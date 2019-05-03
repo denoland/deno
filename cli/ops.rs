@@ -3,7 +3,7 @@ use atty;
 use crate::ansi;
 use crate::compiler::get_compiler_config;
 use crate::dispatch_minimal::dispatch_minimal;
-use crate::dispatch_minimal::has_minimal_token;
+use crate::dispatch_minimal::parse_min_record;
 use crate::errors;
 use crate::errors::{DenoError, DenoResult, ErrorKind};
 use crate::fs as deno_fs;
@@ -76,15 +76,6 @@ fn empty_buf() -> Buf {
   Box::new([])
 }
 
-fn slice_u8_as_i32(bytes: &[u8]) -> &[i32] {
-  let p = bytes.as_ptr();
-  // Assert pointer is 32 bit aligned before casting.
-  assert_eq!((p as usize) % std::mem::align_of::<i32>(), 0);
-  #[allow(clippy::cast_ptr_alignment)]
-  let p32 = p as *const i32;
-  unsafe { std::slice::from_raw_parts(p32, bytes.len() / 4) }
-}
-
 pub fn dispatch_all(
   state: &ThreadSafeState,
   control: &[u8],
@@ -93,10 +84,8 @@ pub fn dispatch_all(
 ) -> Op {
   let bytes_sent_control = control.len();
   let bytes_sent_zero_copy = zero_copy.as_ref().map(|b| b.len()).unwrap_or(0);
-
-  let control32 = slice_u8_as_i32(control);
-  let op = if has_minimal_token(control32) {
-    dispatch_minimal(state, control32, zero_copy)
+  let op = if let Some(min_record) = parse_min_record(control) {
+    dispatch_minimal(state, min_record, zero_copy)
   } else {
     dispatch_all_legacy(state, control, zero_copy, op_selector)
   };
