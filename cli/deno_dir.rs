@@ -1335,15 +1335,14 @@ mod tests {
   }
 
   #[test]
-  fn test_get_source_code_5() {
+  fn test_get_source_code_no_fetch() {
     let (_temp_dir, deno_dir) = test_setup();
-    // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
-      let module_name = "http://localhost:4545/tests/subdir/mismatch_ext.ts";
+      let module_name = "http://localhost:4545/tests/002_hello.ts";
       let filename = deno_fs::normalize_path(
         deno_dir
           .deps_http
-          .join("localhost_PORT4545/tests/subdir/mismatch_ext.ts")
+          .join("localhost_PORT4545/tests/002_hello.ts")
           .as_ref(),
       );
 
@@ -1351,26 +1350,14 @@ mod tests {
       let result =
         get_source_code(&deno_dir, module_name, &filename, true, true);
       assert!(result.is_err());
-    });
-  }
-
-  #[test]
-  fn test_get_source_code_6() {
-    let (_temp_dir, deno_dir) = test_setup();
-    // http_util::fetch_sync_string requires tokio
-    tokio_util::init(|| {
-      let module_name = "http://localhost:4545/tests/subdir/mismatch_ext.ts";
-      let filename = deno_fs::normalize_path(
-        deno_dir
-          .deps_http
-          .join("localhost_PORT4545/tests/subdir/mismatch_ext.ts")
-          .as_ref(),
-      );
+      let err = result.err().unwrap();
+      assert_eq!(err.kind(), ErrorKind::NotFound);
 
       // download and cache file
       let result =
         get_source_code(&deno_dir, module_name, &filename, true, false);
       assert!(result.is_ok());
+
       // module is already cached, should be ok even with `no_fetch`
       let result =
         get_source_code(&deno_dir, module_name, &filename, true, true);
