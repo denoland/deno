@@ -87,7 +87,7 @@ fn test_parse_min_record() {
 
 pub fn dispatch_minimal(
   state: &ThreadSafeState,
-  record: Record,
+  mut record: Record,
   zero_copy: Option<PinnedBuf>,
 ) -> Op {
   let is_sync = record.promise_id == 0;
@@ -98,21 +98,20 @@ pub fn dispatch_minimal(
   };
 
   let state = state.clone();
-  let mut record_ = record;
 
   let fut = Box::new(min_op.then(move |result| -> Result<Buf, ()> {
     match result {
       Ok(r) => {
-        record_.result = r;
+        record.result = r;
       }
       Err(err) => {
         // TODO(ry) The dispatch_minimal doesn't properly pipe errors back to
         // the caller.
         debug!("swallowed err {}", err);
-        record_.result = -1;
+        record.result = -1;
       }
     }
-    let buf: Buf = record_.into();
+    let buf: Buf = record.into();
     state.metrics_op_completed(buf.len());
     Ok(buf)
   }));
