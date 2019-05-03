@@ -35,7 +35,6 @@ impl Into<Buf> for Record {
       self.arg,
       self.result,
     ];
-    //let len = vec.len();
     let buf32 = vec.into_boxed_slice();
     let ptr = Box::into_raw(buf32) as *mut [u8; 5 * 4];
     unsafe { Box::from_raw(ptr) }
