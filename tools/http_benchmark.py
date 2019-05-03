@@ -11,14 +11,14 @@ DURATION = "10s"
 
 
 def deno_http_benchmark(deno_exe):
-    deno_cmd = [deno_exe, "--allow-net", "tests/http_bench.ts", ADDR]
+    deno_cmd = [deno_exe, "run", "--allow-net", "tests/http_bench.ts", ADDR]
     print "http_benchmark testing DENO."
     return run(deno_cmd)
 
 
 def deno_net_http_benchmark(deno_exe):
     deno_cmd = [
-        deno_exe, "--allow-net",
+        deno_exe, "run", "--allow-net",
         "js/deps/https/deno.land/std/http/http_bench.ts", ADDR
     ]
     print "http_benchmark testing DENO using net/http."

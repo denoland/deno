@@ -543,31 +543,24 @@ USAGE:
     deno [FLAGS] [OPTIONS] [SUBCOMMAND]
 
 FLAGS:
-    -A, --allow-all               Allow all permissions
-        --allow-env               Allow environment access
-        --allow-high-precision    Allow high precision time measurement
-        --allow-net               Allow network access
-        --allow-read              Allow file system read access
-        --allow-run               Allow running subprocesses
-        --allow-write             Allow file system write access
-    -h, --help                    Prints help information
-    -D, --log-debug               Log debug output
-        --no-prompt               Do not use prompts
-    -r, --reload                  Reload source code cache (recompile TypeScript)
-        --v8-options              Print V8 command line options
+    -h, --help          Prints help information
+    -D, --log-debug     Log debug output
+    -r, --reload        Reload source code cache (recompile TypeScript)
+        --v8-options    Print V8 command line options
 
 OPTIONS:
+    -c, --config <FILE>          Load compiler configuration file
         --v8-flags=<v8-flags>    Set V8 command line options
 
 SUBCOMMANDS:
-    <script>    Script to run
-    eval        Eval script
-    fetch       Fetch the dependencies
-    fmt         Format files
-    help        Prints this message or the help of the given subcommand(s)
-    info        Show source file related info
-    types       Print runtime TypeScript declarations
-    version     Print the version
+    eval       Eval script
+    fetch      Fetch the dependencies
+    fmt        Format files
+    help       Prints this message or the help of the given subcommand(s)
+    info       Show source file related info
+    run        Run a program given a filename or url to the source code
+    types      Print runtime TypeScript declarations
+    version    Print the version
 
 ENVIRONMENT VARIABLES:
     DENO_DIR        Set deno's base directory

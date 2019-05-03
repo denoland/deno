@@ -36,75 +36,41 @@ pub fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
   App::new("deno")
     .bin_name("deno")
     .global_settings(&[AppSettings::ColorNever])
-    .settings(&[
-      AppSettings::AllowExternalSubcommands,
-      AppSettings::DisableVersion,
-    ]).after_help(ENV_VARIABLES_HELP)
+    .settings(&[AppSettings::DisableVersion])
+    .after_help(ENV_VARIABLES_HELP)
     .arg(
-      Arg::with_name("allow-read")
-        .long("allow-read")
-        .help("Allow file system read access"),
-    ).arg(
-      Arg::with_name("allow-write")
-        .long("allow-write")
-        .help("Allow file system write access"),
-    ).arg(
-      Arg::with_name("allow-net")
-        .long("allow-net")
-        .help("Allow network access"),
-    ).arg(
-      Arg::with_name("allow-env")
-        .long("allow-env")
-        .help("Allow environment access"),
-    ).arg(
-      Arg::with_name("allow-run")
-        .long("allow-run")
-        .help("Allow running subprocesses"),
-    ).arg(
-      Arg::with_name("allow-high-precision")
-        .long("allow-high-precision")
-        .help("Allow high precision time measurement"),
-    ).arg(
-      Arg::with_name("allow-all")
-        .short("A")
-        .long("allow-all")
-        .help("Allow all permissions"),
-    ).arg(
-      Arg::with_name("no-prompt")
-        .long("no-prompt")
-        .help("Do not use prompts"),
-    ).arg(
-      Arg::with_name("no-fetch")
-        .long("no-fetch")
-        .help("Do not download remote modules"),
-    ).arg(
       Arg::with_name("log-debug")
         .short("D")
         .long("log-debug")
-        .help("Log debug output"),
+        .help("Log debug output")
+        .global(true),
     ).arg(
       Arg::with_name("reload")
         .short("r")
         .long("reload")
-        .help("Reload source code cache (recompile TypeScript)"),
+        .help("Reload source code cache (recompile TypeScript)")
+        .global(true),
     ).arg(
       Arg::with_name("config")
         .short("c")
         .long("config")
         .value_name("FILE")
         .help("Load compiler configuration file")
-        .takes_value(true),
+        .takes_value(true)
+        .global(true),
     ).arg(
       Arg::with_name("v8-options")
         .long("v8-options")
-        .help("Print V8 command line options"),
+        .help("Print V8 command line options")
+        .global(true),
     ).arg(
       Arg::with_name("v8-flags")
         .long("v8-flags")
         .takes_value(true)
         .use_delimiter(true)
         .require_equals(true)
-        .help("Set V8 command line options"),
+        .help("Set V8 command line options")
+        .global(true),
     ).subcommand(
       SubCommand::with_name("version")
         .setting(AppSettings::DisableVersion)
@@ -196,7 +162,69 @@ Prettier dependencies on first run.
             .required(true),
         ),
     ).subcommand(
-      SubCommand::with_name("xeval")
+      SubCommand::with_name("run")
+        .settings(&[
+          AppSettings::AllowExternalSubcommands,
+          AppSettings::DisableHelpSubcommand,
+          AppSettings::DisableVersion,
+          AppSettings::SubcommandRequired,
+        ]).about("Run a program given a filename or url to the source code")
+        .long_about(
+          "
+Run a program given a filename or url to the source code.
+
+By default all programs are run in sandbox without access to disk, network or
+ability to spawn subprocesses.
+
+  deno run https://deno.land/welcome.ts
+
+  # run program with permission to read from disk and listen to network
+  deno run --allow-net --allow-read https://deno.land/std/http/file_server.ts
+
+  # run program with all permissions
+  deno run -A https://deno.land/std/http/file_server.ts
+",
+        ).arg(
+          Arg::with_name("allow-read")
+            .long("allow-read")
+            .help("Allow file system read access"),
+        ).arg(
+          Arg::with_name("allow-write")
+            .long("allow-write")
+            .help("Allow file system write access"),
+        ).arg(
+          Arg::with_name("allow-net")
+            .long("allow-net")
+            .help("Allow network access"),
+        ).arg(
+          Arg::with_name("allow-env")
+            .long("allow-env")
+            .help("Allow environment access"),
+        ).arg(
+          Arg::with_name("allow-run")
+            .long("allow-run")
+            .help("Allow running subprocesses"),
+        ).arg(
+          Arg::with_name("allow-high-precision")
+            .long("allow-high-precision")
+            .help("Allow high precision time measurement"),
+        ).arg(
+          Arg::with_name("allow-all")
+            .short("A")
+            .long("allow-all")
+            .help("Allow all permissions"),
+        ).arg(
+          Arg::with_name("no-prompt")
+            .long("no-prompt")
+            .help("Do not use prompts"),
+        ).subcommand(
+          // this is a fake subcommand - it's used in conjunction with
+          // AppSettings:AllowExternalSubcommand to treat it as an
+          // entry point script
+          SubCommand::with_name("<script>").about("Script to run"),
+        ),
+    ).subcommand(
+    SubCommand::with_name("xeval")
         .setting(AppSettings::DisableVersion)
         .about("Eval a script on text segments from stdin")
         .long_about(
@@ -226,14 +254,8 @@ Otherwise '$' will be used as default variable name.
             .help("Set delimiter, defaults to newline")
             .takes_value(true),
         ).arg(Arg::with_name("code").takes_value(true).required(true)),
-    ).subcommand(
-      // this is a fake subcommand - it's used in conjunction with
-      // AppSettings:AllowExternalSubcommand to treat it as an
-      // entry point script
-      SubCommand::with_name("<script>").about("Script to run"),
     )
 }
-
 /// Parse ArgMatches into internal DenoFlags structure.
 /// This method should not make any side effects.
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
@@ -250,39 +272,6 @@ pub fn parse_flags(matches: ArgMatches) -> DenoFlags {
     flags.reload = true;
   }
   flags.config_path = matches.value_of("config").map(ToOwned::to_owned);
-  if matches.is_present("allow-read") {
-    flags.allow_read = true;
-  }
-  if matches.is_present("allow-write") {
-    flags.allow_write = true;
-  }
-  if matches.is_present("allow-net") {
-    flags.allow_net = true;
-  }
-  if matches.is_present("allow-env") {
-    flags.allow_env = true;
-  }
-  if matches.is_present("allow-run") {
-    flags.allow_run = true;
-  }
-  if matches.is_present("allow-high-precision") {
-    flags.allow_high_precision = true;
-  }
-  if matches.is_present("allow-all") {
-    flags.allow_read = true;
-    flags.allow_env = true;
-    flags.allow_net = true;
-    flags.allow_run = true;
-    flags.allow_read = true;
-    flags.allow_write = true;
-    flags.allow_high_precision = true;
-  }
-  if matches.is_present("no-prompt") {
-    flags.no_prompts = true;
-  }
-  if matches.is_present("no-fetch") {
-    flags.no_fetch = true;
-  }
   if matches.is_present("v8-options") {
     let v8_flags = svec!["deno", "--help"];
     flags.v8_flags = Some(v8_flags);
@@ -296,6 +285,40 @@ pub fn parse_flags(matches: ArgMatches) -> DenoFlags {
 
     v8_flags.insert(0, "deno".to_string());
     flags.v8_flags = Some(v8_flags);
+  }
+
+  // flags specific to "run" subcommand
+  if let Some(run_matches) = matches.subcommand_matches("run") {
+    if run_matches.is_present("allow-read") {
+      flags.allow_read = true;
+    }
+    if run_matches.is_present("allow-write") {
+      flags.allow_write = true;
+    }
+    if run_matches.is_present("allow-net") {
+      flags.allow_net = true;
+    }
+    if run_matches.is_present("allow-env") {
+      flags.allow_env = true;
+    }
+    if run_matches.is_present("allow-run") {
+      flags.allow_run = true;
+    }
+    if run_matches.is_present("allow-high-precision") {
+      flags.allow_high_precision = true;
+    }
+    if run_matches.is_present("allow-all") {
+      flags.allow_read = true;
+      flags.allow_env = true;
+      flags.allow_net = true;
+      flags.allow_run = true;
+      flags.allow_read = true;
+      flags.allow_write = true;
+      flags.allow_high_precision = true;
+    }
+    if run_matches.is_present("no-prompt") {
+      flags.no_prompts = true;
+    }
   }
 
   flags
@@ -314,6 +337,7 @@ pub enum DenoSubcommand {
   Repl,
   Run,
   Types,
+  Version,
   Xeval,
 }
 
@@ -327,6 +351,12 @@ pub fn flags_from_vec(
 
   let subcommand = match matches.subcommand() {
     ("eval", Some(eval_match)) => {
+      flags.allow_net = true;
+      flags.allow_env = true;
+      flags.allow_run = true;
+      flags.allow_read = true;
+      flags.allow_write = true;
+      flags.allow_high_precision = true;
       let code: &str = eval_match.value_of("code").unwrap();
       argv.extend(vec![code.to_string()]);
       DenoSubcommand::Eval
@@ -356,6 +386,25 @@ pub fn flags_from_vec(
       DenoSubcommand::Info
     }
     ("types", Some(_)) => DenoSubcommand::Types,
+    ("run", Some(run_match)) => {
+      match run_match.subcommand() {
+        (script, Some(script_match)) => {
+          argv.extend(vec![script.to_string()]);
+          // check if there are any extra arguments that should
+          // be passed to script
+          if script_match.is_present("") {
+            let script_args: Vec<String> = script_match
+              .values_of("")
+              .unwrap()
+              .map(String::from)
+              .collect();
+            argv.extend(script_args);
+          }
+          DenoSubcommand::Run
+        }
+        _ => unreachable!(),
+      }
+    }
     ("xeval", Some(eval_match)) => {
       let code: &str = eval_match.value_of("code").unwrap();
       flags.xeval_replvar =
@@ -367,21 +416,16 @@ pub fn flags_from_vec(
       argv.extend(vec![code.to_string()]);
       DenoSubcommand::Xeval
     }
-    (script, Some(script_match)) => {
-      argv.extend(vec![script.to_string()]);
-      // check if there are any extra arguments that should
-      // be passed to script
-      if script_match.is_present("") {
-        let script_args: Vec<String> = script_match
-          .values_of("")
-          .unwrap()
-          .map(String::from)
-          .collect();
-        argv.extend(script_args);
-      }
-      DenoSubcommand::Run
+    ("version", Some(_)) => DenoSubcommand::Version,
+    _ => {
+      flags.allow_net = true;
+      flags.allow_env = true;
+      flags.allow_run = true;
+      flags.allow_read = true;
+      flags.allow_write = true;
+      flags.allow_high_precision = true;
+      DenoSubcommand::Repl
     }
-    _ => DenoSubcommand::Repl,
   };
 
   (flags, subcommand, argv)
@@ -401,14 +445,14 @@ mod tests {
         ..DenoFlags::default()
       }
     );
-    assert_eq!(subcommand, DenoSubcommand::Run);
-    assert_eq!(argv, svec!["deno", "version"]);
+    assert_eq!(subcommand, DenoSubcommand::Version);
+    assert_eq!(argv, svec!["deno"]);
   }
 
   #[test]
   fn test_flags_from_vec_2() {
     let (flags, subcommand, argv) =
-      flags_from_vec(svec!["deno", "-r", "-D", "script.ts"]);
+      flags_from_vec(svec!["deno", "-r", "-D", "run", "script.ts"]);
     assert_eq!(
       flags,
       DenoFlags {
@@ -423,12 +467,19 @@ mod tests {
 
   #[test]
   fn test_flags_from_vec_3() {
-    let (flags, subcommand, argv) =
-      flags_from_vec(svec!["deno", "-r", "--allow-write", "script.ts"]);
+    let (flags, subcommand, argv) = flags_from_vec(svec![
+      "deno",
+      "run",
+      "-r",
+      "-D",
+      "--allow-write",
+      "script.ts"
+    ]);
     assert_eq!(
       flags,
       DenoFlags {
         reload: true,
+        log_debug: true,
         allow_write: true,
         ..DenoFlags::default()
       }
@@ -440,7 +491,7 @@ mod tests {
   #[test]
   fn test_flags_from_vec_4() {
     let (flags, subcommand, argv) =
-      flags_from_vec(svec!["deno", "-Dr", "--allow-write", "script.ts"]);
+      flags_from_vec(svec!["deno", "-Dr", "run", "--allow-write", "script.ts"]);
     assert_eq!(
       flags,
       DenoFlags {
@@ -457,7 +508,7 @@ mod tests {
   #[test]
   fn test_flags_from_vec_5() {
     let (flags, subcommand, argv) =
-      flags_from_vec(svec!["deno", "--v8-options"]);
+      flags_from_vec(svec!["deno", "--v8-options", "run", "script.ts"]);
     assert_eq!(
       flags,
       DenoFlags {
@@ -465,11 +516,15 @@ mod tests {
         ..DenoFlags::default()
       }
     );
-    assert_eq!(subcommand, DenoSubcommand::Repl);
-    assert_eq!(argv, svec!["deno"]);
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "script.ts"]);
 
-    let (flags, subcommand, argv) =
-      flags_from_vec(svec!["deno", "--v8-flags=--expose-gc,--gc-stats=1"]);
+    let (flags, subcommand, argv) = flags_from_vec(svec![
+      "deno",
+      "--v8-flags=--expose-gc,--gc-stats=1",
+      "run",
+      "script.ts"
+    ]);
     assert_eq!(
       flags,
       DenoFlags {
@@ -477,14 +532,20 @@ mod tests {
         ..DenoFlags::default()
       }
     );
-    assert_eq!(subcommand, DenoSubcommand::Repl);
-    assert_eq!(argv, svec!["deno"]);
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "script.ts"]);
   }
 
   #[test]
   fn test_flags_from_vec_6() {
-    let (flags, subcommand, argv) =
-      flags_from_vec(svec!["deno", "--allow-net", "gist.ts", "--title", "X"]);
+    let (flags, subcommand, argv) = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--allow-net",
+      "gist.ts",
+      "--title",
+      "X"
+    ]);
     assert_eq!(
       flags,
       DenoFlags {
@@ -499,7 +560,7 @@ mod tests {
   #[test]
   fn test_flags_from_vec_7() {
     let (flags, subcommand, argv) =
-      flags_from_vec(svec!["deno", "--allow-all", "gist.ts"]);
+      flags_from_vec(svec!["deno", "run", "--allow-all", "gist.ts"]);
     assert_eq!(
       flags,
       DenoFlags {
@@ -519,7 +580,7 @@ mod tests {
   #[test]
   fn test_flags_from_vec_8() {
     let (flags, subcommand, argv) =
-      flags_from_vec(svec!["deno", "--allow-read", "gist.ts"]);
+      flags_from_vec(svec!["deno", "run", "--allow-read", "gist.ts"]);
     assert_eq!(
       flags,
       DenoFlags {
@@ -533,8 +594,12 @@ mod tests {
 
   #[test]
   fn test_flags_from_vec_9() {
-    let (flags, subcommand, argv) =
-      flags_from_vec(svec!["deno", "--allow-high-precision", "script.ts"]);
+    let (flags, subcommand, argv) = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--allow-high-precision",
+      "script.ts"
+    ]);
     assert_eq!(
       flags,
       DenoFlags {
@@ -553,6 +618,7 @@ mod tests {
     // script args as Deno.args
     let (flags, subcommand, argv) = flags_from_vec(svec![
       "deno",
+      "run",
       "--allow-write",
       "script.ts",
       "-D",
@@ -616,6 +682,60 @@ mod tests {
 
   #[test]
   fn test_flags_from_vec_15() {
+    let (flags, subcommand, argv) =
+      flags_from_vec(svec!["deno", "run", "-c", "tsconfig.json", "script.ts"]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        config_path: Some("tsconfig.json".to_owned()),
+        ..DenoFlags::default()
+      }
+    );
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "script.ts"]);
+  }
+
+  #[test]
+  fn test_flags_from_vec_16() {
+    let (flags, subcommand, argv) =
+      flags_from_vec(svec!["deno", "eval", "'console.log(\"hello\")'"]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        allow_net: true,
+        allow_env: true,
+        allow_run: true,
+        allow_read: true,
+        allow_write: true,
+        allow_high_precision: true,
+        ..DenoFlags::default()
+      }
+    );
+    assert_eq!(subcommand, DenoSubcommand::Eval);
+    assert_eq!(argv, svec!["deno", "'console.log(\"hello\")'"]);
+  }
+
+  #[test]
+  fn test_flags_from_vec_17() {
+    let (flags, subcommand, argv) = flags_from_vec(svec!["deno"]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        allow_net: true,
+        allow_env: true,
+        allow_run: true,
+        allow_read: true,
+        allow_write: true,
+        allow_high_precision: true,
+        ..DenoFlags::default()
+      }
+    );
+    assert_eq!(subcommand, DenoSubcommand::Repl);
+    assert_eq!(argv, svec!["deno"]);
+  }
+
+  #[test]
+  fn test_flags_from_vec_18() {
     let (flags, subcommand, argv) = flags_from_vec(svec![
       "deno",
       "xeval",
@@ -631,18 +751,5 @@ mod tests {
     assert_eq!(flags, expected_flags);
     assert_eq!(subcommand, DenoSubcommand::Xeval);
     assert_eq!(argv, svec!["deno", "console.log(val)"]);
-  }
-
-  #[test]
-  fn test_set_flags_11() {
-    let (flags, _, _) =
-      flags_from_vec(svec!["deno", "-c", "tsconfig.json", "script.ts"]);
-    assert_eq!(
-      flags,
-      DenoFlags {
-        config_path: Some("tsconfig.json".to_owned()),
-        ..DenoFlags::default()
-      }
-    )
   }
 }
