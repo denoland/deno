@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { test, assertEquals } from "./test_util.ts";
+import { test, testPerm, assertEquals, assert } from "./test_util.ts";
 
 // just a hack to get a body object
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -32,7 +32,6 @@ test(async function arrayBufferFromByteArrays(): Promise<void> {
 });
 
 //FormData
-/* TODO(ry) Re-enable this test.
 testPerm({ net: true }, async function bodyMultipartFormData(): Promise<void> {
   const response = await fetch(
     "http://localhost:4545/tests/subdir/multipart_form_data.txt"
@@ -40,6 +39,10 @@ testPerm({ net: true }, async function bodyMultipartFormData(): Promise<void> {
   const text = await response.text();
 
   const body = buildBody(text);
+
+  // @ts-ignore
+  body.contentType = "multipart/form-data;boundary=boundary";
+
   const formData = await body.formData();
   assert(formData.has("field_1"));
   assertEquals(formData.get("field_1").toString(), "value_1 \r\n");
@@ -53,10 +56,13 @@ testPerm({ net: true }, async function bodyURLEncodedFormData(): Promise<void> {
   const text = await response.text();
 
   const body = buildBody(text);
+
+  // @ts-ignore
+  body.contentType = "application/x-www-form-urlencoded";
+
   const formData = await body.formData();
   assert(formData.has("field_1"));
   assertEquals(formData.get("field_1").toString(), "Hi");
   assert(formData.has("field_2"));
   assertEquals(formData.get("field_2").toString(), "<Deno>");
 });
-*/
