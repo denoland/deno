@@ -124,13 +124,18 @@ jobs:
     # tests.  We want to detect leaks during the build process as well as
     # when executing the tests. So set the ASAN_OPTIONS env var before
     # build.py is run.
-    - name: "lsan debug linux"
+    - name: "asan/lsan linux"
       os: linux
       script:
       - ./tools/lint.py
       - ./tools/test_format.py
       - echo is_asan=true >> target/debug/args.gn
       - echo is_lsan=true >> target/debug/args.gn
+      # TODO(ry) sccache doesn't support "-Xclang -fdebug-compilation-dir"
+      # Which is enabled for ASAN builds if symbol_level != 0.
+      # https://cs.chromium.org/chromium/src/build/config/compiler/BUILD.gn?l=1087&rcl=573da77f569b41e23527f2952938f492678ab4bb
+      # Ideally we can remove this constraint in the future.
+      - echo symbol_level=0 >> target/debug/args.gn
       # Call gn gen again to make sure new args are recognized.
       - third_party/depot_tools/gn gen target/debug
       - export ASAN_OPTIONS=detect_leaks=1
