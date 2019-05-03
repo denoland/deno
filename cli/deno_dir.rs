@@ -26,16 +26,6 @@ use std::str;
 use url;
 use url::Url;
 
-/// Gets corresponding MediaType given extension
-fn extmap(ext: &str) -> msg::MediaType {
-  match ext {
-    "ts" => msg::MediaType::TypeScript,
-    "js" => msg::MediaType::JavaScript,
-    "json" => msg::MediaType::Json,
-    _ => msg::MediaType::Unknown,
-  }
-}
-
 #[derive(Clone)]
 pub struct DenoDir {
   // Example: /Users/rld/.deno/
@@ -553,6 +543,7 @@ fn map_file_extension(path: &Path) -> msg::MediaType {
     Some(os_str) => match os_str.to_str() {
       Some("ts") => msg::MediaType::TypeScript,
       Some("js") => msg::MediaType::JavaScript,
+      Some("mjs") => msg::MediaType::JavaScript,
       Some("json") => msg::MediaType::Json,
       _ => msg::MediaType::Unknown,
     },
@@ -871,11 +862,7 @@ fn save_source_code_headers(
     let mime_type_string = mime_type.clone().unwrap();
     let resolved_mime_type =
       { map_content_type(Path::new(""), Some(mime_type_string.as_str())) };
-    let ext = p
-      .extension()
-      .map(|x| x.to_str().unwrap_or(""))
-      .unwrap_or("");
-    let ext_based_mime_type = extmap(&ext);
+    let ext_based_mime_type = map_file_extension(&p);
     // Add mime to headers only when content type is different from extension.
     if ext_based_mime_type == msg::MediaType::Unknown
       || resolved_mime_type != ext_based_mime_type

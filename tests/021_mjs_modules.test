@@ -1,0 +1,2 @@
+args: --reload tests/021_mjs_modules.ts
+output: tests/021_mjs_modules.ts.out
