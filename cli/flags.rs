@@ -209,10 +209,9 @@ string chunks.
 -I/--replvar optionally set variable name for input to be used in eval.
 Otherwise '$' will be used as default variable name.
 
-  cat list.txt | deno xeval 'console.log($)'
-  cat list.txt | deno xeval -I 'val' 'console.log(val)'
-  cat list.txt | deno xeval -d ' ' 'console.log($)'
-  cat list.txt | deno xeval -d $'\\n' 'console.log($)'
+  cat /etc/passwd | deno xeval \"a = $.split(':'); if (a) console.log(a[0])\"
+  git branch | deno xeval -I 'line' \"if (line.startsWith('*')) console.log(line.slice(2))\"
+  cat LICENSE | deno xeval -d ' ' \"if ($ === 'MIT') console.log('MIT licensed')\"
 ",
         ).arg(
           Arg::with_name("replvar")
