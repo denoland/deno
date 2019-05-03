@@ -11,13 +11,10 @@ import {
   SyncSeeker
 } from "./io";
 import * as dispatch from "./dispatch";
-import { sendAsyncMinimal } from "./dispatch_minimal";
+import { sendAsyncMinimal, OP_READ, OP_WRITE } from "./dispatch_minimal";
 import * as msg from "gen/cli/msg_generated";
 import { assert } from "./util";
 import * as flatbuffers from "./flatbuffers";
-
-const OP_READ = 1;
-const OP_WRITE = 2;
 
 function reqOpen(
   filename: string,

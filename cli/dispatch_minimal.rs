@@ -13,6 +13,7 @@ use futures::Future;
 const DISPATCH_MINIMAL_TOKEN: i32 = 0xCAFE;
 const OP_READ: i32 = 1;
 const OP_WRITE: i32 = 2;
+const OP_ACCEPT: i32 = 3;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 // This corresponds to RecordMinimal on the TS side.
@@ -94,6 +95,7 @@ pub fn dispatch_minimal(
   let min_op = match record.op_id {
     OP_READ => ops::read(record.arg, zero_copy),
     OP_WRITE => ops::write(record.arg, zero_copy),
+    OP_ACCEPT => ops::accept(record.arg, zero_copy),
     _ => unimplemented!(),
   };
 
@@ -125,6 +127,7 @@ pub fn dispatch_minimal(
 mod ops {
   use crate::errors;
   use crate::resources;
+  use crate::tokio_util;
   use crate::tokio_write;
   use deno::PinnedBuf;
   use futures::Future;
@@ -153,6 +156,24 @@ mod ops {
         tokio_write::write(resource, zero_copy)
           .map_err(errors::DenoError::from)
           .and_then(move |(_resource, _buf, nwritten)| Ok(nwritten as i32)),
+      ),
+    }
+  }
+
+  pub fn accept(
+    server_rid: i32,
+    zero_copy: Option<PinnedBuf>,
+  ) -> Box<MinimalOp> {
+    assert!(zero_copy.is_none());
+    match resources::lookup(server_rid as u32) {
+      None => Box::new(futures::future::err(errors::bad_resource())),
+      Some(server_resource) => Box::new(
+        tokio_util::accept(server_resource)
+          .map_err(errors::DenoError::from)
+          .and_then(move |(tcp_stream, _socket_addr)| {
+            let tcp_stream_resource = resources::add_tcp_stream(tcp_stream);
+            Ok(tcp_stream_resource.rid as i32)
+          }),
       ),
     }
   }

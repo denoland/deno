@@ -3,6 +3,10 @@
 import * as util from "./util";
 import { core } from "./core";
 
+export const OP_READ = 1;
+export const OP_WRITE = 2;
+export const OP_ACCEPT = 3;
+
 const DISPATCH_MINIMAL_TOKEN = 0xcafe;
 const promiseTableMin = new Map<number, util.Resolvable<number>>();
 let _nextPromiseId = 0;
@@ -60,7 +64,7 @@ export function handleAsyncMsgFromRustMinimal(
 export function sendAsyncMinimal(
   opId: number,
   arg: number,
-  zeroCopy: Uint8Array
+  zeroCopy?: Uint8Array
 ): Promise<number> {
   const promiseId = nextPromiseId(); // AKA cmdId
 

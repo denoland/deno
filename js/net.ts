@@ -4,6 +4,7 @@ import * as msg from "gen/cli/msg_generated";
 import { assert, notImplemented } from "./util";
 import * as dispatch from "./dispatch";
 import * as flatbuffers from "./flatbuffers";
+import { sendAsyncMinimal, OP_ACCEPT } from "./dispatch_minimal";
 import { read, write, close } from "./files";
 
 export type Network = "tcp";
@@ -82,14 +83,14 @@ class ListenerImpl implements Listener {
   constructor(readonly rid: number) {}
 
   async accept(): Promise<Conn> {
-    const builder = flatbuffers.createBuilder();
-    const inner = msg.Accept.createAccept(builder, this.rid);
-    const baseRes = await dispatch.sendAsync(builder, msg.Any.Accept, inner);
-    assert(baseRes != null);
-    assert(msg.Any.NewConn === baseRes!.innerType());
-    const res = new msg.NewConn();
-    assert(baseRes!.inner(res) != null);
-    return new ConnImpl(res.rid(), res.remoteAddr()!, res.localAddr()!);
+    const acceptedRid = await sendAsyncMinimal(OP_ACCEPT, this.rid);
+    if (acceptedRid < 0) {
+      throw new Error("accept error");
+    }
+    // TODO(ry) Restore the remoteAddr localAddr functionality.
+    const remoteAddr = "";
+    const localAddr = "";
+    return new ConnImpl(acceptedRid, remoteAddr, localAddr);
   }
 
   close(): void {
