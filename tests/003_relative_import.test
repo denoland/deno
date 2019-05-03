@@ -1,2 +1,2 @@
-args: --reload run tests/003_relative_import.ts
+args: --reload tests/003_relative_import.ts
 output: tests/003_relative_import.ts.out

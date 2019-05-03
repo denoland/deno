@@ -1,2 +1,2 @@
-args: --reload run tests/https_import.ts
+args: --reload tests/https_import.ts
 output: tests/https_import.ts.out

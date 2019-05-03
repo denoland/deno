@@ -1,2 +1,2 @@
-args: --reload run tests/001_hello.js
+args: --reload tests/001_hello.js
 output: tests/001_hello.js.out

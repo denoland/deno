@@ -1,2 +1,2 @@
-args: --reload run tests/019_media_types.ts
+args: --reload tests/019_media_types.ts
 output: tests/019_media_types.ts.out

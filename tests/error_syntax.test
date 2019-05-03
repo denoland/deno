@@ -1,4 +1,4 @@
-args: --reload run tests/error_syntax.js
+args: --reload tests/error_syntax.js
 check_stderr: true
 exit_code: 1
 output: tests/error_syntax.js.out

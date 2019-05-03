@@ -1,2 +1,2 @@
-args: --reload run tests/002_hello.ts
+args: --reload tests/002_hello.ts
 output: tests/002_hello.ts.out
