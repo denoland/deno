@@ -68,7 +68,7 @@ def integration_tests(deno_exe, test_filter=None):
         output_abs = os.path.join(root_path, test.get("output", ""))
         with open(output_abs, 'r') as f:
             expected_out = f.read()
-        cmd = [deno_exe] + args
+        cmd = [deno_exe, "run"] + args
         sys.stdout.write("tests/%s ... " % (test_filename))
         sys.stdout.flush()
         actual_code = 0

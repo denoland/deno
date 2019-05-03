@@ -71,7 +71,8 @@ class Prompt(object):
 
     def run(self, flags, args, bytes_input):
         "Returns (return_code, stdout, stderr)."
-        cmd = [self.deno_exe] + flags + [PERMISSIONS_PROMPT_TEST_TS] + args
+        cmd = [self.deno_exe, "run"] + flags + [PERMISSIONS_PROMPT_TEST_TS
+                                                ] + args
         return tty_capture(cmd, bytes_input)
 
     def warm_up(self):
