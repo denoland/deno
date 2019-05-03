@@ -70,7 +70,7 @@ function sendInternal(
 
   const response = core.dispatch(
     control,
-    zeroCopy ? ui8FromArrayBufferView(zeroCopy!) : undefined
+    zeroCopy ? ui8FromArrayBufferView(zeroCopy) : undefined
   );
 
   builder.inUse = false;
