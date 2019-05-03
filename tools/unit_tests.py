@@ -48,6 +48,7 @@ def unit_tests(deno_exe):
     run_unit_test(deno_exe, "permR0W0N0E0U0H0", ["--reload"])
     run_unit_test(deno_exe, "permR1W0N0E0U0H0", ["--allow-read"])
     run_unit_test(deno_exe, "permR0W1N0E0U0H0", ["--allow-write"])
+    run_unit_test(deno_exe, "permR0W0N1E0U0H0", ["--allow-net"])
     run_unit_test(deno_exe, "permR1W1N0E0U0H0",
                   ["--allow-read", "--allow-write"])
     run_unit_test(deno_exe, "permR0W0N0E1U0H0", ["--allow-env"])

@@ -42,6 +42,7 @@ install:
     curl -sSf https://sh.rustup.rs | sh -s -- -y \
       --default-toolchain $RUST_VERSION
     rustup default $RUST_VERSION
+    rustup component add clippy
   fi
   rustc --version
   cargo --version
@@ -116,6 +117,8 @@ jobs:
       - ./tools/lint.py
       - ./tools/test_format.py
       - cargo build -vv --release --locked
+      - cargo clippy --all-targets --release --locked -- -D clippy::all
+
     # LSAN: We are in the process of getting a completely clean LSAN build,
     # but it will take some work. So for now we just run a subset of the
     # tests.  We want to detect leaks during the build process as well as
@@ -131,6 +134,6 @@ jobs:
       # Call gn gen again to make sure new args are recognized.
       - third_party/depot_tools/gn gen target/debug
       - export ASAN_OPTIONS=detect_leaks=1
-      - ./tools/build.py test_cc
-      - ./target/debug/test_cc
+      - ./tools/build.py libdeno_test
+      - ./target/debug/libdeno_test
 

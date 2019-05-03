@@ -15,6 +15,7 @@ extern crate nix;
 mod ansi;
 pub mod compiler;
 pub mod deno_dir;
+mod dispatch_minimal;
 pub mod errors;
 pub mod flags;
 mod fs;
@@ -257,17 +258,9 @@ fn main() {
   let args: Vec<String> = env::args().collect();
   let (flags, subcommand, argv) = flags::flags_from_vec(args);
 
-  if flags.v8_help {
-    // show v8 help and exit
-    v8_set_flags(vec!["--help".to_string()]);
+  if let Some(ref v8_flags) = flags.v8_flags {
+    v8_set_flags(v8_flags.clone());
   }
-
-  match &flags.v8_flags {
-    Some(v8_flags) => {
-      v8_set_flags(v8_flags.clone());
-    }
-    _ => {}
-  };
 
   log::set_max_level(if flags.log_debug {
     LevelFilter::Debug

@@ -8,9 +8,9 @@ use crate::permissions::DenoPermissions;
 use crate::resources;
 use crate::resources::ResourceId;
 use crate::worker::Worker;
-use deno::deno_buf;
 use deno::Buf;
 use deno::Op;
+use deno::PinnedBuf;
 use futures::future::Shared;
 use std;
 use std::collections::HashMap;
@@ -81,11 +81,7 @@ impl Deref for ThreadSafeState {
 }
 
 impl ThreadSafeState {
-  pub fn dispatch(
-    &self,
-    control: &[u8],
-    zero_copy: deno_buf,
-  ) -> (bool, Box<Op>) {
+  pub fn dispatch(&self, control: &[u8], zero_copy: Option<PinnedBuf>) -> Op {
     ops::dispatch_all(self, control, zero_copy, self.dispatch_selector)
   }
 }

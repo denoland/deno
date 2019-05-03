@@ -200,7 +200,7 @@ impl<L: Loader> Future for RecursiveLoad<L> {
             modules.is_registered(&source_code_info.module_name)
           };
 
-          let need_alias = &source_code_info.module_name != &completed.url;
+          let need_alias = source_code_info.module_name != completed.url;
 
           if !is_module_registered {
             let module_name = &source_code_info.module_name;
@@ -418,9 +418,7 @@ impl Modules {
     let name = String::from(name);
     debug!("register_complete {}", name);
 
-    let _r = self.by_name.insert(name.clone(), id);
-    // TODO should this be an assert or not ? assert!(r.is_none());
-
+    self.by_name.insert(name.clone(), id);
     self.info.insert(
       id,
       ModuleInfo {
