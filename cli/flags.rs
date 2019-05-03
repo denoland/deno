@@ -40,66 +40,38 @@ pub fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
       AppSettings::DisableVersion,
     ]).after_help(ENV_VARIABLES_HELP)
     .arg(
-      Arg::with_name("allow-read")
-        .long("allow-read")
-        .help("Allow file system read access"),
-    ).arg(
-      Arg::with_name("allow-write")
-        .long("allow-write")
-        .help("Allow file system write access"),
-    ).arg(
-      Arg::with_name("allow-net")
-        .long("allow-net")
-        .help("Allow network access"),
-    ).arg(
-      Arg::with_name("allow-env")
-        .long("allow-env")
-        .help("Allow environment access"),
-    ).arg(
-      Arg::with_name("allow-run")
-        .long("allow-run")
-        .help("Allow running subprocesses"),
-    ).arg(
-      Arg::with_name("allow-high-precision")
-        .long("allow-high-precision")
-        .help("Allow high precision time measurement"),
-    ).arg(
-      Arg::with_name("allow-all")
-        .short("A")
-        .long("allow-all")
-        .help("Allow all permissions"),
-    ).arg(
-      Arg::with_name("no-prompt")
-        .long("no-prompt")
-        .help("Do not use prompts"),
-    ).arg(
       Arg::with_name("log-debug")
         .short("D")
         .long("log-debug")
-        .help("Log debug output"),
+        .help("Log debug output")
+        .global(true),
     ).arg(
       Arg::with_name("reload")
         .short("r")
         .long("reload")
-        .help("Reload source code cache (recompile TypeScript)"),
+        .help("Reload source code cache (recompile TypeScript)")
+        .global(true),
     ).arg(
       Arg::with_name("config")
         .short("c")
         .long("config")
         .value_name("FILE")
         .help("Load compiler configuration file")
-        .takes_value(true),
+        .takes_value(true)
+        .global(true),
     ).arg(
       Arg::with_name("v8-options")
         .long("v8-options")
-        .help("Print V8 command line options"),
+        .help("Print V8 command line options")
+        .global(true),
     ).arg(
       Arg::with_name("v8-flags")
         .long("v8-flags")
         .takes_value(true)
         .use_delimiter(true)
         .require_equals(true)
-        .help("Set V8 command line options"),
+        .help("Set V8 command line options")
+        .global(true),
     ).subcommand(
       SubCommand::with_name("version")
         .setting(AppSettings::DisableVersion)
@@ -422,11 +394,12 @@ mod tests {
   #[test]
   fn test_flags_from_vec_3() {
     let (flags, subcommand, argv) =
-      flags_from_vec(svec!["deno", "-r", "--allow-write", "run", "script.ts"]);
+      flags_from_vec(svec!["deno", "run", "-r", "-D", "--allow-write", "script.ts"]);
     assert_eq!(
       flags,
       DenoFlags {
         reload: true,
+        log_debug: true,
         allow_write: true,
         ..DenoFlags::default()
       }
@@ -625,14 +598,16 @@ mod tests {
 
   #[test]
   fn test_flags_from_vec_15() {
-    let (flags, _, _) =
-      flags_from_vec(svec!["deno", "-c", "tsconfig.json", "script.ts"]);
+    let (flags, subcommand, argv) =
+      flags_from_vec(svec!["deno", "run", "-c", "tsconfig.json", "script.ts"]);
     assert_eq!(
       flags,
       DenoFlags {
         config_path: Some("tsconfig.json".to_owned()),
         ..DenoFlags::default()
       }
-    )
+    );
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "script.ts"]);
   }
 }
