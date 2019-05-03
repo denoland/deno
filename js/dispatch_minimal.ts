@@ -68,7 +68,6 @@ export function sendAsyncMinimal(
   scratch32[1] = promiseId;
   scratch32[2] = opId;
   scratch32[3] = arg;
-  // scratch32[4] = -1;
 
   const promise = util.createResolvable<number>();
   promiseTableMin.set(promiseId, promise);
