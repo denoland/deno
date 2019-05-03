@@ -124,16 +124,16 @@ jobs:
     # tests.  We want to detect leaks during the build process as well as
     # when executing the tests. So set the ASAN_OPTIONS env var before
     # build.py is run.
-    - name: "lsan debug linux"
+    - name: "asan/lsan linux"
       os: linux
       script:
       - ./tools/lint.py
       - ./tools/test_format.py
-      - echo is_asan=true >> target/debug/args.gn
-      - echo is_lsan=true >> target/debug/args.gn
+      - echo is_asan=true >> target/release/args.gn
+      - echo is_lsan=true >> target/release/args.gn
       # Call gn gen again to make sure new args are recognized.
-      - third_party/depot_tools/gn gen target/debug
+      - third_party/depot_tools/gn gen target/release
       - export ASAN_OPTIONS=detect_leaks=1
       - ./tools/build.py libdeno_test
-      - ./target/debug/libdeno_test
+      - ./target/release/libdeno_test
 
