@@ -19,7 +19,7 @@ ADDR = "127.0.0.1:4544"
 def cat(deno_exe, megs):
     size = megs * MB
     start = time.time()
-    cmd = deno_exe + " --allow-read run tests/cat.ts /dev/zero | head -c %s " % size
+    cmd = deno_exe + " --allow-read tests/cat.ts /dev/zero | head -c %s " % size
     print cmd
     subprocess.check_output(cmd, shell=True)
     end = time.time()
@@ -30,7 +30,7 @@ def tcp(deno_exe, megs):
     size = megs * MB
     # Run deno echo server in the background.
     echo_server = subprocess.Popen(
-        [deno_exe, "--allow-net", "run", "tests/echo_server.ts", ADDR])
+        [deno_exe, "--allow-net", "tests/echo_server.ts", ADDR])
 
     time.sleep(5)  # wait for deno to wake up. TODO racy.
     try:
