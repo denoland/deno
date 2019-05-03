@@ -2,7 +2,6 @@
 use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
 
 // Creates vector of strings, Vec<String>
-#[cfg(test)]
 macro_rules! svec {
     ($($x:expr),*) => (vec![$($x.to_string()),*]);
 }
@@ -23,7 +22,6 @@ pub struct DenoFlags {
   pub allow_run: bool,
   pub allow_high_precision: bool,
   pub no_prompts: bool,
-  pub v8_help: bool,
   pub v8_flags: Option<Vec<String>>,
 }
 
@@ -245,15 +243,17 @@ pub fn parse_flags(matches: ArgMatches) -> DenoFlags {
     flags.no_prompts = true;
   }
   if matches.is_present("v8-options") {
-    flags.v8_help = true;
+    let v8_flags = svec!["deno", "--help"];
+    flags.v8_flags = Some(v8_flags);
   }
   if matches.is_present("v8-flags") {
-    let v8_flags: Vec<String> = matches
+    let mut v8_flags: Vec<String> = matches
       .values_of("v8-flags")
       .unwrap()
       .map(String::from)
       .collect();
 
+    v8_flags.insert(0, "deno".to_string());
     flags.v8_flags = Some(v8_flags);
   }
 
@@ -408,7 +408,7 @@ mod tests {
     assert_eq!(
       flags,
       DenoFlags {
-        v8_help: true,
+        v8_flags: Some(svec!["deno", "--help"]),
         ..DenoFlags::default()
       }
     );
@@ -420,7 +420,7 @@ mod tests {
     assert_eq!(
       flags,
       DenoFlags {
-        v8_flags: Some(svec!["--expose-gc", "--gc-stats=1"]),
+        v8_flags: Some(svec!["deno", "--expose-gc", "--gc-stats=1"]),
         ..DenoFlags::default()
       }
     );
