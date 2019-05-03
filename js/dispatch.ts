@@ -5,7 +5,7 @@ import * as msg from "gen/cli/msg_generated";
 import * as errors from "./errors";
 import * as util from "./util";
 import {
-  RecordMinimal,
+  Record,
   nextPromiseId,
   recordFromBufMinimal,
   handleAsyncMsgFromRustMinimal
@@ -13,11 +13,11 @@ import {
 
 const promiseTable = new Map<number, util.Resolvable<msg.Base>>();
 
-interface Record extends RecordMinimal {
+interface FlatbufferRecord extends Record {
   base?: msg.Base;
 }
 
-function recordFromBuf(buf: Uint8Array): Record {
+function recordFromBuf(buf: Uint8Array): FlatbufferRecord {
   // assert(buf.byteLength % 4 == 0);
   const buf32 = new Int32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
 

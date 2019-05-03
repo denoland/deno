@@ -11,7 +11,7 @@ export function nextPromiseId(): number {
   return _nextPromiseId++;
 }
 
-export interface RecordMinimal {
+export interface Record {
   promiseId: number;
   opId: number;
   arg: number;
@@ -25,7 +25,7 @@ export function hasMinimalToken(i32: Int32Array): boolean {
   return i32[0] == DISPATCH_MINIMAL_TOKEN;
 }
 
-export function recordFromBufMinimal(buf32: Int32Array): null | RecordMinimal {
+export function recordFromBufMinimal(buf32: Int32Array): null | Record {
   if (hasMinimalToken(buf32)) {
     return {
       promiseId: buf32[1],
@@ -47,7 +47,7 @@ util.assert(scratchBytes.byteLength === scratch32.length * 4);
 
 export function handleAsyncMsgFromRustMinimal(
   ui8: Uint8Array,
-  record: RecordMinimal
+  record: Record
 ): void {
   // Fast and new
   util.log("minimal handleAsyncMsgFromRust ", ui8.length);
