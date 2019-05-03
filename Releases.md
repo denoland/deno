@@ -6,6 +6,29 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.3.11 / 2019.05.03
+
+In deno:
+
+- add "deno run" subcommand (#2215)
+- add "deno xeval" subcommand (#2260)
+- add --no-fetch CLI flag to prevent remote downloads (#2213)
+- Fix: deno --v8-options does not print v8 options (#2277)
+- Performance improvements and fix memory leaks (#2259, #2238)
+- Add Request global constructor (#2253)
+- fs: add Deno.utime/Deno.utimeSync (#2241)
+- Make `atob` follow the spec (#2242)
+- Upgrade V8 to 7.6.53 (#2236)
+- Remove ? from URL when deleting all params (#2217)
+- Add support for custom tsconfig.json (#2089)
+- URLSearchParams init with itself (#2218)
+
+In deno_std:
+
+- textproto: fix invalid header error and move tests (#369)
+- Add http/cookie improvements (#368, #359)
+- fix ensureLink (#360)
+
 ### v0.3.10 / 2019.04.25
 
 In deno:
