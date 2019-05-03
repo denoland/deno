@@ -317,6 +317,12 @@ pub fn flags_from_vec(
 
   let subcommand = match matches.subcommand() {
     ("eval", Some(eval_match)) => {
+      flags.allow_net = true;
+      flags.allow_env = true;
+      flags.allow_run = true;
+      flags.allow_read = true;
+      flags.allow_write = true;
+      flags.allow_high_precision = true;
       let code: &str = eval_match.value_of("code").unwrap();
       argv.extend(vec![code.to_string()]);
       DenoSubcommand::Eval
@@ -629,5 +635,25 @@ mod tests {
     );
     assert_eq!(subcommand, DenoSubcommand::Run);
     assert_eq!(argv, svec!["deno", "script.ts"]);
+  }
+
+  #[test]
+  fn test_flags_from_vec_16() {
+    let (flags, subcommand, argv) =
+      flags_from_vec(svec!["deno", "eval", "'console.log(\"hello\")'"]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        allow_net: true,
+        allow_env: true,
+        allow_run: true,
+        allow_read: true,
+        allow_write: true,
+        allow_high_precision: true,
+        ..DenoFlags::default()
+      }
+    );
+    assert_eq!(subcommand, DenoSubcommand::Eval);
+    assert_eq!(argv, svec!["deno", "'console.log(\"hello\")'"]);
   }
 }
