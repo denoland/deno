@@ -364,8 +364,7 @@ pub fn flags_from_vec(
       // Currently clap never escapes string,
       // So -d "\n" won't expand to newline.
       // Instead, do -d $'\n'
-      flags.xeval_delim =
-        Some(eval_match.value_of("delim").unwrap_or("\n").to_owned());
+      flags.xeval_delim = eval_match.value_of("delim").map(String::from);
       argv.extend(vec![code.to_string()]);
       DenoSubcommand::Xeval
     }

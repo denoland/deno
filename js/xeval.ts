@@ -19,12 +19,15 @@ async function writeAll(buffer: Buffer, arr: Uint8Array): Promise<void> {
 
 export async function xevalMain(
   xevalFunc: XevalFunc,
-  delim_: string
+  delim_: string | null
 ): Promise<void> {
   const inputBuffer = new Buffer();
   const inspectArr = new Uint8Array(1024);
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
+  if (!delim_) {
+    delim_ = "\n";
+  }
   const delimArr = encoder.encode(delim_); // due to unicode
 
   let nextMatchIndex = 0;
