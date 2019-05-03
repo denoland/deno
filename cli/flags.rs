@@ -169,8 +169,23 @@ Prettier dependencies on first run.
           AppSettings::DisableHelpSubcommand,
           AppSettings::DisableVersion,
           AppSettings::SubcommandRequired,
-        ]).about("Run provided file")
-        .arg(
+        ]).about("Run a program given a filename or url to the source code")
+        .long_about(
+          "
+Run a program given a filename or url to the source code.
+
+By default all programs are run in sandbox without access to disk, network or
+ability to spawn subprocesses.
+
+  deno run https://deno.land/welcome.ts
+
+  # run program with permission to read from disk and listen to network
+  deno run --allow-net --allow-read https://deno.land/std/http/file_server.ts
+
+  # run program with all permissions
+  deno run -A https://deno.land/std/http/file_server.ts
+",
+        ).arg(
           Arg::with_name("allow-read")
             .long("allow-read")
             .help("Allow file system read access"),
@@ -203,8 +218,7 @@ Prettier dependencies on first run.
           Arg::with_name("no-prompt")
             .long("no-prompt")
             .help("Do not use prompts"),
-        )
-        .subcommand(
+        ).subcommand(
           // this is a fake subcommand - it's used in conjunction with
           // AppSettings:AllowExternalSubcommand to treat it as an
           // entry point script
@@ -393,8 +407,14 @@ mod tests {
 
   #[test]
   fn test_flags_from_vec_3() {
-    let (flags, subcommand, argv) =
-      flags_from_vec(svec!["deno", "run", "-r", "-D", "--allow-write", "script.ts"]);
+    let (flags, subcommand, argv) = flags_from_vec(svec![
+      "deno",
+      "run",
+      "-r",
+      "-D",
+      "--allow-write",
+      "script.ts"
+    ]);
     assert_eq!(
       flags,
       DenoFlags {
