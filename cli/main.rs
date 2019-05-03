@@ -208,6 +208,31 @@ fn eval_command(flags: DenoFlags, argv: Vec<String>) {
   tokio_util::run(main_future);
 }
 
+fn xeval_command(flags: DenoFlags, argv: Vec<String>) {
+  let xeval_replvar = flags.xeval_replvar.clone().unwrap();
+  let (mut worker, state) = create_worker_and_state(flags, argv);
+  let xeval_source = format!(
+    "window._xevalWrapper = async function ({}){{
+        {}
+      }}",
+    &xeval_replvar, &state.argv[1]
+  );
+
+  let main_future = lazy(move || {
+    // Setup runtime.
+    js_check(worker.execute(&xeval_source));
+    js_check(worker.execute("denoMain()"));
+    worker
+      .then(|result| {
+        js_check(result);
+        Ok(())
+      }).map_err(|(err, _worker): (RustOrJsError, Worker)| {
+        print_err_and_exit(err)
+      })
+  });
+  tokio_util::run(main_future);
+}
+
 fn run_repl(flags: DenoFlags, argv: Vec<String>) {
   let (mut worker, _state) = create_worker_and_state(flags, argv);
 
@@ -275,5 +300,6 @@ fn main() {
     DenoSubcommand::Repl => run_repl(flags, argv),
     DenoSubcommand::Run => run_script(flags, argv),
     DenoSubcommand::Types => types_command(),
+    DenoSubcommand::Xeval => xeval_command(flags, argv),
   }
 }
