@@ -95,7 +95,7 @@ impl SharedQueue {
 
   fn num_shifted_off(&self) -> usize {
     let s = self.as_u32_slice();
-    return s[INDEX_NUM_SHIFTED_OFF] as usize;
+    s[INDEX_NUM_SHIFTED_OFF] as usize
   }
 
   fn set_end(&mut self, index: usize, end: usize) {

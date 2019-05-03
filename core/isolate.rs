@@ -50,9 +50,11 @@ pub enum StartupData<'a> {
   None,
 }
 
+type DispatchFn = Fn(&[u8], Option<PinnedBuf>) -> Op;
+
 #[derive(Default)]
 pub struct Config {
-  dispatch: Option<Arc<Fn(&[u8], Option<PinnedBuf>) -> Op>>,
+  dispatch: Option<Arc<DispatchFn>>,
   pub will_snapshot: bool,
 }
 
