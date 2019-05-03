@@ -12,8 +12,8 @@ environment:
   DENO_BUILD_PATH: $(APPVEYOR_BUILD_FOLDER)\target\release
   DENO_THIRD_PARTY_PATH: $(APPVEYOR_BUILD_FOLDER)\third_party
   RELEASE_ARTIFACT: deno_win_x64.zip
-  # Renamed to fix an Appveyor cache bug (restoring old caches).
-  RUST_DIR: $(USERPROFILE)\xrust
+  RUST_VERSION: 1.33.0
+  RUST_DIR: $(USERPROFILE)\rust-$(RUST_VERSION)
   CARGO_HOME: $(RUST_DIR)\cargo
   RUSTUP_HOME: $(RUST_DIR)\rustup
   RUST_BACKTRACE: full
@@ -155,13 +155,14 @@ install:
         Invoke-WebRequest -Uri "https://win.rustup.rs" `
                           -OutFile "$env:TEMP\rustup-init.exe"
         Exec -NoNewLines {
-          & "$env:TEMP\rustup-init.exe" -y --default-toolchain 1.33.0
+          & "$env:TEMP\rustup-init.exe" -y --default-toolchain $env:RUST_VERSION
         }
         Delete-Tree @(
           "$env:RUSTUP_HOME\downloads",
           "$env:RUSTUP_HOME\tmp",
           "$env:RUSTUP_HOME\toolchains\stable-x86_64-pc-windows-msvc\share\doc"
         )
+        Exec { rustup component add clippy }
       }
 
   # Log installed Node.js version + processor architecture.
@@ -189,6 +190,7 @@ build_script:
   # Build with Cargo first. Both builds produce a deno.exe in the same dir. We
   # want the final one (which gets tested and released) to be built by Ninja.
   - cargo build -vv --release --locked
+  - cargo clippy --all-targets --release --locked -- -D clippy::all
   - python tools\build.py
 
 test_script:
