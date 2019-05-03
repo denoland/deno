@@ -1,2 +1,2 @@
-args: --allow-read --reload tests/016_double_await.ts
+args: run --allow-read --reload tests/016_double_await.ts
 output: tests/016_double_await.ts.out

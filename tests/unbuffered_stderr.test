@@ -1,3 +1,3 @@
-args: --reload tests/unbuffered_stderr.ts
+args: run --reload tests/unbuffered_stderr.ts
 check_stderr: true
 output: tests/unbuffered_stderr.ts.out

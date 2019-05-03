@@ -1,4 +1,4 @@
-args: --reload tests/error_008_checkjs.js
+args: run --reload tests/error_008_checkjs.js
 check_stderr: true
 exit_code: 1
 output: tests/error_008_checkjs.js.out

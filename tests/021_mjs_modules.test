@@ -1,2 +1,2 @@
-args: --reload tests/021_mjs_modules.ts
+args: run --reload tests/021_mjs_modules.ts
 output: tests/021_mjs_modules.ts.out

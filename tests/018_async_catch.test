@@ -1,2 +1,2 @@
-args: --reload tests/018_async_catch.ts
+args: run --reload tests/018_async_catch.ts
 output: tests/018_async_catch.ts.out

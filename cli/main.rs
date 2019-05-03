@@ -300,6 +300,7 @@ fn main() {
     DenoSubcommand::Repl => run_repl(flags, argv),
     DenoSubcommand::Run => run_script(flags, argv),
     DenoSubcommand::Types => types_command(),
+    DenoSubcommand::Version => run_script(flags, argv),
     DenoSubcommand::Xeval => xeval_command(flags, argv),
   }
 }
