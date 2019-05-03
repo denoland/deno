@@ -151,7 +151,7 @@ mod ops {
       None => Box::new(futures::future::err(errors::bad_resource())),
       Some(resource) => Box::new(
         tokio_write::write(resource, zero_copy)
-          .map_err(|err| err.into())
+          .map_err(errors::DenoError::from)
           .and_then(move |(_resource, _buf, nwritten)| Ok(nwritten as i32)),
       ),
     }
