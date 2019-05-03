@@ -24,6 +24,8 @@ pub struct DenoFlags {
   pub no_prompts: bool,
   pub no_fetch: bool,
   pub v8_flags: Option<Vec<String>>,
+  pub xeval_replvar: Option<String>,
+  pub xeval_delim: Option<String>,
 }
 
 static ENV_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
@@ -194,6 +196,37 @@ Prettier dependencies on first run.
             .required(true),
         ),
     ).subcommand(
+      SubCommand::with_name("xeval")
+        .setting(AppSettings::DisableVersion)
+        .about("Eval a script on text segments from stdin")
+        .long_about(
+          "
+Eval a script on lines (or chunks split under delimiter) from stdin.
+
+Read from standard input and eval code on each whitespace-delimited
+string chunks.
+
+-I/--replvar optionally set variable name for input to be used in eval.
+Otherwise '$' will be used as default variable name.
+
+  cat /etc/passwd | deno xeval \"a = $.split(':'); if (a) console.log(a[0])\"
+  git branch | deno xeval -I 'line' \"if (line.startsWith('*')) console.log(line.slice(2))\"
+  cat LICENSE | deno xeval -d ' ' \"if ($ === 'MIT') console.log('MIT licensed')\"
+",
+        ).arg(
+          Arg::with_name("replvar")
+            .long("replvar")
+            .short("I")
+            .help("Set variable name to be used in eval, defaults to $")
+            .takes_value(true),
+        ).arg(
+          Arg::with_name("delim")
+            .long("delim")
+            .short("d")
+            .help("Set delimiter, defaults to newline")
+            .takes_value(true),
+        ).arg(Arg::with_name("code").takes_value(true).required(true)),
+    ).subcommand(
       // this is a fake subcommand - it's used in conjunction with
       // AppSettings:AllowExternalSubcommand to treat it as an
       // entry point script
@@ -281,6 +314,7 @@ pub enum DenoSubcommand {
   Repl,
   Run,
   Types,
+  Xeval,
 }
 
 pub fn flags_from_vec(
@@ -322,6 +356,17 @@ pub fn flags_from_vec(
       DenoSubcommand::Info
     }
     ("types", Some(_)) => DenoSubcommand::Types,
+    ("xeval", Some(eval_match)) => {
+      let code: &str = eval_match.value_of("code").unwrap();
+      flags.xeval_replvar =
+        Some(eval_match.value_of("replvar").unwrap_or("$").to_owned());
+      // Currently clap never escapes string,
+      // So -d "\n" won't expand to newline.
+      // Instead, do -d $'\n'
+      flags.xeval_delim = eval_match.value_of("delim").map(String::from);
+      argv.extend(vec![code.to_string()]);
+      DenoSubcommand::Xeval
+    }
     (script, Some(script_match)) => {
       argv.extend(vec![script.to_string()]);
       // check if there are any extra arguments that should
@@ -567,6 +612,25 @@ mod tests {
     assert_eq!(flags, DenoFlags::default());
     assert_eq!(subcommand, DenoSubcommand::Info);
     assert_eq!(argv, svec!["deno", "script.ts"]);
+  }
+
+  #[test]
+  fn test_flags_from_vec_15() {
+    let (flags, subcommand, argv) = flags_from_vec(svec![
+      "deno",
+      "xeval",
+      "-I",
+      "val",
+      "-d",
+      " ",
+      "console.log(val)"
+    ]);
+    let mut expected_flags = DenoFlags::default();
+    expected_flags.xeval_replvar = Some("val".to_owned());
+    expected_flags.xeval_delim = Some(" ".to_owned());
+    assert_eq!(flags, expected_flags);
+    assert_eq!(subcommand, DenoSubcommand::Xeval);
+    assert_eq!(argv, svec!["deno", "console.log(val)"]);
   }
 
   #[test]
