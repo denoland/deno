@@ -254,11 +254,13 @@ fn run_repl(flags: DenoFlags, argv: Vec<String>) {
 fn run_script(flags: DenoFlags, argv: Vec<String>) {
   let (mut worker, state) = create_worker_and_state(flags, argv);
 
-  let main_module = state.main_module().unwrap();
+  let main_module = state.main_module();
   // Normal situation of executing a module.
   let main_future = lazy(move || {
     // Setup runtime.
     js_check(worker.execute("denoMain()"));
+    // If `deno version` is run, the following is theoretically unreachable.
+    let main_module = main_module.unwrap_or("".to_owned());
     debug!("main_module {}", main_module);
 
     let main_url = root_specifier_to_url(&main_module).unwrap();
