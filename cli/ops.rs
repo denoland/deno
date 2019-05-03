@@ -442,13 +442,14 @@ fn op_fetch_module_meta_data(
   assert_eq!(state.dir.root.join("gen"), state.dir.gen, "Sanity check");
 
   let use_cache = !state.flags.reload;
+  let no_fetch = state.flags.no_fetch;
 
   Box::new(futures::future::result(|| -> OpResult {
     let builder = &mut FlatBufferBuilder::new();
     // TODO(ry) Use fetch_module_meta_data_async.
     let out = state
       .dir
-      .fetch_module_meta_data(specifier, referrer, use_cache)?;
+      .fetch_module_meta_data(specifier, referrer, use_cache, no_fetch)?;
     let data_off = builder.create_vector(out.source_code.as_slice());
     let msg_args = msg::FetchModuleMetaDataResArgs {
       module_name: Some(builder.create_string(&out.module_name)),
