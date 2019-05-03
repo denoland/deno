@@ -468,7 +468,7 @@ fn op_compiler_config(
     let builder = &mut FlatBufferBuilder::new();
     let (path, out) = match get_compiler_config(state, compiler_type) {
       Some(val) => val,
-      _ => ("".to_owned(), "".as_bytes().to_owned()),
+      _ => ("".to_owned(), vec![]),
     };
     let data_off = builder.create_vector(&out);
     let msg_args = msg::CompilerConfigResArgs {

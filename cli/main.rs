@@ -262,12 +262,9 @@ fn main() {
     v8_set_flags(vec!["--help".to_string()]);
   }
 
-  match &flags.v8_flags {
-    Some(v8_flags) => {
-      v8_set_flags(v8_flags.clone());
-    }
-    _ => {}
-  };
+  if let Some(ref v8_flags) = flags.v8_flags {
+    v8_set_flags(v8_flags.clone());
+  }
 
   log::set_max_level(if flags.log_debug {
     LevelFilter::Debug
