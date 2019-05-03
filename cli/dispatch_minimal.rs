@@ -18,7 +18,7 @@ pub fn has_minimal_token(s: &[i32]) -> bool {
   s[0] == DISPATCH_MINIMAL_TOKEN
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 struct Record {
   pub promise_id: i32,
   pub op_id: i32,
@@ -69,26 +69,25 @@ pub fn dispatch_minimal(
     _ => unimplemented!(),
   };
 
-  let mut record_a = record.clone();
-  let mut record_b = record.clone();
   let state = state.clone();
+  let mut record_ = record;
 
-  let fut = Box::new(
-    min_op
-      .and_then(move |result| {
-        record_a.result = result;
-        Ok(record_a)
-      }).or_else(|err| -> Result<Record, ()> {
-        debug!("unexpected err {}", err);
-        record_b.result = -1;
-        Ok(record_b)
-      }).then(move |result| -> Result<Buf, ()> {
-        let record = result.unwrap();
-        let buf: Buf = record.into();
-        state.metrics_op_completed(buf.len());
-        Ok(buf)
-      }),
-  );
+  let fut = Box::new(min_op.then(move |result| -> Result<Buf, ()> {
+    match result {
+      Ok(r) => {
+        record_.result = r;
+      }
+      Err(err) => {
+        // TODO(ry) The dispatch_minimal doesn't properly pipe errors back to
+        // the caller.
+        debug!("swallowed err {}", err);
+        record_.result = -1;
+      }
+    }
+    let buf: Buf = record_.into();
+    state.metrics_op_completed(buf.len());
+    Ok(buf)
+  }));
   if is_sync {
     Op::Sync(fut.wait().unwrap())
   } else {
