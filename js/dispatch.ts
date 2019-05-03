@@ -5,7 +5,6 @@ import * as msg from "gen/cli/msg_generated";
 import * as errors from "./errors";
 import * as util from "./util";
 import {
-  Record,
   nextPromiseId,
   recordFromBufMinimal,
   handleAsyncMsgFromRustMinimal
@@ -13,49 +12,38 @@ import {
 
 const promiseTable = new Map<number, util.Resolvable<msg.Base>>();
 
-interface FlatbufferRecord extends Record {
-  base?: msg.Base;
+interface FlatbufferRecord {
+  promiseId: number;
+  base: msg.Base;
 }
 
-function recordFromBuf(buf: Uint8Array): FlatbufferRecord {
-  // assert(buf.byteLength % 4 == 0);
-  const buf32 = new Int32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
-
-  const recordMin = recordFromBufMinimal(buf32);
-  if (recordMin) {
-    return recordMin;
-  } else {
-    const bb = new flatbuffers.ByteBuffer(buf);
-    const base = msg.Base.getRootAsBase(bb);
-    const cmdId = base.cmdId();
-    return {
-      opId: -1,
-      arg: -1,
-      result: -1,
-      promiseId: cmdId,
-      base
-    };
-  }
+function flatbufferRecordFromBuf(buf: Uint8Array): FlatbufferRecord {
+  const bb = new flatbuffers.ByteBuffer(buf);
+  const base = msg.Base.getRootAsBase(bb);
+  return {
+    promiseId: base.cmdId(),
+    base
+  };
 }
 
 export function handleAsyncMsgFromRust(ui8: Uint8Array): void {
-  const record = recordFromBuf(ui8);
-
-  if (record.base) {
+  const buf32 = new Int32Array(ui8.buffer, ui8.byteOffset, ui8.byteLength / 4);
+  const recordMin = recordFromBufMinimal(buf32);
+  if (recordMin) {
+    // Fast and new
+    handleAsyncMsgFromRustMinimal(ui8, recordMin);
+  } else {
     // Legacy
-    const { promiseId, base } = record;
+    let { promiseId, base } = flatbufferRecordFromBuf(ui8);
     const promise = promiseTable.get(promiseId);
     util.assert(promise != null, `Expecting promise in table. ${promiseId}`);
-    promiseTable.delete(record.promiseId);
+    promiseTable.delete(promiseId);
     const err = errors.maybeError(base);
     if (err != null) {
       promise!.reject(err);
     } else {
       promise!.resolve(base);
     }
-  } else {
-    // Fast and new
-    handleAsyncMsgFromRustMinimal(ui8, record);
   }
 }
 

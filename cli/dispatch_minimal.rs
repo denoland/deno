@@ -19,6 +19,7 @@ pub fn has_minimal_token(s: &[i32]) -> bool {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
+// This corresponds to RecordMinimal on the TS side.
 struct Record {
   pub promise_id: i32,
   pub op_id: i32,
