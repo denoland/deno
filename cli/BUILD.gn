@@ -64,6 +64,7 @@ ts_sources = [
   "../js/deno.ts",
   "../js/dir.ts",
   "../js/dispatch.ts",
+  "../js/dispatch_minimal.ts",
   "../js/dom_types.ts",
   "../js/errors.ts",
   "../js/event.ts",
@@ -114,6 +115,7 @@ ts_sources = [
   "../js/write_file.ts",
   "../js/performance.ts",
   "../js/version.ts",
+  "../js/xeval.ts",
   "../tsconfig.json",
 
   # Listing package.json and yarn.lock as sources ensures the bundle is rebuilt

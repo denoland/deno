@@ -1,2 +1,2 @@
-args: --reload tests/006_url_imports.ts
+args: run --reload tests/006_url_imports.ts
 output: tests/006_url_imports.ts.out

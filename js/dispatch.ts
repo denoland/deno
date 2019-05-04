@@ -4,23 +4,51 @@ import * as flatbuffers from "./flatbuffers";
 import * as msg from "gen/cli/msg_generated";
 import * as errors from "./errors";
 import * as util from "./util";
+import {
+  nextPromiseId,
+  recordFromBufMinimal,
+  handleAsyncMsgFromRustMinimal
+} from "./dispatch_minimal";
 
-let nextCmdId = 0;
 const promiseTable = new Map<number, util.Resolvable<msg.Base>>();
 
-export function handleAsyncMsgFromRust(ui8: Uint8Array): void {
-  const bb = new flatbuffers.ByteBuffer(ui8);
+interface FlatbufferRecord {
+  promiseId: number;
+  base: msg.Base;
+}
+
+function flatbufferRecordFromBuf(buf: Uint8Array): FlatbufferRecord {
+  const bb = new flatbuffers.ByteBuffer(buf);
   const base = msg.Base.getRootAsBase(bb);
-  const cmdId = base.cmdId();
-  const promise = promiseTable.get(cmdId);
-  util.assert(promise != null, `Expecting promise in table. ${cmdId}`);
-  promiseTable.delete(cmdId);
-  const err = errors.maybeError(base);
-  if (err != null) {
-    promise!.reject(err);
+  return {
+    promiseId: base.cmdId(),
+    base
+  };
+}
+
+export function handleAsyncMsgFromRust(ui8: Uint8Array): void {
+  const buf32 = new Int32Array(ui8.buffer, ui8.byteOffset, ui8.byteLength / 4);
+  const recordMin = recordFromBufMinimal(buf32);
+  if (recordMin) {
+    // Fast and new
+    handleAsyncMsgFromRustMinimal(ui8, recordMin);
   } else {
-    promise!.resolve(base);
+    // Legacy
+    let { promiseId, base } = flatbufferRecordFromBuf(ui8);
+    const promise = promiseTable.get(promiseId);
+    util.assert(promise != null, `Expecting promise in table. ${promiseId}`);
+    promiseTable.delete(promiseId);
+    const err = errors.maybeError(base);
+    if (err != null) {
+      promise!.reject(err);
+    } else {
+      promise!.resolve(base);
+    }
   }
+}
+
+function ui8FromArrayBufferView(abv: ArrayBufferView): Uint8Array {
+  return new Uint8Array(abv.buffer, abv.byteOffset, abv.byteLength);
 }
 
 function sendInternal(
@@ -30,20 +58,20 @@ function sendInternal(
   zeroCopy: undefined | ArrayBufferView,
   sync = true
 ): [number, null | Uint8Array] {
-  const cmdId = nextCmdId++;
-  const message = msg.Base.createBase(
-    builder,
-    cmdId,
-    sync,
-    0,
-    0,
-    innerType,
-    inner
-  );
-  builder.finish(message);
+  const cmdId = nextPromiseId();
+  msg.Base.startBase(builder);
+  msg.Base.addInner(builder, inner);
+  msg.Base.addInnerType(builder, innerType);
+  msg.Base.addSync(builder, sync);
+  msg.Base.addCmdId(builder, cmdId);
+  builder.finish(msg.Base.endBase(builder));
 
   const control = builder.asUint8Array();
-  const response = core.dispatch(control, zeroCopy);
+
+  const response = core.dispatch(
+    control,
+    zeroCopy ? ui8FromArrayBufferView(zeroCopy) : undefined
+  );
 
   builder.inUse = false;
   return [cmdId, response];

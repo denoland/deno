@@ -3,6 +3,8 @@ use atty;
 use crate::ansi;
 use crate::compiler::get_compiler_config;
 use crate::deno_dir;
+use crate::dispatch_minimal::dispatch_minimal;
+use crate::dispatch_minimal::parse_min_record;
 use crate::errors;
 use crate::errors::{DenoError, DenoResult, ErrorKind};
 use crate::fs as deno_fs;
@@ -75,10 +77,6 @@ fn empty_buf() -> Buf {
   Box::new([])
 }
 
-/// Processes raw messages from JavaScript.
-/// This functions invoked every time Deno.core.dispatch() is called.
-/// control corresponds to the first argument of Deno.core.dispatch().
-/// data corresponds to the second argument of Deno.core.dispatch().
 pub fn dispatch_all(
   state: &ThreadSafeState,
   control: &[u8],
@@ -87,6 +85,25 @@ pub fn dispatch_all(
 ) -> Op {
   let bytes_sent_control = control.len();
   let bytes_sent_zero_copy = zero_copy.as_ref().map(|b| b.len()).unwrap_or(0);
+  let op = if let Some(min_record) = parse_min_record(control) {
+    dispatch_minimal(state, min_record, zero_copy)
+  } else {
+    dispatch_all_legacy(state, control, zero_copy, op_selector)
+  };
+  state.metrics_op_dispatched(bytes_sent_control, bytes_sent_zero_copy);
+  op
+}
+
+/// Processes raw messages from JavaScript.
+/// This functions invoked every time Deno.core.dispatch() is called.
+/// control corresponds to the first argument of Deno.core.dispatch().
+/// data corresponds to the second argument of Deno.core.dispatch().
+pub fn dispatch_all_legacy(
+  state: &ThreadSafeState,
+  control: &[u8],
+  zero_copy: Option<PinnedBuf>,
+  op_selector: OpSelector,
+) -> Op {
   let base = msg::get_root_as_base(&control);
   let is_sync = base.sync();
   let inner_type = base.inner_type();
@@ -100,7 +117,6 @@ pub fn dispatch_all(
   let op: Box<OpWithError> = op_func(state, &base, zero_copy);
 
   let state = state.clone();
-  state.metrics_op_dispatched(bytes_sent_control, bytes_sent_zero_copy);
 
   let fut = Box::new(
     op.or_else(move |err: DenoError| -> Result<Buf, ()> {
@@ -326,6 +342,12 @@ fn op_start(
 
   let main_module = state.main_module().map(|m| builder.create_string(&m));
 
+  let xeval_delim = state
+    .flags
+    .xeval_delim
+    .clone()
+    .map(|m| builder.create_string(&m));
+
   let inner = msg::StartRes::create(
     &mut builder,
     &msg::StartResArgs {
@@ -339,6 +361,7 @@ fn op_start(
       deno_version: Some(deno_version_off),
       no_color: !ansi::use_color(),
       exec_path: Some(exec_path),
+      xeval_delim,
       ..Default::default()
     },
   );
@@ -427,13 +450,14 @@ fn op_fetch_module_meta_data(
   assert_eq!(state.dir.root.join("gen"), state.dir.gen, "Sanity check");
 
   let use_cache = !state.flags.reload;
+  let no_fetch = state.flags.no_fetch;
 
   Box::new(futures::future::result(|| -> OpResult {
     let builder = &mut FlatBufferBuilder::new();
     // TODO(ry) Use fetch_module_meta_data_async.
     let out = state
       .dir
-      .fetch_module_meta_data(specifier, referrer, use_cache)?;
+      .fetch_module_meta_data(specifier, referrer, use_cache, no_fetch)?;
     let data_off = builder.create_vector(out.source_code.as_slice());
     let msg_args = msg::FetchModuleMetaDataResArgs {
       module_name: Some(builder.create_string(&out.module_name)),
@@ -469,7 +493,7 @@ fn op_compiler_config(
     let builder = &mut FlatBufferBuilder::new();
     let (path, out) = match get_compiler_config(state, compiler_type) {
       Some(val) => val,
-      _ => ("".to_owned(), "".as_bytes().to_owned()),
+      _ => ("".to_owned(), vec![]),
     };
     let data_off = builder.create_vector(&out);
     let msg_args = msg::CompilerConfigResArgs {

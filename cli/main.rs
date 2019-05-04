@@ -15,6 +15,7 @@ extern crate nix;
 mod ansi;
 pub mod compiler;
 pub mod deno_dir;
+mod dispatch_minimal;
 pub mod errors;
 pub mod flags;
 mod fs;
@@ -207,6 +208,31 @@ fn eval_command(flags: DenoFlags, argv: Vec<String>) {
   tokio_util::run(main_future);
 }
 
+fn xeval_command(flags: DenoFlags, argv: Vec<String>) {
+  let xeval_replvar = flags.xeval_replvar.clone().unwrap();
+  let (mut worker, state) = create_worker_and_state(flags, argv);
+  let xeval_source = format!(
+    "window._xevalWrapper = async function ({}){{
+        {}
+      }}",
+    &xeval_replvar, &state.argv[1]
+  );
+
+  let main_future = lazy(move || {
+    // Setup runtime.
+    js_check(worker.execute(&xeval_source));
+    js_check(worker.execute("denoMain()"));
+    worker
+      .then(|result| {
+        js_check(result);
+        Ok(())
+      }).map_err(|(err, _worker): (RustOrJsError, Worker)| {
+        print_err_and_exit(err)
+      })
+  });
+  tokio_util::run(main_future);
+}
+
 fn run_repl(flags: DenoFlags, argv: Vec<String>) {
   let (mut worker, _state) = create_worker_and_state(flags, argv);
 
@@ -257,17 +283,9 @@ fn main() {
   let args: Vec<String> = env::args().collect();
   let (flags, subcommand, argv) = flags::flags_from_vec(args);
 
-  if flags.v8_help {
-    // show v8 help and exit
-    v8_set_flags(vec!["--help".to_string()]);
+  if let Some(ref v8_flags) = flags.v8_flags {
+    v8_set_flags(v8_flags.clone());
   }
-
-  match &flags.v8_flags {
-    Some(v8_flags) => {
-      v8_set_flags(v8_flags.clone());
-    }
-    _ => {}
-  };
 
   log::set_max_level(if flags.log_debug {
     LevelFilter::Debug
@@ -282,5 +300,7 @@ fn main() {
     DenoSubcommand::Repl => run_repl(flags, argv),
     DenoSubcommand::Run => run_script(flags, argv),
     DenoSubcommand::Types => types_command(),
+    DenoSubcommand::Version => run_repl(flags, argv),
+    DenoSubcommand::Xeval => xeval_command(flags, argv),
   }
 }
