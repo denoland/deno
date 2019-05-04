@@ -118,7 +118,7 @@ executable bit on Mac and Linux.
 Once it's installed and in your `$PATH`, try it:
 
 ```shellsession
-$ deno https://deno.land/welcome.ts
+$ deno run https://deno.land/welcome.ts
 ```
 
 ### Build from source
@@ -137,7 +137,7 @@ cd deno
 ./tools/build.py
 
 # Run.
-./target/debug/deno tests/002_hello.ts
+./target/debug/deno run tests/002_hello.ts
 
 # Test.
 ./tools/test.py
@@ -252,7 +252,7 @@ I/O streams in Deno.
 Try the program:
 
 ```shellsession
-$ deno --allow-read https://deno.land/std/examples/cat.ts /etc/passwd
+$ deno run --allow-read https://deno.land/std/examples/cat.ts /etc/passwd
 ```
 
 ### TCP echo server
@@ -278,7 +278,7 @@ When this program is started, the user is prompted for permission to listen on
 the network:
 
 ```shellsession
-$ deno https://deno.land/std/examples/echo_server.ts
+$ deno run https://deno.land/std/examples/echo_server.ts
 ⚠️  Deno requests network access to "listen". Grant? [a/y/n/d (a = allow always, y = allow once, n = deny once, d = deny always)]
 ```
 
@@ -286,7 +286,7 @@ For security reasons, deno does not allow programs to access the network without
 explicit permission. To avoid the console prompt, use a command-line flag:
 
 ```shellsession
-$ deno --allow-net https://deno.land/std/examples/echo_server.ts
+$ deno run --allow-net https://deno.land/std/examples/echo_server.ts
 ```
 
 To test it, try sending a HTTP request to it by using curl. The request gets
@@ -338,7 +338,7 @@ const { permissions, revokePermission, open, remove } = Deno;
 This one serves a local directory in HTTP.
 
 ```bash
-alias file_server="deno  --allow-net --allow-read \
+alias file_server="deno run --allow-net --allow-read \
   https://deno.land/std/http/file_server.ts"
 ```
 
@@ -380,7 +380,7 @@ main();
 Run it:
 
 ```shellsession
-$ deno --allow-run ./subprocess_simple.ts
+$ deno run --allow-run ./subprocess_simple.ts
 hello
 ```
 
@@ -425,10 +425,10 @@ main();
 When you run it:
 
 ```shellsession
-$ deno --allow-run ./subprocess.ts <somefile>
+$ deno run --allow-run ./subprocess.ts <somefile>
 [file content]
 
-$ deno ./subprocess.ts --allow-run non_existent_file.md
+$ deno run --allow-run ./subprocess.ts non_existent_file.md
 
 Uncaught NotFound: No such file or directory (os error 2)
     at DenoError (deno/js/errors.ts:22:5)
@@ -460,7 +460,7 @@ runIfMain(import.meta);
 Try running this:
 
 ```shellsession
-$ deno test.ts
+$ deno run test.ts
 running 2 tests
 test t1 ... ok
 test t2 ... ok
@@ -536,7 +536,6 @@ if (import.meta.main) {
 ### Flags
 
 ```shellsession
-$ deno -h
 deno
 
 USAGE:
@@ -561,6 +560,7 @@ SUBCOMMANDS:
     run        Run a program given a filename or url to the source code
     types      Print runtime TypeScript declarations
     version    Print the version
+    xeval      Eval a script on text segments from stdin
 
 ENVIRONMENT VARIABLES:
     DENO_DIR        Set deno's base directory
@@ -687,7 +687,7 @@ To learn more about `d8` and profiling, check out the following links:
 We can use LLDB to debug deno.
 
 ```shellsession
-$ lldb -- target/debug/deno tests/worker.js
+$ lldb -- target/debug/deno run tests/worker.js
 > run
 > bt
 > up
@@ -699,7 +699,7 @@ To debug Rust code, we can use `rust-lldb`. It should come with `rustc` and is a
 wrapper around LLDB.
 
 ```shellsession
-$ rust-lldb -- ./target/debug/deno tests/http_bench.ts --allow-net
+$ rust-lldb -- ./target/debug/deno run --allow-net tests/http_bench.ts
 # On macOS, you might get warnings like
 # `ImportError: cannot import name _remove_dead_weakref`
 # In that case, use system python by setting PATH, e.g.
