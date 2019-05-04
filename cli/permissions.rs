@@ -185,7 +185,7 @@ impl DenoPermissions {
           true => Ok(()),
           false => match state {
             // This shouldn't be possible but I guess rust doesn't realize.
-            PermissionAccessorState::Allow => Ok(()),
+            PermissionAccessorState::Allow => unreachable!(),
             PermissionAccessorState::Ask => match self.try_permissions_prompt(
               &format!("read access to \"{}\"", filename),
             ) {
@@ -211,7 +211,7 @@ impl DenoPermissions {
           true => Ok(()),
           false => match state {
             // This shouldn't be possible but I guess rust doesn't realize.
-            PermissionAccessorState::Allow => Ok(()),
+            PermissionAccessorState::Allow => unreachable!(),
             PermissionAccessorState::Ask => match self.try_permissions_prompt(
               &format!("write access to \"{}\"", filename),
             ) {
@@ -235,9 +235,30 @@ impl DenoPermissions {
       state => {
         let parsed_url_result = url::Url::parse(url_str);
         let whitelist_result = match parsed_url_result {
-          Ok(parsed_url) => match parsed_url.host() {
-            Some(host) => self.net_whitelist.contains(&host.to_string()),
-            None => false,
+          Ok(parsed_url) => match parsed_url.origin() {
+            url::Origin::Tuple(_, url::Host::Domain(domain), port) => {
+              match self.net_whitelist.contains(&domain) {
+                false => {
+                  self.net_whitelist.contains(&format!("{}:{}", domain, port))
+                }
+                true => true,
+              }
+            }
+            url::Origin::Tuple(_, url::Host::Ipv4(ip), port) => match self
+              .net_whitelist
+              .contains(&format!("{}", ip))
+            {
+              false => self.net_whitelist.contains(&format!("{}:{}", ip, port)),
+              true => true,
+            },
+            url::Origin::Tuple(_, url::Host::Ipv6(ip), port) => match self
+              .net_whitelist
+              .contains(&format!("{}", ip))
+            {
+              false => self.net_whitelist.contains(&format!("{}:{}", ip, port)),
+              true => true,
+            },
+            _ => panic!("Unexpected url origin type."),
           },
           Err(_) => false,
         };
@@ -246,7 +267,7 @@ impl DenoPermissions {
           false => {
             match state {
               // This shouldn't be possible but I guess rust doesn't realize.
-              PermissionAccessorState::Allow => Ok(()),
+              PermissionAccessorState::Allow => unreachable!(),
               PermissionAccessorState::Ask => {
                 match self.try_permissions_prompt(&format!(
                   "network access to \"{}\"",
@@ -481,7 +502,9 @@ mod tests {
       net_whitelist: vec![
         "localhost".to_string(),
         "deno.land".to_string(),
+        "github.com:3000".to_string(),
         "127.0.0.1".to_string(),
+        "172.16.0.2:8000".to_string(),
       ].to_vec(),
       no_prompts: true,
       ..Default::default()
@@ -491,22 +514,47 @@ mod tests {
     perms.check_net("http://localhost/test/url").unwrap();
     perms.check_net("https://localhost/test/url").unwrap();
 
-    // Correct domain should pass but typo should not
+    // Correct domain + any port should pass incorrect shouldn't
     perms
       .check_net("https://deno.land/std/http/file_server.ts")
       .unwrap();
     perms
+      .check_net("https://deno.land:3000/std/http/file_server.ts")
+      .unwrap();
+    perms
       .check_net("https://deno.lands/std/http/file_server.ts")
       .unwrap_err();
+    perms
+      .check_net("https://deno.lands:3000/std/http/file_server.ts")
+      .unwrap_err();
 
-    // Correct ipv4 address should succeed but type should not
+    // Correct domain + port should pass all other combinations should fail
+    perms
+      .check_net("https://github.com:3000/denoland/deno")
+      .unwrap();
+    perms
+      .check_net("https://github.com/denoland/deno")
+      .unwrap_err();
+    perms
+      .check_net("https://github.com:2000/denoland/deno")
+      .unwrap_err();
+    perms
+      .check_net("https://github.net:3000/denoland/deno")
+      .unwrap_err();
+
+    // Correct ipv4 address + any port should pass others should not
     perms.check_net("https://127.0.0.1").unwrap();
-    perms.check_net("https://127.0.0.2").unwrap_err();
-    // TODO(afinch7) This currently succeeds but we may want to
-    // change this behavior in the future.
     perms.check_net("https://127.0.0.1:3000").unwrap();
+    perms.check_net("https://127.0.0.2").unwrap_err();
+    perms.check_net("https://127.0.0.2:3000").unwrap_err();
 
-    // Completely different hosts should also fail
+    // Correct address + port should pass all other combinations should fail
+    perms.check_net("https://172.16.0.2:8000").unwrap();
+    perms.check_net("https://172.16.0.2").unwrap_err();
+    perms.check_net("https://172.16.0.2:6000").unwrap_err();
+    perms.check_net("https://172.16.0.1:8000").unwrap_err();
+
+    // Just some random hosts that should fail
     perms.check_net("https://somedomain/").unwrap_err();
     perms.check_net("https://192.168.0.1/").unwrap_err();
   }
