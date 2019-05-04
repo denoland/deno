@@ -11,6 +11,7 @@ async function startFileServer(): Promise<void> {
   fileServer = run({
     args: [
       "deno",
+      "run",
       "--allow-read",
       "--allow-net",
       "http/file_server.ts",

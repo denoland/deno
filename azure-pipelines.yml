@@ -1,5 +1,5 @@
 variables:
-  DENO_VERSION: "v0.3.10"
+  DENO_VERSION: "v0.4.0"
   TS_VERSION: "3.4.5"
 
 # TODO DRY up the jobs
@@ -13,8 +13,8 @@ jobs:
       - script: curl -L https://deno.land/x/install/install.sh | sh -s $(DENO_VERSION)
       - script: echo '##vso[task.prependpath]$(HOME)/.deno/bin/'
       - script: npx eslint **/*.ts --max-warnings=0
-      - script: deno --allow-run --allow-write --allow-read format.ts --check
-      - script: deno --allow-run --allow-net --allow-write --allow-read test.ts
+      - script: deno run --allow-run --allow-write --allow-read format.ts --check
+      - script: deno run --allow-run --allow-net --allow-write --allow-read test.ts
 
   - job: "Mac"
     pool:
@@ -24,8 +24,8 @@ jobs:
       - script: curl -L https://deno.land/x/install/install.sh | sh -s $(DENO_VERSION)
       - script: echo '##vso[task.prependpath]$(HOME)/.deno/bin/'
       - script: eslint **/*.ts --max-warnings=0
-      - script: deno --allow-run --allow-write --allow-read format.ts --check
-      - script: deno --allow-run --allow-net --allow-write --allow-read test.ts
+      - script: deno run --allow-run --allow-write --allow-read format.ts --check
+      - script: deno run --allow-run --allow-net --allow-write --allow-read test.ts
 
   - job: "Windows"
     pool:
@@ -35,5 +35,5 @@ jobs:
       - powershell: iwr https://deno.land/x/install/install.ps1 -out install.ps1; .\install.ps1 $(DENO_VERSION)
       - bash: echo "##vso[task.prependpath]C:\Users\VssAdministrator\.deno\\bin"
       - bash: npx eslint **/*.ts --max-warnings=0
-      - bash: deno.exe --allow-run --allow-write --allow-read format.ts --check
-      - bash: deno.exe --allow-run --allow-net --allow-write --allow-read test.ts
+      - bash: deno.exe run --allow-run --allow-write --allow-read format.ts --check
+      - bash: deno.exe run --allow-run --allow-net --allow-write --allow-read test.ts

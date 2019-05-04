@@ -20,6 +20,7 @@ async function run(
 
 const cmd = [
   execPath,
+  "run",
   "--allow-run",
   "--allow-write",
   "--allow-read",
