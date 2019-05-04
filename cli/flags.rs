@@ -406,6 +406,12 @@ pub fn flags_from_vec(
       }
     }
     ("xeval", Some(eval_match)) => {
+      flags.allow_net = true;
+      flags.allow_env = true;
+      flags.allow_run = true;
+      flags.allow_read = true;
+      flags.allow_write = true;
+      flags.allow_high_precision = true;
       let code: &str = eval_match.value_of("code").unwrap();
       flags.xeval_replvar =
         Some(eval_match.value_of("replvar").unwrap_or("$").to_owned());
@@ -745,10 +751,20 @@ mod tests {
       " ",
       "console.log(val)"
     ]);
-    let mut expected_flags = DenoFlags::default();
-    expected_flags.xeval_replvar = Some("val".to_owned());
-    expected_flags.xeval_delim = Some(" ".to_owned());
-    assert_eq!(flags, expected_flags);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        allow_net: true,
+        allow_env: true,
+        allow_run: true,
+        allow_read: true,
+        allow_write: true,
+        allow_high_precision: true,
+        xeval_replvar: Some("val".to_owned()),
+        xeval_delim: Some(" ".to_owned()),
+        ..DenoFlags::default()
+      }
+    );
     assert_eq!(subcommand, DenoSubcommand::Xeval);
     assert_eq!(argv, svec!["deno", "console.log(val)"]);
   }
