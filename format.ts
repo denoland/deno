@@ -7,6 +7,7 @@ import { xrun } from "./prettier/util.ts";
 async function main(opts): Promise<void> {
   const args = [
     execPath,
+    "run",
     "--allow-write",
     "--allow-read",
     "prettier/main.ts",

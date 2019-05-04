@@ -8,7 +8,7 @@ import { TextProtoReader } from "../textproto/mod.ts";
 let server;
 async function startServer(): Promise<void> {
   server = run({
-    args: ["deno", "-A", "http/racing_server.ts"],
+    args: ["deno", "run", "-A", "http/racing_server.ts"],
     stdout: "piped"
   });
   // Once fileServer is ready it will write to its stdout.

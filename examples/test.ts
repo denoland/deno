@@ -15,7 +15,7 @@ test(function t2(): void {
 /** A more complicated test that runs a subprocess. */
 test(async function catSmoke(): Promise<void> {
   const p = run({
-    args: ["deno", "--allow-read", "examples/cat.ts", "README.md"],
+    args: ["deno", "run", "--allow-read", "examples/cat.ts", "README.md"],
     stdout: "piped"
   });
   const s = await p.status();
