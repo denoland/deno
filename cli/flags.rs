@@ -820,7 +820,7 @@ mod tests {
     assert_eq!(subcommand, DenoSubcommand::Run);
     assert_eq!(argv, svec!["deno", "script.ts"]);
   }
-    #[test]
+  #[test]
   fn test_flags_from_vec_21() {
     let (flags, subcommand, argv) = flags_from_vec(svec![
       "deno",
