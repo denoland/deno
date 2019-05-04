@@ -181,9 +181,10 @@ impl DenoPermissions {
     match self.allow_read.get_state() {
       PermissionAccessorState::Allow => Ok(()),
       state => {
-        match check_path_white_list(filename, &self.read_whitelist) {
-          true => Ok(()),
-          false => match state {
+        if check_path_white_list(filename, &self.read_whitelist) {
+          Ok(())
+        } else {
+          match state {
             // This shouldn't be possible but I guess rust doesn't realize.
             PermissionAccessorState::Allow => unreachable!(),
             PermissionAccessorState::Ask => match self.try_permissions_prompt(
@@ -197,7 +198,7 @@ impl DenoPermissions {
               }
             },
             PermissionAccessorState::Deny => Err(permission_denied()),
-          },
+          }
         }
       }
     }
@@ -207,9 +208,10 @@ impl DenoPermissions {
     match self.allow_write.get_state() {
       PermissionAccessorState::Allow => Ok(()),
       state => {
-        match check_path_white_list(filename, &self.write_whitelist) {
-          true => Ok(()),
-          false => match state {
+        if check_path_white_list(filename, &self.write_whitelist) {
+          Ok(())
+        } else {
+          match state {
             // This shouldn't be possible but I guess rust doesn't realize.
             PermissionAccessorState::Allow => unreachable!(),
             PermissionAccessorState::Ask => match self.try_permissions_prompt(
@@ -223,7 +225,7 @@ impl DenoPermissions {
               }
             },
             PermissionAccessorState::Deny => Err(permission_denied()),
-          },
+          }
         }
       }
     }
@@ -237,53 +239,47 @@ impl DenoPermissions {
         let whitelist_result = match parsed_url_result {
           Ok(parsed_url) => match parsed_url.origin() {
             url::Origin::Tuple(_, url::Host::Domain(domain), port) => {
-              match self.net_whitelist.contains(&domain) {
-                false => {
-                  self.net_whitelist.contains(&format!("{}:{}", domain, port))
-                }
-                true => true,
+              if self.net_whitelist.contains(&domain) {
+                true
+              } else {
+                self.net_whitelist.contains(&format!("{}:{}", domain, port))
               }
             }
-            url::Origin::Tuple(_, url::Host::Ipv4(ip), port) => match self
-              .net_whitelist
-              .contains(&format!("{}", ip))
-            {
-              false => self.net_whitelist.contains(&format!("{}:{}", ip, port)),
-              true => true,
-            },
-            url::Origin::Tuple(_, url::Host::Ipv6(ip), port) => match self
-              .net_whitelist
-              .contains(&format!("{}", ip))
-            {
-              false => self.net_whitelist.contains(&format!("{}:{}", ip, port)),
-              true => true,
-            },
+            url::Origin::Tuple(_, url::Host::Ipv4(ip), port) => {
+              if self.net_whitelist.contains(&format!("{}", ip)) {
+                true
+              } else {
+                self.net_whitelist.contains(&format!("{}:{}", ip, port))
+              }
+            }
+            url::Origin::Tuple(_, url::Host::Ipv6(ip), port) => {
+              if self.net_whitelist.contains(&format!("{}", ip)) {
+                true
+              } else {
+                self.net_whitelist.contains(&format!("{}:{}", ip, port))
+              }
+            }
             _ => panic!("Unexpected url origin type."),
           },
           Err(_) => false,
         };
-        match whitelist_result {
-          true => Ok(()),
-          false => {
-            match state {
-              // This shouldn't be possible but I guess rust doesn't realize.
-              PermissionAccessorState::Allow => unreachable!(),
-              PermissionAccessorState::Ask => {
-                match self.try_permissions_prompt(&format!(
-                  "network access to \"{}\"",
-                  url_str
-                )) {
-                  Err(e) => Err(e),
-                  Ok(v) => {
-                    self.allow_net.update_with_prompt_result(&v);
-                    v.check()?;
-                    Ok(())
-                  }
-                }
-              }
-              PermissionAccessorState::Deny => Err(permission_denied()),
+        if whitelist_result {
+          return Ok(());
+        }
+        match state {
+          // This shouldn't be possible but I guess rust doesn't realize.
+          PermissionAccessorState::Allow => unreachable!(),
+          PermissionAccessorState::Ask => match self.try_permissions_prompt(
+            &format!("network access to \"{}\"", url_str),
+          ) {
+            Err(e) => Err(e),
+            Ok(v) => {
+              self.allow_net.update_with_prompt_result(&v);
+              v.check()?;
+              Ok(())
             }
-          }
+          },
+          PermissionAccessorState::Deny => Err(permission_denied()),
         }
       }
     }
@@ -436,12 +432,12 @@ fn check_path_white_list(
     return true;
   }
 
-  while path_buf.pop() == true {
+  while path_buf.pop() {
     if white_list.contains(path_buf.to_str().unwrap()) {
       return true;
     }
   }
-  return false;
+  false
 }
 
 #[cfg(test)]

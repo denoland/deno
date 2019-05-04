@@ -307,7 +307,8 @@ pub fn parse_flags(matches: ArgMatches) -> DenoFlags {
     if run_matches.is_present("allow-read") {
       if run_matches.value_of("allow-read").is_some() {
         let read_wl = run_matches.values_of("allow-read").unwrap();
-        flags.read_whitelist = read_wl.map(|s| s.to_string()).collect();
+        flags.read_whitelist =
+          read_wl.map(std::string::ToString::to_string).collect();
       } else {
         flags.allow_read = true;
       }
@@ -315,7 +316,8 @@ pub fn parse_flags(matches: ArgMatches) -> DenoFlags {
     if run_matches.is_present("allow-write") {
       if run_matches.value_of("allow-write").is_some() {
         let write_wl = run_matches.values_of("allow-write").unwrap();
-        flags.write_whitelist = write_wl.map(|s| s.to_string()).collect();
+        flags.write_whitelist =
+          write_wl.map(std::string::ToString::to_string).collect();
       } else {
         flags.allow_write = true;
       }
@@ -323,7 +325,8 @@ pub fn parse_flags(matches: ArgMatches) -> DenoFlags {
     if run_matches.is_present("allow-net") {
       if run_matches.value_of("allow-net").is_some() {
         let net_wl = run_matches.values_of("allow-net").unwrap();
-        flags.net_whitelist = net_wl.map(|s| s.to_string()).collect();
+        flags.net_whitelist =
+          net_wl.map(std::string::ToString::to_string).collect();
       } else {
         flags.allow_net = true;
       }
