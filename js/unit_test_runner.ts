@@ -11,12 +11,12 @@ function permsToCliFlags(perms: Deno.Permissions): string[] {
 
         const cliFlag = key.replace(
           /\.?([A-Z])/g,
-          (x, y) => `-${y.toLowerCase()}`
+          (x, y): string => `-${y.toLowerCase()}`
         );
         return `--allow-${cliFlag}`;
       }
     )
-    .filter(e => e.length);
+    .filter((e): boolean => e.length > 0);
 }
 
 function fmtPerms(perms: Deno.Permissions): string {
