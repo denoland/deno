@@ -5,22 +5,22 @@ import { testPerm, assertEquals } from "./test_util.ts";
 if (Deno.build.os !== "win") {
   async function getUidAndGid() {
     // get the user ID and group ID of the current process
-    const uid_proc = Deno.run({
+    const uidProc = Deno.run({
       stdout: "piped",
       args: ["python", "-c", "import os; print(os.getuid())"]
     });
-    const gid_proc = Deno.run({
+    const gidProc = Deno.run({
       stdout: "piped",
       args: ["python", "-c", "import os; print(os.getgid())"]
     });
 
-    assertEquals((await uid_proc.status()).code, 0);
-    assertEquals((await gid_proc.status()).code, 0);
+    assertEquals((await uidProc.status()).code, 0);
+    assertEquals((await gidProc.status()).code, 0);
     const uid = parseInt(
-      new TextDecoder("utf-8").decode(await uid_proc.output())
+      new TextDecoder("utf-8").decode(await uidProc.output())
     );
     const gid = parseInt(
-      new TextDecoder("utf-8").decode(await gid_proc.output())
+      new TextDecoder("utf-8").decode(await gidProc.output())
     );
 
     return { uid, gid };
