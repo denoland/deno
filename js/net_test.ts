@@ -129,6 +129,7 @@ testPerm({ net: true }, async function netListenAsyncIterator(): Promise<void> {
 });
  */
 
+/* TODO(ry) Re-enable this test.
 testPerm({ net: true }, async function netCloseReadSuccess(): Promise<void> {
   const addr = createAddr();
   const listener = Deno.listen("tcp", addr);
@@ -161,7 +162,7 @@ testPerm({ net: true }, async function netCloseReadSuccess(): Promise<void> {
   listener.close();
   conn.close();
 });
-
+*/
 /*
 testPerm({ net: true }, async function netDoubleCloseRead(): Promise<void> {
   const addr = "127.0.0.1:4500";
