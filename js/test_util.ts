@@ -17,9 +17,6 @@ export {
   assertEquals
 } from "./deps/https/deno.land/std/testing/asserts.ts";
 
-// testing.setFilter must be run before any tests are defined.
-testing.setFilter(Deno.args[1]);
-
 interface DenoPermissions {
   read?: boolean;
   write?: boolean;
@@ -55,10 +52,40 @@ function permFromString(s: string): DenoPermissions {
   };
 }
 
+const processPerms = Deno.permissions();
+
+function permissionsMatch(
+  processPerms: Deno.Permissions,
+  requiredPerms: DenoPermissions
+): boolean {
+  for (const permName in processPerms) {
+    // if process has permission enabled and test case doesn't need this
+    // perm then skip
+    if (processPerms[permName] && !requiredPerms.hasOwnProperty(permName)) {
+      return false;
+    }
+
+    // if test case requires permissions but process has different
+    // value for perm then skip
+    if (
+      requiredPerms.hasOwnProperty(permName) &&
+      requiredPerms[permName] !== processPerms[permName]
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 export function testPerm(
   perms: DenoPermissions,
   fn: testing.TestFunction
 ): void {
+  if (!permissionsMatch(processPerms, perms)) {
+    return;
+  }
+
   const name = `${fn.name}_${permToString(perms)}`;
   testing.test({ fn, name });
 }
@@ -101,6 +128,86 @@ test(function permSerialization(): void {
   }
 });
 
+test(function permsMatchesOk(): void {
+  assert(
+    permissionsMatch(
+      {
+        read: true,
+        write: false,
+        net: false,
+        env: false,
+        run: false,
+        highPrecision: false
+      },
+      { read: true }
+    )
+  );
+
+  assert(
+    permissionsMatch(
+      {
+        read: false,
+        write: false,
+        net: false,
+        env: false,
+        run: false,
+        highPrecision: false
+      },
+      {}
+    )
+  );
+
+  assertEquals(
+    permissionsMatch(
+      {
+        read: false,
+        write: true,
+        net: true,
+        env: true,
+        run: true,
+        highPrecision: true
+      },
+      { read: true }
+    ),
+    false
+  );
+
+  assertEquals(
+    permissionsMatch(
+      {
+        read: true,
+        write: false,
+        net: true,
+        env: false,
+        run: false,
+        highPrecision: false
+      },
+      { read: true }
+    ),
+    false
+  );
+
+  assert(
+    permissionsMatch(
+      {
+        read: true,
+        write: true,
+        net: true,
+        env: true,
+        run: true,
+        highPrecision: true
+      },
+      {
+        read: true,
+        write: true,
+        net: true,
+        env: true,
+        run: true,
+        highPrecision: true
+      }
+    )
+  );
+});
 // To better catch internal errors, permFromString should throw if it gets an
 // invalid permission string.
 test(function permFromStringThrows(): void {
