@@ -20,9 +20,10 @@ No.
 
 ### I want to contribute, where should i start?
 
-First of all thanks for the help. You may first start to parse all the issues
-in [deno](https://github.com/denoland/deno) and [deno_std](https://github.com/denoland/deno)
-repositories. If you want to add functionnalities,be sure to start an issue to discuss about it.
+First of all thanks for the help. You may first start to parse all the issues in
+[deno](https://github.com/denoland/deno) and
+[deno_std](https://github.com/denoland/deno) repositories. If you want to add
+functionnalities,be sure to start an issue to discuss about it.
 
 ### Is deno going to support node?
 
