@@ -2,6 +2,7 @@ union Any {
   Accept,
   Chdir,
   Chmod,
+  Chown,
   Close,
   CompilerConfig,
   CompilerConfigRes,
@@ -341,6 +342,12 @@ table Mkdir {
 table Chmod {
   path: string;
   mode: uint; // Specified by https://godoc.org/os#FileMode
+}
+
+table Chown {
+  path: string;
+  uid: uint;
+  gid: uint;  // Specified by https://godoc.org/os#Chown
 }
 
 table Remove {
