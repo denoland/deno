@@ -127,7 +127,7 @@ pub fn chown(path: &str, uid: u32, gid: u32) -> DenoResult<()> {
 }
 
 #[cfg(not(unix))]
-pub fn chown(path: &str, uid: u32, gid: u32) -> DenoResult<()> {
+pub fn chown(_path: &str, _uid: u32, _gid: u32) -> DenoResult<()> {
   // Noop
   // TODO: implement chown for Windows
   Ok(())

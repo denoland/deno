@@ -26,6 +26,16 @@ if (Deno.build.os !== "win") {
     return { uid, gid };
   }
 
+  testPerm({}, async function chownNoWritePermission(): Promise<void> {
+    const filePath = "chown_test_file.txt";
+    try {
+      await Deno.chown(filePath, 1000, 1000);
+    } catch (e) {
+      assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
+      assertEquals(e.name, "PermissionDenied");
+    }
+  });
+
   testPerm(
     { run: true, write: true },
     async function chownSyncFileNotExist(): Promise<void> {

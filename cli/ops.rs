@@ -871,7 +871,7 @@ fn op_chmod(
 }
 
 fn op_chown(
-  _state: &ThreadSafeState,
+  state: &ThreadSafeState,
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
@@ -880,6 +880,10 @@ fn op_chown(
   let path = String::from(inner.path().unwrap());
   let uid = inner.uid();
   let gid = inner.gid();
+
+  if let Err(e) = state.check_write(&path) {
+    return odd_future(e);
+  }
 
   debug!("op_chown {}", &path);
   match deno_fs::chown(&path, uid, gid) {
