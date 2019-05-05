@@ -30,16 +30,16 @@ def test_no_color(deno_exe):
     sys.stdout.write("no_color test...")
     sys.stdout.flush()
     t = os.path.join(tests_path, "no_color.js")
-    output = run_output([deno_exe, t], merge_env={"NO_COLOR": "1"})
+    output = run_output([deno_exe, "run", t], merge_env={"NO_COLOR": "1"})
     assert output.strip() == "noColor true"
     t = os.path.join(tests_path, "no_color.js")
-    output = run_output([deno_exe, t])
+    output = run_output([deno_exe, "run", t])
     assert output.strip() == "noColor false"
     print green_ok()
 
 
 def exec_path_test(deno_exe):
-    cmd = [deno_exe, "tests/exec_path.ts"]
+    cmd = [deno_exe, "run", "tests/exec_path.ts"]
     output = run_output(cmd)
     assert deno_exe in output.strip()
 

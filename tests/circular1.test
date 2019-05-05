@@ -1,2 +1,2 @@
-args: tests/circular1.js --reload
+args: run --reload tests/circular1.js
 output: tests/circular1.js.out

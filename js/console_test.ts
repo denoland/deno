@@ -100,6 +100,7 @@ test(function consoleTestStringifyCircular(): void {
   const nestedObjExpected = `{ num, bool, str, method, asyncMethod, generatorMethod, un, nu, arrowFunc, extendedClass, nFunc, extendedCstr, o }`;
 
   assertEquals(stringify(1), "1");
+  assertEquals(stringify(-0), "-0");
   assertEquals(stringify(1n), "1n");
   assertEquals(stringify("s"), "s");
   assertEquals(stringify(false), "false");

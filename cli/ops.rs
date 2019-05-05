@@ -341,6 +341,12 @@ fn op_start(
 
   let main_module = state.main_module().map(|m| builder.create_string(&m));
 
+  let xeval_delim = state
+    .flags
+    .xeval_delim
+    .clone()
+    .map(|m| builder.create_string(&m));
+
   let inner = msg::StartRes::create(
     &mut builder,
     &msg::StartResArgs {
@@ -354,6 +360,7 @@ fn op_start(
       deno_version: Some(deno_version_off),
       no_color: !ansi::use_color(),
       exec_path: Some(exec_path),
+      xeval_delim,
       ..Default::default()
     },
   );
