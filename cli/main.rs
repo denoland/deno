@@ -27,6 +27,7 @@ pub mod msg;
 pub mod msg_util;
 pub mod ops;
 pub mod permissions;
+mod progress;
 mod repl;
 pub mod resolve_addr;
 pub mod resources;
@@ -39,6 +40,7 @@ pub mod version;
 pub mod worker;
 
 use crate::errors::RustOrJsError;
+use crate::progress::Progress;
 use crate::state::ThreadSafeState;
 use crate::worker::root_specifier_to_url;
 use crate::worker::Worker;
@@ -134,7 +136,21 @@ fn create_worker_and_state(
   flags: DenoFlags,
   argv: Vec<String>,
 ) -> (Worker, ThreadSafeState) {
-  let state = ThreadSafeState::new(flags, argv, ops::op_selector_std);
+  let progress = Progress::new();
+  progress.set_callback(|completed, total, msg| {
+    // TODO(ry) Currently we print a \n after every progress message and then
+    // move the cursor up before printing the next line. This isn't ideal. We
+    // could instead print \r after every progress message and avoid moving the
+    // cursor up. This would only require knowing then the progress is complete
+    // and printing \n at that time, so that the output that follows doesn't
+    // continue on the same line.
+    if total != 0 {
+      eprint!("\x1B[F"); // Move up one line.
+    }
+    eprint!("\r[{}/{}] {}", completed, total, msg);
+    eprintln!("\x1B[K"); // Clear to end of line.
+  });
+  let state = ThreadSafeState::new(flags, argv, ops::op_selector_std, progress);
   let worker = Worker::new(
     "main".to_string(),
     startup_data::deno_isolate_init(),
