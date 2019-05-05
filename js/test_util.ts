@@ -52,11 +52,23 @@ function permissionsMatch(
   return true;
 }
 
-export const permissionCombinations: Set<string> = new Set([]);
+export const permissionCombinations: Map<string, Deno.Permissions> = new Map();
+
+function permToString(perms: Deno.Permissions): string {
+  const r = perms.read ? 1 : 0;
+  const w = perms.write ? 1 : 0;
+  const n = perms.net ? 1 : 0;
+  const e = perms.env ? 1 : 0;
+  const u = perms.run ? 1 : 0;
+  const h = perms.highPrecision ? 1 : 0;
+  return `permR${r}W${w}N${n}E${e}U${u}H${h}`;
+}
 
 function registerPermCombination(perms: Deno.Permissions): void {
-  // TODO: poor-man's set of unique objects, to be refactored
-  permissionCombinations.add(JSON.stringify(perms));
+  const key = permToString(perms);
+  if (!permissionCombinations.has(key)) {
+    permissionCombinations.set(key, perms);
+  }
 }
 
 function normalizeTestPermissions(perms: TestPermissions): Deno.Permissions {
