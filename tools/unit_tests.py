@@ -14,7 +14,7 @@ def run_unit_test(cmd):
         universal_newlines=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT)
-    (actual, expected) = util.parse_unit_test_output(process.stdout, True)
+    util.parse_unit_test_output(process.stdout, True)
     process.wait()
     errcode = process.returncode
     if errcode != 0:

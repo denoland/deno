@@ -1,8 +1,12 @@
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// TODO(bartlomieju): enable linter
+/* eslint-disable @typescript-eslint/explicit-function-return-type */
+
 import "./unit_tests.ts";
 
 import { permissionCombinations } from "./test_util.ts";
 
-async function main() {
+async function main(): Promise<void> {
   console.log(
     "discovered permission combinations:",
     permissionCombinations.size

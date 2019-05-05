@@ -54,6 +54,11 @@ function permissionsMatch(
 
 export const permissionCombinations: Set<string> = new Set([]);
 
+function registerPermCombination(perms: Deno.Permissions): void {
+  // TODO: poor-man's set of unique objects, to be refactored
+  permissionCombinations.add(JSON.stringify(perms));
+}
+
 function normalizeTestPermissions(perms: TestPermissions): Deno.Permissions {
   const normalizedPerms = {
     read: !!perms.read,
@@ -66,11 +71,6 @@ function normalizeTestPermissions(perms: TestPermissions): Deno.Permissions {
 
   registerPermCombination(normalizedPerms);
   return normalizedPerms;
-}
-
-function registerPermCombination(perms: Deno.Permissions): void {
-  // TODO: poor-man's set of unique objects, to be refactored
-  permissionCombinations.add(JSON.stringify(perms));
 }
 
 export function testPerm(

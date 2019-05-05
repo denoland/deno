@@ -52,7 +52,7 @@ import "../website/app_test.js";
 
 import { runIfMain } from "./deps/https/deno.land/std/testing/mod.ts";
 
-async function main() {
+async function main(): Promise<void> {
   // Testing entire test suite serially
   runIfMain(import.meta);
 }
