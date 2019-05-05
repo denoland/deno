@@ -26,32 +26,6 @@ interface DenoPermissions {
   highPrecision?: boolean;
 }
 
-function permToString(perms: DenoPermissions): string {
-  const r = perms.read ? 1 : 0;
-  const w = perms.write ? 1 : 0;
-  const n = perms.net ? 1 : 0;
-  const e = perms.env ? 1 : 0;
-  const u = perms.run ? 1 : 0;
-  const h = perms.highPrecision ? 1 : 0;
-  return `permR${r}W${w}N${n}E${e}U${u}H${h}`;
-}
-
-function permFromString(s: string): DenoPermissions {
-  const re = /^permR([01])W([01])N([01])E([01])U([01])H([01])$/;
-  const found = s.match(re);
-  if (!found) {
-    throw Error("Not a permission string");
-  }
-  return {
-    read: Boolean(Number(found[1])),
-    write: Boolean(Number(found[2])),
-    net: Boolean(Number(found[3])),
-    env: Boolean(Number(found[4])),
-    run: Boolean(Number(found[5])),
-    highPrecision: Boolean(Number(found[6]))
-  };
-}
-
 const processPerms = Deno.permissions();
 
 function permissionsMatch(
@@ -86,8 +60,7 @@ export function testPerm(
     return;
   }
 
-  const name = `${fn.name}_${permToString(perms)}`;
-  testing.test({ fn, name });
+  testing.test(fn);
 }
 
 export function test(fn: testing.TestFunction): void {
@@ -104,31 +77,7 @@ export function test(fn: testing.TestFunction): void {
   );
 }
 
-test(function permSerialization(): void {
-  for (const write of [true, false]) {
-    for (const net of [true, false]) {
-      for (const env of [true, false]) {
-        for (const run of [true, false]) {
-          for (const read of [true, false]) {
-            for (const highPrecision of [true, false]) {
-              const perms: DenoPermissions = {
-                write,
-                net,
-                env,
-                run,
-                read,
-                highPrecision
-              };
-              assertEquals(perms, permFromString(permToString(perms)));
-            }
-          }
-        }
-      }
-    }
-  }
-});
-
-test(function permsMatchesOk(): void {
+test(function permissionsMatches(): void {
   assert(
     permissionsMatch(
       {
@@ -207,15 +156,4 @@ test(function permsMatchesOk(): void {
       }
     )
   );
-});
-// To better catch internal errors, permFromString should throw if it gets an
-// invalid permission string.
-test(function permFromStringThrows(): void {
-  let threw = false;
-  try {
-    permFromString("bad");
-  } catch (e) {
-    threw = true;
-  }
-  assert(threw);
 });
