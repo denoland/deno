@@ -3,7 +3,6 @@
 import util
 import sys
 import subprocess
-import itertools
 import http_server
 
 
@@ -33,9 +32,8 @@ def run_unit_test(cmd):
 
 
 def unit_tests(deno_exe):
-    flags = ["--reload", "--allow-run"]
-    cmd = [deno_exe, "run"] + flags + ["js/unit_test_runner.ts"]
-    run_unit_test(cmd)
+    run_unit_test(
+        [deno_exe, "run", "--reload", "--allow-run", "js/unit_test_runner.ts"])
 
 
 if __name__ == '__main__':

@@ -1,7 +1,6 @@
+#!/usr/bin/env deno run --reload --allow-run
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-
 import "./unit_tests.ts";
-
 import { permissionCombinations } from "./test_util.ts";
 
 function permsToCliFlags(perms: Deno.Permissions): string[] {
@@ -46,7 +45,13 @@ async function main(): Promise<void> {
     console.log(`Running tests for: ${fmtPerms(perms)}`);
     const cliPerms = permsToCliFlags(perms);
     // run subsequent tests using same deno executable
-    const args = [Deno.execPath, "run", ...cliPerms, "js/unit_tests.ts"];
+    const args = [
+      Deno.execPath,
+      "run",
+      "--no-prompt",
+      ...cliPerms,
+      "js/unit_tests.ts"
+    ];
 
     const p = Deno.run({
       args,
