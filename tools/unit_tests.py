@@ -7,7 +7,7 @@ import itertools
 import http_server
 
 
-def run_unit_test2(cmd):
+def run_unit_test(cmd):
     process = subprocess.Popen(
         cmd,
         bufsize=1,
@@ -20,11 +20,11 @@ def run_unit_test2(cmd):
     if errcode != 0:
         sys.exit(errcode)
 
-    if actual == None and expected == None:
-        raise AssertionError("Bad js/unit_test.ts output")
-    if expected != actual:
-        print "expected", expected, "actual", actual
-        raise AssertionError("expected tests did not equal actual")
+    # if actual == None and expected == None:
+    #     raise AssertionError("Bad js/unit_test.ts output")
+    # if expected != actual:
+    #     print "expected", expected, "actual", actual
+    #     raise AssertionError("expected tests did not equal actual")
 
     process.wait()
     errcode = process.returncode
@@ -32,29 +32,10 @@ def run_unit_test2(cmd):
         sys.exit(errcode)
 
 
-def run_unit_test(deno_exe, flags=None):
-    if flags is None:
-        flags = []
-    cmd = [deno_exe, "run"] + flags + ["js/unit_tests.ts"]
-    print "Running unit tests for permissions: {}".format(flags)
-    run_unit_test2(cmd)
-
-
-perms = [
-    "--allow-read", "--allow-write", "--allow-net", "--allow-run",
-    "--allow-env", "--allow-high-precision"
-]
-
-
 def unit_tests(deno_exe):
-    run_unit_test(deno_exe, [])
-
-    for i in range(len(perms)):
-        combinations = itertools.combinations(perms, i + 1)
-
-        for test_perms in combinations:
-            test_perms = list(test_perms)
-            run_unit_test(deno_exe, test_perms)
+    flags = ["--reload", "--allow-run"]
+    cmd = [deno_exe, "run"] + flags + ["js/unit_test_runner.ts"]
+    run_unit_test(cmd)
 
 
 if __name__ == '__main__':

@@ -17,7 +17,7 @@ export {
   assertEquals
 } from "./deps/https/deno.land/std/testing/asserts.ts";
 
-interface DenoPermissions {
+interface TestPermissions {
   read?: boolean;
   write?: boolean;
   net?: boolean;
@@ -30,7 +30,7 @@ const processPerms = Deno.permissions();
 
 function permissionsMatch(
   processPerms: Deno.Permissions,
-  requiredPerms: DenoPermissions
+  requiredPerms: TestPermissions
 ): boolean {
   for (const permName in processPerms) {
     // if process has permission enabled and test case doesn't need this
@@ -52,10 +52,33 @@ function permissionsMatch(
   return true;
 }
 
+export const permissionCombinations: Set<string> = new Set([]);
+
+function normalizeTestPermissions(perms: TestPermissions): Deno.Permissions {
+  const normalizedPerms = {
+    read: !!perms.read,
+    write: !!perms.write,
+    net: !!perms.net,
+    run: !!perms.run,
+    env: !!perms.env,
+    highPrecision: !!perms.highPrecision
+  };
+
+  registerPermCombination(normalizedPerms);
+  return normalizedPerms;
+}
+
+function registerPermCombination(perms: Deno.Permissions): void {
+  // TODO: poor-man's set of unique objects, to be refactored
+  permissionCombinations.add(JSON.stringify(perms));
+}
+
 export function testPerm(
-  perms: DenoPermissions,
+  perms: TestPermissions,
   fn: testing.TestFunction
 ): void {
+  perms = normalizeTestPermissions(perms);
+
   if (!permissionsMatch(processPerms, perms)) {
     return;
   }
