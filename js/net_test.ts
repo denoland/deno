@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { testPerm, assert, assertEquals } from "./test_util.ts";
 
+/*
 function deferred(): {
   resolve: () => void;
   reject: () => void;
@@ -16,6 +17,7 @@ function deferred(): {
   );
   return { resolve, reject, promise };
 }
+*/
 
 let port = 4500;
 function createAddr(): string {
