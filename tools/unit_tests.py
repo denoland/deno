@@ -4,6 +4,7 @@ import util
 import sys
 import subprocess
 import itertools
+import http_server
 
 
 def run_unit_test2(cmd):
@@ -60,4 +61,6 @@ if __name__ == '__main__':
     if len(sys.argv) < 2:
         print "Usage ./tools/unit_tests.py target/debug/deno"
         sys.exit(1)
+
+    http_server.spawn()
     unit_tests(sys.argv[1])
