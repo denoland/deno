@@ -222,7 +222,7 @@ test(function permissionsMatches(): void {
   );
 });
 
-testPerm({ read: true }, async function parsingUnitTestOutput(): void {
+testPerm({ read: true }, async function parsingUnitTestOutput(): Promise<void> {
   const cwd = Deno.cwd();
   const testDataPath = `${cwd}/tools/testdata/`;
 
