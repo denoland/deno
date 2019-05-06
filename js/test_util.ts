@@ -100,6 +100,47 @@ export function test(fn: testing.TestFunction): void {
   );
 }
 
+function extractNumber(re: RegExp, str: string): number | undefined {
+  const match = str.match(re);
+
+  if (match) {
+    return Number.parseInt(match[1]);
+  }
+}
+
+export function parseUnitTestOutput(
+  rawOutput: Uint8Array,
+  print: boolean
+): { actual?: number; expected?: number } {
+  const decoder = new TextDecoder();
+  const output = decoder.decode(rawOutput);
+
+  let expected, actual, result;
+
+  for (const line of output.split("\n")) {
+    if (!expected) {
+      // expect "running 30 tests"
+      expected = extractNumber(/running (\d+) tests/, line);
+    } else if (line.indexOf("test result:") !== -1) {
+      result = line;
+    }
+
+    if (print) {
+      console.log(line);
+    }
+  }
+
+  // Check that the number of expected tests equals what was reported at the
+  // bottom.
+  if (result) {
+    // result should be a string like this:
+    // "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; ..."
+    actual = extractNumber(/(\d+) passed/, result);
+  }
+
+  return { actual, expected };
+}
+
 test(function permissionsMatches(): void {
   assert(
     permissionsMatch(
@@ -179,4 +220,40 @@ test(function permissionsMatches(): void {
       }
     )
   );
+});
+
+testPerm({ read: true }, async function parsingUnitTestOutput() {
+  const cwd = Deno.cwd();
+  const testDataPath = `${cwd}/tools/testdata/`;
+
+  let result;
+
+  // This is an example of a successful unit test output.
+  result = parseUnitTestOutput(
+    await Deno.readFile(`${testDataPath}/unit_test_output1.txt`),
+    false
+  );
+  assertEquals(result.actual, 96);
+  assertEquals(result.expected, 96);
+
+  // This is an example of a silently dying unit test.
+  result = parseUnitTestOutput(
+    await Deno.readFile(`${testDataPath}/unit_test_output2.txt`),
+    false
+  );
+  assertEquals(result.actual, undefined);
+  assertEquals(result.expected, 96);
+
+  // This is an example of compiling before successful unit tests.
+  result = parseUnitTestOutput(
+    await Deno.readFile(`${testDataPath}/unit_test_output3.txt`),
+    false
+  );
+  assertEquals(result.actual, 96);
+  assertEquals(result.expected, 96);
+
+  // Check what happens on empty output.
+  result = parseUnitTestOutput(new TextEncoder().encode("\n\n\n"), false);
+  assertEquals(result.actual, undefined);
+  assertEquals(result.expected, undefined);
 });
