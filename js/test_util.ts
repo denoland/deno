@@ -30,21 +30,10 @@ const processPerms = Deno.permissions();
 
 function permissionsMatch(
   processPerms: Deno.Permissions,
-  requiredPerms: TestPermissions
+  requiredPerms: Deno.Permissions
 ): boolean {
   for (const permName in processPerms) {
-    // if process has permission enabled and test case doesn't need this
-    // perm then skip
-    if (processPerms[permName] && !requiredPerms.hasOwnProperty(permName)) {
-      return false;
-    }
-
-    // if test case requires permissions but process has different
-    // value for perm then skip
-    if (
-      requiredPerms.hasOwnProperty(permName) &&
-      requiredPerms[permName] !== processPerms[permName]
-    ) {
+    if (processPerms[permName] !== requiredPerms[permName]) {
       return false;
     }
   }
@@ -72,7 +61,7 @@ function registerPermCombination(perms: Deno.Permissions): void {
 }
 
 function normalizeTestPermissions(perms: TestPermissions): Deno.Permissions {
-  const normalizedPerms = {
+  return {
     read: !!perms.read,
     write: !!perms.write,
     net: !!perms.net,
@@ -80,18 +69,17 @@ function normalizeTestPermissions(perms: TestPermissions): Deno.Permissions {
     env: !!perms.env,
     highPrecision: !!perms.highPrecision
   };
-
-  registerPermCombination(normalizedPerms);
-  return normalizedPerms;
 }
 
 export function testPerm(
   perms: TestPermissions,
   fn: testing.TestFunction
 ): void {
-  perms = normalizeTestPermissions(perms);
+  const normalizedPerms = normalizeTestPermissions(perms);
 
-  if (!permissionsMatch(processPerms, perms)) {
+  registerPermCombination(normalizedPerms);
+
+  if (!permissionsMatch(processPerms, normalizedPerms)) {
     return;
   }
 
@@ -123,7 +111,7 @@ test(function permissionsMatches(): void {
         run: false,
         highPrecision: false
       },
-      { read: true }
+      normalizeTestPermissions({ read: true })
     )
   );
 
@@ -137,7 +125,7 @@ test(function permissionsMatches(): void {
         run: false,
         highPrecision: false
       },
-      {}
+      normalizeTestPermissions({})
     )
   );
 
@@ -151,7 +139,7 @@ test(function permissionsMatches(): void {
         run: true,
         highPrecision: true
       },
-      { read: true }
+      normalizeTestPermissions({ read: true })
     ),
     false
   );
@@ -166,7 +154,7 @@ test(function permissionsMatches(): void {
         run: false,
         highPrecision: false
       },
-      { read: true }
+      normalizeTestPermissions({ read: true })
     ),
     false
   );
