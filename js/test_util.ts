@@ -111,7 +111,7 @@ function extractNumber(re: RegExp, str: string): number | undefined {
 export function parseUnitTestOutput(
   rawOutput: Uint8Array,
   print: boolean
-): { actual?: number; expected?: number } {
+): { actual?: number; expected?: number; resultOutput?: string } {
   const decoder = new TextDecoder();
   const output = decoder.decode(rawOutput);
 
@@ -138,7 +138,7 @@ export function parseUnitTestOutput(
     actual = extractNumber(/(\d+) passed/, result);
   }
 
-  return { actual, expected };
+  return { actual, expected, resultOutput: result };
 }
 
 test(function permissionsMatches(): void {
@@ -222,7 +222,7 @@ test(function permissionsMatches(): void {
   );
 });
 
-testPerm({ read: true }, async function parsingUnitTestOutput() {
+testPerm({ read: true }, async function parsingUnitTestOutput(): void {
   const cwd = Deno.cwd();
   const testDataPath = `${cwd}/tools/testdata/`;
 

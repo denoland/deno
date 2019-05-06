@@ -39,10 +39,11 @@ async function main(): Promise<void> {
     console.log("\t" + fmtPerms(perms));
   }
 
-  const testResults = [];
+  const testResults = new Set();
 
   for (const perms of permissionCombinations.values()) {
-    console.log(`Running tests for: ${fmtPerms(perms)}`);
+    const permsFmt = fmtPerms(perms);
+    console.log(`Running tests for: ${permsFmt}`);
     const cliPerms = permsToCliFlags(perms);
     // run subsequent tests using same deno executable
     const args = [
@@ -59,29 +60,43 @@ async function main(): Promise<void> {
     });
 
     await p.status();
-    const { actual, expected } = parseUnitTestOutput(await p.output(), true);
+    const { actual, expected, resultOutput } = parseUnitTestOutput(
+      await p.output(),
+      true
+    );
+
+    let result = 0;
 
     if (!actual && !expected) {
       console.error("Bad js/unit_test.ts output");
-      testResults.push(1);
+      result = 1;
     } else if (expected !== actual) {
-      testResults.push(1);
-    } else {
-      testResults.push(0);
+      result = 1;
     }
+
+    testResults.add({
+      perms: permsFmt,
+      output: resultOutput,
+      result
+    });
   }
 
   // if any run tests returned non-zero status then whole test
   // run should fail
-  const testsFailed = testResults.some(
-    (result): boolean => {
-      return result !== 0;
-    }
-  );
+  let testsFailed = false;
+
+  for (const testResult of testResults.values()) {
+    console.log(`Summary for ${testResult.perms}`);
+    console.log(testResult.output + "\n");
+    testsFailed = testsFailed || testResult.result;
+  }
 
   if (testsFailed) {
+    console.error("Unit tests failed");
     Deno.exit(1);
   }
+
+  console.log("Unit tests passed");
 }
 
 main();
