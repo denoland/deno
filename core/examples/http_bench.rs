@@ -19,7 +19,7 @@ use std::env;
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex, RwLock};
 use tokio::prelude::*;
 
 static LOGGER: Logger = Logger;
@@ -209,14 +209,37 @@ fn main() {
   }
 }
 
+// Intention of wrapped Option is to allow the same resource
+// to have multi owner through Arc, yet close() by one of
+// the owners could affect all remaining owners through
+// Option::take().
+// Maybe we should attach a clone of Arc for resource
+// in struct Resource such that every single poll_read
+// or poll_write does not require locking the whole
+// resource table each time...
+type AMO<T> = Arc<Mutex<Option<T>>>;
+
+macro_rules! amo {
+  ($x:expr) => {{
+    Arc::new(Mutex::new(Some($x)))
+  }};
+}
+
+macro_rules! take_amo {
+  ($x:expr) => {{
+    ($x).lock().unwrap().take()
+  }};
+}
+
 enum Repr {
-  TcpListener(tokio::net::TcpListener),
-  TcpStream(tokio::net::TcpStream),
+  TcpListener(AMO<tokio::net::TcpListener>),
+  TcpStream(AMO<tokio::net::TcpStream>),
 }
 
 type ResourceTable = HashMap<i32, Repr>;
 lazy_static! {
-  static ref RESOURCE_TABLE: Mutex<ResourceTable> = Mutex::new(HashMap::new());
+  static ref RESOURCE_TABLE: RwLock<ResourceTable> =
+    RwLock::new(HashMap::new());
   static ref NEXT_RID: AtomicUsize = AtomicUsize::new(3);
 }
 
@@ -229,18 +252,23 @@ fn op_accept(listener_rid: i32) -> Box<HttpBenchOp> {
   debug!("accept {}", listener_rid);
   Box::new(
     futures::future::poll_fn(move || {
-      let mut table = RESOURCE_TABLE.lock().unwrap();
-      let maybe_repr = table.get_mut(&listener_rid);
+      let table = RESOURCE_TABLE.read().unwrap();
+      let maybe_repr = table.get(&listener_rid);
       match maybe_repr {
-        Some(Repr::TcpListener(ref mut listener)) => listener.poll_accept(),
+        Some(Repr::TcpListener(ref listener)) => {
+          let l = listener.clone();
+          let mut l = l.lock().unwrap();
+          let l = l.as_mut().unwrap();
+          l.poll_accept()
+        }
         _ => panic!("bad rid {}", listener_rid),
       }
     }).and_then(move |(stream, addr)| {
       debug!("accept success {}", addr);
       let rid = new_rid();
 
-      let mut guard = RESOURCE_TABLE.lock().unwrap();
-      guard.insert(rid, Repr::TcpStream(stream));
+      let mut guard = RESOURCE_TABLE.write().unwrap();
+      guard.insert(rid, Repr::TcpStream(amo!(stream)));
 
       Ok(rid as i32)
     }),
@@ -255,8 +283,8 @@ fn op_listen() -> Box<HttpBenchOp> {
     let listener = tokio::net::TcpListener::bind(&addr).unwrap();
     let rid = new_rid();
 
-    let mut guard = RESOURCE_TABLE.lock().unwrap();
-    guard.insert(rid, Repr::TcpListener(listener));
+    let mut guard = RESOURCE_TABLE.write().unwrap();
+    guard.insert(rid, Repr::TcpListener(amo!(listener)));
     futures::future::ok(rid)
   }))
 }
@@ -264,9 +292,19 @@ fn op_listen() -> Box<HttpBenchOp> {
 fn op_close(rid: i32) -> Box<HttpBenchOp> {
   debug!("close");
   Box::new(lazy(move || {
-    let mut table = RESOURCE_TABLE.lock().unwrap();
+    let mut table = RESOURCE_TABLE.write().unwrap();
     let r = table.remove(&rid);
     let result = if r.is_some() { 0 } else { -1 };
+    if r.is_some() {
+      match r.unwrap() {
+        Repr::TcpListener(ref listener) => {
+          let _ = take_amo!(listener);
+        }
+        Repr::TcpStream(ref stream) => {
+          let _ = take_amo!(stream);
+        }
+      }
+    }
     futures::future::ok(result)
   }))
 }
@@ -276,11 +314,14 @@ fn op_read(rid: i32, zero_copy_buf: Option<PinnedBuf>) -> Box<HttpBenchOp> {
   let mut zero_copy_buf = zero_copy_buf.unwrap();
   Box::new(
     futures::future::poll_fn(move || {
-      let mut table = RESOURCE_TABLE.lock().unwrap();
-      let maybe_repr = table.get_mut(&rid);
+      let table = RESOURCE_TABLE.read().unwrap();
+      let maybe_repr = table.get(&rid);
       match maybe_repr {
-        Some(Repr::TcpStream(ref mut stream)) => {
-          stream.poll_read(&mut zero_copy_buf)
+        Some(Repr::TcpStream(ref stream)) => {
+          let s = stream.clone();
+          let mut s = s.lock().unwrap();
+          let s = s.as_mut().unwrap();
+          s.poll_read(&mut zero_copy_buf)
         }
         _ => panic!("bad rid"),
       }
@@ -296,11 +337,14 @@ fn op_write(rid: i32, zero_copy_buf: Option<PinnedBuf>) -> Box<HttpBenchOp> {
   let zero_copy_buf = zero_copy_buf.unwrap();
   Box::new(
     futures::future::poll_fn(move || {
-      let mut table = RESOURCE_TABLE.lock().unwrap();
-      let maybe_repr = table.get_mut(&rid);
+      let table = RESOURCE_TABLE.read().unwrap();
+      let maybe_repr = table.get(&rid);
       match maybe_repr {
-        Some(Repr::TcpStream(ref mut stream)) => {
-          stream.poll_write(&zero_copy_buf)
+        Some(Repr::TcpStream(ref stream)) => {
+          let s = stream.clone();
+          let mut s = s.lock().unwrap();
+          let s = s.as_mut().unwrap();
+          s.poll_write(&zero_copy_buf)
         }
         _ => panic!("bad rid"),
       }
