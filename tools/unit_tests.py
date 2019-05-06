@@ -1,12 +1,14 @@
 #!/usr/bin/env python
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import util
 import sys
 import subprocess
 import http_server
 
 
-def run_unit_test(cmd):
+def unit_tests(deno_exe):
+    cmd = [
+        deno_exe, "run", "--reload", "--allow-run", "js/unit_test_runner.ts"
+    ]
     process = subprocess.Popen(
         cmd, bufsize=1, universal_newlines=True, stderr=subprocess.STDOUT)
 
@@ -14,11 +16,6 @@ def run_unit_test(cmd):
     errcode = process.returncode
     if errcode != 0:
         sys.exit(errcode)
-
-
-def unit_tests(deno_exe):
-    run_unit_test(
-        [deno_exe, "run", "--reload", "--allow-run", "js/unit_test_runner.ts"])
 
 
 if __name__ == '__main__':
