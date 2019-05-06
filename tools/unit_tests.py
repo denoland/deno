@@ -8,22 +8,7 @@ import http_server
 
 def run_unit_test(cmd):
     process = subprocess.Popen(
-        cmd,
-        bufsize=1,
-        universal_newlines=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT)
-    util.parse_unit_test_output(process.stdout, True)
-    process.wait()
-    errcode = process.returncode
-    if errcode != 0:
-        sys.exit(errcode)
-
-    # if actual == None and expected == None:
-    #     raise AssertionError("Bad js/unit_test.ts output")
-    # if expected != actual:
-    #     print "expected", expected, "actual", actual
-    #     raise AssertionError("expected tests did not equal actual")
+        cmd, bufsize=1, universal_newlines=True, stderr=subprocess.STDOUT)
 
     process.wait()
     errcode = process.returncode
