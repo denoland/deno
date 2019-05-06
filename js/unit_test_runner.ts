@@ -29,7 +29,10 @@ function fmtPerms(perms: Deno.Permissions): string {
   return fmt;
 }
 
-function parseUnitTestOutput(rawOutput: Uint8Array, print: boolean) {
+function parseUnitTestOutput(
+  rawOutput: Uint8Array,
+  print: boolean
+): { actual: number; expected: number } {
   const decoder = new TextDecoder();
   const output = decoder.decode(rawOutput);
 
