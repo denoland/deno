@@ -9,11 +9,7 @@ use rand;
 use rand::Rng;
 
 #[cfg(unix)]
-use nix::unistd::chown as unix_chown;
-#[cfg(unix)]
-use nix::unistd::Gid;
-#[cfg(unix)]
-use nix::unistd::Uid;
+use nix::unistd::{chown as unix_chown, Gid, Uid};
 #[cfg(any(unix))]
 use std::os::unix::fs::DirBuilderExt;
 #[cfg(any(unix))]
