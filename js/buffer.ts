@@ -274,3 +274,21 @@ export function readAllSync(r: SyncReader): Uint8Array {
   buf.readFromSync(r);
   return buf.bytes();
 }
+
+/** Write all the content of `arr` to `w`.
+ */
+export async function writeAll(w: Writer, arr: Uint8Array): Promise<void> {
+  let nwritten = 0;
+  while (nwritten < arr.length) {
+    nwritten += await w.write(arr.subarray(nwritten));
+  }
+}
+
+/** Write synchronously all the content of `arr` to `w`.
+ */
+export function writeAllSync(w: SyncWriter, arr: Uint8Array): void {
+  let nwritten = 0;
+  while (nwritten < arr.length) {
+    nwritten += w.writeSync(arr.subarray(nwritten));
+  }
+}
