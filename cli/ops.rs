@@ -1188,9 +1188,9 @@ fn op_copy_file(
     ".".to_string(),
   ) {
     Err(err) => return odd_future(DenoError::from(err)),
-    Ok(v) => v,
+    Ok(v) => v.to_file_path().unwrap(),
   };
-  let to_ = to.path();
+  let to_ = to.to_str().unwrap().to_string();
 
   if let Err(e) = state.check_read(from_) {
     return odd_future(e);
@@ -1199,7 +1199,7 @@ fn op_copy_file(
     return odd_future(e);
   }
 
-  debug!("op_copy_file {} {}", from.display(), to);
+  debug!("op_copy_file {} {}", from.display(), to.display());
   blocking(base.sync(), move || {
     // On *nix, Rust deem non-existent path as invalid input
     // See https://github.com/rust-lang/rust/issues/54800
@@ -1211,7 +1211,7 @@ fn op_copy_file(
       ));
     }
 
-    fs::copy(&from, &to.to_file_path().unwrap())?;
+    fs::copy(&from, &to)?;
     Ok(empty_buf())
   })
 }
@@ -1410,16 +1410,16 @@ fn op_rename(
     ".".to_string(),
   ) {
     Err(err) => return odd_future(DenoError::from(err)),
-    Ok(v) => v,
+    Ok(v) => v.to_file_path().unwrap(),
   };
-  let newpath_ = newpath.path();
+  let newpath_ = newpath.to_str().unwrap().to_string();
 
   if let Err(e) = state.check_write(&newpath_) {
     return odd_future(e);
   }
   blocking(base.sync(), move || -> OpResult {
-    debug!("op_rename {} {}", oldpath.display(), newpath);
-    fs::rename(&oldpath, &newpath.to_file_path().unwrap())?;
+    debug!("op_rename {} {}", oldpath.display(), newpath.display());
+    fs::rename(&oldpath, &newpath)?;
     Ok(empty_buf())
   })
 }
@@ -1443,17 +1443,17 @@ fn op_link(
     ".".to_string(),
   ) {
     Err(err) => return odd_future(DenoError::from(err)),
-    Ok(v) => v,
+    Ok(v) => v.to_file_path().unwrap(),
   };
-  let newname_ = newname.path();
+  let newname_ = newname.to_str().unwrap().to_string();
 
   if let Err(e) = state.check_write(&newname_) {
     return odd_future(e);
   }
 
   blocking(base.sync(), move || -> OpResult {
-    debug!("op_link {} {}", oldname.display(), newname);
-    std::fs::hard_link(&oldname, &newname.to_file_path().unwrap())?;
+    debug!("op_link {} {}", oldname.display(), newname.display());
+    std::fs::hard_link(&oldname, &newname)?;
     Ok(empty_buf())
   })
 }
@@ -1477,9 +1477,9 @@ fn op_symlink(
     ".".to_string(),
   ) {
     Err(err) => return odd_future(DenoError::from(err)),
-    Ok(v) => v,
+    Ok(v) => v.to_file_path().unwrap(),
   };
-  let newname_ = newname.path();
+  let newname_ = newname.to_str().unwrap().to_string();
 
   if let Err(e) = state.check_write(&newname_) {
     return odd_future(e);
@@ -1492,7 +1492,7 @@ fn op_symlink(
     ));
   }
   blocking(base.sync(), move || -> OpResult {
-    debug!("op_symlink {} {}", oldname.display(), newname);
+    debug!("op_symlink {} {}", oldname.display(), newname.display());
     #[cfg(any(unix))]
     std::os::unix::fs::symlink(&oldname, &newname.to_file_path().unwrap())?;
     Ok(empty_buf())
@@ -1512,17 +1512,17 @@ fn op_read_link(
     ".".to_string(),
   ) {
     Err(err) => return odd_future(DenoError::from(err)),
-    Ok(v) => v,
+    Ok(v) => v.to_file_path().unwrap(),
   };
-  let name_ = name.path();
+  let name_ = name.to_str().unwrap().to_string();
 
-  if let Err(e) = state.check_read(name_) {
+  if let Err(e) = state.check_read(&name_) {
     return odd_future(e);
   }
 
   blocking(base.sync(), move || -> OpResult {
-    debug!("op_read_link {}", name);
-    let path = fs::read_link(&name.to_file_path().unwrap())?;
+    debug!("op_read_link {}", name.display());
+    let path = fs::read_link(&name)?;
     let builder = &mut FlatBufferBuilder::new();
     let path_off = builder.create_string(path.to_str().unwrap());
     let inner = msg::ReadlinkRes::create(
