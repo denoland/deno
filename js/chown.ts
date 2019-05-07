@@ -15,7 +15,7 @@ function req(
 }
 
 /**
- * Change owner of a regular file or directory synchronously, Unix only at the moment
+ * Change owner of a regular file or directory synchronously. Unix only at the moment.
  * @param path path to the file
  * @param uid user id of the new owner
  * @param gid group id of the new owner
@@ -25,7 +25,7 @@ export function chownSync(path: string, uid: number, gid: number): void {
 }
 
 /**
- * Change owner of a regular file or directory asynchronously, Unix only at the moment
+ * Change owner of a regular file or directory asynchronously. Unix only at the moment.
  * @param path path to the file
  * @param uid user id of the new owner
  * @param gid group id of the new owner
