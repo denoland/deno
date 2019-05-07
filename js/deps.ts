@@ -7,11 +7,6 @@ import { assert } from "./util";
 import * as flatbuffers from "./flatbuffers";
 
 export function deps(): any {
-  /* Ideally we could write
-  const res = sendSync({
-    command: msg.Command.ENV,
-  });
-  */
   const builder = flatbuffers.createBuilder();
   const inner = msg.Deps.createDeps(builder);
   const baseRes = sendSync(builder, msg.Any.Deps, inner)!;
