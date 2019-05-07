@@ -8,6 +8,8 @@ union Any {
   CopyFile,
   Cwd,
   CwdRes,
+  Deps,
+  DepsRes,
   Dial,
   Environ,
   EnvironRes,
@@ -277,6 +279,12 @@ table SetEnv {
 
 table EnvironRes {
   map: [KeyValue];
+}
+
+table Deps {}
+
+table DepsRes {
+  data: [ubyte];
 }
 
 table KeyValue {

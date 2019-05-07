@@ -23,6 +23,7 @@ use crate::state::ThreadSafeState;
 use crate::tokio_util;
 use crate::tokio_write;
 use crate::version;
+use crate::worker;
 use crate::worker::root_specifier_to_url;
 use crate::worker::Worker;
 use deno::js_check;
@@ -189,6 +190,7 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<OpCreator> {
     msg::Any::Close => Some(op_close),
     msg::Any::CopyFile => Some(op_copy_file),
     msg::Any::Cwd => Some(op_cwd),
+    msg::Any::Deps => Some(op_deps),
     msg::Any::Dial => Some(op_dial),
     msg::Any::Environ => Some(op_env),
     msg::Any::Exit => Some(op_exit),
@@ -618,6 +620,45 @@ fn op_env(
       ..Default::default()
     },
   ))
+}
+
+fn op_deps(
+  state: &ThreadSafeState,
+  base: &msg::Base<'_>,
+  data: Option<PinnedBuf>,
+) -> Box<OpWithError> {
+  assert!(data.is_none());
+  let cmd_id = base.cmd_id();
+
+  let maybe_out =
+    worker::fetch_module_meta_data_and_maybe_compile(&state, &state.main_module().unwrap(), ".");
+  if let Err(e) = maybe_out {
+    return odd_future(e);
+  }
+  let out = maybe_out.unwrap();
+
+  if let Some(deps) = state.modules.deps(&out.module_name) {
+    let builder = &mut FlatBufferBuilder::new();
+    let data = builder.create_vector(deps.to_json().as_bytes());
+    let inner = msg::DepsRes::create(
+      builder,
+      &msg::DepsResArgs { data: Some(data) },
+    );
+    ok_future(serialize_response(
+      cmd_id,
+      builder,
+      msg::BaseArgs {
+        inner: Some(inner.as_union_value()),
+        inner_type: msg::Any::DepsRes,
+        ..Default::default()
+      },
+    ))
+  } else {
+    odd_future(errors::new(
+      ErrorKind::Other,
+      out.module_name.to_string(),
+    ))
+  }
 }
 
 fn op_permissions(
