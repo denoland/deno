@@ -8,6 +8,7 @@ use crate::permissions::DenoPermissions;
 use crate::resources;
 use crate::resources::ResourceId;
 use crate::worker::Worker;
+use deno;
 use deno::Buf;
 use deno::Op;
 use deno::PinnedBuf;
@@ -65,6 +66,7 @@ pub struct State {
   pub start_time: Instant,
   pub resource: resources::Resource,
   pub dispatch_selector: ops::OpSelector,
+  pub modules: deno::Modules,
 }
 
 impl Clone for ThreadSafeState {
@@ -153,6 +155,7 @@ impl ThreadSafeState {
       start_time: Instant::now(),
       resource,
       dispatch_selector,
+      modules: deno::Modules::new(),
     }))
   }
 
