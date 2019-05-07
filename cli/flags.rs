@@ -38,6 +38,11 @@ pub fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
     .global_settings(&[AppSettings::ColorNever])
     .settings(&[AppSettings::DisableVersion])
     .after_help(ENV_VARIABLES_HELP)
+    .long_about("
+    Run deno REPL
+
+    This command has implicit access to all permissions (equivalent to deno run --allow-all)
+    ")
     .arg(
       Arg::with_name("log-debug")
         .short("D")
@@ -141,6 +146,8 @@ deps:      dependency tree of the source file.
           "
 Evaluate provided script.
 
+This command has implicit access to all permissions (equivalent to deno run --allow-all)
+
   deno eval 'console.log(\"hello world\")'
 ",
         ).arg(Arg::with_name("code").takes_value(true).required(true)),
@@ -234,11 +241,15 @@ Eval a script on lines (or chunks split under delimiter) from stdin.
 Read from standard input and eval code on each whitespace-delimited
 string chunks.
 
--I/--replvar optionally set variable name for input to be used in eval.
+-I/--replvar optionally sets variable name for input to be used in eval.
 Otherwise '$' will be used as default variable name.
 
+This command has implicit access to all permissions (equivalent to deno run --allow-all)
+
   cat /etc/passwd | deno xeval \"a = $.split(':'); if (a) console.log(a[0])\"
+
   git branch | deno xeval -I 'line' \"if (line.startsWith('*')) console.log(line.slice(2))\"
+
   cat LICENSE | deno xeval -d ' ' \"if ($ === 'MIT') console.log('MIT licensed')\"
 ",
         ).arg(
@@ -406,6 +417,12 @@ pub fn flags_from_vec(
       }
     }
     ("xeval", Some(eval_match)) => {
+      flags.allow_net = true;
+      flags.allow_env = true;
+      flags.allow_run = true;
+      flags.allow_read = true;
+      flags.allow_write = true;
+      flags.allow_high_precision = true;
       let code: &str = eval_match.value_of("code").unwrap();
       flags.xeval_replvar =
         Some(eval_match.value_of("replvar").unwrap_or("$").to_owned());
@@ -745,10 +762,20 @@ mod tests {
       " ",
       "console.log(val)"
     ]);
-    let mut expected_flags = DenoFlags::default();
-    expected_flags.xeval_replvar = Some("val".to_owned());
-    expected_flags.xeval_delim = Some(" ".to_owned());
-    assert_eq!(flags, expected_flags);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        allow_net: true,
+        allow_env: true,
+        allow_run: true,
+        allow_read: true,
+        allow_write: true,
+        allow_high_precision: true,
+        xeval_replvar: Some("val".to_owned()),
+        xeval_delim: Some(" ".to_owned()),
+        ..DenoFlags::default()
+      }
+    );
     assert_eq!(subcommand, DenoSubcommand::Xeval);
     assert_eq!(argv, svec!["deno", "console.log(val)"]);
   }
