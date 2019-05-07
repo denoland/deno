@@ -17,6 +17,8 @@ export {
   assertEquals
 } from "./deps/https/deno.land/std/testing/asserts.ts";
 
+export { runIfMain } from "./deps/https/deno.land/std/testing/mod.ts";
+
 // testing.setFilter must be run before any tests are defined.
 testing.setFilter(Deno.args[1]);
 
