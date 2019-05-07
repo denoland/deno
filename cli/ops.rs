@@ -885,13 +885,11 @@ fn op_chown(
     return odd_future(e);
   }
 
-  blocking(base.sync(), move || {
-    debug!("op_chown {}", &path);
-    match deno_fs::chown(&path, uid, gid) {
-      Ok(_) => ok_future(empty_buf()),
-      Err(e) => odd_future(e),
-    }
-  })
+  debug!("op_chown {}", &path);
+  match deno_fs::chown(&path, uid, gid) {
+    Ok(_) => ok_future(empty_buf()),
+    Err(e) => odd_future(e),
+  }
 }
 
 fn op_open(
