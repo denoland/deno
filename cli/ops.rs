@@ -655,7 +655,10 @@ fn op_deps(
       },
     ))
   } else {
-    odd_future(errors::new(ErrorKind::Other, out.module_name.to_string()))
+    odd_future(errors::new(
+      ErrorKind::Other,
+      "cannot retrieve full dependency graph".to_string(),
+    ))
   }
 }
 
