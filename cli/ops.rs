@@ -44,7 +44,6 @@ use std;
 use std::convert::From;
 use std::fs;
 use std::net::Shutdown;
-use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::{Duration, Instant, UNIX_EPOCH};
@@ -821,18 +820,19 @@ fn op_mkdir(
     ".".to_string(),
   ) {
     Err(err) => return odd_future(DenoError::from(err)),
-    Ok(v) => v.path().to_string(),
+    Ok(v) => v.to_file_path().unwrap(),
   };
+  let path_ = path.to_str().unwrap().to_string();
   let recursive = inner.recursive();
   let mode = inner.mode();
 
-  if let Err(e) = state.check_write(&path) {
+  if let Err(e) = state.check_write(&path_) {
     return odd_future(e);
   }
 
   blocking(base.sync(), move || {
-    debug!("op_mkdir {}", path);
-    deno_fs::mkdir(Path::new(&path), mode, recursive)?;
+    debug!("op_mkdir {}", path_);
+    deno_fs::mkdir(&path, mode, recursive)?;
     Ok(empty_buf())
   })
 }
@@ -850,16 +850,16 @@ fn op_chmod(
     ".".to_string(),
   ) {
     Err(err) => return odd_future(DenoError::from(err)),
-    Ok(v) => v.path().to_string(),
+    Ok(v) => v.to_file_path().unwrap(),
   };
+  let path_ = path.to_str().unwrap().to_string();
 
-  if let Err(e) = state.check_write(&path) {
+  if let Err(e) = state.check_write(&path_) {
     return odd_future(e);
   }
 
   blocking(base.sync(), move || {
-    debug!("op_chmod {}", &path);
-    let path = PathBuf::from(&path);
+    debug!("op_chmod {}", &path_);
     // Still check file/dir exists on windows
     let _metadata = fs::metadata(&path)?;
     // Only work in unix
