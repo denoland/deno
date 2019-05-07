@@ -630,8 +630,11 @@ fn op_deps(
   assert!(data.is_none());
   let cmd_id = base.cmd_id();
 
-  let maybe_out =
-    worker::fetch_module_meta_data_and_maybe_compile(&state, &state.main_module().unwrap(), ".");
+  let maybe_out = worker::fetch_module_meta_data_and_maybe_compile(
+    &state,
+    &state.main_module().unwrap(),
+    ".",
+  );
   if let Err(e) = maybe_out {
     return odd_future(e);
   }
@@ -640,10 +643,8 @@ fn op_deps(
   if let Some(deps) = state.modules.deps(&out.module_name) {
     let builder = &mut FlatBufferBuilder::new();
     let data = builder.create_vector(deps.to_json().as_bytes());
-    let inner = msg::DepsRes::create(
-      builder,
-      &msg::DepsResArgs { data: Some(data) },
-    );
+    let inner =
+      msg::DepsRes::create(builder, &msg::DepsResArgs { data: Some(data) });
     ok_future(serialize_response(
       cmd_id,
       builder,
@@ -654,10 +655,7 @@ fn op_deps(
       },
     ))
   } else {
-    odd_future(errors::new(
-      ErrorKind::Other,
-      out.module_name.to_string(),
-    ))
+    odd_future(errors::new(ErrorKind::Other, out.module_name.to_string()))
   }
 }
 

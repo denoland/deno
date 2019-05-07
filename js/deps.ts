@@ -7,7 +7,6 @@ import { assert } from "./util";
 import * as flatbuffers from "./flatbuffers";
 
 export function deps(): any {
-
   /* Ideally we could write
   const res = sendSync({
     command: msg.Command.ENV,
