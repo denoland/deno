@@ -1494,7 +1494,7 @@ fn op_symlink(
   blocking(base.sync(), move || -> OpResult {
     debug!("op_symlink {} {}", oldname.display(), newname.display());
     #[cfg(any(unix))]
-    std::os::unix::fs::symlink(&oldname, &newname.to_file_path().unwrap())?;
+    std::os::unix::fs::symlink(&oldname, &newname)?;
     Ok(empty_buf())
   })
 }
