@@ -54,6 +54,7 @@ ts_sources = [
   "../js/buffer.ts",
   "../js/build.ts",
   "../js/chmod.ts",
+  "../js/chown.ts",
   "../js/colors.ts",
   "../js/compiler.ts",
   "../js/console.ts",

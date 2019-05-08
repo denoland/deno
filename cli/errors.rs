@@ -186,6 +186,12 @@ impl From<UnixError> for DenoError {
           Errno::EINVAL.desc().to_owned(),
         ),
       },
+      UnixError::Sys(Errno::ENOENT) => Self {
+        repr: Repr::Simple(
+          ErrorKind::NotFound,
+          Errno::ENOENT.desc().to_owned(),
+        ),
+      },
       UnixError::Sys(err) => Self {
         repr: Repr::Simple(ErrorKind::UnixError, err.desc().to_owned()),
       },
