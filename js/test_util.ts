@@ -17,10 +17,7 @@ export {
   assertEquals
 } from "./deps/https/deno.land/std/testing/asserts.ts";
 
-// testing.setFilter must be run before any tests are defined.
-testing.setFilter(Deno.args[1]);
-
-interface DenoPermissions {
+interface TestPermissions {
   read?: boolean;
   write?: boolean;
   net?: boolean;
@@ -29,7 +26,24 @@ interface DenoPermissions {
   highPrecision?: boolean;
 }
 
-function permToString(perms: DenoPermissions): string {
+const processPerms = Deno.permissions();
+
+function permissionsMatch(
+  processPerms: Deno.Permissions,
+  requiredPerms: Deno.Permissions
+): boolean {
+  for (const permName in processPerms) {
+    if (processPerms[permName] !== requiredPerms[permName]) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+export const permissionCombinations: Map<string, Deno.Permissions> = new Map();
+
+function permToString(perms: Deno.Permissions): string {
   const r = perms.read ? 1 : 0;
   const w = perms.write ? 1 : 0;
   const n = perms.net ? 1 : 0;
@@ -39,28 +53,37 @@ function permToString(perms: DenoPermissions): string {
   return `permR${r}W${w}N${n}E${e}U${u}H${h}`;
 }
 
-function permFromString(s: string): DenoPermissions {
-  const re = /^permR([01])W([01])N([01])E([01])U([01])H([01])$/;
-  const found = s.match(re);
-  if (!found) {
-    throw Error("Not a permission string");
+function registerPermCombination(perms: Deno.Permissions): void {
+  const key = permToString(perms);
+  if (!permissionCombinations.has(key)) {
+    permissionCombinations.set(key, perms);
   }
+}
+
+function normalizeTestPermissions(perms: TestPermissions): Deno.Permissions {
   return {
-    read: Boolean(Number(found[1])),
-    write: Boolean(Number(found[2])),
-    net: Boolean(Number(found[3])),
-    env: Boolean(Number(found[4])),
-    run: Boolean(Number(found[5])),
-    highPrecision: Boolean(Number(found[6]))
+    read: !!perms.read,
+    write: !!perms.write,
+    net: !!perms.net,
+    run: !!perms.run,
+    env: !!perms.env,
+    highPrecision: !!perms.highPrecision
   };
 }
 
 export function testPerm(
-  perms: DenoPermissions,
+  perms: TestPermissions,
   fn: testing.TestFunction
 ): void {
-  const name = `${fn.name}_${permToString(perms)}`;
-  testing.test({ fn, name });
+  const normalizedPerms = normalizeTestPermissions(perms);
+
+  registerPermCombination(normalizedPerms);
+
+  if (!permissionsMatch(processPerms, normalizedPerms)) {
+    return;
+  }
+
+  testing.test(fn);
 }
 
 export function test(fn: testing.TestFunction): void {
@@ -77,38 +100,160 @@ export function test(fn: testing.TestFunction): void {
   );
 }
 
-test(function permSerialization(): void {
-  for (const write of [true, false]) {
-    for (const net of [true, false]) {
-      for (const env of [true, false]) {
-        for (const run of [true, false]) {
-          for (const read of [true, false]) {
-            for (const highPrecision of [true, false]) {
-              const perms: DenoPermissions = {
-                write,
-                net,
-                env,
-                run,
-                read,
-                highPrecision
-              };
-              assertEquals(perms, permFromString(permToString(perms)));
-            }
-          }
-        }
-      }
+function extractNumber(re: RegExp, str: string): number | undefined {
+  const match = str.match(re);
+
+  if (match) {
+    return Number.parseInt(match[1]);
+  }
+}
+
+export function parseUnitTestOutput(
+  rawOutput: Uint8Array,
+  print: boolean
+): { actual?: number; expected?: number; resultOutput?: string } {
+  const decoder = new TextDecoder();
+  const output = decoder.decode(rawOutput);
+
+  let expected, actual, result;
+
+  for (const line of output.split("\n")) {
+    if (!expected) {
+      // expect "running 30 tests"
+      expected = extractNumber(/running (\d+) tests/, line);
+    } else if (line.indexOf("test result:") !== -1) {
+      result = line;
+    }
+
+    if (print) {
+      console.log(line);
     }
   }
+
+  // Check that the number of expected tests equals what was reported at the
+  // bottom.
+  if (result) {
+    // result should be a string like this:
+    // "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; ..."
+    actual = extractNumber(/(\d+) passed/, result);
+  }
+
+  return { actual, expected, resultOutput: result };
+}
+
+test(function permissionsMatches(): void {
+  assert(
+    permissionsMatch(
+      {
+        read: true,
+        write: false,
+        net: false,
+        env: false,
+        run: false,
+        highPrecision: false
+      },
+      normalizeTestPermissions({ read: true })
+    )
+  );
+
+  assert(
+    permissionsMatch(
+      {
+        read: false,
+        write: false,
+        net: false,
+        env: false,
+        run: false,
+        highPrecision: false
+      },
+      normalizeTestPermissions({})
+    )
+  );
+
+  assertEquals(
+    permissionsMatch(
+      {
+        read: false,
+        write: true,
+        net: true,
+        env: true,
+        run: true,
+        highPrecision: true
+      },
+      normalizeTestPermissions({ read: true })
+    ),
+    false
+  );
+
+  assertEquals(
+    permissionsMatch(
+      {
+        read: true,
+        write: false,
+        net: true,
+        env: false,
+        run: false,
+        highPrecision: false
+      },
+      normalizeTestPermissions({ read: true })
+    ),
+    false
+  );
+
+  assert(
+    permissionsMatch(
+      {
+        read: true,
+        write: true,
+        net: true,
+        env: true,
+        run: true,
+        highPrecision: true
+      },
+      {
+        read: true,
+        write: true,
+        net: true,
+        env: true,
+        run: true,
+        highPrecision: true
+      }
+    )
+  );
 });
 
-// To better catch internal errors, permFromString should throw if it gets an
-// invalid permission string.
-test(function permFromStringThrows(): void {
-  let threw = false;
-  try {
-    permFromString("bad");
-  } catch (e) {
-    threw = true;
-  }
-  assert(threw);
+testPerm({ read: true }, async function parsingUnitTestOutput(): Promise<void> {
+  const cwd = Deno.cwd();
+  const testDataPath = `${cwd}/tools/testdata/`;
+
+  let result;
+
+  // This is an example of a successful unit test output.
+  result = parseUnitTestOutput(
+    await Deno.readFile(`${testDataPath}/unit_test_output1.txt`),
+    false
+  );
+  assertEquals(result.actual, 96);
+  assertEquals(result.expected, 96);
+
+  // This is an example of a silently dying unit test.
+  result = parseUnitTestOutput(
+    await Deno.readFile(`${testDataPath}/unit_test_output2.txt`),
+    false
+  );
+  assertEquals(result.actual, undefined);
+  assertEquals(result.expected, 96);
+
+  // This is an example of compiling before successful unit tests.
+  result = parseUnitTestOutput(
+    await Deno.readFile(`${testDataPath}/unit_test_output3.txt`),
+    false
+  );
+  assertEquals(result.actual, 96);
+  assertEquals(result.expected, 96);
+
+  // Check what happens on empty output.
+  result = parseUnitTestOutput(new TextEncoder().encode("\n\n\n"), false);
+  assertEquals(result.actual, undefined);
+  assertEquals(result.expected, undefined);
 });
