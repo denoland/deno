@@ -409,7 +409,7 @@ async function main() {
 
   if (code === 0) {
     const rawOutput = await p.output();
-    Deno.stdout.write(rawOutput);
+    await Deno.stdout.write(rawOutput);
   } else {
     const rawError = await p.stderrOutput();
     const errorString = decoder.decode(rawError);
