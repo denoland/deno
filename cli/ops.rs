@@ -240,10 +240,12 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<OpCreator> {
   }
 }
 
-fn resolve_path(path: &str) -> Result<PathBuf, DenoError> {
+fn resolve_path(path: &str) -> Result<(PathBuf, String), DenoError> {
   let url = deno_dir::resolve_file_url(path.to_string(), ".".to_string())
     .map_err(DenoError::from)?;
-  Ok(url.to_file_path().unwrap())
+  let path = url.to_file_path().unwrap();
+  let path_string = path.to_str().unwrap().to_string();
+  Ok((path, path_string))
 }
 
 // Returns a milliseconds and nanoseconds subsec
@@ -821,11 +823,10 @@ fn op_mkdir(
 ) -> Box<OpWithError> {
   assert!(data.is_none());
   let inner = base.inner_as_mkdir().unwrap();
-  let path = match resolve_path(inner.path().unwrap()) {
+  let (path, path_) = match resolve_path(inner.path().unwrap()) {
     Err(err) => return odd_future(err),
     Ok(v) => v,
   };
-  let path_ = path.to_str().unwrap().to_string();
   let recursive = inner.recursive();
   let mode = inner.mode();
 
@@ -848,11 +849,10 @@ fn op_chmod(
   assert!(data.is_none());
   let inner = base.inner_as_chmod().unwrap();
   let _mode = inner.mode();
-  let path = match resolve_path(inner.path().unwrap()) {
+  let (path, path_) = match resolve_path(inner.path().unwrap()) {
     Err(err) => return odd_future(err),
     Ok(v) => v,
   };
-  let path_ = path.to_str().unwrap().to_string();
 
   if let Err(e) = state.check_write(&path_) {
     return odd_future(e);
@@ -890,11 +890,10 @@ fn op_open(
   assert!(data.is_none());
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_open().unwrap();
-  let filename = match resolve_path(inner.filename().unwrap()) {
+  let (filename, filename_) = match resolve_path(inner.filename().unwrap()) {
     Err(err) => return odd_future(err),
     Ok(v) => v,
   };
-  let filename_ = filename.to_str().unwrap();
   let mode = inner.mode().unwrap();
 
   let mut open_options = tokio::fs::OpenOptions::new();
@@ -935,20 +934,20 @@ fn op_open(
 
   match mode {
     "r" => {
-      if let Err(e) = state.check_read(filename_) {
+      if let Err(e) = state.check_read(&filename_) {
         return odd_future(e);
       }
     }
     "w" | "a" | "x" => {
-      if let Err(e) = state.check_write(filename_) {
+      if let Err(e) = state.check_write(&filename_) {
         return odd_future(e);
       }
     }
     &_ => {
-      if let Err(e) = state.check_read(filename_) {
+      if let Err(e) = state.check_read(&filename_) {
         return odd_future(e);
       }
-      if let Err(e) = state.check_write(filename_) {
+      if let Err(e) = state.check_write(&filename_) {
         return odd_future(e);
       }
     }
@@ -1137,14 +1136,13 @@ fn op_remove(
 ) -> Box<OpWithError> {
   assert!(data.is_none());
   let inner = base.inner_as_remove().unwrap();
-  let path = match resolve_path(inner.path().unwrap()) {
+  let (path, path_) = match resolve_path(inner.path().unwrap()) {
     Err(err) => return odd_future(err),
     Ok(v) => v,
   };
-  let path_ = path.to_str().unwrap();
   let recursive = inner.recursive();
 
-  if let Err(e) = state.check_write(path_) {
+  if let Err(e) = state.check_write(&path_) {
     return odd_future(e);
   }
 
@@ -1169,18 +1167,16 @@ fn op_copy_file(
 ) -> Box<OpWithError> {
   assert!(data.is_none());
   let inner = base.inner_as_copy_file().unwrap();
-  let from = match resolve_path(inner.from().unwrap()) {
+  let (from, from_) = match resolve_path(inner.from().unwrap()) {
     Err(err) => return odd_future(err),
     Ok(v) => v,
   };
-  let from_ = from.to_str().unwrap();
-  let to = match resolve_path(inner.to().unwrap()) {
+  let (to, to_) = match resolve_path(inner.to().unwrap()) {
     Err(err) => return odd_future(err),
     Ok(v) => v,
   };
-  let to_ = to.to_str().unwrap().to_string();
 
-  if let Err(e) = state.check_read(from_) {
+  if let Err(e) = state.check_read(&from_) {
     return odd_future(e);
   }
   if let Err(e) = state.check_write(&to_) {
@@ -1258,11 +1254,10 @@ fn op_stat(
   assert!(data.is_none());
   let inner = base.inner_as_stat().unwrap();
   let cmd_id = base.cmd_id();
-  let filename = match resolve_path(inner.filename().unwrap()) {
+  let (filename, filename_) = match resolve_path(inner.filename().unwrap()) {
     Err(err) => return odd_future(err),
     Ok(v) => v,
   };
-  let filename_ = filename.to_str().unwrap().to_string();
   let lstat = inner.lstat();
 
   if let Err(e) = state.check_read(&filename_) {
@@ -1316,13 +1311,12 @@ fn op_read_dir(
   assert!(data.is_none());
   let inner = base.inner_as_read_dir().unwrap();
   let cmd_id = base.cmd_id();
-  let path = match resolve_path(inner.path().unwrap()) {
+  let (path, path_) = match resolve_path(inner.path().unwrap()) {
     Err(err) => return odd_future(err),
     Ok(v) => v,
   };
-  let path_ = path.to_str().unwrap();
 
-  if let Err(e) = state.check_read(path_) {
+  if let Err(e) = state.check_read(&path_) {
     return odd_future(e);
   }
 
@@ -1380,15 +1374,14 @@ fn op_rename(
 ) -> Box<OpWithError> {
   assert!(data.is_none());
   let inner = base.inner_as_rename().unwrap();
-  let oldpath = match resolve_path(inner.oldpath().unwrap()) {
+  let (oldpath, _) = match resolve_path(inner.oldpath().unwrap()) {
     Err(err) => return odd_future(err),
     Ok(v) => v,
   };
-  let newpath = match resolve_path(inner.newpath().unwrap()) {
+  let (newpath, newpath_) = match resolve_path(inner.newpath().unwrap()) {
     Err(err) => return odd_future(err),
     Ok(v) => v,
   };
-  let newpath_ = newpath.to_str().unwrap().to_string();
 
   if let Err(e) = state.check_write(&newpath_) {
     return odd_future(e);
@@ -1407,15 +1400,14 @@ fn op_link(
 ) -> Box<OpWithError> {
   assert!(data.is_none());
   let inner = base.inner_as_link().unwrap();
-  let oldname = match resolve_path(inner.oldname().unwrap()) {
+  let (oldname, _) = match resolve_path(inner.oldname().unwrap()) {
     Err(err) => return odd_future(err),
     Ok(v) => v,
   };
-  let newname = match resolve_path(inner.newname().unwrap()) {
+  let (newname, newname_) = match resolve_path(inner.newname().unwrap()) {
     Err(err) => return odd_future(err),
     Ok(v) => v,
   };
-  let newname_ = newname.to_str().unwrap().to_string();
 
   if let Err(e) = state.check_write(&newname_) {
     return odd_future(e);
@@ -1435,15 +1427,14 @@ fn op_symlink(
 ) -> Box<OpWithError> {
   assert!(data.is_none());
   let inner = base.inner_as_symlink().unwrap();
-  let oldname = match resolve_path(inner.oldname().unwrap()) {
+  let (oldname, _) = match resolve_path(inner.oldname().unwrap()) {
     Err(err) => return odd_future(err),
     Ok(v) => v,
   };
-  let newname = match resolve_path(inner.newname().unwrap()) {
+  let (newname, newname_) = match resolve_path(inner.newname().unwrap()) {
     Err(err) => return odd_future(err),
     Ok(v) => v,
   };
-  let newname_ = newname.to_str().unwrap().to_string();
 
   if let Err(e) = state.check_write(&newname_) {
     return odd_future(e);
@@ -1471,11 +1462,10 @@ fn op_read_link(
   assert!(data.is_none());
   let inner = base.inner_as_readlink().unwrap();
   let cmd_id = base.cmd_id();
-  let name = match resolve_path(inner.name().unwrap()) {
+  let (name, name_) = match resolve_path(inner.name().unwrap()) {
     Err(err) => return odd_future(err),
     Ok(v) => v,
   };
-  let name_ = name.to_str().unwrap().to_string();
 
   if let Err(e) = state.check_read(&name_) {
     return odd_future(e);
@@ -1579,11 +1569,10 @@ fn op_truncate(
   assert!(data.is_none());
 
   let inner = base.inner_as_truncate().unwrap();
-  let filename = match resolve_path(inner.name().unwrap()) {
+  let (filename, filename_) = match resolve_path(inner.name().unwrap()) {
     Err(err) => return odd_future(err),
     Ok(v) => v,
   };
-  let filename_ = filename.to_str().unwrap().to_string();
   let len = inner.len();
 
   if let Err(e) = state.check_write(&filename_) {
