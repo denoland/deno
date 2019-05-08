@@ -15,6 +15,8 @@ use std::os::unix::fs::DirBuilderExt;
 #[cfg(any(unix))]
 use std::os::unix::fs::PermissionsExt;
 
+#[cfg(not(unix))]
+use crate::errors;
 use crate::errors::DenoResult;
 
 pub fn write_file<T: AsRef<[u8]>>(
