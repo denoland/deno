@@ -58,8 +58,7 @@ async function main(): Promise<void> {
       args,
       stdout: "piped"
     });
-
-    await p.status();
+    
     const { actual, expected, resultOutput } = parseUnitTestOutput(
       await p.output(),
       true
