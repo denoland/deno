@@ -259,10 +259,10 @@ impl DenoPermissions {
         // ":" and checking host and host + port combinations.
         if match url_check_result {
           None => {
-            let parts = url_or_host_and_port.split(":").collect::<Vec<&str>>();
+            let parts = url_or_host_and_port.split(':').collect::<Vec<&str>>();
             match parts.len() {
               2 => {
-                if self.net_whitelist.contains(&format!("{}", parts[0])) {
+                if self.net_whitelist.contains(parts[0]) {
                   true
                 } else {
                   self
@@ -270,7 +270,7 @@ impl DenoPermissions {
                     .contains(&format!("{}:{}", parts[0], parts[1]))
                 }
               }
-              1 => self.net_whitelist.contains(&format!("{}", parts[0])),
+              1 => self.net_whitelist.contains(parts[0]),
               _ => panic!(
                 "Failed to parse origin string: {}",
                 url_or_host_and_port
@@ -456,6 +456,7 @@ fn check_path_white_list(
 
 #[cfg(test)]
 mod tests {
+  #![allow(clippy::cyclomatic_complexity)]
   use super::*;
 
   // Creates vector of strings, Vec<String>

@@ -242,7 +242,7 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<OpCreator> {
 
 fn resolve_path(path: &str) -> Result<PathBuf, DenoError> {
   let url = deno_dir::resolve_file_url(path.to_string(), ".".to_string())
-    .map_err(|err| DenoError::from(err))?;
+    .map_err(DenoError::from)?;
   Ok(url.to_file_path().unwrap())
 }
 
