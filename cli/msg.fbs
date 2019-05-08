@@ -435,7 +435,6 @@ table StatRes {
   mode: uint;
   has_mode: bool; // false on windows
   name: string;
-  path: string;
 }
 
 table Truncate {
