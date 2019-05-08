@@ -15,8 +15,6 @@ use std::os::unix::fs::DirBuilderExt;
 #[cfg(any(unix))]
 use std::os::unix::fs::PermissionsExt;
 
-#[cfg(not(unix))]
-use crate::errors;
 use crate::errors::DenoResult;
 
 pub fn write_file<T: AsRef<[u8]>>(
@@ -128,5 +126,6 @@ pub fn chown(path: &str, uid: u32, gid: u32) -> DenoResult<()> {
 pub fn chown(_path: &str, _uid: u32, _gid: u32) -> DenoResult<()> {
   // Noop
   // TODO: implement chown for Windows
-  errors::op_not_implemented()
+  use crate::errors;
+  Err(errors::op_not_implemented())
 }
