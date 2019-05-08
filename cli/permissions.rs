@@ -185,8 +185,6 @@ impl DenoPermissions {
           Ok(())
         } else {
           match state {
-            // This shouldn't be possible but I guess rust doesn't realize.
-            PermissionAccessorState::Allow => unreachable!(),
             PermissionAccessorState::Ask => match self.try_permissions_prompt(
               &format!("read access to \"{}\"", filename),
             ) {
@@ -198,6 +196,7 @@ impl DenoPermissions {
               }
             },
             PermissionAccessorState::Deny => Err(permission_denied()),
+            _ => unreachable!(),
           }
         }
       }
@@ -212,8 +211,6 @@ impl DenoPermissions {
           Ok(())
         } else {
           match state {
-            // This shouldn't be possible but I guess rust doesn't realize.
-            PermissionAccessorState::Allow => unreachable!(),
             PermissionAccessorState::Ask => match self.try_permissions_prompt(
               &format!("write access to \"{}\"", filename),
             ) {
@@ -225,52 +222,69 @@ impl DenoPermissions {
               }
             },
             PermissionAccessorState::Deny => Err(permission_denied()),
+            _ => unreachable!(),
           }
         }
       }
     }
   }
 
-  pub fn check_net(&self, url_str: &str) -> DenoResult<()> {
+  pub fn check_net(&self, url_or_host_and_port: &str) -> DenoResult<()> {
     match self.allow_net.get_state() {
       PermissionAccessorState::Allow => Ok(()),
       state => {
-        let parsed_url_result = url::Url::parse(url_str);
-        let whitelist_result = match parsed_url_result {
-          Ok(parsed_url) => match parsed_url.origin() {
-            url::Origin::Tuple(_, url::Host::Domain(domain), port) => {
-              if self.net_whitelist.contains(&domain) {
-                true
+        // Try to parse as url first and do checks.
+        // Return None if unable parse the url or the parse result doesn't have
+        // a host(for strings like "localhost:1234" host is parsed as scheme).
+        let url_check_result = match url::Url::parse(url_or_host_and_port) {
+          Ok(url) => match url.host() {
+            Some(host) => {
+              if self.net_whitelist.contains(&format!("{}", host)) {
+                Some(true)
               } else {
-                self.net_whitelist.contains(&format!("{}:{}", domain, port))
+                match url.port() {
+                  Some(port) => Some(
+                    self.net_whitelist.contains(&format!("{}:{}", host, port)),
+                  ),
+                  None => Some(false),
+                }
               }
             }
-            url::Origin::Tuple(_, url::Host::Ipv4(ip), port) => {
-              if self.net_whitelist.contains(&format!("{}", ip)) {
-                true
-              } else {
-                self.net_whitelist.contains(&format!("{}:{}", ip, port))
-              }
-            }
-            url::Origin::Tuple(_, url::Host::Ipv6(ip), port) => {
-              if self.net_whitelist.contains(&format!("{}", ip)) {
-                true
-              } else {
-                self.net_whitelist.contains(&format!("{}:{}", ip, port))
-              }
-            }
-            _ => panic!("Unexpected url origin type."),
+            None => None,
           },
-          Err(_) => false,
+          Err(_) => None,
         };
-        if whitelist_result {
+
+        // If the first check is a None(unable to check) then try splitting by
+        // ":" and checking host and host + port combinations.
+        if match url_check_result {
+          None => {
+            let parts = url_or_host_and_port.split(":").collect::<Vec<&str>>();
+            match parts.len() {
+              2 => {
+                if self.net_whitelist.contains(&format!("{}", parts[0])) {
+                  true
+                } else {
+                  self
+                    .net_whitelist
+                    .contains(&format!("{}:{}", parts[0], parts[1]))
+                }
+              }
+              1 => self.net_whitelist.contains(&format!("{}", parts[0])),
+              _ => panic!(
+                "Failed to parse origin string: {}",
+                url_or_host_and_port
+              ),
+            }
+          }
+          Some(v) => v,
+        } {
           return Ok(());
         }
+
         match state {
-          // This shouldn't be possible but I guess rust doesn't realize.
-          PermissionAccessorState::Allow => unreachable!(),
           PermissionAccessorState::Ask => match self.try_permissions_prompt(
-            &format!("network access to \"{}\"", url_str),
+            &format!("network access to \"{}\"", url_or_host_and_port),
           ) {
             Err(e) => Err(e),
             Ok(v) => {
@@ -280,6 +294,7 @@ impl DenoPermissions {
             }
           },
           PermissionAccessorState::Deny => Err(permission_denied()),
+          _ => unreachable!(),
         }
       }
     }
@@ -428,13 +443,12 @@ fn check_path_white_list(
 ) -> bool {
   let mut path_buf = PathBuf::from(filename);
 
-  if white_list.contains(path_buf.to_str().unwrap()) {
-    return true;
-  }
-
-  while path_buf.pop() {
+  loop {
     if white_list.contains(path_buf.to_str().unwrap()) {
       return true;
+    }
+    if !path_buf.pop() {
+      break;
     }
   }
   false
@@ -444,13 +458,14 @@ fn check_path_white_list(
 mod tests {
   use super::*;
 
+  // Creates vector of strings, Vec<String>
+  macro_rules! svec {
+      ($($x:expr),*) => (vec![$($x.to_string()),*]);
+  }
+
   #[test]
   fn check_paths() {
-    let whitelist = vec![
-      "/a/specific/dir/name".to_string(),
-      "/a/specific".to_string(),
-      "/b/c".to_string(),
-    ].to_vec();
+    let whitelist = svec!["/a/specific/dir/name", "/a/specific", "/b/c"];
 
     let perms = DenoPermissions::from_flags(&DenoFlags {
       read_whitelist: whitelist.clone(),
@@ -460,98 +475,139 @@ mod tests {
     });
 
     // Inside of /a/specific and /a/specific/dir/name
-    perms.check_read("/a/specific/dir/name").unwrap();
-    perms.check_write("/a/specific/dir/name").unwrap();
+    assert!(perms.check_read("/a/specific/dir/name").is_ok());
+    assert!(perms.check_write("/a/specific/dir/name").is_ok());
 
     // Inside of /a/specific but outside of /a/specific/dir/name
-    perms.check_read("/a/specific/dir").unwrap();
-    perms.check_write("/a/specific/dir").unwrap();
+    assert!(perms.check_read("/a/specific/dir").is_ok());
+    assert!(perms.check_write("/a/specific/dir").is_ok());
 
     // Inside of /a/specific and /a/specific/dir/name
-    perms.check_read("/a/specific/dir/name/inner").unwrap();
-    perms.check_write("/a/specific/dir/name/inner").unwrap();
+    assert!(perms.check_read("/a/specific/dir/name/inner").is_ok());
+    assert!(perms.check_write("/a/specific/dir/name/inner").is_ok());
 
     // Inside of /a/specific but outside of /a/specific/dir/name
-    perms.check_read("/a/specific/other/dir").unwrap();
-    perms.check_write("/a/specific/other/dir").unwrap();
+    assert!(perms.check_read("/a/specific/other/dir").is_ok());
+    assert!(perms.check_write("/a/specific/other/dir").is_ok());
 
     // Exact match with /b/c
-    perms.check_read("/b/c").unwrap();
-    perms.check_write("/b/c").unwrap();
+    assert!(perms.check_read("/b/c").is_ok());
+    assert!(perms.check_write("/b/c").is_ok());
 
     // Sub path within /b/c
-    perms.check_read("/b/c/sub/path").unwrap();
-    perms.check_write("/b/c/sub/path").unwrap();
+    assert!(perms.check_read("/b/c/sub/path").is_ok());
+    assert!(perms.check_write("/b/c/sub/path").is_ok());
 
     // Inside of /b but outside of /b/c
-    perms.check_read("/b/e").unwrap_err();
-    perms.check_write("/b/e").unwrap_err();
+    assert!(perms.check_read("/b/e").is_err());
+    assert!(perms.check_write("/b/e").is_err());
 
     // Inside of /a but outside of /a/specific
-    perms.check_read("/a/b").unwrap_err();
-    perms.check_write("/a/b").unwrap_err();
+    assert!(perms.check_read("/a/b").is_err());
+    assert!(perms.check_write("/a/b").is_err());
   }
 
   #[test]
-  fn check_domains() {
+  fn check_net() {
     let perms = DenoPermissions::from_flags(&DenoFlags {
-      net_whitelist: vec![
-        "localhost".to_string(),
-        "deno.land".to_string(),
-        "github.com:3000".to_string(),
-        "127.0.0.1".to_string(),
-        "172.16.0.2:8000".to_string(),
-      ].to_vec(),
+      net_whitelist: svec![
+        "localhost",
+        "deno.land",
+        "github.com:3000",
+        "127.0.0.1",
+        "172.16.0.2:8000"
+      ],
       no_prompts: true,
       ..Default::default()
     });
 
-    // http and https for the same domain should pass
-    perms.check_net("http://localhost/test/url").unwrap();
-    perms.check_net("https://localhost/test/url").unwrap();
+    // Any protocol + port for localhost should be ok, since we don't specify
+    assert!(perms.check_net("http://localhost").is_ok());
+    assert!(perms.check_net("http://localhost:8080").is_ok());
+    assert!(perms.check_net("https://localhost").is_ok());
+    assert!(perms.check_net("https://localhost:4443").is_ok());
+    assert!(perms.check_net("tcp://localhost:5000").is_ok());
+    assert!(perms.check_net("udp://localhost:6000").is_ok());
+    assert!(perms.check_net("localhost:1234").is_ok());
 
-    // Correct domain + any port should pass incorrect shouldn't
-    perms
-      .check_net("https://deno.land/std/http/file_server.ts")
-      .unwrap();
-    perms
-      .check_net("https://deno.land:3000/std/http/file_server.ts")
-      .unwrap();
-    perms
-      .check_net("https://deno.lands/std/http/file_server.ts")
-      .unwrap_err();
-    perms
-      .check_net("https://deno.lands:3000/std/http/file_server.ts")
-      .unwrap_err();
+    // Correct domain + any port and protocol should be ok incorrect shouldn't
+    assert!(perms.check_net("deno.land").is_ok());
+    assert!(
+      perms
+        .check_net("https://deno.land/std/example/welcome.ts")
+        .is_ok()
+    );
+    assert!(perms.check_net("deno.land:3000").is_ok());
+    assert!(
+      perms
+        .check_net("https://deno.land:3000/std/example/welcome.ts")
+        .is_ok()
+    );
+    assert!(perms.check_net("deno.lands").is_err());
+    assert!(
+      perms
+        .check_net("https://deno.lands/std/example/welcome.ts")
+        .is_err()
+    );
+    assert!(perms.check_net("deno.lands:3000").is_err());
+    assert!(
+      perms
+        .check_net("https://deno.lands:3000/std/example/welcome.ts")
+        .is_err()
+    );
 
-    // Correct domain + port should pass all other combinations should fail
-    perms
-      .check_net("https://github.com:3000/denoland/deno")
-      .unwrap();
-    perms
-      .check_net("https://github.com/denoland/deno")
-      .unwrap_err();
-    perms
-      .check_net("https://github.com:2000/denoland/deno")
-      .unwrap_err();
-    perms
-      .check_net("https://github.net:3000/denoland/deno")
-      .unwrap_err();
+    // Correct domain + port should be ok all other combinations should err
+    assert!(perms.check_net("github.com:3000").is_ok());
+    assert!(
+      perms
+        .check_net("https://github.com:3000/denoland/deno")
+        .is_ok()
+    );
+    assert!(perms.check_net("github.com").is_err());
+    assert!(perms.check_net("https://github.com/denoland/deno").is_err());
+    assert!(perms.check_net("github.com:2000").is_err());
+    assert!(
+      perms
+        .check_net("https://github.com:2000/denoland/deno")
+        .is_err()
+    );
+    assert!(perms.check_net("github.net:3000").is_err());
+    assert!(
+      perms
+        .check_net("https://github.net:3000/denoland/deno")
+        .is_err()
+    );
 
-    // Correct ipv4 address + any port should pass others should not
-    perms.check_net("https://127.0.0.1").unwrap();
-    perms.check_net("https://127.0.0.1:3000").unwrap();
-    perms.check_net("https://127.0.0.2").unwrap_err();
-    perms.check_net("https://127.0.0.2:3000").unwrap_err();
+    // Correct ipv4 address + any port should be ok others should err
+    assert!(perms.check_net("127.0.0.1").is_ok());
+    assert!(perms.check_net("tcp://127.0.0.1").is_ok());
+    assert!(perms.check_net("https://127.0.0.1").is_ok());
+    assert!(perms.check_net("127.0.0.1:3000").is_ok());
+    assert!(perms.check_net("tcp://127.0.0.1:3000").is_ok());
+    assert!(perms.check_net("https://127.0.0.1:3000").is_ok());
+    assert!(perms.check_net("127.0.0.2").is_err());
+    assert!(perms.check_net("tcp://127.0.0.2").is_err());
+    assert!(perms.check_net("https://127.0.0.2").is_err());
+    assert!(perms.check_net("127.0.0.2:3000").is_err());
+    assert!(perms.check_net("tcp://127.0.0.2:3000").is_err());
+    assert!(perms.check_net("https://127.0.0.2:3000").is_err());
 
-    // Correct address + port should pass all other combinations should fail
-    perms.check_net("https://172.16.0.2:8000").unwrap();
-    perms.check_net("https://172.16.0.2").unwrap_err();
-    perms.check_net("https://172.16.0.2:6000").unwrap_err();
-    perms.check_net("https://172.16.0.1:8000").unwrap_err();
+    // Correct address + port should be ok all other combinations should err
+    assert!(perms.check_net("172.16.0.2:8000").is_ok());
+    assert!(perms.check_net("tcp://172.16.0.2:8000").is_ok());
+    assert!(perms.check_net("https://172.16.0.2:8000").is_ok());
+    assert!(perms.check_net("172.16.0.2").is_err());
+    assert!(perms.check_net("tcp://172.16.0.2").is_err());
+    assert!(perms.check_net("https://172.16.0.2").is_err());
+    assert!(perms.check_net("172.16.0.2:6000").is_err());
+    assert!(perms.check_net("tcp://172.16.0.2:6000").is_err());
+    assert!(perms.check_net("https://172.16.0.2:6000").is_err());
+    assert!(perms.check_net("172.16.0.1:8000").is_err());
+    assert!(perms.check_net("tcp://172.16.0.1:8000").is_err());
+    assert!(perms.check_net("https://172.16.0.1:8000").is_err());
 
-    // Just some random hosts that should fail
-    perms.check_net("https://somedomain/").unwrap_err();
-    perms.check_net("https://192.168.0.1/").unwrap_err();
+    // Just some random hosts that should err
+    assert!(perms.check_net("somedomain").is_err());
+    assert!(perms.check_net("192.168.0.1").is_err());
   }
 }

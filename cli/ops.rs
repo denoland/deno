@@ -240,6 +240,12 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<OpCreator> {
   }
 }
 
+fn resolve_path(path: &str) -> Result<PathBuf, DenoError> {
+  let url = deno_dir::resolve_file_url(path.to_string(), ".".to_string())
+    .map_err(|err| DenoError::from(err))?;
+  Ok(url.to_file_path().unwrap())
+}
+
 // Returns a milliseconds and nanoseconds subsec
 // since the start time of the deno runtime.
 // If the High precision flag is not set, the
@@ -815,12 +821,9 @@ fn op_mkdir(
 ) -> Box<OpWithError> {
   assert!(data.is_none());
   let inner = base.inner_as_mkdir().unwrap();
-  let path = match deno_dir::resolve_file_url(
-    inner.path().unwrap().to_string(),
-    ".".to_string(),
-  ) {
-    Err(err) => return odd_future(DenoError::from(err)),
-    Ok(v) => v.to_file_path().unwrap(),
+  let path = match resolve_path(inner.path().unwrap()) {
+    Err(err) => return odd_future(err),
+    Ok(v) => v,
   };
   let path_ = path.to_str().unwrap().to_string();
   let recursive = inner.recursive();
@@ -845,12 +848,9 @@ fn op_chmod(
   assert!(data.is_none());
   let inner = base.inner_as_chmod().unwrap();
   let _mode = inner.mode();
-  let path = match deno_dir::resolve_file_url(
-    inner.path().unwrap().to_string(),
-    ".".to_string(),
-  ) {
-    Err(err) => return odd_future(DenoError::from(err)),
-    Ok(v) => v.to_file_path().unwrap(),
+  let path = match resolve_path(inner.path().unwrap()) {
+    Err(err) => return odd_future(err),
+    Ok(v) => v,
   };
   let path_ = path.to_str().unwrap().to_string();
 
@@ -890,12 +890,9 @@ fn op_open(
   assert!(data.is_none());
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_open().unwrap();
-  let filename = match deno_dir::resolve_file_url(
-    inner.filename().unwrap().to_string(),
-    ".".to_string(),
-  ) {
-    Err(err) => return odd_future(DenoError::from(err)),
-    Ok(v) => v.to_file_path().unwrap(),
+  let filename = match resolve_path(inner.filename().unwrap()) {
+    Err(err) => return odd_future(err),
+    Ok(v) => v,
   };
   let filename_ = filename.to_str().unwrap();
   let mode = inner.mode().unwrap();
@@ -1140,12 +1137,9 @@ fn op_remove(
 ) -> Box<OpWithError> {
   assert!(data.is_none());
   let inner = base.inner_as_remove().unwrap();
-  let path = match deno_dir::resolve_file_url(
-    inner.path().unwrap().to_string(),
-    ".".to_string(),
-  ) {
-    Err(err) => return odd_future(DenoError::from(err)),
-    Ok(v) => v.to_file_path().unwrap(),
+  let path = match resolve_path(inner.path().unwrap()) {
+    Err(err) => return odd_future(err),
+    Ok(v) => v,
   };
   let path_ = path.to_str().unwrap();
   let recursive = inner.recursive();
@@ -1175,20 +1169,14 @@ fn op_copy_file(
 ) -> Box<OpWithError> {
   assert!(data.is_none());
   let inner = base.inner_as_copy_file().unwrap();
-  let from = match deno_dir::resolve_file_url(
-    inner.from().unwrap().to_string(),
-    ".".to_string(),
-  ) {
-    Err(err) => return odd_future(DenoError::from(err)),
-    Ok(v) => v.to_file_path().unwrap(),
+  let from = match resolve_path(inner.from().unwrap()) {
+    Err(err) => return odd_future(err),
+    Ok(v) => v,
   };
   let from_ = from.to_str().unwrap();
-  let to = match deno_dir::resolve_file_url(
-    inner.to().unwrap().to_string(),
-    ".".to_string(),
-  ) {
-    Err(err) => return odd_future(DenoError::from(err)),
-    Ok(v) => v.to_file_path().unwrap(),
+  let to = match resolve_path(inner.to().unwrap()) {
+    Err(err) => return odd_future(err),
+    Ok(v) => v,
   };
   let to_ = to.to_str().unwrap().to_string();
 
@@ -1270,12 +1258,9 @@ fn op_stat(
   assert!(data.is_none());
   let inner = base.inner_as_stat().unwrap();
   let cmd_id = base.cmd_id();
-  let filename = match deno_dir::resolve_file_url(
-    inner.filename().unwrap().to_string(),
-    ".".to_string(),
-  ) {
-    Err(err) => return odd_future(DenoError::from(err)),
-    Ok(v) => v.to_file_path().unwrap(),
+  let filename = match resolve_path(inner.filename().unwrap()) {
+    Err(err) => return odd_future(err),
+    Ok(v) => v,
   };
   let filename_ = filename.to_str().unwrap().to_string();
   let lstat = inner.lstat();
@@ -1331,12 +1316,9 @@ fn op_read_dir(
   assert!(data.is_none());
   let inner = base.inner_as_read_dir().unwrap();
   let cmd_id = base.cmd_id();
-  let path = match deno_dir::resolve_file_url(
-    inner.path().unwrap().to_string(),
-    ".".to_string(),
-  ) {
-    Err(err) => return odd_future(DenoError::from(err)),
-    Ok(v) => v.to_file_path().unwrap(),
+  let path = match resolve_path(inner.path().unwrap()) {
+    Err(err) => return odd_future(err),
+    Ok(v) => v,
   };
   let path_ = path.to_str().unwrap();
 
@@ -1398,19 +1380,13 @@ fn op_rename(
 ) -> Box<OpWithError> {
   assert!(data.is_none());
   let inner = base.inner_as_rename().unwrap();
-  let oldpath = match deno_dir::resolve_file_url(
-    inner.oldpath().unwrap().to_string(),
-    ".".to_string(),
-  ) {
-    Err(err) => return odd_future(DenoError::from(err)),
-    Ok(v) => v.to_file_path().unwrap(),
+  let oldpath = match resolve_path(inner.oldpath().unwrap()) {
+    Err(err) => return odd_future(err),
+    Ok(v) => v,
   };
-  let newpath = match deno_dir::resolve_file_url(
-    inner.newpath().unwrap().to_string(),
-    ".".to_string(),
-  ) {
-    Err(err) => return odd_future(DenoError::from(err)),
-    Ok(v) => v.to_file_path().unwrap(),
+  let newpath = match resolve_path(inner.newpath().unwrap()) {
+    Err(err) => return odd_future(err),
+    Ok(v) => v,
   };
   let newpath_ = newpath.to_str().unwrap().to_string();
 
@@ -1431,19 +1407,13 @@ fn op_link(
 ) -> Box<OpWithError> {
   assert!(data.is_none());
   let inner = base.inner_as_link().unwrap();
-  let oldname = match deno_dir::resolve_file_url(
-    inner.oldname().unwrap().to_string(),
-    ".".to_string(),
-  ) {
-    Err(err) => return odd_future(DenoError::from(err)),
-    Ok(v) => v.to_file_path().unwrap(),
+  let oldname = match resolve_path(inner.oldname().unwrap()) {
+    Err(err) => return odd_future(err),
+    Ok(v) => v,
   };
-  let newname = match deno_dir::resolve_file_url(
-    inner.newname().unwrap().to_string(),
-    ".".to_string(),
-  ) {
-    Err(err) => return odd_future(DenoError::from(err)),
-    Ok(v) => v.to_file_path().unwrap(),
+  let newname = match resolve_path(inner.newname().unwrap()) {
+    Err(err) => return odd_future(err),
+    Ok(v) => v,
   };
   let newname_ = newname.to_str().unwrap().to_string();
 
@@ -1465,19 +1435,13 @@ fn op_symlink(
 ) -> Box<OpWithError> {
   assert!(data.is_none());
   let inner = base.inner_as_symlink().unwrap();
-  let oldname = match deno_dir::resolve_file_url(
-    inner.oldname().unwrap().to_string(),
-    ".".to_string(),
-  ) {
-    Err(err) => return odd_future(DenoError::from(err)),
-    Ok(v) => v.to_file_path().unwrap(),
+  let oldname = match resolve_path(inner.oldname().unwrap()) {
+    Err(err) => return odd_future(err),
+    Ok(v) => v,
   };
-  let newname = match deno_dir::resolve_file_url(
-    inner.newname().unwrap().to_string(),
-    ".".to_string(),
-  ) {
-    Err(err) => return odd_future(DenoError::from(err)),
-    Ok(v) => v.to_file_path().unwrap(),
+  let newname = match resolve_path(inner.newname().unwrap()) {
+    Err(err) => return odd_future(err),
+    Ok(v) => v,
   };
   let newname_ = newname.to_str().unwrap().to_string();
 
@@ -1507,12 +1471,9 @@ fn op_read_link(
   assert!(data.is_none());
   let inner = base.inner_as_readlink().unwrap();
   let cmd_id = base.cmd_id();
-  let name = match deno_dir::resolve_file_url(
-    inner.name().unwrap().to_string(),
-    ".".to_string(),
-  ) {
-    Err(err) => return odd_future(DenoError::from(err)),
-    Ok(v) => v.to_file_path().unwrap(),
+  let name = match resolve_path(inner.name().unwrap()) {
+    Err(err) => return odd_future(err),
+    Ok(v) => v,
   };
   let name_ = name.to_str().unwrap().to_string();
 
@@ -1618,12 +1579,9 @@ fn op_truncate(
   assert!(data.is_none());
 
   let inner = base.inner_as_truncate().unwrap();
-  let filename = match deno_dir::resolve_file_url(
-    inner.name().unwrap().to_string(),
-    ".".to_string(),
-  ) {
-    Err(err) => return odd_future(DenoError::from(err)),
-    Ok(v) => v.to_file_path().unwrap(),
+  let filename = match resolve_path(inner.name().unwrap()) {
+    Err(err) => return odd_future(err),
+    Ok(v) => v,
   };
   let filename_ = filename.to_str().unwrap().to_string();
   let len = inner.len();
