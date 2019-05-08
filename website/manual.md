@@ -412,7 +412,7 @@ async function main() {
     Deno.stdout.write(rawOutput);
   } else {
     const rawError = await p.stderrOutput();
-    const errorString = new TextDecoder().decode(rawError);
+    const errorString = decoder.decode(rawError);
     console.log(errorString);
   }
 
