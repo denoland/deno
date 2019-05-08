@@ -186,6 +186,7 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<OpCreator> {
     msg::Any::Accept => Some(op_accept),
     msg::Any::Chdir => Some(op_chdir),
     msg::Any::Chmod => Some(op_chmod),
+    msg::Any::Chown => Some(op_chown),
     msg::Any::Close => Some(op_close),
     msg::Any::CopyFile => Some(op_copy_file),
     msg::Any::Cwd => Some(op_cwd),
@@ -866,6 +867,30 @@ fn op_chmod(
       fs::set_permissions(&path, permissions)?;
     }
     Ok(empty_buf())
+  })
+}
+
+fn op_chown(
+  state: &ThreadSafeState,
+  base: &msg::Base<'_>,
+  data: Option<PinnedBuf>,
+) -> Box<OpWithError> {
+  assert!(data.is_none());
+  let inner = base.inner_as_chown().unwrap();
+  let path = String::from(inner.path().unwrap());
+  let uid = inner.uid();
+  let gid = inner.gid();
+
+  if let Err(e) = state.check_write(&path) {
+    return odd_future(e);
+  }
+
+  blocking(base.sync(), move || {
+    debug!("op_chown {}", &path);
+    match deno_fs::chown(&path, uid, gid) {
+      Ok(_) => Ok(empty_buf()),
+      Err(e) => Err(e),
+    }
   })
 }
 
