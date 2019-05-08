@@ -3,6 +3,8 @@ import { testPerm, assert, assertEquals } from "./test_util.ts";
 
 type FileInfo = Deno.FileInfo;
 
+const isWin = Deno.build.os === "win";
+
 function assertSameContent(files: FileInfo[]): void {
   let counter = 0;
 
@@ -13,7 +15,11 @@ function assertSameContent(files: FileInfo[]): void {
     }
 
     if (file.name === "002_hello.ts") {
-      assertEquals(file.path, `tests/${file.name}`);
+      if (isWin) {
+        assert(file.path.endsWith(`tests\\${file.name}`));
+      } else {
+        assert(file.path.endsWith(`tests/${file.name}`));
+      }
       assertEquals(file.mode!, Deno.statSync(`tests/${file.name}`).mode!);
       counter++;
     }

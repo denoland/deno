@@ -291,36 +291,14 @@ impl DenoDir {
     referrer: &str,
   ) -> Result<Url, url::ParseError> {
     let specifier = self.src_file_to_url(specifier);
-    let mut referrer = self.src_file_to_url(referrer);
+    let referrer = self.src_file_to_url(referrer);
 
     debug!(
       "resolve_module specifier {} referrer {}",
       specifier, referrer
     );
 
-    if referrer.starts_with('.') {
-      let cwd = std::env::current_dir().unwrap();
-      let referrer_path = cwd.join(referrer);
-      referrer = referrer_path.to_str().unwrap().to_string() + "/";
-    }
-
-    let j = if is_remote(&specifier)
-      || (Path::new(&specifier).is_absolute() && !is_remote(&referrer))
-    {
-      parse_local_or_remote(&specifier)?
-    } else if referrer.ends_with('/') {
-      let r = Url::from_directory_path(&referrer);
-      // TODO(ry) Properly handle error.
-      if r.is_err() {
-        error!("Url::from_directory_path error {}", referrer);
-      }
-      let base = r.unwrap();
-      base.join(specifier.as_ref())?
-    } else {
-      let base = parse_local_or_remote(&referrer)?;
-      base.join(specifier.as_ref())?
-    };
-    Ok(j)
+    resolve_file_url(specifier, referrer)
   }
 
   /// Returns (module name, local filename)
@@ -887,6 +865,35 @@ fn save_source_code_headers(
       let _ = deno_fs::write_file(&(hd.as_path()), s, 0o666);
     });
   }
+}
+
+pub fn resolve_file_url(
+  specifier: String,
+  mut referrer: String,
+) -> Result<Url, url::ParseError> {
+  if referrer.starts_with('.') {
+    let cwd = std::env::current_dir().unwrap();
+    let referrer_path = cwd.join(referrer);
+    referrer = referrer_path.to_str().unwrap().to_string() + "/";
+  }
+
+  let j = if is_remote(&specifier)
+    || (Path::new(&specifier).is_absolute() && !is_remote(&referrer))
+  {
+    parse_local_or_remote(&specifier)?
+  } else if referrer.ends_with('/') {
+    let r = Url::from_directory_path(&referrer);
+    // TODO(ry) Properly handle error.
+    if r.is_err() {
+      error!("Url::from_directory_path error {}", referrer);
+    }
+    let base = r.unwrap();
+    base.join(specifier.as_ref())?
+  } else {
+    let base = parse_local_or_remote(&referrer)?;
+    base.join(specifier.as_ref())?
+  };
+  Ok(j)
 }
 
 #[cfg(test)]
