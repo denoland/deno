@@ -1284,8 +1284,6 @@ fn op_stat(
       fs::metadata(&filename)?
     };
 
-    let filename_str = builder.create_string(&filename_);
-
     let inner = msg::StatRes::create(
       builder,
       &msg::StatResArgs {
@@ -1297,7 +1295,6 @@ fn op_stat(
         created: to_seconds!(metadata.created()),
         mode: get_mode(&metadata.permissions()),
         has_mode: cfg!(target_family = "unix"),
-        path: Some(filename_str),
         ..Default::default()
       },
     );
@@ -1340,7 +1337,6 @@ fn op_read_dir(
         let metadata = entry.metadata().unwrap();
         let file_type = metadata.file_type();
         let name = builder.create_string(entry.file_name().to_str().unwrap());
-        let path = builder.create_string(entry.path().to_str().unwrap());
 
         msg::StatRes::create(
           builder,
@@ -1352,7 +1348,6 @@ fn op_read_dir(
             accessed: to_seconds!(metadata.accessed()),
             created: to_seconds!(metadata.created()),
             name: Some(name),
-            path: Some(path),
             mode: get_mode(&metadata.permissions()),
             has_mode: cfg!(target_family = "unix"),
           },

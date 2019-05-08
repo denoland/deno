@@ -27,11 +27,8 @@ export interface FileInfo {
    */
   mode: number | null;
 
-  /** Returns the file or directory name. */
+  /** The file or directory name. */
   name: string | null;
-
-  /** Returns the file or directory path. */
-  path: string | null;
 
   /** Returns whether this is info for a regular file. This result is mutually
    * exclusive to `FileInfo.isDirectory` and `FileInfo.isSymlink`.
@@ -59,7 +56,6 @@ export class FileInfoImpl implements FileInfo {
   created: number | null;
   mode: number | null;
   name: string | null;
-  path: string | null;
 
   /* @internal */
   constructor(private _inner: msg.StatRes) {
@@ -69,7 +65,6 @@ export class FileInfoImpl implements FileInfo {
     const hasMode = this._inner.hasMode();
     const mode = this._inner.mode(); // negative for invalid mode (Windows)
     const name = this._inner.name();
-    const path = this._inner.path();
 
     this._isFile = this._inner.isFile();
     this._isSymlink = this._inner.isSymlink();
@@ -80,7 +75,6 @@ export class FileInfoImpl implements FileInfo {
     // null on Windows
     this.mode = hasMode ? mode : null;
     this.name = name ? name : null;
-    this.path = path ? path : null;
   }
 
   isFile(): boolean {
