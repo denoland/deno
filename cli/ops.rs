@@ -704,7 +704,11 @@ fn op_fetch(
   }
   let req = maybe_req.unwrap();
 
-  if let Err(e) = state.check_net(url) {
+  let url_ = match url::Url::parse(url) {
+    Err(err) => return odd_future(DenoError::from(err)),
+    Ok(v) => v,
+  };
+  if let Err(e) = state.check_net_url(url_) {
     return odd_future(e);
   }
 
