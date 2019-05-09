@@ -14,6 +14,7 @@ from util_test import util_test
 from benchmark_test import benchmark_test
 from repl_test import repl_tests
 from fetch_test import fetch_test
+from cache_test import cache_test
 from fmt_test import fmt_test
 import subprocess
 import http_server
@@ -95,6 +96,7 @@ def main(argv):
     unit_tests(deno_exe)
 
     fetch_test(deno_exe)
+    cache_test(deno_exe)
     fmt_test(deno_exe)
 
     integration_tests(deno_exe)
