@@ -121,7 +121,7 @@ pub fn dispatch_all_legacy(
     op.or_else(move |err: DenoError| -> Result<Buf, ()> {
       debug!("op err {}", err);
       // No matter whether we got an Err or Ok, we want a serialized message to
-      // send back. So transform the DenoError into a deno_buf.
+      // send back. So transform the DenoError into a Buf.
       let builder = &mut FlatBufferBuilder::new();
       let errmsg_offset = builder.create_string(&format!("{}", err));
       Ok(serialize_response(
