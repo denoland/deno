@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
+use crate::deno_dir;
 
 // Creates vector of strings, Vec<String>
 macro_rules! svec {
@@ -283,24 +284,23 @@ This command has implicit access to all permissions (equivalent to deno run --al
     )
 }
 
-/// Convert paths supplied into canonical (abs) paths.
+/// Convert paths supplied into full path.
 /// If a path is invalid, we print out a warning
 /// and ignore this path in the output.
-fn canonicalize_paths(paths: Vec<String>) -> Vec<String> {
+fn resolve_paths(paths: Vec<String>) -> Vec<String> {
   let mut out: Vec<String> = vec![];
   for pathstr in paths.iter() {
-    let result = std::fs::canonicalize(pathstr);
+    let result = deno_dir::resolve_path(pathstr);
     if result.is_err() {
       eprintln!("Unrecognized path to whitelist: {}", pathstr);
       continue;
     }
-
-    if let Ok(full_path_string) = result.unwrap().into_os_string().into_string()
-    {
-      out.push(full_path_string);
-    } else {
-      eprintln!("Unrecognized path to whitelist: {}", pathstr);
+    let mut full_path = result.unwrap().1;
+    // Remove trailing slash.
+    if full_path.len() > 1 && full_path.ends_with('/') {
+      full_path.pop();
     }
+    out.push(full_path);
   }
   out
 }
@@ -343,7 +343,8 @@ pub fn parse_flags(matches: ArgMatches) -> DenoFlags {
         let read_wl = run_matches.values_of("allow-read").unwrap();
         let raw_read_whitelist: Vec<String> =
           read_wl.map(std::string::ToString::to_string).collect();
-        flags.read_whitelist = canonicalize_paths(raw_read_whitelist);
+        flags.read_whitelist = resolve_paths(raw_read_whitelist);
+        debug!("read whitelist: {:#?}", &flags.read_whitelist);
       } else {
         flags.allow_read = true;
       }
@@ -353,7 +354,8 @@ pub fn parse_flags(matches: ArgMatches) -> DenoFlags {
         let write_wl = run_matches.values_of("allow-write").unwrap();
         let raw_write_whitelist =
           write_wl.map(std::string::ToString::to_string).collect();
-        flags.write_whitelist = canonicalize_paths(raw_write_whitelist);
+        flags.write_whitelist = resolve_paths(raw_write_whitelist);
+        debug!("write whitelist: {:#?}", &flags.write_whitelist);
       } else {
         flags.allow_write = true;
       }
@@ -363,6 +365,7 @@ pub fn parse_flags(matches: ArgMatches) -> DenoFlags {
         let net_wl = run_matches.values_of("allow-net").unwrap();
         flags.net_whitelist =
           net_wl.map(std::string::ToString::to_string).collect();
+        debug!("net whitelist: {:#?}", &flags.net_whitelist);
       } else {
         flags.allow_net = true;
       }
@@ -841,20 +844,20 @@ mod tests {
   fn test_flags_from_vec_19() {
     use tempfile::TempDir;
     let temp_dir = TempDir::new().expect("tempdir fail");
-    let temp_dir_path = std::fs::canonicalize(temp_dir.path()).unwrap();
-    let temp_dir_path_str = temp_dir_path.as_os_str().to_str().unwrap();
+    let (_, temp_dir_path) =
+      deno_dir::resolve_path(temp_dir.path().to_str().unwrap()).unwrap();
 
     let (flags, subcommand, argv) = flags_from_vec(svec![
       "deno",
       "run",
-      format!("--allow-read={}", temp_dir_path_str),
+      format!("--allow-read={}", &temp_dir_path),
       "script.ts"
     ]);
     assert_eq!(
       flags,
       DenoFlags {
         allow_read: false,
-        read_whitelist: svec![temp_dir_path_str],
+        read_whitelist: svec![&temp_dir_path],
         ..DenoFlags::default()
       }
     );
@@ -865,20 +868,20 @@ mod tests {
   fn test_flags_from_vec_20() {
     use tempfile::TempDir;
     let temp_dir = TempDir::new().expect("tempdir fail");
-    let temp_dir_path = std::fs::canonicalize(temp_dir.path()).unwrap();
-    let temp_dir_path_str = temp_dir_path.as_os_str().to_str().unwrap();
+    let (_, temp_dir_path) =
+      deno_dir::resolve_path(temp_dir.path().to_str().unwrap()).unwrap();
 
     let (flags, subcommand, argv) = flags_from_vec(svec![
       "deno",
       "run",
-      format!("--allow-write={}", temp_dir_path_str),
+      format!("--allow-write={}", &temp_dir_path),
       "script.ts"
     ]);
     assert_eq!(
       flags,
       DenoFlags {
         allow_write: false,
-        write_whitelist: svec![temp_dir_path_str],
+        write_whitelist: svec![&temp_dir_path],
         ..DenoFlags::default()
       }
     );

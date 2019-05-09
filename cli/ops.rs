@@ -2,7 +2,7 @@
 use atty;
 use crate::ansi;
 use crate::compiler::get_compiler_config;
-use crate::deno_dir;
+use crate::deno_dir::resolve_path;
 use crate::dispatch_minimal::dispatch_minimal;
 use crate::dispatch_minimal::parse_min_record;
 use crate::errors;
@@ -239,14 +239,6 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<OpCreator> {
 
     _ => None,
   }
-}
-
-fn resolve_path(path: &str) -> Result<(PathBuf, String), DenoError> {
-  let url = deno_dir::resolve_file_url(path.to_string(), ".".to_string())
-    .map_err(DenoError::from)?;
-  let path = url.to_file_path().unwrap();
-  let path_string = path.to_str().unwrap().to_string();
-  Ok((path, path_string))
 }
 
 // Returns a milliseconds and nanoseconds subsec
