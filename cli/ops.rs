@@ -39,6 +39,7 @@ use futures::Sink;
 use futures::Stream;
 use hyper;
 use hyper::rt::Future;
+use libc;
 use remove_dir_all::remove_dir_all;
 use std;
 use std::convert::From;
@@ -820,7 +821,8 @@ fn op_mkdir(
 ) -> Box<OpWithError> {
   assert!(data.is_none());
   let inner = base.inner_as_mkdir().unwrap();
-  let (path, path_) = match resolve_path(inner.path().unwrap()) {
+  #[allow(unused)]
+  let (mut path, mut path_) = match resolve_path(inner.path().unwrap()) {
     Err(err) => return odd_future(err),
     Ok(v) => v,
   };
@@ -828,8 +830,12 @@ fn op_mkdir(
   let mode = inner.mode();
 
   // Write, so don't check follow.
-  if let Err(e) = state.check_write(&path_, false) {
-    return odd_future(e);
+  match state.check_write(&path_, true) {
+    Ok(full_path) => {
+      path = PathBuf::from(&full_path);
+      path_ = full_path;
+    }
+    Err(e) => return odd_future(e),
   }
 
   blocking(base.sync(), move || {
@@ -847,14 +853,19 @@ fn op_chmod(
   assert!(data.is_none());
   let inner = base.inner_as_chmod().unwrap();
   let _mode = inner.mode();
-  let (path, path_) = match resolve_path(inner.path().unwrap()) {
+  #[allow(unused)]
+  let (mut path, mut path_) = match resolve_path(inner.path().unwrap()) {
     Err(err) => return odd_future(err),
     Ok(v) => v,
   };
 
   // chmod modifies target, check follow.
-  if let Err(e) = state.check_write(&path_, true) {
-    return odd_future(e);
+  match state.check_write(&path_, true) {
+    Ok(full_path) => {
+      path = PathBuf::from(&full_path);
+      path_ = full_path;
+    }
+    Err(e) => return odd_future(e),
   }
 
   blocking(base.sync(), move || {
@@ -888,13 +899,18 @@ fn op_chown(
 ) -> Box<OpWithError> {
   assert!(data.is_none());
   let inner = base.inner_as_chown().unwrap();
-  let path = String::from(inner.path().unwrap());
+  let mut path = String::from(inner.path().unwrap());
   let uid = inner.uid();
   let gid = inner.gid();
 
   // chown modifies target, check follow.
-  if let Err(e) = state.check_write(&path, true) {
-    return odd_future(e);
+  match state.check_write(&path, true) {
+    Ok(full_path) => {
+      path = full_path;
+    }
+    Err(e) => {
+      return odd_future(e);
+    }
   }
 
   blocking(base.sync(), move || {
@@ -914,13 +930,13 @@ fn op_open(
   assert!(data.is_none());
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_open().unwrap();
-  let (filename, filename_) = match resolve_path(inner.filename().unwrap()) {
+  let (_, mut filename_) = match resolve_path(inner.filename().unwrap()) {
     Err(err) => return odd_future(err),
     Ok(v) => v,
   };
   let mode = inner.mode().unwrap();
 
-  let mut open_options = tokio::fs::OpenOptions::new();
+  let mut open_options = std::fs::OpenOptions::new();
 
   match mode {
     "r" => {
@@ -963,19 +979,26 @@ fn op_open(
     // still safer...
     "r" => {
       // Check follow.
-      if let Err(e) = state.check_read(&filename_, true) {
-        return odd_future(e);
+      // Replace final destination with resolved target.
+      match state.check_read(&filename_, true) {
+        Ok(full_path) => filename_ = full_path,
+        Err(e) => return odd_future(e),
       }
     }
     "w" | "a" | "x" => {
       // Check follow.
-      if let Err(e) = state.check_write(&filename_, true) {
-        return odd_future(e);
+      // Replace final destination with resolved target.
+      match state.check_write(&filename_, true) {
+        Ok(full_path) => filename_ = full_path,
+        Err(e) => return odd_future(e),
       }
     }
     &_ => {
-      if let Err(e) = state.check_read(&filename_, true) {
-        return odd_future(e);
+      // Check follow.
+      // Replace final destination with resolved target.
+      match state.check_read(&filename_, true) {
+        Ok(full_path) => filename_ = full_path,
+        Err(e) => return odd_future(e),
       }
       if let Err(e) = state.check_write(&filename_, true) {
         return odd_future(e);
@@ -983,8 +1006,17 @@ fn op_open(
     }
   }
 
+  if cfg!(unix) {
+    use std::os::unix::fs::OpenOptionsExt;
+    OpenOptionsExt::custom_flags(&mut open_options, libc::O_NOFOLLOW);
+  }
+
+  // FIXME(kevinkassimo): This won't work actually...
+  // Tokio has no idea about O_NOFOLLOW.
+  let open_options = tokio::fs::OpenOptions::from(open_options);
+
   let op = open_options
-    .open(filename)
+    .open(filename_)
     .map_err(DenoError::from)
     .and_then(move |fs_file| -> OpResult {
       let resource = resources::add_fs_file(fs_file);
@@ -1198,20 +1230,32 @@ fn op_copy_file(
 ) -> Box<OpWithError> {
   assert!(data.is_none());
   let inner = base.inner_as_copy_file().unwrap();
-  let (from, from_) = match resolve_path(inner.from().unwrap()) {
+  #[allow(unused)]
+  let (mut from, mut from_) = match resolve_path(inner.from().unwrap()) {
     Err(err) => return odd_future(err),
     Ok(v) => v,
   };
-  let (to, to_) = match resolve_path(inner.to().unwrap()) {
+  #[allow(unused)]
+  let (mut to, mut to_) = match resolve_path(inner.to().unwrap()) {
     Err(err) => return odd_future(err),
     Ok(v) => v,
   };
 
-  if let Err(e) = state.check_read(&from_, true) {
-    return odd_future(e);
+  // Check follow.
+  // Replace final destination with resolved target.
+  match state.check_read(&from_, true) {
+    Ok(full_path) => {
+      from = PathBuf::from(&full_path);
+      // from_ = full_path;
+    }
+    Err(e) => return odd_future(e),
   }
-  if let Err(e) = state.check_write(&to_, true) {
-    return odd_future(e);
+  match state.check_write(&to_, true) {
+    Ok(full_path) => {
+      to = PathBuf::from(&full_path);
+      // to_ = full_path;
+    }
+    Err(e) => return odd_future(e),
   }
 
   debug!("op_copy_file {} {}", from.display(), to.display());
@@ -1285,15 +1329,21 @@ fn op_stat(
   assert!(data.is_none());
   let inner = base.inner_as_stat().unwrap();
   let cmd_id = base.cmd_id();
-  let (filename, filename_) = match resolve_path(inner.filename().unwrap()) {
-    Err(err) => return odd_future(err),
-    Ok(v) => v,
-  };
+  #[allow(unused)]
+  let (mut filename, mut filename_) =
+    match resolve_path(inner.filename().unwrap()) {
+      Err(err) => return odd_future(err),
+      Ok(v) => v,
+    };
   let lstat = inner.lstat();
 
   // If lstat, don't check follow.
-  if let Err(e) = state.check_read(&filename_, !lstat) {
-    return odd_future(e);
+  match state.check_read(&filename_, !lstat) {
+    Ok(full_path) => {
+      filename = PathBuf::from(&full_path);
+      filename_ = full_path;
+    }
+    Err(e) => return odd_future(e),
   }
 
   blocking(base.sync(), move || {
@@ -1343,13 +1393,18 @@ fn op_read_dir(
   assert!(data.is_none());
   let inner = base.inner_as_read_dir().unwrap();
   let cmd_id = base.cmd_id();
-  let (path, path_) = match resolve_path(inner.path().unwrap()) {
+  #[allow(unused)]
+  let (mut path, path_) = match resolve_path(inner.path().unwrap()) {
     Err(err) => return odd_future(err),
     Ok(v) => v,
   };
 
-  if let Err(e) = state.check_read(&path_, true) {
-    return odd_future(e);
+  match state.check_read(&path_, true) {
+    Ok(full_path) => {
+      path = PathBuf::from(&full_path);
+      // path_ = full_path;
+    }
+    Err(e) => return odd_future(e),
   }
 
   blocking(base.sync(), move || -> OpResult {
@@ -1437,14 +1492,19 @@ fn op_link(
     Err(err) => return odd_future(err),
     Ok(v) => v,
   };
-  let (newname, newname_) = match resolve_path(inner.newname().unwrap()) {
+  #[allow(unused)]
+  let (mut newname, newname_) = match resolve_path(inner.newname().unwrap()) {
     Err(err) => return odd_future(err),
     Ok(v) => v,
   };
 
   // Hard link to symlink links to the target, check follow.
-  if let Err(e) = state.check_write(&newname_, true) {
-    return odd_future(e);
+  match state.check_write(&newname_, true) {
+    Ok(full_path) => {
+      newname = PathBuf::from(&full_path);
+      // newname_ = full_path;
+    }
+    Err(e) => return odd_future(e),
   }
 
   blocking(base.sync(), move || -> OpResult {
@@ -1605,14 +1665,20 @@ fn op_truncate(
   assert!(data.is_none());
 
   let inner = base.inner_as_truncate().unwrap();
-  let (filename, filename_) = match resolve_path(inner.name().unwrap()) {
+  #[allow(unused)]
+  let (mut filename, mut filename_) = match resolve_path(inner.name().unwrap())
+  {
     Err(err) => return odd_future(err),
     Ok(v) => v,
   };
   let len = inner.len();
 
-  if let Err(e) = state.check_write(&filename_, true) {
-    return odd_future(e);
+  match state.check_write(&filename_, true) {
+    Ok(full_path) => {
+      filename = PathBuf::from(&full_path);
+      filename_ = full_path;
+    }
+    Err(e) => return odd_future(e),
   }
 
   blocking(base.sync(), move || {
@@ -1631,13 +1697,16 @@ fn op_utime(
   assert!(data.is_none());
 
   let inner = base.inner_as_utime().unwrap();
-  let filename = String::from(inner.filename().unwrap());
+  let mut filename = String::from(inner.filename().unwrap());
   let atime = inner.atime();
   let mtime = inner.mtime();
 
   // utime follows symlink.
-  if let Err(e) = state.check_write(&filename, true) {
-    return odd_future(e);
+  match state.check_write(&filename, true) {
+    Ok(full_path) => {
+      filename = full_path;
+    }
+    Err(e) => return odd_future(e),
   }
 
   blocking(base.sync(), move || {

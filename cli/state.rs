@@ -1,8 +1,9 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::deno_dir;
-use crate::errors::DenoResult;
+use crate::errors::{new as new_error, DenoResult};
 use crate::flags;
 use crate::global_timer::GlobalTimer;
+use crate::msg::ErrorKind;
 use crate::ops;
 use crate::permissions::DenoPermissions;
 use crate::resources;
@@ -13,7 +14,7 @@ use deno::Op;
 use deno::PinnedBuf;
 use futures::future::Shared;
 use std;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
 use std::ops::Deref;
@@ -173,54 +174,96 @@ impl ThreadSafeState {
     }
   }
 
+  /// Check if a filename is allowed to be read.
+  /// Optionally recurse in symlinks.
+  /// If Ok, returns the full path that should be used.
+  /// (If check_symlink is true, this returned path is final.)
   #[inline]
   pub fn check_read(
     &self,
     filename: &str,
     check_symlink: bool,
-  ) -> DenoResult<()> {
+  ) -> DenoResult<String> {
+    self.check_read_internal(filename, check_symlink, HashSet::new())
+  }
+
+  #[inline]
+  pub fn check_read_internal(
+    &self,
+    filename: &str,
+    check_symlink: bool,
+    mut visited: HashSet<String>,
+  ) -> DenoResult<String> {
     self.permissions.check_read(filename)?;
     if !check_symlink {
-      return Ok(());
+      return Ok(filename.to_owned());
     }
     // Avoid symlink issue. Okay to error.
     if let Ok(pbuf) = std::fs::read_link(filename) {
       let pstr = pbuf.to_str();
       if pstr.is_none() {
-        return Ok(());
+        return Ok(filename.to_owned());
       }
       let pstr = pstr.unwrap();
       if let Ok((_, full_path)) = deno_dir::resolve_path(pstr) {
+        if visited.contains(&full_path) {
+          return Err(new_error(
+            ErrorKind::CircularSymlink,
+            "Circular symlink".to_owned(),
+          ));
+        }
         // Recurse, symlink can point to another symlink.
-        return self.check_read(&full_path, true);
+        visited.insert(full_path.to_owned());
+        return self.check_read_internal(&full_path, true, visited);
       }
     }
-    Ok(())
+    Ok(filename.to_owned())
   }
 
+  /// Check if a filename is allowed to be write.
+  /// Optionally recurse in symlinks.
+  /// If Ok, returns the full path that should be used.
+  /// (If check_symlink is true, this returned path is final.)
   #[inline]
   pub fn check_write(
     &self,
     filename: &str,
     check_symlink: bool,
-  ) -> DenoResult<()> {
+  ) -> DenoResult<String> {
+    self.check_write_internal(filename, check_symlink, HashSet::new())
+  }
+
+  #[inline]
+  pub fn check_write_internal(
+    &self,
+    filename: &str,
+    check_symlink: bool,
+    mut visited: HashSet<String>,
+  ) -> DenoResult<String> {
     self.permissions.check_write(filename)?;
     if !check_symlink {
-      return Ok(());
+      return Ok(filename.to_owned());
     }
     // Avoid symlink issue. Okay to error.
     if let Ok(pbuf) = std::fs::read_link(filename) {
       let pstr = pbuf.to_str();
       if pstr.is_none() {
-        return Ok(());
+        return Ok(filename.to_owned());
       }
       let pstr = pstr.unwrap();
       if let Ok((_, full_path)) = deno_dir::resolve_path(pstr) {
+        if visited.contains(&full_path) {
+          return Err(new_error(
+            ErrorKind::CircularSymlink,
+            "Circular symlink".to_owned(),
+          ));
+        }
         // Recurse, symlink can point to another symlink.
-        return self.check_write(&full_path, true);
+        visited.insert(full_path.to_owned());
+        return self.check_write_internal(&full_path, true, visited);
       }
     }
-    Ok(())
+    Ok(filename.to_owned())
   }
 
   #[inline]

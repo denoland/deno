@@ -900,7 +900,11 @@ pub fn resolve_path(path: &str) -> Result<(PathBuf, String), DenoError> {
   let url = resolve_file_url(path.to_string(), ".".to_string())
     .map_err(DenoError::from)?;
   let path = url.to_file_path().unwrap();
-  let path_string = path.to_str().unwrap().to_string();
+  let mut path_string = path.to_str().unwrap().to_string();
+  // Remove trailing slash.
+  if path_string.len() > 1 && path_string.ends_with('/') {
+    path_string.pop();
+  }
   Ok((path, path_string))
 }
 

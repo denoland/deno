@@ -295,11 +295,7 @@ fn resolve_paths(paths: Vec<String>) -> Vec<String> {
       eprintln!("Unrecognized path to whitelist: {}", pathstr);
       continue;
     }
-    let mut full_path = result.unwrap().1;
-    // Remove trailing slash.
-    if full_path.len() > 1 && full_path.ends_with('/') {
-      full_path.pop();
-    }
+    let full_path = result.unwrap().1;
     out.push(full_path);
   }
   out

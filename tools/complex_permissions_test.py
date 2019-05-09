@@ -98,9 +98,8 @@ class Prompt(object):
                       test_type)
             wrap_test(test_name_base + "_no_prefix", self.test_no_prefix,
                       test_type)
-            if os.name != "nt":
-                wrap_test(test_name_base + "_symlink", self.test_symlink,
-                          test_type)
+            wrap_test(test_name_base + "_symlink", self.test_symlink,
+                      test_type)
         wrap_test(test_name_base + "_allow_localhost_4545",
                   self.test_allow_localhost_4545)
         wrap_test(test_name_base + "_allow_deno_land",
