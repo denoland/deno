@@ -775,7 +775,7 @@ fn op_make_temp_dir(
   let cmd_id = base.cmd_id();
 
   // FIXME
-  if let Err(e) = state.check_write("make_temp") {
+  if let Err(e) = state.check_write("/", false) {
     return odd_future(e);
   }
 
@@ -827,7 +827,8 @@ fn op_mkdir(
   let recursive = inner.recursive();
   let mode = inner.mode();
 
-  if let Err(e) = state.check_write(&path_) {
+  // Write, so don't check follow.
+  if let Err(e) = state.check_write(&path_, false) {
     return odd_future(e);
   }
 
@@ -851,7 +852,8 @@ fn op_chmod(
     Ok(v) => v,
   };
 
-  if let Err(e) = state.check_write(&path_) {
+  // chmod modifies target, check follow.
+  if let Err(e) = state.check_write(&path_, true) {
     return odd_future(e);
   }
 
@@ -890,7 +892,8 @@ fn op_chown(
   let uid = inner.uid();
   let gid = inner.gid();
 
-  if let Err(e) = state.check_write(&path) {
+  // chown modifies target, check follow.
+  if let Err(e) = state.check_write(&path, true) {
     return odd_future(e);
   }
 
@@ -954,21 +957,27 @@ fn op_open(
   }
 
   match mode {
+    // TODO: this is a bit more complicated...
+    // BE CAREFUL of TOCTOU issues.
+    // Check follow might yield false-positives, but
+    // still safer...
     "r" => {
-      if let Err(e) = state.check_read(&filename_) {
+      // Check follow.
+      if let Err(e) = state.check_read(&filename_, true) {
         return odd_future(e);
       }
     }
     "w" | "a" | "x" => {
-      if let Err(e) = state.check_write(&filename_) {
+      // Check follow.
+      if let Err(e) = state.check_write(&filename_, true) {
         return odd_future(e);
       }
     }
     &_ => {
-      if let Err(e) = state.check_read(&filename_) {
+      if let Err(e) = state.check_read(&filename_, true) {
         return odd_future(e);
       }
-      if let Err(e) = state.check_write(&filename_) {
+      if let Err(e) = state.check_write(&filename_, true) {
         return odd_future(e);
       }
     }
@@ -1163,7 +1172,8 @@ fn op_remove(
   };
   let recursive = inner.recursive();
 
-  if let Err(e) = state.check_write(&path_) {
+  // Remove only, don't check follow.
+  if let Err(e) = state.check_write(&path_, false) {
     return odd_future(e);
   }
 
@@ -1197,10 +1207,10 @@ fn op_copy_file(
     Ok(v) => v,
   };
 
-  if let Err(e) = state.check_read(&from_) {
+  if let Err(e) = state.check_read(&from_, true) {
     return odd_future(e);
   }
-  if let Err(e) = state.check_write(&to_) {
+  if let Err(e) = state.check_write(&to_, true) {
     return odd_future(e);
   }
 
@@ -1281,7 +1291,8 @@ fn op_stat(
   };
   let lstat = inner.lstat();
 
-  if let Err(e) = state.check_read(&filename_) {
+  // If lstat, don't check follow.
+  if let Err(e) = state.check_read(&filename_, !lstat) {
     return odd_future(e);
   }
 
@@ -1337,7 +1348,7 @@ fn op_read_dir(
     Ok(v) => v,
   };
 
-  if let Err(e) = state.check_read(&path_) {
+  if let Err(e) = state.check_read(&path_, true) {
     return odd_future(e);
   }
 
@@ -1404,7 +1415,8 @@ fn op_rename(
     Ok(v) => v,
   };
 
-  if let Err(e) = state.check_write(&newpath_) {
+  // Rename shallowly, so don't check follow.
+  if let Err(e) = state.check_write(&newpath_, false) {
     return odd_future(e);
   }
   blocking(base.sync(), move || -> OpResult {
@@ -1430,7 +1442,8 @@ fn op_link(
     Ok(v) => v,
   };
 
-  if let Err(e) = state.check_write(&newname_) {
+  // Hard link to symlink links to the target, check follow.
+  if let Err(e) = state.check_write(&newname_, true) {
     return odd_future(e);
   }
 
@@ -1457,7 +1470,8 @@ fn op_symlink(
     Ok(v) => v,
   };
 
-  if let Err(e) = state.check_write(&newname_) {
+  // Writing a new symlink file, don't check follow.
+  if let Err(e) = state.check_write(&newname_, false) {
     return odd_future(e);
   }
   // TODO Use type for Windows.
@@ -1488,7 +1502,8 @@ fn op_read_link(
     Ok(v) => v,
   };
 
-  if let Err(e) = state.check_read(&name_) {
+  // Reading link itself, so don't check follow.
+  if let Err(e) = state.check_read(&name_, false) {
     return odd_future(e);
   }
 
@@ -1596,7 +1611,7 @@ fn op_truncate(
   };
   let len = inner.len();
 
-  if let Err(e) = state.check_write(&filename_) {
+  if let Err(e) = state.check_write(&filename_, true) {
     return odd_future(e);
   }
 
@@ -1620,7 +1635,8 @@ fn op_utime(
   let atime = inner.atime();
   let mtime = inner.mtime();
 
-  if let Err(e) = state.check_write(&filename) {
+  // utime follows symlink.
+  if let Err(e) = state.check_write(&filename, true) {
     return odd_future(e);
   }
 

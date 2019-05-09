@@ -4,11 +4,13 @@
 import os
 import pty
 import select
+import shutil
 import subprocess
 import sys
 import time
 
-from util import build_path, root_path, executable_suffix, green_ok, red_failed
+from util import (build_path, root_path, executable_suffix, green_ok,
+                  red_failed, mkdtemp)
 
 PERMISSIONS_PROMPT_TEST_TS = "tools/complex_permissions_test.ts"
 
@@ -96,6 +98,9 @@ class Prompt(object):
                       test_type)
             wrap_test(test_name_base + "_no_prefix", self.test_no_prefix,
                       test_type)
+            if os.name != "nt":
+                wrap_test(test_name_base + "_symlink", self.test_symlink,
+                          test_type)
         wrap_test(test_name_base + "_allow_localhost_4545",
                   self.test_allow_localhost_4545)
         wrap_test(test_name_base + "_allow_deno_land",
@@ -206,6 +211,23 @@ class Prompt(object):
         assert not PROMPT_PATTERN in stderr
         assert not PERMISSION_DENIED_PATTERN in stderr
         os.chdir(saved_curdir)
+
+    def test_symlink(self, test_type):
+        # Save and restore curdir
+        temp_dir = mkdtemp()
+        symlink_name = os.path.join(temp_dir, "symlink.lnk")
+        os.symlink("test/subdir/config.json", symlink_name)
+
+        try:
+            # This should fail.
+            code, _stdout, stderr = self.run(
+                ["--no-prompt", "--allow-" + test_type + "=" + temp_dir],
+                [test_type, symlink_name], b'')
+            assert code == 1
+            assert not PROMPT_PATTERN in stderr
+            assert PERMISSION_DENIED_PATTERN in stderr
+        finally:
+            shutil.rmtree(temp_dir)
 
 
 def complex_permissions_test(deno_exe):

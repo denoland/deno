@@ -174,13 +174,53 @@ impl ThreadSafeState {
   }
 
   #[inline]
-  pub fn check_read(&self, filename: &str) -> DenoResult<()> {
-    self.permissions.check_read(filename)
+  pub fn check_read(
+    &self,
+    filename: &str,
+    check_symlink: bool,
+  ) -> DenoResult<()> {
+    self.permissions.check_read(filename)?;
+    if !check_symlink {
+      return Ok(());
+    }
+    // Avoid symlink issue. Okay to error.
+    if let Ok(pbuf) = std::fs::read_link(filename) {
+      let pstr = pbuf.to_str();
+      if pstr.is_none() {
+        return Ok(());
+      }
+      let pstr = pstr.unwrap();
+      if let Ok((_, full_path)) = deno_dir::resolve_path(pstr) {
+        // Recurse, symlink can point to another symlink.
+        return self.check_read(&full_path, true);
+      }
+    }
+    Ok(())
   }
 
   #[inline]
-  pub fn check_write(&self, filename: &str) -> DenoResult<()> {
-    self.permissions.check_write(filename)
+  pub fn check_write(
+    &self,
+    filename: &str,
+    check_symlink: bool,
+  ) -> DenoResult<()> {
+    self.permissions.check_write(filename)?;
+    if !check_symlink {
+      return Ok(());
+    }
+    // Avoid symlink issue. Okay to error.
+    if let Ok(pbuf) = std::fs::read_link(filename) {
+      let pstr = pbuf.to_str();
+      if pstr.is_none() {
+        return Ok(());
+      }
+      let pstr = pstr.unwrap();
+      if let Ok((_, full_path)) = deno_dir::resolve_path(pstr) {
+        // Recurse, symlink can point to another symlink.
+        return self.check_write(&full_path, true);
+      }
+    }
+    Ok(())
   }
 
   #[inline]
