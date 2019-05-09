@@ -13,7 +13,7 @@ from unit_tests import unit_tests
 from util_test import util_test
 from benchmark_test import benchmark_test
 from repl_test import repl_tests
-from prefetch_test import prefetch_test
+from fetch_test import fetch_test
 from fmt_test import fmt_test
 import subprocess
 import http_server
@@ -30,16 +30,16 @@ def test_no_color(deno_exe):
     sys.stdout.write("no_color test...")
     sys.stdout.flush()
     t = os.path.join(tests_path, "no_color.js")
-    output = run_output([deno_exe, t], merge_env={"NO_COLOR": "1"})
+    output = run_output([deno_exe, "run", t], merge_env={"NO_COLOR": "1"})
     assert output.strip() == "noColor true"
     t = os.path.join(tests_path, "no_color.js")
-    output = run_output([deno_exe, t])
+    output = run_output([deno_exe, "run", t])
     assert output.strip() == "noColor false"
     print green_ok()
 
 
 def exec_path_test(deno_exe):
-    cmd = [deno_exe, "tests/exec_path.ts"]
+    cmd = [deno_exe, "run", "tests/exec_path.ts"]
     output = run_output(cmd)
     assert deno_exe in output.strip()
 
@@ -74,13 +74,13 @@ def main(argv):
         "tools/ts_library_builder/test.ts"
     ])
 
-    test_cc = os.path.join(build_dir, "test_cc" + executable_suffix)
-    check_exists(test_cc)
-    run([test_cc])
+    libdeno_test = os.path.join(build_dir, "libdeno_test" + executable_suffix)
+    check_exists(libdeno_test)
+    run([libdeno_test])
 
-    test_rs = os.path.join(build_dir, "test_rs" + executable_suffix)
-    check_exists(test_rs)
-    run([test_rs])
+    cli_test = os.path.join(build_dir, "cli_test" + executable_suffix)
+    check_exists(cli_test)
+    run([cli_test])
 
     deno_core_test = os.path.join(build_dir,
                                   "deno_core_test" + executable_suffix)
@@ -94,7 +94,7 @@ def main(argv):
 
     unit_tests(deno_exe)
 
-    prefetch_test(deno_exe)
+    fetch_test(deno_exe)
     fmt_test(deno_exe)
 
     integration_tests(deno_exe)
@@ -105,7 +105,9 @@ def main(argv):
     if os.name != 'nt':
         from is_tty_test import is_tty_test
         from permission_prompt_test import permission_prompt_test
+        from complex_permissions_test import complex_permissions_test
         permission_prompt_test(deno_exe)
+        complex_permissions_test(deno_exe)
         is_tty_test(deno_exe)
 
     repl_tests(deno_exe)

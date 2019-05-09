@@ -6,6 +6,59 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.4.0 / 2019.05.03
+
+In deno:
+
+- add "deno run" subcommand (#2215)
+- add "deno xeval" subcommand (#2260)
+- add --no-fetch CLI flag to prevent remote downloads (#2213)
+- Fix: deno --v8-options does not print v8 options (#2277)
+- Performance improvements and fix memory leaks (#2259, #2238)
+- Add Request global constructor (#2253)
+- fs: add Deno.utime/Deno.utimeSync (#2241)
+- Make `atob` follow the spec (#2242)
+- Upgrade V8 to 7.6.53 (#2236)
+- Remove ? from URL when deleting all params (#2217)
+- Add support for custom tsconfig.json (#2089)
+- URLSearchParams init with itself (#2218)
+
+In deno_std:
+
+- textproto: fix invalid header error and move tests (#369)
+- Add http/cookie improvements (#368, #359)
+- fix ensureLink (#360)
+
+### v0.3.10 / 2019.04.25
+
+In deno:
+
+- Fix "deno types" (#2209)
+- CLI flags/subcommand rearrangement (#2210, #2212)
+
+### v0.3.9 / 2019.04.25
+
+In deno:
+
+- Fix #2033, shared queue push bug (#2158)
+- Fix panic handler (#2188)
+- cli: Change "deno --types" to "deno types" and "deno --prefetch" to "deno
+  prefetch" (#2157)
+- Make Deno/Deno.core not deletable/writable (#2153)
+- Add Deno.kill(pid, signo) and process.kill(signo) (Unix only) (#2177)
+- symlink: Ignore type parameter on non-Windows platforms (#2185)
+- upgrade rust crates (#2186)
+- core: make Isolate concrete, remove Dispatch trait (#2183)
+
+In deno_std:
+
+- http: add cookie module (#338)
+- fs: add getFileInfoType() (#341)
+- fs: add ensureLink/ensureLinkSync (#353)
+- fs: add ensureSymlink/ensureSymlinkSync (#268)
+- fs: add readFileStr, writeFileStr (#276, #340)
+- testing: support Sets in asserts.equals (#350)
+
 ### v0.3.8 / 2019.04.19
 
 In deno:

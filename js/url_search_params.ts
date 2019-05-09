@@ -1,8 +1,10 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+import { URL } from "./url";
 import { requiredArguments } from "./util";
 
 export class URLSearchParams {
   private params: Array<[string, string]> = [];
+  private url: URL | null = null;
 
   constructor(init: string | string[][] | Record<string, string> = "") {
     if (typeof init === "string") {
@@ -19,10 +21,29 @@ export class URLSearchParams {
       return;
     }
 
+    if (init instanceof URLSearchParams) {
+      this.params = init.params;
+      return;
+    }
+
     // Overload: record<USVString, USVString>
     for (const key of Object.keys(init)) {
       this.append(key, init[key]);
     }
+  }
+
+  private updateSteps(): void {
+    if (this.url === null) {
+      return;
+    }
+
+    let query: string | null = this.toString();
+    if (query === "") {
+      query = null;
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (this.url as any)._parts.query = query;
   }
 
   /** Appends a specified key/value pair as a new search parameter.
@@ -32,7 +53,7 @@ export class URLSearchParams {
    */
   append(name: string, value: string): void {
     requiredArguments("URLSearchParams.append", arguments.length, 2);
-    this.params.push([String(name), value]);
+    this.params.push([String(name), String(value)]);
   }
 
   /** Deletes the given search parameter and its associated value,
@@ -51,6 +72,7 @@ export class URLSearchParams {
         i++;
       }
     }
+    this.updateSteps();
   }
 
   /** Returns all the values associated with a given search parameter
@@ -112,6 +134,7 @@ export class URLSearchParams {
     // set the value of the first such name-value pair to value
     // and remove the others.
     name = String(name);
+    value = String(value);
     let found = false;
     let i = 0;
     while (i < this.params.length) {

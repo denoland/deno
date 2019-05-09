@@ -176,20 +176,28 @@ class UTF8Encoder implements Encoder {
 
 /** Decodes a string of data which has been encoded using base-64. */
 export function atob(s: string): string {
-  const rem = s.length % 4;
-  // base64-js requires length exactly times of 4
-  if (rem > 0) {
-    s = s.padEnd(s.length + (4 - rem), "=");
+  s = String(s);
+  s = s.replace(/[\t\n\f\r ]/g, "");
+
+  if (s.length % 4 === 0) {
+    s = s.replace(/==?$/, "");
   }
-  let byteArray;
-  try {
-    byteArray = base64.toByteArray(s);
-  } catch (_) {
+
+  const rem = s.length % 4;
+  if (rem === 1 || /[^+/0-9A-Za-z]/.test(s)) {
+    // TODO: throw `DOMException`
     throw new DenoError(
       ErrorKind.InvalidInput,
       "The string to be decoded is not correctly encoded"
     );
   }
+
+  // base64-js requires length exactly times of 4
+  if (rem > 0) {
+    s = s.padEnd(s.length + (4 - rem), "=");
+  }
+
+  const byteArray: Uint8Array = base64.toByteArray(s);
   let result = "";
   for (let i = 0; i < byteArray.length; i++) {
     result += String.fromCharCode(byteArray[i]);

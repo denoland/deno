@@ -11,9 +11,13 @@ import {
   SyncSeeker
 } from "./io";
 import * as dispatch from "./dispatch";
+import { sendAsyncMinimal } from "./dispatch_minimal";
 import * as msg from "gen/cli/msg_generated";
 import { assert } from "./util";
 import * as flatbuffers from "./flatbuffers";
+
+const OP_READ = 1;
+const OP_WRITE = 2;
 
 function reqOpen(
   filename: string,
@@ -101,7 +105,14 @@ export function readSync(rid: number, p: Uint8Array): ReadResult {
  *       })();
  */
 export async function read(rid: number, p: Uint8Array): Promise<ReadResult> {
-  return resRead(await dispatch.sendAsync(...reqRead(rid, p)));
+  const nread = await sendAsyncMinimal(OP_READ, rid, p);
+  if (nread < 0) {
+    throw new Error("read error");
+  } else if (nread == 0) {
+    return { nread, eof: true };
+  } else {
+    return { nread, eof: false };
+  }
 }
 
 function reqWrite(
@@ -147,7 +158,12 @@ export function writeSync(rid: number, p: Uint8Array): number {
  *
  */
 export async function write(rid: number, p: Uint8Array): Promise<number> {
-  return resWrite(await dispatch.sendAsync(...reqWrite(rid, p)));
+  let result = await sendAsyncMinimal(OP_WRITE, rid, p);
+  if (result < 0) {
+    throw new Error("write error");
+  } else {
+    return result;
+  }
 }
 
 function reqSeek(

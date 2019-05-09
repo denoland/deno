@@ -1,0 +1,3 @@
+args: xeval -I val console.log(val.toUpperCase());
+input: a\nb\n\nc
+output: tests/031_xeval_replvar.out

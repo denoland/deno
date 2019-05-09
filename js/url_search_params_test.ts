@@ -22,6 +22,14 @@ test(function urlSearchParamsInitRecord(): void {
   assertEquals(searchParams.toString(), "a=54&b=true");
 });
 
+test(function urlSearchParamsInit(): void {
+  const params1 = new URLSearchParams("a=b");
+  assertEquals(params1.toString(), "a=b");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const params2 = new URLSearchParams(params1 as any);
+  assertEquals(params2.toString(), "a=b");
+});
+
 test(function urlSearchParamsAppendSuccess(): void {
   const searchParams = new URLSearchParams();
   searchParams.append("a", "true");
@@ -181,4 +189,18 @@ test(function urlSearchParamsAppendArgumentsCheck(): void {
       assertEquals(hasThrown, 2);
     }
   );
+});
+
+// ref: https://github.com/web-platform-tests/wpt/blob/master/url/urlsearchparams-delete.any.js
+test(function urlSearchParamsDeletingAppendedMultiple(): void {
+  const params = new URLSearchParams();
+  params.append("first", (1 as unknown) as string);
+  assert(params.has("first"));
+  assertEquals(params.get("first"), "1");
+  params.delete("first");
+  assertEquals(params.has("first"), false);
+  params.append("first", (1 as unknown) as string);
+  params.append("first", (10 as unknown) as string);
+  params.delete("first");
+  assertEquals(params.has("first"), false);
 });

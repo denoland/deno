@@ -26,16 +26,6 @@ use std::str;
 use url;
 use url::Url;
 
-/// Gets corresponding MediaType given extension
-fn extmap(ext: &str) -> msg::MediaType {
-  match ext {
-    "ts" => msg::MediaType::TypeScript,
-    "js" => msg::MediaType::JavaScript,
-    "json" => msg::MediaType::Json,
-    _ => msg::MediaType::Unknown,
-  }
-}
-
 #[derive(Clone)]
 pub struct DenoDir {
   // Example: /Users/rld/.deno/
@@ -51,12 +41,18 @@ pub struct DenoDir {
   // This splits to http and https deps
   pub deps_http: PathBuf,
   pub deps_https: PathBuf,
+  /// The active configuration file contents (or empty array) which applies to
+  /// source code cached by `DenoDir`.
+  pub config: Vec<u8>,
 }
 
 impl DenoDir {
   // Must be called before using any function from this module.
   // https://github.com/denoland/deno/blob/golang/deno_dir.go#L99-L111
-  pub fn new(custom_root: Option<PathBuf>) -> std::io::Result<Self> {
+  pub fn new(
+    custom_root: Option<PathBuf>,
+    state_config: &Option<Vec<u8>>,
+  ) -> std::io::Result<Self> {
     // Only setup once.
     let home_dir = dirs::home_dir().expect("Could not get home directory.");
     let fallback = home_dir.join(".deno");
@@ -73,12 +69,22 @@ impl DenoDir {
     let deps_http = deps.join("http");
     let deps_https = deps.join("https");
 
+    // Internally within DenoDir, we use the config as part of the hash to
+    // determine if a file has been transpiled with the same configuration, but
+    // we have borrowed the `State` configuration, which we want to either clone
+    // or create an empty `Vec` which we will use in our hash function.
+    let config = match state_config {
+      Some(config) => config.clone(),
+      _ => b"".to_vec(),
+    };
+
     let deno_dir = Self {
       root,
       gen,
       deps,
       deps_http,
       deps_https,
+      config,
     };
 
     // TODO Lazily create these directories.
@@ -102,7 +108,8 @@ impl DenoDir {
     filename: &str,
     source_code: &[u8],
   ) -> (PathBuf, PathBuf) {
-    let cache_key = source_code_hash(filename, source_code, version::DENO);
+    let cache_key =
+      source_code_hash(filename, source_code, version::DENO, &self.config);
     (
       self.gen.join(cache_key.to_string() + ".js"),
       self.gen.join(cache_key.to_string() + ".js.map"),
@@ -139,6 +146,7 @@ impl DenoDir {
     specifier: &str,
     referrer: &str,
     use_cache: bool,
+    no_fetch: bool,
   ) -> impl Future<Item = ModuleMetaData, Error = errors::DenoError> {
     debug!(
       "fetch_module_meta_data. specifier {} referrer {}",
@@ -156,12 +164,18 @@ impl DenoDir {
 
     let gen = self.gen.clone();
 
+    // If we don't clone the config, we then end up creating an implied lifetime
+    // which gets returned in the future, so we clone here so as to not leak the
+    // move below when the future is resolving.
+    let config = self.config.clone();
+
     Either::B(
       get_source_code_async(
         self,
         module_name.as_str(),
         filename.as_str(),
         use_cache,
+        no_fetch,
       ).then(move |result| {
         let mut out = match result {
           Ok(out) => out,
@@ -191,8 +205,12 @@ impl DenoDir {
           return Ok(out);
         }
 
-        let cache_key =
-          source_code_hash(&out.filename, &out.source_code, version::DENO);
+        let cache_key = source_code_hash(
+          &out.filename,
+          &out.source_code,
+          version::DENO,
+          &config,
+        );
         let (output_code_filename, output_source_map_filename) = (
           gen.join(cache_key.to_string() + ".js"),
           gen.join(cache_key.to_string() + ".js.map"),
@@ -231,9 +249,11 @@ impl DenoDir {
     specifier: &str,
     referrer: &str,
     use_cache: bool,
+    no_fetch: bool,
   ) -> Result<ModuleMetaData, errors::DenoError> {
     tokio_util::block_on(
-      self.fetch_module_meta_data_async(specifier, referrer, use_cache),
+      self
+        .fetch_module_meta_data_async(specifier, referrer, use_cache, no_fetch),
     )
   }
 
@@ -271,36 +291,14 @@ impl DenoDir {
     referrer: &str,
   ) -> Result<Url, url::ParseError> {
     let specifier = self.src_file_to_url(specifier);
-    let mut referrer = self.src_file_to_url(referrer);
+    let referrer = self.src_file_to_url(referrer);
 
     debug!(
       "resolve_module specifier {} referrer {}",
       specifier, referrer
     );
 
-    if referrer.starts_with('.') {
-      let cwd = std::env::current_dir().unwrap();
-      let referrer_path = cwd.join(referrer);
-      referrer = referrer_path.to_str().unwrap().to_string() + "/";
-    }
-
-    let j = if is_remote(&specifier)
-      || (Path::new(&specifier).is_absolute() && !is_remote(&referrer))
-    {
-      parse_local_or_remote(&specifier)?
-    } else if referrer.ends_with('/') {
-      let r = Url::from_directory_path(&referrer);
-      // TODO(ry) Properly handle error.
-      if r.is_err() {
-        error!("Url::from_directory_path error {}", referrer);
-      }
-      let base = r.unwrap();
-      base.join(specifier.as_ref())?
-    } else {
-      let base = parse_local_or_remote(&referrer)?;
-      base.join(specifier.as_ref())?
-    };
-    Ok(j)
+    resolve_file_url(specifier, referrer)
   }
 
   /// Returns (module name, local filename)
@@ -338,7 +336,7 @@ impl DenoDir {
 
 impl SourceMapGetter for DenoDir {
   fn get_source_map(&self, script_name: &str) -> Option<Vec<u8>> {
-    match self.fetch_module_meta_data(script_name, ".", true) {
+    match self.fetch_module_meta_data(script_name, ".", true, true) {
       Err(_e) => None,
       Ok(out) => match out.maybe_source_map {
         None => None,
@@ -366,14 +364,16 @@ fn get_source_code_async(
   module_name: &str,
   filename: &str,
   use_cache: bool,
+  no_fetch: bool,
 ) -> impl Future<Item = ModuleMetaData, Error = DenoError> {
   let filename = filename.to_string();
   let module_name = module_name.to_string();
   let is_module_remote = is_remote(&module_name);
-  // We try fetch local. Two cases:
-  // 1. This is a remote module and we're allowed to use cached downloads.
-  // 2. This is a local module.
-  if !is_module_remote || use_cache {
+  // We try fetch local. Three cases:
+  // 1. Remote downloads are not allowed, we're only allowed to use cache.
+  // 2. This is a remote module and we're allowed to use cached downloads.
+  // 3. This is a local module.
+  if !is_module_remote || use_cache || no_fetch {
     debug!(
       "fetch local or reload {} is_module_remote {}",
       module_name, is_module_remote
@@ -393,13 +393,24 @@ fn get_source_code_async(
     }
   }
 
-  // If not remote file, stop here!
+  // If not remote file stop here!
   if !is_module_remote {
     debug!("not remote file stop here");
     return Either::A(futures::future::err(DenoError::from(
       std::io::Error::new(
         std::io::ErrorKind::NotFound,
         format!("cannot find local file '{}'", &filename),
+      ),
+    )));
+  }
+
+  // If remote downloads are not allowed stop here!
+  if no_fetch {
+    debug!("remote file with no_fetch stop here");
+    return Either::A(futures::future::err(DenoError::from(
+      std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        format!("cannot find remote file '{}' in cache", &filename),
       ),
     )));
   }
@@ -428,12 +439,14 @@ fn get_source_code(
   module_name: &str,
   filename: &str,
   use_cache: bool,
+  no_fetch: bool,
 ) -> DenoResult<ModuleMetaData> {
   tokio_util::block_on(get_source_code_async(
     deno_dir,
     module_name,
     filename,
     use_cache,
+    no_fetch,
   ))
 }
 
@@ -468,15 +481,19 @@ fn load_cache2(
   Ok((read_output_code, read_source_map))
 }
 
+/// Generate an SHA1 hash for source code, to be used to determine if a cached
+/// version of the code is valid or invalid.
 fn source_code_hash(
   filename: &str,
   source_code: &[u8],
   version: &str,
+  config: &[u8],
 ) -> String {
   let mut ctx = ring::digest::Context::new(&ring::digest::SHA1);
   ctx.update(version.as_bytes());
   ctx.update(filename.as_bytes());
   ctx.update(source_code);
+  ctx.update(config);
   let digest = ctx.finish();
   let mut out = String::new();
   // TODO There must be a better way to do this...
@@ -504,6 +521,7 @@ fn map_file_extension(path: &Path) -> msg::MediaType {
     Some(os_str) => match os_str.to_str() {
       Some("ts") => msg::MediaType::TypeScript,
       Some("js") => msg::MediaType::JavaScript,
+      Some("mjs") => msg::MediaType::JavaScript,
       Some("json") => msg::MediaType::Json,
       _ => msg::MediaType::Unknown,
     },
@@ -822,11 +840,7 @@ fn save_source_code_headers(
     let mime_type_string = mime_type.clone().unwrap();
     let resolved_mime_type =
       { map_content_type(Path::new(""), Some(mime_type_string.as_str())) };
-    let ext = p
-      .extension()
-      .map(|x| x.to_str().unwrap_or(""))
-      .unwrap_or("");
-    let ext_based_mime_type = extmap(&ext);
+    let ext_based_mime_type = map_file_extension(&p);
     // Add mime to headers only when content type is different from extension.
     if ext_based_mime_type == msg::MediaType::Unknown
       || resolved_mime_type != ext_based_mime_type
@@ -853,6 +867,35 @@ fn save_source_code_headers(
   }
 }
 
+pub fn resolve_file_url(
+  specifier: String,
+  mut referrer: String,
+) -> Result<Url, url::ParseError> {
+  if referrer.starts_with('.') {
+    let cwd = std::env::current_dir().unwrap();
+    let referrer_path = cwd.join(referrer);
+    referrer = referrer_path.to_str().unwrap().to_string() + "/";
+  }
+
+  let j = if is_remote(&specifier)
+    || (Path::new(&specifier).is_absolute() && !is_remote(&referrer))
+  {
+    parse_local_or_remote(&specifier)?
+  } else if referrer.ends_with('/') {
+    let r = Url::from_directory_path(&referrer);
+    // TODO(ry) Properly handle error.
+    if r.is_err() {
+      error!("Url::from_directory_path error {}", referrer);
+    }
+    let base = r.unwrap();
+    base.join(specifier.as_ref())?
+  } else {
+    let base = parse_local_or_remote(&referrer)?;
+    base.join(specifier.as_ref())?
+  };
+  Ok(j)
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -860,8 +903,9 @@ mod tests {
 
   fn test_setup() -> (TempDir, DenoDir) {
     let temp_dir = TempDir::new().expect("tempdir fail");
-    let deno_dir =
-      DenoDir::new(Some(temp_dir.path().to_path_buf())).expect("setup fail");
+    let config = Some(b"{}".to_vec());
+    let deno_dir = DenoDir::new(Some(temp_dir.path().to_path_buf()), &config)
+      .expect("setup fail");
     (temp_dir, deno_dir)
   }
 
@@ -904,8 +948,27 @@ mod tests {
     let (temp_dir, deno_dir) = test_setup();
     let filename = "hello.js";
     let source_code = b"1+2";
-    let hash = source_code_hash(filename, source_code, version::DENO);
+    let config = b"{}";
+    let hash = source_code_hash(filename, source_code, version::DENO, config);
     assert_eq!(
+      (
+        temp_dir.path().join(format!("gen/{}.js", hash)),
+        temp_dir.path().join(format!("gen/{}.js.map", hash))
+      ),
+      deno_dir.cache_path(filename, source_code)
+    );
+  }
+
+  #[test]
+  fn test_cache_path_config() {
+    // We are changing the compiler config from the "mock" and so we expect the
+    // resolved files coming back to not match the calculated hash.
+    let (temp_dir, deno_dir) = test_setup();
+    let filename = "hello.js";
+    let source_code = b"1+2";
+    let config = b"{\"compilerOptions\":{}}";
+    let hash = source_code_hash(filename, source_code, version::DENO, config);
+    assert_ne!(
       (
         temp_dir.path().join(format!("gen/{}.js", hash)),
         temp_dir.path().join(format!("gen/{}.js.map", hash))
@@ -922,7 +985,8 @@ mod tests {
     let source_code = b"1+2";
     let output_code = b"1+2 // output code";
     let source_map = b"{}";
-    let hash = source_code_hash(filename, source_code, version::DENO);
+    let config = b"{}";
+    let hash = source_code_hash(filename, source_code, version::DENO, config);
     let (cache_path, source_map_path) =
       deno_dir.cache_path(filename, source_code);
     assert!(cache_path.ends_with(format!("gen/{}.js", hash)));
@@ -949,23 +1013,23 @@ mod tests {
   #[test]
   fn test_source_code_hash() {
     assert_eq!(
-      "7e44de2ed9e0065da09d835b76b8d70be503d276",
-      source_code_hash("hello.ts", b"1+2", "0.2.11")
+      "830c8b63ba3194cf2108a3054c176b2bf53aee45",
+      source_code_hash("hello.ts", b"1+2", "0.2.11", b"{}")
     );
     // Different source_code should result in different hash.
     assert_eq!(
-      "57033366cf9db1ef93deca258cdbcd9ef5f4bde1",
-      source_code_hash("hello.ts", b"1", "0.2.11")
+      "fb06127e9b2e169bea9c697fa73386ae7c901e8b",
+      source_code_hash("hello.ts", b"1", "0.2.11", b"{}")
     );
     // Different filename should result in different hash.
     assert_eq!(
-      "19657f90b5b0540f87679e2fb362e7bd62b644b0",
-      source_code_hash("hi.ts", b"1+2", "0.2.11")
+      "3a17b6a493ff744b6a455071935f4bdcd2b72ec7",
+      source_code_hash("hi.ts", b"1+2", "0.2.11", b"{}")
     );
     // Different version should result in different hash.
     assert_eq!(
-      "e2b4b7162975a02bf2770f16836eb21d5bcb8be1",
-      source_code_hash("hi.ts", b"1+2", "0.2.0")
+      "d6b2cfdc39dae9bd3ad5b493ee1544eb22e7475f",
+      source_code_hash("hi.ts", b"1+2", "0.2.0", b"{}")
     );
   }
 
@@ -1012,7 +1076,8 @@ mod tests {
       );
       let headers_file_name = source_code_headers_filename(&filename);
 
-      let result = get_source_code(&deno_dir, module_name, &filename, true);
+      let result =
+        get_source_code(&deno_dir, module_name, &filename, true, false);
       assert!(result.is_ok());
       let r = result.unwrap();
       assert_eq!(
@@ -1026,7 +1091,8 @@ mod tests {
       // Modify .headers.json, write using fs write and read using save_source_code_headers
       let _ =
         fs::write(&headers_file_name, "{ \"mime_type\": \"text/javascript\" }");
-      let result2 = get_source_code(&deno_dir, module_name, &filename, true);
+      let result2 =
+        get_source_code(&deno_dir, module_name, &filename, true, false);
       assert!(result2.is_ok());
       let r2 = result2.unwrap();
       assert_eq!(
@@ -1047,7 +1113,8 @@ mod tests {
         Some("application/json".to_owned()),
         None,
       );
-      let result3 = get_source_code(&deno_dir, module_name, &filename, true);
+      let result3 =
+        get_source_code(&deno_dir, module_name, &filename, true, false);
       assert!(result3.is_ok());
       let r3 = result3.unwrap();
       assert_eq!(
@@ -1064,7 +1131,8 @@ mod tests {
       );
 
       // Don't use_cache
-      let result4 = get_source_code(&deno_dir, module_name, &filename, false);
+      let result4 =
+        get_source_code(&deno_dir, module_name, &filename, false, false);
       assert!(result4.is_ok());
       let r4 = result4.unwrap();
       let expected4 =
@@ -1090,7 +1158,8 @@ mod tests {
       );
       let headers_file_name = source_code_headers_filename(&filename);
 
-      let result = get_source_code(&deno_dir, module_name, &filename, true);
+      let result =
+        get_source_code(&deno_dir, module_name, &filename, true, false);
       assert!(result.is_ok());
       let r = result.unwrap();
       let expected = "export const loaded = true;\n".as_bytes();
@@ -1108,7 +1177,8 @@ mod tests {
         Some("text/typescript".to_owned()),
         None,
       );
-      let result2 = get_source_code(&deno_dir, module_name, &filename, true);
+      let result2 =
+        get_source_code(&deno_dir, module_name, &filename, true, false);
       assert!(result2.is_ok());
       let r2 = result2.unwrap();
       let expected2 = "export const loaded = true;\n".as_bytes();
@@ -1119,7 +1189,8 @@ mod tests {
       assert!(fs::read_to_string(&headers_file_name).is_err());
 
       // Don't use_cache
-      let result3 = get_source_code(&deno_dir, module_name, &filename, false);
+      let result3 =
+        get_source_code(&deno_dir, module_name, &filename, false, false);
       assert!(result3.is_ok());
       let r3 = result3.unwrap();
       let expected3 = "export const loaded = true;\n".as_bytes();
@@ -1160,6 +1231,7 @@ mod tests {
         redirect_module_name,
         &redirect_source_filename,
         true,
+        false,
       ).unwrap();
       // File that requires redirection is not downloaded.
       assert!(fs::read_to_string(&redirect_source_filename).is_err());
@@ -1220,6 +1292,7 @@ mod tests {
         redirect_module_name,
         &redirect_source_filename,
         true,
+        false,
       ).unwrap();
 
       // File that requires redirection is not downloaded.
@@ -1252,6 +1325,37 @@ mod tests {
         &mod_meta.module_redirect_source_name.clone().unwrap(),
         redirect_module_name
       );
+    });
+  }
+
+  #[test]
+  fn test_get_source_code_no_fetch() {
+    let (_temp_dir, deno_dir) = test_setup();
+    tokio_util::init(|| {
+      let module_name = "http://localhost:4545/tests/002_hello.ts";
+      let filename = deno_fs::normalize_path(
+        deno_dir
+          .deps_http
+          .join("localhost_PORT4545/tests/002_hello.ts")
+          .as_ref(),
+      );
+
+      // file hasn't been cached before and remote downloads are not allowed
+      let result =
+        get_source_code(&deno_dir, module_name, &filename, true, true);
+      assert!(result.is_err());
+      let err = result.err().unwrap();
+      assert_eq!(err.kind(), ErrorKind::NotFound);
+
+      // download and cache file
+      let result =
+        get_source_code(&deno_dir, module_name, &filename, true, false);
+      assert!(result.is_ok());
+
+      // module is already cached, should be ok even with `no_fetch`
+      let result =
+        get_source_code(&deno_dir, module_name, &filename, true, true);
+      assert!(result.is_ok());
     });
   }
 
@@ -1429,13 +1533,13 @@ mod tests {
       // Test failure case.
       let specifier = "hello.ts";
       let referrer = add_root!("/baddir/badfile.ts");
-      let r = deno_dir.fetch_module_meta_data(specifier, referrer, true);
+      let r = deno_dir.fetch_module_meta_data(specifier, referrer, true, false);
       assert!(r.is_err());
 
       // Assuming cwd is the deno repo root.
       let specifier = "./js/main.ts";
       let referrer = cwd_string.as_str();
-      let r = deno_dir.fetch_module_meta_data(specifier, referrer, true);
+      let r = deno_dir.fetch_module_meta_data(specifier, referrer, true, false);
       assert!(r.is_ok());
     })
   }
@@ -1452,13 +1556,15 @@ mod tests {
       // Test failure case.
       let specifier = "hello.ts";
       let referrer = add_root!("/baddir/badfile.ts");
-      let r = deno_dir.fetch_module_meta_data(specifier, referrer, false);
+      let r =
+        deno_dir.fetch_module_meta_data(specifier, referrer, false, false);
       assert!(r.is_err());
 
       // Assuming cwd is the deno repo root.
       let specifier = "./js/main.ts";
       let referrer = cwd_string.as_str();
-      let r = deno_dir.fetch_module_meta_data(specifier, referrer, false);
+      let r =
+        deno_dir.fetch_module_meta_data(specifier, referrer, false, false);
       assert!(r.is_ok());
     })
   }

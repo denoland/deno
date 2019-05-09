@@ -1,2 +1,2 @@
-args: --reload tests/023_no_ext_with_headers
+args: run --reload tests/023_no_ext_with_headers
 output: tests/023_no_ext_with_headers.out

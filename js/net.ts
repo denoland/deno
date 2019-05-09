@@ -14,7 +14,7 @@ export type Network = "tcp";
 export type Addr = string;
 
 /** A Listener is a generic network listener for stream-oriented protocols. */
-export interface Listener {
+export interface Listener extends AsyncIterator<Conn> {
   /** Waits for and resolves to the next connection to the `Listener`. */
   accept(): Promise<Conn>;
 
@@ -25,6 +25,8 @@ export interface Listener {
 
   /** Return the address of the `Listener`. */
   addr(): Addr;
+
+  [Symbol.asyncIterator](): AsyncIterator<Conn>;
 }
 
 enum ShutdownMode {
@@ -96,6 +98,17 @@ class ListenerImpl implements Listener {
 
   addr(): Addr {
     return notImplemented();
+  }
+
+  async next(): Promise<IteratorResult<Conn>> {
+    return {
+      done: false,
+      value: await this.accept()
+    };
+  }
+
+  [Symbol.asyncIterator](): AsyncIterator<Conn> {
+    return this;
   }
 }
 

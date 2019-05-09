@@ -9,14 +9,19 @@
     <meta content="width=device-width, initial-scale=1.0" name="viewport" />
   </head>
   <body>
+    <div id="spinner-overlay">
+      <div class="spinner"></div>`
+    </div>
     <main>
-      <a href="/"><img src="images/deno_logo_3.svg" width=200></a>
+      <a href="/"><img src="images/deno_logo_4.gif" width=200></a>
       <h1>Deno Continuous Benchmarks</h1>
 
       <p>
         These plots are updated on every commit to
         <a href="https://github.com/denoland/deno">master branch</a>.
       </p>
+
+      <p>Make sure your adblocker is disabled as some can block the chart rendering.</p>
 
       <p><a href="#recent">recent data</a></p>
       <p><a href="#all">all data</a> (takes a moment to load)</p>
@@ -153,10 +158,26 @@
     <script type="module">
       import { drawCharts } from "./app.js";
       window.chartWidth = 800;
+      const overlay = document.getElementById("spinner-overlay")
 
-      let u = window.location.hash.match("all") ? "./data.json" : "recent.json";
+      function showSpinner () {
+        overlay.style.display = "block";
+      }
 
-      drawCharts(u);
+      function hideSpinner () {
+        overlay.style.display = "none";
+      }
+
+      function updateCharts () {
+        const u = window.location.hash.match("all") ? "./data.json" : "recent.json";
+
+        showSpinner()
+        
+        drawCharts(u).finally(hideSpinner)
+      }
+      updateCharts()
+
+      window.onhashchange = updateCharts
     </script>
   </body>
 </html>

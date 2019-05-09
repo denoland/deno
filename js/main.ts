@@ -9,7 +9,9 @@ import { assert, log } from "./util";
 import * as os from "./os";
 import { args } from "./deno";
 import { replLoop } from "./repl";
+import { xevalMain, XevalFunc } from "./xeval";
 import { setVersions } from "./version";
+import { window } from "./window";
 import { setLocation } from "./location";
 
 // builtin modules
@@ -43,7 +45,9 @@ export default function denoMain(name?: string): void {
   log("args", args);
   Object.freeze(args);
 
-  if (!mainModule) {
+  if (window["_xevalWrapper"] !== undefined) {
+    xevalMain(window["_xevalWrapper"] as XevalFunc, startResMsg.xevalDelim());
+  } else if (!mainModule) {
     replLoop();
   }
 }

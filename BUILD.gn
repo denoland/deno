@@ -4,10 +4,10 @@ group("default") {
   testonly = true
   deps = [
     ":hyper_hello",
+    "cli:cli_test",
     "cli:deno",
-    "cli:test_rs",
     "core:default",
-    "core/libdeno:test_cc",
+    "core/libdeno:libdeno_test",
   ]
 }
 

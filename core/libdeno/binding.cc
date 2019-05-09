@@ -163,64 +163,37 @@ void ErrorToJSON(const v8::FunctionCallbackInfo<v8::Value>& args) {
 }
 
 v8::Local<v8::Uint8Array> ImportBuf(DenoIsolate* d, deno_buf buf) {
-  // Do not use ImportBuf with zero_copy buffers.
-  DCHECK_EQ(buf.zero_copy_id, 0);
-
   if (buf.data_ptr == nullptr) {
     return v8::Local<v8::Uint8Array>();
   }
 
-  if (buf.alloc_ptr == nullptr) {
-    // If alloc_ptr isn't set, we memcpy.
-    // This is currently used for flatbuffers created in Rust.
-
-    // To avoid excessively allocating new ArrayBuffers, we try to reuse a
-    // single global ArrayBuffer. The caveat is that users must extract data
-    // from it before the next tick. We only do this for ArrayBuffers less than
-    // 1024 bytes.
-    v8::Local<v8::ArrayBuffer> ab;
-    void* data;
-    if (buf.data_len > GLOBAL_IMPORT_BUF_SIZE) {
-      // Simple case. We allocate a new ArrayBuffer for this.
-      ab = v8::ArrayBuffer::New(d->isolate_, buf.data_len);
-      data = ab->GetContents().Data();
-    } else {
-      // Fast case. We reuse the global ArrayBuffer.
-      if (d->global_import_buf_.IsEmpty()) {
-        // Lazily initialize it.
-        DCHECK_NULL(d->global_import_buf_ptr_);
-        ab = v8::ArrayBuffer::New(d->isolate_, GLOBAL_IMPORT_BUF_SIZE);
-        d->global_import_buf_.Reset(d->isolate_, ab);
-        d->global_import_buf_ptr_ = ab->GetContents().Data();
-      } else {
-        DCHECK(d->global_import_buf_ptr_);
-        ab = d->global_import_buf_.Get(d->isolate_);
-      }
-      data = d->global_import_buf_ptr_;
-    }
-    memcpy(data, buf.data_ptr, buf.data_len);
-    auto view = v8::Uint8Array::New(ab, 0, buf.data_len);
-    return view;
+  // To avoid excessively allocating new ArrayBuffers, we try to reuse a single
+  // global ArrayBuffer. The caveat is that users must extract data from it
+  // before the next tick. We only do this for ArrayBuffers less than 1024
+  // bytes.
+  v8::Local<v8::ArrayBuffer> ab;
+  void* data;
+  if (buf.data_len > GLOBAL_IMPORT_BUF_SIZE) {
+    // Simple case. We allocate a new ArrayBuffer for this.
+    ab = v8::ArrayBuffer::New(d->isolate_, buf.data_len);
+    data = ab->GetContents().Data();
   } else {
-    auto ab = v8::ArrayBuffer::New(
-        d->isolate_, reinterpret_cast<void*>(buf.alloc_ptr), buf.alloc_len,
-        v8::ArrayBufferCreationMode::kInternalized);
-    auto view =
-        v8::Uint8Array::New(ab, buf.data_ptr - buf.alloc_ptr, buf.data_len);
-    return view;
+    // Fast case. We reuse the global ArrayBuffer.
+    if (d->global_import_buf_.IsEmpty()) {
+      // Lazily initialize it.
+      DCHECK_NULL(d->global_import_buf_ptr_);
+      ab = v8::ArrayBuffer::New(d->isolate_, GLOBAL_IMPORT_BUF_SIZE);
+      d->global_import_buf_.Reset(d->isolate_, ab);
+      d->global_import_buf_ptr_ = ab->GetContents().Data();
+    } else {
+      DCHECK(d->global_import_buf_ptr_);
+      ab = d->global_import_buf_.Get(d->isolate_);
+    }
+    data = d->global_import_buf_ptr_;
   }
-}
-
-static deno_buf GetContents(v8::Isolate* isolate,
-                            v8::Local<v8::ArrayBufferView> view) {
-  auto ab = view->Buffer();
-  auto contents = ab->GetContents();
-  deno_buf buf;
-  buf.alloc_ptr = reinterpret_cast<uint8_t*>(contents.Data());
-  buf.alloc_len = contents.ByteLength();
-  buf.data_ptr = buf.alloc_ptr + view->ByteOffset();
-  buf.data_len = view->ByteLength();
-  return buf;
+  memcpy(data, buf.data_ptr, buf.data_len);
+  auto view = v8::Uint8Array::New(ab, 0, buf.data_len);
+  return view;
 }
 
 // Sets the recv_ callback.
@@ -248,38 +221,25 @@ void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
   DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
   DCHECK_EQ(d->isolate_, isolate);
 
-  deno_buf control = {nullptr, 0u, nullptr, 0u, 0u};
-  deno_buf zero_copy = {nullptr, 0u, nullptr, 0u, 0u};
-
   v8::HandleScope handle_scope(isolate);
 
-  if (args.Length() > 0) {
-    v8::Local<v8::Value> control_v = args[0];
-    if (control_v->IsArrayBufferView()) {
-      control =
-          GetContents(isolate, v8::Local<v8::ArrayBufferView>::Cast(control_v));
-    }
+  deno_buf control = {nullptr, 0};
+  if (args[0]->IsArrayBufferView()) {
+    auto view = v8::Local<v8::ArrayBufferView>::Cast(args[0]);
+    auto data =
+        reinterpret_cast<uint8_t*>(view->Buffer()->GetContents().Data());
+    control = {data + view->ByteOffset(), view->ByteLength()};
   }
 
-  v8::Local<v8::Value> zero_copy_v;
-  if (args.Length() == 2) {
-    if (args[1]->IsArrayBufferView()) {
-      zero_copy_v = args[1];
-      zero_copy = GetContents(
-          isolate, v8::Local<v8::ArrayBufferView>::Cast(zero_copy_v));
-      size_t zero_copy_id = d->next_zero_copy_id_++;
-      DCHECK_GT(zero_copy_id, 0);
-      zero_copy.zero_copy_id = zero_copy_id;
-      // If the zero_copy ArrayBuffer was given, we must maintain a strong
-      // reference to it until deno_zero_copy_release is called.
-      d->AddZeroCopyRef(zero_copy_id, zero_copy_v);
-    }
-  }
+  PinnedBuf zero_copy =
+      args[1]->IsArrayBufferView()
+          ? PinnedBuf(v8::Local<v8::ArrayBufferView>::Cast(args[1]))
+          : PinnedBuf();
 
   DCHECK_NULL(d->current_args_);
   d->current_args_ = &args;
 
-  d->recv_cb_(d->user_data_, control, zero_copy);
+  d->recv_cb_(d->user_data_, control, zero_copy.IntoRaw());
 
   if (d->current_args_ == nullptr) {
     // This indicates that deno_repond() was called already.

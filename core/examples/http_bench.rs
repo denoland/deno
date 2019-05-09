@@ -111,7 +111,7 @@ fn test_record_from() {
 
 pub type HttpBenchOp = dyn Future<Item = i32, Error = std::io::Error> + Send;
 
-fn dispatch(control: &[u8], zero_copy_buf: deno_buf) -> (bool, Box<Op>) {
+fn dispatch(control: &[u8], zero_copy_buf: Option<PinnedBuf>) -> Op {
   let record = Record::from(control);
   let is_sync = record.promise_id == 0;
   let http_bench_op = match record.op_id {
@@ -144,7 +144,7 @@ fn dispatch(control: &[u8], zero_copy_buf: deno_buf) -> (bool, Box<Op>) {
   let mut record_a = record.clone();
   let mut record_b = record.clone();
 
-  let op = Box::new(
+  let fut = Box::new(
     http_bench_op
       .and_then(move |result| {
         record_a.result = result;
@@ -158,7 +158,12 @@ fn dispatch(control: &[u8], zero_copy_buf: deno_buf) -> (bool, Box<Op>) {
         Ok(record.into())
       }),
   );
-  (is_sync, op)
+
+  if is_sync {
+    Op::Sync(fut.wait().unwrap())
+  } else {
+    Op::Async(fut)
+  }
 }
 
 fn main() {
@@ -266,8 +271,9 @@ fn op_close(rid: i32) -> Box<HttpBenchOp> {
   }))
 }
 
-fn op_read(rid: i32, mut zero_copy_buf: deno_buf) -> Box<HttpBenchOp> {
+fn op_read(rid: i32, zero_copy_buf: Option<PinnedBuf>) -> Box<HttpBenchOp> {
   debug!("read rid={}", rid);
+  let mut zero_copy_buf = zero_copy_buf.unwrap();
   Box::new(
     futures::future::poll_fn(move || {
       let mut table = RESOURCE_TABLE.lock().unwrap();
@@ -285,8 +291,9 @@ fn op_read(rid: i32, mut zero_copy_buf: deno_buf) -> Box<HttpBenchOp> {
   )
 }
 
-fn op_write(rid: i32, zero_copy_buf: deno_buf) -> Box<HttpBenchOp> {
+fn op_write(rid: i32, zero_copy_buf: Option<PinnedBuf>) -> Box<HttpBenchOp> {
   debug!("write rid={}", rid);
+  let zero_copy_buf = zero_copy_buf.unwrap();
   Box::new(
     futures::future::poll_fn(move || {
       let mut table = RESOURCE_TABLE.lock().unwrap();

@@ -46,6 +46,7 @@ v8_source_set("libdeno") {
   sources = [
     "api.cc",
     "binding.cc",
+    "buffer.h",
     "deno.h",
     "exceptions.cc",
     "exceptions.h",
@@ -80,7 +81,7 @@ v8_executable("snapshot_creator") {
   configs = [ ":deno_config" ]
 }
 
-v8_executable("test_cc") {
+v8_executable("libdeno_test") {
   testonly = true
   sources = [
     "file_util_test.cc",

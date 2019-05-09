@@ -122,6 +122,8 @@ function stringify(
     case "string":
       return value;
     case "number":
+      // Special handling of -0
+      return Object.is(value, -0) ? "-0" : `${value}`;
     case "boolean":
     case "undefined":
     case "symbol":

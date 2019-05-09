@@ -2,7 +2,10 @@ union Any {
   Accept,
   Chdir,
   Chmod,
+  Chown,
   Close,
+  CompilerConfig,
+  CompilerConfigRes,
   CopyFile,
   Cwd,
   CwdRes,
@@ -66,6 +69,7 @@ union Any {
   StatRes,
   Symlink,
   Truncate,
+  Utime,
   CreateWorker,
   CreateWorkerRes,
   HostGetWorkerClosed,
@@ -173,6 +177,16 @@ table StartRes {
   deno_version: string;
   v8_version: string;
   no_color: bool;
+  xeval_delim: string;
+}
+
+table CompilerConfig {
+  compiler_type: string;
+}
+
+table CompilerConfigRes {
+  path: string;
+  data: [ubyte];
 }
 
 table FormatError {
@@ -331,6 +345,12 @@ table Chmod {
   mode: uint; // Specified by https://godoc.org/os#FileMode
 }
 
+table Chown {
+  path: string;
+  uid: uint;
+  gid: uint;  // Specified by https://godoc.org/os#Chown
+}
+
 table Remove {
   path: string;
   recursive: bool;
@@ -422,6 +442,12 @@ table StatRes {
 table Truncate {
   name: string;
   len: uint;
+}
+
+table Utime {
+  filename: string;
+  atime: uint64;
+  mtime: uint64;
 }
 
 table Open {
