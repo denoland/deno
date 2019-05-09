@@ -896,6 +896,14 @@ pub fn resolve_file_url(
   Ok(j)
 }
 
+pub fn resolve_path(path: &str) -> Result<(PathBuf, String), DenoError> {
+  let url = resolve_file_url(path.to_string(), ".".to_string())
+    .map_err(DenoError::from)?;
+  let path = url.to_file_path().unwrap();
+  let path_string = path.to_str().unwrap().to_string();
+  Ok((path, path_string))
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;

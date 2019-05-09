@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
+use crate::deno_dir;
 
 // Creates vector of strings, Vec<String>
 macro_rules! svec {
@@ -282,6 +283,28 @@ This command has implicit access to all permissions (equivalent to deno run --al
         ).arg(Arg::with_name("code").takes_value(true).required(true)),
     )
 }
+
+/// Convert paths supplied into full path.
+/// If a path is invalid, we print out a warning
+/// and ignore this path in the output.
+fn resolve_paths(paths: Vec<String>) -> Vec<String> {
+  let mut out: Vec<String> = vec![];
+  for pathstr in paths.iter() {
+    let result = deno_dir::resolve_path(pathstr);
+    if result.is_err() {
+      eprintln!("Unrecognized path to whitelist: {}", pathstr);
+      continue;
+    }
+    let mut full_path = result.unwrap().1;
+    // Remove trailing slash.
+    if full_path.len() > 1 && full_path.ends_with('/') {
+      full_path.pop();
+    }
+    out.push(full_path);
+  }
+  out
+}
+
 /// Parse ArgMatches into internal DenoFlags structure.
 /// This method should not make any side effects.
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
@@ -318,8 +341,10 @@ pub fn parse_flags(matches: ArgMatches) -> DenoFlags {
     if run_matches.is_present("allow-read") {
       if run_matches.value_of("allow-read").is_some() {
         let read_wl = run_matches.values_of("allow-read").unwrap();
-        flags.read_whitelist =
+        let raw_read_whitelist: Vec<String> =
           read_wl.map(std::string::ToString::to_string).collect();
+        flags.read_whitelist = resolve_paths(raw_read_whitelist);
+        debug!("read whitelist: {:#?}", &flags.read_whitelist);
       } else {
         flags.allow_read = true;
       }
@@ -327,8 +352,10 @@ pub fn parse_flags(matches: ArgMatches) -> DenoFlags {
     if run_matches.is_present("allow-write") {
       if run_matches.value_of("allow-write").is_some() {
         let write_wl = run_matches.values_of("allow-write").unwrap();
-        flags.write_whitelist =
+        let raw_write_whitelist =
           write_wl.map(std::string::ToString::to_string).collect();
+        flags.write_whitelist = resolve_paths(raw_write_whitelist);
+        debug!("write whitelist: {:#?}", &flags.write_whitelist);
       } else {
         flags.allow_write = true;
       }
@@ -338,6 +365,7 @@ pub fn parse_flags(matches: ArgMatches) -> DenoFlags {
         let net_wl = run_matches.values_of("allow-net").unwrap();
         flags.net_whitelist =
           net_wl.map(std::string::ToString::to_string).collect();
+        debug!("net whitelist: {:#?}", &flags.net_whitelist);
       } else {
         flags.allow_net = true;
       }
@@ -814,17 +842,22 @@ mod tests {
   }
   #[test]
   fn test_flags_from_vec_19() {
+    use tempfile::TempDir;
+    let temp_dir = TempDir::new().expect("tempdir fail");
+    let (_, temp_dir_path) =
+      deno_dir::resolve_path(temp_dir.path().to_str().unwrap()).unwrap();
+
     let (flags, subcommand, argv) = flags_from_vec(svec![
       "deno",
       "run",
-      "--allow-read=/some/test/dir",
+      format!("--allow-read={}", &temp_dir_path),
       "script.ts"
     ]);
     assert_eq!(
       flags,
       DenoFlags {
         allow_read: false,
-        read_whitelist: svec!["/some/test/dir"],
+        read_whitelist: svec![&temp_dir_path],
         ..DenoFlags::default()
       }
     );
@@ -833,17 +866,22 @@ mod tests {
   }
   #[test]
   fn test_flags_from_vec_20() {
+    use tempfile::TempDir;
+    let temp_dir = TempDir::new().expect("tempdir fail");
+    let (_, temp_dir_path) =
+      deno_dir::resolve_path(temp_dir.path().to_str().unwrap()).unwrap();
+
     let (flags, subcommand, argv) = flags_from_vec(svec![
       "deno",
       "run",
-      "--allow-write=/some/test/dir",
+      format!("--allow-write={}", &temp_dir_path),
       "script.ts"
     ]);
     assert_eq!(
       flags,
       DenoFlags {
         allow_write: false,
-        write_whitelist: svec!["/some/test/dir"],
+        write_whitelist: svec![&temp_dir_path],
         ..DenoFlags::default()
       }
     );
