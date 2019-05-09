@@ -286,9 +286,7 @@ pub fn add_tcp_stream(stream: tokio::net::TcpStream) -> Resource {
   Resource { rid }
 }
 
-pub fn add_tls_stream(
-  stream: TlsStream<TcpStream, ClientSession>,
-) -> Resource {
+pub fn add_tls_stream(stream: TlsStream<TcpStream, ClientSession>) -> Resource {
   let rid = new_rid();
   let mut tg = RESOURCE_TABLE.lock().unwrap();
   let r = tg.insert(rid, Repr::TlsStream(stream));

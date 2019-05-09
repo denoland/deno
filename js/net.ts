@@ -185,7 +185,10 @@ export async function dial(network: Network, address: string): Promise<Conn> {
 }
 
 /** DialTLS establishes a secure channel to the address on the named network. */
-export async function dialTLS(network: Network, address: string) {
+export async function dialTLS(
+  network: Network,
+  address: string
+): Promise<Conn> {
   const builder = flatbuffers.createBuilder();
   const network_ = builder.createString(network);
   const address_ = builder.createString(address);

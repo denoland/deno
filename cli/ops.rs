@@ -1632,9 +1632,7 @@ fn op_dial_tls(
 
   let op = resolve_addr(&address)
     .map_err(DenoError::from)
-    .and_then(move |addr| {
-      TcpStream::connect(&addr).map_err(DenoError::from)
-    })
+    .and_then(move |addr| TcpStream::connect(&addr).map_err(DenoError::from))
     .and_then(move |tcp_stream| {
       let mut config = ClientConfig::new();
       config
