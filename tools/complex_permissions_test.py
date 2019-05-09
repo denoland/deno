@@ -92,6 +92,10 @@ class Prompt(object):
                       self.test_outside_test_and_js_dir, test_type)
             wrap_test(test_name_base + "_inside_tests_and_js_dir",
                       self.test_inside_test_and_js_dir, test_type)
+            wrap_test(test_name_base + "_relative", self.test_relative,
+                      test_type)
+            wrap_test(test_name_base + "_no_prefix", self.test_no_prefix,
+                      test_type)
         wrap_test(test_name_base + "_allow_localhost_4545",
                   self.test_allow_localhost_4545)
         wrap_test(test_name_base + "_allow_deno_land",
@@ -178,6 +182,30 @@ class Prompt(object):
         assert code == 0
         assert not PROMPT_PATTERN in stderr
         assert not PERMISSION_DENIED_PATTERN in stderr
+
+    def test_relative(self, test_type):
+        # Save and restore curdir
+        saved_curdir = os.getcwd()
+        os.chdir(root_path)
+        code, _stdout, stderr = self.run(
+            ["--no-prompt", "--allow-" + test_type + "=" + "./tests"],
+            [test_type, "tests/subdir/config.json"], b'')
+        assert code == 0
+        assert not PROMPT_PATTERN in stderr
+        assert not PERMISSION_DENIED_PATTERN in stderr
+        os.chdir(saved_curdir)
+
+    def test_no_prefix(self, test_type):
+        # Save and restore curdir
+        saved_curdir = os.getcwd()
+        os.chdir(root_path)
+        code, _stdout, stderr = self.run(
+            ["--no-prompt", "--allow-" + test_type + "=" + "tests"],
+            [test_type, "tests/subdir/config.json"], b'')
+        assert code == 0
+        assert not PROMPT_PATTERN in stderr
+        assert not PERMISSION_DENIED_PATTERN in stderr
+        os.chdir(saved_curdir)
 
 
 def complex_permissions_test(deno_exe):
