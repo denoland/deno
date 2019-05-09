@@ -1,5 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use atty;
 use crate::ansi;
 use crate::compiler::get_compiler_config;
 use crate::deno_dir::resolve_path;
@@ -26,6 +25,7 @@ use crate::tokio_write;
 use crate::version;
 use crate::worker::root_specifier_to_url;
 use crate::worker::Worker;
+use atty;
 use deno::js_check;
 use deno::Buf;
 use deno::JSError;
@@ -39,6 +39,7 @@ use futures::Sink;
 use futures::Stream;
 use hyper;
 use hyper::rt::Future;
+use rand::Rng;
 use remove_dir_all::remove_dir_all;
 use std;
 use std::convert::From;
@@ -65,9 +66,11 @@ pub type OpWithError = dyn Future<Item = Buf, Error = DenoError> + Send;
 
 // TODO Ideally we wouldn't have to box the OpWithError being returned.
 // The box is just to make it easier to get a prototype refactor working.
-type OpCreator =
-  fn(state: &ThreadSafeState, base: &msg::Base<'_>, data: Option<PinnedBuf>)
-    -> Box<OpWithError>;
+type OpCreator = fn(
+  state: &ThreadSafeState,
+  base: &msg::Base<'_>,
+  data: Option<PinnedBuf>,
+) -> Box<OpWithError>;
 
 pub type OpSelector = fn(inner_type: msg::Any) -> Option<OpCreator>;
 
@@ -133,7 +136,8 @@ pub fn dispatch_all_legacy(
           ..Default::default()
         },
       ))
-    }).and_then(move |buf: Buf| -> Result<Buf, ()> {
+    })
+    .and_then(move |buf: Buf| -> Result<Buf, ()> {
       // Handle empty responses. For sync responses we just want
       // to send null. For async we want to send a small message
       // with the cmd_id.
@@ -151,7 +155,8 @@ pub fn dispatch_all_legacy(
       };
       state.metrics_op_completed(buf.len());
       Ok(buf)
-    }).map_err(|err| panic!("unexpected error {:?}", err)),
+    })
+    .map_err(|err| panic!("unexpected error {:?}", err)),
   );
 
   debug!(
@@ -208,6 +213,7 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<OpCreator> {
     msg::Any::Open => Some(op_open),
     msg::Any::PermissionRevoke => Some(op_revoke_permission),
     msg::Any::Permissions => Some(op_permissions),
+    msg::Any::RandomValues => Some(op_random_values),
     msg::Any::Read => Some(op_read),
     msg::Any::ReadDir => Some(op_read_dir),
     msg::Any::Readlink => Some(op_read_link),
@@ -1367,7 +1373,8 @@ fn op_read_dir(
             has_mode: cfg!(target_family = "unix"),
           },
         )
-      }).collect();
+      })
+      .collect();
 
     let entries = builder.create_vector(&entries);
     let inner = msg::ReadDirRes::create(
@@ -1386,6 +1393,28 @@ fn op_read_dir(
       },
     ))
   })
+}
+
+fn op_random_values(
+  _state: &ThreadSafeState,
+  base: &msg::Base<'_>,
+  data: Option<PinnedBuf>,
+) -> Box<OpWithError> {
+  assert!(data.is_none());
+
+  let mut rng = rand::thread_rng();
+  let val: u32 = rng.gen_range(0, 10);
+  let builder = &mut FlatBufferBuilder::new();
+  let inner = msg::RandomValuesRes::create(builder, &msg::RandomValuesResArgs { val });
+  ok_future(serialize_response(
+    base.cmd_id(),
+    builder,
+    msg::BaseArgs {
+      inner: Some(inner.as_union_value()),
+      inner_type: msg::Any::RandomValuesRes,
+      ..Default::default()
+    },
+  ))
 }
 
 fn op_rename(
@@ -1792,7 +1821,8 @@ fn op_resources(
           repr: Some(repr),
         },
       )
-    }).collect();
+    })
+    .collect();
 
   let resources = builder.create_vector(&res);
   let inner = msg::ResourcesRes::create(

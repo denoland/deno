@@ -25,6 +25,7 @@ import * as url from "./url";
 import * as urlSearchParams from "./url_search_params";
 import * as workers from "./workers";
 import * as performanceUtil from "./performance";
+import * as cryptoUtil from "./crypto";
 
 import * as request from "./request";
 //import * as response from "./response";
@@ -117,6 +118,8 @@ export type Request = request.Request;
 //export type Response = response.Response;
 
 window.performance = new performanceUtil.Performance();
+
+window.crypto = new cryptoUtil.Crypto();
 
 // This variable functioning correctly depends on `declareAsLet`
 // in //tools/ts_library_builder/main.ts

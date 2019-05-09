@@ -41,6 +41,8 @@ union Any {
   PermissionRevoke,
   Permissions,
   PermissionsRes,
+  RandomValues,
+  RandomValuesRes,
   Read,
   ReadDir,
   ReadDirRes,
@@ -527,6 +529,12 @@ table MetricsRes {
 }
 
 enum ProcessStdio: byte { Inherit, Piped, Null }
+
+table RandomValues {}
+
+table RandomValuesRes {
+  val: uint32;
+}
 
 table Run {
   args: [string];

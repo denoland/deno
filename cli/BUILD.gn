@@ -115,6 +115,7 @@ ts_sources = [
   "../js/workers.ts",
   "../js/write_file.ts",
   "../js/performance.ts",
+  "../js/crypto.ts",
   "../js/version.ts",
   "../js/xeval.ts",
   "../tsconfig.json",
