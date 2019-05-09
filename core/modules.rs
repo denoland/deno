@@ -305,7 +305,7 @@ impl ModuleInfo {
 }
 
 /// A symbolic module entity.
-pub enum SymbolicModule {
+enum SymbolicModule {
   /// This module is an alias to another module.
   /// This is useful such that multiple names could point to
   /// the same underlying module (particularly due to redirects).
@@ -316,7 +316,7 @@ pub enum SymbolicModule {
 
 #[derive(Default)]
 /// Alias-able module name map
-pub struct ModuleNameMap {
+struct ModuleNameMap {
   inner: HashMap<String, SymbolicModule>,
 }
 
