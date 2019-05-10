@@ -189,8 +189,13 @@ impl ThreadSafeState {
   }
 
   #[inline]
-  pub fn check_net(&self, filename: &str) -> DenoResult<()> {
-    self.permissions.check_net(filename)
+  pub fn check_net(&self, host_and_port: &str) -> DenoResult<()> {
+    self.permissions.check_net(host_and_port)
+  }
+
+  #[inline]
+  pub fn check_net_url(&self, url: url::Url) -> DenoResult<()> {
+    self.permissions.check_net_url(url)
   }
 
   #[inline]

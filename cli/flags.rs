@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
+use crate::deno_dir;
 
 // Creates vector of strings, Vec<String>
 macro_rules! svec {
@@ -16,8 +17,11 @@ pub struct DenoFlags {
   /// the path passed on the command line, otherwise `None`.
   pub config_path: Option<String>,
   pub allow_read: bool,
+  pub read_whitelist: Vec<String>,
   pub allow_write: bool,
+  pub write_whitelist: Vec<String>,
   pub allow_net: bool,
+  pub net_whitelist: Vec<String>,
   pub allow_env: bool,
   pub allow_run: bool,
   pub allow_high_precision: bool,
@@ -193,17 +197,29 @@ ability to spawn subprocesses.
 ",
         ).arg(
           Arg::with_name("allow-read")
-            .long("allow-read")
-            .help("Allow file system read access"),
-        ).arg(
-          Arg::with_name("allow-write")
-            .long("allow-write")
-            .help("Allow file system write access"),
-        ).arg(
-          Arg::with_name("allow-net")
-            .long("allow-net")
-            .help("Allow network access"),
-        ).arg(
+        .long("allow-read")
+        .min_values(0)
+        .takes_value(true)
+        .use_delimiter(true)
+        .require_equals(true)
+        .help("Allow file system read access"),
+    ).arg(
+      Arg::with_name("allow-write")
+        .long("allow-write")
+        .min_values(0)
+        .takes_value(true)
+        .use_delimiter(true)
+        .require_equals(true)
+        .help("Allow file system write access"),
+    ).arg(
+      Arg::with_name("allow-net")
+        .long("allow-net")
+        .min_values(0)
+        .takes_value(true)
+        .use_delimiter(true)
+        .require_equals(true)
+        .help("Allow network access"),
+    ).arg(
           Arg::with_name("allow-env")
             .long("allow-env")
             .help("Allow environment access"),
@@ -267,6 +283,28 @@ This command has implicit access to all permissions (equivalent to deno run --al
         ).arg(Arg::with_name("code").takes_value(true).required(true)),
     )
 }
+
+/// Convert paths supplied into full path.
+/// If a path is invalid, we print out a warning
+/// and ignore this path in the output.
+fn resolve_paths(paths: Vec<String>) -> Vec<String> {
+  let mut out: Vec<String> = vec![];
+  for pathstr in paths.iter() {
+    let result = deno_dir::resolve_path(pathstr);
+    if result.is_err() {
+      eprintln!("Unrecognized path to whitelist: {}", pathstr);
+      continue;
+    }
+    let mut full_path = result.unwrap().1;
+    // Remove trailing slash.
+    if full_path.len() > 1 && full_path.ends_with('/') {
+      full_path.pop();
+    }
+    out.push(full_path);
+  }
+  out
+}
+
 /// Parse ArgMatches into internal DenoFlags structure.
 /// This method should not make any side effects.
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
@@ -301,13 +339,36 @@ pub fn parse_flags(matches: ArgMatches) -> DenoFlags {
   // flags specific to "run" subcommand
   if let Some(run_matches) = matches.subcommand_matches("run") {
     if run_matches.is_present("allow-read") {
-      flags.allow_read = true;
+      if run_matches.value_of("allow-read").is_some() {
+        let read_wl = run_matches.values_of("allow-read").unwrap();
+        let raw_read_whitelist: Vec<String> =
+          read_wl.map(std::string::ToString::to_string).collect();
+        flags.read_whitelist = resolve_paths(raw_read_whitelist);
+        debug!("read whitelist: {:#?}", &flags.read_whitelist);
+      } else {
+        flags.allow_read = true;
+      }
     }
     if run_matches.is_present("allow-write") {
-      flags.allow_write = true;
+      if run_matches.value_of("allow-write").is_some() {
+        let write_wl = run_matches.values_of("allow-write").unwrap();
+        let raw_write_whitelist =
+          write_wl.map(std::string::ToString::to_string).collect();
+        flags.write_whitelist = resolve_paths(raw_write_whitelist);
+        debug!("write whitelist: {:#?}", &flags.write_whitelist);
+      } else {
+        flags.allow_write = true;
+      }
     }
     if run_matches.is_present("allow-net") {
-      flags.allow_net = true;
+      if run_matches.value_of("allow-net").is_some() {
+        let net_wl = run_matches.values_of("allow-net").unwrap();
+        flags.net_whitelist =
+          net_wl.map(std::string::ToString::to_string).collect();
+        debug!("net whitelist: {:#?}", &flags.net_whitelist);
+      } else {
+        flags.allow_net = true;
+      }
     }
     if run_matches.is_present("allow-env") {
       flags.allow_env = true;
@@ -778,5 +839,72 @@ mod tests {
     );
     assert_eq!(subcommand, DenoSubcommand::Xeval);
     assert_eq!(argv, svec!["deno", "console.log(val)"]);
+  }
+  #[test]
+  fn test_flags_from_vec_19() {
+    use tempfile::TempDir;
+    let temp_dir = TempDir::new().expect("tempdir fail");
+    let (_, temp_dir_path) =
+      deno_dir::resolve_path(temp_dir.path().to_str().unwrap()).unwrap();
+
+    let (flags, subcommand, argv) = flags_from_vec(svec![
+      "deno",
+      "run",
+      format!("--allow-read={}", &temp_dir_path),
+      "script.ts"
+    ]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        allow_read: false,
+        read_whitelist: svec![&temp_dir_path],
+        ..DenoFlags::default()
+      }
+    );
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "script.ts"]);
+  }
+  #[test]
+  fn test_flags_from_vec_20() {
+    use tempfile::TempDir;
+    let temp_dir = TempDir::new().expect("tempdir fail");
+    let (_, temp_dir_path) =
+      deno_dir::resolve_path(temp_dir.path().to_str().unwrap()).unwrap();
+
+    let (flags, subcommand, argv) = flags_from_vec(svec![
+      "deno",
+      "run",
+      format!("--allow-write={}", &temp_dir_path),
+      "script.ts"
+    ]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        allow_write: false,
+        write_whitelist: svec![&temp_dir_path],
+        ..DenoFlags::default()
+      }
+    );
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "script.ts"]);
+  }
+  #[test]
+  fn test_flags_from_vec_21() {
+    let (flags, subcommand, argv) = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--allow-net=127.0.0.1",
+      "script.ts"
+    ]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        allow_net: false,
+        net_whitelist: svec!["127.0.0.1"],
+        ..DenoFlags::default()
+      }
+    );
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "script.ts"]);
   }
 }

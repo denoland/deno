@@ -2,6 +2,7 @@
 use atty;
 use crate::ansi;
 use crate::compiler::get_compiler_config;
+use crate::deno_dir::resolve_path;
 use crate::dispatch_minimal::dispatch_minimal;
 use crate::dispatch_minimal::parse_min_record;
 use crate::errors;
@@ -43,7 +44,6 @@ use std;
 use std::convert::From;
 use std::fs;
 use std::net::Shutdown;
-use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::{Duration, Instant, UNIX_EPOCH};
@@ -121,7 +121,7 @@ pub fn dispatch_all_legacy(
     op.or_else(move |err: DenoError| -> Result<Buf, ()> {
       debug!("op err {}", err);
       // No matter whether we got an Err or Ok, we want a serialized message to
-      // send back. So transform the DenoError into a deno_buf.
+      // send back. So transform the DenoError into a Buf.
       let builder = &mut FlatBufferBuilder::new();
       let errmsg_offset = builder.create_string(&format!("{}", err));
       Ok(serialize_response(
@@ -186,6 +186,7 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<OpCreator> {
     msg::Any::Accept => Some(op_accept),
     msg::Any::Chdir => Some(op_chdir),
     msg::Any::Chmod => Some(op_chmod),
+    msg::Any::Chown => Some(op_chown),
     msg::Any::Close => Some(op_close),
     msg::Any::CopyFile => Some(op_copy_file),
     msg::Any::Cwd => Some(op_cwd),
@@ -696,7 +697,11 @@ fn op_fetch(
   }
   let req = maybe_req.unwrap();
 
-  if let Err(e) = state.check_net(url) {
+  let url_ = match url::Url::parse(url) {
+    Err(err) => return odd_future(DenoError::from(err)),
+    Ok(v) => v,
+  };
+  if let Err(e) = state.check_net_url(url_) {
     return odd_future(e);
   }
 
@@ -815,17 +820,20 @@ fn op_mkdir(
 ) -> Box<OpWithError> {
   assert!(data.is_none());
   let inner = base.inner_as_mkdir().unwrap();
-  let path = String::from(inner.path().unwrap());
+  let (path, path_) = match resolve_path(inner.path().unwrap()) {
+    Err(err) => return odd_future(err),
+    Ok(v) => v,
+  };
   let recursive = inner.recursive();
   let mode = inner.mode();
 
-  if let Err(e) = state.check_write(&path) {
+  if let Err(e) = state.check_write(&path_) {
     return odd_future(e);
   }
 
   blocking(base.sync(), move || {
-    debug!("op_mkdir {}", path);
-    deno_fs::mkdir(Path::new(&path), mode, recursive)?;
+    debug!("op_mkdir {}", path_);
+    deno_fs::mkdir(&path, mode, recursive)?;
     Ok(empty_buf())
   })
 }
@@ -838,15 +846,17 @@ fn op_chmod(
   assert!(data.is_none());
   let inner = base.inner_as_chmod().unwrap();
   let _mode = inner.mode();
-  let path = String::from(inner.path().unwrap());
+  let (path, path_) = match resolve_path(inner.path().unwrap()) {
+    Err(err) => return odd_future(err),
+    Ok(v) => v,
+  };
 
-  if let Err(e) = state.check_write(&path) {
+  if let Err(e) = state.check_write(&path_) {
     return odd_future(e);
   }
 
   blocking(base.sync(), move || {
-    debug!("op_chmod {}", &path);
-    let path = PathBuf::from(&path);
+    debug!("op_chmod {}", &path_);
     // Still check file/dir exists on windows
     let _metadata = fs::metadata(&path)?;
     // Only work in unix
@@ -869,6 +879,30 @@ fn op_chmod(
   })
 }
 
+fn op_chown(
+  state: &ThreadSafeState,
+  base: &msg::Base<'_>,
+  data: Option<PinnedBuf>,
+) -> Box<OpWithError> {
+  assert!(data.is_none());
+  let inner = base.inner_as_chown().unwrap();
+  let path = String::from(inner.path().unwrap());
+  let uid = inner.uid();
+  let gid = inner.gid();
+
+  if let Err(e) = state.check_write(&path) {
+    return odd_future(e);
+  }
+
+  blocking(base.sync(), move || {
+    debug!("op_chown {}", &path);
+    match deno_fs::chown(&path, uid, gid) {
+      Ok(_) => Ok(empty_buf()),
+      Err(e) => Err(e),
+    }
+  })
+}
+
 fn op_open(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
@@ -877,8 +911,10 @@ fn op_open(
   assert!(data.is_none());
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_open().unwrap();
-  let filename_str = inner.filename().unwrap();
-  let filename = PathBuf::from(&filename_str);
+  let (filename, filename_) = match resolve_path(inner.filename().unwrap()) {
+    Err(err) => return odd_future(err),
+    Ok(v) => v,
+  };
   let mode = inner.mode().unwrap();
 
   let mut open_options = tokio::fs::OpenOptions::new();
@@ -919,20 +955,20 @@ fn op_open(
 
   match mode {
     "r" => {
-      if let Err(e) = state.check_read(&filename_str) {
+      if let Err(e) = state.check_read(&filename_) {
         return odd_future(e);
       }
     }
     "w" | "a" | "x" => {
-      if let Err(e) = state.check_write(&filename_str) {
+      if let Err(e) = state.check_write(&filename_) {
         return odd_future(e);
       }
     }
     &_ => {
-      if let Err(e) = state.check_read(&filename_str) {
+      if let Err(e) = state.check_read(&filename_) {
         return odd_future(e);
       }
-      if let Err(e) = state.check_write(&filename_str) {
+      if let Err(e) = state.check_write(&filename_) {
         return odd_future(e);
       }
     }
@@ -1121,11 +1157,13 @@ fn op_remove(
 ) -> Box<OpWithError> {
   assert!(data.is_none());
   let inner = base.inner_as_remove().unwrap();
-  let path_ = inner.path().unwrap();
-  let path = PathBuf::from(path_);
+  let (path, path_) = match resolve_path(inner.path().unwrap()) {
+    Err(err) => return odd_future(err),
+    Ok(v) => v,
+  };
   let recursive = inner.recursive();
 
-  if let Err(e) = state.check_write(path.to_str().unwrap()) {
+  if let Err(e) = state.check_write(&path_) {
     return odd_future(e);
   }
 
@@ -1150,10 +1188,14 @@ fn op_copy_file(
 ) -> Box<OpWithError> {
   assert!(data.is_none());
   let inner = base.inner_as_copy_file().unwrap();
-  let from_ = inner.from().unwrap();
-  let from = PathBuf::from(from_);
-  let to_ = inner.to().unwrap();
-  let to = PathBuf::from(to_);
+  let (from, from_) = match resolve_path(inner.from().unwrap()) {
+    Err(err) => return odd_future(err),
+    Ok(v) => v,
+  };
+  let (to, to_) = match resolve_path(inner.to().unwrap()) {
+    Err(err) => return odd_future(err),
+    Ok(v) => v,
+  };
 
   if let Err(e) = state.check_read(&from_) {
     return odd_future(e);
@@ -1233,8 +1275,10 @@ fn op_stat(
   assert!(data.is_none());
   let inner = base.inner_as_stat().unwrap();
   let cmd_id = base.cmd_id();
-  let filename_ = inner.filename().unwrap();
-  let filename = PathBuf::from(filename_);
+  let (filename, filename_) = match resolve_path(inner.filename().unwrap()) {
+    Err(err) => return odd_future(err),
+    Ok(v) => v,
+  };
   let lstat = inner.lstat();
 
   if let Err(e) = state.check_read(&filename_) {
@@ -1250,6 +1294,8 @@ fn op_stat(
       fs::metadata(&filename)?
     };
 
+    let filename_str = builder.create_string(&filename_);
+
     let inner = msg::StatRes::create(
       builder,
       &msg::StatResArgs {
@@ -1261,6 +1307,7 @@ fn op_stat(
         created: to_seconds!(metadata.created()),
         mode: get_mode(&metadata.permissions()),
         has_mode: cfg!(target_family = "unix"),
+        path: Some(filename_str),
         ..Default::default()
       },
     );
@@ -1285,16 +1332,19 @@ fn op_read_dir(
   assert!(data.is_none());
   let inner = base.inner_as_read_dir().unwrap();
   let cmd_id = base.cmd_id();
-  let path = String::from(inner.path().unwrap());
+  let (path, path_) = match resolve_path(inner.path().unwrap()) {
+    Err(err) => return odd_future(err),
+    Ok(v) => v,
+  };
 
-  if let Err(e) = state.check_read(&path) {
+  if let Err(e) = state.check_read(&path_) {
     return odd_future(e);
   }
 
   blocking(base.sync(), move || -> OpResult {
-    debug!("op_read_dir {}", path);
+    debug!("op_read_dir {}", path.display());
     let builder = &mut FlatBufferBuilder::new();
-    let entries: Vec<_> = fs::read_dir(Path::new(&path))?
+    let entries: Vec<_> = fs::read_dir(path)?
       .map(|entry| {
         let entry = entry.unwrap();
         let metadata = entry.metadata().unwrap();
@@ -1345,9 +1395,15 @@ fn op_rename(
 ) -> Box<OpWithError> {
   assert!(data.is_none());
   let inner = base.inner_as_rename().unwrap();
-  let oldpath = PathBuf::from(inner.oldpath().unwrap());
-  let newpath_ = inner.newpath().unwrap();
-  let newpath = PathBuf::from(newpath_);
+  let (oldpath, _) = match resolve_path(inner.oldpath().unwrap()) {
+    Err(err) => return odd_future(err),
+    Ok(v) => v,
+  };
+  let (newpath, newpath_) = match resolve_path(inner.newpath().unwrap()) {
+    Err(err) => return odd_future(err),
+    Ok(v) => v,
+  };
+
   if let Err(e) = state.check_write(&newpath_) {
     return odd_future(e);
   }
@@ -1365,9 +1421,14 @@ fn op_link(
 ) -> Box<OpWithError> {
   assert!(data.is_none());
   let inner = base.inner_as_link().unwrap();
-  let oldname = PathBuf::from(inner.oldname().unwrap());
-  let newname_ = inner.newname().unwrap();
-  let newname = PathBuf::from(newname_);
+  let (oldname, _) = match resolve_path(inner.oldname().unwrap()) {
+    Err(err) => return odd_future(err),
+    Ok(v) => v,
+  };
+  let (newname, newname_) = match resolve_path(inner.newname().unwrap()) {
+    Err(err) => return odd_future(err),
+    Ok(v) => v,
+  };
 
   if let Err(e) = state.check_write(&newname_) {
     return odd_future(e);
@@ -1387,9 +1448,14 @@ fn op_symlink(
 ) -> Box<OpWithError> {
   assert!(data.is_none());
   let inner = base.inner_as_symlink().unwrap();
-  let oldname = PathBuf::from(inner.oldname().unwrap());
-  let newname_ = inner.newname().unwrap();
-  let newname = PathBuf::from(newname_);
+  let (oldname, _) = match resolve_path(inner.oldname().unwrap()) {
+    Err(err) => return odd_future(err),
+    Ok(v) => v,
+  };
+  let (newname, newname_) = match resolve_path(inner.newname().unwrap()) {
+    Err(err) => return odd_future(err),
+    Ok(v) => v,
+  };
 
   if let Err(e) = state.check_write(&newname_) {
     return odd_future(e);
@@ -1417,8 +1483,10 @@ fn op_read_link(
   assert!(data.is_none());
   let inner = base.inner_as_readlink().unwrap();
   let cmd_id = base.cmd_id();
-  let name_ = inner.name().unwrap();
-  let name = PathBuf::from(name_);
+  let (name, name_) = match resolve_path(inner.name().unwrap()) {
+    Err(err) => return odd_future(err),
+    Ok(v) => v,
+  };
 
   if let Err(e) = state.check_read(&name_) {
     return odd_future(e);
@@ -1522,15 +1590,18 @@ fn op_truncate(
   assert!(data.is_none());
 
   let inner = base.inner_as_truncate().unwrap();
-  let filename = String::from(inner.name().unwrap());
+  let (filename, filename_) = match resolve_path(inner.name().unwrap()) {
+    Err(err) => return odd_future(err),
+    Ok(v) => v,
+  };
   let len = inner.len();
 
-  if let Err(e) = state.check_write(&filename) {
+  if let Err(e) = state.check_write(&filename_) {
     return odd_future(e);
   }
 
   blocking(base.sync(), move || {
-    debug!("op_truncate {} {}", filename, len);
+    debug!("op_truncate {} {}", filename_, len);
     let f = fs::OpenOptions::new().write(true).open(&filename)?;
     f.set_len(u64::from(len))?;
     Ok(empty_buf())
