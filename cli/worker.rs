@@ -83,6 +83,7 @@ impl Worker {
       },
     )
     .map_err(|(err, self_)| {
+      self_.state.progress.done();
       // Convert to RustOrJsError AND apply_source_map.
       let err = match err {
         deno::JSErrorOr::JSError(err) => RustOrJsError::Js(self_.apply_source_map(err)),
