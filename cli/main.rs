@@ -137,18 +137,13 @@ fn create_worker_and_state(
   argv: Vec<String>,
 ) -> (Worker, ThreadSafeState) {
   let progress = Progress::new();
-  progress.set_callback(|completed, total, msg| {
-    // TODO(ry) Currently we print a \n after every progress message and then
-    // move the cursor up before printing the next line. This isn't ideal. We
-    // could instead print \r after every progress message and avoid moving the
-    // cursor up. This would only require knowing then the progress is complete
-    // and printing \n at that time, so that the output that follows doesn't
-    // continue on the same line.
-    if total != 0 {
-      eprint!("\x1B[F"); // Move up one line.
+  progress.set_callback(|done, completed, total, msg| {
+    if done {
+      eprintln!("");
+    } else {
+      eprint!("\r[{}/{}] {}", completed, total, msg);
+      eprint!("\x1B[K"); // Clear to end of line.
     }
-    eprint!("\r[{}/{}] {}", completed, total, msg);
-    eprintln!("\x1B[K"); // Clear to end of line.
   });
   let state = ThreadSafeState::new(flags, argv, ops::op_selector_std, progress);
   let worker = Worker::new(

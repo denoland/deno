@@ -69,6 +69,7 @@ impl Worker {
     let recursive_load = deno::RecursiveLoad::new(js_url.as_str(), self);
     recursive_load.and_then(
       move |(id, mut self_)| -> Result<Self, (deno::JSErrorOr<DenoError>, Self)> {
+        self_.state.progress.done();
         if is_prefetch {
           Ok(self_)
         } else {

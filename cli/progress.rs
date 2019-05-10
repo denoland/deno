@@ -2,7 +2,52 @@
 use std::sync::Arc;
 use std::sync::Mutex;
 
-type Callback = dyn Fn(usize, usize, &str) + Send + Sync;
+#[derive(Clone, Default)]
+pub struct Progress(Arc<Mutex<Inner>>);
+
+impl Progress {
+  pub fn new() -> Self {
+    Progress::default()
+  }
+
+  pub fn set_callback<F>(&self, f: F)
+  where
+    F: Fn(bool, usize, usize, &str) + Send + Sync + 'static,
+  {
+    let mut s = self.0.lock().unwrap();
+    assert!(s.callback.is_none());
+    s.callback = Some(Arc::new(f));
+  }
+
+  /// Returns job counts: (complete, total)
+  pub fn progress(&self) -> (usize, usize) {
+    let s = self.0.lock().unwrap();
+    s.progress()
+  }
+
+  pub fn history(&self) -> Vec<String> {
+    let s = self.0.lock().unwrap();
+    s.job_names.clone()
+  }
+
+  pub fn add(&self, name: String) -> Job {
+    let mut s = self.0.lock().unwrap();
+    let id = s.job_names.len();
+    s.maybe_call_callback(false, s.complete, s.job_names.len() + 1, &name);
+    s.job_names.push(name);
+    Job {
+      id,
+      inner: self.0.clone(),
+    }
+  }
+
+  pub fn done(&self) {
+    let s = self.0.lock().unwrap();
+    s.maybe_call_callback(true, s.complete, s.job_names.len(), "");
+  }
+}
+
+type Callback = dyn Fn(bool, usize, usize, &str) + Send + Sync;
 
 #[derive(Default)]
 struct Inner {
@@ -12,9 +57,15 @@ struct Inner {
 }
 
 impl Inner {
-  pub fn maybe_call_callback(&self, complete: usize, total: usize, msg: &str) {
+  pub fn maybe_call_callback(
+    &self,
+    done: bool,
+    complete: usize,
+    total: usize,
+    msg: &str,
+  ) {
     if let Some(ref cb) = self.callback {
-      cb(complete, total, msg);
+      cb(done, complete, total, msg);
     }
   }
 
@@ -36,47 +87,7 @@ impl Drop for Job {
     s.complete += 1;
     let name = &s.job_names[self.id];
     let (complete, total) = s.progress();
-    s.maybe_call_callback(complete, total, name);
-  }
-}
-
-#[derive(Clone, Default)]
-pub struct Progress(Arc<Mutex<Inner>>);
-
-impl Progress {
-  pub fn new() -> Self {
-    Progress::default()
-  }
-
-  pub fn set_callback<F>(&self, f: F)
-  where
-    F: Fn(usize, usize, &str) + Send + Sync + 'static,
-  {
-    let mut s = self.0.lock().unwrap();
-    assert!(s.callback.is_none());
-    s.callback = Some(Arc::new(f));
-  }
-
-  /// Returns job counts: (complete, total)
-  pub fn progress(&self) -> (usize, usize) {
-    let s = self.0.lock().unwrap();
-    s.progress()
-  }
-
-  pub fn history(&self) -> Vec<String> {
-    let s = self.0.lock().unwrap();
-    s.job_names.clone()
-  }
-
-  pub fn add(&self, name: String) -> Job {
-    let mut s = self.0.lock().unwrap();
-    let id = s.job_names.len();
-    s.maybe_call_callback(s.complete, s.job_names.len() + 1, &name);
-    s.job_names.push(name);
-    Job {
-      id,
-      inner: self.0.clone(),
-    }
+    s.maybe_call_callback(false, complete, total, name);
   }
 }
 
@@ -116,7 +127,7 @@ mod tests {
       let p = Progress::new();
       let callback_history_ = callback_history.clone();
 
-      p.set_callback(move |complete, total, msg| {
+      p.set_callback(move |_done, complete, total, msg| {
         // println!("callback: {}, {}, {}", complete, total, msg);
         let mut h = callback_history_.lock().unwrap();
         h.push((complete, total, String::from(msg)));
