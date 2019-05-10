@@ -91,6 +91,14 @@ export function testPerm(
   testing.test(fn);
 }
 
+export async function delay(ms: number): Promise<void> {
+  return new Promise<void>(
+    (resolve): void => {
+      setTimeout(resolve, ms);
+    }
+  );
+}
+
 export function test(fn: testing.TestFunction): void {
   testPerm(
     {
