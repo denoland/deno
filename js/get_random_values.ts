@@ -2,35 +2,58 @@
 import * as msg from "gen/cli/msg_generated";
 import * as flatbuffers from "./flatbuffers";
 import * as dispatch from "./dispatch";
-import { assert } from "./util";
 
 function req(
-  typedArray: ArrayBufferView
+  typedArray:
+    | Int8Array
+    | Uint8Array
+    | Int16Array
+    | Uint16Array
+    | Int32Array
+    | Uint32Array
 ): [flatbuffers.Builder, msg.Any, flatbuffers.Offset, ArrayBufferView] {
-  assert(typedArray != null);
   const builder = flatbuffers.createBuilder();
   const inner = msg.GetRandomValues.createGetRandomValues(builder);
-  return [builder, msg.Any.GetRandomValues, inner, typedArray];
+  return [
+    builder,
+    msg.Any.GetRandomValues,
+    inner,
+    typedArray as ArrayBufferView
+  ];
 }
 
-/** Collects cryptographically secure random values. Throws if given anything
- * but an ArrayBufferView. The underlying CSPRNG in use is Rust's
- * `rand::rngs::ThreadRng`.
+/** Collects cryptographically secure random values. The underlying CSPRNG in
+ * use is Rust's `rand::rngs::ThreadRng`.
  *
  *       const arr = new Uint8Array(32);
  *       await Deno.getRandomValues(arr);
  */
-export async function getRandomValues(typedArray: ArrayBufferView): Promise<void> {
+export async function getRandomValues(
+  typedArray:
+    | Int8Array
+    | Uint8Array
+    | Int16Array
+    | Uint16Array
+    | Int32Array
+    | Uint32Array
+): Promise<void> {
   await dispatch.sendAsync(...req(typedArray));
 }
 
-/** Synchronously collects cryptographically secure random values. Throws if
- * given anything but an ArrayBufferView. The underlying CSPRNG in use is Rust's
- * `rand::rngs::ThreadRng`.
+/** Synchronously collects cryptographically secure random values. The
+ * underlying CSPRNG in use is Rust's `rand::rngs::ThreadRng`.
  *
  *       const arr = new Uint8Array(32);
  *       Deno.getRandomValuesSync(arr);
  */
-export function getRandomValuesSync(typedArray: ArrayBufferView): void {
+export function getRandomValuesSync(
+  typedArray:
+    | Int8Array
+    | Uint8Array
+    | Int16Array
+    | Uint16Array
+    | Int32Array
+    | Uint32Array
+): void {
   dispatch.sendSync(...req(typedArray));
 }

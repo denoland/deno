@@ -13,19 +13,6 @@ test(async function csprngValues(): Promise<void> {
   assertNotEquals(arr, new Int16Array(4));
 });
 
-test(async function csprngBigints(): Promise<void> {
-  const arr = new BigInt64Array(4);
-  await Deno.getRandomValues(arr);
-  assertNotEquals(arr, new BigInt64Array(4));
-});
-
-test(async function csprngGivenADataView(): Promise<void> {
-  const arr = new Int32Array(4);
-  const view = new DataView(arr.buffer);
-  await Deno.getRandomValues(view);
-  assertNotEquals(arr, new Int32Array(4));
-});
-
 test(function csprngValuesSync(): void {
   const arr = new Uint32Array(8);
   Deno.getRandomValuesSync(arr);
