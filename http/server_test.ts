@@ -6,10 +6,11 @@
 // https://github.com/golang/go/blob/master/src/net/http/responsewrite_test.go
 
 const { Buffer } = Deno;
-import { test } from "../testing/mod.ts";
+import { test, runIfMain } from "../testing/mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
-import { Response, ServerRequest } from "./server.ts";
+import { Response, ServerRequest, writeResponse } from "./server.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
+import { StringReader } from "../io/readers.ts";
 
 interface ResponseTest {
   response: Response;
@@ -261,3 +262,66 @@ test(async function requestBodyStreamWithTransferEncoding(): Promise<void> {
     }
   }
 });
+
+test(async function writeUint8ArrayResponse(): Promise<void> {
+  const shortText = "Hello";
+
+  const body = new TextEncoder().encode(shortText);
+  const res: Response = { body };
+
+  const buf = new Deno.Buffer();
+  await writeResponse(buf, res);
+
+  const decoder = new TextDecoder("utf-8");
+  const reader = new BufReader(buf);
+
+  let line: Uint8Array;
+  line = (await reader.readLine())[0];
+  assertEquals(decoder.decode(line), "HTTP/1.1 200 OK");
+
+  line = (await reader.readLine())[0];
+  assertEquals(decoder.decode(line), `content-length: ${shortText.length}`);
+
+  line = (await reader.readLine())[0];
+  assertEquals(line.byteLength, 0);
+
+  line = (await reader.readLine())[0];
+  assertEquals(decoder.decode(line), shortText);
+
+  line = (await reader.readLine())[0];
+  assertEquals(line.byteLength, 0);
+});
+
+test(async function writeStringReaderResponse(): Promise<void> {
+  const shortText = "Hello";
+
+  const body = new StringReader(shortText);
+  const res: Response = { body };
+
+  const buf = new Deno.Buffer();
+  await writeResponse(buf, res);
+
+  const decoder = new TextDecoder("utf-8");
+  const reader = new BufReader(buf);
+
+  let line: Uint8Array;
+  line = (await reader.readLine())[0];
+  assertEquals(decoder.decode(line), "HTTP/1.1 200 OK");
+
+  line = (await reader.readLine())[0];
+  assertEquals(decoder.decode(line), "transfer-encoding: chunked");
+
+  line = (await reader.readLine())[0];
+  assertEquals(line.byteLength, 0);
+
+  line = (await reader.readLine())[0];
+  assertEquals(decoder.decode(line), shortText.length.toString());
+
+  line = (await reader.readLine())[0];
+  assertEquals(decoder.decode(line), shortText);
+
+  line = (await reader.readLine())[0];
+  assertEquals(decoder.decode(line), "0");
+});
+
+runIfMain(import.meta);
