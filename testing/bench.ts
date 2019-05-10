@@ -61,10 +61,10 @@ function assertTiming(clock: BenchmarkClock): void {
 function createBenchmarkTimer(clock: BenchmarkClock): BenchmarkTimer {
   return {
     start(): void {
-      clock.start = Date.now();
+      clock.start = performance.now();
     },
     stop(): void {
-      clock.stop = Date.now();
+      clock.stop = performance.now();
     }
   };
 }
