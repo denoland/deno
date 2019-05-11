@@ -29,6 +29,38 @@ testPerm({ read: true }, async function filesToAsyncIterator(): Promise<void> {
   assertEquals(totalSize, 12);
 });
 
+test(async function readerToAsyncIterator(): Promise<void> {
+  // ref: https://github.com/denoland/deno/issues/2330
+  const encoder = new TextEncoder();
+
+  class TestReader implements Deno.Reader {
+    private offset = 0;
+    private buf = new Uint8Array(encoder.encode(this.s));
+
+    constructor(private readonly s: string) {}
+
+    async read(p: Uint8Array): Promise<Deno.ReadResult> {
+      const n = Math.min(p.byteLength, this.buf.byteLength - this.offset);
+      p.set(this.buf.slice(this.offset, this.offset + n));
+      this.offset += n;
+
+      return {
+        nread: n,
+        eof: this.offset === this.buf.byteLength
+      };
+    }
+  }
+
+  const reader = new TestReader("hello world!");
+
+  let totalSize = 0;
+  for await (const buf of Deno.toAsyncIterator(reader)) {
+    totalSize += buf.byteLength;
+  }
+
+  assertEquals(totalSize, 12);
+});
+
 testPerm({ write: false }, async function writePermFailure(): Promise<void> {
   const filename = "tests/hello.txt";
   const writeModes: Deno.OpenMode[] = ["w", "a", "x"];
