@@ -1,7 +1,7 @@
 # Deno Core
 
 This Rust crate contains the essential V8 bindings for Deno's command-line
-interface (Deno CLI). The main abstraction here is the Isolate which proivdes a
+interface (Deno CLI). The main abstraction here is the Isolate which provides a
 way to execute JavaScript. The Isolate is modeled as a
 `Future<Item=(), Error=JSError>` which completes once all of its ops have
 completed. The user must define what an Op is by implementing the `Dispatch`
