@@ -26,51 +26,6 @@
       <p><a href="#recent">recent data</a></p>
       <p><a href="#all">all data</a> (takes a moment to load)</p>
 
-      <h3 id="exec-time">Execution time <a href="#exec-time">#</a></h3>
-      <p>
-        This shows how much time total it takes to run a few simple deno
-        programs:
-        <a
-          href="https://github.com/denoland/deno/blob/master/tests/002_hello.ts"
-        >
-          tests/002_hello.ts
-        </a>,
-        <a
-          href="https://github.com/denoland/deno/blob/master/tests/003_relative_import.ts"
-          >tests/003_relative_import.ts</a
-        >,
-        <a
-          href="https://github.com/denoland/deno/blob/master/tests/worker_round_robin_bench.ts"
-          >tests/worker_round_robin_bench.ts</a
-        >, and
-        <a
-          href="https://github.com/denoland/deno/blob/master/tests/worker_startup_bench.ts"
-          >tests/worker_startup_bench.ts</a
-        >. For deno to execute typescript, it must first compile it to JS. A
-        warm startup is when deno has a cached JS output already, so it should
-        be fast because it bypasses the TS compiler. A cold startup is when deno
-        must compile from scratch.
-      </p>
-      <div id="exec-time-chart"></div>
-
-      <h3 id="throughput">Throughput <a href="#throughput">#</a></h3>
-
-      <p>
-        Time it takes to pipe a certain amount of data through Deno.
-
-        <a
-          href="https://github.com/denoland/deno/blob/master/tests/echo_server.ts"
-        >
-          echo_server.ts
-        </a>
-        and
-        <a href="https://github.com/denoland/deno/blob/master/tests/cat.ts">
-          cat.ts </a
-        >. Smaller is better.
-      </p>
-
-      <div id="throughput-chart"></div>
-
       <h3 id="req-per-sec">Req/Sec <a href="#req-per-sec">#</a></h3>
 
       <p>
@@ -129,6 +84,51 @@
       </p>
 
       <div id="max-latency-chart"></div>
+
+      <h3 id="exec-time">Execution time <a href="#exec-time">#</a></h3>
+      <p>
+        This shows how much time total it takes to run a few simple deno
+        programs:
+        <a
+          href="https://github.com/denoland/deno/blob/master/tests/002_hello.ts"
+        >
+          tests/002_hello.ts
+        </a>,
+        <a
+          href="https://github.com/denoland/deno/blob/master/tests/003_relative_import.ts"
+          >tests/003_relative_import.ts</a
+        >,
+        <a
+          href="https://github.com/denoland/deno/blob/master/tests/worker_round_robin_bench.ts"
+          >tests/worker_round_robin_bench.ts</a
+        >, and
+        <a
+          href="https://github.com/denoland/deno/blob/master/tests/worker_startup_bench.ts"
+          >tests/worker_startup_bench.ts</a
+        >. For deno to execute typescript, it must first compile it to JS. A
+        warm startup is when deno has a cached JS output already, so it should
+        be fast because it bypasses the TS compiler. A cold startup is when deno
+        must compile from scratch.
+      </p>
+      <div id="exec-time-chart"></div>
+
+      <h3 id="throughput">Throughput <a href="#throughput">#</a></h3>
+
+      <p>
+        Time it takes to pipe a certain amount of data through Deno.
+
+        <a
+          href="https://github.com/denoland/deno/blob/master/tests/echo_server.ts"
+        >
+          echo_server.ts
+        </a>
+        and
+        <a href="https://github.com/denoland/deno/blob/master/tests/cat.ts">
+          cat.ts </a
+        >. Smaller is better.
+      </p>
+
+      <div id="throughput-chart"></div>
 
       <h3 id="max-memory">Max Memory Usage <a href="#max-memory">#</a></h3>
 
