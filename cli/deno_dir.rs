@@ -689,6 +689,7 @@ fn fetch_remote_source_async(
       })
     },
   ).then(move |r| {
+    // Explicit drop to keep reference alive until future completes.
     drop(download_job);
     r
   })

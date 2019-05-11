@@ -223,7 +223,10 @@ pub fn compile_async(
           let res_data = res["data"].as_object().expect(
             "Error decoding compiler response: expected object field 'data'",
           );
+
+          // Explicit drop to keep reference alive until future completes.
           drop(compiling_job);
+
           match res["success"].as_bool() {
             Some(true) => Ok(ModuleMetaData {
               maybe_output_code: res_data["outputCode"]
