@@ -859,19 +859,9 @@ fn op_chmod(
     debug!("op_chmod {}", &path_);
     // Still check file/dir exists on windows
     let _metadata = fs::metadata(&path)?;
-    // Only work in unix
     #[cfg(any(unix))]
     {
-      // We need to use underscore to compile in Windows.
-      #[cfg_attr(
-        feature = "cargo-clippy",
-        allow(clippy::used_underscore_binding)
-      )]
       let mut permissions = _metadata.permissions();
-      #[cfg_attr(
-        feature = "cargo-clippy",
-        allow(clippy::used_underscore_binding)
-      )]
       permissions.set_mode(_mode);
       fs::set_permissions(&path, permissions)?;
     }
@@ -2049,6 +2039,7 @@ fn op_create_worker(
       parent_state.flags.clone(),
       parent_state.argv.clone(),
       op_selector_std,
+      parent_state.progress.clone(),
     );
     let rid = child_state.resource.rid;
     let name = format!("USER-WORKER-{}", specifier);

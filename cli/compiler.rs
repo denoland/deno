@@ -95,6 +95,7 @@ fn lazy_start(parent_state: ThreadSafeState) -> ResourceId {
         parent_state.flags.clone(),
         parent_state.argv.clone(),
         op_selector_compiler,
+        parent_state.progress.clone(),
       );
       let rid = child_state.resource.rid;
       let resource = child_state.resource.clone();
@@ -192,6 +193,10 @@ pub fn compile_async(
 
   let compiler_rid = lazy_start(parent_state.clone());
 
+  let compiling_job = parent_state
+    .progress
+    .add(format!("Compiling {}", module_meta_data_.module_name));
+
   let (local_sender, local_receiver) =
     oneshot::channel::<Result<ModuleMetaData, Option<JSError>>>();
 
@@ -218,6 +223,10 @@ pub fn compile_async(
           let res_data = res["data"].as_object().expect(
             "Error decoding compiler response: expected object field 'data'",
           );
+
+          // Explicit drop to keep reference alive until future completes.
+          drop(compiling_job);
+
           match res["success"].as_bool() {
             Some(true) => Ok(ModuleMetaData {
               maybe_output_code: res_data["outputCode"]

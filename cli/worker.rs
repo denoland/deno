@@ -69,6 +69,7 @@ impl Worker {
     let recursive_load = deno::RecursiveLoad::new(js_url.as_str(), self);
     recursive_load.and_then(
       move |(id, mut self_)| -> Result<Self, (deno::JSErrorOr<DenoError>, Self)> {
+        self_.state.progress.done();
         if is_prefetch {
           Ok(self_)
         } else {
@@ -82,6 +83,7 @@ impl Worker {
       },
     )
     .map_err(|(err, self_)| {
+      self_.state.progress.done();
       // Convert to RustOrJsError AND apply_source_map.
       let err = match err {
         deno::JSErrorOr::JSError(err) => RustOrJsError::Js(self_.apply_source_map(err)),
@@ -256,6 +258,7 @@ mod tests {
   use super::*;
   use crate::flags;
   use crate::ops::op_selector_std;
+  use crate::progress::Progress;
   use crate::resources;
   use crate::startup_data;
   use crate::state::ThreadSafeState;
@@ -272,8 +275,12 @@ mod tests {
     let js_url = Url::from_file_path(filename).unwrap();
 
     let argv = vec![String::from("./deno"), js_url.to_string()];
-    let state =
-      ThreadSafeState::new(flags::DenoFlags::default(), argv, op_selector_std);
+    let state = ThreadSafeState::new(
+      flags::DenoFlags::default(),
+      argv,
+      op_selector_std,
+      Progress::new(),
+    );
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
       let worker = Worker::new("TEST".to_string(), StartupData::None, state);
@@ -298,8 +305,12 @@ mod tests {
     let js_url = Url::from_file_path(filename).unwrap();
 
     let argv = vec![String::from("./deno"), js_url.to_string()];
-    let state =
-      ThreadSafeState::new(flags::DenoFlags::default(), argv, op_selector_std);
+    let state = ThreadSafeState::new(
+      flags::DenoFlags::default(),
+      argv,
+      op_selector_std,
+      Progress::new(),
+    );
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
       let worker = Worker::new("TEST".to_string(), StartupData::None, state);
@@ -316,6 +327,40 @@ mod tests {
 
     let metrics = &state_.metrics;
     assert_eq!(metrics.resolve_count.load(Ordering::SeqCst), 2);
+  }
+
+  #[test]
+  fn execute_006_url_imports() {
+    let filename = std::env::current_dir()
+      .unwrap()
+      .join("tests/006_url_imports.ts");
+    let js_url = Url::from_file_path(filename).unwrap();
+    let argv = vec![String::from("deno"), js_url.to_string()];
+    let mut flags = flags::DenoFlags::default();
+    flags.reload = true;
+    let state =
+      ThreadSafeState::new(flags, argv, op_selector_std, Progress::new());
+    let state_ = state.clone();
+    tokio_util::run(lazy(move || {
+      let mut worker = Worker::new(
+        "TEST".to_string(),
+        startup_data::deno_isolate_init(),
+        state,
+      );
+      js_check(worker.execute("denoMain()"));
+      let result = worker.execute_mod(&js_url, false);
+      let worker = match result {
+        Err((err, worker)) => {
+          eprintln!("execute_mod err {:?}", err);
+          worker
+        }
+        Ok(worker) => worker,
+      };
+      tokio_util::panic_on_error(worker)
+    }));
+
+    let metrics = &state_.metrics;
+    assert_eq!(metrics.resolve_count.load(Ordering::SeqCst), 3);
   }
 
   fn create_test_worker() -> Worker {

@@ -400,9 +400,8 @@ class Compiler implements ts.LanguageServiceHost, ts.FormatDiagnosticsHost {
   ): { outputCode: OutputCode; sourceMap: SourceMap } {
     this._log("compiler.compile", { moduleSpecifier, containingFile });
     const moduleMetaData = this._resolveModule(moduleSpecifier, containingFile);
-    const { fileName, mediaType, moduleId, sourceCode } = moduleMetaData;
+    const { fileName, mediaType, sourceCode } = moduleMetaData;
     this._scriptFileNames = [fileName];
-    console.warn("Compiling", moduleId);
     let outputCode: string;
     let sourceMap = "";
     // Instead of using TypeScript to transpile JSON modules, we will just do

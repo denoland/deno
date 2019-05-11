@@ -7,7 +7,6 @@ macro_rules! svec {
     ($($x:expr),*) => (vec![$($x.to_string()),*]);
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct DenoFlags {
   pub log_debug: bool,
@@ -307,7 +306,6 @@ fn resolve_paths(paths: Vec<String>) -> Vec<String> {
 
 /// Parse ArgMatches into internal DenoFlags structure.
 /// This method should not make any side effects.
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub fn parse_flags(matches: ArgMatches) -> DenoFlags {
   let mut flags = DenoFlags::default();
 
