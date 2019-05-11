@@ -422,9 +422,9 @@ export async function fetch(
         e instanceof DenoError &&
         (e as DenoError<ErrorKind.NotFound>).kind === ErrorKind.NotFound
       ) {
-        return new Response(404, [], new msg.FetchRes().bodyRid);
+        return new Response(404, [], new msg.FetchRes().bodyRid());
       } else {
-        return new Response(500, [], new msg.FetchRes().bodyRid);
+        return new Response(500, [], new msg.FetchRes().bodyRid());
       }
     }
   }
