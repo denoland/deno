@@ -6,6 +6,21 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.5.0 / 2019.05.11
+
+In deno:
+
+- Add progress bar (#2309)
+- fix: edge case in toAsyncIterator (#2335)
+- Upgrade rust crates (#2334)
+- white listed permissions (#2129 #2317)
+- Add Deno.chown (#2292)
+
+In deno_std:
+
+- benching: use performance.now (denoland/deno_std#385)
+- bytes fix bytesFindIndex and bytesFindLastIndex (denoland/deno_std#381)
+
 ### v0.4.0 / 2019.05.03
 
 In deno:
