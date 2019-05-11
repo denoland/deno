@@ -20,7 +20,8 @@ jobs:
     pool:
       vmImage: "macOS-10.13"
     steps:
-      - script: npm -g install eslint typescript@$(TS_VERSION) @typescript-eslint/eslint-plugin @typescript-eslint/parser eslint-config-prettier
+      - script: npm install -g functional-red-black-tree
+      - script: npm install -g eslint typescript@$(TS_VERSION) @typescript-eslint/eslint-plugin @typescript-eslint/parser eslint-config-prettier
       - script: curl -L https://deno.land/x/install/install.sh | sh -s $(DENO_VERSION)
       - script: echo '##vso[task.prependpath]$(HOME)/.deno/bin/'
       - script: eslint **/*.ts --max-warnings=0
