@@ -114,11 +114,11 @@ class PinnedBuf {
   // This constructor recreates a PinnedBuf that has previously been converted
   // to a PinnedBuf::Raw using the IntoRaw() method. This is a move operation;
   // the Raw struct is emptied in the process.
-  explicit PinnedBuf(Raw raw)
-      : data_ptr_(raw.data_ptr), data_len_(raw.data_len), pin_(raw.pin) {
-    raw.data_ptr = nullptr;
-    raw.data_len = 0;
-    raw.pin = nullptr;
+  explicit PinnedBuf(Raw* raw)
+      : data_ptr_(raw->data_ptr), data_len_(raw->data_len), pin_(raw->pin) {
+    raw->data_ptr = nullptr;
+    raw->data_len = 0;
+    raw->pin = nullptr;
   }
 
   // The IntoRaw() method converts the PinnedBuf to a PinnedBuf::Raw so it's
