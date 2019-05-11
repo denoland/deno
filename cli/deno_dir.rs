@@ -8,6 +8,7 @@ use crate::fs as deno_fs;
 use crate::http_util;
 use crate::js_errors::SourceMapGetter;
 use crate::msg;
+use crate::progress::Progress;
 use crate::tokio_util;
 use crate::version;
 use dirs;
@@ -44,6 +45,8 @@ pub struct DenoDir {
   /// The active configuration file contents (or empty array) which applies to
   /// source code cached by `DenoDir`.
   pub config: Vec<u8>,
+
+  pub progress: Progress,
 }
 
 impl DenoDir {
@@ -52,6 +55,7 @@ impl DenoDir {
   pub fn new(
     custom_root: Option<PathBuf>,
     state_config: &Option<Vec<u8>>,
+    progress: Progress,
   ) -> std::io::Result<Self> {
     // Only setup once.
     let home_dir = dirs::home_dir().expect("Could not get home directory.");
@@ -85,6 +89,7 @@ impl DenoDir {
       deps_http,
       deps_https,
       config,
+      progress,
     };
 
     // TODO Lazily create these directories.
@@ -578,9 +583,10 @@ fn fetch_remote_source_async(
   filename: &str,
 ) -> impl Future<Item = Option<ModuleMetaData>, Error = DenoError> {
   use crate::http_util::FetchOnceResult;
-  {
-    eprintln!("Downloading {}", module_name);
-  }
+
+  let download_job = deno_dir
+    .progress
+    .add(format!("Downloading {}", module_name));
 
   let filename = filename.to_owned();
   let module_name = module_name.to_owned();
@@ -682,7 +688,11 @@ fn fetch_remote_source_async(
         }
       })
     },
-  )
+  ).then(move |r| {
+    // Explicit drop to keep reference alive until future completes.
+    drop(download_job);
+    r
+  })
 }
 
 /// Fetch remote source code.
@@ -912,8 +922,11 @@ mod tests {
   fn test_setup() -> (TempDir, DenoDir) {
     let temp_dir = TempDir::new().expect("tempdir fail");
     let config = Some(b"{}".to_vec());
-    let deno_dir = DenoDir::new(Some(temp_dir.path().to_path_buf()), &config)
-      .expect("setup fail");
+    let deno_dir = DenoDir::new(
+      Some(temp_dir.path().to_path_buf()),
+      &config,
+      Progress::new(),
+    ).expect("setup fail");
     (temp_dir, deno_dir)
   }
 

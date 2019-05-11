@@ -374,7 +374,6 @@ pub fn get_message_stream_from_worker(rid: ResourceId) -> WorkerReceiverStream {
   WorkerReceiverStream { rid }
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct ChildResources {
   pub child_rid: ResourceId,
   pub stdin_rid: Option<ResourceId>,

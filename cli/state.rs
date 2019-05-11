@@ -5,6 +5,7 @@ use crate::flags;
 use crate::global_timer::GlobalTimer;
 use crate::ops;
 use crate::permissions::DenoPermissions;
+use crate::progress::Progress;
 use crate::resources;
 use crate::resources::ResourceId;
 use crate::worker::Worker;
@@ -28,7 +29,6 @@ pub type WorkerReceiver = async_mpsc::Receiver<Buf>;
 pub type WorkerChannels = (WorkerSender, WorkerReceiver);
 pub type UserWorkerTable = HashMap<ResourceId, Shared<Worker>>;
 
-// AtomicU64 is currently unstable
 #[derive(Default)]
 pub struct Metrics {
   pub ops_dispatched: AtomicUsize,
@@ -39,13 +39,11 @@ pub struct Metrics {
   pub resolve_count: AtomicUsize,
 }
 
-// Wrap State so that it can implement Dispatch.
+/// Isolate cannot be passed between threads but ThreadSafeState can.
+/// ThreadSafeState satisfies Send and Sync. So any state that needs to be
+/// accessed outside the main V8 thread should be inside ThreadSafeState.
 pub struct ThreadSafeState(Arc<State>);
 
-// Isolate cannot be passed between threads but ThreadSafeState can.
-// ThreadSafeState satisfies Send and Sync.
-// So any state that needs to be accessed outside the main V8 thread should be
-// inside ThreadSafeState.
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct State {
   pub dir: deno_dir::DenoDir,
@@ -63,8 +61,11 @@ pub struct State {
   pub global_timer: Mutex<GlobalTimer>,
   pub workers: Mutex<UserWorkerTable>,
   pub start_time: Instant,
+  /// A reference to this worker's resource.
   pub resource: resources::Resource,
   pub dispatch_selector: ops::OpSelector,
+  /// Reference to global progress bar.
+  pub progress: Progress,
 }
 
 impl Clone for ThreadSafeState {
@@ -91,6 +92,7 @@ impl ThreadSafeState {
     flags: flags::DenoFlags,
     argv_rest: Vec<String>,
     dispatch_selector: ops::OpSelector,
+    progress: Progress,
   ) -> Self {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
 
@@ -140,7 +142,8 @@ impl ThreadSafeState {
     };
 
     ThreadSafeState(Arc::new(State {
-      dir: deno_dir::DenoDir::new(custom_root, &config).unwrap(),
+      dir: deno_dir::DenoDir::new(custom_root, &config, progress.clone())
+        .unwrap(),
       argv: argv_rest,
       permissions: DenoPermissions::from_flags(&flags),
       flags,
@@ -153,6 +156,7 @@ impl ThreadSafeState {
       start_time: Instant::now(),
       resource,
       dispatch_selector,
+      progress,
     }))
   }
 
@@ -210,6 +214,7 @@ impl ThreadSafeState {
       flags::DenoFlags::default(),
       argv,
       ops::op_selector_std,
+      Progress::new(),
     )
   }
 
