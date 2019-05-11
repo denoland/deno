@@ -413,7 +413,7 @@ export async function fetch(
   if (m && m[0]) {
     try {
       const f = await open(m[1]);
-      const headers: [string, string][] = [];
+      const headers: Array<[string, string]> = [];
       // TODO : Add return type. Using Deno_std media_types module
       const response = new Response(200, headers, f.rid);
       return response;
