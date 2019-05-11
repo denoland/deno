@@ -167,7 +167,7 @@ void deno_execute(Deno* d_, void* user_data, const char* js_filename,
 
 void deno_pinned_buf_delete(deno_pinned_buf* buf) {
   // The PinnedBuf destructor implicitly releases the ArrayBuffer reference.
-  auto _ = deno::PinnedBuf(*buf);
+  auto _ = deno::PinnedBuf(buf);
 }
 
 void deno_respond(Deno* d_, void* user_data, deno_buf buf) {
