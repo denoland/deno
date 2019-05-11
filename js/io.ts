@@ -168,7 +168,7 @@ export function toAsyncIterator(r: Reader): AsyncIterableIterator<Uint8Array> {
 
       return {
         value: b.subarray(0, result.nread),
-        done: false,
+        done: false
       };
     }
   };
