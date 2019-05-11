@@ -159,7 +159,7 @@ testPerm({ net: true }, async function fetchInitBlobBody(): Promise<void> {
   assert(response.headers.get("content-type").startsWith("text/javascript"));
 });
 
-testPerm({ read: true }, async function fetchLocalFile() {
+testPerm({ read: true }, async function fetchLocalFile(): void {
   const res = await fetch("file:///./js/fetch.ts");
   const text = await res.text();
   const decoder = new TextDecoder("utf-8");
