@@ -786,8 +786,6 @@ These Deno logos, like the Deno software, are distributed under the MIT license
 
 ## Frequently Asked Questions
 
-re is the FAQ section, where you'll maybe find the answers of your questions.
-
 ### Is Deno production ready?
 
 No.
@@ -808,9 +806,20 @@ First of all thanks for the help. You may first start to parse all the issues in
 functionnalities, be sure to start an issue to discuss about it. Also please
 refer to the [contributing section](#Contributing).
 
+### How Deno is different from node?
+
+- Deno is secure by default
+- Deno only supports ES modules
+- Deno supports TypeScript natively
+- Deno is only one binary
+
 ### Is deno going to support node?
 
 No, but there is some polyfills in development.
+
+### Should i switch from node to Deno?
+
+No, as it's not production ready you have no benefit to do the switch.
 
 ## Contributing
 
