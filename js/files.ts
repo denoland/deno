@@ -105,6 +105,14 @@ export function readSync(rid: number, p: Uint8Array): ReadResult {
  *       })();
  */
 export async function read(rid: number, p: Uint8Array): Promise<ReadResult> {
+  if(!Number.isInteger(rid)) {
+    throw new Error("rid must be integer.");
+  }
+
+  if(!(p instanceof Uint8Array)) {
+    throw new Error("data must be Uint8Array.");
+  }
+
   const nread = await sendAsyncMinimal(OP_READ, rid, p);
   if (nread < 0) {
     throw new Error("read error");
@@ -158,6 +166,14 @@ export function writeSync(rid: number, p: Uint8Array): number {
  *
  */
 export async function write(rid: number, p: Uint8Array): Promise<number> {
+  if(!Number.isInteger(rid)) {
+    throw new Error("rid must be integer.");
+  }
+
+  if(!(p instanceof Uint8Array)) {
+    throw new Error("data must be Uint8Array.");
+  }
+
   let result = await sendAsyncMinimal(OP_WRITE, rid, p);
   if (result < 0) {
     throw new Error("write error");
