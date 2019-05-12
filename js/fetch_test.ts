@@ -167,6 +167,7 @@ testPerm({ read: true }, async function fetchLocalFile(): Promise<void> {
   assertEquals(text, data);
   const resNotFound = await fetch("file:///./js/NotExistingFile.ts");
   assertEquals(resNotFound.status, 404);
+  assertEquals(await resNotFound.text(), "");
 });
 
 // TODO(ry) The following tests work but are flaky. There's a race condition

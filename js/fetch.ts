@@ -8,12 +8,14 @@ import { TextDecoder, TextEncoder } from "./text_encoding";
 import { DenoBlob, bytesSymbol as blobBytesSymbol } from "./blob";
 import { Headers } from "./headers";
 import * as io from "./io";
-import { read, close } from "./files";
+import { open, read, close } from "./files";
 import { Buffer } from "./buffer";
 import { FormData } from "./form_data";
+import { build } from "./build";
 import { URLSearchParams } from "./url_search_params";
-import { open } from "./files";
 import { DenoError, ErrorKind } from "./errors";
+
+const isWin = build.os === "win";
 
 function getHeaderValueParams(value: string): Map<string, string> {
   const params = new Map();
@@ -418,13 +420,19 @@ export async function fetch(
       const response = new Response(200, headers, f.rid);
       return response;
     } catch (e) {
+      let f;
+      if (isWin) {
+        f = await open("NUL");
+      } else {
+        f = await open("/dev/null");
+      }
       if (
         e instanceof DenoError &&
         (e as DenoError<ErrorKind.NotFound>).kind === ErrorKind.NotFound
       ) {
-        return new Response(404, [], -1);
+        return new Response(404, [], f.rid);
       } else {
-        return new Response(500, [], -1);
+        return new Response(500, [], f.rid);
       }
     }
   }
