@@ -15,6 +15,9 @@ pub struct DenoFlags {
   /// When the `--config`/`-c` flag is used to pass the name, this will be set
   /// the path passed on the command line, otherwise `None`.
   pub config_path: Option<String>,
+  /// When the `--importmap` flag is used to pass the name, this will be set
+  /// the path passed on the command line, otherwise `None`.
+  pub import_map_path: Option<String>,
   pub allow_read: bool,
   pub read_whitelist: Vec<String>,
   pub allow_write: bool,
@@ -80,6 +83,13 @@ To get help on the another subcommands (run in this case):
         .long("config")
         .value_name("FILE")
         .help("Load compiler configuration file")
+        .takes_value(true)
+        .global(true),
+    ).arg(
+      Arg::with_name("importmap")
+        .long("importmap")
+        .value_name("FILE")
+        .help("Load import map file")
         .takes_value(true)
         .global(true),
     ).arg(
@@ -332,6 +342,7 @@ pub fn parse_flags(matches: ArgMatches) -> DenoFlags {
     flags.reload = true;
   }
   flags.config_path = matches.value_of("config").map(ToOwned::to_owned);
+  flags.import_map_path = matches.value_of("importmap").map(ToOwned::to_owned);
   if matches.is_present("v8-options") {
     let v8_flags = svec!["deno", "--help"];
     flags.v8_flags = Some(v8_flags);
@@ -858,6 +869,7 @@ mod tests {
     assert_eq!(subcommand, DenoSubcommand::Xeval);
     assert_eq!(argv, svec!["deno", "console.log(val)"]);
   }
+
   #[test]
   fn test_flags_from_vec_19() {
     use tempfile::TempDir;
@@ -882,6 +894,7 @@ mod tests {
     assert_eq!(subcommand, DenoSubcommand::Run);
     assert_eq!(argv, svec!["deno", "script.ts"]);
   }
+
   #[test]
   fn test_flags_from_vec_20() {
     use tempfile::TempDir;
@@ -906,6 +919,7 @@ mod tests {
     assert_eq!(subcommand, DenoSubcommand::Run);
     assert_eq!(argv, svec!["deno", "script.ts"]);
   }
+
   #[test]
   fn test_flags_from_vec_21() {
     let (flags, subcommand, argv) = flags_from_vec(svec![
@@ -948,5 +962,24 @@ mod tests {
       argv,
       svec!["deno", PRETTIER_URL, "script_1.ts", "script_2.ts"]
     );
+  }
+
+#[test]
+  fn test_flags_from_vec_32() {
+    let (flags, subcommand, argv) = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--importmap=importmap.json",
+      "script.ts"
+    ]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        import_map_path: Some("importmap.json".to_owned()),
+        ..DenoFlags::default()
+      }
+    );
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "script.ts"]);
   }
 }
