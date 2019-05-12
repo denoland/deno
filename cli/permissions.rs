@@ -124,7 +124,6 @@ impl Default for PermissionAccessor {
   }
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 #[derive(Debug, Default)]
 pub struct DenoPermissions {
   // Keep in sync with src/permissions.ts

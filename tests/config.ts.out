@@ -1,7 +1,7 @@
 Unsupported compiler options in "[WILDCARD]tests/config.tsconfig.json"
   The following options were ignored:
     module, target
-Compiling file://[WILDCARD]tests/config.ts
+
 [WILDCARD]tests/config.ts:3:5 - error TS2532: Object is possibly 'undefined'.
 
 3 if (map.get("bar").foo) {

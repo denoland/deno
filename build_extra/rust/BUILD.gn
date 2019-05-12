@@ -239,7 +239,7 @@ rust_crate("dirs") {
 
 rust_crate("flatbuffers") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/flatbuffers-0.5.0/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/flatbuffers-0.6.0/src/lib.rs"
   extern = [ ":smallvec" ]
   args = [
     "--cap-lints",
@@ -259,7 +259,7 @@ rust_crate("fnv") {
 
 rust_crate("futures") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/futures-0.1.26/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/futures-0.1.27/src/lib.rs"
   features = [
     "default",
     "use_std",
@@ -342,7 +342,7 @@ rust_crate("httparse") {
 
 rust_crate("hyper") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/hyper-0.12.27/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/hyper-0.12.28/src/lib.rs"
   features = [
     "__internal_flaky_tests",
     "default",
@@ -464,7 +464,7 @@ rust_crate("iovec") {
 
 rust_crate("itoa") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/itoa-0.4.3/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/itoa-0.4.4/src/lib.rs"
   features = [
     "default",
     "std",
@@ -495,7 +495,7 @@ rust_crate("lazycell") {
 
 rust_crate("libc") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/libc-0.2.51/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/libc-0.2.54/src/lib.rs"
   features = [
     "default",
     "use_std",
@@ -837,7 +837,7 @@ rust_crate("rand_isaac") {
 
 rust_crate("rand_jitter") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rand_jitter-0.1.3/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rand_jitter-0.1.4/src/lib.rs"
   features = [
     "rand_core",
     "std",
@@ -1095,7 +1095,12 @@ rust_crate("rustls") {
 }
 
 rust_crate("rustyline") {
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rustyline-3.0.0/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rustyline-4.0.0/src/lib.rs"
+  features = [
+    "default",
+    "dirs",
+    "with-dirs",
+  ]
   extern = [
     ":dirs",
     ":libc",
@@ -1110,18 +1115,9 @@ rust_crate("rustyline") {
   ]
   if (is_posix) {
     extern += [
-      ":utf8parse",
-
-      # Override: use nix v0.13.0 instead of v0.11.0.
       ":nix",
+      ":utf8parse",
     ]
-    ## Override: use nix v0.13.0 instead of v0.11.0.
-    # extern_version = [
-    #   {
-    #     crate_name = "nix"
-    #     crate_version = "0.11.0"
-    #   },
-    # ]
   }
   if (is_win) {
     extern += [ ":winapi" ]
@@ -1130,7 +1126,7 @@ rust_crate("rustyline") {
 
 rust_crate("ryu") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ryu-0.2.7/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ryu-0.2.8/src/lib.rs"
   args = [
     "--cap-lints",
     "allow",
@@ -1166,7 +1162,7 @@ rust_crate("sct") {
 
 rust_crate("serde") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/serde-1.0.90/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/serde-1.0.91/src/lib.rs"
   features = [
     "default",
     "std",
@@ -1714,12 +1710,25 @@ rust_crate("url") {
   ]
 }
 
+rust_crate("utf8_ranges") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/utf8-ranges-1.0.2/src/lib.rs"
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
 rust_crate("utime") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/utime-0.2.1/src/lib.rs"
-
+  extern = [ ":libc" ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
   if (is_win) {
-    extern = [ ":kernel32" ]
+    extern += [ ":kernel32" ]
     extern_version = [
       {
         crate_name = "winapi"
@@ -1728,23 +1737,18 @@ rust_crate("utime") {
     ]
   }
 
-  if (is_posix) {
-    extern = [ ":libc" ]
-  }
-
-  args = [
-    "--cap-lints",
-    "allow",
-  ]
-}
-
-rust_crate("utf8_ranges") {
-  edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/utf8-ranges-1.0.2/src/lib.rs"
-  args = [
-    "--cap-lints",
-    "allow",
-  ]
+  # if (is_posix) {
+  #   # Override: 'kernel32' should be a windows-only dependency.
+  #   extern += [ ":kernel32" ]
+  #
+  #   # Override: 'winapi' should be a windows-only dependency.
+  #   extern_version = [
+  #     {
+  #       crate_name = "winapi"
+  #       crate_version = "0.2.8"
+  #     },
+  #   ]
+  # }
 }
 
 rust_crate("vec_map") {
@@ -1891,7 +1895,20 @@ if (is_posix) {
 
   rust_crate("signal_hook") {
     edition = "2015"
-    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/signal-hook-0.1.8/src/lib.rs"
+    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/signal-hook-0.1.9/src/lib.rs"
+    extern = [
+      ":libc",
+      ":signal_hook_registry",
+    ]
+    args = [
+      "--cap-lints",
+      "allow",
+    ]
+  }
+
+  rust_crate("signal_hook_registry") {
+    edition = "2015"
+    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/signal-hook-registry-1.0.1/src/lib.rs"
     extern = [
       ":arc_swap",
       ":libc",
@@ -1963,24 +1980,6 @@ if (is_posix) {
       "allow",
     ]
   }
-
-  ## Override: use nix v0.13.0 instead.
-  # rust_crate("nix-0.11.0") {
-  #   crate_name = "nix"
-  #   crate_version = "0.11.0"
-  #   edition = "2015"
-  #   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/nix-0.11.0/src/lib.rs"
-  #   extern = [
-  #     ":bitflags",
-  #     ":cfg_if",
-  #     ":libc",
-  #     ":void",
-  #   ]
-  #   args = [
-  #     "--cap-lints",
-  #     "allow",
-  #   ]
-  # }
 }
 
 if (is_win) {
@@ -2032,7 +2031,7 @@ if (is_win) {
 
   rust_crate("socket2") {
     edition = "2015"
-    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/socket2-0.3.8/src/lib.rs"
+    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/socket2-0.3.9/src/lib.rs"
     extern = [ ":winapi" ]
     args = [
       "--cap-lints",
