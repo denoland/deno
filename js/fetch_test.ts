@@ -170,6 +170,19 @@ testPerm({ read: true }, async function fetchLocalFile(): Promise<void> {
   assertEquals(await resNotFound.text(), "");
 });
 
+testPerm({}, async function fetchLocalNoPerm(): Promise<void> {
+  let hasThrown = false;
+  let _err;
+  try {
+    await fetch("file:///./js/fetch.ts");
+  } catch (e) {
+    _err = e;
+    hasThrown = true;
+  }
+  assertEquals(_err.kind, Deno.ErrorKind.PermissionDenied);
+  assert(hasThrown);
+});
+
 // TODO(ry) The following tests work but are flaky. There's a race condition
 // somewhere. Here is what one of these flaky failures looks like:
 //
