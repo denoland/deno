@@ -3,8 +3,7 @@ import {
   testPerm,
   assert,
   assertEquals,
-  runIfMain,
-  delay
+  runIfMain
 } from "./test_util.ts";
 
 /*
@@ -102,7 +101,6 @@ testPerm({ net: true }, async function netDialListen(): Promise<void> {
 
   listener.close();
   conn.close();
-  await delay(100);
 });
 
 testPerm({ net: true }, async function netListenAsyncIterator(): Promise<void> {
