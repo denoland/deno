@@ -674,7 +674,7 @@ D8_PATH=target/release/ ./third_party/v8/tools/linux-tick-processor
 isolate-0x7fad98242400-v8.log --preprocess > prof.json
 ```
 
-Open `third_party/v8/tools/profview/index.html` in your brower, and select
+Open `third_party/v8/tools/profview/index.html` in your browser, and select
 `prof.json` to view the distribution graphically.
 
 To learn more about `d8` and profiling, check out the following links:
