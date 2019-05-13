@@ -1,4 +1,4 @@
-// This file is copied from prettier@1.16.1
+// This file is copied from prettier@1.17.1
 /**
  * Copyright © James Long and contributors
  * 
@@ -15,7 +15,7 @@
 }(globalThis, (function () { 'use strict';
 
 var name = "prettier";
-var version$1 = "1.16.1";
+var version$1 = "1.17.1";
 var description = "Prettier is an opinionated code formatter";
 var bin = {
   "prettier": "./bin/prettier.js"
@@ -29,11 +29,12 @@ var engines = {
   "node": ">=6"
 };
 var dependencies = {
-  "@angular/compiler": "6.1.10",
-  "@babel/code-frame": "7.0.0-beta.46",
+  "@angular/compiler": "7.2.9",
+  "@babel/code-frame": "7.0.0",
   "@babel/parser": "7.2.0",
   "@glimmer/syntax": "0.30.3",
   "@iarna/toml": "2.0.0",
+  "@typescript-eslint/typescript-estree": "1.6.0",
   "angular-estree-parser": "1.1.5",
   "angular-html-parser": "1.2.0",
   "camelcase": "4.1.0",
@@ -52,11 +53,12 @@ var dependencies = {
   "flow-parser": "0.84.0",
   "get-stream": "3.0.0",
   "globby": "6.1.0",
-  "graphql": "0.13.2",
+  "graphql": "14.2.0",
   "html-element-attributes": "2.0.0",
   "html-styles": "1.0.0",
   "html-tag-names": "1.1.2",
-  "ignore": "3.3.7",
+  "ignore": "4.0.6",
+  "is-ci": "2.0.0",
   "jest-docblock": "23.2.0",
   "json-stable-stringify": "1.0.1",
   "leven": "2.1.0",
@@ -80,8 +82,7 @@ var dependencies = {
   "resolve": "1.5.0",
   "semver": "5.4.1",
   "string-width": "3.0.0",
-  "typescript": "3.2.2",
-  "typescript-estree": "18.0.0",
+  "typescript": "3.4.1",
   "unicode-regex": "2.0.0",
   "unified": "6.1.6",
   "vnopts": "1.0.2",
@@ -110,7 +111,7 @@ var devDependencies = {
   "jest-snapshot-serializer-raw": "1.1.0",
   "jest-watch-typeahead": "0.1.0",
   "mkdirp": "0.5.1",
-  "prettier": "1.16.0",
+  "prettier": "1.17.0",
   "prettylint": "1.0.0",
   "rimraf": "2.6.2",
   "rollup": "0.47.6",
@@ -128,9 +129,6 @@ var devDependencies = {
   "strip-ansi": "4.0.0",
   "tempy": "0.2.1",
   "webpack": "3.12.0"
-};
-var resolutions = {
-  "@babel/code-frame": "7.0.0-beta.46"
 };
 var scripts = {
   "prepublishOnly": "echo \"Error: must publish from dist/\" && exit 1",
@@ -161,7 +159,6 @@ var _package = {
   engines: engines,
   dependencies: dependencies,
   devDependencies: devDependencies,
-  resolutions: resolutions,
   scripts: scripts
 };
 
@@ -178,7 +175,6 @@ var _package$1 = Object.freeze({
 	engines: engines,
 	dependencies: dependencies,
 	devDependencies: devDependencies,
-	resolutions: resolutions,
 	scripts: scripts,
 	default: _package
 });
@@ -6327,6 +6323,10 @@ var options$2 = {
       value: "angular",
       since: "1.15.0",
       description: "Angular"
+    }, {
+      value: "lwc",
+      since: "1.17.0",
+      description: "Lightning Web Components"
     }]
   },
   plugins: {
@@ -6505,6 +6505,7 @@ function getSupportInfo$2(version, opts) {
     });
   });
   var usePostCssParser = semver.lt(version, "1.7.1");
+  var useBabylonParser = semver.lt(version, "1.16.0");
   var languages = plugins.reduce(function (all, plugin) {
     return all.concat(plugin.languages || []);
   }, []).filter(filterSince).map(function (language) {
@@ -6518,6 +6519,15 @@ function getSupportInfo$2(version, opts) {
     if (language.name === "TypeScript") {
       return Object.assign({}, language, {
         parsers: ["typescript"]
+      });
+    } // "babylon" was renamed to "babel" in 1.16.0
+
+
+    if (useBabylonParser && language.parsers.indexOf("babel") !== -1) {
+      return Object.assign({}, language, {
+        parsers: language.parsers.map(function (parser) {
+          return parser === "babel" ? "babylon" : parser;
+        })
       });
     }
 
@@ -11331,19 +11341,20 @@ var loc = {
 };
 
 var jsTokens = createCommonjsModule(function (module, exports) {
-  // Copyright 2014, 2015, 2016, 2017 Simon Lydell
+  // Copyright 2014, 2015, 2016, 2017, 2018 Simon Lydell
   // License: MIT. (See LICENSE.)
   Object.defineProperty(exports, "__esModule", {
     value: true
   }); // This regex comes from regex.coffee, and is inserted here by generate-index.js
   // (run `npm run build`).
 
-  exports.default = /((['"])(?:(?!\2|\\).|\\(?:\r\n|[\s\S]))*(\2)?|`(?:[^`\\$]|\\[\s\S]|\$(?!\{)|\$\{(?:[^{}]|\{[^}]*\}?)*\}?)*(`)?)|(\/\/.*)|(\/\*(?:[^*]|\*(?!\/))*(\*\/)?)|(\/(?!\*)(?:\[(?:(?![\]\\]).|\\.)*\]|(?![\/\]\\]).|\\.)+\/(?:(?!\s*(?:\b|[\u0080-\uFFFF$\\'"~({]|[+\-!](?!=)|\.?\d))|[gmiyu]{1,5}\b(?![\u0080-\uFFFF$\\]|\s*(?:[+\-*%&|^<>!=?({]|\/(?![\/*])))))|(0[xX][\da-fA-F]+|0[oO][0-7]+|0[bB][01]+|(?:\d*\.\d+|\d+\.?)(?:[eE][+-]?\d+)?)|((?!\d)(?:(?!\s)[$\w\u0080-\uFFFF]|\\u[\da-fA-F]{4}|\\u\{[\da-fA-F]+\})+)|(--|\+\+|&&|\|\||=>|\.{3}|(?:[+\-\/%&|^]|\*{1,2}|<{1,2}|>{1,3}|!=?|={1,2})=?|[?~.,:;[\](){}])|(\s+)|(^$|[\s\S])/g;
+  exports.default = /((['"])(?:(?!\2|\\).|\\(?:\r\n|[\s\S]))*(\2)?|`(?:[^`\\$]|\\[\s\S]|\$(?!\{)|\$\{(?:[^{}]|\{[^}]*\}?)*\}?)*(`)?)|(\/\/.*)|(\/\*(?:[^*]|\*(?!\/))*(\*\/)?)|(\/(?!\*)(?:\[(?:(?![\]\\]).|\\.)*\]|(?![\/\]\\]).|\\.)+\/(?:(?!\s*(?:\b|[\u0080-\uFFFF$\\'"~({]|[+\-!](?!=)|\.?\d))|[gmiyus]{1,6}\b(?![\u0080-\uFFFF$\\]|\s*(?:[+\-*%&|^<>!=?({]|\/(?![\/*])))))|(0[xX][\da-fA-F]+|0[oO][0-7]+|0[bB][01]+|(?:\d*\.\d+|\d+\.?)(?:[eE][+-]?\d+)?)|((?!\d)(?:(?!\s)[$\w\u0080-\uFFFF]|\\u[\da-fA-F]{4}|\\u\{[\da-fA-F]+\})+)|(--|\+\+|&&|\|\||=>|\.{3}|(?:[+\-\/%&|^]|\*{1,2}|<{1,2}|>{1,3}|!=?|={1,2})=?|[?~.,:;[\](){}])|(\s+)|(^$|[\s\S])/g;
 
   exports.matchToToken = function (match) {
     var token = {
       type: "invalid",
-      value: match[0]
+      value: match[0],
+      closed: undefined
     };
     if (match[1]) token.type = "string", token.closed = !!(match[3] || match[4]);else if (match[5]) token.type = "comment";else if (match[6]) token.type = "comment", token.closed = !!match[7];else if (match[8]) token.type = "regex";else if (match[9]) token.type = "number";else if (match[10]) token.type = "name";else if (match[11]) token.type = "punctuator";else if (match[12]) token.type = "whitespace";
     return token;
@@ -12464,7 +12475,7 @@ var lib$3 = createCommonjsModule(function (module, exports) {
   exports.default = highlight;
 
   function _jsTokens() {
-    var data = _interopRequireWildcard(jsTokens);
+    var data = _interopRequireWildcard$$1(jsTokens);
 
     _jsTokens = function _jsTokens() {
       return data;
@@ -12474,7 +12485,7 @@ var lib$3 = createCommonjsModule(function (module, exports) {
   }
 
   function _esutils() {
-    var data = _interopRequireDefault(utils$2);
+    var data = _interopRequireDefault$$1(utils$2);
 
     _esutils = function _esutils() {
       return data;
@@ -12484,7 +12495,7 @@ var lib$3 = createCommonjsModule(function (module, exports) {
   }
 
   function _chalk() {
-    var data = _interopRequireDefault(chalk$5);
+    var data = _interopRequireDefault$$1(chalk$5);
 
     _chalk = function _chalk() {
       return data;
@@ -12493,13 +12504,13 @@ var lib$3 = createCommonjsModule(function (module, exports) {
     return data;
   }
 
-  function _interopRequireDefault(obj) {
+  function _interopRequireDefault$$1(obj) {
     return obj && obj.__esModule ? obj : {
       default: obj
     };
   }
 
-  function _interopRequireWildcard(obj) {
+  function _interopRequireWildcard$$1(obj) {
     if (obj && obj.__esModule) {
       return obj;
     } else {
@@ -12544,8 +12555,9 @@ var lib$3 = createCommonjsModule(function (module, exports) {
 
   function getTokenType(match) {
     var _match$slice = match.slice(-2),
-        offset = _match$slice[0],
-        text = _match$slice[1];
+        _match$slice2 = _slicedToArray(_match$slice, 2),
+        offset = _match$slice2[0],
+        text = _match$slice2[1];
 
     var token = (0, _jsTokens().matchToToken)(match);
 
@@ -12610,10 +12622,8 @@ var lib$3 = createCommonjsModule(function (module, exports) {
     return chalk;
   }
 
-  function highlight(code, options) {
-    if (options === void 0) {
-      options = {};
-    }
+  function highlight(code) {
+    var options = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
 
     if (shouldHighlight(options)) {
       var chalk = getChalk(options);
@@ -12683,7 +12693,7 @@ var lib$2 = createCommonjsModule(function (module, exports) {
   var NEWLINE = /\r\n|[\n\r\u2028\u2029]/;
 
   function getMarkerLines(loc, source, opts) {
-    var startLoc = Object.assign({}, {
+    var startLoc = Object.assign({
       column: 0,
       line: -1
     }, loc.start);
@@ -12748,11 +12758,8 @@ var lib$2 = createCommonjsModule(function (module, exports) {
     };
   }
 
-  function codeFrameColumns(rawLines, loc, opts) {
-    if (opts === void 0) {
-      opts = {};
-    }
-
+  function codeFrameColumns(rawLines, loc) {
+    var opts = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
     var highlighted = (opts.highlightCode || opts.forceColor) && (0, _highlight().shouldHighlight)(opts);
     var chalk = (0, _highlight().getChalk)(opts);
     var defs = getDefs(chalk);
@@ -12773,8 +12780,8 @@ var lib$2 = createCommonjsModule(function (module, exports) {
     var numberMaxWidth = String(end).length;
     var frame = lines.slice(start, end).map(function (line, index) {
       var number = start + 1 + index;
-      var paddedNumber = (" " + number).slice(-numberMaxWidth);
-      var gutter = " " + paddedNumber + " | ";
+      var paddedNumber = " ".concat(number).slice(-numberMaxWidth);
+      var gutter = " ".concat(paddedNumber, " | ");
       var hasMarker = markerLines[number];
       var lastMarkerLine = !markerLines[number + 1];
 
@@ -12793,12 +12800,12 @@ var lib$2 = createCommonjsModule(function (module, exports) {
 
         return [maybeHighlight(defs.marker, ">"), maybeHighlight(defs.gutter, gutter), line, markerLine].join("");
       } else {
-        return " " + maybeHighlight(defs.gutter, gutter) + line;
+        return " ".concat(maybeHighlight(defs.gutter, gutter)).concat(line);
       }
     }).join("\n");
 
     if (opts.message && !hasColumns) {
-      frame = "" + " ".repeat(numberMaxWidth + 1) + opts.message + "\n" + frame;
+      frame = "".concat(" ".repeat(numberMaxWidth + 1)).concat(opts.message, "\n").concat(frame);
     }
 
     if (highlighted) {
@@ -12808,10 +12815,8 @@ var lib$2 = createCommonjsModule(function (module, exports) {
     }
   }
 
-  function _default(rawLines, lineNumber, colNumber, opts) {
-    if (opts === void 0) {
-      opts = {};
-    }
+  function _default(rawLines, lineNumber, colNumber) {
+    var opts = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : {};
 
     if (!deprecationWarningShown) {
       deprecationWarningShown = true;
@@ -13479,14 +13484,6 @@ function getPenultimate(arr) {
   return null;
 }
 
-function getLast$3(arr) {
-  if (arr.length > 0) {
-    return arr[arr.length - 1];
-  }
-
-  return null;
-}
-
 function skip(chars) {
   return function (text, index, opts) {
     var backwards = opts && opts.backwards; // Allow `skip` functions to be threaded together without having
@@ -13901,7 +13898,7 @@ function printString(raw, options, isDirectiveLiteral) {
   // sure that we consistently output the minimum amount of escaped quotes.
 
 
-  return makeString(rawContent, enclosingQuote, !(options.parser === "css" || options.parser === "less" || options.parser === "scss" || options.parentParser === "html" || options.parentParser === "vue" || options.parentParser === "angular"));
+  return makeString(rawContent, enclosingQuote, !(options.parser === "css" || options.parser === "less" || options.parser === "scss" || options.parentParser === "html" || options.parentParser === "vue" || options.parentParser === "angular" || options.parentParser === "lwc"));
 }
 
 function makeString(rawContent, enclosingQuote, unescapeUnnecessaryEscapes) {
@@ -14089,7 +14086,7 @@ var util = {
   isExportDeclaration: isExportDeclaration,
   getParentExportDeclaration: getParentExportDeclaration,
   getPenultimate: getPenultimate,
-  getLast: getLast$3,
+  getLast: getLast,
   getNextNonSpaceNonCommentCharacterIndexWithStartIndex: getNextNonSpaceNonCommentCharacterIndexWithStartIndex,
   getNextNonSpaceNonCommentCharacterIndex: getNextNonSpaceNonCommentCharacterIndex,
   getNextNonSpaceNonCommentCharacter: getNextNonSpaceNonCommentCharacter,
@@ -15542,7 +15539,7 @@ function printTrailingComment(commentPath, print, options) {
     return concat([" ", contents]);
   }
 
-  return concat([lineSuffix(" " + contents), !isBlock ? breakParent : ""]);
+  return concat([lineSuffix(concat([" ", contents])), !isBlock ? breakParent : ""]);
 }
 
 function printDanglingComments(path, options, sameIndent, filter) {
@@ -16302,7 +16299,6 @@ function formatRange(text, opts) {
   var rangeResult = coreFormat(rangeString, Object.assign({}, opts, {
     rangeStart: 0,
     rangeEnd: Infinity,
-    printWidth: opts.printWidth - alignmentSize,
     // track the cursor offset only if it's within our range
     cursorOffset: opts.cursorOffset >= rangeStart && opts.cursorOffset < rangeEnd ? opts.cursorOffset - rangeStart : -1
   }), alignmentSize); // Since the range contracts to avoid trailing whitespace,
@@ -18184,7 +18180,7 @@ function genericPrint$1(path, options, print) {
 
     case "FragmentDefinition":
       {
-        return concat$6(["fragment ", path.call(print, "name"), " on ", path.call(print, "typeCondition"), printDirectives(path, print, n), " ", path.call(print, "selectionSet")]);
+        return concat$6(["fragment ", path.call(print, "name"), n.variableDefinitions && n.variableDefinitions.length ? group$5(concat$6(["(", indent$3(concat$6([softline$2, join$3(concat$6([ifBreak$2("", ", "), softline$2]), path.map(print, "variableDefinitions"))])), softline$2, ")"])) : "", " on ", path.call(print, "typeCondition"), printDirectives(path, print, n), " ", path.call(print, "selectionSet")]);
       }
 
     case "SelectionSet":
@@ -18267,7 +18263,7 @@ function genericPrint$1(path, options, print) {
 
     case "VariableDefinition":
       {
-        return concat$6([path.call(print, "variable"), ": ", path.call(print, "type"), n.defaultValue ? concat$6([" = ", path.call(print, "defaultValue")]) : ""]);
+        return concat$6([path.call(print, "variable"), ": ", path.call(print, "type"), n.defaultValue ? concat$6([" = ", path.call(print, "defaultValue")]) : "", printDirectives(path, print, n)]);
       }
 
     case "TypeExtensionDefinition":
@@ -18556,8 +18552,8 @@ function print(path, options, print) {
     case "BlockStatement":
       {
         var pp = path.getParentNode(1);
-        var isElseIf = pp && pp.inverse && pp.inverse.body[0] === n && pp.inverse.body[0].path.parts[0] === "if";
-        var hasElseIf = n.inverse && n.inverse.body[0] && n.inverse.body[0].type === "BlockStatement" && n.inverse.body[0].path.parts[0] === "if";
+        var isElseIf = pp && pp.inverse && pp.inverse.body.length === 1 && pp.inverse.body[0] === n && pp.inverse.body[0].path.parts[0] === "if";
+        var hasElseIf = n.inverse && n.inverse.body.length === 1 && n.inverse.body[0].type === "BlockStatement" && n.inverse.body[0].path.parts[0] === "if";
         var indentElse = hasElseIf ? function (a) {
           return a;
         } : indent$4;
@@ -20673,6 +20669,15 @@ function embed$2(path, print, textToDoc, options) {
 
         if (/^PRETTIER_HTML_PLACEHOLDER_\d+_IN_JS$/.test(options.originalText.slice(node.valueSpan.start.offset, node.valueSpan.end.offset))) {
           return concat$8([node.rawName, "=", node.value]);
+        } // lwc: html`<my-element data-for={value}></my-elememt>`
+
+
+        if (options.parser === "lwc") {
+          var interpolationRegex = /^\{[\s\S]*\}$/;
+
+          if (interpolationRegex.test(options.originalText.slice(node.valueSpan.start.offset, node.valueSpan.end.offset))) {
+            return concat$8([node.rawName, "=", node.value]);
+          }
         }
 
         var embeddedAttributeValueDoc = printEmbeddedAttributeValue(node, function (code, opts) {
@@ -21162,8 +21167,8 @@ function printClosingTagEndMarker(node, options) {
 
 function getTextValueParts(node) {
   var value = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : node.value;
-  return node.parent.isWhitespaceSensitive ? node.parent.isIndentationSensitive ? replaceEndOfLineWith$1(value, literalline$2) : replaceEndOfLineWith$1(dedentString(value.replace(/^\s*?\n|\n\s*?$/g, "")), hardline$7) : // non-breaking whitespace: 0xA0
-  join$5(line$6, value.split(/[^\S\xA0]+/)).parts;
+  return node.parent.isWhitespaceSensitive ? node.parent.isIndentationSensitive ? replaceEndOfLineWith$1(value, literalline$2) : replaceEndOfLineWith$1(dedentString(value.replace(/^\s*?\n|\n\s*?$/g, "")), hardline$7) : // https://infra.spec.whatwg.org/#ascii-whitespace
+  join$5(line$6, value.split(/[\t\n\f\r ]+/)).parts;
 }
 
 function printEmbeddedAttributeValue(node, originalTextToDoc, options) {
@@ -21452,6 +21457,15 @@ var languages$3 = [createLanguage(require$$0$22, {
   extend: {
     extensions: [".mjml" // MJML is considered XML in Linguist but it should be formatted as HTML
     ]
+  }
+}), createLanguage(require$$0$22, {
+  override: {
+    name: "Lightning Web Components",
+    since: "1.17.0",
+    parsers: ["lwc"],
+    vscodeLanguageIds: ["html"],
+    extensions: [],
+    filenames: []
   }
 }), createLanguage(require$$1$9, {
   override: {
@@ -22702,21 +22716,83 @@ var utils$8 = {
 
 var hasFlowShorthandAnnotationComment$1 = utils$8.hasFlowShorthandAnnotationComment;
 
-function hasClosureCompilerTypeCastComment(text, path, locStart, locEnd) {
+function hasClosureCompilerTypeCastComment(text, path) {
   // https://github.com/google/closure-compiler/wiki/Annotating-Types#type-casts
   // Syntax example: var x = /** @type {string} */ (fruit);
   var n = path.getValue();
-  return util.getNextNonSpaceNonCommentCharacter(text, n, locEnd) === ")" && (hasTypeCastComment(n) || hasAncestorTypeCastComment(0)); // for sub-item: /** @type {array} */ (numberOrString).map(x => x);
+  return isParenthesized(n) && (hasTypeCastComment(n) || hasAncestorTypeCastComment(0)); // for sub-item: /** @type {array} */ (numberOrString).map(x => x);
 
   function hasAncestorTypeCastComment(index) {
     var ancestor = path.getParentNode(index);
-    return ancestor && util.getNextNonSpaceNonCommentCharacter(text, ancestor, locEnd) !== ")" && /^[\s(]*$/.test(text.slice(locStart(ancestor), locStart(n))) ? hasTypeCastComment(ancestor) || hasAncestorTypeCastComment(index + 1) : false;
+    return ancestor && !isParenthesized(ancestor) ? hasTypeCastComment(ancestor) || hasAncestorTypeCastComment(index + 1) : false;
   }
 
   function hasTypeCastComment(node) {
     return node.comments && node.comments.some(function (comment) {
-      return comment.leading && comments$3.isBlockComment(comment) && comment.value.match(/^\*\s*@type\s*{[^}]+}\s*$/) && util.getNextNonSpaceNonCommentCharacter(text, comment, locEnd) === "(";
+      return comment.leading && comments$3.isBlockComment(comment) && isTypeCastComment(comment.value);
     });
+  }
+
+  function isParenthesized(node) {
+    // Closure typecast comments only really make sense when _not_ using
+    // typescript or flow parsers, so we take advantage of the babel parser's
+    // parenthesized expressions.
+    return node.extra && node.extra.parenthesized;
+  }
+
+  function isTypeCastComment(comment) {
+    var cleaned = comment.trim().split("\n").map(function (line) {
+      return line.replace(/^[\s*]+/, "");
+    }).join(" ").trim();
+
+    if (!/^@type\s+\{[^]+\}$/.test(cleaned)) {
+      return false;
+    }
+
+    var isCompletelyClosed = false;
+    var unpairedBracketCount = 0;
+    var _iteratorNormalCompletion = true;
+    var _didIteratorError = false;
+    var _iteratorError = undefined;
+
+    try {
+      for (var _iterator = cleaned[Symbol.iterator](), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true) {
+        var char = _step.value;
+
+        if (char === "{") {
+          if (isCompletelyClosed) {
+            return false;
+          }
+
+          unpairedBracketCount++;
+        } else if (char === "}") {
+          if (unpairedBracketCount === 0) {
+            return false;
+          }
+
+          unpairedBracketCount--;
+
+          if (unpairedBracketCount === 0) {
+            isCompletelyClosed = true;
+          }
+        }
+      }
+    } catch (err) {
+      _didIteratorError = true;
+      _iteratorError = err;
+    } finally {
+      try {
+        if (!_iteratorNormalCompletion && _iterator.return != null) {
+          _iterator.return();
+        }
+      } finally {
+        if (_didIteratorError) {
+          throw _iteratorError;
+        }
+      }
+    }
+
+    return unpairedBracketCount === 0;
   }
 }
 
@@ -22748,7 +22824,7 @@ function needsParens(path, options) {
   // parentheses.
 
 
-  if (hasClosureCompilerTypeCastComment(options.originalText, path, options.locStart, options.locEnd)) {
+  if (hasClosureCompilerTypeCastComment(options.originalText, path)) {
     return true;
   }
 
@@ -22924,7 +23000,6 @@ function needsParens(path, options) {
 
         case "ClassExpression":
         case "ClassDeclaration":
-        case "TSAbstractClassDeclaration":
           return name === "superClass" && parent.superClass === node;
 
         case "TSTypeAssertion":
@@ -23060,6 +23135,7 @@ function needsParens(path, options) {
         case "TSAsExpression":
         case "TSNonNullExpression":
         case "BindExpression":
+        case "OptionalMemberExpression":
           return true;
 
         case "MemberExpression":
@@ -23173,6 +23249,7 @@ function needsParens(path, options) {
 
     case "FunctionExpression":
       switch (parent.type) {
+        case "NewExpression":
         case "CallExpression":
           return name === "callee";
         // Not strictly necessary, but it's clearer to the reader if IIFEs are wrapped in parentheses.
@@ -23217,7 +23294,16 @@ function needsParens(path, options) {
       }
 
     case "ClassExpression":
-      return parent.type === "ExportDefaultDeclaration";
+      switch (parent.type) {
+        case "ExportDefaultDeclaration":
+          return true;
+
+        case "NewExpression":
+          return name === "callee" && parent.callee === node;
+
+        default:
+          return false;
+      }
 
     case "OptionalMemberExpression":
       return parent.type === "MemberExpression";
@@ -23249,7 +23335,7 @@ function needsParens(path, options) {
       return false;
 
     case "NGPipeExpression":
-      if (parent.type === "NGRoot" || parent.type === "ObjectProperty" || parent.type === "ArrayExpression" || (parent.type === "CallExpression" || parent.type === "OptionalCallExpression") && parent.arguments[name] === node || parent.type === "NGPipeExpression" && name === "right" || parent.type === "MemberExpression" && name === "property" || parent.type === "AssignmentExpression") {
+      if (parent.type === "NGRoot" || parent.type === "NGMicrosyntaxExpression" || parent.type === "ObjectProperty" || parent.type === "ArrayExpression" || (parent.type === "CallExpression" || parent.type === "OptionalCallExpression") && parent.arguments[name] === node || parent.type === "NGPipeExpression" && name === "right" || parent.type === "MemberExpression" && name === "property" || parent.type === "AssignmentExpression") {
         return false;
       }
 
@@ -23260,7 +23346,7 @@ function needsParens(path, options) {
 }
 
 function isStatement(node) {
-  return node.type === "BlockStatement" || node.type === "BreakStatement" || node.type === "ClassBody" || node.type === "ClassDeclaration" || node.type === "ClassMethod" || node.type === "ClassProperty" || node.type === "ClassPrivateProperty" || node.type === "ContinueStatement" || node.type === "DebuggerStatement" || node.type === "DeclareClass" || node.type === "DeclareExportAllDeclaration" || node.type === "DeclareExportDeclaration" || node.type === "DeclareFunction" || node.type === "DeclareInterface" || node.type === "DeclareModule" || node.type === "DeclareModuleExports" || node.type === "DeclareVariable" || node.type === "DoWhileStatement" || node.type === "ExportAllDeclaration" || node.type === "ExportDefaultDeclaration" || node.type === "ExportNamedDeclaration" || node.type === "ExpressionStatement" || node.type === "ForAwaitStatement" || node.type === "ForInStatement" || node.type === "ForOfStatement" || node.type === "ForStatement" || node.type === "FunctionDeclaration" || node.type === "IfStatement" || node.type === "ImportDeclaration" || node.type === "InterfaceDeclaration" || node.type === "LabeledStatement" || node.type === "MethodDefinition" || node.type === "ReturnStatement" || node.type === "SwitchStatement" || node.type === "ThrowStatement" || node.type === "TryStatement" || node.type === "TSAbstractClassDeclaration" || node.type === "TSDeclareFunction" || node.type === "TSEnumDeclaration" || node.type === "TSImportEqualsDeclaration" || node.type === "TSInterfaceDeclaration" || node.type === "TSModuleDeclaration" || node.type === "TSNamespaceExportDeclaration" || node.type === "TypeAlias" || node.type === "VariableDeclaration" || node.type === "WhileStatement" || node.type === "WithStatement";
+  return node.type === "BlockStatement" || node.type === "BreakStatement" || node.type === "ClassBody" || node.type === "ClassDeclaration" || node.type === "ClassMethod" || node.type === "ClassProperty" || node.type === "ClassPrivateProperty" || node.type === "ContinueStatement" || node.type === "DebuggerStatement" || node.type === "DeclareClass" || node.type === "DeclareExportAllDeclaration" || node.type === "DeclareExportDeclaration" || node.type === "DeclareFunction" || node.type === "DeclareInterface" || node.type === "DeclareModule" || node.type === "DeclareModuleExports" || node.type === "DeclareVariable" || node.type === "DoWhileStatement" || node.type === "ExportAllDeclaration" || node.type === "ExportDefaultDeclaration" || node.type === "ExportNamedDeclaration" || node.type === "ExpressionStatement" || node.type === "ForAwaitStatement" || node.type === "ForInStatement" || node.type === "ForOfStatement" || node.type === "ForStatement" || node.type === "FunctionDeclaration" || node.type === "IfStatement" || node.type === "ImportDeclaration" || node.type === "InterfaceDeclaration" || node.type === "LabeledStatement" || node.type === "MethodDefinition" || node.type === "ReturnStatement" || node.type === "SwitchStatement" || node.type === "ThrowStatement" || node.type === "TryStatement" || node.type === "TSDeclareFunction" || node.type === "TSEnumDeclaration" || node.type === "TSImportEqualsDeclaration" || node.type === "TSInterfaceDeclaration" || node.type === "TSModuleDeclaration" || node.type === "TSNamespaceExportDeclaration" || node.type === "TypeAlias" || node.type === "VariableDeclaration" || node.type === "WhileStatement" || node.type === "WithStatement";
 }
 
 function getUnparenthesizedNode(node) {
@@ -23410,7 +23496,7 @@ var shouldFlatten$1 = util.shouldFlatten;
 var getNextNonSpaceNonCommentCharacter$1 = util.getNextNonSpaceNonCommentCharacter;
 var hasNewline$3 = util.hasNewline;
 var hasNewlineInRange$1 = util.hasNewlineInRange;
-var getLast$4 = util.getLast;
+var getLast$3 = util.getLast;
 var getStringWidth$2 = util.getStringWidth;
 var printString$2 = util.printString;
 var printNumber$2 = util.printNumber;
@@ -23432,6 +23518,7 @@ var isVueEventBindingExpression$2 = htmlBinding.isVueEventBindingExpression;
 var hasNode = utils$8.hasNode;
 var hasFlowAnnotationComment = utils$8.hasFlowAnnotationComment;
 var hasFlowShorthandAnnotationComment = utils$8.hasFlowShorthandAnnotationComment;
+var needsQuoteProps = new WeakMap();
 var _require$$6$builders = doc.builders;
 var concat$11 = _require$$6$builders.concat;
 var join$7 = _require$$6$builders.join;
@@ -23564,7 +23651,7 @@ function genericPrint$3(path, options, printPath, args) {
 }
 
 function hasNewlineBetweenOrAfterDecorators(node, options) {
-  return hasNewlineInRange$1(options.originalText, options.locStart(node.decorators[0]), options.locEnd(getLast$4(node.decorators))) || hasNewline$3(options.originalText, options.locEnd(getLast$4(node.decorators)));
+  return hasNewlineInRange$1(options.originalText, options.locStart(node.decorators[0]), options.locEnd(getLast$3(node.decorators))) || hasNewline$3(options.originalText, options.locEnd(getLast$3(node.decorators)));
 }
 
 function printDecorators(path, options, print) {
@@ -23881,7 +23968,7 @@ function printPathNoParens(path, options, print, args) {
           return chain;
         }
 
-        var jsxPart = getLast$4(_parts);
+        var jsxPart = getLast$3(_parts);
         return group$10(concat$11([chain, ifBreak$6(indent$6(jsxPart), jsxPart, {
           groupId: groupId
         })]));
@@ -24226,7 +24313,7 @@ function printPathNoParens(path, options, print, args) {
         if ( // We want to keep CommonJS- and AMD-style require calls, and AMD-style
         // define calls, as a unit.
         // e.g. `define(["some/lib", (lib) => {`
-        !isNew && n.callee.type === "Identifier" && (n.callee.name === "require" || n.callee.name === "define") || n.callee.type === "Import" || // Template literals as single arguments
+        !isNew && n.callee.type === "Identifier" && (n.callee.name === "require" || n.callee.name === "define") || // Template literals as single arguments
         n.arguments.length === 1 && isTemplateOnItsOwnLine(n.arguments[0], options.originalText, options) || // Keep test declarations on a single line
         // e.g. `it('long name', () => {`
         !isNew && isTestCall(n, path.getParentNode())) {
@@ -24346,7 +24433,7 @@ function printPathNoParens(path, options, print, args) {
           props.push(concat$11(separatorParts.concat(group$10("..."))));
         }
 
-        var lastElem = getLast$4(n[propertiesField]);
+        var lastElem = getLast$3(n[propertiesField]);
         var canHaveTrailingSeparator = !(lastElem && (lastElem.type === "RestProperty" || lastElem.type === "RestElement" || hasNodeIgnoreComment$1(lastElem) || n.inexact));
         var content;
 
@@ -24428,7 +24515,7 @@ function printPathNoParens(path, options, print, args) {
           parts.push(group$10(concat$11(["[", comments.printDanglingComments(path, options), softline$5, "]"])));
         }
       } else {
-        var _lastElem = getLast$4(n.elements);
+        var _lastElem = getLast$3(n.elements);
 
         var canHaveTrailingComma = !(_lastElem && _lastElem.type === "RestElement"); // JavaScript allows you to have empty elements in an array which
         // changes its length based on the number of commas. The algorithm
@@ -24872,7 +24959,7 @@ function printPathNoParens(path, options, print, args) {
           return group$10(concat$11(["<", path.call(print, "name"), path.call(print, "typeParameters"), " ", concat$11(path.map(print, "attributes")), _n.selfClosing ? " />" : ">"]));
         }
 
-        var lastAttrHasTrailingComments = _n.attributes.length && hasTrailingComment(getLast$4(_n.attributes));
+        var lastAttrHasTrailingComments = _n.attributes.length && hasTrailingComment(getLast$3(_n.attributes));
         var bracketSameLine = // Simple tags (no attributes and no comment in tag name) should be
         // kept unbroken regardless of `jsxBracketSameLine`
         !_n.attributes.length && !nameHasComments || options.jsxBracketSameLine && ( // We should print the bracket in a new line for the following cases:
@@ -24978,7 +25065,6 @@ function printPathNoParens(path, options, print, args) {
 
     case "ClassDeclaration":
     case "ClassExpression":
-    case "TSAbstractClassDeclaration":
       if (isNodeStartingWithDeclare(n, options)) {
         parts.push("declare ");
       }
@@ -26041,18 +26127,27 @@ function printStatementSequence(path, options, print) {
 
 function printPropertyKey(path, options, print) {
   var node = path.getNode();
+  var parent = path.getParentNode();
   var key = node.key;
 
-  if (key.type === "Identifier" && !node.computed && options.parser === "json") {
+  if (options.quoteProps === "consistent" && !needsQuoteProps.has(parent)) {
+    var objectHasStringProp = (parent.properties || parent.body || parent.members).some(function (prop) {
+      return prop.key && prop.key.type !== "Identifier" && !isStringPropSafeToCoerceToIdentifier(prop, options);
+    });
+    needsQuoteProps.set(parent, objectHasStringProp);
+  }
+
+  if (key.type === "Identifier" && !node.computed && (options.parser === "json" || options.quoteProps === "consistent" && needsQuoteProps.get(parent))) {
     // a -> "a"
+    var prop = printString$2(JSON.stringify(key.name), options);
     return path.call(function (keyPath) {
       return comments.printComments(keyPath, function () {
-        return JSON.stringify(key.name);
+        return prop;
       }, options);
     }, "key");
   }
 
-  if (isStringLiteral(key) && isIdentifierName(key.value) && !node.computed && options.parser !== "json" && !(options.parser === "typescript" && node.type === "ClassProperty")) {
+  if (isStringPropSafeToCoerceToIdentifier(node, options) && (options.quoteProps === "as-needed" || options.quoteProps === "consistent" && !needsQuoteProps.get(parent))) {
     // 'a' -> a
     return path.call(function (keyPath) {
       return comments.printComments(keyPath, function () {
@@ -26111,7 +26206,7 @@ function couldGroupArg(arg) {
 }
 
 function shouldGroupLastArg(args) {
-  var lastArg = getLast$4(args);
+  var lastArg = getLast$3(args);
   var penultimateArg = getPenultimate$1(args);
   return !hasLeadingComment(lastArg) && !hasTrailingComment(lastArg) && couldGroupArg(lastArg) && ( // If the last two arguments are of the same type,
   // disable last element expansion.
@@ -26207,7 +26302,8 @@ function printArgumentsList(path, options, print) {
 
     return concat$11(parts);
   }, "arguments");
-  var maybeTrailingComma = shouldPrintComma$1(options, "all") ? "," : "";
+  var maybeTrailingComma = // Dynamic imports cannot have trailing commas
+  !(node.callee && node.callee.type === "Import") && shouldPrintComma$1(options, "all") ? "," : "";
 
   function allArgsBrokenOut() {
     return group$10(concat$11(["(", indent$6(concat$11([line$8, concat$11(printedArguments)])), maybeTrailingComma, line$8, ")"]), {
@@ -26256,14 +26352,14 @@ function printArgumentsList(path, options, print) {
     var somePrintedArgumentsWillBreak = printedArguments.some(willBreak$1);
     return concat$11([somePrintedArgumentsWillBreak ? breakParent$3 : "", conditionalGroup$1([concat$11([ifBreak$6(indent$6(concat$11(["(", softline$5, concat$11(printedExpanded)])), concat$11(["(", concat$11(printedExpanded)])), somePrintedArgumentsWillBreak ? concat$11([ifBreak$6(maybeTrailingComma), softline$5]) : "", ")"]), shouldGroupFirst ? concat$11(["(", group$10(printedExpanded[0], {
       shouldBreak: true
-    }), concat$11(printedExpanded.slice(1)), ")"]) : concat$11(["(", concat$11(printedArguments.slice(0, -1)), group$10(getLast$4(printedExpanded), {
+    }), concat$11(printedExpanded.slice(1)), ")"]) : concat$11(["(", concat$11(printedArguments.slice(0, -1)), group$10(getLast$3(printedExpanded), {
       shouldBreak: true
     }), ")"]), allArgsBrokenOut()], {
       shouldBreak: shouldBreak
     })]);
   }
 
-  return group$10(concat$11(["(", indent$6(concat$11([softline$5, concat$11(printedArguments)])), ifBreak$6(shouldPrintComma$1(options, "all") ? "," : ""), softline$5, ")"]), {
+  return group$10(concat$11(["(", indent$6(concat$11([softline$5, concat$11(printedArguments)])), ifBreak$6(maybeTrailingComma), softline$5, ")"]), {
     shouldBreak: printedArguments.some(willBreak$1) || anyArgEmptyLine
   });
 }
@@ -26302,12 +26398,37 @@ function printFunctionTypeParameters(path, options, print) {
 
 function printFunctionParams(path, print, options, expandArg, printTypeParams) {
   var fun = path.getValue();
+  var parent = path.getParentNode();
   var paramsField = fun.parameters ? "parameters" : "params";
+  var isParametersInTestCall = isTestCall(parent);
+  var shouldHugParameters = shouldHugArguments(fun);
+  var shouldExpandParameters = expandArg && !(fun[paramsField] && fun[paramsField].some(function (n) {
+    return n.comments;
+  }));
   var typeParams = printTypeParams ? printFunctionTypeParameters(path, options, print) : "";
   var printed = [];
 
   if (fun[paramsField]) {
-    printed = path.map(print, paramsField);
+    var lastArgIndex = fun[paramsField].length - 1;
+    printed = path.map(function (childPath, index) {
+      var parts = [];
+      var param = childPath.getValue();
+      parts.push(print(childPath));
+
+      if (index === lastArgIndex) {
+        if (fun.rest) {
+          parts.push(",", line$8);
+        }
+      } else if (isParametersInTestCall || shouldHugParameters || shouldExpandParameters) {
+        parts.push(", ");
+      } else if (isNextLineEmpty$4(options.originalText, param, options)) {
+        parts.push(",", hardline$8, hardline$8);
+      } else {
+        parts.push(",", line$8);
+      }
+
+      return concat$11(parts);
+    }, paramsField);
   }
 
   if (fun.rest) {
@@ -26322,7 +26443,7 @@ function printFunctionParams(path, print, options, expandArg, printTypeParams) {
     }), ")"]);
   }
 
-  var lastParam = getLast$4(fun[paramsField]); // If the parent is a call with the first/last argument expansion and this is the
+  var lastParam = getLast$3(fun[paramsField]); // If the parent is a call with the first/last argument expansion and this is the
   // params of the first/last argument, we dont want the arguments to break and instead
   // want the whole expression to be on a new line.
   //
@@ -26333,10 +26454,8 @@ function printFunctionParams(path, print, options, expandArg, printTypeParams) {
   //   })                    ) => {
   //                         })
 
-  if (expandArg && !(fun[paramsField] && fun[paramsField].some(function (n) {
-    return n.comments;
-  }))) {
-    return group$10(concat$11([removeLines$2(typeParams), "(", join$7(", ", printed.map(removeLines$2)), ")"]));
+  if (shouldExpandParameters) {
+    return group$10(concat$11([removeLines$2(typeParams), "(", concat$11(printed.map(removeLines$2)), ")"]));
   } // Single object destructuring should hug
   //
   // function({
@@ -26346,14 +26465,13 @@ function printFunctionParams(path, print, options, expandArg, printTypeParams) {
   // }) {}
 
 
-  if (shouldHugArguments(fun)) {
-    return concat$11([typeParams, "(", join$7(", ", printed), ")"]);
-  }
+  if (shouldHugParameters) {
+    return concat$11([typeParams, "(", concat$11(printed), ")"]);
+  } // don't break in specs, eg; `it("should maintain parens around done even when long", (done) => {})`
 
-  var parent = path.getParentNode(); // don't break in specs, eg; `it("should maintain parens around done even when long", (done) => {})`
 
-  if (isTestCall(parent)) {
-    return concat$11([typeParams, "(", join$7(", ", printed), ")"]);
+  if (isParametersInTestCall) {
+    return concat$11([typeParams, "(", concat$11(printed), ")"]);
   }
 
   var isFlowShorthandWithOneArg = (isObjectTypePropertyAFunction(parent, options) || isTypeAnnotationAFunction(parent, options) || parent.type === "TypeAlias" || parent.type === "UnionTypeAnnotation" || parent.type === "TSUnionType" || parent.type === "IntersectionTypeAnnotation" || parent.type === "FunctionTypeAnnotation" && parent.returnType === fun) && fun[paramsField].length === 1 && fun[paramsField][0].name === null && fun[paramsField][0].typeAnnotation && fun.typeParameters === null && isSimpleFlowType(fun[paramsField][0].typeAnnotation) && !fun.rest;
@@ -26367,7 +26485,7 @@ function printFunctionParams(path, print, options, expandArg, printTypeParams) {
   }
 
   var canHaveTrailingComma = !(lastParam && lastParam.type === "RestElement") && !fun.rest;
-  return concat$11([typeParams, "(", indent$6(concat$11([softline$5, join$7(concat$11([",", line$8]), printed)])), ifBreak$6(canHaveTrailingComma && shouldPrintComma$1(options, "all") ? "," : ""), softline$5, ")"]);
+  return concat$11([typeParams, "(", indent$6(concat$11([softline$5, concat$11(printed)])), ifBreak$6(canHaveTrailingComma && shouldPrintComma$1(options, "all") ? "," : ""), softline$5, ")"]);
 }
 
 function shouldPrintParamsWithoutParens(path, options) {
@@ -26482,7 +26600,7 @@ function printExportDeclaration(path, options, print) {
   if (decl.declaration) {
     parts.push(path.call(print, "declaration"));
 
-    if (isDefault && decl.declaration.type !== "ClassDeclaration" && decl.declaration.type !== "FunctionDeclaration" && decl.declaration.type !== "TSAbstractClassDeclaration" && decl.declaration.type !== "TSInterfaceDeclaration" && decl.declaration.type !== "DeclareClass" && decl.declaration.type !== "DeclareFunction" && decl.declaration.type !== "TSDeclareFunction") {
+    if (isDefault && decl.declaration.type !== "ClassDeclaration" && decl.declaration.type !== "FunctionDeclaration" && decl.declaration.type !== "TSInterfaceDeclaration" && decl.declaration.type !== "DeclareClass" && decl.declaration.type !== "DeclareFunction" && decl.declaration.type !== "TSDeclareFunction") {
       parts.push(semi);
     }
   } else {
@@ -26593,7 +26711,7 @@ function printClass(path, options, print) {
   var n = path.getValue();
   var parts = [];
 
-  if (n.type === "TSAbstractClassDeclaration") {
+  if (n.abstract) {
     parts.push("abstract ");
   }
 
@@ -26894,27 +27012,23 @@ function printMemberChain(path, options, print) {
       return firstNode.type === "ThisExpression" || firstNode.type === "Identifier" && (isFactory(firstNode.name) || isExpression && isShort(firstNode.name) || hasComputed);
     }
 
-    var lastNode = getLast$4(groups[0]).node;
+    var lastNode = getLast$3(groups[0]).node;
     return (lastNode.type === "MemberExpression" || lastNode.type === "OptionalMemberExpression") && lastNode.property.type === "Identifier" && (isFactory(lastNode.property.name) || hasComputed);
   }
 
   var shouldMerge = groups.length >= 2 && !groups[1][0].node.comments && shouldNotWrap(groups);
 
   function printGroup(printedGroup) {
-    var result = [];
+    var printed = printedGroup.map(function (tuple) {
+      return tuple.printed;
+    }); // Checks if the last node (i.e. the parent node) needs parens and print
+    // accordingly
 
-    for (var _i3 = 0; _i3 < printedGroup.length; _i3++) {
-      // Checks if the next node (i.e. the parent node) needs parens
-      // and print accordingly
-      if (printedGroup[_i3 + 1] && printedGroup[_i3 + 1].needsParens) {
-        result.push("(", printedGroup[_i3].printed, printedGroup[_i3 + 1].printed, ")");
-        _i3++;
-      } else {
-        result.push(printedGroup[_i3].printed);
-      }
+    if (printedGroup.length > 0 && printedGroup[printedGroup.length - 1].needsParens) {
+      return concat$11(["("].concat(_toConsumableArray(printed), [")"]));
     }
 
-    return concat$11(result);
+    return concat$11(printed);
   }
 
   function printIndentedGroup(groups) {
@@ -26944,7 +27058,7 @@ function printMemberChain(path, options, print) {
   // empty line after
 
 
-  var lastNodeBeforeIndent = getLast$4(shouldMerge ? groups.slice(1, 2)[0] : groups[0]).node;
+  var lastNodeBeforeIndent = getLast$3(shouldMerge ? groups.slice(1, 2)[0] : groups[0]).node;
   var shouldHaveEmptyLineBeforeIndent = lastNodeBeforeIndent.type !== "CallExpression" && lastNodeBeforeIndent.type !== "OptionalCallExpression" && shouldInsertEmptyLineAfter(lastNodeBeforeIndent);
   var expanded = concat$11([printGroup(groups[0]), shouldMerge ? concat$11(groups.slice(1, 2).map(printGroup)) : "", shouldHaveEmptyLineBeforeIndent ? hardline$8 : "", printIndentedGroup(groups.slice(shouldMerge ? 2 : 1))]);
   var callExpressions = printedNodes.map(function (_ref) {
@@ -26964,7 +27078,7 @@ function printMemberChain(path, options, print) {
    */
   function (lastGroupDoc, lastGroupNode) {
     return isCallOrOptionalCallExpression(lastGroupNode) && willBreak$1(lastGroupDoc);
-  }(getLast$4(printedGroups), getLast$4(getLast$4(groups)).node) && callExpressions.slice(0, -1).some(function (n) {
+  }(getLast$3(printedGroups), getLast$3(getLast$3(groups)).node) && callExpressions.slice(0, -1).some(function (n) {
     return n.arguments.some(isFunctionOrArrowExpression);
   })) {
     return group$10(expanded);
@@ -27175,7 +27289,7 @@ function printJSXChildren(path, options, print, jsxWhitespace, isFacebookTransla
 
         var endWhitespace; // Ends with whitespace
 
-        if (getLast$4(words) === "") {
+        if (getLast$3(words) === "") {
           words.pop();
           endWhitespace = words.pop();
         } // This was whitespace only without a new line.
@@ -27196,13 +27310,13 @@ function printJSXChildren(path, options, print, jsxWhitespace, isFacebookTransla
         if (endWhitespace !== undefined) {
           if (/\n/.test(endWhitespace)) {
             var _next = n.children[i + 1];
-            children.push(separatorWithWhitespace(isFacebookTranslationTag, getLast$4(children), child, _next));
+            children.push(separatorWithWhitespace(isFacebookTranslationTag, getLast$3(children), child, _next));
           } else {
             children.push(jsxWhitespace);
           }
         } else {
           var _next2 = n.children[i + 1];
-          children.push(separatorNoWhitespace(isFacebookTranslationTag, getLast$4(children), child, _next2));
+          children.push(separatorNoWhitespace(isFacebookTranslationTag, getLast$3(children), child, _next2));
         }
       } else if (/\n/.test(text)) {
         // Keep (up to one) blank line between tags/expressions/text.
@@ -27311,7 +27425,7 @@ function printJSXElement(path, options, print) {
   } // Trim trailing lines (or empty strings)
 
 
-  while (children.length && (isLineNext$1(getLast$4(children)) || isEmpty$1(getLast$4(children)))) {
+  while (children.length && (isLineNext$1(getLast$3(children)) || isEmpty$1(getLast$3(children)))) {
     children.pop();
   } // Trim leading lines (or empty strings)
 
@@ -27858,7 +27972,7 @@ function needsHardlineAfterDanglingComment(node) {
     return false;
   }
 
-  var lastDanglingComment = getLast$4(node.comments.filter(function (comment) {
+  var lastDanglingComment = getLast$3(node.comments.filter(function (comment) {
     return !comment.leading && !comment.trailing;
   }));
   return lastDanglingComment && !comments$3.isBlockComment(lastDanglingComment);
@@ -27866,6 +27980,10 @@ function needsHardlineAfterDanglingComment(node) {
 
 function isLiteral(node) {
   return node.type === "BooleanLiteral" || node.type === "DirectiveLiteral" || node.type === "Literal" || node.type === "NullLiteral" || node.type === "NumericLiteral" || node.type === "RegExpLiteral" || node.type === "StringLiteral" || node.type === "TemplateLiteral" || node.type === "TSTypeLiteral" || node.type === "JSXText";
+}
+
+function isStringPropSafeToCoerceToIdentifier(node, options) {
+  return isStringLiteral(node.key) && isIdentifierName(node.key.value) && !node.computed && options.parser !== "json" && !(options.parser === "typescript" && node.type === "ClassProperty");
 }
 
 function isNumericLiteral(node) {
@@ -27958,7 +28076,7 @@ function willPrintOwnComments(path) {
 }
 
 function canAttachComment$1(node) {
-  return node.type && node.type !== "CommentBlock" && node.type !== "CommentLine" && node.type !== "Line" && node.type !== "Block" && node.type !== "EmptyStatement" && node.type !== "TemplateElement" && node.type !== "Import" && !(node.callee && node.callee.type === "Import");
+  return node.type && node.type !== "CommentBlock" && node.type !== "CommentLine" && node.type !== "Line" && node.type !== "Block" && node.type !== "EmptyStatement" && node.type !== "TemplateElement" && node.type !== "Import";
 }
 
 function printComment$2(commentPath, options) {
@@ -28155,6 +28273,23 @@ var options$12 = {
     type: "boolean",
     default: false,
     description: "Use single quotes in JSX."
+  },
+  quoteProps: {
+    since: "1.17.0",
+    category: CATEGORY_JAVASCRIPT,
+    type: "choice",
+    default: "as-needed",
+    description: "Change when properties in objects are quoted.",
+    choices: [{
+      value: "as-needed",
+      description: "Only add quotes around object properties where required."
+    }, {
+      value: "consistent",
+      description: "If at least one property in an object requires quotes, quote all properties."
+    }, {
+      value: "preserve",
+      description: "Respect the input use of quotes in object properties."
+    }]
   },
   trailingComma: {
     since: "0.0.0",
@@ -28507,7 +28642,7 @@ var json$9 = {"cjkPattern":"[\\u02ea-\\u02eb\\u1100-\\u11ff\\u2e80-\\u2e99\\u2e9
 var cjkPattern = json$9.cjkPattern;
 var kPattern = json$9.kPattern;
 var punctuationPattern$1 = json$9.punctuationPattern;
-var getLast$5 = util.getLast;
+var getLast$4 = util.getLast;
 var INLINE_NODE_TYPES$1 = ["liquidNode", "inlineCode", "emphasis", "strong", "delete", "link", "linkReference", "image", "imageReference", "footnote", "footnoteReference", "sentence", "whitespace", "word", "break", "inlineMath"];
 var INLINE_NODE_WRAPPER_TYPES$1 = INLINE_NODE_TYPES$1.concat(["tableCell", "paragraph", "heading"]);
 var kRegex = new RegExp(kPattern);
@@ -28552,7 +28687,7 @@ function splitText$1(text, options) {
             value: innerToken,
             kind: KIND_NON_CJK,
             hasLeadingPunctuation: punctuationRegex.test(innerToken[0]),
-            hasTrailingPunctuation: punctuationRegex.test(getLast$5(innerToken))
+            hasTrailingPunctuation: punctuationRegex.test(getLast$4(innerToken))
           });
         }
 
@@ -28578,7 +28713,7 @@ function splitText$1(text, options) {
   return nodes;
 
   function appendNode(node) {
-    var lastNode = getLast$5(nodes);
+    var lastNode = getLast$4(nodes);
 
     if (lastNode && lastNode.type === "word") {
       if (lastNode.kind === KIND_NON_CJK && node.kind === KIND_CJ_LETTER && !lastNode.hasTrailingPunctuation || lastNode.kind === KIND_CJ_LETTER && node.kind === KIND_NON_CJK && !node.hasLeadingPunctuation) {
@@ -29040,6 +29175,7 @@ function markAlignedList(ast, options) {
 var preprocess_1$4 = preprocess$4;
 
 var _require$$0$builders$8 = doc.builders;
+var breakParent$4 = _require$$0$builders$8.breakParent;
 var concat$15 = _require$$0$builders$8.concat;
 var join$11 = _require$$0$builders$8.join;
 var line$10 = _require$$0$builders$8.line;
@@ -29047,6 +29183,7 @@ var literalline$5 = _require$$0$builders$8.literalline;
 var markAsRoot$3 = _require$$0$builders$8.markAsRoot;
 var hardline$11 = _require$$0$builders$8.hardline;
 var softline$7 = _require$$0$builders$8.softline;
+var ifBreak$7 = _require$$0$builders$8.ifBreak;
 var fill$5 = _require$$0$builders$8.fill;
 var align$2 = _require$$0$builders$8.align;
 var indent$9 = _require$$0$builders$8.indent;
@@ -29399,6 +29536,7 @@ function printLine(path, value, options) {
 }
 
 function printTable(path, options, print) {
+  var hardlineWithoutBreakParent = hardline$11.parts[0];
   var node = path.getValue();
   var contents = []; // { [rowIndex: number]: { [columnIndex: number]: string } }
 
@@ -29408,7 +29546,8 @@ function printTable(path, options, print) {
       rowContents.push(printDocToString$2(cellPath.call(print), options).formatted);
     }, "children");
     contents.push(rowContents);
-  }, "children");
+  }, "children"); // Get the width of each column
+
   var columnMaxWidths = contents.reduce(function (currentWidths, rowContents) {
     return currentWidths.map(function (width, columnIndex) {
       return Math.max(width, util.getStringWidth(rowContents[columnIndex]));
@@ -29417,28 +29556,48 @@ function printTable(path, options, print) {
     return 3;
   }) // minimum width = 3 (---, :--, :-:, --:)
   );
-  return join$11(hardline$11, [printRow(contents[0]), printSeparator(), join$11(hardline$11, contents.slice(1).map(printRow))]);
+  var alignedTable = join$11(hardlineWithoutBreakParent, [printRow(contents[0]), printSeparator(), join$11(hardlineWithoutBreakParent, contents.slice(1).map(function (rowContents) {
+    return printRow(rowContents);
+  }))]);
 
-  function printSeparator() {
+  if (options.proseWrap !== "never") {
+    return concat$15([breakParent$4, alignedTable]);
+  } // Only if the --prose-wrap never is set and it exceeds the print width.
+
+
+  var compactTable = join$11(hardlineWithoutBreakParent, [printRow(contents[0],
+  /* isCompact */
+  true), printSeparator(
+  /* isCompact */
+  true), join$11(hardlineWithoutBreakParent, contents.slice(1).map(function (rowContents) {
+    return printRow(rowContents,
+    /* isCompact */
+    true);
+  }))]);
+  return concat$15([breakParent$4, group$15(ifBreak$7(compactTable, alignedTable))]);
+
+  function printSeparator(isCompact) {
     return concat$15(["| ", join$11(" | ", columnMaxWidths.map(function (width, index) {
+      var spaces = isCompact ? 3 : width;
+
       switch (node.align[index]) {
         case "left":
-          return ":" + "-".repeat(width - 1);
+          return ":" + "-".repeat(spaces - 1);
 
         case "right":
-          return "-".repeat(width - 1) + ":";
+          return "-".repeat(spaces - 1) + ":";
 
         case "center":
-          return ":" + "-".repeat(width - 2) + ":";
+          return ":" + "-".repeat(spaces - 2) + ":";
 
         default:
-          return "-".repeat(width);
+          return "-".repeat(spaces);
       }
     })), " |"]);
   }
 
-  function printRow(rowContents) {
-    return concat$15(["| ", join$11(" | ", rowContents.map(function (rowContent, columnIndex) {
+  function printRow(rowContents, isCompact) {
+    return concat$15(["| ", join$11(" | ", isCompact ? rowContents : rowContents.map(function (rowContent, columnIndex) {
       switch (node.align[columnIndex]) {
         case "right":
           return alignRight(rowContent, columnMaxWidths[columnIndex]);
@@ -29453,11 +29612,13 @@ function printTable(path, options, print) {
   }
 
   function alignLeft(text, width) {
-    return concat$15([text, " ".repeat(width - util.getStringWidth(text))]);
+    var spaces = width - util.getStringWidth(text);
+    return concat$15([text, " ".repeat(spaces)]);
   }
 
   function alignRight(text, width) {
-    return concat$15([" ".repeat(width - util.getStringWidth(text)), text]);
+    var spaces = width - util.getStringWidth(text);
+    return concat$15([" ".repeat(spaces), text]);
   }
 
   function alignCenter(text, width) {
@@ -29842,7 +30003,7 @@ var pragma$11 = {
   insertPragma: insertPragma$9
 };
 
-var getLast$7 = util.getLast;
+var getLast$6 = util.getLast;
 
 function getAncestorCount$1(path, filter) {
   var counter = 0;
@@ -29931,7 +30092,7 @@ function isLastDescendantNode$1(path) {
 }
 
 function getLastDescendantNode$2(node) {
-  return "children" in node && node.children.length !== 0 ? getLastDescendantNode$2(getLast$7(node.children)) : node;
+  return "children" in node && node.children.length !== 0 ? getLastDescendantNode$2(getLast$6(node.children)) : node;
 }
 
 function isPrettierIgnore$2(comment) {
@@ -29943,10 +30104,10 @@ function hasPrettierIgnore$5(path) {
 
   if (node.type === "documentBody") {
     var document = path.getParentNode();
-    return hasEndComments$1(document.head) && isPrettierIgnore$2(getLast$7(document.head.endComments));
+    return hasEndComments$1(document.head) && isPrettierIgnore$2(getLast$6(document.head.endComments));
   }
 
-  return hasLeadingComments$1(node) && isPrettierIgnore$2(getLast$7(node.leadingComments));
+  return hasLeadingComments$1(node) && isPrettierIgnore$2(getLast$6(node.leadingComments));
 }
 
 function isEmptyNode$1(node) {
@@ -30046,7 +30207,7 @@ function getFlowScalarLineContents$1(nodeType, content, options) {
     return lineContent.length === 0 ? [] : splitWithSingleSpace(lineContent);
   }).reduce(function (reduced, lineContentWords, index) {
     return index !== 0 && rawLineContents[index - 1].length !== 0 && lineContentWords.length !== 0 && !( // trailing backslash in quoteDouble should be preserved
-    nodeType === "quoteDouble" && getLast$7(getLast$7(reduced)).endsWith("\\")) ? reduced.concat([reduced.pop().concat(lineContentWords)]) : reduced.concat([lineContentWords]);
+    nodeType === "quoteDouble" && getLast$6(getLast$6(reduced)).endsWith("\\")) ? reduced.concat([reduced.pop().concat(lineContentWords)]) : reduced.concat([lineContentWords]);
   }, []).map(function (lineContentWords) {
     return options.proseWrap === "never" ? [lineContentWords.join(" ")] : lineContentWords;
   });
@@ -30074,11 +30235,11 @@ function getBlockValueLineContents$1(node, _ref) {
   return removeUnnecessaryTrailingNewlines(rawLineContents.map(function (lineContent) {
     return lineContent.length === 0 ? [] : splitWithSingleSpace(lineContent);
   }).reduce(function (reduced, lineContentWords, index) {
-    return index !== 0 && rawLineContents[index - 1].length !== 0 && lineContentWords.length !== 0 && !/^\s/.test(lineContentWords[0]) && !/^\s|\s$/.test(getLast$7(reduced)) ? reduced.concat([reduced.pop().concat(lineContentWords)]) : reduced.concat([lineContentWords]);
+    return index !== 0 && rawLineContents[index - 1].length !== 0 && lineContentWords.length !== 0 && !/^\s/.test(lineContentWords[0]) && !/^\s|\s$/.test(getLast$6(reduced)) ? reduced.concat([reduced.pop().concat(lineContentWords)]) : reduced.concat([lineContentWords]);
   }, []).map(function (lineContentWords) {
     return lineContentWords.reduce(function (reduced, word) {
       return (// disallow trailing spaces
-        reduced.length !== 0 && /\s$/.test(getLast$7(reduced)) ? reduced.concat(reduced.pop() + " " + word) : reduced.concat(word)
+        reduced.length !== 0 && /\s$/.test(getLast$6(reduced)) ? reduced.concat(reduced.pop() + " " + word) : reduced.concat(word)
       );
     }, []);
   }).map(function (lineContentWords) {
@@ -30087,7 +30248,7 @@ function getBlockValueLineContents$1(node, _ref) {
 
   function removeUnnecessaryTrailingNewlines(lineContents) {
     if (node.chomping === "keep") {
-      return getLast$7(lineContents).length === 0 ? lineContents.slice(0, -1) : lineContents;
+      return getLast$6(lineContents).length === 0 ? lineContents.slice(0, -1) : lineContents;
     }
 
     var trailingNewlineCount = 0;
@@ -30106,7 +30267,7 @@ function getBlockValueLineContents$1(node, _ref) {
 }
 
 var utils$12 = {
-  getLast: getLast$7,
+  getLast: getLast$6,
   getAncestorCount: getAncestorCount$1,
   isNode: isNode$1,
   isEmptyNode: isEmptyNode$1,
@@ -30130,7 +30291,7 @@ var isPragma = pragma$11.isPragma;
 var getAncestorCount = utils$12.getAncestorCount;
 var getBlockValueLineContents = utils$12.getBlockValueLineContents;
 var getFlowScalarLineContents = utils$12.getFlowScalarLineContents;
-var getLast$6 = utils$12.getLast;
+var getLast$5 = utils$12.getLast;
 var getLastDescendantNode$1 = utils$12.getLastDescendantNode;
 var hasLeadingComments = utils$12.hasLeadingComments;
 var hasMiddleComments = utils$12.hasMiddleComments;
@@ -30146,14 +30307,14 @@ var defineShortcut = utils$12.defineShortcut;
 var mapNode = utils$12.mapNode;
 var docBuilders$3 = doc.builders;
 var conditionalGroup$2 = docBuilders$3.conditionalGroup;
-var breakParent$4 = docBuilders$3.breakParent;
+var breakParent$5 = docBuilders$3.breakParent;
 var concat$17 = docBuilders$3.concat;
 var dedent$4 = docBuilders$3.dedent;
 var dedentToRoot$3 = docBuilders$3.dedentToRoot;
 var fill$6 = docBuilders$3.fill;
 var group$16 = docBuilders$3.group;
 var hardline$13 = docBuilders$3.hardline;
-var ifBreak$7 = docBuilders$3.ifBreak;
+var ifBreak$8 = docBuilders$3.ifBreak;
 var join$12 = docBuilders$3.join;
 var line$11 = docBuilders$3.line;
 var lineSuffix$2 = docBuilders$3.lineSuffix;
@@ -30207,7 +30368,7 @@ function genericPrint$6(path, options, print) {
   var tag = !node.tag ? "" : path.call(print, "tag");
   var anchor = !node.anchor ? "" : path.call(print, "anchor");
   var nextEmptyLine = isNode(node, ["mapping", "sequence", "comment", "directive", "mappingItem", "sequenceItem"]) && !isLastDescendantNode(path) ? printNextEmptyLine(path, options.originalText) : "";
-  return concat$17([node.type !== "mappingValue" && hasLeadingComments(node) ? concat$17([join$12(hardline$13, path.map(print, "leadingComments")), hardline$13]) : "", tag, tag && anchor ? " " : "", anchor, tag || anchor ? isNode(node, ["sequence", "mapping"]) && !hasMiddleComments(node) ? hardline$13 : " " : "", hasMiddleComments(node) ? concat$17([node.middleComments.length === 1 ? "" : hardline$13, join$12(hardline$13, path.map(print, "middleComments")), hardline$13]) : "", hasPrettierIgnore$4(path) ? concat$17(replaceEndOfLineWith$3(options.originalText.slice(node.position.start.offset, node.position.end.offset), literalline$7)) : group$16(_print(node, parentNode, path, options, print)), hasTrailingComment$1(node) && !isNode(node, ["document", "documentHead"]) ? lineSuffix$2(concat$17([node.type === "mappingValue" && !node.content ? "" : " ", parentNode.type === "mappingKey" && path.getParentNode(2).type === "mapping" && isInlineNode(node) ? "" : breakParent$4, path.call(print, "trailingComment")])) : "", nextEmptyLine, hasEndComments(node) && !isNode(node, ["documentHead", "documentBody"]) ? align$3(node.type === "sequenceItem" ? 2 : 0, concat$17([hardline$13, join$12(hardline$13, path.map(print, "endComments"))])) : ""]);
+  return concat$17([node.type !== "mappingValue" && hasLeadingComments(node) ? concat$17([join$12(hardline$13, path.map(print, "leadingComments")), hardline$13]) : "", tag, tag && anchor ? " " : "", anchor, tag || anchor ? isNode(node, ["sequence", "mapping"]) && !hasMiddleComments(node) ? hardline$13 : " " : "", hasMiddleComments(node) ? concat$17([node.middleComments.length === 1 ? "" : hardline$13, join$12(hardline$13, path.map(print, "middleComments")), hardline$13]) : "", hasPrettierIgnore$4(path) ? concat$17(replaceEndOfLineWith$3(options.originalText.slice(node.position.start.offset, node.position.end.offset), literalline$7)) : group$16(_print(node, parentNode, path, options, print)), hasTrailingComment$1(node) && !isNode(node, ["document", "documentHead"]) ? lineSuffix$2(concat$17([node.type === "mappingValue" && !node.content ? "" : " ", parentNode.type === "mappingKey" && path.getParentNode(2).type === "mapping" && isInlineNode(node) ? "" : breakParent$5, path.call(print, "trailingComment")])) : "", nextEmptyLine, hasEndComments(node) && !isNode(node, ["documentHead", "documentBody"]) ? align$3(node.type === "sequenceItem" ? 2 : 0, concat$17([hardline$13, join$12(hardline$13, path.map(print, "endComments"))])) : ""]);
 }
 
 function _print(node, parentNode, path, options, print) {
@@ -30343,9 +30504,9 @@ function _print(node, parentNode, path, options, print) {
         return forceExplicitKey ? concat$17(["? ", align$3(2, key), hardline$13, join$12("", path.map(print, "value", "leadingComments").map(function (comment) {
           return concat$17([comment, hardline$13]);
         })), ": ", align$3(2, value)]) : // force singleline
-        isSingleLineNode(node.key.content) && !hasLeadingComments(node.key.content) && !hasMiddleComments(node.key.content) && !hasTrailingComment$1(node.key.content) && !hasEndComments(node.key) && !hasLeadingComments(node.value.content) && !hasMiddleComments(node.value.content) && !hasEndComments(node.value) && isAbsolutelyPrintedAsSingleLineNode(node.value.content, options) ? concat$17([key, needsSpaceInFrontOfMappingValue(node) ? " " : "", ": ", value]) : conditionalGroup$2([concat$17([group$16(concat$17([ifBreak$7("? "), group$16(align$3(2, key), {
+        isSingleLineNode(node.key.content) && !hasLeadingComments(node.key.content) && !hasMiddleComments(node.key.content) && !hasTrailingComment$1(node.key.content) && !hasEndComments(node.key) && !hasLeadingComments(node.value.content) && !hasMiddleComments(node.value.content) && !hasEndComments(node.value) && isAbsolutelyPrintedAsSingleLineNode(node.value.content, options) ? concat$17([key, needsSpaceInFrontOfMappingValue(node) ? " " : "", ": ", value]) : conditionalGroup$2([concat$17([group$16(concat$17([ifBreak$8("? "), group$16(align$3(2, key), {
           id: groupId
-        })])), ifBreak$7(concat$17([hardline$13, ": ", align$3(2, value)]), indent(concat$17([needsSpaceInFrontOfMappingValue(node) ? " " : "", ":", hasLeadingComments(node.value.content) || hasEndComments(node.value) && node.value.content && !isNode(node.value.content, ["mapping", "sequence"]) || parentNode.type === "mapping" && hasTrailingComment$1(node.key.content) && isInlineNode(node.value.content) || isNode(node.value.content, ["mapping", "sequence"]) && node.value.content.tag === null && node.value.content.anchor === null ? hardline$13 : !node.value.content ? "" : line$11, value])), {
+        })])), ifBreak$8(concat$17([hardline$13, ": ", align$3(2, value)]), indent(concat$17([needsSpaceInFrontOfMappingValue(node) ? " " : "", ":", hasLeadingComments(node.value.content) || hasEndComments(node.value) && node.value.content && !isNode(node.value.content, ["mapping", "sequence"]) || parentNode.type === "mapping" && hasTrailingComment$1(node.key.content) && isInlineNode(node.value.content) || isNode(node.value.content, ["mapping", "sequence"]) && node.value.content.tag === null && node.value.content.anchor === null ? hardline$13 : !node.value.content ? "" : line$11, value])), {
           groupId: groupId
         })])]);
       }
@@ -30359,11 +30520,11 @@ function _print(node, parentNode, path, options, print) {
 
         var isLastItemEmptyMappingItem = node.children.length !== 0 && function (lastItem) {
           return lastItem.type === "flowMappingItem" && isEmptyNode(lastItem.key) && isEmptyNode(lastItem.value);
-        }(getLast$6(node.children));
+        }(getLast$5(node.children));
 
         return concat$17([openMarker, indent(concat$17([bracketSpacing, concat$17(path.map(function (childPath, index) {
           return concat$17([print(childPath), index === node.children.length - 1 ? "" : concat$17([",", line$11, node.children[index].position.start.line !== node.children[index + 1].position.start.line ? printNextEmptyLine(childPath, options.originalText) : ""])]);
-        }, "children")), ifBreak$7(",", "")])), isLastItemEmptyMappingItem ? "" : bracketSpacing, closeMarker]);
+        }, "children")), ifBreak$8(",", "")])), isLastItemEmptyMappingItem ? "" : bracketSpacing, closeMarker]);
       }
 
     case "flowSequenceItem":
