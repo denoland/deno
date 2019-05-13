@@ -21,6 +21,7 @@ mod dispatch_minimal;
 pub mod errors;
 pub mod flags;
 mod fs;
+mod import_map;
 mod global_timer;
 mod http_body;
 mod http_util;
