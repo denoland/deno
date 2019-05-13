@@ -133,7 +133,12 @@ mod ops {
 
   pub fn read(rid: i32, zero_copy: Option<PinnedBuf>) -> Box<MinimalOp> {
     debug!("read rid={}", rid);
-    let zero_copy = zero_copy.unwrap();
+    let zero_copy = match zero_copy {
+      None => {
+        return Box::new(futures::future::err(errors::no_buffer_specified()))
+      }
+      Some(buf) => buf,
+    };
     match resources::lookup(rid as u32) {
       None => Box::new(futures::future::err(errors::bad_resource())),
       Some(resource) => Box::new(
@@ -146,7 +151,12 @@ mod ops {
 
   pub fn write(rid: i32, zero_copy: Option<PinnedBuf>) -> Box<MinimalOp> {
     debug!("write rid={}", rid);
-    let zero_copy = zero_copy.unwrap();
+    let zero_copy = match zero_copy {
+      None => {
+        return Box::new(futures::future::err(errors::no_buffer_specified()))
+      }
+      Some(buf) => buf,
+    };
     match resources::lookup(rid as u32) {
       None => Box::new(futures::future::err(errors::bad_resource())),
       Some(resource) => Box::new(
