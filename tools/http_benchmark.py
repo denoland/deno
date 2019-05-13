@@ -6,17 +6,23 @@ import util
 import time
 import subprocess
 
+# Some of the benchmarks in this file have been renamed. In case the history
+# somehow gets messed up:
+#   "node_http" was once called "node"
+#   "deno_tcp" was once called "deno"
+#   "deno_http" was once called "deno_net_http"
+
 ADDR = "127.0.0.1:4544"
 DURATION = "10s"
 
 
-def deno_http_benchmark(deno_exe):
-    deno_cmd = [deno_exe, "run", "--allow-net", "tests/http_bench.ts", ADDR]
+def deno_tcp(deno_exe):
+    deno_cmd = [deno_exe, "run", "--allow-net", "tools/deno_tcp.ts", ADDR]
     print "http_benchmark testing DENO."
     return run(deno_cmd)
 
 
-def deno_net_http_benchmark(deno_exe):
+def deno_http(deno_exe):
     deno_cmd = [
         deno_exe, "run", "--allow-net",
         "js/deps/https/deno.land/std/http/http_bench.ts", ADDR
@@ -40,19 +46,19 @@ def deno_core_multi(exe):
     return run([exe, "--multi-thread"])
 
 
-def node_http_benchmark():
+def node_http():
     node_cmd = ["node", "tools/node_http.js", ADDR.split(":")[1]]
     print "http_benchmark testing NODE."
     return run(node_cmd)
 
 
-def node_tcp_benchmark():
+def node_tcp():
     node_cmd = ["node", "tools/node_tcp.js", ADDR.split(":")[1]]
     print "http_benchmark testing node_tcp.js"
     return run(node_cmd)
 
 
-def hyper_http_benchmark(hyper_hello_exe):
+def hyper_http(hyper_hello_exe):
     hyper_cmd = [hyper_hello_exe, ADDR.split(":")[1]]
     print "http_benchmark testing RUST hyper."
     return run(hyper_cmd)
@@ -63,13 +69,16 @@ def http_benchmark(build_dir):
     core_http_bench_exe = os.path.join(build_dir, "deno_core_http_bench")
     deno_exe = os.path.join(build_dir, "deno")
     return {
-        "deno": deno_http_benchmark(deno_exe),
-        "deno_net_http": deno_net_http_benchmark(deno_exe),
+        # "deno_tcp" was once called "deno"
+        "deno_tcp": deno_tcp(deno_exe),
+        # "deno_http" was once called "deno_net_http"
+        "deno_http": deno_http(deno_exe),
         "deno_core_single": deno_core_single(core_http_bench_exe),
         "deno_core_multi": deno_core_multi(core_http_bench_exe),
-        "node": node_http_benchmark(),
-        "node_tcp": node_tcp_benchmark(),
-        "hyper": hyper_http_benchmark(hyper_hello_exe)
+        # "node_http" was once called "node"
+        "node_http": node_http(),
+        "node_tcp": node_tcp(),
+        "hyper": hyper_http(hyper_hello_exe)
     }
 
 
@@ -106,4 +115,4 @@ if __name__ == '__main__':
     if len(sys.argv) < 2:
         print "Usage ./tools/http_benchmark.py target/debug/deno"
         sys.exit(1)
-    deno_net_http_benchmark(sys.argv[1])
+    deno_http(sys.argv[1])
