@@ -105,11 +105,11 @@ export function readSync(rid: number, p: Uint8Array): ReadResult {
  *       })();
  */
 export async function read(rid: number, p: Uint8Array): Promise<ReadResult> {
-  if(!Number.isInteger(rid)) {
+  if (!Number.isInteger(rid)) {
     throw new Error("rid must be integer.");
   }
 
-  if(!(p instanceof Uint8Array)) {
+  if (!(p instanceof Uint8Array)) {
     throw new Error("data must be Uint8Array.");
   }
 
@@ -166,11 +166,11 @@ export function writeSync(rid: number, p: Uint8Array): number {
  *
  */
 export async function write(rid: number, p: Uint8Array): Promise<number> {
-  if(!Number.isInteger(rid)) {
+  if (!Number.isInteger(rid)) {
     throw new Error("rid must be integer.");
   }
 
-  if(!(p instanceof Uint8Array)) {
+  if (!(p instanceof Uint8Array)) {
     throw new Error("data must be Uint8Array.");
   }
 
