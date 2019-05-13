@@ -83,3 +83,12 @@ test({
     assertEquals(actual, expected);
   }
 });
+
+test({
+  name: "[DateTime] to IMF 0",
+  fn(): void {
+    const actual = datetime.toIMF(new Date(0));
+    const expected = "Thus, 01 Jan 1970 00:00:00 GMT";
+    assertEquals(actual, expected);
+  }
+});
