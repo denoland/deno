@@ -147,9 +147,9 @@ group("deno_deps_cross") {
 }
 
 # Reads the cargo info from Cargo.toml
-deno_cargo_info = exec_script(
-  "../build_extra/rust/get_cargo_info.py",
-  [ rebase_path("Cargo.toml", root_build_dir) ], "json")
+deno_cargo_info = exec_script("../build_extra/rust/get_cargo_info.py",
+                              [ rebase_path("Cargo.toml", root_build_dir) ],
+                              "json")
 
 rust_executable("deno") {
   source_root = "main.rs"
@@ -180,7 +180,6 @@ rust_test("cli_test") {
     "Cargo.toml",
   ]
 }
-
 
 # Generates the core TypeScript type library for deno that will be
 # included in the runtime bundle
