@@ -1,10 +1,8 @@
-const { cwd, chdir, makeTempDir, mkdir, open, build, remove, symlink } = Deno;
+const { cwd, chdir, makeTempDir, mkdir, open, remove } = Deno;
 type FileInfo = Deno.FileInfo;
-import { walk, walkSync, WalkOptions } from "./walk.ts";
-import { test, TestFunction } from "../testing/mod.ts";
-import { assert, assertEquals } from "../testing/asserts.ts";
-
-const isWindows = build.os === "win";
+import { walk, walkSync, WalkOptions, WalkInfo } from "./walk.ts";
+import { test, TestFunction, runIfMain } from "../testing/mod.ts";
+import { assertEquals } from "../testing/asserts.ts";
 
 export async function testWalk(
   setup: (string) => void | Promise<void>,
@@ -26,28 +24,32 @@ export async function testWalk(
   test({ name, fn });
 }
 
-async function walkArray(
-  dirname: string = ".",
+function normalize({ filename }: WalkInfo): string {
+  return filename.replace(/\\/g, "/");
+}
+
+export async function walkArray(
+  root: string = ".",
   options: WalkOptions = {}
 ): Promise<string[]> {
   const arr: string[] = [];
-  for await (const f of walk(dirname, { ...options })) {
-    arr.push(f.path.replace(/\\/g, "/"));
+  for await (const w of walk(root, { ...options })) {
+    arr.push(normalize(w));
   }
-  arr.sort();
-  const arrSync = Array.from(
-    walkSync(dirname, options),
-    (f: FileInfo): string => f.path.replace(/\\/g, "/")
-  ).sort();
+  arr.sort(); // TODO(ry) Remove sort. The order should be deterministic.
+  const arrSync = Array.from(walkSync(root, options), normalize);
+  arrSync.sort(); // TODO(ry) Remove sort. The order should be deterministic.
   assertEquals(arr, arrSync);
   return arr;
 }
 
-async function touch(path: string): Promise<void> {
+export async function touch(path: string): Promise<void> {
   await open(path, "w");
 }
+
 function assertReady(expectedLength: number): void {
-  const arr = Array.from(walkSync(), (f: FileInfo): string => f.path);
+  const arr = Array.from(walkSync(), normalize);
+
   assertEquals(arr.length, expectedLength);
 }
 
@@ -68,7 +70,7 @@ testWalk(
   async function singleFile(): Promise<void> {
     const arr = await walkArray();
     assertEquals(arr.length, 1);
-    assertEquals(arr[0], "./x");
+    assertEquals(arr[0], "x");
   }
 );
 
@@ -78,11 +80,11 @@ testWalk(
   },
   async function iteratable(): Promise<void> {
     let count = 0;
-    for (const _ of walkSync()) {
+    for (const _ of walkSync(".")) {
       count += 1;
     }
     assertEquals(count, 1);
-    for await (const _ of walk()) {
+    for await (const _ of walk(".")) {
       count += 1;
     }
     assertEquals(count, 2);
@@ -97,7 +99,7 @@ testWalk(
   async function nestedSingleFile(): Promise<void> {
     const arr = await walkArray();
     assertEquals(arr.length, 1);
-    assertEquals(arr[0], "./a/x");
+    assertEquals(arr[0], "a/x");
   }
 );
 
@@ -112,7 +114,7 @@ testWalk(
     assertEquals(arr3.length, 0);
     const arr5 = await walkArray(".", { maxDepth: 5 });
     assertEquals(arr5.length, 1);
-    assertEquals(arr5[0], "./a/b/c/d/x");
+    assertEquals(arr5[0], "a/b/c/d/x");
   }
 );
 
@@ -125,7 +127,7 @@ testWalk(
     assertReady(2);
     const arr = await walkArray(".", { exts: [".ts"] });
     assertEquals(arr.length, 1);
-    assertEquals(arr[0], "./x.ts");
+    assertEquals(arr[0], "x.ts");
   }
 );
 
@@ -139,8 +141,8 @@ testWalk(
     assertReady(3);
     const arr = await walkArray(".", { exts: [".rs", ".ts"] });
     assertEquals(arr.length, 2);
-    assertEquals(arr[0], "./x.ts");
-    assertEquals(arr[1], "./y.rs");
+    assertEquals(arr[0], "x.ts");
+    assertEquals(arr[1], "y.rs");
   }
 );
 
@@ -153,7 +155,7 @@ testWalk(
     assertReady(2);
     const arr = await walkArray(".", { match: [/x/] });
     assertEquals(arr.length, 1);
-    assertEquals(arr[0], "./x");
+    assertEquals(arr[0], "x");
   }
 );
 
@@ -167,8 +169,8 @@ testWalk(
     assertReady(3);
     const arr = await walkArray(".", { match: [/x/, /y/] });
     assertEquals(arr.length, 2);
-    assertEquals(arr[0], "./x");
-    assertEquals(arr[1], "./y");
+    assertEquals(arr[0], "x");
+    assertEquals(arr[1], "y");
   }
 );
 
@@ -181,7 +183,7 @@ testWalk(
     assertReady(2);
     const arr = await walkArray(".", { skip: [/x/] });
     assertEquals(arr.length, 1);
-    assertEquals(arr[0], "./y");
+    assertEquals(arr[0], "y");
   }
 );
 
@@ -195,7 +197,7 @@ testWalk(
     assertReady(3);
     const arr = await walkArray(".", { skip: [/x/, /y/] });
     assertEquals(arr.length, 1);
-    assertEquals(arr[0], "./z");
+    assertEquals(arr[0], "z");
   }
 );
 
@@ -228,6 +230,7 @@ testWalk(
   }
 );
 
+/* TODO(ry) Re-enable followSymlinks
 testWalk(
   async (d: string): Promise<void> => {
     await mkdir(d + "/a");
@@ -258,3 +261,6 @@ testWalk(
     assert(arr.some((f): boolean => f.endsWith("/b/z")));
   }
 );
+*/
+
+runIfMain(import.meta);
