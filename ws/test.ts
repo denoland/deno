@@ -146,6 +146,22 @@ test(function wsAcceptable(): void {
     })
   });
   assertEquals(ret, true);
+
+  assert(
+    acceptable({
+      headers: new Headers([
+        ["connection", "Upgrade"],
+        ["host", "127.0.0.1:9229"],
+        [
+          "sec-websocket-extensions",
+          "permessage-deflate; client_max_window_bits"
+        ],
+        ["sec-websocket-key", "dGhlIHNhbXBsZSBub25jZQ=="],
+        ["sec-websocket-version", "13"],
+        ["upgrade", "WebSocket"]
+      ])
+    })
+  );
 });
 
 const invalidHeaders = [
