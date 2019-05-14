@@ -12,9 +12,8 @@
 // This script formats the given source files. If the files are omitted, it
 // formats the all files in the repository.
 const { args, exit, readFile, writeFile } = Deno;
-type FileInfo = Deno.FileInfo;
 import { glob } from "../fs/glob.ts";
-import { walk } from "../fs/walk.ts";
+import { walk, WalkInfo } from "../fs/walk.ts";
 import { parse } from "../flags/mod.ts";
 import { prettier, prettierPlugins } from "./prettier.ts";
 
@@ -174,15 +173,15 @@ function selectParser(path: string): ParserLabel | null {
  * If paths are empty, then checks all the files.
  */
 async function checkSourceFiles(
-  files: AsyncIterableIterator<FileInfo>,
+  files: AsyncIterableIterator<WalkInfo>,
   prettierOpts: PrettierOptions
 ): Promise<void> {
   const checks: Array<Promise<boolean>> = [];
 
-  for await (const file of files) {
-    const parser = selectParser(file.path);
+  for await (const { filename } of files) {
+    const parser = selectParser(filename);
     if (parser) {
-      checks.push(checkFile(file.path, parser, prettierOpts));
+      checks.push(checkFile(filename, parser, prettierOpts));
     }
   }
 
@@ -202,15 +201,15 @@ async function checkSourceFiles(
  * If paths are empty, then formats all the files.
  */
 async function formatSourceFiles(
-  files: AsyncIterableIterator<FileInfo>,
+  files: AsyncIterableIterator<WalkInfo>,
   prettierOpts: PrettierOptions
 ): Promise<void> {
   const formats: Array<Promise<void>> = [];
 
-  for await (const file of files) {
-    const parser = selectParser(file.path);
+  for await (const { filename } of files) {
+    const parser = selectParser(filename);
     if (parser) {
-      formats.push(formatFile(file.path, parser, prettierOpts));
+      formats.push(formatFile(filename, parser, prettierOpts));
     }
   }
 

@@ -1,5 +1,10 @@
-const { readDir, readDirSync, readlink, readlinkSync, stat, statSync } = Deno;
+// Documentation and interface for walk were adapted from Go
+// https://golang.org/pkg/path/filepath/#Walk
+// Copyright 2009 The Go Authors. All rights reserved. BSD license.
+const { readDir, readDirSync } = Deno;
 type FileInfo = Deno.FileInfo;
+import { unimplemented } from "../testing/asserts.ts";
+import { join } from "./path/mod.ts";
 
 export interface WalkOptions {
   maxDepth?: number;
@@ -23,121 +28,114 @@ function patternTest(patterns: RegExp[], path: string): boolean {
   );
 }
 
-function include(f: FileInfo, options: WalkOptions): boolean {
+function include(filename: string, options: WalkOptions): boolean {
   if (
     options.exts &&
-    !options.exts.some((ext): boolean => f.path.endsWith(ext))
+    !options.exts.some((ext): boolean => filename.endsWith(ext))
   ) {
     return false;
   }
-  if (options.match && !patternTest(options.match, f.path)) {
+  if (options.match && !patternTest(options.match, filename)) {
     return false;
   }
-  if (options.skip && patternTest(options.skip, f.path)) {
+  if (options.skip && patternTest(options.skip, filename)) {
     return false;
   }
   return true;
 }
 
-async function resolve(f: FileInfo): Promise<FileInfo> {
-  // This is the full path, unfortunately if we were to make it relative
-  // it could resolve to a symlink and cause an infinite loop.
-  const fpath = await readlink(f.path);
-  f = await stat(fpath);
-  // workaround path not being returned by stat
-  f.path = fpath;
-  return f;
+export interface WalkInfo {
+  filename: string;
+  info: FileInfo;
 }
 
-function resolveSync(f: FileInfo): FileInfo {
-  // This is the full path, unfortunately if we were to make it relative
-  // it could resolve to a symlink and cause an infinite loop.
-  const fpath = readlinkSync(f.path);
-  f = statSync(fpath);
-  // workaround path not being returned by stat
-  f.path = fpath;
-  return f;
-}
-
-/** Generate all files in a directory recursively.
+/** Walks the file tree rooted at root, calling walkFn for each file or
+ * directory in the tree, including root. The files are walked in lexical
+ * order, which makes the output deterministic but means that for very large
+ * directories walk() can be inefficient.
  *
- *      for await (const fileInfo of walk()) {
- *        console.log(fileInfo.path);
- *        assert(fileInfo.isFile());
+ * Options:
+ * - maxDepth?: number;
+ * - exts?: string[];
+ * - match?: RegExp[];
+ * - skip?: RegExp[];
+ * - onError?: (err: Error) => void;
+ * - followSymlinks?: boolean;
+ *
+ *      for await (const { filename, info } of walk(".")) {
+ *        console.log(filename);
+ *        assert(info.isFile());
  *      };
  */
 export async function* walk(
-  dir: string = ".",
+  root: string,
   options: WalkOptions = {}
-): AsyncIterableIterator<FileInfo> {
+): AsyncIterableIterator<WalkInfo> {
   options.maxDepth -= 1;
   let ls: FileInfo[] = [];
   try {
-    ls = await readDir(dir);
+    ls = await readDir(root);
   } catch (err) {
     if (options.onError) {
       options.onError(err);
     }
   }
-  const length = ls.length;
-  for (var i = 0; i < length; i++) {
-    let f = ls[i];
-    if (f.isSymlink()) {
+  for (let info of ls) {
+    if (info.isSymlink()) {
       if (options.followSymlinks) {
-        f = await resolve(f);
+        // TODO(ry) Re-enable followSymlinks.
+        unimplemented();
       } else {
         continue;
       }
     }
-    if (f.isFile()) {
-      if (include(f, options)) {
-        yield f;
+
+    const filename = join(root, info.name);
+
+    if (info.isFile()) {
+      if (include(filename, options)) {
+        yield { filename, info };
       }
     } else {
       if (!(options.maxDepth < 0)) {
-        yield* walk(f.path, options);
+        yield* walk(filename, options);
       }
     }
   }
 }
 
-/** Generate all files in a directory recursively.
- *
- *      for (const fileInfo of walkSync()) {
- *        console.log(fileInfo.path);
- *        assert(fileInfo.isFile());
- *      };
- */
+/** Same as walk() but uses synchronous ops */
 export function* walkSync(
-  dir: string = ".",
+  root: string = ".",
   options: WalkOptions = {}
-): IterableIterator<FileInfo> {
+): IterableIterator<WalkInfo> {
   options.maxDepth -= 1;
   let ls: FileInfo[] = [];
   try {
-    ls = readDirSync(dir);
+    ls = readDirSync(root);
   } catch (err) {
     if (options.onError) {
       options.onError(err);
     }
   }
-  const length = ls.length;
-  for (var i = 0; i < length; i++) {
-    let f = ls[i];
-    if (f.isSymlink()) {
+  for (let info of ls) {
+    if (info.isSymlink()) {
       if (options.followSymlinks) {
-        f = resolveSync(f);
+        unimplemented();
       } else {
         continue;
       }
     }
-    if (f.isFile()) {
-      if (include(f, options)) {
-        yield f;
+
+    const filename = join(root, info.name);
+
+    if (info.isFile()) {
+      if (include(filename, options)) {
+        yield { filename, info };
       }
     } else {
       if (!(options.maxDepth < 0)) {
-        yield* walkSync(f.path, options);
+        yield* walkSync(filename, options);
       }
     }
   }
