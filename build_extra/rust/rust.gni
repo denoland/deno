@@ -11,10 +11,20 @@ declare_args() {
   rust_treat_warnings_as_errors = true
 }
 
-if (is_win) {
-  executable_suffix = ".exe"
-} else {
+if (is_linux) {
   executable_suffix = ""
+  shared_lib_prefix = "lib"
+  shared_lib_suffix = ".so"
+} else if (is_mac) {
+  executable_suffix = ""
+  shared_lib_prefix = "lib"
+  shared_lib_suffix = ".dylib"
+} else if (is_win) {
+  executable_suffix = ".exe"
+  shared_lib_prefix = ""
+  shared_lib_suffix = ".dll"
+} else {
+  assert(false, "Unsupported platform")
 }
 
 # To simplify transitive dependency management with gn, we build all rust
@@ -40,7 +50,7 @@ out_dir = "$root_out_dir/rust_crates"
 # the arguments it passes to the system linker. That's what dummy.rs is for.
 _rustc_info = exec_script("get_rustc_info.py", [], "json")
 
-template("rust_crate") {
+template("_rust_crate") {
   config_name = "${target_name}_config"
   action_name = "${target_name}_rustc"
 
@@ -103,24 +113,47 @@ template("rust_crate") {
     crate_suffix = ""
   }
 
-  # Derive filenames for 'extern' and 'extern_version' linked rust libraries.
-  extern_rlibs = []
+  if (crate_type == "bin") {
+    out_file = "$crate_name$crate_suffix.o"
+    emit_type = "obj"
+  } else if (crate_type == "proc-macro") {
+    out_file = "$shared_lib_prefix$crate_name$crate_suffix$shared_lib_suffix"
+    emit_type = "link"
+  } else if (crate_type == "rlib") {
+    out_file = "lib$crate_name$crate_suffix.rlib"
+    emit_type = "link"
+  }
+  out_path = "$out_dir/$out_file"
+
+  # Merge `invoker.extern` and `invoker.extern_rlib` into a single list.
+  extern = []
   if (defined(invoker.extern)) {
-    foreach(label, invoker.extern) {
-      extern_rlibs += [
+    extern += invoker.extern
+  }
+  if (defined(invoker.extern_rlib)) {
+    foreach(extern_crate_name, invoker.extern_rlib) {
+      extern += [
         {
-          label = label
-          crate_name = get_label_info(label, "name")
-          rlib = "$out_dir/lib$crate_name.rlib"
+          label = "$rust_build:$extern_crate_name"
+          crate_name = extern_crate_name
+          crate_type = "rlib"
         },
       ]
     }
   }
-  if (defined(invoker.extern_version)) {
-    foreach(info, invoker.extern_version) {
-      extern_rlibs += [
-        {
-          crate_name = info.crate_name
+
+  # Add output file info to every entry in the 'extern' list.
+  extern_outputs = []
+  foreach(info, extern) {
+    extern_outputs += [
+      {
+        label = info.label
+        crate_name = info.crate_name
+        crate_type = info.crate_type
+
+        if (!defined(info.crate_version)) {
+          crate_suffix = ""
+        } else {
           crate_version = info.crate_version
           crate_suffix = exec_script("//tools/sha256sum.py",
                                      [
@@ -128,33 +161,33 @@ template("rust_crate") {
                                        "--format=-%.8s",
                                      ],
                                      "trim string")
-          label = ":$crate_name-$crate_version"
-          rlib = "$out_dir/lib$crate_name$crate_suffix.rlib"
-        },
-      ]
-    }
+        }
+
+        if (crate_type == "rlib") {
+          out_file = "lib$crate_name$crate_suffix.rlib"
+        } else if (info.crate_type == "proc_macro") {
+          out_file =
+              "$shared_lib_prefix$crate_name$crate_suffix$shared_lib_suffix"
+        }
+        out_path = "$out_dir/$out_file"
+      },
+    ]
   }
 
   config(config_name) {
-    foreach(extern, extern_rlibs) {
-      libs += [ extern.rlib ]
+    foreach(info, extern_outputs) {
+      if (info.crate_type == "rlib") {
+        libs += [ info.out_path ]
+      }
     }
     lib_dirs = [ out_dir ]
-  }
-
-  if (crate_type == "bin") {
-    rustc_output = "$out_dir/$crate_name$crate_suffix.o"
-    emit_type = "obj"
-  } else if (crate_type == "rlib") {
-    rustc_output = "$out_dir/lib$crate_name$crate_suffix.rlib"
-    emit_type = "link"
   }
 
   source_set(target_name) {
     public_deps = [
       ":$action_name",
     ]
-    libs += [ rustc_output ]
+    libs += [ out_path ]
     all_dependent_configs = [ ":$config_name" ]
   }
 
@@ -164,7 +197,7 @@ template("rust_crate") {
       source_root,
     ]
     outputs = [
-      rustc_output,
+      out_path,
     ]
     depfile = "$out_dir/$crate_name$crate_suffix.d"
 
@@ -205,6 +238,20 @@ template("rust_crate") {
       ]
     }
 
+    if (is_win) {
+      # Proc-macro crates need to be linked by rustc itself, because rustc
+      # doesn't expose all the information necessary to produce the correct
+      # linker invocation ourselves. However gn's setup creates an environment
+      # where link.exe doesn't always work, so we direct rustc to use lld-link,
+      # and explicitly load the proper environment that makes it work in run.py.
+      args += [
+        "-Clinker-flavor=lld-link",
+        "-Clinker=" + rebase_path(
+                "//third_party/llvm-build/Release+Asserts/bin/lld-link.exe",
+                root_build_dir),
+      ]
+    }
+
     if (is_debug) {
       args += [ "-g" ]
     }
@@ -242,15 +289,29 @@ template("rust_crate") {
       }
     }
 
-    # Build the list of '--extern' arguments from the 'extern_rlibs' array.
-    foreach(extern, extern_rlibs) {
+    # Build the list of '--extern' arguments from the 'extern_outputs' array.
+    foreach(info, extern_outputs) {
       args += [
         "--extern",
-        extern.crate_name + "=" + rebase_path(extern.rlib, root_build_dir),
+        info.crate_name + "=" + rebase_path(info.out_path, root_build_dir),
       ]
-      sources += [ extern.rlib ]
-      deps += [ extern.label ]
+      sources += [ info.out_path ]
+      deps += [ info.label ]
     }
+  }
+}
+
+template("rust_rlib") {
+  _rust_crate(target_name) {
+    forward_variables_from(invoker, "*")
+    crate_type = "rlib"
+  }
+}
+
+template("rust_proc_macro") {
+  _rust_crate(target_name) {
+    forward_variables_from(invoker, "*")
+    crate_type = "proc-macro"
   }
 }
 
@@ -258,7 +319,7 @@ template("rust_executable") {
   bin_name = target_name + "_bin"
   bin_label = ":" + bin_name
 
-  rust_crate(bin_name) {
+  _rust_crate(bin_name) {
     crate_type = "bin"
     forward_variables_from(invoker, "*")
   }
@@ -279,11 +340,16 @@ template("rust_executable") {
     deps += [ bin_label ]
 
     if (defined(extern)) {
-      deps += extern
+      foreach(info, extern) {
+        if (info.crate_type == "rlib") {
+          deps += [ info.label ]
+        }
+      }
     }
-    if (defined(extern_version)) {
-      foreach(info, extern_version) {
-        deps += [ info.label ]
+
+    if (defined(extern_rlib)) {
+      foreach(extern_crate_name, extern_rlib) {
+        deps += [ "$rust_build:$extern_crate_name" ]
       }
     }
   }
