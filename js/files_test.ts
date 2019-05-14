@@ -89,6 +89,49 @@ testPerm({ read: false }, async function readPermFailure(): Promise<void> {
   assert(caughtError);
 });
 
+testPerm({ write: true }, async function writeNullBufferFailure(): Promise<
+  void
+> {
+  const tempDir = Deno.makeTempDirSync();
+  const filename = tempDir + "hello.txt";
+  const file = await Deno.open(filename, "w");
+
+  // writing null should throw an error
+  let err;
+  try {
+    await file.write(null);
+  } catch (e) {
+    err = e;
+  }
+  // TODO: Check error kind when dispatch_minimal pipes errors properly
+  assert(!!err);
+
+  file.close();
+  await Deno.remove(tempDir, { recursive: true });
+});
+
+testPerm(
+  { write: true, read: true },
+  async function readNullBufferFailure(): Promise<void> {
+    const tempDir = Deno.makeTempDirSync();
+    const filename = tempDir + "hello.txt";
+    const file = await Deno.open(filename, "w+");
+
+    // reading file into null buffer should throw an error
+    let err;
+    try {
+      await file.read(null);
+    } catch (e) {
+      err = e;
+    }
+    // TODO: Check error kind when dispatch_minimal pipes errors properly
+    assert(!!err);
+
+    file.close();
+    await Deno.remove(tempDir, { recursive: true });
+  }
+);
+
 testPerm(
   { write: false, read: false },
   async function readWritePermFailure(): Promise<void> {
