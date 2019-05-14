@@ -106,7 +106,7 @@ would be made unless --reload is specified.
   # Downloads all dependencies
   deno fetch https://deno.land/std/http/file_server.ts
   # Once cached, static imports no longer send network requests
-  deno https://deno.land/std/http/file_server.ts
+  deno run -A https://deno.land/std/http/file_server.ts
 ",
         ).arg(Arg::with_name("file").takes_value(true).required(true)),
     ).subcommand(
