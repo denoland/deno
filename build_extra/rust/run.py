@@ -7,10 +7,23 @@ import sys
 import os
 import re
 
+if sys.platform == 'win32':
+    # On Windows, when gn is setting up the build toolchain, it produces a set
+    # of environment variables that are required to invoke the right build
+    # toolchain. We need to load those environment variables here too in order
+    # for rustc to be able to successfully invoke the linker tool.
+    # The file is in 'windows environment block' format, which contains
+    # multiple 'key=value' pairs, separated by '\0' bytes, and terminated by
+    # two '\0' bytes at the end.
+    env_pairs = open("environment.x64").read()[:-2].split('\0')
+    env = dict([pair.split('=', 1) for pair in env_pairs])
+else:
+    env = os.environ.copy()
+
 # This is for src/msg.rs to know where to find msg_generated.rs.
 # When building with Cargo this variable is set by build.rs.
-os.environ["GN_OUT_DIR"] = os.path.abspath(".")
-assert os.path.isdir(os.environ["GN_OUT_DIR"])
+env["GN_OUT_DIR"] = os.path.abspath(".")
+assert os.path.isdir(env["GN_OUT_DIR"])
 
 # Set the CARGO_PKG_VERSION env variable if provided as an argument
 # When building with Cargo this variable is set automatically
@@ -18,8 +31,8 @@ args = sys.argv[1:]
 for i, arg in enumerate(args):
     match = re.search('--cargo-pkg-version="?([^"]*)"?', arg)
     if match:
-        os.environ["CARGO_PKG_VERSION"] = match.group(1)
+        env["CARGO_PKG_VERSION"] = match.group(1)
         del args[i]
         break
 
-sys.exit(subprocess.call(args))
+sys.exit(subprocess.call(args, env=env))

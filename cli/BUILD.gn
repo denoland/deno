@@ -8,43 +8,48 @@ import("//third_party/v8/snapshot_toolchain.gni")
 import("../deno.gni")
 
 main_extern = [
-  "../core:deno",
-
-  "$rust_build:ansi_term",
-  "$rust_build:atty",
-  "$rust_build:clap",
-  "$rust_build:dirs",
-  "$rust_build:flatbuffers",
-  "$rust_build:futures",
-  "$rust_build:http",
-  "$rust_build:hyper",
-  "$rust_build:hyper_rustls",
-  "$rust_build:lazy_static",
-  "$rust_build:libc",
-  "$rust_build:log",
-  "$rust_build:rand",
-  "$rust_build:regex",
-  "$rust_build:remove_dir_all",
-  "$rust_build:ring",
-  "$rust_build:rustyline",
-  "$rust_build:serde_json",
-  "$rust_build:source_map_mappings",
-  "$rust_build:tempfile",
-  "$rust_build:tokio",
-  "$rust_build:tokio_executor",
-  "$rust_build:tokio_fs",
-  "$rust_build:tokio_io",
-  "$rust_build:tokio_process",
-  "$rust_build:tokio_rustls",
-  "$rust_build:tokio_threadpool",
-  "$rust_build:url",
-  "$rust_build:utime",
+  {
+    label = "../core:deno"
+    crate_name = "deno"
+    crate_type = "rlib"
+  },
+]
+main_extern_rlib = [
+  "ansi_term",
+  "atty",
+  "clap",
+  "dirs",
+  "flatbuffers",
+  "futures",
+  "http",
+  "hyper",
+  "hyper_rustls",
+  "lazy_static",
+  "libc",
+  "log",
+  "rand",
+  "regex",
+  "remove_dir_all",
+  "ring",
+  "rustyline",
+  "serde_json",
+  "source_map_mappings",
+  "tempfile",
+  "tokio",
+  "tokio_executor",
+  "tokio_fs",
+  "tokio_io",
+  "tokio_process",
+  "tokio_rustls",
+  "tokio_threadpool",
+  "url",
+  "utime",
 ]
 if (is_win) {
-  main_extern += [ "$rust_build:winapi" ]
+  main_extern_rlib += [ "winapi" ]
 }
 if (is_posix) {
-  main_extern += [ "$rust_build:nix" ]
+  main_extern_rlib += [ "nix" ]
 }
 
 ts_sources = [
@@ -154,6 +159,7 @@ deno_cargo_info = exec_script("../build_extra/rust/get_cargo_info.py",
 rust_executable("deno") {
   source_root = "main.rs"
   extern = main_extern
+  extern_rlib = main_extern_rlib
   deps = [
     ":deno_deps",
   ]
@@ -170,6 +176,7 @@ rust_executable("deno") {
 rust_test("cli_test") {
   source_root = "main.rs"
   extern = main_extern
+  extern_rlib = main_extern_rlib
   deps = [
     ":deno_deps",
   ]

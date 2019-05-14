@@ -18,19 +18,19 @@ group("deno_core_deps") {
 }
 
 # deno does not depend on flatbuffers nor tokio.
-main_extern = [
-  "$rust_build:futures",
-  "$rust_build:libc",
-  "$rust_build:serde_json",
-  "$rust_build:log",
+main_extern_rlib = [
+  "futures",
+  "libc",
+  "serde_json",
+  "log",
 ]
 
-rust_crate("deno") {
+rust_rlib("deno") {
   source_root = "lib.rs"
   deps = [
     ":deno_core_deps",
   ]
-  extern = main_extern
+  extern_rlib = main_extern_rlib
 }
 
 rust_test("deno_core_test") {
@@ -38,19 +38,25 @@ rust_test("deno_core_test") {
   deps = [
     ":deno_core_deps",
   ]
-  extern = main_extern
+  extern_rlib = main_extern_rlib
 }
 
 http_bench_extern = [
-  "$rust_build:futures",
-  "$rust_build:lazy_static",
-  "$rust_build:libc",
-  "$rust_build:log",
-  "$rust_build:tokio",
-  ":deno",
+  {
+    label = ":deno"
+    crate_name = "deno"
+    crate_type = "rlib"
+  },
+]
+http_bench_extern_rlib = [
+  "futures",
+  "lazy_static",
+  "libc",
+  "log",
+  "tokio",
 ]
 if (is_win) {
-  http_bench_extern += [ "$rust_build:winapi" ]
+  http_bench_extern_rlib += [ "winapi" ]
 }
 
 rust_executable("deno_core_http_bench") {
@@ -59,6 +65,7 @@ rust_executable("deno_core_http_bench") {
     ":deno_core_deps",
   ]
   extern = http_bench_extern
+  extern_rlib = http_bench_extern_rlib
 }
 
 rust_test("deno_core_http_bench_test") {
@@ -67,4 +74,5 @@ rust_test("deno_core_http_bench_test") {
     ":deno_core_deps",
   ]
   extern = http_bench_extern
+  extern_rlib = http_bench_extern_rlib
 }

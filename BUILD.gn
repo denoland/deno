@@ -13,8 +13,8 @@ group("default") {
 
 rust_executable("hyper_hello") {
   source_root = "tools/hyper_hello.rs"
-  extern = [
-    "$rust_build:hyper",
-    "$rust_build:ring",
+  extern_rlib = [
+    "hyper",
+    "ring",
   ]
 }
