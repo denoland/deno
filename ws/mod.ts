@@ -341,9 +341,12 @@ class WebSocketImpl implements WebSocket {
 
 /** Return whether given headers is acceptable for websocket  */
 export function acceptable(req: { headers: Headers }): boolean {
+  const upgrade = req.headers.get("upgrade");
+  if (!upgrade || upgrade.toLowerCase() !== "websocket") {
+    return false;
+  }
   const secKey = req.headers.get("sec-websocket-key");
   return (
-    req.headers.get("upgrade") === "websocket" &&
     req.headers.has("sec-websocket-key") &&
     typeof secKey === "string" &&
     secKey.length > 0
