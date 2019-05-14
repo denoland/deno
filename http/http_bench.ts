@@ -7,6 +7,7 @@ const server = serve(addr);
 const body = new TextEncoder().encode("Hello World");
 
 async function main(): Promise<void> {
+  console.log(`http://${addr}/`);
   for await (const request of server) {
     request.respond({ status: 200, body });
   }
