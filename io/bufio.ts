@@ -33,6 +33,11 @@ export class BufReader implements Reader {
   private lastCharSize: number;
   private err: BufState;
 
+  /** return new BufReader unless r is BufReader */
+  static create(r: Reader, size = DEFAULT_BUF_SIZE): BufReader {
+    return r instanceof BufReader ? r : new BufReader(r, size);
+  }
+
   constructor(rd: Reader, size = DEFAULT_BUF_SIZE) {
     if (size < MIN_BUF_SIZE) {
       size = MIN_BUF_SIZE;
@@ -367,6 +372,11 @@ export class BufWriter implements Writer {
   buf: Uint8Array;
   n: number = 0;
   err: null | BufState = null;
+
+  /** return new BufWriter unless w is BufWriter */
+  static create(w: Writer, size = DEFAULT_BUF_SIZE): BufWriter {
+    return w instanceof BufWriter ? w : new BufWriter(w, size);
+  }
 
   constructor(private wr: Writer, size = DEFAULT_BUF_SIZE) {
     if (size <= 0) {
