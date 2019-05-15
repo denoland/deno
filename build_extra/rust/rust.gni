@@ -228,7 +228,7 @@ template("rust_crate") {
       foreach(c, cfg) {
         args += [
           "--cfg",
-          "c",
+          c,
         ]
       }
     }
