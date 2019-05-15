@@ -225,6 +225,10 @@ pub fn worker_init_failed() -> DenoError {
   )
 }
 
+pub fn no_buffer_specified() -> DenoError {
+  new(ErrorKind::InvalidInput, String::from("no buffer specified"))
+}
+
 #[derive(Debug)]
 pub enum RustOrJsError {
   Rust(DenoError),
