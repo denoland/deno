@@ -117,6 +117,7 @@ impl From<String> for ParsedSpecifier {
 
 // TODO: this should return Result?
 /// This is only place where we allow for bare imports (eg. `import query from "jquery";`);
+#[allow(dead_code)]
 fn get_import_map_key(specifier: &str, base_url: &str) -> Option<String> {
   if specifier.is_empty() {
     return None;
@@ -129,6 +130,7 @@ fn get_import_map_key(specifier: &str, base_url: &str) -> Option<String> {
 
 // TODO: this should return Result?
 /// Only resolvable URLs are allowed as values to import map
+#[allow(dead_code)]
 fn get_import_map_value(specifier: &str, base_url: &str) -> Option<String> {
   match resolve_module_spec(specifier, base_url) {
     Ok(url) => Some(url),
@@ -139,7 +141,7 @@ fn get_import_map_value(specifier: &str, base_url: &str) -> Option<String> {
 #[allow(dead_code)]
 pub struct ImportMap {
   base_url: String,
-  modules: HashMap<String, Vec<String>>,
+  pub modules: HashMap<String, Vec<String>>,
 }
 
 #[allow(dead_code)]
@@ -147,49 +149,84 @@ impl ImportMap {
   // TODO(bartlomieju): add reading JSON string
   // TODO: add proper error handling: https://github.com/WICG/import-maps/issues/100
   pub fn new(base_url: &str) -> Self {
-    let mut modules = HashMap::new();
-
-    // TODO: to be removed
-    modules.insert(
-      get_import_map_key("bar", base_url.clone()).unwrap(),
-      vec![
-        get_import_map_value("./bar.ts", base_url.clone()).unwrap(),
-      ],
-    );
-    modules.insert(
-      get_import_map_key("./foo", base_url.clone()).unwrap(),
-      vec![
-          get_import_map_value("./test/foo.ts", base_url.clone()).unwrap(),
-        ],
-    );
-
     ImportMap {
       base_url: base_url.to_string(),
-      modules,
+      modules: HashMap::new(),
     }
   }
 
   pub fn resolve(&self, specifier: &str, referrer: &str) -> Option<String> {
     println!("current map: {:?} {:?}", self.base_url, self.modules);
-    let key = get_import_map_key(specifier, referrer).unwrap();
+    let parsed_specifier = ParsedSpecifier::new(specifier, referrer);
+    let key = parsed_specifier.get_import_map_key().unwrap();
 
-    if !self.modules.contains_key(&key) {
-      println!("Import map: no match for {:?}", key);
-      return None;
-    }
-
+    // exact match
     match self.modules.get(&key) {
       Some(matches) => {
         match matches.first() {
           Some(url) => {
             println!("Import map: found match for {:?}, maps to {:?}", key, url);
-            Some(url.to_string())
+            return Some(url.to_string());
           },
+          // TODO(bartlomieju): assure this
           // we don't want to have entries in import map that are empty vectors
           None => unreachable!(),
         }
       },
-      None => unreachable!(),
+      None => {},
+    }
+
+    // prefix match ("packages" via trailing slash)
+    // https://github.com/WICG/import-maps#packages-via-trailing-slashes
+    // try to match prefix, only for non-bare specifier
+    // "most-specific wins", i.e. when there are multiple matching keys,
+    // choose the longest.
+    // https://github.com/WICG/import-maps/issues/102
+    if parsed_specifier.get_type() != ParsedSpecifierType::Url {
+      return None;
+    }
+
+    let mut best_match: Option<(&String, &Vec<String>)> = None;
+
+    for (spec, matches) in self.modules.iter() {
+      if !spec.ends_with("/") {
+        continue
+      }
+
+      if !key.starts_with(spec) {
+        continue
+      }
+
+      match best_match {
+        Some((best_spec, _best_value)) => {
+          if best_spec.len() < spec.len() {
+            best_match = Some((spec, matches));
+          }
+        },
+        None => {
+          best_match = Some((spec, matches));
+        }
+      }
+    }
+
+    match best_match {
+      Some((spec, matches)) => {
+        let postfix = &key[spec.len()..].to_string();
+
+        for match_ in matches {
+          if postfix.is_empty() {
+            return Some(match_.clone());
+          } else {
+            // join `match_` with `postfix`
+            let mut url = match_.clone();
+            url.push_str(postfix);
+            return Some(url.clone());
+          }
+        }
+
+        return None;
+      },
+      None => None
     }
   }
 }
@@ -257,20 +294,74 @@ mod tests {
     );
   }
 
+  // TODO(bartlomieju): port tests from:
+  //  https://github.com/WICG/import-maps/blob/master/reference-implementation/__tests__/resolving.js
   #[test]
-  fn test_import_map() {
-    let import_map = ImportMap::new("file:///");
+  fn test_empty_import_map() {
+    let base_url = "https://example.com/app/main.ts";
+    let referrer_url = "https://example.com/js/script.ts";
+    let import_map = ImportMap::new(base_url);
 
-    let url1 = import_map.resolve("bar", "file:///script.ts");
-    assert_eq!(url1, Some("file:///bar.ts".to_string()));
+    // should resolve ./ specifiers as URLs
+    assert_eq!(
+      import_map.resolve("./foo", referrer_url),
+      Some("https://example.com/js/foo".to_string())
+    );
+    assert_eq!(
+      import_map.resolve("./foo/bar", referrer_url),
+      Some("https://example.com/js/foo/bar".to_string())
+    );
+    assert_eq!(
+      import_map.resolve("./foo/../bar", referrer_url),
+      Some("https://example.com/js/bar".to_string())
+    );
+    assert_eq!(
+      import_map.resolve("./foo/../../bar", referrer_url),
+      Some("https://example.com/bar".to_string())
+    );
 
-    let url2 = import_map.resolve("./foo", "file:///script.ts");
-    assert_eq!(url2, Some("file:///test/foo.ts".to_string()));
+    // should resolve ../ specifiers as URLs
+    assert_eq!(
+      import_map.resolve("../foo", referrer_url),
+      Some("https://example.com/foo".to_string())
+    );
+    assert_eq!(
+      import_map.resolve("../foo/bar", referrer_url),
+      Some("https://example.com/foo/bar".to_string())
+    );
+    assert_eq!(
+      import_map.resolve("../../../foo/bar", referrer_url),
+      Some("https://example.com/foo/bar".to_string())
+    );
 
-    let url2 = import_map.resolve("./foo", "file:///dev/script2.ts");
-    assert_eq!(url2, Some("file:///test/foo.ts".to_string()));
+    // should resolve / specifiers as URLs
+    assert_eq!(
+      import_map.resolve("/foo", referrer_url),
+      Some("https://example.com/foo".to_string())
+    );
+    assert_eq!(
+      import_map.resolve("/foo/bar", referrer_url),
+      Some("https://example.com/foo/bar".to_string())
+    );
+    assert_eq!(
+      import_map.resolve("../../foo/bar", referrer_url),
+      Some("https://example.com/foo/bar".to_string())
+    );
+    assert_eq!(
+      import_map.resolve("/../foo/../bar", referrer_url),
+      Some("https://example.com/bar".to_string())
+    );
 
-    let url3 = import_map.resolve("./not_mapped_module.ts", "file:///script.ts");
-    assert_eq!(url3, None);
+    // should fail for string not parseable as absolute URLs and not starting with ./, ../ or /
+    assert_eq!(import_map.resolve("foo", referrer_url), None);
+    assert_eq!(import_map.resolve("\\foo", referrer_url), None);
+    assert_eq!(import_map.resolve(":foo", referrer_url), None);
+    assert_eq!(import_map.resolve("@foo", referrer_url), None);
+    assert_eq!(import_map.resolve("%2E/foo", referrer_url), None);
+    assert_eq!(import_map.resolve("%2E%2Efoo", referrer_url), None);
+    assert_eq!(import_map.resolve(".%2Efoo", referrer_url), None);
+    assert_eq!(import_map.resolve("https://ex ample.org", referrer_url), None);
+    assert_eq!(import_map.resolve("https://example.org:deno", referrer_url), None);
+    assert_eq!(import_map.resolve("https://[example.org]", referrer_url), None);
   }
 }
