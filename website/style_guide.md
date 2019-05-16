@@ -36,7 +36,7 @@ not to introduce circular imports.
 
 Example: Instead of `file-server.ts` use `file_server.ts`.
 
-## Format code according using prettier.
+## Format code using prettier.
 
 More specifically, code should be wrapped at 80 columns and use 2-space
 indentation and use camel-case. Use `//format.ts` to invoke prettier.
