@@ -18,6 +18,14 @@ impl ImportMap {
     }
   }
 
+  // TODO(bartlomieju): this method can definitely be optimized
+  // https://github.com/WICG/import-maps/issues/73#issuecomment-439327758
+  // for some candidate implementations.
+
+  // TODO(bartlomieju):
+  // "most-specific wins", i.e. when there are multiple matching keys,
+  // choose the longest.
+  // https://github.com/WICG/import-maps/issues/102
   fn resolve_imports_match(&self, normalized_specifier: String) -> Option<String> {
     for (specifier_key, address_vec) in self.modules.iter() {
       // exact-match
