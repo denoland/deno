@@ -1,7 +1,23 @@
 use crate::worker::resolve_module_spec;
+use serde_json::Map;
+use serde_json::Value;
 use std::collections::HashMap;
 
+#[derive(Debug)]
+pub struct ImportMapError {
+  msg: String,
+}
+
+impl ImportMapError {
+  pub fn new(msg: &str) -> Self {
+    ImportMapError {
+      msg: msg.to_string(),
+    }
+  }
+}
+
 #[allow(dead_code)]
+#[derive(Debug)]
 pub struct ImportMap {
   base_url: String,
   pub modules: HashMap<String, Vec<String>>,
@@ -16,6 +32,129 @@ impl ImportMap {
       base_url: base_url.to_string(),
       modules: HashMap::new(),
     }
+  }
+
+  fn normalize_specifier_key(
+    specifier_key: &str,
+    base_url: &str,
+  ) -> Option<String> {
+    // ignore empty keys
+    if specifier_key.is_empty() {
+      return None;
+    }
+
+    match resolve_module_spec(&specifier_key, base_url) {
+      Ok(url) => {
+        return Some(url.clone());
+      }
+      _ => {}
+    }
+
+    // "bare" specifier
+    Some(specifier_key.to_string())
+  }
+
+  fn normalize_addresses(
+    specifier_key: &str,
+    base_url: &str,
+    address_value: Value,
+  ) -> Vec<String> {
+    let potential_addresses: Vec<Value> = match address_value {
+      Value::String(_) => vec![address_value],
+      Value::Array(address_array) => address_array,
+      Value::Null => vec![],
+      _ => vec![],
+    };
+
+    let mut normalized_addresses: Vec<String> = vec![];
+
+    for address in potential_addresses.iter() {
+      let potential_address = match address {
+        Value::String(address) => address,
+        _ => continue,
+      };
+      match resolve_module_spec(potential_address, base_url) {
+        Ok(address_url) => {
+          if specifier_key.ends_with("/") && !address_url.ends_with("/") {
+            println!(
+              "Invalid target address `{:?}` for package specifier `{:?}`.\
+               Package address targets must end with `/`.",
+              address_url, specifier_key
+            );
+            continue;
+          }
+
+          normalized_addresses.push(address_url);
+        }
+        _ => continue,
+      }
+    }
+
+    normalized_addresses
+  }
+
+  fn normalize_specifier_map(
+    imports_map: &Map<String, Value>,
+    base_url: &str,
+  ) -> HashMap<String, Vec<String>> {
+    let mut normalized_map: HashMap<String, Vec<String>> = HashMap::new();
+
+    for (specifier_key, value) in imports_map.iter() {
+      let normalized_specifier_key =
+        match ImportMap::normalize_specifier_key(specifier_key, base_url) {
+          Some(s) => s,
+          None => continue,
+        };
+
+      let normalized_address_array = ImportMap::normalize_addresses(
+        &normalized_specifier_key,
+        base_url,
+        value.clone(),
+      );
+
+      normalized_map.insert(normalized_specifier_key, normalized_address_array);
+    }
+
+    normalized_map
+  }
+
+  pub fn from_json(
+    base_url: &str,
+    json_string: &str,
+  ) -> Result<Self, ImportMapError> {
+    let v: Value = match serde_json::from_str(json_string) {
+      Ok(v) => v,
+      Err(_) => {
+        return Err(ImportMapError::new("Unable to parse import map JSON"));
+      }
+    };
+
+    match v {
+      Value::Object(_) => {}
+      _ => {
+        return Err(ImportMapError::new("Import map JSON must be an object"));
+      }
+    }
+
+    let normalized_imports = match &v["imports"] {
+      Value::Object(imports_map) => {
+        ImportMap::normalize_specifier_map(imports_map, base_url)
+      }
+      _ => {
+        return Err(ImportMapError::new(
+          "Import map's 'imports' must be an object",
+        ));
+      }
+    };
+
+    // TODO(bartlomieju): handle scopes
+
+    let import_map = ImportMap {
+      base_url: base_url.to_string(),
+      modules: normalized_imports,
+    };
+
+    Ok(import_map)
   }
 
   // TODO(bartlomieju): this method can definitely be optimized
@@ -234,5 +373,42 @@ mod tests {
       import_map.resolve("https://[example.org]", referrer_url),
       None
     );
+  }
+
+  #[test]
+  fn test_parsing_import_map() {
+    let base_url = "https://deno.land";
+
+    {
+      // invalid JSON
+      assert!(ImportMap::from_json(base_url, "{}").is_err());
+      assert!(ImportMap::from_json(base_url, "null").is_err());
+      assert!(ImportMap::from_json(base_url, "true").is_err());
+      assert!(ImportMap::from_json(base_url, "1").is_err());
+      assert!(ImportMap::from_json(base_url, "\"foo\"").is_err());
+      assert!(ImportMap::from_json(base_url, "[]").is_err());
+    }
+
+    {
+      // invalid schema: 'imports' is non-object
+      assert!(ImportMap::from_json(base_url, "{\"imports\": null}").is_err());
+      assert!(ImportMap::from_json(base_url, "{\"imports\": true}").is_err());
+      assert!(ImportMap::from_json(base_url, "{\"imports\": 1}").is_err());
+      assert!(ImportMap::from_json(base_url, "{\"imports\": \"foo\"").is_err());
+      assert!(ImportMap::from_json(base_url, "{\"imports\": []}").is_err());
+    }
+
+    {
+      let json_map = json!({
+        "imports": {
+          "foo": "https://example.com/1",
+          "bar": ["https://example.com/2"],
+          "fizz": null
+        }
+      });
+      let result = ImportMap::from_json(base_url, &json_map.to_string());
+      eprintln!("import map result {:?}", result);
+      assert!(result.is_ok());
+    }
   }
 }
