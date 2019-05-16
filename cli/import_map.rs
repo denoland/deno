@@ -155,79 +155,84 @@ impl ImportMap {
     }
   }
 
+  fn resolve_imports_match(&self, normalized_specifier: String) -> Option<String> {
+    for (specifier_key, address_vec) in self.modules.iter() {
+      // exact-match
+      if normalized_specifier == specifier_key.to_string() {
+        if address_vec.is_empty() {
+          println!("Specifier {:?} was mapped to no addresses.", normalized_specifier);
+          return None;
+        } else if address_vec.len() == 1 {
+          let address = address_vec.first().unwrap();
+          println!("Specifier {:?} was mapped to {:?}.", normalized_specifier, address);
+          // TODO(bartlomieju): ensure that it's a valid URL
+          return Some(address.to_string());
+        } else {
+          println!("Multi-address mappings are not yet supported");
+          return None;
+        }
+      }
+
+      // package-prefix match
+      if specifier_key.ends_with("/") && normalized_specifier.starts_with(specifier_key) {
+        if address_vec.is_empty() {
+          println!("Specifier {:?} was mapped to no addresses (via prefix specifier key {:?}).", normalized_specifier, specifier_key);
+          return None;
+        } else if address_vec.len() == 1 {
+          let address = address_vec.first().unwrap();
+          let after_prefix = &normalized_specifier[specifier_key.len()..];
+
+          match resolve_module_spec(after_prefix, &address) {
+            Ok(resolved_url) => {
+              let resolved_url = resolved_url.to_string();
+              println!("Specifier {:?} was mapped to {:?} (via prefix specifier key {:?}).", normalized_specifier, resolved_url, address);
+              return Some(resolved_url);
+            },
+            Err(_) => {
+              println!("Specifier {:?} was mapped via prefix specifier key {:?}, but is not resolvable.", normalized_specifier, address);
+              return None;
+            },
+          };
+        } else {
+          println!("Multi-address mappings are not yet supported");
+          return None;
+        }
+      }
+    }
+
+    println!("Specifier {:?} was not mapped in import map.", normalized_specifier);
+    return None;
+  }
+
+  /// Currently we support two types of specifiers: URL (http://, https://, file://)
+  /// and "bare" (moment, jquery, lodash)
   pub fn resolve(&self, specifier: &str, referrer: &str) -> Option<String> {
-    println!("current map: {:?} {:?}", self.base_url, self.modules);
-    let parsed_specifier = ParsedSpecifier::new(specifier, referrer);
-    let key = parsed_specifier.get_import_map_key().unwrap();
+    let resolved_url: Option<String> = match resolve_module_spec(specifier, referrer) {
+      Ok(url) => Some(url.clone()),
+      Err(_) => None,
+    };
+    let normalized_specifier = match &resolved_url {
+      Some(url) => url.clone(),
+      None => specifier.to_string(),
+    };
 
-    // exact match
-    match self.modules.get(&key) {
-      Some(matches) => {
-        match matches.first() {
-          Some(url) => {
-            println!("Import map: found match for {:?}, maps to {:?}", key, url);
-            return Some(url.to_string());
-          },
-          // TODO(bartlomieju): assure this
-          // we don't want to have entries in import map that are empty vectors
-          None => unreachable!(),
-        }
-      },
-      None => {},
+    // TODO: handle scopes
+
+    let imports_match = self.resolve_imports_match(normalized_specifier.clone());
+
+    // match found in import map
+    if imports_match.is_some() {
+      return imports_match;
     }
 
-    // prefix match ("packages" via trailing slash)
-    // https://github.com/WICG/import-maps#packages-via-trailing-slashes
-    // try to match prefix, only for non-bare specifier
-    // "most-specific wins", i.e. when there are multiple matching keys,
-    // choose the longest.
-    // https://github.com/WICG/import-maps/issues/102
-    if parsed_specifier.get_type() != ParsedSpecifierType::Url {
-      return None;
+    // no match in import map but we got resolvable URL
+    if resolved_url.is_some() {
+      // TODO(bartlomieju): verify `resolved_url` scheme in (http://, https://, file://)
+      return resolved_url;
     }
 
-    let mut best_match: Option<(&String, &Vec<String>)> = None;
-
-    for (spec, matches) in self.modules.iter() {
-      if !spec.ends_with("/") {
-        continue
-      }
-
-      if !key.starts_with(spec) {
-        continue
-      }
-
-      match best_match {
-        Some((best_spec, _best_value)) => {
-          if best_spec.len() < spec.len() {
-            best_match = Some((spec, matches));
-          }
-        },
-        None => {
-          best_match = Some((spec, matches));
-        }
-      }
-    }
-
-    match best_match {
-      Some((spec, matches)) => {
-        let postfix = &key[spec.len()..].to_string();
-
-        for match_ in matches {
-          if postfix.is_empty() {
-            return Some(match_.clone());
-          } else {
-            // join `match_` with `postfix`
-            let mut url = match_.clone();
-            url.push_str(postfix);
-            return Some(url.clone());
-          }
-        }
-
-        return None;
-      },
-      None => None
-    }
+    println!("Unmapped bare specifier {:?}", normalized_specifier);
+    return None;
   }
 }
 
@@ -351,6 +356,35 @@ mod tests {
       import_map.resolve("/../foo/../bar", referrer_url),
       Some("https://example.com/bar".to_string())
     );
+
+    // should parse absolute fetch-scheme URLs
+    assert_eq!(
+      import_map.resolve("about:good", referrer_url),
+      Some("about:good".to_string())
+    );
+    assert_eq!(
+      import_map.resolve("https://example.net", referrer_url),
+      Some("https://example.net/".to_string())
+    );
+    assert_eq!(
+      import_map.resolve("https://ex%41mple.com/", referrer_url),
+      Some("https://example.com/".to_string())
+    );
+    assert_eq!(
+      import_map.resolve("https:example.org", referrer_url),
+      Some("https://example.org/".to_string())
+    );
+    assert_eq!(
+      import_map.resolve("https://///example.com///", referrer_url),
+      Some("https://example.com///".to_string())
+    );
+
+    // TODO(bartlomieju): enable these tests
+    // should fail for absolute non-fetch-scheme URLs
+    // assert_eq!(import_map.resolve("mailto:bad", referrer_url), None);
+    // assert_eq!(import_map.resolve("import:bad", referrer_url), None);
+    // assert_eq!(import_map.resolve("javascript:bad", referrer_url), None);
+    // assert_eq!(import_map.resolve("wss:bad", referrer_url), None);
 
     // should fail for string not parseable as absolute URLs and not starting with ./, ../ or /
     assert_eq!(import_map.resolve("foo", referrer_url), None);
