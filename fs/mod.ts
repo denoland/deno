@@ -8,6 +8,7 @@ export * from "./exists.ts";
 export * from "./glob.ts";
 export * from "./globrex.ts";
 export * from "./move.ts";
+export * from "./copy.ts";
 export * from "./read_file_str.ts";
 export * from "./write_file_str.ts";
 export * from "./read_json.ts";

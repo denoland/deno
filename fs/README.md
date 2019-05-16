@@ -129,6 +129,19 @@ moveSync("./foo", "./existingFolder", { overwrite: true });
 // Will overwrite existingFolder
 ```
 
+### copy
+
+copy a file or directory. Overwrites it if option provided
+
+```ts
+import { copy, copySync } from "https://deno.land/std/fs/mod.ts";
+
+copy("./foo", "./bar"); // returns a promise
+copySync("./foo", "./bar"); // void
+copySync("./foo", "./existingFolder", { overwrite: true });
+// Will overwrite existingFolder
+```
+
 ### readJson
 
 Reads a JSON file and then parses it into an object

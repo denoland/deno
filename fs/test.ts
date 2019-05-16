@@ -11,6 +11,7 @@ import "./ensure_file_test.ts";
 import "./ensure_symlink_test.ts";
 import "./ensure_link_test.ts";
 import "./move_test.ts";
+import "./copy_test.ts";
 import "./read_json_test.ts";
 import "./write_json_test.ts";
 import "./read_file_str_test.ts";
