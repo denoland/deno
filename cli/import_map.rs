@@ -1,7 +1,8 @@
 use crate::worker::resolve_module_spec;
 use serde_json::Map;
 use serde_json::Value;
-use std::collections::HashMap;
+use std::cmp::Ordering;
+use std::collections::BTreeMap;
 use url::Url;
 
 #[derive(Debug)]
@@ -21,7 +22,7 @@ impl ImportMapError {
 #[derive(Debug)]
 pub struct ImportMap {
   base_url: String,
-  pub modules: HashMap<String, Vec<String>>,
+  pub modules: BTreeMap<String, Vec<String>>,
 }
 
 #[allow(dead_code)]
@@ -31,7 +32,7 @@ impl ImportMap {
   pub fn new(base_url: &str) -> Self {
     ImportMap {
       base_url: base_url.to_string(),
-      modules: HashMap::new(),
+      modules: BTreeMap::new(),
     }
   }
 
@@ -94,8 +95,8 @@ impl ImportMap {
   fn normalize_specifier_map(
     imports_map: &Map<String, Value>,
     base_url: &str,
-  ) -> HashMap<String, Vec<String>> {
-    let mut normalized_map: HashMap<String, Vec<String>> = HashMap::new();
+  ) -> BTreeMap<String, Vec<String>> {
+    let mut normalized_map: BTreeMap<String, Vec<String>> = BTreeMap::new();
 
     for (specifier_key, value) in imports_map.iter() {
       let normalized_specifier_key =
@@ -167,7 +168,24 @@ impl ImportMap {
     &self,
     normalized_specifier: String,
   ) -> Option<String> {
-    for (specifier_key, address_vec) in self.modules.iter() {
+    let mut keys: Vec<String> = self.modules.keys().cloned().collect();
+    // first sort by length and then alphabetically
+    keys.sort_by(|a, b| {
+      if a.len() > b.len() {
+        return Ordering::Less;
+      } else if b.len() > a.len() {
+        return Ordering::Greater;
+      }
+
+      b.cmp(a)
+    });
+
+    for specifier_key in keys {
+      let address_vec = match self.modules.get(&specifier_key) {
+        Some(v) => v,
+        None => unreachable!(),
+      };
+
       // exact-match
       if normalized_specifier == specifier_key {
         if address_vec.is_empty() {
@@ -192,7 +210,7 @@ impl ImportMap {
 
       // package-prefix match
       if specifier_key.ends_with('/')
-        && normalized_specifier.starts_with(specifier_key)
+        && normalized_specifier.starts_with(&specifier_key)
       {
         if address_vec.is_empty() {
           println!("Specifier {:?} was mapped to no addresses (via prefix specifier key {:?}).", normalized_specifier, specifier_key);
@@ -574,10 +592,6 @@ mod tests {
 
   #[test]
   fn url_like_specifier() {
-    // TODO(bartlomieju): in order for this test to pass we need to implement longest-match in map
-    //  ie. iterate over self.modules sorted by longest keys
-    return;
-
     let base_url = "https://example.com/app/main.ts";
     let referrer_url = "https://example.com/js/script.ts";
 
