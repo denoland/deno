@@ -81,7 +81,6 @@ export {
 export { inspect } from "./console";
 export { build, platform, OperatingSystem, Arch } from "./build";
 export { version } from "./version";
-export { getRandomValues, getRandomValuesSync } from "./get_random_values";
 export const args: string[] = [];
 
 // These are internal Deno APIs.  We are marking them as internal so they do not

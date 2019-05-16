@@ -4,56 +4,29 @@ import * as flatbuffers from "./flatbuffers";
 import * as dispatch from "./dispatch";
 
 function req(
-  typedArray:
-    | Int8Array
-    | Uint8Array
-    | Int16Array
-    | Uint16Array
-    | Int32Array
-    | Uint32Array
+  typedArray: ArrayBufferView
 ): [flatbuffers.Builder, msg.Any, flatbuffers.Offset, ArrayBufferView] {
   const builder = flatbuffers.createBuilder();
   const inner = msg.GetRandomValues.createGetRandomValues(builder);
-  return [
-    builder,
-    msg.Any.GetRandomValues,
-    inner,
-    typedArray as ArrayBufferView
-  ];
-}
-
-/** Collects cryptographically secure random values. The underlying CSPRNG in
- * use is Rust's `rand::rngs::ThreadRng`.
- *
- *       const arr = new Uint8Array(32);
- *       await Deno.getRandomValues(arr);
- */
-export async function getRandomValues(
-  typedArray:
-    | Int8Array
-    | Uint8Array
-    | Int16Array
-    | Uint16Array
-    | Int32Array
-    | Uint32Array
-): Promise<void> {
-  await dispatch.sendAsync(...req(typedArray));
+  return [builder, msg.Any.GetRandomValues, inner, typedArray];
 }
 
 /** Synchronously collects cryptographically secure random values. The
  * underlying CSPRNG in use is Rust's `rand::rngs::ThreadRng`.
  *
  *       const arr = new Uint8Array(32);
- *       Deno.getRandomValuesSync(arr);
+ *       crypto.getRandomValues(arr);
  */
-export function getRandomValuesSync(
-  typedArray:
+export function getRandomValues<
+  T extends
     | Int8Array
     | Uint8Array
+    | Uint8ClampedArray
     | Int16Array
     | Uint16Array
     | Int32Array
     | Uint32Array
-): void {
-  dispatch.sendSync(...req(typedArray));
+>(typedArray: T): T {
+  dispatch.sendSync(...req(typedArray as ArrayBufferView));
+  return typedArray;
 }
