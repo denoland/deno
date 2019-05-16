@@ -43,7 +43,6 @@ testPerm({ read: true, write: true }, function linkSyncExists(): void {
     err = e;
   }
   assert(!!err);
-  console.log(err);
   assertEquals(err.kind, Deno.ErrorKind.AlreadyExists);
   assertEquals(err.name, "AlreadyExists");
 });
@@ -60,7 +59,6 @@ testPerm({ read: true, write: true }, function linkSyncNotFound(): void {
     err = e;
   }
   assert(!!err);
-  console.log(err);
   assertEquals(err.kind, Deno.ErrorKind.NotFound);
   assertEquals(err.name, "NotFound");
 });
