@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use crate::worker::resolve_module_spec;
+use std::collections::HashMap;
 
 #[allow(dead_code)]
 pub struct ImportMap {
@@ -26,16 +26,25 @@ impl ImportMap {
   // "most-specific wins", i.e. when there are multiple matching keys,
   // choose the longest.
   // https://github.com/WICG/import-maps/issues/102
-  fn resolve_imports_match(&self, normalized_specifier: String) -> Option<String> {
+  fn resolve_imports_match(
+    &self,
+    normalized_specifier: String,
+  ) -> Option<String> {
     for (specifier_key, address_vec) in self.modules.iter() {
       // exact-match
       if normalized_specifier == specifier_key.to_string() {
         if address_vec.is_empty() {
-          println!("Specifier {:?} was mapped to no addresses.", normalized_specifier);
+          println!(
+            "Specifier {:?} was mapped to no addresses.",
+            normalized_specifier
+          );
           return None;
         } else if address_vec.len() == 1 {
           let address = address_vec.first().unwrap();
-          println!("Specifier {:?} was mapped to {:?}.", normalized_specifier, address);
+          println!(
+            "Specifier {:?} was mapped to {:?}.",
+            normalized_specifier, address
+          );
           // TODO(bartlomieju): ensure that it's a valid URL
           return Some(address.to_string());
         } else {
@@ -45,7 +54,9 @@ impl ImportMap {
       }
 
       // package-prefix match
-      if specifier_key.ends_with("/") && normalized_specifier.starts_with(specifier_key) {
+      if specifier_key.ends_with("/")
+        && normalized_specifier.starts_with(specifier_key)
+      {
         if address_vec.is_empty() {
           println!("Specifier {:?} was mapped to no addresses (via prefix specifier key {:?}).", normalized_specifier, specifier_key);
           return None;
@@ -58,11 +69,11 @@ impl ImportMap {
               let resolved_url = resolved_url.to_string();
               println!("Specifier {:?} was mapped to {:?} (via prefix specifier key {:?}).", normalized_specifier, resolved_url, address);
               return Some(resolved_url);
-            },
+            }
             Err(_) => {
               println!("Specifier {:?} was mapped via prefix specifier key {:?}, but is not resolvable.", normalized_specifier, address);
               return None;
-            },
+            }
           };
         } else {
           println!("Multi-address mappings are not yet supported");
@@ -71,17 +82,21 @@ impl ImportMap {
       }
     }
 
-    println!("Specifier {:?} was not mapped in import map.", normalized_specifier);
+    println!(
+      "Specifier {:?} was not mapped in import map.",
+      normalized_specifier
+    );
     return None;
   }
 
   /// Currently we support two types of specifiers: URL (http://, https://, file://)
   /// and "bare" (moment, jquery, lodash)
   pub fn resolve(&self, specifier: &str, referrer: &str) -> Option<String> {
-    let resolved_url: Option<String> = match resolve_module_spec(specifier, referrer) {
-      Ok(url) => Some(url.clone()),
-      Err(_) => None,
-    };
+    let resolved_url: Option<String> =
+      match resolve_module_spec(specifier, referrer) {
+        Ok(url) => Some(url.clone()),
+        Err(_) => None,
+      };
     let normalized_specifier = match &resolved_url {
       Some(url) => url.clone(),
       None => specifier.to_string(),
@@ -89,7 +104,8 @@ impl ImportMap {
 
     // TODO: handle scopes
 
-    let imports_match = self.resolve_imports_match(normalized_specifier.clone());
+    let imports_match =
+      self.resolve_imports_match(normalized_specifier.clone());
 
     // match found in import map
     if imports_match.is_some() {
@@ -206,8 +222,17 @@ mod tests {
     assert_eq!(import_map.resolve("%2E/foo", referrer_url), None);
     assert_eq!(import_map.resolve("%2E%2Efoo", referrer_url), None);
     assert_eq!(import_map.resolve(".%2Efoo", referrer_url), None);
-    assert_eq!(import_map.resolve("https://ex ample.org", referrer_url), None);
-    assert_eq!(import_map.resolve("https://example.org:deno", referrer_url), None);
-    assert_eq!(import_map.resolve("https://[example.org]", referrer_url), None);
+    assert_eq!(
+      import_map.resolve("https://ex ample.org", referrer_url),
+      None
+    );
+    assert_eq!(
+      import_map.resolve("https://example.org:deno", referrer_url),
+      None
+    );
+    assert_eq!(
+      import_map.resolve("https://[example.org]", referrer_url),
+      None
+    );
   }
 }
