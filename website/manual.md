@@ -357,6 +357,37 @@ And if you ever want to upgrade to the latest published version:
 $ file_server --reload
 ```
 
+### Permissions whitelist
+
+deno also provides permissions whitelist.
+
+This is an example to restrict File system access by whitelist.
+
+```shellsession
+$ deno run --allow-read=/usr https://deno.land/std/examples/cat.ts /etc/passwd
+⚠️  Deno requests read access to "/etc/passwd". Grant? [a/y/n/d (a = allow always, y = allow once, n = deny once, d = deny always)]
+```
+
+You can grant read permission under `/etc` dir
+
+```shellsession
+$ deno run --allow-read=/etc https://deno.land/std/examples/cat.ts /etc/passwd
+```
+
+`--allow-write` works same as `--allow-read`.
+
+This is an example to restrict host.
+
+```ts
+(async () => {
+  const result = await fetch("https://deno.land/std/examples/echo_server.ts");
+})();
+```
+
+```shellsession
+$ deno run --allow-net=deno.land allow-net-whitelist-example.ts
+```
+
 ### Run subprocess
 
 [API Reference](https://deno.land/typedoc/index.html#run)
