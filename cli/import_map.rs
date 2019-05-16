@@ -112,7 +112,7 @@ impl ImportMap {
         value.clone(),
       );
 
-      println!(
+      debug!(
         "normalized specifier {:?}; {:?}",
         normalized_specifier_key, normalized_address_array
       );
@@ -172,34 +172,32 @@ impl ImportMap {
     Ok(import_map)
   }
 
-  // TODO(bartlomieju): this method can definitely be optimized
   // https://github.com/WICG/import-maps/issues/73#issuecomment-439327758
-  // for some candidate implementations.
+  // for some more optimized candidate implementations.
   fn resolve_imports_match(
     &self,
     normalized_specifier: String,
-  ) -> Option<String> {
+  ) -> Result<Option<String>, ImportMapError> {
     // exact-match
     if let Some(address_vec) = self.modules.get(&normalized_specifier) {
       if address_vec.is_empty() {
-        println!(
+        println!("match with empty array {:?}", normalized_specifier);
+        return Err(ImportMapError::new(&format!(
           "Specifier {:?} was mapped to no addresses.",
           normalized_specifier
-        );
-        // TODO: this branch should return failure
-        return None;
+        )));
       } else if address_vec.len() == 1 {
         let address = address_vec.first().unwrap();
-        println!(
+        debug!(
           "Specifier {:?} was mapped to {:?}.",
           normalized_specifier, address
         );
         // TODO(bartlomieju): ensure that it's a valid URL
-        return Some(address.to_string());
+        return Ok(Some(address.to_string()));
       } else {
-        println!("Multi-address mappings are not yet supported");
-        // TODO: this branch should return failure
-        return None;
+        return Err(ImportMapError::new(
+          "Multi-address mappings are not yet supported",
+        ));
       }
     }
 
@@ -212,9 +210,7 @@ impl ImportMap {
         && normalized_specifier.starts_with(specifier_key)
       {
         if address_vec.is_empty() {
-          println!("Specifier {:?} was mapped to no addresses (via prefix specifier key {:?}).", normalized_specifier, specifier_key);
-          // TODO: this branch should return failure
-          return None;
+          return Err(ImportMapError::new(&format!("Specifier {:?} was mapped to no addresses (via prefix specifier key {:?}).", normalized_specifier, specifier_key)));
         } else if address_vec.len() == 1 {
           let address = address_vec.first().unwrap();
           let after_prefix = &normalized_specifier[specifier_key.len()..];
@@ -222,31 +218,40 @@ impl ImportMap {
           if let Ok(base_url) = Url::parse(address) {
             if let Ok(url) = base_url.join(after_prefix) {
               let resolved_url = url.to_string();
-              println!("Specifier {:?} was mapped to {:?} (via prefix specifier key {:?}).", normalized_specifier, resolved_url, address);
-              return Some(resolved_url);
+              debug!("Specifier {:?} was mapped to {:?} (via prefix specifier key {:?}).", normalized_specifier, resolved_url, address);
+              return Ok(Some(resolved_url));
             }
           }
 
           unreachable!();
         } else {
-          println!("Multi-address mappings are not yet supported");
-          // TODO: this branch should return failure
-          return None;
+          return Err(ImportMapError::new(
+            "Multi-address mappings are not yet supported",
+          ));
         }
       }
     }
 
-    println!(
+    debug!(
       "Specifier {:?} was not mapped in import map.",
       normalized_specifier
     );
 
-    None
+    Ok(None)
   }
 
   /// Currently we support two types of specifiers: URL (http://, https://, file://)
   /// and "bare" (moment, jquery, lodash)
-  pub fn resolve(&self, specifier: &str, referrer: &str) -> Option<String> {
+  ///
+  /// Scenarios:
+  ///   1. import resolved using import map -> String
+  ///   2. import restricted by import map -> ImportMapError
+  ///   3. import not mapped -> None
+  pub fn resolve(
+    &self,
+    specifier: &str,
+    referrer: &str,
+  ) -> Result<Option<String>, ImportMapError> {
     let resolved_url: Option<String> =
       match resolve_module_spec(specifier, referrer) {
         Ok(url) => Some(url.clone()),
@@ -260,21 +265,26 @@ impl ImportMap {
     // TODO: handle scopes
 
     let imports_match =
-      self.resolve_imports_match(normalized_specifier.clone());
+      match self.resolve_imports_match(normalized_specifier.clone()) {
+        Ok(m) => m,
+        Err(e) => return Err(e),
+      };
 
     // match found in import map
     if imports_match.is_some() {
-      return imports_match;
+      return Ok(imports_match);
     }
 
     // no match in import map but we got resolvable URL
     if resolved_url.is_some() {
       // TODO(bartlomieju): verify `resolved_url` scheme in (http://, https://, file://)
-      return resolved_url;
+      return Ok(resolved_url);
     }
 
-    println!("Unmapped bare specifier {:?}", normalized_specifier);
-    None
+    Err(ImportMapError::new(&format!(
+      "Unmapped bare specifier {:?}",
+      normalized_specifier
+    )))
   }
 }
 
@@ -324,73 +334,83 @@ mod tests {
 
     // should resolve ./ specifiers as URLs
     assert_eq!(
-      import_map.resolve("./foo", referrer_url),
+      import_map.resolve("./foo", referrer_url).unwrap(),
       Some("https://example.com/js/foo".to_string())
     );
     assert_eq!(
-      import_map.resolve("./foo/bar", referrer_url),
+      import_map.resolve("./foo/bar", referrer_url).unwrap(),
       Some("https://example.com/js/foo/bar".to_string())
     );
     assert_eq!(
-      import_map.resolve("./foo/../bar", referrer_url),
+      import_map.resolve("./foo/../bar", referrer_url).unwrap(),
       Some("https://example.com/js/bar".to_string())
     );
     assert_eq!(
-      import_map.resolve("./foo/../../bar", referrer_url),
+      import_map.resolve("./foo/../../bar", referrer_url).unwrap(),
       Some("https://example.com/bar".to_string())
     );
 
     // should resolve ../ specifiers as URLs
     assert_eq!(
-      import_map.resolve("../foo", referrer_url),
+      import_map.resolve("../foo", referrer_url).unwrap(),
       Some("https://example.com/foo".to_string())
     );
     assert_eq!(
-      import_map.resolve("../foo/bar", referrer_url),
+      import_map.resolve("../foo/bar", referrer_url).unwrap(),
       Some("https://example.com/foo/bar".to_string())
     );
     assert_eq!(
-      import_map.resolve("../../../foo/bar", referrer_url),
+      import_map
+        .resolve("../../../foo/bar", referrer_url)
+        .unwrap(),
       Some("https://example.com/foo/bar".to_string())
     );
 
     // should resolve / specifiers as URLs
     assert_eq!(
-      import_map.resolve("/foo", referrer_url),
+      import_map.resolve("/foo", referrer_url).unwrap(),
       Some("https://example.com/foo".to_string())
     );
     assert_eq!(
-      import_map.resolve("/foo/bar", referrer_url),
+      import_map.resolve("/foo/bar", referrer_url).unwrap(),
       Some("https://example.com/foo/bar".to_string())
     );
     assert_eq!(
-      import_map.resolve("../../foo/bar", referrer_url),
+      import_map.resolve("../../foo/bar", referrer_url).unwrap(),
       Some("https://example.com/foo/bar".to_string())
     );
     assert_eq!(
-      import_map.resolve("/../foo/../bar", referrer_url),
+      import_map.resolve("/../foo/../bar", referrer_url).unwrap(),
       Some("https://example.com/bar".to_string())
     );
 
     // should parse absolute fetch-scheme URLs
     assert_eq!(
-      import_map.resolve("about:good", referrer_url),
+      import_map.resolve("about:good", referrer_url).unwrap(),
       Some("about:good".to_string())
     );
     assert_eq!(
-      import_map.resolve("https://example.net", referrer_url),
+      import_map
+        .resolve("https://example.net", referrer_url)
+        .unwrap(),
       Some("https://example.net/".to_string())
     );
     assert_eq!(
-      import_map.resolve("https://ex%41mple.com/", referrer_url),
+      import_map
+        .resolve("https://ex%41mple.com/", referrer_url)
+        .unwrap(),
       Some("https://example.com/".to_string())
     );
     assert_eq!(
-      import_map.resolve("https:example.org", referrer_url),
+      import_map
+        .resolve("https:example.org", referrer_url)
+        .unwrap(),
       Some("https://example.org/".to_string())
     );
     assert_eq!(
-      import_map.resolve("https://///example.com///", referrer_url),
+      import_map
+        .resolve("https://///example.com///", referrer_url)
+        .unwrap(),
       Some("https://example.com///".to_string())
     );
 
@@ -404,24 +424,27 @@ mod tests {
     // }
 
     // should fail for string not parseable as absolute URLs and not starting with ./, ../ or /
-    assert_eq!(import_map.resolve("foo", referrer_url), None);
-    assert_eq!(import_map.resolve("\\foo", referrer_url), None);
-    assert_eq!(import_map.resolve(":foo", referrer_url), None);
-    assert_eq!(import_map.resolve("@foo", referrer_url), None);
-    assert_eq!(import_map.resolve("%2E/foo", referrer_url), None);
-    assert_eq!(import_map.resolve("%2E%2Efoo", referrer_url), None);
-    assert_eq!(import_map.resolve(".%2Efoo", referrer_url), None);
-    assert_eq!(
-      import_map.resolve("https://ex ample.org", referrer_url),
-      None
+    assert!(import_map.resolve("foo", referrer_url).is_err());
+    assert!(import_map.resolve("\\foo", referrer_url).is_err());
+    assert!(import_map.resolve(":foo", referrer_url).is_err());
+    assert!(import_map.resolve("@foo", referrer_url).is_err());
+    assert!(import_map.resolve("%2E/foo", referrer_url).is_err());
+    assert!(import_map.resolve("%2E%2Efoo", referrer_url).is_err());
+    assert!(import_map.resolve(".%2Efoo", referrer_url).is_err());
+    assert!(
+      import_map
+        .resolve("https://ex ample.org", referrer_url)
+        .is_err()
     );
-    assert_eq!(
-      import_map.resolve("https://example.org:deno", referrer_url),
-      None
+    assert!(
+      import_map
+        .resolve("https://example.org:deno", referrer_url)
+        .is_err()
     );
-    assert_eq!(
-      import_map.resolve("https://[example.org]", referrer_url),
-      None
+    assert!(
+      import_map
+        .resolve("https://[example.org]", referrer_url)
+        .is_err()
     );
   }
 
@@ -440,8 +463,8 @@ mod tests {
     let import_map =
       ImportMap::from_json(base_url, &json_map.to_string()).unwrap();
 
-    assert_eq!(import_map.resolve("moment", referrer_url), None);
-    assert_eq!(import_map.resolve("lodash", referrer_url), None);
+    assert!(import_map.resolve("moment", referrer_url).is_err());
+    assert!(import_map.resolve("lodash", referrer_url).is_err());
   }
 
   #[test]
@@ -465,44 +488,46 @@ mod tests {
 
     // should work for package main modules
     assert_eq!(
-      import_map.resolve("moment", referrer_url),
+      import_map.resolve("moment", referrer_url).unwrap(),
       Some("https://example.com/deps/moment/src/moment.js".to_string())
     );
     assert_eq!(
-      import_map.resolve("lodash-dot", referrer_url),
+      import_map.resolve("lodash-dot", referrer_url).unwrap(),
       Some("https://example.com/app/deps/lodash-es/lodash.js".to_string())
     );
     assert_eq!(
-      import_map.resolve("lodash-dotdot", referrer_url),
+      import_map.resolve("lodash-dotdot", referrer_url).unwrap(),
       Some("https://example.com/deps/lodash-es/lodash.js".to_string())
     );
 
     // should work for package submodules
     assert_eq!(
-      import_map.resolve("moment/foo", referrer_url),
+      import_map.resolve("moment/foo", referrer_url).unwrap(),
       Some("https://example.com/deps/moment/src/foo".to_string())
     );
     assert_eq!(
-      import_map.resolve("lodash-dot/foo", referrer_url),
+      import_map.resolve("lodash-dot/foo", referrer_url).unwrap(),
       Some("https://example.com/app/deps/lodash-es/foo".to_string())
     );
     assert_eq!(
-      import_map.resolve("lodash-dotdot/foo", referrer_url),
+      import_map
+        .resolve("lodash-dotdot/foo", referrer_url)
+        .unwrap(),
       Some("https://example.com/deps/lodash-es/foo".to_string())
     );
 
     // should work for package names that end in a slash
     assert_eq!(
-      import_map.resolve("moment/", referrer_url),
+      import_map.resolve("moment/", referrer_url).unwrap(),
       Some("https://example.com/deps/moment/src/".to_string())
     );
 
     // should fail for package modules that are not declared
-    assert_eq!(import_map.resolve("underscore/", referrer_url), None);
-    assert_eq!(import_map.resolve("underscore/foo", referrer_url), None);
+    assert!(import_map.resolve("underscore/", referrer_url).is_err());
+    assert!(import_map.resolve("underscore/foo", referrer_url).is_err());
 
     // should fail for package submodules that map to nowhere
-    assert_eq!(import_map.resolve("nowhere/foo", referrer_url), None);
+    assert!(import_map.resolve("nowhere/foo", referrer_url).is_err());
   }
 
   #[test]
@@ -526,34 +551,40 @@ mod tests {
 
     // should work for explicitly-mapped specifiers that happen to have a slash
     assert_eq!(
-      import_map.resolve("package/withslash", referrer_url),
+      import_map
+        .resolve("package/withslash", referrer_url)
+        .unwrap(),
       Some("https://example.com/deps/package-with-slash/index.mjs".to_string())
     );
 
     // should work when the specifier has punctuation
     assert_eq!(
-      import_map.resolve(".", referrer_url),
+      import_map.resolve(".", referrer_url).unwrap(),
       Some("https://example.com/lib/dot.mjs".to_string())
     );
     assert_eq!(
-      import_map.resolve("..", referrer_url),
+      import_map.resolve("..", referrer_url).unwrap(),
       Some("https://example.com/lib/dotdot.mjs".to_string())
     );
     assert_eq!(
-      import_map.resolve("..\\\\", referrer_url),
+      import_map.resolve("..\\\\", referrer_url).unwrap(),
       Some("https://example.com/lib/dotdotbackslash.mjs".to_string())
     );
     assert_eq!(
-      import_map.resolve("%2E", referrer_url),
+      import_map.resolve("%2E", referrer_url).unwrap(),
       Some("https://example.com/lib/percent2e.mjs".to_string())
     );
     assert_eq!(
-      import_map.resolve("%2F", referrer_url),
+      import_map.resolve("%2F", referrer_url).unwrap(),
       Some("https://example.com/lib/percent2f.mjs".to_string())
     );
 
     // should fail for attempting to get a submodule of something not declared with a trailing slash
-    assert_eq!(import_map.resolve("not-a-package/foo", referrer_url), None);
+    assert!(
+      import_map
+        .resolve("not-a-package/foo", referrer_url)
+        .is_err()
+    );
   }
 
   #[test]
@@ -582,99 +613,109 @@ mod tests {
 
     // should remap to other URLs
     assert_eq!(
-      import_map.resolve("https://example.com/lib/foo.mjs", referrer_url),
-      Some("https://example.com/app/more/bar.mjs".to_string())
-    );
-    assert_eq!(
-      import_map.resolve("https://///example.com/lib/foo.mjs", referrer_url),
-      Some("https://example.com/app/more/bar.mjs".to_string())
-    );
-    assert_eq!(
-      import_map.resolve("/lib/foo.mjs", referrer_url),
+      import_map
+        .resolve("https://example.com/lib/foo.mjs", referrer_url)
+        .unwrap(),
       Some("https://example.com/app/more/bar.mjs".to_string())
     );
     assert_eq!(
       import_map
-        .resolve("https://example.com/app/dotrelative/foo.mjs", referrer_url),
-      Some("https://example.com/lib/dot.mjs".to_string())
+        .resolve("https://///example.com/lib/foo.mjs", referrer_url)
+        .unwrap(),
+      Some("https://example.com/app/more/bar.mjs".to_string())
     );
     assert_eq!(
-      import_map.resolve("../app/dotrelative/foo.mjs", referrer_url),
+      import_map.resolve("/lib/foo.mjs", referrer_url).unwrap(),
+      Some("https://example.com/app/more/bar.mjs".to_string())
+    );
+    assert_eq!(
+      import_map
+        .resolve("https://example.com/app/dotrelative/foo.mjs", referrer_url)
+        .unwrap(),
       Some("https://example.com/lib/dot.mjs".to_string())
     );
     assert_eq!(
       import_map
-        .resolve("https://example.com/dotdotrelative/foo.mjs", referrer_url),
+        .resolve("../app/dotrelative/foo.mjs", referrer_url)
+        .unwrap(),
+      Some("https://example.com/lib/dot.mjs".to_string())
+    );
+    assert_eq!(
+      import_map
+        .resolve("https://example.com/dotdotrelative/foo.mjs", referrer_url)
+        .unwrap(),
       Some("https://example.com/lib/dotdot.mjs".to_string())
     );
     assert_eq!(
-      import_map.resolve("../dotdotrelative/foo.mjs", referrer_url),
+      import_map
+        .resolve("../dotdotrelative/foo.mjs", referrer_url)
+        .unwrap(),
       Some("https://example.com/lib/dotdot.mjs".to_string())
     );
 
     // should fail for URLs that remap to empty arrays
-    // FIXME(bartlomieju): this is probably not proper behavior of Deno
-    //  to fall back to actual passed specifier?
-    //    {
-    //      assert_eq!(
-    //        import_map.resolve("https://example.com/lib/no.mjs", referrer_url),
-    //        None
-    //      );
-    //      assert_eq!(
-    //        import_map.resolve("/lib/no.msj", referrer_url),
-    //        None
-    //      );
-    //      assert_eq!(
-    //        import_map.resolve("../lib/no.msj", referrer_url),
-    //        None
-    //      );
-    //      assert_eq!(
-    //        import_map.resolve("https://example.com/app/dotrelative/no.mjs", referrer_url),
-    //        None
-    //      );
-    //      assert_eq!(
-    //        import_map.resolve("/app/dotrelative/no.mjs", referrer_url),
-    //        None
-    //      );
-    //      assert_eq!(
-    //        import_map.resolve("../app/dotrelative/no.mjs", referrer_url),
-    //        None
-    //      );
-    //    }
+    assert!(
+      import_map
+        .resolve("https://example.com/lib/no.mjs", referrer_url)
+        .is_err()
+    );
+    assert!(import_map.resolve("/lib/no.mjs", referrer_url).is_err());
+    assert!(import_map.resolve("../lib/no.mjs", referrer_url).is_err());
+    assert!(
+      import_map
+        .resolve("https://example.com/app/dotrelative/no.mjs", referrer_url)
+        .is_err()
+    );
+    assert!(
+      import_map
+        .resolve("/app/dotrelative/no.mjs", referrer_url)
+        .is_err()
+    );
+    assert!(
+      import_map
+        .resolve("../app/dotrelative/no.mjs", referrer_url)
+        .is_err()
+    );
 
     // should remap URLs that are just composed from / and .
     assert_eq!(
-      import_map.resolve("https://example.com/", referrer_url),
+      import_map
+        .resolve("https://example.com/", referrer_url)
+        .unwrap(),
       Some("https://example.com/lib/slash-only/".to_string())
     );
     assert_eq!(
-      import_map.resolve("/", referrer_url),
+      import_map.resolve("/", referrer_url).unwrap(),
       Some("https://example.com/lib/slash-only/".to_string())
     );
     assert_eq!(
-      import_map.resolve("../", referrer_url),
+      import_map.resolve("../", referrer_url).unwrap(),
       Some("https://example.com/lib/slash-only/".to_string())
     );
     assert_eq!(
-      import_map.resolve("https://example.com/app/", referrer_url),
+      import_map
+        .resolve("https://example.com/app/", referrer_url)
+        .unwrap(),
       Some("https://example.com/lib/dotslash-only/".to_string())
     );
     assert_eq!(
-      import_map.resolve("/app/", referrer_url),
+      import_map.resolve("/app/", referrer_url).unwrap(),
       Some("https://example.com/lib/dotslash-only/".to_string())
     );
     assert_eq!(
-      import_map.resolve("../app/", referrer_url),
+      import_map.resolve("../app/", referrer_url).unwrap(),
       Some("https://example.com/lib/dotslash-only/".to_string())
     );
 
     // should remap URLs that are prefix-matched by keys with trailing slashes
     assert_eq!(
-      import_map.resolve("/test/foo.mjs", referrer_url),
+      import_map.resolve("/test/foo.mjs", referrer_url).unwrap(),
       Some("https://example.com/lib/url-trailing-slash/foo.mjs".to_string())
     );
     assert_eq!(
-      import_map.resolve("https://example.com/app/test/foo.mjs", referrer_url),
+      import_map
+        .resolve("https://example.com/app/test/foo.mjs", referrer_url)
+        .unwrap(),
       Some(
         "https://example.com/lib/url-trailing-slash-dot/foo.mjs".to_string()
       )
@@ -684,7 +725,7 @@ mod tests {
     //
     // NOTE: this works properly because of "preserve_order" feature flag to "serde_json" crate
     assert_eq!(
-      import_map.resolve("/test", referrer_url),
+      import_map.resolve("/test", referrer_url).unwrap(),
       Some("https://example.com/lib/test2.mjs".to_string())
     );
   }
@@ -708,23 +749,23 @@ mod tests {
         ImportMap::from_json(base_url, &json_map.to_string()).unwrap();
 
       assert_eq!(
-        import_map.resolve("a", referrer_url),
+        import_map.resolve("a", referrer_url).unwrap(),
         Some("https://example.com/1".to_string())
       );
       assert_eq!(
-        import_map.resolve("a/", referrer_url),
+        import_map.resolve("a/", referrer_url).unwrap(),
         Some("https://example.com/2/".to_string())
       );
       assert_eq!(
-        import_map.resolve("a/b", referrer_url),
+        import_map.resolve("a/b", referrer_url).unwrap(),
         Some("https://example.com/3".to_string())
       );
       assert_eq!(
-        import_map.resolve("a/b/", referrer_url),
+        import_map.resolve("a/b/", referrer_url).unwrap(),
         Some("https://example.com/4/".to_string())
       );
       assert_eq!(
-        import_map.resolve("a/b/c", referrer_url),
+        import_map.resolve("a/b/c", referrer_url).unwrap(),
         Some("https://example.com/4/c".to_string())
       );
     }
@@ -742,22 +783,22 @@ mod tests {
       let import_map =
         ImportMap::from_json(base_url, &json_map.to_string()).unwrap();
 
-      assert_eq!(import_map.resolve("a", referrer_url), None);
-      assert_eq!(import_map.resolve("a/", referrer_url), None);
-      assert_eq!(import_map.resolve("a/x", referrer_url), None);
+      assert!(import_map.resolve("a", referrer_url).is_err());
+      assert!(import_map.resolve("a/", referrer_url).is_err());
+      assert!(import_map.resolve("a/x", referrer_url).is_err());
       assert_eq!(
-        import_map.resolve("a/b", referrer_url),
+        import_map.resolve("a/b", referrer_url).unwrap(),
         Some("https://example.com/3".to_string())
       );
       assert_eq!(
-        import_map.resolve("a/b/", referrer_url),
+        import_map.resolve("a/b/", referrer_url).unwrap(),
         Some("https://example.com/4/".to_string())
       );
       assert_eq!(
-        import_map.resolve("a/b/c", referrer_url),
+        import_map.resolve("a/b/c", referrer_url).unwrap(),
         Some("https://example.com/4/c".to_string())
       );
-      assert_eq!(import_map.resolve("a/x/c", referrer_url), None);
+      assert!(import_map.resolve("a/x/c", referrer_url).is_err());
     }
   }
 }
