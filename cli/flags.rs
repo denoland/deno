@@ -191,6 +191,9 @@ ability to spawn subprocesses.
   # run program with permission to read from disk and listen to network
   deno run --allow-net --allow-read https://deno.land/std/http/file_server.ts
 
+  # run program with permission to read whitelist files from disk and listen to nework
+  deno run --allow-net --allow-read=$(pwd) https://deno.land/std/http/file_server.ts 
+
   # run program with all permissions
   deno run -A https://deno.land/std/http/file_server.ts
 ",
