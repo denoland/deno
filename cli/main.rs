@@ -9,6 +9,7 @@ extern crate futures;
 extern crate serde_json;
 extern crate clap;
 extern crate deno;
+extern crate indexmap;
 #[cfg(unix)]
 extern crate nix;
 extern crate rand;

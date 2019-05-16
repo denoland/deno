@@ -1,8 +1,8 @@
 use crate::worker::resolve_module_spec;
+use indexmap::IndexMap;
 use serde_json::Map;
 use serde_json::Value;
 use std::cmp::Ordering;
-use std::collections::BTreeMap;
 use url::Url;
 
 #[derive(Debug)]
@@ -22,17 +22,16 @@ impl ImportMapError {
 #[derive(Debug)]
 pub struct ImportMap {
   base_url: String,
-  pub modules: BTreeMap<String, Vec<String>>,
+  modules: IndexMap<String, Vec<String>>,
 }
 
 #[allow(dead_code)]
 impl ImportMap {
-  // TODO(bartlomieju): add reading JSON string
   // TODO: add proper error handling: https://github.com/WICG/import-maps/issues/100
   pub fn new(base_url: &str) -> Self {
     ImportMap {
       base_url: base_url.to_string(),
-      modules: BTreeMap::new(),
+      modules: IndexMap::new(),
     }
   }
 
@@ -53,6 +52,7 @@ impl ImportMap {
     Some(specifier_key.to_string())
   }
 
+  /// Addreses returned from this method are proper URLs
   fn normalize_addresses(
     specifier_key: &str,
     base_url: &str,
@@ -72,20 +72,19 @@ impl ImportMap {
         Value::String(address) => address,
         _ => continue,
       };
-      match resolve_module_spec(potential_address, base_url) {
-        Ok(address_url) => {
-          if specifier_key.ends_with('/') && !address_url.ends_with('/') {
-            println!(
-              "Invalid target address `{:?}` for package specifier `{:?}`.\
-               Package address targets must end with `/`.",
-              address_url, specifier_key
-            );
-            continue;
-          }
 
-          normalized_addresses.push(address_url);
+      if let Ok(address_url) = resolve_module_spec(potential_address, base_url)
+      {
+        if specifier_key.ends_with('/') && !address_url.ends_with('/') {
+          println!(
+            "Invalid target address `{:?}` for package specifier `{:?}`.\
+             Package address targets must end with `/`.",
+            address_url, specifier_key
+          );
+          continue;
         }
-        _ => continue,
+
+        normalized_addresses.push(address_url);
       }
     }
 
@@ -93,12 +92,14 @@ impl ImportMap {
   }
 
   fn normalize_specifier_map(
-    imports_map: &Map<String, Value>,
+    json_map: &Map<String, Value>,
     base_url: &str,
-  ) -> BTreeMap<String, Vec<String>> {
-    let mut normalized_map: BTreeMap<String, Vec<String>> = BTreeMap::new();
+  ) -> IndexMap<String, Vec<String>> {
+    // using IndexMap to preserve order during iteration
+    let mut normalized_map: IndexMap<String, Vec<String>> = IndexMap::new();
 
-    for (specifier_key, value) in imports_map.iter() {
+    // order is preserved because of "preserve_order" feature of "serde_json"
+    for (specifier_key, value) in json_map.iter() {
       let normalized_specifier_key =
         match ImportMap::normalize_specifier_key(specifier_key, base_url) {
           Some(s) => s,
@@ -111,7 +112,10 @@ impl ImportMap {
         value.clone(),
       );
 
-      println!("normalized specifier {:?}; {:?}", normalized_specifier_key, normalized_address_array);
+      println!(
+        "normalized specifier {:?}; {:?}",
+        normalized_specifier_key, normalized_address_array
+      );
       normalized_map.insert(normalized_specifier_key, normalized_address_array);
     }
 
@@ -136,7 +140,7 @@ impl ImportMap {
       }
     }
 
-    let normalized_imports = match &v["imports"] {
+    let mut normalized_imports = match &v["imports"] {
       Value::Object(imports_map) => {
         ImportMap::normalize_specifier_map(imports_map, base_url)
       }
@@ -147,7 +151,17 @@ impl ImportMap {
       }
     };
 
-    println!("normalized imports {:?}", normalized_imports);
+    // now sort `normalized_imports` in longest and alphabetical order
+    normalized_imports.sort_by(|k1, _v1, k2, _v2| {
+      if k1.len() > k2.len() {
+        return Ordering::Less;
+      } else if k2.len() > k1.len() {
+        return Ordering::Greater;
+      }
+
+      k2.cmp(k1)
+    });
+
     // TODO(bartlomieju): handle scopes
 
     let import_map = ImportMap {
@@ -193,26 +207,9 @@ impl ImportMap {
     // "most-specific wins", i.e. when there are multiple matching keys,
     // choose the longest.
     // https://github.com/WICG/import-maps/issues/102
-    let mut keys: Vec<String> = self.modules.keys().cloned().collect();
-    // first sort by length and then alphabetically
-    keys.sort_by(|a, b| {
-      if a.len() > b.len() {
-        return Ordering::Less;
-      } else if b.len() > a.len() {
-        return Ordering::Greater;
-      }
-
-      b.cmp(a)
-    });
-
-    for specifier_key in keys {
-      let address_vec = match self.modules.get(&specifier_key) {
-        Some(v) => v,
-        None => unreachable!(),
-      };
-
+    for (specifier_key, address_vec) in self.modules.iter() {
       if specifier_key.ends_with('/')
-        && normalized_specifier.starts_with(&specifier_key)
+        && normalized_specifier.starts_with(specifier_key)
       {
         if address_vec.is_empty() {
           println!("Specifier {:?} was mapped to no addresses (via prefix specifier key {:?}).", normalized_specifier, specifier_key);
@@ -314,7 +311,8 @@ mod tests {
         "fizz": null
       }
     });
-    let result = ImportMap::from_json("https://deno.land", &json_map.to_string());
+    let result =
+      ImportMap::from_json("https://deno.land", &json_map.to_string());
     assert!(result.is_ok());
   }
 
@@ -529,9 +527,7 @@ mod tests {
     // should work for explicitly-mapped specifiers that happen to have a slash
     assert_eq!(
       import_map.resolve("package/withslash", referrer_url),
-      Some(
-        "https://example.com/deps/package-with-slash/index.mjs".to_string()
-      )
+      Some("https://example.com/deps/package-with-slash/index.mjs".to_string())
     );
 
     // should work when the specifier has punctuation
@@ -619,32 +615,32 @@ mod tests {
     // should fail for URLs that remap to empty arrays
     // FIXME(bartlomieju): this is probably not proper behavior of Deno
     //  to fall back to actual passed specifier?
-//    {
-//      assert_eq!(
-//        import_map.resolve("https://example.com/lib/no.mjs", referrer_url),
-//        None
-//      );
-//      assert_eq!(
-//        import_map.resolve("/lib/no.msj", referrer_url),
-//        None
-//      );
-//      assert_eq!(
-//        import_map.resolve("../lib/no.msj", referrer_url),
-//        None
-//      );
-//      assert_eq!(
-//        import_map.resolve("https://example.com/app/dotrelative/no.mjs", referrer_url),
-//        None
-//      );
-//      assert_eq!(
-//        import_map.resolve("/app/dotrelative/no.mjs", referrer_url),
-//        None
-//      );
-//      assert_eq!(
-//        import_map.resolve("../app/dotrelative/no.mjs", referrer_url),
-//        None
-//      );
-//    }
+    //    {
+    //      assert_eq!(
+    //        import_map.resolve("https://example.com/lib/no.mjs", referrer_url),
+    //        None
+    //      );
+    //      assert_eq!(
+    //        import_map.resolve("/lib/no.msj", referrer_url),
+    //        None
+    //      );
+    //      assert_eq!(
+    //        import_map.resolve("../lib/no.msj", referrer_url),
+    //        None
+    //      );
+    //      assert_eq!(
+    //        import_map.resolve("https://example.com/app/dotrelative/no.mjs", referrer_url),
+    //        None
+    //      );
+    //      assert_eq!(
+    //        import_map.resolve("/app/dotrelative/no.mjs", referrer_url),
+    //        None
+    //      );
+    //      assert_eq!(
+    //        import_map.resolve("../app/dotrelative/no.mjs", referrer_url),
+    //        None
+    //      );
+    //    }
 
     // should remap URLs that are just composed from / and .
     assert_eq!(
@@ -679,7 +675,9 @@ mod tests {
     );
     assert_eq!(
       import_map.resolve("https://example.com/app/test/foo.mjs", referrer_url),
-      Some("https://example.com/lib/url-trailing-slash-dot/foo.mjs".to_string())
+      Some(
+        "https://example.com/lib/url-trailing-slash-dot/foo.mjs".to_string()
+      )
     );
 
     // should use the last entry's address when URL-like specifiers parse to the same absolute URL
@@ -706,7 +704,8 @@ mod tests {
           "a/b/": "/4/"
         }
       });
-      let import_map = ImportMap::from_json(base_url, &json_map.to_string()).unwrap();
+      let import_map =
+        ImportMap::from_json(base_url, &json_map.to_string()).unwrap();
 
       assert_eq!(
         import_map.resolve("a", referrer_url),
@@ -740,20 +739,12 @@ mod tests {
           "a/b/": "/4/"
         }
       });
-      let import_map = ImportMap::from_json(base_url, &json_map.to_string()).unwrap();
+      let import_map =
+        ImportMap::from_json(base_url, &json_map.to_string()).unwrap();
 
-      assert_eq!(
-        import_map.resolve("a", referrer_url),
-        None
-      );
-      assert_eq!(
-        import_map.resolve("a/", referrer_url),
-        None
-      );
-      assert_eq!(
-        import_map.resolve("a/x", referrer_url),
-        None
-      );
+      assert_eq!(import_map.resolve("a", referrer_url), None);
+      assert_eq!(import_map.resolve("a/", referrer_url), None);
+      assert_eq!(import_map.resolve("a/x", referrer_url), None);
       assert_eq!(
         import_map.resolve("a/b", referrer_url),
         Some("https://example.com/3".to_string())
@@ -766,10 +757,7 @@ mod tests {
         import_map.resolve("a/b/c", referrer_url),
         Some("https://example.com/4/c".to_string())
       );
-      assert_eq!(
-        import_map.resolve("a/x/c", referrer_url),
-        None
-      );
+      assert_eq!(import_map.resolve("a/x/c", referrer_url), None);
     }
   }
 }

@@ -29,6 +29,7 @@ main_extern_rlib = [
   "http",
   "hyper",
   "hyper_rustls",
+  "indexmap",
   "lazy_static",
   "libc",
   "log",
