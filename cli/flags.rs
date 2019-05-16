@@ -448,6 +448,7 @@ pub fn flags_from_vec(
         .collect();
       argv.extend(files);
 
+      // `deno fmt` writes to the files by default
       argv.push("--write".to_string());
 
       DenoSubcommand::Run
