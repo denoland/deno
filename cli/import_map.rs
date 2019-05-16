@@ -44,11 +44,8 @@ impl ImportMap {
       return None;
     }
 
-    match resolve_module_spec(&specifier_key, base_url) {
-      Ok(url) => {
-        return Some(url.clone());
-      }
-      _ => {}
+    if let Ok(url) = resolve_module_spec(&specifier_key, base_url) {
+      return Some(url.clone());
     }
 
     // "bare" specifier
@@ -76,7 +73,7 @@ impl ImportMap {
       };
       match resolve_module_spec(potential_address, base_url) {
         Ok(address_url) => {
-          if specifier_key.ends_with("/") && !address_url.ends_with("/") {
+          if specifier_key.ends_with('/') && !address_url.ends_with('/') {
             println!(
               "Invalid target address `{:?}` for package specifier `{:?}`.\
                Package address targets must end with `/`.",
@@ -172,7 +169,7 @@ impl ImportMap {
   ) -> Option<String> {
     for (specifier_key, address_vec) in self.modules.iter() {
       // exact-match
-      if normalized_specifier == specifier_key.to_string() {
+      if normalized_specifier == specifier_key {
         if address_vec.is_empty() {
           println!(
             "Specifier {:?} was mapped to no addresses.",
@@ -194,7 +191,7 @@ impl ImportMap {
       }
 
       // package-prefix match
-      if specifier_key.ends_with("/")
+      if specifier_key.ends_with('/')
         && normalized_specifier.starts_with(specifier_key)
       {
         if address_vec.is_empty() {
