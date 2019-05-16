@@ -67,6 +67,9 @@ pub struct State {
   /// When flags contains a `.config_path` option, the fully qualified path
   /// name of the passed path will be resolved and set.
   pub config_path: Option<String>,
+  /// When flags contains a `.import_map_path` option, the content of the
+  /// import map file will be resolved and set.
+  pub import_map: Option<Vec<u8>>,
   pub metrics: Metrics,
   pub worker_channels: Mutex<WorkerChannels>,
   pub global_timer: Mutex<GlobalTimer>,
@@ -233,6 +236,34 @@ impl ThreadSafeState {
       _ => None,
     };
 
+    // take the passed flag and resolve the file name relative to the cwd
+    let import_map_file = match &flags.import_map_path {
+      Some(file_name) => {
+        debug!("Import map file: {}", file_name);
+        let cwd = std::env::current_dir().unwrap();
+        Some(cwd.join(file_name))
+      }
+      _ => None,
+    };
+
+    // Load the contents of import map
+    let import_map = match &import_map_file {
+      Some(import_map_file) => {
+        debug!(
+          "Attempt to load import map: {}",
+          import_map_file.to_str().unwrap()
+        );
+        match fs::read(&import_map_file) {
+          Ok(import_map_data) => Some(import_map_data.to_owned()),
+          _ => panic!(
+            "Error retrieving import map file at \"{}\"",
+            import_map_file.to_str().unwrap()
+          ),
+        }
+      }
+      _ => None,
+    };
+
     ThreadSafeState(Arc::new(State {
       dir: deno_dir::DenoDir::new(custom_root, &config, progress.clone())
         .unwrap(),
@@ -241,6 +272,7 @@ impl ThreadSafeState {
       flags,
       config,
       config_path,
+      import_map,
       metrics: Metrics::default(),
       worker_channels: Mutex::new(internal_channels),
       global_timer: Mutex::new(GlobalTimer::new()),
