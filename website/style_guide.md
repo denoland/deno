@@ -289,8 +289,8 @@ test myTestFunction ... ok
 Example of test:
 
 ```ts
-import { assertEquals } from "https://deno.land/std@v0.3.1/testing/asserts.ts";
-import { test } from "https://deno.land/std@v0.3.1/testing/mod.ts";
+import { assertEquals } from "https://deno.land/std@v0.5/testing/asserts.ts";
+import { test } from "https://deno.land/std@v0.5/testing/mod.ts";
 import { foo } from "./mod.ts";
 
 test(function myTestFunction() {
