@@ -448,6 +448,9 @@ pub fn flags_from_vec(
         .collect();
       argv.extend(files);
 
+      // `deno fmt` writes to the files by default
+      argv.push("--write".to_string());
+
       DenoSubcommand::Run
     }
     ("info", Some(info_match)) => {
@@ -726,7 +729,13 @@ mod tests {
     assert_eq!(subcommand, DenoSubcommand::Run);
     assert_eq!(
       argv,
-      svec!["deno", PRETTIER_URL, "script_1.ts", "script_2.ts"]
+      svec![
+        "deno",
+        PRETTIER_URL,
+        "script_1.ts",
+        "script_2.ts",
+        "--write"
+      ]
     );
   }
 
