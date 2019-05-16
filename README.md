@@ -37,4 +37,12 @@ Here are the dedicated documentations of modules:
 
 ## Contributing
 
+deno_std is a loose port of [Go's standard library](https://golang.org/pkg/).
+When in doubt, simply port Go's source code, documentation, and tests. There
+are many times when the nature of JavaScript, TypeScript, or Deno itself
+justifies diverging from Go, but if possible we want to leverage the energy that
+went into building Go. We generally welcome direct ports of Go's code.
+
+Please ensure the copyright headers cite the code's origin.
+
 Follow the [style guide](https://deno.land/style_guide.html).
