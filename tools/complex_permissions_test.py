@@ -81,22 +81,23 @@ class Prompt(object):
         self.run(["--allow-read"], ["read", "package.json"], b'')
 
     def test(self):
-        # for test_type in ["read", "write"]:
-        # test_name_base = "test_" + test_type
-        # wrap_test(test_name_base + "_inside_project_dir",
-        #           self.test_inside_project_dir, test_type)
-        # wrap_test(test_name_base + "_outside_tests_dir",
-        #           self.test_outside_test_dir, test_type)
-        # wrap_test(test_name_base + "_inside_tests_dir",
-        #           self.test_inside_test_dir, test_type)
-        # wrap_test(test_name_base + "_outside_tests_and_js_dir",
-        #           self.test_outside_test_and_js_dir, test_type)
-        # wrap_test(test_name_base + "_inside_tests_and_js_dir",
-        #           self.test_inside_test_and_js_dir, test_type)
-        # wrap_test(test_name_base + "_relative", self.test_relative,
-        #           test_type)
-        # wrap_test(test_name_base + "_no_prefix", self.test_no_prefix,
-        #           test_type)
+        for test_type in ["read", "write"]:
+            test_name_base = "test_" + test_type
+            wrap_test(test_name_base + "_inside_project_dir",
+                      self.test_inside_project_dir, test_type)
+            wrap_test(test_name_base + "_outside_tests_dir",
+                      self.test_outside_test_dir, test_type)
+            wrap_test(test_name_base + "_inside_tests_dir",
+                      self.test_inside_test_dir, test_type)
+            wrap_test(test_name_base + "_outside_tests_and_js_dir",
+                      self.test_outside_test_and_js_dir, test_type)
+            wrap_test(test_name_base + "_inside_tests_and_js_dir",
+                      self.test_inside_test_and_js_dir, test_type)
+            wrap_test(test_name_base + "_relative", self.test_relative,
+                      test_type)
+            wrap_test(test_name_base + "_no_prefix", self.test_no_prefix,
+                      test_type)
+
         test_name = "net_fetch"
         test_name_base = "test_" + test_name
         wrap_test(test_name_base + "_allow_localhost_4545",
