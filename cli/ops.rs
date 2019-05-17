@@ -1629,7 +1629,7 @@ fn op_listen(
   let address = inner.address().unwrap();
   let resolved_address = match resolve_addr(address).wait() {
     Err(err) => return odd_future(DenoError::from(err)),
-    Ok(v) => v
+    Ok(v) => v,
   };
 
   if let Err(e) = state.check_net(&resolved_address.to_string()) {
@@ -1723,10 +1723,9 @@ fn op_dial(
     return odd_future(e);
   }
 
-  let op =
-    TcpStream::connect(&resolved_address)
-      .map_err(DenoError::from)
-      .and_then(move |tcp_stream| new_conn(cmd_id, tcp_stream));
+  let op = TcpStream::connect(&resolved_address)
+    .map_err(DenoError::from)
+    .and_then(move |tcp_stream| new_conn(cmd_id, tcp_stream));
   Box::new(op)
 }
 
