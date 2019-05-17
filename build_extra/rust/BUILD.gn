@@ -747,6 +747,42 @@ rust_rlib("percent_encoding") {
   ]
 }
 
+rust_rlib("proc_macro2") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/proc-macro2-0.4.30/src/lib.rs"
+  features = [
+    "default",
+    "proc-macro",
+  ]
+  extern_rlib = [ "unicode_xid" ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+
+  # Added by custom-build script.
+  cfg = [
+    "u128",
+    "use_proc_macro",
+    "wrap_proc_macro",
+  ]
+}
+
+rust_rlib("quote") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/quote-0.6.12/src/lib.rs"
+  features = [
+    "default",
+    "proc-macro",
+    "proc-macro2",
+  ]
+  extern_rlib = [ "proc_macro2" ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
 rust_rlib("rand") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rand-0.6.5/src/lib.rs"
@@ -1221,6 +1257,21 @@ rust_rlib("serde") {
   ]
 }
 
+rust_proc_macro("serde_derive") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/serde_derive-1.0.91/src/lib.rs"
+  features = [ "default" ]
+  extern_rlib = [
+    "proc_macro2",
+    "quote",
+    "syn",
+  ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
 rust_rlib("serde_json") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/serde_json-1.0.39/src/lib.rs"
@@ -1321,6 +1372,40 @@ rust_rlib("strsim") {
   args = [
     "--cap-lints",
     "allow",
+  ]
+}
+
+rust_rlib("syn") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/syn-0.15.34/src/lib.rs"
+  features = [
+    "clone-impls",
+    "default",
+    "derive",
+    "extra-traits",
+    "parsing",
+    "printing",
+    "proc-macro",
+    "proc-macro2",
+    "quote",
+    "visit",
+  ]
+  extern_rlib = [
+    "proc_macro2",
+    "quote",
+    "unicode_xid",
+  ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+
+  # Added by custom-build script.
+  cfg = [
+    "syn_can_call_macro_by_path",
+    "syn_can_use_associated_constants",
+    "syn_can_use_thread_id",
+    "syn_disable_nightly_tests",
   ]
 }
 
@@ -1738,6 +1823,16 @@ rust_rlib("unicode_segmentation") {
 rust_rlib("unicode_width") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/unicode-width-0.1.5/src/lib.rs"
+  features = [ "default" ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
+rust_rlib("unicode_xid") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/unicode-xid-0.1.0/src/lib.rs"
   features = [ "default" ]
   args = [
     "--cap-lints",
