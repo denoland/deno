@@ -138,11 +138,15 @@ fn create_worker_and_state(
 ) -> (Worker, ThreadSafeState) {
   let progress = Progress::new();
   progress.set_callback(|done, completed, total, msg| {
-    if done {
-      eprintln!("");
-    } else {
+    if !done {
       eprint!("\r[{}/{}] {}", completed, total, msg);
       eprint!("\x1B[K"); // Clear to end of line.
+      return;
+    }
+
+    // print empty line only if progress bar was used
+    if done && total > 0 {
+      eprintln!();
     }
   });
   let state = ThreadSafeState::new(flags, argv, ops::op_selector_std, progress);
