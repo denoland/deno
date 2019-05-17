@@ -1627,17 +1627,14 @@ fn op_listen(
   let network = inner.network().unwrap();
   assert_eq!(network, "tcp");
   let address = inner.address().unwrap();
-  let resolved_address = match resolve_addr(address).wait() {
-    Err(err) => return odd_future(DenoError::from(err)),
-    Ok(v) => v,
-  };
 
-  if let Err(e) = state.check_net(&resolved_address.to_string()) {
+  if let Err(e) = state.check_net(&address) {
     return odd_future(e);
   }
 
   Box::new(futures::future::result((move || {
-    let listener = TcpListener::bind(&resolved_address)?;
+    let addr = resolve_addr(address).wait()?;
+    let listener = TcpListener::bind(&addr)?;
     let resource = resources::add_tcp_listener(listener);
 
     let builder = &mut FlatBufferBuilder::new();
@@ -1714,18 +1711,19 @@ fn op_dial(
   let network = inner.network().unwrap();
   assert_eq!(network, "tcp"); // TODO Support others.
   let address = inner.address().unwrap();
-  let resolved_address = match resolve_addr(address).wait() {
-    Err(err) => return odd_future(DenoError::from(err)),
-    Ok(v) => v,
-  };
 
-  if let Err(e) = state.check_net(&resolved_address.to_string()) {
+  if let Err(e) = state.check_net(&address) {
     return odd_future(e);
   }
 
-  let op = TcpStream::connect(&resolved_address)
-    .map_err(DenoError::from)
-    .and_then(move |tcp_stream| new_conn(cmd_id, tcp_stream));
+  let op =
+    resolve_addr(address)
+      .map_err(DenoError::from)
+      .and_then(move |addr| {
+        TcpStream::connect(&addr)
+          .map_err(DenoError::from)
+          .and_then(move |tcp_stream| new_conn(cmd_id, tcp_stream))
+      });
   Box::new(op)
 }
 
