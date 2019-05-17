@@ -88,6 +88,7 @@ ts_sources = [
   "../js/files.ts",
   "../js/flatbuffers.ts",
   "../js/form_data.ts",
+  "../js/get_random_values.ts",
   "../js/globals.ts",
   "../js/headers.ts",
   "../js/io.ts",

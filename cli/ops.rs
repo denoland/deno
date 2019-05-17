@@ -13,6 +13,7 @@ use crate::js_errors::apply_source_map;
 use crate::js_errors::JSErrorColor;
 use crate::msg;
 use crate::msg_util;
+use crate::rand;
 use crate::repl;
 use crate::resolve_addr::resolve_addr;
 use crate::resources;
@@ -39,6 +40,7 @@ use futures::Sink;
 use futures::Stream;
 use hyper;
 use hyper::rt::Future;
+use rand::{thread_rng, Rng};
 use remove_dir_all::remove_dir_all;
 use std;
 use std::convert::From;
@@ -195,6 +197,7 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<OpCreator> {
     msg::Any::Exit => Some(op_exit),
     msg::Any::Fetch => Some(op_fetch),
     msg::Any::FormatError => Some(op_format_error),
+    msg::Any::GetRandomValues => Some(op_get_random_values),
     msg::Any::GlobalTimer => Some(op_global_timer),
     msg::Any::GlobalTimerStop => Some(op_global_timer_stop),
     msg::Any::IsTTY => Some(op_is_tty),
@@ -2167,4 +2170,13 @@ fn op_host_post_message(
     ))
   });
   Box::new(op)
+}
+
+fn op_get_random_values(
+  _state: &ThreadSafeState,
+  _base: &msg::Base<'_>,
+  data: Option<PinnedBuf>,
+) -> Box<OpWithError> {
+  thread_rng().fill(&mut data.unwrap()[..]);
+  Box::new(ok_future(empty_buf()))
 }

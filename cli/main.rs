@@ -11,6 +11,7 @@ extern crate clap;
 extern crate deno;
 #[cfg(unix)]
 extern crate nix;
+extern crate rand;
 
 mod ansi;
 pub mod compiler;
