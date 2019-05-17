@@ -1681,7 +1681,7 @@ fn new_conn(cmd_id: u32, tcp_stream: TcpStream) -> OpResult {
 }
 
 fn op_accept(
-  state: &ThreadSafeState,
+  _state: &ThreadSafeState,
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
@@ -1695,7 +1695,7 @@ fn op_accept(
     Some(server_resource) => {
       let op = tokio_util::accept(server_resource)
         .map_err(DenoError::from)
-        .and_then(move |(tcp_stream, socket_addr)| {
+        .and_then(move |(tcp_stream, _socket_addr)| {
           new_conn(cmd_id, tcp_stream)
         });
       Box::new(op)
