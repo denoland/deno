@@ -101,8 +101,10 @@ rust_rlib("byteorder") {
 rust_rlib("bytes") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/bytes-0.4.12/src/lib.rs"
+  features = [ "either" ]
   extern_rlib = [
     "byteorder",
+    "either",
     "iovec",
   ]
   args = [
@@ -113,7 +115,7 @@ rust_rlib("bytes") {
 
 rust_rlib("cfg_if") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/cfg-if-0.1.7/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/cfg-if-0.1.9/src/lib.rs"
   args = [
     "--cap-lints",
     "allow",
@@ -237,6 +239,19 @@ rust_rlib("dirs") {
   }
 }
 
+rust_rlib("either") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/either-1.5.2/src/lib.rs"
+  features = [
+    "default",
+    "use_std",
+  ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
 rust_rlib("flatbuffers") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/flatbuffers-0.6.0/src/lib.rs"
@@ -291,7 +306,7 @@ rust_rlib("futures_cpupool") {
 
 rust_rlib("h2") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/h2-0.1.18/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/h2-0.1.20/src/lib.rs"
   extern_rlib = [
     "byteorder",
     "bytes",
@@ -324,6 +339,21 @@ rust_rlib("http") {
   ]
 }
 
+rust_rlib("http_body") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/http-body-0.1.0/src/lib.rs"
+  extern_rlib = [
+    "bytes",
+    "futures",
+    "http",
+    "tokio_buf",
+  ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
 rust_rlib("httparse") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/httparse-1.3.3/src/lib.rs"
@@ -342,7 +372,7 @@ rust_rlib("httparse") {
 
 rust_rlib("hyper") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/hyper-0.12.28/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/hyper-0.12.29/src/lib.rs"
   features = [
     "__internal_flaky_tests",
     "default",
@@ -362,6 +392,7 @@ rust_rlib("hyper") {
     "futures_cpupool",
     "h2",
     "http",
+    "http_body",
     "httparse",
     "iovec",
     "itoa",
@@ -369,6 +400,7 @@ rust_rlib("hyper") {
     "net2",
     "time",
     "tokio",
+    "tokio_buf",
     "tokio_executor",
     "tokio_io",
     "tokio_reactor",
@@ -486,15 +518,6 @@ rust_rlib("lazy_static") {
   ]
 }
 
-rust_rlib("lazycell") {
-  edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/lazycell-1.2.1/src/lib.rs"
-  args = [
-    "--cap-lints",
-    "allow",
-  ]
-}
-
 rust_rlib("libc") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/libc-0.2.54/src/lib.rs"
@@ -586,14 +609,13 @@ rust_rlib("memoffset") {
 
 rust_rlib("mio") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/mio-0.6.16/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/mio-0.6.17/src/lib.rs"
   features = [
     "default",
     "with-deprecated",
   ]
   extern_rlib = [
     "iovec",
-    "lazycell",
     "log",
     "net2",
     "slab",
@@ -1357,7 +1379,7 @@ rust_rlib("time") {
 
 rust_rlib("tokio") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-0.1.19/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-0.1.20/src/lib.rs"
   features = [
     "bytes",
     "codec",
@@ -1412,6 +1434,26 @@ rust_rlib("tokio") {
   if (is_posix) {
     extern_rlib += [ "tokio_uds" ]
   }
+}
+
+rust_rlib("tokio_buf") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-buf-0.1.1/src/lib.rs"
+  features = [
+    "bytes",
+    "default",
+    "either",
+    "util",
+  ]
+  extern_rlib = [
+    "bytes",
+    "either",
+    "futures",
+  ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
 }
 
 rust_rlib("tokio_codec") {
@@ -1604,7 +1646,7 @@ rust_rlib("tokio_threadpool") {
 
 rust_rlib("tokio_timer") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-timer-0.2.10/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-timer-0.2.11/src/lib.rs"
   extern_rlib = [
     "crossbeam_utils",
     "futures",
@@ -1686,7 +1728,7 @@ rust_rlib("unicode_normalization") {
 
 rust_rlib("unicode_segmentation") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/unicode-segmentation-1.2.1/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/unicode-segmentation-1.3.0/src/lib.rs"
   args = [
     "--cap-lints",
     "allow",
@@ -2066,7 +2108,6 @@ if (is_win) {
     source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/winapi-0.3.7/src/lib.rs"
     features = [
       "consoleapi",
-      "dbghelp",
       "errhandlingapi",
       "fileapi",
       "handleapi",
@@ -2144,7 +2185,6 @@ if (is_win) {
       "advapi32.lib",
       "cfgmgr32.lib",
       "credui.lib",
-      "dbghelp.lib",
       "fwpuclnt.lib",
       "gdi32.lib",
       "kernel32.lib",
