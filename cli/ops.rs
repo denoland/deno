@@ -2189,9 +2189,8 @@ fn op_host_post_message(
 fn op_get_random_values(
   _state: &ThreadSafeState,
   _base: &msg::Base<'_>,
-  data: Option<PinnedBuf>
+  data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  assert!(data.is_some());
   thread_rng().fill(&mut data.unwrap()[..]);
   Box::new(ok_future(empty_buf()))
 }

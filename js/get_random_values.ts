@@ -2,6 +2,7 @@
 import * as msg from "gen/cli/msg_generated";
 import * as flatbuffers from "./flatbuffers";
 import * as dispatch from "./dispatch";
+import { assert } from "./util";
 
 function req(
   typedArray: ArrayBufferView
@@ -27,6 +28,8 @@ export function getRandomValues<
     | Int32Array
     | Uint32Array
 >(typedArray: T): T {
+  assert(typedArray !== null, "Input must not be null");
+  assert(typedArray.length <= 65536, "Input must not be longer than 65536");
   dispatch.sendSync(...req(typedArray as ArrayBufferView));
   return typedArray;
 }

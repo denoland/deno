@@ -60,11 +60,6 @@ let console = Object.create({}) as consoleTypes.Console;
 Object.assign(console, new consoleTypes.Console(core.print));
 console[consoleTypes.isConsoleInstance] = true;
 
-// The following Crypto interface implementation is not up to par with the
-// standard https://www.w3.org/TR/WebCryptoAPI/#crypto-interface as it does not
-// yet incorporate the SubtleCrypto interface as its "subtle" property.
-let crypto = (csprng as unknown) as Crypto;
-
 // Globally available functions and object instances.
 window.atob = textEncoding.atob;
 window.btoa = textEncoding.btoa;
@@ -75,7 +70,10 @@ window.console = console;
 window.setTimeout = timers.setTimeout;
 window.setInterval = timers.setInterval;
 window.location = (undefined as unknown) as domTypes.Location;
-window.crypto = crypto;
+// The following Crypto interface implementation is not up to par with the
+// standard https://www.w3.org/TR/WebCryptoAPI/#crypto-interface as it does not
+// yet incorporate the SubtleCrypto interface as its "subtle" property.
+window.crypto = (csprng as unknown) as Crypto;
 
 // When creating the runtime type library, we use modifications to `window` to
 // determine what is in the global namespace.  When we put a class in the
