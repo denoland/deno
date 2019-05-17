@@ -19,6 +19,7 @@ union Any {
   FetchRes,
   FormatError,
   FormatErrorRes,
+  GetRandomValues,
   GlobalTimer,
   GlobalTimerRes,
   GlobalTimerStop,
@@ -577,5 +578,7 @@ table Seek {
   offset: int;
   whence: uint;
 }
+
+table GetRandomValues {}
 
 root_type Base;

@@ -10,6 +10,7 @@
 import { window } from "./window";
 import * as blob from "./blob";
 import * as consoleTypes from "./console";
+import * as csprng from "./get_random_values";
 import * as customEvent from "./custom_event";
 import * as deno from "./deno";
 import * as domTypes from "./dom_types";
@@ -69,6 +70,10 @@ window.console = console;
 window.setTimeout = timers.setTimeout;
 window.setInterval = timers.setInterval;
 window.location = (undefined as unknown) as domTypes.Location;
+// The following Crypto interface implementation is not up to par with the
+// standard https://www.w3.org/TR/WebCryptoAPI/#crypto-interface as it does not
+// yet incorporate the SubtleCrypto interface as its "subtle" property.
+window.crypto = (csprng as unknown) as Crypto;
 
 // When creating the runtime type library, we use modifications to `window` to
 // determine what is in the global namespace.  When we put a class in the
@@ -134,4 +139,20 @@ export type Worker = workers.Worker;
 export interface ImportMeta {
   url: string;
   main: boolean;
+}
+
+export interface Crypto {
+  readonly subtle: null;
+  getRandomValues: <
+    T extends
+      | Int8Array
+      | Uint8Array
+      | Uint8ClampedArray
+      | Int16Array
+      | Uint16Array
+      | Int32Array
+      | Uint32Array
+  >(
+    typedArray: T
+  ) => T;
 }

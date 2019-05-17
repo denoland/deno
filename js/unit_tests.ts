@@ -19,6 +19,7 @@ import "./fetch_test.ts";
 import "./file_test.ts";
 import "./files_test.ts";
 import "./form_data_test.ts";
+import "./get_random_values_test.ts";
 import "./globals_test.ts";
 import "./headers_test.ts";
 import "./link_test.ts";
