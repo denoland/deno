@@ -326,11 +326,17 @@ mod tests {
     assert!(result.is_ok());
   }
 
-  #[test]
-  fn empty_import_map() {
+  fn get_empty_import_map() -> ImportMap {
     let base_url = "https://example.com/app/main.ts";
+    let import_map = ImportMap {
+      base_url,
+      modules: IndexMap::new(),
+    };
+  }
+  #[test]
+  fn empty_import_map_relative_specifiers() {
     let referrer_url = "https://example.com/js/script.ts";
-    let import_map = ImportMap::new(base_url);
+    let import_map = get_empty_import_map();
 
     // should resolve ./ specifiers as URLs
     assert_eq!(
@@ -365,6 +371,12 @@ mod tests {
         .unwrap(),
       Some("https://example.com/foo/bar".to_string())
     );
+  }
+
+  #[test]
+  fn empty_import_map_abolute_specifiers() {
+    let referrer_url = "https://example.com/js/script.ts";
+    let import_map = get_empty_import_map();
 
     // should resolve / specifiers as URLs
     assert_eq!(
@@ -413,6 +425,12 @@ mod tests {
         .unwrap(),
       Some("https://example.com///".to_string())
     );
+  }
+
+  #[test]
+  fn bad_specifiers() {
+    let referrer_url = "https://example.com/js/script.ts";
+    let import_map = get_empty_import_map();
 
     // TODO(bartlomieju): enable these tests
     // should fail for absolute non-fetch-scheme URLs
