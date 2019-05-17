@@ -13,6 +13,11 @@ main_extern = [
     crate_name = "deno"
     crate_type = "rlib"
   },
+  {
+    label = "$rust_build:serde_derive"
+    crate_name = "serde_derive"
+    crate_type = "proc_macro"
+  },
 ]
 main_extern_rlib = [
   "ansi_term",
@@ -32,6 +37,7 @@ main_extern_rlib = [
   "remove_dir_all",
   "ring",
   "rustyline",
+  "serde",
   "serde_json",
   "source_map_mappings",
   "tempfile",
