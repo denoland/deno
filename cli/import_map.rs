@@ -219,10 +219,11 @@ impl ImportMap {
       //        continue;
       //      }
 
-      normalized_map.insert(
-        scope_prefix_url,
-        ImportMap::normalize_specifier_map(potential_specifier_map, base_url),
-      );
+      let norm_map =
+        ImportMap::normalize_specifier_map(potential_specifier_map, base_url);
+      println!("normalized scope map {:?} {:?}", scope_prefix_url, norm_map);
+
+      normalized_map.insert(scope_prefix_url, norm_map);
     }
 
     // now sort in longest and alphabetical order
@@ -239,14 +240,66 @@ impl ImportMap {
     Ok(normalized_map)
   }
 
-  // https://github.com/WICG/import-maps/issues/73#issuecomment-439327758
-  // for some more optimized candidate implementations.
-  fn resolve_imports_match(
-    &self,
-    normalized_specifier: String,
+  // TODO: I get a feeling that we should be able to
+  // return only Option
+  pub fn resolve_scopes_match(
+    scopes: &ScopesMap,
+    normalized_specifier: &String,
+    referrer: &String,
   ) -> Result<Option<String>, ImportMapError> {
     // exact-match
-    if let Some(address_vec) = self.imports.get(&normalized_specifier) {
+    println!(
+      "resolve_scopes_match {:?}\n {:?} \n{:?}",
+      normalized_specifier, referrer, scopes
+    );
+    if let Some(scope_imports) = scopes.get(referrer) {
+      println!(
+        "\n\nscope_imports {:?} {:?}\n\n",
+        normalized_specifier, scope_imports
+      );
+      if let Ok(scope_match) =
+        ImportMap::resolve_imports_match(scope_imports, normalized_specifier)
+      {
+        println!(
+          "exact scope match {:?} {:?}",
+          normalized_specifier, scope_match
+        );
+        return Ok(scope_match);
+      }
+    }
+
+    for (normalized_scope_key, scope_imports) in scopes.iter() {
+      println!(
+        "\n\nfoo scope_imports {:?} {:?} {:?}\n\n",
+        referrer, normalized_scope_key, scope_imports
+      );
+      if normalized_scope_key.ends_with('/')
+        && referrer.starts_with(normalized_scope_key)
+      {
+        println!("\n\nfound scope match trying to find scope import match {:?} {:?} {:?}\n\n", referrer, normalized_scope_key, scope_imports);
+        if let Ok(scope_match) =
+          ImportMap::resolve_imports_match(scope_imports, normalized_specifier)
+        {
+          println!(
+            "prefix scope match {:?} {:?}",
+            normalized_scope_key, scope_match
+          );
+          return Ok(scope_match);
+        }
+      }
+    }
+
+    Ok(None)
+  }
+
+  // https://github.com/WICG/import-maps/issues/73#issuecomment-439327758
+  // for some more optimized candidate implementations.
+  pub fn resolve_imports_match(
+    imports: &SpecifierMap,
+    normalized_specifier: &String,
+  ) -> Result<Option<String>, ImportMapError> {
+    // exact-match
+    if let Some(address_vec) = imports.get(normalized_specifier) {
       if address_vec.is_empty() {
         println!("match with empty array {:?}", normalized_specifier);
         return Err(ImportMapError::new(&format!(
@@ -272,7 +325,7 @@ impl ImportMap {
     // "most-specific wins", i.e. when there are multiple matching keys,
     // choose the longest.
     // https://github.com/WICG/import-maps/issues/102
-    for (specifier_key, address_vec) in self.imports.iter() {
+    for (specifier_key, address_vec) in imports.iter() {
       if specifier_key.ends_with('/')
         && normalized_specifier.starts_with(specifier_key)
       {
@@ -291,6 +344,7 @@ impl ImportMap {
           }
 
           unreachable!();
+        // TODO: implement built-in module notice here
         } else {
           return Err(ImportMapError::new(
             "Multi-address mappings are not yet supported",
@@ -319,6 +373,7 @@ impl ImportMap {
     specifier: &str,
     referrer: &str,
   ) -> Result<Option<String>, ImportMapError> {
+    println!("resolve! {:?}; {:?};", specifier, referrer);
     let resolved_url: Option<String> =
       match resolve_module_spec(specifier, referrer) {
         Ok(url) => Some(url.clone()),
@@ -329,13 +384,31 @@ impl ImportMap {
       None => specifier.to_string(),
     };
 
-    // TODO: handle scopes
+    println!(
+      "resolve normalized! {:?}; {:?};",
+      normalized_specifier, referrer
+    );
+    // TODO: referrer should be parsed URL?
+    let scopes_match = match ImportMap::resolve_scopes_match(
+      &self.scopes,
+      &normalized_specifier,
+      &referrer.to_string(),
+    ) {
+      Ok(m) => m,
+      Err(e) => return Err(e),
+    };
+    // match found in scopes map
+    if scopes_match.is_some() {
+      return Ok(scopes_match);
+    }
 
-    let imports_match =
-      match self.resolve_imports_match(normalized_specifier.clone()) {
-        Ok(m) => m,
-        Err(e) => return Err(e),
-      };
+    let imports_match = match ImportMap::resolve_imports_match(
+      &self.imports,
+      &normalized_specifier,
+    ) {
+      Ok(m) => m,
+      Err(e) => return Err(e),
+    };
 
     // match found in import map
     if imports_match.is_some() {
@@ -378,7 +451,7 @@ mod tests {
       assert!(
         ImportMap::from_json(
           base_url,
-          &format!("{{\"imports\": {}}}", non_object)
+          &format!("{{\"imports\": {}}}", non_object),
         ).is_err()
       );
     }
@@ -388,7 +461,7 @@ mod tests {
       assert!(
         ImportMap::from_json(
           base_url,
-          &format!("{{\"scopes\": {}}}", non_object)
+          &format!("{{\"scopes\": {}}}", non_object),
         ).is_err()
       );
     }
@@ -415,6 +488,7 @@ mod tests {
       scopes: IndexMap::new(),
     }
   }
+
   #[test]
   fn empty_import_map_relative_specifiers() {
     let referrer_url = "https://example.com/js/script.ts";
@@ -900,5 +974,258 @@ mod tests {
       );
       assert!(import_map.resolve("a/x/c", referrer_url).is_err());
     }
+  }
+
+  #[test]
+  fn scopes_map_to_empty_array() {
+    let base_url = "https://example.com/app/main.ts";
+    let referrer_url = "https://example.com/js";
+
+    let json_map = json!({
+      "scopes": {
+        "/js/": {
+          "moment": "null",
+          "lodash": []
+        }
+      }
+    });
+    let import_map =
+      ImportMap::from_json(base_url, &json_map.to_string()).unwrap();
+
+    // should remap to other URLs
+    assert!(import_map.resolve("moment", referrer_url).is_err());
+    assert!(import_map.resolve("lodash", referrer_url).is_err());
+  }
+
+  #[test]
+  fn scopes_2() {
+    let base_url = "https://example.com/app/main.ts";
+
+    let json_map = json!({
+      "scopes": {
+        "/js": {
+          "moment": "/only-triggered-by-exact/moment",
+          "moment/": "/only-triggered-by-exact/moment/"
+        },
+        "/js/": {
+          "moment": "/triggered-by-any-subpath/moment",
+          "moment/": "/triggered-by-any-subpath/moment/"
+        }
+      }
+    });
+    let import_map =
+      ImportMap::from_json(base_url, &json_map.to_string()).unwrap();
+
+    // should match correctly when both are in the map
+    let js_non_dir = "https://example.com/js";
+    let js_in_dir = "https://example.com/js/app.mjs";
+    let with_js_prefix = "https://example.com/jsiscool";
+
+    assert_eq!(
+      import_map.resolve("moment", js_non_dir).unwrap(),
+      Some("https://example.com/only-triggered-by-exact/moment".to_string())
+    );
+    assert_eq!(
+      import_map.resolve("moment/foo", js_non_dir).unwrap(),
+      Some(
+        "https://example.com/only-triggered-by-exact/moment/foo".to_string()
+      )
+    );
+    assert_eq!(
+      import_map.resolve("moment", js_in_dir).unwrap(),
+      Some("https://example.com/triggered-by-any-subpath/moment".to_string())
+    );
+    assert_eq!(
+      import_map.resolve("moment/foo", js_in_dir).unwrap(),
+      Some(
+        "https://example.com/triggered-by-any-subpath/moment/foo".to_string()
+      )
+    );
+    assert!(import_map.resolve("moment", with_js_prefix).is_err());
+    assert!(import_map.resolve("moment/foo", with_js_prefix).is_err());
+  }
+
+  #[test]
+  fn scopes_3() {
+    let base_url = "https://example.com/app/main.ts";
+
+    let json_map = json!({
+      "scopes": {
+        "/js": {
+          "moment": "/only-triggered-by-exact/moment",
+          "moment/": "/only-triggered-by-exact/moment/"
+        }
+      }
+    });
+    let import_map =
+      ImportMap::from_json(base_url, &json_map.to_string()).unwrap();
+
+    // should match correctly when only an exact match is in the map
+    let js_non_dir = "https://example.com/js";
+    let js_in_dir = "https://example.com/js/app.mjs";
+    let with_js_prefix = "https://example.com/jsiscool";
+
+    assert_eq!(
+      import_map.resolve("moment", js_non_dir).unwrap(),
+      Some("https://example.com/only-triggered-by-exact/moment".to_string())
+    );
+    assert_eq!(
+      import_map.resolve("moment/foo", js_non_dir).unwrap(),
+      Some(
+        "https://example.com/only-triggered-by-exact/moment/foo".to_string()
+      )
+    );
+    assert!(import_map.resolve("moment", js_in_dir).is_err());
+    assert!(import_map.resolve("moment/foo", js_in_dir).is_err());
+    assert!(import_map.resolve("moment", with_js_prefix).is_err());
+    assert!(import_map.resolve("moment/foo", with_js_prefix).is_err());
+  }
+
+  #[test]
+  fn scopes_4() {
+    let base_url = "https://example.com/app/main.ts";
+
+    let json_map = json!({
+      "scopes": {
+        "/js/": {
+          "moment": "/triggered-by-any-subpath/moment",
+          "moment/": "/triggered-by-any-subpath/moment/"
+        }
+      }
+    });
+    let import_map =
+      ImportMap::from_json(base_url, &json_map.to_string()).unwrap();
+
+    // should match correctly when only a prefix match is in the map
+    let js_non_dir = "https://example.com/js";
+    let js_in_dir = "https://example.com/js/app.mjs";
+    let with_js_prefix = "https://example.com/jsiscool";
+
+    assert!(import_map.resolve("moment", js_non_dir).is_err());
+    assert!(import_map.resolve("moment/foo", js_non_dir).is_err());
+    assert_eq!(
+      import_map.resolve("moment", js_in_dir).unwrap(),
+      Some("https://example.com/triggered-by-any-subpath/moment".to_string())
+    );
+    assert_eq!(
+      import_map.resolve("moment/foo", js_in_dir).unwrap(),
+      Some(
+        "https://example.com/triggered-by-any-subpath/moment/foo".to_string()
+      )
+    );
+    assert!(import_map.resolve("moment", with_js_prefix).is_err());
+    assert!(import_map.resolve("moment/foo", with_js_prefix).is_err());
+  }
+
+  #[test]
+  fn scopes_package_like() {
+    let base_url = "https://example.com/app/main.ts";
+
+    let json_map = json!({
+      "imports": {
+        "moment": "/node_modules/moment/src/moment.js",
+        "moment/": "/node_modules/moment/src/",
+        "lodash-dot": "./node_modules/lodash-es/lodash.js",
+        "lodash-dot/": "./node_modules/lodash-es/",
+        "lodash-dotdot": "../node_modules/lodash-es/lodash.js",
+        "lodash-dotdot/": "../node_modules/lodash-es/"
+      },
+      "scopes": {
+        "/": {
+          "moment": "/node_modules_3/moment/src/moment.js",
+          "vue": "/node_modules_3/vue/dist/vue.runtime.esm.js"
+        },
+        "/js/": {
+          "lodash-dot": "./node_modules_2/lodash-es/lodash.js",
+          "lodash-dot/": "./node_modules_2/lodash-es/",
+          "lodash-dotdot": "../node_modules_2/lodash-es/lodash.js",
+          "lodash-dotdot/": "../node_modules_2/lodash-es/"
+        }
+      }
+    });
+    let import_map =
+      ImportMap::from_json(base_url, &json_map.to_string()).unwrap();
+
+    // should match correctly when only a prefix match is in the map
+    let js_non_dir = "https://example.com/js";
+    let js_in_dir = "https://example.com/js/app.mjs";
+    let with_js_prefix = "https://example.com/jsiscool";
+    let top_level = "https://example.com/app.mjs";
+
+    // should resolve scoped'
+    assert_eq!(
+      import_map.resolve("lodash-dot", js_in_dir).unwrap(),
+      Some(
+        "https://example.com/app/node_modules_2/lodash-es/lodash.js"
+          .to_string()
+      )
+    );
+    assert_eq!(
+      import_map.resolve("lodash-dotdot", js_in_dir).unwrap(),
+      Some(
+        "https://example.com/node_modules_2/lodash-es/lodash.js".to_string()
+      )
+    );
+    assert_eq!(
+      import_map.resolve("lodash-dot/foo", js_in_dir).unwrap(),
+      Some("https://example.com/app/node_modules_2/lodash-es/foo".to_string())
+    );
+    assert_eq!(
+      import_map.resolve("lodash-dotdot/foo", js_in_dir).unwrap(),
+      Some("https://example.com/node_modules_2/lodash-es/foo".to_string())
+    );
+
+    // should apply best scope match'
+    assert_eq!(
+      import_map.resolve("moment", top_level).unwrap(),
+      Some(
+        "https://example.com/node_modules_3/moment/src/moment.js".to_string()
+      )
+    );
+    assert_eq!(
+      import_map.resolve("moment", js_in_dir).unwrap(),
+      Some(
+        "https://example.com/node_modules_3/moment/src/moment.js".to_string()
+      )
+    );
+    assert_eq!(
+      import_map.resolve("vue", js_in_dir).unwrap(),
+      Some(
+        "https://example.com/node_modules_3/vue/dist/vue.runtime.esm.js"
+          .to_string()
+      )
+    );
+
+    // should fallback to "imports"
+    assert_eq!(
+      import_map.resolve("moment/foo", top_level).unwrap(),
+      Some("https://example.com/node_modules/moment/src/foo".to_string())
+    );
+    assert_eq!(
+      import_map.resolve("moment/foo", js_in_dir).unwrap(),
+      Some("https://example.com/node_modules/moment/src/foo".to_string())
+    );
+    assert_eq!(
+      import_map.resolve("lodash-dot", top_level).unwrap(),
+      Some(
+        "https://example.com/app/node_modules/lodash-es/lodash.js".to_string()
+      )
+    );
+    assert_eq!(
+      import_map.resolve("lodash-dotdot", top_level).unwrap(),
+      Some("https://example.com/node_modules/lodash-es/lodash.js".to_string())
+    );
+    assert_eq!(
+      import_map.resolve("lodash-dot/foo", top_level).unwrap(),
+      Some("https://example.com/app/node_modules/lodash-es/foo".to_string())
+    );
+    assert_eq!(
+      import_map.resolve("lodash-dotdot/foo", top_level).unwrap(),
+      Some("https://example.com/node_modules/lodash-es/foo".to_string())
+    );
+
+    // should still fail for package-like specifiers that are not declared'
+    assert!(import_map.resolve("underscore/", js_in_dir).is_err());
+    assert!(import_map.resolve("underscore/foo", js_in_dir).is_err());
   }
 }
