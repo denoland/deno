@@ -1,0 +1,6 @@
+{
+  "imports": {
+    "moment": "test1.ts",
+    "lodash": ["./test2.ts"]
+  }
+}
