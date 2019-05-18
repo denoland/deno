@@ -165,3 +165,20 @@ test({
     assert(err instanceof ProtocolError);
   }
 });
+
+test({
+  name: "[textproto] #409 issue : multipart form boundary",
+  async fn(): Promise<void> {
+    const input = [
+      "Accept: */*\r\n",
+      'Content-Disposition: form-data; name="test"\r\n',
+      " \r\n",
+      "------WebKitFormBoundaryimeZ2Le9LjohiUiG--\r\n\n"
+    ];
+    const r = reader(input.join(""));
+    let [m, err] = await r.readMIMEHeader();
+    assertEquals(m.get("Accept"), "*/*");
+    assertEquals(m.get("Content-Disposition"), 'form-data; name="test"');
+    assert(!err);
+  }
+});
