@@ -18,23 +18,78 @@ impl ImportMapError {
   }
 }
 
+type SpecifierMap = IndexMap<String, Vec<String>>;
+type ScopesMap = IndexMap<String, SpecifierMap>;
+
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct ImportMap {
   base_url: String,
-  modules: IndexMap<String, Vec<String>>,
+  imports: SpecifierMap,
+  scopes: ScopesMap,
 }
 
 #[allow(dead_code)]
 impl ImportMap {
-  // TODO: add proper error handling: https://github.com/WICG/import-maps/issues/100
-  pub fn new(base_url: &str) -> Self {
-    ImportMap {
-      base_url: base_url.to_string(),
-      modules: IndexMap::new(),
+  pub fn from_json(
+    base_url: &str,
+    json_string: &str,
+  ) -> Result<Self, ImportMapError> {
+    let v: Value = match serde_json::from_str(json_string) {
+      Ok(v) => v,
+      Err(_) => {
+        return Err(ImportMapError::new("Unable to parse import map JSON"));
+      }
+    };
+
+    match v {
+      Value::Object(_) => {}
+      _ => {
+        return Err(ImportMapError::new("Import map JSON must be an object"));
+      }
     }
+
+    let normalized_imports = match &v.get("imports") {
+      Some(imports_map) => {
+        if !imports_map.is_object() {
+          return Err(ImportMapError::new(
+            "Import map's 'imports' must be an object",
+          ));
+        }
+
+        let imports_map = imports_map.as_object().unwrap();
+        ImportMap::normalize_specifier_map(imports_map, base_url)
+      }
+      None => IndexMap::new(),
+    };
+
+    let normalized_scopes = match &v.get("scopes") {
+      Some(scope_map) => {
+        if !scope_map.is_object() {
+          return Err(ImportMapError::new(
+            "Import map's 'scopes' must be an object",
+          ));
+        }
+
+        let scope_map = scope_map.as_object().unwrap();
+        match ImportMap::normalize_scope_map(scope_map, base_url) {
+          Ok(scopes_map) => scopes_map,
+          Err(err) => return Err(err),
+        }
+      }
+      None => IndexMap::new(),
+    };
+
+    let import_map = ImportMap {
+      base_url: base_url.to_string(),
+      imports: normalized_imports,
+      scopes: normalized_scopes,
+    };
+
+    Ok(import_map)
   }
 
+  // TODO: add proper error handling: https://github.com/WICG/import-maps/issues/100
   fn normalize_specifier_key(
     specifier_key: &str,
     base_url: &str,
@@ -94,9 +149,8 @@ impl ImportMap {
   fn normalize_specifier_map(
     json_map: &Map<String, Value>,
     base_url: &str,
-  ) -> IndexMap<String, Vec<String>> {
-    // using IndexMap to preserve order during iteration
-    let mut normalized_map: IndexMap<String, Vec<String>> = IndexMap::new();
+  ) -> SpecifierMap {
+    let mut normalized_map: SpecifierMap = SpecifierMap::new();
 
     // order is preserved because of "preserve_order" feature of "serde_json"
     for (specifier_key, value) in json_map.iter() {
@@ -119,40 +173,8 @@ impl ImportMap {
       normalized_map.insert(normalized_specifier_key, normalized_address_array);
     }
 
-    normalized_map
-  }
-
-  pub fn from_json(
-    base_url: &str,
-    json_string: &str,
-  ) -> Result<Self, ImportMapError> {
-    let v: Value = match serde_json::from_str(json_string) {
-      Ok(v) => v,
-      Err(_) => {
-        return Err(ImportMapError::new("Unable to parse import map JSON"));
-      }
-    };
-
-    match v {
-      Value::Object(_) => {}
-      _ => {
-        return Err(ImportMapError::new("Import map JSON must be an object"));
-      }
-    }
-
-    let mut normalized_imports = match &v["imports"] {
-      Value::Object(imports_map) => {
-        ImportMap::normalize_specifier_map(imports_map, base_url)
-      }
-      _ => {
-        return Err(ImportMapError::new(
-          "Import map's 'imports' must be an object",
-        ));
-      }
-    };
-
-    // now sort `normalized_imports` in longest and alphabetical order
-    normalized_imports.sort_by(|k1, _v1, k2, _v2| {
+    // now sort in longest and alphabetical order
+    normalized_map.sort_by(|k1, _v1, k2, _v2| {
       if k1.len() > k2.len() {
         return Ordering::Less;
       } else if k2.len() > k1.len() {
@@ -162,14 +184,59 @@ impl ImportMap {
       k2.cmp(k1)
     });
 
-    // TODO(bartlomieju): handle scopes
+    normalized_map
+  }
 
-    let import_map = ImportMap {
-      base_url: base_url.to_string(),
-      modules: normalized_imports,
-    };
+  // TODO(bartlomieju): factor our SpecifierMap type (IndexMap<String, Vec<String>)?
+  fn normalize_scope_map(
+    scope_map: &Map<String, Value>,
+    base_url: &str,
+  ) -> Result<ScopesMap, ImportMapError> {
+    // using IndexMap to preserve order during iteration
+    let mut normalized_map: ScopesMap = ScopesMap::new();
 
-    Ok(import_map)
+    // order is preserved because of "preserve_order" feature of "serde_json"
+    for (scope_prefix, potential_specifier_map) in scope_map.iter() {
+      if !potential_specifier_map.is_object() {
+        return Err(ImportMapError::new(&format!(
+          "The value for the \"{:?}\" scope prefix must be an object",
+          scope_prefix
+        )));
+      }
+
+      let potential_specifier_map =
+        potential_specifier_map.as_object().unwrap();
+
+      let scope_prefix_url =
+        match Url::parse(base_url).unwrap().join(scope_prefix) {
+          Ok(url) => url.to_string(),
+          _ => continue,
+        };
+
+      // TODO: handle bad "fetch_schemes"
+      //      if (!hasFetchScheme(scopePrefixURL)) {
+      //        console.warn(`Invalid scope "${scopePrefixURL}". Scope URLs must have a fetch scheme.`);
+      //        continue;
+      //      }
+
+      normalized_map.insert(
+        scope_prefix_url,
+        ImportMap::normalize_specifier_map(potential_specifier_map, base_url),
+      );
+    }
+
+    // now sort in longest and alphabetical order
+    normalized_map.sort_by(|k1, _v1, k2, _v2| {
+      if k1.len() > k2.len() {
+        return Ordering::Less;
+      } else if k2.len() > k1.len() {
+        return Ordering::Greater;
+      }
+
+      k2.cmp(k1)
+    });
+
+    Ok(normalized_map)
   }
 
   // https://github.com/WICG/import-maps/issues/73#issuecomment-439327758
@@ -179,7 +246,7 @@ impl ImportMap {
     normalized_specifier: String,
   ) -> Result<Option<String>, ImportMapError> {
     // exact-match
-    if let Some(address_vec) = self.modules.get(&normalized_specifier) {
+    if let Some(address_vec) = self.imports.get(&normalized_specifier) {
       if address_vec.is_empty() {
         println!("match with empty array {:?}", normalized_specifier);
         return Err(ImportMapError::new(&format!(
@@ -205,7 +272,7 @@ impl ImportMap {
     // "most-specific wins", i.e. when there are multiple matching keys,
     // choose the longest.
     // https://github.com/WICG/import-maps/issues/102
-    for (specifier_key, address_vec) in self.modules.iter() {
+    for (specifier_key, address_vec) in self.imports.iter() {
       if specifier_key.ends_with('/')
         && normalized_specifier.starts_with(specifier_key)
       {
@@ -293,23 +360,38 @@ mod tests {
   use super::*;
 
   #[test]
-  fn import_map_from_json_bad_input() {
+  fn import_map_parsing() {
     let base_url = "https://deno.land";
 
+    // empty JSON
+    assert!(ImportMap::from_json(base_url, "{}").is_ok());
+
+    let non_object_strings = vec!["null", "true", "1", "\"foo\"", "[]"];
+
     // invalid JSON
-    assert!(ImportMap::from_json(base_url, "{}").is_err());
-    assert!(ImportMap::from_json(base_url, "null").is_err());
-    assert!(ImportMap::from_json(base_url, "true").is_err());
-    assert!(ImportMap::from_json(base_url, "1").is_err());
-    assert!(ImportMap::from_json(base_url, "\"foo\"").is_err());
-    assert!(ImportMap::from_json(base_url, "[]").is_err());
+    for non_object in non_object_strings.to_vec() {
+      assert!(ImportMap::from_json(base_url, non_object).is_err());
+    }
 
     // invalid schema: 'imports' is non-object
-    assert!(ImportMap::from_json(base_url, "{\"imports\": null}").is_err());
-    assert!(ImportMap::from_json(base_url, "{\"imports\": true}").is_err());
-    assert!(ImportMap::from_json(base_url, "{\"imports\": 1}").is_err());
-    assert!(ImportMap::from_json(base_url, "{\"imports\": \"foo\"").is_err());
-    assert!(ImportMap::from_json(base_url, "{\"imports\": []}").is_err());
+    for non_object in non_object_strings.to_vec() {
+      assert!(
+        ImportMap::from_json(
+          base_url,
+          &format!("{{\"imports\": {}}}", non_object)
+        ).is_err()
+      );
+    }
+
+    // invalid schema: 'scopes' is non-object
+    for non_object in non_object_strings.to_vec() {
+      assert!(
+        ImportMap::from_json(
+          base_url,
+          &format!("{{\"scopes\": {}}}", non_object)
+        ).is_err()
+      );
+    }
   }
 
   #[test]
@@ -329,7 +411,8 @@ mod tests {
   fn get_empty_import_map() -> ImportMap {
     ImportMap {
       base_url: "https://example.com/app/main.ts".to_string(),
-      modules: IndexMap::new(),
+      imports: IndexMap::new(),
+      scopes: IndexMap::new(),
     }
   }
   #[test]
