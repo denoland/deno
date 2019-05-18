@@ -327,11 +327,10 @@ mod tests {
   }
 
   fn get_empty_import_map() -> ImportMap {
-    let base_url = "https://example.com/app/main.ts";
-    let import_map = ImportMap {
-      base_url,
+    ImportMap {
+      base_url: "https://example.com/app/main.ts".to_string(),
       modules: IndexMap::new(),
-    };
+    }
   }
   #[test]
   fn empty_import_map_relative_specifiers() {
