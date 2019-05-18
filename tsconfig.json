@@ -5,11 +5,11 @@
     "module": "esnext",
     "moduleResolution": "node",
     "noEmit": true,
-    "noLib": true,
     "pretty": true,
     "resolveJsonModule": true,
     "strict": true,
-    "target": "esnext"
+    "target": "esnext",
+    "lib": ["esnext"]
   },
   "include": ["./**/*.ts"]
 }
