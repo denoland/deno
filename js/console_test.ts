@@ -143,7 +143,7 @@ test(function consoleTestStringifyCircular(): void {
   assertEquals(stringify(JSON), "{}");
   assertEquals(
     stringify(console),
-    "{ printFunc, log, debug, info, dir, warn, error, assert, count, countReset, table, time, timeLog, timeEnd, group, groupCollapsed, groupEnd, clear, indentLevel, collapsedAt }"
+    "{ printFunc, log, debug, info, dir, warn, error, assert, count, countReset, table, time, timeLog, timeEnd, group, groupCollapsed, groupEnd, clear, clearLine, indentLevel, collapsedAt }"
   );
   // test inspect is working the same
   assertEquals(inspect(nestedObj), nestedObjExpected);
@@ -655,7 +655,7 @@ test(function consoleLogShouldNotThrowError(): void {
 
 test(function consoleTestClearLine(): void {
   const stdoutWrite = stdout.write;
-  const uint8 = new TextEncoder().encode("\x1b[1;1H" + "\x1b[0J");
+  const uint8 = new TextEncoder().encode("\x1b[2K\r");
   let buffer = new Uint8Array(0);
 
   stdout.write = async (u8: Uint8Array): Promise<number> => {
