@@ -1,4 +1,3 @@
-use crate::worker::resolve_module_spec;
 use indexmap::IndexMap;
 use serde_json::Map;
 use serde_json::Value;
@@ -18,6 +17,11 @@ impl ImportMapError {
   }
 }
 
+// NOTE: here is difference between deno and reference implementation - deno currently
+//  can't resolve URL with other schemes (eg. data:, about:, blob:)
+const SUPPORTED_FETCH_SCHEMES: [&str; 3] = ["http", "https", "file"];
+static BUILT_IN_MODULE_SCHEME: &str = "std";
+
 type SpecifierMap = IndexMap<String, Vec<String>>;
 type ScopesMap = IndexMap<String, SpecifierMap>;
 
@@ -25,8 +29,8 @@ type ScopesMap = IndexMap<String, SpecifierMap>;
 #[derive(Debug)]
 pub struct ImportMap {
   base_url: String,
-  imports: SpecifierMap,
-  scopes: ScopesMap,
+  pub imports: SpecifierMap,
+  pub scopes: ScopesMap,
 }
 
 #[allow(dead_code)]
@@ -89,6 +93,28 @@ impl ImportMap {
     Ok(import_map)
   }
 
+  fn try_url_like_specifier(specifier: &str, base: &str) -> Option<Url> {
+    // this should never fail
+    if specifier.starts_with('/')
+      || specifier.starts_with("./")
+      || specifier.starts_with("../")
+    {
+      let base_url = Url::parse(base).unwrap();
+      let url = base_url.join(specifier).unwrap();
+      return Some(url);
+    }
+
+    if let Ok(url) = Url::parse(specifier) {
+      if SUPPORTED_FETCH_SCHEMES.contains(&url.scheme())
+        || url.scheme() == BUILT_IN_MODULE_SCHEME
+      {
+        return Some(url);
+      }
+    }
+
+    None
+  }
+
   // TODO: add proper error handling: https://github.com/WICG/import-maps/issues/100
   fn normalize_specifier_key(
     specifier_key: &str,
@@ -99,8 +125,16 @@ impl ImportMap {
       return None;
     }
 
-    if let Ok(url) = resolve_module_spec(&specifier_key, base_url) {
-      return Some(url.clone());
+    if let Some(url) =
+      ImportMap::try_url_like_specifier(specifier_key, base_url)
+    {
+      let url_string = url.to_string();
+      // TODO: deno doesn't support built-in modules now, prohibit them
+      if url.scheme() == BUILT_IN_MODULE_SCHEME && url_string.contains('/') {
+        eprintln!("Invalid specifier key {:?}. Built-in module specifiers must not contain \"/\".", url_string);
+        return None;
+      }
+      return Some(url_string);
     }
 
     // "bare" specifier
@@ -128,19 +162,31 @@ impl ImportMap {
         _ => continue,
       };
 
-      if let Ok(address_url) = resolve_module_spec(potential_address, base_url)
-      {
-        if specifier_key.ends_with('/') && !address_url.ends_with('/') {
-          println!(
-            "Invalid target address `{:?}` for package specifier `{:?}`.\
-             Package address targets must end with `/`.",
-            address_url, specifier_key
-          );
-          continue;
-        }
+      let url =
+        match ImportMap::try_url_like_specifier(potential_address, base_url) {
+          Some(url) => url,
+          None => continue,
+        };
 
-        normalized_addresses.push(address_url);
+      let url_string = url.to_string();
+      if specifier_key.ends_with('/') && !url_string.ends_with('/') {
+        eprintln!(
+          "Invalid target address {:?} for package specifier {:?}.\
+           Package address targets must end with \"/\".",
+          url_string, specifier_key
+        );
+        continue;
       }
+
+      if url.scheme() == BUILT_IN_MODULE_SCHEME && url_string.contains('/') {
+        eprintln!(
+          "Invalid target address {:?}. Built-in module URLs must not contain \"/\"",
+          potential_address
+        );
+        continue;
+      }
+
+      normalized_addresses.push(url_string);
     }
 
     normalized_addresses
@@ -199,7 +245,7 @@ impl ImportMap {
     for (scope_prefix, potential_specifier_map) in scope_map.iter() {
       if !potential_specifier_map.is_object() {
         return Err(ImportMapError::new(&format!(
-          "The value for the \"{:?}\" scope prefix must be an object",
+          "The value for the {:?} scope prefix must be an object",
           scope_prefix
         )));
       }
@@ -209,15 +255,18 @@ impl ImportMap {
 
       let scope_prefix_url =
         match Url::parse(base_url).unwrap().join(scope_prefix) {
-          Ok(url) => url.to_string(),
+          Ok(url) => {
+            if !SUPPORTED_FETCH_SCHEMES.contains(&url.scheme()) {
+              eprintln!(
+              "Invalid scope {:?}. Scope URLs must have a valid fetch scheme.",
+              url.to_string()
+            );
+              continue;
+            }
+            url.to_string()
+          }
           _ => continue,
         };
-
-      // TODO: handle bad "fetch_schemes"
-      // if (!hasFetchScheme(scopePrefixURL)) {
-      //   console.warn(`Invalid scope "${scopePrefixURL}". Scope URLs must have a fetch scheme.`);
-      //   continue;
-      // }
 
       let norm_map =
         ImportMap::normalize_specifier_map(potential_specifier_map, base_url);
@@ -356,17 +405,13 @@ impl ImportMap {
     specifier: &str,
     referrer: &str,
   ) -> Result<Option<String>, ImportMapError> {
-    let resolved_url: Option<String> =
-      match resolve_module_spec(specifier, referrer) {
-        Ok(url) => Some(url.clone()),
-        Err(_) => None,
-      };
+    let resolved_url: Option<Url> =
+      ImportMap::try_url_like_specifier(specifier, referrer);
     let normalized_specifier = match &resolved_url {
-      Some(url) => url.clone(),
+      Some(url) => url.to_string(),
       None => specifier.to_string(),
     };
 
-    // TODO: referrer should be parsed URL?
     let scopes_match = match ImportMap::resolve_scopes_match(
       &self.scopes,
       &normalized_specifier,
@@ -394,9 +439,8 @@ impl ImportMap {
     }
 
     // no match in import map but we got resolvable URL
-    if resolved_url.is_some() {
-      // TODO(bartlomieju): verify `resolved_url` scheme in (http://, https://, file://)
-      return Ok(resolved_url);
+    if let Some(resolved_url) = resolved_url {
+      return Ok(Some(resolved_url.to_string()));
     }
 
     Err(ImportMapError::new(&format!(
@@ -411,7 +455,7 @@ mod parsing {
   use super::*;
 
   #[test]
-  fn import_map_parsing() {
+  fn import_map() {
     let base_url = "https://deno.land";
 
     // empty JSON
@@ -446,7 +490,7 @@ mod parsing {
   }
 
   #[test]
-  fn import_map_from_json() {
+  fn from_json() {
     let json_map = json!({
       "imports": {
         "foo": "https://example.com/1",
@@ -457,6 +501,797 @@ mod parsing {
     let result =
       ImportMap::from_json("https://deno.land", &json_map.to_string());
     assert!(result.is_ok());
+  }
+
+  #[cfg(test)]
+  mod specifier_keys {
+    use super::*;
+
+    #[test]
+    fn relative() {
+      // should absolutize strings prefixed with ./, ../, or / into the corresponding URLs
+      let json_map = json!({
+        "imports": {
+          "./foo": "/dotslash",
+          "../foo": "/dotdotslash",
+          "/foo": "/slash",
+        }
+      });
+      let import_map = ImportMap::from_json(
+        "https://base.example/path1/path2/path3",
+        &json_map.to_string(),
+      ).unwrap();
+      assert_eq!(
+        import_map
+          .imports
+          .get("https://base.example/path1/path2/foo")
+          .unwrap()[0],
+        "https://base.example/dotslash".to_string()
+      );
+      assert_eq!(
+        import_map
+          .imports
+          .get("https://base.example/path1/foo")
+          .unwrap()[0],
+        "https://base.example/dotdotslash".to_string()
+      );
+      assert_eq!(
+        import_map.imports.get("https://base.example/foo").unwrap()[0],
+        "https://base.example/slash".to_string()
+      );
+
+      // should absolutize the literal strings ./, ../, or / with no suffix
+      let json_map = json!({
+        "imports": {
+          "./": "/dotslash/",
+          "../": "/dotdotslash/",
+          "/": "/slash/",
+        }
+      });
+      let import_map = ImportMap::from_json(
+        "https://base.example/path1/path2/path3",
+        &json_map.to_string(),
+      ).unwrap();
+      assert_eq!(
+        import_map
+          .imports
+          .get("https://base.example/path1/path2/")
+          .unwrap()[0],
+        "https://base.example/dotslash/".to_string()
+      );
+      assert_eq!(
+        import_map
+          .imports
+          .get("https://base.example/path1/")
+          .unwrap()[0],
+        "https://base.example/dotdotslash/".to_string()
+      );
+      assert_eq!(
+        import_map.imports.get("https://base.example/").unwrap()[0],
+        "https://base.example/slash/".to_string()
+      );
+
+      // should treat percent-encoded variants of ./, ../, or / as bare specifiers
+      let json_map = json!({
+        "imports": {
+          "%2E/": "/dotSlash1/",
+          "%2E%2E/": "/dotDotSlash1/",
+          ".%2F": "/dotSlash2",
+          "..%2F": "/dotDotSlash2",
+          "%2F": "/slash2",
+          "%2E%2F": "/dotSlash3",
+          "%2E%2E%2F": "/dotDotSlash3"
+        }
+      });
+      let import_map = ImportMap::from_json(
+        "https://base.example/path1/path2/path3",
+        &json_map.to_string(),
+      ).unwrap();
+      assert_eq!(
+        import_map.imports.get("%2E/").unwrap()[0],
+        "https://base.example/dotSlash1/".to_string()
+      );
+      assert_eq!(
+        import_map.imports.get("%2E%2E/").unwrap()[0],
+        "https://base.example/dotDotSlash1/".to_string()
+      );
+      assert_eq!(
+        import_map.imports.get(".%2F").unwrap()[0],
+        "https://base.example/dotSlash2".to_string()
+      );
+      assert_eq!(
+        import_map.imports.get("..%2F").unwrap()[0],
+        "https://base.example/dotDotSlash2".to_string()
+      );
+      assert_eq!(
+        import_map.imports.get("%2F").unwrap()[0],
+        "https://base.example/slash2".to_string()
+      );
+      assert_eq!(
+        import_map.imports.get("%2E%2F").unwrap()[0],
+        "https://base.example/dotSlash3".to_string()
+      );
+      assert_eq!(
+        import_map.imports.get("%2E%2E%2F").unwrap()[0],
+        "https://base.example/dotDotSlash3".to_string()
+      );
+    }
+
+    #[test]
+    fn absolute() {
+      // should only accept absolute URL specifier keys with fetch schemes, treating others as bare specifiers
+      let json_map = json!({
+        "imports": {
+          "file:///good": "/file",
+          "http://good/": "/http/",
+          "https://good/": "/https/",
+          "about:bad": "/about",
+          "blob:bad": "/blob",
+          "data:bad": "/data",
+          "filesystem:bad": "/filesystem",
+          "ftp://bad/": "/ftp/",
+          "import:bad": "/import",
+          "mailto:bad": "/mailto",
+          "javascript:bad": "/javascript",
+          "wss:bad": "/wss"
+        }
+      });
+      let import_map = ImportMap::from_json(
+        "https://base.example/path1/path2/path3",
+        &json_map.to_string(),
+      ).unwrap();
+      assert_eq!(
+        import_map.imports.get("http://good/").unwrap()[0],
+        "https://base.example/http/".to_string()
+      );
+      assert_eq!(
+        import_map.imports.get("https://good/").unwrap()[0],
+        "https://base.example/https/".to_string()
+      );
+      assert_eq!(
+        import_map.imports.get("file:///good").unwrap()[0],
+        "https://base.example/file".to_string()
+      );
+      assert_eq!(
+        import_map.imports.get("http://good/").unwrap()[0],
+        "https://base.example/http/".to_string()
+      );
+      assert_eq!(
+        import_map.imports.get("import:bad").unwrap()[0],
+        "https://base.example/import".to_string()
+      );
+      assert_eq!(
+        import_map.imports.get("mailto:bad").unwrap()[0],
+        "https://base.example/mailto".to_string()
+      );
+      assert_eq!(
+        import_map.imports.get("javascript:bad").unwrap()[0],
+        "https://base.example/javascript".to_string()
+      );
+      assert_eq!(
+        import_map.imports.get("wss:bad").unwrap()[0],
+        "https://base.example/wss".to_string()
+      );
+      assert_eq!(
+        import_map.imports.get("about:bad").unwrap()[0],
+        "https://base.example/about".to_string()
+      );
+      assert_eq!(
+        import_map.imports.get("blob:bad").unwrap()[0],
+        "https://base.example/blob".to_string()
+      );
+      assert_eq!(
+        import_map.imports.get("data:bad").unwrap()[0],
+        "https://base.example/data".to_string()
+      );
+
+      // should parse absolute URLs, treating unparseable ones as bare specifiers
+      let json_map = json!({
+        "imports": {
+          "https://ex ample.org/": "/unparseable1/",
+          "https://example.com:demo": "/unparseable2",
+          "http://[www.example.com]/": "/unparseable3/",
+          "https:example.org": "/invalidButParseable1/",
+          "https://///example.com///": "/invalidButParseable2/",
+          "https://example.net": "/prettyNormal/",
+          "https://ex%41mple.com/": "/percentDecoding/",
+          "https://example.com/%41": "/noPercentDecoding"
+        }
+      });
+      let import_map = ImportMap::from_json(
+        "https://base.example/path1/path2/path3",
+        &json_map.to_string(),
+      ).unwrap();
+      assert_eq!(
+        import_map.imports.get("https://ex ample.org/").unwrap()[0],
+        "https://base.example/unparseable1/".to_string()
+      );
+      assert_eq!(
+        import_map.imports.get("https://example.com:demo").unwrap()[0],
+        "https://base.example/unparseable2".to_string()
+      );
+      assert_eq!(
+        import_map.imports.get("http://[www.example.com]/").unwrap()[0],
+        "https://base.example/unparseable3/".to_string()
+      );
+      assert_eq!(
+        import_map.imports.get("https://example.org/").unwrap()[0],
+        "https://base.example/invalidButParseable1/".to_string()
+      );
+      assert_eq!(
+        import_map.imports.get("https://example.com///").unwrap()[0],
+        "https://base.example/invalidButParseable2/".to_string()
+      );
+      assert_eq!(
+        import_map.imports.get("https://example.net/").unwrap()[0],
+        "https://base.example/prettyNormal/".to_string()
+      );
+      assert_eq!(
+        import_map.imports.get("https://example.com/").unwrap()[0],
+        "https://base.example/percentDecoding/".to_string()
+      );
+      assert_eq!(
+        import_map.imports.get("https://example.com/%41").unwrap()[0],
+        "https://base.example/noPercentDecoding".to_string()
+      );
+
+      // should only parse built-in module specifier keys without a /
+      let json_map = json!({
+        "imports": {
+          "std:blank": "/blank",
+          "std:blank/": "/blank/",
+          "std:blank/foo": "/blank/foo",
+          "std:blank\\foo": "/blank/backslashfoo"
+        }
+      });
+      let import_map = ImportMap::from_json(
+        "https://base.example/path1/path2/path3",
+        &json_map.to_string(),
+      ).unwrap();
+      assert_eq!(
+        import_map.imports.get("std:blank").unwrap()[0],
+        "https://base.example/blank".to_string()
+      );
+      assert_eq!(
+        import_map.imports.get("std:blank\\foo").unwrap()[0],
+        "https://base.example/blank/backslashfoo".to_string()
+      );
+      assert_eq!(import_map.imports.len(), 2);
+    }
+  }
+
+  #[cfg(test)]
+  mod scope_keys {
+    use super::*;
+
+    #[test]
+    fn relative() {
+      // should work with no prefix
+      let json_map = json!({
+        "scopes": {
+          "foo": {}
+        }
+      });
+      let import_map = ImportMap::from_json(
+        "https://base.example/path1/path2/path3",
+        &json_map.to_string(),
+      ).unwrap();
+      assert!(
+        import_map
+          .scopes
+          .contains_key("https://base.example/path1/path2/foo")
+      );
+
+      // should work with ./, ../, and / prefixes
+      let json_map = json!({
+        "scopes": {
+          "./foo": {},
+          "../foo": {},
+          "/foo": {},
+        }
+      });
+      let import_map = ImportMap::from_json(
+        "https://base.example/path1/path2/path3",
+        &json_map.to_string(),
+      ).unwrap();
+      assert!(
+        import_map
+          .scopes
+          .contains_key("https://base.example/path1/path2/foo")
+      );
+      assert!(
+        import_map
+          .scopes
+          .contains_key("https://base.example/path1/foo")
+      );
+      assert!(import_map.scopes.contains_key("https://base.example/foo"));
+
+      // should work with /s, ?s, and #s
+      let json_map = json!({
+        "scopes": {
+          "foo/bar?baz#qux": {},
+        }
+      });
+      let import_map = ImportMap::from_json(
+        "https://base.example/path1/path2/path3",
+        &json_map.to_string(),
+      ).unwrap();
+      assert!(
+        import_map
+          .scopes
+          .contains_key("https://base.example/path1/path2/foo/bar?baz#qux")
+      );
+
+      // should work with an empty string scope key
+      let json_map = json!({
+        "scopes": {
+          "": {},
+        }
+      });
+      let import_map = ImportMap::from_json(
+        "https://base.example/path1/path2/path3",
+        &json_map.to_string(),
+      ).unwrap();
+      assert!(
+        import_map
+          .scopes
+          .contains_key("https://base.example/path1/path2/path3")
+      );
+
+      // should work with / suffixes
+      let json_map = json!({
+        "scopes": {
+          "foo/": {},
+          "./foo/": {},
+          "../foo/": {},
+          "/foo/": {},
+          "/foo//": {},
+        }
+      });
+      let import_map = ImportMap::from_json(
+        "https://base.example/path1/path2/path3",
+        &json_map.to_string(),
+      ).unwrap();
+      assert!(
+        import_map
+          .scopes
+          .contains_key("https://base.example/path1/path2/foo/")
+      );
+      assert!(
+        import_map
+          .scopes
+          .contains_key("https://base.example/path1/path2/foo/")
+      );
+      assert!(
+        import_map
+          .scopes
+          .contains_key("https://base.example/path1/foo/")
+      );
+      assert!(import_map.scopes.contains_key("https://base.example/foo/"));
+      assert!(import_map.scopes.contains_key("https://base.example/foo//"));
+
+      // should deduplicate based on URL parsing rules
+      let json_map = json!({
+        "scopes": {
+          "foo/\\": {},
+          "foo//": {},
+          "foo\\\\": {},
+        }
+      });
+      let import_map = ImportMap::from_json(
+        "https://base.example/path1/path2/path3",
+        &json_map.to_string(),
+      ).unwrap();
+      assert!(
+        import_map
+          .scopes
+          .contains_key("https://base.example/path1/path2/foo//")
+      );
+      assert_eq!(import_map.scopes.len(), 1);
+    }
+
+    #[test]
+    fn absolute() {
+      // should only accept absolute URL scope keys with fetch schemes
+      let json_map = json!({
+        "scopes": {
+          "http://good/": {},
+          "https://good/": {},
+          "file:///good": {},
+          "about:bad": {},
+          "blob:bad": {},
+          "data:bad": {},
+          "filesystem:bad": {},
+          "ftp://bad/": {},
+          "import:bad": {},
+          "mailto:bad": {},
+          "javascript:bad": {},
+          "wss:bad": {}
+        }
+      });
+      let import_map = ImportMap::from_json(
+        "https://base.example/path1/path2/path3",
+        &json_map.to_string(),
+      ).unwrap();
+      assert!(import_map.scopes.contains_key("http://good/"));
+      assert!(import_map.scopes.contains_key("https://good/"));
+      assert!(import_map.scopes.contains_key("file:///good"));
+      assert_eq!(import_map.scopes.len(), 3);
+
+      // should parse absolute URL scope keys, ignoring unparseable ones
+      let json_map = json!({
+        "scopes": {
+          "https://ex ample.org/": {},
+          "https://example.com:demo": {},
+          "http://[www.example.com]/": {},
+          "https:example.org": {},
+          "https://///example.com///": {},
+          "https://example.net": {},
+          "https://ex%41mple.com/foo/": {},
+          "https://example.com/%41": {}
+        }
+      });
+      let import_map = ImportMap::from_json(
+        "https://base.example/path1/path2/path3",
+        &json_map.to_string(),
+      ).unwrap();
+      // tricky case! remember we have a base URL
+      assert!(
+        import_map
+          .scopes
+          .contains_key("https://base.example/path1/path2/example.org")
+      );
+      assert!(import_map.scopes.contains_key("https://example.com///"));
+      assert!(import_map.scopes.contains_key("https://example.net/"));
+      assert!(import_map.scopes.contains_key("https://example.com/foo/"));
+      assert!(import_map.scopes.contains_key("https://example.com/%41"));
+      assert_eq!(import_map.scopes.len(), 5);
+    }
+  }
+
+  #[cfg(test)]
+  mod addresses {
+    use super::*;
+
+    #[test]
+    fn relative_url_like_addresses() {
+      // should accept strings prefixed with ./, ../, or /
+      let json_map = json!({
+        "imports": {
+          "dotSlash": "./foo",
+          "dotDotSlash": "../foo",
+          "slash": "/foo"
+         }
+      });
+      let import_map = ImportMap::from_json(
+        "https://base.example/path1/path2/path3",
+        &json_map.to_string(),
+      ).unwrap();
+
+      assert_eq!(
+        import_map.imports.get("dotSlash").unwrap(),
+        &vec!["https://base.example/path1/path2/foo".to_string()]
+      );
+      assert_eq!(
+        import_map.imports.get("dotDotSlash").unwrap(),
+        &vec!["https://base.example/path1/foo".to_string()]
+      );
+      assert_eq!(
+        import_map.imports.get("slash").unwrap(),
+        &vec!["https://base.example/foo".to_string()]
+      );
+
+      // should accept the literal strings ./, ../, or / with no suffix
+      let json_map = json!({
+        "imports": {
+          "dotSlash": "./",
+          "dotDotSlash": "../",
+          "slash": "/"
+         }
+      });
+      let import_map = ImportMap::from_json(
+        "https://base.example/path1/path2/path3",
+        &json_map.to_string(),
+      ).unwrap();
+
+      assert_eq!(
+        import_map.imports.get("dotSlash").unwrap(),
+        &vec!["https://base.example/path1/path2/".to_string()]
+      );
+      assert_eq!(
+        import_map.imports.get("dotDotSlash").unwrap(),
+        &vec!["https://base.example/path1/".to_string()]
+      );
+      assert_eq!(
+        import_map.imports.get("slash").unwrap(),
+        &vec!["https://base.example/".to_string()]
+      );
+
+      // should ignore percent-encoded variants of ./, ../, or /
+      let json_map = json!({
+        "imports": {
+          "dotSlash1": "%2E/",
+          "dotDotSlash1": "%2E%2E/",
+          "dotSlash2": ".%2F",
+          "dotDotSlash2": "..%2F",
+          "slash2": "%2F",
+          "dotSlash3": "%2E%2F",
+          "dotDotSlash3": "%2E%2E%2F"
+        }
+      });
+      let import_map = ImportMap::from_json(
+        "https://base.example/path1/path2/path3",
+        &json_map.to_string(),
+      ).unwrap();
+
+      assert!(import_map.imports.get("dotSlash1").unwrap().is_empty());
+      assert!(import_map.imports.get("dotDotSlash1").unwrap().is_empty());
+      assert!(import_map.imports.get("dotSlash2").unwrap().is_empty());
+      assert!(import_map.imports.get("dotDotSlash2").unwrap().is_empty());
+      assert!(import_map.imports.get("slash2").unwrap().is_empty());
+      assert!(import_map.imports.get("dotSlash3").unwrap().is_empty());
+      assert!(import_map.imports.get("dotDotSlash3").unwrap().is_empty());
+    }
+
+    #[test]
+    fn absolute_with_fetch_schemes() {
+      // should only accept absolute URL addresses with fetch schemes
+      let json_map = json!({
+        "imports": {
+          "http": "http://good/",
+          "https": "https://good/",
+          "file": "file:///good",
+          "about": "about:bad",
+          "blob": "blob:bad",
+          "data": "data:bad",
+          "filesystem": "filesystem:bad",
+          "ftp": "ftp://good/",
+          "import": "import:bad",
+          "mailto": "mailto:bad",
+          "javascript": "javascript:bad",
+          "wss": "wss:bad"
+        }
+      });
+      let import_map = ImportMap::from_json(
+        "https://base.example/path1/path2/path3",
+        &json_map.to_string(),
+      ).unwrap();
+
+      assert_eq!(
+        import_map.imports.get("file").unwrap(),
+        &vec!["file:///good".to_string()]
+      );
+      assert_eq!(
+        import_map.imports.get("http").unwrap(),
+        &vec!["http://good/".to_string()]
+      );
+      assert_eq!(
+        import_map.imports.get("https").unwrap(),
+        &vec!["https://good/".to_string()]
+      );
+
+      assert!(import_map.imports.get("about").unwrap().is_empty());
+      assert!(import_map.imports.get("blob").unwrap().is_empty());
+      assert!(import_map.imports.get("data").unwrap().is_empty());
+      assert!(import_map.imports.get("filesystem").unwrap().is_empty());
+      assert!(import_map.imports.get("ftp").unwrap().is_empty());
+      assert!(import_map.imports.get("import").unwrap().is_empty());
+      assert!(import_map.imports.get("mailto").unwrap().is_empty());
+      assert!(import_map.imports.get("javascript").unwrap().is_empty());
+      assert!(import_map.imports.get("wss").unwrap().is_empty());
+    }
+
+    #[test]
+    fn absolute_with_fetch_schemes_arrays() {
+      // should only accept absolute URL addresses with fetch schemes inside arrays
+      let json_map = json!({
+        "imports": {
+          "http": ["http://good/"],
+          "https": ["https://good/"],
+          "file": ["file:///good"],
+          "about": ["about:bad"],
+          "blob": ["blob:bad"],
+          "data": ["data:bad"],
+          "filesystem": ["filesystem:bad"],
+          "ftp": ["ftp://good/"],
+          "import": ["import:bad"],
+          "mailto": ["mailto:bad"],
+          "javascript": ["javascript:bad"],
+          "wss": ["wss:bad"]
+        }
+      });
+      let import_map = ImportMap::from_json(
+        "https://base.example/path1/path2/path3",
+        &json_map.to_string(),
+      ).unwrap();
+
+      assert_eq!(
+        import_map.imports.get("file").unwrap(),
+        &vec!["file:///good".to_string()]
+      );
+      assert_eq!(
+        import_map.imports.get("http").unwrap(),
+        &vec!["http://good/".to_string()]
+      );
+      assert_eq!(
+        import_map.imports.get("https").unwrap(),
+        &vec!["https://good/".to_string()]
+      );
+
+      assert!(import_map.imports.get("about").unwrap().is_empty());
+      assert!(import_map.imports.get("blob").unwrap().is_empty());
+      assert!(import_map.imports.get("data").unwrap().is_empty());
+      assert!(import_map.imports.get("filesystem").unwrap().is_empty());
+      assert!(import_map.imports.get("ftp").unwrap().is_empty());
+      assert!(import_map.imports.get("import").unwrap().is_empty());
+      assert!(import_map.imports.get("mailto").unwrap().is_empty());
+      assert!(import_map.imports.get("javascript").unwrap().is_empty());
+      assert!(import_map.imports.get("wss").unwrap().is_empty());
+    }
+
+    #[test]
+    fn unparseable_addresses() {
+      // should parse absolute URLs, ignoring unparseable ones
+      let json_map = json!({
+        "imports": {
+          "unparseable1": "https://ex ample.org/",
+          "unparseable2": "https://example.com:demo",
+          "unparseable3": "http://[www.example.com]/",
+          "invalidButParseable1": "https:example.org",
+          "invalidButParseable2": "https://///example.com///",
+          "prettyNormal": "https://example.net",
+          "percentDecoding": "https://ex%41mple.com/",
+          "noPercentDecoding": "https://example.com/%41"
+        }
+      });
+      let import_map = ImportMap::from_json(
+        "https://base.example/path1/path2/path3",
+        &json_map.to_string(),
+      ).unwrap();
+
+      assert_eq!(
+        import_map.imports.get("invalidButParseable1").unwrap(),
+        &vec!["https://example.org/".to_string()]
+      );
+      assert_eq!(
+        import_map.imports.get("invalidButParseable2").unwrap(),
+        &vec!["https://example.com///".to_string()]
+      );
+      assert_eq!(
+        import_map.imports.get("prettyNormal").unwrap(),
+        &vec!["https://example.net/".to_string()]
+      );
+      assert_eq!(
+        import_map.imports.get("percentDecoding").unwrap(),
+        &vec!["https://example.com/".to_string()]
+      );
+      assert_eq!(
+        import_map.imports.get("noPercentDecoding").unwrap(),
+        &vec!["https://example.com/%41".to_string()]
+      );
+
+      assert!(import_map.imports.get("unparseable1").unwrap().is_empty());
+      assert!(import_map.imports.get("unparseable2").unwrap().is_empty());
+      assert!(import_map.imports.get("unparseable3").unwrap().is_empty());
+    }
+
+    #[test]
+    fn unparseable_addresses_arrays() {
+      // should parse absolute URLs, ignoring unparseable ones inside arrays
+      let json_map = json!({
+        "imports": {
+          "unparseable1": ["https://ex ample.org/"],
+          "unparseable2": ["https://example.com:demo"],
+          "unparseable3": ["http://[www.example.com]/"],
+          "invalidButParseable1": ["https:example.org"],
+          "invalidButParseable2": ["https://///example.com///"],
+          "prettyNormal": ["https://example.net"],
+          "percentDecoding": ["https://ex%41mple.com/"],
+          "noPercentDecoding": ["https://example.com/%41"]
+        }
+      });
+      let import_map = ImportMap::from_json(
+        "https://base.example/path1/path2/path3",
+        &json_map.to_string(),
+      ).unwrap();
+
+      assert_eq!(
+        import_map.imports.get("invalidButParseable1").unwrap(),
+        &vec!["https://example.org/".to_string()]
+      );
+      assert_eq!(
+        import_map.imports.get("invalidButParseable2").unwrap(),
+        &vec!["https://example.com///".to_string()]
+      );
+      assert_eq!(
+        import_map.imports.get("prettyNormal").unwrap(),
+        &vec!["https://example.net/".to_string()]
+      );
+      assert_eq!(
+        import_map.imports.get("percentDecoding").unwrap(),
+        &vec!["https://example.com/".to_string()]
+      );
+      assert_eq!(
+        import_map.imports.get("noPercentDecoding").unwrap(),
+        &vec!["https://example.com/%41".to_string()]
+      );
+
+      assert!(import_map.imports.get("unparseable1").unwrap().is_empty());
+      assert!(import_map.imports.get("unparseable2").unwrap().is_empty());
+      assert!(import_map.imports.get("unparseable3").unwrap().is_empty());
+    }
+
+    #[test]
+    fn mismatched_trailing_slashes() {
+      // should parse absolute URLs, ignoring unparseable ones inside arrays
+      let json_map = json!({
+        "imports": {
+          "trailer/": "/notrailer"
+        }
+      });
+      let import_map = ImportMap::from_json(
+        "https://base.example/path1/path2/path3",
+        &json_map.to_string(),
+      ).unwrap();
+
+      assert!(import_map.imports.get("trailer/").unwrap().is_empty());
+      // TODO: I'd be good to assert that warning was shown
+    }
+
+    #[test]
+    fn mismatched_trailing_slashes_array() {
+      // should warn for a mismatch alone in an array
+      let json_map = json!({
+        "imports": {
+          "trailer/": ["/notrailer"]
+        }
+      });
+      let import_map = ImportMap::from_json(
+        "https://base.example/path1/path2/path3",
+        &json_map.to_string(),
+      ).unwrap();
+
+      assert!(import_map.imports.get("trailer/").unwrap().is_empty());
+      // TODO: I'd be good to assert that warning was shown
+    }
+
+    #[test]
+    fn mismatched_trailing_slashes_with_nonmismatched_array() {
+      // should warn for a mismatch alone in an array
+      let json_map = json!({
+        "imports": {
+          "trailer/": ["/atrailer/", "/notrailer"]
+        }
+      });
+      let import_map = ImportMap::from_json(
+        "https://base.example/path1/path2/path3",
+        &json_map.to_string(),
+      ).unwrap();
+
+      assert_eq!(
+        import_map.imports.get("trailer/").unwrap(),
+        &vec!["https://base.example/atrailer/".to_string()]
+      );
+      // TODO: I'd be good to assert that warning was shown
+    }
+
+    #[test]
+    fn other_invalid_addresses() {
+      // should ignore unprefixed strings that are not absolute URLs
+      for bad in &["bar", "\\bar", "~bar", "#bar", "?bar"] {
+        let json_map = json!({
+          "imports": {
+            "foo": bad
+          }
+        });
+        let import_map = ImportMap::from_json(
+          "https://base.example/path1/path2/path3",
+          &json_map.to_string(),
+        ).unwrap();
+
+        assert!(import_map.imports.get("foo").unwrap().is_empty());
+      }
+    }
   }
 }
 
@@ -541,10 +1376,6 @@ mod resolving {
 
       // should parse absolute fetch-scheme URLs
       assert_eq!(
-        import_map.resolve("about:good", referrer_url).unwrap(),
-        Some("about:good".to_string())
-      );
-      assert_eq!(
         import_map
           .resolve("https://example.net", referrer_url)
           .unwrap(),
@@ -575,14 +1406,12 @@ mod resolving {
       let referrer_url = "https://example.com/js/script.ts";
       let import_map = get_empty_import_map();
 
-      // TODO(bartlomieju): enable these tests
       // should fail for absolute non-fetch-scheme URLs
-      // {
-      // assert_eq!(import_map.resolve("mailto:bad", referrer_url), None);
-      // assert_eq!(import_map.resolve("import:bad", referrer_url), None);
-      // assert_eq!(import_map.resolve("javascript:bad", referrer_url), None);
-      // assert_eq!(import_map.resolve("wss:bad", referrer_url), None);
-      // }
+      assert!(import_map.resolve("about:good", referrer_url).is_err());
+      assert!(import_map.resolve("mailto:bad", referrer_url).is_err());
+      assert!(import_map.resolve("import:bad", referrer_url).is_err());
+      assert!(import_map.resolve("javascript:bad", referrer_url).is_err());
+      assert!(import_map.resolve("wss:bad", referrer_url).is_err());
 
       // should fail for string not parseable as absolute URLs and not starting with ./, ../ or /
       assert!(import_map.resolve("foo", referrer_url).is_err());
