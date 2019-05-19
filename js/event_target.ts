@@ -451,7 +451,7 @@ export class EventTarget implements domTypes.EventTarget {
 
     return found;
   }
-  
+
   _normalizeAddEventHandlerOptions(
     options: boolean | domTypes.AddEventListenerOptions | undefined
   ): domTypes.AddEventListenerOptions {
