@@ -9,17 +9,16 @@ import { assert, log } from "./util";
 import * as os from "./os";
 import { args } from "./deno";
 import { replLoop } from "./repl";
+import { xevalMain, XevalFunc } from "./xeval";
 import { setVersions } from "./version";
+import { window } from "./window";
 import { setLocation } from "./location";
 
 // builtin modules
 import * as deno from "./deno";
 
-// TODO(kitsonk) remove with `--types` below
-import libDts from "gen/cli/lib/lib.deno_runtime.d.ts!string";
-
-export default function denoMain(): void {
-  const startResMsg = os.start();
+export default function denoMain(name?: string): void {
+  const startResMsg = os.start(name);
 
   setVersions(startResMsg.denoVersion()!, startResMsg.v8Version()!);
 
@@ -28,13 +27,6 @@ export default function denoMain(): void {
     console.log("deno:", deno.version.deno);
     console.log("v8:", deno.version.v8);
     console.log("typescript:", deno.version.typescript);
-    os.exit(0);
-  }
-
-  // handle `--types`
-  // TODO(kitsonk) move to Rust fetching from compiler
-  if (startResMsg.typesFlag()) {
-    console.log(libDts);
     os.exit(0);
   }
 
@@ -53,7 +45,9 @@ export default function denoMain(): void {
   log("args", args);
   Object.freeze(args);
 
-  if (!mainModule) {
+  if (window["_xevalWrapper"] !== undefined) {
+    xevalMain(window["_xevalWrapper"] as XevalFunc, startResMsg.xevalDelim());
+  } else if (!mainModule) {
     replLoop();
   }
 }

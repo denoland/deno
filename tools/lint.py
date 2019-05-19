@@ -20,8 +20,8 @@ run([
 ])
 
 run([
-    "node", eslint, "./js/**/*.{ts,js}", "./core/**/*.{ts,js}",
-    "./tests/**/*.{ts,js}"
+    "node", eslint, "--max-warnings=0", "./js/**/*.{ts,js}",
+    "./core/**/*.{ts,js}", "./tests/**/*.{ts,js}"
 ])
 
 run([sys.executable, "third_party/depot_tools/pylint.py"] +

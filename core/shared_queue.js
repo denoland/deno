@@ -1,4 +1,22 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+/*
+SharedQueue Binary Layout
++-------------------------------+-------------------------------+
+|                        NUM_RECORDS (32)                       |
++---------------------------------------------------------------+
+|                        NUM_SHIFTED_OFF (32)                   |
++---------------------------------------------------------------+
+|                        HEAD (32)                              |
++---------------------------------------------------------------+
+|                        OFFSETS (32)                           |
++---------------------------------------------------------------+
+|                        RECORD_ENDS (*MAX_RECORDS)           ...
++---------------------------------------------------------------+
+|                        RECORDS (*MAX_RECORDS)               ...
++---------------------------------------------------------------+
+ */
+
+/* eslint-disable @typescript-eslint/no-use-before-define */
 
 (window => {
   const GLOBAL_NAMESPACE = "Deno";
@@ -16,6 +34,25 @@
 
   let sharedBytes;
   let shared32;
+  let initialized = false;
+
+  function maybeInit() {
+    if (!initialized) {
+      init();
+      initialized = true;
+    }
+  }
+
+  function init() {
+    let shared = Deno.core.shared;
+    assert(shared.byteLength > 0);
+    assert(sharedBytes == null);
+    assert(shared32 == null);
+    sharedBytes = new Uint8Array(shared);
+    shared32 = new Int32Array(shared);
+    // Callers should not call Deno.core.recv, use setAsyncHandler.
+    Deno.core.recv(handleAsyncMsgFromRust);
+  }
 
   function assert(cond) {
     if (!cond) {
@@ -24,12 +61,14 @@
   }
 
   function reset() {
+    maybeInit();
     shared32[INDEX_NUM_RECORDS] = 0;
     shared32[INDEX_NUM_SHIFTED_OFF] = 0;
     shared32[INDEX_HEAD] = HEAD_INIT;
   }
 
   function head() {
+    maybeInit();
     return shared32[INDEX_HEAD];
   }
 
@@ -69,7 +108,7 @@
     let off = head();
     let end = off + buf.byteLength;
     let index = numRecords();
-    if (end > shared32.byteLength) {
+    if (end > shared32.byteLength || index >= MAX_RECORDS) {
       console.log("shared_queue.ts push fail");
       return false;
     }
@@ -105,6 +144,7 @@
 
   let asyncHandler;
   function setAsyncHandler(cb) {
+    maybeInit();
     assert(asyncHandler == null);
     asyncHandler = cb;
   }
@@ -119,17 +159,8 @@
     }
   }
 
-  function init(shared) {
-    assert(shared.byteLength > 0);
-    assert(sharedBytes == null);
-    assert(shared32 == null);
-    sharedBytes = new Uint8Array(shared);
-    shared32 = new Int32Array(shared);
-    // Callers should not call Deno.core.recv, use setAsyncHandler.
-    window.Deno.core.recv(handleAsyncMsgFromRust);
-  }
-
   function dispatch(control, zeroCopy = null) {
+    maybeInit();
     // First try to push control to shared.
     const success = push(control);
     // If successful, don't use first argument of core.send.
@@ -141,6 +172,7 @@
     setAsyncHandler,
     dispatch,
     sharedQueue: {
+      MAX_RECORDS,
       head,
       numRecords,
       size,
@@ -153,6 +185,4 @@
   assert(window[GLOBAL_NAMESPACE] != null);
   assert(window[GLOBAL_NAMESPACE][CORE_NAMESPACE] != null);
   Object.assign(core, denoCore);
-
-  init(Deno.core.shared);
-})(globalThis);
+})(this);

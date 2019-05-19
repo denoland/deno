@@ -65,6 +65,12 @@ def integration_tests(deno_exe, test_filter=None):
 
         stderr = subprocess.STDOUT if check_stderr else open(os.devnull, 'w')
 
+        stdin_input = (test.get("input",
+                                "").strip().decode("string_escape").replace(
+                                    "\r\n", "\n"))
+
+        has_stdin_input = len(stdin_input) > 0
+
         output_abs = os.path.join(root_path, test.get("output", ""))
         with open(output_abs, 'r') as f:
             expected_out = f.read()
@@ -73,8 +79,20 @@ def integration_tests(deno_exe, test_filter=None):
         sys.stdout.flush()
         actual_code = 0
         try:
-            actual_out = subprocess.check_output(
-                cmd, universal_newlines=True, stderr=stderr)
+            if has_stdin_input:
+                # Provided stdin
+                proc = subprocess.Popen(
+                    cmd,
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=stderr)
+                actual_out, _ = proc.communicate(stdin_input)
+                actual_out = actual_out.replace("\r\n", "\n")
+            else:
+                # No stdin sent
+                actual_out = subprocess.check_output(
+                    cmd, universal_newlines=True, stderr=stderr)
+
         except subprocess.CalledProcessError as e:
             actual_code = e.returncode
             actual_out = e.output

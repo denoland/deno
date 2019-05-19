@@ -36,7 +36,7 @@ not to introduce circular imports.
 
 Example: Instead of `file-server.ts` use `file_server.ts`.
 
-## Format code according using prettier.
+## Format code using prettier.
 
 More specifically, code should be wrapped at 80 columns and use 2-space
 indentation and use camel-case. Use `//format.ts` to invoke prettier.
@@ -269,7 +269,7 @@ the first column of the comment. For example:
 ```
 
 Code examples should not contain additional comments. It is already inside a
-comment. If it needs further comments is not a good example.
+comment. If it needs further comments it is not a good example.
 
 ## Each module should come with tests
 

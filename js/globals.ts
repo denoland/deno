@@ -5,14 +5,16 @@
 // library.
 
 // Modules which will make up part of the global public API surface should be
-// imported as namespaces, so when the runtime tpye library is generated they
+// imported as namespaces, so when the runtime type library is generated they
 // can be expressed as a namespace in the type library.
 import { window } from "./window";
 import * as blob from "./blob";
 import * as consoleTypes from "./console";
+import * as csprng from "./get_random_values";
 import * as customEvent from "./custom_event";
 import * as deno from "./deno";
 import * as domTypes from "./dom_types";
+import * as domFile from "./dom_file";
 import * as event from "./event";
 import * as eventTarget from "./event_target";
 import * as formData from "./form_data";
@@ -25,9 +27,13 @@ import * as urlSearchParams from "./url_search_params";
 import * as workers from "./workers";
 import * as performanceUtil from "./performance";
 
+import * as request from "./request";
+//import * as response from "./response";
+
 // These imports are not exposed and therefore are fine to just import the
 // symbols required.
 import { core } from "./core";
+import { immutableDefine } from "./util";
 
 // During the build process, augmentations to the variable `window` in this
 // file are tracked and created as part of default library that is built into
@@ -43,8 +49,16 @@ window.window = window;
 // This is the Deno namespace, it is handled differently from other window
 // properties when building the runtime type library, as the whole module
 // is flattened into a single namespace.
-window.Deno = deno;
+immutableDefine(window, "Deno", deno);
 Object.freeze(window.Deno);
+
+// ref https://console.spec.whatwg.org/#console-namespace
+// For historical web-compatibility reasons, the namespace object for
+// console must have as its [[Prototype]] an empty object, created as if
+// by ObjectCreate(%ObjectPrototype%), instead of %ObjectPrototype%.
+let console = Object.create({}) as consoleTypes.Console;
+Object.assign(console, new consoleTypes.Console(core.print));
+console[consoleTypes.isConsoleInstance] = true;
 
 // Globally available functions and object instances.
 window.atob = textEncoding.atob;
@@ -52,10 +66,14 @@ window.btoa = textEncoding.btoa;
 window.fetch = fetchTypes.fetch;
 window.clearTimeout = timers.clearTimer;
 window.clearInterval = timers.clearTimer;
-window.console = new consoleTypes.Console(core.print);
+window.console = console;
 window.setTimeout = timers.setTimeout;
 window.setInterval = timers.setInterval;
 window.location = (undefined as unknown) as domTypes.Location;
+// The following Crypto interface implementation is not up to par with the
+// standard https://www.w3.org/TR/WebCryptoAPI/#crypto-interface as it does not
+// yet incorporate the SubtleCrypto interface as its "subtle" property.
+window.crypto = (csprng as unknown) as Crypto;
 
 // When creating the runtime type library, we use modifications to `window` to
 // determine what is in the global namespace.  When we put a class in the
@@ -66,11 +84,8 @@ window.location = (undefined as unknown) as domTypes.Location;
 window.Blob = blob.DenoBlob;
 export type Blob = blob.DenoBlob;
 
-// TODO(ry) Do not export a class implementing the DOM, export the DOM
-// interface. See this comment for implementation hint:
-// https://github.com/denoland/deno/pull/1396#discussion_r243711502
-// window.File = file.DenoFile;
-// export type File = file.DenoFile;
+window.File = domFile.DenoFile as domTypes.DomFileConstructor;
+export type File = domTypes.DomFile;
 
 window.CustomEventInit = customEvent.CustomEventInit;
 export type CustomEventInit = customEvent.CustomEventInit;
@@ -100,13 +115,44 @@ export type TextEncoder = textEncoding.TextEncoder;
 window.TextDecoder = textEncoding.TextDecoder;
 export type TextDecoder = textEncoding.TextDecoder;
 
+window.Request = request.Request;
+export type Request = request.Request;
+
+//window.Response = response.Response;
+//export type Response = response.Response;
+
 window.performance = new performanceUtil.Performance();
 
+// This variable functioning correctly depends on `declareAsLet`
+// in //tools/ts_library_builder/main.ts
+window.onmessage = workers.onmessage;
+
 window.workerMain = workers.workerMain;
+window.workerClose = workers.workerClose;
+window.postMessage = workers.postMessage;
+
+window.Worker = workers.WorkerImpl;
+export type Worker = workers.Worker;
 
 // below are interfaces that are available in TypeScript but
 // have different signatures
 export interface ImportMeta {
   url: string;
   main: boolean;
+}
+
+export interface Crypto {
+  readonly subtle: null;
+  getRandomValues: <
+    T extends
+      | Int8Array
+      | Uint8Array
+      | Uint8ClampedArray
+      | Int16Array
+      | Uint16Array
+      | Int32Array
+      | Uint32Array
+  >(
+    typedArray: T
+  ) => T;
 }

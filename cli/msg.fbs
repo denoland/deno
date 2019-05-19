@@ -2,7 +2,10 @@ union Any {
   Accept,
   Chdir,
   Chmod,
+  Chown,
   Close,
+  CompilerConfig,
+  CompilerConfigRes,
   CopyFile,
   Cwd,
   CwdRes,
@@ -16,11 +19,14 @@ union Any {
   FetchRes,
   FormatError,
   FormatErrorRes,
+  GetRandomValues,
   GlobalTimer,
   GlobalTimerRes,
   GlobalTimerStop,
   IsTTY,
   IsTTYRes,
+  Kill,
+  Link,
   Listen,
   ListenRes,
   MakeTempDir,
@@ -63,6 +69,13 @@ union Any {
   StatRes,
   Symlink,
   Truncate,
+  Utime,
+  CreateWorker,
+  CreateWorkerRes,
+  HostGetWorkerClosed,
+  HostGetMessage,
+  HostGetMessageRes,
+  HostPostMessage,
   WorkerGetMessage,
   WorkerGetMessageRes,
   WorkerPostMessage,
@@ -121,6 +134,9 @@ enum ErrorKind: byte {
   // custom errors
   InvalidUri,
   InvalidSeekMode,
+  OpNotAvaiable,
+  WorkerInitFailed,
+  UnixError,
 }
 
 table Cwd {}
@@ -161,6 +177,16 @@ table StartRes {
   deno_version: string;
   v8_version: string;
   no_color: bool;
+  xeval_delim: string;
+}
+
+table CompilerConfig {
+  compiler_type: string;
+}
+
+table CompilerConfigRes {
+  path: string;
+  data: [ubyte];
 }
 
 table FormatError {
@@ -171,6 +197,35 @@ table FormatErrorRes {
   error: string;
 }
 
+// Create worker as host
+table CreateWorker {
+  specifier: string;
+}
+
+table CreateWorkerRes {
+  rid: uint32;
+}
+
+table HostGetWorkerClosed {
+  rid: uint32;
+}
+
+// Get message from guest worker as host
+table HostGetMessage {
+  rid: uint32;
+}
+
+table HostGetMessageRes {
+  data: [ubyte];
+}
+
+// Post message to guest worker as host
+table HostPostMessage {
+  rid: uint32;
+  // data passed thru the zero-copy data parameter.
+}
+
+// Get message from host as guest worker
 table WorkerGetMessage {
   unused: int8;
 }
@@ -179,6 +234,7 @@ table WorkerGetMessageRes {
   data: [ubyte];
 }
 
+// Post message to host as guest worker
 table WorkerPostMessage {
   // data passed thru the zero-copy data parameter.
 }
@@ -242,6 +298,7 @@ table PermissionsRes {
   write: bool;
   net: bool;
   env: bool;
+  high_precision: bool;
 }
 
 // Note this represents The WHOLE header of an http message, not just the key
@@ -286,6 +343,12 @@ table Mkdir {
 table Chmod {
   path: string;
   mode: uint; // Specified by https://godoc.org/os#FileMode
+}
+
+table Chown {
+  path: string;
+  uid: uint;
+  gid: uint;  // Specified by https://godoc.org/os#Chown
 }
 
 table Remove {
@@ -353,6 +416,11 @@ table Symlink {
   newname: string;
 }
 
+table Link {
+  oldname: string;
+  newname: string;
+}
+
 table Stat {
   filename: string;
   lstat: bool;
@@ -368,12 +436,17 @@ table StatRes {
   mode: uint;
   has_mode: bool; // false on windows
   name: string;
-  path: string;
 }
 
 table Truncate {
   name: string;
   len: uint;
+}
+
+table Utime {
+  filename: string;
+  atime: uint64;
+  mtime: uint64;
 }
 
 table Open {
@@ -406,6 +479,11 @@ table WriteRes {
 
 table Close {
   rid: uint32;
+}
+
+table Kill {
+  pid: int32;
+  signo: int32;
 }
 
 table Shutdown {
@@ -483,7 +561,8 @@ table RunStatusRes {
 table Now {}
 
 table NowRes {
-  time: uint64;
+  seconds: uint64;
+  subsec_nanos: uint32;
 }
 
 table IsTTY {}
@@ -499,5 +578,7 @@ table Seek {
   offset: int;
   whence: uint;
 }
+
+table GetRandomValues {}
 
 root_type Base;

@@ -3,23 +3,20 @@ import * as msg from "gen/cli/msg_generated";
 import * as flatbuffers from "./flatbuffers";
 import * as dispatch from "./dispatch";
 import * as util from "./util";
+import { platform } from "./build";
 
 function req(
   oldname: string,
   newname: string,
   type?: string
 ): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
-  // TODO Use type for Windows.
-  if (type) {
+  if (platform.os === "win" && type) {
     return util.notImplemented();
   }
   const builder = flatbuffers.createBuilder();
   const oldname_ = builder.createString(oldname);
   const newname_ = builder.createString(newname);
-  msg.Symlink.startSymlink(builder);
-  msg.Symlink.addOldname(builder, oldname_);
-  msg.Symlink.addNewname(builder, newname_);
-  const inner = msg.Symlink.endSymlink(builder);
+  const inner = msg.Symlink.createSymlink(builder, oldname_, newname_);
   return [builder, msg.Any.Symlink, inner];
 }
 

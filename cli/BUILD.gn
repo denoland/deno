@@ -8,55 +8,75 @@ import("//third_party/v8/snapshot_toolchain.gni")
 import("../deno.gni")
 
 main_extern = [
-  "../core:deno_core",
-
-  "$rust_build:ansi_term",
-  "$rust_build:atty",
-  "$rust_build:dirs",
-  "$rust_build:flatbuffers",
-  "$rust_build:futures",
-  "$rust_build:getopts",
-  "$rust_build:http",
-  "$rust_build:hyper",
-  "$rust_build:hyper_rustls",
-  "$rust_build:lazy_static",
-  "$rust_build:libc",
-  "$rust_build:log",
-  "$rust_build:rand",
-  "$rust_build:regex",
-  "$rust_build:remove_dir_all",
-  "$rust_build:ring",
-  "$rust_build:rustyline",
-  "$rust_build:serde_json",
-  "$rust_build:source_map_mappings",
-  "$rust_build:tempfile",
-  "$rust_build:tokio",
-  "$rust_build:tokio_executor",
-  "$rust_build:tokio_fs",
-  "$rust_build:tokio_io",
-  "$rust_build:tokio_process",
-  "$rust_build:tokio_threadpool",
-  "$rust_build:url",
+  {
+    label = "../core:deno"
+    crate_name = "deno"
+    crate_type = "rlib"
+  },
+  {
+    label = "$rust_build:serde_derive"
+    crate_name = "serde_derive"
+    crate_type = "proc_macro"
+  },
+]
+main_extern_rlib = [
+  "ansi_term",
+  "atty",
+  "clap",
+  "dirs",
+  "flatbuffers",
+  "futures",
+  "http",
+  "hyper",
+  "hyper_rustls",
+  "lazy_static",
+  "libc",
+  "log",
+  "rand",
+  "regex",
+  "remove_dir_all",
+  "ring",
+  "rustyline",
+  "serde",
+  "serde_json",
+  "source_map_mappings",
+  "tempfile",
+  "tokio",
+  "tokio_executor",
+  "tokio_fs",
+  "tokio_io",
+  "tokio_process",
+  "tokio_rustls",
+  "tokio_threadpool",
+  "url",
+  "utime",
 ]
 if (is_win) {
-  main_extern += [ "$rust_build:winapi" ]
+  main_extern_rlib += [ "winapi" ]
+}
+if (is_posix) {
+  main_extern_rlib += [ "nix" ]
 }
 
 ts_sources = [
   "../js/assets.ts",
   "../js/blob.ts",
+  "../js/body.ts",
   "../js/buffer.ts",
   "../js/build.ts",
   "../js/chmod.ts",
-  "../js/console_table.ts",
+  "../js/chown.ts",
+  "../js/colors.ts",
   "../js/compiler.ts",
   "../js/console.ts",
+  "../js/console_table.ts",
   "../js/copy_file.ts",
   "../js/core.ts",
   "../js/custom_event.ts",
   "../js/deno.ts",
   "../js/dir.ts",
   "../js/dispatch.ts",
+  "../js/dispatch_minimal.ts",
   "../js/dom_types.ts",
   "../js/errors.ts",
   "../js/event.ts",
@@ -68,10 +88,12 @@ ts_sources = [
   "../js/files.ts",
   "../js/flatbuffers.ts",
   "../js/form_data.ts",
+  "../js/get_random_values.ts",
   "../js/globals.ts",
   "../js/headers.ts",
   "../js/io.ts",
   "../js/lib.web_assembly.d.ts",
+  "../js/link.ts",
   "../js/location.ts",
   "../js/main.ts",
   "../js/make_temp_dir.ts",
@@ -89,6 +111,7 @@ ts_sources = [
   "../js/remove.ts",
   "../js/rename.ts",
   "../js/repl.ts",
+  "../js/request.ts",
   "../js/resources.ts",
   "../js/stat.ts",
   "../js/symlink.ts",
@@ -99,11 +122,13 @@ ts_sources = [
   "../js/url.ts",
   "../js/url_search_params.ts",
   "../js/util.ts",
+  "../js/utime.ts",
   "../js/window.ts",
   "../js/workers.ts",
   "../js/write_file.ts",
   "../js/performance.ts",
   "../js/version.ts",
+  "../js/xeval.ts",
   "../tsconfig.json",
 
   # Listing package.json and yarn.lock as sources ensures the bundle is rebuilt
@@ -134,13 +159,14 @@ group("deno_deps_cross") {
 }
 
 # Reads the cargo info from Cargo.toml
-deno_cargo_info = exec_script(
-  "../build_extra/rust/get_cargo_info.py",
-  [ rebase_path("Cargo.toml", root_build_dir) ], "json")
+deno_cargo_info = exec_script("../build_extra/rust/get_cargo_info.py",
+                              [ rebase_path("Cargo.toml", root_build_dir) ],
+                              "json")
 
 rust_executable("deno") {
   source_root = "main.rs"
   extern = main_extern
+  extern_rlib = main_extern_rlib
   deps = [
     ":deno_deps",
   ]
@@ -154,9 +180,10 @@ rust_executable("deno") {
   ]
 }
 
-rust_test("test_rs") {
+rust_test("cli_test") {
   source_root = "main.rs"
   extern = main_extern
+  extern_rlib = main_extern_rlib
   deps = [
     ":deno_deps",
   ]
@@ -167,7 +194,6 @@ rust_test("test_rs") {
     "Cargo.toml",
   ]
 }
-
 
 # Generates the core TypeScript type library for deno that will be
 # included in the runtime bundle

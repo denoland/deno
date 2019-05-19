@@ -4,8 +4,13 @@ use libc::c_char;
 use libc::c_int;
 use libc::c_void;
 use libc::size_t;
+use std::convert::From;
+use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
+use std::option::Option;
 use std::ptr::null;
+use std::ptr::NonNull;
+use std::slice;
 
 // TODO(F001): change this definition to `extern { pub type isolate; }`
 // After RFC 1861 is stablized. See https://github.com/rust-lang/rust/issues/43467.
@@ -14,19 +19,11 @@ pub struct isolate {
   _unused: [u8; 0],
 }
 
-/// If "alloc_ptr" is not null, this type represents a buffer which is created
-/// in C side, and then passed to Rust side by `deno_recv_cb`. Finally it should
-/// be moved back to C side by `deno_respond`. If it is not passed to
-/// `deno_respond` in the end, it will be leaked.
-///
-/// If "alloc_ptr" is null, this type represents a borrowed slice.
+/// This type represents a borrowed slice.
 #[repr(C)]
 pub struct deno_buf {
-  alloc_ptr: *const u8,
-  alloc_len: usize,
   data_ptr: *const u8,
   data_len: usize,
-  pub zero_copy_id: usize,
 }
 
 /// `deno_buf` can not clone, and there is no interior mutability.
@@ -37,22 +34,16 @@ impl deno_buf {
   #[inline]
   pub fn empty() -> Self {
     Self {
-      alloc_ptr: null(),
-      alloc_len: 0,
       data_ptr: null(),
       data_len: 0,
-      zero_copy_id: 0,
     }
   }
 
   #[inline]
   pub unsafe fn from_raw_parts(ptr: *const u8, len: usize) -> Self {
     Self {
-      alloc_ptr: null(),
-      alloc_len: 0,
       data_ptr: ptr,
       data_len: len,
-      zero_copy_id: 0,
     }
   }
 }
@@ -62,11 +53,8 @@ impl<'a> From<&'a [u8]> for deno_buf {
   #[inline]
   fn from(x: &'a [u8]) -> Self {
     Self {
-      alloc_ptr: null(),
-      alloc_len: 0,
       data_ptr: x.as_ref().as_ptr(),
       data_len: x.len(),
-      zero_copy_id: 0,
     }
   }
 }
@@ -79,18 +67,6 @@ impl Deref for deno_buf {
   }
 }
 
-impl DerefMut for deno_buf {
-  #[inline]
-  fn deref_mut(&mut self) -> &mut [u8] {
-    unsafe {
-      if self.alloc_ptr.is_null() {
-        panic!("Can't modify the buf");
-      }
-      std::slice::from_raw_parts_mut(self.data_ptr as *mut u8, self.data_len)
-    }
-  }
-}
-
 impl AsRef<[u8]> for deno_buf {
   #[inline]
   fn as_ref(&self) -> &[u8] {
@@ -98,13 +74,114 @@ impl AsRef<[u8]> for deno_buf {
   }
 }
 
-impl AsMut<[u8]> for deno_buf {
-  #[inline]
-  fn as_mut(&mut self) -> &mut [u8] {
-    if self.alloc_ptr.is_null() {
-      panic!("Can't modify the buf");
+/// A PinnedBuf encapsulates a slice that's been borrowed from a JavaScript
+/// ArrayBuffer object. JavaScript objects can normally be garbage collected,
+/// but the existence of a PinnedBuf inhibits this until it is dropped. It
+/// behaves much like an Arc<[u8]>, although a PinnedBuf currently can't be
+/// cloned.
+#[repr(C)]
+pub struct PinnedBuf {
+  data_ptr: NonNull<u8>,
+  data_len: usize,
+  pin: NonNull<c_void>,
+}
+
+#[repr(C)]
+pub struct PinnedBufRaw {
+  data_ptr: *mut u8,
+  data_len: usize,
+  pin: *mut c_void,
+}
+
+unsafe impl Send for PinnedBuf {}
+unsafe impl Send for PinnedBufRaw {}
+
+impl PinnedBuf {
+  pub fn new(raw: PinnedBufRaw) -> Option<Self> {
+    NonNull::new(raw.data_ptr).map(|data_ptr| PinnedBuf {
+      data_ptr,
+      data_len: raw.data_len,
+      pin: NonNull::new(raw.pin).unwrap(),
+    })
+  }
+}
+
+impl Drop for PinnedBuf {
+  fn drop(&mut self) {
+    unsafe {
+      let raw = &mut *(self as *mut PinnedBuf as *mut PinnedBufRaw);
+      deno_pinned_buf_delete(raw);
     }
+  }
+}
+
+impl Deref for PinnedBuf {
+  type Target = [u8];
+  fn deref(&self) -> &[u8] {
+    unsafe { slice::from_raw_parts(self.data_ptr.as_ptr(), self.data_len) }
+  }
+}
+
+impl DerefMut for PinnedBuf {
+  fn deref_mut(&mut self) -> &mut [u8] {
+    unsafe { slice::from_raw_parts_mut(self.data_ptr.as_ptr(), self.data_len) }
+  }
+}
+
+impl AsRef<[u8]> for PinnedBuf {
+  fn as_ref(&self) -> &[u8] {
+    &*self
+  }
+}
+
+impl AsMut<[u8]> for PinnedBuf {
+  fn as_mut(&mut self) -> &mut [u8] {
     &mut *self
+  }
+}
+
+pub use PinnedBufRaw as deno_pinned_buf;
+
+#[repr(C)]
+pub struct deno_snapshot<'a> {
+  pub data_ptr: *const u8,
+  pub data_len: usize,
+  _marker: PhantomData<&'a [u8]>,
+}
+
+/// `deno_snapshot` can not clone, and there is no interior mutability.
+/// This type satisfies Send bound.
+unsafe impl Send for deno_snapshot<'_> {}
+
+// TODO(ry) Snapshot1 and Snapshot2 are not very good names and need to be
+// reconsidered. The entire snapshotting interface is still under construction.
+
+/// The type returned from deno_snapshot_new. Needs to be dropped.
+pub type Snapshot1<'a> = deno_snapshot<'a>;
+
+/// The type created from slice. Used for loading.
+pub type Snapshot2<'a> = deno_snapshot<'a>;
+
+/// Converts Rust &Buf to libdeno `deno_buf`.
+impl<'a> From<&'a [u8]> for Snapshot2<'a> {
+  #[inline]
+  fn from(x: &'a [u8]) -> Self {
+    Self {
+      data_ptr: x.as_ref().as_ptr(),
+      data_len: x.len(),
+      _marker: PhantomData,
+    }
+  }
+}
+
+impl Snapshot2<'_> {
+  #[inline]
+  pub fn empty() -> Self {
+    Self {
+      data_ptr: null(),
+      data_len: 0,
+      _marker: PhantomData,
+    }
   }
 }
 
@@ -112,7 +189,7 @@ impl AsMut<[u8]> for deno_buf {
 type deno_recv_cb = unsafe extern "C" fn(
   user_data: *mut c_void,
   control_buf: deno_buf, // deprecated
-  zero_copy_buf: deno_buf,
+  zero_copy_buf: deno_pinned_buf,
 );
 
 #[allow(non_camel_case_types)]
@@ -126,12 +203,40 @@ type deno_resolve_cb = unsafe extern "C" fn(
 ) -> deno_mod;
 
 #[repr(C)]
-pub struct deno_config {
+pub struct deno_config<'a> {
   pub will_snapshot: c_int,
-  pub load_snapshot: deno_buf,
+  pub load_snapshot: Snapshot2<'a>,
   pub shared: deno_buf,
   pub recv_cb: deno_recv_cb,
 }
+
+#[cfg(not(windows))]
+#[link(name = "deno")]
+extern "C" {}
+
+#[cfg(any(target_os = "macos", target_os = "freebsd"))]
+#[link(name = "c++")]
+extern "C" {}
+
+#[cfg(windows)]
+#[link(name = "libdeno")]
+extern "C" {}
+
+#[cfg(windows)]
+#[link(name = "shlwapi")]
+extern "C" {}
+
+#[cfg(windows)]
+#[link(name = "winmm")]
+extern "C" {}
+
+#[cfg(windows)]
+#[link(name = "ws2_32")]
+extern "C" {}
+
+#[cfg(windows)]
+#[link(name = "dbghelp")]
+extern "C" {}
 
 extern "C" {
   pub fn deno_init();
@@ -148,7 +253,7 @@ extern "C" {
     user_data: *const c_void,
     buf: deno_buf,
   );
-  pub fn deno_zero_copy_release(i: *const isolate, zero_copy_id: usize);
+  pub fn deno_pinned_buf_delete(buf: &mut deno_pinned_buf);
   pub fn deno_execute(
     i: *const isolate,
     user_data: *const c_void,
@@ -186,4 +291,9 @@ extern "C" {
     user_data: *const c_void,
     id: deno_mod,
   );
+
+  pub fn deno_snapshot_new(i: *const isolate) -> Snapshot1<'static>;
+
+  #[allow(dead_code)]
+  pub fn deno_snapshot_delete(s: &mut deno_snapshot);
 }

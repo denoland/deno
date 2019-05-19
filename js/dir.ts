@@ -5,11 +5,11 @@ import * as flatbuffers from "./flatbuffers";
 import { sendSync } from "./dispatch";
 
 /**
- * cwd() Return a string representing the current working directory.
+ * `cwd()` Return a string representing the current working directory.
  * If the current directory can be reached via multiple paths
- * (due to symbolic links), cwd() may return
+ * (due to symbolic links), `cwd()` may return
  * any one of them.
- * throws NotFound exception if directory not available
+ * throws `NotFound` exception if directory not available
  */
 export function cwd(): string {
   const builder = flatbuffers.createBuilder();
@@ -24,14 +24,12 @@ export function cwd(): string {
 }
 
 /**
- * chdir() Change the current working directory to path.
- * throws NotFound exception if directory not available
+ * `chdir()` Change the current working directory to path.
+ * throws `NotFound` exception if directory not available
  */
 export function chdir(directory: string): void {
   const builder = flatbuffers.createBuilder();
   const directory_ = builder.createString(directory);
-  msg.Chdir.startChdir(builder);
-  msg.Chdir.addDirectory(builder, directory_);
-  const inner = msg.Chdir.endChdir(builder);
+  const inner = msg.Chdir.createChdir(builder, directory_);
   sendSync(builder, msg.Any.Chdir, inner);
 }

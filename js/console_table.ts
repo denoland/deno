@@ -2,6 +2,7 @@
 // Forked from Node's lib/internal/cli_table.js
 
 import { TextEncoder } from "./text_encoding";
+import { hasOwnProperty } from "./util";
 
 const encoder = new TextEncoder();
 
@@ -52,9 +53,9 @@ function renderRow(row: string[], columnWidths: number[]): string {
 
 export function cliTable(head: string[], columns: string[][]): string {
   const rows: string[][] = [];
-  const columnWidths = head.map((h: string) => countBytes(h));
+  const columnWidths = head.map((h: string): number => countBytes(h));
   const longestColumn = columns.reduce(
-    (n: number, a: string[]) => Math.max(n, a.length),
+    (n: number, a: string[]): number => Math.max(n, a.length),
     0
   );
 
@@ -64,15 +65,15 @@ export function cliTable(head: string[], columns: string[][]): string {
       if (rows[j] === undefined) {
         rows[j] = [];
       }
-      const value = (rows[j][i] = column.hasOwnProperty(j) ? column[j] : "");
+      const value = (rows[j][i] = hasOwnProperty(column, j) ? column[j] : "");
       const width = columnWidths[i] || 0;
       const counted = countBytes(value);
       columnWidths[i] = Math.max(width, counted);
     }
   }
 
-  const divider = columnWidths.map((i: number) =>
-    tableChars.middleMiddle.repeat(i + 2)
+  const divider = columnWidths.map(
+    (i: number): string => tableChars.middleMiddle.repeat(i + 2)
   );
 
   let result =

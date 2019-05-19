@@ -13,10 +13,10 @@ use crate::errors::bad_resource;
 use crate::errors::DenoError;
 use crate::errors::DenoResult;
 use crate::http_body::HttpBody;
-use crate::isolate_state::WorkerChannels;
 use crate::repl::Repl;
+use crate::state::WorkerChannels;
 
-use deno_core::Buf;
+use deno::Buf;
 
 use futures;
 use futures::Future;
@@ -35,6 +35,7 @@ use std::sync::{Arc, Mutex};
 use tokio;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
+use tokio::sync::mpsc;
 use tokio_process;
 
 pub type ResourceId = u32; // Sometimes referred to RID.
@@ -305,10 +306,11 @@ pub fn add_worker(wc: WorkerChannels) -> Resource {
   Resource { rid }
 }
 
-pub fn worker_post_message(
+/// Post message to worker as a host or privilged overlord
+pub fn post_message_to_worker(
   rid: ResourceId,
   buf: Buf,
-) -> futures::sink::Send<futures::sync::mpsc::Sender<Buf>> {
+) -> futures::sink::Send<mpsc::Sender<Buf>> {
   let mut table = RESOURCE_TABLE.lock().unwrap();
   let maybe_repr = table.get_mut(&rid);
   match maybe_repr {
@@ -333,19 +335,45 @@ impl Future for WorkerReceiver {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     let maybe_repr = table.get_mut(&self.rid);
     match maybe_repr {
-      Some(Repr::Worker(ref mut wc)) => wc.1.poll().map_err(|()| {
-        errors::new(errors::ErrorKind::Other, "recv msg error".to_string())
-      }),
+      Some(Repr::Worker(ref mut wc)) => wc
+        .1
+        .poll()
+        .map_err(|err| errors::new(errors::ErrorKind::Other, err.to_string())),
       _ => Err(bad_resource()),
     }
   }
 }
 
-pub fn worker_recv_message(rid: ResourceId) -> WorkerReceiver {
+pub fn get_message_from_worker(rid: ResourceId) -> WorkerReceiver {
   WorkerReceiver { rid }
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
+pub struct WorkerReceiverStream {
+  rid: ResourceId,
+}
+
+// Invert the dumbness that tokio_process causes by making Child itself a future.
+impl Stream for WorkerReceiverStream {
+  type Item = Buf;
+  type Error = DenoError;
+
+  fn poll(&mut self) -> Poll<Option<Buf>, DenoError> {
+    let mut table = RESOURCE_TABLE.lock().unwrap();
+    let maybe_repr = table.get_mut(&self.rid);
+    match maybe_repr {
+      Some(Repr::Worker(ref mut wc)) => wc
+        .1
+        .poll()
+        .map_err(|err| errors::new(errors::ErrorKind::Other, err.to_string())),
+      _ => Err(bad_resource()),
+    }
+  }
+}
+
+pub fn get_message_stream_from_worker(rid: ResourceId) -> WorkerReceiverStream {
+  WorkerReceiverStream { rid }
+}
+
 pub struct ChildResources {
   pub child_rid: ResourceId,
   pub stdin_rid: Option<ResourceId>,

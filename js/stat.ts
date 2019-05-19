@@ -11,10 +11,7 @@ function req(
 ): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
   const builder = flatbuffers.createBuilder();
   const filename_ = builder.createString(filename);
-  msg.Stat.startStat(builder);
-  msg.Stat.addFilename(builder, filename_);
-  msg.Stat.addLstat(builder, lstat);
-  const inner = msg.Stat.endStat(builder);
+  const inner = msg.Stat.createStat(builder, filename_, lstat);
   return [builder, msg.Any.Stat, inner];
 }
 

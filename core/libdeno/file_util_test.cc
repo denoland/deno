@@ -38,7 +38,7 @@ TEST(FileUtilTest, ExePath) {
   EXPECT_TRUE(exe_path.find("/") == 0 || exe_path.find(":\\") == 1);
   // FIlename is the name of the test binary.
   std::string exe_filename = deno::Basename(exe_path);
-  EXPECT_EQ(exe_filename.find("test_cc"), 0u);
+  EXPECT_EQ(exe_filename.find("libdeno_test"), 0u);
   // Path exists (also tests ReadFileToString).
   std::string contents;
   EXPECT_TRUE(deno::ReadFileToString(exe_path.c_str(), &contents));

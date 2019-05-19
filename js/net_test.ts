@@ -1,12 +1,12 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { testPerm, assert, assertEquals } from "./test_util.ts";
 
-testPerm({ net: true }, function netListenClose() {
+testPerm({ net: true }, function netListenClose(): void {
   const listener = Deno.listen("tcp", "127.0.0.1:4500");
   listener.close();
 });
 
-testPerm({ net: true }, async function netCloseWhileAccept() {
+testPerm({ net: true }, async function netCloseWhileAccept(): Promise<void> {
   const listener = Deno.listen("tcp", ":4501");
   const p = listener.accept();
   listener.close();
@@ -21,7 +21,8 @@ testPerm({ net: true }, async function netCloseWhileAccept() {
   assertEquals(err.message, "Listener has been closed");
 });
 
-testPerm({ net: true }, async function netConcurrentAccept() {
+/* TODO(ry) Re-enable this test.
+testPerm({ net: true }, async function netConcurrentAccept(): Promise<void> {
   const listener = Deno.listen("tcp", ":4502");
   let acceptErrCount = 0;
   const checkErr = (e): void => {
@@ -41,13 +42,16 @@ testPerm({ net: true }, async function netConcurrentAccept() {
   await [p, p1];
   assertEquals(acceptErrCount, 1);
 });
+*/
 
-testPerm({ net: true }, async function netDialListen() {
+testPerm({ net: true }, async function netDialListen(): Promise<void> {
   const listener = Deno.listen("tcp", ":4500");
-  listener.accept().then(async conn => {
-    await conn.write(new Uint8Array([1, 2, 3]));
-    conn.close();
-  });
+  listener.accept().then(
+    async (conn): Promise<void> => {
+      await conn.write(new Uint8Array([1, 2, 3]));
+      conn.close();
+    }
+  );
   const conn = await Deno.dial("tcp", "127.0.0.1:4500");
   const buf = new Uint8Array(1024);
   const readResult = await conn.read(buf);
@@ -69,6 +73,39 @@ testPerm({ net: true }, async function netDialListen() {
   listener.close();
   conn.close();
 });
+
+/* TODO(ry) Re-enable this test.
+testPerm({ net: true }, async function netListenAsyncIterator(): Promise<void> {
+  const listener = Deno.listen("tcp", ":4500");
+  const runAsyncIterator = async (): Promise<void> => {
+    for await (let conn of listener) {
+      await conn.write(new Uint8Array([1, 2, 3]));
+      conn.close();
+    }
+  };
+  runAsyncIterator();
+  const conn = await Deno.dial("tcp", "127.0.0.1:4500");
+  const buf = new Uint8Array(1024);
+  const readResult = await conn.read(buf);
+  assertEquals(3, readResult.nread);
+  assertEquals(1, buf[0]);
+  assertEquals(2, buf[1]);
+  assertEquals(3, buf[2]);
+  assert(conn.rid > 0);
+
+  // TODO Currently ReadResult does not properly transmit EOF in the same call.
+  // it requires a second call to get the EOF. Either ReadResult to be an
+  // integer in which 0 signifies EOF or the handler should be modified so that
+  // EOF is properly transmitted.
+  assertEquals(false, readResult.eof);
+
+  const readResult2 = await conn.read(buf);
+  assertEquals(true, readResult2.eof);
+
+  listener.close();
+  conn.close();
+});
+ */
 
 /* TODO Fix broken test.
 testPerm({ net: true }, async function netCloseReadSuccess() {

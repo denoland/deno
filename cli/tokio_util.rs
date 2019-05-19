@@ -8,13 +8,28 @@ use std::mem;
 use std::net::SocketAddr;
 use tokio;
 use tokio::net::TcpStream;
+use tokio::runtime;
+
+pub fn create_threadpool_runtime() -> tokio::runtime::Runtime {
+  // This code can be simplified once the following PR is landed and
+  // released: https://github.com/tokio-rs/tokio/pull/1055
+  use tokio_threadpool::Builder as ThreadPoolBuilder;
+  let mut threadpool_builder = ThreadPoolBuilder::new();
+  threadpool_builder.panic_handler(|err| std::panic::resume_unwind(err));
+  #[allow(deprecated)]
+  runtime::Builder::new()
+    .threadpool_builder(threadpool_builder)
+    .build()
+    .unwrap()
+}
 
 pub fn run<F>(future: F)
 where
   F: Future<Item = (), Error = ()> + Send + 'static,
 {
   // tokio::runtime::current_thread::run(future)
-  tokio::run(future)
+  let rt = create_threadpool_runtime();
+  rt.block_on_all(future).unwrap();
 }
 
 pub fn block_on<F, R, E>(future: F) -> Result<R, E>
@@ -36,8 +51,7 @@ pub fn init<F>(f: F)
 where
   F: FnOnce(),
 {
-  use tokio_executor;
-  let rt = tokio::runtime::Runtime::new().unwrap();
+  let rt = create_threadpool_runtime();
   let mut executor = rt.executor();
   let mut enter = tokio_executor::enter().expect("Multiple executors at once");
   tokio_executor::with_default(&mut executor, &mut enter, move |_enter| f());

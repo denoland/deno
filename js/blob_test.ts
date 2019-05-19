@@ -1,14 +1,14 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test, assert, assertEquals } from "./test_util.ts";
 
-test(function blobString() {
+test(function blobString(): void {
   const b1 = new Blob(["Hello World"]);
   const str = "Test";
   const b2 = new Blob([b1, str]);
   assertEquals(b2.size, b1.size + str.length);
 });
 
-test(function blobBuffer() {
+test(function blobBuffer(): void {
   const buffer = new ArrayBuffer(12);
   const u8 = new Uint8Array(buffer);
   const f1 = new Float32Array(buffer);
@@ -18,7 +18,7 @@ test(function blobBuffer() {
   assertEquals(b2.size, 3 * u8.length);
 });
 
-test(function blobSlice() {
+test(function blobSlice(): void {
   const blob = new Blob(["Deno", "Foo"]);
   const b1 = blob.slice(0, 3, "Text/HTML");
   assert(b1 instanceof Blob);
@@ -30,6 +30,24 @@ test(function blobSlice() {
   assertEquals(b3.size, 0);
   const b4 = blob.slice(0, 10);
   assertEquals(b4.size, blob.size);
+});
+
+test(function blobShouldNotThrowError(): void {
+  let hasThrown = false;
+
+  try {
+    const options1: object = {
+      ending: "utf8",
+      hasOwnProperty: "hasOwnProperty"
+    };
+    const options2: object = Object.create(null);
+    new Blob(["Hello World"], options1);
+    new Blob(["Hello World"], options2);
+  } catch {
+    hasThrown = true;
+  }
+
+  assertEquals(hasThrown, false);
 });
 
 // TODO(qti3e) Test the stored data in a Blob after implementing FileReader API.

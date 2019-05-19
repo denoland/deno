@@ -7,6 +7,7 @@ import { File, close } from "./files";
 import { ReadCloser, WriteCloser } from "./io";
 import { readAll } from "./buffer";
 import { assert, unreachable } from "./util";
+import { platform } from "./build";
 
 /** How to handle subprocess stdio.
  *
@@ -34,9 +35,7 @@ export interface RunOptions {
 
 async function runStatus(rid: number): Promise<ProcessStatus> {
   const builder = flatbuffers.createBuilder();
-  msg.RunStatus.startRunStatus(builder);
-  msg.RunStatus.addRid(builder, rid);
-  const inner = msg.RunStatus.endRunStatus(builder);
+  const inner = msg.RunStatus.createRunStatus(builder, rid);
 
   const baseRes = await dispatch.sendAsync(builder, msg.Any.RunStatus, inner);
   assert(baseRes != null);
@@ -51,6 +50,16 @@ async function runStatus(rid: number): Promise<ProcessStatus> {
     const code = res.exitCode();
     return { code, success: code === 0 };
   }
+}
+
+/** Send a signal to process under given PID. Unix only at this moment.
+ * If pid is negative, the signal will be sent to the process group identified
+ * by -pid.
+ */
+export function kill(pid: number, signo: number): void {
+  const builder = flatbuffers.createBuilder();
+  const inner = msg.Kill.createKill(builder, pid, signo);
+  dispatch.sendSync(builder, msg.Any.Kill, inner);
 }
 
 export class Process {
@@ -115,6 +124,10 @@ export class Process {
   close(): void {
     close(this.rid);
   }
+
+  kill(signo: number): void {
+    kill(this.pid, signo);
+  }
 }
 
 export interface ProcessStatus {
@@ -152,37 +165,27 @@ export function run(opt: RunOptions): Process {
   const builder = flatbuffers.createBuilder();
   const argsOffset = msg.Run.createArgsVector(
     builder,
-    opt.args.map(a => builder.createString(a))
+    opt.args.map((a): number => builder.createString(a))
   );
-  const cwdOffset = opt.cwd == null ? -1 : builder.createString(opt.cwd);
+  const cwdOffset = opt.cwd == null ? 0 : builder.createString(opt.cwd);
   const kvOffset: flatbuffers.Offset[] = [];
   if (opt.env) {
     for (const [key, val] of Object.entries(opt.env)) {
       const keyOffset = builder.createString(key);
       const valOffset = builder.createString(String(val));
-      msg.KeyValue.startKeyValue(builder);
-      msg.KeyValue.addKey(builder, keyOffset);
-      msg.KeyValue.addValue(builder, valOffset);
-      kvOffset.push(msg.KeyValue.endKeyValue(builder));
+      kvOffset.push(msg.KeyValue.createKeyValue(builder, keyOffset, valOffset));
     }
   }
   const envOffset = msg.Run.createEnvVector(builder, kvOffset);
-  msg.Run.startRun(builder);
-  msg.Run.addArgs(builder, argsOffset);
-  if (opt.cwd != null) {
-    msg.Run.addCwd(builder, cwdOffset);
-  }
-  msg.Run.addEnv(builder, envOffset);
-  if (opt.stdin) {
-    msg.Run.addStdin(builder, stdioMap(opt.stdin!));
-  }
-  if (opt.stdout) {
-    msg.Run.addStdout(builder, stdioMap(opt.stdout!));
-  }
-  if (opt.stderr) {
-    msg.Run.addStderr(builder, stdioMap(opt.stderr!));
-  }
-  const inner = msg.Run.endRun(builder);
+  const inner = msg.Run.createRun(
+    builder,
+    argsOffset,
+    cwdOffset,
+    envOffset,
+    opt.stdin ? stdioMap(opt.stdin) : stdioMap("inherit"),
+    opt.stdout ? stdioMap(opt.stdout) : stdioMap("inherit"),
+    opt.stderr ? stdioMap(opt.stderr) : stdioMap("inherit")
+  );
   const baseRes = dispatch.sendSync(builder, msg.Any.Run, inner);
   assert(baseRes != null);
   assert(msg.Any.RunRes === baseRes!.innerType());
@@ -191,3 +194,77 @@ export function run(opt: RunOptions): Process {
 
   return new Process(res);
 }
+
+// From `kill -l`
+enum LinuxSignal {
+  SIGHUP = 1,
+  SIGINT = 2,
+  SIGQUIT = 3,
+  SIGILL = 4,
+  SIGTRAP = 5,
+  SIGABRT = 6,
+  SIGBUS = 7,
+  SIGFPE = 8,
+  SIGKILL = 9,
+  SIGUSR1 = 10,
+  SIGSEGV = 11,
+  SIGUSR2 = 12,
+  SIGPIPE = 13,
+  SIGALRM = 14,
+  SIGTERM = 15,
+  SIGSTKFLT = 16,
+  SIGCHLD = 17,
+  SIGCONT = 18,
+  SIGSTOP = 19,
+  SIGTSTP = 20,
+  SIGTTIN = 21,
+  SIGTTOU = 22,
+  SIGURG = 23,
+  SIGXCPU = 24,
+  SIGXFSZ = 25,
+  SIGVTALRM = 26,
+  SIGPROF = 27,
+  SIGWINCH = 28,
+  SIGIO = 29,
+  SIGPWR = 30,
+  SIGSYS = 31
+}
+
+// From `kill -l`
+enum MacOSSignal {
+  SIGHUP = 1,
+  SIGINT = 2,
+  SIGQUIT = 3,
+  SIGILL = 4,
+  SIGTRAP = 5,
+  SIGABRT = 6,
+  SIGEMT = 7,
+  SIGFPE = 8,
+  SIGKILL = 9,
+  SIGBUS = 10,
+  SIGSEGV = 11,
+  SIGSYS = 12,
+  SIGPIPE = 13,
+  SIGALRM = 14,
+  SIGTERM = 15,
+  SIGURG = 16,
+  SIGSTOP = 17,
+  SIGTSTP = 18,
+  SIGCONT = 19,
+  SIGCHLD = 20,
+  SIGTTIN = 21,
+  SIGTTOU = 22,
+  SIGIO = 23,
+  SIGXCPU = 24,
+  SIGXFSZ = 25,
+  SIGVTALRM = 26,
+  SIGPROF = 27,
+  SIGWINCH = 28,
+  SIGINFO = 29,
+  SIGUSR1 = 30,
+  SIGUSR2 = 31
+}
+
+/** Signals numbers. This is platform dependent.
+ */
+export const Signal = platform.os === "mac" ? MacOSSignal : LinuxSignal;

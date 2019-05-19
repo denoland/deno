@@ -1,0 +1,2 @@
+args: run --reload tests/027_redirect_typescript.ts
+output: tests/027_redirect_typescript.ts.out

@@ -5,12 +5,13 @@
 
 import * as assert from "assert";
 import { Project, ts } from "ts-morph";
-import { flatten, mergeGlobal } from "./build_library";
+import { flatten, mergeGlobals, prepareFileForMerge } from "./build_library";
 import { inlineFiles, loadDtsFiles } from "./ast_util";
 
 const { ModuleKind, ModuleResolutionKind, ScriptTarget } = ts;
 
 /** setups and returns the fixtures for testing */
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 function setupFixtures() {
   const basePath = process.cwd();
   const buildPath = `${basePath}/tools/ts_library_builder/testdata`;
@@ -35,7 +36,7 @@ function setupFixtures() {
     compilerOptions: {},
     useVirtualFileSystem: true
   });
-  loadDtsFiles(declarationProject);
+  loadDtsFiles(declarationProject, {});
   for (const { filePath, text } of inputProject.emitToMemory().getFiles()) {
     declarationProject.createSourceFile(filePath, text);
   }
@@ -43,7 +44,7 @@ function setupFixtures() {
     compilerOptions: {},
     useVirtualFileSystem: true
   });
-  loadDtsFiles(outputProject);
+  loadDtsFiles(outputProject, {});
   const outputSourceFile = outputProject.createSourceFile(outputFile);
   const debug = true;
 
@@ -59,7 +60,7 @@ function setupFixtures() {
   };
 }
 
-function buildLibraryFlatten() {
+function buildLibraryFlatten(): void {
   const {
     basePath,
     buildPath,
@@ -135,7 +136,7 @@ function buildLibraryFlatten() {
   assert.equal(variableDeclarationsNs.length, 1);
 }
 
-function buildLibraryMerge() {
+function buildLibraryMerge(): void {
   const {
     basePath,
     buildPath,
@@ -145,15 +146,22 @@ function buildLibraryMerge() {
     outputSourceFile: targetSourceFile
   } = setupFixtures();
 
-  mergeGlobal({
+  const prepareForMergeOpts = {
+    globalVarName: "foobarbaz",
+    interfaceName: "FooBar",
+    targetSourceFile
+  };
+
+  const prepareReturn = prepareFileForMerge(prepareForMergeOpts);
+
+  mergeGlobals({
     basePath,
     declarationProject,
     debug,
-    globalVarName: "foobarbaz",
     filePath: `${buildPath}/globals.ts`,
     inputProject,
-    interfaceName: "FooBar",
-    targetSourceFile
+    ...prepareForMergeOpts,
+    prepareReturn
   });
 
   assert(targetSourceFile.getNamespace("moduleC") != null);
@@ -198,7 +206,7 @@ function buildLibraryMerge() {
   assert.equal(interfaceProperties![1].type, "number");
 }
 
-function testInlineFiles() {
+function testInlineFiles(): void {
   const {
     basePath,
     buildPath,
@@ -220,7 +228,7 @@ function testInlineFiles() {
 
 // TODO author unit tests for `ast_util.ts`
 
-function main() {
+function main(): void {
   console.log("ts_library_builder buildLibraryFlatten");
   buildLibraryFlatten();
   console.log("ts_library_builder buildLibraryMerge");

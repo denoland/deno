@@ -19,7 +19,7 @@ class Repl(object):
     def input(self, *lines, **kwargs):
         exit_ = kwargs.pop("exit", True)
         sleep_ = kwargs.pop("sleep", 0)
-        p = Popen([self.deno_exe, "-A"], stdout=PIPE, stderr=PIPE, stdin=PIPE)
+        p = Popen([self.deno_exe], stdout=PIPE, stderr=PIPE, stdin=PIPE)
         try:
             # Note: The repl takes a >100ms until it's ready.
             time.sleep(sleep_)

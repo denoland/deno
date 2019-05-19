@@ -11,7 +11,7 @@ export interface Permissions {
   net: boolean;
   env: boolean;
   run: boolean;
-
+  highPrecision: boolean;
   // NOTE: Keep in sync with src/permissions.rs
 }
 
@@ -19,8 +19,7 @@ export type Permission = keyof Permissions;
 
 function getReq(): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
   const builder = flatbuffers.createBuilder();
-  msg.Permissions.startPermissions(builder);
-  const inner = msg.Permissions.endPermissions(builder);
+  const inner = msg.Permissions.createPermissions(builder);
   return [builder, msg.Any.Permissions, inner];
 }
 
@@ -30,7 +29,8 @@ function createPermissions(inner: msg.PermissionsRes): Permissions {
     write: inner.write(),
     net: inner.net(),
     env: inner.env(),
-    run: inner.run()
+    run: inner.run(),
+    highPrecision: inner.highPrecision()
   };
 }
 
@@ -55,9 +55,10 @@ function revokeReq(
 ): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
   const builder = flatbuffers.createBuilder();
   const permission_ = builder.createString(permission);
-  msg.PermissionRevoke.startPermissionRevoke(builder);
-  msg.PermissionRevoke.addPermission(builder, permission_);
-  const inner = msg.PermissionRevoke.endPermissionRevoke(builder);
+  const inner = msg.PermissionRevoke.createPermissionRevoke(
+    builder,
+    permission_
+  );
   return [builder, msg.Any.PermissionRevoke, inner];
 }
 

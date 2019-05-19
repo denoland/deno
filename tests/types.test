@@ -1,2 +1,2 @@
-args: --types
+args: types
 output: tests/types.out

@@ -1,19 +1,20 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 #include "test.h"
 
 static int exec_count = 0;
-void recv_cb(void* user_data, deno_buf buf, deno_buf zero_copy_buf) {
+void recv_cb(void* user_data, deno_buf buf, deno_pinned_buf zero_copy_buf) {
   // We use this to check that scripts have executed.
   EXPECT_EQ(1u, buf.data_len);
   EXPECT_EQ(buf.data_ptr[0], 4);
-  EXPECT_EQ(zero_copy_buf.zero_copy_id, 0u);
   EXPECT_EQ(zero_copy_buf.data_ptr, nullptr);
+  EXPECT_EQ(zero_copy_buf.data_len, 0u);
+  EXPECT_EQ(zero_copy_buf.pin, nullptr);
   exec_count++;
 }
 
 TEST(ModulesTest, Resolution) {
   exec_count = 0;  // Reset
-  Deno* d = deno_new(deno_config{0, empty, empty, recv_cb});
+  Deno* d = deno_new(deno_config{0, empty_snapshot, empty, recv_cb});
   EXPECT_EQ(0, exec_count);
 
   static deno_mod a = deno_mod_new(d, true, "a.js",
@@ -66,7 +67,7 @@ TEST(ModulesTest, Resolution) {
 
 TEST(ModulesTest, ResolutionError) {
   exec_count = 0;  // Reset
-  Deno* d = deno_new(deno_config{0, empty, empty, recv_cb});
+  Deno* d = deno_new(deno_config{0, empty_snapshot, empty, recv_cb});
   EXPECT_EQ(0, exec_count);
 
   static deno_mod a = deno_mod_new(d, true, "a.js",
@@ -99,7 +100,7 @@ TEST(ModulesTest, ResolutionError) {
 
 TEST(ModulesTest, ImportMetaUrl) {
   exec_count = 0;  // Reset
-  Deno* d = deno_new(deno_config{0, empty, empty, recv_cb});
+  Deno* d = deno_new(deno_config{0, empty_snapshot, empty, recv_cb});
   EXPECT_EQ(0, exec_count);
 
   static deno_mod a =
@@ -119,7 +120,7 @@ TEST(ModulesTest, ImportMetaUrl) {
 }
 
 TEST(ModulesTest, ImportMetaMain) {
-  Deno* d = deno_new(deno_config{0, empty, empty, recv_cb});
+  Deno* d = deno_new(deno_config{0, empty_snapshot, empty, recv_cb});
 
   const char* throw_not_main_src = "if (!import.meta.main) throw 'err'";
   static deno_mod throw_not_main =

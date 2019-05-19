@@ -4,8 +4,6 @@ import { TypedArray } from "./types";
 import { TextEncoder } from "./text_encoding";
 import { File, stdout } from "./files";
 import { cliTable } from "./console_table";
-import { formatError } from "./format_error";
-import { core } from "./core";
 
 type ConsoleContext = Set<unknown>;
 type ConsoleOptions = Partial<{
@@ -55,12 +53,15 @@ function getClassInstanceName(instance: unknown): string {
   if (typeof instance !== "object") {
     return "";
   }
-  if (instance) {
-    const proto = Object.getPrototypeOf(instance);
-    if (proto && proto.constructor) {
-      return proto.constructor.name; // could be "Object" or "Array"
-    }
+  if (!instance) {
+    return "";
   }
+
+  const proto = Object.getPrototypeOf(instance);
+  if (proto && proto.constructor) {
+    return proto.constructor.name; // could be "Object" or "Array"
+  }
+
   return "";
 }
 
@@ -121,6 +122,8 @@ function stringify(
     case "string":
       return value;
     case "number":
+      // Special handling of -0
+      return Object.is(value, -0) ? "-0" : `${value}`;
     case "boolean":
     case "undefined":
     case "symbol":
@@ -173,7 +176,7 @@ function createArrayString(
     typeName: "Array",
     displayName: "",
     delims: ["[", "]"],
-    entryHandler: (el, ctx, level, maxLevel) =>
+    entryHandler: (el, ctx, level, maxLevel): string =>
       stringifyWithQuotes(el, ctx, level + 1, maxLevel)
   };
   return createIterableString(value, ctx, level, maxLevel, printConfig);
@@ -190,7 +193,7 @@ function createTypedArrayString(
     typeName: typedArrayName,
     displayName: typedArrayName,
     delims: ["[", "]"],
-    entryHandler: (el, ctx, level, maxLevel) =>
+    entryHandler: (el, ctx, level, maxLevel): string =>
       stringifyWithQuotes(el, ctx, level + 1, maxLevel)
   };
   return createIterableString(value, ctx, level, maxLevel, printConfig);
@@ -206,7 +209,7 @@ function createSetString(
     typeName: "Set",
     displayName: "Set",
     delims: ["{", "}"],
-    entryHandler: (el, ctx, level, maxLevel) =>
+    entryHandler: (el, ctx, level, maxLevel): string =>
       stringifyWithQuotes(el, ctx, level + 1, maxLevel)
   };
   return createIterableString(value, ctx, level, maxLevel, printConfig);
@@ -222,7 +225,7 @@ function createMapString(
     typeName: "Map",
     displayName: "Map",
     delims: ["{", "}"],
-    entryHandler: (el, ctx, level, maxLevel) => {
+    entryHandler: (el, ctx, level, maxLevel): string => {
       const [key, val] = el;
       return `${stringifyWithQuotes(
         key,
@@ -290,18 +293,20 @@ function createRawObjectString(
     shouldShowClassName = true;
   }
   const keys = Object.keys(value);
-  const entries: string[] = keys.map(key => {
-    if (keys.length > OBJ_ABBREVIATE_SIZE) {
-      return key;
-    } else {
-      return `${key}: ${stringifyWithQuotes(
-        value[key],
-        ctx,
-        level + 1,
-        maxLevel
-      )}`;
+  const entries: string[] = keys.map(
+    (key): string => {
+      if (keys.length > OBJ_ABBREVIATE_SIZE) {
+        return key;
+      } else {
+        return `${key}: ${stringifyWithQuotes(
+          value[key],
+          ctx,
+          level + 1,
+          maxLevel
+        )}`;
+      }
     }
-  });
+  );
 
   ctx.delete(value);
 
@@ -323,8 +328,7 @@ function createObjectString(
   ...args: [ConsoleContext, number, number]
 ): string {
   if (value instanceof Error) {
-    const errorJSON = core.errorToJSON(value);
-    return formatError(errorJSON);
+    return String(value.stack);
   } else if (Array.isArray(value)) {
     return createArrayString(value, ...args);
   } else if (value instanceof Number) {
@@ -486,14 +490,18 @@ type PrintFunc = (x: string, isErr?: boolean) => void;
 
 const countMap = new Map<string, number>();
 const timerMap = new Map<string, number>();
+export const isConsoleInstance = Symbol("isConsoleInstance");
 
 export class Console {
   indentLevel: number;
   collapsedAt: number | null;
+  [isConsoleInstance]: boolean = false;
+
   /** @internal */
   constructor(private printFunc: PrintFunc) {
     this.indentLevel = 0;
     this.collapsedAt = null;
+    this[isConsoleInstance] = true;
   }
 
   /** Writes the arguments to stdout */
@@ -513,7 +521,7 @@ export class Console {
   info = this.log;
 
   /** Writes the properties of the supplied `obj` to stdout */
-  dir = (obj: unknown, options: ConsoleOptions = {}) => {
+  dir = (obj: unknown, options: ConsoleOptions = {}): void => {
     this.log(stringifyArgs([obj], options));
   };
 
@@ -600,7 +608,7 @@ export class Console {
     const toTable = (header: string[], body: string[][]): void =>
       this.log(cliTable(header, body));
     const createColumn = (value: unknown, shift?: number): string[] => [
-      ...(shift ? [...new Array(shift)].map(() => "") : []),
+      ...(shift ? [...new Array(shift)].map((): string => "") : []),
       stringifyValue(value)
     ];
 
@@ -616,39 +624,43 @@ export class Console {
       let idx = 0;
       resultData = {};
 
-      data.forEach((v: unknown, k: unknown) => {
-        resultData[idx] = { Key: k, Values: v };
-        idx++;
-      });
+      data.forEach(
+        (v: unknown, k: unknown): void => {
+          resultData[idx] = { Key: k, Values: v };
+          idx++;
+        }
+      );
     } else {
       resultData = data!;
     }
 
-    Object.keys(resultData).forEach((k, idx) => {
-      const value: unknown = resultData[k]!;
+    Object.keys(resultData).forEach(
+      (k, idx): void => {
+        const value: unknown = resultData[k]!;
 
-      if (value !== null && typeof value === "object") {
-        Object.entries(value as { [key: string]: unknown }).forEach(
-          ([k, v]) => {
-            if (properties && !properties.includes(k)) {
-              return;
+        if (value !== null && typeof value === "object") {
+          Object.entries(value as { [key: string]: unknown }).forEach(
+            ([k, v]): void => {
+              if (properties && !properties.includes(k)) {
+                return;
+              }
+
+              if (objectValues[k]) {
+                objectValues[k].push(stringifyValue(v));
+              } else {
+                objectValues[k] = createColumn(v, idx);
+              }
             }
+          );
 
-            if (objectValues[k]) {
-              objectValues[k].push(stringifyValue(v));
-            } else {
-              objectValues[k] = createColumn(v, idx);
-            }
-          }
-        );
+          values.push("");
+        } else {
+          values.push(stringifyValue(value));
+        }
 
-        values.push("");
-      } else {
-        values.push(stringifyValue(value));
+        indexKeys.push(k);
       }
-
-      indexKeys.push(k);
-    });
+    );
 
     const headerKeys = Object.keys(objectValues);
     const bodyValues = Object.values(objectValues);
@@ -733,11 +745,15 @@ export class Console {
     cursorTo(stdout, 0, 0);
     clearScreenDown(stdout);
   };
+
+  static [Symbol.hasInstance](instance: Console): boolean {
+    return instance[isConsoleInstance];
+  }
 }
 
 /**
- * inspect() converts input into string that has the same format
- * as printed by console.log(...);
+ * `inspect()` converts input into string that has the same format
+ * as printed by `console.log(...)`;
  */
 export function inspect(value: unknown, options?: ConsoleOptions): string {
   const opts = options || {};

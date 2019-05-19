@@ -1,19 +1,56 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test, assert, assertEquals } from "./test_util.ts";
 
-test(function atobSuccess() {
+test(function btoaSuccess(): void {
   const text = "hello world";
   const encoded = btoa(text);
   assertEquals(encoded, "aGVsbG8gd29ybGQ=");
 });
 
-test(function btoaSuccess() {
+test(function atobSuccess(): void {
   const encoded = "aGVsbG8gd29ybGQ=";
   const decoded = atob(encoded);
   assertEquals(decoded, "hello world");
 });
 
-test(function btoaFailed() {
+test(function atobWithAsciiWhitespace(): void {
+  const encodedList = [
+    " aGVsbG8gd29ybGQ=",
+    "  aGVsbG8gd29ybGQ=",
+    "aGVsbG8gd29ybGQ= ",
+    "aGVsbG8gd29ybGQ=\n",
+    "aGVsbG\t8gd29ybGQ=",
+    `aGVsbG\t8g
+                d29ybGQ=`
+  ];
+
+  for (let encoded of encodedList) {
+    let decoded = atob(encoded);
+    assertEquals(decoded, "hello world");
+  }
+});
+
+test(function atobThrows(): void {
+  let threw = false;
+  try {
+    atob("aGVsbG8gd29ybGQ==");
+  } catch (e) {
+    threw = true;
+  }
+  assert(threw);
+});
+
+test(function atobThrows2(): void {
+  let threw = false;
+  try {
+    atob("aGVsbG8gd29ybGQ===");
+  } catch (e) {
+    threw = true;
+  }
+  assert(threw);
+});
+
+test(function btoaFailed(): void {
   const text = "你好";
   let err;
   try {
@@ -25,7 +62,7 @@ test(function btoaFailed() {
   assertEquals(err.name, "InvalidInput");
 });
 
-test(function textDecoder2() {
+test(function textDecoder2(): void {
   // prettier-ignore
   const fixture = new Uint8Array([
     0xf0, 0x9d, 0x93, 0xbd,
@@ -37,13 +74,13 @@ test(function textDecoder2() {
   assertEquals(decoder.decode(fixture), "𝓽𝓮𝔁𝓽");
 });
 
-test(function textDecoderASCII() {
+test(function textDecoderASCII(): void {
   const fixture = new Uint8Array([0x89, 0x95, 0x9f, 0xbf]);
   const decoder = new TextDecoder("ascii");
   assertEquals(decoder.decode(fixture), "‰•Ÿ¿");
 });
 
-test(function textDecoderErrorEncoding() {
+test(function textDecoderErrorEncoding(): void {
   let didThrow = false;
   try {
     new TextDecoder("foo");
@@ -54,7 +91,7 @@ test(function textDecoderErrorEncoding() {
   assert(didThrow);
 });
 
-test(function textEncoder2() {
+test(function textEncoder2(): void {
   const fixture = "𝓽𝓮𝔁𝓽";
   const encoder = new TextEncoder();
   // prettier-ignore
@@ -66,7 +103,7 @@ test(function textEncoder2() {
   ]);
 });
 
-test(function textDecoderSharedUint8Array() {
+test(function textDecoderSharedUint8Array(): void {
   const ab = new SharedArrayBuffer(6);
   const dataView = new DataView(ab);
   const charCodeA = "A".charCodeAt(0);
@@ -79,7 +116,7 @@ test(function textDecoderSharedUint8Array() {
   assertEquals(actual, "ABCDEF");
 });
 
-test(function textDecoderSharedInt32Array() {
+test(function textDecoderSharedInt32Array(): void {
   const ab = new SharedArrayBuffer(8);
   const dataView = new DataView(ab);
   const charCodeA = "A".charCodeAt(0);
@@ -90,4 +127,12 @@ test(function textDecoderSharedInt32Array() {
   const decoder = new TextDecoder();
   const actual = decoder.decode(i32);
   assertEquals(actual, "ABCDEFGH");
+});
+
+test(function toStringShouldBeWebCompatibility(): void {
+  const encoder = new TextEncoder();
+  assertEquals(encoder.toString(), "[object TextEncoder]");
+
+  const decoder = new TextDecoder();
+  assertEquals(decoder.toString(), "[object TextDecoder]");
 });

@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { testPerm, assert, assertEquals } from "./test_util.ts";
 
-testPerm({ read: true, write: true }, function renameSyncSuccess() {
+testPerm({ read: true, write: true }, function renameSyncSuccess(): void {
   const testDir = Deno.makeTempDirSync();
   const oldpath = testDir + "/oldpath";
   const newpath = testDir + "/newpath";
@@ -23,7 +23,7 @@ testPerm({ read: true, write: true }, function renameSyncSuccess() {
   assertEquals(oldPathInfo, undefined);
 });
 
-testPerm({ read: true, write: false }, function renameSyncPerm() {
+testPerm({ read: true, write: false }, function renameSyncPerm(): void {
   let err;
   try {
     const oldpath = "/oldbaddir";
@@ -36,7 +36,9 @@ testPerm({ read: true, write: false }, function renameSyncPerm() {
   assertEquals(err.name, "PermissionDenied");
 });
 
-testPerm({ read: true, write: true }, async function renameSuccess() {
+testPerm({ read: true, write: true }, async function renameSuccess(): Promise<
+  void
+> {
   const testDir = Deno.makeTempDirSync();
   const oldpath = testDir + "/oldpath";
   const newpath = testDir + "/newpath";

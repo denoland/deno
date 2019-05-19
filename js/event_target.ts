@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as domTypes from "./dom_types";
 import { DenoError, ErrorKind } from "./errors";
-import { requiredArguments } from "./util";
+import { requiredArguments, hasOwnProperty } from "./util";
 
 export class EventListenerOptions implements domTypes.EventListenerOptions {
   _capture = false;
@@ -94,7 +94,6 @@ export class EventTarget implements domTypes.EventTarget {
     options?: domTypes.AddEventListenerOptions | boolean
   ): void {
     requiredArguments("EventTarget.addEventListener", arguments.length, 2);
-
     const normalizedOptions: domTypes.AddEventListenerOptions = this._normalizeAddEventHandlerOptions(
       options
     );
@@ -103,7 +102,7 @@ export class EventTarget implements domTypes.EventTarget {
       return;
     }
 
-    if (!this.listeners[type]) {
+    if (!hasOwnProperty(this.listeners, type)) {
       this.listeners[type] = [];
     }
 
@@ -129,12 +128,9 @@ export class EventTarget implements domTypes.EventTarget {
     options?: domTypes.EventListenerOptions | boolean
   ): void {
     requiredArguments("EventTarget.removeEventListener", arguments.length, 2);
-
-    if (callback === undefined || callback === null) {
-      callback = null;
-    } else if (typeof callback !== "object" && typeof callback !== "function") {
-      throw new TypeError(
-        "Only undefined, null, an object, or a function are allowed for the callback parameter"
+    if (hasOwnProperty(this.listeners, type) && callback !== null) {
+      this.listeners[type] = this.listeners[type].filter(
+        (listener): boolean => listener !== callback
       );
     }
 
@@ -169,6 +165,9 @@ export class EventTarget implements domTypes.EventTarget {
 
   public dispatchEvent(event: domTypes.Event): boolean {
     requiredArguments("EventTarget.dispatchEvent", arguments.length, 1);
+    if (!hasOwnProperty(this.listeners, event.type)) {
+      return true;
+    }
 
     if (event.dispatched || !event.initialized) {
       throw new DenoError(
@@ -452,7 +451,7 @@ export class EventTarget implements domTypes.EventTarget {
 
     return found;
   }
-
+  
   _normalizeAddEventHandlerOptions(
     options: boolean | domTypes.AddEventListenerOptions | undefined
   ): domTypes.AddEventListenerOptions {
@@ -504,6 +503,10 @@ export class EventTarget implements domTypes.EventTarget {
       rootOfClosedTree,
       slotInClosedTree
     });
+  }
+
+  get [Symbol.toStringTag](): string {
+    return "EventTarget";
   }
 }
 

@@ -9,10 +9,12 @@ function deferred(): {
 } {
   let resolve;
   let reject;
-  const promise = new Promise((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
+  const promise = new Promise(
+    (res, rej): void => {
+      resolve = res;
+      reject = rej;
+    }
+  );
   return {
     promise,
     resolve,
@@ -21,13 +23,13 @@ function deferred(): {
 }
 
 async function waitForMs(ms): Promise<number> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve): number => setTimeout(resolve, ms));
 }
 
-test(async function timeoutSuccess() {
+test(async function timeoutSuccess(): Promise<void> {
   const { promise, resolve } = deferred();
   let count = 0;
-  setTimeout(() => {
+  setTimeout((): void => {
     count++;
     resolve();
   }, 500);
@@ -36,11 +38,11 @@ test(async function timeoutSuccess() {
   assertEquals(count, 1);
 });
 
-test(async function timeoutArgs() {
+test(async function timeoutArgs(): Promise<void> {
   const { promise, resolve } = deferred();
   const arg = 1;
   setTimeout(
-    (a, b, c) => {
+    (a, b, c): void => {
       assertEquals(a, arg);
       assertEquals(b, arg.toString());
       assertEquals(c, [arg]);
@@ -54,19 +56,18 @@ test(async function timeoutArgs() {
   await promise;
 });
 
-test(async function timeoutCancelSuccess() {
+test(async function timeoutCancelSuccess(): Promise<void> {
   let count = 0;
-  const id = setTimeout(() => {
+  const id = setTimeout((): void => {
     count++;
-  }, 500);
+  }, 1);
   // Cancelled, count should not increment
   clearTimeout(id);
-  // Wait a bit longer than 500ms
   await waitForMs(600);
   assertEquals(count, 0);
 });
 
-test(async function timeoutCancelMultiple() {
+test(async function timeoutCancelMultiple(): Promise<void> {
   function uncalled(): never {
     throw new Error("This function should not be called.");
   }
@@ -91,11 +92,11 @@ test(async function timeoutCancelMultiple() {
   await waitForMs(50);
 });
 
-test(async function timeoutCancelInvalidSilentFail() {
+test(async function timeoutCancelInvalidSilentFail(): Promise<void> {
   // Expect no panic
   const { promise, resolve } = deferred();
   let count = 0;
-  const id = setTimeout(() => {
+  const id = setTimeout((): void => {
     count++;
     // Should have no effect
     clearTimeout(id);
@@ -108,39 +109,32 @@ test(async function timeoutCancelInvalidSilentFail() {
   clearTimeout(2147483647);
 });
 
-test(async function intervalSuccess() {
+test(async function intervalSuccess(): Promise<void> {
   const { promise, resolve } = deferred();
   let count = 0;
-  const id = setInterval(() => {
+  const id = setInterval((): void => {
     count++;
-    if (count === 2) {
-      // TODO: clearInterval(id) here alone seems not working
-      // causing unit_tests.ts to block forever
-      // Requires further investigation...
-      clearInterval(id);
-      resolve();
-    }
-  }, 200);
+    clearInterval(id);
+    resolve();
+  }, 100);
   await promise;
   // Clear interval
   clearInterval(id);
   // count should increment twice
-  assertEquals(count, 2);
+  assertEquals(count, 1);
 });
 
-test(async function intervalCancelSuccess() {
+test(async function intervalCancelSuccess(): Promise<void> {
   let count = 0;
-  const id = setInterval(() => {
+  const id = setInterval((): void => {
     count++;
-  }, 500);
-  // Cancelled, count should not increment
+  }, 1);
   clearInterval(id);
-  // Wait a bit longer than 500ms
-  await waitForMs(600);
+  await waitForMs(500);
   assertEquals(count, 0);
 });
 
-test(async function intervalOrdering() {
+test(async function intervalOrdering(): Promise<void> {
   const timers = [];
   let timeouts = 0;
   function onTimeout(): void {
@@ -150,20 +144,22 @@ test(async function intervalOrdering() {
     }
   }
   for (let i = 0; i < 10; i++) {
-    timers[i] = setTimeout(onTimeout, 20);
+    timers[i] = setTimeout(onTimeout, 1);
   }
-  await waitForMs(100);
+  await waitForMs(500);
   assertEquals(timeouts, 1);
 });
 
-test(async function intervalCancelInvalidSilentFail() {
+test(async function intervalCancelInvalidSilentFail(): Promise<void> {
   // Should silently fail (no panic)
   clearInterval(2147483647);
 });
 
-test(async function fireCallbackImmediatelyWhenDelayOverMaxValue() {
+test(async function fireCallbackImmediatelyWhenDelayOverMaxValue(): Promise<
+  void
+> {
   let count = 0;
-  setTimeout(() => {
+  setTimeout((): void => {
     count++;
   }, 2 ** 31);
   await waitForMs(1);

@@ -2,8 +2,10 @@
 use crate::js_errors::JSErrorColor;
 pub use crate::msg::ErrorKind;
 use crate::resolve_addr::ResolveAddrError;
-use deno_core::JSError;
+use deno::JSError;
 use hyper;
+#[cfg(unix)]
+use nix::{errno::Errno, Error as UnixError};
 use std;
 use std::fmt;
 use std::io;
@@ -168,6 +170,38 @@ impl From<ResolveAddrError> for DenoError {
   }
 }
 
+#[cfg(unix)]
+impl From<UnixError> for DenoError {
+  fn from(e: UnixError) -> Self {
+    match e {
+      UnixError::Sys(Errno::EPERM) => Self {
+        repr: Repr::Simple(
+          ErrorKind::PermissionDenied,
+          Errno::EPERM.desc().to_owned(),
+        ),
+      },
+      UnixError::Sys(Errno::EINVAL) => Self {
+        repr: Repr::Simple(
+          ErrorKind::InvalidInput,
+          Errno::EINVAL.desc().to_owned(),
+        ),
+      },
+      UnixError::Sys(Errno::ENOENT) => Self {
+        repr: Repr::Simple(
+          ErrorKind::NotFound,
+          Errno::ENOENT.desc().to_owned(),
+        ),
+      },
+      UnixError::Sys(err) => Self {
+        repr: Repr::Simple(ErrorKind::UnixError, err.desc().to_owned()),
+      },
+      _ => Self {
+        repr: Repr::Simple(ErrorKind::Other, format!("{}", e)),
+      },
+    }
+  }
+}
+
 pub fn bad_resource() -> DenoError {
   new(ErrorKind::BadResource, String::from("bad resource id"))
 }
@@ -180,7 +214,19 @@ pub fn permission_denied() -> DenoError {
 }
 
 pub fn op_not_implemented() -> DenoError {
-  new(ErrorKind::BadResource, String::from("op not implemented"))
+  new(ErrorKind::OpNotAvaiable, String::from("op not implemented"))
+}
+
+pub fn worker_init_failed() -> DenoError {
+  // TODO(afinch7) pass worker error data through here
+  new(
+    ErrorKind::WorkerInitFailed,
+    String::from("worker init failed"),
+  )
+}
+
+pub fn no_buffer_specified() -> DenoError {
+  new(ErrorKind::InvalidInput, String::from("no buffer specified"))
 }
 
 #[derive(Debug)]
@@ -206,6 +252,16 @@ impl fmt::Display for RustOrJsError {
     match self {
       RustOrJsError::Rust(e) => e.fmt(f),
       RustOrJsError::Js(e) => JSErrorColor(e).fmt(f),
+    }
+  }
+}
+
+// TODO(ry) This is ugly. They are essentially the same type.
+impl From<deno::JSErrorOr<DenoError>> for RustOrJsError {
+  fn from(e: deno::JSErrorOr<DenoError>) -> Self {
+    match e {
+      deno::JSErrorOr::JSError(err) => RustOrJsError::Js(err),
+      deno::JSErrorOr::Other(err) => RustOrJsError::Rust(err),
     }
   }
 }

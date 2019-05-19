@@ -50,6 +50,10 @@ export function createMaxLatencyColumns(data) {
   return createColumns(data, "max_latency");
 }
 
+export function createMaxMemoryColumns(data) {
+  return createColumns(data, "max_memory");
+}
+
 export function createBinarySizeColumns(data) {
   const propName = "binary_size";
   const binarySizeNames = Object.keys(data[data.length - 1][propName]);
@@ -141,7 +145,7 @@ function generate(
       delete yAxis.min;
       for (let col of columns) {
         for (let i = 1; i < col.length; i++) {
-          if (col[i] == null) {
+          if (col[i] == null || col[i] === 0) {
             continue;
           }
           col[i] = Math.log10(col[i] * TimeScaleFactor);
@@ -190,7 +194,7 @@ export function drawCharts(dataUrl) {
   if (window["location"]["hostname"] != "deno.github.io") {
     dataUrl = "https://denoland.github.io/deno/" + dataUrl;
   }
-  drawChartsFromBenchmarkData(dataUrl);
+  return drawChartsFromBenchmarkData(dataUrl);
 }
 
 /**
@@ -203,6 +207,7 @@ export async function drawChartsFromBenchmarkData(dataUrl) {
   const throughputColumns = createThroughputColumns(data);
   const reqPerSecColumns = createReqPerSecColumns(data);
   const maxLatencyColumns = createMaxLatencyColumns(data);
+  const maxMemoryColumns = createMaxMemoryColumns(data);
   const binarySizeColumns = createBinarySizeColumns(data);
   const threadCountColumns = createThreadCountColumns(data);
   const syscallCountColumns = createSyscallCountColumns(data);
@@ -231,6 +236,7 @@ export async function drawChartsFromBenchmarkData(dataUrl) {
   gen("#throughput-chart", throughputColumns, "seconds", logScale);
   gen("#req-per-sec-chart", reqPerSecColumns, "1000 req/sec", formatReqSec);
   gen("#max-latency-chart", maxLatencyColumns, "milliseconds", logScale);
+  gen("#max-memory-chart", maxMemoryColumns, "megabytes", formatMB);
   gen("#binary-size-chart", binarySizeColumns, "megabytes", formatMB);
   gen("#thread-count-chart", threadCountColumns, "threads");
   gen("#syscall-count-chart", syscallCountColumns, "syscalls");

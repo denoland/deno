@@ -10,10 +10,11 @@
 // It would require calling into Rust from Error.prototype.prepareStackTrace.
 
 use serde_json;
+use serde_json::value::Value;
 use std::fmt;
 use std::str;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct StackFrame {
   pub line: i64,   // zero indexed
   pub column: i64, // zero indexed
@@ -24,7 +25,7 @@ pub struct StackFrame {
   pub is_wasm: bool,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct JSError {
   pub message: String,
 
@@ -38,6 +39,12 @@ pub struct JSError {
   pub end_column: Option<i64>,
 
   pub frames: Vec<StackFrame>,
+}
+
+impl std::error::Error for JSError {
+  fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+    None
+  }
 }
 
 impl fmt::Display for StackFrame {
@@ -187,7 +194,10 @@ impl JSError {
       return None;
     }
     let v = v.unwrap();
+    Self::from_json_value(v)
+  }
 
+  pub fn from_json_value(v: serde_json::Value) -> Option<Self> {
     if !v.is_object() {
       return None;
     }
@@ -205,12 +215,12 @@ impl JSError {
     let script_resource_name = obj
       .get("scriptResourceName")
       .and_then(|v| v.as_str().map(String::from));
-    let line_number = obj.get("lineNumber").and_then(|v| v.as_i64());
-    let start_position = obj.get("startPosition").and_then(|v| v.as_i64());
-    let end_position = obj.get("endPosition").and_then(|v| v.as_i64());
-    let error_level = obj.get("errorLevel").and_then(|v| v.as_i64());
-    let start_column = obj.get("startColumn").and_then(|v| v.as_i64());
-    let end_column = obj.get("endColumn").and_then(|v| v.as_i64());
+    let line_number = obj.get("lineNumber").and_then(Value::as_i64);
+    let start_position = obj.get("startPosition").and_then(Value::as_i64);
+    let end_position = obj.get("endPosition").and_then(Value::as_i64);
+    let error_level = obj.get("errorLevel").and_then(Value::as_i64);
+    let start_column = obj.get("startColumn").and_then(Value::as_i64);
+    let end_column = obj.get("endColumn").and_then(Value::as_i64);
 
     let frames_v = &obj["frames"];
     if !frames_v.is_array() {

@@ -14,8 +14,7 @@ export interface Metrics {
 
 function req(): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
   const builder = flatbuffers.createBuilder();
-  msg.Metrics.startMetrics(builder);
-  const inner = msg.Metrics.endMetrics(builder);
+  const inner = msg.Metrics.createMetrics(builder);
   return [builder, msg.Any.Metrics, inner];
 }
 
@@ -36,16 +35,16 @@ function res(baseRes: null | msg.Base): Metrics {
 
 /** Receive metrics from the privileged side of Deno.
  *
- *    > console.table(Deno.metrics())
- *   ┌──────────────────┬────────┐
- *   │     (index)      │ Values │
- *   ├──────────────────┼────────┤
- *   │  opsDispatched   │   9    │
- *   │   opsCompleted   │   9    │
- *   │ bytesSentControl │  504   │
- *   │  bytesSentData   │   0    │
- *   │  bytesReceived   │  856   │
- *   └──────────────────┴────────┘
+ *      > console.table(Deno.metrics())
+ *      ┌──────────────────┬────────┐
+ *      │     (index)      │ Values │
+ *      ├──────────────────┼────────┤
+ *      │  opsDispatched   │   9    │
+ *      │   opsCompleted   │   9    │
+ *      │ bytesSentControl │  504   │
+ *      │  bytesSentData   │   0    │
+ *      │  bytesReceived   │  856   │
+ *      └──────────────────┴────────┘
  */
 export function metrics(): Metrics {
   return res(dispatch.sendSync(...req()));

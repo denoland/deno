@@ -7,7 +7,7 @@ async function main(): Promise<void> {
   const json = await response.json();
   const deps = Object.keys(json.devDependencies);
   console.log("Deno JS Deps");
-  console.log(deps.map(d => `* ${d}`).join("\n"));
+  console.log(deps.map((d): string => `* ${d}`).join("\n"));
   assert(deps.includes("typescript"));
 }
 

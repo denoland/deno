@@ -1,2 +1,2 @@
-args: tests/wasm.ts
+args: run tests/wasm.ts
 output: tests/wasm.ts.out
