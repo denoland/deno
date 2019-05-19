@@ -129,7 +129,6 @@ impl ImportMap {
       ImportMap::try_url_like_specifier(specifier_key, base_url)
     {
       let url_string = url.to_string();
-      // TODO: deno doesn't support built-in modules now, prohibit them
       if url.scheme() == BUILT_IN_MODULE_SCHEME && url_string.contains('/') {
         eprintln!("Invalid specifier key {:?}. Built-in module specifiers must not contain \"/\".", url_string);
         return None;
@@ -233,7 +232,6 @@ impl ImportMap {
     normalized_map
   }
 
-  // TODO(bartlomieju): factor our SpecifierMap type (IndexMap<String, Vec<String>)?
   fn normalize_scope_map(
     scope_map: &Map<String, Value>,
     base_url: &str,
@@ -288,8 +286,6 @@ impl ImportMap {
     Ok(normalized_map)
   }
 
-  // TODO: I get a feeling that we should be able to
-  // return only Option
   pub fn resolve_scopes_match(
     scopes: &ScopesMap,
     normalized_specifier: &str,
@@ -344,7 +340,6 @@ impl ImportMap {
           "Specifier {:?} was mapped to {:?}.",
           normalized_specifier, address
         );
-        // TODO(bartlomieju): ensure that it's a valid URL
         return Ok(Some(address.to_string()));
       } else {
         return Err(ImportMapError::new(
@@ -376,7 +371,6 @@ impl ImportMap {
           }
 
           unreachable!();
-        // TODO: implement built-in module notice here
         } else {
           return Err(ImportMapError::new(
             "Multi-address mappings are not yet supported",
