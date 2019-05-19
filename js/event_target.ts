@@ -15,8 +15,8 @@ import {
 // https://dom.spec.whatwg.org/#get-the-parent
 // Note: Nodes, shadow roots, and documents override this algorithm so we set it to null.
 function getEventTargetParent(
-  eventTarget: domTypes.EventTarget,
-  event: domTypes.Event
+  _eventTarget: domTypes.EventTarget,
+  _event: domTypes.Event
 ): null {
   return null;
 }
@@ -377,7 +377,10 @@ export class EventTarget implements domTypes.EventTarget {
   }
 
   // https://dom.spec.whatwg.org/#concept-event-listener-invoke
-  _invokeEventListeners(tuple: domTypes.EventPath, eventImpl: domTypes.Event) {
+  _invokeEventListeners(
+    tuple: domTypes.EventPath,
+    eventImpl: domTypes.Event
+  ): void {
     const tupleIndex = eventImpl.path.indexOf(tuple);
     for (let i = tupleIndex; i >= 0; i--) {
       const t = eventImpl.path[i];
@@ -403,7 +406,7 @@ export class EventTarget implements domTypes.EventTarget {
   _innerInvokeEventListeners(
     eventImpl: domTypes.Event,
     listeners: { [type in string]: domTypes.EventListener[] }
-  ) {
+  ): boolean {
     let found = false;
 
     const { type } = eventImpl;
@@ -511,7 +514,7 @@ export class EventTarget implements domTypes.EventTarget {
     relatedTarget: domTypes.EventTarget | null,
     touchTargets: domTypes.EventTarget[],
     slotInClosedTree: boolean
-  ) {
+  ): void {
     const itemInShadowTree = isNode(target) && isShadowRoot(getRoot(target));
     const rootOfClosedTree = isShadowRoot(target) && target.mode === "closed";
 
