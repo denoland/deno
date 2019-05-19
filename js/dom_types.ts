@@ -64,7 +64,18 @@ interface AbortSignalEventMap {
   abort: ProgressEvent;
 }
 
+// https://dom.spec.whatwg.org/#node
+export enum NodeType {
+  ELEMENT_NODE = 1,
+  TEXT_NODE = 3,
+  DOCUMENT_FRAGMENT_NODE = 11
+}
+
 export interface EventTarget {
+  host: EventTarget | null;
+  listeners: { [type in string]: EventListener[] };
+  mode: string;
+  nodeType: NodeType;
   addEventListener(
     type: string,
     callback: EventListener | null,

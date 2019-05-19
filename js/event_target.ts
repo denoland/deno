@@ -44,6 +44,14 @@ export class EventListener implements domTypes.EventListener {
   private _callback: domTypes.EventListener | null = null;
   private _options: boolean | domTypes.AddEventListenerOptions = false;
 
+  constructor(
+    callback: domTypes.EventListener | null,
+    options: boolean | domTypes.AddEventListenerOptions
+  ) {
+    this._callback = callback;
+    this._options = options;
+  }
+
   public handleEvent(event: domTypes.Event): void {
     this.allEvents.push(event);
 
@@ -66,28 +74,30 @@ export class EventListener implements domTypes.EventListener {
     return this._callback;
   }
 
-  get options(): boolean | domTypes.AddEventListenerOptions {
+  get options(): domTypes.AddEventListenerOptions | boolean {
     return this._options;
   }
 }
 
 export class EventTarget implements domTypes.EventTarget {
+  public host: domTypes.EventTarget | null = null;
   public listeners: { [type in string]: domTypes.EventListener[] } = {};
+  public mode = "";
+  public nodeType: domTypes.NodeType = domTypes.NodeType.DOCUMENT_FRAGMENT_NODE;
 
+  private _assignedSlot = false;
   private _hasActivationBehavior = false;
 
   public addEventListener(
     type: string,
     callback: domTypes.EventListener | null,
-    options?: boolean | domTypes.AddEventListenerOptions
+    options?: domTypes.AddEventListenerOptions | boolean
   ): void {
     requiredArguments("EventTarget.addEventListener", arguments.length, 2);
 
-    options = this._normalizeEventHandlerOptions(options, [
-      "capture",
-      "once",
-      "passive"
-    ]);
+    const normalizedOptions: domTypes.AddEventListenerOptions = this._normalizeAddEventHandlerOptions(
+      options
+    );
 
     if (callback === null) {
       return;
@@ -100,14 +110,17 @@ export class EventTarget implements domTypes.EventTarget {
     for (let i = 0; i < this.listeners[type].length; ++i) {
       const listener = this.listeners[type][i];
       if (
-        listener.options.capture === options.capture &&
+        ((typeof listener.options === "boolean" &&
+          listener.options === normalizedOptions.capture) ||
+          (typeof listener.options === "object" &&
+            listener.options.capture === normalizedOptions.capture)) &&
         listener.callback === callback
       ) {
         return;
       }
     }
 
-    this.listeners[type].push({ callback, options });
+    this.listeners[type].push(new EventListener(callback, normalizedOptions));
   }
 
   public removeEventListener(
@@ -125,7 +138,9 @@ export class EventTarget implements domTypes.EventTarget {
       );
     }
 
-    options = this._normalizeEventHandlerOptions(options, ["capture"]);
+    const normalizedOptions: domTypes.EventListenerOptions = this._normalizeEventHandlerOptions(
+      options
+    );
 
     if (callback === null) {
       // Optimization, not in the spec.
@@ -138,9 +153,13 @@ export class EventTarget implements domTypes.EventTarget {
 
     for (let i = 0; i < this.listeners[type].length; ++i) {
       const listener = this.listeners[type][i];
+
       if (
-        listener.callback === callback &&
-        listener.options.capture === options.capture
+        ((typeof listener.options === "boolean" &&
+          listener.options === normalizedOptions.capture) ||
+          (typeof listener.options === "object" &&
+            listener.options.capture === normalizedOptions.capture)) &&
+        listener.callback === callback
       ) {
         this.listeners[type].splice(i, 1);
         break;
@@ -211,38 +230,24 @@ export class EventTarget implements domTypes.EventTarget {
       // https://dom.spec.whatwg.org/#event-path
       while (parent !== null) {
         if (slotable !== null) {
-          if (parent.localName !== "slot") {
-            throw new Error("Internal Error: Expected parent to be a Slot");
-          }
-
           slotable = null;
 
           const parentRoot = getRoot(parent);
-          if (isShadowRoot(parentRoot) && parentRoot.mode === "closed") {
+          if (
+            isShadowRoot(parentRoot) &&
+            parentRoot &&
+            parentRoot.mode === "closed"
+          ) {
             slotInClosedTree = true;
           }
-        }
-
-        if (isSlotable(parent) && parent._assignedSlot) {
-          slotable = parent;
         }
 
         relatedTarget = retarget(eventImpl.relatedTarget, parent);
 
         if (
-          (isNode(parent) &&
-            isShadowInclusiveAncestor(getRoot(targetImpl), parent)) ||
-          parent.constructor.name === "Window"
+          isNode(parent) &&
+          isShadowInclusiveAncestor(getRoot(targetImpl), parent)
         ) {
-          if (
-            isActivationEvent &&
-            eventImpl.bubbles &&
-            activationTarget === null &&
-            parent._hasActivationBehavior
-          ) {
-            activationTarget = parent;
-          }
-
           this._appendToEventPath(
             eventImpl,
             parent,
@@ -301,13 +306,6 @@ export class EventTarget implements domTypes.EventTarget {
 
       eventImpl.eventPhase = domTypes.EventPhase.CAPTURING_PHASE;
 
-      if (
-        activationTarget !== null &&
-        activationTarget._legacyPreActivationBehavior
-      ) {
-        activationTarget._legacyPreActivationBehavior();
-      }
-
       for (let i = eventImpl.path.length - 1; i >= 0; --i) {
         const tuple = eventImpl.path[i];
 
@@ -348,25 +346,18 @@ export class EventTarget implements domTypes.EventTarget {
       eventImpl.relatedTarget = null;
     }
 
-    if (activationTarget !== null) {
-      if (!eventImpl.defaultPrevented) {
-        activationTarget._activationBehavior();
-      } else if (activationTarget._legacyCanceledActivationBehavior) {
-        activationTarget._legacyCanceledActivationBehavior();
-      }
-    }
+    // TODO: invoke activation targets if HTML nodes will be implemented
+    // if (activationTarget !== null) {
+    //   if (!eventImpl.defaultPrevented) {
+    //     activationTarget._activationBehavior();
+    //   }
+    // }
 
     return !eventImpl.defaultPrevented;
   }
 
   // https://dom.spec.whatwg.org/#concept-event-listener-invoke
-  _invokeEventListeners(
-    tuple: {
-      item: domTypes.EventTarget;
-      relatedTarget: domTypes.EventTarget;
-    },
-    eventImpl: domTypes.Event
-  ) {
+  _invokeEventListeners(tuple: domTypes.EventPath, eventImpl: domTypes.Event) {
     const tupleIndex = eventImpl.path.indexOf(tuple);
     for (let i = tupleIndex; i >= 0; i--) {
       const t = eventImpl.path[i];
@@ -406,7 +397,17 @@ export class EventTarget implements domTypes.EventTarget {
 
     for (let i = 0; i < handlers.length; i++) {
       const listener = handlers[i];
-      const { capture, once, passive } = listener.options;
+
+      let capture, once, passive;
+      if (typeof listener.options === "boolean") {
+        capture = listener.options;
+        once = false;
+        passive = false;
+      } else {
+        capture = listener.options.capture;
+        once = listener.options.once;
+        passive = listener.options.passive;
+      }
 
       // Check if the event listener has been removed since the listeners has been cloned.
       if (!listeners[type].includes(listener)) {
@@ -432,12 +433,11 @@ export class EventTarget implements domTypes.EventTarget {
       }
 
       try {
-        if (typeof listener.callback === "object") {
-          if (typeof listener.callback.handleEvent === "function") {
-            listener.callback.handleEvent(eventImpl);
-          }
-        } else {
-          listener.callback.call(eventImpl.currentTarget, eventImpl);
+        if (
+          listener.callback &&
+          typeof listener.callback.handleEvent === "function"
+        ) {
+          listener.callback.handleEvent(eventImpl);
         }
       } catch (error) {
         throw new DenoError(ErrorKind.Interrupted, error.message);
@@ -453,37 +453,34 @@ export class EventTarget implements domTypes.EventTarget {
     return found;
   }
 
-  _normalizeEventHandlerOptions(
-    options: boolean | object | undefined,
-    defaultBoolKeys: string[]
-  ): domTypes.EventListenerOptions | domTypes.AddEventListenerOptions {
-    const returnValue:
-      | domTypes.EventListenerOptions
-      | domTypes.AddEventListenerOptions = {
-      capture: false,
-      passive: false,
-      once: false
-    };
+  _normalizeAddEventHandlerOptions(
+    options: boolean | domTypes.AddEventListenerOptions | undefined
+  ): domTypes.AddEventListenerOptions {
+    if (typeof options === "boolean" || typeof options === "undefined") {
+      const returnValue: domTypes.AddEventListenerOptions = {
+        capture: Boolean(options),
+        once: false,
+        passive: false
+      };
 
-    if (
-      typeof options === "boolean" ||
-      options === null ||
-      typeof options === "undefined"
-    ) {
-      returnValue.capture = Boolean(options);
       return returnValue;
+    } else {
+      return options;
     }
+  }
 
-    if (typeof options !== "object") {
-      returnValue.capture = Boolean(options);
-      defaultBoolKeys = defaultBoolKeys.filter((k: string) => k !== "capture");
+  _normalizeEventHandlerOptions(
+    options: boolean | domTypes.EventListenerOptions | undefined
+  ): domTypes.EventListenerOptions {
+    if (typeof options === "boolean" || typeof options === "undefined") {
+      const returnValue: domTypes.EventListenerOptions = {
+        capture: Boolean(options)
+      };
+
+      return returnValue;
+    } else {
+      return options;
     }
-
-    for (const key of defaultBoolKeys) {
-      returnValue[key] = Boolean(options[key]);
-    }
-
-    return returnValue;
   }
 
   // https://dom.spec.whatwg.org/#concept-event-path-append
@@ -491,7 +488,7 @@ export class EventTarget implements domTypes.EventTarget {
     eventImpl: domTypes.Event,
     target: domTypes.EventTarget,
     targetOverride: domTypes.EventTarget | null,
-    relatedTarget: domTypes.EventTarget,
+    relatedTarget: domTypes.EventTarget | null,
     touchTargets: domTypes.EventTarget[],
     slotInClosedTree: boolean
   ) {
@@ -510,13 +507,6 @@ export class EventTarget implements domTypes.EventTarget {
   }
 }
 
-// https://dom.spec.whatwg.org/#node
-enum NODE_TYPE {
-  ELEMENT_NODE = 1,
-  TEXT_NODE = 3,
-  DOCUMENT_FRAGMENT_NODE = 11
-}
-
 function isNode(nodeImpl: domTypes.EventTarget | null) {
   return Boolean(nodeImpl && "nodeType" in nodeImpl);
 }
@@ -524,7 +514,7 @@ function isNode(nodeImpl: domTypes.EventTarget | null) {
 function isShadowRoot(nodeImpl: domTypes.EventTarget | null) {
   return Boolean(
     nodeImpl &&
-      nodeImpl.nodeType === NODE_TYPE.DOCUMENT_FRAGMENT_NODE &&
+      nodeImpl.nodeType === domTypes.NodeType.DOCUMENT_FRAGMENT_NODE &&
       "host" in nodeImpl
   );
 }
@@ -532,15 +522,18 @@ function isShadowRoot(nodeImpl: domTypes.EventTarget | null) {
 function isSlotable(nodeImpl: domTypes.EventTarget | null) {
   return (
     nodeImpl &&
-    (nodeImpl.nodeType === NODE_TYPE.ELEMENT_NODE ||
-      nodeImpl.nodeType === NODE_TYPE.TEXT_NODE)
+    (nodeImpl.nodeType === domTypes.NodeType.ELEMENT_NODE ||
+      nodeImpl.nodeType === domTypes.NodeType.TEXT_NODE)
   );
 }
 
+// https://dom.spec.whatwg.org/#node-trees
+// const domSymbolTree = Symbol("DOM Symbol Tree");
+
 // https://dom.spec.whatwg.org/#concept-shadow-including-inclusive-ancestor
 function isShadowInclusiveAncestor(
-  ancestor: domTypes.EventTarget,
-  node: domTypes.EventTarget
+  ancestor: domTypes.EventTarget | null,
+  node: domTypes.EventTarget | null
 ) {
   while (isNode(node)) {
     if (node === ancestor) {
@@ -548,9 +541,9 @@ function isShadowInclusiveAncestor(
     }
 
     if (isShadowRoot(node)) {
-      node = node.host;
+      node = node && node.host;
     } else {
-      node = domSymbolTree.parent(node);
+      node = null; // domSymbolTree.parent(node);
     }
   }
 
@@ -565,31 +558,35 @@ function retarget(a: domTypes.EventTarget | null, b: domTypes.EventTarget) {
     }
 
     const aRoot = getRoot(a);
-    if (
-      !isShadowRoot(aRoot) ||
-      (isNode(b) && isShadowInclusiveAncestor(aRoot, b))
-    ) {
-      return a;
-    }
 
-    a = getRoot(a).host;
+    if (aRoot) {
+      if (
+        !isShadowRoot(aRoot) ||
+        (isNode(b) && isShadowInclusiveAncestor(aRoot, b))
+      ) {
+        return a;
+      }
+
+      a = aRoot.host;
+    }
   }
 }
 
 // https://dom.spec.whatwg.org/#get-the-parent
+// Note: Nodes, shadow roots, and documents override this algorithm so we set it to null.
 function getEventTargetParent(
   eventTarget: domTypes.EventTarget,
   event: domTypes.Event
 ) {
-  return eventTarget._getTheParent ? eventTarget._getTheParent(event) : null;
+  return null;
 }
 
 function getRoot(node: domTypes.EventTarget | null) {
-  let root;
+  let root = node;
 
-  for (const ancestor of domSymbolTree.ancestorsIterator(node)) {
-    root = ancestor;
-  }
+  // for (const ancestor of domSymbolTree.ancestorsIterator(node)) {
+  //   root = ancestor;
+  // }
 
   return root;
 }
