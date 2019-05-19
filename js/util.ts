@@ -257,6 +257,19 @@ export function isShadowInclusiveAncestor(
   return false;
 }
 
+// @internal
+export function getRoot(
+  node: domTypes.EventTarget | null
+): domTypes.EventTarget | null {
+  let root = node;
+
+  // for (const ancestor of domSymbolTree.ancestorsIterator(node)) {
+  //   root = ancestor;
+  // }
+
+  return root;
+}
+
 // https://dom.spec.whatwg.org/#retarget
 // @internal
 export function retarget(
@@ -281,17 +294,4 @@ export function retarget(
       a = aRoot.host;
     }
   }
-}
-
-// @internal
-export function getRoot(
-  node: domTypes.EventTarget | null
-): domTypes.EventTarget | null {
-  let root = node;
-
-  // for (const ancestor of domSymbolTree.ancestorsIterator(node)) {
-  //   root = ancestor;
-  // }
-
-  return root;
 }
