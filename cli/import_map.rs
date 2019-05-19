@@ -440,6 +440,11 @@ impl ImportMap {
 
     // no match in import map but we got resolvable URL
     if let Some(resolved_url) = resolved_url {
+      if resolved_url.scheme() == BUILT_IN_MODULE_SCHEME {
+        return Err(ImportMapError::new(
+          "Built in modules are currently not supported",
+        ));
+      }
       return Ok(Some(resolved_url.to_string()));
     }
 
@@ -2188,6 +2193,45 @@ mod resolving {
       assert_eq!(
         import_map.resolve("c", in_dir_above_map).unwrap(),
         Some("https://example.com/c-dot-dot-slash.mjs".to_string())
+      );
+    }
+  }
+
+  #[cfg(test)]
+  mod builtins {
+    use super::*;
+
+    #[test]
+    fn cant_resolve_to_built_in() {
+      let base_url = "https://example.com/app/main.ts";
+
+      let json_map = json!({});
+      let import_map =
+        ImportMap::from_json(base_url, &json_map.to_string()).unwrap();
+
+      assert!(import_map.resolve("std:blank", base_url).is_err());
+    }
+
+    #[test]
+    fn remap_builtin() {
+      let base_url = "https://example.com/app/main.ts";
+
+      let json_map = json!({
+        "imports": {
+          "std:blank": "./blank.mjs",
+          "std:none": "./none.mjs"
+        }
+      });
+      let import_map =
+        ImportMap::from_json(base_url, &json_map.to_string()).unwrap();
+
+      assert_eq!(
+        import_map.resolve("std:blank", base_url).unwrap(),
+        Some("https://example.com/app/blank.mjs".to_string())
+      );
+      assert_eq!(
+        import_map.resolve("std:none", base_url).unwrap(),
+        Some("https://example.com/app/none.mjs".to_string())
       );
     }
   }
