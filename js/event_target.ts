@@ -1,7 +1,25 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as domTypes from "./dom_types";
 import { DenoError, ErrorKind } from "./errors";
-import { requiredArguments, hasOwnProperty } from "./util";
+import {
+  getRoot,
+  hasOwnProperty,
+  isNode,
+  isShadowRoot,
+  isShadowInclusiveAncestor,
+  isSlotable,
+  requiredArguments,
+  retarget
+} from "./util";
+
+// https://dom.spec.whatwg.org/#get-the-parent
+// Note: Nodes, shadow roots, and documents override this algorithm so we set it to null.
+function getEventTargetParent(
+  eventTarget: domTypes.EventTarget,
+  event: domTypes.Event
+): null {
+  return null;
+}
 
 export class EventListenerOptions implements domTypes.EventListenerOptions {
   _capture = false;
@@ -189,7 +207,10 @@ export class EventTarget implements domTypes.EventTarget {
   }
 
   // https://dom.spec.whatwg.org/#concept-event-dispatch
-  _dispatch(eventImpl: domTypes.Event, targetOverride?: domTypes.EventTarget) {
+  _dispatch(
+    eventImpl: domTypes.Event,
+    targetOverride?: domTypes.EventTarget
+  ): boolean {
     let targetImpl = this;
     let clearTargets = false;
     let activationTarget = null;
@@ -508,90 +529,6 @@ export class EventTarget implements domTypes.EventTarget {
   get [Symbol.toStringTag](): string {
     return "EventTarget";
   }
-}
-
-function isNode(nodeImpl: domTypes.EventTarget | null) {
-  return Boolean(nodeImpl && "nodeType" in nodeImpl);
-}
-
-function isShadowRoot(nodeImpl: domTypes.EventTarget | null) {
-  return Boolean(
-    nodeImpl &&
-      nodeImpl.nodeType === domTypes.NodeType.DOCUMENT_FRAGMENT_NODE &&
-      "host" in nodeImpl
-  );
-}
-
-function isSlotable(nodeImpl: domTypes.EventTarget | null) {
-  return (
-    nodeImpl &&
-    (nodeImpl.nodeType === domTypes.NodeType.ELEMENT_NODE ||
-      nodeImpl.nodeType === domTypes.NodeType.TEXT_NODE)
-  );
-}
-
-// https://dom.spec.whatwg.org/#node-trees
-// const domSymbolTree = Symbol("DOM Symbol Tree");
-
-// https://dom.spec.whatwg.org/#concept-shadow-including-inclusive-ancestor
-function isShadowInclusiveAncestor(
-  ancestor: domTypes.EventTarget | null,
-  node: domTypes.EventTarget | null
-) {
-  while (isNode(node)) {
-    if (node === ancestor) {
-      return true;
-    }
-
-    if (isShadowRoot(node)) {
-      node = node && node.host;
-    } else {
-      node = null; // domSymbolTree.parent(node);
-    }
-  }
-
-  return false;
-}
-
-// https://dom.spec.whatwg.org/#retarget
-function retarget(a: domTypes.EventTarget | null, b: domTypes.EventTarget) {
-  while (true) {
-    if (!isNode(a)) {
-      return a;
-    }
-
-    const aRoot = getRoot(a);
-
-    if (aRoot) {
-      if (
-        !isShadowRoot(aRoot) ||
-        (isNode(b) && isShadowInclusiveAncestor(aRoot, b))
-      ) {
-        return a;
-      }
-
-      a = aRoot.host;
-    }
-  }
-}
-
-// https://dom.spec.whatwg.org/#get-the-parent
-// Note: Nodes, shadow roots, and documents override this algorithm so we set it to null.
-function getEventTargetParent(
-  eventTarget: domTypes.EventTarget,
-  event: domTypes.Event
-) {
-  return null;
-}
-
-function getRoot(node: domTypes.EventTarget | null) {
-  let root = node;
-
-  // for (const ancestor of domSymbolTree.ancestorsIterator(node)) {
-  //   root = ancestor;
-  // }
-
-  return root;
 }
 
 /** Built-in objects providing `get` methods for our
