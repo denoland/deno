@@ -214,14 +214,13 @@ impl ImportMap {
         };
 
       // TODO: handle bad "fetch_schemes"
-      //      if (!hasFetchScheme(scopePrefixURL)) {
-      //        console.warn(`Invalid scope "${scopePrefixURL}". Scope URLs must have a fetch scheme.`);
-      //        continue;
-      //      }
+      // if (!hasFetchScheme(scopePrefixURL)) {
+      //   console.warn(`Invalid scope "${scopePrefixURL}". Scope URLs must have a fetch scheme.`);
+      //   continue;
+      // }
 
       let norm_map =
         ImportMap::normalize_specifier_map(potential_specifier_map, base_url);
-      println!("normalized scope map {:?} {:?}", scope_prefix_url, norm_map);
 
       normalized_map.insert(scope_prefix_url, norm_map);
     }
@@ -244,47 +243,32 @@ impl ImportMap {
   // return only Option
   pub fn resolve_scopes_match(
     scopes: &ScopesMap,
-    normalized_specifier: &String,
-    referrer: &String,
+    normalized_specifier: &str,
+    referrer: &str,
   ) -> Result<Option<String>, ImportMapError> {
     // exact-match
-    println!(
-      "resolve_scopes_match {:?}\n {:?} \n{:?}",
-      normalized_specifier, referrer, scopes
-    );
     if let Some(scope_imports) = scopes.get(referrer) {
-      println!(
-        "\n\nscope_imports {:?} {:?}\n\n",
-        normalized_specifier, scope_imports
-      );
       if let Ok(scope_match) =
         ImportMap::resolve_imports_match(scope_imports, normalized_specifier)
       {
-        println!(
-          "exact scope match {:?} {:?}",
-          normalized_specifier, scope_match
-        );
-        return Ok(scope_match);
+        // return only if there was actual match (not None)
+        if scope_match.is_some() {
+          return Ok(scope_match);
+        }
       }
     }
 
     for (normalized_scope_key, scope_imports) in scopes.iter() {
-      println!(
-        "\n\nfoo scope_imports {:?} {:?} {:?}\n\n",
-        referrer, normalized_scope_key, scope_imports
-      );
       if normalized_scope_key.ends_with('/')
         && referrer.starts_with(normalized_scope_key)
       {
-        println!("\n\nfound scope match trying to find scope import match {:?} {:?} {:?}\n\n", referrer, normalized_scope_key, scope_imports);
         if let Ok(scope_match) =
           ImportMap::resolve_imports_match(scope_imports, normalized_specifier)
         {
-          println!(
-            "prefix scope match {:?} {:?}",
-            normalized_scope_key, scope_match
-          );
-          return Ok(scope_match);
+          // return only if there was actual match (not None)
+          if scope_match.is_some() {
+            return Ok(scope_match);
+          }
         }
       }
     }
@@ -296,12 +280,11 @@ impl ImportMap {
   // for some more optimized candidate implementations.
   pub fn resolve_imports_match(
     imports: &SpecifierMap,
-    normalized_specifier: &String,
+    normalized_specifier: &str,
   ) -> Result<Option<String>, ImportMapError> {
     // exact-match
     if let Some(address_vec) = imports.get(normalized_specifier) {
       if address_vec.is_empty() {
-        println!("match with empty array {:?}", normalized_specifier);
         return Err(ImportMapError::new(&format!(
           "Specifier {:?} was mapped to no addresses.",
           normalized_specifier
@@ -373,7 +356,6 @@ impl ImportMap {
     specifier: &str,
     referrer: &str,
   ) -> Result<Option<String>, ImportMapError> {
-    println!("resolve! {:?}; {:?};", specifier, referrer);
     let resolved_url: Option<String> =
       match resolve_module_spec(specifier, referrer) {
         Ok(url) => Some(url.clone()),
@@ -384,10 +366,6 @@ impl ImportMap {
       None => specifier.to_string(),
     };
 
-    println!(
-      "resolve normalized! {:?}; {:?};",
-      normalized_specifier, referrer
-    );
     // TODO: referrer should be parsed URL?
     let scopes_match = match ImportMap::resolve_scopes_match(
       &self.scopes,
@@ -1016,7 +994,6 @@ mod tests {
     let import_map =
       ImportMap::from_json(base_url, &json_map.to_string()).unwrap();
 
-    // should match correctly when both are in the map
     let js_non_dir = "https://example.com/js";
     let js_in_dir = "https://example.com/js/app.mjs";
     let with_js_prefix = "https://example.com/jsiscool";
@@ -1147,12 +1124,10 @@ mod tests {
       ImportMap::from_json(base_url, &json_map.to_string()).unwrap();
 
     // should match correctly when only a prefix match is in the map
-    let js_non_dir = "https://example.com/js";
     let js_in_dir = "https://example.com/js/app.mjs";
-    let with_js_prefix = "https://example.com/jsiscool";
     let top_level = "https://example.com/app.mjs";
 
-    // should resolve scoped'
+    // should resolve scoped
     assert_eq!(
       import_map.resolve("lodash-dot", js_in_dir).unwrap(),
       Some(
@@ -1175,7 +1150,7 @@ mod tests {
       Some("https://example.com/node_modules_2/lodash-es/foo".to_string())
     );
 
-    // should apply best scope match'
+    // should apply best scope match
     assert_eq!(
       import_map.resolve("moment", top_level).unwrap(),
       Some(
@@ -1224,8 +1199,141 @@ mod tests {
       Some("https://example.com/node_modules/lodash-es/foo".to_string())
     );
 
-    // should still fail for package-like specifiers that are not declared'
+    // should still fail for package-like specifiers that are not declared
     assert!(import_map.resolve("underscore/", js_in_dir).is_err());
     assert!(import_map.resolve("underscore/foo", js_in_dir).is_err());
+  }
+
+  #[test]
+  fn scopes_inheritance() {
+    // https://github.com/WICG/import-maps#scope-inheritance
+    let base_url = "https://example.com/app/main.ts";
+
+    let json_map = json!({
+      "imports": {
+        "a": "/a-1.mjs",
+        "b": "/b-1.mjs",
+        "c": "/c-1.mjs"
+      },
+      "scopes": {
+        "/scope2/": {
+          "a": "/a-2.mjs"
+        },
+        "/scope2/scope3/": {
+          "b": "/b-3.mjs"
+        }
+      }
+    });
+    let import_map =
+      ImportMap::from_json(base_url, &json_map.to_string()).unwrap();
+
+    let scope_1_url = "https://example.com/scope1/foo.mjs";
+    let scope_2_url = "https://example.com/scope2/foo.mjs";
+    let scope_3_url = "https://example.com/scope2/scope3/foo.mjs";
+
+    // should fall back to "imports" when none match
+    assert_eq!(
+      import_map.resolve("a", scope_1_url).unwrap(),
+      Some("https://example.com/a-1.mjs".to_string())
+    );
+    assert_eq!(
+      import_map.resolve("b", scope_1_url).unwrap(),
+      Some("https://example.com/b-1.mjs".to_string())
+    );
+    assert_eq!(
+      import_map.resolve("c", scope_1_url).unwrap(),
+      Some("https://example.com/c-1.mjs".to_string())
+    );
+
+    // should use a direct scope override
+    assert_eq!(
+      import_map.resolve("a", scope_2_url).unwrap(),
+      Some("https://example.com/a-2.mjs".to_string())
+    );
+    assert_eq!(
+      import_map.resolve("b", scope_2_url).unwrap(),
+      Some("https://example.com/b-1.mjs".to_string())
+    );
+    assert_eq!(
+      import_map.resolve("c", scope_2_url).unwrap(),
+      Some("https://example.com/c-1.mjs".to_string())
+    );
+
+    // should use an indirect scope override
+    assert_eq!(
+      import_map.resolve("a", scope_3_url).unwrap(),
+      Some("https://example.com/a-2.mjs".to_string())
+    );
+    assert_eq!(
+      import_map.resolve("b", scope_3_url).unwrap(),
+      Some("https://example.com/b-3.mjs".to_string())
+    );
+    assert_eq!(
+      import_map.resolve("c", scope_3_url).unwrap(),
+      Some("https://example.com/c-1.mjs".to_string())
+    );
+  }
+
+  #[test]
+  fn scopes_relate_url_keys() {
+    // https://github.com/WICG/import-maps#scope-inheritance
+    let base_url = "https://example.com/app/main.ts";
+
+    let json_map = json!({
+      "imports": {
+        "a": "/a-1.mjs",
+        "b": "/b-1.mjs",
+        "c": "/c-1.mjs"
+      },
+      "scopes": {
+        "": {
+          "a": "/a-empty-string.mjs"
+        },
+        "./": {
+          "b": "/b-dot-slash.mjs"
+        },
+        "../": {
+          "c": "/c-dot-dot-slash.mjs"
+        }
+      }
+    });
+    let import_map =
+      ImportMap::from_json(base_url, &json_map.to_string()).unwrap();
+    let in_same_dir_as_map = "https://example.com/app/foo.mjs";
+    let in_dir_above_map = "https://example.com/foo.mjs";
+
+    // should resolve an empty string scope using the import map URL
+    assert_eq!(
+      import_map.resolve("a", base_url).unwrap(),
+      Some("https://example.com/a-empty-string.mjs".to_string())
+    );
+    assert_eq!(
+      import_map.resolve("a", in_same_dir_as_map).unwrap(),
+      Some("https://example.com/a-1.mjs".to_string())
+    );
+
+    // should resolve a ./ scope using the import map URL's directory
+    assert_eq!(
+      import_map.resolve("b", base_url).unwrap(),
+      Some("https://example.com/b-dot-slash.mjs".to_string())
+    );
+    assert_eq!(
+      import_map.resolve("b", in_same_dir_as_map).unwrap(),
+      Some("https://example.com/b-dot-slash.mjs".to_string())
+    );
+
+    // should resolve a ../ scope using the import map URL's directory
+    assert_eq!(
+      import_map.resolve("c", base_url).unwrap(),
+      Some("https://example.com/c-dot-dot-slash.mjs".to_string())
+    );
+    assert_eq!(
+      import_map.resolve("c", in_same_dir_as_map).unwrap(),
+      Some("https://example.com/c-dot-dot-slash.mjs".to_string())
+    );
+    assert_eq!(
+      import_map.resolve("c", in_dir_above_map).unwrap(),
+      Some("https://example.com/c-dot-dot-slash.mjs".to_string())
+    );
   }
 }
