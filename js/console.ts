@@ -746,6 +746,12 @@ export class Console {
     clearScreenDown(stdout);
   };
 
+  // Clear the current line
+  // Used when process is prompting directly to stdout
+  clearLine = (): void => {
+    this.printFunc("\x1b[2K\r");
+  };
+
   static [Symbol.hasInstance](instance: Console): boolean {
     return instance[isConsoleInstance];
   }
