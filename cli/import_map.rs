@@ -3,6 +3,7 @@ use serde_json::Map;
 use serde_json::Value;
 use std::cmp::Ordering;
 use url::Url;
+use std::fs;
 
 #[derive(Debug)]
 pub struct ImportMapError {
@@ -35,6 +36,32 @@ pub struct ImportMap {
 
 #[allow(dead_code)]
 impl ImportMap {
+  pub fn load(
+    base_url: &str,
+    file_name: &str,
+  ) -> Result<Self, ImportMapError> {
+    let cwd = std::env::current_dir().unwrap();
+    let resolved_path = cwd.join(file_name);
+    debug!(
+      "Attempt to load import map: {}",
+      resolved_path.to_str().unwrap()
+    );
+
+    // Load the contents of import map
+    match fs::read_to_string(&resolved_path) {
+      Ok(json_string) => {
+        match ImportMap::from_json(base_url, &json_string) {
+          Ok(map) => Ok(map),
+          Err(err) => Err(err),
+        }
+      }
+      _ => panic!(
+        "Error retrieving import map file at \"{}\"",
+        resolved_path.to_str().unwrap()
+      ),
+    }
+  }
+
   pub fn from_json(
     base_url: &str,
     json_string: &str,

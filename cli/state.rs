@@ -258,36 +258,14 @@ impl ThreadSafeState {
     };
 
     let mut import_map = None;
-    // take the passed flag and resolve the file name relative to the cwd
     if let Some(base_url) = &main_module {
       if let Some(file_name) = &flags.import_map_path {
-        debug!("Import map file: {}", file_name);
-        let cwd = std::env::current_dir().unwrap();
-        let resolved_path = cwd.join(file_name);
-        debug!(
-          "Attempt to load import map: {}",
-          resolved_path.to_str().unwrap()
-        );
-
-        // Load the contents of import map
-        match fs::read_to_string(&resolved_path) {
-          Ok(json_string) => {
-            println!("json, {:?}", json_string);
-            // TODO(bartlomieju) this bit will panic in repl because main_module is None
-            match ImportMap::from_json(&base_url, &json_string) {
-              Ok(map) => {
-                import_map = Some(map);
-              }
-              Err(err) => {
-                println!("{:?}", err);
-                panic!("Error parsing import map");
-              }
-            }
-          }
-          _ => panic!(
-            "Error retrieving import map file at \"{}\"",
-            resolved_path.to_str().unwrap()
-          ),
+        match ImportMap::load(base_url, file_name) {
+          Ok(map) => import_map = Some(map),
+          Err(err) => {
+            println!("{:?}", err);
+            panic!("Error parsing import map");
+          },
         }
       }
     }
