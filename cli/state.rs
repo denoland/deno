@@ -15,6 +15,7 @@ use deno::PinnedBuf;
 use futures::future::Shared;
 use std;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::ops::Deref;
@@ -37,6 +38,7 @@ pub struct Metrics {
   pub bytes_sent_data: AtomicUsize,
   pub bytes_received: AtomicUsize,
   pub resolve_count: AtomicUsize,
+  pub compiler_starts: AtomicUsize,
 }
 
 /// Isolate cannot be passed between threads but ThreadSafeState can.
@@ -66,6 +68,11 @@ pub struct State {
   pub dispatch_selector: ops::OpSelector,
   /// Reference to global progress bar.
   pub progress: Progress,
+
+  /// Set of all URLs that have been compiled. This is a hacky way to work
+  /// around the fact that --reload will force multiple compilations of the same
+  /// module.
+  compiled: Mutex<HashSet<String>>,
 }
 
 impl Clone for ThreadSafeState {
@@ -157,6 +164,7 @@ impl ThreadSafeState {
       resource,
       dispatch_selector,
       progress,
+      compiled: Mutex::new(HashSet::new()),
     }))
   }
 
@@ -175,6 +183,16 @@ impl ThreadSafeState {
         }
       }
     }
+  }
+
+  pub fn mark_compiled(&self, module_id: &str) {
+    let mut c = self.compiled.lock().unwrap();
+    c.insert(module_id.to_string());
+  }
+
+  pub fn has_compiled(&self, module_id: &str) -> bool {
+    let c = self.compiled.lock().unwrap();
+    c.contains(module_id)
   }
 
   #[inline]

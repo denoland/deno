@@ -1,7 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use atty;
 use crate::ansi;
-use crate::compiler::get_compiler_config;
 use crate::deno_dir::resolve_path;
 use crate::dispatch_minimal::dispatch_minimal;
 use crate::dispatch_minimal::parse_min_record;
@@ -177,37 +176,30 @@ pub fn dispatch_all_legacy(
   }
 }
 
-pub fn op_selector_compiler(inner_type: msg::Any) -> Option<OpCreator> {
-  match inner_type {
-    msg::Any::CompilerConfig => Some(op_compiler_config),
-    msg::Any::Cwd => Some(op_cwd),
-    msg::Any::FetchModuleMetaData => Some(op_fetch_module_meta_data),
-    msg::Any::WorkerGetMessage => Some(op_worker_get_message),
-    msg::Any::WorkerPostMessage => Some(op_worker_post_message),
-    msg::Any::Exit => Some(op_exit),
-    msg::Any::Start => Some(op_start),
-    _ => None,
-  }
-}
-
 /// Standard ops set for most isolates
 pub fn op_selector_std(inner_type: msg::Any) -> Option<OpCreator> {
   match inner_type {
     msg::Any::Accept => Some(op_accept),
+    msg::Any::Cache => Some(op_cache),
     msg::Any::Chdir => Some(op_chdir),
     msg::Any::Chmod => Some(op_chmod),
     msg::Any::Chown => Some(op_chown),
     msg::Any::Close => Some(op_close),
     msg::Any::CopyFile => Some(op_copy_file),
+    msg::Any::CreateWorker => Some(op_create_worker),
     msg::Any::Cwd => Some(op_cwd),
     msg::Any::Dial => Some(op_dial),
     msg::Any::Environ => Some(op_env),
     msg::Any::Exit => Some(op_exit),
     msg::Any::Fetch => Some(op_fetch),
+    msg::Any::FetchModuleMetaData => Some(op_fetch_module_meta_data),
     msg::Any::FormatError => Some(op_format_error),
     msg::Any::GetRandomValues => Some(op_get_random_values),
     msg::Any::GlobalTimer => Some(op_global_timer),
     msg::Any::GlobalTimerStop => Some(op_global_timer_stop),
+    msg::Any::HostGetMessage => Some(op_host_get_message),
+    msg::Any::HostGetWorkerClosed => Some(op_host_get_worker_closed),
+    msg::Any::HostPostMessage => Some(op_host_post_message),
     msg::Any::IsTTY => Some(op_is_tty),
     msg::Any::Kill => Some(op_kill),
     msg::Any::Link => Some(op_link),
@@ -237,10 +229,6 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<OpCreator> {
     msg::Any::Symlink => Some(op_symlink),
     msg::Any::Truncate => Some(op_truncate),
     msg::Any::Utime => Some(op_utime),
-    msg::Any::CreateWorker => Some(op_create_worker),
-    msg::Any::HostGetWorkerClosed => Some(op_host_get_worker_closed),
-    msg::Any::HostGetMessage => Some(op_host_get_message),
-    msg::Any::HostPostMessage => Some(op_host_post_message),
     msg::Any::Write => Some(op_write),
 
     // TODO(ry) split these out so that only the appropriate Workers can access
@@ -446,6 +434,53 @@ pub fn odd_future(err: DenoError) -> Box<OpWithError> {
   Box::new(futures::future::err(err))
 }
 
+fn op_cache(
+  state: &ThreadSafeState,
+  base: &msg::Base<'_>,
+  data: Option<PinnedBuf>,
+) -> Box<OpWithError> {
+  assert!(data.is_none());
+  let inner = base.inner_as_cache().unwrap();
+  let extension = inner.extension().unwrap();
+  let module_id = inner.module_id().unwrap();
+  let contents = inner.contents().unwrap();
+
+  state.mark_compiled(&module_id);
+
+  // TODO It shouldn't be necessary to call fetch_module_meta_data() here.
+  // However, we need module_meta_data.source_code in order to calculate the
+  // cache path. In the future, checksums will not be used in the cache
+  // filenames and this requirement can be removed. See
+  // https://github.com/denoland/deno/issues/2057
+  let r = state.dir.fetch_module_meta_data(module_id, ".", true, true);
+  if let Err(err) = r {
+    return odd_future(err);
+  }
+  let module_meta_data = r.unwrap();
+
+  let (js_cache_path, source_map_path) = state
+    .dir
+    .cache_path(&module_meta_data.filename, &module_meta_data.source_code);
+
+  if extension == ".map" {
+    debug!("cache {:?}", source_map_path);
+    let r = fs::write(source_map_path, contents);
+    if let Err(err) = r {
+      return odd_future(err.into());
+    }
+  } else if extension == ".js" {
+    debug!("cache {:?}", js_cache_path);
+    let r = fs::write(js_cache_path, contents);
+    if let Err(err) = r {
+      return odd_future(err.into());
+    }
+  } else {
+    unreachable!();
+  }
+
+  ok_future(empty_buf())
+}
+
 // https://github.com/denoland/deno/blob/golang/os.go#L100-L154
 fn op_fetch_module_meta_data(
   state: &ThreadSafeState,
@@ -496,41 +531,6 @@ fn op_fetch_module_meta_data(
   // runtime for executing the future. This is so we don't inadvernently run
   // out of threads in the main runtime.
   Box::new(futures::future::result(tokio_util::block_on(fut)))
-}
-
-/// Retrieve any relevant compiler configuration.
-fn op_compiler_config(
-  state: &ThreadSafeState,
-  base: &msg::Base<'_>,
-  data: Option<PinnedBuf>,
-) -> Box<OpWithError> {
-  assert!(data.is_none());
-  let inner = base.inner_as_compiler_config().unwrap();
-  let cmd_id = base.cmd_id();
-  let compiler_type = inner.compiler_type().unwrap();
-
-  Box::new(futures::future::result(|| -> OpResult {
-    let builder = &mut FlatBufferBuilder::new();
-    let (path, out) = match get_compiler_config(state, compiler_type) {
-      Some(val) => val,
-      _ => ("".to_owned(), vec![]),
-    };
-    let data_off = builder.create_vector(&out);
-    let msg_args = msg::CompilerConfigResArgs {
-      path: Some(builder.create_string(&path)),
-      data: Some(data_off),
-    };
-    let inner = msg::CompilerConfigRes::create(builder, &msg_args);
-    Ok(serialize_response(
-      cmd_id,
-      builder,
-      msg::BaseArgs {
-        inner: Some(inner.as_union_value()),
-        inner_type: msg::Any::CompilerConfigRes,
-        ..Default::default()
-      },
-    ))
-  }()))
 }
 
 fn op_chdir(

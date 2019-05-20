@@ -109,7 +109,7 @@ SharedQueue Binary Layout
     let end = off + buf.byteLength;
     let index = numRecords();
     if (end > shared32.byteLength || index >= MAX_RECORDS) {
-      console.log("shared_queue.ts push fail");
+      // console.log("shared_queue.js push fail");
       return false;
     }
     setEnd(index, end);
