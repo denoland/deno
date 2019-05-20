@@ -265,7 +265,7 @@ impl ThreadSafeState {
           Err(err) => {
             println!("{:?}", err);
             panic!("Error parsing import map");
-          },
+          }
         }
       }
     }

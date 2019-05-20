@@ -2,8 +2,8 @@ use indexmap::IndexMap;
 use serde_json::Map;
 use serde_json::Value;
 use std::cmp::Ordering;
-use url::Url;
 use std::fs;
+use url::Url;
 
 #[derive(Debug)]
 pub struct ImportMapError {
@@ -36,10 +36,7 @@ pub struct ImportMap {
 
 #[allow(dead_code)]
 impl ImportMap {
-  pub fn load(
-    base_url: &str,
-    file_name: &str,
-  ) -> Result<Self, ImportMapError> {
+  pub fn load(base_url: &str, file_name: &str) -> Result<Self, ImportMapError> {
     let cwd = std::env::current_dir().unwrap();
     let resolved_path = cwd.join(file_name);
     debug!(
@@ -49,12 +46,10 @@ impl ImportMap {
 
     // Load the contents of import map
     match fs::read_to_string(&resolved_path) {
-      Ok(json_string) => {
-        match ImportMap::from_json(base_url, &json_string) {
-          Ok(map) => Ok(map),
-          Err(err) => Err(err),
-        }
-      }
+      Ok(json_string) => match ImportMap::from_json(base_url, &json_string) {
+        Ok(map) => Ok(map),
+        Err(err) => Err(err),
+      },
       _ => panic!(
         "Error retrieving import map file at \"{}\"",
         resolved_path.to_str().unwrap()
@@ -89,7 +84,7 @@ impl ImportMap {
         }
 
         let imports_map = imports_map.as_object().unwrap();
-        ImportMap::normalize_specifier_map(imports_map, base_url)
+        ImportMap::parse_specifier_map(imports_map, base_url)
       }
       None => IndexMap::new(),
     };
@@ -103,7 +98,7 @@ impl ImportMap {
         }
 
         let scope_map = scope_map.as_object().unwrap();
-        match ImportMap::normalize_scope_map(scope_map, base_url) {
+        match ImportMap::parse_scope_map(scope_map, base_url) {
           Ok(scopes_map) => scopes_map,
           Err(err) => return Err(err),
         }
@@ -142,6 +137,10 @@ impl ImportMap {
     None
   }
 
+  /// Parse provided key as import map specifier.
+  ///
+  /// Specifiers must be valid URLs (eg. "https://deno.land/x/std/testing/mod.ts")
+  /// or "bare" specifiers (eg. "moment").
   // TODO: add proper error handling: https://github.com/WICG/import-maps/issues/100
   fn normalize_specifier_key(
     specifier_key: &str,
@@ -167,29 +166,19 @@ impl ImportMap {
     Some(specifier_key.to_string())
   }
 
-  /// Addreses returned from this method are proper URLs
+  /// Parse provided addresses as valid URLs.
+  ///
+  /// Non-valid addresses are skipped.
   fn normalize_addresses(
     specifier_key: &str,
     base_url: &str,
-    address_value: Value,
+    potential_addresses: Vec<String>,
   ) -> Vec<String> {
-    let potential_addresses: Vec<Value> = match address_value {
-      Value::String(_) => vec![address_value],
-      Value::Array(address_array) => address_array,
-      Value::Null => vec![],
-      _ => vec![],
-    };
-
     let mut normalized_addresses: Vec<String> = vec![];
 
-    for address in potential_addresses.iter() {
-      let potential_address = match address {
-        Value::String(address) => address,
-        _ => continue,
-      };
-
+    for potential_address in potential_addresses {
       let url =
-        match ImportMap::try_url_like_specifier(potential_address, base_url) {
+        match ImportMap::try_url_like_specifier(&potential_address, base_url) {
           Some(url) => url,
           None => continue,
         };
@@ -218,13 +207,18 @@ impl ImportMap {
     normalized_addresses
   }
 
-  fn normalize_specifier_map(
+  /// Convert provided JSON map to valid SpecifierMap.
+  ///
+  /// From specification:
+  /// - order of iteration must be retained
+  /// - SpecifierMap's keys are sorted in longest and alphabetic order
+  fn parse_specifier_map(
     json_map: &Map<String, Value>,
     base_url: &str,
   ) -> SpecifierMap {
     let mut normalized_map: SpecifierMap = SpecifierMap::new();
 
-    // order is preserved because of "preserve_order" feature of "serde_json"
+    // Order is preserved because of "preserve_order" feature of "serde_json".
     for (specifier_key, value) in json_map.iter() {
       let normalized_specifier_key =
         match ImportMap::normalize_specifier_key(specifier_key, base_url) {
@@ -232,10 +226,30 @@ impl ImportMap {
           None => continue,
         };
 
+      let potential_addresses: Vec<String> = match value {
+        Value::String(address) => vec![address.to_string()],
+        Value::Array(address_array) => {
+          let mut string_addresses: Vec<String> = vec![];
+
+          for address in address_array {
+            match address {
+              Value::String(address) => {
+                string_addresses.push(address.to_string())
+              }
+              _ => continue,
+            }
+          }
+
+          string_addresses
+        }
+        Value::Null => vec![],
+        _ => vec![],
+      };
+
       let normalized_address_array = ImportMap::normalize_addresses(
         &normalized_specifier_key,
         base_url,
-        value.clone(),
+        potential_addresses,
       );
 
       debug!(
@@ -245,7 +259,7 @@ impl ImportMap {
       normalized_map.insert(normalized_specifier_key, normalized_address_array);
     }
 
-    // now sort in longest and alphabetical order
+    // Sort in longest and alphabetical order.
     normalized_map.sort_by(|k1, _v1, k2, _v2| {
       if k1.len() > k2.len() {
         return Ordering::Less;
@@ -259,14 +273,18 @@ impl ImportMap {
     normalized_map
   }
 
-  fn normalize_scope_map(
+  /// Convert provided JSON map to valid ScopeMap.
+  ///
+  /// From specification:
+  /// - order of iteration must be retained
+  /// - ScopeMap's keys are sorted in longest and alphabetic order
+  fn parse_scope_map(
     scope_map: &Map<String, Value>,
     base_url: &str,
   ) -> Result<ScopesMap, ImportMapError> {
-    // using IndexMap to preserve order during iteration
     let mut normalized_map: ScopesMap = ScopesMap::new();
 
-    // order is preserved because of "preserve_order" feature of "serde_json"
+    // Order is preserved because of "preserve_order" feature of "serde_json".
     for (scope_prefix, potential_specifier_map) in scope_map.iter() {
       if !potential_specifier_map.is_object() {
         return Err(ImportMapError::new(&format!(
@@ -294,12 +312,12 @@ impl ImportMap {
         };
 
       let norm_map =
-        ImportMap::normalize_specifier_map(potential_specifier_map, base_url);
+        ImportMap::parse_specifier_map(potential_specifier_map, base_url);
 
       normalized_map.insert(scope_prefix_url, norm_map);
     }
 
-    // now sort in longest and alphabetical order
+    // Sort in longest and alphabetical order.
     normalized_map.sort_by(|k1, _v1, k2, _v2| {
       if k1.len() > k2.len() {
         return Ordering::Less;
@@ -323,7 +341,7 @@ impl ImportMap {
       if let Ok(scope_match) =
         ImportMap::resolve_imports_match(scope_imports, normalized_specifier)
       {
-        // return only if there was actual match (not None)
+        // Return only if there was actual match (not None).
         if scope_match.is_some() {
           return Ok(scope_match);
         }
@@ -337,7 +355,7 @@ impl ImportMap {
         if let Ok(scope_match) =
           ImportMap::resolve_imports_match(scope_imports, normalized_specifier)
         {
-          // return only if there was actual match (not None)
+          // Return only if there was actual match (not None).
           if scope_match.is_some() {
             return Ok(scope_match);
           }
@@ -348,7 +366,7 @@ impl ImportMap {
     Ok(None)
   }
 
-  // https://github.com/WICG/import-maps/issues/73#issuecomment-439327758
+  // TODO: https://github.com/WICG/import-maps/issues/73#issuecomment-439327758
   // for some more optimized candidate implementations.
   pub fn resolve_imports_match(
     imports: &SpecifierMap,
