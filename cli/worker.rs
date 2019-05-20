@@ -212,35 +212,39 @@ fn fetch_module_meta_data_and_maybe_compile_async(
   specifier: &str,
   referrer: &str,
 ) -> impl Future<Item = ModuleMetaData, Error = DenoError> {
-  let use_cache = !state.flags.reload;
-  let no_fetch = state.flags.no_fetch;
   let state_ = state.clone();
   let specifier = specifier.to_string();
   let referrer = referrer.to_string();
-  state
-    .dir
-    .fetch_module_meta_data_async(&specifier, &referrer, use_cache, no_fetch)
-    .and_then(move |out| {
-      if out.media_type == msg::MediaType::TypeScript
-        && !out.has_output_code_and_source_map()
-      {
-        debug!(">>>>> compile_sync START");
-        Either::A(
-          compile_async(state_.clone(), &specifier, &referrer, &out)
-            .map_err(|e| {
-              debug!("compiler error exiting!");
-              eprintln!("{}", JSErrorColor(&e).to_string());
-              std::process::exit(1);
-            }).and_then(move |out| {
-              debug!(">>>>> compile_sync END");
-              state_.dir.code_cache(&out)?;
-              Ok(out)
-            }),
-        )
-      } else {
-        Either::B(futures::future::ok(out))
-      }
-    })
+
+  let f = futures::future::result(Worker::resolve(&specifier, &referrer));
+  f.and_then(move |module_id| {
+    let use_cache = !state_.flags.reload || state_.has_compiled(&module_id);
+    let no_fetch = state_.flags.no_fetch;
+
+    state_
+      .dir
+      .fetch_module_meta_data_async(&specifier, &referrer, use_cache, no_fetch)
+      .and_then(move |out| {
+        if out.media_type == msg::MediaType::TypeScript
+          && !out.has_output_code_and_source_map()
+        {
+          debug!(">>>>> compile_sync START");
+          Either::A(
+            compile_async(state_.clone(), &specifier, &referrer, &out)
+              .map_err(|e| {
+                debug!("compiler error exiting!");
+                eprintln!("{}", JSErrorColor(&e).to_string());
+                std::process::exit(1);
+              }).and_then(move |out| {
+                debug!(">>>>> compile_sync END");
+                Ok(out)
+              }),
+          )
+        } else {
+          Either::B(futures::future::ok(out))
+        }
+      })
+  })
 }
 
 pub fn fetch_module_meta_data_and_maybe_compile(
@@ -297,6 +301,8 @@ mod tests {
 
     let metrics = &state_.metrics;
     assert_eq!(metrics.resolve_count.load(Ordering::SeqCst), 2);
+    // Check that we didn't start the compiler.
+    assert_eq!(metrics.compiler_starts.load(Ordering::SeqCst), 0);
   }
 
   #[test]
@@ -327,6 +333,8 @@ mod tests {
 
     let metrics = &state_.metrics;
     assert_eq!(metrics.resolve_count.load(Ordering::SeqCst), 2);
+    // Check that we didn't start the compiler.
+    assert_eq!(metrics.compiler_starts.load(Ordering::SeqCst), 0);
   }
 
   #[test]
@@ -361,6 +369,8 @@ mod tests {
 
     let metrics = &state_.metrics;
     assert_eq!(metrics.resolve_count.load(Ordering::SeqCst), 3);
+    // Check that we've only invoked the compiler once.
+    assert_eq!(metrics.compiler_starts.load(Ordering::SeqCst), 1);
   }
 
   fn create_test_worker() -> Worker {
@@ -459,20 +469,24 @@ mod tests {
 
   #[test]
   fn execute_mod_resolve_error() {
-    // "foo" is not a vailid module specifier so this should return an error.
-    let worker = create_test_worker();
-    let js_url = root_specifier_to_url("does-not-exist").unwrap();
-    let result = worker.execute_mod_async(&js_url, false).wait();
-    assert!(result.is_err());
+    tokio_util::init(|| {
+      // "foo" is not a vailid module specifier so this should return an error.
+      let worker = create_test_worker();
+      let js_url = root_specifier_to_url("does-not-exist").unwrap();
+      let result = worker.execute_mod_async(&js_url, false).wait();
+      assert!(result.is_err());
+    })
   }
 
   #[test]
   fn execute_mod_002_hello() {
-    // This assumes cwd is project root (an assumption made throughout the
-    // tests).
-    let worker = create_test_worker();
-    let js_url = root_specifier_to_url("./tests/002_hello.ts").unwrap();
-    let result = worker.execute_mod_async(&js_url, false).wait();
-    assert!(result.is_ok());
+    tokio_util::init(|| {
+      // This assumes cwd is project root (an assumption made throughout the
+      // tests).
+      let worker = create_test_worker();
+      let js_url = root_specifier_to_url("./tests/002_hello.ts").unwrap();
+      let result = worker.execute_mod_async(&js_url, false).wait();
+      assert!(result.is_ok());
+    })
   }
 }
