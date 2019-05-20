@@ -43,7 +43,12 @@ pub trait Loader: Send + Sync {
   /// When implementing an spec-complaint VM, this should be exactly the
   /// algorithm described here:
   /// https://html.spec.whatwg.org/multipage/webappapis.html#resolve-a-module-specifier
-  fn resolve(specifier: &str, referrer: &str) -> Result<String, Self::Error>;
+  fn resolve(
+    &self,
+    specifier: &str,
+    referrer: &str,
+    is_root: bool,
+  ) -> Result<String, Self::Error>;
 
   /// Given an absolute url, load its source code.
   fn load(&self, url: &str) -> Box<SourceCodeInfoFuture<Self::Error>>;
@@ -98,7 +103,8 @@ impl<L: Loader> RecursiveLoad<L> {
     referrer: &str,
     parent_id: Option<deno_mod>,
   ) -> Result<String, L::Error> {
-    let url = L::resolve(specifier, referrer)?;
+    let loader = self.loader.as_mut().unwrap();
+    let url = L::resolve(&loader, specifier, referrer, true)?;
 
     let is_root = if let Some(parent_id) = parent_id {
       {
@@ -251,7 +257,7 @@ impl<L: Loader> Future for RecursiveLoad<L> {
         |specifier: &str, referrer_id: deno_mod| -> deno_mod {
           let modules = self.modules.lock().unwrap();
           let referrer = modules.get_name(referrer_id).unwrap();
-          match L::resolve(specifier, &referrer) {
+          match L::resolve(&self.loader.unwrap(), specifier, &referrer, true) {
             Ok(url) => match modules.get_id(&url) {
               Some(id) => id,
               None => 0,
@@ -619,7 +625,12 @@ mod tests {
   impl Loader for MockLoader {
     type Error = MockError;
 
-    fn resolve(specifier: &str, referrer: &str) -> Result<String, Self::Error> {
+    fn resolve(
+      &self,
+      specifier: &str,
+      referrer: &str,
+      _is_root: bool,
+    ) -> Result<String, Self::Error> {
       eprintln!(">> RESOLVING, S: {}, R: {}", specifier, referrer);
       let output_specifier =
         if specifier.starts_with("./") && referrer.starts_with("./") {
