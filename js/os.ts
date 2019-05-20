@@ -3,7 +3,6 @@ import * as msg from "gen/cli/msg_generated";
 import { core } from "./core";
 import { handleAsyncMsgFromRust, sendSync } from "./dispatch";
 import * as flatbuffers from "./flatbuffers";
-import { TextDecoder } from "./text_encoding";
 import { assert } from "./util";
 import * as util from "./util";
 import { window } from "./window";
@@ -22,13 +21,6 @@ function setGlobals(pid_: number, noColor_: boolean, execPath_: string): void {
   pid = pid_;
   noColor = noColor_;
   execPath = execPath_;
-}
-
-interface ResponseModuleMetaData {
-  moduleName: string | undefined;
-  filename: string | undefined;
-  mediaType: msg.MediaType;
-  sourceCode: string | undefined;
 }
 
 /** Check if running in terminal.
@@ -52,43 +44,6 @@ export function exit(exitCode = 0): never {
   const inner = msg.Exit.createExit(builder, exitCode);
   sendSync(builder, msg.Any.Exit, inner);
   return util.unreachable();
-}
-
-const decoder = new TextDecoder();
-
-// @internal
-export function fetchModuleMetaData(
-  specifier: string,
-  referrer: string
-): ResponseModuleMetaData {
-  util.log("os.fetchModuleMetaData", { specifier, referrer });
-  // Send FetchModuleMetaData message
-  const builder = flatbuffers.createBuilder();
-  const specifier_ = builder.createString(specifier);
-  const referrer_ = builder.createString(referrer);
-  const inner = msg.FetchModuleMetaData.createFetchModuleMetaData(
-    builder,
-    specifier_,
-    referrer_
-  );
-  const baseRes = sendSync(builder, msg.Any.FetchModuleMetaData, inner);
-  assert(baseRes != null);
-  assert(
-    msg.Any.FetchModuleMetaDataRes === baseRes!.innerType(),
-    `base.innerType() unexpectedly is ${baseRes!.innerType()}`
-  );
-  const fetchModuleMetaDataRes = new msg.FetchModuleMetaDataRes();
-  assert(baseRes!.inner(fetchModuleMetaDataRes) != null);
-  const dataArray = fetchModuleMetaDataRes.dataArray();
-  const sourceCode = dataArray ? decoder.decode(dataArray) : undefined;
-  // flatbuffers returns `null` for an empty value, this does not fit well with
-  // idiomatic TypeScript under strict null checks, so converting to `undefined`
-  return {
-    moduleName: fetchModuleMetaDataRes.moduleName() || undefined,
-    filename: fetchModuleMetaDataRes.filename() || undefined,
-    mediaType: fetchModuleMetaDataRes.mediaType(),
-    sourceCode
-  };
 }
 
 function setEnv(key: string, value: string): void {

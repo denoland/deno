@@ -1,12 +1,13 @@
 union Any {
   Accept,
+  Cache,
   Chdir,
   Chmod,
   Chown,
   Close,
-  CompilerConfig,
-  CompilerConfigRes,
   CopyFile,
+  CreateWorker,
+  CreateWorkerRes,
   Cwd,
   CwdRes,
   Dial,
@@ -23,6 +24,10 @@ union Any {
   GlobalTimer,
   GlobalTimerRes,
   GlobalTimerStop,
+  HostGetMessage,
+  HostGetMessageRes,
+  HostGetWorkerClosed,
+  HostPostMessage,
   IsTTY,
   IsTTYRes,
   Kill,
@@ -70,12 +75,6 @@ union Any {
   Symlink,
   Truncate,
   Utime,
-  CreateWorker,
-  CreateWorkerRes,
-  HostGetWorkerClosed,
-  HostGetMessage,
-  HostGetMessageRes,
-  HostPostMessage,
   WorkerGetMessage,
   WorkerGetMessageRes,
   WorkerPostMessage,
@@ -180,15 +179,6 @@ table StartRes {
   xeval_delim: string;
 }
 
-table CompilerConfig {
-  compiler_type: string;
-}
-
-table CompilerConfigRes {
-  path: string;
-  data: [ubyte];
-}
-
 table FormatError {
   error: string;
 }
@@ -246,12 +236,18 @@ table FetchModuleMetaData {
 
 table FetchModuleMetaDataRes {
   // If it's a non-http module, moduleName and filename will be the same.
-  // For http modules, moduleName is its resolved http URL, and filename
+  // For http modules, module_name is its resolved http URL, and filename
   // is the location of the locally downloaded source code.
   module_name: string;
   filename: string;
   media_type: MediaType;
   data: [ubyte];
+}
+
+table Cache {
+  extension: string;
+  module_id: string;
+  contents: string;
 }
 
 table Chdir {
