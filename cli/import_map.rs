@@ -508,7 +508,7 @@ mod parsing {
 
     #[test]
     fn relative() {
-      // should absolutize strings prefixed with ./, ../, or / into the corresponding URLs
+      // Should absolutize strings prefixed with ./, ../, or / into the corresponding URLs..
       let json_map = json!({
         "imports": {
           "./foo": "/dotslash",
@@ -539,7 +539,7 @@ mod parsing {
         "https://base.example/slash".to_string()
       );
 
-      // should absolutize the literal strings ./, ../, or / with no suffix
+      // Should absolutize the literal strings ./, ../, or / with no suffix..
       let json_map = json!({
         "imports": {
           "./": "/dotslash/",
@@ -570,7 +570,7 @@ mod parsing {
         "https://base.example/slash/".to_string()
       );
 
-      // should treat percent-encoded variants of ./, ../, or / as bare specifiers
+      // Should treat percent-encoded variants of ./, ../, or / as bare specifiers..
       let json_map = json!({
         "imports": {
           "%2E/": "/dotSlash1/",
@@ -618,7 +618,8 @@ mod parsing {
 
     #[test]
     fn absolute() {
-      // should only accept absolute URL specifier keys with fetch schemes, treating others as bare specifiers
+      // Should only accept absolute URL specifier keys with fetch schemes,.
+      // treating others as bare specifiers.
       let json_map = json!({
         "imports": {
           "file:///good": "/file",
@@ -684,7 +685,7 @@ mod parsing {
         "https://base.example/data".to_string()
       );
 
-      // should parse absolute URLs, treating unparseable ones as bare specifiers
+      // Should parse absolute URLs, treating unparseable ones as bare specifiers..
       let json_map = json!({
         "imports": {
           "https://ex ample.org/": "/unparseable1/",
@@ -734,7 +735,7 @@ mod parsing {
         "https://base.example/noPercentDecoding".to_string()
       );
 
-      // should only parse built-in module specifier keys without a /
+      // Should only parse built-in module specifier keys without a "/"..
       let json_map = json!({
         "imports": {
           "std:blank": "/blank",
@@ -765,7 +766,7 @@ mod parsing {
 
     #[test]
     fn relative() {
-      // should work with no prefix
+      // Should work with no prefix..
       let json_map = json!({
         "scopes": {
           "foo": {}
@@ -781,7 +782,7 @@ mod parsing {
           .contains_key("https://base.example/path1/path2/foo")
       );
 
-      // should work with ./, ../, and / prefixes
+      // Should work with ./, ../, and / prefixes..
       let json_map = json!({
         "scopes": {
           "./foo": {},
@@ -805,7 +806,7 @@ mod parsing {
       );
       assert!(import_map.scopes.contains_key("https://base.example/foo"));
 
-      // should work with /s, ?s, and #s
+      // Should work with /s, ?s, and #s..
       let json_map = json!({
         "scopes": {
           "foo/bar?baz#qux": {},
@@ -821,7 +822,7 @@ mod parsing {
           .contains_key("https://base.example/path1/path2/foo/bar?baz#qux")
       );
 
-      // should work with an empty string scope key
+      // Should work with an empty string scope key..
       let json_map = json!({
         "scopes": {
           "": {},
@@ -837,7 +838,7 @@ mod parsing {
           .contains_key("https://base.example/path1/path2/path3")
       );
 
-      // should work with / suffixes
+      // Should work with / suffixes..
       let json_map = json!({
         "scopes": {
           "foo/": {},
@@ -869,7 +870,7 @@ mod parsing {
       assert!(import_map.scopes.contains_key("https://base.example/foo/"));
       assert!(import_map.scopes.contains_key("https://base.example/foo//"));
 
-      // should deduplicate based on URL parsing rules
+      // Should deduplicate based on URL parsing rules..
       let json_map = json!({
         "scopes": {
           "foo/\\": {},
@@ -891,7 +892,7 @@ mod parsing {
 
     #[test]
     fn absolute() {
-      // should only accept absolute URL scope keys with fetch schemes
+      // Should only accept absolute URL scope keys with fetch schemes..
       let json_map = json!({
         "scopes": {
           "http://good/": {},
@@ -917,7 +918,7 @@ mod parsing {
       assert!(import_map.scopes.contains_key("file:///good"));
       assert_eq!(import_map.scopes.len(), 3);
 
-      // should parse absolute URL scope keys, ignoring unparseable ones
+      // Should parse absolute URL scope keys, ignoring unparseable ones..
       let json_map = json!({
         "scopes": {
           "https://ex ample.org/": {},
@@ -954,7 +955,7 @@ mod parsing {
 
     #[test]
     fn relative_url_like_addresses() {
-      // should accept strings prefixed with ./, ../, or /
+      // Should accept strings prefixed with ./, ../, or /..
       let json_map = json!({
         "imports": {
           "dotSlash": "./foo",
@@ -980,7 +981,7 @@ mod parsing {
         &vec!["https://base.example/foo".to_string()]
       );
 
-      // should accept the literal strings ./, ../, or / with no suffix
+      // Should accept the literal strings ./, ../, or / with no suffix..
       let json_map = json!({
         "imports": {
           "dotSlash": "./",
@@ -1006,7 +1007,7 @@ mod parsing {
         &vec!["https://base.example/".to_string()]
       );
 
-      // should ignore percent-encoded variants of ./, ../, or /
+      // Should ignore percent-encoded variants of ./, ../, or /..
       let json_map = json!({
         "imports": {
           "dotSlash1": "%2E/",
@@ -1034,7 +1035,7 @@ mod parsing {
 
     #[test]
     fn absolute_with_fetch_schemes() {
-      // should only accept absolute URL addresses with fetch schemes
+      // Should only accept absolute URL addresses with fetch schemes..
       let json_map = json!({
         "imports": {
           "http": "http://good/",
@@ -1082,7 +1083,7 @@ mod parsing {
 
     #[test]
     fn absolute_with_fetch_schemes_arrays() {
-      // should only accept absolute URL addresses with fetch schemes inside arrays
+      // Should only accept absolute URL addresses with fetch schemes inside arrays..
       let json_map = json!({
         "imports": {
           "http": ["http://good/"],
@@ -1130,7 +1131,7 @@ mod parsing {
 
     #[test]
     fn unparseable_addresses() {
-      // should parse absolute URLs, ignoring unparseable ones
+      // Should parse absolute URLs, ignoring unparseable ones..
       let json_map = json!({
         "imports": {
           "unparseable1": "https://ex ample.org/",
@@ -1176,7 +1177,7 @@ mod parsing {
 
     #[test]
     fn unparseable_addresses_arrays() {
-      // should parse absolute URLs, ignoring unparseable ones inside arrays
+      // Should parse absolute URLs, ignoring unparseable ones inside arrays..
       let json_map = json!({
         "imports": {
           "unparseable1": ["https://ex ample.org/"],
@@ -1222,7 +1223,7 @@ mod parsing {
 
     #[test]
     fn mismatched_trailing_slashes() {
-      // should parse absolute URLs, ignoring unparseable ones inside arrays
+      // Should parse absolute URLs, ignoring unparseable ones inside arrays..
       let json_map = json!({
         "imports": {
           "trailer/": "/notrailer"
@@ -1239,7 +1240,7 @@ mod parsing {
 
     #[test]
     fn mismatched_trailing_slashes_array() {
-      // should warn for a mismatch alone in an array
+      // Should warn for a mismatch alone in an array..
       let json_map = json!({
         "imports": {
           "trailer/": ["/notrailer"]
@@ -1256,7 +1257,7 @@ mod parsing {
 
     #[test]
     fn mismatched_trailing_slashes_with_nonmismatched_array() {
-      // should warn for a mismatch alone in an array
+      // Should warn for a mismatch alone in an array..
       let json_map = json!({
         "imports": {
           "trailer/": ["/atrailer/", "/notrailer"]
@@ -1276,7 +1277,7 @@ mod parsing {
 
     #[test]
     fn other_invalid_addresses() {
-      // should ignore unprefixed strings that are not absolute URLs
+      // Should ignore unprefixed strings that are not absolute URLs..
       for bad in &["bar", "\\bar", "~bar", "#bar", "?bar"] {
         let json_map = json!({
           "imports": {
@@ -1315,7 +1316,7 @@ mod resolving {
       let referrer_url = "https://example.com/js/script.ts";
       let import_map = get_empty_import_map();
 
-      // should resolve ./ specifiers as URLs
+      // Should resolve ./ specifiers as URLs.
       assert_eq!(
         import_map.resolve("./foo", referrer_url).unwrap(),
         Some("https://example.com/js/foo".to_string())
@@ -1333,7 +1334,7 @@ mod resolving {
         Some("https://example.com/bar".to_string())
       );
 
-      // should resolve ../ specifiers as URLs
+      // Should resolve ../ specifiers as URLs.
       assert_eq!(
         import_map.resolve("../foo", referrer_url).unwrap(),
         Some("https://example.com/foo".to_string())
@@ -1355,7 +1356,7 @@ mod resolving {
       let referrer_url = "https://example.com/js/script.ts";
       let import_map = get_empty_import_map();
 
-      // should resolve / specifiers as URLs
+      // Should resolve / specifiers as URLs.
       assert_eq!(
         import_map.resolve("/foo", referrer_url).unwrap(),
         Some("https://example.com/foo".to_string())
@@ -1373,7 +1374,7 @@ mod resolving {
         Some("https://example.com/bar".to_string())
       );
 
-      // should parse absolute fetch-scheme URLs
+      // Should parse absolute fetch-scheme URLs.
       assert_eq!(
         import_map
           .resolve("https://example.net", referrer_url)
@@ -1405,14 +1406,14 @@ mod resolving {
       let referrer_url = "https://example.com/js/script.ts";
       let import_map = get_empty_import_map();
 
-      // should fail for absolute non-fetch-scheme URLs
+      // Should fail for absolute non-fetch-scheme URLs.
       assert!(import_map.resolve("about:good", referrer_url).is_err());
       assert!(import_map.resolve("mailto:bad", referrer_url).is_err());
       assert!(import_map.resolve("import:bad", referrer_url).is_err());
       assert!(import_map.resolve("javascript:bad", referrer_url).is_err());
       assert!(import_map.resolve("wss:bad", referrer_url).is_err());
 
-      // should fail for string not parseable as absolute URLs and not starting with ./, ../ or /
+      // Should fail for string not parseable as absolute URLs and not starting with ./, ../ or /.
       assert!(import_map.resolve("foo", referrer_url).is_err());
       assert!(import_map.resolve("\\foo", referrer_url).is_err());
       assert!(import_map.resolve(":foo", referrer_url).is_err());
@@ -1447,7 +1448,7 @@ mod resolving {
       let base_url = "https://example.com/app/main.ts";
       let referrer_url = "https://example.com/js/script.ts";
 
-      // should fail when mapping is to an empty array
+      // Should fail when mapping is to an empty array.
       let json_map = json!({
       "imports": {
         "moment": null,
@@ -1480,7 +1481,7 @@ mod resolving {
       let import_map =
         ImportMap::from_json(base_url, &json_map.to_string()).unwrap();
 
-      // should work for package main modules
+      // Should work for package main modules.
       assert_eq!(
         import_map.resolve("moment", referrer_url).unwrap(),
         Some("https://example.com/deps/moment/src/moment.js".to_string())
@@ -1494,7 +1495,7 @@ mod resolving {
         Some("https://example.com/deps/lodash-es/lodash.js".to_string())
       );
 
-      // should work for package submodules
+      // Should work for package submodules.
       assert_eq!(
         import_map.resolve("moment/foo", referrer_url).unwrap(),
         Some("https://example.com/deps/moment/src/foo".to_string())
@@ -1510,17 +1511,17 @@ mod resolving {
         Some("https://example.com/deps/lodash-es/foo".to_string())
       );
 
-      // should work for package names that end in a slash
+      // Should work for package names that end in a slash.
       assert_eq!(
         import_map.resolve("moment/", referrer_url).unwrap(),
         Some("https://example.com/deps/moment/src/".to_string())
       );
 
-      // should fail for package modules that are not declared
+      // Should fail for package modules that are not declared.
       assert!(import_map.resolve("underscore/", referrer_url).is_err());
       assert!(import_map.resolve("underscore/foo", referrer_url).is_err());
 
-      // should fail for package submodules that map to nowhere
+      // Should fail for package submodules that map to nowhere.
       assert!(import_map.resolve("nowhere/foo", referrer_url).is_err());
     }
 
@@ -1543,7 +1544,7 @@ mod resolving {
       let import_map =
         ImportMap::from_json(base_url, &json_map.to_string()).unwrap();
 
-      // should work for explicitly-mapped specifiers that happen to have a slash
+      // Should work for explicitly-mapped specifiers that happen to have a slash.
       assert_eq!(
         import_map
           .resolve("package/withslash", referrer_url)
@@ -1553,7 +1554,7 @@ mod resolving {
         )
       );
 
-      // should work when the specifier has punctuation
+      // Should work when the specifier has punctuation.
       assert_eq!(
         import_map.resolve(".", referrer_url).unwrap(),
         Some("https://example.com/lib/dot.mjs".to_string())
@@ -1575,7 +1576,7 @@ mod resolving {
         Some("https://example.com/lib/percent2f.mjs".to_string())
       );
 
-      // should fail for attempting to get a submodule of something not declared with a trailing slash
+      // Should fail for attempting to get a submodule of something not declared with a trailing slash.
       assert!(
         import_map
           .resolve("not-a-package/foo", referrer_url)
@@ -1607,7 +1608,7 @@ mod resolving {
       let import_map =
         ImportMap::from_json(base_url, &json_map.to_string()).unwrap();
 
-      // should remap to other URLs
+      // Should remap to other URLs.
       assert_eq!(
         import_map
           .resolve("https://example.com/lib/foo.mjs", referrer_url)
@@ -1649,7 +1650,7 @@ mod resolving {
         Some("https://example.com/lib/dotdot.mjs".to_string())
       );
 
-      // should fail for URLs that remap to empty arrays
+      // Should fail for URLs that remap to empty arrays.
       assert!(
         import_map
           .resolve("https://example.com/lib/no.mjs", referrer_url)
@@ -1673,7 +1674,7 @@ mod resolving {
           .is_err()
       );
 
-      // should remap URLs that are just composed from / and .
+      // Should remap URLs that are just composed from / and ..
       assert_eq!(
         import_map
           .resolve("https://example.com/", referrer_url)
@@ -1703,7 +1704,7 @@ mod resolving {
         Some("https://example.com/lib/dotslash-only/".to_string())
       );
 
-      // should remap URLs that are prefix-matched by keys with trailing slashes
+      // Should remap URLs that are prefix-matched by keys with trailing slashes.
       assert_eq!(
         import_map.resolve("/test/foo.mjs", referrer_url).unwrap(),
         Some("https://example.com/lib/url-trailing-slash/foo.mjs".to_string())
@@ -1717,7 +1718,7 @@ mod resolving {
         )
       );
 
-      // should use the last entry's address when URL-like specifiers parse to the same absolute URL
+      // Should use the last entry's address when URL-like specifiers parse to the same absolute URL.
       //
       // NOTE: this works properly because of "preserve_order" feature flag to "serde_json" crate
       assert_eq!(
@@ -1731,7 +1732,7 @@ mod resolving {
       let base_url = "https://example.com/app/main.ts";
       let referrer_url = "https://example.com/js/script.ts";
 
-      // should favor the most-specific key (no empty arrays)
+      // Should favor the most-specific key (no empty arrays).
       {
         let json_map = json!({
         "imports": {
@@ -1766,7 +1767,7 @@ mod resolving {
         );
       }
 
-      // should favor the most-specific key when empty arrays are involved for less-specific keys
+      // Should favor the most-specific key when empty arrays are involved for less-specific keys.
       {
         let json_map = json!({
         "imports": {
@@ -1885,7 +1886,7 @@ mod resolving {
       let import_map =
         ImportMap::from_json(base_url, &json_map.to_string()).unwrap();
 
-      // should match correctly when only an exact match is in the map
+      // Should match correctly when only an exact match is in the map.
       let js_non_dir = "https://example.com/js";
       let js_in_dir = "https://example.com/js/app.mjs";
       let with_js_prefix = "https://example.com/jsiscool";
@@ -1921,7 +1922,7 @@ mod resolving {
       let import_map =
         ImportMap::from_json(base_url, &json_map.to_string()).unwrap();
 
-      // should match correctly when only a prefix match is in the map
+      // Should match correctly when only a prefix match is in the map.
       let js_non_dir = "https://example.com/js";
       let js_in_dir = "https://example.com/js/app.mjs";
       let with_js_prefix = "https://example.com/jsiscool";
@@ -1971,11 +1972,11 @@ mod resolving {
       let import_map =
         ImportMap::from_json(base_url, &json_map.to_string()).unwrap();
 
-      // should match correctly when only a prefix match is in the map
+      // Should match correctly when only a prefix match is in the map.
       let js_in_dir = "https://example.com/js/app.mjs";
       let top_level = "https://example.com/app.mjs";
 
-      // should resolve scoped
+      // Should resolve scoped.
       assert_eq!(
         import_map.resolve("lodash-dot", js_in_dir).unwrap(),
         Some(
@@ -2000,7 +2001,7 @@ mod resolving {
         Some("https://example.com/node_modules_2/lodash-es/foo".to_string())
       );
 
-      // should apply best scope match
+      // Should apply best scope match.
       assert_eq!(
         import_map.resolve("moment", top_level).unwrap(),
         Some(
@@ -2021,7 +2022,7 @@ mod resolving {
         )
       );
 
-      // should fallback to "imports"
+      // Should fallback to "imports".
       assert_eq!(
         import_map.resolve("moment/foo", top_level).unwrap(),
         Some("https://example.com/node_modules/moment/src/foo".to_string())
@@ -2052,7 +2053,7 @@ mod resolving {
         Some("https://example.com/node_modules/lodash-es/foo".to_string())
       );
 
-      // should still fail for package-like specifiers that are not declared
+      // Should still fail for package-like specifiers that are not declared.
       assert!(import_map.resolve("underscore/", js_in_dir).is_err());
       assert!(import_map.resolve("underscore/foo", js_in_dir).is_err());
     }
@@ -2084,7 +2085,7 @@ mod resolving {
       let scope_2_url = "https://example.com/scope2/foo.mjs";
       let scope_3_url = "https://example.com/scope2/scope3/foo.mjs";
 
-      // should fall back to "imports" when none match
+      // Should fall back to "imports" when none match.
       assert_eq!(
         import_map.resolve("a", scope_1_url).unwrap(),
         Some("https://example.com/a-1.mjs".to_string())
@@ -2098,7 +2099,7 @@ mod resolving {
         Some("https://example.com/c-1.mjs".to_string())
       );
 
-      // should use a direct scope override
+      // Should use a direct scope override.
       assert_eq!(
         import_map.resolve("a", scope_2_url).unwrap(),
         Some("https://example.com/a-2.mjs".to_string())
@@ -2112,7 +2113,7 @@ mod resolving {
         Some("https://example.com/c-1.mjs".to_string())
       );
 
-      // should use an indirect scope override
+      // Should use an indirect scope override.
       assert_eq!(
         import_map.resolve("a", scope_3_url).unwrap(),
         Some("https://example.com/a-2.mjs".to_string())
@@ -2155,7 +2156,7 @@ mod resolving {
       let in_same_dir_as_map = "https://example.com/app/foo.mjs";
       let in_dir_above_map = "https://example.com/foo.mjs";
 
-      // should resolve an empty string scope using the import map URL
+      // Should resolve an empty string scope using the import map URL.
       assert_eq!(
         import_map.resolve("a", base_url).unwrap(),
         Some("https://example.com/a-empty-string.mjs".to_string())
@@ -2165,7 +2166,7 @@ mod resolving {
         Some("https://example.com/a-1.mjs".to_string())
       );
 
-      // should resolve a ./ scope using the import map URL's directory
+      // Should resolve a ./ scope using the import map URL's directory.
       assert_eq!(
         import_map.resolve("b", base_url).unwrap(),
         Some("https://example.com/b-dot-slash.mjs".to_string())
@@ -2175,7 +2176,7 @@ mod resolving {
         Some("https://example.com/b-dot-slash.mjs".to_string())
       );
 
-      // should resolve a ../ scope using the import map URL's directory
+      // Should resolve a ../ scope using the import map URL's directory.
       assert_eq!(
         import_map.resolve("c", base_url).unwrap(),
         Some("https://example.com/c-dot-dot-slash.mjs".to_string())
