@@ -21,7 +21,6 @@ impl ImportMapError {
 // NOTE: here is difference between deno and reference implementation - deno currently
 //  can't resolve URL with other schemes (eg. data:, about:, blob:)
 const SUPPORTED_FETCH_SCHEMES: [&str; 3] = ["http", "https", "file"];
-static BUILT_IN_MODULE_SCHEME: &str = "std";
 
 type SpecifierMap = IndexMap<String, Vec<String>>;
 type ScopesMap = IndexMap<String, SpecifierMap>;
@@ -127,9 +126,7 @@ impl ImportMap {
     }
 
     if let Ok(url) = Url::parse(specifier) {
-      if SUPPORTED_FETCH_SCHEMES.contains(&url.scheme())
-        || url.scheme() == BUILT_IN_MODULE_SCHEME
-      {
+      if SUPPORTED_FETCH_SCHEMES.contains(&url.scheme()) {
         return Some(url);
       }
     }
@@ -154,12 +151,7 @@ impl ImportMap {
     if let Some(url) =
       ImportMap::try_url_like_specifier(specifier_key, base_url)
     {
-      let url_string = url.to_string();
-      if url.scheme() == BUILT_IN_MODULE_SCHEME && url_string.contains('/') {
-        eprintln!("Invalid specifier key {:?}. Built-in module specifiers must not contain \"/\".", url_string);
-        return None;
-      }
-      return Some(url_string);
+      return Some(url.to_string());
     }
 
     // "bare" specifier
@@ -189,14 +181,6 @@ impl ImportMap {
           "Invalid target address {:?} for package specifier {:?}.\
            Package address targets must end with \"/\".",
           url_string, specifier_key
-        );
-        continue;
-      }
-
-      if url.scheme() == BUILT_IN_MODULE_SCHEME && url_string.contains('/') {
-        eprintln!(
-          "Invalid target address {:?}. Built-in module URLs must not contain \"/\"",
-          potential_address
         );
         continue;
       }
@@ -432,6 +416,7 @@ impl ImportMap {
     Ok(None)
   }
 
+  // TODO: add support for built-in modules
   /// Currently we support two types of specifiers: URL (http://, https://, file://)
   /// and "bare" (moment, jquery, lodash)
   ///
@@ -479,11 +464,6 @@ impl ImportMap {
 
     // no match in import map but we got resolvable URL
     if let Some(resolved_url) = resolved_url {
-      if resolved_url.scheme() == BUILT_IN_MODULE_SCHEME {
-        return Err(ImportMapError::new(
-          "Built in modules are currently not supported",
-        ));
-      }
       return Ok(Some(resolved_url.to_string()));
     }
 
@@ -769,28 +749,6 @@ mod tests {
       import_map.imports.get("https://example.com/%41").unwrap()[0],
       "https://base.example/noPercentDecoding".to_string()
     );
-
-    // Should only parse built-in module specifier keys without a "/"..
-    let json_map = r#"{
-      "imports": {
-        "std:blank": "/blank",
-        "std:blank/": "/blank/",
-        "std:blank/foo": "/blank/foo",
-        "std:blank\\foo": "/blank/backslashfoo"
-      }
-    }"#;
-    let import_map =
-      ImportMap::from_json("https://base.example/path1/path2/path3", json_map)
-        .unwrap();
-    assert_eq!(
-      import_map.imports.get("std:blank").unwrap()[0],
-      "https://base.example/blank".to_string()
-    );
-    assert_eq!(
-      import_map.imports.get("std:blank\\foo").unwrap()[0],
-      "https://base.example/blank/backslashfoo".to_string()
-    );
-    assert_eq!(import_map.imports.len(), 2);
   }
 
   #[test]
