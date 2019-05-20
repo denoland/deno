@@ -553,7 +553,7 @@ mod tests {
       "imports": {
         "./foo": "/dotslash",
         "../foo": "/dotdotslash",
-        "/foo": "/slash",
+        "/foo": "/slash"
       }
     }"#;
     let import_map =
@@ -583,7 +583,7 @@ mod tests {
       "imports": {
         "./": "/dotslash/",
         "../": "/dotdotslash/",
-        "/": "/slash/",
+        "/": "/slash/"
       }
     }"#;
     let import_map =
@@ -815,7 +815,7 @@ mod tests {
       "scopes": {
         "./foo": {},
         "../foo": {},
-        "/foo": {},
+        "/foo": {}
       }
     }"#;
     let import_map =
@@ -836,7 +836,7 @@ mod tests {
     // Should work with /s, ?s, and #s..
     let json_map = r#"{
       "scopes": {
-        "foo/bar?baz#qux": {},
+        "foo/bar?baz#qux": {}
       }
     }"#;
     let import_map =
@@ -851,7 +851,7 @@ mod tests {
     // Should work with an empty string scope key..
     let json_map = r#"{
       "scopes": {
-        "": {},
+        "": {}
       }
     }"#;
     let import_map =
@@ -870,7 +870,7 @@ mod tests {
         "./foo/": {},
         "../foo/": {},
         "/foo/": {},
-        "/foo//": {},
+        "/foo//": {}
       }
     }"#;
     let import_map =
@@ -899,7 +899,7 @@ mod tests {
       "scopes": {
         "foo/\\": {},
         "foo//": {},
-        "foo\\\\": {},
+        "foo\\\\": {}
       }
     }"#;
     let import_map =
