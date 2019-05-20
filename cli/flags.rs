@@ -86,13 +86,6 @@ To get help on the another subcommands (run in this case):
         .takes_value(true)
         .global(true),
     ).arg(
-      Arg::with_name("importmap")
-        .long("importmap")
-        .value_name("FILE")
-        .help("Load import map file")
-        .takes_value(true)
-        .global(true),
-    ).arg(
       Arg::with_name("v8-options")
         .long("v8-options")
         .help("Print V8 command line options")
@@ -258,7 +251,13 @@ ability to spawn subprocesses.
           Arg::with_name("no-prompt")
             .long("no-prompt")
             .help("Do not use prompts"),
-        ).subcommand(
+        ).arg(
+      Arg::with_name("importmap")
+        .long("importmap")
+        .value_name("FILE")
+        .help("Load import map file")
+        .takes_value(true)
+    ).subcommand(
           // this is a fake subcommand - it's used in conjunction with
           // AppSettings:AllowExternalSubcommand to treat it as an
           // entry point script

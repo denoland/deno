@@ -258,14 +258,17 @@ impl ThreadSafeState {
     };
 
     let mut import_map = None;
-    if let Some(base_url) = &main_module {
-      if let Some(file_name) = &flags.import_map_path {
-        match ImportMap::load(base_url, file_name) {
-          Ok(map) => import_map = Some(map),
-          Err(err) => {
-            println!("{:?}", err);
-            panic!("Error parsing import map");
-          }
+    if let Some(file_name) = &flags.import_map_path {
+      let base_url = match &main_module {
+        Some(url) => url,
+        None => unreachable!(),
+      };
+
+      match ImportMap::load(base_url, file_name) {
+        Ok(map) => import_map = Some(map),
+        Err(err) => {
+          println!("{:?}", err);
+          panic!("Error parsing import map");
         }
       }
     }
