@@ -34,6 +34,7 @@ Here are the dedicated documentations of modules:
 - [strings](strings/README.md)
 - [testing](testing/README.md)
 - [toml](toml/README.md)
+- [ws](ws/README.md)
 
 ## Contributing
 
