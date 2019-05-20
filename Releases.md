@@ -6,6 +6,23 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.6.0 / 2019.05.20
+
+In deno:
+
+- Fix permissions for dial and listen (#2373)
+- Add crypto.getRandomValues() (#2327)
+- Don't print new line if progress bar was not used (#2374)
+- Remove FileInfo.path (#2313)
+
+In deno_std
+
+- Clean up HTTP async iterator code (denoland/deno_std#411)
+- fix: add exnext lib to tsconfig.json (denoland/deno_std#416)
+- feat(fs): add copy/copySync (denoland/deno_std#278)
+- feat: add Tar and Untar classes (denoland/deno_std#388)
+- ws: make acceptable() more robust (denoland/deno_std#404)
+
 ### v0.5.0 / 2019.05.11
 
 In deno:
