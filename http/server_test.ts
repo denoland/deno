@@ -22,31 +22,6 @@ const dec = new TextDecoder();
 
 type Handler = () => void;
 
-interface Deferred {
-  promise: Promise<{}>;
-  resolve: Handler;
-  reject: Handler;
-}
-
-function deferred(isResolved = false): Deferred {
-  let resolve: Handler = (): void => void 0;
-  let reject: Handler = (): void => void 0;
-  const promise = new Promise(
-    (res, rej): void => {
-      resolve = res;
-      reject = rej;
-    }
-  );
-  if (isResolved) {
-    resolve();
-  }
-  return {
-    promise,
-    resolve,
-    reject
-  };
-}
-
 const responseTests: ResponseTest[] = [
   // Default response
   {
@@ -72,8 +47,8 @@ test(async function responseWrite(): Promise<void> {
     const buf = new Buffer();
     const bufw = new BufWriter(buf);
     const request = new ServerRequest();
-    request.pipelineId = 1;
     request.w = bufw;
+
     request.conn = {
       localAddr: "",
       remoteAddr: "",
@@ -86,13 +61,12 @@ test(async function responseWrite(): Promise<void> {
       write: async (): Promise<number> => {
         return -1;
       },
-      close: (): void => {},
-      lastPipelineId: 0,
-      pendingDeferredMap: new Map([[0, deferred(true)], [1, deferred()]])
+      close: (): void => {}
     };
 
     await request.respond(testCase.response);
     assertEquals(buf.toString(), testCase.raw);
+    await request.done;
   }
 });
 
