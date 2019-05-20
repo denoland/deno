@@ -29,8 +29,8 @@ type ScopesMap = IndexMap<String, SpecifierMap>;
 #[derive(Debug)]
 pub struct ImportMap {
   base_url: String,
-  pub imports: SpecifierMap,
-  pub scopes: ScopesMap,
+  imports: SpecifierMap,
+  scopes: ScopesMap,
 }
 
 #[allow(dead_code)]
