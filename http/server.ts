@@ -8,7 +8,12 @@ import { BufReader, BufState, BufWriter } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { STATUS_TEXT } from "./http_status.ts";
 import { assert, fail } from "../testing/asserts.ts";
-import { deferred, Deferred, MuxAsyncIterator } from "../util/async.ts";
+import {
+  collectUint8Arrays,
+  deferred,
+  Deferred,
+  MuxAsyncIterator
+} from "../util/async.ts";
 
 function bufWriter(w: Writer): BufWriter {
   if (w instanceof BufWriter) {
@@ -92,28 +97,6 @@ export async function writeResponse(w: Writer, r: Response): Promise<void> {
     }
   }
   await writer.flush();
-}
-
-async function readAllIterator(
-  it: AsyncIterableIterator<Uint8Array>
-): Promise<Uint8Array> {
-  const chunks = [];
-  let len = 0;
-  for await (const chunk of it) {
-    chunks.push(chunk);
-    len += chunk.length;
-  }
-  if (chunks.length === 0) {
-    // No need for copy
-    return chunks[0];
-  }
-  const collected = new Uint8Array(len);
-  let offset = 0;
-  for (let chunk of chunks) {
-    collected.set(chunk, offset);
-    offset += chunk.length;
-  }
-  return collected;
 }
 
 export class ServerRequest {
@@ -203,7 +186,7 @@ export class ServerRequest {
 
   // Read the body of the request into a single Uint8Array
   public async body(): Promise<Uint8Array> {
-    return readAllIterator(this.bodyStream());
+    return collectUint8Arrays(this.bodyStream());
   }
 
   async respond(r: Response): Promise<void> {
