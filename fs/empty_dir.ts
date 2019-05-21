@@ -16,8 +16,9 @@ export async function emptyDir(dir: string): Promise<void> {
   }
   while (items.length) {
     const item = items.shift();
-    if (item && item.path) {
-      await Deno.remove(item.path, { recursive: true });
+    if (item && item.name) {
+      const fn = dir + "/" + item.name;
+      Deno.remove(fn, { recursive: true });
     }
   }
 }
@@ -39,8 +40,9 @@ export function emptyDirSync(dir: string): void {
   }
   while (items.length) {
     const item = items.shift();
-    if (item && item.path) {
-      Deno.removeSync(item.path, { recursive: true });
+    if (item && item.name) {
+      const fn = dir + "/" + item.name;
+      Deno.removeSync(fn, { recursive: true });
     }
   }
 }

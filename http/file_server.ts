@@ -149,19 +149,20 @@ async function serveDir(
   const listEntry: string[] = [];
   const fileInfos = await readDir(dirPath);
   for (const info of fileInfos) {
+    let fn = dirPath + "/" + info.name;
     if (info.name === "index.html" && info.isFile()) {
       // in case index.html as dir...
-      return await serveFile(req, info.path);
+      return await serveFile(req, fn);
     }
     // Yuck!
     let mode = null;
     try {
-      mode = (await stat(info.path)).mode;
+      mode = (await stat(fn)).mode;
     } catch (e) {}
     listEntry.push(
       createDirEntryDisplay(
         info.name,
-        dirName + "/" + info.name,
+        fn,
         info.isFile() ? info.len : null,
         mode,
         info.isDirectory()
