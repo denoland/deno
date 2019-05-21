@@ -145,7 +145,7 @@ async function copyDir(
   const files = await Deno.readDir(src);
 
   for (const file of files) {
-    const srcPath = file.path as string;
+    const srcPath = path.join(src, file.name);
     const destPath = path.join(dest, path.basename(srcPath as string));
     if (file.isDirectory()) {
       await copyDir(srcPath, destPath, options);
@@ -173,7 +173,7 @@ function copyDirSync(src: string, dest: string, options: CopyOptions): void {
   const files = Deno.readDirSync(src);
 
   for (const file of files) {
-    const srcPath = file.path as string;
+    const srcPath = path.join(src, file.name);
     const destPath = path.join(dest, path.basename(srcPath as string));
     if (file.isDirectory()) {
       copyDirSync(srcPath, destPath, options);
