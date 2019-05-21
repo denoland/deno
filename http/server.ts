@@ -312,7 +312,7 @@ export async function listenAndServe(
   const server = serve(addr);
 
   for await (const request of server) {
-    await handler(request);
+    handler(request);
   }
 }
 
