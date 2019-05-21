@@ -10,6 +10,7 @@ import "./http/test.ts";
 import "./io/test.ts";
 import "./log/test.ts";
 import "./media_types/test.ts";
+import "./mime/test.ts";
 import "./multipart/test.ts";
 import "./prettier/test.ts";
 import "./strings/test.ts";
