@@ -7,7 +7,7 @@ const knownPermissions: Deno.Permission[] = [
   "write",
   "net",
   "env",
-  "highPrecision"
+  "hrtime"
 ];
 
 for (let grant of knownPermissions) {

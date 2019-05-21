@@ -298,7 +298,7 @@ table PermissionsRes {
   write: bool;
   net: bool;
   env: bool;
-  high_precision: bool;
+  hrtime: bool;
 }
 
 // Note this represents The WHOLE header of an http message, not just the key
