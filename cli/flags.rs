@@ -398,7 +398,7 @@ pub fn parse_flags(matches: ArgMatches) -> DenoFlags {
 }
 
 /// Used for `deno fmt <files>...` subcommand
-const PRETTIER_URL: &str = "https://deno.land/std/prettier/main.ts";
+const PRETTIER_URL: &str = "https://deno.land/std@20190520/prettier/main.ts";
 
 /// These are currently handled subcommands.
 /// There is no "Help" subcommand because it's handled by `clap::App` itself.
