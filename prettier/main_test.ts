@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { join } from "../fs/path.ts";
+import { EOL } from "../fs/path/constants.ts";
 import { assertEquals } from "../testing/asserts.ts";
 import { test } from "../testing/mod.ts";
 import { xrun } from "./util.ts";
@@ -59,7 +60,7 @@ test(async function testPrettierCheckAndFormatFiles(): Promise<void> {
   assertEquals(code, 1);
   assertEquals(normalizeOutput(stdout), "Some files are not formatted");
 
-  var { code, stdout } = await run([...cmd, ...files]);
+  var { code, stdout } = await run([...cmd, "--write", ...files]);
   assertEquals(code, 0);
   assertEquals(
     normalizeOutput(stdout),
@@ -83,7 +84,7 @@ test(async function testPrettierCheckAndFormatDirs(): Promise<void> {
   assertEquals(code, 1);
   assertEquals(normalizeOutput(stdout), "Some files are not formatted");
 
-  var { code, stdout } = await run([...cmd, ...dirs]);
+  var { code, stdout } = await run([...cmd, "--write", ...dirs]);
   assertEquals(code, 0);
   assertEquals(
     normalizeOutput(stdout),
@@ -111,7 +112,7 @@ test(async function testPrettierOptions(): Promise<void> {
   const getSourceCode = async (f: string): Promise<string> =>
     decoder.decode(await Deno.readFile(f));
 
-  await run([...cmd, "--no-semi", file0]);
+  await run([...cmd, "--no-semi", "--write", file0]);
   assertEquals(
     normalizeSourceCode(await getSourceCode(file0)),
     `console.log(0)
@@ -119,7 +120,15 @@ console.log([function foo() {}, function baz() {}, a => {}])
 `
   );
 
-  await run([...cmd, "--print-width", "30", "--tab-width", "4", file0]);
+  await run([
+    ...cmd,
+    "--print-width",
+    "30",
+    "--tab-width",
+    "4",
+    "--write",
+    file0
+  ]);
   assertEquals(
     normalizeSourceCode(await getSourceCode(file0)),
     `console.log(0);
@@ -131,7 +140,7 @@ console.log([
 `
   );
 
-  await run([...cmd, "--print-width", "30", "--use-tabs", file0]);
+  await run([...cmd, "--print-width", "30", "--use-tabs", "--write", file0]);
   assertEquals(
     normalizeSourceCode(await getSourceCode(file0)),
     `console.log(0);
@@ -143,14 +152,22 @@ console.log([
 `
   );
 
-  await run([...cmd, "--single-quote", file1]);
+  await run([...cmd, "--single-quote", "--write", file1]);
   assertEquals(
     normalizeSourceCode(await getSourceCode(file1)),
     `console.log('1');
 `
   );
 
-  await run([...cmd, "--print-width", "30", "--trailing-comma", "all", file0]);
+  await run([
+    ...cmd,
+    "--print-width",
+    "30",
+    "--trailing-comma",
+    "all",
+    "--write",
+    file0
+  ]);
   assertEquals(
     normalizeSourceCode(await getSourceCode(file0)),
     `console.log(0);
@@ -162,14 +179,14 @@ console.log([
 `
   );
 
-  await run([...cmd, "--no-bracket-spacing", file2]);
+  await run([...cmd, "--no-bracket-spacing", "--write", file2]);
   assertEquals(
     normalizeSourceCode(await getSourceCode(file2)),
     `console.log({a: 1});
 `
   );
 
-  await run([...cmd, "--arrow-parens", "always", file0]);
+  await run([...cmd, "--arrow-parens", "always", "--write", file0]);
   assertEquals(
     normalizeSourceCode(await getSourceCode(file0)),
     `console.log(0);
@@ -177,7 +194,7 @@ console.log([function foo() {}, function baz() {}, (a) => {}]);
 `
   );
 
-  await run([...cmd, "--prose-wrap", "always", file3]);
+  await run([...cmd, "--prose-wrap", "always", "--write", file3]);
   assertEquals(
     normalizeSourceCode(await getSourceCode(file3)),
     `Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
@@ -185,8 +202,32 @@ incididunt ut labore et dolore magna aliqua.
 `
   );
 
-  await run([...cmd, "--end-of-line", "crlf", file2]);
+  await run([...cmd, "--end-of-line", "crlf", "--write", file2]);
   assertEquals(await getSourceCode(file2), "console.log({ a: 1 });\r\n");
+
+  await clearTestdataChanges();
+});
+
+test(async function testPrettierPrintToStdout(): Promise<void> {
+  await clearTestdataChanges();
+
+  const file0 = join(testdata, "0.ts");
+  const file1 = join(testdata, "formatted.ts");
+
+  const getSourceCode = async (f: string): Promise<string> =>
+    decoder.decode(await Deno.readFile(f));
+
+  const { stdout } = await run([...cmd, file0]);
+  // The source file will not change without `--write` flags.
+  assertEquals(await getSourceCode(file0), "console.log (0)" + EOL);
+  // The output should be formatted code.
+  assertEquals(stdout, "console.log(0);" + EOL);
+
+  const { stdout: formattedCode } = await run([...cmd, file1]);
+  // The source file will not change without `--write` flags.
+  assertEquals(await getSourceCode(file1), "console.log(0);" + EOL);
+  // The output will be formatted code even it is the same as the source file's content.
+  assertEquals(formattedCode, "console.log(0);" + EOL);
 
   await clearTestdataChanges();
 });
