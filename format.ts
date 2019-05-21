@@ -16,7 +16,8 @@ async function main(opts): Promise<void> {
     "--ignore",
     "testdata",
     "--ignore",
-    "vendor"
+    "vendor",
+    "--write"
   ];
 
   if (opts.check) {

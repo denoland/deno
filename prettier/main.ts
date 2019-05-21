@@ -11,7 +11,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 // This script formats the given source files. If the files are omitted, it
 // formats the all files in the repository.
-const { args, exit, readFile, writeFile } = Deno;
+const { args, exit, readFile, writeFile, stdout } = Deno;
 import { glob } from "../fs/glob.ts";
 import { walk, WalkInfo } from "../fs/walk.ts";
 import { parse } from "../flags/mod.ts";
@@ -25,6 +25,7 @@ Usage: deno prettier/main.ts [options] [files...]
 Options:
   -H, --help                 Show this help message and exit.
   --check                    Check if the source files are formatted.
+  --write                    Whether to write to the file, otherwise it will output to stdout, Defaults to false.
   --ignore <path>            Ignore the given path(s).
 
 JS/TS Styling Options:
@@ -54,14 +55,17 @@ Markdown Styling Options:
                              Defaults to preserve.
 
 Example:
-  deno prettier/main.ts script1.ts script2.js
+  deno run prettier/main.ts --write script1.ts script2.js
                              Formats the files
 
-  deno prettier/main.ts --check script1.ts script2.js
+  deno run prettier/main.ts --check script1.ts script2.js
                              Checks if the files are formatted
 
-  deno prettier/main.ts
+  deno run prettier/main.ts --write
                              Formats the all files in the repository
+
+  deno run prettier/main.ts script1.ts
+                             Print the formatted code to stdout
 `;
 
 // Available parsers
@@ -78,6 +82,7 @@ interface PrettierOptions {
   arrowParens: string;
   proseWrap: string;
   endOfLine: string;
+  write: boolean;
 }
 
 const encoder = new TextEncoder();
@@ -139,15 +144,20 @@ async function formatFile(
     return;
   }
 
-  const formatted = prettier.format(text, {
+  const formatted: string = prettier.format(text, {
     ...prettierOpts,
     parser,
     plugins: prettierPlugins
   });
 
-  if (text !== formatted) {
-    console.log(`Formatting ${filename}`);
-    await writeFile(filename, encoder.encode(formatted));
+  const fileUnit8 = encoder.encode(formatted);
+  if (prettierOpts.write) {
+    if (text !== formatted) {
+      console.log(`Formatting ${filename}`);
+      await writeFile(filename, fileUnit8);
+    }
+  } else {
+    await stdout.write(fileUnit8);
   }
 }
 
@@ -230,7 +240,8 @@ async function main(opts): Promise<void> {
     bracketSpacing: Boolean(opts["bracket-spacing"]),
     arrowParens: opts["arrow-parens"],
     proseWrap: opts["prose-wrap"],
-    endOfLine: opts["end-of-line"]
+    endOfLine: opts["end-of-line"],
+    write: opts["write"]
   };
 
   if (help) {
@@ -275,7 +286,8 @@ main(
       "semi",
       "use-tabs",
       "single-quote",
-      "bracket-spacing"
+      "bracket-spacing",
+      "write"
     ],
     default: {
       ignore: [],
@@ -288,7 +300,8 @@ main(
       "bracket-spacing": true,
       "arrow-parens": "avoid",
       "prose-wrap": "preserve",
-      "end-of-line": "auto"
+      "end-of-line": "auto",
+      write: false
     },
     alias: {
       H: "help"
