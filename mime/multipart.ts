@@ -5,7 +5,7 @@ type Closer = Deno.Closer;
 type Reader = Deno.Reader;
 type ReadResult = Deno.ReadResult;
 type Writer = Deno.Writer;
-import { FormFile } from "./formfile.ts";
+import { FormFile } from "../multipart/formfile.ts";
 import {
   bytesFindIndex,
   bytesFindLastIndex,
