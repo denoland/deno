@@ -49,21 +49,6 @@ test(async function responseWrite(): Promise<void> {
     const request = new ServerRequest();
     request.w = bufw;
 
-    request.conn = {
-      localAddr: "",
-      remoteAddr: "",
-      rid: -1,
-      closeRead: (): void => {},
-      closeWrite: (): void => {},
-      read: async (): Promise<Deno.ReadResult> => {
-        return { eof: true, nread: 0 };
-      },
-      write: async (): Promise<number> => {
-        return -1;
-      },
-      close: (): void => {}
-    };
-
     await request.respond(testCase.response);
     assertEquals(buf.toString(), testCase.raw);
     await request.done;
