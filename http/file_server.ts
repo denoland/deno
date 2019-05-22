@@ -162,7 +162,7 @@ async function serveDir(
     listEntry.push(
       createDirEntryDisplay(
         info.name,
-        fn,
+        fn.replace(currentDir, ""),
         info.isFile() ? info.len : null,
         mode,
         info.isDirectory()
