@@ -7,8 +7,13 @@
 
 const { Buffer } = Deno;
 import { test, runIfMain } from "../testing/mod.ts";
-import { assertEquals } from "../testing/asserts.ts";
-import { Response, ServerRequest, writeResponse } from "./server.ts";
+import { assert, assertEquals } from "../testing/asserts.ts";
+import {
+  Response,
+  ServerRequest,
+  writeResponse,
+  readRequest
+} from "./server.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { StringReader } from "../io/readers.ts";
 
@@ -283,4 +288,83 @@ test(async function writeStringReaderResponse(): Promise<void> {
   assertEquals(decoder.decode(line), "0");
 });
 
+test(async function readRequestError(): Promise<void> {
+  let input = `GET / HTTP/1.1
+malformedHeader
+`;
+  const reader = new BufReader(new StringReader(input));
+  let err;
+  try {
+    await readRequest(reader);
+  } catch (e) {
+    err = e;
+  }
+  assert(err instanceof Error);
+  assertEquals(err.message, "malformed MIME header line: malformedHeader");
+});
+
+// Ported from Go
+// https://github.com/golang/go/blob/go1.12.5/src/net/http/request_test.go#L377-L443
+// TODO(zekth) fix tests
+test(async function testReadRequestError(): Promise<void> {
+  const testCases = {
+    0: {
+      in: "GET / HTTP/1.1\r\nheader: foo\r\n\r\n",
+      headers: [{ key: "header", value: "foo" }],
+      err: null
+    },
+    1: { in: "GET / HTTP/1.1\r\nheader:foo\r\n", err: "EOF", headers: [] },
+    2: { in: "", err: "EOF", headers: [] },
+    // 3: {
+    //   in: "HEAD / HTTP/1.1\r\nContent-Length:4\r\n\r\n",
+    //   err: "http: method cannot contain a Content-Length"
+    // },
+    4: {
+      in: "HEAD / HTTP/1.1\r\n\r\n",
+      headers: [],
+      err: null
+    }
+    // Multiple Content-Length values should either be
+    // deduplicated if same or reject otherwise
+    // See Issue 16490.
+    // 5: {
+    //   in:
+    //     "POST / HTTP/1.1\r\nContent-Length: 10\r\nContent-Length: 0\r\n\r\nGopher hey\r\n",
+    //   err: "cannot contain multiple Content-Length headers"
+    // },
+    // 6: {
+    //   in:
+    //     "POST / HTTP/1.1\r\nContent-Length: 10\r\nContent-Length: 6\r\n\r\nGopher\r\n",
+    //   err: "cannot contain multiple Content-Length headers"
+    // },
+    // 7: {
+    //   in:
+    //     "PUT / HTTP/1.1\r\nContent-Length: 6 \r\nContent-Length: 6\r\nContent-Length:6\r\n\r\nGopher\r\n",
+    //   err: null,
+    //   headers: [{ key: "Content-Length", value: "6" }]
+    // },
+    // 8: {
+    //   in: "PUT / HTTP/1.1\r\nContent-Length: 1\r\nContent-Length: 6 \r\n\r\n",
+    //   err: "cannot contain multiple Content-Length headers"
+    // },
+    // 9: {
+    //   in: "POST / HTTP/1.1\r\nContent-Length:\r\nContent-Length: 3\r\n\r\n",
+    //   err: "cannot contain multiple Content-Length headers"
+    // },
+    // 10: {
+    //   in: "HEAD / HTTP/1.1\r\nContent-Length:0\r\nContent-Length: 0\r\n\r\n",
+    //   headers: [{ key: "Content-Length", value: "0" }],
+    //   err: null
+    // }
+  };
+  for (const p in testCases) {
+    const test = testCases[p];
+    const reader = new BufReader(new StringReader(test.in));
+    const [req, err] = await readRequest(reader);
+    assertEquals(test.err, err);
+    for (const h of test.headers) {
+      assertEquals(req.headers.get(h.key), h.value);
+    }
+  }
+});
 runIfMain(import.meta);
