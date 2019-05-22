@@ -197,7 +197,7 @@ export class ServerRequest {
   }
 }
 
-async function readRequest(
+export async function readRequest(
   bufr: BufReader
 ): Promise<[ServerRequest, BufState]> {
   const req = new ServerRequest();
@@ -235,7 +235,11 @@ export class Server implements AsyncIterable<ServerRequest> {
     let req: ServerRequest;
 
     while (!this.closing) {
-      [req, bufStateErr] = await readRequest(bufr);
+      try {
+        [req, bufStateErr] = await readRequest(bufr);
+      } catch (err) {
+        bufStateErr = err;
+      }
       if (bufStateErr) break;
       req.w = w;
       yield req;
@@ -247,7 +251,11 @@ export class Server implements AsyncIterable<ServerRequest> {
     if (bufStateErr === "EOF") {
       // The connection was gracefully closed.
     } else if (bufStateErr instanceof Error) {
-      // TODO(ry): send something back like a HTTP 500 status.
+      // An error was thrown while parsing request headers.
+      await writeResponse(req.w, {
+        status: 400,
+        body: new TextEncoder().encode(`${bufStateErr.message}\r\n\r\n`)
+      });
     } else if (this.closing) {
       // There are more requests incoming but the server is closing.
       // TODO(ry): send a back a HTTP 503 Service Unavailable status.
