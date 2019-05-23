@@ -117,17 +117,17 @@ class Prompt(object):
 
         test_name = "net_dial"
         test_name_base = "test_" + test_name
-        wrap_test(test_name_base + "_allow_localhost_4545",
-                  self.test_allow_localhost_4545, test_name,
-                  ["localhost:4545"])
+        wrap_test(test_name_base + "_allow_127.0.0.1:4545",
+                  self.test_allow_localhost_ip_4555, test_name,
+                  ["127.0.0.1:4545"])
         wrap_test(test_name_base + "_allow_deno_land",
-                  self.test_allow_deno_land, test_name, ["localhost:4545"])
-        wrap_test(test_name_base + "_allow_localhost_4545_fail",
-                  self.test_allow_localhost_4545_fail, test_name,
-                  ["localhost:4546"])
-        wrap_test(test_name_base + "_allow_localhost",
-                  self.test_allow_localhost, test_name,
-                  ["localhost:4545", "localhost:4546", "localhost:4547"])
+                  self.test_allow_deno_land, test_name, ["127.0.0.1:4545"])
+        wrap_test(test_name_base + "_allow_127.0.0.1:4545_fail",
+                  self.test_allow_localhost_ip_4545_fail, test_name,
+                  ["127.0.0.1:4546"])
+        wrap_test(test_name_base + "_allow_127.0.0.1",
+                  self.test_allow_localhost_ip, test_name,
+                  ["127.0.0.1:4545", "127.0.0.1:4546", "127.0.0.1:4547"])
 
         test_name = "net_listen"
         test_name_base = "test_" + test_name
@@ -213,9 +213,25 @@ class Prompt(object):
         os.chdir(saved_curdir)
 
     # net tests
+    def test_allow_net(self, test_type, allowed_host, hosts):
+        code, _stdout, stderr = self.run(
+            ["--no-prompt", "--allow-net=" + allowed_host],
+            [test_type] + hosts, b'')
+        assert code == 0
+        assert not PROMPT_PATTERN in stderr
+        assert not PERMISSION_DENIED_PATTERN in stderr
+
     def test_allow_localhost_4545(self, test_type, hosts):
         code, _stdout, stderr = self.run(
             ["--no-prompt", "--allow-net=localhost:4545"], [test_type] + hosts,
+            b'')
+        assert code == 0
+        assert not PROMPT_PATTERN in stderr
+        assert not PERMISSION_DENIED_PATTERN in stderr
+
+    def test_allow_localhost_ip_4555(self, test_type, hosts):
+        code, _stdout, stderr = self.run(
+            ["--no-prompt", "--allow-net=127.0.0.1:4545"], [test_type] + hosts,
             b'')
         assert code == 0
         assert not PROMPT_PATTERN in stderr
@@ -244,6 +260,14 @@ class Prompt(object):
         assert not PROMPT_PATTERN in stderr
         assert PERMISSION_DENIED_PATTERN in stderr
 
+    def test_allow_localhost_ip_4545_fail(self, test_type, hosts):
+        code, _stdout, stderr = self.run(
+            ["--no-prompt", "--allow-net=127.0.0.1:4545"], [test_type] + hosts,
+            b'')
+        assert code == 1
+        assert not PROMPT_PATTERN in stderr
+        assert PERMISSION_DENIED_PATTERN in stderr
+
     def test_allow_localhost_4555_fail(self, test_type, hosts):
         code, _stdout, stderr = self.run(
             ["--no-prompt", "--allow-net=localhost:4555"], [test_type] + hosts,
@@ -255,6 +279,13 @@ class Prompt(object):
     def test_allow_localhost(self, test_type, hosts):
         code, _stdout, stderr = self.run(
             ["--no-prompt", "--allow-net=localhost"], [test_type] + hosts, b'')
+        assert code == 0
+        assert not PROMPT_PATTERN in stderr
+        assert not PERMISSION_DENIED_PATTERN in stderr
+
+    def test_allow_localhost_ip(self, test_type, hosts):
+        code, _stdout, stderr = self.run(
+            ["--no-prompt", "--allow-net=127.0.0.1"], [test_type] + hosts, b'')
         assert code == 0
         assert not PROMPT_PATTERN in stderr
         assert not PERMISSION_DENIED_PATTERN in stderr
