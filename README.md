@@ -33,7 +33,7 @@ Here are the dedicated documentations of modules:
 - [prettier](prettier/README.md)
 - [strings](strings/README.md)
 - [testing](testing/README.md)
-- [toml](toml/README.md)
+- [toml](encoding/toml/README.md)
 - [ws](ws/README.md)
 
 ## Contributing

@@ -3,9 +3,10 @@ import { test } from "../testing/mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
 import { existsSync } from "../fs/exists.ts";
 import { readFileStrSync } from "../fs/read_file_str.ts";
-import { parse, stringify } from "./parser.ts";
+import { parse, stringify } from "./toml.ts";
 import * as path from "../fs/path/mod.ts";
-const testFilesDir = path.resolve("toml", "testdata");
+
+const testFilesDir = path.resolve("encoding", "testdata");
 
 function parseFile(filePath: string): object {
   if (!existsSync(filePath)) {

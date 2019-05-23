@@ -3,6 +3,7 @@
 import "./archive/tar_test.ts";
 import "./colors/test.ts";
 import "./datetime/test.ts";
+import "./encoding/test.ts";
 import "./examples/test.ts";
 import "./flags/test.ts";
 import "./fs/test.ts";
@@ -16,7 +17,6 @@ import "./prettier/test.ts";
 import "./strings/test.ts";
 import "./testing/test.ts";
 import "./textproto/test.ts";
-import "./toml/test.ts";
 import "./util/test.ts";
 import "./ws/test.ts";
 
