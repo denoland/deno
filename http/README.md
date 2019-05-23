@@ -7,36 +7,46 @@ A framework for creating HTTP/HTTPS server.
 Helper to manipulate `Cookie` throught `ServerRequest` and `Response`.
 
 ```ts
+import { ServerRequest } from "https://deno.land/std/http/server.ts";
 import { getCookies } from "https://deno.land/std/http/cookie.ts";
 
-let req = new ServerRequest();
-req.headers = new Headers();
-req.headers.set("Cookie", "full=of; tasty=chocolate");
+let request = new ServerRequest();
+request.headers = new Headers();
+request.headers.set("Cookie", "full=of; tasty=chocolate");
 
-const c = getCookies(request);
-// c = { full: "of", tasty: "chocolate" }
+const cookies = getCookies(request);
+console.log("cookies:", cookies);
+// cookies: { full: "of", tasty: "chocolate" }
 ```
 
 To set a `Cookie` you can add `CookieOptions` to properly set your `Cookie`
 
 ```ts
-import { setCookie } from "https://deno.land/std/http/cookie.ts";
+import { Response } from "https://deno.land/std/http/server.ts";
+import { Cookie, setCookie } from "https://deno.land/std/http/cookie.ts";
 
-let res: Response = {};
-res.headers = new Headers();
-setCookie(res, { name: "Space", value: "Cat" });
+let response: Response = {};
+const cookie: Cookie = { name: "Space", value: "Cat" };
+setCookie(response, cookie);
+
+const cookieHeader = response.headers.get("set-cookie");
+console.log("Set-Cookie:", cookieHeader);
+// Set-Cookie: Space=Cat
 ```
 
 Deleting a `Cookie` will set its expiration date before now.
 Forcing the browser to delete it.
 
 ```ts
+import { Response } from "https://deno.land/std/http/server.ts";
 import { delCookie } from "https://deno.land/std/http/cookie.ts";
 
-let res = new Response();
-delCookie(res, "deno");
-// Will append this header in the response
-// "Set-Cookie: deno=; Expires=Thus, 01 Jan 1970 00:00:00 GMT"
+let response: Response = {};
+delCookie(response, "deno");
+
+const cookieHeader = response.headers.get("set-cookie");
+console.log("Set-Cookie:", cookieHeader);
+// Set-Cookie: deno=; Expires=Thus, 01 Jan 1970 00:00:00 GMT
 ```
 
 **Note**: At the moment multiple `Set-Cookie` in a `Response` is not handled.
