@@ -1,0 +1,2 @@
+args: run --allow-hrtime --reload tests/025_hrtime.ts
+output: tests/025_hrtime.ts.out
