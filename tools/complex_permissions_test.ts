@@ -24,7 +24,6 @@ const test: (args: string[]) => void = {
   },
   net_dial: async (hosts: string[]): Promise<void> => {
     for (const host of hosts) {
-      console.log("host in dial:", host);
       const listener = await Deno.dial("tcp", host);
       listener.close();
     }
