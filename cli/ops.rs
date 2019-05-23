@@ -1625,19 +1625,18 @@ fn op_listen(
   data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
   assert!(data.is_none());
-  if let Err(e) = state.check_net("listen") {
-    return odd_future(e);
-  }
-
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_listen().unwrap();
   let network = inner.network().unwrap();
   assert_eq!(network, "tcp");
   let address = inner.address().unwrap();
 
+  if let Err(e) = state.check_net(&address) {
+    return odd_future(e);
+  }
+
   Box::new(futures::future::result((move || {
     let addr = resolve_addr(address).wait()?;
-
     let listener = TcpListener::bind(&addr)?;
     let resource = resources::add_tcp_listener(listener);
 
@@ -1682,14 +1681,11 @@ fn new_conn(cmd_id: u32, tcp_stream: TcpStream) -> OpResult {
 }
 
 fn op_accept(
-  state: &ThreadSafeState,
+  _state: &ThreadSafeState,
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
   assert!(data.is_none());
-  if let Err(e) = state.check_net("accept") {
-    return odd_future(e);
-  }
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_accept().unwrap();
   let server_rid = inner.rid();
@@ -1713,14 +1709,15 @@ fn op_dial(
   data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
   assert!(data.is_none());
-  if let Err(e) = state.check_net("dial") {
-    return odd_future(e);
-  }
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_dial().unwrap();
   let network = inner.network().unwrap();
   assert_eq!(network, "tcp"); // TODO Support others.
   let address = inner.address().unwrap();
+
+  if let Err(e) = state.check_net(&address) {
+    return odd_future(e);
+  }
 
   let op =
     resolve_addr(address)

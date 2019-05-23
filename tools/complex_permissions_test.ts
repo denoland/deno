@@ -11,8 +11,22 @@ const test: (args: string[]) => void = {
       (file): any => writeFileSync(file, new Uint8Array(), { append: true })
     );
   },
-  net: (hosts: string[]): void => {
+  net_fetch: (hosts: string[]): void => {
     hosts.forEach((host): any => fetch(host));
+  },
+  net_listen: (hosts: string[]): void => {
+    hosts.forEach(
+      (host): any => {
+        const listener = Deno.listen("tcp", host);
+        listener.close();
+      }
+    );
+  },
+  net_dial: async (hosts: string[]): Promise<void> => {
+    for (const host of hosts) {
+      const listener = await Deno.dial("tcp", host);
+      listener.close();
+    }
   }
 }[name];
 
