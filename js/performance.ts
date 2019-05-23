@@ -5,9 +5,9 @@ import * as flatbuffers from "./flatbuffers";
 import { assert } from "./util";
 
 export class Performance {
-  /** Returns a current time from Deno's start.
-   *  In milliseconds. Flag --allow-high-precision give
-   *  a precise measure.
+  /** Returns a current time from Deno's start in milliseconds.
+   *
+   * Use the flag --allow-hrtime return a precise value.
    *
    *       const t = performance.now();
    *       console.log(`${t} ms since start!`);

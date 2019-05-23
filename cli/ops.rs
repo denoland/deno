@@ -261,7 +261,7 @@ fn op_now(
   // If the permission is not enabled
   // Round the nano result on 2 milliseconds
   // see: https://developer.mozilla.org/en-US/docs/Web/API/DOMHighResTimeStamp#Reduced_time_precision
-  if !state.permissions.allows_high_precision() {
+  if !state.permissions.allows_hrtime() {
     subsec_nanos -= subsec_nanos % reduced_time_precision
   }
 
@@ -640,7 +640,7 @@ fn op_permissions(
       write: state.permissions.allows_write(),
       net: state.permissions.allows_net(),
       env: state.permissions.allows_env(),
-      high_precision: state.permissions.allows_high_precision(),
+      hrtime: state.permissions.allows_hrtime(),
     },
   );
   ok_future(serialize_response(
@@ -668,7 +668,7 @@ fn op_revoke_permission(
     "write" => state.permissions.revoke_write(),
     "net" => state.permissions.revoke_net(),
     "env" => state.permissions.revoke_env(),
-    "highPrecision" => state.permissions.revoke_high_precision(),
+    "hrtime" => state.permissions.revoke_hrtime(),
     _ => Ok(()),
   };
   if let Err(e) = result {

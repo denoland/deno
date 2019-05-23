@@ -135,7 +135,7 @@ pub struct DenoPermissions {
   pub net_whitelist: Arc<HashSet<String>>,
   pub allow_env: PermissionAccessor,
   pub allow_run: PermissionAccessor,
-  pub allow_high_precision: PermissionAccessor,
+  pub allow_hrtime: PermissionAccessor,
   pub no_prompts: AtomicBool,
 }
 
@@ -152,9 +152,7 @@ impl DenoPermissions {
       net_whitelist: Arc::new(flags.net_whitelist.iter().cloned().collect()),
       allow_env: PermissionAccessor::from(flags.allow_env),
       allow_run: PermissionAccessor::from(flags.allow_run),
-      allow_high_precision: PermissionAccessor::from(
-        flags.allow_high_precision,
-      ),
+      allow_hrtime: PermissionAccessor::from(flags.allow_hrtime),
       no_prompts: AtomicBool::new(flags.no_prompts),
     }
   }
@@ -350,8 +348,8 @@ impl DenoPermissions {
     self.allow_env.is_allow()
   }
 
-  pub fn allows_high_precision(&self) -> bool {
-    self.allow_high_precision.is_allow()
+  pub fn allows_hrtime(&self) -> bool {
+    self.allow_hrtime.is_allow()
   }
 
   pub fn revoke_run(&self) -> DenoResult<()> {
@@ -378,8 +376,8 @@ impl DenoPermissions {
     self.allow_env.revoke();
     Ok(())
   }
-  pub fn revoke_high_precision(&self) -> DenoResult<()> {
-    self.allow_high_precision.revoke();
+  pub fn revoke_hrtime(&self) -> DenoResult<()> {
+    self.allow_hrtime.revoke();
     Ok(())
   }
 }
