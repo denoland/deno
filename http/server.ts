@@ -66,6 +66,9 @@ export async function writeResponse(w: Writer, r: Response): Promise<void> {
   if (!statusText) {
     throw Error("bad status code");
   }
+  if (!r.body) {
+    r.body = new Uint8Array();
+  }
 
   let out = `HTTP/${protoMajor}.${protoMinor} ${statusCode} ${statusText}\r\n`;
 
@@ -79,22 +82,18 @@ export async function writeResponse(w: Writer, r: Response): Promise<void> {
   out += "\r\n";
 
   const header = new TextEncoder().encode(out);
-  let n = await writer.write(header);
-  assert(header.byteLength == n);
+  const n = await writer.write(header);
+  assert(n === header.byteLength);
 
-  if (r.body) {
-    if (r.body instanceof Uint8Array) {
-      n = await writer.write(r.body);
-      assert(r.body.byteLength == n);
-    } else {
-      if (r.headers.has("content-length")) {
-        const bodyLength = parseInt(r.headers.get("content-length"));
-        const n = await copy(writer, r.body);
-        assert(n == bodyLength);
-      } else {
-        await writeChunkedBody(writer, r.body);
-      }
-    }
+  if (r.body instanceof Uint8Array) {
+    const n = await writer.write(r.body);
+    assert(n === r.body.byteLength);
+  } else if (r.headers.has("content-length")) {
+    const bodyLength = parseInt(r.headers.get("content-length"));
+    const n = await copy(writer, r.body);
+    assert(n === bodyLength);
+  } else {
+    await writeChunkedBody(writer, r.body);
   }
   await writer.flush();
 }
