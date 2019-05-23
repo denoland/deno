@@ -208,10 +208,9 @@ impl Resource {
   // the resource from the RESOURCE_TABLE.
   pub fn close(&self) {
     let mut table = RESOURCE_TABLE.lock().unwrap();
-    let r = table.remove(&self.rid);
-    assert!(r.is_some());
+    let r = table.remove(&self.rid).unwrap();
     // If TcpListener, we must kill all pending accepts!
-    if let Repr::TcpListener(_, Some(t)) = r.unwrap() {
+    if let Repr::TcpListener(_, Some(t)) = r {
       // Call notify on the tracked task, so that they would error out.
       t.notify();
     }
