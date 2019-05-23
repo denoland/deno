@@ -205,10 +205,16 @@ Extra steps for Windows users:
 
 # Update third_party modules
 git submodule update
+
+# Skip downloading binary build tools and point the build
+# to the system provided ones (for packagers of deno ...).
+./tools/setup.py --no-binary-download
+export DENO_BUILD_ARGS="clang_base_path=/usr clang_use_chrome_plugins=false"
+DENO_GN_PATH=/usr/bin/gn DENO_NINJA_PATH=/usr/bin/ninja ./tools/build.py
 ```
 
 Environment variables: `DENO_BUILD_MODE`, `DENO_BUILD_PATH`, `DENO_BUILD_ARGS`,
-`DENO_DIR`.
+`DENO_DIR`, `DENO_GN_PATH`, `DENO_NINJA_PATH`.
 
 ## API reference
 
