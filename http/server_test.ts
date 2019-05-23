@@ -322,55 +322,67 @@ test(async function testReadRequestError(): Promise<void> {
     },
     1: { in: "GET / HTTP/1.1\r\nheader:foo\r\n", err: "EOF", headers: [] },
     2: { in: "", err: "EOF", headers: [] },
-    // 3: {
-    //   in: "HEAD / HTTP/1.1\r\nContent-Length:4\r\n\r\n",
-    //   err: "http: method cannot contain a Content-Length"
-    // },
+    3: {
+      in: "HEAD / HTTP/1.1\r\nContent-Length:4\r\n\r\n",
+      err: "http: method cannot contain a Content-Length"
+    },
     4: {
       in: "HEAD / HTTP/1.1\r\n\r\n",
       headers: [],
       err: null
-    }
+    },
     // Multiple Content-Length values should either be
     // deduplicated if same or reject otherwise
     // See Issue 16490.
-    // 5: {
-    //   in:
-    //     "POST / HTTP/1.1\r\nContent-Length: 10\r\nContent-Length: 0\r\n\r\nGopher hey\r\n",
-    //   err: "cannot contain multiple Content-Length headers"
-    // },
-    // 6: {
-    //   in:
-    //     "POST / HTTP/1.1\r\nContent-Length: 10\r\nContent-Length: 6\r\n\r\nGopher\r\n",
-    //   err: "cannot contain multiple Content-Length headers"
-    // },
-    // 7: {
-    //   in:
-    //     "PUT / HTTP/1.1\r\nContent-Length: 6 \r\nContent-Length: 6\r\nContent-Length:6\r\n\r\nGopher\r\n",
-    //   err: null,
-    //   headers: [{ key: "Content-Length", value: "6" }]
-    // },
-    // 8: {
-    //   in: "PUT / HTTP/1.1\r\nContent-Length: 1\r\nContent-Length: 6 \r\n\r\n",
-    //   err: "cannot contain multiple Content-Length headers"
-    // },
+    5: {
+      in:
+        "POST / HTTP/1.1\r\nContent-Length: 10\r\nContent-Length: 0\r\n\r\nGopher hey\r\n",
+      err: "cannot contain multiple Content-Length headers"
+    },
+    6: {
+      in:
+        "POST / HTTP/1.1\r\nContent-Length: 10\r\nContent-Length: 6\r\n\r\nGopher\r\n",
+      err: "cannot contain multiple Content-Length headers"
+    },
+    7: {
+      in:
+        "PUT / HTTP/1.1\r\nContent-Length: 6 \r\nContent-Length: 6\r\nContent-Length:6\r\n\r\nGopher\r\n",
+      err: null,
+      headers: [{ key: "Content-Length", value: "6" }]
+    },
+    8: {
+      in: "PUT / HTTP/1.1\r\nContent-Length: 1\r\nContent-Length: 6 \r\n\r\n",
+      err: "cannot contain multiple Content-Length headers"
+    },
+    // Setting an empty header is swallowed by textproto
+    // see: readMIMEHeader()
     // 9: {
     //   in: "POST / HTTP/1.1\r\nContent-Length:\r\nContent-Length: 3\r\n\r\n",
     //   err: "cannot contain multiple Content-Length headers"
     // },
-    // 10: {
-    //   in: "HEAD / HTTP/1.1\r\nContent-Length:0\r\nContent-Length: 0\r\n\r\n",
-    //   headers: [{ key: "Content-Length", value: "0" }],
-    //   err: null
-    // }
+    10: {
+      in: "HEAD / HTTP/1.1\r\nContent-Length:0\r\nContent-Length: 0\r\n\r\n",
+      headers: [{ key: "Content-Length", value: "0" }],
+      err: null
+    }
   };
   for (const p in testCases) {
     const test = testCases[p];
     const reader = new BufReader(new StringReader(test.in));
-    const [req, err] = await readRequest(reader);
-    assertEquals(test.err, err);
-    for (const h of test.headers) {
-      assertEquals(req.headers.get(h.key), h.value);
+    let _err;
+    if (test.err && test.err != "EOF") {
+      try {
+        await readRequest(reader);
+      } catch (e) {
+        _err = e;
+      }
+      assertEquals(_err.message, test.err);
+    } else {
+      const [req, err] = await readRequest(reader);
+      assertEquals(test.err, err);
+      for (const h of test.headers) {
+        assertEquals(req.headers.get(h.key), h.value);
+      }
     }
   }
 });
