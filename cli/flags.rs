@@ -23,7 +23,7 @@ pub struct DenoFlags {
   pub net_whitelist: Vec<String>,
   pub allow_env: bool,
   pub allow_run: bool,
-  pub allow_high_precision: bool,
+  pub allow_hrtime: bool,
   pub no_prompts: bool,
   pub no_fetch: bool,
   pub v8_flags: Option<Vec<String>>,
@@ -230,9 +230,9 @@ ability to spawn subprocesses.
             .long("allow-run")
             .help("Allow running subprocesses"),
         ).arg(
-          Arg::with_name("allow-high-precision")
-            .long("allow-high-precision")
-            .help("Allow high precision time measurement"),
+          Arg::with_name("allow-hrtime")
+            .long("allow-hrtime")
+            .help("Allow high resolution time measurement"),
         ).arg(
           Arg::with_name("allow-all")
             .short("A")
@@ -377,8 +377,8 @@ pub fn parse_flags(matches: ArgMatches) -> DenoFlags {
     if run_matches.is_present("allow-run") {
       flags.allow_run = true;
     }
-    if run_matches.is_present("allow-high-precision") {
-      flags.allow_high_precision = true;
+    if run_matches.is_present("allow-hrtime") {
+      flags.allow_hrtime = true;
     }
     if run_matches.is_present("allow-all") {
       flags.allow_read = true;
@@ -387,7 +387,7 @@ pub fn parse_flags(matches: ArgMatches) -> DenoFlags {
       flags.allow_run = true;
       flags.allow_read = true;
       flags.allow_write = true;
-      flags.allow_high_precision = true;
+      flags.allow_hrtime = true;
     }
     if run_matches.is_present("no-prompt") {
       flags.no_prompts = true;
@@ -429,7 +429,7 @@ pub fn flags_from_vec(
       flags.allow_run = true;
       flags.allow_read = true;
       flags.allow_write = true;
-      flags.allow_high_precision = true;
+      flags.allow_hrtime = true;
       let code: &str = eval_match.value_of("code").unwrap();
       argv.extend(vec![code.to_string()]);
       DenoSubcommand::Eval
@@ -487,7 +487,7 @@ pub fn flags_from_vec(
       flags.allow_run = true;
       flags.allow_read = true;
       flags.allow_write = true;
-      flags.allow_high_precision = true;
+      flags.allow_hrtime = true;
       let code: &str = eval_match.value_of("code").unwrap();
       flags.xeval_replvar =
         Some(eval_match.value_of("replvar").unwrap_or("$").to_owned());
@@ -505,7 +505,7 @@ pub fn flags_from_vec(
       flags.allow_run = true;
       flags.allow_read = true;
       flags.allow_write = true;
-      flags.allow_high_precision = true;
+      flags.allow_hrtime = true;
       DenoSubcommand::Repl
     }
   };
@@ -651,7 +651,7 @@ mod tests {
         allow_run: true,
         allow_read: true,
         allow_write: true,
-        allow_high_precision: true,
+        allow_hrtime: true,
         ..DenoFlags::default()
       }
     );
@@ -676,16 +676,12 @@ mod tests {
 
   #[test]
   fn test_flags_from_vec_9() {
-    let (flags, subcommand, argv) = flags_from_vec(svec![
-      "deno",
-      "run",
-      "--allow-high-precision",
-      "script.ts"
-    ]);
+    let (flags, subcommand, argv) =
+      flags_from_vec(svec!["deno", "run", "--allow-hrtime", "script.ts"]);
     assert_eq!(
       flags,
       DenoFlags {
-        allow_high_precision: true,
+        allow_hrtime: true,
         ..DenoFlags::default()
       }
     );
@@ -795,7 +791,7 @@ mod tests {
         allow_run: true,
         allow_read: true,
         allow_write: true,
-        allow_high_precision: true,
+        allow_hrtime: true,
         ..DenoFlags::default()
       }
     );
@@ -814,7 +810,7 @@ mod tests {
         allow_run: true,
         allow_read: true,
         allow_write: true,
-        allow_high_precision: true,
+        allow_hrtime: true,
         ..DenoFlags::default()
       }
     );
@@ -841,7 +837,7 @@ mod tests {
         allow_run: true,
         allow_read: true,
         allow_write: true,
-        allow_high_precision: true,
+        allow_hrtime: true,
         xeval_replvar: Some("val".to_owned()),
         xeval_delim: Some(" ".to_owned()),
         ..DenoFlags::default()
