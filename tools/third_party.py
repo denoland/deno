@@ -24,9 +24,16 @@ third_party_path = tp()
 depot_tools_path = tp("depot_tools")
 rust_crates_path = tp("rust_crates")
 python_packages_path = tp("python_packages")
-gn_path = tp(depot_tools_path, "gn")
 clang_format_path = tp(depot_tools_path, "clang-format")
-ninja_path = tp(depot_tools_path, "ninja")
+
+if "DENO_GN_PATH" in os.environ:
+    gn_path = os.environ["DENO_GN_PATH"]
+else:
+    gn_path = tp(depot_tools_path, "gn")
+if "DENO_NINJA_PATH" in os.environ:
+    ninja_path = os.environ["DENO_NINJA_PATH"]
+else:
+    ninja_path = tp(depot_tools_path, "ninja")
 
 python_site_env = None
 
