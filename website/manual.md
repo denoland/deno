@@ -326,6 +326,7 @@ const { permissions, revokePermission, open, remove } = Deno;
   revokePermission("write");
 
   // use the log file
+  const encoder = new TextEncoder();
   await log.write(encoder.encode("hello\n"));
 
   // this will prompt for the write permission or fail.
@@ -428,6 +429,7 @@ async function main() {
   const p = Deno.run({
     args: [
       "deno",
+      "run",
       "--allow-read",
       "https://deno.land/std/examples/cat.ts",
       ...fileNames
