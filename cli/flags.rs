@@ -57,7 +57,7 @@ To execute a sandboxed script:
 
 To evaluate code from the command line:
 
-  deno eval 'console.log(30933 + 404)'
+  deno eval \"console.log(30933 + 404)\"
 
 To get help on the another subcommands (run in this case):
 
@@ -156,7 +156,7 @@ The following information is shown:
 
 This command has implicit access to all permissions (equivalent to deno run --allow-all)
 
-  deno eval 'console.log(\"hello world\")'",
+  deno eval \"console.log('hello world')\"",
         ).arg(Arg::with_name("code").takes_value(true).required(true)),
     ).subcommand(
       SubCommand::with_name("fmt")
