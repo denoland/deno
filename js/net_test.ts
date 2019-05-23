@@ -21,7 +21,6 @@ testPerm({ net: true }, async function netCloseWhileAccept(): Promise<void> {
   assertEquals(err.message, "Listener has been closed");
 });
 
-/* TODO(ry) Re-enable this test.
 testPerm({ net: true }, async function netConcurrentAccept(): Promise<void> {
   const listener = Deno.listen("tcp", ":4502");
   let acceptErrCount = 0;
@@ -42,7 +41,6 @@ testPerm({ net: true }, async function netConcurrentAccept(): Promise<void> {
   await [p, p1];
   assertEquals(acceptErrCount, 1);
 });
-*/
 
 testPerm({ net: true }, async function netDialListen(): Promise<void> {
   const listener = Deno.listen("tcp", ":4500");
