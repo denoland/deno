@@ -428,6 +428,7 @@ async function main() {
   const p = Deno.run({
     args: [
       "deno",
+      "run",
       "--allow-read",
       "https://deno.land/std/examples/cat.ts",
       ...fileNames
