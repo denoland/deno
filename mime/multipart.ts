@@ -6,7 +6,7 @@ type Reader = Deno.Reader;
 type ReadResult = Deno.ReadResult;
 type Writer = Deno.Writer;
 import { FormFile } from "../multipart/formfile.ts";
-import { findIndex, findLastIndex, hasPrefix, equal } from "../bytes/bytes.ts";
+import * as bytes from "../bytes/mod.ts";
 import { copyN } from "../io/ioutil.ts";
 import { MultiReader } from "../io/readers.ts";
 import { tempFile } from "../io/util.ts";
@@ -55,7 +55,7 @@ export function scanUntilBoundary(
   state: BufState
 ): [number, BufState] {
   if (total === 0) {
-    if (hasPrefix(buf, dashBoundary)) {
+    if (bytes.hasPrefix(buf, dashBoundary)) {
       switch (matchAfterPrefix(buf, dashBoundary, state)) {
         case -1:
           return [dashBoundary.length, null];
@@ -64,12 +64,12 @@ export function scanUntilBoundary(
         case 1:
           return [0, "EOF"];
       }
-      if (hasPrefix(dashBoundary, buf)) {
+      if (bytes.hasPrefix(dashBoundary, buf)) {
         return [0, state];
       }
     }
   }
-  const i = findIndex(buf, newLineDashBoundary);
+  const i = bytes.findIndex(buf, newLineDashBoundary);
   if (i >= 0) {
     switch (matchAfterPrefix(buf.slice(i), newLineDashBoundary, state)) {
       case -1:
@@ -81,11 +81,11 @@ export function scanUntilBoundary(
         return [i, "EOF"];
     }
   }
-  if (hasPrefix(newLineDashBoundary, buf)) {
+  if (bytes.hasPrefix(newLineDashBoundary, buf)) {
     return [0, state];
   }
-  const j = findLastIndex(buf, newLineDashBoundary.slice(0, 1));
-  if (j >= 0 && hasPrefix(newLineDashBoundary, buf.slice(j))) {
+  const j = bytes.findLastIndex(buf, newLineDashBoundary.slice(0, 1));
+  if (j >= 0 && bytes.hasPrefix(newLineDashBoundary, buf.slice(j))) {
     return [j, null];
   }
   return [buf.length, state];
@@ -294,7 +294,7 @@ export class MultipartReader {
     if (this.currentPart) {
       this.currentPart.close();
     }
-    if (equal(this.dashBoundary, encoder.encode("--"))) {
+    if (bytes.equal(this.dashBoundary, encoder.encode("--"))) {
       throw new Error("boundary is empty");
     }
     let expectNewPart = false;
@@ -326,7 +326,7 @@ export class MultipartReader {
       if (this.partsRead === 0) {
         continue;
       }
-      if (equal(line, this.newLine)) {
+      if (bytes.equal(line, this.newLine)) {
         expectNewPart = true;
         continue;
       }
@@ -335,19 +335,19 @@ export class MultipartReader {
   }
 
   private isFinalBoundary(line: Uint8Array): boolean {
-    if (!hasPrefix(line, this.dashBoundaryDash)) {
+    if (!bytes.hasPrefix(line, this.dashBoundaryDash)) {
       return false;
     }
     let rest = line.slice(this.dashBoundaryDash.length, line.length);
-    return rest.length === 0 || equal(skipLWSPChar(rest), this.newLine);
+    return rest.length === 0 || bytes.equal(skipLWSPChar(rest), this.newLine);
   }
 
   private isBoundaryDelimiterLine(line: Uint8Array): boolean {
-    if (!hasPrefix(line, this.dashBoundary)) {
+    if (!bytes.hasPrefix(line, this.dashBoundary)) {
       return false;
     }
     const rest = line.slice(this.dashBoundary.length);
-    return equal(skipLWSPChar(rest), this.newLine);
+    return bytes.equal(skipLWSPChar(rest), this.newLine);
   }
 }
 
