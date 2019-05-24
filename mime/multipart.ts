@@ -6,12 +6,7 @@ type Reader = Deno.Reader;
 type ReadResult = Deno.ReadResult;
 type Writer = Deno.Writer;
 import { FormFile } from "../multipart/formfile.ts";
-import {
-  bytesFindIndex,
-  bytesFindLastIndex,
-  bytesHasPrefix,
-  bytesEqual
-} from "../bytes/bytes.ts";
+import { findIndex, findLastIndex, hasPrefix, equal } from "../bytes/bytes.ts";
 import { copyN } from "../io/ioutil.ts";
 import { MultiReader } from "../io/readers.ts";
 import { tempFile } from "../io/util.ts";
@@ -60,7 +55,7 @@ export function scanUntilBoundary(
   state: BufState
 ): [number, BufState] {
   if (total === 0) {
-    if (bytesHasPrefix(buf, dashBoundary)) {
+    if (hasPrefix(buf, dashBoundary)) {
       switch (matchAfterPrefix(buf, dashBoundary, state)) {
         case -1:
           return [dashBoundary.length, null];
@@ -69,12 +64,12 @@ export function scanUntilBoundary(
         case 1:
           return [0, "EOF"];
       }
-      if (bytesHasPrefix(dashBoundary, buf)) {
+      if (hasPrefix(dashBoundary, buf)) {
         return [0, state];
       }
     }
   }
-  const i = bytesFindIndex(buf, newLineDashBoundary);
+  const i = findIndex(buf, newLineDashBoundary);
   if (i >= 0) {
     switch (matchAfterPrefix(buf.slice(i), newLineDashBoundary, state)) {
       case -1:
@@ -86,11 +81,11 @@ export function scanUntilBoundary(
         return [i, "EOF"];
     }
   }
-  if (bytesHasPrefix(newLineDashBoundary, buf)) {
+  if (hasPrefix(newLineDashBoundary, buf)) {
     return [0, state];
   }
-  const j = bytesFindLastIndex(buf, newLineDashBoundary.slice(0, 1));
-  if (j >= 0 && bytesHasPrefix(newLineDashBoundary, buf.slice(j))) {
+  const j = findLastIndex(buf, newLineDashBoundary.slice(0, 1));
+  if (j >= 0 && hasPrefix(newLineDashBoundary, buf.slice(j))) {
     return [j, null];
   }
   return [buf.length, state];
@@ -299,7 +294,7 @@ export class MultipartReader {
     if (this.currentPart) {
       this.currentPart.close();
     }
-    if (bytesEqual(this.dashBoundary, encoder.encode("--"))) {
+    if (equal(this.dashBoundary, encoder.encode("--"))) {
       throw new Error("boundary is empty");
     }
     let expectNewPart = false;
@@ -331,7 +326,7 @@ export class MultipartReader {
       if (this.partsRead === 0) {
         continue;
       }
-      if (bytesEqual(line, this.newLine)) {
+      if (equal(line, this.newLine)) {
         expectNewPart = true;
         continue;
       }
@@ -340,19 +335,19 @@ export class MultipartReader {
   }
 
   private isFinalBoundary(line: Uint8Array): boolean {
-    if (!bytesHasPrefix(line, this.dashBoundaryDash)) {
+    if (!hasPrefix(line, this.dashBoundaryDash)) {
       return false;
     }
     let rest = line.slice(this.dashBoundaryDash.length, line.length);
-    return rest.length === 0 || bytesEqual(skipLWSPChar(rest), this.newLine);
+    return rest.length === 0 || equal(skipLWSPChar(rest), this.newLine);
   }
 
   private isBoundaryDelimiterLine(line: Uint8Array): boolean {
-    if (!bytesHasPrefix(line, this.dashBoundary)) {
+    if (!hasPrefix(line, this.dashBoundary)) {
       return false;
     }
     const rest = line.slice(this.dashBoundary.length);
-    return bytesEqual(skipLWSPChar(rest), this.newLine);
+    return equal(skipLWSPChar(rest), this.newLine);
   }
 }
 
