@@ -1,19 +1,21 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
 const { Buffer, copy, remove } = Deno;
+const { min, max } = Math;
 type Closer = Deno.Closer;
 type Reader = Deno.Reader;
 type ReadResult = Deno.ReadResult;
 type Writer = Deno.Writer;
 import { FormFile } from "../multipart/formfile.ts";
-import * as bytes from "../bytes/mod.ts";
+import { equal, findIndex, findLastIndex, hasPrefix } from "../bytes/mod.ts";
+import { extname } from "../fs/path.ts";
 import { copyN } from "../io/ioutil.ts";
 import { MultiReader } from "../io/readers.ts";
 import { tempFile } from "../io/util.ts";
-import { BufReader, BufState, BufWriter } from "../io/bufio.ts";
-import { TextProtoReader } from "../textproto/mod.ts";
+import { BufReader, BufWriter, EOF, UnexpectedEOFError } from "../io/bufio.ts";
 import { encoder } from "../strings/mod.ts";
-import * as path from "../fs/path.ts";
+import { assertStrictEq } from "../testing/asserts.ts";
+import { TextProtoReader } from "../textproto/mod.ts";
 
 function randomBoundary(): string {
   let boundary = "--------------------------";
@@ -23,18 +25,31 @@ function randomBoundary(): string {
   return boundary;
 }
 
+/**
+ * Checks whether `buf` should be considered to match the boundary.
+ *
+ * The prefix is "--boundary" or "\r\n--boundary" or "\n--boundary", and the
+ * caller has verified already that `hasPrefix(buf, prefix)` is true.
+ *
+ * `matchAfterPrefix()` returns `1` if the buffer does match the boundary,
+ * meaning the prefix is followed by a dash, space, tab, cr, nl, or EOF.
+ *
+ * It returns `-1` if the buffer definitely does NOT match the boundary,
+ * meaning the prefix is followed by some other character.
+ * For example, "--foobar" does not match "--foo".
+ *
+ * It returns `0` more input needs to be read to make the decision,
+ * meaning that `buf.length` and `prefix.length` are the same.
+ */
 export function matchAfterPrefix(
-  a: Uint8Array,
+  buf: Uint8Array,
   prefix: Uint8Array,
-  bufState: BufState
-): number {
-  if (a.length === prefix.length) {
-    if (bufState) {
-      return 1;
-    }
-    return 0;
+  eof: boolean
+): -1 | 0 | 1 {
+  if (buf.length === prefix.length) {
+    return eof ? 1 : 0;
   }
-  const c = a[prefix.length];
+  const c = buf[prefix.length];
   if (
     c === " ".charCodeAt(0) ||
     c === "\t".charCodeAt(0) ||
@@ -47,105 +62,117 @@ export function matchAfterPrefix(
   return -1;
 }
 
+/**
+ * Scans `buf` to identify how much of it can be safely returned as part of the
+ * `PartReader` body.
+ *
+ * @param buf - The buffer to search for boundaries.
+ * @param dashBoundary - Is "--boundary".
+ * @param newLineDashBoundary - Is "\r\n--boundary" or "\n--boundary", depending
+ * on what mode we are in. The comments below (and the name) assume
+ * "\n--boundary", but either is accepted.
+ * @param total - The number of bytes read out so far. If total == 0, then a
+ * leading "--boundary" is recognized.
+ * @param eof - Whether `buf` contains the final bytes in the stream before EOF.
+ * If `eof` is false, more bytes are expected to follow.
+ * @returns The number of data bytes from buf that can be returned as part of
+ * the `PartReader` body.
+ */
 export function scanUntilBoundary(
   buf: Uint8Array,
   dashBoundary: Uint8Array,
   newLineDashBoundary: Uint8Array,
   total: number,
-  state: BufState
-): [number, BufState] {
+  eof: boolean
+): number | EOF {
   if (total === 0) {
-    if (bytes.hasPrefix(buf, dashBoundary)) {
-      switch (matchAfterPrefix(buf, dashBoundary, state)) {
+    // At beginning of body, allow dashBoundary.
+    if (hasPrefix(buf, dashBoundary)) {
+      switch (matchAfterPrefix(buf, dashBoundary, eof)) {
         case -1:
-          return [dashBoundary.length, null];
+          return dashBoundary.length;
         case 0:
-          return [0, null];
+          return 0;
         case 1:
-          return [0, "EOF"];
-      }
-      if (bytes.hasPrefix(dashBoundary, buf)) {
-        return [0, state];
+          return EOF;
       }
     }
+    if (hasPrefix(dashBoundary, buf)) {
+      return 0;
+    }
   }
-  const i = bytes.findIndex(buf, newLineDashBoundary);
+
+  // Search for "\n--boundary".
+  const i = findIndex(buf, newLineDashBoundary);
   if (i >= 0) {
-    switch (matchAfterPrefix(buf.slice(i), newLineDashBoundary, state)) {
+    switch (matchAfterPrefix(buf.slice(i), newLineDashBoundary, eof)) {
       case -1:
-        // eslint-disable-next-line @typescript-eslint/restrict-plus-operands
-        return [i + newLineDashBoundary.length, null];
+        return i + newLineDashBoundary.length;
       case 0:
-        return [i, null];
+        return i;
       case 1:
-        return [i, "EOF"];
+        return i > 0 ? i : EOF;
     }
   }
-  if (bytes.hasPrefix(newLineDashBoundary, buf)) {
-    return [0, state];
+  if (hasPrefix(newLineDashBoundary, buf)) {
+    return 0;
   }
-  const j = bytes.findLastIndex(buf, newLineDashBoundary.slice(0, 1));
-  if (j >= 0 && bytes.hasPrefix(newLineDashBoundary, buf.slice(j))) {
-    return [j, null];
+
+  // Otherwise, anything up to the final \n is not part of the boundary and so
+  // must be part of the body. Also, if the section from the final \n onward is
+  // not a prefix of the boundary, it too must be part of the body.
+  const j = findLastIndex(buf, newLineDashBoundary.slice(0, 1));
+  if (j >= 0 && hasPrefix(newLineDashBoundary, buf.slice(j))) {
+    return j;
   }
-  return [buf.length, state];
+
+  return buf.length;
 }
 
-let i = 0;
-
 class PartReader implements Reader, Closer {
-  n: number = 0;
+  n: number | EOF = 0;
   total: number = 0;
-  bufState: BufState = null;
-  index = i++;
 
   constructor(private mr: MultipartReader, public readonly headers: Headers) {}
 
   async read(p: Uint8Array): Promise<ReadResult> {
     const br = this.mr.bufReader;
-    const returnResult = (nread: number, bufState: BufState): ReadResult => {
-      if (bufState && bufState !== "EOF") {
-        throw bufState;
+
+    // Read into buffer until we identify some data to return,
+    // or we find a reason to stop (boundary or EOF).
+    let peekLength = 1;
+    while (this.n === 0) {
+      peekLength = max(peekLength, br.buffered());
+      const peekBuf = await br.peek(peekLength);
+      if (peekBuf === EOF) {
+        throw new UnexpectedEOFError();
       }
-      return { nread, eof: bufState === "EOF" };
-    };
-    if (this.n === 0 && !this.bufState) {
-      const [peek] = await br.peek(br.buffered());
-      const [n, state] = scanUntilBoundary(
-        peek,
+      const eof = peekBuf.length < peekLength;
+      this.n = scanUntilBoundary(
+        peekBuf,
         this.mr.dashBoundary,
         this.mr.newLineDashBoundary,
         this.total,
-        this.bufState
+        eof
       );
-      this.n = n;
-      this.bufState = state;
-      if (this.n === 0 && !this.bufState) {
-        // eslint-disable-next-line @typescript-eslint/restrict-plus-operands
-        const [, state] = await br.peek(peek.length + 1);
-        this.bufState = state;
-        if (this.bufState === "EOF") {
-          this.bufState = new RangeError("unexpected eof");
-        }
+      if (this.n === 0) {
+        // Force buffered I/O to read more into buffer.
+        assertStrictEq(eof, false);
+        peekLength++;
       }
     }
-    if (this.n === 0) {
-      return returnResult(0, this.bufState);
+
+    if (this.n === EOF) {
+      return { nread: 0, eof: true };
     }
 
-    let n = 0;
-    if (p.byteLength > this.n) {
-      n = this.n;
-    }
-    const buf = p.slice(0, n);
-    const [nread] = await this.mr.bufReader.readFull(buf);
-    p.set(buf);
-    this.total += nread;
+    const nread = min(p.length, this.n);
+    const buf = p.subarray(0, nread);
+    const r = await br.readFull(buf);
+    assertStrictEq(r, buf);
     this.n -= nread;
-    if (this.n === 0) {
-      return returnResult(n, this.bufState);
-    }
-    return returnResult(n, null);
+    this.total += nread;
+    return { nread, eof: false };
   }
 
   close(): void {}
@@ -212,7 +239,7 @@ export class MultipartReader {
   readonly dashBoundary = encoder.encode(`--${this.boundary}`);
   readonly bufReader: BufReader;
 
-  constructor(private reader: Reader, private boundary: string) {
+  constructor(reader: Reader, private boundary: string) {
     this.bufReader = new BufReader(reader);
   }
 
@@ -228,7 +255,7 @@ export class MultipartReader {
     const buf = new Buffer(new Uint8Array(maxValueBytes));
     for (;;) {
       const p = await this.nextPart();
-      if (!p) {
+      if (p === EOF) {
         break;
       }
       if (p.formName === "") {
@@ -251,7 +278,7 @@ export class MultipartReader {
       const n = await copy(buf, p);
       if (n > maxMemory) {
         // too big, write to disk and flush buffer
-        const ext = path.extname(p.fileName);
+        const ext = extname(p.fileName);
         const { file, filepath } = await tempFile(".", {
           prefix: "multipart-",
           postfix: ext
@@ -277,7 +304,7 @@ export class MultipartReader {
           filename: p.fileName,
           type: p.headers.get("content-type"),
           content: buf.bytes(),
-          size: buf.bytes().byteLength
+          size: buf.length
         };
         maxMemory -= n;
         maxValueBytes -= n;
@@ -290,35 +317,32 @@ export class MultipartReader {
   private currentPart: PartReader;
   private partsRead: number;
 
-  private async nextPart(): Promise<PartReader> {
+  private async nextPart(): Promise<PartReader | EOF> {
     if (this.currentPart) {
       this.currentPart.close();
     }
-    if (bytes.equal(this.dashBoundary, encoder.encode("--"))) {
+    if (equal(this.dashBoundary, encoder.encode("--"))) {
       throw new Error("boundary is empty");
     }
     let expectNewPart = false;
     for (;;) {
-      const [line, state] = await this.bufReader.readSlice("\n".charCodeAt(0));
-      if (state === "EOF" && this.isFinalBoundary(line)) {
-        break;
-      }
-      if (state) {
-        throw new Error(`aa${state.toString()}`);
+      const line = await this.bufReader.readSlice("\n".charCodeAt(0));
+      if (line === EOF) {
+        throw new UnexpectedEOFError();
       }
       if (this.isBoundaryDelimiterLine(line)) {
         this.partsRead++;
         const r = new TextProtoReader(this.bufReader);
-        const [headers, state] = await r.readMIMEHeader();
-        if (state) {
-          throw state;
+        const headers = await r.readMIMEHeader();
+        if (headers === EOF) {
+          throw new UnexpectedEOFError();
         }
         const np = new PartReader(this, headers);
         this.currentPart = np;
         return np;
       }
       if (this.isFinalBoundary(line)) {
-        break;
+        return EOF;
       }
       if (expectNewPart) {
         throw new Error(`expecting a new Part; got line ${line}`);
@@ -326,28 +350,28 @@ export class MultipartReader {
       if (this.partsRead === 0) {
         continue;
       }
-      if (bytes.equal(line, this.newLine)) {
+      if (equal(line, this.newLine)) {
         expectNewPart = true;
         continue;
       }
-      throw new Error(`unexpected line in next(): ${line}`);
+      throw new Error(`unexpected line in nextPart(): ${line}`);
     }
   }
 
   private isFinalBoundary(line: Uint8Array): boolean {
-    if (!bytes.hasPrefix(line, this.dashBoundaryDash)) {
+    if (!hasPrefix(line, this.dashBoundaryDash)) {
       return false;
     }
     let rest = line.slice(this.dashBoundaryDash.length, line.length);
-    return rest.length === 0 || bytes.equal(skipLWSPChar(rest), this.newLine);
+    return rest.length === 0 || equal(skipLWSPChar(rest), this.newLine);
   }
 
   private isBoundaryDelimiterLine(line: Uint8Array): boolean {
-    if (!bytes.hasPrefix(line, this.dashBoundary)) {
+    if (!hasPrefix(line, this.dashBoundary)) {
       return false;
     }
     const rest = line.slice(this.dashBoundary.length);
-    return bytes.equal(skipLWSPChar(rest), this.newLine);
+    return equal(skipLWSPChar(rest), this.newLine);
   }
 }
 
@@ -478,7 +502,7 @@ export class MultipartWriter {
     await copy(f, file);
   }
 
-  private flush(): Promise<BufState> {
+  private flush(): Promise<void> {
     return this.bufWriter.flush();
   }
 

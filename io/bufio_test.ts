@@ -6,13 +6,29 @@
 const { Buffer } = Deno;
 type Reader = Deno.Reader;
 type ReadResult = Deno.ReadResult;
-import { test } from "../testing/mod.ts";
-import { assert, assertEquals } from "../testing/asserts.ts";
-import { BufReader, BufWriter } from "./bufio.ts";
+import { test, runIfMain } from "../testing/mod.ts";
+import {
+  assert,
+  assertEquals,
+  assertNotEquals,
+  fail
+} from "../testing/asserts.ts";
+import {
+  BufReader,
+  BufWriter,
+  EOF,
+  BufferFullError,
+  UnexpectedEOFError
+} from "./bufio.ts";
 import * as iotest from "./iotest.ts";
 import { charCode, copyBytes, stringsReader } from "./util.ts";
 
 const encoder = new TextEncoder();
+
+function assertNotEOF<T extends {}>(val: T | EOF): T {
+  assertNotEquals(val, EOF);
+  return val as T;
+}
 
 async function readBytes(buf: BufReader): Promise<string> {
   const b = new Uint8Array(1000);
@@ -129,17 +145,20 @@ test(async function bufioBufferFull(): Promise<void> {
   const longString =
     "And now, hello, world! It is the time for all good men to come to the aid of their party";
   const buf = new BufReader(stringsReader(longString), MIN_READ_BUFFER_SIZE);
-  let [line, err] = await buf.readSlice(charCode("!"));
-
   const decoder = new TextDecoder();
-  let actual = decoder.decode(line);
-  assertEquals(err, "BufferFull");
-  assertEquals(actual, "And now, hello, ");
 
-  [line, err] = await buf.readSlice(charCode("!"));
-  actual = decoder.decode(line);
+  try {
+    await buf.readSlice(charCode("!"));
+    fail("readSlice should throw");
+  } catch (err) {
+    assert(err instanceof BufferFullError);
+    assert(err.partial instanceof Uint8Array);
+    assertEquals(decoder.decode(err.partial), "And now, hello, ");
+  }
+
+  const line = assertNotEOF(await buf.readSlice(charCode("!")));
+  const actual = decoder.decode(line);
   assertEquals(actual, "world!");
-  assert(err == null);
 });
 
 const testInput = encoder.encode(
@@ -178,14 +197,12 @@ async function testReadLine(input: Uint8Array): Promise<void> {
     let reader = new TestReader(input, stride);
     let l = new BufReader(reader, input.byteLength + 1);
     while (true) {
-      let [line, isPrefix, err] = await l.readLine();
-      if (line.byteLength > 0 && err != null) {
-        throw Error("readLine returned both data and error");
-      }
-      assertEquals(isPrefix, false);
-      if (err == "EOF") {
+      const r = await l.readLine();
+      if (r === EOF) {
         break;
       }
+      const { line, more } = r;
+      assertEquals(more, false);
       // eslint-disable-next-line @typescript-eslint/restrict-plus-operands
       let want = testOutput.subarray(done, done + line.byteLength);
       assertEquals(
@@ -218,56 +235,51 @@ test(async function bufioPeek(): Promise<void> {
     MIN_READ_BUFFER_SIZE
   );
 
-  let [actual, err] = await buf.peek(1);
+  let actual = assertNotEOF(await buf.peek(1));
   assertEquals(decoder.decode(actual), "a");
-  assert(err == null);
 
-  [actual, err] = await buf.peek(4);
+  actual = assertNotEOF(await buf.peek(4));
   assertEquals(decoder.decode(actual), "abcd");
-  assert(err == null);
 
-  [actual, err] = await buf.peek(32);
-  assertEquals(decoder.decode(actual), "abcdefghijklmnop");
-  assertEquals(err, "BufferFull");
+  try {
+    await buf.peek(32);
+    fail("peek() should throw");
+  } catch (err) {
+    assert(err instanceof BufferFullError);
+    assert(err.partial instanceof Uint8Array);
+    assertEquals(decoder.decode(err.partial), "abcdefghijklmnop");
+  }
 
   await buf.read(p.subarray(0, 3));
   assertEquals(decoder.decode(p.subarray(0, 3)), "abc");
 
-  [actual, err] = await buf.peek(1);
+  actual = assertNotEOF(await buf.peek(1));
   assertEquals(decoder.decode(actual), "d");
-  assert(err == null);
 
-  [actual, err] = await buf.peek(1);
+  actual = assertNotEOF(await buf.peek(1));
   assertEquals(decoder.decode(actual), "d");
-  assert(err == null);
 
-  [actual, err] = await buf.peek(1);
+  actual = assertNotEOF(await buf.peek(1));
   assertEquals(decoder.decode(actual), "d");
-  assert(err == null);
 
-  [actual, err] = await buf.peek(2);
+  actual = assertNotEOF(await buf.peek(2));
   assertEquals(decoder.decode(actual), "de");
-  assert(err == null);
 
   let { eof } = await buf.read(p.subarray(0, 3));
   assertEquals(decoder.decode(p.subarray(0, 3)), "def");
   assert(!eof);
-  assert(err == null);
 
-  [actual, err] = await buf.peek(4);
+  actual = assertNotEOF(await buf.peek(4));
   assertEquals(decoder.decode(actual), "ghij");
-  assert(err == null);
 
   await buf.read(p);
   assertEquals(decoder.decode(p), "ghijklmnop");
 
-  [actual, err] = await buf.peek(0);
+  actual = assertNotEOF(await buf.peek(0));
   assertEquals(decoder.decode(actual), "");
-  assert(err == null);
 
-  [actual, err] = await buf.peek(1);
-  assertEquals(decoder.decode(actual), "");
-  assert(err == "EOF");
+  const r = await buf.peek(1);
+  assert(r === EOF);
   /* TODO
 	// Test for issue 3022, not exposing a reader's error on a successful Peek.
 	buf = NewReaderSize(dataAndEOFReader("abcd"), 32)
@@ -328,16 +340,22 @@ test(async function bufReaderReadFull(): Promise<void> {
   const bufr = new BufReader(data, 3);
   {
     const buf = new Uint8Array(6);
-    const [nread, err] = await bufr.readFull(buf);
-    assertEquals(nread, 6);
-    assert(!err);
+    const r = assertNotEOF(await bufr.readFull(buf));
+    assertEquals(r, buf);
     assertEquals(dec.decode(buf), "Hello ");
   }
   {
     const buf = new Uint8Array(6);
-    const [nread, err] = await bufr.readFull(buf);
-    assertEquals(nread, 5);
-    assertEquals(err, "EOF");
-    assertEquals(dec.decode(buf.subarray(0, 5)), "World");
+    try {
+      await bufr.readFull(buf);
+      fail("readFull() should throw");
+    } catch (err) {
+      assert(err instanceof UnexpectedEOFError);
+      assert(err.partial instanceof Uint8Array);
+      assertEquals(err.partial.length, 5);
+      assertEquals(dec.decode(buf.subarray(0, 5)), "World");
+    }
   }
 });
+
+runIfMain(import.meta);

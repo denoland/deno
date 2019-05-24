@@ -7,7 +7,7 @@
 
 const { Buffer } = Deno;
 import { test, runIfMain } from "../testing/mod.ts";
-import { assert, assertEquals } from "../testing/asserts.ts";
+import { assert, assertEquals, assertNotEquals } from "../testing/asserts.ts";
 import {
   Response,
   ServerRequest,
@@ -15,8 +15,19 @@ import {
   readRequest,
   parseHTTPVersion
 } from "./server.ts";
-import { BufReader, BufWriter } from "../io/bufio.ts";
+import {
+  BufReader,
+  BufWriter,
+  EOF,
+  ReadLineResult,
+  UnexpectedEOFError
+} from "../io/bufio.ts";
 import { StringReader } from "../io/readers.ts";
+
+function assertNotEOF<T extends {}>(val: T | EOF): T {
+  assertNotEquals(val, EOF);
+  return val as T;
+}
 
 interface ResponseTest {
   response: Response;
@@ -247,21 +258,25 @@ test(async function writeUint8ArrayResponse(): Promise<void> {
   const decoder = new TextDecoder("utf-8");
   const reader = new BufReader(buf);
 
-  let line: Uint8Array;
-  line = (await reader.readLine())[0];
-  assertEquals(decoder.decode(line), "HTTP/1.1 200 OK");
+  let r: ReadLineResult;
+  r = assertNotEOF(await reader.readLine());
+  assertEquals(decoder.decode(r.line), "HTTP/1.1 200 OK");
+  assertEquals(r.more, false);
 
-  line = (await reader.readLine())[0];
-  assertEquals(decoder.decode(line), `content-length: ${shortText.length}`);
+  r = assertNotEOF(await reader.readLine());
+  assertEquals(decoder.decode(r.line), `content-length: ${shortText.length}`);
+  assertEquals(r.more, false);
 
-  line = (await reader.readLine())[0];
-  assertEquals(line.byteLength, 0);
+  r = assertNotEOF(await reader.readLine());
+  assertEquals(r.line.byteLength, 0);
+  assertEquals(r.more, false);
 
-  line = (await reader.readLine())[0];
-  assertEquals(decoder.decode(line), shortText);
+  r = assertNotEOF(await reader.readLine());
+  assertEquals(decoder.decode(r.line), shortText);
+  assertEquals(r.more, false);
 
-  line = (await reader.readLine())[0];
-  assertEquals(line.byteLength, 0);
+  const eof = await reader.readLine();
+  assertEquals(eof, EOF);
 });
 
 test(async function writeStringReaderResponse(): Promise<void> {
@@ -276,24 +291,30 @@ test(async function writeStringReaderResponse(): Promise<void> {
   const decoder = new TextDecoder("utf-8");
   const reader = new BufReader(buf);
 
-  let line: Uint8Array;
-  line = (await reader.readLine())[0];
-  assertEquals(decoder.decode(line), "HTTP/1.1 200 OK");
+  let r: ReadLineResult;
+  r = assertNotEOF(await reader.readLine());
+  assertEquals(decoder.decode(r.line), "HTTP/1.1 200 OK");
+  assertEquals(r.more, false);
 
-  line = (await reader.readLine())[0];
-  assertEquals(decoder.decode(line), "transfer-encoding: chunked");
+  r = assertNotEOF(await reader.readLine());
+  assertEquals(decoder.decode(r.line), "transfer-encoding: chunked");
+  assertEquals(r.more, false);
 
-  line = (await reader.readLine())[0];
-  assertEquals(line.byteLength, 0);
+  r = assertNotEOF(await reader.readLine());
+  assertEquals(r.line.byteLength, 0);
+  assertEquals(r.more, false);
 
-  line = (await reader.readLine())[0];
-  assertEquals(decoder.decode(line), shortText.length.toString());
+  r = assertNotEOF(await reader.readLine());
+  assertEquals(decoder.decode(r.line), shortText.length.toString());
+  assertEquals(r.more, false);
 
-  line = (await reader.readLine())[0];
-  assertEquals(decoder.decode(line), shortText);
+  r = assertNotEOF(await reader.readLine());
+  assertEquals(decoder.decode(r.line), shortText);
+  assertEquals(r.more, false);
 
-  line = (await reader.readLine())[0];
-  assertEquals(decoder.decode(line), "0");
+  r = assertNotEOF(await reader.readLine());
+  assertEquals(decoder.decode(r.line), "0");
+  assertEquals(r.more, false);
 });
 
 test(async function readRequestError(): Promise<void> {
@@ -318,19 +339,20 @@ test(async function testReadRequestError(): Promise<void> {
   const testCases = {
     0: {
       in: "GET / HTTP/1.1\r\nheader: foo\r\n\r\n",
-      headers: [{ key: "header", value: "foo" }],
-      err: null
+      headers: [{ key: "header", value: "foo" }]
     },
-    1: { in: "GET / HTTP/1.1\r\nheader:foo\r\n", err: "EOF", headers: [] },
-    2: { in: "", err: "EOF", headers: [] },
+    1: {
+      in: "GET / HTTP/1.1\r\nheader:foo\r\n",
+      err: UnexpectedEOFError
+    },
+    2: { in: "", err: EOF },
     3: {
       in: "HEAD / HTTP/1.1\r\nContent-Length:4\r\n\r\n",
       err: "http: method cannot contain a Content-Length"
     },
     4: {
       in: "HEAD / HTTP/1.1\r\n\r\n",
-      headers: [],
-      err: null
+      headers: []
     },
     // Multiple Content-Length values should either be
     // deduplicated if same or reject otherwise
@@ -348,7 +370,6 @@ test(async function testReadRequestError(): Promise<void> {
     7: {
       in:
         "PUT / HTTP/1.1\r\nContent-Length: 6 \r\nContent-Length: 6\r\nContent-Length:6\r\n\r\nGopher\r\n",
-      err: null,
       headers: [{ key: "Content-Length", value: "6" }]
     },
     8: {
@@ -363,24 +384,28 @@ test(async function testReadRequestError(): Promise<void> {
     // },
     10: {
       in: "HEAD / HTTP/1.1\r\nContent-Length:0\r\nContent-Length: 0\r\n\r\n",
-      headers: [{ key: "Content-Length", value: "0" }],
-      err: null
+      headers: [{ key: "Content-Length", value: "0" }]
     }
   };
   for (const p in testCases) {
     const test = testCases[p];
     const reader = new BufReader(new StringReader(test.in));
-    let _err;
-    if (test.err && test.err != "EOF") {
-      try {
-        await readRequest(reader);
-      } catch (e) {
-        _err = e;
-      }
-      assertEquals(_err.message, test.err);
+    let err;
+    let req;
+    try {
+      req = await readRequest(reader);
+    } catch (e) {
+      err = e;
+    }
+    if (test.err === EOF) {
+      assertEquals(req, EOF);
+    } else if (typeof test.err === "string") {
+      assertEquals(err.message, test.err);
+    } else if (test.err) {
+      assert(err instanceof test.err);
     } else {
-      const [req, err] = await readRequest(reader);
-      assertEquals(test.err, err);
+      assertEquals(err, undefined);
+      assertNotEquals(req, EOF);
       for (const h of test.headers) {
         assertEquals(req.headers.get(h.key), h.value);
       }
@@ -393,21 +418,31 @@ test({
   name: "[http] parseHttpVersion",
   fn(): void {
     const testCases = [
-      { in: "HTTP/0.9", want: [0, 9, true] },
-      { in: "HTTP/1.0", want: [1, 0, true] },
-      { in: "HTTP/1.1", want: [1, 1, true] },
-      { in: "HTTP/3.14", want: [3, 14, true] },
-      { in: "HTTP", want: [0, 0, false] },
-      { in: "HTTP/one.one", want: [0, 0, false] },
-      { in: "HTTP/1.1/", want: [0, 0, false] },
-      { in: "HTTP/-1.0", want: [0, 0, false] },
-      { in: "HTTP/0.-1", want: [0, 0, false] },
-      { in: "HTTP/", want: [0, 0, false] },
-      { in: "HTTP/1,0", want: [0, 0, false] }
+      { in: "HTTP/0.9", want: [0, 9] },
+      { in: "HTTP/1.0", want: [1, 0] },
+      { in: "HTTP/1.1", want: [1, 1] },
+      { in: "HTTP/3.14", want: [3, 14] },
+      { in: "HTTP", err: true },
+      { in: "HTTP/one.one", err: true },
+      { in: "HTTP/1.1/", err: true },
+      { in: "HTTP/-1.0", err: true },
+      { in: "HTTP/0.-1", err: true },
+      { in: "HTTP/", err: true },
+      { in: "HTTP/1,0", err: true }
     ];
     for (const t of testCases) {
-      const r = parseHTTPVersion(t.in);
-      assertEquals(r, t.want, t.in);
+      let r, err;
+      try {
+        r = parseHTTPVersion(t.in);
+      } catch (e) {
+        err = e;
+      }
+      if (t.err) {
+        assert(err instanceof Error, t.in);
+      } else {
+        assertEquals(err, undefined);
+        assertEquals(r, t.want, t.in);
+      }
     }
   }
 });
