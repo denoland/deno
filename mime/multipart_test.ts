@@ -7,7 +7,7 @@ import {
   assertThrows,
   assertThrowsAsync
 } from "../testing/asserts.ts";
-import { test } from "../testing/mod.ts";
+import { test, runIfMain } from "../testing/mod.ts";
 import {
   matchAfterPrefix,
   MultipartReader,
@@ -16,6 +16,7 @@ import {
 } from "./multipart.ts";
 import * as path from "../fs/path.ts";
 import { FormFile, isFormFile } from "../multipart/formfile.ts";
+import { EOF } from "../io/bufio.ts";
 import { StringWriter } from "../io/writers.ts";
 
 const e = new TextEncoder();
@@ -25,71 +26,67 @@ const nlDashBoundary = e.encode("\r\n--" + boundary);
 
 test(function multipartScanUntilBoundary1(): void {
   const data = `--${boundary}`;
-  const [n, err] = scanUntilBoundary(
+  const n = scanUntilBoundary(
     e.encode(data),
     dashBoundary,
     nlDashBoundary,
     0,
-    "EOF"
+    true
   );
-  assertEquals(n, 0);
-  assertEquals(err, "EOF");
+  assertEquals(n, EOF);
 });
 
 test(function multipartScanUntilBoundary2(): void {
   const data = `foo\r\n--${boundary}`;
-  const [n, err] = scanUntilBoundary(
+  const n = scanUntilBoundary(
     e.encode(data),
     dashBoundary,
     nlDashBoundary,
     0,
-    "EOF"
+    true
   );
   assertEquals(n, 3);
-  assertEquals(err, "EOF");
-});
-
-test(function multipartScanUntilBoundary4(): void {
-  const data = `foo\r\n--`;
-  const [n, err] = scanUntilBoundary(
-    e.encode(data),
-    dashBoundary,
-    nlDashBoundary,
-    0,
-    null
-  );
-  assertEquals(n, 3);
-  assertEquals(err, null);
 });
 
 test(function multipartScanUntilBoundary3(): void {
   const data = `foobar`;
-  const [n, err] = scanUntilBoundary(
+  const n = scanUntilBoundary(
     e.encode(data),
     dashBoundary,
     nlDashBoundary,
     0,
-    null
+    false
   );
   assertEquals(n, data.length);
-  assertEquals(err, null);
+});
+
+test(function multipartScanUntilBoundary4(): void {
+  const data = `foo\r\n--`;
+  const n = scanUntilBoundary(
+    e.encode(data),
+    dashBoundary,
+    nlDashBoundary,
+    0,
+    false
+  );
+  assertEquals(n, 3);
 });
 
 test(function multipartMatchAfterPrefix1(): void {
   const data = `${boundary}\r`;
-  const v = matchAfterPrefix(e.encode(data), e.encode(boundary), null);
+  const v = matchAfterPrefix(e.encode(data), e.encode(boundary), false);
   assertEquals(v, 1);
 });
 
 test(function multipartMatchAfterPrefix2(): void {
   const data = `${boundary}hoge`;
-  const v = matchAfterPrefix(e.encode(data), e.encode(boundary), null);
+  const v = matchAfterPrefix(e.encode(data), e.encode(boundary), false);
   assertEquals(v, -1);
 });
 
 test(function multipartMatchAfterPrefix3(): void {
   const data = `${boundary}`;
-  const v = matchAfterPrefix(e.encode(data), e.encode(boundary), null);
+  const v = matchAfterPrefix(e.encode(data), e.encode(boundary), false);
   assertEquals(v, 0);
 });
 
@@ -211,3 +208,5 @@ test(async function multipartMultipartReader2(): Promise<void> {
     await remove(file.tempfile);
   }
 });
+
+runIfMain(import.meta);

@@ -2,7 +2,7 @@
 // https://github.com/golang/go/blob/go1.12.5/src/encoding/csv/
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
-import { BufReader, BufState } from "../io/bufio.ts";
+import { BufReader, EOF } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 
 const INVALID_RUNE = ["\r", "\n", '"'];
@@ -25,30 +25,29 @@ export interface ParseOptions {
   fieldsPerRecord?: number;
 }
 
-function chkOptions(opt: ParseOptions): Error | null {
+function chkOptions(opt: ParseOptions): void {
   if (
     INVALID_RUNE.includes(opt.comma) ||
     INVALID_RUNE.includes(opt.comment) ||
     opt.comma === opt.comment
   ) {
-    return Error("Invalid Delimiter");
+    throw new Error("Invalid Delimiter");
   }
-  return null;
 }
 
 export async function read(
   Startline: number,
   reader: BufReader,
   opt: ParseOptions = { comma: ",", comment: "#", trimLeadingSpace: false }
-): Promise<[string[], BufState]> {
+): Promise<string[] | EOF> {
   const tp = new TextProtoReader(reader);
-  let err: BufState;
   let line: string;
   let result: string[] = [];
   let lineIndex = Startline;
 
-  [line, err] = await tp.readLine();
-
+  const r = await tp.readLine();
+  if (r === EOF) return EOF;
+  line = r;
   // Normalize \r\n to \n on all input lines.
   if (
     line.length >= 2 &&
@@ -61,12 +60,12 @@ export async function read(
 
   const trimmedLine = line.trimLeft();
   if (trimmedLine.length === 0) {
-    return [[], err];
+    return [];
   }
 
   // line starting with comment character is ignored
   if (opt.comment && trimmedLine[0] === opt.comment) {
-    return [result, err];
+    return [];
   }
 
   result = line.split(opt.comma);
@@ -92,12 +91,9 @@ export async function read(
     }
   );
   if (quoteError) {
-    return [
-      [],
-      new ParseError(Startline, lineIndex, 'bare " in non-quoted-field')
-    ];
+    throw new ParseError(Startline, lineIndex, 'bare " in non-quoted-field');
   }
-  return [result, err];
+  return result;
 }
 
 export async function readAll(
@@ -107,19 +103,18 @@ export async function readAll(
     trimLeadingSpace: false,
     lazyQuotes: false
   }
-): Promise<[string[][], BufState]> {
+): Promise<string[][]> {
   const result: string[][] = [];
   let _nbFields: number;
-  let err: BufState;
   let lineResult: string[];
   let first = true;
   let lineIndex = 0;
-  err = chkOptions(opt);
-  if (err) return [result, err];
+  chkOptions(opt);
 
   for (;;) {
-    [lineResult, err] = await read(lineIndex, reader, opt);
-    if (err) break;
+    const r = await read(lineIndex, reader, opt);
+    if (r === EOF) break;
+    lineResult = r;
     lineIndex++;
     // If fieldsPerRecord is 0, Read sets it to
     // the number of fields in the first record
@@ -136,16 +131,10 @@ export async function readAll(
 
     if (lineResult.length > 0) {
       if (_nbFields && _nbFields !== lineResult.length) {
-        return [
-          null,
-          new ParseError(lineIndex, lineIndex, "wrong number of fields")
-        ];
+        throw new ParseError(lineIndex, lineIndex, "wrong number of fields");
       }
       result.push(lineResult);
     }
   }
-  if (err !== "EOF") {
-    return [result, err];
-  }
-  return [result, null];
+  return result;
 }

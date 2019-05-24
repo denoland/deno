@@ -4,10 +4,10 @@ type Listener = Deno.Listener;
 type Conn = Deno.Conn;
 type Reader = Deno.Reader;
 type Writer = Deno.Writer;
-import { BufReader, BufState, BufWriter } from "../io/bufio.ts";
+import { BufReader, BufWriter, EOF, UnexpectedEOFError } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { STATUS_TEXT } from "./http_status.ts";
-import { assert, fail } from "../testing/asserts.ts";
+import { assert } from "../testing/asserts.ts";
 import {
   collectUint8Arrays,
   deferred,
@@ -134,7 +134,8 @@ export class ServerRequest {
         if (transferEncodings.includes("chunked")) {
           // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
           const tp = new TextProtoReader(this.r);
-          let [line] = await tp.readLine();
+          let line = await tp.readLine();
+          if (line === EOF) throw new UnexpectedEOFError();
           // TODO: handle chunk extension
           let [chunkSizeString] = line.split(";");
           let chunkSize = parseInt(chunkSizeString, 16);
@@ -142,18 +143,18 @@ export class ServerRequest {
             throw new Error("Invalid chunk size");
           }
           while (chunkSize > 0) {
-            let data = new Uint8Array(chunkSize);
-            let [nread] = await this.r.readFull(data);
-            if (nread !== chunkSize) {
-              throw new Error("Chunk data does not match size");
+            const data = new Uint8Array(chunkSize);
+            if ((await this.r.readFull(data)) === EOF) {
+              throw new UnexpectedEOFError();
             }
             yield data;
             await this.r.readLine(); // Consume \r\n
-            [line] = await tp.readLine();
+            line = await tp.readLine();
+            if (line === EOF) throw new UnexpectedEOFError();
             chunkSize = parseInt(line, 16);
           }
-          const [entityHeaders, err] = await tp.readMIMEHeader();
-          if (!err) {
+          const entityHeaders = await tp.readMIMEHeader();
+          if (entityHeaders !== EOF) {
             for (let [k, v] of entityHeaders) {
               this.headers.set(k, v);
             }
@@ -220,70 +221,78 @@ function fixLength(req: ServerRequest): void {
 // ParseHTTPVersion parses a HTTP version string.
 // "HTTP/1.0" returns (1, 0, true).
 // Ported from https://github.com/golang/go/blob/f5c43b9/src/net/http/request.go#L766-L792
-export function parseHTTPVersion(vers: string): [number, number, boolean] {
-  const Big = 1000000; // arbitrary upper bound
-  const digitReg = /^\d+$/; // test if string is only digit
-  let major: number;
-  let minor: number;
-
+export function parseHTTPVersion(vers: string): [number, number] {
   switch (vers) {
     case "HTTP/1.1":
-      return [1, 1, true];
+      return [1, 1];
+
     case "HTTP/1.0":
-      return [1, 0, true];
+      return [1, 0];
+
+    default: {
+      const Big = 1000000; // arbitrary upper bound
+      const digitReg = /^\d+$/; // test if string is only digit
+      let major: number;
+      let minor: number;
+
+      if (!vers.startsWith("HTTP/")) {
+        break;
+      }
+
+      const dot = vers.indexOf(".");
+      if (dot < 0) {
+        break;
+      }
+
+      let majorStr = vers.substring(vers.indexOf("/") + 1, dot);
+      major = parseInt(majorStr);
+      if (
+        !digitReg.test(majorStr) ||
+        isNaN(major) ||
+        major < 0 ||
+        major > Big
+      ) {
+        break;
+      }
+
+      let minorStr = vers.substring(dot + 1);
+      minor = parseInt(minorStr);
+      if (
+        !digitReg.test(minorStr) ||
+        isNaN(minor) ||
+        minor < 0 ||
+        minor > Big
+      ) {
+        break;
+      }
+
+      return [major, minor];
+    }
   }
 
-  if (!vers.startsWith("HTTP/")) {
-    return [0, 0, false];
-  }
-
-  const dot = vers.indexOf(".");
-  if (dot < 0) {
-    return [0, 0, false];
-  }
-
-  let majorStr = vers.substring(vers.indexOf("/") + 1, dot);
-  major = parseInt(majorStr);
-  if (!digitReg.test(majorStr) || isNaN(major) || major < 0 || major > Big) {
-    return [0, 0, false];
-  }
-
-  let minorStr = vers.substring(dot + 1);
-  minor = parseInt(minorStr);
-  if (!digitReg.test(minorStr) || isNaN(minor) || minor < 0 || minor > Big) {
-    return [0, 0, false];
-  }
-  return [major, minor, true];
+  throw new Error(`malformed HTTP version ${vers}`);
 }
 
 export async function readRequest(
   bufr: BufReader
-): Promise<[ServerRequest, BufState]> {
+): Promise<ServerRequest | EOF> {
+  const tp = new TextProtoReader(bufr);
+  const firstLine = await tp.readLine(); // e.g. GET /index.html HTTP/1.0
+  if (firstLine === EOF) return EOF;
+  const headers = await tp.readMIMEHeader();
+  if (headers === EOF) throw new UnexpectedEOFError();
+
   const req = new ServerRequest();
   req.r = bufr;
-  const tp = new TextProtoReader(bufr);
-  let err: BufState;
-  // First line: GET /index.html HTTP/1.0
-  let firstLine: string;
-  [firstLine, err] = await tp.readLine();
-  if (err) {
-    return [null, err];
-  }
   [req.method, req.url, req.proto] = firstLine.split(" ", 3);
-
-  let ok: boolean;
-  [req.protoMinor, req.protoMajor, ok] = parseHTTPVersion(req.proto);
-  if (!ok) {
-    throw Error(`malformed HTTP version ${req.proto}`);
-  }
-
-  [req.headers, err] = await tp.readMIMEHeader();
+  [req.protoMinor, req.protoMajor] = parseHTTPVersion(req.proto);
+  req.headers = headers;
   fixLength(req);
   // TODO(zekth) : add parsing of headers eg:
   // rfc: https://tools.ietf.org/html/rfc7230#section-3.3.2
   // A sender MUST NOT send a Content-Length header field in any message
   // that contains a Transfer-Encoding header field.
-  return [req, err];
+  return req;
 }
 
 export class Server implements AsyncIterable<ServerRequest> {
@@ -302,36 +311,39 @@ export class Server implements AsyncIterable<ServerRequest> {
   ): AsyncIterableIterator<ServerRequest> {
     const bufr = new BufReader(conn);
     const w = new BufWriter(conn);
-    let bufStateErr: BufState;
-    let req: ServerRequest;
+    let req: ServerRequest | EOF;
+    let err: Error | undefined;
 
     while (!this.closing) {
       try {
-        [req, bufStateErr] = await readRequest(bufr);
-      } catch (err) {
-        bufStateErr = err;
+        req = await readRequest(bufr);
+      } catch (e) {
+        err = e;
+        break;
       }
-      if (bufStateErr) break;
+      if (req === EOF) {
+        break;
+      }
+
       req.w = w;
       yield req;
+
       // Wait for the request to be processed before we accept a new request on
       // this connection.
       await req.done;
     }
 
-    if (bufStateErr === "EOF") {
+    if (req === EOF) {
       // The connection was gracefully closed.
-    } else if (bufStateErr instanceof Error) {
+    } else if (err) {
       // An error was thrown while parsing request headers.
       await writeResponse(req.w, {
         status: 400,
-        body: new TextEncoder().encode(`${bufStateErr.message}\r\n\r\n`)
+        body: new TextEncoder().encode(`${err.message}\r\n\r\n`)
       });
     } else if (this.closing) {
       // There are more requests incoming but the server is closing.
       // TODO(ry): send a back a HTTP 503 Service Unavailable status.
-    } else {
-      fail(`unexpected BufState: ${bufStateErr}`);
     }
 
     conn.close();

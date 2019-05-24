@@ -107,8 +107,9 @@ test(async function wsReadUnmaskedPingPongFrame(): Promise<void> {
 });
 
 test(async function wsReadUnmaskedBigBinaryFrame(): Promise<void> {
+  const payloadLength = 0x100;
   const a = [0x82, 0x7e, 0x01, 0x00];
-  for (let i = 0; i < 256; i++) {
+  for (let i = 0; i < payloadLength; i++) {
     a.push(i);
   }
   const buf = new BufReader(new Buffer(new Uint8Array(a)));
@@ -116,12 +117,13 @@ test(async function wsReadUnmaskedBigBinaryFrame(): Promise<void> {
   assertEquals(bin.opcode, OpCode.BinaryFrame);
   assertEquals(bin.isLastFrame, true);
   assertEquals(bin.mask, undefined);
-  assertEquals(bin.payload.length, 256);
+  assertEquals(bin.payload.length, payloadLength);
 });
 
 test(async function wsReadUnmaskedBigBigBinaryFrame(): Promise<void> {
+  const payloadLength = 0x10000;
   const a = [0x82, 0x7f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00];
-  for (let i = 0; i < 0xffff; i++) {
+  for (let i = 0; i < payloadLength; i++) {
     a.push(i);
   }
   const buf = new BufReader(new Buffer(new Uint8Array(a)));
@@ -129,7 +131,7 @@ test(async function wsReadUnmaskedBigBigBinaryFrame(): Promise<void> {
   assertEquals(bin.opcode, OpCode.BinaryFrame);
   assertEquals(bin.isLastFrame, true);
   assertEquals(bin.mask, undefined);
-  assertEquals(bin.payload.length, 0xffff + 1);
+  assertEquals(bin.payload.length, payloadLength);
 });
 
 test(async function wsCreateSecAccept(): Promise<void> {
