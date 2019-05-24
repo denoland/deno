@@ -1,11 +1,14 @@
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+
 import {
   bytesFindIndex,
   bytesFindLastIndex,
   bytesEqual,
-  bytesHasPrefix
+  bytesHasPrefix,
+  bytesRepeat
 } from "./bytes.ts";
 import { test } from "../testing/mod.ts";
-import { assertEquals } from "../testing/asserts.ts";
+import { assertEquals, assertThrows } from "../testing/asserts.ts";
 
 test(function bytesBytesFindIndex1(): void {
   const i = bytesFindIndex(
@@ -47,4 +50,40 @@ test(function bytesBytesBytesEqual(): void {
 test(function bytesBytesHasPrefix(): void {
   const v = bytesHasPrefix(new Uint8Array([0, 1, 2]), new Uint8Array([0, 1]));
   assertEquals(v, true);
+});
+
+test(function bytesBytesRepeat(): void {
+  // input / output / count / error message
+  const repeatTestCase = [
+    ["", "", 0],
+    ["", "", 1],
+    ["", "", 1.1, "bytes: repeat count must be an integer"],
+    ["", "", 2],
+    ["", "", 0],
+    ["-", "", 0],
+    ["-", "-", -1, "bytes: negative repeat count"],
+    ["-", "----------", 10],
+    ["abc ", "abc abc abc ", 3]
+  ];
+  for (const [input, output, count, errMsg] of repeatTestCase) {
+    if (errMsg) {
+      assertThrows(
+        (): void => {
+          bytesRepeat(
+            new TextEncoder().encode(input as string),
+            count as number
+          );
+        },
+        Error,
+        errMsg as string
+      );
+    } else {
+      const newBytes = bytesRepeat(
+        new TextEncoder().encode(input as string),
+        count as number
+      );
+
+      assertEquals(new TextDecoder().decode(newBytes), output);
+    }
+  }
 });
