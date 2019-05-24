@@ -95,13 +95,13 @@ scripts to download and install the binary.
 Using Shell:
 
 ```shellsession
-$ curl -fsSL https://deno.land/x/install/install.sh | sh
+curl -fsSL https://deno.land/x/install/install.sh | sh
 ```
 
 Using PowerShell:
 
 ```shellsession
-> iwr https://deno.land/x/install/install.ps1 | iex
+iwr https://deno.land/x/install/install.ps1 | iex
 ```
 
 Using [Scoop](https://scoop.sh/) (windows):
@@ -118,7 +118,7 @@ executable bit on Mac and Linux.
 Once it's installed and in your `$PATH`, try it:
 
 ```shellsession
-$ deno run https://deno.land/welcome.ts
+deno run https://deno.land/welcome.ts
 ```
 
 ### Build from source
