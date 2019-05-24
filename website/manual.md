@@ -106,8 +106,14 @@ iwr https://deno.land/x/install/install.ps1 | iex
 
 Using [Scoop](https://scoop.sh/) (windows):
 
-```
+```shellsession
 scoop install deno
+```
+
+Using [Homebrew](https://brew.sh/) (mac):
+
+```shellsession
+brew install deno
 ```
 
 Deno can also be installed manually, by downloading a tarball or zip file at
