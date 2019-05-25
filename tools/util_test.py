@@ -2,7 +2,13 @@
 import sys
 import unittest
 
-from util import pattern_match, parse_exit_code, shell_quote_win, parse_wrk_output, root_path
+from util import (
+    pattern_match,
+    parse_exit_code,
+    shell_quote_win,
+    parse_wrk_output,
+    root_path,
+)
 import os
 
 
