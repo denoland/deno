@@ -1,5 +1,6 @@
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import os
+import sys
 import unittest
 
 from setup import gn_string, read_gn_args, write_gn_args
@@ -59,5 +60,12 @@ class TestSetup(unittest.TestCase):
         rmtree(d)
 
 
+def setup_test():
+    suite = unittest.TestLoader().loadTestsFromTestCase(TestSetup)
+    result = unittest.TextTestRunner(verbosity=2).run(suite)
+    if not result.wasSuccessful():
+        sys.exit(1)
+
+
 if __name__ == '__main__':
-    unittest.main()
+    setup_test()

@@ -11,6 +11,8 @@ from deno_dir_test import deno_dir_test
 from util import build_path, enable_ansi_colors, executable_suffix, run, rmtree
 from util import run_output, tests_path, green_ok
 from unit_tests import unit_tests
+from util_test import util_test
+from setup_test import setup_test
 from benchmark_test import benchmark_test
 from repl_test import repl_tests
 from fetch_test import fetch_test
@@ -66,9 +68,8 @@ def main(argv):
     check_exists(deno_exe)
 
     # Python/build tools testing
-    unit_test_loader = unittest.TestLoader()
-    suite = unit_test_loader.loadTestsFromNames(["util_test", "setup_test"])
-    unittest.TextTestRunner(verbosity=2).run(suite)
+    setup_test()
+    util_test()
 
     run([
         "node", "./node_modules/.bin/ts-node", "--project",

@@ -1,4 +1,5 @@
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+import sys
 import unittest
 
 from util import pattern_match, parse_exit_code, shell_quote_win, parse_wrk_output, root_path
@@ -60,5 +61,12 @@ class TestUtil(unittest.TestCase):
         assert stats3['max_latency'] == 1630.0
 
 
+def util_test():
+    suite = unittest.TestLoader().loadTestsFromTestCase(TestUtil)
+    result = unittest.TextTestRunner(verbosity=2).run(suite)
+    if not result.wasSuccessful():
+        sys.exit(1)
+
+
 if __name__ == '__main__':
-    unittest.main()
+    util_test()
