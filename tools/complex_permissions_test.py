@@ -61,12 +61,8 @@ class ComplexPermissionTestCase(unittest.TestCase):
 
     def _run_deno(self, flags, args):
         "Returns (return_code, stdout, stderr)."
-        cmd = (
-            [self.deno_exe, "run", "--no-prompt"] +
-            flags +
-            [PERMISSIONS_PROMPT_TEST_TS] +
-            args
-        )
+        cmd = ([self.deno_exe, "run", "--no-prompt"] + flags +
+               [PERMISSIONS_PROMPT_TEST_TS] + args)
         return tty_capture(cmd, b'')
 
 
@@ -80,26 +76,26 @@ class TestReadWritePermissions(ComplexPermissionTestCase):
         assert not PERMISSION_DENIED_PATTERN in stderr
 
     def test_outside_test_dir(self):
-        code, _stdout, stderr = self._run_deno(
-            ["--allow-" + self.test_type + "=" + os.path.join(root_path, "tests")],
-            [self.test_type, "package.json"]
-        )
+        code, _stdout, stderr = self._run_deno([
+            "--allow-" + self.test_type + "=" + os.path.join(
+                root_path, "tests")
+        ], [self.test_type, "package.json"])
         assert code == 1
         assert not PROMPT_PATTERN in stderr
         assert PERMISSION_DENIED_PATTERN in stderr
 
     def test_inside_test_dir(self):
-        code, _stdout, stderr = self._run_deno(
-            ["--allow-" + self.test_type + "=" + os.path.join(root_path, "tests")],
-            [self.test_type, "tests/subdir/config.json"]
-        )
+        code, _stdout, stderr = self._run_deno([
+            "--allow-" + self.test_type + "=" + os.path.join(
+                root_path, "tests")
+        ], [self.test_type, "tests/subdir/config.json"])
         assert code == 0
         assert not PROMPT_PATTERN in stderr
         assert not PERMISSION_DENIED_PATTERN in stderr
 
     def test_outside_test_and_js_dir(self):
-        code, _stdout, stderr = self._run_deno(
-            ["--allow-" + self.test_type + "=" + os.path.join(
+        code, _stdout, stderr = self._run_deno([
+            "--allow-" + self.test_type + "=" + os.path.join(
                 root_path, "tests") + "," + os.path.join(root_path, "js")
         ], [self.test_type, "package.json"])
         assert code == 1
@@ -144,15 +140,15 @@ class TestNetFetchPermissions(ComplexPermissionTestCase):
     def test_allow_localhost_4545(self):
         code, _stdout, stderr = self._run_deno(
             ["--allow-net=localhost:4545"],
-            [self.test_type, "http://localhost:4545"]
-        )
+            [self.test_type, "http://localhost:4545"])
         assert code == 0
         assert not PROMPT_PATTERN in stderr
         assert not PERMISSION_DENIED_PATTERN in stderr
 
     def test_allow_deno_land(self):
         code, _stdout, stderr = self._run_deno(
-            ["--allow-net=deno.land"], [self.test_type, "http://localhost:4545"])
+            ["--allow-net=deno.land"],
+            [self.test_type, "http://localhost:4545"])
         assert code == 1
         assert not PROMPT_PATTERN in stderr
         assert PERMISSION_DENIED_PATTERN in stderr
@@ -160,17 +156,16 @@ class TestNetFetchPermissions(ComplexPermissionTestCase):
     def test_allow_localhost_4545_fail(self):
         code, _stdout, stderr = self._run_deno(
             ["--allow-net=localhost:4545"],
-            [self.test_type, "http://localhost:4546"]
-        )
+            [self.test_type, "http://localhost:4546"])
         assert code == 1
         assert not PROMPT_PATTERN in stderr
         assert PERMISSION_DENIED_PATTERN in stderr
 
     def test_allow_localhost(self):
-        code, _stdout, stderr = self._run_deno(
-            ["--allow-net=localhost"],
-            [self.test_type, "http://localhost:4545", "http://localhost:4546", "http://localhost:4547"]
-        )
+        code, _stdout, stderr = self._run_deno(["--allow-net=localhost"], [
+            self.test_type, "http://localhost:4545", "http://localhost:4546",
+            "http://localhost:4547"
+        ])
         assert code == 0
         assert not PROMPT_PATTERN in stderr
         assert not PERMISSION_DENIED_PATTERN in stderr
@@ -179,8 +174,7 @@ class TestNetFetchPermissions(ComplexPermissionTestCase):
 class TestNetDialPermissions(ComplexPermissionTestCase):
     def test_allow_localhost_ip_4555(self):
         code, _stdout, stderr = self._run_deno(
-            ["--allow-net=127.0.0.1:4545"], [self.test_type, "127.0.0.1:4545"]
-        )
+            ["--allow-net=127.0.0.1:4545"], [self.test_type, "127.0.0.1:4545"])
         assert code == 0
         assert not PROMPT_PATTERN in stderr
         assert not PERMISSION_DENIED_PATTERN in stderr
@@ -194,17 +188,16 @@ class TestNetDialPermissions(ComplexPermissionTestCase):
 
     def test_allow_localhost_ip_4545_fail(self):
         code, _stdout, stderr = self._run_deno(
-            ["--allow-net=127.0.0.1:4545"], [self.test_type, "127.0.0.1:4546"]
-        )
+            ["--allow-net=127.0.0.1:4545"], [self.test_type, "127.0.0.1:4546"])
         assert code == 1
         assert not PROMPT_PATTERN in stderr
         assert PERMISSION_DENIED_PATTERN in stderr
 
     def test_allow_localhost_ip(self):
-        code, _stdout, stderr = self._run_deno(
-            ["--allow-net=127.0.0.1"],
-            [self.test_type, "127.0.0.1:4545", "127.0.0.1:4546", "127.0.0.1:4547"]
-        )
+        code, _stdout, stderr = self._run_deno(["--allow-net=127.0.0.1"], [
+            self.test_type, "127.0.0.1:4545", "127.0.0.1:4546",
+            "127.0.0.1:4547"
+        ])
         assert code == 0
         assert not PROMPT_PATTERN in stderr
         assert not PERMISSION_DENIED_PATTERN in stderr
@@ -213,8 +206,7 @@ class TestNetDialPermissions(ComplexPermissionTestCase):
 class TestNetListenPermissions(ComplexPermissionTestCase):
     def test_allow_localhost_4555(self):
         code, _stdout, stderr = self._run_deno(
-            ["--allow-net=localhost:4555"], [self.test_type, "localhost:4555"]
-        )
+            ["--allow-net=localhost:4555"], [self.test_type, "localhost:4555"])
         assert code == 0
         assert not PROMPT_PATTERN in stderr
         assert not PERMISSION_DENIED_PATTERN in stderr
@@ -228,16 +220,16 @@ class TestNetListenPermissions(ComplexPermissionTestCase):
 
     def test_allow_localhost_4555_fail(self):
         code, _stdout, stderr = self._run_deno(
-            ["--allow-net=localhost:4555"], [self.test_type, "localhost:4556"]
-        )
+            ["--allow-net=localhost:4555"], [self.test_type, "localhost:4556"])
         assert code == 1
         assert not PROMPT_PATTERN in stderr
         assert PERMISSION_DENIED_PATTERN in stderr
 
     def test_allow_localhost(self):
-        code, _stdout, stderr = self._run_deno(
-            ["--allow-net=localhost"], [self.test_type, "localhost:4555", "localhost:4556", "localhost:4557"]
-        )
+        code, _stdout, stderr = self._run_deno(["--allow-net=localhost"], [
+            self.test_type, "localhost:4555", "localhost:4556",
+            "localhost:4557"
+        ])
         assert code == 0
         assert not PROMPT_PATTERN in stderr
         assert not PERMISSION_DENIED_PATTERN in stderr

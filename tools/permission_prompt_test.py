@@ -76,8 +76,8 @@ class TestPrompt(unittest.TestCase):
 
     def test_yes_yes(self):
         test_type = self.test_type
-        code, stdout, stderr = self._run_deno([], ["needs" + test_type.capitalize()],
-                                        b'y\ny\n')
+        code, stdout, stderr = self._run_deno(
+            [], ["needs" + test_type.capitalize()], b'y\ny\n')
         assert code == 0
         assert PROMPT_PATTERN in stderr
         assert not FIRST_CHECK_FAILED_PATTERN in stdout
@@ -85,8 +85,8 @@ class TestPrompt(unittest.TestCase):
 
     def test_yes_no(self):
         test_type = self.test_type
-        code, stdout, stderr = self._run_deno([], ["needs" + test_type.capitalize()],
-                                        b'y\nn\n')
+        code, stdout, stderr = self._run_deno(
+            [], ["needs" + test_type.capitalize()], b'y\nn\n')
         assert code == 1
         assert PROMPT_PATTERN in stderr
         assert not FIRST_CHECK_FAILED_PATTERN in stdout
@@ -94,8 +94,8 @@ class TestPrompt(unittest.TestCase):
 
     def test_no_no(self):
         test_type = self.test_type
-        code, stdout, stderr = self._run_deno([], ["needs" + test_type.capitalize()],
-                                        b'n\nn\n')
+        code, stdout, stderr = self._run_deno(
+            [], ["needs" + test_type.capitalize()], b'n\nn\n')
         assert code == 1
         assert PROMPT_PATTERN in stderr
         assert FIRST_CHECK_FAILED_PATTERN in stdout
@@ -103,8 +103,8 @@ class TestPrompt(unittest.TestCase):
 
     def test_no_yes(self):
         test_type = self.test_type
-        code, stdout, stderr = self._run_deno([], ["needs" + test_type.capitalize()],
-                                        b'n\ny\n')
+        code, stdout, stderr = self._run_deno(
+            [], ["needs" + test_type.capitalize()], b'n\ny\n')
         assert code == 0
 
         assert PROMPT_PATTERN in stderr
@@ -113,8 +113,8 @@ class TestPrompt(unittest.TestCase):
 
     def test_allow(self):
         test_type = self.test_type
-        code, stdout, stderr = self._run_deno([], ["needs" + test_type.capitalize()],
-                                        b'a\n')
+        code, stdout, stderr = self._run_deno(
+            [], ["needs" + test_type.capitalize()], b'a\n')
         assert code == 0
         assert PROMPT_PATTERN in stderr
         assert not FIRST_CHECK_FAILED_PATTERN in stdout
@@ -122,8 +122,8 @@ class TestPrompt(unittest.TestCase):
 
     def test_deny(self):
         test_type = self.test_type
-        code, stdout, stderr = self._run_deno([], ["needs" + test_type.capitalize()],
-                                        b'd\n')
+        code, stdout, stderr = self._run_deno(
+            [], ["needs" + test_type.capitalize()], b'd\n')
         assert code == 1
         assert PROMPT_PATTERN in stderr
         assert FIRST_CHECK_FAILED_PATTERN in stdout
@@ -131,8 +131,8 @@ class TestPrompt(unittest.TestCase):
 
     def test_unrecognized_option(self):
         test_type = self.test_type
-        code, stdout, stderr = self._run_deno([], ["needs" + test_type.capitalize()],
-                                        b'e\na\n')
+        code, stdout, stderr = self._run_deno(
+            [], ["needs" + test_type.capitalize()], b'e\na\n')
         assert code == 0
         assert PROMPT_PATTERN in stderr
         assert not FIRST_CHECK_FAILED_PATTERN in stdout
@@ -174,6 +174,7 @@ def permission_prompt_test(deno_exe):
         result = runner.run(suite)
         if not result.wasSuccessful():
             sys.exit(1)
+
 
 def main():
     deno_exe = os.path.join(build_path(), "deno" + executable_suffix)

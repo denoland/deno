@@ -17,7 +17,8 @@ class TestSetup(unittest.TestCase):
 
     def test_read_gn_args(self):
         # Args file doesn't exist.
-        (args, hand_edited) = read_gn_args("/baddir/hopefully/nonexistent/args.gn")
+        (args,
+         hand_edited) = read_gn_args("/baddir/hopefully/nonexistent/args.gn")
         assert args is None
         assert hand_edited == False
 

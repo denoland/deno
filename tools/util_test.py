@@ -38,7 +38,8 @@ class TestUtil(unittest.TestCase):
 
     def test_shell_quote_win(self):
         assert 'simple' == shell_quote_win('simple')
-        assert 'roof/\\isoprojection' == shell_quote_win('roof/\\isoprojection')
+        assert 'roof/\\isoprojection' == shell_quote_win(
+            'roof/\\isoprojection')
         assert '"with space"' == shell_quote_win('with space')
         assert '"embedded""quote"' == shell_quote_win('embedded"quote')
         assert '"a""b""""c\\d\\\\""e\\\\\\\\"' == shell_quote_win(
