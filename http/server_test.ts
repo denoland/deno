@@ -12,7 +12,8 @@ import {
   Response,
   ServerRequest,
   writeResponse,
-  readRequest
+  readRequest,
+  parseHTTPVersion
 } from "./server.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { StringReader } from "../io/readers.ts";
@@ -386,4 +387,29 @@ test(async function testReadRequestError(): Promise<void> {
     }
   }
 });
+
+// Ported from https://github.com/golang/go/blob/f5c43b9/src/net/http/request_test.go#L535-L565
+test({
+  name: "[http] parseHttpVersion",
+  fn(): void {
+    const testCases = [
+      { in: "HTTP/0.9", want: [0, 9, true] },
+      { in: "HTTP/1.0", want: [1, 0, true] },
+      { in: "HTTP/1.1", want: [1, 1, true] },
+      { in: "HTTP/3.14", want: [3, 14, true] },
+      { in: "HTTP", want: [0, 0, false] },
+      { in: "HTTP/one.one", want: [0, 0, false] },
+      { in: "HTTP/1.1/", want: [0, 0, false] },
+      { in: "HTTP/-1.0", want: [0, 0, false] },
+      { in: "HTTP/0.-1", want: [0, 0, false] },
+      { in: "HTTP/", want: [0, 0, false] },
+      { in: "HTTP/1,0", want: [0, 0, false] }
+    ];
+    for (const t of testCases) {
+      const r = parseHTTPVersion(t.in);
+      assertEquals(r, t.want, t.in);
+    }
+  }
+});
+
 runIfMain(import.meta);
