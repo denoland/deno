@@ -64,7 +64,14 @@ impl log::Log for Logger {
 
   fn log(&self, record: &Record) {
     if self.enabled(record.metadata()) {
-      println!("{} RS - {}", record.level(), record.args());
+      let mut target = record.target().to_string();
+
+      if let Some(line_no) = record.line() {
+        target.push_str(":");
+        target.push_str(&line_no.to_string());
+      }
+
+      println!("{} RS - {} - {}", record.level(), target, record.args());
     }
   }
   fn flush(&self) {}
