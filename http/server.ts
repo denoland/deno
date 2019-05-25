@@ -102,6 +102,8 @@ export class ServerRequest {
   url: string;
   method: string;
   proto: string;
+  protoMinor: number;
+  protoMajor: number;
   headers: Headers;
   r: BufReader;
   w: BufWriter;
@@ -215,6 +217,45 @@ function fixLength(req: ServerRequest): void {
   }
 }
 
+// ParseHTTPVersion parses a HTTP version string.
+// "HTTP/1.0" returns (1, 0, true).
+// Ported from https://github.com/golang/go/blob/f5c43b9/src/net/http/request.go#L766-L792
+export function parseHTTPVersion(vers: string): [number, number, boolean] {
+  const Big = 1000000; // arbitrary upper bound
+  const digitReg = /^\d+$/; // test if string is only digit
+  let major: number;
+  let minor: number;
+
+  switch (vers) {
+    case "HTTP/1.1":
+      return [1, 1, true];
+    case "HTTP/1.0":
+      return [1, 0, true];
+  }
+
+  if (!vers.startsWith("HTTP/")) {
+    return [0, 0, false];
+  }
+
+  const dot = vers.indexOf(".");
+  if (dot < 0) {
+    return [0, 0, false];
+  }
+
+  let majorStr = vers.substring(vers.indexOf("/") + 1, dot);
+  major = parseInt(majorStr);
+  if (!digitReg.test(majorStr) || isNaN(major) || major < 0 || major > Big) {
+    return [0, 0, false];
+  }
+
+  let minorStr = vers.substring(dot + 1);
+  minor = parseInt(minorStr);
+  if (!digitReg.test(minorStr) || isNaN(minor) || minor < 0 || minor > Big) {
+    return [0, 0, false];
+  }
+  return [major, minor, true];
+}
+
 export async function readRequest(
   bufr: BufReader
 ): Promise<[ServerRequest, BufState]> {
@@ -229,6 +270,13 @@ export async function readRequest(
     return [null, err];
   }
   [req.method, req.url, req.proto] = firstLine.split(" ", 3);
+
+  let ok: boolean;
+  [req.protoMinor, req.protoMajor, ok] = parseHTTPVersion(req.proto);
+  if (!ok) {
+    throw Error(`malformed HTTP version ${req.proto}`);
+  }
+
   [req.headers, err] = await tp.readMIMEHeader();
   fixLength(req);
   // TODO(zekth) : add parsing of headers eg:
