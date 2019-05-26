@@ -4,7 +4,7 @@ import {
   isWebSocketPingEvent,
   isWebSocketPongEvent
 } from "../ws/mod.ts";
-import { encode } from "../strings/strings.ts";
+import { encode } from "../strings/mod.ts";
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { blue, green, red, yellow } from "../colors/mod.ts";

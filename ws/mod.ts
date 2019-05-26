@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
-import { decode, encode } from "../strings/strings.ts";
+import { decode, encode } from "../strings/mod.ts";
 
 type Conn = Deno.Conn;
 type Writer = Deno.Writer;

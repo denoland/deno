@@ -11,7 +11,7 @@ import {
   unmask,
   writeFrame
 } from "./mod.ts";
-import { encode } from "../strings/strings.ts";
+import { encode } from "../strings/mod.ts";
 
 const { Buffer } = Deno;
 
