@@ -537,7 +537,8 @@ export class EventTarget implements domTypes.EventTarget {
  * interceptable JavaScript operations.
  */
 Reflect.defineProperty(EventTarget.prototype, "host", {
-  enumerable: true
+  enumerable: true,
+  writable: true
 });
 Reflect.defineProperty(EventTarget.prototype, "listeners", {
   enumerable: true,
@@ -548,7 +549,8 @@ Reflect.defineProperty(EventTarget.prototype, "mode", {
   writable: true
 });
 Reflect.defineProperty(EventTarget.prototype, "nodeType", {
-  enumerable: true
+  enumerable: true,
+  writable: true
 });
 Reflect.defineProperty(EventTarget.prototype, "addEventListener", {
   enumerable: true
