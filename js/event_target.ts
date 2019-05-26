@@ -1,16 +1,15 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as domTypes from "./dom_types";
 import { DenoError, ErrorKind } from "./errors";
+import { hasOwnProperty, requiredArguments } from "./util";
 import {
   getRoot,
-  hasOwnProperty,
   isNode,
   isShadowRoot,
   isShadowInclusiveAncestor,
   isSlotable,
-  requiredArguments,
   retarget
-} from "./util";
+} from "./dom_util";
 
 // https://dom.spec.whatwg.org/#get-the-parent
 // Note: Nodes, shadow roots, and documents override this algorithm so we set it to null.
@@ -59,11 +58,11 @@ export class EventListener implements domTypes.EventListener {
   bubbledEvents: domTypes.Event[] = [];
   capturedEvents: domTypes.Event[] = [];
 
-  private _callback: domTypes.EventListener | null = null;
+  private _callback: (event: domTypes.Event) => void | null;
   private _options: boolean | domTypes.AddEventListenerOptions = false;
 
   constructor(
-    callback: domTypes.EventListener | null,
+    callback: (event: domTypes.Event) => void | null,
     options: boolean | domTypes.AddEventListenerOptions
   ) {
     this._callback = callback;
@@ -86,9 +85,11 @@ export class EventListener implements domTypes.EventListener {
       default:
         throw new Error("Unspecified event phase");
     }
+
+    this._callback(event);
   }
 
-  get callback(): domTypes.EventListener | null {
+  get callback(): (event: domTypes.Event) => void | null {
     return this._callback;
   }
 
@@ -98,17 +99,14 @@ export class EventListener implements domTypes.EventListener {
 }
 
 export class EventTarget implements domTypes.EventTarget {
-  public host: domTypes.EventTarget | null = null;
   public listeners: { [type in string]: domTypes.EventListener[] } = {};
   public mode = "";
-  public nodeType: domTypes.NodeType = domTypes.NodeType.DOCUMENT_FRAGMENT_NODE;
-
   private _assignedSlot = false;
   private _hasActivationBehavior = false;
 
   public addEventListener(
     type: string,
-    callback: domTypes.EventListener | null,
+    callback: (event: domTypes.Event) => void | null,
     options?: domTypes.AddEventListenerOptions | boolean
   ): void {
     requiredArguments("EventTarget.addEventListener", arguments.length, 2);
@@ -142,13 +140,13 @@ export class EventTarget implements domTypes.EventTarget {
 
   public removeEventListener(
     type: string,
-    callback: domTypes.EventListener | null,
+    callback: (event: domTypes.Event) => void | null,
     options?: domTypes.EventListenerOptions | boolean
   ): void {
     requiredArguments("EventTarget.removeEventListener", arguments.length, 2);
     if (hasOwnProperty(this.listeners, type) && callback !== null) {
       this.listeners[type] = this.listeners[type].filter(
-        (listener): boolean => listener !== callback
+        (listener): boolean => listener.callback !== callback
       );
     }
 
@@ -398,25 +396,24 @@ export class EventTarget implements domTypes.EventTarget {
 
     eventImpl.currentTarget = tuple.item;
 
-    const listeners = tuple.item.listeners;
-    this._innerInvokeEventListeners(eventImpl, listeners);
+    this._innerInvokeEventListeners(eventImpl, tuple.item.listeners);
   }
 
   // https://dom.spec.whatwg.org/#concept-event-listener-inner-invoke
   _innerInvokeEventListeners(
     eventImpl: domTypes.Event,
-    listeners: { [type in string]: domTypes.EventListener[] }
+    targetListeners: { [type in string]: domTypes.EventListener[] }
   ): boolean {
     let found = false;
 
     const { type } = eventImpl;
 
-    if (!listeners || !listeners[type]) {
+    if (!targetListeners || !targetListeners[type]) {
       return found;
     }
 
     // Copy event listeners before iterating since the list can be modified during the iteration.
-    const handlers = listeners[type].slice();
+    const handlers = targetListeners[type].slice();
 
     for (let i = 0; i < handlers.length; i++) {
       const listener = handlers[i];
@@ -433,7 +430,7 @@ export class EventTarget implements domTypes.EventTarget {
       }
 
       // Check if the event listener has been removed since the listeners has been cloned.
-      if (!listeners[type].includes(listener)) {
+      if (!targetListeners[type].includes(listener)) {
         continue;
       }
 
@@ -448,7 +445,10 @@ export class EventTarget implements domTypes.EventTarget {
       }
 
       if (once) {
-        listeners[type].splice(listeners[type].indexOf(listener), 1);
+        targetListeners[type].splice(
+          targetListeners[type].indexOf(listener),
+          1
+        );
       }
 
       if (passive) {
@@ -456,11 +456,8 @@ export class EventTarget implements domTypes.EventTarget {
       }
 
       try {
-        if (
-          listener.callback &&
-          typeof listener.callback.handleEvent === "function"
-        ) {
-          listener.callback.handleEvent(eventImpl);
+        if (listener.callback && typeof listener.handleEvent === "function") {
+          listener.handleEvent(eventImpl);
         }
       } catch (error) {
         throw new DenoError(ErrorKind.Interrupted, error.message);
@@ -538,7 +535,12 @@ export class EventTarget implements domTypes.EventTarget {
  * interceptable JavaScript operations.
  */
 Reflect.defineProperty(EventTarget.prototype, "listeners", {
-  enumerable: true
+  enumerable: true,
+  writable: true
+});
+Reflect.defineProperty(EventTarget.prototype, "mode", {
+  enumerable: true,
+  writable: true
 });
 Reflect.defineProperty(EventTarget.prototype, "addEventListener", {
   enumerable: true

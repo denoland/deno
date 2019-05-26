@@ -14,10 +14,10 @@ test(function constructedEventTargetCanBeUsedAsExpected(): void {
   const event = new Event("foo", { bubbles: true, cancelable: false });
   let callCount = 0;
 
-  function listener(e): void {
+  const listener = (e): void => {
     assertEquals(e, event);
     ++callCount;
-  }
+  };
 
   target.addEventListener("foo", listener);
 
@@ -47,9 +47,9 @@ test(function anEventTargetCanBeSubclassed(): void {
   new Event("foo", { bubbles: true, cancelable: false });
   let callCount = 0;
 
-  function listener(): void {
+  const listener = (): void => {
     ++callCount;
-  }
+  };
 
   target.on("foo", listener);
   assertEquals(callCount, 0);
@@ -70,10 +70,10 @@ test(function constructedEventTargetUseObjectPrototype(): void {
   const event = new Event("toString", { bubbles: true, cancelable: false });
   let callCount = 0;
 
-  function listener(e): void {
+  const listener = (e): void => {
     assertEquals(e, event);
     ++callCount;
-  }
+  };
 
   target.addEventListener("toString", listener);
 
@@ -102,7 +102,8 @@ test(function dispatchEventShouldNotThrowError(): void {
       bubbles: true,
       cancelable: false
     });
-    target.addEventListener("hasOwnProperty", (): void => {});
+    const listener = (): void => {};
+    target.addEventListener("hasOwnProperty", listener);
     target.dispatchEvent(event);
   } catch {
     hasThrown = true;

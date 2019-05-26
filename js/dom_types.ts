@@ -72,19 +72,17 @@ export enum NodeType {
 }
 
 export interface EventTarget {
-  host: EventTarget | null;
   listeners: { [type in string]: EventListener[] };
   mode: string;
-  nodeType: NodeType;
   addEventListener(
     type: string,
-    callback: EventListener | null,
+    callback: (event: Event) => void | null,
     options?: boolean | AddEventListenerOptions
   ): void;
   dispatchEvent(event: Event): boolean;
   removeEventListener(
     type: string,
-    callback?: EventListener | null,
+    callback?: (event: Event) => void | null,
     options?: EventListenerOptions | boolean
   ): void;
 }
@@ -144,7 +142,7 @@ export interface URLSearchParams {
 
 export interface EventListener {
   handleEvent(event: Event): void;
-  readonly callback: EventListener | null;
+  readonly callback: (event: Event) => void | null;
   readonly options: boolean | AddEventListenerOptions;
 }
 
