@@ -139,35 +139,41 @@ testPerm({ net: true }, async function netCloseReadSuccess(): Promise<void> {
   conn.close();
 });
 
-/* TODO Fix broken test.
-testPerm({ net: true }, async function netDoubleCloseRead() {
-  const addr = '127.0.0.1:4500';
-  const listener = Deno.listen('tcp', addr);
+testPerm({ net: true }, async function netDoubleCloseRead(): Promise<void> {
+  const addr = "127.0.0.1:4500";
+  const listener = Deno.listen("tcp", addr);
   const closeDeferred = deferred();
-  listener.accept().then(async conn => {
-    await conn.write(new Uint8Array([1, 2, 3]));
-    await closeDeferred;
-    conn.close();
-  });
-  const conn = await Deno.dial('tcp', addr);
+  listener.accept().then(
+    async (conn): Promise<void> => {
+      await conn.write(new Uint8Array([1, 2, 3]));
+      await closeDeferred;
+      conn.close();
+    }
+  );
+  const conn = await Deno.dial("tcp", addr);
   conn.closeRead(); // closing read
   let err;
   try {
-    // Duplicated close should throw error
+    // Duplicated close should throw error on Mac.
+    // whereas linux is no error.
+    // https://doc.rust-lang.org/nightly/std/net/struct.TcpStream.html#platform-specific-behavior
     conn.closeRead();
   } catch (e) {
     err = e;
   }
-  assert(!!err);
-  assertEquals(err.kind, Deno.ErrorKind.NotConnected);
-  assertEquals(err.name, 'NotConnected');
+  if (Deno.platform.os === "mac") {
+    assert(!!err);
+    assertEquals(err.kind, Deno.ErrorKind.NotConnected);
+    assertEquals(err.name, "NotConnected");
+  } else if (Deno.platform.os === "linux") {
+    assert(!err);
+  }
   closeDeferred.resolve();
   listener.close();
   conn.close();
 });
- */
 
-testPerm({ net: true }, async function netCloseWriteSuccess(): Proimise<void> {
+testPerm({ net: true }, async function netCloseWriteSuccess(): Promise<void> {
   const addr = "127.0.0.1:4500";
   const listener = Deno.listen("tcp", addr);
   const closeDeferred = deferred();
@@ -201,16 +207,17 @@ testPerm({ net: true }, async function netCloseWriteSuccess(): Proimise<void> {
   conn.close();
 });
 
-/* TODO Fix broken test.
-testPerm({ net: true }, async function netDoubleCloseWrite() {
-  const addr = '127.0.0.1:4500';
-  const listener = Deno.listen('tcp', addr);
+testPerm({ net: true }, async function netDoubleCloseWrite(): Promise<void> {
+  const addr = "127.0.0.1:4500";
+  const listener = Deno.listen("tcp", addr);
   const closeDeferred = deferred();
-  listener.accept().then(async conn => {
-    await closeDeferred;
-    conn.close();
-  });
-  const conn = await Deno.dial('tcp', addr);
+  listener.accept().then(
+    async (conn): Promise<void> => {
+      await closeDeferred;
+      conn.close();
+    }
+  );
+  const conn = await Deno.dial("tcp", addr);
   conn.closeWrite(); // closing write
   let err;
   try {
@@ -219,11 +226,14 @@ testPerm({ net: true }, async function netDoubleCloseWrite() {
   } catch (e) {
     err = e;
   }
-  assert(!!err);
-  assertEquals(err.kind, Deno.ErrorKind.NotConnected);
-  assertEquals(err.name, 'NotConnected');
+  if (Deno.platform.os === "mac") {
+    assert(!!err);
+    assertEquals(err.kind, Deno.ErrorKind.NotConnected);
+    assertEquals(err.name, "NotConnected");
+  } else if (Deno.platform.os === "linux") {
+    assert(!err);
+  }
   closeDeferred.resolve();
   listener.close();
   conn.close();
 });
- */
