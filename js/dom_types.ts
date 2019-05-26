@@ -72,8 +72,10 @@ export enum NodeType {
 }
 
 export interface EventTarget {
+  host: EventTarget | null;
   listeners: { [type in string]: EventListener[] };
   mode: string;
+  nodeType: NodeType;
   addEventListener(
     type: string,
     callback: (event: Event) => void | null,

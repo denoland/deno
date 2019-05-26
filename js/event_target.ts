@@ -99,8 +99,10 @@ export class EventListener implements domTypes.EventListener {
 }
 
 export class EventTarget implements domTypes.EventTarget {
+  public host: domTypes.EventTarget | null = null;
   public listeners: { [type in string]: domTypes.EventListener[] } = {};
   public mode = "";
+  public nodeType: domTypes.NodeType = domTypes.NodeType.DOCUMENT_FRAGMENT_NODE;
   private _assignedSlot = false;
   private _hasActivationBehavior = false;
 
@@ -534,6 +536,9 @@ export class EventTarget implements domTypes.EventTarget {
 /** Built-in objects providing `get` methods for our
  * interceptable JavaScript operations.
  */
+Reflect.defineProperty(EventTarget.prototype, "host", {
+  enumerable: true
+});
 Reflect.defineProperty(EventTarget.prototype, "listeners", {
   enumerable: true,
   writable: true
@@ -541,6 +546,9 @@ Reflect.defineProperty(EventTarget.prototype, "listeners", {
 Reflect.defineProperty(EventTarget.prototype, "mode", {
   enumerable: true,
   writable: true
+});
+Reflect.defineProperty(EventTarget.prototype, "nodeType", {
+  enumerable: true
 });
 Reflect.defineProperty(EventTarget.prototype, "addEventListener", {
   enumerable: true
