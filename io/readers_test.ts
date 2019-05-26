@@ -4,7 +4,7 @@ import { assertEquals } from "../testing/asserts.ts";
 import { MultiReader, StringReader } from "./readers.ts";
 import { StringWriter } from "./writers.ts";
 import { copyN } from "./ioutil.ts";
-import { decode } from "../strings/strings.ts";
+import { decode } from "../strings/mod.ts";
 
 test(async function ioStringReader(): Promise<void> {
   const r = new StringReader("abcdef");

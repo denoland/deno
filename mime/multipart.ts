@@ -12,7 +12,7 @@ import { MultiReader } from "../io/readers.ts";
 import { tempFile } from "../io/util.ts";
 import { BufReader, BufState, BufWriter } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
-import { encoder } from "../strings/strings.ts";
+import { encoder } from "../strings/mod.ts";
 import * as path from "../fs/path.ts";
 
 function randomBoundary(): string {

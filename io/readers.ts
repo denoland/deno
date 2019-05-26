@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 type Reader = Deno.Reader;
 type ReadResult = Deno.ReadResult;
-import { encode } from "../strings/strings.ts";
+import { encode } from "../strings/mod.ts";
 
 /** Reader utility for strings */
 export class StringReader implements Reader {
