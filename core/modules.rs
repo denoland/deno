@@ -6,8 +6,8 @@
 // small and simple for users who do not use modules or if they do can load them
 // synchronously. The isolate.rs module should never depend on this module.
 
+use crate::diagnostics::DenoDiagnostic;
 use crate::isolate::Isolate;
-use crate::js_errors::JSError;
 use crate::libdeno::deno_mod;
 use futures::Async;
 use futures::Future;
@@ -148,7 +148,7 @@ impl<L: Loader> RecursiveLoad<L> {
 // combined into one type.
 #[derive(Debug, PartialEq)]
 pub enum JSErrorOr<E> {
-  JSError(JSError),
+  JSError(DenoDiagnostic),
   Other(E),
 }
 

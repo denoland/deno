@@ -2,14 +2,14 @@
 use atty;
 use crate::ansi;
 use crate::deno_dir::resolve_path;
+use crate::diagnostics::apply_source_map;
+use crate::diagnostics::DenoDiagnosticColor;
 use crate::dispatch_minimal::dispatch_minimal;
 use crate::dispatch_minimal::parse_min_record;
 use crate::errors;
 use crate::errors::{DenoError, DenoResult, ErrorKind};
 use crate::fs as deno_fs;
 use crate::http_util;
-use crate::js_errors::apply_source_map;
-use crate::js_errors::JSErrorColor;
 use crate::msg;
 use crate::msg_util;
 use crate::rand;
@@ -28,7 +28,7 @@ use crate::worker::root_specifier_to_url;
 use crate::worker::Worker;
 use deno::js_check;
 use deno::Buf;
-use deno::JSError;
+use deno::DenoDiagnostic;
 use deno::Op;
 use deno::PinnedBuf;
 use flatbuffers::FlatBufferBuilder;
@@ -385,12 +385,12 @@ fn op_format_error(
   let inner = base.inner_as_format_error().unwrap();
   let orig_error = String::from(inner.error().unwrap());
 
-  let js_error = JSError::from_v8_exception(&orig_error).unwrap();
-  let js_error_mapped = apply_source_map(&js_error, &state.dir);
-  let js_error_string = JSErrorColor(&js_error_mapped).to_string();
+  let diagnostic = DenoDiagnostic::from_v8_exception(&orig_error).unwrap();
+  let diagnostic_mapped = apply_source_map(&diagnostic, &state.dir);
+  let diagnostic_string = DenoDiagnosticColor(&diagnostic_mapped).to_string();
 
   let mut builder = FlatBufferBuilder::new();
-  let new_error = builder.create_string(&js_error_string);
+  let new_error = builder.create_string(&diagnostic_string);
 
   let inner = msg::FormatErrorRes::create(
     &mut builder,

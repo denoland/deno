@@ -7,7 +7,7 @@ use crate::tokio_util;
 use crate::worker::Worker;
 use deno::js_check;
 use deno::Buf;
-use deno::JSError;
+use deno::DenoDiagnostic;
 use futures::Future;
 use futures::Stream;
 use std::str;
@@ -87,7 +87,7 @@ pub fn compile_async(
   specifier: &str,
   referrer: &str,
   module_meta_data: &ModuleMetaData,
-) -> impl Future<Item = ModuleMetaData, Error = JSError> {
+) -> impl Future<Item = ModuleMetaData, Error = DenoDiagnostic> {
   debug!(
     "Running rust part of compile_sync. specifier: {}, referrer: {}",
     &specifier, &referrer
@@ -169,7 +169,7 @@ pub fn compile_sync(
   specifier: &str,
   referrer: &str,
   module_meta_data: &ModuleMetaData,
-) -> Result<ModuleMetaData, JSError> {
+) -> Result<ModuleMetaData, DenoDiagnostic> {
   tokio_util::block_on(compile_async(
     state,
     specifier,

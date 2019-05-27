@@ -1,4 +1,8 @@
-[WILDCARD]Uncaught NotFound: Cannot resolve module "./non-existent" from "[WILDCARD]/tests/error_006_import_ext_failure.ts"
+[WILDCARD]Uncaught NotFound: Cannot resolve module "./non-existent" from "/Users/kkelly/github/deno/tests/error_006_import_ext_failure.ts"
+
+[WILDCARD]return new DenoError(kind, base.error());
+[WILDCARD]^
+
     at DenoError (js/errors.ts:[WILDCARD])
     at maybeError (js/errors.ts:[WILDCARD])
     at maybeThrowError (js/errors.ts:[WILDCARD])

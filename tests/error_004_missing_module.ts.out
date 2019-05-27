@@ -1,4 +1,8 @@
-[WILDCARD]Uncaught NotFound: Cannot resolve module "bad-module.ts" from "[WILDCARD]/tests/error_004_missing_module.ts"
+[WILDCARD]Uncaught NotFound: Cannot resolve module "bad-module.ts" from "/Users/kkelly/github/deno/tests/error_004_missing_module.ts"
+
+[WILDCARD]return new DenoError(kind, base.error());
+[WILDCARD]^
+
     at DenoError (js/errors.ts:[WILDCARD])
     at maybeError (js/errors.ts:[WILDCARD])
     at maybeThrowError (js/errors.ts:[WILDCARD])

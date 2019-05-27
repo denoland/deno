@@ -1,16 +1,16 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::compiler::compile_async;
 use crate::compiler::ModuleMetaData;
+use crate::diagnostics;
+use crate::diagnostics::DenoDiagnosticColor;
 use crate::errors::DenoError;
 use crate::errors::RustOrJsError;
-use crate::js_errors;
-use crate::js_errors::JSErrorColor;
 use crate::msg;
 use crate::state::ThreadSafeState;
 use crate::tokio_util;
 use deno;
 use deno::Config;
-use deno::JSError;
+use deno::DenoDiagnostic;
 use deno::Loader;
 use deno::StartupData;
 use futures::future::Either;
@@ -46,7 +46,7 @@ impl Worker {
   }
 
   /// Same as execute2() but the filename defaults to "<anonymous>".
-  pub fn execute(&mut self, js_source: &str) -> Result<(), JSError> {
+  pub fn execute(&mut self, js_source: &str) -> Result<(), DenoDiagnostic> {
     self.execute2("<anonymous>", js_source)
   }
 
@@ -56,7 +56,7 @@ impl Worker {
     &mut self,
     js_filename: &str,
     js_source: &str,
-  ) -> Result<(), JSError> {
+  ) -> Result<(), DenoDiagnostic> {
     self.inner.execute(js_filename, js_source)
   }
 
@@ -103,8 +103,8 @@ impl Worker {
   }
 
   /// Applies source map to the error.
-  fn apply_source_map(&self, err: JSError) -> JSError {
-    js_errors::apply_source_map(&err, &self.state.dir)
+  fn apply_source_map(&self, err: DenoDiagnostic) -> DenoDiagnostic {
+    diagnostics::apply_source_map(&err, &self.state.dir)
   }
 }
 
@@ -200,7 +200,7 @@ impl Loader for Worker {
 
 impl Future for Worker {
   type Item = ();
-  type Error = JSError;
+  type Error = DenoDiagnostic;
 
   fn poll(&mut self) -> Result<Async<()>, Self::Error> {
     self.inner.poll().map_err(|err| self.apply_source_map(err))
@@ -233,7 +233,7 @@ fn fetch_module_meta_data_and_maybe_compile_async(
             compile_async(state_.clone(), &specifier, &referrer, &out)
               .map_err(|e| {
                 debug!("compiler error exiting!");
-                eprintln!("{}", JSErrorColor(&e).to_string());
+                eprintln!("{}", DenoDiagnosticColor(&e).to_string());
                 std::process::exit(1);
               }).and_then(move |out| {
                 debug!(">>>>> compile_sync END");

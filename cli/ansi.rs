@@ -1,6 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+use ansi_term::Color::Black;
 use ansi_term::Color::Fixed;
 use ansi_term::Color::Red;
+use ansi_term::Color::White;
 use ansi_term::Style;
 use regex::Regex;
 use std::env;
@@ -27,18 +29,34 @@ pub fn use_color() -> bool {
   !(*NO_COLOR)
 }
 
-pub fn red_bold(s: String) -> impl fmt::Display {
-  let mut style = Style::new();
-  if use_color() {
-    style = style.bold().fg(Red);
-  }
-  style.paint(s)
-}
-
 pub fn italic_bold(s: String) -> impl fmt::Display {
   let mut style = Style::new();
   if use_color() {
     style = style.italic().bold();
+  }
+  style.paint(s)
+}
+
+pub fn black_on_white(s: String) -> impl fmt::Display {
+  let mut style = Style::new();
+  if use_color() {
+    style = style.on(White).fg(Black);
+  }
+  style.paint(s)
+}
+
+pub fn red(s: String) -> impl fmt::Display {
+  let mut style = Style::new();
+  if use_color() {
+    style = style.fg(Red);
+  }
+  style.paint(s)
+}
+
+pub fn grey(s: String) -> impl fmt::Display {
+  let mut style = Style::new();
+  if use_color() {
+    style = style.fg(Fixed(8));
   }
   style.paint(s)
 }

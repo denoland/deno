@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as msg from "gen/cli/msg_generated";
 import { core } from "./core";
+import { toDenoDiagnostics } from "./diagnostics";
 import * as flatbuffers from "./flatbuffers";
 import { sendSync } from "./dispatch";
 import { TextDecoder } from "./text_encoding";
@@ -408,14 +409,13 @@ window.compilerMain = function compilerMain(): void {
         }
       );
 
-    if (diagnostics.length > 0) {
-      host._logDiagnostics(diagnostics);
-      // The above _logDiagnostics calls os.exit(). The return is here just for
-      // clarity.
-      return;
-    }
+    const { emitSkipped, emittedFiles } = emitResult;
 
-    postMessage(emitResult);
+    postMessage({
+      emitSkipped,
+      diagnostics: toDenoDiagnostics(diagnostics),
+      emittedFiles
+    });
 
     // The compiler isolate exits after a single messsage.
     workerClose();

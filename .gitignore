@@ -16,3 +16,6 @@ node_modules
 /website/data.json
 /website/recent.json
 /js/gen
+# cached for some of the tests
+/js/deps/https/deno.land/std@v*/
+/js/deps/https/raw.githubusercontent.com/

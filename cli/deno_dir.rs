@@ -1,12 +1,12 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::compiler::ModuleMetaData;
+use crate::diagnostics::SourceMapGetter;
 use crate::errors;
 use crate::errors::DenoError;
 use crate::errors::DenoResult;
 use crate::errors::ErrorKind;
 use crate::fs as deno_fs;
 use crate::http_util;
-use crate::js_errors::SourceMapGetter;
 use crate::msg;
 use crate::progress::Progress;
 use crate::tokio_util;

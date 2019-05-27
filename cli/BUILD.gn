@@ -73,6 +73,7 @@ ts_sources = [
   "../js/copy_file.ts",
   "../js/core.ts",
   "../js/custom_event.ts",
+  "../js/diagnostics.ts",
   "../js/deno.ts",
   "../js/dir.ts",
   "../js/dispatch.ts",

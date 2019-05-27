@@ -1,8 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::js_errors::JSErrorColor;
+use crate::diagnostics::DenoDiagnosticColor;
 pub use crate::msg::ErrorKind;
 use crate::resolve_addr::ResolveAddrError;
-use deno::JSError;
+use deno::DenoDiagnostic;
 use hyper;
 #[cfg(unix)]
 use nix::{errno::Errno, Error as UnixError};
@@ -232,7 +232,7 @@ pub fn no_buffer_specified() -> DenoError {
 #[derive(Debug)]
 pub enum RustOrJsError {
   Rust(DenoError),
-  Js(JSError),
+  Js(DenoDiagnostic),
 }
 
 impl From<DenoError> for RustOrJsError {
@@ -241,8 +241,8 @@ impl From<DenoError> for RustOrJsError {
   }
 }
 
-impl From<JSError> for RustOrJsError {
-  fn from(e: JSError) -> Self {
+impl From<DenoDiagnostic> for RustOrJsError {
+  fn from(e: DenoDiagnostic) -> Self {
     RustOrJsError::Js(e)
   }
 }
@@ -251,7 +251,7 @@ impl fmt::Display for RustOrJsError {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
       RustOrJsError::Rust(e) => e.fmt(f),
-      RustOrJsError::Js(e) => JSErrorColor(e).fmt(f),
+      RustOrJsError::Js(e) => DenoDiagnosticColor(e).fmt(f),
     }
   }
 }

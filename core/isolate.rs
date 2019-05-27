@@ -4,7 +4,7 @@
 // isolate to keep the Isolate struct from becoming too bloating for users who
 // do not need asynchronous module loading.
 
-use crate::js_errors::JSError;
+use crate::diagnostics::DenoDiagnostic;
 use crate::libdeno;
 use crate::libdeno::deno_buf;
 use crate::libdeno::deno_mod;
@@ -212,7 +212,7 @@ impl Isolate {
       Op::Sync(buf) => {
         // For sync messages, we always return the response via Deno.core.send's
         // return value.
-        // TODO(ry) check that if JSError thrown during respond(), that it will be
+        // TODO(ry) check that if DenoDiagnostic thrown during respond(), that it will be
         // picked up.
         let _ = isolate.respond(Some(&buf));
       }
@@ -238,7 +238,7 @@ impl Isolate {
     &mut self,
     js_filename: &str,
     js_source: &str,
-  ) -> Result<(), JSError> {
+  ) -> Result<(), DenoDiagnostic> {
     self.shared_init();
     let filename = CString::new(js_filename).unwrap();
     let source = CString::new(js_source).unwrap();
@@ -256,7 +256,7 @@ impl Isolate {
     Ok(())
   }
 
-  fn last_exception(&self) -> Option<JSError> {
+  fn last_exception(&self) -> Option<DenoDiagnostic> {
     let ptr = unsafe { libdeno::deno_last_exception(self.libdeno_isolate) };
     if ptr.is_null() {
       None
@@ -264,7 +264,7 @@ impl Isolate {
       let cstr = unsafe { CStr::from_ptr(ptr) };
       let v8_exception = cstr.to_str().unwrap();
       debug!("v8_exception\n{}\n", v8_exception);
-      let js_error = JSError::from_v8_exception(v8_exception).unwrap();
+      let js_error = DenoDiagnostic::from_v8_exception(v8_exception).unwrap();
       Some(js_error)
     }
   }
@@ -275,7 +275,10 @@ impl Isolate {
     }
   }
 
-  fn respond(&mut self, maybe_buf: Option<&[u8]>) -> Result<(), JSError> {
+  fn respond(
+    &mut self,
+    maybe_buf: Option<&[u8]>,
+  ) -> Result<(), DenoDiagnostic> {
     let buf = match maybe_buf {
       None => deno_buf::empty(),
       Some(r) => deno_buf::from(r),
@@ -296,7 +299,7 @@ impl Isolate {
     main: bool,
     name: &str,
     source: &str,
-  ) -> Result<deno_mod, JSError> {
+  ) -> Result<deno_mod, DenoDiagnostic> {
     let name_ = CString::new(name.to_string()).unwrap();
     let name_ptr = name_.as_ptr() as *const libc::c_char;
 
@@ -329,7 +332,7 @@ impl Isolate {
     out
   }
 
-  pub fn snapshot(&self) -> Result<Snapshot1<'static>, JSError> {
+  pub fn snapshot(&self) -> Result<Snapshot1<'static>, DenoDiagnostic> {
     let snapshot = unsafe { libdeno::deno_snapshot_new(self.libdeno_isolate) };
     if let Some(js_error) = self.last_exception() {
       assert_eq!(snapshot.data_ptr, null());
@@ -368,7 +371,7 @@ impl Isolate {
     &mut self,
     id: deno_mod,
     resolve_fn: &mut ResolveFn,
-  ) -> Result<(), JSError> {
+  ) -> Result<(), DenoDiagnostic> {
     let libdeno_isolate = self.libdeno_isolate;
     let mut ctx = ResolveContext { resolve_fn };
     unsafe {
@@ -400,7 +403,7 @@ impl Isolate {
     resolve_fn(specifier, referrer)
   }
 
-  pub fn mod_evaluate(&mut self, id: deno_mod) -> Result<(), JSError> {
+  pub fn mod_evaluate(&mut self, id: deno_mod) -> Result<(), DenoDiagnostic> {
     self.shared_init();
     unsafe {
       libdeno::deno_mod_evaluate(self.libdeno_isolate, self.as_raw_ptr(), id)
@@ -431,9 +434,9 @@ impl Drop for LockerScope {
 
 impl Future for Isolate {
   type Item = ();
-  type Error = JSError;
+  type Error = DenoDiagnostic;
 
-  fn poll(&mut self) -> Poll<(), JSError> {
+  fn poll(&mut self) -> Poll<(), DenoDiagnostic> {
     // Lock the current thread for V8.
     let _locker = LockerScope::new(self.libdeno_isolate);
 
@@ -508,7 +511,7 @@ impl IsolateHandle {
   }
 }
 
-pub fn js_check(r: Result<(), JSError>) {
+pub fn js_check(r: Result<(), DenoDiagnostic>) {
   if let Err(e) = r {
     panic!(e.to_string());
   }
