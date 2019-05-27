@@ -5,50 +5,42 @@
 import os
 import subprocess
 import sys
-from util import rmtree, run
+
+from util import DenoTestCase, mkdtemp, rmtree, run, test_main
 
 
-def deno_dir_test(deno_exe, deno_dir):
-    assert os.path.isfile(deno_exe)
+class TestDenoDir(DenoTestCase):
+    def setUp(self):
+        self.old_deno_dir = None
+        if "DENO_DIR" in os.environ:
+            self.old_deno_dir = os.environ["DENO_DIR"]
+            del os.environ["DENO_DIR"]
 
-    old_deno_dir = None
-    if "DENO_DIR" in os.environ:
-        old_deno_dir = os.environ["DENO_DIR"]
-        del os.environ["DENO_DIR"]
+    def tearDown(self):
+        if self.old_deno_dir is not None:
+            os.environ["DENO_DIR"] = self.old_deno_dir
 
-    if os.path.isdir(deno_dir):
+    def test_deno_dir(self):
+        deno_dir = mkdtemp()
+        if os.path.isdir(deno_dir):
+            rmtree(deno_dir)
+
+        # Run deno with no env flag
+        self.run_deno()
+        assert not os.path.isdir(deno_dir)
+
+        # Run deno with DENO_DIR env flag
+        self.run_deno(deno_dir)
+        assert os.path.isdir(deno_dir)
+        assert os.path.isdir(os.path.join(deno_dir, "deps"))
+        assert os.path.isdir(os.path.join(deno_dir, "gen"))
         rmtree(deno_dir)
 
-    # Run deno with no env flag
-    run_deno(deno_exe)
-    assert not os.path.isdir(deno_dir)
-
-    # Run deno with DENO_DIR env flag
-    run_deno(deno_exe, deno_dir)
-    assert os.path.isdir(deno_dir)
-    assert os.path.isdir(os.path.join(deno_dir, "deps"))
-    assert os.path.isdir(os.path.join(deno_dir, "gen"))
-    rmtree(deno_dir)
-
-    if old_deno_dir is not None:
-        os.environ["DENO_DIR"] = old_deno_dir
-
-
-def run_deno(deno_exe, deno_dir=None):
-    cmd = [deno_exe, "run", "tests/002_hello.ts"]
-    deno_dir_env = {"DENO_DIR": deno_dir} if deno_dir is not None else None
-    run(cmd, quiet=True, env=deno_dir_env)
-
-
-USAGE = "./tools/deno_dir_test.py target/debug/deno target/debug/.deno_dir"
-
-
-def main(argv):
-    if len(sys.argv) != 3:
-        print "Usage: " + USAGE
-        sys.exit(1)
-    deno_dir_test(argv[1], argv[2])
+    def run_deno(self, deno_dir=None):
+        cmd = [self.deno_exe, "run", "tests/002_hello.ts"]
+        deno_dir_env = {"DENO_DIR": deno_dir} if deno_dir is not None else None
+        run(cmd, quiet=True, env=deno_dir_env)
 
 
 if __name__ == '__main__':
-    sys.exit(main(sys.argv))
+    test_main()

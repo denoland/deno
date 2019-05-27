@@ -137,35 +137,46 @@ def double_redirects_server():
     return base_redirect_server(DOUBLE_REDIRECTS_PORT, REDIRECT_PORT)
 
 
+def start(s):
+    thread = Thread(target=s.serve_forever, kwargs={"poll_interval": 0.05})
+    thread.daemon = True
+    thread.start()
+    return thread
+
+
 def spawn():
     # Main http server
     s = server()
-    thread = Thread(target=s.serve_forever)
-    thread.daemon = True
-    thread.start()
+    thread = start(s)
     # Redirect server
     rs = redirect_server()
-    r_thread = Thread(target=rs.serve_forever)
-    r_thread.daemon = True
-    r_thread.start()
+    r_thread = start(rs)
     # Another redirect server
     ars = another_redirect_server()
-    ar_thread = Thread(target=ars.serve_forever)
-    ar_thread.daemon = True
-    ar_thread.start()
+    ar_thread = start(ars)
     # Double redirects server
     drs = double_redirects_server()
-    dr_thread = Thread(target=drs.serve_forever)
-    dr_thread.daemon = True
-    dr_thread.start()
+    dr_thread = start(drs)
     sleep(1)  # TODO I'm too lazy to figure out how to do this properly.
-    return thread
+    return [s, rs, ars, drs], [thread, r_thread, ar_thread, dr_thread]
+
+
+class Spawn():
+    def __init__(self):
+        self._servers = self._threads = None
+
+    def __enter__(self):
+        self._servers, self._threads = spawn()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        for s in self._servers:
+            s.shutdown()
 
 
 def main():
     try:
-        thread = spawn()
-        while thread.is_alive():
+        _, ts = spawn()
+        while all(t.is_alive() for t in ts):
             sleep(10)
     except KeyboardInterrupt:
         pass

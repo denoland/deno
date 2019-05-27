@@ -1,18 +1,19 @@
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+import os
 import sys
-import unittest
 
 from util import (
+    DenoTestCase,
     pattern_match,
     parse_exit_code,
     shell_quote_win,
     parse_wrk_output,
     root_path,
+    test_main,
 )
-import os
 
 
-class TestUtil(unittest.TestCase):
+class TestUtil(DenoTestCase):
     def test_pattern_match(self):
         # yapf: disable
         fixtures = [("foobarbaz", "foobarbaz", True),
@@ -68,12 +69,5 @@ class TestUtil(unittest.TestCase):
         assert stats3['max_latency'] == 1630.0
 
 
-def util_test():
-    suite = unittest.TestLoader().loadTestsFromTestCase(TestUtil)
-    result = unittest.TextTestRunner(verbosity=2).run(suite)
-    if not result.wasSuccessful():
-        sys.exit(1)
-
-
 if __name__ == '__main__':
-    util_test()
+    test_main()
