@@ -4,13 +4,15 @@
 # Usage: ./tools/test.py out/Debug
 import os
 import sys
+import unittest
+
 from integration_tests import integration_tests
 from deno_dir_test import deno_dir_test
-from setup_test import setup_test
 from util import build_path, enable_ansi_colors, executable_suffix, run, rmtree
 from util import run_output, tests_path, green_ok
 from unit_tests import unit_tests
 from util_test import util_test
+from setup_test import setup_test
 from benchmark_test import benchmark_test
 from repl_test import repl_tests
 from fetch_test import fetch_test
@@ -68,6 +70,7 @@ def main(argv):
     # Python/build tools testing
     setup_test()
     util_test()
+
     run([
         "node", "./node_modules/.bin/ts-node", "--project",
         "tools/ts_library_builder/tsconfig.json",

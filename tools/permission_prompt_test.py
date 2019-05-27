@@ -7,6 +7,7 @@ import select
 import subprocess
 import sys
 import time
+import unittest
 
 from util import build_path, executable_suffix, green_ok, red_failed
 
@@ -52,128 +53,104 @@ def tty_capture(cmd, bytes_input, timeout=5):
     return p.returncode, res['stdout'], res['stderr']
 
 
-# Wraps a test in debug printouts
-# so we have visual indicator of what test failed
-def wrap_test(test_name, test_method, *argv):
-    sys.stdout.write(test_name + " ... ")
-    try:
-        test_method(*argv)
-        print green_ok()
-    except AssertionError:
-        print red_failed()
-        raise
-
-
-class Prompt(object):
-    def __init__(self, deno_exe, test_types):
+class TestPrompt(unittest.TestCase):
+    def __init__(self, method_name, test_type, deno_exe):
+        super(TestPrompt, self).__init__(method_name)
+        self.test_type = test_type
         self.deno_exe = deno_exe
-        self.test_types = test_types
 
-    def run(self, flags, args, bytes_input):
+    def _run_deno(self, flags, args, bytes_input):
         "Returns (return_code, stdout, stderr)."
         cmd = [self.deno_exe, "run"] + flags + [PERMISSIONS_PROMPT_TEST_TS
                                                 ] + args
         return tty_capture(cmd, bytes_input)
 
-    def warm_up(self):
-        # ignore the ts compiling message
-        self.run(["--allow-write"], 'needsWrite', b'')
-
-    def test(self):
-        for test_type in self.test_types:
-            test_name_base = "test_" + test_type
-            wrap_test(test_name_base + "_allow_flag", self.test_allow_flag,
-                      test_type)
-            wrap_test(test_name_base + "_yes_yes", self.test_yes_yes,
-                      test_type)
-            wrap_test(test_name_base + "_yes_no", self.test_yes_no, test_type)
-            wrap_test(test_name_base + "_no_no", self.test_no_no, test_type)
-            wrap_test(test_name_base + "_no_yes", self.test_no_yes, test_type)
-            wrap_test(test_name_base + "_allow", self.test_allow, test_type)
-            wrap_test(test_name_base + "_deny", self.test_deny, test_type)
-            wrap_test(test_name_base + "_unrecognized_option",
-                      self.test_unrecognized_option, test_type)
-            wrap_test(test_name_base + "_no_prompt", self.test_no_prompt,
-                      test_type)
-            wrap_test(test_name_base + "_no_prompt_allow",
-                      self.test_no_prompt_allow, test_type)
-
-    def test_allow_flag(self, test_type):
-        code, stdout, stderr = self.run(
+    def test_allow_flag(self):
+        test_type = self.test_type
+        code, stdout, stderr = self._run_deno(
             ["--allow-" + test_type], ["needs" + test_type.capitalize()], b'')
         assert code == 0
         assert not PROMPT_PATTERN in stderr
         assert not FIRST_CHECK_FAILED_PATTERN in stdout
         assert not PERMISSION_DENIED_PATTERN in stderr
 
-    def test_yes_yes(self, test_type):
-        code, stdout, stderr = self.run([], ["needs" + test_type.capitalize()],
-                                        b'y\ny\n')
+    def test_yes_yes(self):
+        test_type = self.test_type
+        code, stdout, stderr = self._run_deno(
+            [], ["needs" + test_type.capitalize()], b'y\ny\n')
         assert code == 0
         assert PROMPT_PATTERN in stderr
         assert not FIRST_CHECK_FAILED_PATTERN in stdout
         assert not PERMISSION_DENIED_PATTERN in stderr
 
-    def test_yes_no(self, test_type):
-        code, stdout, stderr = self.run([], ["needs" + test_type.capitalize()],
-                                        b'y\nn\n')
+    def test_yes_no(self):
+        test_type = self.test_type
+        code, stdout, stderr = self._run_deno(
+            [], ["needs" + test_type.capitalize()], b'y\nn\n')
         assert code == 1
         assert PROMPT_PATTERN in stderr
         assert not FIRST_CHECK_FAILED_PATTERN in stdout
         assert PERMISSION_DENIED_PATTERN in stderr
 
-    def test_no_no(self, test_type):
-        code, stdout, stderr = self.run([], ["needs" + test_type.capitalize()],
-                                        b'n\nn\n')
+    def test_no_no(self):
+        test_type = self.test_type
+        code, stdout, stderr = self._run_deno(
+            [], ["needs" + test_type.capitalize()], b'n\nn\n')
         assert code == 1
         assert PROMPT_PATTERN in stderr
         assert FIRST_CHECK_FAILED_PATTERN in stdout
         assert PERMISSION_DENIED_PATTERN in stderr
 
-    def test_no_yes(self, test_type):
-        code, stdout, stderr = self.run([], ["needs" + test_type.capitalize()],
-                                        b'n\ny\n')
+    def test_no_yes(self):
+        test_type = self.test_type
+        code, stdout, stderr = self._run_deno(
+            [], ["needs" + test_type.capitalize()], b'n\ny\n')
         assert code == 0
 
         assert PROMPT_PATTERN in stderr
         assert FIRST_CHECK_FAILED_PATTERN in stdout
         assert not PERMISSION_DENIED_PATTERN in stderr
 
-    def test_allow(self, test_type):
-        code, stdout, stderr = self.run([], ["needs" + test_type.capitalize()],
-                                        b'a\n')
+    def test_allow(self):
+        test_type = self.test_type
+        code, stdout, stderr = self._run_deno(
+            [], ["needs" + test_type.capitalize()], b'a\n')
         assert code == 0
         assert PROMPT_PATTERN in stderr
         assert not FIRST_CHECK_FAILED_PATTERN in stdout
         assert not PERMISSION_DENIED_PATTERN in stderr
 
-    def test_deny(self, test_type):
-        code, stdout, stderr = self.run([], ["needs" + test_type.capitalize()],
-                                        b'd\n')
+    def test_deny(self):
+        test_type = self.test_type
+        code, stdout, stderr = self._run_deno(
+            [], ["needs" + test_type.capitalize()], b'd\n')
         assert code == 1
         assert PROMPT_PATTERN in stderr
         assert FIRST_CHECK_FAILED_PATTERN in stdout
         assert PERMISSION_DENIED_PATTERN in stderr
 
-    def test_unrecognized_option(self, test_type):
-        code, stdout, stderr = self.run([], ["needs" + test_type.capitalize()],
-                                        b'e\na\n')
+    def test_unrecognized_option(self):
+        test_type = self.test_type
+        code, stdout, stderr = self._run_deno(
+            [], ["needs" + test_type.capitalize()], b'e\na\n')
         assert code == 0
         assert PROMPT_PATTERN in stderr
         assert not FIRST_CHECK_FAILED_PATTERN in stdout
         assert not PERMISSION_DENIED_PATTERN in stderr
         assert b'Unrecognized option' in stderr
 
-    def test_no_prompt(self, test_type):
-        code, stdout, stderr = self.run(
+    def test_no_prompt(self):
+        test_type = self.test_type
+        code, stdout, stderr = self._run_deno(
             ["--no-prompt"], ["needs" + test_type.capitalize()], b'')
         assert code == 1
         assert not PROMPT_PATTERN in stderr
         assert FIRST_CHECK_FAILED_PATTERN in stdout
         assert PERMISSION_DENIED_PATTERN in stderr
 
-    def test_no_prompt_allow(self, test_type):
-        code, stdout, stderr = self.run(
+    def test_no_prompt_allow(self):
+        test_type = self.test_type
+        code, stdout, stderr = self._run_deno(
             ["--no-prompt", "--allow-" + test_type],
             ["needs" + test_type.capitalize()], b'')
         assert code == 0
@@ -183,12 +160,23 @@ class Prompt(object):
 
 
 def permission_prompt_test(deno_exe):
-    p = Prompt(deno_exe, ["read", "write", "env", "net", "run"])
-    p.test()
+    runner = unittest.TextTestRunner(verbosity=2)
+    loader = unittest.TestLoader()
+
+    test_types = ["read", "write", "env", "net", "run"]
+
+    for test_type in test_types:
+        print "Permissions prompt tests for \"{}\"".format(test_type)
+        test_names = loader.getTestCaseNames(TestPrompt)
+        suite = unittest.TestSuite()
+        for test_name in test_names:
+            suite.addTest(TestPrompt(test_name, test_type, deno_exe))
+        result = runner.run(suite)
+        if not result.wasSuccessful():
+            sys.exit(1)
 
 
 def main():
-    print "Permissions prompt tests"
     deno_exe = os.path.join(build_path(), "deno" + executable_suffix)
     permission_prompt_test(deno_exe)
 
