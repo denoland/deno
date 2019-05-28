@@ -98,13 +98,14 @@ def main(argv):
             FetchTest,
             FmtTest,
             TestIntegrations,
-            TestIsTty,
             TestRepl,
             TestDenoDir,
             TestBenchmark,
         ]
-        test_cases += permission_prompt_tests()
-        test_cases += complex_permissions_tests()
+        if os.name != 'nt':
+            test_cases.append(TestIsTty)
+            test_cases += permission_prompt_tests()
+            test_cases += complex_permissions_tests()
 
         suite = unittest.TestSuite([
             unittest.TestLoader().loadTestsFromTestCase(tc)

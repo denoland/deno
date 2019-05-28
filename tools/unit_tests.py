@@ -19,7 +19,8 @@ class JsUnitTests(DenoTestCase):
         process.wait()
         errcode = process.returncode
         if errcode != 0:
-            sys.exit(errcode)
+            raise AssertionError(
+                "js/unit_test_runner.ts exited with exit code %s" % errcode)
 
 
 if __name__ == '__main__':
