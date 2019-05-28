@@ -163,7 +163,7 @@ pub fn dispatch_all_legacy(
   );
 
   if base.sync() {
-    Op::Sync(fut.wait().unwrap())
+    Op::Sync(tokio_util::block_on(fut).unwrap())
   } else {
     Op::Async(fut)
   }

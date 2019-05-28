@@ -11,14 +11,18 @@ use tokio::net::TcpStream;
 use tokio::runtime;
 
 pub fn create_threadpool_runtime() -> tokio::runtime::Runtime {
-  // This code can be simplified once the following PR is landed and
-  // released: https://github.com/tokio-rs/tokio/pull/1055
-  use tokio_threadpool::Builder as ThreadPoolBuilder;
-  let mut threadpool_builder = ThreadPoolBuilder::new();
-  threadpool_builder.panic_handler(|err| std::panic::resume_unwind(err));
-  #[allow(deprecated)]
   runtime::Builder::new()
-    .threadpool_builder(threadpool_builder)
+    .panic_handler(|err| std::panic::resume_unwind(err))
+    // TODO(ry)
+    // Set a very large number of maximum threads. This is because of an error
+    // in how ops are implemented. We allow sync ops to return a future which
+    // we then block on. If there are not enough threads available in the
+    // runtime, then the process will lock up trying to wait.
+    // The proper solution is that sync ops should be actually synchronous.
+    // This can be acheived when op creators return Op::Sync when sync.
+    .core_threads(100)
+    // We want the threads to exit when not in use.
+    .keep_alive(Some(std::time::Duration::from_secs(5)))
     .build()
     .unwrap()
 }
