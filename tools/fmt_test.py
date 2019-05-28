@@ -16,9 +16,12 @@ def fmt_test(deno_exe):
         src = os.path.join(tests_path, "badly_formatted.js")
         dst = os.path.join(d, "badly_formatted.js")
         shutil.copyfile(src, dst)
-        # Set DENO_DIR to //js/ so we don't have to rely on an intenet
-        # connection to download https://deno.land/std/prettier/main.ts
-        deno_dir = os.path.join(root_path, "js")
+        # Set DENO_DIR to the temp dir so we test an initial fetch of prettier.
+        # TODO(ry) This make the test depend on internet access which is not
+        # ideal. We should have prettier in the repo already, and we could
+        # fetch it instead through tools/http_server.py.
+        deno_dir = d
+
         # TODO(kt3k) The below line should be run([deno_exe, "fmt", dst], ...)
         # It should be updated when the below issue is addressed
         # https://github.com/denoland/deno_std/issues/330
