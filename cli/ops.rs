@@ -455,30 +455,31 @@ fn op_fetch_module_meta_data(
   let use_cache = !state.flags.reload;
   let no_fetch = state.flags.no_fetch;
 
-  Box::new(futures::future::result(|| -> OpResult {
-    let builder = &mut FlatBufferBuilder::new();
-    // TODO(ry) Use fetch_module_meta_data_async.
-    let out = state
+  Box::new(
+    state
       .dir
-      .fetch_module_meta_data(specifier, referrer, use_cache, no_fetch)?;
-    let data_off = builder.create_vector(out.source_code.as_slice());
-    let msg_args = msg::FetchModuleMetaDataResArgs {
-      module_name: Some(builder.create_string(&out.module_name)),
-      filename: Some(builder.create_string(&out.filename)),
-      media_type: out.media_type,
-      data: Some(data_off),
-    };
-    let inner = msg::FetchModuleMetaDataRes::create(builder, &msg_args);
-    Ok(serialize_response(
-      cmd_id,
-      builder,
-      msg::BaseArgs {
-        inner: Some(inner.as_union_value()),
-        inner_type: msg::Any::FetchModuleMetaDataRes,
-        ..Default::default()
-      },
-    ))
-  }()))
+      .fetch_module_meta_data_async(specifier, referrer, use_cache, no_fetch)
+      .and_then(move |out| {
+        let builder = &mut FlatBufferBuilder::new();
+        let data_off = builder.create_vector(out.source_code.as_slice());
+        let msg_args = msg::FetchModuleMetaDataResArgs {
+          module_name: Some(builder.create_string(&out.module_name)),
+          filename: Some(builder.create_string(&out.filename)),
+          media_type: out.media_type,
+          data: Some(data_off),
+        };
+        let inner = msg::FetchModuleMetaDataRes::create(builder, &msg_args);
+        Ok(serialize_response(
+          cmd_id,
+          builder,
+          msg::BaseArgs {
+            inner: Some(inner.as_union_value()),
+            inner_type: msg::Any::FetchModuleMetaDataRes,
+            ..Default::default()
+          },
+        ))
+      }),
+  )
 }
 
 /// Retrieve any relevant compiler configuration.
