@@ -163,6 +163,14 @@ pub fn dispatch_all_legacy(
   );
 
   if base.sync() {
+    // TODO(ry) This is not correct! If the sync op is not actually synchronous
+    // (like in the case of op_fetch_module_meta_data) this wait() will block
+    // a thread in the Tokio runtime. Depending on the size of the runtime's
+    // thread pool, this may result in a dead lock!
+    //
+    // The solution is that ops should return an Op directly. Op::Sync contains
+    // the result value, so if its returned directly from the OpCreator, we
+    // know it has actually be evaluated synchronously.
     Op::Sync(fut.wait().unwrap())
   } else {
     Op::Async(fut)
@@ -455,30 +463,39 @@ fn op_fetch_module_meta_data(
   let use_cache = !state.flags.reload;
   let no_fetch = state.flags.no_fetch;
 
-  Box::new(futures::future::result(|| -> OpResult {
-    let builder = &mut FlatBufferBuilder::new();
-    // TODO(ry) Use fetch_module_meta_data_async.
-    let out = state
-      .dir
-      .fetch_module_meta_data(specifier, referrer, use_cache, no_fetch)?;
-    let data_off = builder.create_vector(out.source_code.as_slice());
-    let msg_args = msg::FetchModuleMetaDataResArgs {
-      module_name: Some(builder.create_string(&out.module_name)),
-      filename: Some(builder.create_string(&out.filename)),
-      media_type: out.media_type,
-      data: Some(data_off),
-    };
-    let inner = msg::FetchModuleMetaDataRes::create(builder, &msg_args);
-    Ok(serialize_response(
-      cmd_id,
-      builder,
-      msg::BaseArgs {
-        inner: Some(inner.as_union_value()),
-        inner_type: msg::Any::FetchModuleMetaDataRes,
-        ..Default::default()
-      },
-    ))
-  }()))
+  let fut = state
+    .dir
+    .fetch_module_meta_data_async(specifier, referrer, use_cache, no_fetch)
+    .and_then(move |out| {
+      let builder = &mut FlatBufferBuilder::new();
+      let data_off = builder.create_vector(out.source_code.as_slice());
+      let msg_args = msg::FetchModuleMetaDataResArgs {
+        module_name: Some(builder.create_string(&out.module_name)),
+        filename: Some(builder.create_string(&out.filename)),
+        media_type: out.media_type,
+        data: Some(data_off),
+      };
+      let inner = msg::FetchModuleMetaDataRes::create(builder, &msg_args);
+      Ok(serialize_response(
+        cmd_id,
+        builder,
+        msg::BaseArgs {
+          inner: Some(inner.as_union_value()),
+          inner_type: msg::Any::FetchModuleMetaDataRes,
+          ..Default::default()
+        },
+      ))
+    });
+
+  // Unfortunately TypeScript's CompilerHost interface does not leave room for
+  // asynchronous source code fetching. This complicates things greatly and
+  // requires us to use tokio_util::block_on() below.
+  assert!(base.sync());
+
+  // WARNING: Here we use tokio_util::block_on() which starts a new Tokio
+  // runtime for executing the future. This is so we don't inadvernently run
+  // out of threads in the main runtime.
+  Box::new(futures::future::result(tokio_util::block_on(fut)))
 }
 
 /// Retrieve any relevant compiler configuration.
