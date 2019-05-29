@@ -1,4 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+
+// TODO(ry) replace ansi_term with termcolor.
 use ansi_term::Color::Fixed;
 use ansi_term::Color::Red;
 use ansi_term::Style;

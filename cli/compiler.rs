@@ -115,7 +115,7 @@ pub fn compile_async(
 
   let compiling_job = state
     .progress
-    .add(format!("Compiling {}", module_meta_data_.module_name));
+    .add(format!("Compile {}", module_meta_data_.module_name));
 
   let resource = worker.state.resource.clone();
   let compiler_rid = resource.rid;

@@ -49,6 +49,7 @@ main_extern_rlib = [
   "tokio_process",
   "tokio_rustls",
   "tokio_threadpool",
+  "unicode_width",
   "url",
   "utime",
 ]

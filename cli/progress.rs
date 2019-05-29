@@ -33,7 +33,20 @@ impl Progress {
   pub fn add(&self, name: String) -> Job {
     let mut s = self.0.lock().unwrap();
     let id = s.job_names.len();
-    s.maybe_call_callback(false, s.complete, s.job_names.len() + 1, &name);
+    let max = s.job_names.len() + 1;
+    let cur = s.complete;
+    s.maybe_call_callback(false, max, cur, &name);
+
+    /*
+    {
+      let mut iter = name.split_whitespace();
+      let name = iter.next().unwrap();
+      let url = iter.next().unwrap();
+      s.progress.print_now2(&name, &url).unwrap();
+    }
+    */
+    s.tick();
+
     s.job_names.push(name);
     Job {
       id,
@@ -42,18 +55,39 @@ impl Progress {
   }
 
   pub fn done(&self) {
-    let s = self.0.lock().unwrap();
+    let mut s = self.0.lock().unwrap();
+    s.progress.clear();
+    // s.progress.print_now("Ready").unwrap();
+    // s.progress.tick_now(cur, max, "done").unwrap();
+    // s.progress.print_now("Foo").unwrap();
     s.maybe_call_callback(true, s.complete, s.job_names.len(), "");
   }
 }
 
 type Callback = dyn Fn(bool, usize, usize, &str) + Send + Sync;
 
-#[derive(Default)]
+use crate::cargo_progress::Progress as CargoProgress;
+use crate::cargo_shell::Shell as CargoShell;
+
 struct Inner {
+  progress: CargoProgress,
   job_names: Vec<String>,
   complete: usize,
   callback: Option<Arc<Callback>>,
+}
+
+impl Default for Inner {
+  fn default() -> Inner {
+    let shell = CargoShell::new();
+    // shell.status_header("hello world").unwrap();
+    // shell.status("hello", "world").unwrap();
+    Inner {
+      progress: CargoProgress::new("Building", shell),
+      job_names: Vec::new(),
+      complete: 0,
+      callback: None,
+    }
+  }
 }
 
 impl Inner {
@@ -67,6 +101,13 @@ impl Inner {
     if let Some(ref cb) = self.callback {
       cb(done, complete, total, msg);
     }
+  }
+
+  pub fn tick(&mut self) {
+    let (complete, total) = self.progress();
+    assert!(self.progress.is_enabled());
+    // drop(self.progress.stderr("hi".to_string()));
+    self.progress.tick_now(complete, total, "").unwrap();
   }
 
   /// Returns job counts: (complete, total)
@@ -85,9 +126,16 @@ impl Drop for Job {
   fn drop(&mut self) {
     let mut s = self.inner.lock().unwrap();
     s.complete += 1;
-    let name = &s.job_names[self.id];
+    let name = s.job_names[self.id].clone();
     let (complete, total) = s.progress();
-    s.maybe_call_callback(false, complete, total, name);
+    {
+      let mut iter = name.split_whitespace();
+      let name = iter.next().unwrap();
+      let url = iter.next().unwrap();
+      s.progress.print_now2(&name, &url).unwrap();
+    }
+    s.tick();
+    s.maybe_call_callback(false, complete, total, &name);
   }
 }
 

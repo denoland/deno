@@ -68,7 +68,6 @@ pub struct State {
   pub dispatch_selector: ops::OpSelector,
   /// Reference to global progress bar.
   pub progress: Progress,
-
   /// Set of all URLs that have been compiled. This is a hacky way to work
   /// around the fact that --reload will force multiple compilations of the same
   /// module.

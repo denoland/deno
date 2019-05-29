@@ -14,6 +14,8 @@ extern crate nix;
 extern crate rand;
 
 mod ansi;
+mod cargo_progress;
+mod cargo_shell;
 pub mod compiler;
 pub mod deno_dir;
 mod dispatch_minimal;
@@ -145,6 +147,7 @@ fn create_worker_and_state(
   argv: Vec<String>,
 ) -> (Worker, ThreadSafeState) {
   let progress = Progress::new();
+  /*
   progress.set_callback(|done, completed, total, msg| {
     if !done {
       eprint!("\r[{}/{}] {}", completed, total, msg);
@@ -157,6 +160,7 @@ fn create_worker_and_state(
       eprintln!();
     }
   });
+  */
   let state = ThreadSafeState::new(flags, argv, ops::op_selector_std, progress);
   let worker = Worker::new(
     "main".to_string(),
