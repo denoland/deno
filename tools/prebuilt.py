@@ -18,23 +18,22 @@ def download_prebuilt(sha1_file):
         env=google_env())
 
 
-def load_sccache():
+def get_platform_path(tool):
     if sys.platform == 'win32':
-        p = "prebuilt/win/sccache.exe"
+        return "prebuilt/win/" + tool + ".exe"
     elif sys.platform.startswith('linux'):
-        p = "prebuilt/linux64/sccache"
+        return "prebuilt/linux64/" + tool
     elif sys.platform == 'darwin':
-        p = "prebuilt/mac/sccache"
+        return "prebuilt/mac/" + tool
+
+
+def load_sccache():
+    p = get_platform_path("sccache")
     download_prebuilt(p + ".sha1")
     return os.path.join(root_path, p)
 
 
 def load_hyperfine():
-    if sys.platform == 'win32':
-        p = "prebuilt/win/hyperfine.exe"
-    elif sys.platform.startswith('linux'):
-        p = "prebuilt/linux64/hyperfine"
-    elif sys.platform == 'darwin':
-        p = "prebuilt/mac/hyperfine"
+    p = get_platform_path("hyperfine")
     download_prebuilt(p + ".sha1")
     return os.path.join(root_path, p)
