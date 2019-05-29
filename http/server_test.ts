@@ -385,6 +385,12 @@ test(async function testReadRequestError(): Promise<void> {
     10: {
       in: "HEAD / HTTP/1.1\r\nContent-Length:0\r\nContent-Length: 0\r\n\r\n",
       headers: [{ key: "Content-Length", value: "0" }]
+    },
+    11: {
+      in:
+        "POST / HTTP/1.1\r\nContent-Length:0\r\ntransfer-encoding: chunked\r\n\r\n",
+      headers: [],
+      err: "http: Transfer-Encoding and Content-Length cannot be send together"
     }
   };
   for (const p in testCases) {

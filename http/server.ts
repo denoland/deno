@@ -215,6 +215,14 @@ function fixLength(req: ServerRequest): void {
     if (req.method === "HEAD" && c && c !== "0") {
       throw Error("http: method cannot contain a Content-Length");
     }
+    if (c && req.headers.has("transfer-encoding")) {
+      // A sender MUST NOT send a Content-Length header field in any message
+      // that contains a Transfer-Encoding header field.
+      // rfc: https://tools.ietf.org/html/rfc7230#section-3.3.2
+      throw new Error(
+        "http: Transfer-Encoding and Content-Length cannot be send together"
+      );
+    }
   }
 }
 
@@ -288,10 +296,6 @@ export async function readRequest(
   [req.protoMinor, req.protoMajor] = parseHTTPVersion(req.proto);
   req.headers = headers;
   fixLength(req);
-  // TODO(zekth) : add parsing of headers eg:
-  // rfc: https://tools.ietf.org/html/rfc7230#section-3.3.2
-  // A sender MUST NOT send a Content-Length header field in any message
-  // that contains a Transfer-Encoding header field.
   return req;
 }
 
