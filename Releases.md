@@ -6,6 +6,40 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.7.0 / 2019.05.29
+
+In deno:
+
+- TS compiler refactor (#2380)
+- add EventTarget implementation (#2377)
+- add module and line no for Rust logger (#2409)
+- re-fix permissions for dial and listen (#2400)
+- Fix concurrent accepts (#2403)
+- Rename --allow-high-precision to --allow-hrtime (#2398)
+- Use tagged version of prettier in CLI (#2387)
+
+In deno_std:
+
+- io: refactor BufReader/Writer interfaces to be more idiomatic
+  (denoland/deno_std#444)
+- http: add rfc7230 handling (denoland/deno_std#451)
+- http: add ParseHTTPVersion (denoland/deno_std#452)
+- rename strings/strings.ts to strings/mod.ts (denoland/deno_std#449)
+- Prettier: support for specified files and glob mode (denoland/deno_std#438)
+- Add encoding/csv (denoland/deno_std#432)
+- rename bytes/bytes.ts to bytes/mod.ts
+- remove function prefix of bytes module
+- add bytes.repeat() (denoland/deno_std#446)
+- http: fix content-length checking (denoland/deno_std#437)
+- Added isGlob function (denoland/deno_std#433)
+- http: send an empty response body if none is provided (denoland/deno_std#429)
+- http: make server handle bad client requests properly (denoland/deno_std#419)
+- fix(fileserver): wrong url href of displayed files (denoland/deno_std#426)
+- http: delete conn parameter in readRequest (denoland/deno_std#430)
+- Rename //multipart/multipart.ts to //mime/multipart.ts (denoland/deno_std#420)
+- feat(prettier): output to stdout instead of write file by default unless
+  specified --write flag (denoland/deno_std#332)
+
 ### v0.6.0 / 2019.05.20
 
 In deno:
