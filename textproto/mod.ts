@@ -82,7 +82,7 @@ export class TextProtoReader {
       throw new UnexpectedEOFError();
     } else if (buf[0] == charCode(" ") || buf[0] == charCode("\t")) {
       throw new ProtocolError(
-        `malformed MIME header initial line: ${str(line)}`
+        `malformed MIME header initial line: ${str(line!)}`
       );
     }
 
@@ -140,7 +140,7 @@ export class TextProtoReader {
       const { line: l, more } = r;
 
       // Avoid the copy if the first call produced a full line.
-      if (!line && !more) {
+      if (!line! && !more) {
         // TODO(ry):
         // This skipSpace() is definitely misplaced, but I don't know where it
         // comes from nor how to fix it.
@@ -150,6 +150,7 @@ export class TextProtoReader {
         return l;
       }
 
+      // @ts-ignore
       line = append(line, l);
       if (!more) {
         break;

@@ -19,7 +19,7 @@ test(function flagBooleanTrue(): void {
 
 // flag boolean true only affects double hyphen arguments without equals signs
 test(function flagBooleanTrueOnlyAffectsDoubleDash(): void {
-  var argv = parse(["moo", "--honk", "cow", "-p", "55", "--tacos=good"], {
+  const argv = parse(["moo", "--honk", "cow", "-p", "55", "--tacos=good"], {
     boolean: true
   });
 

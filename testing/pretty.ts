@@ -38,7 +38,7 @@ function createSign(diffType: DiffType): string {
 }
 
 function buildMessage(diffResult: ReadonlyArray<DiffResult<string>>): string[] {
-  const messages = [];
+  const messages: string[] = [];
   messages.push("");
   messages.push("");
   messages.push(

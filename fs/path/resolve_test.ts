@@ -37,14 +37,16 @@ const posixTests =
 
 test(function resolve() {
   posixTests.forEach(function(p) {
-    const actual = path.posix.resolve.apply(null, p[0]);
+    const _p = p[0] as string[];
+    const actual = path.posix.resolve.apply(null, _p);
     assertEquals(actual, p[1]);
   });
 });
 
 test(function resolveWin32() {
   windowsTests.forEach(function(p) {
-    const actual = path.win32.resolve.apply(null, p[0]);
+    const _p = p[0] as string[];
+    const actual = path.win32.resolve.apply(null, _p);
     assertEquals(actual, p[1]);
   });
 });

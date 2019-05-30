@@ -54,7 +54,7 @@ interface TestStats {
 
 interface TestResult {
   name: string;
-  error: Error;
+  error?: Error;
   ok: boolean;
   printed: boolean;
 }
@@ -68,7 +68,7 @@ function createTestResults(tests: TestDefinition[]): TestResults {
   return tests.reduce(
     (acc: TestResults, { name }: TestDefinition, i: number): TestResults => {
       acc.keys.set(name, i);
-      acc.cases.set(i, { name, printed: false, ok: false, error: null });
+      acc.cases.set(i, { name, printed: false, ok: false, error: undefined });
       return acc;
     },
     { cases: new Map(), keys: new Map() }
@@ -114,11 +114,11 @@ function printResults(
 }
 
 function previousPrinted(name: string, results: TestResults): boolean {
-  const curIndex: number = results.keys.get(name);
+  const curIndex: number = results.keys.get(name)!;
   if (curIndex === 0) {
     return true;
   }
-  return results.cases.get(curIndex - 1).printed;
+  return results.cases.get(curIndex - 1)!.printed;
 }
 
 async function createTestCase(
@@ -127,7 +127,7 @@ async function createTestCase(
   exitOnFail: boolean,
   { fn, name }: TestDefinition
 ): Promise<void> {
-  const result: TestResult = results.cases.get(results.keys.get(name));
+  const result: TestResult = results.cases.get(results.keys.get(name)!)!;
   try {
     await fn();
     stats.passed++;

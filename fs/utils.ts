@@ -16,10 +16,14 @@ export function isSubdir(
   }
   const srcArray = src.split(sep);
   const destArray = dest.split(sep);
-
-  return srcArray.reduce((acc, current, i): boolean => {
-    return acc && destArray[i] === current;
-  }, true);
+  // see: https://github.com/Microsoft/TypeScript/issues/30821
+  return srcArray.reduce(
+    // @ts-ignore
+    (acc: true, current: string, i: number): boolean => {
+      return acc && destArray[i] === current;
+    },
+    true
+  );
 }
 
 export type PathType = "file" | "dir" | "symlink";
@@ -29,7 +33,7 @@ export type PathType = "file" | "dir" | "symlink";
  *
  * @param fileInfo A FileInfo describes a file and is returned by `stat`, `lstat`
  */
-export function getFileInfoType(fileInfo: Deno.FileInfo): PathType {
+export function getFileInfoType(fileInfo: Deno.FileInfo): PathType | undefined {
   return fileInfo.isFile()
     ? "file"
     : fileInfo.isDirectory()

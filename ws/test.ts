@@ -166,20 +166,31 @@ test(function wsAcceptable(): void {
   );
 });
 
-const invalidHeaders = [
-  { "sec-websocket-key": "aaa" },
-  { upgrade: "websocket" },
-  { upgrade: "invalid", "sec-websocket-key": "aaa" },
-  { upgrade: "websocket", "sec-websocket-ky": "" }
-];
-
 test(function wsAcceptableInvalid(): void {
-  for (const pat of invalidHeaders) {
-    const ret = acceptable({
-      headers: new Headers(pat)
-    });
-    assertEquals(ret, false);
-  }
+  assertEquals(
+    acceptable({
+      headers: new Headers({ "sec-websocket-key": "aaa" })
+    }),
+    false
+  );
+  assertEquals(
+    acceptable({
+      headers: new Headers({ upgrade: "websocket" })
+    }),
+    false
+  );
+  assertEquals(
+    acceptable({
+      headers: new Headers({ upgrade: "invalid", "sec-websocket-key": "aaa" })
+    }),
+    false
+  );
+  assertEquals(
+    acceptable({
+      headers: new Headers({ upgrade: "websocket", "sec-websocket-ky": "" })
+    }),
+    false
+  );
 });
 
 test(async function wsWriteReadMaskedFrame(): Promise<void> {

@@ -66,7 +66,7 @@ export function globrex(
 
   // Helper function to build string and segments
   function add(
-    str,
+    str: string,
     options: AddOptions = { split: false, last: false, only: "" }
   ): void {
     const { split, last, only } = options;
@@ -114,13 +114,13 @@ export function globrex(
     if (c === ")") {
       if (ext.length) {
         add(c);
-        let type = ext.pop();
+        let type: string | undefined = ext.pop();
         if (type === "@") {
           add("{1}");
         } else if (type === "!") {
           add("([^/]*)");
         } else {
-          add(type);
+          add(type as string);
         }
         continue;
       }

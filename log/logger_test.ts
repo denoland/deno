@@ -10,7 +10,7 @@ class TestHandler extends BaseHandler {
   public records: LogRecord[] = [];
 
   handle(record: LogRecord): void {
-    this.records.push({ ...record, datetime: null });
+    this.records.push({ ...record });
     super.handle(record);
   }
 
@@ -38,33 +38,29 @@ test(function customHandler(): void {
 
   logger.debug("foo", 1, 2);
 
-  assertEquals(handler.records, [
-    {
-      msg: "foo",
-      args: [1, 2],
-      datetime: null,
-      level: LogLevel.DEBUG,
-      levelName: "DEBUG"
-    }
-  ]);
+  const record = handler.records[0];
+  assertEquals(record.msg, "foo");
+  assertEquals(record.args, [1, 2]);
+  assertEquals(record.level, LogLevel.DEBUG);
+  assertEquals(record.levelName, "DEBUG");
 
   assertEquals(handler.messages, ["DEBUG foo"]);
 });
 
 test(function logFunctions(): void {
-  let handler: TestHandler;
-
-  const doLog = (level: string): void => {
-    handler = new TestHandler(level);
+  const doLog = (level: string): TestHandler => {
+    const handler = new TestHandler(level);
     let logger = new Logger(level, [handler]);
     logger.debug("foo");
     logger.info("bar");
     logger.warning("baz");
     logger.error("boo");
     logger.critical("doo");
+    return handler;
   };
 
-  doLog("DEBUG");
+  let handler: TestHandler;
+  handler = doLog("DEBUG");
 
   assertEquals(handler.messages, [
     "DEBUG foo",
@@ -74,7 +70,7 @@ test(function logFunctions(): void {
     "CRITICAL doo"
   ]);
 
-  doLog("INFO");
+  handler = doLog("INFO");
 
   assertEquals(handler.messages, [
     "INFO bar",
@@ -83,15 +79,15 @@ test(function logFunctions(): void {
     "CRITICAL doo"
   ]);
 
-  doLog("WARNING");
+  handler = doLog("WARNING");
 
   assertEquals(handler.messages, ["WARNING baz", "ERROR boo", "CRITICAL doo"]);
 
-  doLog("ERROR");
+  handler = doLog("ERROR");
 
   assertEquals(handler.messages, ["ERROR boo", "CRITICAL doo"]);
 
-  doLog("CRITICAL");
+  handler = doLog("CRITICAL");
 
   assertEquals(handler.messages, ["CRITICAL doo"]);
 });

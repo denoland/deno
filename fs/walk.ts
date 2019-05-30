@@ -71,7 +71,7 @@ export async function* walk(
   root: string,
   options: WalkOptions = {}
 ): AsyncIterableIterator<WalkInfo> {
-  options.maxDepth -= 1;
+  options.maxDepth! -= 1;
   let ls: FileInfo[] = [];
   try {
     ls = await readDir(root);
@@ -90,14 +90,14 @@ export async function* walk(
       }
     }
 
-    const filename = join(root, info.name);
+    const filename = join(root, info.name!);
 
     if (info.isFile()) {
       if (include(filename, options)) {
         yield { filename, info };
       }
     } else {
-      if (!(options.maxDepth < 0)) {
+      if (!(options.maxDepth! < 0)) {
         yield* walk(filename, options);
       }
     }
@@ -109,7 +109,7 @@ export function* walkSync(
   root: string = ".",
   options: WalkOptions = {}
 ): IterableIterator<WalkInfo> {
-  options.maxDepth -= 1;
+  options.maxDepth! -= 1;
   let ls: FileInfo[] = [];
   try {
     ls = readDirSync(root);
@@ -127,14 +127,14 @@ export function* walkSync(
       }
     }
 
-    const filename = join(root, info.name);
+    const filename = join(root, info.name!);
 
     if (info.isFile()) {
       if (include(filename, options)) {
         yield { filename, info };
       }
     } else {
-      if (!(options.maxDepth < 0)) {
+      if (!(options.maxDepth! < 0)) {
         yield* walkSync(filename, options);
       }
     }

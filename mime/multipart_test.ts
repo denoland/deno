@@ -142,6 +142,7 @@ test(async function multipartMultipartWriter3(): Promise<void> {
   );
   await assertThrowsAsync(
     async (): Promise<void> => {
+      // @ts-ignore
       await mw.writeFile("bar", "file", null);
     },
     Error,
@@ -197,7 +198,7 @@ test(async function multipartMultipartReader2(): Promise<void> {
     assertEquals(form["bar"], "bar");
     const file = form["file"] as FormFile;
     assertEquals(file.type, "application/octet-stream");
-    const f = await open(file.tempfile);
+    const f = await open(file.tempfile!);
     const w = new StringWriter();
     await copy(w, f);
     const json = JSON.parse(w.toString());
@@ -205,7 +206,7 @@ test(async function multipartMultipartReader2(): Promise<void> {
     f.close();
   } finally {
     const file = form["file"] as FormFile;
-    await remove(file.tempfile);
+    await remove(file.tempfile!);
   }
 });
 

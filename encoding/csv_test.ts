@@ -441,7 +441,7 @@ for (const t of testCases) {
       if (t.Error) {
         let err;
         try {
-          actual = await readAll(new BufReader(new StringReader(t.Input)), {
+          actual = await readAll(new BufReader(new StringReader(t.Input!)), {
             comma: comma,
             comment: comment,
             trimLeadingSpace: trim,
@@ -454,7 +454,7 @@ for (const t of testCases) {
         assert(err);
         assertEquals(err.message, t.Error);
       } else {
-        actual = await readAll(new BufReader(new StringReader(t.Input)), {
+        actual = await readAll(new BufReader(new StringReader(t.Input!)), {
           comma: comma,
           comment: comment,
           trimLeadingSpace: trim,

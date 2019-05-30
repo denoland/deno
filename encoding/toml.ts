@@ -3,20 +3,19 @@ import { deepAssign } from "../util/deep_assign.ts";
 import { pad } from "../strings/pad.ts";
 
 class KeyValuePair {
-  key: string;
-  value: unknown;
+  constructor(public key: string, public value: unknown) {}
 }
 
 class ParserGroup {
-  type: string;
-  name: string;
   arrValues: unknown[] = [];
-  objValues: object = {};
+  objValues: Record<string, unknown> = {};
+
+  constructor(public type: string, public name: string) {}
 }
 
 class ParserContext {
   currentGroup?: ParserGroup;
-  output: object = {};
+  output: Record<string, unknown> = {};
 }
 
 class Parser {
@@ -27,7 +26,7 @@ class Parser {
     this.context = new ParserContext();
   }
   _sanitize(): void {
-    const out = [];
+    const out: string[] = [];
     for (let i = 0; i < this.tomlLines.length; i++) {
       const s = this.tomlLines[i];
       const trimmed = s.trim();
@@ -124,28 +123,30 @@ class Parser {
     this.tomlLines = merged;
   }
   _unflat(keys: string[], values: object = {}, cObj: object = {}): object {
-    let out = {};
+    let out: Record<string, unknown> = {};
     if (keys.length === 0) {
       return cObj;
     } else {
       if (Object.keys(cObj).length === 0) {
         cObj = values;
       }
-      let key = keys.pop();
-      out[key] = cObj;
+      let key: string | undefined = keys.pop();
+      if (key) {
+        out[key] = cObj;
+      }
       return this._unflat(keys, values, out);
     }
   }
   _groupToOutput(): void {
-    const arrProperty = this.context.currentGroup.name
-      .replace(/"/g, "")
+    const arrProperty = this.context
+      .currentGroup!.name.replace(/"/g, "")
       .replace(/'/g, "")
       .split(".");
     let u = {};
-    if (this.context.currentGroup.type === "array") {
-      u = this._unflat(arrProperty, this.context.currentGroup.arrValues);
+    if (this.context.currentGroup!.type === "array") {
+      u = this._unflat(arrProperty, this.context.currentGroup!.arrValues);
     } else {
-      u = this._unflat(arrProperty, this.context.currentGroup.objValues);
+      u = this._unflat(arrProperty, this.context.currentGroup!.objValues);
     }
     deepAssign(this.context.output, u);
     delete this.context.currentGroup;
@@ -167,22 +168,22 @@ class Parser {
     if (this.context.currentGroup) {
       this._groupToOutput();
     }
-    let g = new ParserGroup();
-    g.name = line.match(captureReg)[1];
-    if (g.name.match(/\[.*\]/)) {
-      g.type = "array";
-      g.name = g.name.match(captureReg)[1];
+
+    let type;
+    let name = line.match(captureReg)![1];
+    if (name.match(/\[.*\]/)) {
+      type = "array";
+      name = name.match(captureReg)![1];
     } else {
-      g.type = "object";
+      type = "object";
     }
-    this.context.currentGroup = g;
+    this.context.currentGroup = new ParserGroup(type, name);
   }
   _processDeclaration(line: string): KeyValuePair {
-    let kv = new KeyValuePair();
     const idx = line.indexOf("=");
-    kv.key = line.substring(0, idx).trim();
-    kv.value = this._parseData(line.slice(idx + 1));
-    return kv;
+    const key = line.substring(0, idx).trim();
+    const value = this._parseData(line.slice(idx + 1));
+    return new KeyValuePair(key, value);
   }
   // TODO (zekth) Need refactor using ACC
   _parseData(dataString: string): unknown {
@@ -353,23 +354,27 @@ class Parser {
   _cleanOutput(): void {
     this._propertyClean(this.context.output);
   }
-  _propertyClean(obj: object): void {
+  _propertyClean(obj: Record<string, unknown>): void {
     const keys = Object.keys(obj);
     for (let i = 0; i < keys.length; i++) {
       let k = keys[i];
-      let v = obj[k];
-      let pathDeclaration = this._parseDeclarationName(k);
-      delete obj[k];
-      if (pathDeclaration.length > 1) {
-        k = pathDeclaration.shift();
-        k = k.replace(/"/g, "");
-        v = this._unflat(pathDeclaration, v as object);
-      } else {
-        k = k.replace(/"/g, "");
-      }
-      obj[k] = v;
-      if (v instanceof Object) {
-        this._propertyClean(v);
+      if (k) {
+        let v = obj[k];
+        let pathDeclaration = this._parseDeclarationName(k);
+        delete obj[k];
+        if (pathDeclaration.length > 1) {
+          const shift = pathDeclaration.shift();
+          if (shift) {
+            k = shift.replace(/"/g, "");
+            v = this._unflat(pathDeclaration, v as object);
+          }
+        } else {
+          k = k.replace(/"/g, "");
+        }
+        obj[k] = v;
+        if (v instanceof Object) {
+          this._propertyClean(v);
+        }
       }
     }
   }
@@ -393,18 +398,26 @@ class Dumper {
     this.output = this._format();
     return this.output;
   }
-  _parse(obj: object, path: string = ""): string[] {
+  _parse(obj: Record<string, unknown>, path: string = ""): string[] {
     const out = [];
     const props = Object.keys(obj);
     const propObj = props.filter(
-      (e): boolean =>
-        (obj[e] instanceof Array && !this._isSimplySerializable(obj[e][0])) ||
-        !this._isSimplySerializable(obj[e])
+      (e: string): boolean => {
+        if (obj[e] instanceof Array) {
+          const d: unknown[] = obj[e] as unknown[];
+          return !this._isSimplySerializable(d[0]);
+        }
+        return !this._isSimplySerializable(obj[e]);
+      }
     );
     const propPrim = props.filter(
-      (e): boolean =>
-        !(obj[e] instanceof Array && !this._isSimplySerializable(obj[e][0])) &&
-        this._isSimplySerializable(obj[e])
+      (e: string): boolean => {
+        if (obj[e] instanceof Array) {
+          const d: unknown[] = obj[e] as unknown[];
+          return this._isSimplySerializable(d[0]);
+        }
+        return this._isSimplySerializable(obj[e]);
+      }
     );
     const k = propPrim.concat(propObj);
     for (let i = 0; i < k.length; i++) {
@@ -435,7 +448,11 @@ class Dumper {
       } else if (typeof value === "object") {
         out.push("");
         out.push(this._header(path + prop));
-        out.push(...this._parse(value, `${path}${prop}.`));
+        if (value) {
+          const toParse: Record<string, unknown> = value;
+          out.push(...this._parse(toParse, `${path}${prop}.`));
+        }
+        // out.push(...this._parse(value, `${path}${prop}.`));
       }
     }
     out.push("");

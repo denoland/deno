@@ -16,7 +16,8 @@ class TestHandler extends log.handlers.BaseHandler {
 }
 
 test(async function defaultHandlers(): Promise<void> {
-  const loggers = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const loggers: { [key: string]: (msg: string, ...args: any[]) => void } = {
     DEBUG: log.debug,
     INFO: log.info,
     WARNING: log.warning,
@@ -29,9 +30,8 @@ test(async function defaultHandlers(): Promise<void> {
       continue;
     }
 
-    const level = LogLevel[levelName];
     const logger = loggers[levelName];
-    const handler = new TestHandler(level);
+    const handler = new TestHandler(levelName);
 
     await log.setup({
       handlers: {

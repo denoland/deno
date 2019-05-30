@@ -4,8 +4,8 @@ import { assertEquals } from "../testing/asserts.ts";
 import { parse } from "./mod.ts";
 
 test(function booleanAndAliasIsNotUnknown(): void {
-  const unknown = [];
-  function unknownFn(arg): boolean {
+  const unknown: unknown[] = [];
+  function unknownFn(arg: unknown): boolean {
     unknown.push(arg);
     return false;
   }
@@ -23,8 +23,8 @@ test(function booleanAndAliasIsNotUnknown(): void {
 });
 
 test(function flagBooleanTrueAnyDoubleHyphenArgumentIsNotUnknown(): void {
-  const unknown = [];
-  function unknownFn(arg): boolean {
+  const unknown: unknown[] = [];
+  function unknownFn(arg: unknown): boolean {
     unknown.push(arg);
     return false;
   }
@@ -40,8 +40,8 @@ test(function flagBooleanTrueAnyDoubleHyphenArgumentIsNotUnknown(): void {
 });
 
 test(function stringAndAliasIsNotUnkown(): void {
-  const unknown = [];
-  function unknownFn(arg): boolean {
+  const unknown: unknown[] = [];
+  function unknownFn(arg: unknown): boolean {
     unknown.push(arg);
     return false;
   }
@@ -59,8 +59,8 @@ test(function stringAndAliasIsNotUnkown(): void {
 });
 
 test(function defaultAndAliasIsNotUnknown(): void {
-  const unknown = [];
-  function unknownFn(arg): boolean {
+  const unknown: unknown[] = [];
+  function unknownFn(arg: unknown): boolean {
     unknown.push(arg);
     return false;
   }
@@ -78,8 +78,8 @@ test(function defaultAndAliasIsNotUnknown(): void {
 });
 
 test(function valueFollowingDoubleHyphenIsNotUnknown(): void {
-  const unknown = [];
-  function unknownFn(arg): boolean {
+  const unknown: unknown[] = [];
+  function unknownFn(arg: unknown): boolean {
     unknown.push(arg);
     return false;
   }

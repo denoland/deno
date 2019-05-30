@@ -28,7 +28,7 @@ export interface ParseOptions {
 function chkOptions(opt: ParseOptions): void {
   if (
     INVALID_RUNE.includes(opt.comma) ||
-    INVALID_RUNE.includes(opt.comment) ||
+    (opt.comment && INVALID_RUNE.includes(opt.comment)) ||
     opt.comma === opt.comment
   ) {
     throw new Error("Invalid Delimiter");
@@ -130,7 +130,7 @@ export async function readAll(
     }
 
     if (lineResult.length > 0) {
-      if (_nbFields && _nbFields !== lineResult.length) {
+      if (_nbFields! && _nbFields! !== lineResult.length) {
         throw new ParseError(lineIndex, lineIndex, "wrong number of fields");
       }
       result.push(lineResult);

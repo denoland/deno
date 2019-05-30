@@ -40,14 +40,14 @@ export class BaseHandler {
     return this.formatter.replace(
       /{(\S+)}/g,
       (match, p1): string => {
-        const value = logRecord[p1];
+        const value = logRecord[p1 as keyof LogRecord];
 
         // do not interpolate missing values
         if (!value) {
           return match;
         }
 
-        return value;
+        return String(value);
       }
     );
   }
@@ -87,7 +87,7 @@ export class ConsoleHandler extends BaseHandler {
 }
 
 export abstract class WriterHandler extends BaseHandler {
-  protected _writer: Writer;
+  protected _writer!: Writer;
   private _encoder = new TextEncoder();
 
   log(msg: string): void {
@@ -100,7 +100,7 @@ interface FileHandlerOptions extends HandlerOptions {
 }
 
 export class FileHandler extends WriterHandler {
-  private _file: File;
+  private _file!: File;
   private _filename: string;
 
   constructor(levelName: string, options: FileHandlerOptions) {

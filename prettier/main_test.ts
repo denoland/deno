@@ -13,7 +13,7 @@ async function run(
 ): Promise<{ stdout: string; code: number | undefined }> {
   const p = xrun({ args, stdout: "piped" });
 
-  const stdout = decoder.decode(await readAll(p.stdout));
+  const stdout = decoder.decode(await readAll(p.stdout!));
   const { code } = await p.status();
 
   return { stdout, code };
