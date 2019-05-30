@@ -171,7 +171,7 @@ export function normalize(path: string): string {
   const len = path.length;
   if (len === 0) return ".";
   let rootEnd = 0;
-  let device: string;
+  let device: string | undefined;
   let isAbsolute = false;
   const code = path.charCodeAt(0);
 
@@ -301,7 +301,7 @@ export function join(...paths: string[]): string {
   const pathsCount = paths.length;
   if (pathsCount === 0) return ".";
 
-  let joined: string;
+  let joined: string | undefined;
   let firstPart: string;
   for (let i = 0; i < pathsCount; ++i) {
     let path = paths[i];
@@ -329,6 +329,7 @@ export function join(...paths: string[]): string {
   //   path.join('//server', 'share') -> '\\\\server\\share\\')
   let needsReplace = true;
   let slashCount = 0;
+  firstPart = firstPart!;
   if (isPathSeparator(firstPart.charCodeAt(0))) {
     ++slashCount;
     const firstLen = firstPart.length;

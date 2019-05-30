@@ -38,7 +38,7 @@ test({
     let res: Response = {};
     delCookie(res, "deno");
     assertEquals(
-      res.headers.get("Set-Cookie"),
+      res.headers!.get("Set-Cookie"),
       "deno=; Expires=Thus, 01 Jan 1970 00:00:00 GMT"
     );
   }

@@ -79,8 +79,8 @@ const unixSpecialCaseFormatTests = [
   [{}, ""]
 ];
 
-function checkParseFormat(path, paths): void {
-  paths.forEach(function(p) {
+function checkParseFormat(path: any, paths: any): void {
+  paths.forEach(function(p: Record<string, unknown>[]) {
     const element = p[0];
     const output = path.parse(element);
     assertEquals(typeof output.root, "string");
@@ -95,8 +95,8 @@ function checkParseFormat(path, paths): void {
   });
 }
 
-function checkSpecialCaseParseFormat(path, testCases): void {
-  testCases.forEach(function(testCase) {
+function checkSpecialCaseParseFormat(path: any, testCases: any): void {
+  testCases.forEach(function(testCase: Record<string, unknown>[]) {
     const element = testCase[0];
     const expect = testCase[1];
     const output = path.parse(element);
@@ -106,7 +106,7 @@ function checkSpecialCaseParseFormat(path, testCases): void {
   });
 }
 
-function checkFormat(path, testCases): void {
+function checkFormat(path: any, testCases: unknown[][]): void {
   testCases.forEach(function(testCase) {
     assertEquals(path.format(testCase[0]), testCase[1]);
   });

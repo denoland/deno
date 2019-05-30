@@ -1,20 +1,11 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-export const LogLevel = {
+export const LogLevel: Record<string, number> = {
   NOTSET: 0,
   DEBUG: 10,
   INFO: 20,
   WARNING: 30,
   ERROR: 40,
   CRITICAL: 50
-};
-
-const byName = {
-  NOTSET: LogLevel.NOTSET,
-  DEBUG: LogLevel.DEBUG,
-  INFO: LogLevel.INFO,
-  WARNING: LogLevel.WARNING,
-  ERROR: LogLevel.ERROR,
-  CRITICAL: LogLevel.CRITICAL
 };
 
 const byLevel = {
@@ -27,7 +18,7 @@ const byLevel = {
 };
 
 export function getLevelByName(name: string): number {
-  return byName[name];
+  return LogLevel[name];
 }
 
 export function getLevelName(level: number): string {

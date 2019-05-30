@@ -77,11 +77,11 @@ export class Sha1 {
 
       if (notString) {
         for (i = start; index < length && i < 64; ++index) {
-          blocks[i >> 2] |= message[index] << SHIFT[i++ & 3];
+          blocks[i >> 2] |= (message[index] as number) << SHIFT[i++ & 3];
         }
       } else {
         for (i = start; index < length && i < 64; ++index) {
-          code = message.charCodeAt(index);
+          code = (message as string).charCodeAt(index);
           if (code < 0x80) {
             blocks[i >> 2] |= code << SHIFT[i++ & 3];
           } else if (code < 0x800) {
@@ -94,7 +94,8 @@ export class Sha1 {
           } else {
             code =
               0x10000 +
-              (((code & 0x3ff) << 10) | (message.charCodeAt(++index) & 0x3ff));
+              (((code & 0x3ff) << 10) |
+                ((message as string).charCodeAt(++index) & 0x3ff));
             blocks[i >> 2] |= (0xf0 | (code >> 18)) << SHIFT[i++ & 3];
             blocks[i >> 2] |= (0x80 | ((code >> 12) & 0x3f)) << SHIFT[i++ & 3];
             blocks[i >> 2] |= (0x80 | ((code >> 6) & 0x3f)) << SHIFT[i++ & 3];

@@ -40,8 +40,8 @@ export interface ReadLineResult {
 
 /** BufReader implements buffering for a Reader object. */
 export class BufReader implements Reader {
-  private buf: Uint8Array;
-  private rd: Reader; // Reader provided by caller.
+  private buf!: Uint8Array;
+  private rd!: Reader; // Reader provided by caller.
   private r = 0; // buf read position.
   private w = 0; // buf write position.
   private eof = false;
@@ -342,7 +342,7 @@ export class BufReader implements Reader {
       try {
         await this._fill();
       } catch (err) {
-        err.partial = slice;
+        err.partial = slice!;
         throw err;
       }
     }
@@ -439,7 +439,7 @@ export class BufWriter implements Writer {
     if (this.err !== null) throw this.err;
     if (this.n === 0) return;
 
-    let n: number;
+    let n = 0;
     try {
       n = await this.wr.write(this.buf.subarray(0, this.n));
     } catch (e) {
@@ -479,7 +479,7 @@ export class BufWriter implements Writer {
     if (p.length === 0) return 0;
 
     let nn = 0;
-    let n: number;
+    let n = 0;
     while (p.byteLength > this.available()) {
       if (this.buffered() === 0) {
         // Large write, empty buffer.

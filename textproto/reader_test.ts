@@ -83,7 +83,7 @@ test({
 test({
   name: "[textproto] Reader : Large MIME Header",
   async fn(): Promise<void> {
-    const data = [];
+    const data: string[] = [];
     // Go test is 16*1024. But seems it can't handle more
     for (let i = 0; i < 1024; i++) {
       data.push("x");

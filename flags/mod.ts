@@ -1,16 +1,16 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 export interface ArgParsingOptions {
-  unknown?: Function;
+  unknown?: (i: unknown) => unknown;
   boolean?: boolean | string | string[];
   alias?: { [key: string]: string | string[] };
   string?: string | string[];
-  default?: { [key: string]: any }; // eslint-disable-line @typescript-eslint/no-explicit-any
+  default?: { [key: string]: unknown }; // eslint-disable-line @typescript-eslint/no-explicit-any
   "--"?: boolean;
   stopEarly?: boolean;
 }
 
 const DEFAULT_OPTIONS = {
-  unknown: (i): unknown => i,
+  unknown: (i: unknown): unknown => i,
   boolean: false,
   alias: {},
   string: [],
@@ -19,16 +19,27 @@ const DEFAULT_OPTIONS = {
   stopEarly: false
 };
 
+interface Flags {
+  bools: { [key: string]: boolean };
+  strings: { [key: string]: boolean };
+  unknownFn: (i: unknown) => unknown;
+  allBools: boolean;
+}
+
+interface NestedMapping {
+  [key: string]: NestedMapping | unknown;
+}
+
 function isNumber(x: unknown): boolean {
   if (typeof x === "number") return true;
   if (/^0x[0-9a-f]+$/i.test(String(x))) return true;
   return /^[-+]?(?:\d+(?:\.\d*)?|\.\d+)(e[-+]?\d+)?$/.test(String(x));
 }
 
-function hasKey(obj, keys): boolean {
+function hasKey(obj: NestedMapping, keys: string[]): boolean {
   let o = obj;
-  keys.slice(0, -1).forEach(function(key): void {
-    o = o[key] || {};
+  keys.slice(0, -1).forEach(function(key: string): void {
+    o = (o[key] || {}) as NestedMapping;
   });
 
   const key = keys[keys.length - 1];
@@ -36,7 +47,8 @@ function hasKey(obj, keys): boolean {
 }
 
 export function parse(
-  args,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  args: any[],
   initialOptions?: ArgParsingOptions
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): { [key: string]: any } {
@@ -45,65 +57,85 @@ export function parse(
     ...(initialOptions || {})
   };
 
-  const flags = {
+  const flags: Flags = {
     bools: {},
     strings: {},
     unknownFn: options.unknown!,
     allBools: false
   };
 
-  // TODO: get rid of this, providing two different options
-  if (typeof options["boolean"] === "boolean" && options["boolean"]) {
-    flags.allBools = true;
-  } else {
-    []
-      .concat(options["boolean"])
-      .filter(Boolean)
-      .forEach(function(key): void {
-        flags.bools[key] = true;
-      });
+  if (options.boolean !== undefined) {
+    if (typeof options.boolean === "boolean") {
+      flags.allBools = !!options.boolean;
+    } else {
+      const booleanArgs: string[] =
+        typeof options.boolean === "string"
+          ? [options.boolean]
+          : options.boolean;
+
+      booleanArgs.filter(Boolean).forEach(
+        (key: string): void => {
+          flags.bools[key] = true;
+        }
+      );
+    }
   }
 
-  const aliases = {};
-  Object.keys(options.alias).forEach(function(key): void {
-    aliases[key] = [].concat(options.alias[key]);
-    aliases[key].forEach(function(x): void {
-      aliases[x] = [key].concat(
-        aliases[key].filter(function(y): boolean {
-          return x !== y;
-        })
-      );
-    });
-  });
+  const aliases: { [key: string]: string[] } = {};
+  if (options.alias !== undefined) {
+    for (const key in options.alias) {
+      const val = options.alias[key];
 
-  []
-    .concat(options.string)
-    .filter(Boolean)
-    .forEach(function(key): void {
+      if (typeof val === "string") {
+        aliases[key] = [val];
+      } else {
+        aliases[key] = val;
+      }
+
+      for (const alias of aliases[key]) {
+        aliases[alias] = [key].concat(
+          aliases[key].filter((y: string): boolean => alias !== y)
+        );
+      }
+    }
+  }
+
+  if (options.string !== undefined) {
+    const stringArgs =
+      typeof options.string === "string" ? [options.string] : options.string;
+
+    stringArgs.filter(Boolean).forEach(function(key): void {
       flags.strings[key] = true;
       if (aliases[key]) {
-        flags.strings[aliases[key]] = true;
+        aliases[key].forEach(
+          (alias: string): void => {
+            flags.strings[alias] = true;
+          }
+        );
       }
     });
+  }
 
   const defaults = options.default!;
 
-  const argv = { _: [] };
+  const argv: { [key: string]: unknown[] } = { _: [] };
 
-  function argDefined(key, arg): boolean {
+  function argDefined(key: string, arg: string): boolean {
     return (
       (flags.allBools && /^--[^=]+$/.test(arg)) ||
-      flags.strings[key] ||
       flags.bools[key] ||
-      aliases[key]
+      !!flags.strings[key] ||
+      !!aliases[key]
     );
   }
 
-  function setKey(obj, keys, value): void {
+  function setKey(obj: NestedMapping, keys: string[], value: unknown): void {
     let o = obj;
     keys.slice(0, -1).forEach(function(key): void {
-      if (o[key] === undefined) o[key] = {};
-      o = o[key];
+      if (o[key] === undefined) {
+        o[key] = {};
+      }
+      o = o[key] as NestedMapping;
     });
 
     const key = keys[keys.length - 1];
@@ -114,13 +146,17 @@ export function parse(
     ) {
       o[key] = value;
     } else if (Array.isArray(o[key])) {
-      o[key].push(value);
+      (o[key] as unknown[]).push(value);
     } else {
       o[key] = [o[key], value];
     }
   }
 
-  function setArg(key, val, arg = null): void {
+  function setArg(
+    key: string,
+    val: unknown,
+    arg: string | undefined = undefined
+  ): void {
     if (arg && flags.unknownFn && !argDefined(key, arg)) {
       if (flags.unknownFn(arg) === false) return;
     }
@@ -133,7 +169,7 @@ export function parse(
     });
   }
 
-  function aliasIsBoolean(key): boolean {
+  function aliasIsBoolean(key: string): boolean {
     return aliases[key].some(function(x): boolean {
       return flags.bools[x];
     });
@@ -143,8 +179,9 @@ export function parse(
     setArg(key, defaults[key] === undefined ? false : defaults[key]);
   });
 
-  let notFlags = [];
+  let notFlags: string[] = [];
 
+  // all args after "--" are not parsed
   if (args.indexOf("--") !== -1) {
     notFlags = args.slice(args.indexOf("--") + 1);
     args = args.slice(0, args.indexOf("--"));
@@ -157,18 +194,21 @@ export function parse(
       // Using [\s\S] instead of . because js doesn't support the
       // 'dotall' regex modifier. See:
       // http://stackoverflow.com/a/1068308/13216
-      const m = arg.match(/^--([^=]+)=([\s\S]*)$/);
+      const m = arg.match(/^--([^=]+)=([\s\S]*)$/)!;
       const key = m[1];
-      let value = m[2];
+      const value = m[2];
+
       if (flags.bools[key]) {
-        value = value !== "false";
+        const booleanValue = value !== "false";
+        setArg(key, booleanValue, arg);
+      } else {
+        setArg(key, value, arg);
       }
-      setArg(key, value, arg);
     } else if (/^--no-.+/.test(arg)) {
-      const key = arg.match(/^--no-(.+)/)[1];
+      const key = arg.match(/^--no-(.+)/)![1];
       setArg(key, false, arg);
     } else if (/^--.+/.test(arg)) {
-      const key = arg.match(/^--(.+)/)[1];
+      const key = arg.match(/^--(.+)/)![1];
       const next = args[i + 1];
       if (
         next !== undefined &&

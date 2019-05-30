@@ -108,18 +108,21 @@ const windowsJoinTests = [
 
 test(function join() {
   joinTests.forEach(function(p) {
-    const actual = path.posix.join.apply(null, p[0]);
+    const _p = p[0] as string[];
+    const actual = path.posix.join.apply(null, _p);
     assertEquals(actual, p[1]);
   });
 });
 
 test(function joinWin32() {
   joinTests.forEach(function(p) {
-    const actual = path.win32.join.apply(null, p[0]).replace(backslashRE, "/");
+    const _p = p[0] as string[];
+    const actual = path.win32.join.apply(null, _p).replace(backslashRE, "/");
     assertEquals(actual, p[1]);
   });
   windowsJoinTests.forEach(function(p) {
-    const actual = path.win32.join.apply(null, p[0]);
+    const _p = p[0] as string[];
+    const actual = path.win32.join.apply(null, _p);
     assertEquals(actual, p[1]);
   });
 });

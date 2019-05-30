@@ -183,7 +183,7 @@ export function assertArrayContains(
   expected: unknown[],
   msg?: string
 ): void {
-  let missing = [];
+  let missing: unknown[] = [];
   for (let i = 0; i < expected.length; i++) {
     let found = false;
     for (let j = 0; j < actual.length; j++) {

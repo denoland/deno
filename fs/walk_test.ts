@@ -5,7 +5,7 @@ import { test, TestFunction, runIfMain } from "../testing/mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
 
 export async function testWalk(
-  setup: (string) => void | Promise<void>,
+  setup: (arg0: string) => void | Promise<void>,
   t: TestFunction
 ): Promise<void> {
   const name = t.name;

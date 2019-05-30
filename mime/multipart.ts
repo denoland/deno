@@ -177,20 +177,20 @@ class PartReader implements Reader, Closer {
 
   close(): void {}
 
-  private contentDisposition: string;
-  private contentDispositionParams: { [key: string]: string };
+  private contentDisposition!: string;
+  private contentDispositionParams!: { [key: string]: string };
 
   private getContentDispositionParams(): { [key: string]: string } {
     if (this.contentDispositionParams) return this.contentDispositionParams;
     const cd = this.headers.get("content-disposition");
-    const params = {};
-    const comps = cd.split(";");
+    const params: { [key: string]: string } = {};
+    const comps = cd!.split(";");
     this.contentDisposition = comps[0];
     comps
       .slice(1)
-      .map((v): string => v.trim())
+      .map((v: string): string => v.trim())
       .map(
-        (kv): void => {
+        (kv: string): void => {
           const [k, v] = kv.split("=");
           if (v) {
             const s = v.charAt(0);
@@ -292,7 +292,7 @@ export class MultipartReader {
           file.close();
           formFile = {
             filename: p.fileName,
-            type: p.headers.get("content-type"),
+            type: p.headers.get("content-type")!,
             tempfile: filepath,
             size
           };
@@ -302,20 +302,20 @@ export class MultipartReader {
       } else {
         formFile = {
           filename: p.fileName,
-          type: p.headers.get("content-type"),
+          type: p.headers.get("content-type")!,
           content: buf.bytes(),
           size: buf.length
         };
         maxMemory -= n;
         maxValueBytes -= n;
       }
-      result[p.formName] = formFile;
+      result[p.formName] = formFile!;
     }
     return result;
   }
 
-  private currentPart: PartReader;
-  private partsRead: number;
+  private currentPart: PartReader | undefined;
+  private partsRead: number = 0;
 
   private async nextPart(): Promise<PartReader | EOF> {
     if (this.currentPart) {
@@ -437,7 +437,7 @@ export class MultipartWriter {
     return this._boundary;
   }
 
-  private lastPart: PartWriter;
+  private lastPart: PartWriter | undefined;
   private bufWriter: BufWriter;
   private isClosed: boolean = false;
 

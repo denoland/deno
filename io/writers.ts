@@ -6,6 +6,7 @@ import { decode, encode } from "../strings/mod.ts";
 export class StringWriter implements Writer {
   private chunks: Uint8Array[] = [];
   private byteLength: number = 0;
+  private cache: string | undefined;
 
   constructor(private base: string = "") {
     const c = encode(base);
@@ -16,11 +17,9 @@ export class StringWriter implements Writer {
   async write(p: Uint8Array): Promise<number> {
     this.chunks.push(p);
     this.byteLength += p.byteLength;
-    this.cache = null;
+    this.cache = undefined;
     return p.byteLength;
   }
-
-  private cache: string;
 
   toString(): string {
     if (this.cache) {
@@ -33,6 +32,6 @@ export class StringWriter implements Writer {
       offs += chunk.byteLength;
     }
     this.cache = decode(buf);
-    return this.cache;
+    return this.cache!;
   }
 }

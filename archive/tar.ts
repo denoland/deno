@@ -35,8 +35,10 @@ const ustar = "ustar\u000000";
  * Simple file reader
  */
 export class FileReader implements Deno.Reader {
-  private file: Deno.File;
+  private file?: Deno.File;
+
   constructor(private filePath: string, private mode: Deno.OpenMode = "r") {}
+
   public async read(p: Uint8Array): Promise<Deno.ReadResult> {
     if (!this.file) {
       this.file = await Deno.open(this.filePath, this.mode);
@@ -44,7 +46,7 @@ export class FileReader implements Deno.Reader {
     const res = await Deno.read(this.file.rid, p);
     if (res.eof) {
       await Deno.close(this.file.rid);
-      this.file = null;
+      this.file = undefined;
     }
     return res;
   }
@@ -54,18 +56,21 @@ export class FileReader implements Deno.Reader {
  * Simple file writer (call FileWriter.dispose() after use)
  */
 export class FileWriter implements Deno.Writer {
-  private file: Deno.File;
+  private file?: Deno.File;
+
   constructor(private filePath: string, private mode: Deno.OpenMode = "w") {}
+
   public async write(p: Uint8Array): Promise<number> {
     if (!this.file) {
       this.file = await Deno.open(this.filePath, this.mode);
     }
     return Deno.write(this.file.rid, p);
   }
+
   public dispose(): void {
     if (!this.file) return;
     Deno.close(this.file.rid);
-    this.file = null;
+    this.file = undefined;
   }
 }
 
@@ -191,7 +196,7 @@ function formatHeader(data: TarData): Uint8Array {
     buffer = clean(512);
   let offset = 0;
   ustarStructure.forEach(function(value): void {
-    const entry = encoder.encode(data[value.field] || "");
+    const entry = encoder.encode(data[value.field as keyof TarData] || "");
     buffer.set(entry, offset);
     offset += value.length; // space it out with nulls
   });
@@ -307,12 +312,13 @@ export class Tar {
         }
         i--;
       }
-      if (i < 0 || fileName.length > 100 || fileNamePrefix.length > 155) {
+      if (i < 0 || fileName.length > 100 || fileNamePrefix!.length > 155) {
         throw new Error(
           "ustar format does not allow a long file name (length of [file name prefix] + / + [file name] must be shorter than 256 bytes)"
         );
       }
     }
+    fileNamePrefix = fileNamePrefix!;
 
     opts = opts || {};
 
@@ -344,7 +350,7 @@ export class Tar {
       fileMode: pad(mode, 7),
       uid: pad(uid, 7),
       gid: pad(gid, 7),
-      fileSize: pad(info ? info.len : opts.contentSize, 11),
+      fileSize: pad((info ? info.len : opts.contentSize)!, 11),
       mtime: pad(mtime, 11),
       checksum: "        ",
       type: "0", // just a file
@@ -362,7 +368,7 @@ export class Tar {
       .filter((key): boolean => ["filePath", "reader"].indexOf(key) < 0)
       .forEach(function(key): void {
         checksum += encoder
-          .encode(tarData[key])
+          .encode(tarData[key as keyof TarData])
           .reduce((p, c): number => p + c, 0);
       });
 
@@ -381,7 +387,7 @@ export class Tar {
           headerArr = formatHeader(tarData);
         readers.push(new Deno.Buffer(headerArr));
         if (!reader) {
-          reader = new FileReader(filePath);
+          reader = new FileReader(filePath!);
         }
         readers.push(reader);
 
@@ -390,7 +396,7 @@ export class Tar {
           new Deno.Buffer(
             clean(
               recordSize -
-                (parseInt(tarData.fileSize, 8) % recordSize || recordSize)
+                (parseInt(tarData.fileSize!, 8) % recordSize || recordSize)
             )
           )
         );
@@ -451,7 +457,7 @@ export class Untar {
       (key): void => {
         const arr = trim(header[key]);
         if (arr.byteLength > 0) {
-          meta[key] = parseInt(decoder.decode(arr), 8);
+          meta[key as keyof UntarOptions] = parseInt(decoder.decode(arr), 8);
         }
       }
     );
@@ -459,7 +465,7 @@ export class Untar {
       (key): void => {
         const arr = trim(header[key]);
         if (arr.byteLength > 0) {
-          meta[key] = decoder.decode(arr);
+          meta[key as keyof UntarOptions] = decoder.decode(arr);
         }
       }
     );
