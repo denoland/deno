@@ -42,6 +42,7 @@ main_extern_rlib = [
   "serde_json",
   "source_map_mappings",
   "tempfile",
+  "termcolor",
   "tokio",
   "tokio_executor",
   "tokio_fs",
