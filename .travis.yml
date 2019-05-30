@@ -73,7 +73,7 @@ script:
 - ./tools/lint.py
 - ./tools/test_format.py
 - ./tools/build.py -C target/release
-- DENO_BUILD_MODE=release ./tools/test.py
+- DENO_BUILD_MODE=release ./tools/test.py -v
 
 jobs:
   fast_finish: true

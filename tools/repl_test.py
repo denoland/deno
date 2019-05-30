@@ -4,12 +4,12 @@ from subprocess import CalledProcessError, PIPE, Popen
 import sys
 import time
 
-from util import build_path, executable_suffix, green_ok
+from util import DenoTestCase, test_main
 
 
-class Repl(object):
-    def __init__(self, deno_exe):
-        self.deno_exe = deno_exe
+class TestRepl(DenoTestCase):
+    def __init__(self, *args, **kwargs):
+        super(TestRepl, self).__init__(*args, **kwargs)
         self._warm_up()
 
     def _warm_up(self):
@@ -40,26 +40,17 @@ class Repl(object):
         # Ignore Windows CRLF (\r\n).
         return out.replace('\r\n', '\n'), err.replace('\r\n', '\n'), retcode
 
-    def run(self):
-        print('repl_test.py')
-        test_names = [name for name in dir(self) if name.startswith("test_")]
-        for t in test_names:
-            self.__getattribute__(t)()
-            sys.stdout.write(".")
-            sys.stdout.flush()
-        print(' {}\n'.format(green_ok()))
-
     def test_console_log(self):
         out, err, code = self.input("console.log('hello')", "'world'")
-        assertEqual(out, 'hello\nundefined\nworld\n')
-        assertEqual(err, '')
-        assertEqual(code, 0)
+        self.assertEqual(out, 'hello\nundefined\nworld\n')
+        self.assertEqual(err, '')
+        self.assertEqual(code, 0)
 
     def test_exit_command(self):
         out, err, code = self.input("exit", "'ignored'", exit=False)
-        assertEqual(out, '')
-        assertEqual(err, '')
-        assertEqual(code, 0)
+        self.assertEqual(out, '')
+        self.assertEqual(err, '')
+        self.assertEqual(code, 0)
 
     def test_help_command(self):
         out, err, code = self.input("help")
@@ -68,100 +59,86 @@ class Repl(object):
             "help    Print this help message",
             "",
         ])
-        assertEqual(out, expectedOut)
-        assertEqual(err, '')
-        assertEqual(code, 0)
+        self.assertEqual(out, expectedOut)
+        self.assertEqual(err, '')
+        self.assertEqual(code, 0)
 
     def test_function(self):
         out, err, code = self.input("Deno.writeFileSync")
-        assertEqual(out, '[Function: writeFileSync]\n')
-        assertEqual(err, '')
-        assertEqual(code, 0)
+        self.assertEqual(out, '[Function: writeFileSync]\n')
+        self.assertEqual(err, '')
+        self.assertEqual(code, 0)
 
     def test_multiline(self):
         out, err, code = self.input("(\n1 + 2\n)")
-        assertEqual(out, '3\n')
-        assertEqual(err, '')
-        assertEqual(code, 0)
+        self.assertEqual(out, '3\n')
+        self.assertEqual(err, '')
+        self.assertEqual(code, 0)
 
     # This should print error instead of wait for input
     def test_eval_unterminated(self):
         out, err, code = self.input("eval('{')")
-        assertEqual(out, '')
+        self.assertEqual(out, '')
         assert "Unexpected end of input" in err
-        assertEqual(code, 0)
+        self.assertEqual(code, 0)
 
     def test_reference_error(self):
         out, err, code = self.input("not_a_variable")
-        assertEqual(out, '')
+        self.assertEqual(out, '')
         assert "not_a_variable is not defined" in err
-        assertEqual(code, 0)
+        self.assertEqual(code, 0)
 
     # def test_set_timeout(self):
     #     out, err, code = self.input(
     #         "setTimeout(() => { console.log('b'); Deno.exit(0); }, 1)",
     #         "'a'",
     #         exit=False)
-    #     assertEqual(out, '1\na\nb\n')
-    #     assertEqual(err, '')
-    #     assertEqual(code, 0)
+    #     self.assertEqual(out, '1\na\nb\n')
+    #     self.assertEqual(err, '')
+    #     self.assertEqual(code, 0)
 
     # def test_set_timeout_interlaced(self):
     #     out, err, code = self.input(
     #         "setTimeout(() => console.log('a'), 1)",
     #         "setTimeout(() => console.log('b'), 6)",
     #         sleep=0.8)
-    #     assertEqual(out, '1\n2\na\nb\n')
-    #     assertEqual(err, '')
-    #     assertEqual(code, 0)
+    #     self.assertEqual(out, '1\n2\na\nb\n')
+    #     self.assertEqual(err, '')
+    #     self.assertEqual(code, 0)
 
     # def test_async_op(self):
     #     out, err, code = self.input(
     #         "fetch('http://localhost:4545/tests/001_hello.js')" +
     #         ".then(res => res.text()).then(console.log)",
     #         sleep=1)
-    #     assertEqual(out, 'Promise {}\nconsole.log("Hello World");\n\n')
-    #     assertEqual(err, '')
-    #     assertEqual(code, 0)
+    #     self.assertEqual(out, 'Promise {}\nconsole.log("Hello World");\n\n')
+    #     self.assertEqual(err, '')
+    #     self.assertEqual(code, 0)
 
     def test_syntax_error(self):
         out, err, code = self.input("syntax error")
-        assertEqual(out, '')
+        self.assertEqual(out, '')
         assert "Unexpected identifier" in err
-        assertEqual(code, 0)
+        self.assertEqual(code, 0)
 
     def test_type_error(self):
         out, err, code = self.input("console()")
-        assertEqual(out, '')
+        self.assertEqual(out, '')
         assert "console is not a function" in err
-        assertEqual(code, 0)
+        self.assertEqual(code, 0)
 
     def test_variable(self):
         out, err, code = self.input("var a = 123;", "a")
-        assertEqual(out, 'undefined\n123\n')
-        assertEqual(err, '')
-        assertEqual(code, 0)
+        self.assertEqual(out, 'undefined\n123\n')
+        self.assertEqual(err, '')
+        self.assertEqual(code, 0)
 
     def test_lexical_scoped_variable(self):
         out, err, code = self.input("let a = 123;", "a")
-        assertEqual(out, 'undefined\n123\n')
-        assertEqual(err, '')
-        assertEqual(code, 0)
-
-
-def assertEqual(left, right):
-    if left != right:
-        raise AssertionError("{} != {}".format(repr(left), repr(right)))
-
-
-def repl_tests(deno_exe):
-    Repl(deno_exe).run()
-
-
-def main():
-    deno_exe = os.path.join(build_path(), "deno" + executable_suffix)
-    repl_tests(deno_exe)
+        self.assertEqual(out, 'undefined\n123\n')
+        self.assertEqual(err, '')
+        self.assertEqual(code, 0)
 
 
 if __name__ == "__main__":
-    main()
+    test_main()

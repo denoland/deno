@@ -1,12 +1,17 @@
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+import argparse
 import os
 import re
 import shutil
+import select
 import stat
 import sys
 import subprocess
 import tempfile
+import time
+import unittest
 
+# FIXME support nocolor (use "" if passed?)
 RESET = "\x1b[0m"
 FG_RED = "\x1b[31m"
 FG_GREEN = "\x1b[32m"
@@ -83,14 +88,6 @@ def shell_quote(arg):
         # Python 2 has posix shell quoting built in, albeit in a weird place.
         from pipes import quote
         return quote(arg)
-
-
-def red_failed():
-    return "%sFAILED%s" % (FG_RED, RESET)
-
-
-def green_ok():
-    return "%sok%s" % (FG_GREEN, RESET)
 
 
 def symlink(target, name, target_is_dir=False):
@@ -176,6 +173,8 @@ def rmtree(directory):
 def build_mode(default="debug"):
     if "DENO_BUILD_MODE" in os.environ:
         return os.environ["DENO_BUILD_MODE"]
+    elif "--release" in sys.argv:
+        return "release"
     else:
         return default
 
@@ -191,8 +190,6 @@ def build_path():
 # Returns True if the expected matches the actual output, allowing variation
 # from actual where expected has the wildcard (e.g. matches /.*/)
 def pattern_match(pattern, string, wildcard="[WILDCARD]"):
-    if len(pattern) == 0:
-        return string == 0
     if pattern == wildcard:
         return True
 
@@ -374,3 +371,122 @@ def mkdtemp():
     # 'TS5009: Cannot find the common subdirectory path for the input files.'
     temp_dir = os.environ["TEMP"] if os.name == 'nt' else None
     return tempfile.mkdtemp(dir=temp_dir)
+
+
+class DenoTestCase(unittest.TestCase):
+    @property
+    def build_dir(self):
+        args = test_args()
+        return args.build_dir
+
+    @property
+    def deno_exe(self):
+        return os.path.join(self.build_dir, "deno" + executable_suffix)
+
+
+# overload the test result class
+class ColorTextTestResult(unittest.TextTestResult):
+    def getDescription(self, test):
+        name = str(test)
+        if name.startswith("test_"):
+            name = name[5:]
+        return name
+
+    def addSuccess(self, test):
+        if self.showAll:
+            self.stream.write(FG_GREEN)
+        super(ColorTextTestResult, self).addSuccess(test)
+        if self.showAll:
+            self.stream.write(RESET)
+
+    def addError(self, test, err):
+        if self.showAll:
+            self.stream.write(FG_RED)
+        super(ColorTextTestResult, self).addError(test, err)
+        if self.showAll:
+            self.stream.write(RESET)
+
+    def addFailure(self, test, err):
+        if self.showAll:
+            self.stream.write(FG_RED)
+        super(ColorTextTestResult, self).addFailure(test, err)
+        if self.showAll:
+            self.stream.write(RESET)
+
+
+class ColorTextTestRunner(unittest.TextTestRunner):
+    resultclass = ColorTextTestResult
+
+
+def test_main():
+    args = test_args()
+    # FIXME(hayd) support more of the unittest.main API.
+    return unittest.main(
+        verbosity=args.verbosity + 1,
+        testRunner=ColorTextTestRunner,
+        failfast=args.failfast,
+        argv=[''])
+
+
+def test_args(argv=None):
+    if argv is None:
+        argv = sys.argv[1:]
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '--failfast', '-f', action='store_true', help='Stop on first failure')
+    parser.add_argument(
+        '--verbosity', '-v', action='store_true', help='Verbose output')
+    parser.add_argument(
+        '--release',
+        action='store_true',
+        help='Test against release deno_executable')
+    parser.add_argument('build_dir', nargs='?', help='Deno build directory')
+    args = parser.parse_args(argv)
+    if args.build_dir and args.release:
+        raise argparse.ArgumentError(
+            None, "build_dir is inferred from --release, cannot provide both")
+    if not args.build_dir:
+        args.build_dir = build_path()
+
+    if not os.path.isfile(
+            os.path.join(args.build_dir, "deno" + executable_suffix)):
+        raise argparse.ArgumentError(None,
+                                     "deno executable not found in build_dir")
+    return args
+
+
+# This function is copied from:
+# https://gist.github.com/hayd/4f46a68fc697ba8888a7b517a414583e
+# https://stackoverflow.com/q/52954248/1240268
+def tty_capture(cmd, bytes_input, timeout=5):
+    """Capture the output of cmd with bytes_input to stdin,
+    with stdin, stdout and stderr as TTYs."""
+    # pty is not available on windows, so we import it within this function.
+    import pty
+    mo, so = pty.openpty()  # provide tty to enable line-buffering
+    me, se = pty.openpty()
+    mi, si = pty.openpty()
+    fdmap = {mo: 'stdout', me: 'stderr', mi: 'stdin'}
+
+    timeout_exact = time.time() + timeout
+    p = subprocess.Popen(
+        cmd, bufsize=1, stdin=si, stdout=so, stderr=se, close_fds=True)
+    os.write(mi, bytes_input)
+
+    select_timeout = .04  #seconds
+    res = {'stdout': b'', 'stderr': b''}
+    while True:
+        ready, _, _ = select.select([mo, me], [], [], select_timeout)
+        if ready:
+            for fd in ready:
+                data = os.read(fd, 512)
+                if not data:
+                    break
+                res[fdmap[fd]] += data
+        elif p.poll() is not None or time.time(
+        ) > timeout_exact:  # select timed-out
+            break  # p exited
+    for fd in [si, so, se, mi, mo, me]:
+        os.close(fd)  # can't do it sooner: it leads to errno.EIO error
+    p.wait()
+    return p.returncode, res['stdout'], res['stderr']

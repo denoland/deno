@@ -7,14 +7,16 @@
 # exit code can be specified.
 #
 # Usage: integration_tests.py [path to deno executable]
+import argparse
 import os
 import re
 import sys
 import subprocess
-import http_server
-import argparse
-from util import root_path, tests_path, pattern_match, \
-                 green_ok, red_failed, rmtree, executable_suffix
+import unittest
+
+from http_server import spawn
+from util import (DenoTestCase, ColorTextTestRunner, root_path, tests_path,
+                  pattern_match, rmtree, test_main)
 
 
 def strip_ansi_codes(s):
@@ -45,38 +47,29 @@ def str2bool(v):
         raise ValueError("Bad boolean value")
 
 
-def integration_tests(deno_exe, test_filter=None):
-    assert os.path.isfile(deno_exe)
-    tests = sorted([
-        filename for filename in os.listdir(tests_path)
-        if filename.endswith(".test")
-    ])
-    assert len(tests) > 0
-    for test_filename in tests:
-        if test_filter and test_filter not in test_filename:
-            continue
+class TestIntegrations(DenoTestCase):
+    @classmethod
+    def _test(cls, test_filename):
+        # Return thunk to test for js file,
+        # This is to 'trick' unittest so as to generate these dynamically.
+        return lambda self: self.generate(test_filename)
 
+    def generate(self, test_filename):
         test_abs = os.path.join(tests_path, test_filename)
         test = read_test(test_abs)
         exit_code = int(test.get("exit_code", 0))
         args = test.get("args", "").split(" ")
-
         check_stderr = str2bool(test.get("check_stderr", "false"))
-
         stderr = subprocess.STDOUT if check_stderr else open(os.devnull, 'w')
-
         stdin_input = (test.get("input",
                                 "").strip().decode("string_escape").replace(
                                     "\r\n", "\n"))
-
         has_stdin_input = len(stdin_input) > 0
 
         output_abs = os.path.join(root_path, test.get("output", ""))
         with open(output_abs, 'r') as f:
             expected_out = f.read()
-        cmd = [deno_exe] + args
-        sys.stdout.write("tests/%s ... " % (test_filename))
-        sys.stdout.flush()
+        cmd = [self.deno_exe] + args
         actual_code = 0
         try:
             if has_stdin_input:
@@ -97,23 +90,22 @@ def integration_tests(deno_exe, test_filter=None):
             actual_code = e.returncode
             actual_out = e.output
 
-        if exit_code != actual_code:
-            print "... " + red_failed()
-            print "Expected exit code %d but got %d" % (exit_code, actual_code)
-            print "Output:"
-            print actual_out
-            sys.exit(1)
+        self.assertEqual(exit_code, actual_code)
 
         actual_out = strip_ansi_codes(actual_out)
+        if not pattern_match(expected_out, actual_out):
+            # This will always throw since pattern_match failed.
+            self.assertEqual(expected_out, actual_out)
 
-        if pattern_match(expected_out, actual_out) != True:
-            print red_failed()
-            print "Expected output does not match actual."
-            print "Expected output: \n" + expected_out
-            print "Actual output:   \n" + actual_out
-            sys.exit(1)
 
-        print green_ok()
+# Add a methods for each test file in tests_path.
+for fn in sorted(
+        filename for filename in os.listdir(tests_path)
+        if filename.endswith(".test")):
+
+    t = TestIntegrations._test(fn)
+    tn = t.__name__ = "test_" + fn.split(".")[0]
+    setattr(TestIntegrations, tn, t)
 
 
 def main():
@@ -125,26 +117,26 @@ def main():
     args = parser.parse_args()
 
     target = "release" if args.release else "debug"
-
-    build_dir = None
-    if "DENO_BUILD_PATH" in os.environ:
-        build_dir = os.environ["DENO_BUILD_PATH"]
-    else:
-        build_dir = os.path.join(root_path, "target", target)
+    build_dir = os.environ.get("DENO_BUILD_PATH",
+                               os.path.join(root_path, "target", target))
 
     deno_dir = os.path.join(build_dir, ".deno_test")
     if os.path.isdir(deno_dir):
         rmtree(deno_dir)
     os.environ["DENO_DIR"] = deno_dir
 
-    deno_exe = os.path.join(build_dir, "deno" + executable_suffix)
-    if args.executable:
-        deno_exe = args.executable
+    test_names = [
+        test_name for test_name in unittest.TestLoader().getTestCaseNames(
+            TestIntegrations) if not args.filter or args.filter in test_name
+    ]
+    suite = unittest.TestLoader().loadTestsFromNames(
+        test_names, module=TestIntegrations)
 
-    http_server.spawn()
-
-    integration_tests(deno_exe, args.filter)
+    with spawn():
+        result = ColorTextTestRunner(verbosity=2).run(suite)
+        if not result.wasSuccessful():
+            sys.exit(1)
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
