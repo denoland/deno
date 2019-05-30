@@ -4,6 +4,7 @@
 
 import { BufReader, EOF } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
+import { StringReader } from "../io/readers.ts";
 
 const INVALID_RUNE = ["\r", "\n", '"'];
 
@@ -17,28 +18,39 @@ export class ParseError extends Error {
   }
 }
 
+/**
+ * @property comma - Character which separates values. Default: ','
+ * @property comment - Character to start a comment. Default: '#'
+ * @property trimLeadingSpace - Flag to trim the leading space of the value. Default: 'false'
+ * @property lazyQuotes - Allow unquoted quote in a quoted field or non double
+ *  quoted quotes in quoted field Default: 'false'
+ * @property fieldsPerRecord - Enabling the check of fields for each row. If == 0
+ * first row is used as referal for the number of fields.
+ */
 export interface ParseOptions {
-  comma: string;
+  comma?: string;
   comment?: string;
-  trimLeadingSpace: boolean;
+  trimLeadingSpace?: boolean;
   lazyQuotes?: boolean;
   fieldsPerRecord?: number;
 }
 
 function chkOptions(opt: ParseOptions): void {
+  if (!opt.comma) opt.comma = ",";
+  if (!opt.trimLeadingSpace) opt.trimLeadingSpace = false;
   if (
-    INVALID_RUNE.includes(opt.comma) ||
-    (opt.comment && INVALID_RUNE.includes(opt.comment)) ||
+    INVALID_RUNE.includes(opt.comma!) ||
+    INVALID_RUNE.includes(opt.comment!) ||
     opt.comma === opt.comment
   ) {
     throw new Error("Invalid Delimiter");
   }
 }
 
-export async function read(
+async function read(
   Startline: number,
   reader: BufReader,
-  opt: ParseOptions = { comma: ",", comment: "#", trimLeadingSpace: false }
+  opt: ParseOptions = { comma: ",", trimLeadingSpace: false }
 ): Promise<string[] | EOF> {
   const tp = new TextProtoReader(reader);
   let line: string;
@@ -68,7 +80,7 @@ export async function read(
     return [];
   }
 
-  result = line.split(opt.comma);
+  result = line.split(opt.comma!);
 
   let quoteError = false;
   result = result.map(
@@ -137,4 +149,106 @@ export async function readAll(
     }
   }
   return result;
+}
+
+/**
+ * HeaderOption provides the column definition
+ * and the parse function for each entry of the
+ * column.
+ */
+export interface HeaderOption {
+  name: string;
+  parse?: (input: string) => unknown;
+}
+
+export interface ExtendedParseOptions extends ParseOptions {
+  header: boolean | string[] | HeaderOption[];
+  parse?: (input: unknown) => unknown;
+}
+
+/**
+ * Csv parse helper to manipulate data.
+ * Provides an auto/custom mapper for columns and parse function
+ * for columns and rows.
+ * @param input Input to parse. Can be a string or BufReader.
+ * @param opt options of the parser.
+ * @param [opt.header=false] HeaderOptions
+ * @param [opt.parse=null] Parse function for rows.
+ * Example:
+ *     const r = await parseFile('a,b,c\ne,f,g\n', {
+ *      header: ["this", "is", "sparta"],
+ *       parse: (e: Record<string, unknown>) => {
+ *         return { super: e.this, street: e.is, fighter: e.sparta };
+ *       }
+ *     });
+ * // output
+ * [
+ *   { super: "a", street: "b", fighter: "c" },
+ *   { super: "e", street: "f", fighter: "g" }
+ * ]
+ */
+export async function parse(
+  input: string | BufReader,
+  opt: ExtendedParseOptions = {
+    header: false
+  }
+): Promise<unknown[]> {
+  let r: string[][];
+  if (input instanceof BufReader) {
+    r = await readAll(input, opt);
+  } else {
+    r = await readAll(new BufReader(new StringReader(input)), opt);
+  }
+  if (opt.header) {
+    let headers: HeaderOption[] = [];
+    let i = 0;
+    if (Array.isArray(opt.header)) {
+      if (typeof opt.header[0] !== "string") {
+        headers = opt.header as HeaderOption[];
+      } else {
+        const h = opt.header as string[];
+        headers = h.map(
+          (e): HeaderOption => {
+            return {
+              name: e
+            };
+          }
+        );
+      }
+    } else {
+      headers = r.shift()!.map(
+        (e): HeaderOption => {
+          return {
+            name: e
+          };
+        }
+      );
+      i++;
+    }
+    return r.map(
+      (e): unknown => {
+        if (e.length !== headers.length) {
+          throw `Error number of fields line:${i}`;
+        }
+        i++;
+        let out: Record<string, unknown> = {};
+        for (let j = 0; j < e.length; j++) {
+          const h = headers[j];
+          if (h.parse) {
+            out[h.name] = h.parse(e[j]);
+          } else {
+            out[h.name] = e[j];
+          }
+        }
+        if (opt.parse) {
+          return opt.parse(out);
+        }
+        return out;
+      }
+    );
+  }
+  if (opt.parse) {
+    return r.map((e: string[]): unknown => opt.parse!(e));
+  }
+  return r;
 }

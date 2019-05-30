@@ -2,7 +2,7 @@
 // https://github.com/golang/go/blob/2cc15b1/src/encoding/csv/reader_test.go
 import { test, runIfMain } from "../testing/mod.ts";
 import { assertEquals, assert } from "../testing/asserts.ts";
-import { readAll } from "./csv.ts";
+import { readAll, parse } from "./csv.ts";
 import { StringReader } from "../io/readers.ts";
 import { BufReader } from "../io/bufio.ts";
 
@@ -464,6 +464,116 @@ for (const t of testCases) {
         const expected = t.Output;
         assertEquals(actual, expected);
       }
+    }
+  });
+}
+
+const parseTestCases = [
+  {
+    name: "simple",
+    in: "a,b,c",
+    header: false,
+    result: [["a", "b", "c"]]
+  },
+  {
+    name: "simple Bufreader",
+    in: new BufReader(new StringReader("a,b,c")),
+    header: false,
+    result: [["a", "b", "c"]]
+  },
+  {
+    name: "multiline",
+    in: "a,b,c\ne,f,g\n",
+    header: false,
+    result: [["a", "b", "c"], ["e", "f", "g"]]
+  },
+  {
+    name: "header mapping boolean",
+    in: "a,b,c\ne,f,g\n",
+    header: true,
+    result: [{ a: "e", b: "f", c: "g" }]
+  },
+  {
+    name: "header mapping array",
+    in: "a,b,c\ne,f,g\n",
+    header: ["this", "is", "sparta"],
+    result: [
+      { this: "a", is: "b", sparta: "c" },
+      { this: "e", is: "f", sparta: "g" }
+    ]
+  },
+  {
+    name: "header mapping object",
+    in: "a,b,c\ne,f,g\n",
+    header: [{ name: "this" }, { name: "is" }, { name: "sparta" }],
+    result: [
+      { this: "a", is: "b", sparta: "c" },
+      { this: "e", is: "f", sparta: "g" }
+    ]
+  },
+  {
+    name: "header mapping parse entry",
+    in: "a,b,c\ne,f,g\n",
+    header: [
+      {
+        name: "this",
+        parse: (e: string): string => {
+          return `b${e}$$`;
+        }
+      },
+      {
+        name: "is",
+        parse: (e: string): number => {
+          return e.length;
+        }
+      },
+      {
+        name: "sparta",
+        parse: (e: string): unknown => {
+          return { bim: `boom-${e}` };
+        }
+      }
+    ],
+    result: [
+      { this: "ba$$", is: 1, sparta: { bim: `boom-c` } },
+      { this: "be$$", is: 1, sparta: { bim: `boom-g` } }
+    ]
+  },
+  {
+    name: "multiline parse",
+    in: "a,b,c\ne,f,g\n",
+    parse: (e: string[]): unknown => {
+      return { super: e[0], street: e[1], fighter: e[2] };
+    },
+    header: false,
+    result: [
+      { super: "a", street: "b", fighter: "c" },
+      { super: "e", street: "f", fighter: "g" }
+    ]
+  },
+  {
+    name: "header mapping object parseline",
+    in: "a,b,c\ne,f,g\n",
+    header: [{ name: "this" }, { name: "is" }, { name: "sparta" }],
+    parse: (e: Record<string, unknown>): unknown => {
+      return { super: e.this, street: e.is, fighter: e.sparta };
+    },
+    result: [
+      { super: "a", street: "b", fighter: "c" },
+      { super: "e", street: "f", fighter: "g" }
+    ]
+  }
+];
+
+for (const testCase of parseTestCases) {
+  test({
+    name: `[CSV] Parse ${testCase.name}`,
+    async fn(): Promise<void> {
+      const r = await parse(testCase.in, {
+        header: testCase.header,
+        parse: testCase.parse as (input: unknown) => unknown
+      });
+      assertEquals(r, testCase.result);
     }
   });
 }

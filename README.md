@@ -24,6 +24,7 @@ Here are the dedicated documentations of modules:
 
 - [colors](colors/README.md)
 - [datetime](datetime/README.md)
+- [encoding](encoding/README.md)
 - [examples](examples/README.md)
 - [flags](flags/README.md)
 - [fs](fs/README.md)
@@ -33,7 +34,6 @@ Here are the dedicated documentations of modules:
 - [prettier](prettier/README.md)
 - [strings](strings/README.md)
 - [testing](testing/README.md)
-- [toml](encoding/toml/README.md)
 - [ws](ws/README.md)
 
 ## Contributing
