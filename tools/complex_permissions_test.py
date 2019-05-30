@@ -2,15 +2,13 @@
 # -*- coding: utf-8 -*-
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import os
-import pty
-import select
 import subprocess
 import sys
 import time
 import unittest
 
-import http_server
-from util import build_path, root_path, executable_suffix, green_ok, red_failed
+from http_server import spawn
+from util import DenoTestCase, root_path, test_main, tty_capture
 
 PERMISSIONS_PROMPT_TEST_TS = "tools/complex_permissions_test.ts"
 
@@ -18,47 +16,8 @@ PROMPT_PATTERN = b'⚠️'
 PERMISSION_DENIED_PATTERN = b'PermissionDenied: permission denied'
 
 
-# This function is copied from:
-# https://gist.github.com/hayd/4f46a68fc697ba8888a7b517a414583e
-# https://stackoverflow.com/q/52954248/1240268
-def tty_capture(cmd, bytes_input, timeout=5):
-    """Capture the output of cmd with bytes_input to stdin,
-    with stdin, stdout and stderr as TTYs."""
-    mo, so = pty.openpty()  # provide tty to enable line-buffering
-    me, se = pty.openpty()
-    mi, si = pty.openpty()
-    fdmap = {mo: 'stdout', me: 'stderr', mi: 'stdin'}
-
-    timeout_exact = time.time() + timeout
-    p = subprocess.Popen(
-        cmd, bufsize=1, stdin=si, stdout=so, stderr=se, close_fds=True)
-    os.write(mi, bytes_input)
-
-    select_timeout = .04  #seconds
-    res = {'stdout': b'', 'stderr': b''}
-    while True:
-        ready, _, _ = select.select([mo, me], [], [], select_timeout)
-        if ready:
-            for fd in ready:
-                data = os.read(fd, 512)
-                if not data:
-                    break
-                res[fdmap[fd]] += data
-        elif p.poll() is not None or time.time(
-        ) > timeout_exact:  # select timed-out
-            break  # p exited
-    for fd in [si, so, se, mi, mo, me]:
-        os.close(fd)  # can't do it sooner: it leads to errno.EIO error
-    p.wait()
-    return p.returncode, res['stdout'], res['stderr']
-
-
-class ComplexPermissionTestCase(unittest.TestCase):
-    def __init__(self, method_name, test_type, deno_exe):
-        super(ComplexPermissionTestCase, self).__init__(method_name)
-        self.test_type = test_type
-        self.deno_exe = deno_exe
-
+@unittest.skipIf(os.name == 'nt', "Unable to test tty on Windows")
+class BaseComplexPermissionTest(DenoTestCase):
     def _run_deno(self, flags, args):
         "Returns (return_code, stdout, stderr)."
         cmd = ([self.deno_exe, "run", "--no-prompt"] + flags +
@@ -66,7 +25,9 @@ class ComplexPermissionTestCase(unittest.TestCase):
         return tty_capture(cmd, b'')
 
 
-class TestReadWritePermissions(ComplexPermissionTestCase):
+class TestReadPermissions(BaseComplexPermissionTest):
+    test_type = "read"
+
     def test_inside_project_dir(self):
         code, _stdout, stderr = self._run_deno(
             ["--allow-" + self.test_type + "=" + root_path],
@@ -136,7 +97,13 @@ class TestReadWritePermissions(ComplexPermissionTestCase):
         os.chdir(saved_curdir)
 
 
-class TestNetFetchPermissions(ComplexPermissionTestCase):
+class TestWritePermissions(TestReadPermissions):
+    test_type = "write"
+
+
+class TestNetFetchPermissions(BaseComplexPermissionTest):
+    test_type = "net_fetch"
+
     def test_allow_localhost_4545(self):
         code, _stdout, stderr = self._run_deno(
             ["--allow-net=localhost:4545"],
@@ -171,7 +138,9 @@ class TestNetFetchPermissions(ComplexPermissionTestCase):
         assert not PERMISSION_DENIED_PATTERN in stderr
 
 
-class TestNetDialPermissions(ComplexPermissionTestCase):
+class TestNetDialPermissions(BaseComplexPermissionTest):
+    test_type = "net_dial"
+
     def test_allow_localhost_ip_4555(self):
         code, _stdout, stderr = self._run_deno(
             ["--allow-net=127.0.0.1:4545"], [self.test_type, "127.0.0.1:4545"])
@@ -203,7 +172,9 @@ class TestNetDialPermissions(ComplexPermissionTestCase):
         assert not PERMISSION_DENIED_PATTERN in stderr
 
 
-class TestNetListenPermissions(ComplexPermissionTestCase):
+class TestNetListenPermissions(BaseComplexPermissionTest):
+    test_type = "net_listen"
+
     def test_allow_localhost_4555(self):
         code, _stdout, stderr = self._run_deno(
             ["--allow-net=localhost:4555"], [self.test_type, "localhost:4555"])
@@ -235,36 +206,10 @@ class TestNetListenPermissions(ComplexPermissionTestCase):
         assert not PERMISSION_DENIED_PATTERN in stderr
 
 
-def complex_permissions_test(deno_exe):
-    runner = unittest.TextTestRunner(verbosity=2)
-    loader = unittest.TestLoader()
-
-    tests = (
-        ("read", TestReadWritePermissions),
-        ("write", TestReadWritePermissions),
-        ("net_fetch", TestNetFetchPermissions),
-        ("net_dial", TestNetDialPermissions),
-        ("net_listen", TestNetListenPermissions),
-    )
-
-    for (test_type, test_class) in tests:
-        print "Complex permissions tests for \"{}\"".format(test_type)
-
-        test_names = loader.getTestCaseNames(test_class)
-        suite = unittest.TestSuite()
-        for test_name in test_names:
-            suite.addTest(test_class(test_name, test_type, deno_exe))
-
-        result = runner.run(suite)
-        if not result.wasSuccessful():
-            sys.exit(1)
-
-
-def main():
-    deno_exe = os.path.join(build_path(), "deno" + executable_suffix)
-    http_server.spawn()
-    complex_permissions_test(deno_exe)
+def complex_permissions_tests():
+    return BaseComplexPermissionTest.__subclasses__()
 
 
 if __name__ == "__main__":
-    main()
+    with spawn():
+        test_main()

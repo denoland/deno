@@ -1,14 +1,15 @@
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import os
 import sys
-import unittest
 
 from setup import gn_string, read_gn_args, write_gn_args
 from shutil import rmtree
 from tempfile import mktemp
 
+from util import DenoTestCase, test_main
 
-class TestSetup(unittest.TestCase):
+
+class TestSetup(DenoTestCase):
     def test_gn_string(self):
         assert '"abc"' == gn_string('abc')
         assert '"foo\\$bar\\"baz"' == gn_string('foo$bar"baz')
@@ -61,12 +62,5 @@ class TestSetup(unittest.TestCase):
         rmtree(d)
 
 
-def setup_test():
-    suite = unittest.TestLoader().loadTestsFromTestCase(TestSetup)
-    result = unittest.TextTestRunner(verbosity=2).run(suite)
-    if not result.wasSuccessful():
-        sys.exit(1)
-
-
 if __name__ == '__main__':
-    setup_test()
+    test_main()

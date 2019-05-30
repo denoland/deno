@@ -2,14 +2,12 @@
 # -*- coding: utf-8 -*-
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import os
-import pty
-import select
 import subprocess
 import sys
 import time
 import unittest
 
-from util import build_path, executable_suffix, green_ok, red_failed
+from util import DenoTestCase, test_main, tty_capture
 
 PERMISSIONS_PROMPT_TEST_TS = "tools/permission_prompt_test.ts"
 
@@ -18,47 +16,8 @@ FIRST_CHECK_FAILED_PATTERN = b'First check failed'
 PERMISSION_DENIED_PATTERN = b'PermissionDenied: permission denied'
 
 
-# This function is copied from:
-# https://gist.github.com/hayd/4f46a68fc697ba8888a7b517a414583e
-# https://stackoverflow.com/q/52954248/1240268
-def tty_capture(cmd, bytes_input, timeout=5):
-    """Capture the output of cmd with bytes_input to stdin,
-    with stdin, stdout and stderr as TTYs."""
-    mo, so = pty.openpty()  # provide tty to enable line-buffering
-    me, se = pty.openpty()
-    mi, si = pty.openpty()
-    fdmap = {mo: 'stdout', me: 'stderr', mi: 'stdin'}
-
-    timeout_exact = time.time() + timeout
-    p = subprocess.Popen(
-        cmd, bufsize=1, stdin=si, stdout=so, stderr=se, close_fds=True)
-    os.write(mi, bytes_input)
-
-    select_timeout = .04  #seconds
-    res = {'stdout': b'', 'stderr': b''}
-    while True:
-        ready, _, _ = select.select([mo, me], [], [], select_timeout)
-        if ready:
-            for fd in ready:
-                data = os.read(fd, 512)
-                if not data:
-                    break
-                res[fdmap[fd]] += data
-        elif p.poll() is not None or time.time(
-        ) > timeout_exact:  # select timed-out
-            break  # p exited
-    for fd in [si, so, se, mi, mo, me]:
-        os.close(fd)  # can't do it sooner: it leads to errno.EIO error
-    p.wait()
-    return p.returncode, res['stdout'], res['stderr']
-
-
-class TestPrompt(unittest.TestCase):
-    def __init__(self, method_name, test_type, deno_exe):
-        super(TestPrompt, self).__init__(method_name)
-        self.test_type = test_type
-        self.deno_exe = deno_exe
-
+@unittest.skipIf(os.name == 'nt', "Unable to test tty on Windows")
+class BasePromptTest(object):
     def _run_deno(self, flags, args, bytes_input):
         "Returns (return_code, stdout, stderr)."
         cmd = [self.deno_exe, "run"] + flags + [PERMISSIONS_PROMPT_TEST_TS
@@ -159,27 +118,29 @@ class TestPrompt(unittest.TestCase):
         assert not PERMISSION_DENIED_PATTERN in stderr
 
 
-def permission_prompt_test(deno_exe):
-    runner = unittest.TextTestRunner(verbosity=2)
-    loader = unittest.TestLoader()
-
-    test_types = ["read", "write", "env", "net", "run"]
-
-    for test_type in test_types:
-        print "Permissions prompt tests for \"{}\"".format(test_type)
-        test_names = loader.getTestCaseNames(TestPrompt)
-        suite = unittest.TestSuite()
-        for test_name in test_names:
-            suite.addTest(TestPrompt(test_name, test_type, deno_exe))
-        result = runner.run(suite)
-        if not result.wasSuccessful():
-            sys.exit(1)
+class ReadPromptTest(DenoTestCase, BasePromptTest):
+    test_type = "read"
 
 
-def main():
-    deno_exe = os.path.join(build_path(), "deno" + executable_suffix)
-    permission_prompt_test(deno_exe)
+class WritePromptTest(DenoTestCase, BasePromptTest):
+    test_type = "write"
+
+
+class EnvPromptTest(DenoTestCase, BasePromptTest):
+    test_type = "env"
+
+
+class NetPromptTest(DenoTestCase, BasePromptTest):
+    test_type = "net"
+
+
+class RunPromptTest(DenoTestCase, BasePromptTest):
+    test_type = "run"
+
+
+def permission_prompt_tests():
+    return BasePromptTest.__subclasses__()
 
 
 if __name__ == "__main__":
-    main()
+    test_main()
