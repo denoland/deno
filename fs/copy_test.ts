@@ -346,8 +346,10 @@ testCopySync(
 
     assert(typeof destStatInfo.accessed === "number");
     assert(typeof destStatInfo.modified === "number");
-    assertEquals(destStatInfo.accessed, srcStatInfo.accessed);
-    assertEquals(destStatInfo.modified, srcStatInfo.modified);
+    // TODO: Activate test when https://github.com/denoland/deno/issues/2411
+    // is fixed
+    // assertEquals(destStatInfo.accessed, srcStatInfo.accessed);
+    // assertEquals(destStatInfo.modified, srcStatInfo.modified);
   }
 );
 
