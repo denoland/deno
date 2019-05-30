@@ -226,16 +226,30 @@ rust_rlib("ct_logs") {
 
 rust_rlib("dirs") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/dirs-1.0.5/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/dirs-2.0.0/src/lib.rs"
+  extern_rlib = [
+    "cfg_if",
+    "dirs_sys",
+  ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
+rust_rlib("dirs_sys") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/dirs-sys-0.3.1/src/lib.rs"
+  extern_rlib = [ "cfg_if" ]
   args = [
     "--cap-lints",
     "allow",
   ]
   if (is_posix) {
-    extern_rlib = [ "libc" ]
+    extern_rlib += [ "libc" ]
   }
   if (is_win) {
-    extern_rlib = [ "winapi" ]
+    extern_rlib += [ "winapi" ]
   }
 }
 
@@ -520,7 +534,7 @@ rust_rlib("lazy_static") {
 
 rust_rlib("libc") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/libc-0.2.54/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/libc-0.2.55/src/lib.rs"
   features = [
     "default",
     "use_std",
@@ -609,7 +623,7 @@ rust_rlib("memoffset") {
 
 rust_rlib("mio") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/mio-0.6.17/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/mio-0.6.19/src/lib.rs"
   features = [
     "default",
     "with-deprecated",
@@ -1167,24 +1181,36 @@ rust_rlib("rustls") {
 }
 
 rust_rlib("rustyline") {
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rustyline-4.0.0/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rustyline-4.1.0/src/lib.rs"
   features = [
     "default",
     "dirs",
     "with-dirs",
   ]
   extern_rlib = [
-    "dirs",
     "libc",
     "log",
     "memchr",
     "unicode_segmentation",
     "unicode_width",
+
+    # Override: use dirs v2.0.0 instead of v1.0.5.
+    "dirs",
   ]
   args = [
     "--cap-lints",
     "allow",
   ]
+
+  ## Override: use dirs v2.0.0 instead of v1.0.5.
+  # extern = [
+  #   {
+  #     label = ":dirs-1.0.5"
+  #     crate_name = "dirs"
+  #     crate_type = "rlib"
+  #     crate_version = "1.0.5"
+  #   },
+  # ]
   if (is_posix) {
     extern_rlib += [
       "nix",
@@ -1411,7 +1437,7 @@ rust_rlib("syn") {
 
 rust_rlib("tempfile") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tempfile-3.0.7/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tempfile-3.0.8/src/lib.rs"
   extern_rlib = [
     "cfg_if",
     "rand",
@@ -1660,7 +1686,7 @@ rust_rlib("tokio_reactor") {
 
 rust_rlib("tokio_rustls") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-rustls-0.9.2/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-rustls-0.9.3/src/lib.rs"
   features = [
     "default",
     "futures",
@@ -1969,6 +1995,24 @@ rust_rlib("webpki_roots") {
     "allow",
   ]
 }
+
+## Override: use dirs v2.0.0 instead.
+# rust_rlib("dirs-1.0.5") {
+#   crate_name = "dirs"
+#   crate_version = "1.0.5"
+#   edition = "2015"
+#   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/dirs-1.0.5/src/lib.rs"
+#   args = [
+#     "--cap-lints",
+#     "allow",
+#   ]
+#   if (is_posix) {
+#     extern_rlib = [ "libc" ]
+#   }
+#   if (is_win) {
+#     extern_rlib = [ "winapi" ]
+#   }
+# }
 
 ## Override: use rand v0.6.5 instead.
 # rust_rlib("rand-0.4.6") {
