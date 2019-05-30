@@ -14,7 +14,7 @@ import sys
 import subprocess
 import unittest
 
-from http_server import Spawn
+from http_server import spawn
 from util import (DenoTestCase, ColorTextTestRunner, root_path, tests_path,
                   pattern_match, rmtree, test_main)
 
@@ -90,28 +90,22 @@ class TestIntegrations(DenoTestCase):
             actual_code = e.returncode
             actual_out = e.output
 
-        if exit_code != actual_code:
-            print "Expected exit code %d but got %d" % (exit_code, actual_code)
-            print "Output:"
-            print actual_out
-            raise AssertionError()
+        self.assertEqual(exit_code, actual_code)
 
         actual_out = strip_ansi_codes(actual_out)
-
-        if pattern_match(expected_out, actual_out) != True:
-            print "Expected output does not match actual."
-            print "Expected output: \n" + expected_out
-            print "Actual output:   \n" + actual_out
-            # FIXME use unittest assertions
-            raise AssertionError()
+        if not pattern_match(expected_out, actual_out):
+            # This will always throw since pattern_match failed.
+            self.assertEqual(expected_out, actual_out)
 
 
 # Add a methods for each test file in tests_path.
 for fn in sorted(
         filename for filename in os.listdir(tests_path)
         if filename.endswith(".test")):
-    tn = fn.split(".")[0]
-    setattr(TestIntegrations, "test_" + tn, TestIntegrations._test(fn))
+
+    t = TestIntegrations._test(fn)
+    tn = t.__name__ = "test_" + fn.split(".")[0]
+    setattr(TestIntegrations, tn, t)
 
 
 def main():
@@ -138,7 +132,7 @@ def main():
     suite = unittest.TestLoader().loadTestsFromNames(
         test_names, module=TestIntegrations)
 
-    with Spawn():
+    with spawn():
         result = ColorTextTestRunner(verbosity=2).run(suite)
         if not result.wasSuccessful():
             sys.exit(1)

@@ -22,13 +22,13 @@ from is_tty_test import TestIsTty
 from permission_prompt_test import permission_prompt_tests
 from complex_permissions_test import complex_permissions_tests
 
-from http_server import Spawn
+from http_server import spawn
 from util import (DenoTestCase, ColorTextTestRunner, enable_ansi_colors,
                   executable_suffix, run, run_output, rmtree, tests_path,
                   test_args)
 
 
-class TestLib(DenoTestCase):
+class TestTarget(DenoTestCase):
     @staticmethod
     def check_exists(filename):
         if not os.path.exists(filename):
@@ -89,11 +89,11 @@ def main(argv):
 
     enable_ansi_colors()
 
-    with Spawn():
+    with spawn():
         test_cases = [
             TestSetup,
             TestUtil,
-            TestLib,
+            TestTarget,
             JsUnitTests,
             FetchTest,
             FmtTest,
@@ -102,6 +102,8 @@ def main(argv):
             TestDenoDir,
             TestBenchmark,
         ]
+        # These tests are skipped, but to make the test output less noisy
+        # we'll avoid triggering them.
         if os.name != 'nt':
             test_cases.append(TestIsTty)
             test_cases += permission_prompt_tests()
@@ -113,7 +115,7 @@ def main(argv):
         ])
 
         result = ColorTextTestRunner(
-            verbosity=2, failfast=args.failfast).run(suite)
+            verbosity=args.verbosity + 1, failfast=args.failfast).run(suite)
         if not result.wasSuccessful():
             sys.exit(1)
 

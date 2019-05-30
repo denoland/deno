@@ -190,8 +190,6 @@ def build_path():
 # Returns True if the expected matches the actual output, allowing variation
 # from actual where expected has the wildcard (e.g. matches /.*/)
 def pattern_match(pattern, string, wildcard="[WILDCARD]"):
-    if len(pattern) == 0:
-        return string == 0
     if pattern == wildcard:
         return True
 
@@ -424,7 +422,7 @@ def test_main():
     args = test_args()
     # FIXME(hayd) support more of the unittest.main API.
     return unittest.main(
-        verbosity=2,
+        verbosity=args.verbosity + 1,
         testRunner=ColorTextTestRunner,
         failfast=args.failfast,
         argv=[''])
@@ -436,6 +434,8 @@ def test_args(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument(
         '--failfast', '-f', action='store_true', help='Stop on first failure')
+    parser.add_argument(
+        '--verbosity', '-v', action='store_true', help='Verbose output')
     parser.add_argument(
         '--release',
         action='store_true',

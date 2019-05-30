@@ -2,13 +2,15 @@
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 # Many tests expect there to be an http server on port 4545 servering the deno
 # root directory.
+from collections import namedtuple
+from contextlib import contextmanager
 import os
-import sys
-from threading import Thread
 import SimpleHTTPServer
 import SocketServer
-from util import root_path
+import sys
 from time import sleep
+from threading import Thread
+from util import root_path
 
 PORT = 4545
 REDIRECT_PORT = 4546
@@ -87,6 +89,9 @@ class ContentTypeHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
         return SimpleHTTPServer.SimpleHTTPRequestHandler.guess_type(self, path)
 
 
+RunningServer = namedtuple("RunningServer", ["server", "thread"])
+
+
 def server():
     os.chdir(root_path)  # Hopefully the main thread doesn't also chdir.
     Handler = ContentTypeHandler
@@ -98,7 +103,7 @@ def server():
     SocketServer.TCPServer.allow_reuse_address = True
     s = SocketServer.TCPServer(("", PORT), Handler)
     print "Deno test server http://localhost:%d/" % PORT
-    return s
+    return RunningServer(s, start(s))
 
 
 def base_redirect_server(host_port, target_port, extra_path_segment=""):
@@ -117,7 +122,7 @@ def base_redirect_server(host_port, target_port, extra_path_segment=""):
     s = SocketServer.TCPServer(("", host_port), Handler)
     print "redirect server http://localhost:%d/ -> http://localhost:%d/" % (
         host_port, target_port)
-    return s
+    return RunningServer(s, start(s))
 
 
 # redirect server
@@ -144,39 +149,23 @@ def start(s):
     return thread
 
 
+@contextmanager
 def spawn():
-    # Main http server
-    s = server()
-    thread = start(s)
-    # Redirect server
-    rs = redirect_server()
-    r_thread = start(rs)
-    # Another redirect server
-    ars = another_redirect_server()
-    ar_thread = start(ars)
-    # Double redirects server
-    drs = double_redirects_server()
-    dr_thread = start(drs)
+    servers = (server(), redirect_server(), another_redirect_server(),
+               double_redirects_server())
     sleep(1)  # TODO I'm too lazy to figure out how to do this properly.
-    return [s, rs, ars, drs], [thread, r_thread, ar_thread, dr_thread]
-
-
-class Spawn():
-    def __init__(self):
-        self._servers = self._threads = None
-
-    def __enter__(self):
-        self._servers, self._threads = spawn()
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        for s in self._servers:
-            s.shutdown()
+    try:
+        yield
+    finally:
+        for s in servers:
+            s.server.shutdown()
 
 
 def main():
+    servers = (server(), redirect_server(), another_redirect_server(),
+               double_redirects_server())
     try:
-        _, ts = spawn()
-        while all(t.is_alive() for t in ts):
+        while all(s.thread.is_alive() for s in servers):
             sleep(10)
     except KeyboardInterrupt:
         pass

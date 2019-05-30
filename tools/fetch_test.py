@@ -4,7 +4,7 @@ import os
 import sys
 import shutil
 
-from http_server import Spawn
+from http_server import spawn
 from util import DenoTestCase, mkdtemp, tests_path, run_output, test_main
 
 
@@ -26,5 +26,5 @@ class FetchTest(DenoTestCase):
 
 
 if __name__ == "__main__":
-    with Spawn():
+    with spawn():
         test_main()

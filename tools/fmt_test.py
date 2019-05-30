@@ -18,7 +18,7 @@ class FmtTest(DenoTestCase):
             dst = os.path.join(d, "badly_formatted.js")
             shutil.copyfile(src, dst)
 
-            # Set DENO_DIR to the temp dir so we test an initial fetch of prettier.
+            # Set DENO_DIR to the temp dir to test an initial fetch of prettier.
             # TODO(ry) This make the test depend on internet access which is not
             # ideal. We should have prettier in the repo already, and we could
             # fetch it instead through tools/http_server.py.
@@ -37,12 +37,7 @@ class FmtTest(DenoTestCase):
                 expected = f.read()
             with open(dst) as f:
                 actual = f.read()
-            if expected != actual:
-                print "Expected didn't match actual."
-                print "expected: ", json.dumps(expected)
-                print "actual: ", json.dumps(actual)
-                # FIXME use regular unittest assertions
-                raise AssertionError
+            self.assertEqual(expected, actual)
         finally:
             shutil.rmtree(d)
 

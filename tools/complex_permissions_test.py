@@ -7,7 +7,7 @@ import sys
 import time
 import unittest
 
-from http_server import Spawn
+from http_server import spawn
 from util import DenoTestCase, root_path, test_main, tty_capture
 
 PERMISSIONS_PROMPT_TEST_TS = "tools/complex_permissions_test.ts"
@@ -25,7 +25,7 @@ class BaseComplexPermissionTest(DenoTestCase):
         return tty_capture(cmd, b'')
 
 
-class TestReadWritePermissions(BaseComplexPermissionTest):
+class TestReadPermissions(BaseComplexPermissionTest):
     test_type = "read"
 
     def test_inside_project_dir(self):
@@ -95,6 +95,10 @@ class TestReadWritePermissions(BaseComplexPermissionTest):
         assert not PROMPT_PATTERN in stderr
         assert not PERMISSION_DENIED_PATTERN in stderr
         os.chdir(saved_curdir)
+
+
+class TestWritePermissions(TestReadPermissions):
+    test_type = "write"
 
 
 class TestNetFetchPermissions(BaseComplexPermissionTest):
@@ -207,5 +211,5 @@ def complex_permissions_tests():
 
 
 if __name__ == "__main__":
-    with Spawn():
+    with spawn():
         test_main()

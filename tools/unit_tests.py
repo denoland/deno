@@ -3,7 +3,7 @@
 import sys
 import subprocess
 
-from http_server import Spawn
+from http_server import spawn
 from util import DenoTestCase, test_main
 
 
@@ -24,5 +24,5 @@ class JsUnitTests(DenoTestCase):
 
 
 if __name__ == '__main__':
-    with Spawn():
+    with spawn():
         test_main()
