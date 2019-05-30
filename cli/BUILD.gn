@@ -26,6 +26,7 @@ main_extern_rlib = [
   "dirs",
   "flatbuffers",
   "futures",
+  "fwdansi",
   "http",
   "hyper",
   "hyper_rustls",

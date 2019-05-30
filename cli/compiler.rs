@@ -180,7 +180,7 @@ pub fn compile_async(
   err_check(worker.execute("workerMain()"));
   err_check(worker.execute("compilerMain()"));
 
-  let compiling_job = state.progress.add(format!("Compiling {}", module_name));
+  let compiling_job = state.progress.add("Compile", &module_name);
 
   let resource = worker.state.resource.clone();
   let compiler_rid = resource.rid;
