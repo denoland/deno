@@ -1,11 +1,12 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-//! This mod adds source maps and ANSI color display to deno::DenoDiagnostic.
+//! This mod adds source maps and ANSI color display to deno::Diagnostic.
 use crate::ansi;
 use deno;
-use deno::DenoDiagnostic;
-use deno::DenoDiagnosticCategory;
-use deno::DenoDiagnosticFrame;
-use deno::DenoDiagnosticSources;
+use deno::Diagnostic;
+use deno::DiagnosticCategory;
+use deno::DiagnosticFrame;
+use deno::DiagnosticItem;
+use deno::DiagnosticSources;
 use source_map_mappings::parse_mappings;
 use source_map_mappings::Bias;
 use source_map_mappings::Mappings;
@@ -13,10 +14,10 @@ use std::collections::HashMap;
 use std::fmt;
 use std::str;
 
-/// Wrapper around DenoDiagnostic which provides color to_string.
-pub struct DenoDiagnosticColor<'a>(pub &'a DenoDiagnostic);
+/// Wrapper around Diagnostic which provides color to_string.
+pub struct DiagnosticColor<'a>(pub &'a Diagnostic);
 
-struct DenoDiagnosticFrameColor<'a>(&'a DenoDiagnosticFrame);
+struct DiagnosticFrameColor<'a>(&'a DiagnosticFrame);
 
 pub trait SourceMapGetter {
   /// Returns the raw source map file.
@@ -32,7 +33,7 @@ struct SourceMap {
   sources: Vec<String>,
 }
 
-impl<'a> fmt::Display for DenoDiagnosticFrameColor<'a> {
+impl<'a> fmt::Display for DiagnosticFrameColor<'a> {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let frame = self.0;
     // Note when we print to string, we change from 0-indexed to 1-indexed.
@@ -62,32 +63,31 @@ fn format_script_line_column(
   format!("{}:{}:{}", script_name, line, column)
 }
 
-impl<'a> fmt::Display for DenoDiagnosticColor<'a> {
+impl<'a> fmt::Display for DiagnosticColor<'a> {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    let e = self.0;
+    let source = &self.0.source;
+    let mut i = 0;
+    for item in &self.0.items {
+      if i > 0 {
+        write!(f, "\n")?;
+      }
 
-    write!(
-      f,
-      "{}{}{}{}{}",
-      format_source_name_color(e, 0),
-      format_category_and_code_color(e),
-      format_message_color(e, 0),
-      format_source_line_color(e, 0),
-      format_related_info_color(e),
-    )?;
+      write!(
+        f,
+        "{}{}{}{}{}",
+        format_source_name_color(item, source, 0),
+        format_category_and_code_color(item, source),
+        format_message_color(item, 0),
+        format_source_line_color(item, source, 0),
+        format_related_info_color(item, source),
+      )?;
 
-    match &e.frames {
-      Some(frames) => {
-        for frame in frames {
-          write!(f, "\n{}", DenoDiagnosticFrameColor(&frame).to_string())?;
+      if item.frames.is_some() {
+        for frame in &item.frames.clone().unwrap() {
+          write!(f, "\n{}", DiagnosticFrameColor(&frame).to_string())?;
         }
       }
-      _ => (),
-    }
-
-    match &e.next {
-      Some(next) => write!(f, "\n{}", DenoDiagnosticColor(next).to_string())?,
-      _ => (),
+      i += 1;
     }
 
     Ok(())
@@ -96,22 +96,25 @@ impl<'a> fmt::Display for DenoDiagnosticColor<'a> {
 
 /// Format the category and code for a given diagnostic.  This currently only
 /// pertains to diagnostics coming from TypeScript.
-fn format_category_and_code_color(diagnostic: &DenoDiagnostic) -> String {
-  if diagnostic.source != DenoDiagnosticSources::TypeScript {
+fn format_category_and_code_color(
+  diagnostic_item: &DiagnosticItem,
+  source: &DiagnosticSources,
+) -> String {
+  if source.to_owned() != DiagnosticSources::TypeScript {
     return "".to_owned();
   }
 
-  let category = match diagnostic.category {
-    DenoDiagnosticCategory::Error => {
+  let category = match diagnostic_item.category {
+    DiagnosticCategory::Error => {
       format!("- {}", ansi::red("error".to_string()))
     }
-    DenoDiagnosticCategory::Warning => "- warn".to_string(),
-    DenoDiagnosticCategory::Debug => "- debug".to_string(),
-    DenoDiagnosticCategory::Info => "- info".to_string(),
+    DiagnosticCategory::Warning => "- warn".to_string(),
+    DiagnosticCategory::Debug => "- debug".to_string(),
+    DiagnosticCategory::Info => "- info".to_string(),
     _ => "".to_string(),
   };
 
-  let code = match diagnostic.code {
+  let code = match diagnostic_item.code {
     Some(code_int) => {
       ansi::grey(format!(" TS{}:", code_int.to_string())).to_string()
     }
@@ -122,17 +125,23 @@ fn format_category_and_code_color(diagnostic: &DenoDiagnostic) -> String {
 }
 
 /// Format the message of a diagnostic.
-fn format_message_color(diagnostic: &DenoDiagnostic, level: usize) -> String {
-  if diagnostic.diagnostics.is_none() {
-    return format!("{:indent$}{}", "", diagnostic.message, indent = level);
+fn format_message_color(
+  diagnostic_item: &DiagnosticItem,
+  level: usize,
+) -> String {
+  if diagnostic_item.message_chain.is_none() {
+    return format!("{:indent$}{}", "", diagnostic_item.message, indent = level);
   }
 
   let mut s = String::new();
   let mut i = level / 2;
-  for diagnostic in diagnostic.diagnostics.clone().unwrap() {
+  let mut item_o = diagnostic_item.message_chain.clone();
+  while item_o.is_some() {
+    let item = item_o.unwrap();
     s.push_str(&std::iter::repeat(" ").take(i * 2).collect::<String>());
-    s.push_str(&diagnostic.message);
+    s.push_str(&item.message);
     s.push('\n');
+    item_o = item.next.clone();
     i += 1;
   }
   s.pop();
@@ -143,18 +152,22 @@ fn format_message_color(diagnostic: &DenoDiagnostic, level: usize) -> String {
 /// Format the related information from a diagnostic.  Currently only TypeScript
 /// diagnostics optionally contain related information, where the compiler
 /// can advise on the source of a diagnostic error.
-fn format_related_info_color(diagnostic: &DenoDiagnostic) -> String {
-  if diagnostic.related_information.is_none() {
+fn format_related_info_color(
+  diagnostic_item: &DiagnosticItem,
+  source: &DiagnosticSources,
+) -> String {
+  if diagnostic_item.related_information.is_none() {
     return "".to_string();
   }
 
   let mut s = String::new();
-  for related_diagnostic in diagnostic.related_information.clone().unwrap() {
+  for related_diagnostic in diagnostic_item.related_information.clone().unwrap()
+  {
     let rd = &related_diagnostic;
     s.push_str(&format!(
       "\n{}{}{}\n",
-      format_source_name_color(rd, 2),
-      format_source_line_color(rd, 4),
+      format_source_name_color(rd, source, 2),
+      format_source_line_color(rd, source, 4),
       format_message_color(rd, 4),
     ));
   }
@@ -165,27 +178,28 @@ fn format_related_info_color(diagnostic: &DenoDiagnostic) -> String {
 /// If a diagnostic contains a source line, return a string that formats it
 /// underlining the span of code related to the diagnostic
 fn format_source_line_color(
-  diagnostic: &DenoDiagnostic,
+  diagnostic_item: &DiagnosticItem,
+  source: &DiagnosticSources,
   level: usize,
 ) -> String {
-  if diagnostic.source_line.is_none() {
+  if diagnostic_item.source_line.is_none() {
     return "".to_owned();
   }
 
-  let source_line = diagnostic.source_line.as_ref().unwrap();
+  let source_line = diagnostic_item.source_line.as_ref().unwrap();
   // sometimes source_line gets set with an empty string, which then outputs
   // an empty source line when displayed, so need just short circuit here
   if source_line.len() == 0 {
     return "".to_owned();
   }
-  assert!(diagnostic.line_number.is_some());
-  assert!(diagnostic.start_column.is_some());
-  assert!(diagnostic.end_column.is_some());
-  let line = match diagnostic.source {
-    DenoDiagnosticSources::TypeScript => {
-      (1 + diagnostic.line_number.unwrap()).to_string()
+  assert!(diagnostic_item.line_number.is_some());
+  assert!(diagnostic_item.start_column.is_some());
+  assert!(diagnostic_item.end_column.is_some());
+  let line = match source {
+    DiagnosticSources::TypeScript => {
+      (1 + diagnostic_item.line_number.unwrap()).to_string()
     }
-    _ => diagnostic.line_number.unwrap().to_string(),
+    _ => diagnostic_item.line_number.unwrap().to_string(),
   };
   let line_color = ansi::black_on_white(line.to_string());
   let line_len = line.clone().len();
@@ -193,17 +207,16 @@ fn format_source_line_color(
     ansi::black_on_white(format!("{:indent$}", "", indent = line_len))
       .to_string();
   let mut s = String::new();
-  let start_column = diagnostic.start_column.unwrap();
-  let end_column = diagnostic.end_column.unwrap();
+  let start_column = diagnostic_item.start_column.unwrap();
+  let end_column = diagnostic_item.end_column.unwrap();
   // TypeScript uses `~` always, but V8 would utilise `^` always, even when
   // doing ranges, so here, if we only have one marker (very common with V8
   // errors) we will use `^` instead.
-  let underline_char =
-    if (end_column - start_column) <= 1 {
-      '^'
-    } else {
-      '~'
-    };
+  let underline_char = if (end_column - start_column) <= 1 {
+    '^'
+  } else {
+    '~'
+  };
   for i in 0..end_column {
     if i >= start_column {
       s.push(underline_char);
@@ -211,8 +224,8 @@ fn format_source_line_color(
       s.push(' ');
     }
   }
-  let color_underline = match diagnostic.category {
-    DenoDiagnosticCategory::Error => ansi::red(s).to_string(),
+  let color_underline = match diagnostic_item.category {
+    DiagnosticCategory::Error => ansi::red(s).to_string(),
     _ => ansi::cyan(s).to_string(),
   };
 
@@ -227,28 +240,29 @@ fn format_source_line_color(
 /// Format the source resource name, along with line and column information from
 /// a diagnostic into a single line.
 fn format_source_name_color(
-  diagnostic: &DenoDiagnostic,
+  diagnostic_item: &DiagnosticItem,
+  source: &DiagnosticSources,
   level: usize,
 ) -> String {
-  if diagnostic.script_resource_name.is_none() {
+  if diagnostic_item.script_resource_name.is_none() {
     return "".to_owned();
   }
 
   let script_name =
-    ansi::cyan(diagnostic.script_resource_name.clone().unwrap());
-  assert!(diagnostic.line_number.is_some());
-  assert!(diagnostic.start_column.is_some());
-  let line = ansi::yellow(match diagnostic.source {
-    DenoDiagnosticSources::TypeScript => {
-      (1 + diagnostic.line_number.unwrap()).to_string()
+    ansi::cyan(diagnostic_item.script_resource_name.clone().unwrap());
+  assert!(diagnostic_item.line_number.is_some());
+  assert!(diagnostic_item.start_column.is_some());
+  let line = ansi::yellow(match source {
+    DiagnosticSources::TypeScript => {
+      (1 + diagnostic_item.line_number.unwrap()).to_string()
     }
-    _ => diagnostic.line_number.unwrap().to_string(),
+    _ => diagnostic_item.line_number.unwrap().to_string(),
   });
-  let column = ansi::yellow(match diagnostic.source {
-    DenoDiagnosticSources::TypeScript => {
-      (1 + diagnostic.start_column.unwrap()).to_string()
+  let column = ansi::yellow(match source {
+    DiagnosticSources::TypeScript => {
+      (1 + diagnostic_item.start_column.unwrap()).to_string()
     }
-    _ => diagnostic.start_column.unwrap().to_string(),
+    _ => diagnostic_item.start_column.unwrap().to_string(),
   });
   format!(
     "{:indent$}{}:{}:{} ",
@@ -296,10 +310,10 @@ impl SourceMap {
 }
 
 fn frame_apply_source_map(
-  frame: &DenoDiagnosticFrame,
+  frame: &DiagnosticFrame,
   mappings_map: &mut CachedMaps,
   getter: &dyn SourceMapGetter,
-) -> DenoDiagnosticFrame {
+) -> DiagnosticFrame {
   let maybe_sm = get_mappings(frame.script_name.as_ref(), mappings_map, getter);
   let frame_pos = (
     frame.script_name.to_owned(),
@@ -328,7 +342,7 @@ fn frame_apply_source_map(
     },
   };
 
-  DenoDiagnosticFrame {
+  DiagnosticFrame {
     script_name,
     function_name: frame.function_name.clone(),
     line,
@@ -340,13 +354,13 @@ fn frame_apply_source_map(
 }
 
 pub fn apply_source_map(
-  diagnostic: &DenoDiagnostic,
+  diagnostic: &Diagnostic,
   getter: &dyn SourceMapGetter,
-) -> DenoDiagnostic {
+) -> Diagnostic {
   let mut mappings_map: CachedMaps = HashMap::new();
-  let frames = match &diagnostic.frames {
+  let frames = match &diagnostic.items[0].frames {
     Some(diagnostic_frames) => {
-      let mut frames = Vec::<DenoDiagnosticFrame>::new();
+      let mut frames = Vec::<DiagnosticFrame>::new();
       for frame in diagnostic_frames {
         let f = frame_apply_source_map(&frame, &mut mappings_map, getter);
         frames.push(f);
@@ -357,23 +371,24 @@ pub fn apply_source_map(
     _ => None,
   };
 
-  DenoDiagnostic {
-    message: diagnostic.message.clone(),
-    diagnostics: diagnostic.diagnostics.clone(),
-    related_information: diagnostic.related_information.clone(),
-    frames,
-    code: diagnostic.code,
-    category: diagnostic.category.clone(),
+  Diagnostic {
     source: diagnostic.source.clone(),
-    source_line: diagnostic.source_line.clone(),
-    // TODO the following need to be source mapped:
-    script_resource_name: diagnostic.script_resource_name.clone(),
-    line_number: diagnostic.line_number,
-    start_position: diagnostic.start_position,
-    end_position: diagnostic.end_position,
-    start_column: diagnostic.start_column,
-    end_column: diagnostic.end_column,
-    next: None,
+    items: vec![DiagnosticItem {
+      message: diagnostic.items[0].message.clone(),
+      message_chain: diagnostic.items[0].message_chain.clone(),
+      related_information: diagnostic.items[0].related_information.clone(),
+      frames,
+      code: diagnostic.items[0].code,
+      category: diagnostic.items[0].category.clone(),
+      source_line: diagnostic.items[0].source_line.clone(),
+      // TODO the following need to be source mapped:
+      script_resource_name: diagnostic.items[0].script_resource_name.clone(),
+      line_number: diagnostic.items[0].line_number,
+      start_position: diagnostic.items[0].start_position,
+      end_position: diagnostic.items[0].end_position,
+      start_column: diagnostic.items[0].start_column,
+      end_column: diagnostic.items[0].end_column,
+    }],
   }
 }
 
@@ -428,178 +443,148 @@ fn get_mappings<'a>(
 mod tests {
   use super::*;
   use crate::ansi::strip_ansi_codes;
+  use deno::DiagnosticMessageChain;
 
-  fn error1() -> DenoDiagnostic {
-    DenoDiagnostic {
-      message: "Error: foo bar".to_string(),
-      diagnostics: None,
-      related_information: None,
-      code: None,
-      source: deno::DenoDiagnosticSources::V8,
-      category: deno::DenoDiagnosticCategory::Error,
-      source_line: None,
-      script_resource_name: None,
-      line_number: None,
-      start_position: None,
-      end_position: None,
-      start_column: None,
-      end_column: None,
-      frames: Some(vec![
-        DenoDiagnosticFrame {
-          line: 4,
-          column: 16,
-          script_name: "foo_bar.ts".to_string(),
-          function_name: "foo".to_string(),
-          is_eval: false,
-          is_constructor: false,
-          is_wasm: false,
-        },
-        DenoDiagnosticFrame {
-          line: 5,
-          column: 20,
-          script_name: "bar_baz.ts".to_string(),
-          function_name: "qat".to_string(),
-          is_eval: false,
-          is_constructor: false,
-          is_wasm: false,
-        },
-        DenoDiagnosticFrame {
-          line: 1,
-          column: 1,
-          script_name: "deno_main.js".to_string(),
-          function_name: "".to_string(),
-          is_eval: false,
-          is_constructor: false,
-          is_wasm: false,
-        },
-      ]),
-      next: None,
+  fn error1() -> Diagnostic {
+    Diagnostic {
+      source: deno::DiagnosticSources::V8,
+      items: vec![DiagnosticItem {
+        message: "Error: foo bar".to_string(),
+        message_chain: None,
+        related_information: None,
+        code: None,
+        category: deno::DiagnosticCategory::Error,
+        source_line: None,
+        script_resource_name: None,
+        line_number: None,
+        start_position: None,
+        end_position: None,
+        start_column: None,
+        end_column: None,
+        frames: Some(vec![
+          DiagnosticFrame {
+            line: 4,
+            column: 16,
+            script_name: "foo_bar.ts".to_string(),
+            function_name: "foo".to_string(),
+            is_eval: false,
+            is_constructor: false,
+            is_wasm: false,
+          },
+          DiagnosticFrame {
+            line: 5,
+            column: 20,
+            script_name: "bar_baz.ts".to_string(),
+            function_name: "qat".to_string(),
+            is_eval: false,
+            is_constructor: false,
+            is_wasm: false,
+          },
+          DiagnosticFrame {
+            line: 1,
+            column: 1,
+            script_name: "deno_main.js".to_string(),
+            function_name: "".to_string(),
+            is_eval: false,
+            is_constructor: false,
+            is_wasm: false,
+          },
+        ]),
+      }],
     }
   }
 
-  fn diagnostic1() -> DenoDiagnostic {
-    DenoDiagnostic {
-      message: "Type '(o: T) => { v: any; f: (x: B) => string; }[]' is not assignable to type '(r: B) => Value<B>[]'.".to_string(),
-      diagnostics: Some(vec![
-        DenoDiagnostic {
+  fn diagnostic1() -> Diagnostic {
+    Diagnostic {
+      source: deno::DiagnosticSources::TypeScript,
+      items: vec![
+        DiagnosticItem {
           message: "Type '(o: T) => { v: any; f: (x: B) => string; }[]' is not assignable to type '(r: B) => Value<B>[]'.".to_string(),
-          diagnostics: None,
-          related_information: None,
-          source: DenoDiagnosticSources::TypeScript,
+          message_chain: Some(Box::new(DiagnosticMessageChain {
+            message: "Type '(o: T) => { v: any; f: (x: B) => string; }[]' is not assignable to type '(r: B) => Value<B>[]'.".to_string(),
+            code: 2322,
+            category: DiagnosticCategory::Error,
+            next: Some(Box::new(DiagnosticMessageChain {
+              message: "Types of parameters 'o' and 'r' are incompatible.".to_string(),
+              code: 2328,
+              category: DiagnosticCategory::Error,
+              next: Some(Box::new(DiagnosticMessageChain {
+                message: "Type 'B' is not assignable to type 'T'.".to_string(),
+                code: 2322,
+                category: DiagnosticCategory::Error,
+                next: None,
+              })),
+            })),
+          })),
           code: Some(2322),
-          source_line: None,
-          script_resource_name: None,
-          line_number: None,
-          start_position: None,
-          end_position: None,
-          category: DenoDiagnosticCategory::Error,
-          start_column: None,
-          end_column: None,
-          frames: None,
-          next: None,
-        },
-        DenoDiagnostic {
-          message: "Types of parameters 'o' and 'r' are incompatible.".to_string(),
-          diagnostics: None,
-          related_information: None,
-          source: DenoDiagnosticSources::TypeScript,
-          code: Some(2328),
-          source_line: None,
-          script_resource_name: None,
-          line_number: None,
-          start_position: None,
-          end_position: None,
-          category: DenoDiagnosticCategory::Error,
-          start_column: None,
-          end_column: None,
-          frames: None,
-          next: None,
-        },
-        DenoDiagnostic {
-          message: "Type 'B' is not assignable to type 'T'.".to_string(),
-          diagnostics: None,
-          related_information: None,
-          source: DenoDiagnosticSources::TypeScript,
-          code: Some(2322),
-          source_line: None,
-          script_resource_name: None,
-          line_number: None,
-          start_position: None,
-          end_position: None,
-          category: DenoDiagnosticCategory::Error,
-          start_column: None,
-          end_column: None,
-          frames: None,
-          next: None,
-        },
-      ]),
-      code: Some(2322),
-      category: DenoDiagnosticCategory::Error,
-      source: DenoDiagnosticSources::TypeScript,
-      start_position: Some(267),
-      end_position: Some(273),
-      source_line: Some("  values: o => [".to_string()),
-      line_number: Some(18),
-      script_resource_name: Some("deno/tests/complex_diagnostics.ts".to_string()),
-      start_column: Some(2),
-      end_column: Some(8),
-      related_information: Some(vec![
-        DenoDiagnostic {
-          message: "The expected type comes from property 'values' which is declared here on type 'SettingsInterface<B>'".to_string(),
-          diagnostics: None,
-          related_information: None,
-          source: DenoDiagnosticSources::TypeScript,
-          code: Some(6500),
-          source_line: Some("  values?: (r: T) => Array<Value<T>>;".to_string()),
+          category: DiagnosticCategory::Error,
+          start_position: Some(267),
+          end_position: Some(273),
+          source_line: Some("  values: o => [".to_string()),
+          line_number: Some(18),
           script_resource_name: Some("deno/tests/complex_diagnostics.ts".to_string()),
-          line_number: Some(6),
-          start_position: Some(94),
-          end_position: Some(100),
-          category: DenoDiagnosticCategory::Info,
           start_column: Some(2),
           end_column: Some(8),
+          related_information: Some(vec![
+            DiagnosticItem {
+              message: "The expected type comes from property 'values' which is declared here on type 'SettingsInterface<B>'".to_string(),
+              message_chain: None,
+              related_information: None,
+              code: Some(6500),
+              source_line: Some("  values?: (r: T) => Array<Value<T>>;".to_string()),
+              script_resource_name: Some("deno/tests/complex_diagnostics.ts".to_string()),
+              line_number: Some(6),
+              start_position: Some(94),
+              end_position: Some(100),
+              category: DiagnosticCategory::Info,
+              start_column: Some(2),
+              end_column: Some(8),
+              frames: None,
+            }
+          ]),
           frames: None,
-          next: None,
         }
-      ]),
-      frames: None,
-      next: None,
+      ]
     }
   }
 
-  fn diagnostic2() -> DenoDiagnostic {
-    DenoDiagnostic {
-      message: "Example 1".to_string(),
-      diagnostics: None,
-      code: Some(2322),
-      category: DenoDiagnosticCategory::Error,
-      source: DenoDiagnosticSources::TypeScript,
-      start_position: Some(267),
-      end_position: Some(273),
-      source_line: Some("  values: o => [".to_string()),
-      line_number: Some(18),
-      script_resource_name: Some("deno/tests/complex_diagnostics.ts".to_string()),
-      start_column: Some(2),
-      end_column: Some(8),
-      related_information: None,
-      frames: None,
-      next: Some(Box::new(DenoDiagnostic {
-        message: "Example 2".to_string(),
-        diagnostics: None,
-        code: Some(2000),
-        category: DenoDiagnosticCategory::Error,
-        source: DenoDiagnosticSources::TypeScript,
-        start_position: Some(2),
-        end_position: Some(2),
-        source_line: Some("  values: undefined,".to_string()),
-        line_number: Some(128),
-        script_resource_name: Some("/foo/bar.ts".to_string()),
-        start_column: Some(2),
-        end_column: Some(8),
-        related_information: None,
-        frames: None,
-        next: None,
-      })),
+  fn diagnostic2() -> Diagnostic {
+    Diagnostic {
+      source: deno::DiagnosticSources::TypeScript,
+      items: vec![
+        DiagnosticItem {
+          message: "Example 1".to_string(),
+          message_chain: None,
+          code: Some(2322),
+          category: DiagnosticCategory::Error,
+          start_position: Some(267),
+          end_position: Some(273),
+          source_line: Some("  values: o => [".to_string()),
+          line_number: Some(18),
+          script_resource_name: Some(
+            "deno/tests/complex_diagnostics.ts".to_string(),
+          ),
+          start_column: Some(2),
+          end_column: Some(8),
+          related_information: None,
+          frames: None,
+        },
+        DiagnosticItem {
+          message: "Example 2".to_string(),
+          message_chain: None,
+          code: Some(2000),
+          category: DiagnosticCategory::Error,
+          start_position: Some(2),
+          end_position: Some(2),
+          source_line: Some("  values: undefined,".to_string()),
+          line_number: Some(128),
+          script_resource_name: Some("/foo/bar.ts".to_string()),
+          start_column: Some(2),
+          end_column: Some(8),
+          related_information: None,
+          frames: None,
+        },
+      ],
     }
   }
 
@@ -620,21 +605,21 @@ mod tests {
   fn js_error_to_color_string() {
     let e = error1();
     let expected = "Error: foo bar\n    at foo (foo_bar.ts:5:17)\n    at qat (bar_baz.ts:6:21)\n    at deno_main.js:2:2";
-    assert_eq!(expected, strip_ansi_codes(&DenoDiagnosticColor(&e).to_string()));
+    assert_eq!(expected, strip_ansi_codes(&DiagnosticColor(&e).to_string()));
   }
 
   #[test]
   fn ts_diagnostic_to_color_string1() {
     let d = diagnostic1();
     let expected = "deno/tests/complex_diagnostics.ts:19:3 - error TS2322: Type \'(o: T) => { v: any; f: (x: B) => string; }[]\' is not assignable to type \'(r: B) => Value<B>[]\'.\n  Types of parameters \'o\' and \'r\' are incompatible.\n    Type \'B\' is not assignable to type \'T\'.\n\n19   values: o => [\n     ~~~~~~\n\n  deno/tests/complex_diagnostics.ts:7:3 \n\n    7   values?: (r: T) => Array<Value<T>>;\n        ~~~~~~\n    The expected type comes from property \'values\' which is declared here on type \'SettingsInterface<B>\'\n";
-    assert_eq!(expected, strip_ansi_codes(&DenoDiagnosticColor(&d).to_string()));
+    assert_eq!(expected, strip_ansi_codes(&DiagnosticColor(&d).to_string()));
   }
 
   #[test]
   fn ts_diagnostic_to_color_string2() {
     let d = diagnostic2();
     let expected = "deno/tests/complex_diagnostics.ts:19:3 - error TS2322: Example 1\n\n19   values: o => [\n     ~~~~~~\n\n/foo/bar.ts:129:3 - error TS2000: Example 2\n\n129   values: undefined,\n      ~~~~~~\n";
-    assert_eq!(expected, strip_ansi_codes(&DenoDiagnosticColor(&d).to_string()));
+    assert_eq!(expected, strip_ansi_codes(&DiagnosticColor(&d).to_string()));
   }
 
   #[test]
@@ -642,86 +627,88 @@ mod tests {
     let e = error1();
     let getter = MockSourceMapGetter {};
     let actual = apply_source_map(&e, &getter);
-    let expected = DenoDiagnostic {
-      message: "Error: foo bar".to_string(),
-      diagnostics: None,
-      related_information: None,
-      source: deno::DenoDiagnosticSources::V8,
-      code: None,
-      category: deno::DenoDiagnosticCategory::Error,
-      source_line: None,
-      script_resource_name: None,
-      line_number: None,
-      start_position: None,
-      end_position: None,
-      start_column: None,
-      end_column: None,
-      frames: Some(vec![
-        DenoDiagnosticFrame {
-          line: 5,
-          column: 12,
-          script_name: "foo_bar.ts".to_string(),
-          function_name: "foo".to_string(),
-          is_eval: false,
-          is_constructor: false,
-          is_wasm: false,
-        },
-        DenoDiagnosticFrame {
-          line: 4,
-          column: 14,
-          script_name: "bar_baz.ts".to_string(),
-          function_name: "qat".to_string(),
-          is_eval: false,
-          is_constructor: false,
-          is_wasm: false,
-        },
-        DenoDiagnosticFrame {
-          line: 1,
-          column: 1,
-          script_name: "deno_main.js".to_string(),
-          function_name: "".to_string(),
-          is_eval: false,
-          is_constructor: false,
-          is_wasm: false,
-        },
-      ]),
-      next: None,
+    let expected = Diagnostic {
+      source: deno::DiagnosticSources::V8,
+      items: vec![DiagnosticItem {
+        message: "Error: foo bar".to_string(),
+        message_chain: None,
+        related_information: None,
+        code: None,
+        category: deno::DiagnosticCategory::Error,
+        source_line: None,
+        script_resource_name: None,
+        line_number: None,
+        start_position: None,
+        end_position: None,
+        start_column: None,
+        end_column: None,
+        frames: Some(vec![
+          DiagnosticFrame {
+            line: 5,
+            column: 12,
+            script_name: "foo_bar.ts".to_string(),
+            function_name: "foo".to_string(),
+            is_eval: false,
+            is_constructor: false,
+            is_wasm: false,
+          },
+          DiagnosticFrame {
+            line: 4,
+            column: 14,
+            script_name: "bar_baz.ts".to_string(),
+            function_name: "qat".to_string(),
+            is_eval: false,
+            is_constructor: false,
+            is_wasm: false,
+          },
+          DiagnosticFrame {
+            line: 1,
+            column: 1,
+            script_name: "deno_main.js".to_string(),
+            function_name: "".to_string(),
+            is_eval: false,
+            is_constructor: false,
+            is_wasm: false,
+          },
+        ]),
+      }],
     };
     assert_eq!(actual, expected);
   }
 
   #[test]
   fn js_error_apply_source_map_2() {
-    let e = DenoDiagnostic {
-      message: "TypeError: baz".to_string(),
-      diagnostics: None,
-      related_information: None,
-      source: deno::DenoDiagnosticSources::V8,
-      code: None,
-      category: deno::DenoDiagnosticCategory::Error,
-      source_line: None,
-      script_resource_name: None,
-      line_number: None,
-      start_position: None,
-      end_position: None,
-      start_column: None,
-      end_column: None,
-      frames: Some(vec![DenoDiagnosticFrame {
-        line: 11,
-        column: 12,
-        script_name: "gen/cli/bundle/main.js".to_string(),
-        function_name: "setLogDebug".to_string(),
-        is_eval: false,
-        is_constructor: false,
-        is_wasm: false,
-      }]),
-      next: None,
+    let e = Diagnostic {
+      source: deno::DiagnosticSources::V8,
+      items: vec![DiagnosticItem {
+        message: "TypeError: baz".to_string(),
+        message_chain: None,
+        related_information: None,
+        code: None,
+        category: deno::DiagnosticCategory::Error,
+        source_line: None,
+        script_resource_name: None,
+        line_number: None,
+        start_position: None,
+        end_position: None,
+        start_column: None,
+        end_column: None,
+        frames: Some(vec![DiagnosticFrame {
+          line: 11,
+          column: 12,
+          script_name: "gen/cli/bundle/main.js".to_string(),
+          function_name: "setLogDebug".to_string(),
+          is_eval: false,
+          is_constructor: false,
+          is_wasm: false,
+        }]),
+      }],
     };
     let getter = MockSourceMapGetter {};
     let actual = apply_source_map(&e, &getter);
-    assert_eq!(actual.message, "TypeError: baz");
+    assert_eq!(actual.items[0].message, "TypeError: baz");
     // Because this is accessing the live bundle, this test might be more fragile
-    let frames = actual.frames.unwrap();
+    let frames = actual.items[0].frames.clone().unwrap();
     assert_eq!(frames.len(), 1);
     assert!(frames[0].script_name.ends_with("js/util.ts"));
   }

@@ -3,7 +3,7 @@ use atty;
 use crate::ansi;
 use crate::deno_dir::resolve_path;
 use crate::diagnostics::apply_source_map;
-use crate::diagnostics::DenoDiagnosticColor;
+use crate::diagnostics::DiagnosticColor;
 use crate::dispatch_minimal::dispatch_minimal;
 use crate::dispatch_minimal::parse_min_record;
 use crate::errors;
@@ -28,7 +28,7 @@ use crate::worker::root_specifier_to_url;
 use crate::worker::Worker;
 use deno::js_check;
 use deno::Buf;
-use deno::DenoDiagnostic;
+use deno::Diagnostic;
 use deno::Op;
 use deno::PinnedBuf;
 use flatbuffers::FlatBufferBuilder;
@@ -385,9 +385,9 @@ fn op_format_error(
   let inner = base.inner_as_format_error().unwrap();
   let orig_error = String::from(inner.error().unwrap());
 
-  let diagnostic = DenoDiagnostic::from_v8_exception(&orig_error).unwrap();
+  let diagnostic = Diagnostic::from_v8_exception(&orig_error).unwrap();
   let diagnostic_mapped = apply_source_map(&diagnostic, &state.dir);
-  let diagnostic_string = DenoDiagnosticColor(&diagnostic_mapped).to_string();
+  let diagnostic_string = DiagnosticColor(&diagnostic_mapped).to_string();
 
   let mut builder = FlatBufferBuilder::new();
   let new_error = builder.create_string(&diagnostic_string);

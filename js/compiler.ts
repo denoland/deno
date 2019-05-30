@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as msg from "gen/cli/msg_generated";
 import { core } from "./core";
-import { toDenoDiagnostics } from "./diagnostics";
+import { fromTypeScriptDiagnostic } from "./diagnostics";
 import * as flatbuffers from "./flatbuffers";
 import { sendSync } from "./dispatch";
 import { TextDecoder } from "./text_encoding";
@@ -413,7 +413,7 @@ window.compilerMain = function compilerMain(): void {
 
     postMessage({
       emitSkipped,
-      diagnostics: toDenoDiagnostics(diagnostics),
+      diagnostics: fromTypeScriptDiagnostic(diagnostics),
       emittedFiles
     });
 

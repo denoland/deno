@@ -6,7 +6,7 @@
 import * as ts from "typescript";
 
 /** The log category for a diagnostic message */
-export enum DenoDiagnosticCategory {
+export enum DiagnosticCategory {
   Log = 0,
   Debug = 1,
   Info = 2,
@@ -16,7 +16,7 @@ export enum DenoDiagnosticCategory {
 }
 
 /** The source of the diagnostic message */
-export enum DenoDiagnosticSources {
+export enum DiagnosticSources {
   V8 = 0,
   Rust = 1,
   TypeScript = 2,
@@ -24,7 +24,7 @@ export enum DenoDiagnosticSources {
 }
 
 /** A diagnostic frame */
-export interface DenoDiagnosticFrame {
+export interface DiagnosticFrame {
   line: number;
   column: number;
   functionName: string;
@@ -34,16 +34,23 @@ export interface DenoDiagnosticFrame {
   isWasm: boolean;
 }
 
-export interface DenoDiagnostic {
+export interface DiagnosticMessageChain {
+  message: string;
+  category: DiagnosticCategory;
+  code: number;
+  next?: DiagnosticMessageChain;
+}
+
+export interface DiagnosticItem {
   /** A string message summarizing the diagnostic. */
   message: string;
 
   /** An ordered array of further diagnostics. */
-  diagnostics?: DenoDiagnostic[];
+  messageChain?: DiagnosticMessageChain;
 
   /** Information related to the diagnostic.  This is present when there is a
    * suggestion or other additional diagnostic information */
-  relatedInformation?: DenoDiagnostic[];
+  relatedInformation?: DiagnosticItem[];
 
   /** The text of the source line related to the diagnostic */
   sourceLine?: string;
@@ -61,13 +68,10 @@ export interface DenoDiagnostic {
   endPosition?: number;
 
   /** The category of the diagnostic */
-  category: DenoDiagnosticCategory;
+  category: DiagnosticCategory;
 
   /** A number identifier */
   code?: number;
-
-  /** The origin of the diagnostic */
-  source: DenoDiagnosticSources;
 
   /** The the start column of the sourceLine related to the diagnostic */
   startColumn?: number;
@@ -76,10 +80,15 @@ export interface DenoDiagnostic {
   endColumn?: number;
 
   /** Any frames of a stack trace related to the diagnostic */
-  frames?: DenoDiagnosticFrame[];
+  frames?: DiagnosticFrame[];
+}
 
-  /** The next diagnostic in the chain. */
-  next?: DenoDiagnostic;
+export interface Diagnostic {
+  /** The origin of the diagnostic. */
+  source: DiagnosticSources;
+
+  /** An array of diagnostic items. */
+  items: DiagnosticItem[];
 }
 
 interface SourceInformation {
@@ -90,18 +99,16 @@ interface SourceInformation {
   endColumn: number;
 }
 
-function toDenoCategory(
-  category: ts.DiagnosticCategory
-): DenoDiagnosticCategory {
+function toDenoCategory(category: ts.DiagnosticCategory): DiagnosticCategory {
   switch (category) {
     case ts.DiagnosticCategory.Error:
-      return DenoDiagnosticCategory.Error;
+      return DiagnosticCategory.Error;
     case ts.DiagnosticCategory.Message:
-      return DenoDiagnosticCategory.Info;
+      return DiagnosticCategory.Info;
     case ts.DiagnosticCategory.Suggestion:
-      return DenoDiagnosticCategory.Suggestion;
+      return DiagnosticCategory.Suggestion;
     case ts.DiagnosticCategory.Warning:
-      return DenoDiagnosticCategory.Warning;
+      return DiagnosticCategory.Warning;
     default:
       throw new Error(
         `Unexpected DiagnosticCategory: "${category}"/"${
@@ -145,11 +152,27 @@ function getSourceInformation(
   };
 }
 
+/** Converts a TypeScript diagnostic message chain to a Deno one. */
+function fromDiagnosticMessageChain(
+  messageChain: ts.DiagnosticMessageChain | undefined
+): DiagnosticMessageChain | undefined {
+  if (!messageChain) {
+    return undefined;
+  }
+
+  const { messageText: message, code, category, next } = messageChain;
+  return {
+    message,
+    code,
+    category: toDenoCategory(category),
+    next: fromDiagnosticMessageChain(next)
+  };
+}
+
 /** Parse out information from a TypeScript diagnostic structure. */
 function parseDiagnostic(
   item: ts.Diagnostic | ts.DiagnosticRelatedInformation
-): DenoDiagnostic {
-  const source = DenoDiagnosticSources.TypeScript;
+): DiagnosticItem {
   const {
     messageText,
     category: sourceCategory,
@@ -167,30 +190,19 @@ function parseDiagnostic(
   const category = toDenoCategory(sourceCategory);
 
   let message: string;
-  let diagnostics: DenoDiagnostic[] | undefined;
+  let messageChain: DiagnosticMessageChain | undefined;
   if (typeof messageText === "string") {
     message = messageText;
   } else {
     message = messageText.messageText;
-    let messageChain = messageText;
-    diagnostics = [];
-    do {
-      const { messageText: message, code, category } = messageChain;
-      diagnostics.push({
-        message,
-        code,
-        category: toDenoCategory(category),
-        source
-      });
-    } while (messageChain.next && (messageChain = messageChain.next));
+    messageChain = fromDiagnosticMessageChain(messageText);
   }
 
   const base = {
     message,
-    diagnostics,
+    messageChain,
     code,
     category,
-    source,
     startPosition,
     endPosition
   };
@@ -202,31 +214,30 @@ function parseDiagnostic(
  * array. */
 function parseRelatedInformation(
   relatedInformation: ts.DiagnosticRelatedInformation[]
-): DenoDiagnostic[] {
-  const result: DenoDiagnostic[] = [];
+): DiagnosticItem[] {
+  const result: DiagnosticItem[] = [];
   for (const item of relatedInformation) {
     result.push(parseDiagnostic(item));
   }
   return result;
 }
 
-/** Convert TypeScript diagnostics to DenoDiagnostics. */
-export function toDenoDiagnostics(
+/** Convert TypeScript diagnostics to Deno diagnostics. */
+export function fromTypeScriptDiagnostic(
   diagnostics: ts.Diagnostic[]
-): DenoDiagnostic {
-  let result: DenoDiagnostic | undefined;
+): Diagnostic {
+  let items: DiagnosticItem[] = [];
   for (const sourceDiagnostic of diagnostics) {
-    const d: DenoDiagnostic = parseDiagnostic(sourceDiagnostic);
+    const item: DiagnosticItem = parseDiagnostic(sourceDiagnostic);
     if (sourceDiagnostic.relatedInformation) {
-      d.relatedInformation = parseRelatedInformation(
+      item.relatedInformation = parseRelatedInformation(
         sourceDiagnostic.relatedInformation
       );
     }
-    if (result) {
-      result.next = d;
-    } else {
-      result = d;
-    }
+    items.push(item);
   }
-  return result!;
+  return {
+    source: DiagnosticSources.TypeScript,
+    items
+  };
 }

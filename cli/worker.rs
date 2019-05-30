@@ -2,7 +2,7 @@
 use crate::compiler::compile_async;
 use crate::compiler::ModuleMetaData;
 use crate::diagnostics;
-use crate::diagnostics::DenoDiagnosticColor;
+use crate::diagnostics::DiagnosticColor;
 use crate::errors::DenoError;
 use crate::errors::RustOrJsError;
 use crate::msg;
@@ -10,7 +10,7 @@ use crate::state::ThreadSafeState;
 use crate::tokio_util;
 use deno;
 use deno::Config;
-use deno::DenoDiagnostic;
+use deno::Diagnostic;
 use deno::Loader;
 use deno::StartupData;
 use futures::future::Either;
@@ -46,7 +46,7 @@ impl Worker {
   }
 
   /// Same as execute2() but the filename defaults to "<anonymous>".
-  pub fn execute(&mut self, js_source: &str) -> Result<(), DenoDiagnostic> {
+  pub fn execute(&mut self, js_source: &str) -> Result<(), Diagnostic> {
     self.execute2("<anonymous>", js_source)
   }
 
@@ -56,7 +56,7 @@ impl Worker {
     &mut self,
     js_filename: &str,
     js_source: &str,
-  ) -> Result<(), DenoDiagnostic> {
+  ) -> Result<(), Diagnostic> {
     self.inner.execute(js_filename, js_source)
   }
 
@@ -103,7 +103,7 @@ impl Worker {
   }
 
   /// Applies source map to the error.
-  fn apply_source_map(&self, err: DenoDiagnostic) -> DenoDiagnostic {
+  fn apply_source_map(&self, err: Diagnostic) -> Diagnostic {
     diagnostics::apply_source_map(&err, &self.state.dir)
   }
 }
@@ -200,7 +200,7 @@ impl Loader for Worker {
 
 impl Future for Worker {
   type Item = ();
-  type Error = DenoDiagnostic;
+  type Error = Diagnostic;
 
   fn poll(&mut self) -> Result<Async<()>, Self::Error> {
     self.inner.poll().map_err(|err| self.apply_source_map(err))
@@ -233,7 +233,7 @@ fn fetch_module_meta_data_and_maybe_compile_async(
             compile_async(state_.clone(), &specifier, &referrer, &out)
               .map_err(|e| {
                 debug!("compiler error exiting!");
-                eprintln!("{}", DenoDiagnosticColor(&e).to_string());
+                eprintln!("{}", DiagnosticColor(&e).to_string());
                 std::process::exit(1);
               }).and_then(move |out| {
                 debug!(">>>>> compile_sync END");
