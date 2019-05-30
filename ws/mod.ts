@@ -423,6 +423,7 @@ async function handshake(
   headers.set("upgrade", "websocket");
   headers.set("connection", "upgrade");
   headers.set("sec-websocket-key", key);
+  headers.set("sec-websocket-version", "13");
 
   let headerStr = `GET ${pathname}?${searchParams || ""} HTTP/1.1\r\n`;
   for (const [key, value] of headers) {
