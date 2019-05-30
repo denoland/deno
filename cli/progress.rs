@@ -115,6 +115,19 @@ impl Inner {
     let total = self.job_names.len();
     (self.complete, total)
   }
+
+  pub fn complete(&mut self, id: usize) {
+    self.complete += 1;
+    let name = self.job_names[id].clone();
+    let (complete, total) = self.progress();
+    {
+      let mut iter = name.split_whitespace();
+      let name = iter.next().unwrap();
+      let url = iter.next().unwrap();
+      self.progress.print_now2(&name, &url).unwrap();
+    }
+    self.maybe_call_callback(false, complete, total, &name);
+  }
 }
 
 pub struct Job {
@@ -125,17 +138,7 @@ pub struct Job {
 impl Drop for Job {
   fn drop(&mut self) {
     let mut s = self.inner.lock().unwrap();
-    s.complete += 1;
-    let name = s.job_names[self.id].clone();
-    let (complete, total) = s.progress();
-    {
-      let mut iter = name.split_whitespace();
-      let name = iter.next().unwrap();
-      let url = iter.next().unwrap();
-      s.progress.print_now2(&name, &url).unwrap();
-    }
-    s.tick();
-    s.maybe_call_callback(false, complete, total, &name);
+    s.complete(self.id)
   }
 }
 
@@ -148,12 +151,12 @@ mod tests {
     let p = Progress::new();
     assert_eq!(p.progress(), (0, 0));
     {
-      let _j1 = p.add("hello".to_string());
+      let _j1 = p.add("hello world".to_string());
       assert_eq!(p.progress(), (0, 1));
     }
     assert_eq!(p.progress(), (1, 1));
     {
-      let _j2 = p.add("hello".to_string());
+      let _j2 = p.add("foo bar".to_string());
       assert_eq!(p.progress(), (1, 2));
     }
     assert_eq!(p.progress(), (2, 2));
