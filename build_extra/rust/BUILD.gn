@@ -1468,6 +1468,18 @@ rust_rlib("tempfile") {
   }
 }
 
+rust_rlib("termcolor") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/termcolor-1.0.4/src/lib.rs"
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+  if (is_win) {
+    extern_rlib = [ "wincolor" ]
+  }
+}
+
 rust_rlib("textwrap") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/textwrap-0.11.0/src/lib.rs"
@@ -2350,6 +2362,29 @@ if (is_win) {
       "user32.lib",
       "winspool.lib",
       "ws2_32.lib",
+    ]
+  }
+
+  rust_rlib("winapi_util") {
+    edition = "2015"
+    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/winapi-util-0.1.2/src/lib.rs"
+    extern_rlib = [ "winapi" ]
+    args = [
+      "--cap-lints",
+      "allow",
+    ]
+  }
+
+  rust_rlib("wincolor") {
+    edition = "2015"
+    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/wincolor-1.0.1/src/lib.rs"
+    extern_rlib = [
+      "winapi",
+      "winapi_util",
+    ]
+    args = [
+      "--cap-lints",
+      "allow",
     ]
   }
 
