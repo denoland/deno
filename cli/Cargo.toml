@@ -55,6 +55,7 @@ utime = "0.2.1"
 
 [target.'cfg(windows)'.dependencies]
 winapi = "0.3.7"
+fwdansi = "1.0.1"
 
 [target.'cfg(unix)'.dependencies]
 nix = "0.13.x"

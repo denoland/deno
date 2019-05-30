@@ -647,9 +647,7 @@ fn fetch_remote_source_async(
 ) -> impl Future<Item = Option<ModuleMetaData>, Error = DenoError> {
   use crate::http_util::FetchOnceResult;
 
-  let download_job = deno_dir
-    .progress
-    .add(format!("Downloading {}", module_name));
+  let download_job = deno_dir.progress.add("Download", module_name);
 
   let module_name = module_name.to_owned();
   let filepath = filepath.to_owned();
