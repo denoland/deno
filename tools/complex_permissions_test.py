@@ -25,9 +25,7 @@ class BaseComplexPermissionTest(DenoTestCase):
         return tty_capture(cmd, b'')
 
 
-class TestReadPermissions(BaseComplexPermissionTest):
-    test_type = "read"
-
+class BaseReadWritePermissionsTest(BaseComplexPermissionTest):
     def test_inside_project_dir(self):
         code, _stdout, stderr = self._run_deno(
             ["--allow-" + self.test_type + "=" + root_path],
@@ -97,7 +95,11 @@ class TestReadPermissions(BaseComplexPermissionTest):
         os.chdir(saved_curdir)
 
 
-class TestWritePermissions(TestReadPermissions):
+class TestReadPermissions(BaseReadWritePermissionsTest):
+    test_type = "read"
+
+
+class TestWritePermissions(BaseReadWritePermissionsTest):
     test_type = "write"
 
 

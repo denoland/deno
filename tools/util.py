@@ -11,10 +11,12 @@ import tempfile
 import time
 import unittest
 
-# FIXME support nocolor (use "" if passed?)
-RESET = "\x1b[0m"
-FG_RED = "\x1b[31m"
-FG_GREEN = "\x1b[32m"
+if os.environ.get("NO_COLOR", None):
+    RESET = FG_READ = FG_GREEN = ""
+else:
+    RESET = "\x1b[0m"
+    FG_RED = "\x1b[31m"
+    FG_GREEN = "\x1b[32m"
 
 executable_suffix = ".exe" if os.name == "nt" else ""
 root_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -376,11 +378,13 @@ def mkdtemp():
 class DenoTestCase(unittest.TestCase):
     @property
     def build_dir(self):
+        # TODO(bartlomieju): cache
         args = test_args()
         return args.build_dir
 
     @property
     def deno_exe(self):
+        # TODO(bartlomieju): cache
         return os.path.join(self.build_dir, "deno" + executable_suffix)
 
 

@@ -125,9 +125,10 @@ def main():
         rmtree(deno_dir)
     os.environ["DENO_DIR"] = deno_dir
 
+    test_names = unittest.TestLoader().getTestCaseNames(TestIntegrations)
     test_names = [
-        test_name for test_name in unittest.TestLoader().getTestCaseNames(
-            TestIntegrations) if not args.filter or args.filter in test_name
+        test_name for test_name in test_names
+        if not args.filter or args.filter in test_name
     ]
     suite = unittest.TestLoader().loadTestsFromNames(
         test_names, module=TestIntegrations)

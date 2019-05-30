@@ -3,7 +3,6 @@
 # Runs the full test suite.
 # Usage: ./tools/test.py out/Debug
 import os
-import subprocess
 import sys
 import unittest
 
@@ -17,12 +16,12 @@ from setup_test import TestSetup
 from unit_tests import JsUnitTests
 from util_test import TestUtil
 
-from is_tty_test import TestIsTty
 # NOTE: These tests are skipped on Windows
+from is_tty_test import TestIsTty
 from permission_prompt_test import permission_prompt_tests
 from complex_permissions_test import complex_permissions_tests
 
-from http_server import spawn
+import http_server
 from util import (DenoTestCase, ColorTextTestRunner, enable_ansi_colors,
                   executable_suffix, run, run_output, rmtree, tests_path,
                   test_args)
@@ -89,33 +88,30 @@ def main(argv):
 
     enable_ansi_colors()
 
-    with spawn():
-        test_cases = [
-            TestSetup,
-            TestUtil,
-            TestTarget,
-            JsUnitTests,
-            FetchTest,
-            FmtTest,
-            TestIntegrations,
-            TestRepl,
-            TestDenoDir,
-            TestBenchmark,
-        ]
-        # These tests are skipped, but to make the test output less noisy
-        # we'll avoid triggering them.
-        if os.name != 'nt':
-            test_cases.append(TestIsTty)
-            test_cases += permission_prompt_tests()
-            test_cases += complex_permissions_tests()
+    test_cases = [
+        TestSetup,
+        TestUtil,
+        TestTarget,
+        JsUnitTests,
+        FetchTest,
+        FmtTest,
+        TestIntegrations,
+        TestRepl,
+        TestDenoDir,
+        TestBenchmark,
+        TestIsTty,
+    ]
+    test_cases += permission_prompt_tests()
+    test_cases += complex_permissions_tests()
 
-        suite = unittest.TestSuite([
-            unittest.TestLoader().loadTestsFromTestCase(tc)
-            for tc in test_cases
-        ])
+    suite = unittest.TestSuite(
+        [unittest.TestLoader().loadTestsFromTestCase(tc) for tc in test_cases])
 
-        result = ColorTextTestRunner(
-            verbosity=args.verbosity + 1, failfast=args.failfast).run(suite)
+    runner = ColorTextTestRunner(
+        verbosity=args.verbosity + 1, failfast=args.failfast)
+
+    with http_server.spawn():
+        result = runner.run(suite)
         if not result.wasSuccessful():
             sys.exit(1)
 
