@@ -2,9 +2,6 @@
 # -*- coding: utf-8 -*-
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import os
-import subprocess
-import sys
-import time
 import unittest
 
 from http_server import spawn
@@ -26,11 +23,13 @@ class BaseComplexPermissionTest(DenoTestCase):
 
 
 class BaseReadWritePermissionsTest(BaseComplexPermissionTest):
+    test_type = None
+
     def test_inside_project_dir(self):
         code, _stdout, stderr = self._run_deno(
             ["--allow-" + self.test_type + "=" + root_path],
             [self.test_type, "package.json", "tests/subdir/config.json"])
-        assert code == 0
+        self.assertEqual(code, 0)
         assert not PROMPT_PATTERN in stderr
         assert not PERMISSION_DENIED_PATTERN in stderr
 
