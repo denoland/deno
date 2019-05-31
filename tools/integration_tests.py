@@ -11,9 +11,9 @@ import os
 import re
 import subprocess
 
-from http_server import spawn
-from util import (DenoTestCase, ColorTextTestRunner, root_path, tests_path,
-                  pattern_match, rmtree, test_main)
+import http_server
+from test_util import DenoTestCase, run_tests
+from util import root_path, tests_path, pattern_match, rmtree
 
 
 def strip_ansi_codes(s):
@@ -104,7 +104,6 @@ for fn in sorted(
     tn = t.__name__ = "test_" + fn.split(".")[0]
     setattr(TestIntegrations, tn, t)
 
-
 if __name__ == "__main__":
-    with spawn():
-        test_main()
+    with http_server.spawn():
+        run_tests()

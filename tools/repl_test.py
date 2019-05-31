@@ -4,7 +4,7 @@ from subprocess import CalledProcessError, PIPE, Popen
 import sys
 import time
 
-from util import DenoTestCase, test_main
+from test_util import DenoTestCase, run_tests
 
 
 class TestRepl(DenoTestCase):
@@ -133,4 +133,4 @@ class TestRepl(DenoTestCase):
 
 
 if __name__ == "__main__":
-    test_main()
+    run_tests()

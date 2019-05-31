@@ -3,8 +3,9 @@
 import os
 import shutil
 
-from http_server import spawn
-from util import DenoTestCase, mkdtemp, tests_path, run_output, test_main
+import http_server
+from test_util import DenoTestCase, run_tests
+from util import mkdtemp, tests_path, run_output
 
 
 class FetchTest(DenoTestCase):
@@ -25,5 +26,5 @@ class FetchTest(DenoTestCase):
 
 
 if __name__ == "__main__":
-    with spawn():
-        test_main()
+    with http_server.spawn():
+        run_tests()

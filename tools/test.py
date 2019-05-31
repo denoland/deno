@@ -3,8 +3,6 @@
 # Runs the full test suite.
 # Usage: ./tools/test.py out/Debug
 import os
-import sys
-import unittest
 
 from benchmark_test import TestBenchmark
 from deno_dir_test import TestDenoDir
@@ -13,69 +11,18 @@ from fmt_test import FmtTest
 from integration_tests import TestIntegrations
 from repl_test import TestRepl
 from setup_test import TestSetup
+from target_test import TestTarget
 from unit_tests import JsUnitTests
 from util_test import TestUtil
-
 # NOTE: These tests are skipped on Windows
 from is_tty_test import TestIsTty
 from permission_prompt_test import permission_prompt_tests
 from complex_permissions_test import complex_permissions_tests
 
 import http_server
-from util import (DenoTestCase, ColorTextTestRunner, enable_ansi_colors,
-                  executable_suffix, run, run_output, rmtree, tests_path,
-                  parse_test_args, test_main)
-
-
-class TestTarget(DenoTestCase):
-    @staticmethod
-    def check_exists(filename):
-        if not os.path.exists(filename):
-            print "Required target doesn't exist:", filename
-            print "Run ./tools/build.py"
-            sys.exit(1)
-
-    def test_executable_exists(self):
-        self.check_exists(self.deno_exe)
-
-    def _test(self, executable):
-        "Test executable runs and exits with code 0."
-        bin_file = os.path.join(self.build_dir, executable + executable_suffix)
-        self.check_exists(bin_file)
-        run([bin_file])
-
-    def test_libdeno(self):
-        self._test("libdeno_test")
-
-    def test_cli(self):
-        self._test("cli_test")
-
-    def test_core(self):
-        self._test("deno_core_test")
-
-    def test_core_http_benchmark(self):
-        self._test("deno_core_http_bench_test")
-
-    def test_ts_library_builder(self):
-        run([
-            "node", "./node_modules/.bin/ts-node", "--project",
-            "tools/ts_library_builder/tsconfig.json",
-            "tools/ts_library_builder/test.ts"
-        ])
-
-    def test_no_color(self):
-        t = os.path.join(tests_path, "no_color.js")
-        output = run_output([self.deno_exe, "run", t],
-                            merge_env={"NO_COLOR": "1"})
-        assert output.strip() == "noColor true"
-        t = os.path.join(tests_path, "no_color.js")
-        output = run_output([self.deno_exe, "run", t])
-        assert output.strip() == "noColor false"
-
-    def test_exec_path(self):
-        cmd = [self.deno_exe, "run", "tests/exec_path.ts"]
-        output = run_output(cmd)
-        assert self.deno_exe in output.strip()
+from util import (enable_ansi_colors, build_path, RESET, FG_RED, FG_GREEN,
+                  executable_suffix, run, run_output, rmtree, tests_path)
+from test_util import parse_test_args, run_tests
 
 
 def main():
@@ -105,7 +52,7 @@ def main():
     test_cases += complex_permissions_tests()
 
     with http_server.spawn():
-        test_main(test_cases)
+        run_tests(test_cases)
 
 
 if __name__ == '__main__':

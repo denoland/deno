@@ -4,8 +4,9 @@
 import os
 import unittest
 
-from http_server import spawn
-from util import DenoTestCase, root_path, test_main, tty_capture
+import http_server
+from test_util import DenoTestCase, run_tests
+from util import root_path, tty_capture
 
 PERMISSIONS_PROMPT_TEST_TS = "tools/complex_permissions_test.ts"
 
@@ -29,7 +30,7 @@ class BaseReadWritePermissionsTest(object):
         code, _stdout, stderr = self._run_deno(
             ["--allow-" + self.test_type + "=" + root_path],
             [self.test_type, "package.json", "tests/subdir/config.json"])
-        self.assertEqual(code, 0)
+        assert code == 0
         assert not PROMPT_PATTERN in stderr
         assert not PERMISSION_DENIED_PATTERN in stderr
 
@@ -214,5 +215,5 @@ def complex_permissions_tests():
 
 
 if __name__ == "__main__":
-    with spawn():
-        test_main()
+    with http_server.spawn():
+        run_tests()

@@ -1,5 +1,4 @@
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import argparse
 import os
 import re
 import shutil
@@ -9,7 +8,6 @@ import sys
 import subprocess
 import tempfile
 import time
-import unittest
 
 if os.environ.get("NO_COLOR", None):
     RESET = FG_READ = FG_GREEN = ""
@@ -373,128 +371,6 @@ def mkdtemp():
     # 'TS5009: Cannot find the common subdirectory path for the input files.'
     temp_dir = os.environ["TEMP"] if os.name == 'nt' else None
     return tempfile.mkdtemp(dir=temp_dir)
-
-
-class DenoTestCase(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        args = parse_test_args()
-
-        cls.build_dir = args.build_dir
-        cls.deno_exe = args.executable
-
-
-# overload the test result class
-class ColorTextTestResult(unittest.TextTestResult):
-    def getDescription(self, test):
-        name = str(test)
-        if name.startswith("test_"):
-            name = name[5:]
-        return name
-
-    def addSuccess(self, test):
-        if self.showAll:
-            self.stream.write(FG_GREEN)
-        super(ColorTextTestResult, self).addSuccess(test)
-        if self.showAll:
-            self.stream.write(RESET)
-
-    def addError(self, test, err):
-        if self.showAll:
-            self.stream.write(FG_RED)
-        super(ColorTextTestResult, self).addError(test, err)
-        if self.showAll:
-            self.stream.write(RESET)
-
-    def addFailure(self, test, err):
-        if self.showAll:
-            self.stream.write(FG_RED)
-        super(ColorTextTestResult, self).addFailure(test, err)
-        if self.showAll:
-            self.stream.write(RESET)
-
-
-class ColorTextTestRunner(unittest.TextTestRunner):
-    resultclass = ColorTextTestResult
-
-
-def test_main(test_cases=None):
-    args = parse_test_args()
-
-    loader = unittest.TestLoader()
-
-    # if suite was not explicitly passed load test
-    # cases from calling module
-    if test_cases is None:
-        import __main__
-        suite = loader.loadTestsFromModule(__main__)
-    else:
-        suite = unittest.TestSuite()
-        for test_case in test_cases:
-            suite.addTests(loader.loadTestsFromTestCase(test_case))
-
-    if args.pattern:
-        filtered_tests = []
-
-        for nested_suite in suite:
-            for test_case in nested_suite:
-                if args.pattern in str(test_case):
-                    filtered_tests.append(test_case)
-
-        suite = unittest.TestSuite(filtered_tests)
-
-    runner = ColorTextTestRunner(
-        verbosity=args.verbosity + 1, failfast=args.failfast)
-
-    result = runner.run(suite)
-    if not result.wasSuccessful():
-        sys.exit(1)
-
-
-def create_test_arg_parser():
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        '--failfast', '-f', action='store_true', help='Stop on first failure')
-    parser.add_argument(
-        '--verbosity', '-v', action='store_true', help='Verbose output')
-    parser.add_argument("--executable", help="Use external executable of Deno")
-    parser.add_argument(
-        '--release',
-        action='store_true',
-        help='Test against release executable')
-    parser.add_argument(
-        '--pattern',
-        '-p',
-        required=False,
-        help='Run tests that match provided pattern')
-    parser.add_argument('build_dir', nargs='?', help='Deno build directory')
-    return parser
-
-
-TestArgParser = create_test_arg_parser()
-
-
-def parse_test_args(argv=None):
-    if argv is None:
-        argv = sys.argv[1:]
-
-    args = TestArgParser.parse_args(argv)
-
-    if args.executable and args.release:
-        raise argparse.ArgumentError(
-            None,
-            "Path to executable is inferred from --release, cannot provide both."
-        )
-
-    if not args.executable:
-        build_dir = build_path()
-        args.executable = os.path.join(build_dir, "deno" + executable_suffix)
-
-    if not os.path.isfile(args.executable):
-        raise argparse.ArgumentError(
-            None, "deno executable not found at {}".format(args.executable))
-
-    return args
 
 
 # This function is copied from:
