@@ -403,6 +403,11 @@ export async function fetch(
     url = input.url;
     method = input.method;
     headers = input.headers;
+
+    //@ts-ignore
+    if (input._bodySource) {
+      body = new DataView(await input.arrayBuffer());
+    }
   }
 
   // Send Fetch message
