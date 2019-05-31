@@ -104,8 +104,16 @@ def main(argv):
     test_cases += permission_prompt_tests()
     test_cases += complex_permissions_tests()
 
-    suite = unittest.TestSuite(
-        [unittest.TestLoader().loadTestsFromTestCase(tc) for tc in test_cases])
+    suite = unittest.TestSuite()
+    loader = unittest.TestLoader()
+
+    for test_case in test_cases:
+        test_names = loader.getTestCaseNames(test_case)
+
+        if args.pattern:
+            test_names = [name for name in test_names if args.pattern in name]
+
+        suite.addTests(loader.loadTestsFromNames(test_names, module=test_case))
 
     runner = ColorTextTestRunner(
         verbosity=args.verbosity + 1, failfast=args.failfast)

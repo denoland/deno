@@ -110,7 +110,7 @@ for fn in sorted(
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--filter", help="Run specific tests")
+    parser.add_argument("--filter", type=str, help="Run specific tests")
     parser.add_argument(
         "--release", help="Use release build of Deno", action="store_true")
     parser.add_argument("--executable", help="Use external executable of Deno")
@@ -126,10 +126,12 @@ def main():
     os.environ["DENO_DIR"] = deno_dir
 
     test_names = unittest.TestLoader().getTestCaseNames(TestIntegrations)
-    test_names = [
-        test_name for test_name in test_names
-        if not args.filter or args.filter in test_name
-    ]
+
+    if args.filter:
+        test_names = [
+            test_name for test_name in test_names if args.filter in test_name
+        ]
+
     suite = unittest.TestLoader().loadTestsFromNames(
         test_names, module=TestIntegrations)
 

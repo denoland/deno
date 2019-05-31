@@ -424,7 +424,7 @@ class ColorTextTestRunner(unittest.TextTestRunner):
 
 def test_main():
     args = test_args()
-    # FIXME(hayd) support more of the unittest.main API.
+
     return unittest.main(
         verbosity=args.verbosity + 1,
         testRunner=ColorTextTestRunner,
@@ -443,7 +443,12 @@ def test_args(argv=None):
     parser.add_argument(
         '--release',
         action='store_true',
-        help='Test against release deno_executable')
+        help='Test against release executable')
+    parser.add_argument(
+        '--pattern',
+        '-p',
+        required=False,
+        help='Run tests that match provided pattern')
     parser.add_argument('build_dir', nargs='?', help='Deno build directory')
     args = parser.parse_args(argv)
     if args.build_dir and args.release:

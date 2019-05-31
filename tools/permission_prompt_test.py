@@ -2,9 +2,6 @@
 # -*- coding: utf-8 -*-
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import os
-import subprocess
-import sys
-import time
 import unittest
 
 from util import DenoTestCase, test_main, tty_capture
