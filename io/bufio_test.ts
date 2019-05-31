@@ -35,7 +35,7 @@ async function readBytes(buf: BufReader): Promise<string> {
   let nb = 0;
   while (true) {
     let c = await buf.readByte();
-    if (c < 0) {
+    if (c === EOF) {
       break; // EOF
     }
     b[nb] = c;
