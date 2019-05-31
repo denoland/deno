@@ -381,7 +381,7 @@ class DenoTestCase(unittest.TestCase):
         args = parse_test_args()
 
         cls.build_dir = args.build_dir
-        cls.deno_exe = os.path.join(args.build_dir, "deno" + executable_suffix)
+        cls.deno_exe = args.executable
 
 
 # overload the test result class
@@ -480,21 +480,19 @@ def parse_test_args(argv=None):
 
     args = TestArgParser.parse_args(argv)
 
-    if args.build_dir and args.release:
+    if args.executable and args.release:
         raise argparse.ArgumentError(
-            None, "build_dir is inferred from --release, cannot provide both")
-
-    if not args.build_dir:
-        args.build_dir = build_path()
+            None,
+            "Path to executable is inferred from --release, cannot provide both."
+        )
 
     if not args.executable:
-        exe_path = args.executable
-    else:
-        exe_path = os.path.join(args.build_dir, "deno" + executable_suffix)
+        build_dir = build_path()
+        args.executable = os.path.join(build_dir, "deno" + executable_suffix)
 
-    if not os.path.isfile(exe_path):
+    if not os.path.isfile(args.executable):
         raise argparse.ArgumentError(
-            None, "deno executable not found at {}".format(exe_path))
+            None, "deno executable not found at {}".format(args.executable))
 
     return args
 

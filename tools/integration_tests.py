@@ -7,12 +7,9 @@
 # exit code can be specified.
 #
 # Usage: integration_tests.py [path to deno executable]
-import argparse
 import os
 import re
-import sys
 import subprocess
-import unittest
 
 from http_server import spawn
 from util import (DenoTestCase, ColorTextTestRunner, root_path, tests_path,
@@ -106,39 +103,6 @@ for fn in sorted(
     t = TestIntegrations._test(fn)
     tn = t.__name__ = "test_" + fn.split(".")[0]
     setattr(TestIntegrations, tn, t)
-
-
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--filter", type=str, help="Run specific tests")
-    parser.add_argument(
-        "--release", help="Use release build of Deno", action="store_true")
-    parser.add_argument("--executable", help="Use external executable of Deno")
-    args = parser.parse_args()
-
-    target = "release" if args.release else "debug"
-    build_dir = os.environ.get("DENO_BUILD_PATH",
-                               os.path.join(root_path, "target", target))
-
-    deno_dir = os.path.join(build_dir, ".deno_test")
-    if os.path.isdir(deno_dir):
-        rmtree(deno_dir)
-    os.environ["DENO_DIR"] = deno_dir
-
-    test_names = unittest.TestLoader().getTestCaseNames(TestIntegrations)
-
-    if args.filter:
-        test_names = [
-            test_name for test_name in test_names if args.filter in test_name
-        ]
-
-    suite = unittest.TestLoader().loadTestsFromNames(
-        test_names, module=TestIntegrations)
-
-    with spawn():
-        result = ColorTextTestRunner(verbosity=2).run(suite)
-        if not result.wasSuccessful():
-            sys.exit(1)
 
 
 if __name__ == "__main__":
