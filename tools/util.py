@@ -376,16 +376,12 @@ def mkdtemp():
 
 
 class DenoTestCase(unittest.TestCase):
-    @property
-    def build_dir(self):
-        # TODO(bartlomieju): cache
-        args = test_args()
-        return args.build_dir
+    @classmethod
+    def setUpClass(cls):
+        args = parse_test_args()
 
-    @property
-    def deno_exe(self):
-        # TODO(bartlomieju): cache
-        return os.path.join(self.build_dir, "deno" + executable_suffix)
+        cls.build_dir = args.build_dir
+        cls.deno_exe = os.path.join(args.build_dir, "deno" + executable_suffix)
 
 
 # overload the test result class
@@ -423,7 +419,7 @@ class ColorTextTestRunner(unittest.TextTestRunner):
 
 
 def test_main():
-    args = test_args()
+    args = parse_test_args()
 
     return unittest.main(
         verbosity=args.verbosity + 1,
@@ -432,9 +428,7 @@ def test_main():
         argv=[''])
 
 
-def test_args(argv=None):
-    if argv is None:
-        argv = sys.argv[1:]
+def create_test_arg_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         '--failfast', '-f', action='store_true', help='Stop on first failure')
@@ -450,17 +444,30 @@ def test_args(argv=None):
         required=False,
         help='Run tests that match provided pattern')
     parser.add_argument('build_dir', nargs='?', help='Deno build directory')
-    args = parser.parse_args(argv)
+    return parser
+
+
+TestArgParser = create_test_arg_parser()
+
+
+def parse_test_args(argv=None):
+    if argv is None:
+        argv = sys.argv[1:]
+
+    args = TestArgParser.parse_args(argv)
+
     if args.build_dir and args.release:
         raise argparse.ArgumentError(
             None, "build_dir is inferred from --release, cannot provide both")
+
     if not args.build_dir:
         args.build_dir = build_path()
 
-    if not os.path.isfile(
-            os.path.join(args.build_dir, "deno" + executable_suffix)):
+    exe_path = os.path.join(args.build_dir, "deno" + executable_suffix)
+    if not os.path.isfile(exe_path):
         raise argparse.ArgumentError(None,
                                      "deno executable not found in build_dir")
+
     return args
 
 

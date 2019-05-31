@@ -8,14 +8,6 @@ from util import DenoTestCase, test_main
 
 
 class TestRepl(DenoTestCase):
-    def __init__(self, *args, **kwargs):
-        super(TestRepl, self).__init__(*args, **kwargs)
-        self._warm_up()
-
-    def _warm_up(self):
-        # This may output an error message about the history file (ignore it).
-        self.input("")
-
     def input(self, *lines, **kwargs):
         exit_ = kwargs.pop("exit", True)
         sleep_ = kwargs.pop("sleep", 0)

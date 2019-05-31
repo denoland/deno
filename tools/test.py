@@ -24,7 +24,7 @@ from complex_permissions_test import complex_permissions_tests
 import http_server
 from util import (DenoTestCase, ColorTextTestRunner, enable_ansi_colors,
                   executable_suffix, run, run_output, rmtree, tests_path,
-                  test_args)
+                  parse_test_args)
 
 
 class TestTarget(DenoTestCase):
@@ -78,8 +78,8 @@ class TestTarget(DenoTestCase):
         assert self.deno_exe in output.strip()
 
 
-def main(argv):
-    args = test_args(argv)
+def main():
+    args = parse_test_args()
 
     deno_dir = os.path.join(args.build_dir, ".deno_test")
     if os.path.isdir(deno_dir):
@@ -125,4 +125,4 @@ def main(argv):
 
 
 if __name__ == '__main__':
-    main(sys.argv[1:])
+    main()
