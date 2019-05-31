@@ -4,7 +4,7 @@ A framework for creating HTTP/HTTPS server.
 
 ## Cookie
 
-Helper to manipulate `Cookie` throught `ServerRequest` and `Response`.
+Helper to manipulate `Cookie` through `ServerRequest` and `Response`.
 
 ```ts
 import { ServerRequest } from "https://deno.land/std/http/server.ts";
@@ -72,6 +72,6 @@ A small program for serving local files over HTTP.
 
 Add the following to your `.bash_profile`
 
-```
+```sh
 alias file_server="deno run --allow-net https://deno.land/std/http/file_server.ts"
 ```

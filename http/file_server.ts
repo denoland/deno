@@ -86,16 +86,16 @@ function modeToString(isDir: boolean, maybeMode: number | null): string {
 }
 
 function fileLenToString(len: number): string {
-  const multipler = 1024;
+  const multiplier = 1024;
   let base = 1;
   const suffix = ["B", "K", "M", "G", "T"];
   let suffixIndex = 0;
 
-  while (base * multipler < len) {
+  while (base * multiplier < len) {
     if (suffixIndex >= suffix.length - 1) {
       break;
     }
-    base *= multipler;
+    base *= multiplier;
     suffixIndex++;
   }
 
