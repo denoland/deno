@@ -142,4 +142,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    with spawn():
+        test_main()

@@ -418,14 +418,34 @@ class ColorTextTestRunner(unittest.TextTestRunner):
     resultclass = ColorTextTestResult
 
 
-def test_main():
+def test_main(suite=None):
     args = parse_test_args()
 
-    return unittest.main(
-        verbosity=args.verbosity + 1,
-        testRunner=ColorTextTestRunner,
-        failfast=args.failfast,
-        argv=[''])
+    loader = unittest.TestLoader()
+
+    # if suite was not explicitly passed load test
+    # cases from calling module
+    if suite is None:
+        import __main__
+        suite = loader.loadTestsFromModule(__main__)
+
+    # TODO: should `args.pattern` be called filter?
+    if args.pattern:
+        filtered_tests = []
+
+        for nested_suite in suite:
+            for test_case in nested_suite:
+                if args.pattern in str(test_case):
+                    filtered_tests.append(test_case)
+
+        suite = unittest.TestSuite(filtered_tests)
+
+    runner = ColorTextTestRunner(
+        verbosity=args.verbosity + 1, failfast=args.failfast)
+
+    result = runner.run(suite)
+    if not result.wasSuccessful():
+        sys.exit(1)
 
 
 def create_test_arg_parser():

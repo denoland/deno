@@ -24,7 +24,7 @@ from complex_permissions_test import complex_permissions_tests
 import http_server
 from util import (DenoTestCase, ColorTextTestRunner, enable_ansi_colors,
                   executable_suffix, run, run_output, rmtree, tests_path,
-                  parse_test_args)
+                  parse_test_args, test_main)
 
 
 class TestTarget(DenoTestCase):
@@ -104,24 +104,8 @@ def main():
     test_cases += permission_prompt_tests()
     test_cases += complex_permissions_tests()
 
-    suite = unittest.TestSuite()
-    loader = unittest.TestLoader()
-
-    for test_case in test_cases:
-        test_names = loader.getTestCaseNames(test_case)
-
-        if args.pattern:
-            test_names = [name for name in test_names if args.pattern in name]
-
-        suite.addTests(loader.loadTestsFromNames(test_names, module=test_case))
-
-    runner = ColorTextTestRunner(
-        verbosity=args.verbosity + 1, failfast=args.failfast)
-
     with http_server.spawn():
-        result = runner.run(suite)
-        if not result.wasSuccessful():
-            sys.exit(1)
+        test_main(test_cases)
 
 
 if __name__ == '__main__':

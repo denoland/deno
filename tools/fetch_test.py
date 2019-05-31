@@ -27,4 +27,4 @@ class FetchTest(DenoTestCase):
 
 if __name__ == "__main__":
     with spawn():
-        test_main()
+        parse_test_args()
