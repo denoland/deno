@@ -142,6 +142,7 @@ export async function writeFrame(
 /** Read websocket frame from given BufReader */
 export async function readFrame(buf: BufReader): Promise<WebSocketFrame> {
   let b = await buf.readByte();
+  if (b === EOF) throw new UnexpectedEOFError();
   let isLastFrame = false;
   switch (b >>> 4) {
     case 0b1000:
@@ -156,12 +157,17 @@ export async function readFrame(buf: BufReader): Promise<WebSocketFrame> {
   const opcode = b & 0x0f;
   // has_mask & payload
   b = await buf.readByte();
+  if (b === EOF) throw new UnexpectedEOFError();
   const hasMask = b >>> 7;
   let payloadLength = b & 0b01111111;
   if (payloadLength === 126) {
-    payloadLength = await readShort(buf);
+    const l = await readShort(buf);
+    if (l === EOF) throw new UnexpectedEOFError();
+    payloadLength = l;
   } else if (payloadLength === 127) {
-    payloadLength = await readLong(buf);
+    const l = await readLong(buf);
+    if (l === EOF) throw new UnexpectedEOFError();
+    payloadLength = Number(l);
   }
   // mask
   let mask;

@@ -192,10 +192,10 @@ export class BufReader implements Reader {
     return p;
   }
 
-  /** Returns the next byte [0, 255] or -1 if EOF. */
-  async readByte(): Promise<number> {
+  /** Returns the next byte [0, 255] or `EOF`. */
+  async readByte(): Promise<number | EOF> {
     while (this.r === this.w) {
-      if (this.eof) return -1;
+      if (this.eof) return EOF;
       await this._fill(); // buffer is empty.
     }
     const c = this.buf[this.r];

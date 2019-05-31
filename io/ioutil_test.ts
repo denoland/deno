@@ -40,10 +40,10 @@ test(async function testReadInt(): Promise<void> {
 
 test(async function testReadLong(): Promise<void> {
   const r = new BinaryReader(
-    new Uint8Array([0x12, 0x34, 0x56, 0x78, 0x12, 0x34, 0x56, 0x78])
+    new Uint8Array([0x00, 0x00, 0x00, 0x78, 0x12, 0x34, 0x56, 0x78])
   );
   const long = await readLong(new BufReader(r));
-  assertEquals(long, 0x1234567812345678);
+  assertEquals(long, 0x7812345678);
 });
 
 test(async function testReadLong2(): Promise<void> {
