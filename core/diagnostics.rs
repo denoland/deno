@@ -147,6 +147,8 @@ impl DiagnosticFrame {
       }
     }
 
+    // Frames are not zero indexed, while other parts of errors are, so when we
+    // parse it, we convert the frames to 0 based.
     Some(Self {
       line: line - 1,
       column: column - 1,
@@ -435,6 +437,10 @@ impl fmt::Display for Diagnostic {
         }
       }
       i += 1;
+    }
+
+    if i > 1 {
+      write!(f, "\n\nFound {} errors.\n", i)?;
     }
 
     Ok(())
@@ -805,7 +811,7 @@ mod tests {
   }
 
   #[test]
-  fn js_error_from_v8_exception() {
+  fn from_v8_exception() {
     let r = Diagnostic::from_v8_exception(
       r#"{
         "message":"Uncaught Error: bad",
@@ -850,7 +856,7 @@ mod tests {
   }
 
   #[test]
-  fn js_error_from_v8_exception2() {
+  fn from_v8_exception2() {
     let r = Diagnostic::from_v8_exception(
       "{\"message\":\"Error: boo\",\"sourceLine\":\"throw Error('boo');\",\"scriptResourceName\":\"a.js\",\"lineNumber\":3,\"startPosition\":8,\"endPosition\":9,\"errorLevel\":8,\"startColumn\":6,\"endColumn\":7,\"isSharedCrossOrigin\":false,\"isOpaque\":false,\"frames\":[{\"line\":3,\"column\":7,\"functionName\":\"\",\"scriptName\":\"a.js\",\"isEval\":false,\"isConstructor\":false,\"isWasm\":false}]}"
     );
@@ -871,6 +877,138 @@ mod tests {
   }
 
   #[test]
+  fn from_compiler_json() {
+    let v = serde_json::from_str::<serde_json::Value>(
+      &r#"{
+        "source": 2,
+        "items": [
+          {
+            "message": "Type '(o: T) => { v: any; f: (x: B) => string; }[]' is not assignable to type '(r: B) => Value<B>[]'.",
+            "messageChain": {
+              "message": "Type '(o: T) => { v: any; f: (x: B) => string; }[]' is not assignable to type '(r: B) => Value<B>[]'.",
+              "code": 2322,
+              "category": 3,
+              "next": {
+                "message": "Types of parameters 'o' and 'r' are incompatible.",
+                "code": 2328,
+                "category": 3,
+                "next": {
+                  "message": "Type 'B' is not assignable to type 'T'.",
+                  "code": 2322,
+                  "category": 3
+                }
+              }
+            },
+            "code": 2322,
+            "category": 3,
+            "startPosition": 235,
+            "endPosition": 241,
+            "sourceLine": "  values: o => [",
+            "lineNumber": 18,
+            "scriptResourceName": "/deno/tests/complex_diagnostics.ts",
+            "startColumn": 2,
+            "endColumn": 8,
+            "relatedInformation": [
+              {
+                "message": "The expected type comes from property 'values' which is declared here on type 'C<B>'",
+                "code": 6500,
+                "category": 2,
+                "startPosition": 78,
+                "endPosition": 84,
+                "sourceLine": "  values?: (r: T) => Array<Value<T>>;",
+                "lineNumber": 6,
+                "scriptResourceName": "/deno/tests/complex_diagnostics.ts",
+                "startColumn": 2,
+                "endColumn": 8
+              }
+            ]
+          },
+          {
+            "message": "Property 't' does not exist on type 'T'.",
+            "code": 2339,
+            "category": 3,
+            "startPosition": 267,
+            "endPosition": 268,
+            "sourceLine": "      v: o.t,",
+            "lineNumber": 20,
+            "scriptResourceName": "/deno/tests/complex_diagnostics.ts",
+            "startColumn": 11,
+            "endColumn": 12
+          }
+        ]
+      }"#,
+    ).unwrap();
+    let r = Diagnostic::from_compiler_json_value(&v).unwrap();
+    let expected = Diagnostic {
+      source: DiagnosticSources::TypeScript,
+      items: vec![
+        DiagnosticItem {
+          message: "Type '(o: T) => { v: any; f: (x: B) => string; }[]' is not assignable to type '(r: B) => Value<B>[]'.".to_string(),
+          message_chain: Some(Box::new(DiagnosticMessageChain {
+            message: "Type '(o: T) => { v: any; f: (x: B) => string; }[]' is not assignable to type '(r: B) => Value<B>[]'.".to_string(),
+            code: 2322,
+            category: DiagnosticCategory::Error,
+            next: Some(Box::new(DiagnosticMessageChain {
+              message: "Types of parameters 'o' and 'r' are incompatible.".to_string(),
+              code: 2328,
+              category: DiagnosticCategory::Error,
+              next: Some(Box::new(DiagnosticMessageChain {
+                message: "Type 'B' is not assignable to type 'T'.".to_string(),
+                code: 2322,
+                category: DiagnosticCategory::Error,
+                next: None,
+              })),
+            })),
+          })),
+          related_information: Some(vec![
+            DiagnosticItem {
+              message: "The expected type comes from property 'values' which is declared here on type 'C<B>'".to_string(),
+              message_chain: None,
+              related_information: None,
+              source_line: Some("  values?: (r: T) => Array<Value<T>>;".to_string()),
+              line_number: Some(6),
+              script_resource_name: Some("/deno/tests/complex_diagnostics.ts".to_string()),
+              start_position: Some(78),
+              end_position: Some(84),
+              category: DiagnosticCategory::Info,
+              code: Some(6500),
+              start_column: Some(2),
+              end_column: Some(8),
+              frames: None,
+            }
+          ]),
+          source_line: Some("  values: o => [".to_string()),
+          line_number: Some(18),
+          script_resource_name: Some("/deno/tests/complex_diagnostics.ts".to_string()),
+          start_position: Some(235),
+          end_position: Some(241),
+          category: DiagnosticCategory::Error,
+          code: Some(2322),
+          start_column: Some(2),
+          end_column: Some(8),
+          frames: None,
+        },
+        DiagnosticItem {
+          message: "Property 't' does not exist on type 'T'.".to_string(),
+          message_chain: None,
+          related_information: None,
+          source_line: Some("      v: o.t,".to_string()),
+          line_number: Some(20),
+          script_resource_name: Some("/deno/tests/complex_diagnostics.ts".to_string()),
+          start_position: Some(267),
+          end_position: Some(268),
+          category: DiagnosticCategory::Error,
+          code: Some(2339),
+          start_column: Some(11),
+          end_column: Some(12),
+          frames: None,
+        },
+      ],
+    };
+    assert_eq!(expected, r);
+  }
+
+  #[test]
   fn stack_frame_to_string() {
     let e = diagnostic_js();
     let frames = e.items[0].frames.clone().unwrap();
@@ -879,7 +1017,7 @@ mod tests {
   }
 
   #[test]
-  fn js_error_to_string() {
+  fn diagnostic_to_string() {
     let e = diagnostic_js();
     let expected = "Error: foo bar\n    at foo (foo_bar.ts:5:17)\n    at qat (bar_baz.ts:6:21)\n    at deno_main.js:2:2";
     assert_eq!(expected, &e.to_string());
@@ -895,7 +1033,7 @@ mod tests {
   #[test]
   fn ts_diagnostic_to_string2() {
     let d = diagnostic_ts2();
-    let expected = "deno/tests/complex_diagnostics.ts:19:3 - error TS2322: Example 1\n\n19   values: o => [\n     ~~~~~~\n\n/foo/bar.ts:129:3 - error TS2000: Example 2\n\n129   values: undefined,\n      ~~~~~~\n";
+    let expected = "deno/tests/complex_diagnostics.ts:19:3 - error TS2322: Example 1\n\n19   values: o => [\n     ~~~~~~\n\n/foo/bar.ts:129:3 - error TS2000: Example 2\n\n129   values: undefined,\n      ~~~~~~\n\n\nFound 2 errors.\n";
     assert_eq!(expected, &d.to_string());
   }
 }

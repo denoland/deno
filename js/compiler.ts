@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as msg from "gen/cli/msg_generated";
 import { core } from "./core";
-import { fromTypeScriptDiagnostic } from "./diagnostics";
+import { Diagnostic, fromTypeScriptDiagnostic } from "./diagnostics";
 import * as flatbuffers from "./flatbuffers";
 import { sendSync } from "./dispatch";
 import { TextDecoder } from "./text_encoding";
@@ -104,6 +104,11 @@ interface ModuleMetaData {
   filename: string | undefined;
   mediaType: msg.MediaType;
   sourceCode: string | undefined;
+}
+
+interface EmitResult {
+  emitSkipped: boolean;
+  diagnostics?: Diagnostic;
 }
 
 function fetchModuleMetaData(
@@ -409,13 +414,16 @@ window.compilerMain = function compilerMain(): void {
         }
       );
 
-    const { emitSkipped, emittedFiles } = emitResult;
+    const { emitSkipped } = emitResult;
 
-    postMessage({
+    const result: EmitResult = {
       emitSkipped,
-      diagnostics: fromTypeScriptDiagnostic(diagnostics),
-      emittedFiles
-    });
+      diagnostics: diagnostics.length
+        ? fromTypeScriptDiagnostic(diagnostics)
+        : undefined
+    };
+
+    postMessage(result);
 
     // The compiler isolate exits after a single messsage.
     workerClose();

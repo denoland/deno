@@ -1,4 +1,4 @@
-[WILDCARD]Uncaught NotFound: Cannot resolve module "bad-module.ts" from "/Users/kkelly/github/deno/tests/error_005_missing_dynamic_import.ts"
+[WILDCARD]Uncaught NotFound: Cannot resolve module "bad-module.ts" from "[WILDCARD]/tests/error_005_missing_dynamic_import.ts"
 
 [WILDCARD]return new DenoError(kind, base.error());
 [WILDCARD]^

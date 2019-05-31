@@ -233,7 +233,7 @@ fn fetch_module_meta_data_and_maybe_compile_async(
             compile_async(state_.clone(), &specifier, &referrer, &out)
               .map_err(|e| {
                 debug!("compiler error exiting!");
-                eprintln!("{}", DiagnosticColor(&e).to_string());
+                eprintln!("\n{}", DiagnosticColor(&e).to_string());
                 std::process::exit(1);
               }).and_then(move |out| {
                 debug!(">>>>> compile_sync END");

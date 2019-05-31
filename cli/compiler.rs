@@ -10,6 +10,7 @@ use deno::Buf;
 use deno::Diagnostic;
 use futures::Future;
 use futures::Stream;
+use serde_json;
 use std::str;
 use std::sync::atomic::Ordering;
 
@@ -136,14 +137,23 @@ pub fn compile_async(
   first_msg_fut
     .map_err(|_| panic!("not handled"))
     .and_then(move |maybe_msg: Option<Buf>| {
-      let _res_msg = maybe_msg.unwrap();
-
       debug!("Received message from worker");
 
-      // TODO res is EmitResult, use serde_derive to parse it. Errors from the
-      // worker or Diagnostics should be somehow forwarded to the caller!
-      // Currently they are handled inside compiler.ts with os.exit(1) and above
-      // with std::process::exit(1). This bad.
+      if maybe_msg.is_some() {
+        let msg = &maybe_msg.unwrap();
+        let res_json = std::str::from_utf8(msg).unwrap();
+        debug!("Message: {}", res_json);
+        let res = serde_json::from_str::<serde_json::Value>(res_json)
+          .expect("Error decoding compiler response");
+        let diagnostics_o = res.get("diagnostics");
+        if let Some(diagnostics_v) = diagnostics_o {
+          if let Some(diagnostics) =
+            Diagnostic::from_compiler_json_value(diagnostics_v)
+          {
+            return Err(diagnostics);
+          }
+        }
+      }
 
       let r = state.dir.fetch_module_meta_data(
         &module_meta_data_.module_name,

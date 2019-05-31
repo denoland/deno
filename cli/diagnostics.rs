@@ -36,7 +36,6 @@ struct SourceMap {
 impl<'a> fmt::Display for DiagnosticFrameColor<'a> {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let frame = self.0;
-    // Note when we print to string, we change from 0-indexed to 1-indexed.
     let function_name = ansi::italic_bold(frame.function_name.clone());
     let script_line_column =
       format_script_line_column(&frame.script_name, frame.line, frame.column);
@@ -56,7 +55,7 @@ fn format_script_line_column(
   line: i64,
   column: i64,
 ) -> String {
-  // TODO match this style with how typescript displays errors.
+  // Note when we print to string, we change from 0-indexed to 1-indexed.
   let line = ansi::yellow((1 + line).to_string());
   let column = ansi::yellow((1 + column).to_string());
   let script_name = ansi::cyan(script_name.to_string());
@@ -69,7 +68,7 @@ impl<'a> fmt::Display for DiagnosticColor<'a> {
     let mut i = 0;
     for item in &self.0.items {
       if i > 0 {
-        write!(f, "\n")?;
+        writeln!(f)?;
       }
 
       write!(
@@ -90,6 +89,10 @@ impl<'a> fmt::Display for DiagnosticColor<'a> {
       i += 1;
     }
 
+    if i > 1 {
+      write!(f, "\n\nFound {} errors.\n", i)?;
+    }
+
     Ok(())
   }
 }
@@ -100,8 +103,9 @@ fn format_category_and_code_color(
   diagnostic_item: &DiagnosticItem,
   source: &DiagnosticSources,
 ) -> String {
-  if source.to_owned() != DiagnosticSources::TypeScript {
-    return "".to_owned();
+  match source {
+    DiagnosticSources::TypeScript => (),
+    _ => return "".to_owned(),
   }
 
   let category = match diagnostic_item.category {
@@ -189,7 +193,7 @@ fn format_source_line_color(
   let source_line = diagnostic_item.source_line.as_ref().unwrap();
   // sometimes source_line gets set with an empty string, which then outputs
   // an empty source line when displayed, so need just short circuit here
-  if source_line.len() == 0 {
+  if source_line.is_empty() {
     return "".to_owned();
   }
   assert!(diagnostic_item.line_number.is_some());
@@ -602,7 +606,7 @@ mod tests {
   }
 
   #[test]
-  fn js_error_to_color_string() {
+  fn diagnostic_to_color_string() {
     let e = error1();
     let expected = "Error: foo bar\n    at foo (foo_bar.ts:5:17)\n    at qat (bar_baz.ts:6:21)\n    at deno_main.js:2:2";
     assert_eq!(expected, strip_ansi_codes(&DiagnosticColor(&e).to_string()));
@@ -618,12 +622,12 @@ mod tests {
   #[test]
   fn ts_diagnostic_to_color_string2() {
     let d = diagnostic2();
-    let expected = "deno/tests/complex_diagnostics.ts:19:3 - error TS2322: Example 1\n\n19   values: o => [\n     ~~~~~~\n\n/foo/bar.ts:129:3 - error TS2000: Example 2\n\n129   values: undefined,\n      ~~~~~~\n";
+    let expected = "deno/tests/complex_diagnostics.ts:19:3 - error TS2322: Example 1\n\n19   values: o => [\n     ~~~~~~\n\n/foo/bar.ts:129:3 - error TS2000: Example 2\n\n129   values: undefined,\n      ~~~~~~\n\n\nFound 2 errors.\n";
     assert_eq!(expected, strip_ansi_codes(&DiagnosticColor(&d).to_string()));
   }
 
   #[test]
-  fn js_error_apply_source_map_1() {
+  fn diagnostic_apply_source_map_1() {
     let e = error1();
     let getter = MockSourceMapGetter {};
     let actual = apply_source_map(&e, &getter);
@@ -677,7 +681,7 @@ mod tests {
   }
 
   #[test]
-  fn js_error_apply_source_map_2() {
+  fn diagnostic_apply_source_map_2() {
     let e = Diagnostic {
       source: deno::DiagnosticSources::V8,
       items: vec![DiagnosticItem {
