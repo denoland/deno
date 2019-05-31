@@ -1,4 +1,5 @@
 import os
+import sys
 
 from test_util import DenoTestCase, run_tests
 from util import executable_suffix, run, tests_path, run_output

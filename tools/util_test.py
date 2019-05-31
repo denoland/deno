@@ -2,7 +2,8 @@
 import os
 
 from test_util import DenoTestCase, run_tests
-from util import (pattern_match, parse_exit_code, shell_quote_win, parse_wrk_output, root_path)
+from util import (pattern_match, parse_exit_code, shell_quote_win,
+                  parse_wrk_output, root_path)
 
 
 class TestUtil(DenoTestCase):

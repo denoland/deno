@@ -85,15 +85,15 @@ def parse_test_args(argv=None):
 
     if args.executable and args.release:
         raise argparse.ArgumentError(
-            None,
-            "Path to executable is inferred from --release, cannot provide both."
-        )
+            None, "Path to executable is inferred from "
+            "--release, cannot provide both.")
 
     if not args.build_dir:
         args.build_dir = build_path()
 
     if not args.executable:
-        args.executable = os.path.join(args.build_dir, "deno" + executable_suffix)
+        args.executable = os.path.join(args.build_dir,
+                                       "deno" + executable_suffix)
 
     if not os.path.isfile(args.executable):
         raise argparse.ArgumentError(
