@@ -1,6 +1,6 @@
 # datetime
 
-Simple helper to help parse date strings into `Date`, with additionnal functions.
+Simple helper to help parse date strings into `Date`, with additional functions.
 
 ## Usage
 
