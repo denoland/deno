@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import os
-import sys
 import shutil
 
 from http_server import spawn
@@ -27,4 +26,4 @@ class FetchTest(DenoTestCase):
 
 if __name__ == "__main__":
     with spawn():
-        parse_test_args()
+        test_main()

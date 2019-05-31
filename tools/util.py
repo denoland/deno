@@ -418,18 +418,21 @@ class ColorTextTestRunner(unittest.TextTestRunner):
     resultclass = ColorTextTestResult
 
 
-def test_main(suite=None):
+def test_main(test_cases=None):
     args = parse_test_args()
 
     loader = unittest.TestLoader()
 
     # if suite was not explicitly passed load test
     # cases from calling module
-    if suite is None:
+    if test_cases is None:
         import __main__
         suite = loader.loadTestsFromModule(__main__)
+    else:
+        suite = unittest.TestSuite()
+        for test_case in test_cases:
+            suite.addTests(loader.loadTestsFromTestCase(test_case))
 
-    # TODO: should `args.pattern` be called filter?
     if args.pattern:
         filtered_tests = []
 
@@ -454,6 +457,7 @@ def create_test_arg_parser():
         '--failfast', '-f', action='store_true', help='Stop on first failure')
     parser.add_argument(
         '--verbosity', '-v', action='store_true', help='Verbose output')
+    parser.add_argument("--executable", help="Use external executable of Deno")
     parser.add_argument(
         '--release',
         action='store_true',
@@ -483,10 +487,14 @@ def parse_test_args(argv=None):
     if not args.build_dir:
         args.build_dir = build_path()
 
-    exe_path = os.path.join(args.build_dir, "deno" + executable_suffix)
+    if not args.executable:
+        exe_path = args.executable
+    else:
+        exe_path = os.path.join(args.build_dir, "deno" + executable_suffix)
+
     if not os.path.isfile(exe_path):
-        raise argparse.ArgumentError(None,
-                                     "deno executable not found in build_dir")
+        raise argparse.ArgumentError(
+            None, "deno executable not found at {}".format(exe_path))
 
     return args
 
