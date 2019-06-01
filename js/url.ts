@@ -71,12 +71,13 @@ export class URL {
     const searchParams = new urlSearchParams.URLSearchParams(this.search);
 
     for (const methodName of searchParamsMethods) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      /* eslint-disable @typescript-eslint/no-explicit-any */
       const method: (...args: any[]) => any = searchParams[methodName];
-      searchParams[methodName] = (...args: unknown[]): void => {
+      searchParams[methodName] = (...args: unknown[]): any => {
         method.apply(searchParams, args);
         this.search = searchParams.toString();
       };
+      /* eslint-enable */
     }
     this._searchParams = searchParams;
   }

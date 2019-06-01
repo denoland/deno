@@ -612,7 +612,8 @@ export class Console {
       stringifyValue(value)
     ];
 
-    let resultData: { [key: string]: unknown };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let resultData: any;
     const isSet = data instanceof Set;
     const isMap = data instanceof Map;
     const valuesKey = "Values";

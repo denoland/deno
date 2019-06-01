@@ -3,6 +3,12 @@
 import "./unit_tests.ts";
 import { permissionCombinations, parseUnitTestOutput } from "./test_util.ts";
 
+interface TestResult {
+  perms: string;
+  output: string;
+  result: number;
+}
+
 function permsToCliFlags(perms: Deno.Permissions): string[] {
   return Object.keys(perms)
     .map(
@@ -39,7 +45,7 @@ async function main(): Promise<void> {
     console.log("\t" + fmtPerms(perms));
   }
 
-  const testResults = new Set();
+  const testResults = new Set<TestResult>();
 
   for (const perms of permissionCombinations.values()) {
     const permsFmt = fmtPerms(perms);
@@ -84,10 +90,10 @@ async function main(): Promise<void> {
   // run should fail
   let testsFailed = false;
 
-  for (const testResult of testResults.values()) {
+  for (const testResult of testResults) {
     console.log(`Summary for ${testResult.perms}`);
     console.log(testResult.output + "\n");
-    testsFailed = testsFailed || testResult.result;
+    testsFailed = testsFailed || Boolean(testResult.result);
   }
 
   if (testsFailed) {
