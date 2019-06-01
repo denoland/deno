@@ -210,16 +210,6 @@ export function prepareFileForMerge({
     true
   );
 
-  // `globalThis` accesses the global scope and is defined here:
-  // https://github.com/tc39/proposal-global
-  addVariableDeclaration(
-    targetSourceFile,
-    "globalThis",
-    interfaceName,
-    true,
-    true
-  );
-
   // Add self reference to the global variable
   addInterfaceProperty(interfaceDeclaration, globalVarName, interfaceName);
 

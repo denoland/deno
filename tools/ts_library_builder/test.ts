@@ -173,25 +173,24 @@ function buildLibraryMerge(): void {
   assert.equal(targetSourceFile.getInterfaces().length, 2);
   const variableDeclarations = targetSourceFile.getVariableDeclarations();
   assert.equal(variableDeclarations[0].getType().getText(), `FooBar`);
-  assert.equal(variableDeclarations[1].getType().getText(), `FooBar`);
-  assert.equal(variableDeclarations[2].getType().getText(), `moduleC.Bar`);
+  assert.equal(variableDeclarations[1].getType().getText(), `moduleC.Bar`);
   assert.equal(
-    variableDeclarations[3].getType().getText(),
+    variableDeclarations[2].getType().getText(),
     `typeof moduleC.qat`
   );
   assert.equal(
-    variableDeclarations[4].getType().getText(),
+    variableDeclarations[3].getType().getText(),
     `typeof moduleE.process`
   );
   assert.equal(
-    variableDeclarations[5].getType().getText(),
+    variableDeclarations[4].getType().getText(),
     `typeof moduleD.reprocess`
   );
   assert.equal(
-    variableDeclarations[6].getType().getText(),
+    variableDeclarations[5].getType().getText(),
     `typeof moduleC.Bar`
   );
-  assert.equal(variableDeclarations.length, 7);
+  assert.equal(variableDeclarations.length, 6);
   const typeAliases = targetSourceFile.getTypeAliases();
   assert.equal(typeAliases[0].getName(), "Bar");
   assert.equal(typeAliases[0].getType().getText(), "moduleC.Bar");
