@@ -167,7 +167,12 @@ This command has implicit access to all permissions (equivalent to deno run --al
 
 Automatically downloads Prettier dependencies on first run.
 
-  deno fmt --write myfile1.ts myfile2.ts",
+  deno fmt myfile1.ts myfile2.ts",
+        ).arg(
+          Arg::with_name("stdout")
+            .long("stdout")
+            .help("Output formated code to stdout")
+            .takes_value(false),
         ).arg(
           Arg::with_name("files")
             .takes_value(true)
@@ -194,7 +199,7 @@ ability to spawn subprocesses.
   deno run --allow-net --allow-read https://deno.land/std/http/file_server.ts
 
   # run program with permission to read whitelist files from disk and listen to network
-  deno run --allow-net --allow-read=$(pwd) https://deno.land/std/http/file_server.ts 
+  deno run --allow-net --allow-read=$(pwd) https://deno.land/std/http/file_server.ts
 
   # run program with all permissions
   deno run -A https://deno.land/std/http/file_server.ts",
@@ -456,8 +461,10 @@ pub fn flags_from_vec(
         .collect();
       argv.extend(files);
 
-      // `deno fmt` writes to the files by default
-      argv.push("--write".to_string());
+      if !fmt_match.is_present("stdout") {
+        // `deno fmt` writes to the files by default
+        argv.push("--write".to_string());
+      }
 
       DenoSubcommand::Run
     }
@@ -917,5 +924,29 @@ mod tests {
     );
     assert_eq!(subcommand, DenoSubcommand::Run);
     assert_eq!(argv, svec!["deno", "script.ts"]);
+  }
+
+  #[test]
+  fn test_flags_from_vec_22() {
+    let (flags, subcommand, argv) = flags_from_vec(svec![
+      "deno",
+      "fmt",
+      "--stdout",
+      "script_1.ts",
+      "script_2.ts"
+    ]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        allow_write: true,
+        allow_read: true,
+        ..DenoFlags::default()
+      }
+    );
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(
+      argv,
+      svec!["deno", PRETTIER_URL, "script_1.ts", "script_2.ts"]
+    );
   }
 }
