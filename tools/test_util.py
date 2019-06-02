@@ -59,17 +59,14 @@ def create_test_arg_parser():
     parser.add_argument(
         '--failfast', '-f', action='store_true', help='Stop on first failure')
     parser.add_argument(
-        '--verbosity', '-v', action='store_true', help='Verbose output')
+        '--verbose', '-v', action='store_true', help='Verbose output')
     parser.add_argument("--executable", help="Use external executable of Deno")
     parser.add_argument(
         '--release',
         action='store_true',
         help='Test against release executable')
     parser.add_argument(
-        '--pattern',
-        '-p',
-        required=False,
-        help='Run tests that match provided pattern')
+        '--pattern', '-p', help='Run tests that match provided pattern')
     parser.add_argument('build_dir', nargs='?', help='Deno build directory')
     return parser
 
