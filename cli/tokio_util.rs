@@ -30,7 +30,7 @@ where
 ///
 /// This creates a new tokio runtime, with many new threads, to execute the
 /// given future. This is useful when we want to block the main runtime to
-/// resolve a future without worrying that we'll us up all the threads in the
+/// resolve a future without worrying that we'll use up all the threads in the
 /// main runtime.
 pub fn block_on<F, R, E>(future: F) -> Result<R, E>
 where
