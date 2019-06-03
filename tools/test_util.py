@@ -67,7 +67,8 @@ def create_test_arg_parser():
         help='Test against release executable')
     parser.add_argument(
         '--pattern', '-p', help='Run tests that match provided pattern')
-    parser.add_argument('build_dir', nargs='?', help='Deno build directory')
+    parser.add_argument(
+        '--build-dir', dest="build_dir", help='Deno build directory')
     return parser
 
 
@@ -85,6 +86,7 @@ def parse_test_args(argv=None):
             None, "Path to executable is inferred from "
             "--release, cannot provide both.")
 
+    print(args.build_dir)
     if not args.build_dir:
         args.build_dir = build_path()
 
@@ -125,7 +127,7 @@ def run_tests(test_cases=None):
         suite = unittest.TestSuite(filtered_tests)
 
     runner = ColorTextTestRunner(
-        verbosity=args.verbosity + 1, failfast=args.failfast)
+        verbosity=args.verbose + 1, failfast=args.failfast)
 
     result = runner.run(suite)
     if not result.wasSuccessful():
