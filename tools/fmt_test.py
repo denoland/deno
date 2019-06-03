@@ -1,11 +1,10 @@
 #!/usr/bin/env python
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import json
 import os
 import shutil
-import sys
 
-from util import (DenoTestCase, mkdtemp, root_path, tests_path, run, test_main)
+from test_util import DenoTestCase, run_tests
+from util import mkdtemp, root_path, tests_path, run
 
 
 class FmtTest(DenoTestCase):
@@ -43,4 +42,4 @@ class FmtTest(DenoTestCase):
 
 
 if __name__ == "__main__":
-    test_main()
+    run_tests()

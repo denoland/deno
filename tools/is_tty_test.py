@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import os
-import subprocess
 import unittest
 from sys import stdin
 
-from util import DenoTestCase, test_main, tty_capture
+from test_util import DenoTestCase, run_tests
+from util import tty_capture
 
 IS_TTY_TEST_TS = "tests/is_tty.ts"
 
@@ -20,4 +20,4 @@ class TestIsTty(DenoTestCase):
 
 
 if __name__ == "__main__":
-    test_main()
+    run_tests()

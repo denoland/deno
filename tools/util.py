@@ -1,5 +1,4 @@
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import argparse
 import os
 import re
 import shutil
@@ -9,12 +8,13 @@ import sys
 import subprocess
 import tempfile
 import time
-import unittest
 
-# FIXME support nocolor (use "" if passed?)
-RESET = "\x1b[0m"
-FG_RED = "\x1b[31m"
-FG_GREEN = "\x1b[32m"
+if os.environ.get("NO_COLOR", None):
+    RESET = FG_READ = FG_GREEN = ""
+else:
+    RESET = "\x1b[0m"
+    FG_RED = "\x1b[31m"
+    FG_GREEN = "\x1b[32m"
 
 executable_suffix = ".exe" if os.name == "nt" else ""
 root_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -371,88 +371,6 @@ def mkdtemp():
     # 'TS5009: Cannot find the common subdirectory path for the input files.'
     temp_dir = os.environ["TEMP"] if os.name == 'nt' else None
     return tempfile.mkdtemp(dir=temp_dir)
-
-
-class DenoTestCase(unittest.TestCase):
-    @property
-    def build_dir(self):
-        args = test_args()
-        return args.build_dir
-
-    @property
-    def deno_exe(self):
-        return os.path.join(self.build_dir, "deno" + executable_suffix)
-
-
-# overload the test result class
-class ColorTextTestResult(unittest.TextTestResult):
-    def getDescription(self, test):
-        name = str(test)
-        if name.startswith("test_"):
-            name = name[5:]
-        return name
-
-    def addSuccess(self, test):
-        if self.showAll:
-            self.stream.write(FG_GREEN)
-        super(ColorTextTestResult, self).addSuccess(test)
-        if self.showAll:
-            self.stream.write(RESET)
-
-    def addError(self, test, err):
-        if self.showAll:
-            self.stream.write(FG_RED)
-        super(ColorTextTestResult, self).addError(test, err)
-        if self.showAll:
-            self.stream.write(RESET)
-
-    def addFailure(self, test, err):
-        if self.showAll:
-            self.stream.write(FG_RED)
-        super(ColorTextTestResult, self).addFailure(test, err)
-        if self.showAll:
-            self.stream.write(RESET)
-
-
-class ColorTextTestRunner(unittest.TextTestRunner):
-    resultclass = ColorTextTestResult
-
-
-def test_main():
-    args = test_args()
-    # FIXME(hayd) support more of the unittest.main API.
-    return unittest.main(
-        verbosity=args.verbosity + 1,
-        testRunner=ColorTextTestRunner,
-        failfast=args.failfast,
-        argv=[''])
-
-
-def test_args(argv=None):
-    if argv is None:
-        argv = sys.argv[1:]
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        '--failfast', '-f', action='store_true', help='Stop on first failure')
-    parser.add_argument(
-        '--verbosity', '-v', action='store_true', help='Verbose output')
-    parser.add_argument(
-        '--release',
-        action='store_true',
-        help='Test against release deno_executable')
-    parser.add_argument('build_dir', nargs='?', help='Deno build directory')
-    args = parser.parse_args(argv)
-    if args.build_dir and args.release:
-        raise argparse.ArgumentError(
-            None, "build_dir is inferred from --release, cannot provide both")
-    if not args.build_dir:
-        args.build_dir = build_path()
-
-    if not os.path.isfile(
-            os.path.join(args.build_dir, "deno" + executable_suffix)):
-        raise argparse.ArgumentError(None,
-                                     "deno executable not found in build_dir")
-    return args
 
 
 # This function is copied from:
