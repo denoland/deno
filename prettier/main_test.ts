@@ -4,6 +4,7 @@ import { EOL } from "../fs/path/constants.ts";
 import { assertEquals } from "../testing/asserts.ts";
 import { test } from "../testing/mod.ts";
 import { xrun } from "./util.ts";
+import { copy, emptyDir } from "../fs/mod.ts";
 const { readAll, execPath } = Deno;
 
 const decoder = new TextDecoder();
@@ -43,17 +44,14 @@ function normalizeSourceCode(source: string): string {
   return source.replace(/\r/g, "");
 }
 
-async function clearTestdataChanges(): Promise<void> {
-  await xrun({ args: ["git", "checkout", testdata] }).status();
-}
-
 test(async function testPrettierCheckAndFormatFiles(): Promise<void> {
-  await clearTestdataChanges();
+  const tempDir = await Deno.makeTempDir();
+  await copy(testdata, tempDir, { overwrite: true });
 
   const files = [
-    join(testdata, "0.ts"),
-    join(testdata, "1.js"),
-    join(testdata, "2.ts")
+    join(tempDir, "0.ts"),
+    join(tempDir, "1.js"),
+    join(tempDir, "2.ts")
   ];
 
   var { code, stdout } = await run([...cmd, "--check", ...files]);
@@ -64,21 +62,22 @@ test(async function testPrettierCheckAndFormatFiles(): Promise<void> {
   assertEquals(code, 0);
   assertEquals(
     normalizeOutput(stdout),
-    `Formatting prettier/testdata/0.ts
-Formatting prettier/testdata/1.js`
+    normalizeOutput(`Formatting ${tempDir}/0.ts
+Formatting ${tempDir}/1.js`)
   );
 
   var { code, stdout } = await run([...cmd, "--check", ...files]);
   assertEquals(code, 0);
   assertEquals(normalizeOutput(stdout), "Every file is formatted");
 
-  await clearTestdataChanges();
+  emptyDir(tempDir);
 });
 
 test(async function testPrettierCheckAndFormatDirs(): Promise<void> {
-  await clearTestdataChanges();
+  const tempDir = await Deno.makeTempDir();
+  await copy(testdata, tempDir, { overwrite: true });
 
-  const dirs = [join(testdata, "foo"), join(testdata, "bar")];
+  const dirs = [join(tempDir, "foo"), join(tempDir, "bar")];
 
   var { code, stdout } = await run([...cmd, "--check", ...dirs]);
   assertEquals(code, 1);
@@ -88,26 +87,27 @@ test(async function testPrettierCheckAndFormatDirs(): Promise<void> {
   assertEquals(code, 0);
   assertEquals(
     normalizeOutput(stdout),
-    `Formatting prettier/testdata/bar/0.ts
-Formatting prettier/testdata/bar/1.js
-Formatting prettier/testdata/foo/0.ts
-Formatting prettier/testdata/foo/1.js`
+    normalizeOutput(`Formatting ${tempDir}/bar/0.ts
+Formatting ${tempDir}/bar/1.js
+Formatting ${tempDir}/foo/0.ts
+Formatting ${tempDir}/foo/1.js`)
   );
 
   var { code, stdout } = await run([...cmd, "--check", ...dirs]);
   assertEquals(code, 0);
   assertEquals(normalizeOutput(stdout), "Every file is formatted");
 
-  await clearTestdataChanges();
+  emptyDir(tempDir);
 });
 
 test(async function testPrettierOptions(): Promise<void> {
-  await clearTestdataChanges();
+  const tempDir = await Deno.makeTempDir();
+  await copy(testdata, tempDir, { overwrite: true });
 
-  const file0 = join(testdata, "opts", "0.ts");
-  const file1 = join(testdata, "opts", "1.ts");
-  const file2 = join(testdata, "opts", "2.ts");
-  const file3 = join(testdata, "opts", "3.md");
+  const file0 = join(tempDir, "opts", "0.ts");
+  const file1 = join(tempDir, "opts", "1.ts");
+  const file2 = join(tempDir, "opts", "2.ts");
+  const file3 = join(tempDir, "opts", "3.md");
 
   const getSourceCode = async (f: string): Promise<string> =>
     decoder.decode(await Deno.readFile(f));
@@ -205,14 +205,15 @@ incididunt ut labore et dolore magna aliqua.
   await run([...cmd, "--end-of-line", "crlf", "--write", file2]);
   assertEquals(await getSourceCode(file2), "console.log({ a: 1 });\r\n");
 
-  await clearTestdataChanges();
+  emptyDir(tempDir);
 });
 
 test(async function testPrettierPrintToStdout(): Promise<void> {
-  await clearTestdataChanges();
+  const tempDir = await Deno.makeTempDir();
+  await copy(testdata, tempDir, { overwrite: true });
 
-  const file0 = join(testdata, "0.ts");
-  const file1 = join(testdata, "formatted.ts");
+  const file0 = join(tempDir, "0.ts");
+  const file1 = join(tempDir, "formatted.ts");
 
   const getSourceCode = async (f: string): Promise<string> =>
     decoder.decode(await Deno.readFile(f));
@@ -229,5 +230,5 @@ test(async function testPrettierPrintToStdout(): Promise<void> {
   // The output will be formatted code even it is the same as the source file's content.
   assertEquals(formattedCode, "console.log(0);" + EOL);
 
-  await clearTestdataChanges();
+  emptyDir(tempDir);
 });
