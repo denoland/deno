@@ -100,6 +100,19 @@ def parse_test_args(argv=None):
     return args
 
 
+def filter_test_suite(suite, pattern):
+    filtered_tests = []
+
+    for test_case in suite:
+        if isinstance(test_case, unittest.TestSuite):
+            filtered_tests += filter_test_suite(test_case, pattern)
+        else:
+            if pattern in str(test_case):
+                filtered_tests.append(test_case)
+
+    return filtered_tests
+
+
 def run_tests(test_cases=None):
     args = parse_test_args()
 
@@ -116,13 +129,7 @@ def run_tests(test_cases=None):
             suite.addTests(loader.loadTestsFromTestCase(test_case))
 
     if args.pattern:
-        filtered_tests = []
-
-        for nested_suite in suite:
-            for test_case in nested_suite:
-                if args.pattern in str(test_case):
-                    filtered_tests.append(test_case)
-
+        filtered_tests = filter_test_suite(suite, args.pattern)
         suite = unittest.TestSuite(filtered_tests)
 
     runner = ColorTextTestRunner(
