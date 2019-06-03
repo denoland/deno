@@ -86,7 +86,6 @@ def parse_test_args(argv=None):
             None, "Path to executable is inferred from "
             "--release, cannot provide both.")
 
-    print(args.build_dir)
     if not args.build_dir:
         args.build_dir = build_path()
 
