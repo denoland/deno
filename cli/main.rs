@@ -16,6 +16,7 @@ extern crate rand;
 mod ansi;
 pub mod compiler;
 pub mod deno_dir;
+pub mod diagnostics;
 mod dispatch_minimal;
 pub mod errors;
 pub mod flags;

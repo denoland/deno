@@ -1,10 +1,22 @@
-[WILDCARD]tests/error_003_typescript.ts[WILDCARD] - error TS2552: Cannot find name 'consol'. Did you mean 'console'?
+[WILDCARD]/tests/error_003_typescript.ts:20:3 - error TS2322: Type '(o: T) => { v: any; f: (x: B) => string; }[]' is not assignable to type '(r: B) => Value<B>[]'.
+  Types of parameters 'o' and 'r' are incompatible.
+    Type 'B' is not assignable to type 'T'.
+      'B' is assignable to the constraint of type 'T', but 'T' could be instantiated with a different subtype of constraint '{}'.
 
-[WILDCARD] consol.log("hello world!");
-[WILDCARD]~~~~~~
+20   values: o => [
+     ~~~~~~
 
-  $asset$/lib.deno_runtime.d.ts[WILDCARD]
-[WILDCARD]declare const console: consoleTypes.Console;
-[WILDCARD]~~~~~~~
-[WILDCARD]'console' is declared here.
+  [WILDCARD]/tests/error_003_typescript.ts:8:3 
+
+    8   values?: (r: T) => Array<Value<T>>;
+        ~~~~~~
+    The expected type comes from property 'values' which is declared here on type 'C<B>'
+
+[WILDCARD]/tests/error_003_typescript.ts:22:12 - error TS2339: Property 't' does not exist on type 'T'.
+
+22       v: o.t,
+              ^
+
+
+Found 2 errors.
 
