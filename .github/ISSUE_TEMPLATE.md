@@ -24,9 +24,7 @@ typescript: 3.x.x
 
 ### What did you expect to see?
 
-
 ### What did you see instead?
-
 
 <!--
     To answer the questions please put "x" inside the square brackets, for example:
@@ -37,5 +35,3 @@ typescript: 3.x.x
     -> Please format your code properly (by taking code blocks into ``` some code here... ```)
     -> You can also join discussion on https://gitter.im/denolife
 !>
-
-
