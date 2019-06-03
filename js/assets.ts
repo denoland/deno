@@ -34,8 +34,12 @@ import libEs2018PromiseDts from "/third_party/node_modules/typescript/lib/lib.es
 import libEs2018RegexpDts from "/third_party/node_modules/typescript/lib/lib.es2018.regexp.d.ts!string";
 import libEs2019Dts from "/third_party/node_modules/typescript/lib/lib.es2019.d.ts!string";
 import libEs2019ArrayDts from "/third_party/node_modules/typescript/lib/lib.es2019.array.d.ts!string";
+import libEs2019ObjectDts from "/third_party/node_modules/typescript/lib/lib.es2019.object.d.ts!string";
 import libEs2019StringDts from "/third_party/node_modules/typescript/lib/lib.es2019.string.d.ts!string";
 import libEs2019SymbolDts from "/third_party/node_modules/typescript/lib/lib.es2019.symbol.d.ts!string";
+import libEs2020Dts from "/third_party/node_modules/typescript/lib/lib.es2020.d.ts!string";
+import libEs2020String from "/third_party/node_modules/typescript/lib/lib.es2020.string.d.ts!string";
+import libEs2020SymbolWellknownDts from "/third_party/node_modules/typescript/lib/lib.es2020.symbol.wellknown.d.ts!string";
 import libEs5Dts from "/third_party/node_modules/typescript/lib/lib.es5.d.ts!string";
 import libEsnextArrayDts from "/third_party/node_modules/typescript/lib/lib.esnext.array.d.ts!string";
 import libEsnextAsynciterablesDts from "/third_party/node_modules/typescript/lib/lib.esnext.asynciterable.d.ts!string";
@@ -71,8 +75,12 @@ const defaultAssets: { [key: string]: string } = {
   "lib.es2018.regexp.d.ts": libEs2018RegexpDts,
   "lib.es2019.d.ts": libEs2019Dts,
   "lib.es2019.array.d.ts": libEs2019ArrayDts,
+  "lib.es2019.object.d.ts": libEs2019ObjectDts,
   "lib.es2019.string.d.ts": libEs2019StringDts,
   "lib.es2019.symbol.d.ts": libEs2019SymbolDts,
+  "lib.es2020.d.ts": libEs2020Dts,
+  "lib.es2020.string.d.ts": libEs2020String,
+  "lib.es2020.symbol.wellknown.d.ts": libEs2020SymbolWellknownDts,
   "lib.es5.d.ts": libEs5Dts,
   "lib.esnext.d.ts": libEsnextDts,
   "lib.esnext.array.d.ts": libEsnextArrayDts,

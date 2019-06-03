@@ -389,7 +389,6 @@ window.compilerMain = function compilerMain(): void {
       .concat(emitResult.diagnostics)
       .filter(
         ({ code }): boolean => {
-          if (code === 2649) return false;
           // TS2691: An import path cannot end with a '.ts' extension. Consider
           // importing 'bad-module' instead.
           if (code === 2691) return false;
