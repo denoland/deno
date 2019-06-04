@@ -11,7 +11,6 @@
 
 #include "deno.h"
 #include "exceptions.h"
-#include "file_util.h"
 #include "internal.h"
 
 extern "C" {
