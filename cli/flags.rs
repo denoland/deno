@@ -973,4 +973,28 @@ mod tests {
       svec!["deno", PRETTIER_URL, "script_1.ts", "script_2.ts"]
     );
   }
+
+  #[test]
+  fn test_flags_from_vec_23() {
+    let (flags, subcommand, argv) = flags_from_vec(svec!["deno", "script.ts"]);
+    assert_eq!(flags, DenoFlags::default());
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "script.ts"]);
+  }
+
+  #[test]
+  fn test_flags_from_vec_24() {
+    let (flags, subcommand, argv) =
+      flags_from_vec(svec!["deno", "--allow-net", "--allow-read", "script.ts"]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        allow_net: true,
+        allow_read: true,
+        ..DenoFlags::default()
+      }
+    );
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "script.ts"]);
+  }
 }
