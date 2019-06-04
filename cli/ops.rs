@@ -129,9 +129,10 @@ pub fn dispatch_all_legacy(
   match (is_sync, op_result) {
     (_, Ok(Op::Sync(buf))) => {
       state.metrics_op_completed(buf.len());
-      match is_sync {
-        true => Op::Sync(buf),
-        false => Op::Async(Box::new(futures::future::ok(buf))),
+      if is_sync {
+        Op::Sync(buf)
+      } else {
+        Op::Async(Box::new(futures::future::ok(buf)))
       }
     }
     (false, Ok(Op::Async(fut))) => {
@@ -193,9 +194,10 @@ pub fn dispatch_all_legacy(
         },
       );
       state.metrics_op_completed(response_buf.len());
-      match is_sync {
-        true => Op::Sync(response_buf),
-        false => Op::Async(Box::new(futures::future::ok(response_buf))),
+      if is_sync {
+        Op::Sync(response_buf)
+      } else {
+        Op::Async(Box::new(futures::future::ok(response_buf)))
       }
     }
   }

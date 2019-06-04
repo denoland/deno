@@ -34,11 +34,11 @@ pub enum Op<E> {
   Async(OpAsyncFuture<E>),
 }
 
-pub type CoreErrorType = ();
+pub type CoreError = ();
 
-pub type CoreOpAsyncFuture = OpAsyncFuture<CoreErrorType>;
+pub type CoreOpAsyncFuture = OpAsyncFuture<CoreError>;
 
-pub type CoreOp = Op<CoreErrorType>;
+pub type CoreOp = Op<CoreError>;
 
 /// Stores a script used to initalize a Isolate
 pub struct Script<'a> {
