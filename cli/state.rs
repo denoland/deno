@@ -10,7 +10,7 @@ use crate::resources;
 use crate::resources::ResourceId;
 use crate::worker::Worker;
 use deno::Buf;
-use deno::CoreOpResult;
+use deno::CoreOp;
 use deno::PinnedBuf;
 use futures::future::Shared;
 use std;
@@ -94,7 +94,7 @@ impl ThreadSafeState {
     is_sync: bool,
     control: &[u8],
     zero_copy: Option<PinnedBuf>,
-  ) -> CoreOpResult {
+  ) -> CoreOp {
     ops::dispatch_all(self, is_sync, control, zero_copy, self.dispatch_selector)
   }
 }

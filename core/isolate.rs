@@ -58,11 +58,7 @@ pub enum StartupData<'a> {
 
 pub type OpResult<E> = Result<Op<E>, E>;
 
-pub type DispatchFn<E> = Fn(bool, &[u8], Option<PinnedBuf>) -> OpResult<E>;
-
-pub type CoreOpResult = OpResult<CoreErrorType>;
-
-type CoreDispatchFn = DispatchFn<CoreErrorType>;
+type CoreDispatchFn = Fn(bool, &[u8], Option<PinnedBuf>) -> CoreOp;
 
 #[derive(Default)]
 pub struct Config {
@@ -76,10 +72,7 @@ impl Config {
   /// corresponds to the second argument of Deno.core.dispatch().
   pub fn dispatch<F>(&mut self, f: F)
   where
-    F: Fn(bool, &[u8], Option<PinnedBuf>) -> CoreOpResult
-      + Send
-      + Sync
-      + 'static,
+    F: Fn(bool, &[u8], Option<PinnedBuf>) -> CoreOp + Send + Sync + 'static,
   {
     self.dispatch = Some(Arc::new(f));
   }
@@ -198,7 +191,7 @@ impl Isolate {
     let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
     let control_shared = isolate.shared.shift();
 
-    let op_result = if control_argv0.len() > 0 {
+    let op = if control_argv0.len() > 0 {
       // The user called Deno.core.send(control)
       if let Some(ref f) = isolate.config.dispatch {
         f(
@@ -228,31 +221,26 @@ impl Isolate {
     // At this point the SharedQueue should be empty.
     assert_eq!(isolate.shared.size(), 0);
 
-    match op_result {
-      Ok(op) => match (is_sync, op) {
-        (true, Op::Sync(buf)) => {
-          // For sync messages, we always return the response via Deno.core.send's
-          // return value.
-          // TODO(ry) check that if JSError thrown during respond(), that it will be
-          // picked up.
-          let _ = isolate.respond(Some(&buf));
-        }
-        (false, Op::Async(fut)) => {
-          isolate.pending_ops.push(fut);
-          isolate.have_unpolled_ops = true;
-        }
-        // Panic on unexpected synchronicity. Maybe it would be better to have two
-        // dispatch functions(one for sync one for async).
-        (true, Op::Async(_)) => {
-          panic!("Dispatch returned Op::Async for sync call!")
-        }
-        (false, Op::Sync(_)) => {
-          panic!("Dispatch returned Op::Sync for async call!")
-        }
-      },
-      Err(_) => panic!(
-        "Unhandled dispatch error. Core doesn't handle dispatch errors(yet)."
-      ),
+    match (is_sync, op) {
+      (true, Op::Sync(buf)) => {
+        // For sync messages, we always return the response via Deno.core.send's
+        // return value.
+        // TODO(ry) check that if JSError thrown during respond(), that it will be
+        // picked up.
+        let _ = isolate.respond(Some(&buf));
+      }
+      (false, Op::Async(fut)) => {
+        isolate.pending_ops.push(fut);
+        isolate.have_unpolled_ops = true;
+      }
+      // Panic on unexpected synchronicity. Maybe it would be better to have two
+      // dispatch functions(one for sync one for async).
+      (true, Op::Async(_)) => {
+        panic!("Dispatch returned Op::Async for sync call!")
+      }
+      (false, Op::Sync(_)) => {
+        panic!("Dispatch returned Op::Sync for async call!")
+      }
     }
   }
 
@@ -597,19 +585,19 @@ pub mod tests {
     let dispatch_count_ = dispatch_count.clone();
 
     let mut config = Config::default();
-    config.dispatch(move |_, control: &[u8], _| -> CoreOpResult {
+    config.dispatch(move |_, control: &[u8], _| -> CoreOp {
       dispatch_count_.fetch_add(1, Ordering::Relaxed);
       match mode {
         Mode::AsyncImmediate => {
           assert_eq!(control.len(), 1);
           assert_eq!(control[0], 42);
           let buf = vec![43u8].into_boxed_slice();
-          Ok(Op::Async(Box::new(futures::future::ok(buf))))
+          Op::Async(Box::new(futures::future::ok(buf)))
         }
         Mode::OverflowReqSync => {
           assert_eq!(control.len(), 100 * 1024 * 1024);
           let buf = vec![43u8].into_boxed_slice();
-          Ok(Op::Sync(buf))
+          Op::Sync(buf)
         }
         Mode::OverflowResSync => {
           assert_eq!(control.len(), 1);
@@ -618,12 +606,12 @@ pub mod tests {
           vec.resize(100 * 1024 * 1024, 0);
           vec[0] = 99;
           let buf = vec.into_boxed_slice();
-          Ok(Op::Sync(buf))
+          Op::Sync(buf)
         }
         Mode::OverflowReqAsync => {
           assert_eq!(control.len(), 100 * 1024 * 1024);
           let buf = vec![43u8].into_boxed_slice();
-          Ok(Op::Async(Box::new(futures::future::ok(buf))))
+          Op::Async(Box::new(futures::future::ok(buf)))
         }
         Mode::OverflowResAsync => {
           assert_eq!(control.len(), 1);
@@ -632,7 +620,7 @@ pub mod tests {
           vec.resize(100 * 1024 * 1024, 0);
           vec[0] = 4;
           let buf = vec.into_boxed_slice();
-          Ok(Op::Async(Box::new(futures::future::ok(buf))))
+          Op::Async(Box::new(futures::future::ok(buf)))
         }
       }
     });

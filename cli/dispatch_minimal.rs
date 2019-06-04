@@ -6,7 +6,7 @@
 //! message or a "minimal" message.
 use crate::state::ThreadSafeState;
 use deno::Buf;
-use deno::CoreOpResult;
+use deno::CoreOp;
 use deno::Op;
 use deno::PinnedBuf;
 use futures::Future;
@@ -91,7 +91,7 @@ pub fn dispatch_minimal(
   is_sync: bool,
   mut record: Record,
   zero_copy: Option<PinnedBuf>,
-) -> CoreOpResult {
+) -> CoreOp {
   let min_op = match record.op_id {
     OP_READ => ops::read(record.arg, zero_copy),
     OP_WRITE => ops::write(record.arg, zero_copy),
@@ -117,9 +117,9 @@ pub fn dispatch_minimal(
     Ok(buf)
   }));
   if is_sync {
-    Ok(Op::Sync(fut.wait().unwrap()))
+    Op::Sync(fut.wait().unwrap())
   } else {
-    Ok(Op::Async(fut))
+    Op::Async(fut)
   }
 }
 

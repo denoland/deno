@@ -115,7 +115,7 @@ fn dispatch(
   is_sync: bool,
   control: &[u8],
   zero_copy_buf: Option<PinnedBuf>,
-) -> CoreOpResult {
+) -> CoreOp {
   let record = Record::from(control);
   let http_bench_op = match record.op_id {
     OP_LISTEN => {
@@ -163,9 +163,9 @@ fn dispatch(
   );
 
   if is_sync {
-    Ok(Op::Sync(fut.wait().unwrap()))
+    Op::Sync(fut.wait().unwrap())
   } else {
-    Ok(Op::Async(fut))
+    Op::Async(fut)
   }
 }
 

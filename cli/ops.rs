@@ -28,7 +28,7 @@ use crate::worker::root_specifier_to_url;
 use crate::worker::Worker;
 use deno::js_check;
 use deno::Buf;
-use deno::CoreOpResult;
+use deno::CoreOp;
 use deno::JSError;
 use deno::Op;
 use deno::OpResult;
@@ -84,7 +84,7 @@ pub fn dispatch_all(
   control: &[u8],
   zero_copy: Option<PinnedBuf>,
   op_selector: OpSelector,
-) -> CoreOpResult {
+) -> CoreOp {
   let bytes_sent_control = control.len();
   let bytes_sent_zero_copy = zero_copy.as_ref().map(|b| b.len()).unwrap_or(0);
   let op = if let Some(min_record) = parse_min_record(control) {
@@ -106,7 +106,7 @@ pub fn dispatch_all_legacy(
   control: &[u8],
   zero_copy: Option<PinnedBuf>,
   op_selector: OpSelector,
-) -> CoreOpResult {
+) -> CoreOp {
   let base = msg::get_root_as_base(&control);
   let inner_type = base.inner_type();
   let cmd_id = base.cmd_id();
@@ -130,8 +130,8 @@ pub fn dispatch_all_legacy(
     (_, Ok(Op::Sync(buf))) => {
       state.metrics_op_completed(buf.len());
       match is_sync {
-        true => Ok(Op::Sync(buf)),
-        false => Ok(Op::Async(Box::new(futures::future::ok(buf)))),
+        true => Op::Sync(buf),
+        false => Op::Async(Box::new(futures::future::ok(buf))),
       }
     }
     (false, Ok(Op::Async(fut))) => {
@@ -171,7 +171,7 @@ pub fn dispatch_all_legacy(
           Ok(buf)
         }).map_err(|err| panic!("unexpected error {:?}", err)),
       );
-      Ok(Op::Async(result_fut))
+      Op::Async(result_fut)
     }
     (true, Ok(Op::Async(_))) => panic!(
       "Dispatch returned Op::Async for sync call for: {}",
@@ -194,8 +194,8 @@ pub fn dispatch_all_legacy(
       );
       state.metrics_op_completed(response_buf.len());
       match is_sync {
-        true => Ok(Op::Sync(response_buf)),
-        false => Ok(Op::Async(Box::new(futures::future::ok(response_buf)))),
+        true => Op::Sync(response_buf),
+        false => Op::Async(Box::new(futures::future::ok(response_buf))),
       }
     }
   }
