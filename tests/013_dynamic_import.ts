@@ -1,9 +1,7 @@
 (async (): Promise<void> => {
-  const {
-    returnsHi,
-    returnsFoo2,
-    printHello3
-  } = await import("./subdir/mod1.ts");
+  const { returnsHi, returnsFoo2, printHello3 } = await import(
+    "./subdir/mod1.ts"
+  );
 
   printHello3();
 

@@ -1,4 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+use crate::diagnostics::Diagnostic;
 use crate::msg;
 use crate::resources;
 use crate::startup_data;
@@ -7,7 +8,6 @@ use crate::tokio_util;
 use crate::worker::Worker;
 use deno::js_check;
 use deno::Buf;
-use deno::JSError;
 use futures::Future;
 use futures::Stream;
 use std::str;
@@ -87,7 +87,7 @@ pub fn compile_async(
   specifier: &str,
   referrer: &str,
   module_meta_data: &ModuleMetaData,
-) -> impl Future<Item = ModuleMetaData, Error = JSError> {
+) -> impl Future<Item = ModuleMetaData, Error = Diagnostic> {
   debug!(
     "Running rust part of compile_sync. specifier: {}, referrer: {}",
     &specifier, &referrer
@@ -136,14 +136,15 @@ pub fn compile_async(
   first_msg_fut
     .map_err(|_| panic!("not handled"))
     .and_then(move |maybe_msg: Option<Buf>| {
-      let _res_msg = maybe_msg.unwrap();
-
       debug!("Received message from worker");
 
-      // TODO res is EmitResult, use serde_derive to parse it. Errors from the
-      // worker or Diagnostics should be somehow forwarded to the caller!
-      // Currently they are handled inside compiler.ts with os.exit(1) and above
-      // with std::process::exit(1). This bad.
+      if let Some(msg) = maybe_msg {
+        let json_str = std::str::from_utf8(&msg).unwrap();
+        debug!("Message: {}", json_str);
+        if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
+          return Err(diagnostics);
+        }
+      }
 
       let r = state.dir.fetch_module_meta_data(
         &module_meta_data_.module_name,
@@ -169,7 +170,7 @@ pub fn compile_sync(
   specifier: &str,
   referrer: &str,
   module_meta_data: &ModuleMetaData,
-) -> Result<ModuleMetaData, JSError> {
+) -> Result<ModuleMetaData, Diagnostic> {
   tokio_util::block_on(compile_async(
     state,
     specifier,

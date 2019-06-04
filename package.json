@@ -12,7 +12,7 @@
     "eslint-config-prettier": "4.1.0",
     "flatbuffers": "1.9.0",
     "magic-string": "0.25.2",
-    "prettier": "1.16.4",
+    "prettier": "1.17.1",
     "rollup": "1.4.1",
     "rollup-plugin-alias": "1.5.1",
     "rollup-plugin-analyzer": "3.0.0",

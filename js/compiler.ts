@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as msg from "gen/cli/msg_generated";
 import { core } from "./core";
+import { Diagnostic, fromTypeScriptDiagnostic } from "./diagnostics";
 import * as flatbuffers from "./flatbuffers";
 import { sendSync } from "./dispatch";
 import { TextDecoder } from "./text_encoding";
@@ -35,6 +36,11 @@ interface CompilerReq {
   // options: ts.CompilerOptions;
   configPath?: string;
   config?: string;
+}
+
+interface ConfigureResponse {
+  ignoredOptions?: string[];
+  diagnostics?: ts.Diagnostic[];
 }
 
 /** Options that either do nothing in Deno, or would cause undesired behavior
@@ -103,6 +109,11 @@ interface ModuleMetaData {
   filename: string | undefined;
   mediaType: msg.MediaType;
   sourceCode: string | undefined;
+}
+
+interface EmitResult {
+  emitSkipped: boolean;
+  diagnostics?: Diagnostic;
 }
 
 function fetchModuleMetaData(
@@ -193,22 +204,19 @@ class Host implements ts.CompilerHost {
    * compiler's configuration options.  The method returns an array of compiler
    * options which were ignored, or `undefined`.
    */
-  configure(path: string, configurationText: string): string[] | undefined {
+  configure(path: string, configurationText: string): ConfigureResponse {
     util.log("compile.configure", path);
     const { config, error } = ts.parseConfigFileTextToJson(
       path,
       configurationText
     );
     if (error) {
-      this._logDiagnostics([error]);
+      return { diagnostics: [error] };
     }
     const { options, errors } = ts.convertCompilerOptionsFromJson(
       config.compilerOptions,
       cwd()
     );
-    if (errors.length) {
-      this._logDiagnostics(errors);
-    }
     const ignoredOptions: string[] = [];
     for (const key of Object.keys(options)) {
       if (
@@ -220,25 +228,15 @@ class Host implements ts.CompilerHost {
       }
     }
     Object.assign(this._options, options);
-    return ignoredOptions.length ? ignoredOptions : undefined;
+    return {
+      ignoredOptions: ignoredOptions.length ? ignoredOptions : undefined,
+      diagnostics: errors.length ? errors : undefined
+    };
   }
 
   getCompilationSettings(): ts.CompilerOptions {
     util.log("getCompilationSettings()");
     return this._options;
-  }
-
-  /** Log TypeScript diagnostics to the console and exit */
-  _logDiagnostics(diagnostics: ReadonlyArray<ts.Diagnostic>): never {
-    const errMsg = os.noColor
-      ? ts.formatDiagnostics(diagnostics, this)
-      : ts.formatDiagnosticsWithColorAndContext(diagnostics, this);
-
-    console.log(errMsg);
-    // TODO The compiler isolate shouldn't call os.exit(). (In fact, it
-    // shouldn't even have access to call that op.) Errors should be forwarded
-    // to to the caller and the caller exit.
-    return os.exit(1);
   }
 
   fileExists(_fileName: string): boolean {
@@ -362,10 +360,17 @@ class Host implements ts.CompilerHost {
 window.compilerMain = function compilerMain(): void {
   // workerMain should have already been called since a compiler is a worker.
   window.onmessage = ({ data }: { data: CompilerReq }): void => {
+    let emitSkipped = true;
+    let diagnostics: ts.Diagnostic[] | undefined;
+
     const { rootNames, configPath, config } = data;
     const host = new Host();
-    if (config && config.length) {
-      const ignoredOptions = host.configure(configPath!, config);
+
+    // if there is a configuration supplied, we need to parse that
+    if (config && config.length && configPath) {
+      const configResult = host.configure(configPath, config);
+      const ignoredOptions = configResult.ignoredOptions;
+      diagnostics = configResult.diagnostics;
       if (ignoredOptions) {
         console.warn(
           yellow(`Unsupported compiler options in "${configPath}"\n`) +
@@ -377,51 +382,52 @@ window.compilerMain = function compilerMain(): void {
       }
     }
 
-    const options = host.getCompilationSettings();
-    const program = ts.createProgram(rootNames, options, host);
+    // if there was a configuration and no diagnostics with it, we will continue
+    // to generate the program and possibly emit it.
+    if (!diagnostics || (diagnostics && diagnostics.length === 0)) {
+      const options = host.getCompilationSettings();
+      const program = ts.createProgram(rootNames, options, host);
 
-    const preEmitDiagnostics = ts.getPreEmitDiagnostics(program).filter(
-      ({ code }): boolean => {
-        // TS2691: An import path cannot end with a '.ts' extension. Consider
-        // importing 'bad-module' instead.
-        if (code === 2691) return false;
-        // TS5009: Cannot find the common subdirectory path for the input files.
-        if (code === 5009) return false;
-        // TS5055: Cannot write file
-        // 'http://localhost:4545/tests/subdir/mt_application_x_javascript.j4.js'
-        // because it would overwrite input file.
-        if (code === 5055) return false;
-        // TypeScript is overly opinionated that only CommonJS modules kinds can
-        // support JSON imports.  Allegedly this was fixed in
-        // Microsoft/TypeScript#26825 but that doesn't seem to be working here,
-        // so we will ignore complaints about this compiler setting.
-        if (code === 5070) return false;
-        return true;
+      diagnostics = ts.getPreEmitDiagnostics(program).filter(
+        ({ code }): boolean => {
+          // TS2691: An import path cannot end with a '.ts' extension. Consider
+          // importing 'bad-module' instead.
+          if (code === 2691) return false;
+          // TS5009: Cannot find the common subdirectory path for the input files.
+          if (code === 5009) return false;
+          // TS5055: Cannot write file
+          // 'http://localhost:4545/tests/subdir/mt_application_x_javascript.j4.js'
+          // because it would overwrite input file.
+          if (code === 5055) return false;
+          // TypeScript is overly opinionated that only CommonJS modules kinds can
+          // support JSON imports.  Allegedly this was fixed in
+          // Microsoft/TypeScript#26825 but that doesn't seem to be working here,
+          // so we will ignore complaints about this compiler setting.
+          if (code === 5070) return false;
+          return true;
+        }
+      );
+
+      // We will only proceed with the emit if there are no diagnostics.
+      if (diagnostics && diagnostics.length === 0) {
+        const emitResult = program.emit();
+        emitSkipped = emitResult.emitSkipped;
+        // emitResult.diagnostics is `readonly` in TS3.5+ and can't be assigned
+        // without casting.
+        diagnostics = emitResult.diagnostics as ts.Diagnostic[];
       }
-    );
-    if (preEmitDiagnostics.length > 0) {
-      host._logDiagnostics(preEmitDiagnostics);
-      // The above _logDiagnostics calls os.exit(). The return is here just for
-      // clarity.
-      return;
     }
 
-    const emitResult = program!.emit();
+    const result: EmitResult = {
+      emitSkipped,
+      diagnostics: diagnostics.length
+        ? fromTypeScriptDiagnostic(diagnostics)
+        : undefined
+    };
 
-    // TODO(ry) Print diagnostics in Rust.
-    // https://github.com/denoland/deno/pull/2310
+    postMessage(result);
 
-    const { diagnostics } = emitResult;
-    if (diagnostics.length > 0) {
-      host._logDiagnostics(diagnostics);
-      // The above _logDiagnostics calls os.exit(). The return is here just for
-      // clarity.
-      return;
-    }
-
-    postMessage(emitResult);
-
-    // The compiler isolate exits after a single messsage.
+    // The compiler isolate exits after a single message.
     workerClose();
   };
 };
