@@ -7,6 +7,7 @@ group("default") {
     ":deno_core_http_bench",
     ":deno_core_http_bench_test",
     ":deno_core_test",
+    ":rust_snapshot_creator",
   ]
 }
 
@@ -75,4 +76,11 @@ rust_test("deno_core_http_bench_test") {
   ]
   extern = http_bench_extern
   extern_rlib = http_bench_extern_rlib
+}
+
+rust_executable("rust_snapshot_creator") {
+  source_root = "snapshot_creator.rs"
+  deps = [
+    ":deno_core_deps",
+  ]
 }
