@@ -329,7 +329,7 @@ fn resolve_paths(paths: Vec<String>) -> Vec<String> {
 
 /// Parse ArgMatches into internal DenoFlags structure.
 /// This method should not make any side effects.
-pub fn parse_flags(matches: ArgMatches) -> DenoFlags {
+pub fn parse_flags(matches: &ArgMatches) -> DenoFlags {
   let mut flags = DenoFlags::default();
 
   if matches.is_present("log-debug") {
@@ -358,60 +358,58 @@ pub fn parse_flags(matches: ArgMatches) -> DenoFlags {
   }
 
   // flags specific to "run" subcommand
-  if let Some(run_matches) = matches.subcommand_matches("run") {
-    if run_matches.is_present("allow-read") {
-      if run_matches.value_of("allow-read").is_some() {
-        let read_wl = run_matches.values_of("allow-read").unwrap();
-        let raw_read_whitelist: Vec<String> =
-          read_wl.map(std::string::ToString::to_string).collect();
-        flags.read_whitelist = resolve_paths(raw_read_whitelist);
-        debug!("read whitelist: {:#?}", &flags.read_whitelist);
-      } else {
-        flags.allow_read = true;
-      }
-    }
-    if run_matches.is_present("allow-write") {
-      if run_matches.value_of("allow-write").is_some() {
-        let write_wl = run_matches.values_of("allow-write").unwrap();
-        let raw_write_whitelist =
-          write_wl.map(std::string::ToString::to_string).collect();
-        flags.write_whitelist = resolve_paths(raw_write_whitelist);
-        debug!("write whitelist: {:#?}", &flags.write_whitelist);
-      } else {
-        flags.allow_write = true;
-      }
-    }
-    if run_matches.is_present("allow-net") {
-      if run_matches.value_of("allow-net").is_some() {
-        let net_wl = run_matches.values_of("allow-net").unwrap();
-        flags.net_whitelist =
-          net_wl.map(std::string::ToString::to_string).collect();
-        debug!("net whitelist: {:#?}", &flags.net_whitelist);
-      } else {
-        flags.allow_net = true;
-      }
-    }
-    if run_matches.is_present("allow-env") {
-      flags.allow_env = true;
-    }
-    if run_matches.is_present("allow-run") {
-      flags.allow_run = true;
-    }
-    if run_matches.is_present("allow-hrtime") {
-      flags.allow_hrtime = true;
-    }
-    if run_matches.is_present("allow-all") {
+  if matches.is_present("allow-read") {
+    if matches.value_of("allow-read").is_some() {
+      let read_wl = matches.values_of("allow-read").unwrap();
+      let raw_read_whitelist: Vec<String> =
+        read_wl.map(std::string::ToString::to_string).collect();
+      flags.read_whitelist = resolve_paths(raw_read_whitelist);
+      debug!("read whitelist: {:#?}", &flags.read_whitelist);
+    } else {
       flags.allow_read = true;
-      flags.allow_env = true;
-      flags.allow_net = true;
-      flags.allow_run = true;
-      flags.allow_read = true;
+    }
+  }
+  if matches.is_present("allow-write") {
+    if matches.value_of("allow-write").is_some() {
+      let write_wl = matches.values_of("allow-write").unwrap();
+      let raw_write_whitelist =
+        write_wl.map(std::string::ToString::to_string).collect();
+      flags.write_whitelist = resolve_paths(raw_write_whitelist);
+      debug!("write whitelist: {:#?}", &flags.write_whitelist);
+    } else {
       flags.allow_write = true;
-      flags.allow_hrtime = true;
     }
-    if run_matches.is_present("no-prompt") {
-      flags.no_prompts = true;
+  }
+  if matches.is_present("allow-net") {
+    if matches.value_of("allow-net").is_some() {
+      let net_wl = matches.values_of("allow-net").unwrap();
+      flags.net_whitelist =
+        net_wl.map(std::string::ToString::to_string).collect();
+      debug!("net whitelist: {:#?}", &flags.net_whitelist);
+    } else {
+      flags.allow_net = true;
     }
+  }
+  if matches.is_present("allow-env") {
+    flags.allow_env = true;
+  }
+  if matches.is_present("allow-run") {
+    flags.allow_run = true;
+  }
+  if matches.is_present("allow-hrtime") {
+    flags.allow_hrtime = true;
+  }
+  if matches.is_present("allow-all") {
+    flags.allow_read = true;
+    flags.allow_env = true;
+    flags.allow_net = true;
+    flags.allow_run = true;
+    flags.allow_read = true;
+    flags.allow_write = true;
+    flags.allow_hrtime = true;
+  }
+  if matches.is_present("no-prompt") {
+    flags.no_prompts = true;
   }
 
   flags
@@ -440,7 +438,7 @@ pub fn flags_from_vec(
   let cli_app = create_cli_app();
   let matches = cli_app.get_matches_from(args);
   let mut argv: Vec<String> = vec!["deno".to_string()];
-  let mut flags = parse_flags(matches.clone());
+  let mut flags = parse_flags(&matches.clone());
 
   let subcommand = match matches.subcommand() {
     ("eval", Some(eval_match)) => {
@@ -485,6 +483,7 @@ pub fn flags_from_vec(
     }
     ("types", Some(_)) => DenoSubcommand::Types,
     ("run", Some(run_match)) => {
+      flags = parse_flags(run_match);
       match run_match.subcommand() {
         (script, Some(script_match)) => {
           argv.extend(vec![script.to_string()]);
