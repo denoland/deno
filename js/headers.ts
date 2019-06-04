@@ -1,6 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as domTypes from "./dom_types";
-import { DomIterableMixin } from "./mixins/dom_iterable";
 import { requiredArguments } from "./util";
 
 // From node-fetch
@@ -8,24 +6,22 @@ import { requiredArguments } from "./util";
 const invalidTokenRegex = /[^\^_`a-zA-Z\-0-9!#$%&'*+.|~]/;
 const invalidHeaderCharRegex = /[^\t\x20-\x7e\x80-\xff]/;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function isHeaders(value: any): value is domTypes.Headers {
-  // eslint-disable-next-line @typescript-eslint/no-use-before-define
-  return value instanceof Headers;
-}
-
-const headerMap = Symbol("header map");
+const entries = Symbol("entries");
 
 // ref: https://fetch.spec.whatwg.org/#dom-headers
-class HeadersBase {
-  private [headerMap]: Map<string, string>;
-  // TODO: headerGuard? Investigate if it is needed
-  // node-fetch did not implement this but it is in the spec
+export class Headers {
+  private [entries]: Array<[string, string]>;
 
-  private _normalizeParams(name: string, value?: string): string[] {
-    name = String(name).toLowerCase();
-    value = String(value).trim();
-    return [name, value];
+  private _normalizeParams(name: string, value: string): string[] {
+    return [this._normalizeName(name), this._normalizeValue(value)];
+  }
+
+  private _normalizeName(name: string): string {
+    return String(name).toLowerCase();
+  }
+
+  private _normalizeValue(value: string): string {
+    return String(value).trim();
   }
 
   // The following name/value validations are copied from
@@ -43,46 +39,35 @@ class HeadersBase {
     }
   }
 
-  constructor(init?: domTypes.HeadersInit) {
+  constructor(init?: Array<[string, string]> | object) {
+    this[entries] = [];
     if (init === null) {
       throw new TypeError(
         "Failed to construct 'Headers'; The provided value was not valid"
       );
-    } else if (isHeaders(init)) {
-      this[headerMap] = new Map(init);
-    } else {
-      this[headerMap] = new Map();
-      if (Array.isArray(init)) {
-        for (const tuple of init) {
-          // If header does not contain exactly two items,
-          // then throw a TypeError.
-          // ref: https://fetch.spec.whatwg.org/#concept-headers-fill
-          requiredArguments(
-            "Headers.constructor tuple array argument",
-            tuple.length,
-            2
-          );
-
-          const [name, value] = this._normalizeParams(tuple[0], tuple[1]);
-          this._validateName(name);
-          this._validateValue(value);
-          const existingValue = this[headerMap].get(name);
-          this[headerMap].set(
-            name,
-            existingValue ? `${existingValue}, ${value}` : value
-          );
-        }
-      } else if (init) {
-        const names = Object.keys(init);
-        for (const rawName of names) {
-          const rawValue = init[rawName];
-          const [name, value] = this._normalizeParams(rawName, rawValue);
-          this._validateName(name);
-          this._validateValue(value);
-          this[headerMap].set(name, value);
-        }
+    }
+    // Object type constructors
+    if (!Array.isArray(init) && typeof init == "object") {
+      for (const [name, value] of Object.entries(init)) {
+        const [newname, newvalue] = this._normalizeParams(name, value);
+        this._validateName(newname);
+        this._validateValue(newvalue);
+        this[entries].push([newname, newvalue]);
       }
     }
+    // Array type constructors
+    else if (Array.isArray(init)) {
+      for (const [name, value] of init) {
+        const [newname, newvalue] = this._normalizeParams(name, value);
+        this._validateName(newname);
+        this._validateValue(newvalue);
+        this[entries].push([newname, newvalue]);
+      }
+    }
+  }
+
+  [Symbol.iterator](): IterableIterator<[string, string]> {
+    return this[entries][Symbol.iterator]();
   }
 
   // ref: https://fetch.spec.whatwg.org/#concept-headers-append
@@ -91,49 +76,50 @@ class HeadersBase {
     const [newname, newvalue] = this._normalizeParams(name, value);
     this._validateName(newname);
     this._validateValue(newvalue);
-    const v = this[headerMap].get(newname);
-    const str = v ? `${v}, ${newvalue}` : newvalue;
-    this[headerMap].set(newname, str);
+    this[entries].push([newname, newvalue]);
   }
 
-  delete(name: string): void {
-    requiredArguments("Headers.delete", arguments.length, 1);
-    const [newname] = this._normalizeParams(name);
-    this._validateName(newname);
-    this[headerMap].delete(newname);
-  }
-
+  // https://fetch.spec.whatwg.org/#dom-headers-get
   get(name: string): string | null {
     requiredArguments("Headers.get", arguments.length, 1);
-    const [newname] = this._normalizeParams(name);
+    const newname = this._normalizeName(name);
     this._validateName(newname);
-    const value = this[headerMap].get(newname);
-    return value || null;
+    const matches = this[entries].filter((h): boolean => h[0] == newname);
+    if (!matches.length) return null;
+    const values = matches.map((m): string => m[1]);
+    return values.join(", ");
   }
 
+  // https://fetch.spec.whatwg.org/#dom-headers-has
   has(name: string): boolean {
     requiredArguments("Headers.has", arguments.length, 1);
-    const [newname] = this._normalizeParams(name);
+    const newname = this._normalizeName(name);
     this._validateName(newname);
-    return this[headerMap].has(newname);
+    const result = this[entries].find(
+      (header): boolean => header[0] == newname
+    );
+    return Boolean(result);
   }
 
+  // https://fetch.spec.whatwg.org/#dom-headers-set
   set(name: string, value: string): void {
     requiredArguments("Headers.set", arguments.length, 2);
     const [newname, newvalue] = this._normalizeParams(name, value);
     this._validateName(newname);
     this._validateValue(newvalue);
-    this[headerMap].set(newname, newvalue);
+    this.delete(newname);
+    this[entries].push([newname, newvalue]);
+  }
+
+  // https://fetch.spec.whatwg.org/#dom-headers-delete
+  delete(name: string): void {
+    requiredArguments("Headers.delete", arguments.length, 1);
+    const newname = this._normalizeName(name);
+    this._validateName(newname);
+    this[entries] = this[entries].filter((h): boolean => h[0] !== newname);
   }
 
   get [Symbol.toStringTag](): string {
     return "Headers";
   }
 }
-
-// @internal
-export class Headers extends DomIterableMixin<
-  string,
-  string,
-  typeof HeadersBase
->(HeadersBase, headerMap) {}
