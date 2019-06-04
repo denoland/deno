@@ -35,11 +35,61 @@ static ENV_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
     DENO_DIR        Set deno's base directory
     NO_COLOR        Set to disable color";
 
+fn add_permission_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
+  app
+    .arg(
+      Arg::with_name("allow-read")
+        .long("allow-read")
+        .min_values(0)
+        .takes_value(true)
+        .use_delimiter(true)
+        .require_equals(true)
+        .help("Allow file system read access"),
+    ).arg(
+      Arg::with_name("allow-write")
+        .long("allow-write")
+        .min_values(0)
+        .takes_value(true)
+        .use_delimiter(true)
+        .require_equals(true)
+        .help("Allow file system write access"),
+    ).arg(
+      Arg::with_name("allow-net")
+        .long("allow-net")
+        .min_values(0)
+        .takes_value(true)
+        .use_delimiter(true)
+        .require_equals(true)
+        .help("Allow network access"),
+    ).arg(
+      Arg::with_name("allow-env")
+        .long("allow-env")
+        .help("Allow environment access"),
+    ).arg(
+      Arg::with_name("allow-run")
+        .long("allow-run")
+        .help("Allow running subprocesses"),
+    ).arg(
+      Arg::with_name("allow-hrtime")
+        .long("allow-hrtime")
+        .help("Allow high resolution time measurement"),
+    ).arg(
+      Arg::with_name("allow-all")
+        .short("A")
+        .long("allow-all")
+        .help("Allow all permissions"),
+    ).arg(
+      Arg::with_name("no-prompt")
+        .long("no-prompt")
+        .help("Do not use prompts"),
+    )
+}
+
 pub fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
-  App::new("deno")
+  add_permission_args(App::new("deno"))
     .bin_name("deno")
     .global_settings(&[AppSettings::ColorNever])
-    .settings(&[AppSettings::DisableVersion])
+    .settings(&[AppSettings::DisableVersion, AppSettings::AllowExternalSubcommands])
     .after_help(ENV_VARIABLES_HELP)
     .long_about("A secure runtime for JavaScript and TypeScript built with V8, Rust, and Tokio.
 
@@ -180,7 +230,7 @@ Automatically downloads Prettier dependencies on first run.
             .required(true),
         ),
     ).subcommand(
-      SubCommand::with_name("run")
+      add_permission_args(SubCommand::with_name("run"))
         .settings(&[
           AppSettings::AllowExternalSubcommands,
           AppSettings::DisableHelpSubcommand,
@@ -203,51 +253,6 @@ ability to spawn subprocesses.
 
   # run program with all permissions
   deno run -A https://deno.land/std/http/file_server.ts",
-        ).arg(
-          Arg::with_name("allow-read")
-        .long("allow-read")
-        .min_values(0)
-        .takes_value(true)
-        .use_delimiter(true)
-        .require_equals(true)
-        .help("Allow file system read access"),
-    ).arg(
-      Arg::with_name("allow-write")
-        .long("allow-write")
-        .min_values(0)
-        .takes_value(true)
-        .use_delimiter(true)
-        .require_equals(true)
-        .help("Allow file system write access"),
-    ).arg(
-      Arg::with_name("allow-net")
-        .long("allow-net")
-        .min_values(0)
-        .takes_value(true)
-        .use_delimiter(true)
-        .require_equals(true)
-        .help("Allow network access"),
-    ).arg(
-          Arg::with_name("allow-env")
-            .long("allow-env")
-            .help("Allow environment access"),
-        ).arg(
-          Arg::with_name("allow-run")
-            .long("allow-run")
-            .help("Allow running subprocesses"),
-        ).arg(
-          Arg::with_name("allow-hrtime")
-            .long("allow-hrtime")
-            .help("Allow high resolution time measurement"),
-        ).arg(
-          Arg::with_name("allow-all")
-            .short("A")
-            .long("allow-all")
-            .help("Allow all permissions"),
-        ).arg(
-          Arg::with_name("no-prompt")
-            .long("no-prompt")
-            .help("Do not use prompts"),
         ).subcommand(
           // this is a fake subcommand - it's used in conjunction with
           // AppSettings:AllowExternalSubcommand to treat it as an
@@ -293,6 +298,11 @@ Demonstrates breaking the input up by space delimiter instead of by lines:
             .help("Set delimiter, defaults to newline")
             .takes_value(true),
         ).arg(Arg::with_name("code").takes_value(true).required(true)),
+    ).subcommand(
+      // this is a fake subcommand - it's used in conjunction with
+      // AppSettings:AllowExternalSubcommand to treat it as an
+      // entry point script
+      SubCommand::with_name("<script>").about("Script to run"),
     )
 }
 
@@ -511,6 +521,20 @@ pub fn flags_from_vec(
       DenoSubcommand::Xeval
     }
     ("version", Some(_)) => DenoSubcommand::Version,
+    (script, Some(script_match)) => {
+      argv.extend(vec![script.to_string()]);
+      // check if there are any extra arguments that should
+      // be passed to script
+      if script_match.is_present("") {
+        let script_args: Vec<String> = script_match
+          .values_of("")
+          .unwrap()
+          .map(String::from)
+          .collect();
+        argv.extend(script_args);
+      }
+      DenoSubcommand::Run
+    }
     _ => {
       flags.allow_net = true;
       flags.allow_env = true;
