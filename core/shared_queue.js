@@ -159,13 +159,13 @@ SharedQueue Binary Layout
     }
   }
 
-  function dispatch(control, zeroCopy = null) {
+  function dispatch(isSync, control, zeroCopy = null) {
     maybeInit();
     // First try to push control to shared.
     const success = push(control);
     // If successful, don't use first argument of core.send.
     const arg0 = success ? null : control;
-    return window.Deno.core.send(arg0, zeroCopy);
+    return window.Deno.core.send(isSync, arg0, zeroCopy);
   }
 
   const denoCore = {

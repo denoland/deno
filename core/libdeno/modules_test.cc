@@ -2,7 +2,8 @@
 #include "test.h"
 
 static int exec_count = 0;
-void recv_cb(void* user_data, deno_buf buf, deno_pinned_buf zero_copy_buf) {
+void recv_cb(void* user_data, bool is_sync, deno_buf buf,
+             deno_pinned_buf zero_copy_buf) {
   // We use this to check that scripts have executed.
   EXPECT_EQ(1u, buf.data_len);
   EXPECT_EQ(buf.data_ptr[0], 4);
@@ -17,10 +18,11 @@ TEST(ModulesTest, Resolution) {
   Deno* d = deno_new(deno_config{0, empty_snapshot, empty, recv_cb});
   EXPECT_EQ(0, exec_count);
 
-  static deno_mod a = deno_mod_new(d, true, "a.js",
-                                   "import { b } from 'b.js'\n"
-                                   "if (b() != 'b') throw Error();\n"
-                                   "Deno.core.send(new Uint8Array([4]));");
+  static deno_mod a =
+      deno_mod_new(d, true, "a.js",
+                   "import { b } from 'b.js'\n"
+                   "if (b() != 'b') throw Error();\n"
+                   "Deno.core.send(true, new Uint8Array([4]));");
   EXPECT_NE(a, 0);
   EXPECT_EQ(nullptr, deno_last_exception(d));
 
@@ -70,9 +72,10 @@ TEST(ModulesTest, ResolutionError) {
   Deno* d = deno_new(deno_config{0, empty_snapshot, empty, recv_cb});
   EXPECT_EQ(0, exec_count);
 
-  static deno_mod a = deno_mod_new(d, true, "a.js",
-                                   "import 'bad'\n"
-                                   "Deno.core.send(new Uint8Array([4]));");
+  static deno_mod a =
+      deno_mod_new(d, true, "a.js",
+                   "import 'bad'\n"
+                   "Deno.core.send(true, new Uint8Array([4]));");
   EXPECT_NE(a, 0);
   EXPECT_EQ(nullptr, deno_last_exception(d));
 
@@ -106,7 +109,7 @@ TEST(ModulesTest, ImportMetaUrl) {
   static deno_mod a =
       deno_mod_new(d, true, "a.js",
                    "if ('a.js' != import.meta.url) throw 'hmm'\n"
-                   "Deno.core.send(new Uint8Array([4]));");
+                   "Deno.core.send(true, new Uint8Array([4]));");
   EXPECT_NE(a, 0);
   EXPECT_EQ(nullptr, deno_last_exception(d));
 

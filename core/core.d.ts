@@ -10,6 +10,7 @@ declare interface MessageCallback {
 
 declare interface DenoCore {
   dispatch(
+    isSync: boolean,
     control: Uint8Array,
     zeroCopy?: ArrayBufferView | null
   ): Uint8Array | null;

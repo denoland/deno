@@ -56,19 +56,19 @@ function sendInternal(
   innerType: msg.Any,
   inner: flatbuffers.Offset,
   zeroCopy: undefined | ArrayBufferView,
-  sync = true
+  isSync = true
 ): [number, null | Uint8Array] {
   const cmdId = nextPromiseId();
   msg.Base.startBase(builder);
   msg.Base.addInner(builder, inner);
   msg.Base.addInnerType(builder, innerType);
-  msg.Base.addSync(builder, sync);
   msg.Base.addCmdId(builder, cmdId);
   builder.finish(msg.Base.endBase(builder));
 
   const control = builder.asUint8Array();
 
   const response = core.dispatch(
+    isSync,
     control,
     zeroCopy ? ui8FromArrayBufferView(zeroCopy) : undefined
   );

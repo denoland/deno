@@ -27,12 +27,18 @@ use std::sync::{Arc, Mutex, Once, ONCE_INIT};
 
 pub type Buf = Box<[u8]>;
 
-pub type OpAsyncFuture = Box<dyn Future<Item = Buf, Error = ()> + Send>;
+pub type OpAsyncFuture<E> = Box<dyn Future<Item = Buf, Error = E> + Send>;
 
-pub enum Op {
+pub enum Op<E> {
   Sync(Buf),
-  Async(OpAsyncFuture),
+  Async(OpAsyncFuture<E>),
 }
+
+pub type CoreErrorType = ();
+
+pub type CoreOpAsyncFuture = OpAsyncFuture<CoreErrorType>;
+
+pub type CoreOp = Op<CoreErrorType>;
 
 /// Stores a script used to initalize a Isolate
 pub struct Script<'a> {
@@ -50,11 +56,17 @@ pub enum StartupData<'a> {
   None,
 }
 
-type DispatchFn = Fn(&[u8], Option<PinnedBuf>) -> Op;
+pub type OpResult<E> = Result<Op<E>, E>;
+
+pub type DispatchFn<E> = Fn(bool, &[u8], Option<PinnedBuf>) -> OpResult<E>;
+
+pub type CoreOpResult = OpResult<CoreErrorType>;
+
+type CoreDispatchFn = DispatchFn<CoreErrorType>;
 
 #[derive(Default)]
 pub struct Config {
-  dispatch: Option<Arc<DispatchFn>>,
+  dispatch: Option<Arc<CoreDispatchFn>>,
   pub will_snapshot: bool,
 }
 
@@ -64,7 +76,10 @@ impl Config {
   /// corresponds to the second argument of Deno.core.dispatch().
   pub fn dispatch<F>(&mut self, f: F)
   where
-    F: Fn(&[u8], Option<PinnedBuf>) -> Op + Send + Sync + 'static,
+    F: Fn(bool, &[u8], Option<PinnedBuf>) -> CoreOpResult
+      + Send
+      + Sync
+      + 'static,
   {
     self.dispatch = Some(Arc::new(f));
   }
@@ -84,7 +99,7 @@ pub struct Isolate {
   config: Config,
   needs_init: bool,
   shared: SharedQueue,
-  pending_ops: FuturesUnordered<OpAsyncFuture>,
+  pending_ops: FuturesUnordered<CoreOpAsyncFuture>,
   have_unpolled_ops: bool,
 }
 
@@ -176,23 +191,28 @@ impl Isolate {
 
   extern "C" fn pre_dispatch(
     user_data: *mut c_void,
+    is_sync: bool,
     control_argv0: deno_buf,
     zero_copy_buf: deno_pinned_buf,
   ) {
     let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
     let control_shared = isolate.shared.shift();
 
-    let op = if control_argv0.len() > 0 {
+    let op_result = if control_argv0.len() > 0 {
       // The user called Deno.core.send(control)
       if let Some(ref f) = isolate.config.dispatch {
-        f(control_argv0.as_ref(), PinnedBuf::new(zero_copy_buf))
+        f(
+          is_sync,
+          control_argv0.as_ref(),
+          PinnedBuf::new(zero_copy_buf),
+        )
       } else {
         panic!("isolate.config.dispatch not set")
       }
     } else if let Some(c) = control_shared {
       // The user called Deno.sharedQueue.push(control)
       if let Some(ref f) = isolate.config.dispatch {
-        f(&c, PinnedBuf::new(zero_copy_buf))
+        f(is_sync, &c, PinnedBuf::new(zero_copy_buf))
       } else {
         panic!("isolate.config.dispatch not set")
       }
@@ -208,18 +228,31 @@ impl Isolate {
     // At this point the SharedQueue should be empty.
     assert_eq!(isolate.shared.size(), 0);
 
-    match op {
-      Op::Sync(buf) => {
-        // For sync messages, we always return the response via Deno.core.send's
-        // return value.
-        // TODO(ry) check that if JSError thrown during respond(), that it will be
-        // picked up.
-        let _ = isolate.respond(Some(&buf));
-      }
-      Op::Async(fut) => {
-        isolate.pending_ops.push(fut);
-        isolate.have_unpolled_ops = true;
-      }
+    match op_result {
+      Ok(op) => match (is_sync, op) {
+        (true, Op::Sync(buf)) => {
+          // For sync messages, we always return the response via Deno.core.send's
+          // return value.
+          // TODO(ry) check that if JSError thrown during respond(), that it will be
+          // picked up.
+          let _ = isolate.respond(Some(&buf));
+        }
+        (false, Op::Async(fut)) => {
+          isolate.pending_ops.push(fut);
+          isolate.have_unpolled_ops = true;
+        }
+        // Panic on unexpected synchronicity. Maybe it would be better to have two
+        // dispatch functions(one for sync one for async).
+        (true, Op::Async(_)) => {
+          panic!("Dispatch returned Op::Async for sync call!")
+        }
+        (false, Op::Sync(_)) => {
+          panic!("Dispatch returned Op::Sync for async call!")
+        }
+      },
+      Err(_) => panic!(
+        "Unhandled dispatch error. Core doesn't handle dispatch errors(yet)."
+      ),
     }
   }
 
@@ -564,19 +597,19 @@ pub mod tests {
     let dispatch_count_ = dispatch_count.clone();
 
     let mut config = Config::default();
-    config.dispatch(move |control, _| -> Op {
+    config.dispatch(move |_, control: &[u8], _| -> CoreOpResult {
       dispatch_count_.fetch_add(1, Ordering::Relaxed);
       match mode {
         Mode::AsyncImmediate => {
           assert_eq!(control.len(), 1);
           assert_eq!(control[0], 42);
           let buf = vec![43u8].into_boxed_slice();
-          Op::Async(Box::new(futures::future::ok(buf)))
+          Ok(Op::Async(Box::new(futures::future::ok(buf))))
         }
         Mode::OverflowReqSync => {
           assert_eq!(control.len(), 100 * 1024 * 1024);
           let buf = vec![43u8].into_boxed_slice();
-          Op::Sync(buf)
+          Ok(Op::Sync(buf))
         }
         Mode::OverflowResSync => {
           assert_eq!(control.len(), 1);
@@ -585,12 +618,12 @@ pub mod tests {
           vec.resize(100 * 1024 * 1024, 0);
           vec[0] = 99;
           let buf = vec.into_boxed_slice();
-          Op::Sync(buf)
+          Ok(Op::Sync(buf))
         }
         Mode::OverflowReqAsync => {
           assert_eq!(control.len(), 100 * 1024 * 1024);
           let buf = vec![43u8].into_boxed_slice();
-          Op::Async(Box::new(futures::future::ok(buf)))
+          Ok(Op::Async(Box::new(futures::future::ok(buf))))
         }
         Mode::OverflowResAsync => {
           assert_eq!(control.len(), 1);
@@ -599,7 +632,7 @@ pub mod tests {
           vec.resize(100 * 1024 * 1024, 0);
           vec[0] = 4;
           let buf = vec.into_boxed_slice();
-          Op::Async(Box::new(futures::future::ok(buf)))
+          Ok(Op::Async(Box::new(futures::future::ok(buf))))
         }
       }
     });
@@ -626,9 +659,9 @@ pub mod tests {
       "filename.js",
       r#"
         let control = new Uint8Array([42]);
-        Deno.core.send(control);
+        Deno.core.send(false, control);
         async function main() {
-          Deno.core.send(control);
+          Deno.core.send(false, control);
         }
         main();
         "#,
@@ -647,7 +680,7 @@ pub mod tests {
         import { b } from 'b.js'
         if (b() != 'b') throw Error();
         let control = new Uint8Array([42]);
-        Deno.core.send(control);
+        Deno.core.send(false, control);
       "#,
       ).unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
@@ -703,7 +736,7 @@ pub mod tests {
         r#"
         assert(nrecv == 0);
         let control = new Uint8Array([42]);
-        Deno.core.send(control);
+        Deno.core.send(false, control);
         assert(nrecv == 0);
         "#,
       ));
@@ -714,7 +747,7 @@ pub mod tests {
         "check2.js",
         r#"
         assert(nrecv == 1);
-        Deno.core.send(control);
+        Deno.core.send(false, control);
         assert(nrecv == 1);
         "#,
       ));
@@ -750,11 +783,11 @@ pub mod tests {
         r#"
         let control = new Uint8Array([42]);
         Deno.core.sharedQueue.push(control);
-        Deno.core.send();
+        Deno.core.send(false);
         assert(nrecv === 0);
 
         Deno.core.sharedQueue.push(control);
-        Deno.core.send();
+        Deno.core.send(false);
         assert(nrecv === 0);
         "#,
       ));
@@ -844,7 +877,7 @@ pub mod tests {
         Deno.core.setAsyncHandler((buf) => { asyncRecv++ });
         // Large message that will overflow the shared space.
         let control = new Uint8Array(100 * 1024 * 1024);
-        let response = Deno.core.dispatch(control);
+        let response = Deno.core.dispatch(true, control);
         assert(response instanceof Uint8Array);
         assert(response.length == 1);
         assert(response[0] == 43);
@@ -866,7 +899,7 @@ pub mod tests {
         Deno.core.setAsyncHandler((buf) => { asyncRecv++ });
         // Large message that will overflow the shared space.
         let control = new Uint8Array([42]);
-        let response = Deno.core.dispatch(control);
+        let response = Deno.core.dispatch(true, control);
         assert(response instanceof Uint8Array);
         assert(response.length == 100 * 1024 * 1024);
         assert(response[0] == 99);
@@ -891,7 +924,7 @@ pub mod tests {
         });
         // Large message that will overflow the shared space.
         let control = new Uint8Array(100 * 1024 * 1024);
-        let response = Deno.core.dispatch(control);
+        let response = Deno.core.dispatch(false, control);
         // Async messages always have null response.
         assert(response == null);
         assert(asyncRecv == 0);
@@ -920,7 +953,7 @@ pub mod tests {
         });
         // Large message that will overflow the shared space.
         let control = new Uint8Array([42]);
-        let response = Deno.core.dispatch(control);
+        let response = Deno.core.dispatch(false, control);
         assert(response == null);
         assert(asyncRecv == 0);
         "#,
@@ -948,12 +981,12 @@ pub mod tests {
         });
         // Large message that will overflow the shared space.
         let control = new Uint8Array([42]);
-        let response = Deno.core.dispatch(control);
+        let response = Deno.core.dispatch(false, control);
         assert(response == null);
         assert(asyncRecv == 0);
         // Dispatch another message to verify that pending ops
         // are done even if shared space overflows
-        Deno.core.dispatch(control);
+        Deno.core.dispatch(false, control);
         "#,
       ));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);

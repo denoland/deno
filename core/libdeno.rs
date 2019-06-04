@@ -188,6 +188,7 @@ impl Snapshot2<'_> {
 #[allow(non_camel_case_types)]
 type deno_recv_cb = unsafe extern "C" fn(
   user_data: *mut c_void,
+  is_sync: bool,
   control_buf: deno_buf, // deprecated
   zero_copy_buf: deno_pinned_buf,
 );

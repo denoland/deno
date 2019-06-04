@@ -20,6 +20,7 @@ declare interface DenoCore {
   recv(cb: MessageCallback): void;
 
   send(
+    isSync: boolean,
     control: null | ArrayBufferView,
     data?: ArrayBufferView
   ): null | Uint8Array;

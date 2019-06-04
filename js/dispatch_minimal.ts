@@ -72,6 +72,6 @@ export function sendAsyncMinimal(
   const promise = util.createResolvable<number>();
   promiseTableMin.set(promiseId, promise);
 
-  core.dispatch(scratchBytes, zeroCopy);
+  core.dispatch(false, scratchBytes, zeroCopy);
   return promise;
 }

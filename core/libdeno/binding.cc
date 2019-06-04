@@ -223,23 +223,29 @@ void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
 
   v8::HandleScope handle_scope(isolate);
 
+  bool is_sync = true;
+  if (args[0]->IsBoolean()) {
+    auto is_sync_v8_handle = v8::Local<v8::Boolean>::Cast(args[0]);
+    is_sync = is_sync_v8_handle->Value();
+  }
+
   deno_buf control = {nullptr, 0};
-  if (args[0]->IsArrayBufferView()) {
-    auto view = v8::Local<v8::ArrayBufferView>::Cast(args[0]);
+  if (args[1]->IsArrayBufferView()) {
+    auto view = v8::Local<v8::ArrayBufferView>::Cast(args[1]);
     auto data =
         reinterpret_cast<uint8_t*>(view->Buffer()->GetContents().Data());
     control = {data + view->ByteOffset(), view->ByteLength()};
   }
 
   PinnedBuf zero_copy =
-      args[1]->IsArrayBufferView()
-          ? PinnedBuf(v8::Local<v8::ArrayBufferView>::Cast(args[1]))
+      args[2]->IsArrayBufferView()
+          ? PinnedBuf(v8::Local<v8::ArrayBufferView>::Cast(args[2]))
           : PinnedBuf();
 
   DCHECK_NULL(d->current_args_);
   d->current_args_ = &args;
 
-  d->recv_cb_(d->user_data_, control, zero_copy.IntoRaw());
+  d->recv_cb_(d->user_data_, is_sync, control, zero_copy.IntoRaw());
 
   if (d->current_args_ == nullptr) {
     // This indicates that deno_repond() was called already.
