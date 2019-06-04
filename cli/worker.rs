@@ -4,7 +4,6 @@ use crate::compiler::ModuleMetaData;
 use crate::errors::DenoError;
 use crate::errors::RustOrJsError;
 use crate::js_errors;
-use crate::js_errors::JSErrorColor;
 use crate::msg;
 use crate::state::ThreadSafeState;
 use crate::tokio_util;
@@ -233,7 +232,7 @@ fn fetch_module_meta_data_and_maybe_compile_async(
             compile_async(state_.clone(), &specifier, &referrer, &out)
               .map_err(|e| {
                 debug!("compiler error exiting!");
-                eprintln!("{}", JSErrorColor(&e).to_string());
+                eprintln!("\n{}", e.to_string());
                 std::process::exit(1);
               }).and_then(move |out| {
                 debug!(">>>>> compile_sync END");
