@@ -1,5 +1,4 @@
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import("//deno.gni")
 import("//third_party/v8/gni/v8.gni")
 
 config("deno_config") {
@@ -50,8 +49,6 @@ v8_source_set("libdeno") {
     "deno.h",
     "exceptions.cc",
     "exceptions.h",
-    "file_util.cc",
-    "file_util.h",
     "internal.h",
     "modules.cc",
   ]
@@ -71,39 +68,21 @@ v8_static_library("libdeno_static_lib") {
   configs = [ ":deno_config" ]
 }
 
-v8_executable("snapshot_creator") {
-  sources = [
-    "snapshot_creator.cc",
-  ]
-  deps = [
-    ":libdeno",
-  ]
-  configs = [ ":deno_config" ]
-}
-
 v8_executable("libdeno_test") {
   testonly = true
   sources = [
-    "file_util_test.cc",
     "libdeno_test.cc",
     "modules_test.cc",
     "test.cc",
   ]
   deps = [
     ":libdeno",
-    ":snapshot_test",
     "//testing/gtest:gtest",
   ]
   data = [
-    "$target_gen_dir/snapshot_test.bin",
+    "libdeno_test.js",
   ]
-  snapshot_path = rebase_path(data[0], root_build_dir)
-  defines = [ "SNAPSHOT_PATH=\"$snapshot_path\"" ]
+  js_path = rebase_path(data[0])
+  defines = [ "JS_PATH=\"$js_path\"" ]
   configs = [ ":deno_config" ]
-}
-
-# Generates $target_gen_dir/snapshot_test.bin
-snapshot("snapshot_test") {
-  testonly = true
-  source_root = "libdeno_test.js"
 }

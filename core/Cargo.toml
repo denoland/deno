@@ -13,6 +13,10 @@ repository = "https://github.com/denoland/deno"
 [lib]
 path = "lib.rs"
 
+[[bin]]
+name = "snapshot_creator"
+path = "snapshot_creator.rs"
+
 [dependencies]
 futures = "0.1.27"
 lazy_static = "1.3.0"
