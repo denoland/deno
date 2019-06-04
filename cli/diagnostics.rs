@@ -1,4 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+//! This module encodes TypeScript errors (diagnostics) into Rust structs and 
+//! contains code for printing them to the console.
 use crate::ansi;
 use serde_json;
 use serde_json::value::Value;
@@ -73,17 +75,41 @@ impl fmt::Display for Diagnostic {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct DiagnosticItem {
+  /// The top level message relating to the diagnostic item.
   pub message: String,
+
+  /// A chain of messages, code, and categories of messages which indicate the
+  /// full diagnostic information.
   pub message_chain: Option<Box<DiagnosticMessageChain>>,
+
+  /// Other diagnostic items that are related to the diagnostic, usually these
+  /// are suggestions of why an error occurred.
   pub related_information: Option<Vec<DiagnosticItem>>,
+
+  /// The source line the diagnostic is in reference to.
   pub source_line: Option<String>,
+
+  /// Zero-based index to the line number of the error.
   pub line_number: Option<i64>,
+
+  /// The resource name provided to the TypeScript compiler.
   pub script_resource_name: Option<String>,
+
+  /// Zero-based index to the start position in the entire script resource.
   pub start_position: Option<i64>,
+
+  /// Zero-based index to the end position in the entire script resource.
   pub end_position: Option<i64>,
   pub category: DiagnosticCategory,
+
+  /// This is defined in TypeScript and can be referenced via
+  /// [diagnosticMessages.json](https://github.com/microsoft/TypeScript/blob/master/src/compiler/diagnosticMessages.json).
   pub code: i64,
+
+  /// Zero-based index to the start column on `line_number`.
   pub start_column: Option<i64>,
+
+  /// Zero-based index to the end column on `line_number`.
   pub end_column: Option<i64>,
 }
 
@@ -96,7 +122,7 @@ impl DiagnosticItem {
       .get("message")
       .and_then(|v| v.as_str().map(String::from))
       .unwrap();
-    let category = DiagnosticCategory::from_i64(
+    let category = DiagnosticCategory::from(
       obj.get("category").and_then(Value::as_i64).unwrap(),
     );
     let code = obj.get("code").and_then(Value::as_i64).unwrap();
@@ -153,6 +179,8 @@ impl DiagnosticItem {
   }
 }
 
+// TODO should chare logic with cli/js_errors, possibly with JSError
+// implementing the `DisplayFormatter` trait.
 impl DisplayFormatter for DiagnosticItem {
   fn format_category_and_code(&self) -> String {
     let category = match self.category {
@@ -320,7 +348,7 @@ impl DiagnosticMessageChain {
       .and_then(|v| v.as_str().map(String::from))
       .unwrap();
     let code = obj.get("code").and_then(Value::as_i64).unwrap();
-    let category = DiagnosticCategory::from_i64(
+    let category = DiagnosticCategory::from(
       obj.get("category").and_then(Value::as_i64).unwrap(),
     );
 
@@ -349,8 +377,8 @@ pub enum DiagnosticCategory {
   Suggestion, // 5
 }
 
-impl DiagnosticCategory {
-  fn from_i64(value: i64) -> Self {
+impl From<i64> for DiagnosticCategory {
+  fn from(value: i64) -> Self {
     match value {
       0 => DiagnosticCategory::Log,
       1 => DiagnosticCategory::Debug,
