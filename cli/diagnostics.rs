@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-//! This module encodes TypeScript errors (diagnostics) into Rust structs and 
+//! This module encodes TypeScript errors (diagnostics) into Rust structs and
 //! contains code for printing them to the console.
 use crate::ansi;
 use serde_json;
