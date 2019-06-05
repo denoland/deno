@@ -52,7 +52,7 @@ pub struct Record {
 impl Into<Buf> for Record {
   fn into(self) -> Buf {
     let buf32 = vec![self.op_id, self.arg, self.result].into_boxed_slice();
-    let ptr = Box::into_raw(buf32) as *mut [u8; 16];
+    let ptr = Box::into_raw(buf32) as *mut [u8; 12];
     unsafe { Box::from_raw(ptr) }
   }
 }
