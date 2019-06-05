@@ -35,11 +35,61 @@ static ENV_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
     DENO_DIR        Set deno's base directory
     NO_COLOR        Set to disable color";
 
+fn add_run_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
+  app
+    .arg(
+      Arg::with_name("allow-read")
+        .long("allow-read")
+        .min_values(0)
+        .takes_value(true)
+        .use_delimiter(true)
+        .require_equals(true)
+        .help("Allow file system read access"),
+    ).arg(
+      Arg::with_name("allow-write")
+        .long("allow-write")
+        .min_values(0)
+        .takes_value(true)
+        .use_delimiter(true)
+        .require_equals(true)
+        .help("Allow file system write access"),
+    ).arg(
+      Arg::with_name("allow-net")
+        .long("allow-net")
+        .min_values(0)
+        .takes_value(true)
+        .use_delimiter(true)
+        .require_equals(true)
+        .help("Allow network access"),
+    ).arg(
+      Arg::with_name("allow-env")
+        .long("allow-env")
+        .help("Allow environment access"),
+    ).arg(
+      Arg::with_name("allow-run")
+        .long("allow-run")
+        .help("Allow running subprocesses"),
+    ).arg(
+      Arg::with_name("allow-hrtime")
+        .long("allow-hrtime")
+        .help("Allow high resolution time measurement"),
+    ).arg(
+      Arg::with_name("allow-all")
+        .short("A")
+        .long("allow-all")
+        .help("Allow all permissions"),
+    ).arg(
+      Arg::with_name("no-prompt")
+        .long("no-prompt")
+        .help("Do not use prompts"),
+    )
+}
+
 pub fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
-  App::new("deno")
+  add_run_args(App::new("deno"))
     .bin_name("deno")
     .global_settings(&[AppSettings::ColorNever])
-    .settings(&[AppSettings::DisableVersion])
+    .settings(&[AppSettings::DisableVersion, AppSettings::AllowExternalSubcommands])
     .after_help(ENV_VARIABLES_HELP)
     .long_about("A secure runtime for JavaScript and TypeScript built with V8, Rust, and Tokio.
 
@@ -53,7 +103,7 @@ To run the REPL:
 
 To execute a sandboxed script:
 
-  deno run https://deno.land/welcome.ts
+  deno https://deno.land/welcome.ts
 
 To evaluate code from the command line:
 
@@ -180,7 +230,7 @@ Automatically downloads Prettier dependencies on first run.
             .required(true),
         ),
     ).subcommand(
-      SubCommand::with_name("run")
+      add_run_args(SubCommand::with_name("run"))
         .settings(&[
           AppSettings::AllowExternalSubcommands,
           AppSettings::DisableHelpSubcommand,
@@ -203,51 +253,6 @@ ability to spawn subprocesses.
 
   # run program with all permissions
   deno run -A https://deno.land/std/http/file_server.ts",
-        ).arg(
-          Arg::with_name("allow-read")
-        .long("allow-read")
-        .min_values(0)
-        .takes_value(true)
-        .use_delimiter(true)
-        .require_equals(true)
-        .help("Allow file system read access"),
-    ).arg(
-      Arg::with_name("allow-write")
-        .long("allow-write")
-        .min_values(0)
-        .takes_value(true)
-        .use_delimiter(true)
-        .require_equals(true)
-        .help("Allow file system write access"),
-    ).arg(
-      Arg::with_name("allow-net")
-        .long("allow-net")
-        .min_values(0)
-        .takes_value(true)
-        .use_delimiter(true)
-        .require_equals(true)
-        .help("Allow network access"),
-    ).arg(
-          Arg::with_name("allow-env")
-            .long("allow-env")
-            .help("Allow environment access"),
-        ).arg(
-          Arg::with_name("allow-run")
-            .long("allow-run")
-            .help("Allow running subprocesses"),
-        ).arg(
-          Arg::with_name("allow-hrtime")
-            .long("allow-hrtime")
-            .help("Allow high resolution time measurement"),
-        ).arg(
-          Arg::with_name("allow-all")
-            .short("A")
-            .long("allow-all")
-            .help("Allow all permissions"),
-        ).arg(
-          Arg::with_name("no-prompt")
-            .long("no-prompt")
-            .help("Do not use prompts"),
         ).subcommand(
           // this is a fake subcommand - it's used in conjunction with
           // AppSettings:AllowExternalSubcommand to treat it as an
@@ -293,6 +298,11 @@ Demonstrates breaking the input up by space delimiter instead of by lines:
             .help("Set delimiter, defaults to newline")
             .takes_value(true),
         ).arg(Arg::with_name("code").takes_value(true).required(true)),
+    ).subcommand(
+      // this is a fake subcommand - it's used in conjunction with
+      // AppSettings:AllowExternalSubcommand to treat it as an
+      // entry point script
+      SubCommand::with_name("<script>").about("Script to run"),
     )
 }
 
@@ -319,7 +329,7 @@ fn resolve_paths(paths: Vec<String>) -> Vec<String> {
 
 /// Parse ArgMatches into internal DenoFlags structure.
 /// This method should not make any side effects.
-pub fn parse_flags(matches: ArgMatches) -> DenoFlags {
+pub fn parse_flags(matches: &ArgMatches) -> DenoFlags {
   let mut flags = DenoFlags::default();
 
   if matches.is_present("log-debug") {
@@ -347,61 +357,73 @@ pub fn parse_flags(matches: ArgMatches) -> DenoFlags {
     flags.v8_flags = Some(v8_flags);
   }
 
+  flags = parse_permission_args(flags, matches);
   // flags specific to "run" subcommand
   if let Some(run_matches) = matches.subcommand_matches("run") {
-    if run_matches.is_present("allow-read") {
-      if run_matches.value_of("allow-read").is_some() {
-        let read_wl = run_matches.values_of("allow-read").unwrap();
-        let raw_read_whitelist: Vec<String> =
-          read_wl.map(std::string::ToString::to_string).collect();
-        flags.read_whitelist = resolve_paths(raw_read_whitelist);
-        debug!("read whitelist: {:#?}", &flags.read_whitelist);
-      } else {
-        flags.allow_read = true;
-      }
-    }
-    if run_matches.is_present("allow-write") {
-      if run_matches.value_of("allow-write").is_some() {
-        let write_wl = run_matches.values_of("allow-write").unwrap();
-        let raw_write_whitelist =
-          write_wl.map(std::string::ToString::to_string).collect();
-        flags.write_whitelist = resolve_paths(raw_write_whitelist);
-        debug!("write whitelist: {:#?}", &flags.write_whitelist);
-      } else {
-        flags.allow_write = true;
-      }
-    }
-    if run_matches.is_present("allow-net") {
-      if run_matches.value_of("allow-net").is_some() {
-        let net_wl = run_matches.values_of("allow-net").unwrap();
-        flags.net_whitelist =
-          net_wl.map(std::string::ToString::to_string).collect();
-        debug!("net whitelist: {:#?}", &flags.net_whitelist);
-      } else {
-        flags.allow_net = true;
-      }
-    }
-    if run_matches.is_present("allow-env") {
-      flags.allow_env = true;
-    }
-    if run_matches.is_present("allow-run") {
-      flags.allow_run = true;
-    }
-    if run_matches.is_present("allow-hrtime") {
-      flags.allow_hrtime = true;
-    }
-    if run_matches.is_present("allow-all") {
+    flags = parse_permission_args(flags.clone(), run_matches);
+  }
+
+  flags
+}
+
+/// Parse permission specific matches Args and assign to DenoFlags.
+/// This method is required because multiple subcommands use permission args.
+fn parse_permission_args(
+  mut flags: DenoFlags,
+  matches: &ArgMatches,
+) -> DenoFlags {
+  if matches.is_present("allow-read") {
+    if matches.value_of("allow-read").is_some() {
+      let read_wl = matches.values_of("allow-read").unwrap();
+      let raw_read_whitelist: Vec<String> =
+        read_wl.map(std::string::ToString::to_string).collect();
+      flags.read_whitelist = resolve_paths(raw_read_whitelist);
+      debug!("read whitelist: {:#?}", &flags.read_whitelist);
+    } else {
       flags.allow_read = true;
-      flags.allow_env = true;
-      flags.allow_net = true;
-      flags.allow_run = true;
-      flags.allow_read = true;
+    }
+  }
+  if matches.is_present("allow-write") {
+    if matches.value_of("allow-write").is_some() {
+      let write_wl = matches.values_of("allow-write").unwrap();
+      let raw_write_whitelist =
+        write_wl.map(std::string::ToString::to_string).collect();
+      flags.write_whitelist = resolve_paths(raw_write_whitelist);
+      debug!("write whitelist: {:#?}", &flags.write_whitelist);
+    } else {
       flags.allow_write = true;
-      flags.allow_hrtime = true;
     }
-    if run_matches.is_present("no-prompt") {
-      flags.no_prompts = true;
+  }
+  if matches.is_present("allow-net") {
+    if matches.value_of("allow-net").is_some() {
+      let net_wl = matches.values_of("allow-net").unwrap();
+      flags.net_whitelist =
+        net_wl.map(std::string::ToString::to_string).collect();
+      debug!("net whitelist: {:#?}", &flags.net_whitelist);
+    } else {
+      flags.allow_net = true;
     }
+  }
+  if matches.is_present("allow-env") {
+    flags.allow_env = true;
+  }
+  if matches.is_present("allow-run") {
+    flags.allow_run = true;
+  }
+  if matches.is_present("allow-hrtime") {
+    flags.allow_hrtime = true;
+  }
+  if matches.is_present("allow-all") {
+    flags.allow_read = true;
+    flags.allow_env = true;
+    flags.allow_net = true;
+    flags.allow_run = true;
+    flags.allow_read = true;
+    flags.allow_write = true;
+    flags.allow_hrtime = true;
+  }
+  if matches.is_present("no-prompt") {
+    flags.no_prompts = true;
   }
 
   flags
@@ -430,7 +452,7 @@ pub fn flags_from_vec(
   let cli_app = create_cli_app();
   let matches = cli_app.get_matches_from(args);
   let mut argv: Vec<String> = vec!["deno".to_string()];
-  let mut flags = parse_flags(matches.clone());
+  let mut flags = parse_flags(&matches.clone());
 
   let subcommand = match matches.subcommand() {
     ("eval", Some(eval_match)) => {
@@ -511,6 +533,20 @@ pub fn flags_from_vec(
       DenoSubcommand::Xeval
     }
     ("version", Some(_)) => DenoSubcommand::Version,
+    (script, Some(script_match)) => {
+      argv.extend(vec![script.to_string()]);
+      // check if there are any extra arguments that should
+      // be passed to script
+      if script_match.is_present("") {
+        let script_args: Vec<String> = script_match
+          .values_of("")
+          .unwrap()
+          .map(String::from)
+          .collect();
+        argv.extend(script_args);
+      }
+      DenoSubcommand::Run
+    }
     _ => {
       flags.allow_net = true;
       flags.allow_env = true;
@@ -948,5 +984,54 @@ mod tests {
       argv,
       svec!["deno", PRETTIER_URL, "script_1.ts", "script_2.ts"]
     );
+  }
+
+  #[test]
+  fn test_flags_from_vec_23() {
+    let (flags, subcommand, argv) = flags_from_vec(svec!["deno", "script.ts"]);
+    assert_eq!(flags, DenoFlags::default());
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "script.ts"]);
+  }
+
+  #[test]
+  fn test_flags_from_vec_24() {
+    let (flags, subcommand, argv) =
+      flags_from_vec(svec!["deno", "--allow-net", "--allow-read", "script.ts"]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        allow_net: true,
+        allow_read: true,
+        ..DenoFlags::default()
+      }
+    );
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "script.ts"]);
+  }
+
+  #[test]
+  fn test_flags_from_vec_25() {
+    let (flags, subcommand, argv) = flags_from_vec(svec![
+      "deno",
+      "-r",
+      "-D",
+      "--allow-net",
+      "run",
+      "--allow-read",
+      "script.ts"
+    ]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        reload: true,
+        log_debug: true,
+        allow_net: true,
+        allow_read: true,
+        ..DenoFlags::default()
+      }
+    );
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "script.ts"]);
   }
 }

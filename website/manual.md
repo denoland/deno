@@ -593,30 +593,60 @@ if (import.meta.main) {
 
 ```shellsession
 deno
+A secure runtime for JavaScript and TypeScript built with V8, Rust, and Tokio.
+
+Docs: https://deno.land/manual.html
+Modules: https://github.com/denoland/deno_std
+Bugs: https://github.com/denoland/deno/issues
+
+To run the REPL:
+
+  deno
+
+To execute a sandboxed script:
+
+  deno https://deno.land/welcome.ts
+
+To evaluate code from the command line:
+
+  deno eval "console.log(30933 + 404)"
+
+To get help on the another subcommands (run in this case):
+
+  deno help run
 
 USAGE:
     deno [FLAGS] [OPTIONS] [SUBCOMMAND]
 
 FLAGS:
-    -h, --help          Prints help information
-    -D, --log-debug     Log debug output
-    -r, --reload        Reload source code cache (recompile TypeScript)
-        --v8-options    Print V8 command line options
+    -A, --allow-all       Allow all permissions
+        --allow-env       Allow environment access
+        --allow-hrtime    Allow high resolution time measurement
+        --allow-run       Allow running subprocesses
+    -h, --help            Prints help information
+    -D, --log-debug       Log debug output
+        --no-prompt       Do not use prompts
+    -r, --reload          Reload source code cache (recompile TypeScript)
+        --v8-options      Print V8 command line options
 
 OPTIONS:
-    -c, --config <FILE>          Load compiler configuration file
-        --v8-flags=<v8-flags>    Set V8 command line options
+        --allow-net=<allow-net>        Allow network access
+        --allow-read=<allow-read>      Allow file system read access
+        --allow-write=<allow-write>    Allow file system write access
+    -c, --config <FILE>                Load compiler configuration file
+        --v8-flags=<v8-flags>          Set V8 command line options
 
 SUBCOMMANDS:
-    eval       Eval script
-    fetch      Fetch the dependencies
-    fmt        Format files
-    help       Prints this message or the help of the given subcommand(s)
-    info       Show source file related info
-    run        Run a program given a filename or url to the source code
-    types      Print runtime TypeScript declarations
-    version    Print the version
-    xeval      Eval a script on text segments from stdin
+    <script>    Script to run
+    eval        Eval script
+    fetch       Fetch the dependencies
+    fmt         Format files
+    help        Prints this message or the help of the given subcommand(s)
+    info        Show source file related info
+    run         Run a program given a filename or url to the source code
+    types       Print runtime TypeScript declarations
+    version     Print the version
+    xeval       Eval a script on text segments from stdin
 
 ENVIRONMENT VARIABLES:
     DENO_DIR        Set deno's base directory
