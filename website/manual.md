@@ -595,7 +595,6 @@ To run the REPL:
 To execute a sandboxed script:
 
   deno https://deno.land/welcome.ts
-  deno run https://deno.land/welcome.ts
 
 To evaluate code from the command line:
 
