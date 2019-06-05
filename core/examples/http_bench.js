@@ -29,13 +29,13 @@ function createResolvable() {
   return Object.assign(promise, methods);
 }
 
-const scratch32 = new Int32Array(4);
+const scratch32 = new Int32Array(3);
 const scratchBytes = new Uint8Array(
   scratch32.buffer,
   scratch32.byteOffset,
   scratch32.byteLength
 );
-assert(scratchBytes.byteLength === 4 * 4);
+assert(scratchBytes.byteLength === 3 * 4);
 
 function send(promiseId, opId, arg, zeroCopy = null) {
   scratch32[0] = opId;
@@ -54,7 +54,7 @@ function sendAsync(opId, arg, zeroCopy = null) {
 }
 
 function recordFromBuf(buf) {
-  assert(buf.byteLength === 16);
+  assert(buf.byteLength === 12);
   const buf32 = new Int32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
   return {
     opId: buf32[0],

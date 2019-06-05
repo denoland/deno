@@ -1693,7 +1693,7 @@ fn op_dial(
       .and_then(move |addr| {
         TcpStream::connect(&addr)
           .map_err(DenoError::from)
-          .and_then(move |tcp_stream| new_conn(tcp_stream))
+          .and_then(new_conn)
       });
   if is_sync {
     let buf = tokio_util::block_on(op)?;
