@@ -92,10 +92,9 @@ where
   }
 }
 
-// TODO(ry) Move this to main.rs
 pub fn print_file_info(worker: &Worker, url: &str) {
   let maybe_out =
-    worker::fetch_module_meta_data_and_maybe_compile(&worker.state, url, ".");
+    state::fetch_module_meta_data_and_maybe_compile(&worker.state, url, ".");
   if let Err(err) = maybe_out {
     println!("{}", err);
     return;
@@ -126,7 +125,8 @@ pub fn print_file_info(worker: &Worker, url: &str) {
     );
   }
 
-  if let Some(deps) = worker.modules.deps(&out.module_name) {
+  let modules = worker.modules.lock().unwrap();
+  if let Some(deps) = modules.deps(&out.module_name) {
     println!("{}{}", ansi::bold("deps:\n".to_string()), deps.name);
     if let Some(ref depsdeps) = deps.deps {
       for d in depsdeps {
@@ -193,7 +193,7 @@ fn fetch_or_info_command(
 
     worker
       .execute_mod_async(&main_url, true)
-      .and_then(move |worker| {
+      .and_then(move |()| {
         if print_info {
           print_file_info(&worker, &main_module);
         }
@@ -201,7 +201,7 @@ fn fetch_or_info_command(
           js_check(result);
           Ok(())
         })
-      }).map_err(|(err, _worker)| print_err_and_exit(err))
+      }).map_err(print_err_and_exit)
   });
   tokio_util::run(main_future);
 }
@@ -289,12 +289,12 @@ fn run_script(flags: DenoFlags, argv: Vec<String>) {
 
     worker
       .execute_mod_async(&main_url, false)
-      .and_then(move |worker| {
+      .and_then(move |()| {
         worker.then(|result| {
           js_check(result);
           Ok(())
         })
-      }).map_err(|(err, _worker)| print_err_and_exit(err))
+      }).map_err(print_err_and_exit)
   });
   tokio_util::run(main_future);
 }

@@ -1,18 +1,27 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+use crate::compiler::compile_async;
+use crate::compiler::ModuleMetaData;
 use crate::deno_dir;
+use crate::errors::DenoError;
 use crate::errors::DenoResult;
 use crate::flags;
 use crate::global_timer::GlobalTimer;
+use crate::msg;
 use crate::ops;
 use crate::permissions::DenoPermissions;
 use crate::progress::Progress;
 use crate::resources;
 use crate::resources::ResourceId;
+use crate::tokio_util;
+use crate::worker::resolve_module_spec;
 use crate::worker::Worker;
 use deno::Buf;
+use deno::Loader;
 use deno::Op;
 use deno::PinnedBuf;
+use futures::future::Either;
 use futures::future::Shared;
+use futures::Future;
 use std;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -91,6 +100,82 @@ impl Deref for ThreadSafeState {
 impl ThreadSafeState {
   pub fn dispatch(&self, control: &[u8], zero_copy: Option<PinnedBuf>) -> Op {
     ops::dispatch_all(self, control, zero_copy, self.dispatch_selector)
+  }
+}
+
+fn fetch_module_meta_data_and_maybe_compile_async(
+  state: &ThreadSafeState,
+  specifier: &str,
+  referrer: &str,
+) -> impl Future<Item = ModuleMetaData, Error = DenoError> {
+  let state_ = state.clone();
+  let specifier = specifier.to_string();
+  let referrer = referrer.to_string();
+
+  let f =
+    futures::future::result(ThreadSafeState::resolve(&specifier, &referrer));
+  f.and_then(move |module_id| {
+    let use_cache = !state_.flags.reload || state_.has_compiled(&module_id);
+    let no_fetch = state_.flags.no_fetch;
+
+    state_
+      .dir
+      .fetch_module_meta_data_async(&specifier, &referrer, use_cache, no_fetch)
+      .and_then(move |out| {
+        if out.media_type == msg::MediaType::TypeScript
+          && !out.has_output_code_and_source_map()
+        {
+          debug!(">>>>> compile_sync START");
+          Either::A(
+            compile_async(state_.clone(), &specifier, &referrer, &out)
+              .map_err(|e| {
+                debug!("compiler error exiting!");
+                eprintln!("\n{}", e.to_string());
+                std::process::exit(1);
+              }).and_then(move |out| {
+                debug!(">>>>> compile_sync END");
+                Ok(out)
+              }),
+          )
+        } else {
+          Either::B(futures::future::ok(out))
+        }
+      })
+  })
+}
+
+pub fn fetch_module_meta_data_and_maybe_compile(
+  state: &ThreadSafeState,
+  specifier: &str,
+  referrer: &str,
+) -> Result<ModuleMetaData, DenoError> {
+  tokio_util::block_on(fetch_module_meta_data_and_maybe_compile_async(
+    state, specifier, referrer,
+  ))
+}
+
+impl Loader for ThreadSafeState {
+  type Error = DenoError;
+
+  fn resolve(specifier: &str, referrer: &str) -> Result<String, Self::Error> {
+    resolve_module_spec(specifier, referrer).map_err(DenoError::from)
+  }
+
+  /// Given an absolute url, load its source code.
+  fn load(&self, url: &str) -> Box<deno::SourceCodeInfoFuture<Self::Error>> {
+    self.metrics.resolve_count.fetch_add(1, Ordering::SeqCst);
+    Box::new(
+      fetch_module_meta_data_and_maybe_compile_async(self, url, ".")
+        .map_err(|err| {
+          eprintln!("{}", err);
+          err
+        }).map(|module_meta_data| deno::SourceCodeInfo {
+          // Real module name, might be different from initial URL
+          // due to redirections.
+          code: module_meta_data.js_source(),
+          module_name: module_meta_data.module_name,
+        }),
+    )
   }
 }
 
