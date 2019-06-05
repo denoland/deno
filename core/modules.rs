@@ -103,18 +103,15 @@ impl<L: Loader> RecursiveLoad<L> {
     referrer: &str,
     parent_id: Option<deno_mod>,
   ) -> Result<String, L::Error> {
-    let loader = self.loader.as_mut().unwrap();
-    let url = L::resolve(&loader, specifier, referrer, true)?;
+    let is_root = parent_id.is_none();
+    let url = L::resolve(&self.loader, specifier, referrer, is_root)?;
 
-    let is_root = if let Some(parent_id) = parent_id {
+    if !is_root {
       {
         let mut m = self.modules.lock().unwrap();
-        m.add_child(parent_id, &url);
+        m.add_child(parent_id.unwrap(), &url);
       }
-      false
-    } else {
-      true
-    };
+    }
 
     {
       // #B We only add modules that have not yet been resolved for RecursiveLoad.
@@ -257,7 +254,9 @@ impl<L: Loader> Future for RecursiveLoad<L> {
         |specifier: &str, referrer_id: deno_mod| -> deno_mod {
           let modules = self.modules.lock().unwrap();
           let referrer = modules.get_name(referrer_id).unwrap();
-          match L::resolve(&self.loader.unwrap(), specifier, &referrer, true) {
+          // TODO(bartlomieju): cleanup
+          let is_root = referrer == ".";
+          match L::resolve(&self.loader, specifier, &referrer, is_root) {
             Ok(url) => match modules.get_id(&url) {
               Some(id) => id,
               None => 0,

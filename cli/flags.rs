@@ -341,7 +341,6 @@ pub fn parse_flags(matches: ArgMatches) -> DenoFlags {
     flags.reload = true;
   }
   flags.config_path = matches.value_of("config").map(ToOwned::to_owned);
-  flags.import_map_path = matches.value_of("importmap").map(ToOwned::to_owned);
   if matches.is_present("v8-options") {
     let v8_flags = svec!["deno", "--help"];
     flags.v8_flags = Some(v8_flags);
@@ -359,6 +358,8 @@ pub fn parse_flags(matches: ArgMatches) -> DenoFlags {
 
   // flags specific to "run" subcommand
   if let Some(run_matches) = matches.subcommand_matches("run") {
+    flags.import_map_path =
+      run_matches.value_of("importmap").map(ToOwned::to_owned);
     if run_matches.is_present("allow-read") {
       if run_matches.value_of("allow-read").is_some() {
         let read_wl = run_matches.values_of("allow-read").unwrap();
@@ -963,7 +964,7 @@ mod tests {
     );
   }
 
-#[test]
+  #[test]
   fn test_flags_from_vec_32() {
     let (flags, subcommand, argv) = flags_from_vec(svec![
       "deno",

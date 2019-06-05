@@ -29,6 +29,7 @@ use crate::worker::Worker;
 use deno::js_check;
 use deno::Buf;
 use deno::JSError;
+use deno::Loader;
 use deno::Op;
 use deno::PinnedBuf;
 use flatbuffers::FlatBufferBuilder;
@@ -498,10 +499,18 @@ fn op_fetch_module_meta_data(
   let use_cache = !state.flags.reload;
   let no_fetch = state.flags.no_fetch;
 
+  // TODO(bartlomieju)
+  debug!("op fetch module {:?} {:?} {:?}", false, specifier, referrer);
+  let resolved_specifier = state.resolve(specifier, referrer, false).unwrap();
+
   let fut = state
     .dir
-    .fetch_module_meta_data_async(specifier, referrer, use_cache, no_fetch)
-    .and_then(move |out| {
+    .fetch_module_meta_data_async(
+      &resolved_specifier,
+      referrer,
+      use_cache,
+      no_fetch,
+    ).and_then(move |out| {
       let builder = &mut FlatBufferBuilder::new();
       let data_off = builder.create_vector(out.source_code.as_slice());
       let msg_args = msg::FetchModuleMetaDataResArgs {

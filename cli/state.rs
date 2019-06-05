@@ -6,8 +6,8 @@ use crate::errors::DenoError;
 use crate::errors::DenoResult;
 use crate::flags;
 use crate::global_timer::GlobalTimer;
-use crate::msg;
 use crate::import_map::ImportMap;
+use crate::msg;
 use crate::ops;
 use crate::permissions::DenoPermissions;
 use crate::progress::Progress;
@@ -116,9 +116,14 @@ fn fetch_module_meta_data_and_maybe_compile_async(
   let state_ = state.clone();
   let specifier = specifier.to_string();
   let referrer = referrer.to_string();
-
+  // TODO(bartlomieju) cleanup, this is bad
+  let is_root = referrer == ".";
+  debug!(
+    "fetch module, is_root {:?}, spec {:?}, ref {:?}",
+    is_root, specifier, referrer
+  );
   let f =
-    futures::future::result(ThreadSafeState::resolve(&specifier, &referrer));
+    futures::future::result(state.resolve(&specifier, &referrer, is_root));
   f.and_then(move |module_id| {
     let use_cache = !state_.flags.reload || state_.has_compiled(&module_id);
     let no_fetch = state_.flags.no_fetch;
@@ -162,7 +167,35 @@ pub fn fetch_module_meta_data_and_maybe_compile(
 impl Loader for ThreadSafeState {
   type Error = DenoError;
 
-  fn resolve(specifier: &str, referrer: &str) -> Result<String, Self::Error> {
+  fn resolve(
+    &self,
+    specifier: &str,
+    referrer: &str,
+    is_root: bool,
+  ) -> Result<String, Self::Error> {
+    debug!(
+      "resolve is_root: {:?}, spec: {:?}, ref: {:?}",
+      is_root, specifier, referrer
+    );
+    if !is_root {
+      match &self.import_map {
+        Some(import_map) => {
+          match import_map.resolve(specifier, referrer) {
+            Ok(result) => {
+              if result.is_some() {
+                return Ok(result.unwrap());
+              }
+            }
+            Err(err) => {
+              // TODO: this should be coerced to DenoError
+              panic!("error resolving using import map: {:?}", err);
+            }
+          }
+        }
+        None => {}
+      }
+    }
+
     resolve_module_spec(specifier, referrer).map_err(DenoError::from)
   }
 
