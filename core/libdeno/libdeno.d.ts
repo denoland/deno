@@ -12,15 +12,13 @@ interface EvalErrorInfo {
   thrown: any;
 }
 
-declare interface MessageCallback {
-  (msg: Uint8Array): void;
-}
+declare type MessageCallbackInternal = (msg: Uint8Array) => void;
 
 declare interface DenoCore {
-  recv(cb: MessageCallback): void;
+  recv(cb: MessageCallbackInternal): void;
 
   send(
-    isSync: boolean,
+    cmdId: number,
     control: null | ArrayBufferView,
     data?: ArrayBufferView
   ): null | Uint8Array;

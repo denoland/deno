@@ -12,29 +12,24 @@ import {
 
 const promiseTable = new Map<number, util.Resolvable<msg.Base>>();
 
-interface FlatbufferRecord {
-  promiseId: number;
-  base: msg.Base;
-}
-
-function flatbufferRecordFromBuf(buf: Uint8Array): FlatbufferRecord {
+function flatbufferRecordFromBuf(buf: Uint8Array): msg.Base {
   const bb = new flatbuffers.ByteBuffer(buf);
   const base = msg.Base.getRootAsBase(bb);
-  return {
-    promiseId: base.cmdId(),
-    base
-  };
+  return base;
 }
 
-export function handleAsyncMsgFromRust(ui8: Uint8Array): void {
+export function handleAsyncMsgFromRust(
+  promiseId: number,
+  ui8: Uint8Array
+): void {
   const buf32 = new Int32Array(ui8.buffer, ui8.byteOffset, ui8.byteLength / 4);
   const recordMin = recordFromBufMinimal(buf32);
   if (recordMin) {
     // Fast and new
-    handleAsyncMsgFromRustMinimal(ui8, recordMin);
+    handleAsyncMsgFromRustMinimal(promiseId, ui8, recordMin);
   } else {
     // Legacy
-    let { promiseId, base } = flatbufferRecordFromBuf(ui8);
+    let base = flatbufferRecordFromBuf(ui8);
     const promise = promiseTable.get(promiseId);
     util.assert(promise != null, `Expecting promise in table. ${promiseId}`);
     promiseTable.delete(promiseId);
@@ -58,17 +53,17 @@ function sendInternal(
   zeroCopy: undefined | ArrayBufferView,
   isSync = true
 ): [number, null | Uint8Array] {
-  const cmdId = nextPromiseId();
   msg.Base.startBase(builder);
   msg.Base.addInner(builder, inner);
   msg.Base.addInnerType(builder, innerType);
-  msg.Base.addCmdId(builder, cmdId);
   builder.finish(msg.Base.endBase(builder));
 
   const control = builder.asUint8Array();
 
+  const cmdId = isSync ? 0 : nextPromiseId();
+
   const response = core.dispatch(
-    isSync,
+    cmdId,
     control,
     zeroCopy ? ui8FromArrayBufferView(zeroCopy) : undefined
   );

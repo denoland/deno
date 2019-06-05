@@ -18,7 +18,6 @@ const OP_WRITE: i32 = 2;
 #[derive(Copy, Clone, Debug, PartialEq)]
 // This corresponds to RecordMinimal on the TS side.
 pub struct Record {
-  pub promise_id: i32,
   pub op_id: i32,
   pub arg: i32,
   pub result: i32,
@@ -26,15 +25,9 @@ pub struct Record {
 
 impl Into<Buf> for Record {
   fn into(self) -> Buf {
-    let vec = vec![
-      DISPATCH_MINIMAL_TOKEN,
-      self.promise_id,
-      self.op_id,
-      self.arg,
-      self.result,
-    ];
+    let vec = vec![DISPATCH_MINIMAL_TOKEN, self.op_id, self.arg, self.result];
     let buf32 = vec.into_boxed_slice();
-    let ptr = Box::into_raw(buf32) as *mut [u8; 5 * 4];
+    let ptr = Box::into_raw(buf32) as *mut [u8; 4 * 4];
     unsafe { Box::from_raw(ptr) }
   }
 }
@@ -46,36 +39,32 @@ pub fn parse_min_record(bytes: &[u8]) -> Option<Record> {
   let p = bytes.as_ptr();
   #[allow(clippy::cast_ptr_alignment)]
   let p32 = p as *const i32;
-  let s = unsafe { std::slice::from_raw_parts(p32, bytes.len() / 4) };
+  let s = unsafe { std::slice::from_raw_parts(p32, bytes.len() / 3) };
 
-  if s.len() < 5 {
+  if s.len() < 4 {
     return None;
   }
   let ptr = s.as_ptr();
-  let ints = unsafe { std::slice::from_raw_parts(ptr, 5) };
+  let ints = unsafe { std::slice::from_raw_parts(ptr, 4) };
   if ints[0] != DISPATCH_MINIMAL_TOKEN {
     return None;
   }
   Some(Record {
-    promise_id: ints[1],
-    op_id: ints[2],
-    arg: ints[3],
-    result: ints[4],
+    op_id: ints[1],
+    arg: ints[2],
+    result: ints[3],
   })
 }
 
 #[test]
 fn test_parse_min_record() {
-  let buf = vec![
-    0xFE, 0xCA, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0,
-  ];
+  let buf = vec![0xFE, 0xCA, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0];
   assert_eq!(
     parse_min_record(&buf),
     Some(Record {
-      promise_id: 1,
-      op_id: 2,
-      arg: 3,
-      result: 4,
+      op_id: 1,
+      arg: 2,
+      result: 3,
     })
   );
 

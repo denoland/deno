@@ -19,6 +19,7 @@ use futures::task;
 use futures::Async::*;
 use futures::Future;
 use futures::Poll;
+use libc::c_int;
 use libc::c_void;
 use std::ffi::CStr;
 use std::ffi::CString;
@@ -36,7 +37,7 @@ pub enum Op<E> {
 
 pub type CoreError = ();
 
-pub type CoreOpAsyncFuture = OpAsyncFuture<CoreError>;
+type CoreOpAsyncFuture = OpAsyncFuture<CoreError>;
 
 pub type CoreOp = Op<CoreError>;
 
@@ -184,10 +185,11 @@ impl Isolate {
 
   extern "C" fn pre_dispatch(
     user_data: *mut c_void,
-    is_sync: bool,
+    cmd_id: c_int,
     control_argv0: deno_buf,
     zero_copy_buf: deno_pinned_buf,
   ) {
+    let is_sync: bool = cmd_id == 0;
     let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
     let control_shared = isolate.shared.shift();
 
@@ -230,7 +232,12 @@ impl Isolate {
         let _ = isolate.respond(Some(&buf));
       }
       (false, Op::Async(fut)) => {
-        isolate.pending_ops.push(fut);
+        let fut = fut.and_then(move |result_buf| -> Result<Buf, CoreError> {
+          let cmd_id_bytes = cmd_id.to_ne_bytes();
+          let buf: Buf = [&cmd_id_bytes, &result_buf[..]].concat().into();
+          Ok(buf)
+        });
+        isolate.pending_ops.push(Box::new(fut));
         isolate.have_unpolled_ops = true;
       }
       // Panic on unexpected synchronicity. Maybe it would be better to have two
@@ -647,9 +654,9 @@ pub mod tests {
       "filename.js",
       r#"
         let control = new Uint8Array([42]);
-        Deno.core.send(false, control);
+        Deno.core.send(1, control);
         async function main() {
-          Deno.core.send(false, control);
+          Deno.core.send(1, control);
         }
         main();
         "#,
@@ -668,7 +675,7 @@ pub mod tests {
         import { b } from 'b.js'
         if (b() != 'b') throw Error();
         let control = new Uint8Array([42]);
-        Deno.core.send(false, control);
+        Deno.core.send(1, control);
       "#,
       ).unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
@@ -724,7 +731,7 @@ pub mod tests {
         r#"
         assert(nrecv == 0);
         let control = new Uint8Array([42]);
-        Deno.core.send(false, control);
+        Deno.core.send(1, control);
         assert(nrecv == 0);
         "#,
       ));
@@ -735,7 +742,7 @@ pub mod tests {
         "check2.js",
         r#"
         assert(nrecv == 1);
-        Deno.core.send(false, control);
+        Deno.core.send(1, control);
         assert(nrecv == 1);
         "#,
       ));
@@ -757,7 +764,7 @@ pub mod tests {
         "setup2.js",
         r#"
         let nrecv = 0;
-        Deno.core.setAsyncHandler((buf) => {
+        Deno.core.setAsyncHandler((cmdId, buf) => {
           assert(buf.byteLength === 1);
           assert(buf[0] === 43);
           nrecv++;
@@ -771,11 +778,11 @@ pub mod tests {
         r#"
         let control = new Uint8Array([42]);
         Deno.core.sharedQueue.push(control);
-        Deno.core.send(false);
+        Deno.core.send(1);
         assert(nrecv === 0);
 
         Deno.core.sharedQueue.push(control);
-        Deno.core.send(false);
+        Deno.core.send(1);
         assert(nrecv === 0);
         "#,
       ));
@@ -865,7 +872,7 @@ pub mod tests {
         Deno.core.setAsyncHandler((buf) => { asyncRecv++ });
         // Large message that will overflow the shared space.
         let control = new Uint8Array(100 * 1024 * 1024);
-        let response = Deno.core.dispatch(true, control);
+        let response = Deno.core.dispatch(0, control);
         assert(response instanceof Uint8Array);
         assert(response.length == 1);
         assert(response[0] == 43);
@@ -887,7 +894,7 @@ pub mod tests {
         Deno.core.setAsyncHandler((buf) => { asyncRecv++ });
         // Large message that will overflow the shared space.
         let control = new Uint8Array([42]);
-        let response = Deno.core.dispatch(true, control);
+        let response = Deno.core.dispatch(0, control);
         assert(response instanceof Uint8Array);
         assert(response.length == 100 * 1024 * 1024);
         assert(response[0] == 99);
@@ -905,14 +912,14 @@ pub mod tests {
         "overflow_req_async.js",
         r#"
         let asyncRecv = 0;
-        Deno.core.setAsyncHandler((buf) => {
+        Deno.core.setAsyncHandler((cmdId, buf) => {
           assert(buf.byteLength === 1);
           assert(buf[0] === 43);
           asyncRecv++;
         });
         // Large message that will overflow the shared space.
         let control = new Uint8Array(100 * 1024 * 1024);
-        let response = Deno.core.dispatch(false, control);
+        let response = Deno.core.dispatch(1, control);
         // Async messages always have null response.
         assert(response == null);
         assert(asyncRecv == 0);
@@ -934,14 +941,14 @@ pub mod tests {
         "overflow_res_async.js",
         r#"
         let asyncRecv = 0;
-        Deno.core.setAsyncHandler((buf) => {
+        Deno.core.setAsyncHandler((cmdId, buf) => {
           assert(buf.byteLength === 100 * 1024 * 1024);
           assert(buf[0] === 4);
           asyncRecv++;
         });
         // Large message that will overflow the shared space.
         let control = new Uint8Array([42]);
-        let response = Deno.core.dispatch(false, control);
+        let response = Deno.core.dispatch(1, control);
         assert(response == null);
         assert(asyncRecv == 0);
         "#,
@@ -962,19 +969,19 @@ pub mod tests {
         "overflow_res_multiple_dispatch_async.js",
         r#"
         let asyncRecv = 0;
-        Deno.core.setAsyncHandler((buf) => {
+        Deno.core.setAsyncHandler((cmdId, buf) => {
           assert(buf.byteLength === 100 * 1024 * 1024);
           assert(buf[0] === 4);
           asyncRecv++;
         });
         // Large message that will overflow the shared space.
         let control = new Uint8Array([42]);
-        let response = Deno.core.dispatch(false, control);
+        let response = Deno.core.dispatch(1, control);
         assert(response == null);
         assert(asyncRecv == 0);
         // Dispatch another message to verify that pending ops
         // are done even if shared space overflows
-        Deno.core.dispatch(false, control);
+        Deno.core.dispatch(1, control);
         "#,
       ));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);

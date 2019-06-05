@@ -2,7 +2,7 @@
 #include "test.h"
 
 static int exec_count = 0;
-void recv_cb(void* user_data, bool is_sync, deno_buf buf,
+void recv_cb(void* user_data, int cmd_id, deno_buf buf,
              deno_pinned_buf zero_copy_buf) {
   // We use this to check that scripts have executed.
   EXPECT_EQ(1u, buf.data_len);

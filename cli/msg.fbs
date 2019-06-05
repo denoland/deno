@@ -154,7 +154,6 @@ enum MediaType: byte {
 }
 
 table Base {
-  cmd_id: uint32;
   error_kind: ErrorKind = NoError;
   error: string;
   inner: Any;

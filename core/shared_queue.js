@@ -151,21 +151,33 @@ SharedQueue Binary Layout
 
   function handleAsyncMsgFromRust(buf) {
     if (buf) {
-      asyncHandler(buf);
+      handleAsyncMsgFromRustInner(buf);
     } else {
       while ((buf = shift()) != null) {
-        asyncHandler(buf);
+        handleAsyncMsgFromRustInner(buf);
       }
     }
   }
 
-  function dispatch(isSync, control, zeroCopy = null) {
+  function handleAsyncMsgFromRustInner(buf) {
+    // DataView to extract cmdId value.
+    const cmdIdView = new DataView(buf.buffer, buf.byteOffset, 4);
+    // Uint8 buffer view shifted right and shortened 4 bytes to remove cmdId from view window.
+    const bufViewFinal = new Uint8Array(
+      buf.buffer,
+      buf.byteOffset + 4,
+      buf.byteLength - 4
+    );
+    asyncHandler(cmdIdView.getInt32(0, true), bufViewFinal);
+  }
+
+  function dispatch(cmdId, control, zeroCopy = null) {
     maybeInit();
     // First try to push control to shared.
     const success = push(control);
     // If successful, don't use first argument of core.send.
     const arg0 = success ? null : control;
-    return window.Deno.core.send(isSync, arg0, zeroCopy);
+    return window.Deno.core.send(cmdId, arg0, zeroCopy);
   }
 
   const denoCore = {

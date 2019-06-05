@@ -49,7 +49,7 @@ void assert_null(deno_pinned_buf b) {
 
 TEST(LibDenoTest, RecvReturnEmpty) {
   static int count = 0;
-  auto recv_cb = [](auto _, auto is_sync, auto buf, auto zero_copy_buf) {
+  auto recv_cb = [](auto _, auto cmd_id, auto buf, auto zero_copy_buf) {
     assert_null(zero_copy_buf);
     count++;
     EXPECT_EQ(static_cast<size_t>(3), buf.data_len);
@@ -66,8 +66,7 @@ TEST(LibDenoTest, RecvReturnEmpty) {
 
 TEST(LibDenoTest, RecvReturnBar) {
   static int count = 0;
-  auto recv_cb = [](auto user_data, auto is_sync, auto buf,
-                    auto zero_copy_buf) {
+  auto recv_cb = [](auto user_data, auto cmd_id, auto buf, auto zero_copy_buf) {
     auto d = reinterpret_cast<Deno*>(user_data);
     assert_null(zero_copy_buf);
     count++;
@@ -126,7 +125,7 @@ TEST(LibDenoTest, GlobalErrorHandling) {
 TEST(LibDenoTest, ZeroCopyBuf) {
   static int count = 0;
   static deno_pinned_buf zero_copy_buf2;
-  auto recv_cb = [](auto user_data, bool is_sync, deno_buf buf,
+  auto recv_cb = [](auto user_data, int cmd_id, deno_buf buf,
                     deno_pinned_buf zero_copy_buf) {
     count++;
     EXPECT_NE(zero_copy_buf.pin, nullptr);
@@ -155,7 +154,7 @@ TEST(LibDenoTest, ZeroCopyBuf) {
 
 TEST(LibDenoTest, CheckPromiseErrors) {
   static int count = 0;
-  auto recv_cb = [](auto _, auto is_sync, auto buf, auto zero_copy_buf) {
+  auto recv_cb = [](auto _, auto cmd_id, auto buf, auto zero_copy_buf) {
     count++;
   };
   Deno* d = deno_new(deno_config{0, snapshot, empty, recv_cb});

@@ -109,7 +109,6 @@ pub fn dispatch_all_legacy(
 ) -> CoreOp {
   let base = msg::get_root_as_base(&control);
   let inner_type = base.inner_type();
-  let cmd_id = base.cmd_id();
 
   debug!(
     "msg_from_js {} sync {}",
@@ -144,7 +143,6 @@ pub fn dispatch_all_legacy(
           let builder = &mut FlatBufferBuilder::new();
           let errmsg_offset = builder.create_string(&format!("{}", err));
           Ok(serialize_response(
-            cmd_id,
             builder,
             msg::BaseArgs {
               error: Some(errmsg_offset),
@@ -161,7 +159,6 @@ pub fn dispatch_all_legacy(
           } else {
             let builder = &mut FlatBufferBuilder::new();
             serialize_response(
-              cmd_id,
               builder,
               msg::BaseArgs {
                 ..Default::default()
@@ -185,7 +182,6 @@ pub fn dispatch_all_legacy(
       let builder = &mut FlatBufferBuilder::new();
       let errmsg_offset = builder.create_string(&format!("{}", err));
       let response_buf = serialize_response(
-        cmd_id,
         builder,
         msg::BaseArgs {
           error: Some(errmsg_offset),
@@ -274,7 +270,7 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<CliDispatchFn> {
 fn op_now(
   state: &ThreadSafeState,
   _is_sync: bool,
-  base: &msg::Base<'_>,
+  _base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
   assert!(data.is_none());
@@ -299,7 +295,6 @@ fn op_now(
   );
 
   ok_buf(serialize_response(
-    base.cmd_id(),
     builder,
     msg::BaseArgs {
       inner: Some(inner.as_union_value()),
@@ -312,7 +307,7 @@ fn op_now(
 fn op_is_tty(
   _state: &ThreadSafeState,
   _is_sync: bool,
-  base: &msg::Base<'_>,
+  _base: &msg::Base<'_>,
   _data: Option<PinnedBuf>,
 ) -> CliOpResult {
   let builder = &mut FlatBufferBuilder::new();
@@ -325,7 +320,6 @@ fn op_is_tty(
     },
   );
   ok_buf(serialize_response(
-    base.cmd_id(),
     builder,
     msg::BaseArgs {
       inner: Some(inner.as_union_value()),
@@ -348,7 +342,7 @@ fn op_exit(
 fn op_start(
   state: &ThreadSafeState,
   _is_sync: bool,
-  base: &msg::Base<'_>,
+  _base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
   assert!(data.is_none());
@@ -398,7 +392,6 @@ fn op_start(
   );
 
   ok_buf(serialize_response(
-    base.cmd_id(),
     &mut builder,
     msg::BaseArgs {
       inner_type: msg::Any::StartRes,
@@ -433,7 +426,6 @@ fn op_format_error(
   );
 
   let response_buf = serialize_response(
-    base.cmd_id(),
     &mut builder,
     msg::BaseArgs {
       inner_type: msg::Any::FormatErrorRes,
@@ -446,11 +438,9 @@ fn op_format_error(
 }
 
 fn serialize_response(
-  cmd_id: u32,
   builder: &mut FlatBufferBuilder<'_>,
-  mut args: msg::BaseArgs<'_>,
+  args: msg::BaseArgs<'_>,
 ) -> Buf {
-  args.cmd_id = cmd_id;
   let base = msg::Base::create(builder, &args);
   msg::finish_base_buffer(builder, base);
   let data = builder.finished_data();
@@ -520,7 +510,7 @@ fn op_fetch_module_meta_data(
   }
   assert!(data.is_none());
   let inner = base.inner_as_fetch_module_meta_data().unwrap();
-  let cmd_id = base.cmd_id();
+
   let specifier = inner.specifier().unwrap();
   let referrer = inner.referrer().unwrap();
 
@@ -543,7 +533,6 @@ fn op_fetch_module_meta_data(
       };
       let inner = msg::FetchModuleMetaDataRes::create(builder, &msg_args);
       Ok(serialize_response(
-        cmd_id,
         builder,
         msg::BaseArgs {
           inner: Some(inner.as_union_value()),
@@ -599,7 +588,7 @@ fn op_global_timer(
     return Err(errors::no_sync_support());
   }
   assert!(data.is_none());
-  let cmd_id = base.cmd_id();
+
   let inner = base.inner_as_global_timer().unwrap();
   let val = inner.timeout();
   assert!(val >= 0);
@@ -614,7 +603,6 @@ fn op_global_timer(
     let inner =
       msg::GlobalTimerRes::create(builder, &msg::GlobalTimerResArgs {});
     Ok(serialize_response(
-      cmd_id,
       builder,
       msg::BaseArgs {
         inner: Some(inner.as_union_value()),
@@ -643,11 +631,10 @@ fn op_set_env(
 fn op_env(
   state: &ThreadSafeState,
   _is_sync: bool,
-  base: &msg::Base<'_>,
+  _base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
   assert!(data.is_none());
-  let cmd_id = base.cmd_id();
 
   state.check_env()?;
 
@@ -661,7 +648,6 @@ fn op_env(
     &msg::EnvironResArgs { map: Some(tables) },
   );
   let response_buf = serialize_response(
-    cmd_id,
     builder,
     msg::BaseArgs {
       inner: Some(inner.as_union_value()),
@@ -675,11 +661,11 @@ fn op_env(
 fn op_permissions(
   state: &ThreadSafeState,
   _is_sync: bool,
-  base: &msg::Base<'_>,
+  _base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
   assert!(data.is_none());
-  let cmd_id = base.cmd_id();
+
   let builder = &mut FlatBufferBuilder::new();
   let inner = msg::PermissionsRes::create(
     builder,
@@ -693,7 +679,6 @@ fn op_permissions(
     },
   );
   let response_buf = serialize_response(
-    cmd_id,
     builder,
     msg::BaseArgs {
       inner: Some(inner.as_union_value()),
@@ -732,7 +717,6 @@ fn op_fetch(
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
   let inner = base.inner_as_fetch().unwrap();
-  let cmd_id = base.cmd_id();
 
   let header = inner.header().unwrap();
   assert!(header.is_request());
@@ -769,7 +753,6 @@ fn op_fetch(
         );
 
         Ok(serialize_response(
-          cmd_id,
           builder,
           msg::BaseArgs {
             inner: Some(inner.as_union_value()),
@@ -825,7 +808,6 @@ fn op_make_temp_dir(
   assert!(data.is_none());
   let base = Box::new(*base);
   let inner = base.inner_as_make_temp_dir().unwrap();
-  let cmd_id = base.cmd_id();
 
   // FIXME
   state.check_write("make_temp")?;
@@ -853,7 +835,6 @@ fn op_make_temp_dir(
       },
     );
     Ok(serialize_response(
-      cmd_id,
       builder,
       msg::BaseArgs {
         inner: Some(inner.as_union_value()),
@@ -942,7 +923,7 @@ fn op_open(
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
   assert!(data.is_none());
-  let cmd_id = base.cmd_id();
+
   let inner = base.inner_as_open().unwrap();
   let (filename, filename_) = resolve_path(inner.filename().unwrap())?;
   let mode = inner.mode().unwrap();
@@ -1005,7 +986,6 @@ fn op_open(
       let inner =
         msg::OpenRes::create(builder, &msg::OpenResArgs { rid: resource.rid });
       Ok(serialize_response(
-        cmd_id,
         builder,
         msg::BaseArgs {
           inner: Some(inner.as_union_value()),
@@ -1089,7 +1069,6 @@ fn op_read(
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
-  let cmd_id = base.cmd_id();
   let inner = base.inner_as_read().unwrap();
   let rid = inner.rid();
 
@@ -1108,7 +1087,6 @@ fn op_read(
             },
           );
           Ok(serialize_response(
-            cmd_id,
             builder,
             msg::BaseArgs {
               inner: Some(inner.as_union_value()),
@@ -1133,7 +1111,6 @@ fn op_write(
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
-  let cmd_id = base.cmd_id();
   let inner = base.inner_as_write().unwrap();
   let rid = inner.rid();
 
@@ -1151,7 +1128,6 @@ fn op_write(
             },
           );
           Ok(serialize_response(
-            cmd_id,
             builder,
             msg::BaseArgs {
               inner: Some(inner.as_union_value()),
@@ -1177,7 +1153,6 @@ fn op_seek(
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
   assert!(data.is_none());
-  let _cmd_id = base.cmd_id();
   let inner = base.inner_as_seek().unwrap();
   let rid = inner.rid();
   let offset = inner.offset();
@@ -1279,18 +1254,17 @@ fn get_mode(_perm: &fs::Permissions) -> u32 {
 fn op_cwd(
   _state: &ThreadSafeState,
   _is_sync: bool,
-  base: &msg::Base<'_>,
+  _base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
   assert!(data.is_none());
-  let cmd_id = base.cmd_id();
+
   let path = std::env::current_dir()?;
   let builder = &mut FlatBufferBuilder::new();
   let cwd =
     builder.create_string(&path.into_os_string().into_string().unwrap());
   let inner = msg::CwdRes::create(builder, &msg::CwdResArgs { cwd: Some(cwd) });
   let response_buf = serialize_response(
-    cmd_id,
     builder,
     msg::BaseArgs {
       inner: Some(inner.as_union_value()),
@@ -1309,7 +1283,7 @@ fn op_stat(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_stat().unwrap();
-  let cmd_id = base.cmd_id();
+
   let (filename, filename_) = resolve_path(inner.filename().unwrap())?;
   let lstat = inner.lstat();
 
@@ -1340,7 +1314,6 @@ fn op_stat(
     );
 
     Ok(serialize_response(
-      cmd_id,
       builder,
       msg::BaseArgs {
         inner: Some(inner.as_union_value()),
@@ -1359,7 +1332,6 @@ fn op_read_dir(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_read_dir().unwrap();
-  let cmd_id = base.cmd_id();
   let (path, path_) = resolve_path(inner.path().unwrap())?;
 
   state.check_read(&path_)?;
@@ -1398,7 +1370,6 @@ fn op_read_dir(
       },
     );
     Ok(serialize_response(
-      cmd_id,
       builder,
       msg::BaseArgs {
         inner: Some(inner.as_union_value()),
@@ -1481,7 +1452,7 @@ fn op_read_link(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_readlink().unwrap();
-  let cmd_id = base.cmd_id();
+
   let (name, name_) = resolve_path(inner.name().unwrap())?;
 
   state.check_read(&name_)?;
@@ -1498,7 +1469,6 @@ fn op_read_link(
       },
     );
     Ok(serialize_response(
-      cmd_id,
       builder,
       msg::BaseArgs {
         inner: Some(inner.as_union_value()),
@@ -1517,7 +1487,7 @@ fn op_repl_start(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_repl_start().unwrap();
-  let cmd_id = base.cmd_id();
+
   let history_file = String::from(inner.history_file().unwrap());
 
   debug!("op_repl_start {}", history_file);
@@ -1531,7 +1501,6 @@ fn op_repl_start(
     &msg::ReplStartResArgs { rid: resource.rid },
   );
   ok_buf(serialize_response(
-    cmd_id,
     builder,
     msg::BaseArgs {
       inner: Some(inner.as_union_value()),
@@ -1549,7 +1518,7 @@ fn op_repl_readline(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_repl_readline().unwrap();
-  let cmd_id = base.cmd_id();
+
   let rid = inner.rid();
   let prompt = inner.prompt().unwrap().to_owned();
   debug!("op_repl_readline {} {}", rid, prompt);
@@ -1567,7 +1536,6 @@ fn op_repl_readline(
       },
     );
     Ok(serialize_response(
-      cmd_id,
       builder,
       msg::BaseArgs {
         inner: Some(inner.as_union_value()),
@@ -1629,7 +1597,7 @@ fn op_listen(
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
   assert!(data.is_none());
-  let cmd_id = base.cmd_id();
+
   let inner = base.inner_as_listen().unwrap();
   let network = inner.network().unwrap();
   assert_eq!(network, "tcp");
@@ -1645,7 +1613,6 @@ fn op_listen(
   let inner =
     msg::ListenRes::create(builder, &msg::ListenResArgs { rid: resource.rid });
   let response_buf = serialize_response(
-    cmd_id,
     builder,
     msg::BaseArgs {
       inner: Some(inner.as_union_value()),
@@ -1656,7 +1623,7 @@ fn op_listen(
   ok_buf(response_buf)
 }
 
-fn new_conn(cmd_id: u32, tcp_stream: TcpStream) -> DenoResult<Buf> {
+fn new_conn(tcp_stream: TcpStream) -> DenoResult<Buf> {
   let tcp_stream_resource = resources::add_tcp_stream(tcp_stream);
   // TODO forward socket_addr to client.
 
@@ -1669,7 +1636,6 @@ fn new_conn(cmd_id: u32, tcp_stream: TcpStream) -> DenoResult<Buf> {
     },
   );
   Ok(serialize_response(
-    cmd_id,
     builder,
     msg::BaseArgs {
       inner: Some(inner.as_union_value()),
@@ -1686,7 +1652,7 @@ fn op_accept(
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
   assert!(data.is_none());
-  let cmd_id = base.cmd_id();
+
   let inner = base.inner_as_accept().unwrap();
   let server_rid = inner.rid();
 
@@ -1695,9 +1661,7 @@ fn op_accept(
     Some(server_resource) => {
       let op = tokio_util::accept(server_resource)
         .map_err(DenoError::from)
-        .and_then(move |(tcp_stream, _socket_addr)| {
-          new_conn(cmd_id, tcp_stream)
-        });
+        .and_then(move |(tcp_stream, _socket_addr)| new_conn(tcp_stream));
       if is_sync {
         let buf = tokio_util::block_on(op)?;
         Ok(Op::Sync(buf))
@@ -1715,7 +1679,7 @@ fn op_dial(
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
   assert!(data.is_none());
-  let cmd_id = base.cmd_id();
+
   let inner = base.inner_as_dial().unwrap();
   let network = inner.network().unwrap();
   assert_eq!(network, "tcp"); // TODO Support others.
@@ -1729,7 +1693,7 @@ fn op_dial(
       .and_then(move |addr| {
         TcpStream::connect(&addr)
           .map_err(DenoError::from)
-          .and_then(move |tcp_stream| new_conn(cmd_id, tcp_stream))
+          .and_then(move |tcp_stream| new_conn(tcp_stream))
       });
   if is_sync {
     let buf = tokio_util::block_on(op)?;
@@ -1742,11 +1706,10 @@ fn op_dial(
 fn op_metrics(
   state: &ThreadSafeState,
   _is_sync: bool,
-  base: &msg::Base<'_>,
+  _base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
   assert!(data.is_none());
-  let cmd_id = base.cmd_id();
 
   let builder = &mut FlatBufferBuilder::new();
   let inner = msg::MetricsRes::create(
@@ -1754,7 +1717,6 @@ fn op_metrics(
     &msg::MetricsResArgs::from(&state.metrics),
   );
   ok_buf(serialize_response(
-    cmd_id,
     builder,
     msg::BaseArgs {
       inner: Some(inner.as_union_value()),
@@ -1767,11 +1729,10 @@ fn op_metrics(
 fn op_resources(
   _state: &ThreadSafeState,
   _is_sync: bool,
-  base: &msg::Base<'_>,
+  _base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
   assert!(data.is_none());
-  let cmd_id = base.cmd_id();
 
   let builder = &mut FlatBufferBuilder::new();
   let serialized_resources = table_entries();
@@ -1799,7 +1760,6 @@ fn op_resources(
   );
 
   ok_buf(serialize_response(
-    cmd_id,
     builder,
     msg::BaseArgs {
       inner: Some(inner.as_union_value()),
@@ -1826,7 +1786,6 @@ fn op_run(
   if !is_sync {
     return Err(errors::no_async_support());
   }
-  let cmd_id = base.cmd_id();
 
   state.check_run()?;
 
@@ -1876,7 +1835,6 @@ fn op_run(
   let builder = &mut FlatBufferBuilder::new();
   let inner = msg::RunRes::create(builder, &res_args);
   Ok(Op::Sync(serialize_response(
-    cmd_id,
     builder,
     msg::BaseArgs {
       inner: Some(inner.as_union_value()),
@@ -1893,7 +1851,7 @@ fn op_run_status(
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
   assert!(data.is_none());
-  let cmd_id = base.cmd_id();
+
   let inner = base.inner_as_run_status().unwrap();
   let rid = inner.rid();
 
@@ -1924,7 +1882,6 @@ fn op_run_status(
       },
     );
     Ok(serialize_response(
-      cmd_id,
       builder,
       msg::BaseArgs {
         inner: Some(inner.as_union_value()),
@@ -1961,14 +1918,13 @@ impl Future for GetMessageFuture {
 fn op_worker_get_message(
   state: &ThreadSafeState,
   is_sync: bool,
-  base: &msg::Base<'_>,
+  _base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
   if is_sync {
     return Err(errors::no_sync_support());
   }
   assert!(data.is_none());
-  let cmd_id = base.cmd_id();
 
   let op = GetMessageFuture {
     state: state.clone(),
@@ -1984,7 +1940,6 @@ fn op_worker_get_message(
       &msg::WorkerGetMessageResArgs { data },
     );
     Ok(serialize_response(
-      cmd_id,
       builder,
       msg::BaseArgs {
         inner: Some(inner.as_union_value()),
@@ -2000,11 +1955,9 @@ fn op_worker_get_message(
 fn op_worker_post_message(
   state: &ThreadSafeState,
   _is_sync: bool,
-  base: &msg::Base<'_>,
+  _base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
-  let cmd_id = base.cmd_id();
-
   let d = Vec::from(data.unwrap().as_ref()).into_boxed_slice();
 
   let tx = {
@@ -2017,7 +1970,6 @@ fn op_worker_post_message(
   let builder = &mut FlatBufferBuilder::new();
 
   ok_buf(serialize_response(
-    cmd_id,
     builder,
     msg::BaseArgs {
       ..Default::default()
@@ -2033,7 +1985,7 @@ fn op_create_worker(
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
   assert!(data.is_none());
-  let cmd_id = base.cmd_id();
+
   let inner = base.inner_as_create_worker().unwrap();
   let specifier = inner.specifier().unwrap();
 
@@ -2068,7 +2020,6 @@ fn op_create_worker(
         &msg::CreateWorkerResArgs { rid },
       );
       Ok(serialize_response(
-        cmd_id,
         builder,
         msg::BaseArgs {
           inner: Some(msg_inner.as_union_value()),
@@ -2096,7 +2047,7 @@ fn op_host_get_worker_closed(
     return Err(errors::no_sync_support());
   }
   assert!(data.is_none());
-  let cmd_id = base.cmd_id();
+
   let inner = base.inner_as_host_get_worker_closed().unwrap();
   let rid = inner.rid();
   let state = state.clone();
@@ -2111,7 +2062,6 @@ fn op_host_get_worker_closed(
     let builder = &mut FlatBufferBuilder::new();
 
     Ok(serialize_response(
-      cmd_id,
       builder,
       msg::BaseArgs {
         ..Default::default()
@@ -2132,7 +2082,7 @@ fn op_host_get_message(
     return Err(errors::no_sync_support());
   }
   assert!(data.is_none());
-  let cmd_id = base.cmd_id();
+
   let inner = base.inner_as_host_get_message().unwrap();
   let rid = inner.rid();
 
@@ -2147,7 +2097,6 @@ fn op_host_get_message(
       &msg::HostGetMessageResArgs { data },
     );
     Ok(serialize_response(
-      cmd_id,
       builder,
       msg::BaseArgs {
         inner: Some(msg_inner.as_union_value()),
@@ -2166,7 +2115,6 @@ fn op_host_post_message(
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
-  let cmd_id = base.cmd_id();
   let inner = base.inner_as_host_post_message().unwrap();
   let rid = inner.rid();
 
@@ -2178,7 +2126,6 @@ fn op_host_post_message(
   let builder = &mut FlatBufferBuilder::new();
 
   ok_buf(serialize_response(
-    cmd_id,
     builder,
     msg::BaseArgs {
       ..Default::default()
