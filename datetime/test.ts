@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test } from "../testing/mod.ts";
-import { assert, assertEquals } from "../testing/asserts.ts";
+import { assertEquals, assertThrows } from "../testing/asserts.ts";
 import * as datetime from "./mod.ts";
 
 test(function parseDateTime(): void {
@@ -31,13 +31,14 @@ test(function parseDateTime(): void {
 });
 
 test(function invalidParseDateTimeFormatThrows(): void {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (datetime as any).parseDateTime("2019-01-01 00:00", "x-y-z");
-    assert(false, "no exception was thrown");
-  } catch (e) {
-    assertEquals(e.message, "Invalid datetime format!");
-  }
+  assertThrows(
+    (): void => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (datetime as any).parseDateTime("2019-01-01 00:00", "x-y-z");
+    },
+    Error,
+    "Invalid datetime format!"
+  );
 });
 
 test(function parseDate(): void {
@@ -56,13 +57,14 @@ test(function parseDate(): void {
 });
 
 test(function invalidParseDateFormatThrows(): void {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (datetime as any).parseDate("2019-01-01", "x-y-z");
-    assert(false, "no exception was thrown");
-  } catch (e) {
-    assertEquals(e.message, "Invalid date format!");
-  }
+  assertThrows(
+    (): void => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (datetime as any).parseDate("2019-01-01", "x-y-z");
+    },
+    Error,
+    "Invalid date format!"
+  );
 });
 
 test(function DayOfYear(): void {
