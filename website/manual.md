@@ -129,9 +129,20 @@ deno run https://deno.land/welcome.ts
 
 ### Build from source
 
+Clone on Unix/MacOs
+
 ```bash
 # Fetch deps.
 git clone --recurse-submodules https://github.com/denoland/deno.git
+```
+
+Clone on Windows (with Admin privileges)
+
+```bash
+git clone -c core.symlinks=true --recurse-submodules https://github.com/denoland/deno.git
+```
+
+```bash
 cd deno
 ./tools/setup.py
 
