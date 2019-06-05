@@ -35,7 +35,7 @@ static ENV_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
     DENO_DIR        Set deno's base directory
     NO_COLOR        Set to disable color";
 
-fn add_permission_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
+fn add_run_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
   app
     .arg(
       Arg::with_name("allow-read")
@@ -86,7 +86,7 @@ fn add_permission_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
 }
 
 pub fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
-  add_permission_args(App::new("deno"))
+  add_run_args(App::new("deno"))
     .bin_name("deno")
     .global_settings(&[AppSettings::ColorNever])
     .settings(&[AppSettings::DisableVersion, AppSettings::AllowExternalSubcommands])
@@ -230,7 +230,7 @@ Automatically downloads Prettier dependencies on first run.
             .required(true),
         ),
     ).subcommand(
-      add_permission_args(SubCommand::with_name("run"))
+      add_run_args(SubCommand::with_name("run"))
         .settings(&[
           AppSettings::AllowExternalSubcommands,
           AppSettings::DisableHelpSubcommand,
