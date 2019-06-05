@@ -51,8 +51,22 @@ function sendInternal(
   innerType: msg.Any,
   inner: flatbuffers.Offset,
   zeroCopy: undefined | ArrayBufferView,
-  isSync = true
-): [number, null | Uint8Array] {
+  isSync: true
+): Uint8Array | null;
+function sendInternal(
+  builder: flatbuffers.Builder,
+  innerType: msg.Any,
+  inner: flatbuffers.Offset,
+  zeroCopy: undefined | ArrayBufferView,
+  isSync: false
+): Promise<msg.Base>;
+function sendInternal(
+  builder: flatbuffers.Builder,
+  innerType: msg.Any,
+  inner: flatbuffers.Offset,
+  zeroCopy: undefined | ArrayBufferView,
+  isSync: boolean
+): Promise<msg.Base> | Uint8Array | null {
   msg.Base.startBase(builder);
   msg.Base.addInner(builder, inner);
   msg.Base.addInnerType(builder, innerType);
@@ -69,7 +83,15 @@ function sendInternal(
   );
 
   builder.inUse = false;
-  return [cmdId, response];
+
+  if (isSync) {
+    return response;
+  } else {
+    const promise = util.createResolvable<msg.Base>();
+    promiseTable.set(cmdId, promise);
+    util.assert(response == null);
+    return promise;
+  }
 }
 
 // @internal
@@ -79,16 +101,7 @@ export function sendAsync(
   inner: flatbuffers.Offset,
   data?: ArrayBufferView
 ): Promise<msg.Base> {
-  const [cmdId, response] = sendInternal(
-    builder,
-    innerType,
-    inner,
-    data,
-    false
-  );
-  util.assert(response == null);
-  const promise = util.createResolvable<msg.Base>();
-  promiseTable.set(cmdId, promise);
+  const promise = sendInternal(builder, innerType, inner, data, false);
   return promise;
 }
 
@@ -99,8 +112,7 @@ export function sendSync(
   inner: flatbuffers.Offset,
   data?: ArrayBufferView
 ): null | msg.Base {
-  const [cmdId, response] = sendInternal(builder, innerType, inner, data, true);
-  util.assert(cmdId >= 0);
+  const response = sendInternal(builder, innerType, inner, data, true);
   if (response == null || response.length === 0) {
     return null;
   } else {
