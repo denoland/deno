@@ -38,11 +38,10 @@ const scratchBytes = new Uint8Array(
 assert(scratchBytes.byteLength === 4 * 4);
 
 function send(promiseId, opId, arg, zeroCopy = null) {
-  scratch32[0] = promiseId;
-  scratch32[1] = opId;
-  scratch32[2] = arg;
-  scratch32[3] = -1;
-  return Deno.core.dispatch(promiseId === 0, scratchBytes, zeroCopy);
+  scratch32[0] = opId;
+  scratch32[1] = arg;
+  scratch32[2] = -1;
+  return Deno.core.dispatch(promiseId, scratchBytes, zeroCopy);
 }
 
 /** Returns Promise<number> */
@@ -58,10 +57,9 @@ function recordFromBuf(buf) {
   assert(buf.byteLength === 16);
   const buf32 = new Int32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
   return {
-    promiseId: buf32[0],
-    opId: buf32[1],
-    arg: buf32[2],
-    result: buf32[3]
+    opId: buf32[0],
+    arg: buf32[1],
+    result: buf32[2]
   };
 }
 
@@ -72,9 +70,9 @@ function sendSync(opId, arg) {
   return record.result;
 }
 
-function handleAsyncMsgFromRust(buf) {
+function handleAsyncMsgFromRust(promiseId, buf) {
   const record = recordFromBuf(buf);
-  const { promiseId, result } = record;
+  const { result } = record;
   const p = promiseMap.get(promiseId);
   promiseMap.delete(promiseId);
   p.resolve(result);

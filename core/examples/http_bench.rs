@@ -44,7 +44,6 @@ const OP_CLOSE: i32 = 5;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Record {
-  pub promise_id: i32,
   pub op_id: i32,
   pub arg: i32,
   pub result: i32,
@@ -52,8 +51,7 @@ pub struct Record {
 
 impl Into<Buf> for Record {
   fn into(self) -> Buf {
-    let buf32 = vec![self.promise_id, self.op_id, self.arg, self.result]
-      .into_boxed_slice();
+    let buf32 = vec![self.op_id, self.arg, self.result].into_boxed_slice();
     let ptr = Box::into_raw(buf32) as *mut [u8; 16];
     unsafe { Box::from_raw(ptr) }
   }
@@ -63,28 +61,26 @@ impl From<&[u8]> for Record {
   fn from(s: &[u8]) -> Record {
     #[allow(clippy::cast_ptr_alignment)]
     let ptr = s.as_ptr() as *const i32;
-    let ints = unsafe { std::slice::from_raw_parts(ptr, 4) };
+    let ints = unsafe { std::slice::from_raw_parts(ptr, 3) };
     Record {
-      promise_id: ints[0],
-      op_id: ints[1],
-      arg: ints[2],
-      result: ints[3],
+      op_id: ints[0],
+      arg: ints[1],
+      result: ints[2],
     }
   }
 }
 
 impl From<Buf> for Record {
   fn from(buf: Buf) -> Record {
-    assert_eq!(buf.len(), 4 * 4);
+    assert_eq!(buf.len(), 3 * 4);
     #[allow(clippy::cast_ptr_alignment)]
-    let ptr = Box::into_raw(buf) as *mut [i32; 4];
+    let ptr = Box::into_raw(buf) as *mut [i32; 3];
     let ints: Box<[i32]> = unsafe { Box::from_raw(ptr) };
-    assert_eq!(ints.len(), 4);
+    assert_eq!(ints.len(), 3);
     Record {
-      promise_id: ints[0],
-      op_id: ints[1],
-      arg: ints[2],
-      result: ints[3],
+      op_id: ints[0],
+      arg: ints[1],
+      result: ints[2],
     }
   }
 }
@@ -92,17 +88,16 @@ impl From<Buf> for Record {
 #[test]
 fn test_record_from() {
   let r = Record {
-    promise_id: 1,
-    op_id: 2,
-    arg: 3,
-    result: 4,
+    op_id: 1,
+    arg: 2,
+    result: 3,
   };
   let expected = r.clone();
   let buf: Buf = r.into();
   #[cfg(target_endian = "little")]
   assert_eq!(
     buf,
-    vec![1u8, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0].into_boxed_slice()
+    vec![1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0].into_boxed_slice()
   );
   let actual = Record::from(buf);
   assert_eq!(actual, expected);
