@@ -357,7 +357,21 @@ pub fn parse_flags(matches: &ArgMatches) -> DenoFlags {
     flags.v8_flags = Some(v8_flags);
   }
 
+  flags = parse_permission_args(flags, matches);
   // flags specific to "run" subcommand
+  if let Some(run_matches) = matches.subcommand_matches("run") {
+    flags = parse_permission_args(flags.clone(), run_matches);
+  }
+
+  flags
+}
+
+/// Parse permission specific matches Args and assign to DenoFlags.
+/// This method is required because multiple subcommands use permission args.
+fn parse_permission_args(
+  mut flags: DenoFlags,
+  matches: &ArgMatches,
+) -> DenoFlags {
   if matches.is_present("allow-read") {
     if matches.value_of("allow-read").is_some() {
       let read_wl = matches.values_of("allow-read").unwrap();
@@ -483,7 +497,6 @@ pub fn flags_from_vec(
     }
     ("types", Some(_)) => DenoSubcommand::Types,
     ("run", Some(run_match)) => {
-      flags = parse_flags(run_match);
       match run_match.subcommand() {
         (script, Some(script_match)) => {
           argv.extend(vec![script.to_string()]);
@@ -988,6 +1001,31 @@ mod tests {
     assert_eq!(
       flags,
       DenoFlags {
+        allow_net: true,
+        allow_read: true,
+        ..DenoFlags::default()
+      }
+    );
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "script.ts"]);
+  }
+
+  #[test]
+  fn test_flags_from_vec_25() {
+    let (flags, subcommand, argv) = flags_from_vec(svec![
+      "deno",
+      "-r",
+      "-D",
+      "--allow-net",
+      "run",
+      "--allow-read",
+      "script.ts"
+    ]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        reload: true,
+        log_debug: true,
         allow_net: true,
         allow_read: true,
         ..DenoFlags::default()
