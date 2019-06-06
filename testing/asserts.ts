@@ -104,12 +104,6 @@ export function assertNotEquals(
   } catch (e) {
     expectedString = "[Cannot display]";
   }
-  console.error(
-    "Not Equals failed. actual =",
-    actualString,
-    "expected =",
-    expectedString
-  );
   if (!msg) {
     msg = `actual: ${actualString} expected: ${expectedString}`;
   }
@@ -138,12 +132,6 @@ export function assertStrictEq(
     } catch (e) {
       expectedString = "[Cannot display]";
     }
-    console.error(
-      "strictEqual failed. actual =",
-      actualString,
-      "expected =",
-      expectedString
-    );
     if (!msg) {
       msg = `actual: ${actualString} expected: ${expectedString}`;
     }
@@ -161,12 +149,6 @@ export function assertStrContains(
   msg?: string
 ): void {
   if (!actual.includes(expected)) {
-    console.error(
-      "stringContains failed. actual =",
-      actual,
-      "not containing ",
-      expected
-    );
     if (!msg) {
       msg = `actual: "${actual}" expected to contains: "${expected}"`;
     }
@@ -199,12 +181,6 @@ export function assertArrayContains(
   if (missing.length === 0) {
     return;
   }
-  console.error(
-    "assertArrayContains failed. actual=",
-    actual,
-    "not containing ",
-    expected
-  );
   if (!msg) {
     msg = `actual: "${actual}" expected to contains: "${expected}"`;
     msg += "\n";
@@ -223,12 +199,6 @@ export function assertMatch(
   msg?: string
 ): void {
   if (!expected.test(actual)) {
-    console.error(
-      "stringMatching failed. actual =",
-      actual,
-      "not matching RegExp ",
-      expected
-    );
     if (!msg) {
       msg = `actual: "${actual}" expected to match: "${expected}"`;
     }
