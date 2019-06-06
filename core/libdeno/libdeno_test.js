@@ -197,9 +197,24 @@ global.LibDenoEvalContextError = () => {
 };
 
 global.LibDenoEvalContextInvalidArgument = () => {
-  try{
+  try {
     Deno.core.evalContext();
-  }catch(e){
+  } catch (e) {
+    assert(e instanceof TypeError);
+    assert(e.message === "Invalid Argument");
+  }
+}
+
+global.LibDenoPrintInvalidArgument = () => {
+  try {
+    Deno.core.print();
+  } catch (e) {
+    assert(e instanceof TypeError);
+    assert(e.message === "Invalid Argument");
+  }
+  try {
+    Deno.core.print(2, 3, 4);
+  } catch (e) {
     assert(e instanceof TypeError);
     assert(e.message === "Invalid Argument");
   }

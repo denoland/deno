@@ -96,9 +96,11 @@ void PromiseRejectCallback(v8::PromiseRejectMessage promise_reject_message) {
 }
 
 void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
-  CHECK_GE(args.Length(), 1);
-  CHECK_LE(args.Length(), 3);
   auto* isolate = args.GetIsolate();
+  int argsLen = args.Length();
+  if(argsLen < 1 || argsLen > 2){
+    ThrowInvalidArgument(isolate);
+  }
   DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
   auto context = d->context_.Get(d->isolate_);
   v8::HandleScope handle_scope(isolate);

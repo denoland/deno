@@ -242,6 +242,13 @@ TEST(LibDenoTest, LibDenoEvalContextInvalidArgument){
   deno_delete(d);
 }
 
+TEST(LibDenoTest, LibDenoPrintInvalidArgument){
+  Deno* d = deno_new(deno_config{0, snapshot, empty, nullptr});
+  deno_execute(d, nullptr, "a.js", "LibDenoPrintInvalidArgument();");
+  EXPECT_EQ(nullptr, deno_last_exception(d));
+  deno_delete(d);
+}
+
 TEST(LibDenoTest, SharedAtomics) {
   int32_t s[] = {0, 1, 2};
   deno_buf shared = {reinterpret_cast<uint8_t*>(s), sizeof s};
