@@ -45,9 +45,7 @@ def deno_http_proxy(deno_exe, hyper_hello_exe):
     print "http_proxy_benchmark testing DENO using net/http."
     return run(
         deno_cmd,
-        merge_env={
-            "DENO_DIR": os.path.join(util.root_path, "js")
-        },
+        merge_env={"DENO_DIR": os.path.join(util.root_path, "js")},
         origin_cmd=http_proxy_origin(hyper_hello_exe))
 
 
