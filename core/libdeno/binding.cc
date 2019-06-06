@@ -375,7 +375,12 @@ void EvalContext(const v8::FunctionCallbackInfo<v8::Value>& args) {
   auto context = d->context_.Get(isolate);
   v8::Context::Scope context_scope(context);
 
-  CHECK(args[0]->IsString());
+  if (!(args[0]->IsString()))
+  {
+    ThrowInvalidArgument(isolate);
+    return;
+  }
+
   auto source = args[0].As<v8::String>();
 
   auto output = v8::Array::New(isolate, 2);
