@@ -3,17 +3,18 @@
 <html>
   <head>
     <title>Deno Benchmarks</title>
-    <link rel="shortcut icon" href="favicon.ico">
+    <link rel="shortcut icon" href="favicon.ico" />
     <link rel="stylesheet" href="https://unpkg.com/c3@0.6.7/c3.min.css" />
     <link rel="stylesheet" href="style.css" />
     <meta content="width=device-width, initial-scale=1.0" name="viewport" />
   </head>
   <body>
     <div id="spinner-overlay">
-      <div class="spinner"></div>`
+      <div class="spinner"></div>
+      `
     </div>
     <main>
-      <a href="/"><img src="images/deno_logo_4.gif" width=200></a>
+      <a href="/"><img src="images/deno_logo_4.gif" width="200"/></a>
       <h1>Deno Continuous Benchmarks</h1>
 
       <p>
@@ -21,7 +22,10 @@
         <a href="https://github.com/denoland/deno">master branch</a>.
       </p>
 
-      <p>Make sure your adblocker is disabled as some can block the chart rendering.</p>
+      <p>
+        Make sure your adblocker is disabled as some can block the chart
+        rendering.
+      </p>
 
       <p><a href="#recent">recent data</a></p>
       <p><a href="#all">all data</a> (takes a moment to load)</p>
@@ -37,41 +41,53 @@
         <li>
           <a
             href="https://github.com/denoland/deno/blob/master/tools/deno_tcp.ts"
-          >deno_tcp</a>
+            >deno_tcp</a
+          >
           is a fake http server that doesn't parse HTTP. It is comparable to
           <a
             href="https://github.com/denoland/deno/blob/master/tools/node_tcp.js"
-          >node_tcp</a>
+            >node_tcp</a
+          >
           .
         </li>
 
         <li>
           <a
             href="https://github.com/denoland/deno_std/blob/master/http/http_bench.ts"
-          >deno_http</a>
+            >deno_http</a
+          >
           is a web server written in TypeScript. It is comparable to
           <a
             href="https://github.com/denoland/deno/blob/master/tools/node_http.js"
-          >node_http</a>
+            >node_http</a
+          >
           .
         </li>
 
-        <li>deno_core_single and deno_core_multi are two versions of 
-          a minimal fake HTTP server. It blindly reads and writes fixed HTTP
-          packets. It is comparable to deno_tcp and node_tcp.
-          This is a standalone executable that uses <a
-            href="https://crates.io/crates/deno">the deno rust crate</a>. The
+        <li>
+          deno_core_single and deno_core_multi are two versions of a minimal
+          fake HTTP server. It blindly reads and writes fixed HTTP packets. It
+          is comparable to deno_tcp and node_tcp. This is a standalone
+          executable that uses
+          <a href="https://crates.io/crates/deno">the deno rust crate</a>. The
           code is in
           <a
             href="https://github.com/denoland/deno/blob/master/core/examples/http_bench.rs"
-          >http_bench.rs</a>
+            >http_bench.rs</a
+          >
           and
           <a
             href="https://github.com/denoland/deno/blob/master/core/examples/http_bench.js"
-          >http_bench.js</a>. single uses <a
-            href="https://docs.rs/tokio/0.1.19/tokio/runtime/current_thread/index.html">tokio::runtime::current_thread</a>
-          and multi uses <a
-            href="https://docs.rs/tokio/0.1.19/tokio/runtime/">tokio::runtime::threadpool</a>.
+            >http_bench.js</a
+          >. single uses
+          <a
+            href="https://docs.rs/tokio/0.1.19/tokio/runtime/current_thread/index.html"
+            >tokio::runtime::current_thread</a
+          >
+          and multi uses
+          <a href="https://docs.rs/tokio/0.1.19/tokio/runtime/"
+            >tokio::runtime::threadpool</a
+          >.
         </li>
 
         <li>
@@ -86,10 +102,60 @@
 
       <div id="req-per-sec-chart"></div>
 
+      <h3 id="proxy-req-per-sec">
+        Proxy Req/Sec <a href="#proxy-eq-per-sec">#</a>
+      </h3>
+
+      <p>
+        Tests proxy performance. 10 keep-alive connections do as many
+        hello-world requests as possible. Bigger is better.
+      </p>
+
+      <ul>
+        <li>
+          <a
+            href="https://github.com/denoland/deno/blob/master/tools/deno_tcp_proxy.ts"
+            >deno_proxy_tcp</a
+          >
+          is a fake tcp proxy server that doesn't parse HTTP. It is comparable
+          to
+          <a
+            href="https://github.com/denoland/deno/blob/master/tools/node_tcp_proxy.js"
+            >node_proxy_tcp</a
+          >
+          .
+        </li>
+
+        <li>
+          <a
+            href="https://github.com/denoland/deno/blob/master/tools/deno_http_proxy.ts"
+            >deno_proxy</a
+          >
+          is an HTTP proxy server written in TypeScript. It is comparable to
+          <a
+            href="https://github.com/denoland/deno/blob/master/tools/node_http_proxy.js"
+            >node_proxy</a
+          >
+          .
+        </li>
+
+        <li>
+          <a
+            href="https://github.com/denoland/deno/blob/master/tools/hyper_hello.rs"
+          >
+            hyper
+          </a>
+          is a Rust HTTP server used as the origin for the proxy tests
+        </li>
+      </ul>
+
+      <div id="proxy-req-per-sec-chart"></div>
+
       <h3 id="max-latency">Max Latency <a href="#max-latency">#</a></h3>
 
       <p>
-        Max latency during the same test used above for requests/second. Smaller is better.
+        Max latency during the same test used above for requests/second. Smaller
+        is better.
       </p>
 
       <div id="max-latency-chart"></div>
@@ -101,8 +167,8 @@
         <a
           href="https://github.com/denoland/deno/blob/master/tests/002_hello.ts"
         >
-          tests/002_hello.ts
-        </a>,
+          tests/002_hello.ts </a
+        >,
         <a
           href="https://github.com/denoland/deno/blob/master/tests/003_relative_import.ts"
           >tests/003_relative_import.ts</a
@@ -167,26 +233,28 @@
     <script type="module">
       import { drawCharts } from "./app.js";
       window.chartWidth = 800;
-      const overlay = document.getElementById("spinner-overlay")
+      const overlay = document.getElementById("spinner-overlay");
 
-      function showSpinner () {
+      function showSpinner() {
         overlay.style.display = "block";
       }
 
-      function hideSpinner () {
+      function hideSpinner() {
         overlay.style.display = "none";
       }
 
-      function updateCharts () {
-        const u = window.location.hash.match("all") ? "./data.json" : "recent.json";
+      function updateCharts() {
+        const u = window.location.hash.match("all")
+          ? "./data.json"
+          : "recent.json";
 
-        showSpinner()
-        
-        drawCharts(u).finally(hideSpinner)
+        showSpinner();
+
+        drawCharts(u).finally(hideSpinner);
       }
-      updateCharts()
+      updateCharts();
 
-      window.onhashchange = updateCharts
+      window.onhashchange = updateCharts;
     </script>
   </body>
 </html>
