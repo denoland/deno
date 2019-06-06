@@ -21,11 +21,7 @@ async function proxyRequest(req: ServerRequest) {
     method: req.method,
     headers: req.headers
   });
-  req.respond({
-    headers: resp.headers,
-    status: resp.status,
-    body: resp.body
-  });
+  req.respond(resp);
 }
 
 main();
