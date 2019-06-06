@@ -36,6 +36,16 @@ def deno_http(deno_exe):
             "DENO_DIR": os.path.join(util.root_path, "js")
         })
 
+def deno_tcp_proxy(deno_exe, hyper_hello_exe)
+    deno_cmd = [
+        deno_exe, "run", "--allow-net", "tools/deno_tcp_proxy.ts", ADDR,
+        ORIGIN_ADDR
+    ]
+    print "http_proxy_benchmark testing DENO using net/tcp."
+    return run(
+        deno_cmd,
+        merge_env={"DENO_DIR": os.path.join(util.root_path, "js")},
+        origin_cmd=http_proxy_origin(hyper_hello_exe))
 
 def deno_http_proxy(deno_exe, hyper_hello_exe):
     deno_cmd = [
@@ -97,6 +107,7 @@ def http_benchmark(build_dir):
         # "deno_http" was once called "deno_net_http"
         "deno_http": deno_http(deno_exe),
         "deno_proxy": deno_http_proxy(deno_exe, hyper_hello_exe),
+        "deno_proxy_tcp": deno_http_proxy(deno_exe, hyper_hello_exe),
         "deno_core_single": deno_core_single(core_http_bench_exe),
         "deno_core_multi": deno_core_multi(core_http_bench_exe),
         # "node_http" was once called "node"
