@@ -19,25 +19,26 @@ use futures::task;
 use futures::Async::*;
 use futures::Future;
 use futures::Poll;
+use libc::c_int;
 use libc::c_void;
-use std::convert::TryInto;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::ptr::null;
+use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Arc, Mutex, Once, ONCE_INIT};
 
 pub type Buf = Box<[u8]>;
 
-pub type OpAsyncFuture<E> = Box<dyn Future<Item = Buf, Error = E> + Send>;
+pub type OpAsyncFuture<I, E> = Box<dyn Future<Item = I, Error = E> + Send>;
 
 pub enum Op<E> {
   Sync(Buf),
-  Async(OpAsyncFuture<E>),
+  Async(OpAsyncFuture<Buf, E>),
 }
 
 pub type CoreError = ();
 
-type CoreOpAsyncFuture = OpAsyncFuture<CoreError>;
+type CoreOpAsyncFuture = OpAsyncFuture<(c_int, Buf), CoreError>;
 
 pub type CoreOp = Op<CoreError>;
 
@@ -59,7 +60,7 @@ pub enum StartupData<'a> {
 
 pub type OpResult<E> = Result<Op<E>, E>;
 
-type CoreDispatchFn = Fn(bool, &[u8], Option<PinnedBuf>) -> CoreOp;
+type CoreDispatchFn = Fn(&[u8], Option<PinnedBuf>) -> CoreOp;
 
 #[derive(Default)]
 pub struct Config {
@@ -73,7 +74,7 @@ impl Config {
   /// corresponds to the second argument of Deno.core.dispatch().
   pub fn dispatch<F>(&mut self, f: F)
   where
-    F: Fn(bool, &[u8], Option<PinnedBuf>) -> CoreOp + Send + Sync + 'static,
+    F: Fn(&[u8], Option<PinnedBuf>) -> CoreOp + Send + Sync + 'static,
   {
     self.dispatch = Some(Arc::new(f));
   }
@@ -95,6 +96,7 @@ pub struct Isolate {
   shared: SharedQueue,
   pending_ops: FuturesUnordered<CoreOpAsyncFuture>,
   have_unpolled_ops: bool,
+  next_promise_id: AtomicI32,
 }
 
 unsafe impl Send for Isolate {}
@@ -156,6 +158,7 @@ impl Isolate {
       needs_init,
       pending_ops: FuturesUnordered::new(),
       have_unpolled_ops: false,
+      next_promise_id: AtomicI32::new(1),
     };
 
     // If we want to use execute this has to happen here sadly.
@@ -183,6 +186,10 @@ impl Isolate {
     }
   }
 
+  pub fn get_next_promise_id(&self) -> i32 {
+    self.next_promise_id.fetch_add(1, Ordering::SeqCst)
+  }
+
   extern "C" fn pre_dispatch(
     user_data: *mut c_void,
     control_argv0: deno_buf,
@@ -191,34 +198,17 @@ impl Isolate {
     let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
     let control_shared = isolate.shared.shift();
 
-    let (op, promise_id, is_sync) = if control_argv0.len() > 0 {
+    let op = if control_argv0.len() > 0 {
       // The user called Deno.core.send(control)
       if let Some(ref f) = isolate.config.dispatch {
-        let promise_id =
-          i32::from_ne_bytes(control_argv0[..4].try_into().unwrap());
-        let is_sync: bool = promise_id == 0;
-        (
-          f(
-            is_sync,
-            &control_argv0.as_ref()[4..],
-            PinnedBuf::new(zero_copy_buf),
-          ),
-          promise_id,
-          is_sync,
-        )
+        f(control_argv0.as_ref(), PinnedBuf::new(zero_copy_buf))
       } else {
         panic!("isolate.config.dispatch not set")
       }
     } else if let Some(c) = control_shared {
       // The user called Deno.sharedQueue.push(control)
       if let Some(ref f) = isolate.config.dispatch {
-        let promise_id = i32::from_be_bytes(c[..4].try_into().unwrap());
-        let is_sync: bool = promise_id == 0;
-        (
-          f(is_sync, &c[4..], PinnedBuf::new(zero_copy_buf)),
-          promise_id,
-          is_sync,
-        )
+        f(&c, PinnedBuf::new(zero_copy_buf))
       } else {
         panic!("isolate.config.dispatch not set")
       }
@@ -234,30 +224,22 @@ impl Isolate {
     // At this point the SharedQueue should be empty.
     assert_eq!(isolate.shared.size(), 0);
 
-    match (is_sync, op) {
-      (true, Op::Sync(buf)) => {
+    match op {
+      Op::Sync(buf) => {
         // For sync messages, we always return the response via Deno.core.send's
         // return value.
         // TODO(ry) check that if JSError thrown during respond(), that it will be
         // picked up.
-        let _ = isolate.respond(Some(&buf));
+        let _ = isolate.respond(Some(Ok(&buf)));
       }
-      (false, Op::Async(fut)) => {
-        let fut = fut.and_then(move |result_buf| -> Result<Buf, CoreError> {
-          let promise_id_bytes = promise_id.to_be_bytes();
-          let buf: Buf = [&promise_id_bytes, &result_buf[..]].concat().into();
-          Ok(buf)
+      Op::Async(fut) => {
+        let promise_id = isolate.get_next_promise_id();
+        let _ = isolate.respond(Some(Err(promise_id)));
+        let fut = fut.and_then(move |buf| -> Result<(c_int, Buf), CoreError> {
+          Ok((promise_id, buf))
         });
         isolate.pending_ops.push(Box::new(fut));
         isolate.have_unpolled_ops = true;
-      }
-      // Panic on unexpected synchronicity. Maybe it would be better to have two
-      // dispatch functions(one for sync one for async).
-      (true, Op::Async(_)) => {
-        panic!("Dispatch returned Op::Async for sync call!")
-      }
-      (false, Op::Sync(_)) => {
-        panic!("Dispatch returned Op::Sync for async call!")
       }
     }
   }
@@ -314,13 +296,34 @@ impl Isolate {
     }
   }
 
-  fn respond(&mut self, maybe_buf: Option<&[u8]>) -> Result<(), JSError> {
-    let buf = match maybe_buf {
-      None => deno_buf::empty(),
-      Some(r) => deno_buf::from(r),
+  // the result type is a placeholder for a more specific enum type
+  fn respond(
+    &mut self,
+    maybe_buf_or_pid: Option<Result<&[u8], c_int>>,
+  ) -> Result<(), JSError> {
+    let (buf, pid) = match maybe_buf_or_pid {
+      Some(Err(pid)) => (deno_buf::empty(), Some(pid)),
+      Some(Ok(r)) => (deno_buf::from(r), None),
+      None => (deno_buf::empty(), None),
     };
-    unsafe {
-      libdeno::deno_respond(self.libdeno_isolate, self.as_raw_ptr(), buf)
+    if pid.is_some() {
+      unsafe {
+        libdeno::deno_respond(
+          self.libdeno_isolate,
+          self.as_raw_ptr(),
+          buf,
+          &pid.unwrap(),
+        )
+      }
+    } else {
+      unsafe {
+        libdeno::deno_respond(
+          self.libdeno_isolate,
+          self.as_raw_ptr(),
+          buf,
+          null(),
+        )
+      }
     }
     if let Some(err) = self.last_exception() {
       Err(err)
@@ -476,7 +479,7 @@ impl Future for Isolate {
     // Lock the current thread for V8.
     let _locker = LockerScope::new(self.libdeno_isolate);
 
-    let mut overflow_response: Option<Buf> = None;
+    let mut overflow_response: Option<(c_int, Buf)> = None;
 
     loop {
       self.have_unpolled_ops = false;
@@ -485,13 +488,13 @@ impl Future for Isolate {
         Err(_) => panic!("unexpected op error"),
         Ok(Ready(None)) => break,
         Ok(NotReady) => break,
-        Ok(Ready(Some(buf))) => {
-          let successful_push = self.shared.push(&buf);
+        Ok(Ready(Some(op))) => {
+          let successful_push = self.shared.push(op.0, &op.1);
           if !successful_push {
             // If we couldn't push the response to the shared queue, because
             // there wasn't enough size, we will return the buffer via the
             // legacy route, using the argument of deno_respond.
-            overflow_response = Some(buf);
+            overflow_response = Some(op);
             break;
           }
         }
@@ -505,8 +508,10 @@ impl Future for Isolate {
     }
 
     if overflow_response.is_some() {
-      let buf = overflow_response.take().unwrap();
-      self.respond(Some(&buf))?;
+      let op = overflow_response.take().unwrap();
+      let promise_id_bytes = op.0.to_be_bytes();
+      let buf: Buf = [&promise_id_bytes, &op.1[..]].concat().into();
+      self.respond(Some(Ok(&buf)))?;
     }
 
     self.check_promise_errors();
@@ -603,7 +608,7 @@ pub mod tests {
     let dispatch_count_ = dispatch_count.clone();
 
     let mut config = Config::default();
-    config.dispatch(move |_, control: &[u8], _| -> CoreOp {
+    config.dispatch(move |control: &[u8], _| -> CoreOp {
       dispatch_count_.fetch_add(1, Ordering::Relaxed);
       match mode {
         Mode::AsyncImmediate => {
@@ -664,8 +669,7 @@ pub mod tests {
     js_check(isolate.execute(
       "filename.js",
       r#"
-        let control = new Uint8Array([0,0,0,0,42]);
-        new DataView(control.buffer, 0, 4).setInt32(0, 1);
+        let control = new Uint8Array([42]);
         Deno.core.send(control);
         async function main() {
           Deno.core.send(control);
@@ -686,8 +690,7 @@ pub mod tests {
         r#"
         import { b } from 'b.js'
         if (b() != 'b') throw Error();
-        let control = new Uint8Array([0,0,0,0,42]);
-        new DataView(control.buffer, 0, 4).setInt32(0, 1);
+        let control = new Uint8Array([42]);
         Deno.core.send(control);
       "#,
       ).unwrap();
@@ -743,8 +746,7 @@ pub mod tests {
         "check1.js",
         r#"
         assert(nrecv == 0);
-        let control = new Uint8Array([0,0,0,0,42]);
-        new DataView(control.buffer, 0, 4).setInt32(0, 1);
+        let control = new Uint8Array([42]);
         Deno.core.send(control);
         assert(nrecv == 0);
         "#,
@@ -791,11 +793,11 @@ pub mod tests {
         "send1.js",
         r#"
         let control = new Uint8Array([42]);
-        Deno.core.sharedQueue.push(1, control);
+        Deno.core.sharedQueue.push(control);
         Deno.core.send();
         assert(nrecv === 0);
 
-        Deno.core.sharedQueue.push(1, control);
+        Deno.core.sharedQueue.push(control);
         Deno.core.send();
         assert(nrecv === 0);
         "#,
@@ -883,10 +885,10 @@ pub mod tests {
       "overflow_req_sync.js",
       r#"
         let asyncRecv = 0;
-        Deno.core.setAsyncHandler((buf) => { asyncRecv++ });
+        Deno.core.setAsyncHandler((promiseId, buf) => { asyncRecv++ });
         // Large message that will overflow the shared space.
         let control = new Uint8Array(100 * 1024 * 1024);
-        let response = Deno.core.dispatch(0, control);
+        let response = Deno.core.dispatch(control);
         assert(response instanceof Uint8Array);
         assert(response.length == 1);
         assert(response[0] == 43);
@@ -905,10 +907,10 @@ pub mod tests {
       "overflow_res_sync.js",
       r#"
         let asyncRecv = 0;
-        Deno.core.setAsyncHandler((buf) => { asyncRecv++ });
+        Deno.core.setAsyncHandler((promiseId, buf) => { asyncRecv++ });
         // Large message that will overflow the shared space.
         let control = new Uint8Array([42]);
-        let response = Deno.core.dispatch(0, control);
+        let response = Deno.core.dispatch(control);
         assert(response instanceof Uint8Array);
         assert(response.length == 100 * 1024 * 1024);
         assert(response[0] == 99);
@@ -933,9 +935,9 @@ pub mod tests {
         });
         // Large message that will overflow the shared space.
         let control = new Uint8Array(100 * 1024 * 1024);
-        let response = Deno.core.dispatch(1, control);
+        let response = Deno.core.dispatch(control);
         // Async messages always have null response.
-        assert(response == null);
+        assert(typeof response == "number");
         assert(asyncRecv == 0);
         "#,
       ));
@@ -962,8 +964,8 @@ pub mod tests {
         });
         // Large message that will overflow the shared space.
         let control = new Uint8Array([42]);
-        let response = Deno.core.dispatch(1, control);
-        assert(response == null);
+        let response = Deno.core.dispatch(control);
+        assert(typeof response == "number");
         assert(asyncRecv == 0);
         "#,
       ));
@@ -990,12 +992,12 @@ pub mod tests {
         });
         // Large message that will overflow the shared space.
         let control = new Uint8Array([42]);
-        let response = Deno.core.dispatch(1, control);
-        assert(response == null);
+        let response = Deno.core.dispatch(control);
+        assert(typeof response == "number");
         assert(asyncRecv == 0);
         // Dispatch another message to verify that pending ops
         // are done even if shared space overflows
-        Deno.core.dispatch(1, control);
+        Deno.core.dispatch(control);
         "#,
       ));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);

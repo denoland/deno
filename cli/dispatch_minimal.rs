@@ -39,7 +39,7 @@ pub fn parse_min_record(bytes: &[u8]) -> Option<Record> {
   let p = bytes.as_ptr();
   #[allow(clippy::cast_ptr_alignment)]
   let p32 = p as *const i32;
-  let s = unsafe { std::slice::from_raw_parts(p32, bytes.len() / 4) };
+  let s = unsafe { std::slice::from_raw_parts(p32, bytes.len() / 3) };
 
   if s.len() < 4 {
     return None;
@@ -77,7 +77,6 @@ fn test_parse_min_record() {
 
 pub fn dispatch_minimal(
   state: &ThreadSafeState,
-  is_sync: bool,
   mut record: Record,
   zero_copy: Option<PinnedBuf>,
 ) -> CoreOp {
@@ -105,11 +104,7 @@ pub fn dispatch_minimal(
     state.metrics_op_completed(buf.len());
     Ok(buf)
   }));
-  if is_sync {
-    Op::Sync(fut.wait().unwrap())
-  } else {
-    Op::Async(fut)
-  }
+  Op::Async(fut)
 }
 
 mod ops {

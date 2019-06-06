@@ -31,8 +31,8 @@ impl Worker {
   ) -> Worker {
     let state_ = state.clone();
     let mut config = Config::default();
-    config.dispatch(move |is_sync, control_buf, zero_copy_buf| {
-      state_.dispatch(is_sync, control_buf, zero_copy_buf)
+    config.dispatch(move |control_buf, zero_copy_buf| {
+      state_.dispatch(control_buf, zero_copy_buf)
     });
     Self {
       inner: Arc::new(Mutex::new(deno::Isolate::new(startup_data, config))),

@@ -13,7 +13,6 @@ const responseBuf = new Uint8Array(
     .map(c => c.charCodeAt(0))
 );
 const promiseMap = new Map();
-let nextPromiseId = 1;
 
 function assert(cond) {
   if (!cond) {
@@ -29,50 +28,51 @@ function createResolvable() {
   return Object.assign(promise, methods);
 }
 
-const scratch32 = new Int32Array(3);
+const scratch32 = new Int32Array(4);
 const scratchBytes = new Uint8Array(
   scratch32.buffer,
   scratch32.byteOffset,
   scratch32.byteLength
 );
-assert(scratchBytes.byteLength === 3 * 4);
+assert(scratchBytes.byteLength === 4 * 4);
 
-function send(promiseId, opId, arg, zeroCopy = null) {
-  scratch32[0] = opId;
-  scratch32[1] = arg;
-  scratch32[2] = -1;
-  return Deno.core.dispatch(promiseId, scratchBytes, zeroCopy);
+function send(isSync, opId, arg, zeroCopy = null) {
+  scratch32[0] = isSync;
+  scratch32[1] = opId;
+  scratch32[2] = arg;
+  scratch32[3] = -1;
+  return Deno.core.dispatch(scratchBytes, zeroCopy);
 }
 
 /** Returns Promise<number> */
 function sendAsync(opId, arg, zeroCopy = null) {
-  const promiseId = nextPromiseId++;
+  const promiseId = send(false, opId, arg, zeroCopy);
   const p = createResolvable();
   promiseMap.set(promiseId, p);
-  send(promiseId, opId, arg, zeroCopy);
   return p;
 }
 
 function recordFromBuf(buf) {
-  assert(buf.byteLength === 12);
+  assert(buf.byteLength === 16);
   const buf32 = new Int32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
   return {
-    opId: buf32[0],
-    arg: buf32[1],
-    result: buf32[2]
+    isSync: !!buf32[0],
+    opId: buf32[1],
+    arg: buf32[2],
+    result: buf32[3]
   };
 }
 
 /** Returns i32 number */
 function sendSync(opId, arg) {
-  const buf = send(0, opId, arg);
+  const buf = send(true, opId, arg);
   const record = recordFromBuf(buf);
   return record.result;
 }
 
-function handleAsyncMsgFromRust(promiseId, buf) {
+function handleAsyncMsgFromRust(buf) {
   const record = recordFromBuf(buf);
-  const { result } = record;
+  const { promiseId, result } = record;
   const p = promiseMap.get(promiseId);
   promiseMap.delete(promiseId);
   p.resolve(result);

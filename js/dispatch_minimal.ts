@@ -5,11 +5,6 @@ import { core } from "./core";
 
 const DISPATCH_MINIMAL_TOKEN = 0xcafe;
 const promiseTableMin = new Map<number, util.Resolvable<number>>();
-let _nextPromiseId = 1;
-
-export function nextPromiseId(): number {
-  return _nextPromiseId++;
-}
 
 export interface RecordMinimal {
   opId: number;
@@ -61,15 +56,16 @@ export function sendAsyncMinimal(
   arg: number,
   zeroCopy: Uint8Array
 ): Promise<number> {
-  const promiseId = nextPromiseId(); // AKA cmdId
-
   scratch32[0] = DISPATCH_MINIMAL_TOKEN;
   scratch32[1] = opId;
   scratch32[2] = arg;
 
-  const promise = util.createResolvable<number>();
-  promiseTableMin.set(promiseId, promise);
+  const promiseId = core.dispatch(scratchBytes, zeroCopy);
 
-  core.dispatch(promiseId, scratchBytes, zeroCopy);
+  util.assert(typeof promiseId == "number");
+
+  const promise = util.createResolvable<number>();
+  promiseTableMin.set(promiseId as number, promise);
+
   return promise;
 }

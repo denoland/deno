@@ -84,7 +84,7 @@ void deno_execute(Deno* d, void* user_data, const char* js_filename,
 // releasing its memory.)
 //
 // If a JS exception was encountered, deno_last_exception() will be non-NULL.
-void deno_respond(Deno* d, void* user_data, deno_buf buf);
+void deno_respond(Deno* d, void* user_data, deno_buf buf, int* promise_id);
 
 // consumes zero_copy
 void deno_pinned_buf_delete(deno_pinned_buf* buf);

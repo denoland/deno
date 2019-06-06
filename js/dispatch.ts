@@ -5,7 +5,6 @@ import * as msg from "gen/cli/msg_generated";
 import * as errors from "./errors";
 import * as util from "./util";
 import {
-  nextPromiseId,
   recordFromBufMinimal,
   handleAsyncMsgFromRustMinimal
 } from "./dispatch_minimal";
@@ -68,29 +67,37 @@ function sendInternal(
   isSync: boolean
 ): Promise<msg.Base> | Uint8Array | null {
   msg.Base.startBase(builder);
+  msg.Base.addSync(builder, isSync);
   msg.Base.addInner(builder, inner);
   msg.Base.addInnerType(builder, innerType);
   builder.finish(msg.Base.endBase(builder));
 
   const control = builder.asUint8Array();
 
-  const cmdId = isSync ? 0 : nextPromiseId();
-
   const response = core.dispatch(
-    cmdId,
     control,
     zeroCopy ? ui8FromArrayBufferView(zeroCopy) : undefined
   );
 
   builder.inUse = false;
 
-  if (isSync) {
-    return response;
-  } else {
+  if (typeof response === "number") {
     const promise = util.createResolvable<msg.Base>();
-    promiseTable.set(cmdId, promise);
-    util.assert(response == null);
+    promiseTable.set(response, promise);
+    util.assert(!isSync);
     return promise;
+  } else {
+    if (!isSync) {
+      util.assert(response !== null);
+      const base = flatbufferRecordFromBuf(response as Uint8Array);
+      const err = errors.maybeError(base);
+      if (err != null) {
+        return Promise.reject(err);
+      } else {
+        return Promise.resolve(base);
+      }
+    }
+    return response;
   }
 }
 

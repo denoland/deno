@@ -154,6 +154,7 @@ enum MediaType: byte {
 }
 
 table Base {
+  sync: bool = false;
   error_kind: ErrorKind = NoError;
   error: string;
   inner: Any;

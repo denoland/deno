@@ -18,6 +18,7 @@ declare interface DenoCore {
   recv(cb: MessageCallbackInternal): void;
 
   send(
+    cmdId: number,
     control: null | ArrayBufferView,
     data?: ArrayBufferView
   ): null | Uint8Array;

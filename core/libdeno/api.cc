@@ -170,13 +170,16 @@ void deno_pinned_buf_delete(deno_pinned_buf* buf) {
   auto _ = deno::PinnedBuf(buf);
 }
 
-void deno_respond(Deno* d_, void* user_data, deno_buf buf) {
+void deno_respond(Deno* d_, void* user_data, deno_buf buf, int* promise_id) {
   auto* d = unwrap(d_);
   if (d->current_args_ != nullptr) {
     // Synchronous response.
     if (buf.data_ptr != nullptr) {
       auto ab = deno::ImportBuf(d, buf);
       d->current_args_->GetReturnValue().Set(ab);
+    } else if (promise_id != nullptr) {
+      auto number = v8::Number::New(d->isolate_, *promise_id);
+      d->current_args_->GetReturnValue().Set(number);
     }
     d->current_args_ = nullptr;
     return;

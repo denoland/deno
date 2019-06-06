@@ -104,18 +104,17 @@ SharedQueue Binary Layout
     }
   }
 
-  function push(promiseId, buf) {
+  function push(buf) {
     let off = head();
-    let end = off + buf.byteLength + 4;
+    let end = off + buf.byteLength;
     let index = numRecords();
     if (end > shared32.byteLength || index >= MAX_RECORDS) {
       // console.log("shared_queue.js push fail");
       return false;
     }
     setEnd(index, end);
-    assert(end - off == buf.byteLength + 4);
-    new DataView(sharedBytes.buffer, off, 4).setInt32(0, promiseId);
-    sharedBytes.set(buf, off + 4);
+    assert(end - off == buf.byteLength);
+    sharedBytes.set(buf, off);
     shared32[INDEX_NUM_RECORDS] += 1;
     shared32[INDEX_HEAD] = end;
     return true;
@@ -162,27 +161,23 @@ SharedQueue Binary Layout
 
   function handleAsyncMsgFromRustInner(buf) {
     // DataView to extract cmdId value.
-    const cmdIdView = new DataView(buf.buffer, buf.byteOffset, 4);
+    const dataView = new DataView(buf.buffer, buf.byteOffset, 4);
+    const promiseId = dataView.getInt32(0);
     // Uint8 buffer view shifted right and shortened 4 bytes to remove cmdId from view window.
     const bufViewFinal = new Uint8Array(
       buf.buffer,
       buf.byteOffset + 4,
       buf.byteLength - 4
     );
-    asyncHandler(cmdIdView.getInt32(0), bufViewFinal);
+    asyncHandler(promiseId, bufViewFinal);
   }
 
-  function dispatch(promiseId, control, zeroCopy = null) {
+  function dispatch(control, zeroCopy = null) {
     maybeInit();
     // First try to push control to shared.
-    const success = push(promiseId, control);
+    const success = push(control);
     // If successful, don't use first argument of core.send.
-    let arg0 = null;
-    if (!success) {
-      arg0 = new Uint8Array(control.byteLength + 4);
-      new DataView(arg0.buffer, 0, 4).setInt32(0, promiseId);
-      arg0.set(control, 4);
-    }
+    const arg0 = success ? null : control;
     return window.Deno.core.send(arg0, zeroCopy);
   }
 

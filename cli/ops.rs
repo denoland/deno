@@ -80,7 +80,6 @@ fn empty_buf() -> Buf {
 
 pub fn dispatch_all(
   state: &ThreadSafeState,
-  is_sync: bool,
   control: &[u8],
   zero_copy: Option<PinnedBuf>,
   op_selector: OpSelector,
@@ -88,9 +87,9 @@ pub fn dispatch_all(
   let bytes_sent_control = control.len();
   let bytes_sent_zero_copy = zero_copy.as_ref().map(|b| b.len()).unwrap_or(0);
   let op = if let Some(min_record) = parse_min_record(control) {
-    dispatch_minimal(state, is_sync, min_record, zero_copy)
+    dispatch_minimal(state, min_record, zero_copy)
   } else {
-    dispatch_all_legacy(state, is_sync, control, zero_copy, op_selector)
+    dispatch_all_legacy(state, control, zero_copy, op_selector)
   };
   state.metrics_op_dispatched(bytes_sent_control, bytes_sent_zero_copy);
   op
@@ -102,13 +101,13 @@ pub fn dispatch_all(
 /// data corresponds to the second argument of Deno.core.dispatch().
 pub fn dispatch_all_legacy(
   state: &ThreadSafeState,
-  is_sync: bool,
   control: &[u8],
   zero_copy: Option<PinnedBuf>,
   op_selector: OpSelector,
 ) -> CoreOp {
   let base = msg::get_root_as_base(&control);
   let inner_type = base.inner_type();
+  let is_sync = base.sync();
 
   debug!(
     "msg_from_js {} sync {}",
@@ -128,11 +127,7 @@ pub fn dispatch_all_legacy(
   match (is_sync, op_result) {
     (_, Ok(Op::Sync(buf))) => {
       state.metrics_op_completed(buf.len());
-      if is_sync {
-        Op::Sync(buf)
-      } else {
-        Op::Async(Box::new(futures::future::ok(buf)))
-      }
+      Op::Sync(buf)
     }
     (false, Ok(Op::Async(fut))) => {
       let result_fut = Box::new(
@@ -172,7 +167,7 @@ pub fn dispatch_all_legacy(
       Op::Async(result_fut)
     }
     (true, Ok(Op::Async(_))) => panic!(
-      "Dispatch returned Op::Async for sync call OP: {}",
+      "Dispatch returned Op::Async for sync call of: {}",
       msg::enum_name_any(inner_type)
     ),
     (_, Err(err)) => {
@@ -190,11 +185,7 @@ pub fn dispatch_all_legacy(
         },
       );
       state.metrics_op_completed(response_buf.len());
-      if is_sync {
-        Op::Sync(response_buf)
-      } else {
-        Op::Async(Box::new(futures::future::ok(response_buf)))
-      }
+      Op::Sync(response_buf)
     }
   }
 }
@@ -716,9 +707,6 @@ fn op_fetch(
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
-  if is_sync {
-    return Err(errors::no_sync_support());
-  }
   let inner = base.inner_as_fetch().unwrap();
 
   let header = inner.header().unwrap();
@@ -764,7 +752,13 @@ fn op_fetch(
           },
         ))
       });
-  Ok(Op::Async(Box::new(future)))
+  if is_sync {
+    // TODO(afinch7) avoid block_on here?
+    let result_buf = tokio_util::block_on(future)?;
+    Ok(Op::Sync(result_buf))
+  } else {
+    Ok(Op::Async(Box::new(future)))
+  }
 }
 
 // This is just type conversion. Implement From trait?
@@ -992,7 +986,7 @@ fn op_open(
       ))
     });
   if is_sync {
-    let buf = op.wait()?;
+    let buf = tokio_util::block_on(op)?;
     Ok(Op::Sync(buf))
   } else {
     Ok(Op::Async(Box::new(op)))
@@ -1093,7 +1087,7 @@ fn op_read(
           ))
         });
       if is_sync {
-        let buf = op.wait()?;
+        let buf = tokio_util::block_on(op)?;
         Ok(Op::Sync(buf))
       } else {
         Ok(Op::Async(Box::new(op)))
@@ -1693,7 +1687,7 @@ fn op_dial(
           .and_then(new_conn)
       });
   if is_sync {
-    let buf = op.wait()?;
+    let buf = tokio_util::block_on(op)?;
     Ok(Op::Sync(buf))
   } else {
     Ok(Op::Async(Box::new(op)))
