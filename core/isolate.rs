@@ -778,7 +778,7 @@ pub mod tests {
         "setup2.js",
         r#"
         let nrecv = 0;
-        Deno.core.setAsyncHandler((cmdId, buf) => {
+        Deno.core.setAsyncHandler((promiseId, buf) => {
           assert(buf.byteLength === 1);
           assert(buf[0] === 43);
           nrecv++;
@@ -790,13 +790,12 @@ pub mod tests {
       js_check(isolate.execute(
         "send1.js",
         r#"
-        let control = new Uint8Array([0,0,0,0,42]);
-        new DataView(control.buffer, 0, 4).setInt32(0, 1);
-        Deno.core.sharedQueue.push(control);
+        let control = new Uint8Array([42]);
+        Deno.core.sharedQueue.push(1, control);
         Deno.core.send();
         assert(nrecv === 0);
 
-        Deno.core.sharedQueue.push(control);
+        Deno.core.sharedQueue.push(1, control);
         Deno.core.send();
         assert(nrecv === 0);
         "#,

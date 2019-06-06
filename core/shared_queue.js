@@ -104,17 +104,18 @@ SharedQueue Binary Layout
     }
   }
 
-  function push(buf) {
+  function push(promiseId, buf) {
     let off = head();
-    let end = off + buf.byteLength;
+    let end = off + buf.byteLength + 4;
     let index = numRecords();
     if (end > shared32.byteLength || index >= MAX_RECORDS) {
       // console.log("shared_queue.js push fail");
       return false;
     }
     setEnd(index, end);
-    assert(end - off == buf.byteLength);
-    sharedBytes.set(buf, off);
+    assert(end - off == buf.byteLength + 4);
+    new DataView(sharedBytes.buffer, off, 4).setInt32(0, promiseId);
+    sharedBytes.set(buf, off + 4);
     shared32[INDEX_NUM_RECORDS] += 1;
     shared32[INDEX_HEAD] = end;
     return true;
@@ -171,15 +172,17 @@ SharedQueue Binary Layout
     asyncHandler(cmdIdView.getInt32(0), bufViewFinal);
   }
 
-  function dispatch(cmdId, control, zeroCopy = null) {
+  function dispatch(promiseId, control, zeroCopy = null) {
     maybeInit();
-    const controlFinal = new Uint8Array(control.byteLength + 4);
-    new DataView(controlFinal.buffer, 0, 4).setInt32(0, cmdId);
-    controlFinal.set(control, 4);
     // First try to push control to shared.
-    const success = push(controlFinal);
+    const success = push(promiseId, control);
     // If successful, don't use first argument of core.send.
-    const arg0 = success ? null : controlFinal;
+    let arg0 = null;
+    if (!success) {
+      arg0 = new Uint8Array(control.byteLength + 4);
+      new DataView(arg0.buffer, 0, 4).setInt32(0, promiseId);
+      arg0.set(control, 4);
+    }
     return window.Deno.core.send(arg0, zeroCopy);
   }
 
