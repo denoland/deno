@@ -235,14 +235,14 @@ TEST(LibDenoTest, LibDenoEvalContextError) {
   deno_delete(d);
 }
 
-TEST(LibDenoTest, LibDenoEvalContextInvalidArgument){
+TEST(LibDenoTest, LibDenoEvalContextInvalidArgument) {
   Deno* d = deno_new(deno_config{0, snapshot, empty, nullptr});
   deno_execute(d, nullptr, "a.js", "LibDenoEvalContextInvalidArgument();");
   EXPECT_EQ(nullptr, deno_last_exception(d));
   deno_delete(d);
 }
 
-TEST(LibDenoTest, LibDenoPrintInvalidArgument){
+TEST(LibDenoTest, LibDenoPrintInvalidArgument) {
   Deno* d = deno_new(deno_config{0, snapshot, empty, nullptr});
   deno_execute(d, nullptr, "a.js", "LibDenoPrintInvalidArgument();");
   EXPECT_EQ(nullptr, deno_last_exception(d));

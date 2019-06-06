@@ -203,7 +203,7 @@ global.LibDenoEvalContextInvalidArgument = () => {
     assert(e instanceof TypeError);
     assert(e.message === "Invalid Argument");
   }
-}
+};
 
 global.LibDenoPrintInvalidArgument = () => {
   try {
@@ -218,4 +218,4 @@ global.LibDenoPrintInvalidArgument = () => {
     assert(e instanceof TypeError);
     assert(e.message === "Invalid Argument");
   }
-}
+};

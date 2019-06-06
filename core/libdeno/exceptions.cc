@@ -215,8 +215,8 @@ void HandleExceptionMessage(v8::Local<v8::Context> context,
   d->last_exception_ = json_str;
 }
 
-void ThrowInvalidArgument(v8::Isolate *isolate){
-      isolate->ThrowException(v8::Exception::TypeError(v8_str("Invalid Argument")));
+void ThrowInvalidArgument(v8::Isolate* isolate) {
+  isolate->ThrowException(v8::Exception::TypeError(v8_str("Invalid Argument")));
 }
 
 }  // namespace deno
