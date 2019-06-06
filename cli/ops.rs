@@ -29,7 +29,7 @@ use crate::worker::Worker;
 use deno::js_check;
 use deno::Buf;
 use deno::JSError;
-use deno::Loader;
+//use deno::Loader;
 use deno::Op;
 use deno::PinnedBuf;
 use flatbuffers::FlatBufferBuilder;
@@ -499,9 +499,22 @@ fn op_fetch_module_meta_data(
   let use_cache = !state.flags.reload;
   let no_fetch = state.flags.no_fetch;
 
-  // TODO(bartlomieju)
-  debug!("op fetch module {:?} {:?} {:?}", false, specifier, referrer);
-  let resolved_specifier = state.resolve(specifier, referrer, false).unwrap();
+  //  println!("op fetch module meta data {:?}, {:?}", specifier, referrer);
+  // TODO(bartlomieju): I feel this is wrong - specifier is only resolved if there's an
+  //  import map - why it is not always resolved? Eg. "bad-module.ts" will return NotFound
+  //  error whilst it should return RelativeUrlWithCannotBeABaseBase error
+  let resolved_specifier = match &state.import_map {
+    Some(import_map) => {
+      match import_map.resolve(specifier, referrer) {
+        Ok(result) => match result {
+          Some(url) => url.clone(),
+          None => specifier.to_string(),
+        },
+        Err(err) => panic!("error resolving using import map: {:?}", err), // TODO: this should be coerced to DenoError
+      }
+    }
+    None => specifier.to_string(),
+  };
 
   let fut = state
     .dir

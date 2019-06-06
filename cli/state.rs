@@ -116,12 +116,10 @@ fn fetch_module_meta_data_and_maybe_compile_async(
   let state_ = state.clone();
   let specifier = specifier.to_string();
   let referrer = referrer.to_string();
-  // TODO(bartlomieju) cleanup, this is bad
   let is_root = referrer == ".";
-  debug!(
-    "fetch module, is_root {:?}, spec {:?}, ref {:?}",
-    is_root, specifier, referrer
-  );
+
+  //  println!("fetch_module_meta_data_and_maybe_compile_async, {:?}, {:?}", specifier, referrer);
+
   let f =
     futures::future::result(state.resolve(&specifier, &referrer, is_root));
   f.and_then(move |module_id| {
@@ -173,10 +171,10 @@ impl Loader for ThreadSafeState {
     referrer: &str,
     is_root: bool,
   ) -> Result<String, Self::Error> {
-    debug!(
-      "resolve is_root: {:?}, spec: {:?}, ref: {:?}",
-      is_root, specifier, referrer
-    );
+    //    println!(
+    //      "resolve is_root: {:?}, spec: {:?}, ref: {:?}",
+    //      is_root, specifier, referrer
+    //    );
     if !is_root {
       match &self.import_map {
         Some(import_map) => {
