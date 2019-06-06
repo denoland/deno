@@ -4,7 +4,7 @@ export interface ArgParsingOptions {
   boolean?: boolean | string | string[];
   alias?: { [key: string]: string | string[] };
   string?: string | string[];
-  default?: { [key: string]: unknown }; // eslint-disable-line @typescript-eslint/no-explicit-any
+  default?: { [key: string]: unknown };
   "--"?: boolean;
   stopEarly?: boolean;
 }

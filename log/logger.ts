@@ -4,8 +4,7 @@ import { BaseHandler } from "./handlers.ts";
 
 export interface LogRecord {
   msg: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  args: any[];
+  args: unknown[];
   datetime: Date;
   level: number;
   levelName: string;
@@ -24,8 +23,7 @@ export class Logger {
     this.handlers = handlers || [];
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  _log(level: number, msg: string, ...args: any[]): void {
+  _log(level: number, msg: string, ...args: unknown[]): void {
     if (this.level > level) return;
 
     // TODO: it'd be a good idea to make it immutable, so
@@ -38,7 +36,6 @@ export class Logger {
       level: level,
       levelName: getLevelName(level)
     };
-
     this.handlers.forEach(
       (handler): void => {
         handler.handle(record);
@@ -46,28 +43,23 @@ export class Logger {
     );
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  debug(msg: string, ...args: any[]): void {
+  debug(msg: string, ...args: unknown[]): void {
     this._log(LogLevel.DEBUG, msg, ...args);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  info(msg: string, ...args: any[]): void {
+  info(msg: string, ...args: unknown[]): void {
     this._log(LogLevel.INFO, msg, ...args);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  warning(msg: string, ...args: any[]): void {
+  warning(msg: string, ...args: unknown[]): void {
     this._log(LogLevel.WARNING, msg, ...args);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  error(msg: string, ...args: any[]): void {
+  error(msg: string, ...args: unknown[]): void {
     this._log(LogLevel.ERROR, msg, ...args);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  critical(msg: string, ...args: any[]): void {
+  critical(msg: string, ...args: unknown[]): void {
     this._log(LogLevel.CRITICAL, msg, ...args);
   }
 }
