@@ -242,7 +242,7 @@ mod tests {
     assert!(q.push(1, &alloc_buf(1)));
     assert_eq!(q.size(), 2);
 
-    assert_eq!(q.shift().unwrap().len(), RECOMMENDED_SIZE - 1 - (4 * 1));
+    assert_eq!(q.shift().unwrap().len(), RECOMMENDED_SIZE - 1 - 4);
     assert_eq!(q.size(), 1);
 
     assert!(!q.push(1, &alloc_buf(1)));

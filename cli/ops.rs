@@ -753,8 +753,7 @@ fn op_fetch(
         ))
       });
   if is_sync {
-    // TODO(afinch7) avoid block_on here?
-    let result_buf = tokio_util::block_on(future)?;
+    let result_buf = future.wait()?;
     Ok(Op::Sync(result_buf))
   } else {
     Ok(Op::Async(Box::new(future)))
@@ -986,7 +985,7 @@ fn op_open(
       ))
     });
   if is_sync {
-    let buf = tokio_util::block_on(op)?;
+    let buf = op.wait()?;
     Ok(Op::Sync(buf))
   } else {
     Ok(Op::Async(Box::new(op)))
@@ -1087,7 +1086,7 @@ fn op_read(
           ))
         });
       if is_sync {
-        let buf = tokio_util::block_on(op)?;
+        let buf = op.wait()?;
         Ok(Op::Sync(buf))
       } else {
         Ok(Op::Async(Box::new(op)))
@@ -1128,7 +1127,7 @@ fn op_write(
           ))
         });
       if is_sync {
-        let buf = tokio_util::block_on(op)?;
+        let buf = op.wait()?;
         Ok(Op::Sync(buf))
       } else {
         Ok(Op::Async(Box::new(op)))
@@ -1155,7 +1154,7 @@ fn op_seek(
       let op = resources::seek(resource, offset, whence)
         .and_then(move |_| Ok(empty_buf()));
       if is_sync {
-        let buf = tokio_util::block_on(op)?;
+        let buf = op.wait()?;
         Ok(Op::Sync(buf))
       } else {
         Ok(Op::Async(Box::new(op)))
@@ -1654,7 +1653,7 @@ fn op_accept(
         .map_err(DenoError::from)
         .and_then(move |(tcp_stream, _socket_addr)| new_conn(tcp_stream));
       if is_sync {
-        let buf = tokio_util::block_on(op)?;
+        let buf = op.wait()?;
         Ok(Op::Sync(buf))
       } else {
         Ok(Op::Async(Box::new(op)))
@@ -1687,7 +1686,7 @@ fn op_dial(
           .and_then(new_conn)
       });
   if is_sync {
-    let buf = tokio_util::block_on(op)?;
+    let buf = op.wait()?;
     Ok(Op::Sync(buf))
   } else {
     Ok(Op::Async(Box::new(op)))
@@ -1882,7 +1881,7 @@ fn op_run_status(
     ))
   });
   if is_sync {
-    let buf = tokio_util::block_on(future)?;
+    let buf = future.wait()?;
     Ok(Op::Sync(buf))
   } else {
     Ok(Op::Async(Box::new(future)))
