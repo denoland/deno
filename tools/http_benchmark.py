@@ -13,6 +13,7 @@ import subprocess
 #   "deno_http" was once called "deno_net_http"
 
 ADDR = "127.0.0.1:4544"
+ORIGIN_ADDR = "127.0.0.1:4545"
 DURATION = "10s"
 
 
@@ -36,6 +37,18 @@ def deno_http(deno_exe):
         })
 
 
+def deno_http_proxy(deno_exe, hyper_hello_exe):
+    deno_cmd = [
+        deno_exe, "run", "--allow-net", "tools/deno_http_proxy.ts", ADDR,
+        ORIGIN_ADDR
+    ]
+    print "http_proxy_benchmark testing DENO using net/http."
+    return run(
+        deno_cmd,
+        merge_env={"DENO_DIR": os.path.join(util.root_path, "js")},
+        origin_cmd=http_proxy_origin(hyper_hello_exe))
+
+
 def deno_core_single(exe):
     print "http_benchmark testing deno_core_single"
     return run([exe, "--single-thread"])
@@ -52,10 +65,20 @@ def node_http():
     return run(node_cmd)
 
 
+def node_http_proxy(hyper_hello_exe):
+    node_cmd = ["node", "tools/node_http_proxy.js", ADDR.split(":")[1]]
+    print "http_proxy_benchmark testing NODE."
+    return run(node_cmd, None, http_proxy_origin(hyper_hello_exe))
+
+
 def node_tcp():
     node_cmd = ["node", "tools/node_tcp.js", ADDR.split(":")[1]]
     print "http_benchmark testing node_tcp.js"
     return run(node_cmd)
+
+
+def http_proxy_origin(hyper_hello_exe):
+    return [hyper_hello_exe, ORIGIN_ADDR.split(":")[1]]
 
 
 def hyper_http(hyper_hello_exe):
@@ -73,16 +96,18 @@ def http_benchmark(build_dir):
         "deno_tcp": deno_tcp(deno_exe),
         # "deno_http" was once called "deno_net_http"
         "deno_http": deno_http(deno_exe),
+        "deno_proxy": deno_http_proxy(deno_exe, hyper_hello_exe),
         "deno_core_single": deno_core_single(core_http_bench_exe),
         "deno_core_multi": deno_core_multi(core_http_bench_exe),
         # "node_http" was once called "node"
         "node_http": node_http(),
+        "node_proxy": node_http_proxy(hyper_hello_exe),
         "node_tcp": node_tcp(),
         "hyper": hyper_http(hyper_hello_exe)
     }
 
 
-def run(server_cmd, merge_env=None):
+def run(server_cmd, merge_env=None, origin_cmd=None):
     # Run deno echo server in the background.
     if merge_env is None:
         env = None
@@ -94,6 +119,11 @@ def run(server_cmd, merge_env=None):
     # Wait for port 4544 to become available.
     # TODO Need to use SO_REUSEPORT with tokio::net::TcpListener.
     time.sleep(5)
+
+    origin = None
+    if origin_cmd is not None:
+        print "Starting origin server"
+        origin = subprocess.Popen(origin_cmd, env=env)
 
     server = subprocess.Popen(server_cmd, env=env)
 
@@ -109,6 +139,9 @@ def run(server_cmd, merge_env=None):
         return stats
     finally:
         server.kill()
+        if origin is not None:
+            print "Stopping origin server"
+            origin.kill()
 
 
 if __name__ == '__main__':
