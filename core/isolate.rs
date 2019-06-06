@@ -19,8 +19,8 @@ use futures::task;
 use futures::Async::*;
 use futures::Future;
 use futures::Poll;
-use libc::c_int;
 use libc::c_void;
+use std::convert::TryInto;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::ptr::null;
@@ -185,21 +185,26 @@ impl Isolate {
 
   extern "C" fn pre_dispatch(
     user_data: *mut c_void,
-    cmd_id: c_int,
     control_argv0: deno_buf,
     zero_copy_buf: deno_pinned_buf,
   ) {
-    let is_sync: bool = cmd_id == 0;
     let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
     let control_shared = isolate.shared.shift();
 
-    let op = if control_argv0.len() > 0 {
+    let (op, promise_id, is_sync) = if control_argv0.len() > 0 {
       // The user called Deno.core.send(control)
       if let Some(ref f) = isolate.config.dispatch {
-        f(
+        let promise_id =
+          i32::from_ne_bytes(control_argv0[..4].try_into().unwrap());
+        let is_sync: bool = promise_id == 0;
+        (
+          f(
+            is_sync,
+            &control_argv0.as_ref()[4..],
+            PinnedBuf::new(zero_copy_buf),
+          ),
+          promise_id,
           is_sync,
-          control_argv0.as_ref(),
-          PinnedBuf::new(zero_copy_buf),
         )
       } else {
         panic!("isolate.config.dispatch not set")
@@ -207,7 +212,13 @@ impl Isolate {
     } else if let Some(c) = control_shared {
       // The user called Deno.sharedQueue.push(control)
       if let Some(ref f) = isolate.config.dispatch {
-        f(is_sync, &c, PinnedBuf::new(zero_copy_buf))
+        let promise_id = i32::from_be_bytes(c[..4].try_into().unwrap());
+        let is_sync: bool = promise_id == 0;
+        (
+          f(is_sync, &c[4..], PinnedBuf::new(zero_copy_buf)),
+          promise_id,
+          is_sync,
+        )
       } else {
         panic!("isolate.config.dispatch not set")
       }
@@ -233,8 +244,8 @@ impl Isolate {
       }
       (false, Op::Async(fut)) => {
         let fut = fut.and_then(move |result_buf| -> Result<Buf, CoreError> {
-          let cmd_id_bytes = cmd_id.to_ne_bytes();
-          let buf: Buf = [&cmd_id_bytes, &result_buf[..]].concat().into();
+          let promise_id_bytes = promise_id.to_be_bytes();
+          let buf: Buf = [&promise_id_bytes, &result_buf[..]].concat().into();
           Ok(buf)
         });
         isolate.pending_ops.push(Box::new(fut));
@@ -653,10 +664,11 @@ pub mod tests {
     js_check(isolate.execute(
       "filename.js",
       r#"
-        let control = new Uint8Array([42]);
-        Deno.core.send(1, control);
+        let control = new Uint8Array([0,0,0,0,42]);
+        new DataView(control.buffer, 0, 4).setInt32(0, 1);
+        Deno.core.send(control);
         async function main() {
-          Deno.core.send(1, control);
+          Deno.core.send(control);
         }
         main();
         "#,
@@ -674,8 +686,9 @@ pub mod tests {
         r#"
         import { b } from 'b.js'
         if (b() != 'b') throw Error();
-        let control = new Uint8Array([42]);
-        Deno.core.send(1, control);
+        let control = new Uint8Array([0,0,0,0,42]);
+        new DataView(control.buffer, 0, 4).setInt32(0, 1);
+        Deno.core.send(control);
       "#,
       ).unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
@@ -730,8 +743,9 @@ pub mod tests {
         "check1.js",
         r#"
         assert(nrecv == 0);
-        let control = new Uint8Array([42]);
-        Deno.core.send(1, control);
+        let control = new Uint8Array([0,0,0,0,42]);
+        new DataView(control.buffer, 0, 4).setInt32(0, 1);
+        Deno.core.send(control);
         assert(nrecv == 0);
         "#,
       ));
@@ -742,7 +756,7 @@ pub mod tests {
         "check2.js",
         r#"
         assert(nrecv == 1);
-        Deno.core.send(1, control);
+        Deno.core.send(control);
         assert(nrecv == 1);
         "#,
       ));
@@ -776,13 +790,14 @@ pub mod tests {
       js_check(isolate.execute(
         "send1.js",
         r#"
-        let control = new Uint8Array([42]);
+        let control = new Uint8Array([0,0,0,0,42]);
+        new DataView(control.buffer, 0, 4).setInt32(0, 1);
         Deno.core.sharedQueue.push(control);
-        Deno.core.send(1);
+        Deno.core.send();
         assert(nrecv === 0);
 
         Deno.core.sharedQueue.push(control);
-        Deno.core.send(1);
+        Deno.core.send();
         assert(nrecv === 0);
         "#,
       ));

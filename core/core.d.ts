@@ -8,7 +8,7 @@ declare type MessageCallback = (cmdId: number, msg: Uint8Array) => void;
 
 declare interface DenoCore {
   dispatch(
-    cmdId: number,
+    promiseId: number,
     control: Uint8Array,
     zeroCopy?: ArrayBufferView | null
   ): Uint8Array | null;

@@ -172,7 +172,7 @@ pub fn dispatch_all_legacy(
       Op::Async(result_fut)
     }
     (true, Ok(Op::Async(_))) => panic!(
-      "Dispatch returned Op::Async for sync call for: {}",
+      "Dispatch returned Op::Async for sync call OP: {}",
       msg::enum_name_any(inner_type)
     ),
     (_, Err(err)) => {
@@ -716,6 +716,9 @@ fn op_fetch(
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
+  if is_sync {
+    return Err(errors::no_sync_support());
+  }
   let inner = base.inner_as_fetch().unwrap();
 
   let header = inner.header().unwrap();
@@ -761,13 +764,7 @@ fn op_fetch(
           },
         ))
       });
-  if is_sync {
-    // TODO(afinch7) avoid block_on here?
-    let result_buf = tokio_util::block_on(future)?;
-    Ok(Op::Sync(result_buf))
-  } else {
-    Ok(Op::Async(Box::new(future)))
-  }
+  Ok(Op::Async(Box::new(future)))
 }
 
 // This is just type conversion. Implement From trait?
@@ -995,7 +992,7 @@ fn op_open(
       ))
     });
   if is_sync {
-    let buf = tokio_util::block_on(op)?;
+    let buf = op.wait()?;
     Ok(Op::Sync(buf))
   } else {
     Ok(Op::Async(Box::new(op)))
@@ -1096,7 +1093,7 @@ fn op_read(
           ))
         });
       if is_sync {
-        let buf = tokio_util::block_on(op)?;
+        let buf = op.wait()?;
         Ok(Op::Sync(buf))
       } else {
         Ok(Op::Async(Box::new(op)))
@@ -1696,7 +1693,7 @@ fn op_dial(
           .and_then(new_conn)
       });
   if is_sync {
-    let buf = tokio_util::block_on(op)?;
+    let buf = op.wait()?;
     Ok(Op::Sync(buf))
   } else {
     Ok(Op::Async(Box::new(op)))

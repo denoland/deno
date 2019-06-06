@@ -28,15 +28,15 @@ global.TypedArraySnapshots = () => {
 global.RecvReturnEmpty = () => {
   const m1 = new Uint8Array("abc".split("").map(c => c.charCodeAt(0)));
   const m2 = m1.slice();
-  const r1 = Deno.core.send(true, m1);
+  const r1 = Deno.core.send(m1);
   assert(r1 == null);
-  const r2 = Deno.core.send(true, m2);
+  const r2 = Deno.core.send(m2);
   assert(r2 == null);
 };
 
 global.RecvReturnBar = () => {
   const m = new Uint8Array("abc".split("").map(c => c.charCodeAt(0)));
-  const r = Deno.core.send(true, m);
+  const r = Deno.core.send(m);
   assert(r instanceof Uint8Array);
   assert(r.byteLength === 3);
   const rstr = String.fromCharCode(...r);
@@ -58,7 +58,7 @@ global.SendRecvSlice = () => {
     buf[0] = 100 + i;
     buf[buf.length - 1] = 100 - i;
     // On the native side, the slice is shortened by 19 bytes.
-    buf = Deno.core.send(true, buf);
+    buf = Deno.core.send(buf);
     assert(buf.byteOffset === i * 11);
     assert(buf.byteLength === abLen - i * 30 - 19);
     assert(buf.buffer.byteLength == abLen);
@@ -78,17 +78,17 @@ global.JSSendArrayBufferViewTypes = () => {
   const ab1 = new ArrayBuffer(4321);
   const u8 = new Uint8Array(ab1, 2468, 1000);
   u8[0] = 1;
-  Deno.core.send(true, u8);
+  Deno.core.send(u8);
   // Send Uint32Array.
   const ab2 = new ArrayBuffer(4321);
   const u32 = new Uint32Array(ab2, 2468, 1000 / Uint32Array.BYTES_PER_ELEMENT);
   u32[0] = 0x02020202;
-  Deno.core.send(true, u32);
+  Deno.core.send(u32);
   // Send DataView.
   const ab3 = new ArrayBuffer(4321);
   const dv = new DataView(ab3, 2468, 1000);
   dv.setUint8(0, 3);
-  Deno.core.send(true, dv);
+  Deno.core.send(dv);
 };
 
 // The following join has caused SnapshotBug to segfault when using kKeep.
@@ -110,7 +110,7 @@ global.ZeroCopyBuf = () => {
   const b = zeroCopyBuf;
   // The second parameter of send should modified by the
   // privileged side.
-  const r = Deno.core.send(true, a, b);
+  const r = Deno.core.send(a, b);
   assert(r == null);
   // b is different.
   assert(b[0] === 4);
@@ -129,7 +129,7 @@ global.CheckPromiseErrors = () => {
     try {
       await fn();
     } catch (e) {
-      Deno.core.send(true, new Uint8Array([42]));
+      Deno.core.send(new Uint8Array([42]));
     }
   })();
 };

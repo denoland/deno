@@ -168,16 +168,19 @@ SharedQueue Binary Layout
       buf.byteOffset + 4,
       buf.byteLength - 4
     );
-    asyncHandler(cmdIdView.getInt32(0, true), bufViewFinal);
+    asyncHandler(cmdIdView.getInt32(0), bufViewFinal);
   }
 
   function dispatch(cmdId, control, zeroCopy = null) {
     maybeInit();
+    const controlFinal = new Uint8Array(control.byteLength + 4);
+    new DataView(controlFinal.buffer, 0, 4).setInt32(0, cmdId);
+    controlFinal.set(control, 4);
     // First try to push control to shared.
-    const success = push(control);
+    const success = push(controlFinal);
     // If successful, don't use first argument of core.send.
-    const arg0 = success ? null : control;
-    return window.Deno.core.send(cmdId, arg0, zeroCopy);
+    const arg0 = success ? null : controlFinal;
+    return window.Deno.core.send(arg0, zeroCopy);
   }
 
   const denoCore = {

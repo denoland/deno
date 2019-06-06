@@ -39,7 +39,7 @@ pub fn parse_min_record(bytes: &[u8]) -> Option<Record> {
   let p = bytes.as_ptr();
   #[allow(clippy::cast_ptr_alignment)]
   let p32 = p as *const i32;
-  let s = unsafe { std::slice::from_raw_parts(p32, bytes.len() / 3) };
+  let s = unsafe { std::slice::from_raw_parts(p32, bytes.len() / 4) };
 
   if s.len() < 4 {
     return None;
