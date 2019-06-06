@@ -16,8 +16,9 @@ class TestHandler extends log.handlers.BaseHandler {
 }
 
 test(async function defaultHandlers(): Promise<void> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const loggers: { [key: string]: (msg: string, ...args: any[]) => void } = {
+  const loggers: {
+    [key: string]: (msg: string, ...args: unknown[]) => void;
+  } = {
     DEBUG: log.debug,
     INFO: log.info,
     WARNING: log.warning,
