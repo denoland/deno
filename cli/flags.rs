@@ -1025,6 +1025,7 @@ mod tests {
       "--allow-net",
       "run",
       "--allow-read",
+      "script.ts"
     ]);
     assert_eq!(
       flags,
