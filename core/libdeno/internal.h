@@ -40,6 +40,8 @@ class DenoIsolate {
         recv_cb_(config.recv_cb),
         user_data_(nullptr),
         resolve_cb_(nullptr),
+        next_dyn_import_id_(0),
+        dyn_import_cb_(config.dyn_import_cb),
         has_snapshotted_(false) {
     if (config.load_snapshot.data_ptr) {
       snapshot_.data =
@@ -100,6 +102,11 @@ class DenoIsolate {
   std::map<deno_mod, ModuleInfo> mods_;
   std::map<std::string, deno_mod> mods_by_name_;
   deno_resolve_cb resolve_cb_;
+
+  deno_dyn_import_id next_dyn_import_id_;
+  deno_dyn_import_cb dyn_import_cb_;
+  std::map<deno_dyn_import_id, v8::Persistent<v8::Promise::Resolver>>
+      dyn_import_map_;
 
   v8::Persistent<v8::Context> context_;
   std::map<int, v8::Persistent<v8::Value>> pending_promise_map_;
