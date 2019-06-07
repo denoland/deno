@@ -84,20 +84,18 @@ pub fn get_compiler_config(
 
 pub fn compile_async(
   state: ThreadSafeState,
-  specifier: &str,
-  referrer: &str,
   module_meta_data: &ModuleMetaData,
 ) -> impl Future<Item = ModuleMetaData, Error = Diagnostic> {
+  let module_name = module_meta_data.module_name.clone();
+
   debug!(
-    "Running rust part of compile_sync. specifier: {}, referrer: {}",
-    &specifier, &referrer
+    "Running rust part of compile_sync. module_name: {}",
+    &module_name
   );
 
-  let root_names = vec![module_meta_data.module_name.clone()];
+  let root_names = vec![module_name.clone()];
   let compiler_config = get_compiler_config(&state, "typescript");
   let req_msg = req(root_names, compiler_config);
-
-  let module_meta_data_ = module_meta_data.clone();
 
   // Count how many times we start the compiler worker.
   state.metrics.compiler_starts.fetch_add(1, Ordering::SeqCst);
@@ -113,9 +111,7 @@ pub fn compile_async(
   js_check(worker.execute("workerMain()"));
   js_check(worker.execute("compilerMain()"));
 
-  let compiling_job = state
-    .progress
-    .add(format!("Compiling {}", module_meta_data_.module_name));
+  let compiling_job = state.progress.add(format!("Compiling {}", module_name));
 
   let resource = worker.state.resource.clone();
   let compiler_rid = resource.rid;
@@ -146,12 +142,9 @@ pub fn compile_async(
         }
       }
 
-      let r = state.dir.fetch_module_meta_data(
-        &module_meta_data_.module_name,
-        ".",
-        true,
-        true,
-      );
+      let r = state
+        .dir
+        .fetch_module_meta_data(&module_name, ".", true, true);
       let module_meta_data_after_compile = r.unwrap();
 
       // Explicit drop to keep reference alive until future completes.
@@ -167,16 +160,9 @@ pub fn compile_async(
 
 pub fn compile_sync(
   state: ThreadSafeState,
-  specifier: &str,
-  referrer: &str,
   module_meta_data: &ModuleMetaData,
 ) -> Result<ModuleMetaData, Diagnostic> {
-  tokio_util::block_on(compile_async(
-    state,
-    specifier,
-    referrer,
-    module_meta_data,
-  ))
+  tokio_util::block_on(compile_async(state, module_meta_data))
 }
 
 #[cfg(test)]
@@ -186,11 +172,7 @@ mod tests {
   #[test]
   fn test_compile_sync() {
     tokio_util::init(|| {
-      let cwd = std::env::current_dir().unwrap();
-      let cwd_string = cwd.to_str().unwrap().to_owned();
-
       let specifier = "./tests/002_hello.ts";
-      let referrer = cwd_string + "/";
       use crate::worker;
       let module_name = worker::root_specifier_to_url(specifier)
         .unwrap()
@@ -208,8 +190,7 @@ mod tests {
         maybe_source_map: None,
       };
 
-      out = compile_sync(ThreadSafeState::mock(), specifier, &referrer, &out)
-        .unwrap();
+      out = compile_sync(ThreadSafeState::mock(), &out).unwrap();
       assert!(
         out
           .maybe_output_code
