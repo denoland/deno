@@ -23,8 +23,8 @@ fn main() {
   // NOTE: `--help` arg will display V8 help and exit
   let args = flags::v8_set_flags(args);
 
-  let (snapshot_out_bin, js_filename) = if args.len() == 2 {
-    (args[0].clone(), args[1].clone())
+  let (snapshot_out_bin, js_filename) = if args.len() == 3 {
+    (args[1].clone(), args[2].clone())
   } else {
     eprintln!("Usage: snapshot_creator <out_dir> <js_filename>");
     std::process::exit(1);
@@ -72,7 +72,7 @@ fn main() {
     std::process::exit(1);
   }
 
-  let mut snapshot = unsafe { libdeno::deno_snapshot_new(isolate) };
+  let snapshot = unsafe { libdeno::deno_snapshot_new(isolate) };
 
   let mut out_file = std::fs::File::create(snapshot_out_bin).unwrap();
   let snapshot_slice =
@@ -81,7 +81,12 @@ fn main() {
   let write_result = out_file.write_all(snapshot_slice);
 
   unsafe {
-    libdeno::deno_snapshot_delete(&mut snapshot);
+    // TODO: calling this method causes
+    //  `error for object 0x7ffee91ccfc0: pointer being freed was not allocated`
+    //  I suspect it's because snapshot is created by Rust and we try to free it in C++
+    //  using drop(snapshot) works fine though
+    // libdeno::deno_snapshot_delete(&mut snapshot);
+    drop(snapshot);
     libdeno::deno_delete(isolate);
   }
 
@@ -89,6 +94,4 @@ fn main() {
     eprintln!("Failed to write snapshot file");
     std::process::exit(1);
   }
-
-  println!("Snapshot created");
 }
