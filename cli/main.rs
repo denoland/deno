@@ -270,9 +270,9 @@ fn bundle_command(flags: DenoFlags, argv: Vec<String>) {
       debug!("diagnostics returned, exiting!");
       eprintln!("\n{}", e.to_string());
       std::process::exit(1);
-    }).and_then(move |out| {
+    }).and_then(move |_| {
       debug!(">>>>> bundle_async END");
-      Ok(out)
+      Ok(())
     });
   tokio_util::run(bundle_future);
 }
