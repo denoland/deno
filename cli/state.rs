@@ -127,7 +127,7 @@ fn fetch_module_meta_data_and_maybe_compile_async(
         {
           debug!(">>>>> compile_sync START");
           Either::A(
-            compile_async(state_.clone(), &specifier, &referrer, &out)
+            compile_async(state_.clone(), &out)
               .map_err(|e| {
                 debug!("compiler error exiting!");
                 eprintln!("\n{}", e.to_string());
