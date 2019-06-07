@@ -9,7 +9,7 @@ const originAddr = Deno.args[2] || "127.0.0.1:4501";
 const server = serve(addr);
 
 async function main(): Promise<void> {
-  console.log(`http://${addr}/`);
+  console.log(`Proxy listening on http://${addr}/`);
   for await (const req of server) {
     proxyRequest(req);
   }

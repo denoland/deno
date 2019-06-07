@@ -151,7 +151,7 @@ def run(server_cmd, merge_env=None, origin_cmd=None):
 
     server = subprocess.Popen(server_cmd, env=env)
 
-    time.sleep(15)  # wait for server to wake up. TODO racy.
+    time.sleep(5)  # wait for server to wake up. TODO racy.
 
     try:
         cmd = "third_party/wrk/%s/wrk -d %s http://%s/" % (util.platform(),
