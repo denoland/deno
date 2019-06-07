@@ -37,6 +37,18 @@ def deno_http(deno_exe):
         })
 
 
+def deno_tcp_proxy(deno_exe, hyper_hello_exe):
+    deno_cmd = [
+        deno_exe, "run", "--allow-net", "tools/deno_tcp_proxy.ts", ADDR,
+        ORIGIN_ADDR
+    ]
+    print "http_proxy_benchmark testing DENO using net/tcp."
+    return run(
+        deno_cmd,
+        merge_env={"DENO_DIR": os.path.join(util.root_path, "js")},
+        origin_cmd=http_proxy_origin(hyper_hello_exe))
+
+
 def deno_http_proxy(deno_exe, hyper_hello_exe):
     deno_cmd = [
         deno_exe, "run", "--allow-net", "tools/deno_http_proxy.ts", ADDR,
@@ -71,6 +83,16 @@ def node_http_proxy(hyper_hello_exe):
     return run(node_cmd, None, http_proxy_origin(hyper_hello_exe))
 
 
+def node_tcp_proxy(hyper_hello_exe):
+    node_cmd = [
+        "node", "tools/node_tcp_proxy.js",
+        ADDR.split(":")[1],
+        ORIGIN_ADDR.split(":")[1]
+    ]
+    print "http_proxy_benchmark testing NODE tcp."
+    return run(node_cmd, None, http_proxy_origin(hyper_hello_exe))
+
+
 def node_tcp():
     node_cmd = ["node", "tools/node_tcp.js", ADDR.split(":")[1]]
     print "http_benchmark testing node_tcp.js"
@@ -97,11 +119,13 @@ def http_benchmark(build_dir):
         # "deno_http" was once called "deno_net_http"
         "deno_http": deno_http(deno_exe),
         "deno_proxy": deno_http_proxy(deno_exe, hyper_hello_exe),
+        "deno_proxy_tcp": deno_tcp_proxy(deno_exe, hyper_hello_exe),
         "deno_core_single": deno_core_single(core_http_bench_exe),
         "deno_core_multi": deno_core_multi(core_http_bench_exe),
         # "node_http" was once called "node"
         "node_http": node_http(),
         "node_proxy": node_http_proxy(hyper_hello_exe),
+        "node_proxy_tcp": node_tcp_proxy(hyper_hello_exe),
         "node_tcp": node_tcp(),
         "hyper": hyper_http(hyper_hello_exe)
     }
@@ -127,7 +151,7 @@ def run(server_cmd, merge_env=None, origin_cmd=None):
 
     server = subprocess.Popen(server_cmd, env=env)
 
-    time.sleep(5)  # wait for server to wake up. TODO racy.
+    time.sleep(15)  # wait for server to wake up. TODO racy.
 
     try:
         cmd = "third_party/wrk/%s/wrk -d %s http://%s/" % (util.platform(),
