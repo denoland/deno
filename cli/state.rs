@@ -270,6 +270,15 @@ impl ThreadSafeState {
     }
   }
 
+  /// Read the out file from argv
+  pub fn out_file(&self) -> Option<String> {
+    if self.argv.len() <= 2 {
+      None
+    } else {
+      Some(self.argv[2].clone())
+    }
+  }
+
   pub fn mark_compiled(&self, module_id: &str) {
     let mut c = self.compiled.lock().unwrap();
     c.insert(module_id.to_string());

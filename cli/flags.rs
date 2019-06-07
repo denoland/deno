@@ -155,6 +155,16 @@ Includes versions of Deno, V8 JavaScript Engine, and the TypeScript
 compiler.",
         ),
     ).subcommand(
+      SubCommand::with_name("bundle")
+        .setting(AppSettings::DisableVersion)
+        .about("Bundle module and dependnecies into single file")
+        .long_about(
+          "Fetch, compile, and output to a single file a module and its dependencies.
+"
+        )
+          .arg(Arg::with_name("source_file").takes_value(true).required(true))
+          .arg(Arg::with_name("out_file").takes_value(true).required(true)),
+    ).subcommand(
       SubCommand::with_name("fetch")
         .setting(AppSettings::DisableVersion)
         .about("Fetch the dependencies")
@@ -436,6 +446,7 @@ const PRETTIER_URL: &str = "https://deno.land/std@v0.7.0/prettier/main.ts";
 /// There is no "Help" subcommand because it's handled by `clap::App` itself.
 #[derive(Debug, PartialEq)]
 pub enum DenoSubcommand {
+  Bundle,
   Eval,
   Fetch,
   Info,
@@ -455,6 +466,13 @@ pub fn flags_from_vec(
   let mut flags = parse_flags(&matches.clone());
 
   let subcommand = match matches.subcommand() {
+    ("bundle", Some(bundle_match)) => {
+      flags.allow_write = true;
+      let source_file: &str = bundle_match.value_of("source_file").unwrap();
+      let out_file: &str = bundle_match.value_of("out_file").unwrap();
+      argv.extend(vec![source_file.to_string(), out_file.to_string()]);
+      DenoSubcommand::Bundle
+    }
     ("eval", Some(eval_match)) => {
       flags.allow_net = true;
       flags.allow_env = true;
