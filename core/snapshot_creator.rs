@@ -1,6 +1,7 @@
 mod flags;
 #[allow(dead_code)]
 mod libdeno;
+extern crate libc;
 
 use libc::c_void;
 use std;
