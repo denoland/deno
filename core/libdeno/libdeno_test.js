@@ -195,3 +195,27 @@ global.LibDenoEvalContextError = () => {
   assert(!errInfo5.isCompileError); // is NOT a compilation error! (just eval)
   assert(errInfo5.thrown.message === "Unexpected end of input");
 };
+
+global.LibDenoEvalContextInvalidArgument = () => {
+  try {
+    Deno.core.evalContext();
+  } catch (e) {
+    assert(e instanceof TypeError);
+    assert(e.message === "Invalid Argument");
+  }
+};
+
+global.LibDenoPrintInvalidArgument = () => {
+  try {
+    Deno.core.print();
+  } catch (e) {
+    assert(e instanceof TypeError);
+    assert(e.message === "Invalid Argument");
+  }
+  try {
+    Deno.core.print(2, 3, 4);
+  } catch (e) {
+    assert(e instanceof TypeError);
+    assert(e.message === "Invalid Argument");
+  }
+};
