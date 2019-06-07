@@ -10,8 +10,9 @@ import subprocess
 def main():
     util.run([sys.executable, "tools/format.py"])
     result = util.run_output(
-        ["git", "status", "-uno", "--porcelain", "--ignore-submodules"])
-    if len(result.out) > 0:
+        ["git", "status", "-uno", "--porcelain", "--ignore-submodules"],
+        exit_on_fail=True)
+    if result.out:
         print "Run tools/format.py "
         print result.out
         sys.exit(1)

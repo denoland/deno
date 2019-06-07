@@ -12,11 +12,10 @@ from util import mkdtemp, tests_path, run_output
 class TestFetch(DenoTestCase):
     def test_fetch(self):
         deno_dir = mkdtemp()
-        quiet = sys.argv.count('-v') < 2 and not '-vv' in sys.argv
         try:
             t = os.path.join(tests_path, "006_url_imports.ts")
             result = run_output([self.deno_exe, "fetch", t],
-                                quiet=quiet,
+                                quiet=True,
                                 merge_env={"DENO_DIR": deno_dir})
             self.assertEqual(result.out, "")
             self.assertEqual(result.code, 0)

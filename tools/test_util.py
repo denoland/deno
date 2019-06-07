@@ -25,13 +25,11 @@ class DenoTestCase(unittest.TestCase):
 class ColorTextTestResult(unittest.TextTestResult):
     @contextlib.contextmanager
     def color(self, code):
-        if self.showAll:
-            self.stream.write(code)
+        self.stream.write(code)
         try:
             yield
         finally:
-            if self.showAll:
-                self.stream.write(RESET)
+            self.stream.write(RESET)
 
     def getDescription(self, test):
         name = str(test)
@@ -135,7 +133,7 @@ def run_tests(test_cases=None):
         suite = unittest.TestSuite(filtered_tests)
 
     runner = ColorTextTestRunner(
-        verbosity=args.verbose + 1, failfast=args.failfast)
+        verbosity=args.verbose + 2, failfast=args.failfast)
 
     result = runner.run(suite)
     if not result.wasSuccessful():

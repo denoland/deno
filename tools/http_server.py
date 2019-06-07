@@ -17,7 +17,7 @@ REDIRECT_PORT = 4546
 ANOTHER_REDIRECT_PORT = 4547
 DOUBLE_REDIRECTS_PORT = 4548
 
-QUIET = '-vv' not in sys.argv and sys.argv.count('-v') < 2
+QUIET = '-v' not in sys.argv and '--verbose' not in sys.argv
 
 
 class QuietSimpleHTTPRequestHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
