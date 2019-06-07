@@ -2,20 +2,24 @@
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import os
 import shutil
+import sys
 
 import http_server
 from test_util import DenoTestCase, run_tests
 from util import mkdtemp, tests_path, run_output
 
 
-class FetchTest(DenoTestCase):
+class TestFetch(DenoTestCase):
     def test_fetch(self):
         deno_dir = mkdtemp()
+        quiet = sys.argv.count('-v') < 2 and not '-vv' in sys.argv
         try:
             t = os.path.join(tests_path, "006_url_imports.ts")
-            output = run_output([self.deno_exe, "fetch", t],
+            result = run_output([self.deno_exe, "fetch", t],
+                                quiet=quiet,
                                 merge_env={"DENO_DIR": deno_dir})
-            assert output == ""
+            self.assertEqual(result.out, "")
+            self.assertEqual(result.code, 0)
             # Check that we actually did the prefetch.
             os.path.exists(
                 os.path.join(

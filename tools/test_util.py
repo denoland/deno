@@ -3,12 +3,13 @@
 # Runs the full test suite.
 # Usage: ./tools/test.py out/Debug
 import argparse
+import contextlib
 import os
 import sys
 import unittest
 
 from util import (enable_ansi_colors, build_path, RESET, FG_RED, FG_GREEN,
-                  executable_suffix, run, run_output, rmtree, tests_path)
+                  executable_suffix, rmtree, tests_path)
 
 
 class DenoTestCase(unittest.TestCase):
@@ -22,6 +23,16 @@ class DenoTestCase(unittest.TestCase):
 
 # overload the test result class
 class ColorTextTestResult(unittest.TextTestResult):
+    @contextlib.contextmanager
+    def color(self, code):
+        if self.showAll:
+            self.stream.write(code)
+        try:
+            yield
+        finally:
+            if self.showAll:
+                self.stream.write(RESET)
+
     def getDescription(self, test):
         name = str(test)
         if name.startswith("test_"):
@@ -29,25 +40,16 @@ class ColorTextTestResult(unittest.TextTestResult):
         return name
 
     def addSuccess(self, test):
-        if self.showAll:
-            self.stream.write(FG_GREEN)
-        super(ColorTextTestResult, self).addSuccess(test)
-        if self.showAll:
-            self.stream.write(RESET)
+        with self.color(FG_GREEN):
+            super(ColorTextTestResult, self).addSuccess(test)
 
     def addError(self, test, err):
-        if self.showAll:
-            self.stream.write(FG_RED)
-        super(ColorTextTestResult, self).addError(test, err)
-        if self.showAll:
-            self.stream.write(RESET)
+        with self.color(FG_RED):
+            super(ColorTextTestResult, self).addError(test, err)
 
     def addFailure(self, test, err):
-        if self.showAll:
-            self.stream.write(FG_RED)
-        super(ColorTextTestResult, self).addFailure(test, err)
-        if self.showAll:
-            self.stream.write(RESET)
+        with self.color(FG_RED):
+            super(ColorTextTestResult, self).addFailure(test, err)
 
 
 class ColorTextTestRunner(unittest.TextTestRunner):
