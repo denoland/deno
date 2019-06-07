@@ -2067,7 +2067,7 @@ fn op_create_worker(
     // TODO(ry) Use execute_mod_async here.
     let result = worker.execute_mod(&specifier_url, false);
     match result {
-      Ok(worker) => {
+      Ok(()) => {
         let mut workers_tl = parent_state.workers.lock().unwrap();
         workers_tl.insert(rid, worker.shared());
         let builder = &mut FlatBufferBuilder::new();
@@ -2085,10 +2085,8 @@ fn op_create_worker(
           },
         ))
       }
-      Err((errors::RustOrJsError::Js(_), _worker)) => {
-        Err(errors::worker_init_failed())
-      }
-      Err((errors::RustOrJsError::Rust(err), _worker)) => Err(err),
+      Err(errors::RustOrJsError::Js(_)) => Err(errors::worker_init_failed()),
+      Err(errors::RustOrJsError::Rust(err)) => Err(err),
     }
   }()))
 }

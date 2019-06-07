@@ -2,12 +2,10 @@
 # -*- coding: utf-8 -*-
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import os
-import subprocess
-import sys
-import time
 import unittest
 
-from util import DenoTestCase, test_main, tty_capture
+from test_util import DenoTestCase, run_tests
+from util import tty_capture
 
 PERMISSIONS_PROMPT_TEST_TS = "tools/permission_prompt_test.ts"
 
@@ -143,4 +141,4 @@ def permission_prompt_tests():
 
 
 if __name__ == "__main__":
-    test_main()
+    run_tests()

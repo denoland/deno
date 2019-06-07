@@ -2,13 +2,11 @@
 # -*- coding: utf-8 -*-
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import os
-import subprocess
-import sys
-import time
 import unittest
 
-from http_server import spawn
-from util import DenoTestCase, root_path, test_main, tty_capture
+import http_server
+from test_util import DenoTestCase, run_tests
+from util import root_path, tty_capture
 
 PERMISSIONS_PROMPT_TEST_TS = "tools/complex_permissions_test.ts"
 
@@ -25,8 +23,8 @@ class BaseComplexPermissionTest(DenoTestCase):
         return tty_capture(cmd, b'')
 
 
-class TestReadPermissions(BaseComplexPermissionTest):
-    test_type = "read"
+class BaseReadWritePermissionsTest(object):
+    test_type = None
 
     def test_inside_project_dir(self):
         code, _stdout, stderr = self._run_deno(
@@ -97,7 +95,13 @@ class TestReadPermissions(BaseComplexPermissionTest):
         os.chdir(saved_curdir)
 
 
-class TestWritePermissions(TestReadPermissions):
+class TestReadPermissions(BaseReadWritePermissionsTest,
+                          BaseComplexPermissionTest):
+    test_type = "read"
+
+
+class TestWritePermissions(BaseReadWritePermissionsTest,
+                           BaseComplexPermissionTest):
     test_type = "write"
 
 
@@ -211,5 +215,5 @@ def complex_permissions_tests():
 
 
 if __name__ == "__main__":
-    with spawn():
-        test_main()
+    with http_server.spawn():
+        run_tests()

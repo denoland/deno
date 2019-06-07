@@ -239,6 +239,7 @@ export default function makeConfig(commandOptions) {
             "parseConfigFileTextToJson",
             "version",
             "CompilerHost",
+            "DiagnosticCategory",
             "Extension",
             "ModuleKind",
             "ScriptKind",

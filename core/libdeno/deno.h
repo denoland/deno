@@ -34,6 +34,13 @@ typedef struct deno_s Deno;
 typedef void (*deno_recv_cb)(void* user_data, deno_buf control_buf,
                              deno_pinned_buf zero_copy_buf);
 
+typedef int deno_dyn_import_id;
+// Called when dynamic import is called in JS: import('foo')
+// Embedder must call deno_dyn_import() with the specified id and
+// the module.
+typedef void (*deno_dyn_import_cb)(void* user_data, const char* specifier,
+                                   const char* referrer, deno_dyn_import_id id);
+
 void deno_init();
 const char* deno_v8_version();
 void deno_set_v8_flags(int* argc, char** argv);
@@ -43,6 +50,7 @@ typedef struct {
   deno_snapshot load_snapshot;  // A startup snapshot to use.
   deno_buf shared;              // Shared buffer to be mapped to libdeno.shared
   deno_recv_cb recv_cb;         // Maps to libdeno.send() calls.
+  deno_dyn_import_cb dyn_import_cb;
 } deno_config;
 
 // Create a new deno isolate.
@@ -116,6 +124,9 @@ void deno_mod_instantiate(Deno* d, void* user_data, deno_mod id,
 
 // If it succeeded deno_last_exception() will return NULL.
 void deno_mod_evaluate(Deno* d, void* user_data, deno_mod id);
+
+// Call exactly once for every deno_dyn_import_cb.
+void deno_dyn_import(Deno* d, deno_dyn_import_id id, deno_mod mod_id);
 
 #ifdef __cplusplus
 }  // extern "C"

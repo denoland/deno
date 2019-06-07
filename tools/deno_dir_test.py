@@ -3,10 +3,9 @@
 # Check deno dir is created properly
 # Usage: deno_dir_test.py [path to deno dir]
 import os
-import subprocess
-import sys
 
-from util import DenoTestCase, mkdtemp, rmtree, run, test_main
+from test_util import DenoTestCase, run_tests
+from util import mkdtemp, rmtree, run
 
 
 class TestDenoDir(DenoTestCase):
@@ -43,4 +42,4 @@ class TestDenoDir(DenoTestCase):
 
 
 if __name__ == '__main__':
-    test_main()
+    run_tests()

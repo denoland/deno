@@ -1,4 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+use crate::diagnostics::Diagnostic;
 use crate::msg;
 use crate::resources;
 use crate::startup_data;
@@ -7,7 +8,6 @@ use crate::tokio_util;
 use crate::worker::Worker;
 use deno::js_check;
 use deno::Buf;
-use deno::JSError;
 use futures::Future;
 use futures::Stream;
 use std::str;
@@ -84,20 +84,18 @@ pub fn get_compiler_config(
 
 pub fn compile_async(
   state: ThreadSafeState,
-  specifier: &str,
-  referrer: &str,
   module_meta_data: &ModuleMetaData,
-) -> impl Future<Item = ModuleMetaData, Error = JSError> {
+) -> impl Future<Item = ModuleMetaData, Error = Diagnostic> {
+  let module_name = module_meta_data.module_name.clone();
+
   debug!(
-    "Running rust part of compile_sync. specifier: {}, referrer: {}",
-    &specifier, &referrer
+    "Running rust part of compile_sync. module_name: {}",
+    &module_name
   );
 
-  let root_names = vec![module_meta_data.module_name.clone()];
+  let root_names = vec![module_name.clone()];
   let compiler_config = get_compiler_config(&state, "typescript");
   let req_msg = req(root_names, compiler_config);
-
-  let module_meta_data_ = module_meta_data.clone();
 
   // Count how many times we start the compiler worker.
   state.metrics.compiler_starts.fetch_add(1, Ordering::SeqCst);
@@ -113,9 +111,7 @@ pub fn compile_async(
   js_check(worker.execute("workerMain()"));
   js_check(worker.execute("compilerMain()"));
 
-  let compiling_job = state
-    .progress
-    .add(format!("Compiling {}", module_meta_data_.module_name));
+  let compiling_job = state.progress.add(format!("Compiling {}", module_name));
 
   let resource = worker.state.resource.clone();
   let compiler_rid = resource.rid;
@@ -136,21 +132,19 @@ pub fn compile_async(
   first_msg_fut
     .map_err(|_| panic!("not handled"))
     .and_then(move |maybe_msg: Option<Buf>| {
-      let _res_msg = maybe_msg.unwrap();
-
       debug!("Received message from worker");
 
-      // TODO res is EmitResult, use serde_derive to parse it. Errors from the
-      // worker or Diagnostics should be somehow forwarded to the caller!
-      // Currently they are handled inside compiler.ts with os.exit(1) and above
-      // with std::process::exit(1). This bad.
+      if let Some(msg) = maybe_msg {
+        let json_str = std::str::from_utf8(&msg).unwrap();
+        debug!("Message: {}", json_str);
+        if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
+          return Err(diagnostics);
+        }
+      }
 
-      let r = state.dir.fetch_module_meta_data(
-        &module_meta_data_.module_name,
-        ".",
-        true,
-        true,
-      );
+      let r = state
+        .dir
+        .fetch_module_meta_data(&module_name, ".", true, true);
       let module_meta_data_after_compile = r.unwrap();
 
       // Explicit drop to keep reference alive until future completes.
@@ -166,16 +160,9 @@ pub fn compile_async(
 
 pub fn compile_sync(
   state: ThreadSafeState,
-  specifier: &str,
-  referrer: &str,
   module_meta_data: &ModuleMetaData,
-) -> Result<ModuleMetaData, JSError> {
-  tokio_util::block_on(compile_async(
-    state,
-    specifier,
-    referrer,
-    module_meta_data,
-  ))
+) -> Result<ModuleMetaData, Diagnostic> {
+  tokio_util::block_on(compile_async(state, module_meta_data))
 }
 
 #[cfg(test)]
@@ -185,11 +172,7 @@ mod tests {
   #[test]
   fn test_compile_sync() {
     tokio_util::init(|| {
-      let cwd = std::env::current_dir().unwrap();
-      let cwd_string = cwd.to_str().unwrap().to_owned();
-
       let specifier = "./tests/002_hello.ts";
-      let referrer = cwd_string + "/";
       use crate::worker;
       let module_name = worker::root_specifier_to_url(specifier)
         .unwrap()
@@ -207,8 +190,7 @@ mod tests {
         maybe_source_map: None,
       };
 
-      out = compile_sync(ThreadSafeState::mock(), specifier, &referrer, &out)
-        .unwrap();
+      out = compile_sync(ThreadSafeState::mock(), &out).unwrap();
       assert!(
         out
           .maybe_output_code

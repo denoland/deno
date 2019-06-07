@@ -6,7 +6,7 @@ from setup import gn_string, read_gn_args, write_gn_args
 from shutil import rmtree
 from tempfile import mktemp
 
-from util import DenoTestCase, test_main
+from test_util import DenoTestCase, run_tests
 
 
 class TestSetup(DenoTestCase):
@@ -63,4 +63,4 @@ class TestSetup(DenoTestCase):
 
 
 if __name__ == '__main__':
-    test_main()
+    run_tests()

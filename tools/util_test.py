@@ -1,16 +1,9 @@
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import os
-import sys
 
-from util import (
-    DenoTestCase,
-    pattern_match,
-    parse_exit_code,
-    shell_quote_win,
-    parse_wrk_output,
-    root_path,
-    test_main,
-)
+from test_util import DenoTestCase, run_tests
+from util import (pattern_match, parse_exit_code, shell_quote_win,
+                  parse_wrk_output, root_path)
 
 
 class TestUtil(DenoTestCase):
@@ -70,4 +63,4 @@ class TestUtil(DenoTestCase):
 
 
 if __name__ == '__main__':
-    test_main()
+    run_tests()

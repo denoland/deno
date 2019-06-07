@@ -196,7 +196,7 @@ build_script:
 test_script:
   - python tools\lint.py
   - python tools\test_format.py
-  - ps: Exec { & python tools\test.py -v $env:DENO_BUILD_PATH }
+  - ps: Exec { & python tools\test.py -v --build-dir $env:DENO_BUILD_PATH }
 
 after_test:
   # Delete the the rollup cache, which is unreliable, so that it doesn't get
