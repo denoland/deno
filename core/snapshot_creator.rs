@@ -1,3 +1,4 @@
+mod flags;
 #[allow(dead_code)]
 mod libdeno;
 
@@ -9,6 +10,7 @@ use std::ffi::CString;
 use std::io::Write;
 use std::ptr;
 
+// empty function is needed to satisfy type for `deno_config.recv_cb`
 extern "C" fn config_cb(
   _user_data: *mut c_void,
   _control_argv0: libdeno::deno_buf,
@@ -17,10 +19,10 @@ extern "C" fn config_cb(
 }
 
 fn main() {
-  println!("hello world from snapshot creator in rust");
-
-  // TODO: set v8 flags
   let args: Vec<String> = env::args().collect();
+  // NOTE: `--help` arg will display V8 help and exit
+  let args = flags::v8_set_flags(args);
+
   let (snapshot_out_bin, js_filename) = if args.len() == 2 {
     (args[0].clone(), args[1].clone())
   } else {
@@ -84,6 +86,9 @@ fn main() {
   }
 
   if write_result.is_err() {
+    eprintln!("Failed to write snapshot file");
     std::process::exit(1);
   }
+
+  println!("Snapshot created");
 }
