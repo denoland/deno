@@ -256,7 +256,13 @@ ability to spawn subprocesses.
 
   # run program with all permissions
   deno run -A https://deno.land/std/http/file_server.ts",
-        ).subcommand(
+        ).arg(
+        Arg::with_name("importmap")
+          .long("importmap")
+          .value_name("FILE")
+          .help("Load import map file")
+          .takes_value(true)
+      ).subcommand(
           // this is a fake subcommand - it's used in conjunction with
           // AppSettings:AllowExternalSubcommand to treat it as an
           // entry point script
@@ -364,6 +370,8 @@ pub fn parse_flags(matches: &ArgMatches) -> DenoFlags {
   // flags specific to "run" subcommand
   if let Some(run_matches) = matches.subcommand_matches("run") {
     flags = parse_permission_args(flags.clone(), run_matches);
+    flags.import_map_path =
+      run_matches.value_of("importmap").map(ToOwned::to_owned);
   }
 
   flags
