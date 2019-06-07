@@ -1,3 +1,4 @@
+#[allow(dead_code)]
 mod libdeno;
 
 use libc::c_void;
@@ -20,11 +21,10 @@ fn main() {
 
   // TODO: set v8 flags
   let args: Vec<String> = env::args().collect();
-
   let (snapshot_out_bin, js_filename) = if args.len() == 2 {
     (args[0].clone(), args[1].clone())
   } else {
-    eprintln!("Usage: snapshopt_creator <out_dir> <js_filename>");
+    eprintln!("Usage: snapshot_creator <out_dir> <js_filename>");
     std::process::exit(1);
   };
 
@@ -75,10 +75,15 @@ fn main() {
   let mut out_file = std::fs::File::create(snapshot_out_bin).unwrap();
   let snapshot_slice =
     unsafe { std::slice::from_raw_parts(snapshot.data_ptr, snapshot.data_len) };
-  out_file.write_all(snapshot_slice);
+
+  let write_result = out_file.write_all(snapshot_slice);
 
   unsafe {
     libdeno::deno_snapshot_delete(&mut snapshot);
     libdeno::deno_delete(isolate);
+  }
+
+  if write_result.is_err() {
+    std::process::exit(1);
   }
 }

@@ -14,7 +14,7 @@ repository = "https://github.com/denoland/deno"
 path = "lib.rs"
 
 [[bin]]
-name = "snapshot_creator"
+name = "rust_snapshot_creator"
 path = "snapshot_creator.rs"
 
 [dependencies]

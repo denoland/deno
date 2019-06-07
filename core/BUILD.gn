@@ -83,5 +83,5 @@ rust_executable("rust_snapshot_creator") {
   deps = [
     ":deno_core_deps",
   ]
-  extern_rlib = ["libc"]
+  extern_rlib = [ "libc" ]
 }
