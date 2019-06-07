@@ -142,7 +142,7 @@ def run(server_cmd, merge_env=None, origin_cmd=None):
 
     # Wait for port 4544 to become available.
     # TODO Need to use SO_REUSEPORT with tokio::net::TcpListener.
-    time.sleep(5)
+    time.sleep(10)
 
     origin = None
     if origin_cmd is not None:
@@ -162,6 +162,7 @@ def run(server_cmd, merge_env=None, origin_cmd=None):
         print output
         return stats
     finally:
+        print "Stopping server"
         server.kill()
         if origin is not None:
             print "Stopping origin server"
