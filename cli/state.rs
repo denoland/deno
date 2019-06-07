@@ -118,8 +118,6 @@ fn fetch_module_meta_data_and_maybe_compile_async(
   let referrer = referrer.to_string();
   let is_root = referrer == ".";
 
-  //  println!("fetch_module_meta_data_and_maybe_compile_async, {:?}, {:?}", specifier, referrer);
-
   let f =
     futures::future::result(state.resolve(&specifier, &referrer, is_root));
   f.and_then(move |module_id| {
@@ -171,26 +169,19 @@ impl Loader for ThreadSafeState {
     referrer: &str,
     is_root: bool,
   ) -> Result<String, Self::Error> {
-    //    println!(
-    //      "resolve is_root: {:?}, spec: {:?}, ref: {:?}",
-    //      is_root, specifier, referrer
-    //    );
     if !is_root {
-      match &self.import_map {
-        Some(import_map) => {
-          match import_map.resolve(specifier, referrer) {
-            Ok(result) => {
-              if result.is_some() {
-                return Ok(result.unwrap());
-              }
-            }
-            Err(err) => {
-              // TODO: this should be coerced to DenoError
-              panic!("error resolving using import map: {:?}", err);
+      if let Some(import_map) = &self.import_map {
+        match import_map.resolve(specifier, referrer) {
+          Ok(result) => {
+            if result.is_some() {
+              return Ok(result.unwrap());
             }
           }
+          Err(err) => {
+            // TODO(bartlomieju): this should be coerced to DenoError
+            panic!("error resolving using import map: {:?}", err);
+          }
         }
-        None => {}
       }
     }
 

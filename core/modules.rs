@@ -104,8 +104,7 @@ impl<L: Loader> RecursiveLoad<L> {
     parent_id: Option<deno_mod>,
   ) -> Result<String, L::Error> {
     let is_root = parent_id.is_none();
-    //    println!("module add {:?}, {:?}, {:?}", is_root, specifier, referrer);
-    let url = L::resolve(&self.loader, specifier, referrer, is_root)?;
+    let url = self.loader.resolve(specifier, referrer, is_root)?;
 
     if !is_root {
       {
@@ -255,10 +254,9 @@ impl<L: Loader> Future for RecursiveLoad<L> {
         |specifier: &str, referrer_id: deno_mod| -> deno_mod {
           let modules = self.modules.lock().unwrap();
           let referrer = modules.get_name(referrer_id).unwrap();
+          // TODO(bartlomieju): there must be a better way
           let is_root = referrer == ".";
-          // TODO:
-          //          println!("module poll {:?}, {:?}", specifier, referrer);
-          match L::resolve(&self.loader, specifier, &referrer, is_root) {
+          match self.loader.resolve(specifier, &referrer, is_root) {
             Ok(url) => match modules.get_id(&url) {
               Some(id) => id,
               None => 0,
