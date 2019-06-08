@@ -37,6 +37,7 @@ use futures::Async;
 use futures::Poll;
 use futures::Sink;
 use futures::Stream;
+use futures::future;
 use hyper;
 use hyper::rt::Future;
 use rand::{thread_rng, Rng};
@@ -2044,51 +2045,57 @@ fn op_create_worker(
   let inner = base.inner_as_create_worker().unwrap();
   let specifier = inner.specifier().unwrap();
 
-  Box::new(futures::future::result(move || -> OpResult {
-    let parent_state = state.clone();
+  let parent_state = state.clone();
 
-    let child_state = ThreadSafeState::new(
-      parent_state.flags.clone(),
-      parent_state.argv.clone(),
-      op_selector_std,
-      parent_state.progress.clone(),
-    );
-    let rid = child_state.resource.rid;
-    let name = format!("USER-WORKER-{}", specifier);
+  let child_state = ThreadSafeState::new(
+    parent_state.flags.clone(),
+    parent_state.argv.clone(),
+    op_selector_std,
+    parent_state.progress.clone(),
+  );
+  let rid = child_state.resource.rid;
+  let name = format!("USER-WORKER-{}", specifier);
 
-    let mut worker =
-      Worker::new(name, startup_data::deno_isolate_init(), child_state);
-    js_check(worker.execute("denoMain()"));
-    js_check(worker.execute("workerMain()"));
+  let mut worker =
+    Worker::new(name, startup_data::deno_isolate_init(), child_state);
+  js_check(worker.execute("denoMain()"));
+  js_check(worker.execute("workerMain()"));
 
-    let specifier_url =
-      root_specifier_to_url(specifier).map_err(DenoError::from)?;
+  let op = root_specifier_to_url(specifier)
+    .and_then(|specifier_url| {
+      Ok(
+        worker
+          .execute_mod_async(&specifier_url, false)
+          .and_then(move |worker| {
+            let mut workers_tl = parent_state.workers.lock().unwrap();
+            workers_tl.insert(rid, worker.shared());
+            let builder = &mut FlatBufferBuilder::new();
+            let msg_inner = msg::CreateWorkerRes::create(
+              builder,
+              &msg::CreateWorkerResArgs { rid },
+            );
+            Ok(serialize_response(
+              cmd_id,
+              builder,
+              msg::BaseArgs {
+                inner: Some(msg_inner.as_union_value()),
+                inner_type: msg::Any::CreateWorkerRes,
+                ..Default::default()
+              },
+            ))
+          }).map_err(|err| match err {
+            (errors::RustOrJsError::Js(_), _worker) => {
+              errors::worker_init_failed()
+            }
+            (errors::RustOrJsError::Rust(err), _worker) => err,
+          }),
+      )
+    }).map_err(DenoError::from);
 
-    // TODO(ry) Use execute_mod_async here.
-    let result = worker.execute_mod(&specifier_url, false);
-    match result {
-      Ok(()) => {
-        let mut workers_tl = parent_state.workers.lock().unwrap();
-        workers_tl.insert(rid, worker.shared());
-        let builder = &mut FlatBufferBuilder::new();
-        let msg_inner = msg::CreateWorkerRes::create(
-          builder,
-          &msg::CreateWorkerResArgs { rid },
-        );
-        Ok(serialize_response(
-          cmd_id,
-          builder,
-          msg::BaseArgs {
-            inner: Some(msg_inner.as_union_value()),
-            inner_type: msg::Any::CreateWorkerRes,
-            ..Default::default()
-          },
-        ))
-      }
-      Err(errors::RustOrJsError::Js(_)) => Err(errors::worker_init_failed()),
-      Err(errors::RustOrJsError::Rust(err)) => Err(err),
-    }
-  }()))
+  Box::new(match op {
+    Ok(op) => future::Either::A(op),
+    Err(err) => future::Either::B(future::result(Err(err))),
+  })
 }
 
 /// Return when the worker closes
