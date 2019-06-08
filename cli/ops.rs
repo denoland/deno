@@ -33,11 +33,11 @@ use deno::Op;
 use deno::PinnedBuf;
 use flatbuffers::FlatBufferBuilder;
 use futures;
+use futures::future;
 use futures::Async;
 use futures::Poll;
 use futures::Sink;
 use futures::Stream;
-use futures::future;
 use hyper;
 use hyper::rt::Future;
 use rand::{thread_rng, Rng};
@@ -2066,7 +2066,7 @@ fn op_create_worker(
       Ok(
         worker
           .execute_mod_async(&specifier_url, false)
-          .and_then(move |worker| {
+          .and_then(move |()| {
             let mut workers_tl = parent_state.workers.lock().unwrap();
             workers_tl.insert(rid, worker.shared());
             let builder = &mut FlatBufferBuilder::new();
@@ -2084,10 +2084,8 @@ fn op_create_worker(
               },
             ))
           }).map_err(|err| match err {
-            (errors::RustOrJsError::Js(_), _worker) => {
-              errors::worker_init_failed()
-            }
-            (errors::RustOrJsError::Rust(err), _worker) => err,
+            errors::RustOrJsError::Js(_) => errors::worker_init_failed(),
+            errors::RustOrJsError::Rust(err) => err,
           }),
       )
     }).map_err(DenoError::from);
