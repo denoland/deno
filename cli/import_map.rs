@@ -7,7 +7,7 @@ use url::Url;
 
 #[derive(Debug)]
 pub struct ImportMapError {
-  msg: String,
+  pub msg: String,
 }
 
 impl ImportMapError {
@@ -25,7 +25,6 @@ const SUPPORTED_FETCH_SCHEMES: [&str; 3] = ["http", "https", "file"];
 type SpecifierMap = IndexMap<String, Vec<String>>;
 type ScopesMap = IndexMap<String, SpecifierMap>;
 
-#[allow(dead_code)]
 #[derive(Debug)]
 pub struct ImportMap {
   base_url: String,
@@ -33,7 +32,6 @@ pub struct ImportMap {
   scopes: ScopesMap,
 }
 
-#[allow(dead_code)]
 impl ImportMap {
   pub fn load(base_url: &str, file_name: &str) -> Result<Self, ImportMapError> {
     let cwd = std::env::current_dir().unwrap();
@@ -45,10 +43,7 @@ impl ImportMap {
 
     // Load the contents of import map
     match fs::read_to_string(&resolved_path) {
-      Ok(json_string) => match ImportMap::from_json(base_url, &json_string) {
-        Ok(map) => Ok(map),
-        Err(err) => Err(err),
-      },
+      Ok(json_string) => ImportMap::from_json(base_url, &json_string),
       _ => panic!(
         "Error retrieving import map file at \"{}\"",
         resolved_path.to_str().unwrap()
@@ -97,10 +92,7 @@ impl ImportMap {
         }
 
         let scope_map = scope_map.as_object().unwrap();
-        match ImportMap::parse_scope_map(scope_map, base_url) {
-          Ok(scopes_map) => scopes_map,
-          Err(err) => return Err(err),
-        }
+        ImportMap::parse_scope_map(scope_map, base_url)?
       }
       None => IndexMap::new(),
     };
@@ -436,26 +428,21 @@ impl ImportMap {
       None => specifier.to_string(),
     };
 
-    let scopes_match = match ImportMap::resolve_scopes_match(
+    let scopes_match = ImportMap::resolve_scopes_match(
       &self.scopes,
       &normalized_specifier,
       &referrer.to_string(),
-    ) {
-      Ok(m) => m,
-      Err(e) => return Err(e),
-    };
+    )?;
+
     // match found in scopes map
     if scopes_match.is_some() {
       return Ok(scopes_match);
     }
 
-    let imports_match = match ImportMap::resolve_imports_match(
+    let imports_match = ImportMap::resolve_imports_match(
       &self.imports,
       &normalized_specifier,
-    ) {
-      Ok(m) => m,
-      Err(e) => return Err(e),
-    };
+    )?;
 
     // match found in import map
     if imports_match.is_some() {
