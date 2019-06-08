@@ -191,16 +191,14 @@ function cache(extension: string, moduleId: string, contents: string): void {
 const encoder = new TextEncoder();
 
 /** Given a fileName and the data, emit the file to the file system. */
-function emit(fileName: string, data: string): void {
+function emitBundle(fileName: string, data: string): void {
   // For internal purposes, when trying to emit to `$deno$` just no-op
   if (fileName.startsWith("$deno$")) {
-    util.log("skipping compiler.emit", fileName);
+    console.warn("skipping compiler.emitBundle", fileName);
     return;
   }
-
-  util.log("compiler.emit", fileName);
   const encodedData = encoder.encode(data);
-  console.log(`Emitting bundle to "${fileName}"...`);
+  console.log(`Emitting bundle to "${fileName}"`);
   writeFileSync(fileName, encodedData);
   console.log(`${humanFileSize(encodedData.length)} emitted.`);
 }
@@ -401,7 +399,9 @@ class Host implements ts.CompilerHost {
   ): void {
     util.log("writeFile", fileName);
     try {
-      if (!this._bundle) {
+      if (this._bundle) {
+        emitBundle(this._bundle, data);
+      } else {
         assert(sourceFiles != null && sourceFiles.length == 1);
         const sourceFileName = sourceFiles![0].fileName;
 
@@ -414,8 +414,6 @@ class Host implements ts.CompilerHost {
         } else {
           assert(false, "Trying to cache unhandled file type " + fileName);
         }
-      } else {
-        emit(this._bundle, data);
       }
     } catch (e) {
       if (onError) {
@@ -483,7 +481,7 @@ window.compilerMain = function compilerMain(): void {
       // We will only proceed with the emit if there are no diagnostics.
       if (diagnostics && diagnostics.length === 0) {
         if (bundle) {
-          console.log(`Bundling "${bundle}"...`);
+          console.log(`Bundling "${bundle}"`);
         }
         const emitResult = program.emit();
         emitSkipped = emitResult.emitSkipped;
