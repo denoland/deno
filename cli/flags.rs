@@ -1052,4 +1052,19 @@ mod tests {
     assert_eq!(subcommand, DenoSubcommand::Run);
     assert_eq!(argv, svec!["deno", "script.ts"]);
   }
+
+  #[test]
+  fn test_flags_from_vec_26() {
+    let (flags, subcommand, argv) =
+      flags_from_vec(svec!["deno", "bundle", "source.ts", "bundle.js"]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        allow_write: true,
+        ..DenoFlags::default()
+      }
+    );
+    assert_eq!(subcommand, DenoSubcommand::Bundle);
+    assert_eq!(argv, svec!["deno", "source.ts", "bundle.js"])
+  }
 }

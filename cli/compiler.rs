@@ -257,7 +257,13 @@ mod tests {
         maybe_source_map: None,
       };
 
-      out = compile_sync(ThreadSafeState::mock(), &out).unwrap();
+      out = compile_sync(
+        ThreadSafeState::mock(vec![
+          String::from("./deno"),
+          String::from("hello.js"),
+        ]),
+        &out,
+      ).unwrap();
       assert!(
         out
           .maybe_output_code
@@ -270,8 +276,26 @@ mod tests {
   #[test]
   fn test_get_compiler_config_no_flag() {
     let compiler_type = "typescript";
-    let state = ThreadSafeState::mock();
+    let state = ThreadSafeState::mock(vec![
+      String::from("./deno"),
+      String::from("hello.js"),
+    ]);
     let out = get_compiler_config(&state, compiler_type);
     assert_eq!(out, None);
+  }
+
+  #[test]
+  fn test_bundle_async() {
+    let state = ThreadSafeState::mock(vec![
+      String::from("./deno"),
+      String::from("source.ts"),
+      String::from("bundle.ts"),
+    ]);
+    let out = bundle_async(
+      state,
+      String::from("file://foo/bar/source.ts"),
+      String::from("bundle.ts"),
+    );
+    assert_eq!(tokio_util::block_on(out), Ok(()));
   }
 }

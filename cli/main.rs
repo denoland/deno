@@ -263,7 +263,8 @@ fn bundle_command(flags: DenoFlags, argv: Vec<String>) {
 
   let main_module = state.main_module().unwrap();
   let main_url = root_specifier_to_url(&main_module).unwrap();
-  let out_file = state.out_file().unwrap();
+  assert!(state.argv.len() >= 3);
+  let out_file = state.argv[2].clone();
   debug!(">>>>> bundle_async START");
   let bundle_future = bundle_async(state, main_url.to_string(), out_file)
     .map_err(|e| {
