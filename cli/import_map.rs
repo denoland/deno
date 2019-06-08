@@ -439,10 +439,8 @@ impl ImportMap {
       return Ok(scopes_match);
     }
 
-    let imports_match = ImportMap::resolve_imports_match(
-      &self.imports,
-      &normalized_specifier,
-    )?;
+    let imports_match =
+      ImportMap::resolve_imports_match(&self.imports, &normalized_specifier)?;
 
     // match found in import map
     if imports_match.is_some() {
