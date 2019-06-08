@@ -4,10 +4,10 @@ import os
 import shutil
 
 from test_util import DenoTestCase, run_tests
-from util import mkdtemp, root_path, tests_path, run
+from util import mkdtemp, root_path, tests_path, run_output
 
 
-class FmtTest(DenoTestCase):
+class TestFmt(DenoTestCase):
     def test_fmt(self):
         d = mkdtemp()
         try:
@@ -26,12 +26,15 @@ class FmtTest(DenoTestCase):
             # TODO(kt3k) Below can be run([deno_exe, "fmt", dst], ...)
             # once the following issue is addressed:
             # https://github.com/denoland/deno_std/issues/330
-            run([
+            result = run_output([
                 os.path.join(root_path, self.deno_exe), "fmt",
                 "badly_formatted.js"
             ],
-                cwd=d,
-                merge_env={"DENO_DIR": deno_dir})
+                                cwd=d,
+                                merge_env={"DENO_DIR": deno_dir},
+                                exit_on_fail=True,
+                                quiet=True)
+            self.assertEqual(result.code, 0)
             with open(fixed_filename) as f:
                 expected = f.read()
             with open(dst) as f:

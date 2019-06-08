@@ -11,7 +11,8 @@ args_list = run_output([
     build_path(), "--list", "--short", "--overrides-only"
 ],
                        quiet=True,
-                       env=third_party.google_env())
+                       env=third_party.google_env(),
+                       exit_on_fail=True).out
 
 with open(out_filename, "w") as f:
     f.write(args_list)

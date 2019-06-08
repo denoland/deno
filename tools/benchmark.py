@@ -11,7 +11,7 @@ import sys
 import json
 import time
 import shutil
-from util import run, run_output, root_path, build_path, executable_suffix
+from util import root_path, run, run_output, build_path, executable_suffix
 import tempfile
 import http_server
 import throughput_benchmark
@@ -212,7 +212,8 @@ def main(argv):
         print "Usage: tools/benchmark.py [build_dir]"
         sys.exit(1)
 
-    sha1 = run_output(["git", "rev-parse", "HEAD"]).strip()
+    sha1 = run_output(["git", "rev-parse", "HEAD"],
+                      exit_on_fail=True).out.strip()
     http_server.spawn()
 
     deno_exe = os.path.join(build_dir, "deno")

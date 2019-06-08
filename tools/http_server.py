@@ -17,8 +17,17 @@ REDIRECT_PORT = 4546
 ANOTHER_REDIRECT_PORT = 4547
 DOUBLE_REDIRECTS_PORT = 4548
 
+QUIET = '-v' not in sys.argv and '--verbose' not in sys.argv
 
-class ContentTypeHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
+
+class QuietSimpleHTTPRequestHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
+    def log_request(self, code='-', size='-'):
+        if not QUIET:
+            SimpleHTTPServer.SimpleHTTPRequestHandler.log_request(
+                self, code, size)
+
+
+class ContentTypeHandler(QuietSimpleHTTPRequestHandler):
     def do_GET(self):
         if "multipart_form_data.txt" in self.path:
             self.protocol_version = 'HTTP/1.1'
@@ -102,7 +111,8 @@ def server():
     })
     SocketServer.TCPServer.allow_reuse_address = True
     s = SocketServer.TCPServer(("", PORT), Handler)
-    print "Deno test server http://localhost:%d/" % PORT
+    if not QUIET:
+        print "Deno test server http://localhost:%d/" % PORT
     return RunningServer(s, start(s))
 
 
@@ -110,7 +120,7 @@ def base_redirect_server(host_port, target_port, extra_path_segment=""):
     os.chdir(root_path)
     target_host = "http://localhost:%d" % target_port
 
-    class RedirectHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
+    class RedirectHandler(QuietSimpleHTTPRequestHandler):
         def do_GET(self):
             self.send_response(301)
             self.send_header('Location',
@@ -120,8 +130,9 @@ def base_redirect_server(host_port, target_port, extra_path_segment=""):
     Handler = RedirectHandler
     SocketServer.TCPServer.allow_reuse_address = True
     s = SocketServer.TCPServer(("", host_port), Handler)
-    print "redirect server http://localhost:%d/ -> http://localhost:%d/" % (
-        host_port, target_port)
+    if not QUIET:
+        print "redirect server http://localhost:%d/ -> http://localhost:%d/" % (
+            host_port, target_port)
     return RunningServer(s, start(s))
 
 
@@ -153,7 +164,8 @@ def start(s):
 def spawn():
     servers = (server(), redirect_server(), another_redirect_server(),
                double_redirects_server())
-    sleep(1)  # TODO I'm too lazy to figure out how to do this properly.
+    while any(not s.thread.is_alive() for s in servers):
+        sleep(0.01)
     try:
         yield
     finally:
