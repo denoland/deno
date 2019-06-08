@@ -616,7 +616,13 @@ fn map_content_type(path: &Path, content_type: Option<&str>) -> msg::MediaType {
         | "text/javascript"
         | "application/ecmascript"
         | "text/ecmascript"
-        | "application/x-javascript" => msg::MediaType::JavaScript,
+        | "application/x-javascript" => {
+          if map_file_extension(path) == msg::MediaType::TypeScript {
+            msg::MediaType::TypeScript
+          } else {
+            msg::MediaType::JavaScript
+          }
+        },
         "application/json" | "text/json" => msg::MediaType::Json,
         "text/plain" => map_file_extension(path),
         _ => {
@@ -861,14 +867,18 @@ fn fetch_local_source(
     }
     Ok(c) => c,
   };
+  let media_type= map_content_type(
+    &p,
+    source_code_headers.mime_type.as_ref().map(String::as_str),
+  );
+  println!("media_type {:?} {}", media_type, module_name);
+  println!("p {:?}\nsource_code_headers.mime_type {:?}", p, source_code_headers.mime_type);
+  println!("source_code_headers {:?}", source_code_headers);
   Ok(Some(ModuleMetaData {
     module_name: module_name.to_string(),
     module_redirect_source_name: module_initial_source_name,
     filename: filename.to_string(),
-    media_type: map_content_type(
-      &p,
-      source_code_headers.mime_type.as_ref().map(String::as_str),
-    ),
+    media_type,
     source_code,
     maybe_output_code_filename: None,
     maybe_output_code: None,
@@ -1216,9 +1226,9 @@ mod tests {
         r2.source_code,
         "export { printHello } from \"./print_hello.ts\";\n".as_bytes()
       );
-      // If get_source_code does not call remote, this should be JavaScript
+      // If get_source_code does not call remote, this should be TypeScript
       // as we modified before! (we do not overwrite .headers.json due to no http fetch)
-      assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
+      assert_eq!(&(r2.media_type), &msg::MediaType::TypeScript);
       assert_eq!(
         get_source_code_headers(&filename).mime_type.unwrap(),
         "text/javascript"
@@ -1282,7 +1292,7 @@ mod tests {
       let expected = "export const loaded = true;\n".as_bytes();
       assert_eq!(r.source_code, expected);
       // Mismatch ext with content type, create .headers.json
-      assert_eq!(&(r.media_type), &msg::MediaType::JavaScript);
+      assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
       assert_eq!(
         get_source_code_headers(&filename).mime_type.unwrap(),
         "text/javascript"
@@ -1314,7 +1324,7 @@ mod tests {
       assert_eq!(r3.source_code, expected3);
       // Now the old .headers.json file should be overwritten back to JavaScript!
       // (due to http fetch)
-      assert_eq!(&(r3.media_type), &msg::MediaType::JavaScript);
+      assert_eq!(&(r3.media_type), &msg::MediaType::TypeScript);
       assert_eq!(
         get_source_code_headers(&filename).mime_type.unwrap(),
         "text/javascript"
@@ -2072,6 +2082,10 @@ mod tests {
     );
     assert_eq!(
       map_content_type(Path::new("foo/bar.ts"), Some("text/plain")),
+      msg::MediaType::TypeScript
+    );
+    assert_eq!(
+      map_content_type(Path::new("foo/bar.ts"), Some("application/javascript")),
       msg::MediaType::TypeScript
     );
     assert_eq!(
