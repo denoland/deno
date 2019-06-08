@@ -91,7 +91,7 @@ export function sendAsync(
     data,
     false
   );
-  util.assert(response == null);
+  util.assert(response == null); // null indicates async.
   const promise = util.createResolvable<msg.Base>();
   promiseTable.set(cmdId, promise);
   return promise;
@@ -106,10 +106,11 @@ export function sendSync(
 ): null | msg.Base {
   const [cmdId, response] = sendInternal(builder, innerType, inner, data, true);
   util.assert(cmdId >= 0);
-  if (response == null || response.length === 0) {
+  util.assert(response != null); // null indicates async.
+  if (response!.length === 0) {
     return null;
   } else {
-    const bb = new flatbuffers.ByteBuffer(response);
+    const bb = new flatbuffers.ByteBuffer(response!);
     const baseRes = msg.Base.getRootAsBase(bb);
     errors.maybeThrowError(baseRes);
     return baseRes;
