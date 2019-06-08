@@ -634,6 +634,7 @@ OPTIONS:
         --allow-read=<allow-read>      Allow file system read access
         --allow-write=<allow-write>    Allow file system write access
     -c, --config <FILE>                Load compiler configuration file
+        --importmap <FILE>             Load import map file
         --v8-flags=<v8-flags>          Set V8 command line options
 
 SUBCOMMANDS:
@@ -674,6 +675,43 @@ Particularly useful ones:
 
 ```
 --async-stack-trace
+```
+
+## Import maps
+
+Deno supports [import maps](https://github.com/WICG/import-maps).
+
+One can use import map with `--importmap=<FILE>` CLI flag.
+
+Example:
+
+```js
+// import-map.json
+
+{
+   "imports": {
+      "http/": "https://deno.land/std/http/"
+   }
+}
+```
+
+```ts
+// hello-server.ts
+
+import { serve } from "http/server.ts";
+
+async function main() {
+  const body = new TextEncoder().encode("Hello World\n");
+  for await (const req of serve(":8000")) {
+    req.respond({ body });
+  }
+}
+
+main();
+```
+
+```bash
+$ deno run --importmap=import-map.json hello-server.ts
 ```
 
 ## Internal details
