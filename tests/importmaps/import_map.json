@@ -1,6 +1,14 @@
 {
   "imports": {
-    "moment": "./test1.ts",
-    "lodash": ["./test2.ts"]
+    "moment": "./moment/moment.ts",
+    "moment/": "./moment/",
+    "lodash": "./lodash/lodash.ts",
+    "lodash/": "./lodash/",
+    "https://www.unpkg.com/vue/dist/vue.runtime.esm.js": "./vue.ts"
+  },
+  "scopes": {
+    "scope/": {
+      "moment": "./scoped-moment.ts"
+    }
   }
 }

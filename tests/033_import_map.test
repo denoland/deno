@@ -1,2 +1,2 @@
-args: run --reload --importmap=tests/importmaps/import_map.json tests/importmaps/import_map_test.ts
+args: run --reload --importmap=tests/importmaps/import_map.json tests/importmaps/test.ts
 output: tests/033_import_map.out

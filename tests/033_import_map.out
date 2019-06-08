@@ -1,2 +1,7 @@
-hello from fake moment
-hello from fake lodash
+Hello from remapped moment!
+Hello from remapped moment dir!
+Hello from remapped lodash!
+Hello from remapped lodash dir!
+Hello from remapped Vue!
+Hello from scoped moment!
+Hello from scoped!
