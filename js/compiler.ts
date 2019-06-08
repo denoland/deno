@@ -155,6 +155,22 @@ function fetchModuleMetaData(
   };
 }
 
+/** Utility function to turn the number of bytes into a human readable
+ * unit */
+function humanFileSize(bytes: number): string {
+  const thresh = 1000;
+  if (Math.abs(bytes) < thresh) {
+    return bytes + " B";
+  }
+  const units = ["kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
+  let u = -1;
+  do {
+    bytes /= thresh;
+    ++u;
+  } while (Math.abs(bytes) >= thresh && u < units.length - 1);
+  return `${bytes.toFixed(1)} ${units[u]}`;
+}
+
 /** Ops to rest for caching source map and compiled js */
 function cache(extension: string, moduleId: string, contents: string): void {
   util.log("compiler.cache", moduleId);
@@ -176,18 +192,10 @@ const encoder = new TextEncoder();
 
 /** Given a fileName and the data, emit the file to the file system. */
 function emit(fileName: string, data: string): void {
-  function humanFileSize(bytes: number): string {
-    const thresh = 1000;
-    if (Math.abs(bytes) < thresh) {
-      return bytes + " B";
-    }
-    const units = ["kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
-    let u = -1;
-    do {
-      bytes /= thresh;
-      ++u;
-    } while (Math.abs(bytes) >= thresh && u < units.length - 1);
-    return `${bytes.toFixed(1)} ${units[u]}`;
+  // For internal purposes, when trying to emit to `$deno$` just no-op
+  if (fileName.startsWith("$deno$")) {
+    util.log("skipping compiler.emit", fileName);
+    return;
   }
 
   util.log("compiler.emit", fileName);
