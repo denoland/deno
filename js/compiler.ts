@@ -261,7 +261,6 @@ class Host implements ts.CompilerHost {
       const bundlerOptions: ts.CompilerOptions = {
         module: ts.ModuleKind.AMD,
         inlineSourceMap: true,
-        inlineSources: true,
         outDir: undefined,
         outFile: `${OUT_DIR}/bundle.js`,
         sourceMap: false
