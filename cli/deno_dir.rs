@@ -18,14 +18,32 @@ use http;
 use ring;
 use serde_json;
 use std;
+use std::collections::HashSet;
 use std::fmt::Write;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::result::Result;
 use std::str;
+use std::sync::Arc;
+use std::sync::Mutex;
 use url;
 use url::Url;
+
+#[derive(Clone, Default)]
+pub struct FetchSet(Arc<Mutex<HashSet<String>>>);
+
+impl FetchSet {
+  pub fn mark(&self, module_id: &str) {
+    let mut c = self.0.lock().unwrap();
+    c.insert(module_id.to_string());
+  }
+
+  pub fn has(&self, module_id: &str) -> bool {
+    let c = self.0.lock().unwrap();
+    c.contains(module_id)
+  }
+}
 
 #[derive(Clone)]
 pub struct DenoDir {
@@ -47,6 +65,11 @@ pub struct DenoDir {
   pub config: Vec<u8>,
 
   pub progress: Progress,
+
+  /// Set of all URLs that have been fetched in this run. This is a hacky way to work
+  /// around the fact that --reload will force multiple downloads of the same
+  /// module.
+  fetched: FetchSet,
 }
 
 impl DenoDir {
@@ -90,6 +113,7 @@ impl DenoDir {
       deps_https,
       config,
       progress,
+      fetched: FetchSet::default(),
     };
 
     // TODO Lazily create these directories.
@@ -378,7 +402,11 @@ fn get_source_code_async(
   // 1. Remote downloads are not allowed, we're only allowed to use cache.
   // 2. This is a remote module and we're allowed to use cached downloads.
   // 3. This is a local module.
-  if !is_module_remote || use_cache || no_fetch {
+  if !is_module_remote
+    || use_cache
+    || no_fetch
+    || deno_dir.fetched.has(&module_name)
+  {
     debug!(
       "fetch local or reload {} is_module_remote {}",
       module_name, is_module_remote
@@ -422,11 +450,16 @@ fn get_source_code_async(
 
   debug!("is remote but didn't find module");
 
+  let fetched = deno_dir.fetched.clone();
+
   // not cached/local, try remote.
   Either::B(
     fetch_remote_source_async(deno_dir, &module_name, &filename).and_then(
       move |maybe_remote_source| match maybe_remote_source {
-        Some(output) => Ok(output),
+        Some(output) => {
+          fetched.mark(&module_name);
+          Ok(output)
+        }
         None => Err(DenoError::from(std::io::Error::new(
           std::io::ErrorKind::NotFound,
           format!("cannot find remote file '{}'", &filename),
