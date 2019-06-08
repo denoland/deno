@@ -142,11 +142,18 @@ pub fn compile_async(
         }
       }
 
-      let r = state
-        .dir
-        .fetch_module_meta_data(&module_name, ".", true, true);
-      let module_meta_data_after_compile = r.unwrap();
-
+      Ok(())
+    }).and_then(move |_| {
+      state.dir.fetch_module_meta_data_async(
+        &module_name,
+        ".",
+        true,
+        true,
+      ).map_err(|e| {
+        // TODO(95th) Instead of panicking, We could translate this error to Diagnostic.
+        panic!("{}", e)
+      })
+    }).and_then(move |module_meta_data_after_compile| {
       // Explicit drop to keep reference alive until future completes.
       drop(compiling_job);
 

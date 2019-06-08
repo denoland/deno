@@ -103,7 +103,7 @@ impl ThreadSafeState {
   }
 }
 
-fn fetch_module_meta_data_and_maybe_compile_async(
+pub fn fetch_module_meta_data_and_maybe_compile_async(
   state: &ThreadSafeState,
   specifier: &str,
   referrer: &str,
