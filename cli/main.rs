@@ -41,6 +41,7 @@ mod tokio_write;
 pub mod version;
 pub mod worker;
 
+use crate::compiler::bundle_async;
 use crate::errors::RustOrJsError;
 use crate::progress::Progress;
 use crate::state::ThreadSafeState;
@@ -261,6 +262,26 @@ fn xeval_command(flags: DenoFlags, argv: Vec<String>) {
   tokio_util::run(main_future);
 }
 
+fn bundle_command(flags: DenoFlags, argv: Vec<String>) {
+  let (mut _worker, state) = create_worker_and_state(flags, argv);
+
+  let main_module = state.main_module().unwrap();
+  let main_url = root_specifier_to_url(&main_module).unwrap();
+  assert!(state.argv.len() >= 3);
+  let out_file = state.argv[2].clone();
+  debug!(">>>>> bundle_async START");
+  let bundle_future = bundle_async(state, main_url.to_string(), out_file)
+    .map_err(|e| {
+      debug!("diagnostics returned, exiting!");
+      eprintln!("\n{}", e.to_string());
+      std::process::exit(1);
+    }).and_then(move |_| {
+      debug!(">>>>> bundle_async END");
+      Ok(())
+    });
+  tokio_util::run(bundle_future);
+}
+
 fn run_repl(flags: DenoFlags, argv: Vec<String>) {
   let (mut worker, _state) = create_worker_and_state(flags, argv);
 
@@ -322,6 +343,7 @@ fn main() {
   });
 
   match subcommand {
+    DenoSubcommand::Bundle => bundle_command(flags, argv),
     DenoSubcommand::Eval => eval_command(flags, argv),
     DenoSubcommand::Fetch => fetch_or_info_command(flags, argv, false),
     DenoSubcommand::Info => fetch_or_info_command(flags, argv, true),
