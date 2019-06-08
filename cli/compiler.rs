@@ -287,21 +287,18 @@ mod tests {
   #[test]
   fn test_bundle_async() {
     let specifier = "./tests/002_hello.ts";
-      use crate::worker;
-      let module_name = worker::root_specifier_to_url(specifier)
-        .unwrap()
-        .to_string();
-    
+    use crate::worker;
+    let module_name = worker::root_specifier_to_url(specifier)
+      .unwrap()
+      .to_string();
+
     let state = ThreadSafeState::mock(vec![
       String::from("./deno"),
       String::from("./tests/002_hello.ts"),
       String::from("$deno$/bundle.js"),
     ]);
-    let out = bundle_async(
-      state,
-      module_name,
-      String::from("$deno$/bundle.js"),
-    );
+    let out =
+      bundle_async(state, module_name, String::from("$deno$/bundle.js"));
     assert_eq!(tokio_util::block_on(out), Ok(()));
   }
 }
