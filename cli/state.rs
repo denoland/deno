@@ -311,8 +311,7 @@ impl ThreadSafeState {
   }
 
   #[cfg(test)]
-  pub fn mock() -> ThreadSafeState {
-    let argv = vec![String::from("./deno"), String::from("hello.js")];
+  pub fn mock(argv: Vec<String>) -> ThreadSafeState {
     ThreadSafeState::new(
       flags::DenoFlags::default(),
       argv,
@@ -349,5 +348,8 @@ impl ThreadSafeState {
 #[test]
 fn thread_safe() {
   fn f<S: Send + Sync>(_: S) {}
-  f(ThreadSafeState::mock());
+  f(ThreadSafeState::mock(vec![
+    String::from("./deno"),
+    String::from("hello.js"),
+  ]));
 }
