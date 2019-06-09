@@ -301,30 +301,32 @@ impl Isolate {
     &mut self,
     maybe_buf_or_pid: Option<Result<&[u8], c_int>>,
   ) -> Result<(), JSError> {
-    let (buf, pid) = match maybe_buf_or_pid {
-      Some(Err(pid)) => (deno_buf::empty(), Some(pid)),
-      Some(Ok(r)) => (deno_buf::from(r), None),
-      None => (deno_buf::empty(), None),
-    };
-    if pid.is_some() {
-      unsafe {
+    match maybe_buf_or_pid {
+      Some(Err(pid)) => unsafe {
         libdeno::deno_respond(
           self.libdeno_isolate,
           self.as_raw_ptr(),
-          buf,
-          &pid.unwrap(),
+          deno_buf::empty(),
+          &pid,
         )
-      }
-    } else {
-      unsafe {
+      },
+      Some(Ok(r)) => unsafe {
         libdeno::deno_respond(
           self.libdeno_isolate,
           self.as_raw_ptr(),
-          buf,
+          deno_buf::from(r),
           null(),
         )
-      }
-    }
+      },
+      None => unsafe {
+        libdeno::deno_respond(
+          self.libdeno_isolate,
+          self.as_raw_ptr(),
+          deno_buf::empty(),
+          null(),
+        )
+      },
+    };
     if let Some(err) = self.last_exception() {
       Err(err)
     } else {
