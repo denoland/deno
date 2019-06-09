@@ -136,6 +136,7 @@ enum ErrorKind: byte {
   OpNotAvaiable,
   WorkerInitFailed,
   UnixError,
+  ImportMapError,
 }
 
 table Cwd {}

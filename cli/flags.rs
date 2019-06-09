@@ -15,6 +15,9 @@ pub struct DenoFlags {
   /// When the `--config`/`-c` flag is used to pass the name, this will be set
   /// the path passed on the command line, otherwise `None`.
   pub config_path: Option<String>,
+  /// When the `--importmap` flag is used to pass the name, this will be set
+  /// the path passed on the command line, otherwise `None`.
+  pub import_map_path: Option<String>,
   pub allow_read: bool,
   pub read_whitelist: Vec<String>,
   pub allow_write: bool,
@@ -82,6 +85,16 @@ fn add_run_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
       Arg::with_name("no-prompt")
         .long("no-prompt")
         .help("Do not use prompts"),
+    ).arg(
+      Arg::with_name("importmap")
+        .long("importmap")
+        .value_name("FILE")
+        .help("Load import map file")
+        .long_help(
+          "Load import map file
+Specification: https://wicg.github.io/import-maps/
+Examples: https://github.com/WICG/import-maps#the-import-map",
+        ).takes_value(true),
     )
 }
 
@@ -367,10 +380,10 @@ pub fn parse_flags(matches: &ArgMatches) -> DenoFlags {
     flags.v8_flags = Some(v8_flags);
   }
 
-  flags = parse_permission_args(flags, matches);
+  flags = parse_run_args(flags, matches);
   // flags specific to "run" subcommand
   if let Some(run_matches) = matches.subcommand_matches("run") {
-    flags = parse_permission_args(flags.clone(), run_matches);
+    flags = parse_run_args(flags.clone(), run_matches);
   }
 
   flags
@@ -378,10 +391,7 @@ pub fn parse_flags(matches: &ArgMatches) -> DenoFlags {
 
 /// Parse permission specific matches Args and assign to DenoFlags.
 /// This method is required because multiple subcommands use permission args.
-fn parse_permission_args(
-  mut flags: DenoFlags,
-  matches: &ArgMatches,
-) -> DenoFlags {
+fn parse_run_args(mut flags: DenoFlags, matches: &ArgMatches) -> DenoFlags {
   if matches.is_present("allow-read") {
     if matches.value_of("allow-read").is_some() {
       let read_wl = matches.values_of("allow-read").unwrap();
@@ -435,6 +445,7 @@ fn parse_permission_args(
   if matches.is_present("no-prompt") {
     flags.no_prompts = true;
   }
+  flags.import_map_path = matches.value_of("importmap").map(ToOwned::to_owned);
 
   flags
 }
@@ -912,6 +923,7 @@ mod tests {
     assert_eq!(subcommand, DenoSubcommand::Xeval);
     assert_eq!(argv, svec!["deno", "console.log(val)"]);
   }
+
   #[test]
   fn test_flags_from_vec_19() {
     use tempfile::TempDir;
@@ -936,6 +948,7 @@ mod tests {
     assert_eq!(subcommand, DenoSubcommand::Run);
     assert_eq!(argv, svec!["deno", "script.ts"]);
   }
+
   #[test]
   fn test_flags_from_vec_20() {
     use tempfile::TempDir;
@@ -960,6 +973,7 @@ mod tests {
     assert_eq!(subcommand, DenoSubcommand::Run);
     assert_eq!(argv, svec!["deno", "script.ts"]);
   }
+
   #[test]
   fn test_flags_from_vec_21() {
     let (flags, subcommand, argv) = flags_from_vec(svec![
@@ -1066,5 +1080,36 @@ mod tests {
     );
     assert_eq!(subcommand, DenoSubcommand::Bundle);
     assert_eq!(argv, svec!["deno", "source.ts", "bundle.js"])
+  }
+
+  #[test]
+  fn test_flags_from_vec_27() {
+    let (flags, subcommand, argv) = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--importmap=importmap.json",
+      "script.ts"
+    ]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        import_map_path: Some("importmap.json".to_owned()),
+        ..DenoFlags::default()
+      }
+    );
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "script.ts"]);
+
+    let (flags, subcommand, argv) =
+      flags_from_vec(svec!["deno", "--importmap=importmap.json", "script.ts"]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        import_map_path: Some("importmap.json".to_owned()),
+        ..DenoFlags::default()
+      }
+    );
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "script.ts"]);
   }
 }

@@ -1301,11 +1301,15 @@ rust_proc_macro("serde_derive") {
 rust_rlib("serde_json") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/serde_json-1.0.39/src/lib.rs"
-  features = [ "default" ]
+  features = [
+    "default",
+    "preserve_order",
+  ]
   extern_rlib = [
     "itoa",
     "ryu",
     "serde",
+    "indexmap",
   ]
   args = [
     "--cap-lints",
