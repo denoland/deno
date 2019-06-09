@@ -394,7 +394,7 @@ pub fn parse_flags(matches: &ArgMatches) -> DenoFlags {
   }
   if matches.is_present("seed") {
     let seed = matches.value_of("seed").unwrap();
-    let v8_seed_flag = format!("--random_seed={}", seed);
+    let v8_seed_flag = format!("--random-seed={}", seed);
 
     match flags.v8_flags {
       Some(ref mut v8_flags) => {
