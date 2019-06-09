@@ -90,7 +90,11 @@ fn add_run_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .long("importmap")
         .value_name("FILE")
         .help("Load import map file")
-        .takes_value(true),
+        .long_help(
+          "Load import map file
+Specification: https://wicg.github.io/import-maps/
+Examples: https://github.com/WICG/import-maps#the-import-map",
+        ).takes_value(true),
     )
 }
 
