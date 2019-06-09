@@ -280,7 +280,10 @@ mod tests {
   }
 
   fn create_test_worker() -> Worker {
-    let state = ThreadSafeState::mock();
+    let state = ThreadSafeState::mock(vec![
+      String::from("./deno"),
+      String::from("hello.js"),
+    ]);
     let mut worker =
       Worker::new("TEST".to_string(), startup_data::deno_isolate_init(), state);
     js_check(worker.execute("denoMain()"));

@@ -137,10 +137,10 @@ impl SourceMap {
   }
 }
 
-fn frame_apply_source_map(
+fn frame_apply_source_map<G: SourceMapGetter>(
   frame: &StackFrame,
   mappings_map: &mut CachedMaps,
-  getter: &dyn SourceMapGetter,
+  getter: &G,
 ) -> StackFrame {
   let maybe_sm = get_mappings(frame.script_name.as_ref(), mappings_map, getter);
   let frame_pos = (
@@ -181,9 +181,9 @@ fn frame_apply_source_map(
   }
 }
 
-pub fn apply_source_map(
+pub fn apply_source_map<G: SourceMapGetter>(
   js_error: &JSError,
-  getter: &dyn SourceMapGetter,
+  getter: &G,
 ) -> JSError {
   let mut mappings_map: CachedMaps = HashMap::new();
   let mut frames = Vec::<StackFrame>::new();
@@ -232,9 +232,9 @@ fn builtin_source_map(script_name: &str) -> Option<Vec<u8>> {
   }
 }
 
-fn parse_map_string(
+fn parse_map_string<G: SourceMapGetter>(
   script_name: &str,
-  getter: &dyn SourceMapGetter,
+  getter: &G,
 ) -> Option<SourceMap> {
   builtin_source_map(script_name)
     .or_else(|| getter.get_source_map(script_name))
@@ -243,10 +243,10 @@ fn parse_map_string(
     })
 }
 
-fn get_mappings<'a>(
+fn get_mappings<'a, G: SourceMapGetter>(
   script_name: &str,
   mappings_map: &'a mut CachedMaps,
-  getter: &dyn SourceMapGetter,
+  getter: &G,
 ) -> &'a Option<SourceMap> {
   mappings_map
     .entry(script_name.to_string())
