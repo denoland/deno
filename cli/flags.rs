@@ -1156,8 +1156,14 @@ mod tests {
 
   #[test]
   fn test_flags_from_vec_29() {
-    let (flags, subcommand, argv) =
-      flags_from_vec(svec!["deno", "--seed", "250", "--v8-flags=--expose-gc", "run", "script.ts"]);
+    let (flags, subcommand, argv) = flags_from_vec(svec![
+      "deno",
+      "--seed",
+      "250",
+      "--v8-flags=--expose-gc",
+      "run",
+      "script.ts"
+    ]);
     assert_eq!(
       flags,
       DenoFlags {
