@@ -1,20 +1,22 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as msg from "gen/cli/msg_generated";
+import * as ts from "typescript";
+
+import { assetSourceCode } from "./assets";
+import { bold, cyan, yellow } from "./colors";
+import { Console } from "./console";
 import { core } from "./core";
 import { Diagnostic, fromTypeScriptDiagnostic } from "./diagnostics";
-import * as flatbuffers from "./flatbuffers";
+import { cwd } from "./dir";
 import { sendSync } from "./dispatch";
-import { TextDecoder } from "./text_encoding";
-import * as ts from "typescript";
+import * as flatbuffers from "./flatbuffers";
 import * as os from "./os";
-import { bold, cyan, yellow } from "./colors";
-import { window } from "./window";
-import { postMessage, workerClose, workerMain } from "./workers";
-import { Console } from "./console";
+import { TextDecoder, TextEncoder } from "./text_encoding";
 import { assert, notImplemented } from "./util";
 import * as util from "./util";
-import { cwd } from "./dir";
-import { assetSourceCode } from "./assets";
+import { window } from "./window";
+import { postMessage, workerClose, workerMain } from "./workers";
+import { writeFileSync } from "./write_file";
 
 // Startup boilerplate. This is necessary because the compiler has its own
 // snapshot. (It would be great if we could remove these things or centralize
@@ -32,6 +34,7 @@ const OUT_DIR = "$deno$";
 /** The format of the work message payload coming from the privileged side */
 interface CompilerReq {
   rootNames: string[];
+  bundle?: string;
   // TODO(ry) add compiler config to this interface.
   // options: ts.CompilerOptions;
   configPath?: string;
@@ -116,6 +119,7 @@ interface EmitResult {
   diagnostics?: Diagnostic;
 }
 
+/** Ops to Rust to resolve and fetch a modules meta data. */
 function fetchModuleMetaData(
   specifier: string,
   referrer: string
@@ -151,7 +155,23 @@ function fetchModuleMetaData(
   };
 }
 
-/** For caching source map and compiled js */
+/** Utility function to turn the number of bytes into a human readable
+ * unit */
+function humanFileSize(bytes: number): string {
+  const thresh = 1000;
+  if (Math.abs(bytes) < thresh) {
+    return bytes + " B";
+  }
+  const units = ["kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
+  let u = -1;
+  do {
+    bytes /= thresh;
+    ++u;
+  } while (Math.abs(bytes) >= thresh && u < units.length - 1);
+  return `${bytes.toFixed(1)} ${units[u]}`;
+}
+
+/** Ops to rest for caching source map and compiled js */
 function cache(extension: string, moduleId: string, contents: string): void {
   util.log("compiler.cache", moduleId);
   const builder = flatbuffers.createBuilder();
@@ -166,6 +186,21 @@ function cache(extension: string, moduleId: string, contents: string): void {
   );
   const baseRes = sendSync(builder, msg.Any.Cache, inner);
   assert(baseRes == null);
+}
+
+const encoder = new TextEncoder();
+
+/** Given a fileName and the data, emit the file to the file system. */
+function emitBundle(fileName: string, data: string): void {
+  // For internal purposes, when trying to emit to `$deno$` just no-op
+  if (fileName.startsWith("$deno$")) {
+    console.warn("skipping compiler.emitBundle", fileName);
+    return;
+  }
+  const encodedData = encoder.encode(data);
+  console.log(`Emitting bundle to "${fileName}"`);
+  writeFileSync(fileName, encodedData);
+  console.log(`${humanFileSize(encodedData.length)} emitted.`);
 }
 
 /** Returns the TypeScript Extension enum for a given media type. */
@@ -199,6 +234,46 @@ class Host implements ts.CompilerHost {
     stripComments: true,
     target: ts.ScriptTarget.ESNext
   };
+
+  private _resolveModule(specifier: string, referrer: string): ModuleMetaData {
+    // Handle built-in assets specially.
+    if (specifier.startsWith(ASSETS)) {
+      const moduleName = specifier.split("/").pop()!;
+      const assetName = moduleName.includes(".")
+        ? moduleName
+        : `${moduleName}.d.ts`;
+      assert(assetName in assetSourceCode, `No such asset "${assetName}"`);
+      const sourceCode = assetSourceCode[assetName];
+      return {
+        moduleName,
+        filename: specifier,
+        mediaType: msg.MediaType.TypeScript,
+        sourceCode
+      };
+    }
+    return fetchModuleMetaData(specifier, referrer);
+  }
+
+  /* Deno specific APIs */
+
+  /** Provides the `ts.HostCompiler` interface for Deno.
+   *
+   * @param _bundle Set to a string value to configure the host to write out a
+   *   bundle instead of caching individual files.
+   */
+  constructor(private _bundle?: string) {
+    if (this._bundle) {
+      // options we need to change when we are generating a bundle
+      const bundlerOptions: ts.CompilerOptions = {
+        module: ts.ModuleKind.AMD,
+        inlineSourceMap: true,
+        outDir: undefined,
+        outFile: `${OUT_DIR}/bundle.js`,
+        sourceMap: false
+      };
+      Object.assign(this._options, bundlerOptions);
+    }
+  }
 
   /** Take a configuration string, parse it, and use it to merge with the
    * compiler's configuration options.  The method returns an array of compiler
@@ -234,17 +309,32 @@ class Host implements ts.CompilerHost {
     };
   }
 
-  getCompilationSettings(): ts.CompilerOptions {
-    util.log("getCompilationSettings()");
-    return this._options;
-  }
+  /* TypeScript CompilerHost APIs */
 
   fileExists(_fileName: string): boolean {
     return notImplemented();
   }
 
-  readFile(_fileName: string): string | undefined {
-    return notImplemented();
+  getCanonicalFileName(fileName: string): string {
+    // console.log("getCanonicalFileName", fileName);
+    return fileName;
+  }
+
+  getCompilationSettings(): ts.CompilerOptions {
+    util.log("getCompilationSettings()");
+    return this._options;
+  }
+
+  getCurrentDirectory(): string {
+    return "";
+  }
+
+  getDefaultLibFileName(_options: ts.CompilerOptions): string {
+    return ASSETS + "/lib.deno_runtime.d.ts";
+  }
+
+  getNewLine(): string {
+    return "\n";
   }
 
   getSourceFile(
@@ -266,47 +356,8 @@ class Host implements ts.CompilerHost {
     );
   }
 
-  getDefaultLibFileName(_options: ts.CompilerOptions): string {
-    return ASSETS + "/lib.deno_runtime.d.ts";
-  }
-
-  writeFile(
-    fileName: string,
-    data: string,
-    writeByteOrderMark: boolean,
-    onError?: (message: string) => void,
-    sourceFiles?: ReadonlyArray<ts.SourceFile>
-  ): void {
-    util.log("writeFile", fileName);
-    assert(sourceFiles != null && sourceFiles.length == 1);
-    const sourceFileName = sourceFiles![0].fileName;
-
-    if (fileName.endsWith(".map")) {
-      // Source Map
-      cache(".map", sourceFileName, data);
-    } else if (fileName.endsWith(".js") || fileName.endsWith(".json")) {
-      // Compiled JavaScript
-      cache(".js", sourceFileName, data);
-    } else {
-      assert(false, "Trying to cache unhandled file type " + fileName);
-    }
-  }
-
-  getCurrentDirectory(): string {
-    return "";
-  }
-
-  getCanonicalFileName(fileName: string): string {
-    // console.log("getCanonicalFileName", fileName);
-    return fileName;
-  }
-
-  useCaseSensitiveFileNames(): boolean {
-    return true;
-  }
-
-  getNewLine(): string {
-    return "\n";
+  readFile(_fileName: string): string | undefined {
+    return notImplemented();
   }
 
   resolveModuleNames(
@@ -335,23 +386,42 @@ class Host implements ts.CompilerHost {
     );
   }
 
-  private _resolveModule(specifier: string, referrer: string): ModuleMetaData {
-    // Handle built-in assets specially.
-    if (specifier.startsWith(ASSETS)) {
-      const moduleName = specifier.split("/").pop()!;
-      const assetName = moduleName.includes(".")
-        ? moduleName
-        : `${moduleName}.d.ts`;
-      assert(assetName in assetSourceCode, `No such asset "${assetName}"`);
-      const sourceCode = assetSourceCode[assetName];
-      return {
-        moduleName,
-        filename: specifier,
-        mediaType: msg.MediaType.TypeScript,
-        sourceCode
-      };
+  useCaseSensitiveFileNames(): boolean {
+    return true;
+  }
+
+  writeFile(
+    fileName: string,
+    data: string,
+    writeByteOrderMark: boolean,
+    onError?: (message: string) => void,
+    sourceFiles?: ReadonlyArray<ts.SourceFile>
+  ): void {
+    util.log("writeFile", fileName);
+    try {
+      if (this._bundle) {
+        emitBundle(this._bundle, data);
+      } else {
+        assert(sourceFiles != null && sourceFiles.length == 1);
+        const sourceFileName = sourceFiles![0].fileName;
+
+        if (fileName.endsWith(".map")) {
+          // Source Map
+          cache(".map", sourceFileName, data);
+        } else if (fileName.endsWith(".js") || fileName.endsWith(".json")) {
+          // Compiled JavaScript
+          cache(".js", sourceFileName, data);
+        } else {
+          assert(false, "Trying to cache unhandled file type " + fileName);
+        }
+      }
+    } catch (e) {
+      if (onError) {
+        onError(String(e));
+      } else {
+        throw e;
+      }
     }
-    return fetchModuleMetaData(specifier, referrer);
   }
 }
 
@@ -360,11 +430,11 @@ class Host implements ts.CompilerHost {
 window.compilerMain = function compilerMain(): void {
   // workerMain should have already been called since a compiler is a worker.
   window.onmessage = ({ data }: { data: CompilerReq }): void => {
+    const { rootNames, configPath, config, bundle } = data;
+    const host = new Host(bundle);
+
     let emitSkipped = true;
     let diagnostics: ts.Diagnostic[] | undefined;
-
-    const { rootNames, configPath, config } = data;
-    const host = new Host();
 
     // if there is a configuration supplied, we need to parse that
     if (config && config.length && configPath) {
@@ -410,6 +480,9 @@ window.compilerMain = function compilerMain(): void {
 
       // We will only proceed with the emit if there are no diagnostics.
       if (diagnostics && diagnostics.length === 0) {
+        if (bundle) {
+          console.log(`Bundling "${bundle}"`);
+        }
         const emitResult = program.emit();
         emitSkipped = emitResult.emitSkipped;
         // emitResult.diagnostics is `readonly` in TS3.5+ and can't be assigned

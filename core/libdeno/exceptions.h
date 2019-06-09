@@ -18,6 +18,8 @@ void HandleException(v8::Local<v8::Context> context,
 
 void HandleExceptionMessage(v8::Local<v8::Context> context,
                             v8::Local<v8::Message> message);
+
+void ThrowInvalidArgument(v8::Isolate* isolate);
 }  // namespace deno
 
 #endif  // EXCEPTIONS_H_

@@ -1995,13 +1995,11 @@ fn op_create_worker(
   js_check(worker.execute("denoMain()"));
   js_check(worker.execute("workerMain()"));
 
-  let specifier_url =
-    root_specifier_to_url(specifier).map_err(DenoError::from)?;
+  let specifier_url = root_specifier_to_url(specifier)?;
 
-  // TODO(ry) Use execute_mod_async here.
-  let result = worker.execute_mod(&specifier_url, false);
-  let response_buf = match result {
-    Ok(()) => {
+  let op = worker
+    .execute_mod_async(&specifier_url, false)
+    .and_then(move |()| {
       let mut workers_tl = parent_state.workers.lock().unwrap();
       workers_tl.insert(rid, worker.shared());
       let builder = &mut FlatBufferBuilder::new();
@@ -2017,11 +2015,13 @@ fn op_create_worker(
           ..Default::default()
         },
       ))
-    }
-    Err(errors::RustOrJsError::Js(_)) => Err(errors::worker_init_failed()),
-    Err(errors::RustOrJsError::Rust(err)) => Err(err),
-  }?;
-  ok_buf(response_buf)
+    }).map_err(|err| match err {
+      errors::RustOrJsError::Js(_) => errors::worker_init_failed(),
+      errors::RustOrJsError::Rust(err) => err,
+    }).map_err(DenoError::from);
+
+  let result = op.wait()?;
+  Ok(Op::Sync(result))
 }
 
 /// Return when the worker closes

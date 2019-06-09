@@ -123,7 +123,7 @@ export function sendSync(
   if (response == null || response.length === 0) {
     return null;
   } else {
-    const bb = new flatbuffers.ByteBuffer(response);
+    const bb = new flatbuffers.ByteBuffer(response!);
     const baseRes = msg.Base.getRootAsBase(bb);
     errors.maybeThrowError(baseRes);
     return baseRes;

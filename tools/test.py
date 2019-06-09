@@ -6,8 +6,8 @@ import os
 
 from benchmark_test import TestBenchmark
 from deno_dir_test import TestDenoDir
-from fetch_test import FetchTest
-from fmt_test import FmtTest
+from fetch_test import TestFetch
+from fmt_test import TestFmt
 from integration_tests import TestIntegrations
 from repl_test import TestRepl
 from setup_test import TestSetup
@@ -21,7 +21,7 @@ from complex_permissions_test import complex_permissions_tests
 
 import http_server
 from util import (enable_ansi_colors, build_path, RESET, FG_RED, FG_GREEN,
-                  executable_suffix, run, run_output, rmtree, tests_path)
+                  executable_suffix, rmtree, tests_path)
 from test_util import parse_test_args, run_tests
 
 
@@ -40,8 +40,8 @@ def main():
         TestUtil,
         TestTarget,
         JsUnitTests,
-        FetchTest,
-        FmtTest,
+        TestFetch,
+        TestFmt,
         TestIntegrations,
         TestRepl,
         TestDenoDir,

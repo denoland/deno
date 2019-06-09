@@ -107,7 +107,7 @@ impl ThreadSafeState {
   }
 }
 
-fn fetch_module_meta_data_and_maybe_compile_async(
+pub fn fetch_module_meta_data_and_maybe_compile_async(
   state: &ThreadSafeState,
   specifier: &str,
   referrer: &str,
@@ -131,7 +131,7 @@ fn fetch_module_meta_data_and_maybe_compile_async(
         {
           debug!(">>>>> compile_sync START");
           Either::A(
-            compile_async(state_.clone(), &specifier, &referrer, &out)
+            compile_async(state_.clone(), &out)
               .map_err(|e| {
                 debug!("compiler error exiting!");
                 eprintln!("\n{}", e.to_string());
@@ -315,8 +315,7 @@ impl ThreadSafeState {
   }
 
   #[cfg(test)]
-  pub fn mock() -> ThreadSafeState {
-    let argv = vec![String::from("./deno"), String::from("hello.js")];
+  pub fn mock(argv: Vec<String>) -> ThreadSafeState {
     ThreadSafeState::new(
       flags::DenoFlags::default(),
       argv,
@@ -353,5 +352,8 @@ impl ThreadSafeState {
 #[test]
 fn thread_safe() {
   fn f<S: Send + Sync>(_: S) {}
-  f(ThreadSafeState::mock());
+  f(ThreadSafeState::mock(vec![
+    String::from("./deno"),
+    String::from("hello.js"),
+  ]));
 }
