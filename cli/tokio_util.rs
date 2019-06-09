@@ -6,9 +6,15 @@ use futures::Poll;
 use std::io;
 use std::mem;
 use std::net::SocketAddr;
+use std::sync::Mutex;
 use tokio;
 use tokio::net::TcpStream;
 use tokio::runtime;
+
+lazy_static! {
+  static ref SYNC_RT: Mutex<runtime::Runtime> =
+    Mutex::new(create_threadpool_runtime());
+}
 
 pub fn create_threadpool_runtime() -> tokio::runtime::Runtime {
   runtime::Builder::new()
@@ -28,10 +34,9 @@ where
 
 /// THIS IS A HACK AND SHOULD BE AVOIDED.
 ///
-/// This creates a new tokio runtime, with many new threads, to execute the
-/// given future. This is useful when we want to block the main runtime to
-/// resolve a future without worrying that we'll use up all the threads in the
-/// main runtime.
+/// This submits the future to a separate tokio runtime. This is useful when we
+/// want to block the main runtime to resolve a future without worrying that
+/// we'll use up all the threads in the main runtime.
 pub fn block_on<F, R, E>(future: F) -> Result<R, E>
 where
   F: Send + 'static + Future<Item = R, Error = E>,
@@ -39,14 +44,12 @@ where
   E: Send + 'static,
 {
   use std::sync::mpsc::channel;
-  use std::thread;
   let (sender, receiver) = channel();
-  // Create a new runtime to evaluate the future asynchronously.
-  thread::spawn(move || {
-    let mut rt = create_threadpool_runtime();
-    let r = rt.block_on(future);
+
+  SYNC_RT.lock().unwrap().spawn(future.then(move |r| {
     sender.send(r).unwrap();
-  });
+    Ok(())
+  }));
   receiver.recv().unwrap()
 }
 
