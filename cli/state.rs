@@ -6,6 +6,7 @@ use crate::errors::DenoError;
 use crate::errors::DenoResult;
 use crate::flags;
 use crate::global_timer::GlobalTimer;
+use crate::import_map::ImportMap;
 use crate::msg;
 use crate::ops;
 use crate::permissions::DenoPermissions;
@@ -57,6 +58,7 @@ pub struct ThreadSafeState(Arc<State>);
 
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct State {
+  pub main_module: Option<String>,
   pub dir: deno_dir::DenoDir,
   pub argv: Vec<String>,
   pub permissions: DenoPermissions,
@@ -67,6 +69,9 @@ pub struct State {
   /// When flags contains a `.config_path` option, the fully qualified path
   /// name of the passed path will be resolved and set.
   pub config_path: Option<String>,
+  /// When flags contains a `.import_map_path` option, the content of the
+  /// import map file will be resolved and set.
+  pub import_map: Option<ImportMap>,
   pub metrics: Metrics,
   pub worker_channels: Mutex<WorkerChannels>,
   pub global_timer: Mutex<GlobalTimer>,
@@ -111,9 +116,10 @@ pub fn fetch_module_meta_data_and_maybe_compile_async(
   let state_ = state.clone();
   let specifier = specifier.to_string();
   let referrer = referrer.to_string();
+  let is_root = referrer == ".";
 
   let f =
-    futures::future::result(ThreadSafeState::resolve(&specifier, &referrer));
+    futures::future::result(state.resolve(&specifier, &referrer, is_root));
   f.and_then(move |module_id| {
     let use_cache = !state_.flags.reload || state_.has_compiled(&module_id);
     let no_fetch = state_.flags.no_fetch;
@@ -157,7 +163,28 @@ pub fn fetch_module_meta_data_and_maybe_compile(
 impl Loader for ThreadSafeState {
   type Error = DenoError;
 
-  fn resolve(specifier: &str, referrer: &str) -> Result<String, Self::Error> {
+  fn resolve(
+    &self,
+    specifier: &str,
+    referrer: &str,
+    is_root: bool,
+  ) -> Result<String, Self::Error> {
+    if !is_root {
+      if let Some(import_map) = &self.import_map {
+        match import_map.resolve(specifier, referrer) {
+          Ok(result) => {
+            if result.is_some() {
+              return Ok(result.unwrap());
+            }
+          }
+          Err(err) => {
+            // TODO(bartlomieju): this should be coerced to DenoError
+            panic!("error resolving using import map: {:?}", err);
+          }
+        }
+      }
+    }
+
     resolve_module_spec(specifier, referrer).map_err(DenoError::from)
   }
 
@@ -233,14 +260,50 @@ impl ThreadSafeState {
       _ => None,
     };
 
+    let dir =
+      deno_dir::DenoDir::new(custom_root, &config, progress.clone()).unwrap();
+
+    let main_module: Option<String> = if argv_rest.len() <= 1 {
+      None
+    } else {
+      let specifier = argv_rest[1].clone();
+      let referrer = ".";
+      // TODO: does this really have to be resolved by DenoDir?
+      //  Maybe we can call `resolve_module_spec`
+      match dir.resolve_module_url(&specifier, referrer) {
+        Ok(url) => Some(url.to_string()),
+        Err(e) => {
+          debug!("Potentially swallowed error {}", e);
+          None
+        }
+      }
+    };
+
+    let mut import_map = None;
+    if let Some(file_name) = &flags.import_map_path {
+      let base_url = match &main_module {
+        Some(url) => url,
+        None => unreachable!(),
+      };
+
+      match ImportMap::load(base_url, file_name) {
+        Ok(map) => import_map = Some(map),
+        Err(err) => {
+          println!("{:?}", err);
+          panic!("Error parsing import map");
+        }
+      }
+    }
+
     ThreadSafeState(Arc::new(State {
-      dir: deno_dir::DenoDir::new(custom_root, &config, progress.clone())
-        .unwrap(),
+      main_module,
+      dir,
       argv: argv_rest,
       permissions: DenoPermissions::from_flags(&flags),
       flags,
       config,
       config_path,
+      import_map,
       metrics: Metrics::default(),
       worker_channels: Mutex::new(internal_channels),
       global_timer: Mutex::new(GlobalTimer::new()),
@@ -255,18 +318,9 @@ impl ThreadSafeState {
 
   /// Read main module from argv
   pub fn main_module(&self) -> Option<String> {
-    if self.argv.len() <= 1 {
-      None
-    } else {
-      let specifier = self.argv[1].clone();
-      let referrer = ".";
-      match self.dir.resolve_module_url(&specifier, referrer) {
-        Ok(url) => Some(url.to_string()),
-        Err(e) => {
-          debug!("Potentially swallowed error {}", e);
-          None
-        }
-      }
+    match &self.main_module {
+      Some(url) => Some(url.to_string()),
+      None => None,
     }
   }
 

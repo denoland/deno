@@ -43,7 +43,12 @@ pub trait Loader: Send + Sync {
   /// When implementing an spec-complaint VM, this should be exactly the
   /// algorithm described here:
   /// https://html.spec.whatwg.org/multipage/webappapis.html#resolve-a-module-specifier
-  fn resolve(specifier: &str, referrer: &str) -> Result<String, Self::Error>;
+  fn resolve(
+    &self,
+    specifier: &str,
+    referrer: &str,
+    is_root: bool,
+  ) -> Result<String, Self::Error>;
 
   /// Given an absolute url, load its source code.
   fn load(&self, url: &str) -> Box<SourceCodeInfoFuture<Self::Error>>;
@@ -98,17 +103,15 @@ impl<L: Loader> RecursiveLoad<L> {
     referrer: &str,
     parent_id: Option<deno_mod>,
   ) -> Result<String, L::Error> {
-    let url = L::resolve(specifier, referrer)?;
+    let is_root = parent_id.is_none();
+    let url = self.loader.resolve(specifier, referrer, is_root)?;
 
-    let is_root = if let Some(parent_id) = parent_id {
+    if !is_root {
       {
         let mut m = self.modules.lock().unwrap();
-        m.add_child(parent_id, &url);
+        m.add_child(parent_id.unwrap(), &url);
       }
-      false
-    } else {
-      true
-    };
+    }
 
     {
       // #B We only add modules that have not yet been resolved for RecursiveLoad.
@@ -251,7 +254,9 @@ impl<L: Loader> Future for RecursiveLoad<L> {
         |specifier: &str, referrer_id: deno_mod| -> deno_mod {
           let modules = self.modules.lock().unwrap();
           let referrer = modules.get_name(referrer_id).unwrap();
-          match L::resolve(specifier, &referrer) {
+          // TODO(bartlomieju): there must be a better way
+          let is_root = referrer == ".";
+          match self.loader.resolve(specifier, &referrer, is_root) {
             Ok(url) => match modules.get_id(&url) {
               Some(id) => id,
               None => 0,
@@ -619,7 +624,12 @@ mod tests {
   impl Loader for MockLoader {
     type Error = MockError;
 
-    fn resolve(specifier: &str, referrer: &str) -> Result<String, Self::Error> {
+    fn resolve(
+      &self,
+      specifier: &str,
+      referrer: &str,
+      _is_root: bool,
+    ) -> Result<String, Self::Error> {
       eprintln!(">> RESOLVING, S: {}, R: {}", specifier, referrer);
       let output_specifier =
         if specifier.starts_with("./") && referrer.starts_with("./") {

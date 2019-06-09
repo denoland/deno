@@ -1,4 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+use crate::import_map::ImportMapError;
 use crate::js_errors::JSErrorColor;
 pub use crate::msg::ErrorKind;
 use crate::resolve_addr::ResolveAddrError;
@@ -24,6 +25,7 @@ enum Repr {
   IoErr(io::Error),
   UrlErr(url::ParseError),
   HyperErr(hyper::Error),
+  ImportMapErr(ImportMapError),
 }
 
 pub fn new(kind: ErrorKind, msg: String) -> DenoError {
@@ -92,6 +94,7 @@ impl DenoError {
           ErrorKind::HttpOther
         }
       }
+      Repr::ImportMapErr(ref _err) => ErrorKind::ImportMapError,
     }
   }
 }
@@ -103,6 +106,7 @@ impl fmt::Display for DenoError {
       Repr::IoErr(ref err) => err.fmt(f),
       Repr::UrlErr(ref err) => err.fmt(f),
       Repr::HyperErr(ref err) => err.fmt(f),
+      Repr::ImportMapErr(ref err) => f.pad(&err.msg),
     }
   }
 }
@@ -114,6 +118,7 @@ impl std::error::Error for DenoError {
       Repr::IoErr(ref err) => err.description(),
       Repr::UrlErr(ref err) => err.description(),
       Repr::HyperErr(ref err) => err.description(),
+      Repr::ImportMapErr(ref err) => &err.msg,
     }
   }
 
@@ -123,6 +128,7 @@ impl std::error::Error for DenoError {
       Repr::IoErr(ref err) => Some(err),
       Repr::UrlErr(ref err) => Some(err),
       Repr::HyperErr(ref err) => Some(err),
+      Repr::ImportMapErr(ref _err) => None,
     }
   }
 }
@@ -198,6 +204,14 @@ impl From<UnixError> for DenoError {
       _ => Self {
         repr: Repr::Simple(ErrorKind::Other, format!("{}", e)),
       },
+    }
+  }
+}
+
+impl From<ImportMapError> for DenoError {
+  fn from(err: ImportMapError) -> Self {
+    Self {
+      repr: Repr::ImportMapErr(err),
     }
   }
 }
