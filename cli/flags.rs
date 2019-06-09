@@ -1146,7 +1146,22 @@ mod tests {
     assert_eq!(
       flags,
       DenoFlags {
-        v8_flags: Some(svec!["deno", "--random_seed=250"]),
+        v8_flags: Some(svec!["deno", "--random-seed=250"]),
+        ..DenoFlags::default()
+      }
+    );
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "script.ts"])
+  }
+
+  #[test]
+  fn test_flags_from_vec_29() {
+    let (flags, subcommand, argv) =
+      flags_from_vec(svec!["deno", "--seed", "250", "--v8-flags=--expose-gc", "run", "script.ts"]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        v8_flags: Some(svec!["deno", "--expose-gc", "--random-seed=250"]),
         ..DenoFlags::default()
       }
     );
