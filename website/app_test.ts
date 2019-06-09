@@ -1,13 +1,14 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
 import { test, testPerm, assert, assertEquals } from "../js/test_util.ts";
+import { runIfMain } from "../js/deps/https/deno.land/std/testing/mod.ts";
 import {
   createBinarySizeColumns,
   createExecTimeColumns,
   createThreadCountColumns,
   createSyscallCountColumns,
   createSha1List
-} from "./app.js";
+} from "./app.ts";
 
 const regularData = [
   {
@@ -191,3 +192,5 @@ test(function createSha1ListRegularData() {
   const sha1List = createSha1List(regularData);
   assertEquals(sha1List, ["abcdef", "012345"]);
 });
+
+runIfMain(import.meta);

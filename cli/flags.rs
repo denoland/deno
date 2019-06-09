@@ -172,8 +172,11 @@ compiler.",
         .setting(AppSettings::DisableVersion)
         .about("Bundle module and dependencies into single file")
         .long_about(
-          "Fetch, compile, and output to a single file a module and its dependencies.
-"
+          "Output a single JavaScript file with all dependencies
+
+Example:
+
+  deno bundle https://deno.land/std/examples/colors.ts"
         )
           .arg(Arg::with_name("source_file").takes_value(true).required(true))
           .arg(Arg::with_name("out_file").takes_value(true).required(false)),
