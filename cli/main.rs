@@ -9,6 +9,7 @@ extern crate futures;
 extern crate serde_json;
 extern crate clap;
 extern crate deno;
+extern crate indexmap;
 #[cfg(unix)]
 extern crate nix;
 extern crate rand;
@@ -24,6 +25,7 @@ mod fs;
 mod global_timer;
 mod http_body;
 mod http_util;
+mod import_map;
 pub mod js_errors;
 pub mod msg;
 pub mod msg_util;

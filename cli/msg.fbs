@@ -138,6 +138,7 @@ enum ErrorKind: byte {
   UnixError,
   NoAsyncSupport,
   NoSyncSupport,
+  ImportMapError,
 }
 
 table Cwd {}
