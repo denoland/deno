@@ -80,6 +80,12 @@ impl Config {
   }
 }
 
+enum ResponseData {
+  None,
+  Buffer(deno_buf),
+  PromiseId(c_int),
+}
+
 /// A single execution context of JavaScript. Corresponds roughly to the "Web
 /// Worker" concept in the DOM. An Isolate is a Future that can be used with
 /// Tokio.  The Isolate future complete when there is an error or when all
@@ -230,15 +236,18 @@ impl Isolate {
         // return value.
         // TODO(ry) check that if JSError thrown during respond(), that it will be
         // picked up.
-        let _ = isolate.respond(Some(Ok(&buf)));
+        let _ =
+          isolate.respond(ResponseData::Buffer(deno_buf::from(buf.as_ref())));
       }
       Op::Async(fut) => {
         let promise_id = isolate.get_next_promise_id();
-        let _ = isolate.respond(Some(Err(promise_id)));
-        let fut = fut.and_then(move |buf| -> Result<(c_int, Buf), CoreError> {
-          Ok((promise_id, buf))
-        });
-        isolate.pending_ops.push(Box::new(fut));
+        let _ = isolate.respond(ResponseData::PromiseId(promise_id));
+        let fut = Box::new(fut.and_then(
+          move |buf| -> Result<(c_int, Buf), CoreError> {
+            Ok((promise_id, buf))
+          },
+        ));
+        isolate.pending_ops.push(fut);
         isolate.have_unpolled_ops = true;
       }
     }
@@ -297,12 +306,9 @@ impl Isolate {
   }
 
   // the result type is a placeholder for a more specific enum type
-  fn respond(
-    &mut self,
-    maybe_buf_or_pid: Option<Result<&[u8], c_int>>,
-  ) -> Result<(), JSError> {
-    match maybe_buf_or_pid {
-      Some(Err(pid)) => unsafe {
+  fn respond(&mut self, data: ResponseData) -> Result<(), JSError> {
+    match data {
+      ResponseData::PromiseId(pid) => unsafe {
         libdeno::deno_respond(
           self.libdeno_isolate,
           self.as_raw_ptr(),
@@ -310,15 +316,15 @@ impl Isolate {
           &pid,
         )
       },
-      Some(Ok(r)) => unsafe {
+      ResponseData::Buffer(r) => unsafe {
         libdeno::deno_respond(
           self.libdeno_isolate,
           self.as_raw_ptr(),
-          deno_buf::from(r),
+          r,
           null(),
         )
       },
-      None => unsafe {
+      ResponseData::None => unsafe {
         libdeno::deno_respond(
           self.libdeno_isolate,
           self.as_raw_ptr(),
@@ -504,7 +510,7 @@ impl Future for Isolate {
     }
 
     if self.shared.size() > 0 {
-      self.respond(None)?;
+      self.respond(ResponseData::None)?;
       // The other side should have shifted off all the messages.
       assert_eq!(self.shared.size(), 0);
     }
@@ -513,7 +519,7 @@ impl Future for Isolate {
       let op = overflow_response.take().unwrap();
       let promise_id_bytes = op.0.to_be_bytes();
       let buf: Buf = [&promise_id_bytes, &op.1[..]].concat().into();
-      self.respond(Some(Ok(&buf)))?;
+      self.respond(ResponseData::Buffer(deno_buf::from(buf.as_ref())))?;
     }
 
     self.check_promise_errors();
