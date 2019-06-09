@@ -70,9 +70,9 @@ function sendSync(opId, arg) {
   return record.result;
 }
 
-function handleAsyncMsgFromRust(buf) {
+function handleAsyncMsgFromRust(promiseId, buf) {
   const record = recordFromBuf(buf);
-  const { promiseId, result } = record;
+  const { result } = record;
   const p = promiseMap.get(promiseId);
   promiseMap.delete(promiseId);
   p.resolve(result);
