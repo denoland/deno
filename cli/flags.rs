@@ -154,7 +154,7 @@ To get help on the another subcommands (run in this case):
         .validator(|val: String| {
           match val.parse::<i64>() {
             Ok(_) => Ok(()),
-            Err(_) => Err("value should be a number".to_string())
+            Err(_) => Err("Seed should be a number".to_string())
           }
         })
         .global(true),
