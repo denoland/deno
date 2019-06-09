@@ -14,7 +14,7 @@ void recv_cb(void* user_data, deno_buf buf, deno_pinned_buf zero_copy_buf) {
 
 TEST(ModulesTest, Resolution) {
   exec_count = 0;  // Reset
-  Deno* d = deno_new(deno_config{0, empty_snapshot, empty, recv_cb});
+  Deno* d = deno_new(deno_config{0, empty_snapshot, empty, recv_cb, nullptr});
   EXPECT_EQ(0, exec_count);
 
   static deno_mod a = deno_mod_new(d, true, "a.js",
@@ -67,7 +67,7 @@ TEST(ModulesTest, Resolution) {
 
 TEST(ModulesTest, ResolutionError) {
   exec_count = 0;  // Reset
-  Deno* d = deno_new(deno_config{0, empty_snapshot, empty, recv_cb});
+  Deno* d = deno_new(deno_config{0, empty_snapshot, empty, recv_cb, nullptr});
   EXPECT_EQ(0, exec_count);
 
   static deno_mod a = deno_mod_new(d, true, "a.js",
@@ -100,7 +100,7 @@ TEST(ModulesTest, ResolutionError) {
 
 TEST(ModulesTest, ImportMetaUrl) {
   exec_count = 0;  // Reset
-  Deno* d = deno_new(deno_config{0, empty_snapshot, empty, recv_cb});
+  Deno* d = deno_new(deno_config{0, empty_snapshot, empty, recv_cb, nullptr});
   EXPECT_EQ(0, exec_count);
 
   static deno_mod a =
@@ -120,7 +120,7 @@ TEST(ModulesTest, ImportMetaUrl) {
 }
 
 TEST(ModulesTest, ImportMetaMain) {
-  Deno* d = deno_new(deno_config{0, empty_snapshot, empty, recv_cb});
+  Deno* d = deno_new(deno_config{0, empty_snapshot, empty, recv_cb, nullptr});
 
   const char* throw_not_main_src = "if (!import.meta.main) throw 'err'";
   static deno_mod throw_not_main =
@@ -146,4 +146,79 @@ TEST(ModulesTest, ImportMetaMain) {
   EXPECT_EQ(nullptr, deno_last_exception(d));
 
   deno_delete(d);
+}
+
+TEST(ModulesTest, DynamicImportSuccess) {
+  exec_count = 0;
+  static int dyn_import_count = 0;
+  static deno_mod b = 0;
+  auto dyn_import_cb = [](auto user_data, const char* specifier,
+                          const char* referrer, deno_dyn_import_id import_id) {
+    auto d = reinterpret_cast<Deno*>(user_data);
+    dyn_import_count++;
+    EXPECT_STREQ(specifier, "foo");
+    EXPECT_STREQ(referrer, "a.js");
+    deno_dyn_import(d, import_id, b);
+  };
+  const char* src =
+      "(async () => { \n"
+      "  let mod = await import('foo'); \n"
+      "  assert(mod.b() === 'b'); \n"
+      // Send a message to signify that we're done.
+      "  Deno.core.send(new Uint8Array([4])); \n"
+      "})(); \n";
+  Deno* d = deno_new(deno_config{0, snapshot, empty, recv_cb, dyn_import_cb});
+  static deno_mod a = deno_mod_new(d, true, "a.js", src);
+  EXPECT_NE(a, 0);
+  EXPECT_EQ(nullptr, deno_last_exception(d));
+  deno_mod_instantiate(d, d, a, nullptr);
+  EXPECT_EQ(nullptr, deno_last_exception(d));
+  const char* b_src = "export function b() { return 'b' }";
+  b = deno_mod_new(d, false, "b.js", b_src);
+  EXPECT_NE(b, 0);
+  EXPECT_EQ(nullptr, deno_last_exception(d));
+  deno_mod_instantiate(d, d, b, nullptr);
+  EXPECT_EQ(nullptr, deno_last_exception(d));
+  deno_mod_evaluate(d, d, a);
+  EXPECT_EQ(nullptr, deno_last_exception(d));
+  deno_check_promise_errors(d);
+  EXPECT_EQ(deno_last_exception(d), nullptr);
+  deno_delete(d);
+  EXPECT_EQ(1, exec_count);
+  EXPECT_EQ(1, dyn_import_count);
+}
+
+TEST(ModulesTest, DynamicImportError) {
+  exec_count = 0;
+  static int dyn_import_count = 0;
+  auto dyn_import_cb = [](auto user_data, const char* specifier,
+                          const char* referrer, deno_dyn_import_id import_id) {
+    auto d = reinterpret_cast<Deno*>(user_data);
+    dyn_import_count++;
+    EXPECT_STREQ(specifier, "foo");
+    EXPECT_STREQ(referrer, "a.js");
+    // We indicate there was an error resolving by returning mod_id 0.
+    deno_dyn_import(d, import_id, 0);
+  };
+  const char* src =
+      "(async () => { \n"
+      "  let mod = await import('foo'); \n"
+      // The following should be unreachable.
+      "  Deno.core.send(new Uint8Array([4])); \n"
+      "})(); \n";
+  Deno* d = deno_new(deno_config{0, snapshot, empty, recv_cb, dyn_import_cb});
+  static deno_mod a = deno_mod_new(d, true, "a.js", src);
+  EXPECT_NE(a, 0);
+  EXPECT_EQ(nullptr, deno_last_exception(d));
+  deno_mod_instantiate(d, d, a, nullptr);
+  EXPECT_EQ(nullptr, deno_last_exception(d));
+  // No error when evaluating, because it's an async error.
+  deno_mod_evaluate(d, d, a);
+  EXPECT_EQ(nullptr, deno_last_exception(d));
+  // Now we should get an error.
+  deno_check_promise_errors(d);
+  EXPECT_NE(deno_last_exception(d), nullptr);
+  deno_delete(d);
+  EXPECT_EQ(0, exec_count);
+  EXPECT_EQ(1, dyn_import_count);
 }

@@ -96,9 +96,11 @@ void PromiseRejectCallback(v8::PromiseRejectMessage promise_reject_message) {
 }
 
 void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
-  CHECK_GE(args.Length(), 1);
-  CHECK_LE(args.Length(), 3);
   auto* isolate = args.GetIsolate();
+  int argsLen = args.Length();
+  if (argsLen < 1 || argsLen > 2) {
+    ThrowInvalidArgument(isolate);
+  }
   DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
   auto context = d->context_.Get(d->isolate_);
   v8::HandleScope handle_scope(isolate);
@@ -375,7 +377,11 @@ void EvalContext(const v8::FunctionCallbackInfo<v8::Value>& args) {
   auto context = d->context_.Get(isolate);
   v8::Context::Scope context_scope(context);
 
-  CHECK(args[0]->IsString());
+  if (!(args[0]->IsString())) {
+    ThrowInvalidArgument(isolate);
+    return;
+  }
+
   auto source = args[0].As<v8::String>();
 
   auto output = v8::Array::New(isolate, 2);
@@ -509,6 +515,38 @@ void HostInitializeImportMetaObjectCallback(v8::Local<v8::Context> context,
   meta->CreateDataProperty(context, v8_str("main"), v8_bool(main)).ToChecked();
 }
 
+v8::MaybeLocal<v8::Promise> HostImportModuleDynamicallyCallback(
+    v8::Local<v8::Context> context, v8::Local<v8::ScriptOrModule> referrer,
+    v8::Local<v8::String> specifier) {
+  auto* isolate = context->GetIsolate();
+  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
+  v8::Isolate::Scope isolate_scope(isolate);
+
+  v8::String::Utf8Value specifier_str(isolate, specifier);
+
+  auto referrer_name = referrer->GetResourceName();
+  v8::String::Utf8Value referrer_name_str(isolate, referrer_name);
+
+  // TODO(ry) I'm not sure what HostDefinedOptions is for or if we're ever going
+  // to use it. For now we check that it is not used. This check may need to be
+  // changed in the future.
+  auto host_defined_options = referrer->GetHostDefinedOptions();
+  CHECK_EQ(host_defined_options->Length(), 0);
+
+  v8::Local<v8::Promise::Resolver> resolver =
+      v8::Promise::Resolver::New(context).ToLocalChecked();
+
+  deno_dyn_import_id import_id = d->next_dyn_import_id_++;
+
+  d->dyn_import_map_.emplace(std::piecewise_construct,
+                             std::make_tuple(import_id),
+                             std::make_tuple(d->isolate_, resolver));
+
+  d->dyn_import_cb_(d->user_data_, *specifier_str, *referrer_name_str,
+                    import_id);
+  return resolver->GetPromise();
+}
+
 void DenoIsolate::AddIsolate(v8::Isolate* isolate) {
   isolate_ = isolate;
   isolate_->SetCaptureStackTraceForUncaughtExceptions(
@@ -518,6 +556,8 @@ void DenoIsolate::AddIsolate(v8::Isolate* isolate) {
   isolate_->AddMessageListener(MessageCallback);
   isolate->SetHostInitializeImportMetaObjectCallback(
       HostInitializeImportMetaObjectCallback);
+  isolate->SetHostImportModuleDynamicallyCallback(
+      HostImportModuleDynamicallyCallback);
 }
 
 }  // namespace deno
