@@ -8,7 +8,7 @@
   },
   "scopes": {
     "scope/": {
-      "moment": "./scoped-moment.ts"
+      "moment": "./scoped_moment.ts"
     }
   }
 }

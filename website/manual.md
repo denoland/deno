@@ -683,10 +683,17 @@ Deno supports [import maps](https://github.com/WICG/import-maps).
 
 One can use import map with `--importmap=<FILE>` CLI flag.
 
+Current limitations:
+
+- single import map
+- no fallback URLs
+- Deno does not support `std:` namespace
+- Does supports only `file:`, `http:` and `https:` schemes
+
 Example:
 
 ```js
-// import-map.json
+// import_map.json
 
 {
    "imports": {
@@ -696,7 +703,7 @@ Example:
 ```
 
 ```ts
-// hello-server.ts
+// hello_server.ts
 
 import { serve } from "http/server.ts";
 
@@ -711,7 +718,7 @@ main();
 ```
 
 ```bash
-$ deno run --importmap=import-map.json hello-server.ts
+$ deno run --importmap=import_map.json hello_server.ts
 ```
 
 ## Internal details
