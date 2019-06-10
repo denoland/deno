@@ -101,11 +101,8 @@ void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
   if (argsLen < 1 || argsLen > 2) {
     ThrowInvalidArgument(isolate);
   }
-  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
-  auto context = d->context_.Get(d->isolate_);
   v8::HandleScope handle_scope(isolate);
-  bool is_err =
-      args.Length() >= 2 ? args[1]->BooleanValue(context).ToChecked() : false;
+  bool is_err = args.Length() >= 2 ? args[1]->BooleanValue(isolate) : false;
   FILE* file = is_err ? stderr : stdout;
 
 #ifdef _WIN32
@@ -322,7 +319,8 @@ void Shared(v8::Local<v8::Name> property,
                                     v8::ArrayBufferCreationMode::kExternalized);
     d->shared_ab_.Reset(isolate, ab);
   }
-  info.GetReturnValue().Set(d->shared_ab_);
+  auto shared_ab = d->shared_ab_.Get(isolate);
+  info.GetReturnValue().Set(shared_ab);
 }
 
 void DenoIsolate::ClearModules() {

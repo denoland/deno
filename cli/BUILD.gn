@@ -3,8 +3,8 @@ import("//build/toolchain/cc_wrapper.gni")
 import("//build_extra/flatbuffers/flatbuffer.gni")
 import("//build_extra/flatbuffers/rust/rust_flatbuffer.gni")
 import("//build_extra/rust/rust.gni")
+import("//third_party/v8/gni/snapshot_toolchain.gni")
 import("//third_party/v8/gni/v8.gni")
-import("//third_party/v8/snapshot_toolchain.gni")
 import("../deno.gni")
 
 main_extern = [
