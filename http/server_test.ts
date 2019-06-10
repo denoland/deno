@@ -396,7 +396,8 @@ test(async function testReadRequestError(): Promise<void> {
   for (const test of testCases) {
     const reader = new BufReader(new StringReader(test.in));
     let err;
-    let req;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let req: any;
     try {
       req = await readRequest(reader);
     } catch (e) {
