@@ -453,19 +453,24 @@ export class Untar {
     if (fileNamePrefix.byteLength > 0) {
       meta.fileName = decoder.decode(fileNamePrefix) + "/" + meta.fileName;
     }
-    ["fileMode", "mtime", "uid", "gid"].forEach(
+    (["fileMode", "mtime", "uid", "gid"] as [
+      "fileMode",
+      "mtime",
+      "uid",
+      "gid"
+    ]).forEach(
       (key): void => {
         const arr = trim(header[key]);
         if (arr.byteLength > 0) {
-          meta[key as keyof UntarOptions] = parseInt(decoder.decode(arr), 8);
+          meta[key] = parseInt(decoder.decode(arr), 8);
         }
       }
     );
-    ["owner", "group"].forEach(
+    (["owner", "group"] as ["owner", "group"]).forEach(
       (key): void => {
         const arr = trim(header[key]);
         if (arr.byteLength > 0) {
-          meta[key as keyof UntarOptions] = decoder.decode(arr);
+          meta[key] = decoder.decode(arr);
         }
       }
     );

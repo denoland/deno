@@ -373,7 +373,8 @@ class Parser {
         }
         obj[k] = v;
         if (v instanceof Object) {
-          this._propertyClean(v);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          this._propertyClean(v as any);
         }
       }
     }
@@ -394,7 +395,8 @@ class Dumper {
     this.srcObject = srcObjc;
   }
   dump(): string[] {
-    this.output = this._parse(this.srcObject);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    this.output = this._parse(this.srcObject as any);
     this.output = this._format();
     return this.output;
   }
@@ -449,7 +451,7 @@ class Dumper {
         out.push("");
         out.push(this._header(path + prop));
         if (value) {
-          const toParse: Record<string, unknown> = value;
+          const toParse = value as Record<string, unknown>;
           out.push(...this._parse(toParse, `${path}${prop}.`));
         }
         // out.push(...this._parse(value, `${path}${prop}.`));
