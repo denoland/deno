@@ -67,7 +67,8 @@ pre {
   color: #161616;
   background: rgba(36, 126, 233, 0.1);
   padding: 15px;
-  word-wrap: normal;
+  white-space: pre-wrap;
+  word-break: break-all;
   overflow-x: auto;
 }
 
@@ -115,7 +116,7 @@ code {
 @keyframes spinner {
   to {transform: rotate(360deg);}
 }
- 
+
 .spinner:before {
   content: '';
   box-sizing: border-box;
