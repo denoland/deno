@@ -44,7 +44,7 @@ pub mod version;
 pub mod worker;
 
 use crate::compiler::bundle_async;
-use crate::errors::RustOrJsError;
+use crate::errors::DenoError;
 use crate::progress::Progress;
 use crate::state::ThreadSafeState;
 use crate::worker::Worker;
@@ -82,14 +82,14 @@ impl log::Log for Logger {
   fn flush(&self) {}
 }
 
-fn print_err_and_exit(err: RustOrJsError) {
+fn print_err_and_exit(err: DenoError) {
   eprintln!("{}", err.to_string());
   std::process::exit(1);
 }
 
 fn js_check<E>(r: Result<(), E>)
 where
-  E: Into<RustOrJsError>,
+  E: Into<DenoError>,
 {
   if let Err(err) = r {
     print_err_and_exit(err.into());
@@ -258,9 +258,7 @@ fn xeval_command(flags: DenoFlags, argv: Vec<String>) {
       .then(|result| {
         js_check(result);
         Ok(())
-      }).map_err(|(err, _worker): (RustOrJsError, Worker)| {
-        print_err_and_exit(err)
-      })
+      }).map_err(|(err, _worker): (DenoError, Worker)| print_err_and_exit(err))
   });
   tokio_util::run(main_future);
 }
@@ -295,9 +293,7 @@ fn run_repl(flags: DenoFlags, argv: Vec<String>) {
       .then(|result| {
         js_check(result);
         Ok(())
-      }).map_err(|(err, _worker): (RustOrJsError, Worker)| {
-        print_err_and_exit(err)
-      })
+      }).map_err(|(err, _worker): (DenoError, Worker)| print_err_and_exit(err))
   });
   tokio_util::run(main_future);
 }

@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::import_map::ImportMapError;
-use crate::js_errors::JSErrorColor;
+use crate::diagnostics;
+use crate::import_map;
+use crate::js_errors;
 pub use crate::msg::ErrorKind;
 use crate::resolve_addr::ResolveAddrError;
 use deno::JSError;
@@ -25,7 +26,9 @@ enum Repr {
   IoErr(io::Error),
   UrlErr(url::ParseError),
   HyperErr(hyper::Error),
-  ImportMapErr(ImportMapError),
+  ImportMapErr(import_map::ImportMapError),
+  Diagnostic(diagnostics::Diagnostic),
+  JSError(JSError),
 }
 
 pub fn new(kind: ErrorKind, msg: String) -> DenoError {
@@ -95,6 +98,8 @@ impl DenoError {
         }
       }
       Repr::ImportMapErr(ref _err) => ErrorKind::ImportMapError,
+      Repr::Diagnostic(ref _err) => ErrorKind::Diagnostic,
+      Repr::JSError(ref _err) => ErrorKind::JSError,
     }
   }
 }
@@ -107,6 +112,8 @@ impl fmt::Display for DenoError {
       Repr::UrlErr(ref err) => err.fmt(f),
       Repr::HyperErr(ref err) => err.fmt(f),
       Repr::ImportMapErr(ref err) => f.pad(&err.msg),
+      Repr::Diagnostic(ref err) => err.fmt(f),
+      Repr::JSError(ref err) => js_errors::JSErrorColor(err).fmt(f),
     }
   }
 }
@@ -119,6 +126,8 @@ impl std::error::Error for DenoError {
       Repr::UrlErr(ref err) => err.description(),
       Repr::HyperErr(ref err) => err.description(),
       Repr::ImportMapErr(ref err) => &err.msg,
+      Repr::Diagnostic(ref err) => &err.items[0].message,
+      Repr::JSError(ref err) => &err.message,
     }
   }
 
@@ -129,6 +138,8 @@ impl std::error::Error for DenoError {
       Repr::UrlErr(ref err) => Some(err),
       Repr::HyperErr(ref err) => Some(err),
       Repr::ImportMapErr(ref _err) => None,
+      Repr::Diagnostic(ref _err) => None,
+      Repr::JSError(ref _err) => None,
     }
   }
 }
@@ -208,10 +219,26 @@ impl From<UnixError> for DenoError {
   }
 }
 
-impl From<ImportMapError> for DenoError {
-  fn from(err: ImportMapError) -> Self {
+impl From<import_map::ImportMapError> for DenoError {
+  fn from(err: import_map::ImportMapError) -> Self {
     Self {
       repr: Repr::ImportMapErr(err),
+    }
+  }
+}
+
+impl From<diagnostics::Diagnostic> for DenoError {
+  fn from(diagnostic: diagnostics::Diagnostic) -> Self {
+    Self {
+      repr: Repr::Diagnostic(diagnostic),
+    }
+  }
+}
+
+impl From<JSError> for DenoError {
+  fn from(err: JSError) -> Self {
+    Self {
+      repr: Repr::JSError(err),
     }
   }
 }
@@ -228,7 +255,7 @@ pub fn permission_denied() -> DenoError {
 }
 
 pub fn op_not_implemented() -> DenoError {
-  new(ErrorKind::OpNotAvaiable, String::from("op not implemented"))
+  new(ErrorKind::OpNotAvailable, String::from("op not implemented"))
 }
 
 pub fn worker_init_failed() -> DenoError {
@@ -257,39 +284,8 @@ pub fn no_sync_support() -> DenoError {
   )
 }
 
-#[derive(Debug)]
-pub enum RustOrJsError {
-  Rust(DenoError),
-  Js(JSError),
-}
-
-impl From<DenoError> for RustOrJsError {
-  fn from(e: DenoError) -> Self {
-    RustOrJsError::Rust(e)
-  }
-}
-
-impl From<JSError> for RustOrJsError {
-  fn from(e: JSError) -> Self {
-    RustOrJsError::Js(e)
-  }
-}
-
-impl fmt::Display for RustOrJsError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    match self {
-      RustOrJsError::Rust(e) => e.fmt(f),
-      RustOrJsError::Js(e) => JSErrorColor(e).fmt(f),
-    }
-  }
-}
-
-// TODO(ry) This is ugly. They are essentially the same type.
-impl From<deno::JSErrorOr<DenoError>> for RustOrJsError {
-  fn from(e: deno::JSErrorOr<DenoError>) -> Self {
-    match e {
-      deno::JSErrorOr::JSError(err) => RustOrJsError::Js(err),
-      deno::JSErrorOr::Other(err) => RustOrJsError::Rust(err),
-    }
+pub fn err_check(r: Result<(), DenoError>) {
+  if let Err(e) = r {
+    panic!(e.to_string());
   }
 }

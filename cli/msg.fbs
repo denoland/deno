@@ -133,12 +133,16 @@ enum ErrorKind: byte {
   // custom errors
   InvalidUri,
   InvalidSeekMode,
-  OpNotAvaiable,
+  OpNotAvailable,
   WorkerInitFailed,
   UnixError,
   NoAsyncSupport,
   NoSyncSupport,
   ImportMapError,
+
+  // other kinds
+  Diagnostic,
+  JSError,
 }
 
 table Cwd {}

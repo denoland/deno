@@ -5,11 +5,13 @@ use crate::deno_dir::resolve_path;
 use crate::dispatch_minimal::dispatch_minimal;
 use crate::dispatch_minimal::parse_min_record;
 use crate::errors;
-use crate::errors::{DenoError, DenoResult, ErrorKind};
+use crate::errors::err_check;
+use crate::errors::DenoError;
+use crate::errors::DenoResult;
+use crate::errors::ErrorKind;
 use crate::fs as deno_fs;
 use crate::http_util;
 use crate::js_errors::apply_source_map;
-use crate::js_errors::JSErrorColor;
 use crate::msg;
 use crate::msg_util;
 use crate::rand;
@@ -25,7 +27,6 @@ use crate::tokio_util;
 use crate::tokio_write;
 use crate::version;
 use crate::worker::Worker;
-use deno::js_check;
 use deno::Buf;
 use deno::CoreOp;
 use deno::JSError;
@@ -402,7 +403,7 @@ fn op_format_error(
 
   let js_error = JSError::from_v8_exception(&orig_error).unwrap();
   let js_error_mapped = apply_source_map(&js_error, &state.dir);
-  let js_error_string = JSErrorColor(&js_error_mapped).to_string();
+  let js_error_string = DenoError::from(js_error_mapped).to_string();
 
   let mut builder = FlatBufferBuilder::new();
   let new_error = builder.create_string(&js_error_string);
@@ -1988,8 +1989,8 @@ fn op_create_worker(
 
   let mut worker =
     Worker::new(name, startup_data::deno_isolate_init(), child_state);
-  js_check(worker.execute("denoMain()"));
-  js_check(worker.execute("workerMain()"));
+  err_check(worker.execute("denoMain()"));
+  err_check(worker.execute("workerMain()"));
 
   let module_specifier = ModuleSpecifier::resolve_root(specifier)?;
 
@@ -2012,9 +2013,6 @@ fn op_create_worker(
           ..Default::default()
         },
       ))
-    }).map_err(|err| match err {
-      errors::RustOrJsError::Js(_) => errors::worker_init_failed(),
-      errors::RustOrJsError::Rust(err) => err,
     });
 
   let result = op.wait()?;
