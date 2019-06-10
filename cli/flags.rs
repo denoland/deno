@@ -170,7 +170,7 @@ compiler.",
     ).subcommand(
       SubCommand::with_name("bundle")
         .setting(AppSettings::DisableVersion)
-        .about("Bundle module and dependnecies into single file")
+        .about("Bundle module and dependencies into single file")
         .long_about(
           "Fetch, compile, and output to a single file a module and its dependencies.
 "
