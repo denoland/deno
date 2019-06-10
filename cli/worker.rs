@@ -142,6 +142,46 @@ pub fn resolve_module_spec(
   Ok(u.to_string())
 }
 
+#[derive(Debug, PartialEq)]
+#[allow(dead_code)]
+/// Resolved module specifier
+pub struct ModuleSpecifier(String);
+
+impl ModuleSpecifier {
+  // TODO(bartlomieju): refactor
+  pub fn to_string(&self) -> String {
+    String::from(self.0.clone())
+  }
+
+  /// Resolves module using this algorithm:
+  /// https://html.spec.whatwg.org/multipage/webappapis.html#resolve-a-module-specifier
+  pub fn resolve(
+    specifier: &str,
+    base: &str,
+  ) -> Result<ModuleSpecifier, url::ParseError> {
+    Ok(ModuleSpecifier(resolve_module_spec(specifier, base)?))
+  }
+
+  /// Takes a string representing a path or URL to a module, but of the type
+  /// passed through the command-line interface for the main module. This is
+  /// slightly different than specifiers used in import statements: "foo.js" for
+  /// example is allowed here, whereas in import statements a leading "./" is
+  /// required ("./foo.js"). This function is aware of the current working
+  /// directory and returns an absolute URL.
+  pub fn resolve_root(
+    root_specifier: &str,
+  ) -> Result<ModuleSpecifier, url::ParseError> {
+    if let Ok(url) = Url::parse(root_specifier) {
+      Ok(ModuleSpecifier(url.to_string()))
+    } else {
+      let cwd = std::env::current_dir().unwrap();
+      let base = Url::from_directory_path(cwd).unwrap();
+      let url = base.join(root_specifier)?;
+      Ok(ModuleSpecifier(url.to_string()))
+    }
+  }
+}
+
 /// Takes a string representing a path or URL to a module, but of the type
 /// passed through the command-line interface for the main module. This is
 /// slightly different than specifiers used in import statements: "foo.js" for

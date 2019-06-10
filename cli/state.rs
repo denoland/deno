@@ -261,8 +261,7 @@ impl ThreadSafeState {
     } else {
       let specifier = argv_rest[1].clone();
       let referrer = ".";
-      // TODO: does this really have to be resolved by DenoDir?
-      //  Maybe we can call `resolve_module_spec`
+      // TODO(bartlomieju): to be deleted - main module is already resolved in main.rs
       match dir.resolve_module_url(&specifier, referrer) {
         Ok(url) => Some(url.to_string()),
         Err(e) => {
