@@ -522,15 +522,15 @@ impl Future for Isolate {
       // If there are any pending dyn_import futures, do those first.
       match self.pending_dyn_imports.poll() {
         Err(()) => unreachable!(),
-        Ok(Ready(None)) => unreachable!(),
-        Ok(NotReady) => continue,
+        Ok(NotReady) => unreachable!(),
+        Ok(Ready(None)) => (),
         Ok(Ready(Some((dyn_import_id, mod_id)))) => {
           self.dyn_import_done(dyn_import_id, mod_id)?;
+          continue;
         }
       }
 
-      // Now handle actual ops,
-
+      // Now handle actual ops.
       self.have_unpolled_ops = false;
       #[allow(clippy::match_wild_err_arm)]
       match self.pending_ops.poll() {
