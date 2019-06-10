@@ -521,6 +521,8 @@ v8::MaybeLocal<v8::Promise> HostImportModuleDynamicallyCallback(
   auto* isolate = context->GetIsolate();
   DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
   v8::Isolate::Scope isolate_scope(isolate);
+  v8::Context::Scope context_scope(context);
+  v8::EscapableHandleScope handle_scope(isolate);
 
   v8::String::Utf8Value specifier_str(isolate, specifier);
 
@@ -544,7 +546,9 @@ v8::MaybeLocal<v8::Promise> HostImportModuleDynamicallyCallback(
 
   d->dyn_import_cb_(d->user_data_, *specifier_str, *referrer_name_str,
                     import_id);
-  return resolver->GetPromise();
+
+  auto promise = resolver->GetPromise();
+  return handle_scope.Escape(promise);
 }
 
 void DenoIsolate::AddIsolate(v8::Isolate* isolate) {

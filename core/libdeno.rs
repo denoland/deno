@@ -192,8 +192,22 @@ type deno_recv_cb = unsafe extern "C" fn(
   zero_copy_buf: deno_pinned_buf,
 );
 
+/// Called when dynamic import is called in JS: import('foo')
+/// Embedder must call deno_dyn_import() with the specified id and
+/// the module.
+#[allow(non_camel_case_types)]
+type deno_dyn_import_cb = unsafe extern "C" fn(
+  user_data: *mut c_void,
+  specifier: *const c_char,
+  referrer: *const c_char,
+  id: deno_dyn_import_id,
+);
+
 #[allow(non_camel_case_types)]
 pub type deno_mod = i32;
+
+#[allow(non_camel_case_types)]
+pub type deno_dyn_import_id = i32;
 
 #[allow(non_camel_case_types)]
 type deno_resolve_cb = unsafe extern "C" fn(
@@ -208,6 +222,7 @@ pub struct deno_config<'a> {
   pub load_snapshot: Snapshot2<'a>,
   pub shared: deno_buf,
   pub recv_cb: deno_recv_cb,
+  pub dyn_import_cb: deno_dyn_import_cb,
 }
 
 #[cfg(not(windows))]
@@ -290,6 +305,14 @@ extern "C" {
     i: *const isolate,
     user_data: *const c_void,
     id: deno_mod,
+  );
+
+  /// Call exactly once for every deno_dyn_import_cb.
+  pub fn deno_dyn_import(
+    i: *const isolate,
+    user_data: *const c_void,
+    id: deno_dyn_import_id,
+    mod_id: deno_mod,
   );
 
   pub fn deno_snapshot_new(i: *const isolate) -> Snapshot1<'static>;
