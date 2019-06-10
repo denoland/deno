@@ -521,7 +521,7 @@ impl Future for Isolate {
     loop {
       // If there are any pending dyn_import futures, do those first.
       match self.pending_dyn_imports.poll() {
-        Err(()) => panic!("unexpected dyn_import error"),
+        Err(()) => unreachable!(),
         Ok(Ready(None)) => unreachable!(),
         Ok(NotReady) => continue,
         Ok(Ready(Some((dyn_import_id, mod_id)))) => {
