@@ -102,8 +102,7 @@ void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
     ThrowInvalidArgument(isolate);
   }
   v8::HandleScope handle_scope(isolate);
-  bool is_err =
-      args.Length() >= 2 ? args[1]->BooleanValue(isolate) : false;
+  bool is_err = args.Length() >= 2 ? args[1]->BooleanValue(isolate) : false;
   FILE* file = is_err ? stderr : stdout;
 
 #ifdef _WIN32
