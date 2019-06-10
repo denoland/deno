@@ -404,7 +404,7 @@ impl Isolate {
     id: libdeno::deno_dyn_import_id,
     mod_id: deno_mod,
   ) -> Result<(), JSError> {
-    debug!("dyn_import_done {} {}", dyn_import_id, mod_id);
+    debug!("dyn_import_done {} {}", id, mod_id);
     unsafe {
       libdeno::deno_dyn_import(
         self.libdeno_isolate,
