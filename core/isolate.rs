@@ -225,6 +225,7 @@ impl Isolate {
     if let Some(ref f) = isolate.config.dyn_import {
       let inner = f(specifier, referrer);
       let fut = DynImport { inner, id };
+      task::current().notify();
       isolate.pending_dyn_imports.push(fut);
     } else {
       panic!("dyn_import callback not set")
@@ -403,6 +404,7 @@ impl Isolate {
     id: libdeno::deno_dyn_import_id,
     mod_id: deno_mod,
   ) -> Result<(), JSError> {
+    debug!("dyn_import_done {} {}", dyn_import_id, mod_id);
     unsafe {
       libdeno::deno_dyn_import(
         self.libdeno_isolate,
@@ -518,15 +520,12 @@ impl Future for Isolate {
 
     loop {
       // If there are any pending dyn_import futures, do those first.
-      if !self.pending_dyn_imports.is_empty() {
-        match self.pending_dyn_imports.poll() {
-          Err(()) => panic!("unexpected dyn_import error"),
-          Ok(Ready(None)) => break,
-          Ok(NotReady) => break,
-          Ok(Ready(Some((dyn_import_id, mod_id)))) => {
-            debug!("dyn_import_done {} {}", dyn_import_id, mod_id);
-            self.dyn_import_done(dyn_import_id, mod_id)?;
-          }
+      match self.pending_dyn_imports.poll() {
+        Err(()) => panic!("unexpected dyn_import error"),
+        Ok(Ready(None)) => unreachable!(),
+        Ok(NotReady) => continue,
+        Ok(Ready(Some((dyn_import_id, mod_id)))) => {
+          self.dyn_import_done(dyn_import_id, mod_id)?;
         }
       }
 
