@@ -55,7 +55,7 @@ impl Worker {
     isolate.execute(js_filename, js_source)
   }
 
-  /// Consumes worker. Executes the provided JavaScript module.
+  /// Executes the provided JavaScript module.
   pub fn execute_mod_async(
     &mut self,
     js_url: &Url,
@@ -94,7 +94,7 @@ impl Worker {
       })
   }
 
-  /// Consumes worker. Executes the provided JavaScript module.
+  /// Executes the provided JavaScript module.
   pub fn execute_mod(
     &mut self,
     js_url: &Url,
