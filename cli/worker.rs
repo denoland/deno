@@ -19,7 +19,6 @@ use url::Url;
 #[derive(Clone)]
 pub struct Worker {
   inner: Arc<Mutex<deno::Isolate>>,
-  pub modules: Arc<Mutex<deno::Modules>>,
   pub state: ThreadSafeState,
 }
 
@@ -36,7 +35,6 @@ impl Worker {
     });
     Self {
       inner: Arc::new(Mutex::new(deno::Isolate::new(startup_data, config))),
-      modules: Arc::new(Mutex::new(deno::Modules::new())),
       state,
     }
   }
@@ -67,7 +65,7 @@ impl Worker {
     let worker_ = worker.clone();
     let loader = self.state.clone();
     let isolate = self.inner.clone();
-    let modules = self.modules.clone();
+    let modules = self.state.modules.clone();
     let recursive_load =
       deno::RecursiveLoad::new(js_url.as_str(), loader, isolate, modules);
     recursive_load
