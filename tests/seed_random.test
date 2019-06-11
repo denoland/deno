@@ -1,0 +1,2 @@
+args: run --seed=100 tests/seed_random.js
+output: tests/seed_random.js.out

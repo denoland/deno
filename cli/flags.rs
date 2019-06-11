@@ -29,6 +29,7 @@ pub struct DenoFlags {
   pub allow_hrtime: bool,
   pub no_prompts: bool,
   pub no_fetch: bool,
+  pub seed: Option<u64>,
   pub v8_flags: Option<Vec<String>>,
   pub xeval_replvar: Option<String>,
   pub xeval_delim: Option<String>,
@@ -144,6 +145,19 @@ To get help on the another subcommands (run in this case):
         .value_name("FILE")
         .help("Load compiler configuration file")
         .takes_value(true)
+        .global(true),
+    ).arg(
+      Arg::with_name("seed")
+        .long("seed")
+        .value_name("NUMBER")
+        .help("Seed Math.random()")
+        .takes_value(true)
+        .validator(|val: String| {
+          match val.parse::<u64>() {
+            Ok(_) => Ok(()),
+            Err(_) => Err("Seed should be a number".to_string())
+          }
+        })
         .global(true),
     ).arg(
       Arg::with_name("v8-options")
@@ -378,6 +392,22 @@ pub fn parse_flags(matches: &ArgMatches) -> DenoFlags {
 
     v8_flags.insert(0, "deno".to_string());
     flags.v8_flags = Some(v8_flags);
+  }
+  if matches.is_present("seed") {
+    let seed_string = matches.value_of("seed").unwrap();
+    let seed = seed_string.parse::<u64>().unwrap();
+    flags.seed = Some(seed);
+
+    let v8_seed_flag = format!("--random-seed={}", seed);
+
+    match flags.v8_flags {
+      Some(ref mut v8_flags) => {
+        v8_flags.push(v8_seed_flag);
+      }
+      None => {
+        flags.v8_flags = Some(svec!["deno", v8_seed_flag]);
+      }
+    }
   }
 
   flags = parse_run_args(flags, matches);
@@ -1111,5 +1141,43 @@ mod tests {
     );
     assert_eq!(subcommand, DenoSubcommand::Run);
     assert_eq!(argv, svec!["deno", "script.ts"]);
+  }
+
+  #[test]
+  fn test_flags_from_vec_28() {
+    let (flags, subcommand, argv) =
+      flags_from_vec(svec!["deno", "--seed", "250", "run", "script.ts"]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        seed: Some(250 as u64),
+        v8_flags: Some(svec!["deno", "--random-seed=250"]),
+        ..DenoFlags::default()
+      }
+    );
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "script.ts"])
+  }
+
+  #[test]
+  fn test_flags_from_vec_29() {
+    let (flags, subcommand, argv) = flags_from_vec(svec![
+      "deno",
+      "--seed",
+      "250",
+      "--v8-flags=--expose-gc",
+      "run",
+      "script.ts"
+    ]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        seed: Some(250 as u64),
+        v8_flags: Some(svec!["deno", "--expose-gc", "--random-seed=250"]),
+        ..DenoFlags::default()
+      }
+    );
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "script.ts"])
   }
 }
