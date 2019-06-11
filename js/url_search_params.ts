@@ -54,6 +54,7 @@ export class URLSearchParams {
   append(name: string, value: string): void {
     requiredArguments("URLSearchParams.append", arguments.length, 2);
     this.params.push([String(name), String(value)]);
+    this.updateSteps();
   }
 
   /** Deletes the given search parameter and its associated value,
@@ -156,6 +157,8 @@ export class URLSearchParams {
     if (!found) {
       this.append(name, value);
     }
+
+    this.updateSteps();
   }
 
   /** Sort all key/value pairs contained in this object in place and
@@ -168,6 +171,7 @@ export class URLSearchParams {
     this.params = this.params.sort(
       (a, b): number => (a[0] === b[0] ? 0 : a[0] > b[0] ? 1 : -1)
     );
+    this.updateSteps();
   }
 
   /** Calls a function for each element contained in this object in
