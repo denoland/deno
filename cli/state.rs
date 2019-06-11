@@ -13,7 +13,6 @@ use crate::permissions::DenoPermissions;
 use crate::progress::Progress;
 use crate::resources;
 use crate::resources::ResourceId;
-use crate::tokio_util;
 use crate::worker::resolve_module_spec;
 use crate::worker::Worker;
 use deno::Buf;
@@ -152,16 +151,6 @@ pub fn fetch_module_meta_data_and_maybe_compile_async(
         }
       })
   })
-}
-
-pub fn fetch_module_meta_data_and_maybe_compile(
-  state: &ThreadSafeState,
-  specifier: &str,
-  referrer: &str,
-) -> Result<ModuleMetaData, DenoError> {
-  tokio_util::block_on(fetch_module_meta_data_and_maybe_compile_async(
-    state, specifier, referrer,
-  ))
 }
 
 impl Loader for ThreadSafeState {
