@@ -535,7 +535,6 @@ impl Future for Isolate {
         Ok(Ready(None)) => (),
         Ok(Ready(Some((dyn_import_id, mod_id)))) => {
           self.dyn_import_done(dyn_import_id, mod_id)?;
-          continue;
         }
       }
 

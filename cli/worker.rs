@@ -8,10 +8,55 @@ use crate::tokio_util;
 use deno;
 use deno::JSError;
 use deno::StartupData;
+use futures::task;
 use futures::Async;
 use futures::Future;
 use std::sync::Arc;
 use std::sync::Mutex;
+
+use crate::state::fetch_module_meta_data_and_maybe_compile_async;
+use deno::DynImportFuture;
+// use deno::Modules;
+
+// TODO(ry) modules should be moved into ThreadSafeState.
+fn get_dyn_import(
+  isolate: Arc<Mutex<deno::Isolate>>,
+  state: ThreadSafeState,
+  module_specifier: &ModuleSpecifier,
+) -> DynImportFuture {
+  Box::new(
+    fetch_module_meta_data_and_maybe_compile_async(&state, module_specifier)
+      .then(move |result| match result {
+        Ok(module_meta_data) => {
+          let name = &module_meta_data.module_name;
+          println!(
+            "fetch_module_meta_data_and_maybe_compile_async result {}",
+            name
+          );
+          task::current().notify();
+          let modules = state.modules.clone();
+          let recursive_load =
+            deno::RecursiveLoad::new(name, state.clone(), isolate, modules);
+
+          recursive_load.then(|load_result| {
+            println!("load_result {:?}", load_result);
+            match load_result {
+              Ok(id) => {
+                println!("load success {}", id);
+                Ok(id)
+              }
+              Err(err) => {
+                panic!("unhandled err {:?}", err);
+                #[allow(unreachable_code)]
+                Err(())
+              }
+            }
+          })
+        }
+        Err(err) => panic!("unhandled error {}", err),
+      }),
+  )
+}
 
 /// Wraps deno::Isolate to provide source maps, ops for the CLI, and
 /// high-level module loading
@@ -27,14 +72,23 @@ impl Worker {
     startup_data: StartupData,
     state: ThreadSafeState,
   ) -> Worker {
-    let state_ = state.clone();
     let isolate = Arc::new(Mutex::new(deno::Isolate::new(startup_data, false)));
+    let isolate_ = isolate.clone();
+    let state_ = state.clone();
+    let state__ = state.clone(); // TODO Simplfiy this madness.
     {
       let mut i = isolate.lock().unwrap();
       i.set_dispatch(move |control_buf, zero_copy_buf| {
         state_.dispatch(control_buf, zero_copy_buf)
       });
+      i.set_dyn_import(move |specifier, referrer| {
+        let module_specifier = ModuleSpecifier::resolve(specifier, referrer)
+          .expect("should already been properly resolved");
+        println!("set_dyn_import {}", module_specifier);
+        get_dyn_import(isolate_.clone(), state__.clone(), &module_specifier)
+      });
     }
+    println!("isolate unlock");
     Self { isolate, state }
   }
 
@@ -117,6 +171,7 @@ impl Future for Worker {
   type Error = JSError;
 
   fn poll(&mut self) -> Result<Async<()>, Self::Error> {
+    debug!("isolate.lock()");
     let mut isolate = self.isolate.lock().unwrap();
     isolate.poll().map_err(|err| self.apply_source_map(err))
   }

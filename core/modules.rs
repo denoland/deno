@@ -106,6 +106,8 @@ impl<L: Loader> RecursiveLoad<L> {
     let is_root = parent_id.is_none();
     let url = self.loader.resolve(specifier, referrer, is_root)?;
 
+    debug!("RecursiveLoad:add {}", specifier);
+
     if !is_root {
       {
         let mut m = self.modules.lock().unwrap();
@@ -166,6 +168,7 @@ impl<L: Loader> Future for RecursiveLoad<L> {
 
     let mut i = 0;
     while i < self.pending.len() {
+      debug!("RecursiveLoad poll {}", i);
       let pending = &mut self.pending[i];
       match pending.source_code_info_future.poll() {
         Err(err) => {
@@ -194,10 +197,12 @@ impl<L: Loader> Future for RecursiveLoad<L> {
 
           let need_alias = source_code_info.module_name != completed.url;
 
+          debug!("RecursiveLoad poll ready {}", source_code_info.module_name);
           if !is_module_registered {
             let module_name = &source_code_info.module_name;
 
             let result = {
+              debug!("isolate.lock()");
               let isolate = self.isolate.lock().unwrap();
               isolate.mod_new(
                 completed.is_root,
@@ -227,6 +232,7 @@ impl<L: Loader> Future for RecursiveLoad<L> {
 
             // Now we must iterate over all imports of the module and load them.
             let imports = {
+              debug!("isolate.lock()");
               let isolate = self.isolate.lock().unwrap();
               isolate.mod_get_imports(mod_id)
             };
@@ -252,6 +258,7 @@ impl<L: Loader> Future for RecursiveLoad<L> {
     let result = {
       let mut resolve_cb =
         |specifier: &str, referrer_id: deno_mod| -> deno_mod {
+          println!("isolate.mod_instantiate callback");
           let modules = self.modules.lock().unwrap();
           let referrer = modules.get_name(referrer_id).unwrap();
           // TODO(bartlomieju): there must be a better way
@@ -267,6 +274,7 @@ impl<L: Loader> Future for RecursiveLoad<L> {
           }
         };
 
+      debug!("isolate.lock()");
       let mut isolate = self.isolate.lock().unwrap();
       isolate.mod_instantiate(root_id, &mut resolve_cb)
     };
