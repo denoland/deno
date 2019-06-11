@@ -165,3 +165,15 @@ test(async function fireCallbackImmediatelyWhenDelayOverMaxValue(): Promise<
   await waitForMs(1);
   assertEquals(count, 1);
 });
+
+test(async function timeoutCallbackThis(): Promise<void> {
+  const { promise, resolve } = deferred();
+  const obj = {
+    foo(): void {
+      assertEquals(this, window);
+      resolve();
+    }
+  };
+  setTimeout(obj.foo, 1);
+  await promise;
+});
