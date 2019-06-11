@@ -147,6 +147,19 @@ test(function urlSearchParamsShouldThrowTypeError(): void {
   }
 
   assertEquals(hasThrown, 2);
+
+  try {
+    new URLSearchParams([["1", "2", "3"]]);
+    hasThrown = 1;
+  } catch (err) {
+    if (err instanceof TypeError) {
+      hasThrown = 2;
+    } else {
+      hasThrown = 3;
+    }
+  }
+
+  assertEquals(hasThrown, 2);
 });
 
 test(function urlSearchParamsAppendArgumentsCheck(): void {

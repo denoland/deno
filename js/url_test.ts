@@ -157,3 +157,11 @@ test(function removingNonExistentParamRemovesQuestionMarkFromURL(): void {
   assertEquals(url.href, "http://example.com/");
   assertEquals(url.search, "");
 });
+
+test(function sortingNonExistentParamRemovesQuestionMarkFromURL(): void {
+  const url = new URL("http://example.com/?");
+  assertEquals(url.href, "http://example.com/?");
+  url.searchParams.sort();
+  assertEquals(url.href, "http://example.com/");
+  assertEquals(url.search, "");
+});
