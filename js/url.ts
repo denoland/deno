@@ -80,6 +80,10 @@ export class URL {
       /* eslint-enable */
     }
     this._searchParams = searchParams;
+
+    // convert to `any` that has avoided the private limit
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (this._searchParams as any).url = this;
   }
 
   get hash(): string {
