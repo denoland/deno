@@ -77,32 +77,6 @@ impl Future for DynImport {
   }
 }
 
-#[derive(Default)]
-pub struct Config {
-  dispatch: Option<Arc<DispatchFn>>,
-  dyn_import: Option<Arc<DynImportFn>>,
-  pub will_snapshot: bool,
-}
-
-impl Config {
-  /// Defines the how Deno.core.dispatch() acts.
-  /// Called whenever Deno.core.dispatch() is called in JavaScript. zero_copy_buf
-  /// corresponds to the second argument of Deno.core.dispatch().
-  pub fn dispatch<F>(&mut self, f: F)
-  where
-    F: Fn(&[u8], Option<PinnedBuf>) -> Op + Send + Sync + 'static,
-  {
-    self.dispatch = Some(Arc::new(f));
-  }
-
-  pub fn dyn_import<F>(&mut self, f: F)
-  where
-    F: Fn(&str, &str) -> DynImportFuture + Send + Sync + 'static,
-  {
-    self.dyn_import = Some(Arc::new(f));
-  }
-}
-
 /// A single execution context of JavaScript. Corresponds roughly to the "Web
 /// Worker" concept in the DOM. An Isolate is a Future that can be used with
 /// Tokio.  The Isolate future complete when there is an error or when all
@@ -114,7 +88,9 @@ impl Config {
 pub struct Isolate {
   libdeno_isolate: *const libdeno::isolate,
   shared_libdeno_isolate: Arc<Mutex<Option<*const libdeno::isolate>>>,
-  config: Config,
+  dispatch: Option<Arc<DispatchFn>>,
+  dyn_import: Option<Arc<DynImportFn>>,
+  pub will_snapshot: bool,
   needs_init: bool,
   shared: SharedQueue,
   pending_ops: FuturesUnordered<OpAsyncFuture>,
@@ -138,9 +114,7 @@ static DENO_INIT: Once = ONCE_INIT;
 impl Isolate {
   /// startup_data defines the snapshot or script used at startup to initalize
   /// the isolate.
-  // TODO(ry) move startup_data into Config. Ideally without introducing a
-  // generic lifetime into the Isolate struct...
-  pub fn new(startup_data: StartupData, config: Config) -> Self {
+  pub fn new(startup_data: StartupData, will_snapshot: bool) -> Self {
     DENO_INIT.call_once(|| {
       unsafe { libdeno::deno_init() };
     });
@@ -151,7 +125,7 @@ impl Isolate {
 
     let mut startup_script: Option<Script> = None;
     let mut libdeno_config = libdeno::deno_config {
-      will_snapshot: if config.will_snapshot { 1 } else { 0 },
+      will_snapshot: will_snapshot.into(),
       load_snapshot: Snapshot2::empty(),
       shared: shared.as_deno_buf(),
       recv_cb: Self::pre_dispatch,
@@ -177,11 +151,13 @@ impl Isolate {
     let mut core_isolate = Self {
       libdeno_isolate,
       shared_libdeno_isolate: Arc::new(Mutex::new(Some(libdeno_isolate))),
-      config,
+      dispatch: None,
+      dyn_import: None,
       shared,
       needs_init,
       pending_ops: FuturesUnordered::new(),
       have_unpolled_ops: false,
+      will_snapshot,
       pending_dyn_imports: FuturesUnordered::new(),
     };
 
@@ -191,6 +167,23 @@ impl Isolate {
     };
 
     core_isolate
+  }
+
+  /// Defines the how Deno.core.dispatch() acts.
+  /// Called whenever Deno.core.dispatch() is called in JavaScript. zero_copy_buf
+  /// corresponds to the second argument of Deno.core.dispatch().
+  pub fn set_dispatch<F>(&mut self, f: F)
+  where
+    F: Fn(&[u8], Option<PinnedBuf>) -> Op + Send + Sync + 'static,
+  {
+    self.dispatch = Some(Arc::new(f));
+  }
+
+  pub fn set_dyn_import<F>(&mut self, f: F)
+  where
+    F: Fn(&str, &str) -> DynImportFuture + Send + Sync + 'static,
+  {
+    self.dyn_import = Some(Arc::new(f));
   }
 
   /// Get a thread safe handle on the isolate.
@@ -222,7 +215,7 @@ impl Isolate {
     let referrer = unsafe { CStr::from_ptr(referrer).to_str().unwrap() };
     debug!("dyn_import specifier {} referrer {} ", specifier, referrer);
 
-    if let Some(ref f) = isolate.config.dyn_import {
+    if let Some(ref f) = isolate.dyn_import {
       let inner = f(specifier, referrer);
       let fut = DynImport { inner, id };
       task::current().notify();
@@ -242,17 +235,17 @@ impl Isolate {
 
     let op = if control_argv0.len() > 0 {
       // The user called Deno.core.send(control)
-      if let Some(ref f) = isolate.config.dispatch {
+      if let Some(ref f) = isolate.dispatch {
         f(control_argv0.as_ref(), PinnedBuf::new(zero_copy_buf))
       } else {
-        panic!("isolate.config.dispatch not set")
+        panic!("isolate.dispatch not set")
       }
     } else if let Some(c) = control_shared {
       // The user called Deno.sharedQueue.push(control)
-      if let Some(ref f) = isolate.config.dispatch {
+      if let Some(ref f) = isolate.dispatch {
         f(&c, PinnedBuf::new(zero_copy_buf))
       } else {
-        panic!("isolate.config.dispatch not set")
+        panic!("isolate.dispatch not set")
       }
     } else {
       // The sharedQueue is empty. The shouldn't happen usually, but it's also
@@ -654,8 +647,8 @@ pub mod tests {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let dispatch_count_ = dispatch_count.clone();
 
-    let mut config = Config::default();
-    config.dispatch(move |control, _| -> Op {
+    let mut isolate = Isolate::new(StartupData::None, false);
+    isolate.set_dispatch(move |control, _| -> Op {
       dispatch_count_.fetch_add(1, Ordering::Relaxed);
       match mode {
         Mode::AsyncImmediate => {
@@ -694,8 +687,6 @@ pub mod tests {
         }
       }
     });
-
-    let mut isolate = Isolate::new(StartupData::None, config);
     js_check(isolate.execute(
       "setup.js",
       r#"
@@ -861,14 +852,13 @@ pub mod tests {
     run_in_task(|| {
       let count = Arc::new(AtomicUsize::new(0));
       let count_ = count.clone();
-      let mut config = Config::default();
-      config.dyn_import(move |specifier, referrer| {
+      let mut isolate = Isolate::new(StartupData::None, false);
+      isolate.set_dyn_import(move |specifier, referrer| {
         count_.fetch_add(1, Ordering::Relaxed);
         assert_eq!(specifier, "foo.js");
         assert_eq!(referrer, "dyn_import2.js");
         Box::new(futures::future::err(()))
       });
-      let mut isolate = Isolate::new(StartupData::None, config);
       js_check(isolate.execute(
         "dyn_import2.js",
         r#"
@@ -896,16 +886,14 @@ pub mod tests {
       let mod_b = Arc::new(Mutex::new(0));
       let mod_b2 = mod_b.clone();
 
-      let mut config = Config::default();
-      config.dyn_import(move |_specifier, referrer| {
+      let mut isolate = Isolate::new(StartupData::None, false);
+      isolate.set_dyn_import(move |_specifier, referrer| {
         count_.fetch_add(1, Ordering::Relaxed);
         // assert_eq!(specifier, "foo.js");
         assert_eq!(referrer, "dyn_import3.js");
         let mod_id = mod_b2.lock().unwrap();
         Box::new(futures::future::ok(*mod_id))
       });
-
-      let mut isolate = Isolate::new(StartupData::None, config);
 
       // Instantiate mod_b
       {
@@ -1159,9 +1147,7 @@ pub mod tests {
   #[test]
   fn will_snapshot() {
     let snapshot = {
-      let mut config = Config::default();
-      config.will_snapshot = true;
-      let mut isolate = Isolate::new(StartupData::None, config);
+      let mut isolate = Isolate::new(StartupData::None, true);
       js_check(isolate.execute("a.js", "a = 1 + 2"));
       let s = isolate.snapshot().unwrap();
       drop(isolate);
@@ -1169,7 +1155,7 @@ pub mod tests {
     };
 
     let startup_data = StartupData::LibdenoSnapshot(snapshot);
-    let mut isolate2 = Isolate::new(startup_data, Config::default());
+    let mut isolate2 = Isolate::new(startup_data, false);
     js_check(isolate2.execute("check.js", "if (a != 3) throw Error('x')"));
   }
 }

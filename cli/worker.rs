@@ -5,7 +5,6 @@ use crate::js_errors;
 use crate::state::ThreadSafeState;
 use crate::tokio_util;
 use deno;
-use deno::Config;
 use deno::JSError;
 use deno::StartupData;
 use futures::Async;
@@ -29,14 +28,15 @@ impl Worker {
     state: ThreadSafeState,
   ) -> Worker {
     let state_ = state.clone();
-    let mut config = Config::default();
-    config.dispatch(move |control_buf, zero_copy_buf| {
-      state_.dispatch(control_buf, zero_copy_buf)
-    });
-    Self {
-      inner: Arc::new(Mutex::new(deno::Isolate::new(startup_data, config))),
-      state,
+    // TODO rename inner to isolate.
+    let inner = Arc::new(Mutex::new(deno::Isolate::new(startup_data, false)));
+    {
+      let mut i = inner.lock().unwrap();
+      i.set_dispatch(move |control_buf, zero_copy_buf| {
+        state_.dispatch(control_buf, zero_copy_buf)
+      });
     }
+    Self { inner, state }
   }
 
   /// Same as execute2() but the filename defaults to "<anonymous>".
