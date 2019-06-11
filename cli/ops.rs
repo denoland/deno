@@ -65,12 +65,9 @@ use std::os::unix::process::ExitStatusExt;
 
 type CliOpResult = OpResult<DenoError>;
 
-type CliDispatchFn = fn(
-  state: &ThreadSafeState,
-  is_sync: bool,
-  base: &msg::Base<'_>,
-  data: Option<PinnedBuf>,
-) -> CliOpResult;
+type CliDispatchFn =
+  fn(state: &ThreadSafeState, base: &msg::Base<'_>, data: Option<PinnedBuf>)
+    -> CliOpResult;
 
 pub type OpSelector = fn(inner_type: msg::Any) -> Option<CliDispatchFn>;
 
@@ -121,16 +118,16 @@ pub fn dispatch_all_legacy(
     None => panic!("Unhandled message {}", msg::enum_name_any(inner_type)),
   };
 
-  let op_result = op_func(state, is_sync, &base, zero_copy);
+  let op_result = op_func(state, &base, zero_copy);
 
   let state = state.clone();
 
-  match (is_sync, op_result) {
-    (_, Ok(Op::Sync(buf))) => {
+  match op_result {
+    Ok(Op::Sync(buf)) => {
       state.metrics_op_completed(buf.len());
       Op::Sync(buf)
     }
-    (false, Ok(Op::Async(fut))) => {
+    Ok(Op::Async(fut)) => {
       let result_fut = Box::new(
         fut.or_else(move |err: DenoError| -> Result<Buf, ()> {
           debug!("op err {}", err);
@@ -167,11 +164,7 @@ pub fn dispatch_all_legacy(
       );
       Op::Async(result_fut)
     }
-    (true, Ok(Op::Async(_))) => panic!(
-      "Dispatch returned Op::Async for sync call of: {}",
-      msg::enum_name_any(inner_type)
-    ),
-    (_, Err(err)) => {
+    Err(err) => {
       debug!("op err {}", err);
       // No matter whether we got an Err or Ok, we want a serialized message to
       // send back. So transform the DenoError into a Buf.
@@ -261,7 +254,7 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<CliDispatchFn> {
 // nanoseconds are rounded on 2ms.
 fn op_now(
   state: &ThreadSafeState,
-  _is_sync: bool,
+
   _base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -298,7 +291,7 @@ fn op_now(
 
 fn op_is_tty(
   _state: &ThreadSafeState,
-  _is_sync: bool,
+
   _base: &msg::Base<'_>,
   _data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -323,7 +316,7 @@ fn op_is_tty(
 
 fn op_exit(
   _state: &ThreadSafeState,
-  _is_sync: bool,
+
   base: &msg::Base<'_>,
   _data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -333,7 +326,7 @@ fn op_exit(
 
 fn op_start(
   state: &ThreadSafeState,
-  _is_sync: bool,
+
   _base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -395,7 +388,7 @@ fn op_start(
 
 fn op_format_error(
   state: &ThreadSafeState,
-  _is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -452,7 +445,7 @@ pub fn ok_buf(buf: Buf) -> CliOpResult {
 
 fn op_cache(
   state: &ThreadSafeState,
-  _is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -493,11 +486,11 @@ fn op_cache(
 // https://github.com/denoland/deno/blob/golang/os.go#L100-L154
 fn op_fetch_module_meta_data(
   state: &ThreadSafeState,
-  is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
-  if !is_sync {
+  if !base.sync() {
     return Err(errors::no_async_support());
   }
   assert!(data.is_none());
@@ -563,7 +556,7 @@ fn op_fetch_module_meta_data(
 
 fn op_chdir(
   _state: &ThreadSafeState,
-  _is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -576,11 +569,10 @@ fn op_chdir(
 
 fn op_global_timer_stop(
   state: &ThreadSafeState,
-  is_sync: bool,
-  _base: &msg::Base<'_>,
+  base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
-  if !is_sync {
+  if !base.sync() {
     return Err(errors::no_async_support());
   }
   assert!(data.is_none());
@@ -592,11 +584,11 @@ fn op_global_timer_stop(
 
 fn op_global_timer(
   state: &ThreadSafeState,
-  is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
-  if is_sync {
+  if base.sync() {
     return Err(errors::no_sync_support());
   }
   assert!(data.is_none());
@@ -627,7 +619,7 @@ fn op_global_timer(
 
 fn op_set_env(
   state: &ThreadSafeState,
-  _is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -642,7 +634,7 @@ fn op_set_env(
 
 fn op_env(
   state: &ThreadSafeState,
-  _is_sync: bool,
+
   _base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -672,7 +664,7 @@ fn op_env(
 
 fn op_permissions(
   state: &ThreadSafeState,
-  _is_sync: bool,
+
   _base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -703,7 +695,7 @@ fn op_permissions(
 
 fn op_revoke_permission(
   state: &ThreadSafeState,
-  _is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -724,7 +716,7 @@ fn op_revoke_permission(
 
 fn op_fetch(
   state: &ThreadSafeState,
-  is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -773,7 +765,7 @@ fn op_fetch(
           },
         ))
       });
-  if is_sync {
+  if base.sync() {
     let result_buf = future.wait()?;
     Ok(Op::Sync(result_buf))
   } else {
@@ -812,7 +804,6 @@ where
 
 fn op_make_temp_dir(
   state: &ThreadSafeState,
-  is_sync: bool,
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -827,7 +818,7 @@ fn op_make_temp_dir(
   let prefix = inner.prefix().map(String::from);
   let suffix = inner.suffix().map(String::from);
 
-  blocking(is_sync, move || {
+  blocking(base.sync(), move || {
     // TODO(piscisaureus): use byte vector for paths, not a string.
     // See https://github.com/denoland/deno/issues/627.
     // We can't assume that paths are always valid utf8 strings.
@@ -858,7 +849,7 @@ fn op_make_temp_dir(
 
 fn op_mkdir(
   state: &ThreadSafeState,
-  is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -870,7 +861,7 @@ fn op_mkdir(
 
   state.check_write(&path_)?;
 
-  blocking(is_sync, move || {
+  blocking(base.sync(), move || {
     debug!("op_mkdir {}", path_);
     deno_fs::mkdir(&path, mode, recursive)?;
     Ok(empty_buf())
@@ -879,7 +870,7 @@ fn op_mkdir(
 
 fn op_chmod(
   state: &ThreadSafeState,
-  is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -890,7 +881,7 @@ fn op_chmod(
 
   state.check_write(&path_)?;
 
-  blocking(is_sync, move || {
+  blocking(base.sync(), move || {
     debug!("op_chmod {}", &path_);
     // Still check file/dir exists on windows
     let _metadata = fs::metadata(&path)?;
@@ -906,7 +897,7 @@ fn op_chmod(
 
 fn op_chown(
   state: &ThreadSafeState,
-  is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -918,7 +909,7 @@ fn op_chown(
 
   state.check_write(&path)?;
 
-  blocking(is_sync, move || {
+  blocking(base.sync(), move || {
     debug!("op_chown {}", &path);
     match deno_fs::chown(&path, uid, gid) {
       Ok(_) => Ok(empty_buf()),
@@ -929,7 +920,7 @@ fn op_chown(
 
 fn op_open(
   state: &ThreadSafeState,
-  is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1005,7 +996,7 @@ fn op_open(
         },
       ))
     });
-  if is_sync {
+  if base.sync() {
     let buf = op.wait()?;
     Ok(Op::Sync(buf))
   } else {
@@ -1015,7 +1006,7 @@ fn op_open(
 
 fn op_close(
   _state: &ThreadSafeState,
-  _is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1033,7 +1024,7 @@ fn op_close(
 
 fn op_kill(
   _state: &ThreadSafeState,
-  _is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1049,7 +1040,7 @@ fn op_kill(
 
 fn op_shutdown(
   _state: &ThreadSafeState,
-  is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1065,7 +1056,7 @@ fn op_shutdown(
         1 => Shutdown::Write,
         _ => unimplemented!(),
       };
-      blocking(is_sync, move || {
+      blocking(base.sync(), move || {
         // Use UFCS for disambiguation
         Resource::shutdown(&mut resource, shutdown_mode)?;
         Ok(empty_buf())
@@ -1076,7 +1067,7 @@ fn op_shutdown(
 
 fn op_read(
   _state: &ThreadSafeState,
-  is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1106,7 +1097,7 @@ fn op_read(
             },
           ))
         });
-      if is_sync {
+      if base.sync() {
         let buf = op.wait()?;
         Ok(Op::Sync(buf))
       } else {
@@ -1118,7 +1109,7 @@ fn op_read(
 
 fn op_write(
   _state: &ThreadSafeState,
-  is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1147,7 +1138,7 @@ fn op_write(
             },
           ))
         });
-      if is_sync {
+      if base.sync() {
         let buf = op.wait()?;
         Ok(Op::Sync(buf))
       } else {
@@ -1159,7 +1150,7 @@ fn op_write(
 
 fn op_seek(
   _state: &ThreadSafeState,
-  is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1174,7 +1165,7 @@ fn op_seek(
     Some(resource) => {
       let op = resources::seek(resource, offset, whence)
         .and_then(move |_| Ok(empty_buf()));
-      if is_sync {
+      if base.sync() {
         let buf = op.wait()?;
         Ok(Op::Sync(buf))
       } else {
@@ -1186,7 +1177,7 @@ fn op_seek(
 
 fn op_remove(
   state: &ThreadSafeState,
-  is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1197,7 +1188,7 @@ fn op_remove(
 
   state.check_write(&path_)?;
 
-  blocking(is_sync, move || {
+  blocking(base.sync(), move || {
     debug!("op_remove {}", path.display());
     let metadata = fs::metadata(&path)?;
     if metadata.is_file() {
@@ -1213,7 +1204,7 @@ fn op_remove(
 
 fn op_copy_file(
   state: &ThreadSafeState,
-  is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1226,7 +1217,7 @@ fn op_copy_file(
   state.check_write(&to_)?;
 
   debug!("op_copy_file {} {}", from.display(), to.display());
-  blocking(is_sync, move || {
+  blocking(base.sync(), move || {
     // On *nix, Rust deem non-existent path as invalid input
     // See https://github.com/rust-lang/rust/issues/54800
     // Once the issue is reolved, we should remove this workaround.
@@ -1264,7 +1255,7 @@ fn get_mode(_perm: &fs::Permissions) -> u32 {
 
 fn op_cwd(
   _state: &ThreadSafeState,
-  _is_sync: bool,
+
   _base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1288,7 +1279,7 @@ fn op_cwd(
 
 fn op_stat(
   state: &ThreadSafeState,
-  is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1300,7 +1291,7 @@ fn op_stat(
 
   state.check_read(&filename_)?;
 
-  blocking(is_sync, move || {
+  blocking(base.sync(), move || {
     let builder = &mut FlatBufferBuilder::new();
     debug!("op_stat {} {}", filename.display(), lstat);
     let metadata = if lstat {
@@ -1337,7 +1328,7 @@ fn op_stat(
 
 fn op_read_dir(
   state: &ThreadSafeState,
-  is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1347,7 +1338,7 @@ fn op_read_dir(
 
   state.check_read(&path_)?;
 
-  blocking(is_sync, move || {
+  blocking(base.sync(), move || {
     debug!("op_read_dir {}", path.display());
     let builder = &mut FlatBufferBuilder::new();
     let entries: Vec<_> = fs::read_dir(path)?
@@ -1393,7 +1384,7 @@ fn op_read_dir(
 
 fn op_rename(
   state: &ThreadSafeState,
-  is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1404,7 +1395,7 @@ fn op_rename(
 
   state.check_write(&newpath_)?;
 
-  blocking(is_sync, move || {
+  blocking(base.sync(), move || {
     debug!("op_rename {} {}", oldpath.display(), newpath.display());
     fs::rename(&oldpath, &newpath)?;
     Ok(empty_buf())
@@ -1413,7 +1404,7 @@ fn op_rename(
 
 fn op_link(
   state: &ThreadSafeState,
-  is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1424,7 +1415,7 @@ fn op_link(
 
   state.check_write(&newname_)?;
 
-  blocking(is_sync, move || {
+  blocking(base.sync(), move || {
     debug!("op_link {} {}", oldname.display(), newname.display());
     std::fs::hard_link(&oldname, &newname)?;
     Ok(empty_buf())
@@ -1433,7 +1424,7 @@ fn op_link(
 
 fn op_symlink(
   state: &ThreadSafeState,
-  is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1447,7 +1438,7 @@ fn op_symlink(
   if cfg!(windows) {
     return Err(errors::new(ErrorKind::Other, "Not implemented".to_string()));
   }
-  blocking(is_sync, move || {
+  blocking(base.sync(), move || {
     debug!("op_symlink {} {}", oldname.display(), newname.display());
     #[cfg(any(unix))]
     std::os::unix::fs::symlink(&oldname, &newname)?;
@@ -1457,7 +1448,7 @@ fn op_symlink(
 
 fn op_read_link(
   state: &ThreadSafeState,
-  is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1468,7 +1459,7 @@ fn op_read_link(
 
   state.check_read(&name_)?;
 
-  blocking(is_sync, move || {
+  blocking(base.sync(), move || {
     debug!("op_read_link {}", name.display());
     let path = fs::read_link(&name)?;
     let builder = &mut FlatBufferBuilder::new();
@@ -1492,7 +1483,7 @@ fn op_read_link(
 
 fn op_repl_start(
   state: &ThreadSafeState,
-  _is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1523,7 +1514,7 @@ fn op_repl_start(
 
 fn op_repl_readline(
   _state: &ThreadSafeState,
-  is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1534,7 +1525,7 @@ fn op_repl_readline(
   let prompt = inner.prompt().unwrap().to_owned();
   debug!("op_repl_readline {} {}", rid, prompt);
 
-  blocking(is_sync, move || {
+  blocking(base.sync(), move || {
     let repl = resources::get_repl(rid)?;
     let line = repl.lock().unwrap().readline(&prompt)?;
 
@@ -1559,7 +1550,7 @@ fn op_repl_readline(
 
 fn op_truncate(
   state: &ThreadSafeState,
-  is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1571,7 +1562,7 @@ fn op_truncate(
 
   state.check_write(&filename_)?;
 
-  blocking(is_sync, move || {
+  blocking(base.sync(), move || {
     debug!("op_truncate {} {}", filename_, len);
     let f = fs::OpenOptions::new().write(true).open(&filename)?;
     f.set_len(u64::from(len))?;
@@ -1581,7 +1572,7 @@ fn op_truncate(
 
 fn op_utime(
   state: &ThreadSafeState,
-  is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1594,7 +1585,7 @@ fn op_utime(
 
   state.check_write(&filename)?;
 
-  blocking(is_sync, move || {
+  blocking(base.sync(), move || {
     debug!("op_utimes {} {} {}", filename, atime, mtime);
     utime::set_file_times(filename, atime, mtime)?;
     Ok(empty_buf())
@@ -1603,7 +1594,7 @@ fn op_utime(
 
 fn op_listen(
   state: &ThreadSafeState,
-  _is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1658,7 +1649,7 @@ fn new_conn(tcp_stream: TcpStream) -> DenoResult<Buf> {
 
 fn op_accept(
   _state: &ThreadSafeState,
-  is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1673,7 +1664,7 @@ fn op_accept(
       let op = tokio_util::accept(server_resource)
         .map_err(DenoError::from)
         .and_then(move |(tcp_stream, _socket_addr)| new_conn(tcp_stream));
-      if is_sync {
+      if base.sync() {
         let buf = op.wait()?;
         Ok(Op::Sync(buf))
       } else {
@@ -1685,7 +1676,7 @@ fn op_accept(
 
 fn op_dial(
   state: &ThreadSafeState,
-  is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1706,7 +1697,7 @@ fn op_dial(
           .map_err(DenoError::from)
           .and_then(new_conn)
       });
-  if is_sync {
+  if base.sync() {
     let buf = op.wait()?;
     Ok(Op::Sync(buf))
   } else {
@@ -1716,7 +1707,7 @@ fn op_dial(
 
 fn op_metrics(
   state: &ThreadSafeState,
-  _is_sync: bool,
+
   _base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1739,7 +1730,7 @@ fn op_metrics(
 
 fn op_resources(
   _state: &ThreadSafeState,
-  _is_sync: bool,
+
   _base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1790,11 +1781,11 @@ fn subprocess_stdio_map(v: msg::ProcessStdio) -> std::process::Stdio {
 
 fn op_run(
   state: &ThreadSafeState,
-  is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
-  if !is_sync {
+  if !base.sync() {
     return Err(errors::no_async_support());
   }
 
@@ -1857,7 +1848,7 @@ fn op_run(
 
 fn op_run_status(
   state: &ThreadSafeState,
-  is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1901,7 +1892,7 @@ fn op_run_status(
       },
     ))
   });
-  if is_sync {
+  if base.sync() {
     let buf = future.wait()?;
     Ok(Op::Sync(buf))
   } else {
@@ -1928,11 +1919,10 @@ impl Future for GetMessageFuture {
 /// Get message from host as guest worker
 fn op_worker_get_message(
   state: &ThreadSafeState,
-  is_sync: bool,
-  _base: &msg::Base<'_>,
+  base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
-  if is_sync {
+  if base.sync() {
     return Err(errors::no_sync_support());
   }
   assert!(data.is_none());
@@ -1965,7 +1955,7 @@ fn op_worker_get_message(
 /// Post message to host as guest worker
 fn op_worker_post_message(
   state: &ThreadSafeState,
-  _is_sync: bool,
+
   _base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1991,7 +1981,7 @@ fn op_worker_post_message(
 /// Create worker as the host
 fn op_create_worker(
   state: &ThreadSafeState,
-  _is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -2048,11 +2038,11 @@ fn op_create_worker(
 /// Return when the worker closes
 fn op_host_get_worker_closed(
   state: &ThreadSafeState,
-  is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
-  if is_sync {
+  if base.sync() {
     return Err(errors::no_sync_support());
   }
   assert!(data.is_none());
@@ -2083,11 +2073,11 @@ fn op_host_get_worker_closed(
 /// Get message from guest worker as host
 fn op_host_get_message(
   _state: &ThreadSafeState,
-  is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
-  if is_sync {
+  if base.sync() {
     return Err(errors::no_sync_support());
   }
   assert!(data.is_none());
@@ -2120,7 +2110,7 @@ fn op_host_get_message(
 /// Post message to guest worker as host
 fn op_host_post_message(
   _state: &ThreadSafeState,
-  _is_sync: bool,
+
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -2144,7 +2134,7 @@ fn op_host_post_message(
 
 fn op_get_random_values(
   _state: &ThreadSafeState,
-  _is_sync: bool,
+
   _base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
