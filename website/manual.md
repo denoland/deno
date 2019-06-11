@@ -635,6 +635,7 @@ OPTIONS:
         --allow-write=<allow-write>    Allow file system write access
     -c, --config <FILE>                Load compiler configuration file
         --importmap <FILE>             Load import map file
+        --seed <NUMBER>                Seed Math.random() and crypto.getRandomValues()
         --v8-flags=<v8-flags>          Set V8 command line options
 
 SUBCOMMANDS:

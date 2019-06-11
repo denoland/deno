@@ -254,7 +254,6 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<CliDispatchFn> {
 // nanoseconds are rounded on 2ms.
 fn op_now(
   state: &ThreadSafeState,
-
   _base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -326,7 +325,6 @@ fn op_exit(
 
 fn op_start(
   state: &ThreadSafeState,
-
   _base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -388,7 +386,6 @@ fn op_start(
 
 fn op_format_error(
   state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -445,7 +442,6 @@ pub fn ok_buf(buf: Buf) -> CliOpResult {
 
 fn op_cache(
   state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -486,7 +482,6 @@ fn op_cache(
 // https://github.com/denoland/deno/blob/golang/os.go#L100-L154
 fn op_fetch_module_meta_data(
   state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -556,7 +551,6 @@ fn op_fetch_module_meta_data(
 
 fn op_chdir(
   _state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -584,7 +578,6 @@ fn op_global_timer_stop(
 
 fn op_global_timer(
   state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -619,7 +612,6 @@ fn op_global_timer(
 
 fn op_set_env(
   state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -634,7 +626,6 @@ fn op_set_env(
 
 fn op_env(
   state: &ThreadSafeState,
-
   _base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -664,7 +655,6 @@ fn op_env(
 
 fn op_permissions(
   state: &ThreadSafeState,
-
   _base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -695,7 +685,6 @@ fn op_permissions(
 
 fn op_revoke_permission(
   state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -716,7 +705,6 @@ fn op_revoke_permission(
 
 fn op_fetch(
   state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -849,7 +837,6 @@ fn op_make_temp_dir(
 
 fn op_mkdir(
   state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -870,7 +857,6 @@ fn op_mkdir(
 
 fn op_chmod(
   state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -897,7 +883,6 @@ fn op_chmod(
 
 fn op_chown(
   state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -920,7 +905,6 @@ fn op_chown(
 
 fn op_open(
   state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1006,7 +990,6 @@ fn op_open(
 
 fn op_close(
   _state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1024,7 +1007,6 @@ fn op_close(
 
 fn op_kill(
   _state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1040,7 +1022,6 @@ fn op_kill(
 
 fn op_shutdown(
   _state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1067,7 +1048,6 @@ fn op_shutdown(
 
 fn op_read(
   _state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1109,7 +1089,6 @@ fn op_read(
 
 fn op_write(
   _state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1150,7 +1129,6 @@ fn op_write(
 
 fn op_seek(
   _state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1177,7 +1155,6 @@ fn op_seek(
 
 fn op_remove(
   state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1204,7 +1181,6 @@ fn op_remove(
 
 fn op_copy_file(
   state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1279,7 +1255,6 @@ fn op_cwd(
 
 fn op_stat(
   state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1328,7 +1303,6 @@ fn op_stat(
 
 fn op_read_dir(
   state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1384,7 +1358,6 @@ fn op_read_dir(
 
 fn op_rename(
   state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1404,7 +1377,6 @@ fn op_rename(
 
 fn op_link(
   state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1424,7 +1396,6 @@ fn op_link(
 
 fn op_symlink(
   state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1448,7 +1419,6 @@ fn op_symlink(
 
 fn op_read_link(
   state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1483,7 +1453,6 @@ fn op_read_link(
 
 fn op_repl_start(
   state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1514,7 +1483,6 @@ fn op_repl_start(
 
 fn op_repl_readline(
   _state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1550,7 +1518,6 @@ fn op_repl_readline(
 
 fn op_truncate(
   state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1572,7 +1539,6 @@ fn op_truncate(
 
 fn op_utime(
   state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1594,7 +1560,6 @@ fn op_utime(
 
 fn op_listen(
   state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1649,7 +1614,6 @@ fn new_conn(tcp_stream: TcpStream) -> DenoResult<Buf> {
 
 fn op_accept(
   _state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1676,7 +1640,6 @@ fn op_accept(
 
 fn op_dial(
   state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1730,7 +1693,6 @@ fn op_metrics(
 
 fn op_resources(
   _state: &ThreadSafeState,
-
   _base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1781,7 +1743,6 @@ fn subprocess_stdio_map(v: msg::ProcessStdio) -> std::process::Stdio {
 
 fn op_run(
   state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1848,7 +1809,6 @@ fn op_run(
 
 fn op_run_status(
   state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1955,7 +1915,6 @@ fn op_worker_get_message(
 /// Post message to host as guest worker
 fn op_worker_post_message(
   state: &ThreadSafeState,
-
   _base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -1981,7 +1940,6 @@ fn op_worker_post_message(
 /// Create worker as the host
 fn op_create_worker(
   state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -2038,7 +1996,6 @@ fn op_create_worker(
 /// Return when the worker closes
 fn op_host_get_worker_closed(
   state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -2073,7 +2030,6 @@ fn op_host_get_worker_closed(
 /// Get message from guest worker as host
 fn op_host_get_message(
   _state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -2110,7 +2066,6 @@ fn op_host_get_message(
 /// Post message to guest worker as host
 fn op_host_post_message(
   _state: &ThreadSafeState,
-
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
@@ -2133,11 +2088,17 @@ fn op_host_post_message(
 }
 
 fn op_get_random_values(
-  _state: &ThreadSafeState,
-
+  state: &ThreadSafeState,
   _base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
-  thread_rng().fill(&mut data.unwrap()[..]);
+  if let Some(ref seeded_rng) = state.seeded_rng {
+    let mut rng = seeded_rng.lock().unwrap();
+    rng.fill(&mut data.unwrap()[..]);
+  } else {
+    let mut rng = thread_rng();
+    rng.fill(&mut data.unwrap()[..]);
+  }
+
   ok_buf(empty_buf())
 }
