@@ -41,12 +41,13 @@ def main():
         TestTarget,
         JsUnitTests,
         TestFetch,
-        TestFmt,
         TestIntegrations,
         TestRepl,
         TestDenoDir,
         TestBenchmark,
         TestIsTty,
+        # It is very slow, so do TestFmt at the end.
+        TestFmt,
     ]
     test_cases += permission_prompt_tests()
     test_cases += complex_permissions_tests()
