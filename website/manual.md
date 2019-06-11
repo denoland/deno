@@ -591,30 +591,9 @@ if (import.meta.main) {
 
 ### Flags
 
-```shellsession
-deno
-A secure runtime for JavaScript and TypeScript built with V8, Rust, and Tokio.
+Use `deno help` to see the help text.
 
-Docs: https://deno.land/manual.html
-Modules: https://github.com/denoland/deno_std
-Bugs: https://github.com/denoland/deno/issues
-
-To run the REPL:
-
-  deno
-
-To execute a sandboxed script:
-
-  deno https://deno.land/welcome.ts
-
-To evaluate code from the command line:
-
-  deno eval "console.log(30933 + 404)"
-
-To get help on the another subcommands (run in this case):
-
-  deno help run
-
+```
 USAGE:
     deno [FLAGS] [OPTIONS] [SUBCOMMAND]
 
@@ -640,6 +619,7 @@ OPTIONS:
 
 SUBCOMMANDS:
     <script>    Script to run
+    bundle      Bundle module and dependnecies into single file
     eval        Eval script
     fetch       Fetch the dependencies
     fmt         Format files
@@ -676,6 +656,46 @@ Particularly useful ones:
 
 ```
 --async-stack-trace
+```
+
+### Bundling
+
+`deno bundle [URL]` will output a single JavaScript file, using
+[AMD](https://en.wikipedia.org/wiki/Asynchronous_module_definition), which
+includes all dependencies of the specified input.
+
+```
+> deno bundle https://deno.land/std/examples/colors.ts
+Bundling "colors.bundle.js"
+Emitting bundle to "colors.bundle.js"
+9.2 kB emitted.
+```
+
+To run then bundle in Deno use
+
+```
+deno https://deno.land/std/bundle/run.ts colors.bundle.js
+```
+
+Bundles can also be loaded in the web browser with the assistance of
+[RequireJS](https://requirejs.org/). Suppose we have a bundle called
+`website.bundle.js`, then the following HTML should be able to load it:
+
+```html
+<script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js"></script>
+<script src="website.bundle.js"></script>
+<script>
+  requirejs(["website"], website => website.main());
+</script>
+```
+
+Here we assume there's an exported function `main()` from `website.ts`.
+
+```js
+// website.ts
+export main() {
+  console.log("hello from the web browser");
+}
 ```
 
 ## Import maps
