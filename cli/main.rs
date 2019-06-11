@@ -126,7 +126,8 @@ pub fn print_file_info(
         );
       }
 
-      if let Some(deps) = worker.modules.lock().unwrap().deps(&out.module_name)
+      if let Some(deps) =
+        worker.state.modules.lock().unwrap().deps(&out.module_name)
       {
         println!("{}{}", ansi::bold("deps:\n".to_string()), deps.name);
         if let Some(ref depsdeps) = deps.deps {
