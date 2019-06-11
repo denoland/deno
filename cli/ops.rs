@@ -2211,10 +2211,17 @@ fn op_host_post_message(
 }
 
 fn op_get_random_values(
-  _state: &ThreadSafeState,
+  state: &ThreadSafeState,
   _base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> Box<OpWithError> {
-  thread_rng().fill(&mut data.unwrap()[..]);
+  if let Some(ref seeded_rng) = state.seeded_rng {
+    let mut rng = seeded_rng.lock().unwrap();
+    rng.fill(&mut data.unwrap()[..]);
+  } else {
+    let mut rng = thread_rng();
+    rng.fill(&mut data.unwrap()[..]);
+  }
+
   Box::new(ok_future(empty_buf()))
 }
