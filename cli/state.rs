@@ -23,6 +23,8 @@ use deno::PinnedBuf;
 use futures::future::Either;
 use futures::future::Shared;
 use futures::Future;
+use rand::rngs::StdRng;
+use rand::SeedableRng;
 use std;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -82,6 +84,7 @@ pub struct State {
   pub dispatch_selector: ops::OpSelector,
   /// Reference to global progress bar.
   pub progress: Progress,
+  pub seeded_rng: Option<Mutex<StdRng>>,
 
   /// Set of all URLs that have been compiled. This is a hacky way to work
   /// around the fact that --reload will force multiple compilations of the same
@@ -295,6 +298,11 @@ impl ThreadSafeState {
       }
     }
 
+    let mut seeded_rng = None;
+    if let Some(seed) = flags.seed {
+      seeded_rng = Some(Mutex::new(StdRng::seed_from_u64(seed)));
+    };
+
     ThreadSafeState(Arc::new(State {
       main_module,
       dir,
@@ -312,6 +320,7 @@ impl ThreadSafeState {
       resource,
       dispatch_selector,
       progress,
+      seeded_rng,
       compiled: Mutex::new(HashSet::new()),
     }))
   }

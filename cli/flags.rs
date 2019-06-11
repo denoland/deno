@@ -29,6 +29,7 @@ pub struct DenoFlags {
   pub allow_hrtime: bool,
   pub no_prompts: bool,
   pub no_fetch: bool,
+  pub seed: Option<u64>,
   pub v8_flags: Option<Vec<String>>,
   pub xeval_replvar: Option<String>,
   pub xeval_delim: Option<String>,
@@ -152,7 +153,7 @@ To get help on the another subcommands (run in this case):
         .help("Seed Math.random()")
         .takes_value(true)
         .validator(|val: String| {
-          match val.parse::<i64>() {
+          match val.parse::<u64>() {
             Ok(_) => Ok(()),
             Err(_) => Err("Seed should be a number".to_string())
           }
@@ -393,7 +394,10 @@ pub fn parse_flags(matches: &ArgMatches) -> DenoFlags {
     flags.v8_flags = Some(v8_flags);
   }
   if matches.is_present("seed") {
-    let seed = matches.value_of("seed").unwrap();
+    let seed_string = matches.value_of("seed").unwrap();
+    let seed = seed_string.parse::<u64>().unwrap();
+    flags.seed = Some(seed);
+
     let v8_seed_flag = format!("--random-seed={}", seed);
 
     match flags.v8_flags {
@@ -1146,6 +1150,7 @@ mod tests {
     assert_eq!(
       flags,
       DenoFlags {
+        seed: Some(250 as u64),
         v8_flags: Some(svec!["deno", "--random-seed=250"]),
         ..DenoFlags::default()
       }
@@ -1167,6 +1172,7 @@ mod tests {
     assert_eq!(
       flags,
       DenoFlags {
+        seed: Some(250 as u64),
         v8_flags: Some(svec!["deno", "--expose-gc", "--random-seed=250"]),
         ..DenoFlags::default()
       }
