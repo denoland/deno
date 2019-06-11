@@ -50,7 +50,7 @@ import "./performance_test.ts";
 import "./permissions_test.ts";
 import "./version_test.ts";
 
-import "../website/app_test.js";
+import "../website/app_test.ts";
 
 import { runIfMain } from "./deps/https/deno.land/std/testing/mod.ts";
 

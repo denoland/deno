@@ -15,4 +15,5 @@ node_modules
 # temp benchmark data
 /website/data.json
 /website/recent.json
+/website/*.bundle.js
 /js/gen

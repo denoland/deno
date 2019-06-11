@@ -230,31 +230,11 @@
     <script src="https://unpkg.com/d3@5.7.0/dist/d3.min.js"></script>
     <script src="https://unpkg.com/c3@0.6.7/c3.min.js"></script>
 
-    <script type="module">
-      import { drawCharts } from "./app.js";
-      window.chartWidth = 800;
-      const overlay = document.getElementById("spinner-overlay");
-
-      function showSpinner() {
-        overlay.style.display = "block";
-      }
-
-      function hideSpinner() {
-        overlay.style.display = "none";
-      }
-
-      function updateCharts() {
-        const u = window.location.hash.match("all")
-          ? "./data.json"
-          : "recent.json";
-
-        showSpinner();
-
-        drawCharts(u).finally(hideSpinner);
-      }
-      updateCharts();
-
-      window.onhashchange = updateCharts;
+    <!-- Run "deno bundle app.ts" to generate app.bundle.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js"></script>
+    <script src="app.bundle.js"></script>
+    <script>
+    requirejs(['app'], (app) => app.main());
     </script>
   </body>
 </html>

@@ -186,11 +186,14 @@ compiler.",
         .setting(AppSettings::DisableVersion)
         .about("Bundle module and dependencies into single file")
         .long_about(
-          "Fetch, compile, and output to a single file a module and its dependencies.
-"
+          "Output a single JavaScript file with all dependencies
+
+Example:
+
+  deno bundle https://deno.land/std/examples/colors.ts"
         )
           .arg(Arg::with_name("source_file").takes_value(true).required(true))
-          .arg(Arg::with_name("out_file").takes_value(true).required(true)),
+          .arg(Arg::with_name("out_file").takes_value(true).required(false)),
     ).subcommand(
       SubCommand::with_name("fetch")
         .setting(AppSettings::DisableVersion)
@@ -498,6 +501,29 @@ pub enum DenoSubcommand {
   Xeval,
 }
 
+fn get_default_bundle_filename(source_file: &str) -> String {
+  use crate::worker::root_specifier_to_url;
+  let url = root_specifier_to_url(source_file).unwrap();
+  let path_segments = url.path_segments().unwrap();
+  let last = path_segments.last().unwrap();
+  String::from(last.trim_end_matches(".ts").trim_end_matches(".js"))
+    + ".bundle.js"
+}
+
+#[test]
+fn test_get_default_bundle_filename() {
+  assert_eq!(get_default_bundle_filename("blah.ts"), "blah.bundle.js");
+  assert_eq!(
+    get_default_bundle_filename("http://example.com/blah.ts"),
+    "blah.bundle.js"
+  );
+  assert_eq!(get_default_bundle_filename("blah.js"), "blah.bundle.js");
+  assert_eq!(
+    get_default_bundle_filename("http://example.com/blah.js"),
+    "blah.bundle.js"
+  );
+}
+
 pub fn flags_from_vec(
   args: Vec<String>,
 ) -> (DenoFlags, DenoSubcommand, Vec<String>) {
@@ -510,7 +536,10 @@ pub fn flags_from_vec(
     ("bundle", Some(bundle_match)) => {
       flags.allow_write = true;
       let source_file: &str = bundle_match.value_of("source_file").unwrap();
-      let out_file: &str = bundle_match.value_of("out_file").unwrap();
+      let out_file = bundle_match
+        .value_of("out_file")
+        .map(String::from)
+        .unwrap_or_else(|| get_default_bundle_filename(source_file));
       argv.extend(vec![source_file.to_string(), out_file.to_string()]);
       DenoSubcommand::Bundle
     }
