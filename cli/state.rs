@@ -60,6 +60,7 @@ pub struct ThreadSafeState(Arc<State>);
 
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct State {
+  pub modules: Arc<Mutex<deno::Modules>>,
   pub main_module: Option<String>,
   pub dir: deno_dir::DenoDir,
   pub argv: Vec<String>,
@@ -303,8 +304,11 @@ impl ThreadSafeState {
       seeded_rng = Some(Mutex::new(StdRng::seed_from_u64(seed)));
     };
 
+    let modules = Arc::new(Mutex::new(deno::Modules::new()));
+
     ThreadSafeState(Arc::new(State {
       main_module,
+      modules,
       dir,
       argv: argv_rest,
       permissions: DenoPermissions::from_flags(&flags),
