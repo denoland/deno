@@ -90,7 +90,6 @@ pub struct Isolate {
   shared_libdeno_isolate: Arc<Mutex<Option<*const libdeno::isolate>>>,
   dispatch: Option<Arc<DispatchFn>>,
   dyn_import: Option<Arc<DynImportFn>>,
-  pub will_snapshot: bool,
   needs_init: bool,
   shared: SharedQueue,
   pending_ops: FuturesUnordered<OpAsyncFuture>,
@@ -157,7 +156,6 @@ impl Isolate {
       needs_init,
       pending_ops: FuturesUnordered::new(),
       have_unpolled_ops: false,
-      will_snapshot,
       pending_dyn_imports: FuturesUnordered::new(),
     };
 

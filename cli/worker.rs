@@ -17,7 +17,7 @@ use url::Url;
 /// high-level module loading
 #[derive(Clone)]
 pub struct Worker {
-  inner: Arc<Mutex<deno::Isolate>>,
+  isolate: Arc<Mutex<deno::Isolate>>,
   pub state: ThreadSafeState,
 }
 
@@ -28,15 +28,14 @@ impl Worker {
     state: ThreadSafeState,
   ) -> Worker {
     let state_ = state.clone();
-    // TODO rename inner to isolate.
-    let inner = Arc::new(Mutex::new(deno::Isolate::new(startup_data, false)));
+    let isolate = Arc::new(Mutex::new(deno::Isolate::new(startup_data, false)));
     {
-      let mut i = inner.lock().unwrap();
+      let mut i = isolate.lock().unwrap();
       i.set_dispatch(move |control_buf, zero_copy_buf| {
         state_.dispatch(control_buf, zero_copy_buf)
       });
     }
-    Self { inner, state }
+    Self { isolate, state }
   }
 
   /// Same as execute2() but the filename defaults to "<anonymous>".
@@ -51,7 +50,7 @@ impl Worker {
     js_filename: &str,
     js_source: &str,
   ) -> Result<(), JSError> {
-    let mut isolate = self.inner.lock().unwrap();
+    let mut isolate = self.isolate.lock().unwrap();
     isolate.execute(js_filename, js_source)
   }
 
@@ -64,7 +63,7 @@ impl Worker {
     let worker = self.clone();
     let worker_ = worker.clone();
     let loader = self.state.clone();
-    let isolate = self.inner.clone();
+    let isolate = self.isolate.clone();
     let modules = self.state.modules.clone();
     let recursive_load =
       deno::RecursiveLoad::new(js_url.as_str(), loader, isolate, modules);
@@ -74,7 +73,7 @@ impl Worker {
         if is_prefetch {
           Ok(())
         } else {
-          let mut isolate = worker.inner.lock().unwrap();
+          let mut isolate = worker.isolate.lock().unwrap();
           let result = isolate.mod_evaluate(id);
           if let Err(err) = result {
             Err(deno::JSErrorOr::JSError(err))
@@ -166,7 +165,7 @@ impl Future for Worker {
   type Error = JSError;
 
   fn poll(&mut self) -> Result<Async<()>, Self::Error> {
-    let mut isolate = self.inner.lock().unwrap();
+    let mut isolate = self.isolate.lock().unwrap();
     isolate.poll().map_err(|err| self.apply_source_map(err))
   }
 }
