@@ -505,15 +505,13 @@ fn op_fetch_module_meta_data(
   //  import map - why it is not always resolved? Eg. "bad-module.ts" will return NotFound
   //  error whilst it should return RelativeUrlWithCannotBeABaseBase error
   let resolved_specifier = match &state.import_map {
-    Some(import_map) => {
-      match import_map.resolve(specifier, referrer) {
-        Ok(result) => match result {
-          Some(module_specifier) => module_specifier.to_string(),
-          None => specifier.to_string(),
-        },
-        Err(err) => panic!("error resolving using import map: {:?}", err), // TODO: this should be coerced to DenoError
-      }
-    }
+    Some(import_map) => match import_map.resolve(specifier, referrer) {
+      Ok(result) => match result {
+        Some(module_specifier) => module_specifier.to_string(),
+        None => specifier.to_string(),
+      },
+      Err(err) => return odd_future(DenoError::from(err)),
+    },
     None => specifier.to_string(),
   };
 

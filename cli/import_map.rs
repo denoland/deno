@@ -1,4 +1,4 @@
-use crate::module_specifier::ModuleSpecifier;
+use deno::ModuleSpecifier;
 use indexmap::IndexMap;
 use serde_json::Map;
 use serde_json::Value;

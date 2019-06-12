@@ -351,6 +351,18 @@ impl fmt::Display for ModuleSpecifier {
   }
 }
 
+impl From<Url> for ModuleSpecifier {
+  fn from(url: Url) -> Self {
+    ModuleSpecifier(url)
+  }
+}
+
+impl PartialEq<String> for ModuleSpecifier {
+  fn eq(&self, other: &String) -> bool {
+    &self.to_string() == other
+  }
+}
+
 struct ModuleInfo {
   name: String,
   children: Vec<String>,
