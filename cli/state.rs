@@ -13,7 +13,6 @@ use crate::permissions::DenoPermissions;
 use crate::progress::Progress;
 use crate::resources;
 use crate::resources::ResourceId;
-use crate::worker::resolve_module_spec;
 use crate::worker::ModuleSpecifier;
 use crate::worker::Worker;
 use deno::Buf;
@@ -165,21 +164,17 @@ impl Loader for ThreadSafeState {
   ) -> Result<String, Self::Error> {
     if !is_root {
       if let Some(import_map) = &self.import_map {
-        match import_map.resolve(specifier, referrer) {
-          Ok(result) => {
-            if result.is_some() {
-              return Ok(result.unwrap());
-            }
-          }
-          Err(err) => {
-            // TODO(bartlomieju): this should be coerced to DenoError
-            panic!("error resolving using import map: {:?}", err);
-          }
+        let result = import_map.resolve(specifier, referrer)?;
+        if result.is_some() {
+          return Ok(result.unwrap());
         }
       }
     }
 
-    resolve_module_spec(specifier, referrer).map_err(DenoError::from)
+    match ModuleSpecifier::resolve(specifier, referrer) {
+      Ok(specifier) => Ok(specifier.to_string()),
+      Err(e) => Err(DenoError::from(e)),
+    }
   }
 
   /// Given an absolute url, load its source code.

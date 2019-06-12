@@ -110,39 +110,6 @@ impl Worker {
   }
 }
 
-// https://html.spec.whatwg.org/multipage/webappapis.html#resolve-a-module-specifier
-// TODO(ry) Add tests.
-// TODO(ry) Move this to core?
-pub fn resolve_module_spec(
-  specifier: &str,
-  base: &str,
-) -> Result<String, url::ParseError> {
-  // 1. Apply the URL parser to specifier. If the result is not failure, return
-  //    the result.
-  // let specifier = parse_local_or_remote(specifier)?.to_string();
-  if let Ok(specifier_url) = Url::parse(specifier) {
-    return Ok(specifier_url.to_string());
-  }
-
-  // 2. If specifier does not start with the character U+002F SOLIDUS (/), the
-  //    two-character sequence U+002E FULL STOP, U+002F SOLIDUS (./), or the
-  //    three-character sequence U+002E FULL STOP, U+002E FULL STOP, U+002F
-  //    SOLIDUS (../), return failure.
-  if !specifier.starts_with('/')
-    && !specifier.starts_with("./")
-    && !specifier.starts_with("../")
-  {
-    // TODO(ry) This is (probably) not the correct error to return here.
-    return Err(url::ParseError::RelativeUrlWithCannotBeABaseBase);
-  }
-
-  // 3. Return the result of applying the URL parser to specifier with base URL
-  //    as the base URL.
-  let base_url = Url::parse(base)?;
-  let u = base_url.join(&specifier)?;
-  Ok(u.to_string())
-}
-
 #[derive(Debug, Clone, PartialEq)]
 #[allow(dead_code)]
 /// Resolved module specifier
