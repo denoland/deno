@@ -7,12 +7,12 @@ use crate::tokio_util;
 use deno;
 use deno::Config;
 use deno::JSError;
+use deno::ModuleSpecifier;
 use deno::StartupData;
 use futures::Async;
 use futures::Future;
 use std::sync::Arc;
 use std::sync::Mutex;
-use url::Url;
 
 /// Wraps deno::Isolate to provide source maps, ops for the CLI, and
 /// high-level module loading
@@ -58,7 +58,7 @@ impl Worker {
   /// Executes the provided JavaScript module.
   pub fn execute_mod_async(
     &mut self,
-    js_url: &Url,
+    module_specifier: &ModuleSpecifier,
     is_prefetch: bool,
   ) -> impl Future<Item = (), Error = RustOrJsError> {
     let worker = self.clone();
@@ -66,8 +66,12 @@ impl Worker {
     let loader = self.state.clone();
     let isolate = self.inner.clone();
     let modules = self.state.modules.clone();
-    let recursive_load =
-      deno::RecursiveLoad::new(js_url.as_str(), loader, isolate, modules);
+    let recursive_load = deno::RecursiveLoad::new(
+      &module_specifier.to_string(),
+      loader,
+      isolate,
+      modules,
+    );
     recursive_load
       .and_then(move |id| -> Result<(), deno::JSErrorOr<DenoError>> {
         worker.state.progress.done();
@@ -97,10 +101,10 @@ impl Worker {
   /// Executes the provided JavaScript module.
   pub fn execute_mod(
     &mut self,
-    js_url: &Url,
+    module_specifier: &ModuleSpecifier,
     is_prefetch: bool,
   ) -> Result<(), RustOrJsError> {
-    tokio_util::block_on(self.execute_mod_async(js_url, is_prefetch))
+    tokio_util::block_on(self.execute_mod_async(module_specifier, is_prefetch))
   }
 
   /// Applies source map to the error.
@@ -135,12 +139,9 @@ mod tests {
 
   #[test]
   fn execute_mod_esm_imports_a() {
-    let filename = std::env::current_dir()
-      .unwrap()
-      .join("tests/esm_imports_a.js");
-    let js_url = Url::from_file_path(filename).unwrap();
-
-    let argv = vec![String::from("./deno"), js_url.to_string()];
+    let module_specifier =
+      ModuleSpecifier::resolve_root("tests/esm_imports_a.js").unwrap();
+    let argv = vec![String::from("./deno"), module_specifier.to_string()];
     let state = ThreadSafeState::new(
       flags::DenoFlags::default(),
       argv,
@@ -151,7 +152,7 @@ mod tests {
     tokio_util::run(lazy(move || {
       let mut worker =
         Worker::new("TEST".to_string(), StartupData::None, state);
-      let result = worker.execute_mod(&js_url, false);
+      let result = worker.execute_mod(&module_specifier, false);
       if let Err(err) = result {
         eprintln!("execute_mod err {:?}", err);
       }
@@ -166,10 +167,9 @@ mod tests {
 
   #[test]
   fn execute_mod_circular() {
-    let filename = std::env::current_dir().unwrap().join("tests/circular1.js");
-    let js_url = Url::from_file_path(filename).unwrap();
-
-    let argv = vec![String::from("./deno"), js_url.to_string()];
+    let module_specifier =
+      ModuleSpecifier::resolve_root("tests/circular1.js").unwrap();
+    let argv = vec![String::from("./deno"), module_specifier.to_string()];
     let state = ThreadSafeState::new(
       flags::DenoFlags::default(),
       argv,
@@ -180,7 +180,7 @@ mod tests {
     tokio_util::run(lazy(move || {
       let mut worker =
         Worker::new("TEST".to_string(), StartupData::None, state);
-      let result = worker.execute_mod(&js_url, false);
+      let result = worker.execute_mod(&module_specifier, false);
       if let Err(err) = result {
         eprintln!("execute_mod err {:?}", err);
       }
@@ -195,11 +195,9 @@ mod tests {
 
   #[test]
   fn execute_006_url_imports() {
-    let filename = std::env::current_dir()
-      .unwrap()
-      .join("tests/006_url_imports.ts");
-    let js_url = Url::from_file_path(filename).unwrap();
-    let argv = vec![String::from("deno"), js_url.to_string()];
+    let module_specifier =
+      ModuleSpecifier::resolve_root("tests/006_url_imports.ts").unwrap();
+    let argv = vec![String::from("deno"), module_specifier.to_string()];
     let mut flags = flags::DenoFlags::default();
     flags.reload = true;
     let state =
@@ -212,7 +210,7 @@ mod tests {
         state,
       );
       js_check(worker.execute("denoMain()"));
-      let result = worker.execute_mod(&js_url, false);
+      let result = worker.execute_mod(&module_specifier, false);
       if let Err(err) = result {
         eprintln!("execute_mod err {:?}", err);
       }
@@ -324,29 +322,25 @@ mod tests {
 
   #[test]
   fn execute_mod_resolve_error() {
-    use deno::ModuleSpecifier;
     tokio_util::init(|| {
       // "foo" is not a vailid module specifier so this should return an error.
       let mut worker = create_test_worker();
-      let js_url = ModuleSpecifier::resolve_root("does-not-exist")
-        .unwrap()
-        .to_url();
-      let result = worker.execute_mod_async(&js_url, false).wait();
+      let module_specifier =
+        ModuleSpecifier::resolve_root("does-not-exist").unwrap();
+      let result = worker.execute_mod_async(&module_specifier, false).wait();
       assert!(result.is_err());
     })
   }
 
   #[test]
   fn execute_mod_002_hello() {
-    use deno::ModuleSpecifier;
     tokio_util::init(|| {
       // This assumes cwd is project root (an assumption made throughout the
       // tests).
       let mut worker = create_test_worker();
-      let js_url = ModuleSpecifier::resolve_root("./tests/002_hello.ts")
-        .unwrap()
-        .to_url();
-      let result = worker.execute_mod_async(&js_url, false).wait();
+      let module_specifier =
+        ModuleSpecifier::resolve_root("./tests/002_hello.ts").unwrap();
+      let result = worker.execute_mod_async(&module_specifier, false).wait();
       assert!(result.is_ok());
     })
   }

@@ -2087,7 +2087,7 @@ fn op_create_worker(
     .and_then(|module_specifier| {
       Ok(
         worker
-          .execute_mod_async(&module_specifier.to_url(), false)
+          .execute_mod_async(&module_specifier, false)
           .and_then(move |()| {
             let mut workers_tl = parent_state.workers.lock().unwrap();
             workers_tl.insert(rid, worker.shared());

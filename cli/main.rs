@@ -193,7 +193,7 @@ fn fetch_or_info_command(
     debug!("main_module {}", main_module);
 
     worker
-      .execute_mod_async(&main_module.to_url(), true)
+      .execute_mod_async(&main_module, true)
       .map_err(print_err_and_exit)
       .and_then(move |()| {
         if print_info {
@@ -310,7 +310,7 @@ fn run_script(flags: DenoFlags, argv: Vec<String>) {
     debug!("main_module {}", main_module);
 
     worker
-      .execute_mod_async(&main_module.to_url(), false)
+      .execute_mod_async(&main_module, false)
       .and_then(move |()| {
         worker.then(|result| {
           js_check(result);
