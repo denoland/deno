@@ -7,13 +7,13 @@ use crate::errors::DenoResult;
 use crate::flags;
 use crate::global_timer::GlobalTimer;
 use crate::import_map::ImportMap;
+use crate::module_specifier::ModuleSpecifier;
 use crate::msg;
 use crate::ops;
 use crate::permissions::DenoPermissions;
 use crate::progress::Progress;
 use crate::resources;
 use crate::resources::ResourceId;
-use crate::worker::resolve_module_spec;
 use crate::worker::Worker;
 use deno::Buf;
 use deno::Loader;
@@ -60,7 +60,7 @@ pub struct ThreadSafeState(Arc<State>);
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct State {
   pub modules: Arc<Mutex<deno::Modules>>,
-  pub main_module: Option<String>,
+  pub main_module: Option<ModuleSpecifier>,
   pub dir: deno_dir::DenoDir,
   pub argv: Vec<String>,
   pub permissions: DenoPermissions,
@@ -113,44 +113,40 @@ impl ThreadSafeState {
 
 pub fn fetch_module_meta_data_and_maybe_compile_async(
   state: &ThreadSafeState,
-  specifier: &str,
-  referrer: &str,
+  module_specifier: &ModuleSpecifier,
 ) -> impl Future<Item = ModuleMetaData, Error = DenoError> {
   let state_ = state.clone();
-  let specifier = specifier.to_string();
-  let referrer = referrer.to_string();
-  let is_root = referrer == ".";
+  let use_cache =
+    !state_.flags.reload || state_.has_compiled(&module_specifier.to_string());
+  let no_fetch = state_.flags.no_fetch;
 
-  let f =
-    futures::future::result(state.resolve(&specifier, &referrer, is_root));
-  f.and_then(move |module_id| {
-    let use_cache = !state_.flags.reload || state_.has_compiled(&module_id);
-    let no_fetch = state_.flags.no_fetch;
-
-    state_
-      .dir
-      .fetch_module_meta_data_async(&specifier, &referrer, use_cache, no_fetch)
-      .and_then(move |out| {
-        if out.media_type == msg::MediaType::TypeScript
-          && !out.has_output_code_and_source_map()
-        {
-          debug!(">>>>> compile_sync START");
-          Either::A(
-            compile_async(state_.clone(), &out)
-              .map_err(|e| {
-                debug!("compiler error exiting!");
-                eprintln!("\n{}", e.to_string());
-                std::process::exit(1);
-              }).and_then(move |out| {
-                debug!(">>>>> compile_sync END");
-                Ok(out)
-              }),
-          )
-        } else {
-          Either::B(futures::future::ok(out))
-        }
-      })
-  })
+  state_
+    .dir
+    .fetch_module_meta_data_async(
+      &module_specifier.to_string(),
+      ".",
+      use_cache,
+      no_fetch,
+    ).and_then(move |out| {
+      if out.media_type == msg::MediaType::TypeScript
+        && !out.has_output_code_and_source_map()
+      {
+        debug!(">>>>> compile_sync START");
+        Either::A(
+          compile_async(state_.clone(), &out)
+            .map_err(|e| {
+              debug!("compiler error exiting!");
+              eprintln!("\n{}", e.to_string());
+              std::process::exit(1);
+            }).and_then(move |out| {
+              debug!(">>>>> compile_sync END");
+              Ok(out)
+            }),
+        )
+      } else {
+        Either::B(futures::future::ok(out))
+      }
+    })
 }
 
 impl Loader for ThreadSafeState {
@@ -164,28 +160,25 @@ impl Loader for ThreadSafeState {
   ) -> Result<String, Self::Error> {
     if !is_root {
       if let Some(import_map) = &self.import_map {
-        match import_map.resolve(specifier, referrer) {
-          Ok(result) => {
-            if result.is_some() {
-              return Ok(result.unwrap());
-            }
-          }
-          Err(err) => {
-            // TODO(bartlomieju): this should be coerced to DenoError
-            panic!("error resolving using import map: {:?}", err);
-          }
+        let result = import_map.resolve(specifier, referrer)?;
+        if result.is_some() {
+          return Ok(result.unwrap().to_string());
         }
       }
     }
 
-    resolve_module_spec(specifier, referrer).map_err(DenoError::from)
+    let module_specifier =
+      ModuleSpecifier::resolve(specifier, referrer).map_err(DenoError::from)?;
+    Ok(module_specifier.to_string())
   }
 
   /// Given an absolute url, load its source code.
   fn load(&self, url: &str) -> Box<deno::SourceCodeInfoFuture<Self::Error>> {
     self.metrics.resolve_count.fetch_add(1, Ordering::SeqCst);
+    let module_specifier = ModuleSpecifier::resolve_root(url)
+      .expect("should already been properly resolved");
     Box::new(
-      fetch_module_meta_data_and_maybe_compile_async(self, url, ".")
+      fetch_module_meta_data_and_maybe_compile_async(self, &module_specifier)
         .map_err(|err| {
           eprintln!("{}", err);
           err
@@ -256,18 +249,15 @@ impl ThreadSafeState {
     let dir =
       deno_dir::DenoDir::new(custom_root, &config, progress.clone()).unwrap();
 
-    let main_module: Option<String> = if argv_rest.len() <= 1 {
+    let main_module: Option<ModuleSpecifier> = if argv_rest.len() <= 1 {
       None
     } else {
-      let specifier = argv_rest[1].clone();
-      let referrer = ".";
-      // TODO: does this really have to be resolved by DenoDir?
-      //  Maybe we can call `resolve_module_spec`
-      match dir.resolve_module_url(&specifier, referrer) {
-        Ok(url) => Some(url.to_string()),
+      let root_specifier = argv_rest[1].clone();
+      match ModuleSpecifier::resolve_root(&root_specifier) {
+        Ok(specifier) => Some(specifier),
         Err(e) => {
-          debug!("Potentially swallowed error {}", e);
-          None
+          // TODO: handle unresolvable specifier
+          panic!("Unable to resolve root specifier: {:?}", e);
         }
       }
     };
@@ -275,11 +265,11 @@ impl ThreadSafeState {
     let mut import_map = None;
     if let Some(file_name) = &flags.import_map_path {
       let base_url = match &main_module {
-        Some(url) => url,
+        Some(module_specifier) => module_specifier.clone(),
         None => unreachable!(),
       };
 
-      match ImportMap::load(base_url, file_name) {
+      match ImportMap::load(&base_url.to_string(), file_name) {
         Ok(map) => import_map = Some(map),
         Err(err) => {
           println!("{:?}", err);
@@ -319,9 +309,9 @@ impl ThreadSafeState {
   }
 
   /// Read main module from argv
-  pub fn main_module(&self) -> Option<String> {
+  pub fn main_module(&self) -> Option<ModuleSpecifier> {
     match &self.main_module {
-      Some(url) => Some(url.to_string()),
+      Some(module_specifier) => Some(module_specifier.clone()),
       None => None,
     }
   }

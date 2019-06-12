@@ -10,6 +10,7 @@ use crate::fs as deno_fs;
 use crate::http_util;
 use crate::js_errors::apply_source_map;
 use crate::js_errors::JSErrorColor;
+use crate::module_specifier::ModuleSpecifier;
 use crate::msg;
 use crate::msg_util;
 use crate::rand;
@@ -24,12 +25,10 @@ use crate::state::ThreadSafeState;
 use crate::tokio_util;
 use crate::tokio_write;
 use crate::version;
-use crate::worker::root_specifier_to_url;
 use crate::worker::Worker;
 use deno::js_check;
 use deno::Buf;
 use deno::JSError;
-//use deno::Loader;
 use deno::Op;
 use deno::PinnedBuf;
 use flatbuffers::FlatBufferBuilder;
@@ -341,7 +340,9 @@ fn op_start(
   let deno_version = version::DENO;
   let deno_version_off = builder.create_string(deno_version);
 
-  let main_module = state.main_module().map(|m| builder.create_string(&m));
+  let main_module = state
+    .main_module()
+    .map(|m| builder.create_string(&m.to_string()));
 
   let xeval_delim = state
     .flags
@@ -507,7 +508,7 @@ fn op_fetch_module_meta_data(
     Some(import_map) => {
       match import_map.resolve(specifier, referrer) {
         Ok(result) => match result {
-          Some(url) => url.clone(),
+          Some(module_specifier) => module_specifier.to_string(),
           None => specifier.to_string(),
         },
         Err(err) => panic!("error resolving using import map: {:?}", err), // TODO: this should be coerced to DenoError
@@ -2082,11 +2083,11 @@ fn op_create_worker(
   js_check(worker.execute("denoMain()"));
   js_check(worker.execute("workerMain()"));
 
-  let op = root_specifier_to_url(specifier)
-    .and_then(|specifier_url| {
+  let op = ModuleSpecifier::resolve_root(specifier)
+    .and_then(|module_specifier| {
       Ok(
         worker
-          .execute_mod_async(&specifier_url, false)
+          .execute_mod_async(&module_specifier, false)
           .and_then(move |()| {
             let mut workers_tl = parent_state.workers.lock().unwrap();
             workers_tl.insert(rid, worker.shared());
