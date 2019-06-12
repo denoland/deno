@@ -498,7 +498,6 @@ fn op_fetch_module_meta_data(
 
   assert_eq!(state.dir.root.join("gen"), state.dir.gen, "Sanity check");
 
-  println!("specifier {:?}, referrer {:?}", specifier, referrer);
   let use_cache = !state.flags.reload;
   let no_fetch = state.flags.no_fetch;
 
