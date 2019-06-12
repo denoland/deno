@@ -176,7 +176,7 @@ impl Loader for ThreadSafeState {
   /// Given an absolute url, load its source code.
   fn load(&self, url: &str) -> Box<deno::SourceCodeInfoFuture<Self::Error>> {
     self.metrics.resolve_count.fetch_add(1, Ordering::SeqCst);
-    let module_specifier = ModuleSpecifier::resolve(url, ".")
+    let module_specifier = ModuleSpecifier::resolve_root(url)
       .expect("should already been properly resolved");
     Box::new(
       fetch_module_meta_data_and_maybe_compile_async(self, &module_specifier)

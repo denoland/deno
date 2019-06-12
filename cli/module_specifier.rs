@@ -2,7 +2,6 @@ use std::fmt;
 use url::Url;
 
 #[derive(Debug, Clone, PartialEq)]
-#[allow(dead_code)]
 /// Resolved module specifier
 pub struct ModuleSpecifier(Url);
 
