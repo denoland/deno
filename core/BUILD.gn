@@ -23,6 +23,7 @@ main_extern_rlib = [
   "libc",
   "serde_json",
   "log",
+  "url",
 ]
 
 rust_rlib("deno") {
