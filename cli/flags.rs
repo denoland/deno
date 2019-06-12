@@ -502,8 +502,8 @@ pub enum DenoSubcommand {
 }
 
 fn get_default_bundle_filename(source_file: &str) -> String {
-  use crate::worker::root_specifier_to_url;
-  let url = root_specifier_to_url(source_file).unwrap();
+  use crate::module_specifier::ModuleSpecifier;
+  let url = ModuleSpecifier::resolve_root(source_file).unwrap().to_url();
   let path_segments = url.path_segments().unwrap();
   let last = path_segments.last().unwrap();
   String::from(last.trim_end_matches(".ts").trim_end_matches(".js"))
