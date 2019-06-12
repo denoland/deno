@@ -49,6 +49,7 @@ use crate::progress::Progress;
 use crate::state::ThreadSafeState;
 use crate::worker::Worker;
 use deno::v8_set_flags;
+use deno::ModuleSpecifier;
 use flags::DenoFlags;
 use flags::DenoSubcommand;
 use futures::future;
@@ -97,51 +98,53 @@ where
 
 pub fn print_file_info(
   worker: Worker,
-  url: &str,
+  module_specifier: &ModuleSpecifier,
 ) -> impl Future<Item = Worker, Error = ()> {
-  state::fetch_module_meta_data_and_maybe_compile_async(&worker.state, url, ".")
-    .and_then(move |out| {
-      println!("{} {}", ansi::bold("local:".to_string()), &(out.filename));
+  state::fetch_module_meta_data_and_maybe_compile_async(
+    &worker.state,
+    module_specifier,
+  ).and_then(move |out| {
+    println!("{} {}", ansi::bold("local:".to_string()), &(out.filename));
 
+    println!(
+      "{} {}",
+      ansi::bold("type:".to_string()),
+      msg::enum_name_media_type(out.media_type)
+    );
+
+    if out.maybe_output_code_filename.is_some() {
       println!(
         "{} {}",
-        ansi::bold("type:".to_string()),
-        msg::enum_name_media_type(out.media_type)
+        ansi::bold("compiled:".to_string()),
+        out.maybe_output_code_filename.as_ref().unwrap(),
       );
+    }
 
-      if out.maybe_output_code_filename.is_some() {
-        println!(
-          "{} {}",
-          ansi::bold("compiled:".to_string()),
-          out.maybe_output_code_filename.as_ref().unwrap(),
-        );
-      }
+    if out.maybe_source_map_filename.is_some() {
+      println!(
+        "{} {}",
+        ansi::bold("map:".to_string()),
+        out.maybe_source_map_filename.as_ref().unwrap()
+      );
+    }
 
-      if out.maybe_source_map_filename.is_some() {
-        println!(
-          "{} {}",
-          ansi::bold("map:".to_string()),
-          out.maybe_source_map_filename.as_ref().unwrap()
-        );
-      }
-
-      if let Some(deps) =
-        worker.state.modules.lock().unwrap().deps(&out.module_name)
-      {
-        println!("{}{}", ansi::bold("deps:\n".to_string()), deps.name);
-        if let Some(ref depsdeps) = deps.deps {
-          for d in depsdeps {
-            println!("{}", d);
-          }
+    if let Some(deps) =
+      worker.state.modules.lock().unwrap().deps(&out.module_name)
+    {
+      println!("{}{}", ansi::bold("deps:\n".to_string()), deps.name);
+      if let Some(ref depsdeps) = deps.deps {
+        for d in depsdeps {
+          println!("{}", d);
         }
-      } else {
-        println!(
-          "{} cannot retrieve full dependency graph",
-          ansi::bold("deps:".to_string()),
-        );
       }
-      Ok(worker)
-    }).map_err(|err| println!("{}", err))
+    } else {
+      println!(
+        "{} cannot retrieve full dependency graph",
+        ansi::bold("deps:".to_string()),
+      );
+    }
+    Ok(worker)
+  }).map_err(|err| println!("{}", err))
 }
 
 fn create_worker_and_state(
@@ -197,7 +200,7 @@ fn fetch_or_info_command(
       .map_err(print_err_and_exit)
       .and_then(move |()| {
         if print_info {
-          future::Either::A(print_file_info(worker, &main_module.to_string()))
+          future::Either::A(print_file_info(worker, &main_module))
         } else {
           future::Either::B(future::ok(worker))
         }

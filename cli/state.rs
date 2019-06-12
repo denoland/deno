@@ -113,44 +113,40 @@ impl ThreadSafeState {
 
 pub fn fetch_module_meta_data_and_maybe_compile_async(
   state: &ThreadSafeState,
-  specifier: &str,
-  referrer: &str,
+  module_specifier: &ModuleSpecifier,
 ) -> impl Future<Item = ModuleMetaData, Error = DenoError> {
   let state_ = state.clone();
-  let specifier = specifier.to_string();
-  let referrer = referrer.to_string();
-  let is_root = referrer == ".";
+  let use_cache =
+    !state_.flags.reload || state_.has_compiled(&module_specifier.to_string());
+  let no_fetch = state_.flags.no_fetch;
 
-  let f =
-    futures::future::result(state.resolve(&specifier, &referrer, is_root));
-  f.and_then(move |module_id| {
-    let use_cache = !state_.flags.reload || state_.has_compiled(&module_id);
-    let no_fetch = state_.flags.no_fetch;
-
-    state_
-      .dir
-      .fetch_module_meta_data_async(&specifier, &referrer, use_cache, no_fetch)
-      .and_then(move |out| {
-        if out.media_type == msg::MediaType::TypeScript
-          && !out.has_output_code_and_source_map()
-        {
-          debug!(">>>>> compile_sync START");
-          Either::A(
-            compile_async(state_.clone(), &out)
-              .map_err(|e| {
-                debug!("compiler error exiting!");
-                eprintln!("\n{}", e.to_string());
-                std::process::exit(1);
-              }).and_then(move |out| {
-                debug!(">>>>> compile_sync END");
-                Ok(out)
-              }),
-          )
-        } else {
-          Either::B(futures::future::ok(out))
-        }
-      })
-  })
+  state_
+    .dir
+    .fetch_module_meta_data_async(
+      &module_specifier.to_string(),
+      ".",
+      use_cache,
+      no_fetch,
+    ).and_then(move |out| {
+      if out.media_type == msg::MediaType::TypeScript
+        && !out.has_output_code_and_source_map()
+      {
+        debug!(">>>>> compile_sync START");
+        Either::A(
+          compile_async(state_.clone(), &out)
+            .map_err(|e| {
+              debug!("compiler error exiting!");
+              eprintln!("\n{}", e.to_string());
+              std::process::exit(1);
+            }).and_then(move |out| {
+              debug!(">>>>> compile_sync END");
+              Ok(out)
+            }),
+        )
+      } else {
+        Either::B(futures::future::ok(out))
+      }
+    })
 }
 
 impl Loader for ThreadSafeState {
@@ -161,27 +157,30 @@ impl Loader for ThreadSafeState {
     specifier: &str,
     referrer: &str,
     is_root: bool,
-  ) -> Result<String, Self::Error> {
+  ) -> Result<ModuleSpecifier, Self::Error> {
     if !is_root {
       if let Some(import_map) = &self.import_map {
         let result = import_map.resolve(specifier, referrer)?;
         if result.is_some() {
-          return Ok(result.unwrap());
+          // TODO: update import map to resolve to ModuleSpecifier
+          let module_specifier =
+            ModuleSpecifier::resolve(specifier, referrer).unwrap();
+          return Ok(module_specifier);
         }
       }
     }
 
-    match ModuleSpecifier::resolve(specifier, referrer) {
-      Ok(specifier) => Ok(specifier.to_string()),
-      Err(e) => Err(DenoError::from(e)),
-    }
+    ModuleSpecifier::resolve(specifier, referrer).map_err(DenoError::from)
   }
 
   /// Given an absolute url, load its source code.
-  fn load(&self, url: &str) -> Box<deno::SourceCodeInfoFuture<Self::Error>> {
+  fn load(
+    &self,
+    module_specifier: &ModuleSpecifier,
+  ) -> Box<deno::SourceCodeInfoFuture<Self::Error>> {
     self.metrics.resolve_count.fetch_add(1, Ordering::SeqCst);
     Box::new(
-      fetch_module_meta_data_and_maybe_compile_async(self, url, ".")
+      fetch_module_meta_data_and_maybe_compile_async(self, module_specifier)
         .map_err(|err| {
           eprintln!("{}", err);
           err
@@ -268,7 +267,7 @@ impl ThreadSafeState {
     let mut import_map = None;
     if let Some(file_name) = &flags.import_map_path {
       let base_url = match &main_module {
-        Some(module_specifier) => module_specifier.to_url(),
+        Some(module_specifier) => module_specifier.clone(),
         None => unreachable!(),
       };
 

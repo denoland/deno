@@ -49,10 +49,13 @@ pub trait Loader: Send + Sync {
     specifier: &str,
     referrer: &str,
     is_root: bool,
-  ) -> Result<String, Self::Error>;
+  ) -> Result<ModuleSpecifier, Self::Error>;
 
-  /// Given an absolute url, load its source code.
-  fn load(&self, url: &str) -> Box<SourceCodeInfoFuture<Self::Error>>;
+  /// Given ModuleSpecifier, load its source code.
+  fn load(
+    &self,
+    module_specifier: &ModuleSpecifier,
+  ) -> Box<SourceCodeInfoFuture<Self::Error>>;
 }
 
 struct PendingLoad<E: Error> {
@@ -105,12 +108,13 @@ impl<L: Loader> RecursiveLoad<L> {
     parent_id: Option<deno_mod>,
   ) -> Result<String, L::Error> {
     let is_root = parent_id.is_none();
-    let url = self.loader.resolve(specifier, referrer, is_root)?;
+    let module_specifier = self.loader.resolve(specifier, referrer, is_root)?;
+    let module_name = module_specifier.to_string();
 
     if !is_root {
       {
         let mut m = self.modules.lock().unwrap();
-        m.add_child(parent_id.unwrap(), &url);
+        m.add_child(parent_id.unwrap(), &module_name);
       }
     }
 
@@ -119,22 +123,22 @@ impl<L: Loader> RecursiveLoad<L> {
       // Only short circuit after add_child().
       // This impacts possible conditions in #A.
       let modules = self.modules.lock().unwrap();
-      if modules.is_registered(&url) {
-        return Ok(url);
+      if modules.is_registered(&module_name) {
+        return Ok(module_name);
       }
     }
 
-    if !self.is_pending.contains(&url) {
-      self.is_pending.insert(url.clone());
-      let source_code_info_future = { self.loader.load(&url) };
+    if !self.is_pending.contains(&module_name) {
+      self.is_pending.insert(module_name.to_string());
+      let source_code_info_future = { self.loader.load(&module_specifier) };
       self.pending.push(PendingLoad {
-        url: url.clone(),
+        url: module_name.to_string(),
         source_code_info_future,
         is_root,
       });
     }
 
-    Ok(url)
+    Ok(module_name)
   }
 }
 
@@ -255,10 +259,9 @@ impl<L: Loader> Future for RecursiveLoad<L> {
         |specifier: &str, referrer_id: deno_mod| -> deno_mod {
           let modules = self.modules.lock().unwrap();
           let referrer = modules.get_name(referrer_id).unwrap();
-          // TODO(bartlomieju): there must be a better way
-          let is_root = referrer == ".";
-          match self.loader.resolve(specifier, &referrer, is_root) {
-            Ok(url) => match modules.get_id(&url) {
+          // this callback is only called for non-root modules
+          match self.loader.resolve(specifier, &referrer, false) {
+            Ok(specifier) => match modules.get_id(&specifier.to_string()) {
               Some(id) => id,
               None => 0,
             },
@@ -702,7 +705,7 @@ mod tests {
       specifier: &str,
       referrer: &str,
       _is_root: bool,
-    ) -> Result<String, Self::Error> {
+    ) -> Result<ModuleSpecifier, Self::Error> {
       let referrer = if referrer == "." {
         "file:///"
       } else {
@@ -713,21 +716,24 @@ mod tests {
 
       let output_specifier = match ModuleSpecifier::resolve(specifier, referrer)
       {
-        Ok(url) => url.to_string(),
+        Ok(specifier) => specifier,
         Err(_e) => return Err(MockError::ResolveErr),
       };
 
-      if mock_source_code(&output_specifier).is_some() {
+      if mock_source_code(&output_specifier.to_string()).is_some() {
         Ok(output_specifier)
       } else {
         Err(MockError::ResolveErr)
       }
     }
 
-    fn load(&self, url: &str) -> Box<SourceCodeInfoFuture<Self::Error>> {
+    fn load(
+      &self,
+      module_specifier: &ModuleSpecifier,
+    ) -> Box<SourceCodeInfoFuture<Self::Error>> {
       let mut loads = self.loads.lock().unwrap();
-      loads.push(url.to_string());
-      let url = url.to_string();
+      loads.push(module_specifier.to_string());
+      let url = module_specifier.to_string();
       Box::new(DelayedSourceCodeFuture { url, counter: 0 })
     }
   }
