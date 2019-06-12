@@ -47,7 +47,6 @@ use crate::compiler::bundle_async;
 use crate::errors::RustOrJsError;
 use crate::progress::Progress;
 use crate::state::ThreadSafeState;
-use crate::worker::root_specifier_to_url;
 use crate::worker::Worker;
 use deno::v8_set_flags;
 use flags::DenoFlags;
@@ -193,14 +192,12 @@ fn fetch_or_info_command(
     js_check(worker.execute("denoMain()"));
     debug!("main_module {}", main_module);
 
-    let main_url = root_specifier_to_url(&main_module).unwrap();
-
     worker
-      .execute_mod_async(&main_url, true)
+      .execute_mod_async(&main_module.to_url(), true)
       .map_err(print_err_and_exit)
       .and_then(move |()| {
         if print_info {
-          future::Either::A(print_file_info(worker, &main_module))
+          future::Either::A(print_file_info(worker, &main_module.to_string()))
         } else {
           future::Either::B(future::ok(worker))
         }
@@ -269,11 +266,10 @@ fn bundle_command(flags: DenoFlags, argv: Vec<String>) {
   let (mut _worker, state) = create_worker_and_state(flags, argv);
 
   let main_module = state.main_module().unwrap();
-  let main_url = root_specifier_to_url(&main_module).unwrap();
   assert!(state.argv.len() >= 3);
   let out_file = state.argv[2].clone();
   debug!(">>>>> bundle_async START");
-  let bundle_future = bundle_async(state, main_url.to_string(), out_file)
+  let bundle_future = bundle_async(state, main_module.to_string(), out_file)
     .map_err(|e| {
       debug!("diagnostics returned, exiting!");
       eprintln!("\n{}", e.to_string());
@@ -313,10 +309,8 @@ fn run_script(flags: DenoFlags, argv: Vec<String>) {
     js_check(worker.execute("denoMain()"));
     debug!("main_module {}", main_module);
 
-    let main_url = root_specifier_to_url(&main_module).unwrap();
-
     worker
-      .execute_mod_async(&main_url, false)
+      .execute_mod_async(&main_module.to_url(), false)
       .and_then(move |()| {
         worker.then(|result| {
           js_check(result);

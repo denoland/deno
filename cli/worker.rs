@@ -143,12 +143,16 @@ pub fn resolve_module_spec(
   Ok(u.to_string())
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[allow(dead_code)]
 /// Resolved module specifier
 pub struct ModuleSpecifier(Url);
 
 impl ModuleSpecifier {
+  pub fn to_url(&self) -> Url {
+    self.0.clone()
+  }
+
   /// Resolves module using this algorithm:
   /// https://html.spec.whatwg.org/multipage/webappapis.html#resolve-a-module-specifier
   pub fn resolve(

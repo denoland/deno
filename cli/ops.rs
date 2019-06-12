@@ -341,7 +341,9 @@ fn op_start(
   let deno_version = version::DENO;
   let deno_version_off = builder.create_string(deno_version);
 
-  let main_module = state.main_module().map(|m| builder.create_string(&m));
+  let main_module = state
+    .main_module()
+    .map(|m| builder.create_string(&m.to_string()));
 
   let xeval_delim = state
     .flags

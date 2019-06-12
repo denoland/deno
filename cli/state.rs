@@ -14,6 +14,7 @@ use crate::progress::Progress;
 use crate::resources;
 use crate::resources::ResourceId;
 use crate::worker::resolve_module_spec;
+use crate::worker::ModuleSpecifier;
 use crate::worker::Worker;
 use deno::Buf;
 use deno::Loader;
@@ -60,7 +61,7 @@ pub struct ThreadSafeState(Arc<State>);
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct State {
   pub modules: Arc<Mutex<deno::Modules>>,
-  pub main_module: Option<String>,
+  pub main_module: Option<ModuleSpecifier>,
   pub dir: deno_dir::DenoDir,
   pub argv: Vec<String>,
   pub permissions: DenoPermissions,
@@ -256,17 +257,15 @@ impl ThreadSafeState {
     let dir =
       deno_dir::DenoDir::new(custom_root, &config, progress.clone()).unwrap();
 
-    let main_module: Option<String> = if argv_rest.len() <= 1 {
+    let main_module: Option<ModuleSpecifier> = if argv_rest.len() <= 1 {
       None
     } else {
-      let specifier = argv_rest[1].clone();
-      let referrer = ".";
-      // TODO(bartlomieju): to be deleted - main module is already resolved in main.rs
-      match dir.resolve_module_url(&specifier, referrer) {
-        Ok(url) => Some(url.to_string()),
+      let root_specifier = argv_rest[1].clone();
+      match ModuleSpecifier::resolve_root(&root_specifier) {
+        Ok(specifier) => Some(specifier),
         Err(e) => {
-          debug!("Potentially swallowed error {}", e);
-          None
+          // TODO: handle unresolvable specifier
+          panic!("Unable to resolve root specifier: {:?}", e);
         }
       }
     };
@@ -274,11 +273,11 @@ impl ThreadSafeState {
     let mut import_map = None;
     if let Some(file_name) = &flags.import_map_path {
       let base_url = match &main_module {
-        Some(url) => url,
+        Some(module_specifier) => module_specifier.to_url(),
         None => unreachable!(),
       };
 
-      match ImportMap::load(base_url, file_name) {
+      match ImportMap::load(&base_url.to_string(), file_name) {
         Ok(map) => import_map = Some(map),
         Err(err) => {
           println!("{:?}", err);
@@ -318,9 +317,9 @@ impl ThreadSafeState {
   }
 
   /// Read main module from argv
-  pub fn main_module(&self) -> Option<String> {
+  pub fn main_module(&self) -> Option<ModuleSpecifier> {
     match &self.main_module {
-      Some(url) => Some(url.to_string()),
+      Some(module_specifier) => Some(module_specifier.clone()),
       None => None,
     }
   }
