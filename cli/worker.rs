@@ -1,6 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::errors::DenoError;
-use crate::js_errors;
 use crate::state::ThreadSafeState;
 use crate::tokio_util;
 use deno;
@@ -92,7 +91,7 @@ impl Worker {
         // Convert to DenoError AND apply_source_map.
         match err {
           deno::JSErrorOr::JSError(err) => {
-            DenoError::from(worker_.apply_source_map(err))
+            worker_.apply_source_map(DenoError::from(err))
           }
           deno::JSErrorOr::Other(err) => err,
         }
@@ -109,8 +108,8 @@ impl Worker {
   }
 
   /// Applies source map to the error.
-  fn apply_source_map(&self, err: JSError) -> JSError {
-    js_errors::apply_source_map(&err, &self.state.dir)
+  fn apply_source_map(&self, err: DenoError) -> DenoError {
+    err.apply_source_map(&self.state.dir)
   }
 }
 
@@ -122,7 +121,7 @@ impl Future for Worker {
     let mut isolate = self.isolate.lock().unwrap();
     isolate
       .poll()
-      .map_err(|err| DenoError::from(self.apply_source_map(err)))
+      .map_err(|err| self.apply_source_map(DenoError::from(err)))
   }
 }
 

@@ -11,7 +11,6 @@ use crate::errors::DenoResult;
 use crate::errors::ErrorKind;
 use crate::fs as deno_fs;
 use crate::http_util;
-use crate::js_errors::apply_source_map;
 use crate::msg;
 use crate::msg_util;
 use crate::rand;
@@ -402,11 +401,11 @@ fn op_format_error(
   let orig_error = String::from(inner.error().unwrap());
 
   let js_error = JSError::from_v8_exception(&orig_error).unwrap();
-  let js_error_mapped = apply_source_map(&js_error, &state.dir);
-  let js_error_string = DenoError::from(js_error_mapped).to_string();
+  let error_mapped = DenoError::from(js_error).apply_source_map(&state.dir);
+  let error_string = error_mapped.to_string();
 
   let mut builder = FlatBufferBuilder::new();
-  let new_error = builder.create_string(&js_error_string);
+  let new_error = builder.create_string(&error_string);
 
   let inner = msg::FormatErrorRes::create(
     &mut builder,

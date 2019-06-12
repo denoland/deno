@@ -1,19 +1,13 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-//! This mod adds source maps and ANSI color display to deno::JSError.
-use crate::ansi;
+//! This mod provides functions to remap a deno::JSError based on a source map
 use deno::JSError;
 use deno::StackFrame;
+use serde_json;
 use source_map_mappings::parse_mappings;
 use source_map_mappings::Bias;
 use source_map_mappings::Mappings;
 use std::collections::HashMap;
-use std::fmt;
 use std::str;
-
-/// Wrapper around JSError which provides color to_string.
-pub struct JSErrorColor<'a>(pub &'a JSError);
-
-struct StackFrameColor<'a>(&'a StackFrame);
 
 pub trait SourceMapGetter {
   /// Returns the raw source map file.
@@ -29,80 +23,9 @@ struct SourceMap {
   sources: Vec<String>,
 }
 
-impl<'a> fmt::Display for StackFrameColor<'a> {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    let frame = self.0;
-    // Note when we print to string, we change from 0-indexed to 1-indexed.
-    let function_name = ansi::italic_bold(frame.function_name.clone());
-    let script_line_column =
-      format_script_line_column(&frame.script_name, frame.line, frame.column);
-
-    if !frame.function_name.is_empty() {
-      write!(f, "    at {} ({})", function_name, script_line_column)
-    } else if frame.is_eval {
-      write!(f, "    at eval ({})", script_line_column)
-    } else {
-      write!(f, "    at {}", script_line_column)
-    }
-  }
-}
-
-fn format_script_line_column(
-  script_name: &str,
-  line: i64,
-  column: i64,
-) -> String {
-  // TODO match this style with how typescript displays errors.
-  let line = ansi::yellow((1 + line).to_string());
-  let column = ansi::yellow((1 + column).to_string());
-  let script_name = ansi::cyan(script_name.to_string());
-  format!("{}:{}:{}", script_name, line, column)
-}
-
-impl<'a> fmt::Display for JSErrorColor<'a> {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    let e = self.0;
-    if e.script_resource_name.is_some() {
-      let script_resource_name = e.script_resource_name.as_ref().unwrap();
-      // Avoid showing internal code from gen/cli/bundle/main.js
-      if script_resource_name != "gen/cli/bundle/main.js"
-        && script_resource_name != "gen/cli/bundle/compiler.js"
-      {
-        if e.line_number.is_some() && e.start_column.is_some() {
-          assert!(e.line_number.is_some());
-          assert!(e.start_column.is_some());
-          let script_line_column = format_script_line_column(
-            script_resource_name,
-            e.line_number.unwrap() - 1,
-            e.start_column.unwrap() - 1,
-          );
-          write!(f, "{}", script_line_column)?;
-        }
-        if e.source_line.is_some() {
-          write!(f, "\n{}\n", e.source_line.as_ref().unwrap())?;
-          let mut s = String::new();
-          for i in 0..e.end_column.unwrap() {
-            if i >= e.start_column.unwrap() {
-              s.push('^');
-            } else {
-              s.push(' ');
-            }
-          }
-          writeln!(f, "{}", ansi::red_bold(s))?;
-        }
-      }
-    }
-
-    write!(f, "{}", ansi::bold(e.message.clone()))?;
-
-    for frame in &e.frames {
-      write!(f, "\n{}", StackFrameColor(&frame).to_string())?;
-    }
-    Ok(())
-  }
-}
-
 impl SourceMap {
+  /// Take a JSON string and attempt to decode it, returning an optional
+  /// instance of `SourceMap`.
   fn from_json(json_str: &str) -> Option<Self> {
     // Ugly. Maybe use serde_derive.
     match serde_json::from_str::<serde_json::Value>(json_str) {
@@ -137,77 +60,11 @@ impl SourceMap {
   }
 }
 
-fn frame_apply_source_map<G: SourceMapGetter>(
-  frame: &StackFrame,
-  mappings_map: &mut CachedMaps,
-  getter: &G,
-) -> StackFrame {
-  let maybe_sm = get_mappings(frame.script_name.as_ref(), mappings_map, getter);
-  let frame_pos = (
-    frame.script_name.to_owned(),
-    frame.line as i64,
-    frame.column as i64,
-  );
-  let (script_name, line, column) = match maybe_sm {
-    None => frame_pos,
-    Some(sm) => match sm.mappings.original_location_for(
-      frame.line as u32,
-      frame.column as u32,
-      Bias::default(),
-    ) {
-      None => frame_pos,
-      Some(mapping) => match &mapping.original {
-        None => frame_pos,
-        Some(original) => {
-          let orig_source = sm.sources[original.source as usize].clone();
-          (
-            orig_source,
-            i64::from(original.original_line),
-            i64::from(original.original_column),
-          )
-        }
-      },
-    },
-  };
-
-  StackFrame {
-    script_name,
-    function_name: frame.function_name.clone(),
-    line,
-    column,
-    is_eval: frame.is_eval,
-    is_constructor: frame.is_constructor,
-    is_wasm: frame.is_wasm,
-  }
-}
-
-pub fn apply_source_map<G: SourceMapGetter>(
-  js_error: &JSError,
-  getter: &G,
-) -> JSError {
-  let mut mappings_map: CachedMaps = HashMap::new();
-  let mut frames = Vec::<StackFrame>::new();
-  for frame in &js_error.frames {
-    let f = frame_apply_source_map(&frame, &mut mappings_map, getter);
-    frames.push(f);
-  }
-  JSError {
-    message: js_error.message.clone(),
-    frames,
-    error_level: js_error.error_level,
-    source_line: js_error.source_line.clone(),
-    // TODO the following need to be source mapped:
-    script_resource_name: js_error.script_resource_name.clone(),
-    line_number: js_error.line_number,
-    start_position: js_error.start_position,
-    end_position: js_error.end_position,
-    start_column: js_error.start_column,
-    end_column: js_error.end_column,
-  }
-}
-
 // The bundle does not get built for 'cargo check', so we don't embed the
-// bundle source map.
+// bundle source map.  The built in source map is the source map for the main
+// JavaScript bundle which is then used to create the snapshot.  Runtime stack
+// traces can contain positions within the bundle which we will map to the
+// original Deno TypeScript code.
 #[cfg(feature = "check-only")]
 fn builtin_source_map(_: &str) -> Option<Vec<u8>> {
   None
@@ -232,15 +89,128 @@ fn builtin_source_map(script_name: &str) -> Option<Vec<u8>> {
   }
 }
 
-fn parse_map_string<G: SourceMapGetter>(
-  script_name: &str,
+/// Apply a source map to a JSError, returning a JSError where the filenames,
+/// the lines and the columns point to their original source location, not their
+/// transpiled location if applicable.
+pub fn apply_source_map<G: SourceMapGetter>(
+  js_error: &JSError,
   getter: &G,
-) -> Option<SourceMap> {
-  builtin_source_map(script_name)
-    .or_else(|| getter.get_source_map(script_name))
-    .and_then(|raw_source_map| {
-      SourceMap::from_json(str::from_utf8(&raw_source_map).unwrap())
-    })
+) -> JSError {
+  let mut mappings_map: CachedMaps = HashMap::new();
+
+  let mut frames = Vec::<StackFrame>::new();
+  for frame in &js_error.frames {
+    let f = frame_apply_source_map(&frame, &mut mappings_map, getter);
+    frames.push(f);
+  }
+
+  let (script_resource_name, line_number, start_column) =
+    get_maybe_orig_position(
+      js_error.script_resource_name.clone(),
+      js_error.line_number,
+      js_error.start_column,
+      &mut mappings_map,
+      getter,
+    );
+  let end_column = match js_error.end_column {
+    Some(ec) => {
+      Some(ec - (js_error.start_column.unwrap() - start_column.unwrap()))
+    }
+    _ => None,
+  };
+
+  JSError {
+    message: js_error.message.clone(),
+    frames,
+    error_level: js_error.error_level,
+    source_line: js_error.source_line.clone(),
+    // TODO the following need to be source mapped:
+    script_resource_name,
+    line_number,
+    start_position: js_error.start_position,
+    end_position: js_error.end_position,
+    start_column,
+    end_column,
+  }
+}
+
+fn frame_apply_source_map<G: SourceMapGetter>(
+  frame: &StackFrame,
+  mappings_map: &mut CachedMaps,
+  getter: &G,
+) -> StackFrame {
+  let (script_name, line, column) = get_orig_position(
+    frame.script_name.to_string(),
+    frame.line,
+    frame.column,
+    mappings_map,
+    getter,
+  );
+
+  StackFrame {
+    script_name,
+    function_name: frame.function_name.clone(),
+    line,
+    column,
+    is_eval: frame.is_eval,
+    is_constructor: frame.is_constructor,
+    is_wasm: frame.is_wasm,
+  }
+}
+
+fn get_maybe_orig_position<G: SourceMapGetter>(
+  script_name: Option<String>,
+  line: Option<i64>,
+  column: Option<i64>,
+  mappings_map: &mut CachedMaps,
+  getter: &G,
+) -> (Option<String>, Option<i64>, Option<i64>) {
+  match (script_name, line, column) {
+    (Some(script_name_v), Some(line_v), Some(column_v)) => {
+      let (script_name, line, column) = get_orig_position(
+        script_name_v,
+        line_v - 1,
+        column_v,
+        mappings_map,
+        getter,
+      );
+      (Some(script_name), Some(line + 1), Some(column + 1))
+    }
+    _ => (None, None, None),
+  }
+}
+
+fn get_orig_position<G: SourceMapGetter>(
+  script_name: String,
+  line: i64,
+  column: i64,
+  mappings_map: &mut CachedMaps,
+  getter: &G,
+) -> (String, i64, i64) {
+  let maybe_sm = get_mappings(&script_name, mappings_map, getter);
+  let default_pos = (script_name, line, column);
+
+  match maybe_sm {
+    None => default_pos,
+    Some(sm) => match sm.mappings.original_location_for(
+      line as u32,
+      column as u32,
+      Bias::default(),
+    ) {
+      None => default_pos,
+      Some(mapping) => match &mapping.original {
+        None => default_pos,
+        Some(original) => {
+          let orig_source = sm.sources[original.source as usize].clone();
+          (
+            orig_source,
+            i64::from(original.original_line),
+            i64::from(original.original_column),
+          )
+        }
+      },
+    },
+  }
 }
 
 fn get_mappings<'a, G: SourceMapGetter>(
@@ -253,10 +223,35 @@ fn get_mappings<'a, G: SourceMapGetter>(
     .or_insert_with(|| parse_map_string(script_name, getter))
 }
 
+// TODO(kitsonk) parsed source maps should probably be cached in state in
+// the module meta data.
+fn parse_map_string<G: SourceMapGetter>(
+  script_name: &str,
+  getter: &G,
+) -> Option<SourceMap> {
+  builtin_source_map(script_name)
+    .or_else(|| getter.get_source_map(script_name))
+    .and_then(|raw_source_map| {
+      SourceMap::from_json(str::from_utf8(&raw_source_map).unwrap())
+    })
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::ansi::strip_ansi_codes;
+
+  struct MockSourceMapGetter {}
+
+  impl SourceMapGetter for MockSourceMapGetter {
+    fn get_source_map(&self, script_name: &str) -> Option<Vec<u8>> {
+      let s = match script_name {
+        "foo_bar.ts" => r#"{"sources": ["foo_bar.ts"], "mappings":";;;IAIA,OAAO,CAAC,GAAG,CAAC,qBAAqB,EAAE,EAAE,CAAC,OAAO,CAAC,CAAC;IAC/C,OAAO,CAAC,GAAG,CAAC,eAAe,EAAE,IAAI,CAAC,QAAQ,CAAC,IAAI,CAAC,CAAC;IACjD,OAAO,CAAC,GAAG,CAAC,WAAW,EAAE,IAAI,CAAC,QAAQ,CAAC,EAAE,CAAC,CAAC;IAE3C,OAAO,CAAC,GAAG,CAAC,GAAG,CAAC,CAAC"}"#,
+        "bar_baz.ts" => r#"{"sources": ["bar_baz.ts"], "mappings":";;;IAEA,CAAC,KAAK,IAAI,EAAE;QACV,MAAM,GAAG,GAAG,sDAAa,OAAO,2BAAC,CAAC;QAClC,OAAO,CAAC,GAAG,CAAC,GAAG,CAAC,CAAC;IACnB,CAAC,CAAC,EAAE,CAAC;IAEQ,QAAA,GAAG,GAAG,KAAK,CAAC;IAEzB,OAAO,CAAC,GAAG,CAAC,GAAG,CAAC,CAAC"}"#,
+        _ => return None,
+      };
+      Some(s.as_bytes().to_owned())
+    }
+  }
 
   fn error1() -> JSError {
     JSError {
@@ -299,25 +294,6 @@ mod tests {
         },
       ],
     }
-  }
-
-  struct MockSourceMapGetter {}
-
-  impl SourceMapGetter for MockSourceMapGetter {
-    fn get_source_map(&self, script_name: &str) -> Option<Vec<u8>> {
-      let s = match script_name {
-        "foo_bar.ts" => r#"{"sources": ["foo_bar.ts"], "mappings":";;;IAIA,OAAO,CAAC,GAAG,CAAC,qBAAqB,EAAE,EAAE,CAAC,OAAO,CAAC,CAAC;IAC/C,OAAO,CAAC,GAAG,CAAC,eAAe,EAAE,IAAI,CAAC,QAAQ,CAAC,IAAI,CAAC,CAAC;IACjD,OAAO,CAAC,GAAG,CAAC,WAAW,EAAE,IAAI,CAAC,QAAQ,CAAC,EAAE,CAAC,CAAC;IAE3C,OAAO,CAAC,GAAG,CAAC,GAAG,CAAC,CAAC"}"#,
-        "bar_baz.ts" => r#"{"sources": ["bar_baz.ts"], "mappings":";;;IAEA,CAAC,KAAK,IAAI,EAAE;QACV,MAAM,GAAG,GAAG,sDAAa,OAAO,2BAAC,CAAC;QAClC,OAAO,CAAC,GAAG,CAAC,GAAG,CAAC,CAAC;IACnB,CAAC,CAAC,EAAE,CAAC;IAEQ,QAAA,GAAG,GAAG,KAAK,CAAC;IAEzB,OAAO,CAAC,GAAG,CAAC,GAAG,CAAC,CAAC"}"#,
-        _ => return None,
-      };
-      Some(s.as_bytes().to_owned())
-    }
-  }
-
-  #[test]
-  fn js_error_to_string() {
-    let e = error1();
-    assert_eq!("Error: foo bar\n    at foo (foo_bar.ts:5:17)\n    at qat (bar_baz.ts:6:21)\n    at deno_main.js:2:2", strip_ansi_codes(&e.to_string()));
   }
 
   #[test]
