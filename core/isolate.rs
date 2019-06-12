@@ -42,6 +42,22 @@ pub struct Script<'a> {
   pub filename: &'a str,
 }
 
+// TODO(ry) It's ugly that we have both Script and OwnedScript. Ideally we
+// wouldn't expose such twiddly complexity.
+struct OwnedScript {
+  pub source: String,
+  pub filename: String,
+}
+
+impl<'a> From<Script<'a>> for OwnedScript {
+  fn from(s: Script<'a>) -> OwnedScript {
+    OwnedScript {
+      source: s.source.to_string(),
+      filename: s.filename.to_string(),
+    }
+  }
+}
+
 /// Represents data used to initialize isolate at startup
 /// either a binary snapshot or a javascript source file
 /// in the form of the StartupScript struct.
@@ -95,6 +111,7 @@ pub struct Isolate {
   pending_ops: FuturesUnordered<OpAsyncFuture>,
   pending_dyn_imports: FuturesUnordered<DynImport>,
   have_unpolled_ops: bool,
+  startup_script: Option<OwnedScript>,
 }
 
 unsafe impl Send for Isolate {}
@@ -122,7 +139,6 @@ impl Isolate {
 
     let needs_init = true;
 
-    let mut startup_script: Option<Script> = None;
     let mut libdeno_config = libdeno::deno_config {
       will_snapshot: will_snapshot.into(),
       load_snapshot: Snapshot2::empty(),
@@ -131,10 +147,12 @@ impl Isolate {
       dyn_import_cb: Self::dyn_import,
     };
 
+    let mut startup_script: Option<OwnedScript> = None;
+
     // Seperate into Option values for each startup type
     match startup_data {
       StartupData::Script(d) => {
-        startup_script = Some(d);
+        startup_script = Some(d.into());
       }
       StartupData::Snapshot(d) => {
         libdeno_config.load_snapshot = d.into();
@@ -147,7 +165,7 @@ impl Isolate {
 
     let libdeno_isolate = unsafe { libdeno::deno_new(libdeno_config) };
 
-    let mut core_isolate = Self {
+    Self {
       libdeno_isolate,
       shared_libdeno_isolate: Arc::new(Mutex::new(Some(libdeno_isolate))),
       dispatch: None,
@@ -157,14 +175,8 @@ impl Isolate {
       pending_ops: FuturesUnordered::new(),
       have_unpolled_ops: false,
       pending_dyn_imports: FuturesUnordered::new(),
-    };
-
-    // If we want to use execute this has to happen here sadly.
-    if let Some(s) = startup_script {
-      core_isolate.execute(s.filename, s.source).unwrap()
-    };
-
-    core_isolate
+      startup_script,
+    }
   }
 
   /// Defines the how Deno.core.dispatch() acts.
@@ -192,12 +204,16 @@ impl Isolate {
   }
 
   /// Executes a bit of built-in JavaScript to provide Deno.sharedQueue.
-  pub fn shared_init(&mut self) {
+  fn shared_init(&mut self) {
     if self.needs_init {
       self.needs_init = false;
       js_check(
         self.execute("shared_queue.js", include_str!("shared_queue.js")),
       );
+      // Maybe execute the startup script.
+      if let Some(s) = self.startup_script.take() {
+        self.execute(&s.filename, &s.source).unwrap()
+      }
     }
   }
 
@@ -506,6 +522,8 @@ impl Future for Isolate {
   fn poll(&mut self) -> Poll<(), JSError> {
     // Lock the current thread for V8.
     let _locker = LockerScope::new(self.libdeno_isolate);
+
+    self.shared_init();
 
     let mut overflow_response: Option<Buf> = None;
 
