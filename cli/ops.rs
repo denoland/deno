@@ -508,7 +508,7 @@ fn op_fetch_module_meta_data(
     Some(import_map) => {
       match import_map.resolve(specifier, referrer) {
         Ok(result) => match result {
-          Some(url) => url.clone(),
+          Some(module_specifier) => module_specifier.to_string(),
           None => specifier.to_string(),
         },
         Err(err) => panic!("error resolving using import map: {:?}", err), // TODO: this should be coerced to DenoError

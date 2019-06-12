@@ -160,10 +160,9 @@ impl Loader for ThreadSafeState {
   ) -> Result<String, Self::Error> {
     if !is_root {
       if let Some(import_map) = &self.import_map {
-        // TODO: update import map to resolve to ModuleSpecifier
         let result = import_map.resolve(specifier, referrer)?;
         if result.is_some() {
-          return Ok(result.unwrap());
+          return Ok(result.unwrap().to_string());
         }
       }
     }
