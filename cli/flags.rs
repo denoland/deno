@@ -502,7 +502,7 @@ pub enum DenoSubcommand {
 }
 
 fn get_default_bundle_filename(source_file: &str) -> String {
-  use deno::ModuleSpecifier;
+  use crate::module_specifier::ModuleSpecifier;
   let url = ModuleSpecifier::resolve_root(source_file).unwrap().to_url();
   let path_segments = url.path_segments().unwrap();
   let last = path_segments.last().unwrap();

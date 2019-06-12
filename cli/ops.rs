@@ -10,6 +10,7 @@ use crate::fs as deno_fs;
 use crate::http_util;
 use crate::js_errors::apply_source_map;
 use crate::js_errors::JSErrorColor;
+use crate::module_specifier::ModuleSpecifier;
 use crate::msg;
 use crate::msg_util;
 use crate::rand;
@@ -28,7 +29,6 @@ use crate::worker::Worker;
 use deno::js_check;
 use deno::Buf;
 use deno::JSError;
-use deno::ModuleSpecifier;
 use deno::Op;
 use deno::PinnedBuf;
 use flatbuffers::FlatBufferBuilder;
@@ -498,6 +498,7 @@ fn op_fetch_module_meta_data(
 
   assert_eq!(state.dir.root.join("gen"), state.dir.gen, "Sanity check");
 
+  println!("specifier {:?}, referrer {:?}", specifier, referrer);
   let use_cache = !state.flags.reload;
   let no_fetch = state.flags.no_fetch;
 

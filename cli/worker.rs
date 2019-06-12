@@ -2,12 +2,12 @@
 use crate::errors::DenoError;
 use crate::errors::RustOrJsError;
 use crate::js_errors;
+use crate::module_specifier::ModuleSpecifier;
 use crate::state::ThreadSafeState;
 use crate::tokio_util;
 use deno;
 use deno::Config;
 use deno::JSError;
-use deno::ModuleSpecifier;
 use deno::StartupData;
 use futures::Async;
 use futures::Future;
