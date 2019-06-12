@@ -7,7 +7,6 @@ use crate::errors::DenoResult;
 use crate::flags;
 use crate::global_timer::GlobalTimer;
 use crate::import_map::ImportMap;
-use crate::module_specifier::ModuleSpecifier;
 use crate::msg;
 use crate::ops;
 use crate::permissions::DenoPermissions;
@@ -17,6 +16,7 @@ use crate::resources::ResourceId;
 use crate::worker::Worker;
 use deno::Buf;
 use deno::Loader;
+use deno::ModuleSpecifier;
 use deno::Op;
 use deno::PinnedBuf;
 use futures::future::Either;
@@ -157,28 +157,27 @@ impl Loader for ThreadSafeState {
     specifier: &str,
     referrer: &str,
     is_root: bool,
-  ) -> Result<String, Self::Error> {
+  ) -> Result<ModuleSpecifier, Self::Error> {
     if !is_root {
       if let Some(import_map) = &self.import_map {
         let result = import_map.resolve(specifier, referrer)?;
         if result.is_some() {
-          return Ok(result.unwrap().to_string());
+          return Ok(result.unwrap());
         }
       }
     }
 
-    let module_specifier =
-      ModuleSpecifier::resolve(specifier, referrer).map_err(DenoError::from)?;
-    Ok(module_specifier.to_string())
+    ModuleSpecifier::resolve(specifier, referrer).map_err(DenoError::from)
   }
 
   /// Given an absolute url, load its source code.
-  fn load(&self, url: &str) -> Box<deno::SourceCodeInfoFuture<Self::Error>> {
+  fn load(
+    &self,
+    module_specifier: &ModuleSpecifier,
+  ) -> Box<deno::SourceCodeInfoFuture<Self::Error>> {
     self.metrics.resolve_count.fetch_add(1, Ordering::SeqCst);
-    let module_specifier = ModuleSpecifier::resolve_root(url)
-      .expect("should already been properly resolved");
     Box::new(
-      fetch_module_meta_data_and_maybe_compile_async(self, &module_specifier)
+      fetch_module_meta_data_and_maybe_compile_async(self, module_specifier)
         .map_err(|err| {
           eprintln!("{}", err);
           err

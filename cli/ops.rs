@@ -10,7 +10,6 @@ use crate::fs as deno_fs;
 use crate::http_util;
 use crate::js_errors::apply_source_map;
 use crate::js_errors::JSErrorColor;
-use crate::module_specifier::ModuleSpecifier;
 use crate::msg;
 use crate::msg_util;
 use crate::rand;
@@ -29,6 +28,7 @@ use crate::worker::Worker;
 use deno::js_check;
 use deno::Buf;
 use deno::JSError;
+use deno::ModuleSpecifier;
 use deno::Op;
 use deno::PinnedBuf;
 use flatbuffers::FlatBufferBuilder;
@@ -505,15 +505,13 @@ fn op_fetch_module_meta_data(
   //  import map - why it is not always resolved? Eg. "bad-module.ts" will return NotFound
   //  error whilst it should return RelativeUrlWithCannotBeABaseBase error
   let resolved_specifier = match &state.import_map {
-    Some(import_map) => {
-      match import_map.resolve(specifier, referrer) {
-        Ok(result) => match result {
-          Some(module_specifier) => module_specifier.to_string(),
-          None => specifier.to_string(),
-        },
-        Err(err) => panic!("error resolving using import map: {:?}", err), // TODO: this should be coerced to DenoError
-      }
-    }
+    Some(import_map) => match import_map.resolve(specifier, referrer) {
+      Ok(result) => match result {
+        Some(module_specifier) => module_specifier.to_string(),
+        None => specifier.to_string(),
+      },
+      Err(err) => return odd_future(DenoError::from(err)),
+    },
     None => specifier.to_string(),
   };
 
