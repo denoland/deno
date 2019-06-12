@@ -164,7 +164,8 @@ impl Loader for ThreadSafeState {
         if result.is_some() {
           // TODO: update import map to resolve to ModuleSpecifier
           let module_specifier =
-            ModuleSpecifier::resolve(specifier, referrer).unwrap();
+            ModuleSpecifier::resolve(&result.unwrap(), ".")
+              .expect("already resolved by import map");
           return Ok(module_specifier);
         }
       }
