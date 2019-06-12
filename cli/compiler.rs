@@ -248,7 +248,7 @@ mod tests {
     tokio_util::init(|| {
       let specifier = "./tests/002_hello.ts";
       use crate::worker;
-      let module_name = worker::root_specifier_to_url(specifier)
+      let module_name = worker::ModuleSpecifier::resolve_root(specifier)
         .unwrap()
         .to_string();
 
@@ -295,7 +295,7 @@ mod tests {
   fn test_bundle_async() {
     let specifier = "./tests/002_hello.ts";
     use crate::worker;
-    let module_name = worker::root_specifier_to_url(specifier)
+    let module_name = worker::ModuleSpecifier::resolve_root(specifier)
       .unwrap()
       .to_string();
 

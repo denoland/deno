@@ -211,24 +211,6 @@ impl fmt::Display for ModuleSpecifier {
     self.0.fmt(f)
   }
 }
-/// Takes a string representing a path or URL to a module, but of the type
-/// passed through the command-line interface for the main module. This is
-/// slightly different than specifiers used in import statements: "foo.js" for
-/// example is allowed here, whereas in import statements a leading "./" is
-/// required ("./foo.js"). This function is aware of the current working
-/// directory and returns an absolute URL.
-pub fn root_specifier_to_url(
-  root_specifier: &str,
-) -> Result<Url, url::ParseError> {
-  let maybe_url = Url::parse(root_specifier);
-  if let Ok(url) = maybe_url {
-    Ok(url)
-  } else {
-    let cwd = std::env::current_dir().unwrap();
-    let base = Url::from_directory_path(cwd).unwrap();
-    base.join(root_specifier)
-  }
-}
 
 impl Future for Worker {
   type Item = ();
@@ -448,7 +430,9 @@ mod tests {
     tokio_util::init(|| {
       // "foo" is not a vailid module specifier so this should return an error.
       let mut worker = create_test_worker();
-      let js_url = root_specifier_to_url("does-not-exist").unwrap();
+      let js_url = ModuleSpecifier::resolve_root("does-not-exist")
+        .unwrap()
+        .to_url();
       let result = worker.execute_mod_async(&js_url, false).wait();
       assert!(result.is_err());
     })
@@ -460,7 +444,9 @@ mod tests {
       // This assumes cwd is project root (an assumption made throughout the
       // tests).
       let mut worker = create_test_worker();
-      let js_url = root_specifier_to_url("./tests/002_hello.ts").unwrap();
+      let js_url = ModuleSpecifier::resolve_root("./tests/002_hello.ts")
+        .unwrap()
+        .to_url();
       let result = worker.execute_mod_async(&js_url, false).wait();
       assert!(result.is_ok());
     })

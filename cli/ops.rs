@@ -24,7 +24,7 @@ use crate::state::ThreadSafeState;
 use crate::tokio_util;
 use crate::tokio_write;
 use crate::version;
-use crate::worker::root_specifier_to_url;
+use crate::worker::ModuleSpecifier;
 use crate::worker::Worker;
 use deno::js_check;
 use deno::Buf;
@@ -2084,11 +2084,11 @@ fn op_create_worker(
   js_check(worker.execute("denoMain()"));
   js_check(worker.execute("workerMain()"));
 
-  let op = root_specifier_to_url(specifier)
-    .and_then(|specifier_url| {
+  let op = ModuleSpecifier::resolve_root(specifier)
+    .and_then(|module_specifier| {
       Ok(
         worker
-          .execute_mod_async(&specifier_url, false)
+          .execute_mod_async(&module_specifier.to_url(), false)
           .and_then(move |()| {
             let mut workers_tl = parent_state.workers.lock().unwrap();
             workers_tl.insert(rid, worker.shared());
