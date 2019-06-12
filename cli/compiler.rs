@@ -247,7 +247,7 @@ mod tests {
   fn test_compile_sync() {
     tokio_util::init(|| {
       let specifier = "./tests/002_hello.ts";
-      use crate::module_specifier::ModuleSpecifier;
+      use deno::ModuleSpecifier;
       let module_name = ModuleSpecifier::resolve_root(specifier)
         .unwrap()
         .to_string();
@@ -294,7 +294,7 @@ mod tests {
   #[test]
   fn test_bundle_async() {
     let specifier = "./tests/002_hello.ts";
-    use crate::module_specifier::ModuleSpecifier;
+    use deno::ModuleSpecifier;
     let module_name = ModuleSpecifier::resolve_root(specifier)
       .unwrap()
       .to_string();

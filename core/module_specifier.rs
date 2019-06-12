@@ -9,6 +9,7 @@ impl ModuleSpecifier {
   pub fn to_url(&self) -> Url {
     self.0.clone()
   }
+
   /// Resolves module using this algorithm:
   /// https://html.spec.whatwg.org/multipage/webappapis.html#resolve-a-module-specifier
   pub fn resolve(
@@ -62,15 +63,15 @@ impl ModuleSpecifier {
   }
 }
 
-impl From<Url> for ModuleSpecifier {
-  fn from(url: Url) -> Self {
-    ModuleSpecifier(url)
-  }
-}
-
 impl fmt::Display for ModuleSpecifier {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     self.0.fmt(f)
+  }
+}
+
+impl From<Url> for ModuleSpecifier {
+  fn from(url: Url) -> Self {
+    ModuleSpecifier(url)
   }
 }
 
