@@ -181,6 +181,12 @@ function fireTimers(): void {
 
 export type Args = unknown[];
 
+function checkThis(thisArg: unknown): void {
+  if (thisArg !== null && thisArg !== undefined && thisArg !== window) {
+    throw new TypeError("Illegal invocation");
+  }
+}
+
 function setTimer(
   cb: (...args: Args) => void,
   delay: number,
@@ -226,6 +232,8 @@ export function setTimeout(
   delay: number,
   ...args: Args
 ): number {
+  // @ts-ignore
+  checkThis(this);
   return setTimer(cb, delay, args, false);
 }
 
@@ -235,6 +243,8 @@ export function setInterval(
   delay: number,
   ...args: Args
 ): number {
+  // @ts-ignore
+  checkThis(this);
   return setTimer(cb, delay, args, true);
 }
 
