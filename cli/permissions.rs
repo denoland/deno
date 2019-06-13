@@ -158,40 +158,50 @@ impl DenoPermissions {
   }
 
   pub fn check_run(&self) -> DenoResult<()> {
+    let msg = "access to run a subprocess";
+
     match self.allow_run.get_state() {
-      PermissionAccessorState::Allow => Ok(()),
-      PermissionAccessorState::Ask => {
-        match self.try_permissions_prompt("access to run a subprocess") {
-          Err(e) => Err(e),
-          Ok(v) => {
-            self.allow_run.update_with_prompt_result(&v);
-            v.check()?;
-            Ok(())
-          }
-        }
+      PermissionAccessorState::Allow => {
+        self.log_perm_access(msg);
+        Ok(())
       }
+      PermissionAccessorState::Ask => match self.try_permissions_prompt(msg) {
+        Err(e) => Err(e),
+        Ok(v) => {
+          self.allow_run.update_with_prompt_result(&v);
+          v.check()?;
+          self.log_perm_access(msg);
+          Ok(())
+        }
+      },
       PermissionAccessorState::Deny => Err(permission_denied()),
     }
   }
 
   pub fn check_read(&self, filename: &str) -> DenoResult<()> {
+    let msg = &format!("read access to \"{}\"", filename);
     match self.allow_read.get_state() {
-      PermissionAccessorState::Allow => Ok(()),
+      PermissionAccessorState::Allow => {
+        self.log_perm_access(msg);
+        Ok(())
+      }
       state => {
         if check_path_white_list(filename, &self.read_whitelist) {
+          self.log_perm_access(msg);
           Ok(())
         } else {
           match state {
-            PermissionAccessorState::Ask => match self.try_permissions_prompt(
-              &format!("read access to \"{}\"", filename),
-            ) {
-              Err(e) => Err(e),
-              Ok(v) => {
-                self.allow_read.update_with_prompt_result(&v);
-                v.check()?;
-                Ok(())
+            PermissionAccessorState::Ask => {
+              match self.try_permissions_prompt(msg) {
+                Err(e) => Err(e),
+                Ok(v) => {
+                  self.allow_read.update_with_prompt_result(&v);
+                  v.check()?;
+                  self.log_perm_access(msg);
+                  Ok(())
+                }
               }
-            },
+            }
             PermissionAccessorState::Deny => Err(permission_denied()),
             _ => unreachable!(),
           }
@@ -201,23 +211,29 @@ impl DenoPermissions {
   }
 
   pub fn check_write(&self, filename: &str) -> DenoResult<()> {
+    let msg = &format!("write access to \"{}\"", filename);
     match self.allow_write.get_state() {
-      PermissionAccessorState::Allow => Ok(()),
+      PermissionAccessorState::Allow => {
+        self.log_perm_access(msg);
+        Ok(())
+      }
       state => {
         if check_path_white_list(filename, &self.write_whitelist) {
+          self.log_perm_access(msg);
           Ok(())
         } else {
           match state {
-            PermissionAccessorState::Ask => match self.try_permissions_prompt(
-              &format!("write access to \"{}\"", filename),
-            ) {
-              Err(e) => Err(e),
-              Ok(v) => {
-                self.allow_write.update_with_prompt_result(&v);
-                v.check()?;
-                Ok(())
+            PermissionAccessorState::Ask => {
+              match self.try_permissions_prompt(msg) {
+                Err(e) => Err(e),
+                Ok(v) => {
+                  self.allow_write.update_with_prompt_result(&v);
+                  v.check()?;
+                  self.log_perm_access(msg);
+                  Ok(())
+                }
               }
-            },
+            }
             PermissionAccessorState::Deny => Err(permission_denied()),
             _ => unreachable!(),
           }
@@ -227,8 +243,12 @@ impl DenoPermissions {
   }
 
   pub fn check_net(&self, host_and_port: &str) -> DenoResult<()> {
+    let msg = &format!("network access to \"{}\"", host_and_port);
     match self.allow_net.get_state() {
-      PermissionAccessorState::Allow => Ok(()),
+      PermissionAccessorState::Allow => {
+        self.log_perm_access(msg);
+        Ok(())
+      }
       state => {
         let parts = host_and_port.split(':').collect::<Vec<&str>>();
         if match parts.len() {
@@ -244,17 +264,22 @@ impl DenoPermissions {
           1 => self.net_whitelist.contains(parts[0]),
           _ => panic!("Failed to parse origin string: {}", host_and_port),
         } {
+          self.log_perm_access(msg);
           Ok(())
         } else {
-          self.check_net_inner(state, host_and_port)
+          self.check_net_inner(state, msg)
         }
       }
     }
   }
 
   pub fn check_net_url(&self, url: url::Url) -> DenoResult<()> {
+    let msg = &format!("network access to \"{}\"", url);
     match self.allow_net.get_state() {
-      PermissionAccessorState::Allow => Ok(()),
+      PermissionAccessorState::Allow => {
+        self.log_perm_access(msg);
+        Ok(())
+      }
       state => {
         let host = url.host().unwrap();
         let whitelist_result = {
@@ -270,9 +295,10 @@ impl DenoPermissions {
           }
         };
         if whitelist_result {
+          self.log_perm_access(msg);
           Ok(())
         } else {
-          self.check_net_inner(state, &url.to_string())
+          self.check_net_inner(state, msg)
         }
       }
     }
@@ -284,34 +310,38 @@ impl DenoPermissions {
     prompt_str: &str,
   ) -> DenoResult<()> {
     match state {
-      PermissionAccessorState::Ask => match self.try_permissions_prompt(
-        &format!("network access to \"{}\"", prompt_str),
-      ) {
-        Err(e) => Err(e),
-        Ok(v) => {
-          self.allow_net.update_with_prompt_result(&v);
-          v.check()?;
-          Ok(())
+      PermissionAccessorState::Ask => {
+        match self.try_permissions_prompt(prompt_str) {
+          Err(e) => Err(e),
+          Ok(v) => {
+            self.allow_net.update_with_prompt_result(&v);
+            v.check()?;
+            self.log_perm_access(prompt_str);
+            Ok(())
+          }
         }
-      },
+      }
       PermissionAccessorState::Deny => Err(permission_denied()),
       _ => unreachable!(),
     }
   }
 
   pub fn check_env(&self) -> DenoResult<()> {
+    let msg = "access to environment variables";
     match self.allow_env.get_state() {
-      PermissionAccessorState::Allow => Ok(()),
-      PermissionAccessorState::Ask => {
-        match self.try_permissions_prompt("access to environment variables") {
-          Err(e) => Err(e),
-          Ok(v) => {
-            self.allow_env.update_with_prompt_result(&v);
-            v.check()?;
-            Ok(())
-          }
-        }
+      PermissionAccessorState::Allow => {
+        self.log_perm_access(msg);
+        Ok(())
       }
+      PermissionAccessorState::Ask => match self.try_permissions_prompt(msg) {
+        Err(e) => Err(e),
+        Ok(v) => {
+          self.allow_env.update_with_prompt_result(&v);
+          v.check()?;
+          self.log_perm_access(msg);
+          Ok(())
+        }
+      },
       PermissionAccessorState::Deny => Err(permission_denied()),
     }
   }
@@ -326,6 +356,19 @@ impl DenoPermissions {
       return Err(permission_denied());
     };
     permission_prompt(message)
+  }
+
+  fn log_perm_access(&self, message: &str) {
+    if self.no_prompts.load(Ordering::SeqCst) {
+      return ();
+    }
+
+    eprintln!(
+      "{}",
+      Style::new()
+        .bold()
+        .paint(format!("ℹ️  Granted {}", message))
+    );
   }
 
   pub fn allows_run(&self) -> bool {
