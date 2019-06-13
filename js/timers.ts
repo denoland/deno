@@ -181,8 +181,7 @@ function fireTimers(): void {
 
 export type Args = unknown[];
 
-// @internal
-function checkThis<T>(thisArg: T): void {
+function checkThis(thisArg: unknown): void {
   if (thisArg !== null && thisArg !== undefined && thisArg !== window) {
     throw new TypeError("Illegal invocation");
   }
