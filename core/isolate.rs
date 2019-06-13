@@ -1124,7 +1124,7 @@ pub mod tests {
         // Large message that will overflow the shared space.
         let control = new Uint8Array(100 * 1024 * 1024);
         let response = Deno.core.dispatch(control);
-        // Async messages always have null response.
+        // Async messages always have number type response.
         assert(typeof response == "number");
         assert(asyncRecv == 0);
         "#,
