@@ -122,6 +122,17 @@ export function isObject(o: unknown): o is object {
   return o != null && typeof o === "object";
 }
 
+// Returns whether o is iterable.
+// @internal
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function isIterable(obj: any): obj is Iterable<any> {
+  // checks for null and undefined
+  if (obj == null) {
+    return false;
+  }
+  return typeof obj[Symbol.iterator] === "function";
+}
+
 // @internal
 export function requiredArguments(
   name: string,
