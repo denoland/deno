@@ -4,13 +4,15 @@
 // Deno core.  These are not intended to be used directly by runtime users of
 // Deno and therefore do not flow through to the runtime type library.
 
-declare type MessageCallback = (promiseId: number, msg: Uint8Array) => void;
+declare interface MessageCallback {
+  (msg: Uint8Array): void;
+}
 
 declare interface DenoCore {
   dispatch(
     control: Uint8Array,
     zeroCopy?: ArrayBufferView | null
-  ): Uint8Array | null | number;
+  ): Uint8Array | null;
   setAsyncHandler(cb: MessageCallback): void;
   sharedQueue: {
     head(): number;
