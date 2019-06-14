@@ -123,14 +123,16 @@ export function isObject(o: unknown): o is object {
 }
 
 // Returns whether o is iterable.
-// @internal
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function isIterable(obj: any): obj is Iterable<any> {
+export function isIterable<T, P extends keyof T, K extends T[P]>(
+  o: T
+): o is T & Iterable<[P, K]> {
   // checks for null and undefined
-  if (obj == null) {
+  if (o == null) {
     return false;
   }
-  return typeof obj[Symbol.iterator] === "function";
+  return (
+    typeof ((o as unknown) as Iterable<[P, K]>)[Symbol.iterator] === "function"
+  );
 }
 
 // @internal
