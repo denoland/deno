@@ -161,17 +161,17 @@ Iterate all files in a directory recursively.
 import { walk, walkSync } from "https://deno.land/std/fs/mod.ts";
 
 for (const fileInfo of walkSync()) {
-  console.log(fileInfo.path);
+  console.log(fileInfo.filename);
 }
 
 // Async
-async function printFilesPath() {
+async function printFilesNames() {
   for await (const fileInfo of walk()) {
-    console.log(fileInfo.path);
+    console.log(fileInfo.filename);
   }
 }
 
-printFilesPath().then(() => console.log("Done!"));
+printFilesNames().then(() => console.log("Done!"));
 ```
 
 ### writeJson
