@@ -75,7 +75,7 @@ TEST(LibDenoTest, RecvReturnBar) {
     EXPECT_EQ(buf.data_ptr[1], 'b');
     EXPECT_EQ(buf.data_ptr[2], 'c');
     uint8_t response[] = {'b', 'a', 'r'};
-    deno_respond(d, user_data, {response, sizeof response}, nullptr);
+    deno_respond(d, user_data, {response, sizeof response});
   };
   Deno* d = deno_new(deno_config{0, snapshot, empty, recv_cb, nullptr});
   deno_execute(d, d, "a.js", "RecvReturnBar()");

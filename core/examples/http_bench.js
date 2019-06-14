@@ -13,6 +13,7 @@ const responseBuf = new Uint8Array(
     .map(c => c.charCodeAt(0))
 );
 const promiseMap = new Map();
+let nextPromiseId = 1;
 
 function assert(cond) {
   if (!cond) {
@@ -36,8 +37,8 @@ const scratchBytes = new Uint8Array(
 );
 assert(scratchBytes.byteLength === 4 * 4);
 
-function send(isSync, opId, arg, zeroCopy = null) {
-  scratch32[0] = isSync;
+function send(promiseId, opId, arg, zeroCopy = null) {
+  scratch32[0] = promiseId;
   scratch32[1] = opId;
   scratch32[2] = arg;
   scratch32[3] = -1;
@@ -46,9 +47,10 @@ function send(isSync, opId, arg, zeroCopy = null) {
 
 /** Returns Promise<number> */
 function sendAsync(opId, arg, zeroCopy = null) {
-  const promiseId = send(false, opId, arg, zeroCopy);
+  const promiseId = nextPromiseId++;
   const p = createResolvable();
   promiseMap.set(promiseId, p);
+  send(promiseId, opId, arg, zeroCopy);
   return p;
 }
 
@@ -56,7 +58,7 @@ function recordFromBuf(buf) {
   assert(buf.byteLength === 16);
   const buf32 = new Int32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
   return {
-    isSync: !!buf32[0],
+    promiseId: buf32[0],
     opId: buf32[1],
     arg: buf32[2],
     result: buf32[3]
@@ -65,14 +67,14 @@ function recordFromBuf(buf) {
 
 /** Returns i32 number */
 function sendSync(opId, arg) {
-  const buf = send(true, opId, arg);
+  const buf = send(0, opId, arg);
   const record = recordFromBuf(buf);
   return record.result;
 }
 
-function handleAsyncMsgFromRust(promiseId, buf) {
+function handleAsyncMsgFromRust(buf) {
   const record = recordFromBuf(buf);
-  const { result } = record;
+  const { promiseId, result } = record;
   const p = promiseMap.get(promiseId);
   promiseMap.delete(promiseId);
   p.resolve(result);
