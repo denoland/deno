@@ -15,6 +15,7 @@ import { sendAsyncMinimal } from "./dispatch_minimal";
 import * as msg from "gen/cli/msg_generated";
 import { assert } from "./util";
 import * as flatbuffers from "./flatbuffers";
+import { DenoError } from "./errors";
 
 const OP_READ = 1;
 const OP_WRITE = 2;
@@ -107,7 +108,7 @@ export function readSync(rid: number, p: Uint8Array): ReadResult {
 export async function read(rid: number, p: Uint8Array): Promise<ReadResult> {
   const nread = await sendAsyncMinimal(OP_READ, rid, p);
   if (nread < 0) {
-    throw new DenoError(ErrorKind.BrokenPipe, "read error");
+    throw new DenoError(msg.ErrorKind.BrokenPipe, "read error");
   } else if (nread == 0) {
     return { nread, eof: true };
   } else {
