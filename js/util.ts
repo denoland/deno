@@ -122,6 +122,19 @@ export function isObject(o: unknown): o is object {
   return o != null && typeof o === "object";
 }
 
+// Returns whether o is iterable.
+export function isIterable<T, P extends keyof T, K extends T[P]>(
+  o: T
+): o is T & Iterable<[P, K]> {
+  // checks for null and undefined
+  if (o == null) {
+    return false;
+  }
+  return (
+    typeof ((o as unknown) as Iterable<[P, K]>)[Symbol.iterator] === "function"
+  );
+}
+
 // @internal
 export function requiredArguments(
   name: string,
