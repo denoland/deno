@@ -339,6 +339,29 @@ Demonstrates breaking the input up by space delimiter instead of by lines:
             .takes_value(true),
         ).arg(Arg::with_name("code").takes_value(true).required(true)),
     ).subcommand(
+      SubCommand::with_name("install")
+        .settings(&[
+          AppSettings::DisableVersion,
+          AppSettings::DisableHelpSubcommand,
+          AppSettings::AllowExternalSubcommands,
+          AppSettings::SubcommandRequired,
+        ])
+        .about("Install script as executable")
+        .long_about(
+"Automatically downloads deno_installer dependencies on first run.
+
+  deno install file_server https://deno.land/std/http/file_server.ts --allow-net --allow-read",
+        ).arg(
+          Arg::with_name("exe_name")
+            .help("Executable name")
+            .required(true),
+        ).subcommand(
+          // this is a fake subcommand - it's used in conjunction with
+          // AppSettings:AllowExternalSubcommand to treat it as an
+          // entry point script
+          SubCommand::with_name("<script>").about("Script URL"),
+        ),
+    ).subcommand(
       // this is a fake subcommand - it's used in conjunction with
       // AppSettings:AllowExternalSubcommand to treat it as an
       // entry point script
@@ -485,6 +508,8 @@ fn parse_run_args(mut flags: DenoFlags, matches: &ArgMatches) -> DenoFlags {
 
 /// Used for `deno fmt <files>...` subcommand
 const PRETTIER_URL: &str = "https://deno.land/std@v0.7.0/prettier/main.ts";
+/// Used for `deno install...` subcommand
+const INSTALLER_URL: &str = "https://deno.land/std@a3015be/installer/mod.ts";
 
 /// These are currently handled subcommands.
 /// There is no "Help" subcommand because it's handled by `clap::App` itself.
@@ -494,6 +519,7 @@ pub enum DenoSubcommand {
   Eval,
   Fetch,
   Info,
+  Install,
   Repl,
   Run,
   Types,
@@ -582,6 +608,30 @@ pub fn flags_from_vec(
       let file: &str = info_match.value_of("file").unwrap();
       argv.extend(vec![file.to_string()]);
       DenoSubcommand::Info
+    }
+    ("install", Some(install_match)) => {
+      flags.allow_read = true;
+      flags.allow_write = true;
+      flags.allow_net = true;
+      flags.allow_env = true;
+      flags.allow_run = true;
+      argv.push(INSTALLER_URL.to_string());
+
+      let exe_name: &str = install_match.value_of("exe_name").unwrap();
+      match install_match.subcommand() {
+        (script_url, Some(script_match)) => {
+          argv.extend(vec![exe_name.to_string(), script_url.to_string()]);
+          let flags: Vec<String> = script_match
+            .values_of("")
+            .unwrap()
+            .map(String::from)
+            .collect();
+          argv.extend(flags);
+
+          DenoSubcommand::Install
+        }
+        _ => unreachable!(),
+      }
     }
     ("types", Some(_)) => DenoSubcommand::Types,
     ("run", Some(run_match)) => {
