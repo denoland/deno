@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { URL } from "./url";
-import { requiredArguments } from "./util";
+import { requiredArguments, isIterable } from "./util";
 
 export class URLSearchParams {
   private params: Array<[string, string]> = [];
@@ -14,6 +14,11 @@ export class URLSearchParams {
 
     if (Array.isArray(init)) {
       this._handleArrayInitialization(init);
+      return;
+    }
+
+    if (isIterable(init)) {
+      this.params = [...init];
       return;
     }
 

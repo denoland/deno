@@ -217,3 +217,13 @@ test(function urlSearchParamsDeletingAppendedMultiple(): void {
   params.delete("first");
   assertEquals(params.has("first"), false);
 });
+
+// ref: https://github.com/web-platform-tests/wpt/blob/master/url/urlsearchparams-constructor.any.js#L176-L182
+test(function urlSearchParamsCustomSymbolIterator(): void {
+  const params = new URLSearchParams();
+  params[Symbol.iterator] = function*(): IterableIterator<[string, string]> {
+    yield ["a", "b"];
+  };
+  const params1 = new URLSearchParams((params as unknown) as string[][]);
+  assertEquals(params1.get("a"), "b");
+});
