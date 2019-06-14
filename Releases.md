@@ -6,6 +6,26 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.9.0 / 2019.06.15
+
+In deno:
+
+- feat: add deno install command (#2522)
+- feat: URLSearchParams should work with custom iterator (#2512)
+- feat: default output filename for deno bundle (#2484)
+- feat: expose window.Response (#2515)
+- feat: Add --seed for setting RNG seed (#2483)
+- feat: Import maps (#2360)
+- fix: setTimeout API adjustments (#2511, #2497)
+- fix: URL and URLSearchParams bugs (#2495, #2488)
+- fix: make global request type an interface (#2503)
+- upgrade: V8 to 7.7.37 (#2492)
+
+In deno_std:
+
+- feat: installer (denoland/deno_std#489)
+- feat: bundle loader (denoland/deno_std#480)
+
 ### v0.8.0 / 2019.06.08
 
 In deno:
