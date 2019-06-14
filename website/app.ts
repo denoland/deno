@@ -291,7 +291,9 @@ export function main(): void {
 
     showSpinner();
 
-    drawCharts(u).then(hideSpinner).catch(hideSpinner);
+    drawCharts(u)
+      .then(hideSpinner)
+      .catch(hideSpinner);
   }
   updateCharts();
 
