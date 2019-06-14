@@ -160,7 +160,8 @@ void deno_respond(Deno* d_, void* user_data, deno_buf buf, int* promise_id) {
     if (promise_id != nullptr) {
       auto number = v8::Number::New(d->isolate_, *promise_id);
       d->current_args_->GetReturnValue().Set(number);
-    } else if (buf.data_ptr != nullptr) {
+    } else {
+      CHECK_NOT_NULL(buf.data_ptr);
       auto ab = deno::ImportBuf(d, buf);
       d->current_args_->GetReturnValue().Set(ab);
     }
