@@ -44,7 +44,7 @@ const OP_CLOSE: i32 = 5;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Record {
-  pub is_sync: i32,
+  pub promise_id: i32,
   pub op_id: i32,
   pub arg: i32,
   pub result: i32,
@@ -52,8 +52,8 @@ pub struct Record {
 
 impl Into<Buf> for Record {
   fn into(self) -> Buf {
-    let buf32 =
-      vec![self.is_sync, self.op_id, self.arg, self.result].into_boxed_slice();
+    let buf32 = vec![self.promise_id, self.op_id, self.arg, self.result]
+      .into_boxed_slice();
     let ptr = Box::into_raw(buf32) as *mut [u8; 16];
     unsafe { Box::from_raw(ptr) }
   }
@@ -65,7 +65,7 @@ impl From<&[u8]> for Record {
     let ptr = s.as_ptr() as *const i32;
     let ints = unsafe { std::slice::from_raw_parts(ptr, 4) };
     Record {
-      is_sync: ints[0],
+      promise_id: ints[0],
       op_id: ints[1],
       arg: ints[2],
       result: ints[3],
@@ -81,7 +81,7 @@ impl From<Buf> for Record {
     let ints: Box<[i32]> = unsafe { Box::from_raw(ptr) };
     assert_eq!(ints.len(), 4);
     Record {
-      is_sync: ints[0],
+      promise_id: ints[0],
       op_id: ints[1],
       arg: ints[2],
       result: ints[3],
@@ -92,7 +92,7 @@ impl From<Buf> for Record {
 #[test]
 fn test_record_from() {
   let r = Record {
-    is_sync: 1,
+    promise_id: 1,
     op_id: 2,
     arg: 3,
     result: 4,
@@ -111,9 +111,9 @@ fn test_record_from() {
 
 pub type HttpBenchOp = dyn Future<Item = i32, Error = std::io::Error> + Send;
 
-fn dispatch(control: &[u8], zero_copy_buf: Option<PinnedBuf>) -> CoreOp {
+fn dispatch(control: &[u8], zero_copy_buf: Option<PinnedBuf>) -> Op {
   let record = Record::from(control);
-  let is_sync = record.is_sync == 1;
+  let is_sync = record.promise_id == 0;
   let http_bench_op = match record.op_id {
     OP_LISTEN => {
       assert!(is_sync);

@@ -5,8 +5,14 @@ import { core } from "./core";
 
 const DISPATCH_MINIMAL_TOKEN = 0xcafe;
 const promiseTableMin = new Map<number, util.Resolvable<number>>();
+let _nextPromiseId = 0;
+
+export function nextPromiseId(): number {
+  return _nextPromiseId++;
+}
 
 export interface RecordMinimal {
+  promiseId: number;
   opId: number;
   arg: number;
   result: number;
@@ -22,9 +28,10 @@ export function hasMinimalToken(i32: Int32Array): boolean {
 export function recordFromBufMinimal(buf32: Int32Array): null | RecordMinimal {
   if (hasMinimalToken(buf32)) {
     return {
-      opId: buf32[1],
-      arg: buf32[2],
-      result: buf32[3]
+      promiseId: buf32[1],
+      opId: buf32[2],
+      arg: buf32[3],
+      result: buf32[4]
     };
   }
   return null;
@@ -39,13 +46,12 @@ const scratchBytes = new Uint8Array(
 util.assert(scratchBytes.byteLength === scratch32.length * 4);
 
 export function handleAsyncMsgFromRustMinimal(
-  promiseId: number,
   ui8: Uint8Array,
   record: RecordMinimal
 ): void {
   // Fast and new
   util.log("minimal handleAsyncMsgFromRust ", ui8.length);
-  const { result } = record;
+  const { promiseId, result } = record;
   const promise = promiseTableMin.get(promiseId);
   promiseTableMin.delete(promiseId);
   promise!.resolve(result);
@@ -56,16 +62,16 @@ export function sendAsyncMinimal(
   arg: number,
   zeroCopy: Uint8Array
 ): Promise<number> {
+  const promiseId = nextPromiseId(); // AKA cmdId
+
   scratch32[0] = DISPATCH_MINIMAL_TOKEN;
-  scratch32[1] = opId;
-  scratch32[2] = arg;
-
-  const promiseId = core.dispatch(scratchBytes, zeroCopy);
-
-  util.assert(typeof promiseId == "number");
+  scratch32[1] = promiseId;
+  scratch32[2] = opId;
+  scratch32[3] = arg;
 
   const promise = util.createResolvable<number>();
-  promiseTableMin.set(promiseId as number, promise);
+  promiseTableMin.set(promiseId, promise);
 
+  core.dispatch(scratchBytes, zeroCopy);
   return promise;
 }
