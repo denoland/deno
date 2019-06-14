@@ -267,6 +267,7 @@ extern "C" {
     i: *const isolate,
     user_data: *const c_void,
     buf: deno_buf,
+    promise_id: *const c_int,
   );
   pub fn deno_pinned_buf_delete(buf: &mut deno_pinned_buf);
   pub fn deno_execute(
