@@ -28,6 +28,7 @@ use crate::worker::Worker;
 use deno::js_check;
 use deno::Buf;
 use deno::JSError;
+use deno::Loader;
 use deno::ModuleSpecifier;
 use deno::Op;
 use deno::PinnedBuf;
@@ -500,19 +501,9 @@ fn op_fetch_module_meta_data(
 
   let use_cache = !state.flags.reload;
   let no_fetch = state.flags.no_fetch;
-
-  // TODO(bartlomieju): I feel this is wrong - specifier is only resolved if there's an
-  //  import map - why it is not always resolved? Eg. "bad-module.ts" will return NotFound
-  //  error whilst it should return RelativeUrlWithCannotBeABaseBase error
-  let resolved_specifier = match &state.import_map {
-    Some(import_map) => match import_map.resolve(specifier, referrer) {
-      Ok(result) => match result {
-        Some(module_specifier) => module_specifier.to_string(),
-        None => specifier.to_string(),
-      },
-      Err(err) => return odd_future(DenoError::from(err)),
-    },
-    None => specifier.to_string(),
+  let resolved_specifier = match state.resolve(specifier, referrer, false) {
+    Ok(module_specifier) => module_specifier.to_string(),
+    Err(err) => return odd_future(err),
   };
 
   let fut = state
