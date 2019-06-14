@@ -177,3 +177,57 @@ test(async function timeoutCallbackThis(): Promise<void> {
   setTimeout(obj.foo, 1);
   await promise;
 });
+
+test(async function timeoutBindThis(): Promise<void> {
+  function noop(): void {}
+
+  const thisCheckPassed = [null, undefined, window, globalThis];
+
+  const thisCheckFailed = [
+    0,
+    "",
+    true,
+    false,
+    {},
+    [],
+    "foo",
+    (): void => {},
+    Object.prototype
+  ];
+
+  thisCheckPassed.forEach(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (thisArg: any): void => {
+      let hasThrown = 0;
+      try {
+        setTimeout.call(thisArg, noop, 1);
+        hasThrown = 1;
+      } catch (err) {
+        if (err instanceof TypeError) {
+          hasThrown = 2;
+        } else {
+          hasThrown = 3;
+        }
+      }
+      assertEquals(hasThrown, 1);
+    }
+  );
+
+  thisCheckFailed.forEach(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (thisArg: any): void => {
+      let hasThrown = 0;
+      try {
+        setTimeout.call(thisArg, noop, 1);
+        hasThrown = 1;
+      } catch (err) {
+        if (err instanceof TypeError) {
+          hasThrown = 2;
+        } else {
+          hasThrown = 3;
+        }
+      }
+      assertEquals(hasThrown, 2);
+    }
+  );
+});

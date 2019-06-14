@@ -179,9 +179,8 @@ fn main() {
       filename: "http_bench.js",
     });
 
-    let mut config = deno::Config::default();
-    config.dispatch(dispatch);
-    let isolate = deno::Isolate::new(startup_data, config);
+    let mut isolate = deno::Isolate::new(startup_data, false);
+    isolate.set_dispatch(dispatch);
 
     isolate.then(|r| {
       js_check(r);

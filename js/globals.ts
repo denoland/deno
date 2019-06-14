@@ -117,8 +117,8 @@ export type TextEncoder = textEncoding.TextEncoder;
 window.TextDecoder = textEncoding.TextDecoder;
 export type TextDecoder = textEncoding.TextDecoder;
 
-window.Request = request.Request;
-export type Request = request.Request;
+window.Request = request.Request as domTypes.RequestConstructor;
+export type Request = domTypes.Request;
 
 //window.Response = response.Response;
 //export type Response = response.Response;

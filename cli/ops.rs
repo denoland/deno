@@ -24,13 +24,12 @@ use crate::state::ThreadSafeState;
 use crate::tokio_util;
 use crate::tokio_write;
 use crate::version;
-use crate::worker::root_specifier_to_url;
 use crate::worker::Worker;
 use deno::js_check;
 use deno::Buf;
 use deno::CoreOp;
 use deno::JSError;
-//use deno::Loader;
+use deno::ModuleSpecifier;
 use deno::Op;
 use deno::OpResult;
 use deno::PinnedBuf;
@@ -348,7 +347,9 @@ fn op_start(
   let deno_version = version::DENO;
   let deno_version_off = builder.create_string(deno_version);
 
-  let main_module = state.main_module().map(|m| builder.create_string(&m));
+  let main_module = state
+    .main_module()
+    .map(|m| builder.create_string(&m.to_string()));
 
   let xeval_delim = state
     .flags
@@ -503,15 +504,13 @@ fn op_fetch_module_meta_data(
   //  import map - why it is not always resolved? Eg. "bad-module.ts" will return NotFound
   //  error whilst it should return RelativeUrlWithCannotBeABaseBase error
   let resolved_specifier = match &state.import_map {
-    Some(import_map) => {
-      match import_map.resolve(specifier, referrer) {
-        Ok(result) => match result {
-          Some(url) => url.clone(),
-          None => specifier.to_string(),
-        },
-        Err(err) => panic!("error resolving using import map: {:?}", err), // TODO: this should be coerced to DenoError
-      }
-    }
+    Some(import_map) => match import_map.resolve(specifier, referrer) {
+      Ok(result) => match result {
+        Some(module_specifier) => module_specifier.to_string(),
+        None => specifier.to_string(),
+      },
+      Err(err) => return Err(DenoError::from(err)),
+    },
     None => specifier.to_string(),
   };
 
@@ -1964,10 +1963,10 @@ fn op_create_worker(
   js_check(worker.execute("denoMain()"));
   js_check(worker.execute("workerMain()"));
 
-  let specifier_url = root_specifier_to_url(specifier)?;
+  let module_specifier = ModuleSpecifier::resolve_root(specifier)?;
 
   let op = worker
-    .execute_mod_async(&specifier_url, false)
+    .execute_mod_async(&module_specifier, false)
     .and_then(move |()| {
       let mut workers_tl = parent_state.workers.lock().unwrap();
       workers_tl.insert(rid, worker.shared());
@@ -1987,7 +1986,7 @@ fn op_create_worker(
     }).map_err(|err| match err {
       errors::RustOrJsError::Js(_) => errors::worker_init_failed(),
       errors::RustOrJsError::Rust(err) => err,
-    }).map_err(DenoError::from);
+    });
 
   let result = op.wait()?;
   Ok(Op::Sync(result))
