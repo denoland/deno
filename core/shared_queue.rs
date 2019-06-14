@@ -32,7 +32,7 @@ const INDEX_RECORDS: usize = 3 + MAX_RECORDS;
 /// Byte offset of where the records begin. Also where the head starts.
 const HEAD_INIT: usize = 4 * INDEX_RECORDS;
 /// A rough guess at how big we should make the shared buffer in bytes.
-pub const RECOMMENDED_SIZE: usize = 128 * MAX_RECORDS;
+pub const RECOMMENDED_SIZE: usize = 256 * MAX_RECORDS;
 
 pub struct SharedQueue {
   bytes: Vec<u8>,

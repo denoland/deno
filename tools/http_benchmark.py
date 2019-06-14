@@ -201,4 +201,5 @@ if __name__ == '__main__':
     if len(sys.argv) < 2:
         print "Usage ./tools/http_benchmark.py target/debug/deno"
         sys.exit(1)
+    deno_tcp(sys.argv[1])
     deno_http(sys.argv[1])
