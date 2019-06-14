@@ -359,16 +359,14 @@ impl DenoPermissions {
   }
 
   fn log_perm_access(&self, message: &str) {
-    if self.no_prompts.load(Ordering::SeqCst) {
-      return ();
+    if !self.no_prompts.load(Ordering::SeqCst) {
+      eprintln!(
+        "{}",
+        Style::new()
+          .bold()
+          .paint(format!("ℹ️  Granted {}", message))
+      );
     }
-
-    eprintln!(
-      "{}",
-      Style::new()
-        .bold()
-        .paint(format!("ℹ️  Granted {}", message))
-    );
   }
 
   pub fn allows_run(&self) -> bool {
