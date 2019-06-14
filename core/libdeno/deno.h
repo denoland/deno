@@ -81,8 +81,10 @@ void deno_execute(Deno* d, void* user_data, const char* js_filename,
 // deno_respond sends up to one message back for every deno_recv_cb made.
 //
 // If this is called during deno_recv_cb, the issuing libdeno.send() in
-// javascript will synchronously return the specified buf as an ArrayBuffer (or
-// null if buf is empty).
+// javascript will synchronously return the specified promise_id(number)
+// or buf(Uint8Array) (or null if buf and promise_id are both null/empty).
+// Calling with non-null for both buf and promise_id will result in the
+// promise_id being returned.
 //
 // If this is called after deno_recv_cb has returned, the deno_respond
 // will call into the JS callback specified by libdeno.recv().
@@ -92,7 +94,7 @@ void deno_execute(Deno* d, void* user_data, const char* js_filename,
 // releasing its memory.)
 //
 // If a JS exception was encountered, deno_last_exception() will be non-NULL.
-void deno_respond(Deno* d, void* user_data, deno_buf buf);
+void deno_respond(Deno* d, void* user_data, deno_buf buf, int* promise_id);
 
 // consumes zero_copy
 void deno_pinned_buf_delete(deno_pinned_buf* buf);

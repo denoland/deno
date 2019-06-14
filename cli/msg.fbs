@@ -136,6 +136,8 @@ enum ErrorKind: byte {
   OpNotAvaiable,
   WorkerInitFailed,
   UnixError,
+  NoAsyncSupport,
+  NoSyncSupport,
   ImportMapError,
 }
 
@@ -153,7 +155,6 @@ enum MediaType: byte {
 }
 
 table Base {
-  cmd_id: uint32;
   sync: bool = false;
   error_kind: ErrorKind = NoError;
   error: string;

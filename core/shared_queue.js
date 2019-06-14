@@ -151,12 +151,25 @@ SharedQueue Binary Layout
 
   function handleAsyncMsgFromRust(buf) {
     if (buf) {
-      asyncHandler(buf);
+      handleAsyncMsgFromRustInner(buf);
     } else {
       while ((buf = shift()) != null) {
-        asyncHandler(buf);
+        handleAsyncMsgFromRustInner(buf);
       }
     }
+  }
+
+  function handleAsyncMsgFromRustInner(buf) {
+    // DataView to extract cmdId value.
+    const dataView = new DataView(buf.buffer, buf.byteOffset, 4);
+    const promiseId = dataView.getInt32(0);
+    // Uint8 buffer view shifted right and shortened 4 bytes to remove cmdId from view window.
+    const bufViewFinal = new Uint8Array(
+      buf.buffer,
+      buf.byteOffset + 4,
+      buf.byteLength - 4
+    );
+    asyncHandler(promiseId, bufViewFinal);
   }
 
   function dispatch(control, zeroCopy = null) {
