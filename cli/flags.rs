@@ -509,7 +509,7 @@ fn parse_run_args(mut flags: DenoFlags, matches: &ArgMatches) -> DenoFlags {
 /// Used for `deno fmt <files>...` subcommand
 const PRETTIER_URL: &str = "https://deno.land/std@v0.7.0/prettier/main.ts";
 /// Used for `deno install...` subcommand
-const INSTALLER_URL: &str = "https://deno.land/std@a3015be/installer/mod.ts";
+const INSTALLER_URL: &str = "https://deno.land/std@1679ba/installer/mod.ts";
 
 /// These are currently handled subcommands.
 /// There is no "Help" subcommand because it's handled by `clap::App` itself.
