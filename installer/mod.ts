@@ -159,11 +159,11 @@ export async function install(
   const installerDir = getInstallerDir();
   createDirIfNotExists(installerDir);
 
-  const FILE_PATH = path.join(installerDir, moduleName);
+  const filePath = path.join(installerDir, moduleName);
 
   let fileInfo;
   try {
-    fileInfo = await stat(FILE_PATH);
+    fileInfo = await stat(filePath);
   } catch (e) {
     // pass
   }
@@ -209,9 +209,9 @@ export async function install(
 
   // TODO: add windows Version
   const template = `#/bin/sh\n${commands.join(" ")}`;
-  await writeFile(FILE_PATH, encoder.encode(template));
+  await writeFile(filePath, encoder.encode(template));
 
-  const makeExecutable = run({ args: ["chmod", "+x", FILE_PATH] });
+  const makeExecutable = run({ args: ["chmod", "+x", filePath] });
   const { code } = await makeExecutable.status();
   makeExecutable.close();
 
@@ -219,7 +219,9 @@ export async function install(
     throw new Error("Failed to make file executable");
   }
 
-  console.log(`✅ Successfully installed ${moduleName}.`);
+  console.log(`✅ Successfully installed ${moduleName}`);
+  console.log(filePath);
+
   // TODO: add Windows version
   if (!checkIfExistsInPath(installerDir)) {
     console.log("\nℹ️  Add ~/.deno/bin to PATH");
@@ -231,17 +233,17 @@ export async function install(
 
 export async function uninstall(moduleName: string): Promise<void> {
   const installerDir = getInstallerDir();
-  const FILE_PATH = path.join(installerDir, moduleName);
+  const filePath = path.join(installerDir, moduleName);
 
   try {
-    await stat(FILE_PATH);
+    await stat(filePath);
   } catch (e) {
     if (e instanceof Deno.DenoError && e.kind === Deno.ErrorKind.NotFound) {
       throw new Error(`ℹ️  ${moduleName} not found`);
     }
   }
 
-  await remove(FILE_PATH);
+  await remove(filePath);
   console.log(`ℹ️  Uninstalled ${moduleName}`);
 }
 
