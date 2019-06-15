@@ -6,6 +6,7 @@ use crate::flags::DenoFlags;
 use ansi_term::Style;
 use crate::errors::permission_denied;
 use crate::errors::DenoResult;
+use log;
 use std::collections::HashSet;
 use std::fmt;
 use std::io;
@@ -359,7 +360,7 @@ impl DenoPermissions {
   }
 
   fn log_perm_access(&self, message: &str) {
-    if !self.no_prompts.load(Ordering::SeqCst) {
+    if log_enabled!(log::Level::Info) {
       eprintln!(
         "{}",
         Style::new()

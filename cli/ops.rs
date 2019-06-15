@@ -351,7 +351,10 @@ fn op_start(
     .clone()
     .map(|m| builder.create_string(&m));
 
-  let debug_flag = state.flags.log_level.map_or(false, |l| l == log::Level::Debug);
+  let debug_flag = state
+    .flags
+    .log_level
+    .map_or(false, |l| l == log::Level::Debug);
 
   let inner = msg::StartRes::create(
     &mut builder,
