@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
 use crate::deno_dir;
+use log::Level;
 
 // Creates vector of strings, Vec<String>
 macro_rules! svec {
@@ -9,7 +10,7 @@ macro_rules! svec {
 
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct DenoFlags {
-  pub log_debug: bool,
+  pub log_level: Option<Level>,
   pub version: bool,
   pub reload: bool,
   /// When the `--config`/`-c` flag is used to pass the name, this will be set
@@ -127,10 +128,19 @@ To get help on the another subcommands (run in this case):
 
   deno help run")
     .arg(
+      Arg::with_name("log-level")
+        .short("L")
+        .long("log-level")
+        .help("Set log level")
+        .takes_value(true)
+        .possible_values(&["debug", "info"])
+        .global(true),
+    ).arg(
       Arg::with_name("log-debug")
         .short("D")
         .long("log-debug")
         .help("Log debug output")
+        .conflicts_with("log-level")
         .global(true),
     ).arg(
       Arg::with_name("reload")
@@ -395,8 +405,15 @@ fn resolve_paths(paths: Vec<String>) -> Vec<String> {
 pub fn parse_flags(matches: &ArgMatches) -> DenoFlags {
   let mut flags = DenoFlags::default();
 
+  if matches.is_present("log-level") {
+    flags.log_level = match matches.value_of("log-level").unwrap() {
+      "debug" => Some(Level::Debug),
+      "info" => Some(Level::Info),
+      _ => unreachable!(),
+    };
+  }
   if matches.is_present("log-debug") {
-    flags.log_debug = true;
+    flags.log_level = Some(Level::Debug);
   }
   if matches.is_present("version") {
     flags.version = true;
@@ -724,7 +741,7 @@ mod tests {
     assert_eq!(
       flags,
       DenoFlags {
-        log_debug: true,
+        log_level: Some(Level::Debug),
         reload: true,
         ..DenoFlags::default()
       }
@@ -747,7 +764,7 @@ mod tests {
       flags,
       DenoFlags {
         reload: true,
-        log_debug: true,
+        log_level: Some(Level::Debug),
         allow_write: true,
         ..DenoFlags::default()
       }
@@ -763,7 +780,7 @@ mod tests {
     assert_eq!(
       flags,
       DenoFlags {
-        log_debug: true,
+        log_level: Some(Level::Debug),
         reload: true,
         allow_write: true,
         ..DenoFlags::default()
@@ -1166,7 +1183,7 @@ mod tests {
       flags,
       DenoFlags {
         reload: true,
-        log_debug: true,
+        log_level: Some(Level::Debug),
         allow_net: true,
         allow_read: true,
         ..DenoFlags::default()
@@ -1253,6 +1270,21 @@ mod tests {
       DenoFlags {
         seed: Some(250 as u64),
         v8_flags: Some(svec!["deno", "--expose-gc", "--random-seed=250"]),
+        ..DenoFlags::default()
+      }
+    );
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "script.ts"])
+  }
+
+  #[test]
+  fn test_flags_from_vec_31() {
+    let (flags, subcommand, argv) =
+      flags_from_vec(svec!["deno", "--log-level=debug", "script.ts"]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        log_level: Some(Level::Debug),
         ..DenoFlags::default()
       }
     );
