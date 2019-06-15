@@ -621,13 +621,14 @@ pub fn flags_from_vec(
       match install_match.subcommand() {
         (script_url, Some(script_match)) => {
           argv.extend(vec![exe_name.to_string(), script_url.to_string()]);
-          let flags: Vec<String> = script_match
-            .values_of("")
-            .unwrap()
-            .map(String::from)
-            .collect();
-          argv.extend(flags);
-
+          if script_match.is_present("") {
+            let flags: Vec<String> = script_match
+              .values_of("")
+              .unwrap()
+              .map(String::from)
+              .collect();
+            argv.extend(flags);
+          }
           DenoSubcommand::Install
         }
         _ => unreachable!(),
@@ -1235,7 +1236,7 @@ mod tests {
       }
     );
     assert_eq!(subcommand, DenoSubcommand::Run);
-    assert_eq!(argv, svec!["deno", "script.ts"])
+    assert_eq!(argv, svec!["deno", "script.ts"]);
   }
 
   #[test]
@@ -1257,6 +1258,69 @@ mod tests {
       }
     );
     assert_eq!(subcommand, DenoSubcommand::Run);
-    assert_eq!(argv, svec!["deno", "script.ts"])
+    assert_eq!(argv, svec!["deno", "script.ts"]);
+  }
+
+  #[test]
+  fn test_flags_from_vec_30() {
+    let (flags, subcommand, argv) = flags_from_vec(svec![
+      "deno",
+      "install",
+      "deno_colors",
+      "https://deno.land/std/examples/colors.ts"
+    ]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        allow_write: true,
+        allow_net: true,
+        allow_read: true,
+        allow_env: true,
+        allow_run: true,
+        ..DenoFlags::default()
+      }
+    );
+    assert_eq!(subcommand, DenoSubcommand::Install);
+    assert_eq!(
+      argv,
+      svec![
+        "deno",
+        INSTALLER_URL,
+        "deno_colors",
+        "https://deno.land/std/examples/colors.ts"
+      ]
+    );
+
+    let (flags, subcommand, argv) = flags_from_vec(svec![
+      "deno",
+      "install",
+      "file_server",
+      "https://deno.land/std/http/file_server.ts",
+      "--allow-net",
+      "--allow-read"
+    ]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        allow_write: true,
+        allow_net: true,
+        allow_read: true,
+        allow_env: true,
+        allow_run: true,
+        ..DenoFlags::default()
+      }
+    );
+    assert_eq!(subcommand, DenoSubcommand::Install);
+    assert_eq!(
+      argv,
+      svec![
+        "deno",
+        INSTALLER_URL,
+        "file_server",
+        "https://deno.land/std/http/file_server.ts",
+        "--allow-net",
+        "--allow-read"
+      ]
+    );
   }
 }
