@@ -132,7 +132,13 @@ export async function workerMain(): Promise<void> {
 
     if (window["onmessage"]) {
       const event = { data };
-      window.onmessage(event);
+      log("running on message");
+      try {
+        window.onmessage(event);
+      } catch (e) {
+        log("caught error in worker", e);
+        // TODO: pass to host
+      }
     }
 
     if (!window["onmessage"]) {
@@ -142,7 +148,7 @@ export async function workerMain(): Promise<void> {
 }
 
 export interface Worker {
-  onerror?: () => void;
+  onerror?: (e: { error: any; message: string }) => void;
   onmessage?: (e: { data: any }) => void;
   onmessageerror?: () => void;
   postMessage(data: any): void;
@@ -153,7 +159,7 @@ export class WorkerImpl implements Worker {
   private readonly rid: number;
   private isClosing: boolean = false;
   private readonly isClosedPromise: Promise<void>;
-  public onerror?: () => void;
+  public onerror?: (e: { error: any; message: string }) => void;
   public onmessage?: (data: any) => void;
   public onmessageerror?: () => void;
 
