@@ -2,14 +2,13 @@
 
 Install remote or local script as executables.
 
-````
 ## Installation
 
 `installer` can be install using iteself:
 
 ```sh
 deno -A https://deno.land/std/installer/mod.ts deno_installer https://deno.land/std/installer/mod.ts -A
-````
+```
 
 Installer uses `~/.deno/bin` to store installed scripts so make sure it's in `$PATH`
 
