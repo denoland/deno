@@ -227,3 +227,12 @@ test(function urlSearchParamsCustomSymbolIterator(): void {
   const params1 = new URLSearchParams((params as unknown) as string[][]);
   assertEquals(params1.get("a"), "b");
 });
+
+test(function urlSearchParamsCustomSymbolIteratorWithNonStringParams(): void {
+  const params = {};
+  params[Symbol.iterator] = function*(): IterableIterator<[number, number]> {
+    yield [1, 2];
+  };
+  const params1 = new URLSearchParams((params as unknown) as string[][]);
+  assertEquals(params1.get("1"), "2");
+});
