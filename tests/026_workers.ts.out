@@ -1,10 +1,12 @@
+js worker init
+ts worker init
 js worker received message: hello world
-Error: error from js worker
-    at onmessage ([WILDCARD]/tests/subdir/test_worker.js:[WILDCARD])
+ReferenceError: DoesNotExist is not defined
+    at onmessage ([WILDCARD]/tests/subdir/test_worker.js:10:5)
     at workerMain (gen/cli/bundle/main.js:[WILDCARD])
 ts worker received message: hello world
 Error: error from ts worker
-    at onmessage ([WILDCARD]/tests/subdir/test_worker.ts:[WILDCARD])
+    at onmessage ([WILDCARD]/tests/subdir/test_worker.ts:7:15)
     at workerMain (gen/cli/bundle/main.js:[WILDCARD])
 msg from js worker js worker init
 msg from ts worker ts worker init

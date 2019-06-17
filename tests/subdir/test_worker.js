@@ -7,7 +7,7 @@ onmessage = e => {
 
   if (!thrown) {
     thrown = true;
-    throw Error("error from js worker");
+    throw DoesNotExist();
   }
 
   console.log("end js worker");
