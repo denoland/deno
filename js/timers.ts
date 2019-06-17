@@ -250,6 +250,7 @@ export function setInterval(
 
 /** Clears a previously set timer by id. AKA clearTimeout and clearInterval. */
 export function clearTimer(id: number): void {
+  id = Number(id);
   const timer = idMap.get(id);
   if (timer === undefined) {
     // Timer doesn't exist any more or never existed. This is not an error.
