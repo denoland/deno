@@ -2,7 +2,7 @@ postMessage("ts worker init");
 
 let thrown = false;
 
-onmessage = e => {
+onmessage = (e): void => {
   console.log("ts worker received message:", e.data);
 
   if (!thrown) {
