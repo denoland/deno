@@ -1,4 +1,16 @@
-Hello World
-Received js: Hello World
-Hello World
-Received ts: Hello World
+js worker received message: hello world
+Error: error from js worker
+    at onmessage ([WILDCARD]/tests/subdir/test_worker.js:[WILDCARD])
+    at workerMain (gen/cli/bundle/main.js:[WILDCARD])
+ts worker received message: hello world
+Error: error from ts worker
+    at onmessage ([WILDCARD]/tests/subdir/test_worker.ts:[WILDCARD])
+    at workerMain (gen/cli/bundle/main.js:[WILDCARD])
+msg from js worker js worker init
+msg from ts worker ts worker init
+error from js worker { message: "error from js worker" }
+error from ts worker { message: "error from ts worker" }
+js worker received message: hello js after timeout
+end js worker
+ts worker received message: hello ts after timeout
+end ts worker

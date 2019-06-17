@@ -1,14 +1,15 @@
-onmessage = function(e): void {
-  if (e.data === "trigger error") {
-    console.log("triggering error");
-    throw new Error("error from test_worker.ts");
+postMessage("ts worker init");
+
+let thrown = false;
+
+onmessage = e => {
+  console.log("ts worker received message:", e.data);
+
+  if (!thrown) {
+    thrown = true;
+    throw Error("error from ts worker");
   }
 
-  console.log(e.data);
-
-  postMessage(e.data);
-
-  if (e.data === "exit") {
-    workerClose();
-  }
+  console.log("end ts worker");
+  workerClose();
 };

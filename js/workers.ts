@@ -120,6 +120,17 @@ export function workerClose(): void {
   isClosing = true;
 }
 
+export interface ErrorEvent {
+  message: string;
+  filename: string;
+  lineno: number;
+  colno: number;
+}
+
+export interface MessageEvent {
+  data: any;
+}
+
 export async function workerMain(): Promise<void> {
   log("workerMain");
 
@@ -135,7 +146,13 @@ export async function workerMain(): Promise<void> {
       try {
         window.onmessage(event);
       } catch (e) {
-        // TODO: pass ErrorEvent message to host
+        const errorEvent: ErrorEvent = {
+          message: e.message,
+          filename: e.filename,
+          lineno: e.lineno,
+          colno: e.colno
+        };
+        postMessage(errorEvent);
         console.error(e);
       }
     }
@@ -147,9 +164,9 @@ export async function workerMain(): Promise<void> {
 }
 
 export interface Worker {
-  onerror?: (e: { error: any; message: string }) => void;
-  onmessage?: (e: { data: any }) => void;
-  onmessageerror?: () => void;
+  onerror?: (e: ErrorEvent) => void;
+  onmessage?: (e: MessageEvent) => void;
+  onmessageerror?: (e: MessageEvent) => void;
   postMessage(data: any): void;
   closed: Promise<void>;
 }
@@ -158,9 +175,9 @@ export class WorkerImpl implements Worker {
   private readonly rid: number;
   private isClosing: boolean = false;
   private readonly isClosedPromise: Promise<void>;
-  public onerror?: (e: { error: any; message: string }) => void;
-  public onmessage?: (data: any) => void;
-  public onmessageerror?: () => void;
+  public onerror?: (e: ErrorEvent) => void;
+  public onmessage?: (e: MessageEvent) => void;
+  public onmessageerror?: (e: MessageEvent) => void;
 
   constructor(specifier: string) {
     this.rid = createWorker(specifier);
@@ -184,15 +201,22 @@ export class WorkerImpl implements Worker {
   private async run(): Promise<void> {
     while (!this.isClosing) {
       // TODO: handle different types of messages
-      const data = await hostGetMessage(this.rid);
-      if (data == null) {
+      const msg = await hostGetMessage(this.rid);
+      if (msg == null) {
         log("worker got null message. quitting.");
         break;
       }
+
+      if (msg.message) {
+        if (this.onerror) {
+          this.onerror(msg as ErrorEvent);
+        }
+        continue;
+      }
+
       // TODO(afinch7) stop this from eating messages before onmessage has been assigned
       if (this.onmessage) {
-        const event = { data };
-        this.onmessage(event);
+        this.onmessage(msg as MessageEvent);
       }
     }
   }

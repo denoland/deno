@@ -1,8 +1,15 @@
-onmessage = function(e) {
-  if (e.data === "trigger error") {
-    throw new Error("error from test_worker.js");
+postMessage("js worker init");
+
+let thrown = false;
+
+onmessage = e => {
+  console.log("js worker received message:", e.data);
+
+  if (!thrown) {
+    thrown = true;
+    throw Error("error from js worker");
   }
 
-  console.log(e.data);
-  postMessage(e.data);
+  console.log("end js worker");
+  workerClose();
 };

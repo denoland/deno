@@ -1,30 +1,29 @@
 const jsWorker = new Worker("./tests/subdir/test_worker.js");
 const tsWorker = new Worker("./tests/subdir/test_worker.ts");
 
-let tsReceived = 0;
-
-tsWorker.onmessage = (e): void => {
-  console.log("Received ts: " + e.data);
-  tsReceived++;
-
-  if (tsReceived === 1) {
-    tsWorker.postMessage("trigger error");
-  } else if (tsReceived === 3) {
-    tsWorker.postMessage("exit");
-  } else {
-    tsWorker.postMessage("Hello again!");
-  }
+jsWorker.onmessage = e => {
+  console.log("msg from js worker", e);
 };
 
-let jsReceived = false;
-
-jsWorker.onmessage = (e): void => {
-  console.log("Received js: " + e.data);
-  if (!jsReceived) {
-    jsReceived = true;
-    jsWorker.postMessage("trigger error");
-  }
+tsWorker.onmessage = e => {
+  console.log("msg from ts worker", e);
 };
 
-// jsWorker.postMessage("Hello World");
-tsWorker.postMessage("Hello World");
+jsWorker.onerror = e => {
+  console.log("error from js worker", e);
+};
+
+tsWorker.onerror = e => {
+  console.log("error from ts worker", e);
+};
+
+jsWorker.postMessage("hello world");
+tsWorker.postMessage("hello world");
+
+setTimeout(() => {
+  jsWorker.postMessage("hello js after timeout");
+}, 250);
+
+setTimeout(() => {
+  tsWorker.postMessage("hello ts after timeout");
+}, 500);
