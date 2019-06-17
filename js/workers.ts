@@ -132,12 +132,11 @@ export async function workerMain(): Promise<void> {
 
     if (window["onmessage"]) {
       const event = { data };
-      log("running on message");
       try {
         window.onmessage(event);
       } catch (e) {
-        log("caught error in worker", e);
-        // TODO: pass to host
+        // TODO: pass ErrorEvent message to host
+        console.error(e);
       }
     }
 
@@ -184,6 +183,7 @@ export class WorkerImpl implements Worker {
 
   private async run(): Promise<void> {
     while (!this.isClosing) {
+      // TODO: handle different types of messages
       const data = await hostGetMessage(this.rid);
       if (data == null) {
         log("worker got null message. quitting.");

@@ -6,10 +6,3 @@ onmessage = function(e) {
   console.log(e.data);
   postMessage(e.data);
 };
-
-onerror = function(e) {
-  console.log("Handled error: ", e.message);
-  postMessage(e.message);
-
-  workerClose();
-};
