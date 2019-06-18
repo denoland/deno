@@ -136,6 +136,8 @@ enum ErrorKind: byte {
   OpNotAvaiable,
   WorkerInitFailed,
   UnixError,
+  NoAsyncSupport,
+  NoSyncSupport,
   ImportMapError,
 }
 

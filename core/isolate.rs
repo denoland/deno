@@ -29,12 +29,18 @@ use std::sync::{Arc, Mutex, Once, ONCE_INIT};
 
 pub type Buf = Box<[u8]>;
 
-pub type OpAsyncFuture = Box<dyn Future<Item = Buf, Error = ()> + Send>;
+pub type OpAsyncFuture<E> = Box<dyn Future<Item = Buf, Error = E> + Send>;
 
-pub enum Op {
+pub enum Op<E> {
   Sync(Buf),
-  Async(OpAsyncFuture),
+  Async(OpAsyncFuture<E>),
 }
+
+pub type CoreError = ();
+
+type CoreOpAsyncFuture = OpAsyncFuture<CoreError>;
+
+pub type CoreOp = Op<CoreError>;
 
 /// Stores a script used to initalize a Isolate
 pub struct Script<'a> {
@@ -68,7 +74,9 @@ pub enum StartupData<'a> {
   None,
 }
 
-type DispatchFn = Fn(&[u8], Option<PinnedBuf>) -> Op;
+pub type OpResult<E> = Result<Op<E>, E>;
+
+type CoreDispatchFn = Fn(&[u8], Option<PinnedBuf>) -> CoreOp;
 
 pub type DynImportFuture = Box<dyn Future<Item = deno_mod, Error = ()> + Send>;
 type DynImportFn = Fn(&str, &str) -> DynImportFuture;
@@ -104,11 +112,11 @@ impl Future for DynImport {
 pub struct Isolate {
   libdeno_isolate: *const libdeno::isolate,
   shared_libdeno_isolate: Arc<Mutex<Option<*const libdeno::isolate>>>,
-  dispatch: Option<Arc<DispatchFn>>,
+  dispatch: Option<Arc<CoreDispatchFn>>,
   dyn_import: Option<Arc<DynImportFn>>,
   needs_init: bool,
   shared: SharedQueue,
-  pending_ops: FuturesUnordered<OpAsyncFuture>,
+  pending_ops: FuturesUnordered<CoreOpAsyncFuture>,
   pending_dyn_imports: FuturesUnordered<DynImport>,
   have_unpolled_ops: bool,
   startup_script: Option<OwnedScript>,
@@ -184,7 +192,7 @@ impl Isolate {
   /// corresponds to the second argument of Deno.core.dispatch().
   pub fn set_dispatch<F>(&mut self, f: F)
   where
-    F: Fn(&[u8], Option<PinnedBuf>) -> Op + Send + Sync + 'static,
+    F: Fn(&[u8], Option<PinnedBuf>) -> CoreOp + Send + Sync + 'static,
   {
     self.dispatch = Some(Arc::new(f));
   }
@@ -664,7 +672,7 @@ pub mod tests {
     let dispatch_count_ = dispatch_count.clone();
 
     let mut isolate = Isolate::new(StartupData::None, false);
-    isolate.set_dispatch(move |control, _| -> Op {
+    isolate.set_dispatch(move |control, _| -> CoreOp {
       dispatch_count_.fetch_add(1, Ordering::Relaxed);
       match mode {
         Mode::AsyncImmediate => {
