@@ -76,10 +76,10 @@ pub enum StartupData<'a> {
 
 pub type OpResult<E> = Result<Op<E>, E>;
 
-type CoreDispatchFn = Fn(&[u8], Option<PinnedBuf>) -> CoreOp;
+type CoreDispatchFn = dyn Fn(&[u8], Option<PinnedBuf>) -> CoreOp;
 
 pub type DynImportFuture = Box<dyn Future<Item = deno_mod, Error = ()> + Send>;
-type DynImportFn = Fn(&str, &str) -> DynImportFuture;
+type DynImportFn = dyn Fn(&str, &str) -> DynImportFuture;
 
 /// Wraps DynImportFuture to include the deno_dyn_import_id, so that it doesn't
 /// need to be exposed.
