@@ -63,19 +63,8 @@ console[consoleTypes.isConsoleInstance] = true;
 window.atob = textEncoding.atob;
 window.btoa = textEncoding.btoa;
 window.fetch = fetchTypes.fetch;
-
-window.clearTimeout = timers.clearTimer;
-Object.defineProperty(window.clearTimeout, "name", {
-  value: "clearTimeout",
-  writable: false
-});
-
-window.clearInterval = timers.clearTimer;
-Object.defineProperty(window.clearInterval, "name", {
-  value: "clearInterval",
-  writable: false
-});
-
+window.clearTimeout = timers.clearTimeout;
+window.clearInterval = timers.clearInterval;
 window.console = console;
 window.setTimeout = timers.setTimeout;
 window.setInterval = timers.setInterval;
