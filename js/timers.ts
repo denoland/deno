@@ -249,7 +249,7 @@ export function setInterval(
 }
 
 /** Clears a previously set timer by id. AKA clearTimeout and clearInterval. */
-export function clearTimer(id: number): void {
+function clearTimer(id: number): void {
   id = Number(id);
   const timer = idMap.get(id);
   if (timer === undefined) {
@@ -259,4 +259,12 @@ export function clearTimer(id: number): void {
   // Unschedule the timer if it is currently scheduled, and forget about it.
   unschedule(timer);
   idMap.delete(timer.id);
+}
+
+export function clearTimeout(id: number): void {
+  clearTimer(id);
+}
+
+export function clearInterval(id: number): void {
+  clearTimer(id);
 }
