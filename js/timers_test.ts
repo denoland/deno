@@ -243,3 +243,15 @@ test(async function clearTimeoutShouldConvertToNumber(): Promise<void> {
   clearTimeout((obj as unknown) as number);
   assert(called);
 });
+
+test(function testFunctionName(): void {
+  assertEquals(clearTimeout.name, "clearTimeout");
+  assertEquals(clearInterval.name, "clearInterval");
+
+  // @ts-ignore 2540
+  clearTimeout.name = "foo";
+  // @ts-ignore 2540
+  clearInterval.name = "bar";
+  assertEquals(clearTimeout.name, "clearTimeout");
+  assertEquals(clearInterval.name, "clearInterval");
+});
