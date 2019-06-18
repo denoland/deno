@@ -243,6 +243,20 @@ pub fn no_buffer_specified() -> DenoError {
   new(ErrorKind::InvalidInput, String::from("no buffer specified"))
 }
 
+pub fn no_async_support() -> DenoError {
+  new(
+    ErrorKind::NoAsyncSupport,
+    String::from("op doesn't support async calls"),
+  )
+}
+
+pub fn no_sync_support() -> DenoError {
+  new(
+    ErrorKind::NoSyncSupport,
+    String::from("op doesn't support sync calls"),
+  )
+}
+
 #[derive(Debug)]
 pub enum RustOrJsError {
   Rust(DenoError),
