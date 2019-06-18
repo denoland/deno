@@ -181,6 +181,12 @@ function fireTimers(): void {
 
 export type Args = unknown[];
 
+function checkThis(thisArg: unknown): void {
+  if (thisArg !== null && thisArg !== undefined && thisArg !== window) {
+    throw new TypeError("Illegal invocation");
+  }
+}
+
 function setTimer(
   cb: (...args: Args) => void,
   delay: number,
@@ -226,6 +232,8 @@ export function setTimeout(
   delay: number,
   ...args: Args
 ): number {
+  // @ts-ignore
+  checkThis(this);
   return setTimer(cb, delay, args, false);
 }
 
@@ -235,11 +243,14 @@ export function setInterval(
   delay: number,
   ...args: Args
 ): number {
+  // @ts-ignore
+  checkThis(this);
   return setTimer(cb, delay, args, true);
 }
 
 /** Clears a previously set timer by id. AKA clearTimeout and clearInterval. */
 export function clearTimer(id: number): void {
+  id = Number(id);
   const timer = idMap.get(id);
   if (timer === undefined) {
     // Timer doesn't exist any more or never existed. This is not an error.

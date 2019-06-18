@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { URL } from "./url";
-import { requiredArguments } from "./util";
+import { requiredArguments, isIterable } from "./util";
 
 export class URLSearchParams {
   private params: Array<[string, string]> = [];
@@ -12,7 +12,7 @@ export class URLSearchParams {
       return;
     }
 
-    if (Array.isArray(init)) {
+    if (Array.isArray(init) || isIterable(init)) {
       this._handleArrayInitialization(init);
       return;
     }
@@ -280,7 +280,9 @@ export class URLSearchParams {
     }
   }
 
-  private _handleArrayInitialization(init: string[][]): void {
+  private _handleArrayInitialization(
+    init: string[][] | Iterable<[string, string]>
+  ): void {
     // Overload: sequence<sequence<USVString>>
     for (const tuple of init) {
       // If pair does not contain exactly two items, then throw a TypeError.
