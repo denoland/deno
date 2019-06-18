@@ -1,4 +1,4 @@
-[WILDCARD]Uncaught NotFound: Cannot resolve module "[WILDCARD]/non-existent" from "[WILDCARD]/tests/error_006_import_ext_failure.ts"
+[WILDCARD]Uncaught RelativeUrlWithCannotBeABaseBase: relative URL with a cannot-be-a-base base
     at DenoError (js/errors.ts:[WILDCARD])
     at maybeError (js/errors.ts:[WILDCARD])
     at maybeThrowError (js/errors.ts:[WILDCARD])
