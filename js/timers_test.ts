@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { test, assert, assertEquals } from "./test_util.ts";
+import { test, assert, assertEquals, assertNotEquals } from "./test_util.ts";
 
 function deferred(): {
   promise: Promise<{}>;
@@ -242,4 +242,13 @@ test(async function clearTimeoutShouldConvertToNumber(): Promise<void> {
   };
   clearTimeout((obj as unknown) as number);
   assert(called);
+});
+
+test(function testFunctionName(): void {
+  assertEquals(clearTimeout.name, "clearTimeout");
+  assertEquals(clearInterval.name, "clearInterval");
+});
+
+test(function clearTimeoutAndClearIntervalNotBeEquals(): void {
+  assertNotEquals(clearTimeout, clearInterval);
 });
