@@ -597,7 +597,7 @@ mod tests {
   }
 
   impl Error for MockError {
-    fn cause(&self) -> Option<&Error> {
+    fn cause(&self) -> Option<&dyn Error> {
       unimplemented!()
     }
   }

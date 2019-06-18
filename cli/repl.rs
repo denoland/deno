@@ -94,7 +94,7 @@ impl Repl {
       .editor
       .readline(&prompt)
       .map(|line| {
-        self.editor.add_history_entry(line.as_ref());
+        self.editor.add_history_entry(line.clone());
         line
       }).map_err(|e| deno_error(ErrorKind::Other, e.description().to_string()))
     // Forward error to TS side for processing
