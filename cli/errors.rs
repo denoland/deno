@@ -1,13 +1,12 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::ansi;
 use crate::diagnostics;
+use crate::fmt_errors::JSErrorColor;
 use crate::import_map;
 pub use crate::msg::ErrorKind;
 use crate::resolve_addr::ResolveAddrError;
 use crate::source_maps::apply_source_map;
 use crate::source_maps::SourceMapGetter;
 use deno::JSError;
-use deno::StackFrame;
 use hyper;
 #[cfg(unix)]
 use nix::{errno::Errno, Error as UnixError};
@@ -33,84 +32,6 @@ enum Repr {
   ImportMapErr(import_map::ImportMapError),
   Diagnostic(diagnostics::Diagnostic),
   JSError(JSError),
-}
-
-/// Wrapper around JSError which provides color to_string.
-struct JSErrorColor<'a>(pub &'a JSError);
-
-impl<'a> fmt::Display for JSErrorColor<'a> {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    let e = self.0;
-    if e.script_resource_name.is_some() {
-      let script_resource_name = e.script_resource_name.as_ref().unwrap();
-      // Avoid showing internal code from gen/cli/bundle/main.js
-      if script_resource_name != "gen/cli/bundle/main.js"
-        && script_resource_name != "gen/cli/bundle/compiler.js"
-      {
-        if e.line_number.is_some() && e.start_column.is_some() {
-          assert!(e.line_number.is_some());
-          assert!(e.start_column.is_some());
-          let script_line_column = format_script_line_column(
-            script_resource_name,
-            e.line_number.unwrap() - 1,
-            e.start_column.unwrap() - 1,
-          );
-          write!(f, "{}", script_line_column)?;
-        }
-        if e.source_line.is_some() {
-          write!(f, "\n{}\n", e.source_line.as_ref().unwrap())?;
-          let mut s = String::new();
-          for i in 0..e.end_column.unwrap() {
-            if i >= e.start_column.unwrap() {
-              s.push('^');
-            } else {
-              s.push(' ');
-            }
-          }
-          writeln!(f, "{}", ansi::red_bold(s))?;
-        }
-      }
-    }
-
-    write!(f, "{}", ansi::bold(e.message.clone()))?;
-
-    for frame in &e.frames {
-      write!(f, "\n{}", StackFrameColor(&frame).to_string())?;
-    }
-    Ok(())
-  }
-}
-
-struct StackFrameColor<'a>(&'a StackFrame);
-
-impl<'a> fmt::Display for StackFrameColor<'a> {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    let frame = self.0;
-    // Note when we print to string, we change from 0-indexed to 1-indexed.
-    let function_name = ansi::italic_bold(frame.function_name.clone());
-    let script_line_column =
-      format_script_line_column(&frame.script_name, frame.line, frame.column);
-
-    if !frame.function_name.is_empty() {
-      write!(f, "    at {} ({})", function_name, script_line_column)
-    } else if frame.is_eval {
-      write!(f, "    at eval ({})", script_line_column)
-    } else {
-      write!(f, "    at {}", script_line_column)
-    }
-  }
-}
-
-fn format_script_line_column(
-  script_name: &str,
-  line: i64,
-  column: i64,
-) -> String {
-  // TODO match this style with how typescript displays errors.
-  let line = ansi::yellow((1 + line).to_string());
-  let column = ansi::yellow((1 + column).to_string());
-  let script_name = ansi::cyan(script_name.to_string());
-  format!("{}:{}:{}", script_name, line, column)
 }
 
 /// Create a new simple DenoError.
@@ -347,7 +268,10 @@ pub fn permission_denied() -> DenoError {
 }
 
 pub fn op_not_implemented() -> DenoError {
-  new(ErrorKind::OpNotAvailable, String::from("op not implemented"))
+  new(
+    ErrorKind::OpNotAvailable,
+    String::from("op not implemented"),
+  )
 }
 
 pub fn worker_init_failed() -> DenoError {

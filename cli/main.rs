@@ -21,6 +21,7 @@ pub mod diagnostics;
 mod dispatch_minimal;
 pub mod errors;
 pub mod flags;
+pub mod fmt_errors;
 mod fs;
 mod global_timer;
 mod http_body;

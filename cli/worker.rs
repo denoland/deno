@@ -3,7 +3,6 @@ use crate::errors::DenoError;
 use crate::state::ThreadSafeState;
 use crate::tokio_util;
 use deno;
-use deno::JSError;
 use deno::ModuleSpecifier;
 use deno::StartupData;
 use futures::Async;

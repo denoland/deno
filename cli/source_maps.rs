@@ -12,6 +12,7 @@ use std::str;
 pub trait SourceMapGetter {
   /// Returns the raw source map file.
   fn get_source_map(&self, script_name: &str) -> Option<Vec<u8>>;
+  fn get_source_line(&self, script_name: &str, line: usize) -> Option<String>;
 }
 
 /// Cached filename lookups. The key can be None if a previous lookup failed to
@@ -112,25 +113,41 @@ pub fn apply_source_map<G: SourceMapGetter>(
       &mut mappings_map,
       getter,
     );
+  // It is better to just move end_column to be the same distance away from
+  // start column because sometimes the code point is not available in the
+  // source file map.
   let end_column = match js_error.end_column {
     Some(ec) => {
-      Some(ec - (js_error.start_column.unwrap() - start_column.unwrap()))
+      if start_column.is_some() {
+        Some(ec - (js_error.start_column.unwrap() - start_column.unwrap()))
+      } else {
+        None
+      }
     }
     _ => None,
+  };
+  // if there is a source line that we might be different in the source file, we
+  // will go fetch it from the getter
+  let source_line = if js_error.source_line.is_some() && script_resource_name.is_some() && line_number.is_some()
+  {
+    getter.get_source_line(&js_error.script_resource_name.clone().unwrap(), line_number.unwrap() as usize)
+  } else {
+    js_error.source_line.clone()
   };
 
   JSError {
     message: js_error.message.clone(),
     frames,
     error_level: js_error.error_level,
-    source_line: js_error.source_line.clone(),
-    // TODO the following need to be source mapped:
+    source_line,
     script_resource_name,
     line_number,
-    start_position: js_error.start_position,
-    end_position: js_error.end_position,
     start_column,
     end_column,
+    // These are difficult to map to their original position and they are not
+    // currently used in any output, so we don't remap them.
+    start_position: js_error.start_position,
+    end_position: js_error.end_position,
   }
 }
 
@@ -174,7 +191,7 @@ fn get_maybe_orig_position<G: SourceMapGetter>(
         mappings_map,
         getter,
       );
-      (Some(script_name), Some(line + 1), Some(column + 1))
+      (Some(script_name), Some(line), Some(column))
     }
     _ => (None, None, None),
   }
@@ -250,6 +267,10 @@ mod tests {
         _ => return None,
       };
       Some(s.as_bytes().to_owned())
+    }
+
+    fn get_source_line(&self, _script_name: &str, _line: usize) -> Option<String> {
+      None
     }
   }
 

@@ -349,6 +349,20 @@ impl SourceMapGetter for DenoDir {
       },
     }
   }
+
+  fn get_source_line(&self, script_name: &str, line: usize) -> Option<String> {
+    match self.fetch_module_meta_data(script_name, ".", true, true) {
+      Ok(out) => match str::from_utf8(&out.source_code) {
+        Ok(v) => {
+          let lines: Vec<&str> = v.lines().collect();
+          assert!(lines.len() > line);
+          Some(lines[line].to_string())
+        },
+        _ => None,
+      },
+      _ => None,
+    }
+  }
 }
 
 /// This fetches source code, locally or remotely.

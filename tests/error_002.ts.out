@@ -1,4 +1,9 @@
-[WILDCARD]Error: exception from mod1
-    at throwsError (file://[WILDCARD]/tests/subdir/mod1.ts:16:9)
-    at foo (file://[WILDCARD]/tests/error_002.ts:4:3)
-    at file://[WILDCARD]/tests/error_002.ts:7:1
+[WILDCARD]error: Uncaught Error: exception from mod1
+[WILDCARD]tests/subdir/mod1.ts:16:9
+
+16   throw Error("exception from mod1");
+           ^
+
+    at throwsError ([WILDCARD]tests/subdir/mod1.ts:16:9)
+    at foo ([WILDCARD]tests/error_002.ts:4:3)
+    at [WILDCARD]tests/error_002.ts:7:1
