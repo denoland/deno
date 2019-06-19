@@ -207,8 +207,10 @@ export class BufReader implements Reader {
   /** readString() reads until the first occurrence of delim in the input,
    * returning a string containing the data up to and including the delimiter.
    * If ReadString encounters an error before finding a delimiter,
-   * it returns the data read before the error and the error itself (often io.EOF).
-   * ReadString returns err != nil if and only if the returned data does not end in
+   * it returns the data read before the error and the error itself
+   * (often io.EOF).
+   * ReadString returns err != nil if and only if the returned data does not end
+   * in
    * delim.
    * For simple uses, a Scanner may be more convenient.
    */

@@ -36,11 +36,13 @@ test(function existsDirectorySync(): void {
 });
 
 test(function existsLinkSync(): void {
-  // TODO(axetroy): generate link file use Deno api instead of set a link file in repository
+  // TODO(axetroy): generate link file use Deno api instead of set a link file
+  // in repository
   assertEquals(existsSync(path.join(testdataDir, "0-link.ts")), true);
 });
 
 test(async function existsLink(): Promise<void> {
-  // TODO(axetroy): generate link file use Deno api instead of set a link file in repository
+  // TODO(axetroy): generate link file use Deno api instead of set a link file
+  // in repository
   assertEquals(await exists(path.join(testdataDir, "0-link.ts")), true);
 });

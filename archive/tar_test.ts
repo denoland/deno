@@ -34,7 +34,10 @@ test(async function createTarArchive(): Promise<void> {
   const writer = new Deno.Buffer(),
     wrote = await Deno.copy(writer, tar.getReader());
 
-  // 3072 = 512 (header) + 512 (content) + 512 (header) + 512 (content) + 1024 (footer)
+  /**
+   * 3072 = 512 (header) + 512 (content) + 512 (header) + 512 (content)
+   *       + 1024 (footer)
+   */
   assertEquals(wrote, 3072);
 });
 

@@ -42,7 +42,8 @@ async function main(): Promise<void> {
     } else {
       await sock.send(line);
     }
-    // FIXME: Without this, sock.receive() won't resolved though it is readable...
+    // FIXME: Without this,
+    // sock.receive() won't resolved though it is readable...
     await new Promise((resolve): void => setTimeout(resolve, 0));
   }
   await sock.close(1000);

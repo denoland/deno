@@ -5,8 +5,10 @@ import { getFileInfoType } from "./utils.ts";
 
 /**
  * Ensures that the file exists.
- * If the file that is requested to be created is in directories that do not exist,
- * these directories are created. If the file already exists, it is NOT MODIFIED.
+ * If the file that is requested to be created is in directories that do not
+ * exist.
+ * these directories are created. If the file already exists,
+ * it is NOTMODIFIED.
  */
 export async function ensureFile(filePath: string): Promise<void> {
   let pathExists = false;
@@ -33,8 +35,10 @@ export async function ensureFile(filePath: string): Promise<void> {
 
 /**
  * Ensures that the file exists.
- * If the file that is requested to be created is in directories that do not exist,
- * these directories are created. If the file already exists, it is NOT MODIFIED.
+ * If the file that is requested to be created is in directories that do not
+ * exist,
+ * these directories are created. If the file already exists,
+ * it is NOT MODIFIED.
  */
 export function ensureFileSync(filePath: string): void {
   let pathExists = false;

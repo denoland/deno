@@ -25,7 +25,9 @@ export function stringsReader(s: string): Reader {
   return new Buffer(encode(s).buffer);
 }
 
-/** Create or open a temporal file at specified directory with prefix and postfix  */
+/** Create or open a temporal file at specified directory with prefix and
+ *  postfix
+ * */
 export async function tempFile(
   dir: string,
   opts: {

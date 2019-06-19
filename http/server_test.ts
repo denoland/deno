@@ -359,17 +359,20 @@ test(async function testReadRequestError(): Promise<void> {
     // See Issue 16490.
     {
       in:
-        "POST / HTTP/1.1\r\nContent-Length: 10\r\nContent-Length: 0\r\n\r\nGopher hey\r\n",
+        "POST / HTTP/1.1\r\nContent-Length: 10\r\nContent-Length: 0\r\n\r\n" +
+        "Gopher hey\r\n",
       err: "cannot contain multiple Content-Length headers"
     },
     {
       in:
-        "POST / HTTP/1.1\r\nContent-Length: 10\r\nContent-Length: 6\r\n\r\nGopher\r\n",
+        "POST / HTTP/1.1\r\nContent-Length: 10\r\nContent-Length: 6\r\n\r\n" +
+        "Gopher\r\n",
       err: "cannot contain multiple Content-Length headers"
     },
     {
       in:
-        "PUT / HTTP/1.1\r\nContent-Length: 6 \r\nContent-Length: 6\r\nContent-Length:6\r\n\r\nGopher\r\n",
+        "PUT / HTTP/1.1\r\nContent-Length: 6 \r\nContent-Length: 6\r\n" +
+        "Content-Length:6\r\n\r\nGopher\r\n",
       headers: [{ key: "Content-Length", value: "6" }]
     },
     {
@@ -388,7 +391,8 @@ test(async function testReadRequestError(): Promise<void> {
     },
     {
       in:
-        "POST / HTTP/1.1\r\nContent-Length:0\r\ntransfer-encoding: chunked\r\n\r\n",
+        "POST / HTTP/1.1\r\nContent-Length:0\r\ntransfer-encoding: " +
+        "chunked\r\n\r\n",
       headers: [],
       err: "http: Transfer-Encoding and Content-Length cannot be send together"
     }

@@ -507,8 +507,9 @@ class Dumper {
     const min = dtPad(value.getUTCMinutes().toString());
     const s = dtPad(value.getUTCSeconds().toString());
     const ms = dtPad(value.getUTCMilliseconds().toString(), 3);
-    const fmtDate = `${value.getUTCFullYear()}-${m}-${d}T${h}:${min}:${s}.${ms}`;
-    return `${this._declaration(title)}${fmtDate}`;
+    // formated date
+    const fData = `${value.getUTCFullYear()}-${m}-${d}T${h}:${min}:${s}.${ms}`;
+    return `${this._declaration(title)}${fData}`;
   }
   _format(): string[] {
     const rDeclaration = /(.*)\s=/;

@@ -4,7 +4,9 @@ type Reader = Deno.Reader;
 type Writer = Deno.Writer;
 import { assert } from "../testing/asserts.ts";
 
-/** copy N size at the most. If read size is lesser than N, then returns nread */
+/** copy N size at the most.
+ *  If read size is lesser than N, then returns nread
+ * */
 export async function copyN(
   dest: Writer,
   r: Reader,

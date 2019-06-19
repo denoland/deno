@@ -47,6 +47,7 @@ export function glob(glob: string, options: GlobOptions = {}): RegExp {
 /** Test whether the given string is a glob */
 export function isGlob(str: string): boolean {
   const chars: Record<string, string> = { "{": "}", "(": ")", "[": "]" };
+  /* eslint-disable-next-line max-len */
   const regex = /\\(.)|(^!|\*|[\].+)]\?|\[[^\\\]]+\]|\{[^\\}]+\}|\(\?[:!=][^\\)]+\)|\([^|]+\|[^\\)]+\))/;
 
   if (str === "") {

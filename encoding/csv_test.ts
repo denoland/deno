@@ -129,7 +129,7 @@ const testCases = [
     Name: "BadBareQuote",
     Input: `a "word","b"`,
     Error: ErrBareQuote
-    // Error: true //&ParseError{StartLine: 1, Line: 1, Column: 2, Err: ErrBareQuote},
+    // &ParseError{StartLine: 1, Line: 1, Column: 2, Err: ErrBareQuote}
   },
   {
     Name: "BadTrailingQuote",
@@ -151,7 +151,7 @@ const testCases = [
   {
     Name: "BadFieldCount1",
     Input: `a,b,c`,
-    // Error:              &ParseError{StartLine: 1, Line: 1, Err: ErrFieldCount},
+    // Error: &ParseError{StartLine: 1, Line: 1, Err: ErrFieldCount},
     UseFieldsPerRecord: true,
     FieldsPerRecord: 2,
     Error: ErrFieldCount
@@ -298,7 +298,11 @@ x,,,
   // {
   //   Name: "MultiFieldCRCRLFCRCR",
   //   Input: "field1,field2\r\r\n\r\rfield1,field2\r\r\n\r\r,",
-  //   Output: [["field1", "field2\r"], ["\r\rfield1", "field2\r"], ["\r\r", ""]]
+  //   Output: [
+  //     ["field1", "field2\r"],
+  //     ["\r\rfield1", "field2\r"],
+  //     ["\r\r", ""]
+  //   ]
   // },
   {
     Name: "NonASCIICommaAndComment",
@@ -339,13 +343,20 @@ x,,,
   //   Name: "MultipleCRLF",
   //   Input: "\r\n\r\n\r\n\r\n"
   // },
-  //  {
-  //   // The implementation may read each line in several chunks if it doesn't fit entirely
-  //   // in the read buffer, so we should test the code to handle that condition.
-  //   Name:    "HugeLines",
-  //   Input:   strings.Repeat("#ignore\n", 10000) + strings.Repeat("@", 5000) + "," + strings.Repeat("*", 5000),
-  //   Output:  [[strings.Repeat("@", 5000), strings.Repeat("*", 5000)]],
-  //   Comment: '#',
+  /**
+   * The implementation may read each line in several chunks if
+   * it doesn't fit entirely.
+   * in the read buffer, so we should test the code to handle that condition.
+   */
+  // {
+  //   Name: "HugeLines",
+  //   Input:
+  //     strings.Repeat("#ignore\n", 10000) +
+  //     strings.Repeat("@", 5000) +
+  //     "," +
+  //     strings.Repeat("*", 5000),
+  //   Output: [[strings.Repeat("@", 5000), strings.Repeat("*", 5000)]],
+  //   Comment: "#"
   // },
   {
     Name: "QuoteWithTrailingCRLF",

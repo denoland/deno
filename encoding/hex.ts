@@ -32,7 +32,8 @@ function fromHexChar(byte: number): [number, boolean] {
 }
 
 /**
- * EncodedLen returns the length of an encoding of n source bytes. Specifically, it returns n * 2.
+ * EncodedLen returns the length of an encoding of n source bytes. Specifically,
+ * it returns n * 2.
  * @param n
  */
 export function encodedLen(n: number): number {
@@ -73,8 +74,10 @@ export function encodeToString(src: Uint8Array): string {
 /**
  * Decode decodes `src` into `decodedLen(src.length)` bytes
  * returning the actual number of bytes written to `dst`.
- * Decode expects that `src` contains only hexadecimal characters and that `src` has even length.
- * If the input is malformed, Decode returns the number of bytes decoded before the error.
+ * Decode expects that `src` contains only hexadecimal characters and that `src`
+ * has even length.
+ * If the input is malformed, Decode returns the number of bytes decoded before
+ * the error.
  * @param dst
  * @param src
  */
@@ -110,7 +113,8 @@ export function decode(
 }
 
 /**
- * DecodedLen returns the length of a decoding of `x` source bytes. Specifically, it returns `x / 2`.
+ * DecodedLen returns the length of a decoding of `x` source bytes.
+ * Specifically, it returns `x / 2`.
  * @param x
  */
 export function decodedLen(x: number): number {
@@ -119,14 +123,16 @@ export function decodedLen(x: number): number {
 
 /**
  * DecodeString returns the bytes represented by the hexadecimal string `s`.
- * DecodeString expects that src contains only hexadecimal characters and that src has even length.
+ * DecodeString expects that src contains only hexadecimal characters and that
+ * src has even length.
  * If the input is malformed, DecodeString will throws an error.
  * @param s the `string` need to decode to `Uint8Array`
  */
 export function decodeString(s: string): Uint8Array {
   const src = new TextEncoder().encode(s);
   // We can use the source slice itself as the destination
-  // because the decode loop increments by one and then the 'seen' byte is not used anymore.
+  // because the decode loop increments by one and then the 'seen' byte is not
+  // used anymore.
   const [n, err] = decode(src, src);
 
   if (err) {

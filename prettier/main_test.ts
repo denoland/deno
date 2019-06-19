@@ -197,9 +197,9 @@ console.log([function foo() {}, function baz() {}, (a) => {}]);
   await run([...cmd, "--prose-wrap", "always", "--write", file3]);
   assertEquals(
     normalizeSourceCode(await getSourceCode(file3)),
-    `Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
-incididunt ut labore et dolore magna aliqua.
-`
+    "Lorem ipsum dolor sit amet, consectetur adipiscing elit, " +
+      "sed do eiusmod tempor" +
+      "\nincididunt ut labore et dolore magna aliqua.\n"
   );
 
   await run([...cmd, "--end-of-line", "crlf", "--write", file2]);
@@ -227,7 +227,8 @@ test(async function testPrettierPrintToStdout(): Promise<void> {
   const { stdout: formattedCode } = await run([...cmd, file1]);
   // The source file will not change without `--write` flags.
   assertEquals(await getSourceCode(file1), "console.log(0);" + EOL);
-  // The output will be formatted code even it is the same as the source file's content.
+  // The output will be formatted code even it is the same as the source file's
+  // content.
   assertEquals(formattedCode, "console.log(0);" + EOL);
 
   emptyDir(tempDir);
