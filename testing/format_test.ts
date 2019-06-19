@@ -10,6 +10,7 @@ import { test } from "./mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
 import { format } from "./format.ts";
 
+// eslint-disable-next-line max-len
 // eslint-disable-next-line @typescript-eslint/no-unused-vars,@typescript-eslint/no-explicit-any
 function returnArguments(...args: any[]): IArguments {
   return arguments;
@@ -385,7 +386,8 @@ test({
     val.prop = "value1";
     assertEquals(
       format(val),
-      'Object {\n  "prop": "value1",\n  Symbol(symbol1): "value2",\n  Symbol(symbol2): "value3",\n}'
+      'Object {\n  "prop": "value1",\n  Symbol(symbol1): "value2",\n  ' +
+        'Symbol(symbol2): "value3",\n}'
     );
   }
 });
@@ -607,7 +609,8 @@ test({
     const val = { prop: { prop: { prop: "value" } } };
     assertEquals(
       format(val),
-      'Object {\n  "prop": Object {\n    "prop": Object {\n      "prop": "value",\n    },\n  },\n}'
+      'Object {\n  "prop": Object {\n    "prop": Object {\n      "prop": ' +
+        '"value",\n    },\n  },\n}'
     );
   }
 });

@@ -97,9 +97,10 @@ export function getCookies(req: ServerRequest): Cookies {
  * @param [cookie.domain] Specifies those hosts to which the cookie will be sent
  * @param [cookie.path] Indicates a URL path that must exist in the request.
  * @param [cookie.secure] Indicates if the cookie is made using SSL & HTTPS.
- * @param [cookie.httpOnly] Indicates that cookie is not accessible via Javascript
- * @param [cookie.sameSite] Allows servers to assert that a cookie ought not to be
- *  sent along with cross-site requests
+ * @param [cookie.httpOnly] Indicates that cookie is not accessible via
+ *                          Javascript
+ * @param [cookie.sameSite] Allows servers to assert that a cookie ought not to
+ *                          be sent along with cross-site requests
  * Example:
  *
  *     setCookie(response, { name: 'deno', value: 'runtime',

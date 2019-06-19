@@ -21,7 +21,8 @@ async function main(): Promise<void> {
 
   if (parsedArgs._.length === 0) {
     console.error(
-      "Usage: gist.ts --allow-env --allow-net [-t|--title Example] some_file [next_file]"
+      "Usage: gist.ts --allow-env --allow-net [-t|--title Example] some_file " +
+        "[next_file]"
     );
     exit(1);
   }

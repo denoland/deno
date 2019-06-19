@@ -21,11 +21,12 @@ export class ParseError extends Error {
 /**
  * @property comma - Character which separates values. Default: ','
  * @property comment - Character to start a comment. Default: '#'
- * @property trimLeadingSpace - Flag to trim the leading space of the value. Default: 'false'
+ * @property trimLeadingSpace - Flag to trim the leading space of the value.
+ *           Default: 'false'
  * @property lazyQuotes - Allow unquoted quote in a quoted field or non double
- *  quoted quotes in quoted field Default: 'false'
- * @property fieldsPerRecord - Enabling the check of fields for each row. If == 0
- * first row is used as referal for the number of fields.
+ *           quoted quotes in quoted field Default: 'false'
+ * @property fieldsPerRecord - Enabling the check of fields for each row.
+ *           If == 0, first row is used as referal for the number of fields.
  */
 export interface ParseOptions {
   comma?: string;

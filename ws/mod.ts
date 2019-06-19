@@ -474,7 +474,10 @@ async function handshake(
   }
 }
 
-/** Connect to given websocket endpoint url. Endpoint must be acceptable for URL */
+/**
+ * Connect to given websocket endpoint url.
+ * Endpoint must be acceptable for URL.
+ */
 export async function connectWebSocket(
   endpoint: string,
   headers: Headers = new Headers()

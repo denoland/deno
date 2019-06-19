@@ -16,8 +16,8 @@ declare global {
     var __results: [string, string] | undefined;
   }
 }
+/* eslint-disable max-len */
 /* eslint-enable @typescript-eslint/no-namespace */
-
 const fixture = `
 define("data", [], { "baz": "qat" });
 define("modB", ["require", "exports", "data"], function(require, exports, data) {
@@ -32,6 +32,7 @@ define("modA", ["require", "exports", "modB"], function(require, exports, modB) 
   globalThis.__results = [modB.foo, modB.baz];
 });
 `;
+/* eslint-enable max-len */
 
 const fixtureQueue = ["data", "modB", "modA"];
 const fixtureModules = new Map<string, ModuleMetaData>();

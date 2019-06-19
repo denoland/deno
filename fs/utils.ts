@@ -31,7 +31,8 @@ export type PathType = "file" | "dir" | "symlink";
 /**
  * Get a human readable file type string.
  *
- * @param fileInfo A FileInfo describes a file and is returned by `stat`, `lstat`
+ * @param fileInfo A FileInfo describes a file and is returned by `stat`,
+ *                 `lstat`
  */
 export function getFileInfoType(fileInfo: Deno.FileInfo): PathType | undefined {
   return fileInfo.isFile()

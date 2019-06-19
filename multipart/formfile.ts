@@ -10,7 +10,9 @@ export interface FormFile {
   size: number;
   /** in-memory content of file. Either content or tempfile is set  */
   content?: Uint8Array;
-  /** temporal file path. Set if file size is bigger than specified max-memory size at reading form */
+  /** temporal file path.
+   * Set if file size is bigger than specified max-memory size at reading form
+   * */
   tempfile?: string;
 }
 

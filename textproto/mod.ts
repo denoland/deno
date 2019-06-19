@@ -106,8 +106,10 @@ export class TextProtoReader {
       //let key = canonicalMIMEHeaderKey(kv.subarray(0, endKey));
       let key = str(kv.subarray(0, endKey));
 
-      // As per RFC 7230 field-name is a token, tokens consist of one or more chars.
-      // We could return a ProtocolError here, but better to be liberal in what we
+      // As per RFC 7230 field-name is a token,
+      // tokens consist of one or more chars.
+      // We could return a ProtocolError here,
+      // but better to be liberal in what we
       // accept, so if we get an empty key, skip it.
       if (key == "") {
         continue;

@@ -431,7 +431,8 @@ testCopySync(
 );
 
 testCopySync(
-  "[fs] copy directory synchronously, and destination exist and not a directory",
+  "[fs] copy directory synchronously, and destination exist and not a " +
+    "directory",
   (tempDir: string): void => {
     const srcDir = path.join(tempDir, "parent_sync");
     const destDir = path.join(tempDir, "child.txt");

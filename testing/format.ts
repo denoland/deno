@@ -72,7 +72,9 @@ const getConstructorName = (val: new (...args: any[]) => any): string =>
   (typeof val.constructor === "function" && val.constructor.name) || "Object";
 
 /* global window */
-/** Is val is equal to global window object? Works even if it does not exist :) */
+/** Is val is equal to global window object?
+ *  Works even if it does not exist :)
+ * */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const isWindow = (val: any): val is Window =>
   typeof window !== "undefined" && val === window;

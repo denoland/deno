@@ -111,7 +111,8 @@ test(function multipartMultipartWriter2(): void {
     (): MultipartWriter =>
       new MultipartWriter(
         w,
-        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" +
+          "aaaaaaaa"
       ),
     Error,
     "invalid boundary length"

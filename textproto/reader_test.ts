@@ -52,7 +52,8 @@ test({
   name: "[textproto] Reader : MIME Header",
   async fn(): Promise<void> {
     const input =
-      "my-key: Value 1  \r\nLong-key: Even Longer Value\r\nmy-Key: Value 2\r\n\n";
+      "my-key: Value 1  \r\nLong-key: Even Longer Value\r\nmy-Key: " +
+      "Value 2\r\n\n";
     const r = reader(input);
     const m = assertNotEOF(await r.readMIMEHeader());
     assertEquals(m.get("My-Key"), "Value 1, Value 2");

@@ -29,7 +29,8 @@ test({
         str5: "The quick brown\nfox jumps over\nthe lazy dog.",
         str6: "The quick brown\nfox jumps over\nthe lazy dog.",
         lines:
-          "The first newline is\ntrimmed in raw strings.\n   All other whitespace\n   is preserved."
+          "The first newline is\ntrimmed in raw strings.\n   All other " +
+          "whitespace\n   is preserved."
       }
     };
     const actual = parseFile(path.join(testFilesDir, "string.toml"));

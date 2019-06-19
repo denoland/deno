@@ -59,7 +59,8 @@ test(async function serveDirectory(): Promise<void> {
     assert(page.includes("azure-pipelines.yml"));
 
     // `Deno.FileInfo` is not completely compatible with Windows yet
-    // TODO: `mode` should work correctly in the future. Correct this test case accordingly.
+    // TODO: `mode` should work correctly in the future.
+    // Correct this test case accordingly.
     Deno.platform.os !== "win" &&
       assert(/<td class="mode">\([a-zA-Z-]{10}\)<\/td>/.test(page));
     Deno.platform.os === "win" &&
