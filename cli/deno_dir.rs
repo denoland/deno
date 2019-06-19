@@ -357,7 +357,7 @@ impl SourceMapGetter for DenoDir {
           let lines: Vec<&str> = v.lines().collect();
           assert!(lines.len() > line);
           Some(lines[line].to_string())
-        },
+        }
         _ => None,
       },
       _ => None,

@@ -1993,26 +1993,27 @@ fn op_create_worker(
 
   let module_specifier = ModuleSpecifier::resolve_root(specifier)?;
 
-  let op = worker
-    .execute_mod_async(&module_specifier, false)
-    .and_then(move |()| {
-      let mut workers_tl = parent_state.workers.lock().unwrap();
-      workers_tl.insert(rid, worker.shared());
-      let builder = &mut FlatBufferBuilder::new();
-      let msg_inner = msg::CreateWorkerRes::create(
-        builder,
-        &msg::CreateWorkerResArgs { rid },
-      );
-      Ok(serialize_response(
-        cmd_id,
-        builder,
-        msg::BaseArgs {
-          inner: Some(msg_inner.as_union_value()),
-          inner_type: msg::Any::CreateWorkerRes,
-          ..Default::default()
-        },
-      ))
-    });
+  let op =
+    worker
+      .execute_mod_async(&module_specifier, false)
+      .and_then(move |()| {
+        let mut workers_tl = parent_state.workers.lock().unwrap();
+        workers_tl.insert(rid, worker.shared());
+        let builder = &mut FlatBufferBuilder::new();
+        let msg_inner = msg::CreateWorkerRes::create(
+          builder,
+          &msg::CreateWorkerResArgs { rid },
+        );
+        Ok(serialize_response(
+          cmd_id,
+          builder,
+          msg::BaseArgs {
+            inner: Some(msg_inner.as_union_value()),
+            inner_type: msg::Any::CreateWorkerRes,
+            ..Default::default()
+          },
+        ))
+      });
 
   let result = op.wait()?;
   Ok(Op::Sync(result))

@@ -240,4 +240,48 @@ mod tests {
     let e = error1();
     assert_eq!("error: Error: foo bar\n    at foo (foo_bar.ts:5:17)\n    at qat (bar_baz.ts:6:21)\n    at deno_main.js:2:2", strip_ansi_codes(&JSErrorColor(&e).to_string()));
   }
+
+  #[test]
+  fn test_format_none_source_name() {
+    let actual = format_maybe_source_name(None, None, None);
+    assert_eq!(actual, "");
+  }
+
+  #[test]
+  fn test_format_some_source_name() {
+    let actual = format_maybe_source_name(
+      Some("file://foo/bar.ts".to_string()),
+      Some(1),
+      Some(2),
+    );
+    assert_eq!(strip_ansi_codes(&actual), "file://foo/bar.ts:2:3");
+  }
+
+  #[test]
+  fn test_format_none_source_line() {
+    let actual = format_maybe_source_line(None, None, None, None, false, 0);
+    assert_eq!(actual, "");
+  }
+
+  #[test]
+  fn test_format_some_source_line() {
+    let actual = format_maybe_source_line(
+      Some("console.log('foo');".to_string()),
+      Some(8),
+      Some(8),
+      Some(11),
+      true,
+      0,
+    );
+    assert_eq!(
+      strip_ansi_codes(&actual),
+      "\n\n9 console.log(\'foo\');\n          ~~~\n"
+    );
+  }
+
+  #[test]
+  fn test_format_error_message() {
+    let actual = format_error_message("foo".to_string());
+    assert_eq!(strip_ansi_codes(&actual), "error: foo");
+  }
 }

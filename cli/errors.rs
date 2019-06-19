@@ -140,7 +140,7 @@ impl std::error::Error for DenoError {
       Repr::HyperErr(ref err) => err.description(),
       Repr::ImportMapErr(ref err) => &err.msg,
       Repr::Diagnostic(ref err) => &err.items[0].message,
-      Repr::JSError(ref err) => &err.message,
+      Repr::JSError(ref err) => &err.description(),
     }
   }
 
@@ -152,7 +152,7 @@ impl std::error::Error for DenoError {
       Repr::HyperErr(ref err) => Some(err),
       Repr::ImportMapErr(ref _err) => None,
       Repr::Diagnostic(ref _err) => None,
-      Repr::JSError(ref _err) => None,
+      Repr::JSError(ref err) => Some(err),
     }
   }
 }
@@ -300,8 +300,214 @@ pub fn no_sync_support() -> DenoError {
   )
 }
 
-pub fn err_check(r: Result<(), DenoError>) {
+pub fn err_check<R>(r: Result<R, DenoError>) {
   if let Err(e) = r {
     panic!(e.to_string());
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::ansi::strip_ansi_codes;
+  use crate::diagnostics::Diagnostic;
+  use crate::diagnostics::DiagnosticCategory;
+  use crate::diagnostics::DiagnosticItem;
+  use crate::import_map::ImportMapError;
+  use deno::StackFrame;
+
+  fn js_error() -> JSError {
+    JSError {
+      message: "Error: foo bar".to_string(),
+      source_line: None,
+      script_resource_name: None,
+      line_number: None,
+      start_position: None,
+      end_position: None,
+      error_level: None,
+      start_column: None,
+      end_column: None,
+      frames: vec![
+        StackFrame {
+          line: 4,
+          column: 16,
+          script_name: "foo_bar.ts".to_string(),
+          function_name: "foo".to_string(),
+          is_eval: false,
+          is_constructor: false,
+          is_wasm: false,
+        },
+        StackFrame {
+          line: 5,
+          column: 20,
+          script_name: "bar_baz.ts".to_string(),
+          function_name: "qat".to_string(),
+          is_eval: false,
+          is_constructor: false,
+          is_wasm: false,
+        },
+        StackFrame {
+          line: 1,
+          column: 1,
+          script_name: "deno_main.js".to_string(),
+          function_name: "".to_string(),
+          is_eval: false,
+          is_constructor: false,
+          is_wasm: false,
+        },
+      ],
+    }
+  }
+
+  fn diagnostic() -> Diagnostic {
+    Diagnostic {
+      items: vec![
+        DiagnosticItem {
+          message: "Example 1".to_string(),
+          message_chain: None,
+          code: 2322,
+          category: DiagnosticCategory::Error,
+          start_position: Some(267),
+          end_position: Some(273),
+          source_line: Some("  values: o => [".to_string()),
+          line_number: Some(18),
+          script_resource_name: Some(
+            "deno/tests/complex_diagnostics.ts".to_string(),
+          ),
+          start_column: Some(2),
+          end_column: Some(8),
+          related_information: None,
+        },
+        DiagnosticItem {
+          message: "Example 2".to_string(),
+          message_chain: None,
+          code: 2000,
+          category: DiagnosticCategory::Error,
+          start_position: Some(2),
+          end_position: Some(2),
+          source_line: Some("  values: undefined,".to_string()),
+          line_number: Some(128),
+          script_resource_name: Some("/foo/bar.ts".to_string()),
+          start_column: Some(2),
+          end_column: Some(8),
+          related_information: None,
+        },
+      ],
+    }
+  }
+
+  fn io_error() -> io::Error {
+    io::Error::from(io::ErrorKind::NotFound)
+  }
+
+  fn url_error() -> url::ParseError {
+    url::ParseError::EmptyHost
+  }
+
+  fn import_map_error() -> ImportMapError {
+    ImportMapError {
+      msg: "an import map error".to_string(),
+    }
+  }
+
+  #[test]
+  fn test_simple_error() {
+    let err = new(ErrorKind::NoError, "foo".to_string());
+    assert_eq!(err.kind(), ErrorKind::NoError);
+    assert_eq!(err.to_string(), "foo");
+  }
+
+  #[test]
+  fn test_io_error() {
+    let err = DenoError::from(io_error());
+    assert_eq!(err.kind(), ErrorKind::NotFound);
+    assert_eq!(err.to_string(), "entity not found");
+  }
+
+  #[test]
+  fn test_url_error() {
+    let err = DenoError::from(url_error());
+    assert_eq!(err.kind(), ErrorKind::EmptyHost);
+    assert_eq!(err.to_string(), "empty host");
+  }
+
+  // TODO find a way to easily test tokio errors and unix errors
+
+  #[test]
+  fn test_diagnostic() {
+    let err = DenoError::from(diagnostic());
+    assert_eq!(err.kind(), ErrorKind::Diagnostic);
+    assert_eq!(strip_ansi_codes(&err.to_string()), "error TS2322: Example 1\n\n► deno/tests/complex_diagnostics.ts:19:3\n\n19   values: o => [\n     ~~~~~~\n\nerror TS2000: Example 2\n\n► /foo/bar.ts:129:3\n\n129   values: undefined,\n      ~~~~~~\n\n\nFound 2 errors.\n");
+  }
+
+  #[test]
+  fn test_js_error() {
+    let err = DenoError::from(js_error());
+    assert_eq!(err.kind(), ErrorKind::JSError);
+    assert_eq!(strip_ansi_codes(&err.to_string()), "error: Error: foo bar\n    at foo (foo_bar.ts:5:17)\n    at qat (bar_baz.ts:6:21)\n    at deno_main.js:2:2");
+  }
+
+  #[test]
+  fn test_import_map_error() {
+    let err = DenoError::from(import_map_error());
+    assert_eq!(err.kind(), ErrorKind::ImportMapError);
+    assert_eq!(err.to_string(), "an import map error");
+  }
+
+  #[test]
+  fn test_bad_resource() {
+    let err = bad_resource();
+    assert_eq!(err.kind(), ErrorKind::BadResource);
+    assert_eq!(err.to_string(), "bad resource id");
+  }
+
+  #[test]
+  fn test_permission_denied() {
+    let err = permission_denied();
+    assert_eq!(err.kind(), ErrorKind::PermissionDenied);
+    assert_eq!(err.to_string(), "permission denied");
+  }
+
+  #[test]
+  fn test_op_not_implemented() {
+    let err = op_not_implemented();
+    assert_eq!(err.kind(), ErrorKind::OpNotAvailable);
+    assert_eq!(err.to_string(), "op not implemented");
+  }
+
+  #[test]
+  fn test_worker_init_failed() {
+    let err = worker_init_failed();
+    assert_eq!(err.kind(), ErrorKind::WorkerInitFailed);
+    assert_eq!(err.to_string(), "worker init failed");
+  }
+
+  #[test]
+  fn test_no_buffer_specified() {
+    let err = no_buffer_specified();
+    assert_eq!(err.kind(), ErrorKind::InvalidInput);
+    assert_eq!(err.to_string(), "no buffer specified");
+  }
+
+  #[test]
+  fn test_no_async_support() {
+    let err = no_async_support();
+    assert_eq!(err.kind(), ErrorKind::NoAsyncSupport);
+    assert_eq!(err.to_string(), "op doesn't support async calls");
+  }
+
+  #[test]
+  fn test_no_sync_support() {
+    let err = no_sync_support();
+    assert_eq!(err.kind(), ErrorKind::NoSyncSupport);
+    assert_eq!(err.to_string(), "op doesn't support sync calls");
+  }
+
+  #[test]
+  #[should_panic]
+  fn test_err_check() {
+    err_check(
+      Err(new(ErrorKind::NotFound, "foo".to_string())) as Result<(), DenoError>
+    );
   }
 }

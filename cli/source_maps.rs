@@ -128,9 +128,14 @@ pub fn apply_source_map<G: SourceMapGetter>(
   };
   // if there is a source line that we might be different in the source file, we
   // will go fetch it from the getter
-  let source_line = if js_error.source_line.is_some() && script_resource_name.is_some() && line_number.is_some()
+  let source_line = if js_error.source_line.is_some()
+    && script_resource_name.is_some()
+    && line_number.is_some()
   {
-    getter.get_source_line(&js_error.script_resource_name.clone().unwrap(), line_number.unwrap() as usize)
+    getter.get_source_line(
+      &js_error.script_resource_name.clone().unwrap(),
+      line_number.unwrap() as usize,
+    )
   } else {
     js_error.source_line.clone()
   };
@@ -269,7 +274,11 @@ mod tests {
       Some(s.as_bytes().to_owned())
     }
 
-    fn get_source_line(&self, _script_name: &str, _line: usize) -> Option<String> {
+    fn get_source_line(
+      &self,
+      _script_name: &str,
+      _line: usize,
+    ) -> Option<String> {
       None
     }
   }
