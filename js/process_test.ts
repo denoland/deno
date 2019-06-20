@@ -1,6 +1,15 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test, testPerm, assert, assertEquals } from "./test_util.ts";
-const { kill, run, DenoError, ErrorKind } = Deno;
+const {
+  kill,
+  run,
+  DenoError,
+  ErrorKind,
+  readFile,
+  open,
+  makeTempDir,
+  writeFile
+} = Deno;
 
 test(function runPermissions(): void {
   let caughtError = false;
@@ -71,7 +80,7 @@ testPerm(
   { write: true, run: true },
   async function runWithCwdIsAsync(): Promise<void> {
     const enc = new TextEncoder();
-    const cwd = Deno.makeTempDirSync({ prefix: "deno_command_test" });
+    const cwd = await makeTempDir({ prefix: "deno_command_test" });
 
     const exitCodeFile = "deno_was_here";
     const pyProgramFile = "poll_exit.py";
@@ -204,6 +213,56 @@ testPerm({ run: true }, async function runStderrOutput(): Promise<void> {
   assertEquals(s, "error");
   p.close();
 });
+
+testPerm(
+  { run: true, write: true, read: true },
+  async function runRedirectStdoutStderr(): Promise<void> {
+    const tempDir = await makeTempDir();
+    const fileName = tempDir + "/redirected_stdio.txt";
+    const file = await open(fileName, "w");
+
+    const p = run({
+      args: [
+        "python",
+        "-c",
+        "import sys; sys.stderr.write('error\\n'); sys.stdout.write('output\\n');"
+      ],
+      stdout: file,
+      stderr: file.rid
+    });
+
+    await p.status();
+    p.close();
+    file.close();
+
+    const fileContents = await readFile(fileName);
+    const decoder = new TextDecoder();
+    const text = decoder.decode(fileContents);
+
+    assertEquals(text, "error\noutput\n");
+  }
+);
+
+testPerm(
+  { run: true, write: true, read: true },
+  async function runRedirectStdin(): Promise<void> {
+    const tempDir = await makeTempDir();
+    const fileName = tempDir + "/redirected_stdio.txt";
+    const encoder = new TextEncoder();
+    await writeFile(fileName, encoder.encode("hello"));
+    const file = await open(fileName, "r");
+
+    const p = run({
+      args: ["python", "-c", "import sys; assert 'hello' == sys.stdin.read();"],
+      stdin: file
+    });
+
+    const status = await p.status();
+    assertEquals(status.code, 0);
+    p.close();
+    file.close();
+  }
+);
 
 testPerm({ run: true }, async function runEnv(): Promise<void> {
   const p = run({

@@ -28,12 +28,9 @@ export interface RunOptions {
   args: string[];
   cwd?: string;
   env?: { [key: string]: string };
-  stdout?: ProcessStdio;
-  stderr?: ProcessStdio;
-  stdin?: ProcessStdio;
-  stdoutRid?: number;
-  stderrRid?: number;
-  stdinRid?: number;
+  stdout?: ProcessStdio | File | number;
+  stderr?: ProcessStdio | File | number;
+  stdin?: ProcessStdio | File | number;
 }
 
 async function runStatus(rid: number): Promise<ProcessStatus> {
@@ -139,6 +136,10 @@ export interface ProcessStatus {
   signal?: number; // TODO: Make this a string, e.g. 'SIGTERM'.
 }
 
+function isProcessStdio(arg: unknown): arg is ProcessStdio {
+  return ["inherit", "piped", "null"].includes(String(arg));
+}
+
 function stdioMap(s: ProcessStdio): msg.ProcessStdio {
   switch (s) {
     case "inherit":
@@ -150,6 +151,10 @@ function stdioMap(s: ProcessStdio): msg.ProcessStdio {
     default:
       return unreachable();
   }
+}
+
+function isRid(arg: unknown): arg is number {
+  return !isNaN(arg as number);
 }
 
 /**
@@ -180,17 +185,55 @@ export function run(opt: RunOptions): Process {
     }
   }
   const envOffset = msg.Run.createEnvVector(builder, kvOffset);
+
+  let stdInOffset = stdioMap("inherit");
+  let stdOutOffset = stdioMap("inherit");
+  let stdErrOffset = stdioMap("inherit");
+  let stdinRidOffset = 0;
+  let stdoutRidOffset = 0;
+  let stderrRidOffset = 0;
+
+  if (opt.stdin) {
+    if (isProcessStdio(opt.stdin)) {
+      stdInOffset = stdioMap(opt.stdin as ProcessStdio);
+    } else if (isRid(opt.stdin)) {
+      stdinRidOffset = opt.stdin as number;
+    } else {
+      stdinRidOffset = opt.stdin.rid as number;
+    }
+  }
+
+  if (opt.stdout) {
+    if (isProcessStdio(opt.stdout)) {
+      stdOutOffset = stdioMap(opt.stdout as ProcessStdio);
+    } else if (isRid(opt.stdout)) {
+      stdoutRidOffset = opt.stdout as number;
+    } else {
+      stdoutRidOffset = opt.stdout.rid as number;
+    }
+  }
+
+  if (opt.stderr) {
+    if (isProcessStdio(opt.stderr)) {
+      stdErrOffset = stdioMap(opt.stderr as ProcessStdio);
+    } else if (isRid(opt.stderr)) {
+      stderrRidOffset = opt.stderr as number;
+    } else {
+      stderrRidOffset = opt.stderr.rid as number;
+    }
+  }
+
   const inner = msg.Run.createRun(
     builder,
     argsOffset,
     cwdOffset,
     envOffset,
-    opt.stdin ? stdioMap(opt.stdin) : stdioMap("inherit"),
-    opt.stdout ? stdioMap(opt.stdout) : stdioMap("inherit"),
-    opt.stderr ? stdioMap(opt.stderr) : stdioMap("inherit"),
-    opt.stdinRid ? opt.stdinRid : 0,
-    opt.stdoutRid ? opt.stdoutRid : 0,
-    opt.stderrRid ? opt.stderrRid : 0
+    stdInOffset,
+    stdOutOffset,
+    stdErrOffset,
+    stdinRidOffset,
+    stdoutRidOffset,
+    stderrRidOffset
   );
   const baseRes = dispatch.sendSync(builder, msg.Any.Run, inner);
   assert(baseRes != null);

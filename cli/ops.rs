@@ -1811,7 +1811,7 @@ fn op_run(
   if stderr_rid > 0 {
     c.stderr(resources::get_file(stderr_rid)?);
   } else {
-    c.stderr(subprocess_stdio_map(inner.stdin()));
+    c.stderr(subprocess_stdio_map(inner.stderr()));
   }
 
   // Spawn the command.
