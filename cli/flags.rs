@@ -350,13 +350,20 @@ Demonstrates breaking the input up by space delimiter instead of by lines:
         .long_about(
 "Automatically downloads deno_installer dependencies on first run.
 
+Default installation directory is $HOME/.deno/bin and it must be added to the path manually.
+
   deno install file_server https://deno.land/std/http/file_server.ts --allow-net --allow-read
+
+  deno install colors https://deno.land/std/examples/colors.ts
+
+To change installation directory use -d/--dir flag
+
   deno install -d /usr/local/bin file_server https://deno.land/std/http/file_server.ts --allow-net --allow-read",
         ).arg(
           Arg::with_name("dir")
             .long("dir")
             .short("d")
-            .help("Installation directory (defaults to ~/.deno/bin)")
+            .help("Installation directory (defaults to $HOME/.deno/bin)")
             .takes_value(true)
         ).arg(
           Arg::with_name("exe_name")
