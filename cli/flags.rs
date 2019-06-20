@@ -625,14 +625,17 @@ pub fn flags_from_vec(
       argv.push(INSTALLER_URL.to_string());
 
       if install_match.is_present("dir") {
+        let install_dir = install_match.value_of("dir").unwrap();
         argv.push("--dir".to_string());
-        argv.push(install_match.value_of("dir").unwrap());
+        argv.push(install_dir.to_string());
       }
 
       let exe_name: &str = install_match.value_of("exe_name").unwrap();
+      argv.push(exe_name.to_string());
+
       match install_match.subcommand() {
         (script_url, Some(script_match)) => {
-          argv.extend(vec![exe_name.to_string(), script_url.to_string()]);
+          argv.push(script_url.to_string());
           if script_match.is_present("") {
             let flags: Vec<String> = script_match
               .values_of("")
