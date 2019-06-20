@@ -1,5 +1,11 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { test, testPerm, assert, assertEquals } from "./test_util.ts";
+import {
+  test,
+  testPerm,
+  assert,
+  assertEquals,
+  assertStrContains
+} from "./test_util.ts";
 const {
   kill,
   run,
@@ -239,7 +245,8 @@ testPerm(
     const decoder = new TextDecoder();
     const text = decoder.decode(fileContents);
 
-    assertEquals(text, "error\noutput\n");
+    assertStrContains(text, "error");
+    assertStrContains(text, "output");
   }
 );
 
