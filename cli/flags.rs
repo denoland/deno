@@ -350,7 +350,14 @@ Demonstrates breaking the input up by space delimiter instead of by lines:
         .long_about(
 "Automatically downloads deno_installer dependencies on first run.
 
-  deno install file_server https://deno.land/std/http/file_server.ts --allow-net --allow-read",
+  deno install file_server https://deno.land/std/http/file_server.ts --allow-net --allow-read
+  deno install -d /usr/local/bin file_server https://deno.land/std/http/file_server.ts --allow-net --allow-read",
+        ).arg(
+          Arg::with_name("dir")
+            .long("dir")
+            .short("d")
+            .help("Installation directory (defaults to ~/.deno/bin)")
+            .takes_value(true)
         ).arg(
           Arg::with_name("exe_name")
             .help("Executable name")
@@ -509,7 +516,7 @@ fn parse_run_args(mut flags: DenoFlags, matches: &ArgMatches) -> DenoFlags {
 /// Used for `deno fmt <files>...` subcommand
 const PRETTIER_URL: &str = "https://deno.land/std@v0.7.0/prettier/main.ts";
 /// Used for `deno install...` subcommand
-const INSTALLER_URL: &str = "https://deno.land/std@1679ba/installer/mod.ts";
+const INSTALLER_URL: &str = "https://deno.land/std@b13441f/installer/mod.ts";
 
 /// These are currently handled subcommands.
 /// There is no "Help" subcommand because it's handled by `clap::App` itself.
@@ -616,6 +623,11 @@ pub fn flags_from_vec(
       flags.allow_env = true;
       flags.allow_run = true;
       argv.push(INSTALLER_URL.to_string());
+
+      if install_match.is_present("dir") {
+        argv.push("--dir".to_string());
+        argv.push(install_match.value_of("dir").unwrap());
+      }
 
       let exe_name: &str = install_match.value_of("exe_name").unwrap();
       match install_match.subcommand() {
@@ -1316,6 +1328,42 @@ mod tests {
       svec![
         "deno",
         INSTALLER_URL,
+        "file_server",
+        "https://deno.land/std/http/file_server.ts",
+        "--allow-net",
+        "--allow-read"
+      ]
+    );
+
+    let (flags, subcommand, argv) = flags_from_vec(svec![
+      "deno",
+      "install",
+      "-d",
+      "/usr/local/bin",
+      "file_server",
+      "https://deno.land/std/http/file_server.ts",
+      "--allow-net",
+      "--allow-read"
+    ]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        allow_write: true,
+        allow_net: true,
+        allow_read: true,
+        allow_env: true,
+        allow_run: true,
+        ..DenoFlags::default()
+      }
+    );
+    assert_eq!(subcommand, DenoSubcommand::Install);
+    assert_eq!(
+      argv,
+      svec![
+        "deno",
+        INSTALLER_URL,
+        "--dir",
+        "/usr/local/bin",
         "file_server",
         "https://deno.land/std/http/file_server.ts",
         "--allow-net",
