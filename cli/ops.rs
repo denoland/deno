@@ -2,13 +2,13 @@
 use atty;
 use crate::ansi;
 use crate::deno_dir::resolve_path;
+use crate::deno_error;
+use crate::deno_error::err_check;
+use crate::deno_error::DenoError;
+use crate::deno_error::DenoResult;
+use crate::deno_error::ErrorKind;
 use crate::dispatch_minimal::dispatch_minimal;
 use crate::dispatch_minimal::parse_min_record;
-use crate::errors;
-use crate::errors::err_check;
-use crate::errors::DenoError;
-use crate::errors::DenoResult;
-use crate::errors::ErrorKind;
 use crate::fs as deno_fs;
 use crate::http_util;
 use crate::msg;
@@ -496,7 +496,7 @@ fn op_fetch_module_meta_data(
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
   if !base.sync() {
-    return Err(errors::no_async_support());
+    return Err(deno_error::no_async_support());
   }
   assert!(data.is_none());
   let inner = base.inner_as_fetch_module_meta_data().unwrap();
@@ -563,7 +563,7 @@ fn op_global_timer_stop(
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
   if !base.sync() {
-    return Err(errors::no_async_support());
+    return Err(deno_error::no_async_support());
   }
   assert!(data.is_none());
   let state = state;
@@ -578,7 +578,7 @@ fn op_global_timer(
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
   if base.sync() {
-    return Err(errors::no_sync_support());
+    return Err(deno_error::no_sync_support());
   }
   assert!(data.is_none());
   let cmd_id = base.cmd_id();
@@ -1002,7 +1002,7 @@ fn op_close(
   let inner = base.inner_as_close().unwrap();
   let rid = inner.rid();
   match resources::lookup(rid) {
-    None => Err(errors::bad_resource()),
+    None => Err(deno_error::bad_resource()),
     Some(resource) => {
       resource.close();
       ok_buf(empty_buf())
@@ -1033,7 +1033,7 @@ fn op_shutdown(
   let rid = inner.rid();
   let how = inner.how();
   match resources::lookup(rid) {
-    None => Err(errors::bad_resource()),
+    None => Err(deno_error::bad_resource()),
     Some(mut resource) => {
       let shutdown_mode = match how {
         0 => Shutdown::Read,
@@ -1059,7 +1059,7 @@ fn op_read(
   let rid = inner.rid();
 
   match resources::lookup(rid) {
-    None => Err(errors::bad_resource()),
+    None => Err(deno_error::bad_resource()),
     Some(resource) => {
       let op = tokio::io::read(resource, data.unwrap())
         .map_err(DenoError::from)
@@ -1102,7 +1102,7 @@ fn op_write(
   let rid = inner.rid();
 
   match resources::lookup(rid) {
-    None => Err(errors::bad_resource()),
+    None => Err(deno_error::bad_resource()),
     Some(resource) => {
       let op = tokio_write::write(resource, data.unwrap())
         .map_err(DenoError::from)
@@ -1146,7 +1146,7 @@ fn op_seek(
   let whence = inner.whence();
 
   match resources::lookup(rid) {
-    None => Err(errors::bad_resource()),
+    None => Err(deno_error::bad_resource()),
     Some(resource) => {
       let op = resources::seek(resource, offset, whence)
         .and_then(move |_| Ok(empty_buf()));
@@ -1205,7 +1205,7 @@ fn op_copy_file(
     // See https://github.com/rust-lang/rust/issues/54800
     // Once the issue is reolved, we should remove this workaround.
     if cfg!(unix) && !from.is_file() {
-      return Err(errors::new(
+      return Err(deno_error::new(
         ErrorKind::NotFound,
         "File not found".to_string(),
       ));
@@ -1417,7 +1417,7 @@ fn op_symlink(
   state.check_write(&newname_)?;
   // TODO Use type for Windows.
   if cfg!(windows) {
-    return Err(errors::new(ErrorKind::Other, "Not implemented".to_string()));
+    return Err(deno_error::new(ErrorKind::Other, "Not implemented".to_string()));
   }
   blocking(base.sync(), move || {
     debug!("op_symlink {} {}", oldname.display(), newname.display());
@@ -1638,7 +1638,7 @@ fn op_accept(
   let server_rid = inner.rid();
 
   match resources::lookup(server_rid) {
-    None => Err(errors::bad_resource()),
+    None => Err(deno_error::bad_resource()),
     Some(server_resource) => {
       let op = tokio_util::accept(server_resource)
         .map_err(DenoError::from)
@@ -1767,7 +1767,7 @@ fn op_run(
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
   if !base.sync() {
-    return Err(errors::no_async_support());
+    return Err(deno_error::no_async_support());
   }
   let cmd_id = base.cmd_id();
 
@@ -1906,7 +1906,7 @@ fn op_worker_get_message(
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
   if base.sync() {
-    return Err(errors::no_sync_support());
+    return Err(deno_error::no_sync_support());
   }
   assert!(data.is_none());
   let cmd_id = base.cmd_id();
@@ -1952,7 +1952,7 @@ fn op_worker_post_message(
   };
   tx.send(d)
     .wait()
-    .map_err(|e| errors::new(ErrorKind::Other, e.to_string()))?;
+    .map_err(|e| deno_error::new(ErrorKind::Other, e.to_string()))?;
   let builder = &mut FlatBufferBuilder::new();
 
   ok_buf(serialize_response(
@@ -2026,7 +2026,7 @@ fn op_host_get_worker_closed(
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
   if base.sync() {
-    return Err(errors::no_sync_support());
+    return Err(deno_error::no_sync_support());
   }
   assert!(data.is_none());
   let cmd_id = base.cmd_id();
@@ -2061,7 +2061,7 @@ fn op_host_get_message(
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
   if base.sync() {
-    return Err(errors::no_sync_support());
+    return Err(deno_error::no_sync_support());
   }
   assert!(data.is_none());
   let cmd_id = base.cmd_id();
@@ -2105,7 +2105,7 @@ fn op_host_post_message(
 
   resources::post_message_to_worker(rid, d)
     .wait()
-    .map_err(|e| errors::new(ErrorKind::Other, e.to_string()))?;
+    .map_err(|e| deno_error::new(ErrorKind::Other, e.to_string()))?;
   let builder = &mut FlatBufferBuilder::new();
 
   ok_buf(serialize_response(

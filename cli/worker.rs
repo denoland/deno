@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::errors::DenoError;
+use crate::deno_error::DenoError;
 use crate::state::ThreadSafeState;
 use crate::tokio_util;
 use deno;
@@ -127,7 +127,7 @@ impl Future for Worker {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::errors::err_check;
+  use crate::deno_error::err_check;
   use crate::flags;
   use crate::ops::op_selector_std;
   use crate::progress::Progress;

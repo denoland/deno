@@ -4,8 +4,8 @@ use atty;
 use crate::flags::DenoFlags;
 
 use ansi_term::Style;
-use crate::errors::permission_denied;
-use crate::errors::DenoResult;
+use crate::deno_error::permission_denied;
+use crate::deno_error::DenoResult;
 use std::collections::HashSet;
 use std::fmt;
 use std::io;

@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+use crate::deno_error::err_check;
+use crate::deno_error::DenoError;
 use crate::diagnostics::Diagnostic;
-use crate::errors::err_check;
-use crate::errors::DenoError;
 use crate::msg;
 use crate::resources;
 use crate::startup_data;

@@ -112,8 +112,9 @@ impl DenoError {
       return DenoError {
         repr: Repr::JSError(apply_source_map(&js_error, getter)),
       };
+    } else {
+      panic!("attempt to apply source map an unremappable error")
     }
-    self
   }
 }
 
@@ -396,6 +397,22 @@ mod tests {
     }
   }
 
+  struct MockSourceMapGetter {}
+
+  impl SourceMapGetter for MockSourceMapGetter {
+    fn get_source_map(&self, _script_name: &str) -> Option<Vec<u8>> {
+      Some(vec![])
+    }
+
+    fn get_source_line(
+      &self,
+      _script_name: &str,
+      _line: usize,
+    ) -> Option<String> {
+      None
+    }
+  }
+
   fn io_error() -> io::Error {
     io::Error::from(io::ErrorKind::NotFound)
   }
@@ -501,6 +518,14 @@ mod tests {
     let err = no_sync_support();
     assert_eq!(err.kind(), ErrorKind::NoSyncSupport);
     assert_eq!(err.to_string(), "op doesn't support sync calls");
+  }
+
+  #[test]
+  #[should_panic]
+  fn test_apply_source_map_invalid() {
+    let getter = MockSourceMapGetter {};
+    let err = new(ErrorKind::NotFound, "not found".to_string());
+    err.apply_source_map(&getter);
   }
 
   #[test]

@@ -1,9 +1,9 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::compiler::ModuleMetaData;
-use crate::errors;
-use crate::errors::DenoError;
-use crate::errors::DenoResult;
-use crate::errors::ErrorKind;
+use crate::deno_error;
+use crate::deno_error::DenoError;
+use crate::deno_error::DenoResult;
+use crate::deno_error::ErrorKind;
 use crate::fs as deno_fs;
 use crate::http_util;
 use crate::msg;
@@ -152,7 +152,7 @@ impl DenoDir {
     referrer: &str,
     use_cache: bool,
     no_fetch: bool,
-  ) -> impl Future<Item = ModuleMetaData, Error = errors::DenoError> {
+  ) -> impl Future<Item = ModuleMetaData, Error = deno_error::DenoError> {
     debug!(
       "fetch_module_meta_data. specifier {} referrer {}",
       specifier, referrer
@@ -187,7 +187,7 @@ impl DenoDir {
           Err(err) => {
             if err.kind() == ErrorKind::NotFound {
               // For NotFound, change the message to something better.
-              return Err(errors::new(
+              return Err(deno_error::new(
                 ErrorKind::NotFound,
                 format!(
                   "Cannot resolve module \"{}\" from \"{}\"",
@@ -255,7 +255,7 @@ impl DenoDir {
     referrer: &str,
     use_cache: bool,
     no_fetch: bool,
-  ) -> Result<ModuleMetaData, errors::DenoError> {
+  ) -> Result<ModuleMetaData, deno_error::DenoError> {
     tokio_util::block_on(
       self
         .fetch_module_meta_data_async(specifier, referrer, use_cache, no_fetch),
