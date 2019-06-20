@@ -698,10 +698,10 @@ export main() {
 }
 ```
 
-### Executable scripts
+### Installing executable scripts
 
-Deno provides ability to easily distribute executable code via `deno install`
-command.
+Deno provides ability to easily install and distribute executable code via
+`deno install` command.
 
 `deno install [EXE_NAME] [URL] [FLAGS...]` will install script available at
 `URL` with name `EXE_NAME`.
@@ -713,10 +713,10 @@ Example:
 
 ```
 $ deno install file_server https://deno.land/std/http/file_server.ts --allow-net --allow-read
-> [1/1] Compiling https://deno.land/std/http/file_server.ts
->
-> ✅ Successfully installed file_server.
-> /Users/deno/.deno/bin/file_server
+[1/1] Compiling https://deno.land/std/http/file_server.ts
+
+✅ Successfully installed file_server.
+/Users/deno/.deno/bin/file_server
 ```
 
 By default scripts are installed at `$HOME/.deno/bin` and that directory must be
@@ -732,8 +732,6 @@ Installation directory can be changed using `-d/--dir` flag:
 deno install --dir /usr/local/bin prettier https://deno.land/std/prettier/main.ts --allow-write --allow-read
 ```
 
-#### Flags and permissions
-
 When installing a script you can specify permissions that will be used to run
 the script. They are placed after the script URL and can be mixed with any
 additional CLI flags you want to pass to the script.
@@ -748,8 +746,6 @@ Above command creates an executable called `format_check` that runs `prettier`
 with write and read permissions. When you run `format_check` deno will run
 prettier in `check` mode and configured to use `88` column width with `2` column
 tabs.
-
-#### Authoring executable scripts
 
 It is a good practice to use `import.meta.main` idiom for an entry point for
 executable file. See
