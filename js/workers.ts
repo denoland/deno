@@ -228,7 +228,7 @@ export class WorkerImpl implements Worker {
         decodedMsg = decodeMessage(msg);
       } catch (e) {
         if (this.onmessageerror) {
-          this.onmessageerror({ data: msg } as MessageEvent);
+          this.onmessageerror({ data: msg } as any as MessageEvent);
         }
         continue;
       }
