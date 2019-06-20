@@ -1,9 +1,9 @@
 const { makeTempDir, open, run, execPath, remove, readFile } = Deno;
 
-async function main() {
+async function main(): Promise<void> {
   const tempDir = await makeTempDir();
   const fileName = tempDir + "/redirected_stdio.txt";
-  const file = await Deno.open(fileName, "w");
+  const file = await open(fileName, "w");
 
   const p = run({
     args: [execPath, "./tests/subdir/redirected_stdio.ts"],
