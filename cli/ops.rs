@@ -2038,17 +2038,10 @@ fn op_worker_post_message(
     let wc = state.worker_channels.lock().unwrap();
     wc.0.clone()
   };
-  debug!("post lock");
   let op = tx.send(d);
-  debug!("post send");
-  let op = op.map_err(|e| {
-    debug!("send error");
-    errors::new(ErrorKind::Other, e.to_string())
-  });
+  let op = op.map_err(|e| errors::new(ErrorKind::Other, e.to_string()));
   let op = op.and_then(move |_| -> DenoResult<Buf> {
-    debug!("flatbfr");
     let builder = &mut FlatBufferBuilder::new();
-    debug!("posting message");
     Ok(serialize_response(
       cmd_id,
       builder,
