@@ -117,6 +117,13 @@ void deno_init() {
     platform = v8::platform::NewDefaultPlatform();
     v8::V8::InitializePlatform(platform.get());
     v8::V8::Initialize();
+    // TODO(ry) This makes WASM compile synchronously. Eventually we should
+    // remove this to make it work asynchronously too. But that requires getting
+    // PumpMessageLoop and RunMicrotasks setup correctly.
+    // See https://github.com/denoland/deno/issues/2544
+    const char* argv[2] = {"", "--no-wasm-async-compilation"};
+    int argc = 2;
+    v8::V8::SetFlagsFromCommandLine(&argc, const_cast<char**>(argv), false);
   }
 }
 

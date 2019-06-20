@@ -1,0 +1,2 @@
+args: tests/wasm_async.js
+output: tests/wasm_async.out
