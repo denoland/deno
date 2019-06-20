@@ -37,6 +37,8 @@ pub fn format_maybe_source_name(
   format_source_name(script_name.unwrap(), line.unwrap(), column.unwrap())
 }
 
+/// Take an optional source line and associated information to format it into
+/// a pretty printed version of that line.
 pub fn format_maybe_source_line(
   source_line: Option<String>,
   line_number: Option<i64>,
