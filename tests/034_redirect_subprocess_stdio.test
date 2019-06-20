@@ -1,0 +1,1 @@
+args: run --reload tests/034_redirect_subprocess_stdio.ts

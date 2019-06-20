@@ -31,6 +31,9 @@ export interface RunOptions {
   stdout?: ProcessStdio;
   stderr?: ProcessStdio;
   stdin?: ProcessStdio;
+  stdoutRid?: number;
+  stderrRid?: number;
+  stdinRid?: number;
 }
 
 async function runStatus(rid: number): Promise<ProcessStatus> {
@@ -184,7 +187,10 @@ export function run(opt: RunOptions): Process {
     envOffset,
     opt.stdin ? stdioMap(opt.stdin) : stdioMap("inherit"),
     opt.stdout ? stdioMap(opt.stdout) : stdioMap("inherit"),
-    opt.stderr ? stdioMap(opt.stderr) : stdioMap("inherit")
+    opt.stderr ? stdioMap(opt.stderr) : stdioMap("inherit"),
+    opt.stdinRid ? opt.stdinRid : 0,
+    opt.stdoutRid ? opt.stdoutRid : 0,
+    opt.stderrRid ? opt.stderrRid : 0
   );
   const baseRes = dispatch.sendSync(builder, msg.Any.Run, inner);
   assert(baseRes != null);
