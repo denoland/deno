@@ -5,8 +5,8 @@ use crate::msg::ErrorKind;
 use std::error::Error;
 
 use crate::deno_dir::DenoDir;
-use crate::errors::new as deno_error;
-use crate::errors::DenoResult;
+use crate::deno_error::new as deno_error;
+use crate::deno_error::DenoResult;
 use std::path::PathBuf;
 
 #[cfg(not(windows))]

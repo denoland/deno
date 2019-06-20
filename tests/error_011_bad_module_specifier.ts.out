@@ -1,4 +1,5 @@
-[WILDCARD]Uncaught RelativeUrlWithCannotBeABaseBase: relative URL with a cannot-be-a-base base
+[WILDCARD]error: Uncaught RelativeUrlWithCannotBeABaseBase: relative URL with a cannot-be-a-base base
+[WILDCARD] js/errors.ts:[WILDCARD]
     at DenoError (js/errors.ts:[WILDCARD])
     at maybeError (js/errors.ts:[WILDCARD])
     at maybeThrowError (js/errors.ts:[WILDCARD])

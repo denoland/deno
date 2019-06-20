@@ -1,4 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+use crate::deno_error::err_check;
+use crate::deno_error::DenoError;
 use crate::diagnostics::Diagnostic;
 use crate::msg;
 use crate::resources;
@@ -6,7 +8,6 @@ use crate::startup_data;
 use crate::state::*;
 use crate::tokio_util;
 use crate::worker::Worker;
-use deno::js_check;
 use deno::Buf;
 use futures::Future;
 use futures::Stream;
@@ -92,7 +93,7 @@ pub fn bundle_async(
   state: ThreadSafeState,
   module_name: String,
   out_file: String,
-) -> impl Future<Item = (), Error = Diagnostic> {
+) -> impl Future<Item = (), Error = DenoError> {
   debug!(
     "Invoking the compiler to bundle. module_name: {}",
     module_name
@@ -112,9 +113,9 @@ pub fn bundle_async(
     // as was done previously.
     state.clone(),
   );
-  js_check(worker.execute("denoMain()"));
-  js_check(worker.execute("workerMain()"));
-  js_check(worker.execute("compilerMain()"));
+  err_check(worker.execute("denoMain()"));
+  err_check(worker.execute("workerMain()"));
+  err_check(worker.execute("compilerMain()"));
 
   let resource = worker.state.resource.clone();
   let compiler_rid = resource.rid;
@@ -140,7 +141,7 @@ pub fn bundle_async(
         let json_str = std::str::from_utf8(&msg).unwrap();
         debug!("Message: {}", json_str);
         if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
-          return Err(diagnostics);
+          return Err(DenoError::from(diagnostics));
         }
       }
 
@@ -152,7 +153,7 @@ pub fn bundle_async(
 pub fn compile_async(
   state: ThreadSafeState,
   module_meta_data: &ModuleMetaData,
-) -> impl Future<Item = ModuleMetaData, Error = Diagnostic> {
+) -> impl Future<Item = ModuleMetaData, Error = DenoError> {
   let module_name = module_meta_data.module_name.clone();
 
   debug!(
@@ -174,9 +175,9 @@ pub fn compile_async(
     // as was done previously.
     state.clone(),
   );
-  js_check(worker.execute("denoMain()"));
-  js_check(worker.execute("workerMain()"));
-  js_check(worker.execute("compilerMain()"));
+  err_check(worker.execute("denoMain()"));
+  err_check(worker.execute("workerMain()"));
+  err_check(worker.execute("compilerMain()"));
 
   let compiling_job = state.progress.add(format!("Compiling {}", module_name));
 
@@ -205,7 +206,7 @@ pub fn compile_async(
         let json_str = std::str::from_utf8(&msg).unwrap();
         debug!("Message: {}", json_str);
         if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
-          return Err(diagnostics);
+          return Err(DenoError::from(diagnostics));
         }
       }
 
@@ -235,7 +236,7 @@ pub fn compile_async(
 pub fn compile_sync(
   state: ThreadSafeState,
   module_meta_data: &ModuleMetaData,
-) -> Result<ModuleMetaData, Diagnostic> {
+) -> Result<ModuleMetaData, DenoError> {
   tokio_util::block_on(compile_async(state, module_meta_data))
 }
 
@@ -306,6 +307,6 @@ mod tests {
     ]);
     let out =
       bundle_async(state, module_name, String::from("$deno$/bundle.js"));
-    assert_eq!(tokio_util::block_on(out), Ok(()));
+    assert!(tokio_util::block_on(out).is_ok());
   }
 }

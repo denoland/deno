@@ -1,4 +1,6 @@
-[WILDCARD]tests/error_syntax.js:3:5
-(the following is a syntax error  ^^ ! )
-     ^^^^^^^^^
-Uncaught SyntaxError: Unexpected identifier
+error: Uncaught SyntaxError: Unexpected identifier
+[WILDCARD]tests/error_syntax.js:3:6
+
+3 (the following is a syntax error  ^^ ! )
+       ~~~~~~~~~
+
