@@ -1417,7 +1417,10 @@ fn op_symlink(
   state.check_write(&newname_)?;
   // TODO Use type for Windows.
   if cfg!(windows) {
-    return Err(deno_error::new(ErrorKind::Other, "Not implemented".to_string()));
+    return Err(deno_error::new(
+      ErrorKind::Other,
+      "Not implemented".to_string(),
+    ));
   }
   blocking(base.sync(), move || {
     debug!("op_symlink {} {}", oldname.display(), newname.display());

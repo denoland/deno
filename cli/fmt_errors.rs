@@ -5,8 +5,8 @@ use deno::JSError;
 use deno::StackFrame;
 use std::fmt;
 
-// A trait which specifies parts of a diagnostic like item needs to be able to
-// generate to conform its display to other diagnostic like items
+/// A trait which specifies parts of a diagnostic like item needs to be able to
+/// generate to conform its display to other diagnostic like items
 pub trait DisplayFormatter {
   fn format_category_and_code(&self) -> String;
   fn format_message(&self, level: usize) -> String;

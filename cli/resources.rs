@@ -372,10 +372,9 @@ impl Future for WorkerReceiver {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     let maybe_repr = table.get_mut(&self.rid);
     match maybe_repr {
-      Some(Repr::Worker(ref mut wc)) => wc
-        .1
-        .poll()
-        .map_err(|err| deno_error::new(deno_error::ErrorKind::Other, err.to_string())),
+      Some(Repr::Worker(ref mut wc)) => wc.1.poll().map_err(|err| {
+        deno_error::new(deno_error::ErrorKind::Other, err.to_string())
+      }),
       _ => Err(bad_resource()),
     }
   }
@@ -398,10 +397,9 @@ impl Stream for WorkerReceiverStream {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     let maybe_repr = table.get_mut(&self.rid);
     match maybe_repr {
-      Some(Repr::Worker(ref mut wc)) => wc
-        .1
-        .poll()
-        .map_err(|err| deno_error::new(deno_error::ErrorKind::Other, err.to_string())),
+      Some(Repr::Worker(ref mut wc)) => wc.1.poll().map_err(|err| {
+        deno_error::new(deno_error::ErrorKind::Other, err.to_string())
+      }),
       _ => Err(bad_resource()),
     }
   }

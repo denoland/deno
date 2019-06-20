@@ -285,7 +285,7 @@ mod tests {
           "console.log('foo');",
           "console.log('foo');",
           "console.log('foo');",
-          "console.log('foo');"
+          "console.log('foo');",
         ],
         _ => return None,
       };
