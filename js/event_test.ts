@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { test, assertEquals } from "./test_util.ts";
+import { test, assertEquals, assertNotEquals } from "./test_util.ts";
 
 test(function eventInitializedWithType(): void {
   const type = "click";
@@ -79,4 +79,17 @@ test(function eventInitializedWithNonStringType(): void {
   assertEquals(event.type, "undefined");
   assertEquals(event.bubbles, false);
   assertEquals(event.cancelable, false);
+});
+
+// ref https://github.com/web-platform-tests/wpt/blob/master/dom/events/Event-isTrusted.any.js
+test(function eventIsTrusted(): void {
+  const desc1 = Object.getOwnPropertyDescriptor(new Event("x"), "isTrusted");
+  assertNotEquals(desc1, undefined);
+  assertEquals(typeof desc1.get, "function");
+
+  const desc2 = Object.getOwnPropertyDescriptor(new Event("x"), "isTrusted");
+  assertNotEquals(desc2, undefined);
+  assertEquals(typeof desc2.get, "function");
+
+  assertEquals(desc1.get, desc2.get);
 });
