@@ -6,6 +6,7 @@
 //! message or a "minimal" message.
 use crate::state::ThreadSafeState;
 use deno::Buf;
+use deno::CoreOp;
 use deno::Op;
 use deno::PinnedBuf;
 use futures::Future;
@@ -89,7 +90,7 @@ pub fn dispatch_minimal(
   state: &ThreadSafeState,
   mut record: Record,
   zero_copy: Option<PinnedBuf>,
-) -> Op {
+) -> CoreOp {
   let is_sync = record.promise_id == 0;
   let min_op = match record.op_id {
     OP_READ => ops::read(record.arg, zero_copy),
@@ -123,27 +124,27 @@ pub fn dispatch_minimal(
 }
 
 mod ops {
-  use crate::errors;
+  use crate::deno_error;
   use crate::resources;
   use crate::tokio_write;
   use deno::PinnedBuf;
   use futures::Future;
 
-  type MinimalOp = dyn Future<Item = i32, Error = errors::DenoError> + Send;
+  type MinimalOp = dyn Future<Item = i32, Error = deno_error::DenoError> + Send;
 
   pub fn read(rid: i32, zero_copy: Option<PinnedBuf>) -> Box<MinimalOp> {
     debug!("read rid={}", rid);
     let zero_copy = match zero_copy {
       None => {
-        return Box::new(futures::future::err(errors::no_buffer_specified()))
+        return Box::new(futures::future::err(deno_error::no_buffer_specified()))
       }
       Some(buf) => buf,
     };
     match resources::lookup(rid as u32) {
-      None => Box::new(futures::future::err(errors::bad_resource())),
+      None => Box::new(futures::future::err(deno_error::bad_resource())),
       Some(resource) => Box::new(
         tokio::io::read(resource, zero_copy)
-          .map_err(errors::DenoError::from)
+          .map_err(deno_error::DenoError::from)
           .and_then(move |(_resource, _buf, nread)| Ok(nread as i32)),
       ),
     }
@@ -153,15 +154,15 @@ mod ops {
     debug!("write rid={}", rid);
     let zero_copy = match zero_copy {
       None => {
-        return Box::new(futures::future::err(errors::no_buffer_specified()))
+        return Box::new(futures::future::err(deno_error::no_buffer_specified()))
       }
       Some(buf) => buf,
     };
     match resources::lookup(rid as u32) {
-      None => Box::new(futures::future::err(errors::bad_resource())),
+      None => Box::new(futures::future::err(deno_error::bad_resource())),
       Some(resource) => Box::new(
         tokio_write::write(resource, zero_copy)
-          .map_err(errors::DenoError::from)
+          .map_err(deno_error::DenoError::from)
           .and_then(move |(_resource, _buf, nwritten)| Ok(nwritten as i32)),
       ),
     }

@@ -15,7 +15,7 @@ use std::os::unix::fs::DirBuilderExt;
 #[cfg(any(unix))]
 use std::os::unix::fs::PermissionsExt;
 
-use crate::errors::DenoResult;
+use crate::deno_error::DenoResult;
 
 pub fn write_file<T: AsRef<[u8]>>(
   filename: &Path,
@@ -115,7 +115,7 @@ pub fn normalize_path(path: &Path) -> String {
 
 #[cfg(unix)]
 pub fn chown(path: &str, uid: u32, gid: u32) -> DenoResult<()> {
-  use crate::errors::DenoError;
+  use crate::deno_error::DenoError;
   let nix_uid = Uid::from_raw(uid);
   let nix_gid = Gid::from_raw(gid);
   unix_chown(path, Option::Some(nix_uid), Option::Some(nix_gid))
@@ -126,6 +126,6 @@ pub fn chown(path: &str, uid: u32, gid: u32) -> DenoResult<()> {
 pub fn chown(_path: &str, _uid: u32, _gid: u32) -> DenoResult<()> {
   // Noop
   // TODO: implement chown for Windows
-  use crate::errors;
-  Err(errors::op_not_implemented())
+  use crate::deno_error;
+  Err(deno_error::op_not_implemented())
 }
