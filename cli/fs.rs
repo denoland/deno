@@ -126,6 +126,6 @@ pub fn chown(path: &str, uid: u32, gid: u32) -> DenoResult<()> {
 pub fn chown(_path: &str, _uid: u32, _gid: u32) -> DenoResult<()> {
   // Noop
   // TODO: implement chown for Windows
-  use crate::errors;
-  Err(errors::op_not_implemented())
+  use crate::deno_error;
+  Err(deno_error::op_not_implemented())
 }
