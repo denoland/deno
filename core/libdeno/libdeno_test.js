@@ -219,3 +219,37 @@ global.LibDenoPrintInvalidArgument = () => {
     assert(e.message === "Invalid Argument");
   }
 };
+
+global.WasmInstantiate = () => {
+  // The following blob can be created by taking the following s-expr and pass
+  // it through wat2wasm.
+  //    (module
+  //      (func $add (param $a i32) (param $b i32) (result i32)
+  //        local.get $a
+  //        local.get $b
+  //        i32.add)
+  //      (export "add" (func $add))
+  //    )
+  // prettier-ignore
+  const bytes = new Uint8Array([
+    0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01, 0x07, 0x01, 0x60,
+    0x02, 0x7f, 0x7f, 0x01, 0x7f, 0x03, 0x02, 0x01, 0x00, 0x07, 0x07, 0x01,
+    0x03, 0x61, 0x64, 0x64, 0x00, 0x00, 0x0a, 0x09, 0x01, 0x07, 0x00, 0x20,
+    0x00, 0x20, 0x01, 0x6a, 0x0b
+  ]);
+
+  (async () => {
+    Deno.core.send(new Uint8Array([42]));
+
+    const wasm = await WebAssembly.instantiate(bytes);
+
+    Deno.core.send(new Uint8Array([42]));
+
+    const result = wasm.instance.exports.add(1, 3);
+    if (result != 4) {
+      throw Error("bad");
+    }
+    // To signal success, we send back a fixed buffer.
+    Deno.core.send(new Uint8Array([42]));
+  })();
+};
