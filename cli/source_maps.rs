@@ -276,10 +276,24 @@ mod tests {
 
     fn get_source_line(
       &self,
-      _script_name: &str,
-      _line: usize,
+      script_name: &str,
+      line: usize,
     ) -> Option<String> {
-      None
+      let s = match script_name {
+        "foo_bar.ts" => vec![
+          "console.log('foo');",
+          "console.log('foo');",
+          "console.log('foo');",
+          "console.log('foo');",
+          "console.log('foo');"
+        ],
+        _ => return None,
+      };
+      if s.len() > line {
+        Some(s[line].to_string())
+      } else {
+        None
+      }
     }
   }
 
@@ -402,6 +416,25 @@ mod tests {
     // Because this is accessing the live bundle, this test might be more fragile
     assert_eq!(actual.frames.len(), 1);
     assert!(actual.frames[0].script_name.ends_with("js/util.ts"));
+  }
+
+  #[test]
+  fn js_error_apply_source_map_line() {
+    let e = JSError {
+      message: "TypeError: baz".to_string(),
+      source_line: Some("foo".to_string()),
+      script_resource_name: Some("foo_bar.ts".to_string()),
+      line_number: Some(4),
+      start_position: None,
+      end_position: None,
+      error_level: None,
+      start_column: Some(16),
+      end_column: None,
+      frames: vec![],
+    };
+    let getter = MockSourceMapGetter {};
+    let actual = apply_source_map(&e, &getter);
+    assert_eq!(actual.source_line, Some("console.log('foo');".to_string()));
   }
 
   #[test]
