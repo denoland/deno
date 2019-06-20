@@ -23,6 +23,8 @@ export class EventInit implements domTypes.EventInit {
 }
 
 export class Event implements domTypes.Event {
+  // The default value is `false`.
+  // Use `defineProperty` to define on each instance, NOT on the prototype.
   isTrusted!: boolean;
   // Each event has the following associated flags
   private _canceledFlag = false;
