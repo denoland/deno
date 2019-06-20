@@ -142,8 +142,6 @@ impl<L: Loader> RecursiveLoad<L> {
   }
 }
 
-// TODO(ry) This is basically the same thing as RustOrJsError. They should be
-// combined into one type.
 #[derive(Debug, PartialEq)]
 pub enum JSErrorOr<E> {
   JSError(JSError),

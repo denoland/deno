@@ -2,19 +2,12 @@
 //! This module encodes TypeScript errors (diagnostics) into Rust structs and
 //! contains code for printing them to the console.
 use crate::ansi;
+use crate::fmt_errors::format_maybe_source_line;
+use crate::fmt_errors::format_maybe_source_name;
+use crate::fmt_errors::DisplayFormatter;
 use serde_json;
 use serde_json::value::Value;
 use std::fmt;
-
-// A trait which specifies parts of a diagnostic like item needs to be able to
-// generate to conform its display to other diagnostic like items
-pub trait DisplayFormatter {
-  fn format_category_and_code(&self) -> String;
-  fn format_message(&self, level: usize) -> String;
-  fn format_related_info(&self) -> String;
-  fn format_source_line(&self, level: usize) -> String;
-  fn format_source_name(&self, level: usize) -> String;
-}
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Diagnostic {
@@ -179,23 +172,21 @@ impl DiagnosticItem {
   }
 }
 
-// TODO should chare logic with cli/js_errors, possibly with JSError
-// implementing the `DisplayFormatter` trait.
 impl DisplayFormatter for DiagnosticItem {
   fn format_category_and_code(&self) -> String {
     let category = match self.category {
       DiagnosticCategory::Error => {
-        format!("- {}", ansi::red("error".to_string()))
+        format!("{}", ansi::red_bold("error".to_string()))
       }
-      DiagnosticCategory::Warning => "- warn".to_string(),
-      DiagnosticCategory::Debug => "- debug".to_string(),
-      DiagnosticCategory::Info => "- info".to_string(),
+      DiagnosticCategory::Warning => "warn".to_string(),
+      DiagnosticCategory::Debug => "debug".to_string(),
+      DiagnosticCategory::Info => "info".to_string(),
       _ => "".to_string(),
     };
 
-    let code = ansi::grey(format!(" TS{}:", self.code.to_string())).to_string();
+    let code = ansi::bold(format!(" TS{}", self.code.to_string())).to_string();
 
-    format!("{}{} ", category, code)
+    format!("{}{}: ", category, code)
   }
 
   fn format_message(&self, level: usize) -> String {
@@ -229,10 +220,10 @@ impl DisplayFormatter for DiagnosticItem {
     for related_diagnostic in related_information {
       let rd = &related_diagnostic;
       s.push_str(&format!(
-        "\n{}{}{}\n",
-        rd.format_source_name(2),
+        "\n{}\n\n    ► {}{}\n",
+        rd.format_message(2),
+        rd.format_source_name(),
         rd.format_source_line(4),
-        rd.format_message(4),
       ));
     }
 
@@ -240,74 +231,24 @@ impl DisplayFormatter for DiagnosticItem {
   }
 
   fn format_source_line(&self, level: usize) -> String {
-    if self.source_line.is_none() {
-      return "".to_string();
-    }
-
-    let source_line = self.source_line.as_ref().unwrap();
-    // sometimes source_line gets set with an empty string, which then outputs
-    // an empty source line when displayed, so need just short circuit here
-    if source_line.is_empty() {
-      return "".to_string();
-    }
-
-    assert!(self.line_number.is_some());
-    assert!(self.start_column.is_some());
-    assert!(self.end_column.is_some());
-    let line = (1 + self.line_number.unwrap()).to_string();
-    let line_color = ansi::black_on_white(line.to_string());
-    let line_len = line.clone().len();
-    let line_padding =
-      ansi::black_on_white(format!("{:indent$}", "", indent = line_len))
-        .to_string();
-    let mut s = String::new();
-    let start_column = self.start_column.unwrap();
-    let end_column = self.end_column.unwrap();
-    // TypeScript uses `~` always, but V8 would utilise `^` always, even when
-    // doing ranges, so here, if we only have one marker (very common with V8
-    // errors) we will use `^` instead.
-    let underline_char = if (end_column - start_column) <= 1 {
-      '^'
-    } else {
-      '~'
-    };
-    for i in 0..end_column {
-      if i >= start_column {
-        s.push(underline_char);
-      } else {
-        s.push(' ');
-      }
-    }
-    let color_underline = match self.category {
-      DiagnosticCategory::Error => ansi::red(s).to_string(),
-      _ => ansi::cyan(s).to_string(),
-    };
-
-    let indent = format!("{:indent$}", "", indent = level);
-
-    format!(
-      "\n\n{}{} {}\n{}{} {}\n",
-      indent, line_color, source_line, indent, line_padding, color_underline
+    format_maybe_source_line(
+      self.source_line.clone(),
+      self.line_number,
+      self.start_column,
+      self.end_column,
+      match self.category {
+        DiagnosticCategory::Error => true,
+        _ => false,
+      },
+      level,
     )
   }
 
-  fn format_source_name(&self, level: usize) -> String {
-    if self.script_resource_name.is_none() {
-      return "".to_string();
-    }
-
-    let script_name = ansi::cyan(self.script_resource_name.clone().unwrap());
-    assert!(self.line_number.is_some());
-    assert!(self.start_column.is_some());
-    let line = ansi::yellow((1 + self.line_number.unwrap()).to_string());
-    let column = ansi::yellow((1 + self.start_column.unwrap()).to_string());
-    format!(
-      "{:indent$}{}:{}:{} ",
-      "",
-      script_name,
-      line,
-      column,
-      indent = level
+  fn format_source_name(&self) -> String {
+    format_maybe_source_name(
+      self.script_resource_name.clone(),
+      self.line_number,
+      self.start_column,
     )
   }
 }
@@ -316,15 +257,13 @@ impl fmt::Display for DiagnosticItem {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     write!(
       f,
-      "{}{}{}{}{}",
-      self.format_source_name(0),
+      "{}{}\n\n► {}{}{}",
       self.format_category_and_code(),
       self.format_message(0),
+      self.format_source_name(),
       self.format_source_line(0),
       self.format_related_info(),
-    )?;
-
-    Ok(())
+    )
   }
 }
 
@@ -655,14 +594,14 @@ mod tests {
   #[test]
   fn diagnostic_to_string1() {
     let d = diagnostic1();
-    let expected = "deno/tests/complex_diagnostics.ts:19:3 - error TS2322: Type \'(o: T) => { v: any; f: (x: B) => string; }[]\' is not assignable to type \'(r: B) => Value<B>[]\'.\n  Types of parameters \'o\' and \'r\' are incompatible.\n    Type \'B\' is not assignable to type \'T\'.\n\n19   values: o => [\n     ~~~~~~\n\n  deno/tests/complex_diagnostics.ts:7:3 \n\n    7   values?: (r: T) => Array<Value<T>>;\n        ~~~~~~\n    The expected type comes from property \'values\' which is declared here on type \'SettingsInterface<B>\'\n";
+    let expected = "error TS2322: Type \'(o: T) => { v: any; f: (x: B) => string; }[]\' is not assignable to type \'(r: B) => Value<B>[]\'.\n  Types of parameters \'o\' and \'r\' are incompatible.\n    Type \'B\' is not assignable to type \'T\'.\n\n► deno/tests/complex_diagnostics.ts:19:3\n\n19   values: o => [\n     ~~~~~~\n\n  The expected type comes from property \'values\' which is declared here on type \'SettingsInterface<B>\'\n\n    ► deno/tests/complex_diagnostics.ts:7:3\n\n    7   values?: (r: T) => Array<Value<T>>;\n        ~~~~~~\n\n";
     assert_eq!(expected, strip_ansi_codes(&d.to_string()));
   }
 
   #[test]
   fn diagnostic_to_string2() {
     let d = diagnostic2();
-    let expected = "deno/tests/complex_diagnostics.ts:19:3 - error TS2322: Example 1\n\n19   values: o => [\n     ~~~~~~\n\n/foo/bar.ts:129:3 - error TS2000: Example 2\n\n129   values: undefined,\n      ~~~~~~\n\n\nFound 2 errors.\n";
+    let expected = "error TS2322: Example 1\n\n► deno/tests/complex_diagnostics.ts:19:3\n\n19   values: o => [\n     ~~~~~~\n\nerror TS2000: Example 2\n\n► /foo/bar.ts:129:3\n\n129   values: undefined,\n      ~~~~~~\n\n\nFound 2 errors.\n";
     assert_eq!(expected, strip_ansi_codes(&d.to_string()));
   }
 }
