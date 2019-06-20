@@ -1,9 +1,6 @@
 const jsWorker = new Worker("./tests/subdir/test_worker.js");
 const tsWorker = new Worker("./tests/subdir/test_worker.ts");
 
-jsWorker.postMessage("hello world");
-tsWorker.postMessage("hello world");
-
 setTimeout((): void => {
   jsWorker.onmessage = (e): void => {
     console.log("msg from js worker", e);
@@ -20,6 +17,9 @@ setTimeout((): void => {
   tsWorker.onerror = (e): void => {
     console.log("error from ts worker", e);
   };
+
+  jsWorker.postMessage("hello world");
+  tsWorker.postMessage("hello world");
 }, 1000);
 
 setTimeout((): void => {

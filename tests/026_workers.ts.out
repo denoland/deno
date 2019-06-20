@@ -1,5 +1,5 @@
-js worker init
-ts worker init
+msg from js worker js worker init
+msg from ts worker ts worker init
 js worker received message: hello world
 ReferenceError: DoesNotExist is not defined
     at onmessage ([WILDCARD]/tests/subdir/test_worker.js:10:5)
@@ -10,7 +10,7 @@ Error: error from ts worker
     at workerMain (gen/cli/bundle/main.js:[WILDCARD])
 msg from js worker js worker init
 msg from ts worker ts worker init
-error from js worker { message: "error from js worker" }
+error from js worker { message: "DoesNotExist is not defined" }
 error from ts worker { message: "error from ts worker" }
 js worker received message: hello js after timeout
 end js worker

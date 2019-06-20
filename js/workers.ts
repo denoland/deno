@@ -3,7 +3,7 @@
 import { sendAsync, sendSync } from "./dispatch";
 import * as msg from "gen/cli/msg_generated";
 import * as flatbuffers from "./flatbuffers";
-import { assert, log } from "./util";
+import { assert, log, createResolvable, Resolvable } from "./util";
 import { TextDecoder, TextEncoder } from "./text_encoding";
 import { window } from "./window";
 
@@ -54,7 +54,7 @@ function hostPostMessage(rid: number, data: any): void {
   assert(baseRes != null);
 }
 
-async function hostGetMessage(rid: number): Promise<any> {
+async function hostGetMessage(rid: number): Promise<Uint8Array | null> {
   const builder = flatbuffers.createBuilder();
   const inner = msg.HostGetMessage.createHostGetMessage(builder, rid);
   const baseRes = await sendAsync(builder, msg.Any.HostGetMessage, inner);
@@ -66,16 +66,8 @@ async function hostGetMessage(rid: number): Promise<any> {
   const res = new msg.HostGetMessageRes();
   assert(baseRes!.inner(res) != null);
 
-  const dataArray = res.dataArray();
-  if (dataArray != null) {
-    return decodeMessage(dataArray);
-  } else {
-    return null;
-  }
+  return res.dataArray();
 }
-
-// Stuff for workers
-export let onmessage: (e: { data: any }) => void = (): void => {};
 
 export function postMessage(data: any): void {
   const dataIntArray = encodeMessage(data);
@@ -120,17 +112,6 @@ export function workerClose(): void {
   isClosing = true;
 }
 
-export interface ErrorEvent {
-  message: string;
-  filename: string;
-  lineno: number;
-  colno: number;
-}
-
-export interface MessageEvent {
-  data: any;
-}
-
 export async function workerMain(): Promise<void> {
   log("workerMain");
 
@@ -152,6 +133,7 @@ export async function workerMain(): Promise<void> {
           lineno: e.lineno,
           colno: e.colno
         };
+        log("error event from worker:", JSON.stringify(errorEvent));
         postMessage(errorEvent);
         console.error(e);
       }
@@ -163,10 +145,26 @@ export async function workerMain(): Promise<void> {
   }
 }
 
+export interface ErrorEvent {
+  message: string;
+  filename: string;
+  lineno: number;
+  colno: number;
+}
+
+export interface MessageEvent {
+  data: any;
+}
+
+type OnMessageHandler = (e: MessageEvent) => void;
+type OnErrorHandler = (e: ErrorEvent) => void;
+
+export let onmessage: OnMessageHandler = (): void => {};
+
 export interface Worker {
-  onerror?: (e: ErrorEvent) => void;
-  onmessage?: (e: MessageEvent) => void;
-  onmessageerror?: (e: MessageEvent) => void;
+  onerror?: OnErrorHandler;
+  onmessage?: OnMessageHandler;
+  onmessageerror?: OnMessageHandler;
   postMessage(data: any): void;
   closed: Promise<void>;
 }
@@ -175,19 +173,30 @@ export class WorkerImpl implements Worker {
   private readonly rid: number;
   private isClosing: boolean = false;
   private readonly isClosedPromise: Promise<void>;
-  public onerror?: (e: ErrorEvent) => void;
-  public onmessage?: (e: MessageEvent) => void;
-  public onmessageerror?: (e: MessageEvent) => void;
+  // To prevent eating messages that had been sent by worker
+  // but before `onmessage` listener is set we await
+  // setting that handler.
+  private onmessageSet: Resolvable<void> = createResolvable();
+  private onmessageHandler?: OnMessageHandler;
+  public onerror?: OnErrorHandler;
+  public onmessageerror?: OnMessageHandler;
 
   constructor(specifier: string) {
     this.rid = createWorker(specifier);
     this.run();
+    log("post run");
     this.isClosedPromise = hostGetWorkerClosed(this.rid);
     this.isClosedPromise.then(
       (): void => {
         this.isClosing = true;
       }
     );
+  }
+
+  set onmessage(fn: OnMessageHandler) {
+    log("on message is being set", this.onmessageSet);
+    this.onmessageHandler = fn;
+    this.onmessageSet.resolve();
   }
 
   get closed(): Promise<void> {
@@ -200,23 +209,39 @@ export class WorkerImpl implements Worker {
 
   private async run(): Promise<void> {
     while (!this.isClosing) {
-      // TODO: handle different types of messages
+      log("awaitng to receive message");
       const msg = await hostGetMessage(this.rid);
+      log("received message");
       if (msg == null) {
         log("worker got null message. quitting.");
         break;
       }
 
-      if (msg.message) {
-        if (this.onerror) {
-          this.onerror(msg as ErrorEvent);
+      // Ensure we don't start accepting until we have a listener.
+      log("running await", this.onmessageSet);
+      await this.onmessageSet;
+      log("await done");
+
+      let decodedMsg;
+
+      try {
+        decodedMsg = decodeMessage(msg);
+      } catch (e) {
+        if (this.onmessageerror) {
+          this.onmessageerror({ data: msg } as MessageEvent);
         }
         continue;
       }
 
-      // TODO(afinch7) stop this from eating messages before onmessage has been assigned
-      if (this.onmessage) {
-        this.onmessage(msg as MessageEvent);
+      if (decodedMsg.message) {
+        if (this.onerror) {
+          this.onerror(decodedMsg as ErrorEvent);
+        }
+        continue;
+      }
+
+      if (this.onmessageHandler) {
+        this.onmessageHandler(decodedMsg as MessageEvent);
       }
     }
   }
