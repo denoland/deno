@@ -622,6 +622,44 @@ fn filter_shebang(bytes: Vec<u8>) -> Vec<u8> {
   }
 }
 
+fn save_code_and_headers(
+  filename: &str,
+  module_name: &str,
+  source: &str,
+  maybe_content_type: Option<String>,
+  maybe_initial_filename: Option<String>,
+) -> Result<(), DenoError> {
+  let p = PathBuf::from(filename.clone());
+  match p.parent() {
+    Some(ref parent) => fs::create_dir_all(parent),
+    None => Ok(()),
+  }?;
+  // Write file and create .headers.json for the file.
+  deno_fs::write_file(&p, &source, 0o666)?;
+  {
+    save_source_code_headers(&filename, maybe_content_type.clone(), None);
+  }
+  // Check if this file is downloaded due to some old redirect request.
+  if maybe_initial_filename.is_some() {
+    // If yes, record down the headers for redirect.
+    // Also create its containing folder.
+    let pp = PathBuf::from(filename.clone());
+    match pp.parent() {
+      Some(ref parent) => fs::create_dir_all(parent),
+      None => Ok(()),
+    }?;
+    {
+      save_source_code_headers(
+        &maybe_initial_filename.clone().unwrap(),
+        maybe_content_type.clone(),
+        Some(module_name.to_string()),
+      );
+    }
+  }
+
+  Ok(())
+}
+
 /// Asynchronously fetch remote source file specified by the URL `module_name`
 /// and write it to disk at `filename`.
 fn fetch_remote_source_async(
@@ -663,74 +701,52 @@ fn fetch_remote_source_async(
         match fetch_once_result {
           FetchOnceResult::Redirect(url) => {
             // If redirects, update module_name and filename for next looped call.
-            let resolve_result = dir
-              .resolve_module(&(url.to_string()), ".")
-              .map_err(DenoError::from);
-            match resolve_result {
-              Ok((new_module_name, new_filename)) => {
-                if maybe_initial_module_name.is_none() {
-                  maybe_initial_module_name = Some(module_name.clone());
-                  maybe_initial_filename = Some(filename.clone());
-                }
-                // Not yet completed. Follow the redirect and loop.
-                Ok(Loop::Continue((
-                  dir,
-                  maybe_initial_module_name,
-                  maybe_initial_filename,
-                  new_module_name,
-                  new_filename,
-                )))
-              }
-              Err(e) => Err(e),
+            let (new_module_name, new_filename) = dir
+              .resolve_module(&(url.to_string()), ".")?;
+
+            if maybe_initial_module_name.is_none() {
+              maybe_initial_module_name = Some(module_name.clone());
+              maybe_initial_filename = Some(filename.clone());
             }
+
+            // Not yet completed. Follow the redirect and loop.
+            Ok(Loop::Continue((
+              dir,
+              maybe_initial_module_name,
+              maybe_initial_filename,
+              new_module_name,
+              new_filename,
+            )))
           }
           FetchOnceResult::Code(source, maybe_content_type) => {
             // We land on the code.
+            save_code_and_headers(
+              &filename.clone(),
+              &module_name.clone(),
+              &source,
+              maybe_content_type.clone(),
+              maybe_initial_filename,
+            )?;
+
             let p = PathBuf::from(filename.clone());
-            match p.parent() {
-              Some(ref parent) => fs::create_dir_all(parent),
-              None => Ok(()),
-            }?;
-            // Write file and create .headers.json for the file.
-            deno_fs::write_file(&p, &source, 0o666)?;
-            {
-              save_source_code_headers(
-                &filename,
-                maybe_content_type.clone(),
-                None,
-              );
-            }
-            // Check if this file is downloaded due to some old redirect request.
-            if maybe_initial_filename.is_some() {
-              // If yes, record down the headers for redirect.
-              // Also create its containing folder.
-              let pp = PathBuf::from(filename.clone());
-              match pp.parent() {
-                Some(ref parent) => fs::create_dir_all(parent),
-                None => Ok(()),
-              }?;
-              {
-                save_source_code_headers(
-                  &maybe_initial_filename.clone().unwrap(),
-                  maybe_content_type.clone(),
-                  Some(module_name.clone()),
-                );
-              }
-            }
-            Ok(Loop::Break(Some(ModuleMetaData {
+            let media_type = map_content_type(
+              &p,
+              maybe_content_type.as_ref().map(String::as_str),
+            );
+
+            let module_meta_data = ModuleMetaData {
               module_name: module_name.to_string(),
               module_redirect_source_name: maybe_initial_module_name,
               filename: filename.to_string(),
-              media_type: map_content_type(
-                &p,
-                maybe_content_type.as_ref().map(String::as_str),
-              ),
+              media_type,
               source_code: source.as_bytes().to_owned(),
               maybe_output_code_filename: None,
               maybe_output_code: None,
               maybe_source_map_filename: None,
               maybe_source_map: None,
-            })))
+            };
+
+            Ok(Loop::Break(Some(module_meta_data)))
           }
         }
       })
