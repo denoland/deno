@@ -91,7 +91,7 @@ test(function textDecoderErrorEncoding(): void {
   assert(didThrow);
 });
 
-test(function textEncoder2(): void {
+test(function textEncoder(): void {
   const fixture = "𝓽𝓮𝔁𝓽";
   const encoder = new TextEncoder();
   // prettier-ignore
@@ -100,6 +100,35 @@ test(function textEncoder2(): void {
     0xf0, 0x9d, 0x93, 0xae,
     0xf0, 0x9d, 0x94, 0x81,
     0xf0, 0x9d, 0x93, 0xbd
+  ]);
+});
+
+test(function textEncodeInto(): void {
+  const fixture = "text";
+  const encoder = new TextEncoder();
+  const bytes = new Uint8Array(5);
+  const result = encoder.encodeInto(fixture, bytes);
+  assertEquals(result.read, 4);
+  assertEquals(result.written, 4);
+  // prettier-ignore
+  assertEquals(Array.from(bytes), [
+    0x74, 0x65, 0x78, 0x74, 0x00,
+  ]);
+});
+
+test(function textEncodeInto2(): void {
+  const fixture = "𝓽𝓮𝔁𝓽";
+  const encoder = new TextEncoder();
+  const bytes = new Uint8Array(17);
+  const result = encoder.encodeInto(fixture, bytes);
+  assertEquals(result.read, 8);
+  assertEquals(result.written, 16);
+  // prettier-ignore
+  assertEquals(Array.from(bytes), [
+    0xf0, 0x9d, 0x93, 0xbd,
+    0xf0, 0x9d, 0x93, 0xae,
+    0xf0, 0x9d, 0x94, 0x81,
+    0xf0, 0x9d, 0x93, 0xbd, 0x00,
   ]);
 });
 
