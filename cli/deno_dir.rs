@@ -390,7 +390,7 @@ fn get_source_code_async(
       module_name, is_module_remote
     );
     // Note that local fetch is done synchronously.
-    match fetch_local_source(deno_dir, &module_name, &filename, None) {
+    match fetch_local_source(deno_dir, &module_name, filepath.clone(), None) {
       Ok(Some(output)) => {
         debug!("found local source ");
         return Either::A(futures::future::ok(output));
@@ -593,8 +593,6 @@ fn fetch_remote_source_async(
     .progress
     .add(format!("Downloading {}", module_name));
 
-  // TODO: use `PathBuf` as filename
-  let filename = filepath.to_str().unwrap().to_string();
   let module_name = module_name.to_owned();
 
   // We write a special ".headers.json" file into the `.deno/deps` directory along side the
@@ -607,14 +605,14 @@ fn fetch_remote_source_async(
       None,
       None,
       module_name.clone(),
-      filename.clone(),
+      filepath.clone(),
     ),
     |(
       dir,
       mut maybe_initial_module_name,
       mut maybe_initial_filename,
       module_name,
-      filename,
+      filepath,
     )| {
       let url = module_name.parse::<http::uri::Uri>().unwrap();
       // Single pass fetch, either yields code or yields redirect.
@@ -622,14 +620,13 @@ fn fetch_remote_source_async(
         match fetch_once_result {
           FetchOnceResult::Redirect(url) => {
             // If redirects, update module_name and filename for next looped call.
-            let (new_module_name, new_filename) = dir
+            let (new_module_name, new_filepath) = dir
               .resolve_module(&(url.to_string()), ".")?;
-
-            let new_filename = new_filename.to_str().unwrap().to_string();
 
             if maybe_initial_module_name.is_none() {
               maybe_initial_module_name = Some(module_name.clone());
-              maybe_initial_filename = Some(filename.to_string());
+              // TODO: replace with `PathBuf`
+              maybe_initial_filename = Some(filepath.to_str().unwrap().to_string());
             }
             // Not yet completed. Follow the redirect and loop.
             Ok(Loop::Continue((
@@ -637,18 +634,20 @@ fn fetch_remote_source_async(
               maybe_initial_module_name,
               maybe_initial_filename,
               new_module_name,
-              new_filename,
+              new_filepath,
             )))
           }
           FetchOnceResult::Code(source, maybe_content_type) => {
             // We land on the code.
-            let p = PathBuf::from(filename.clone());
-            match p.parent() {
+            // TODO: replace with `PathBuf`
+            let filename = filepath.to_str().unwrap().to_string();
+
+            match filepath.parent() {
               Some(ref parent) => fs::create_dir_all(parent),
               None => Ok(()),
             }?;
             // Write file and create .headers.json for the file.
-            deno_fs::write_file(&p, &source, 0o666)?;
+            deno_fs::write_file(&filepath, &source, 0o666)?;
             {
               save_source_code_headers(
                 &filename,
@@ -660,8 +659,7 @@ fn fetch_remote_source_async(
             if maybe_initial_filename.is_some() {
               // If yes, record down the headers for redirect.
               // Also create its containing folder.
-              let pp = PathBuf::from(filename.clone());
-              match pp.parent() {
+              match filepath.parent() {
                 Some(ref parent) => fs::create_dir_all(parent),
                 None => Ok(()),
               }?;
@@ -678,7 +676,7 @@ fn fetch_remote_source_async(
               module_redirect_source_name: maybe_initial_module_name,
               filename: filename.to_string(),
               media_type: map_content_type(
-                &p,
+                filepath.as_path(),
                 maybe_content_type.as_ref().map(String::as_str),
               ),
               source_code: source.as_bytes().to_owned(),
@@ -724,12 +722,13 @@ fn fetch_remote_source(
 fn fetch_local_source(
   deno_dir: &DenoDir,
   module_name: &str,
-  filename: &str,
+  filepath: PathBuf,
   module_initial_source_name: Option<String>,
 ) -> DenoResult<Option<ModuleMetaData>> {
   // TODO: use `PathBuf` as filename
-  let p = Path::new(&filename);
-  let source_code_headers = get_source_code_headers(&filename);
+  let p = filepath.as_path();
+  let filename = p.to_str().unwrap();
+  let source_code_headers = get_source_code_headers(filename);
   // If source code headers says that it would redirect elsewhere,
   // (meaning that the source file might not exist; only .headers.json is present)
   // Abort reading attempts to the cached source file and and follow the redirect.
@@ -740,9 +739,8 @@ fn fetch_local_source(
     // redirect_to https://import-meta.now.sh/sub/final1.js
     // real_filename /Users/kun/Library/Caches/deno/deps/https/import-meta.now.sh/sub/final1.js
     // real_module_name = https://import-meta.now.sh/sub/final1.js
-    let (real_module_name, real_filename) =
+    let (real_module_name, real_filepath) =
       deno_dir.resolve_module(&redirect_to, ".")?;
-    let real_filename = real_filename.to_str().unwrap();
 
     let mut module_initial_source_name = module_initial_source_name;
     // If this is the first redirect attempt,
@@ -755,7 +753,7 @@ fn fetch_local_source(
     return fetch_local_source(
       deno_dir,
       &real_module_name,
-      real_filename,
+      real_filepath,
       module_initial_source_name,
     );
   }
@@ -1397,7 +1395,7 @@ mod tests {
       let result = tokio_util::block_on(fetch_remote_source_async(
         &deno_dir,
         &module_name,
-        filepath,
+        filepath.clone(),
       ));
       assert!(result.is_ok());
       let r = result.unwrap().unwrap();
@@ -1413,7 +1411,7 @@ mod tests {
         None,
       );
       let result2 =
-        fetch_local_source(&deno_dir, &module_name, &filename, None);
+        fetch_local_source(&deno_dir, &module_name, filepath.clone(), None);
       assert!(result2.is_ok());
       let r2 = result2.unwrap().unwrap();
       assert_eq!(r2.source_code, b"export const loaded = true;\n");
@@ -1436,7 +1434,8 @@ mod tests {
       let filename = filepath.to_str().unwrap().to_string();
       let headers_file_name = source_code_headers_filename(&filename);
 
-      let result = fetch_remote_source(&deno_dir, module_name, filepath);
+      let result =
+        fetch_remote_source(&deno_dir, module_name, filepath.clone());
       assert!(result.is_ok());
       let r = result.unwrap().unwrap();
       assert_eq!(r.source_code, "export const loaded = true;\n".as_bytes());
@@ -1450,7 +1449,8 @@ mod tests {
         Some("text/javascript".to_owned()),
         None,
       );
-      let result2 = fetch_local_source(&deno_dir, module_name, &filename, None);
+      let result2 =
+        fetch_local_source(&deno_dir, module_name, filepath.clone(), None);
       assert!(result2.is_ok());
       let r2 = result2.unwrap().unwrap();
       assert_eq!(r2.source_code, "export const loaded = true;\n".as_bytes());
@@ -1521,12 +1521,11 @@ mod tests {
     // only local, no http_util::fetch_sync_string called
     let (_temp_dir, deno_dir) = test_setup();
     let cwd = std::env::current_dir().unwrap();
-    let cwd_string = cwd.to_str().unwrap();
     let module_name = "http://example.com/mt_text_typescript.t1.ts"; // not used
-    let filename =
-      format!("{}/tests/subdir/mt_text_typescript.t1.ts", &cwd_string);
+    let mut filepath = cwd.clone();
+    filepath.push("/tests/subdir/mt_text_typescript.t1.ts");
 
-    let result = fetch_local_source(&deno_dir, module_name, &filename, None);
+    let result = fetch_local_source(&deno_dir, module_name, filepath, None);
     assert!(result.is_ok());
     let r = result.unwrap().unwrap();
     assert_eq!(r.source_code, "export const loaded = true;\n".as_bytes());
@@ -1538,8 +1537,7 @@ mod tests {
     let (_temp_dir, deno_dir) = test_setup();
 
     let cwd = std::env::current_dir().unwrap();
-    let cwd_string =
-      String::from(format!("file://{}", cwd.to_str().unwrap())) + "/";
+    let cwd_string = format!("file://{}/", cwd.to_str().unwrap());
 
     tokio_util::init(|| {
       // Test failure case.
@@ -1563,8 +1561,7 @@ mod tests {
     let (_temp_dir, deno_dir) = test_setup();
 
     let cwd = std::env::current_dir().unwrap();
-    let cwd_string =
-      String::from(format!("file://{}", cwd.to_str().unwrap())) + "/";
+    let cwd_string = format!("file://{}/", cwd.to_str().unwrap());
 
     tokio_util::init(|| {
       // Test failure case.
