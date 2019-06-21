@@ -163,7 +163,8 @@ function isRid(arg: unknown): arg is number {
  * mapping.
  *
  * By default subprocess inherits stdio of parent process. To change that
- * `opt.stdout`, `opt.stderr` and `opt.stdin` can be specified independently.
+ * `opt.stdout`, `opt.stderr` and `opt.stdin` can be specified independently -
+ * they can be set to either `ProcessStdio` or `rid` of open file.
  */
 export function run(opt: RunOptions): Process {
   const builder = flatbuffers.createBuilder();
