@@ -239,7 +239,7 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
   }
 }
 
-class Response implements domTypes.Response {
+export class Response implements domTypes.Response {
   readonly url: string = "";
   statusText = "FIXME"; // TODO
   readonly type = "basic"; // TODO

@@ -151,13 +151,19 @@ void deno_mod_evaluate(Deno* d_, void* user_data, deno_mod id) {
   }
 }
 
-void deno_dyn_import(Deno* d_, deno_dyn_import_id import_id, deno_mod mod_id) {
+void deno_dyn_import(Deno* d_, void* user_data, deno_dyn_import_id import_id,
+                     deno_mod mod_id) {
   auto* d = unwrap(d_);
+  deno::UserDataScope user_data_scope(d, user_data);
+
   auto* isolate = d->isolate_;
   v8::Isolate::Scope isolate_scope(isolate);
   v8::Locker locker(isolate);
   v8::HandleScope handle_scope(isolate);
   auto context = d->context_.Get(d->isolate_);
+  v8::Context::Scope context_scope(context);
+
+  v8::TryCatch try_catch(isolate);
 
   auto it = d->dyn_import_map_.find(import_id);
   if (it == d->dyn_import_map_.end()) {
@@ -168,9 +174,13 @@ void deno_dyn_import(Deno* d_, deno_dyn_import_id import_id, deno_mod mod_id) {
   /// Resolve.
   auto persistent_promise = &it->second;
   auto promise = persistent_promise->Get(isolate);
-  persistent_promise->Reset();
 
   auto* info = d->GetModuleInfo(mod_id);
+
+  // Do the following callback into JS?? Is user_data_scope needed?
+  persistent_promise->Reset();
+  d->dyn_import_map_.erase(it);
+
   if (info == nullptr) {
     // Resolution error.
     promise->Reject(context, v8::Null(isolate)).ToChecked();
@@ -181,7 +191,10 @@ void deno_dyn_import(Deno* d_, deno_dyn_import_id import_id, deno_mod mod_id) {
     Local<Value> module_namespace = module->GetModuleNamespace();
     promise->Resolve(context, module_namespace).ToChecked();
   }
-  d->dyn_import_map_.erase(it);
+
+  if (try_catch.HasCaught()) {
+    HandleException(context, try_catch.Exception());
+  }
 }
 
 }  // extern "C"

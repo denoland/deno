@@ -1,4 +1,5 @@
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+import collections
 import os
 import re
 import shutil
@@ -59,7 +60,15 @@ def run(args, quiet=False, cwd=None, env=None, merge_env=None):
         sys.exit(rc)
 
 
-def run_output(args, quiet=False, cwd=None, env=None, merge_env=None):
+CmdResult = collections.namedtuple('CmdResult', ['out', 'err', 'code'])
+
+
+def run_output(args,
+               quiet=False,
+               cwd=None,
+               env=None,
+               merge_env=None,
+               exit_on_fail=False):
     if merge_env is None:
         merge_env = {}
     args[0] = os.path.normpath(args[0])
@@ -67,7 +76,25 @@ def run_output(args, quiet=False, cwd=None, env=None, merge_env=None):
         print " ".join(args)
     env = make_env(env=env, merge_env=merge_env)
     shell = os.name == "nt"  # Run through shell to make .bat/.cmd files work.
-    return subprocess.check_output(args, cwd=cwd, env=env, shell=shell)
+    p = subprocess.Popen(
+        args,
+        cwd=cwd,
+        env=env,
+        shell=shell,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE)
+    try:
+        out, err = p.communicate()
+    except subprocess.CalledProcessError as e:
+        p.kill()
+        p.wait()
+        raise e
+    retcode = p.poll()
+    if retcode and exit_on_fail:
+        sys.exit(retcode)
+    # Ignore Windows CRLF (\r\n).
+    return CmdResult(
+        out.replace('\r\n', '\n'), err.replace('\r\n', '\n'), retcode)
 
 
 def shell_quote_win(arg):

@@ -101,11 +101,8 @@ void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
   if (argsLen < 1 || argsLen > 2) {
     ThrowInvalidArgument(isolate);
   }
-  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
-  auto context = d->context_.Get(d->isolate_);
   v8::HandleScope handle_scope(isolate);
-  bool is_err =
-      args.Length() >= 2 ? args[1]->BooleanValue(context).ToChecked() : false;
+  bool is_err = args.Length() >= 2 ? args[1]->BooleanValue(isolate) : false;
   FILE* file = is_err ? stderr : stdout;
 
 #ifdef _WIN32
@@ -322,7 +319,8 @@ void Shared(v8::Local<v8::Name> property,
                                     v8::ArrayBufferCreationMode::kExternalized);
     d->shared_ab_.Reset(isolate, ab);
   }
-  info.GetReturnValue().Set(d->shared_ab_);
+  auto shared_ab = d->shared_ab_.Get(isolate);
+  info.GetReturnValue().Set(shared_ab);
 }
 
 void DenoIsolate::ClearModules() {
@@ -521,6 +519,8 @@ v8::MaybeLocal<v8::Promise> HostImportModuleDynamicallyCallback(
   auto* isolate = context->GetIsolate();
   DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
   v8::Isolate::Scope isolate_scope(isolate);
+  v8::Context::Scope context_scope(context);
+  v8::EscapableHandleScope handle_scope(isolate);
 
   v8::String::Utf8Value specifier_str(isolate, specifier);
 
@@ -544,7 +544,9 @@ v8::MaybeLocal<v8::Promise> HostImportModuleDynamicallyCallback(
 
   d->dyn_import_cb_(d->user_data_, *specifier_str, *referrer_name_str,
                     import_id);
-  return resolver->GetPromise();
+
+  auto promise = resolver->GetPromise();
+  return handle_scope.Escape(promise);
 }
 
 void DenoIsolate::AddIsolate(v8::Isolate* isolate) {

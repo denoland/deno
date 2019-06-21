@@ -147,6 +147,19 @@ test(function urlSearchParamsShouldThrowTypeError(): void {
   }
 
   assertEquals(hasThrown, 2);
+
+  try {
+    new URLSearchParams([["1", "2", "3"]]);
+    hasThrown = 1;
+  } catch (err) {
+    if (err instanceof TypeError) {
+      hasThrown = 2;
+    } else {
+      hasThrown = 3;
+    }
+  }
+
+  assertEquals(hasThrown, 2);
 });
 
 test(function urlSearchParamsAppendArgumentsCheck(): void {
@@ -203,4 +216,23 @@ test(function urlSearchParamsDeletingAppendedMultiple(): void {
   params.append("first", (10 as unknown) as string);
   params.delete("first");
   assertEquals(params.has("first"), false);
+});
+
+// ref: https://github.com/web-platform-tests/wpt/blob/master/url/urlsearchparams-constructor.any.js#L176-L182
+test(function urlSearchParamsCustomSymbolIterator(): void {
+  const params = new URLSearchParams();
+  params[Symbol.iterator] = function*(): IterableIterator<[string, string]> {
+    yield ["a", "b"];
+  };
+  const params1 = new URLSearchParams((params as unknown) as string[][]);
+  assertEquals(params1.get("a"), "b");
+});
+
+test(function urlSearchParamsCustomSymbolIteratorWithNonStringParams(): void {
+  const params = {};
+  params[Symbol.iterator] = function*(): IterableIterator<[number, number]> {
+    yield [1, 2];
+  };
+  const params1 = new URLSearchParams((params as unknown) as string[][]);
+  assertEquals(params1.get("1"), "2");
 });

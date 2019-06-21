@@ -444,6 +444,11 @@ export interface ResponseInit {
   statusText?: string;
 }
 
+export interface RequestConstructor {
+  new (input: RequestInfo, init?: RequestInit): Request;
+  prototype: Request;
+}
+
 export interface Request extends Body {
   /** Returns the cache mode associated with request, which is a string
    * indicating how the the request will interact with the browser's cache when

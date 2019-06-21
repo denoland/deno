@@ -28,7 +28,6 @@ import * as workers from "./workers";
 import * as performanceUtil from "./performance";
 
 import * as request from "./request";
-//import * as response from "./response";
 
 // These imports are not exposed and therefore are fine to just import the
 // symbols required.
@@ -64,8 +63,8 @@ console[consoleTypes.isConsoleInstance] = true;
 window.atob = textEncoding.atob;
 window.btoa = textEncoding.btoa;
 window.fetch = fetchTypes.fetch;
-window.clearTimeout = timers.clearTimer;
-window.clearInterval = timers.clearTimer;
+window.clearTimeout = timers.clearTimeout;
+window.clearInterval = timers.clearInterval;
 window.console = console;
 window.setTimeout = timers.setTimeout;
 window.setInterval = timers.setInterval;
@@ -117,11 +116,11 @@ export type TextEncoder = textEncoding.TextEncoder;
 window.TextDecoder = textEncoding.TextDecoder;
 export type TextDecoder = textEncoding.TextDecoder;
 
-window.Request = request.Request;
-export type Request = request.Request;
+window.Request = request.Request as domTypes.RequestConstructor;
+export type Request = domTypes.Request;
 
-//window.Response = response.Response;
-//export type Response = response.Response;
+window.Response = fetchTypes.Response;
+export type Response = domTypes.Response;
 
 window.performance = new performanceUtil.Performance();
 

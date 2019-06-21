@@ -56,13 +56,27 @@ function sendInternal(
   innerType: msg.Any,
   inner: flatbuffers.Offset,
   zeroCopy: undefined | ArrayBufferView,
-  sync = true
-): [number, null | Uint8Array] {
+  isSync: true
+): Uint8Array;
+function sendInternal(
+  builder: flatbuffers.Builder,
+  innerType: msg.Any,
+  inner: flatbuffers.Offset,
+  zeroCopy: undefined | ArrayBufferView,
+  isSync: false
+): Promise<msg.Base>;
+function sendInternal(
+  builder: flatbuffers.Builder,
+  innerType: msg.Any,
+  inner: flatbuffers.Offset,
+  zeroCopy: undefined | ArrayBufferView,
+  isSync: boolean
+): Promise<msg.Base> | Uint8Array {
   const cmdId = nextPromiseId();
   msg.Base.startBase(builder);
   msg.Base.addInner(builder, inner);
   msg.Base.addInnerType(builder, innerType);
-  msg.Base.addSync(builder, sync);
+  msg.Base.addSync(builder, isSync);
   msg.Base.addCmdId(builder, cmdId);
   builder.finish(msg.Base.endBase(builder));
 
@@ -74,7 +88,27 @@ function sendInternal(
   );
 
   builder.inUse = false;
-  return [cmdId, response];
+
+  if (response == null) {
+    util.assert(!isSync);
+    const promise = util.createResolvable<msg.Base>();
+    promiseTable.set(cmdId, promise);
+    return promise;
+  } else {
+    if (!isSync) {
+      // We can easily and correctly allow for sync responses to async calls
+      // by creating and returning a promise from the sync response.
+      const bb = new flatbuffers.ByteBuffer(response);
+      const base = msg.Base.getRootAsBase(bb);
+      const err = errors.maybeError(base);
+      if (err != null) {
+        return Promise.reject(err);
+      } else {
+        return Promise.resolve(base);
+      }
+    }
+    return response;
+  }
 }
 
 // @internal
@@ -84,17 +118,7 @@ export function sendAsync(
   inner: flatbuffers.Offset,
   data?: ArrayBufferView
 ): Promise<msg.Base> {
-  const [cmdId, response] = sendInternal(
-    builder,
-    innerType,
-    inner,
-    data,
-    false
-  );
-  util.assert(response == null);
-  const promise = util.createResolvable<msg.Base>();
-  promiseTable.set(cmdId, promise);
-  return promise;
+  return sendInternal(builder, innerType, inner, data, false);
 }
 
 // @internal
@@ -104,12 +128,11 @@ export function sendSync(
   inner: flatbuffers.Offset,
   data?: ArrayBufferView
 ): null | msg.Base {
-  const [cmdId, response] = sendInternal(builder, innerType, inner, data, true);
-  util.assert(cmdId >= 0);
-  if (response == null || response.length === 0) {
+  const response = sendInternal(builder, innerType, inner, data, true);
+  if (response!.length === 0) {
     return null;
   } else {
-    const bb = new flatbuffers.ByteBuffer(response);
+    const bb = new flatbuffers.ByteBuffer(response!);
     const baseRes = msg.Base.getRootAsBase(bb);
     errors.maybeThrowError(baseRes);
     return baseRes;

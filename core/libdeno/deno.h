@@ -126,7 +126,9 @@ void deno_mod_instantiate(Deno* d, void* user_data, deno_mod id,
 void deno_mod_evaluate(Deno* d, void* user_data, deno_mod id);
 
 // Call exactly once for every deno_dyn_import_cb.
-void deno_dyn_import(Deno* d, deno_dyn_import_id id, deno_mod mod_id);
+// Note this call will execute JS.
+void deno_dyn_import(Deno* d, void* user_data, deno_dyn_import_id id,
+                     deno_mod mod_id);
 
 #ifdef __cplusplus
 }  // extern "C"

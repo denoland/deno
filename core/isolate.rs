@@ -7,6 +7,7 @@
 use crate::js_errors::JSError;
 use crate::libdeno;
 use crate::libdeno::deno_buf;
+use crate::libdeno::deno_dyn_import_id;
 use crate::libdeno::deno_mod;
 use crate::libdeno::deno_pinned_buf;
 use crate::libdeno::PinnedBuf;
@@ -19,6 +20,7 @@ use futures::task;
 use futures::Async::*;
 use futures::Future;
 use futures::Poll;
+use libc::c_char;
 use libc::c_void;
 use std::ffi::CStr;
 use std::ffi::CString;
@@ -27,17 +29,39 @@ use std::sync::{Arc, Mutex, Once, ONCE_INIT};
 
 pub type Buf = Box<[u8]>;
 
-pub type OpAsyncFuture = Box<dyn Future<Item = Buf, Error = ()> + Send>;
+pub type OpAsyncFuture<E> = Box<dyn Future<Item = Buf, Error = E> + Send>;
 
-pub enum Op {
+pub enum Op<E> {
   Sync(Buf),
-  Async(OpAsyncFuture),
+  Async(OpAsyncFuture<E>),
 }
+
+pub type CoreError = ();
+
+type CoreOpAsyncFuture = OpAsyncFuture<CoreError>;
+
+pub type CoreOp = Op<CoreError>;
 
 /// Stores a script used to initalize a Isolate
 pub struct Script<'a> {
   pub source: &'a str,
   pub filename: &'a str,
+}
+
+// TODO(ry) It's ugly that we have both Script and OwnedScript. Ideally we
+// wouldn't expose such twiddly complexity.
+struct OwnedScript {
+  pub source: String,
+  pub filename: String,
+}
+
+impl<'a> From<Script<'a>> for OwnedScript {
+  fn from(s: Script<'a>) -> OwnedScript {
+    OwnedScript {
+      source: s.source.to_string(),
+      filename: s.filename.to_string(),
+    }
+  }
 }
 
 /// Represents data used to initialize isolate at startup
@@ -50,23 +74,30 @@ pub enum StartupData<'a> {
   None,
 }
 
-type DispatchFn = Fn(&[u8], Option<PinnedBuf>) -> Op;
+pub type OpResult<E> = Result<Op<E>, E>;
 
-#[derive(Default)]
-pub struct Config {
-  dispatch: Option<Arc<DispatchFn>>,
-  pub will_snapshot: bool,
+type CoreDispatchFn = dyn Fn(&[u8], Option<PinnedBuf>) -> CoreOp;
+
+pub type DynImportFuture = Box<dyn Future<Item = deno_mod, Error = ()> + Send>;
+type DynImportFn = dyn Fn(&str, &str) -> DynImportFuture;
+
+/// Wraps DynImportFuture to include the deno_dyn_import_id, so that it doesn't
+/// need to be exposed.
+struct DynImport {
+  id: deno_dyn_import_id,
+  inner: DynImportFuture,
 }
 
-impl Config {
-  /// Defines the how Deno.core.dispatch() acts.
-  /// Called whenever Deno.core.dispatch() is called in JavaScript. zero_copy_buf
-  /// corresponds to the second argument of Deno.core.dispatch().
-  pub fn dispatch<F>(&mut self, f: F)
-  where
-    F: Fn(&[u8], Option<PinnedBuf>) -> Op + Send + Sync + 'static,
-  {
-    self.dispatch = Some(Arc::new(f));
+impl Future for DynImport {
+  type Item = (deno_dyn_import_id, deno_mod);
+  type Error = ();
+  fn poll(&mut self) -> Poll<Self::Item, ()> {
+    match self.inner.poll() {
+      Ok(Ready(mod_id)) => Ok(Ready((self.id, mod_id))),
+      Ok(NotReady) => Ok(NotReady),
+      // Note that mod_id 0 indicates error.
+      Err(()) => Ok(Ready((self.id, 0))),
+    }
   }
 }
 
@@ -81,11 +112,14 @@ impl Config {
 pub struct Isolate {
   libdeno_isolate: *const libdeno::isolate,
   shared_libdeno_isolate: Arc<Mutex<Option<*const libdeno::isolate>>>,
-  config: Config,
+  dispatch: Option<Arc<CoreDispatchFn>>,
+  dyn_import: Option<Arc<DynImportFn>>,
   needs_init: bool,
   shared: SharedQueue,
-  pending_ops: FuturesUnordered<OpAsyncFuture>,
+  pending_ops: FuturesUnordered<CoreOpAsyncFuture>,
+  pending_dyn_imports: FuturesUnordered<DynImport>,
   have_unpolled_ops: bool,
+  startup_script: Option<OwnedScript>,
 }
 
 unsafe impl Send for Isolate {}
@@ -104,9 +138,7 @@ static DENO_INIT: Once = ONCE_INIT;
 impl Isolate {
   /// startup_data defines the snapshot or script used at startup to initalize
   /// the isolate.
-  // TODO(ry) move startup_data into Config. Ideally without introducing a
-  // generic lifetime into the Isolate struct...
-  pub fn new(startup_data: StartupData, config: Config) -> Self {
+  pub fn new(startup_data: StartupData, will_snapshot: bool) -> Self {
     DENO_INIT.call_once(|| {
       unsafe { libdeno::deno_init() };
     });
@@ -115,18 +147,20 @@ impl Isolate {
 
     let needs_init = true;
 
-    let mut startup_script: Option<Script> = None;
     let mut libdeno_config = libdeno::deno_config {
-      will_snapshot: if config.will_snapshot { 1 } else { 0 },
+      will_snapshot: will_snapshot.into(),
       load_snapshot: Snapshot2::empty(),
       shared: shared.as_deno_buf(),
       recv_cb: Self::pre_dispatch,
+      dyn_import_cb: Self::dyn_import,
     };
+
+    let mut startup_script: Option<OwnedScript> = None;
 
     // Seperate into Option values for each startup type
     match startup_data {
       StartupData::Script(d) => {
-        startup_script = Some(d);
+        startup_script = Some(d.into());
       }
       StartupData::Snapshot(d) => {
         libdeno_config.load_snapshot = d.into();
@@ -139,22 +173,35 @@ impl Isolate {
 
     let libdeno_isolate = unsafe { libdeno::deno_new(libdeno_config) };
 
-    let mut core_isolate = Self {
+    Self {
       libdeno_isolate,
       shared_libdeno_isolate: Arc::new(Mutex::new(Some(libdeno_isolate))),
-      config,
+      dispatch: None,
+      dyn_import: None,
       shared,
       needs_init,
       pending_ops: FuturesUnordered::new(),
       have_unpolled_ops: false,
-    };
+      pending_dyn_imports: FuturesUnordered::new(),
+      startup_script,
+    }
+  }
 
-    // If we want to use execute this has to happen here sadly.
-    if let Some(s) = startup_script {
-      core_isolate.execute(s.filename, s.source).unwrap()
-    };
+  /// Defines the how Deno.core.dispatch() acts.
+  /// Called whenever Deno.core.dispatch() is called in JavaScript. zero_copy_buf
+  /// corresponds to the second argument of Deno.core.dispatch().
+  pub fn set_dispatch<F>(&mut self, f: F)
+  where
+    F: Fn(&[u8], Option<PinnedBuf>) -> CoreOp + Send + Sync + 'static,
+  {
+    self.dispatch = Some(Arc::new(f));
+  }
 
-    core_isolate
+  pub fn set_dyn_import<F>(&mut self, f: F)
+  where
+    F: Fn(&str, &str) -> DynImportFuture + Send + Sync + 'static,
+  {
+    self.dyn_import = Some(Arc::new(f));
   }
 
   /// Get a thread safe handle on the isolate.
@@ -165,12 +212,38 @@ impl Isolate {
   }
 
   /// Executes a bit of built-in JavaScript to provide Deno.sharedQueue.
-  pub fn shared_init(&mut self) {
+  fn shared_init(&mut self) {
     if self.needs_init {
       self.needs_init = false;
       js_check(
         self.execute("shared_queue.js", include_str!("shared_queue.js")),
       );
+      // Maybe execute the startup script.
+      if let Some(s) = self.startup_script.take() {
+        self.execute(&s.filename, &s.source).unwrap()
+      }
+    }
+  }
+
+  extern "C" fn dyn_import(
+    user_data: *mut c_void,
+    specifier: *const c_char,
+    referrer: *const c_char,
+    id: deno_dyn_import_id,
+  ) {
+    assert_ne!(user_data, std::ptr::null_mut());
+    let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
+    let specifier = unsafe { CStr::from_ptr(specifier).to_str().unwrap() };
+    let referrer = unsafe { CStr::from_ptr(referrer).to_str().unwrap() };
+    debug!("dyn_import specifier {} referrer {} ", specifier, referrer);
+
+    if let Some(ref f) = isolate.dyn_import {
+      let inner = f(specifier, referrer);
+      let fut = DynImport { inner, id };
+      task::current().notify();
+      isolate.pending_dyn_imports.push(fut);
+    } else {
+      panic!("dyn_import callback not set")
     }
   }
 
@@ -184,17 +257,17 @@ impl Isolate {
 
     let op = if control_argv0.len() > 0 {
       // The user called Deno.core.send(control)
-      if let Some(ref f) = isolate.config.dispatch {
+      if let Some(ref f) = isolate.dispatch {
         f(control_argv0.as_ref(), PinnedBuf::new(zero_copy_buf))
       } else {
-        panic!("isolate.config.dispatch not set")
+        panic!("isolate.dispatch not set")
       }
     } else if let Some(c) = control_shared {
       // The user called Deno.sharedQueue.push(control)
-      if let Some(ref f) = isolate.config.dispatch {
+      if let Some(ref f) = isolate.dispatch {
         f(&c, PinnedBuf::new(zero_copy_buf))
       } else {
-        panic!("isolate.config.dispatch not set")
+        panic!("isolate.dispatch not set")
       }
     } else {
       // The sharedQueue is empty. The shouldn't happen usually, but it's also
@@ -340,6 +413,27 @@ impl Isolate {
     assert_ne!(snapshot.data_len, 0);
     Ok(snapshot)
   }
+
+  fn dyn_import_done(
+    &self,
+    id: libdeno::deno_dyn_import_id,
+    mod_id: deno_mod,
+  ) -> Result<(), JSError> {
+    debug!("dyn_import_done {} {}", id, mod_id);
+    unsafe {
+      libdeno::deno_dyn_import(
+        self.libdeno_isolate,
+        self.as_raw_ptr(),
+        id,
+        mod_id,
+      )
+    };
+    if let Some(js_error) = self.last_exception() {
+      assert_eq!(id, 0);
+      return Err(js_error);
+    }
+    Ok(())
+  }
 }
 
 /// Called during mod_instantiate() to resolve imports.
@@ -437,9 +531,23 @@ impl Future for Isolate {
     // Lock the current thread for V8.
     let _locker = LockerScope::new(self.libdeno_isolate);
 
+    self.shared_init();
+
     let mut overflow_response: Option<Buf> = None;
 
     loop {
+      // If there are any pending dyn_import futures, do those first.
+      match self.pending_dyn_imports.poll() {
+        Err(()) => unreachable!(),
+        Ok(NotReady) => unreachable!(),
+        Ok(Ready(None)) => (),
+        Ok(Ready(Some((dyn_import_id, mod_id)))) => {
+          self.dyn_import_done(dyn_import_id, mod_id)?;
+          continue;
+        }
+      }
+
+      // Now handle actual ops.
       self.have_unpolled_ops = false;
       #[allow(clippy::match_wild_err_arm)]
       match self.pending_ops.poll() {
@@ -563,8 +671,8 @@ pub mod tests {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let dispatch_count_ = dispatch_count.clone();
 
-    let mut config = Config::default();
-    config.dispatch(move |control, _| -> Op {
+    let mut isolate = Isolate::new(StartupData::None, false);
+    isolate.set_dispatch(move |control, _| -> CoreOp {
       dispatch_count_.fetch_add(1, Ordering::Relaxed);
       match mode {
         Mode::AsyncImmediate => {
@@ -603,8 +711,6 @@ pub mod tests {
         }
       }
     });
-
-    let mut isolate = Isolate::new(StartupData::None, config);
     js_check(isolate.execute(
       "setup.js",
       r#"
@@ -762,6 +868,92 @@ pub mod tests {
       assert_eq!(Ok(Async::Ready(())), isolate.poll());
       js_check(isolate.execute("send1.js", "assert(nrecv === 2);"));
     });
+  }
+
+  #[test]
+  fn dyn_import_err() {
+    // Test an erroneous dynamic import where the specified module isn't found.
+    run_in_task(|| {
+      let count = Arc::new(AtomicUsize::new(0));
+      let count_ = count.clone();
+      let mut isolate = Isolate::new(StartupData::None, false);
+      isolate.set_dyn_import(move |specifier, referrer| {
+        count_.fetch_add(1, Ordering::Relaxed);
+        assert_eq!(specifier, "foo.js");
+        assert_eq!(referrer, "dyn_import2.js");
+        Box::new(futures::future::err(()))
+      });
+      js_check(isolate.execute(
+        "dyn_import2.js",
+        r#"
+        (async () => {
+          await import("foo.js");
+        })();
+        "#,
+      ));
+      assert_eq!(count.load(Ordering::Relaxed), 1);
+
+      // We should get an error here.
+      let result = isolate.poll();
+      assert!(result.is_err());
+    })
+  }
+
+  #[test]
+  fn dyn_import_ok() {
+    run_in_task(|| {
+      let count = Arc::new(AtomicUsize::new(0));
+      let count_ = count.clone();
+
+      // Sometimes Rust is really annoying.
+      use std::sync::Mutex;
+      let mod_b = Arc::new(Mutex::new(0));
+      let mod_b2 = mod_b.clone();
+
+      let mut isolate = Isolate::new(StartupData::None, false);
+      isolate.set_dyn_import(move |_specifier, referrer| {
+        count_.fetch_add(1, Ordering::Relaxed);
+        // assert_eq!(specifier, "foo.js");
+        assert_eq!(referrer, "dyn_import3.js");
+        let mod_id = mod_b2.lock().unwrap();
+        Box::new(futures::future::ok(*mod_id))
+      });
+
+      // Instantiate mod_b
+      {
+        let mut mod_id = mod_b.lock().unwrap();
+        *mod_id = isolate
+          .mod_new(false, "b.js", "export function b() { return 'b' }")
+          .unwrap();
+        let mut resolve = move |_specifier: &str,
+                                _referrer: deno_mod|
+              -> deno_mod { unreachable!() };
+        js_check(isolate.mod_instantiate(*mod_id, &mut resolve));
+      }
+      // Dynamically import mod_b
+      js_check(isolate.execute(
+        "dyn_import3.js",
+        r#"
+        (async () => {
+          let mod = await import("foo1.js");
+          if (mod.b() !== 'b') {
+            throw Error("bad1");
+          }
+          // And again!
+          mod = await import("foo2.js");
+          if (mod.b() !== 'b') {
+            throw Error("bad2");
+          }
+        })();
+        "#,
+      ));
+
+      assert_eq!(count.load(Ordering::Relaxed), 1);
+      assert_eq!(Ok(Ready(())), isolate.poll());
+      assert_eq!(count.load(Ordering::Relaxed), 2);
+      assert_eq!(Ok(Ready(())), isolate.poll());
+      assert_eq!(count.load(Ordering::Relaxed), 2);
+    })
   }
 
   #[test]
@@ -979,9 +1171,7 @@ pub mod tests {
   #[test]
   fn will_snapshot() {
     let snapshot = {
-      let mut config = Config::default();
-      config.will_snapshot = true;
-      let mut isolate = Isolate::new(StartupData::None, config);
+      let mut isolate = Isolate::new(StartupData::None, true);
       js_check(isolate.execute("a.js", "a = 1 + 2"));
       let s = isolate.snapshot().unwrap();
       drop(isolate);
@@ -989,7 +1179,7 @@ pub mod tests {
     };
 
     let startup_data = StartupData::LibdenoSnapshot(snapshot);
-    let mut isolate2 = Isolate::new(startup_data, Config::default());
+    let mut isolate2 = Isolate::new(startup_data, false);
     js_check(isolate2.execute("check.js", "if (a != 3) throw Error('x')"));
   }
 }

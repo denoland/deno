@@ -1,6 +1,32 @@
+:root {
+  --text-color: #444;
+  --background-color: #f0f0f0;
+  --link-color: #106ad5;
+  --table-border: #bbb;
+  --pre-color: #161616;
+  --pre-link-color: #001631;
+  --pre-background: rgba(36, 126, 233, 0.1);
+  --code-color: #333;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background-color: #444;
+    --text-color: #f0f0f0;
+    --link-color: #4498ff;
+    --pre-color: #e8e8e8;	
+    --pre-link-color: #cee4ff;
+    --code-color: #ccc;
+  }
+  
+  #logo {
+    filter: invert(); 
+  }
+}
+
 body {
-  color: #444;
-  background: #f0f0f0;
+  color: var(--text-color);
+  background: var(--background-color);
   padding: 0;
 
   line-height: 1.5;
@@ -33,7 +59,7 @@ table {
 td, th {
   font-weight: normal;
   text-align: center;
-  border: 1px dotted #bbb;
+  border: 1px dotted var(--table-border);
   padding: 4px;
 }
 
@@ -44,11 +70,11 @@ svg {
 }
 
 a {
-  color: #106ad5;
+  color: var(--link-color);
 }
 
 pre a {
-  color: #001631;
+  color: var(--pre-link-color);
 }
 
 h2 a, h3 a {
@@ -64,10 +90,11 @@ h3:hover a  {
 
 pre {
   /* background: rgba(36, 126, 233, 0.03); */
-  color: #161616;
-  background: rgba(36, 126, 233, 0.1);
+  color: var(--pre-color);
+  background: var(--pre-background);
   padding: 15px;
-  word-wrap: normal;
+  white-space: pre-wrap;
+  word-break: break-all;
   overflow-x: auto;
 }
 
@@ -95,7 +122,7 @@ header h1 {
 code {
   background: rgba(36, 126, 233, 0.1);
   padding: 2px 5px;
-  color: #333;
+  color: var(--code-color);
 }
 
 .hljs {
@@ -115,7 +142,7 @@ code {
 @keyframes spinner {
   to {transform: rotate(360deg);}
 }
- 
+
 .spinner:before {
   content: '';
   box-sizing: border-box;
@@ -124,8 +151,8 @@ code {
   left: 50%;
   width: 60px;
   height: 60px;
-  margin-top: -10px;
-  margin-left: -10px;
+  margin-top: -30px;
+  margin-left: -30px;
   border-radius: 50%;
   border: 2px solid #ccc;
   border-top-color: #000;

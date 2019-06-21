@@ -139,7 +139,8 @@ function generate(
   const yAxis = {
     padding: { bottom: 0 },
     min: 0,
-    label: yLabel
+    label: yLabel,
+    tick: null
   };
   if (yTickFormat) {
     yAxis.tick = {
@@ -188,7 +189,7 @@ function formatSecsAsMins(t) {
 }
 
 /**
- * @param dataUrl The url of benchramk data json.
+ * @param dataUrl The url of benchmark data json.
  */
 export function drawCharts(dataUrl) {
   // TODO Using window["location"]["hostname"] instead of
@@ -271,4 +272,30 @@ export async function drawChartsFromBenchmarkData(dataUrl) {
   gen("#binary-size-chart", binarySizeColumns, "megabytes", formatMB);
   gen("#thread-count-chart", threadCountColumns, "threads");
   gen("#syscall-count-chart", syscallCountColumns, "syscalls");
+}
+
+export function main(): void {
+  window["chartWidth"] = 800;
+  const overlay = window["document"].getElementById("spinner-overlay");
+
+  function showSpinner() {
+    overlay.style.display = "block";
+  }
+
+  function hideSpinner() {
+    overlay.style.display = "none";
+  }
+
+  function updateCharts() {
+    const u = window.location.hash.match("all") ? "./data.json" : "recent.json";
+
+    showSpinner();
+
+    drawCharts(u)
+      .then(hideSpinner)
+      .catch(hideSpinner);
+  }
+  updateCharts();
+
+  window["onhashchange"] = updateCharts;
 }

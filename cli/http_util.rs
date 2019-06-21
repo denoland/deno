@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::errors;
-use crate::errors::DenoError;
+use crate::deno_error;
+use crate::deno_error::DenoError;
 #[cfg(test)]
 use futures::future::{loop_fn, Loop};
 use futures::{future, Future, Stream};
@@ -58,7 +58,7 @@ fn resolve_uri_from_location(base_uri: &Uri, location: &str) -> Uri {
 }
 
 #[cfg(test)]
-use crate::errors::DenoResult;
+use crate::deno_error::DenoResult;
 #[cfg(test)]
 use crate::tokio_util;
 #[cfg(test)]
@@ -108,8 +108,8 @@ pub fn fetch_string_once(
         } else if response.status().is_client_error()
           || response.status().is_server_error()
         {
-          return Box::new(future::err(errors::new(
-            errors::ErrorKind::Other,
+          return Box::new(future::err(deno_error::new(
+            deno_error::ErrorKind::Other,
             format!("Import '{}' failed: {}", &url, response.status()),
           )));
         }
@@ -165,8 +165,8 @@ pub fn fetch_string(
           return Ok(Loop::Continue((client, new_url)));
         }
         if !response.status().is_success() {
-          return Err(errors::new(
-            errors::ErrorKind::NotFound,
+          return Err(deno_error::new(
+            deno_error::ErrorKind::NotFound,
             "module not found".to_string(),
           ));
         }

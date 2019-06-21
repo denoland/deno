@@ -5,8 +5,8 @@ use crate::msg::ErrorKind;
 use std::error::Error;
 
 use crate::deno_dir::DenoDir;
-use crate::errors::new as deno_error;
-use crate::errors::DenoResult;
+use crate::deno_error::new as deno_error;
+use crate::deno_error::DenoResult;
 use std::path::PathBuf;
 
 #[cfg(not(windows))]
@@ -94,7 +94,7 @@ impl Repl {
       .editor
       .readline(&prompt)
       .map(|line| {
-        self.editor.add_history_entry(line.as_ref());
+        self.editor.add_history_entry(line.clone());
         line
       }).map_err(|e| deno_error(ErrorKind::Other, e.description().to_string()))
     // Forward error to TS side for processing

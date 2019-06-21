@@ -111,7 +111,7 @@ fn test_record_from() {
 
 pub type HttpBenchOp = dyn Future<Item = i32, Error = std::io::Error> + Send;
 
-fn dispatch(control: &[u8], zero_copy_buf: Option<PinnedBuf>) -> Op {
+fn dispatch(control: &[u8], zero_copy_buf: Option<PinnedBuf>) -> CoreOp {
   let record = Record::from(control);
   let is_sync = record.promise_id == 0;
   let http_bench_op = match record.op_id {
@@ -179,9 +179,8 @@ fn main() {
       filename: "http_bench.js",
     });
 
-    let mut config = deno::Config::default();
-    config.dispatch(dispatch);
-    let isolate = deno::Isolate::new(startup_data, config);
+    let mut isolate = deno::Isolate::new(startup_data, false);
+    isolate.set_dispatch(dispatch);
 
     isolate.then(|r| {
       js_check(r);

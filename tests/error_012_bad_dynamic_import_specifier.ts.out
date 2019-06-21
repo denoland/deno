@@ -1,0 +1,11 @@
+[WILDCARD]error: Uncaught RelativeUrlWithCannotBeABaseBase: relative URL with a cannot-be-a-base base
+[WILDCARD] js/errors.ts:[WILDCARD]
+    at DenoError (js/errors.ts:[WILDCARD])
+    at maybeError (js/errors.ts:[WILDCARD])
+    at maybeThrowError (js/errors.ts:[WILDCARD])
+    at sendSync (js/dispatch.ts:[WILDCARD])
+    at fetchModuleMetaData (js/compiler.ts:[WILDCARD])
+    at _resolveModule (js/compiler.ts:[WILDCARD])
+    at js/compiler.ts:[WILDCARD]
+    at resolveModuleNamesWorker ([WILDCARD])
+    at resolveModuleNamesReusingOldState ([WILDCARD]typescript.js:[WILDCARD])

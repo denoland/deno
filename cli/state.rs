@@ -2,26 +2,28 @@
 use crate::compiler::compile_async;
 use crate::compiler::ModuleMetaData;
 use crate::deno_dir;
-use crate::errors::DenoError;
-use crate::errors::DenoResult;
+use crate::deno_error::DenoError;
+use crate::deno_error::DenoResult;
 use crate::flags;
 use crate::global_timer::GlobalTimer;
+use crate::import_map::ImportMap;
 use crate::msg;
 use crate::ops;
 use crate::permissions::DenoPermissions;
 use crate::progress::Progress;
 use crate::resources;
 use crate::resources::ResourceId;
-use crate::tokio_util;
-use crate::worker::resolve_module_spec;
 use crate::worker::Worker;
 use deno::Buf;
+use deno::CoreOp;
 use deno::Loader;
-use deno::Op;
+use deno::ModuleSpecifier;
 use deno::PinnedBuf;
 use futures::future::Either;
 use futures::future::Shared;
 use futures::Future;
+use rand::rngs::StdRng;
+use rand::SeedableRng;
 use std;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -57,6 +59,8 @@ pub struct ThreadSafeState(Arc<State>);
 
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct State {
+  pub modules: Arc<Mutex<deno::Modules>>,
+  pub main_module: Option<ModuleSpecifier>,
   pub dir: deno_dir::DenoDir,
   pub argv: Vec<String>,
   pub permissions: DenoPermissions,
@@ -67,6 +71,9 @@ pub struct State {
   /// When flags contains a `.config_path` option, the fully qualified path
   /// name of the passed path will be resolved and set.
   pub config_path: Option<String>,
+  /// When flags contains a `.import_map_path` option, the content of the
+  /// import map file will be resolved and set.
+  pub import_map: Option<ImportMap>,
   pub metrics: Metrics,
   pub worker_channels: Mutex<WorkerChannels>,
   pub global_timer: Mutex<GlobalTimer>,
@@ -77,6 +84,7 @@ pub struct State {
   pub dispatch_selector: ops::OpSelector,
   /// Reference to global progress bar.
   pub progress: Progress,
+  pub seeded_rng: Option<Mutex<StdRng>>,
 
   /// Set of all URLs that have been compiled. This is a hacky way to work
   /// around the fact that --reload will force multiple compilations of the same
@@ -98,74 +106,82 @@ impl Deref for ThreadSafeState {
 }
 
 impl ThreadSafeState {
-  pub fn dispatch(&self, control: &[u8], zero_copy: Option<PinnedBuf>) -> Op {
+  pub fn dispatch(
+    &self,
+    control: &[u8],
+    zero_copy: Option<PinnedBuf>,
+  ) -> CoreOp {
     ops::dispatch_all(self, control, zero_copy, self.dispatch_selector)
   }
 }
 
-fn fetch_module_meta_data_and_maybe_compile_async(
+pub fn fetch_module_meta_data_and_maybe_compile_async(
   state: &ThreadSafeState,
-  specifier: &str,
-  referrer: &str,
+  module_specifier: &ModuleSpecifier,
 ) -> impl Future<Item = ModuleMetaData, Error = DenoError> {
   let state_ = state.clone();
-  let specifier = specifier.to_string();
-  let referrer = referrer.to_string();
+  let use_cache =
+    !state_.flags.reload || state_.has_compiled(&module_specifier.to_string());
+  let no_fetch = state_.flags.no_fetch;
 
-  let f =
-    futures::future::result(ThreadSafeState::resolve(&specifier, &referrer));
-  f.and_then(move |module_id| {
-    let use_cache = !state_.flags.reload || state_.has_compiled(&module_id);
-    let no_fetch = state_.flags.no_fetch;
-
-    state_
-      .dir
-      .fetch_module_meta_data_async(&specifier, &referrer, use_cache, no_fetch)
-      .and_then(move |out| {
-        if out.media_type == msg::MediaType::TypeScript
-          && !out.has_output_code_and_source_map()
-        {
-          debug!(">>>>> compile_sync START");
-          Either::A(
-            compile_async(state_.clone(), &out)
-              .map_err(|e| {
-                debug!("compiler error exiting!");
-                eprintln!("\n{}", e.to_string());
-                std::process::exit(1);
-              }).and_then(move |out| {
-                debug!(">>>>> compile_sync END");
-                Ok(out)
-              }),
-          )
-        } else {
-          Either::B(futures::future::ok(out))
-        }
-      })
-  })
-}
-
-pub fn fetch_module_meta_data_and_maybe_compile(
-  state: &ThreadSafeState,
-  specifier: &str,
-  referrer: &str,
-) -> Result<ModuleMetaData, DenoError> {
-  tokio_util::block_on(fetch_module_meta_data_and_maybe_compile_async(
-    state, specifier, referrer,
-  ))
+  state_
+    .dir
+    .fetch_module_meta_data_async(
+      &module_specifier.to_string(),
+      ".",
+      use_cache,
+      no_fetch,
+    ).and_then(move |out| {
+      if out.media_type == msg::MediaType::TypeScript
+        && !out.has_output_code_and_source_map()
+      {
+        debug!(">>>>> compile_sync START");
+        Either::A(
+          compile_async(state_.clone(), &out)
+            .map_err(|e| {
+              debug!("compiler error exiting!");
+              eprintln!("\n{}", e.to_string());
+              std::process::exit(1);
+            }).and_then(move |out| {
+              debug!(">>>>> compile_sync END");
+              Ok(out)
+            }),
+        )
+      } else {
+        Either::B(futures::future::ok(out))
+      }
+    })
 }
 
 impl Loader for ThreadSafeState {
   type Error = DenoError;
 
-  fn resolve(specifier: &str, referrer: &str) -> Result<String, Self::Error> {
-    resolve_module_spec(specifier, referrer).map_err(DenoError::from)
+  fn resolve(
+    &self,
+    specifier: &str,
+    referrer: &str,
+    is_root: bool,
+  ) -> Result<ModuleSpecifier, Self::Error> {
+    if !is_root {
+      if let Some(import_map) = &self.import_map {
+        let result = import_map.resolve(specifier, referrer)?;
+        if result.is_some() {
+          return Ok(result.unwrap());
+        }
+      }
+    }
+
+    ModuleSpecifier::resolve(specifier, referrer).map_err(DenoError::from)
   }
 
   /// Given an absolute url, load its source code.
-  fn load(&self, url: &str) -> Box<deno::SourceCodeInfoFuture<Self::Error>> {
+  fn load(
+    &self,
+    module_specifier: &ModuleSpecifier,
+  ) -> Box<deno::SourceCodeInfoFuture<Self::Error>> {
     self.metrics.resolve_count.fetch_add(1, Ordering::SeqCst);
     Box::new(
-      fetch_module_meta_data_and_maybe_compile_async(self, url, ".")
+      fetch_module_meta_data_and_maybe_compile_async(self, module_specifier)
         .map_err(|err| {
           eprintln!("{}", err);
           err
@@ -233,14 +249,55 @@ impl ThreadSafeState {
       _ => None,
     };
 
+    let dir =
+      deno_dir::DenoDir::new(custom_root, &config, progress.clone()).unwrap();
+
+    let main_module: Option<ModuleSpecifier> = if argv_rest.len() <= 1 {
+      None
+    } else {
+      let root_specifier = argv_rest[1].clone();
+      match ModuleSpecifier::resolve_root(&root_specifier) {
+        Ok(specifier) => Some(specifier),
+        Err(e) => {
+          // TODO: handle unresolvable specifier
+          panic!("Unable to resolve root specifier: {:?}", e);
+        }
+      }
+    };
+
+    let mut import_map = None;
+    if let Some(file_name) = &flags.import_map_path {
+      let base_url = match &main_module {
+        Some(module_specifier) => module_specifier.clone(),
+        None => unreachable!(),
+      };
+
+      match ImportMap::load(&base_url.to_string(), file_name) {
+        Ok(map) => import_map = Some(map),
+        Err(err) => {
+          println!("{:?}", err);
+          panic!("Error parsing import map");
+        }
+      }
+    }
+
+    let mut seeded_rng = None;
+    if let Some(seed) = flags.seed {
+      seeded_rng = Some(Mutex::new(StdRng::seed_from_u64(seed)));
+    };
+
+    let modules = Arc::new(Mutex::new(deno::Modules::new()));
+
     ThreadSafeState(Arc::new(State {
-      dir: deno_dir::DenoDir::new(custom_root, &config, progress.clone())
-        .unwrap(),
+      main_module,
+      modules,
+      dir,
       argv: argv_rest,
       permissions: DenoPermissions::from_flags(&flags),
       flags,
       config,
       config_path,
+      import_map,
       metrics: Metrics::default(),
       worker_channels: Mutex::new(internal_channels),
       global_timer: Mutex::new(GlobalTimer::new()),
@@ -249,24 +306,16 @@ impl ThreadSafeState {
       resource,
       dispatch_selector,
       progress,
+      seeded_rng,
       compiled: Mutex::new(HashSet::new()),
     }))
   }
 
   /// Read main module from argv
-  pub fn main_module(&self) -> Option<String> {
-    if self.argv.len() <= 1 {
-      None
-    } else {
-      let specifier = self.argv[1].clone();
-      let referrer = ".";
-      match self.dir.resolve_module_url(&specifier, referrer) {
-        Ok(url) => Some(url.to_string()),
-        Err(e) => {
-          debug!("Potentially swallowed error {}", e);
-          None
-        }
-      }
+  pub fn main_module(&self) -> Option<ModuleSpecifier> {
+    match &self.main_module {
+      Some(module_specifier) => Some(module_specifier.clone()),
+      None => None,
     }
   }
 
@@ -311,8 +360,7 @@ impl ThreadSafeState {
   }
 
   #[cfg(test)]
-  pub fn mock() -> ThreadSafeState {
-    let argv = vec![String::from("./deno"), String::from("hello.js")];
+  pub fn mock(argv: Vec<String>) -> ThreadSafeState {
     ThreadSafeState::new(
       flags::DenoFlags::default(),
       argv,
@@ -349,5 +397,8 @@ impl ThreadSafeState {
 #[test]
 fn thread_safe() {
   fn f<S: Send + Sync>(_: S) {}
-  f(ThreadSafeState::mock());
+  f(ThreadSafeState::mock(vec![
+    String::from("./deno"),
+    String::from("hello.js"),
+  ]));
 }

@@ -591,30 +591,9 @@ if (import.meta.main) {
 
 ### Flags
 
-```shellsession
-deno
-A secure runtime for JavaScript and TypeScript built with V8, Rust, and Tokio.
+Use `deno help` to see the help text.
 
-Docs: https://deno.land/manual.html
-Modules: https://github.com/denoland/deno_std
-Bugs: https://github.com/denoland/deno/issues
-
-To run the REPL:
-
-  deno
-
-To execute a sandboxed script:
-
-  deno https://deno.land/welcome.ts
-
-To evaluate code from the command line:
-
-  deno eval "console.log(30933 + 404)"
-
-To get help on the another subcommands (run in this case):
-
-  deno help run
-
+```
 USAGE:
     deno [FLAGS] [OPTIONS] [SUBCOMMAND]
 
@@ -634,10 +613,13 @@ OPTIONS:
         --allow-read=<allow-read>      Allow file system read access
         --allow-write=<allow-write>    Allow file system write access
     -c, --config <FILE>                Load compiler configuration file
+        --importmap <FILE>             Load import map file
+        --seed <NUMBER>                Seed Math.random() and crypto.getRandomValues()
         --v8-flags=<v8-flags>          Set V8 command line options
 
 SUBCOMMANDS:
     <script>    Script to run
+    bundle      Bundle module and dependnecies into single file
     eval        Eval script
     fetch       Fetch the dependencies
     fmt         Format files
@@ -674,6 +656,166 @@ Particularly useful ones:
 
 ```
 --async-stack-trace
+```
+
+### Bundling
+
+`deno bundle [URL]` will output a single JavaScript file, using
+[AMD](https://en.wikipedia.org/wiki/Asynchronous_module_definition), which
+includes all dependencies of the specified input.
+
+```
+> deno bundle https://deno.land/std/examples/colors.ts
+Bundling "colors.bundle.js"
+Emitting bundle to "colors.bundle.js"
+9.2 kB emitted.
+```
+
+To run then bundle in Deno use
+
+```
+deno https://deno.land/std/bundle/run.ts colors.bundle.js
+```
+
+Bundles can also be loaded in the web browser with the assistance of
+[RequireJS](https://requirejs.org/). Suppose we have a bundle called
+`website.bundle.js`, then the following HTML should be able to load it:
+
+```html
+<script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js"></script>
+<script src="website.bundle.js"></script>
+<script>
+  requirejs(["website"], website => website.main());
+</script>
+```
+
+Here we assume there's an exported function `main()` from `website.ts`.
+
+```js
+// website.ts
+export main() {
+  console.log("hello from the web browser");
+}
+```
+
+### Installing executable scripts
+
+Deno provides ability to easily install and distribute executable code via
+`deno install` command.
+
+`deno install [EXE_NAME] [URL] [FLAGS...]` will install script available at
+`URL` with name `EXE_NAME`.
+
+This command is a thin wrapper that creates executable shell scripts which
+invoke `deno` with specified permissions and CLI flags.
+
+Example:
+
+```
+$ deno install file_server https://deno.land/std/http/file_server.ts --allow-net --allow-read
+[1/1] Compiling https://deno.land/std/http/file_server.ts
+
+✅ Successfully installed file_server.
+/Users/deno/.deno/bin/file_server
+```
+
+By default scripts are installed at `$HOME/.deno/bin` and that directory must be
+added to the path manually.
+
+```
+$ echo 'export PATH="$HOME/.deno/bin:$PATH"' >> ~/.bashrc
+```
+
+Installation directory can be changed using `-d/--dir` flag:
+
+```
+deno install --dir /usr/local/bin prettier https://deno.land/std/prettier/main.ts --allow-write --allow-read
+```
+
+When installing a script you can specify permissions that will be used to run
+the script. They are placed after the script URL and can be mixed with any
+additional CLI flags you want to pass to the script.
+
+Example:
+
+```
+deno install format_check https://deno.land/std/prettier/main.ts --allow-write --allow-read --check --print-width 88 --tab-width 2
+```
+
+Above command creates an executable called `format_check` that runs `prettier`
+with write and read permissions. When you run `format_check` deno will run
+prettier in `check` mode and configured to use `88` column width with `2` column
+tabs.
+
+It is a good practice to use `import.meta.main` idiom for an entry point for
+executable file. See
+[Testing if current file is the main program](#testing-if-current-file-is-the-main-program)
+section.
+
+Example:
+
+```ts
+// https://example.com/awesome/cli.ts
+async function myAwesomeCli(): Promise<void> {
+  -- snip --
+}
+
+if (import.meta.main) {
+  myAwesomeCli();
+}
+```
+
+When you create executable script make sure to let users know by adding example
+installation command to your repository:
+
+```
+# Install using deno install
+
+$ deno install awesome_cli https://example.com/awesome/cli.ts
+```
+
+## Import maps
+
+Deno supports [import maps](https://github.com/WICG/import-maps).
+
+One can use import map with `--importmap=<FILE>` CLI flag.
+
+Current limitations:
+
+- single import map
+- no fallback URLs
+- Deno does not support `std:` namespace
+- Does supports only `file:`, `http:` and `https:` schemes
+
+Example:
+
+```js
+// import_map.json
+
+{
+   "imports": {
+      "http/": "https://deno.land/std/http/"
+   }
+}
+```
+
+```ts
+// hello_server.ts
+
+import { serve } from "http/server.ts";
+
+async function main() {
+  const body = new TextEncoder().encode("Hello World\n");
+  for await (const req of serve(":8000")) {
+    req.respond({ body });
+  }
+}
+
+main();
+```
+
+```bash
+$ deno run --importmap=import_map.json hello_server.ts
 ```
 
 ## Internal details

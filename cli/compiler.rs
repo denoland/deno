@@ -1,4 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+use crate::deno_error::err_check;
+use crate::deno_error::DenoError;
 use crate::diagnostics::Diagnostic;
 use crate::msg;
 use crate::resources;
@@ -6,7 +8,6 @@ use crate::startup_data;
 use crate::state::*;
 use crate::tokio_util;
 use crate::worker::Worker;
-use deno::js_check;
 use deno::Buf;
 use futures::Future;
 use futures::Stream;
@@ -50,16 +51,22 @@ impl ModuleMetaData {
 type CompilerConfig = Option<(String, Vec<u8>)>;
 
 /// Creates the JSON message send to compiler.ts's onmessage.
-fn req(root_names: Vec<String>, compiler_config: CompilerConfig) -> Buf {
+fn req(
+  root_names: Vec<String>,
+  compiler_config: CompilerConfig,
+  bundle: Option<String>,
+) -> Buf {
   let j = if let Some((config_path, config_data)) = compiler_config {
     json!({
       "rootNames": root_names,
+      "bundle": bundle,
       "configPath": config_path,
       "config": str::from_utf8(&config_data).unwrap(),
     })
   } else {
     json!({
       "rootNames": root_names,
+      "bundle": bundle,
     })
   };
   j.to_string().into_boxed_str().into_boxed_bytes()
@@ -82,20 +89,19 @@ pub fn get_compiler_config(
   }
 }
 
-pub fn compile_async(
+pub fn bundle_async(
   state: ThreadSafeState,
-  module_meta_data: &ModuleMetaData,
-) -> impl Future<Item = ModuleMetaData, Error = Diagnostic> {
-  let module_name = module_meta_data.module_name.clone();
-
+  module_name: String,
+  out_file: String,
+) -> impl Future<Item = (), Error = DenoError> {
   debug!(
-    "Running rust part of compile_sync. module_name: {}",
-    &module_name
+    "Invoking the compiler to bundle. module_name: {}",
+    module_name
   );
 
   let root_names = vec![module_name.clone()];
   let compiler_config = get_compiler_config(&state, "typescript");
-  let req_msg = req(root_names, compiler_config);
+  let req_msg = req(root_names, compiler_config, Some(out_file));
 
   // Count how many times we start the compiler worker.
   state.metrics.compiler_starts.fetch_add(1, Ordering::SeqCst);
@@ -107,9 +113,71 @@ pub fn compile_async(
     // as was done previously.
     state.clone(),
   );
-  js_check(worker.execute("denoMain()"));
-  js_check(worker.execute("workerMain()"));
-  js_check(worker.execute("compilerMain()"));
+  err_check(worker.execute("denoMain()"));
+  err_check(worker.execute("workerMain()"));
+  err_check(worker.execute("compilerMain()"));
+
+  let resource = worker.state.resource.clone();
+  let compiler_rid = resource.rid;
+  let first_msg_fut = resources::post_message_to_worker(compiler_rid, req_msg)
+    .then(move |_| worker)
+    .then(move |result| {
+      if let Err(err) = result {
+        // TODO(ry) Need to forward the error instead of exiting.
+        eprintln!("{}", err.to_string());
+        std::process::exit(1);
+      }
+      debug!("Sent message to worker");
+      let stream_future =
+        resources::get_message_stream_from_worker(compiler_rid).into_future();
+      stream_future.map(|(f, _rest)| f).map_err(|(f, _rest)| f)
+    });
+
+  first_msg_fut.map_err(|_| panic!("not handled")).and_then(
+    move |maybe_msg: Option<Buf>| {
+      debug!("Received message from worker");
+
+      if let Some(msg) = maybe_msg {
+        let json_str = std::str::from_utf8(&msg).unwrap();
+        debug!("Message: {}", json_str);
+        if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
+          return Err(DenoError::from(diagnostics));
+        }
+      }
+
+      Ok(())
+    },
+  )
+}
+
+pub fn compile_async(
+  state: ThreadSafeState,
+  module_meta_data: &ModuleMetaData,
+) -> impl Future<Item = ModuleMetaData, Error = DenoError> {
+  let module_name = module_meta_data.module_name.clone();
+
+  debug!(
+    "Running rust part of compile_sync. module_name: {}",
+    &module_name
+  );
+
+  let root_names = vec![module_name.clone()];
+  let compiler_config = get_compiler_config(&state, "typescript");
+  let req_msg = req(root_names, compiler_config, None);
+
+  // Count how many times we start the compiler worker.
+  state.metrics.compiler_starts.fetch_add(1, Ordering::SeqCst);
+
+  let mut worker = Worker::new(
+    "TS".to_string(),
+    startup_data::compiler_isolate_init(),
+    // TODO(ry) Maybe we should use a separate state for the compiler.
+    // as was done previously.
+    state.clone(),
+  );
+  err_check(worker.execute("denoMain()"));
+  err_check(worker.execute("workerMain()"));
+  err_check(worker.execute("compilerMain()"));
 
   let compiling_job = state.progress.add(format!("Compiling {}", module_name));
 
@@ -138,15 +206,22 @@ pub fn compile_async(
         let json_str = std::str::from_utf8(&msg).unwrap();
         debug!("Message: {}", json_str);
         if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
-          return Err(diagnostics);
+          return Err(DenoError::from(diagnostics));
         }
       }
 
-      let r = state
-        .dir
-        .fetch_module_meta_data(&module_name, ".", true, true);
-      let module_meta_data_after_compile = r.unwrap();
-
+      Ok(())
+    }).and_then(move |_| {
+      state.dir.fetch_module_meta_data_async(
+        &module_name,
+        ".",
+        true,
+        true,
+      ).map_err(|e| {
+        // TODO(95th) Instead of panicking, We could translate this error to Diagnostic.
+        panic!("{}", e)
+      })
+    }).and_then(move |module_meta_data_after_compile| {
       // Explicit drop to keep reference alive until future completes.
       drop(compiling_job);
 
@@ -161,7 +236,7 @@ pub fn compile_async(
 pub fn compile_sync(
   state: ThreadSafeState,
   module_meta_data: &ModuleMetaData,
-) -> Result<ModuleMetaData, Diagnostic> {
+) -> Result<ModuleMetaData, DenoError> {
   tokio_util::block_on(compile_async(state, module_meta_data))
 }
 
@@ -173,8 +248,8 @@ mod tests {
   fn test_compile_sync() {
     tokio_util::init(|| {
       let specifier = "./tests/002_hello.ts";
-      use crate::worker;
-      let module_name = worker::root_specifier_to_url(specifier)
+      use deno::ModuleSpecifier;
+      let module_name = ModuleSpecifier::resolve_root(specifier)
         .unwrap()
         .to_string();
 
@@ -190,7 +265,13 @@ mod tests {
         maybe_source_map: None,
       };
 
-      out = compile_sync(ThreadSafeState::mock(), &out).unwrap();
+      out = compile_sync(
+        ThreadSafeState::mock(vec![
+          String::from("./deno"),
+          String::from("hello.js"),
+        ]),
+        &out,
+      ).unwrap();
       assert!(
         out
           .maybe_output_code
@@ -203,8 +284,29 @@ mod tests {
   #[test]
   fn test_get_compiler_config_no_flag() {
     let compiler_type = "typescript";
-    let state = ThreadSafeState::mock();
+    let state = ThreadSafeState::mock(vec![
+      String::from("./deno"),
+      String::from("hello.js"),
+    ]);
     let out = get_compiler_config(&state, compiler_type);
     assert_eq!(out, None);
+  }
+
+  #[test]
+  fn test_bundle_async() {
+    let specifier = "./tests/002_hello.ts";
+    use deno::ModuleSpecifier;
+    let module_name = ModuleSpecifier::resolve_root(specifier)
+      .unwrap()
+      .to_string();
+
+    let state = ThreadSafeState::mock(vec![
+      String::from("./deno"),
+      String::from("./tests/002_hello.ts"),
+      String::from("$deno$/bundle.js"),
+    ]);
+    let out =
+      bundle_async(state, module_name, String::from("$deno$/bundle.js"));
+    assert!(tokio_util::block_on(out).is_ok());
   }
 }

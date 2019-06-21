@@ -1,9 +1,11 @@
 [WILDCARD]hello
 before error
 world
-[WILDCARD]tests/async_error.ts:4:10
-    throw Error("error");
+error: Uncaught Error: error
+[WILDCARD]tests/async_error.ts:4:9
+
+4   throw Error("error");
           ^
-Uncaught Error: error
+
     at foo ([WILDCARD]tests/async_error.ts:4:9)
     at [WILDCARD]tests/async_error.ts:7:1

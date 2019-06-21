@@ -5,7 +5,7 @@
 import os
 
 from test_util import DenoTestCase, run_tests
-from util import mkdtemp, rmtree, run
+from util import mkdtemp, rmtree, run_output
 
 
 class TestDenoDir(DenoTestCase):
@@ -38,7 +38,8 @@ class TestDenoDir(DenoTestCase):
     def run_deno(self, deno_dir=None):
         cmd = [self.deno_exe, "run", "tests/002_hello.ts"]
         deno_dir_env = {"DENO_DIR": deno_dir} if deno_dir is not None else None
-        run(cmd, quiet=True, env=deno_dir_env)
+        res = run_output(cmd, quiet=True, env=deno_dir_env)
+        self.assertEqual(res.code, 0)
 
 
 if __name__ == '__main__':
