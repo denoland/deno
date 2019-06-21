@@ -1793,6 +1793,7 @@ fn op_run(
     c.env(entry.key().unwrap(), entry.value().unwrap());
   });
 
+  // TODO: make this work with other resources, eg. sockets
   let stdin_rid = inner.stdin_rid();
   if stdin_rid > 0 {
     c.stdin(resources::get_file(stdin_rid)?);
