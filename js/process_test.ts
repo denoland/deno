@@ -233,7 +233,7 @@ testPerm(
         "-c",
         "import sys; sys.stderr.write('error\\n'); sys.stdout.write('output\\n');"
       ],
-      stdout: file,
+      stdout: file.rid,
       stderr: file.rid
     });
 

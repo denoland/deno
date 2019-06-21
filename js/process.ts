@@ -28,9 +28,9 @@ export interface RunOptions {
   args: string[];
   cwd?: string;
   env?: { [key: string]: string };
-  stdout?: ProcessStdio | File | number;
-  stderr?: ProcessStdio | File | number;
-  stdin?: ProcessStdio | File | number;
+  stdout?: ProcessStdio | number;
+  stderr?: ProcessStdio | number;
+  stdin?: ProcessStdio | number;
 }
 
 async function runStatus(rid: number): Promise<ProcessStatus> {
@@ -136,10 +136,6 @@ export interface ProcessStatus {
   signal?: number; // TODO: Make this a string, e.g. 'SIGTERM'.
 }
 
-function isProcessStdio(arg: unknown): arg is ProcessStdio {
-  return ["inherit", "piped", "null"].includes(String(arg));
-}
-
 function stdioMap(s: ProcessStdio): msg.ProcessStdio {
   switch (s) {
     case "inherit":
@@ -194,32 +190,26 @@ export function run(opt: RunOptions): Process {
   let stderrRidOffset = 0;
 
   if (opt.stdin) {
-    if (isProcessStdio(opt.stdin)) {
-      stdInOffset = stdioMap(opt.stdin as ProcessStdio);
-    } else if (isRid(opt.stdin)) {
-      stdinRidOffset = opt.stdin as number;
+    if (isRid(opt.stdin)) {
+      stdinRidOffset = opt.stdin;
     } else {
-      stdinRidOffset = opt.stdin.rid as number;
+      stdInOffset = stdioMap(opt.stdin);
     }
   }
 
   if (opt.stdout) {
-    if (isProcessStdio(opt.stdout)) {
-      stdOutOffset = stdioMap(opt.stdout as ProcessStdio);
-    } else if (isRid(opt.stdout)) {
-      stdoutRidOffset = opt.stdout as number;
+    if (isRid(opt.stdout)) {
+      stdoutRidOffset = opt.stdout;
     } else {
-      stdoutRidOffset = opt.stdout.rid as number;
+      stdOutOffset = stdioMap(opt.stdout);
     }
   }
 
   if (opt.stderr) {
-    if (isProcessStdio(opt.stderr)) {
-      stdErrOffset = stdioMap(opt.stderr as ProcessStdio);
-    } else if (isRid(opt.stderr)) {
-      stderrRidOffset = opt.stderr as number;
+    if (isRid(opt.stderr)) {
+      stderrRidOffset = opt.stderr;
     } else {
-      stderrRidOffset = opt.stderr.rid as number;
+      stdErrOffset = stdioMap(opt.stderr);
     }
   }
 
