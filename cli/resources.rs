@@ -492,29 +492,19 @@ pub fn get_repl(rid: ResourceId) -> DenoResult<Arc<Mutex<Repl>>> {
   }
 }
 
-pub fn lookup(rid: ResourceId) -> Option<Resource> {
-  debug!("resource lookup {}", rid);
-  let table = RESOURCE_TABLE.lock().unwrap();
-  table.get(&rid).map(|_| Resource { rid })
-}
-
-// TODO(kevinkassimo): revamp this after the following lands:
+// TODO: revamp this after the following lands:
 // https://github.com/tokio-rs/tokio/pull/785
-pub fn seek(
-  resource: Resource,
-  offset: i32,
-  whence: u32,
-) -> Box<dyn Future<Item = (), Error = DenoError> + Send> {
+pub fn get_file(rid: ResourceId) -> DenoResult<std::fs::File> {
   let mut table = RESOURCE_TABLE.lock().unwrap();
   // We take ownership of File here.
   // It is put back below while still holding the lock.
-  let maybe_repr = table.remove(&resource.rid);
+  let maybe_repr = table.remove(&rid);
+
   match maybe_repr {
-    None => panic!("bad rid"),
-    Some(Repr::FsFile(f)) => {
+    Some(Repr::FsFile(r)) => {
       // Trait Clone not implemented on tokio::fs::File,
       // so convert to std File first.
-      let std_file = f.into_std();
+      let std_file = r.into_std();
       // Create a copy and immediately put back.
       // We don't want to block other resource ops.
       // try_clone() would yield a copy containing the same
@@ -523,36 +513,49 @@ pub fn seek(
       // to write back.
       let maybe_std_file_copy = std_file.try_clone();
       // Insert the entry back with the same rid.
-      table.insert(
-        resource.rid,
-        Repr::FsFile(tokio_fs::File::from_std(std_file)),
-      );
-      // Translate seek mode to Rust repr.
-      let seek_from = match whence {
-        0 => SeekFrom::Start(offset as u64),
-        1 => SeekFrom::Current(i64::from(offset)),
-        2 => SeekFrom::End(i64::from(offset)),
-        _ => {
-          return Box::new(futures::future::err(deno_error::new(
-            deno_error::ErrorKind::InvalidSeekMode,
-            format!("Invalid seek mode: {}", whence),
-          )));
-        }
-      };
+      table.insert(rid, Repr::FsFile(tokio_fs::File::from_std(std_file)));
+
       if maybe_std_file_copy.is_err() {
-        return Box::new(futures::future::err(DenoError::from(
-          maybe_std_file_copy.unwrap_err(),
-        )));
+        return Err(DenoError::from(maybe_std_file_copy.unwrap_err()));
       }
-      let mut std_file_copy = maybe_std_file_copy.unwrap();
-      Box::new(futures::future::lazy(move || {
-        let result = std_file_copy
-          .seek(seek_from)
-          .map(|_| {})
-          .map_err(DenoError::from);
-        futures::future::result(result)
-      }))
+
+      let std_file_copy = maybe_std_file_copy.unwrap();
+
+      Ok(std_file_copy)
     }
-    _ => panic!("cannot seek"),
+    _ => Err(bad_resource()),
+  }
+}
+
+pub fn lookup(rid: ResourceId) -> Option<Resource> {
+  debug!("resource lookup {}", rid);
+  let table = RESOURCE_TABLE.lock().unwrap();
+  table.get(&rid).map(|_| Resource { rid })
+}
+
+pub fn seek(
+  resource: Resource,
+  offset: i32,
+  whence: u32,
+) -> Box<dyn Future<Item = (), Error = DenoError> + Send> {
+  // Translate seek mode to Rust repr.
+  let seek_from = match whence {
+    0 => SeekFrom::Start(offset as u64),
+    1 => SeekFrom::Current(i64::from(offset)),
+    2 => SeekFrom::End(i64::from(offset)),
+    _ => {
+      return Box::new(futures::future::err(deno_error::new(
+        deno_error::ErrorKind::InvalidSeekMode,
+        format!("Invalid seek mode: {}", whence),
+      )));
+    }
+  };
+
+  match get_file(resource.rid) {
+    Ok(mut file) => Box::new(futures::future::lazy(move || {
+      let result = file.seek(seek_from).map(|_| {}).map_err(DenoError::from);
+      futures::future::result(result)
+    })),
+    Err(err) => Box::new(futures::future::err(err)),
   }
 }

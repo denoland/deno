@@ -16,7 +16,8 @@ export {
   assert,
   assertEquals,
   assertNotEquals,
-  assertStrictEq
+  assertStrictEq,
+  assertStrContains
 } from "./deps/https/deno.land/std/testing/asserts.ts";
 
 interface TestPermissions {
