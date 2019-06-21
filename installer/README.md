@@ -4,7 +4,7 @@ Install remote or local script as executables.
 
 ## Installation
 
-`installer` can be install using itself:
+`installer` can be installed using itself:
 
 ```sh
 deno -A https://deno.land/std/installer/mod.ts deno_installer https://deno.land/std/installer/mod.ts -A
