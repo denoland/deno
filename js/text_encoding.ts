@@ -461,6 +461,11 @@ export class TextDecoder {
   }
 }
 
+interface TextEncoderEncodeIntoResult {
+  read: number;
+  written: number;
+}
+
 export class TextEncoder {
   /** Returns "utf-8". */
   readonly encoding = "utf-8";
@@ -483,6 +488,36 @@ export class TextEncoder {
     }
 
     return new Uint8Array(output);
+  }
+  encodeInto(input: string, dest: Uint8Array): TextEncoderEncodeIntoResult {
+    const encoder = new UTF8Encoder();
+    const inputStream = new Stream(stringToCodePoints(input));
+
+    let written = 0;
+    let read = 0;
+    while (true) {
+      const result = encoder.handler(inputStream.read());
+      if (result === FINISHED) {
+        break;
+      }
+      read++;
+      if (Array.isArray(result)) {
+        dest.set(result, written);
+        written += result.length;
+        if (result.length > 3) {
+          // increment read a second time if greater than U+FFFF
+          read++;
+        }
+      } else {
+        dest[written] = result;
+        written++;
+      }
+    }
+
+    return {
+      read,
+      written
+    };
   }
   get [Symbol.toStringTag](): string {
     return "TextEncoder";
