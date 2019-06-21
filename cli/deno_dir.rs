@@ -176,7 +176,7 @@ impl DenoDir {
       get_source_code_async(
         self,
         module_name.as_str(),
-        filename.to_str().unwrap(),
+        filename,
         use_cache,
         no_fetch,
       ).then(move |result| {
@@ -372,11 +372,12 @@ impl SourceMapGetter for DenoDir {
 fn get_source_code_async(
   deno_dir: &DenoDir,
   module_name: &str,
-  filename: &str,
+  filename: PathBuf,
   use_cache: bool,
   no_fetch: bool,
 ) -> impl Future<Item = ModuleMetaData, Error = DenoError> {
-  let filename = filename.to_string();
+  // TODO(bartlomieju) use `PathBuf` as filename
+  let filename = filename.to_str().unwrap().to_string();
   let module_name = module_name.to_string();
   let is_module_remote = is_remote(&module_name);
   // We try fetch local. Three cases:
@@ -447,7 +448,7 @@ fn get_source_code_async(
 fn get_source_code(
   deno_dir: &DenoDir,
   module_name: &str,
-  filename: &str,
+  filename: PathBuf,
   use_cache: bool,
   no_fetch: bool,
 ) -> DenoResult<ModuleMetaData> {
@@ -587,6 +588,7 @@ fn fetch_remote_source_async(
   module_name: &str,
   filename: &str,
 ) -> impl Future<Item = Option<ModuleMetaData>, Error = DenoError> {
+  // TODO: use `PathBuf` as filename
   use crate::http_util::FetchOnceResult;
 
   let download_job = deno_dir
@@ -726,6 +728,7 @@ fn fetch_local_source(
   filename: &str,
   module_initial_source_name: Option<String>,
 ) -> DenoResult<Option<ModuleMetaData>> {
+  // TODO: use `PathBuf` as filename
   let p = Path::new(&filename);
   let source_code_headers = get_source_code_headers(&filename);
   // If source code headers says that it would redirect elsewhere,
@@ -801,6 +804,7 @@ static MIME_TYPE: &'static str = "mime_type";
 static REDIRECT_TO: &'static str = "redirect_to";
 
 fn source_code_headers_filename(filename: &str) -> String {
+  // TODO: use `PathBuf` as filename
   [&filename, ".headers.json"].concat()
 }
 
@@ -809,6 +813,7 @@ fn source_code_headers_filename(filename: &str) -> String {
 /// In this case, the headers file provides info about where we should go and get
 /// the source code that redirect eventually points to (which should be cached).
 fn get_source_code_headers(filename: &str) -> SourceCodeHeaders {
+  // TODO: use `PathBuf` as filename
   let headers_filename = source_code_headers_filename(filename);
   let hd = Path::new(&headers_filename);
   // .headers.json file might not exists.
@@ -841,6 +846,7 @@ fn save_source_code_headers(
   mime_type: Option<String>,
   redirect_to: Option<String>,
 ) {
+  // TODO: use `PathBuf` as filename
   let headers_filename = source_code_headers_filename(filename);
   // Remove possibly existing stale .headers.json file.
   // May not exist. DON'T unwrap.
@@ -1093,16 +1099,14 @@ mod tests {
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
       let module_name = "http://localhost:4545/tests/subdir/mod2.ts";
-      let filename = deno_fs::normalize_path(
-        deno_dir
-          .deps_http
-          .join("localhost_PORT4545/tests/subdir/mod2.ts")
-          .as_ref(),
-      );
+      let filepath = deno_dir
+        .deps_http
+        .join("localhost_PORT4545/tests/subdir/mod2.ts");
+      let filename = filepath.to_str().unwrap().to_string();
       let headers_file_name = source_code_headers_filename(&filename);
 
       let result =
-        get_source_code(&deno_dir, module_name, &filename, true, false);
+        get_source_code(&deno_dir, module_name, filepath.clone(), true, false);
       assert!(result.is_ok());
       let r = result.unwrap();
       assert_eq!(
@@ -1117,7 +1121,7 @@ mod tests {
       let _ =
         fs::write(&headers_file_name, "{ \"mime_type\": \"text/javascript\" }");
       let result2 =
-        get_source_code(&deno_dir, module_name, &filename, true, false);
+        get_source_code(&deno_dir, module_name, filepath.clone(), true, false);
       assert!(result2.is_ok());
       let r2 = result2.unwrap();
       assert_eq!(
@@ -1139,7 +1143,7 @@ mod tests {
         None,
       );
       let result3 =
-        get_source_code(&deno_dir, module_name, &filename, true, false);
+        get_source_code(&deno_dir, module_name, filepath.clone(), true, false);
       assert!(result3.is_ok());
       let r3 = result3.unwrap();
       assert_eq!(
@@ -1157,7 +1161,7 @@ mod tests {
 
       // Don't use_cache
       let result4 =
-        get_source_code(&deno_dir, module_name, &filename, false, false);
+        get_source_code(&deno_dir, module_name, filepath.clone(), false, false);
       assert!(result4.is_ok());
       let r4 = result4.unwrap();
       let expected4 =
@@ -1175,16 +1179,14 @@ mod tests {
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
       let module_name = "http://localhost:4545/tests/subdir/mismatch_ext.ts";
-      let filename = deno_fs::normalize_path(
-        deno_dir
-          .deps_http
-          .join("localhost_PORT4545/tests/subdir/mismatch_ext.ts")
-          .as_ref(),
-      );
+      let filepath = deno_dir
+        .deps_http
+        .join("localhost_PORT4545/tests/subdir/mismatch_ext.ts");
+      let filename = filepath.to_str().unwrap().to_string();
       let headers_file_name = source_code_headers_filename(&filename);
 
       let result =
-        get_source_code(&deno_dir, module_name, &filename, true, false);
+        get_source_code(&deno_dir, module_name, filepath.clone(), true, false);
       assert!(result.is_ok());
       let r = result.unwrap();
       let expected = "export const loaded = true;\n".as_bytes();
@@ -1203,7 +1205,7 @@ mod tests {
         None,
       );
       let result2 =
-        get_source_code(&deno_dir, module_name, &filename, true, false);
+        get_source_code(&deno_dir, module_name, filepath.clone(), true, false);
       assert!(result2.is_ok());
       let r2 = result2.unwrap();
       let expected2 = "export const loaded = true;\n".as_bytes();
@@ -1215,7 +1217,7 @@ mod tests {
 
       // Don't use_cache
       let result3 =
-        get_source_code(&deno_dir, module_name, &filename, false, false);
+        get_source_code(&deno_dir, module_name, filepath.clone(), false, false);
       assert!(result3.is_ok());
       let r3 = result3.unwrap();
       let expected3 = "export const loaded = true;\n".as_bytes();
@@ -1237,12 +1239,11 @@ mod tests {
     tokio_util::init(|| {
       let redirect_module_name =
         "http://localhost:4546/tests/subdir/redirects/redirect1.js";
-      let redirect_source_filename = deno_fs::normalize_path(
-        deno_dir
-          .deps_http
-          .join("localhost_PORT4546/tests/subdir/redirects/redirect1.js")
-          .as_ref(),
-      );
+      let redirect_source_filepath = deno_dir
+        .deps_http
+        .join("localhost_PORT4546/tests/subdir/redirects/redirect1.js");
+      let redirect_source_filename =
+        redirect_source_filepath.to_str().unwrap().to_string();
       let target_module_name =
         "http://localhost:4545/tests/subdir/redirects/redirect1.js";
       let redirect_target_filename = deno_fs::normalize_path(
@@ -1254,7 +1255,7 @@ mod tests {
       let mod_meta = get_source_code(
         &deno_dir,
         redirect_module_name,
-        &redirect_source_filename,
+        redirect_source_filepath.clone(),
         true,
         false,
       ).unwrap();
@@ -1292,12 +1293,11 @@ mod tests {
     tokio_util::init(|| {
       let redirect_module_name =
         "http://localhost:4548/tests/subdir/redirects/redirect1.js";
-      let redirect_source_filename = deno_fs::normalize_path(
-        deno_dir
-          .deps_http
-          .join("localhost_PORT4548/tests/subdir/redirects/redirect1.js")
-          .as_ref(),
-      );
+      let redirect_source_filepath = deno_dir
+        .deps_http
+        .join("localhost_PORT4548/tests/subdir/redirects/redirect1.js");
+      let redirect_source_filename =
+        redirect_source_filepath.to_str().unwrap().to_string();
       let redirect_source_filename_intermediate = deno_fs::normalize_path(
         deno_dir
           .deps_http
@@ -1315,7 +1315,7 @@ mod tests {
       let mod_meta = get_source_code(
         &deno_dir,
         redirect_module_name,
-        &redirect_source_filename,
+        redirect_source_filepath.clone(),
         true,
         false,
       ).unwrap();
@@ -1358,28 +1358,25 @@ mod tests {
     let (_temp_dir, deno_dir) = test_setup();
     tokio_util::init(|| {
       let module_name = "http://localhost:4545/tests/002_hello.ts";
-      let filename = deno_fs::normalize_path(
-        deno_dir
-          .deps_http
-          .join("localhost_PORT4545/tests/002_hello.ts")
-          .as_ref(),
-      );
+      let filepath = deno_dir
+        .deps_http
+        .join("localhost_PORT4545/tests/002_hello.ts");
 
       // file hasn't been cached before and remote downloads are not allowed
       let result =
-        get_source_code(&deno_dir, module_name, &filename, true, true);
+        get_source_code(&deno_dir, module_name, filepath.clone(), true, true);
       assert!(result.is_err());
       let err = result.err().unwrap();
       assert_eq!(err.kind(), ErrorKind::NotFound);
 
       // download and cache file
       let result =
-        get_source_code(&deno_dir, module_name, &filename, true, false);
+        get_source_code(&deno_dir, module_name, filepath.clone(), true, false);
       assert!(result.is_ok());
 
       // module is already cached, should be ok even with `no_fetch`
       let result =
-        get_source_code(&deno_dir, module_name, &filename, true, true);
+        get_source_code(&deno_dir, module_name, filepath.clone(), true, true);
       assert!(result.is_ok());
     });
   }
