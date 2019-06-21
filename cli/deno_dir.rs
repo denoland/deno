@@ -11,6 +11,7 @@ use crate::progress::Progress;
 use crate::source_maps::SourceMapGetter;
 use crate::tokio_util;
 use crate::version;
+use deno::ModuleSpecifier;
 use dirs;
 use futures::future::{loop_fn, Either, Loop};
 use futures::Future;
@@ -148,18 +149,15 @@ impl DenoDir {
 
   pub fn fetch_module_meta_data_async(
     self: &Self,
-    specifier: &str,
-    referrer: &str,
+    specifier: &ModuleSpecifier,
     use_cache: bool,
     no_fetch: bool,
   ) -> impl Future<Item = ModuleMetaData, Error = deno_error::DenoError> {
-    debug!(
-      "fetch_module_meta_data. specifier {} referrer {}",
-      specifier, referrer
-    );
+    debug!("fetch_module_meta_data. specifier {}", specifier);
 
     let specifier = specifier.to_string();
-    let referrer = referrer.to_string();
+    // TODO: referrer is always "."
+    let referrer = ".".to_string();
 
     let result = self.resolve_module(&specifier, &referrer);
     if let Err(err) = result {
@@ -256,10 +254,14 @@ impl DenoDir {
     use_cache: bool,
     no_fetch: bool,
   ) -> Result<ModuleMetaData, deno_error::DenoError> {
-    tokio_util::block_on(
-      self
-        .fetch_module_meta_data_async(specifier, referrer, use_cache, no_fetch),
-    )
+    // TODO(bartlomieju): change signature of this function
+    let module_specifier = ModuleSpecifier::resolve(specifier, referrer)?;
+
+    tokio_util::block_on(self.fetch_module_meta_data_async(
+      &module_specifier,
+      use_cache,
+      no_fetch,
+    ))
   }
 
   // Prototype: https://github.com/denoland/deno/blob/golang/os.go#L56-L68
@@ -1562,12 +1564,13 @@ mod tests {
     let (_temp_dir, deno_dir) = test_setup();
 
     let cwd = std::env::current_dir().unwrap();
-    let cwd_string = String::from(cwd.to_str().unwrap()) + "/";
+    let cwd_string =
+      String::from(format!("file://{}", cwd.to_str().unwrap())) + "/";
 
     tokio_util::init(|| {
       // Test failure case.
       let specifier = "hello.ts";
-      let referrer = add_root!("/baddir/badfile.ts");
+      let referrer = file_url!("/baddir/badfile.ts");
       let r = deno_dir.fetch_module_meta_data(specifier, referrer, true, false);
       assert!(r.is_err());
 
@@ -1575,6 +1578,7 @@ mod tests {
       let specifier = "./js/main.ts";
       let referrer = cwd_string.as_str();
       let r = deno_dir.fetch_module_meta_data(specifier, referrer, true, false);
+      println!("{:?} {:?}", r, referrer);
       assert!(r.is_ok());
     })
   }
@@ -1585,7 +1589,8 @@ mod tests {
     let (_temp_dir, deno_dir) = test_setup();
 
     let cwd = std::env::current_dir().unwrap();
-    let cwd_string = String::from(cwd.to_str().unwrap()) + "/";
+    let cwd_string =
+      String::from(format!("file://{}", cwd.to_str().unwrap())) + "/";
 
     tokio_util::init(|| {
       // Test failure case.

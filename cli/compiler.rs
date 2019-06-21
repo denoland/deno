@@ -9,6 +9,7 @@ use crate::state::*;
 use crate::tokio_util;
 use crate::worker::Worker;
 use deno::Buf;
+use deno::ModuleSpecifier;
 use futures::Future;
 use futures::Stream;
 use std::str;
@@ -212,9 +213,11 @@ pub fn compile_async(
 
       Ok(())
     }).and_then(move |_| {
+    // TODO(bartlomieju): module specifier should exist on `ModuleMetaData` struct
+    let module_specifier = ModuleSpecifier::resolve(&module_name, ".").expect("Failed to resolve specifier");
+
       state.dir.fetch_module_meta_data_async(
-        &module_name,
-        ".",
+        &module_specifier,
         true,
         true,
       ).map_err(|e| {
