@@ -261,7 +261,7 @@ testPerm(
 
     const p = run({
       args: ["python", "-c", "import sys; assert 'hello' == sys.stdin.read();"],
-      stdin: file
+      stdin: file.rid
     });
 
     const status = await p.status();
