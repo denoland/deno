@@ -14,6 +14,7 @@ use crate::progress::Progress;
 use crate::resources;
 use crate::resources::ResourceId;
 use crate::worker::Worker;
+use crate::ansi::{red_bold};
 use deno::Buf;
 use deno::CoreOp;
 use deno::Loader;
@@ -195,6 +196,49 @@ impl Loader for ThreadSafeState {
   }
 }
 
+fn print_config_error(msg: String) {
+  eprintln!("    {}", red_bold(String::from("Failed to load TS Config file")));
+  eprintln!("     {}", msg);
+}
+
+/// Loads custom ts config file if specified
+fn load_config(config_path_flag: &Option<String>) -> (Option<Vec<u8>>, Option<String>) {
+  if config_path_flag.is_none() {
+    return (None, None);
+  }
+
+  let cwd = std::env::current_dir().unwrap();
+  let dirty_path = cwd.join(config_path_flag.as_ref().unwrap());
+
+  let config_path = match dirty_path.canonicalize() {
+    Ok(path) => path,
+    Err(e) => {
+      let path_str = dirty_path.to_str().unwrap();
+
+      match e.kind() {
+        std::io::ErrorKind::NotFound => {
+          print_config_error(format!("No such file '{}'", path_str));
+        },
+        _ => {
+          print_config_error(format!("{}", e));
+        }
+      };
+
+      std::process::exit(1);
+    }
+  };
+
+  let config = match fs::read(&config_path) {
+    Ok(config_content) => config_content,
+    Err(e) => {
+      print_config_error(format!("{}", e));
+      std::process::exit(1);
+    }
+  };
+
+  (Some(config), Some(config_path.to_str().unwrap().to_string()))
+}
+
 impl ThreadSafeState {
   pub fn new(
     flags: flags::DenoFlags,
@@ -209,45 +253,7 @@ impl ThreadSafeState {
     let internal_channels = (worker_out_tx, worker_in_rx);
     let external_channels = (worker_in_tx, worker_out_rx);
     let resource = resources::add_worker(external_channels);
-
-    // take the passed flag and resolve the file name relative to the cwd
-    let config_file = match &flags.config_path {
-      Some(config_file_name) => {
-        debug!("Compiler config file: {}", config_file_name);
-        let cwd = std::env::current_dir().unwrap();
-        Some(cwd.join(config_file_name))
-      }
-      _ => None,
-    };
-
-    // Convert the PathBuf to a canonicalized string.  This is needed by the
-    // compiler to properly deal with the configuration.
-    let config_path = match &config_file {
-      Some(config_file) => Some(
-        config_file
-          .canonicalize()
-          .unwrap()
-          .to_str()
-          .unwrap()
-          .to_owned(),
-      ),
-      _ => None,
-    };
-
-    // Load the contents of the configuration file
-    let config = match &config_file {
-      Some(config_file) => {
-        debug!("Attempt to load config: {}", config_file.to_str().unwrap());
-        match fs::read(&config_file) {
-          Ok(config_data) => Some(config_data.to_owned()),
-          _ => panic!(
-            "Error retrieving compiler config file at \"{}\"",
-            config_file.to_str().unwrap()
-          ),
-        }
-      }
-      _ => None,
-    };
+    let (config, config_path) = load_config(&flags.config_path);
 
     let dir =
       deno_dir::DenoDir::new(custom_root, &config, progress.clone()).unwrap();
