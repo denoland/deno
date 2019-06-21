@@ -176,7 +176,7 @@ impl DenoDir {
       get_source_code_async(
         self,
         module_name.as_str(),
-        filename.as_str(),
+        filename.to_str().unwrap(),
         use_cache,
         no_fetch,
       ).then(move |result| {
@@ -313,30 +313,19 @@ impl DenoDir {
     self: &Self,
     specifier: &str,
     referrer: &str,
-  ) -> Result<(String, String), url::ParseError> {
+  ) -> Result<(String, PathBuf), url::ParseError> {
     let j = self.resolve_module_url(specifier, referrer)?;
 
     let module_name = j.to_string();
-    let filename;
-    match j.scheme() {
-      "file" => {
-        filename = deno_fs::normalize_path(j.to_file_path().unwrap().as_ref());
-      }
-      "https" => {
-        filename = deno_fs::normalize_path(
-          get_cache_filename(self.deps_https.as_path(), &j).as_ref(),
-        )
-      }
-      "http" => {
-        filename = deno_fs::normalize_path(
-          get_cache_filename(self.deps_http.as_path(), &j).as_ref(),
-        )
-      }
+    let filename = match j.scheme() {
+      "file" => j.to_file_path().unwrap(),
+      "https" => get_cache_filename(self.deps_https.as_path(), &j),
+      "http" => get_cache_filename(self.deps_http.as_path(), &j),
       // TODO(kevinkassimo): change this to support other protocols than http.
       _ => unimplemented!(),
-    }
+    };
 
-    debug!("module_name: {}, filename: {}", module_name, filename);
+    debug!("module_name: {}, filename: {:?}", module_name, filename);
     Ok((module_name, filename))
   }
 }
@@ -632,26 +621,23 @@ fn fetch_remote_source_async(
         match fetch_once_result {
           FetchOnceResult::Redirect(url) => {
             // If redirects, update module_name and filename for next looped call.
-            let resolve_result = dir
-              .resolve_module(&(url.to_string()), ".")
-              .map_err(DenoError::from);
-            match resolve_result {
-              Ok((new_module_name, new_filename)) => {
-                if maybe_initial_module_name.is_none() {
-                  maybe_initial_module_name = Some(module_name.clone());
-                  maybe_initial_filename = Some(filename.clone());
-                }
-                // Not yet completed. Follow the redirect and loop.
-                Ok(Loop::Continue((
-                  dir,
-                  maybe_initial_module_name,
-                  maybe_initial_filename,
-                  new_module_name,
-                  new_filename,
-                )))
-              }
-              Err(e) => Err(e),
+            let (new_module_name, new_filename) = dir
+              .resolve_module(&(url.to_string()), ".")?;
+
+            let new_filename = new_filename.to_str().unwrap().to_string();
+
+            if maybe_initial_module_name.is_none() {
+              maybe_initial_module_name = Some(module_name.clone());
+              maybe_initial_filename = Some(filename.to_string());
             }
+            // Not yet completed. Follow the redirect and loop.
+            Ok(Loop::Continue((
+              dir,
+              maybe_initial_module_name,
+              maybe_initial_filename,
+              new_module_name,
+              new_filename,
+            )))
           }
           FetchOnceResult::Code(source, maybe_content_type) => {
             // We land on the code.
@@ -754,6 +740,8 @@ fn fetch_local_source(
     // real_module_name = https://import-meta.now.sh/sub/final1.js
     let (real_module_name, real_filename) =
       deno_dir.resolve_module(&redirect_to, ".")?;
+    let real_filename = real_filename.to_str().unwrap();
+
     let mut module_initial_source_name = module_initial_source_name;
     // If this is the first redirect attempt,
     // then module_initial_source_name should be None.
@@ -765,7 +753,7 @@ fn fetch_local_source(
     return fetch_local_source(
       deno_dir,
       &real_module_name,
-      &real_filename,
+      real_filename,
       module_initial_source_name,
     );
   }
@@ -1690,7 +1678,7 @@ mod tests {
       let (module_name, filename) =
         deno_dir.resolve_module(&specifier, &referrer).unwrap();
       assert_eq!(module_name, test.2);
-      assert_eq!(filename, test.3);
+      assert_eq!(filename.to_str().unwrap().to_string(), test.3);
     }
   }
 
@@ -1713,7 +1701,7 @@ mod tests {
     let (module_name, filename) =
       deno_dir.resolve_module(specifier, referrer).unwrap();
     assert_eq!(module_name, expected_module_name);
-    assert_eq!(filename, expected_filename);
+    assert_eq!(filename.to_str().unwrap().to_string(), expected_filename);
   }
 
   #[test]
@@ -1736,7 +1724,7 @@ mod tests {
     let (module_name, filename) =
       deno_dir.resolve_module(specifier, referrer).unwrap();
     assert_eq!(module_name, expected_module_name);
-    assert_eq!(filename, expected_filename);
+    assert_eq!(filename.to_str().unwrap().to_string(), expected_filename);
   }
 
   #[test]
@@ -1759,7 +1747,7 @@ mod tests {
     let (module_name, filename) =
       deno_dir.resolve_module(specifier, referrer).unwrap();
     assert_eq!(module_name, expected_module_name);
-    assert_eq!(filename, expected_filename);
+    assert_eq!(filename.to_str().unwrap().to_string(), expected_filename);
   }
 
   #[test]
@@ -1783,7 +1771,7 @@ mod tests {
     let (module_name, filename) =
       deno_dir.resolve_module(specifier, referrer).unwrap();
     assert_eq!(module_name, expected_module_name);
-    assert_eq!(filename, expected_filename);
+    assert_eq!(filename.to_str().unwrap().to_string(), expected_filename);
   }
 
   #[test]
@@ -1803,7 +1791,7 @@ mod tests {
     let (module_name, filename) =
       deno_dir.resolve_module(specifier, referrer).unwrap();
     assert_eq!(module_name, expected_module_name);
-    assert_eq!(filename, expected_filename);
+    assert_eq!(filename.to_str().unwrap().to_string(), expected_filename);
   }
 
   #[test]
@@ -1819,7 +1807,7 @@ mod tests {
     let (module_name, filename) =
       deno_dir.resolve_module(specifier, referrer).unwrap();
     assert_eq!(module_name, expected_module_name);
-    assert_eq!(filename, expected_filename);
+    assert_eq!(filename.to_str().unwrap().to_string(), expected_filename);
   }
 
   #[test]
@@ -1839,7 +1827,7 @@ mod tests {
     let (module_name, filename) =
       deno_dir.resolve_module(specifier, referrer).unwrap();
     assert_eq!(module_name, expected_module_name);
-    assert_eq!(filename, expected_filename);
+    assert_eq!(filename.to_str().unwrap().to_string(), expected_filename);
   }
 
   #[test]
@@ -1857,12 +1845,12 @@ mod tests {
     let (module_name, filename) =
       deno_dir.resolve_module(specifier, ".").unwrap();
     assert_eq!(module_name, expected_module_name);
-    assert_eq!(filename, expected_filename);
+    assert_eq!(filename.to_str().unwrap().to_string(), expected_filename);
 
     let (module_name, filename) =
       deno_dir.resolve_module(specifier, "./").unwrap();
     assert_eq!(module_name, expected_module_name);
-    assert_eq!(filename, expected_filename);
+    assert_eq!(filename.to_str().unwrap().to_string(), expected_filename);
   }
 
   #[test]
@@ -1880,12 +1868,12 @@ mod tests {
     let (module_name, filename) =
       deno_dir.resolve_module(specifier, "..").unwrap();
     assert_eq!(module_name, expected_module_name);
-    assert_eq!(filename, expected_filename);
+    assert_eq!(filename.to_str().unwrap().to_string(), expected_filename);
 
     let (module_name, filename) =
       deno_dir.resolve_module(specifier, "../").unwrap();
     assert_eq!(module_name, expected_module_name);
-    assert_eq!(filename, expected_filename);
+    assert_eq!(filename.to_str().unwrap().to_string(), expected_filename);
   }
 
   #[test]
