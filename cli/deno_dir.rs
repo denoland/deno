@@ -18,7 +18,7 @@ use http;
 use ring;
 use serde_json;
 use std;
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::fmt::Write;
 use std::fs;
 use std::path::Path;
@@ -31,17 +31,46 @@ use url;
 use url::Url;
 
 #[derive(Clone, Default)]
-pub struct FetchSet(Arc<Mutex<HashSet<String>>>);
+pub struct DownloadCache(
+  Arc<
+    Mutex<
+      HashMap<String, (Option<String>, Option<String>, String, Option<String>)>,
+    >,
+  >,
+);
 
-impl FetchSet {
-  pub fn mark(&self, module_id: &str) {
+impl DownloadCache {
+  pub fn add(
+    &self,
+    module_name: &str,
+    maybe_initial_name: Option<String>,
+    maybe_initial_module_name: Option<String>,
+    source: String,
+    maybe_content_type: Option<String>,
+  ) {
     let mut c = self.0.lock().unwrap();
-    c.insert(module_id.to_string());
+    c.insert(
+      module_name.to_string(),
+      (
+        maybe_initial_name,
+        maybe_initial_module_name,
+        source,
+        maybe_content_type,
+      ),
+    );
   }
 
-  pub fn has(&self, module_id: &str) -> bool {
+  pub fn get(
+    &self,
+    module_name: &str,
+  ) -> Option<(Option<String>, Option<String>, String, Option<String>)> {
     let c = self.0.lock().unwrap();
-    c.contains(module_id)
+
+    if !c.contains_key(module_name) {
+      return None;
+    }
+
+    Some(c.get(module_name).unwrap().clone())
   }
 }
 
@@ -66,10 +95,7 @@ pub struct DenoDir {
 
   pub progress: Progress,
 
-  /// Set of all URLs that have been fetched in this run. This is a hacky way to work
-  /// around the fact that --reload will force multiple downloads of the same
-  /// module.
-  fetched: FetchSet,
+  download_cache: DownloadCache,
 }
 
 impl DenoDir {
@@ -113,7 +139,7 @@ impl DenoDir {
       deps_https,
       config,
       progress,
-      fetched: FetchSet::default(),
+      download_cache: DownloadCache::default(),
     };
 
     // TODO Lazily create these directories.
@@ -416,11 +442,7 @@ fn get_source_code_async(
   // 1. Remote downloads are not allowed, we're only allowed to use cache.
   // 2. This is a remote module and we're allowed to use cached downloads.
   // 3. This is a local module.
-  if !is_module_remote
-    || use_cache
-    || no_fetch
-    || deno_dir.fetched.has(&module_name)
-  {
+  if !is_module_remote || use_cache || no_fetch {
     debug!(
       "fetch local or reload {} is_module_remote {}",
       module_name, is_module_remote
@@ -464,16 +486,11 @@ fn get_source_code_async(
 
   debug!("is remote but didn't find module");
 
-  let fetched = deno_dir.fetched.clone();
-
   // not cached/local, try remote.
   Either::B(
     fetch_remote_source_async(deno_dir, &module_name, &filename).and_then(
       move |maybe_remote_source| match maybe_remote_source {
-        Some(output) => {
-          fetched.mark(&module_name);
-          Ok(output)
-        }
+        Some(output) => Ok(output),
         None => Err(DenoError::from(std::io::Error::new(
           std::io::ErrorKind::NotFound,
           format!("cannot find remote file '{}'", &filename),
@@ -719,6 +736,22 @@ fn fetch_remote_source_async(
             )))
           }
           FetchOnceResult::Code(source, maybe_content_type) => {
+            // TODO: things that should be cached in DownloadCache
+            //  - filename (probably not)
+            //  - module_name
+            //  - maybe_initial_filename
+            //  - maybe_initial_module_name
+            //  - source
+            //  - maybe_content_type
+
+            dir.download_cache.add(
+              &module_name.clone(),
+              maybe_initial_filename.clone(),
+              maybe_initial_module_name.clone(),
+              source.clone(),
+              maybe_content_type.clone(),
+            );
+
             // We land on the code.
             save_code_and_headers(
               &filename.clone(),
