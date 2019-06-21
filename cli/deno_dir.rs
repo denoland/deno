@@ -111,11 +111,11 @@ impl DenoDir {
   // https://github.com/denoland/deno/blob/golang/deno_dir.go#L32-L35
   pub fn cache_path(
     self: &Self,
-    filename: &str,
+    filepath: &Path,
     source_code: &[u8],
   ) -> (PathBuf, PathBuf) {
     let cache_key =
-      source_code_hash(filename, source_code, version::DENO, &self.config);
+      source_code_hash(filepath, source_code, version::DENO, &self.config);
     (
       self.gen.join(cache_key.to_string() + ".js"),
       self.gen.join(cache_key.to_string() + ".js.map"),
@@ -126,8 +126,9 @@ impl DenoDir {
     self: &Self,
     module_meta_data: &ModuleMetaData,
   ) -> std::io::Result<()> {
-    let (cache_path, source_map_path) = self
-      .cache_path(&module_meta_data.filename, &module_meta_data.source_code);
+    let filepath = &PathBuf::from(&module_meta_data.filename);
+    let (cache_path, source_map_path) =
+      self.cache_path(filepath, &module_meta_data.source_code);
     // TODO(ry) This is a race condition w.r.t to exists() -- probably should
     // create the file in exclusive mode. A worry is what might happen is there
     // are two processes and one reads the cache file while the other is in the
@@ -163,7 +164,7 @@ impl DenoDir {
     if let Err(err) = result {
       return Either::A(futures::future::err(DenoError::from(err)));
     }
-    let (module_name, filename) = result.unwrap();
+    let (module_name, filepath) = result.unwrap();
 
     let gen = self.gen.clone();
 
@@ -176,7 +177,7 @@ impl DenoDir {
       get_source_code_async(
         self,
         module_name.as_str(),
-        filename,
+        filepath,
         use_cache,
         no_fetch,
       ).then(move |result| {
@@ -209,7 +210,7 @@ impl DenoDir {
         }
 
         let cache_key = source_code_hash(
-          &out.filename,
+          &PathBuf::from(&out.filename),
           &out.source_code,
           version::DENO,
           &config,
@@ -494,14 +495,14 @@ fn load_cache2(
 /// Generate an SHA1 hash for source code, to be used to determine if a cached
 /// version of the code is valid or invalid.
 fn source_code_hash(
-  filename: &str,
+  filename: &Path,
   source_code: &[u8],
   version: &str,
   config: &[u8],
 ) -> String {
   let mut ctx = ring::digest::Context::new(&ring::digest::SHA1);
   ctx.update(version.as_bytes());
-  ctx.update(filename.as_bytes());
+  ctx.update(filename.to_str().unwrap().as_bytes());
   ctx.update(source_code);
   ctx.update(config);
   let digest = ctx.finish();
@@ -970,7 +971,7 @@ mod tests {
   #[test]
   fn test_cache_path() {
     let (temp_dir, deno_dir) = test_setup();
-    let filename = "hello.js";
+    let filename = &PathBuf::from("hello.js");
     let source_code = b"1+2";
     let config = b"{}";
     let hash = source_code_hash(filename, source_code, version::DENO, config);
@@ -988,7 +989,7 @@ mod tests {
     // We are changing the compiler config from the "mock" and so we expect the
     // resolved files coming back to not match the calculated hash.
     let (temp_dir, deno_dir) = test_setup();
-    let filename = "hello.js";
+    let filename = &PathBuf::from("hello.js");
     let source_code = b"1+2";
     let config = b"{\"compilerOptions\":{}}";
     let hash = source_code_hash(filename, source_code, version::DENO, config);
@@ -1006,13 +1007,14 @@ mod tests {
     let (_temp_dir, deno_dir) = test_setup();
 
     let filename = "hello.js";
+    let filepath = &PathBuf::from(filename);
     let source_code = b"1+2";
     let output_code = b"1+2 // output code";
     let source_map = b"{}";
     let config = b"{}";
-    let hash = source_code_hash(filename, source_code, version::DENO, config);
+    let hash = source_code_hash(filepath, source_code, version::DENO, config);
     let (cache_path, source_map_path) =
-      deno_dir.cache_path(filename, source_code);
+      deno_dir.cache_path(filepath, source_code);
     assert!(cache_path.ends_with(format!("gen/{}.js", hash)));
     assert!(source_map_path.ends_with(format!("gen/{}.js.map", hash)));
 
@@ -1038,22 +1040,22 @@ mod tests {
   fn test_source_code_hash() {
     assert_eq!(
       "830c8b63ba3194cf2108a3054c176b2bf53aee45",
-      source_code_hash("hello.ts", b"1+2", "0.2.11", b"{}")
+      source_code_hash(&PathBuf::from("hello.ts"), b"1+2", "0.2.11", b"{}")
     );
     // Different source_code should result in different hash.
     assert_eq!(
       "fb06127e9b2e169bea9c697fa73386ae7c901e8b",
-      source_code_hash("hello.ts", b"1", "0.2.11", b"{}")
+      source_code_hash(&PathBuf::from("hello.ts"), b"1", "0.2.11", b"{}")
     );
     // Different filename should result in different hash.
     assert_eq!(
       "3a17b6a493ff744b6a455071935f4bdcd2b72ec7",
-      source_code_hash("hi.ts", b"1+2", "0.2.11", b"{}")
+      source_code_hash(&PathBuf::from("hi.ts"), b"1+2", "0.2.11", b"{}")
     );
     // Different version should result in different hash.
     assert_eq!(
       "d6b2cfdc39dae9bd3ad5b493ee1544eb22e7475f",
-      source_code_hash("hi.ts", b"1+2", "0.2.0", b"{}")
+      source_code_hash(&PathBuf::from("hi.ts"), b"1+2", "0.2.0", b"{}")
     );
   }
 

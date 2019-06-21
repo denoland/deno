@@ -472,9 +472,10 @@ fn op_cache(
     .dir
     .fetch_module_meta_data(module_id, ".", true, true)?;
 
-  let (js_cache_path, source_map_path) = state
-    .dir
-    .cache_path(&module_meta_data.filename, &module_meta_data.source_code);
+  let (js_cache_path, source_map_path) = state.dir.cache_path(
+    &PathBuf::from(&module_meta_data.filename),
+    &module_meta_data.source_code,
+  );
 
   if extension == ".map" {
     debug!("cache {:?}", source_map_path);
