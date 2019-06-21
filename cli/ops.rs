@@ -1793,9 +1793,27 @@ fn op_run(
     c.env(entry.key().unwrap(), entry.value().unwrap());
   });
 
-  c.stdin(subprocess_stdio_map(inner.stdin()));
-  c.stdout(subprocess_stdio_map(inner.stdout()));
-  c.stderr(subprocess_stdio_map(inner.stderr()));
+  // TODO: make this work with other resources, eg. sockets
+  let stdin_rid = inner.stdin_rid();
+  if stdin_rid > 0 {
+    c.stdin(resources::get_file(stdin_rid)?);
+  } else {
+    c.stdin(subprocess_stdio_map(inner.stdin()));
+  }
+
+  let stdout_rid = inner.stdout_rid();
+  if stdout_rid > 0 {
+    c.stdout(resources::get_file(stdout_rid)?);
+  } else {
+    c.stdout(subprocess_stdio_map(inner.stdout()));
+  }
+
+  let stderr_rid = inner.stderr_rid();
+  if stderr_rid > 0 {
+    c.stderr(resources::get_file(stderr_rid)?);
+  } else {
+    c.stderr(subprocess_stdio_map(inner.stderr()));
+  }
 
   // Spawn the command.
   let child = c.spawn_async().map_err(DenoError::from)?;

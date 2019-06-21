@@ -538,6 +538,9 @@ table Run {
   stdin: ProcessStdio;
   stdout: ProcessStdio;
   stderr: ProcessStdio;
+  stdin_rid: uint32;
+  stdout_rid: uint32;
+  stderr_rid: uint32;
 }
 
 table RunRes {
