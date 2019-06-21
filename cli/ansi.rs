@@ -79,14 +79,6 @@ pub fn red(s: String) -> impl fmt::Display {
   style.paint(s)
 }
 
-pub fn grey(s: String) -> impl fmt::Display {
-  let mut style = Style::new();
-  if use_color() {
-    style = style.fg(Fixed(8));
-  }
-  style.paint(s)
-}
-
 pub fn bold(s: String) -> impl fmt::Display {
   let mut style = Style::new();
   if use_color() {

@@ -6,6 +6,10 @@ import { getPrivateValue, requiredArguments } from "./util";
 // https://developer.mozilla.org/en-US/docs/Archive/Add-ons/Add-on_SDK/Guides/Contributor_s_Guide/Private_Properties#Using_WeakMaps
 export const eventAttributes = new WeakMap();
 
+function isTrusted(this: Event): boolean {
+  return getPrivateValue(this, eventAttributes, "isTrusted");
+}
+
 export class EventInit implements domTypes.EventInit {
   bubbles = false;
   cancelable = false;
@@ -19,6 +23,9 @@ export class EventInit implements domTypes.EventInit {
 }
 
 export class Event implements domTypes.Event {
+  // The default value is `false`.
+  // Use `defineProperty` to define on each instance, NOT on the prototype.
+  isTrusted!: boolean;
   // Each event has the following associated flags
   private _canceledFlag = false;
   private _dispatchedFlag = false;
@@ -45,6 +52,10 @@ export class Event implements domTypes.Event {
       relatedTarget: null,
       target: null,
       timeStamp: Date.now()
+    });
+    Reflect.defineProperty(this, "isTrusted", {
+      enumerable: true,
+      get: isTrusted
     });
   }
 
@@ -132,25 +143,6 @@ export class Event implements domTypes.Event {
 
   set inPassiveListener(value: boolean) {
     this._inPassiveListenerFlag = value;
-  }
-
-  get isTrusted(): boolean {
-    return getPrivateValue(this, eventAttributes, "isTrusted");
-  }
-
-  set isTrusted(value: boolean) {
-    eventAttributes.set(this, {
-      type: this.type,
-      bubbles: this.bubbles,
-      cancelable: this.cancelable,
-      composed: this.composed,
-      currentTarget: this.currentTarget,
-      eventPhase: this.eventPhase,
-      isTrusted: value,
-      relatedTarget: this.relatedTarget,
-      target: this.target,
-      timeStamp: this.timeStamp
-    });
   }
 
   get path(): domTypes.EventPath[] {
@@ -363,7 +355,6 @@ Reflect.defineProperty(Event.prototype, "defaultPrevented", {
 });
 Reflect.defineProperty(Event.prototype, "dispatched", { enumerable: true });
 Reflect.defineProperty(Event.prototype, "eventPhase", { enumerable: true });
-Reflect.defineProperty(Event.prototype, "isTrusted", { enumerable: true });
 Reflect.defineProperty(Event.prototype, "target", { enumerable: true });
 Reflect.defineProperty(Event.prototype, "timeStamp", { enumerable: true });
 Reflect.defineProperty(Event.prototype, "type", { enumerable: true });

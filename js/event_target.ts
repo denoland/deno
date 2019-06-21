@@ -201,8 +201,6 @@ export class EventTarget implements domTypes.EventTarget {
       );
     }
 
-    event.isTrusted = false;
-
     return this._dispatch(event);
   }
 

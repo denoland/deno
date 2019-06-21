@@ -698,6 +698,82 @@ export main() {
 }
 ```
 
+### Installing executable scripts
+
+Deno provides ability to easily install and distribute executable code via
+`deno install` command.
+
+`deno install [EXE_NAME] [URL] [FLAGS...]` will install script available at
+`URL` with name `EXE_NAME`.
+
+This command is a thin wrapper that creates executable shell scripts which
+invoke `deno` with specified permissions and CLI flags.
+
+Example:
+
+```
+$ deno install file_server https://deno.land/std/http/file_server.ts --allow-net --allow-read
+[1/1] Compiling https://deno.land/std/http/file_server.ts
+
+✅ Successfully installed file_server.
+/Users/deno/.deno/bin/file_server
+```
+
+By default scripts are installed at `$HOME/.deno/bin` and that directory must be
+added to the path manually.
+
+```
+$ echo 'export PATH="$HOME/.deno/bin:$PATH"' >> ~/.bashrc
+```
+
+Installation directory can be changed using `-d/--dir` flag:
+
+```
+deno install --dir /usr/local/bin prettier https://deno.land/std/prettier/main.ts --allow-write --allow-read
+```
+
+When installing a script you can specify permissions that will be used to run
+the script. They are placed after the script URL and can be mixed with any
+additional CLI flags you want to pass to the script.
+
+Example:
+
+```
+deno install format_check https://deno.land/std/prettier/main.ts --allow-write --allow-read --check --print-width 88 --tab-width 2
+```
+
+Above command creates an executable called `format_check` that runs `prettier`
+with write and read permissions. When you run `format_check` deno will run
+prettier in `check` mode and configured to use `88` column width with `2` column
+tabs.
+
+It is a good practice to use `import.meta.main` idiom for an entry point for
+executable file. See
+[Testing if current file is the main program](#testing-if-current-file-is-the-main-program)
+section.
+
+Example:
+
+```ts
+// https://example.com/awesome/cli.ts
+async function myAwesomeCli(): Promise<void> {
+  -- snip --
+}
+
+if (import.meta.main) {
+  myAwesomeCli();
+}
+```
+
+When you create executable script make sure to let users know by adding example
+installation command to your repository:
+
+```
+# Install using deno install
+
+$ deno install awesome_cli https://example.com/awesome/cli.ts
+```
+
 ## Import maps
 
 Deno supports [import maps](https://github.com/WICG/import-maps).

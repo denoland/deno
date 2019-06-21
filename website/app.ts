@@ -189,7 +189,7 @@ function formatSecsAsMins(t) {
 }
 
 /**
- * @param dataUrl The url of benchramk data json.
+ * @param dataUrl The url of benchmark data json.
  */
 export function drawCharts(dataUrl) {
   // TODO Using window["location"]["hostname"] instead of
@@ -291,7 +291,9 @@ export function main(): void {
 
     showSpinner();
 
-    drawCharts(u).finally(hideSpinner);
+    drawCharts(u)
+      .then(hideSpinner)
+      .catch(hideSpinner);
   }
   updateCharts();
 

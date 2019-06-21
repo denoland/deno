@@ -8,10 +8,10 @@
 // descriptors". This module implements a global resource table. Ops (AKA
 // handlers) look up resources by their integer id here.
 
-use crate::errors;
-use crate::errors::bad_resource;
-use crate::errors::DenoError;
-use crate::errors::DenoResult;
+use crate::deno_error;
+use crate::deno_error::bad_resource;
+use crate::deno_error::DenoError;
+use crate::deno_error::DenoResult;
 use crate::http_body::HttpBody;
 use crate::repl::Repl;
 use crate::state::WorkerChannels;
@@ -372,10 +372,9 @@ impl Future for WorkerReceiver {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     let maybe_repr = table.get_mut(&self.rid);
     match maybe_repr {
-      Some(Repr::Worker(ref mut wc)) => wc
-        .1
-        .poll()
-        .map_err(|err| errors::new(errors::ErrorKind::Other, err.to_string())),
+      Some(Repr::Worker(ref mut wc)) => wc.1.poll().map_err(|err| {
+        deno_error::new(deno_error::ErrorKind::Other, err.to_string())
+      }),
       _ => Err(bad_resource()),
     }
   }
@@ -398,10 +397,9 @@ impl Stream for WorkerReceiverStream {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     let maybe_repr = table.get_mut(&self.rid);
     match maybe_repr {
-      Some(Repr::Worker(ref mut wc)) => wc
-        .1
-        .poll()
-        .map_err(|err| errors::new(errors::ErrorKind::Other, err.to_string())),
+      Some(Repr::Worker(ref mut wc)) => wc.1.poll().map_err(|err| {
+        deno_error::new(deno_error::ErrorKind::Other, err.to_string())
+      }),
       _ => Err(bad_resource()),
     }
   }
@@ -535,8 +533,8 @@ pub fn seek(
         1 => SeekFrom::Current(i64::from(offset)),
         2 => SeekFrom::End(i64::from(offset)),
         _ => {
-          return Box::new(futures::future::err(errors::new(
-            errors::ErrorKind::InvalidSeekMode,
+          return Box::new(futures::future::err(deno_error::new(
+            deno_error::ErrorKind::InvalidSeekMode,
             format!("Invalid seek mode: {}", whence),
           )));
         }

@@ -1,14 +1,14 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::compiler::ModuleMetaData;
-use crate::errors;
-use crate::errors::DenoError;
-use crate::errors::DenoResult;
-use crate::errors::ErrorKind;
+use crate::deno_error;
+use crate::deno_error::DenoError;
+use crate::deno_error::DenoResult;
+use crate::deno_error::ErrorKind;
 use crate::fs as deno_fs;
 use crate::http_util;
-use crate::js_errors::SourceMapGetter;
 use crate::msg;
 use crate::progress::Progress;
+use crate::source_maps::SourceMapGetter;
 use crate::tokio_util;
 use crate::version;
 use dirs;
@@ -152,7 +152,7 @@ impl DenoDir {
     referrer: &str,
     use_cache: bool,
     no_fetch: bool,
-  ) -> impl Future<Item = ModuleMetaData, Error = errors::DenoError> {
+  ) -> impl Future<Item = ModuleMetaData, Error = deno_error::DenoError> {
     debug!(
       "fetch_module_meta_data. specifier {} referrer {}",
       specifier, referrer
@@ -187,7 +187,7 @@ impl DenoDir {
           Err(err) => {
             if err.kind() == ErrorKind::NotFound {
               // For NotFound, change the message to something better.
-              return Err(errors::new(
+              return Err(deno_error::new(
                 ErrorKind::NotFound,
                 format!(
                   "Cannot resolve module \"{}\" from \"{}\"",
@@ -255,7 +255,7 @@ impl DenoDir {
     referrer: &str,
     use_cache: bool,
     no_fetch: bool,
-  ) -> Result<ModuleMetaData, errors::DenoError> {
+  ) -> Result<ModuleMetaData, deno_error::DenoError> {
     tokio_util::block_on(
       self
         .fetch_module_meta_data_async(specifier, referrer, use_cache, no_fetch),
@@ -347,6 +347,20 @@ impl SourceMapGetter for DenoDir {
         None => None,
         Some(source_map) => Some(source_map),
       },
+    }
+  }
+
+  fn get_source_line(&self, script_name: &str, line: usize) -> Option<String> {
+    match self.fetch_module_meta_data(script_name, ".", true, true) {
+      Ok(out) => match str::from_utf8(&out.source_code) {
+        Ok(v) => {
+          let lines: Vec<&str> = v.lines().collect();
+          assert!(lines.len() > line);
+          Some(lines[line].to_string())
+        }
+        _ => None,
+      },
+      _ => None,
     }
   }
 }

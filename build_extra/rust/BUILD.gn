@@ -74,17 +74,20 @@ rust_rlib("base64") {
 
 rust_rlib("bitflags") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/bitflags-1.0.4/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/bitflags-1.1.0/src/lib.rs"
   features = [ "default" ]
   args = [
     "--cap-lints",
     "allow",
   ]
+
+  # Added by custom-build script.
+  cfg = [ "bitflags_const_fn" ]
 }
 
 rust_rlib("byteorder") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/byteorder-1.3.1/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/byteorder-1.3.2/src/lib.rs"
   features = [
     "default",
     "std",
@@ -226,7 +229,7 @@ rust_rlib("ct_logs") {
 
 rust_rlib("dirs") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/dirs-2.0.0/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/dirs-2.0.1/src/lib.rs"
   extern_rlib = [
     "cfg_if",
     "dirs_sys",
@@ -239,7 +242,7 @@ rust_rlib("dirs") {
 
 rust_rlib("dirs_sys") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/dirs-sys-0.3.1/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/dirs-sys-0.3.3/src/lib.rs"
   extern_rlib = [ "cfg_if" ]
   args = [
     "--cap-lints",
@@ -320,7 +323,7 @@ rust_rlib("futures_cpupool") {
 
 rust_rlib("h2") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/h2-0.1.20/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/h2-0.1.23/src/lib.rs"
   extern_rlib = [
     "byteorder",
     "bytes",
@@ -386,7 +389,7 @@ rust_rlib("httparse") {
 
 rust_rlib("hyper") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/hyper-0.12.29/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/hyper-0.12.30/src/lib.rs"
   features = [
     "__internal_flaky_tests",
     "default",
@@ -534,10 +537,10 @@ rust_rlib("lazy_static") {
 
 rust_rlib("libc") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/libc-0.2.55/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/libc-0.2.58/src/lib.rs"
   features = [
     "default",
-    "use_std",
+    "std",
   ]
   args = [
     "--cap-lints",
@@ -691,7 +694,7 @@ rust_rlib("nodrop") {
 
 rust_rlib("num_cpus") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/num_cpus-1.10.0/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/num_cpus-1.10.1/src/lib.rs"
   extern_rlib = [ "libc" ]
   args = [
     "--cap-lints",
@@ -997,7 +1000,7 @@ rust_rlib("rand_xorshift") {
 
 rust_rlib("regex") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/regex-1.1.6/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/regex-1.1.7/src/lib.rs"
   features = [
     "default",
     "use_std",
@@ -1023,7 +1026,7 @@ rust_rlib("regex") {
 
 rust_rlib("regex_syntax") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/regex-syntax-0.6.6/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/regex-syntax-0.6.7/src/lib.rs"
   extern_rlib = [ "ucd_util" ]
   args = [
     "--cap-lints",
@@ -1033,7 +1036,7 @@ rust_rlib("regex_syntax") {
 
 rust_rlib("remove_dir_all") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/remove_dir_all-0.5.1/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/remove_dir_all-0.5.2/src/lib.rs"
   args = [
     "--cap-lints",
     "allow",
@@ -1194,7 +1197,7 @@ rust_rlib("rustyline") {
     "unicode_segmentation",
     "unicode_width",
 
-    # Override: use dirs v2.0.0 instead of v1.0.5.
+    # Override: use dirs v2.0.1 instead of v1.0.5.
     "dirs",
   ]
   args = [
@@ -1202,7 +1205,7 @@ rust_rlib("rustyline") {
     "allow",
   ]
 
-  ## Override: use dirs v2.0.0 instead of v1.0.5.
+  ## Override: use dirs v2.0.1 instead of v1.0.5.
   # extern = [
   #   {
   #     label = ":dirs-1.0.5"
@@ -1260,7 +1263,7 @@ rust_rlib("sct") {
 
 rust_rlib("serde") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/serde-1.0.91/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/serde-1.0.92/src/lib.rs"
   features = [
     "default",
     "std",
@@ -1285,7 +1288,7 @@ rust_rlib("serde") {
 
 rust_proc_macro("serde_derive") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/serde_derive-1.0.91/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/serde_derive-1.0.92/src/lib.rs"
   features = [ "default" ]
   extern_rlib = [
     "proc_macro2",
@@ -1303,13 +1306,14 @@ rust_rlib("serde_json") {
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/serde_json-1.0.39/src/lib.rs"
   features = [
     "default",
+    "indexmap",
     "preserve_order",
   ]
   extern_rlib = [
+    "indexmap",
     "itoa",
     "ryu",
     "serde",
-    "indexmap",
   ]
   args = [
     "--cap-lints",
@@ -1328,7 +1332,7 @@ rust_rlib("slab") {
 
 rust_rlib("smallvec") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/smallvec-0.6.9/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/smallvec-0.6.10/lib.rs"
   features = [
     "default",
     "std",
@@ -1389,7 +1393,12 @@ rust_rlib("spin") {
 
 rust_rlib("string") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/string-0.1.3/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/string-0.2.0/src/lib.rs"
+  features = [
+    "bytes",
+    "default",
+  ]
+  extern_rlib = [ "bytes" ]
   args = [
     "--cap-lints",
     "allow",
@@ -1407,7 +1416,7 @@ rust_rlib("strsim") {
 
 rust_rlib("syn") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/syn-0.15.34/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/syn-0.15.36/src/lib.rs"
   features = [
     "clone-impls",
     "default",
@@ -1494,7 +1503,7 @@ rust_rlib("time") {
 
 rust_rlib("tokio") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-0.1.20/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-0.1.21/src/lib.rs"
   features = [
     "bytes",
     "codec",
@@ -1711,7 +1720,7 @@ rust_rlib("tokio_rustls") {
 
 rust_rlib("tokio_sync") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-sync-0.1.5/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-sync-0.1.6/src/lib.rs"
   extern_rlib = [
     "fnv",
     "futures",
@@ -1776,7 +1785,7 @@ rust_rlib("tokio_timer") {
 
 rust_rlib("tokio_trace_core") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-trace-core-0.1.0/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-trace-core-0.2.0/src/lib.rs"
   extern_rlib = [ "lazy_static" ]
   args = [
     "--cap-lints",
@@ -1895,7 +1904,7 @@ rust_rlib("url") {
 
 rust_rlib("utf8_ranges") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/utf8-ranges-1.0.2/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/utf8-ranges-1.0.3/src/lib.rs"
   args = [
     "--cap-lints",
     "allow",
@@ -2000,7 +2009,7 @@ rust_rlib("webpki_roots") {
   ]
 }
 
-## Override: use dirs v2.0.0 instead.
+## Override: use dirs v2.0.1 instead.
 # rust_rlib("dirs-1.0.5") {
 #   crate_name = "dirs"
 #   crate_version = "1.0.5"
@@ -2085,7 +2094,7 @@ if (is_posix) {
 
   rust_rlib("nix") {
     edition = "2015"
-    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/nix-0.13.0/src/lib.rs"
+    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/nix-0.13.1/src/lib.rs"
     extern_rlib = [
       "bitflags",
       "cfg_if",

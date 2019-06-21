@@ -159,7 +159,6 @@ TEST(LibDenoTest, CheckPromiseErrors) {
   EXPECT_EQ(deno_last_exception(d), nullptr);
   deno_execute(d, nullptr, "a.js", "CheckPromiseErrors()");
   EXPECT_EQ(nullptr, deno_last_exception(d));
-  EXPECT_EQ(deno_last_exception(d), nullptr);
   EXPECT_EQ(count, 1);
   // We caught the exception. So still no errors after calling
   // deno_check_promise_errors().
@@ -259,5 +258,25 @@ TEST(LibDenoTest, SharedAtomics) {
   EXPECT_EQ(s[0], 1);
   EXPECT_EQ(s[1], 1);
   EXPECT_EQ(s[2], 2);
+  deno_delete(d);
+}
+
+TEST(LibDenoTest, WasmInstantiate) {
+  static int count = 0;
+  auto recv_cb = [](auto _, auto buf, auto zero_copy_buf) {
+    EXPECT_EQ(buf.data_len, 1u);
+    EXPECT_EQ(buf.data_ptr[0], 42);
+    count++;
+  };
+  Deno* d = deno_new(deno_config{0, snapshot, empty, recv_cb, nullptr});
+  EXPECT_EQ(deno_last_exception(d), nullptr);
+  deno_execute(d, nullptr, "a.js", "WasmInstantiate()");
+
+  EXPECT_EQ(nullptr, deno_last_exception(d));
+  deno_check_promise_errors(d);
+  EXPECT_EQ(nullptr, deno_last_exception(d));
+
+  EXPECT_EQ(count, 3);
+
   deno_delete(d);
 }
