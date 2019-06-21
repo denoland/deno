@@ -1,4 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+use crate::ansi::red_bold;
 use crate::compiler::compile_async;
 use crate::compiler::ModuleMetaData;
 use crate::deno_dir;
@@ -14,7 +15,6 @@ use crate::progress::Progress;
 use crate::resources;
 use crate::resources::ResourceId;
 use crate::worker::Worker;
-use crate::ansi::{red_bold};
 use deno::Buf;
 use deno::CoreOp;
 use deno::Loader;
@@ -197,12 +197,17 @@ impl Loader for ThreadSafeState {
 }
 
 fn print_config_error(msg: String) {
-  eprintln!("    {}", red_bold(String::from("Failed to load TS Config file")));
+  eprintln!(
+    "    {}",
+    red_bold(String::from("Failed to load TS Config file"))
+  );
   eprintln!("     {}", msg);
 }
 
 /// Loads custom ts config file if specified
-fn load_config(config_path_flag: &Option<String>) -> (Option<Vec<u8>>, Option<String>) {
+fn load_config(
+  config_path_flag: &Option<String>,
+) -> (Option<Vec<u8>>, Option<String>) {
   if config_path_flag.is_none() {
     return (None, None);
   }
@@ -218,7 +223,7 @@ fn load_config(config_path_flag: &Option<String>) -> (Option<Vec<u8>>, Option<St
       match e.kind() {
         std::io::ErrorKind::NotFound => {
           print_config_error(format!("No such file '{}'", path_str));
-        },
+        }
         _ => {
           print_config_error(format!("{}", e));
         }
@@ -236,7 +241,10 @@ fn load_config(config_path_flag: &Option<String>) -> (Option<Vec<u8>>, Option<St
     }
   };
 
-  (Some(config), Some(config_path.to_str().unwrap().to_string()))
+  (
+    Some(config),
+    Some(config_path.to_str().unwrap().to_string()),
+  )
 }
 
 impl ThreadSafeState {
