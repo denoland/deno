@@ -372,12 +372,12 @@ impl SourceMapGetter for DenoDir {
 fn get_source_code_async(
   deno_dir: &DenoDir,
   module_name: &str,
-  filename: PathBuf,
+  filepath: PathBuf,
   use_cache: bool,
   no_fetch: bool,
 ) -> impl Future<Item = ModuleMetaData, Error = DenoError> {
   // TODO(bartlomieju) use `PathBuf` as filename
-  let filename = filename.to_str().unwrap().to_string();
+  let filename = filepath.to_str().unwrap().to_string();
   let module_name = module_name.to_string();
   let is_module_remote = is_remote(&module_name);
   // We try fetch local. Three cases:
@@ -430,15 +430,14 @@ fn get_source_code_async(
 
   // not cached/local, try remote.
   Either::B(
-    fetch_remote_source_async(deno_dir, &module_name, &filename).and_then(
-      move |maybe_remote_source| match maybe_remote_source {
+    fetch_remote_source_async(deno_dir, &module_name, filepath.clone())
+      .and_then(move |maybe_remote_source| match maybe_remote_source {
         Some(output) => Ok(output),
         None => Err(DenoError::from(std::io::Error::new(
           std::io::ErrorKind::NotFound,
           format!("cannot find remote file '{}'", &filename),
         ))),
-      },
-    ),
+      }),
   )
 }
 
@@ -586,16 +585,16 @@ fn filter_shebang(bytes: Vec<u8>) -> Vec<u8> {
 fn fetch_remote_source_async(
   deno_dir: &DenoDir,
   module_name: &str,
-  filename: &str,
+  filepath: PathBuf,
 ) -> impl Future<Item = Option<ModuleMetaData>, Error = DenoError> {
-  // TODO: use `PathBuf` as filename
   use crate::http_util::FetchOnceResult;
 
   let download_job = deno_dir
     .progress
     .add(format!("Downloading {}", module_name));
 
-  let filename = filename.to_owned();
+  // TODO: use `PathBuf` as filename
+  let filename = filepath.to_str().unwrap().to_string();
   let module_name = module_name.to_owned();
 
   // We write a special ".headers.json" file into the `.deno/deps` directory along side the
@@ -704,12 +703,12 @@ fn fetch_remote_source_async(
 fn fetch_remote_source(
   deno_dir: &DenoDir,
   module_name: &str,
-  filename: &str,
+  filepath: PathBuf,
 ) -> DenoResult<Option<ModuleMetaData>> {
   tokio_util::block_on(fetch_remote_source_async(
     deno_dir,
     module_name,
-    filename,
+    filepath,
   ))
 }
 
@@ -1389,18 +1388,16 @@ mod tests {
       let (_temp_dir, deno_dir) = test_setup();
       let module_name =
         "http://127.0.0.1:4545/tests/subdir/mt_video_mp2t.t3.ts".to_string();
-      let filename = deno_fs::normalize_path(
-        deno_dir
-          .deps_http
-          .join("127.0.0.1_PORT4545/tests/subdir/mt_video_mp2t.t3.ts")
-          .as_ref(),
-      );
+      let filepath = deno_dir
+        .deps_http
+        .join("127.0.0.1_PORT4545/tests/subdir/mt_video_mp2t.t3.ts");
+      let filename = filepath.to_str().unwrap().to_string();
       let headers_file_name = source_code_headers_filename(&filename);
 
       let result = tokio_util::block_on(fetch_remote_source_async(
         &deno_dir,
         &module_name,
-        &filename,
+        filepath,
       ));
       assert!(result.is_ok());
       let r = result.unwrap().unwrap();
@@ -1433,15 +1430,13 @@ mod tests {
       let (_temp_dir, deno_dir) = test_setup();
       let module_name =
         "http://localhost:4545/tests/subdir/mt_video_mp2t.t3.ts";
-      let filename = deno_fs::normalize_path(
-        deno_dir
-          .deps_http
-          .join("localhost_PORT4545/tests/subdir/mt_video_mp2t.t3.ts")
-          .as_ref(),
-      );
+      let filepath = deno_dir
+        .deps_http
+        .join("localhost_PORT4545/tests/subdir/mt_video_mp2t.t3.ts");
+      let filename = filepath.to_str().unwrap().to_string();
       let headers_file_name = source_code_headers_filename(&filename);
 
-      let result = fetch_remote_source(&deno_dir, module_name, &filename);
+      let result = fetch_remote_source(&deno_dir, module_name, filepath);
       assert!(result.is_ok());
       let r = result.unwrap().unwrap();
       assert_eq!(r.source_code, "export const loaded = true;\n".as_bytes());
@@ -1471,13 +1466,11 @@ mod tests {
     tokio_util::init(|| {
       let (_temp_dir, deno_dir) = test_setup();
       let module_name = "http://localhost:4545/tests/subdir/no_ext";
-      let filename = deno_fs::normalize_path(
-        deno_dir
-          .deps_http
-          .join("localhost_PORT4545/tests/subdir/no_ext")
-          .as_ref(),
-      );
-      let result = fetch_remote_source(&deno_dir, module_name, &filename);
+      let filepath = deno_dir
+        .deps_http
+        .join("localhost_PORT4545/tests/subdir/no_ext");
+      let filename = filepath.to_str().unwrap().to_string();
+      let result = fetch_remote_source(&deno_dir, module_name, filepath);
       assert!(result.is_ok());
       let r = result.unwrap().unwrap();
       assert_eq!(r.source_code, "export const loaded = true;\n".as_bytes());
@@ -1489,13 +1482,11 @@ mod tests {
       );
 
       let module_name_2 = "http://localhost:4545/tests/subdir/mismatch_ext.ts";
-      let filename_2 = deno_fs::normalize_path(
-        deno_dir
-          .deps_http
-          .join("localhost_PORT4545/tests/subdir/mismatch_ext.ts")
-          .as_ref(),
-      );
-      let result_2 = fetch_remote_source(&deno_dir, module_name_2, &filename_2);
+      let filepath_2 = deno_dir
+        .deps_http
+        .join("localhost_PORT4545/tests/subdir/mismatch_ext.ts");
+      let filename_2 = filepath_2.to_str().unwrap().to_string();
+      let result_2 = fetch_remote_source(&deno_dir, module_name_2, filepath_2);
       assert!(result_2.is_ok());
       let r2 = result_2.unwrap().unwrap();
       assert_eq!(r2.source_code, "export const loaded = true;\n".as_bytes());
@@ -1508,13 +1499,11 @@ mod tests {
 
       // test unknown extension
       let module_name_3 = "http://localhost:4545/tests/subdir/unknown_ext.deno";
-      let filename_3 = deno_fs::normalize_path(
-        deno_dir
-          .deps_http
-          .join("localhost_PORT4545/tests/subdir/unknown_ext.deno")
-          .as_ref(),
-      );
-      let result_3 = fetch_remote_source(&deno_dir, module_name_3, &filename_3);
+      let filepath_3 = deno_dir
+        .deps_http
+        .join("localhost_PORT4545/tests/subdir/unknown_ext.deno");
+      let filename_3 = filepath_3.to_str().unwrap().to_string();
+      let result_3 = fetch_remote_source(&deno_dir, module_name_3, filepath_3);
       assert!(result_3.is_ok());
       let r3 = result_3.unwrap().unwrap();
       assert_eq!(r3.source_code, "export const loaded = true;\n".as_bytes());
