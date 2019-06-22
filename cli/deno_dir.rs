@@ -887,9 +887,22 @@ pub fn resolve_from_cwd(path: &str) -> Result<(PathBuf, String), DenoError> {
     cwd.join(path)
   };
 
-  let path_string = resolved_path.to_str().unwrap().to_string();
+  // HACK: `Url::from_directory_path` is used here because it normalizes the path.
+  // Joining `/dev/deno/" with "./tests" using `PathBuf` yields `/deno/dev/./tests/`.
+  // On the other hand joining `/dev/deno/" with "./tests" using `Url` yields "/dev/deno/tests"
+  // - and that's what we want.
+  // There exists similar method on `PathBuf` - `PathBuf.canonicalize`, but the problem
+  // is `canonicalize` resolves symlinks and we don't want that.
+  // We just want o normalize the path...
+  let resolved_url = Url::from_file_path(resolved_path)
+    .expect("PathBuf should be parseable URL");
+  let normalized_path = resolved_url
+    .to_file_path()
+    .expect("URL from PathBuf should be valid path");
 
-  Ok((resolved_path, path_string))
+  let path_string = normalized_path.to_str().unwrap().to_string();
+
+  Ok((normalized_path, path_string))
 }
 
 pub fn resolve_file_url(
