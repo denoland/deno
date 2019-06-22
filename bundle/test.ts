@@ -64,7 +64,7 @@ fixtureModules.set("modA", {
 });
 
 test(async function loadBundle(): Promise<void> {
-  const result = await load(["", "./bundle/testdata/bundle.js"]);
+  const result = await load(["", "./bundle/testdata/bundle.js", "--foo"]);
   assert(result != null);
   assert(
     result.includes(
@@ -79,7 +79,7 @@ test(async function loadBadArgs(): Promise<void> {
       await load(["bundle/test.ts"]);
     },
     AssertionError,
-    "Expected exactly two arguments."
+    "Expected at least two arguments."
   );
 });
 
