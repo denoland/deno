@@ -42,6 +42,7 @@ use futures::Sink;
 use futures::Stream;
 use hyper;
 use hyper::rt::Future;
+use log;
 use rand::{thread_rng, Rng};
 use remove_dir_all::remove_dir_all;
 use std;
@@ -362,6 +363,11 @@ fn op_start(
     .clone()
     .map(|m| builder.create_string(&m));
 
+  let debug_flag = state
+    .flags
+    .log_level
+    .map_or(false, |l| l == log::Level::Debug);
+
   let inner = msg::StartRes::create(
     &mut builder,
     &msg::StartResArgs {
@@ -369,7 +375,7 @@ fn op_start(
       pid: std::process::id(),
       argv: Some(argv_off),
       main_module,
-      debug_flag: state.flags.log_debug,
+      debug_flag,
       version_flag: state.flags.version,
       v8_version: Some(v8_version_off),
       deno_version: Some(deno_version_off),
