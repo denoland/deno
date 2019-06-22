@@ -23,17 +23,12 @@ class TestFmt(DenoTestCase):
             # fetch it instead through tools/http_server.py.
             deno_dir = d
 
-            # TODO(kt3k) Below can be run([deno_exe, "fmt", dst], ...)
-            # once the following issue is addressed:
-            # https://github.com/denoland/deno_std/issues/330
-            result = run_output([
-                os.path.join(root_path, self.deno_exe), "fmt",
-                "badly_formatted.js"
-            ],
-                                cwd=d,
-                                merge_env={"DENO_DIR": deno_dir},
-                                exit_on_fail=True,
-                                quiet=True)
+            result = run_output(
+                [os.path.join(root_path, self.deno_exe), "fmt", dst],
+                cwd=d,
+                merge_env={"DENO_DIR": deno_dir},
+                exit_on_fail=True,
+                quiet=True)
             self.assertEqual(result.code, 0)
             with open(fixed_filename) as f:
                 expected = f.read()
