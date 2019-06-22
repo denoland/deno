@@ -33,6 +33,17 @@ testPerm({ net: true }, async function fetchBlob(): Promise<void> {
   assertEquals(blob.size, Number(headers.get("Content-Length")));
 });
 
+testPerm({ net: true }, async function fetchAsyncIterator(): Promise<void> {
+  const response = await fetch("http://localhost:4545/package.json");
+  const headers = response.headers;
+  let total = 0;
+  for await (const chunk of response.body) {
+    total += chunk.length;
+  }
+
+  assertEquals(total, Number(headers.get("Content-Length")));
+});
+
 testPerm({ net: true }, async function responseClone(): Promise<void> {
   const response = await fetch("http://localhost:4545/package.json");
   const response1 = response.clone();
