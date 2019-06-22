@@ -147,7 +147,10 @@ impl DenoDir {
 
     let specifier = specifier.to_string();
     let referrer = referrer.to_string();
+    // TODO: url resolution should happen here
+    // let module_name = ...
 
+    // TODO: this should return only deps filepath for given module URL
     let result = self.resolve_module(&specifier, &referrer);
     if let Err(err) = result {
       return Either::A(futures::future::err(DenoError::from(err)));
@@ -250,6 +253,7 @@ impl DenoDir {
   }
 
   // Prototype: https://github.com/denoland/deno/blob/golang/os.go#L56-L68
+  // TODO: this method should take deps filepath and return URL for module
   fn src_file_to_url(self: &Self, filename: &str) -> String {
     let filename_path = Path::new(filename);
     if filename_path.starts_with(&self.deps) {
@@ -298,6 +302,9 @@ impl DenoDir {
     resolve_file_url(specifier, referrer)
   }
 
+  // TODO(bartlomieju): this method should return only `local filepath`
+  //  it should be called with already resolved URLs
+  // TODO(bartlomieju): rename to url_to_deps_path
   /// Returns (module name, local filename)
   pub fn resolve_module(
     self: &Self,
@@ -880,10 +887,9 @@ pub fn resolve_from_cwd(path: &str) -> Result<(PathBuf, String), DenoError> {
     cwd.join(path)
   };
 
-  let path = resolved_path.canonicalize().map_err(DenoError::from)?;
-  let path_string = path.to_str().unwrap().to_string();
+  let path_string = resolved_path.to_str().unwrap().to_string();
 
-  Ok((path, path_string))
+  Ok((resolved_path, path_string))
 }
 
 pub fn resolve_file_url(
