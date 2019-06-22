@@ -56,7 +56,9 @@ use flags::DenoSubcommand;
 use futures::future;
 use futures::lazy;
 use futures::Future;
-use log::{LevelFilter, Metadata, Record};
+use log::Level;
+use log::Metadata;
+use log::Record;
 use std::env;
 
 static LOGGER: Logger = Logger;
@@ -333,11 +335,11 @@ fn main() {
     v8_set_flags(v8_flags.clone());
   }
 
-  log::set_max_level(if flags.log_debug {
-    LevelFilter::Debug
-  } else {
-    LevelFilter::Warn
-  });
+  let log_level = match flags.log_level {
+    Some(level) => level,
+    None => Level::Warn,
+  };
+  log::set_max_level(log_level.to_level_filter());
 
   match subcommand {
     DenoSubcommand::Bundle => bundle_command(flags, argv),
