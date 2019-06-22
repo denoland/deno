@@ -27,6 +27,18 @@ use std::str;
 use url;
 use url::Url;
 
+fn normalize_path(path: &Path) -> PathBuf {
+  let s = String::from(path.to_str().unwrap());
+  let normalized_string = if cfg!(windows) {
+    // TODO This isn't correct. Probbly should iterate over components.
+    s.replace("\\", "/")
+  } else {
+    s
+  };
+
+  PathBuf::from(normalized_string)
+}
+
 #[derive(Clone)]
 pub struct DenoDir {
   // Example: /Users/rld/.deno/
@@ -325,7 +337,7 @@ impl DenoDir {
     };
 
     debug!("module_name: {}, filename: {:?}", module_name, filename);
-    Ok((module_name, filename))
+    Ok((module_name, normalize_path(&filename)))
   }
 }
 
@@ -389,7 +401,7 @@ fn get_source_code_async(
       module_name, is_module_remote
     );
     // Note that local fetch is done synchronously.
-    match fetch_local_source(deno_dir, &module_name, filepath.clone(), None) {
+    match fetch_local_source(deno_dir, &module_name, &filepath, None) {
       Ok(Some(output)) => {
         debug!("found local source ");
         return Either::A(futures::future::ok(output));
@@ -648,7 +660,7 @@ fn fetch_remote_source_async(
             deno_fs::write_file(&filepath, &source, 0o666)?;
             {
               save_source_code_headers(
-                filepath.clone(),
+                &filepath,
                 maybe_content_type.clone(),
                 None,
               );
@@ -663,7 +675,7 @@ fn fetch_remote_source_async(
               }?;
               {
                 save_source_code_headers(
-                  maybe_initial_filepath.unwrap().clone(),
+                  &maybe_initial_filepath.unwrap(),
                   maybe_content_type.clone(),
                   Some(module_name.clone()),
                 );
@@ -720,12 +732,10 @@ fn fetch_remote_source(
 fn fetch_local_source(
   deno_dir: &DenoDir,
   module_name: &str,
-  filepath: PathBuf,
+  filepath: &Path,
   module_initial_source_name: Option<String>,
 ) -> DenoResult<Option<ModuleMetaData>> {
-  // TODO: use `PathBuf` as filename
-  let filename = filepath.to_str().unwrap();
-  let source_code_headers = get_source_code_headers(filepath.clone());
+  let source_code_headers = get_source_code_headers(&filepath);
   // If source code headers says that it would redirect elsewhere,
   // (meaning that the source file might not exist; only .headers.json is present)
   // Abort reading attempts to the cached source file and and follow the redirect.
@@ -750,7 +760,7 @@ fn fetch_local_source(
     return fetch_local_source(
       deno_dir,
       &real_module_name,
-      real_filepath,
+      &real_filepath,
       module_initial_source_name,
     );
   }
@@ -769,9 +779,9 @@ fn fetch_local_source(
   Ok(Some(ModuleMetaData {
     module_name: module_name.to_string(),
     module_redirect_source_name: module_initial_source_name,
-    filename: filename.to_string(),
+    filename: filepath.to_str().unwrap().to_string(),
     media_type: map_content_type(
-      &filepath.as_path(),
+      &filepath,
       source_code_headers.mime_type.as_ref().map(String::as_str),
     ),
     source_code,
@@ -797,7 +807,7 @@ pub struct SourceCodeHeaders {
 static MIME_TYPE: &'static str = "mime_type";
 static REDIRECT_TO: &'static str = "redirect_to";
 
-fn source_code_headers_filename(filepath: PathBuf) -> PathBuf {
+fn source_code_headers_filename(filepath: &Path) -> PathBuf {
   PathBuf::from([filepath.to_str().unwrap(), ".headers.json"].concat())
 }
 
@@ -805,7 +815,7 @@ fn source_code_headers_filename(filepath: PathBuf) -> PathBuf {
 /// NOTICE: chances are that the source code itself is not downloaded due to redirects.
 /// In this case, the headers file provides info about where we should go and get
 /// the source code that redirect eventually points to (which should be cached).
-fn get_source_code_headers(filepath: PathBuf) -> SourceCodeHeaders {
+fn get_source_code_headers(filepath: &Path) -> SourceCodeHeaders {
   let headers_filename = source_code_headers_filename(filepath);
   let hd = Path::new(&headers_filename);
   // .headers.json file might not exists.
@@ -834,11 +844,11 @@ fn get_source_code_headers(filepath: PathBuf) -> SourceCodeHeaders {
 /// content type of "text/javascript", then we would not save the mime type.
 /// If nothing needs to be saved, the headers file is not created.
 fn save_source_code_headers(
-  filepath: PathBuf,
+  filepath: &Path,
   mime_type: Option<String>,
   redirect_to: Option<String>,
 ) {
-  let headers_filename = source_code_headers_filename(filepath.clone());
+  let headers_filename = source_code_headers_filename(filepath);
   // Remove possibly existing stale .headers.json file.
   // May not exist. DON'T unwrap.
   let _ = std::fs::remove_file(&headers_filename);
@@ -850,7 +860,7 @@ fn save_source_code_headers(
     let mime_type_string = mime_type.clone().unwrap();
     let resolved_mime_type =
       { map_content_type(Path::new(""), Some(mime_type_string.as_str())) };
-    let ext_based_mime_type = map_file_extension(filepath.as_path());
+    let ext_based_mime_type = map_file_extension(filepath);
     // Add mime to headers only when content type is different from extension.
     if ext_based_mime_type == msg::MediaType::Unknown
       || resolved_mime_type != ext_based_mime_type
@@ -918,6 +928,10 @@ pub fn resolve_path(path: &str) -> Result<(PathBuf, String), DenoError> {
 mod tests {
   use super::*;
   use tempfile::TempDir;
+
+  fn normalize_to_str(path: &Path) -> String {
+    normalize_path(path).to_str().unwrap().to_string()
+  }
 
   fn test_setup() -> (TempDir, DenoDir) {
     let temp_dir = TempDir::new().expect("tempdir fail");
@@ -1059,14 +1073,14 @@ mod tests {
   fn test_source_code_headers_get_and_save() {
     let (temp_dir, _deno_dir) = test_setup();
     let filepath = temp_dir.into_path().join("f.js");
-    let headers_filepath = source_code_headers_filename(filepath.clone());
+    let headers_filepath = source_code_headers_filename(&filepath);
     assert_eq!(
       headers_filepath.to_str().unwrap().to_string(),
       [filepath.to_str().unwrap(), ".headers.json"].concat()
     );
     let _ = deno_fs::write_file(headers_filepath.as_path(),
       "{\"mime_type\":\"text/javascript\",\"redirect_to\":\"http://example.com/a.js\"}", 0o666);
-    let headers = get_source_code_headers(filepath.clone());
+    let headers = get_source_code_headers(&filepath);
     assert_eq!(headers.mime_type.clone().unwrap(), "text/javascript");
     assert_eq!(
       headers.redirect_to.clone().unwrap(),
@@ -1074,11 +1088,11 @@ mod tests {
     );
 
     save_source_code_headers(
-      filepath.clone(),
+      &filepath,
       Some("text/typescript".to_owned()),
       Some("http://deno.land/a.js".to_owned()),
     );
-    let headers2 = get_source_code_headers(filepath.clone());
+    let headers2 = get_source_code_headers(&filepath);
     assert_eq!(headers2.mime_type.clone().unwrap(), "text/typescript");
     assert_eq!(
       headers2.redirect_to.clone().unwrap(),
@@ -1095,7 +1109,7 @@ mod tests {
       let filepath = deno_dir
         .deps_http
         .join("localhost_PORT4545/tests/subdir/mod2.ts");
-      let headers_file_name = source_code_headers_filename(filepath.clone());
+      let headers_file_name = source_code_headers_filename(&filepath);
 
       let result =
         get_source_code(&deno_dir, module_name, filepath.clone(), true, false);
@@ -1124,13 +1138,13 @@ mod tests {
       // as we modified before! (we do not overwrite .headers.json due to no http fetch)
       assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
       assert_eq!(
-        get_source_code_headers(filepath.clone()).mime_type.unwrap(),
+        get_source_code_headers(&filepath).mime_type.unwrap(),
         "text/javascript"
       );
 
       // Modify .headers.json again, but the other way around
       save_source_code_headers(
-        filepath.clone(),
+        &filepath,
         Some("application/json".to_owned()),
         None,
       );
@@ -1174,7 +1188,7 @@ mod tests {
       let filepath = deno_dir
         .deps_http
         .join("localhost_PORT4545/tests/subdir/mismatch_ext.ts");
-      let headers_file_name = source_code_headers_filename(filepath.clone());
+      let headers_file_name = source_code_headers_filename(&filepath);
 
       let result =
         get_source_code(&deno_dir, module_name, filepath.clone(), true, false);
@@ -1185,13 +1199,13 @@ mod tests {
       // Mismatch ext with content type, create .headers.json
       assert_eq!(&(r.media_type), &msg::MediaType::JavaScript);
       assert_eq!(
-        get_source_code_headers(filepath.clone()).mime_type.unwrap(),
+        get_source_code_headers(&filepath).mime_type.unwrap(),
         "text/javascript"
       );
 
       // Modify .headers.json
       save_source_code_headers(
-        filepath.clone(),
+        &filepath,
         Some("text/typescript".to_owned()),
         None,
       );
@@ -1217,7 +1231,7 @@ mod tests {
       // (due to http fetch)
       assert_eq!(&(r3.media_type), &msg::MediaType::JavaScript);
       assert_eq!(
-        get_source_code_headers(filepath.clone()).mime_type.unwrap(),
+        get_source_code_headers(&filepath).mime_type.unwrap(),
         "text/javascript"
       );
     });
@@ -1254,7 +1268,7 @@ mod tests {
       assert!(fs::read_to_string(&redirect_source_filename).is_err());
       // ... but its .headers.json is created.
       let redirect_source_headers =
-        get_source_code_headers(redirect_source_filepath.clone());
+        get_source_code_headers(&redirect_source_filepath);
       assert_eq!(
         redirect_source_headers.redirect_to.unwrap(),
         "http://localhost:4545/tests/subdir/redirects/redirect1.js"
@@ -1265,7 +1279,7 @@ mod tests {
         "export const redirect = 1;\n"
       );
       let redirect_target_headers =
-        get_source_code_headers(redirect_target_filepath.clone());
+        get_source_code_headers(&redirect_target_filepath);
       assert!(redirect_target_headers.redirect_to.is_none());
 
       // Examine the meta result.
@@ -1289,7 +1303,7 @@ mod tests {
         .join("localhost_PORT4548/tests/subdir/redirects/redirect1.js");
       let redirect_source_filename =
         redirect_source_filepath.to_str().unwrap().to_string();
-      let redirect_source_filename_intermediate = deno_fs::normalize_path(
+      let redirect_source_filename_intermediate = normalize_to_str(
         deno_dir
           .deps_http
           .join("localhost_PORT4546/tests/subdir/redirects/redirect1.js")
@@ -1315,7 +1329,7 @@ mod tests {
       assert!(fs::read_to_string(&redirect_source_filename).is_err());
       // ... but its .headers.json is created.
       let redirect_source_headers =
-        get_source_code_headers(redirect_source_filepath.clone());
+        get_source_code_headers(&redirect_source_filepath);
       assert_eq!(
         redirect_source_headers.redirect_to.unwrap(),
         target_module_name
@@ -1332,7 +1346,7 @@ mod tests {
         "export const redirect = 1;\n"
       );
       let redirect_target_headers =
-        get_source_code_headers(redirect_target_filepath.clone());
+        get_source_code_headers(&redirect_target_filepath);
       assert!(redirect_target_headers.redirect_to.is_none());
 
       // Examine the meta result.
@@ -1383,7 +1397,7 @@ mod tests {
       let filepath = deno_dir
         .deps_http
         .join("127.0.0.1_PORT4545/tests/subdir/mt_video_mp2t.t3.ts");
-      let headers_file_name = source_code_headers_filename(filepath.clone());
+      let headers_file_name = source_code_headers_filename(&filepath);
 
       let result = tokio_util::block_on(fetch_remote_source_async(
         &deno_dir,
@@ -1399,12 +1413,12 @@ mod tests {
 
       // Modify .headers.json, make sure read from local
       save_source_code_headers(
-        filepath.clone(),
+        &filepath,
         Some("text/javascript".to_owned()),
         None,
       );
       let result2 =
-        fetch_local_source(&deno_dir, &module_name, filepath.clone(), None);
+        fetch_local_source(&deno_dir, &module_name, &filepath, None);
       assert!(result2.is_ok());
       let r2 = result2.unwrap().unwrap();
       assert_eq!(r2.source_code, b"export const loaded = true;\n");
@@ -1424,7 +1438,7 @@ mod tests {
       let filepath = deno_dir
         .deps_http
         .join("localhost_PORT4545/tests/subdir/mt_video_mp2t.t3.ts");
-      let headers_file_name = source_code_headers_filename(filepath.clone());
+      let headers_file_name = source_code_headers_filename(&filepath);
 
       let result =
         fetch_remote_source(&deno_dir, module_name, filepath.clone());
@@ -1437,12 +1451,12 @@ mod tests {
 
       // Modify .headers.json, make sure read from local
       save_source_code_headers(
-        filepath.clone(),
+        &filepath,
         Some("text/javascript".to_owned()),
         None,
       );
       let result2 =
-        fetch_local_source(&deno_dir, module_name, filepath.clone(), None);
+        fetch_local_source(&deno_dir, module_name, &filepath, None);
       assert!(result2.is_ok());
       let r2 = result2.unwrap().unwrap();
       assert_eq!(r2.source_code, "export const loaded = true;\n".as_bytes());
@@ -1469,7 +1483,7 @@ mod tests {
       assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
       // no ext, should create .headers.json file
       assert_eq!(
-        get_source_code_headers(filepath.clone()).mime_type.unwrap(),
+        get_source_code_headers(&filepath).mime_type.unwrap(),
         "text/typescript"
       );
 
@@ -1485,7 +1499,7 @@ mod tests {
       assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
       // mismatch ext, should create .headers.json file
       assert_eq!(
-        get_source_code_headers(filepath_2.clone())
+        get_source_code_headers(&filepath_2)
           .mime_type
           .unwrap(),
         "text/javascript"
@@ -1504,7 +1518,7 @@ mod tests {
       assert_eq!(&(r3.media_type), &msg::MediaType::TypeScript);
       // unknown ext, should create .headers.json file
       assert_eq!(
-        get_source_code_headers(filepath_3.clone())
+        get_source_code_headers(&filepath_3)
           .mime_type
           .unwrap(),
         "text/typescript"
@@ -1520,7 +1534,7 @@ mod tests {
     let module_name = "http://example.com/mt_text_typescript.t1.ts"; // not used
     let filepath = cwd.join("tests/subdir/mt_text_typescript.t1.ts");
 
-    let result = fetch_local_source(&deno_dir, module_name, filepath, None);
+    let result = fetch_local_source(&deno_dir, module_name, &filepath, None);
     assert!(result.is_ok());
     let r = result.unwrap().unwrap();
     assert_eq!(r.source_code, "export const loaded = true;\n".as_bytes());
@@ -1668,7 +1682,7 @@ mod tests {
 
     let expected_module_name =
       "http://localhost:4545/testdata/subdir/print_hello.ts";
-    let expected_filename = deno_fs::normalize_path(
+    let expected_filename = normalize_to_str(
       deno_dir
         .deps_http
         .join("localhost_PORT4545/testdata/subdir/print_hello.ts")
@@ -1691,7 +1705,7 @@ mod tests {
     let referrer = ".";
 
     let expected_module_name = "http://unpkg.com/liltest@0.0.5/index.ts";
-    let expected_filename = deno_fs::normalize_path(
+    let expected_filename = normalize_to_str(
       deno_dir
         .deps_http
         .join("unpkg.com/liltest@0.0.5/index.ts")
@@ -1714,7 +1728,7 @@ mod tests {
 
     // http containing files -> load relative import with http
     let expected_module_name = "http://unpkg.com/liltest@0.0.5/util";
-    let expected_filename = deno_fs::normalize_path(
+    let expected_filename = normalize_to_str(
       deno_dir
         .deps_http
         .join("unpkg.com/liltest@0.0.5/util")
@@ -1738,7 +1752,7 @@ mod tests {
 
     // https containing files -> load relative import with https
     let expected_module_name = "https://unpkg.com/liltest@0.0.5/util";
-    let expected_filename = deno_fs::normalize_path(
+    let expected_filename = normalize_to_str(
       deno_dir
         .deps_https
         .join("unpkg.com/liltest@0.0.5/util")
@@ -1758,7 +1772,7 @@ mod tests {
     let specifier = "http://localhost:4545/tests/subdir/mod2.ts";
     let referrer = add_root!("/deno/tests/006_url_imports.ts");
     let expected_module_name = "http://localhost:4545/tests/subdir/mod2.ts";
-    let expected_filename = deno_fs::normalize_path(
+    let expected_filename = normalize_to_str(
       deno_dir
         .deps_http
         .join("localhost_PORT4545/tests/subdir/mod2.ts")
@@ -1797,7 +1811,7 @@ mod tests {
     let referrer = referrer_.to_str().unwrap();
 
     let expected_module_name = "https://unpkg.com/util";
-    let expected_filename = deno_fs::normalize_path(
+    let expected_filename = normalize_to_str(
       deno_dir.deps_https.join("unpkg.com/util").as_ref(),
     );
 
@@ -1817,7 +1831,7 @@ mod tests {
     let expected_path = cwd.join(specifier);
     let expected_module_name =
       Url::from_file_path(&expected_path).unwrap().to_string();
-    let expected_filename = deno_fs::normalize_path(&expected_path);
+    let expected_filename = normalize_to_str(&expected_path);
 
     let (module_name, filename) =
       deno_dir.resolve_module(specifier, ".").unwrap();
@@ -1840,7 +1854,7 @@ mod tests {
     let expected_path = cwd.join("..").join(specifier);
     let expected_module_name =
       Url::from_file_path(&expected_path).unwrap().to_string();
-    let expected_filename = deno_fs::normalize_path(&expected_path);
+    let expected_filename = normalize_to_str(&expected_path);
 
     let (module_name, filename) =
       deno_dir.resolve_module(specifier, "..").unwrap();
