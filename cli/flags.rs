@@ -136,13 +136,6 @@ To get help on the another subcommands (run in this case):
         .possible_values(&["debug", "info"])
         .global(true),
     ).arg(
-      Arg::with_name("log-debug")
-        .short("D")
-        .long("log-debug")
-        .help("Log debug output")
-        .conflicts_with("log-level")
-        .global(true),
-    ).arg(
       Arg::with_name("reload")
         .short("r")
         .long("reload")
@@ -425,9 +418,6 @@ pub fn parse_flags(matches: &ArgMatches) -> DenoFlags {
       "info" => Some(Level::Info),
       _ => unreachable!(),
     };
-  }
-  if matches.is_present("log-debug") {
-    flags.log_level = Some(Level::Debug);
   }
   if matches.is_present("version") {
     flags.version = true;
@@ -760,11 +750,10 @@ mod tests {
   #[test]
   fn test_flags_from_vec_2() {
     let (flags, subcommand, argv) =
-      flags_from_vec(svec!["deno", "-r", "-D", "run", "script.ts"]);
+      flags_from_vec(svec!["deno", "-r", "run", "script.ts"]);
     assert_eq!(
       flags,
       DenoFlags {
-        log_level: Some(Level::Debug),
         reload: true,
         ..DenoFlags::default()
       }
@@ -775,19 +764,12 @@ mod tests {
 
   #[test]
   fn test_flags_from_vec_3() {
-    let (flags, subcommand, argv) = flags_from_vec(svec![
-      "deno",
-      "run",
-      "-r",
-      "-D",
-      "--allow-write",
-      "script.ts"
-    ]);
+    let (flags, subcommand, argv) =
+      flags_from_vec(svec!["deno", "run", "-r", "--allow-write", "script.ts"]);
     assert_eq!(
       flags,
       DenoFlags {
         reload: true,
-        log_level: Some(Level::Debug),
         allow_write: true,
         ..DenoFlags::default()
       }
@@ -799,11 +781,10 @@ mod tests {
   #[test]
   fn test_flags_from_vec_4() {
     let (flags, subcommand, argv) =
-      flags_from_vec(svec!["deno", "-Dr", "run", "--allow-write", "script.ts"]);
+      flags_from_vec(svec!["deno", "-r", "run", "--allow-write", "script.ts"]);
     assert_eq!(
       flags,
       DenoFlags {
-        log_level: Some(Level::Debug),
         reload: true,
         allow_write: true,
         ..DenoFlags::default()
@@ -1196,7 +1177,6 @@ mod tests {
     let (flags, subcommand, argv) = flags_from_vec(svec![
       "deno",
       "-r",
-      "-D",
       "--allow-net",
       "run",
       "--allow-read",
@@ -1206,7 +1186,6 @@ mod tests {
       flags,
       DenoFlags {
         reload: true,
-        log_level: Some(Level::Debug),
         allow_net: true,
         allow_read: true,
         ..DenoFlags::default()
