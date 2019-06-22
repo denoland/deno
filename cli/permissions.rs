@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 
-const PERMISSION_EMOJI: &str = "⚠";
+const PERMISSION_EMOJI: &str = "⚠️";
 
 /// Tri-state value for storing permission state
 pub enum PermissionAccessorState {
