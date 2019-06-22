@@ -394,7 +394,7 @@ fn resolve_paths(paths: Vec<String>) -> Vec<String> {
       eprintln!("Unrecognized path to whitelist: {}", pathstr);
       continue;
     }
-    let mut full_path = result.unwrap().to_str().unwrap().to_string();
+    let mut full_path = result.unwrap().1;
     // Remove trailing slash.
     if full_path.len() > 1 && full_path.ends_with('/') {
       full_path.pop();
@@ -1060,21 +1060,20 @@ mod tests {
   fn test_flags_from_vec_19() {
     use tempfile::TempDir;
     let temp_dir = TempDir::new().expect("tempdir fail");
-    let temp_dir_path =
+    let (_, temp_dir_path) =
       deno_dir::resolve_from_cwd(temp_dir.path().to_str().unwrap()).unwrap();
-    let temp_dir_str = temp_dir_path.to_str().unwrap();
 
     let (flags, subcommand, argv) = flags_from_vec(svec![
       "deno",
       "run",
-      format!("--allow-read={}", temp_dir_str),
+      format!("--allow-read={}", &temp_dir_path),
       "script.ts"
     ]);
     assert_eq!(
       flags,
       DenoFlags {
         allow_read: false,
-        read_whitelist: svec![temp_dir_str],
+        read_whitelist: svec![&temp_dir_path],
         ..DenoFlags::default()
       }
     );
@@ -1086,21 +1085,20 @@ mod tests {
   fn test_flags_from_vec_20() {
     use tempfile::TempDir;
     let temp_dir = TempDir::new().expect("tempdir fail");
-    let temp_dir_path =
+    let (_, temp_dir_path) =
       deno_dir::resolve_from_cwd(temp_dir.path().to_str().unwrap()).unwrap();
-    let temp_dir_str = temp_dir_path.to_str().unwrap();
 
     let (flags, subcommand, argv) = flags_from_vec(svec![
       "deno",
       "run",
-      format!("--allow-write={}", temp_dir_str),
+      format!("--allow-write={}", &temp_dir_path),
       "script.ts"
     ]);
     assert_eq!(
       flags,
       DenoFlags {
         allow_write: false,
-        write_whitelist: svec![temp_dir_str],
+        write_whitelist: svec![&temp_dir_path],
         ..DenoFlags::default()
       }
     );

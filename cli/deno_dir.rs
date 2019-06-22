@@ -868,19 +868,9 @@ fn save_source_code_headers(
   }
 }
 
-// TODO(bartlomieju): this method should be removed, it doesn't belong to deno_dir.rs
-// as it's called by function that just want to resolve relative or absolute path
-// with respect to current working dir
-pub fn resolve_path(path: &str) -> Result<(PathBuf, String), DenoError> {
-  let url = resolve_file_url(path.to_string(), ".".to_string())
-    .map_err(DenoError::from)?;
-  let path = url.to_file_path().unwrap();
-  let path_string = path.to_str().unwrap().to_string();
-  Ok((path, path_string))
-}
-
-// TODO(bartlomieju): replaces `resolve_path`
-pub fn resolve_from_cwd(path: &str) -> Result<PathBuf, DenoError> {
+// TODO(bartlomieju): this method should be moved, it doesn't belong to deno_dir.rs
+//  it's a general utility
+pub fn resolve_from_cwd(path: &str) -> Result<(PathBuf, String), DenoError> {
   let candidate_path = Path::new(path);
 
   let resolved_path = if candidate_path.is_absolute() {
@@ -890,7 +880,10 @@ pub fn resolve_from_cwd(path: &str) -> Result<PathBuf, DenoError> {
     cwd.join(path)
   };
 
-  resolved_path.canonicalize().map_err(DenoError::from)
+  let path = resolved_path.canonicalize().map_err(DenoError::from)?;
+  let path_string = path.to_str().unwrap().to_string();
+
+  Ok((path, path_string))
 }
 
 pub fn resolve_file_url(
