@@ -133,32 +133,6 @@ impl DenoDir {
     )
   }
 
-  pub fn code_cache(
-    self: &Self,
-    module_meta_data: &ModuleMetaData,
-  ) -> std::io::Result<()> {
-    let filepath = &PathBuf::from(&module_meta_data.filename);
-    let (cache_path, source_map_path) =
-      self.cache_path(filepath, &module_meta_data.source_code);
-    // TODO(ry) This is a race condition w.r.t to exists() -- probably should
-    // create the file in exclusive mode. A worry is what might happen is there
-    // are two processes and one reads the cache file while the other is in the
-    // midst of writing it.
-    if cache_path.exists() && source_map_path.exists() {
-      Ok(())
-    } else {
-      match &module_meta_data.maybe_output_code {
-        Some(output_code) => fs::write(cache_path, output_code),
-        _ => Ok(()),
-      }?;
-      match &module_meta_data.maybe_source_map {
-        Some(source_map) => fs::write(source_map_path, source_map),
-        _ => Ok(()),
-      }?;
-      Ok(())
-    }
-  }
-
   pub fn fetch_module_meta_data_async(
     self: &Self,
     specifier: &str,
@@ -308,6 +282,11 @@ impl DenoDir {
     specifier: &str,
     referrer: &str,
   ) -> Result<Url, url::ParseError> {
+    debug!(
+      "pre-resolve_module specifier {} referrer {}",
+      specifier, referrer
+    );
+
     let specifier = self.src_file_to_url(specifier);
     let referrer = self.src_file_to_url(referrer);
 
@@ -523,6 +502,7 @@ fn source_code_hash(
   out
 }
 
+// TODO: module_name should be Url
 fn is_remote(module_name: &str) -> bool {
   module_name.starts_with("http://") || module_name.starts_with("https://")
 }
@@ -1013,40 +993,6 @@ mod tests {
       ),
       deno_dir.cache_path(filename, source_code)
     );
-  }
-
-  #[test]
-  fn test_code_cache() {
-    let (_temp_dir, deno_dir) = test_setup();
-
-    let filename = "hello.js";
-    let filepath = &PathBuf::from(filename);
-    let source_code = b"1+2";
-    let output_code = b"1+2 // output code";
-    let source_map = b"{}";
-    let config = b"{}";
-    let hash = source_code_hash(filepath, source_code, version::DENO, config);
-    let (cache_path, source_map_path) =
-      deno_dir.cache_path(filepath, source_code);
-    assert!(cache_path.ends_with(format!("gen/{}.js", hash)));
-    assert!(source_map_path.ends_with(format!("gen/{}.js.map", hash)));
-
-    let out = ModuleMetaData {
-      filename: filename.to_owned(),
-      source_code: source_code[..].to_owned(),
-      module_name: "hello.js".to_owned(),
-      module_redirect_source_name: None,
-      media_type: msg::MediaType::TypeScript,
-      maybe_output_code: Some(output_code[..].to_owned()),
-      maybe_output_code_filename: None,
-      maybe_source_map: Some(source_map[..].to_owned()),
-      maybe_source_map_filename: None,
-    };
-
-    let r = deno_dir.code_cache(&out);
-    r.expect("code_cache error");
-    assert!(cache_path.exists());
-    assert_eq!(output_code[..].to_owned(), fs::read(&cache_path).unwrap());
   }
 
   #[test]
