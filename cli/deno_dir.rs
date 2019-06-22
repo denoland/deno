@@ -136,22 +136,18 @@ impl DenoDir {
   pub fn fetch_module_meta_data_async(
     self: &Self,
     specifier: &str,
-    referrer: &str,
     use_cache: bool,
     no_fetch: bool,
   ) -> impl Future<Item = ModuleMetaData, Error = deno_error::DenoError> {
-    debug!(
-      "fetch_module_meta_data. specifier {} referrer {}",
-      specifier, referrer
-    );
+    debug!("fetch_module_meta_data. specifier {} ", specifier);
 
+    // TODO: rename specifier?
     let specifier = specifier.to_string();
-    let referrer = referrer.to_string();
     // TODO: url resolution should happen here
     // let module_name = ...
 
     // TODO: this should return only deps filepath for given module URL
-    let result = self.resolve_module(&specifier, &referrer);
+    let result = self.resolve_module(&specifier, ".");
     if let Err(err) = result {
       return Either::A(futures::future::err(DenoError::from(err)));
     }
@@ -179,10 +175,7 @@ impl DenoDir {
               // For NotFound, change the message to something better.
               return Err(deno_error::new(
                 ErrorKind::NotFound,
-                format!(
-                  "Cannot resolve module \"{}\" from \"{}\"",
-                  specifier, referrer
-                ),
+                format!("Cannot resolve module \"{}\"", specifier),
               ));
             } else {
               return Err(err);
@@ -242,13 +235,11 @@ impl DenoDir {
   pub fn fetch_module_meta_data(
     self: &Self,
     specifier: &str,
-    referrer: &str,
     use_cache: bool,
     no_fetch: bool,
   ) -> Result<ModuleMetaData, deno_error::DenoError> {
     tokio_util::block_on(
-      self
-        .fetch_module_meta_data_async(specifier, referrer, use_cache, no_fetch),
+      self.fetch_module_meta_data_async(specifier, use_cache, no_fetch),
     )
   }
 
@@ -329,7 +320,7 @@ impl DenoDir {
 
 impl SourceMapGetter for DenoDir {
   fn get_source_map(&self, script_name: &str) -> Option<Vec<u8>> {
-    match self.fetch_module_meta_data(script_name, ".", true, true) {
+    match self.fetch_module_meta_data(script_name, true, true) {
       Err(_e) => None,
       Ok(out) => match out.maybe_source_map {
         None => None,
@@ -339,7 +330,7 @@ impl SourceMapGetter for DenoDir {
   }
 
   fn get_source_line(&self, script_name: &str, line: usize) -> Option<String> {
-    match self.fetch_module_meta_data(script_name, ".", true, true) {
+    match self.fetch_module_meta_data(script_name, true, true) {
       Ok(out) => match str::from_utf8(&out.source_code) {
         Ok(v) => {
           let lines: Vec<&str> = v.lines().collect();
@@ -1518,15 +1509,13 @@ mod tests {
 
     tokio_util::init(|| {
       // Test failure case.
-      let specifier = "hello.ts";
-      let referrer = add_root!("/baddir/badfile.ts");
-      let r = deno_dir.fetch_module_meta_data(specifier, referrer, true, false);
+      let specifier = add_root!("/baddir/hello.ts");
+      let r = deno_dir.fetch_module_meta_data(specifier, true, false);
       assert!(r.is_err());
 
       // Assuming cwd is the deno repo root.
-      let specifier = "./js/main.ts";
-      let referrer = cwd_string.as_str();
-      let r = deno_dir.fetch_module_meta_data(specifier, referrer, true, false);
+      let specifier = &format!("{}{}", cwd_string.as_str(), "js/main.ts");
+      let r = deno_dir.fetch_module_meta_data(specifier, true, false);
       assert!(r.is_ok());
     })
   }
@@ -1541,17 +1530,13 @@ mod tests {
 
     tokio_util::init(|| {
       // Test failure case.
-      let specifier = "hello.ts";
-      let referrer = add_root!("/baddir/badfile.ts");
-      let r =
-        deno_dir.fetch_module_meta_data(specifier, referrer, false, false);
+      let specifier = add_root!("/baddir/hello.ts");
+      let r = deno_dir.fetch_module_meta_data(specifier, false, false);
       assert!(r.is_err());
 
       // Assuming cwd is the deno repo root.
-      let specifier = "./js/main.ts";
-      let referrer = cwd_string.as_str();
-      let r =
-        deno_dir.fetch_module_meta_data(specifier, referrer, false, false);
+      let specifier = &format!("{}{}", cwd_string.as_str(), "js/main.ts");
+      let r = deno_dir.fetch_module_meta_data(specifier, false, false);
       assert!(r.is_ok());
     })
   }

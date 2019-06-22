@@ -458,6 +458,7 @@ fn op_cache(
   assert!(data.is_none());
   let inner = base.inner_as_cache().unwrap();
   let extension = inner.extension().unwrap();
+  // TODO: rename to something with 'url'
   let module_id = inner.module_id().unwrap();
   let contents = inner.contents().unwrap();
 
@@ -468,9 +469,8 @@ fn op_cache(
   // cache path. In the future, checksums will not be used in the cache
   // filenames and this requirement can be removed. See
   // https://github.com/denoland/deno/issues/2057
-  let module_meta_data = state
-    .dir
-    .fetch_module_meta_data(module_id, ".", true, true)?;
+  let module_meta_data =
+    state.dir.fetch_module_meta_data(module_id, true, true)?;
 
   let (js_cache_path, source_map_path) = state.dir.cache_path(
     &PathBuf::from(&module_meta_data.filename),
@@ -515,7 +515,6 @@ fn op_fetch_module_meta_data(
     .dir
     .fetch_module_meta_data_async(
       &resolved_specifier.to_string(),
-      referrer,
       use_cache,
       no_fetch,
     ).and_then(move |out| {

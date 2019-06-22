@@ -215,7 +215,6 @@ pub fn compile_async(
     }).and_then(move |_| {
       state.dir.fetch_module_meta_data_async(
         &module_name,
-        ".",
         true,
         true,
       ).map_err(|e| {
