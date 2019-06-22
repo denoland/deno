@@ -14,6 +14,8 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 
+const PERMISSION_EMOJI: &str = "⚠";
+
 /// Tri-state value for storing permission state
 pub enum PermissionAccessorState {
   Allow = 0,
@@ -365,7 +367,7 @@ impl DenoPermissions {
         "{}",
         Style::new()
           .bold()
-          .paint(format!("ℹ️  Granted {}", message))
+          .paint(format!("{}️  Granted {}", PERMISSION_EMOJI, message))
       );
     }
   }
@@ -456,7 +458,7 @@ impl fmt::Display for PromptResult {
 }
 
 fn permission_prompt(message: &str) -> DenoResult<PromptResult> {
-  let msg = format!("⚠️  Deno requests {}. Grant? [a/y/n/d (a = allow always, y = allow once, n = deny once, d = deny always)] ", message);
+  let msg = format!("️{}  Deno requests {}. Grant? [a/y/n/d (a = allow always, y = allow once, n = deny once, d = deny always)] ", PERMISSION_EMOJI, message);
   // print to stderr so that if deno is > to a file this is still displayed.
   eprint!("{}", Style::new().bold().paint(msg));
   loop {
