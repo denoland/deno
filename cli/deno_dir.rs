@@ -191,7 +191,7 @@ impl DenoDir {
       get_source_code_async(
         self,
         module_name.as_str(),
-        &filepath,
+        filepath,
         use_cache,
         no_fetch,
       ).then(move |result| {
@@ -383,11 +383,11 @@ impl SourceMapGetter for DenoDir {
 fn get_source_code_async(
   deno_dir: &DenoDir,
   module_name: &str,
-  filepath: &Path,
+  filepath: PathBuf,
   use_cache: bool,
   no_fetch: bool,
 ) -> impl Future<Item = ModuleMetaData, Error = DenoError> {
-  let filename = filepath.to_str().unwrap();
+  let filename = filepath.to_str().unwrap().to_string();
   let module_name = module_name.to_string();
   let is_module_remote = is_remote(&module_name);
   // We try fetch local. Three cases:
@@ -400,7 +400,7 @@ fn get_source_code_async(
       module_name, is_module_remote
     );
     // Note that local fetch is done synchronously.
-    match fetch_local_source(deno_dir, &module_name, filepath, None) {
+    match fetch_local_source(deno_dir, &module_name, &filepath, None) {
       Ok(Some(output)) => {
         debug!("found local source ");
         return Either::A(futures::future::ok(output));
@@ -440,15 +440,14 @@ fn get_source_code_async(
 
   // not cached/local, try remote.
   Either::B(
-    fetch_remote_source_async(deno_dir, &module_name, filepath).and_then(
-      move |maybe_remote_source| match maybe_remote_source {
+    fetch_remote_source_async(deno_dir, &module_name, filepath.as_path())
+      .and_then(move |maybe_remote_source| match maybe_remote_source {
         Some(output) => Ok(output),
         None => Err(DenoError::from(std::io::Error::new(
           std::io::ErrorKind::NotFound,
           format!("cannot find remote file '{}'", filename),
         ))),
-      },
-    ),
+      }),
   )
 }
 
@@ -458,7 +457,7 @@ fn get_source_code_async(
 fn get_source_code(
   deno_dir: &DenoDir,
   module_name: &str,
-  filepath: &Path,
+  filepath: PathBuf,
   use_cache: bool,
   no_fetch: bool,
 ) -> DenoResult<ModuleMetaData> {
@@ -888,6 +887,17 @@ fn save_source_code_headers(
   }
 }
 
+// TODO(bartlomieju): this method should be removed, it doesn't belong to deno_dir.rs
+// as it's called by function that just want to resolve relative or absolute path
+// with respect to current working dir
+pub fn resolve_path(path: &str) -> Result<(PathBuf, String), DenoError> {
+  let url = resolve_file_url(path.to_string(), ".".to_string())
+    .map_err(DenoError::from)?;
+  let path = url.to_file_path().unwrap();
+  let path_string = path.to_str().unwrap().to_string();
+  Ok((path, path_string))
+}
+
 pub fn resolve_file_url(
   specifier: String,
   mut referrer: String,
@@ -915,14 +925,6 @@ pub fn resolve_file_url(
     base.join(specifier.as_ref())?
   };
   Ok(j)
-}
-
-pub fn resolve_path(path: &str) -> Result<(PathBuf, String), DenoError> {
-  let url = resolve_file_url(path.to_string(), ".".to_string())
-    .map_err(DenoError::from)?;
-  let path = url.to_file_path().unwrap();
-  let path_string = path.to_str().unwrap().to_string();
-  Ok((path, path_string))
 }
 
 #[cfg(test)]
@@ -1113,7 +1115,7 @@ mod tests {
       let headers_file_name = source_code_headers_filename(&filepath);
 
       let result =
-        get_source_code(&deno_dir, module_name, &filepath, true, false);
+        get_source_code(&deno_dir, module_name, filepath.clone(), true, false);
       assert!(result.is_ok());
       let r = result.unwrap();
       assert_eq!(
@@ -1128,7 +1130,7 @@ mod tests {
       let _ =
         fs::write(&headers_file_name, "{ \"mime_type\": \"text/javascript\" }");
       let result2 =
-        get_source_code(&deno_dir, module_name, &filepath, true, false);
+        get_source_code(&deno_dir, module_name, filepath.clone(), true, false);
       assert!(result2.is_ok());
       let r2 = result2.unwrap();
       assert_eq!(
@@ -1150,7 +1152,7 @@ mod tests {
         None,
       );
       let result3 =
-        get_source_code(&deno_dir, module_name, &filepath, true, false);
+        get_source_code(&deno_dir, module_name, filepath.clone(), true, false);
       assert!(result3.is_ok());
       let r3 = result3.unwrap();
       assert_eq!(
@@ -1168,7 +1170,7 @@ mod tests {
 
       // Don't use_cache
       let result4 =
-        get_source_code(&deno_dir, module_name, &filepath, false, false);
+        get_source_code(&deno_dir, module_name, filepath.clone(), false, false);
       assert!(result4.is_ok());
       let r4 = result4.unwrap();
       let expected4 =
@@ -1192,7 +1194,7 @@ mod tests {
       let headers_file_name = source_code_headers_filename(&filepath);
 
       let result =
-        get_source_code(&deno_dir, module_name, &filepath, true, false);
+        get_source_code(&deno_dir, module_name, filepath.clone(), true, false);
       assert!(result.is_ok());
       let r = result.unwrap();
       let expected = "export const loaded = true;\n".as_bytes();
@@ -1211,7 +1213,7 @@ mod tests {
         None,
       );
       let result2 =
-        get_source_code(&deno_dir, module_name, &filepath, true, false);
+        get_source_code(&deno_dir, module_name, filepath.clone(), true, false);
       assert!(result2.is_ok());
       let r2 = result2.unwrap();
       let expected2 = "export const loaded = true;\n".as_bytes();
@@ -1223,7 +1225,7 @@ mod tests {
 
       // Don't use_cache
       let result3 =
-        get_source_code(&deno_dir, module_name, &filepath, false, false);
+        get_source_code(&deno_dir, module_name, filepath.clone(), false, false);
       assert!(result3.is_ok());
       let r3 = result3.unwrap();
       let expected3 = "export const loaded = true;\n".as_bytes();
@@ -1261,7 +1263,7 @@ mod tests {
       let mod_meta = get_source_code(
         &deno_dir,
         redirect_module_name,
-        &redirect_source_filepath,
+        redirect_source_filepath.clone(),
         true,
         false,
       ).unwrap();
@@ -1321,7 +1323,7 @@ mod tests {
       let mod_meta = get_source_code(
         &deno_dir,
         redirect_module_name,
-        &redirect_source_filepath,
+        redirect_source_filepath.clone(),
         true,
         false,
       ).unwrap();
@@ -1370,19 +1372,19 @@ mod tests {
 
       // file hasn't been cached before and remote downloads are not allowed
       let result =
-        get_source_code(&deno_dir, module_name, &filepath, true, true);
+        get_source_code(&deno_dir, module_name, filepath.clone(), true, true);
       assert!(result.is_err());
       let err = result.err().unwrap();
       assert_eq!(err.kind(), ErrorKind::NotFound);
 
       // download and cache file
       let result =
-        get_source_code(&deno_dir, module_name, &filepath, true, false);
+        get_source_code(&deno_dir, module_name, filepath.clone(), true, false);
       assert!(result.is_ok());
 
       // module is already cached, should be ok even with `no_fetch`
       let result =
-        get_source_code(&deno_dir, module_name, &filepath, true, true);
+        get_source_code(&deno_dir, module_name, filepath.clone(), true, true);
       assert!(result.is_ok());
     });
   }
