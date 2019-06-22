@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
-import { assertStrictEq, assert } from "../testing/asserts.ts";
+import { assert } from "../testing/asserts.ts";
 import { exists } from "../fs/exists.ts";
 
 export interface DefineFactory {
@@ -98,7 +98,7 @@ export function instantiate(
 /** Load the bundle and return the contents asynchronously. */
 export async function load(args: string[]): Promise<string> {
   // TODO(kitsonk) allow loading of remote bundles via fetch.
-  assertStrictEq(args.length, 2, "Expected exactly two arguments.");
+  assert(args.length >= 2, "Expected at least two arguments.");
   const [, bundleFileName] = args;
   assert(
     await exists(bundleFileName),
