@@ -16,6 +16,7 @@ use std::sync::atomic::Ordering;
 
 // This corresponds to JS ModuleMetaData.
 // TODO Rename one or the other so they correspond.
+// TODO(bartlomieju): update file name fields to PathBuf
 #[derive(Debug, Clone)]
 pub struct ModuleMetaData {
   pub module_name: String,

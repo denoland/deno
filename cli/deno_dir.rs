@@ -507,6 +507,7 @@ fn is_remote(module_name: &str) -> bool {
   module_name.starts_with("http://") || module_name.starts_with("https://")
 }
 
+// TODO: basically parse or resolve from_file_path
 fn parse_local_or_remote(p: &str) -> Result<url::Url, url::ParseError> {
   if is_remote(p) || p.starts_with("file:") {
     Url::parse(p)
@@ -878,6 +879,20 @@ pub fn resolve_path(path: &str) -> Result<(PathBuf, String), DenoError> {
   Ok((path, path_string))
 }
 
+// TODO(bartlomieju): replaces `resolve_path`
+pub fn resolve_from_cwd(path: &str) -> Result<PathBuf, DenoError> {
+  let candidate_path = Path::new(path);
+
+  let resolved_path = if candidate_path.is_absolute() {
+    candidate_path.to_owned()
+  } else {
+    let cwd = std::env::current_dir().unwrap();
+    cwd.join(path)
+  };
+
+  resolved_path.canonicalize().map_err(DenoError::from)
+}
+
 pub fn resolve_file_url(
   specifier: String,
   mut referrer: String,
@@ -888,6 +903,7 @@ pub fn resolve_file_url(
     referrer = referrer_path.to_str().unwrap().to_string() + "/";
   }
 
+  //
   let j = if is_remote(&specifier)
     || (Path::new(&specifier).is_absolute() && !is_remote(&referrer))
   {

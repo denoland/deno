@@ -389,12 +389,12 @@ To change installation directory use -d/--dir flag
 fn resolve_paths(paths: Vec<String>) -> Vec<String> {
   let mut out: Vec<String> = vec![];
   for pathstr in paths.iter() {
-    let result = deno_dir::resolve_path(pathstr);
+    let result = deno_dir::resolve_from_cwd(pathstr);
     if result.is_err() {
       eprintln!("Unrecognized path to whitelist: {}", pathstr);
       continue;
     }
-    let mut full_path = result.unwrap().1;
+    let mut full_path = result.unwrap().to_str().unwrap().to_string();
     // Remove trailing slash.
     if full_path.len() > 1 && full_path.ends_with('/') {
       full_path.pop();
@@ -1060,20 +1060,21 @@ mod tests {
   fn test_flags_from_vec_19() {
     use tempfile::TempDir;
     let temp_dir = TempDir::new().expect("tempdir fail");
-    let (_, temp_dir_path) =
-      deno_dir::resolve_path(temp_dir.path().to_str().unwrap()).unwrap();
+    let temp_dir_path =
+      deno_dir::resolve_from_cwd(temp_dir.path().to_str().unwrap()).unwrap();
+    let temp_dir_str = temp_dir_path.to_str().unwrap();
 
     let (flags, subcommand, argv) = flags_from_vec(svec![
       "deno",
       "run",
-      format!("--allow-read={}", &temp_dir_path),
+      format!("--allow-read={}", temp_dir_str),
       "script.ts"
     ]);
     assert_eq!(
       flags,
       DenoFlags {
         allow_read: false,
-        read_whitelist: svec![&temp_dir_path],
+        read_whitelist: svec![temp_dir_str],
         ..DenoFlags::default()
       }
     );
@@ -1085,20 +1086,21 @@ mod tests {
   fn test_flags_from_vec_20() {
     use tempfile::TempDir;
     let temp_dir = TempDir::new().expect("tempdir fail");
-    let (_, temp_dir_path) =
-      deno_dir::resolve_path(temp_dir.path().to_str().unwrap()).unwrap();
+    let temp_dir_path =
+      deno_dir::resolve_from_cwd(temp_dir.path().to_str().unwrap()).unwrap();
+    let temp_dir_str = temp_dir_path.to_str().unwrap();
 
     let (flags, subcommand, argv) = flags_from_vec(svec![
       "deno",
       "run",
-      format!("--allow-write={}", &temp_dir_path),
+      format!("--allow-write={}", temp_dir_str),
       "script.ts"
     ]);
     assert_eq!(
       flags,
       DenoFlags {
         allow_write: false,
-        write_whitelist: svec![&temp_dir_path],
+        write_whitelist: svec![temp_dir_str],
         ..DenoFlags::default()
       }
     );
