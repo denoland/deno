@@ -145,8 +145,12 @@ async function serveDir(
   dirPath: string,
   dirName: string
 ): Promise<Response> {
+  interface ListItem {
+    name: string;
+    template: string;
+  }
   // dirname has no prefix
-  const listEntry: string[] = [];
+  const listEntry: ListItem[] = [];
   const fileInfos = await readDir(dirPath);
   for (const info of fileInfos) {
     let fn = dirPath + "/" + info.name;
@@ -159,21 +163,29 @@ async function serveDir(
     try {
       mode = (await stat(fn)).mode;
     } catch (e) {}
-    listEntry.push(
-      createDirEntryDisplay(
+    listEntry.push({
+      name: info.name,
+      template: createDirEntryDisplay(
         info.name,
         fn.replace(currentDir, ""),
         info.isFile() ? info.len : null,
         mode,
         info.isDirectory()
       )
-    );
+    });
   }
 
   const page = new TextEncoder().encode(
-    dirViewerTemplate
-      .replace("<%DIRNAME%>", dirName + "/")
-      .replace("<%CONTENTS%>", listEntry.join(""))
+    dirViewerTemplate.replace("<%DIRNAME%>", dirName + "/").replace(
+      "<%CONTENTS%>",
+      listEntry
+        .sort(
+          (a, b): number =>
+            a.name.toLowerCase() > b.name.toLowerCase() ? 1 : -1
+        )
+        .map((v): string => v.template)
+        .join("")
+    )
   );
 
   const headers = new Headers();
