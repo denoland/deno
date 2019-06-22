@@ -237,6 +237,10 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
   tee(): [domTypes.ReadableStream, domTypes.ReadableStream] {
     return notImplemented();
   }
+
+  [Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array> {
+    return io.toAsyncIterator(this);
+  }
 }
 
 export class Response implements domTypes.Response {
