@@ -307,7 +307,13 @@ export class Response implements domTypes.Response {
       headersList.push(header);
     }
 
-    return new Response(this.status, headersList, -1, this.redirected, this.body);
+    return new Response(
+      this.status,
+      headersList,
+      -1,
+      this.redirected,
+      this.body
+    );
   }
 }
 
@@ -360,7 +366,7 @@ export async function fetch(
   let method: string | null = null;
   let headers: domTypes.Headers | null = null;
   let body: ArrayBufferView | undefined;
-  let redirected: boolean = false;
+  let redirected = false;
 
   if (typeof input === "string") {
     url = input;
@@ -438,7 +444,8 @@ export async function fetch(
     const headersList = deserializeHeaderFields(header);
 
     const response = new Response(status, headersList, bodyRid, redirected);
-    if ([301, 302, 303, 307, 308].includes(response.status)) { // We're in a redirect status
+    if ([301, 302, 303, 307, 308].includes(response.status)) {
+      // We're in a redirect status
       switch ((init && init.redirect) || "follow") {
         case "error":
           throw notImplemented();
@@ -449,6 +456,16 @@ export async function fetch(
           let redirectUrl = response.headers.get("Location");
           if (redirectUrl == null) {
             return response; // Unspecified
+          }
+          if (
+            !redirectUrl.startsWith("http://") &&
+            !redirectUrl.startsWith("https://")
+          ) {
+            redirectUrl =
+              url.split("//")[0] +
+              "//" +
+              url.split("//")[1].split("/")[0] +
+              redirectUrl; // TODO: handle relative redirection more gracefully
           }
           url = redirectUrl;
           redirected = true;
