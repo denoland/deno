@@ -3,6 +3,8 @@
 // Cargo is MIT licenced:
 // https://github.com/rust-lang/cargo/blob/edd874/LICENSE-MIT
 
+#![allow(dead_code)]
+
 use std::fmt;
 use std::io::prelude::*;
 
@@ -10,7 +12,7 @@ use atty;
 use termcolor::Color::{Cyan, Green, Red, Yellow};
 use termcolor::{self, Color, ColorSpec, StandardStream, WriteColor};
 
-use crate::util::errors::CargoResult;
+use crate::deno_error::DenoResult;
 
 /// The requested verbosity of output.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -36,10 +38,12 @@ pub struct Shell {
 impl fmt::Debug for Shell {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self.err {
+      /*
       ShellOut::Write(_) => f
         .debug_struct("Shell")
         .field("verbosity", &self.verbosity)
         .finish(),
+      */
       ShellOut::Stream { color_choice, .. } => f
         .debug_struct("Shell")
         .field("verbosity", &self.verbosity)
@@ -52,7 +56,7 @@ impl fmt::Debug for Shell {
 /// A `Write`able object, either with or without color support
 enum ShellOut {
   /// A plain write object without color support
-  Write(Box<dyn Write>),
+  //Write(Box<dyn Write>),
   /// Color-enabled stdio, with information on whether color should be used
   Stream {
     stream: StandardStream,
@@ -89,6 +93,7 @@ impl Shell {
     }
   }
 
+  /*
   /// Creates a shell from a plain writable object, with no color, and max verbosity.
   pub fn from_write(out: Box<dyn Write>) -> Shell {
     Shell {
@@ -97,6 +102,7 @@ impl Shell {
       needs_clear: false,
     }
   }
+  */
 
   /// Prints a message, where the status will have `color` color, and can be justified. The
   /// messages follows without color.
@@ -106,7 +112,7 @@ impl Shell {
     message: Option<&dyn fmt::Display>,
     color: Color,
     justified: bool,
-  ) -> CargoResult<()> {
+  ) -> DenoResult<()> {
     match self.verbosity {
       Verbosity::Quiet => Ok(()),
       _ => {
@@ -140,7 +146,7 @@ impl Shell {
   pub fn is_err_tty(&self) -> bool {
     match self.err {
       ShellOut::Stream { tty, .. } => tty,
-      _ => false,
+      // _ => false,
     }
   }
 
@@ -161,7 +167,7 @@ impl Shell {
   }
 
   /// Shortcut to right-align and color green a status message.
-  pub fn status<T, U>(&mut self, status: T, message: U) -> CargoResult<()>
+  pub fn status<T, U>(&mut self, status: T, message: U) -> DenoResult<()>
   where
     T: fmt::Display,
     U: fmt::Display,
@@ -169,7 +175,7 @@ impl Shell {
     self.print(&status, Some(&message), Green, true)
   }
 
-  pub fn status_header<T>(&mut self, status: T) -> CargoResult<()>
+  pub fn status_header<T>(&mut self, status: T) -> DenoResult<()>
   where
     T: fmt::Display,
   {
@@ -182,7 +188,7 @@ impl Shell {
     status: T,
     message: U,
     color: Color,
-  ) -> CargoResult<()>
+  ) -> DenoResult<()>
   where
     T: fmt::Display,
     U: fmt::Display,
@@ -191,9 +197,9 @@ impl Shell {
   }
 
   /// Runs the callback only if we are in verbose mode.
-  pub fn verbose<F>(&mut self, mut callback: F) -> CargoResult<()>
+  pub fn verbose<F>(&mut self, mut callback: F) -> DenoResult<()>
   where
-    F: FnMut(&mut Shell) -> CargoResult<()>,
+    F: FnMut(&mut Shell) -> DenoResult<()>,
   {
     match self.verbosity {
       Verbosity::Verbose => callback(self),
@@ -202,9 +208,9 @@ impl Shell {
   }
 
   /// Runs the callback if we are not in verbose mode.
-  pub fn concise<F>(&mut self, mut callback: F) -> CargoResult<()>
+  pub fn concise<F>(&mut self, mut callback: F) -> DenoResult<()>
   where
-    F: FnMut(&mut Shell) -> CargoResult<()>,
+    F: FnMut(&mut Shell) -> DenoResult<()>,
   {
     match self.verbosity {
       Verbosity::Verbose => Ok(()),
@@ -213,12 +219,12 @@ impl Shell {
   }
 
   /// Prints a red 'error' message.
-  pub fn error<T: fmt::Display>(&mut self, message: T) -> CargoResult<()> {
+  pub fn error<T: fmt::Display>(&mut self, message: T) -> DenoResult<()> {
     self.print(&"error:", Some(&message), Red, false)
   }
 
   /// Prints an amber 'warning' message.
-  pub fn warn<T: fmt::Display>(&mut self, message: T) -> CargoResult<()> {
+  pub fn warn<T: fmt::Display>(&mut self, message: T) -> DenoResult<()> {
     match self.verbosity {
       Verbosity::Quiet => Ok(()),
       _ => self.print(&"warning:", Some(&message), Yellow, false),
@@ -236,7 +242,8 @@ impl Shell {
   }
 
   /// Updates the color choice (always, never, or auto) from a string..
-  pub fn set_color_choice(&mut self, color: Option<&str>) -> CargoResult<()> {
+  #[allow(irrefutable_let_patterns)]
+  pub fn set_color_choice(&mut self, color: Option<&str>) -> DenoResult<()> {
     if let ShellOut::Stream {
       ref mut stream,
       ref mut color_choice,
@@ -249,7 +256,7 @@ impl Shell {
 
         Some("auto") | None => ColorChoice::CargoAuto,
 
-        Some(arg) => failure::bail!(
+        Some(arg) => panic!(
           "argument for --color must be auto, always, or \
            never, but found `{}`",
           arg
@@ -268,20 +275,20 @@ impl Shell {
   pub fn color_choice(&self) -> ColorChoice {
     match self.err {
       ShellOut::Stream { color_choice, .. } => color_choice,
-      ShellOut::Write(_) => ColorChoice::Never,
+      // ShellOut::Write(_) => ColorChoice::Never,
     }
   }
 
   /// Whether the shell supports color.
   pub fn supports_color(&self) -> bool {
     match &self.err {
-      ShellOut::Write(_) => false,
+      // ShellOut::Write(_) => false,
       ShellOut::Stream { stream, .. } => stream.supports_color(),
     }
   }
 
   /// Prints a message and translates ANSI escape code into console colors.
-  pub fn print_ansi(&mut self, message: &[u8]) -> CargoResult<()> {
+  pub fn print_ansi(&mut self, message: &[u8]) -> DenoResult<()> {
     if self.needs_clear {
       self.err_erase_line();
     }
@@ -313,7 +320,7 @@ impl ShellOut {
     message: Option<&dyn fmt::Display>,
     color: Color,
     justified: bool,
-  ) -> CargoResult<()> {
+  ) -> DenoResult<()> {
     match *self {
       ShellOut::Stream { ref mut stream, .. } => {
         stream.reset()?;
@@ -329,7 +336,7 @@ impl ShellOut {
           Some(message) => writeln!(stream, " {}", message)?,
           None => write!(stream, " ")?,
         }
-      }
+      } /*
       ShellOut::Write(ref mut w) => {
         if justified {
           write!(w, "{:>12}", status)?;
@@ -341,6 +348,7 @@ impl ShellOut {
           None => write!(w, " ")?,
         }
       }
+      */
     }
     Ok(())
   }
@@ -349,7 +357,7 @@ impl ShellOut {
   fn as_write(&mut self) -> &mut dyn Write {
     match *self {
       ShellOut::Stream { ref mut stream, .. } => stream,
-      ShellOut::Write(ref mut w) => w,
+      // ShellOut::Write(ref mut w) => w,
     }
   }
 }

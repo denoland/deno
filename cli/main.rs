@@ -15,6 +15,7 @@ extern crate nix;
 extern crate rand;
 
 mod ansi;
+mod cargo_shell;
 pub mod compiler;
 pub mod deno_dir;
 pub mod deno_error;
@@ -158,17 +159,15 @@ fn create_worker_and_state(
   flags: DenoFlags,
   argv: Vec<String>,
 ) -> (Worker, ThreadSafeState) {
+  use crate::cargo_shell::Shell;
+  use std::sync::Arc;
+  use std::sync::Mutex;
+  let shell = Arc::new(Mutex::new(Shell::new()));
   let progress = Progress::new();
-  progress.set_callback(|done, completed, total, msg| {
-    if !done {
-      eprint!("\r[{}/{}] {}", completed, total, msg);
-      eprint!("\x1B[K"); // Clear to end of line.
-      return;
-    }
-
-    // print empty line only if progress bar was used
-    if done && total > 0 {
-      eprintln!();
+  progress.set_callback(move |_done, _completed, _total, status, msg| {
+    if status.len() > 0 {
+      let mut s = shell.lock().unwrap();
+      s.status(status, msg).expect("cargo_shell problem");
     }
   });
   let state = ThreadSafeState::new(flags, argv, ops::op_selector_std, progress);
