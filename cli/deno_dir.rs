@@ -746,7 +746,7 @@ fn fetch_local_source(
   }
   // No redirect needed or end of redirects.
   // We can try read the file
-  let source_code = match fs::read(filepath.clone()) {
+  let source_code = match fs::read(filepath) {
     Err(e) => {
       if e.kind() == std::io::ErrorKind::NotFound {
         return Ok(None);
