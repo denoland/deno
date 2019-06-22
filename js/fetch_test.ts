@@ -88,6 +88,15 @@ testPerm(
   }
 );
 
+testPerm({ net: true }, async function fetchWithRedirection(): Promise<void> {
+  const response = await fetch("http://localhost:4545/tests"); // will redirect to /tests/
+  console.log(response);
+  console.log(response.statusText);
+  assertEquals(response.status, 200);
+  const body = await response.text();
+  assert(body.includes("<title>Directory listing for /tests/</title>"));
+});
+
 testPerm({ net: true }, async function fetchInitStringBody(): Promise<void> {
   const data = "Hello World";
   const response = await fetch("http://localhost:4545/echo_server", {
