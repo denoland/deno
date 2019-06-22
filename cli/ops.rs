@@ -513,8 +513,12 @@ fn op_fetch_module_meta_data(
 
   let fut = state
     .dir
-    .fetch_module_meta_data_async(&resolved_specifier, use_cache, no_fetch)
-    .and_then(move |out| {
+    .fetch_module_meta_data_async(
+      &resolved_specifier.to_string(),
+      referrer,
+      use_cache,
+      no_fetch,
+    ).and_then(move |out| {
       let builder = &mut FlatBufferBuilder::new();
       let data_off = builder.create_vector(out.source_code.as_slice());
       let msg_args = msg::FetchModuleMetaDataResArgs {
