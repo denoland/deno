@@ -798,9 +798,7 @@ static MIME_TYPE: &'static str = "mime_type";
 static REDIRECT_TO: &'static str = "redirect_to";
 
 fn source_code_headers_filename(filepath: PathBuf) -> PathBuf {
-  let mut headers_path = filepath.clone();
-  headers_path.push(".headers.json");
-  headers_path
+  PathBuf::from([filepath.to_str().unwrap(), ".headers.json"].concat())
 }
 
 /// Get header metadata associated with a single source code file.
@@ -1520,8 +1518,7 @@ mod tests {
     let (_temp_dir, deno_dir) = test_setup();
     let cwd = std::env::current_dir().unwrap();
     let module_name = "http://example.com/mt_text_typescript.t1.ts"; // not used
-    let mut filepath = cwd.clone();
-    filepath.push("/tests/subdir/mt_text_typescript.t1.ts");
+    let filepath = cwd.join("tests/subdir/mt_text_typescript.t1.ts");
 
     let result = fetch_local_source(&deno_dir, module_name, filepath, None);
     assert!(result.is_ok());
@@ -1535,7 +1532,7 @@ mod tests {
     let (_temp_dir, deno_dir) = test_setup();
 
     let cwd = std::env::current_dir().unwrap();
-    let cwd_string = format!("file://{}/", cwd.to_str().unwrap());
+    let cwd_string = String::from(cwd.to_str().unwrap()) + "/";
 
     tokio_util::init(|| {
       // Test failure case.
@@ -1558,7 +1555,7 @@ mod tests {
     let (_temp_dir, deno_dir) = test_setup();
 
     let cwd = std::env::current_dir().unwrap();
-    let cwd_string = format!("file://{}/", cwd.to_str().unwrap());
+    let cwd_string = String::from(cwd.to_str().unwrap()) + "/";
 
     tokio_util::init(|| {
       // Test failure case.
