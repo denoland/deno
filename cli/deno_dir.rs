@@ -163,19 +163,19 @@ impl DenoDir {
     use_cache: bool,
     no_fetch: bool,
   ) -> impl Future<Item = ModuleMetaData, Error = deno_error::DenoError> {
-    debug!("fetch_module_meta_data. specifier {} ", specifier);
+    println!("fetch_module_meta_data. specifier {} ", specifier);
 
     // TODO: rename specifier?
     let specifier = specifier.to_string();
-    // TODO: url resolution should happen here
-    // let module_name = ...
+    // TODO(bartlomieju): this bit is to be removed once more concrete type for `specifier` is used
+    let module_url =
+      Url::parse(&specifier).expect("Specifier should be valid URL");
 
-    // TODO: this should return only deps filepath for given module URL
-    let result = self.resolve_module(&specifier, ".");
+    let result = self.url_to_deps_path(&module_url);
     if let Err(err) = result {
       return Either::A(futures::future::err(DenoError::from(err)));
     }
-    let (module_name, filepath) = result.unwrap();
+    let deps_filepath = result.unwrap();
 
     let gen = self.gen.clone();
 
@@ -187,8 +187,8 @@ impl DenoDir {
     Either::B(
       get_source_code_async(
         self,
-        module_name.as_str(),
-        filepath,
+        specifier.as_str(),
+        deps_filepath,
         use_cache,
         no_fetch,
       ).then(move |result| {
@@ -199,7 +199,7 @@ impl DenoDir {
               // For NotFound, change the message to something better.
               return Err(deno_error::new(
                 ErrorKind::NotFound,
-                format!("Cannot resolve module \"{}\"", specifier),
+                format!("Cannot resolve module \"{}\"", module_url.to_string()),
               ));
             } else {
               return Err(err);
@@ -315,9 +315,34 @@ impl DenoDir {
     resolve_file_url(specifier, referrer)
   }
 
-  // TODO(bartlomieju): this method should return only `local filepath`
-  //  it should be called with already resolved URLs
-  // TODO(bartlomieju): rename to url_to_deps_path
+  // TODO(bartlomieju): rename to something more appropriate
+  // TODO(bartlomieju): upgrade doctring
+  // TODO(bartlomieju): port `resolve_module` test
+  /// This method return local file path for given module url/specifier that is used
+  /// internally by DenoDir to reference module.
+  ///
+  /// For specifiers starting with `file://` it return that specifier.
+  ///
+  /// For specifier starting with `http://` and `https://` it returns
+  /// path to DenoDir dependency directory.
+  pub fn url_to_deps_path(
+    self: &Self,
+    url: &Url,
+  ) -> Result<PathBuf, url::ParseError> {
+    let filename = match url.scheme() {
+      "file" => url.to_file_path().unwrap(),
+      "https" => get_cache_filename(self.deps_https.as_path(), &url),
+      "http" => get_cache_filename(self.deps_http.as_path(), &url),
+      // TODO(bartlomieju): use enum for supported schemes and return informative error what
+      //  went wrong and what are supported schemes
+      _ => unimplemented!(),
+    };
+
+    debug!("deps filename: {:?}", filename);
+    Ok(normalize_path(&filename))
+  }
+
+  // TODO(bartlomieju): deprecate in favor of `url_to_deps_path`
   /// Returns (module name, local filename)
   pub fn resolve_module(
     self: &Self,
@@ -675,10 +700,16 @@ fn fetch_remote_source_async(
       // Single pass fetch, either yields code or yields redirect.
       http_util::fetch_string_once(url).and_then(move |fetch_once_result| {
         match fetch_once_result {
-          FetchOnceResult::Redirect(url) => {
+          FetchOnceResult::Redirect(uri) => {
             // If redirects, update module_name and filename for next looped call.
+<<<<<<< HEAD
             let (new_module_name, new_filepath) = dir
               .resolve_module(&url.to_string(), ".")?;
+=======
+            let url = Url::parse(&uri.to_string()).expect("http::uri::Uri should be parseable as Url");
+            let new_module_name = url.to_string();
+            let new_filepath = dir.url_to_deps_path(&url)?;
+>>>>>>> 3bc33261... start refactor to use Url in deno_dir
 
             if maybe_initial_module_name.is_none() {
               maybe_initial_module_name = Some(module_name.clone());
@@ -773,8 +804,9 @@ fn fetch_local_source(
     // redirect_to https://import-meta.now.sh/sub/final1.js
     // real_filename /Users/kun/Library/Caches/deno/deps/https/import-meta.now.sh/sub/final1.js
     // real_module_name = https://import-meta.now.sh/sub/final1.js
-    let (real_module_name, real_filepath) =
-      deno_dir.resolve_module(&redirect_to, ".")?;
+    let real_module_name = redirect_to.to_string();
+    let redirect_url = Url::parse(&redirect_to).expect("Should be valid URL");
+    let real_filepath = deno_dir.url_to_deps_path(&redirect_url)?;
 
     let mut module_initial_source_name = module_initial_source_name;
     // If this is the first redirect attempt,
@@ -1598,17 +1630,20 @@ mod tests {
     let (_temp_dir, deno_dir) = test_setup();
 
     let cwd = std::env::current_dir().unwrap();
-    let cwd_string = String::from(cwd.to_str().unwrap()) + "/";
 
     tokio_util::init(|| {
       // Test failure case.
-      let specifier = add_root!("/baddir/hello.ts");
+      let specifier = file_url!("/baddir/hello.ts");
       let r = deno_dir.fetch_module_meta_data(specifier, true, false);
       assert!(r.is_err());
 
       // Assuming cwd is the deno repo root.
-      let specifier = &format!("{}{}", cwd_string.as_str(), "js/main.ts");
-      let r = deno_dir.fetch_module_meta_data(specifier, true, false);
+      let url = Url::from_directory_path(cwd).expect("Cwd if valid URL");
+      let specifier = url
+        .join("js/main.ts")
+        .expect("Should be able to join")
+        .to_string();
+      let r = deno_dir.fetch_module_meta_data(&specifier, true, false);
       assert!(r.is_ok());
     })
   }
@@ -1619,17 +1654,20 @@ mod tests {
     let (_temp_dir, deno_dir) = test_setup();
 
     let cwd = std::env::current_dir().unwrap();
-    let cwd_string = String::from(cwd.to_str().unwrap()) + "/";
 
     tokio_util::init(|| {
       // Test failure case.
-      let specifier = add_root!("/baddir/hello.ts");
+      let specifier = file_url!("/baddir/hello.ts");
       let r = deno_dir.fetch_module_meta_data(specifier, false, false);
       assert!(r.is_err());
 
       // Assuming cwd is the deno repo root.
-      let specifier = &format!("{}{}", cwd_string.as_str(), "js/main.ts");
-      let r = deno_dir.fetch_module_meta_data(specifier, false, false);
+      let url = Url::from_directory_path(cwd).expect("Cwd if valid URL");
+      let specifier = url
+        .join("js/main.ts")
+        .expect("Should be able to join")
+        .to_string();
+      let r = deno_dir.fetch_module_meta_data(&specifier, false, false);
       assert!(r.is_ok());
     })
   }
