@@ -993,6 +993,15 @@ mod tests {
     (temp_dir, deno_dir)
   }
 
+  fn setup_deno_dir(temp_dir: TempDir) -> DenoDir {
+    let config = Some(b"{}".to_vec());
+    let deno_dir = DenoDir::new(
+      Some(temp_dir.path().to_path_buf()),
+      &config,
+      Progress::new(),
+    ).expect("setup fail");
+    deno_dir
+  }
   // The `add_root` macro prepends "C:" to a string if on windows; on posix
   // systems it returns the input string untouched. This is necessary because
   // `Url::from_file_path()` fails if the input path isn't an absolute path.
@@ -1148,7 +1157,7 @@ mod tests {
 
   #[test]
   fn test_get_source_code_1() {
-    let (_temp_dir, deno_dir) = test_setup();
+    let (temp_dir, deno_dir) = test_setup();
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
       let module_name = "http://localhost:4545/tests/subdir/mod2.ts";
@@ -1214,7 +1223,9 @@ mod tests {
           .contains("application/json")
       );
 
-      // Don't use_cache
+      // let's create fresh instance of DenoDir (simulating another freshh Deno process)
+      // and don't use cache
+      let deno_dir = setup_deno_dir(temp_dir);
       let result4 =
         get_source_code(&deno_dir, module_name, &filename, false, false);
       assert!(result4.is_ok());
@@ -1230,7 +1241,7 @@ mod tests {
 
   #[test]
   fn test_get_source_code_2() {
-    let (_temp_dir, deno_dir) = test_setup();
+    let (temp_dir, deno_dir) = test_setup();
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
       let module_name = "http://localhost:4545/tests/subdir/mismatch_ext.ts";
@@ -1272,7 +1283,9 @@ mod tests {
       assert_eq!(&(r2.media_type), &msg::MediaType::TypeScript);
       assert!(fs::read_to_string(&headers_file_name).is_err());
 
-      // Don't use_cache
+      // let's create fresh instance of DenoDir (simulating another freshh Deno process)
+      // and don't use cache
+      let deno_dir = setup_deno_dir(temp_dir);
       let result3 =
         get_source_code(&deno_dir, module_name, &filename, false, false);
       assert!(result3.is_ok());
@@ -1286,6 +1299,50 @@ mod tests {
         get_source_code_headers(&filename).mime_type.unwrap(),
         "text/javascript"
       );
+    });
+  }
+
+  #[test]
+  fn test_get_source_code_multiple_downloads_of_same_file() {
+    let (_temp_dir, deno_dir) = test_setup();
+    // http_util::fetch_sync_string requires tokio
+    tokio_util::init(|| {
+      let module_name = "http://localhost:4545/tests/subdir/mismatch_ext.ts";
+      let filename = deno_fs::normalize_path(
+        deno_dir
+          .deps_http
+          .join("localhost_PORT4545/tests/subdir/mismatch_ext.ts")
+          .as_ref(),
+      );
+      let headers_file_name = source_code_headers_filename(&filename);
+
+      // first download
+      let result =
+        get_source_code(&deno_dir, module_name, &filename, false, false);
+      assert!(result.is_ok());
+
+      let result = fs::File::open(&headers_file_name);
+      assert!(result.is_ok());
+      let headers_file = result.unwrap();
+      // save modified timestamp for headers file
+      let headers_file_metadata = headers_file.metadata().unwrap();
+      let headers_file_modified = headers_file_metadata.modified().unwrap();
+
+      // download file again, it should use already fetched file even though `use_cache` is set to
+      // false, this can be verified using source header file creation timestamp (should be
+      // the same as after first download)
+      let result =
+        get_source_code(&deno_dir, module_name, &filename, false, false);
+      assert!(result.is_ok());
+
+      let result = fs::File::open(&headers_file_name);
+      assert!(result.is_ok());
+      let headers_file_2 = result.unwrap();
+      // save modified timestamp for headers file
+      let headers_file_metadata_2 = headers_file_2.metadata().unwrap();
+      let headers_file_modified_2 = headers_file_metadata_2.modified().unwrap();
+
+      assert_eq!(headers_file_modified, headers_file_modified_2);
     });
   }
 
