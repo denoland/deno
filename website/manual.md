@@ -603,7 +603,6 @@ FLAGS:
         --allow-hrtime    Allow high resolution time measurement
         --allow-run       Allow running subprocesses
     -h, --help            Prints help information
-    -D, --log-debug       Log debug output
         --no-prompt       Do not use prompts
     -r, --reload          Reload source code cache (recompile TypeScript)
         --v8-options      Print V8 command line options
@@ -614,17 +613,19 @@ OPTIONS:
         --allow-write=<allow-write>    Allow file system write access
     -c, --config <FILE>                Load compiler configuration file
         --importmap <FILE>             Load import map file
-        --seed <NUMBER>                Seed Math.random() and crypto.getRandomValues()
+    -L, --log-level <log-level>        Set log level [possible values: debug, info]
+        --seed <NUMBER>                Seed Math.random()
         --v8-flags=<v8-flags>          Set V8 command line options
 
 SUBCOMMANDS:
     <script>    Script to run
-    bundle      Bundle module and dependnecies into single file
+    bundle      Bundle module and dependencies into single file
     eval        Eval script
     fetch       Fetch the dependencies
     fmt         Format files
     help        Prints this message or the help of the given subcommand(s)
     info        Show source file related info
+    install     Install script as executable
     run         Run a program given a filename or url to the source code
     types       Print runtime TypeScript declarations
     version     Print the version
