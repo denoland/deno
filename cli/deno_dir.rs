@@ -629,7 +629,7 @@ fn save_code_and_headers(
   maybe_content_type: Option<String>,
   maybe_initial_filename: Option<String>,
 ) -> Result<(), DenoError> {
-  let p = PathBuf::from(filename.clone());
+  let p = PathBuf::from(filename);
   match p.parent() {
     Some(ref parent) => fs::create_dir_all(parent),
     None => Ok(()),
@@ -637,13 +637,13 @@ fn save_code_and_headers(
   // Write file and create .headers.json for the file.
   deno_fs::write_file(&p, &source, 0o666)?;
   {
-    save_source_code_headers(&filename, maybe_content_type.clone(), None);
+    save_source_code_headers(filename, maybe_content_type.clone(), None);
   }
   // Check if this file is downloaded due to some old redirect request.
   if maybe_initial_filename.is_some() {
     // If yes, record down the headers for redirect.
     // Also create its containing folder.
-    let pp = PathBuf::from(filename.clone());
+    let pp = PathBuf::from(filename);
     match pp.parent() {
       Some(ref parent) => fs::create_dir_all(parent),
       None => Ok(()),
@@ -995,12 +995,11 @@ mod tests {
 
   fn setup_deno_dir(temp_dir: TempDir) -> DenoDir {
     let config = Some(b"{}".to_vec());
-    let deno_dir = DenoDir::new(
+    DenoDir::new(
       Some(temp_dir.path().to_path_buf()),
       &config,
       Progress::new(),
-    ).expect("setup fail");
-    deno_dir
+    ).expect("setup fail")
   }
   // The `add_root` macro prepends "C:" to a string if on windows; on posix
   // systems it returns the input string untouched. This is necessary because
