@@ -414,6 +414,7 @@ fn get_source_code_async(
   let filename = filepath.to_str().unwrap().to_string();
   // TODO: don't use module_name
   let module_name = module_url.to_string();
+  // TODO: use module_url.scheme()
   let is_module_remote = is_remote(&module_name);
   // We try fetch local. Three cases:
   // 1. Remote downloads are not allowed, we're only allowed to use cache.
@@ -429,7 +430,7 @@ fn get_source_code_async(
       module_name, is_module_remote
     );
     // Note that local fetch is done synchronously.
-    match fetch_local_source(deno_dir, &module_name, &filepath, None) {
+    match fetch_local_source(deno_dir, &module_url, &filepath, None) {
       Ok(Some(output)) => {
         debug!("found local source ");
         return Either::A(futures::future::ok(output));
@@ -786,7 +787,7 @@ fn fetch_remote_source(
 /// after following all redirections.
 fn fetch_local_source(
   deno_dir: &DenoDir,
-  module_name: &str,
+  module_url: &Url,
   filepath: &Path,
   module_initial_source_name: Option<String>,
 ) -> DenoResult<Option<ModuleMetaData>> {
@@ -801,21 +802,20 @@ fn fetch_local_source(
     // redirect_to https://import-meta.now.sh/sub/final1.js
     // real_filename /Users/kun/Library/Caches/deno/deps/https/import-meta.now.sh/sub/final1.js
     // real_module_name = https://import-meta.now.sh/sub/final1.js
-    let real_module_name = redirect_to.to_string();
-    let redirect_url = Url::parse(&redirect_to).expect("Should be valid URL");
-    let real_filepath = deno_dir.url_to_deps_path(&redirect_url)?;
+    let real_module_url = Url::parse(&redirect_to).expect("Should be valid URL");
+    let real_filepath = deno_dir.url_to_deps_path(&real_module_url)?;
 
     let mut module_initial_source_name = module_initial_source_name;
     // If this is the first redirect attempt,
     // then module_initial_source_name should be None.
     // In that case, use current module name as module_initial_source_name.
     if module_initial_source_name.is_none() {
-      module_initial_source_name = Some(module_name.to_owned());
+      module_initial_source_name = Some(module_url.to_string());
     }
     // Recurse.
     return fetch_local_source(
       deno_dir,
-      &real_module_name,
+      &real_module_url,
       &real_filepath,
       module_initial_source_name,
     );
@@ -833,7 +833,7 @@ fn fetch_local_source(
     Ok(c) => c,
   };
   Ok(Some(ModuleMetaData {
-    module_name: module_name.to_string(),
+    module_name: module_url.to_string(),
     module_redirect_source_name: module_initial_source_name,
     filename: filepath.to_owned(),
     media_type: map_content_type(
@@ -1488,8 +1488,9 @@ mod tests {
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
       let (_temp_dir, deno_dir) = test_setup();
-      let module_name =
-        "http://127.0.0.1:4545/tests/subdir/mt_video_mp2t.t3.ts".to_string();
+      let module_url =
+        Url::parse("http://127.0.0.1:4545/tests/subdir/mt_video_mp2t.t3.ts").unwrap();
+      let module_name = module_url.to_string();
       let filepath = deno_dir
         .deps_http
         .join("127.0.0.1_PORT4545/tests/subdir/mt_video_mp2t.t3.ts");
@@ -1514,7 +1515,7 @@ mod tests {
         None,
       );
       let result2 =
-        fetch_local_source(&deno_dir, &module_name, &filepath, None);
+        fetch_local_source(&deno_dir, &module_url, &filepath, None);
       assert!(result2.is_ok());
       let r2 = result2.unwrap().unwrap();
       assert_eq!(r2.source_code, b"export const loaded = true;\n");
@@ -1529,14 +1530,15 @@ mod tests {
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
       let (_temp_dir, deno_dir) = test_setup();
-      let module_name =
-        "http://localhost:4545/tests/subdir/mt_video_mp2t.t3.ts";
+      let module_url =
+        Url::parse("http://localhost:4545/tests/subdir/mt_video_mp2t.t3.ts").unwrap();
+      let module_name = module_url.to_string();
       let filepath = deno_dir
         .deps_http
         .join("localhost_PORT4545/tests/subdir/mt_video_mp2t.t3.ts");
       let headers_file_name = source_code_headers_filename(&filepath);
 
-      let result = fetch_remote_source(&deno_dir, module_name, &filepath);
+      let result = fetch_remote_source(&deno_dir, &module_name, &filepath);
       assert!(result.is_ok());
       let r = result.unwrap().unwrap();
       assert_eq!(r.source_code, "export const loaded = true;\n".as_bytes());
@@ -1550,7 +1552,7 @@ mod tests {
         Some("text/javascript".to_owned()),
         None,
       );
-      let result2 = fetch_local_source(&deno_dir, module_name, &filepath, None);
+      let result2 = fetch_local_source(&deno_dir, &module_url, &filepath, None);
       assert!(result2.is_ok());
       let r2 = result2.unwrap().unwrap();
       assert_eq!(r2.source_code, "export const loaded = true;\n".as_bytes());
@@ -1618,10 +1620,10 @@ mod tests {
     // only local, no http_util::fetch_sync_string called
     let (_temp_dir, deno_dir) = test_setup();
     let cwd = std::env::current_dir().unwrap();
-    let module_name = "http://example.com/mt_text_typescript.t1.ts"; // not used
+    let module_url = Url::parse("http://example.com/mt_text_typescript.t1.ts").unwrap();
     let filepath = cwd.join("tests/subdir/mt_text_typescript.t1.ts");
 
-    let result = fetch_local_source(&deno_dir, module_name, &filepath, None);
+    let result = fetch_local_source(&deno_dir, &module_url, &filepath, None);
     assert!(result.is_ok());
     let r = result.unwrap().unwrap();
     assert_eq!(r.source_code, "export const loaded = true;\n".as_bytes());
