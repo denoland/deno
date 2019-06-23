@@ -17,6 +17,7 @@ use std::sync::atomic::Ordering;
 
 // This corresponds to JS ModuleMetaData.
 // TODO Rename one or the other so they correspond.
+// TODO(bartlomieju): change `*_name` to `*_url` and use Url type
 #[derive(Debug, Clone)]
 pub struct ModuleMetaData {
   pub module_name: String,

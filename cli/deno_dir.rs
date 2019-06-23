@@ -163,7 +163,7 @@ impl DenoDir {
     use_cache: bool,
     no_fetch: bool,
   ) -> impl Future<Item = ModuleMetaData, Error = deno_error::DenoError> {
-    println!("fetch_module_meta_data. specifier {} ", specifier);
+    debug!("fetch_module_meta_data. specifier {} ", specifier);
 
     // TODO: rename specifier?
     let specifier = specifier.to_string();
@@ -187,7 +187,7 @@ impl DenoDir {
     Either::B(
       get_source_code_async(
         self,
-        specifier.as_str(),
+        &module_url,
         deps_filepath,
         use_cache,
         no_fetch,
@@ -406,13 +406,14 @@ impl SourceMapGetter for DenoDir {
 /// use_cache.
 fn get_source_code_async(
   deno_dir: &DenoDir,
-  module_name: &str,
+  module_url: &Url,
   filepath: PathBuf,
   use_cache: bool,
   no_fetch: bool,
 ) -> impl Future<Item = ModuleMetaData, Error = DenoError> {
   let filename = filepath.to_str().unwrap().to_string();
-  let module_name = module_name.to_string();
+  // TODO: don't use module_name
+  let module_name = module_url.to_string();
   let is_module_remote = is_remote(&module_name);
   // We try fetch local. Three cases:
   // 1. Remote downloads are not allowed, we're only allowed to use cache.
@@ -490,17 +491,13 @@ fn get_source_code_async(
 /// This function is deprecated.
 fn get_source_code(
   deno_dir: &DenoDir,
-  module_name: &str,
+  module_url: &Url,
   filepath: PathBuf,
   use_cache: bool,
   no_fetch: bool,
 ) -> DenoResult<ModuleMetaData> {
   tokio_util::block_on(get_source_code_async(
-    deno_dir,
-    module_name,
-    filepath,
-    use_cache,
-    no_fetch,
+    deno_dir, module_url, filepath, use_cache, no_fetch,
   ))
 }
 
@@ -1153,14 +1150,15 @@ mod tests {
     let (temp_dir, deno_dir) = test_setup();
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
-      let module_name = "http://localhost:4545/tests/subdir/mod2.ts";
+      let module_url =
+        Url::parse("http://localhost:4545/tests/subdir/mod2.ts").unwrap();
       let filepath = deno_dir
         .deps_http
         .join("localhost_PORT4545/tests/subdir/mod2.ts");
       let headers_file_name = source_code_headers_filename(&filepath);
 
       let result =
-        get_source_code(&deno_dir, module_name, filepath.clone(), true, false);
+        get_source_code(&deno_dir, &module_url, filepath.clone(), true, false);
       assert!(result.is_ok());
       let r = result.unwrap();
       assert_eq!(
@@ -1175,7 +1173,7 @@ mod tests {
       let _ =
         fs::write(&headers_file_name, "{ \"mime_type\": \"text/javascript\" }");
       let result2 =
-        get_source_code(&deno_dir, module_name, filepath.clone(), true, false);
+        get_source_code(&deno_dir, &module_url, filepath.clone(), true, false);
       assert!(result2.is_ok());
       let r2 = result2.unwrap();
       assert_eq!(
@@ -1197,7 +1195,7 @@ mod tests {
         None,
       );
       let result3 =
-        get_source_code(&deno_dir, module_name, filepath.clone(), true, false);
+        get_source_code(&deno_dir, &module_url, filepath.clone(), true, false);
       assert!(result3.is_ok());
       let r3 = result3.unwrap();
       assert_eq!(
@@ -1217,7 +1215,7 @@ mod tests {
       // and don't use cache
       let deno_dir = setup_deno_dir(temp_dir.path());
       let result4 =
-        get_source_code(&deno_dir, module_name, filepath.clone(), false, false);
+        get_source_code(&deno_dir, &module_url, filepath.clone(), false, false);
       assert!(result4.is_ok());
       let r4 = result4.unwrap();
       let expected4 =
@@ -1234,14 +1232,16 @@ mod tests {
     let (temp_dir, deno_dir) = test_setup();
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
-      let module_name = "http://localhost:4545/tests/subdir/mismatch_ext.ts";
+      let module_url =
+        Url::parse("http://localhost:4545/tests/subdir/mismatch_ext.ts")
+          .unwrap();
       let filepath = deno_dir
         .deps_http
         .join("localhost_PORT4545/tests/subdir/mismatch_ext.ts");
       let headers_file_name = source_code_headers_filename(&filepath);
 
       let result =
-        get_source_code(&deno_dir, module_name, filepath.clone(), true, false);
+        get_source_code(&deno_dir, &module_url, filepath.clone(), true, false);
       assert!(result.is_ok());
       let r = result.unwrap();
       let expected = "export const loaded = true;\n".as_bytes();
@@ -1260,7 +1260,7 @@ mod tests {
         None,
       );
       let result2 =
-        get_source_code(&deno_dir, module_name, filepath.clone(), true, false);
+        get_source_code(&deno_dir, &module_url, filepath.clone(), true, false);
       assert!(result2.is_ok());
       let r2 = result2.unwrap();
       let expected2 = "export const loaded = true;\n".as_bytes();
@@ -1274,7 +1274,7 @@ mod tests {
       // and don't use cache
       let deno_dir = setup_deno_dir(temp_dir.path());
       let result3 =
-        get_source_code(&deno_dir, module_name, filepath.clone(), false, false);
+        get_source_code(&deno_dir, &module_url, filepath.clone(), false, false);
       assert!(result3.is_ok());
       let r3 = result3.unwrap();
       let expected3 = "export const loaded = true;\n".as_bytes();
@@ -1335,8 +1335,9 @@ mod tests {
     let (_temp_dir, deno_dir) = test_setup();
     // Test basic follow and headers recording
     tokio_util::init(|| {
-      let redirect_module_name =
-        "http://localhost:4546/tests/subdir/redirects/redirect1.js";
+      let redirect_module_url =
+        Url::parse("http://localhost:4546/tests/subdir/redirects/redirect1.js")
+          .unwrap();
       let redirect_source_filepath = deno_dir
         .deps_http
         .join("localhost_PORT4546/tests/subdir/redirects/redirect1.js");
@@ -1352,7 +1353,7 @@ mod tests {
 
       let mod_meta = get_source_code(
         &deno_dir,
-        redirect_module_name,
+        &redirect_module_url,
         redirect_source_filepath.clone(),
         true,
         false,
@@ -1379,7 +1380,7 @@ mod tests {
       assert_eq!(&mod_meta.module_name, target_module_name);
       assert_eq!(
         &mod_meta.module_redirect_source_name.clone().unwrap(),
-        redirect_module_name
+        &redirect_module_url.to_string()
       );
     });
   }
@@ -1389,8 +1390,9 @@ mod tests {
     let (_temp_dir, deno_dir) = test_setup();
     // Test double redirects and headers recording
     tokio_util::init(|| {
-      let redirect_module_name =
-        "http://localhost:4548/tests/subdir/redirects/redirect1.js";
+      let redirect_module_url =
+        Url::parse("http://localhost:4548/tests/subdir/redirects/redirect1.js")
+          .unwrap();
       let redirect_source_filepath = deno_dir
         .deps_http
         .join("localhost_PORT4548/tests/subdir/redirects/redirect1.js");
@@ -1412,7 +1414,7 @@ mod tests {
 
       let mod_meta = get_source_code(
         &deno_dir,
-        redirect_module_name,
+        &redirect_module_url,
         redirect_source_filepath.clone(),
         true,
         false,
@@ -1446,7 +1448,7 @@ mod tests {
       assert_eq!(&mod_meta.module_name, target_module_name);
       assert_eq!(
         &mod_meta.module_redirect_source_name.clone().unwrap(),
-        redirect_module_name
+        &redirect_module_url.to_string()
       );
     });
   }
@@ -1455,26 +1457,27 @@ mod tests {
   fn test_get_source_code_no_fetch() {
     let (_temp_dir, deno_dir) = test_setup();
     tokio_util::init(|| {
-      let module_name = "http://localhost:4545/tests/002_hello.ts";
+      let module_url =
+        Url::parse("http://localhost:4545/tests/002_hello.ts").unwrap();
       let filepath = deno_dir
         .deps_http
         .join("localhost_PORT4545/tests/002_hello.ts");
 
       // file hasn't been cached before and remote downloads are not allowed
       let result =
-        get_source_code(&deno_dir, module_name, filepath.clone(), true, true);
+        get_source_code(&deno_dir, &module_url, filepath.clone(), true, true);
       assert!(result.is_err());
       let err = result.err().unwrap();
       assert_eq!(err.kind(), ErrorKind::NotFound);
 
       // download and cache file
       let result =
-        get_source_code(&deno_dir, module_name, filepath.clone(), true, false);
+        get_source_code(&deno_dir, &module_url, filepath.clone(), true, false);
       assert!(result.is_ok());
 
       // module is already cached, should be ok even with `no_fetch`
       let result =
-        get_source_code(&deno_dir, module_name, filepath.clone(), true, true);
+        get_source_code(&deno_dir, &module_url, filepath.clone(), true, true);
       assert!(result.is_ok());
     });
   }
