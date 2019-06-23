@@ -367,14 +367,21 @@ impl DenoDir {
 
 impl SourceMapGetter for DenoDir {
   fn get_source_map(&self, script_name: &str) -> Option<Vec<u8>> {
-    // TODO(bartlomieju): this is temporary hack to make tests pass
     // TODO: this method shouldn't issue `fetch_module_meta_data` - this is done for each line
     //  in JS stack trace so it's pretty slow - quick idea: store `ModuleMetaData` in one
     //  structure available to DenoDir so it's not fetched from disk everytime it's needed
-    debug!("get_source_map {:?}", script_name);
-    let script_url = self
-      .resolve_module_url(script_name, ".")
-      .expect("Must resolve");
+
+    // TODO(bartlomieju): this is temporary hack to make tests pass
+    let script_url = match Url::parse(script_name) {
+      Ok(url) => url,
+      Err(_) => {
+        // if `script_name` can't be resolved to Url it's probably internal
+        // script (like `gen/cli/bundle/compiler.js`) so we won't be
+        // able to get source for it anyway
+        return None;
+      }
+    };
+
     match self.fetch_module_meta_data(&script_url.to_string(), true, true) {
       Err(_e) => None,
       Ok(out) => match out.maybe_source_map {
@@ -385,14 +392,21 @@ impl SourceMapGetter for DenoDir {
   }
 
   fn get_source_line(&self, script_name: &str, line: usize) -> Option<String> {
-    // TODO(bartlomieju): this is temporary hack to make tests pass
     // TODO: this method shouldn't issue `fetch_module_meta_data` - this is done for each line
     //  in JS stack trace so it's pretty slow - quick idea: store `ModuleMetaData` in one
     //  structure available to DenoDir so it's not fetched from disk everytime it's needed
-    debug!("get_source_line {:?}", script_name);
-    let script_url = self
-      .resolve_module_url(script_name, ".")
-      .expect("Must resolve");
+
+    // TODO(bartlomieju): this is temporary hack to make tests pass
+    let script_url = match Url::parse(script_name) {
+      Ok(url) => url,
+      Err(_) => {
+        // if `script_name` can't be resolved to Url it's probably internal
+        // script (like `gen/cli/bundle/compiler.js`) so we won't be
+        // able to get source for it anyway
+        return None;
+      }
+    };
+
     match self.fetch_module_meta_data(&script_url.to_string(), true, true) {
       Ok(out) => match str::from_utf8(&out.source_code) {
         Ok(v) => {
