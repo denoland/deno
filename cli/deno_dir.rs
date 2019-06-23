@@ -31,9 +31,9 @@ use url;
 use url::Url;
 
 #[derive(Clone, Default)]
-pub struct FetchSet(Arc<Mutex<HashSet<String>>>);
+pub struct DownloadCache(Arc<Mutex<HashSet<String>>>);
 
-impl FetchSet {
+impl DownloadCache {
   pub fn mark(&self, module_id: &str) {
     let mut c = self.0.lock().unwrap();
     c.insert(module_id.to_string());
@@ -69,7 +69,7 @@ pub struct DenoDir {
   /// Set of all URLs that have been fetched in this run. This is a hacky way to work
   /// around the fact that --reload will force multiple downloads of the same
   /// module.
-  fetched: FetchSet,
+  download_cache: DownloadCache,
 }
 
 impl DenoDir {
@@ -113,7 +113,7 @@ impl DenoDir {
       deps_https,
       config,
       progress,
-      fetched: FetchSet::default(),
+      download_cache: DownloadCache::default(),
     };
 
     // TODO Lazily create these directories.
@@ -419,7 +419,7 @@ fn get_source_code_async(
   if !is_module_remote
     || use_cache
     || no_fetch
-    || deno_dir.fetched.has(&module_name)
+    || deno_dir.download_cache.has(&module_name)
   {
     debug!(
       "fetch local or reload {} is_module_remote {}",
@@ -464,14 +464,14 @@ fn get_source_code_async(
 
   debug!("is remote but didn't find module");
 
-  let fetched = deno_dir.fetched.clone();
+  let download_cache = deno_dir.download_cache.clone();
 
   // not cached/local, try remote.
   Either::B(
     fetch_remote_source_async(deno_dir, &module_name, &filename).and_then(
       move |maybe_remote_source| match maybe_remote_source {
         Some(output) => {
-          fetched.mark(&module_name);
+          download_cache.mark(&module_name);
           Ok(output)
         }
         None => Err(DenoError::from(std::io::Error::new(
