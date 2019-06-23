@@ -105,7 +105,11 @@ pub fn print_file_info(
     &worker.state,
     module_specifier,
   ).and_then(move |out| {
-    println!("{} {}", ansi::bold("local:".to_string()), &(out.filename));
+    println!(
+      "{} {}",
+      ansi::bold("local:".to_string()),
+      out.filename.to_str().unwrap()
+    );
 
     println!(
       "{} {}",
@@ -117,7 +121,7 @@ pub fn print_file_info(
       println!(
         "{} {}",
         ansi::bold("compiled:".to_string()),
-        out.maybe_output_code_filename.as_ref().unwrap(),
+        out.maybe_output_code_filename.unwrap().to_str().unwrap(),
       );
     }
 
@@ -125,7 +129,7 @@ pub fn print_file_info(
       println!(
         "{} {}",
         ansi::bold("map:".to_string()),
-        out.maybe_source_map_filename.as_ref().unwrap()
+        out.maybe_source_map_filename.unwrap().to_str().unwrap()
       );
     }
 

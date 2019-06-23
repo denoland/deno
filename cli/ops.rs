@@ -522,7 +522,7 @@ fn op_fetch_module_meta_data(
       let data_off = builder.create_vector(out.source_code.as_slice());
       let msg_args = msg::FetchModuleMetaDataResArgs {
         module_name: Some(builder.create_string(&out.module_name)),
-        filename: Some(builder.create_string(&out.filename)),
+        filename: Some(builder.create_string(&out.filename.to_str().unwrap())),
         media_type: out.media_type,
         data: Some(data_off),
       };

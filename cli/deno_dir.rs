@@ -219,10 +219,8 @@ impl DenoDir {
           Ok((output_code, source_map)) => {
             out.maybe_output_code = Some(output_code);
             out.maybe_source_map = Some(source_map);
-            out.maybe_output_code_filename =
-              Some(output_code_filename.to_str().unwrap().to_string());
-            out.maybe_source_map_filename =
-              Some(output_source_map_filename.to_str().unwrap().to_string());
+            out.maybe_output_code_filename = Some(output_code_filename);
+            out.maybe_source_map_filename = Some(output_source_map_filename);
             Ok(out)
           }
         }
@@ -628,9 +626,6 @@ fn fetch_remote_source_async(
           }
           FetchOnceResult::Code(source, maybe_content_type) => {
             // We land on the code.
-            // TODO: replace with `PathBuf`
-            let filename = filepath.to_str().unwrap().to_string();
-
             match filepath.parent() {
               Some(ref parent) => fs::create_dir_all(parent),
               None => Ok(()),
@@ -663,7 +658,7 @@ fn fetch_remote_source_async(
             Ok(Loop::Break(Some(ModuleMetaData {
               module_name: module_name.to_string(),
               module_redirect_source_name: maybe_initial_module_name,
-              filename: filename.to_string(),
+              filename: filepath.clone(),
               media_type: map_content_type(
                 filepath.as_path(),
                 maybe_content_type.as_ref().map(String::as_str),
@@ -758,7 +753,7 @@ fn fetch_local_source(
   Ok(Some(ModuleMetaData {
     module_name: module_name.to_string(),
     module_redirect_source_name: module_initial_source_name,
-    filename: filepath.to_str().unwrap().to_string(),
+    filename: filepath.to_owned(),
     media_type: map_content_type(
       &filepath,
       source_code_headers.mime_type.as_ref().map(String::as_str),
