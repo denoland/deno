@@ -357,6 +357,29 @@ function deserializeHeaderFields(m: msg.HttpHeader): Array<[string, string]> {
   return out;
 }
 
+async function getFetchRes(
+  url: string,
+  method: string | null,
+  headers: domTypes.Headers | null,
+  body: ArrayBufferView | undefined
+): Promise<msg.FetchRes> {
+  // Send Fetch message
+  const builder = flatbuffers.createBuilder();
+  const headerOff = msgHttpRequest(builder, url, method, headers);
+  const resBase = await sendAsync(
+    builder,
+    msg.Any.Fetch,
+    msg.Fetch.createFetch(builder, headerOff),
+    body
+  );
+
+  // Decode FetchRes
+  assert(msg.Any.FetchRes === resBase.innerType());
+  const inner = new msg.FetchRes();
+  assert(resBase.inner(inner) != null);
+  return inner;
+}
+
 /** Fetch a resource from the network. */
 export async function fetch(
   input: domTypes.Request | string,
@@ -367,6 +390,7 @@ export async function fetch(
   let headers: domTypes.Headers | null = null;
   let body: ArrayBufferView | undefined;
   let redirected = false;
+  let remRedirectCount = 20; // TODO: use a better way to handle
 
   if (typeof input === "string") {
     url = input;
@@ -420,21 +444,8 @@ export async function fetch(
     }
   }
 
-  while (true) {
-    // Send Fetch message
-    const builder = flatbuffers.createBuilder();
-    const headerOff = msgHttpRequest(builder, url, method, headers);
-    const resBase = await sendAsync(
-      builder,
-      msg.Any.Fetch,
-      msg.Fetch.createFetch(builder, headerOff),
-      body
-    );
-
-    // Decode FetchRes
-    assert(msg.Any.FetchRes === resBase.innerType());
-    const inner = new msg.FetchRes();
-    assert(resBase.inner(inner) != null);
+  while (remRedirectCount) {
+    const inner = await getFetchRes(url, method, headers, body);
 
     const header = inner.header()!;
     const bodyRid = inner.bodyRid();
@@ -469,9 +480,12 @@ export async function fetch(
           }
           url = redirectUrl;
           redirected = true;
+          remRedirectCount--;
       }
     } else {
       return response;
     }
   }
+  // Return a network error due to too many redirections
+  throw notImplemented();
 }
