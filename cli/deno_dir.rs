@@ -367,7 +367,15 @@ impl DenoDir {
 
 impl SourceMapGetter for DenoDir {
   fn get_source_map(&self, script_name: &str) -> Option<Vec<u8>> {
-    match self.fetch_module_meta_data(script_name, true, true) {
+    // TODO(bartlomieju): this is temporary hack to make tests pass
+    // TODO: this method shouldn't issue `fetch_module_meta_data` - this is done for each line
+    //  in JS stack trace so it's pretty slow - quick idea: store `ModuleMetaData` in one
+    //  structure available to DenoDir so it's not fetched from disk everytime it's needed
+    debug!("get_source_map {:?}", script_name);
+    let script_url = self
+      .resolve_module_url(script_name, ".")
+      .expect("Must resolve");
+    match self.fetch_module_meta_data(&script_url.to_string(), true, true) {
       Err(_e) => None,
       Ok(out) => match out.maybe_source_map {
         None => None,
@@ -377,7 +385,15 @@ impl SourceMapGetter for DenoDir {
   }
 
   fn get_source_line(&self, script_name: &str, line: usize) -> Option<String> {
-    match self.fetch_module_meta_data(script_name, true, true) {
+    // TODO(bartlomieju): this is temporary hack to make tests pass
+    // TODO: this method shouldn't issue `fetch_module_meta_data` - this is done for each line
+    //  in JS stack trace so it's pretty slow - quick idea: store `ModuleMetaData` in one
+    //  structure available to DenoDir so it's not fetched from disk everytime it's needed
+    debug!("get_source_line {:?}", script_name);
+    let script_url = self
+      .resolve_module_url(script_name, ".")
+      .expect("Must resolve");
+    match self.fetch_module_meta_data(&script_url.to_string(), true, true) {
       Ok(out) => match str::from_utf8(&out.source_code) {
         Ok(v) => {
           let lines: Vec<&str> = v.lines().collect();
@@ -802,7 +818,8 @@ fn fetch_local_source(
     // redirect_to https://import-meta.now.sh/sub/final1.js
     // real_filename /Users/kun/Library/Caches/deno/deps/https/import-meta.now.sh/sub/final1.js
     // real_module_name = https://import-meta.now.sh/sub/final1.js
-    let real_module_url = Url::parse(&redirect_to).expect("Should be valid URL");
+    let real_module_url =
+      Url::parse(&redirect_to).expect("Should be valid URL");
     let real_filepath = deno_dir.url_to_deps_path(&real_module_url)?;
 
     let mut module_initial_source_name = module_initial_source_name;
@@ -1489,7 +1506,8 @@ mod tests {
     tokio_util::init(|| {
       let (_temp_dir, deno_dir) = test_setup();
       let module_url =
-        Url::parse("http://127.0.0.1:4545/tests/subdir/mt_video_mp2t.t3.ts").unwrap();
+        Url::parse("http://127.0.0.1:4545/tests/subdir/mt_video_mp2t.t3.ts")
+          .unwrap();
       let module_name = module_url.to_string();
       let filepath = deno_dir
         .deps_http
@@ -1514,8 +1532,7 @@ mod tests {
         Some("text/javascript".to_owned()),
         None,
       );
-      let result2 =
-        fetch_local_source(&deno_dir, &module_url, &filepath, None);
+      let result2 = fetch_local_source(&deno_dir, &module_url, &filepath, None);
       assert!(result2.is_ok());
       let r2 = result2.unwrap().unwrap();
       assert_eq!(r2.source_code, b"export const loaded = true;\n");
@@ -1531,7 +1548,8 @@ mod tests {
     tokio_util::init(|| {
       let (_temp_dir, deno_dir) = test_setup();
       let module_url =
-        Url::parse("http://localhost:4545/tests/subdir/mt_video_mp2t.t3.ts").unwrap();
+        Url::parse("http://localhost:4545/tests/subdir/mt_video_mp2t.t3.ts")
+          .unwrap();
       let module_name = module_url.to_string();
       let filepath = deno_dir
         .deps_http
@@ -1620,7 +1638,8 @@ mod tests {
     // only local, no http_util::fetch_sync_string called
     let (_temp_dir, deno_dir) = test_setup();
     let cwd = std::env::current_dir().unwrap();
-    let module_url = Url::parse("http://example.com/mt_text_typescript.t1.ts").unwrap();
+    let module_url =
+      Url::parse("http://example.com/mt_text_typescript.t1.ts").unwrap();
     let filepath = cwd.join("tests/subdir/mt_text_typescript.t1.ts");
 
     let result = fetch_local_source(&deno_dir, &module_url, &filepath, None);
