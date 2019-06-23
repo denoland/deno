@@ -1,56 +1,61 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use deno::{Script, StartupData};
+#[cfg(feature = "no-snapshot-init")]
+use deno::Script;
 
+use deno::StartupData;
+
+#[cfg(feature = "no-snapshot-init")]
 pub fn deno_isolate_init() -> StartupData<'static> {
-  if cfg!(feature = "no-snapshot-init") {
-    debug!("Deno isolate init without snapshots.");
-    #[cfg(not(feature = "check-only"))]
-    let source_bytes =
-      include_bytes!(concat!(env!("GN_OUT_DIR"), "/gen/cli/bundle/main.js"));
-    #[cfg(feature = "check-only")]
-    let source_bytes = b"";
+  debug!("Deno isolate init without snapshots.");
+  #[cfg(not(feature = "check-only"))]
+  let source =
+    include_str!(concat!(env!("GN_OUT_DIR"), "/gen/cli/bundle/main.js"));
+  #[cfg(feature = "check-only")]
+  let source = "";
 
-    StartupData::Script(Script {
-      filename: "gen/cli/bundle/main.js",
-      source: std::str::from_utf8(&source_bytes[..]).unwrap(),
-    })
-  } else {
-    debug!("Deno isolate init with snapshots.");
-    #[cfg(not(any(feature = "check-only", feature = "no-snapshot-init")))]
-    let data =
-      include_bytes!(concat!(env!("GN_OUT_DIR"), "/gen/cli/snapshot_deno.bin"));
-    #[cfg(any(feature = "check-only", feature = "no-snapshot-init"))]
-    let data = b"";
-
-    StartupData::Snapshot(data)
-  }
+  StartupData::Script(Script {
+    filename: "gen/cli/bundle/main.js",
+    source,
+  })
 }
 
+#[cfg(not(feature = "no-snapshot-init"))]
+pub fn deno_isolate_init() -> StartupData<'static> {
+  debug!("Deno isolate init with snapshots.");
+  #[cfg(not(feature = "check-only"))]
+  let data =
+    include_bytes!(concat!(env!("GN_OUT_DIR"), "/gen/cli/snapshot_deno.bin"));
+  #[cfg(feature = "check-only")]
+  let data = b"";
+
+  StartupData::Snapshot(data)
+}
+
+#[cfg(feature = "no-snapshot-init")]
 pub fn compiler_isolate_init() -> StartupData<'static> {
-  if cfg!(feature = "no-snapshot-init") {
-    debug!("Compiler isolate init without snapshots.");
-    #[cfg(not(feature = "check-only"))]
-    let source_bytes = include_bytes!(concat!(
-      env!("GN_OUT_DIR"),
-      "/gen/cli/bundle/compiler.js"
-    ));
-    #[cfg(feature = "check-only")]
-    let source_bytes = b"";
+  debug!("Compiler isolate init without snapshots.");
+  #[cfg(not(feature = "check-only"))]
+  let source =
+    include_str!(concat!(env!("GN_OUT_DIR"), "/gen/cli/bundle/compiler.js"));
+  #[cfg(feature = "check-only")]
+  let source = "";
 
-    StartupData::Script(Script {
-      filename: "gen/cli/bundle/compiler.js",
-      source: std::str::from_utf8(&source_bytes[..]).unwrap(),
-    })
-  } else {
-    debug!("Deno isolate init with snapshots.");
-    #[cfg(not(any(feature = "check-only", feature = "no-snapshot-init")))]
-    let data = include_bytes!(concat!(
-      env!("GN_OUT_DIR"),
-      "/gen/cli/snapshot_compiler.bin"
-    ));
-    #[cfg(any(feature = "check-only", feature = "no-snapshot-init"))]
-    let data = b"";
+  StartupData::Script(Script {
+    filename: "gen/cli/bundle/compiler.js",
+    source,
+  })
+}
 
-    StartupData::Snapshot(data)
-  }
+#[cfg(not(feature = "no-snapshot-init"))]
+pub fn compiler_isolate_init() -> StartupData<'static> {
+  debug!("Deno isolate init with snapshots.");
+  #[cfg(not(feature = "check-only"))]
+  let data = include_bytes!(concat!(
+    env!("GN_OUT_DIR"),
+    "/gen/cli/snapshot_compiler.bin"
+  ));
+  #[cfg(feature = "check-only")]
+  let data = b"";
+
+  StartupData::Snapshot(data)
 }

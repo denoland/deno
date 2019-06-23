@@ -25,7 +25,7 @@ use libc::c_void;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::ptr::null;
-use std::sync::{Arc, Mutex, Once, ONCE_INIT};
+use std::sync::{Arc, Mutex, Once};
 
 pub type Buf = Box<[u8]>;
 
@@ -55,8 +55,8 @@ struct OwnedScript {
   pub filename: String,
 }
 
-impl<'a> From<Script<'a>> for OwnedScript {
-  fn from(s: Script<'a>) -> OwnedScript {
+impl From<Script<'_>> for OwnedScript {
+  fn from(s: Script) -> OwnedScript {
     OwnedScript {
       source: s.source.to_string(),
       filename: s.filename.to_string(),
@@ -133,10 +133,10 @@ impl Drop for Isolate {
   }
 }
 
-static DENO_INIT: Once = ONCE_INIT;
+static DENO_INIT: Once = Once::new();
 
 impl Isolate {
-  /// startup_data defines the snapshot or script used at startup to initalize
+  /// startup_data defines the snapshot or script used at startup to initialize
   /// the isolate.
   pub fn new(startup_data: StartupData, will_snapshot: bool) -> Self {
     DENO_INIT.call_once(|| {
@@ -157,7 +157,7 @@ impl Isolate {
 
     let mut startup_script: Option<OwnedScript> = None;
 
-    // Seperate into Option values for each startup type
+    // Separate into Option values for each startup type
     match startup_data {
       StartupData::Script(d) => {
         startup_script = Some(d.into());
