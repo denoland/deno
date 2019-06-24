@@ -4,6 +4,7 @@
 // https://github.com/rust-lang/cargo/blob/edd874/LICENSE-MIT
 
 #![allow(dead_code)]
+#![allow(irrefutable_let_patterns)]
 
 use std::fmt;
 use std::io::prelude::*;
@@ -242,7 +243,6 @@ impl Shell {
   }
 
   /// Updates the color choice (always, never, or auto) from a string..
-  #[allow(irrefutable_let_patterns)]
   pub fn set_color_choice(&mut self, color: Option<&str>) -> DenoResult<()> {
     if let ShellOut::Stream {
       ref mut stream,
