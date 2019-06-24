@@ -1,7 +1,13 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
+use clap::App;
+use clap::AppSettings;
+use clap::Arg;
+use clap::ArgMatches;
+use clap::Shell;
+use clap::SubCommand;
 use crate::deno_dir;
 use log::Level;
+use std;
 
 // Creates vector of strings, Vec<String>
 macro_rules! svec {
@@ -300,7 +306,7 @@ ability to spawn subprocesses.
           // this is a fake subcommand - it's used in conjunction with
           // AppSettings:AllowExternalSubcommand to treat it as an
           // entry point script
-          SubCommand::with_name("<script>").about("Script to run"),
+          SubCommand::with_name("[SCRIPT]").about("Script to run"),
         ),
     ).subcommand(
     SubCommand::with_name("xeval")
@@ -376,13 +382,19 @@ To change installation directory use -d/--dir flag
           // this is a fake subcommand - it's used in conjunction with
           // AppSettings:AllowExternalSubcommand to treat it as an
           // entry point script
-          SubCommand::with_name("<script>").about("Script URL"),
+          SubCommand::with_name("[SCRIPT]").about("Script URL"),
         ),
     ).subcommand(
+      SubCommand::with_name("completions")
+        .settings(&[
+          AppSettings::DisableHelpSubcommand,
+          AppSettings::DisableVersion,
+        ]).about("Generate completions for shell. Available shells: "),
+  ).subcommand(
       // this is a fake subcommand - it's used in conjunction with
       // AppSettings:AllowExternalSubcommand to treat it as an
       // entry point script
-      SubCommand::with_name("<script>").about("Script to run"),
+      SubCommand::with_name("[SCRIPT]").about("Script to run"),
     )
 }
 
@@ -589,6 +601,14 @@ pub fn flags_from_vec(
         .unwrap_or_else(|| get_default_bundle_filename(source_file));
       argv.extend(vec![source_file.to_string(), out_file.to_string()]);
       DenoSubcommand::Bundle
+    }
+    ("completions", Some(_completions_match)) => {
+      create_cli_app().gen_completions_to(
+        "deno",
+        Shell::Bash,
+        &mut std::io::stdout(),
+      );
+      std::process::exit(1);
     }
     ("eval", Some(eval_match)) => {
       flags.allow_net = true;
