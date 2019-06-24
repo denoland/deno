@@ -42,6 +42,7 @@ use futures::Sink;
 use futures::Stream;
 use hyper;
 use hyper::rt::Future;
+use log;
 use rand::{thread_rng, Rng};
 use remove_dir_all::remove_dir_all;
 use std;
@@ -362,6 +363,11 @@ fn op_start(
     .clone()
     .map(|m| builder.create_string(&m));
 
+  let debug_flag = state
+    .flags
+    .log_level
+    .map_or(false, |l| l == log::Level::Debug);
+
   let inner = msg::StartRes::create(
     &mut builder,
     &msg::StartResArgs {
@@ -369,7 +375,7 @@ fn op_start(
       pid: std::process::id(),
       argv: Some(argv_off),
       main_module,
-      debug_flag: state.flags.log_debug,
+      debug_flag,
       version_flag: state.flags.version,
       v8_version: Some(v8_version_off),
       deno_version: Some(deno_version_off),
@@ -1793,9 +1799,27 @@ fn op_run(
     c.env(entry.key().unwrap(), entry.value().unwrap());
   });
 
-  c.stdin(subprocess_stdio_map(inner.stdin()));
-  c.stdout(subprocess_stdio_map(inner.stdout()));
-  c.stderr(subprocess_stdio_map(inner.stderr()));
+  // TODO: make this work with other resources, eg. sockets
+  let stdin_rid = inner.stdin_rid();
+  if stdin_rid > 0 {
+    c.stdin(resources::get_file(stdin_rid)?);
+  } else {
+    c.stdin(subprocess_stdio_map(inner.stdin()));
+  }
+
+  let stdout_rid = inner.stdout_rid();
+  if stdout_rid > 0 {
+    c.stdout(resources::get_file(stdout_rid)?);
+  } else {
+    c.stdout(subprocess_stdio_map(inner.stdout()));
+  }
+
+  let stderr_rid = inner.stderr_rid();
+  if stderr_rid > 0 {
+    c.stderr(resources::get_file(stderr_rid)?);
+  } else {
+    c.stderr(subprocess_stdio_map(inner.stderr()));
+  }
 
   // Spawn the command.
   let child = c.spawn_async().map_err(DenoError::from)?;

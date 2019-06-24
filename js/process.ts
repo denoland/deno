@@ -28,9 +28,9 @@ export interface RunOptions {
   args: string[];
   cwd?: string;
   env?: { [key: string]: string };
-  stdout?: ProcessStdio;
-  stderr?: ProcessStdio;
-  stdin?: ProcessStdio;
+  stdout?: ProcessStdio | number;
+  stderr?: ProcessStdio | number;
+  stdin?: ProcessStdio | number;
 }
 
 async function runStatus(rid: number): Promise<ProcessStatus> {
@@ -149,6 +149,10 @@ function stdioMap(s: ProcessStdio): msg.ProcessStdio {
   }
 }
 
+function isRid(arg: unknown): arg is number {
+  return !isNaN(arg as number);
+}
+
 /**
  * Spawns new subprocess.
  *
@@ -159,7 +163,8 @@ function stdioMap(s: ProcessStdio): msg.ProcessStdio {
  * mapping.
  *
  * By default subprocess inherits stdio of parent process. To change that
- * `opt.stdout`, `opt.stderr` and `opt.stdin` can be specified independently.
+ * `opt.stdout`, `opt.stderr` and `opt.stdin` can be specified independently -
+ * they can be set to either `ProcessStdio` or `rid` of open file.
  */
 export function run(opt: RunOptions): Process {
   const builder = flatbuffers.createBuilder();
@@ -177,14 +182,49 @@ export function run(opt: RunOptions): Process {
     }
   }
   const envOffset = msg.Run.createEnvVector(builder, kvOffset);
+
+  let stdInOffset = stdioMap("inherit");
+  let stdOutOffset = stdioMap("inherit");
+  let stdErrOffset = stdioMap("inherit");
+  let stdinRidOffset = 0;
+  let stdoutRidOffset = 0;
+  let stderrRidOffset = 0;
+
+  if (opt.stdin) {
+    if (isRid(opt.stdin)) {
+      stdinRidOffset = opt.stdin;
+    } else {
+      stdInOffset = stdioMap(opt.stdin);
+    }
+  }
+
+  if (opt.stdout) {
+    if (isRid(opt.stdout)) {
+      stdoutRidOffset = opt.stdout;
+    } else {
+      stdOutOffset = stdioMap(opt.stdout);
+    }
+  }
+
+  if (opt.stderr) {
+    if (isRid(opt.stderr)) {
+      stderrRidOffset = opt.stderr;
+    } else {
+      stdErrOffset = stdioMap(opt.stderr);
+    }
+  }
+
   const inner = msg.Run.createRun(
     builder,
     argsOffset,
     cwdOffset,
     envOffset,
-    opt.stdin ? stdioMap(opt.stdin) : stdioMap("inherit"),
-    opt.stdout ? stdioMap(opt.stdout) : stdioMap("inherit"),
-    opt.stderr ? stdioMap(opt.stderr) : stdioMap("inherit")
+    stdInOffset,
+    stdOutOffset,
+    stdErrOffset,
+    stdinRidOffset,
+    stdoutRidOffset,
+    stderrRidOffset
   );
   const baseRes = dispatch.sendSync(builder, msg.Any.Run, inner);
   assert(baseRes != null);
