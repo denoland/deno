@@ -13,7 +13,7 @@ object is passed, the `name` property is used to identify the test. If the asser
 
 Asserts are exposed in `testing/asserts.ts` module.
 
-- `equal()` - Deep comparision function, where `actual` and `expected` are
+- `equal()` - Deep comparison function, where `actual` and `expected` are
   compared deeply, and if they vary, `equal` returns `false`.
 - `assert()` - Expects a boolean value, throws if the value is `false`.
 - `assertEquals()` - Uses the `equal` comparison and throws if the `actual` and
