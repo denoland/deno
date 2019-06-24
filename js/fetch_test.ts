@@ -99,6 +99,32 @@ testPerm(
   }
 );
 
+testPerm({ net: true }, async function fetchWithRedirection(): Promise<void> {
+  const response = await fetch("http://localhost:4546/"); // will redirect to http://localhost:4545/
+  assertEquals(response.status, 200);
+  const body = await response.text();
+  assert(body.includes("<title>Directory listing for /</title>"));
+});
+
+testPerm({ net: true }, async function fetchWithRelativeRedirection(): Promise<
+  void
+> {
+  const response = await fetch("http://localhost:4545/tests"); // will redirect to /tests/
+  assertEquals(response.status, 200);
+  const body = await response.text();
+  assert(body.includes("<title>Directory listing for /tests/</title>"));
+});
+
+// The feature below is not implemented, but the test should work after implementation
+/*
+testPerm({ net: true }, async function fetchWithInfRedirection(): Promise<
+  void
+> {
+  const response = await fetch("http://localhost:4549/tests"); // will redirect to the same place
+  assertEquals(response.status, 0); // network error
+});
+*/
+
 testPerm({ net: true }, async function fetchInitStringBody(): Promise<void> {
   const data = "Hello World";
   const response = await fetch("http://localhost:4545/echo_server", {
