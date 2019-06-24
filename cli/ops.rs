@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use atty;
 use crate::ansi;
-use crate::deno_dir::resolve_path;
+use crate::deno_dir::resolve_from_cwd;
 use crate::deno_error;
 use crate::deno_error::err_check;
 use crate::deno_error::DenoError;
@@ -464,6 +464,7 @@ fn op_cache(
   assert!(data.is_none());
   let inner = base.inner_as_cache().unwrap();
   let extension = inner.extension().unwrap();
+  // TODO: rename to something with 'url'
   let module_id = inner.module_id().unwrap();
   let contents = inner.contents().unwrap();
 
@@ -474,13 +475,13 @@ fn op_cache(
   // cache path. In the future, checksums will not be used in the cache
   // filenames and this requirement can be removed. See
   // https://github.com/denoland/deno/issues/2057
-  let module_meta_data = state
-    .dir
-    .fetch_module_meta_data(module_id, ".", true, true)?;
+  let module_meta_data =
+    state.dir.fetch_module_meta_data(module_id, true, true)?;
 
-  let (js_cache_path, source_map_path) = state
-    .dir
-    .cache_path(&module_meta_data.filename, &module_meta_data.source_code);
+  let (js_cache_path, source_map_path) = state.dir.cache_path(
+    &PathBuf::from(&module_meta_data.filename),
+    &module_meta_data.source_code,
+  );
 
   if extension == ".map" {
     debug!("cache {:?}", source_map_path);
@@ -520,7 +521,6 @@ fn op_fetch_module_meta_data(
     .dir
     .fetch_module_meta_data_async(
       &resolved_specifier.to_string(),
-      referrer,
       use_cache,
       no_fetch,
     ).and_then(move |out| {
@@ -528,7 +528,7 @@ fn op_fetch_module_meta_data(
       let data_off = builder.create_vector(out.source_code.as_slice());
       let msg_args = msg::FetchModuleMetaDataResArgs {
         module_name: Some(builder.create_string(&out.module_name)),
-        filename: Some(builder.create_string(&out.filename)),
+        filename: Some(builder.create_string(&out.filename.to_str().unwrap())),
         media_type: out.media_type,
         data: Some(data_off),
       };
@@ -852,7 +852,7 @@ fn op_mkdir(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_mkdir().unwrap();
-  let (path, path_) = resolve_path(inner.path().unwrap())?;
+  let (path, path_) = resolve_from_cwd(inner.path().unwrap())?;
   let recursive = inner.recursive();
   let mode = inner.mode();
 
@@ -873,7 +873,7 @@ fn op_chmod(
   assert!(data.is_none());
   let inner = base.inner_as_chmod().unwrap();
   let _mode = inner.mode();
-  let (path, path_) = resolve_path(inner.path().unwrap())?;
+  let (path, path_) = resolve_from_cwd(inner.path().unwrap())?;
 
   state.check_write(&path_)?;
 
@@ -921,7 +921,7 @@ fn op_open(
   assert!(data.is_none());
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_open().unwrap();
-  let (filename, filename_) = resolve_path(inner.filename().unwrap())?;
+  let (filename, filename_) = resolve_from_cwd(inner.filename().unwrap())?;
   let mode = inner.mode().unwrap();
 
   let mut open_options = tokio::fs::OpenOptions::new();
@@ -1173,7 +1173,7 @@ fn op_remove(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_remove().unwrap();
-  let (path, path_) = resolve_path(inner.path().unwrap())?;
+  let (path, path_) = resolve_from_cwd(inner.path().unwrap())?;
   let recursive = inner.recursive();
 
   state.check_write(&path_)?;
@@ -1199,8 +1199,8 @@ fn op_copy_file(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_copy_file().unwrap();
-  let (from, from_) = resolve_path(inner.from().unwrap())?;
-  let (to, to_) = resolve_path(inner.to().unwrap())?;
+  let (from, from_) = resolve_from_cwd(inner.from().unwrap())?;
+  let (to, to_) = resolve_from_cwd(inner.to().unwrap())?;
 
   state.check_read(&from_)?;
   state.check_write(&to_)?;
@@ -1274,7 +1274,7 @@ fn op_stat(
   assert!(data.is_none());
   let inner = base.inner_as_stat().unwrap();
   let cmd_id = base.cmd_id();
-  let (filename, filename_) = resolve_path(inner.filename().unwrap())?;
+  let (filename, filename_) = resolve_from_cwd(inner.filename().unwrap())?;
   let lstat = inner.lstat();
 
   state.check_read(&filename_)?;
@@ -1323,7 +1323,7 @@ fn op_read_dir(
   assert!(data.is_none());
   let inner = base.inner_as_read_dir().unwrap();
   let cmd_id = base.cmd_id();
-  let (path, path_) = resolve_path(inner.path().unwrap())?;
+  let (path, path_) = resolve_from_cwd(inner.path().unwrap())?;
 
   state.check_read(&path_)?;
 
@@ -1379,8 +1379,8 @@ fn op_rename(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_rename().unwrap();
-  let (oldpath, _) = resolve_path(inner.oldpath().unwrap())?;
-  let (newpath, newpath_) = resolve_path(inner.newpath().unwrap())?;
+  let (oldpath, _) = resolve_from_cwd(inner.oldpath().unwrap())?;
+  let (newpath, newpath_) = resolve_from_cwd(inner.newpath().unwrap())?;
 
   state.check_write(&newpath_)?;
 
@@ -1398,8 +1398,8 @@ fn op_link(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_link().unwrap();
-  let (oldname, _) = resolve_path(inner.oldname().unwrap())?;
-  let (newname, newname_) = resolve_path(inner.newname().unwrap())?;
+  let (oldname, _) = resolve_from_cwd(inner.oldname().unwrap())?;
+  let (newname, newname_) = resolve_from_cwd(inner.newname().unwrap())?;
 
   state.check_write(&newname_)?;
 
@@ -1417,8 +1417,8 @@ fn op_symlink(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_symlink().unwrap();
-  let (oldname, _) = resolve_path(inner.oldname().unwrap())?;
-  let (newname, newname_) = resolve_path(inner.newname().unwrap())?;
+  let (oldname, _) = resolve_from_cwd(inner.oldname().unwrap())?;
+  let (newname, newname_) = resolve_from_cwd(inner.newname().unwrap())?;
 
   state.check_write(&newname_)?;
   // TODO Use type for Windows.
@@ -1444,7 +1444,7 @@ fn op_read_link(
   assert!(data.is_none());
   let inner = base.inner_as_readlink().unwrap();
   let cmd_id = base.cmd_id();
-  let (name, name_) = resolve_path(inner.name().unwrap())?;
+  let (name, name_) = resolve_from_cwd(inner.name().unwrap())?;
 
   state.check_read(&name_)?;
 
@@ -1546,7 +1546,7 @@ fn op_truncate(
   assert!(data.is_none());
 
   let inner = base.inner_as_truncate().unwrap();
-  let (filename, filename_) = resolve_path(inner.name().unwrap())?;
+  let (filename, filename_) = resolve_from_cwd(inner.name().unwrap())?;
   let len = inner.len();
 
   state.check_write(&filename_)?;

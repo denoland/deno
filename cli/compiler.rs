@@ -11,6 +11,7 @@ use crate::worker::Worker;
 use deno::Buf;
 use futures::Future;
 use futures::Stream;
+use std::path::PathBuf;
 use std::str;
 use std::sync::atomic::Ordering;
 
@@ -20,12 +21,12 @@ use std::sync::atomic::Ordering;
 pub struct ModuleMetaData {
   pub module_name: String,
   pub module_redirect_source_name: Option<String>, // source of redirect
-  pub filename: String,
+  pub filename: PathBuf,
   pub media_type: msg::MediaType,
   pub source_code: Vec<u8>,
-  pub maybe_output_code_filename: Option<String>,
+  pub maybe_output_code_filename: Option<PathBuf>,
   pub maybe_output_code: Option<Vec<u8>>,
-  pub maybe_source_map_filename: Option<String>,
+  pub maybe_source_map_filename: Option<PathBuf>,
   pub maybe_source_map: Option<Vec<u8>>,
 }
 
@@ -214,7 +215,6 @@ pub fn compile_async(
     }).and_then(move |_| {
       state.dir.fetch_module_meta_data_async(
         &module_name,
-        ".",
         true,
         true,
       ).map_err(|e| {
@@ -256,7 +256,7 @@ mod tests {
       let mut out = ModuleMetaData {
         module_name,
         module_redirect_source_name: None,
-        filename: "/tests/002_hello.ts".to_owned(),
+        filename: PathBuf::from("/tests/002_hello.ts"),
         media_type: msg::MediaType::TypeScript,
         source_code: include_bytes!("../tests/002_hello.ts").to_vec(),
         maybe_output_code_filename: None,
