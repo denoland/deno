@@ -9,6 +9,7 @@ import { assert, log } from "./util";
 import * as os from "./os";
 import { args } from "./deno";
 import { replLoop } from "./repl";
+import { setPrepareStackTrace } from "./error_stack";
 import { xevalMain, XevalFunc } from "./xeval";
 import { setVersions } from "./version";
 import { window } from "./window";
@@ -29,6 +30,8 @@ export default function denoMain(name?: string): void {
     console.log("typescript:", deno.version.typescript);
     os.exit(0);
   }
+
+  setPrepareStackTrace(Error);
 
   const mainModule = startResMsg.mainModule();
   if (mainModule) {

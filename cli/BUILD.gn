@@ -83,6 +83,7 @@ ts_sources = [
   "../js/dispatch_minimal.ts",
   "../js/dom_types.ts",
   "../js/dom_util.ts",
+  "../js/error_stack.ts",
   "../js/errors.ts",
   "../js/event.ts",
   "../js/event_target.ts",
