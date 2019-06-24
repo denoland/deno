@@ -392,7 +392,7 @@ To change installation directory use -d/--dir flag
 fn resolve_paths(paths: Vec<String>) -> Vec<String> {
   let mut out: Vec<String> = vec![];
   for pathstr in paths.iter() {
-    let result = deno_dir::resolve_path(pathstr);
+    let result = deno_dir::resolve_from_cwd(pathstr);
     if result.is_err() {
       eprintln!("Unrecognized path to whitelist: {}", pathstr);
       continue;
@@ -1059,7 +1059,7 @@ mod tests {
     use tempfile::TempDir;
     let temp_dir = TempDir::new().expect("tempdir fail");
     let (_, temp_dir_path) =
-      deno_dir::resolve_path(temp_dir.path().to_str().unwrap()).unwrap();
+      deno_dir::resolve_from_cwd(temp_dir.path().to_str().unwrap()).unwrap();
 
     let (flags, subcommand, argv) = flags_from_vec(svec![
       "deno",
@@ -1084,7 +1084,7 @@ mod tests {
     use tempfile::TempDir;
     let temp_dir = TempDir::new().expect("tempdir fail");
     let (_, temp_dir_path) =
-      deno_dir::resolve_path(temp_dir.path().to_str().unwrap()).unwrap();
+      deno_dir::resolve_from_cwd(temp_dir.path().to_str().unwrap()).unwrap();
 
     let (flags, subcommand, argv) = flags_from_vec(svec![
       "deno",
