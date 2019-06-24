@@ -552,7 +552,7 @@ mod tests {
   }
 
   #[test]
-  fn check_net() {
+  fn test_check_net() {
     let perms = DenoPermissions::from_flags(&DenoFlags {
       net_whitelist: svec![
         "localhost",
@@ -565,195 +565,73 @@ mod tests {
       ..Default::default()
     });
 
-    // Any protocol + port for localhost should be ok, since we don't specify
-    assert!(
-      perms
-        .check_net_url(url::Url::parse("http://localhost").unwrap())
-        .is_ok()
-    );
-    assert!(
-      perms
-        .check_net_url(url::Url::parse("http://localhost:8080").unwrap())
-        .is_ok()
-    );
-    assert!(
-      perms
-        .check_net_url(url::Url::parse("https://localhost").unwrap())
-        .is_ok()
-    );
-    assert!(
-      perms
-        .check_net_url(url::Url::parse("https://localhost:4443").unwrap())
-        .is_ok()
-    );
-    assert!(
-      perms
-        .check_net_url(url::Url::parse("tcp://localhost:5000").unwrap())
-        .is_ok()
-    );
-    assert!(
-      perms
-        .check_net_url(url::Url::parse("udp://localhost:6000").unwrap())
-        .is_ok()
-    );
-    assert!(perms.check_net("localhost:1234").is_ok());
+    let domain_tests = vec![
+      ("localhost:1234", true),
+      ("deno.land", true),
+      ("deno.land:3000", true),
+      ("deno.lands", false),
+      ("deno.lands:3000", false),
+      ("github.com:3000", true),
+      ("github.com", false),
+      ("github.com:2000", false),
+      ("github.net:3000", false),
+      ("127.0.0.1", true),
+      ("127.0.0.1:3000", true),
+      ("127.0.0.2", false),
+      ("127.0.0.2:3000", false),
+      ("172.16.0.2:8000", true),
+      ("172.16.0.2", false),
+      ("172.16.0.2:6000", false),
+      ("172.16.0.1:8000", false),
+      // Just some random hosts that should err
+      ("somedomain", false),
+      ("192.168.0.1", false),
+    ];
 
-    // Correct domain + any port and protocol should be ok incorrect shouldn't
-    assert!(perms.check_net("deno.land").is_ok());
-    assert!(
-      perms
-        .check_net_url(
-          url::Url::parse("https://deno.land/std/example/welcome.ts").unwrap()
-        ).is_ok()
-    );
-    assert!(perms.check_net("deno.land:3000").is_ok());
-    assert!(
-      perms
-        .check_net_url(
-          url::Url::parse("https://deno.land:3000/std/example/welcome.ts")
-            .unwrap()
-        ).is_ok()
-    );
-    assert!(perms.check_net("deno.lands").is_err());
-    assert!(
-      perms
-        .check_net_url(
-          url::Url::parse("https://deno.lands/std/example/welcome.ts").unwrap()
-        ).is_err()
-    );
-    assert!(perms.check_net("deno.lands:3000").is_err());
-    assert!(
-      perms
-        .check_net_url(
-          url::Url::parse("https://deno.lands:3000/std/example/welcome.ts")
-            .unwrap()
-        ).is_err()
-    );
+    let url_tests = vec![
+      // Any protocol + port for localhost should be ok, since we don't specify
+      ("http://localhost", true),
+      ("https://localhost", true),
+      ("https://localhost:4443", true),
+      ("tcp://localhost:5000", true),
+      ("udp://localhost:6000", true),
+      // Correct domain + any port and protocol should be ok incorrect shouldn't
+      ("https://deno.land/std/example/welcome.ts", true),
+      ("https://deno.land:3000/std/example/welcome.ts", true),
+      ("https://deno.lands/std/example/welcome.ts", false),
+      ("https://deno.lands:3000/std/example/welcome.ts", false),
+      // Correct domain + port should be ok all other combinations should err
+      ("https://github.com:3000/denoland/deno", true),
+      ("https://github.com/denoland/deno", false),
+      ("https://github.com:2000/denoland/deno", false),
+      ("https://github.net:3000/denoland/deno", false),
+      // Correct ipv4 address + any port should be ok others should err
+      ("tcp://127.0.0.1", true),
+      ("https://127.0.0.1", true),
+      ("tcp://127.0.0.1:3000", true),
+      ("https://127.0.0.1:3000", true),
+      ("tcp://127.0.0.2", false),
+      ("https://127.0.0.2", false),
+      ("tcp://127.0.0.2:3000", false),
+      ("https://127.0.0.2:3000", false),
+      // Correct address + port should be ok all other combinations should err
+      ("tcp://172.16.0.2:8000", true),
+      ("https://172.16.0.2:8000", true),
+      ("tcp://172.16.0.2", false),
+      ("https://172.16.0.2", false),
+      ("tcp://172.16.0.2:6000", false),
+      ("https://172.16.0.2:6000", false),
+      ("tcp://172.16.0.1:8000", false),
+      ("https://172.16.0.1:8000", false),
+    ];
 
-    // Correct domain + port should be ok all other combinations should err
-    assert!(perms.check_net("github.com:3000").is_ok());
-    assert!(
-      perms
-        .check_net_url(
-          url::Url::parse("https://github.com:3000/denoland/deno").unwrap()
-        ).is_ok()
-    );
-    assert!(perms.check_net("github.com").is_err());
-    assert!(
-      perms
-        .check_net_url(
-          url::Url::parse("https://github.com/denoland/deno").unwrap()
-        ).is_err()
-    );
-    assert!(perms.check_net("github.com:2000").is_err());
-    assert!(
-      perms
-        .check_net_url(
-          url::Url::parse("https://github.com:2000/denoland/deno").unwrap()
-        ).is_err()
-    );
-    assert!(perms.check_net("github.net:3000").is_err());
-    assert!(
-      perms
-        .check_net_url(
-          url::Url::parse("https://github.net:3000/denoland/deno").unwrap()
-        ).is_err()
-    );
+    for (url_str, is_ok) in url_tests.iter() {
+      let u = url::Url::parse(url_str).unwrap();
+      assert_eq!(*is_ok, perms.check_net_url(u).is_ok());
+    }
 
-    // Correct ipv4 address + any port should be ok others should err
-    assert!(perms.check_net("127.0.0.1").is_ok());
-    assert!(
-      perms
-        .check_net_url(url::Url::parse("tcp://127.0.0.1").unwrap())
-        .is_ok()
-    );
-    assert!(
-      perms
-        .check_net_url(url::Url::parse("https://127.0.0.1").unwrap())
-        .is_ok()
-    );
-    assert!(perms.check_net("127.0.0.1:3000").is_ok());
-    assert!(
-      perms
-        .check_net_url(url::Url::parse("tcp://127.0.0.1:3000").unwrap())
-        .is_ok()
-    );
-    assert!(
-      perms
-        .check_net_url(url::Url::parse("https://127.0.0.1:3000").unwrap())
-        .is_ok()
-    );
-    assert!(perms.check_net("127.0.0.2").is_err());
-    assert!(
-      perms
-        .check_net_url(url::Url::parse("tcp://127.0.0.2").unwrap())
-        .is_err()
-    );
-    assert!(
-      perms
-        .check_net_url(url::Url::parse("https://127.0.0.2").unwrap())
-        .is_err()
-    );
-    assert!(perms.check_net("127.0.0.2:3000").is_err());
-    assert!(
-      perms
-        .check_net_url(url::Url::parse("tcp://127.0.0.2:3000").unwrap())
-        .is_err()
-    );
-    assert!(
-      perms
-        .check_net_url(url::Url::parse("https://127.0.0.2:3000").unwrap())
-        .is_err()
-    );
-
-    // Correct address + port should be ok all other combinations should err
-    assert!(perms.check_net("172.16.0.2:8000").is_ok());
-    assert!(
-      perms
-        .check_net_url(url::Url::parse("tcp://172.16.0.2:8000").unwrap())
-        .is_ok()
-    );
-    assert!(
-      perms
-        .check_net_url(url::Url::parse("https://172.16.0.2:8000").unwrap())
-        .is_ok()
-    );
-    assert!(perms.check_net("172.16.0.2").is_err());
-    assert!(
-      perms
-        .check_net_url(url::Url::parse("tcp://172.16.0.2").unwrap())
-        .is_err()
-    );
-    assert!(
-      perms
-        .check_net_url(url::Url::parse("https://172.16.0.2").unwrap())
-        .is_err()
-    );
-    assert!(perms.check_net("172.16.0.2:6000").is_err());
-    assert!(
-      perms
-        .check_net_url(url::Url::parse("tcp://172.16.0.2:6000").unwrap())
-        .is_err()
-    );
-    assert!(
-      perms
-        .check_net_url(url::Url::parse("https://172.16.0.2:6000").unwrap())
-        .is_err()
-    );
-    assert!(perms.check_net("172.16.0.1:8000").is_err());
-    assert!(
-      perms
-        .check_net_url(url::Url::parse("tcp://172.16.0.1:8000").unwrap())
-        .is_err()
-    );
-    assert!(
-      perms
-        .check_net_url(url::Url::parse("https://172.16.0.1:8000").unwrap())
-        .is_err()
-    );
-
-    // Just some random hosts that should err
-    assert!(perms.check_net("somedomain").is_err());
-    assert!(perms.check_net("192.168.0.1").is_err());
+    for (domain, is_ok) in domain_tests.iter() {
+      assert_eq!(*is_ok, perms.check_net(domain).is_ok());
+    }
   }
 }
