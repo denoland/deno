@@ -622,13 +622,14 @@ fn filter_shebang(bytes: Vec<u8>) -> Vec<u8> {
   }
 }
 
-fn save_code_and_headers(
+/// Save source code and related headers for given module
+fn save_module_code_and_headers(
   filename: &str,
   module_name: &str,
   source: &str,
   maybe_content_type: Option<String>,
   maybe_initial_filename: Option<String>,
-) -> Result<(), DenoError> {
+) -> DenoResult<()> {
   let p = PathBuf::from(filename);
   match p.parent() {
     Some(ref parent) => fs::create_dir_all(parent),
@@ -702,7 +703,7 @@ fn fetch_remote_source_async(
           FetchOnceResult::Redirect(url) => {
             // If redirects, update module_name and filename for next looped call.
             let (new_module_name, new_filename) = dir
-              .resolve_module(&(url.to_string()), ".")?;
+              .resolve_module(&url.to_string(), ".")?;
 
             if maybe_initial_module_name.is_none() {
               maybe_initial_module_name = Some(module_name.clone());
@@ -720,7 +721,7 @@ fn fetch_remote_source_async(
           }
           FetchOnceResult::Code(source, maybe_content_type) => {
             // We land on the code.
-            save_code_and_headers(
+            save_module_code_and_headers(
               &filename.clone(),
               &module_name.clone(),
               &source,
@@ -982,24 +983,16 @@ mod tests {
   use super::*;
   use tempfile::TempDir;
 
-  fn test_setup() -> (TempDir, DenoDir) {
-    let temp_dir = TempDir::new().expect("tempdir fail");
+  fn setup_deno_dir(dir_path: &Path) -> DenoDir {
     let config = Some(b"{}".to_vec());
-    let deno_dir = DenoDir::new(
-      Some(temp_dir.path().to_path_buf()),
-      &config,
-      Progress::new(),
-    ).expect("setup fail");
-    (temp_dir, deno_dir)
+    DenoDir::new(Some(dir_path.to_path_buf()), &config, Progress::new())
+      .expect("setup fail")
   }
 
-  fn setup_deno_dir(temp_dir: TempDir) -> DenoDir {
-    let config = Some(b"{}".to_vec());
-    DenoDir::new(
-      Some(temp_dir.path().to_path_buf()),
-      &config,
-      Progress::new(),
-    ).expect("setup fail")
+  fn test_setup() -> (TempDir, DenoDir) {
+    let temp_dir = TempDir::new().expect("tempdir fail");
+    let deno_dir = setup_deno_dir(temp_dir.path());
+    (temp_dir, deno_dir)
   }
   // The `add_root` macro prepends "C:" to a string if on windows; on posix
   // systems it returns the input string untouched. This is necessary because
@@ -1224,7 +1217,7 @@ mod tests {
 
       // let's create fresh instance of DenoDir (simulating another freshh Deno process)
       // and don't use cache
-      let deno_dir = setup_deno_dir(temp_dir);
+      let deno_dir = setup_deno_dir(temp_dir.path());
       let result4 =
         get_source_code(&deno_dir, module_name, &filename, false, false);
       assert!(result4.is_ok());
@@ -1284,7 +1277,7 @@ mod tests {
 
       // let's create fresh instance of DenoDir (simulating another freshh Deno process)
       // and don't use cache
-      let deno_dir = setup_deno_dir(temp_dir);
+      let deno_dir = setup_deno_dir(temp_dir.path());
       let result3 =
         get_source_code(&deno_dir, module_name, &filename, false, false);
       assert!(result3.is_ok());
