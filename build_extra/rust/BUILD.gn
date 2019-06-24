@@ -1480,6 +1480,19 @@ rust_rlib("termcolor") {
   }
 }
 
+rust_rlib("fwdansi") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/fwdansi-1.0.1/src/lib.rs"
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+  extern_rlib = [
+    "memchr",
+    "termcolor",
+  ]
+}
+
 rust_rlib("textwrap") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/textwrap-0.11.0/src/lib.rs"
