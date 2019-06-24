@@ -165,7 +165,7 @@ fn create_worker_and_state(
   let shell = Arc::new(Mutex::new(Shell::new()));
   let progress = Progress::new();
   progress.set_callback(move |_done, _completed, _total, status, msg| {
-    if status.len() > 0 {
+    if status.is_empty() {
       let mut s = shell.lock().unwrap();
       s.status(status, msg).expect("cargo_shell problem");
     }

@@ -499,7 +499,7 @@ fn check_path_white_list(
 
 #[cfg(test)]
 mod tests {
-  #![allow(clippy::cyclomatic_complexity)]
+  #![allow(clippy::cognitive_complexity)]
   use super::*;
 
   // Creates vector of strings, Vec<String>
