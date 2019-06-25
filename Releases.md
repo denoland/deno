@@ -6,6 +6,35 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.10.0 / 2019.06.25
+
+In deno:
+
+- feat: improve module download progress (#2576)
+- feat: improve 'deno install' (#2551)
+- feat: log permission access with -L=info (#2518)
+- feat: redirect process stdio to file (#2554)
+- fix: add encodeInto to TextEncoder (#2558)
+- fix: clearTimeout should convert to number (#2539)
+- fix: clearTimeout.name / clearInterval.name (#2540)
+- fix: event `isTrusted` is enumerable (#2543)
+- fix: fetch() body now async iterable (#2563)
+- fix: fetch() now handles redirects (#2561)
+- fix: prevent multiple downloads of modules (#2477)
+- fix: silent failure of WebAssembly.instantiate() (#2548)
+- fix: urlSearchParams custom symbol iterator (#2537)
+
+In deno_std
+
+- feat(testing): Pretty output + Silent mode (denoland/deno_std#314)
+- feat: Add os/userHomeDir (denoland/deno_std#521)
+- feat: add catjson example (denoland/deno_std#517)
+- feat: add encoding/hex module (denoland/deno_std#434)
+- feat: improve installer (denoland/deno_std#512, denoland/deno_std#510,
+  denoland/deno_std#499)
+- fix: bundle/run handles Deno.args better. (denoland/deno_std#514)
+- fix: file server should order filenames (denoland/deno_std#511)
+
 ### v0.9.0 / 2019.06.15
 
 In deno:
