@@ -58,9 +58,18 @@ impl ModuleSpecifier {
     }
 
     // fallback to relative file path
+    // HACK: `Url::from_directory_path` is used here because it normalizes the path.
+    // Joining `/dev/deno/" with "./tests" using `PathBuf` yields `/deno/dev/./tests/`.
+    // On the other hand joining `/dev/deno/" with "./tests" using `Url` yields "/dev/deno/tests"
+    // - and that's what we want.
+    // There exists similar method on `PathBuf` - `PathBuf.canonicalize`, but the problem
+    // is `canonicalize` resolves symlinks and we don't want that.
+    // We just want o normalize the path...
+    let specifier_path = PathBuf::from(specifier);
     let cwd = std::env::current_dir().unwrap();
-    let base = Url::from_directory_path(cwd).unwrap();
-    let url = base.join(specifier)?;
+    let path = cwd.join(specifier_path);
+    let url =
+      Url::from_file_path(path).expect("PathBuf should be parseable URL");
     Ok(ModuleSpecifier(url))
   }
 
@@ -138,7 +147,7 @@ mod tests {
       "file://{}{}",
       cwd_string.as_str(),
       "tests/006_url_imports.ts"
-    );
+    ).replace("\\", "/");
 
     if cfg!(target_os = "windows") {
       assert_eq!(
