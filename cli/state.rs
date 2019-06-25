@@ -126,11 +126,8 @@ pub fn fetch_module_meta_data_and_maybe_compile_async(
 
   state_
     .dir
-    .fetch_module_meta_data_async(
-      &module_specifier.to_string(),
-      use_cache,
-      no_fetch,
-    ).and_then(move |out| {
+    .fetch_module_meta_data_async(&module_specifier, use_cache, no_fetch)
+    .and_then(move |out| {
       if out.media_type == msg::MediaType::TypeScript
         && !out.has_output_code_and_source_map()
       {

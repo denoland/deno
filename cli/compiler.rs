@@ -9,6 +9,7 @@ use crate::state::*;
 use crate::tokio_util;
 use crate::worker::Worker;
 use deno::Buf;
+use deno::ModuleSpecifier;
 use futures::Future;
 use futures::Stream;
 use std::path::PathBuf;
@@ -17,6 +18,7 @@ use std::sync::atomic::Ordering;
 
 // This corresponds to JS ModuleMetaData.
 // TODO Rename one or the other so they correspond.
+// TODO(bartlomieju): change `*_name` to `*_url` and use Url type
 #[derive(Debug, Clone)]
 pub struct ModuleMetaData {
   pub module_name: String,
@@ -203,6 +205,8 @@ pub fn compile_async(
     .and_then(move |maybe_msg: Option<Buf>| {
       debug!("Received message from worker");
 
+      // TODO: here TS compiler emitted the files to disc and we should signal ModuleMetaData
+      //  cache that source code is available
       if let Some(msg) = maybe_msg {
         let json_str = std::str::from_utf8(&msg).unwrap();
         debug!("Message: {}", json_str);
@@ -213,8 +217,10 @@ pub fn compile_async(
 
       Ok(())
     }).and_then(move |_| {
+      let module_specifier = ModuleSpecifier::resolve_url(&module_name)
+        .expect("Should be valid module specifier");
       state.dir.fetch_module_meta_data_async(
-        &module_name,
+        &module_specifier,
         true,
         true,
       ).map_err(|e| {

@@ -180,6 +180,41 @@ mod tests {
   fn test_resolve_import() {
     let tests = vec![
       (
+        "./005_more_imports.ts",
+        "http://deno.land/core/tests/006_url_imports.ts",
+        "http://deno.land/core/tests/005_more_imports.ts",
+      ),
+      (
+        "../005_more_imports.ts",
+        "http://deno.land/core/tests/006_url_imports.ts",
+        "http://deno.land/core/005_more_imports.ts",
+      ),
+      (
+        "http://deno.land/core/tests/005_more_imports.ts",
+        "http://deno.land/core/tests/006_url_imports.ts",
+        "http://deno.land/core/tests/005_more_imports.ts",
+      ),
+      (
+        "data:text/javascript,export default 'grapes';",
+        "http://deno.land/core/tests/006_url_imports.ts",
+        "data:text/javascript,export default 'grapes';",
+      ),
+      (
+        "blob:https://whatwg.org/d0360e2f-caee-469f-9a2f-87d5b0456f6f",
+        "http://deno.land/core/tests/006_url_imports.ts",
+        "blob:https://whatwg.org/d0360e2f-caee-469f-9a2f-87d5b0456f6f",
+      ),
+      (
+        "javascript:export default 'artichokes';",
+        "http://deno.land/core/tests/006_url_imports.ts",
+        "javascript:export default 'artichokes';",
+      ),
+      (
+        "data:text/plain,export default 'kale';",
+        "http://deno.land/core/tests/006_url_imports.ts",
+        "data:text/plain,export default 'kale';",
+      ),
+      (
         "/dev/core/tests/005_more_imports.ts",
         "file:///home/yeti",
         "file:///dev/core/tests/005_more_imports.ts",
@@ -223,6 +258,31 @@ mod tests {
 
     let tests = vec![
       (
+        "005_more_imports.ts",
+        "http://deno.land/core/tests/006_url_imports.ts",
+        ImportPrefixMissing,
+      ),
+      (
+        ".tomato",
+        "http://deno.land/core/tests/006_url_imports.ts",
+        ImportPrefixMissing,
+      ),
+      (
+        "..zucchini.mjs",
+        "http://deno.land/core/tests/006_url_imports.ts",
+        ImportPrefixMissing,
+      ),
+      (
+        r".\yam.es",
+        "http://deno.land/core/tests/006_url_imports.ts",
+        ImportPrefixMissing,
+      ),
+      (
+        r"..\yam.es",
+        "http://deno.land/core/tests/006_url_imports.ts",
+        ImportPrefixMissing,
+      ),
+      (
         "https://eggplant:b/c",
         "http://deno.land/core/tests/006_url_imports.ts",
         InvalidUrl(InvalidPort),
@@ -248,7 +308,16 @@ mod tests {
   #[test]
   fn test_resolve_url_or_path() {
     // Absolute URL.
-    let mut tests: Vec<(&str, String)> = vec![];
+    let mut tests: Vec<(&str, String)> = vec![
+      (
+        "http://deno.land/core/tests/006_url_imports.ts",
+        "http://deno.land/core/tests/006_url_imports.ts".to_string(),
+      ),
+      (
+        "https://deno.land/core/tests/006_url_imports.ts",
+        "https://deno.land/core/tests/006_url_imports.ts".to_string(),
+      ),
+    ];
 
     // The local path tests assume that the cwd is the deno repo root.
     let cwd = current_dir().unwrap();

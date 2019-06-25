@@ -1,4 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+use crate::deno_dir;
 use crate::diagnostics;
 use crate::fmt_errors::JSErrorColor;
 use crate::import_map;
@@ -34,6 +35,7 @@ enum Repr {
   ModuleResolutionErr(ModuleResolutionError),
   Diagnostic(diagnostics::Diagnostic),
   JSError(JSError),
+  DenoDirErr(deno_dir::DenoDirError),
 }
 
 /// Create a new simple DenoError.
@@ -116,6 +118,7 @@ impl DenoError {
       }
       Repr::Diagnostic(ref _err) => ErrorKind::Diagnostic,
       Repr::JSError(ref _err) => ErrorKind::JSError,
+      Repr::DenoDirErr(ref _err) => ErrorKind::DenoDirError,
     }
   }
 
@@ -141,6 +144,7 @@ impl fmt::Display for DenoError {
       Repr::ModuleResolutionErr(ref err) => err.fmt(f),
       Repr::Diagnostic(ref err) => err.fmt(f),
       Repr::JSError(ref err) => JSErrorColor(err).fmt(f),
+      Repr::DenoDirErr(ref err) => err.fmt(f),
     }
   }
 }
@@ -156,6 +160,7 @@ impl std::error::Error for DenoError {
       Repr::ModuleResolutionErr(ref err) => err.description(),
       Repr::Diagnostic(ref err) => &err.items[0].message,
       Repr::JSError(ref err) => &err.description(),
+      Repr::DenoDirErr(ref err) => err.description(),
     }
   }
 
@@ -169,6 +174,7 @@ impl std::error::Error for DenoError {
       Repr::ModuleResolutionErr(ref err) => err.source(),
       Repr::Diagnostic(ref _err) => None,
       Repr::JSError(ref err) => Some(err),
+      Repr::DenoDirErr(ref err) => Some(err),
     }
   }
 }
@@ -256,6 +262,14 @@ impl From<import_map::ImportMapError> for DenoError {
   }
 }
 
+impl From<deno_dir::DenoDirError> for DenoError {
+  fn from(err: deno_dir::DenoDirError) -> Self {
+    Self {
+      repr: Repr::DenoDirErr(err),
+    }
+  }
+}
+
 impl From<ModuleResolutionError> for DenoError {
   fn from(err: ModuleResolutionError) -> Self {
     Self {
@@ -334,6 +348,8 @@ pub fn err_check<R>(r: Result<R, DenoError>) {
 mod tests {
   use super::*;
   use crate::ansi::strip_ansi_codes;
+  use crate::deno_dir::DenoDirError;
+  use crate::deno_dir::DenoDirErrorKind;
   use crate::diagnostics::Diagnostic;
   use crate::diagnostics::DiagnosticCategory;
   use crate::diagnostics::DiagnosticItem;
@@ -450,6 +466,13 @@ mod tests {
     }
   }
 
+  fn deno_dir_error() -> DenoDirError {
+    DenoDirError::new(
+      "a deno dir error".to_string(),
+      DenoDirErrorKind::UnsupportedFetchScheme,
+    )
+  }
+
   #[test]
   fn test_simple_error() {
     let err = new(ErrorKind::NoError, "foo".to_string());
@@ -492,6 +515,13 @@ mod tests {
     let err = DenoError::from(import_map_error());
     assert_eq!(err.kind(), ErrorKind::ImportMapError);
     assert_eq!(err.to_string(), "an import map error");
+  }
+
+  #[test]
+  fn test_deno_dir_error() {
+    let err = DenoError::from(deno_dir_error());
+    assert_eq!(err.kind(), ErrorKind::DenoDirError);
+    assert_eq!(err.to_string(), "a deno dir error\n");
   }
 
   #[test]
