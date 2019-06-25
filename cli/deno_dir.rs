@@ -11,6 +11,7 @@ use crate::progress::Progress;
 use crate::source_maps::SourceMapGetter;
 use crate::tokio_util;
 use crate::version;
+use deno::ModuleSpecifier;
 use dirs;
 use futures::future::{loop_fn, Either, Loop};
 use futures::Future;
@@ -19,16 +20,51 @@ use ring;
 use serde_json;
 use std;
 use std::collections::HashSet;
+use std::fmt;
+use std::fmt::Display;
 use std::fmt::Write;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::result::Result;
 use std::str;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::Mutex;
 use url;
 use url::Url;
+
+// TODO: DenoDirError is temporary solution, should be upgraded during rewrite
+#[derive(Debug, PartialEq)]
+pub enum DenoDirErrorKind {
+  UnsupportedFetchScheme,
+}
+
+#[derive(Debug)]
+pub struct DenoDirError {
+  pub message: String,
+  pub kind: DenoDirErrorKind,
+}
+
+impl DenoDirError {
+  pub fn new(message: String, kind: DenoDirErrorKind) -> Self {
+    DenoDirError { message, kind }
+  }
+}
+
+impl std::error::Error for DenoDirError {
+  fn description(&self) -> &str {
+    &*self.message
+  }
+}
+
+impl Display for DenoDirError {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    writeln!(f, "{}", self.message)
+  }
+}
+
+const SUPPORTED_URL_SCHEMES: [&str; 3] = ["http", "https", "file"];
 
 fn normalize_path(path: &Path) -> PathBuf {
   let s = String::from(path.to_str().unwrap());
@@ -159,23 +195,18 @@ impl DenoDir {
 
   pub fn fetch_module_meta_data_async(
     self: &Self,
-    specifier: &str,
+    specifier: &ModuleSpecifier,
     use_cache: bool,
     no_fetch: bool,
   ) -> impl Future<Item = ModuleMetaData, Error = deno_error::DenoError> {
-    debug!("fetch_module_meta_data. specifier {} ", specifier);
+    let module_url = specifier.to_url();
+    debug!("fetch_module_meta_data. specifier {} ", module_url);
 
-    // TODO: rename specifier?
-    let specifier = specifier.to_string();
-    // TODO: url resolution should happen here
-    // let module_name = ...
-
-    // TODO: this should return only deps filepath for given module URL
-    let result = self.resolve_module(&specifier, ".");
+    let result = self.url_to_deps_path(&module_url);
     if let Err(err) = result {
       return Either::A(futures::future::err(DenoError::from(err)));
     }
-    let (module_name, filepath) = result.unwrap();
+    let deps_filepath = result.unwrap();
 
     let gen = self.gen.clone();
 
@@ -187,8 +218,8 @@ impl DenoDir {
     Either::B(
       get_source_code_async(
         self,
-        module_name.as_str(),
-        filepath,
+        &module_url,
+        deps_filepath,
         use_cache,
         no_fetch,
       ).then(move |result| {
@@ -199,7 +230,7 @@ impl DenoDir {
               // For NotFound, change the message to something better.
               return Err(deno_error::new(
                 ErrorKind::NotFound,
-                format!("Cannot resolve module \"{}\"", specifier),
+                format!("Cannot resolve module \"{}\"", module_url.to_string()),
               ));
             } else {
               return Err(err);
@@ -256,7 +287,7 @@ impl DenoDir {
   /// This function is deprecated.
   pub fn fetch_module_meta_data(
     self: &Self,
-    specifier: &str,
+    specifier: &ModuleSpecifier,
     use_cache: bool,
     no_fetch: bool,
   ) -> Result<ModuleMetaData, deno_error::DenoError> {
@@ -265,104 +296,77 @@ impl DenoDir {
     )
   }
 
-  // Prototype: https://github.com/denoland/deno/blob/golang/os.go#L56-L68
-  // TODO: this method should take deps filepath and return URL for module
-  fn src_file_to_url(self: &Self, filename: &str) -> String {
-    let filename_path = Path::new(filename);
-    if filename_path.starts_with(&self.deps) {
-      let (rest, prefix) = if filename_path.starts_with(&self.deps_https) {
-        let rest = filename_path.strip_prefix(&self.deps_https).unwrap();
-        let prefix = "https://".to_string();
-        (rest, prefix)
-      } else if filename_path.starts_with(&self.deps_http) {
-        let rest = filename_path.strip_prefix(&self.deps_http).unwrap();
-        let prefix = "http://".to_string();
-        (rest, prefix)
-      } else {
-        // TODO(kevinkassimo): change this to support other protocols than http
-        unimplemented!()
-      };
-      // Windows doesn't support ":" in filenames, so we represent port using a
-      // special string.
-      // TODO(ry) This current implementation will break on a URL that has
-      // the default port but contains "_PORT" in the path.
-      let rest = rest.to_str().unwrap().replacen("_PORT", ":", 1);
-      prefix + &rest
-    } else {
-      String::from(filename)
-    }
-  }
-
-  /// Returns (module name, local filename)
-  pub fn resolve_module_url(
+  /// This method returns local file path for given module url that is used
+  /// internally by DenoDir to reference module.
+  ///
+  /// For specifiers starting with `file://` returns the input.
+  ///
+  /// For specifier starting with `http://` and `https://` it returns
+  /// path to DenoDir dependency directory.
+  pub fn url_to_deps_path(
     self: &Self,
-    specifier: &str,
-    referrer: &str,
-  ) -> Result<Url, url::ParseError> {
-    debug!(
-      "pre-resolve_module specifier {} referrer {}",
-      specifier, referrer
-    );
-
-    let specifier = self.src_file_to_url(specifier);
-    let referrer = self.src_file_to_url(referrer);
-
-    debug!(
-      "resolve_module specifier {} referrer {}",
-      specifier, referrer
-    );
-
-    resolve_file_url(specifier, referrer)
-  }
-
-  // TODO(bartlomieju): this method should return only `local filepath`
-  //  it should be called with already resolved URLs
-  // TODO(bartlomieju): rename to url_to_deps_path
-  /// Returns (module name, local filename)
-  pub fn resolve_module(
-    self: &Self,
-    specifier: &str,
-    referrer: &str,
-  ) -> Result<(String, PathBuf), url::ParseError> {
-    let j = self.resolve_module_url(specifier, referrer)?;
-
-    let module_name = j.to_string();
-    let filename = match j.scheme() {
-      "file" => j.to_file_path().unwrap(),
-      "https" => get_cache_filename(self.deps_https.as_path(), &j),
-      "http" => get_cache_filename(self.deps_http.as_path(), &j),
-      // TODO(kevinkassimo): change this to support other protocols than http.
-      _ => unimplemented!(),
+    url: &Url,
+  ) -> Result<PathBuf, DenoDirError> {
+    let filename = match url.scheme() {
+      "file" => url.to_file_path().unwrap(),
+      "https" => get_cache_filename(self.deps_https.as_path(), &url),
+      "http" => get_cache_filename(self.deps_http.as_path(), &url),
+      scheme => {
+        return Err(
+          DenoDirError::new(
+            format!("Unsupported scheme \"{}\" for module \"{}\". Supported schemes: {:#?}", scheme, url, SUPPORTED_URL_SCHEMES),
+            DenoDirErrorKind::UnsupportedFetchScheme
+          )
+        );
+      }
     };
 
-    debug!("module_name: {}, filename: {:?}", module_name, filename);
-    Ok((module_name, normalize_path(&filename)))
+    debug!("deps filename: {:?}", filename);
+    Ok(normalize_path(&filename))
+  }
+
+  // TODO: this method is only used by `SourceMapGetter` impl - can we organize it better?
+  fn try_resolve_and_get_module_meta_data(
+    &self,
+    script_name: &str,
+  ) -> Option<ModuleMetaData> {
+    // if `script_name` can't be resolved to ModuleSpecifier it's probably internal
+    // script (like `gen/cli/bundle/compiler.js`) so we won't be
+    // able to get source for it anyway
+    let maybe_specifier = ModuleSpecifier::resolve_url(script_name);
+
+    if maybe_specifier.is_err() {
+      return None;
+    }
+
+    let module_specifier = maybe_specifier.unwrap();
+    // TODO: this method shouldn't issue `fetch_module_meta_data` - this is done for each line
+    //  in JS stack trace so it's pretty slow - quick idea: store `ModuleMetaData` in one
+    //  structure available to DenoDir so it's not fetched from disk everytime it's needed
+    match self.fetch_module_meta_data(&module_specifier, true, true) {
+      Err(_) => None,
+      Ok(out) => Some(out),
+    }
   }
 }
 
 impl SourceMapGetter for DenoDir {
   fn get_source_map(&self, script_name: &str) -> Option<Vec<u8>> {
-    match self.fetch_module_meta_data(script_name, true, true) {
-      Err(_e) => None,
-      Ok(out) => match out.maybe_source_map {
-        None => None,
-        Some(source_map) => Some(source_map),
-      },
-    }
+    self
+      .try_resolve_and_get_module_meta_data(script_name)
+      .and_then(|out| out.maybe_source_map)
   }
 
   fn get_source_line(&self, script_name: &str, line: usize) -> Option<String> {
-    match self.fetch_module_meta_data(script_name, true, true) {
-      Ok(out) => match str::from_utf8(&out.source_code) {
-        Ok(v) => {
+    self
+      .try_resolve_and_get_module_meta_data(script_name)
+      .and_then(|out| {
+        str::from_utf8(&out.source_code).ok().and_then(|v| {
           let lines: Vec<&str> = v.lines().collect();
           assert!(lines.len() > line);
           Some(lines[line].to_string())
-        }
-        _ => None,
-      },
-      _ => None,
-    }
+        })
+      })
   }
 }
 
@@ -381,14 +385,15 @@ impl SourceMapGetter for DenoDir {
 /// use_cache.
 fn get_source_code_async(
   deno_dir: &DenoDir,
-  module_name: &str,
+  module_url: &Url,
   filepath: PathBuf,
   use_cache: bool,
   no_fetch: bool,
 ) -> impl Future<Item = ModuleMetaData, Error = DenoError> {
   let filename = filepath.to_str().unwrap().to_string();
-  let module_name = module_name.to_string();
-  let is_module_remote = is_remote(&module_name);
+  let module_name = module_url.to_string();
+  let url_scheme = module_url.scheme();
+  let is_module_remote = url_scheme == "http" || url_scheme == "https";
   // We try fetch local. Three cases:
   // 1. Remote downloads are not allowed, we're only allowed to use cache.
   // 2. This is a remote module and we're allowed to use cached downloads.
@@ -403,7 +408,7 @@ fn get_source_code_async(
       module_name, is_module_remote
     );
     // Note that local fetch is done synchronously.
-    match fetch_local_source(deno_dir, &module_name, &filepath, None) {
+    match fetch_local_source(deno_dir, &module_url, &filepath, None) {
       Ok(Some(output)) => {
         debug!("found local source ");
         return Either::A(futures::future::ok(output));
@@ -445,7 +450,7 @@ fn get_source_code_async(
 
   // not cached/local, try remote.
   Either::B(
-    fetch_remote_source_async(deno_dir, &module_name, &filepath).and_then(
+    fetch_remote_source_async(deno_dir, &module_url, &filepath).and_then(
       move |maybe_remote_source| match maybe_remote_source {
         Some(output) => {
           download_cache.mark(&module_name);
@@ -465,17 +470,13 @@ fn get_source_code_async(
 /// This function is deprecated.
 fn get_source_code(
   deno_dir: &DenoDir,
-  module_name: &str,
+  module_url: &Url,
   filepath: PathBuf,
   use_cache: bool,
   no_fetch: bool,
 ) -> DenoResult<ModuleMetaData> {
   tokio_util::block_on(get_source_code_async(
-    deno_dir,
-    module_name,
-    filepath,
-    use_cache,
-    no_fetch,
+    deno_dir, module_url, filepath, use_cache, no_fetch,
   ))
 }
 
@@ -530,20 +531,6 @@ fn source_code_hash(
     write!(&mut out, "{:02x}", byte).unwrap();
   }
   out
-}
-
-// TODO: module_name should be Url
-fn is_remote(module_name: &str) -> bool {
-  module_name.starts_with("http://") || module_name.starts_with("https://")
-}
-
-// TODO: basically parse or resolve from_file_path
-fn parse_local_or_remote(p: &str) -> Result<url::Url, url::ParseError> {
-  if is_remote(p) || p.starts_with("file:") {
-    Url::parse(p)
-  } else {
-    Url::from_file_path(p).map_err(|_err| url::ParseError::IdnaError)
-  }
 }
 
 fn map_file_extension(path: &Path) -> msg::MediaType {
@@ -604,7 +591,7 @@ fn filter_shebang(bytes: Vec<u8>) -> Vec<u8> {
 /// Save source code and related headers for given module
 fn save_module_code_and_headers(
   filepath: PathBuf,
-  module_name: &str,
+  module_url: &Url,
   source: &str,
   maybe_content_type: Option<String>,
   maybe_initial_filepath: Option<PathBuf>,
@@ -630,7 +617,7 @@ fn save_module_code_and_headers(
       save_source_code_headers(
         &maybe_initial_filepath.unwrap(),
         maybe_content_type.clone(),
-        Some(module_name.to_string()),
+        Some(module_url.to_string()),
       );
     }
   }
@@ -638,18 +625,22 @@ fn save_module_code_and_headers(
   Ok(())
 }
 
+fn url_into_uri(url: &url::Url) -> http::uri::Uri {
+  http::uri::Uri::from_str(&url.to_string())
+    .expect("url::Url should be parseable as http::uri::Uri")
+}
+
 /// Asynchronously fetch remote source file specified by the URL `module_name`
 /// and write it to disk at `filename`.
 fn fetch_remote_source_async(
   deno_dir: &DenoDir,
-  module_name: &str,
+  module_url: &Url,
   filepath: &Path,
 ) -> impl Future<Item = Option<ModuleMetaData>, Error = DenoError> {
   use crate::http_util::FetchOnceResult;
 
-  let download_job = deno_dir.progress.add("Download", module_name);
+  let download_job = deno_dir.progress.add("Download", &module_url.to_string());
 
-  let module_name = module_name.to_owned();
   let filepath = filepath.to_owned();
 
   // We write a special ".headers.json" file into the `.deno/deps` directory along side the
@@ -661,27 +652,27 @@ fn fetch_remote_source_async(
       deno_dir.clone(),
       None,
       None,
-      module_name.clone(),
+      module_url.clone(),
       filepath.clone(),
     ),
     |(
       dir,
       mut maybe_initial_module_name,
       mut maybe_initial_filepath,
-      module_name,
+      module_url,
       filepath,
     )| {
-      let url = module_name.parse::<http::uri::Uri>().unwrap();
+      let module_uri = url_into_uri(&module_url);
       // Single pass fetch, either yields code or yields redirect.
-      http_util::fetch_string_once(url).and_then(move |fetch_once_result| {
+      http_util::fetch_string_once(module_uri).and_then(move |fetch_once_result| {
         match fetch_once_result {
-          FetchOnceResult::Redirect(url) => {
+          FetchOnceResult::Redirect(uri) => {
             // If redirects, update module_name and filename for next looped call.
-            let (new_module_name, new_filepath) = dir
-              .resolve_module(&url.to_string(), ".")?;
+            let new_module_url = Url::parse(&uri.to_string()).expect("http::uri::Uri should be parseable as Url");
+            let new_filepath = dir.url_to_deps_path(&new_module_url)?;
 
             if maybe_initial_module_name.is_none() {
-              maybe_initial_module_name = Some(module_name.clone());
+              maybe_initial_module_name = Some(module_url.to_string());
               maybe_initial_filepath = Some(filepath.clone());
             }
 
@@ -690,7 +681,7 @@ fn fetch_remote_source_async(
               dir,
               maybe_initial_module_name,
               maybe_initial_filepath,
-              new_module_name,
+              new_module_url,
               new_filepath,
             )))
           }
@@ -698,7 +689,7 @@ fn fetch_remote_source_async(
             // We land on the code.
             save_module_code_and_headers(
               filepath.clone(),
-              &module_name.clone(),
+              &module_url,
               &source,
               maybe_content_type.clone(),
               maybe_initial_filepath,
@@ -709,8 +700,9 @@ fn fetch_remote_source_async(
               maybe_content_type.as_ref().map(String::as_str),
             );
 
+            // TODO: module_name should be renamed to URL
             let module_meta_data = ModuleMetaData {
-              module_name: module_name.to_string(),
+              module_name: module_url.to_string(),
               module_redirect_source_name: maybe_initial_module_name,
               filename: filepath.clone(),
               media_type,
@@ -737,13 +729,11 @@ fn fetch_remote_source_async(
 #[cfg(test)]
 fn fetch_remote_source(
   deno_dir: &DenoDir,
-  module_name: &str,
+  module_url: &Url,
   filepath: &Path,
 ) -> DenoResult<Option<ModuleMetaData>> {
   tokio_util::block_on(fetch_remote_source_async(
-    deno_dir,
-    module_name,
-    filepath,
+    deno_dir, module_url, filepath,
   ))
 }
 
@@ -758,7 +748,7 @@ fn fetch_remote_source(
 /// after following all redirections.
 fn fetch_local_source(
   deno_dir: &DenoDir,
-  module_name: &str,
+  module_url: &Url,
   filepath: &Path,
   module_initial_source_name: Option<String>,
 ) -> DenoResult<Option<ModuleMetaData>> {
@@ -773,20 +763,21 @@ fn fetch_local_source(
     // redirect_to https://import-meta.now.sh/sub/final1.js
     // real_filename /Users/kun/Library/Caches/deno/deps/https/import-meta.now.sh/sub/final1.js
     // real_module_name = https://import-meta.now.sh/sub/final1.js
-    let (real_module_name, real_filepath) =
-      deno_dir.resolve_module(&redirect_to, ".")?;
+    let real_module_url =
+      Url::parse(&redirect_to).expect("Should be valid URL");
+    let real_filepath = deno_dir.url_to_deps_path(&real_module_url)?;
 
     let mut module_initial_source_name = module_initial_source_name;
     // If this is the first redirect attempt,
     // then module_initial_source_name should be None.
     // In that case, use current module name as module_initial_source_name.
     if module_initial_source_name.is_none() {
-      module_initial_source_name = Some(module_name.to_owned());
+      module_initial_source_name = Some(module_url.to_string());
     }
     // Recurse.
     return fetch_local_source(
       deno_dir,
-      &real_module_name,
+      &real_module_url,
       &real_filepath,
       module_initial_source_name,
     );
@@ -804,7 +795,7 @@ fn fetch_local_source(
     Ok(c) => c,
   };
   Ok(Some(ModuleMetaData {
-    module_name: module_name.to_string(),
+    module_name: module_url.to_string(),
     module_redirect_source_name: module_initial_source_name,
     filename: filepath.to_owned(),
     media_type: map_content_type(
@@ -942,36 +933,6 @@ pub fn resolve_from_cwd(path: &str) -> Result<(PathBuf, String), DenoError> {
   let path_string = normalized_path.to_str().unwrap().to_string();
 
   Ok((normalized_path, path_string))
-}
-
-pub fn resolve_file_url(
-  specifier: String,
-  mut referrer: String,
-) -> Result<Url, url::ParseError> {
-  if referrer.starts_with('.') {
-    let cwd = std::env::current_dir().unwrap();
-    let referrer_path = cwd.join(referrer);
-    referrer = referrer_path.to_str().unwrap().to_string() + "/";
-  }
-
-  //
-  let j = if is_remote(&specifier)
-    || (Path::new(&specifier).is_absolute() && !is_remote(&referrer))
-  {
-    parse_local_or_remote(&specifier)?
-  } else if referrer.ends_with('/') {
-    let r = Url::from_directory_path(&referrer);
-    // TODO(ry) Properly handle error.
-    if r.is_err() {
-      error!("Url::from_directory_path error {}", referrer);
-    }
-    let base = r.unwrap();
-    base.join(specifier.as_ref())?
-  } else {
-    let base = parse_local_or_remote(&referrer)?;
-    base.join(specifier.as_ref())?
-  };
-  Ok(j)
 }
 
 #[cfg(test)]
@@ -1121,14 +1082,15 @@ mod tests {
     let (temp_dir, deno_dir) = test_setup();
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
-      let module_name = "http://localhost:4545/tests/subdir/mod2.ts";
+      let module_url =
+        Url::parse("http://localhost:4545/tests/subdir/mod2.ts").unwrap();
       let filepath = deno_dir
         .deps_http
         .join("localhost_PORT4545/tests/subdir/mod2.ts");
       let headers_file_name = source_code_headers_filename(&filepath);
 
       let result =
-        get_source_code(&deno_dir, module_name, filepath.clone(), true, false);
+        get_source_code(&deno_dir, &module_url, filepath.clone(), true, false);
       assert!(result.is_ok());
       let r = result.unwrap();
       assert_eq!(
@@ -1143,7 +1105,7 @@ mod tests {
       let _ =
         fs::write(&headers_file_name, "{ \"mime_type\": \"text/javascript\" }");
       let result2 =
-        get_source_code(&deno_dir, module_name, filepath.clone(), true, false);
+        get_source_code(&deno_dir, &module_url, filepath.clone(), true, false);
       assert!(result2.is_ok());
       let r2 = result2.unwrap();
       assert_eq!(
@@ -1165,7 +1127,7 @@ mod tests {
         None,
       );
       let result3 =
-        get_source_code(&deno_dir, module_name, filepath.clone(), true, false);
+        get_source_code(&deno_dir, &module_url, filepath.clone(), true, false);
       assert!(result3.is_ok());
       let r3 = result3.unwrap();
       assert_eq!(
@@ -1185,7 +1147,7 @@ mod tests {
       // and don't use cache
       let deno_dir = setup_deno_dir(temp_dir.path());
       let result4 =
-        get_source_code(&deno_dir, module_name, filepath.clone(), false, false);
+        get_source_code(&deno_dir, &module_url, filepath.clone(), false, false);
       assert!(result4.is_ok());
       let r4 = result4.unwrap();
       let expected4 =
@@ -1202,14 +1164,16 @@ mod tests {
     let (temp_dir, deno_dir) = test_setup();
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
-      let module_name = "http://localhost:4545/tests/subdir/mismatch_ext.ts";
+      let module_url =
+        Url::parse("http://localhost:4545/tests/subdir/mismatch_ext.ts")
+          .unwrap();
       let filepath = deno_dir
         .deps_http
         .join("localhost_PORT4545/tests/subdir/mismatch_ext.ts");
       let headers_file_name = source_code_headers_filename(&filepath);
 
       let result =
-        get_source_code(&deno_dir, module_name, filepath.clone(), true, false);
+        get_source_code(&deno_dir, &module_url, filepath.clone(), true, false);
       assert!(result.is_ok());
       let r = result.unwrap();
       let expected = "export const loaded = true;\n".as_bytes();
@@ -1228,7 +1192,7 @@ mod tests {
         None,
       );
       let result2 =
-        get_source_code(&deno_dir, module_name, filepath.clone(), true, false);
+        get_source_code(&deno_dir, &module_url, filepath.clone(), true, false);
       assert!(result2.is_ok());
       let r2 = result2.unwrap();
       let expected2 = "export const loaded = true;\n".as_bytes();
@@ -1242,7 +1206,7 @@ mod tests {
       // and don't use cache
       let deno_dir = setup_deno_dir(temp_dir.path());
       let result3 =
-        get_source_code(&deno_dir, module_name, filepath.clone(), false, false);
+        get_source_code(&deno_dir, &module_url, filepath.clone(), false, false);
       assert!(result3.is_ok());
       let r3 = result3.unwrap();
       let expected3 = "export const loaded = true;\n".as_bytes();
@@ -1262,7 +1226,9 @@ mod tests {
     let (_temp_dir, deno_dir) = test_setup();
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
-      let module_name = "http://localhost:4545/tests/subdir/mismatch_ext.ts";
+      let module_url =
+        Url::parse("http://localhost:4545/tests/subdir/mismatch_ext.ts")
+          .unwrap();
       let filepath = deno_dir
         .deps_http
         .join("localhost_PORT4545/tests/subdir/mismatch_ext.ts");
@@ -1270,7 +1236,7 @@ mod tests {
 
       // first download
       let result =
-        get_source_code(&deno_dir, module_name, filepath.clone(), false, false);
+        get_source_code(&deno_dir, &module_url, filepath.clone(), false, false);
       assert!(result.is_ok());
 
       let result = fs::File::open(&headers_file_name);
@@ -1284,7 +1250,7 @@ mod tests {
       // false, this can be verified using source header file creation timestamp (should be
       // the same as after first download)
       let result =
-        get_source_code(&deno_dir, module_name, filepath.clone(), false, false);
+        get_source_code(&deno_dir, &module_url, filepath.clone(), false, false);
       assert!(result.is_ok());
 
       let result = fs::File::open(&headers_file_name);
@@ -1303,8 +1269,9 @@ mod tests {
     let (_temp_dir, deno_dir) = test_setup();
     // Test basic follow and headers recording
     tokio_util::init(|| {
-      let redirect_module_name =
-        "http://localhost:4546/tests/subdir/redirects/redirect1.js";
+      let redirect_module_url =
+        Url::parse("http://localhost:4546/tests/subdir/redirects/redirect1.js")
+          .unwrap();
       let redirect_source_filepath = deno_dir
         .deps_http
         .join("localhost_PORT4546/tests/subdir/redirects/redirect1.js");
@@ -1320,7 +1287,7 @@ mod tests {
 
       let mod_meta = get_source_code(
         &deno_dir,
-        redirect_module_name,
+        &redirect_module_url,
         redirect_source_filepath.clone(),
         true,
         false,
@@ -1347,7 +1314,7 @@ mod tests {
       assert_eq!(&mod_meta.module_name, target_module_name);
       assert_eq!(
         &mod_meta.module_redirect_source_name.clone().unwrap(),
-        redirect_module_name
+        &redirect_module_url.to_string()
       );
     });
   }
@@ -1357,8 +1324,9 @@ mod tests {
     let (_temp_dir, deno_dir) = test_setup();
     // Test double redirects and headers recording
     tokio_util::init(|| {
-      let redirect_module_name =
-        "http://localhost:4548/tests/subdir/redirects/redirect1.js";
+      let redirect_module_url =
+        Url::parse("http://localhost:4548/tests/subdir/redirects/redirect1.js")
+          .unwrap();
       let redirect_source_filepath = deno_dir
         .deps_http
         .join("localhost_PORT4548/tests/subdir/redirects/redirect1.js");
@@ -1380,7 +1348,7 @@ mod tests {
 
       let mod_meta = get_source_code(
         &deno_dir,
-        redirect_module_name,
+        &redirect_module_url,
         redirect_source_filepath.clone(),
         true,
         false,
@@ -1414,7 +1382,7 @@ mod tests {
       assert_eq!(&mod_meta.module_name, target_module_name);
       assert_eq!(
         &mod_meta.module_redirect_source_name.clone().unwrap(),
-        redirect_module_name
+        &redirect_module_url.to_string()
       );
     });
   }
@@ -1423,26 +1391,27 @@ mod tests {
   fn test_get_source_code_no_fetch() {
     let (_temp_dir, deno_dir) = test_setup();
     tokio_util::init(|| {
-      let module_name = "http://localhost:4545/tests/002_hello.ts";
+      let module_url =
+        Url::parse("http://localhost:4545/tests/002_hello.ts").unwrap();
       let filepath = deno_dir
         .deps_http
         .join("localhost_PORT4545/tests/002_hello.ts");
 
       // file hasn't been cached before and remote downloads are not allowed
       let result =
-        get_source_code(&deno_dir, module_name, filepath.clone(), true, true);
+        get_source_code(&deno_dir, &module_url, filepath.clone(), true, true);
       assert!(result.is_err());
       let err = result.err().unwrap();
       assert_eq!(err.kind(), ErrorKind::NotFound);
 
       // download and cache file
       let result =
-        get_source_code(&deno_dir, module_name, filepath.clone(), true, false);
+        get_source_code(&deno_dir, &module_url, filepath.clone(), true, false);
       assert!(result.is_ok());
 
       // module is already cached, should be ok even with `no_fetch`
       let result =
-        get_source_code(&deno_dir, module_name, filepath.clone(), true, true);
+        get_source_code(&deno_dir, &module_url, filepath.clone(), true, true);
       assert!(result.is_ok());
     });
   }
@@ -1453,8 +1422,9 @@ mod tests {
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
       let (_temp_dir, deno_dir) = test_setup();
-      let module_name =
-        "http://127.0.0.1:4545/tests/subdir/mt_video_mp2t.t3.ts".to_string();
+      let module_url =
+        Url::parse("http://127.0.0.1:4545/tests/subdir/mt_video_mp2t.t3.ts")
+          .unwrap();
       let filepath = deno_dir
         .deps_http
         .join("127.0.0.1_PORT4545/tests/subdir/mt_video_mp2t.t3.ts");
@@ -1462,7 +1432,7 @@ mod tests {
 
       let result = tokio_util::block_on(fetch_remote_source_async(
         &deno_dir,
-        &module_name,
+        &module_url,
         &filepath,
       ));
       assert!(result.is_ok());
@@ -1478,8 +1448,7 @@ mod tests {
         Some("text/javascript".to_owned()),
         None,
       );
-      let result2 =
-        fetch_local_source(&deno_dir, &module_name, &filepath, None);
+      let result2 = fetch_local_source(&deno_dir, &module_url, &filepath, None);
       assert!(result2.is_ok());
       let r2 = result2.unwrap().unwrap();
       assert_eq!(r2.source_code, b"export const loaded = true;\n");
@@ -1494,14 +1463,15 @@ mod tests {
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
       let (_temp_dir, deno_dir) = test_setup();
-      let module_name =
-        "http://localhost:4545/tests/subdir/mt_video_mp2t.t3.ts";
+      let module_url =
+        Url::parse("http://localhost:4545/tests/subdir/mt_video_mp2t.t3.ts")
+          .unwrap();
       let filepath = deno_dir
         .deps_http
         .join("localhost_PORT4545/tests/subdir/mt_video_mp2t.t3.ts");
       let headers_file_name = source_code_headers_filename(&filepath);
 
-      let result = fetch_remote_source(&deno_dir, module_name, &filepath);
+      let result = fetch_remote_source(&deno_dir, &module_url, &filepath);
       assert!(result.is_ok());
       let r = result.unwrap().unwrap();
       assert_eq!(r.source_code, "export const loaded = true;\n".as_bytes());
@@ -1515,7 +1485,7 @@ mod tests {
         Some("text/javascript".to_owned()),
         None,
       );
-      let result2 = fetch_local_source(&deno_dir, module_name, &filepath, None);
+      let result2 = fetch_local_source(&deno_dir, &module_url, &filepath, None);
       assert!(result2.is_ok());
       let r2 = result2.unwrap().unwrap();
       assert_eq!(r2.source_code, "export const loaded = true;\n".as_bytes());
@@ -1530,11 +1500,12 @@ mod tests {
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
       let (_temp_dir, deno_dir) = test_setup();
-      let module_name = "http://localhost:4545/tests/subdir/no_ext";
+      let module_url =
+        Url::parse("http://localhost:4545/tests/subdir/no_ext").unwrap();
       let filepath = deno_dir
         .deps_http
         .join("localhost_PORT4545/tests/subdir/no_ext");
-      let result = fetch_remote_source(&deno_dir, module_name, &filepath);
+      let result = fetch_remote_source(&deno_dir, &module_url, &filepath);
       assert!(result.is_ok());
       let r = result.unwrap().unwrap();
       assert_eq!(r.source_code, "export const loaded = true;\n".as_bytes());
@@ -1545,11 +1516,13 @@ mod tests {
         "text/typescript"
       );
 
-      let module_name_2 = "http://localhost:4545/tests/subdir/mismatch_ext.ts";
+      let module_url_2 =
+        Url::parse("http://localhost:4545/tests/subdir/mismatch_ext.ts")
+          .unwrap();
       let filepath_2 = deno_dir
         .deps_http
         .join("localhost_PORT4545/tests/subdir/mismatch_ext.ts");
-      let result_2 = fetch_remote_source(&deno_dir, module_name_2, &filepath_2);
+      let result_2 = fetch_remote_source(&deno_dir, &module_url_2, &filepath_2);
       assert!(result_2.is_ok());
       let r2 = result_2.unwrap().unwrap();
       assert_eq!(r2.source_code, "export const loaded = true;\n".as_bytes());
@@ -1561,11 +1534,13 @@ mod tests {
       );
 
       // test unknown extension
-      let module_name_3 = "http://localhost:4545/tests/subdir/unknown_ext.deno";
+      let module_url_3 =
+        Url::parse("http://localhost:4545/tests/subdir/unknown_ext.deno")
+          .unwrap();
       let filepath_3 = deno_dir
         .deps_http
         .join("localhost_PORT4545/tests/subdir/unknown_ext.deno");
-      let result_3 = fetch_remote_source(&deno_dir, module_name_3, &filepath_3);
+      let result_3 = fetch_remote_source(&deno_dir, &module_url_3, &filepath_3);
       assert!(result_3.is_ok());
       let r3 = result_3.unwrap().unwrap();
       assert_eq!(r3.source_code, "export const loaded = true;\n".as_bytes());
@@ -1583,10 +1558,11 @@ mod tests {
     // only local, no http_util::fetch_sync_string called
     let (_temp_dir, deno_dir) = test_setup();
     let cwd = std::env::current_dir().unwrap();
-    let module_name = "http://example.com/mt_text_typescript.t1.ts"; // not used
+    let module_url =
+      Url::parse("http://example.com/mt_text_typescript.t1.ts").unwrap();
     let filepath = cwd.join("tests/subdir/mt_text_typescript.t1.ts");
 
-    let result = fetch_local_source(&deno_dir, module_name, &filepath, None);
+    let result = fetch_local_source(&deno_dir, &module_url, &filepath, None);
     assert!(result.is_ok());
     let r = result.unwrap().unwrap();
     assert_eq!(r.source_code, "export const loaded = true;\n".as_bytes());
@@ -1597,18 +1573,17 @@ mod tests {
   fn test_fetch_module_meta_data() {
     let (_temp_dir, deno_dir) = test_setup();
 
-    let cwd = std::env::current_dir().unwrap();
-    let cwd_string = String::from(cwd.to_str().unwrap()) + "/";
-
     tokio_util::init(|| {
       // Test failure case.
-      let specifier = add_root!("/baddir/hello.ts");
-      let r = deno_dir.fetch_module_meta_data(specifier, true, false);
+      let specifier =
+        ModuleSpecifier::resolve_url(file_url!("/baddir/hello.ts")).unwrap();
+      let r = deno_dir.fetch_module_meta_data(&specifier, true, false);
       assert!(r.is_err());
 
       // Assuming cwd is the deno repo root.
-      let specifier = &format!("{}{}", cwd_string.as_str(), "js/main.ts");
-      let r = deno_dir.fetch_module_meta_data(specifier, true, false);
+      let specifier =
+        ModuleSpecifier::resolve_url_or_path("js/main.ts").unwrap();
+      let r = deno_dir.fetch_module_meta_data(&specifier, true, false);
       assert!(r.is_ok());
     })
   }
@@ -1618,116 +1593,58 @@ mod tests {
     /*recompile ts file*/
     let (_temp_dir, deno_dir) = test_setup();
 
-    let cwd = std::env::current_dir().unwrap();
-    let cwd_string = String::from(cwd.to_str().unwrap()) + "/";
-
     tokio_util::init(|| {
       // Test failure case.
-      let specifier = add_root!("/baddir/hello.ts");
-      let r = deno_dir.fetch_module_meta_data(specifier, false, false);
+      let specifier =
+        ModuleSpecifier::resolve_url(file_url!("/baddir/hello.ts")).unwrap();
+      let r = deno_dir.fetch_module_meta_data(&specifier, false, false);
       assert!(r.is_err());
 
       // Assuming cwd is the deno repo root.
-      let specifier = &format!("{}{}", cwd_string.as_str(), "js/main.ts");
-      let r = deno_dir.fetch_module_meta_data(specifier, false, false);
+      let specifier =
+        ModuleSpecifier::resolve_url_or_path("js/main.ts").unwrap();
+      let r = deno_dir.fetch_module_meta_data(&specifier, false, false);
       assert!(r.is_ok());
     })
   }
 
-  #[test]
-  fn test_src_file_to_url_1() {
-    let (_temp_dir, deno_dir) = test_setup();
-    assert_eq!("hello", deno_dir.src_file_to_url("hello"));
-    assert_eq!("/hello", deno_dir.src_file_to_url("/hello"));
-    let x = deno_dir.deps_http.join("hello/world.txt");
-    assert_eq!(
-      "http://hello/world.txt",
-      deno_dir.src_file_to_url(x.to_str().unwrap())
-    );
-  }
-
-  #[test]
-  fn test_src_file_to_url_2() {
-    let (_temp_dir, deno_dir) = test_setup();
-    assert_eq!("hello", deno_dir.src_file_to_url("hello"));
-    assert_eq!("/hello", deno_dir.src_file_to_url("/hello"));
-    let x = deno_dir.deps_https.join("hello/world.txt");
-    assert_eq!(
-      "https://hello/world.txt",
-      deno_dir.src_file_to_url(x.to_str().unwrap())
-    );
-  }
-
-  #[test]
-  fn test_src_file_to_url_3() {
-    let (_temp_dir, deno_dir) = test_setup();
-    let x = deno_dir.deps_http.join("localhost_PORT4545/world.txt");
-    assert_eq!(
-      "http://localhost:4545/world.txt",
-      deno_dir.src_file_to_url(x.to_str().unwrap())
-    );
-  }
-
-  #[test]
-  fn test_src_file_to_url_4() {
-    let (_temp_dir, deno_dir) = test_setup();
-    let x = deno_dir.deps_https.join("localhost_PORT4545/world.txt");
-    assert_eq!(
-      "https://localhost:4545/world.txt",
-      deno_dir.src_file_to_url(x.to_str().unwrap())
-    );
-  }
-
   // https://github.com/denoland/deno/blob/golang/os_test.go#L16-L87
   #[test]
-  fn test_resolve_module_1() {
+  fn test_url_to_deps_path_1() {
     let (_temp_dir, deno_dir) = test_setup();
 
     let test_cases = [
       (
-        "./subdir/print_hello.ts",
-        add_root!("/Users/rld/go/src/github.com/denoland/deno/testdata/006_url_imports.ts"),
         file_url!("/Users/rld/go/src/github.com/denoland/deno/testdata/subdir/print_hello.ts"),
         add_root!("/Users/rld/go/src/github.com/denoland/deno/testdata/subdir/print_hello.ts"),
       ),
       (
-        "testdata/001_hello.js",
-        add_root!("/Users/rld/go/src/github.com/denoland/deno/"),
         file_url!("/Users/rld/go/src/github.com/denoland/deno/testdata/001_hello.js"),
         add_root!("/Users/rld/go/src/github.com/denoland/deno/testdata/001_hello.js"),
       ),
       (
-        add_root!("/Users/rld/src/deno/hello.js"),
-        ".",
         file_url!("/Users/rld/src/deno/hello.js"),
         add_root!("/Users/rld/src/deno/hello.js"),
       ),
       (
-        add_root!("/this/module/got/imported.js"),
-        add_root!("/that/module/did/it.js"),
         file_url!("/this/module/got/imported.js"),
         add_root!("/this/module/got/imported.js"),
       ),
     ];
     for &test in test_cases.iter() {
-      let specifier = String::from(test.0);
-      let referrer = String::from(test.1);
-      let (module_name, filename) =
-        deno_dir.resolve_module(&specifier, &referrer).unwrap();
-      assert_eq!(module_name, test.2);
-      assert_eq!(filename.to_str().unwrap().to_string(), test.3);
+      let url = Url::parse(test.0).unwrap();
+      let filename = deno_dir.url_to_deps_path(&url).unwrap();
+      assert_eq!(filename.to_str().unwrap().to_string(), test.1);
     }
   }
 
   #[test]
-  fn test_resolve_module_2() {
+  fn test_url_to_deps_path_2() {
     let (_temp_dir, deno_dir) = test_setup();
 
-    let specifier = "http://localhost:4545/testdata/subdir/print_hello.ts";
-    let referrer = add_root!("/deno/testdata/006_url_imports.ts");
-
-    let expected_module_name =
-      "http://localhost:4545/testdata/subdir/print_hello.ts";
+    let specifier =
+      Url::parse("http://localhost:4545/testdata/subdir/print_hello.ts")
+        .unwrap();
     let expected_filename = normalize_to_str(
       deno_dir
         .deps_http
@@ -1735,9 +1652,7 @@ mod tests {
         .as_ref(),
     );
 
-    let (module_name, filename) =
-      deno_dir.resolve_module(specifier, referrer).unwrap();
-    assert_eq!(module_name, expected_module_name);
+    let filename = deno_dir.url_to_deps_path(&specifier).unwrap();
     assert_eq!(filename.to_str().unwrap().to_string(), expected_filename);
   }
 
@@ -1745,171 +1660,19 @@ mod tests {
   fn test_resolve_module_3() {
     let (_temp_dir, deno_dir) = test_setup();
 
-    let specifier_ =
-      deno_dir.deps_http.join("unpkg.com/liltest@0.0.5/index.ts");
-    let specifier = specifier_.to_str().unwrap();
-    let referrer = ".";
+    // unsupported schemes
+    let test_cases = [
+      "ftp://localhost:4545/testdata/subdir/print_hello.ts",
+      "blob:https://whatwg.org/d0360e2f-caee-469f-9a2f-87d5b0456f6f",
+    ];
 
-    let expected_module_name = "http://unpkg.com/liltest@0.0.5/index.ts";
-    let expected_filename = normalize_to_str(
-      deno_dir
-        .deps_http
-        .join("unpkg.com/liltest@0.0.5/index.ts")
-        .as_ref(),
-    );
-
-    let (module_name, filename) =
-      deno_dir.resolve_module(specifier, referrer).unwrap();
-    assert_eq!(module_name, expected_module_name);
-    assert_eq!(filename.to_str().unwrap().to_string(), expected_filename);
-  }
-
-  #[test]
-  fn test_resolve_module_4() {
-    let (_temp_dir, deno_dir) = test_setup();
-
-    let specifier = "./util";
-    let referrer_ = deno_dir.deps_http.join("unpkg.com/liltest@0.0.5/index.ts");
-    let referrer = referrer_.to_str().unwrap();
-
-    // http containing files -> load relative import with http
-    let expected_module_name = "http://unpkg.com/liltest@0.0.5/util";
-    let expected_filename = normalize_to_str(
-      deno_dir
-        .deps_http
-        .join("unpkg.com/liltest@0.0.5/util")
-        .as_ref(),
-    );
-
-    let (module_name, filename) =
-      deno_dir.resolve_module(specifier, referrer).unwrap();
-    assert_eq!(module_name, expected_module_name);
-    assert_eq!(filename.to_str().unwrap().to_string(), expected_filename);
-  }
-
-  #[test]
-  fn test_resolve_module_5() {
-    let (_temp_dir, deno_dir) = test_setup();
-
-    let specifier = "./util";
-    let referrer_ =
-      deno_dir.deps_https.join("unpkg.com/liltest@0.0.5/index.ts");
-    let referrer = referrer_.to_str().unwrap();
-
-    // https containing files -> load relative import with https
-    let expected_module_name = "https://unpkg.com/liltest@0.0.5/util";
-    let expected_filename = normalize_to_str(
-      deno_dir
-        .deps_https
-        .join("unpkg.com/liltest@0.0.5/util")
-        .as_ref(),
-    );
-
-    let (module_name, filename) =
-      deno_dir.resolve_module(specifier, referrer).unwrap();
-    assert_eq!(module_name, expected_module_name);
-    assert_eq!(filename.to_str().unwrap().to_string(), expected_filename);
-  }
-
-  #[test]
-  fn test_resolve_module_6() {
-    let (_temp_dir, deno_dir) = test_setup();
-
-    let specifier = "http://localhost:4545/tests/subdir/mod2.ts";
-    let referrer = add_root!("/deno/tests/006_url_imports.ts");
-    let expected_module_name = "http://localhost:4545/tests/subdir/mod2.ts";
-    let expected_filename = normalize_to_str(
-      deno_dir
-        .deps_http
-        .join("localhost_PORT4545/tests/subdir/mod2.ts")
-        .as_ref(),
-    );
-
-    let (module_name, filename) =
-      deno_dir.resolve_module(specifier, referrer).unwrap();
-    assert_eq!(module_name, expected_module_name);
-    assert_eq!(filename.to_str().unwrap().to_string(), expected_filename);
-  }
-
-  #[test]
-  fn test_resolve_module_7() {
-    let (_temp_dir, deno_dir) = test_setup();
-
-    let specifier = "http_test.ts";
-    let referrer = add_root!("/Users/rld/src/deno_net/");
-    let expected_module_name =
-      file_url!("/Users/rld/src/deno_net/http_test.ts");
-    let expected_filename = add_root!("/Users/rld/src/deno_net/http_test.ts");
-
-    let (module_name, filename) =
-      deno_dir.resolve_module(specifier, referrer).unwrap();
-    assert_eq!(module_name, expected_module_name);
-    assert_eq!(filename.to_str().unwrap().to_string(), expected_filename);
-  }
-
-  #[test]
-  fn test_resolve_module_8() {
-    let (_temp_dir, deno_dir) = test_setup();
-
-    let specifier = "/util";
-    let referrer_ =
-      deno_dir.deps_https.join("unpkg.com/liltest@0.0.5/index.ts");
-    let referrer = referrer_.to_str().unwrap();
-
-    let expected_module_name = "https://unpkg.com/util";
-    let expected_filename =
-      normalize_to_str(deno_dir.deps_https.join("unpkg.com/util").as_ref());
-
-    let (module_name, filename) =
-      deno_dir.resolve_module(specifier, referrer).unwrap();
-    assert_eq!(module_name, expected_module_name);
-    assert_eq!(filename.to_str().unwrap().to_string(), expected_filename);
-  }
-
-  #[test]
-  fn test_resolve_module_referrer_dot() {
-    let (_temp_dir, deno_dir) = test_setup();
-
-    let specifier = "tests/001_hello.js";
-
-    let cwd = std::env::current_dir().unwrap();
-    let expected_path = cwd.join(specifier);
-    let expected_module_name =
-      Url::from_file_path(&expected_path).unwrap().to_string();
-    let expected_filename = normalize_to_str(&expected_path);
-
-    let (module_name, filename) =
-      deno_dir.resolve_module(specifier, ".").unwrap();
-    assert_eq!(module_name, expected_module_name);
-    assert_eq!(filename.to_str().unwrap().to_string(), expected_filename);
-
-    let (module_name, filename) =
-      deno_dir.resolve_module(specifier, "./").unwrap();
-    assert_eq!(module_name, expected_module_name);
-    assert_eq!(filename.to_str().unwrap().to_string(), expected_filename);
-  }
-
-  #[test]
-  fn test_resolve_module_referrer_dotdot() {
-    let (_temp_dir, deno_dir) = test_setup();
-
-    let specifier = "tests/001_hello.js";
-
-    let cwd = std::env::current_dir().unwrap();
-    let expected_path = cwd.join("..").join(specifier);
-    let expected_module_name =
-      Url::from_file_path(&expected_path).unwrap().to_string();
-    let expected_filename = normalize_to_str(&expected_path);
-
-    let (module_name, filename) =
-      deno_dir.resolve_module(specifier, "..").unwrap();
-    assert_eq!(module_name, expected_module_name);
-    assert_eq!(filename.to_str().unwrap().to_string(), expected_filename);
-
-    let (module_name, filename) =
-      deno_dir.resolve_module(specifier, "../").unwrap();
-    assert_eq!(module_name, expected_module_name);
-    assert_eq!(filename.to_str().unwrap().to_string(), expected_filename);
+    for &test in test_cases.iter() {
+      let url = Url::parse(test).unwrap();
+      assert_eq!(
+        deno_dir.url_to_deps_path(&url).unwrap_err().kind,
+        DenoDirErrorKind::UnsupportedFetchScheme
+      );
+    }
   }
 
   #[test]

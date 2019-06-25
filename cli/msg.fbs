@@ -143,6 +143,7 @@ enum ErrorKind: byte {
   NoSyncSupport,
   ImportMapError,
   ImportPrefixMissing,
+  DenoDirError,
 
   // other kinds
   Diagnostic,
