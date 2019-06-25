@@ -241,6 +241,7 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<CliDispatchFn> {
     msg::Any::Stat => Some(op_stat),
     msg::Any::Symlink => Some(op_symlink),
     msg::Any::Truncate => Some(op_truncate),
+    msg::Any::HomeDir => Some(op_home_dir),
     msg::Any::Utime => Some(op_utime),
     msg::Any::Write => Some(op_write),
 
@@ -1713,6 +1714,34 @@ fn op_metrics(
     msg::BaseArgs {
       inner: Some(inner.as_union_value()),
       inner_type: msg::Any::MetricsRes,
+      ..Default::default()
+    },
+  ))
+}
+
+fn op_home_dir(
+  _state: &ThreadSafeState,
+  base: &msg::Base<'_>,
+  data: Option<PinnedBuf>,
+) -> CliOpResult {
+  assert!(data.is_none());
+  let cmd_id = base.cmd_id();
+
+  let builder = &mut FlatBufferBuilder::new();
+  let path = dirs::home_dir()
+    .unwrap_or_default()
+    .into_os_string()
+    .into_string()
+    .unwrap_or_default();
+  let path = Some(builder.create_string(&path));
+  let inner = msg::HomeDirRes::create(builder, &msg::HomeDirResArgs { path });
+
+  ok_buf(serialize_response(
+    cmd_id,
+    builder,
+    msg::BaseArgs {
+      inner: Some(inner.as_union_value()),
+      inner_type: msg::Any::HomeDirRes,
       ..Default::default()
     },
   ))

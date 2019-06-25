@@ -1,5 +1,11 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { test, testPerm, assert, assertEquals } from "./test_util.ts";
+import {
+  test,
+  testPerm,
+  assert,
+  assertEquals,
+  assertNotEquals
+} from "./test_util.ts";
 
 testPerm({ env: true }, function envSuccess(): void {
   const env = Deno.env();
@@ -31,4 +37,8 @@ test(function osPid(): void {
 // See complete tests in tools/is_tty_test.py
 test(function osIsTTYSmoke(): void {
   console.log(Deno.isTTY());
+});
+
+test(function homeDir(): void {
+  assertNotEquals(Deno.homeDir(), "");
 });

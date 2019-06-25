@@ -130,3 +130,23 @@ export function start(source?: string): msg.StartRes {
 
   return startResMsg;
 }
+
+/**
+ * Returns the current user's home directory.
+ * Does not require elevated privileges.
+ */
+export function homeDir(): string {
+  const builder = flatbuffers.createBuilder();
+  const inner = msg.HomeDir.createHomeDir(builder);
+  const baseRes = sendSync(builder, msg.Any.HomeDir, inner)!;
+  assert(msg.Any.HomeDirRes === baseRes.innerType());
+  const res = new msg.HomeDirRes();
+  assert(baseRes.inner(res) != null);
+  const path = res.path();
+
+  if (!path) {
+    throw new Error("Could not get home directory.");
+  }
+
+  return path;
+}
