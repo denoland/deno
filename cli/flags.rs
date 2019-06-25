@@ -8,6 +8,7 @@ use clap::SubCommand;
 use crate::deno_dir;
 use log::Level;
 use std;
+use std::str::FromStr;
 
 // Creates vector of strings, Vec<String>
 macro_rules! svec {
@@ -389,7 +390,12 @@ To change installation directory use -d/--dir flag
         .settings(&[
           AppSettings::DisableHelpSubcommand,
           AppSettings::DisableVersion,
-        ]).about("Generate completions for shell. Available shells: "),
+        ]).about("Generate shell completions")
+        .arg(
+          Arg::with_name("shell")
+          .possible_values(&Shell::variants())
+          .required(true),
+        ),
   ).subcommand(
       // this is a fake subcommand - it's used in conjunction with
       // AppSettings:AllowExternalSubcommand to treat it as an
@@ -602,13 +608,14 @@ pub fn flags_from_vec(
       argv.extend(vec![source_file.to_string(), out_file.to_string()]);
       DenoSubcommand::Bundle
     }
-    ("completions", Some(_completions_match)) => {
+    ("completions", Some(completions_match)) => {
+      let shell: &str = completions_match.value_of("shell").unwrap();
       create_cli_app().gen_completions_to(
         "deno",
-        Shell::Bash,
+        Shell::from_str(shell).unwrap(),
         &mut std::io::stdout(),
       );
-      std::process::exit(1);
+      std::process::exit(0);
     }
     ("eval", Some(eval_match)) => {
       flags.allow_net = true;
