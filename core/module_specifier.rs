@@ -1,4 +1,5 @@
 use std::fmt;
+use std::path::PathBuf;
 use url::Url;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -49,17 +50,35 @@ impl ModuleSpecifier {
   /// example is allowed here, whereas in import statements a leading "./" is
   /// required ("./foo.js"). This function is aware of the current working
   /// directory and returns an absolute URL.
-  pub fn resolve_root(
-    root_specifier: &str,
+  pub fn resolve_from_cwd(
+    specifier: &str,
   ) -> Result<ModuleSpecifier, url::ParseError> {
-    if let Ok(url) = Url::parse(root_specifier) {
-      Ok(ModuleSpecifier(url))
-    } else {
-      let cwd = std::env::current_dir().unwrap();
-      let base = Url::from_directory_path(cwd).unwrap();
-      let url = base.join(root_specifier)?;
-      Ok(ModuleSpecifier(url))
+    if let Ok(module_specifier) = ModuleSpecifier::resolve_absolute(specifier) {
+      return Ok(module_specifier);
     }
+
+    // fallback to relative file path
+    let cwd = std::env::current_dir().unwrap();
+    let base = Url::from_directory_path(cwd).unwrap();
+    let url = base.join(specifier)?;
+    Ok(ModuleSpecifier(url))
+  }
+
+  /// Takes a string representing a path or URL to a module - must be absolute file path
+  /// or remote URL
+  pub fn resolve_absolute(
+    specifier: &str,
+  ) -> Result<ModuleSpecifier, url::ParseError> {
+    // first check if specifier is an absolute path
+    let path = PathBuf::from(specifier);
+
+    if let Ok(url) = Url::from_file_path(path) {
+      return Ok(ModuleSpecifier(url));
+    }
+
+    // now check if it's resolvable url
+    let url = Url::parse(specifier)?;
+    Ok(ModuleSpecifier(url))
   }
 }
 
@@ -78,5 +97,87 @@ impl From<Url> for ModuleSpecifier {
 impl PartialEq<String> for ModuleSpecifier {
   fn eq(&self, other: &String) -> bool {
     &self.to_string() == other
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_absolute() {
+    if cfg!(target_os = "windows") {
+      assert_eq!(
+        ModuleSpecifier::resolve_from_cwd(r"C:/deno/tests/006_url_imports.ts")
+          .unwrap()
+          .to_string(),
+        "file:///C:/deno/tests/006_url_imports.ts",
+      );
+      assert_eq!(
+        ModuleSpecifier::resolve_from_cwd(r"C:\deno\tests\006_url_imports.ts")
+          .unwrap()
+          .to_string(),
+        "file:///C:/deno/tests/006_url_imports.ts",
+      );
+    } else {
+      assert_eq!(
+        ModuleSpecifier::resolve_from_cwd("/deno/tests/006_url_imports.ts")
+          .unwrap()
+          .to_string(),
+        "file:///deno/tests/006_url_imports.ts",
+      );
+    }
+  }
+
+  #[test]
+  fn test_relative() {
+    // Assuming cwd is the deno repo root.
+    let cwd = std::env::current_dir().unwrap();
+    let cwd_string = String::from(cwd.to_str().unwrap()) + "/";
+    let expected_url = format!(
+      "file://{}{}",
+      cwd_string.as_str(),
+      "tests/006_url_imports.ts"
+    );
+
+    if cfg!(target_os = "windows") {
+      assert_eq!(
+        ModuleSpecifier::resolve_from_cwd(r"/tests/006_url_imports.ts")
+          .unwrap()
+          .to_string(),
+        expected_url
+      );
+      assert_eq!(
+        ModuleSpecifier::resolve_from_cwd(r"\tests\006_url_imports.ts")
+          .unwrap()
+          .to_string(),
+        expected_url,
+      );
+    } else {
+      assert_eq!(
+        ModuleSpecifier::resolve_from_cwd("./tests/006_url_imports.ts")
+          .unwrap()
+          .to_string(),
+        expected_url,
+      );
+    }
+  }
+
+  #[test]
+  fn test_http() {
+    assert_eq!(
+      ModuleSpecifier::resolve_from_cwd(
+        "http://deno.land/core/tests/006_url_imports.ts"
+      ).unwrap()
+      .to_string(),
+      "http://deno.land/core/tests/006_url_imports.ts",
+    );
+    assert_eq!(
+      ModuleSpecifier::resolve_from_cwd(
+        "https://deno.land/core/tests/006_url_imports.ts"
+      ).unwrap()
+      .to_string(),
+      "https://deno.land/core/tests/006_url_imports.ts",
+    );
   }
 }

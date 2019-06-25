@@ -255,7 +255,7 @@ impl ThreadSafeState {
       None
     } else {
       let root_specifier = argv_rest[1].clone();
-      match ModuleSpecifier::resolve_root(&root_specifier) {
+      match ModuleSpecifier::resolve_from_cwd(&root_specifier) {
         Ok(specifier) => Some(specifier),
         Err(e) => {
           // TODO: handle unresolvable specifier
