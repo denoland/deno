@@ -74,6 +74,8 @@ union Any {
   StatRes,
   Symlink,
   Truncate,
+  HomeDir,
+  HomeDirRes,
   Utime,
   WorkerGetMessage,
   WorkerGetMessageRes,
@@ -444,6 +446,12 @@ table StatRes {
 table Truncate {
   name: string;
   len: uint;
+}
+
+table HomeDir {}
+
+table HomeDirRes {
+  path: string;
 }
 
 table Utime {
