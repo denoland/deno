@@ -391,6 +391,13 @@ To change installation directory use -d/--dir flag
           AppSettings::DisableHelpSubcommand,
           AppSettings::DisableVersion,
         ]).about("Generate shell completions")
+        .long_about(
+"Generate and output completion script for shell of choice to standard output.
+
+  deno completions bash > /usr/local/etc/bash_completion.d/deno.bash
+
+  source /usr/local/etc/bash_completion.d/deno.bash
+        ")
         .arg(
           Arg::with_name("shell")
           .possible_values(&Shell::variants())
@@ -555,6 +562,7 @@ const INSTALLER_URL: &str = "https://deno.land/std@b13441f/installer/mod.ts";
 #[derive(Debug, PartialEq)]
 pub enum DenoSubcommand {
   Bundle,
+  Completions,
   Eval,
   Fetch,
   Info,
@@ -615,7 +623,7 @@ pub fn flags_from_vec(
         Shell::from_str(shell).unwrap(),
         &mut std::io::stdout(),
       );
-      std::process::exit(0);
+      DenoSubcommand::Completions
     }
     ("eval", Some(eval_match)) => {
       flags.allow_net = true;
@@ -1418,5 +1426,17 @@ mod tests {
     );
     assert_eq!(subcommand, DenoSubcommand::Run);
     assert_eq!(argv, svec!["deno", "script.ts"])
+  }
+
+  #[test]
+  fn test_flags_from_vec_32() {
+    let (flags, subcommand, argv) =
+      flags_from_vec(svec!["deno", "completions", "bash"]);
+    assert_eq!(
+      flags,
+      DenoFlags::default()
+    );
+    assert_eq!(subcommand, DenoSubcommand::Completions);
+    assert_eq!(argv, svec!["deno"])
   }
 }
