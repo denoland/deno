@@ -1432,10 +1432,7 @@ mod tests {
   fn test_flags_from_vec_32() {
     let (flags, subcommand, argv) =
       flags_from_vec(svec!["deno", "completions", "bash"]);
-    assert_eq!(
-      flags,
-      DenoFlags::default()
-    );
+    assert_eq!(flags, DenoFlags::default());
     assert_eq!(subcommand, DenoSubcommand::Completions);
     assert_eq!(argv, svec!["deno"])
   }
