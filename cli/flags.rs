@@ -1,7 +1,14 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
+use clap::App;
+use clap::AppSettings;
+use clap::Arg;
+use clap::ArgMatches;
+use clap::Shell;
+use clap::SubCommand;
 use crate::deno_dir;
 use log::Level;
+use std;
+use std::str::FromStr;
 
 // Creates vector of strings, Vec<String>
 macro_rules! svec {
@@ -300,7 +307,7 @@ ability to spawn subprocesses.
           // this is a fake subcommand - it's used in conjunction with
           // AppSettings:AllowExternalSubcommand to treat it as an
           // entry point script
-          SubCommand::with_name("<script>").about("Script to run"),
+          SubCommand::with_name("[SCRIPT]").about("Script to run"),
         ),
     ).subcommand(
     SubCommand::with_name("xeval")
@@ -376,13 +383,31 @@ To change installation directory use -d/--dir flag
           // this is a fake subcommand - it's used in conjunction with
           // AppSettings:AllowExternalSubcommand to treat it as an
           // entry point script
-          SubCommand::with_name("<script>").about("Script URL"),
+          SubCommand::with_name("[SCRIPT]").about("Script URL"),
         ),
     ).subcommand(
+      SubCommand::with_name("completions")
+        .settings(&[
+          AppSettings::DisableHelpSubcommand,
+          AppSettings::DisableVersion,
+        ]).about("Generate shell completions")
+        .long_about(
+"Output shell completion script to standard output.
+
+Example:
+
+  deno completions bash > /usr/local/etc/bash_completion.d/deno.bash
+  source /usr/local/etc/bash_completion.d/deno.bash")
+        .arg(
+          Arg::with_name("shell")
+          .possible_values(&Shell::variants())
+          .required(true),
+        ),
+  ).subcommand(
       // this is a fake subcommand - it's used in conjunction with
       // AppSettings:AllowExternalSubcommand to treat it as an
       // entry point script
-      SubCommand::with_name("<script>").about("Script to run"),
+      SubCommand::with_name("[SCRIPT]").about("Script to run"),
     )
 }
 
@@ -537,6 +562,7 @@ const INSTALLER_URL: &str = "https://deno.land/std@b13441f/installer/mod.ts";
 #[derive(Debug, PartialEq)]
 pub enum DenoSubcommand {
   Bundle,
+  Completions,
   Eval,
   Fetch,
   Info,
@@ -589,6 +615,15 @@ pub fn flags_from_vec(
         .unwrap_or_else(|| get_default_bundle_filename(source_file));
       argv.extend(vec![source_file.to_string(), out_file.to_string()]);
       DenoSubcommand::Bundle
+    }
+    ("completions", Some(completions_match)) => {
+      let shell: &str = completions_match.value_of("shell").unwrap();
+      create_cli_app().gen_completions_to(
+        "deno",
+        Shell::from_str(shell).unwrap(),
+        &mut std::io::stdout(),
+      );
+      DenoSubcommand::Completions
     }
     ("eval", Some(eval_match)) => {
       flags.allow_net = true;
@@ -1391,5 +1426,14 @@ mod tests {
     );
     assert_eq!(subcommand, DenoSubcommand::Run);
     assert_eq!(argv, svec!["deno", "script.ts"])
+  }
+
+  #[test]
+  fn test_flags_from_vec_32() {
+    let (flags, subcommand, argv) =
+      flags_from_vec(svec!["deno", "completions", "bash"]);
+    assert_eq!(flags, DenoFlags::default());
+    assert_eq!(subcommand, DenoSubcommand::Completions);
+    assert_eq!(argv, svec!["deno"])
   }
 }
