@@ -115,16 +115,9 @@ mod tests {
 
   #[test]
   fn test_absolute() {
-    // Assuming cwd is the deno repo root.
-    let cwd = std::env::current_dir().unwrap();
-    let cwd_string = String::from(cwd.to_str().unwrap()) + "/";
-    let expected_url = format!(
-      "file://{}{}",
-      cwd_string.as_str(),
-      "tests/006_url_imports.ts"
-    ).replace("\\", "/");
-
     if cfg!(target_os = "windows") {
+      let expected_url = "file:///C:/deno/tests/006_url_imports.ts";
+
       assert_eq!(
         ModuleSpecifier::resolve_from_cwd(r"C:/deno/tests/006_url_imports.ts")
           .unwrap()
@@ -148,7 +141,7 @@ mod tests {
         ModuleSpecifier::resolve_from_cwd("/deno/tests/006_url_imports.ts")
           .unwrap()
           .to_string(),
-        expected_url
+        "file:///deno/tests/006_url_imports.ts"
       );
     }
   }
@@ -158,13 +151,14 @@ mod tests {
     // Assuming cwd is the deno repo root.
     let cwd = std::env::current_dir().unwrap();
     let cwd_string = String::from(cwd.to_str().unwrap()) + "/";
-    let expected_url = format!(
-      "file://{}{}",
-      cwd_string.as_str(),
-      "tests/006_url_imports.ts"
-    ).replace("\\", "/");
 
     if cfg!(target_os = "windows") {
+      let expected_url = format!(
+        "file:///{}{}",
+        cwd_string.as_str(),
+        "tests/006_url_imports.ts"
+      ).replace("\\", "/");
+
       assert_eq!(
         ModuleSpecifier::resolve_from_cwd(r"./tests/006_url_imports.ts")
           .unwrap()
@@ -175,20 +169,24 @@ mod tests {
         ModuleSpecifier::resolve_from_cwd(r".\tests\006_url_imports.ts")
           .unwrap()
           .to_string(),
-        expected_url,
+        expected_url
       );
       assert_eq!(
         ModuleSpecifier::resolve_from_cwd(r"\tests\006_url_imports.ts")
           .unwrap()
           .to_string(),
-        expected_url,
+        expected_url
       );
     } else {
       assert_eq!(
         ModuleSpecifier::resolve_from_cwd("./tests/006_url_imports.ts")
           .unwrap()
           .to_string(),
-        expected_url,
+        format!(
+          "file://{}{}",
+          cwd_string.as_str(),
+          "tests/006_url_imports.ts"
+        ),
       );
     }
   }
