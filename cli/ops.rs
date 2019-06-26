@@ -793,9 +793,10 @@ where
     let result_buf = f()?;
     Ok(Op::Sync(result_buf))
   } else {
-    Ok(Op::Async(Box::new(tokio_util::poll_fn(move || {
-      convert_blocking(f)
-    }))))
+    Ok(Op::Async(Box::new(futures::sync::oneshot::spawn(
+      tokio_util::poll_fn(move || convert_blocking(f)),
+      &tokio_executor::DefaultExecutor::current(),
+    ))))
   }
 }
 
