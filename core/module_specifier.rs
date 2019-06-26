@@ -115,25 +115,40 @@ mod tests {
 
   #[test]
   fn test_absolute() {
+    // Assuming cwd is the deno repo root.
+    let cwd = std::env::current_dir().unwrap();
+    let cwd_string = String::from(cwd.to_str().unwrap()) + "/";
+    let expected_url = format!(
+      "file://{}{}",
+      cwd_string.as_str(),
+      "tests/006_url_imports.ts"
+    ).replace("\\", "/");
+
     if cfg!(target_os = "windows") {
       assert_eq!(
         ModuleSpecifier::resolve_from_cwd(r"C:/deno/tests/006_url_imports.ts")
           .unwrap()
           .to_string(),
-        "file:///C:/deno/tests/006_url_imports.ts",
+        expected_url,
       );
       assert_eq!(
         ModuleSpecifier::resolve_from_cwd(r"C:\deno\tests\006_url_imports.ts")
           .unwrap()
           .to_string(),
-        "file:///C:/deno/tests/006_url_imports.ts",
+        expected_url,
+      );
+      assert_eq!(
+        ModuleSpecifier::resolve_from_cwd(r"/deno/tests/006_url_imports.ts")
+          .unwrap()
+          .to_string(),
+        expected_url
       );
     } else {
       assert_eq!(
         ModuleSpecifier::resolve_from_cwd("/deno/tests/006_url_imports.ts")
           .unwrap()
           .to_string(),
-        "file:///deno/tests/006_url_imports.ts",
+        expected_url
       );
     }
   }
@@ -151,10 +166,16 @@ mod tests {
 
     if cfg!(target_os = "windows") {
       assert_eq!(
-        ModuleSpecifier::resolve_from_cwd(r"/tests/006_url_imports.ts")
+        ModuleSpecifier::resolve_from_cwd(r"./tests/006_url_imports.ts")
           .unwrap()
           .to_string(),
         expected_url
+      );
+      assert_eq!(
+        ModuleSpecifier::resolve_from_cwd(r".\tests\006_url_imports.ts")
+          .unwrap()
+          .to_string(),
+        expected_url,
       );
       assert_eq!(
         ModuleSpecifier::resolve_from_cwd(r"\tests\006_url_imports.ts")
