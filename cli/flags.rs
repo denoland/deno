@@ -392,12 +392,12 @@ To change installation directory use -d/--dir flag
           AppSettings::DisableVersion,
         ]).about("Generate shell completions")
         .long_about(
-"Generate and output completion script for shell of choice to standard output.
+"Output shell completion script to standard output.
+
+Example:
 
   deno completions bash > /usr/local/etc/bash_completion.d/deno.bash
-
-  source /usr/local/etc/bash_completion.d/deno.bash
-        ")
+  source /usr/local/etc/bash_completion.d/deno.bash")
         .arg(
           Arg::with_name("shell")
           .possible_values(&Shell::variants())

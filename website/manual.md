@@ -650,11 +650,11 @@ boolean constant `Deno.noColor`.
 
 ### Shell completion
 
-You can generate completion script for your shell using
-`deno completions <shell>` command. Command outputs to standard output so you
-should redirect it to an appropriate file.
+You can generate completion script for your shell using the
+`deno completions <shell>` command. The command outputs to stdout so you should
+redirect it to an appropriate file.
 
-Currently supported shells are:
+The supported shells are:
 
 - zsh
 - bash
@@ -664,9 +664,9 @@ Currently supported shells are:
 
 Example:
 
-```
-$ deno completions bash > /usr/local/etc/bash_completion.d/deno.bash
-$ source /usr/local/etc/bash_completion.d/deno.bash
+```shellsession
+deno completions bash > /usr/local/etc/bash_completion.d/deno.bash
+source /usr/local/etc/bash_completion.d/deno.bash
 ```
 
 ### V8 flags
