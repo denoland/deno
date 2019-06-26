@@ -17,13 +17,10 @@ impl ModuleSpecifier {
     specifier: &str,
     base: &str,
   ) -> Result<ModuleSpecifier, url::ParseError> {
-    // TODO: it should firstly try to resolve from path (specifier may be absolute filepath)
-
     // 1. Apply the URL parser to specifier. If the result is not failure, return
     //    the result.
-    // let specifier = parse_local_or_remote(specifier)?.to_string();
-    if let Ok(url) = Url::parse(specifier) {
-      return Ok(ModuleSpecifier(url));
+    if let Ok(module_specifier) = ModuleSpecifier::resolve_absolute(specifier) {
+      return Ok(module_specifier);
     }
 
     // 2. If specifier does not start with the character U+002F SOLIDUS (/), the
@@ -41,6 +38,7 @@ impl ModuleSpecifier {
 
     // 3. Return the result of applying the URL parser to specifier with base URL
     //    as the base URL.
+    // TODO: this should resolve path as well
     let base_url = Url::parse(base)?;
     let u = base_url.join(&specifier)?;
     Ok(ModuleSpecifier(u))
@@ -120,9 +118,6 @@ mod tests {
     if cfg!(target_os = "windows") {
       let expected_url = "file:///C:/deno/tests/006_url_imports.ts";
 
-      eprintln!("{:?}", Url::parse(r"C:/deno/tests/006_url_imports.ts"));
-      eprintln!("{:?}", Url::parse(r"C:\deno\tests\006_url_imports.ts"));
-
       assert_eq!(
         ModuleSpecifier::resolve_from_cwd(r"C:/deno/tests/006_url_imports.ts")
           .unwrap()
@@ -137,6 +132,12 @@ mod tests {
       );
       assert_eq!(
         ModuleSpecifier::resolve_from_cwd(r"/deno/tests/006_url_imports.ts")
+          .unwrap()
+          .to_string(),
+        expected_url
+      );
+      assert_eq!(
+        ModuleSpecifier::resolve_from_cwd(r"\tests\006_url_imports.ts")
           .unwrap()
           .to_string(),
         expected_url
@@ -169,12 +170,6 @@ mod tests {
       );
       assert_eq!(
         ModuleSpecifier::resolve_from_cwd(r".\tests\006_url_imports.ts")
-          .unwrap()
-          .to_string(),
-        expected_url
-      );
-      assert_eq!(
-        ModuleSpecifier::resolve_from_cwd(r"\tests\006_url_imports.ts")
           .unwrap()
           .to_string(),
         expected_url
@@ -219,7 +214,53 @@ mod tests {
       "http://deno.land/core/tests/005_more_imports.ts"
     );
 
-    // TODO(bartlomieju): add more test cases
+    assert_eq!(
+      ModuleSpecifier::resolve(
+        "../005_more_imports.ts",
+        "http://deno.land/core/tests/006_url_imports.ts",
+      ).unwrap()
+      .to_string(),
+      "http://deno.land/core/005_more_imports.ts"
+    );
+
+    // absolute URL
+    assert_eq!(
+      ModuleSpecifier::resolve(
+        "http://deno.land/core/tests/005_more_imports.ts",
+        "http://deno.land/core/tests/006_url_imports.ts",
+      ).unwrap()
+      .to_string(),
+      "http://deno.land/core/tests/005_more_imports.ts",
+    );
+
+    // absolute path
+    if cfg!(target_os = "windows") {
+      assert_eq!(
+        ModuleSpecifier::resolve(
+          r"/deno/tests/005_more_imports.ts",
+          r"/deno/tests/006_url_imports.ts",
+        ).unwrap()
+        .to_string(),
+        "file:///C:/deno/tests/005_more_imports.ts",
+      );
+      assert_eq!(
+        ModuleSpecifier::resolve(
+          r"\deno\tests\005_more_imports.ts",
+          r"/deno/tests/006_url_imports.ts",
+        ).unwrap()
+        .to_string(),
+        "file:///C:/deno/tests/005_more_imports.ts",
+      );
+    } else {
+      assert_eq!(
+        ModuleSpecifier::resolve(
+          "/dev/core/tests/005_more_imports.ts",
+          "/dev/core/tests/006_url_imports.ts",
+        ).unwrap()
+        .to_string(),
+        "file:///dev/core/tests/005_more_imports.ts",
+      );
+    }
   }
 
   #[test]
