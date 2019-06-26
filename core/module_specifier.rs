@@ -140,7 +140,7 @@ mod tests {
         ModuleSpecifier::resolve_from_cwd(r"\tests\006_url_imports.ts")
           .unwrap()
           .to_string(),
-        expected_url
+        "file:///C:/tests/006_url_imports.ts"
       );
     } else {
       assert_eq!(
@@ -237,16 +237,16 @@ mod tests {
     if cfg!(target_os = "windows") {
       assert_eq!(
         ModuleSpecifier::resolve(
-          r"/deno/tests/005_more_imports.ts",
-          r"/deno/tests/006_url_imports.ts",
+          r"C:/deno/tests/005_more_imports.ts",
+          r"C:/deno/tests/006_url_imports.ts",
         ).unwrap()
         .to_string(),
         "file:///C:/deno/tests/005_more_imports.ts",
       );
       assert_eq!(
         ModuleSpecifier::resolve(
-          r"\deno\tests\005_more_imports.ts",
-          r"/deno/tests/006_url_imports.ts",
+          r"C:\deno\tests\005_more_imports.ts",
+          r"C:/deno/tests/006_url_imports.ts",
         ).unwrap()
         .to_string(),
         "file:///C:/deno/tests/005_more_imports.ts",
