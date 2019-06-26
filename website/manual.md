@@ -186,18 +186,21 @@ Extra steps for Mac users: install [XCode](https://developer.apple.com/xcode/)
 Extra steps for Windows users:
 
 1. Add `python.exe` to `PATH` (e.g. `set PATH=%PATH%;C:\Python27\python.exe`)
-2. Get [VS Community 2017](https://www.visualstudio.com/downloads/) with
-   "Desktop development with C++" toolkit and make sure to select the following
-   required tools listed below along with all C++ tools.
+2. Get
+   [VS Community 2017](https://docs.microsoft.com/en-us/visualstudio/releasenotes/vs2017-relnotes)
+   with "Desktop development with C++" toolkit and make sure to select the
+   following required tools listed below along with all C++ tools.
    - Windows 10 SDK >= 10.0.17134
    - Visual C++ ATL for x86 and x64
    - Visual C++ MFC for x86 and x64
    - C++ profiling tools
-3. Enable "Debugging Tools for Windows". Go to "Control Panel" → "Programs" →
+3. Add your Visual studio path to `GYP_MSVS_OVERRIDE_PATH` (e.g.
+   `set GYP_MSVS_OVERRIDE_PATH=C:\Program Files (x86)\Microsoft Visual Studio\2017\Community`)
+4. Enable "Debugging Tools for Windows". Go to "Control Panel" → "Programs" →
    "Programs and Features" → Select "Windows Software Development Kit - Windows
    10" → "Change" → "Change" → Check "Debugging Tools For Windows" → "Change" ->
    "Finish".
-4. Make sure you are using git version 2.19.2.windows.1 or newer.
+5. Make sure you are using git version 2.19.2.windows.1 or newer.
 
 #### Other useful commands
 
