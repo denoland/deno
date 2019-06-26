@@ -181,10 +181,7 @@ impl Loader for ThreadSafeState {
     self.metrics.resolve_count.fetch_add(1, Ordering::SeqCst);
     Box::new(
       fetch_module_meta_data_and_maybe_compile_async(self, module_specifier)
-        .map_err(|err| {
-          eprintln!("{}", err);
-          err
-        }).map(|module_meta_data| deno::SourceCodeInfo {
+        .map(|module_meta_data| deno::SourceCodeInfo {
           // Real module name, might be different from initial URL
           // due to redirections.
           code: module_meta_data.js_source(),
