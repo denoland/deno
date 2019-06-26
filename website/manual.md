@@ -618,18 +618,19 @@ OPTIONS:
         --v8-flags=<v8-flags>          Set V8 command line options
 
 SUBCOMMANDS:
-    <script>    Script to run
-    bundle      Bundle module and dependencies into single file
-    eval        Eval script
-    fetch       Fetch the dependencies
-    fmt         Format files
-    help        Prints this message or the help of the given subcommand(s)
-    info        Show source file related info
-    install     Install script as executable
-    run         Run a program given a filename or url to the source code
-    types       Print runtime TypeScript declarations
-    version     Print the version
-    xeval       Eval a script on text segments from stdin
+    [SCRIPT]       Script to run
+    bundle         Bundle module and dependencies into single file
+    completions    Generate shell completions
+    eval           Eval script
+    fetch          Fetch the dependencies
+    fmt            Format files
+    help           Prints this message or the help of the given subcommand(s)
+    info           Show source file related info
+    install        Install script as executable
+    run            Run a program given a filename or url to the source code
+    types          Print runtime TypeScript declarations
+    version        Print the version
+    xeval          Eval a script on text segments from stdin
 
 ENVIRONMENT VARIABLES:
     DENO_DIR        Set deno's base directory
@@ -646,6 +647,27 @@ generated and cached source code is written and read to.
 `NO_COLOR` will turn off color output if set. See https://no-color.org/. User
 code can test if `NO_COLOR` was set without having `--allow-env` by using the
 boolean constant `Deno.noColor`.
+
+### Shell completion
+
+You can generate completion script for your shell using the
+`deno completions <shell>` command. The command outputs to stdout so you should
+redirect it to an appropriate file.
+
+The supported shells are:
+
+- zsh
+- bash
+- fish
+- powershell
+- elvish
+
+Example:
+
+```shellsession
+deno completions bash > /usr/local/etc/bash_completion.d/deno.bash
+source /usr/local/etc/bash_completion.d/deno.bash
+```
 
 ### V8 flags
 

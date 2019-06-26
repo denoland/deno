@@ -346,6 +346,7 @@ fn main() {
 
   match subcommand {
     DenoSubcommand::Bundle => bundle_command(flags, argv),
+    DenoSubcommand::Completions => {}
     DenoSubcommand::Eval => eval_command(flags, argv),
     DenoSubcommand::Fetch => fetch_or_info_command(flags, argv, false),
     DenoSubcommand::Info => fetch_or_info_command(flags, argv, true),
