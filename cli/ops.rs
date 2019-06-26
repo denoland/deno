@@ -2018,7 +2018,7 @@ fn op_create_worker(
   err_check(worker.execute("denoMain()"));
   err_check(worker.execute("workerMain()"));
 
-  let module_specifier = ModuleSpecifier::resolve_absolute(specifier)?;
+  let module_specifier = ModuleSpecifier::resolve_from_cwd(specifier)?;
 
   let op =
     worker
