@@ -17,6 +17,8 @@ impl ModuleSpecifier {
     specifier: &str,
     base: &str,
   ) -> Result<ModuleSpecifier, url::ParseError> {
+    // TODO: it should firstly try to resolve from path (specifier may be absolute filepath)
+
     // 1. Apply the URL parser to specifier. If the result is not failure, return
     //    the result.
     // let specifier = parse_local_or_remote(specifier)?.to_string();
@@ -114,9 +116,12 @@ mod tests {
   use super::*;
 
   #[test]
-  fn test_absolute() {
+  fn test_resolve_from_cwd() {
     if cfg!(target_os = "windows") {
       let expected_url = "file:///C:/deno/tests/006_url_imports.ts";
+
+      eprintln!("{:?}", Url::parse(r"C:/deno/tests/006_url_imports.ts"));
+      eprintln!("{:?}", Url::parse(r"C:\deno\tests\006_url_imports.ts"));
 
       assert_eq!(
         ModuleSpecifier::resolve_from_cwd(r"C:/deno/tests/006_url_imports.ts")
@@ -144,10 +149,7 @@ mod tests {
         "file:///deno/tests/006_url_imports.ts"
       );
     }
-  }
 
-  #[test]
-  fn test_relative() {
     // Assuming cwd is the deno repo root.
     let cwd = std::env::current_dir().unwrap();
     let cwd_string = String::from(cwd.to_str().unwrap()) + "/";
@@ -189,10 +191,7 @@ mod tests {
         ),
       );
     }
-  }
 
-  #[test]
-  fn test_http() {
     assert_eq!(
       ModuleSpecifier::resolve_from_cwd(
         "http://deno.land/core/tests/006_url_imports.ts"
@@ -207,5 +206,30 @@ mod tests {
       .to_string(),
       "https://deno.land/core/tests/006_url_imports.ts",
     );
+  }
+
+  #[test]
+  fn test_resolve() {
+    assert_eq!(
+      ModuleSpecifier::resolve(
+        "./005_more_imports.ts",
+        "http://deno.land/core/tests/006_url_imports.ts",
+      ).unwrap()
+      .to_string(),
+      "http://deno.land/core/tests/005_more_imports.ts"
+    );
+
+    // TODO(bartlomieju): add more test cases
+  }
+
+  #[test]
+  fn test_resolve_bad_specifier() {
+    assert!(
+      ModuleSpecifier::resolve(
+        "005_more_imports.ts",
+        "http://deno.land/core/tests/006_url_imports.ts",
+      ).is_err()
+    );
+    // TODO(bartlomieju): add more test cases
   }
 }
