@@ -94,25 +94,25 @@ scripts to download and install the binary.
 
 Using Shell:
 
-```shellsession
+```shell
 curl -fsSL https://deno.land/x/install/install.sh | sh
 ```
 
 Using PowerShell:
 
-```shellsession
+```powershell
 iwr https://deno.land/x/install/install.ps1 | iex
 ```
 
 Using [Scoop](https://scoop.sh/) (windows):
 
-```shellsession
+```shell
 scoop install deno
 ```
 
 Using [Homebrew](https://brew.sh/) (mac):
 
-```shellsession
+```shell
 brew install deno
 ```
 
@@ -123,7 +123,7 @@ executable bit on Mac and Linux.
 
 Once it's installed and in your `$PATH`, try it:
 
-```shellsession
+```shell
 deno run https://deno.land/welcome.ts
 ```
 
@@ -234,7 +234,7 @@ Environment variables: `DENO_BUILD_MODE`, `DENO_BUILD_PATH`, `DENO_BUILD_ARGS`,
 To get an exact reference of deno's runtime API, run the following in the
 command line:
 
-```shellsession
+```shell
 $ deno types
 ```
 
@@ -274,7 +274,7 @@ I/O streams in Deno.
 
 Try the program:
 
-```shellsession
+```shell
 $ deno run --allow-read https://deno.land/std/examples/cat.ts /etc/passwd
 ```
 
@@ -300,7 +300,7 @@ const { listen, copy } = Deno;
 When this program is started, the user is prompted for permission to listen on
 the network:
 
-```shellsession
+```shell
 $ deno run https://deno.land/std/examples/echo_server.ts
 ⚠️  Deno requests network access to "listen". Grant? [a/y/n/d (a = allow always, y = allow once, n = deny once, d = deny always)]
 ```
@@ -308,14 +308,14 @@ $ deno run https://deno.land/std/examples/echo_server.ts
 For security reasons, deno does not allow programs to access the network without
 explicit permission. To avoid the console prompt, use a command-line flag:
 
-```shellsession
+```shell
 $ deno run --allow-net https://deno.land/std/examples/echo_server.ts
 ```
 
 To test it, try sending a HTTP request to it by using curl. The request gets
 written directly back to the client.
 
-```shellsession
+```shell
 $ curl http://localhost:8080/
 GET / HTTP/1.1
 Host: localhost:8080
@@ -368,7 +368,7 @@ alias file_server="deno run --allow-net --allow-read \
 
 Run it:
 
-```shellsession
+```shell
 $ file_server .
 Downloading https://deno.land/std/http/file_server.ts...
 [...]
@@ -377,7 +377,7 @@ HTTP server listening on http://0.0.0.0:4500/
 
 And if you ever want to upgrade to the latest published version:
 
-```shellsession
+```shell
 $ file_server --reload
 ```
 
@@ -387,14 +387,14 @@ deno also provides permissions whitelist.
 
 This is an example to restrict File system access by whitelist.
 
-```shellsession
+```shell
 $ deno run --allow-read=/usr https://deno.land/std/examples/cat.ts /etc/passwd
 ⚠️  Deno requests read access to "/etc/passwd". Grant? [a/y/n/d (a = allow always, y = allow once, n = deny once, d = deny always)]
 ```
 
 You can grant read permission under `/etc` dir
 
-```shellsession
+```shell
 $ deno run --allow-read=/etc https://deno.land/std/examples/cat.ts /etc/passwd
 ```
 
@@ -408,7 +408,7 @@ This is an example to restrict host.
 })();
 ```
 
-```shellsession
+```shell
 $ deno run --allow-net=deno.land allow-net-whitelist-example.ts
 ```
 
@@ -434,7 +434,7 @@ main();
 
 Run it:
 
-```shellsession
+```shell
 $ deno run --allow-run ./subprocess_simple.ts
 hello
 ```
@@ -480,7 +480,7 @@ main();
 
 When you run it:
 
-```shellsession
+```shell
 $ deno run --allow-run ./subprocess.ts <somefile>
 [file content]
 
@@ -515,7 +515,7 @@ runIfMain(import.meta);
 
 Try running this:
 
-```shellsession
+```shell
 $ deno run test.ts
 running 2 tests
 test t1 ... ok
@@ -664,7 +664,7 @@ The supported shells are:
 
 Example:
 
-```shellsession
+```shell
 deno completions bash > /usr/local/etc/bash_completion.d/deno.bash
 source /usr/local/etc/bash_completion.d/deno.bash
 ```
@@ -734,7 +734,7 @@ invoke `deno` with specified permissions and CLI flags.
 
 Example:
 
-```
+```shell
 $ deno install file_server https://deno.land/std/http/file_server.ts --allow-net --allow-read
 [1/1] Compiling https://deno.land/std/http/file_server.ts
 
@@ -745,14 +745,14 @@ $ deno install file_server https://deno.land/std/http/file_server.ts --allow-net
 By default scripts are installed at `$HOME/.deno/bin` and that directory must be
 added to the path manually.
 
-```
+```shell
 $ echo 'export PATH="$HOME/.deno/bin:$PATH"' >> ~/.bashrc
 ```
 
 Installation directory can be changed using `-d/--dir` flag:
 
-```
-deno install --dir /usr/local/bin prettier https://deno.land/std/prettier/main.ts --allow-write --allow-read
+```shell
+$ deno install --dir /usr/local/bin prettier https://deno.land/std/prettier/main.ts --allow-write --allow-read
 ```
 
 When installing a script you can specify permissions that will be used to run
@@ -761,8 +761,8 @@ additional CLI flags you want to pass to the script.
 
 Example:
 
-```
-deno install format_check https://deno.land/std/prettier/main.ts --allow-write --allow-read --check --print-width 88 --tab-width 2
+```shell
+$ deno install format_check https://deno.land/std/prettier/main.ts --allow-write --allow-read --check --print-width 88 --tab-width 2
 ```
 
 Above command creates an executable called `format_check` that runs `prettier`
@@ -791,7 +791,7 @@ if (import.meta.main) {
 When you create executable script make sure to let users know by adding example
 installation command to your repository:
 
-```
+```shell
 # Install using deno install
 
 $ deno install awesome_cli https://example.com/awesome/cli.ts
@@ -837,7 +837,7 @@ async function main() {
 main();
 ```
 
-```bash
+```shell
 $ deno run --importmap=import_map.json hello_server.ts
 ```
 
@@ -875,7 +875,7 @@ close(3);
 
 Metrics is deno's internal counters for various statics.
 
-```shellsession
+```shell
 > console.table(Deno.metrics())
 ┌──────────────────┬────────┐
 │     (index)      │ Values │
@@ -937,7 +937,7 @@ To learn more about `d8` and profiling, check out the following links:
 
 We can use LLDB to debug deno.
 
-```shellsession
+```shell
 $ lldb -- target/debug/deno run tests/worker.js
 > run
 > bt
@@ -949,7 +949,7 @@ $ lldb -- target/debug/deno run tests/worker.js
 To debug Rust code, we can use `rust-lldb`. It should come with `rustc` and is a
 wrapper around LLDB.
 
-```shellsession
+```shell
 $ rust-lldb -- ./target/debug/deno run --allow-net tests/http_bench.ts
 # On macOS, you might get warnings like
 # `ImportError: cannot import name _remove_dead_weakref`
@@ -980,7 +980,7 @@ Rust. These common data structures are defined in
 
 ### Updating prebuilt binaries
 
-```shellsession
+```shell
 $ ./third_party/depot_tools/upload_to_google_storage.py -b denoland  \
   -e ~/.config/gcloud/legacy_credentials/ry@tinyclouds.org/.boto `which sccache`
 $ mv `which sccache`.sha1 prebuilt/linux64/
