@@ -20,9 +20,9 @@ export {
   OpenMode
 } from "./files";
 export {
+  EOF,
   copy,
   toAsyncIterator,
-  ReadResult,
   SeekMode,
   Reader,
   SyncReader,

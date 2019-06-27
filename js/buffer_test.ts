@@ -60,10 +60,10 @@ async function empty(buf: Buffer, s: string, fub: Uint8Array): Promise<void> {
   check(buf, s);
   while (true) {
     const r = await buf.read(fub);
-    if (r.nread == 0) {
+    if (r === Deno.EOF) {
       break;
     }
-    s = s.slice(r.nread);
+    s = s.slice(r);
     check(buf, s);
   }
   check(buf, "");
@@ -126,8 +126,7 @@ test(async function bufferReadEmptyAtEOF(): Promise<void> {
   let buf = new Buffer();
   const zeroLengthTmp = new Uint8Array(0);
   let result = await buf.read(zeroLengthTmp);
-  assertEquals(result.nread, 0);
-  assertEquals(result.eof, false);
+  assertEquals(result, 0);
 });
 
 test(async function bufferLargeByteWrites(): Promise<void> {
@@ -217,7 +216,8 @@ test(async function bufferTestGrow(): Promise<void> {
     for (let growLen of [0, 100, 1000, 10000, 100000]) {
       const buf = new Buffer(xBytes.buffer as ArrayBuffer);
       // If we read, this affects buf.off, which is good to test.
-      const { nread } = await buf.read(tmp);
+      const result = await buf.read(tmp);
+      const nread = result === Deno.EOF ? 0 : result;
       buf.grow(growLen);
       const yBytes = repeat("y", growLen);
       await buf.write(yBytes);

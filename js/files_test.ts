@@ -39,15 +39,16 @@ test(async function readerToAsyncIterator(): Promise<void> {
 
     constructor(private readonly s: string) {}
 
-    async read(p: Uint8Array): Promise<Deno.ReadResult> {
+    async read(p: Uint8Array): Promise<number | Deno.EOF> {
       const n = Math.min(p.byteLength, this.buf.byteLength - this.offset);
       p.set(this.buf.slice(this.offset, this.offset + n));
       this.offset += n;
 
-      return {
-        nread: n,
-        eof: this.offset === this.buf.byteLength
-      };
+      if (n === 0) {
+        return Deno.EOF;
+      }
+
+      return n;
     }
   }
 
@@ -228,7 +229,7 @@ testPerm(
     const buf = new Uint8Array(20);
     await file.seek(0, Deno.SeekMode.SEEK_START);
     const result = await file.read(buf);
-    assertEquals(result.nread, 13);
+    assertEquals(result, 13);
     file.close();
 
     await Deno.remove(tempDir, { recursive: true });

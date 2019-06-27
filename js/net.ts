@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { ReadResult, Reader, Writer, Closer } from "./io";
+import { EOF, Reader, Writer, Closer } from "./io";
 import * as msg from "gen/cli/msg_generated";
 import { assert, notImplemented } from "./util";
 import * as dispatch from "./dispatch";
@@ -55,7 +55,7 @@ class ConnImpl implements Conn {
     return write(this.rid, p);
   }
 
-  read(p: Uint8Array): Promise<ReadResult> {
+  read(p: Uint8Array): Promise<number | EOF> {
     return read(this.rid, p);
   }
 
