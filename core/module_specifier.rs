@@ -181,16 +181,17 @@ mod tests {
 
       // non-disk paths
       let invalid_paths = vec![
-        r"d:foo\bar.txt",
         r"\\server\share",
         r"//server/share",
         r"\\.\c:\foo\bar.txt",
         r"//./c:/foo/bar.txt",
         r"\\?\c:\foo\bar",
         r"\??\something\something",
+        r"d:foo\bar.txt",
       ];
 
       for invalid_path in invalid_paths {
+        println!("{}", invalid_path);
         assert!(ModuleSpecifier::resolve_from_cwd(invalid_path).is_err());
       }
     } else {
