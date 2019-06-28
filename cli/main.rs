@@ -35,6 +35,7 @@ mod progress;
 mod repl;
 pub mod resolve_addr;
 pub mod resources;
+mod shell;
 mod signal;
 pub mod source_maps;
 mod startup_data;
@@ -158,17 +159,15 @@ fn create_worker_and_state(
   flags: DenoFlags,
   argv: Vec<String>,
 ) -> (Worker, ThreadSafeState) {
+  use crate::shell::Shell;
+  use std::sync::Arc;
+  use std::sync::Mutex;
+  let shell = Arc::new(Mutex::new(Shell::new()));
   let progress = Progress::new();
-  progress.set_callback(|done, completed, total, msg| {
-    if !done {
-      eprint!("\r[{}/{}] {}", completed, total, msg);
-      eprint!("\x1B[K"); // Clear to end of line.
-      return;
-    }
-
-    // print empty line only if progress bar was used
-    if done && total > 0 {
-      eprintln!();
+  progress.set_callback(move |_done, _completed, _total, status, msg| {
+    if !status.is_empty() {
+      let mut s = shell.lock().unwrap();
+      s.status(status, msg).expect("shell problem");
     }
   });
   let state = ThreadSafeState::new(flags, argv, ops::op_selector_std, progress);
@@ -347,6 +346,7 @@ fn main() {
 
   match subcommand {
     DenoSubcommand::Bundle => bundle_command(flags, argv),
+    DenoSubcommand::Completions => {}
     DenoSubcommand::Eval => eval_command(flags, argv),
     DenoSubcommand::Fetch => fetch_or_info_command(flags, argv, false),
     DenoSubcommand::Info => fetch_or_info_command(flags, argv, true),

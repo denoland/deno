@@ -12,7 +12,7 @@ impl Progress {
 
   pub fn set_callback<F>(&self, f: F)
   where
-    F: Fn(bool, usize, usize, &str) + Send + Sync + 'static,
+    F: Fn(bool, usize, usize, &str, &str) + Send + Sync + 'static,
   {
     let mut s = self.0.lock().unwrap();
     assert!(s.callback.is_none());
@@ -30,11 +30,17 @@ impl Progress {
     s.job_names.clone()
   }
 
-  pub fn add(&self, name: String) -> Job {
+  pub fn add(&self, status: &str, name: &str) -> Job {
     let mut s = self.0.lock().unwrap();
     let id = s.job_names.len();
-    s.maybe_call_callback(false, s.complete, s.job_names.len() + 1, &name);
-    s.job_names.push(name);
+    s.maybe_call_callback(
+      false,
+      s.complete,
+      s.job_names.len() + 1,
+      status,
+      name,
+    );
+    s.job_names.push(name.to_string());
     Job {
       id,
       inner: self.0.clone(),
@@ -43,11 +49,11 @@ impl Progress {
 
   pub fn done(&self) {
     let s = self.0.lock().unwrap();
-    s.maybe_call_callback(true, s.complete, s.job_names.len(), "");
+    s.maybe_call_callback(true, s.complete, s.job_names.len(), "", "");
   }
 }
 
-type Callback = dyn Fn(bool, usize, usize, &str) + Send + Sync;
+type Callback = dyn Fn(bool, usize, usize, &str, &str) + Send + Sync;
 
 #[derive(Default)]
 struct Inner {
@@ -62,10 +68,11 @@ impl Inner {
     done: bool,
     complete: usize,
     total: usize,
+    status: &str,
     msg: &str,
   ) {
     if let Some(ref cb) = self.callback {
-      cb(done, complete, total, msg);
+      cb(done, complete, total, status, msg);
     }
   }
 
@@ -87,7 +94,7 @@ impl Drop for Job {
     s.complete += 1;
     let name = &s.job_names[self.id];
     let (complete, total) = s.progress();
-    s.maybe_call_callback(false, complete, total, name);
+    s.maybe_call_callback(false, complete, total, "", name);
   }
 }
 
@@ -100,12 +107,12 @@ mod tests {
     let p = Progress::new();
     assert_eq!(p.progress(), (0, 0));
     {
-      let _j1 = p.add("hello".to_string());
+      let _j1 = p.add("status", "hello");
       assert_eq!(p.progress(), (0, 1));
     }
     assert_eq!(p.progress(), (1, 1));
     {
-      let _j2 = p.add("hello".to_string());
+      let _j2 = p.add("status", "hello");
       assert_eq!(p.progress(), (1, 2));
     }
     assert_eq!(p.progress(), (2, 2));
@@ -114,8 +121,8 @@ mod tests {
   #[test]
   fn history() {
     let p = Progress::new();
-    let _a = p.add("a".to_string());
-    let _b = p.add("b".to_string());
+    let _a = p.add("status", "a");
+    let _b = p.add("status", "b");
     assert_eq!(p.history(), vec!["a", "b"]);
   }
 
@@ -127,16 +134,16 @@ mod tests {
       let p = Progress::new();
       let callback_history_ = callback_history.clone();
 
-      p.set_callback(move |_done, complete, total, msg| {
+      p.set_callback(move |_done, complete, total, _status, msg| {
         // println!("callback: {}, {}, {}", complete, total, msg);
         let mut h = callback_history_.lock().unwrap();
         h.push((complete, total, String::from(msg)));
       });
       {
-        let _a = p.add("a".to_string());
-        let _b = p.add("b".to_string());
+        let _a = p.add("status", "a");
+        let _b = p.add("status", "b");
       }
-      let _c = p.add("c".to_string());
+      let _c = p.add("status", "c");
     }
 
     let h = callback_history.lock().unwrap();
