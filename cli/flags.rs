@@ -438,7 +438,7 @@ pub fn parse_flags(
   matches: &ArgMatches,
   maybe_flags: Option<DenoFlags>,
 ) -> DenoFlags {
-  let mut flags = maybe_flags.unwrap_or(DenoFlags::default());
+  let mut flags = maybe_flags.unwrap_or_defult();
 
   if matches.is_present("log-level") {
     flags.log_level = match matches.value_of("log-level").unwrap() {
@@ -585,7 +585,7 @@ fn parse_script_args(
       continue;
     }
 
-    if !arg.starts_with("-") {
+    if !arg.starts_with('-') {
       argv.push(arg.to_string());
       continue;
     }
