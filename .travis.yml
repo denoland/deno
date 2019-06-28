@@ -5,7 +5,7 @@ git:
   depth: 1
 env:
   global:
-  - RUST_VERSION=1.34.1
+  - RUST_VERSION=1.35.0
   - CARGO_HOME=$TRAVIS_BUILD_DIR/third_party/rust_crates/
   - RUSTUP_HOME=$HOME/.rustup/
   - RUST_BACKTRACE=full
