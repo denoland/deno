@@ -438,7 +438,7 @@ pub fn parse_flags(
   matches: &ArgMatches,
   maybe_flags: Option<DenoFlags>,
 ) -> DenoFlags {
-  let mut flags = maybe_flags.unwrap_or_defult();
+  let mut flags = maybe_flags.unwrap_or_default();
 
   if matches.is_present("log-level") {
     flags.log_level = match matches.value_of("log-level").unwrap() {
