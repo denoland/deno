@@ -116,6 +116,10 @@ mod tests {
 
   #[test]
   fn test_resolve_from_cwd() {
+    // Assuming cwd is the deno repo root.
+    let cwd = std::env::current_dir().unwrap();
+    let cwd_string = String::from(cwd.to_str().unwrap()) + "/";
+
     if cfg!(target_os = "windows") {
       let expected_url = "file:///C:/deno/tests/006_url_imports.ts";
 
@@ -135,13 +139,19 @@ mod tests {
         ModuleSpecifier::resolve_from_cwd(r"/deno/tests/006_url_imports.ts")
           .unwrap()
           .to_string(),
-        expected_url
+        format!(
+          "file:///{}",
+          cwd.join("/deno/tests/006_url_imports.ts").to_str().unwrap(),
+        ).replace("\\", "/")
       );
       assert_eq!(
         ModuleSpecifier::resolve_from_cwd(r"\tests\006_url_imports.ts")
           .unwrap()
           .to_string(),
-        "file:///C:/tests/006_url_imports.ts"
+        format!(
+          "file:///{}",
+          cwd.join(r"\tests\006_url_imports.ts").to_str().unwrap(),
+        ).replace("\\", "/")
       );
     } else {
       assert_eq!(
@@ -151,10 +161,6 @@ mod tests {
         "file:///deno/tests/006_url_imports.ts"
       );
     }
-
-    // Assuming cwd is the deno repo root.
-    let cwd = std::env::current_dir().unwrap();
-    let cwd_string = String::from(cwd.to_str().unwrap()) + "/";
 
     if cfg!(target_os = "windows") {
       let expected_url = format!(
@@ -262,16 +268,80 @@ mod tests {
         "file:///dev/core/tests/005_more_imports.ts",
       );
     }
+
+    assert_eq!(
+      ModuleSpecifier::resolve(
+        "data:text/javascript,export default 'grapes';",
+        "http://deno.land/core/tests/006_url_imports.ts",
+      ).unwrap()
+      .to_string(),
+      "data:text/javascript,export default 'grapes';",
+    );
+
+    assert_eq!(
+      ModuleSpecifier::resolve(
+        "blob:https://whatwg.org/d0360e2f-caee-469f-9a2f-87d5b0456f6f",
+        "http://deno.land/core/tests/006_url_imports.ts",
+      ).unwrap()
+      .to_string(),
+      "blob:https://whatwg.org/d0360e2f-caee-469f-9a2f-87d5b0456f6f",
+    );
+
+    assert_eq!(
+      ModuleSpecifier::resolve(
+        "javascript:export default 'artichokes';",
+        "http://deno.land/core/tests/006_url_imports.ts",
+      ).unwrap()
+      .to_string(),
+      "javascript:export default 'artichokes';",
+    );
+
+    assert_eq!(
+      ModuleSpecifier::resolve(
+        "data:text/plain,export default 'kale';",
+        "http://deno.land/core/tests/006_url_imports.ts",
+      ).unwrap()
+      .to_string(),
+      "data:text/plain,export default 'kale';",
+    );
   }
 
   #[test]
   fn test_resolve_bad_specifier() {
-    assert!(
+    assert_eq!(
       ModuleSpecifier::resolve(
         "005_more_imports.ts",
         "http://deno.land/core/tests/006_url_imports.ts",
-      ).is_err()
+      ).unwrap_err(),
+      url::ParseError::RelativeUrlWithCannotBeABaseBase
     );
-    // TODO(bartlomieju): add more test cases
+    assert_eq!(
+      ModuleSpecifier::resolve(
+        "https://eggplant:b/c",
+        "http://deno.land/core/tests/006_url_imports.ts",
+      ).unwrap_err(),
+      url::ParseError::RelativeUrlWithCannotBeABaseBase
+    );
+    assert_eq!(
+      ModuleSpecifier::resolve(
+        ".tomato",
+        "http://deno.land/core/tests/006_url_imports.ts",
+      ).unwrap_err(),
+      url::ParseError::RelativeUrlWithCannotBeABaseBase
+    );
+    assert_eq!(
+      ModuleSpecifier::resolve(
+        "..zucchini.mjs",
+        "http://deno.land/core/tests/006_url_imports.ts",
+      ).unwrap_err(),
+      url::ParseError::RelativeUrlWithCannotBeABaseBase
+    );
+    assert_eq!(
+      ModuleSpecifier::resolve(
+        r".\yam.es",
+        "http://deno.land/core/tests/006_url_imports.ts",
+      ).unwrap_err(),
+      url::ParseError::RelativeUrlWithCannotBeABaseBase
+    );
   }
 }
