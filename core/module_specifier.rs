@@ -1,6 +1,29 @@
 use std::fmt;
+use std::path::Component;
+use std::path::Path;
 use std::path::PathBuf;
+use std::path::Prefix;
 use url::Url;
+
+/// Ensure that Windows path has disk prefix (eg. C:, D:).
+///
+/// Currently we don't allow verbatim, UNC and device NS paths.
+fn ensure_valid_prefix(path: &Path) -> Result<(), url::ParseError> {
+  if cfg!(target_os = "windows") {
+    match path.components().next().unwrap() {
+      Component::Prefix(prefix_component) => {
+        match prefix_component.kind() {
+          Prefix::Disk(_) => {}
+          // TODO(bartlomieju) this is not proper error to return
+          _ => return Err(url::ParseError::RelativeUrlWithCannotBeABaseBase),
+        }
+      }
+      _ => unreachable!(), // TODO: should handle this branch?
+    }
+  }
+
+  Ok(())
+}
 
 #[derive(Debug, Clone, PartialEq)]
 /// Resolved module specifier
@@ -69,6 +92,7 @@ impl ModuleSpecifier {
     let specifier_path = PathBuf::from(specifier);
     let cwd = std::env::current_dir().unwrap();
     let path = cwd.join(specifier_path);
+    ensure_valid_prefix(&path)?;
     let url =
       Url::from_file_path(path).expect("PathBuf should be parseable URL");
     Ok(ModuleSpecifier(url))
@@ -82,7 +106,8 @@ impl ModuleSpecifier {
     // first check if specifier is an absolute path
     let path = PathBuf::from(specifier);
 
-    if let Ok(url) = Url::from_file_path(path) {
+    if let Ok(url) = Url::from_file_path(path.clone()) {
+      ensure_valid_prefix(&path)?;
       return Ok(ModuleSpecifier(url));
     }
 
@@ -153,6 +178,21 @@ mod tests {
           cwd.join(r"\tests\006_url_imports.ts").to_str().unwrap(),
         ).replace("\\", "/")
       );
+
+      // non-disk paths
+      let invalid_paths = vec![
+        r"d:foo\bar.txt",
+        r"\\server\share",
+        r"//server/share",
+        r"\\.\c:\foo\bar.txt",
+        r"//./c:/foo/bar.txt",
+        r"\\?\c:\foo\bar",
+        r"\??\something\something",
+      ];
+
+      for invalid_path in invalid_paths {
+        assert!(ModuleSpecifier::resolve_from_cwd(invalid_path).is_err());
+      }
     } else {
       assert_eq!(
         ModuleSpecifier::resolve_from_cwd("/deno/tests/006_url_imports.ts")
