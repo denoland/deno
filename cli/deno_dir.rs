@@ -730,14 +730,9 @@ fn fetch_remote_source_async(
         match fetch_once_result {
           FetchOnceResult::Redirect(uri) => {
             // If redirects, update module_name and filename for next looped call.
-<<<<<<< HEAD
-            let (new_module_name, new_filepath) = dir
-              .resolve_module(&url.to_string(), ".")?;
-=======
             let url = Url::parse(&uri.to_string()).expect("http::uri::Uri should be parseable as Url");
             let new_module_name = url.to_string();
             let new_filepath = dir.url_to_deps_path(&url)?;
->>>>>>> 3bc33261... start refactor to use Url in deno_dir
 
             if maybe_initial_module_name.is_none() {
               maybe_initial_module_name = Some(module_name.clone());
@@ -1325,7 +1320,9 @@ mod tests {
     let (_temp_dir, deno_dir) = test_setup();
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
-      let module_name = "http://localhost:4545/tests/subdir/mismatch_ext.ts";
+      let module_url =
+        Url::parse("http://localhost:4545/tests/subdir/mismatch_ext.ts")
+          .unwrap();
       let filepath = deno_dir
         .deps_http
         .join("localhost_PORT4545/tests/subdir/mismatch_ext.ts");
@@ -1333,7 +1330,7 @@ mod tests {
 
       // first download
       let result =
-        get_source_code(&deno_dir, module_name, filepath.clone(), false, false);
+        get_source_code(&deno_dir, &module_url, filepath.clone(), false, false);
       assert!(result.is_ok());
 
       let result = fs::File::open(&headers_file_name);
@@ -1347,7 +1344,7 @@ mod tests {
       // false, this can be verified using source header file creation timestamp (should be
       // the same as after first download)
       let result =
-        get_source_code(&deno_dir, module_name, filepath.clone(), false, false);
+        get_source_code(&deno_dir, &module_url, filepath.clone(), false, false);
       assert!(result.is_ok());
 
       let result = fs::File::open(&headers_file_name);
