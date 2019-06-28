@@ -348,11 +348,7 @@ fn op_start(
 
   let current_exe = std::env::current_exe().unwrap();
   // Now apply URL parser to current exe to get fully resolved path, otherwise we might get
-  // `./` and `../` bits in `exec_path`:
-  // $ ./target/debug/deno
-  // > Deno.execPath
-  // /dev/deno/./target/debug/deno
-  // see https://github.com/denoland/deno/issues/1798 for reference
+  // `./` and `../` bits in `exec_path`
   let exe_url = Url::from_file_path(current_exe).unwrap();
   let exec_path =
     builder.create_string(exe_url.to_file_path().unwrap().to_str().unwrap());
