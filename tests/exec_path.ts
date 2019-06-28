@@ -1,6 +1,6 @@
 console.log(Deno.execPath);
 
-async function main() {
+async function main(): Promise<void> {
   // See https://github.com/denoland/deno/issues/1798
   const p = Deno.run({
     args: ["./target/debug/deno", "eval", "console.log(Deno.execPath);"],
