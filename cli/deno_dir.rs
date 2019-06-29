@@ -12,6 +12,7 @@ use crate::source_maps::SourceMapGetter;
 use crate::tokio_util;
 use crate::version;
 use dirs;
+use deno::ModuleSpecifier;
 use futures::future::{loop_fn, Either, Loop};
 use futures::Future;
 use http;
@@ -159,17 +160,12 @@ impl DenoDir {
 
   pub fn fetch_module_meta_data_async(
     self: &Self,
-    specifier: &str,
+    specifier: &ModuleSpecifier,
     use_cache: bool,
     no_fetch: bool,
   ) -> impl Future<Item = ModuleMetaData, Error = deno_error::DenoError> {
-    debug!("fetch_module_meta_data. specifier {} ", specifier);
-
-    // TODO: rename specifier?
-    let specifier = specifier.to_string();
-    // TODO(bartlomieju): this bit is to be removed once more concrete type for `specifier` is used
-    let module_url =
-      Url::parse(&specifier).expect("Specifier should be valid URL");
+    let module_url = specifier.to_url();
+    debug!("fetch_module_meta_data. specifier {} ", module_url);
 
     let result = self.url_to_deps_path(&module_url);
     if let Err(err) = result {
@@ -256,7 +252,7 @@ impl DenoDir {
   /// This function is deprecated.
   pub fn fetch_module_meta_data(
     self: &Self,
-    specifier: &str,
+    specifier: &ModuleSpecifier,
     use_cache: bool,
     no_fetch: bool,
   ) -> Result<ModuleMetaData, deno_error::DenoError> {
@@ -372,17 +368,17 @@ impl SourceMapGetter for DenoDir {
     //  structure available to DenoDir so it's not fetched from disk everytime it's needed
 
     // TODO(bartlomieju): this is temporary hack to make tests pass
-    let script_url = match Url::parse(script_name) {
-      Ok(url) => url,
+    let module_specifier = match ModuleSpecifier::resolve_absolute(script_name) {
+      Ok(specifier) => specifier,
       Err(_) => {
-        // if `script_name` can't be resolved to Url it's probably internal
+        // if `script_name` can't be resolved to ModuleSpecifier it's probably internal
         // script (like `gen/cli/bundle/compiler.js`) so we won't be
         // able to get source for it anyway
         return None;
       }
     };
 
-    match self.fetch_module_meta_data(&script_url.to_string(), true, true) {
+    match self.fetch_module_meta_data(&module_specifier, true, true) {
       Err(_e) => None,
       Ok(out) => match out.maybe_source_map {
         None => None,
@@ -397,17 +393,17 @@ impl SourceMapGetter for DenoDir {
     //  structure available to DenoDir so it's not fetched from disk everytime it's needed
 
     // TODO(bartlomieju): this is temporary hack to make tests pass
-    let script_url = match Url::parse(script_name) {
-      Ok(url) => url,
+    let module_specifier = match ModuleSpecifier::resolve_absolute(script_name) {
+      Ok(specifier) => specifier,
       Err(_) => {
-        // if `script_name` can't be resolved to Url it's probably internal
+        // if `script_name` can't be resolved to ModuleSpecifier it's probably internal
         // script (like `gen/cli/bundle/compiler.js`) so we won't be
         // able to get source for it anyway
         return None;
       }
     };
 
-    match self.fetch_module_meta_data(&script_url.to_string(), true, true) {
+    match self.fetch_module_meta_data(&module_specifier, true, true) {
       Ok(out) => match str::from_utf8(&out.source_code) {
         Ok(v) => {
           let lines: Vec<&str> = v.lines().collect();
@@ -1664,20 +1660,14 @@ mod tests {
   fn test_fetch_module_meta_data() {
     let (_temp_dir, deno_dir) = test_setup();
 
-    let cwd = std::env::current_dir().unwrap();
-
     tokio_util::init(|| {
       // Test failure case.
-      let specifier = file_url!("/baddir/hello.ts");
-      let r = deno_dir.fetch_module_meta_data(specifier, true, false);
+      let specifier = ModuleSpecifier::resolve_absolute(file_url!("/baddir/hello.ts")).unwrap();
+      let r = deno_dir.fetch_module_meta_data(&specifier, true, false);
       assert!(r.is_err());
 
       // Assuming cwd is the deno repo root.
-      let url = Url::from_directory_path(cwd).expect("Cwd if valid URL");
-      let specifier = url
-        .join("js/main.ts")
-        .expect("Should be able to join")
-        .to_string();
+      let specifier = ModuleSpecifier::resolve_from_cwd("js/main.ts").unwrap();
       let r = deno_dir.fetch_module_meta_data(&specifier, true, false);
       assert!(r.is_ok());
     })
@@ -1688,20 +1678,14 @@ mod tests {
     /*recompile ts file*/
     let (_temp_dir, deno_dir) = test_setup();
 
-    let cwd = std::env::current_dir().unwrap();
-
     tokio_util::init(|| {
       // Test failure case.
-      let specifier = file_url!("/baddir/hello.ts");
-      let r = deno_dir.fetch_module_meta_data(specifier, false, false);
+      let specifier = ModuleSpecifier::resolve_absolute(file_url!("/baddir/hello.ts")).unwrap();
+      let r = deno_dir.fetch_module_meta_data(&specifier, false, false);
       assert!(r.is_err());
 
       // Assuming cwd is the deno repo root.
-      let url = Url::from_directory_path(cwd).expect("Cwd if valid URL");
-      let specifier = url
-        .join("js/main.ts")
-        .expect("Should be able to join")
-        .to_string();
+      let specifier = ModuleSpecifier::resolve_from_cwd("js/main.ts").unwrap();
       let r = deno_dir.fetch_module_meta_data(&specifier, false, false);
       assert!(r.is_ok());
     })

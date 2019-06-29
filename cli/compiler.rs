@@ -14,6 +14,7 @@ use futures::Stream;
 use std::path::PathBuf;
 use std::str;
 use std::sync::atomic::Ordering;
+use deno::ModuleSpecifier;
 
 // This corresponds to JS ModuleMetaData.
 // TODO Rename one or the other so they correspond.
@@ -214,8 +215,10 @@ pub fn compile_async(
 
       Ok(())
     }).and_then(move |_| {
+      let module_specifier = ModuleSpecifier::resolve_absolute(&module_name)
+        .expect("Should be valid module specifier");
       state.dir.fetch_module_meta_data_async(
-        &module_name,
+        &module_specifier,
         true,
         true,
       ).map_err(|e| {
