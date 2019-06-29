@@ -20,6 +20,7 @@ use ring;
 use serde_json;
 use std;
 use std::collections::HashSet;
+use std::fmt;
 use std::fmt::Write;
 use std::fs;
 use std::path::Path;
@@ -31,6 +32,32 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use url;
 use url::Url;
+
+// TODO: this is temporary solution, should be upgraded during rewrite
+#[derive(PartialEq, Eq, Debug)]
+pub struct DenoDirError {
+  pub msg: String,
+}
+
+impl DenoDirError {
+  pub fn new(msg: &str) -> Self {
+    DenoDirError {
+      msg: msg.to_string(),
+    }
+  }
+}
+
+impl std::error::Error for DenoDirError {
+  fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+    None
+  }
+}
+
+impl fmt::Display for DenoDirError {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(f, "{}", self.msg)
+  }
+}
 
 const SUPPORTED_URL_SCHEMES: [&str; 3] = ["http", "https", "file"];
 
@@ -274,16 +301,17 @@ impl DenoDir {
   pub fn url_to_deps_path(
     self: &Self,
     url: &Url,
-  ) -> Result<PathBuf, url::ParseError> {
+  ) -> Result<PathBuf, DenoDirError> {
     let filename = match url.scheme() {
       "file" => url.to_file_path().unwrap(),
       "https" => get_cache_filename(self.deps_https.as_path(), &url),
       "http" => get_cache_filename(self.deps_http.as_path(), &url),
       scheme => {
-        eprintln!("Unsupported scheme \"{}\" for module \"{}\"", scheme, url);
-        eprintln!("Supported schemes: {:#?}", SUPPORTED_URL_SCHEMES);
-        // TODO(bartlomieju): more graceful handling, replace with correct error;
-        return Err(url::ParseError::IdnaError);
+        return Err(
+          DenoDirError::new(
+            &format!("Unsupported scheme \"{}\" for module \"{}\". Supported schemes: {:#?}", scheme, url, SUPPORTED_URL_SCHEMES)
+          )
+        );
       }
     };
 
@@ -1640,7 +1668,6 @@ mod tests {
 
     for &test in test_cases.iter() {
       let url = Url::parse(test).unwrap();
-      // TODO(bartlomieju): update this assertion once error handling is fixed
       assert!(deno_dir.url_to_deps_path(&url).is_err());
     }
   }

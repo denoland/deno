@@ -205,6 +205,8 @@ pub fn compile_async(
     .and_then(move |maybe_msg: Option<Buf>| {
       debug!("Received message from worker");
 
+      // TODO: here TS compiler emitted the files to disc and we should signal ModuleMetaData
+      //  cache that source code is available
       if let Some(msg) = maybe_msg {
         let json_str = std::str::from_utf8(&msg).unwrap();
         debug!("Message: {}", json_str);
