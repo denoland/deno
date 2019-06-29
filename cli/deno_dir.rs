@@ -19,6 +19,7 @@ use http;
 use ring;
 use serde_json;
 use std;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
 use std::fmt::Write;
@@ -88,6 +89,33 @@ impl DownloadCache {
   }
 }
 
+#[derive(Clone, Default)]
+pub struct ModuleMetaDataCache(Arc<Mutex<HashMap<String, ModuleMetaData>>>);
+
+impl ModuleMetaDataCache {
+  pub fn mark(&self, module_meta_data: ModuleMetaData) {
+    let m = module_meta_data.module_name.to_string();
+    debug!("marking: {:?}", &m);
+    let mut c = self.0.lock().unwrap();
+    let key = module_meta_data.module_name.to_string();
+    if !c.contains_key(&key) {
+      c.insert(key, module_meta_data);
+    }
+    debug!("marked: {:?}", &m);
+  }
+
+  pub fn get(&self, module_id: &str) -> Option<ModuleMetaData> {
+    debug!("getting: {:?}", module_id);
+    let c = self.0.lock().unwrap();
+    if let Some(mmd) = c.get(module_id) {
+      debug!("got hit: {:?}", module_id);
+      return Some(mmd.clone());
+    }
+    debug!("got none: {:?}", module_id);
+    None
+  }
+}
+
 #[derive(Clone)]
 pub struct DenoDir {
   // Example: /Users/rld/.deno/
@@ -113,6 +141,8 @@ pub struct DenoDir {
   /// around the fact that --reload will force multiple downloads of the same
   /// module.
   download_cache: DownloadCache,
+
+  module_meta_data_cache: ModuleMetaDataCache,
 }
 
 impl DenoDir {
@@ -157,6 +187,7 @@ impl DenoDir {
       config,
       progress,
       download_cache: DownloadCache::default(),
+      module_meta_data_cache: ModuleMetaDataCache::default(),
     };
 
     // TODO Lazily create these directories.
@@ -195,6 +226,13 @@ impl DenoDir {
     no_fetch: bool,
   ) -> impl Future<Item = ModuleMetaData, Error = deno_error::DenoError> {
     let module_url = specifier.to_url();
+
+    if let Some(module_meta_data) =
+      self.module_meta_data_cache.get(&module_url.to_string())
+    {
+      return Either::A(futures::future::ok(module_meta_data.clone()));
+    }
+
     debug!("fetch_module_meta_data. specifier {} ", module_url);
 
     let result = self.url_to_deps_path(&module_url);
@@ -209,6 +247,8 @@ impl DenoDir {
     // which gets returned in the future, so we clone here so as to not leak the
     // move below when the future is resolving.
     let config = self.config.clone();
+
+    let mmd_cache = self.module_meta_data_cache.clone();
 
     Either::B(
       get_source_code_async(
@@ -237,6 +277,9 @@ impl DenoDir {
           out.source_code = filter_shebang(out.source_code);
         }
 
+        if out.media_type != msg::MediaType::TypeScript {
+          mmd_cache.mark(out.clone());
+        }
         // If TypeScript we have to also load corresponding compile js and
         // source maps (called output_code and output_source_map)
         if out.media_type != msg::MediaType::TypeScript || !use_cache {
@@ -271,6 +314,8 @@ impl DenoDir {
             out.maybe_source_map = Some(source_map);
             out.maybe_output_code_filename = Some(output_code_filename);
             out.maybe_source_map_filename = Some(output_source_map_filename);
+
+            mmd_cache.mark(out.clone());
             Ok(out)
           }
         }

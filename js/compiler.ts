@@ -367,6 +367,9 @@ class Host implements ts.CompilerHost {
     util.log("resolveModuleNames()", { moduleNames, containingFile });
     return moduleNames.map(
       (moduleName): ts.ResolvedModuleFull | undefined => {
+        // TODO: this can be updated two fold:
+        //  - cache `ModuleMetaData` on privileged side
+        //  - add alternative `op` that returns only `moduleName` and `extension`
         const moduleMetaData = this._resolveModule(moduleName, containingFile);
         if (moduleMetaData.moduleName) {
           const resolvedFileName = moduleMetaData.moduleName;

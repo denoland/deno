@@ -215,10 +215,14 @@ pub fn compile_async(
         }
       }
 
+//      state.dir.module_meta_data_cache.mark
       Ok(())
     }).and_then(move |_| {
       let module_specifier = ModuleSpecifier::resolve_absolute(&module_name)
         .expect("Should be valid module specifier");
+      // TODO: `fetch_module_meta_data_async` is called here only to reread `maybe_output_code` etc
+      // into `ModuleMetaData` - quite a lot of wasteful work, only compiled
+      // code should be read from disk
       state.dir.fetch_module_meta_data_async(
         &module_specifier,
         true,
