@@ -129,18 +129,24 @@ deno run https://deno.land/welcome.ts
 
 ### Build from source
 
-Clone on Unix/MacOs
+Clone on Linux or Mac:
 
 ```bash
-# Fetch deps.
 git clone --recurse-submodules https://github.com/denoland/deno.git
 ```
 
-Clone on Windows (with Admin privileges)
+On Windows, a couple extra steps are required to clone because we use symlinks
+in the repository. First
+[enable "Developer Mode"](https://www.google.com/search?q=windows+enable+developer+mode)
+(otherwise symlinks would require administrator privileges). Then you must set
+`core.symlinks=true` before the checkout is started.
 
 ```bash
-git clone -c core.symlinks=true --recurse-submodules https://github.com/denoland/deno.git
+git config --global core.symlinks=true
+git clone --recurse-submodules https://github.com/denoland/deno.git
 ```
+
+Now we can start the build:
 
 ```bash
 cd deno
