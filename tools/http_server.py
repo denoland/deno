@@ -16,6 +16,7 @@ PORT = 4545
 REDIRECT_PORT = 4546
 ANOTHER_REDIRECT_PORT = 4547
 DOUBLE_REDIRECTS_PORT = 4548
+INF_REDIRECTS_PORT = 4549
 
 QUIET = '-v' not in sys.argv and '--verbose' not in sys.argv
 
@@ -153,6 +154,11 @@ def double_redirects_server():
     return base_redirect_server(DOUBLE_REDIRECTS_PORT, REDIRECT_PORT)
 
 
+# redirect server that points to itself
+def inf_redirects_server():
+    return base_redirect_server(INF_REDIRECTS_PORT, INF_REDIRECTS_PORT)
+
+
 def start(s):
     thread = Thread(target=s.serve_forever, kwargs={"poll_interval": 0.05})
     thread.daemon = True
@@ -175,7 +181,7 @@ def spawn():
 
 def main():
     servers = (server(), redirect_server(), another_redirect_server(),
-               double_redirects_server())
+               double_redirects_server(), inf_redirects_server())
     try:
         while all(s.thread.is_alive() for s in servers):
             sleep(10)

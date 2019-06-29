@@ -74,6 +74,8 @@ union Any {
   StatRes,
   Symlink,
   Truncate,
+  HomeDir,
+  HomeDirRes,
   Utime,
   WorkerGetMessage,
   WorkerGetMessageRes,
@@ -446,6 +448,12 @@ table Truncate {
   len: uint;
 }
 
+table HomeDir {}
+
+table HomeDirRes {
+  path: string;
+}
+
 table Utime {
   filename: string;
   atime: uint64;
@@ -538,6 +546,9 @@ table Run {
   stdin: ProcessStdio;
   stdout: ProcessStdio;
   stderr: ProcessStdio;
+  stdin_rid: uint32;
+  stdout_rid: uint32;
+  stderr_rid: uint32;
 }
 
 table RunRes {

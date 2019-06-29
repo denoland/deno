@@ -35,6 +35,7 @@ mod progress;
 mod repl;
 pub mod resolve_addr;
 pub mod resources;
+mod shell;
 mod signal;
 pub mod source_maps;
 mod startup_data;
@@ -56,7 +57,9 @@ use flags::DenoSubcommand;
 use futures::future;
 use futures::lazy;
 use futures::Future;
-use log::{LevelFilter, Metadata, Record};
+use log::Level;
+use log::Metadata;
+use log::Record;
 use std::env;
 
 static LOGGER: Logger = Logger;
@@ -105,7 +108,11 @@ pub fn print_file_info(
     &worker.state,
     module_specifier,
   ).and_then(move |out| {
-    println!("{} {}", ansi::bold("local:".to_string()), &(out.filename));
+    println!(
+      "{} {}",
+      ansi::bold("local:".to_string()),
+      out.filename.to_str().unwrap()
+    );
 
     println!(
       "{} {}",
@@ -117,7 +124,7 @@ pub fn print_file_info(
       println!(
         "{} {}",
         ansi::bold("compiled:".to_string()),
-        out.maybe_output_code_filename.as_ref().unwrap(),
+        out.maybe_output_code_filename.unwrap().to_str().unwrap(),
       );
     }
 
@@ -125,7 +132,7 @@ pub fn print_file_info(
       println!(
         "{} {}",
         ansi::bold("map:".to_string()),
-        out.maybe_source_map_filename.as_ref().unwrap()
+        out.maybe_source_map_filename.unwrap().to_str().unwrap()
       );
     }
 
@@ -152,17 +159,15 @@ fn create_worker_and_state(
   flags: DenoFlags,
   argv: Vec<String>,
 ) -> (Worker, ThreadSafeState) {
+  use crate::shell::Shell;
+  use std::sync::Arc;
+  use std::sync::Mutex;
+  let shell = Arc::new(Mutex::new(Shell::new()));
   let progress = Progress::new();
-  progress.set_callback(|done, completed, total, msg| {
-    if !done {
-      eprint!("\r[{}/{}] {}", completed, total, msg);
-      eprint!("\x1B[K"); // Clear to end of line.
-      return;
-    }
-
-    // print empty line only if progress bar was used
-    if done && total > 0 {
-      eprintln!();
+  progress.set_callback(move |_done, _completed, _total, status, msg| {
+    if !status.is_empty() {
+      let mut s = shell.lock().unwrap();
+      s.status(status, msg).expect("shell problem");
     }
   });
   let state = ThreadSafeState::new(flags, argv, ops::op_selector_std, progress);
@@ -333,14 +338,15 @@ fn main() {
     v8_set_flags(v8_flags.clone());
   }
 
-  log::set_max_level(if flags.log_debug {
-    LevelFilter::Debug
-  } else {
-    LevelFilter::Warn
-  });
+  let log_level = match flags.log_level {
+    Some(level) => level,
+    None => Level::Warn,
+  };
+  log::set_max_level(log_level.to_level_filter());
 
   match subcommand {
     DenoSubcommand::Bundle => bundle_command(flags, argv),
+    DenoSubcommand::Completions => {}
     DenoSubcommand::Eval => eval_command(flags, argv),
     DenoSubcommand::Fetch => fetch_or_info_command(flags, argv, false),
     DenoSubcommand::Info => fetch_or_info_command(flags, argv, true),

@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use atty;
 use crate::ansi;
-use crate::deno_dir::resolve_path;
+use crate::deno_dir::resolve_from_cwd;
 use crate::deno_error;
 use crate::deno_error::err_check;
 use crate::deno_error::DenoError;
@@ -42,6 +42,7 @@ use futures::Sink;
 use futures::Stream;
 use hyper;
 use hyper::rt::Future;
+use log;
 use rand::{thread_rng, Rng};
 use remove_dir_all::remove_dir_all;
 use std;
@@ -240,6 +241,7 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<CliDispatchFn> {
     msg::Any::Stat => Some(op_stat),
     msg::Any::Symlink => Some(op_symlink),
     msg::Any::Truncate => Some(op_truncate),
+    msg::Any::HomeDir => Some(op_home_dir),
     msg::Any::Utime => Some(op_utime),
     msg::Any::Write => Some(op_write),
 
@@ -362,6 +364,11 @@ fn op_start(
     .clone()
     .map(|m| builder.create_string(&m));
 
+  let debug_flag = state
+    .flags
+    .log_level
+    .map_or(false, |l| l == log::Level::Debug);
+
   let inner = msg::StartRes::create(
     &mut builder,
     &msg::StartResArgs {
@@ -369,7 +376,7 @@ fn op_start(
       pid: std::process::id(),
       argv: Some(argv_off),
       main_module,
-      debug_flag: state.flags.log_debug,
+      debug_flag,
       version_flag: state.flags.version,
       v8_version: Some(v8_version_off),
       deno_version: Some(deno_version_off),
@@ -458,6 +465,7 @@ fn op_cache(
   assert!(data.is_none());
   let inner = base.inner_as_cache().unwrap();
   let extension = inner.extension().unwrap();
+  // TODO: rename to something with 'url'
   let module_id = inner.module_id().unwrap();
   let contents = inner.contents().unwrap();
 
@@ -468,13 +476,13 @@ fn op_cache(
   // cache path. In the future, checksums will not be used in the cache
   // filenames and this requirement can be removed. See
   // https://github.com/denoland/deno/issues/2057
-  let module_meta_data = state
-    .dir
-    .fetch_module_meta_data(module_id, ".", true, true)?;
+  let module_meta_data =
+    state.dir.fetch_module_meta_data(module_id, true, true)?;
 
-  let (js_cache_path, source_map_path) = state
-    .dir
-    .cache_path(&module_meta_data.filename, &module_meta_data.source_code);
+  let (js_cache_path, source_map_path) = state.dir.cache_path(
+    &PathBuf::from(&module_meta_data.filename),
+    &module_meta_data.source_code,
+  );
 
   if extension == ".map" {
     debug!("cache {:?}", source_map_path);
@@ -514,7 +522,6 @@ fn op_fetch_module_meta_data(
     .dir
     .fetch_module_meta_data_async(
       &resolved_specifier.to_string(),
-      referrer,
       use_cache,
       no_fetch,
     ).and_then(move |out| {
@@ -522,7 +529,7 @@ fn op_fetch_module_meta_data(
       let data_off = builder.create_vector(out.source_code.as_slice());
       let msg_args = msg::FetchModuleMetaDataResArgs {
         module_name: Some(builder.create_string(&out.module_name)),
-        filename: Some(builder.create_string(&out.filename)),
+        filename: Some(builder.create_string(&out.filename.to_str().unwrap())),
         media_type: out.media_type,
         data: Some(data_off),
       };
@@ -786,9 +793,10 @@ where
     let result_buf = f()?;
     Ok(Op::Sync(result_buf))
   } else {
-    Ok(Op::Async(Box::new(tokio_util::poll_fn(move || {
-      convert_blocking(f)
-    }))))
+    Ok(Op::Async(Box::new(futures::sync::oneshot::spawn(
+      tokio_util::poll_fn(move || convert_blocking(f)),
+      &tokio_executor::DefaultExecutor::current(),
+    ))))
   }
 }
 
@@ -846,7 +854,7 @@ fn op_mkdir(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_mkdir().unwrap();
-  let (path, path_) = resolve_path(inner.path().unwrap())?;
+  let (path, path_) = resolve_from_cwd(inner.path().unwrap())?;
   let recursive = inner.recursive();
   let mode = inner.mode();
 
@@ -867,7 +875,7 @@ fn op_chmod(
   assert!(data.is_none());
   let inner = base.inner_as_chmod().unwrap();
   let _mode = inner.mode();
-  let (path, path_) = resolve_path(inner.path().unwrap())?;
+  let (path, path_) = resolve_from_cwd(inner.path().unwrap())?;
 
   state.check_write(&path_)?;
 
@@ -915,7 +923,7 @@ fn op_open(
   assert!(data.is_none());
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_open().unwrap();
-  let (filename, filename_) = resolve_path(inner.filename().unwrap())?;
+  let (filename, filename_) = resolve_from_cwd(inner.filename().unwrap())?;
   let mode = inner.mode().unwrap();
 
   let mut open_options = tokio::fs::OpenOptions::new();
@@ -1167,7 +1175,7 @@ fn op_remove(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_remove().unwrap();
-  let (path, path_) = resolve_path(inner.path().unwrap())?;
+  let (path, path_) = resolve_from_cwd(inner.path().unwrap())?;
   let recursive = inner.recursive();
 
   state.check_write(&path_)?;
@@ -1193,8 +1201,8 @@ fn op_copy_file(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_copy_file().unwrap();
-  let (from, from_) = resolve_path(inner.from().unwrap())?;
-  let (to, to_) = resolve_path(inner.to().unwrap())?;
+  let (from, from_) = resolve_from_cwd(inner.from().unwrap())?;
+  let (to, to_) = resolve_from_cwd(inner.to().unwrap())?;
 
   state.check_read(&from_)?;
   state.check_write(&to_)?;
@@ -1268,7 +1276,7 @@ fn op_stat(
   assert!(data.is_none());
   let inner = base.inner_as_stat().unwrap();
   let cmd_id = base.cmd_id();
-  let (filename, filename_) = resolve_path(inner.filename().unwrap())?;
+  let (filename, filename_) = resolve_from_cwd(inner.filename().unwrap())?;
   let lstat = inner.lstat();
 
   state.check_read(&filename_)?;
@@ -1317,7 +1325,7 @@ fn op_read_dir(
   assert!(data.is_none());
   let inner = base.inner_as_read_dir().unwrap();
   let cmd_id = base.cmd_id();
-  let (path, path_) = resolve_path(inner.path().unwrap())?;
+  let (path, path_) = resolve_from_cwd(inner.path().unwrap())?;
 
   state.check_read(&path_)?;
 
@@ -1373,8 +1381,8 @@ fn op_rename(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_rename().unwrap();
-  let (oldpath, _) = resolve_path(inner.oldpath().unwrap())?;
-  let (newpath, newpath_) = resolve_path(inner.newpath().unwrap())?;
+  let (oldpath, _) = resolve_from_cwd(inner.oldpath().unwrap())?;
+  let (newpath, newpath_) = resolve_from_cwd(inner.newpath().unwrap())?;
 
   state.check_write(&newpath_)?;
 
@@ -1392,8 +1400,8 @@ fn op_link(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_link().unwrap();
-  let (oldname, _) = resolve_path(inner.oldname().unwrap())?;
-  let (newname, newname_) = resolve_path(inner.newname().unwrap())?;
+  let (oldname, _) = resolve_from_cwd(inner.oldname().unwrap())?;
+  let (newname, newname_) = resolve_from_cwd(inner.newname().unwrap())?;
 
   state.check_write(&newname_)?;
 
@@ -1411,8 +1419,8 @@ fn op_symlink(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_symlink().unwrap();
-  let (oldname, _) = resolve_path(inner.oldname().unwrap())?;
-  let (newname, newname_) = resolve_path(inner.newname().unwrap())?;
+  let (oldname, _) = resolve_from_cwd(inner.oldname().unwrap())?;
+  let (newname, newname_) = resolve_from_cwd(inner.newname().unwrap())?;
 
   state.check_write(&newname_)?;
   // TODO Use type for Windows.
@@ -1438,7 +1446,7 @@ fn op_read_link(
   assert!(data.is_none());
   let inner = base.inner_as_readlink().unwrap();
   let cmd_id = base.cmd_id();
-  let (name, name_) = resolve_path(inner.name().unwrap())?;
+  let (name, name_) = resolve_from_cwd(inner.name().unwrap())?;
 
   state.check_read(&name_)?;
 
@@ -1540,7 +1548,7 @@ fn op_truncate(
   assert!(data.is_none());
 
   let inner = base.inner_as_truncate().unwrap();
-  let (filename, filename_) = resolve_path(inner.name().unwrap())?;
+  let (filename, filename_) = resolve_from_cwd(inner.name().unwrap())?;
   let len = inner.len();
 
   state.check_write(&filename_)?;
@@ -1712,6 +1720,34 @@ fn op_metrics(
   ))
 }
 
+fn op_home_dir(
+  _state: &ThreadSafeState,
+  base: &msg::Base<'_>,
+  data: Option<PinnedBuf>,
+) -> CliOpResult {
+  assert!(data.is_none());
+  let cmd_id = base.cmd_id();
+
+  let builder = &mut FlatBufferBuilder::new();
+  let path = dirs::home_dir()
+    .unwrap_or_default()
+    .into_os_string()
+    .into_string()
+    .unwrap_or_default();
+  let path = Some(builder.create_string(&path));
+  let inner = msg::HomeDirRes::create(builder, &msg::HomeDirResArgs { path });
+
+  ok_buf(serialize_response(
+    cmd_id,
+    builder,
+    msg::BaseArgs {
+      inner: Some(inner.as_union_value()),
+      inner_type: msg::Any::HomeDirRes,
+      ..Default::default()
+    },
+  ))
+}
+
 fn op_resources(
   _state: &ThreadSafeState,
   base: &msg::Base<'_>,
@@ -1793,9 +1829,27 @@ fn op_run(
     c.env(entry.key().unwrap(), entry.value().unwrap());
   });
 
-  c.stdin(subprocess_stdio_map(inner.stdin()));
-  c.stdout(subprocess_stdio_map(inner.stdout()));
-  c.stderr(subprocess_stdio_map(inner.stderr()));
+  // TODO: make this work with other resources, eg. sockets
+  let stdin_rid = inner.stdin_rid();
+  if stdin_rid > 0 {
+    c.stdin(resources::get_file(stdin_rid)?);
+  } else {
+    c.stdin(subprocess_stdio_map(inner.stdin()));
+  }
+
+  let stdout_rid = inner.stdout_rid();
+  if stdout_rid > 0 {
+    c.stdout(resources::get_file(stdout_rid)?);
+  } else {
+    c.stdout(subprocess_stdio_map(inner.stdout()));
+  }
+
+  let stderr_rid = inner.stderr_rid();
+  if stderr_rid > 0 {
+    c.stderr(resources::get_file(stderr_rid)?);
+  } else {
+    c.stderr(subprocess_stdio_map(inner.stderr()));
+  }
 
   // Spawn the command.
   let child = c.spawn_async().map_err(DenoError::from)?;
