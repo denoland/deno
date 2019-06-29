@@ -340,7 +340,7 @@ impl DenoDir {
     };
 
     debug!("deps filename: {:?}", filename);
-    Ok(filename)
+    Ok(normalize_path(&filename))
   }
 
   // TODO(bartlomieju): deprecate in favor of `url_to_deps_path`
