@@ -26,6 +26,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::result::Result;
 use std::str;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::Mutex;
 use url;
@@ -604,6 +605,11 @@ fn save_module_code_and_headers(
   Ok(())
 }
 
+fn url_into_uri(url: &url::Url) -> http::uri::Uri {
+  http::uri::Uri::from_str(&url.to_string())
+    .expect("url::Url should be parseable as http::uri::Uri")
+}
+
 /// Asynchronously fetch remote source file specified by the URL `module_name`
 /// and write it to disk at `filename`.
 fn fetch_remote_source_async(
@@ -636,10 +642,9 @@ fn fetch_remote_source_async(
       module_url,
       filepath,
     )| {
-      // TODO: there must be better way to do this conversion
-      let url = module_url.to_string().parse::<http::uri::Uri>().unwrap();
+      let module_uri = url_into_uri(&module_url);
       // Single pass fetch, either yields code or yields redirect.
-      http_util::fetch_string_once(url).and_then(move |fetch_once_result| {
+      http_util::fetch_string_once(module_uri).and_then(move |fetch_once_result| {
         match fetch_once_result {
           FetchOnceResult::Redirect(uri) => {
             // If redirects, update module_name and filename for next looped call.
