@@ -129,7 +129,7 @@ deno run https://deno.land/welcome.ts
 
 ### Build from source
 
-Clone on Unix/MacOs
+Clone on Linux or Mac:
 
 ```bash
 git clone --recurse-submodules https://github.com/denoland/deno.git
@@ -143,7 +143,7 @@ in the repository. First
 
 ```bash
 git config --global core.symlinks=true
-git clone -recurse-submodules https://github.com/denoland/deno.git
+git clone --recurse-submodules https://github.com/denoland/deno.git
 ```
 
 Now we can start the build:
