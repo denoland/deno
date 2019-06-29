@@ -2,8 +2,15 @@ console.log(Deno.execPath);
 
 async function main(): Promise<void> {
   // See https://github.com/denoland/deno/issues/1798
+  // Assumes that tests are run from repo root
+  let exePath = Deno.cwd() + "/./target/debug/deno";
+
+  if (Deno.platform.os == "win") {
+    exePath += ".exe";
+  }
+
   const p = Deno.run({
-    args: ["./target/debug/deno", "eval", "console.log(Deno.execPath);"],
+    args: [exePath, "eval", "console.log(Deno.execPath);"],
     stdout: "piped"
   });
 
