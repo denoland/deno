@@ -8,6 +8,7 @@ use clap::SubCommand;
 use crate::deno_dir;
 use log::Level;
 use std;
+use std::str;
 use std::str::FromStr;
 
 // Creates vector of strings, Vec<String>
@@ -671,11 +672,13 @@ pub fn flags_from_vec(
     }
     ("completions", Some(completions_match)) => {
       let shell: &str = completions_match.value_of("shell").unwrap();
+      let mut buf: Vec<u8> = vec![];
       create_cli_app().gen_completions_to(
         "deno",
         Shell::from_str(shell).unwrap(),
-        &mut std::io::stdout(),
+        &mut buf,
       );
+      print!("{}", std::str::from_utf8(&buf).unwrap());
       DenoSubcommand::Completions
     }
     ("eval", Some(eval_match)) => {
