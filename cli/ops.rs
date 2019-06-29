@@ -479,7 +479,9 @@ fn op_cache(
   let module_specifier = ModuleSpecifier::resolve_absolute(module_id)
     .expect("Should be valid module specifier");
   let module_meta_data =
-    state.dir.fetch_module_meta_data(&module_specifier, true, true)?;
+    state
+      .dir
+      .fetch_module_meta_data(&module_specifier, true, true)?;
 
   let (js_cache_path, source_map_path) = state.dir.cache_path(
     &PathBuf::from(&module_meta_data.filename),
@@ -522,11 +524,8 @@ fn op_fetch_module_meta_data(
 
   let fut = state
     .dir
-    .fetch_module_meta_data_async(
-      &resolved_specifier,
-      use_cache,
-      no_fetch,
-    ).and_then(move |out| {
+    .fetch_module_meta_data_async(&resolved_specifier, use_cache, no_fetch)
+    .and_then(move |out| {
       let builder = &mut FlatBufferBuilder::new();
       let data_off = builder.create_vector(out.source_code.as_slice());
       let msg_args = msg::FetchModuleMetaDataResArgs {

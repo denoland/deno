@@ -11,8 +11,8 @@ use crate::progress::Progress;
 use crate::source_maps::SourceMapGetter;
 use crate::tokio_util;
 use crate::version;
-use dirs;
 use deno::ModuleSpecifier;
+use dirs;
 use futures::future::{loop_fn, Either, Loop};
 use futures::Future;
 use http;
@@ -30,6 +30,8 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use url;
 use url::Url;
+
+const SUPPORTED_URL_SCHEMES: [&str; 3] = ["http", "https", "file"];
 
 fn normalize_path(path: &Path) -> PathBuf {
   let s = String::from(path.to_str().unwrap());
@@ -329,13 +331,16 @@ impl DenoDir {
       "file" => url.to_file_path().unwrap(),
       "https" => get_cache_filename(self.deps_https.as_path(), &url),
       "http" => get_cache_filename(self.deps_http.as_path(), &url),
-      // TODO(bartlomieju): use enum for supported schemes and return informative error what
-      //  went wrong and what are supported schemes
-      _ => unimplemented!(),
+      scheme => {
+        // TODO(bartlomieju): more graceful handling
+        eprintln!("Unsupported scheme \"{}\" for module \"{}\"", scheme, url);
+        eprintln!("Supported schemes: {:#?}", SUPPORTED_URL_SCHEMES);
+        std::process::exit(1);
+      }
     };
 
     debug!("deps filename: {:?}", filename);
-    Ok(normalize_path(&filename))
+    Ok(filename)
   }
 
   // TODO(bartlomieju): deprecate in favor of `url_to_deps_path`
@@ -368,7 +373,8 @@ impl SourceMapGetter for DenoDir {
     //  structure available to DenoDir so it's not fetched from disk everytime it's needed
 
     // TODO(bartlomieju): this is temporary hack to make tests pass
-    let module_specifier = match ModuleSpecifier::resolve_absolute(script_name) {
+    let module_specifier = match ModuleSpecifier::resolve_absolute(script_name)
+    {
       Ok(specifier) => specifier,
       Err(_) => {
         // if `script_name` can't be resolved to ModuleSpecifier it's probably internal
@@ -393,7 +399,8 @@ impl SourceMapGetter for DenoDir {
     //  structure available to DenoDir so it's not fetched from disk everytime it's needed
 
     // TODO(bartlomieju): this is temporary hack to make tests pass
-    let module_specifier = match ModuleSpecifier::resolve_absolute(script_name) {
+    let module_specifier = match ModuleSpecifier::resolve_absolute(script_name)
+    {
       Ok(specifier) => specifier,
       Err(_) => {
         // if `script_name` can't be resolved to ModuleSpecifier it's probably internal
@@ -1662,7 +1669,9 @@ mod tests {
 
     tokio_util::init(|| {
       // Test failure case.
-      let specifier = ModuleSpecifier::resolve_absolute(file_url!("/baddir/hello.ts")).unwrap();
+      let specifier =
+        ModuleSpecifier::resolve_absolute(file_url!("/baddir/hello.ts"))
+          .unwrap();
       let r = deno_dir.fetch_module_meta_data(&specifier, true, false);
       assert!(r.is_err());
 
@@ -1680,7 +1689,9 @@ mod tests {
 
     tokio_util::init(|| {
       // Test failure case.
-      let specifier = ModuleSpecifier::resolve_absolute(file_url!("/baddir/hello.ts")).unwrap();
+      let specifier =
+        ModuleSpecifier::resolve_absolute(file_url!("/baddir/hello.ts"))
+          .unwrap();
       let r = deno_dir.fetch_module_meta_data(&specifier, false, false);
       assert!(r.is_err());
 

@@ -9,12 +9,12 @@ use crate::state::*;
 use crate::tokio_util;
 use crate::worker::Worker;
 use deno::Buf;
+use deno::ModuleSpecifier;
 use futures::Future;
 use futures::Stream;
 use std::path::PathBuf;
 use std::str;
 use std::sync::atomic::Ordering;
-use deno::ModuleSpecifier;
 
 // This corresponds to JS ModuleMetaData.
 // TODO Rename one or the other so they correspond.
