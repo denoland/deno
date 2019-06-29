@@ -290,54 +290,46 @@ impl DenoDir {
     debug!("deps filename: {:?}", filename);
     Ok(normalize_path(&filename))
   }
+
+  // TODO: this method is only used by `SourceMapGetter` impl - can we organize it better?
+  fn try_resolve_and_get_module_meta_data(
+    &self,
+    script_name: &str,
+  ) -> Option<ModuleMetaData> {
+    // if `script_name` can't be resolved to ModuleSpecifier it's probably internal
+    // script (like `gen/cli/bundle/compiler.js`) so we won't be
+    // able to get source for it anyway
+    let maybe_specifier = ModuleSpecifier::resolve_absolute(script_name);
+
+    if maybe_specifier.is_err() {
+      return None;
+    }
+
+    let module_specifier = maybe_specifier.unwrap();
+    // TODO: this method shouldn't issue `fetch_module_meta_data` - this is done for each line
+    //  in JS stack trace so it's pretty slow - quick idea: store `ModuleMetaData` in one
+    //  structure available to DenoDir so it's not fetched from disk everytime it's needed
+    match self.fetch_module_meta_data(&module_specifier, true, true) {
+      Err(_) => None,
+      Ok(out) => Some(out),
+    }
+  }
 }
 
 impl SourceMapGetter for DenoDir {
   fn get_source_map(&self, script_name: &str) -> Option<Vec<u8>> {
-    // TODO: this method shouldn't issue `fetch_module_meta_data` - this is done for each line
-    //  in JS stack trace so it's pretty slow - quick idea: store `ModuleMetaData` in one
-    //  structure available to DenoDir so it's not fetched from disk everytime it's needed
-
-    // TODO(bartlomieju): this is temporary hack to make tests pass
-    let module_specifier = match ModuleSpecifier::resolve_absolute(script_name)
-    {
-      Ok(specifier) => specifier,
-      Err(_) => {
-        // if `script_name` can't be resolved to ModuleSpecifier it's probably internal
-        // script (like `gen/cli/bundle/compiler.js`) so we won't be
-        // able to get source for it anyway
-        return None;
-      }
-    };
-
-    match self.fetch_module_meta_data(&module_specifier, true, true) {
-      Err(_e) => None,
-      Ok(out) => match out.maybe_source_map {
-        None => None,
+    match self.try_resolve_and_get_module_meta_data(script_name) {
+      Some(out) => match out.maybe_source_map {
         Some(source_map) => Some(source_map),
+        _ => None,
       },
+      _ => None,
     }
   }
 
   fn get_source_line(&self, script_name: &str, line: usize) -> Option<String> {
-    // TODO: this method shouldn't issue `fetch_module_meta_data` - this is done for each line
-    //  in JS stack trace so it's pretty slow - quick idea: store `ModuleMetaData` in one
-    //  structure available to DenoDir so it's not fetched from disk everytime it's needed
-
-    // TODO(bartlomieju): this is temporary hack to make tests pass
-    let module_specifier = match ModuleSpecifier::resolve_absolute(script_name)
-    {
-      Ok(specifier) => specifier,
-      Err(_) => {
-        // if `script_name` can't be resolved to ModuleSpecifier it's probably internal
-        // script (like `gen/cli/bundle/compiler.js`) so we won't be
-        // able to get source for it anyway
-        return None;
-      }
-    };
-
-    match self.fetch_module_meta_data(&module_specifier, true, true) {
-      Ok(out) => match str::from_utf8(&out.source_code) {
+    match self.try_resolve_and_get_module_meta_data(script_name) {
+      Some(out) => match str::from_utf8(&out.source_code) {
         Ok(v) => {
           let lines: Vec<&str> = v.lines().collect();
           assert!(lines.len() > line);
