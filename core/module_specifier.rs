@@ -80,8 +80,7 @@ impl ModuleSpecifier {
     }
 
     // fallback to relative file path
-    // TODO: factor out as `normalize_path` method - it is used in /cli/deno_dir.rs and should
-    //  be applied to resolve https://github.com/denoland/deno/issues/1798
+    // TODO: factor out as `normalize_path` method - it is used in /cli/deno_dir.rs
     // HACK: `Url::from_directory_path` is used here because it normalizes the path.
     // Joining `/dev/deno/" with "./tests" using `PathBuf` yields `/deno/dev/./tests/`.
     // On the other hand joining `/dev/deno/" with "./tests" using `Url` yields "/dev/deno/tests"
