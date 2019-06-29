@@ -70,8 +70,8 @@ main();
 
 A small program for serving local files over HTTP.
 
-Add the following to your `.bash_profile`
+Install it by using `deno install`
 
 ```sh
-alias file_server="deno run --allow-net https://deno.land/std/http/file_server.ts"
+deno install file_server https://deno.land/std/http/file_server.ts --allow-net --allow-read
 ```
