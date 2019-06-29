@@ -263,13 +263,10 @@ impl DenoDir {
     )
   }
 
-  // TODO(bartlomieju): rename to something more appropriate
-  // TODO(bartlomieju): upgrade doctring
-  // TODO(bartlomieju): port `resolve_module` test
-  /// This method return local file path for given module url/specifier that is used
+  /// This method returns local file path for given module url that is used
   /// internally by DenoDir to reference module.
   ///
-  /// For specifiers starting with `file://` it return that specifier.
+  /// For specifiers starting with `file://` returns the input.
   ///
   /// For specifier starting with `http://` and `https://` it returns
   /// path to DenoDir dependency directory.
@@ -282,10 +279,10 @@ impl DenoDir {
       "https" => get_cache_filename(self.deps_https.as_path(), &url),
       "http" => get_cache_filename(self.deps_http.as_path(), &url),
       scheme => {
-        // TODO(bartlomieju): more graceful handling
         eprintln!("Unsupported scheme \"{}\" for module \"{}\"", scheme, url);
         eprintln!("Supported schemes: {:#?}", SUPPORTED_URL_SCHEMES);
-        std::process::exit(1);
+        // TODO(bartlomieju): more graceful handling, replace with correct error;
+        return Err(url::ParseError::IdnaError);
       }
     };
 
@@ -1634,177 +1631,22 @@ mod tests {
     assert_eq!(filename.to_str().unwrap().to_string(), expected_filename);
   }
 
-  // TODO(bartlomieju): commented tests should be ported to `url_to_deps_path`
-  //  #[test]
-  //  fn test_resolve_module_3() {
-  //    let (_temp_dir, deno_dir) = test_setup();
-  //
-  //    let specifier_ =
-  //      deno_dir.deps_http.join("unpkg.com/liltest@0.0.5/index.ts");
-  //    let specifier = specifier_.to_str().unwrap();
-  //    let referrer = ".";
-  //
-  //    let expected_module_name = "http://unpkg.com/liltest@0.0.5/index.ts";
-  //    let expected_filename = normalize_to_str(
-  //      deno_dir
-  //        .deps_http
-  //        .join("unpkg.com/liltest@0.0.5/index.ts")
-  //        .as_ref(),
-  //    );
-  //
-  //    let (module_name, filename) =
-  //      deno_dir.resolve_module(specifier, referrer).unwrap();
-  //    assert_eq!(module_name, expected_module_name);
-  //    assert_eq!(filename.to_str().unwrap().to_string(), expected_filename);
-  //  }
-  //
-  //  #[test]
-  //  fn test_resolve_module_4() {
-  //    let (_temp_dir, deno_dir) = test_setup();
-  //
-  //    let specifier = "./util";
-  //    let referrer_ = deno_dir.deps_http.join("unpkg.com/liltest@0.0.5/index.ts");
-  //    let referrer = referrer_.to_str().unwrap();
-  //
-  //    // http containing files -> load relative import with http
-  //    let expected_module_name = "http://unpkg.com/liltest@0.0.5/util";
-  //    let expected_filename = normalize_to_str(
-  //      deno_dir
-  //        .deps_http
-  //        .join("unpkg.com/liltest@0.0.5/util")
-  //        .as_ref(),
-  //    );
-  //
-  //    let (module_name, filename) =
-  //      deno_dir.resolve_module(specifier, referrer).unwrap();
-  //    assert_eq!(module_name, expected_module_name);
-  //    assert_eq!(filename.to_str().unwrap().to_string(), expected_filename);
-  //  }
-  //
-  //  #[test]
-  //  fn test_resolve_module_5() {
-  //    let (_temp_dir, deno_dir) = test_setup();
-  //
-  //    let specifier = "./util";
-  //    let referrer_ =
-  //      deno_dir.deps_https.join("unpkg.com/liltest@0.0.5/index.ts");
-  //    let referrer = referrer_.to_str().unwrap();
-  //
-  //    // https containing files -> load relative import with https
-  //    let expected_module_name = "https://unpkg.com/liltest@0.0.5/util";
-  //    let expected_filename = normalize_to_str(
-  //      deno_dir
-  //        .deps_https
-  //        .join("unpkg.com/liltest@0.0.5/util")
-  //        .as_ref(),
-  //    );
-  //
-  //    let (module_name, filename) =
-  //      deno_dir.resolve_module(specifier, referrer).unwrap();
-  //    assert_eq!(module_name, expected_module_name);
-  //    assert_eq!(filename.to_str().unwrap().to_string(), expected_filename);
-  //  }
-  //
-  //  #[test]
-  //  fn test_resolve_module_6() {
-  //    let (_temp_dir, deno_dir) = test_setup();
-  //
-  //    let specifier = "http://localhost:4545/tests/subdir/mod2.ts";
-  //    let referrer = add_root!("/deno/tests/006_url_imports.ts");
-  //    let expected_module_name = "http://localhost:4545/tests/subdir/mod2.ts";
-  //    let expected_filename = normalize_to_str(
-  //      deno_dir
-  //        .deps_http
-  //        .join("localhost_PORT4545/tests/subdir/mod2.ts")
-  //        .as_ref(),
-  //    );
-  //
-  //    let (module_name, filename) =
-  //      deno_dir.resolve_module(specifier, referrer).unwrap();
-  //    assert_eq!(module_name, expected_module_name);
-  //    assert_eq!(filename.to_str().unwrap().to_string(), expected_filename);
-  //  }
-  //
-  //  #[test]
-  //  fn test_resolve_module_7() {
-  //    let (_temp_dir, deno_dir) = test_setup();
-  //
-  //    let specifier = "http_test.ts";
-  //    let referrer = add_root!("/Users/rld/src/deno_net/");
-  //    let expected_module_name =
-  //      file_url!("/Users/rld/src/deno_net/http_test.ts");
-  //    let expected_filename = add_root!("/Users/rld/src/deno_net/http_test.ts");
-  //
-  //    let (module_name, filename) =
-  //      deno_dir.resolve_module(specifier, referrer).unwrap();
-  //    assert_eq!(module_name, expected_module_name);
-  //    assert_eq!(filename.to_str().unwrap().to_string(), expected_filename);
-  //  }
-  //
-  //  #[test]
-  //  fn test_resolve_module_8() {
-  //    let (_temp_dir, deno_dir) = test_setup();
-  //
-  //    let specifier = "/util";
-  //    let referrer_ =
-  //      deno_dir.deps_https.join("unpkg.com/liltest@0.0.5/index.ts");
-  //    let referrer = referrer_.to_str().unwrap();
-  //
-  //    let expected_module_name = "https://unpkg.com/util";
-  //    let expected_filename =
-  //      normalize_to_str(deno_dir.deps_https.join("unpkg.com/util").as_ref());
-  //
-  //    let (module_name, filename) =
-  //      deno_dir.resolve_module(specifier, referrer).unwrap();
-  //    assert_eq!(module_name, expected_module_name);
-  //    assert_eq!(filename.to_str().unwrap().to_string(), expected_filename);
-  //  }
-  //
-  //  #[test]
-  //  fn test_resolve_module_referrer_dot() {
-  //    let (_temp_dir, deno_dir) = test_setup();
-  //
-  //    let specifier = "tests/001_hello.js";
-  //
-  //    let cwd = std::env::current_dir().unwrap();
-  //    let expected_path = cwd.join(specifier);
-  //    let expected_module_name =
-  //      Url::from_file_path(&expected_path).unwrap().to_string();
-  //    let expected_filename = normalize_to_str(&expected_path);
-  //
-  //    let (module_name, filename) =
-  //      deno_dir.resolve_module(specifier, ".").unwrap();
-  //    assert_eq!(module_name, expected_module_name);
-  //    assert_eq!(filename.to_str().unwrap().to_string(), expected_filename);
-  //
-  //    let (module_name, filename) =
-  //      deno_dir.resolve_module(specifier, "./").unwrap();
-  //    assert_eq!(module_name, expected_module_name);
-  //    assert_eq!(filename.to_str().unwrap().to_string(), expected_filename);
-  //  }
-  //
-  //  #[test]
-  //  fn test_resolve_module_referrer_dotdot() {
-  //    let (_temp_dir, deno_dir) = test_setup();
-  //
-  //    let specifier = "tests/001_hello.js";
-  //
-  //    let cwd = std::env::current_dir().unwrap();
-  //    let expected_path = cwd.join("..").join(specifier);
-  //    let expected_module_name =
-  //      Url::from_file_path(&expected_path).unwrap().to_string();
-  //    let expected_filename = normalize_to_str(&expected_path);
-  //
-  //    let (module_name, filename) =
-  //      deno_dir.resolve_module(specifier, "..").unwrap();
-  //    assert_eq!(module_name, expected_module_name);
-  //    assert_eq!(filename.to_str().unwrap().to_string(), expected_filename);
-  //
-  //    let (module_name, filename) =
-  //      deno_dir.resolve_module(specifier, "../").unwrap();
-  //    assert_eq!(module_name, expected_module_name);
-  //    assert_eq!(filename.to_str().unwrap().to_string(), expected_filename);
-  //  }
+  #[test]
+  fn test_resolve_module_3() {
+    let (_temp_dir, deno_dir) = test_setup();
+
+    // unsupported schemes
+    let test_cases = [
+      "ftp://localhost:4545/testdata/subdir/print_hello.ts",
+      "blob:https://whatwg.org/d0360e2f-caee-469f-9a2f-87d5b0456f6f",
+    ];
+
+    for &test in test_cases.iter() {
+      let url = Url::parse(test).unwrap();
+      // TODO(bartlomieju): update this assertion once error handling is fixed
+      assert!(deno_dir.url_to_deps_path(&url).is_err());
+    }
+  }
 
   #[test]
   fn test_map_file_extension() {
