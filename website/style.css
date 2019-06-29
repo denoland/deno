@@ -14,13 +14,18 @@
     --background-color: #444;
     --text-color: #f0f0f0;
     --link-color: #4498ff;
-    --pre-color: #e8e8e8;	
+    --pre-color: #e8e8e8;
     --pre-link-color: #cee4ff;
     --code-color: #ccc;
   }
   
   #logo {
-    filter: invert(); 
+    filter: invert(1);
+  }
+
+  code.hljs {
+    background: #949494;
+    border-radius: 5px;
   }
 }
 
