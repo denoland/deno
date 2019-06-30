@@ -21,6 +21,7 @@ async function proxyRequest(req: ServerRequest) {
     method: req.method,
     headers: req.headers
   });
+  // @ts-ignore
   req.respond(resp);
 }
 
