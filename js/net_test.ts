@@ -114,13 +114,20 @@ testPerm({ net: true }, async function netCloseReadSuccess(): Promise<void> {
   listener.accept().then(
     async (conn): Promise<void> => {
       await closeReadDeferred;
-      await conn.write(new Uint8Array([1, 2, 3]));
-      const buf = new Uint8Array(1024);
-      const readResult = await conn.read(buf);
-      assertEquals(3, readResult.nread);
-      assertEquals(4, buf[0]);
-      assertEquals(5, buf[1]);
-      assertEquals(6, buf[2]);
+      try {
+        await conn.write(new Uint8Array([1, 2, 3]));
+        const buf = new Uint8Array(1024);
+        const readResult = await conn.read(buf);
+        assertEquals(3, readResult.nread);
+        assertEquals(4, buf[0]);
+        assertEquals(5, buf[1]);
+        assertEquals(6, buf[2]);
+      } catch (e) {
+        assertEquals(Deno.platform.os, "win");
+        assert(!!e);
+        assertEquals(e.kind, Deno.ErrorKind.BrokenPipe);
+        assertEquals(e.name, "BrokenPipe");
+      }
       conn.close();
       closeDeferred.resolve();
     }
@@ -135,7 +142,9 @@ testPerm({ net: true }, async function netCloseReadSuccess(): Promise<void> {
     assertEquals(true, readResult.eof); // with immediate EOF
   } catch (e) {
     assertEquals(Deno.platform.os, "win");
-    assert(!e);
+    assert(!!e);
+    assertEquals(e.kind, Deno.ErrorKind.BrokenPipe);
+    assertEquals(e.name, "BrokenPipe");
   }
   // Ensure closeRead does not impact write
   await conn.write(new Uint8Array([4, 5, 6]));
