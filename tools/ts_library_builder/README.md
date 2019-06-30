@@ -2,13 +2,13 @@
 
 This tool allows us to produce a single TypeScript declaration file that
 describes the complete Deno runtime, including global variables and the built-in
-`deno` module. The output of this tool, `lib.deno_runtime.d.ts`, serves several
-purposes:
+`Deno` global object. The output of this tool, `lib.deno_runtime.d.ts`, serves
+several purposes:
 
 1. It is passed to the TypeScript compiler `js/compiler.ts`, so that TypeScript
    knows what types to expect and can validate code against the runtime
    environment.
-2. It is outputted to stdout by `deno --types`, so that users can easily have
+2. It is outputted to stdout by `deno types`, so that users can easily have
    access to the complete declaration file. Editors can use this in the future
    to perform type checking.
 3. Because JSDocs are maintained, this serves as a simple documentation page for
