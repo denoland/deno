@@ -7,6 +7,7 @@ use crate::resolve_addr::ResolveAddrError;
 use crate::source_maps::apply_source_map;
 use crate::source_maps::SourceMapGetter;
 use deno::JSError;
+use deno::ModuleResolutionError;
 use hyper;
 #[cfg(unix)]
 use nix::{errno::Errno, Error as UnixError};
@@ -30,6 +31,7 @@ enum Repr {
   UrlErr(url::ParseError),
   HyperErr(hyper::Error),
   ImportMapErr(import_map::ImportMapError),
+  ModuleResolutionErr(ModuleResolutionError),
   Diagnostic(diagnostics::Diagnostic),
   JSError(JSError),
 }
@@ -42,6 +44,24 @@ pub fn new(kind: ErrorKind, msg: String) -> DenoError {
 }
 
 impl DenoError {
+  fn url_error_kind(err: url::ParseError) -> ErrorKind {
+    use url::ParseError::*;
+    match err {
+      EmptyHost => ErrorKind::EmptyHost,
+      IdnaError => ErrorKind::IdnaError,
+      InvalidPort => ErrorKind::InvalidPort,
+      InvalidIpv4Address => ErrorKind::InvalidIpv4Address,
+      InvalidIpv6Address => ErrorKind::InvalidIpv6Address,
+      InvalidDomainCharacter => ErrorKind::InvalidDomainCharacter,
+      RelativeUrlWithoutBase => ErrorKind::RelativeUrlWithoutBase,
+      RelativeUrlWithCannotBeABaseBase => {
+        ErrorKind::RelativeUrlWithCannotBeABaseBase
+      }
+      SetHostOnCannotBeABaseUrl => ErrorKind::SetHostOnCannotBeABaseUrl,
+      Overflow => ErrorKind::Overflow,
+    }
+  }
+
   pub fn kind(&self) -> ErrorKind {
     match self.repr {
       Repr::Simple(kind, ref _msg) => kind,
@@ -70,23 +90,7 @@ impl DenoError {
           _ => unreachable!(),
         }
       }
-      Repr::UrlErr(ref err) => {
-        use url::ParseError::*;
-        match err {
-          EmptyHost => ErrorKind::EmptyHost,
-          IdnaError => ErrorKind::IdnaError,
-          InvalidPort => ErrorKind::InvalidPort,
-          InvalidIpv4Address => ErrorKind::InvalidIpv4Address,
-          InvalidIpv6Address => ErrorKind::InvalidIpv6Address,
-          InvalidDomainCharacter => ErrorKind::InvalidDomainCharacter,
-          RelativeUrlWithoutBase => ErrorKind::RelativeUrlWithoutBase,
-          RelativeUrlWithCannotBeABaseBase => {
-            ErrorKind::RelativeUrlWithCannotBeABaseBase
-          }
-          SetHostOnCannotBeABaseUrl => ErrorKind::SetHostOnCannotBeABaseUrl,
-          Overflow => ErrorKind::Overflow,
-        }
-      }
+      Repr::UrlErr(err) => Self::url_error_kind(err),
       Repr::HyperErr(ref err) => {
         // For some reason hyper::errors::Kind is private.
         if err.is_parse() {
@@ -102,6 +106,13 @@ impl DenoError {
         }
       }
       Repr::ImportMapErr(ref _err) => ErrorKind::ImportMapError,
+      Repr::ModuleResolutionErr(err) => {
+        use ModuleResolutionError::*;
+        match err {
+          InvalidUrl(err) | InvalidBaseUrl(err) => Self::url_error_kind(err),
+          ImportPathPrefixMissing => ErrorKind::ImportPathPrefixMissing,
+        }
+      }
       Repr::Diagnostic(ref _err) => ErrorKind::Diagnostic,
       Repr::JSError(ref _err) => ErrorKind::JSError,
     }
@@ -126,6 +137,7 @@ impl fmt::Display for DenoError {
       Repr::UrlErr(ref err) => err.fmt(f),
       Repr::HyperErr(ref err) => err.fmt(f),
       Repr::ImportMapErr(ref err) => f.pad(&err.msg),
+      Repr::ModuleResolutionErr(ref err) => err.fmt(f),
       Repr::Diagnostic(ref err) => err.fmt(f),
       Repr::JSError(ref err) => JSErrorColor(err).fmt(f),
     }
@@ -140,6 +152,7 @@ impl std::error::Error for DenoError {
       Repr::UrlErr(ref err) => err.description(),
       Repr::HyperErr(ref err) => err.description(),
       Repr::ImportMapErr(ref err) => &err.msg,
+      Repr::ModuleResolutionErr(ref err) => err.description(),
       Repr::Diagnostic(ref err) => &err.items[0].message,
       Repr::JSError(ref err) => &err.description(),
     }
@@ -152,6 +165,7 @@ impl std::error::Error for DenoError {
       Repr::UrlErr(ref err) => Some(err),
       Repr::HyperErr(ref err) => Some(err),
       Repr::ImportMapErr(ref _err) => None,
+      Repr::ModuleResolutionErr(ref err) => err.source(),
       Repr::Diagnostic(ref _err) => None,
       Repr::JSError(ref err) => Some(err),
     }
@@ -237,6 +251,14 @@ impl From<import_map::ImportMapError> for DenoError {
   fn from(err: import_map::ImportMapError) -> Self {
     Self {
       repr: Repr::ImportMapErr(err),
+    }
+  }
+}
+
+impl From<ModuleResolutionError> for DenoError {
+  fn from(err: ModuleResolutionError) -> Self {
+    Self {
+      repr: Repr::ModuleResolutionErr(err),
     }
   }
 }
