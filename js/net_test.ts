@@ -129,9 +129,14 @@ testPerm({ net: true }, async function netCloseReadSuccess(): Promise<void> {
   conn.closeRead(); // closing read
   closeReadDeferred.resolve();
   const buf = new Uint8Array(1024);
-  const readResult = await conn.read(buf);
-  assertEquals(0, readResult.nread); // No error, read nothing
-  assertEquals(true, readResult.eof); // with immediate EOF
+  try {
+    const readResult = await conn.read(buf);
+    assertEquals(0, readResult.nread); // No error, read nothing
+    assertEquals(true, readResult.eof); // with immediate EOF
+  } catch (e) {
+    assertEquals(Deno.platform.os, "win");
+    assert(!e);
+  }
   // Ensure closeRead does not impact write
   await conn.write(new Uint8Array([4, 5, 6]));
   await closeDeferred;
