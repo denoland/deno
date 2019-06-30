@@ -108,7 +108,14 @@ export function readSync(rid: number, p: Uint8Array): ReadResult {
 export async function read(rid: number, p: Uint8Array): Promise<ReadResult> {
   const nread = await sendAsyncMinimal(OP_READ, rid, p);
   if (nread < 0) {
-    throw new DenoError(msg.ErrorKind.BrokenPipe, "read error");
+    const errorTab: { [key: number]: string } = {
+      10054: "Connection reset by peer.",
+      10058: "Cannot send after sockeet shutdown"
+    };
+    throw new DenoError(
+      msg.ErrorKind.BrokenPipe,
+      "read error " + (errorTab[nread * -1] || "")
+    );
   } else if (nread == 0) {
     return { nread, eof: true };
   } else {

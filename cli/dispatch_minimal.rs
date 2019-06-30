@@ -100,6 +100,7 @@ pub fn dispatch_minimal(
 
   let state = state.clone();
 
+  #[allow(clippy::neg_multiply)]
   let fut = Box::new(min_op.then(move |result| -> Result<Buf, ()> {
     match result {
       Ok(r) => {
@@ -109,7 +110,10 @@ pub fn dispatch_minimal(
         // TODO(ry) The dispatch_minimal doesn't properly pipe errors back to
         // the caller.
         debug!("swallowed err {}", err);
-        record.result = -1;
+        record.result = match err.raw_os_error() {
+          None => -1,
+          Some(i) => i * -1,
+        }
       }
     }
     let buf: Buf = record.into();

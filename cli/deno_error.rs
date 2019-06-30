@@ -116,6 +116,13 @@ impl DenoError {
       panic!("attempt to apply source map an unremappable error")
     }
   }
+
+  pub fn raw_os_error(&self) -> Option<i32> {
+    match self.repr {
+      Repr::IoErr(ref err) => err.raw_os_error(),
+      _ => None,
+    }
+  }
 }
 
 impl fmt::Display for DenoError {
