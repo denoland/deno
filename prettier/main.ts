@@ -23,7 +23,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 // This script formats the given source files. If the files are omitted, it
 // formats the all files in the repository.
-const { args, exit, readFile, writeFile, stdout } = Deno;
+const { args, exit, readFile, writeFile, stdout, stdin, readAll } = Deno;
 import { glob, isGlob, GlobOptions } from "../fs/glob.ts";
 import { walk, WalkInfo } from "../fs/walk.ts";
 import { parse } from "../flags/mod.ts";
@@ -41,6 +41,15 @@ Options:
                                         it will output to stdout, Defaults to
                                         false.
   --ignore <path>                       Ignore the given path(s).
+  --stdin                               Specifies to read the code from stdin.
+                                        If run the command in a pipe, you do not
+                                        need to specify this flag.
+                                        Defaults to false.
+  --stdin-parser <typescript|babel|markdown|json>
+                                        If set --stdin flag, then need specify a
+                                        parser for stdin. available parser:
+                                        typescript/babel/markdown/json. Defaults
+                                        to typescript.
 
 JS/TS Styling Options:
   --print-width <int>                   The line length where Prettier will try
@@ -76,6 +85,14 @@ Example:
 
   deno run prettier/main.ts script1.ts
                                         Print the formatted code to stdout
+
+  cat script1.ts | deno run prettier/main.ts
+                                        Read the typescript code from stdin and
+                                        output formatted code to stdout.
+
+  cat config.json | deno run prettier/main.ts --stdin-parser=json
+                                        Read the JSON string from stdin and
+                                        output formatted code to stdout.
 `;
 
 // Available parsers
@@ -238,6 +255,39 @@ async function formatSourceFiles(
 }
 
 /**
+ * Format source code
+ */
+function format(
+  text: string,
+  parser: ParserLabel,
+  prettierOpts: PrettierOptions
+): string {
+  const formatted: string = prettier.format(text, {
+    ...prettierOpts,
+    parser: parser,
+    plugins: prettierPlugins
+  });
+
+  return formatted;
+}
+
+/**
+ * Format code from stdin and output to stdout
+ */
+async function formatFromStdin(
+  parser: ParserLabel,
+  prettierOpts: PrettierOptions
+): Promise<void> {
+  const byte = await readAll(stdin);
+  const formattedCode = format(
+    new TextDecoder().decode(byte),
+    parser,
+    prettierOpts
+  );
+  await stdout.write(new TextEncoder().encode(formattedCode));
+}
+
+/**
  * Get the files to format.
  * @param selectors The glob patterns to select the files.
  *                  eg `cmd/*.ts` to select all the typescript files in cmd
@@ -329,14 +379,21 @@ async function main(opts): Promise<void> {
     options
   );
 
+  const tty = Deno.isTTY();
+
+  const shouldReadFromStdin =
+    (!tty.stdin && (tty.stdout || tty.stderr)) || !!opts["stdin"];
+
   try {
-    if (check) {
+    if (shouldReadFromStdin) {
+      await formatFromStdin(opts["stdin-parser"], prettierOpts);
+    } else if (check) {
       await checkSourceFiles(files, prettierOpts);
     } else {
       await formatSourceFiles(files, prettierOpts);
     }
   } catch (e) {
-    console.log(e);
+    console.error(e);
     exit(1);
   }
 }
@@ -350,7 +407,8 @@ main(
       "trailing-comma",
       "arrow-parens",
       "prose-wrap",
-      "end-of-line"
+      "end-of-line",
+      "stdin-parser"
     ],
     boolean: [
       "check",
@@ -359,7 +417,8 @@ main(
       "use-tabs",
       "single-quote",
       "bracket-spacing",
-      "write"
+      "write",
+      "stdin"
     ],
     default: {
       ignore: [],
@@ -373,7 +432,9 @@ main(
       "arrow-parens": "avoid",
       "prose-wrap": "preserve",
       "end-of-line": "auto",
-      write: false
+      write: false,
+      stdin: false,
+      "stdin-parser": "typescript"
     },
     alias: {
       H: "help"

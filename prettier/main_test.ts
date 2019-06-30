@@ -2,7 +2,7 @@
 import { join } from "../fs/path.ts";
 import { EOL } from "../fs/path/constants.ts";
 import { assertEquals } from "../testing/asserts.ts";
-import { test } from "../testing/mod.ts";
+import { test, runIfMain } from "../testing/mod.ts";
 import { xrun } from "./util.ts";
 import { copy, emptyDir } from "../fs/mod.ts";
 const { readAll, execPath } = Deno;
@@ -233,3 +233,128 @@ test(async function testPrettierPrintToStdout(): Promise<void> {
 
   emptyDir(tempDir);
 });
+
+test(async function testPrettierReadFromStdin(): Promise<void> {
+  interface TestCase {
+    stdin: string;
+    stdout: string;
+    stderr: string;
+    code: number;
+    success: boolean;
+    parser?: string;
+  }
+
+  async function readFromStdinAssertion(
+    stdin: string,
+    expectedStdout: string,
+    expectedStderr: string,
+    expectedCode: number,
+    expectedSuccess: boolean,
+    parser?: string
+  ): Promise<void> {
+    const inputCode = stdin;
+    const p1 = Deno.run({
+      args: [execPath, "./prettier/testdata/echox.ts", `${inputCode}`],
+      stdout: "piped"
+    });
+
+    const p2 = Deno.run({
+      args: [
+        execPath,
+        "run",
+        "./prettier/main.ts",
+        "--stdin",
+        ...(parser ? ["--stdin-parser", parser] : [])
+      ],
+      stdin: "piped",
+      stdout: "piped",
+      stderr: "piped"
+    });
+
+    const n = await Deno.copy(p2.stdin!, p1.stdout!);
+    assertEquals(n, new TextEncoder().encode(stdin).length);
+
+    const status1 = await p1.status();
+    assertEquals(status1.code, 0);
+    assertEquals(status1.success, true);
+    p2.stdin!.close();
+    const status2 = await p2.status();
+    assertEquals(status2.code, expectedCode);
+    assertEquals(status2.success, expectedSuccess);
+    const decoder = new TextDecoder("utf-8");
+    assertEquals(
+      decoder.decode(await Deno.readAll(p2.stdout!)),
+      expectedStdout
+    );
+    assertEquals(
+      decoder.decode(await Deno.readAll(p2.stderr!)).split(EOL)[0],
+      expectedStderr
+    );
+    p2.close();
+    p1.close();
+  }
+
+  const testCases: TestCase[] = [
+    {
+      stdin: `console.log("abc"  )`,
+      stdout: `console.log("abc");\n`,
+      stderr: ``,
+      code: 0,
+      success: true
+    },
+    {
+      stdin: `console.log("abc"  )`,
+      stdout: `console.log("abc");\n`,
+      stderr: ``,
+      code: 0,
+      success: true,
+      parser: "babel"
+    },
+    {
+      stdin: `{\"a\":\"b\"}`,
+      stdout: `{ "a": "b" }\n`,
+      stderr: ``,
+      code: 0,
+      success: true,
+      parser: "json"
+    },
+    {
+      stdin: `##  test`,
+      stdout: `## test\n`,
+      stderr: ``,
+      code: 0,
+      success: true,
+      parser: "markdown"
+    },
+    {
+      stdin: `invalid typescript code##!!@@`,
+      stdout: ``,
+      stderr: `SyntaxError: ';' expected. (1:9)`,
+      code: 1,
+      success: false
+    },
+    {
+      stdin: `console.log("foo");`,
+      stdout: ``,
+      stderr:
+        'Error: Couldn\'t resolve parser "invalid_parser". ' +
+        "Parsers must be explicitly added to the standalone bundle.",
+      code: 1,
+      success: false,
+      parser: "invalid_parser"
+    }
+  ];
+
+  for (const t of testCases) {
+    await readFromStdinAssertion(
+      t.stdin,
+      t.stdout,
+      t.stderr,
+      t.code,
+      t.success,
+      t.parser
+    );
+  }
+});
+
+runIfMain(import.meta);
