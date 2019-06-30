@@ -141,6 +141,7 @@ enum ErrorKind: byte {
   NoAsyncSupport,
   NoSyncSupport,
   ImportMapError,
+  ImportPathPrefixMissing,
 
   // other kinds
   Diagnostic,
