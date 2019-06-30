@@ -57,6 +57,7 @@ use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio_process::CommandExt;
 use tokio_threadpool;
+use url::Url;
 use utime;
 
 #[cfg(unix)]
@@ -345,8 +346,12 @@ fn op_start(
   let cwd_off =
     builder.create_string(deno_fs::normalize_path(cwd_path.as_ref()).as_ref());
 
+  let current_exe = std::env::current_exe().unwrap();
+  // Now apply URL parser to current exe to get fully resolved path, otherwise we might get
+  // `./` and `../` bits in `exec_path`
+  let exe_url = Url::from_file_path(current_exe).unwrap();
   let exec_path =
-    builder.create_string(std::env::current_exe().unwrap().to_str().unwrap());
+    builder.create_string(exe_url.to_file_path().unwrap().to_str().unwrap());
 
   let v8_version = version::v8();
   let v8_version_off = builder.create_string(v8_version);
