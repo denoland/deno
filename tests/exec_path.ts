@@ -3,7 +3,10 @@ console.log(Deno.execPath);
 async function main(): Promise<void> {
   // See https://github.com/denoland/deno/issues/1798
   // Assumes that tests are run from repo root
-  let exePath = Deno.cwd() + "/./target/debug/deno";
+  // Create path with "/./" segment
+  let exePath = Deno.execPath;
+  let index = exePath.indexOf("target");
+  exePath = exePath.slice(0, index) + "./" + exePath.slice(index);
 
   const p = Deno.run({
     args: [exePath, "eval", "console.log(Deno.execPath);"],
