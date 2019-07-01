@@ -9,6 +9,7 @@ import sys
 from distutils.spawn import find_executable
 import prebuilt
 import argparse
+from binary_downloads import binary_downloads
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -26,12 +27,7 @@ def main():
     if args.no_binary_download:
         print "no binary download"
     else:
-        print "binary download"
-        third_party.download_gn()
-        third_party.download_clang_format()
-        third_party.download_clang()
-        third_party.maybe_download_sysroot()
-        prebuilt.load_sccache()
+        binary_downloads()
 
     write_lastchange()
 
