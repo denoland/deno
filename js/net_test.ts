@@ -193,7 +193,14 @@ testPerm({ net: true }, async function netCloseWriteSuccess(): Promise<void> {
   const closeDeferred = deferred();
   listener.accept().then(
     async (conn): Promise<void> => {
-      await conn.write(new Uint8Array([1, 2, 3]));
+      try {
+        await conn.write(new Uint8Array([1, 2, 3]));
+      } catch (e) {
+        assertEquals(Deno.platform.os, "win");
+        assert(!!e);
+        assertEquals(e.kind, Deno.ErrorKind.BrokenPipe);
+        assertEquals(e.name, "BrokenPipe");
+      }
       await closeDeferred;
       conn.close();
     }
@@ -201,12 +208,19 @@ testPerm({ net: true }, async function netCloseWriteSuccess(): Promise<void> {
   const conn = await Deno.dial("tcp", addr);
   conn.closeWrite(); // closing write
   const buf = new Uint8Array(1024);
-  // Check read not impacted
-  const readResult = await conn.read(buf);
-  assertEquals(3, readResult.nread);
-  assertEquals(1, buf[0]);
-  assertEquals(2, buf[1]);
-  assertEquals(3, buf[2]);
+  try {
+    // Check read not impacted
+    const readResult = await conn.read(buf);
+    assertEquals(3, readResult.nread);
+    assertEquals(1, buf[0]);
+    assertEquals(2, buf[1]);
+    assertEquals(3, buf[2]);
+  } catch (e) {
+    assertEquals(Deno.platform.os, "win");
+    assert(!!e);
+    assertEquals(e.kind, Deno.ErrorKind.BrokenPipe);
+    assertEquals(e.name, "BrokenPipe");
+  }
   // Check write should be closed
   let err;
   try {
