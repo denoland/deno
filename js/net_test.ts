@@ -154,7 +154,7 @@ testPerm({ net: true }, async function netCloseReadSuccess(): Promise<void> {
 });
 
 testPerm({ net: true }, async function netDoubleCloseRead(): Promise<void> {
-  const addr = "127.0.0.1:4500";
+  const addr = "127.0.0.1:4501";
   const listener = Deno.listen("tcp", addr);
   const closeDeferred = deferred();
   listener.accept().then(
@@ -188,7 +188,7 @@ testPerm({ net: true }, async function netDoubleCloseRead(): Promise<void> {
 });
 
 testPerm({ net: true }, async function netCloseWriteSuccess(): Promise<void> {
-  const addr = "127.0.0.1:4500";
+  const addr = "127.0.0.1:4502";
   const listener = Deno.listen("tcp", addr);
   const closeDeferred = deferred();
   listener.accept().then(
@@ -222,7 +222,7 @@ testPerm({ net: true }, async function netCloseWriteSuccess(): Promise<void> {
 });
 
 testPerm({ net: true }, async function netDoubleCloseWrite(): Promise<void> {
-  const addr = "127.0.0.1:4500";
+  const addr = "127.0.0.1:4503";
   const listener = Deno.listen("tcp", addr);
   const closeDeferred = deferred();
   listener.accept().then(
