@@ -21,6 +21,7 @@ import "./strings/test.ts";
 import "./testing/test.ts";
 import "./textproto/test.ts";
 import "./util/test.ts";
+import "./uuid/test.ts";
 import "./ws/test.ts";
 import "./encoding/test.ts";
 import "./os/test.ts";
