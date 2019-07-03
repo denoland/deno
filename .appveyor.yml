@@ -191,6 +191,7 @@ build_script:
   # want the final one (which gets tested and released) to be built by Ninja.
   - cargo build -vv --release --locked
   - cargo clippy --all-targets --release --locked -- -D clippy::all
+  - python tools\cargo_gn_test.py # Test cargo-gn integration before build.py
   - python tools\build.py
 
 test_script:

@@ -117,6 +117,7 @@ jobs:
       - ./tools/lint.py
       - ./tools/test_format.py
       - cargo build -vv --release --locked
+      - ./tools/cargo_gn_test.py
       - cargo clippy --all-targets --release --locked -- -D clippy::all
 
     # LSAN: We are in the process of getting a completely clean LSAN build,
