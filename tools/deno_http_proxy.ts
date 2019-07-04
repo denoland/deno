@@ -21,10 +21,6 @@ async function proxyRequest(req: ServerRequest) {
     method: req.method,
     headers: req.headers
   });
-  // TODO(kt3k): lib.deno_runtime.d.ts has 2 EOF types: Deno.EOF and io.EOF.
-  // They are identical symbols, and should be compatible. However typescript
-  // recognizes they are different types and the below call doesn't compile.
-  // @ts-ignore
   req.respond(resp);
 }
 
