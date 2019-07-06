@@ -53,20 +53,16 @@ testPerm({ net: true }, async function netDialListen(): Promise<void> {
   const conn = await Deno.dial("tcp", "127.0.0.1:4500");
   const buf = new Uint8Array(1024);
   const readResult = await conn.read(buf);
-  assertEquals(3, readResult.nread);
+  assertEquals(3, readResult);
   assertEquals(1, buf[0]);
   assertEquals(2, buf[1]);
   assertEquals(3, buf[2]);
   assert(conn.rid > 0);
 
-  // TODO Currently ReadResult does not properly transmit EOF in the same call.
-  // it requires a second call to get the EOF. Either ReadResult to be an
-  // integer in which 0 signifies EOF or the handler should be modified so that
-  // EOF is properly transmitted.
-  assertEquals(false, readResult.eof);
+  assert(readResult !== Deno.EOF);
 
   const readResult2 = await conn.read(buf);
-  assertEquals(true, readResult2.eof);
+  assertEquals(Deno.EOF, readResult2);
 
   listener.close();
   conn.close();
@@ -85,20 +81,16 @@ testPerm({ net: true }, async function netListenAsyncIterator(): Promise<void> {
   const conn = await Deno.dial("tcp", "127.0.0.1:4500");
   const buf = new Uint8Array(1024);
   const readResult = await conn.read(buf);
-  assertEquals(3, readResult.nread);
+  assertEquals(3, readResult);
   assertEquals(1, buf[0]);
   assertEquals(2, buf[1]);
   assertEquals(3, buf[2]);
   assert(conn.rid > 0);
 
-  // TODO Currently ReadResult does not properly transmit EOF in the same call.
-  // it requires a second call to get the EOF. Either ReadResult to be an
-  // integer in which 0 signifies EOF or the handler should be modified so that
-  // EOF is properly transmitted.
-  assertEquals(false, readResult.eof);
+  assert(readResult !== Deno.EOF);
 
   const readResult2 = await conn.read(buf);
-  assertEquals(true, readResult2.eof);
+  assertEquals(Deno.EOF, readResult2);
 
   listener.close();
   conn.close();
@@ -116,7 +108,7 @@ testPerm({ net: true }, async function netCloseReadSuccess() {
     await conn.write(new Uint8Array([1, 2, 3]));
     const buf = new Uint8Array(1024);
     const readResult = await conn.read(buf);
-    assertEquals(3, readResult.nread);
+    assertEquals(3, readResult);
     assertEquals(4, buf[0]);
     assertEquals(5, buf[1]);
     assertEquals(6, buf[2]);
@@ -128,8 +120,7 @@ testPerm({ net: true }, async function netCloseReadSuccess() {
   closeReadDeferred.resolve();
   const buf = new Uint8Array(1024);
   const readResult = await conn.read(buf);
-  assertEquals(0, readResult.nread); // No error, read nothing
-  assertEquals(true, readResult.eof); // with immediate EOF
+  assertEquals(Deno.EOF, readResult); // with immediate EOF
   // Ensure closeRead does not impact write
   await conn.write(new Uint8Array([4, 5, 6]));
   await closeDeferred.promise;
@@ -181,7 +172,7 @@ testPerm({ net: true }, async function netCloseWriteSuccess() {
   const buf = new Uint8Array(1024);
   // Check read not impacted
   const readResult = await conn.read(buf);
-  assertEquals(3, readResult.nread);
+  assertEquals(3, readResult);
   assertEquals(1, buf[0]);
   assertEquals(2, buf[1]);
   assertEquals(3, buf[2]);
