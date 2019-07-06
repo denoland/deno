@@ -6,6 +6,24 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.11.0 / 2019.07.06
+
+In deno:
+
+- feat: Add Deno.homeDir() (#2578)
+- feat: Change Reader interface (#2591)
+- feat: add bash completions (#2577)
+- feat: parse CLI flags after script name (#2596)
+- fix: multiple error messages for a missing file (#2587)
+- fix: normalize Deno.execPath (#2598)
+- fix: return useful error when import path has no ./ (#2605)
+- fix: run blocking function on a different task (#2570)
+
+In deno_std:
+
+- feat: add UUID module (denoland/deno_std#479)
+- feat: prettier support reading code from stdin (denoland/deno_std#498)
+
 ### v0.10.0 / 2019.06.25
 
 In deno:
