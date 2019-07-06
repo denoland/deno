@@ -24,8 +24,8 @@ const idMap = new Map<number, Timer>();
 const dueMap = new Map<number, Timer[]>();
 
 function addToDueMap(due: number, timer: Timer): Timer[] {
-  var list = dueMap.get(due);
-  if (list === undefined) {
+  let list = dueMap.get(due);
+  if (!list) {
     list = [];
     dueMap.set(due, list);
   }
@@ -36,8 +36,8 @@ function addToDueMap(due: number, timer: Timer): Timer[] {
 }
 
 function getFromDueMap(due: number): Timer[] {
-  var list = dueMap.get(due);
-  if (list === undefined) {
+  let list = dueMap.get(due);
+  if (!list) {
     list = [];
   }
 
