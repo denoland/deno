@@ -13,7 +13,7 @@ async function handle(conn: Deno.Conn): Promise<void> {
   try {
     while (true) {
       const r = await conn.read(buffer);
-      if (r.eof) {
+      if (r === Deno.EOF) {
         break;
       }
       await conn.write(response);

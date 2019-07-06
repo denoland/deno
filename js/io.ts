@@ -3,11 +3,11 @@
 // Documentation liberally lifted from them too.
 // Thank you! We love Go!
 
-// The bytes read during an I/O call and a boolean indicating EOF.
-export interface ReadResult {
-  nread: number;
-  eof: boolean;
-}
+// TODO(kt3k): EOF should be `unique symbol` type.
+// That might require some changes of ts_library_builder.
+// See #2591 for more details.
+export const EOF: null = null;
+export type EOF = null;
 
 // Seek whence values.
 // https://golang.org/pkg/io/#pkg-constants
@@ -21,36 +21,27 @@ export enum SeekMode {
 // https://golang.org/pkg/io/#Reader
 export interface Reader {
   /** Reads up to p.byteLength bytes into `p`. It resolves to the number
-   * of bytes read (`0` <= `n` <= `p.byteLength`) and any error encountered.
+   * of bytes read (`0` < `n` <= `p.byteLength`) and rejects if any error encountered.
    * Even if `read()` returns `n` < `p.byteLength`, it may use all of `p` as
    * scratch space during the call. If some data is available but not
    * `p.byteLength` bytes, `read()` conventionally returns what is available
    * instead of waiting for more.
    *
-   * When `read()` encounters an error or end-of-file condition after
-   * successfully reading `n` > `0` bytes, it returns the number of bytes read.
-   * It may return the (non-nil) error from the same call or return the error
-   * (and `n` == `0`) from a subsequent call. An instance of this general case
-   * is that a `Reader` returning a non-zero number of bytes at the end of the
-   * input stream may return either `err` == `EOF` or `err` == `null`. The next
-   * `read()` should return `0`, `EOF`.
+   * When `read()` encounters end-of-file condition, it returns EOF symbol.
+   *
+   * When `read()` encounters an error, it rejects with an error.
    *
    * Callers should always process the `n` > `0` bytes returned before
-   * considering the `EOF`. Doing so correctly handles I/O errors that happen
-   * after reading some bytes and also both of the allowed `EOF` behaviors.
-   *
-   * Implementations of `read()` are discouraged from returning a zero byte
-   * count with a `null` error, except when `p.byteLength` == `0`. Callers
-   * should treat a return of `0` and `null` as indicating that nothing
-   * happened; in particular it does not indicate `EOF`.
+   * considering the EOF. Doing so correctly handles I/O errors that happen
+   * after reading some bytes and also both of the allowed EOF behaviors.
    *
    * Implementations must not retain `p`.
    */
-  read(p: Uint8Array): Promise<ReadResult>;
+  read(p: Uint8Array): Promise<number | EOF>;
 }
 
 export interface SyncReader {
-  readSync(p: Uint8Array): ReadResult;
+  readSync(p: Uint8Array): number | EOF;
 }
 
 // Writer is the interface that wraps the basic write() method.
@@ -128,10 +119,11 @@ export async function copy(dst: Writer, src: Reader): Promise<number> {
   let gotEOF = false;
   while (gotEOF === false) {
     const result = await src.read(b);
-    if (result.eof) {
+    if (result === EOF) {
       gotEOF = true;
+    } else {
+      n += await dst.write(b.subarray(0, result));
     }
-    n += await dst.write(b.subarray(0, result.nread));
   }
   return n;
 }
@@ -146,7 +138,7 @@ export function toAsyncIterator(r: Reader): AsyncIterableIterator<Uint8Array> {
   const b = new Uint8Array(1024);
   // Keep track if end-of-file has been reached, then
   // signal that iterator is done during subsequent next()
-  // call. This is required because `r` can return a `ReadResult`
+  // call. This is required because `r` can return a `number | EOF`
   // with data read and EOF reached. But if iterator returns
   // `done` then `value` is discarded.
   //
@@ -164,10 +156,13 @@ export function toAsyncIterator(r: Reader): AsyncIterableIterator<Uint8Array> {
       }
 
       const result = await r.read(b);
-      sawEof = result.eof;
+      if (result === EOF) {
+        sawEof = true;
+        return { value: new Uint8Array(), done: true };
+      }
 
       return {
-        value: b.subarray(0, result.nread),
+        value: b.subarray(0, result),
         done: false
       };
     }

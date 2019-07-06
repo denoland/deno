@@ -218,7 +218,7 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
     return decoder.decode(ab);
   }
 
-  read(p: Uint8Array): Promise<io.ReadResult> {
+  read(p: Uint8Array): Promise<number | io.EOF> {
     return read(this.rid, p);
   }
 

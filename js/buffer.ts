@@ -4,8 +4,7 @@
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
 // https://github.com/golang/go/blob/master/LICENSE
 
-//import * as io from "./io";
-import { Reader, Writer, ReadResult, SyncReader, SyncWriter } from "./io";
+import { Reader, Writer, EOF, SyncReader, SyncWriter } from "./io";
 import { assert } from "./util";
 import { TextDecoder } from "./text_encoding";
 import { DenoError, ErrorKind } from "./errors";
@@ -131,22 +130,22 @@ export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
    * is drained. The return value n is the number of bytes read. If the
    * buffer has no data to return, eof in the response will be true.
    */
-  readSync(p: Uint8Array): ReadResult {
+  readSync(p: Uint8Array): number | EOF {
     if (this.empty()) {
       // Buffer is empty, reset to recover space.
       this.reset();
       if (p.byteLength === 0) {
         // this edge case is tested in 'bufferReadEmptyAtEOF' test
-        return { nread: 0, eof: false };
+        return 0;
       }
-      return { nread: 0, eof: true };
+      return EOF;
     }
     const nread = copyBytes(p, this.buf.subarray(this.off));
     this.off += nread;
-    return { nread, eof: false };
+    return nread;
   }
 
-  async read(p: Uint8Array): Promise<ReadResult> {
+  async read(p: Uint8Array): Promise<number | EOF> {
     const rr = this.readSync(p);
     return Promise.resolve(rr);
   }
@@ -226,12 +225,12 @@ export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
         const i = this._grow(MIN_READ);
         this._reslice(i);
         const fub = new Uint8Array(this.buf.buffer, i);
-        const { nread, eof } = await r.read(fub);
-        this._reslice(i + nread);
-        n += nread;
-        if (eof) {
+        const nread = await r.read(fub);
+        if (nread === EOF) {
           return n;
         }
+        this._reslice(i + nread);
+        n += nread;
       } catch (e) {
         return n;
       }
@@ -247,12 +246,12 @@ export class Buffer implements Reader, SyncReader, Writer, SyncWriter {
         const i = this._grow(MIN_READ);
         this._reslice(i);
         const fub = new Uint8Array(this.buf.buffer, i);
-        const { nread, eof } = r.readSync(fub);
-        this._reslice(i + nread);
-        n += nread;
-        if (eof) {
+        const nread = r.readSync(fub);
+        if (nread === EOF) {
           return n;
         }
+        this._reslice(i + nread);
+        n += nread;
       } catch (e) {
         return n;
       }
