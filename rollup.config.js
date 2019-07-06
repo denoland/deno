@@ -18,7 +18,6 @@ const typescriptPath = path.resolve(
   __dirname,
   "third_party/node_modules/typescript/lib/typescript.js"
 );
-const gnArgs = fs.readFileSync("gen/cli/gn_args.txt", "utf-8").trim();
 
 // We will allow generated modules to be resolvable by TypeScript based on
 // the current build path
@@ -190,8 +189,7 @@ export default function makeConfig(commandOptions) {
       replace({
         ROLLUP_REPLACE_TS_VERSION: typescript.version,
         ROLLUP_REPLACE_ARCH: archNodeToDeno[process.arch],
-        ROLLUP_REPLACE_OS: osNodeToDeno[process.platform],
-        ROLLUP_REPLACE_GN_ARGS: gnArgs
+        ROLLUP_REPLACE_OS: osNodeToDeno[process.platform]
       }),
 
       // would prefer to use `rollup-plugin-virtual` to inject the empty module, but there
