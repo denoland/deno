@@ -8,7 +8,3 @@ test(function buildInfo(): void {
   assert(arch === "x64");
   assert(os === "mac" || os === "win" || os === "linux");
 });
-
-test(function buildGnArgs(): void {
-  assert(Deno.build.args.length > 100);
-});
