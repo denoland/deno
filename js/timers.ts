@@ -21,22 +21,13 @@ let globalTimeoutDue: number | null = null;
 
 let nextTimerId = 1;
 const idMap = new Map<number, Timer>();
-
+//TODO When SortedMap become available in TypeScript change type of this to SortedMap
 const dueMap = new Map<number, Timer[]>();
-// due of next, in dueMap
-// TODO: When SortedMap is available as buitin object in TypeScript,
-// replace logic around nextDue to use SortedMap.
-let nextDue: number | null = null;
 
 function addToDueMap(due: number, timer: Timer): Timer[] {
   let list = dueMap.get(due);
   if (!list) {
     list = [];
-    //Keep smallest key of due in dueMap
-    if (!nextDue || due < nextDue) {
-      nextDue = due;
-    }
-
     dueMap.set(due, list);
   }
 
@@ -56,19 +47,18 @@ function getFromDueMap(due: number): Timer[] {
 
 function removeFromDueMap(due: number): boolean {
   const isRemoved = dueMap.delete(due);
-
-  //Keep nextDue smallest due-value in key of dueMap.
-  if (isRemoved && nextDue && nextDue <= due) {
-    var smallestDue: number | null = null;
-    for (const key of dueMap.keys()) {
-      if (!smallestDue || key < smallestDue) {
-        smallestDue = key;
-      }
-    }
-    nextDue = smallestDue;
-  }
-
   return isRemoved;
+}
+
+function nextDue(): number | null {
+  //TODO When type of dueMap is changed to SortedMap, remove this logic.
+  let smallestDue: number | null = null;
+  for (const key of dueMap.keys()) {
+    if (!smallestDue || smallestDue > key) {
+      smallestDue = key;
+    }
+  }
+  return smallestDue;
 }
 
 function clearGlobalTimeout(): void {
@@ -130,7 +120,7 @@ function unschedule(timer: Timer): void {
     // If the unscheduled timer was 'next up', find when the next timer that
     // still exists is due, and update the global alarm accordingly.
     if (timer.due === globalTimeoutDue) {
-      setOrClearGlobalTimeout(nextDue, Date.now());
+      setOrClearGlobalTimeout(nextDue(), Date.now());
     }
   } else {
     // Multiple timers that are due at the same point in time.
