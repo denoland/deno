@@ -4,7 +4,7 @@ import { decode, encode } from "../strings/mod.ts";
 
 type Conn = Deno.Conn;
 type Writer = Deno.Writer;
-import { BufReader, BufWriter, EOF, UnexpectedEOFError } from "../io/bufio.ts";
+import { BufReader, BufWriter, UnexpectedEOFError } from "../io/bufio.ts";
 import { readLong, readShort, sliceLongToBytes } from "../io/ioutil.ts";
 import { Sha1 } from "./sha1.ts";
 import { writeResponse } from "../http/server.ts";
@@ -142,7 +142,7 @@ export async function writeFrame(
 /** Read websocket frame from given BufReader */
 export async function readFrame(buf: BufReader): Promise<WebSocketFrame> {
   let b = await buf.readByte();
-  if (b === EOF) throw new UnexpectedEOFError();
+  if (b === Deno.EOF) throw new UnexpectedEOFError();
   let isLastFrame = false;
   switch (b >>> 4) {
     case 0b1000:
@@ -157,16 +157,16 @@ export async function readFrame(buf: BufReader): Promise<WebSocketFrame> {
   const opcode = b & 0x0f;
   // has_mask & payload
   b = await buf.readByte();
-  if (b === EOF) throw new UnexpectedEOFError();
+  if (b === Deno.EOF) throw new UnexpectedEOFError();
   const hasMask = b >>> 7;
   let payloadLength = b & 0b01111111;
   if (payloadLength === 126) {
     const l = await readShort(buf);
-    if (l === EOF) throw new UnexpectedEOFError();
+    if (l === Deno.EOF) throw new UnexpectedEOFError();
     payloadLength = l;
   } else if (payloadLength === 127) {
     const l = await readLong(buf);
-    if (l === EOF) throw new UnexpectedEOFError();
+    if (l === Deno.EOF) throw new UnexpectedEOFError();
     payloadLength = Number(l);
   }
   // mask
@@ -442,7 +442,7 @@ async function handshake(
 
   const tpReader = new TextProtoReader(bufReader);
   const statusLine = await tpReader.readLine();
-  if (statusLine === EOF) {
+  if (statusLine === Deno.EOF) {
     throw new UnexpectedEOFError();
   }
   const m = statusLine.match(/^(?<version>\S+) (?<statusCode>\S+) /);
@@ -460,7 +460,7 @@ async function handshake(
   }
 
   const responseHeaders = await tpReader.readMIMEHeader();
-  if (responseHeaders === EOF) {
+  if (responseHeaders === Deno.EOF) {
     throw new UnexpectedEOFError();
   }
 

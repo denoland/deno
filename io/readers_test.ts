@@ -8,21 +8,23 @@ import { decode } from "../strings/mod.ts";
 
 test(async function ioStringReader(): Promise<void> {
   const r = new StringReader("abcdef");
-  const { nread, eof } = await r.read(new Uint8Array(6));
-  assertEquals(nread, 6);
-  assertEquals(eof, true);
+  const res0 = await r.read(new Uint8Array(6));
+  assertEquals(res0, 6);
+  const res1 = await r.read(new Uint8Array(6));
+  assertEquals(res1, Deno.EOF);
 });
 
 test(async function ioStringReader(): Promise<void> {
   const r = new StringReader("abcdef");
   const buf = new Uint8Array(3);
   let res1 = await r.read(buf);
-  assertEquals(res1.nread, 3);
-  assertEquals(res1.eof, false);
+  assertEquals(res1, 3);
   assertEquals(decode(buf), "abc");
   let res2 = await r.read(buf);
-  assertEquals(res2.nread, 3);
-  assertEquals(res2.eof, true);
+  assertEquals(res2, 3);
+  assertEquals(decode(buf), "def");
+  let res3 = await r.read(buf);
+  assertEquals(res3, Deno.EOF);
   assertEquals(decode(buf), "def");
 });
 

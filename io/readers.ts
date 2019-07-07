@@ -1,6 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 type Reader = Deno.Reader;
-type ReadResult = Deno.ReadResult;
 import { encode } from "../strings/mod.ts";
 
 /** Reader utility for strings */
@@ -10,11 +9,14 @@ export class StringReader implements Reader {
 
   constructor(private readonly s: string) {}
 
-  async read(p: Uint8Array): Promise<ReadResult> {
+  async read(p: Uint8Array): Promise<number | Deno.EOF> {
     const n = Math.min(p.byteLength, this.buf.byteLength - this.offs);
     p.set(this.buf.slice(this.offs, this.offs + n));
     this.offs += n;
-    return { nread: n, eof: this.offs === this.buf.byteLength };
+    if (n === 0) {
+      return Deno.EOF;
+    }
+    return n;
   }
 }
 
@@ -27,13 +29,14 @@ export class MultiReader implements Reader {
     this.readers = readers;
   }
 
-  async read(p: Uint8Array): Promise<ReadResult> {
+  async read(p: Uint8Array): Promise<number | Deno.EOF> {
     const r = this.readers[this.currentIndex];
-    if (!r) return { nread: 0, eof: true };
-    const { nread, eof } = await r.read(p);
-    if (eof) {
+    if (!r) return Deno.EOF;
+    const result = await r.read(p);
+    if (result === Deno.EOF) {
       this.currentIndex++;
+      return 0;
     }
-    return { nread, eof: false };
+    return result;
   }
 }

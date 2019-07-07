@@ -5,7 +5,6 @@
 
 const { Buffer } = Deno;
 type Reader = Deno.Reader;
-type ReadResult = Deno.ReadResult;
 import { test, runIfMain } from "../testing/mod.ts";
 import {
   assert,
@@ -16,7 +15,6 @@ import {
 import {
   BufReader,
   BufWriter,
-  EOF,
   BufferFullError,
   UnexpectedEOFError
 } from "./bufio.ts";
@@ -25,8 +23,8 @@ import { charCode, copyBytes, stringsReader } from "./util.ts";
 
 const encoder = new TextEncoder();
 
-function assertNotEOF<T extends {}>(val: T | EOF): T {
-  assertNotEquals(val, EOF);
+function assertNotEOF<T extends {}>(val: T | Deno.EOF): T {
+  assertNotEquals(val, Deno.EOF);
   return val as T;
 }
 
@@ -35,7 +33,7 @@ async function readBytes(buf: BufReader): Promise<string> {
   let nb = 0;
   while (true) {
     let c = await buf.readByte();
-    if (c === EOF) {
+    if (c === Deno.EOF) {
       break; // EOF
     }
     b[nb] = c;
@@ -73,11 +71,11 @@ async function reads(buf: BufReader, m: number): Promise<string> {
   const b = new Uint8Array(1000);
   let nb = 0;
   while (true) {
-    const { nread, eof } = await buf.read(b.subarray(nb, nb + m));
-    nb += nread;
-    if (eof) {
+    const result = await buf.read(b.subarray(nb, nb + m));
+    if (result === Deno.EOF) {
       break;
     }
+    nb += result;
   }
   const decoder = new TextDecoder();
   return decoder.decode(b.subarray(0, nb));
@@ -175,7 +173,7 @@ const testOutput = encoder.encode("0123456789abcdefghijklmnopqrstuvwxy");
 class TestReader implements Reader {
   constructor(private data: Uint8Array, private stride: number) {}
 
-  async read(buf: Uint8Array): Promise<ReadResult> {
+  async read(buf: Uint8Array): Promise<number | Deno.EOF> {
     let nread = this.stride;
     if (nread > this.data.byteLength) {
       nread = this.data.byteLength;
@@ -183,13 +181,12 @@ class TestReader implements Reader {
     if (nread > buf.byteLength) {
       nread = buf.byteLength;
     }
+    if (nread === 0) {
+      return Deno.EOF;
+    }
     copyBytes(buf as Uint8Array, this.data);
     this.data = this.data.subarray(nread);
-    let eof = false;
-    if (this.data.byteLength == 0) {
-      eof = true;
-    }
-    return { nread, eof };
+    return nread;
   }
 }
 
@@ -200,7 +197,7 @@ async function testReadLine(input: Uint8Array): Promise<void> {
     let l = new BufReader(reader, input.byteLength + 1);
     while (true) {
       const r = await l.readLine();
-      if (r === EOF) {
+      if (r === Deno.EOF) {
         break;
       }
       const { line, more } = r;
@@ -267,9 +264,9 @@ test(async function bufioPeek(): Promise<void> {
   actual = assertNotEOF(await buf.peek(2));
   assertEquals(decoder.decode(actual), "de");
 
-  let { eof } = await buf.read(p.subarray(0, 3));
+  let res = await buf.read(p.subarray(0, 3));
   assertEquals(decoder.decode(p.subarray(0, 3)), "def");
-  assert(!eof);
+  assert(res !== Deno.EOF);
 
   actual = assertNotEOF(await buf.peek(4));
   assertEquals(decoder.decode(actual), "ghij");
@@ -281,7 +278,7 @@ test(async function bufioPeek(): Promise<void> {
   assertEquals(decoder.decode(actual), "");
 
   const r = await buf.peek(1);
-  assert(r === EOF);
+  assert(r === Deno.EOF);
   /* TODO
 	Test for issue 3022, not exposing a reader's error on a successful Peek.
 	buf = NewReaderSize(dataAndEOFReader("abcd"), 32)

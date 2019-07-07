@@ -3,7 +3,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-import { BufReader, EOF } from "../io/bufio.ts";
+import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader, ProtocolError } from "./mod.ts";
 import { stringsReader } from "../io/util.ts";
 import {
@@ -14,8 +14,8 @@ import {
 } from "../testing/asserts.ts";
 import { test, runIfMain } from "../testing/mod.ts";
 
-function assertNotEOF<T extends {}>(val: T | EOF): T {
-  assertNotEquals(val, EOF);
+function assertNotEOF<T extends {}>(val: T | Deno.EOF): T {
+  assertNotEquals(val, Deno.EOF);
   return val as T;
 }
 
@@ -33,7 +33,7 @@ function reader(s: string): TextProtoReader {
 test(async function textprotoReadEmpty(): Promise<void> {
   const r = reader("");
   const m = await r.readMIMEHeader();
-  assertEquals(m, EOF);
+  assertEquals(m, Deno.EOF);
 });
 
 test(async function textprotoReader(): Promise<void> {
@@ -45,7 +45,7 @@ test(async function textprotoReader(): Promise<void> {
   assertEquals(s, "line2");
 
   s = await r.readLine();
-  assert(s === EOF);
+  assert(s === Deno.EOF);
 });
 
 test({

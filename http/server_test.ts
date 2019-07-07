@@ -18,14 +18,13 @@ import {
 import {
   BufReader,
   BufWriter,
-  EOF,
   ReadLineResult,
   UnexpectedEOFError
 } from "../io/bufio.ts";
 import { StringReader } from "../io/readers.ts";
 
-function assertNotEOF<T extends {}>(val: T | EOF): T {
-  assertNotEquals(val, EOF);
+function assertNotEOF<T extends {}>(val: T | Deno.EOF): T {
+  assertNotEquals(val, Deno.EOF);
   return val as T;
 }
 
@@ -276,7 +275,7 @@ test(async function writeUint8ArrayResponse(): Promise<void> {
   assertEquals(r.more, false);
 
   const eof = await reader.readLine();
-  assertEquals(eof, EOF);
+  assertEquals(eof, Deno.EOF);
 });
 
 test(async function writeStringReaderResponse(): Promise<void> {
@@ -345,7 +344,7 @@ test(async function testReadRequestError(): Promise<void> {
       in: "GET / HTTP/1.1\r\nheader:foo\r\n",
       err: UnexpectedEOFError
     },
-    { in: "", err: EOF },
+    { in: "", err: Deno.EOF },
     {
       in: "HEAD / HTTP/1.1\r\nContent-Length:4\r\n\r\n",
       err: "http: method cannot contain a Content-Length"
@@ -407,15 +406,15 @@ test(async function testReadRequestError(): Promise<void> {
     } catch (e) {
       err = e;
     }
-    if (test.err === EOF) {
-      assertEquals(req, EOF);
+    if (test.err === Deno.EOF) {
+      assertEquals(req, Deno.EOF);
     } else if (typeof test.err === "string") {
       assertEquals(err.message, test.err);
     } else if (test.err) {
       assert(err instanceof (test.err as typeof UnexpectedEOFError));
     } else {
       assertEquals(err, undefined);
-      assertNotEquals(req, EOF);
+      assertNotEquals(req, Deno.EOF);
       for (const h of test.headers!) {
         assertEquals((req! as ServerRequest).headers.get(h.key), h.value);
       }

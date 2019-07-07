@@ -2,7 +2,7 @@ const { dial, run } = Deno;
 
 import { test, runIfMain } from "../testing/mod.ts";
 import { assert, assertEquals } from "../testing/asserts.ts";
-import { BufReader, EOF } from "../io/bufio.ts";
+import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 
 let server: Deno.Process;
@@ -14,7 +14,7 @@ async function startServer(): Promise<void> {
   // Once fileServer is ready it will write to its stdout.
   const r = new TextProtoReader(new BufReader(server.stdout!));
   const s = await r.readLine();
-  assert(s !== EOF && s.includes("Racing server listening..."));
+  assert(s !== Deno.EOF && s.includes("Racing server listening..."));
 }
 function killServer(): void {
   server.close();

@@ -4,7 +4,7 @@ type Listener = Deno.Listener;
 type Conn = Deno.Conn;
 type Reader = Deno.Reader;
 type Writer = Deno.Writer;
-import { BufReader, BufWriter, EOF, UnexpectedEOFError } from "../io/bufio.ts";
+import { BufReader, BufWriter, UnexpectedEOFError } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { STATUS_TEXT } from "./http_status.ts";
 import { assert } from "../testing/asserts.ts";
@@ -116,14 +116,16 @@ export class ServerRequest {
       }
       let buf = new Uint8Array(1024);
       let rr = await this.r.read(buf);
-      let nread = rr.nread;
-      while (!rr.eof && nread < len) {
-        yield buf.subarray(0, rr.nread);
+      let nread = rr === Deno.EOF ? 0 : rr;
+      let nreadTotal = nread;
+      while (rr !== Deno.EOF && nreadTotal < len) {
+        yield buf.subarray(0, nread);
         buf = new Uint8Array(1024);
         rr = await this.r.read(buf);
-        nread += rr.nread;
+        nread = rr === Deno.EOF ? 0 : rr;
+        nreadTotal += nread;
       }
-      yield buf.subarray(0, rr.nread);
+      yield buf.subarray(0, nread);
     } else {
       if (this.headers.has("transfer-encoding")) {
         const transferEncodings = this.headers
@@ -134,7 +136,7 @@ export class ServerRequest {
           // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
           const tp = new TextProtoReader(this.r);
           let line = await tp.readLine();
-          if (line === EOF) throw new UnexpectedEOFError();
+          if (line === Deno.EOF) throw new UnexpectedEOFError();
           // TODO: handle chunk extension
           let [chunkSizeString] = line.split(";");
           let chunkSize = parseInt(chunkSizeString, 16);
@@ -143,17 +145,17 @@ export class ServerRequest {
           }
           while (chunkSize > 0) {
             const data = new Uint8Array(chunkSize);
-            if ((await this.r.readFull(data)) === EOF) {
+            if ((await this.r.readFull(data)) === Deno.EOF) {
               throw new UnexpectedEOFError();
             }
             yield data;
             await this.r.readLine(); // Consume \r\n
             line = await tp.readLine();
-            if (line === EOF) throw new UnexpectedEOFError();
+            if (line === Deno.EOF) throw new UnexpectedEOFError();
             chunkSize = parseInt(line, 16);
           }
           const entityHeaders = await tp.readMIMEHeader();
-          if (entityHeaders !== EOF) {
+          if (entityHeaders !== Deno.EOF) {
             for (let [k, v] of entityHeaders) {
               this.headers.set(k, v);
             }
@@ -282,12 +284,12 @@ export function parseHTTPVersion(vers: string): [number, number] {
 
 export async function readRequest(
   bufr: BufReader
-): Promise<ServerRequest | EOF> {
+): Promise<ServerRequest | Deno.EOF> {
   const tp = new TextProtoReader(bufr);
   const firstLine = await tp.readLine(); // e.g. GET /index.html HTTP/1.0
-  if (firstLine === EOF) return EOF;
+  if (firstLine === Deno.EOF) return Deno.EOF;
   const headers = await tp.readMIMEHeader();
-  if (headers === EOF) throw new UnexpectedEOFError();
+  if (headers === Deno.EOF) throw new UnexpectedEOFError();
 
   const req = new ServerRequest();
   req.r = bufr;
@@ -314,7 +316,7 @@ export class Server implements AsyncIterable<ServerRequest> {
   ): AsyncIterableIterator<ServerRequest> {
     const bufr = new BufReader(conn);
     const w = new BufWriter(conn);
-    let req: ServerRequest | EOF;
+    let req: ServerRequest | Deno.EOF;
     let err: Error | undefined;
 
     while (!this.closing) {
@@ -324,7 +326,7 @@ export class Server implements AsyncIterable<ServerRequest> {
         err = e;
         break;
       }
-      if (req === EOF) {
+      if (req === Deno.EOF) {
         break;
       }
 
@@ -336,7 +338,7 @@ export class Server implements AsyncIterable<ServerRequest> {
       await req!.done;
     }
 
-    if (req! === EOF) {
+    if (req! === Deno.EOF) {
       // The connection was gracefully closed.
     } else if (err) {
       // An error was thrown while parsing request headers.

@@ -2,7 +2,7 @@
 // https://github.com/golang/go/blob/go1.12.5/src/encoding/csv/
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
-import { BufReader, EOF } from "../io/bufio.ts";
+import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { StringReader } from "../io/readers.ts";
 
@@ -52,14 +52,14 @@ async function read(
   Startline: number,
   reader: BufReader,
   opt: ParseOptions = { comma: ",", trimLeadingSpace: false }
-): Promise<string[] | EOF> {
+): Promise<string[] | Deno.EOF> {
   const tp = new TextProtoReader(reader);
   let line: string;
   let result: string[] = [];
   let lineIndex = Startline;
 
   const r = await tp.readLine();
-  if (r === EOF) return EOF;
+  if (r === Deno.EOF) return Deno.EOF;
   line = r;
   // Normalize \r\n to \n on all input lines.
   if (
@@ -126,7 +126,7 @@ export async function readAll(
 
   for (;;) {
     const r = await read(lineIndex, reader, opt);
-    if (r === EOF) break;
+    if (r === Deno.EOF) break;
     lineResult = r;
     lineIndex++;
     // If fieldsPerRecord is 0, Read sets it to
