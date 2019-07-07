@@ -4,7 +4,6 @@ const { Buffer, copy, remove } = Deno;
 const { min, max } = Math;
 type Closer = Deno.Closer;
 type Reader = Deno.Reader;
-type ReadResult = Deno.ReadResult;
 type Writer = Deno.Writer;
 import { FormFile } from "../multipart/formfile.ts";
 import { equal, findIndex, findLastIndex, hasPrefix } from "../bytes/mod.ts";
@@ -12,7 +11,7 @@ import { extname } from "../fs/path.ts";
 import { copyN } from "../io/ioutil.ts";
 import { MultiReader } from "../io/readers.ts";
 import { tempFile } from "../io/util.ts";
-import { BufReader, BufWriter, EOF, UnexpectedEOFError } from "../io/bufio.ts";
+import { BufReader, BufWriter, UnexpectedEOFError } from "../io/bufio.ts";
 import { encoder } from "../strings/mod.ts";
 import { assertStrictEq } from "../testing/asserts.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
@@ -84,7 +83,7 @@ export function scanUntilBoundary(
   newLineDashBoundary: Uint8Array,
   total: number,
   eof: boolean
-): number | EOF {
+): number | Deno.EOF {
   if (total === 0) {
     // At beginning of body, allow dashBoundary.
     if (hasPrefix(buf, dashBoundary)) {
@@ -94,7 +93,7 @@ export function scanUntilBoundary(
         case 0:
           return 0;
         case 1:
-          return EOF;
+          return Deno.EOF;
       }
     }
     if (hasPrefix(dashBoundary, buf)) {
@@ -111,7 +110,7 @@ export function scanUntilBoundary(
       case 0:
         return i;
       case 1:
-        return i > 0 ? i : EOF;
+        return i > 0 ? i : Deno.EOF;
     }
   }
   if (hasPrefix(newLineDashBoundary, buf)) {
@@ -130,12 +129,12 @@ export function scanUntilBoundary(
 }
 
 class PartReader implements Reader, Closer {
-  n: number | EOF = 0;
+  n: number | Deno.EOF = 0;
   total: number = 0;
 
   constructor(private mr: MultipartReader, public readonly headers: Headers) {}
 
-  async read(p: Uint8Array): Promise<ReadResult> {
+  async read(p: Uint8Array): Promise<number | Deno.EOF> {
     const br = this.mr.bufReader;
 
     // Read into buffer until we identify some data to return,
@@ -144,7 +143,7 @@ class PartReader implements Reader, Closer {
     while (this.n === 0) {
       peekLength = max(peekLength, br.buffered());
       const peekBuf = await br.peek(peekLength);
-      if (peekBuf === EOF) {
+      if (peekBuf === Deno.EOF) {
         throw new UnexpectedEOFError();
       }
       const eof = peekBuf.length < peekLength;
@@ -162,8 +161,8 @@ class PartReader implements Reader, Closer {
       }
     }
 
-    if (this.n === EOF) {
-      return { nread: 0, eof: true };
+    if (this.n === Deno.EOF) {
+      return Deno.EOF;
     }
 
     const nread = min(p.length, this.n);
@@ -172,7 +171,7 @@ class PartReader implements Reader, Closer {
     assertStrictEq(r, buf);
     this.n -= nread;
     this.total += nread;
-    return { nread, eof: false };
+    return nread;
   }
 
   close(): void {}
@@ -255,7 +254,7 @@ export class MultipartReader {
     const buf = new Buffer(new Uint8Array(maxValueBytes));
     for (;;) {
       const p = await this.nextPart();
-      if (p === EOF) {
+      if (p === Deno.EOF) {
         break;
       }
       if (p.formName === "") {
@@ -317,7 +316,7 @@ export class MultipartReader {
   private currentPart: PartReader | undefined;
   private partsRead: number = 0;
 
-  private async nextPart(): Promise<PartReader | EOF> {
+  private async nextPart(): Promise<PartReader | Deno.EOF> {
     if (this.currentPart) {
       this.currentPart.close();
     }
@@ -327,14 +326,14 @@ export class MultipartReader {
     let expectNewPart = false;
     for (;;) {
       const line = await this.bufReader.readSlice("\n".charCodeAt(0));
-      if (line === EOF) {
+      if (line === Deno.EOF) {
         throw new UnexpectedEOFError();
       }
       if (this.isBoundaryDelimiterLine(line)) {
         this.partsRead++;
         const r = new TextProtoReader(this.bufReader);
         const headers = await r.readMIMEHeader();
-        if (headers === EOF) {
+        if (headers === Deno.EOF) {
           throw new UnexpectedEOFError();
         }
         const np = new PartReader(this, headers);
@@ -342,7 +341,7 @@ export class MultipartReader {
         return np;
       }
       if (this.isFinalBoundary(line)) {
-        return EOF;
+        return Deno.EOF;
       }
       if (expectNewPart) {
         throw new Error(`expecting a new Part; got line ${line}`);

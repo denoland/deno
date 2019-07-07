@@ -3,7 +3,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-import { BufReader, EOF, UnexpectedEOFError } from "../io/bufio.ts";
+import { BufReader, UnexpectedEOFError } from "../io/bufio.ts";
 import { charCode } from "../io/util.ts";
 
 const asciiDecoder = new TextDecoder();
@@ -39,9 +39,9 @@ export class TextProtoReader {
   /** readLine() reads a single line from the TextProtoReader,
    * eliding the final \n or \r\n from the returned string.
    */
-  async readLine(): Promise<string | EOF> {
+  async readLine(): Promise<string | Deno.EOF> {
     const s = await this.readLineSlice();
-    if (s === EOF) return EOF;
+    if (s === Deno.EOF) return Deno.EOF;
     return str(s);
   }
 
@@ -65,20 +65,20 @@ export class TextProtoReader {
    *		"Long-Key": {"Even Longer Value"},
    *	}
    */
-  async readMIMEHeader(): Promise<Headers | EOF> {
+  async readMIMEHeader(): Promise<Headers | Deno.EOF> {
     let m = new Headers();
     let line: Uint8Array;
 
     // The first line cannot start with a leading space.
     let buf = await this.r.peek(1);
-    if (buf === EOF) {
-      return EOF;
+    if (buf === Deno.EOF) {
+      return Deno.EOF;
     } else if (buf[0] == charCode(" ") || buf[0] == charCode("\t")) {
       line = (await this.readLineSlice()) as Uint8Array;
     }
 
     buf = await this.r.peek(1);
-    if (buf === EOF) {
+    if (buf === Deno.EOF) {
       throw new UnexpectedEOFError();
     } else if (buf[0] == charCode(" ") || buf[0] == charCode("\t")) {
       throw new ProtocolError(
@@ -88,7 +88,7 @@ export class TextProtoReader {
 
     while (true) {
       let kv = await this.readLineSlice(); // readContinuedLineSlice
-      if (kv === EOF) throw new UnexpectedEOFError();
+      if (kv === Deno.EOF) throw new UnexpectedEOFError();
       if (kv.byteLength === 0) return m;
 
       // Key ends at first colon; should not have trailing spaces
@@ -133,12 +133,12 @@ export class TextProtoReader {
     }
   }
 
-  async readLineSlice(): Promise<Uint8Array | EOF> {
+  async readLineSlice(): Promise<Uint8Array | Deno.EOF> {
     // this.closeDot();
     let line: Uint8Array;
     while (true) {
       const r = await this.r.readLine();
-      if (r === EOF) return EOF;
+      if (r === Deno.EOF) return Deno.EOF;
       const { line: l, more } = r;
 
       // Avoid the copy if the first call produced a full line.

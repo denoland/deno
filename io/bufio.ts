@@ -4,7 +4,6 @@
 // license that can be found in the LICENSE file.
 
 type Reader = Deno.Reader;
-type ReadResult = Deno.ReadResult;
 type Writer = Deno.Writer;
 import { charCode, copyBytes } from "./util.ts";
 import { assert } from "../testing/asserts.ts";
@@ -28,9 +27,6 @@ export class UnexpectedEOFError extends Error {
     super("Unexpected EOF");
   }
 }
-
-export const EOF: unique symbol = Symbol("EOF");
-export type EOF = typeof EOF;
 
 /** Result type returned by of BufReader.readLine(). */
 export interface ReadLineResult {
@@ -84,14 +80,14 @@ export class BufReader implements Reader {
 
     // Read new data: try a limited number of times.
     for (let i = MAX_CONSECUTIVE_EMPTY_READS; i > 0; i--) {
-      let rr: ReadResult = await this.rd.read(this.buf.subarray(this.w));
-      assert(rr.nread >= 0, "negative read");
-      this.w += rr.nread;
-      if (rr.eof) {
+      const rr = await this.rd.read(this.buf.subarray(this.w));
+      if (rr === Deno.EOF) {
         this.eof = true;
         return;
       }
-      if (rr.nread > 0) {
+      assert(rr >= 0, "negative read");
+      this.w += rr;
+      if (rr > 0) {
         return;
       }
     }
@@ -122,8 +118,8 @@ export class BufReader implements Reader {
    * hence n may be less than len(p).
    * To read exactly len(p) bytes, use io.ReadFull(b, p).
    */
-  async read(p: Uint8Array): Promise<ReadResult> {
-    let rr: ReadResult = { nread: p.byteLength, eof: false };
+  async read(p: Uint8Array): Promise<number | Deno.EOF> {
+    let rr: number | Deno.EOF = p.byteLength;
     if (p.byteLength === 0) return rr;
 
     if (this.r === this.w) {
@@ -131,7 +127,8 @@ export class BufReader implements Reader {
         // Large read, empty buffer.
         // Read directly into p to avoid copy.
         const rr = await this.rd.read(p);
-        assert(rr.nread >= 0, "negative read");
+        const nread = rr === Deno.EOF ? 0 : rr;
+        assert(nread >= 0, "negative read");
         // if (rr.nread > 0) {
         //   this.lastByte = p[rr.nread - 1];
         //   this.lastCharSize = -1;
@@ -144,17 +141,17 @@ export class BufReader implements Reader {
       this.r = 0;
       this.w = 0;
       rr = await this.rd.read(this.buf);
-      assert(rr.nread >= 0, "negative read");
-      if (rr.nread === 0) return rr;
-      this.w += rr.nread;
+      if (rr === 0 || rr === Deno.EOF) return rr;
+      assert(rr >= 0, "negative read");
+      this.w += rr;
     }
 
     // copy as much as we can
-    rr.nread = copyBytes(p, this.buf.subarray(this.r, this.w), 0);
-    this.r += rr.nread;
+    const copied = copyBytes(p, this.buf.subarray(this.r, this.w), 0);
+    this.r += copied;
     // this.lastByte = this.buf[this.r - 1];
     // this.lastCharSize = -1;
-    return rr;
+    return copied;
   }
 
   /** reads exactly `p.length` bytes into `p`.
@@ -171,19 +168,19 @@ export class BufReader implements Reader {
    *
    * Ported from https://golang.org/pkg/io/#ReadFull
    */
-  async readFull(p: Uint8Array): Promise<Uint8Array | EOF> {
+  async readFull(p: Uint8Array): Promise<Uint8Array | Deno.EOF> {
     let bytesRead = 0;
     while (bytesRead < p.length) {
       try {
         const rr = await this.read(p.subarray(bytesRead));
-        bytesRead += rr.nread;
-        if (rr.eof) {
+        if (rr === Deno.EOF) {
           if (bytesRead === 0) {
-            return EOF;
+            return Deno.EOF;
           } else {
             throw new UnexpectedEOFError();
           }
         }
+        bytesRead += rr;
       } catch (err) {
         err.partial = p.subarray(0, bytesRead);
         throw err;
@@ -193,9 +190,9 @@ export class BufReader implements Reader {
   }
 
   /** Returns the next byte [0, 255] or `EOF`. */
-  async readByte(): Promise<number | EOF> {
+  async readByte(): Promise<number | Deno.EOF> {
     while (this.r === this.w) {
-      if (this.eof) return EOF;
+      if (this.eof) return Deno.EOF;
       await this._fill(); // buffer is empty.
     }
     const c = this.buf[this.r];
@@ -214,7 +211,7 @@ export class BufReader implements Reader {
    * delim.
    * For simple uses, a Scanner may be more convenient.
    */
-  async readString(_delim: string): Promise<string | EOF> {
+  async readString(_delim: string): Promise<string | Deno.EOF> {
     throw new Error("Not implemented");
   }
 
@@ -240,8 +237,8 @@ export class BufReader implements Reader {
    * read (possibly a character belonging to the line end) even if that byte is
    * not part of the line returned by `readLine()`.
    */
-  async readLine(): Promise<ReadLineResult | EOF> {
-    let line: Uint8Array | EOF;
+  async readLine(): Promise<ReadLineResult | Deno.EOF> {
+    let line: Uint8Array | Deno.EOF;
 
     try {
       line = await this.readSlice(LF);
@@ -274,8 +271,8 @@ export class BufReader implements Reader {
       return { line: partial, more: !this.eof };
     }
 
-    if (line === EOF) {
-      return EOF;
+    if (line === Deno.EOF) {
+      return Deno.EOF;
     }
 
     if (line.byteLength === 0) {
@@ -308,7 +305,7 @@ export class BufReader implements Reader {
    * Because the data returned from `readSlice()` will be overwritten by the
    * next I/O operation, most clients should use `readString()` instead.
    */
-  async readSlice(delim: number): Promise<Uint8Array | EOF> {
+  async readSlice(delim: number): Promise<Uint8Array | Deno.EOF> {
     let s = 0; // search start index
     let slice: Uint8Array;
 
@@ -325,7 +322,7 @@ export class BufReader implements Reader {
       // EOF?
       if (this.eof) {
         if (this.r === this.w) {
-          return EOF;
+          return Deno.EOF;
         }
         slice = this.buf.subarray(this.r, this.w);
         this.r = this.w;
@@ -370,7 +367,7 @@ export class BufReader implements Reader {
    * an error with the `partial` property set to a slice of the buffer that
    * contains the bytes that were available before the error occurred.
    */
-  async peek(n: number): Promise<Uint8Array | EOF> {
+  async peek(n: number): Promise<Uint8Array | Deno.EOF> {
     if (n < 0) {
       throw Error("negative count");
     }
@@ -387,7 +384,7 @@ export class BufReader implements Reader {
     }
 
     if (avail === 0 && this.eof) {
-      return EOF;
+      return Deno.EOF;
     } else if (avail < n && this.eof) {
       return this.buf.subarray(this.r, this.r + avail);
     } else if (avail < n) {

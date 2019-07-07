@@ -3,7 +3,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 type Reader = Deno.Reader;
-type ReadResult = Deno.ReadResult;
 
 /** OneByteReader returns a Reader that implements
  * each non-empty Read by reading one byte from r.
@@ -11,9 +10,9 @@ type ReadResult = Deno.ReadResult;
 export class OneByteReader implements Reader {
   constructor(readonly r: Reader) {}
 
-  async read(p: Uint8Array): Promise<ReadResult> {
+  async read(p: Uint8Array): Promise<number | Deno.EOF> {
     if (p.byteLength === 0) {
-      return { nread: 0, eof: false };
+      return 0;
     }
     if (!(p instanceof Uint8Array)) {
       throw Error("expected Uint8Array");
@@ -28,7 +27,7 @@ export class OneByteReader implements Reader {
 export class HalfReader implements Reader {
   constructor(readonly r: Reader) {}
 
-  async read(p: Uint8Array): Promise<ReadResult> {
+  async read(p: Uint8Array): Promise<number | Deno.EOF> {
     if (!(p instanceof Uint8Array)) {
       throw Error("expected Uint8Array");
     }
@@ -51,7 +50,7 @@ export class TimeoutReader implements Reader {
   count = 0;
   constructor(readonly r: Reader) {}
 
-  async read(p: Uint8Array): Promise<ReadResult> {
+  async read(p: Uint8Array): Promise<number | Deno.EOF> {
     this.count++;
     if (this.count === 2) {
       throw new ErrTimeout();

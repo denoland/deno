@@ -16,7 +16,6 @@ import {
 } from "./multipart.ts";
 import * as path from "../fs/path.ts";
 import { FormFile, isFormFile } from "../multipart/formfile.ts";
-import { EOF } from "../io/bufio.ts";
 import { StringWriter } from "../io/writers.ts";
 
 const e = new TextEncoder();
@@ -33,7 +32,7 @@ test(function multipartScanUntilBoundary1(): void {
     0,
     true
   );
-  assertEquals(n, EOF);
+  assertEquals(n, Deno.EOF);
 });
 
 test(function multipartScanUntilBoundary2(): void {
