@@ -26,7 +26,7 @@ const dueMap = new Map<number, Timer[]>();
 // due of next, in dueMap
 // TODO: When SortedMap is available as buitin object in TypeScript,
 // replace logic around nextDue to use SortedMap.
-var nextDue: number | null = null;
+let nextDue: number | null = null;
 
 function addToDueMap(due: number, timer: Timer): Timer[] {
   let list = dueMap.get(due);
@@ -173,20 +173,20 @@ function fireTimers(): void {
   // After firing the timers that are due now, this will hold the due time of
   // the first timer that hasn't fired yet.
   let nextTimerDue: number | null = null;
-  // Walk over the keys of the 'due' map. Since dueMap is actually a regular
-  // object and its keys are numerical and smaller than UINT32_MAX - 2,
-  // keys are iterated in ascending order.
-  for (const key of dueMap.keys()) {
-    // Convert the object key (a string) to a number.
-    const due = Number(key);
-    // Break out of the loop if the next timer isn't due to fire yet.
-    if (Number(due) > now) {
-      nextTimerDue = due;
-      break;
+
+  // Walk over the keys of the 'due' map.
+  for (const due of dueMap.keys()) {
+    // Continue the loop if the next timer isn't due to fire yet.
+    if (due > now) {
+      //Update nextTimerDue in this function
+      if (!nextTimerDue || nextTimerDue > due) {
+        nextTimerDue = due;
+      }
+      continue;
     }
     // Get the list of timers that have this due time, then drop it.
-    const list = getFromDueMap(key);
-    removeFromDueMap(key);
+    const list = getFromDueMap(due);
+    removeFromDueMap(due);
     // Fire all the timers in the list.
     for (const timer of list) {
       // With the list dropped, the timer is no longer scheduled.
