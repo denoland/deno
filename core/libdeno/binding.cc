@@ -222,7 +222,7 @@ void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Isolate* isolate = args.GetIsolate();
   DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
   DCHECK_EQ(d->isolate_, isolate);
-
+  
   v8::HandleScope handle_scope(isolate);
 
   deno_buf control = {nullptr, 0};

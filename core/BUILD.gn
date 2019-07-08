@@ -23,6 +23,7 @@ main_extern_rlib = [
   "libc",
   "serde_json",
   "log",
+  "tokio_signal"
 ]
 
 rust_rlib("deno") {

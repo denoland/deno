@@ -243,4 +243,11 @@ void deno_terminate_execution(Deno* d_) {
   deno::DenoIsolate* d = reinterpret_cast<deno::DenoIsolate*>(d_);
   d->isolate_->TerminateExecution();
 }
+
+void deno_print_stack_trace(Deno * d_){
+  deno::DenoIsolate* d = reinterpret_cast<deno::DenoIsolate*>(d_);
+  auto* isolate = d->isolate_;
+  CHECK_NOT_NULL(isolate);
+  deno::ThrowInvalidArgument(isolate);
+}
 }

@@ -19,6 +19,7 @@ use futures::task;
 use futures::Async::*;
 use futures::Future;
 use futures::Poll;
+use tokio_signal;
 use libc::c_void;
 use std::ffi::CStr;
 use std::ffi::CString;
@@ -26,6 +27,8 @@ use std::ptr::null;
 use std::sync::{Arc, Mutex, Once, ONCE_INIT};
 
 pub type Buf = Box<[u8]>;
+
+pub type Custom = futures::FlattenStream<std::boxed::Box<dyn futures::Future<Item=std::boxed::Box<dyn futures::Stream<Error=std::io::Error, Item=()> + std::marker::Send>, Error=std::io::Error> + std::marker::Send>>;
 
 pub type OpAsyncFuture = Box<dyn Future<Item = Buf, Error = ()> + Send>;
 
@@ -86,6 +89,7 @@ pub struct Isolate {
   shared: SharedQueue,
   pending_ops: FuturesUnordered<OpAsyncFuture>,
   have_unpolled_ops: bool,
+  ctrl_c: Custom,
 }
 
 unsafe impl Send for Isolate {}
@@ -138,6 +142,7 @@ impl Isolate {
     };
 
     let libdeno_isolate = unsafe { libdeno::deno_new(libdeno_config) };
+    let ctrl_c = tokio_signal::ctrl_c().flatten_stream();
 
     let mut core_isolate = Self {
       libdeno_isolate,
@@ -147,6 +152,7 @@ impl Isolate {
       needs_init,
       pending_ops: FuturesUnordered::new(),
       have_unpolled_ops: false,
+      ctrl_c,
     };
 
     // If we want to use execute this has to happen here sadly.
@@ -274,7 +280,11 @@ impl Isolate {
       libdeno::deno_check_promise_errors(self.libdeno_isolate);
     }
   }
-
+  fn throw_error(&self) {
+    unsafe {
+      libdeno::deno_print_stack_trace(self.libdeno_isolate);
+    }
+  }
   fn respond(&mut self, maybe_buf: Option<&[u8]>) -> Result<(), JSError> {
     let buf = match maybe_buf {
       None => deno_buf::empty(),
@@ -464,7 +474,10 @@ impl Future for Isolate {
       // The other side should have shifted off all the messages.
       assert_eq!(self.shared.size(), 0);
     }
-
+    match self.ctrl_c.poll() {
+      Ok(Ready(_)) => self.throw_error(),
+      _ => println!("..."),
+    }
     if overflow_response.is_some() {
       let buf = overflow_response.take().unwrap();
       self.respond(Some(&buf))?;

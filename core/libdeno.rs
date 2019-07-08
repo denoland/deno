@@ -261,6 +261,7 @@ extern "C" {
     js_source: *const c_char,
   );
   pub fn deno_terminate_execution(i: *const isolate);
+  pub fn deno_print_stack_trace(i: *const isolate);
 
   // Modules
 
@@ -296,4 +297,5 @@ extern "C" {
 
   #[allow(dead_code)]
   pub fn deno_snapshot_delete(s: &mut deno_snapshot);
+
 }
