@@ -1,6 +1,10 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test } from "../testing/mod.ts";
-import { assertEquals, assertThrows } from "../testing/asserts.ts";
+import {
+  assertEquals,
+  assertThrows,
+  assertThrowsAsync
+} from "../testing/asserts.ts";
 import { emptyDir, emptyDirSync } from "./empty_dir.ts";
 import * as path from "./path/mod.ts";
 
@@ -38,7 +42,6 @@ test(function emptyDirSyncIfItNotExist(): void {
   }
 });
 
-/* TODO(ry) Re-enable this test. It's broken on windows.
 test(async function emptyDirIfItExist(): Promise<void> {
   const testDir = path.join(testdataDir, "empty_dir_test_3");
   const testNestDir = path.join(testDir, "nest");
@@ -81,7 +84,6 @@ test(async function emptyDirIfItExist(): Promise<void> {
     await Deno.remove(testDir, { recursive: true });
   }
 });
-*/
 
 test(function emptyDirSyncIfItExist(): void {
   const testDir = path.join(testdataDir, "empty_dir_test_4");
