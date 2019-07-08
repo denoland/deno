@@ -141,7 +141,7 @@ mod tests {
   #[test]
   fn execute_mod_esm_imports_a() {
     let module_specifier =
-      ModuleSpecifier::resolve_root("tests/esm_imports_a.js").unwrap();
+      ModuleSpecifier::resolve_url_or_path("tests/esm_imports_a.js").unwrap();
     let argv = vec![String::from("./deno"), module_specifier.to_string()];
     let state = ThreadSafeState::new(
       flags::DenoFlags::default(),
@@ -169,7 +169,7 @@ mod tests {
   #[test]
   fn execute_mod_circular() {
     let module_specifier =
-      ModuleSpecifier::resolve_root("tests/circular1.js").unwrap();
+      ModuleSpecifier::resolve_url_or_path("tests/circular1.js").unwrap();
     let argv = vec![String::from("./deno"), module_specifier.to_string()];
     let state = ThreadSafeState::new(
       flags::DenoFlags::default(),
@@ -197,7 +197,7 @@ mod tests {
   #[test]
   fn execute_006_url_imports() {
     let module_specifier =
-      ModuleSpecifier::resolve_root("tests/006_url_imports.ts").unwrap();
+      ModuleSpecifier::resolve_url_or_path("tests/006_url_imports.ts").unwrap();
     let argv = vec![String::from("deno"), module_specifier.to_string()];
     let mut flags = flags::DenoFlags::default();
     flags.reload = true;
@@ -327,7 +327,7 @@ mod tests {
       // "foo" is not a valid module specifier so this should return an error.
       let mut worker = create_test_worker();
       let module_specifier =
-        ModuleSpecifier::resolve_root("does-not-exist").unwrap();
+        ModuleSpecifier::resolve_url_or_path("does-not-exist").unwrap();
       let result = worker.execute_mod_async(&module_specifier, false).wait();
       assert!(result.is_err());
     })
@@ -340,7 +340,7 @@ mod tests {
       // tests).
       let mut worker = create_test_worker();
       let module_specifier =
-        ModuleSpecifier::resolve_root("./tests/002_hello.ts").unwrap();
+        ModuleSpecifier::resolve_url_or_path("./tests/002_hello.ts").unwrap();
       let result = worker.execute_mod_async(&module_specifier, false).wait();
       assert!(result.is_ok());
     })

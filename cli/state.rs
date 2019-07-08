@@ -170,7 +170,8 @@ impl Loader for ThreadSafeState {
       }
     }
 
-    ModuleSpecifier::resolve(specifier, referrer).map_err(DenoError::from)
+    ModuleSpecifier::resolve_import(specifier, referrer)
+      .map_err(DenoError::from)
   }
 
   /// Given an absolute url, load its source code.
@@ -252,7 +253,7 @@ impl ThreadSafeState {
       None
     } else {
       let root_specifier = argv_rest[1].clone();
-      match ModuleSpecifier::resolve_root(&root_specifier) {
+      match ModuleSpecifier::resolve_url_or_path(&root_specifier) {
         Ok(specifier) => Some(specifier),
         Err(e) => {
           // TODO: handle unresolvable specifier

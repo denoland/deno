@@ -249,7 +249,7 @@ mod tests {
     tokio_util::init(|| {
       let specifier = "./tests/002_hello.ts";
       use deno::ModuleSpecifier;
-      let module_name = ModuleSpecifier::resolve_root(specifier)
+      let module_name = ModuleSpecifier::resolve_url_or_path(specifier)
         .unwrap()
         .to_string();
 
@@ -296,7 +296,7 @@ mod tests {
   fn test_bundle_async() {
     let specifier = "./tests/002_hello.ts";
     use deno::ModuleSpecifier;
-    let module_name = ModuleSpecifier::resolve_root(specifier)
+    let module_name = ModuleSpecifier::resolve_url_or_path(specifier)
       .unwrap()
       .to_string();
 
