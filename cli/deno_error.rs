@@ -110,7 +110,8 @@ impl DenoError {
         use ModuleResolutionError::*;
         match err {
           InvalidUrl(err) | InvalidBaseUrl(err) => Self::url_error_kind(err),
-          ImportPathPrefixMissing => ErrorKind::ImportPathPrefixMissing,
+          InvalidPath => ErrorKind::InvalidPath,
+          ImportPrefixMissing => ErrorKind::ImportPrefixMissing,
         }
       }
       Repr::Diagnostic(ref _err) => ErrorKind::Diagnostic,

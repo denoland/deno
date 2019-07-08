@@ -1,4 +1,4 @@
-[WILDCARD]error: Uncaught ImportPathPrefixMissing: relative import path not prefixed with / or ./ or ../
+[WILDCARD]error: Uncaught ImportPrefixMissing: relative import path not prefixed with / or ./ or ../
 [WILDCARD] js/errors.ts:[WILDCARD]
     at DenoError (js/errors.ts:[WILDCARD])
     at maybeError (js/errors.ts:[WILDCARD])

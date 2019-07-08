@@ -178,9 +178,7 @@ impl ImportMap {
         continue;
       }
 
-      let normalized_address = ModuleSpecifier::resolve(&url_string, ".")
-        .expect("Address should be valid module specifier");
-      normalized_addresses.push(normalized_address);
+      normalized_addresses.push(url.into());
     }
 
     normalized_addresses

@@ -643,11 +643,11 @@ mod tests {
 
       eprintln!(">> RESOLVING, S: {}, R: {}", specifier, referrer);
 
-      let output_specifier = match ModuleSpecifier::resolve(specifier, referrer)
-      {
-        Ok(specifier) => specifier,
-        Err(_e) => return Err(MockError::ResolveErr),
-      };
+      let output_specifier =
+        match ModuleSpecifier::resolve_import(specifier, referrer) {
+          Ok(specifier) => specifier,
+          Err(..) => return Err(MockError::ResolveErr),
+        };
 
       if mock_source_code(&output_specifier.to_string()).is_some() {
         Ok(output_specifier)

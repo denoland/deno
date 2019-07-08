@@ -2053,7 +2053,7 @@ fn op_create_worker(
   err_check(worker.execute("denoMain()"));
   err_check(worker.execute("workerMain()"));
 
-  let module_specifier = ModuleSpecifier::resolve_root(specifier)?;
+  let module_specifier = ModuleSpecifier::resolve_url_or_path(specifier)?;
 
   let op =
     worker
