@@ -632,7 +632,7 @@ pub enum DenoSubcommand {
 fn get_default_bundle_filename(source_file: &str) -> String {
   let specifier = ModuleSpecifier::resolve_url_or_path(source_file).unwrap();
   let path_segments = specifier.as_url().path_segments().unwrap();
-  let file_name = path_segments.last().unwrap();
+  let file_name = path_segments.filter(|s| !s.is_empty()).last().unwrap();
   let file_stem = file_name.trim_end_matches(".ts").trim_end_matches(".js");
   format!("{}.bundle.js", file_stem)
 }
@@ -648,6 +648,10 @@ fn test_get_default_bundle_filename() {
   assert_eq!(
     get_default_bundle_filename("http://example.com/blah.js"),
     "blah.bundle.js"
+  );
+  assert_eq!(
+    get_default_bundle_filename("http://zombo.com/stuff/"),
+    "stuff.bundle.js"
   );
 }
 
