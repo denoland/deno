@@ -18,7 +18,7 @@ export async function emptyDir(dir: string): Promise<void> {
     const item = items.shift();
     if (item && item.name) {
       const fn = dir + "/" + item.name;
-      Deno.remove(fn, { recursive: true });
+      await Deno.remove(fn, { recursive: true });
     }
   }
 }
