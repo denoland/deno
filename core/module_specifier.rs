@@ -43,8 +43,8 @@ impl fmt::Display for ModuleResolutionError {
 pub struct ModuleSpecifier(Url);
 
 impl ModuleSpecifier {
-  pub fn to_url(&self) -> Url {
-    self.0.clone()
+  pub fn as_url(&self) -> &Url {
+    &self.0
   }
 
   /// Resolves module using this algorithm:

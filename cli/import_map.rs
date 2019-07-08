@@ -384,7 +384,7 @@ impl ImportMap {
           let address = address_vec.first().unwrap();
           let after_prefix = &normalized_specifier[specifier_key.len()..];
 
-          let base_url = address.to_url();
+          let base_url = address.as_url();
           if let Ok(url) = base_url.join(after_prefix) {
             debug!("Specifier {:?} was mapped to {:?} (via prefix specifier key {:?}).", normalized_specifier, url, address);
             return Ok(Some(ModuleSpecifier::from(url)));

@@ -199,8 +199,8 @@ impl DenoDir {
     use_cache: bool,
     no_fetch: bool,
   ) -> impl Future<Item = ModuleMetaData, Error = deno_error::DenoError> {
-    let module_url = specifier.to_url();
-    debug!("fetch_module_meta_data. specifier {} ", module_url);
+    let module_url = specifier.as_url().to_owned();
+    debug!("fetch_module_meta_data. specifier {} ", &module_url);
 
     let result = self.url_to_deps_path(&module_url);
     if let Err(err) = result {
