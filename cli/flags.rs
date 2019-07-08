@@ -6,6 +6,7 @@ use clap::ArgMatches;
 use clap::Shell;
 use clap::SubCommand;
 use crate::deno_dir;
+use deno::ModuleSpecifier;
 use log::Level;
 use std;
 use std::str;
@@ -629,14 +630,11 @@ pub enum DenoSubcommand {
 }
 
 fn get_default_bundle_filename(source_file: &str) -> String {
-  use deno::ModuleSpecifier;
-  let url = ModuleSpecifier::resolve_url_or_path(source_file)
-    .unwrap()
-    .to_url();
-  let path_segments = url.path_segments().unwrap();
-  let last = path_segments.last().unwrap();
-  String::from(last.trim_end_matches(".ts").trim_end_matches(".js"))
-    + ".bundle.js"
+  let specifier = ModuleSpecifier::resolve_url_or_path(source_file).unwrap();
+  let path_segments = specifier.as_url().path_segments().unwrap();
+  let file_name = path_segments.last().unwrap();
+  let file_stem = file_name.trim_end_matches(".ts").trim_end_matches(".js");
+  format!("{}.bundle.js", file_stem)
 }
 
 #[test]
