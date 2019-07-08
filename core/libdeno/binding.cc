@@ -400,18 +400,21 @@ void EvalContext(const v8::FunctionCallbackInfo<v8::Value>& args) {
   auto script = v8::Script::Compile(context, source, &origin);
 
   if (script.IsEmpty()) {
-    DCHECK(try_catch.HasCaught());
+    CHECK(try_catch.HasCaught());
     auto exception = try_catch.Exception();
 
-    output->Set(0, v8::Null(isolate));
+    CHECK(output->Set(context, 0, v8::Null(isolate)).FromJust());
 
     auto errinfo_obj = v8::Object::New(isolate);
-    errinfo_obj->Set(v8_str("isCompileError"), v8_bool(true));
-    errinfo_obj->Set(v8_str("isNativeError"),
-                     v8_bool(exception->IsNativeError()));
-    errinfo_obj->Set(v8_str("thrown"), exception);
+    CHECK(errinfo_obj->Set(context, v8_str("isCompileError"), v8_bool(true))
+              .FromJust());
+    CHECK(errinfo_obj
+              ->Set(context, v8_str("isNativeError"),
+                    v8_bool(exception->IsNativeError()))
+              .FromJust());
+    CHECK(errinfo_obj->Set(context, v8_str("thrown"), exception).FromJust());
 
-    output->Set(1, errinfo_obj);
+    CHECK(output->Set(context, 1, errinfo_obj).FromJust());
 
     args.GetReturnValue().Set(output);
     return;
@@ -420,25 +423,28 @@ void EvalContext(const v8::FunctionCallbackInfo<v8::Value>& args) {
   auto result = script.ToLocalChecked()->Run(context);
 
   if (result.IsEmpty()) {
-    DCHECK(try_catch.HasCaught());
+    CHECK(try_catch.HasCaught());
     auto exception = try_catch.Exception();
 
-    output->Set(0, v8::Null(isolate));
+    CHECK(output->Set(context, 0, v8::Null(isolate)).FromJust());
 
     auto errinfo_obj = v8::Object::New(isolate);
-    errinfo_obj->Set(v8_str("isCompileError"), v8_bool(false));
-    errinfo_obj->Set(v8_str("isNativeError"),
-                     v8_bool(exception->IsNativeError()));
-    errinfo_obj->Set(v8_str("thrown"), exception);
+    CHECK(errinfo_obj->Set(context, v8_str("isCompileError"), v8_bool(false))
+              .FromJust());
+    CHECK(errinfo_obj
+              ->Set(context, v8_str("isNativeError"),
+                    v8_bool(exception->IsNativeError()))
+              .FromJust());
+    CHECK(errinfo_obj->Set(context, v8_str("thrown"), exception).FromJust());
 
-    output->Set(1, errinfo_obj);
+    CHECK(output->Set(context, 1, errinfo_obj).FromJust());
 
     args.GetReturnValue().Set(output);
     return;
   }
 
-  output->Set(0, result.ToLocalChecked());
-  output->Set(1, v8::Null(isolate));
+  CHECK(output->Set(context, 0, result.ToLocalChecked()).FromJust());
+  CHECK(output->Set(context, 1, v8::Null(isolate)).FromJust());
   args.GetReturnValue().Set(output);
 }
 
