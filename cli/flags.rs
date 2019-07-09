@@ -239,7 +239,7 @@ The declaration file could be saved and used for typing information.",
         .about("Show source file related info")
         .long_about("Show source file related info.
 
-  deno info https://deno.land/std@v0.6/http/file_server.ts
+  deno info https://deno.land/std@v0.11/http/file_server.ts
 
 The following information is shown:
 
@@ -608,9 +608,9 @@ fn parse_script_args(
 }
 
 /// Used for `deno fmt <files>...` subcommand
-const PRETTIER_URL: &str = "https://deno.land/std@v0.7.0/prettier/main.ts";
+const PRETTIER_URL: &str = "https://deno.land/std@v0.11/prettier/main.ts";
 /// Used for `deno install...` subcommand
-const INSTALLER_URL: &str = "https://deno.land/std@b13441f/installer/mod.ts";
+const INSTALLER_URL: &str = "https://deno.land/std@v0.11/installer/mod.ts";
 
 /// These are currently handled subcommands.
 /// There is no "Help" subcommand because it's handled by `clap::App` itself.
