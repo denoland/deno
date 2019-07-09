@@ -90,9 +90,12 @@ v8::Local<v8::Object> EncodeMessageAsObject(v8::Local<v8::Context> context,
       auto column = v8::Integer::New(isolate, frame->GetColumn());
       CHECK(frame_obj->Set(context, v8_str("line"), line).FromJust());
       CHECK(frame_obj->Set(context, v8_str("column"), column).FromJust());
-      CHECK(frame_obj
-                ->Set(context, v8_str("functionName"), frame->GetFunctionName())
-                .FromJust());
+
+      auto function_name = frame->GetFunctionName();
+      if (!function_name.IsEmpty()) {
+        CHECK(frame_obj->Set(context, v8_str("functionName"), function_name)
+                  .FromJust());
+      }
       // scriptName can be empty in special conditions e.g. eval
       auto scriptName = frame->GetScriptNameOrSourceURL();
       if (scriptName.IsEmpty()) {
