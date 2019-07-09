@@ -115,7 +115,8 @@ TEST(LibDenoTest, GlobalErrorHandling) {
       "\"lineNumber\":3,\"startPosition\":3,\"endPosition\":4,\"errorLevel\":8,"
       "\"startColumn\":1,\"endColumn\":2,\"isSharedCrossOrigin\":false,"
       "\"isOpaque\":false,\"frames\":[{\"line\":3,\"column\":2,"
-      "\"functionName\":\"\",\"scriptName\":\"helloworld.js\",\"isEval\":true,"
+      "\"functionName\":\"eval\",\"scriptName\":\"helloworld.js\",\"isEval\":"
+      "true,"
       "\"isConstructor\":false,\"isWasm\":false},";
   std::string actual(deno_last_exception(d), 0, expected.length());
   EXPECT_STREQ(expected.c_str(), actual.c_str());
@@ -177,7 +178,7 @@ TEST(LibDenoTest, LastException) {
                "3,\"startPosition\":8,\"endPosition\":9,\"errorLevel\":8,"
                "\"startColumn\":6,\"endColumn\":7,\"isSharedCrossOrigin\":"
                "false,\"isOpaque\":false,\"frames\":[{\"line\":3,\"column\":7,"
-               "\"functionName\":\"\",\"scriptName\":\"a.js\",\"isEval\":false,"
+               "\"scriptName\":\"a.js\",\"isEval\":false,"
                "\"isConstructor\":false,\"isWasm\":false}]}");
   deno_delete(d);
 }
@@ -192,9 +193,9 @@ TEST(LibDenoTest, EncodeErrorBug) {
       "defined\",\"sourceLine\":\"a\",\"lineNumber\":1,\"startPosition\":0,"
       "\"endPosition\":1,\"errorLevel\":8,\"startColumn\":0,\"endColumn\":1,"
       "\"isSharedCrossOrigin\":false,\"isOpaque\":false,\"frames\":[{\"line\":"
-      "1,\"column\":1,\"functionName\":\"\",\"scriptName\":\"<unknown>\","
+      "1,\"column\":1,\"functionName\":\"eval\",\"scriptName\":\"<unknown>\","
       "\"isEval\":true,\"isConstructor\":false,\"isWasm\":false},{\"line\":1,"
-      "\"column\":1,\"functionName\":\"\",\"scriptName\":\"a.js\",\"isEval\":"
+      "\"column\":1,\"scriptName\":\"a.js\",\"isEval\":"
       "false,\"isConstructor\":false,\"isWasm\":false}]}");
   deno_delete(d);
 }
