@@ -10,6 +10,7 @@ use crate::tokio_util;
 use crate::worker::Worker;
 use deno::Buf;
 use deno::ModuleSpecifier;
+use futures::future::Either;
 use futures::Future;
 use futures::Stream;
 use std::path::PathBuf;
@@ -157,6 +158,16 @@ pub fn compile_async(
   state: ThreadSafeState,
   module_meta_data: &ModuleMetaData,
 ) -> impl Future<Item = ModuleMetaData, Error = DenoError> {
+  if module_meta_data.media_type != msg::MediaType::TypeScript {
+    return Either::A(futures::future::ok(module_meta_data.clone()));
+  }
+
+  if module_meta_data.has_output_code_and_source_map() {
+    return Either::A(futures::future::ok(module_meta_data.clone()));
+  }
+  // TODO: try cached version
+
+  debug!(">>>>> compile_sync START");
   let module_name = module_meta_data.module_name.clone();
 
   debug!(
@@ -200,7 +211,7 @@ pub fn compile_async(
       stream_future.map(|(f, _rest)| f).map_err(|(f, _rest)| f)
     });
 
-  first_msg_fut
+  let fut = first_msg_fut
     .map_err(|_| panic!("not handled"))
     .and_then(move |maybe_msg: Option<Buf>| {
       debug!("Received message from worker");
@@ -233,10 +244,13 @@ pub fn compile_async(
 
       Ok(module_meta_data_after_compile)
     }).then(move |r| {
+      debug!(">>>>> compile_sync END");
       // TODO(ry) do this in worker's destructor.
       // resource.close();
       r
-    })
+    });
+
+  Either::B(fut)
 }
 
 pub fn compile_sync(

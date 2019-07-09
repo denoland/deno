@@ -7,7 +7,6 @@ use crate::deno_error::DenoResult;
 use crate::flags;
 use crate::global_timer::GlobalTimer;
 use crate::import_map::ImportMap;
-use crate::msg;
 use crate::ops;
 use crate::permissions::DenoPermissions;
 use crate::progress::Progress;
@@ -19,7 +18,6 @@ use deno::CoreOp;
 use deno::Loader;
 use deno::ModuleSpecifier;
 use deno::PinnedBuf;
-use futures::future::Either;
 use futures::future::Shared;
 use futures::Future;
 use rand::rngs::StdRng;
@@ -128,24 +126,12 @@ pub fn fetch_module_meta_data_and_maybe_compile_async(
     .dir
     .fetch_module_meta_data_async(&module_specifier, use_cache, no_fetch)
     .and_then(move |out| {
-      if out.media_type == msg::MediaType::TypeScript
-        && !out.has_output_code_and_source_map()
-      {
-        debug!(">>>>> compile_sync START");
-        Either::A(
-          compile_async(state_.clone(), &out)
-            .map_err(|e| {
-              debug!("compiler error exiting!");
-              eprintln!("\n{}", e.to_string());
-              std::process::exit(1);
-            }).and_then(move |out| {
-              debug!(">>>>> compile_sync END");
-              Ok(out)
-            }),
-        )
-      } else {
-        Either::B(futures::future::ok(out))
-      }
+      compile_async(state_.clone(), &out)
+        .map_err(|e| {
+          debug!("compiler error exiting!");
+          eprintln!("\n{}", e.to_string());
+          std::process::exit(1);
+        }).and_then(move |out| Ok(out))
     })
 }
 
