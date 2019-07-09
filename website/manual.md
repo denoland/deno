@@ -101,7 +101,7 @@ curl -fsSL https://deno.land/x/install/install.sh | sh
 Using PowerShell:
 
 ```powershell
-iwr https://deno.land/x/install/install.ps1 | iex
+iwr https://deno.land/x/install/install.ps1 -useb | iex
 ```
 
 Using [Scoop](https://scoop.sh/) (windows):
