@@ -310,7 +310,7 @@ fn op_write(rid: i32, zero_copy_buf: Option<PinnedBuf>) -> Box<HttpBenchOp> {
   )
 }
 
-fn js_check(r: Result<(), JSError>) {
+fn js_check(r: Result<(), ErrBox>) {
   if let Err(e) = r {
     panic!(e.to_string());
   }

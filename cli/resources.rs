@@ -10,13 +10,12 @@
 
 use crate::deno_error;
 use crate::deno_error::bad_resource;
-use crate::deno_error::DenoError;
-use crate::deno_error::DenoResult;
 use crate::http_body::HttpBody;
 use crate::repl::Repl;
 use crate::state::WorkerChannels;
 
 use deno::Buf;
+use deno::ErrBox;
 
 use futures;
 use futures::Future;
@@ -216,14 +215,14 @@ impl Resource {
     }
   }
 
-  pub fn shutdown(&mut self, how: Shutdown) -> Result<(), DenoError> {
+  pub fn shutdown(&mut self, how: Shutdown) -> Result<(), ErrBox> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     let maybe_repr = table.get_mut(&self.rid);
     match maybe_repr {
       None => panic!("bad rid"),
       Some(repr) => match repr {
         Repr::TcpStream(ref mut f) => {
-          TcpStream::shutdown(f, how).map_err(DenoError::from)
+          TcpStream::shutdown(f, how).map_err(ErrBox::from)
         }
         _ => panic!("Cannot shutdown"),
       },
@@ -366,15 +365,13 @@ pub struct WorkerReceiver {
 // Invert the dumbness that tokio_process causes by making Child itself a future.
 impl Future for WorkerReceiver {
   type Item = Option<Buf>;
-  type Error = DenoError;
+  type Error = ErrBox;
 
-  fn poll(&mut self) -> Poll<Option<Buf>, DenoError> {
+  fn poll(&mut self) -> Poll<Option<Buf>, ErrBox> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     let maybe_repr = table.get_mut(&self.rid);
     match maybe_repr {
-      Some(Repr::Worker(ref mut wc)) => wc.1.poll().map_err(|err| {
-        deno_error::new(deno_error::ErrorKind::Other, err.to_string())
-      }),
+      Some(Repr::Worker(ref mut wc)) => wc.1.poll().map_err(ErrBox::from),
       _ => Err(bad_resource()),
     }
   }
@@ -391,15 +388,13 @@ pub struct WorkerReceiverStream {
 // Invert the dumbness that tokio_process causes by making Child itself a future.
 impl Stream for WorkerReceiverStream {
   type Item = Buf;
-  type Error = DenoError;
+  type Error = ErrBox;
 
-  fn poll(&mut self) -> Poll<Option<Buf>, DenoError> {
+  fn poll(&mut self) -> Poll<Option<Buf>, ErrBox> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     let maybe_repr = table.get_mut(&self.rid);
     match maybe_repr {
-      Some(Repr::Worker(ref mut wc)) => wc.1.poll().map_err(|err| {
-        deno_error::new(deno_error::ErrorKind::Other, err.to_string())
-      }),
+      Some(Repr::Worker(ref mut wc)) => wc.1.poll().map_err(ErrBox::from),
       _ => Err(bad_resource()),
     }
   }
@@ -462,19 +457,19 @@ pub struct ChildStatus {
 // Invert the dumbness that tokio_process causes by making Child itself a future.
 impl Future for ChildStatus {
   type Item = ExitStatus;
-  type Error = DenoError;
+  type Error = ErrBox;
 
-  fn poll(&mut self) -> Poll<ExitStatus, DenoError> {
+  fn poll(&mut self) -> Poll<ExitStatus, ErrBox> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     let maybe_repr = table.get_mut(&self.rid);
     match maybe_repr {
-      Some(Repr::Child(ref mut child)) => child.poll().map_err(DenoError::from),
+      Some(Repr::Child(ref mut child)) => child.poll().map_err(ErrBox::from),
       _ => Err(bad_resource()),
     }
   }
 }
 
-pub fn child_status(rid: ResourceId) -> DenoResult<ChildStatus> {
+pub fn child_status(rid: ResourceId) -> Result<ChildStatus, ErrBox> {
   let mut table = RESOURCE_TABLE.lock().unwrap();
   let maybe_repr = table.get_mut(&rid);
   match maybe_repr {
@@ -483,7 +478,7 @@ pub fn child_status(rid: ResourceId) -> DenoResult<ChildStatus> {
   }
 }
 
-pub fn get_repl(rid: ResourceId) -> DenoResult<Arc<Mutex<Repl>>> {
+pub fn get_repl(rid: ResourceId) -> Result<Arc<Mutex<Repl>>, ErrBox> {
   let mut table = RESOURCE_TABLE.lock().unwrap();
   let maybe_repr = table.get_mut(&rid);
   match maybe_repr {
@@ -494,7 +489,7 @@ pub fn get_repl(rid: ResourceId) -> DenoResult<Arc<Mutex<Repl>>> {
 
 // TODO: revamp this after the following lands:
 // https://github.com/tokio-rs/tokio/pull/785
-pub fn get_file(rid: ResourceId) -> DenoResult<std::fs::File> {
+pub fn get_file(rid: ResourceId) -> Result<std::fs::File, ErrBox> {
   let mut table = RESOURCE_TABLE.lock().unwrap();
   // We take ownership of File here.
   // It is put back below while still holding the lock.
@@ -516,7 +511,7 @@ pub fn get_file(rid: ResourceId) -> DenoResult<std::fs::File> {
       table.insert(rid, Repr::FsFile(tokio_fs::File::from_std(std_file)));
 
       if maybe_std_file_copy.is_err() {
-        return Err(DenoError::from(maybe_std_file_copy.unwrap_err()));
+        return Err(ErrBox::from(maybe_std_file_copy.unwrap_err()));
       }
 
       let std_file_copy = maybe_std_file_copy.unwrap();
@@ -537,23 +532,25 @@ pub fn seek(
   resource: Resource,
   offset: i32,
   whence: u32,
-) -> Box<dyn Future<Item = (), Error = DenoError> + Send> {
+) -> Box<dyn Future<Item = (), Error = ErrBox> + Send> {
   // Translate seek mode to Rust repr.
   let seek_from = match whence {
     0 => SeekFrom::Start(offset as u64),
     1 => SeekFrom::Current(i64::from(offset)),
     2 => SeekFrom::End(i64::from(offset)),
     _ => {
-      return Box::new(futures::future::err(deno_error::new(
-        deno_error::ErrorKind::InvalidSeekMode,
-        format!("Invalid seek mode: {}", whence),
-      )));
+      return Box::new(futures::future::err(
+        deno_error::DenoError::new(
+          deno_error::ErrorKind::InvalidSeekMode,
+          format!("Invalid seek mode: {}", whence),
+        ).into(),
+      ));
     }
   };
 
   match get_file(resource.rid) {
     Ok(mut file) => Box::new(futures::future::lazy(move || {
-      let result = file.seek(seek_from).map(|_| {}).map_err(DenoError::from);
+      let result = file.seek(seek_from).map(|_| {}).map_err(ErrBox::from);
       futures::future::result(result)
     })),
     Err(err) => Box::new(futures::future::err(err)),

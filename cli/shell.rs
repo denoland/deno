@@ -10,10 +10,9 @@ use std::fmt;
 use std::io::prelude::*;
 
 use atty;
+use deno::ErrBox;
 use termcolor::Color::{Cyan, Green, Red, Yellow};
 use termcolor::{self, Color, ColorSpec, StandardStream, WriteColor};
-
-use crate::deno_error::DenoResult;
 
 /// The requested verbosity of output.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -116,7 +115,7 @@ impl Shell {
     message: Option<&dyn fmt::Display>,
     color: Color,
     justified: bool,
-  ) -> DenoResult<()> {
+  ) -> Result<(), ErrBox> {
     match self.verbosity {
       Verbosity::Quiet => Ok(()),
       _ => {
@@ -171,7 +170,7 @@ impl Shell {
   }
 
   /// Shortcut to right-align and color green a status message.
-  pub fn status<T, U>(&mut self, status: T, message: U) -> DenoResult<()>
+  pub fn status<T, U>(&mut self, status: T, message: U) -> Result<(), ErrBox>
   where
     T: fmt::Display,
     U: fmt::Display,
@@ -179,7 +178,7 @@ impl Shell {
     self.print(&status, Some(&message), Green, false)
   }
 
-  pub fn status_header<T>(&mut self, status: T) -> DenoResult<()>
+  pub fn status_header<T>(&mut self, status: T) -> Result<(), ErrBox>
   where
     T: fmt::Display,
   {
@@ -192,7 +191,7 @@ impl Shell {
     status: T,
     message: U,
     color: Color,
-  ) -> DenoResult<()>
+  ) -> Result<(), ErrBox>
   where
     T: fmt::Display,
     U: fmt::Display,
@@ -201,9 +200,9 @@ impl Shell {
   }
 
   /// Runs the callback only if we are in verbose mode.
-  pub fn verbose<F>(&mut self, mut callback: F) -> DenoResult<()>
+  pub fn verbose<F>(&mut self, mut callback: F) -> Result<(), ErrBox>
   where
-    F: FnMut(&mut Shell) -> DenoResult<()>,
+    F: FnMut(&mut Shell) -> Result<(), ErrBox>,
   {
     match self.verbosity {
       Verbosity::Verbose => callback(self),
@@ -212,9 +211,9 @@ impl Shell {
   }
 
   /// Runs the callback if we are not in verbose mode.
-  pub fn concise<F>(&mut self, mut callback: F) -> DenoResult<()>
+  pub fn concise<F>(&mut self, mut callback: F) -> Result<(), ErrBox>
   where
-    F: FnMut(&mut Shell) -> DenoResult<()>,
+    F: FnMut(&mut Shell) -> Result<(), ErrBox>,
   {
     match self.verbosity {
       Verbosity::Verbose => Ok(()),
@@ -223,12 +222,12 @@ impl Shell {
   }
 
   /// Prints a red 'error' message.
-  pub fn error<T: fmt::Display>(&mut self, message: T) -> DenoResult<()> {
+  pub fn error<T: fmt::Display>(&mut self, message: T) -> Result<(), ErrBox> {
     self.print(&"error:", Some(&message), Red, false)
   }
 
   /// Prints an amber 'warning' message.
-  pub fn warn<T: fmt::Display>(&mut self, message: T) -> DenoResult<()> {
+  pub fn warn<T: fmt::Display>(&mut self, message: T) -> Result<(), ErrBox> {
     match self.verbosity {
       Verbosity::Quiet => Ok(()),
       _ => self.print(&"warning:", Some(&message), Yellow, false),
@@ -246,7 +245,10 @@ impl Shell {
   }
 
   /// Updates the color choice (always, never, or auto) from a string..
-  pub fn set_color_choice(&mut self, color: Option<&str>) -> DenoResult<()> {
+  pub fn set_color_choice(
+    &mut self,
+    color: Option<&str>,
+  ) -> Result<(), ErrBox> {
     if let ShellOut::Stream {
       ref mut stream,
       ref mut color_choice,
@@ -291,7 +293,7 @@ impl Shell {
   }
 
   /// Prints a message and translates ANSI escape code into console colors.
-  pub fn print_ansi(&mut self, message: &[u8]) -> DenoResult<()> {
+  pub fn print_ansi(&mut self, message: &[u8]) -> Result<(), ErrBox> {
     if self.needs_clear {
       self.err_erase_line();
     }
@@ -323,7 +325,7 @@ impl ShellOut {
     message: Option<&dyn fmt::Display>,
     color: Color,
     justified: bool,
-  ) -> DenoResult<()> {
+  ) -> Result<(), ErrBox> {
     match *self {
       ShellOut::Stream { ref mut stream, .. } => {
         stream.reset()?;

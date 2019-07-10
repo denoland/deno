@@ -1,10 +1,9 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-
+use crate::deno_error;
+use deno::ErrBox;
 use futures::Async;
 use futures::Future;
 use futures::Poll;
-use std::error::Error;
-use std::fmt;
 use std::net::SocketAddr;
 use std::net::ToSocketAddrs;
 
@@ -21,46 +20,23 @@ pub fn resolve_addr(address: &str) -> ResolveAddrFuture {
   }
 }
 
-#[derive(Debug)]
-pub enum ResolveAddrError {
-  Syntax,
-  Resolution(std::io::Error),
-}
-
-impl fmt::Display for ResolveAddrError {
-  fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-    fmt.write_str(self.description())
-  }
-}
-
-impl Error for ResolveAddrError {
-  fn description(&self) -> &str {
-    match self {
-      ResolveAddrError::Syntax => "invalid address syntax",
-      ResolveAddrError::Resolution(e) => e.description(),
-    }
-  }
-}
-
 pub struct ResolveAddrFuture {
   address: String,
 }
 
 impl Future for ResolveAddrFuture {
   type Item = SocketAddr;
-  type Error = ResolveAddrError;
+  type Error = ErrBox;
 
   fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
     // The implementation of this is not actually async at the moment,
     // however we intend to use async DNS resolution in the future and
     // so we expose this as a future instead of Result.
     match split(&self.address) {
-      None => Err(ResolveAddrError::Syntax),
+      None => Err(deno_error::invalid_address_syntax()),
       Some(addr_port_pair) => {
         // I absolutely despise the .to_socket_addrs() API.
-        let r = addr_port_pair
-          .to_socket_addrs()
-          .map_err(ResolveAddrError::Resolution);
+        let r = addr_port_pair.to_socket_addrs().map_err(ErrBox::from);
 
         r.and_then(|mut iter| match iter.next() {
           Some(a) => Ok(Async::Ready(a)),
