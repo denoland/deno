@@ -1,11 +1,9 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use atty;
-
-use crate::flags::DenoFlags;
-
 use ansi_term::Style;
+use atty;
 use crate::deno_error::permission_denied;
-use crate::deno_error::DenoResult;
+use crate::flags::DenoFlags;
+use deno::ErrBox;
 use log;
 use std::collections::HashSet;
 use std::fmt;
@@ -160,7 +158,7 @@ impl DenoPermissions {
     }
   }
 
-  pub fn check_run(&self) -> DenoResult<()> {
+  pub fn check_run(&self) -> Result<(), ErrBox> {
     let msg = "access to run a subprocess";
 
     match self.allow_run.get_state() {
@@ -181,7 +179,7 @@ impl DenoPermissions {
     }
   }
 
-  pub fn check_read(&self, filename: &str) -> DenoResult<()> {
+  pub fn check_read(&self, filename: &str) -> Result<(), ErrBox> {
     let msg = &format!("read access to \"{}\"", filename);
     match self.allow_read.get_state() {
       PermissionAccessorState::Allow => {
@@ -213,7 +211,7 @@ impl DenoPermissions {
     }
   }
 
-  pub fn check_write(&self, filename: &str) -> DenoResult<()> {
+  pub fn check_write(&self, filename: &str) -> Result<(), ErrBox> {
     let msg = &format!("write access to \"{}\"", filename);
     match self.allow_write.get_state() {
       PermissionAccessorState::Allow => {
@@ -245,7 +243,7 @@ impl DenoPermissions {
     }
   }
 
-  pub fn check_net(&self, host_and_port: &str) -> DenoResult<()> {
+  pub fn check_net(&self, host_and_port: &str) -> Result<(), ErrBox> {
     let msg = &format!("network access to \"{}\"", host_and_port);
     match self.allow_net.get_state() {
       PermissionAccessorState::Allow => {
@@ -276,7 +274,7 @@ impl DenoPermissions {
     }
   }
 
-  pub fn check_net_url(&self, url: url::Url) -> DenoResult<()> {
+  pub fn check_net_url(&self, url: url::Url) -> Result<(), ErrBox> {
     let msg = &format!("network access to \"{}\"", url);
     match self.allow_net.get_state() {
       PermissionAccessorState::Allow => {
@@ -311,7 +309,7 @@ impl DenoPermissions {
     &self,
     state: PermissionAccessorState,
     prompt_str: &str,
-  ) -> DenoResult<()> {
+  ) -> Result<(), ErrBox> {
     match state {
       PermissionAccessorState::Ask => {
         match self.try_permissions_prompt(prompt_str) {
@@ -329,7 +327,7 @@ impl DenoPermissions {
     }
   }
 
-  pub fn check_env(&self) -> DenoResult<()> {
+  pub fn check_env(&self) -> Result<(), ErrBox> {
     let msg = "access to environment variables";
     match self.allow_env.get_state() {
       PermissionAccessorState::Allow => {
@@ -351,7 +349,10 @@ impl DenoPermissions {
 
   /// Try to present the user with a permission prompt
   /// will error with permission_denied if no_prompts is enabled
-  fn try_permissions_prompt(&self, message: &str) -> DenoResult<PromptResult> {
+  fn try_permissions_prompt(
+    &self,
+    message: &str,
+  ) -> Result<PromptResult, ErrBox> {
     if self.no_prompts.load(Ordering::SeqCst) {
       return Err(permission_denied());
     }
@@ -396,31 +397,31 @@ impl DenoPermissions {
     self.allow_hrtime.is_allow()
   }
 
-  pub fn revoke_run(&self) -> DenoResult<()> {
+  pub fn revoke_run(&self) -> Result<(), ErrBox> {
     self.allow_run.revoke();
     Ok(())
   }
 
-  pub fn revoke_read(&self) -> DenoResult<()> {
+  pub fn revoke_read(&self) -> Result<(), ErrBox> {
     self.allow_read.revoke();
     Ok(())
   }
 
-  pub fn revoke_write(&self) -> DenoResult<()> {
+  pub fn revoke_write(&self) -> Result<(), ErrBox> {
     self.allow_write.revoke();
     Ok(())
   }
 
-  pub fn revoke_net(&self) -> DenoResult<()> {
+  pub fn revoke_net(&self) -> Result<(), ErrBox> {
     self.allow_net.revoke();
     Ok(())
   }
 
-  pub fn revoke_env(&self) -> DenoResult<()> {
+  pub fn revoke_env(&self) -> Result<(), ErrBox> {
     self.allow_env.revoke();
     Ok(())
   }
-  pub fn revoke_hrtime(&self) -> DenoResult<()> {
+  pub fn revoke_hrtime(&self) -> Result<(), ErrBox> {
     self.allow_hrtime.revoke();
     Ok(())
   }
@@ -437,7 +438,7 @@ pub enum PromptResult {
 
 impl PromptResult {
   /// If value is any form of deny this will error with permission_denied
-  pub fn check(&self) -> DenoResult<()> {
+  pub fn check(&self) -> Result<(), ErrBox> {
     match self {
       PromptResult::DenyOnce => Err(permission_denied()),
       PromptResult::DenyAlways => Err(permission_denied()),
@@ -457,7 +458,7 @@ impl fmt::Display for PromptResult {
   }
 }
 
-fn permission_prompt(message: &str) -> DenoResult<PromptResult> {
+fn permission_prompt(message: &str) -> Result<PromptResult, ErrBox> {
   let msg = format!("️{}  Deno requests {}. Grant? [a/y/n/d (a = allow always, y = allow once, n = deny once, d = deny always)] ", PERMISSION_EMOJI, message);
   // print to stderr so that if deno is > to a file this is still displayed.
   eprint!("{}", Style::new().bold().paint(msg));

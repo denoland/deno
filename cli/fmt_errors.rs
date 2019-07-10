@@ -1,8 +1,12 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 //! This mod provides DenoError to unify errors across Deno.
 use crate::ansi;
-use deno::JSError;
+use crate::source_maps::apply_source_map;
+use crate::source_maps::SourceMapGetter;
+use deno::ErrBox;
 use deno::StackFrame;
+use deno::V8Exception;
+use std::error::Error;
 use std::fmt;
 
 /// A trait which specifies parts of a diagnostic like item needs to be able to
@@ -104,10 +108,50 @@ pub fn format_error_message(msg: String) -> String {
   format!("{} {}", preamble, msg)
 }
 
-/// Wrapper around JSError which provides color to_string.
-pub struct JSErrorColor<'a>(pub &'a JSError);
+fn format_stack_frame(frame: &StackFrame) -> String {
+  // Note when we print to string, we change from 0-indexed to 1-indexed.
+  let function_name = ansi::italic_bold(frame.function_name.clone());
+  let source_loc =
+    format_source_name(frame.script_name.clone(), frame.line, frame.column);
 
-impl<'a> DisplayFormatter for JSErrorColor<'a> {
+  if !frame.function_name.is_empty() {
+    format!("    at {} ({})", function_name, source_loc)
+  } else if frame.is_eval {
+    format!("    at eval ({})", source_loc)
+  } else {
+    format!("    at {}", source_loc)
+  }
+}
+
+/// Wrapper around V8Exception which provides color to_string.
+#[derive(Debug)]
+pub struct JSError(V8Exception);
+
+impl JSError {
+  pub fn new(v8_exception: V8Exception) -> Self {
+    Self(v8_exception)
+  }
+
+  pub fn from_json(
+    json_str: &str,
+    source_map_getter: &impl SourceMapGetter,
+  ) -> ErrBox {
+    let unmapped_exception = V8Exception::from_json(json_str).unwrap();
+    Self::from_v8_exception(unmapped_exception, source_map_getter)
+  }
+
+  pub fn from_v8_exception(
+    unmapped_exception: V8Exception,
+    source_map_getter: &impl SourceMapGetter,
+  ) -> ErrBox {
+    let mapped_exception =
+      apply_source_map(&unmapped_exception, source_map_getter);
+    let js_error = Self(mapped_exception);
+    ErrBox::from(js_error)
+  }
+}
+
+impl DisplayFormatter for JSError {
   fn format_category_and_code(&self) -> String {
     "".to_string()
   }
@@ -136,7 +180,7 @@ impl<'a> DisplayFormatter for JSErrorColor<'a> {
   }
 
   fn format_source_name(&self) -> String {
-    let e = self.0;
+    let e = &self.0;
     if e.script_resource_name.is_none() {
       return "".to_string();
     }
@@ -152,7 +196,7 @@ impl<'a> DisplayFormatter for JSErrorColor<'a> {
   }
 }
 
-impl<'a> fmt::Display for JSErrorColor<'a> {
+impl fmt::Display for JSError {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     write!(
       f,
@@ -163,39 +207,21 @@ impl<'a> fmt::Display for JSErrorColor<'a> {
     )?;
 
     for frame in &self.0.frames {
-      write!(f, "\n{}", StackFrameColor(&frame).to_string())?;
+      write!(f, "\n{}", format_stack_frame(&frame))?;
     }
     Ok(())
   }
 }
 
-struct StackFrameColor<'a>(&'a StackFrame);
-
-impl<'a> fmt::Display for StackFrameColor<'a> {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    let frame = self.0;
-    // Note when we print to string, we change from 0-indexed to 1-indexed.
-    let function_name = ansi::italic_bold(frame.function_name.clone());
-    let script_line_column =
-      format_source_name(frame.script_name.clone(), frame.line, frame.column);
-
-    if !frame.function_name.is_empty() {
-      write!(f, "    at {} ({})", function_name, script_line_column)
-    } else if frame.is_eval {
-      write!(f, "    at eval ({})", script_line_column)
-    } else {
-      write!(f, "    at {}", script_line_column)
-    }
-  }
-}
+impl Error for JSError {}
 
 #[cfg(test)]
 mod tests {
   use super::*;
   use crate::ansi::strip_ansi_codes;
 
-  fn error1() -> JSError {
-    JSError {
+  fn error1() -> V8Exception {
+    V8Exception {
       message: "Error: foo bar".to_string(),
       source_line: None,
       script_resource_name: None,
@@ -240,7 +266,7 @@ mod tests {
   #[test]
   fn js_error_to_string() {
     let e = error1();
-    assert_eq!("error: Error: foo bar\n    at foo (foo_bar.ts:5:17)\n    at qat (bar_baz.ts:6:21)\n    at deno_main.js:2:2", strip_ansi_codes(&JSErrorColor(&e).to_string()));
+    assert_eq!("error: Error: foo bar\n    at foo (foo_bar.ts:5:17)\n    at qat (bar_baz.ts:6:21)\n    at deno_main.js:2:2", strip_ansi_codes(&JSError(e).to_string()));
   }
 
   #[test]

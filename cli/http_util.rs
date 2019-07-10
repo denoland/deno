@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::deno_error;
 use crate::deno_error::DenoError;
+use deno::ErrBox;
 #[cfg(test)]
 use futures::future::{loop_fn, Loop};
 use futures::{future, Future, Stream};
@@ -58,12 +59,12 @@ fn resolve_uri_from_location(base_uri: &Uri, location: &str) -> Uri {
 }
 
 #[cfg(test)]
-use crate::deno_error::DenoResult;
-#[cfg(test)]
 use crate::tokio_util;
 #[cfg(test)]
 /// Synchronously fetchs the given HTTP URL. Returns (content, media_type).
-pub fn fetch_sync_string(module_name: &str) -> DenoResult<(String, String)> {
+pub fn fetch_sync_string(
+  module_name: &str,
+) -> Result<(String, String), ErrBox> {
   tokio_util::block_on(fetch_string(module_name))
 }
 
@@ -80,15 +81,15 @@ pub enum FetchOnceResult {
 /// yields Redirect(url).
 pub fn fetch_string_once(
   url: http::uri::Uri,
-) -> impl Future<Item = FetchOnceResult, Error = DenoError> {
+) -> impl Future<Item = FetchOnceResult, Error = ErrBox> {
   type FetchAttempt = (Option<String>, Option<String>, Option<FetchOnceResult>);
   let client = get_client();
   client
     .get(url.clone())
-    .map_err(DenoError::from)
+    .map_err(ErrBox::from)
     .and_then(
       move |response| -> Box<
-        dyn Future<Item = FetchAttempt, Error = DenoError> + Send,
+        dyn Future<Item = FetchAttempt, Error = ErrBox> + Send,
       > {
         if response.status().is_redirection() {
           let location_string = response
@@ -108,10 +109,10 @@ pub fn fetch_string_once(
         } else if response.status().is_client_error()
           || response.status().is_server_error()
         {
-          return Box::new(future::err(deno_error::new(
+          return Box::new(future::err(DenoError::new(
             deno_error::ErrorKind::Other,
             format!("Import '{}' failed: {}", &url, response.status()),
-          )));
+          ).into()));
         }
         let content_type = response
           .headers()
@@ -121,7 +122,7 @@ pub fn fetch_string_once(
           .into_body()
           .concat2()
           .map(|body| String::from_utf8(body.to_vec()).ok())
-          .map_err(DenoError::from);
+          .map_err(ErrBox::from);
         Box::new(body.join3(future::ok(content_type), future::ok(None)))
       },
     )
@@ -142,7 +143,7 @@ pub fn fetch_string_once(
 /// Asynchronously fetchs the given HTTP URL. Returns (content, media_type).
 pub fn fetch_string(
   module_name: &str,
-) -> impl Future<Item = (String, String), Error = DenoError> {
+) -> impl Future<Item = (String, String), Error = ErrBox> {
   let url = module_name.parse::<Uri>().unwrap();
   let client = get_client();
   // TODO(kevinkassimo): consider set a max redirection counter
@@ -150,7 +151,7 @@ pub fn fetch_string(
   loop_fn((client, url), |(client, url)| {
     client
       .get(url.clone())
-      .map_err(DenoError::from)
+      .map_err(ErrBox::from)
       .and_then(move |response| {
         if response.status().is_redirection() {
           let location_string = response
@@ -165,10 +166,12 @@ pub fn fetch_string(
           return Ok(Loop::Continue((client, new_url)));
         }
         if !response.status().is_success() {
-          return Err(deno_error::new(
-            deno_error::ErrorKind::NotFound,
-            "module not found".to_string(),
-          ));
+          return Err(
+            DenoError::new(
+              deno_error::ErrorKind::NotFound,
+              "module not found".to_string(),
+            ).into(),
+          );
         }
         Ok(Loop::Break(response))
       })
@@ -181,7 +184,7 @@ pub fn fetch_string(
       .into_body()
       .concat2()
       .map(|body| String::from_utf8(body.to_vec()).unwrap())
-      .map_err(DenoError::from);
+      .map_err(ErrBox::from);
     body.join(future::ok(content_type))
   }).and_then(|(body_string, maybe_content_type)| {
     future::ok((body_string, maybe_content_type.unwrap()))
