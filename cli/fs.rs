@@ -5,6 +5,7 @@ use std::io::ErrorKind;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use deno::ErrBox;
 use rand;
 use rand::Rng;
 
@@ -14,8 +15,6 @@ use nix::unistd::{chown as unix_chown, Gid, Uid};
 use std::os::unix::fs::DirBuilderExt;
 #[cfg(any(unix))]
 use std::os::unix::fs::PermissionsExt;
-
-use crate::deno_error::DenoResult;
 
 pub fn write_file<T: AsRef<[u8]>>(
   filename: &Path,
@@ -114,18 +113,16 @@ pub fn normalize_path(path: &Path) -> String {
 }
 
 #[cfg(unix)]
-pub fn chown(path: &str, uid: u32, gid: u32) -> DenoResult<()> {
-  use crate::deno_error::DenoError;
+pub fn chown(path: &str, uid: u32, gid: u32) -> Result<(), ErrBox> {
   let nix_uid = Uid::from_raw(uid);
   let nix_gid = Gid::from_raw(gid);
   unix_chown(path, Option::Some(nix_uid), Option::Some(nix_gid))
-    .map_err(DenoError::from)
+    .map_err(ErrBox::from)
 }
 
 #[cfg(not(unix))]
-pub fn chown(_path: &str, _uid: u32, _gid: u32) -> DenoResult<()> {
+pub fn chown(_path: &str, _uid: u32, _gid: u32) -> Result<(), ErrBox> {
   // Noop
   // TODO: implement chown for Windows
-  use crate::deno_error;
-  Err(deno_error::op_not_implemented())
+  Err(crate::deno_error::op_not_implemented())
 }

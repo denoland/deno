@@ -3,6 +3,8 @@ use indexmap::IndexMap;
 use serde_json::Map;
 use serde_json::Value;
 use std::cmp::Ordering;
+use std::error::Error;
+use std::fmt;
 use std::fs;
 use url::Url;
 
@@ -18,6 +20,14 @@ impl ImportMapError {
     }
   }
 }
+
+impl fmt::Display for ImportMapError {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    f.pad(&self.msg)
+  }
+}
+
+impl Error for ImportMapError {}
 
 // NOTE: here is difference between deno and reference implementation - deno currently
 //  can't resolve URL with other schemes (eg. data:, about:, blob:)

@@ -7,6 +7,7 @@ use crate::fmt_errors::format_maybe_source_name;
 use crate::fmt_errors::DisplayFormatter;
 use serde_json;
 use serde_json::value::Value;
+use std::error::Error;
 use std::fmt;
 
 #[derive(Debug, PartialEq, Clone)]
@@ -63,6 +64,12 @@ impl fmt::Display for Diagnostic {
     }
 
     Ok(())
+  }
+}
+
+impl Error for Diagnostic {
+  fn description(&self) -> &str {
+    &self.items[0].message
   }
 }
 

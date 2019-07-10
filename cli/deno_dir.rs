@@ -1,9 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::compiler::ModuleMetaData;
-use crate::deno_error;
 use crate::deno_error::DenoError;
-use crate::deno_error::DenoResult;
 use crate::deno_error::ErrorKind;
+use crate::deno_error::GetErrorKind;
 use crate::fs as deno_fs;
 use crate::http_util;
 use crate::msg;
@@ -11,6 +10,7 @@ use crate::progress::Progress;
 use crate::source_maps::SourceMapGetter;
 use crate::tokio_util;
 use crate::version;
+use deno::ErrBox;
 use deno::ModuleSpecifier;
 use dirs;
 use futures::future::{loop_fn, Either, Loop};
@@ -20,8 +20,6 @@ use ring;
 use serde_json;
 use std;
 use std::collections::HashSet;
-use std::fmt;
-use std::fmt::Display;
 use std::fmt::Write;
 use std::fs;
 use std::path::Path;
@@ -33,36 +31,6 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use url;
 use url::Url;
-
-// TODO: DenoDirError is temporary solution, should be upgraded during rewrite
-#[derive(Debug, PartialEq)]
-pub enum DenoDirErrorKind {
-  UnsupportedFetchScheme,
-}
-
-#[derive(Debug)]
-pub struct DenoDirError {
-  pub message: String,
-  pub kind: DenoDirErrorKind,
-}
-
-impl DenoDirError {
-  pub fn new(message: String, kind: DenoDirErrorKind) -> Self {
-    DenoDirError { message, kind }
-  }
-}
-
-impl std::error::Error for DenoDirError {
-  fn description(&self) -> &str {
-    &*self.message
-  }
-}
-
-impl Display for DenoDirError {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    writeln!(f, "{}", self.message)
-  }
-}
 
 const SUPPORTED_URL_SCHEMES: [&str; 3] = ["http", "https", "file"];
 
@@ -198,13 +166,13 @@ impl DenoDir {
     specifier: &ModuleSpecifier,
     use_cache: bool,
     no_fetch: bool,
-  ) -> impl Future<Item = ModuleMetaData, Error = deno_error::DenoError> {
+  ) -> impl Future<Item = ModuleMetaData, Error = ErrBox> {
     let module_url = specifier.as_url().to_owned();
     debug!("fetch_module_meta_data. specifier {} ", &module_url);
 
     let result = self.url_to_deps_path(&module_url);
     if let Err(err) = result {
-      return Either::A(futures::future::err(DenoError::from(err)));
+      return Either::A(futures::future::err(err));
     }
     let deps_filepath = result.unwrap();
 
@@ -223,20 +191,17 @@ impl DenoDir {
         use_cache,
         no_fetch,
       ).then(move |result| {
-        let mut out = match result {
-          Ok(out) => out,
-          Err(err) => {
-            if err.kind() == ErrorKind::NotFound {
-              // For NotFound, change the message to something better.
-              return Err(deno_error::new(
-                ErrorKind::NotFound,
-                format!("Cannot resolve module \"{}\"", module_url.to_string()),
-              ));
-            } else {
-              return Err(err);
-            }
+        let mut out = result.map_err(|err| {
+          if err.kind() == ErrorKind::NotFound {
+            // For NotFound, change the message to something better.
+            DenoError::new(
+              ErrorKind::NotFound,
+              format!("Cannot resolve module \"{}\"", module_url.to_string()),
+            ).into()
+          } else {
+            err
           }
-        };
+        })?;
 
         if out.source_code.starts_with(b"#!") {
           out.source_code = filter_shebang(out.source_code);
@@ -290,7 +255,7 @@ impl DenoDir {
     specifier: &ModuleSpecifier,
     use_cache: bool,
     no_fetch: bool,
-  ) -> Result<ModuleMetaData, deno_error::DenoError> {
+  ) -> Result<ModuleMetaData, ErrBox> {
     tokio_util::block_on(
       self.fetch_module_meta_data_async(specifier, use_cache, no_fetch),
     )
@@ -303,20 +268,17 @@ impl DenoDir {
   ///
   /// For specifier starting with `http://` and `https://` it returns
   /// path to DenoDir dependency directory.
-  pub fn url_to_deps_path(
-    self: &Self,
-    url: &Url,
-  ) -> Result<PathBuf, DenoDirError> {
+  pub fn url_to_deps_path(self: &Self, url: &Url) -> Result<PathBuf, ErrBox> {
     let filename = match url.scheme() {
       "file" => url.to_file_path().unwrap(),
       "https" => get_cache_filename(self.deps_https.as_path(), &url),
       "http" => get_cache_filename(self.deps_http.as_path(), &url),
       scheme => {
         return Err(
-          DenoDirError::new(
+          DenoError::new(
+            ErrorKind::UnsupportedFetchScheme,
             format!("Unsupported scheme \"{}\" for module \"{}\". Supported schemes: {:#?}", scheme, url, SUPPORTED_URL_SCHEMES),
-            DenoDirErrorKind::UnsupportedFetchScheme
-          )
+          ).into()
         );
       }
     };
@@ -389,7 +351,7 @@ fn get_source_code_async(
   filepath: PathBuf,
   use_cache: bool,
   no_fetch: bool,
-) -> impl Future<Item = ModuleMetaData, Error = DenoError> {
+) -> impl Future<Item = ModuleMetaData, Error = ErrBox> {
   let filename = filepath.to_str().unwrap().to_string();
   let module_name = module_url.to_string();
   let url_scheme = module_url.scheme();
@@ -425,23 +387,23 @@ fn get_source_code_async(
   // If not remote file stop here!
   if !is_module_remote {
     debug!("not remote file stop here");
-    return Either::A(futures::future::err(DenoError::from(
+    return Either::A(futures::future::err(
       std::io::Error::new(
         std::io::ErrorKind::NotFound,
         format!("cannot find local file '{}'", filename),
-      ),
-    )));
+      ).into(),
+    ));
   }
 
   // If remote downloads are not allowed stop here!
   if no_fetch {
     debug!("remote file with no_fetch stop here");
-    return Either::A(futures::future::err(DenoError::from(
+    return Either::A(futures::future::err(
       std::io::Error::new(
         std::io::ErrorKind::NotFound,
         format!("cannot find remote file '{}' in cache", filename),
-      ),
-    )));
+      ).into(),
+    ));
   }
 
   debug!("is remote but didn't find module");
@@ -456,10 +418,12 @@ fn get_source_code_async(
           download_cache.mark(&module_name);
           Ok(output)
         }
-        None => Err(DenoError::from(std::io::Error::new(
-          std::io::ErrorKind::NotFound,
-          format!("cannot find remote file '{}'", filename),
-        ))),
+        None => Err(
+          std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("cannot find remote file '{}'", filename),
+          ).into(),
+        ),
       },
     ),
   )
@@ -474,7 +438,7 @@ fn get_source_code(
   filepath: PathBuf,
   use_cache: bool,
   no_fetch: bool,
-) -> DenoResult<ModuleMetaData> {
+) -> Result<ModuleMetaData, ErrBox> {
   tokio_util::block_on(get_source_code_async(
     deno_dir, module_url, filepath, use_cache, no_fetch,
   ))
@@ -595,7 +559,7 @@ fn save_module_code_and_headers(
   source: &str,
   maybe_content_type: Option<String>,
   maybe_initial_filepath: Option<PathBuf>,
-) -> DenoResult<()> {
+) -> Result<(), ErrBox> {
   match filepath.parent() {
     Some(ref parent) => fs::create_dir_all(parent),
     None => Ok(()),
@@ -636,7 +600,7 @@ fn fetch_remote_source_async(
   deno_dir: &DenoDir,
   module_url: &Url,
   filepath: &Path,
-) -> impl Future<Item = Option<ModuleMetaData>, Error = DenoError> {
+) -> impl Future<Item = Option<ModuleMetaData>, Error = ErrBox> {
   use crate::http_util::FetchOnceResult;
 
   let download_job = deno_dir.progress.add("Download", &module_url.to_string());
@@ -664,61 +628,65 @@ fn fetch_remote_source_async(
     )| {
       let module_uri = url_into_uri(&module_url);
       // Single pass fetch, either yields code or yields redirect.
-      http_util::fetch_string_once(module_uri).and_then(move |fetch_once_result| {
-        match fetch_once_result {
-          FetchOnceResult::Redirect(uri) => {
-            // If redirects, update module_name and filename for next looped call.
-            let new_module_url = Url::parse(&uri.to_string()).expect("http::uri::Uri should be parseable as Url");
-            let new_filepath = dir.url_to_deps_path(&new_module_url)?;
+      http_util::fetch_string_once(module_uri).and_then(
+        move |fetch_once_result| {
+          match fetch_once_result {
+            FetchOnceResult::Redirect(uri) => {
+              // If redirects, update module_name and filename for next looped call.
+              let new_module_url = Url::parse(&uri.to_string())
+                .expect("http::uri::Uri should be parseable as Url");
+              let new_filepath = dir.url_to_deps_path(&new_module_url)?;
 
-            if maybe_initial_module_name.is_none() {
-              maybe_initial_module_name = Some(module_url.to_string());
-              maybe_initial_filepath = Some(filepath.clone());
+              if maybe_initial_module_name.is_none() {
+                maybe_initial_module_name = Some(module_url.to_string());
+                maybe_initial_filepath = Some(filepath.clone());
+              }
+
+              // Not yet completed. Follow the redirect and loop.
+              Ok(Loop::Continue((
+                dir,
+                maybe_initial_module_name,
+                maybe_initial_filepath,
+                new_module_url,
+                new_filepath,
+              )))
             }
+            FetchOnceResult::Code(source, maybe_content_type) => {
+              // We land on the code.
+              save_module_code_and_headers(
+                filepath.clone(),
+                &module_url,
+                &source,
+                maybe_content_type.clone(),
+                maybe_initial_filepath,
+              )?;
 
-            // Not yet completed. Follow the redirect and loop.
-            Ok(Loop::Continue((
-              dir,
-              maybe_initial_module_name,
-              maybe_initial_filepath,
-              new_module_url,
-              new_filepath,
-            )))
+              let media_type = map_content_type(
+                &filepath,
+                maybe_content_type.as_ref().map(String::as_str),
+              );
+
+              // TODO: module_name should be renamed to URL
+              let module_meta_data = ModuleMetaData {
+                module_name: module_url.to_string(),
+                module_redirect_source_name: maybe_initial_module_name,
+                filename: filepath.clone(),
+                media_type,
+                source_code: source.as_bytes().to_owned(),
+                maybe_output_code_filename: None,
+                maybe_output_code: None,
+                maybe_source_map_filename: None,
+                maybe_source_map: None,
+              };
+
+              Ok(Loop::Break(Some(module_meta_data)))
+            }
           }
-          FetchOnceResult::Code(source, maybe_content_type) => {
-            // We land on the code.
-            save_module_code_and_headers(
-              filepath.clone(),
-              &module_url,
-              &source,
-              maybe_content_type.clone(),
-              maybe_initial_filepath,
-            )?;
-
-            let media_type = map_content_type(
-              &filepath,
-              maybe_content_type.as_ref().map(String::as_str),
-            );
-
-            // TODO: module_name should be renamed to URL
-            let module_meta_data = ModuleMetaData {
-              module_name: module_url.to_string(),
-              module_redirect_source_name: maybe_initial_module_name,
-              filename: filepath.clone(),
-              media_type,
-              source_code: source.as_bytes().to_owned(),
-              maybe_output_code_filename: None,
-              maybe_output_code: None,
-              maybe_source_map_filename: None,
-              maybe_source_map: None,
-            };
-
-            Ok(Loop::Break(Some(module_meta_data)))
-          }
-        }
-      })
+        },
+      )
     },
-  ).then(move |r| {
+  )
+  .then(move |r| {
     // Explicit drop to keep reference alive until future completes.
     drop(download_job);
     r
@@ -731,7 +699,7 @@ fn fetch_remote_source(
   deno_dir: &DenoDir,
   module_url: &Url,
   filepath: &Path,
-) -> DenoResult<Option<ModuleMetaData>> {
+) -> Result<Option<ModuleMetaData>, ErrBox> {
   tokio_util::block_on(fetch_remote_source_async(
     deno_dir, module_url, filepath,
   ))
@@ -751,7 +719,7 @@ fn fetch_local_source(
   module_url: &Url,
   filepath: &Path,
   module_initial_source_name: Option<String>,
-) -> DenoResult<Option<ModuleMetaData>> {
+) -> Result<Option<ModuleMetaData>, ErrBox> {
   let source_code_headers = get_source_code_headers(&filepath);
   // If source code headers says that it would redirect elsewhere,
   // (meaning that the source file might not exist; only .headers.json is present)
@@ -907,7 +875,7 @@ fn save_source_code_headers(
 
 // TODO(bartlomieju): this method should be moved, it doesn't belong to deno_dir.rs
 //  it's a general utility
-pub fn resolve_from_cwd(path: &str) -> Result<(PathBuf, String), DenoError> {
+pub fn resolve_from_cwd(path: &str) -> Result<(PathBuf, String), ErrBox> {
   let candidate_path = Path::new(path);
 
   let resolved_path = if candidate_path.is_absolute() {
@@ -1669,8 +1637,8 @@ mod tests {
     for &test in test_cases.iter() {
       let url = Url::parse(test).unwrap();
       assert_eq!(
-        deno_dir.url_to_deps_path(&url).unwrap_err().kind,
-        DenoDirErrorKind::UnsupportedFetchScheme
+        deno_dir.url_to_deps_path(&url).unwrap_err().kind(),
+        ErrorKind::UnsupportedFetchScheme
       );
     }
   }

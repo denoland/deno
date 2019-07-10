@@ -102,7 +102,6 @@ enum ErrorKind: byte {
   WouldBlock,
   InvalidInput,
   InvalidData,
-  InvalidPath,
   TimedOut,
   Interrupted,
   WriteZero,
@@ -142,8 +141,9 @@ enum ErrorKind: byte {
   NoAsyncSupport,
   NoSyncSupport,
   ImportMapError,
+  InvalidPath,
   ImportPrefixMissing,
-  DenoDirError,
+  UnsupportedFetchScheme,
 
   // other kinds
   Diagnostic,

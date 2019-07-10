@@ -4,7 +4,9 @@
 // isolate to keep the Isolate struct from becoming too bloating for users who
 // do not need asynchronous module loading.
 
-use crate::js_errors::JSError;
+use crate::any_error::ErrBox;
+use crate::js_errors::CoreJSError;
+use crate::js_errors::V8Exception;
 use crate::libdeno;
 use crate::libdeno::deno_buf;
 use crate::libdeno::deno_dyn_import_id;
@@ -81,6 +83,8 @@ type CoreDispatchFn = dyn Fn(&[u8], Option<PinnedBuf>) -> CoreOp;
 pub type DynImportFuture = Box<dyn Future<Item = deno_mod, Error = ()> + Send>;
 type DynImportFn = dyn Fn(&str, &str) -> DynImportFuture;
 
+type JSErrorCreateFn = dyn Fn(V8Exception) -> ErrBox;
+
 /// Wraps DynImportFuture to include the deno_dyn_import_id, so that it doesn't
 /// need to be exposed.
 struct DynImport {
@@ -114,6 +118,7 @@ pub struct Isolate {
   shared_libdeno_isolate: Arc<Mutex<Option<*const libdeno::isolate>>>,
   dispatch: Option<Arc<CoreDispatchFn>>,
   dyn_import: Option<Arc<DynImportFn>>,
+  js_error_create: Arc<JSErrorCreateFn>,
   needs_init: bool,
   shared: SharedQueue,
   pending_ops: FuturesUnordered<CoreOpAsyncFuture>,
@@ -178,6 +183,7 @@ impl Isolate {
       shared_libdeno_isolate: Arc::new(Mutex::new(Some(libdeno_isolate))),
       dispatch: None,
       dyn_import: None,
+      js_error_create: Arc::new(CoreJSError::from_v8_exception),
       shared,
       needs_init,
       pending_ops: FuturesUnordered::new(),
@@ -202,6 +208,16 @@ impl Isolate {
     F: Fn(&str, &str) -> DynImportFuture + Send + Sync + 'static,
   {
     self.dyn_import = Some(Arc::new(f));
+  }
+
+  /// Allows a callback to be set whenever a V8 exception is made. This allows
+  /// the caller to wrap the V8Exception into an error. By default this callback
+  /// is set to CoreJSError::from_v8_exception.
+  pub fn set_js_error_create<F>(&mut self, f: F)
+  where
+    F: Fn(V8Exception) -> ErrBox + 'static,
+  {
+    self.js_error_create = Arc::new(f);
   }
 
   /// Get a thread safe handle on the isolate.
@@ -307,11 +323,16 @@ impl Isolate {
     self as *const _ as *const c_void
   }
 
+  /// Executes traditional JavaScript code (traditional = not ES modules)
+  ///
+  /// ErrBox can be downcast to a type that exposes additional information about
+  /// the V8 exception. By default this type is CoreJSError, however it may be a
+  /// different type if Isolate::set_js_error_create() has been used.
   pub fn execute(
     &mut self,
     js_filename: &str,
     js_source: &str,
-  ) -> Result<(), JSError> {
+  ) -> Result<(), ErrBox> {
     self.shared_init();
     let filename = CString::new(js_filename).unwrap();
     let source = CString::new(js_source).unwrap();
@@ -323,22 +344,20 @@ impl Isolate {
         source.as_ptr(),
       )
     };
-    if let Some(err) = self.last_exception() {
-      return Err(err);
-    }
-    Ok(())
+    self.check_last_exception()
   }
 
-  fn last_exception(&self) -> Option<JSError> {
+  fn check_last_exception(&self) -> Result<(), ErrBox> {
     let ptr = unsafe { libdeno::deno_last_exception(self.libdeno_isolate) };
     if ptr.is_null() {
-      None
+      Ok(())
     } else {
+      let js_error_create = &*self.js_error_create;
       let cstr = unsafe { CStr::from_ptr(ptr) };
-      let v8_exception = cstr.to_str().unwrap();
-      debug!("v8_exception\n{}\n", v8_exception);
-      let js_error = JSError::from_v8_exception(v8_exception).unwrap();
-      Some(js_error)
+      let json_str = cstr.to_str().unwrap();
+      let v8_exception = V8Exception::from_json(json_str).unwrap();
+      let js_error = js_error_create(v8_exception);
+      Err(js_error)
     }
   }
 
@@ -348,7 +367,7 @@ impl Isolate {
     }
   }
 
-  fn respond(&mut self, maybe_buf: Option<&[u8]>) -> Result<(), JSError> {
+  fn respond(&mut self, maybe_buf: Option<&[u8]>) -> Result<(), ErrBox> {
     let buf = match maybe_buf {
       None => deno_buf::empty(),
       Some(r) => deno_buf::from(r),
@@ -356,11 +375,7 @@ impl Isolate {
     unsafe {
       libdeno::deno_respond(self.libdeno_isolate, self.as_raw_ptr(), buf)
     }
-    if let Some(err) = self.last_exception() {
-      Err(err)
-    } else {
-      Ok(())
-    }
+    self.check_last_exception()
   }
 
   /// Low-level module creation.
@@ -369,7 +384,7 @@ impl Isolate {
     main: bool,
     name: &str,
     source: &str,
-  ) -> Result<deno_mod, JSError> {
+  ) -> Result<deno_mod, ErrBox> {
     let name_ = CString::new(name.to_string()).unwrap();
     let name_ptr = name_.as_ptr() as *const libc::c_char;
 
@@ -379,12 +394,11 @@ impl Isolate {
     let id = unsafe {
       libdeno::deno_mod_new(self.libdeno_isolate, main, name_ptr, source_ptr)
     };
-    if let Some(js_error) = self.last_exception() {
-      assert_eq!(id, 0);
-      return Err(js_error);
-    }
 
-    Ok(id)
+    self.check_last_exception().map(|_| id).map_err(|err| {
+      assert_eq!(id, 0);
+      err
+    })
   }
 
   pub fn mod_get_imports(&self, id: deno_mod) -> Vec<String> {
@@ -402,23 +416,29 @@ impl Isolate {
     out
   }
 
-  pub fn snapshot(&self) -> Result<Snapshot1<'static>, JSError> {
+  /// Takes a snapshot. The isolate should have been created with will_snapshot
+  /// set to true.
+  ///
+  /// ErrBox can be downcast to a type that exposes additional information about
+  /// the V8 exception. By default this type is CoreJSError, however it may be a
+  /// different type if Isolate::set_js_error_create() has been used.
+  pub fn snapshot(&self) -> Result<Snapshot1<'static>, ErrBox> {
     let snapshot = unsafe { libdeno::deno_snapshot_new(self.libdeno_isolate) };
-    if let Some(js_error) = self.last_exception() {
-      assert_eq!(snapshot.data_ptr, null());
-      assert_eq!(snapshot.data_len, 0);
-      return Err(js_error);
+    match self.check_last_exception() {
+      Ok(..) => Ok(snapshot),
+      Err(err) => {
+        assert_eq!(snapshot.data_ptr, null());
+        assert_eq!(snapshot.data_len, 0);
+        Err(err)
+      }
     }
-    assert_ne!(snapshot.data_ptr, null());
-    assert_ne!(snapshot.data_len, 0);
-    Ok(snapshot)
   }
 
   fn dyn_import_done(
     &self,
     id: libdeno::deno_dyn_import_id,
     mod_id: deno_mod,
-  ) -> Result<(), JSError> {
+  ) -> Result<(), ErrBox> {
     debug!("dyn_import_done {} {}", id, mod_id);
     unsafe {
       libdeno::deno_dyn_import(
@@ -428,11 +448,10 @@ impl Isolate {
         mod_id,
       )
     };
-    if let Some(js_error) = self.last_exception() {
+    self.check_last_exception().map_err(|err| {
       assert_eq!(id, 0);
-      return Err(js_error);
-    }
-    Ok(())
+      err
+    })
   }
 }
 
@@ -458,11 +477,16 @@ impl<'a> ResolveContext<'a> {
 }
 
 impl Isolate {
+  /// Instanciates a ES module
+  ///
+  /// ErrBox can be downcast to a type that exposes additional information about
+  /// the V8 exception. By default this type is CoreJSError, however it may be a
+  /// different type if Isolate::set_js_error_create() has been used.
   pub fn mod_instantiate(
     &mut self,
     id: deno_mod,
     resolve_fn: &mut ResolveFn,
-  ) -> Result<(), JSError> {
+  ) -> Result<(), ErrBox> {
     let libdeno_isolate = self.libdeno_isolate;
     let mut ctx = ResolveContext { resolve_fn };
     unsafe {
@@ -473,11 +497,7 @@ impl Isolate {
         Self::resolve_cb,
       )
     };
-
-    if let Some(js_error) = self.last_exception() {
-      return Err(js_error);
-    }
-    Ok(())
+    self.check_last_exception()
   }
 
   /// Called during mod_instantiate() only.
@@ -494,15 +514,17 @@ impl Isolate {
     resolve_fn(specifier, referrer)
   }
 
-  pub fn mod_evaluate(&mut self, id: deno_mod) -> Result<(), JSError> {
+  /// Evaluates an already instantiated ES module.
+  ///
+  /// ErrBox can be downcast to a type that exposes additional information about
+  /// the V8 exception. By default this type is CoreJSError, however it may be a
+  /// different type if Isolate::set_js_error_create() has been used.
+  pub fn mod_evaluate(&mut self, id: deno_mod) -> Result<(), ErrBox> {
     self.shared_init();
     unsafe {
       libdeno::deno_mod_evaluate(self.libdeno_isolate, self.as_raw_ptr(), id)
     };
-    if let Some(js_error) = self.last_exception() {
-      return Err(js_error);
-    }
-    Ok(())
+    self.check_last_exception()
   }
 }
 
@@ -525,9 +547,9 @@ impl Drop for LockerScope {
 
 impl Future for Isolate {
   type Item = ();
-  type Error = JSError;
+  type Error = ErrBox;
 
-  fn poll(&mut self) -> Poll<(), JSError> {
+  fn poll(&mut self) -> Poll<(), ErrBox> {
     // Lock the current thread for V8.
     let _locker = LockerScope::new(self.libdeno_isolate);
 
@@ -579,9 +601,7 @@ impl Future for Isolate {
     }
 
     self.check_promise_errors();
-    if let Some(err) = self.last_exception() {
-      return Err(err);
-    }
+    self.check_last_exception()?;
 
     // We're idle if pending_ops is empty.
     if self.pending_ops.is_empty() {
@@ -616,7 +636,7 @@ impl IsolateHandle {
   }
 }
 
-pub fn js_check(r: Result<(), JSError>) {
+pub fn js_check(r: Result<(), ErrBox>) {
   if let Err(e) = r {
     panic!(e.to_string());
   }
@@ -814,7 +834,7 @@ pub mod tests {
         "#,
       ));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
-      assert_eq!(Ok(Async::Ready(())), isolate.poll());
+      assert_eq!(Async::Ready(()), isolate.poll().unwrap());
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
       js_check(isolate.execute(
         "check2.js",
@@ -825,11 +845,11 @@ pub mod tests {
         "#,
       ));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
-      assert_eq!(Ok(Async::Ready(())), isolate.poll());
+      assert_eq!(Async::Ready(()), isolate.poll().unwrap());
       js_check(isolate.execute("check3.js", "assert(nrecv == 2)"));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
       // We are idle, so the next poll should be the last.
-      assert_eq!(Ok(Async::Ready(())), isolate.poll());
+      assert_eq!(Async::Ready(()), isolate.poll().unwrap());
     });
   }
 
@@ -865,7 +885,7 @@ pub mod tests {
         "#,
       ));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
-      assert_eq!(Ok(Async::Ready(())), isolate.poll());
+      assert_eq!(Async::Ready(()), isolate.poll().unwrap());
       js_check(isolate.execute("send1.js", "assert(nrecv === 2);"));
     });
   }
@@ -949,9 +969,9 @@ pub mod tests {
       ));
 
       assert_eq!(count.load(Ordering::Relaxed), 1);
-      assert_eq!(Ok(Ready(())), isolate.poll());
+      assert_eq!(Ready(()), isolate.poll().unwrap());
       assert_eq!(count.load(Ordering::Relaxed), 2);
-      assert_eq!(Ok(Ready(())), isolate.poll());
+      assert_eq!(Ready(()), isolate.poll().unwrap());
       assert_eq!(count.load(Ordering::Relaxed), 2);
     })
   }
@@ -1090,7 +1110,7 @@ pub mod tests {
         "#,
       ));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
-      assert_eq!(Ok(Async::Ready(())), isolate.poll());
+      assert_eq!(Async::Ready(()), isolate.poll().unwrap());
       js_check(isolate.execute("check.js", "assert(asyncRecv == 1);"));
     });
   }
@@ -1118,7 +1138,7 @@ pub mod tests {
         "#,
       ));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
-      assert_eq!(Ok(()), poll_until_ready(&mut isolate, 3));
+      poll_until_ready(&mut isolate, 3).unwrap();
       js_check(isolate.execute("check.js", "assert(asyncRecv == 1);"));
     });
   }
@@ -1149,7 +1169,7 @@ pub mod tests {
         "#,
       ));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
-      assert_eq!(Ok(()), poll_until_ready(&mut isolate, 3));
+      poll_until_ready(&mut isolate, 3).unwrap();
       js_check(isolate.execute("check.js", "assert(asyncRecv == 2);"));
     });
   }
@@ -1164,7 +1184,7 @@ pub mod tests {
           include_str!("shared_queue_test.js"),
         ),
       );
-      assert_eq!(Ok(Async::Ready(())), isolate.poll());
+      assert_eq!(Async::Ready(()), isolate.poll().unwrap());
     });
   }
 

@@ -1,6 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::deno_error::err_check;
-use crate::deno_error::DenoError;
 use crate::diagnostics::Diagnostic;
 use crate::msg;
 use crate::resources;
@@ -9,6 +7,7 @@ use crate::state::*;
 use crate::tokio_util;
 use crate::worker::Worker;
 use deno::Buf;
+use deno::ErrBox;
 use deno::ModuleSpecifier;
 use futures::Future;
 use futures::Stream;
@@ -96,7 +95,7 @@ pub fn bundle_async(
   state: ThreadSafeState,
   module_name: String,
   out_file: String,
-) -> impl Future<Item = (), Error = DenoError> {
+) -> impl Future<Item = (), Error = ErrBox> {
   debug!(
     "Invoking the compiler to bundle. module_name: {}",
     module_name
@@ -116,9 +115,9 @@ pub fn bundle_async(
     // as was done previously.
     state.clone(),
   );
-  err_check(worker.execute("denoMain()"));
-  err_check(worker.execute("workerMain()"));
-  err_check(worker.execute("compilerMain()"));
+  worker.execute("denoMain()").unwrap();
+  worker.execute("workerMain()").unwrap();
+  worker.execute("compilerMain()").unwrap();
 
   let resource = worker.state.resource.clone();
   let compiler_rid = resource.rid;
@@ -144,7 +143,7 @@ pub fn bundle_async(
         let json_str = std::str::from_utf8(&msg).unwrap();
         debug!("Message: {}", json_str);
         if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
-          return Err(DenoError::from(diagnostics));
+          return Err(ErrBox::from(diagnostics));
         }
       }
 
@@ -156,7 +155,7 @@ pub fn bundle_async(
 pub fn compile_async(
   state: ThreadSafeState,
   module_meta_data: &ModuleMetaData,
-) -> impl Future<Item = ModuleMetaData, Error = DenoError> {
+) -> impl Future<Item = ModuleMetaData, Error = ErrBox> {
   let module_name = module_meta_data.module_name.clone();
 
   debug!(
@@ -178,9 +177,9 @@ pub fn compile_async(
     // as was done previously.
     state.clone(),
   );
-  err_check(worker.execute("denoMain()"));
-  err_check(worker.execute("workerMain()"));
-  err_check(worker.execute("compilerMain()"));
+  worker.execute("denoMain()").unwrap();
+  worker.execute("workerMain()").unwrap();
+  worker.execute("compilerMain()").unwrap();
 
   let compiling_job = state.progress.add("Compile", &module_name);
 
@@ -211,7 +210,7 @@ pub fn compile_async(
         let json_str = std::str::from_utf8(&msg).unwrap();
         debug!("Message: {}", json_str);
         if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
-          return Err(DenoError::from(diagnostics));
+          return Err(ErrBox::from(diagnostics));
         }
       }
 
@@ -242,7 +241,7 @@ pub fn compile_async(
 pub fn compile_sync(
   state: ThreadSafeState,
   module_meta_data: &ModuleMetaData,
-) -> Result<ModuleMetaData, DenoError> {
+) -> Result<ModuleMetaData, ErrBox> {
   tokio_util::block_on(compile_async(state, module_meta_data))
 }
 
