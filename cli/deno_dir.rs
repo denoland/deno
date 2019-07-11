@@ -38,7 +38,7 @@ use url::Url;
 // TODO(bartlomieju): rename to SourceFile
 #[derive(Debug, Clone)]
 pub struct ModuleMetaData {
-  pub module_name: String,
+  pub specifier: ModuleSpecifier,
   pub module_redirect_source_name: Option<String>, // source of redirect
   pub filename: PathBuf,
   pub media_type: msg::MediaType,
@@ -307,7 +307,7 @@ impl DenoDir {
       Err(err) => Err(err.into()),
       Ok((output_code, source_map)) => {
         let compiled_module = ModuleMetaData {
-          module_name: module_specifier.to_string(),
+          specifier: module_specifier.clone(),
           module_redirect_source_name: None,
           filename: output_code_filename,
           media_type: msg::MediaType::JavaScript,
@@ -889,9 +889,8 @@ fn fetch_remote_source_async(
               maybe_content_type.as_ref().map(String::as_str),
             );
 
-            // TODO: module_name should be renamed to URL
             let module_meta_data = ModuleMetaData {
-              module_name: module_url.to_string(),
+              specifier: ModuleSpecifier::from(module_url.clone()),
               module_redirect_source_name: maybe_initial_module_name,
               filename: filepath.clone(),
               media_type,
@@ -982,7 +981,7 @@ fn fetch_local_source(
     Ok(c) => c,
   };
   Ok(Some(ModuleMetaData {
-    module_name: module_url.to_string(),
+    specifier: ModuleSpecifier::from(module_url.clone()),
     module_redirect_source_name: module_initial_source_name,
     filename: filepath.to_owned(),
     media_type: map_content_type(
@@ -1484,8 +1483,9 @@ mod tests {
         .join("localhost_PORT4546/tests/subdir/redirects/redirect1.js");
       let redirect_source_filename =
         redirect_source_filepath.to_str().unwrap().to_string();
-      let target_module_name =
-        "http://localhost:4545/tests/subdir/redirects/redirect1.js";
+      let target_module_url =
+        Url::parse("http://localhost:4545/tests/subdir/redirects/redirect1.js")
+          .unwrap();
       let redirect_target_filepath = deno_dir
         .deps_http
         .join("localhost_PORT4545/tests/subdir/redirects/redirect1.js");
@@ -1518,7 +1518,7 @@ mod tests {
       assert!(redirect_target_headers.redirect_to.is_none());
 
       // Examine the meta result.
-      assert_eq!(&mod_meta.module_name, target_module_name);
+      assert_eq!(mod_meta.specifier.as_url().clone(), target_module_url);
       assert_eq!(
         &mod_meta.module_redirect_source_name.clone().unwrap(),
         &redirect_module_url.to_string()
@@ -1545,8 +1545,10 @@ mod tests {
           .join("localhost_PORT4546/tests/subdir/redirects/redirect1.js")
           .as_ref(),
       );
-      let target_module_name =
-        "http://localhost:4545/tests/subdir/redirects/redirect1.js";
+      let target_module_url =
+        Url::parse("http://localhost:4545/tests/subdir/redirects/redirect1.js")
+          .unwrap();
+      let target_module_name = target_module_url.to_string();
       let redirect_target_filepath = deno_dir
         .deps_http
         .join("localhost_PORT4545/tests/subdir/redirects/redirect1.js");
@@ -1586,7 +1588,7 @@ mod tests {
       assert!(redirect_target_headers.redirect_to.is_none());
 
       // Examine the meta result.
-      assert_eq!(&mod_meta.module_name, target_module_name);
+      assert_eq!(mod_meta.specifier.as_url().clone(), target_module_url);
       assert_eq!(
         &mod_meta.module_redirect_source_name.clone().unwrap(),
         &redirect_module_url.to_string()

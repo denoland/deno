@@ -10,7 +10,6 @@ use crate::startup_data;
 use crate::state::*;
 use crate::worker::Worker;
 use deno::Buf;
-use deno::ModuleSpecifier;
 use futures::future::Either;
 use futures::Future;
 use futures::Stream;
@@ -139,15 +138,11 @@ pub fn compile_async(
   }
 
   if use_cache {
-    let module_specifier =
-      ModuleSpecifier::resolve_url(&module_meta_data.module_name)
-        .expect("Should be valid module specifier");
-
     // try to load cached version
-    match state
-      .dir
-      .get_compiled_module_meta_data(&module_specifier, &module_meta_data)
-    {
+    match state.dir.get_compiled_module_meta_data(
+      &module_meta_data.specifier,
+      &module_meta_data,
+    ) {
       Ok(compiled_module) => {
         debug!(
           "found cached compiled module: {:?}",
@@ -162,14 +157,14 @@ pub fn compile_async(
   let module_meta_data_ = module_meta_data.clone();
 
   debug!(">>>>> compile_sync START");
-  let module_name = module_meta_data.module_name.clone();
+  let module_specifier = module_meta_data.specifier.clone();
 
   debug!(
-    "Running rust part of compile_sync. module_name: {}",
-    &module_name
+    "Running rust part of compile_sync, module specifier: {}",
+    &module_meta_data.specifier
   );
 
-  let root_names = vec![module_name.clone()];
+  let root_names = vec![module_specifier.to_string()];
   let compiler_config = get_compiler_config(&state, "typescript");
   let req_msg = req(root_names, compiler_config, None);
 
@@ -187,7 +182,8 @@ pub fn compile_async(
   err_check(worker.execute("workerMain()"));
   err_check(worker.execute("compilerMain()"));
 
-  let compiling_job = state.progress.add("Compile", &module_name);
+  let compiling_job =
+    state.progress.add("Compile", &module_specifier.to_string());
 
   let resource = worker.state.resource.clone();
   let compiler_rid = resource.rid;
@@ -254,10 +250,6 @@ pub fn compile_async(
       // We
       // still need to handle that JS and JSON files are compiled by TS compiler now (and they're
       // not used).
-
-      let module_specifier = ModuleSpecifier::resolve_url(&module_name)
-        .expect("Should be valid module specifier");
-
       state.dir.get_compiled_module_meta_data(
         &module_specifier,
         &module_meta_data_
@@ -284,6 +276,7 @@ pub fn compile_async(
 mod tests {
   use super::*;
   use crate::tokio_util;
+  use deno::ModuleSpecifier;
   use std::path::PathBuf;
 
   fn compile_sync(
@@ -297,14 +290,11 @@ mod tests {
   #[test]
   fn test_compile_sync() {
     tokio_util::init(|| {
-      let specifier = "./tests/002_hello.ts";
-      use deno::ModuleSpecifier;
-      let module_name = ModuleSpecifier::resolve_url_or_path(specifier)
-        .unwrap()
-        .to_string();
+      let specifier =
+        ModuleSpecifier::resolve_url_or_path("./tests/002_hello.ts").unwrap();
 
       let mut out = ModuleMetaData {
-        module_name,
+        specifier,
         module_redirect_source_name: None,
         filename: PathBuf::from("/tests/002_hello.ts"),
         media_type: msg::MediaType::TypeScript,

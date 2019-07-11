@@ -169,10 +169,10 @@ impl Loader for ThreadSafeState {
     Box::new(
       fetch_module_meta_data_and_maybe_compile_async(self, module_specifier)
         .map(|module_meta_data| deno::SourceCodeInfo {
-          // Real module name, might be different from initial URL
+          // Real module name, might be different from initial specifier
           // due to redirections.
           code: module_meta_data.js_source(),
-          module_name: module_meta_data.module_name,
+          module_name: module_meta_data.specifier.to_string(),
         }),
     )
   }
