@@ -478,12 +478,9 @@ fn op_cache(
 
   let module_specifier = ModuleSpecifier::resolve_url(module_id)
     .expect("Should be valid module specifier");
-  let source_file =
-    state.dir.fetch_source_file(&module_specifier, true, true)?;
 
-  state.dir.cache_compiler_output(
+  state.ts_compiler.cache_compiler_output(
     &module_specifier,
-    &source_file,
     extension,
     contents,
   )?;

@@ -86,6 +86,7 @@ pub struct State {
 
   pub ts_compiler: TsCompiler,
 
+  // TODO: remove, this should be handled by compiler
   /// Set of all URLs that have been compiled. This is a hacky way to work
   /// around the fact that --reload will force multiple compilations of the same
   /// module.

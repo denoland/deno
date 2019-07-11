@@ -9,7 +9,6 @@ use crate::msg;
 use crate::progress::Progress;
 use crate::source_maps::SourceMapGetter;
 use crate::tokio_util;
-use crate::version;
 use deno::ErrBox;
 use deno::ModuleSpecifier;
 use dirs;
@@ -237,118 +236,6 @@ impl DenoDir {
     Ok(deno_dir)
   }
 
-  pub fn cache_paths(self: &Self, url: &Url) -> (PathBuf, PathBuf, PathBuf) {
-    let compiled_cache_filename = get_cache_filename(url);
-    (
-      compiled_cache_filename.with_extension("js"),
-      compiled_cache_filename.with_extension("js.map"),
-      compiled_cache_filename.with_extension("meta"),
-    )
-  }
-
-  // TODO: move to compiler
-  pub fn cache_compiler_output(
-    self: &Self,
-    module_specifier: &ModuleSpecifier,
-    source_file: &SourceFile,
-    extension: &str,
-    contents: &str,
-  ) -> std::io::Result<()> {
-    let (js_cache_path, source_map_path, meta_data_path) =
-      self.cache_paths(module_specifier.as_url());
-    let (js_cache_path, source_map_path, meta_data_path) = (
-      self.gen.join(js_cache_path),
-      self.gen.join(source_map_path),
-      self.gen.join(meta_data_path),
-    );
-
-    match extension {
-      ".map" => {
-        match source_map_path.parent() {
-          Some(ref parent) => fs::create_dir_all(parent),
-          None => unreachable!(),
-        }?;
-        fs::write(source_map_path, contents)?;
-      }
-      ".js" => {
-        match js_cache_path.parent() {
-          Some(ref parent) => fs::create_dir_all(parent),
-          None => unreachable!(),
-        }?;
-        fs::write(js_cache_path, contents)?;
-
-        // save .meta file
-        let version_hash = source_code_version_hash(
-          &source_file.source_code,
-          version::DENO,
-          &self.config,
-        );
-        let compiled_file_metadata = CompiledFileMetadata {
-          source_path: source_file.filename.to_str().unwrap().to_string(),
-          version_hash,
-        };
-        compiled_file_metadata.save(&meta_data_path);
-      }
-      _ => unreachable!(),
-    }
-
-    Ok(())
-  }
-
-  // TODO: move to compiler
-  pub fn get_compiled_source_file(
-    self: &Self,
-    source_file: &SourceFile,
-  ) -> Result<SourceFile, ErrBox> {
-    let compiled_cache_filename =
-      self.gen.join(get_cache_filename(&source_file.url));
-    let (
-      output_code_filename,
-      output_source_map_filename,
-      output_meta_filename,
-    ) = (
-      compiled_cache_filename.with_extension("js"),
-      compiled_cache_filename.with_extension("js.map"),
-      compiled_cache_filename.with_extension("meta"),
-    );
-
-    debug!(
-      "compiled filenames: {:?}, {:?}",
-      output_code_filename, output_source_map_filename
-    );
-
-    let version_hash_to_validate = source_code_version_hash(
-      &source_file.source_code,
-      version::DENO,
-      &self.config,
-    );
-
-    // TODO: validation of hash should be done by compiler
-    let result = load_cache(
-      &output_code_filename,
-      &output_source_map_filename,
-      &output_meta_filename,
-      version_hash_to_validate,
-    );
-    debug!("load cache result: {:?}", result);
-    match result {
-      Err(err) => Err(err.into()),
-      Ok((output_code, source_map)) => {
-        let compiled_module = SourceFile {
-          url: source_file.url.clone(),
-          redirect_source_url: None,
-          filename: output_code_filename,
-          media_type: msg::MediaType::JavaScript,
-          source_code: output_code,
-          maybe_source_map: Some(source_map),
-          maybe_source_map_filename: Some(output_source_map_filename),
-        };
-
-        Ok(compiled_module)
-      }
-    }
-  }
-
   /// This method returns local file path for given module url that is used
   /// internally by DenoDir to reference module.
   ///
@@ -376,6 +263,7 @@ impl DenoDir {
   }
 
   // TODO: this method is only used by `SourceMapGetter` impl - can we organize it better?
+  // TODO: change interface to use `ModuleSpecifier` instead of `&str`
   fn try_resolve_and_get_source_file(
     &self,
     script_name: &str,
@@ -458,15 +346,15 @@ impl SourceFileFetcher for DenoDir {
     )
   }
 }
-// TODO: this should be implemented most likely on TS compiler
+
+// TODO: source maps should be fetched as a source file after resolving `script_name`
 impl SourceMapGetter for DenoDir {
   fn get_source_map(&self, script_name: &str) -> Option<Vec<u8>> {
     self
       .try_resolve_and_get_source_file(script_name)
-      .and_then(|out| match self.get_compiled_source_file(&out) {
-        Ok(compiled_module) => compiled_module.maybe_source_map,
-        Err(_) => None,
-      })
+//      .and_then(|out| match self.get_compiled_source_file(&out) {
+      // TODO: this is broken
+      .and_then(|out| out.maybe_source_map)
   }
 
   fn get_source_line(&self, script_name: &str, line: usize) -> Option<String> {
@@ -579,22 +467,8 @@ fn get_source_code_async(
   )
 }
 
-#[cfg(test)]
-/// Synchronous version of get_source_code_async
-/// This function is deprecated.
-fn get_source_code(
-  deno_dir: &DenoDir,
-  module_url: &Url,
-  filepath: PathBuf,
-  use_cache: bool,
-  no_fetch: bool,
-) -> Result<SourceFile, ErrBox> {
-  tokio_util::block_on(get_source_code_async(
-    deno_dir, module_url, filepath, use_cache, no_fetch,
-  ))
-}
-
-fn get_cache_filename(url: &Url) -> PathBuf {
+// TODO: method of DiskCache?
+pub fn get_cache_filename(url: &Url) -> PathBuf {
   let mut out = PathBuf::new();
 
   let scheme = url.scheme();
@@ -617,106 +491,6 @@ fn get_cache_filename(url: &Url) -> PathBuf {
     out.push(path_seg);
   }
   out
-}
-
-/// Information associated with compiled file in cache.
-/// Includes source code path and state hash.
-/// version_hash is used to validate versions of the file
-/// and could be used to remove stale file in cache.
-pub struct CompiledFileMetadata {
-  pub source_path: String,
-  pub version_hash: String,
-}
-
-static SOURCE_PATH: &'static str = "source_path";
-static VERSION_HASH: &'static str = "version_hash";
-
-impl CompiledFileMetadata {
-  /// Get compiled file metadata from meta_path.
-  /// If operation failed or metadata file is corrupted,
-  /// return None.
-  pub fn load<P: AsRef<Path>>(meta_path: P) -> Option<CompiledFileMetadata> {
-    let meta_path = meta_path.as_ref();
-    let maybe_metadata_string = fs::read_to_string(meta_path).ok();
-    maybe_metadata_string.as_ref()?;
-    let maybe_metadata_json: serde_json::Result<serde_json::Value> =
-      serde_json::from_str(&maybe_metadata_string.unwrap());
-    if let Ok(metadata_json) = maybe_metadata_json {
-      let source_path = metadata_json[SOURCE_PATH].as_str().map(String::from);
-      let version_hash = metadata_json[VERSION_HASH].as_str().map(String::from);
-      if source_path.is_none() || version_hash.is_none() {
-        return None;
-      }
-      return Some(CompiledFileMetadata {
-        source_path: source_path.unwrap(),
-        version_hash: version_hash.unwrap(),
-      });
-    } else {
-      return None;
-    }
-  }
-
-  /// Save compiled file metadata to meta_path.
-  pub fn save<P: AsRef<Path>>(self: &Self, meta_path: P) {
-    let meta_path = meta_path.as_ref();
-    // Remove possibly existing stale meta file.
-    // May not exist. DON'T unwrap.
-    let _ = std::fs::remove_file(&meta_path);
-    let mut value_map = serde_json::map::Map::new();
-
-    value_map.insert(SOURCE_PATH.to_owned(), json!(&self.source_path));
-    value_map.insert(VERSION_HASH.to_string(), json!(&self.version_hash));
-
-    let _ = serde_json::to_string(&value_map).map(|s| {
-      let _ = deno_fs::write_file(meta_path, s, 0o666);
-    });
-  }
-}
-
-/// Try loading the compiled code and map from the cache.
-/// Also validate the state hash in case source code has changed.
-/// If the version hash does not match,
-/// try delete all these files and return an error.
-fn load_cache(
-  js_filename: &PathBuf,
-  map_filename: &PathBuf,
-  meta_filename: &PathBuf,
-  version_hash_to_validate: String,
-) -> Result<(Vec<u8>, Vec<u8>), std::io::Error> {
-  debug!(
-    "load_cache code: {} map: {} meta: {}",
-    js_filename.display(),
-    map_filename.display(),
-    meta_filename.display()
-  );
-  let read_output_code = fs::read(&js_filename)?;
-  let read_source_map = fs::read(&map_filename)?;
-
-  // Validate metadata.
-  let mut should_remove_all = false;
-  if let Some(read_metadata) = CompiledFileMetadata::load(meta_filename) {
-    if read_metadata.version_hash != version_hash_to_validate {
-      debug!("load_cache metadata version hash does not match");
-      should_remove_all = true;
-    }
-  } else {
-    debug!("load_cache metadata load error");
-    should_remove_all = true;
-  }
-
-  // TODO: this step can be skipped now
-  // The old version is stale or some error occurred.
-  // Try removing all the cached files.
-  if should_remove_all {
-    let _ = fs::remove_file(&js_filename);
-    let _ = fs::remove_file(&map_filename);
-    let _ = fs::remove_file(&meta_filename);
-    // This will trigger a not-found error return
-    // and hint recompilation.
-    let _ = fs::read(&js_filename)?;
-  }
-
-  Ok((read_output_code, read_source_map))
 }
 
 fn gen_hash(v: Vec<&[u8]>) -> String {
@@ -1148,6 +922,19 @@ pub fn resolve_from_cwd(path: &str) -> Result<(PathBuf, String), ErrBox> {
 mod tests {
   use super::*;
   use tempfile::TempDir;
+
+  /// Synchronous version of get_source_code_async
+  fn get_source_code(
+    deno_dir: &DenoDir,
+    module_url: &Url,
+    filepath: PathBuf,
+    use_cache: bool,
+    no_fetch: bool,
+  ) -> Result<SourceFile, ErrBox> {
+    tokio_util::block_on(get_source_code_async(
+      deno_dir, module_url, filepath, use_cache, no_fetch,
+    ))
+  }
 
   fn normalize_to_str(path: &Path) -> String {
     normalize_path(path).to_str().unwrap().to_string()
