@@ -2,8 +2,6 @@
 use atty;
 use crate::ansi;
 use crate::deno_dir::resolve_from_cwd;
-use crate::deno_dir::CompiledFileMetadata;
-use crate::deno_dir::source_code_version_hash;
 use crate::deno_error;
 use crate::deno_error::err_check;
 use crate::deno_error::DenoError;
@@ -490,42 +488,14 @@ fn op_cache(
       .dir
       .fetch_module_meta_data(&module_specifier, true, true)?;
 
-  let (js_cache_path, source_map_path, meta_data_path) = state.dir.cache_paths(
-    &Url::parse(&module_meta_data.module_name)?,
-  );
-
-  eprintln!("op_cache: {:?}, {:?}", js_cache_path, source_map_path);
-  if extension == ".map" {
-    debug!("cache {:?}", source_map_path);
-    match source_map_path.parent() {
-      Some(ref parent) => fs::create_dir_all(parent),
-      None => Ok(()),
-    }?;
-    fs::write(source_map_path, contents).map_err(DenoError::from)?;
-  } else if extension == ".js" {
-    debug!("cache {:?}", js_cache_path);
-    match js_cache_path.parent() {
-      Some(ref parent) => fs::create_dir_all(parent),
-      None => Ok(()),
-    }?;
-    fs::write(js_cache_path, contents).map_err(DenoError::from)?;
-    let config = match &state.config {
-      Some(config) => config.clone(),
-      _ => b"".to_vec(),
-    };
-    let version_hash = source_code_version_hash(
-      &module_meta_data.source_code,
-      version::DENO,
-      &config,
-    );
-    let compiled_file_metadata = CompiledFileMetadata {
-      source_path: module_meta_data.filename.to_str().unwrap().to_string(),
-      version_hash,
-    };
-    compiled_file_metadata.save(&meta_data_path);
-  } else {
-    unreachable!();
-  }
+  state
+    .dir
+    .cache_compiler_output(
+      &module_specifier,
+      &module_meta_data,
+      extension,
+      contents
+    )?;
 
   ok_buf(empty_buf())
 }
