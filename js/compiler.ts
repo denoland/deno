@@ -120,37 +120,34 @@ interface EmitResult {
 }
 
 /** Ops to Rust to resolve and fetch a modules meta data. */
-function fetchModuleMetaData(
-  specifier: string,
-  referrer: string
-): ModuleMetaData {
-  util.log("compiler.fetchModuleMetaData", { specifier, referrer });
-  // Send FetchModuleMetaData message
+function fetchSourceFile(specifier: string, referrer: string): ModuleMetaData {
+  util.log("compiler.fetchSourceFile", { specifier, referrer });
+  // Send FetchSourceFile message
   const builder = flatbuffers.createBuilder();
   const specifier_ = builder.createString(specifier);
   const referrer_ = builder.createString(referrer);
-  const inner = msg.FetchModuleMetaData.createFetchModuleMetaData(
+  const inner = msg.FetchSourceFile.createFetchSourceFile(
     builder,
     specifier_,
     referrer_
   );
-  const baseRes = sendSync(builder, msg.Any.FetchModuleMetaData, inner);
+  const baseRes = sendSync(builder, msg.Any.FetchSourceFile, inner);
   assert(baseRes != null);
   assert(
-    msg.Any.FetchModuleMetaDataRes === baseRes!.innerType(),
+    msg.Any.FetchSourceFileRes === baseRes!.innerType(),
     `base.innerType() unexpectedly is ${baseRes!.innerType()}`
   );
-  const fetchModuleMetaDataRes = new msg.FetchModuleMetaDataRes();
-  assert(baseRes!.inner(fetchModuleMetaDataRes) != null);
-  const dataArray = fetchModuleMetaDataRes.dataArray();
+  const fetchSourceFileRes = new msg.FetchSourceFileRes();
+  assert(baseRes!.inner(fetchSourceFileRes) != null);
+  const dataArray = fetchSourceFileRes.dataArray();
   const decoder = new TextDecoder();
   const sourceCode = dataArray ? decoder.decode(dataArray) : undefined;
   // flatbuffers returns `null` for an empty value, this does not fit well with
   // idiomatic TypeScript under strict null checks, so converting to `undefined`
   return {
-    moduleName: fetchModuleMetaDataRes.moduleName() || undefined,
-    filename: fetchModuleMetaDataRes.filename() || undefined,
-    mediaType: fetchModuleMetaDataRes.mediaType(),
+    moduleName: fetchSourceFileRes.moduleName() || undefined,
+    filename: fetchSourceFileRes.filename() || undefined,
+    mediaType: fetchSourceFileRes.mediaType(),
     sourceCode
   };
 }
@@ -251,7 +248,7 @@ class Host implements ts.CompilerHost {
         sourceCode
       };
     }
-    return fetchModuleMetaData(specifier, referrer);
+    return fetchSourceFile(specifier, referrer);
   }
 
   /* Deno specific APIs */

@@ -15,8 +15,8 @@ union Any {
   EnvironRes,
   Exit,
   Fetch,
-  FetchModuleMetaData,
-  FetchModuleMetaDataRes,
+  FetchSourceFile,
+  FetchSourceFileRes,
   FetchRes,
   FormatError,
   FormatErrorRes,
@@ -241,12 +241,12 @@ table WorkerPostMessage {
   // data passed thru the zero-copy data parameter.
 }
 
-table FetchModuleMetaData {
+table FetchSourceFile {
   specifier: string;
   referrer: string;
 }
 
-table FetchModuleMetaDataRes {
+table FetchSourceFileRes {
   // If it's a non-http module, moduleName and filename will be the same.
   // For http modules, module_name is its resolved http URL, and filename
   // is the location of the locally downloaded source code.

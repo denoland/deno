@@ -206,7 +206,7 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<CliDispatchFn> {
     msg::Any::Environ => Some(op_env),
     msg::Any::Exit => Some(op_exit),
     msg::Any::Fetch => Some(op_fetch),
-    msg::Any::FetchModuleMetaData => Some(op_fetch_module_meta_data),
+    msg::Any::FetchSourceFile => Some(op_fetch_source_file),
     msg::Any::FormatError => Some(op_format_error),
     msg::Any::GetRandomValues => Some(op_get_random_values),
     msg::Any::GlobalTimer => Some(op_global_timer),
@@ -474,7 +474,7 @@ fn op_cache(
 
   state.mark_compiled(&module_id);
 
-  // TODO It shouldn't be necessary to call fetch_module_meta_data() here.
+  // TODO It shouldn't be necessary to call fetch_source_file() here.
   // However, we need module_meta_data.source_code in order to calculate the
   // cache path. In the future, checksums will not be used in the cache
   // filenames and this requirement can be removed. See
@@ -495,7 +495,7 @@ fn op_cache(
 }
 
 // https://github.com/denoland/deno/blob/golang/os.go#L100-L154
-fn op_fetch_module_meta_data(
+fn op_fetch_source_file(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
@@ -504,7 +504,7 @@ fn op_fetch_module_meta_data(
     return Err(deno_error::no_async_support());
   }
   assert!(data.is_none());
-  let inner = base.inner_as_fetch_module_meta_data().unwrap();
+  let inner = base.inner_as_fetch_source_file().unwrap();
   let cmd_id = base.cmd_id();
   let specifier = inner.specifier().unwrap();
   let referrer = inner.referrer().unwrap();
@@ -521,19 +521,19 @@ fn op_fetch_module_meta_data(
     .and_then(move |out| {
       let builder = &mut FlatBufferBuilder::new();
       let data_off = builder.create_vector(out.source_code.as_slice());
-      let msg_args = msg::FetchModuleMetaDataResArgs {
+      let msg_args = msg::FetchSourceFileResArgs {
         module_name: Some(builder.create_string(&out.url.to_string())),
         filename: Some(builder.create_string(&out.filename.to_str().unwrap())),
         media_type: out.media_type,
         data: Some(data_off),
       };
-      let inner = msg::FetchModuleMetaDataRes::create(builder, &msg_args);
+      let inner = msg::FetchSourceFileRes::create(builder, &msg_args);
       Ok(serialize_response(
         cmd_id,
         builder,
         msg::BaseArgs {
           inner: Some(inner.as_union_value()),
-          inner_type: msg::Any::FetchModuleMetaDataRes,
+          inner_type: msg::Any::FetchSourceFileRes,
           ..Default::default()
         },
       ))
