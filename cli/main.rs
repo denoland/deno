@@ -45,7 +45,6 @@ mod tokio_write;
 pub mod version;
 pub mod worker;
 
-use crate::compiler::bundle_async;
 use crate::deno_error::DenoError;
 use crate::progress::Progress;
 use crate::state::ThreadSafeState;
@@ -273,7 +272,9 @@ fn bundle_command(flags: DenoFlags, argv: Vec<String>) {
   assert!(state.argv.len() >= 3);
   let out_file = state.argv[2].clone();
   debug!(">>>>> bundle_async START");
-  let bundle_future = bundle_async(state, main_module.to_string(), out_file)
+  let bundle_future = state
+    .ts_compiler
+    .bundle_async(state.clone(), main_module.to_string(), out_file)
     .map_err(|e| {
       debug!("diagnostics returned, exiting!");
       eprintln!("\n{}", e.to_string());

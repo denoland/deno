@@ -141,6 +141,7 @@ pub struct DenoDir {
   // This splits to http and https deps
   pub deps_http: PathBuf,
   pub deps_https: PathBuf,
+  // TODO: remove
   /// The active configuration file contents (or empty array) which applies to
   /// source code cached by `DenoDir`.
   pub config: Vec<u8>,
@@ -706,12 +707,7 @@ fn gen_hash(v: Vec<&[u8]>) -> String {
   out
 }
 
-/// Emit a SHA1 hash of source filename.
-/// Used as the filename of the compiled file.
-fn filename_hash(filename: &str) -> String {
-  gen_hash(vec![filename.as_bytes()])
-}
-
+// TODO: move to compiler.rs
 /// Emit a SHA1 hash based on source code, deno version and TS config.
 /// Used to check if a recompilation for source code is needed.
 pub fn source_code_version_hash(

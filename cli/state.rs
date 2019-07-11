@@ -195,6 +195,7 @@ impl ThreadSafeState {
     let external_channels = (worker_in_tx, worker_out_rx);
     let resource = resources::add_worker(external_channels);
 
+    // TODO: move loading of config in TsCompiler
     // take the passed flag and resolve the file name relative to the cwd
     let config_file = match &flags.config_path {
       Some(config_file_name) => {
@@ -273,7 +274,7 @@ impl ThreadSafeState {
 
     let modules = Arc::new(Mutex::new(deno::Modules::new()));
 
-    let ts_compiler = TsCompiler::new(dir.clone());
+    let ts_compiler = TsCompiler::new(dir.clone(), config_path.clone(), config.clone());
 
     ThreadSafeState(Arc::new(State {
       main_module,
