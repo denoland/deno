@@ -190,11 +190,12 @@ impl GetErrorKind for ReadlineError {
   fn kind(&self) -> ErrorKind {
     use ReadlineError::*;
     match self {
-      Io(_err) => unimplemented!(),
+      Io(err) => GetErrorKind::kind(err),
       Eof => ErrorKind::UnexpectedEof,
       Interrupted => unimplemented!(),
       Utf8Error => unimplemented!(),
-      Errno(_err) => unimplemented!(),
+      #[cfg(unix)]
+      Errno(err) => err.kind(),
     }
   }
 }
