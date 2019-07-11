@@ -488,14 +488,12 @@ fn op_cache(
       .dir
       .fetch_module_meta_data(&module_specifier, true, true)?;
 
-  state
-    .dir
-    .cache_compiler_output(
-      &module_specifier,
-      &module_meta_data,
-      extension,
-      contents
-    )?;
+  state.dir.cache_compiler_output(
+    &module_specifier,
+    &module_meta_data,
+    extension,
+    contents,
+  )?;
 
   ok_buf(empty_buf())
 }

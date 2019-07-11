@@ -189,6 +189,7 @@ impl DenoDir {
     )
   }
 
+  // TODO: move to compiler
   pub fn cache_compiler_output(
     self: &Self,
     module_specifier: &ModuleSpecifier,
@@ -196,9 +197,8 @@ impl DenoDir {
     extension: &str,
     contents: &str,
   ) -> std::io::Result<()> {
-    let (js_cache_path, source_map_path, meta_data_path) = self.cache_paths(
-      module_specifier.as_url(),
-    );
+    let (js_cache_path, source_map_path, meta_data_path) =
+      self.cache_paths(module_specifier.as_url());
 
     match extension {
       ".map" => {
@@ -233,6 +233,62 @@ impl DenoDir {
     Ok(())
   }
 
+  // TODO: move to compiler
+  pub fn get_compiled_module_meta_data(
+    self: &Self,
+    module_specifier: &ModuleSpecifier,
+    module_meta_data: &ModuleMetaData,
+  ) -> Result<ModuleMetaData, deno_error::DenoError> {
+    let compiled_cache_filename =
+      get_cache_filename(&self.gen, &module_specifier.as_url());
+    let (
+      output_code_filename,
+      output_source_map_filename,
+      output_meta_filename,
+    ) = (
+      compiled_cache_filename.with_extension("js"),
+      compiled_cache_filename.with_extension("js.map"),
+      compiled_cache_filename.with_extension("meta"),
+    );
+
+    debug!(
+      "compiled filenames: {:?}, {:?}",
+      output_code_filename, output_source_map_filename
+    );
+
+    let version_hash_to_validate = source_code_version_hash(
+      &module_meta_data.source_code,
+      version::DENO,
+      &self.config,
+    );
+
+    let result = load_cache(
+      &output_code_filename,
+      &output_source_map_filename,
+      &output_meta_filename,
+      version_hash_to_validate,
+    );
+    debug!("load cache result: {:?}", result);
+    match result {
+      Err(err) => Err(err.into()),
+      Ok((output_code, source_map)) => {
+        let compiled_module = ModuleMetaData {
+          module_name: module_specifier.to_string(),
+          module_redirect_source_name: None,
+          filename: output_code_filename.to_owned(),
+          media_type: msg::MediaType::JavaScript,
+          source_code: vec![],
+          maybe_output_code: Some(output_code),
+          maybe_output_code_filename: Some(output_code_filename),
+          maybe_source_map: Some(source_map),
+          maybe_source_map_filename: Some(output_source_map_filename),
+        };
+
+        Ok(compiled_module)
+      }
+    }
+  }
+
   pub fn fetch_module_meta_data_async(
     self: &Self,
     specifier: &ModuleSpecifier,
@@ -248,13 +304,6 @@ impl DenoDir {
     }
     let deps_filepath = result.unwrap();
 
-    let gen = self.gen.clone();
-
-    // If we don't clone the config, we then end up creating an implied lifetime
-    // which gets returned in the future, so we clone here so as to not leak the
-    // move below when the future is resolving.
-    let config = self.config.clone();
-
     Either::B(
       get_source_code_async(
         self,
@@ -263,10 +312,6 @@ impl DenoDir {
         use_cache,
         no_fetch,
       ).then(move |result| {
-        eprintln!(
-          "post get_source_code_async {:?}, {:?}",
-          deps_filepath, result
-        );
         let mut out = match result {
           Ok(out) => out,
           Err(err) => {
@@ -286,62 +331,7 @@ impl DenoDir {
           out.source_code = filter_shebang(out.source_code);
         }
 
-        // If TypeScript we have to also load corresponding compile js and
-        // source maps (called output_code and output_source_map)
-        if out.media_type != msg::MediaType::TypeScript || !use_cache {
-          return Ok(out);
-        }
-
-        // TODO: move to compiler
-        // TODO: generate filename for compiled module
-        // it should be:
-        // file/a/b/c.js
-        // http/deno.land/std/http/file_server.js
-        let url = Url::parse(&out.module_name.clone())?;
-        let compiled_cache_filename = get_cache_filename(&gen, &url);
-        let (
-          output_code_filename,
-          output_source_map_filename,
-          output_meta_filename,
-        ) = (
-          compiled_cache_filename.with_extension("js"),
-          compiled_cache_filename.with_extension("js.map"),
-          compiled_cache_filename.with_extension("meta"),
-        );
-
-        eprintln!(
-          "cache filenames: {:?}, {:?}",
-          output_code_filename, output_source_map_filename
-        );
-
-        let version_hash_to_validate =
-          source_code_version_hash(&out.source_code, version::DENO, &config);
-
-        let result = load_cache(
-          &output_code_filename,
-          &output_source_map_filename,
-          &output_meta_filename,
-          version_hash_to_validate,
-        );
-        eprintln!("load cache result: {:?}", result);
-        match result {
-          Err(err) => {
-            if err.kind() == std::io::ErrorKind::NotFound {
-              // If there's no compiled JS/source map/metadata/invalid hash,
-              // that's ok, just return what we have.
-              Ok(out)
-            } else {
-              Err(err.into())
-            }
-          }
-          Ok((output_code, source_map)) => {
-            out.maybe_output_code = Some(output_code);
-            out.maybe_source_map = Some(source_map);
-            out.maybe_output_code_filename = Some(output_code_filename);
-            out.maybe_source_map_filename = Some(output_source_map_filename);
-            Ok(out)
-          }
-        }
+        Ok(out)
       }),
     )
   }
@@ -372,8 +362,8 @@ impl DenoDir {
   ) -> Result<PathBuf, DenoDirError> {
     let filename = match url.scheme() {
       "file" => url.to_file_path().unwrap(),
-      "https" => get_cache_filename(self.deps_https.as_path(), &url),
-      "http" => get_cache_filename(self.deps_http.as_path(), &url),
+      "https" => get_cache_filename(self.deps.as_path(), &url),
+      "http" => get_cache_filename(self.deps.as_path(), &url),
       scheme => {
         return Err(
           DenoDirError::new(
@@ -1149,24 +1139,25 @@ mod tests {
     let cache_file = get_cache_filename(&basedir, &url);
     assert_eq!(
       cache_file,
-      Path::new("/cache/dir/example.com_PORT1234/path/to/file.ts")
+      Path::new("/cache/dir/http/example.com_PORT1234/path/to/file.ts")
     );
   }
 
-  //  #[test]
-  //  fn test_cache_paths() {
-  //    let (temp_dir, deno_dir) = test_setup();
-  //    let filename = "hello.js";
-  //    let hash = filename_hash(filename);
-  //    assert_eq!(
-  //      (
-  //        temp_dir.path().join(format!("gen/{}.js", hash)),
-  //        temp_dir.path().join(format!("gen/{}.js.map", hash)),
-  //        temp_dir.path().join(format!("gen/{}.meta", hash)),
-  //      ),
-  //      deno_dir.cache_paths(filename)
-  //    );
-  //  }
+  //    #[test]
+  //    fn test_cache_paths() {
+  //      let (temp_dir, deno_dir) = test_setup();
+  //      let file_url = Url::parse("file:///hello.js").unwrap();
+  //      let cache_filename = get_cache_filename(&deno_dir.gen, file_url);
+  //      let filename = cache_filename.file_name();
+  //      assert_eq!(
+  //        (
+  //          cache_filename.with_extension("js"),
+  //          cache_filename.with_extension("js.map"),
+  //          cache_filename.with_extension("meta"),
+  //        ),
+  //        deno_dir.cache_paths(filename)
+  //      );
+  //    }
 
   //  #[test]
   //  fn test_code_cache() {

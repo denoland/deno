@@ -167,6 +167,8 @@ pub fn compile_async(
   }
   // TODO: try cached version
 
+  let module_meta_data_ = module_meta_data.clone();
+
   debug!(">>>>> compile_sync START");
   let module_name = module_meta_data.module_name.clone();
 
@@ -228,12 +230,47 @@ pub fn compile_async(
 
       Ok(())
     }).and_then(move |_| {
+      // TODO: must fetch compiled JS file from DENO_DIR, this can't file
+      //  but if we get rid of gen/ and store JS files alongside TS files
+      //  when we request local JS file it is fetched from original location on disk
+      //  example:
+      //  compiling file:///dev/foo.ts
+      //  it's fetched from /dev/foo.ts
+      //  we want to fetch $DENO_DIR/src/file/dev/foo.js
+      //  so it would be natural to request equivalent JS file (file://dev/foo.js),
+      //  but it's local file so it will be fetched from /dev/foo.js (NotFound!)
+      //
+      //  simple solution:
+      //  always get files from $DENO_DIR
+      //
+      //
+      //  compiling file:///dev/foo.ts
+      //  looking for already compiled file file:///dev/foo.js
+      //  looking at $DENO_DIR/src/file/dev/foo.js (NotFound!)
+      //  fallback to /dev/foo.js (NotFound!)
+      //  create worker and compile file:///dev/foo.ts
+      //  looking at $DENO_DIR/src/file/dev/foo.ts (NotFound)
+      //  fetch from /dev/foo.ts, cache in $DENO_DIR along with headers with modified timestamp
+      //  to avoid copying if not needed
+      //  worker writes compiled file to disk at $DENO_DIR/src/file/dev/foo.js
+      //  looking for already compiled file file:///dev/foo.js
+      //  looking at $DENO_DIR/src/file/dev/foo.ts (found, return file)
+      //
+      // This solution wouldn't play nicely with CheckJS when there's JS->JS compilation. Because
+      // first we'd access the file from original location on disk, on subsequent access we'd
+      // have to force skipping in-process cache to re-fetch from disk and only then we'd
+      // get compiled module.
+      //
+      // We
+      // still need to handle that JS and JSON files are compiled by TS compiler now (and they're
+      // not used).
+
       let module_specifier = ModuleSpecifier::resolve_url(&module_name)
         .expect("Should be valid module specifier");
-      state.dir.fetch_module_meta_data_async(
+
+      state.dir.get_compiled_module_meta_data(
         &module_specifier,
-        true,
-        true,
+        &module_meta_data_
       ).map_err(|e| {
         // TODO(95th) Instead of panicking, We could translate this error to Diagnostic.
         panic!("{}", e)
