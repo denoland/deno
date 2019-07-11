@@ -174,7 +174,7 @@ cd deno
 To ensure reproducible builds, deno has most of its dependencies in a git
 submodule. However, you need to install separately:
 
-1. [Rust](https://www.rust-lang.org/en-US/install.html) >= 1.34.1
+1. [Rust](https://www.rust-lang.org/en-US/install.html) >= 1.36.0
 2. [Node](https://nodejs.org/)
 3. Python 2.
    [Not 3](https://github.com/denoland/deno/issues/464#issuecomment-411795578).
@@ -961,7 +961,7 @@ $ rust-lldb -- ./target/debug/deno run --allow-net tests/http_bench.ts
 # `ImportError: cannot import name _remove_dead_weakref`
 # In that case, use system python by setting PATH, e.g.
 # PATH=/System/Library/Frameworks/Python.framework/Versions/2.7/bin:$PATH
-(lldb) command script import "/Users/kevinqian/.rustup/toolchains/1.34.1-x86_64-apple-darwin/lib/rustlib/etc/lldb_rust_formatters.py"
+(lldb) command script import "/Users/kevinqian/.rustup/toolchains/1.36.0-x86_64-apple-darwin/lib/rustlib/etc/lldb_rust_formatters.py"
 (lldb) type summary add --no-value --python-function lldb_rust_formatters.print_val -x ".*" --category Rust
 (lldb) type category enable Rust
 (lldb) target create "../deno/target/debug/deno"
