@@ -172,7 +172,7 @@ impl Loader for ThreadSafeState {
           // Real module name, might be different from initial specifier
           // due to redirections.
           code: module_meta_data.js_source(),
-          module_name: module_meta_data.specifier.to_string(),
+          module_name: module_meta_data.url.to_string(),
         }),
     )
   }

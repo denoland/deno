@@ -526,7 +526,7 @@ fn op_fetch_module_meta_data(
       let builder = &mut FlatBufferBuilder::new();
       let data_off = builder.create_vector(out.source_code.as_slice());
       let msg_args = msg::FetchModuleMetaDataResArgs {
-        module_name: Some(builder.create_string(&out.specifier.to_string())),
+        module_name: Some(builder.create_string(&out.url.to_string())),
         filename: Some(builder.create_string(&out.filename.to_str().unwrap())),
         media_type: out.media_type,
         data: Some(data_off),

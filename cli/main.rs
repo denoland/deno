@@ -134,7 +134,7 @@ pub fn print_file_info(
       .modules
       .lock()
       .unwrap()
-      .deps(&out.specifier.to_string())
+      .deps(&out.url.to_string())
     {
       println!("{}{}", ansi::bold("deps:\n".to_string()), deps.name);
       if let Some(ref depsdeps) = deps.deps {

@@ -38,7 +38,7 @@ use url::Url;
 // TODO(bartlomieju): rename to SourceFile
 #[derive(Debug, Clone)]
 pub struct ModuleMetaData {
-  pub specifier: ModuleSpecifier,
+  pub url: Url,
   pub redirect_source_url: Option<Url>,
   pub filename: PathBuf,
   pub media_type: msg::MediaType,
@@ -269,11 +269,10 @@ impl DenoDir {
   // TODO: move to compiler
   pub fn get_compiled_module_meta_data(
     self: &Self,
-    module_specifier: &ModuleSpecifier,
     module_meta_data: &ModuleMetaData,
   ) -> Result<ModuleMetaData, deno_error::DenoError> {
     let compiled_cache_filename =
-      get_cache_filename(&self.gen, &module_specifier.as_url());
+      get_cache_filename(&self.gen, &module_meta_data.url);
     let (
       output_code_filename,
       output_source_map_filename,
@@ -307,7 +306,7 @@ impl DenoDir {
       Err(err) => Err(err.into()),
       Ok((output_code, source_map)) => {
         let compiled_module = ModuleMetaData {
-          specifier: module_specifier.clone(),
+          url: module_meta_data.url.clone(),
           redirect_source_url: None,
           filename: output_code_filename,
           media_type: msg::MediaType::JavaScript,
@@ -890,7 +889,7 @@ fn fetch_remote_source_async(
             );
 
             let module_meta_data = ModuleMetaData {
-              specifier: ModuleSpecifier::from(module_url.clone()),
+              url: module_url,
               redirect_source_url: maybe_initial_module_url,
               filename: filepath.clone(),
               media_type,
@@ -981,7 +980,7 @@ fn fetch_local_source(
     Ok(c) => c,
   };
   Ok(Some(ModuleMetaData {
-    specifier: ModuleSpecifier::from(module_url.clone()),
+    url: module_url.clone(),
     redirect_source_url: maybe_initial_module_url,
     filename: filepath.to_owned(),
     media_type: map_content_type(
@@ -1518,7 +1517,7 @@ mod tests {
       assert!(redirect_target_headers.redirect_to.is_none());
 
       // Examine the meta result.
-      assert_eq!(mod_meta.specifier.as_url().clone(), target_module_url);
+      assert_eq!(mod_meta.url.clone(), target_module_url);
       assert_eq!(
         &mod_meta.redirect_source_url.clone().unwrap(),
         &redirect_module_url
@@ -1588,7 +1587,7 @@ mod tests {
       assert!(redirect_target_headers.redirect_to.is_none());
 
       // Examine the meta result.
-      assert_eq!(mod_meta.specifier.as_url().clone(), target_module_url);
+      assert_eq!(mod_meta.url.clone(), target_module_url);
       assert_eq!(
         &mod_meta.redirect_source_url.clone().unwrap(),
         &redirect_module_url

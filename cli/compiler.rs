@@ -139,10 +139,7 @@ pub fn compile_async(
 
   if use_cache {
     // try to load cached version
-    match state.dir.get_compiled_module_meta_data(
-      &module_meta_data.specifier,
-      &module_meta_data,
-    ) {
+    match state.dir.get_compiled_module_meta_data(&module_meta_data) {
       Ok(compiled_module) => {
         debug!(
           "found cached compiled module: {:?}",
@@ -157,14 +154,14 @@ pub fn compile_async(
   let module_meta_data_ = module_meta_data.clone();
 
   debug!(">>>>> compile_sync START");
-  let module_specifier = module_meta_data.specifier.clone();
+  let module_url = module_meta_data.url.clone();
 
   debug!(
     "Running rust part of compile_sync, module specifier: {}",
-    &module_meta_data.specifier
+    &module_meta_data.url
   );
 
-  let root_names = vec![module_specifier.to_string()];
+  let root_names = vec![module_url.to_string()];
   let compiler_config = get_compiler_config(&state, "typescript");
   let req_msg = req(root_names, compiler_config, None);
 
@@ -182,8 +179,7 @@ pub fn compile_async(
   err_check(worker.execute("workerMain()"));
   err_check(worker.execute("compilerMain()"));
 
-  let compiling_job =
-    state.progress.add("Compile", &module_specifier.to_string());
+  let compiling_job = state.progress.add("Compile", &module_url.to_string());
 
   let resource = worker.state.resource.clone();
   let compiler_rid = resource.rid;
@@ -250,13 +246,11 @@ pub fn compile_async(
       // We
       // still need to handle that JS and JSON files are compiled by TS compiler now (and they're
       // not used).
-      state.dir.get_compiled_module_meta_data(
-        &module_specifier,
-        &module_meta_data_
-      ).map_err(|e| {
-        // TODO(95th) Instead of panicking, We could translate this error to Diagnostic.
-        panic!("{}", e)
-      })
+      state.dir.get_compiled_module_meta_data(&module_meta_data_)
+        .map_err(|e| {
+          // TODO(95th) Instead of panicking, We could translate this error to Diagnostic.
+          panic!("{}", e)
+        })
     }).and_then(move |module_meta_data_after_compile| {
       // Explicit drop to keep reference alive until future completes.
       drop(compiling_job);
@@ -294,7 +288,7 @@ mod tests {
         ModuleSpecifier::resolve_url_or_path("./tests/002_hello.ts").unwrap();
 
       let mut out = ModuleMetaData {
-        specifier,
+        url: specifier.as_url().clone(),
         redirect_source_url: None,
         filename: PathBuf::from("/tests/002_hello.ts"),
         media_type: msg::MediaType::TypeScript,
