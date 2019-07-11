@@ -147,18 +147,15 @@ impl TsCompiler {
 
     if use_cache {
       // try to load cached version
-      match self
+      if let Ok(compiled_module) = self
         .deno_dir
         .get_compiled_module_meta_data(&module_meta_data)
       {
-        Ok(compiled_module) => {
-          debug!(
-            "found cached compiled module: {:?}",
-            compiled_module.clone().filename
-          );
-          return Either::A(futures::future::ok(compiled_module));
-        }
-        Err(_) => {}
+        debug!(
+          "found cached compiled module: {:?}",
+          compiled_module.clone().filename
+        );
+        return Either::A(futures::future::ok(compiled_module));
       }
     }
 

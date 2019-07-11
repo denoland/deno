@@ -135,7 +135,7 @@ pub fn fetch_module_meta_data_and_maybe_compile_async(
           debug!("compiler error exiting!");
           eprintln!("\n{}", e.to_string());
           std::process::exit(1);
-        }).and_then(move |out| Ok(out))
+        })
     })
 }
 

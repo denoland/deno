@@ -100,52 +100,76 @@ pub fn print_file_info(
   worker: Worker,
   module_specifier: &ModuleSpecifier,
 ) -> impl Future<Item = Worker, Error = ()> {
-  state::fetch_module_meta_data_and_maybe_compile_async(
-    &worker.state,
-    module_specifier,
-  ).and_then(move |out| {
-    // TODO(bartlomieju): it will show filename of compiled module (if it is TS)
-    println!(
-      "{} {}",
-      ansi::bold("local:".to_string()),
-      out.filename.to_str().unwrap()
-    );
+  let state_ = worker.state.clone();
+  let use_cache = !state_.flags.reload;
+  let no_fetch = state_.flags.no_fetch;
 
-    println!(
-      "{} {}",
-      ansi::bold("type:".to_string()),
-      msg::enum_name_media_type(out.media_type)
-    );
-
-    if out.maybe_source_map_filename.is_some() {
+  state_
+    .dir
+    .fetch_module_meta_data_async(&module_specifier, use_cache, no_fetch)
+    .map_err(|err| println!("{}", err))
+    .and_then(move |out| {
       println!(
         "{} {}",
-        ansi::bold("map:".to_string()),
-        out.maybe_source_map_filename.unwrap().to_str().unwrap()
+        ansi::bold("local:".to_string()),
+        out.filename.to_str().unwrap()
       );
-    }
 
-    if let Some(deps) = worker
-      .state
-      .modules
-      .lock()
-      .unwrap()
-      .deps(&out.url.to_string())
-    {
-      println!("{}{}", ansi::bold("deps:\n".to_string()), deps.name);
-      if let Some(ref depsdeps) = deps.deps {
-        for d in depsdeps {
-          println!("{}", d);
-        }
-      }
-    } else {
       println!(
-        "{} cannot retrieve full dependency graph",
-        ansi::bold("deps:".to_string()),
+        "{} {}",
+        ansi::bold("type:".to_string()),
+        msg::enum_name_media_type(out.media_type)
       );
-    }
-    Ok(worker)
-  }).map_err(|err| println!("{}", err))
+
+      state_
+        .clone()
+        .ts_compiler
+        .compile_async(state_.clone(), &out, use_cache)
+        .map_err(|e| {
+          debug!("compiler error exiting!");
+          eprintln!("\n{}", e.to_string());
+          std::process::exit(1);
+        }).and_then(move |compiled| {
+          if out.media_type == msg::MediaType::TypeScript {
+            println!(
+              "{} {}",
+              ansi::bold("compiled:".to_string()),
+              compiled.filename.to_str().unwrap(),
+            );
+
+            println!(
+              "{} {}",
+              ansi::bold("map:".to_string()),
+              compiled
+                .maybe_source_map_filename
+                .unwrap()
+                .to_str()
+                .unwrap()
+            );
+          }
+
+          if let Some(deps) = worker
+            .state
+            .modules
+            .lock()
+            .unwrap()
+            .deps(&compiled.url.to_string())
+          {
+            println!("{}{}", ansi::bold("deps:\n".to_string()), deps.name);
+            if let Some(ref depsdeps) = deps.deps {
+              for d in depsdeps {
+                println!("{}", d);
+              }
+            }
+          } else {
+            println!(
+              "{} cannot retrieve full dependency graph",
+              ansi::bold("deps:".to_string()),
+            );
+          }
+          Ok(worker)
+        })
+    })
 }
 
 fn create_worker_and_state(

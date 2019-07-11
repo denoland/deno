@@ -536,7 +536,7 @@ fn get_cache_filename(basedir: &Path, url: &Url) -> PathBuf {
   let mut out = basedir.to_path_buf();
 
   let scheme = url.scheme();
-  out.push(scheme.clone());
+  out.push(scheme);
   match scheme {
     "http" | "https" => {
       let host = url.host_str().unwrap();
