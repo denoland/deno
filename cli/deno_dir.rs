@@ -262,6 +262,7 @@ impl DenoDir {
       &self.config,
     );
 
+    // TODO: validation of hash should be done by compiler
     let result = load_cache(
       &output_code_filename,
       &output_source_map_filename,

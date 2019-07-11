@@ -162,10 +162,28 @@ pub fn compile_async(
     return Either::A(futures::future::ok(module_meta_data.clone()));
   }
 
+  let module_specifier =
+    ModuleSpecifier::resolve_url(&module_meta_data.module_name)
+      .expect("Should be valid module specifier");
+
+  // try to load cached version
+  match state
+    .dir
+    .get_compiled_module_meta_data(&module_specifier, &module_meta_data)
+  {
+    Ok(compiled_module) => {
+      debug!(
+        "found cached compiled module: {:?}",
+        compiled_module.clone().maybe_output_code_filename.unwrap()
+      );
+      return Either::A(futures::future::ok(compiled_module));
+    }
+    Err(_) => {}
+  }
+
   if module_meta_data.has_output_code_and_source_map() {
     return Either::A(futures::future::ok(module_meta_data.clone()));
   }
-  // TODO: try cached version
 
   let module_meta_data_ = module_meta_data.clone();
 
