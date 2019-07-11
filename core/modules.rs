@@ -6,8 +6,8 @@
 // small and simple for users who do not use modules or if they do can load them
 // synchronously. The isolate.rs module should never depend on this module.
 
+use crate::any_error::ErrBox;
 use crate::isolate::Isolate;
-use crate::js_errors::JSError;
 use crate::libdeno::deno_mod;
 use crate::module_specifier::ModuleSpecifier;
 use futures::Async;
@@ -15,7 +15,6 @@ use futures::Future;
 use futures::Poll;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::error::Error;
 use std::fmt;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -34,12 +33,10 @@ pub struct SourceCodeInfo {
   pub code: String,
 }
 
-pub type SourceCodeInfoFuture<E> =
-  dyn Future<Item = SourceCodeInfo, Error = E> + Send;
+pub type SourceCodeInfoFuture =
+  dyn Future<Item = SourceCodeInfo, Error = ErrBox> + Send;
 
 pub trait Loader: Send + Sync {
-  type Error: std::error::Error + 'static;
-
   /// Returns an absolute URL.
   /// When implementing an spec-complaint VM, this should be exactly the
   /// algorithm described here:
@@ -49,19 +46,19 @@ pub trait Loader: Send + Sync {
     specifier: &str,
     referrer: &str,
     is_root: bool,
-  ) -> Result<ModuleSpecifier, Self::Error>;
+  ) -> Result<ModuleSpecifier, ErrBox>;
 
   /// Given ModuleSpecifier, load its source code.
   fn load(
     &self,
     module_specifier: &ModuleSpecifier,
-  ) -> Box<SourceCodeInfoFuture<Self::Error>>;
+  ) -> Box<SourceCodeInfoFuture>;
 }
 
-struct PendingLoad<E: Error> {
+struct PendingLoad {
   url: String,
   is_root: bool,
-  source_code_info_future: Box<SourceCodeInfoFuture<E>>,
+  source_code_info_future: Box<SourceCodeInfoFuture>,
 }
 
 /// This future is used to implement parallel async module loading without
@@ -71,7 +68,7 @@ pub struct RecursiveLoad<L: Loader> {
   loader: L,
   isolate: Arc<Mutex<Isolate>>,
   modules: Arc<Mutex<Modules>>,
-  pending: Vec<PendingLoad<L::Error>>,
+  pending: Vec<PendingLoad>,
   is_pending: HashSet<String>,
   phantom: PhantomData<L>,
   // TODO(ry) The following can all be combined into a single enum State type.
@@ -106,7 +103,7 @@ impl<L: Loader> RecursiveLoad<L> {
     specifier: &str,
     referrer: &str,
     parent_id: Option<deno_mod>,
-  ) -> Result<String, L::Error> {
+  ) -> Result<String, ErrBox> {
     let is_root = parent_id.is_none();
     let module_specifier = self.loader.resolve(specifier, referrer, is_root)?;
     let module_name = module_specifier.to_string();
@@ -142,22 +139,16 @@ impl<L: Loader> RecursiveLoad<L> {
   }
 }
 
-#[derive(Debug, PartialEq)]
-pub enum JSErrorOr<E> {
-  JSError(JSError),
-  Other(E),
-}
-
 impl<L: Loader> Future for RecursiveLoad<L> {
   type Item = deno_mod;
-  type Error = JSErrorOr<L::Error>;
+  type Error = ErrBox;
 
   fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
     if self.root.is_none() && self.root_specifier.is_some() {
       let s = self.root_specifier.take().unwrap();
       match self.add(&s, ".", None) {
         Err(err) => {
-          return Err(JSErrorOr::Other(err));
+          return Err(err);
         }
         Ok(root) => {
           self.root = Some(root);
@@ -172,7 +163,7 @@ impl<L: Loader> Future for RecursiveLoad<L> {
       let pending = &mut self.pending[i];
       match pending.source_code_info_future.poll() {
         Err(err) => {
-          return Err(JSErrorOr::Other(err));
+          return Err(err);
         }
         Ok(Async::NotReady) => {
           i += 1;
@@ -200,18 +191,15 @@ impl<L: Loader> Future for RecursiveLoad<L> {
           if !is_module_registered {
             let module_name = &source_code_info.module_name;
 
-            let result = {
+            let mod_id = {
               let isolate = self.isolate.lock().unwrap();
               isolate.mod_new(
                 completed.is_root,
                 module_name,
                 &source_code_info.code,
               )
-            };
-            if let Err(err) = result {
-              return Err(JSErrorOr::JSError(err));
-            }
-            let mod_id = result.unwrap();
+            }?;
+
             if completed.is_root {
               assert!(self.root_id.is_none());
               self.root_id = Some(mod_id);
@@ -235,9 +223,7 @@ impl<L: Loader> Future for RecursiveLoad<L> {
             };
             let referrer = module_name;
             for specifier in imports {
-              self
-                .add(&specifier, referrer, Some(mod_id))
-                .map_err(JSErrorOr::Other)?;
+              self.add(&specifier, referrer, Some(mod_id))?;
             }
           } else if need_alias {
             let mut modules = self.modules.lock().unwrap();
@@ -252,31 +238,26 @@ impl<L: Loader> Future for RecursiveLoad<L> {
     }
 
     let root_id = self.root_id.unwrap();
-    let result = {
-      let mut resolve_cb =
-        |specifier: &str, referrer_id: deno_mod| -> deno_mod {
-          let modules = self.modules.lock().unwrap();
-          let referrer = modules.get_name(referrer_id).unwrap();
-          // this callback is only called for non-root modules
-          match self.loader.resolve(specifier, &referrer, false) {
-            Ok(specifier) => match modules.get_id(&specifier.to_string()) {
-              Some(id) => id,
-              None => 0,
-            },
-            // We should have already resolved and loaded this module, so
-            // resolve() will not fail this time.
-            Err(_err) => unreachable!(),
-          }
-        };
 
-      let mut isolate = self.isolate.lock().unwrap();
-      isolate.mod_instantiate(root_id, &mut resolve_cb)
+    let mut resolve_cb = |specifier: &str, referrer_id: deno_mod| -> deno_mod {
+      let modules = self.modules.lock().unwrap();
+      let referrer = modules.get_name(referrer_id).unwrap();
+      // this callback is only called for non-root modules
+      match self.loader.resolve(specifier, &referrer, false) {
+        Ok(specifier) => match modules.get_id(&specifier.to_string()) {
+          Some(id) => id,
+          None => 0,
+        },
+        // We should have already resolved and loaded this module, so
+        // resolve() will not fail this time.
+        Err(_err) => unreachable!(),
+      }
     };
 
-    match result {
-      Err(err) => Err(JSErrorOr::JSError(err)),
-      Ok(()) => Ok(Async::Ready(root_id)),
-    }
+    let mut isolate = self.isolate.lock().unwrap();
+    isolate
+      .mod_instantiate(root_id, &mut resolve_cb)
+      .map(|_| Async::Ready(root_id))
   }
 }
 
@@ -537,6 +518,7 @@ mod tests {
   use super::*;
   use crate::isolate::js_check;
   use crate::isolate::tests::*;
+  use std::error::Error;
   use std::fmt;
 
   struct MockLoader {
@@ -607,9 +589,9 @@ mod tests {
 
   impl Future for DelayedSourceCodeFuture {
     type Item = SourceCodeInfo;
-    type Error = MockError;
+    type Error = ErrBox;
 
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+    fn poll(&mut self) -> Poll<Self::Item, ErrBox> {
       self.counter += 1;
       if self.url == "file:///never_ready.js"
         || (self.url == "file:///slow.js" && self.counter < 2)
@@ -621,20 +603,18 @@ mod tests {
           code: src.0.to_owned(),
           module_name: src.1.to_owned(),
         })),
-        None => Err(MockError::LoadErr),
+        None => Err(MockError::LoadErr.into()),
       }
     }
   }
 
   impl Loader for MockLoader {
-    type Error = MockError;
-
     fn resolve(
       &self,
       specifier: &str,
       referrer: &str,
       _is_root: bool,
-    ) -> Result<ModuleSpecifier, Self::Error> {
+    ) -> Result<ModuleSpecifier, ErrBox> {
       let referrer = if referrer == "." {
         "file:///"
       } else {
@@ -646,20 +626,20 @@ mod tests {
       let output_specifier =
         match ModuleSpecifier::resolve_import(specifier, referrer) {
           Ok(specifier) => specifier,
-          Err(..) => return Err(MockError::ResolveErr),
+          Err(..) => return Err(MockError::ResolveErr.into()),
         };
 
       if mock_source_code(&output_specifier.to_string()).is_some() {
         Ok(output_specifier)
       } else {
-        Err(MockError::ResolveErr)
+        Err(MockError::ResolveErr.into())
       }
     }
 
     fn load(
       &self,
       module_specifier: &ModuleSpecifier,
-    ) -> Box<SourceCodeInfoFuture<Self::Error>> {
+    ) -> Box<SourceCodeInfoFuture> {
       let mut loads = self.loads.lock().unwrap();
       loads.push(module_specifier.to_string());
       let url = module_specifier.to_string();
@@ -962,8 +942,11 @@ mod tests {
       RecursiveLoad::new("/bad_import.js", loader, isolate, modules);
     let result = recursive_load.poll();
     assert!(result.is_err());
-    let either_err = result.err().unwrap();
-    assert_eq!(either_err, JSErrorOr::Other(MockError::ResolveErr));
+    let err = result.err().unwrap();
+    assert_eq!(
+      err.downcast_ref::<MockError>().unwrap(),
+      &MockError::ResolveErr
+    );
   }
 
   #[test]

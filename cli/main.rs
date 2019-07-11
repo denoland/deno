@@ -45,11 +45,11 @@ mod tokio_write;
 pub mod version;
 pub mod worker;
 
-use crate::deno_error::DenoError;
 use crate::progress::Progress;
 use crate::state::ThreadSafeState;
 use crate::worker::Worker;
 use deno::v8_set_flags;
+use deno::ErrBox;
 use deno::ModuleSpecifier;
 use flags::DenoFlags;
 use flags::DenoSubcommand;
@@ -85,17 +85,14 @@ impl log::Log for Logger {
   fn flush(&self) {}
 }
 
-fn print_err_and_exit(err: DenoError) {
+fn print_err_and_exit(err: ErrBox) {
   eprintln!("{}", err.to_string());
   std::process::exit(1);
 }
 
-fn js_check<E>(r: Result<(), E>)
-where
-  E: Into<DenoError>,
-{
+fn js_check(r: Result<(), ErrBox>) {
   if let Err(err) = r {
-    print_err_and_exit(err.into());
+    print_err_and_exit(err);
   }
 }
 
@@ -260,7 +257,7 @@ fn xeval_command(flags: DenoFlags, argv: Vec<String>) {
       .then(|result| {
         js_check(result);
         Ok(())
-      }).map_err(|(err, _worker): (DenoError, Worker)| print_err_and_exit(err))
+      }).map_err(print_err_and_exit)
   });
   tokio_util::run(main_future);
 }
@@ -275,10 +272,10 @@ fn bundle_command(flags: DenoFlags, argv: Vec<String>) {
   let bundle_future = state
     .ts_compiler
     .bundle_async(state.clone(), main_module.to_string(), out_file)
-    .map_err(|e| {
+    .map_err(|err| {
       debug!("diagnostics returned, exiting!");
-      eprintln!("\n{}", e.to_string());
-      std::process::exit(1);
+      eprintln!("");
+      print_err_and_exit(err);
     }).and_then(move |_| {
       debug!(">>>>> bundle_async END");
       Ok(())
@@ -297,7 +294,7 @@ fn run_repl(flags: DenoFlags, argv: Vec<String>) {
       .then(|result| {
         js_check(result);
         Ok(())
-      }).map_err(|(err, _worker): (DenoError, Worker)| print_err_and_exit(err))
+      }).map_err(|(err, _worker): (ErrBox, Worker)| print_err_and_exit(err))
   });
   tokio_util::run(main_future);
 }

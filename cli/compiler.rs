@@ -1,8 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::deno_dir::DenoDir;
 use crate::deno_dir::ModuleMetaData;
-use crate::deno_error::err_check;
-use crate::deno_error::DenoError;
 use crate::diagnostics::Diagnostic;
 use crate::msg;
 use crate::resources;
@@ -10,6 +8,7 @@ use crate::startup_data;
 use crate::state::*;
 use crate::worker::Worker;
 use deno::Buf;
+use deno::ErrBox;
 use futures::future::Either;
 use futures::Future;
 use futures::Stream;
@@ -51,7 +50,11 @@ pub struct TsCompiler {
 impl TsCompiler {
   // TODO: reading of config file should be done in TsCompiler::new instead of state, refactor
   // DenoDir to not require compiler config in initializer
-  pub fn new(deno_dir: DenoDir, config_path: Option<String>, config: Option<Vec<u8>>) -> Self {
+  pub fn new(
+    deno_dir: DenoDir,
+    config_path: Option<String>,
+    config: Option<Vec<u8>>,
+  ) -> Self {
     let compiler_config = match (&config_path, &config) {
       (Some(config_path), Some(config)) => {
         Some((config_path.to_string(), config.to_vec()))
@@ -76,9 +79,9 @@ impl TsCompiler {
       // as was done previously.
       state.clone(),
     );
-    err_check(worker.execute("denoMain()"));
-    err_check(worker.execute("workerMain()"));
-    err_check(worker.execute("compilerMain()"));
+    worker.execute("denoMain()").unwrap();
+    worker.execute("workerMain()").unwrap();
+    worker.execute("compilerMain()").unwrap();
     worker
   }
 
@@ -87,7 +90,7 @@ impl TsCompiler {
     state: ThreadSafeState,
     module_name: String,
     out_file: String,
-  ) -> impl Future<Item = (), Error = DenoError> {
+  ) -> impl Future<Item = (), Error = ErrBox> {
     debug!(
       "Invoking the compiler to bundle. module_name: {}",
       module_name
@@ -123,7 +126,7 @@ impl TsCompiler {
           let json_str = std::str::from_utf8(&msg).unwrap();
           debug!("Message: {}", json_str);
           if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
-            return Err(DenoError::from(diagnostics));
+            return Err(ErrBox::from(diagnostics));
           }
         }
 
@@ -137,7 +140,7 @@ impl TsCompiler {
     state: ThreadSafeState,
     module_meta_data: &ModuleMetaData,
     use_cache: bool,
-  ) -> impl Future<Item = ModuleMetaData, Error = DenoError> {
+  ) -> impl Future<Item = ModuleMetaData, Error = ErrBox> {
     if module_meta_data.media_type != msg::MediaType::TypeScript {
       return Either::A(futures::future::ok(module_meta_data.clone()));
     }
@@ -203,7 +206,7 @@ impl TsCompiler {
           let json_str = std::str::from_utf8(&msg).unwrap();
           debug!("Message: {}", json_str);
           if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
-            return Err(DenoError::from(diagnostics));
+            return Err(ErrBox::from(diagnostics));
           }
         }
 
@@ -277,7 +280,7 @@ mod tests {
       state: ThreadSafeState,
       module_meta_data: &ModuleMetaData,
       use_cache: bool,
-    ) -> Result<ModuleMetaData, DenoError> {
+    ) -> Result<ModuleMetaData, ErrBox> {
       tokio_util::block_on(self.compile_async(
         state,
         module_meta_data,

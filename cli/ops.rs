@@ -3,12 +3,12 @@ use atty;
 use crate::ansi;
 use crate::deno_dir::resolve_from_cwd;
 use crate::deno_error;
-use crate::deno_error::err_check;
 use crate::deno_error::DenoError;
-use crate::deno_error::DenoResult;
 use crate::deno_error::ErrorKind;
+use crate::deno_error::GetErrorKind;
 use crate::dispatch_minimal::dispatch_minimal;
 use crate::dispatch_minimal::parse_min_record;
+use crate::fmt_errors::JSError;
 use crate::fs as deno_fs;
 use crate::http_util;
 use crate::msg;
@@ -28,7 +28,7 @@ use crate::version;
 use crate::worker::Worker;
 use deno::Buf;
 use deno::CoreOp;
-use deno::JSError;
+use deno::ErrBox;
 use deno::Loader;
 use deno::ModuleSpecifier;
 use deno::Op;
@@ -65,7 +65,7 @@ use std::os::unix::fs::PermissionsExt;
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
 
-type CliOpResult = OpResult<DenoError>;
+type CliOpResult = OpResult<ErrBox>;
 
 type CliDispatchFn =
   fn(state: &ThreadSafeState, base: &msg::Base<'_>, data: Option<PinnedBuf>)
@@ -132,7 +132,7 @@ pub fn dispatch_all_legacy(
     }
     Ok(Op::Async(fut)) => {
       let result_fut = Box::new(
-        fut.or_else(move |err: DenoError| -> Result<Buf, ()> {
+        fut.or_else(move |err: ErrBox| -> Result<Buf, ()> {
           debug!("op err {}", err);
           // No matter whether we got an Err or Ok, we want a serialized message to
           // send back. So transform the DenoError into a Buf.
@@ -410,11 +410,9 @@ fn op_format_error(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_format_error().unwrap();
-  let orig_error = String::from(inner.error().unwrap());
-
-  let js_error = JSError::from_v8_exception(&orig_error).unwrap();
-  let error_mapped = DenoError::from(js_error).apply_source_map(&state.dir);
-  let error_string = error_mapped.to_string();
+  let json_str = inner.error().unwrap();
+  let error = JSError::from_json(json_str, &state.dir);
+  let error_string = error.to_string();
 
   let mut builder = FlatBufferBuilder::new();
   let new_error = builder.create_string(&error_string);
@@ -727,39 +725,38 @@ fn op_fetch(
 
   let req = msg_util::deserialize_request(header, body)?;
 
-  let url_ = url::Url::parse(url).map_err(DenoError::from)?;
+  let url_ = url::Url::parse(url).map_err(ErrBox::from)?;
   state.check_net_url(url_)?;
 
   let client = http_util::get_client();
 
   debug!("Before fetch {}", url);
-  let future =
-    client
-      .request(req)
-      .map_err(DenoError::from)
-      .and_then(move |res| {
-        let builder = &mut FlatBufferBuilder::new();
-        let header_off = msg_util::serialize_http_response(builder, &res);
-        let body = res.into_body();
-        let body_resource = resources::add_hyper_body(body);
-        let inner = msg::FetchRes::create(
-          builder,
-          &msg::FetchResArgs {
-            header: Some(header_off),
-            body_rid: body_resource.rid,
-          },
-        );
+  let future = client
+    .request(req)
+    .map_err(ErrBox::from)
+    .and_then(move |res| {
+      let builder = &mut FlatBufferBuilder::new();
+      let header_off = msg_util::serialize_http_response(builder, &res);
+      let body = res.into_body();
+      let body_resource = resources::add_hyper_body(body);
+      let inner = msg::FetchRes::create(
+        builder,
+        &msg::FetchResArgs {
+          header: Some(header_off),
+          body_rid: body_resource.rid,
+        },
+      );
 
-        Ok(serialize_response(
-          cmd_id,
-          builder,
-          msg::BaseArgs {
-            inner: Some(inner.as_union_value()),
-            inner_type: msg::Any::FetchRes,
-            ..Default::default()
-          },
-        ))
-      });
+      Ok(serialize_response(
+        cmd_id,
+        builder,
+        msg::BaseArgs {
+          inner: Some(inner.as_union_value()),
+          inner_type: msg::Any::FetchRes,
+          ..Default::default()
+        },
+      ))
+    });
   if base.sync() {
     let result_buf = future.wait()?;
     Ok(Op::Sync(result_buf))
@@ -770,9 +767,9 @@ fn op_fetch(
 
 // This is just type conversion. Implement From trait?
 // See https://github.com/tokio-rs/tokio/blob/ffd73a64e7ec497622b7f939e38017afe7124dc4/tokio-fs/src/lib.rs#L76-L85
-fn convert_blocking<F>(f: F) -> Poll<Buf, DenoError>
+fn convert_blocking<F>(f: F) -> Poll<Buf, ErrBox>
 where
-  F: FnOnce() -> DenoResult<Buf>,
+  F: FnOnce() -> Result<Buf, ErrBox>,
 {
   use futures::Async::*;
   match tokio_threadpool::blocking(f) {
@@ -785,7 +782,7 @@ where
 
 fn blocking<F>(is_sync: bool, f: F) -> CliOpResult
 where
-  F: 'static + Send + FnOnce() -> DenoResult<Buf>,
+  F: 'static + Send + FnOnce() -> Result<Buf, ErrBox>,
 {
   if is_sync {
     let result_buf = f()?;
@@ -973,10 +970,8 @@ fn op_open(
     }
   }
 
-  let op = open_options
-    .open(filename)
-    .map_err(DenoError::from)
-    .and_then(move |fs_file| {
+  let op = open_options.open(filename).map_err(ErrBox::from).and_then(
+    move |fs_file| {
       let resource = resources::add_fs_file(fs_file);
       let builder = &mut FlatBufferBuilder::new();
       let inner =
@@ -990,7 +985,8 @@ fn op_open(
           ..Default::default()
         },
       ))
-    });
+    },
+  );
   if base.sync() {
     let buf = op.wait()?;
     Ok(Op::Sync(buf))
@@ -1068,7 +1064,7 @@ fn op_read(
     None => Err(deno_error::bad_resource()),
     Some(resource) => {
       let op = tokio::io::read(resource, data.unwrap())
-        .map_err(DenoError::from)
+        .map_err(ErrBox::from)
         .and_then(move |(_resource, _buf, nread)| {
           let builder = &mut FlatBufferBuilder::new();
           let inner = msg::ReadRes::create(
@@ -1111,7 +1107,7 @@ fn op_write(
     None => Err(deno_error::bad_resource()),
     Some(resource) => {
       let op = tokio_write::write(resource, data.unwrap())
-        .map_err(DenoError::from)
+        .map_err(ErrBox::from)
         .and_then(move |(_resource, _buf, nwritten)| {
           let builder = &mut FlatBufferBuilder::new();
           let inner = msg::WriteRes::create(
@@ -1211,10 +1207,10 @@ fn op_copy_file(
     // See https://github.com/rust-lang/rust/issues/54800
     // Once the issue is reolved, we should remove this workaround.
     if cfg!(unix) && !from.is_file() {
-      return Err(deno_error::new(
-        ErrorKind::NotFound,
-        "File not found".to_string(),
-      ));
+      return Err(
+        DenoError::new(ErrorKind::NotFound, "File not found".to_string())
+          .into(),
+      );
     }
 
     fs::copy(&from, &to)?;
@@ -1423,10 +1419,9 @@ fn op_symlink(
   state.check_write(&newname_)?;
   // TODO Use type for Windows.
   if cfg!(windows) {
-    return Err(deno_error::new(
-      ErrorKind::Other,
-      "Not implemented".to_string(),
-    ));
+    return Err(
+      DenoError::new(ErrorKind::Other, "Not implemented".to_string()).into(),
+    );
   }
   blocking(base.sync(), move || {
     debug!("op_symlink {} {}", oldname.display(), newname.display());
@@ -1613,7 +1608,7 @@ fn op_listen(
   ok_buf(response_buf)
 }
 
-fn new_conn(cmd_id: u32, tcp_stream: TcpStream) -> DenoResult<Buf> {
+fn new_conn(cmd_id: u32, tcp_stream: TcpStream) -> Result<Buf, ErrBox> {
   let tcp_stream_resource = resources::add_tcp_stream(tcp_stream);
   // TODO forward socket_addr to client.
 
@@ -1650,7 +1645,7 @@ fn op_accept(
     None => Err(deno_error::bad_resource()),
     Some(server_resource) => {
       let op = tokio_util::accept(server_resource)
-        .map_err(DenoError::from)
+        .map_err(ErrBox::from)
         .and_then(move |(tcp_stream, _socket_addr)| {
           new_conn(cmd_id, tcp_stream)
         });
@@ -1678,14 +1673,11 @@ fn op_dial(
 
   state.check_net(&address)?;
 
-  let op =
-    resolve_addr(address)
-      .map_err(DenoError::from)
-      .and_then(move |addr| {
-        TcpStream::connect(&addr)
-          .map_err(DenoError::from)
-          .and_then(move |tcp_stream| new_conn(cmd_id, tcp_stream))
-      });
+  let op = resolve_addr(address).and_then(move |addr| {
+    TcpStream::connect(&addr)
+      .map_err(ErrBox::from)
+      .and_then(move |tcp_stream| new_conn(cmd_id, tcp_stream))
+  });
   if base.sync() {
     let buf = op.wait()?;
     Ok(Op::Sync(buf))
@@ -1850,7 +1842,7 @@ fn op_run(
   }
 
   // Spawn the command.
-  let child = c.spawn_async().map_err(DenoError::from)?;
+  let child = c.spawn_async().map_err(ErrBox::from)?;
 
   let pid = child.id();
   let resources = resources::add_child(child);
@@ -1969,8 +1961,8 @@ fn op_worker_get_message(
   let op = GetMessageFuture {
     state: state.clone(),
   };
-  let op = op.map_err(move |_| -> DenoError { unimplemented!() });
-  let op = op.and_then(move |maybe_buf| -> DenoResult<Buf> {
+  let op = op.map_err(move |_| -> ErrBox { unimplemented!() });
+  let op = op.and_then(move |maybe_buf| -> Result<Buf, ErrBox> {
     debug!("op_worker_get_message");
     let builder = &mut FlatBufferBuilder::new();
 
@@ -2007,7 +1999,7 @@ fn op_worker_post_message(
   };
   tx.send(d)
     .wait()
-    .map_err(|e| deno_error::new(ErrorKind::Other, e.to_string()))?;
+    .map_err(|e| DenoError::new(ErrorKind::Other, e.to_string()))?;
   let builder = &mut FlatBufferBuilder::new();
 
   ok_buf(serialize_response(
@@ -2043,8 +2035,8 @@ fn op_create_worker(
 
   let mut worker =
     Worker::new(name, startup_data::deno_isolate_init(), child_state);
-  err_check(worker.execute("denoMain()"));
-  err_check(worker.execute("workerMain()"));
+  worker.execute("denoMain()").unwrap();
+  worker.execute("workerMain()").unwrap();
 
   let module_specifier = ModuleSpecifier::resolve_url_or_path(specifier)?;
 
@@ -2124,8 +2116,8 @@ fn op_host_get_message(
   let rid = inner.rid();
 
   let op = resources::get_message_from_worker(rid);
-  let op = op.map_err(move |_| -> DenoError { unimplemented!() });
-  let op = op.and_then(move |maybe_buf| -> DenoResult<Buf> {
+  let op = op.map_err(move |_| -> ErrBox { unimplemented!() });
+  let op = op.and_then(move |maybe_buf| -> Result<Buf, ErrBox> {
     let builder = &mut FlatBufferBuilder::new();
 
     let data = maybe_buf.as_ref().map(|buf| builder.create_vector(buf));
@@ -2160,7 +2152,7 @@ fn op_host_post_message(
 
   resources::post_message_to_worker(rid, d)
     .wait()
-    .map_err(|e| deno_error::new(ErrorKind::Other, e.to_string()))?;
+    .map_err(|e| DenoError::new(ErrorKind::Other, e.to_string()))?;
   let builder = &mut FlatBufferBuilder::new();
 
   ok_buf(serialize_response(

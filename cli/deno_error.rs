@@ -1,346 +1,239 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::deno_dir;
-use crate::diagnostics;
-use crate::fmt_errors::JSErrorColor;
-use crate::import_map;
+use crate::diagnostics::Diagnostic;
+use crate::fmt_errors::JSError;
+use crate::import_map::ImportMapError;
 pub use crate::msg::ErrorKind;
-use crate::resolve_addr::ResolveAddrError;
-use crate::source_maps::apply_source_map;
-use crate::source_maps::SourceMapGetter;
-use deno::JSError;
+use deno::AnyError;
+use deno::ErrBox;
 use deno::ModuleResolutionError;
+use http::uri;
 use hyper;
-#[cfg(unix)]
-use nix::{errno::Errno, Error as UnixError};
 use std;
+use std::error::Error;
 use std::fmt;
 use std::io;
-use std::str;
 use url;
-
-pub type DenoResult<T> = std::result::Result<T, DenoError>;
 
 #[derive(Debug)]
 pub struct DenoError {
-  repr: Repr,
-}
-
-#[derive(Debug)]
-enum Repr {
-  Simple(ErrorKind, String),
-  IoErr(io::Error),
-  UrlErr(url::ParseError),
-  HyperErr(hyper::Error),
-  ImportMapErr(import_map::ImportMapError),
-  ModuleResolutionErr(ModuleResolutionError),
-  Diagnostic(diagnostics::Diagnostic),
-  JSError(JSError),
-  DenoDirErr(deno_dir::DenoDirError),
-}
-
-/// Create a new simple DenoError.
-pub fn new(kind: ErrorKind, msg: String) -> DenoError {
-  DenoError {
-    repr: Repr::Simple(kind, msg),
-  }
+  kind: ErrorKind,
+  msg: String,
 }
 
 impl DenoError {
-  fn url_error_kind(err: url::ParseError) -> ErrorKind {
-    use url::ParseError::*;
-    match err {
-      EmptyHost => ErrorKind::EmptyHost,
-      IdnaError => ErrorKind::IdnaError,
-      InvalidPort => ErrorKind::InvalidPort,
-      InvalidIpv4Address => ErrorKind::InvalidIpv4Address,
-      InvalidIpv6Address => ErrorKind::InvalidIpv6Address,
-      InvalidDomainCharacter => ErrorKind::InvalidDomainCharacter,
-      RelativeUrlWithoutBase => ErrorKind::RelativeUrlWithoutBase,
-      RelativeUrlWithCannotBeABaseBase => {
-        ErrorKind::RelativeUrlWithCannotBeABaseBase
-      }
-      SetHostOnCannotBeABaseUrl => ErrorKind::SetHostOnCannotBeABaseUrl,
-      Overflow => ErrorKind::Overflow,
-    }
-  }
-
-  pub fn kind(&self) -> ErrorKind {
-    match self.repr {
-      Repr::Simple(kind, ref _msg) => kind,
-      // Repr::Simple(kind) => kind,
-      Repr::IoErr(ref err) => {
-        use std::io::ErrorKind::*;
-        match err.kind() {
-          NotFound => ErrorKind::NotFound,
-          PermissionDenied => ErrorKind::PermissionDenied,
-          ConnectionRefused => ErrorKind::ConnectionRefused,
-          ConnectionReset => ErrorKind::ConnectionReset,
-          ConnectionAborted => ErrorKind::ConnectionAborted,
-          NotConnected => ErrorKind::NotConnected,
-          AddrInUse => ErrorKind::AddrInUse,
-          AddrNotAvailable => ErrorKind::AddrNotAvailable,
-          BrokenPipe => ErrorKind::BrokenPipe,
-          AlreadyExists => ErrorKind::AlreadyExists,
-          WouldBlock => ErrorKind::WouldBlock,
-          InvalidInput => ErrorKind::InvalidInput,
-          InvalidData => ErrorKind::InvalidData,
-          TimedOut => ErrorKind::TimedOut,
-          Interrupted => ErrorKind::Interrupted,
-          WriteZero => ErrorKind::WriteZero,
-          Other => ErrorKind::Other,
-          UnexpectedEof => ErrorKind::UnexpectedEof,
-          _ => unreachable!(),
-        }
-      }
-      Repr::UrlErr(err) => Self::url_error_kind(err),
-      Repr::HyperErr(ref err) => {
-        // For some reason hyper::errors::Kind is private.
-        if err.is_parse() {
-          ErrorKind::HttpParse
-        } else if err.is_user() {
-          ErrorKind::HttpUser
-        } else if err.is_canceled() {
-          ErrorKind::HttpCanceled
-        } else if err.is_closed() {
-          ErrorKind::HttpClosed
-        } else {
-          ErrorKind::HttpOther
-        }
-      }
-      Repr::ImportMapErr(ref _err) => ErrorKind::ImportMapError,
-      Repr::ModuleResolutionErr(err) => {
-        use ModuleResolutionError::*;
-        match err {
-          InvalidUrl(err) | InvalidBaseUrl(err) => Self::url_error_kind(err),
-          InvalidPath => ErrorKind::InvalidPath,
-          ImportPrefixMissing => ErrorKind::ImportPrefixMissing,
-        }
-      }
-      Repr::Diagnostic(ref _err) => ErrorKind::Diagnostic,
-      Repr::JSError(ref _err) => ErrorKind::JSError,
-      Repr::DenoDirErr(ref _err) => ErrorKind::DenoDirError,
-    }
-  }
-
-  pub fn apply_source_map<G: SourceMapGetter>(self, getter: &G) -> Self {
-    if let Repr::JSError(js_error) = self.repr {
-      return DenoError {
-        repr: Repr::JSError(apply_source_map(&js_error, getter)),
-      };
-    } else {
-      panic!("attempt to apply source map an unremappable error")
-    }
+  pub fn new(kind: ErrorKind, msg: String) -> Self {
+    Self { kind, msg }
   }
 }
+
+impl Error for DenoError {}
 
 impl fmt::Display for DenoError {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    match self.repr {
-      Repr::Simple(_kind, ref err_str) => f.pad(err_str),
-      Repr::IoErr(ref err) => err.fmt(f),
-      Repr::UrlErr(ref err) => err.fmt(f),
-      Repr::HyperErr(ref err) => err.fmt(f),
-      Repr::ImportMapErr(ref err) => f.pad(&err.msg),
-      Repr::ModuleResolutionErr(ref err) => err.fmt(f),
-      Repr::Diagnostic(ref err) => err.fmt(f),
-      Repr::JSError(ref err) => JSErrorColor(err).fmt(f),
-      Repr::DenoDirErr(ref err) => err.fmt(f),
+    f.pad(self.msg.as_str())
+  }
+}
+
+#[derive(Debug)]
+struct StaticError(ErrorKind, &'static str);
+
+impl Error for StaticError {}
+
+impl fmt::Display for StaticError {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.pad(self.1)
+  }
+}
+
+pub fn bad_resource() -> ErrBox {
+  StaticError(ErrorKind::BadResource, "bad resource id").into()
+}
+
+pub fn permission_denied() -> ErrBox {
+  StaticError(ErrorKind::PermissionDenied, "permission denied").into()
+}
+
+pub fn op_not_implemented() -> ErrBox {
+  StaticError(ErrorKind::OpNotAvailable, "op not implemented").into()
+}
+
+pub fn no_buffer_specified() -> ErrBox {
+  StaticError(ErrorKind::InvalidInput, "no buffer specified").into()
+}
+
+pub fn no_async_support() -> ErrBox {
+  StaticError(ErrorKind::NoAsyncSupport, "op doesn't support async calls")
+    .into()
+}
+
+pub fn no_sync_support() -> ErrBox {
+  StaticError(ErrorKind::NoSyncSupport, "op doesn't support sync calls").into()
+}
+
+pub fn invalid_address_syntax() -> ErrBox {
+  StaticError(ErrorKind::InvalidInput, "invalid address syntax").into()
+}
+
+pub trait GetErrorKind {
+  fn kind(&self) -> ErrorKind;
+}
+
+impl GetErrorKind for DenoError {
+  fn kind(&self) -> ErrorKind {
+    self.kind
+  }
+}
+
+impl GetErrorKind for StaticError {
+  fn kind(&self) -> ErrorKind {
+    self.0
+  }
+}
+
+impl GetErrorKind for JSError {
+  fn kind(&self) -> ErrorKind {
+    ErrorKind::JSError
+  }
+}
+
+impl GetErrorKind for Diagnostic {
+  fn kind(&self) -> ErrorKind {
+    ErrorKind::Diagnostic
+  }
+}
+
+impl GetErrorKind for ImportMapError {
+  fn kind(&self) -> ErrorKind {
+    ErrorKind::ImportMapError
+  }
+}
+
+impl GetErrorKind for ModuleResolutionError {
+  fn kind(&self) -> ErrorKind {
+    use ModuleResolutionError::*;
+    match self {
+      InvalidUrl(ref err) | InvalidBaseUrl(ref err) => err.kind(),
+      InvalidPath => ErrorKind::InvalidPath,
+      ImportPrefixMissing => ErrorKind::ImportPrefixMissing,
     }
   }
 }
 
-impl std::error::Error for DenoError {
-  fn description(&self) -> &str {
-    match self.repr {
-      Repr::Simple(_kind, ref msg) => msg.as_str(),
-      Repr::IoErr(ref err) => err.description(),
-      Repr::UrlErr(ref err) => err.description(),
-      Repr::HyperErr(ref err) => err.description(),
-      Repr::ImportMapErr(ref err) => &err.msg,
-      Repr::ModuleResolutionErr(ref err) => err.description(),
-      Repr::Diagnostic(ref err) => &err.items[0].message,
-      Repr::JSError(ref err) => &err.description(),
-      Repr::DenoDirErr(ref err) => err.description(),
-    }
-  }
-
-  fn cause(&self) -> Option<&dyn std::error::Error> {
-    match self.repr {
-      Repr::Simple(_kind, ref _msg) => None,
-      Repr::IoErr(ref err) => Some(err),
-      Repr::UrlErr(ref err) => Some(err),
-      Repr::HyperErr(ref err) => Some(err),
-      Repr::ImportMapErr(ref _err) => None,
-      Repr::ModuleResolutionErr(ref err) => err.source(),
-      Repr::Diagnostic(ref _err) => None,
-      Repr::JSError(ref err) => Some(err),
-      Repr::DenoDirErr(ref err) => Some(err),
+impl GetErrorKind for io::Error {
+  fn kind(&self) -> ErrorKind {
+    use io::ErrorKind::*;
+    match self.kind() {
+      NotFound => ErrorKind::NotFound,
+      PermissionDenied => ErrorKind::PermissionDenied,
+      ConnectionRefused => ErrorKind::ConnectionRefused,
+      ConnectionReset => ErrorKind::ConnectionReset,
+      ConnectionAborted => ErrorKind::ConnectionAborted,
+      NotConnected => ErrorKind::NotConnected,
+      AddrInUse => ErrorKind::AddrInUse,
+      AddrNotAvailable => ErrorKind::AddrNotAvailable,
+      BrokenPipe => ErrorKind::BrokenPipe,
+      AlreadyExists => ErrorKind::AlreadyExists,
+      WouldBlock => ErrorKind::WouldBlock,
+      InvalidInput => ErrorKind::InvalidInput,
+      InvalidData => ErrorKind::InvalidData,
+      TimedOut => ErrorKind::TimedOut,
+      Interrupted => ErrorKind::Interrupted,
+      WriteZero => ErrorKind::WriteZero,
+      UnexpectedEof => ErrorKind::UnexpectedEof,
+      _ => ErrorKind::Other,
     }
   }
 }
 
-impl From<io::Error> for DenoError {
-  #[inline]
-  fn from(err: io::Error) -> Self {
-    Self {
-      repr: Repr::IoErr(err),
+impl GetErrorKind for uri::InvalidUri {
+  fn kind(&self) -> ErrorKind {
+    // The http::uri::ErrorKind exists and is similar to url::ParseError.
+    // However it is also private, so we can't get any details out.
+    ErrorKind::InvalidUri
+  }
+}
+
+impl GetErrorKind for url::ParseError {
+  fn kind(&self) -> ErrorKind {
+    use url::ParseError::*;
+    match self {
+      EmptyHost => ErrorKind::EmptyHost,
+      IdnaError => ErrorKind::IdnaError,
+      InvalidDomainCharacter => ErrorKind::InvalidDomainCharacter,
+      InvalidIpv4Address => ErrorKind::InvalidIpv4Address,
+      InvalidIpv6Address => ErrorKind::InvalidIpv6Address,
+      InvalidPort => ErrorKind::InvalidPort,
+      Overflow => ErrorKind::Overflow,
+      RelativeUrlWithCannotBeABaseBase => {
+        ErrorKind::RelativeUrlWithCannotBeABaseBase
+      }
+      RelativeUrlWithoutBase => ErrorKind::RelativeUrlWithoutBase,
+      SetHostOnCannotBeABaseUrl => ErrorKind::SetHostOnCannotBeABaseUrl,
     }
   }
 }
 
-impl From<url::ParseError> for DenoError {
-  #[inline]
-  fn from(err: url::ParseError) -> Self {
-    Self {
-      repr: Repr::UrlErr(err),
-    }
-  }
-}
-
-impl From<hyper::Error> for DenoError {
-  #[inline]
-  fn from(err: hyper::Error) -> Self {
-    Self {
-      repr: Repr::HyperErr(err),
-    }
-  }
-}
-
-impl From<ResolveAddrError> for DenoError {
-  fn from(e: ResolveAddrError) -> Self {
-    match e {
-      ResolveAddrError::Syntax => Self {
-        repr: Repr::Simple(
-          ErrorKind::InvalidInput,
-          "invalid address syntax".to_string(),
-        ),
-      },
-      ResolveAddrError::Resolution(io_err) => Self {
-        repr: Repr::IoErr(io_err),
-      },
+impl GetErrorKind for hyper::Error {
+  fn kind(&self) -> ErrorKind {
+    match self {
+      e if e.is_canceled() => ErrorKind::HttpCanceled,
+      e if e.is_closed() => ErrorKind::HttpClosed,
+      e if e.is_parse() => ErrorKind::HttpParse,
+      e if e.is_user() => ErrorKind::HttpUser,
+      _ => ErrorKind::HttpOther,
     }
   }
 }
 
 #[cfg(unix)]
-impl From<UnixError> for DenoError {
-  fn from(e: UnixError) -> Self {
-    match e {
-      UnixError::Sys(Errno::EPERM) => Self {
-        repr: Repr::Simple(
-          ErrorKind::PermissionDenied,
-          Errno::EPERM.desc().to_owned(),
-        ),
-      },
-      UnixError::Sys(Errno::EINVAL) => Self {
-        repr: Repr::Simple(
-          ErrorKind::InvalidInput,
-          Errno::EINVAL.desc().to_owned(),
-        ),
-      },
-      UnixError::Sys(Errno::ENOENT) => Self {
-        repr: Repr::Simple(
-          ErrorKind::NotFound,
-          Errno::ENOENT.desc().to_owned(),
-        ),
-      },
-      UnixError::Sys(err) => Self {
-        repr: Repr::Simple(ErrorKind::UnixError, err.desc().to_owned()),
-      },
-      _ => Self {
-        repr: Repr::Simple(ErrorKind::Other, format!("{}", e)),
-      },
+mod unix {
+  use super::{ErrorKind, GetErrorKind};
+  use nix::errno::Errno::*;
+  pub use nix::Error;
+  use nix::Error::Sys;
+
+  impl GetErrorKind for Error {
+    fn kind(&self) -> ErrorKind {
+      match self {
+        Sys(EPERM) => ErrorKind::PermissionDenied,
+        Sys(EINVAL) => ErrorKind::InvalidInput,
+        Sys(ENOENT) => ErrorKind::NotFound,
+        Sys(_) => ErrorKind::UnixError,
+        _ => ErrorKind::Other,
+      }
     }
   }
 }
 
-impl From<import_map::ImportMapError> for DenoError {
-  fn from(err: import_map::ImportMapError) -> Self {
-    Self {
-      repr: Repr::ImportMapErr(err),
+impl GetErrorKind for dyn AnyError {
+  fn kind(&self) -> ErrorKind {
+    use self::GetErrorKind as Get;
+
+    #[cfg(unix)]
+    fn unix_error_kind(err: &dyn AnyError) -> Option<ErrorKind> {
+      err.downcast_ref::<unix::Error>().map(Get::kind)
     }
-  }
-}
 
-impl From<deno_dir::DenoDirError> for DenoError {
-  fn from(err: deno_dir::DenoDirError) -> Self {
-    Self {
-      repr: Repr::DenoDirErr(err),
+    #[cfg(not(unix))]
+    fn unix_error_kind(_: &dyn AnyError) -> Option<ErrorKind> {
+      None
     }
-  }
-}
 
-impl From<ModuleResolutionError> for DenoError {
-  fn from(err: ModuleResolutionError) -> Self {
-    Self {
-      repr: Repr::ModuleResolutionErr(err),
-    }
-  }
-}
-
-impl From<diagnostics::Diagnostic> for DenoError {
-  fn from(diagnostic: diagnostics::Diagnostic) -> Self {
-    Self {
-      repr: Repr::Diagnostic(diagnostic),
-    }
-  }
-}
-
-impl From<JSError> for DenoError {
-  fn from(err: JSError) -> Self {
-    Self {
-      repr: Repr::JSError(err),
-    }
-  }
-}
-
-pub fn bad_resource() -> DenoError {
-  new(ErrorKind::BadResource, String::from("bad resource id"))
-}
-
-pub fn permission_denied() -> DenoError {
-  new(
-    ErrorKind::PermissionDenied,
-    String::from("permission denied"),
-  )
-}
-
-pub fn op_not_implemented() -> DenoError {
-  new(
-    ErrorKind::OpNotAvailable,
-    String::from("op not implemented"),
-  )
-}
-
-pub fn worker_init_failed() -> DenoError {
-  // TODO(afinch7) pass worker error data through here
-  new(
-    ErrorKind::WorkerInitFailed,
-    String::from("worker init failed"),
-  )
-}
-
-pub fn no_buffer_specified() -> DenoError {
-  new(ErrorKind::InvalidInput, String::from("no buffer specified"))
-}
-
-pub fn no_async_support() -> DenoError {
-  new(
-    ErrorKind::NoAsyncSupport,
-    String::from("op doesn't support async calls"),
-  )
-}
-
-pub fn no_sync_support() -> DenoError {
-  new(
-    ErrorKind::NoSyncSupport,
-    String::from("op doesn't support sync calls"),
-  )
-}
-
-pub fn err_check<R>(r: Result<R, DenoError>) {
-  if let Err(e) = r {
-    panic!(e.to_string());
+    None
+      .or_else(|| self.downcast_ref::<DenoError>().map(Get::kind))
+      .or_else(|| self.downcast_ref::<Diagnostic>().map(Get::kind))
+      .or_else(|| self.downcast_ref::<hyper::Error>().map(Get::kind))
+      .or_else(|| self.downcast_ref::<ImportMapError>().map(Get::kind))
+      .or_else(|| self.downcast_ref::<io::Error>().map(Get::kind))
+      .or_else(|| self.downcast_ref::<JSError>().map(Get::kind))
+      .or_else(|| self.downcast_ref::<ModuleResolutionError>().map(Get::kind))
+      .or_else(|| self.downcast_ref::<StaticError>().map(Get::kind))
+      .or_else(|| self.downcast_ref::<uri::InvalidUri>().map(Get::kind))
+      .or_else(|| self.downcast_ref::<url::ParseError>().map(Get::kind))
+      .or_else(|| unix_error_kind(self))
+      .unwrap_or_else(|| {
+        panic!("Can't get ErrorKind for {:?}", self);
+      })
   }
 }
 
@@ -348,16 +241,15 @@ pub fn err_check<R>(r: Result<R, DenoError>) {
 mod tests {
   use super::*;
   use crate::ansi::strip_ansi_codes;
-  use crate::deno_dir::DenoDirError;
-  use crate::deno_dir::DenoDirErrorKind;
   use crate::diagnostics::Diagnostic;
   use crate::diagnostics::DiagnosticCategory;
   use crate::diagnostics::DiagnosticItem;
-  use crate::import_map::ImportMapError;
+  use deno::ErrBox;
   use deno::StackFrame;
+  use deno::V8Exception;
 
   fn js_error() -> JSError {
-    JSError {
+    JSError::new(V8Exception {
       message: "Error: foo bar".to_string(),
       source_line: None,
       script_resource_name: None,
@@ -396,7 +288,7 @@ mod tests {
           is_wasm: false,
         },
       ],
-    }
+    })
   }
 
   fn diagnostic() -> Diagnostic {
@@ -436,22 +328,6 @@ mod tests {
     }
   }
 
-  struct MockSourceMapGetter {}
-
-  impl SourceMapGetter for MockSourceMapGetter {
-    fn get_source_map(&self, _script_name: &str) -> Option<Vec<u8>> {
-      Some(vec![])
-    }
-
-    fn get_source_line(
-      &self,
-      _script_name: &str,
-      _line: usize,
-    ) -> Option<String> {
-      None
-    }
-  }
-
   fn io_error() -> io::Error {
     io::Error::from(io::ErrorKind::NotFound)
   }
@@ -466,30 +342,24 @@ mod tests {
     }
   }
 
-  fn deno_dir_error() -> DenoDirError {
-    DenoDirError::new(
-      "a deno dir error".to_string(),
-      DenoDirErrorKind::UnsupportedFetchScheme,
-    )
-  }
-
   #[test]
   fn test_simple_error() {
-    let err = new(ErrorKind::NoError, "foo".to_string());
+    let err =
+      ErrBox::from(DenoError::new(ErrorKind::NoError, "foo".to_string()));
     assert_eq!(err.kind(), ErrorKind::NoError);
     assert_eq!(err.to_string(), "foo");
   }
 
   #[test]
   fn test_io_error() {
-    let err = DenoError::from(io_error());
+    let err = ErrBox::from(io_error());
     assert_eq!(err.kind(), ErrorKind::NotFound);
     assert_eq!(err.to_string(), "entity not found");
   }
 
   #[test]
   fn test_url_error() {
-    let err = DenoError::from(url_error());
+    let err = ErrBox::from(url_error());
     assert_eq!(err.kind(), ErrorKind::EmptyHost);
     assert_eq!(err.to_string(), "empty host");
   }
@@ -498,30 +368,23 @@ mod tests {
 
   #[test]
   fn test_diagnostic() {
-    let err = DenoError::from(diagnostic());
+    let err = ErrBox::from(diagnostic());
     assert_eq!(err.kind(), ErrorKind::Diagnostic);
     assert_eq!(strip_ansi_codes(&err.to_string()), "error TS2322: Example 1\n\n► deno/tests/complex_diagnostics.ts:19:3\n\n19   values: o => [\n     ~~~~~~\n\nerror TS2000: Example 2\n\n► /foo/bar.ts:129:3\n\n129   values: undefined,\n      ~~~~~~\n\n\nFound 2 errors.\n");
   }
 
   #[test]
   fn test_js_error() {
-    let err = DenoError::from(js_error());
+    let err = ErrBox::from(js_error());
     assert_eq!(err.kind(), ErrorKind::JSError);
     assert_eq!(strip_ansi_codes(&err.to_string()), "error: Error: foo bar\n    at foo (foo_bar.ts:5:17)\n    at qat (bar_baz.ts:6:21)\n    at deno_main.js:2:2");
   }
 
   #[test]
   fn test_import_map_error() {
-    let err = DenoError::from(import_map_error());
+    let err = ErrBox::from(import_map_error());
     assert_eq!(err.kind(), ErrorKind::ImportMapError);
     assert_eq!(err.to_string(), "an import map error");
-  }
-
-  #[test]
-  fn test_deno_dir_error() {
-    let err = DenoError::from(deno_dir_error());
-    assert_eq!(err.kind(), ErrorKind::DenoDirError);
-    assert_eq!(err.to_string(), "a deno dir error\n");
   }
 
   #[test]
@@ -546,13 +409,6 @@ mod tests {
   }
 
   #[test]
-  fn test_worker_init_failed() {
-    let err = worker_init_failed();
-    assert_eq!(err.kind(), ErrorKind::WorkerInitFailed);
-    assert_eq!(err.to_string(), "worker init failed");
-  }
-
-  #[test]
   fn test_no_buffer_specified() {
     let err = no_buffer_specified();
     assert_eq!(err.kind(), ErrorKind::InvalidInput);
@@ -571,21 +427,5 @@ mod tests {
     let err = no_sync_support();
     assert_eq!(err.kind(), ErrorKind::NoSyncSupport);
     assert_eq!(err.to_string(), "op doesn't support sync calls");
-  }
-
-  #[test]
-  #[should_panic]
-  fn test_apply_source_map_invalid() {
-    let getter = MockSourceMapGetter {};
-    let err = new(ErrorKind::NotFound, "not found".to_string());
-    err.apply_source_map(&getter);
-  }
-
-  #[test]
-  #[should_panic]
-  fn test_err_check() {
-    err_check(
-      Err(new(ErrorKind::NotFound, "foo".to_string())) as Result<(), DenoError>
-    );
   }
 }

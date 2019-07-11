@@ -1,8 +1,9 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::deno_error::DenoError;
+use crate::fmt_errors::JSError;
 use crate::state::ThreadSafeState;
 use crate::tokio_util;
 use deno;
+use deno::ErrBox;
 use deno::ModuleSpecifier;
 use deno::StartupData;
 use futures::Async;
@@ -24,19 +25,23 @@ impl Worker {
     startup_data: StartupData,
     state: ThreadSafeState,
   ) -> Worker {
-    let state_ = state.clone();
     let isolate = Arc::new(Mutex::new(deno::Isolate::new(startup_data, false)));
     {
       let mut i = isolate.lock().unwrap();
+      let state_ = state.clone();
       i.set_dispatch(move |control_buf, zero_copy_buf| {
         state_.dispatch(control_buf, zero_copy_buf)
       });
+      let state_ = state.clone();
+      i.set_js_error_create(move |v8_exception| {
+        JSError::from_v8_exception(v8_exception, &state_.dir)
+      })
     }
     Self { isolate, state }
   }
 
   /// Same as execute2() but the filename defaults to "<anonymous>".
-  pub fn execute(&mut self, js_source: &str) -> Result<(), DenoError> {
+  pub fn execute(&mut self, js_source: &str) -> Result<(), ErrBox> {
     self.execute2("<anonymous>", js_source)
   }
 
@@ -46,12 +51,9 @@ impl Worker {
     &mut self,
     js_filename: &str,
     js_source: &str,
-  ) -> Result<(), DenoError> {
+  ) -> Result<(), ErrBox> {
     let mut isolate = self.isolate.lock().unwrap();
-    match isolate.execute(js_filename, js_source) {
-      Ok(_) => Ok(()),
-      Err(err) => Err(DenoError::from(err)),
-    }
+    isolate.execute(js_filename, js_source)
   }
 
   /// Executes the provided JavaScript module.
@@ -59,9 +61,8 @@ impl Worker {
     &mut self,
     module_specifier: &ModuleSpecifier,
     is_prefetch: bool,
-  ) -> impl Future<Item = (), Error = DenoError> {
+  ) -> impl Future<Item = (), Error = ErrBox> {
     let worker = self.clone();
-    let worker_ = worker.clone();
     let loader = self.state.clone();
     let isolate = self.isolate.clone();
     let modules = self.state.modules.clone();
@@ -71,30 +72,15 @@ impl Worker {
       isolate,
       modules,
     );
-    recursive_load
-      .and_then(move |id| -> Result<(), deno::JSErrorOr<DenoError>> {
-        worker.state.progress.done();
-        if is_prefetch {
-          Ok(())
-        } else {
-          let mut isolate = worker.isolate.lock().unwrap();
-          let result = isolate.mod_evaluate(id);
-          if let Err(err) = result {
-            Err(deno::JSErrorOr::JSError(err))
-          } else {
-            Ok(())
-          }
-        }
-      }).map_err(move |err| {
-        worker_.state.progress.done();
-        // Convert to DenoError AND apply_source_map.
-        match err {
-          deno::JSErrorOr::JSError(err) => {
-            worker_.apply_source_map(DenoError::from(err))
-          }
-          deno::JSErrorOr::Other(err) => err,
-        }
-      })
+    recursive_load.and_then(move |id| -> Result<(), ErrBox> {
+      worker.state.progress.done();
+      if is_prefetch {
+        Ok(())
+      } else {
+        let mut isolate = worker.isolate.lock().unwrap();
+        isolate.mod_evaluate(id)
+      }
+    })
   }
 
   /// Executes the provided JavaScript module.
@@ -102,32 +88,24 @@ impl Worker {
     &mut self,
     module_specifier: &ModuleSpecifier,
     is_prefetch: bool,
-  ) -> Result<(), DenoError> {
+  ) -> Result<(), ErrBox> {
     tokio_util::block_on(self.execute_mod_async(module_specifier, is_prefetch))
-  }
-
-  /// Applies source map to the error.
-  fn apply_source_map(&self, err: DenoError) -> DenoError {
-    err.apply_source_map(&self.state.dir)
   }
 }
 
 impl Future for Worker {
   type Item = ();
-  type Error = DenoError;
+  type Error = ErrBox;
 
-  fn poll(&mut self) -> Result<Async<()>, Self::Error> {
+  fn poll(&mut self) -> Result<Async<()>, ErrBox> {
     let mut isolate = self.isolate.lock().unwrap();
-    isolate
-      .poll()
-      .map_err(|err| self.apply_source_map(DenoError::from(err)))
+    isolate.poll()
   }
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::deno_error::err_check;
   use crate::flags;
   use crate::ops::op_selector_std;
   use crate::progress::Progress;
@@ -210,7 +188,7 @@ mod tests {
         startup_data::deno_isolate_init(),
         state,
       );
-      err_check(worker.execute("denoMain()"));
+      worker.execute("denoMain()").unwrap();
       let result = worker.execute_mod(&module_specifier, false);
       if let Err(err) = result {
         eprintln!("execute_mod err {:?}", err);
@@ -231,8 +209,8 @@ mod tests {
     ]);
     let mut worker =
       Worker::new("TEST".to_string(), startup_data::deno_isolate_init(), state);
-    err_check(worker.execute("denoMain()"));
-    err_check(worker.execute("workerMain()"));
+    worker.execute("denoMain()").unwrap();
+    worker.execute("workerMain()").unwrap();
     worker
   }
 
@@ -253,7 +231,7 @@ mod tests {
           console.log("after postMessage");
         }
         "#;
-      err_check(worker.execute(source));
+      worker.execute(source).unwrap();
 
       let resource = worker.state.resource.clone();
       let resource_ = resource.clone();
@@ -261,7 +239,7 @@ mod tests {
       tokio::spawn(lazy(move || {
         worker.then(move |r| -> Result<(), ()> {
           resource_.close();
-          err_check(r);
+          r.unwrap();
           Ok(())
         })
       }));
@@ -291,9 +269,9 @@ mod tests {
   fn removed_from_resource_table_on_close() {
     tokio_util::init(|| {
       let mut worker = create_test_worker();
-      err_check(
-        worker.execute("onmessage = () => { delete window.onmessage; }"),
-      );
+      worker
+        .execute("onmessage = () => { delete window.onmessage; }")
+        .unwrap();
 
       let resource = worker.state.resource.clone();
       let rid = resource.rid;
@@ -302,7 +280,7 @@ mod tests {
         .then(move |r| -> Result<(), ()> {
           resource.close();
           println!("workers.rs after resource close");
-          err_check(r);
+          r.unwrap();
           Ok(())
         }).shared();
 
