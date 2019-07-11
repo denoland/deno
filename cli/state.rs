@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::compiler::TsCompiler;
 use crate::deno_dir;
-use crate::deno_dir::ModuleMetaData;
+use crate::deno_dir::SourceFile;
 use crate::flags;
 use crate::global_timer::GlobalTimer;
 use crate::import_map::ImportMap;
@@ -114,10 +114,10 @@ impl ThreadSafeState {
   }
 }
 
-pub fn fetch_module_meta_data_and_maybe_compile_async(
+pub fn fetch_source_file_and_maybe_compile_async(
   state: &ThreadSafeState,
   module_specifier: &ModuleSpecifier,
-) -> impl Future<Item = ModuleMetaData, Error = ErrBox> {
+) -> impl Future<Item = SourceFile, Error = ErrBox> {
   let state_ = state.clone();
   let use_cache =
     !state_.flags.reload || state_.has_compiled(&module_specifier.to_string());
@@ -125,7 +125,7 @@ pub fn fetch_module_meta_data_and_maybe_compile_async(
 
   state_
     .dir
-    .fetch_module_meta_data_async(&module_specifier, use_cache, no_fetch)
+    .fetch_source_file_async(&module_specifier, use_cache, no_fetch)
     .and_then(move |out| {
       state_
         .clone()
@@ -165,13 +165,14 @@ impl Loader for ThreadSafeState {
   ) -> Box<deno::SourceCodeInfoFuture> {
     self.metrics.resolve_count.fetch_add(1, Ordering::SeqCst);
     Box::new(
-      fetch_module_meta_data_and_maybe_compile_async(self, module_specifier)
-        .map(|module_meta_data| deno::SourceCodeInfo {
+      fetch_source_file_and_maybe_compile_async(self, module_specifier).map(
+        |source_file| deno::SourceCodeInfo {
           // Real module name, might be different from initial specifier
           // due to redirections.
-          code: module_meta_data.js_source(),
-          module_name: module_meta_data.url.to_string(),
-        }),
+          code: source_file.js_source(),
+          module_name: source_file.url.to_string(),
+        },
+      ),
     )
   }
 }

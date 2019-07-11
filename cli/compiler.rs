@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::deno_dir::DenoDir;
-use crate::deno_dir::ModuleMetaData;
+use crate::deno_dir::SourceFile;
 use crate::diagnostics::Diagnostic;
 use crate::msg;
 use crate::resources;
@@ -138,18 +138,17 @@ impl TsCompiler {
   pub fn compile_async(
     self: &Self,
     state: ThreadSafeState,
-    module_meta_data: &ModuleMetaData,
+    source_file: &SourceFile,
     use_cache: bool,
-  ) -> impl Future<Item = ModuleMetaData, Error = ErrBox> {
-    if module_meta_data.media_type != msg::MediaType::TypeScript {
-      return Either::A(futures::future::ok(module_meta_data.clone()));
+  ) -> impl Future<Item = SourceFile, Error = ErrBox> {
+    if source_file.media_type != msg::MediaType::TypeScript {
+      return Either::A(futures::future::ok(source_file.clone()));
     }
 
     if use_cache {
       // try to load cached version
-      if let Ok(compiled_module) = self
-        .deno_dir
-        .get_compiled_module_meta_data(&module_meta_data)
+      if let Ok(compiled_module) =
+        self.deno_dir.get_compiled_source_file(&source_file)
       {
         debug!(
           "found cached compiled module: {:?}",
@@ -159,14 +158,14 @@ impl TsCompiler {
       }
     }
 
-    let module_meta_data_ = module_meta_data.clone();
+    let source_file_ = source_file.clone();
 
     debug!(">>>>> compile_sync START");
-    let module_url = module_meta_data.url.clone();
+    let module_url = source_file.url.clone();
 
     debug!(
       "Running rust part of compile_sync, module specifier: {}",
-      &module_meta_data.url
+      &source_file.url
     );
 
     let root_names = vec![module_url.to_string()];
@@ -243,16 +242,16 @@ impl TsCompiler {
         // We
         // still need to handle that JS and JSON files are compiled by TS compiler now (and they're
         // not used).
-        deno_dir_.get_compiled_module_meta_data(&module_meta_data_)
+        deno_dir_.get_compiled_source_file(&source_file_)
           .map_err(|e| {
             // TODO(95th) Instead of panicking, We could translate this error to Diagnostic.
             panic!("{}", e)
           })
-      }).and_then(move |module_meta_data_after_compile| {
+      }).and_then(move |source_file_after_compile| {
         // Explicit drop to keep reference alive until future completes.
         drop(compiling_job);
 
-        Ok(module_meta_data_after_compile)
+        Ok(source_file_after_compile)
       }).then(move |r| {
         debug!(">>>>> compile_sync END");
         // TODO(ry) do this in worker's destructor.
@@ -275,14 +274,10 @@ mod tests {
     fn compile_sync(
       self: &Self,
       state: ThreadSafeState,
-      module_meta_data: &ModuleMetaData,
+      source_file: &SourceFile,
       use_cache: bool,
-    ) -> Result<ModuleMetaData, ErrBox> {
-      tokio_util::block_on(self.compile_async(
-        state,
-        module_meta_data,
-        use_cache,
-      ))
+    ) -> Result<SourceFile, ErrBox> {
+      tokio_util::block_on(self.compile_async(state, source_file, use_cache))
     }
   }
 
@@ -292,7 +287,7 @@ mod tests {
       let specifier =
         ModuleSpecifier::resolve_url_or_path("./tests/002_hello.ts").unwrap();
 
-      let mut out = ModuleMetaData {
+      let mut out = SourceFile {
         url: specifier.as_url().clone(),
         redirect_source_url: None,
         filename: PathBuf::from("/tests/002_hello.ts"),

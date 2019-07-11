@@ -32,9 +32,8 @@ use std::sync::Mutex;
 use url;
 use url::Url;
 
-// TODO(bartlomieju): rename to SourceFile
 #[derive(Debug, Clone)]
-pub struct ModuleMetaData {
+pub struct SourceFile {
   pub url: Url,
   pub redirect_source_url: Option<Url>,
   pub filename: PathBuf,
@@ -46,7 +45,8 @@ pub struct ModuleMetaData {
   pub maybe_source_map: Option<Vec<u8>>,
 }
 
-impl ModuleMetaData {
+impl SourceFile {
+  // TODO: this method should be implemented on CompiledSourceFile trait
   pub fn js_source(&self) -> String {
     if self.media_type == msg::MediaType::TypeScript {
       panic!("TypeScript module has no JS source, did you forget to run it through compiler?");
@@ -65,6 +65,7 @@ impl ModuleMetaData {
   }
 }
 
+// TODO: this list should be implemented on SourceFileFetcher trait
 const SUPPORTED_URL_SCHEMES: [&str; 3] = ["http", "https", "file"];
 
 fn normalize_path(path: &Path) -> PathBuf {
@@ -228,7 +229,7 @@ impl DenoDir {
   pub fn cache_compiler_output(
     self: &Self,
     module_specifier: &ModuleSpecifier,
-    module_meta_data: &ModuleMetaData,
+    source_file: &SourceFile,
     extension: &str,
     contents: &str,
   ) -> std::io::Result<()> {
@@ -257,12 +258,12 @@ impl DenoDir {
 
         // save .meta file
         let version_hash = source_code_version_hash(
-          &module_meta_data.source_code,
+          &source_file.source_code,
           version::DENO,
           &self.config,
         );
         let compiled_file_metadata = CompiledFileMetadata {
-          source_path: module_meta_data.filename.to_str().unwrap().to_string(),
+          source_path: source_file.filename.to_str().unwrap().to_string(),
           version_hash,
         };
         compiled_file_metadata.save(&meta_data_path);
@@ -274,12 +275,12 @@ impl DenoDir {
   }
 
   // TODO: move to compiler
-  pub fn get_compiled_module_meta_data(
+  pub fn get_compiled_source_file(
     self: &Self,
-    module_meta_data: &ModuleMetaData,
-  ) -> Result<ModuleMetaData, ErrBox> {
+    source_file: &SourceFile,
+  ) -> Result<SourceFile, ErrBox> {
     let compiled_cache_filename =
-      self.gen.join(get_cache_filename(&module_meta_data.url));
+      self.gen.join(get_cache_filename(&source_file.url));
     let (
       output_code_filename,
       output_source_map_filename,
@@ -296,7 +297,7 @@ impl DenoDir {
     );
 
     let version_hash_to_validate = source_code_version_hash(
-      &module_meta_data.source_code,
+      &source_file.source_code,
       version::DENO,
       &self.config,
     );
@@ -312,8 +313,8 @@ impl DenoDir {
     match result {
       Err(err) => Err(err.into()),
       Ok((output_code, source_map)) => {
-        let compiled_module = ModuleMetaData {
-          url: module_meta_data.url.clone(),
+        let compiled_module = SourceFile {
+          url: source_file.url.clone(),
           redirect_source_url: None,
           filename: output_code_filename,
           media_type: msg::MediaType::JavaScript,
@@ -327,14 +328,14 @@ impl DenoDir {
     }
   }
 
-  pub fn fetch_module_meta_data_async(
+  pub fn fetch_source_file_async(
     self: &Self,
     specifier: &ModuleSpecifier,
     use_cache: bool,
     no_fetch: bool,
-  ) -> impl Future<Item = ModuleMetaData, Error = ErrBox> {
+  ) -> impl Future<Item = SourceFile, Error = ErrBox> {
     let module_url = specifier.as_url().to_owned();
-    debug!("fetch_module_meta_data. specifier {} ", &module_url);
+    debug!("fetch_source_file. specifier {} ", &module_url);
 
     let result = self.url_to_deps_path(&module_url);
     if let Err(err) = result {
@@ -371,16 +372,16 @@ impl DenoDir {
     )
   }
 
-  /// Synchronous version of fetch_module_meta_data_async
+  /// Synchronous version of fetch_source_file_async
   /// This function is deprecated.
-  pub fn fetch_module_meta_data(
+  pub fn fetch_source_file(
     self: &Self,
     specifier: &ModuleSpecifier,
     use_cache: bool,
     no_fetch: bool,
-  ) -> Result<ModuleMetaData, ErrBox> {
+  ) -> Result<SourceFile, ErrBox> {
     tokio_util::block_on(
-      self.fetch_module_meta_data_async(specifier, use_cache, no_fetch),
+      self.fetch_source_file_async(specifier, use_cache, no_fetch),
     )
   }
 
@@ -411,10 +412,10 @@ impl DenoDir {
   }
 
   // TODO: this method is only used by `SourceMapGetter` impl - can we organize it better?
-  fn try_resolve_and_get_module_meta_data(
+  fn try_resolve_and_get_source_file(
     &self,
     script_name: &str,
-  ) -> Option<ModuleMetaData> {
+  ) -> Option<SourceFile> {
     // if `script_name` can't be resolved to ModuleSpecifier it's probably internal
     // script (like `gen/cli/bundle/compiler.js`) so we won't be
     // able to get source for it anyway
@@ -425,10 +426,10 @@ impl DenoDir {
     }
 
     let module_specifier = maybe_specifier.unwrap();
-    // TODO: this method shouldn't issue `fetch_module_meta_data` - this is done for each line
-    //  in JS stack trace so it's pretty slow - quick idea: store `ModuleMetaData` in one
+    // TODO: this method shouldn't issue `fetch_source_file` - this is done for each line
+    //  in JS stack trace so it's pretty slow - quick idea: store `SourceFile` in one
     //  structure available to DenoDir so it's not fetched from disk everytime it's needed
-    match self.fetch_module_meta_data(&module_specifier, true, true) {
+    match self.fetch_source_file(&module_specifier, true, true) {
       Err(_) => None,
       Ok(out) => Some(out),
     }
@@ -439,8 +440,8 @@ impl DenoDir {
 impl SourceMapGetter for DenoDir {
   fn get_source_map(&self, script_name: &str) -> Option<Vec<u8>> {
     self
-      .try_resolve_and_get_module_meta_data(script_name)
-      .and_then(|out| match self.get_compiled_module_meta_data(&out) {
+      .try_resolve_and_get_source_file(script_name)
+      .and_then(|out| match self.get_compiled_source_file(&out) {
         Ok(compiled_module) => compiled_module.maybe_source_map,
         Err(_) => None,
       })
@@ -448,7 +449,7 @@ impl SourceMapGetter for DenoDir {
 
   fn get_source_line(&self, script_name: &str, line: usize) -> Option<String> {
     self
-      .try_resolve_and_get_module_meta_data(script_name)
+      .try_resolve_and_get_source_file(script_name)
       .and_then(|out| {
         str::from_utf8(&out.source_code).ok().and_then(|v| {
           let lines: Vec<&str> = v.lines().collect();
@@ -465,8 +466,8 @@ impl SourceMapGetter for DenoDir {
 /// folder, and potentially does not exist yet)
 ///
 /// It *does not* fill the compiled JS nor source map portions of
-/// ModuleMetaData. This is the only difference between this function and
-/// fetch_module_meta_data_async(). TODO(ry) change return type to reflect this
+/// SourceFile. This is the only difference between this function and
+/// fetch_source_file_async(). TODO(ry) change return type to reflect this
 /// fact.
 ///
 /// If this is a remote module, and it has not yet been cached, the resulting
@@ -478,7 +479,7 @@ fn get_source_code_async(
   filepath: PathBuf,
   use_cache: bool,
   no_fetch: bool,
-) -> impl Future<Item = ModuleMetaData, Error = ErrBox> {
+) -> impl Future<Item = SourceFile, Error = ErrBox> {
   let filename = filepath.to_str().unwrap().to_string();
   let module_name = module_url.to_string();
   let url_scheme = module_url.scheme();
@@ -565,7 +566,7 @@ fn get_source_code(
   filepath: PathBuf,
   use_cache: bool,
   no_fetch: bool,
-) -> Result<ModuleMetaData, ErrBox> {
+) -> Result<SourceFile, ErrBox> {
   tokio_util::block_on(get_source_code_async(
     deno_dir, module_url, filepath, use_cache, no_fetch,
   ))
@@ -824,7 +825,7 @@ fn fetch_remote_source_async(
   deno_dir: &DenoDir,
   module_url: &Url,
   filepath: &Path,
-) -> impl Future<Item = Option<ModuleMetaData>, Error = ErrBox> {
+) -> impl Future<Item = Option<SourceFile>, Error = ErrBox> {
   use crate::http_util::FetchOnceResult;
 
   let download_job = deno_dir.progress.add("Download", &module_url.to_string());
@@ -889,7 +890,7 @@ fn fetch_remote_source_async(
                 maybe_content_type.as_ref().map(String::as_str),
               );
 
-              let module_meta_data = ModuleMetaData {
+              let source_file = SourceFile {
                 url: module_url,
                 redirect_source_url: maybe_initial_module_url,
                 filename: filepath.clone(),
@@ -899,7 +900,7 @@ fn fetch_remote_source_async(
                 maybe_source_map: None,
               };
 
-              Ok(Loop::Break(Some(module_meta_data)))
+              Ok(Loop::Break(Some(source_file)))
             }
           }
         },
@@ -919,7 +920,7 @@ fn fetch_remote_source(
   deno_dir: &DenoDir,
   module_url: &Url,
   filepath: &Path,
-) -> Result<Option<ModuleMetaData>, ErrBox> {
+) -> Result<Option<SourceFile>, ErrBox> {
   tokio_util::block_on(fetch_remote_source_async(
     deno_dir, module_url, filepath,
   ))
@@ -939,7 +940,7 @@ fn fetch_local_source(
   module_url: &Url,
   filepath: &Path,
   maybe_initial_module_url: Option<Url>,
-) -> Result<Option<ModuleMetaData>, ErrBox> {
+) -> Result<Option<SourceFile>, ErrBox> {
   let source_code_headers = get_source_code_headers(&filepath);
   // If source code headers says that it would redirect elsewhere,
   // (meaning that the source file might not exist; only .headers.json is present)
@@ -982,7 +983,7 @@ fn fetch_local_source(
     }
     Ok(c) => c,
   };
-  Ok(Some(ModuleMetaData {
+  Ok(Some(SourceFile {
     url: module_url.clone(),
     redirect_source_url: maybe_initial_module_url,
     filename: filepath.to_owned(),
@@ -1195,46 +1196,6 @@ mod tests {
       )
     );
   }
-
-  //  #[test]
-  //  fn test_code_cache() {
-  //    let (_temp_dir, deno_dir) = test_setup();
-  //
-  //    let filename = "hello.js";
-  //    let source_code = b"1+2";
-  //    let output_code = b"1+2 // output code";
-  //    let source_map = b"{}";
-  //    let config = b"{}";
-  //    let hash = filename_hash(filename);
-  //    let version_hash =
-  //      source_code_version_hash(source_code, version::DENO, config);
-  //    let (cache_path, source_map_path, meta_path) =
-  //      deno_dir.cache_paths(filename);
-  //    assert!(cache_path.ends_with(format!("gen/{}.js", hash)));
-  //    assert!(source_map_path.ends_with(format!("gen/{}.js.map", hash)));
-  //    assert!(meta_path.ends_with(format!("gen/{}.meta", hash)));
-  //
-  //    let out = ModuleMetaData {
-  //      filename: PathBuf::from(filename),
-  //      source_code: source_code[..].to_owned(),
-  //      module_name: "hello.js".to_owned(),
-  //      module_redirect_source_name: None,
-  //      media_type: msg::MediaType::TypeScript,
-  //      maybe_output_code: Some(output_code[..].to_owned()),
-  //      maybe_output_code_filename: None,
-  //      maybe_source_map: Some(source_map[..].to_owned()),
-  //      maybe_source_map_filename: None,
-  //    };
-  //
-  //    let r = deno_dir.code_cache(&out);
-  //    r.expect("code_cache error");
-  //    assert!(cache_path.exists());
-  //    assert_eq!(output_code[..].to_owned(), fs::read(&cache_path).unwrap());
-  //
-  //    let meta = CompiledFileMetadata::load(&meta_path);
-  //    assert!(meta.is_some());
-  //    assert_eq!(&version_hash, &meta.unwrap().version_hash);
-  //  }
 
   #[test]
   fn test_source_code_version_hash() {
@@ -1786,26 +1747,26 @@ mod tests {
   }
 
   #[test]
-  fn test_fetch_module_meta_data() {
+  fn test_fetch_source_file() {
     let (_temp_dir, deno_dir) = test_setup();
 
     tokio_util::init(|| {
       // Test failure case.
       let specifier =
         ModuleSpecifier::resolve_url(file_url!("/baddir/hello.ts")).unwrap();
-      let r = deno_dir.fetch_module_meta_data(&specifier, true, false);
+      let r = deno_dir.fetch_source_file(&specifier, true, false);
       assert!(r.is_err());
 
       // Assuming cwd is the deno repo root.
       let specifier =
         ModuleSpecifier::resolve_url_or_path("js/main.ts").unwrap();
-      let r = deno_dir.fetch_module_meta_data(&specifier, true, false);
+      let r = deno_dir.fetch_source_file(&specifier, true, false);
       assert!(r.is_ok());
     })
   }
 
   #[test]
-  fn test_fetch_module_meta_data_1() {
+  fn test_fetch_source_file_1() {
     /*recompile ts file*/
     let (_temp_dir, deno_dir) = test_setup();
 
@@ -1813,13 +1774,13 @@ mod tests {
       // Test failure case.
       let specifier =
         ModuleSpecifier::resolve_url(file_url!("/baddir/hello.ts")).unwrap();
-      let r = deno_dir.fetch_module_meta_data(&specifier, false, false);
+      let r = deno_dir.fetch_source_file(&specifier, false, false);
       assert!(r.is_err());
 
       // Assuming cwd is the deno repo root.
       let specifier =
         ModuleSpecifier::resolve_url_or_path("js/main.ts").unwrap();
-      let r = deno_dir.fetch_module_meta_data(&specifier, false, false);
+      let r = deno_dir.fetch_source_file(&specifier, false, false);
       assert!(r.is_ok());
     })
   }

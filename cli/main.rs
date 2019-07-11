@@ -106,7 +106,7 @@ pub fn print_file_info(
 
   state_
     .dir
-    .fetch_module_meta_data_async(&module_specifier, use_cache, no_fetch)
+    .fetch_source_file_async(&module_specifier, use_cache, no_fetch)
     .map_err(|err| println!("{}", err))
     .and_then(move |out| {
       println!(

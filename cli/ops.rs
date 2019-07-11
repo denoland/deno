@@ -481,14 +481,12 @@ fn op_cache(
   // https://github.com/denoland/deno/issues/2057
   let module_specifier = ModuleSpecifier::resolve_url(module_id)
     .expect("Should be valid module specifier");
-  let module_meta_data =
-    state
-      .dir
-      .fetch_module_meta_data(&module_specifier, true, true)?;
+  let source_file =
+    state.dir.fetch_source_file(&module_specifier, true, true)?;
 
   state.dir.cache_compiler_output(
     &module_specifier,
-    &module_meta_data,
+    &source_file,
     extension,
     contents,
   )?;
@@ -519,7 +517,7 @@ fn op_fetch_module_meta_data(
 
   let fut = state
     .dir
-    .fetch_module_meta_data_async(&resolved_specifier, use_cache, no_fetch)
+    .fetch_source_file_async(&resolved_specifier, use_cache, no_fetch)
     .and_then(move |out| {
       let builder = &mut FlatBufferBuilder::new();
       let data_off = builder.create_vector(out.source_code.as_slice());
