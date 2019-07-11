@@ -43,17 +43,13 @@ pub struct ModuleMetaData {
   pub filename: PathBuf,
   pub media_type: msg::MediaType,
   pub source_code: Vec<u8>,
-  pub maybe_output_code_filename: Option<PathBuf>,
-  pub maybe_output_code: Option<Vec<u8>>,
+  // TODO: those fields shouldn't be on this struct, they are orthogonal to source file
+  // and only useful in compiled modules
   pub maybe_source_map_filename: Option<PathBuf>,
   pub maybe_source_map: Option<Vec<u8>>,
 }
 
 impl ModuleMetaData {
-  pub fn has_output_code_and_source_map(&self) -> bool {
-    self.maybe_output_code.is_some() && self.maybe_source_map.is_some()
-  }
-
   pub fn js_source(&self) -> String {
     if self.media_type == msg::MediaType::TypeScript {
       panic!("TypeScript module has no JS source, did you forget to run it through compiler?");
@@ -313,11 +309,9 @@ impl DenoDir {
         let compiled_module = ModuleMetaData {
           module_name: module_specifier.to_string(),
           module_redirect_source_name: None,
-          filename: output_code_filename.to_owned(),
+          filename: output_code_filename,
           media_type: msg::MediaType::JavaScript,
-          source_code: vec![],
-          maybe_output_code: Some(output_code),
-          maybe_output_code_filename: Some(output_code_filename),
+          source_code: output_code,
           maybe_source_map: Some(source_map),
           maybe_source_map_filename: Some(output_source_map_filename),
         };
@@ -441,6 +435,8 @@ impl DenoDir {
   }
 }
 
+// TODO: broken because source maps are no longer loaded by DenoDir - this should be implemented
+//  most likely on TS compiler
 impl SourceMapGetter for DenoDir {
   fn get_source_map(&self, script_name: &str) -> Option<Vec<u8>> {
     self
@@ -900,8 +896,6 @@ fn fetch_remote_source_async(
               filename: filepath.clone(),
               media_type,
               source_code: source.as_bytes().to_owned(),
-              maybe_output_code_filename: None,
-              maybe_output_code: None,
               maybe_source_map_filename: None,
               maybe_source_map: None,
             };
@@ -996,8 +990,6 @@ fn fetch_local_source(
       source_code_headers.mime_type.as_ref().map(String::as_str),
     ),
     source_code,
-    maybe_output_code_filename: None,
-    maybe_output_code: None,
     maybe_source_map_filename: None,
     maybe_source_map: None,
   }))

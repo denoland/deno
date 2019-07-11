@@ -151,7 +151,7 @@ pub fn compile_async(
       Ok(compiled_module) => {
         debug!(
           "found cached compiled module: {:?}",
-          compiled_module.clone().maybe_output_code_filename.unwrap()
+          compiled_module.clone().filename
         );
         return Either::A(futures::future::ok(compiled_module));
       }
@@ -309,8 +309,6 @@ mod tests {
         filename: PathBuf::from("/tests/002_hello.ts"),
         media_type: msg::MediaType::TypeScript,
         source_code: include_bytes!("../tests/002_hello.ts").to_vec(),
-        maybe_output_code_filename: None,
-        maybe_output_code: None,
         maybe_source_map_filename: None,
         maybe_source_map: None,
       };
@@ -325,8 +323,7 @@ mod tests {
       ).unwrap();
       assert!(
         out
-          .maybe_output_code
-          .unwrap()
+          .source_code
           .starts_with("console.log(\"Hello World\");".as_bytes())
       );
     })

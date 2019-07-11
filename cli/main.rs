@@ -108,6 +108,7 @@ pub fn print_file_info(
     &worker.state,
     module_specifier,
   ).and_then(move |out| {
+    // TODO(bartlomieju): it will show filename of compiled module (if it is TS)
     println!(
       "{} {}",
       ansi::bold("local:".to_string()),
@@ -119,14 +120,6 @@ pub fn print_file_info(
       ansi::bold("type:".to_string()),
       msg::enum_name_media_type(out.media_type)
     );
-
-    if out.maybe_output_code_filename.is_some() {
-      println!(
-        "{} {}",
-        ansi::bold("compiled:".to_string()),
-        out.maybe_output_code_filename.unwrap().to_str().unwrap(),
-      );
-    }
 
     if out.maybe_source_map_filename.is_some() {
       println!(
