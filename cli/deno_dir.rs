@@ -34,7 +34,6 @@ use std::sync::Mutex;
 use url;
 use url::Url;
 
-// TODO(bartlomieju): change `*_name` to `*_url` and use Url type
 // TODO(bartlomieju): rename to SourceFile
 #[derive(Debug, Clone)]
 pub struct ModuleMetaData {
@@ -434,13 +433,15 @@ impl DenoDir {
   }
 }
 
-// TODO: broken because source maps are no longer loaded by DenoDir - this should be implemented
-//  most likely on TS compiler
+// TODO: this should be implemented most likely on TS compiler
 impl SourceMapGetter for DenoDir {
   fn get_source_map(&self, script_name: &str) -> Option<Vec<u8>> {
     self
       .try_resolve_and_get_module_meta_data(script_name)
-      .and_then(|out| out.maybe_source_map)
+      .and_then(|out| match self.get_compiled_module_meta_data(&out) {
+        Ok(compiled_module) => compiled_module.maybe_source_map,
+        Err(_) => None,
+      })
   }
 
   fn get_source_line(&self, script_name: &str, line: usize) -> Option<String> {
