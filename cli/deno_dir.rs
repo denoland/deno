@@ -94,6 +94,36 @@ impl DownloadCache {
   }
 }
 
+// TODO: this is a structure that is supposed to be moved to //core/cache.rs
+#[derive(Clone)]
+pub struct DiskCache {
+  location: PathBuf,
+}
+
+impl DiskCache {
+  pub fn new(location: &Path) -> Self {
+    // TODO: ensure that 'location' is a directory
+    Self {
+      location: location.to_owned(),
+    }
+  }
+
+  pub fn get(self: &Self, filename: &Path) -> std::io::Result<Vec<u8>> {
+    let path = self.location.join(filename);
+    fs::read(&path)
+  }
+
+  pub fn set(self: &Self, filename: &Path, data: &[u8]) -> std::io::Result<()> {
+    let path = self.location.join(filename);
+    match path.parent() {
+      Some(ref parent) => fs::create_dir_all(parent),
+      None => Ok(()),
+    }?;
+    // Write file and create .headers.json for the file.
+    deno_fs::write_file(&path, data, 0o666)
+  }
+}
+
 #[derive(Clone)]
 pub struct DenoDir {
   // Example: /Users/rld/.deno/
@@ -102,10 +132,12 @@ pub struct DenoDir {
   // This is where we cache http resources. Example:
   // /Users/rld/.deno/deps/github.com/ry/blah.js
   pub gen: PathBuf,
+  pub gen_cache: DiskCache,
   // In the Go code this was called CacheDir.
   // This is where we cache compilation outputs. Example:
   // /Users/rld/.deno/gen/f39a473452321cacd7c346a870efb0e3e1264b43.js
   pub deps: PathBuf,
+  pub deps_cache: DiskCache,
   // This splits to http and https deps
   pub deps_http: PathBuf,
   pub deps_https: PathBuf,
@@ -157,7 +189,9 @@ impl DenoDir {
 
     let deno_dir = Self {
       root,
+      gen_cache: DiskCache::new(&gen),
       gen,
+      deps_cache: DiskCache::new(&deps),
       deps,
       deps_http,
       deps_https,
@@ -182,7 +216,7 @@ impl DenoDir {
   }
 
   pub fn cache_paths(self: &Self, url: &Url) -> (PathBuf, PathBuf, PathBuf) {
-    let compiled_cache_filename = get_cache_filename(&self.gen, url);
+    let compiled_cache_filename = get_cache_filename(url);
     (
       compiled_cache_filename.with_extension("js"),
       compiled_cache_filename.with_extension("js.map"),
@@ -200,6 +234,11 @@ impl DenoDir {
   ) -> std::io::Result<()> {
     let (js_cache_path, source_map_path, meta_data_path) =
       self.cache_paths(module_specifier.as_url());
+    let (js_cache_path, source_map_path, meta_data_path) = (
+      self.gen.join(js_cache_path),
+      self.gen.join(source_map_path),
+      self.gen.join(meta_data_path),
+    );
 
     match extension {
       ".map" => {
@@ -240,7 +279,7 @@ impl DenoDir {
     module_meta_data: &ModuleMetaData,
   ) -> Result<ModuleMetaData, ErrBox> {
     let compiled_cache_filename =
-      get_cache_filename(&self.gen, &module_meta_data.url);
+      self.gen.join(get_cache_filename(&module_meta_data.url));
     let (
       output_code_filename,
       output_source_map_filename,
@@ -355,8 +394,8 @@ impl DenoDir {
   pub fn url_to_deps_path(self: &Self, url: &Url) -> Result<PathBuf, ErrBox> {
     let filename = match url.scheme() {
       "file" => url.to_file_path().unwrap(),
-      "https" => get_cache_filename(self.deps.as_path(), &url),
-      "http" => get_cache_filename(self.deps.as_path(), &url),
+      "https" => self.deps.join(get_cache_filename(&url)),
+      "http" => self.deps.join(get_cache_filename(&url)),
       scheme => {
         return Err(
           DenoError::new(
@@ -532,8 +571,8 @@ fn get_source_code(
   ))
 }
 
-fn get_cache_filename(basedir: &Path, url: &Url) -> PathBuf {
-  let mut out = basedir.to_path_buf();
+fn get_cache_filename(url: &Url) -> PathBuf {
+  let mut out = PathBuf::new();
 
   let scheme = url.scheme();
   out.push(scheme);
@@ -1128,29 +1167,34 @@ mod tests {
   #[test]
   fn test_get_cache_filename() {
     let url = Url::parse("http://example.com:1234/path/to/file.ts").unwrap();
-    let basedir = Path::new("/cache/dir/");
-    let cache_file = get_cache_filename(&basedir, &url);
+    let cache_file = get_cache_filename(&url);
     assert_eq!(
       cache_file,
-      Path::new("/cache/dir/http/example.com_PORT1234/path/to/file.ts")
+      Path::new("http/example.com_PORT1234/path/to/file.ts")
     );
+
+    let url = Url::parse("file:///src/a/b/c/file.ts").unwrap();
+    let cache_file = get_cache_filename(&url);
+    assert_eq!(cache_file, Path::new("file//src/a/b/c/file.ts"));
   }
 
-  //    #[test]
-  //    fn test_cache_paths() {
-  //      let (temp_dir, deno_dir) = test_setup();
-  //      let file_url = Url::parse("file:///hello.js").unwrap();
-  //      let cache_filename = get_cache_filename(&deno_dir.gen, file_url);
-  //      let filename = cache_filename.file_name();
-  //      assert_eq!(
-  //        (
-  //          cache_filename.with_extension("js"),
-  //          cache_filename.with_extension("js.map"),
-  //          cache_filename.with_extension("meta"),
-  //        ),
-  //        deno_dir.cache_paths(filename)
-  //      );
-  //    }
+  #[test]
+  fn test_cache_paths() {
+    let file_url = Url::parse("file:///a/b/chello.js").unwrap();
+    let cache_filename = get_cache_filename(&file_url);
+    assert_eq!(
+      (
+        cache_filename.with_extension("js"),
+        cache_filename.with_extension("js.map"),
+        cache_filename.with_extension("meta"),
+      ),
+      (
+        PathBuf::from("file/a/b/c/hello.js"),
+        PathBuf::from("file/a/b/c/hello.js.map"),
+        PathBuf::from("file/a/b/c/hello.js.meta"),
+      )
+    );
+  }
 
   //  #[test]
   //  fn test_code_cache() {
