@@ -1,9 +1,9 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::compiler::compile_async;
-use crate::compiler::ModuleMetaData;
 use crate::deno_dir;
 use crate::deno_error::DenoError;
 use crate::deno_error::DenoResult;
+use crate::deno_dir::ModuleMetaData;
 use crate::flags;
 use crate::global_timer::GlobalTimer;
 use crate::import_map::ImportMap;

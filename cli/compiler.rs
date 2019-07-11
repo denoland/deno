@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::deno_error::err_check;
 use crate::deno_error::DenoError;
+use crate::deno_dir::ModuleMetaData;
 use crate::diagnostics::Diagnostic;
 use crate::msg;
 use crate::resources;
@@ -13,44 +14,8 @@ use deno::ModuleSpecifier;
 use futures::future::Either;
 use futures::Future;
 use futures::Stream;
-use std::path::PathBuf;
 use std::str;
 use std::sync::atomic::Ordering;
-
-// This corresponds to JS ModuleMetaData.
-// TODO Rename one or the other so they correspond.
-// TODO(bartlomieju): change `*_name` to `*_url` and use Url type
-#[derive(Debug, Clone)]
-pub struct ModuleMetaData {
-  pub module_name: String,
-  pub module_redirect_source_name: Option<String>, // source of redirect
-  pub filename: PathBuf,
-  pub media_type: msg::MediaType,
-  pub source_code: Vec<u8>,
-  pub maybe_output_code_filename: Option<PathBuf>,
-  pub maybe_output_code: Option<Vec<u8>>,
-  pub maybe_source_map_filename: Option<PathBuf>,
-  pub maybe_source_map: Option<Vec<u8>>,
-}
-
-impl ModuleMetaData {
-  pub fn has_output_code_and_source_map(&self) -> bool {
-    self.maybe_output_code.is_some() && self.maybe_source_map.is_some()
-  }
-
-  pub fn js_source(&self) -> String {
-    if self.media_type == msg::MediaType::Json {
-      return format!(
-        "export default {};",
-        str::from_utf8(&self.source_code).unwrap()
-      );
-    }
-    match self.maybe_output_code {
-      None => str::from_utf8(&self.source_code).unwrap().to_string(),
-      Some(ref output_code) => str::from_utf8(output_code).unwrap().to_string(),
-    }
-  }
-}
 
 type CompilerConfig = Option<(String, Vec<u8>)>;
 
@@ -179,10 +144,6 @@ pub fn compile_async(
       return Either::A(futures::future::ok(compiled_module));
     }
     Err(_) => {}
-  }
-
-  if module_meta_data.has_output_code_and_source_map() {
-    return Either::A(futures::future::ok(module_meta_data.clone()));
   }
 
   let module_meta_data_ = module_meta_data.clone();
@@ -318,6 +279,7 @@ pub fn compile_sync(
 #[cfg(test)]
 mod tests {
   use super::*;
+  use std::path::PathBuf;
 
   #[test]
   fn test_compile_sync() {

@@ -1,6 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 #![allow(dead_code)]
-use crate::compiler::ModuleMetaData;
 use crate::deno_error;
 use crate::deno_error::DenoError;
 use crate::deno_error::DenoResult;
@@ -34,6 +33,42 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use url;
 use url::Url;
+
+// TODO(bartlomieju): change `*_name` to `*_url` and use Url type
+// TODO(bartlomieju): rename to SourceFile
+#[derive(Debug, Clone)]
+pub struct ModuleMetaData {
+  pub module_name: String,
+  pub module_redirect_source_name: Option<String>, // source of redirect
+  pub filename: PathBuf,
+  pub media_type: msg::MediaType,
+  pub source_code: Vec<u8>,
+  pub maybe_output_code_filename: Option<PathBuf>,
+  pub maybe_output_code: Option<Vec<u8>>,
+  pub maybe_source_map_filename: Option<PathBuf>,
+  pub maybe_source_map: Option<Vec<u8>>,
+}
+
+impl ModuleMetaData {
+  pub fn has_output_code_and_source_map(&self) -> bool {
+    self.maybe_output_code.is_some() && self.maybe_source_map.is_some()
+  }
+
+  pub fn js_source(&self) -> String {
+    // TODO: this should be done by compiler
+    if self.media_type == msg::MediaType::Json {
+      return format!(
+        "export default {};",
+        str::from_utf8(&self.source_code).unwrap()
+      );
+    }
+
+    match self.maybe_output_code {
+      None => str::from_utf8(&self.source_code).unwrap().to_string(),
+      Some(ref output_code) => str::from_utf8(output_code).unwrap().to_string(),
+    }
+  }
+}
 
 // TODO: DenoDirError is temporary solution, should be upgraded during rewrite
 #[derive(Debug, PartialEq)]
@@ -644,6 +679,7 @@ fn load_cache(
     should_remove_all = true;
   }
 
+  // TODO: this step can be skipped now
   // The old version is stale or some error occurred.
   // Try removing all the cached files.
   if should_remove_all {
