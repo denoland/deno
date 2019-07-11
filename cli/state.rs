@@ -1,5 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::compiler::compile_async;
 use crate::compiler::TsCompiler;
 use crate::deno_dir;
 use crate::deno_dir::ModuleMetaData;
@@ -129,7 +128,10 @@ pub fn fetch_module_meta_data_and_maybe_compile_async(
     .dir
     .fetch_module_meta_data_async(&module_specifier, use_cache, no_fetch)
     .and_then(move |out| {
-      compile_async(state_.clone(), &out, use_cache)
+      state_
+        .clone()
+        .ts_compiler
+        .compile_async(state_.clone(), &out, use_cache)
         .map_err(|e| {
           debug!("compiler error exiting!");
           eprintln!("\n{}", e.to_string());
