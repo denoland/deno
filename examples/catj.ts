@@ -4,7 +4,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
 // Install using `deno install`
-// $ deno install catjson https://deno.land/std/examples/catjson.ts --allow-read
+// $ deno install catj https://deno.land/std/examples/catj.ts --allow-read
 
 /* eslint-disable @typescript-eslint/no-use-before-define */
 import { parse } from "../flags/mod.ts";
@@ -83,15 +83,15 @@ async function main(): Promise<void> {
   const parsedArgs = parse(Deno.args.slice(1));
 
   if (parsedArgs.h || parsedArgs.help || parsedArgs._.length === 0) {
-    console.log("Usage: catjson [-h|--help] [file...]");
+    console.log("Usage: catj [-h|--help] [file...]");
     console.log();
     console.log("Examples:");
     console.log();
-    console.log("// print file:\n   catjson file.json");
+    console.log("// print file:\n   catj file.json");
     console.log();
-    console.log("// print multiple files:\n   catjson file1.json file2.json");
+    console.log("// print multiple files:\n   catj file1.json file2.json");
     console.log();
-    console.log("// print from stdin:\n   cat file.json | catjson -");
+    console.log("// print from stdin:\n   cat file.json | catj -");
   }
 
   if (parsedArgs._[0] === "-") {
