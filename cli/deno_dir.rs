@@ -39,7 +39,7 @@ use url::Url;
 #[derive(Debug, Clone)]
 pub struct ModuleMetaData {
   pub specifier: ModuleSpecifier,
-  pub module_redirect_source_name: Option<String>, // source of redirect
+  pub redirect_source_url: Option<Url>,
   pub filename: PathBuf,
   pub media_type: msg::MediaType,
   pub source_code: Vec<u8>,
@@ -308,7 +308,7 @@ impl DenoDir {
       Ok((output_code, source_map)) => {
         let compiled_module = ModuleMetaData {
           specifier: module_specifier.clone(),
-          module_redirect_source_name: None,
+          redirect_source_url: None,
           filename: output_code_filename,
           media_type: msg::MediaType::JavaScript,
           source_code: output_code,
@@ -846,7 +846,7 @@ fn fetch_remote_source_async(
     ),
     |(
       dir,
-      mut maybe_initial_module_name,
+      mut maybe_initial_module_url,
       mut maybe_initial_filepath,
       module_url,
       filepath,
@@ -860,15 +860,15 @@ fn fetch_remote_source_async(
             let new_module_url = Url::parse(&uri.to_string()).expect("http::uri::Uri should be parseable as Url");
             let new_filepath = dir.url_to_deps_path(&new_module_url)?;
 
-            if maybe_initial_module_name.is_none() {
-              maybe_initial_module_name = Some(module_url.to_string());
+            if maybe_initial_module_url.is_none() {
+              maybe_initial_module_url = Some(module_url);
               maybe_initial_filepath = Some(filepath.clone());
             }
 
             // Not yet completed. Follow the redirect and loop.
             Ok(Loop::Continue((
               dir,
-              maybe_initial_module_name,
+              maybe_initial_module_url,
               maybe_initial_filepath,
               new_module_url,
               new_filepath,
@@ -891,7 +891,7 @@ fn fetch_remote_source_async(
 
             let module_meta_data = ModuleMetaData {
               specifier: ModuleSpecifier::from(module_url.clone()),
-              module_redirect_source_name: maybe_initial_module_name,
+              redirect_source_url: maybe_initial_module_url,
               filename: filepath.clone(),
               media_type,
               source_code: source.as_bytes().to_owned(),
@@ -936,7 +936,7 @@ fn fetch_local_source(
   deno_dir: &DenoDir,
   module_url: &Url,
   filepath: &Path,
-  module_initial_source_name: Option<String>,
+  maybe_initial_module_url: Option<Url>,
 ) -> DenoResult<Option<ModuleMetaData>> {
   let source_code_headers = get_source_code_headers(&filepath);
   // If source code headers says that it would redirect elsewhere,
@@ -953,19 +953,19 @@ fn fetch_local_source(
       Url::parse(&redirect_to).expect("Should be valid URL");
     let real_filepath = deno_dir.url_to_deps_path(&real_module_url)?;
 
-    let mut module_initial_source_name = module_initial_source_name;
+    let mut maybe_initial_module_url = maybe_initial_module_url;
     // If this is the first redirect attempt,
-    // then module_initial_source_name should be None.
-    // In that case, use current module name as module_initial_source_name.
-    if module_initial_source_name.is_none() {
-      module_initial_source_name = Some(module_url.to_string());
+    // then maybe_initial_module_url should be None.
+    // In that case, use current module name as maybe_initial_module_url.
+    if maybe_initial_module_url.is_none() {
+      maybe_initial_module_url = Some(module_url.clone());
     }
     // Recurse.
     return fetch_local_source(
       deno_dir,
       &real_module_url,
       &real_filepath,
-      module_initial_source_name,
+      maybe_initial_module_url,
     );
   }
   // No redirect needed or end of redirects.
@@ -982,7 +982,7 @@ fn fetch_local_source(
   };
   Ok(Some(ModuleMetaData {
     specifier: ModuleSpecifier::from(module_url.clone()),
-    module_redirect_source_name: module_initial_source_name,
+    redirect_source_url: maybe_initial_module_url,
     filename: filepath.to_owned(),
     media_type: map_content_type(
       &filepath,
@@ -1520,8 +1520,8 @@ mod tests {
       // Examine the meta result.
       assert_eq!(mod_meta.specifier.as_url().clone(), target_module_url);
       assert_eq!(
-        &mod_meta.module_redirect_source_name.clone().unwrap(),
-        &redirect_module_url.to_string()
+        &mod_meta.redirect_source_url.clone().unwrap(),
+        &redirect_module_url
       );
     });
   }
@@ -1590,8 +1590,8 @@ mod tests {
       // Examine the meta result.
       assert_eq!(mod_meta.specifier.as_url().clone(), target_module_url);
       assert_eq!(
-        &mod_meta.module_redirect_source_name.clone().unwrap(),
-        &redirect_module_url.to_string()
+        &mod_meta.redirect_source_url.clone().unwrap(),
+        &redirect_module_url
       );
     });
   }

@@ -295,7 +295,7 @@ mod tests {
 
       let mut out = ModuleMetaData {
         specifier,
-        module_redirect_source_name: None,
+        redirect_source_url: None,
         filename: PathBuf::from("/tests/002_hello.ts"),
         media_type: msg::MediaType::TypeScript,
         source_code: include_bytes!("../tests/002_hello.ts").to_vec(),
