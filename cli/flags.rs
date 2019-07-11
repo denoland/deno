@@ -587,7 +587,7 @@ fn parse_script_args(
       continue;
     }
 
-    if !arg.starts_with('-') {
+    if !arg.starts_with('-') || arg == "-" {
       argv.push(arg.to_string());
       continue;
     }
@@ -1541,5 +1541,23 @@ mod tests {
     );
     assert_eq!(subcommand, DenoSubcommand::Run);
     assert_eq!(argv, svec!["deno", "script.ts", "--help", "--foo", "bar"]);
+
+    let (flags, subcommand, argv) =
+      flags_from_vec(svec!["deno", "script.ts", "foo", "bar"]);
+    assert_eq!(flags, DenoFlags::default());
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "script.ts", "foo", "bar"]);
+
+    let (flags, subcommand, argv) =
+      flags_from_vec(svec!["deno", "script.ts", "-"]);
+    assert_eq!(flags, DenoFlags::default());
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "script.ts", "-"]);
+
+    let (flags, subcommand, argv) =
+      flags_from_vec(svec!["deno", "script.ts", "-", "foo", "bar"]);
+    assert_eq!(flags, DenoFlags::default());
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "script.ts", "-", "foo", "bar"]);
   }
 }
