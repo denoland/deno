@@ -2,6 +2,7 @@
 use crate::compiler::TsCompiler;
 use crate::deno_dir;
 use crate::deno_dir::SourceFile;
+use crate::deno_dir::SourceFileFetcher;
 use crate::flags;
 use crate::global_timer::GlobalTimer;
 use crate::import_map::ImportMap;

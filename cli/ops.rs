@@ -2,6 +2,7 @@
 use atty;
 use crate::ansi;
 use crate::deno_dir::resolve_from_cwd;
+use crate::deno_dir::SourceFileFetcher;
 use crate::deno_error;
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
@@ -472,13 +473,9 @@ fn op_cache(
   let module_id = inner.module_id().unwrap();
   let contents = inner.contents().unwrap();
 
+  // TODO: to be removed
   state.mark_compiled(&module_id);
 
-  // TODO It shouldn't be necessary to call fetch_source_file() here.
-  // However, we need module_meta_data.source_code in order to calculate the
-  // cache path. In the future, checksums will not be used in the cache
-  // filenames and this requirement can be removed. See
-  // https://github.com/denoland/deno/issues/2057
   let module_specifier = ModuleSpecifier::resolve_url(module_id)
     .expect("Should be valid module specifier");
   let source_file =

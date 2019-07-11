@@ -65,6 +65,27 @@ impl SourceFile {
   }
 }
 
+pub type SourceFileFuture =
+  dyn Future<Item = SourceFile, Error = ErrBox> + Send;
+
+pub trait SourceFileFetcher {
+  fn fetch_source_file_async(
+    self: &Self,
+    specifier: &ModuleSpecifier,
+    use_cache: bool,
+    no_fetch: bool,
+  ) -> Box<SourceFileFuture>;
+
+  /// Synchronous version of fetch_source_file_async
+  /// Required for TS compiler.
+  fn fetch_source_file(
+    self: &Self,
+    specifier: &ModuleSpecifier,
+    use_cache: bool,
+    no_fetch: bool,
+  ) -> Result<SourceFile, ErrBox>;
+}
+
 // TODO: this list should be implemented on SourceFileFetcher trait
 const SUPPORTED_URL_SCHEMES: [&str; 3] = ["http", "https", "file"];
 
@@ -328,63 +349,6 @@ impl DenoDir {
     }
   }
 
-  pub fn fetch_source_file_async(
-    self: &Self,
-    specifier: &ModuleSpecifier,
-    use_cache: bool,
-    no_fetch: bool,
-  ) -> impl Future<Item = SourceFile, Error = ErrBox> {
-    let module_url = specifier.as_url().to_owned();
-    debug!("fetch_source_file. specifier {} ", &module_url);
-
-    let result = self.url_to_deps_path(&module_url);
-    if let Err(err) = result {
-      return Either::A(futures::future::err(err));
-    }
-    let deps_filepath = result.unwrap();
-
-    Either::B(
-      get_source_code_async(
-        self,
-        &module_url,
-        deps_filepath.clone(),
-        use_cache,
-        no_fetch,
-      ).then(move |result| {
-        let mut out = result.map_err(|err| {
-          if err.kind() == ErrorKind::NotFound {
-            // For NotFound, change the message to something better.
-            DenoError::new(
-              ErrorKind::NotFound,
-              format!("Cannot resolve module \"{}\"", module_url.to_string()),
-            ).into()
-          } else {
-            err
-          }
-        })?;
-
-        if out.source_code.starts_with(b"#!") {
-          out.source_code = filter_shebang(out.source_code);
-        }
-
-        Ok(out)
-      }),
-    )
-  }
-
-  /// Synchronous version of fetch_source_file_async
-  /// This function is deprecated.
-  pub fn fetch_source_file(
-    self: &Self,
-    specifier: &ModuleSpecifier,
-    use_cache: bool,
-    no_fetch: bool,
-  ) -> Result<SourceFile, ErrBox> {
-    tokio_util::block_on(
-      self.fetch_source_file_async(specifier, use_cache, no_fetch),
-    )
-  }
-
   /// This method returns local file path for given module url that is used
   /// internally by DenoDir to reference module.
   ///
@@ -436,6 +400,64 @@ impl DenoDir {
   }
 }
 
+impl SourceFileFetcher for DenoDir {
+  fn fetch_source_file_async(
+    self: &Self,
+    specifier: &ModuleSpecifier,
+    use_cache: bool,
+    no_fetch: bool,
+  ) -> Box<SourceFileFuture> {
+    let module_url = specifier.as_url().to_owned();
+    debug!("fetch_source_file. specifier {} ", &module_url);
+
+    let result = self.url_to_deps_path(&module_url);
+    if let Err(err) = result {
+      return Box::new(futures::future::err(err));
+    }
+    let deps_filepath = result.unwrap();
+
+    let fut = get_source_code_async(
+      self,
+      &module_url,
+      deps_filepath.clone(),
+      use_cache,
+      no_fetch,
+    ).then(move |result| {
+      let mut out = result.map_err(|err| {
+        if err.kind() == ErrorKind::NotFound {
+          // For NotFound, change the message to something better.
+          DenoError::new(
+            ErrorKind::NotFound,
+            format!("Cannot resolve module \"{}\"", module_url.to_string()),
+          ).into()
+        } else {
+          err
+        }
+      })?;
+
+      if out.source_code.starts_with(b"#!") {
+        out.source_code = filter_shebang(out.source_code);
+      }
+
+      Ok(out)
+    });
+
+    Box::new(fut)
+  }
+
+  /// Synchronous version of fetch_source_file_async
+  /// This function is deprecated.
+  fn fetch_source_file(
+    self: &Self,
+    specifier: &ModuleSpecifier,
+    use_cache: bool,
+    no_fetch: bool,
+  ) -> Result<SourceFile, ErrBox> {
+    tokio_util::block_on(
+      self.fetch_source_file_async(specifier, use_cache, no_fetch),
+    )
+  }
+}
 // TODO: this should be implemented most likely on TS compiler
 impl SourceMapGetter for DenoDir {
   fn get_source_map(&self, script_name: &str) -> Option<Vec<u8>> {
@@ -1181,7 +1203,7 @@ mod tests {
 
   #[test]
   fn test_cache_paths() {
-    let file_url = Url::parse("file:///a/b/chello.js").unwrap();
+    let file_url = Url::parse("file:///a/b/c/hello.js").unwrap();
     let cache_filename = get_cache_filename(&file_url);
     assert_eq!(
       (

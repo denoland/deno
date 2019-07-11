@@ -45,6 +45,7 @@ mod tokio_write;
 pub mod version;
 pub mod worker;
 
+use crate::deno_dir::SourceFileFetcher;
 use crate::progress::Progress;
 use crate::state::ThreadSafeState;
 use crate::worker::Worker;
