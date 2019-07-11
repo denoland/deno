@@ -1,4 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+#![allow(dead_code)]
 use crate::compiler::ModuleMetaData;
 use crate::deno_error;
 use crate::deno_error::DenoError;
@@ -179,19 +180,51 @@ impl DenoDir {
     Ok(deno_dir)
   }
 
-  // https://github.com/denoland/deno/blob/golang/deno_dir.go#L32-L35
-  pub fn cache_path(
+  pub fn cache_paths(
     self: &Self,
-    filepath: &Path,
-    source_code: &[u8],
-  ) -> (PathBuf, PathBuf) {
-    let cache_key =
-      source_code_hash(filepath, source_code, version::DENO, &self.config);
+    url: &Url,
+  ) -> (PathBuf, PathBuf, PathBuf) {
+    let compiled_cache_filename = get_cache_filename(&self.gen, url);
     (
-      self.gen.join(cache_key.to_string() + ".js"),
-      self.gen.join(cache_key.to_string() + ".js.map"),
+      compiled_cache_filename.with_extension("js"),
+      compiled_cache_filename.with_extension("js.map"),
+      compiled_cache_filename.with_extension("meta"),
     )
   }
+
+//  pub fn code_cache(
+//    self: &Self,
+//    module_meta_data: &ModuleMetaData,
+//  ) -> std::io::Result<()> {
+//    let (cache_path, source_map_path, meta_path) =
+//      self.cache_paths(&module_meta_data.filename.to_str().unwrap());
+//
+//    // TODO(ry) This is a race condition w.r.t to exists() -- probably should
+//    // create the file in exclusive mode. A worry is what might happen is there
+//    // are two processes and one reads the cache file while the other is in the
+//    // midst of writing it.
+//    if cache_path.exists() && source_map_path.exists() && meta_path.exists() {
+//      // We don't need to check state hash here.
+//      // If state hash does not match, the old files should have been gone
+//      // in a previous step.
+//      Ok(())
+//    } else {
+//      match &module_meta_data.maybe_output_code {
+//        Some(output_code) => fs::write(cache_path, output_code),
+//        _ => Ok(()),
+//      }?;
+//      match &module_meta_data.maybe_source_map {
+//        Some(source_map) => fs::write(source_map_path, source_map),
+//        _ => Ok(()),
+//      }?;
+//      let compiled_file_metadata = CompiledFileMetadata {
+//        source_path: module_meta_data.filename.to_str().unwrap().to_string(),
+//        version_hash,
+//      };
+//      compiled_file_metadata.save(&meta_path);
+//      Ok(())
+//    }
+//  }
 
   pub fn fetch_module_meta_data_async(
     self: &Self,
@@ -219,10 +252,11 @@ impl DenoDir {
       get_source_code_async(
         self,
         &module_url,
-        deps_filepath,
+        deps_filepath.clone(),
         use_cache,
         no_fetch,
       ).then(move |result| {
+        eprintln!("post get_source_code_async {:?}, {:?}", deps_filepath, result);
         let mut out = match result {
           Ok(out) => out,
           Err(err) => {
@@ -248,24 +282,41 @@ impl DenoDir {
           return Ok(out);
         }
 
-        let cache_key = source_code_hash(
-          &PathBuf::from(&out.filename),
-          &out.source_code,
-          version::DENO,
-          &config,
-        );
-        let (output_code_filename, output_source_map_filename) = (
-          gen.join(cache_key.to_string() + ".js"),
-          gen.join(cache_key.to_string() + ".js.map"),
+
+        // TODO: move to compiler
+        // TODO: generate filename for compiled module
+        // it should be:
+        // file/a/b/c.js
+        // http/deno.land/std/http/file_server.js
+        let url = Url::parse(&out.module_name.clone())?;
+        let compiled_cache_filename = get_cache_filename(&gen, &url);
+        let (
+          output_code_filename,
+          output_source_map_filename,
+          output_meta_filename,
+        ) = (
+          compiled_cache_filename.with_extension("js"),
+          compiled_cache_filename.with_extension("js.map"),
+          compiled_cache_filename.with_extension("meta"),
         );
 
-        let result =
-          load_cache2(&output_code_filename, &output_source_map_filename);
+        eprintln!("cache filenames: {:?}, {:?}", output_code_filename, output_source_map_filename);
+
+        let version_hash_to_validate =
+          source_code_version_hash(&out.source_code, version::DENO, &config);
+
+        let result = load_cache(
+          &output_code_filename,
+          &output_source_map_filename,
+          &output_meta_filename,
+          version_hash_to_validate,
+        );
+        eprintln!("load cache result: {:?}", result);
         match result {
           Err(err) => {
             if err.kind() == std::io::ErrorKind::NotFound {
-              // If there's no compiled JS or source map, that's ok, just
-              // return what we have.
+              // If there's no compiled JS/source map/metadata/invalid hash,
+              // that's ok, just return what we have.
               Ok(out)
             } else {
               Err(err.into())
@@ -481,49 +532,134 @@ fn get_source_code(
 }
 
 fn get_cache_filename(basedir: &Path, url: &Url) -> PathBuf {
-  let host = url.host_str().unwrap();
-  let host_port = match url.port() {
-    // Windows doesn't support ":" in filenames, so we represent port using a
-    // special string.
-    Some(port) => format!("{}_PORT{}", host, port),
-    None => host.to_string(),
+  let mut out = basedir.to_path_buf();
+
+  let scheme = url.scheme();
+  out.push(scheme.clone());
+  match scheme {
+    "http" | "https" => {
+      let host = url.host_str().unwrap();
+      let host_port = match url.port() {
+        // Windows doesn't support ":" in filenames, so we represent port using a
+        // special string.
+        Some(port) => format!("{}_PORT{}", host, port),
+        None => host.to_string(),
+      };
+      out.push(host_port);
+    },
+    _ => {}
   };
 
-  let mut out = basedir.to_path_buf();
-  out.push(host_port);
   for path_seg in url.path_segments().unwrap() {
     out.push(path_seg);
   }
   out
 }
 
-fn load_cache2(
+/// Information associated with compiled file in cache.
+/// Includes source code path and state hash.
+/// version_hash is used to validate versions of the file
+/// and could be used to remove stale file in cache.
+pub struct CompiledFileMetadata {
+  pub source_path: String,
+  pub version_hash: String,
+}
+
+static SOURCE_PATH: &'static str = "source_path";
+static VERSION_HASH: &'static str = "version_hash";
+
+impl CompiledFileMetadata {
+  /// Get compiled file metadata from meta_path.
+  /// If operation failed or metadata file is corrupted,
+  /// return None.
+  pub fn load<P: AsRef<Path>>(meta_path: P) -> Option<CompiledFileMetadata> {
+    let meta_path = meta_path.as_ref();
+    let maybe_metadata_string = fs::read_to_string(meta_path).ok();
+    maybe_metadata_string.as_ref()?;
+    let maybe_metadata_json: serde_json::Result<serde_json::Value> =
+      serde_json::from_str(&maybe_metadata_string.unwrap());
+    if let Ok(metadata_json) = maybe_metadata_json {
+      let source_path = metadata_json[SOURCE_PATH].as_str().map(String::from);
+      let version_hash = metadata_json[VERSION_HASH].as_str().map(String::from);
+      if source_path.is_none() || version_hash.is_none() {
+        return None;
+      }
+      return Some(CompiledFileMetadata {
+        source_path: source_path.unwrap(),
+        version_hash: version_hash.unwrap(),
+      });
+    } else {
+      return None;
+    }
+  }
+
+  /// Save compiled file metadata to meta_path.
+  pub fn save<P: AsRef<Path>>(self: &Self, meta_path: P) {
+    let meta_path = meta_path.as_ref();
+    // Remove possibly existing stale meta file.
+    // May not exist. DON'T unwrap.
+    let _ = std::fs::remove_file(&meta_path);
+    let mut value_map = serde_json::map::Map::new();
+
+    value_map.insert(SOURCE_PATH.to_owned(), json!(&self.source_path));
+    value_map.insert(VERSION_HASH.to_string(), json!(&self.version_hash));
+
+    let _ = serde_json::to_string(&value_map).map(|s| {
+      let _ = deno_fs::write_file(meta_path, s, 0o666);
+    });
+  }
+}
+
+/// Try loading the compiled code and map from the cache.
+/// Also validate the state hash in case source code has changed.
+/// If the version hash does not match,
+/// try delete all these files and return an error.
+fn load_cache(
   js_filename: &PathBuf,
   map_filename: &PathBuf,
+  meta_filename: &PathBuf,
+  version_hash_to_validate: String,
 ) -> Result<(Vec<u8>, Vec<u8>), std::io::Error> {
   debug!(
-    "load_cache code: {} map: {}",
+    "load_cache code: {} map: {} meta: {}",
     js_filename.display(),
-    map_filename.display()
+    map_filename.display(),
+    meta_filename.display()
   );
   let read_output_code = fs::read(&js_filename)?;
   let read_source_map = fs::read(&map_filename)?;
+
+  // Validate metadata.
+  let mut should_remove_all = false;
+  if let Some(read_metadata) = CompiledFileMetadata::load(meta_filename) {
+    if read_metadata.version_hash != version_hash_to_validate {
+      debug!("load_cache metadata version hash does not match");
+      should_remove_all = true;
+    }
+  } else {
+    debug!("load_cache metadata load error");
+    should_remove_all = true;
+  }
+
+  // The old version is stale or some error occurred.
+  // Try removing all the cached files.
+  if should_remove_all {
+    let _ = fs::remove_file(&js_filename);
+    let _ = fs::remove_file(&map_filename);
+    let _ = fs::remove_file(&meta_filename);
+    // This will trigger a not-found error return
+    // and hint recompilation.
+    let _ = fs::read(&js_filename)?;
+  }
+
   Ok((read_output_code, read_source_map))
 }
 
-/// Generate an SHA1 hash for source code, to be used to determine if a cached
-/// version of the code is valid or invalid.
-fn source_code_hash(
-  filename: &Path,
-  source_code: &[u8],
-  version: &str,
-  config: &[u8],
-) -> String {
+fn gen_hash(v: Vec<&[u8]>) -> String {
   let mut ctx = ring::digest::Context::new(&ring::digest::SHA1);
-  ctx.update(version.as_bytes());
-  ctx.update(filename.to_str().unwrap().as_bytes());
-  ctx.update(source_code);
-  ctx.update(config);
+  for src in v.iter() {
+    ctx.update(src);
+  }
   let digest = ctx.finish();
   let mut out = String::new();
   // TODO There must be a better way to do this...
@@ -531,6 +667,22 @@ fn source_code_hash(
     write!(&mut out, "{:02x}", byte).unwrap();
   }
   out
+}
+
+/// Emit a SHA1 hash of source filename.
+/// Used as the filename of the compiled file.
+fn filename_hash(filename: &str) -> String {
+  gen_hash(vec![filename.as_bytes()])
+}
+
+/// Emit a SHA1 hash based on source code, deno version and TS config.
+/// Used to check if a recompilation for source code is needed.
+pub fn source_code_version_hash(
+  source_code: &[u8],
+  version: &str,
+  config: &[u8],
+) -> String {
+  gen_hash(vec![source_code, version.as_bytes(), config])
 }
 
 fn map_file_extension(path: &Path) -> msg::MediaType {
@@ -989,60 +1141,81 @@ mod tests {
     );
   }
 
-  #[test]
-  fn test_cache_path() {
-    let (temp_dir, deno_dir) = test_setup();
-    let filename = &PathBuf::from("hello.js");
-    let source_code = b"1+2";
-    let config = b"{}";
-    let hash = source_code_hash(filename, source_code, version::DENO, config);
-    assert_eq!(
-      (
-        temp_dir.path().join(format!("gen/{}.js", hash)),
-        temp_dir.path().join(format!("gen/{}.js.map", hash))
-      ),
-      deno_dir.cache_path(filename, source_code)
-    );
-  }
+//  #[test]
+//  fn test_cache_paths() {
+//    let (temp_dir, deno_dir) = test_setup();
+//    let filename = "hello.js";
+//    let hash = filename_hash(filename);
+//    assert_eq!(
+//      (
+//        temp_dir.path().join(format!("gen/{}.js", hash)),
+//        temp_dir.path().join(format!("gen/{}.js.map", hash)),
+//        temp_dir.path().join(format!("gen/{}.meta", hash)),
+//      ),
+//      deno_dir.cache_paths(filename)
+//    );
+//  }
+
+//  #[test]
+//  fn test_code_cache() {
+//    let (_temp_dir, deno_dir) = test_setup();
+//
+//    let filename = "hello.js";
+//    let source_code = b"1+2";
+//    let output_code = b"1+2 // output code";
+//    let source_map = b"{}";
+//    let config = b"{}";
+//    let hash = filename_hash(filename);
+//    let version_hash =
+//      source_code_version_hash(source_code, version::DENO, config);
+//    let (cache_path, source_map_path, meta_path) =
+//      deno_dir.cache_paths(filename);
+//    assert!(cache_path.ends_with(format!("gen/{}.js", hash)));
+//    assert!(source_map_path.ends_with(format!("gen/{}.js.map", hash)));
+//    assert!(meta_path.ends_with(format!("gen/{}.meta", hash)));
+//
+//    let out = ModuleMetaData {
+//      filename: PathBuf::from(filename),
+//      source_code: source_code[..].to_owned(),
+//      module_name: "hello.js".to_owned(),
+//      module_redirect_source_name: None,
+//      media_type: msg::MediaType::TypeScript,
+//      maybe_output_code: Some(output_code[..].to_owned()),
+//      maybe_output_code_filename: None,
+//      maybe_source_map: Some(source_map[..].to_owned()),
+//      maybe_source_map_filename: None,
+//    };
+//
+//    let r = deno_dir.code_cache(&out);
+//    r.expect("code_cache error");
+//    assert!(cache_path.exists());
+//    assert_eq!(output_code[..].to_owned(), fs::read(&cache_path).unwrap());
+//
+//    let meta = CompiledFileMetadata::load(&meta_path);
+//    assert!(meta.is_some());
+//    assert_eq!(&version_hash, &meta.unwrap().version_hash);
+//  }
 
   #[test]
-  fn test_cache_path_config() {
-    // We are changing the compiler config from the "mock" and so we expect the
-    // resolved files coming back to not match the calculated hash.
-    let (temp_dir, deno_dir) = test_setup();
-    let filename = &PathBuf::from("hello.js");
-    let source_code = b"1+2";
-    let config = b"{\"compilerOptions\":{}}";
-    let hash = source_code_hash(filename, source_code, version::DENO, config);
-    assert_ne!(
-      (
-        temp_dir.path().join(format!("gen/{}.js", hash)),
-        temp_dir.path().join(format!("gen/{}.js.map", hash))
-      ),
-      deno_dir.cache_path(filename, source_code)
-    );
-  }
-
-  #[test]
-  fn test_source_code_hash() {
+  fn test_source_code_version_hash() {
     assert_eq!(
-      "830c8b63ba3194cf2108a3054c176b2bf53aee45",
-      source_code_hash(&PathBuf::from("hello.ts"), b"1+2", "0.2.11", b"{}")
+      "08574f9cdeb94fd3fb9cdc7a20d086daeeb42bca",
+      source_code_version_hash(b"1+2", "0.4.0", b"{}")
     );
     // Different source_code should result in different hash.
     assert_eq!(
-      "fb06127e9b2e169bea9c697fa73386ae7c901e8b",
-      source_code_hash(&PathBuf::from("hello.ts"), b"1", "0.2.11", b"{}")
-    );
-    // Different filename should result in different hash.
-    assert_eq!(
-      "3a17b6a493ff744b6a455071935f4bdcd2b72ec7",
-      source_code_hash(&PathBuf::from("hi.ts"), b"1+2", "0.2.11", b"{}")
+      "d8abe2ead44c3ff8650a2855bf1b18e559addd06",
+      source_code_version_hash(b"1", "0.4.0", b"{}")
     );
     // Different version should result in different hash.
     assert_eq!(
-      "d6b2cfdc39dae9bd3ad5b493ee1544eb22e7475f",
-      source_code_hash(&PathBuf::from("hi.ts"), b"1+2", "0.2.0", b"{}")
+      "d6feffc5024d765d22c94977b4fe5975b59d6367",
+      source_code_version_hash(b"1", "0.1.0", b"{}")
+    );
+    // Different config should result in different hash.
+    assert_eq!(
+      "3b35db249b26a27decd68686f073a58266b2aec2",
+      source_code_version_hash(b"1", "0.4.0", b"{\"compilerOptions\": {}}")
     );
   }
 
