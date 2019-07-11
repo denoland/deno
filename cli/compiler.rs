@@ -1,13 +1,13 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+use crate::deno_dir::DenoDir;
+use crate::deno_dir::ModuleMetaData;
 use crate::deno_error::err_check;
 use crate::deno_error::DenoError;
-use crate::deno_dir::ModuleMetaData;
 use crate::diagnostics::Diagnostic;
 use crate::msg;
 use crate::resources;
 use crate::startup_data;
 use crate::state::*;
-use crate::tokio_util;
 use crate::worker::Worker;
 use deno::Buf;
 use deno::ModuleSpecifier;
@@ -119,31 +119,44 @@ pub fn bundle_async(
   )
 }
 
+pub struct TsCompiler {
+  pub deno_dir: DenoDir,
+}
+
+impl TsCompiler {
+  pub fn new(deno_dir: DenoDir) -> Self {
+    Self { deno_dir }
+  }
+}
+
 pub fn compile_async(
   state: ThreadSafeState,
   module_meta_data: &ModuleMetaData,
+  use_cache: bool,
 ) -> impl Future<Item = ModuleMetaData, Error = DenoError> {
   if module_meta_data.media_type != msg::MediaType::TypeScript {
     return Either::A(futures::future::ok(module_meta_data.clone()));
   }
 
-  let module_specifier =
-    ModuleSpecifier::resolve_url(&module_meta_data.module_name)
-      .expect("Should be valid module specifier");
+  if use_cache {
+    let module_specifier =
+      ModuleSpecifier::resolve_url(&module_meta_data.module_name)
+        .expect("Should be valid module specifier");
 
-  // try to load cached version
-  match state
-    .dir
-    .get_compiled_module_meta_data(&module_specifier, &module_meta_data)
-  {
-    Ok(compiled_module) => {
-      debug!(
-        "found cached compiled module: {:?}",
-        compiled_module.clone().maybe_output_code_filename.unwrap()
-      );
-      return Either::A(futures::future::ok(compiled_module));
+    // try to load cached version
+    match state
+      .dir
+      .get_compiled_module_meta_data(&module_specifier, &module_meta_data)
+    {
+      Ok(compiled_module) => {
+        debug!(
+          "found cached compiled module: {:?}",
+          compiled_module.clone().maybe_output_code_filename.unwrap()
+        );
+        return Either::A(futures::future::ok(compiled_module));
+      }
+      Err(_) => {}
     }
-    Err(_) => {}
   }
 
   let module_meta_data_ = module_meta_data.clone();
@@ -197,8 +210,6 @@ pub fn compile_async(
     .and_then(move |maybe_msg: Option<Buf>| {
       debug!("Received message from worker");
 
-      // TODO: here TS compiler emitted the files to disc and we should signal ModuleMetaData
-      //  cache that source code is available
       if let Some(msg) = maybe_msg {
         let json_str = std::str::from_utf8(&msg).unwrap();
         debug!("Message: {}", json_str);
@@ -269,17 +280,19 @@ pub fn compile_async(
   Either::B(fut)
 }
 
-pub fn compile_sync(
-  state: ThreadSafeState,
-  module_meta_data: &ModuleMetaData,
-) -> Result<ModuleMetaData, DenoError> {
-  tokio_util::block_on(compile_async(state, module_meta_data))
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::tokio_util;
   use std::path::PathBuf;
+
+  fn compile_sync(
+    state: ThreadSafeState,
+    module_meta_data: &ModuleMetaData,
+    use_cache: bool,
+  ) -> Result<ModuleMetaData, DenoError> {
+    tokio_util::block_on(compile_async(state, module_meta_data, use_cache))
+  }
 
   #[test]
   fn test_compile_sync() {
@@ -308,6 +321,7 @@ mod tests {
           String::from("hello.js"),
         ]),
         &out,
+        false,
       ).unwrap();
       assert!(
         out

@@ -1,9 +1,10 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::compiler::compile_async;
+use crate::compiler::TsCompiler;
 use crate::deno_dir;
+use crate::deno_dir::ModuleMetaData;
 use crate::deno_error::DenoError;
 use crate::deno_error::DenoResult;
-use crate::deno_dir::ModuleMetaData;
 use crate::flags;
 use crate::global_timer::GlobalTimer;
 use crate::import_map::ImportMap;
@@ -84,6 +85,8 @@ pub struct State {
   pub progress: Progress,
   pub seeded_rng: Option<Mutex<StdRng>>,
 
+  pub ts_compiler: TsCompiler,
+
   /// Set of all URLs that have been compiled. This is a hacky way to work
   /// around the fact that --reload will force multiple compilations of the same
   /// module.
@@ -126,7 +129,7 @@ pub fn fetch_module_meta_data_and_maybe_compile_async(
     .dir
     .fetch_module_meta_data_async(&module_specifier, use_cache, no_fetch)
     .and_then(move |out| {
-      compile_async(state_.clone(), &out)
+      compile_async(state_.clone(), &out, use_cache)
         .map_err(|e| {
           debug!("compiler error exiting!");
           eprintln!("\n{}", e.to_string());
@@ -268,6 +271,8 @@ impl ThreadSafeState {
 
     let modules = Arc::new(Mutex::new(deno::Modules::new()));
 
+    let ts_compiler = TsCompiler::new(dir.clone());
+
     ThreadSafeState(Arc::new(State {
       main_module,
       modules,
@@ -287,6 +292,7 @@ impl ThreadSafeState {
       dispatch_selector,
       progress,
       seeded_rng,
+      ts_compiler,
       compiled: Mutex::new(HashSet::new()),
     }))
   }

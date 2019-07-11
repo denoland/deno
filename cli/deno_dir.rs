@@ -55,7 +55,11 @@ impl ModuleMetaData {
   }
 
   pub fn js_source(&self) -> String {
-    // TODO: this should be done by compiler
+    if self.media_type == msg::MediaType::TypeScript {
+      panic!("TypeScript module has no JS source, did you forget to run it through compiler?");
+    }
+
+    // TODO: this should be done by compiler and JS module should be returned
     if self.media_type == msg::MediaType::Json {
       return format!(
         "export default {};",
@@ -63,10 +67,8 @@ impl ModuleMetaData {
       );
     }
 
-    match self.maybe_output_code {
-      None => str::from_utf8(&self.source_code).unwrap().to_string(),
-      Some(ref output_code) => str::from_utf8(output_code).unwrap().to_string(),
-    }
+    // it's either JS or Unknown media type
+    str::from_utf8(&self.source_code).unwrap().to_string()
   }
 }
 
