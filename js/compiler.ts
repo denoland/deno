@@ -107,7 +107,7 @@ const ignoredCompilerOptions: ReadonlyArray<string> = [
   "watch"
 ];
 
-interface ModuleMetaData {
+interface SourceFile {
   moduleName: string | undefined;
   filename: string | undefined;
   mediaType: msg.MediaType;
@@ -120,7 +120,7 @@ interface EmitResult {
 }
 
 /** Ops to Rust to resolve and fetch a modules meta data. */
-function fetchSourceFile(specifier: string, referrer: string): ModuleMetaData {
+function fetchSourceFile(specifier: string, referrer: string): SourceFile {
   util.log("compiler.fetchSourceFile", { specifier, referrer });
   // Send FetchSourceFile message
   const builder = flatbuffers.createBuilder();
@@ -232,7 +232,7 @@ class Host implements ts.CompilerHost {
     target: ts.ScriptTarget.ESNext
   };
 
-  private _resolveModule(specifier: string, referrer: string): ModuleMetaData {
+  private _resolveModule(specifier: string, referrer: string): SourceFile {
     // Handle built-in assets specially.
     if (specifier.startsWith(ASSETS)) {
       const moduleName = specifier.split("/").pop()!;
@@ -342,13 +342,13 @@ class Host implements ts.CompilerHost {
   ): ts.SourceFile | undefined {
     assert(!shouldCreateNewSourceFile);
     util.log("getSourceFile", fileName);
-    const moduleMetaData = this._resolveModule(fileName, ".");
-    if (!moduleMetaData || !moduleMetaData.sourceCode) {
+    const SourceFile = this._resolveModule(fileName, ".");
+    if (!SourceFile || !SourceFile.sourceCode) {
       return undefined;
     }
     return ts.createSourceFile(
       fileName,
-      moduleMetaData.sourceCode,
+      SourceFile.sourceCode,
       languageVersion
     );
   }
@@ -364,16 +364,16 @@ class Host implements ts.CompilerHost {
     util.log("resolveModuleNames()", { moduleNames, containingFile });
     return moduleNames.map(
       (moduleName): ts.ResolvedModuleFull | undefined => {
-        const moduleMetaData = this._resolveModule(moduleName, containingFile);
-        if (moduleMetaData.moduleName) {
-          const resolvedFileName = moduleMetaData.moduleName;
+        const SourceFile = this._resolveModule(moduleName, containingFile);
+        if (SourceFile.moduleName) {
+          const resolvedFileName = SourceFile.moduleName;
           // This flags to the compiler to not go looking to transpile functional
           // code, anything that is in `/$asset$/` is just library code
           const isExternalLibraryImport = moduleName.startsWith(ASSETS);
           const r = {
             resolvedFileName,
             isExternalLibraryImport,
-            extension: getExtension(resolvedFileName, moduleMetaData.mediaType)
+            extension: getExtension(resolvedFileName, SourceFile.mediaType)
           };
           return r;
         } else {

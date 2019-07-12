@@ -261,7 +261,7 @@ impl SourceFileFetcher for DenoDir {
     }
     let deps_filepath = result.unwrap();
 
-    let fut = get_source_code_async(
+    let fut = get_source_file_async(
       self,
       &module_url,
       deps_filepath.clone(),
@@ -317,7 +317,7 @@ impl SourceFileFetcher for DenoDir {
 /// If this is a remote module, and it has not yet been cached, the resulting
 /// download will be written to "filename". This happens no matter the value of
 /// use_cache.
-fn get_source_code_async(
+fn get_source_file_async(
   deno_dir: &DenoDir,
   module_url: &Url,
   filepath: PathBuf,
@@ -333,7 +333,7 @@ fn get_source_code_async(
     match fetch_local_source(deno_dir, &module_url, &filepath, None) {
       Ok(Some(source_file)) => {
         return Either::A(futures::future::ok(source_file));
-      },
+      }
       Ok(None) => {
         return Either::A(futures::future::err(
           std::io::Error::new(
@@ -353,7 +353,7 @@ fn get_source_code_async(
     match fetch_local_source(deno_dir, &module_url, &filepath, None) {
       Ok(Some(source_file)) => {
         return Either::A(futures::future::ok(source_file));
-      },
+      }
       Ok(None) => {
         // there's no cached version
       }
@@ -823,15 +823,15 @@ mod tests {
   use super::*;
   use tempfile::TempDir;
 
-  /// Synchronous version of get_source_code_async
-  fn get_source_code(
+  /// Synchronous version of get_source_file_async
+  fn get_source_file(
     deno_dir: &DenoDir,
     module_url: &Url,
     filepath: PathBuf,
     use_cache: bool,
     no_fetch: bool,
   ) -> Result<SourceFile, ErrBox> {
-    tokio_util::block_on(get_source_code_async(
+    tokio_util::block_on(get_source_file_async(
       deno_dir, module_url, filepath, use_cache, no_fetch,
     ))
   }
@@ -949,7 +949,7 @@ mod tests {
       let headers_file_name = source_code_headers_filename(&filepath);
 
       let result =
-        get_source_code(&deno_dir, &module_url, filepath.clone(), true, false);
+        get_source_file(&deno_dir, &module_url, filepath.clone(), true, false);
       assert!(result.is_ok());
       let r = result.unwrap();
       assert_eq!(
@@ -964,14 +964,14 @@ mod tests {
       let _ =
         fs::write(&headers_file_name, "{ \"mime_type\": \"text/javascript\" }");
       let result2 =
-        get_source_code(&deno_dir, &module_url, filepath.clone(), true, false);
+        get_source_file(&deno_dir, &module_url, filepath.clone(), true, false);
       assert!(result2.is_ok());
       let r2 = result2.unwrap();
       assert_eq!(
         r2.source_code,
         "export { printHello } from \"./print_hello.ts\";\n".as_bytes()
       );
-      // If get_source_code does not call remote, this should be JavaScript
+      // If get_source_file does not call remote, this should be JavaScript
       // as we modified before! (we do not overwrite .headers.json due to no http fetch)
       assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
       assert_eq!(
@@ -986,14 +986,14 @@ mod tests {
         None,
       );
       let result3 =
-        get_source_code(&deno_dir, &module_url, filepath.clone(), true, false);
+        get_source_file(&deno_dir, &module_url, filepath.clone(), true, false);
       assert!(result3.is_ok());
       let r3 = result3.unwrap();
       assert_eq!(
         r3.source_code,
         "export { printHello } from \"./print_hello.ts\";\n".as_bytes()
       );
-      // If get_source_code does not call remote, this should be JavaScript
+      // If get_source_file does not call remote, this should be JavaScript
       // as we modified before! (we do not overwrite .headers.json due to no http fetch)
       assert_eq!(&(r3.media_type), &msg::MediaType::Json);
       assert!(
@@ -1006,7 +1006,7 @@ mod tests {
       // and don't use cache
       let deno_dir = setup_deno_dir(temp_dir.path());
       let result4 =
-        get_source_code(&deno_dir, &module_url, filepath.clone(), false, false);
+        get_source_file(&deno_dir, &module_url, filepath.clone(), false, false);
       assert!(result4.is_ok());
       let r4 = result4.unwrap();
       let expected4 =
@@ -1032,7 +1032,7 @@ mod tests {
       let headers_file_name = source_code_headers_filename(&filepath);
 
       let result =
-        get_source_code(&deno_dir, &module_url, filepath.clone(), true, false);
+        get_source_file(&deno_dir, &module_url, filepath.clone(), true, false);
       assert!(result.is_ok());
       let r = result.unwrap();
       let expected = "export const loaded = true;\n".as_bytes();
@@ -1051,12 +1051,12 @@ mod tests {
         None,
       );
       let result2 =
-        get_source_code(&deno_dir, &module_url, filepath.clone(), true, false);
+        get_source_file(&deno_dir, &module_url, filepath.clone(), true, false);
       assert!(result2.is_ok());
       let r2 = result2.unwrap();
       let expected2 = "export const loaded = true;\n".as_bytes();
       assert_eq!(r2.source_code, expected2);
-      // If get_source_code does not call remote, this should be TypeScript
+      // If get_source_file does not call remote, this should be TypeScript
       // as we modified before! (we do not overwrite .headers.json due to no http fetch)
       assert_eq!(&(r2.media_type), &msg::MediaType::TypeScript);
       assert!(fs::read_to_string(&headers_file_name).is_err());
@@ -1065,7 +1065,7 @@ mod tests {
       // and don't use cache
       let deno_dir = setup_deno_dir(temp_dir.path());
       let result3 =
-        get_source_code(&deno_dir, &module_url, filepath.clone(), false, false);
+        get_source_file(&deno_dir, &module_url, filepath.clone(), false, false);
       assert!(result3.is_ok());
       let r3 = result3.unwrap();
       let expected3 = "export const loaded = true;\n".as_bytes();
@@ -1095,7 +1095,7 @@ mod tests {
 
       // first download
       let result =
-        get_source_code(&deno_dir, &module_url, filepath.clone(), false, false);
+        get_source_file(&deno_dir, &module_url, filepath.clone(), false, false);
       assert!(result.is_ok());
 
       let result = fs::File::open(&headers_file_name);
@@ -1109,7 +1109,7 @@ mod tests {
       // false, this can be verified using source header file creation timestamp (should be
       // the same as after first download)
       let result =
-        get_source_code(&deno_dir, &module_url, filepath.clone(), false, false);
+        get_source_file(&deno_dir, &module_url, filepath.clone(), false, false);
       assert!(result.is_ok());
 
       let result = fs::File::open(&headers_file_name);
@@ -1145,7 +1145,7 @@ mod tests {
       let redirect_target_filename =
         redirect_target_filepath.to_str().unwrap().to_string();
 
-      let mod_meta = get_source_code(
+      let mod_meta = get_source_file(
         &deno_dir,
         &redirect_module_url,
         redirect_source_filepath.clone(),
@@ -1208,7 +1208,7 @@ mod tests {
       let redirect_target_filename =
         redirect_target_filepath.to_str().unwrap().to_string();
 
-      let mod_meta = get_source_code(
+      let mod_meta = get_source_file(
         &deno_dir,
         &redirect_module_url,
         redirect_source_filepath.clone(),
@@ -1261,19 +1261,19 @@ mod tests {
 
       // file hasn't been cached before and remote downloads are not allowed
       let result =
-        get_source_code(&deno_dir, &module_url, filepath.clone(), true, true);
+        get_source_file(&deno_dir, &module_url, filepath.clone(), true, true);
       assert!(result.is_err());
       let err = result.err().unwrap();
       assert_eq!(err.kind(), ErrorKind::NotFound);
 
       // download and cache file
       let result =
-        get_source_code(&deno_dir, &module_url, filepath.clone(), true, false);
+        get_source_file(&deno_dir, &module_url, filepath.clone(), true, false);
       assert!(result.is_ok());
 
       // module is already cached, should be ok even with `no_fetch`
       let result =
-        get_source_code(&deno_dir, &module_url, filepath.clone(), true, true);
+        get_source_file(&deno_dir, &module_url, filepath.clone(), true, true);
       assert!(result.is_ok());
     });
   }
