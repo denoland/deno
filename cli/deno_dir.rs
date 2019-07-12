@@ -180,7 +180,6 @@ impl DenoDir {
   // https://github.com/denoland/deno/blob/golang/deno_dir.go#L99-L111
   pub fn new(
     custom_root: Option<PathBuf>,
-    state_config: &Option<Vec<u8>>,
     progress: Progress,
   ) -> std::io::Result<Self> {
     // Only setup once.
@@ -199,15 +198,6 @@ impl DenoDir {
     let deps_http = deps.join("http");
     let deps_https = deps.join("https");
 
-    // Internally within DenoDir, we use the config as part of the hash to
-    // determine if a file has been transpiled with the same configuration, but
-    // we have borrowed the `State` configuration, which we want to either clone
-    // or create an empty `Vec` which we will use in our hash function.
-    let config = match state_config {
-      Some(config) => config.clone(),
-      _ => b"".to_vec(),
-    };
-
     let deno_dir = Self {
       root,
       gen_cache: DiskCache::new(&gen),
@@ -216,7 +206,7 @@ impl DenoDir {
       deps,
       deps_http,
       deps_https,
-      config,
+      config: vec![],
       progress,
       download_cache: DownloadCache::default(),
     };
@@ -941,8 +931,7 @@ mod tests {
   }
 
   fn setup_deno_dir(dir_path: &Path) -> DenoDir {
-    let config = Some(b"{}".to_vec());
-    DenoDir::new(Some(dir_path.to_path_buf()), &config, Progress::new())
+    DenoDir::new(Some(dir_path.to_path_buf()), Progress::new())
       .expect("setup fail")
   }
 
@@ -1001,7 +990,7 @@ mod tests {
       (
         PathBuf::from("file/a/b/c/hello.js"),
         PathBuf::from("file/a/b/c/hello.js.map"),
-        PathBuf::from("file/a/b/c/hello.js.meta"),
+        PathBuf::from("file/a/b/c/hello.meta"),
       )
     );
   }

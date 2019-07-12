@@ -173,45 +173,80 @@ fn gen_hash(v: Vec<&[u8]>) -> String {
 pub fn source_code_version_hash(
   source_code: &[u8],
   version: &str,
-  config_hash: &str,
+  config_hash: &[u8],
 ) -> String {
-  gen_hash(vec![
-    source_code,
-    version.as_bytes(),
-    config_hash.as_bytes(),
-  ])
+  gen_hash(vec![source_code, version.as_bytes(), config_hash])
+}
+
+fn load_config_file(
+  config_path: Option<String>,
+) -> (Option<String>, Option<Vec<u8>>) {
+  // take the passed flag and resolve the file name relative to the cwd
+  let config_file = match &config_path {
+    Some(config_file_name) => {
+      debug!("Compiler config file: {}", config_file_name);
+      let cwd = std::env::current_dir().unwrap();
+      Some(cwd.join(config_file_name))
+    }
+    _ => None,
+  };
+
+  // Convert the PathBuf to a canonicalized string.  This is needed by the
+  // compiler to properly deal with the configuration.
+  let config_path = match &config_file {
+    Some(config_file) => Some(
+      config_file
+        .canonicalize()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_owned(),
+    ),
+    _ => None,
+  };
+
+  // Load the contents of the configuration file
+  let config = match &config_file {
+    Some(config_file) => {
+      debug!("Attempt to load config: {}", config_file.to_str().unwrap());
+      match fs::read(&config_file) {
+        Ok(config_data) => Some(config_data.to_owned()),
+        _ => panic!(
+          "Error retrieving compiler config file at \"{}\"",
+          config_file.to_str().unwrap()
+        ),
+      }
+    }
+    _ => None,
+  };
+
+  (config_path, config)
 }
 
 pub struct TsCompiler {
   pub deno_dir: DenoDir,
   pub config: CompilerConfig,
-  pub config_hash: String,
+  pub config_hash: Vec<u8>,
 }
 
 impl TsCompiler {
-  // TODO: reading of config file should be done in TsCompiler::new instead of state, refactor
-  // DenoDir to not require compiler config in initializer
-  pub fn new(
-    deno_dir: DenoDir,
-    config_path: Option<String>,
-    config: Option<Vec<u8>>,
-  ) -> Self {
-    let compiler_config = match (&config_path, &config) {
+  pub fn new(deno_dir: DenoDir, config_path: Option<String>) -> Self {
+    let compiler_config = match load_config_file(config_path) {
       (Some(config_path), Some(config)) => {
         Some((config_path.to_string(), config.to_vec()))
       }
       _ => None,
     };
 
-    let config_hash = match &compiler_config {
-      Some((_, config)) => gen_hash(vec![&config.clone()[..]]),
-      None => gen_hash(vec![b""]),
+    let config_bytes = match &compiler_config {
+      Some((_, config)) => config.clone(),
+      _ => b"".to_vec(),
     };
 
     Self {
       deno_dir,
       config: compiler_config,
-      config_hash,
+      config_hash: config_bytes,
     }
   }
 
@@ -353,41 +388,9 @@ impl TsCompiler {
 
         Ok(())
       }).and_then(move |_| {
-        // TODO: must fetch compiled JS file from DENO_DIR, this can't fail
-        //  but if we get rid of gen/ and store JS files alongside TS files
-        //  when we request local JS file it is fetched from original location on disk
-        //  example:
-        //  compiling file:///dev/foo.ts
-        //  it's fetched from /dev/foo.ts
-        //  we want to fetch $DENO_DIR/src/file/dev/foo.js
-        //  so it would be natural to request equivalent JS file (file://dev/foo.js),
-        //  but it's local file so it will be fetched from /dev/foo.js (NotFound!)
-        //
-        //  simple solution:
-        //  always get files from $DENO_DIR
-        //
-        //
-        //  compiling file:///dev/foo.ts
-        //  looking for already compiled file file:///dev/foo.js
-        //  looking at $DENO_DIR/src/file/dev/foo.js (NotFound!)
-        //  fallback to /dev/foo.js (NotFound!)
-        //  create worker and compile file:///dev/foo.ts
-        //  looking at $DENO_DIR/src/file/dev/foo.ts (NotFound)
-        //  fetch from /dev/foo.ts, cache in $DENO_DIR along with headers with modified timestamp
-        //  to avoid copying if not needed
-        //  worker writes compiled file to disk at $DENO_DIR/src/file/dev/foo.js
-        //  looking for already compiled file file:///dev/foo.js
-        //  looking at $DENO_DIR/src/file/dev/foo.ts (found, return file)
-        //
-        // This solution wouldn't play nicely with CheckJS when there's JS->JS compilation. Because
-        // first we'd access the file from original location on disk, on subsequent access we'd
-        // have to force skipping in-process cache to re-fetch from disk and only then we'd
-        // get compiled module.
-        //
-        // We
-        // still need to handle that JS and JSON files are compiled by TS compiler now (and they're
-        // not used).
-        // TODO: this is bad
+        // if we are this far it means compilation was successful and we can
+        // load compiled filed from disk
+        // TODO: can this be somehow called using `self.`?
         state_.ts_compiler.get_compiled_source_file(&source_file_)
           .map_err(|e| {
             // TODO(95th) Instead of panicking, We could translate this error to Diagnostic.
@@ -593,5 +596,28 @@ mod tests {
       String::from("$deno$/bundle.js"),
     );
     assert!(tokio_util::block_on(out).is_ok());
+  }
+
+  #[test]
+  fn test_source_code_version_hash() {
+    assert_eq!(
+      "08574f9cdeb94fd3fb9cdc7a20d086daeeb42bca",
+      source_code_version_hash(b"1+2", "0.4.0", b"{}")
+    );
+    // Different source_code should result in different hash.
+    assert_eq!(
+      "d8abe2ead44c3ff8650a2855bf1b18e559addd06",
+      source_code_version_hash(b"1", "0.4.0", b"{}")
+    );
+    // Different version should result in different hash.
+    assert_eq!(
+      "d6feffc5024d765d22c94977b4fe5975b59d6367",
+      source_code_version_hash(b"1", "0.1.0", b"{}")
+    );
+    // Different config should result in different hash.
+    assert_eq!(
+      "3b35db249b26a27decd68686f073a58266b2aec2",
+      source_code_version_hash(b"1", "0.4.0", b"{\"compilerOptions\": {}}")
+    );
   }
 }

@@ -26,7 +26,6 @@ use std;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
-use std::fs;
 use std::ops::Deref;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -63,12 +62,6 @@ pub struct State {
   pub argv: Vec<String>,
   pub permissions: DenoPermissions,
   pub flags: flags::DenoFlags,
-  /// When flags contains a `.config_path` option, the content of the
-  /// configuration file will be resolved and set.
-  pub config: Option<Vec<u8>>,
-  /// When flags contains a `.config_path` option, the fully qualified path
-  /// name of the passed path will be resolved and set.
-  pub config_path: Option<String>,
   /// When flags contains a `.import_map_path` option, the content of the
   /// import map file will be resolved and set.
   pub import_map: Option<ImportMap>,
@@ -194,48 +187,7 @@ impl ThreadSafeState {
     let external_channels = (worker_in_tx, worker_out_rx);
     let resource = resources::add_worker(external_channels);
 
-    // TODO: move loading of config in TsCompiler
-    // take the passed flag and resolve the file name relative to the cwd
-    let config_file = match &flags.config_path {
-      Some(config_file_name) => {
-        debug!("Compiler config file: {}", config_file_name);
-        let cwd = std::env::current_dir().unwrap();
-        Some(cwd.join(config_file_name))
-      }
-      _ => None,
-    };
-
-    // Convert the PathBuf to a canonicalized string.  This is needed by the
-    // compiler to properly deal with the configuration.
-    let config_path = match &config_file {
-      Some(config_file) => Some(
-        config_file
-          .canonicalize()
-          .unwrap()
-          .to_str()
-          .unwrap()
-          .to_owned(),
-      ),
-      _ => None,
-    };
-
-    // Load the contents of the configuration file
-    let config = match &config_file {
-      Some(config_file) => {
-        debug!("Attempt to load config: {}", config_file.to_str().unwrap());
-        match fs::read(&config_file) {
-          Ok(config_data) => Some(config_data.to_owned()),
-          _ => panic!(
-            "Error retrieving compiler config file at \"{}\"",
-            config_file.to_str().unwrap()
-          ),
-        }
-      }
-      _ => None,
-    };
-
-    let dir =
-      deno_dir::DenoDir::new(custom_root, &config, progress.clone()).unwrap();
+    let dir = deno_dir::DenoDir::new(custom_root, progress.clone()).unwrap();
 
     let main_module: Option<ModuleSpecifier> = if argv_rest.len() <= 1 {
       None
@@ -273,8 +225,7 @@ impl ThreadSafeState {
 
     let modules = Arc::new(Mutex::new(deno::Modules::new()));
 
-    let ts_compiler =
-      TsCompiler::new(dir.clone(), config_path.clone(), config.clone());
+    let ts_compiler = TsCompiler::new(dir.clone(), flags.config_path.clone());
 
     ThreadSafeState(Arc::new(State {
       main_module,
@@ -283,8 +234,6 @@ impl ThreadSafeState {
       argv: argv_rest,
       permissions: DenoPermissions::from_flags(&flags),
       flags,
-      config,
-      config_path,
       import_map,
       metrics: Metrics::default(),
       worker_channels: Mutex::new(internal_channels),
