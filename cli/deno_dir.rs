@@ -7,7 +7,6 @@ use crate::fs as deno_fs;
 use crate::http_util;
 use crate::msg;
 use crate::progress::Progress;
-use crate::source_maps::SourceMapGetter;
 use crate::tokio_util;
 use deno::ErrBox;
 use deno::ModuleSpecifier;
@@ -162,10 +161,6 @@ pub struct DenoDir {
   // This splits to http and https deps
   pub deps_http: PathBuf,
   pub deps_https: PathBuf,
-  // TODO: remove
-  /// The active configuration file contents (or empty array) which applies to
-  /// source code cached by `DenoDir`.
-  pub config: Vec<u8>,
 
   pub progress: Progress,
 
@@ -206,7 +201,6 @@ impl DenoDir {
       deps,
       deps_http,
       deps_https,
-      config: vec![],
       progress,
       download_cache: DownloadCache::default(),
     };
@@ -250,31 +244,6 @@ impl DenoDir {
 
     debug!("deps filename: {:?}", filename);
     Ok(normalize_path(&filename))
-  }
-
-  // TODO: this method is only used by `SourceMapGetter` impl - can we organize it better?
-  // TODO: change interface to use `ModuleSpecifier` instead of `&str`
-  fn try_resolve_and_get_source_file(
-    &self,
-    script_name: &str,
-  ) -> Option<SourceFile> {
-    // if `script_name` can't be resolved to ModuleSpecifier it's probably internal
-    // script (like `gen/cli/bundle/compiler.js`) so we won't be
-    // able to get source for it anyway
-    let maybe_specifier = ModuleSpecifier::resolve_url(script_name);
-
-    if maybe_specifier.is_err() {
-      return None;
-    }
-
-    let module_specifier = maybe_specifier.unwrap();
-    // TODO: this method shouldn't issue `fetch_source_file` - this is done for each line
-    //  in JS stack trace so it's pretty slow - quick idea: store `SourceFile` in one
-    //  structure available to DenoDir so it's not fetched from disk everytime it's needed
-    match self.fetch_source_file(&module_specifier, true, true) {
-      Err(_) => None,
-      Ok(out) => Some(out),
-    }
   }
 }
 
@@ -334,30 +303,6 @@ impl SourceFileFetcher for DenoDir {
     tokio_util::block_on(
       self.fetch_source_file_async(specifier, use_cache, no_fetch),
     )
-  }
-}
-
-// TODO: remove
-// TODO: source maps should be fetched as a source file after resolving `script_name`
-impl SourceMapGetter for DenoDir {
-  fn get_source_map(&self, script_name: &str) -> Option<Vec<u8>> {
-    self
-      .try_resolve_and_get_source_file(script_name)
-//      .and_then(|out| match self.get_compiled_source_file(&out) {
-      // TODO: this is broken
-      .and_then(|out| out.maybe_source_map)
-  }
-
-  fn get_source_line(&self, script_name: &str, line: usize) -> Option<String> {
-    self
-      .try_resolve_and_get_source_file(script_name)
-      .and_then(|out| {
-        str::from_utf8(&out.source_code).ok().and_then(|v| {
-          let lines: Vec<&str> = v.lines().collect();
-          assert!(lines.len() > line);
-          Some(lines[line].to_string())
-        })
-      })
   }
 }
 

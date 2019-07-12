@@ -527,73 +527,52 @@ impl TsCompiler {
     Ok(())
   }
 
+  fn try_to_resolve(self: &Self, script_name: &str) -> Option<ModuleSpecifier> {
+    // if `script_name` can't be resolved to ModuleSpecifier it's probably internal
+    // script (like `gen/cli/bundle/compiler.js`) so we won't be
+    // able to get source for it anyway
+    ModuleSpecifier::resolve_url(script_name).ok()
+  }
+
   fn try_resolve_and_get_source_file(
     &self,
     script_name: &str,
   ) -> Option<SourceFile> {
-    // TODO: this method should fetch original file
-
-    // if `script_name` can't be resolved to ModuleSpecifier it's probably internal
-    // script (like `gen/cli/bundle/compiler.js`) so we won't be
-    // able to get source for it anyway
-    let maybe_specifier = ModuleSpecifier::resolve_url(script_name);
-
-    if maybe_specifier.is_err() {
-      return None;
+    if let Some(module_specifier) = self.try_to_resolve(script_name) {
+      return match self.deno_dir.fetch_source_file(
+        &module_specifier,
+        true,
+        true,
+      ) {
+        Ok(out) => Some(out),
+        Err(_) => None,
+      };
     }
 
-    let module_specifier = maybe_specifier.unwrap();
-    match self
-      .deno_dir
-      .fetch_source_file(&module_specifier, true, true)
-    {
-      Ok(out) => Some(out),
-      Err(_) => None,
-    }
-  }
-
-  // TODO: this method is only used by `SourceMapGetter` impl - can we organize it better?
-  // TODO: change interface to use `ModuleSpecifier` instead of `&str`
-  fn try_resolve_and_get_source_map(
-    &self,
-    script_name: &str,
-  ) -> Option<Vec<u8>> {
-    // if `script_name` can't be resolved to ModuleSpecifier it's probably internal
-    // script (like `gen/cli/bundle/compiler.js`) so we won't be
-    // able to get source for it anyway
-    let maybe_specifier = ModuleSpecifier::resolve_url(script_name);
-
-    if maybe_specifier.is_err() {
-      return None;
-    }
-
-    let module_specifier = maybe_specifier.unwrap();
-    let (_, source_map_path, _) = self.cache_paths(module_specifier.as_url());
-    let source_map_path = self.deno_dir.gen.join(source_map_path);
-
-    // TODO: this method shouldn't fetch from disk for each time it's called
-    match fs::read(&source_map_path) {
-      Ok(out) => Some(out),
-      Err(_) => None,
-    }
-
-    // TODO: this method shouldn't issue `fetch_source_file` - this is done for each line
-    //  in JS stack trace so it's pretty slow - quick idea: store `SourceFile` in one
-    //  structure available to DenoDir so it's not fetched from disk everytime it's needed
-    //    match self.fetch_source_file(&module_specifier, true, true) {
-    //      Err(_) => None,
-    //      Ok(out) => Some(out),
-    //    }
+    None
   }
 }
 
-// TODO: source maps should be fetched as a source file after resolving `script_name`
 impl SourceMapGetter for TsCompiler {
   fn get_source_map(&self, script_name: &str) -> Option<Vec<u8>> {
-    self.try_resolve_and_get_source_map(script_name)
+    if let Some(module_specifier) = self.try_to_resolve(script_name) {
+      let (_, source_map_path, _) = self.cache_paths(module_specifier.as_url());
+      let source_map_path = self.deno_dir.gen.join(source_map_path);
+
+      // TODO: this method shouldn't fetch from disk for each time it's called
+      // TODO: source maps should be fetched as a `SourceFile`
+      return match fs::read(&source_map_path) {
+        Ok(out) => Some(out),
+        Err(_) => None,
+      };
+    }
+
+    None
   }
 
   fn get_source_line(&self, script_name: &str, line: usize) -> Option<String> {
+    // TODO: maybe it's worth caching vector of lines after first access
+    // because this function might be called several times for each file
     self
       .try_resolve_and_get_source_file(script_name)
       .and_then(|out| {
