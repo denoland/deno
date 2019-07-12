@@ -337,6 +337,7 @@ impl SourceFileFetcher for DenoDir {
   }
 }
 
+// TODO: remove
 // TODO: source maps should be fetched as a source file after resolving `script_name`
 impl SourceMapGetter for DenoDir {
   fn get_source_map(&self, script_name: &str) -> Option<Vec<u8>> {

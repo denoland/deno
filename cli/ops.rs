@@ -412,7 +412,7 @@ fn op_format_error(
   assert!(data.is_none());
   let inner = base.inner_as_format_error().unwrap();
   let json_str = inner.error().unwrap();
-  let error = JSError::from_json(json_str, &state.dir);
+  let error = JSError::from_json(json_str, &state.ts_compiler);
   let error_string = error.to_string();
 
   let mut builder = FlatBufferBuilder::new();
