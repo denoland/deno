@@ -87,52 +87,6 @@ impl CompiledFileMetadata {
   }
 }
 
-/// Try loading the compiled code and map from the cache.
-/// Also validate the state hash in case source code has changed.
-/// If the version hash does not match,
-/// try delete all these files and return an error.
-fn load_cache(
-  js_filename: &PathBuf,
-  map_filename: &PathBuf,
-  meta_filename: &PathBuf,
-  version_hash_to_validate: String,
-) -> Result<(Vec<u8>, Vec<u8>), std::io::Error> {
-  debug!(
-    "load_cache code: {} map: {} meta: {}",
-    js_filename.display(),
-    map_filename.display(),
-    meta_filename.display()
-  );
-  let read_output_code = fs::read(&js_filename)?;
-  let read_source_map = fs::read(&map_filename)?;
-
-  // Validate metadata.
-  let mut should_remove_all = false;
-  if let Some(read_metadata) = CompiledFileMetadata::load(meta_filename) {
-    if read_metadata.version_hash != version_hash_to_validate {
-      debug!("load_cache metadata version hash does not match");
-      should_remove_all = true;
-    }
-  } else {
-    debug!("load_cache metadata load error");
-    should_remove_all = true;
-  }
-
-  // TODO: this step can be skipped now
-  // The old version is stale or some error occurred.
-  // Try removing all the cached files.
-  if should_remove_all {
-    let _ = fs::remove_file(&js_filename);
-    let _ = fs::remove_file(&map_filename);
-    let _ = fs::remove_file(&meta_filename);
-    // This will trigger a not-found error return
-    // and hint recompilation.
-    let _ = fs::read(&js_filename)?;
-  }
-
-  Ok((read_output_code, read_source_map))
-}
-
 /// Creates the JSON message send to compiler.ts's onmessage.
 fn req(
   root_names: Vec<String>,
@@ -324,18 +278,39 @@ impl TsCompiler {
     source_file: &SourceFile,
     use_cache: bool,
   ) -> impl Future<Item = SourceFile, Error = ErrBox> {
+    // TODO: maybe fetching of original SourceFile should be done here?
+
     if source_file.media_type != msg::MediaType::TypeScript {
       return Either::A(futures::future::ok(source_file.clone()));
     }
 
     if use_cache {
-      // try to load cached version
-      if let Ok(compiled_module) = self.get_compiled_source_file(&source_file) {
-        debug!(
-          "found cached compiled module: {:?}",
-          compiled_module.clone().filename
+      // Try to load cached version:
+      // 1. check if there's 'meta' file
+      let (_, _, meta_cache_key) = self.cache_paths(&source_file.url);
+      let meta_filename = self.deno_dir.gen.join(meta_cache_key);
+      if let Some(read_metadata) = CompiledFileMetadata::load(meta_filename) {
+        // 2. compare version hashes
+        // TODO: it would probably be good idea to make it method implemented on SourceFile
+        let version_hash_to_validate = source_code_version_hash(
+          &source_file.source_code,
+          version::DENO,
+          &self.config_hash,
         );
-        return Either::A(futures::future::ok(compiled_module));
+
+        if read_metadata.version_hash == version_hash_to_validate {
+          debug!("load_cache metadata version hash match");
+          if let Ok(compiled_module) =
+            self.get_compiled_source_file(&source_file)
+          {
+            debug!(
+              "found cached compiled module: {:?}",
+              compiled_module.clone().filename
+            );
+            // TODO: store in in-process cache for subsequent access
+            return Either::A(futures::future::ok(compiled_module));
+          }
+        }
       }
     }
 
@@ -392,10 +367,12 @@ impl TsCompiler {
         // if we are this far it means compilation was successful and we can
         // load compiled filed from disk
         // TODO: can this be somehow called using `self.`?
-        state_.ts_compiler.get_compiled_source_file(&source_file_)
+        state_
+          .ts_compiler
+          .get_compiled_source_file(&source_file_)
           .map_err(|e| {
-            // TODO(95th) Instead of panicking, We could translate this error to Diagnostic.
-            panic!("{}", e)
+            // TODO: this situation shouldn't happen
+            panic!("Expected to find compiled file: {}", e)
           })
       }).and_then(move |source_file_after_compile| {
         // Explicit drop to keep reference alive until future completes.
@@ -421,57 +398,29 @@ impl TsCompiler {
     )
   }
 
+  // TODO: this should be done by some higher level function from `DiskCache` or DenoDir
   pub fn get_compiled_source_file(
     self: &Self,
     source_file: &SourceFile,
   ) -> Result<SourceFile, ErrBox> {
     let compiled_cache_filename =
       self.deno_dir.gen.join(get_cache_filename(&source_file.url));
-    let (
-      output_code_filename,
-      output_source_map_filename,
-      output_meta_filename,
-    ) = (
-      compiled_cache_filename.with_extension("js"),
-      compiled_cache_filename.with_extension("js.map"),
-      compiled_cache_filename.with_extension("meta"),
-    );
+    let compiled_code_filename = compiled_cache_filename.with_extension("js");
+    debug!("compiled filename: {:?}", compiled_code_filename);
 
-    debug!(
-      "compiled filenames: {:?}, {:?}",
-      output_code_filename, output_source_map_filename
-    );
+    let compiled_code = fs::read(&compiled_code_filename)?;
 
-    let version_hash_to_validate = source_code_version_hash(
-      &source_file.source_code,
-      version::DENO,
-      &self.config_hash,
-    );
+    let compiled_module = SourceFile {
+      url: source_file.url.clone(),
+      redirect_source_url: None,
+      filename: compiled_code_filename,
+      media_type: msg::MediaType::JavaScript,
+      source_code: compiled_code,
+      maybe_source_map: None, // TODO: this breaks deno info
+      maybe_source_map_filename: None,
+    };
 
-    // TODO: validation of hash should be done by compiler
-    let result = load_cache(
-      &output_code_filename,
-      &output_source_map_filename,
-      &output_meta_filename,
-      version_hash_to_validate,
-    );
-    debug!("load cache result: {:?}", result);
-    match result {
-      Err(err) => Err(err.into()),
-      Ok((output_code, source_map)) => {
-        let compiled_module = SourceFile {
-          url: source_file.url.clone(),
-          redirect_source_url: None,
-          filename: output_code_filename,
-          media_type: msg::MediaType::JavaScript,
-          source_code: output_code,
-          maybe_source_map: Some(source_map),
-          maybe_source_map_filename: Some(output_source_map_filename),
-        };
-
-        Ok(compiled_module)
-      }
-    }
+    Ok(compiled_module)
   }
 
   pub fn cache_compiler_output(
