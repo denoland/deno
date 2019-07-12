@@ -242,7 +242,6 @@ impl DenoDir {
 }
 
 impl SourceFileFetcher for DenoDir {
-  // TODO: change `specifier` to `url`?
   fn fetch_source_file_async(
     self: &Self,
     specifier: &ModuleSpecifier,
@@ -328,9 +327,17 @@ fn get_source_file_async(
 
   // Local files are always fetched from disk bypassing cache.
   if is_local_file {
-    match fetch_local_file(&module_url, &filepath) {
-      Ok(source_file) => {
+    match fetch_local_source(deno_dir, &module_url, &filepath, None) {
+      Ok(Some(source_file)) => {
         return Either::A(futures::future::ok(source_file));
+      }
+      Ok(None) => {
+        return Either::A(futures::future::err(
+          std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("cannot find local file '{}'", filename),
+          ).into(),
+        ));
       }
       Err(err) => {
         return Either::A(futures::future::err(err));
@@ -340,7 +347,7 @@ fn get_source_file_async(
 
   // TODO: this should be removed once in-process `SourceCodeCache` is implemented
   if deno_dir.download_cache.has(&module_name) {
-    match fetch_cached_remote_module(deno_dir, &module_url, &filepath, None) {
+    match fetch_local_source(deno_dir, &module_url, &filepath, None) {
       Ok(Some(source_file)) => {
         return Either::A(futures::future::ok(source_file));
       }
@@ -360,7 +367,7 @@ fn get_source_file_async(
 
   // We're dealing with remote file, first try local cache
   if use_cache {
-    match fetch_cached_remote_module(deno_dir, &module_url, &filepath, None) {
+    match fetch_local_source(deno_dir, &module_url, &filepath, None) {
       Ok(Some(source_file)) => {
         return Either::A(futures::future::ok(source_file));
       }
@@ -635,24 +642,6 @@ fn fetch_remote_source(
   ))
 }
 
-fn fetch_local_file(
-  file_url: &Url,
-  filepath: &Path,
-) -> Result<SourceFile, ErrBox> {
-  let source_code = match fs::read(filepath) {
-    Err(e) => return Err(e.into()),
-    Ok(c) => c,
-  };
-
-  Ok(SourceFile {
-    url: file_url.clone(),
-    redirect_source_url: None,
-    filename: filepath.to_owned(),
-    media_type: map_content_type(&filepath, None),
-    source_code,
-  })
-}
-
 /// Fetch local or cached source code.
 /// This is a recursive operation if source file has redirection.
 /// It will keep reading filename.headers.json for information about redirection.
@@ -662,7 +651,7 @@ fn fetch_local_file(
 /// AKA if redirection occurs, module_initial_source_name is the source path
 /// that user provides, and the final module_name is the resolved path
 /// after following all redirections.
-fn fetch_cached_remote_module(
+fn fetch_local_source(
   deno_dir: &DenoDir,
   module_url: &Url,
   filepath: &Path,
@@ -691,7 +680,7 @@ fn fetch_cached_remote_module(
       maybe_initial_module_url = Some(module_url.clone());
     }
     // Recurse.
-    return fetch_cached_remote_module(
+    return fetch_local_source(
       deno_dir,
       &real_module_url,
       &real_filepath,
@@ -1339,8 +1328,7 @@ mod tests {
         Some("text/javascript".to_owned()),
         None,
       );
-      let result2 =
-        fetch_cached_remote_module(&deno_dir, &module_url, &filepath, None);
+      let result2 = fetch_local_source(&deno_dir, &module_url, &filepath, None);
       assert!(result2.is_ok());
       let r2 = result2.unwrap().unwrap();
       assert_eq!(r2.source_code, b"export const loaded = true;\n");
@@ -1377,8 +1365,7 @@ mod tests {
         Some("text/javascript".to_owned()),
         None,
       );
-      let result2 =
-        fetch_cached_remote_module(&deno_dir, &module_url, &filepath, None);
+      let result2 = fetch_local_source(&deno_dir, &module_url, &filepath, None);
       assert!(result2.is_ok());
       let r2 = result2.unwrap().unwrap();
       assert_eq!(r2.source_code, "export const loaded = true;\n".as_bytes());
@@ -1455,8 +1442,7 @@ mod tests {
       Url::parse("http://example.com/mt_text_typescript.t1.ts").unwrap();
     let filepath = cwd.join("tests/subdir/mt_text_typescript.t1.ts");
 
-    let result =
-      fetch_cached_remote_module(&deno_dir, &module_url, &filepath, None);
+    let result = fetch_local_source(&deno_dir, &module_url, &filepath, None);
     assert!(result.is_ok());
     let r = result.unwrap().unwrap();
     assert_eq!(r.source_code, "export const loaded = true;\n".as_bytes());

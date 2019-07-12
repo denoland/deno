@@ -460,15 +460,19 @@ impl TsCompiler {
       .gen
       .join(get_cache_filename(module_specifier.as_url()));
     let source_map_filename = compiled_cache_filename.with_extension("js.map");
-    debug!("source map filename: {:?}", source_map_filename);
+    eprintln!("source map filename: {:?}", source_map_filename);
 
-    let source_map_url = Url::from_file_path(&source_map_filename)
-      .expect("Path must be valid URL");
-    let source_map_specifier = ModuleSpecifier::from(source_map_url);
+    let contents = fs::read(&source_map_filename)?;
 
-    self
-      .deno_dir
-      .fetch_source_file(&source_map_specifier, true, true)
+    let source_map_file = SourceFile {
+      url: module_specifier.as_url().to_owned(),
+      redirect_source_url: None,
+      filename: source_map_filename,
+      media_type: msg::MediaType::JavaScript,
+      source_code: contents,
+    };
+
+    Ok(source_map_file)
   }
 
   pub fn cache_compiler_output(
