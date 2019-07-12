@@ -8,6 +8,7 @@ use deno::ErrBox;
 use deno::ModuleResolutionError;
 use http::uri;
 use hyper;
+use rustyline::error::ReadlineError;
 use std;
 use std::error::Error;
 use std::fmt;
@@ -185,6 +186,19 @@ impl GetErrorKind for hyper::Error {
   }
 }
 
+impl GetErrorKind for ReadlineError {
+  fn kind(&self) -> ErrorKind {
+    use ReadlineError::*;
+    match self {
+      Io(err) => GetErrorKind::kind(err),
+      Eof => ErrorKind::UnexpectedEof,
+      #[cfg(unix)]
+      Errno(err) => err.kind(),
+      _ => unimplemented!(),
+    }
+  }
+}
+
 #[cfg(unix)]
 mod unix {
   use super::{ErrorKind, GetErrorKind};
@@ -230,6 +244,7 @@ impl GetErrorKind for dyn AnyError {
       .or_else(|| self.downcast_ref::<StaticError>().map(Get::kind))
       .or_else(|| self.downcast_ref::<uri::InvalidUri>().map(Get::kind))
       .or_else(|| self.downcast_ref::<url::ParseError>().map(Get::kind))
+      .or_else(|| self.downcast_ref::<ReadlineError>().map(Get::kind))
       .or_else(|| unix_error_kind(self))
       .unwrap_or_else(|| {
         panic!("Can't get ErrorKind for {:?}", self);
