@@ -14,11 +14,9 @@ use dirs;
 use futures::future::{loop_fn, Either, Loop};
 use futures::Future;
 use http;
-use ring;
 use serde_json;
 use std;
 use std::collections::HashSet;
-use std::fmt::Write;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
@@ -327,30 +325,22 @@ fn get_source_code_async(
   no_fetch: bool,
 ) -> impl Future<Item = SourceFile, Error = ErrBox> {
   let filename = filepath.to_str().unwrap().to_string();
-  let module_name = module_url.to_string();
   let url_scheme = module_url.scheme();
-  let is_module_remote = url_scheme == "http" || url_scheme == "https";
-  // We try fetch local. Three cases:
-  // 1. Remote downloads are not allowed, we're only allowed to use cache.
-  // 2. This is a remote module and we're allowed to use cached downloads.
-  // 3. This is a local module.
-  if !is_module_remote
-    || use_cache
-    || no_fetch
-    || deno_dir.download_cache.has(&module_name)
-  {
-    debug!(
-      "fetch local or reload {} is_module_remote {}",
-      module_name, is_module_remote
-    );
-    // Note that local fetch is done synchronously.
+  let is_local_file = url_scheme == "file";
+
+  // Local files are always fetched from disk bypassing cache.
+  if is_local_file {
     match fetch_local_source(deno_dir, &module_url, &filepath, None) {
-      Ok(Some(output)) => {
-        debug!("found local source ");
-        return Either::A(futures::future::ok(output));
-      }
+      Ok(Some(source_file)) => {
+        return Either::A(futures::future::ok(source_file));
+      },
       Ok(None) => {
-        debug!("fetch_local_source returned None");
+        return Either::A(futures::future::err(
+          std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("cannot find local file '{}'", filename),
+          ).into(),
+        ));
       }
       Err(err) => {
         return Either::A(futures::future::err(err));
@@ -358,20 +348,24 @@ fn get_source_code_async(
     }
   }
 
-  // If not remote file stop here!
-  if !is_module_remote {
-    debug!("not remote file stop here");
-    return Either::A(futures::future::err(
-      std::io::Error::new(
-        std::io::ErrorKind::NotFound,
-        format!("cannot find local file '{}'", filename),
-      ).into(),
-    ));
+  // We're dealing with remote file, first try local cache
+  if use_cache {
+    match fetch_local_source(deno_dir, &module_url, &filepath, None) {
+      Ok(Some(source_file)) => {
+        return Either::A(futures::future::ok(source_file));
+      },
+      Ok(None) => {
+        // there's no cached version
+      }
+      Err(err) => {
+        return Either::A(futures::future::err(err));
+      }
+    }
   }
 
-  // If remote downloads are not allowed stop here!
+  // If remote file wasn't found check if we can fetch it
   if no_fetch {
-    debug!("remote file with no_fetch stop here");
+    // We can't fetch remote file - bail out
     return Either::A(futures::future::err(
       std::io::Error::new(
         std::io::ErrorKind::NotFound,
@@ -380,18 +374,12 @@ fn get_source_code_async(
     ));
   }
 
-  debug!("is remote but didn't find module");
-
-  let download_cache = deno_dir.download_cache.clone();
-
+  // Fetch remote file and cache on-disk for subsequent access
   // not cached/local, try remote.
   Either::B(
     fetch_remote_source_async(deno_dir, &module_url, &filepath).and_then(
       move |maybe_remote_source| match maybe_remote_source {
-        Some(output) => {
-          download_cache.mark(&module_name);
-          Ok(output)
-        }
+        Some(output) => Ok(output),
         None => Err(
           std::io::Error::new(
             std::io::ErrorKind::NotFound,
@@ -427,31 +415,6 @@ pub fn get_cache_filename(url: &Url) -> PathBuf {
     out.push(path_seg);
   }
   out
-}
-
-fn gen_hash(v: Vec<&[u8]>) -> String {
-  let mut ctx = ring::digest::Context::new(&ring::digest::SHA1);
-  for src in v.iter() {
-    ctx.update(src);
-  }
-  let digest = ctx.finish();
-  let mut out = String::new();
-  // TODO There must be a better way to do this...
-  for byte in digest.as_ref() {
-    write!(&mut out, "{:02x}", byte).unwrap();
-  }
-  out
-}
-
-// TODO: move to compiler.rs
-/// Emit a SHA1 hash based on source code, deno version and TS config.
-/// Used to check if a recompilation for source code is needed.
-pub fn source_code_version_hash(
-  source_code: &[u8],
-  version: &str,
-  config: &[u8],
-) -> String {
-  gen_hash(vec![source_code, version.as_bytes(), config])
 }
 
 fn map_file_extension(path: &Path) -> msg::MediaType {
@@ -608,6 +571,7 @@ fn fetch_remote_source_async(
               )))
             }
             FetchOnceResult::Code(source, maybe_content_type) => {
+              // TODO: this should be done using `DiskCache` API
               // We land on the code.
               save_module_code_and_headers(
                 filepath.clone(),
@@ -938,29 +902,6 @@ mod tests {
         PathBuf::from("file/a/b/c/hello.js.map"),
         PathBuf::from("file/a/b/c/hello.meta"),
       )
-    );
-  }
-
-  #[test]
-  fn test_source_code_version_hash() {
-    assert_eq!(
-      "08574f9cdeb94fd3fb9cdc7a20d086daeeb42bca",
-      source_code_version_hash(b"1+2", "0.4.0", b"{}")
-    );
-    // Different source_code should result in different hash.
-    assert_eq!(
-      "d8abe2ead44c3ff8650a2855bf1b18e559addd06",
-      source_code_version_hash(b"1", "0.4.0", b"{}")
-    );
-    // Different version should result in different hash.
-    assert_eq!(
-      "d6feffc5024d765d22c94977b4fe5975b59d6367",
-      source_code_version_hash(b"1", "0.1.0", b"{}")
-    );
-    // Different config should result in different hash.
-    assert_eq!(
-      "3b35db249b26a27decd68686f073a58266b2aec2",
-      source_code_version_hash(b"1", "0.4.0", b"{\"compilerOptions\": {}}")
     );
   }
 
