@@ -416,8 +416,6 @@ impl TsCompiler {
       filename: compiled_code_filename,
       media_type: msg::MediaType::JavaScript,
       source_code: compiled_code,
-      maybe_source_map: None, // TODO: this breaks deno info
-      maybe_source_map_filename: None,
     };
 
     Ok(compiled_module)
@@ -445,8 +443,6 @@ impl TsCompiler {
       filename: source_map_filename,
       media_type: msg::MediaType::JavaScript,
       source_code,
-      maybe_source_map_filename: None,
-      maybe_source_map: None,
     };
 
     Ok(compiled_module)
@@ -597,8 +593,6 @@ mod tests {
         filename: PathBuf::from("/tests/002_hello.ts"),
         media_type: msg::MediaType::TypeScript,
         source_code: include_bytes!("../tests/002_hello.ts").to_vec(),
-        maybe_source_map_filename: None,
-        maybe_source_map: None,
       };
 
       let mock_state = ThreadSafeState::mock(vec![

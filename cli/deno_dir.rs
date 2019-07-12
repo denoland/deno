@@ -35,10 +35,6 @@ pub struct SourceFile {
   pub filename: PathBuf,
   pub media_type: msg::MediaType,
   pub source_code: Vec<u8>,
-  // TODO: those fields shouldn't be on this struct, they are orthogonal to source file
-  // and only useful in compiled modules
-  pub maybe_source_map_filename: Option<PathBuf>,
-  pub maybe_source_map: Option<Vec<u8>>,
 }
 
 impl SourceFile {
@@ -618,8 +614,6 @@ fn fetch_remote_source_async(
                 filename: filepath.clone(),
                 media_type,
                 source_code: source.as_bytes().to_owned(),
-                maybe_source_map_filename: None,
-                maybe_source_map: None,
               };
 
               Ok(Loop::Break(Some(source_file)))
@@ -714,8 +708,6 @@ fn fetch_local_source(
       source_code_headers.mime_type.as_ref().map(String::as_str),
     ),
     source_code,
-    maybe_source_map_filename: None,
-    maybe_source_map: None,
   }))
 }
 
