@@ -2,4 +2,5 @@
 members = [
   "cli",
   "core",
+  "tools/hyper_hello",
 ]

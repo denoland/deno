@@ -1,0 +1,10 @@
+[package]
+name = "hyper_hello"
+version = "0.0.1"
+
+[dependencies]
+hyper = "0.12.30"
+
+[[bin]]
+name = "hyper_hello"
+path = "hyper_hello.rs"
