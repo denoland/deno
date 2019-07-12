@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::deno_dir::get_cache_filename;
 use crate::deno_dir::DenoDir;
+use crate::deno_dir::DiskCache;
 use crate::deno_dir::SourceFile;
 use crate::deno_dir::SourceFileFetcher;
 use crate::diagnostics::Diagnostic;
@@ -86,7 +87,6 @@ impl CompiledFileMetadata {
     });
   }
 }
-
 /// Creates the JSON message send to compiler.ts's onmessage.
 fn req(
   root_names: Vec<String>,
@@ -182,6 +182,7 @@ pub struct TsCompiler {
   pub deno_dir: DenoDir,
   pub config: CompilerConfig,
   pub config_hash: Vec<u8>,
+  pub disk_cache: DiskCache,
 }
 
 impl TsCompiler {
@@ -199,6 +200,7 @@ impl TsCompiler {
     };
 
     Self {
+      disk_cache: deno_dir.clone().gen_cache,
       deno_dir,
       config: compiler_config,
       config_hash: config_bytes,
@@ -403,12 +405,11 @@ impl TsCompiler {
     self: &Self,
     source_file: &SourceFile,
   ) -> Result<SourceFile, ErrBox> {
-    let compiled_cache_filename =
-      self.deno_dir.gen.join(get_cache_filename(&source_file.url));
-    let compiled_code_filename = compiled_cache_filename.with_extension("js");
+    let cache_key = get_cache_filename(&source_file.url).with_extension("js");
+    let compiled_code = self.disk_cache.get(&cache_key)?;
+    // TODO: it's bad we have to construct this filename here
+    let compiled_code_filename = self.deno_dir.gen.join(cache_key);
     debug!("compiled filename: {:?}", compiled_code_filename);
-
-    let compiled_code = fs::read(&compiled_code_filename)?;
 
     let compiled_module = SourceFile {
       url: source_file.url.clone(),
@@ -435,17 +436,11 @@ impl TsCompiler {
 
     let source_map_url = Url::from_file_path(&source_map_filename)
       .expect("Path must be valid URL");
-    let source_code = fs::read(&source_map_filename)?;
+    let source_map_specifier = ModuleSpecifier::from(source_map_url);
 
-    let compiled_module = SourceFile {
-      url: source_map_url,
-      redirect_source_url: None,
-      filename: source_map_filename,
-      media_type: msg::MediaType::JavaScript,
-      source_code,
-    };
-
-    Ok(compiled_module)
+    self
+      .deno_dir
+      .fetch_source_file(&source_map_specifier, true, true)
   }
 
   pub fn cache_compiler_output(
@@ -454,22 +449,13 @@ impl TsCompiler {
     extension: &str,
     contents: &str,
   ) -> std::io::Result<()> {
-    let (js_cache_path, source_map_path, meta_data_path) =
-      self.cache_paths(module_specifier.as_url());
-    let (js_cache_path, source_map_path, meta_data_path) = (
-      self.deno_dir.gen.join(js_cache_path),
-      self.deno_dir.gen.join(source_map_path),
-      self.deno_dir.gen.join(meta_data_path),
-    );
+    let cache_key = get_cache_filename(module_specifier.as_url());
 
     // TODO: factor out to Enum
     match extension {
       ".map" => {
-        match source_map_path.parent() {
-          Some(ref parent) => fs::create_dir_all(parent),
-          None => unreachable!(),
-        }?;
-        fs::write(source_map_path, contents)?;
+        let source_map_key = cache_key.with_extension("js.map");
+        self.disk_cache.set(&source_map_key, contents.as_bytes())?;
       }
       ".js" => {
         let source_file = self
@@ -477,11 +463,8 @@ impl TsCompiler {
           .fetch_source_file(&module_specifier, true, true)
           .expect("Source file not found");
 
-        match js_cache_path.parent() {
-          Some(ref parent) => fs::create_dir_all(parent),
-          None => unreachable!(),
-        }?;
-        fs::write(js_cache_path, contents)?;
+        let js_key = cache_key.with_extension("js");
+        self.disk_cache.set(&js_key, contents.as_bytes())?;
 
         // save .meta file
         let version_hash = source_code_version_hash(
@@ -489,6 +472,10 @@ impl TsCompiler {
           version::DENO,
           &self.config_hash,
         );
+
+        let meta_data_path =
+          self.deno_dir.gen.join(cache_key.with_extension("meta"));
+        // TODO: use self.disk_cache to save it
         let compiled_file_metadata = CompiledFileMetadata {
           source_path: source_file.filename.to_str().unwrap().to_string(),
           version_hash,
