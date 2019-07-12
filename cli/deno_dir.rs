@@ -325,6 +325,7 @@ fn get_source_file_async(
   no_fetch: bool,
 ) -> impl Future<Item = SourceFile, Error = ErrBox> {
   let filename = filepath.to_str().unwrap().to_string();
+  let module_name = module_url.to_string();
   let url_scheme = module_url.scheme();
   let is_local_file = url_scheme == "file";
 
@@ -339,6 +340,26 @@ fn get_source_file_async(
           std::io::Error::new(
             std::io::ErrorKind::NotFound,
             format!("cannot find local file '{}'", filename),
+          ).into(),
+        ));
+      }
+      Err(err) => {
+        return Either::A(futures::future::err(err));
+      }
+    }
+  }
+
+  // TODO: this should be removed once in-process `SourceCodeCache` is implemented
+  if deno_dir.download_cache.has(&module_name) {
+    match fetch_local_source(deno_dir, &module_url, &filepath, None) {
+      Ok(Some(source_file)) => {
+        return Either::A(futures::future::ok(source_file));
+      }
+      Ok(None) => {
+        return Either::A(futures::future::err(
+          std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("cannot find locally cached file '{}'", filename),
           ).into(),
         ));
       }
@@ -374,12 +395,17 @@ fn get_source_file_async(
     ));
   }
 
+  let download_cache = deno_dir.download_cache.clone();
+
   // Fetch remote file and cache on-disk for subsequent access
   // not cached/local, try remote.
   Either::B(
     fetch_remote_source_async(deno_dir, &module_url, &filepath).and_then(
       move |maybe_remote_source| match maybe_remote_source {
-        Some(output) => Ok(output),
+        Some(output) => {
+          download_cache.mark(&module_name);
+          Ok(output)
+        }
         None => Err(
           std::io::Error::new(
             std::io::ErrorKind::NotFound,
