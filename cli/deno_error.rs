@@ -192,10 +192,9 @@ impl GetErrorKind for ReadlineError {
     match self {
       Io(err) => GetErrorKind::kind(err),
       Eof => ErrorKind::UnexpectedEof,
-      Interrupted => unimplemented!(),
-      Utf8Error => unimplemented!(),
       #[cfg(unix)]
       Errno(err) => err.kind(),
+      _ => unimplemented!(),
     }
   }
 }
