@@ -87,12 +87,12 @@ class TestIntegrations(DenoTestCase):
             actual_code = e.returncode
             actual_out = e.output
 
-        self.assertEqual(exit_code, actual_code)
-
         actual_out = strip_ansi_codes(actual_out)
         if not pattern_match(expected_out, actual_out):
             # This will always throw since pattern_match failed.
             self.assertEqual(expected_out, actual_out)
+
+        self.assertEqual(exit_code, actual_code)
 
 
 # Add a methods for each test file in tests_path.

@@ -281,12 +281,12 @@ impl TsCompiler {
     )
   }
 
-  pub fn mark_compiled(&self, module_id: &str) {
+  fn mark_compiled(&self, module_id: &str) {
     let mut c = self.compiled.lock().unwrap();
     c.insert(module_id.to_string());
   }
 
-  pub fn has_compiled(&self, module_id: &str) -> bool {
+  fn has_compiled(&self, module_id: &str) -> bool {
     let c = self.compiled.lock().unwrap();
     c.contains(module_id)
   }
