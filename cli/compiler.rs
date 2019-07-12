@@ -20,12 +20,14 @@ use futures::future::Either;
 use futures::Future;
 use futures::Stream;
 use ring;
+use std::collections::HashSet;
 use std::fmt::Write;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str;
 use std::sync::atomic::Ordering;
+use std::sync::Mutex;
 use url::Url;
 
 /// Optional tuple which represents the state of the compiler
@@ -183,6 +185,10 @@ pub struct TsCompiler {
   pub config: CompilerConfig,
   pub config_hash: Vec<u8>,
   pub disk_cache: DiskCache,
+  /// Set of all URLs that have been compiled. This is a hacky way to work
+  /// around the fact that --reload will force multiple compilations of the same
+  /// module.
+  pub compiled: Mutex<HashSet<String>>,
 }
 
 impl TsCompiler {
@@ -204,6 +210,7 @@ impl TsCompiler {
       deno_dir,
       config: compiler_config,
       config_hash: config_bytes,
+      compiled: Mutex::new(HashSet::new()),
     }
   }
 
@@ -274,6 +281,16 @@ impl TsCompiler {
     )
   }
 
+  pub fn mark_compiled(&self, module_id: &str) {
+    let mut c = self.compiled.lock().unwrap();
+    c.insert(module_id.to_string());
+  }
+
+  pub fn has_compiled(&self, module_id: &str) -> bool {
+    let c = self.compiled.lock().unwrap();
+    c.contains(module_id)
+  }
+
   pub fn compile_async(
     self: &Self,
     state: ThreadSafeState,
@@ -284,6 +301,17 @@ impl TsCompiler {
 
     if source_file.media_type != msg::MediaType::TypeScript {
       return Either::A(futures::future::ok(source_file.clone()));
+    }
+
+    if self.has_compiled(&source_file.url.to_string()) {
+      match self.get_compiled_source_file(&source_file) {
+        Ok(compiled_module) => {
+          return Either::A(futures::future::ok(compiled_module));
+        }
+        Err(err) => {
+          return Either::A(futures::future::err(err));
+        }
+      }
     }
 
     if use_cache {
@@ -481,6 +509,7 @@ impl TsCompiler {
           version_hash,
         };
         compiled_file_metadata.save(&meta_data_path);
+        self.mark_compiled(&module_specifier.to_string());
       }
       _ => unreachable!(),
     }

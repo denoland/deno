@@ -473,9 +473,6 @@ fn op_cache(
   let module_id = inner.module_id().unwrap();
   let contents = inner.contents().unwrap();
 
-  // TODO: to be removed
-  state.mark_compiled(&module_id);
-
   let module_specifier = ModuleSpecifier::resolve_url(module_id)
     .expect("Should be valid module specifier");
 

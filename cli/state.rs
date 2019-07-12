@@ -24,7 +24,6 @@ use rand::rngs::StdRng;
 use rand::SeedableRng;
 use std;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::env;
 use std::ops::Deref;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -78,12 +77,6 @@ pub struct State {
   pub seeded_rng: Option<Mutex<StdRng>>,
 
   pub ts_compiler: TsCompiler,
-
-  // TODO: remove, this should be handled by compiler
-  /// Set of all URLs that have been compiled. This is a hacky way to work
-  /// around the fact that --reload will force multiple compilations of the same
-  /// module.
-  compiled: Mutex<HashSet<String>>,
 }
 
 impl Clone for ThreadSafeState {
@@ -114,8 +107,7 @@ pub fn fetch_source_file_and_maybe_compile_async(
   module_specifier: &ModuleSpecifier,
 ) -> impl Future<Item = SourceFile, Error = ErrBox> {
   let state_ = state.clone();
-  let use_cache =
-    !state_.flags.reload || state_.has_compiled(&module_specifier.to_string());
+  let use_cache = !state_.flags.reload;
   let no_fetch = state_.flags.no_fetch;
 
   state_
@@ -245,7 +237,6 @@ impl ThreadSafeState {
       progress,
       seeded_rng,
       ts_compiler,
-      compiled: Mutex::new(HashSet::new()),
     }))
   }
 
@@ -255,16 +246,6 @@ impl ThreadSafeState {
       Some(module_specifier) => Some(module_specifier.clone()),
       None => None,
     }
-  }
-
-  pub fn mark_compiled(&self, module_id: &str) {
-    let mut c = self.compiled.lock().unwrap();
-    c.insert(module_id.to_string());
-  }
-
-  pub fn has_compiled(&self, module_id: &str) -> bool {
-    let c = self.compiled.lock().unwrap();
-    c.contains(module_id)
   }
 
   #[inline]
