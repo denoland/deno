@@ -221,23 +221,30 @@ impl DenoDir {
   ///
   /// For specifier starting with `http://` and `https://` it returns
   /// path to DenoDir dependency directory.
-  pub fn url_to_deps_path(self: &Self, url: &Url) -> Result<PathBuf, ErrBox> {
+  pub fn url_to_deps_path(self: &Self, url: &Url) -> PathBuf {
     let filename = match url.scheme() {
       "file" => url.to_file_path().unwrap(),
       "https" => self.deps.join(get_cache_filename(&url)),
       "http" => self.deps.join(get_cache_filename(&url)),
-      scheme => {
-        return Err(
-          DenoError::new(
-            ErrorKind::UnsupportedFetchScheme,
-            format!("Unsupported scheme \"{}\" for module \"{}\". Supported schemes: {:#?}", scheme, url, SUPPORTED_URL_SCHEMES),
-          ).into()
-        );
-      }
+      _ => unreachable!(),
     };
 
     debug!("deps filename: {:?}", filename);
-    Ok(normalize_path(&filename))
+    normalize_path(&filename)
+  }
+
+  // TODO: should be implemented on `SourceFileFetcher` trait
+  pub fn check_if_supported_scheme(url: &Url) -> Result<(), ErrBox> {
+    if !SUPPORTED_URL_SCHEMES.contains(&url.scheme()) {
+      return Err(
+        DenoError::new(
+          ErrorKind::UnsupportedFetchScheme,
+          format!("Unsupported scheme \"{}\" for module \"{}\". Supported schemes: {:#?}", url.scheme(), url, SUPPORTED_URL_SCHEMES),
+        ).into()
+      );
+    }
+
+    Ok(())
   }
 }
 
@@ -251,11 +258,11 @@ impl SourceFileFetcher for DenoDir {
     let module_url = specifier.as_url().to_owned();
     debug!("fetch_source_file. specifier {} ", &module_url);
 
-    let result = self.url_to_deps_path(&module_url);
-    if let Err(err) = result {
+    if let Err(err) = DenoDir::check_if_supported_scheme(&module_url) {
       return Box::new(futures::future::err(err));
     }
-    let deps_filepath = result.unwrap();
+
+    let deps_filepath = self.url_to_deps_path(&module_url);
 
     let fut = get_source_file_async(
       self,
@@ -265,6 +272,7 @@ impl SourceFileFetcher for DenoDir {
       no_fetch,
     ).then(move |result| {
       let mut out = result.map_err(|err| {
+        // TODO: is it even needed?
         if err.kind() == ErrorKind::NotFound {
           // For NotFound, change the message to something better.
           DenoError::new(
@@ -276,6 +284,7 @@ impl SourceFileFetcher for DenoDir {
         }
       })?;
 
+      // TODO: move somewhere?
       if out.source_code.starts_with(b"#!") {
         out.source_code = filter_shebang(out.source_code);
       }
@@ -576,7 +585,7 @@ fn fetch_remote_source_async(
             FetchOnceResult::Redirect(uri) => {
               // If redirects, update module_name and filename for next looped call.
               let new_module_url = Url::parse(&uri.to_string()).expect("http::uri::Uri should be parseable as Url");
-              let new_filepath = dir.url_to_deps_path(&new_module_url)?;
+              let new_filepath = dir.url_to_deps_path(&new_module_url);
 
               if maybe_initial_module_url.is_none() {
                 maybe_initial_module_url = Some(module_url);
@@ -630,18 +639,6 @@ fn fetch_remote_source_async(
   })
 }
 
-/// Fetch remote source code.
-#[cfg(test)]
-fn fetch_remote_source(
-  deno_dir: &DenoDir,
-  module_url: &Url,
-  filepath: &Path,
-) -> Result<Option<SourceFile>, ErrBox> {
-  tokio_util::block_on(fetch_remote_source_async(
-    deno_dir, module_url, filepath,
-  ))
-}
-
 /// Fetch local or cached source code.
 /// This is a recursive operation if source file has redirection.
 /// It will keep reading filename.headers.json for information about redirection.
@@ -670,7 +667,7 @@ fn fetch_local_source(
     // real_module_name = https://import-meta.now.sh/sub/final1.js
     let real_module_url =
       Url::parse(&redirect_to).expect("Should be valid URL");
-    let real_filepath = deno_dir.url_to_deps_path(&real_module_url)?;
+    let real_filepath = deno_dir.url_to_deps_path(&real_module_url);
 
     let mut maybe_initial_module_url = maybe_initial_module_url;
     // If this is the first redirect attempt,
@@ -840,6 +837,17 @@ pub fn resolve_from_cwd(path: &str) -> Result<(PathBuf, String), ErrBox> {
 mod tests {
   use super::*;
   use tempfile::TempDir;
+
+  /// Fetch remote source code.
+  fn fetch_remote_source(
+    deno_dir: &DenoDir,
+    module_url: &Url,
+    filepath: &Path,
+  ) -> Result<Option<SourceFile>, ErrBox> {
+    tokio_util::block_on(fetch_remote_source_async(
+      deno_dir, module_url, filepath,
+    ))
+  }
 
   /// Synchronous version of get_source_file_async
   fn get_source_file(
@@ -1513,7 +1521,7 @@ mod tests {
     ];
     for &test in test_cases.iter() {
       let url = Url::parse(test.0).unwrap();
-      let filename = deno_dir.url_to_deps_path(&url).unwrap();
+      let filename = deno_dir.url_to_deps_path(&url);
       assert_eq!(filename.to_str().unwrap().to_string(), test.1);
     }
   }
@@ -1532,14 +1540,12 @@ mod tests {
         .as_ref(),
     );
 
-    let filename = deno_dir.url_to_deps_path(&specifier).unwrap();
+    let filename = deno_dir.url_to_deps_path(&specifier);
     assert_eq!(filename.to_str().unwrap().to_string(), expected_filename);
   }
 
   #[test]
   fn test_resolve_module_3() {
-    let (_temp_dir, deno_dir) = test_setup();
-
     // unsupported schemes
     let test_cases = [
       "ftp://localhost:4545/testdata/subdir/print_hello.ts",
@@ -1549,7 +1555,7 @@ mod tests {
     for &test in test_cases.iter() {
       let url = Url::parse(test).unwrap();
       assert_eq!(
-        deno_dir.url_to_deps_path(&url).unwrap_err().kind(),
+        DenoDir::check_if_supported_scheme(&url).unwrap_err().kind(),
         ErrorKind::UnsupportedFetchScheme
       );
     }
