@@ -24,7 +24,6 @@ use std::collections::HashSet;
 use std::fmt::Write;
 use std::fs;
 use std::path::Path;
-use std::path::PathBuf;
 use std::str;
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;
@@ -56,21 +55,36 @@ impl CompiledFileMetadata {
     let meta_path = meta_path.as_ref();
     let maybe_metadata_string = fs::read_to_string(meta_path).ok();
     maybe_metadata_string.as_ref()?;
+    CompiledFileMetadata::from_json_string(maybe_metadata_string.unwrap())
+  }
+
+  pub fn from_json_string(metadata_string: String) -> Option<Self> {
     let maybe_metadata_json: serde_json::Result<serde_json::Value> =
-      serde_json::from_str(&maybe_metadata_string.unwrap());
+      serde_json::from_str(&metadata_string);
+
     if let Ok(metadata_json) = maybe_metadata_json {
       let source_path = metadata_json[SOURCE_PATH].as_str().map(String::from);
       let version_hash = metadata_json[VERSION_HASH].as_str().map(String::from);
+
       if source_path.is_none() || version_hash.is_none() {
         return None;
       }
+
       return Some(CompiledFileMetadata {
         source_path: source_path.unwrap(),
         version_hash: version_hash.unwrap(),
       });
-    } else {
-      return None;
     }
+
+    None
+  }
+
+  pub fn to_json_string(self: &Self) -> Result<String, serde_json::Error> {
+    let mut value_map = serde_json::map::Map::new();
+
+    value_map.insert(SOURCE_PATH.to_owned(), json!(&self.source_path));
+    value_map.insert(VERSION_HASH.to_string(), json!(&self.version_hash));
+    serde_json::to_string(&value_map)
   }
 
   /// Save compiled file metadata to meta_path.
@@ -79,12 +93,9 @@ impl CompiledFileMetadata {
     // Remove possibly existing stale meta file.
     // May not exist. DON'T unwrap.
     let _ = std::fs::remove_file(&meta_path);
-    let mut value_map = serde_json::map::Map::new();
 
-    value_map.insert(SOURCE_PATH.to_owned(), json!(&self.source_path));
-    value_map.insert(VERSION_HASH.to_string(), json!(&self.version_hash));
-
-    let _ = serde_json::to_string(&value_map).map(|s| {
+    // TODO: shouldn't it fail instead of ignoring errors?
+    let _ = self.to_json_string().map(|s| {
       let _ = deno_fs::write_file(meta_path, s, 0o666);
     });
   }
@@ -317,9 +328,7 @@ impl TsCompiler {
     if use_cache {
       // Try to load cached version:
       // 1. check if there's 'meta' file
-      let (_, _, meta_cache_key) = self.cache_paths(&source_file.url);
-      let meta_filename = self.deno_dir.gen.join(meta_cache_key);
-      if let Some(read_metadata) = CompiledFileMetadata::load(meta_filename) {
+      if let Some(metadata) = self.get_metadata(&source_file.url) {
         // 2. compare version hashes
         // TODO: it would probably be good idea to make it method implemented on SourceFile
         let version_hash_to_validate = source_code_version_hash(
@@ -328,7 +337,7 @@ impl TsCompiler {
           &self.config_hash,
         );
 
-        if read_metadata.version_hash == version_hash_to_validate {
+        if metadata.version_hash == version_hash_to_validate {
           debug!("load_cache metadata version hash match");
           if let Ok(compiled_module) =
             self.get_compiled_source_file(&source_file)
@@ -419,13 +428,21 @@ impl TsCompiler {
     Either::B(fut)
   }
 
-  pub fn cache_paths(self: &Self, url: &Url) -> (PathBuf, PathBuf, PathBuf) {
-    let compiled_cache_filename = get_cache_filename(url);
-    (
-      compiled_cache_filename.with_extension("js"),
-      compiled_cache_filename.with_extension("js.map"),
-      compiled_cache_filename.with_extension("meta"),
-    )
+  pub fn get_metadata(self: &Self, url: &Url) -> Option<CompiledFileMetadata> {
+    // Try to load cached version:
+    // 1. check if there's 'meta' file
+    let cache_key = get_cache_filename(url).with_extension("meta");
+    if let Ok(metadata_bytes) = self.disk_cache.get(&cache_key) {
+      if let Ok(metadata) = std::str::from_utf8(&metadata_bytes) {
+        if let Some(read_metadata) =
+          CompiledFileMetadata::from_json_string(metadata.to_string())
+        {
+          return Some(read_metadata);
+        }
+      }
+    }
+
+    None
   }
 
   // TODO: this should be done by some higher level function from `DiskCache` or DenoDir
@@ -460,7 +477,7 @@ impl TsCompiler {
       .gen
       .join(get_cache_filename(module_specifier.as_url()));
     let source_map_filename = compiled_cache_filename.with_extension("js.map");
-    eprintln!("source map filename: {:?}", source_map_filename);
+    debug!("source map filename: {:?}", source_map_filename);
 
     let contents = fs::read(&source_map_filename)?;
 
@@ -505,14 +522,16 @@ impl TsCompiler {
           &self.config_hash,
         );
 
-        let meta_data_path =
-          self.deno_dir.gen.join(cache_key.with_extension("meta"));
-        // TODO: use self.disk_cache to save it
         let compiled_file_metadata = CompiledFileMetadata {
           source_path: source_file.filename.to_str().unwrap().to_string(),
           version_hash,
         };
-        compiled_file_metadata.save(&meta_data_path);
+        let meta_key = cache_key.with_extension("meta");
+        self.disk_cache.set(
+          &meta_key,
+          compiled_file_metadata.to_json_string()?.as_bytes(),
+        )?;
+
         self.mark_compiled(&module_specifier.to_string());
       }
       _ => unreachable!(),
