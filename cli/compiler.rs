@@ -423,6 +423,35 @@ impl TsCompiler {
     Ok(compiled_module)
   }
 
+  // TODO: this should be done by some higher level function from `DiskCache` or DenoDir
+  pub fn get_source_map_file(
+    self: &Self,
+    module_specifier: &ModuleSpecifier,
+  ) -> Result<SourceFile, ErrBox> {
+    let compiled_cache_filename = self
+      .deno_dir
+      .gen
+      .join(get_cache_filename(module_specifier.as_url()));
+    let source_map_filename = compiled_cache_filename.with_extension("js.map");
+    debug!("source map filename: {:?}", source_map_filename);
+
+    let source_map_url = Url::from_file_path(&source_map_filename)
+      .expect("Path must be valid URL");
+    let source_code = fs::read(&source_map_filename)?;
+
+    let compiled_module = SourceFile {
+      url: source_map_url,
+      redirect_source_url: None,
+      filename: source_map_filename,
+      media_type: msg::MediaType::JavaScript,
+      source_code,
+      maybe_source_map_filename: None,
+      maybe_source_map: None,
+    };
+
+    Ok(compiled_module)
+  }
+
   pub fn cache_compiler_output(
     self: &Self,
     module_specifier: &ModuleSpecifier,
@@ -500,23 +529,27 @@ impl TsCompiler {
 
     None
   }
-}
 
-impl SourceMapGetter for TsCompiler {
-  fn get_source_map(&self, script_name: &str) -> Option<Vec<u8>> {
+  fn try_to_resolve_and_get_source_map(
+    &self,
+    script_name: &str,
+  ) -> Option<SourceFile> {
     if let Some(module_specifier) = self.try_to_resolve(script_name) {
-      let (_, source_map_path, _) = self.cache_paths(module_specifier.as_url());
-      let source_map_path = self.deno_dir.gen.join(source_map_path);
-
-      // TODO: this method shouldn't fetch from disk for each time it's called
-      // TODO: source maps should be fetched as a `SourceFile`
-      return match fs::read(&source_map_path) {
+      return match self.get_source_map_file(&module_specifier) {
         Ok(out) => Some(out),
         Err(_) => None,
       };
     }
 
     None
+  }
+}
+
+impl SourceMapGetter for TsCompiler {
+  fn get_source_map(&self, script_name: &str) -> Option<Vec<u8>> {
+    self
+      .try_to_resolve_and_get_source_map(script_name)
+      .and_then(|out| Some(out.source_code))
   }
 
   fn get_source_line(&self, script_name: &str, line: usize) -> Option<String> {

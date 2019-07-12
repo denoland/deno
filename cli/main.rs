@@ -105,6 +105,7 @@ pub fn print_file_info(
   let state_ = worker.state.clone();
   let use_cache = !state_.flags.reload;
   let no_fetch = state_.flags.no_fetch;
+  let module_specifier_ = module_specifier.clone();
 
   state_
     .dir
@@ -138,15 +139,17 @@ pub fn print_file_info(
               ansi::bold("compiled:".to_string()),
               compiled.filename.to_str().unwrap(),
             );
+          }
 
+          if let Ok(source_map) = state_
+            .clone()
+            .ts_compiler
+            .get_source_map_file(&module_specifier_)
+          {
             println!(
               "{} {}",
               ansi::bold("map:".to_string()),
-              compiled
-                .maybe_source_map_filename
-                .unwrap()
-                .to_str()
-                .unwrap()
+              source_map.filename.to_str().unwrap()
             );
           }
 
