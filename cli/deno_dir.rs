@@ -1085,9 +1085,9 @@ mod tests {
     let (_temp_dir, deno_dir) = test_setup();
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
-      let module_url =
-        Url::parse("http://localhost:4545/tests/subdir/mismatch_ext.ts")
-          .unwrap();
+      let specifier = ModuleSpecifier::resolve_url(
+        "http://localhost:4545/tests/subdir/mismatch_ext.ts",
+      ).unwrap();
       let filepath = deno_dir
         .deps_cache
         .location
@@ -1095,8 +1095,7 @@ mod tests {
       let headers_file_name = source_code_headers_filename(&filepath);
 
       // first download
-      let result =
-        get_source_file(&deno_dir, &module_url, filepath.clone(), false, false);
+      let result = deno_dir.fetch_source_file(&specifier, false, false);
       assert!(result.is_ok());
 
       let result = fs::File::open(&headers_file_name);
@@ -1109,8 +1108,7 @@ mod tests {
       // download file again, it should use already fetched file even though `use_cache` is set to
       // false, this can be verified using source header file creation timestamp (should be
       // the same as after first download)
-      let result =
-        get_source_file(&deno_dir, &module_url, filepath.clone(), false, false);
+      let result = deno_dir.fetch_source_file(&specifier, false, false);
       assert!(result.is_ok());
 
       let result = fs::File::open(&headers_file_name);
