@@ -1,5 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-#![allow(dead_code)]
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
 use crate::deno_error::GetErrorKind;
@@ -142,17 +141,13 @@ impl DiskCache {
 pub struct DenoDir {
   // Example: /Users/rld/.deno/
   pub root: PathBuf,
-  // In the Go code this was called SrcDir.
-  // This is where we cache http resources. Example:
-  // /Users/rld/.deno/deps/github.com/ry/blah.js
+  // This is where we cache compilation outputs. Example:
+  // /Users/rld/.deno/gen/http/github.com/ry/blah.js
   pub gen: PathBuf,
   pub gen_cache: DiskCache,
-  // In the Go code this was called CacheDir.
-  // This is where we cache compilation outputs. Example:
-  // /Users/rld/.deno/gen/f39a473452321cacd7c346a870efb0e3e1264b43.js
+  // /Users/rld/.deno/deps/http/github.com/ry/blah.ts
   pub deps: PathBuf,
   pub deps_cache: DiskCache,
-  // This splits to http and https deps
   pub deps_http: PathBuf,
   pub deps_https: PathBuf,
 

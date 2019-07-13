@@ -5,7 +5,6 @@ use crate::deno_dir::DiskCache;
 use crate::deno_dir::SourceFile;
 use crate::deno_dir::SourceFileFetcher;
 use crate::diagnostics::Diagnostic;
-use crate::fs as deno_fs;
 use crate::msg;
 use crate::resources;
 use crate::source_maps::SourceMapGetter;
@@ -23,7 +22,6 @@ use ring;
 use std::collections::HashSet;
 use std::fmt::Write;
 use std::fs;
-use std::path::Path;
 use std::str;
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;
@@ -47,18 +45,8 @@ static SOURCE_PATH: &'static str = "source_path";
 static VERSION_HASH: &'static str = "version_hash";
 
 impl CompiledFileMetadata {
-  // TODO: use serde for deserialization
-  /// Get compiled file metadata from meta_path.
-  /// If operation failed or metadata file is corrupted,
-  /// return None.
-  pub fn load<P: AsRef<Path>>(meta_path: P) -> Option<CompiledFileMetadata> {
-    let meta_path = meta_path.as_ref();
-    let maybe_metadata_string = fs::read_to_string(meta_path).ok();
-    maybe_metadata_string.as_ref()?;
-    CompiledFileMetadata::from_json_string(maybe_metadata_string.unwrap())
-  }
-
   pub fn from_json_string(metadata_string: String) -> Option<Self> {
+    // TODO: use serde for deserialization
     let maybe_metadata_json: serde_json::Result<serde_json::Value> =
       serde_json::from_str(&metadata_string);
 
@@ -85,19 +73,6 @@ impl CompiledFileMetadata {
     value_map.insert(SOURCE_PATH.to_owned(), json!(&self.source_path));
     value_map.insert(VERSION_HASH.to_string(), json!(&self.version_hash));
     serde_json::to_string(&value_map)
-  }
-
-  /// Save compiled file metadata to meta_path.
-  pub fn save<P: AsRef<Path>>(self: &Self, meta_path: P) {
-    let meta_path = meta_path.as_ref();
-    // Remove possibly existing stale meta file.
-    // May not exist. DON'T unwrap.
-    let _ = std::fs::remove_file(&meta_path);
-
-    // TODO: shouldn't it fail instead of ignoring errors?
-    let _ = self.to_json_string().map(|s| {
-      let _ = deno_fs::write_file(meta_path, s, 0o666);
-    });
   }
 }
 /// Creates the JSON message send to compiler.ts's onmessage.
