@@ -60,6 +60,8 @@ pub type SourceFileFuture =
   dyn Future<Item = SourceFile, Error = ErrBox> + Send;
 
 pub trait SourceFileFetcher {
+  fn check_if_supported_scheme(url: &Url) -> Result<(), ErrBox>;
+
   fn fetch_source_file_async(
     self: &Self,
     specifier: &ModuleSpecifier,
@@ -227,9 +229,10 @@ impl DenoDir {
     debug!("deps filename: {:?}", filename);
     normalize_path(&filename)
   }
+}
 
-  // TODO: should be implemented on `SourceFileFetcher` trait
-  pub fn check_if_supported_scheme(url: &Url) -> Result<(), ErrBox> {
+impl SourceFileFetcher for DenoDir {
+  fn check_if_supported_scheme(url: &Url) -> Result<(), ErrBox> {
     if !SUPPORTED_URL_SCHEMES.contains(&url.scheme()) {
       return Err(
         DenoError::new(
@@ -241,9 +244,7 @@ impl DenoDir {
 
     Ok(())
   }
-}
 
-impl SourceFileFetcher for DenoDir {
   fn fetch_source_file_async(
     self: &Self,
     specifier: &ModuleSpecifier,
