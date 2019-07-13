@@ -500,8 +500,6 @@ fn op_fetch_source_file(
   let specifier = inner.specifier().unwrap();
   let referrer = inner.referrer().unwrap();
 
-  assert_eq!(state.dir.root.join("gen"), state.dir.gen, "Sanity check");
-
   let use_cache = !state.flags.reload;
   let no_fetch = state.flags.no_fetch;
   let resolved_specifier = state.resolve(specifier, referrer, false)?;

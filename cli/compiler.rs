@@ -427,8 +427,7 @@ impl TsCompiler {
   ) -> Result<SourceFile, ErrBox> {
     let cache_key = get_cache_filename(&source_file.url).with_extension("js");
     let compiled_code = self.disk_cache.get(&cache_key)?;
-    // TODO: it's bad we have to construct this filename here
-    let compiled_code_filename = self.deno_dir.gen.join(cache_key);
+    let compiled_code_filename = self.disk_cache.location.join(cache_key);
     debug!("compiled filename: {:?}", compiled_code_filename);
 
     let compiled_module = SourceFile {
@@ -448,8 +447,8 @@ impl TsCompiler {
     module_specifier: &ModuleSpecifier,
   ) -> Result<SourceFile, ErrBox> {
     let compiled_cache_filename = self
-      .deno_dir
-      .gen
+      .disk_cache
+      .location
       .join(get_cache_filename(module_specifier.as_url()));
     let source_map_filename = compiled_cache_filename.with_extension("js.map");
     debug!("source map filename: {:?}", source_map_filename);

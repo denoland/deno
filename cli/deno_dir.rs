@@ -112,7 +112,7 @@ impl DownloadCache {
 // TODO: this is a structure that is supposed to be moved to //core/cache.rs
 #[derive(Clone)]
 pub struct DiskCache {
-  location: PathBuf,
+  pub location: PathBuf,
 }
 
 impl DiskCache {
@@ -134,7 +134,6 @@ impl DiskCache {
       Some(ref parent) => fs::create_dir_all(parent),
       None => Ok(()),
     }?;
-    // Write file and create .headers.json for the file.
     deno_fs::write_file(&path, data, 0o666)
   }
 }
@@ -145,13 +144,10 @@ pub struct DenoDir {
   pub root: PathBuf,
   // This is where we cache compilation outputs. Example:
   // /Users/rld/.deno/gen/http/github.com/ry/blah.js
-  pub gen: PathBuf,
+  // TODO: this cache can be created using public API by TS compiler
   pub gen_cache: DiskCache,
   // /Users/rld/.deno/deps/http/github.com/ry/blah.ts
-  pub deps: PathBuf,
   pub deps_cache: DiskCache,
-  pub deps_http: PathBuf,
-  pub deps_https: PathBuf,
 
   pub progress: Progress,
 
@@ -180,33 +176,29 @@ impl DenoDir {
 
     let root: PathBuf = custom_root.unwrap_or(default);
     let gen = root.as_path().join("gen");
+    let gen_cache = DiskCache::new(&gen);
     let deps = root.as_path().join("deps");
-    let deps_http = deps.join("http");
-    let deps_https = deps.join("https");
+    let deps_cache = DiskCache::new(&deps);
 
     let deno_dir = Self {
       root,
-      gen_cache: DiskCache::new(&gen),
-      gen,
-      deps_cache: DiskCache::new(&deps),
-      deps,
-      deps_http,
-      deps_https,
+      gen_cache,
+      deps_cache,
       progress,
       download_cache: DownloadCache::default(),
     };
 
     // TODO Lazily create these directories.
-    deno_fs::mkdir(deno_dir.gen.as_ref(), 0o755, true)?;
-    deno_fs::mkdir(deno_dir.deps.as_ref(), 0o755, true)?;
-    deno_fs::mkdir(deno_dir.deps_http.as_ref(), 0o755, true)?;
-    deno_fs::mkdir(deno_dir.deps_https.as_ref(), 0o755, true)?;
+    // TODO: once saving and loading of SourceFiles uses DiskCache API these calls can be removed
+    deno_fs::mkdir(deno_dir.deps_cache.location.as_ref(), 0o755, true)?;
+    let deps_http = deps.join("http");
+    let deps_https = deps.join("https");
+    deno_fs::mkdir(deps_http.as_ref(), 0o755, true)?;
+    deno_fs::mkdir(deps_https.as_ref(), 0o755, true)?;
 
     debug!("root {}", deno_dir.root.display());
-    debug!("gen {}", deno_dir.gen.display());
-    debug!("deps {}", deno_dir.deps.display());
-    debug!("deps_http {}", deno_dir.deps_http.display());
-    debug!("deps_https {}", deno_dir.deps_https.display());
+    debug!("deps {}", deno_dir.deps_cache.location.display());
+    debug!("gen {}", deno_dir.gen_cache.location.display());
 
     Ok(deno_dir)
   }
@@ -221,8 +213,8 @@ impl DenoDir {
   pub fn url_to_deps_path(self: &Self, url: &Url) -> PathBuf {
     let filename = match url.scheme() {
       "file" => url.to_file_path().unwrap(),
-      "https" => self.deps.join(get_cache_filename(&url)),
-      "http" => self.deps.join(get_cache_filename(&url)),
+      "https" => self.deps_cache.location.join(get_cache_filename(&url)),
+      "http" => self.deps_cache.location.join(get_cache_filename(&url)),
       _ => unreachable!(),
     };
 
@@ -966,8 +958,9 @@ mod tests {
       let module_url =
         Url::parse("http://localhost:4545/tests/subdir/mod2.ts").unwrap();
       let filepath = deno_dir
-        .deps_http
-        .join("localhost_PORT4545/tests/subdir/mod2.ts");
+        .deps_cache
+        .location
+        .join("http/localhost_PORT4545/tests/subdir/mod2.ts");
       let headers_file_name = source_code_headers_filename(&filepath);
 
       let result =
@@ -1049,8 +1042,9 @@ mod tests {
         Url::parse("http://localhost:4545/tests/subdir/mismatch_ext.ts")
           .unwrap();
       let filepath = deno_dir
-        .deps_http
-        .join("localhost_PORT4545/tests/subdir/mismatch_ext.ts");
+        .deps_cache
+        .location
+        .join("http/localhost_PORT4545/tests/subdir/mismatch_ext.ts");
       let headers_file_name = source_code_headers_filename(&filepath);
 
       let result =
@@ -1111,8 +1105,9 @@ mod tests {
         Url::parse("http://localhost:4545/tests/subdir/mismatch_ext.ts")
           .unwrap();
       let filepath = deno_dir
-        .deps_http
-        .join("localhost_PORT4545/tests/subdir/mismatch_ext.ts");
+        .deps_cache
+        .location
+        .join("http/localhost_PORT4545/tests/subdir/mismatch_ext.ts");
       let headers_file_name = source_code_headers_filename(&filepath);
 
       // first download
@@ -1154,16 +1149,18 @@ mod tests {
         Url::parse("http://localhost:4546/tests/subdir/redirects/redirect1.js")
           .unwrap();
       let redirect_source_filepath = deno_dir
-        .deps_http
-        .join("localhost_PORT4546/tests/subdir/redirects/redirect1.js");
+        .deps_cache
+        .location
+        .join("http/localhost_PORT4546/tests/subdir/redirects/redirect1.js");
       let redirect_source_filename =
         redirect_source_filepath.to_str().unwrap().to_string();
       let target_module_url =
         Url::parse("http://localhost:4545/tests/subdir/redirects/redirect1.js")
           .unwrap();
       let redirect_target_filepath = deno_dir
-        .deps_http
-        .join("localhost_PORT4545/tests/subdir/redirects/redirect1.js");
+        .deps_cache
+        .location
+        .join("http/localhost_PORT4545/tests/subdir/redirects/redirect1.js");
       let redirect_target_filename =
         redirect_target_filepath.to_str().unwrap().to_string();
 
@@ -1210,14 +1207,16 @@ mod tests {
         Url::parse("http://localhost:4548/tests/subdir/redirects/redirect1.js")
           .unwrap();
       let redirect_source_filepath = deno_dir
-        .deps_http
-        .join("localhost_PORT4548/tests/subdir/redirects/redirect1.js");
+        .deps_cache
+        .location
+        .join("http/localhost_PORT4548/tests/subdir/redirects/redirect1.js");
       let redirect_source_filename =
         redirect_source_filepath.to_str().unwrap().to_string();
       let redirect_source_filename_intermediate = normalize_to_str(
         deno_dir
-          .deps_http
-          .join("localhost_PORT4546/tests/subdir/redirects/redirect1.js")
+          .deps_cache
+          .location
+          .join("http/localhost_PORT4546/tests/subdir/redirects/redirect1.js")
           .as_ref(),
       );
       let target_module_url =
@@ -1225,8 +1224,9 @@ mod tests {
           .unwrap();
       let target_module_name = target_module_url.to_string();
       let redirect_target_filepath = deno_dir
-        .deps_http
-        .join("localhost_PORT4545/tests/subdir/redirects/redirect1.js");
+        .deps_cache
+        .location
+        .join("http/localhost_PORT4545/tests/subdir/redirects/redirect1.js");
       let redirect_target_filename =
         redirect_target_filepath.to_str().unwrap().to_string();
 
@@ -1278,8 +1278,9 @@ mod tests {
       let module_url =
         Url::parse("http://localhost:4545/tests/002_hello.ts").unwrap();
       let filepath = deno_dir
-        .deps_http
-        .join("localhost_PORT4545/tests/002_hello.ts");
+        .deps_cache
+        .location
+        .join("http/localhost_PORT4545/tests/002_hello.ts");
 
       // file hasn't been cached before and remote downloads are not allowed
       let result =
@@ -1310,8 +1311,9 @@ mod tests {
         Url::parse("http://127.0.0.1:4545/tests/subdir/mt_video_mp2t.t3.ts")
           .unwrap();
       let filepath = deno_dir
-        .deps_http
-        .join("127.0.0.1_PORT4545/tests/subdir/mt_video_mp2t.t3.ts");
+        .deps_cache
+        .location
+        .join("http/127.0.0.1_PORT4545/tests/subdir/mt_video_mp2t.t3.ts");
       let headers_file_name = source_code_headers_filename(&filepath);
 
       let result = tokio_util::block_on(fetch_remote_source_async(
@@ -1351,8 +1353,9 @@ mod tests {
         Url::parse("http://localhost:4545/tests/subdir/mt_video_mp2t.t3.ts")
           .unwrap();
       let filepath = deno_dir
-        .deps_http
-        .join("localhost_PORT4545/tests/subdir/mt_video_mp2t.t3.ts");
+        .deps_cache
+        .location
+        .join("http/localhost_PORT4545/tests/subdir/mt_video_mp2t.t3.ts");
       let headers_file_name = source_code_headers_filename(&filepath);
 
       let result = fetch_remote_source(&deno_dir, &module_url, &filepath);
@@ -1387,8 +1390,9 @@ mod tests {
       let module_url =
         Url::parse("http://localhost:4545/tests/subdir/no_ext").unwrap();
       let filepath = deno_dir
-        .deps_http
-        .join("localhost_PORT4545/tests/subdir/no_ext");
+        .deps_cache
+        .location
+        .join("http/localhost_PORT4545/tests/subdir/no_ext");
       let result = fetch_remote_source(&deno_dir, &module_url, &filepath);
       assert!(result.is_ok());
       let r = result.unwrap().unwrap();
@@ -1404,8 +1408,9 @@ mod tests {
         Url::parse("http://localhost:4545/tests/subdir/mismatch_ext.ts")
           .unwrap();
       let filepath_2 = deno_dir
-        .deps_http
-        .join("localhost_PORT4545/tests/subdir/mismatch_ext.ts");
+        .deps_cache
+        .location
+        .join("http/localhost_PORT4545/tests/subdir/mismatch_ext.ts");
       let result_2 = fetch_remote_source(&deno_dir, &module_url_2, &filepath_2);
       assert!(result_2.is_ok());
       let r2 = result_2.unwrap().unwrap();
@@ -1422,8 +1427,9 @@ mod tests {
         Url::parse("http://localhost:4545/tests/subdir/unknown_ext.deno")
           .unwrap();
       let filepath_3 = deno_dir
-        .deps_http
-        .join("localhost_PORT4545/tests/subdir/unknown_ext.deno");
+        .deps_cache
+        .location
+        .join("http/localhost_PORT4545/tests/subdir/unknown_ext.deno");
       let result_3 = fetch_remote_source(&deno_dir, &module_url_3, &filepath_3);
       assert!(result_3.is_ok());
       let r3 = result_3.unwrap().unwrap();
@@ -1531,8 +1537,9 @@ mod tests {
         .unwrap();
     let expected_filename = normalize_to_str(
       deno_dir
-        .deps_http
-        .join("localhost_PORT4545/testdata/subdir/print_hello.ts")
+        .deps_cache
+        .location
+        .join("http/localhost_PORT4545/testdata/subdir/print_hello.ts")
         .as_ref(),
     );
 
