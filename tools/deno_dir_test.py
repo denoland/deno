@@ -32,7 +32,8 @@ class TestDenoDir(DenoTestCase):
         self.run_deno(deno_dir)
         assert os.path.isdir(deno_dir)
         assert os.path.isdir(os.path.join(deno_dir, "deps"))
-        # TODO: directories are lazily generated, this assert is no longer needed?
+        # TODO: directories are lazily generated
+        # this assert is no longer needed?
         # assert os.path.isdir(os.path.join(deno_dir, "gen"))
         rmtree(deno_dir)
 

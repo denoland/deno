@@ -15,7 +15,7 @@ use futures::Future;
 use http;
 use serde_json;
 use std;
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
@@ -95,17 +95,20 @@ fn normalize_path(path: &Path) -> PathBuf {
 }
 
 #[derive(Clone, Default)]
-pub struct DownloadCache(Arc<Mutex<HashSet<String>>>);
+pub struct SourceFileCache(Arc<Mutex<HashMap<PathBuf, SourceFile>>>);
 
-impl DownloadCache {
-  pub fn mark(&self, module_id: &str) {
+impl SourceFileCache {
+  pub fn set(&self, path: PathBuf, source_file: SourceFile) {
     let mut c = self.0.lock().unwrap();
-    c.insert(module_id.to_string());
+    c.insert(path, source_file);
   }
 
-  pub fn has(&self, module_id: &str) -> bool {
+  pub fn get(&self, path: PathBuf) -> Option<SourceFile> {
     let c = self.0.lock().unwrap();
-    c.contains(module_id)
+    match c.get(&path) {
+      Some(source_file) => Some(source_file.clone()),
+      None => None,
+    }
   }
 }
 
@@ -151,10 +154,7 @@ pub struct DenoDir {
 
   pub progress: Progress,
 
-  /// Set of all URLs that have been fetched in this run. This is a hacky way to work
-  /// around the fact that --reload will force multiple downloads of the same
-  /// module.
-  download_cache: DownloadCache,
+  source_file_cache: SourceFileCache,
 }
 
 impl DenoDir {
@@ -185,7 +185,7 @@ impl DenoDir {
       gen_cache,
       deps_cache,
       progress,
-      download_cache: DownloadCache::default(),
+      source_file_cache: SourceFileCache::default(),
     };
 
     // TODO Lazily create these directories.
@@ -252,6 +252,14 @@ impl SourceFileFetcher for DenoDir {
 
     let deps_filepath = self.url_to_deps_path(&module_url);
 
+    if let Some(source_file) = self.source_file_cache.get(deps_filepath.clone())
+    {
+      return Box::new(futures::future::ok(source_file));
+    }
+
+    let source_file_cache = self.source_file_cache.clone();
+    let deps_filepath_ = deps_filepath.clone();
+
     let fut = get_source_file_async(
       self,
       &module_url,
@@ -276,6 +284,8 @@ impl SourceFileFetcher for DenoDir {
       if out.source_code.starts_with(b"#!") {
         out.source_code = filter_shebang(out.source_code);
       }
+
+      source_file_cache.set(deps_filepath_, out.clone());
 
       Ok(out)
     });
@@ -318,7 +328,6 @@ fn get_source_file_async(
   no_fetch: bool,
 ) -> impl Future<Item = SourceFile, Error = ErrBox> {
   let filename = filepath.to_str().unwrap().to_string();
-  let module_name = module_url.to_string();
   let url_scheme = module_url.scheme();
   let is_local_file = url_scheme == "file";
 
@@ -333,26 +342,6 @@ fn get_source_file_async(
           std::io::Error::new(
             std::io::ErrorKind::NotFound,
             format!("cannot find local file '{}'", filename),
-          ).into(),
-        ));
-      }
-      Err(err) => {
-        return Either::A(futures::future::err(err));
-      }
-    }
-  }
-
-  // TODO: this should be removed once in-process `SourceCodeCache` is implemented
-  if deno_dir.download_cache.has(&module_name) {
-    match fetch_local_source(deno_dir, &module_url, &filepath, None) {
-      Ok(Some(source_file)) => {
-        return Either::A(futures::future::ok(source_file));
-      }
-      Ok(None) => {
-        return Either::A(futures::future::err(
-          std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            format!("cannot find locally cached file '{}'", filename),
           ).into(),
         ));
       }
@@ -388,17 +377,12 @@ fn get_source_file_async(
     ));
   }
 
-  let download_cache = deno_dir.download_cache.clone();
-
   // Fetch remote file and cache on-disk for subsequent access
   // not cached/local, try remote.
   Either::B(
     fetch_remote_source_async(deno_dir, &module_url, &filepath).and_then(
       move |maybe_remote_source| match maybe_remote_source {
-        Some(output) => {
-          download_cache.mark(&module_name);
-          Ok(output)
-        }
+        Some(output) => Ok(output),
         None => Err(
           std::io::Error::new(
             std::io::ErrorKind::NotFound,
