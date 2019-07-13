@@ -13,6 +13,7 @@ import { xevalMain, XevalFunc } from "./xeval";
 import { setVersions } from "./version";
 import { window } from "./window";
 import { setLocation } from "./location";
+import { triggerLoadEvent } from "./event_triggers";
 
 // builtin modules
 import * as deno from "./deno";
@@ -51,3 +52,5 @@ export default function denoMain(name?: string): void {
     replLoop();
   }
 }
+
+denoMain.triggerLoadEvent = triggerLoadEvent;
