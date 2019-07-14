@@ -98,6 +98,7 @@ ts_sources = [
   "../js/headers.ts",
   "../js/io.ts",
   "../js/lib.web_assembly.d.ts",
+  "../js/lifecycles.ts",
   "../js/link.ts",
   "../js/location.ts",
   "../js/main.ts",
