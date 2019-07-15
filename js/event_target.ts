@@ -98,13 +98,19 @@ export class EventListener implements domTypes.EventListener {
   }
 }
 
+export const eventTargetAssignedSlot: unique symbol = Symbol();
+export const eventTargetHasActivationBehavior: unique symbol = Symbol();
+
 export class EventTarget implements domTypes.EventTarget {
-  public host: domTypes.EventTarget | null = null;
-  public listeners: { [type in string]: domTypes.EventListener[] } = {};
-  public mode = "";
-  public nodeType: domTypes.NodeType = domTypes.NodeType.DOCUMENT_FRAGMENT_NODE;
-  private _assignedSlot = false;
-  private _hasActivationBehavior = false;
+  public [domTypes.eventTargetHost]: domTypes.EventTarget | null = null;
+  public [domTypes.eventTargetListeners]: {
+    [type in string]: domTypes.EventListener[]
+  } = {};
+  public [domTypes.eventTargetMode] = "";
+  public [domTypes.eventTargetNodeType]: domTypes.NodeType =
+    domTypes.NodeType.DOCUMENT_FRAGMENT_NODE;
+  private [eventTargetAssignedSlot] = false;
+  private [eventTargetHasActivationBehavior] = false;
 
   public addEventListener(
     type: string,
@@ -112,7 +118,7 @@ export class EventTarget implements domTypes.EventTarget {
     options?: domTypes.AddEventListenerOptions | boolean
   ): void {
     requiredArguments("EventTarget.addEventListener", arguments.length, 2);
-    const normalizedOptions: domTypes.AddEventListenerOptions = this._normalizeAddEventHandlerOptions(
+    const normalizedOptions: domTypes.AddEventListenerOptions = eventTargetHelpers.normalizeAddEventHandlerOptions(
       options
     );
 
@@ -120,12 +126,14 @@ export class EventTarget implements domTypes.EventTarget {
       return;
     }
 
-    if (!hasOwnProperty(this.listeners, type)) {
-      this.listeners[type] = [];
+    const listeners = this[domTypes.eventTargetListeners];
+
+    if (!hasOwnProperty(listeners, type)) {
+      listeners[type] = [];
     }
 
-    for (let i = 0; i < this.listeners[type].length; ++i) {
-      const listener = this.listeners[type][i];
+    for (let i = 0; i < listeners[type].length; ++i) {
+      const listener = listeners[type][i];
       if (
         ((typeof listener.options === "boolean" &&
           listener.options === normalizedOptions.capture) ||
@@ -137,7 +145,7 @@ export class EventTarget implements domTypes.EventTarget {
       }
     }
 
-    this.listeners[type].push(new EventListener(callback, normalizedOptions));
+    listeners[type].push(new EventListener(callback, normalizedOptions));
   }
 
   public removeEventListener(
@@ -146,13 +154,14 @@ export class EventTarget implements domTypes.EventTarget {
     options?: domTypes.EventListenerOptions | boolean
   ): void {
     requiredArguments("EventTarget.removeEventListener", arguments.length, 2);
-    if (hasOwnProperty(this.listeners, type) && callback !== null) {
-      this.listeners[type] = this.listeners[type].filter(
+    const listeners = this[domTypes.eventTargetListeners];
+    if (hasOwnProperty(listeners, type) && callback !== null) {
+      listeners[type] = listeners[type].filter(
         (listener): boolean => listener.callback !== callback
       );
     }
 
-    const normalizedOptions: domTypes.EventListenerOptions = this._normalizeEventHandlerOptions(
+    const normalizedOptions: domTypes.EventListenerOptions = eventTargetHelpers.normalizeEventHandlerOptions(
       options
     );
 
@@ -161,12 +170,12 @@ export class EventTarget implements domTypes.EventTarget {
       return;
     }
 
-    if (!this.listeners[type]) {
+    if (!listeners[type]) {
       return;
     }
 
-    for (let i = 0; i < this.listeners[type].length; ++i) {
-      const listener = this.listeners[type][i];
+    for (let i = 0; i < listeners[type].length; ++i) {
+      const listener = listeners[type][i];
 
       if (
         ((typeof listener.options === "boolean" &&
@@ -175,7 +184,7 @@ export class EventTarget implements domTypes.EventTarget {
             listener.options.capture === normalizedOptions.capture)) &&
         listener.callback === callback
       ) {
-        this.listeners[type].splice(i, 1);
+        listeners[type].splice(i, 1);
         break;
       }
     }
@@ -183,7 +192,8 @@ export class EventTarget implements domTypes.EventTarget {
 
   public dispatchEvent(event: domTypes.Event): boolean {
     requiredArguments("EventTarget.dispatchEvent", arguments.length, 1);
-    if (!hasOwnProperty(this.listeners, event.type)) {
+    const listeners = this[domTypes.eventTargetListeners];
+    if (!hasOwnProperty(listeners, event.type)) {
       return true;
     }
 
@@ -201,15 +211,21 @@ export class EventTarget implements domTypes.EventTarget {
       );
     }
 
-    return this._dispatch(event);
+    return eventTargetHelpers.dispatch(this, event);
   }
 
+  get [Symbol.toStringTag](): string {
+    return "EventTarget";
+  }
+}
+
+const eventTargetHelpers = {
   // https://dom.spec.whatwg.org/#concept-event-dispatch
-  _dispatch(
+  dispatch(
+    targetImpl: EventTarget,
     eventImpl: domTypes.Event,
     targetOverride?: domTypes.EventTarget
   ): boolean {
-    let targetImpl = this;
     let clearTargets = false;
     let activationTarget = null;
 
@@ -224,7 +240,7 @@ export class EventTarget implements domTypes.EventTarget {
     ) {
       const touchTargets: domTypes.EventTarget[] = [];
 
-      this._appendToEventPath(
+      eventTargetHelpers.appendToEventPath(
         eventImpl,
         targetImpl,
         targetOverride,
@@ -235,13 +251,15 @@ export class EventTarget implements domTypes.EventTarget {
 
       const isActivationEvent = eventImpl.type === "click";
 
-      if (isActivationEvent && targetImpl._hasActivationBehavior) {
+      if (isActivationEvent && targetImpl[eventTargetHasActivationBehavior]) {
         activationTarget = targetImpl;
       }
 
       let slotInClosedTree = false;
       let slotable =
-        isSlotable(targetImpl) && targetImpl._assignedSlot ? targetImpl : null;
+        isSlotable(targetImpl) && targetImpl[eventTargetAssignedSlot]
+          ? targetImpl
+          : null;
       let parent = getEventTargetParent(targetImpl, eventImpl);
 
       // Populate event path
@@ -254,7 +272,7 @@ export class EventTarget implements domTypes.EventTarget {
           if (
             isShadowRoot(parentRoot) &&
             parentRoot &&
-            parentRoot.mode === "closed"
+            parentRoot[domTypes.eventTargetMode] === "closed"
           ) {
             slotInClosedTree = true;
           }
@@ -266,7 +284,7 @@ export class EventTarget implements domTypes.EventTarget {
           isNode(parent) &&
           isShadowInclusiveAncestor(getRoot(targetImpl), parent)
         ) {
-          this._appendToEventPath(
+          eventTargetHelpers.appendToEventPath(
             eventImpl,
             parent,
             null,
@@ -282,12 +300,12 @@ export class EventTarget implements domTypes.EventTarget {
           if (
             isActivationEvent &&
             activationTarget === null &&
-            targetImpl._hasActivationBehavior
+            targetImpl[eventTargetHasActivationBehavior]
           ) {
             activationTarget = targetImpl;
           }
 
-          this._appendToEventPath(
+          eventTargetHelpers.appendToEventPath(
             eventImpl,
             parent,
             targetImpl,
@@ -328,7 +346,7 @@ export class EventTarget implements domTypes.EventTarget {
         const tuple = eventImpl.path[i];
 
         if (tuple.target === null) {
-          this._invokeEventListeners(tuple, eventImpl);
+          eventTargetHelpers.invokeEventListeners(targetImpl, tuple, eventImpl);
         }
       }
 
@@ -346,7 +364,7 @@ export class EventTarget implements domTypes.EventTarget {
             eventImpl.bubbles) ||
           eventImpl.eventPhase === domTypes.EventPhase.AT_TARGET
         ) {
-          this._invokeEventListeners(tuple, eventImpl);
+          eventTargetHelpers.invokeEventListeners(targetImpl, tuple, eventImpl);
         }
       }
     }
@@ -372,10 +390,11 @@ export class EventTarget implements domTypes.EventTarget {
     // }
 
     return !eventImpl.defaultPrevented;
-  }
+  },
 
   // https://dom.spec.whatwg.org/#concept-event-listener-invoke
-  _invokeEventListeners(
+  invokeEventListeners(
+    targetImpl: EventTarget,
     tuple: domTypes.EventPath,
     eventImpl: domTypes.Event
   ): void {
@@ -396,11 +415,16 @@ export class EventTarget implements domTypes.EventTarget {
 
     eventImpl.currentTarget = tuple.item;
 
-    this._innerInvokeEventListeners(eventImpl, tuple.item.listeners);
-  }
+    eventTargetHelpers.innerInvokeEventListeners(
+      targetImpl,
+      eventImpl,
+      tuple.item[domTypes.eventTargetListeners]
+    );
+  },
 
   // https://dom.spec.whatwg.org/#concept-event-listener-inner-invoke
-  _innerInvokeEventListeners(
+  innerInvokeEventListeners(
+    targetImpl: EventTarget,
     eventImpl: domTypes.Event,
     targetListeners: { [type in string]: domTypes.EventListener[] }
   ): boolean {
@@ -471,9 +495,9 @@ export class EventTarget implements domTypes.EventTarget {
     }
 
     return found;
-  }
+  },
 
-  _normalizeAddEventHandlerOptions(
+  normalizeAddEventHandlerOptions(
     options: boolean | domTypes.AddEventListenerOptions | undefined
   ): domTypes.AddEventListenerOptions {
     if (typeof options === "boolean" || typeof options === "undefined") {
@@ -487,9 +511,9 @@ export class EventTarget implements domTypes.EventTarget {
     } else {
       return options;
     }
-  }
+  },
 
-  _normalizeEventHandlerOptions(
+  normalizeEventHandlerOptions(
     options: boolean | domTypes.EventListenerOptions | undefined
   ): domTypes.EventListenerOptions {
     if (typeof options === "boolean" || typeof options === "undefined") {
@@ -501,10 +525,10 @@ export class EventTarget implements domTypes.EventTarget {
     } else {
       return options;
     }
-  }
+  },
 
   // https://dom.spec.whatwg.org/#concept-event-path-append
-  _appendToEventPath(
+  appendToEventPath(
     eventImpl: domTypes.Event,
     target: domTypes.EventTarget,
     targetOverride: domTypes.EventTarget | null,
@@ -513,7 +537,8 @@ export class EventTarget implements domTypes.EventTarget {
     slotInClosedTree: boolean
   ): void {
     const itemInShadowTree = isNode(target) && isShadowRoot(getRoot(target));
-    const rootOfClosedTree = isShadowRoot(target) && target.mode === "closed";
+    const rootOfClosedTree =
+      isShadowRoot(target) && target[domTypes.eventTargetMode] === "closed";
 
     eventImpl.path.push({
       item: target,
@@ -525,31 +550,11 @@ export class EventTarget implements domTypes.EventTarget {
       slotInClosedTree
     });
   }
-
-  get [Symbol.toStringTag](): string {
-    return "EventTarget";
-  }
-}
+};
 
 /** Built-in objects providing `get` methods for our
  * interceptable JavaScript operations.
  */
-Reflect.defineProperty(EventTarget.prototype, "host", {
-  enumerable: true,
-  writable: true
-});
-Reflect.defineProperty(EventTarget.prototype, "listeners", {
-  enumerable: true,
-  writable: true
-});
-Reflect.defineProperty(EventTarget.prototype, "mode", {
-  enumerable: true,
-  writable: true
-});
-Reflect.defineProperty(EventTarget.prototype, "nodeType", {
-  enumerable: true,
-  writable: true
-});
 Reflect.defineProperty(EventTarget.prototype, "addEventListener", {
   enumerable: true
 });

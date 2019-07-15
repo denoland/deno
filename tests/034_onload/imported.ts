@@ -1,2 +1,8 @@
 import "./nest_imported.ts";
-console.log("from imported script");
+window.addEventListener(
+  "load",
+  (e: Event): void => {
+    console.log(`got ${e.type} event in event handler (imported)`);
+  }
+);
+console.log("log from imported script");

@@ -136,6 +136,28 @@ window.postMessage = workers.postMessage;
 window.Worker = workers.WorkerImpl;
 export type Worker = workers.Worker;
 
+window[domTypes.eventTargetHost] = null;
+window[domTypes.eventTargetListeners] = {};
+window[domTypes.eventTargetMode] = "";
+window[domTypes.eventTargetNodeType] = 0;
+window[eventTarget.eventTargetAssignedSlot] = false;
+window[eventTarget.eventTargetHasActivationBehavior] = false;
+window.addEventListener = eventTarget.EventTarget.prototype.addEventListener;
+window.dispatchEvent = eventTarget.EventTarget.prototype.dispatchEvent;
+window.removeEventListener =
+  eventTarget.EventTarget.prototype.removeEventListener;
+
+// Registers the handler for window.onload function.
+window.addEventListener(
+  "load",
+  (e: domTypes.Event): void => {
+    const onload = window.onload;
+    if (typeof onload === "function") {
+      onload(e);
+    }
+  }
+);
+
 // below are interfaces that are available in TypeScript but
 // have different signatures
 export interface ImportMeta {
