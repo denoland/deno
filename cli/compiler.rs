@@ -1,6 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::deno_error::err_check;
-use crate::deno_error::DenoError;
 use crate::diagnostics::Diagnostic;
 use crate::msg;
 use crate::resources;
@@ -9,6 +7,8 @@ use crate::state::*;
 use crate::tokio_util;
 use crate::worker::Worker;
 use deno::Buf;
+use deno::ErrBox;
+use deno::ModuleSpecifier;
 use futures::Future;
 use futures::Stream;
 use std::path::PathBuf;
@@ -17,6 +17,7 @@ use std::sync::atomic::Ordering;
 
 // This corresponds to JS ModuleMetaData.
 // TODO Rename one or the other so they correspond.
+// TODO(bartlomieju): change `*_name` to `*_url` and use Url type
 #[derive(Debug, Clone)]
 pub struct ModuleMetaData {
   pub module_name: String,
@@ -94,7 +95,7 @@ pub fn bundle_async(
   state: ThreadSafeState,
   module_name: String,
   out_file: String,
-) -> impl Future<Item = (), Error = DenoError> {
+) -> impl Future<Item = (), Error = ErrBox> {
   debug!(
     "Invoking the compiler to bundle. module_name: {}",
     module_name
@@ -114,9 +115,9 @@ pub fn bundle_async(
     // as was done previously.
     state.clone(),
   );
-  err_check(worker.execute("denoMain()"));
-  err_check(worker.execute("workerMain()"));
-  err_check(worker.execute("compilerMain()"));
+  worker.execute("denoMain()").unwrap();
+  worker.execute("workerMain()").unwrap();
+  worker.execute("compilerMain()").unwrap();
 
   let resource = worker.state.resource.clone();
   let compiler_rid = resource.rid;
@@ -142,7 +143,7 @@ pub fn bundle_async(
         let json_str = std::str::from_utf8(&msg).unwrap();
         debug!("Message: {}", json_str);
         if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
-          return Err(DenoError::from(diagnostics));
+          return Err(ErrBox::from(diagnostics));
         }
       }
 
@@ -154,7 +155,7 @@ pub fn bundle_async(
 pub fn compile_async(
   state: ThreadSafeState,
   module_meta_data: &ModuleMetaData,
-) -> impl Future<Item = ModuleMetaData, Error = DenoError> {
+) -> impl Future<Item = ModuleMetaData, Error = ErrBox> {
   let module_name = module_meta_data.module_name.clone();
 
   debug!(
@@ -176,9 +177,9 @@ pub fn compile_async(
     // as was done previously.
     state.clone(),
   );
-  err_check(worker.execute("denoMain()"));
-  err_check(worker.execute("workerMain()"));
-  err_check(worker.execute("compilerMain()"));
+  worker.execute("denoMain()").unwrap();
+  worker.execute("workerMain()").unwrap();
+  worker.execute("compilerMain()").unwrap();
 
   let compiling_job = state.progress.add("Compile", &module_name);
 
@@ -203,18 +204,22 @@ pub fn compile_async(
     .and_then(move |maybe_msg: Option<Buf>| {
       debug!("Received message from worker");
 
+      // TODO: here TS compiler emitted the files to disc and we should signal ModuleMetaData
+      //  cache that source code is available
       if let Some(msg) = maybe_msg {
         let json_str = std::str::from_utf8(&msg).unwrap();
         debug!("Message: {}", json_str);
         if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
-          return Err(DenoError::from(diagnostics));
+          return Err(ErrBox::from(diagnostics));
         }
       }
 
       Ok(())
     }).and_then(move |_| {
+      let module_specifier = ModuleSpecifier::resolve_url(&module_name)
+        .expect("Should be valid module specifier");
       state.dir.fetch_module_meta_data_async(
-        &module_name,
+        &module_specifier,
         true,
         true,
       ).map_err(|e| {
@@ -236,7 +241,7 @@ pub fn compile_async(
 pub fn compile_sync(
   state: ThreadSafeState,
   module_meta_data: &ModuleMetaData,
-) -> Result<ModuleMetaData, DenoError> {
+) -> Result<ModuleMetaData, ErrBox> {
   tokio_util::block_on(compile_async(state, module_meta_data))
 }
 
@@ -249,7 +254,7 @@ mod tests {
     tokio_util::init(|| {
       let specifier = "./tests/002_hello.ts";
       use deno::ModuleSpecifier;
-      let module_name = ModuleSpecifier::resolve_root(specifier)
+      let module_name = ModuleSpecifier::resolve_url_or_path(specifier)
         .unwrap()
         .to_string();
 
@@ -296,7 +301,7 @@ mod tests {
   fn test_bundle_async() {
     let specifier = "./tests/002_hello.ts";
     use deno::ModuleSpecifier;
-    let module_name = ModuleSpecifier::resolve_root(specifier)
+    let module_name = ModuleSpecifier::resolve_url_or_path(specifier)
       .unwrap()
       .to_string();
 

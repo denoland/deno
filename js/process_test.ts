@@ -156,13 +156,14 @@ testPerm({ run: true }, async function runStdoutPiped(): Promise<void> {
 
   const data = new Uint8Array(10);
   let r = await p.stdout.read(data);
-  assertEquals(r.nread, 5);
-  assertEquals(r.eof, false);
-  const s = new TextDecoder().decode(data.subarray(0, r.nread));
+  if (r === Deno.EOF) {
+    throw new Error("p.stdout.read(...) should not be EOF");
+  }
+  assertEquals(r, 5);
+  const s = new TextDecoder().decode(data.subarray(0, r));
   assertEquals(s, "hello");
   r = await p.stdout.read(data);
-  assertEquals(r.nread, 0);
-  assertEquals(r.eof, true);
+  assertEquals(r, Deno.EOF);
   p.stdout.close();
 
   const status = await p.status();
@@ -182,13 +183,14 @@ testPerm({ run: true }, async function runStderrPiped(): Promise<void> {
 
   const data = new Uint8Array(10);
   let r = await p.stderr.read(data);
-  assertEquals(r.nread, 5);
-  assertEquals(r.eof, false);
-  const s = new TextDecoder().decode(data.subarray(0, r.nread));
+  if (r === Deno.EOF) {
+    throw new Error("p.stderr.read should not return EOF here");
+  }
+  assertEquals(r, 5);
+  const s = new TextDecoder().decode(data.subarray(0, r));
   assertEquals(s, "hello");
   r = await p.stderr.read(data);
-  assertEquals(r.nread, 0);
-  assertEquals(r.eof, true);
+  assertEquals(r, Deno.EOF);
   p.stderr.close();
 
   const status = await p.status();
@@ -306,8 +308,7 @@ testPerm({ run: true }, async function runClose(): Promise<void> {
 
   const data = new Uint8Array(10);
   let r = await p.stderr.read(data);
-  assertEquals(r.nread, 0);
-  assertEquals(r.eof, true);
+  assertEquals(r, Deno.EOF);
 });
 
 test(function signalNumbers(): void {

@@ -3,6 +3,8 @@ use indexmap::IndexMap;
 use serde_json::Map;
 use serde_json::Value;
 use std::cmp::Ordering;
+use std::error::Error;
+use std::fmt;
 use std::fs;
 use url::Url;
 
@@ -18,6 +20,14 @@ impl ImportMapError {
     }
   }
 }
+
+impl fmt::Display for ImportMapError {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    f.pad(&self.msg)
+  }
+}
+
+impl Error for ImportMapError {}
 
 // NOTE: here is difference between deno and reference implementation - deno currently
 //  can't resolve URL with other schemes (eg. data:, about:, blob:)
@@ -178,9 +188,7 @@ impl ImportMap {
         continue;
       }
 
-      let normalized_address = ModuleSpecifier::resolve(&url_string, ".")
-        .expect("Address should be valid module specifier");
-      normalized_addresses.push(normalized_address);
+      normalized_addresses.push(url.into());
     }
 
     normalized_addresses
@@ -386,7 +394,7 @@ impl ImportMap {
           let address = address_vec.first().unwrap();
           let after_prefix = &normalized_specifier[specifier_key.len()..];
 
-          let base_url = address.to_url();
+          let base_url = address.as_url();
           if let Ok(url) = base_url.join(after_prefix) {
             debug!("Specifier {:?} was mapped to {:?} (via prefix specifier key {:?}).", normalized_specifier, url, address);
             return Ok(Some(ModuleSpecifier::from(url)));

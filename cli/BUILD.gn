@@ -5,7 +5,7 @@ import("//build_extra/flatbuffers/rust/rust_flatbuffer.gni")
 import("//build_extra/rust/rust.gni")
 import("//third_party/v8/gni/snapshot_toolchain.gni")
 import("//third_party/v8/gni/v8.gni")
-import("../deno.gni")
+import("deno.gni")
 
 main_extern = [
   {

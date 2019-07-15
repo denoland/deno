@@ -2,8 +2,6 @@
 use crate::compiler::compile_async;
 use crate::compiler::ModuleMetaData;
 use crate::deno_dir;
-use crate::deno_error::DenoError;
-use crate::deno_error::DenoResult;
 use crate::flags;
 use crate::global_timer::GlobalTimer;
 use crate::import_map::ImportMap;
@@ -16,6 +14,7 @@ use crate::resources::ResourceId;
 use crate::worker::Worker;
 use deno::Buf;
 use deno::CoreOp;
+use deno::ErrBox;
 use deno::Loader;
 use deno::ModuleSpecifier;
 use deno::PinnedBuf;
@@ -118,7 +117,7 @@ impl ThreadSafeState {
 pub fn fetch_module_meta_data_and_maybe_compile_async(
   state: &ThreadSafeState,
   module_specifier: &ModuleSpecifier,
-) -> impl Future<Item = ModuleMetaData, Error = DenoError> {
+) -> impl Future<Item = ModuleMetaData, Error = ErrBox> {
   let state_ = state.clone();
   let use_cache =
     !state_.flags.reload || state_.has_compiled(&module_specifier.to_string());
@@ -126,11 +125,8 @@ pub fn fetch_module_meta_data_and_maybe_compile_async(
 
   state_
     .dir
-    .fetch_module_meta_data_async(
-      &module_specifier.to_string(),
-      use_cache,
-      no_fetch,
-    ).and_then(move |out| {
+    .fetch_module_meta_data_async(&module_specifier, use_cache, no_fetch)
+    .and_then(move |out| {
       if out.media_type == msg::MediaType::TypeScript
         && !out.has_output_code_and_source_map()
       {
@@ -153,14 +149,12 @@ pub fn fetch_module_meta_data_and_maybe_compile_async(
 }
 
 impl Loader for ThreadSafeState {
-  type Error = DenoError;
-
   fn resolve(
     &self,
     specifier: &str,
     referrer: &str,
     is_root: bool,
-  ) -> Result<ModuleSpecifier, Self::Error> {
+  ) -> Result<ModuleSpecifier, ErrBox> {
     if !is_root {
       if let Some(import_map) = &self.import_map {
         let result = import_map.resolve(specifier, referrer)?;
@@ -170,21 +164,18 @@ impl Loader for ThreadSafeState {
       }
     }
 
-    ModuleSpecifier::resolve(specifier, referrer).map_err(DenoError::from)
+    ModuleSpecifier::resolve_import(specifier, referrer).map_err(ErrBox::from)
   }
 
   /// Given an absolute url, load its source code.
   fn load(
     &self,
     module_specifier: &ModuleSpecifier,
-  ) -> Box<deno::SourceCodeInfoFuture<Self::Error>> {
+  ) -> Box<deno::SourceCodeInfoFuture> {
     self.metrics.resolve_count.fetch_add(1, Ordering::SeqCst);
     Box::new(
       fetch_module_meta_data_and_maybe_compile_async(self, module_specifier)
-        .map_err(|err| {
-          eprintln!("{}", err);
-          err
-        }).map(|module_meta_data| deno::SourceCodeInfo {
+        .map(|module_meta_data| deno::SourceCodeInfo {
           // Real module name, might be different from initial URL
           // due to redirections.
           code: module_meta_data.js_source(),
@@ -255,7 +246,7 @@ impl ThreadSafeState {
       None
     } else {
       let root_specifier = argv_rest[1].clone();
-      match ModuleSpecifier::resolve_root(&root_specifier) {
+      match ModuleSpecifier::resolve_url_or_path(&root_specifier) {
         Ok(specifier) => Some(specifier),
         Err(e) => {
           // TODO: handle unresolvable specifier
@@ -329,32 +320,32 @@ impl ThreadSafeState {
   }
 
   #[inline]
-  pub fn check_read(&self, filename: &str) -> DenoResult<()> {
+  pub fn check_read(&self, filename: &str) -> Result<(), ErrBox> {
     self.permissions.check_read(filename)
   }
 
   #[inline]
-  pub fn check_write(&self, filename: &str) -> DenoResult<()> {
+  pub fn check_write(&self, filename: &str) -> Result<(), ErrBox> {
     self.permissions.check_write(filename)
   }
 
   #[inline]
-  pub fn check_env(&self) -> DenoResult<()> {
+  pub fn check_env(&self) -> Result<(), ErrBox> {
     self.permissions.check_env()
   }
 
   #[inline]
-  pub fn check_net(&self, host_and_port: &str) -> DenoResult<()> {
+  pub fn check_net(&self, host_and_port: &str) -> Result<(), ErrBox> {
     self.permissions.check_net(host_and_port)
   }
 
   #[inline]
-  pub fn check_net_url(&self, url: url::Url) -> DenoResult<()> {
+  pub fn check_net_url(&self, url: url::Url) -> Result<(), ErrBox> {
     self.permissions.check_net_url(url)
   }
 
   #[inline]
-  pub fn check_run(&self) -> DenoResult<()> {
+  pub fn check_run(&self) -> Result<(), ErrBox> {
     self.permissions.check_run()
   }
 

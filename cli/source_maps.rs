@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-//! This mod provides functions to remap a deno::JSError based on a source map
-use deno::JSError;
+//! This mod provides functions to remap a deno::V8Exception based on a source map
 use deno::StackFrame;
+use deno::V8Exception;
 use serde_json;
 use source_map_mappings::parse_mappings;
 use source_map_mappings::Bias;
@@ -90,36 +90,36 @@ fn builtin_source_map(script_name: &str) -> Option<Vec<u8>> {
   }
 }
 
-/// Apply a source map to a JSError, returning a JSError where the filenames,
+/// Apply a source map to a V8Exception, returning a V8Exception where the filenames,
 /// the lines and the columns point to their original source location, not their
 /// transpiled location if applicable.
 pub fn apply_source_map<G: SourceMapGetter>(
-  js_error: &JSError,
+  v8_exception: &V8Exception,
   getter: &G,
-) -> JSError {
+) -> V8Exception {
   let mut mappings_map: CachedMaps = HashMap::new();
 
   let mut frames = Vec::<StackFrame>::new();
-  for frame in &js_error.frames {
+  for frame in &v8_exception.frames {
     let f = frame_apply_source_map(&frame, &mut mappings_map, getter);
     frames.push(f);
   }
 
   let (script_resource_name, line_number, start_column) =
     get_maybe_orig_position(
-      js_error.script_resource_name.clone(),
-      js_error.line_number,
-      js_error.start_column,
+      v8_exception.script_resource_name.clone(),
+      v8_exception.line_number,
+      v8_exception.start_column,
       &mut mappings_map,
       getter,
     );
   // It is better to just move end_column to be the same distance away from
   // start column because sometimes the code point is not available in the
   // source file map.
-  let end_column = match js_error.end_column {
+  let end_column = match v8_exception.end_column {
     Some(ec) => {
       if start_column.is_some() {
-        Some(ec - (js_error.start_column.unwrap() - start_column.unwrap()))
+        Some(ec - (v8_exception.start_column.unwrap() - start_column.unwrap()))
       } else {
         None
       }
@@ -128,22 +128,22 @@ pub fn apply_source_map<G: SourceMapGetter>(
   };
   // if there is a source line that we might be different in the source file, we
   // will go fetch it from the getter
-  let source_line = if js_error.source_line.is_some()
+  let source_line = if v8_exception.source_line.is_some()
     && script_resource_name.is_some()
     && line_number.is_some()
   {
     getter.get_source_line(
-      &js_error.script_resource_name.clone().unwrap(),
+      &v8_exception.script_resource_name.clone().unwrap(),
       line_number.unwrap() as usize,
     )
   } else {
-    js_error.source_line.clone()
+    v8_exception.source_line.clone()
   };
 
-  JSError {
-    message: js_error.message.clone(),
+  V8Exception {
+    message: v8_exception.message.clone(),
     frames,
-    error_level: js_error.error_level,
+    error_level: v8_exception.error_level,
     source_line,
     script_resource_name,
     line_number,
@@ -151,8 +151,8 @@ pub fn apply_source_map<G: SourceMapGetter>(
     end_column,
     // These are difficult to map to their original position and they are not
     // currently used in any output, so we don't remap them.
-    start_position: js_error.start_position,
-    end_position: js_error.end_position,
+    start_position: v8_exception.start_position,
+    end_position: v8_exception.end_position,
   }
 }
 
@@ -297,8 +297,8 @@ mod tests {
     }
   }
 
-  fn error1() -> JSError {
-    JSError {
+  fn error1() -> V8Exception {
+    V8Exception {
       message: "Error: foo bar".to_string(),
       source_line: None,
       script_resource_name: None,
@@ -341,11 +341,11 @@ mod tests {
   }
 
   #[test]
-  fn js_error_apply_source_map_1() {
+  fn v8_exception_apply_source_map_1() {
     let e = error1();
     let getter = MockSourceMapGetter {};
     let actual = apply_source_map(&e, &getter);
-    let expected = JSError {
+    let expected = V8Exception {
       message: "Error: foo bar".to_string(),
       source_line: None,
       script_resource_name: None,
@@ -389,8 +389,8 @@ mod tests {
   }
 
   #[test]
-  fn js_error_apply_source_map_2() {
-    let e = JSError {
+  fn v8_exception_apply_source_map_2() {
+    let e = V8Exception {
       message: "TypeError: baz".to_string(),
       source_line: None,
       script_resource_name: None,
@@ -419,8 +419,8 @@ mod tests {
   }
 
   #[test]
-  fn js_error_apply_source_map_line() {
-    let e = JSError {
+  fn v8_exception_apply_source_map_line() {
+    let e = V8Exception {
       message: "TypeError: baz".to_string(),
       source_line: Some("foo".to_string()),
       script_resource_name: Some("foo_bar.ts".to_string()),
