@@ -451,6 +451,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "hyper_hello"
+version = "0.0.1"
+dependencies = [
+ "hyper 0.12.30 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ring 0.14.6 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "idna"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
