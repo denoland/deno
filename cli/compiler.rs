@@ -1,5 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::deno_dir::get_cache_filename;
 use crate::deno_dir::DenoDir;
 use crate::deno_dir::DiskCache;
 use crate::deno_dir::SourceFile;
@@ -406,7 +405,10 @@ impl TsCompiler {
   pub fn get_metadata(self: &Self, url: &Url) -> Option<CompiledFileMetadata> {
     // Try to load cached version:
     // 1. check if there's 'meta' file
-    let cache_key = get_cache_filename(url).with_extension("meta");
+    let cache_key = self
+      .disk_cache
+      .get_cache_filename(url)
+      .with_extension("meta");
     if let Ok(metadata_bytes) = self.disk_cache.get(&cache_key) {
       if let Ok(metadata) = std::str::from_utf8(&metadata_bytes) {
         if let Some(read_metadata) =
@@ -425,7 +427,10 @@ impl TsCompiler {
     self: &Self,
     source_file: &SourceFile,
   ) -> Result<SourceFile, ErrBox> {
-    let cache_key = get_cache_filename(&source_file.url).with_extension("js");
+    let cache_key = self
+      .disk_cache
+      .get_cache_filename(&source_file.url)
+      .with_extension("js");
     let compiled_code = self.disk_cache.get(&cache_key)?;
     let compiled_code_filename = self.disk_cache.location.join(cache_key);
     debug!("compiled filename: {:?}", compiled_code_filename);
@@ -446,10 +451,11 @@ impl TsCompiler {
     self: &Self,
     module_specifier: &ModuleSpecifier,
   ) -> Result<SourceFile, ErrBox> {
-    let compiled_cache_filename = self
-      .disk_cache
-      .location
-      .join(get_cache_filename(module_specifier.as_url()));
+    let compiled_cache_filename = self.disk_cache.location.join(
+      self
+        .disk_cache
+        .get_cache_filename(module_specifier.as_url()),
+    );
     let source_map_filename = compiled_cache_filename.with_extension("js.map");
     debug!("source map filename: {:?}", source_map_filename);
 
@@ -472,7 +478,9 @@ impl TsCompiler {
     extension: &str,
     contents: &str,
   ) -> std::io::Result<()> {
-    let cache_key = get_cache_filename(module_specifier.as_url());
+    let cache_key = self
+      .disk_cache
+      .get_cache_filename(module_specifier.as_url());
 
     // TODO: factor out to Enum
     match extension {

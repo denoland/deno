@@ -95,17 +95,17 @@ fn normalize_path(path: &Path) -> PathBuf {
 }
 
 #[derive(Clone, Default)]
-pub struct SourceFileCache(Arc<Mutex<HashMap<PathBuf, SourceFile>>>);
+pub struct SourceFileCache(Arc<Mutex<HashMap<String, SourceFile>>>);
 
 impl SourceFileCache {
-  pub fn set(&self, path: PathBuf, source_file: SourceFile) {
+  pub fn set(&self, key: String, source_file: SourceFile) {
     let mut c = self.0.lock().unwrap();
-    c.insert(path, source_file);
+    c.insert(key, source_file);
   }
 
-  pub fn get(&self, path: PathBuf) -> Option<SourceFile> {
+  pub fn get(&self, key: String) -> Option<SourceFile> {
     let c = self.0.lock().unwrap();
-    match c.get(&path) {
+    match c.get(&key) {
       Some(source_file) => Some(source_file.clone()),
       None => None,
     }
@@ -124,6 +124,31 @@ impl DiskCache {
     Self {
       location: location.to_owned(),
     }
+  }
+
+  pub fn get_cache_filename(self: &Self, url: &Url) -> PathBuf {
+    let mut out = PathBuf::new();
+
+    let scheme = url.scheme();
+    out.push(scheme);
+    match scheme {
+      "http" | "https" => {
+        let host = url.host_str().unwrap();
+        let host_port = match url.port() {
+          // Windows doesn't support ":" in filenames, so we represent port using a
+          // special string.
+          Some(port) => format!("{}_PORT{}", host, port),
+          None => host.to_string(),
+        };
+        out.push(host_port);
+      }
+      _ => {}
+    };
+
+    for path_seg in url.path_segments().unwrap() {
+      out.push(path_seg);
+    }
+    out
   }
 
   pub fn get(self: &Self, filename: &Path) -> std::io::Result<Vec<u8>> {
@@ -210,11 +235,18 @@ impl DenoDir {
   ///
   /// For specifier starting with `http://` and `https://` it returns
   /// path to DenoDir dependency directory.
+  // TODO: to be removed
   pub fn url_to_deps_path(self: &Self, url: &Url) -> PathBuf {
     let filename = match url.scheme() {
       "file" => url.to_file_path().unwrap(),
-      "https" => self.deps_cache.location.join(get_cache_filename(&url)),
-      "http" => self.deps_cache.location.join(get_cache_filename(&url)),
+      "https" => self
+        .deps_cache
+        .location
+        .join(self.deps_cache.get_cache_filename(&url)),
+      "http" => self
+        .deps_cache
+        .location
+        .join(self.deps_cache.get_cache_filename(&url)),
       _ => unreachable!(),
     };
 
@@ -250,23 +282,17 @@ impl SourceFileFetcher for DenoDir {
       return Box::new(futures::future::err(err));
     }
 
-    let deps_filepath = self.url_to_deps_path(&module_url);
-
-    if let Some(source_file) = self.source_file_cache.get(deps_filepath.clone())
+    if let Some(source_file) = self.source_file_cache.get(specifier.to_string())
     {
       return Box::new(futures::future::ok(source_file));
     }
 
     let source_file_cache = self.source_file_cache.clone();
-    let deps_filepath_ = deps_filepath.clone();
+    let specifier_ = specifier.clone();
 
     let fut = self
-      .get_source_file_async(
-        &module_url,
-        deps_filepath.clone(),
-        use_cache,
-        no_fetch,
-      ).then(move |result| {
+      .get_source_file_async(&module_url, use_cache, no_fetch)
+      .then(move |result| {
         let mut out = result.map_err(|err| {
           // TODO: is it even needed?
           if err.kind() == ErrorKind::NotFound {
@@ -285,7 +311,7 @@ impl SourceFileFetcher for DenoDir {
           out.source_code = filter_shebang(out.source_code);
         }
 
-        source_file_cache.set(deps_filepath_, out.clone());
+        source_file_cache.set(specifier_.to_string(), out.clone());
 
         Ok(out)
       });
@@ -294,7 +320,7 @@ impl SourceFileFetcher for DenoDir {
   }
 
   /// Synchronous version of fetch_source_file_async
-  /// This function is deprecated.
+  /// Required by TypeScript compiler.
   fn fetch_source_file(
     self: &Self,
     specifier: &ModuleSpecifier,
@@ -325,17 +351,15 @@ impl DenoDir {
   fn get_source_file_async(
     self: &Self,
     module_url: &Url,
-    filepath: PathBuf,
     use_cache: bool,
     no_fetch: bool,
   ) -> impl Future<Item = SourceFile, Error = ErrBox> {
-    let filename = filepath.to_str().unwrap().to_string();
     let url_scheme = module_url.scheme();
     let is_local_file = url_scheme == "file";
 
     // Local files are always fetched from disk bypassing cache entirely.
     if is_local_file {
-      match self.fetch_local_file(&module_url, &filepath) {
+      match self.fetch_local_file(&module_url) {
         Ok(source_file) => {
           return Either::A(futures::future::ok(source_file));
         }
@@ -346,8 +370,13 @@ impl DenoDir {
     }
 
     // We're dealing with remote file, first try local cache
+    let cache_filepath = self.url_to_deps_path(&module_url);
+    // TODO: replace with .display()
+    let cache_filename = cache_filepath.to_str().unwrap().to_string();
+
     if use_cache {
-      match self.fetch_cached_remote_source(&module_url, &filepath, None) {
+      match self.fetch_cached_remote_source(&module_url, &cache_filepath, None)
+      {
         Ok(Some(source_file)) => {
           return Either::A(futures::future::ok(source_file));
         }
@@ -366,7 +395,7 @@ impl DenoDir {
       return Either::A(futures::future::err(
         std::io::Error::new(
           std::io::ErrorKind::NotFound,
-          format!("cannot find remote file '{}' in cache", filename),
+          format!("cannot find remote file '{}' in cache", cache_filename),
         ).into(),
       ));
     }
@@ -375,13 +404,13 @@ impl DenoDir {
     // not cached/local, try remote.
     Either::B(
       self
-        .fetch_remote_source_async(&module_url, &filepath)
+        .fetch_remote_source_async(&module_url, &cache_filepath)
         .and_then(move |maybe_remote_source| match maybe_remote_source {
           Some(output) => Ok(output),
           None => Err(
             std::io::Error::new(
               std::io::ErrorKind::NotFound,
-              format!("cannot find remote file '{}'", filename),
+              format!("cannot find remote file '{}'", cache_filename),
             ).into(),
           ),
         }),
@@ -392,13 +421,12 @@ impl DenoDir {
   fn fetch_local_file(
     self: &Self,
     module_url: &Url,
-    filepath: &Path,
   ) -> Result<SourceFile, ErrBox> {
-    // TODO: get filepath from URL
+    let filepath = module_url.to_file_path().expect("File URL expected");
 
     // No redirect needed or end of redirects.
     // We can try read the file
-    let source_code = match fs::read(filepath) {
+    let source_code = match fs::read(filepath.clone()) {
       Ok(c) => c,
       Err(e) => return Err(e.into()),
     };
@@ -578,32 +606,6 @@ impl DenoDir {
       r
     })
   }
-}
-
-// TODO: method of DiskCache?
-pub fn get_cache_filename(url: &Url) -> PathBuf {
-  let mut out = PathBuf::new();
-
-  let scheme = url.scheme();
-  out.push(scheme);
-  match scheme {
-    "http" | "https" => {
-      let host = url.host_str().unwrap();
-      let host_port = match url.port() {
-        // Windows doesn't support ":" in filenames, so we represent port using a
-        // special string.
-        Some(port) => format!("{}_PORT{}", host, port),
-        None => host.to_string(),
-      };
-      out.push(host_port);
-    }
-    _ => {}
-  };
-
-  for path_seg in url.path_segments().unwrap() {
-    out.push(path_seg);
-  }
-  out
 }
 
 fn map_file_extension(path: &Path) -> msg::MediaType {
@@ -844,15 +846,16 @@ mod tests {
     }
 
     /// Synchronous version of get_source_file_async
+    // TODO:
     fn get_source_file(
       self: &Self,
       module_url: &Url,
-      filepath: PathBuf,
+      _filepath: PathBuf,
       use_cache: bool,
       no_fetch: bool,
     ) -> Result<SourceFile, ErrBox> {
       tokio_util::block_on(
-        self.get_source_file_async(module_url, filepath, use_cache, no_fetch),
+        self.get_source_file_async(module_url, use_cache, no_fetch),
       )
     }
   }
@@ -896,22 +899,24 @@ mod tests {
 
   #[test]
   fn test_get_cache_filename() {
+    let cache = DiskCache::new(&PathBuf::from("foo"));
     let url = Url::parse("http://example.com:1234/path/to/file.ts").unwrap();
-    let cache_file = get_cache_filename(&url);
+    let cache_file = cache.get_cache_filename(&url);
     assert_eq!(
       cache_file,
       Path::new("http/example.com_PORT1234/path/to/file.ts")
     );
 
     let url = Url::parse("file:///src/a/b/c/file.ts").unwrap();
-    let cache_file = get_cache_filename(&url);
+    let cache_file = cache.get_cache_filename(&url);
     assert_eq!(cache_file, Path::new("file//src/a/b/c/file.ts"));
   }
 
   #[test]
   fn test_cache_paths() {
+    let cache = DiskCache::new(&PathBuf::from("foo"));
     let file_url = Url::parse("file:///a/b/c/hello.js").unwrap();
-    let cache_filename = get_cache_filename(&file_url);
+    let cache_filename = cache.get_cache_filename(&file_url);
     assert_eq!(
       (
         cache_filename.with_extension("js"),
