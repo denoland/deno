@@ -71,11 +71,16 @@ export enum NodeType {
   DOCUMENT_FRAGMENT_NODE = 11
 }
 
+export const eventTargetHost: unique symbol = Symbol();
+export const eventTargetListeners: unique symbol = Symbol();
+export const eventTargetMode: unique symbol = Symbol();
+export const eventTargetNodeType: unique symbol = Symbol();
+
 export interface EventTarget {
-  host: EventTarget | null;
-  listeners: { [type in string]: EventListener[] };
-  mode: string;
-  nodeType: NodeType;
+  [eventTargetHost]: EventTarget | null;
+  [eventTargetListeners]: { [type in string]: EventListener[] };
+  [eventTargetMode]: string;
+  [eventTargetNodeType]: NodeType;
   addEventListener(
     type: string,
     callback: (event: Event) => void | null,

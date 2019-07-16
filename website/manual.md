@@ -425,7 +425,7 @@ $ deno run --allow-net=deno.land allow-net-whitelist-example.ts
 Example:
 
 ```ts
-async function main() {
+window.onload = async function() {
   // create subprocess
   const p = Deno.run({
     args: ["echo", "hello"]
@@ -433,9 +433,7 @@ async function main() {
 
   // await its completion
   await p.status();
-}
-
-main();
+};
 ```
 
 Run it:
@@ -445,12 +443,17 @@ $ deno run --allow-run ./subprocess_simple.ts
 hello
 ```
 
+Here a function is assigned to `window.onload`. This function is called after
+the main script is loaded. This is the same as
+[onload](https://developer.mozilla.org/en-US/docs/Web/API/GlobalEventHandlers/onload)
+of the browsers, and it can be used as the main entrypoint.
+
 By default when you use `Deno.run()` subprocess inherits `stdin`, `stdout` and
 `stderr` of parent process. If you want to communicate with started subprocess
 you can use `"piped"` option.
 
 ```ts
-async function main() {
+window.onload = async function() {
   const decoder = new TextDecoder();
 
   const fileNames = Deno.args.slice(1);
@@ -479,9 +482,7 @@ async function main() {
   }
 
   Deno.exit(code);
-}
-
-main();
+};
 ```
 
 When you run it:
@@ -833,14 +834,12 @@ Example:
 
 import { serve } from "http/server.ts";
 
-async function main() {
+window.onload = async function() {
   const body = new TextEncoder().encode("Hello World\n");
   for await (const req of serve(":8000")) {
     req.respond({ body });
   }
-}
-
-main();
+};
 ```
 
 ```shell

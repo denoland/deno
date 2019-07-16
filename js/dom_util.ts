@@ -9,16 +9,18 @@ export function isNode(nodeImpl: domTypes.EventTarget | null): boolean {
 export function isShadowRoot(nodeImpl: domTypes.EventTarget | null): boolean {
   return Boolean(
     nodeImpl &&
-      nodeImpl.nodeType === domTypes.NodeType.DOCUMENT_FRAGMENT_NODE &&
-      "host" in nodeImpl
+      nodeImpl[domTypes.eventTargetNodeType] ===
+        domTypes.NodeType.DOCUMENT_FRAGMENT_NODE &&
+      nodeImpl[domTypes.eventTargetHost] != null
   );
 }
 
 export function isSlotable(nodeImpl: domTypes.EventTarget | null): boolean {
   return Boolean(
     nodeImpl &&
-      (nodeImpl.nodeType === domTypes.NodeType.ELEMENT_NODE ||
-        nodeImpl.nodeType === domTypes.NodeType.TEXT_NODE)
+      (nodeImpl[domTypes.eventTargetNodeType] ===
+        domTypes.NodeType.ELEMENT_NODE ||
+        nodeImpl[domTypes.eventTargetNodeType] === domTypes.NodeType.TEXT_NODE)
   );
 }
 
@@ -36,7 +38,7 @@ export function isShadowInclusiveAncestor(
     }
 
     if (isShadowRoot(node)) {
-      node = node && node.host;
+      node = node && node[domTypes.eventTargetHost];
     } else {
       node = null; // domSymbolTree.parent(node);
     }
@@ -77,7 +79,7 @@ export function retarget(
         return a;
       }
 
-      a = aRoot.host;
+      a = aRoot[domTypes.eventTargetHost];
     }
   }
 }
