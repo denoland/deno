@@ -66,8 +66,6 @@ pub trait SourceFileFetcher {
   fn fetch_source_file_async(
     self: &Self,
     specifier: &ModuleSpecifier,
-    use_cache: bool,
-    no_fetch: bool,
   ) -> Box<SourceFileFuture>;
 
   /// Synchronous version of fetch_source_file_async
@@ -75,8 +73,6 @@ pub trait SourceFileFetcher {
   fn fetch_source_file(
     self: &Self,
     specifier: &ModuleSpecifier,
-    use_cache: bool,
-    no_fetch: bool,
   ) -> Result<SourceFile, ErrBox>;
 }
 
@@ -128,6 +124,9 @@ pub struct DenoDir {
   pub progress: Progress,
 
   source_file_cache: SourceFileCache,
+
+  use_disk_cache: bool,
+  no_remote_fetch: bool,
 }
 
 impl DenoDir {
@@ -136,6 +135,8 @@ impl DenoDir {
   pub fn new(
     custom_root: Option<PathBuf>,
     progress: Progress,
+    use_disk_cache: bool,
+    no_remote_fetch: bool,
   ) -> std::io::Result<Self> {
     // Only setup once.
     let home_dir = dirs::home_dir().expect("Could not get home directory.");
@@ -159,6 +160,8 @@ impl DenoDir {
       deps_cache,
       progress,
       source_file_cache: SourceFileCache::default(),
+      use_disk_cache,
+      no_remote_fetch,
     };
 
     // TODO Lazily create these directories.
@@ -220,8 +223,6 @@ impl SourceFileFetcher for DenoDir {
   fn fetch_source_file_async(
     self: &Self,
     specifier: &ModuleSpecifier,
-    use_cache: bool,
-    no_fetch: bool,
   ) -> Box<SourceFileFuture> {
     let module_url = specifier.as_url().to_owned();
     debug!("fetch_source_file. specifier {} ", &module_url);
@@ -235,8 +236,11 @@ impl SourceFileFetcher for DenoDir {
     let specifier_ = specifier.clone();
 
     let fut = self
-      .get_source_file_async(&module_url, use_cache, no_fetch)
-      .then(move |result| {
+      .get_source_file_async(
+        &module_url,
+        self.use_disk_cache,
+        self.no_remote_fetch,
+      ).then(move |result| {
         let mut out = result.map_err(|err| {
           if err.kind() == ErrorKind::NotFound {
             // For NotFound, change the message to something better.
@@ -267,12 +271,8 @@ impl SourceFileFetcher for DenoDir {
   fn fetch_source_file(
     self: &Self,
     specifier: &ModuleSpecifier,
-    use_cache: bool,
-    no_fetch: bool,
   ) -> Result<SourceFile, ErrBox> {
-    tokio_util::block_on(
-      self.fetch_source_file_async(specifier, use_cache, no_fetch),
-    )
+    tokio_util::block_on(self.fetch_source_file_async(specifier))
   }
 }
 
@@ -290,12 +290,12 @@ impl DenoDir {
   ///
   /// If this is a remote module, and it has not yet been cached, the resulting
   /// download will be written to "filename". This happens no matter the value of
-  /// use_cache.
+  /// use_disk_cache.
   fn get_source_file_async(
     self: &Self,
     module_url: &Url,
-    use_cache: bool,
-    no_fetch: bool,
+    use_disk_cache: bool,
+    no_remote_fetch: bool,
   ) -> impl Future<Item = SourceFile, Error = ErrBox> {
     let url_scheme = module_url.scheme();
     let is_local_file = url_scheme == "file";
@@ -321,7 +321,7 @@ impl DenoDir {
     // TODO: replace with .display()
     let cache_filename = cache_filepath.to_str().unwrap().to_string();
 
-    if use_cache {
+    if use_disk_cache {
       match self.fetch_cached_remote_source(&module_url, None) {
         Ok(Some(source_file)) => {
           return Either::A(futures::future::ok(source_file));
@@ -336,7 +336,7 @@ impl DenoDir {
     }
 
     // If remote file wasn't found check if we can fetch it
-    if no_fetch {
+    if no_remote_fetch {
       // We can't fetch remote file - bail out
       return Either::A(futures::future::err(
         std::io::Error::new(
@@ -780,12 +780,14 @@ mod tests {
     fn get_source_file(
       self: &Self,
       module_url: &Url,
-      use_cache: bool,
-      no_fetch: bool,
+      use_disk_cache: bool,
+      no_remote_fetch: bool,
     ) -> Result<SourceFile, ErrBox> {
-      tokio_util::block_on(
-        self.get_source_file_async(module_url, use_cache, no_fetch),
-      )
+      tokio_util::block_on(self.get_source_file_async(
+        module_url,
+        use_disk_cache,
+        no_remote_fetch,
+      ))
     }
   }
 
@@ -794,7 +796,7 @@ mod tests {
   }
 
   fn setup_deno_dir(dir_path: &Path) -> DenoDir {
-    DenoDir::new(Some(dir_path.to_path_buf()), Progress::new())
+    DenoDir::new(Some(dir_path.to_path_buf()), Progress::new(), true, false)
       .expect("setup fail")
   }
 
@@ -1031,7 +1033,7 @@ mod tests {
       );
 
       // first download
-      let result = deno_dir.fetch_source_file(&specifier, false, false);
+      let result = deno_dir.fetch_source_file(&specifier);
       assert!(result.is_ok());
 
       let result = fs::File::open(&headers_file_name);
@@ -1041,10 +1043,10 @@ mod tests {
       let headers_file_metadata = headers_file.metadata().unwrap();
       let headers_file_modified = headers_file_metadata.modified().unwrap();
 
-      // download file again, it should use already fetched file even though `use_cache` is set to
+      // download file again, it should use already fetched file even though `use_disk_cache` is set to
       // false, this can be verified using source header file creation timestamp (should be
       // the same as after first download)
-      let result = deno_dir.fetch_source_file(&specifier, false, false);
+      let result = deno_dir.fetch_source_file(&specifier);
       assert!(result.is_ok());
 
       let result = fs::File::open(&headers_file_name);
@@ -1198,7 +1200,7 @@ mod tests {
       let result = deno_dir.get_source_file(&module_url, true, false);
       assert!(result.is_ok());
 
-      // module is already cached, should be ok even with `no_fetch`
+      // module is already cached, should be ok even with `no_remote_fetch`
       let result = deno_dir.get_source_file(&module_url, true, true);
       assert!(result.is_ok());
     });
@@ -1384,13 +1386,13 @@ mod tests {
       // Test failure case.
       let specifier =
         ModuleSpecifier::resolve_url(file_url!("/baddir/hello.ts")).unwrap();
-      let r = deno_dir.fetch_source_file(&specifier, true, false);
+      let r = deno_dir.fetch_source_file(&specifier);
       assert!(r.is_err());
 
       // Assuming cwd is the deno repo root.
       let specifier =
         ModuleSpecifier::resolve_url_or_path("js/main.ts").unwrap();
-      let r = deno_dir.fetch_source_file(&specifier, true, false);
+      let r = deno_dir.fetch_source_file(&specifier);
       assert!(r.is_ok());
     })
   }
@@ -1404,13 +1406,13 @@ mod tests {
       // Test failure case.
       let specifier =
         ModuleSpecifier::resolve_url(file_url!("/baddir/hello.ts")).unwrap();
-      let r = deno_dir.fetch_source_file(&specifier, false, false);
+      let r = deno_dir.fetch_source_file(&specifier);
       assert!(r.is_err());
 
       // Assuming cwd is the deno repo root.
       let specifier =
         ModuleSpecifier::resolve_url_or_path("js/main.ts").unwrap();
-      let r = deno_dir.fetch_source_file(&specifier, false, false);
+      let r = deno_dir.fetch_source_file(&specifier);
       assert!(r.is_ok());
     })
   }

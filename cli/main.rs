@@ -104,13 +104,11 @@ pub fn print_file_info(
   module_specifier: &ModuleSpecifier,
 ) -> impl Future<Item = Worker, Error = ()> {
   let state_ = worker.state.clone();
-  let use_cache = !state_.flags.reload;
-  let no_fetch = state_.flags.no_fetch;
   let module_specifier_ = module_specifier.clone();
 
   state_
     .dir
-    .fetch_source_file_async(&module_specifier, use_cache, no_fetch)
+    .fetch_source_file_async(&module_specifier)
     .map_err(|err| println!("{}", err))
     .and_then(move |out| {
       println!(
@@ -128,7 +126,7 @@ pub fn print_file_info(
       state_
         .clone()
         .ts_compiler
-        .compile_async(state_.clone(), &out, use_cache)
+        .compile_async(state_.clone(), &out)
         .map_err(|e| {
           debug!("compiler error exiting!");
           eprintln!("\n{}", e.to_string());

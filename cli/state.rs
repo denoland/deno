@@ -107,17 +107,15 @@ pub fn fetch_source_file_and_maybe_compile_async(
   module_specifier: &ModuleSpecifier,
 ) -> impl Future<Item = SourceFile, Error = ErrBox> {
   let state_ = state.clone();
-  let use_cache = !state_.flags.reload;
-  let no_fetch = state_.flags.no_fetch;
 
   state_
     .dir
-    .fetch_source_file_async(&module_specifier, use_cache, no_fetch)
+    .fetch_source_file_async(&module_specifier)
     .and_then(move |out| {
       state_
         .clone()
         .ts_compiler
-        .compile_async(state_.clone(), &out, use_cache)
+        .compile_async(state_.clone(), &out)
         .map_err(|e| {
           debug!("compiler error exiting!");
           eprintln!("\n{}", e.to_string());
@@ -179,7 +177,12 @@ impl ThreadSafeState {
     let external_channels = (worker_in_tx, worker_out_rx);
     let resource = resources::add_worker(external_channels);
 
-    let dir = deno_dir::DenoDir::new(custom_root, progress.clone()).unwrap();
+    let dir = deno_dir::DenoDir::new(
+      custom_root,
+      progress.clone(),
+      !flags.reload,
+      flags.no_fetch,
+    ).unwrap();
 
     let main_module: Option<ModuleSpecifier> = if argv_rest.len() <= 1 {
       None
@@ -217,7 +220,8 @@ impl ThreadSafeState {
 
     let modules = Arc::new(Mutex::new(deno::Modules::new()));
 
-    let ts_compiler = TsCompiler::new(dir.clone(), flags.config_path.clone());
+    let ts_compiler =
+      TsCompiler::new(dir.clone(), !flags.reload, flags.config_path.clone());
 
     ThreadSafeState(Arc::new(State {
       main_module,

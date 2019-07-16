@@ -174,10 +174,15 @@ pub struct TsCompiler {
   /// around the fact that --reload will force multiple compilations of the same
   /// module.
   pub compiled: Mutex<HashSet<String>>,
+  pub use_disk_cache: bool,
 }
 
 impl TsCompiler {
-  pub fn new(deno_dir: DenoDir, config_path: Option<String>) -> Self {
+  pub fn new(
+    deno_dir: DenoDir,
+    use_disk_cache: bool,
+    config_path: Option<String>,
+  ) -> Self {
     let compiler_config = match load_config_file(config_path) {
       (Some(config_path), Some(config)) => {
         Some((config_path.to_string(), config.to_vec()))
@@ -196,6 +201,7 @@ impl TsCompiler {
       config: compiler_config,
       config_hash: config_bytes,
       compiled: Mutex::new(HashSet::new()),
+      use_disk_cache,
     }
   }
 
@@ -280,7 +286,6 @@ impl TsCompiler {
     self: &Self,
     state: ThreadSafeState,
     source_file: &SourceFile,
-    use_cache: bool,
   ) -> impl Future<Item = SourceFile, Error = ErrBox> {
     // TODO: maybe fetching of original SourceFile should be done here?
 
@@ -299,7 +304,7 @@ impl TsCompiler {
       }
     }
 
-    if use_cache {
+    if self.use_disk_cache {
       // Try to load cached version:
       // 1. check if there's 'meta' file
       if let Some(metadata) = self.get_metadata(&source_file.url) {
@@ -461,7 +466,7 @@ impl TsCompiler {
 
         let source_file = self
           .deno_dir
-          .fetch_source_file(&module_specifier, true, true)
+          .fetch_source_file(&module_specifier)
           .expect("Source file not found");
 
         let version_hash = source_code_version_hash(
@@ -544,11 +549,7 @@ impl TsCompiler {
     script_name: &str,
   ) -> Option<SourceFile> {
     if let Some(module_specifier) = self.try_to_resolve(script_name) {
-      return match self.deno_dir.fetch_source_file(
-        &module_specifier,
-        true,
-        true,
-      ) {
+      return match self.deno_dir.fetch_source_file(&module_specifier) {
         Ok(out) => Some(out),
         Err(_) => None,
       };
@@ -606,9 +607,8 @@ mod tests {
       self: &Self,
       state: ThreadSafeState,
       source_file: &SourceFile,
-      use_cache: bool,
     ) -> Result<SourceFile, ErrBox> {
-      tokio_util::block_on(self.compile_async(state, source_file, use_cache))
+      tokio_util::block_on(self.compile_async(state, source_file))
     }
   }
 
@@ -632,7 +632,7 @@ mod tests {
       ]);
       out = mock_state
         .ts_compiler
-        .compile_sync(mock_state.clone(), &out, false)
+        .compile_sync(mock_state.clone(), &out)
         .unwrap();
       assert!(
         out

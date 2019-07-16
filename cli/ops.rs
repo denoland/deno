@@ -499,13 +499,11 @@ fn op_fetch_source_file(
   let specifier = inner.specifier().unwrap();
   let referrer = inner.referrer().unwrap();
 
-  let use_cache = !state.flags.reload;
-  let no_fetch = state.flags.no_fetch;
   let resolved_specifier = state.resolve(specifier, referrer, false)?;
 
   let fut = state
     .dir
-    .fetch_source_file_async(&resolved_specifier, use_cache, no_fetch)
+    .fetch_source_file_async(&resolved_specifier)
     .and_then(move |out| {
       let builder = &mut FlatBufferBuilder::new();
       let data_off = builder.create_vector(out.source_code.as_slice());
