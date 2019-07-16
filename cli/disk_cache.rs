@@ -46,7 +46,7 @@ impl DiskCache {
   pub fn get_cache_filename_with_extension(
     self: &Self,
     url: &Url,
-    extension: String,
+    extension: &str,
   ) -> PathBuf {
     let base = self.get_cache_filename(url);
 
@@ -72,6 +72,11 @@ impl DiskCache {
       None => Ok(()),
     }?;
     deno_fs::write_file(&path, data, 0o666)
+  }
+
+  pub fn remove(self: &Self, filename: &Path) -> std::io::Result<()> {
+    let path = self.location.join(filename);
+    fs::remove_file(path)
   }
 }
 
@@ -136,7 +141,7 @@ mod tests {
       assert_eq!(
         cache.get_cache_filename_with_extension(
           &Url::parse(test_case.0).unwrap(),
-          test_case.1.to_string()
+          test_case.1
         ),
         PathBuf::from(test_case.2)
       )

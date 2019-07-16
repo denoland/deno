@@ -408,7 +408,7 @@ impl DenoDir {
     // TODO: to be removed
     let filepath = self.url_to_deps_path(&module_url);
 
-    let source_code_headers = get_source_code_headers(&filepath);
+    let source_code_headers = self.get_source_code_headers(&module_url);
     // If source code headers says that it would redirect elsewhere,
     // (meaning that the source file might not exist; only .headers.json is present)
     // Abort reading attempts to the cached source file and and follow the redirect.
@@ -513,15 +513,27 @@ impl DenoDir {
                 )))
               }
               FetchOnceResult::Code(source, maybe_content_type) => {
-                // TODO: this should be done using `DiskCache` API
+                // TODO: move caching logic outside this function
                 // We land on the code.
-                save_module_code_and_headers(
-                  filepath.clone(),
+                dir.save_source_code_headers(
                   &module_url,
-                  &source,
                   maybe_content_type.clone(),
-                  maybe_initial_filepath,
-                )?;
+                  None,
+                ).unwrap();
+
+
+                dir.save_source_code(
+                  &module_url,
+                  &source
+                ).unwrap();
+
+                if let Some(redirect_source_url) = &maybe_initial_module_url {
+                  dir.save_source_code_headers(
+                    redirect_source_url,
+                    maybe_content_type.clone(),
+                    Some(module_url.to_string())
+                  ).unwrap()
+                }
 
                 let media_type = map_content_type(
                   &filepath,
@@ -548,6 +560,71 @@ impl DenoDir {
       drop(download_job);
       r
     })
+  }
+
+  /// Get header metadata associated with a single source code file.
+  /// NOTICE: chances are that the source code itself is not downloaded due to redirects.
+  /// In this case, the headers file provides info about where we should go and get
+  /// the source code that redirect eventually points to (which should be cached).
+  fn get_source_code_headers(self: &Self, url: &Url) -> SourceCodeHeaders {
+    let cache_key = self
+      .deps_cache
+      .get_cache_filename_with_extension(url, "headers.json");
+
+    if let Ok(bytes) = self.deps_cache.get(&cache_key) {
+      if let Ok(json_string) = std::str::from_utf8(&bytes) {
+        return SourceCodeHeaders::from_json_string(json_string.to_string());
+      }
+    }
+
+    SourceCodeHeaders::default()
+  }
+
+  fn save_source_code(
+    self: &Self,
+    url: &Url,
+    source: &str,
+  ) -> std::io::Result<()> {
+    let cache_key = self.deps_cache.get_cache_filename(url);
+
+    // May not exist. DON'T unwrap.
+    let _ = self.deps_cache.remove(&cache_key);
+
+    self.deps_cache.set(&cache_key, source.as_bytes())
+  }
+
+  /// Save headers related to source filename to {filename}.headers.json file,
+  /// only when there is actually something necessary to save.
+  /// For example, if the extension ".js" already mean JS file and we have
+  /// content type of "text/javascript", then we would not save the mime type.
+  /// If nothing needs to be saved, the headers file is not created.
+  fn save_source_code_headers(
+    self: &Self,
+    url: &Url,
+    mime_type: Option<String>,
+    redirect_to: Option<String>,
+  ) -> std::io::Result<()> {
+    let cache_key = self
+      .deps_cache
+      .get_cache_filename_with_extension(url, "headers.json");
+
+    // Remove possibly existing stale .headers.json file.
+    // May not exist. DON'T unwrap.
+    let _ = self.deps_cache.remove(&cache_key);
+
+    let headers = SourceCodeHeaders {
+      mime_type,
+      redirect_to,
+    };
+
+    let cache_filename = self.deps_cache.get_cache_filename(url);
+    if let Ok(maybe_json_string) = headers.to_json_string(&cache_filename) {
+      if let Some(json_string) = maybe_json_string {
+        return self.deps_cache.set(&cache_key, json_string.as_bytes());
+      }
+    }
+
+    Ok(())
   }
 }
 
@@ -606,49 +683,12 @@ fn filter_shebang(bytes: Vec<u8>) -> Vec<u8> {
   }
 }
 
-/// Save source code and related headers for given module
-fn save_module_code_and_headers(
-  filepath: PathBuf,
-  module_url: &Url,
-  source: &str,
-  maybe_content_type: Option<String>,
-  maybe_initial_filepath: Option<PathBuf>,
-) -> Result<(), ErrBox> {
-  match filepath.parent() {
-    Some(ref parent) => fs::create_dir_all(parent),
-    None => Ok(()),
-  }?;
-  // Write file and create .headers.json for the file.
-  deno_fs::write_file(&filepath, &source, 0o666)?;
-  {
-    save_source_code_headers(&filepath, maybe_content_type.clone(), None);
-  }
-  // Check if this file is downloaded due to some old redirect request.
-  if maybe_initial_filepath.is_some() {
-    // If yes, record down the headers for redirect.
-    // Also create its containing folder.
-    match filepath.parent() {
-      Some(ref parent) => fs::create_dir_all(parent),
-      None => Ok(()),
-    }?;
-    {
-      save_source_code_headers(
-        &maybe_initial_filepath.unwrap(),
-        maybe_content_type.clone(),
-        Some(module_url.to_string()),
-      );
-    }
-  }
-
-  Ok(())
-}
-
 fn url_into_uri(url: &url::Url) -> http::uri::Uri {
   http::uri::Uri::from_str(&url.to_string())
     .expect("url::Url should be parseable as http::uri::Uri")
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 /// Header metadata associated with a particular "symbolic" source code file.
 /// (the associated source code file might not be cached, while remaining
 /// a user accessible entity through imports (due to redirects)).
@@ -679,82 +719,45 @@ impl SourceCodeHeaders {
       };
     }
 
-    SourceCodeHeaders {
-      mime_type: None,
-      redirect_to: None,
+    SourceCodeHeaders::default()
+  }
+
+  // TODO: remove this nonsense `cache_filename` param, this should be
+  //  done when instantiating SourceCodeHeaders
+  pub fn to_json_string(
+    self: &Self,
+    cache_filename: &Path,
+  ) -> Result<Option<String>, serde_json::Error> {
+    // TODO(kevinkassimo): consider introduce serde::Deserialize to make things simpler.
+    // This is super ugly at this moment...
+    // Had trouble to make serde_derive work: I'm unable to build proc-macro2.
+    let mut value_map = serde_json::map::Map::new();
+
+    if let Some(mime_type) = &self.mime_type {
+      let resolved_mime_type =
+        map_content_type(Path::new(""), Some(mime_type.clone().as_str()));
+
+      // TODO: fix this
+      let ext_based_mime_type = map_file_extension(cache_filename);
+
+      // Add mime to headers only when content type is different from extension.
+      if ext_based_mime_type == msg::MediaType::Unknown
+        || resolved_mime_type != ext_based_mime_type
+      {
+        value_map.insert(MIME_TYPE.to_string(), json!(mime_type));
+      }
     }
-  }
-}
 
-fn source_code_headers_filename(filepath: &Path) -> PathBuf {
-  PathBuf::from([filepath.to_str().unwrap(), ".headers.json"].concat())
-}
-
-/// Get header metadata associated with a single source code file.
-/// NOTICE: chances are that the source code itself is not downloaded due to redirects.
-/// In this case, the headers file provides info about where we should go and get
-/// the source code that redirect eventually points to (which should be cached).
-fn get_source_code_headers(filepath: &Path) -> SourceCodeHeaders {
-  let headers_filename = source_code_headers_filename(filepath);
-  let hd = Path::new(&headers_filename);
-  // .headers.json file might not exists.
-  // This is okay for local source.
-  let maybe_headers_string = fs::read_to_string(&hd).ok();
-  if let Some(headers_string) = maybe_headers_string {
-    return SourceCodeHeaders::from_json_string(headers_string);
-  }
-  SourceCodeHeaders {
-    mime_type: None,
-    redirect_to: None,
-  }
-}
-
-/// Save headers related to source filename to {filename}.headers.json file,
-/// only when there is actually something necessary to save.
-/// For example, if the extension ".js" already mean JS file and we have
-/// content type of "text/javascript", then we would not save the mime type.
-/// If nothing needs to be saved, the headers file is not created.
-fn save_source_code_headers(
-  filepath: &Path,
-  mime_type: Option<String>,
-  redirect_to: Option<String>,
-) {
-  let headers_filename = source_code_headers_filename(filepath);
-  // Remove possibly existing stale .headers.json file.
-  // May not exist. DON'T unwrap.
-  let _ = std::fs::remove_file(&headers_filename);
-  // TODO(kevinkassimo): consider introduce serde::Deserialize to make things simpler.
-  // This is super ugly at this moment...
-  // Had trouble to make serde_derive work: I'm unable to build proc-macro2.
-  let mut value_map = serde_json::map::Map::new();
-  if mime_type.is_some() {
-    let mime_type_string = mime_type.clone().unwrap();
-    let resolved_mime_type =
-      { map_content_type(Path::new(""), Some(mime_type_string.as_str())) };
-    let ext_based_mime_type = map_file_extension(filepath);
-    // Add mime to headers only when content type is different from extension.
-    if ext_based_mime_type == msg::MediaType::Unknown
-      || resolved_mime_type != ext_based_mime_type
-    {
-      value_map.insert(MIME_TYPE.to_string(), json!(mime_type_string));
+    if let Some(redirect_to) = &self.redirect_to {
+      value_map.insert(REDIRECT_TO.to_string(), json!(redirect_to));
     }
-  }
-  if redirect_to.is_some() {
-    value_map.insert(REDIRECT_TO.to_string(), json!(redirect_to.unwrap()));
-  }
-  // Only save to file when there is actually data.
-  if !value_map.is_empty() {
-    let _ = serde_json::to_string(&value_map).map(|s| {
-      // It is possible that we need to create file
-      // with parent folders not yet created.
-      // (Due to .headers.json feature for redirection)
-      let hd = PathBuf::from(&headers_filename);
-      let _ = match hd.parent() {
-        Some(ref parent) => fs::create_dir_all(parent),
-        None => Ok(()),
-      };
-      let _ = deno_fs::write_file(&(hd.as_path()), s, 0o666);
-    });
+
+    if value_map.is_empty() {
+      return Ok(None);
+    }
+
+    serde_json::to_string(&value_map)
+      .and_then(|serialized| Ok(Some(serialized)))
   }
 }
 
@@ -824,63 +827,39 @@ mod tests {
   }
 
   #[test]
-  fn test_get_cache_filename() {
-    let cache = DiskCache::new(&PathBuf::from("foo"));
-    let url = Url::parse("http://example.com:1234/path/to/file.ts").unwrap();
-    let cache_file = cache.get_cache_filename(&url);
-    assert_eq!(
-      cache_file,
-      Path::new("http/example.com_PORT1234/path/to/file.ts")
-    );
-
-    let url = Url::parse("file:///src/a/b/c/file.ts").unwrap();
-    let cache_file = cache.get_cache_filename(&url);
-    assert_eq!(cache_file, Path::new("file//src/a/b/c/file.ts"));
-  }
-
-  #[test]
-  fn test_cache_paths() {
-    let cache = DiskCache::new(&PathBuf::from("foo"));
-    let file_url = Url::parse("file:///a/b/c/hello.js").unwrap();
-    let cache_filename = cache.get_cache_filename(&file_url);
-    assert_eq!(
-      (
-        cache_filename.with_extension("js"),
-        cache_filename.with_extension("js.map"),
-        cache_filename.with_extension("meta"),
-      ),
-      (
-        PathBuf::from("file/a/b/c/hello.js"),
-        PathBuf::from("file/a/b/c/hello.js.map"),
-        PathBuf::from("file/a/b/c/hello.meta"),
-      )
-    );
-  }
-
-  #[test]
   fn test_source_code_headers_get_and_save() {
-    let (temp_dir, _deno_dir) = test_setup();
-    let filepath = temp_dir.into_path().join("f.js");
-    let headers_filepath = source_code_headers_filename(&filepath);
-    assert_eq!(
-      headers_filepath.to_str().unwrap().to_string(),
-      [filepath.to_str().unwrap(), ".headers.json"].concat()
+    let (_temp_dir, deno_dir) = test_setup();
+    let url = Url::parse("http://example.com/f.js").unwrap();
+    let headers_filepath = deno_dir.deps_cache.location.join(
+      deno_dir
+        .deps_cache
+        .get_cache_filename_with_extension(&url, "headers.json"),
     );
-    let _ = deno_fs::write_file(headers_filepath.as_path(),
-      "{\"mime_type\":\"text/javascript\",\"redirect_to\":\"http://example.com/a.js\"}", 0o666);
-    let headers = get_source_code_headers(&filepath);
+
+    match headers_filepath.parent() {
+      Some(ref parent) => fs::create_dir_all(parent).unwrap(),
+      None => {}
+    };
+
+    let _ = deno_fs::write_file(
+      headers_filepath.as_path(),
+      "{\"mime_type\":\"text/javascript\",\"redirect_to\":\"http://example.com/a.js\"}",
+      0o666
+    );
+    let headers = deno_dir.get_source_code_headers(&url);
+
     assert_eq!(headers.mime_type.clone().unwrap(), "text/javascript");
     assert_eq!(
       headers.redirect_to.clone().unwrap(),
       "http://example.com/a.js"
     );
 
-    save_source_code_headers(
-      &filepath,
+    let _ = deno_dir.save_source_code_headers(
+      &url,
       Some("text/typescript".to_owned()),
       Some("http://deno.land/a.js".to_owned()),
     );
-    let headers2 = get_source_code_headers(&filepath);
+    let headers2 = deno_dir.get_source_code_headers(&url);
     assert_eq!(headers2.mime_type.clone().unwrap(), "text/typescript");
     assert_eq!(
       headers2.redirect_to.clone().unwrap(),
@@ -895,11 +874,11 @@ mod tests {
     tokio_util::init(|| {
       let module_url =
         Url::parse("http://localhost:4545/tests/subdir/mod2.ts").unwrap();
-      let filepath = deno_dir
-        .deps_cache
-        .location
-        .join("http/localhost_PORT4545/tests/subdir/mod2.ts");
-      let headers_file_name = source_code_headers_filename(&filepath);
+      let headers_file_name = deno_dir.deps_cache.location.join(
+        deno_dir
+          .deps_cache
+          .get_cache_filename_with_extension(&module_url, "headers.json"),
+      );
 
       let result = deno_dir.get_source_file(&module_url, true, false);
       assert!(result.is_ok());
@@ -926,13 +905,16 @@ mod tests {
       // as we modified before! (we do not overwrite .headers.json due to no http fetch)
       assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
       assert_eq!(
-        get_source_code_headers(&filepath).mime_type.unwrap(),
+        deno_dir
+          .get_source_code_headers(&module_url)
+          .mime_type
+          .unwrap(),
         "text/javascript"
       );
 
       // Modify .headers.json again, but the other way around
-      save_source_code_headers(
-        &filepath,
+      let _ = deno_dir.save_source_code_headers(
+        &module_url,
         Some("application/json".to_owned()),
         None,
       );
@@ -975,11 +957,11 @@ mod tests {
       let module_url =
         Url::parse("http://localhost:4545/tests/subdir/mismatch_ext.ts")
           .unwrap();
-      let filepath = deno_dir
-        .deps_cache
-        .location
-        .join("http/localhost_PORT4545/tests/subdir/mismatch_ext.ts");
-      let headers_file_name = source_code_headers_filename(&filepath);
+      let headers_file_name = deno_dir.deps_cache.location.join(
+        deno_dir
+          .deps_cache
+          .get_cache_filename_with_extension(&module_url, "headers.json"),
+      );
 
       let result = deno_dir.get_source_file(&module_url, true, false);
       assert!(result.is_ok());
@@ -989,13 +971,16 @@ mod tests {
       // Mismatch ext with content type, create .headers.json
       assert_eq!(&(r.media_type), &msg::MediaType::JavaScript);
       assert_eq!(
-        get_source_code_headers(&filepath).mime_type.unwrap(),
+        deno_dir
+          .get_source_code_headers(&module_url)
+          .mime_type
+          .unwrap(),
         "text/javascript"
       );
 
       // Modify .headers.json
-      save_source_code_headers(
-        &filepath,
+      let _ = deno_dir.save_source_code_headers(
+        &module_url,
         Some("text/typescript".to_owned()),
         None,
       );
@@ -1021,7 +1006,10 @@ mod tests {
       // (due to http fetch)
       assert_eq!(&(r3.media_type), &msg::MediaType::JavaScript);
       assert_eq!(
-        get_source_code_headers(&filepath).mime_type.unwrap(),
+        deno_dir
+          .get_source_code_headers(&module_url)
+          .mime_type
+          .unwrap(),
         "text/javascript"
       );
     });
@@ -1035,11 +1023,12 @@ mod tests {
       let specifier = ModuleSpecifier::resolve_url(
         "http://localhost:4545/tests/subdir/mismatch_ext.ts",
       ).unwrap();
-      let filepath = deno_dir
-        .deps_cache
-        .location
-        .join("http/localhost_PORT4545/tests/subdir/mismatch_ext.ts");
-      let headers_file_name = source_code_headers_filename(&filepath);
+      let headers_file_name = deno_dir.deps_cache.location.join(
+        deno_dir.deps_cache.get_cache_filename_with_extension(
+          specifier.as_url(),
+          "headers.json",
+        ),
+      );
 
       // first download
       let result = deno_dir.fetch_source_file(&specifier, false, false);
@@ -1100,7 +1089,7 @@ mod tests {
       assert!(fs::read_to_string(&redirect_source_filename).is_err());
       // ... but its .headers.json is created.
       let redirect_source_headers =
-        get_source_code_headers(&redirect_source_filepath);
+        deno_dir.get_source_code_headers(&redirect_module_url);
       assert_eq!(
         redirect_source_headers.redirect_to.unwrap(),
         "http://localhost:4545/tests/subdir/redirects/redirect1.js"
@@ -1111,7 +1100,7 @@ mod tests {
         "export const redirect = 1;\n"
       );
       let redirect_target_headers =
-        get_source_code_headers(&redirect_target_filepath);
+        deno_dir.get_source_code_headers(&target_module_url);
       assert!(redirect_target_headers.redirect_to.is_none());
 
       // Examine the meta result.
@@ -1163,7 +1152,7 @@ mod tests {
       assert!(fs::read_to_string(&redirect_source_filename).is_err());
       // ... but its .headers.json is created.
       let redirect_source_headers =
-        get_source_code_headers(&redirect_source_filepath);
+        deno_dir.get_source_code_headers(&redirect_module_url);
       assert_eq!(
         redirect_source_headers.redirect_to.unwrap(),
         target_module_name
@@ -1180,7 +1169,7 @@ mod tests {
         "export const redirect = 1;\n"
       );
       let redirect_target_headers =
-        get_source_code_headers(&redirect_target_filepath);
+        deno_dir.get_source_code_headers(&target_module_url);
       assert!(redirect_target_headers.redirect_to.is_none());
 
       // Examine the meta result.
@@ -1227,7 +1216,11 @@ mod tests {
         .deps_cache
         .location
         .join("http/127.0.0.1_PORT4545/tests/subdir/mt_video_mp2t.t3.ts");
-      let headers_file_name = source_code_headers_filename(&filepath);
+      let headers_file_name = deno_dir.deps_cache.location.join(
+        deno_dir
+          .deps_cache
+          .get_cache_filename_with_extension(&module_url, "headers.json"),
+      );
 
       let result = tokio_util::block_on(
         deno_dir.fetch_remote_source_async(&module_url, &filepath),
@@ -1240,8 +1233,8 @@ mod tests {
       assert!(fs::read_to_string(&headers_file_name).is_err());
 
       // Modify .headers.json, make sure read from local
-      save_source_code_headers(
-        &filepath,
+      let _ = deno_dir.save_source_code_headers(
+        &module_url,
         Some("text/javascript".to_owned()),
         None,
       );
@@ -1266,7 +1259,11 @@ mod tests {
         .deps_cache
         .location
         .join("http/localhost_PORT4545/tests/subdir/mt_video_mp2t.t3.ts");
-      let headers_file_name = source_code_headers_filename(&filepath);
+      let headers_file_name = deno_dir.deps_cache.location.join(
+        deno_dir
+          .deps_cache
+          .get_cache_filename_with_extension(&module_url, "headers.json"),
+      );
 
       let result = deno_dir.fetch_remote_source(&module_url, &filepath);
       assert!(result.is_ok());
@@ -1277,8 +1274,8 @@ mod tests {
       assert!(fs::read_to_string(&headers_file_name).is_err());
 
       // Modify .headers.json, make sure read from local
-      save_source_code_headers(
-        &filepath,
+      let _ = deno_dir.save_source_code_headers(
+        &module_url,
         Some("text/javascript".to_owned()),
         None,
       );
@@ -1309,7 +1306,10 @@ mod tests {
       assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
       // no ext, should create .headers.json file
       assert_eq!(
-        get_source_code_headers(&filepath).mime_type.unwrap(),
+        deno_dir
+          .get_source_code_headers(&module_url)
+          .mime_type
+          .unwrap(),
         "text/typescript"
       );
 
@@ -1327,7 +1327,10 @@ mod tests {
       assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
       // mismatch ext, should create .headers.json file
       assert_eq!(
-        get_source_code_headers(&filepath_2).mime_type.unwrap(),
+        deno_dir
+          .get_source_code_headers(&module_url_2)
+          .mime_type
+          .unwrap(),
         "text/javascript"
       );
 
@@ -1346,7 +1349,10 @@ mod tests {
       assert_eq!(&(r3.media_type), &msg::MediaType::TypeScript);
       // unknown ext, should create .headers.json file
       assert_eq!(
-        get_source_code_headers(&filepath_3).mime_type.unwrap(),
+        deno_dir
+          .get_source_code_headers(&module_url_3)
+          .mime_type
+          .unwrap(),
         "text/typescript"
       );
     });

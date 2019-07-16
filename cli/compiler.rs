@@ -407,7 +407,7 @@ impl TsCompiler {
     // 1. check if there's 'meta' file
     let cache_key = self
       .disk_cache
-      .get_cache_filename_with_extension(url, "meta".to_string());
+      .get_cache_filename_with_extension(url, "meta");
     if let Ok(metadata_bytes) = self.disk_cache.get(&cache_key) {
       if let Ok(metadata) = std::str::from_utf8(&metadata_bytes) {
         if let Some(read_metadata) =
@@ -429,7 +429,7 @@ impl TsCompiler {
   ) -> Result<SourceFile, ErrBox> {
     let cache_key = self
       .disk_cache
-      .get_cache_filename_with_extension(&source_file.url, "js".to_string());
+      .get_cache_filename_with_extension(&source_file.url, "js");
     let compiled_code = self.disk_cache.get(&cache_key)?;
     let compiled_code_filename = self.disk_cache.location.join(cache_key);
     debug!("compiled filename: {:?}", compiled_code_filename);
@@ -450,10 +450,9 @@ impl TsCompiler {
     module_specifier: &ModuleSpecifier,
     contents: &str,
   ) -> std::io::Result<()> {
-    let js_key = self.disk_cache.get_cache_filename_with_extension(
-      module_specifier.as_url(),
-      "js".to_string(),
-    );
+    let js_key = self
+      .disk_cache
+      .get_cache_filename_with_extension(module_specifier.as_url(), "js");
     self
       .disk_cache
       .set(&js_key, contents.as_bytes())
@@ -475,10 +474,9 @@ impl TsCompiler {
           source_path: source_file.filename.to_str().unwrap().to_string(),
           version_hash,
         };
-        let meta_key = self.disk_cache.get_cache_filename_with_extension(
-          module_specifier.as_url(),
-          "meta".to_string(),
-        );
+        let meta_key = self
+          .disk_cache
+          .get_cache_filename_with_extension(module_specifier.as_url(), "meta");
         self.disk_cache.set(
           &meta_key,
           compiled_file_metadata.to_json_string()?.as_bytes(),
@@ -492,10 +490,9 @@ impl TsCompiler {
     self: &Self,
     module_specifier: &ModuleSpecifier,
   ) -> Result<SourceFile, ErrBox> {
-    let cache_key = self.disk_cache.get_cache_filename_with_extension(
-      module_specifier.as_url(),
-      "js.map".to_string(),
-    );
+    let cache_key = self
+      .disk_cache
+      .get_cache_filename_with_extension(module_specifier.as_url(), "js.map");
     let source_code = self.disk_cache.get(&cache_key)?;
     let source_map_filename = self.disk_cache.location.join(cache_key);
     debug!("source map filename: {:?}", source_map_filename);
@@ -516,10 +513,9 @@ impl TsCompiler {
     module_specifier: &ModuleSpecifier,
     contents: &str,
   ) -> std::io::Result<()> {
-    let source_map_key = self.disk_cache.get_cache_filename_with_extension(
-      module_specifier.as_url(),
-      "js.map".to_string(),
-    );
+    let source_map_key = self
+      .disk_cache
+      .get_cache_filename_with_extension(module_specifier.as_url(), "js.map");
     self.disk_cache.set(&source_map_key, contents.as_bytes())
   }
 
