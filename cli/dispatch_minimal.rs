@@ -117,9 +117,9 @@ pub fn dispatch_minimal(
     Ok(buf)
   }));
   if is_sync {
-    Op::Sync(fut.wait().unwrap())
+    Op::Sync(fut.wait().unwrap()) as CoreOp
   } else {
-    Op::Async(fut)
+    Op::Async(fut) as CoreOp
   }
 }
 

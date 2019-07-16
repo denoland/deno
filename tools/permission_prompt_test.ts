@@ -1,43 +1,60 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-const { args, listen, env, exit, makeTempDirSync, readFileSync, run } = Deno;
+const {
+  args,
+  listen,
+  env,
+  exit,
+  makeTempDirSync,
+  readFileSync,
+  run,
+  openPlugin
+} = Deno;
 
 const firstCheckFailedMessage = "First check failed";
 
 const name = args[1];
 const test = {
-  needsRead: async () => {
+  needsRead: async (): Promise<void> => {
     try {
       readFileSync("package.json");
     } catch (e) {
-      console.log(firstCheckFailedMessage);
+      if (e.kind === Deno.ErrorKind.PermissionDenied) {
+        console.log(firstCheckFailedMessage);
+      }
     }
     readFileSync("package.json");
   },
-  needsWrite: () => {
+  needsWrite: (): void => {
     try {
       makeTempDirSync();
     } catch (e) {
-      console.log(firstCheckFailedMessage);
+      if (e.kind === Deno.ErrorKind.PermissionDenied) {
+        console.log(firstCheckFailedMessage);
+      }
     }
     makeTempDirSync();
   },
-  needsEnv: () => {
+  needsEnv: (): void => {
     try {
       env().home;
     } catch (e) {
-      console.log(firstCheckFailedMessage);
+      if (e.kind === Deno.ErrorKind.PermissionDenied) {
+        console.log(firstCheckFailedMessage);
+      }
     }
     env().home;
   },
-  needsNet: () => {
+  needsNet: (): void => {
     try {
       listen("tcp", "127.0.0.1:4540");
     } catch (e) {
-      console.log(firstCheckFailedMessage);
+      if (e.kind === Deno.ErrorKind.PermissionDenied) {
+        console.log(firstCheckFailedMessage);
+      }
     }
     listen("tcp", "127.0.0.1:4541");
   },
-  needsRun: () => {
+  needsRun: (): void => {
     try {
       const process = run({
         args: [
@@ -47,7 +64,9 @@ const test = {
         ]
       });
     } catch (e) {
-      console.log(firstCheckFailedMessage);
+      if (e.kind === Deno.ErrorKind.PermissionDenied) {
+        console.log(firstCheckFailedMessage);
+      }
     }
     const process = run({
       args: [
@@ -56,6 +75,22 @@ const test = {
         "import sys; sys.stdout.write('hello'); sys.stdout.flush()"
       ]
     });
+  },
+  needsPlugins: (): void => {
+    try {
+      const plugin = openPlugin("some/fake/path");
+    } catch (e) {
+      if (e.kind === Deno.ErrorKind.PermissionDenied) {
+        console.log(firstCheckFailedMessage);
+      }
+    }
+    try {
+      const plugin = openPlugin("some/fake/path");
+    } catch (e) {
+      if (e.kind === Deno.ErrorKind.PermissionDenied) {
+        throw e;
+      }
+    }
   }
 }[name];
 

@@ -136,6 +136,10 @@ class RunPromptTest(DenoTestCase, BasePromptTest):
     test_type = "run"
 
 
+class PluginPromptTest(DenoTestCase, BasePromptTest):
+    test_type = "plugins"
+
+
 def permission_prompt_tests():
     return BasePromptTest.__subclasses__()
 

@@ -349,6 +349,11 @@ impl ThreadSafeState {
     self.permissions.check_run()
   }
 
+  #[inline]
+  pub fn check_plugins(&self, filename: &str) -> Result<(), ErrBox> {
+    self.permissions.check_plugins(filename)
+  }
+
   #[cfg(test)]
   pub fn mock(argv: Vec<String>) -> ThreadSafeState {
     ThreadSafeState::new(

@@ -1,0 +1,2 @@
+args: run --reload --allow-plugins --allow-env tests/034_plugin.ts
+output: tests/034_plugin.out

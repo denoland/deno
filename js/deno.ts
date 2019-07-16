@@ -88,6 +88,13 @@ export const args: string[] = [];
 /** @internal */
 export { core } from "./core";
 
+export {
+  PluginOp,
+  PluginImpl as Plugin,
+  openPlugin,
+  pluginFilename
+} from "./native_plugins";
+
 // TODO Don't expose Console nor stringifyArgs.
 /** @internal */
 export { Console, stringifyArgs } from "./console";

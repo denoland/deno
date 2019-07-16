@@ -14,9 +14,13 @@ use crate::http_body::HttpBody;
 use crate::repl::Repl;
 use crate::state::WorkerChannels;
 
+use deno::plugins::PluginDispatchFn;
 use deno::Buf;
+use deno::CoreOp;
 use deno::ErrBox;
+use deno::PinnedBuf;
 
+use dlopen::symbor::Library;
 use futures;
 use futures::Future;
 use futures::Poll;
@@ -25,6 +29,7 @@ use futures::Stream;
 use hyper;
 use std;
 use std::collections::HashMap;
+use std::ffi::OsStr;
 use std::io::{Error, Read, Seek, SeekFrom, Write};
 use std::net::{Shutdown, SocketAddr};
 use std::process::ExitStatus;
@@ -99,6 +104,8 @@ enum Repr {
   ChildStdout(tokio_process::ChildStdout),
   ChildStderr(tokio_process::ChildStderr),
   Worker(WorkerChannels),
+  Plugin(Library),
+  PluginOp(PluginDispatchFn),
 }
 
 /// If the given rid is open, this returns the type of resource, E.G. "worker".
@@ -141,6 +148,8 @@ fn inspect_repr(repr: &Repr) -> String {
     Repr::ChildStdout(_) => "childStdout",
     Repr::ChildStderr(_) => "childStderr",
     Repr::Worker(_) => "worker",
+    Repr::Plugin(_) => "plugin",
+    Repr::PluginOp(_) => "pluginOp",
   };
 
   String::from(h_repr)
@@ -555,4 +564,46 @@ pub fn seek(
     })),
     Err(err) => Box::new(futures::future::err(err)),
   }
+}
+
+pub fn add_plugin<P: AsRef<OsStr>>(lib_path: P) -> Result<Resource, ErrBox> {
+  debug!("LOADING NATIVE BINDING LIB: {:#?}", lib_path.as_ref());
+
+  let lib = Library::open(lib_path)?;
+
+  let rid = new_rid();
+  let mut tg = RESOURCE_TABLE.lock().unwrap();
+  let r = tg.insert(rid, Repr::Plugin(lib));
+  assert!(r.is_none());
+  Ok(Resource { rid })
+}
+
+pub fn add_plugin_op(
+  lib_resource: ResourceId,
+  name: &str,
+) -> Result<Resource, ErrBox> {
+  let mut tg = RESOURCE_TABLE.lock().unwrap();
+  let lib = match tg.get(&lib_resource) {
+    Some(Repr::Plugin(lib)) => lib,
+    Some(_) | None => return Err(bad_resource()),
+  };
+  let fun = *unsafe { lib.symbol::<PluginDispatchFn>(name) }?;
+  let rid = new_rid();
+  let r = tg.insert(rid, Repr::PluginOp(fun));
+  assert!(r.is_none());
+  Ok(Resource { rid })
+}
+
+pub fn call_plugin_op(
+  fn_resource: ResourceId,
+  data: &[u8],
+  zero_copy: Option<PinnedBuf>,
+) -> Result<CoreOp, ErrBox> {
+  let tg = RESOURCE_TABLE.lock().unwrap();
+  let fun = match tg.get(&fn_resource) {
+    Some(Repr::PluginOp(fun)) => fun,
+    Some(_) | None => return Err(bad_resource()),
+  };
+  let result = fun(data, zero_copy);
+  Ok(result)
 }

@@ -203,6 +203,9 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<CliDispatchFn> {
     msg::Any::CreateWorker => Some(op_create_worker),
     msg::Any::Cwd => Some(op_cwd),
     msg::Any::Dial => Some(op_dial),
+    msg::Any::PluginOpen => Some(op_plugin_open),
+    msg::Any::PluginSym => Some(op_plugin_sym),
+    msg::Any::PluginCall => Some(op_plugin_call),
     msg::Any::Environ => Some(op_env),
     msg::Any::Exit => Some(op_exit),
     msg::Any::Fetch => Some(op_fetch),
@@ -2186,4 +2189,114 @@ fn op_get_random_values(
   }
 
   ok_buf(empty_buf())
+}
+
+fn op_plugin_open(
+  state: &ThreadSafeState,
+  base: &msg::Base<'_>,
+  _data: Option<PinnedBuf>,
+) -> CliOpResult {
+  let cmd_id = base.cmd_id();
+  let inner = base.inner_as_plugin_open().unwrap();
+  let (filename, filename_) = resolve_from_cwd(inner.filename().unwrap())?;
+
+  state.check_plugins(&filename_)?;
+
+  let lib = resources::add_plugin(filename)?;
+
+  let builder = &mut FlatBufferBuilder::new();
+  let msg_inner = msg::PluginOpenRes::create(
+    builder,
+    &msg::PluginOpenResArgs { rid: lib.rid },
+  );
+
+  ok_buf(serialize_response(
+    cmd_id,
+    builder,
+    msg::BaseArgs {
+      inner: Some(msg_inner.as_union_value()),
+      inner_type: msg::Any::PluginOpenRes,
+      ..Default::default()
+    },
+  ))
+}
+
+fn op_plugin_sym(
+  _state: &ThreadSafeState,
+  base: &msg::Base<'_>,
+  _data: Option<PinnedBuf>,
+) -> CliOpResult {
+  let cmd_id = base.cmd_id();
+  let inner = base.inner_as_plugin_sym().unwrap();
+  let rid = inner.rid();
+  let name = inner.name().unwrap();
+
+  let fun = resources::add_plugin_op(rid, name)?;
+
+  let builder = &mut FlatBufferBuilder::new();
+  let msg_inner =
+    msg::PluginSymRes::create(builder, &msg::PluginSymResArgs { rid: fun.rid });
+
+  ok_buf(serialize_response(
+    cmd_id,
+    builder,
+    msg::BaseArgs {
+      inner: Some(msg_inner.as_union_value()),
+      inner_type: msg::Any::PluginSymRes,
+      ..Default::default()
+    },
+  ))
+}
+
+fn op_plugin_call(
+  _state: &ThreadSafeState,
+  base: &msg::Base<'_>,
+  data: Option<PinnedBuf>,
+) -> CliOpResult {
+  let cmd_id = base.cmd_id();
+  let inner = base.inner_as_plugin_call().unwrap();
+  let rid = inner.rid();
+
+  let result = resources::call_plugin_op(rid, inner.data().unwrap(), data)?;
+
+  match result {
+    Op::Sync(buf) => {
+      let builder = &mut FlatBufferBuilder::new();
+      let data = Some(builder.create_vector(&buf));
+      let msg_inner =
+        msg::PluginCallRes::create(builder, &msg::PluginCallResArgs { data });
+
+      ok_buf(serialize_response(
+        cmd_id,
+        builder,
+        msg::BaseArgs {
+          inner: Some(msg_inner.as_union_value()),
+          inner_type: msg::Any::PluginCallRes,
+          ..Default::default()
+        },
+      ))
+    }
+    Op::Async(result) => Ok(Op::Async(Box::new(
+      result
+        .map_err(|_| panic!("Plugin op returned error future."))
+        .and_then(move |buf| {
+          let builder = &mut FlatBufferBuilder::new();
+          let data = Some(builder.create_vector(&buf));
+          let msg_inner = msg::PluginCallRes::create(
+            builder,
+            &msg::PluginCallResArgs { data },
+          );
+
+          Ok(serialize_response(
+            cmd_id,
+            builder,
+            msg::BaseArgs {
+              inner: Some(msg_inner.as_union_value()),
+              inner_type: msg::Any::PluginCallRes,
+              ..Default::default()
+            },
+          ))
+        }),
+    ))),
+  }
 }

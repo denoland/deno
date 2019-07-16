@@ -122,6 +122,9 @@ template("_rust_crate") {
   } else if (crate_type == "rlib") {
     out_file = "lib$crate_name$crate_suffix.rlib"
     emit_type = "link"
+  } else if (crate_type == "dylib" || crate_type == "cdylib") {
+    out_file = "$shared_lib_prefix$crate_name$crate_suffix$shared_lib_suffix"
+    emit_type = "link"
   }
   out_path = "$out_dir/$out_file"
 
@@ -305,6 +308,20 @@ template("rust_rlib") {
   _rust_crate(target_name) {
     forward_variables_from(invoker, "*")
     crate_type = "rlib"
+  }
+}
+
+template("rust_dylib") {
+  _rust_crate(target_name) {
+    forward_variables_from(invoker, "*")
+    crate_type = "dylib"
+  }
+}
+
+template("rust_cdylib") {
+  _rust_crate(target_name) {
+    forward_variables_from(invoker, "*")
+    crate_type = "cdylib"
   }
 }
 

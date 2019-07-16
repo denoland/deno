@@ -137,6 +137,8 @@ pub struct DenoPermissions {
   pub allow_env: PermissionAccessor,
   pub allow_run: PermissionAccessor,
   pub allow_hrtime: PermissionAccessor,
+  // TODO(afinch7) maybe add permissions whitelist for this?
+  pub allow_plugins: PermissionAccessor,
   pub no_prompts: AtomicBool,
 }
 
@@ -154,6 +156,7 @@ impl DenoPermissions {
       allow_env: PermissionAccessor::from(flags.allow_env),
       allow_run: PermissionAccessor::from(flags.allow_run),
       allow_hrtime: PermissionAccessor::from(flags.allow_hrtime),
+      allow_plugins: PermissionAccessor::from(flags.allow_plugins),
       no_prompts: AtomicBool::new(flags.no_prompts),
     }
   }
@@ -347,6 +350,26 @@ impl DenoPermissions {
     }
   }
 
+  pub fn check_plugins(&self, filename: &str) -> Result<(), ErrBox> {
+    let msg = &format!("access to native plugin {}", filename);
+    match self.allow_plugins.get_state() {
+      PermissionAccessorState::Allow => {
+        self.log_perm_access(msg);
+        Ok(())
+      }
+      PermissionAccessorState::Ask => match self.try_permissions_prompt(msg) {
+        Err(e) => Err(e),
+        Ok(v) => {
+          self.allow_plugins.update_with_prompt_result(&v);
+          v.check()?;
+          self.log_perm_access(msg);
+          Ok(())
+        }
+      },
+      PermissionAccessorState::Deny => Err(permission_denied()),
+    }
+  }
+
   /// Try to present the user with a permission prompt
   /// will error with permission_denied if no_prompts is enabled
   fn try_permissions_prompt(
@@ -397,6 +420,10 @@ impl DenoPermissions {
     self.allow_hrtime.is_allow()
   }
 
+  pub fn allows_dlopen(&self) -> bool {
+    self.allow_plugins.is_allow()
+  }
+
   pub fn revoke_run(&self) -> Result<(), ErrBox> {
     self.allow_run.revoke();
     Ok(())
@@ -423,6 +450,11 @@ impl DenoPermissions {
   }
   pub fn revoke_hrtime(&self) -> Result<(), ErrBox> {
     self.allow_hrtime.revoke();
+    Ok(())
+  }
+
+  pub fn revoke_plugins(&self) -> Result<(), ErrBox> {
+    self.allow_plugins.revoke();
     Ok(())
   }
 }

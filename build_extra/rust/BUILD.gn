@@ -256,6 +256,51 @@ rust_rlib("dirs_sys") {
   }
 }
 
+rust_proc_macro("dlopen_derive") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/dlopen_derive-0.1.4/src/lib.rs"
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+  extern_rlib = [
+    "syn",
+    "quote",
+    "libc",
+  ]
+}
+
+rust_rlib("dlopen") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/dlopen-0.1.7/src/lib.rs"
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+  extern = [
+    {
+      label = ":dlopen_derive"
+      crate_name = "dlopen_derive"
+      crate_type = "proc_macro"
+    },
+  ]
+  extern_rlib = [ "lazy_static" ]
+  if (is_posix) {
+    extern_rlib += [ "libc" ]
+  }
+  if (is_win) {
+    extern += [
+      {
+        label = ":winapi-0.2.8"
+        crate_name = "winapi"
+        crate_type = "rlib"
+        crate_version = "0.2.8"
+      },
+    ]
+    extern_rlib += [ "kernel32" ]
+  }
+}
+
 rust_rlib("either") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/either-1.5.2/src/lib.rs"
@@ -579,6 +624,10 @@ rust_rlib("log") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/log-0.4.6/src/lib.rs"
   extern_rlib = [ "cfg_if" ]
+  features = [
+    "default",
+    "std",
+  ]
   args = [
     "--cap-lints",
     "allow",
@@ -1267,10 +1316,19 @@ rust_rlib("serde") {
   features = [
     "default",
     "std",
+    "derive",
+    "serde_derive",
   ]
   args = [
     "--cap-lints",
     "allow",
+  ]
+  extern = [
+    {
+      label = ":serde_derive"
+      crate_name = "serde_derive"
+      crate_type = "proc_macro"
+    },
   ]
 
   # Added by custom-build script.

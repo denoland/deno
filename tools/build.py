@@ -5,7 +5,7 @@ import argparse
 import os
 import sys
 import third_party
-from util import build_path, enable_ansi_colors, run
+from util import build_mode, build_path, enable_ansi_colors, run
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -32,6 +32,13 @@ def main(argv):
     run([third_party.ninja_path] + ninja_args,
         env=third_party.google_env(),
         quiet=True)
+
+    cargo_args = ["build", "-p", "test_plugin", "-vv", "--locked"]
+
+    if build_mode() == "release":
+        cargo_args += ["--release"]
+
+    run(["cargo"] + cargo_args, env=third_party.google_env(), quiet=True)
 
 
 if __name__ == '__main__':

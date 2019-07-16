@@ -64,7 +64,7 @@ function sendInternal(
   inner: flatbuffers.Offset,
   zeroCopy: undefined | ArrayBufferView,
   isSync: false
-): Promise<msg.Base>;
+): Uint8Array | Promise<msg.Base>;
 function sendInternal(
   builder: flatbuffers.Builder,
   innerType: msg.Any,
@@ -95,18 +95,6 @@ function sendInternal(
     promiseTable.set(cmdId, promise);
     return promise;
   } else {
-    if (!isSync) {
-      // We can easily and correctly allow for sync responses to async calls
-      // by creating and returning a promise from the sync response.
-      const bb = new flatbuffers.ByteBuffer(response);
-      const base = msg.Base.getRootAsBase(bb);
-      const err = errors.maybeError(base);
-      if (err != null) {
-        return Promise.reject(err);
-      } else {
-        return Promise.resolve(base);
-      }
-    }
     return response;
   }
 }
@@ -118,7 +106,21 @@ export function sendAsync(
   inner: flatbuffers.Offset,
   data?: ArrayBufferView
 ): Promise<msg.Base> {
-  return sendInternal(builder, innerType, inner, data, false);
+  const response = sendInternal(builder, innerType, inner, data, false);
+  if (response instanceof Promise) {
+    return response;
+  } else {
+    // We can easily and correctly allow for sync responses to async calls
+    // by creating and returning a promise from the sync response.
+    const bb = new flatbuffers.ByteBuffer(response);
+    const base = msg.Base.getRootAsBase(bb);
+    const err = errors.maybeError(base);
+    if (err != null) {
+      return Promise.reject(err);
+    } else {
+      return Promise.resolve(base);
+    }
+  }
 }
 
 // @internal
@@ -136,5 +138,26 @@ export function sendSync(
     const baseRes = msg.Base.getRootAsBase(bb);
     errors.maybeThrowError(baseRes);
     return baseRes;
+  }
+}
+
+export function sendAnySync(
+  builder: flatbuffers.Builder,
+  innerType: msg.Any,
+  inner: flatbuffers.Offset,
+  data?: ArrayBufferView
+): null | msg.Base | Promise<msg.Base> {
+  const response = sendInternal(builder, innerType, inner, data, false);
+  if (response instanceof Promise) {
+    return response;
+  } else {
+    if (response!.length === 0) {
+      return null;
+    } else {
+      const bb = new flatbuffers.ByteBuffer(response!);
+      const baseRes = msg.Base.getRootAsBase(bb);
+      errors.maybeThrowError(baseRes);
+      return baseRes;
+    }
   }
 }

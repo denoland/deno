@@ -6,6 +6,7 @@ pub use crate::msg::ErrorKind;
 use deno::AnyError;
 use deno::ErrBox;
 use deno::ModuleResolutionError;
+use dlopen::Error as DlopenError;
 use http::uri;
 use hyper;
 use rustyline::error::ReadlineError;
@@ -199,6 +200,17 @@ impl GetErrorKind for ReadlineError {
   }
 }
 
+impl GetErrorKind for DlopenError {
+  fn kind(&self) -> ErrorKind {
+    match self {
+      DlopenError::NullCharacter(_) => ErrorKind::PluginNullCharacter,
+      DlopenError::OpeningLibraryError(io_err)
+      | DlopenError::SymbolGettingError(io_err) => GetErrorKind::kind(io_err),
+      DlopenError::NullSymbol => ErrorKind::PluginNullSymbol,
+    }
+  }
+}
+
 #[cfg(unix)]
 mod unix {
   use super::{ErrorKind, GetErrorKind};
@@ -245,6 +257,7 @@ impl GetErrorKind for dyn AnyError {
       .or_else(|| self.downcast_ref::<uri::InvalidUri>().map(Get::kind))
       .or_else(|| self.downcast_ref::<url::ParseError>().map(Get::kind))
       .or_else(|| self.downcast_ref::<ReadlineError>().map(Get::kind))
+      .or_else(|| self.downcast_ref::<DlopenError>().map(Get::kind))
       .or_else(|| unix_error_kind(self))
       .unwrap_or_else(|| {
         panic!("Can't get ErrorKind for {:?}", self);

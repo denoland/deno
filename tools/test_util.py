@@ -114,6 +114,8 @@ def filter_test_suite(suite, pattern):
 
 
 def run_tests(test_cases=None):
+    os.environ["DENO_BUILD_PATH"] = build_path()
+
     args = parse_test_args()
 
     loader = unittest.TestLoader()

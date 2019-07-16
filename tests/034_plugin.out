@@ -1,0 +1,4 @@
+Hello from native bindings. data: "test" | zero_copy: {"some":"data"}
+test
+Hello from native bindings. data: "test" | zero_copy: {"some":"data"}
+test
