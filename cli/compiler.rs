@@ -407,8 +407,7 @@ impl TsCompiler {
     // 1. check if there's 'meta' file
     let cache_key = self
       .disk_cache
-      .get_cache_filename(url)
-      .with_extension("meta");
+      .get_cache_filename_with_extension(url, "meta".to_string());
     if let Ok(metadata_bytes) = self.disk_cache.get(&cache_key) {
       if let Ok(metadata) = std::str::from_utf8(&metadata_bytes) {
         if let Some(read_metadata) =
@@ -422,15 +421,15 @@ impl TsCompiler {
     None
   }
 
-  // TODO: this should be done by some higher level function from `DiskCache` or DenoDir
+  // TODO: ideally we shouldn't construct SourceFile by hand, but it should be delegated to
+  // SourceFileFetcher
   pub fn get_compiled_source_file(
     self: &Self,
     source_file: &SourceFile,
   ) -> Result<SourceFile, ErrBox> {
     let cache_key = self
       .disk_cache
-      .get_cache_filename(&source_file.url)
-      .with_extension("js");
+      .get_cache_filename_with_extension(&source_file.url, "js".to_string());
     let compiled_code = self.disk_cache.get(&cache_key)?;
     let compiled_code_filename = self.disk_cache.location.join(cache_key);
     debug!("compiled filename: {:?}", compiled_code_filename);
@@ -446,58 +445,26 @@ impl TsCompiler {
     Ok(compiled_module)
   }
 
-  // TODO: this should be done by some higher level function from `DiskCache` or DenoDir
-  pub fn get_source_map_file(
+  fn cache_compiled_file(
     self: &Self,
     module_specifier: &ModuleSpecifier,
-  ) -> Result<SourceFile, ErrBox> {
-    let compiled_cache_filename = self.disk_cache.location.join(
-      self
-        .disk_cache
-        .get_cache_filename(module_specifier.as_url()),
-    );
-    let source_map_filename = compiled_cache_filename.with_extension("js.map");
-    debug!("source map filename: {:?}", source_map_filename);
-
-    let contents = fs::read(&source_map_filename)?;
-
-    let source_map_file = SourceFile {
-      url: module_specifier.as_url().to_owned(),
-      redirect_source_url: None,
-      filename: source_map_filename,
-      media_type: msg::MediaType::JavaScript,
-      source_code: contents,
-    };
-
-    Ok(source_map_file)
-  }
-
-  pub fn cache_compiler_output(
-    self: &Self,
-    module_specifier: &ModuleSpecifier,
-    extension: &str,
     contents: &str,
   ) -> std::io::Result<()> {
-    let cache_key = self
+    let js_key = self.disk_cache.get_cache_filename_with_extension(
+      module_specifier.as_url(),
+      "js".to_string(),
+    );
+    self
       .disk_cache
-      .get_cache_filename(module_specifier.as_url());
+      .set(&js_key, contents.as_bytes())
+      .and_then(|_| {
+        self.mark_compiled(&module_specifier.to_string());
 
-    // TODO: factor out to Enum
-    match extension {
-      ".map" => {
-        let source_map_key = cache_key.with_extension("js.map");
-        self.disk_cache.set(&source_map_key, contents.as_bytes())?;
-      }
-      ".js" => {
         let source_file = self
           .deno_dir
           .fetch_source_file(&module_specifier, true, true)
           .expect("Source file not found");
 
-        let js_key = cache_key.with_extension("js");
-        self.disk_cache.set(&js_key, contents.as_bytes())?;
-
-        // save .meta file
         let version_hash = source_code_version_hash(
           &source_file.source_code,
           version::DENO,
@@ -508,18 +475,65 @@ impl TsCompiler {
           source_path: source_file.filename.to_str().unwrap().to_string(),
           version_hash,
         };
-        let meta_key = cache_key.with_extension("meta");
+        let meta_key = self.disk_cache.get_cache_filename_with_extension(
+          module_specifier.as_url(),
+          "meta".to_string(),
+        );
         self.disk_cache.set(
           &meta_key,
           compiled_file_metadata.to_json_string()?.as_bytes(),
-        )?;
+        )
+      })
+  }
 
-        self.mark_compiled(&module_specifier.to_string());
-      }
+  // TODO: ideally we shouldn't construct SourceFile by hand, but it should be delegated to
+  // SourceFileFetcher
+  pub fn get_source_map_file(
+    self: &Self,
+    module_specifier: &ModuleSpecifier,
+  ) -> Result<SourceFile, ErrBox> {
+    let cache_key = self.disk_cache.get_cache_filename_with_extension(
+      module_specifier.as_url(),
+      "js.map".to_string(),
+    );
+    let source_code = self.disk_cache.get(&cache_key)?;
+    let source_map_filename = self.disk_cache.location.join(cache_key);
+    debug!("source map filename: {:?}", source_map_filename);
+
+    let source_map_file = SourceFile {
+      url: module_specifier.as_url().to_owned(),
+      redirect_source_url: None,
+      filename: source_map_filename,
+      media_type: msg::MediaType::JavaScript,
+      source_code,
+    };
+
+    Ok(source_map_file)
+  }
+
+  fn cache_source_map(
+    self: &Self,
+    module_specifier: &ModuleSpecifier,
+    contents: &str,
+  ) -> std::io::Result<()> {
+    let source_map_key = self.disk_cache.get_cache_filename_with_extension(
+      module_specifier.as_url(),
+      "js.map".to_string(),
+    );
+    self.disk_cache.set(&source_map_key, contents.as_bytes())
+  }
+
+  pub fn cache_compiler_output(
+    self: &Self,
+    module_specifier: &ModuleSpecifier,
+    extension: &str,
+    contents: &str,
+  ) -> std::io::Result<()> {
+    match extension {
+      ".map" => self.cache_source_map(module_specifier, contents),
+      ".js" => self.cache_compiled_file(module_specifier, contents),
       _ => unreachable!(),
     }
-
-    Ok(())
   }
 
   fn try_to_resolve(self: &Self, script_name: &str) -> Option<ModuleSpecifier> {
