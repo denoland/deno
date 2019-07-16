@@ -79,18 +79,6 @@ pub trait SourceFileFetcher {
 // TODO: this list should be implemented on SourceFileFetcher trait
 const SUPPORTED_URL_SCHEMES: [&str; 3] = ["http", "https", "file"];
 
-fn normalize_path(path: &Path) -> PathBuf {
-  let s = String::from(path.to_str().unwrap());
-  let normalized_string = if cfg!(windows) {
-    // TODO This isn't correct. Probbly should iterate over components.
-    s.replace("\\", "/")
-  } else {
-    s
-  };
-
-  PathBuf::from(normalized_string)
-}
-
 #[derive(Clone, Default)]
 pub struct SourceFileCache(Arc<Mutex<HashMap<String, SourceFile>>>);
 
@@ -177,32 +165,6 @@ impl DenoDir {
     debug!("gen {}", deno_dir.gen_cache.location.display());
 
     Ok(deno_dir)
-  }
-
-  /// This method returns local file path for given module url that is used
-  /// internally by DenoDir to reference module.
-  ///
-  /// For specifiers starting with `file://` returns the input.
-  ///
-  /// For specifier starting with `http://` and `https://` it returns
-  /// path to DenoDir dependency directory.
-  // TODO: to be removed
-  pub fn url_to_deps_path(self: &Self, url: &Url) -> PathBuf {
-    let filename = match url.scheme() {
-      "file" => url.to_file_path().unwrap(),
-      "https" => self
-        .deps_cache
-        .location
-        .join(self.deps_cache.get_cache_filename(&url)),
-      "http" => self
-        .deps_cache
-        .location
-        .join(self.deps_cache.get_cache_filename(&url)),
-      _ => unreachable!(),
-    };
-
-    debug!("deps filename: {:?}", filename);
-    normalize_path(&filename)
   }
 }
 
@@ -317,10 +279,6 @@ impl DenoDir {
     }
 
     // We're dealing with remote file, first try local cache
-    let cache_filepath = self.url_to_deps_path(&module_url);
-    // TODO: replace with .display()
-    let cache_filename = cache_filepath.to_str().unwrap().to_string();
-
     if use_disk_cache {
       match self.fetch_cached_remote_source(&module_url, None) {
         Ok(Some(source_file)) => {
@@ -341,16 +299,19 @@ impl DenoDir {
       return Either::A(futures::future::err(
         std::io::Error::new(
           std::io::ErrorKind::NotFound,
-          format!("cannot find remote file '{}' in cache", cache_filename),
+          format!(
+            "cannot find remote file '{}' in cache",
+            module_url.to_string()
+          ),
         ).into(),
       ));
     }
 
     // Fetch remote file and cache on-disk for subsequent access
     // not cached/local, try remote.
-    Either::B(
-      self
-        .fetch_remote_source_async(&module_url, &cache_filepath)
+    let module_url_ = module_url.clone();
+    Either::B(self
+        .fetch_remote_source_async(&module_url)
         // TODO: cache fetched remote source here - `fetch_remote_source` should only fetch with
         // redirects, nothing more
         .and_then(move |maybe_remote_source| match maybe_remote_source {
@@ -358,11 +319,10 @@ impl DenoDir {
           None => Err(
             std::io::Error::new(
               std::io::ErrorKind::NotFound,
-              format!("cannot find remote file '{}'", cache_filename),
+              format!("cannot find remote file '{}'", module_url_.to_string()),
             ).into(),
           ),
-        }),
-    )
+        }))
   }
 
   /// Fetch local source file
@@ -405,9 +365,6 @@ impl DenoDir {
     module_url: &Url,
     maybe_initial_module_url: Option<Url>,
   ) -> Result<Option<SourceFile>, ErrBox> {
-    // TODO: to be removed
-    let filepath = self.url_to_deps_path(&module_url);
-
     let source_code_headers = self.get_source_code_headers(&module_url);
     // If source code headers says that it would redirect elsewhere,
     // (meaning that the source file might not exist; only .headers.json is present)
@@ -432,8 +389,13 @@ impl DenoDir {
       return self
         .fetch_cached_remote_source(&redirect_url, maybe_initial_module_url);
     }
+
     // No redirect needed or end of redirects.
     // We can try read the file
+    let filepath = self
+      .deps_cache
+      .location
+      .join(self.deps_cache.get_cache_filename(&module_url));
     let source_code = match fs::read(filepath.clone()) {
       Err(e) => {
         if e.kind() == std::io::ErrorKind::NotFound {
@@ -461,13 +423,10 @@ impl DenoDir {
   fn fetch_remote_source_async(
     self: &Self,
     module_url: &Url,
-    filepath: &Path,
   ) -> impl Future<Item = Option<SourceFile>, Error = ErrBox> {
     use crate::http_util::FetchOnceResult;
 
     let download_job = self.progress.add("Download", &module_url.to_string());
-
-    let filepath = filepath.to_owned();
 
     // We write a special ".headers.json" file into the `.deno/deps` directory along side the
     // cached file, containing just the media type and possible redirect target (both are http headers).
@@ -477,16 +436,12 @@ impl DenoDir {
       (
         self.clone(),
         None,
-        None,
         module_url.clone(),
-        filepath.clone(),
       ),
       |(
         dir,
         mut maybe_initial_module_url,
-        mut maybe_initial_filepath,
         module_url,
-        filepath,
       )| {
         let module_uri = url_into_uri(&module_url);
         // Single pass fetch, either yields code or yields redirect.
@@ -496,20 +451,16 @@ impl DenoDir {
               FetchOnceResult::Redirect(uri) => {
                 // If redirects, update module_name and filename for next looped call.
                 let new_module_url = Url::parse(&uri.to_string()).expect("http::uri::Uri should be parseable as Url");
-                let new_filepath = dir.url_to_deps_path(&new_module_url);
 
                 if maybe_initial_module_url.is_none() {
                   maybe_initial_module_url = Some(module_url);
-                  maybe_initial_filepath = Some(filepath.clone());
                 }
 
                 // Not yet completed. Follow the redirect and loop.
                 Ok(Loop::Continue((
                   dir,
                   maybe_initial_module_url,
-                  maybe_initial_filepath,
                   new_module_url,
-                  new_filepath,
                 )))
               }
               FetchOnceResult::Code(source, maybe_content_type) => {
@@ -534,6 +485,11 @@ impl DenoDir {
                     Some(module_url.to_string())
                   ).unwrap()
                 }
+
+                let filepath = dir
+                  .deps_cache
+                  .location
+                  .join(dir.deps_cache.get_cache_filename(&module_url));
 
                 let media_type = map_content_type(
                   &filepath,
@@ -771,9 +727,9 @@ mod tests {
     fn fetch_remote_source(
       self: &Self,
       module_url: &Url,
-      filepath: &Path,
+      _filepath: &Path,
     ) -> Result<Option<SourceFile>, ErrBox> {
-      tokio_util::block_on(self.fetch_remote_source_async(module_url, filepath))
+      tokio_util::block_on(self.fetch_remote_source_async(module_url))
     }
 
     /// Synchronous version of get_source_file_async
@@ -791,10 +747,6 @@ mod tests {
     }
   }
 
-  fn normalize_to_str(path: &Path) -> String {
-    normalize_path(path).to_str().unwrap().to_string()
-  }
-
   fn setup_deno_dir(dir_path: &Path) -> DenoDir {
     DenoDir::new(Some(dir_path.to_path_buf()), Progress::new(), true, false)
       .expect("setup fail")
@@ -804,18 +756,6 @@ mod tests {
     let temp_dir = TempDir::new().expect("tempdir fail");
     let deno_dir = setup_deno_dir(temp_dir.path());
     (temp_dir, deno_dir)
-  }
-  // The `add_root` macro prepends "C:" to a string if on windows; on posix
-  // systems it returns the input string untouched. This is necessary because
-  // `Url::from_file_path()` fails if the input path isn't an absolute path.
-  macro_rules! add_root {
-    ($path:expr) => {
-      if cfg!(target_os = "windows") {
-        concat!("C:", $path)
-      } else {
-        $path
-      }
-    };
   }
 
   macro_rules! file_url {
@@ -838,9 +778,8 @@ mod tests {
         .get_cache_filename_with_extension(&url, "headers.json"),
     );
 
-    match headers_filepath.parent() {
-      Some(ref parent) => fs::create_dir_all(parent).unwrap(),
-      None => {}
+    if let Some(ref parent) = headers_filepath.parent() {
+      fs::create_dir_all(parent).unwrap();
     };
 
     let _ = deno_fs::write_file(
@@ -1128,13 +1067,10 @@ mod tests {
         .join("http/localhost_PORT4548/tests/subdir/redirects/redirect1.js");
       let redirect_source_filename =
         redirect_source_filepath.to_str().unwrap().to_string();
-      let redirect_source_filename_intermediate = normalize_to_str(
-        deno_dir
-          .deps_cache
-          .location
-          .join("http/localhost_PORT4546/tests/subdir/redirects/redirect1.js")
-          .as_ref(),
-      );
+      let redirect_source_filename_intermediate = deno_dir
+        .deps_cache
+        .location
+        .join("http/localhost_PORT4546/tests/subdir/redirects/redirect1.js");
       let target_module_url =
         Url::parse("http://localhost:4545/tests/subdir/redirects/redirect1.js")
           .unwrap();
@@ -1214,19 +1150,14 @@ mod tests {
       let module_url =
         Url::parse("http://127.0.0.1:4545/tests/subdir/mt_video_mp2t.t3.ts")
           .unwrap();
-      let filepath = deno_dir
-        .deps_cache
-        .location
-        .join("http/127.0.0.1_PORT4545/tests/subdir/mt_video_mp2t.t3.ts");
       let headers_file_name = deno_dir.deps_cache.location.join(
         deno_dir
           .deps_cache
           .get_cache_filename_with_extension(&module_url, "headers.json"),
       );
 
-      let result = tokio_util::block_on(
-        deno_dir.fetch_remote_source_async(&module_url, &filepath),
-      );
+      let result =
+        tokio_util::block_on(deno_dir.fetch_remote_source_async(&module_url));
       assert!(result.is_ok());
       let r = result.unwrap().unwrap();
       assert_eq!(r.source_code, b"export const loaded = true;\n");
@@ -1415,55 +1346,6 @@ mod tests {
       let r = deno_dir.fetch_source_file(&specifier);
       assert!(r.is_ok());
     })
-  }
-
-  // https://github.com/denoland/deno/blob/golang/os_test.go#L16-L87
-  #[test]
-  fn test_url_to_deps_path_1() {
-    let (_temp_dir, deno_dir) = test_setup();
-
-    let test_cases = [
-      (
-        file_url!("/Users/rld/go/src/github.com/denoland/deno/testdata/subdir/print_hello.ts"),
-        add_root!("/Users/rld/go/src/github.com/denoland/deno/testdata/subdir/print_hello.ts"),
-      ),
-      (
-        file_url!("/Users/rld/go/src/github.com/denoland/deno/testdata/001_hello.js"),
-        add_root!("/Users/rld/go/src/github.com/denoland/deno/testdata/001_hello.js"),
-      ),
-      (
-        file_url!("/Users/rld/src/deno/hello.js"),
-        add_root!("/Users/rld/src/deno/hello.js"),
-      ),
-      (
-        file_url!("/this/module/got/imported.js"),
-        add_root!("/this/module/got/imported.js"),
-      ),
-    ];
-    for &test in test_cases.iter() {
-      let url = Url::parse(test.0).unwrap();
-      let filename = deno_dir.url_to_deps_path(&url);
-      assert_eq!(filename.to_str().unwrap().to_string(), test.1);
-    }
-  }
-
-  #[test]
-  fn test_url_to_deps_path_2() {
-    let (_temp_dir, deno_dir) = test_setup();
-
-    let specifier =
-      Url::parse("http://localhost:4545/testdata/subdir/print_hello.ts")
-        .unwrap();
-    let expected_filename = normalize_to_str(
-      deno_dir
-        .deps_cache
-        .location
-        .join("http/localhost_PORT4545/testdata/subdir/print_hello.ts")
-        .as_ref(),
-    );
-
-    let filename = deno_dir.url_to_deps_path(&specifier);
-    assert_eq!(filename.to_str().unwrap().to_string(), expected_filename);
   }
 
   #[test]
