@@ -1,9 +1,9 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::deno_dir::DenoDir;
-use crate::deno_dir::DiskCache;
 use crate::deno_dir::SourceFile;
 use crate::deno_dir::SourceFileFetcher;
 use crate::diagnostics::Diagnostic;
+use crate::disk_cache::DiskCache;
 use crate::msg;
 use crate::resources;
 use crate::source_maps::SourceMapGetter;

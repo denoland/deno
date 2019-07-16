@@ -20,6 +20,7 @@ pub mod compiler;
 pub mod deno_dir;
 pub mod deno_error;
 pub mod diagnostics;
+mod disk_cache;
 mod dispatch_minimal;
 pub mod flags;
 pub mod fmt_errors;

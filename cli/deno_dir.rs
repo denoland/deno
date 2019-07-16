@@ -2,6 +2,7 @@
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
 use crate::deno_error::GetErrorKind;
+use crate::disk_cache::DiskCache;
 use crate::fs as deno_fs;
 use crate::http_util;
 use crate::msg;
@@ -109,60 +110,6 @@ impl SourceFileCache {
       Some(source_file) => Some(source_file.clone()),
       None => None,
     }
-  }
-}
-
-// TODO: this is a structure that is supposed to be moved to //core/cache.rs
-#[derive(Clone)]
-pub struct DiskCache {
-  pub location: PathBuf,
-}
-
-impl DiskCache {
-  pub fn new(location: &Path) -> Self {
-    // TODO: ensure that 'location' is a directory
-    Self {
-      location: location.to_owned(),
-    }
-  }
-
-  pub fn get_cache_filename(self: &Self, url: &Url) -> PathBuf {
-    let mut out = PathBuf::new();
-
-    let scheme = url.scheme();
-    out.push(scheme);
-    match scheme {
-      "http" | "https" => {
-        let host = url.host_str().unwrap();
-        let host_port = match url.port() {
-          // Windows doesn't support ":" in filenames, so we represent port using a
-          // special string.
-          Some(port) => format!("{}_PORT{}", host, port),
-          None => host.to_string(),
-        };
-        out.push(host_port);
-      }
-      _ => {}
-    };
-
-    for path_seg in url.path_segments().unwrap() {
-      out.push(path_seg);
-    }
-    out
-  }
-
-  pub fn get(self: &Self, filename: &Path) -> std::io::Result<Vec<u8>> {
-    let path = self.location.join(filename);
-    fs::read(&path)
-  }
-
-  pub fn set(self: &Self, filename: &Path, data: &[u8]) -> std::io::Result<()> {
-    let path = self.location.join(filename);
-    match path.parent() {
-      Some(ref parent) => fs::create_dir_all(parent),
-      None => Ok(()),
-    }?;
-    deno_fs::write_file(&path, data, 0o666)
   }
 }
 
