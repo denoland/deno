@@ -314,6 +314,7 @@ fn run_script(flags: DenoFlags, argv: Vec<String>) {
     worker
       .execute_mod_async(&main_module, false)
       .and_then(move |()| {
+        js_check(worker.execute("window.dispatchEvent(new Event('load'))"));
         worker.then(|result| {
           js_check(result);
           Ok(())
