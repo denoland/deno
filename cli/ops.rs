@@ -1,7 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use atty;
 use crate::ansi;
-use crate::deno_dir::resolve_from_cwd;
 use crate::deno_dir::SourceFileFetcher;
 use crate::deno_error;
 use crate::deno_error::DenoError;
@@ -836,7 +835,7 @@ fn op_mkdir(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_mkdir().unwrap();
-  let (path, path_) = resolve_from_cwd(inner.path().unwrap())?;
+  let (path, path_) = deno_fs::resolve_from_cwd(inner.path().unwrap())?;
   let recursive = inner.recursive();
   let mode = inner.mode();
 
@@ -857,7 +856,7 @@ fn op_chmod(
   assert!(data.is_none());
   let inner = base.inner_as_chmod().unwrap();
   let _mode = inner.mode();
-  let (path, path_) = resolve_from_cwd(inner.path().unwrap())?;
+  let (path, path_) = deno_fs::resolve_from_cwd(inner.path().unwrap())?;
 
   state.check_write(&path_)?;
 
@@ -905,7 +904,8 @@ fn op_open(
   assert!(data.is_none());
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_open().unwrap();
-  let (filename, filename_) = resolve_from_cwd(inner.filename().unwrap())?;
+  let (filename, filename_) =
+    deno_fs::resolve_from_cwd(inner.filename().unwrap())?;
   let mode = inner.mode().unwrap();
 
   let mut open_options = tokio::fs::OpenOptions::new();
@@ -1156,7 +1156,7 @@ fn op_remove(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_remove().unwrap();
-  let (path, path_) = resolve_from_cwd(inner.path().unwrap())?;
+  let (path, path_) = deno_fs::resolve_from_cwd(inner.path().unwrap())?;
   let recursive = inner.recursive();
 
   state.check_write(&path_)?;
@@ -1182,8 +1182,8 @@ fn op_copy_file(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_copy_file().unwrap();
-  let (from, from_) = resolve_from_cwd(inner.from().unwrap())?;
-  let (to, to_) = resolve_from_cwd(inner.to().unwrap())?;
+  let (from, from_) = deno_fs::resolve_from_cwd(inner.from().unwrap())?;
+  let (to, to_) = deno_fs::resolve_from_cwd(inner.to().unwrap())?;
 
   state.check_read(&from_)?;
   state.check_write(&to_)?;
@@ -1257,7 +1257,8 @@ fn op_stat(
   assert!(data.is_none());
   let inner = base.inner_as_stat().unwrap();
   let cmd_id = base.cmd_id();
-  let (filename, filename_) = resolve_from_cwd(inner.filename().unwrap())?;
+  let (filename, filename_) =
+    deno_fs::resolve_from_cwd(inner.filename().unwrap())?;
   let lstat = inner.lstat();
 
   state.check_read(&filename_)?;
@@ -1306,7 +1307,7 @@ fn op_read_dir(
   assert!(data.is_none());
   let inner = base.inner_as_read_dir().unwrap();
   let cmd_id = base.cmd_id();
-  let (path, path_) = resolve_from_cwd(inner.path().unwrap())?;
+  let (path, path_) = deno_fs::resolve_from_cwd(inner.path().unwrap())?;
 
   state.check_read(&path_)?;
 
@@ -1362,8 +1363,9 @@ fn op_rename(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_rename().unwrap();
-  let (oldpath, _) = resolve_from_cwd(inner.oldpath().unwrap())?;
-  let (newpath, newpath_) = resolve_from_cwd(inner.newpath().unwrap())?;
+  let (oldpath, _) = deno_fs::resolve_from_cwd(inner.oldpath().unwrap())?;
+  let (newpath, newpath_) =
+    deno_fs::resolve_from_cwd(inner.newpath().unwrap())?;
 
   state.check_write(&newpath_)?;
 
@@ -1381,8 +1383,9 @@ fn op_link(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_link().unwrap();
-  let (oldname, _) = resolve_from_cwd(inner.oldname().unwrap())?;
-  let (newname, newname_) = resolve_from_cwd(inner.newname().unwrap())?;
+  let (oldname, _) = deno_fs::resolve_from_cwd(inner.oldname().unwrap())?;
+  let (newname, newname_) =
+    deno_fs::resolve_from_cwd(inner.newname().unwrap())?;
 
   state.check_write(&newname_)?;
 
@@ -1400,8 +1403,9 @@ fn op_symlink(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_symlink().unwrap();
-  let (oldname, _) = resolve_from_cwd(inner.oldname().unwrap())?;
-  let (newname, newname_) = resolve_from_cwd(inner.newname().unwrap())?;
+  let (oldname, _) = deno_fs::resolve_from_cwd(inner.oldname().unwrap())?;
+  let (newname, newname_) =
+    deno_fs::resolve_from_cwd(inner.newname().unwrap())?;
 
   state.check_write(&newname_)?;
   // TODO Use type for Windows.
@@ -1426,7 +1430,7 @@ fn op_read_link(
   assert!(data.is_none());
   let inner = base.inner_as_readlink().unwrap();
   let cmd_id = base.cmd_id();
-  let (name, name_) = resolve_from_cwd(inner.name().unwrap())?;
+  let (name, name_) = deno_fs::resolve_from_cwd(inner.name().unwrap())?;
 
   state.check_read(&name_)?;
 
@@ -1528,7 +1532,7 @@ fn op_truncate(
   assert!(data.is_none());
 
   let inner = base.inner_as_truncate().unwrap();
-  let (filename, filename_) = resolve_from_cwd(inner.name().unwrap())?;
+  let (filename, filename_) = deno_fs::resolve_from_cwd(inner.name().unwrap())?;
   let len = inner.len();
 
   state.check_write(&filename_)?;

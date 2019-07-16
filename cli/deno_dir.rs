@@ -167,6 +167,7 @@ impl DiskCache {
 }
 
 #[derive(Clone)]
+// TODO: try to remove `pub` from fields
 pub struct DenoDir {
   // Example: /Users/rld/.deno/
   pub root: PathBuf,
@@ -278,10 +279,6 @@ impl SourceFileFetcher for DenoDir {
     let module_url = specifier.as_url().to_owned();
     debug!("fetch_source_file. specifier {} ", &module_url);
 
-    if let Err(err) = DenoDir::check_if_supported_scheme(&module_url) {
-      return Box::new(futures::future::err(err));
-    }
-
     if let Some(source_file) = self.source_file_cache.get(specifier.to_string())
     {
       return Box::new(futures::future::ok(source_file));
@@ -294,7 +291,6 @@ impl SourceFileFetcher for DenoDir {
       .get_source_file_async(&module_url, use_cache, no_fetch)
       .then(move |result| {
         let mut out = result.map_err(|err| {
-          // TODO: is it even needed?
           if err.kind() == ErrorKind::NotFound {
             // For NotFound, change the message to something better.
             DenoError::new(
@@ -357,6 +353,10 @@ impl DenoDir {
     let url_scheme = module_url.scheme();
     let is_local_file = url_scheme == "file";
 
+    if let Err(err) = DenoDir::check_if_supported_scheme(&module_url) {
+      return Either::A(futures::future::err(err));
+    }
+
     // Local files are always fetched from disk bypassing cache entirely.
     if is_local_file {
       match self.fetch_local_file(&module_url) {
@@ -405,6 +405,8 @@ impl DenoDir {
     Either::B(
       self
         .fetch_remote_source_async(&module_url, &cache_filepath)
+        // TODO: cache fetched remote source here - `fetch_remote_source` should only fetch with
+        // redirects, nothing more
         .and_then(move |maybe_remote_source| match maybe_remote_source {
           Some(output) => Ok(output),
           None => Err(
@@ -720,6 +722,29 @@ pub struct SourceCodeHeaders {
 static MIME_TYPE: &'static str = "mime_type";
 static REDIRECT_TO: &'static str = "redirect_to";
 
+impl SourceCodeHeaders {
+  pub fn from_json_string(headers_string: String) -> Self {
+    // TODO: use serde for deserialization
+    let maybe_headers_json: serde_json::Result<serde_json::Value> =
+      serde_json::from_str(&headers_string);
+
+    if let Ok(headers_json) = maybe_headers_json {
+      let mime_type = headers_json[MIME_TYPE].as_str().map(String::from);
+      let redirect_to = headers_json[REDIRECT_TO].as_str().map(String::from);
+
+      return SourceCodeHeaders {
+        mime_type,
+        redirect_to,
+      };
+    }
+
+    SourceCodeHeaders {
+      mime_type: None,
+      redirect_to: None,
+    }
+  }
+}
+
 fn source_code_headers_filename(filepath: &Path) -> PathBuf {
   PathBuf::from([filepath.to_str().unwrap(), ".headers.json"].concat())
 }
@@ -735,15 +760,7 @@ fn get_source_code_headers(filepath: &Path) -> SourceCodeHeaders {
   // This is okay for local source.
   let maybe_headers_string = fs::read_to_string(&hd).ok();
   if let Some(headers_string) = maybe_headers_string {
-    // TODO(kevinkassimo): consider introduce serde::Deserialize to make things simpler.
-    let maybe_headers: serde_json::Result<serde_json::Value> =
-      serde_json::from_str(&headers_string);
-    if let Ok(headers) = maybe_headers {
-      return SourceCodeHeaders {
-        mime_type: headers[MIME_TYPE].as_str().map(String::from),
-        redirect_to: headers[REDIRECT_TO].as_str().map(String::from),
-      };
-    }
+    return SourceCodeHeaders::from_json_string(headers_string);
   }
   SourceCodeHeaders {
     mime_type: None,
@@ -798,36 +815,6 @@ fn save_source_code_headers(
       let _ = deno_fs::write_file(&(hd.as_path()), s, 0o666);
     });
   }
-}
-
-// TODO(bartlomieju): this method should be moved, it doesn't belong to deno_dir.rs
-//  it's a general utility
-pub fn resolve_from_cwd(path: &str) -> Result<(PathBuf, String), ErrBox> {
-  let candidate_path = Path::new(path);
-
-  let resolved_path = if candidate_path.is_absolute() {
-    candidate_path.to_owned()
-  } else {
-    let cwd = std::env::current_dir().unwrap();
-    cwd.join(path)
-  };
-
-  // HACK: `Url::from_directory_path` is used here because it normalizes the path.
-  // Joining `/dev/deno/" with "./tests" using `PathBuf` yields `/deno/dev/./tests/`.
-  // On the other hand joining `/dev/deno/" with "./tests" using `Url` yields "/dev/deno/tests"
-  // - and that's what we want.
-  // There exists similar method on `PathBuf` - `PathBuf.canonicalize`, but the problem
-  // is `canonicalize` resolves symlinks and we don't want that.
-  // We just want o normalize the path...
-  let resolved_url = Url::from_file_path(resolved_path)
-    .expect("PathBuf should be parseable URL");
-  let normalized_path = resolved_url
-    .to_file_path()
-    .expect("URL from PathBuf should be valid path");
-
-  let path_string = normalized_path.to_str().unwrap().to_string();
-
-  Ok((normalized_path, path_string))
 }
 
 #[cfg(test)]
