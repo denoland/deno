@@ -322,8 +322,7 @@ impl DenoDir {
     let cache_filename = cache_filepath.to_str().unwrap().to_string();
 
     if use_cache {
-      match self.fetch_cached_remote_source(&module_url, &cache_filepath, None)
-      {
+      match self.fetch_cached_remote_source(&module_url, None) {
         Ok(Some(source_file)) => {
           return Either::A(futures::future::ok(source_file));
         }
@@ -404,10 +403,11 @@ impl DenoDir {
   fn fetch_cached_remote_source(
     self: &Self,
     module_url: &Url,
-    filepath: &Path,
     maybe_initial_module_url: Option<Url>,
   ) -> Result<Option<SourceFile>, ErrBox> {
-    // TODO: construct filepath from URL
+    // TODO: to be removed
+    let filepath = self.url_to_deps_path(&module_url);
+
     let source_code_headers = get_source_code_headers(&filepath);
     // If source code headers says that it would redirect elsewhere,
     // (meaning that the source file might not exist; only .headers.json is present)
@@ -419,10 +419,7 @@ impl DenoDir {
       // redirect_to https://import-meta.now.sh/sub/final1.js
       // real_filename /Users/kun/Library/Caches/deno/deps/https/import-meta.now.sh/sub/final1.js
       // real_module_name = https://import-meta.now.sh/sub/final1.js
-      let real_module_url =
-        Url::parse(&redirect_to).expect("Should be valid URL");
-      // TODO: refactor
-      let real_filepath = self.url_to_deps_path(&real_module_url);
+      let redirect_url = Url::parse(&redirect_to).expect("Should be valid URL");
 
       let mut maybe_initial_module_url = maybe_initial_module_url;
       // If this is the first redirect attempt,
@@ -432,15 +429,12 @@ impl DenoDir {
         maybe_initial_module_url = Some(module_url.clone());
       }
       // Recurse.
-      return self.fetch_cached_remote_source(
-        &real_module_url,
-        &real_filepath,
-        maybe_initial_module_url,
-      );
+      return self
+        .fetch_cached_remote_source(&redirect_url, maybe_initial_module_url);
     }
     // No redirect needed or end of redirects.
     // We can try read the file
-    let source_code = match fs::read(filepath) {
+    let source_code = match fs::read(filepath.clone()) {
       Err(e) => {
         if e.kind() == std::io::ErrorKind::NotFound {
           return Ok(None);
@@ -780,11 +774,9 @@ mod tests {
     }
 
     /// Synchronous version of get_source_file_async
-    // TODO:
     fn get_source_file(
       self: &Self,
       module_url: &Url,
-      _filepath: PathBuf,
       use_cache: bool,
       no_fetch: bool,
     ) -> Result<SourceFile, ErrBox> {
@@ -909,8 +901,7 @@ mod tests {
         .join("http/localhost_PORT4545/tests/subdir/mod2.ts");
       let headers_file_name = source_code_headers_filename(&filepath);
 
-      let result =
-        deno_dir.get_source_file(&module_url, filepath.clone(), true, false);
+      let result = deno_dir.get_source_file(&module_url, true, false);
       assert!(result.is_ok());
       let r = result.unwrap();
       assert_eq!(
@@ -924,8 +915,7 @@ mod tests {
       // Modify .headers.json, write using fs write and read using save_source_code_headers
       let _ =
         fs::write(&headers_file_name, "{ \"mime_type\": \"text/javascript\" }");
-      let result2 =
-        deno_dir.get_source_file(&module_url, filepath.clone(), true, false);
+      let result2 = deno_dir.get_source_file(&module_url, true, false);
       assert!(result2.is_ok());
       let r2 = result2.unwrap();
       assert_eq!(
@@ -946,8 +936,7 @@ mod tests {
         Some("application/json".to_owned()),
         None,
       );
-      let result3 =
-        deno_dir.get_source_file(&module_url, filepath.clone(), true, false);
+      let result3 = deno_dir.get_source_file(&module_url, true, false);
       assert!(result3.is_ok());
       let r3 = result3.unwrap();
       assert_eq!(
@@ -966,8 +955,7 @@ mod tests {
       // let's create fresh instance of DenoDir (simulating another freshh Deno process)
       // and don't use cache
       let deno_dir = setup_deno_dir(temp_dir.path());
-      let result4 =
-        deno_dir.get_source_file(&module_url, filepath.clone(), false, false);
+      let result4 = deno_dir.get_source_file(&module_url, false, false);
       assert!(result4.is_ok());
       let r4 = result4.unwrap();
       let expected4 =
@@ -993,8 +981,7 @@ mod tests {
         .join("http/localhost_PORT4545/tests/subdir/mismatch_ext.ts");
       let headers_file_name = source_code_headers_filename(&filepath);
 
-      let result =
-        deno_dir.get_source_file(&module_url, filepath.clone(), true, false);
+      let result = deno_dir.get_source_file(&module_url, true, false);
       assert!(result.is_ok());
       let r = result.unwrap();
       let expected = "export const loaded = true;\n".as_bytes();
@@ -1012,8 +999,7 @@ mod tests {
         Some("text/typescript".to_owned()),
         None,
       );
-      let result2 =
-        deno_dir.get_source_file(&module_url, filepath.clone(), true, false);
+      let result2 = deno_dir.get_source_file(&module_url, true, false);
       assert!(result2.is_ok());
       let r2 = result2.unwrap();
       let expected2 = "export const loaded = true;\n".as_bytes();
@@ -1026,8 +1012,7 @@ mod tests {
       // let's create fresh instance of DenoDir (simulating another freshh Deno process)
       // and don't use cache
       let deno_dir = setup_deno_dir(temp_dir.path());
-      let result3 =
-        deno_dir.get_source_file(&module_url, filepath.clone(), false, false);
+      let result3 = deno_dir.get_source_file(&module_url, false, false);
       assert!(result3.is_ok());
       let r3 = result3.unwrap();
       let expected3 = "export const loaded = true;\n".as_bytes();
@@ -1109,12 +1094,8 @@ mod tests {
         redirect_target_filepath.to_str().unwrap().to_string();
 
       let mod_meta = deno_dir
-        .get_source_file(
-          &redirect_module_url,
-          redirect_source_filepath.clone(),
-          true,
-          false,
-        ).unwrap();
+        .get_source_file(&redirect_module_url, true, false)
+        .unwrap();
       // File that requires redirection is not downloaded.
       assert!(fs::read_to_string(&redirect_source_filename).is_err());
       // ... but its .headers.json is created.
@@ -1175,12 +1156,8 @@ mod tests {
         redirect_target_filepath.to_str().unwrap().to_string();
 
       let mod_meta = deno_dir
-        .get_source_file(
-          &redirect_module_url,
-          redirect_source_filepath.clone(),
-          true,
-          false,
-        ).unwrap();
+        .get_source_file(&redirect_module_url, true, false)
+        .unwrap();
 
       // File that requires redirection is not downloaded.
       assert!(fs::read_to_string(&redirect_source_filename).is_err());
@@ -1221,33 +1198,25 @@ mod tests {
     tokio_util::init(|| {
       let module_url =
         Url::parse("http://localhost:4545/tests/002_hello.ts").unwrap();
-      let filepath = deno_dir
-        .deps_cache
-        .location
-        .join("http/localhost_PORT4545/tests/002_hello.ts");
 
       // file hasn't been cached before and remote downloads are not allowed
-      let result =
-        deno_dir.get_source_file(&module_url, filepath.clone(), true, true);
+      let result = deno_dir.get_source_file(&module_url, true, true);
       assert!(result.is_err());
       let err = result.err().unwrap();
       assert_eq!(err.kind(), ErrorKind::NotFound);
 
       // download and cache file
-      let result =
-        deno_dir.get_source_file(&module_url, filepath.clone(), true, false);
+      let result = deno_dir.get_source_file(&module_url, true, false);
       assert!(result.is_ok());
 
       // module is already cached, should be ok even with `no_fetch`
-      let result =
-        deno_dir.get_source_file(&module_url, filepath.clone(), true, true);
+      let result = deno_dir.get_source_file(&module_url, true, true);
       assert!(result.is_ok());
     });
   }
 
   #[test]
   fn test_fetch_source_async_1() {
-    use crate::tokio_util;
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
       let (_temp_dir, deno_dir) = test_setup();
@@ -1276,8 +1245,7 @@ mod tests {
         Some("text/javascript".to_owned()),
         None,
       );
-      let result2 =
-        deno_dir.fetch_cached_remote_source(&module_url, &filepath, None);
+      let result2 = deno_dir.fetch_cached_remote_source(&module_url, None);
       assert!(result2.is_ok());
       let r2 = result2.unwrap().unwrap();
       assert_eq!(r2.source_code, b"export const loaded = true;\n");
@@ -1288,7 +1256,6 @@ mod tests {
 
   #[test]
   fn test_fetch_source_1() {
-    use crate::tokio_util;
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
       let (_temp_dir, deno_dir) = test_setup();
@@ -1315,8 +1282,7 @@ mod tests {
         Some("text/javascript".to_owned()),
         None,
       );
-      let result2 =
-        deno_dir.fetch_cached_remote_source(&module_url, &filepath, None);
+      let result2 = deno_dir.fetch_cached_remote_source(&module_url, None);
       assert!(result2.is_ok());
       let r2 = result2.unwrap().unwrap();
       assert_eq!(r2.source_code, "export const loaded = true;\n".as_bytes());
@@ -1327,7 +1293,6 @@ mod tests {
 
   #[test]
   fn test_fetch_source_2() {
-    use crate::tokio_util;
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
       let (_temp_dir, deno_dir) = test_setup();
@@ -1387,22 +1352,23 @@ mod tests {
     });
   }
 
-  #[test]
-  fn test_fetch_source_3() {
-    // only local, no http_util::fetch_sync_string called
-    let (_temp_dir, deno_dir) = test_setup();
-    let cwd = std::env::current_dir().unwrap();
-    let module_url =
-      Url::parse("http://example.com/mt_text_typescript.t1.ts").unwrap();
-    let filepath = cwd.join("tests/subdir/mt_text_typescript.t1.ts");
-
-    let result =
-      deno_dir.fetch_cached_remote_source(&module_url, &filepath, None);
-    assert!(result.is_ok());
-    let r = result.unwrap().unwrap();
-    assert_eq!(r.source_code, "export const loaded = true;\n".as_bytes());
-    assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
-  }
+  // TODO: this test no more makes sense
+  //  #[test]
+  //  fn test_fetch_source_3() {
+  //    // only local, no http_util::fetch_sync_string called
+  //    let (_temp_dir, deno_dir) = test_setup();
+  //    let cwd = std::env::current_dir().unwrap();
+  //    let module_url =
+  //      Url::parse("http://example.com/mt_text_typescript.t1.ts").unwrap();
+  //    let filepath = cwd.join("tests/subdir/mt_text_typescript.t1.ts");
+  //
+  //    let result =
+  //      deno_dir.fetch_cached_remote_source(&module_url, None);
+  //    assert!(result.is_ok());
+  //    let r = result.unwrap().unwrap();
+  //    assert_eq!(r.source_code, "export const loaded = true;\n".as_bytes());
+  //    assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
+  //  }
 
   #[test]
   fn test_fetch_source_file() {
