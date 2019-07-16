@@ -17,11 +17,9 @@ A secure JavaScript/TypeScript runtime built with V8, Rust, and Tokio
 Deno aims to be a productive and secure scripting environment for the modern
 programmer.
 
-It will always be distributed as a single executable - and that executable will
-be sufficient software to run any deno program. Given a URL to a deno program,
-you should be able to execute it with nothing more than the 50 megabyte deno
-executable.
-
+Deno will always be distributed as a single executable. Given a URL to a Deno
+program, it is runnable with nothing more than
+[the 10 megabyte zipped executable](https://github.com/denoland/deno/releases).
 Deno explicitly takes on the role of both runtime and package manager. It uses a
 standard browser-compatible protocol for loading modules: URLs.
 
@@ -35,7 +33,8 @@ Deno provides <a href="https://github.com/denoland/deno_std">a set of reviewed
 
 - Support TypeScript out of the box.
 
-- Like the browser, allows imports from URLs:
+- Uses "ES Modules" and does not support `require()`. Like the browser, allows
+  imports from URLs:
 
   ```ts
   import * as log from "https://deno.land/std/log/mod.ts";
@@ -44,8 +43,6 @@ Deno provides <a href="https://github.com/denoland/deno_std">a set of reviewed
 - Remote code is fetched and cached on first execution, and never updated until
   the code is run with the `--reload` flag. (So, this will still work on an
   airplane. See `~/.deno/src` for details on the cache.)
-
-- Uses "ES Modules" and does not support `require()`.
 
 - File system and network access can be controlled in order to run sandboxed
   code. Access between V8 (unprivileged) and Rust (privileged) is only done via
@@ -68,11 +65,15 @@ Deno provides <a href="https://github.com/denoland/deno_std">a set of reviewed
   ([Currently it is relatively slow.](https://deno.land/benchmarks.html#req-per-sec))
 
 - Provide useful tooling out of the box:
-  - command-line debugger
-    [not yet](https://github.com/denoland/deno/issues/1120)
-  - linter [not yet](https://github.com/denoland/deno/issues/1880)
   - dependency inspector (`deno info`)
   - code formatter (`deno fmt`),
+  - bundling (`deno bundle`)
+  - runtime type info (`deno types`)
+  - test runner (`deno test`)
+    [not yet](https://github.com/denoland/deno_std/issues/193)
+  - command-line debugger (`--debug`)
+    [not yet](https://github.com/denoland/deno/issues/1120)
+  - linter (`deno lint`) [not yet](https://github.com/denoland/deno/issues/1880)
 
 ### Non-goals
 
@@ -124,7 +125,7 @@ executable bit on Mac and Linux.
 Once it's installed and in your `$PATH`, try it:
 
 ```shell
-deno run https://deno.land/welcome.ts
+deno https://deno.land/welcome.ts
 ```
 
 ### Build from source
@@ -160,7 +161,7 @@ cd deno
 ./tools/build.py
 
 # Run.
-./target/debug/deno run tests/002_hello.ts
+./target/debug/deno tests/002_hello.ts
 
 # Test.
 ./tools/test.py
@@ -281,7 +282,7 @@ I/O streams in Deno.
 Try the program:
 
 ```shell
-$ deno run --allow-read https://deno.land/std/examples/cat.ts /etc/passwd
+$ deno --allow-read https://deno.land/std/examples/cat.ts /etc/passwd
 ```
 
 ### TCP echo server
@@ -307,7 +308,7 @@ When this program is started, the user is prompted for permission to listen on
 the network:
 
 ```shell
-$ deno run https://deno.land/std/examples/echo_server.ts
+$ deno https://deno.land/std/examples/echo_server.ts
 ⚠️  Deno requests network access to "listen". Grant? [a/y/n/d (a = allow always, y = allow once, n = deny once, d = deny always)]
 ```
 
@@ -315,23 +316,20 @@ For security reasons, deno does not allow programs to access the network without
 explicit permission. To avoid the console prompt, use a command-line flag:
 
 ```shell
-$ deno run --allow-net https://deno.land/std/examples/echo_server.ts
+$ deno --allow-net https://deno.land/std/examples/echo_server.ts
 ```
 
-To test it, try sending a HTTP request to it by using curl. The request gets
-written directly back to the client.
+To test it, try sending data to it with netcat:
 
 ```shell
-$ curl http://localhost:8080/
-GET / HTTP/1.1
-Host: localhost:8080
-User-Agent: curl/7.54.0
-Accept: */*
+$ nc localhost 8080
+hello world
+hello world
 ```
 
-It's worth noting that like the `cat.ts` example, the `copy()` function here
-also does not make unnecessary memory copies. It receives a packet from the
-kernel and sends back, without further complexity.
+Like the `cat.ts` example, the `copy()` function here also does not make
+unnecessary memory copies. It receives a packet from the kernel and sends back,
+without further complexity.
 
 ### Inspecting and revoking permissions
 
@@ -368,8 +366,7 @@ const { permissions, revokePermission, open, remove } = Deno;
 This one serves a local directory in HTTP.
 
 ```bash
-alias file_server="deno run --allow-net --allow-read \
-  https://deno.land/std/http/file_server.ts"
+deno install file_server https://deno.land/std/http/file_server.ts --allow-net --allow-read
 ```
 
 Run it:
@@ -394,14 +391,14 @@ deno also provides permissions whitelist.
 This is an example to restrict File system access by whitelist.
 
 ```shell
-$ deno run --allow-read=/usr https://deno.land/std/examples/cat.ts /etc/passwd
+$ deno --allow-read=/usr https://deno.land/std/examples/cat.ts /etc/passwd
 ⚠️  Deno requests read access to "/etc/passwd". Grant? [a/y/n/d (a = allow always, y = allow once, n = deny once, d = deny always)]
 ```
 
 You can grant read permission under `/etc` dir
 
 ```shell
-$ deno run --allow-read=/etc https://deno.land/std/examples/cat.ts /etc/passwd
+$ deno --allow-read=/etc https://deno.land/std/examples/cat.ts /etc/passwd
 ```
 
 `--allow-write` works same as `--allow-read`.
@@ -415,7 +412,7 @@ This is an example to restrict host.
 ```
 
 ```shell
-$ deno run --allow-net=deno.land allow-net-whitelist-example.ts
+$ deno --allow-net=deno.land allow-net-whitelist-example.ts
 ```
 
 ### Run subprocess
@@ -439,7 +436,7 @@ window.onload = async function() {
 Run it:
 
 ```shell
-$ deno run --allow-run ./subprocess_simple.ts
+$ deno --allow-run ./subprocess_simple.ts
 hello
 ```
 
