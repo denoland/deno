@@ -6,6 +6,21 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.12.0 / 2019.07.16
+
+In deno:
+
+- feat: Support window.onload (#2643)
+- feat: generate default file name for bundle when URL ends in a slash (#2625)
+- fix: for '-' arg after script name (#2631)
+- fix: upgrade v8 to 7.7.200 (#2624)
+
+In deno_std:
+
+- Rename catjson.ts to catj.ts (denoland/deno_std#533)
+- Remove os.userHomeDir in favor of Deno.homeDir (denoland/deno_std#523)
+- fix: emptydir on windows (denoland/deno_std#531)
+
 ### v0.11.0 / 2019.07.06
 
 In deno:
