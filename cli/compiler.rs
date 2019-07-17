@@ -198,6 +198,7 @@ impl TsCompiler {
     }
   }
 
+  /// Create a new V8 worker with snapshot of TS compiler and setup compiler's runtime.
   fn setup_worker(state: ThreadSafeState) -> Worker {
     // Count how many times we start the compiler worker.
     state.metrics.compiler_starts.fetch_add(1, Ordering::SeqCst);
@@ -265,16 +266,26 @@ impl TsCompiler {
     )
   }
 
+  /// Mark given module URL as compiled to avoid multiple compilations of same module
+  /// in single run.
   fn mark_compiled(&self, url: &Url) {
     let mut c = self.compiled.lock().unwrap();
     c.insert(url.clone());
   }
 
+  /// Check if given module URL has already been compiled and can be fetched directly from disk.
   fn has_compiled(&self, url: &Url) -> bool {
     let c = self.compiled.lock().unwrap();
     c.contains(url)
   }
 
+  /// Asynchronously compile module and all it's dependencies.
+  ///
+  /// This method compiled every module at most once.
+  ///
+  /// If `--reload` flag was provided then compiler will not on-disk cache and force recompilation.
+  ///
+  /// If compilation is required then new V8 worker is spawned with fresh TS compiler.
   pub fn compile_async(
     self: &Self,
     state: ThreadSafeState,
@@ -400,6 +411,7 @@ impl TsCompiler {
     Either::B(fut)
   }
 
+  /// Get associated `CompiledFileMetadata` for given module if it exists.
   pub fn get_metadata(self: &Self, url: &Url) -> Option<CompiledFileMetadata> {
     // Try to load cached version:
     // 1. check if there's 'meta' file
@@ -419,6 +431,7 @@ impl TsCompiler {
     None
   }
 
+  /// Return compiled JS file for given TS module.
   pub fn get_compiled_source_file(
     self: &Self,
     source_file: &SourceFile,
@@ -436,6 +449,10 @@ impl TsCompiler {
     self.deno_dir.fetch_source_file(&compiled_file_specifier)
   }
 
+  /// Save compiled JS file for given TS module to on-disk cache.
+  ///
+  /// Along compiled file a special metadata file is saved as well containing
+  /// hash that can be validated to avoid unnecessary recompilation.
   fn cache_compiled_file(
     self: &Self,
     module_specifier: &ModuleSpecifier,
@@ -475,6 +492,7 @@ impl TsCompiler {
       })
   }
 
+  /// Return associated source map file for given TS module.
   pub fn get_source_map_file(
     self: &Self,
     module_specifier: &ModuleSpecifier,
@@ -492,6 +510,7 @@ impl TsCompiler {
     self.deno_dir.fetch_source_file(&source_map_specifier)
   }
 
+  /// Save source map file for given TS module to on-disk cache.
   fn cache_source_map(
     self: &Self,
     module_specifier: &ModuleSpecifier,
@@ -503,6 +522,7 @@ impl TsCompiler {
     self.disk_cache.set(&source_map_key, contents.as_bytes())
   }
 
+  /// This method is called by TS compiler via an "op".
   pub fn cache_compiler_output(
     self: &Self,
     module_specifier: &ModuleSpecifier,

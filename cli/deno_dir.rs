@@ -27,6 +27,10 @@ use std::sync::Mutex;
 use url;
 use url::Url;
 
+/// Structure representing local or remote file.
+///
+/// In case of remote file `url` might be different than originally requested URL, if so
+/// `redirect_source_url` will contain original URL and `url` will be equal to final location.
 #[derive(Debug, Clone)]
 pub struct SourceFile {
   pub url: Url,
@@ -37,7 +41,8 @@ pub struct SourceFile {
 }
 
 impl SourceFile {
-  // TODO: this method should be implemented on CompiledSourceFile trait
+  // TODO(bartlomieju): this method should be implemented on new `CompiledSourceFile`
+  // trait and should be handled by "compiler pipeline"
   pub fn js_source(&self) -> String {
     if self.media_type == msg::MediaType::TypeScript {
       panic!("TypeScript module has no JS source, did you forget to run it through compiler?");
@@ -56,7 +61,7 @@ impl SourceFile {
   }
 }
 
-// TODO: this should be removed, but integration test 022_info_flag depends on
+// TODO(bartlomieju): this should be removed, but integration test 022_info_flag depends on
 // using "/" (forward slashes) or doesn't match output on Windows
 fn normalize_path(path: &Path) -> PathBuf {
   let s = String::from(path.to_str().unwrap());
@@ -73,6 +78,11 @@ fn normalize_path(path: &Path) -> PathBuf {
 pub type SourceFileFuture =
   dyn Future<Item = SourceFile, Error = ErrBox> + Send;
 
+/// This trait implements synchronous and asynchronous methods
+/// for file fetching.
+///
+/// Implementors might implement caching mechanism to
+/// minimize number of fs ops/net fetches.
 pub trait SourceFileFetcher {
   fn check_if_supported_scheme(url: &Url) -> Result<(), ErrBox>;
 
@@ -81,7 +91,6 @@ pub trait SourceFileFetcher {
     specifier: &ModuleSpecifier,
   ) -> Box<SourceFileFuture>;
 
-  /// Synchronous version of fetch_source_file_async
   /// Required for TS compiler.
   fn fetch_source_file(
     self: &Self,
@@ -92,6 +101,8 @@ pub trait SourceFileFetcher {
 // TODO: this list should be implemented on SourceFileFetcher trait
 const SUPPORTED_URL_SCHEMES: [&str; 3] = ["http", "https", "file"];
 
+/// Simple struct implementing in-process caching to prevent multiple
+/// fs reads/net fetches for same file.
 #[derive(Clone, Default)]
 pub struct SourceFileCache(Arc<Mutex<HashMap<String, SourceFile>>>);
 
@@ -110,8 +121,10 @@ impl SourceFileCache {
   }
 }
 
+/// `DenoDir` serves as coordinator for multiple `DiskCache`s containing them
+/// in single directory that can be controlled with `$DENO_DIR` env variable.
 #[derive(Clone)]
-// TODO: try to remove `pub` from fields
+// TODO(bartlomieju): try to remove `pub` from fields
 pub struct DenoDir {
   // Example: /Users/rld/.deno/
   pub root: PathBuf,
@@ -173,6 +186,8 @@ impl DenoDir {
   }
 }
 
+// TODO(bartlomieju): it might be a good idea to factor out this trait to separate
+// struct instead of implementing it on DenoDir
 impl SourceFileFetcher for DenoDir {
   fn check_if_supported_scheme(url: &Url) -> Result<(), ErrBox> {
     if !SUPPORTED_URL_SCHEMES.contains(&url.scheme()) {
@@ -194,6 +209,7 @@ impl SourceFileFetcher for DenoDir {
     let module_url = specifier.as_url().to_owned();
     debug!("fetch_source_file. specifier {} ", &module_url);
 
+    // Check if this file was already fetched and can be retrieved from in-process cache.
     if let Some(source_file) = self.source_file_cache.get(specifier.to_string())
     {
       return Box::new(futures::future::ok(source_file));
@@ -225,6 +241,7 @@ impl SourceFileFetcher for DenoDir {
           out.source_code = filter_shebang(out.source_code);
         }
 
+        // Cache in-process for subsequent access.
         source_file_cache.set(specifier_.to_string(), out.clone());
 
         Ok(out)
@@ -233,8 +250,6 @@ impl SourceFileFetcher for DenoDir {
     Box::new(fut)
   }
 
-  /// Synchronous version of fetch_source_file_async
-  /// Required by TypeScript compiler.
   fn fetch_source_file(
     self: &Self,
     specifier: &ModuleSpecifier,
@@ -245,19 +260,15 @@ impl SourceFileFetcher for DenoDir {
 
 // stuff related to SourceFileFetcher
 impl DenoDir {
-  /// This fetches source code, locally or remotely.
-  /// module_name is the URL specifying the module.
-  /// filename is the local path to the module (if remote, it is in the cache
-  /// folder, and potentially does not exist yet)
-  ///
-  /// It *does not* fill the compiled JS nor source map portions of
-  /// SourceFile. This is the only difference between this function and
-  /// fetch_source_file_async(). TODO(ry) change return type to reflect this
-  /// fact.
+  /// This is main method that is responsible for fetching local or remote files.
   ///
   /// If this is a remote module, and it has not yet been cached, the resulting
-  /// download will be written to "filename". This happens no matter the value of
-  /// use_disk_cache.
+  /// download will be cached on disk for subsequent access.
+  ///
+  /// If `use_disk_cache` is true then remote files are fetched from disk cache.
+  ///
+  /// If `no_remote_fetch` is true then if remote file is not found it disk
+  /// cache this method will fail.
   fn get_source_file_async(
     self: &Self,
     module_url: &Url,
@@ -330,7 +341,7 @@ impl DenoDir {
         }))
   }
 
-  /// Fetch local source file
+  /// Fetch local source file.
   fn fetch_local_file(
     self: &Self,
     module_url: &Url,
@@ -351,12 +362,12 @@ impl DenoDir {
     })
   }
 
-  /// Fetch cached remote source code.
+  /// Fetch cached remote file.
   ///
-  /// This is a recursive operation if source file has redirection.
+  /// This is a recursive operation if source file has redirections.
   ///
-  /// It will keep reading filename.headers.json for information about redirection.
-  /// module_initial_source_name would be None on first call,
+  /// It will keep reading <filename>.headers.json for information about redirection.
+  /// `module_initial_source_name` would be None on first call,
   /// and becomes the name of the very first module that initiates the call
   /// in subsequent recursions.
   ///
@@ -421,8 +432,7 @@ impl DenoDir {
     }))
   }
 
-  /// Asynchronously fetch remote source file specified by the URL `module_name`
-  /// and write it to disk at `filename`.
+  /// Asynchronously fetch remote source file specified by the URL following redirects.
   fn fetch_remote_source_async(
     self: &Self,
     module_url: &Url,
@@ -521,10 +531,11 @@ impl DenoDir {
     })
   }
 
-  /// Get header metadata associated with a single source code file.
-  /// NOTICE: chances are that the source code itself is not downloaded due to redirects.
+  /// Get header metadata associated with a remote file.
+  ///
+  /// NOTE: chances are that the source file was downloaded due to redirects.
   /// In this case, the headers file provides info about where we should go and get
-  /// the source code that redirect eventually points to (which should be cached).
+  /// the file that redirect eventually points to.
   fn get_source_code_headers(self: &Self, url: &Url) -> SourceCodeHeaders {
     let cache_key = self
       .deps_cache
@@ -539,6 +550,7 @@ impl DenoDir {
     SourceCodeHeaders::default()
   }
 
+  /// Save contents of downloaded remote file in on-disk cache for subsequent access.
   fn save_source_code(
     self: &Self,
     url: &Url,
@@ -552,10 +564,12 @@ impl DenoDir {
     self.deps_cache.set(&cache_key, source.as_bytes())
   }
 
-  /// Save headers related to source filename to {filename}.headers.json file,
+  /// Save headers related to source file to {filename}.headers.json file,
   /// only when there is actually something necessary to save.
+  ///
   /// For example, if the extension ".js" already mean JS file and we have
   /// content type of "text/javascript", then we would not save the mime type.
+  ///
   /// If nothing needs to be saved, the headers file is not created.
   fn save_source_code_headers(
     self: &Self,
