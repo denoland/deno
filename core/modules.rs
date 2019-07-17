@@ -36,7 +36,6 @@ pub struct SourceCodeInfo {
 pub type SourceCodeInfoFuture =
   dyn Future<Item = SourceCodeInfo, Error = ErrBox> + Send;
 
-// TODO: rename to ModuleLoader
 pub trait Loader: Send + Sync {
   /// Returns an absolute URL.
   /// When implementing an spec-complaint VM, this should be exactly the

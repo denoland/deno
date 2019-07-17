@@ -3,7 +3,6 @@ use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
 use crate::deno_error::GetErrorKind;
 use crate::disk_cache::DiskCache;
-use crate::fs as deno_fs;
 use crate::http_util;
 use crate::msg;
 use crate::progress::Progress;
@@ -165,14 +164,6 @@ impl DenoDir {
       use_disk_cache,
       no_remote_fetch,
     };
-
-    // TODO Lazily create these directories.
-    // TODO: once saving and loading of SourceFiles uses DiskCache API these calls can be removed
-    deno_fs::mkdir(deno_dir.deps_cache.location.as_ref(), 0o755, true)?;
-    let deps_http = deps.join("http");
-    let deps_https = deps.join("https");
-    deno_fs::mkdir(deps_http.as_ref(), 0o755, true)?;
-    deno_fs::mkdir(deps_https.as_ref(), 0o755, true)?;
 
     debug!("root {}", deno_dir.root.display());
     debug!("deps {}", deno_dir.deps_cache.location.display());
@@ -346,8 +337,6 @@ impl DenoDir {
   ) -> Result<SourceFile, ErrBox> {
     let filepath = module_url.to_file_path().expect("File URL expected");
 
-    // No redirect needed or end of redirects.
-    // We can try read the file
     let source_code = match fs::read(filepath.clone()) {
       Ok(c) => c,
       Err(e) => return Err(e.into()),
@@ -734,6 +723,7 @@ impl SourceCodeHeaders {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::fs as deno_fs;
   use tempfile::TempDir;
 
   impl DenoDir {

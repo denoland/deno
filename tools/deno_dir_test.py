@@ -32,13 +32,14 @@ class TestDenoDir(DenoTestCase):
         self.run_deno(deno_dir)
         assert os.path.isdir(deno_dir)
         assert os.path.isdir(os.path.join(deno_dir, "deps"))
-        # TODO: directories are lazily generated
-        # this assert is no longer needed?
-        # assert os.path.isdir(os.path.join(deno_dir, "gen"))
+        assert os.path.isdir(os.path.join(deno_dir, "gen"))
         rmtree(deno_dir)
 
     def run_deno(self, deno_dir=None):
-        cmd = [self.deno_exe, "run", "tests/002_hello.ts"]
+        cmd = [
+            self.deno_exe, "run",
+            "http://localhost:4545/testdata/subdir/print_hello.ts"
+        ]
         deno_dir_env = {"DENO_DIR": deno_dir} if deno_dir is not None else None
         res = run_output(cmd, quiet=True, env=deno_dir_env)
         self.assertEqual(res.code, 0)
