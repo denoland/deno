@@ -21,6 +21,7 @@ use ring;
 use std::collections::HashSet;
 use std::fmt::Write;
 use std::fs;
+use std::path::PathBuf;
 use std::str;
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;
@@ -29,14 +30,14 @@ use url::Url;
 /// Optional tuple which represents the state of the compiler
 /// configuration where the first is canonical name for the configuration file
 /// and a vector of the bytes of the contents of the configuration file.
-type CompilerConfig = Option<(String, Vec<u8>)>;
+type CompilerConfig = Option<(PathBuf, Vec<u8>)>;
 
 /// Information associated with compiled file in cache.
 /// Includes source code path and state hash.
 /// version_hash is used to validate versions of the file
 /// and could be used to remove stale file in cache.
 pub struct CompiledFileMetadata {
-  pub source_path: String,
+  pub source_path: PathBuf,
   pub version_hash: String,
 }
 
@@ -50,7 +51,7 @@ impl CompiledFileMetadata {
       serde_json::from_str(&metadata_string);
 
     if let Ok(metadata_json) = maybe_metadata_json {
-      let source_path = metadata_json[SOURCE_PATH].as_str().map(String::from);
+      let source_path = metadata_json[SOURCE_PATH].as_str().map(PathBuf::from);
       let version_hash = metadata_json[VERSION_HASH].as_str().map(String::from);
 
       if source_path.is_none() || version_hash.is_none() {
@@ -122,7 +123,7 @@ pub fn source_code_version_hash(
 
 fn load_config_file(
   config_path: Option<String>,
-) -> (Option<String>, Option<Vec<u8>>) {
+) -> (Option<PathBuf>, Option<Vec<u8>>) {
   // take the passed flag and resolve the file name relative to the cwd
   let config_file = match &config_path {
     Some(config_file_name) => {
@@ -136,14 +137,7 @@ fn load_config_file(
   // Convert the PathBuf to a canonicalized string.  This is needed by the
   // compiler to properly deal with the configuration.
   let config_path = match &config_file {
-    Some(config_file) => Some(
-      config_file
-        .canonicalize()
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .to_owned(),
-    ),
+    Some(config_file) => Some(config_file.canonicalize().unwrap().to_owned()),
     _ => None,
   };
 
@@ -170,10 +164,11 @@ pub struct TsCompiler {
   pub config: CompilerConfig,
   pub config_hash: Vec<u8>,
   pub disk_cache: DiskCache,
-  /// Set of all URLs that have been compiled. This is a hacky way to work
-  /// around the fact that --reload will force multiple compilations of the same
-  /// module.
-  pub compiled: Mutex<HashSet<String>>,
+  /// Set of all URLs that have been compiled. This prevents double
+  /// compilation of module.
+  pub compiled: Mutex<HashSet<Url>>,
+  /// This setting is controlled by `--reload` flag. Unless the flag
+  /// is provided disk cache is used.
   pub use_disk_cache: bool,
 }
 
@@ -184,9 +179,7 @@ impl TsCompiler {
     config_path: Option<String>,
   ) -> Self {
     let compiler_config = match load_config_file(config_path) {
-      (Some(config_path), Some(config)) => {
-        Some((config_path.to_string(), config.to_vec()))
-      }
+      (Some(config_path), Some(config)) => Some((config_path, config.to_vec())),
       _ => None,
     };
 
@@ -272,14 +265,14 @@ impl TsCompiler {
     )
   }
 
-  fn mark_compiled(&self, module_id: &str) {
+  fn mark_compiled(&self, url: &Url) {
     let mut c = self.compiled.lock().unwrap();
-    c.insert(module_id.to_string());
+    c.insert(url.clone());
   }
 
-  fn has_compiled(&self, module_id: &str) -> bool {
+  fn has_compiled(&self, url: &Url) -> bool {
     let c = self.compiled.lock().unwrap();
-    c.contains(module_id)
+    c.contains(url)
   }
 
   pub fn compile_async(
@@ -293,7 +286,7 @@ impl TsCompiler {
       return Either::A(futures::future::ok(source_file.clone()));
     }
 
-    if self.has_compiled(&source_file.url.to_string()) {
+    if self.has_compiled(&source_file.url) {
       match self.get_compiled_source_file(&source_file) {
         Ok(compiled_module) => {
           return Either::A(futures::future::ok(compiled_module));
@@ -462,7 +455,7 @@ impl TsCompiler {
       .disk_cache
       .set(&js_key, contents.as_bytes())
       .and_then(|_| {
-        self.mark_compiled(&module_specifier.to_string());
+        self.mark_compiled(module_specifier.as_url());
 
         let source_file = self
           .deno_dir
@@ -476,7 +469,7 @@ impl TsCompiler {
         );
 
         let compiled_file_metadata = CompiledFileMetadata {
-          source_path: source_file.filename.to_str().unwrap().to_string(),
+          source_path: source_file.filename.to_owned(),
           version_hash,
         };
         let meta_key = self
@@ -536,7 +529,30 @@ impl TsCompiler {
       _ => unreachable!(),
     }
   }
+}
 
+impl SourceMapGetter for TsCompiler {
+  fn get_source_map(&self, script_name: &str) -> Option<Vec<u8>> {
+    self
+      .try_to_resolve_and_get_source_map(script_name)
+      .and_then(|out| Some(out.source_code))
+  }
+
+  fn get_source_line(&self, script_name: &str, line: usize) -> Option<String> {
+    self
+      .try_resolve_and_get_source_file(script_name)
+      .and_then(|out| {
+        str::from_utf8(&out.source_code).ok().and_then(|v| {
+          let lines: Vec<&str> = v.lines().collect();
+          assert!(lines.len() > line);
+          Some(lines[line].to_string())
+        })
+      })
+  }
+}
+
+// `SourceMapGetter` related methods
+impl TsCompiler {
   fn try_to_resolve(self: &Self, script_name: &str) -> Option<ModuleSpecifier> {
     // if `script_name` can't be resolved to ModuleSpecifier it's probably internal
     // script (like `gen/cli/bundle/compiler.js`) so we won't be
@@ -570,28 +586,6 @@ impl TsCompiler {
     }
 
     None
-  }
-}
-
-impl SourceMapGetter for TsCompiler {
-  fn get_source_map(&self, script_name: &str) -> Option<Vec<u8>> {
-    self
-      .try_to_resolve_and_get_source_map(script_name)
-      .and_then(|out| Some(out.source_code))
-  }
-
-  fn get_source_line(&self, script_name: &str, line: usize) -> Option<String> {
-    // TODO: maybe it's worth caching vector of lines after first access
-    // because this function might be called several times for each file
-    self
-      .try_resolve_and_get_source_file(script_name)
-      .and_then(|out| {
-        str::from_utf8(&out.source_code).ok().and_then(|v| {
-          let lines: Vec<&str> = v.lines().collect();
-          assert!(lines.len() > line);
-          Some(lines[line].to_string())
-        })
-      })
   }
 }
 
