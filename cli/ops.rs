@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use atty;
 use crate::ansi;
-use crate::deno_dir::resolve_from_cwd;
+use crate::deno_dir::SourceFileFetcher;
 use crate::deno_error;
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
@@ -206,7 +206,7 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<CliDispatchFn> {
     msg::Any::Environ => Some(op_env),
     msg::Any::Exit => Some(op_exit),
     msg::Any::Fetch => Some(op_fetch),
-    msg::Any::FetchModuleMetaData => Some(op_fetch_module_meta_data),
+    msg::Any::FetchSourceFile => Some(op_fetch_source_file),
     msg::Any::FormatError => Some(op_format_error),
     msg::Any::GetRandomValues => Some(op_get_random_values),
     msg::Any::GlobalTimer => Some(op_global_timer),
@@ -411,7 +411,7 @@ fn op_format_error(
   assert!(data.is_none());
   let inner = base.inner_as_format_error().unwrap();
   let json_str = inner.error().unwrap();
-  let error = JSError::from_json(json_str, &state.dir);
+  let error = JSError::from_json(json_str, &state.ts_compiler);
   let error_string = error.to_string();
 
   let mut builder = FlatBufferBuilder::new();
@@ -472,40 +472,20 @@ fn op_cache(
   let module_id = inner.module_id().unwrap();
   let contents = inner.contents().unwrap();
 
-  state.mark_compiled(&module_id);
-
-  // TODO It shouldn't be necessary to call fetch_module_meta_data() here.
-  // However, we need module_meta_data.source_code in order to calculate the
-  // cache path. In the future, checksums will not be used in the cache
-  // filenames and this requirement can be removed. See
-  // https://github.com/denoland/deno/issues/2057
   let module_specifier = ModuleSpecifier::resolve_url(module_id)
     .expect("Should be valid module specifier");
-  let module_meta_data =
-    state
-      .dir
-      .fetch_module_meta_data(&module_specifier, true, true)?;
 
-  let (js_cache_path, source_map_path) = state.dir.cache_path(
-    &PathBuf::from(&module_meta_data.filename),
-    &module_meta_data.source_code,
-  );
-
-  if extension == ".map" {
-    debug!("cache {:?}", source_map_path);
-    fs::write(source_map_path, contents).map_err(ErrBox::from)?;
-  } else if extension == ".js" {
-    debug!("cache {:?}", js_cache_path);
-    fs::write(js_cache_path, contents).map_err(ErrBox::from)?;
-  } else {
-    unreachable!();
-  }
+  state.ts_compiler.cache_compiler_output(
+    &module_specifier,
+    extension,
+    contents,
+  )?;
 
   ok_buf(empty_buf())
 }
 
 // https://github.com/denoland/deno/blob/golang/os.go#L100-L154
-fn op_fetch_module_meta_data(
+fn op_fetch_source_file(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
@@ -514,36 +494,32 @@ fn op_fetch_module_meta_data(
     return Err(deno_error::no_async_support());
   }
   assert!(data.is_none());
-  let inner = base.inner_as_fetch_module_meta_data().unwrap();
+  let inner = base.inner_as_fetch_source_file().unwrap();
   let cmd_id = base.cmd_id();
   let specifier = inner.specifier().unwrap();
   let referrer = inner.referrer().unwrap();
 
-  assert_eq!(state.dir.root.join("gen"), state.dir.gen, "Sanity check");
-
-  let use_cache = !state.flags.reload;
-  let no_fetch = state.flags.no_fetch;
   let resolved_specifier = state.resolve(specifier, referrer, false)?;
 
   let fut = state
     .dir
-    .fetch_module_meta_data_async(&resolved_specifier, use_cache, no_fetch)
+    .fetch_source_file_async(&resolved_specifier)
     .and_then(move |out| {
       let builder = &mut FlatBufferBuilder::new();
       let data_off = builder.create_vector(out.source_code.as_slice());
-      let msg_args = msg::FetchModuleMetaDataResArgs {
-        module_name: Some(builder.create_string(&out.module_name)),
+      let msg_args = msg::FetchSourceFileResArgs {
+        module_name: Some(builder.create_string(&out.url.to_string())),
         filename: Some(builder.create_string(&out.filename.to_str().unwrap())),
         media_type: out.media_type,
         data: Some(data_off),
       };
-      let inner = msg::FetchModuleMetaDataRes::create(builder, &msg_args);
+      let inner = msg::FetchSourceFileRes::create(builder, &msg_args);
       Ok(serialize_response(
         cmd_id,
         builder,
         msg::BaseArgs {
           inner: Some(inner.as_union_value()),
-          inner_type: msg::Any::FetchModuleMetaDataRes,
+          inner_type: msg::Any::FetchSourceFileRes,
           ..Default::default()
         },
       ))
@@ -857,7 +833,7 @@ fn op_mkdir(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_mkdir().unwrap();
-  let (path, path_) = resolve_from_cwd(inner.path().unwrap())?;
+  let (path, path_) = deno_fs::resolve_from_cwd(inner.path().unwrap())?;
   let recursive = inner.recursive();
   let mode = inner.mode();
 
@@ -878,7 +854,7 @@ fn op_chmod(
   assert!(data.is_none());
   let inner = base.inner_as_chmod().unwrap();
   let _mode = inner.mode();
-  let (path, path_) = resolve_from_cwd(inner.path().unwrap())?;
+  let (path, path_) = deno_fs::resolve_from_cwd(inner.path().unwrap())?;
 
   state.check_write(&path_)?;
 
@@ -926,7 +902,8 @@ fn op_open(
   assert!(data.is_none());
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_open().unwrap();
-  let (filename, filename_) = resolve_from_cwd(inner.filename().unwrap())?;
+  let (filename, filename_) =
+    deno_fs::resolve_from_cwd(inner.filename().unwrap())?;
   let mode = inner.mode().unwrap();
 
   let mut open_options = tokio::fs::OpenOptions::new();
@@ -1177,7 +1154,7 @@ fn op_remove(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_remove().unwrap();
-  let (path, path_) = resolve_from_cwd(inner.path().unwrap())?;
+  let (path, path_) = deno_fs::resolve_from_cwd(inner.path().unwrap())?;
   let recursive = inner.recursive();
 
   state.check_write(&path_)?;
@@ -1203,8 +1180,8 @@ fn op_copy_file(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_copy_file().unwrap();
-  let (from, from_) = resolve_from_cwd(inner.from().unwrap())?;
-  let (to, to_) = resolve_from_cwd(inner.to().unwrap())?;
+  let (from, from_) = deno_fs::resolve_from_cwd(inner.from().unwrap())?;
+  let (to, to_) = deno_fs::resolve_from_cwd(inner.to().unwrap())?;
 
   state.check_read(&from_)?;
   state.check_write(&to_)?;
@@ -1278,7 +1255,8 @@ fn op_stat(
   assert!(data.is_none());
   let inner = base.inner_as_stat().unwrap();
   let cmd_id = base.cmd_id();
-  let (filename, filename_) = resolve_from_cwd(inner.filename().unwrap())?;
+  let (filename, filename_) =
+    deno_fs::resolve_from_cwd(inner.filename().unwrap())?;
   let lstat = inner.lstat();
 
   state.check_read(&filename_)?;
@@ -1327,7 +1305,7 @@ fn op_read_dir(
   assert!(data.is_none());
   let inner = base.inner_as_read_dir().unwrap();
   let cmd_id = base.cmd_id();
-  let (path, path_) = resolve_from_cwd(inner.path().unwrap())?;
+  let (path, path_) = deno_fs::resolve_from_cwd(inner.path().unwrap())?;
 
   state.check_read(&path_)?;
 
@@ -1383,8 +1361,9 @@ fn op_rename(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_rename().unwrap();
-  let (oldpath, _) = resolve_from_cwd(inner.oldpath().unwrap())?;
-  let (newpath, newpath_) = resolve_from_cwd(inner.newpath().unwrap())?;
+  let (oldpath, _) = deno_fs::resolve_from_cwd(inner.oldpath().unwrap())?;
+  let (newpath, newpath_) =
+    deno_fs::resolve_from_cwd(inner.newpath().unwrap())?;
 
   state.check_write(&newpath_)?;
 
@@ -1402,8 +1381,9 @@ fn op_link(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_link().unwrap();
-  let (oldname, _) = resolve_from_cwd(inner.oldname().unwrap())?;
-  let (newname, newname_) = resolve_from_cwd(inner.newname().unwrap())?;
+  let (oldname, _) = deno_fs::resolve_from_cwd(inner.oldname().unwrap())?;
+  let (newname, newname_) =
+    deno_fs::resolve_from_cwd(inner.newname().unwrap())?;
 
   state.check_write(&newname_)?;
 
@@ -1421,8 +1401,9 @@ fn op_symlink(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_symlink().unwrap();
-  let (oldname, _) = resolve_from_cwd(inner.oldname().unwrap())?;
-  let (newname, newname_) = resolve_from_cwd(inner.newname().unwrap())?;
+  let (oldname, _) = deno_fs::resolve_from_cwd(inner.oldname().unwrap())?;
+  let (newname, newname_) =
+    deno_fs::resolve_from_cwd(inner.newname().unwrap())?;
 
   state.check_write(&newname_)?;
   // TODO Use type for Windows.
@@ -1447,7 +1428,7 @@ fn op_read_link(
   assert!(data.is_none());
   let inner = base.inner_as_readlink().unwrap();
   let cmd_id = base.cmd_id();
-  let (name, name_) = resolve_from_cwd(inner.name().unwrap())?;
+  let (name, name_) = deno_fs::resolve_from_cwd(inner.name().unwrap())?;
 
   state.check_read(&name_)?;
 
@@ -1549,7 +1530,7 @@ fn op_truncate(
   assert!(data.is_none());
 
   let inner = base.inner_as_truncate().unwrap();
-  let (filename, filename_) = resolve_from_cwd(inner.name().unwrap())?;
+  let (filename, filename_) = deno_fs::resolve_from_cwd(inner.name().unwrap())?;
   let len = inner.len();
 
   state.check_write(&filename_)?;

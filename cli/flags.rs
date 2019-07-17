@@ -5,7 +5,7 @@ use clap::Arg;
 use clap::ArgMatches;
 use clap::Shell;
 use clap::SubCommand;
-use crate::deno_dir;
+use crate::fs as deno_fs;
 use deno::ModuleSpecifier;
 use log::Level;
 use std;
@@ -419,7 +419,7 @@ Example:
 fn resolve_paths(paths: Vec<String>) -> Vec<String> {
   let mut out: Vec<String> = vec![];
   for pathstr in paths.iter() {
-    let result = deno_dir::resolve_from_cwd(pathstr);
+    let result = deno_fs::resolve_from_cwd(pathstr);
     if result.is_err() {
       eprintln!("Unrecognized path to whitelist: {}", pathstr);
       continue;
@@ -1161,7 +1161,7 @@ mod tests {
     use tempfile::TempDir;
     let temp_dir = TempDir::new().expect("tempdir fail");
     let (_, temp_dir_path) =
-      deno_dir::resolve_from_cwd(temp_dir.path().to_str().unwrap()).unwrap();
+      deno_fs::resolve_from_cwd(temp_dir.path().to_str().unwrap()).unwrap();
 
     let (flags, subcommand, argv) = flags_from_vec(svec![
       "deno",
@@ -1186,7 +1186,7 @@ mod tests {
     use tempfile::TempDir;
     let temp_dir = TempDir::new().expect("tempdir fail");
     let (_, temp_dir_path) =
-      deno_dir::resolve_from_cwd(temp_dir.path().to_str().unwrap()).unwrap();
+      deno_fs::resolve_from_cwd(temp_dir.path().to_str().unwrap()).unwrap();
 
     let (flags, subcommand, argv) = flags_from_vec(svec![
       "deno",

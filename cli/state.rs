@@ -1,11 +1,11 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::compiler::compile_async;
-use crate::compiler::ModuleMetaData;
+use crate::compiler::TsCompiler;
 use crate::deno_dir;
+use crate::deno_dir::SourceFile;
+use crate::deno_dir::SourceFileFetcher;
 use crate::flags;
 use crate::global_timer::GlobalTimer;
 use crate::import_map::ImportMap;
-use crate::msg;
 use crate::ops;
 use crate::permissions::DenoPermissions;
 use crate::progress::Progress;
@@ -18,16 +18,13 @@ use deno::ErrBox;
 use deno::Loader;
 use deno::ModuleSpecifier;
 use deno::PinnedBuf;
-use futures::future::Either;
 use futures::future::Shared;
 use futures::Future;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use std;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::env;
-use std::fs;
 use std::ops::Deref;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -64,12 +61,6 @@ pub struct State {
   pub argv: Vec<String>,
   pub permissions: DenoPermissions,
   pub flags: flags::DenoFlags,
-  /// When flags contains a `.config_path` option, the content of the
-  /// configuration file will be resolved and set.
-  pub config: Option<Vec<u8>>,
-  /// When flags contains a `.config_path` option, the fully qualified path
-  /// name of the passed path will be resolved and set.
-  pub config_path: Option<String>,
   /// When flags contains a `.import_map_path` option, the content of the
   /// import map file will be resolved and set.
   pub import_map: Option<ImportMap>,
@@ -85,10 +76,7 @@ pub struct State {
   pub progress: Progress,
   pub seeded_rng: Option<Mutex<StdRng>>,
 
-  /// Set of all URLs that have been compiled. This is a hacky way to work
-  /// around the fact that --reload will force multiple compilations of the same
-  /// module.
-  compiled: Mutex<HashSet<String>>,
+  pub ts_compiler: TsCompiler,
 }
 
 impl Clone for ThreadSafeState {
@@ -114,37 +102,25 @@ impl ThreadSafeState {
   }
 }
 
-pub fn fetch_module_meta_data_and_maybe_compile_async(
+pub fn fetch_source_file_and_maybe_compile_async(
   state: &ThreadSafeState,
   module_specifier: &ModuleSpecifier,
-) -> impl Future<Item = ModuleMetaData, Error = ErrBox> {
+) -> impl Future<Item = SourceFile, Error = ErrBox> {
   let state_ = state.clone();
-  let use_cache =
-    !state_.flags.reload || state_.has_compiled(&module_specifier.to_string());
-  let no_fetch = state_.flags.no_fetch;
 
   state_
     .dir
-    .fetch_module_meta_data_async(&module_specifier, use_cache, no_fetch)
+    .fetch_source_file_async(&module_specifier)
     .and_then(move |out| {
-      if out.media_type == msg::MediaType::TypeScript
-        && !out.has_output_code_and_source_map()
-      {
-        debug!(">>>>> compile_sync START");
-        Either::A(
-          compile_async(state_.clone(), &out)
-            .map_err(|e| {
-              debug!("compiler error exiting!");
-              eprintln!("\n{}", e.to_string());
-              std::process::exit(1);
-            }).and_then(move |out| {
-              debug!(">>>>> compile_sync END");
-              Ok(out)
-            }),
-        )
-      } else {
-        Either::B(futures::future::ok(out))
-      }
+      state_
+        .clone()
+        .ts_compiler
+        .compile_async(state_.clone(), &out)
+        .map_err(|e| {
+          debug!("compiler error exiting!");
+          eprintln!("\n{}", e.to_string());
+          std::process::exit(1);
+        })
     })
 }
 
@@ -174,13 +150,14 @@ impl Loader for ThreadSafeState {
   ) -> Box<deno::SourceCodeInfoFuture> {
     self.metrics.resolve_count.fetch_add(1, Ordering::SeqCst);
     Box::new(
-      fetch_module_meta_data_and_maybe_compile_async(self, module_specifier)
-        .map(|module_meta_data| deno::SourceCodeInfo {
-          // Real module name, might be different from initial URL
+      fetch_source_file_and_maybe_compile_async(self, module_specifier).map(
+        |source_file| deno::SourceCodeInfo {
+          // Real module name, might be different from initial specifier
           // due to redirections.
-          code: module_meta_data.js_source(),
-          module_name: module_meta_data.module_name,
-        }),
+          code: source_file.js_source(),
+          module_name: source_file.url.to_string(),
+        },
+      ),
     )
   }
 }
@@ -200,47 +177,12 @@ impl ThreadSafeState {
     let external_channels = (worker_in_tx, worker_out_rx);
     let resource = resources::add_worker(external_channels);
 
-    // take the passed flag and resolve the file name relative to the cwd
-    let config_file = match &flags.config_path {
-      Some(config_file_name) => {
-        debug!("Compiler config file: {}", config_file_name);
-        let cwd = std::env::current_dir().unwrap();
-        Some(cwd.join(config_file_name))
-      }
-      _ => None,
-    };
-
-    // Convert the PathBuf to a canonicalized string.  This is needed by the
-    // compiler to properly deal with the configuration.
-    let config_path = match &config_file {
-      Some(config_file) => Some(
-        config_file
-          .canonicalize()
-          .unwrap()
-          .to_str()
-          .unwrap()
-          .to_owned(),
-      ),
-      _ => None,
-    };
-
-    // Load the contents of the configuration file
-    let config = match &config_file {
-      Some(config_file) => {
-        debug!("Attempt to load config: {}", config_file.to_str().unwrap());
-        match fs::read(&config_file) {
-          Ok(config_data) => Some(config_data.to_owned()),
-          _ => panic!(
-            "Error retrieving compiler config file at \"{}\"",
-            config_file.to_str().unwrap()
-          ),
-        }
-      }
-      _ => None,
-    };
-
-    let dir =
-      deno_dir::DenoDir::new(custom_root, &config, progress.clone()).unwrap();
+    let dir = deno_dir::DenoDir::new(
+      custom_root,
+      progress.clone(),
+      !flags.reload,
+      flags.no_fetch,
+    ).unwrap();
 
     let main_module: Option<ModuleSpecifier> = if argv_rest.len() <= 1 {
       None
@@ -278,6 +220,9 @@ impl ThreadSafeState {
 
     let modules = Arc::new(Mutex::new(deno::Modules::new()));
 
+    let ts_compiler =
+      TsCompiler::new(dir.clone(), !flags.reload, flags.config_path.clone());
+
     ThreadSafeState(Arc::new(State {
       main_module,
       modules,
@@ -285,8 +230,6 @@ impl ThreadSafeState {
       argv: argv_rest,
       permissions: DenoPermissions::from_flags(&flags),
       flags,
-      config,
-      config_path,
       import_map,
       metrics: Metrics::default(),
       worker_channels: Mutex::new(internal_channels),
@@ -297,7 +240,7 @@ impl ThreadSafeState {
       dispatch_selector,
       progress,
       seeded_rng,
-      compiled: Mutex::new(HashSet::new()),
+      ts_compiler,
     }))
   }
 
@@ -307,16 +250,6 @@ impl ThreadSafeState {
       Some(module_specifier) => Some(module_specifier.clone()),
       None => None,
     }
-  }
-
-  pub fn mark_compiled(&self, module_id: &str) {
-    let mut c = self.compiled.lock().unwrap();
-    c.insert(module_id.to_string());
-  }
-
-  pub fn has_compiled(&self, module_id: &str) -> bool {
-    let c = self.compiled.lock().unwrap();
-    c.contains(module_id)
   }
 
   #[inline]

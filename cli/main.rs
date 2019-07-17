@@ -13,12 +13,14 @@ extern crate indexmap;
 #[cfg(unix)]
 extern crate nix;
 extern crate rand;
+extern crate url;
 
 mod ansi;
 pub mod compiler;
 pub mod deno_dir;
 pub mod deno_error;
 pub mod diagnostics;
+mod disk_cache;
 mod dispatch_minimal;
 pub mod flags;
 pub mod fmt_errors;
@@ -45,7 +47,7 @@ mod tokio_write;
 pub mod version;
 pub mod worker;
 
-use crate::compiler::bundle_async;
+use crate::deno_dir::SourceFileFetcher;
 use crate::progress::Progress;
 use crate::state::ThreadSafeState;
 use crate::worker::Worker;
@@ -101,55 +103,77 @@ pub fn print_file_info(
   worker: Worker,
   module_specifier: &ModuleSpecifier,
 ) -> impl Future<Item = Worker, Error = ()> {
-  state::fetch_module_meta_data_and_maybe_compile_async(
-    &worker.state,
-    module_specifier,
-  ).and_then(move |out| {
-    println!(
-      "{} {}",
-      ansi::bold("local:".to_string()),
-      out.filename.to_str().unwrap()
-    );
+  let state_ = worker.state.clone();
+  let module_specifier_ = module_specifier.clone();
 
-    println!(
-      "{} {}",
-      ansi::bold("type:".to_string()),
-      msg::enum_name_media_type(out.media_type)
-    );
-
-    if out.maybe_output_code_filename.is_some() {
+  state_
+    .dir
+    .fetch_source_file_async(&module_specifier)
+    .map_err(|err| println!("{}", err))
+    .and_then(move |out| {
       println!(
         "{} {}",
-        ansi::bold("compiled:".to_string()),
-        out.maybe_output_code_filename.unwrap().to_str().unwrap(),
+        ansi::bold("local:".to_string()),
+        out.filename.to_str().unwrap()
       );
-    }
 
-    if out.maybe_source_map_filename.is_some() {
       println!(
         "{} {}",
-        ansi::bold("map:".to_string()),
-        out.maybe_source_map_filename.unwrap().to_str().unwrap()
+        ansi::bold("type:".to_string()),
+        msg::enum_name_media_type(out.media_type)
       );
-    }
 
-    if let Some(deps) =
-      worker.state.modules.lock().unwrap().deps(&out.module_name)
-    {
-      println!("{}{}", ansi::bold("deps:\n".to_string()), deps.name);
-      if let Some(ref depsdeps) = deps.deps {
-        for d in depsdeps {
-          println!("{}", d);
-        }
-      }
-    } else {
-      println!(
-        "{} cannot retrieve full dependency graph",
-        ansi::bold("deps:".to_string()),
-      );
-    }
-    Ok(worker)
-  }).map_err(|err| println!("{}", err))
+      state_
+        .clone()
+        .ts_compiler
+        .compile_async(state_.clone(), &out)
+        .map_err(|e| {
+          debug!("compiler error exiting!");
+          eprintln!("\n{}", e.to_string());
+          std::process::exit(1);
+        }).and_then(move |compiled| {
+          if out.media_type == msg::MediaType::TypeScript {
+            println!(
+              "{} {}",
+              ansi::bold("compiled:".to_string()),
+              compiled.filename.to_str().unwrap(),
+            );
+          }
+
+          if let Ok(source_map) = state_
+            .clone()
+            .ts_compiler
+            .get_source_map_file(&module_specifier_)
+          {
+            println!(
+              "{} {}",
+              ansi::bold("map:".to_string()),
+              source_map.filename.to_str().unwrap()
+            );
+          }
+
+          if let Some(deps) = worker
+            .state
+            .modules
+            .lock()
+            .unwrap()
+            .deps(&compiled.url.to_string())
+          {
+            println!("{}{}", ansi::bold("deps:\n".to_string()), deps.name);
+            if let Some(ref depsdeps) = deps.deps {
+              for d in depsdeps {
+                println!("{}", d);
+              }
+            }
+          } else {
+            println!(
+              "{} cannot retrieve full dependency graph",
+              ansi::bold("deps:".to_string()),
+            );
+          }
+          Ok(worker)
+        })
+    })
 }
 
 fn create_worker_and_state(
@@ -273,7 +297,9 @@ fn bundle_command(flags: DenoFlags, argv: Vec<String>) {
   assert!(state.argv.len() >= 3);
   let out_file = state.argv[2].clone();
   debug!(">>>>> bundle_async START");
-  let bundle_future = bundle_async(state, main_module.to_string(), out_file)
+  let bundle_future = state
+    .ts_compiler
+    .bundle_async(state.clone(), main_module.to_string(), out_file)
     .map_err(|err| {
       debug!("diagnostics returned, exiting!");
       eprintln!("");
