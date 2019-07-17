@@ -42,6 +42,7 @@ class TestDenoDir(DenoTestCase):
         ]
         deno_dir_env = {"DENO_DIR": deno_dir} if deno_dir is not None else None
         res = run_output(cmd, quiet=True, env=deno_dir_env)
+        print res.code, res.out, res.err
         self.assertEqual(res.code, 0)
 
 
