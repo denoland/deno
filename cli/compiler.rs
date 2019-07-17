@@ -419,8 +419,6 @@ impl TsCompiler {
     None
   }
 
-  // TODO: ideally we shouldn't construct SourceFile by hand, but it should be delegated to
-  // SourceFileFetcher
   pub fn get_compiled_source_file(
     self: &Self,
     source_file: &SourceFile,
@@ -428,19 +426,14 @@ impl TsCompiler {
     let cache_key = self
       .disk_cache
       .get_cache_filename_with_extension(&source_file.url, "js");
-    let compiled_code = self.disk_cache.get(&cache_key)?;
     let compiled_code_filename = self.disk_cache.location.join(cache_key);
     debug!("compiled filename: {:?}", compiled_code_filename);
 
-    let compiled_module = SourceFile {
-      url: source_file.url.clone(),
-      redirect_source_url: None,
-      filename: compiled_code_filename,
-      media_type: msg::MediaType::JavaScript,
-      source_code: compiled_code,
-    };
+    let compiled_file_specifier = ModuleSpecifier::resolve_url_or_path(
+      compiled_code_filename.to_str().unwrap(),
+    )?;
 
-    Ok(compiled_module)
+    self.deno_dir.fetch_source_file(&compiled_file_specifier)
   }
 
   fn cache_compiled_file(
@@ -482,8 +475,6 @@ impl TsCompiler {
       })
   }
 
-  // TODO: ideally we shouldn't construct SourceFile by hand, but it should be delegated to
-  // SourceFileFetcher
   pub fn get_source_map_file(
     self: &Self,
     module_specifier: &ModuleSpecifier,
@@ -491,19 +482,14 @@ impl TsCompiler {
     let cache_key = self
       .disk_cache
       .get_cache_filename_with_extension(module_specifier.as_url(), "js.map");
-    let source_code = self.disk_cache.get(&cache_key)?;
     let source_map_filename = self.disk_cache.location.join(cache_key);
+    let source_map_specifier = ModuleSpecifier::resolve_url_or_path(
+      source_map_filename.to_str().unwrap(),
+    )?;
+
     debug!("source map filename: {:?}", source_map_filename);
 
-    let source_map_file = SourceFile {
-      url: module_specifier.as_url().to_owned(),
-      redirect_source_url: None,
-      filename: source_map_filename,
-      media_type: msg::MediaType::JavaScript,
-      source_code,
-    };
-
-    Ok(source_map_file)
+    self.deno_dir.fetch_source_file(&source_map_specifier)
   }
 
   fn cache_source_map(
