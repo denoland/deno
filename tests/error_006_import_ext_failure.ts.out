@@ -4,7 +4,7 @@
     at maybeError (js/errors.ts:[WILDCARD])
     at maybeThrowError (js/errors.ts:[WILDCARD])
     at sendSync (js/dispatch.ts:[WILDCARD])
-    at fetchModuleMetaData (js/compiler.ts:[WILDCARD])
+    at fetchSourceFile (js/compiler.ts:[WILDCARD])
     at _resolveModule (js/compiler.ts:[WILDCARD])
     at js/compiler.ts:[WILDCARD]
     at resolveModuleNamesWorker ([WILDCARD])

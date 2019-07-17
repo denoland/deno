@@ -107,7 +107,7 @@ const ignoredCompilerOptions: ReadonlyArray<string> = [
   "watch"
 ];
 
-interface ModuleMetaData {
+interface SourceFile {
   moduleName: string | undefined;
   filename: string | undefined;
   mediaType: msg.MediaType;
@@ -120,37 +120,34 @@ interface EmitResult {
 }
 
 /** Ops to Rust to resolve and fetch a modules meta data. */
-function fetchModuleMetaData(
-  specifier: string,
-  referrer: string
-): ModuleMetaData {
-  util.log("compiler.fetchModuleMetaData", { specifier, referrer });
-  // Send FetchModuleMetaData message
+function fetchSourceFile(specifier: string, referrer: string): SourceFile {
+  util.log("compiler.fetchSourceFile", { specifier, referrer });
+  // Send FetchSourceFile message
   const builder = flatbuffers.createBuilder();
   const specifier_ = builder.createString(specifier);
   const referrer_ = builder.createString(referrer);
-  const inner = msg.FetchModuleMetaData.createFetchModuleMetaData(
+  const inner = msg.FetchSourceFile.createFetchSourceFile(
     builder,
     specifier_,
     referrer_
   );
-  const baseRes = sendSync(builder, msg.Any.FetchModuleMetaData, inner);
+  const baseRes = sendSync(builder, msg.Any.FetchSourceFile, inner);
   assert(baseRes != null);
   assert(
-    msg.Any.FetchModuleMetaDataRes === baseRes!.innerType(),
+    msg.Any.FetchSourceFileRes === baseRes!.innerType(),
     `base.innerType() unexpectedly is ${baseRes!.innerType()}`
   );
-  const fetchModuleMetaDataRes = new msg.FetchModuleMetaDataRes();
-  assert(baseRes!.inner(fetchModuleMetaDataRes) != null);
-  const dataArray = fetchModuleMetaDataRes.dataArray();
+  const fetchSourceFileRes = new msg.FetchSourceFileRes();
+  assert(baseRes!.inner(fetchSourceFileRes) != null);
+  const dataArray = fetchSourceFileRes.dataArray();
   const decoder = new TextDecoder();
   const sourceCode = dataArray ? decoder.decode(dataArray) : undefined;
   // flatbuffers returns `null` for an empty value, this does not fit well with
   // idiomatic TypeScript under strict null checks, so converting to `undefined`
   return {
-    moduleName: fetchModuleMetaDataRes.moduleName() || undefined,
-    filename: fetchModuleMetaDataRes.filename() || undefined,
-    mediaType: fetchModuleMetaDataRes.mediaType(),
+    moduleName: fetchSourceFileRes.moduleName() || undefined,
+    filename: fetchSourceFileRes.filename() || undefined,
+    mediaType: fetchSourceFileRes.mediaType(),
     sourceCode
   };
 }
@@ -235,7 +232,7 @@ class Host implements ts.CompilerHost {
     target: ts.ScriptTarget.ESNext
   };
 
-  private _resolveModule(specifier: string, referrer: string): ModuleMetaData {
+  private _resolveModule(specifier: string, referrer: string): SourceFile {
     // Handle built-in assets specially.
     if (specifier.startsWith(ASSETS)) {
       const moduleName = specifier.split("/").pop()!;
@@ -251,7 +248,7 @@ class Host implements ts.CompilerHost {
         sourceCode
       };
     }
-    return fetchModuleMetaData(specifier, referrer);
+    return fetchSourceFile(specifier, referrer);
   }
 
   /* Deno specific APIs */
@@ -345,13 +342,13 @@ class Host implements ts.CompilerHost {
   ): ts.SourceFile | undefined {
     assert(!shouldCreateNewSourceFile);
     util.log("getSourceFile", fileName);
-    const moduleMetaData = this._resolveModule(fileName, ".");
-    if (!moduleMetaData || !moduleMetaData.sourceCode) {
+    const SourceFile = this._resolveModule(fileName, ".");
+    if (!SourceFile || !SourceFile.sourceCode) {
       return undefined;
     }
     return ts.createSourceFile(
       fileName,
-      moduleMetaData.sourceCode,
+      SourceFile.sourceCode,
       languageVersion
     );
   }
@@ -367,16 +364,16 @@ class Host implements ts.CompilerHost {
     util.log("resolveModuleNames()", { moduleNames, containingFile });
     return moduleNames.map(
       (moduleName): ts.ResolvedModuleFull | undefined => {
-        const moduleMetaData = this._resolveModule(moduleName, containingFile);
-        if (moduleMetaData.moduleName) {
-          const resolvedFileName = moduleMetaData.moduleName;
+        const SourceFile = this._resolveModule(moduleName, containingFile);
+        if (SourceFile.moduleName) {
+          const resolvedFileName = SourceFile.moduleName;
           // This flags to the compiler to not go looking to transpile functional
           // code, anything that is in `/$asset$/` is just library code
           const isExternalLibraryImport = moduleName.startsWith(ASSETS);
           const r = {
             resolvedFileName,
             isExternalLibraryImport,
-            extension: getExtension(resolvedFileName, moduleMetaData.mediaType)
+            extension: getExtension(resolvedFileName, SourceFile.mediaType)
           };
           return r;
         } else {

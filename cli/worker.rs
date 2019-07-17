@@ -34,7 +34,7 @@ impl Worker {
       });
       let state_ = state.clone();
       i.set_js_error_create(move |v8_exception| {
-        JSError::from_v8_exception(v8_exception, &state_.dir)
+        JSError::from_v8_exception(v8_exception, &state_.ts_compiler)
       })
     }
     Self { isolate, state }
