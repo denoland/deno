@@ -61,20 +61,6 @@ impl SourceFile {
   }
 }
 
-// TODO(bartlomieju): this should be removed, but integration test 022_info_flag depends on
-// using "/" (forward slashes) or doesn't match output on Windows
-fn normalize_path(path: &Path) -> PathBuf {
-  let s = String::from(path.to_str().unwrap());
-  let normalized_string = if cfg!(windows) {
-    // TODO This isn't correct. Probbly should iterate over components.
-    s.replace("\\", "/")
-  } else {
-    s
-  };
-
-  PathBuf::from(normalized_string)
-}
-
 pub type SourceFileFuture =
   dyn Future<Item = SourceFile, Error = ErrBox> + Send;
 
@@ -353,11 +339,12 @@ impl DenoDir {
       Err(e) => return Err(e.into()),
     };
 
+    let media_type = map_content_type(&filepath, None);
     Ok(SourceFile {
       url: module_url.clone(),
       redirect_source_url: None,
-      filename: normalize_path(&filepath),
-      media_type: map_content_type(&filepath, None),
+      filename: filepath,
+      media_type,
       source_code,
     })
   }
@@ -420,14 +407,15 @@ impl DenoDir {
       }
       Ok(c) => c,
     };
+    let media_type = map_content_type(
+      &filepath,
+      source_code_headers.mime_type.as_ref().map(String::as_str),
+    );
     Ok(Some(SourceFile {
       url: module_url.clone(),
       redirect_source_url: maybe_initial_module_url,
-      filename: normalize_path(&filepath),
-      media_type: map_content_type(
-        &filepath,
-        source_code_headers.mime_type.as_ref().map(String::as_str),
-      ),
+      filename: filepath,
+      media_type,
       source_code,
     }))
   }
@@ -512,7 +500,7 @@ impl DenoDir {
                 let source_file = SourceFile {
                   url: module_url,
                   redirect_source_url: maybe_initial_module_url,
-                  filename: normalize_path(&filepath),
+                  filename: filepath,
                   media_type,
                   source_code: source.as_bytes().to_owned(),
                 };
