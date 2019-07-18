@@ -249,6 +249,13 @@ test(function testFunctionName(): void {
   assertEquals(clearInterval.name, "clearInterval");
 });
 
+test(function testFunctionParamsLength(): void {
+  assertEquals(setTimeout.length, 1);
+  assertEquals(setInterval.length, 1);
+  assertEquals(clearTimeout.length, 0);
+  assertEquals(clearInterval.length, 0);
+});
+
 test(function clearTimeoutAndClearIntervalNotBeEquals(): void {
   assertNotEquals(clearTimeout, clearInterval);
 });
