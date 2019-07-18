@@ -173,7 +173,6 @@ void deno_respond(Deno* d_, void* user_data, deno_buf buf) {
 
   // Asynchronous response.
   deno::UserDataScope user_data_scope(d, user_data);
-  v8::Locker locker(d->isolate_);
   v8::Isolate::Scope isolate_scope(d->isolate_);
   v8::HandleScope handle_scope(d->isolate_);
 
