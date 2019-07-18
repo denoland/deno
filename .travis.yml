@@ -113,7 +113,14 @@ jobs:
 
     - name: "cargo release linux x86_64"
       os: linux
+      addons:
+        apt:
+          sources:
+            - llvm-toolchain-trusty-8
+          packages:
+            - clang-8
       script:
+      - export CC=clang-8 && export CXX=clang++-8
       - ./tools/lint.py
       - ./tools/test_format.py
       - cargo build -vv --release --locked
