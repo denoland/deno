@@ -23,6 +23,13 @@ print "clang_format"
 qrun([clang_format_path, "-i", "-style", "Google"] +
      find_exts(["core"], [".cc", ".h"]))
 
+print "rustfmt"
+qrun([
+    "third_party/rustfmt/" + platform() + "/rustfmt",
+    "--config-path",
+    rustfmt_config,
+] + find_exts(["cli", "core", "tools"], [".rs"]))
+
 print "gn format"
 for fn in ["BUILD.gn", ".gn"] + find_exts(["build_extra", "cli", "core"],
                                           [".gn", ".gni"]):
@@ -40,10 +47,3 @@ qrun(["node", prettier, "--write", "--loglevel=error"] + ["rollup.config.js"] +
      find_exts([".github", "js", "tests", "tools", "website", "core"],
                [".js", ".json", ".ts", ".md"],
                skip=["tools/clang", "js/deps"]))
-
-print "rustfmt"
-qrun([
-    "third_party/rustfmt/" + platform() + "/rustfmt",
-    "--config-path",
-    rustfmt_config,
-] + find_exts(["cli", "core", "tools"], [".rs"]))
