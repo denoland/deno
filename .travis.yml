@@ -113,14 +113,11 @@ jobs:
 
     - name: "cargo release linux x86_64"
       os: linux
-      addons:
-        apt:
-          sources:
-            - llvm-toolchain-trusty-8
-          packages:
-            - clang-8
       script:
-      - export CC=clang-8 && export CXX=clang++-8
+      # CARGO_GN_PATH and CARGO_NINJA_PATH allivate the need to build these
+      # tools from scratch. See docs at https://crates.io/crates/cargo_gn
+      - export CARGO_GN_PATH=$TRAVIS_BUILD_DIR/buildtools/linux64/gn
+      - export CARGO_NINJA_PATH=$TRAVIS_BUILD_DIR/third_party/depot_tools/ninja
       - ./tools/lint.py
       - ./tools/test_format.py
       - cargo build -vv --release --locked
