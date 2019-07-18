@@ -123,7 +123,7 @@ jobs:
       - cargo build -vv --release --locked
       - cargo clippy --all-targets --release --locked -- -D clippy::all
       # TODO(ry) Warning! The following does not run libdeno_test
-      - ./tools/test.py
+      - DENO_BUILD_MODE=release ./tools/test.py
 
     # LSAN: We are in the process of getting a completely clean LSAN build,
     # but it will take some work. So for now we just run a subset of the
