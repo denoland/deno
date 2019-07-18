@@ -43,7 +43,7 @@ impl AsRef<dyn AnyError> for ErrBox {
 }
 
 impl Deref for ErrBox {
-  type Target = Box<AnyError>;
+  type Target = Box<dyn AnyError>;
   fn deref(&self) -> &Self::Target {
     &self.0
   }
