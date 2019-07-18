@@ -229,7 +229,7 @@ function setTimer(
 /** Sets a timer which executes a function once after the timer expires. */
 export function setTimeout(
   cb: (...args: Args) => void,
-  delay: number,
+  delay: number = 0,
   ...args: Args
 ): number {
   // @ts-ignore
@@ -240,7 +240,7 @@ export function setTimeout(
 /** Repeatedly calls a function , with a fixed time delay between each call. */
 export function setInterval(
   cb: (...args: Args) => void,
-  delay: number,
+  delay: number = 0,
   ...args: Args
 ): number {
   // @ts-ignore
@@ -261,10 +261,16 @@ function clearTimer(id: number): void {
   idMap.delete(timer.id);
 }
 
-export function clearTimeout(id: number): void {
+export function clearTimeout(id: number = 0): void {
+  if (id === 0) {
+    return;
+  }
   clearTimer(id);
 }
 
-export function clearInterval(id: number): void {
+export function clearInterval(id: number = 0): void {
+  if (id === 0) {
+    return;
+  }
   clearTimer(id);
 }
