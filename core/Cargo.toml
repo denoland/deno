@@ -34,4 +34,4 @@ path = "examples/http_bench.rs"
 tokio = "0.1.18"
 
 [build-dependencies]
-cargo_gn = "0.0.7"
+cargo_gn = "0.0.8"

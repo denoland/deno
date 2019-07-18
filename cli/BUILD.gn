@@ -217,6 +217,7 @@ run_node("deno_runtime_declaration") {
              "//tools/ts_library_builder/build_library.ts",
              "//tools/ts_library_builder/ast_util.ts",
            ]
+  data = inputs
   args = [
     rebase_path("//node_modules/ts-node/dist/bin.js", root_build_dir),
     "--project",
