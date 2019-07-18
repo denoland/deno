@@ -23,6 +23,10 @@ environment:
   AWS_ACCESS_KEY_ID: AKIAIVRN52PLDBP55LBQ
   AWS_SECRET_ACCESS_KEY:
     secure: 8ybpi/y5qE2baChsCBhNHmykng3FitELAtTYOiqZd0mw38i88dzdAX8ETNtBogMV
+  # CARGO_GN_PATH and CARGO_NINJA_PATH allivate the need to build these
+  # tools from scratch. See docs at https://crates.io/crates/cargo_gn
+  CARGO_GN_PATH: $(APPVEYOR_BUILD_FOLDER)/buildtools/win/gn.exe
+  CARGO_NINJA_PATH: $(APPVEYOR_BUILD_FOLDER)/third_party/depot_tools/ninja.exe
 
 
   # Appveyor uses 7zip to pack cache directories. We use these options:
