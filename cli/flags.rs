@@ -1,11 +1,11 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+use crate::fs as deno_fs;
 use clap::App;
 use clap::AppSettings;
 use clap::Arg;
 use clap::ArgMatches;
 use clap::Shell;
 use clap::SubCommand;
-use crate::fs as deno_fs;
 use deno::ModuleSpecifier;
 use log::Level;
 use std;
@@ -59,7 +59,8 @@ fn add_run_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .use_delimiter(true)
         .require_equals(true)
         .help("Allow file system read access"),
-    ).arg(
+    )
+    .arg(
       Arg::with_name("allow-write")
         .long("allow-write")
         .min_values(0)
@@ -67,7 +68,8 @@ fn add_run_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .use_delimiter(true)
         .require_equals(true)
         .help("Allow file system write access"),
-    ).arg(
+    )
+    .arg(
       Arg::with_name("allow-net")
         .long("allow-net")
         .min_values(0)
@@ -75,28 +77,34 @@ fn add_run_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .use_delimiter(true)
         .require_equals(true)
         .help("Allow network access"),
-    ).arg(
+    )
+    .arg(
       Arg::with_name("allow-env")
         .long("allow-env")
         .help("Allow environment access"),
-    ).arg(
+    )
+    .arg(
       Arg::with_name("allow-run")
         .long("allow-run")
         .help("Allow running subprocesses"),
-    ).arg(
+    )
+    .arg(
       Arg::with_name("allow-hrtime")
         .long("allow-hrtime")
         .help("Allow high resolution time measurement"),
-    ).arg(
+    )
+    .arg(
       Arg::with_name("allow-all")
         .short("A")
         .long("allow-all")
         .help("Allow all permissions"),
-    ).arg(
+    )
+    .arg(
       Arg::with_name("no-prompt")
         .long("no-prompt")
         .help("Do not use prompts"),
-    ).arg(
+    )
+    .arg(
       Arg::with_name("importmap")
         .long("importmap")
         .value_name("FILE")
@@ -105,7 +113,8 @@ fn add_run_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
           "Load import map file
 Specification: https://wicg.github.io/import-maps/
 Examples: https://github.com/WICG/import-maps#the-import-map",
-        ).takes_value(true),
+        )
+        .takes_value(true),
     )
 }
 

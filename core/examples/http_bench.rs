@@ -13,14 +13,22 @@ extern crate log;
 extern crate lazy_static;
 
 use deno::*;
+use futures::executor::block_on;
 use futures::future::lazy;
+use futures::future::Future;
+use futures::future::FutureExt;
+use futures::future::TryFutureExt;
+use futures::task::Poll;
 use std::collections::HashMap;
 use std::env;
 use std::net::SocketAddr;
+use std::pin::Pin;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;
-use tokio::prelude::*;
+use tokio::io::AsyncRead;
+use tokio::io::AsyncWrite;
+use tokio::prelude::Async;
 
 static LOGGER: Logger = Logger;
 struct Logger;
@@ -109,7 +117,7 @@ fn test_record_from() {
   // TODO test From<&[u8]> for Record
 }
 
-pub type HttpBenchOp = dyn Future<Item = i32, Error = std::io::Error> + Send;
+pub type HttpBenchOp = dyn Future<Output = Result<i32, std::io::Error>> + Send;
 
 fn dispatch(control: &[u8], zero_copy_buf: Option<PinnedBuf>) -> CoreOp {
   let record = Record::from(control);
@@ -144,50 +152,29 @@ fn dispatch(control: &[u8], zero_copy_buf: Option<PinnedBuf>) -> CoreOp {
   let mut record_a = record.clone();
   let mut record_b = record.clone();
 
-  let fut = Box::new(
-    http_bench_op
-      .and_then(move |result| {
-        record_a.result = result;
-        Ok(record_a)
-      }).or_else(|err| -> Result<Record, ()> {
+  let fut = http_bench_op
+    .then(move |result| match result {
+      Ok(res) => {
+        record_a.result = res;
+        futures::future::ready(record_a)
+      }
+      Err(err) => {
         eprintln!("unexpected err {}", err);
         record_b.result = -1;
-        Ok(record_b)
-      }).then(|result| -> Result<Buf, ()> {
-        let record = result.unwrap();
-        Ok(record.into())
-      }),
-  );
+        futures::future::ready(record_b)
+      }
+    })
+    .then(|record| futures::future::ready(record.into()))
+    .boxed();
 
   if is_sync {
-    Op::Sync(fut.wait().unwrap())
+    Op::Sync(block_on(fut))
   } else {
     Op::Async(fut)
   }
 }
 
 fn main() {
-  let main_future = lazy(move || {
-    // TODO currently isolate.execute() must be run inside tokio, hence the
-    // lazy(). It would be nice to not have that contraint. Probably requires
-    // using v8::MicrotasksPolicy::kExplicit
-
-    let js_source = include_str!("http_bench.js");
-
-    let startup_data = StartupData::Script(Script {
-      source: js_source,
-      filename: "http_bench.js",
-    });
-
-    let mut isolate = deno::Isolate::new(startup_data, false);
-    isolate.set_dispatch(dispatch);
-
-    isolate.then(|r| {
-      js_check(r);
-      Ok(())
-    })
-  });
-
   let args: Vec<String> = env::args().collect();
   // NOTE: `--help` arg will display V8 help and exit
   let args = deno::v8_set_flags(args);
@@ -199,12 +186,29 @@ fn main() {
     log::LevelFilter::Warn
   });
 
+  let js_source = include_str!("http_bench.js");
+
+  let startup_data = StartupData::Script(Script {
+    source: js_source,
+    filename: "http_bench.js",
+  });
+
+  let mut isolate = deno::Isolate::new(startup_data, false);
+  isolate.set_dispatch(dispatch);
+
+  let main_future = isolate
+    .then(|r| {
+      js_check(r);
+      futures::future::ok(())
+    })
+    .boxed();
+
   if args.iter().any(|a| a == "--multi-thread") {
     println!("multi-thread");
-    tokio::run(main_future);
+    tokio::run(main_future.compat());
   } else {
     println!("single-thread");
-    tokio::runtime::current_thread::run(main_future);
+    tokio::runtime::current_thread::run(main_future.compat());
   }
 }
 
@@ -224,90 +228,111 @@ fn new_rid() -> i32 {
   rid as i32
 }
 
-fn op_accept(listener_rid: i32) -> Box<HttpBenchOp> {
+fn op_accept(listener_rid: i32) -> Pin<Box<HttpBenchOp>> {
   debug!("accept {}", listener_rid);
-  Box::new(
-    futures::future::poll_fn(move || {
-      let mut table = RESOURCE_TABLE.lock().unwrap();
-      let maybe_repr = table.get_mut(&listener_rid);
-      match maybe_repr {
-        Some(Repr::TcpListener(ref mut listener)) => listener.poll_accept(),
-        _ => panic!("bad rid {}", listener_rid),
-      }
-    }).and_then(move |(stream, addr)| {
-      debug!("accept success {}", addr);
-      let rid = new_rid();
+  futures::future::poll_fn(move |_cx| {
+    let mut table = RESOURCE_TABLE.lock().unwrap();
+    let maybe_repr = table.get_mut(&listener_rid);
+    match maybe_repr {
+      Some(Repr::TcpListener(ref mut listener)) => match listener.poll_accept()
+      {
+        Ok(Async::Ready(v)) => Poll::Ready(Ok(v)),
+        Ok(Async::NotReady) => Poll::Pending,
+        Err(err) => Poll::Ready(Err(err)),
+      },
+      _ => panic!("bad rid {}", listener_rid),
+    }
+  })
+  .and_then(move |(stream, addr)| {
+    debug!("accept success {}", addr);
+    let rid = new_rid();
 
-      let mut guard = RESOURCE_TABLE.lock().unwrap();
-      guard.insert(rid, Repr::TcpStream(stream));
+    let mut guard = RESOURCE_TABLE.lock().unwrap();
+    guard.insert(rid, Repr::TcpStream(stream));
 
-      Ok(rid as i32)
-    }),
-  )
+    futures::future::ok(rid as i32)
+  })
+  .boxed()
 }
 
-fn op_listen() -> Box<HttpBenchOp> {
+fn op_listen() -> Pin<Box<HttpBenchOp>> {
   debug!("listen");
 
-  Box::new(lazy(move || {
+  lazy(move |_cx| {
     let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
     let listener = tokio::net::TcpListener::bind(&addr).unwrap();
     let rid = new_rid();
 
     let mut guard = RESOURCE_TABLE.lock().unwrap();
     guard.insert(rid, Repr::TcpListener(listener));
-    futures::future::ok(rid)
-  }))
+    Ok(rid)
+  })
+  .boxed()
 }
 
-fn op_close(rid: i32) -> Box<HttpBenchOp> {
+fn op_close(rid: i32) -> Pin<Box<HttpBenchOp>> {
   debug!("close");
-  Box::new(lazy(move || {
+  lazy(move |_cx| {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     let r = table.remove(&rid);
     let result = if r.is_some() { 0 } else { -1 };
-    futures::future::ok(result)
-  }))
+    Ok(result)
+  })
+  .boxed()
 }
 
-fn op_read(rid: i32, zero_copy_buf: Option<PinnedBuf>) -> Box<HttpBenchOp> {
+fn op_read(
+  rid: i32,
+  zero_copy_buf: Option<PinnedBuf>,
+) -> Pin<Box<HttpBenchOp>> {
   debug!("read rid={}", rid);
   let mut zero_copy_buf = zero_copy_buf.unwrap();
-  Box::new(
-    futures::future::poll_fn(move || {
-      let mut table = RESOURCE_TABLE.lock().unwrap();
-      let maybe_repr = table.get_mut(&rid);
-      match maybe_repr {
-        Some(Repr::TcpStream(ref mut stream)) => {
-          stream.poll_read(&mut zero_copy_buf)
+  futures::future::poll_fn(move |_cx| {
+    let mut table = RESOURCE_TABLE.lock().unwrap();
+    let maybe_repr = table.get_mut(&rid);
+    match maybe_repr {
+      Some(Repr::TcpStream(ref mut stream)) => {
+        match stream.poll_read(&mut zero_copy_buf) {
+          Ok(Async::Ready(v)) => Poll::Ready(Ok(v)),
+          Ok(Async::NotReady) => Poll::Pending,
+          Err(err) => Poll::Ready(Err(err)),
         }
-        _ => panic!("bad rid"),
       }
-    }).and_then(move |nread| {
-      debug!("read success {}", nread);
-      Ok(nread as i32)
-    }),
-  )
+      _ => panic!("bad rid"),
+    }
+  })
+  .and_then(move |nread| {
+    debug!("read success {}", nread);
+    futures::future::ok(nread as i32)
+  })
+  .boxed()
 }
 
-fn op_write(rid: i32, zero_copy_buf: Option<PinnedBuf>) -> Box<HttpBenchOp> {
+fn op_write(
+  rid: i32,
+  zero_copy_buf: Option<PinnedBuf>,
+) -> Pin<Box<HttpBenchOp>> {
   debug!("write rid={}", rid);
   let zero_copy_buf = zero_copy_buf.unwrap();
-  Box::new(
-    futures::future::poll_fn(move || {
-      let mut table = RESOURCE_TABLE.lock().unwrap();
-      let maybe_repr = table.get_mut(&rid);
-      match maybe_repr {
-        Some(Repr::TcpStream(ref mut stream)) => {
-          stream.poll_write(&zero_copy_buf)
+  futures::future::poll_fn(move |_cx| {
+    let mut table = RESOURCE_TABLE.lock().unwrap();
+    let maybe_repr = table.get_mut(&rid);
+    match maybe_repr {
+      Some(Repr::TcpStream(ref mut stream)) => {
+        match stream.poll_write(&zero_copy_buf) {
+          Ok(Async::Ready(v)) => Poll::Ready(Ok(v)),
+          Ok(Async::NotReady) => Poll::Pending,
+          Err(err) => Poll::Ready(Err(err)),
         }
-        _ => panic!("bad rid"),
       }
-    }).and_then(move |nwritten| {
-      debug!("write success {}", nwritten);
-      Ok(nwritten as i32)
-    }),
-  )
+      _ => panic!("bad rid"),
+    }
+  })
+  .and_then(move |nwritten| {
+    debug!("write success {}", nwritten);
+    futures::future::ok(nwritten as i32)
+  })
+  .boxed()
 }
 
 fn js_check(r: Result<(), ErrBox>) {

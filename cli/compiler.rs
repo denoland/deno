@@ -14,13 +14,12 @@ use crate::worker::Worker;
 use deno::Buf;
 use deno::ErrBox;
 use deno::ModuleSpecifier;
-use futures::future::Either;
-use futures::Future;
-use futures::Stream;
+use futures::future::{self, Either, FutureExt, TryFutureExt};
 use ring;
 use std::collections::HashSet;
 use std::fmt::Write;
 use std::fs;
+use std::future::Future;
 use std::path::PathBuf;
 use std::str;
 use std::sync::atomic::Ordering;
@@ -221,7 +220,7 @@ impl TsCompiler {
     state: ThreadSafeState,
     module_name: String,
     out_file: String,
-  ) -> impl Future<Item = (), Error = ErrBox> {
+  ) -> impl Future<Output = Result<(), ErrBox>> {
     debug!(
       "Invoking the compiler to bundle. module_name: {}",
       module_name
@@ -243,10 +242,7 @@ impl TsCompiler {
             std::process::exit(1);
           }
           debug!("Sent message to worker");
-          let stream_future =
-            resources::get_message_stream_from_worker(compiler_rid)
-              .into_future();
-          stream_future.map(|(f, _rest)| f).map_err(|(f, _rest)| f)
+          resources::get_message_from_worker(compiler_rid)
         });
 
     first_msg_fut.map_err(|_| panic!("not handled")).and_then(
@@ -257,11 +253,11 @@ impl TsCompiler {
           let json_str = std::str::from_utf8(&msg).unwrap();
           debug!("Message: {}", json_str);
           if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
-            return Err(ErrBox::from(diagnostics));
+            return future::err(ErrBox::from(diagnostics));
           }
         }
 
-        Ok(())
+        future::ok(())
       },
     )
   }
@@ -290,20 +286,20 @@ impl TsCompiler {
     self: &Self,
     state: ThreadSafeState,
     source_file: &SourceFile,
-  ) -> impl Future<Item = SourceFile, Error = ErrBox> {
+  ) -> impl Future<Output = Result<SourceFile, ErrBox>> {
     // TODO: maybe fetching of original SourceFile should be done here?
 
     if source_file.media_type != msg::MediaType::TypeScript {
-      return Either::A(futures::future::ok(source_file.clone()));
+      return Either::Right(futures::future::ok(source_file.clone()));
     }
 
     if self.has_compiled(&source_file.url) {
       match self.get_compiled_source_file(&source_file) {
         Ok(compiled_module) => {
-          return Either::A(futures::future::ok(compiled_module));
+          return Either::Right(futures::future::ok(compiled_module));
         }
         Err(err) => {
-          return Either::A(futures::future::err(err));
+          return Either::Right(futures::future::err(err));
         }
       }
     }
@@ -330,7 +326,7 @@ impl TsCompiler {
               compiled_module.clone().filename
             );
             // TODO: store in in-process cache for subsequent access
-            return Either::A(futures::future::ok(compiled_module));
+            return Either::Right(futures::future::ok(compiled_module));
           }
         }
       }
@@ -365,10 +361,7 @@ impl TsCompiler {
             std::process::exit(1);
           }
           debug!("Sent message to worker");
-          let stream_future =
-            resources::get_message_stream_from_worker(compiler_rid)
-              .into_future();
-          stream_future.map(|(f, _rest)| f).map_err(|(f, _rest)| f)
+          resources::get_message_from_worker(compiler_rid)
         });
 
     let fut = first_msg_fut
@@ -380,35 +373,40 @@ impl TsCompiler {
           let json_str = std::str::from_utf8(&msg).unwrap();
           debug!("Message: {}", json_str);
           if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
-            return Err(ErrBox::from(diagnostics));
+            return future::err(ErrBox::from(diagnostics));
           }
         }
 
-        Ok(())
-      }).and_then(move |_| {
+        future::ok(())
+      })
+      .and_then(move |_| {
         // if we are this far it means compilation was successful and we can
         // load compiled filed from disk
         // TODO: can this be somehow called using `self.`?
-        state_
-          .ts_compiler
-          .get_compiled_source_file(&source_file_)
-          .map_err(|e| {
-            // TODO: this situation shouldn't happen
-            panic!("Expected to find compiled file: {}", e)
-          })
-      }).and_then(move |source_file_after_compile| {
+        future::ready(
+          state_
+            .ts_compiler
+            .get_compiled_source_file(&source_file_)
+            .map_err(|e| {
+              // TODO: this situation shouldn't happen
+              panic!("Expected to find compiled file: {}", e)
+            }),
+        )
+      })
+      .and_then(move |source_file_after_compile| {
         // Explicit drop to keep reference alive until future completes.
         drop(compiling_job);
 
-        Ok(source_file_after_compile)
-      }).then(move |r| {
+        future::ok(source_file_after_compile)
+      })
+      .then(move |r| {
         debug!(">>>>> compile_sync END");
         // TODO(ry) do this in worker's destructor.
         // resource.close();
-        r
+        future::ready(r)
       });
 
-    Either::B(fut)
+    Either::Left(fut)
   }
 
   /// Get associated `CompiledFileMetadata` for given module if it exists.
@@ -648,11 +646,9 @@ mod tests {
         .ts_compiler
         .compile_sync(mock_state.clone(), &out)
         .unwrap();
-      assert!(
-        out
-          .source_code
-          .starts_with("console.log(\"Hello World\");".as_bytes())
-      );
+      assert!(out
+        .source_code
+        .starts_with("console.log(\"Hello World\");".as_bytes()));
     })
   }
 

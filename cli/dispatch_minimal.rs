@@ -9,7 +9,8 @@ use deno::Buf;
 use deno::CoreOp;
 use deno::Op;
 use deno::PinnedBuf;
-use futures::Future;
+use futures::future;
+use futures::future::FutureExt;
 
 const DISPATCH_MINIMAL_TOKEN: i32 = 0xCAFE;
 const OP_READ: i32 = 1;
@@ -100,24 +101,27 @@ pub fn dispatch_minimal(
 
   let state = state.clone();
 
-  let fut = Box::new(min_op.then(move |result| -> Result<Buf, ()> {
-    match result {
-      Ok(r) => {
-        record.result = r;
+  let fut = min_op
+    .then(move |result| {
+      match result {
+        Ok(r) => {
+          record.result = r;
+        }
+        Err(err) => {
+          // TODO(ry) The dispatch_minimal doesn't properly pipe errors back to
+          // the caller.
+          debug!("swallowed err {}", err);
+          record.result = -1;
+        }
       }
-      Err(err) => {
-        // TODO(ry) The dispatch_minimal doesn't properly pipe errors back to
-        // the caller.
-        debug!("swallowed err {}", err);
-        record.result = -1;
-      }
-    }
-    let buf: Buf = record.into();
-    state.metrics_op_completed(buf.len());
-    Ok(buf)
-  }));
+      let buf: Buf = record.into();
+      state.metrics_op_completed(buf.len());
+      future::ready(buf)
+    })
+    .boxed();
+
   if is_sync {
-    Op::Sync(fut.wait().unwrap())
+    Op::Sync(futures::executor::block_on(fut))
   } else {
     Op::Async(fut)
   }
@@ -126,46 +130,57 @@ pub fn dispatch_minimal(
 mod ops {
   use crate::deno_error;
   use crate::resources;
-  use crate::tokio_write;
   use deno::ErrBox;
   use deno::PinnedBuf;
-  use futures::Future;
+  use futures::future;
+  use futures::future::FutureExt;
+  use futures::future::TryFutureExt;
+  use std::future::Future;
+  use std::pin::Pin;
 
-  type MinimalOp = dyn Future<Item = i32, Error = ErrBox> + Send;
+  type MinimalOp = dyn Future<Output = Result<i32, ErrBox>> + Send;
 
-  pub fn read(rid: i32, zero_copy: Option<PinnedBuf>) -> Box<MinimalOp> {
+  pub fn read(rid: i32, zero_copy: Option<PinnedBuf>) -> Pin<Box<MinimalOp>> {
     debug!("read rid={}", rid);
-    let zero_copy = match zero_copy {
+    let mut zero_copy = match zero_copy {
       None => {
-        return Box::new(futures::future::err(deno_error::no_buffer_specified()))
+        return future::err(deno_error::no_buffer_specified()).boxed();
       }
       Some(buf) => buf,
     };
     match resources::lookup(rid as u32) {
-      None => Box::new(futures::future::err(deno_error::bad_resource())),
-      Some(resource) => Box::new(
-        tokio::io::read(resource, zero_copy)
-          .map_err(ErrBox::from)
-          .and_then(move |(_resource, _buf, nread)| Ok(nread as i32)),
-      ),
+      None => future::err(deno_error::bad_resource()).boxed(),
+      Some(mut resource) => async move {
+        let nread = tokio::io::AsyncReadExt::read(
+          &mut resource,
+          &mut zero_copy.as_mut()[..],
+        )
+        .map_err(ErrBox::from)
+        .await?;
+        Ok(nread as i32)
+      }
+        .boxed(),
     }
   }
 
-  pub fn write(rid: i32, zero_copy: Option<PinnedBuf>) -> Box<MinimalOp> {
+  pub fn write(rid: i32, zero_copy: Option<PinnedBuf>) -> Pin<Box<MinimalOp>> {
     debug!("write rid={}", rid);
     let zero_copy = match zero_copy {
       None => {
-        return Box::new(futures::future::err(deno_error::no_buffer_specified()))
+        return future::err(deno_error::no_buffer_specified()).boxed();
       }
       Some(buf) => buf,
     };
     match resources::lookup(rid as u32) {
-      None => Box::new(futures::future::err(deno_error::bad_resource())),
-      Some(resource) => Box::new(
-        tokio_write::write(resource, zero_copy)
-          .map_err(ErrBox::from)
-          .and_then(move |(_resource, _buf, nwritten)| Ok(nwritten as i32)),
-      ),
+      None => future::err(deno_error::bad_resource()).boxed(),
+      Some(mut resource) => async move {
+        let nwritten =
+          tokio::io::AsyncWriteExt::write(&mut resource, &zero_copy)
+            .map_err(ErrBox::from)
+            .await?;
+        Ok(nwritten as i32)
+      }
+        .boxed(),
     }
   }
 }

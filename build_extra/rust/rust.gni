@@ -150,6 +150,11 @@ template("_rust_crate") {
         label = info.label
         crate_name = info.crate_name
         crate_type = info.crate_type
+        extern_name = info.crate_name
+
+        if (defined(info.extern_alias)) {
+          extern_name = info.extern_alias
+        }
 
         if (!defined(info.crate_version)) {
           crate_suffix = ""
@@ -293,7 +298,7 @@ template("_rust_crate") {
     foreach(info, extern_outputs) {
       args += [
         "--extern",
-        info.crate_name + "=" + rebase_path(info.out_path, root_build_dir),
+        info.extern_name + "=" + rebase_path(info.out_path, root_build_dir),
       ]
       sources += [ info.out_path ]
       deps += [ info.label ]

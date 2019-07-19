@@ -18,6 +18,12 @@ main_extern = [
     crate_name = "serde_derive"
     crate_type = "proc_macro"
   },
+  {
+    label = "//build_extra/rust:futures_preview"
+    crate_name = "futures"
+    crate_type = "rlib"
+    crate_version = "0.3.0-alpha.17"
+  },
 ]
 main_extern_rlib = [
   "ansi_term",
@@ -25,7 +31,6 @@ main_extern_rlib = [
   "clap",
   "dirs",
   "flatbuffers",
-  "futures",
   "fwdansi",
   "http",
   "hyper",

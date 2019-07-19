@@ -1,15 +1,20 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::fmt_errors::JSError;
 use crate::state::ThreadSafeState;
-use crate::tokio_util;
 use deno;
 use deno::ErrBox;
 use deno::ModuleSpecifier;
 use deno::StartupData;
-use futures::Async;
-use futures::Future;
+use futures::executor::block_on;
+use futures::future;
+use futures::future::FutureExt;
+use futures::future::TryFutureExt;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::task::Context;
+use std::task::Poll;
 
 /// Wraps deno::Isolate to provide source maps, ops for the CLI, and
 /// high-level module loading
@@ -61,7 +66,7 @@ impl Worker {
     &mut self,
     module_specifier: &ModuleSpecifier,
     is_prefetch: bool,
-  ) -> impl Future<Item = (), Error = ErrBox> {
+  ) -> impl Future<Output = Result<(), ErrBox>> {
     let worker = self.clone();
     let loader = self.state.clone();
     let isolate = self.isolate.clone();
@@ -72,13 +77,13 @@ impl Worker {
       isolate,
       modules,
     );
-    recursive_load.and_then(move |id| -> Result<(), ErrBox> {
+    recursive_load.and_then(move |id| {
       worker.state.progress.done();
       if is_prefetch {
-        Ok(())
+        future::ok(())
       } else {
         let mut isolate = worker.isolate.lock().unwrap();
-        isolate.mod_evaluate(id)
+        future::ready(isolate.mod_evaluate(id))
       }
     })
   }
@@ -89,17 +94,16 @@ impl Worker {
     module_specifier: &ModuleSpecifier,
     is_prefetch: bool,
   ) -> Result<(), ErrBox> {
-    tokio_util::block_on(self.execute_mod_async(module_specifier, is_prefetch))
+    block_on(self.execute_mod_async(module_specifier, is_prefetch))
   }
 }
 
 impl Future for Worker {
-  type Item = ();
-  type Error = ErrBox;
+  type Output = Result<(), ErrBox>;
 
-  fn poll(&mut self) -> Result<Async<()>, ErrBox> {
+  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let mut isolate = self.isolate.lock().unwrap();
-    isolate.poll()
+    isolate.poll_unpin(cx)
   }
 }
 
@@ -128,15 +132,18 @@ mod tests {
       Progress::new(),
     );
     let state_ = state.clone();
-    tokio_util::run(lazy(move || {
-      let mut worker =
-        Worker::new("TEST".to_string(), StartupData::None, state);
-      let result = worker.execute_mod(&module_specifier, false);
-      if let Err(err) = result {
-        eprintln!("execute_mod err {:?}", err);
-      }
-      tokio_util::panic_on_error(worker)
-    }));
+    tokio_util::run(
+      lazy(move |_cx| {
+        let mut worker =
+          Worker::new("TEST".to_string(), StartupData::None, state);
+        let result = worker.execute_mod(&module_specifier, false);
+        if let Err(err) = result {
+          eprintln!("execute_mod err {:?}", err);
+        }
+        worker
+      })
+      .then(|worker| tokio_util::panic_on_error(worker).map(|r| Ok(r))),
+    );
 
     let metrics = &state_.metrics;
     assert_eq!(metrics.resolve_count.load(Ordering::SeqCst), 2);
@@ -156,15 +163,18 @@ mod tests {
       Progress::new(),
     );
     let state_ = state.clone();
-    tokio_util::run(lazy(move || {
-      let mut worker =
-        Worker::new("TEST".to_string(), StartupData::None, state);
-      let result = worker.execute_mod(&module_specifier, false);
-      if let Err(err) = result {
-        eprintln!("execute_mod err {:?}", err);
-      }
-      tokio_util::panic_on_error(worker)
-    }));
+    tokio_util::run(
+      lazy(move |_cx| {
+        let mut worker =
+          Worker::new("TEST".to_string(), StartupData::None, state);
+        let result = worker.execute_mod(&module_specifier, false);
+        if let Err(err) = result {
+          eprintln!("execute_mod err {:?}", err);
+        }
+        worker
+      })
+      .then(|worker| tokio_util::panic_on_error(worker).map(|r| Ok(r))),
+    );
 
     let metrics = &state_.metrics;
     assert_eq!(metrics.resolve_count.load(Ordering::SeqCst), 2);
@@ -182,19 +192,22 @@ mod tests {
     let state =
       ThreadSafeState::new(flags, argv, op_selector_std, Progress::new());
     let state_ = state.clone();
-    tokio_util::run(lazy(move || {
-      let mut worker = Worker::new(
-        "TEST".to_string(),
-        startup_data::deno_isolate_init(),
-        state,
-      );
-      worker.execute("denoMain()").unwrap();
-      let result = worker.execute_mod(&module_specifier, false);
-      if let Err(err) = result {
-        eprintln!("execute_mod err {:?}", err);
-      }
-      tokio_util::panic_on_error(worker)
-    }));
+    tokio_util::run(
+      lazy(move |_cx| {
+        let mut worker = Worker::new(
+          "TEST".to_string(),
+          startup_data::deno_isolate_init(),
+          state,
+        );
+        worker.execute("denoMain()").unwrap();
+        let result = worker.execute_mod(&module_specifier, false);
+        if let Err(err) = result {
+          eprintln!("execute_mod err {:?}", err);
+        }
+        worker
+      })
+      .then(|worker| tokio_util::panic_on_error(worker).map(|r| Ok(r))),
+    );
 
     let metrics = &state_.metrics;
     assert_eq!(metrics.resolve_count.load(Ordering::SeqCst), 3);
@@ -236,22 +249,29 @@ mod tests {
       let resource = worker.state.resource.clone();
       let resource_ = resource.clone();
 
-      tokio::spawn(lazy(move || {
-        worker.then(move |r| -> Result<(), ()> {
-          resource_.close();
-          r.unwrap();
-          Ok(())
-        })
-      }));
+      tokio::spawn(
+        worker
+          .then(move |r| {
+            resource_.close();
+            r.unwrap();
+            future::ok(())
+          })
+          .boxed()
+          .compat(),
+      );
 
       let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
 
-      let r = resources::post_message_to_worker(resource.rid, msg).wait();
+      let r = futures::executor::block_on(resources::post_message_to_worker(
+        resource.rid,
+        msg,
+      ));
       assert!(r.is_ok());
 
-      let maybe_msg = resources::get_message_from_worker(resource.rid)
-        .wait()
-        .unwrap();
+      let maybe_msg_result =
+        tokio_util::block_on(resources::get_message_from_worker(resource.rid));
+      assert!(maybe_msg_result.is_ok());
+      let maybe_msg = maybe_msg_result.unwrap();
       assert!(maybe_msg.is_some());
       // Check if message received is [1, 2, 3] in json
       assert_eq!(*maybe_msg.unwrap(), *b"[1,2,3]");
@@ -260,7 +280,10 @@ mod tests {
         .to_string()
         .into_boxed_str()
         .into_boxed_bytes();
-      let r = resources::post_message_to_worker(resource.rid, msg).wait();
+      let r = futures::executor::block_on(resources::post_message_to_worker(
+        resource.rid,
+        msg,
+      ));
       assert!(r.is_ok());
     })
   }
@@ -276,25 +299,28 @@ mod tests {
       let resource = worker.state.resource.clone();
       let rid = resource.rid;
 
-      let worker_future = worker
-        .then(move |r| -> Result<(), ()> {
-          resource.close();
-          println!("workers.rs after resource close");
-          r.unwrap();
-          Ok(())
-        }).shared();
+      let (sender, receiver) = futures::channel::oneshot::channel();
 
-      let worker_future_ = worker_future.clone();
-      tokio::spawn(lazy(move || worker_future_.then(|_| Ok(()))));
+      let worker_future = worker.then(move |r| {
+        resource.close();
+        println!("workers.rs after resource close");
+        r.unwrap();
+        sender.send(()).unwrap();
+        future::ok(())
+      });
+
+      tokio::spawn(worker_future.boxed().compat());
 
       assert_eq!(resources::get_type(rid), Some("worker".to_string()));
 
       let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
-      let r = resources::post_message_to_worker(rid, msg).wait();
+      let r = futures::executor::block_on(resources::post_message_to_worker(
+        rid, msg,
+      ));
       assert!(r.is_ok());
       debug!("rid {:?}", rid);
 
-      worker_future.wait().unwrap();
+      futures::executor::block_on(receiver).unwrap();
       assert_eq!(resources::get_type(rid), None);
     })
   }
@@ -306,7 +332,9 @@ mod tests {
       let mut worker = create_test_worker();
       let module_specifier =
         ModuleSpecifier::resolve_url_or_path("does-not-exist").unwrap();
-      let result = worker.execute_mod_async(&module_specifier, false).wait();
+      let result = futures::executor::block_on(
+        worker.execute_mod_async(&module_specifier, false),
+      );
       assert!(result.is_err());
     })
   }
@@ -319,7 +347,9 @@ mod tests {
       let mut worker = create_test_worker();
       let module_specifier =
         ModuleSpecifier::resolve_url_or_path("./tests/002_hello.ts").unwrap();
-      let result = worker.execute_mod_async(&module_specifier, false).wait();
+      let result = futures::executor::block_on(
+        worker.execute_mod_async(&module_specifier, false),
+      );
       assert!(result.is_ok());
     })
   }

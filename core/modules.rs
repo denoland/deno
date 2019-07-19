@@ -10,15 +10,17 @@ use crate::any_error::ErrBox;
 use crate::isolate::Isolate;
 use crate::libdeno::deno_mod;
 use crate::module_specifier::ModuleSpecifier;
-use futures::Async;
-use futures::Future;
-use futures::Poll;
+use futures::future::FutureExt;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
+use std::future::Future;
 use std::marker::PhantomData;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::task::Context;
+use std::task::Poll;
 
 /// Represent result of fetching the source code of a module.
 /// Contains both module name and code.
@@ -34,7 +36,7 @@ pub struct SourceCodeInfo {
 }
 
 pub type SourceCodeInfoFuture =
-  dyn Future<Item = SourceCodeInfo, Error = ErrBox> + Send;
+  dyn Future<Output = Result<SourceCodeInfo, ErrBox>> + Send;
 
 pub trait Loader: Send + Sync {
   /// Returns an absolute URL.
@@ -52,13 +54,13 @@ pub trait Loader: Send + Sync {
   fn load(
     &self,
     module_specifier: &ModuleSpecifier,
-  ) -> Box<SourceCodeInfoFuture>;
+  ) -> Pin<Box<SourceCodeInfoFuture>>;
 }
 
 struct PendingLoad {
   url: String,
   is_root: bool,
-  source_code_info_future: Box<SourceCodeInfoFuture>,
+  source_code_info_future: Pin<Box<SourceCodeInfoFuture>>,
 }
 
 /// This future is used to implement parallel async module loading without
@@ -76,6 +78,8 @@ pub struct RecursiveLoad<L: Loader> {
   root_specifier: Option<String>, // Empty after first poll
   root_id: Option<deno_mod>,
 }
+
+impl<L: Loader> Unpin for RecursiveLoad<L> {}
 
 impl<L: Loader> RecursiveLoad<L> {
   /// Starts a new parallel load of the given URL.
@@ -140,37 +144,37 @@ impl<L: Loader> RecursiveLoad<L> {
 }
 
 impl<L: Loader> Future for RecursiveLoad<L> {
-  type Item = deno_mod;
-  type Error = ErrBox;
+  type Output = Result<deno_mod, ErrBox>;
 
-  fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-    if self.root.is_none() && self.root_specifier.is_some() {
-      let s = self.root_specifier.take().unwrap();
-      match self.add(&s, ".", None) {
+  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+    let mut load = self.get_mut();
+    if load.root.is_none() && load.root_specifier.is_some() {
+      let s = load.root_specifier.take().unwrap();
+      match load.add(&s, ".", None) {
         Err(err) => {
-          return Err(err);
+          return Poll::Ready(Err(err));
         }
         Ok(root) => {
-          self.root = Some(root);
+          load.root = Some(root);
         }
       }
     }
-    assert!(self.root_specifier.is_none());
-    assert!(self.root.is_some());
+    assert!(load.root_specifier.is_none());
+    assert!(load.root.is_some());
 
     let mut i = 0;
-    while i < self.pending.len() {
-      let pending = &mut self.pending[i];
-      match pending.source_code_info_future.poll() {
-        Err(err) => {
-          return Err(err);
+    while i < load.pending.len() {
+      let pending = &mut load.pending[i];
+      match pending.source_code_info_future.poll_unpin(cx) {
+        Poll::Ready(Err(err)) => {
+          return Poll::Ready(Err(err));
         }
-        Ok(Async::NotReady) => {
+        Poll::Pending => {
           i += 1;
         }
-        Ok(Async::Ready(source_code_info)) => {
+        Poll::Ready(Ok(source_code_info)) => {
           // We have completed loaded one of the modules.
-          let completed = self.pending.remove(i);
+          let completed = load.pending.remove(i);
 
           // #A There are 3 cases to handle at this moment:
           // 1. Source code resolved result have the same module name as requested
@@ -182,7 +186,7 @@ impl<L: Loader> Future for RecursiveLoad<L> {
           //   2b. The module with resolved module name has not yet been registerd
           //     -> register & alias
           let is_module_registered = {
-            let modules = self.modules.lock().unwrap();
+            let modules = load.modules.lock().unwrap();
             modules.is_registered(&source_code_info.module_name)
           };
 
@@ -191,23 +195,26 @@ impl<L: Loader> Future for RecursiveLoad<L> {
           if !is_module_registered {
             let module_name = &source_code_info.module_name;
 
-            let mod_id = {
-              let isolate = self.isolate.lock().unwrap();
+            let result = {
+              let isolate = load.isolate.lock().unwrap();
               isolate.mod_new(
                 completed.is_root,
                 module_name,
                 &source_code_info.code,
               )
-            }?;
-
+            };
+            if let Err(err) = result {
+              return Poll::Ready(Err(err));
+            }
+            let mod_id = result.unwrap();
             if completed.is_root {
-              assert!(self.root_id.is_none());
-              self.root_id = Some(mod_id);
+              assert!(load.root_id.is_none());
+              load.root_id = Some(mod_id);
             }
 
             // Register new module.
             {
-              let mut modules = self.modules.lock().unwrap();
+              let mut modules = load.modules.lock().unwrap();
               modules.register(mod_id, module_name);
               // If necessary, register the alias.
               if need_alias {
@@ -218,46 +225,51 @@ impl<L: Loader> Future for RecursiveLoad<L> {
 
             // Now we must iterate over all imports of the module and load them.
             let imports = {
-              let isolate = self.isolate.lock().unwrap();
+              let isolate = load.isolate.lock().unwrap();
               isolate.mod_get_imports(mod_id)
             };
             let referrer = module_name;
             for specifier in imports {
-              self.add(&specifier, referrer, Some(mod_id))?;
+              load.add(&specifier, referrer, Some(mod_id))?;
             }
           } else if need_alias {
-            let mut modules = self.modules.lock().unwrap();
+            let mut modules = load.modules.lock().unwrap();
             modules.alias(&completed.url, &source_code_info.module_name);
           }
         }
       }
     }
 
-    if !self.pending.is_empty() {
-      return Ok(Async::NotReady);
+    if !load.pending.is_empty() {
+      return Poll::Pending;
     }
 
-    let root_id = self.root_id.unwrap();
+    let root_id = load.root_id.unwrap();
+    let result = {
+      let mut resolve_cb =
+        |specifier: &str, referrer_id: deno_mod| -> deno_mod {
+          let modules = load.modules.lock().unwrap();
+          let referrer = modules.get_name(referrer_id).unwrap();
+          // this callback is only called for non-root modules
+          match load.loader.resolve(specifier, &referrer, false) {
+            Ok(specifier) => match modules.get_id(&specifier.to_string()) {
+              Some(id) => id,
+              None => 0,
+            },
+            // We should have already resolved and loaded this module, so
+            // resolve() will not fail this time.
+            Err(_err) => unreachable!(),
+          }
+        };
 
-    let mut resolve_cb = |specifier: &str, referrer_id: deno_mod| -> deno_mod {
-      let modules = self.modules.lock().unwrap();
-      let referrer = modules.get_name(referrer_id).unwrap();
-      // this callback is only called for non-root modules
-      match self.loader.resolve(specifier, &referrer, false) {
-        Ok(specifier) => match modules.get_id(&specifier.to_string()) {
-          Some(id) => id,
-          None => 0,
-        },
-        // We should have already resolved and loaded this module, so
-        // resolve() will not fail this time.
-        Err(_err) => unreachable!(),
-      }
+      let mut isolate = load.isolate.lock().unwrap();
+      isolate.mod_instantiate(root_id, &mut resolve_cb)
     };
 
-    let mut isolate = self.isolate.lock().unwrap();
-    isolate
-      .mod_instantiate(root_id, &mut resolve_cb)
-      .map(|_| Async::Ready(root_id))
+    match result {
+      Err(err) => Poll::Ready(Err(err)),
+      Ok(()) => Poll::Ready(Ok(root_id)),
+    }
   }
 }
 
@@ -384,7 +396,8 @@ impl Modules {
         if !i.has_child(&child_name) {
           i.children.push(child_name.to_string());
         }
-      }).is_some()
+      })
+      .is_some()
   }
 
   pub fn register(&mut self, id: deno_mod, name: &str) {
@@ -518,8 +531,18 @@ mod tests {
   use super::*;
   use crate::isolate::js_check;
   use crate::isolate::tests::*;
+  use futures::executor::ThreadPool;
+  use futures::future::lazy;
   use std::error::Error;
   use std::fmt;
+
+  fn run_in_task<F, R>(f: F) -> R
+  where
+    F: FnOnce(&mut Context) -> R,
+  {
+    let mut pool = ThreadPool::new().unwrap();
+    pool.run(lazy(move |cx| f(cx)))
+  }
 
   struct MockLoader {
     pub loads: Arc<Mutex<Vec<String>>>,
@@ -588,22 +611,22 @@ mod tests {
   }
 
   impl Future for DelayedSourceCodeFuture {
-    type Item = SourceCodeInfo;
-    type Error = ErrBox;
+    type Output = Result<SourceCodeInfo, ErrBox>;
 
-    fn poll(&mut self) -> Poll<Self::Item, ErrBox> {
-      self.counter += 1;
-      if self.url == "file:///never_ready.js"
-        || (self.url == "file:///slow.js" && self.counter < 2)
+    fn poll(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Self::Output> {
+      let inner = Pin::get_mut(self);
+      inner.counter += 1;
+      if inner.url == "file:///never_ready.js"
+        || (inner.url == "file:///slow.js" && inner.counter < 2)
       {
-        return Ok(Async::NotReady);
+        return Poll::Pending;
       }
-      match mock_source_code(&self.url) {
-        Some(src) => Ok(Async::Ready(SourceCodeInfo {
+      match mock_source_code(&inner.url) {
+        Some(src) => Poll::Ready(Ok(SourceCodeInfo {
           code: src.0.to_owned(),
           module_name: src.1.to_owned(),
         })),
-        None => Err(MockError::LoadErr.into()),
+        None => Poll::Ready(Err(MockError::LoadErr.into())),
       }
     }
   }
@@ -639,11 +662,11 @@ mod tests {
     fn load(
       &self,
       module_specifier: &ModuleSpecifier,
-    ) -> Box<SourceCodeInfoFuture> {
+    ) -> Pin<Box<SourceCodeInfoFuture>> {
       let mut loads = self.loads.lock().unwrap();
       loads.push(module_specifier.to_string());
       let url = module_specifier.to_string();
-      Box::new(DelayedSourceCodeFuture { url, counter: 0 })
+      DelayedSourceCodeFuture { url, counter: 0 }.boxed()
     }
   }
 
@@ -680,58 +703,60 @@ mod tests {
 
   #[test]
   fn test_recursive_load() {
-    let loader = MockLoader::new();
-    let modules = loader.modules.clone();
-    let modules_ = modules.clone();
-    let isolate = loader.isolate.clone();
-    let isolate_ = isolate.clone();
-    let loads = loader.loads.clone();
-    let mut recursive_load =
-      RecursiveLoad::new("/a.js", loader, isolate, modules);
+    run_in_task(|cx| {
+      let loader = MockLoader::new();
+      let modules = loader.modules.clone();
+      let modules_ = modules.clone();
+      let isolate = loader.isolate.clone();
+      let isolate_ = isolate.clone();
+      let loads = loader.loads.clone();
+      let mut recursive_load =
+        RecursiveLoad::new("/a.js", loader, isolate, modules);
 
-    let result = recursive_load.poll();
-    assert!(result.is_ok());
-    if let Async::Ready(a_id) = result.ok().unwrap() {
-      let mut isolate = isolate_.lock().unwrap();
-      js_check(isolate.mod_evaluate(a_id));
+      if let Poll::Ready(result) = recursive_load.poll_unpin(cx) {
+        assert!(result.is_ok());
+        let a_id = result.unwrap();
+        let mut isolate = isolate_.lock().unwrap();
+        js_check(isolate.mod_evaluate(a_id));
 
-      let l = loads.lock().unwrap();
-      assert_eq!(
-        l.to_vec(),
-        vec![
-          "file:///a.js",
-          "file:///b.js",
-          "file:///c.js",
-          "file:///d.js"
-        ]
-      );
+        let l = loads.lock().unwrap();
+        assert_eq!(
+          l.to_vec(),
+          vec![
+            "file:///a.js",
+            "file:///b.js",
+            "file:///c.js",
+            "file:///d.js"
+          ]
+        );
 
-      let modules = modules_.lock().unwrap();
+        let modules = modules_.lock().unwrap();
 
-      assert_eq!(modules.get_id("file:///a.js"), Some(a_id));
-      let b_id = modules.get_id("file:///b.js").unwrap();
-      let c_id = modules.get_id("file:///c.js").unwrap();
-      let d_id = modules.get_id("file:///d.js").unwrap();
+        assert_eq!(modules.get_id("file:///a.js"), Some(a_id));
+        let b_id = modules.get_id("file:///b.js").unwrap();
+        let c_id = modules.get_id("file:///c.js").unwrap();
+        let d_id = modules.get_id("file:///d.js").unwrap();
 
-      assert_eq!(
-        modules.get_children(a_id),
-        Some(&vec![
-          "file:///b.js".to_string(),
-          "file:///c.js".to_string()
-        ])
-      );
-      assert_eq!(
-        modules.get_children(b_id),
-        Some(&vec!["file:///c.js".to_string()])
-      );
-      assert_eq!(
-        modules.get_children(c_id),
-        Some(&vec!["file:///d.js".to_string()])
-      );
-      assert_eq!(modules.get_children(d_id), Some(&vec![]));
-    } else {
-      unreachable!();
-    }
+        assert_eq!(
+          modules.get_children(a_id),
+          Some(&vec![
+            "file:///b.js".to_string(),
+            "file:///c.js".to_string()
+          ])
+        );
+        assert_eq!(
+          modules.get_children(b_id),
+          Some(&vec!["file:///c.js".to_string()])
+        );
+        assert_eq!(
+          modules.get_children(c_id),
+          Some(&vec!["file:///d.js".to_string()])
+        );
+        assert_eq!(modules.get_children(d_id), Some(&vec![]));
+      } else {
+        unreachable!();
+      }
+    })
   }
 
   const CIRCULAR1_SRC: &str = r#"
@@ -752,58 +777,60 @@ mod tests {
 
   #[test]
   fn test_circular_load() {
-    let loader = MockLoader::new();
-    let isolate = loader.isolate.clone();
-    let isolate_ = isolate.clone();
-    let modules = loader.modules.clone();
-    let modules_ = modules.clone();
-    let loads = loader.loads.clone();
-    let mut recursive_load =
-      RecursiveLoad::new("/circular1.js", loader, isolate, modules);
+    run_in_task(|cx| {
+      let loader = MockLoader::new();
+      let isolate = loader.isolate.clone();
+      let isolate_ = isolate.clone();
+      let modules = loader.modules.clone();
+      let modules_ = modules.clone();
+      let loads = loader.loads.clone();
+      let mut recursive_load =
+        RecursiveLoad::new("/circular1.js", loader, isolate, modules);
 
-    let result = recursive_load.poll();
-    assert!(result.is_ok());
-    if let Async::Ready(circular1_id) = result.ok().unwrap() {
-      let mut isolate = isolate_.lock().unwrap();
-      js_check(isolate.mod_evaluate(circular1_id));
+      if let Poll::Ready(result) = recursive_load.poll_unpin(cx) {
+        assert!(result.is_ok());
+        let circular1_id = result.unwrap();
+        let mut isolate = isolate_.lock().unwrap();
+        js_check(isolate.mod_evaluate(circular1_id));
 
-      let l = loads.lock().unwrap();
-      assert_eq!(
-        l.to_vec(),
-        vec![
-          "file:///circular1.js",
-          "file:///circular2.js",
-          "file:///circular3.js"
-        ]
-      );
+        let l = loads.lock().unwrap();
+        assert_eq!(
+          l.to_vec(),
+          vec![
+            "file:///circular1.js",
+            "file:///circular2.js",
+            "file:///circular3.js"
+          ]
+        );
 
-      let modules = modules_.lock().unwrap();
+        let modules = modules_.lock().unwrap();
 
-      assert_eq!(modules.get_id("file:///circular1.js"), Some(circular1_id));
-      let circular2_id = modules.get_id("file:///circular2.js").unwrap();
+        assert_eq!(modules.get_id("file:///circular1.js"), Some(circular1_id));
+        let circular2_id = modules.get_id("file:///circular2.js").unwrap();
 
-      assert_eq!(
-        modules.get_children(circular1_id),
-        Some(&vec!["file:///circular2.js".to_string()])
-      );
+        assert_eq!(
+          modules.get_children(circular1_id),
+          Some(&vec!["file:///circular2.js".to_string()])
+        );
 
-      assert_eq!(
-        modules.get_children(circular2_id),
-        Some(&vec!["file:///circular3.js".to_string()])
-      );
+        assert_eq!(
+          modules.get_children(circular2_id),
+          Some(&vec!["file:///circular3.js".to_string()])
+        );
 
-      assert!(modules.get_id("file:///circular3.js").is_some());
-      let circular3_id = modules.get_id("file:///circular3.js").unwrap();
-      assert_eq!(
-        modules.get_children(circular3_id),
-        Some(&vec![
-          "file:///circular1.js".to_string(),
-          "file:///circular2.js".to_string()
-        ])
-      );
-    } else {
-      unreachable!();
-    }
+        assert!(modules.get_id("file:///circular3.js").is_some());
+        let circular3_id = modules.get_id("file:///circular3.js").unwrap();
+        assert_eq!(
+          modules.get_children(circular3_id),
+          Some(&vec![
+            "file:///circular1.js".to_string(),
+            "file:///circular2.js".to_string()
+          ])
+        );
+      } else {
+        unreachable!();
+      }
+    });
   }
 
   const REDIRECT1_SRC: &str = r#"
@@ -822,49 +849,51 @@ mod tests {
 
   #[test]
   fn test_redirect_load() {
-    let loader = MockLoader::new();
-    let isolate = loader.isolate.clone();
-    let isolate_ = isolate.clone();
-    let modules = loader.modules.clone();
-    let modules_ = modules.clone();
-    let loads = loader.loads.clone();
-    let mut recursive_load =
-      RecursiveLoad::new("/redirect1.js", loader, isolate, modules);
+    run_in_task(|cx| {
+      let loader = MockLoader::new();
+      let isolate = loader.isolate.clone();
+      let isolate_ = isolate.clone();
+      let modules = loader.modules.clone();
+      let modules_ = modules.clone();
+      let loads = loader.loads.clone();
+      let mut recursive_load =
+        RecursiveLoad::new("/redirect1.js", loader, isolate, modules);
 
-    let result = recursive_load.poll();
-    assert!(result.is_ok());
-    if let Async::Ready(redirect1_id) = result.ok().unwrap() {
-      let mut isolate = isolate_.lock().unwrap();
-      js_check(isolate.mod_evaluate(redirect1_id));
-      let l = loads.lock().unwrap();
-      assert_eq!(
-        l.to_vec(),
-        vec![
-          "file:///redirect1.js",
-          "file:///redirect2.js",
-          "file:///dir/redirect3.js"
-        ]
-      );
+      if let Poll::Ready(result) = recursive_load.poll_unpin(cx) {
+        assert!(result.is_ok());
+        let redirect1_id = result.unwrap();
+        let mut isolate = isolate_.lock().unwrap();
+        js_check(isolate.mod_evaluate(redirect1_id));
+        let l = loads.lock().unwrap();
+        assert_eq!(
+          l.to_vec(),
+          vec![
+            "file:///redirect1.js",
+            "file:///redirect2.js",
+            "file:///dir/redirect3.js"
+          ]
+        );
 
-      let modules = modules_.lock().unwrap();
+        let modules = modules_.lock().unwrap();
 
-      assert_eq!(modules.get_id("file:///redirect1.js"), Some(redirect1_id));
+        assert_eq!(modules.get_id("file:///redirect1.js"), Some(redirect1_id));
 
-      let redirect2_id = modules.get_id("file:///dir/redirect2.js").unwrap();
-      assert!(modules.is_alias("file:///redirect2.js"));
-      assert!(!modules.is_alias("file:///dir/redirect2.js"));
-      assert_eq!(modules.get_id("file:///redirect2.js"), Some(redirect2_id));
+        let redirect2_id = modules.get_id("file:///dir/redirect2.js").unwrap();
+        assert!(modules.is_alias("file:///redirect2.js"));
+        assert!(!modules.is_alias("file:///dir/redirect2.js"));
+        assert_eq!(modules.get_id("file:///redirect2.js"), Some(redirect2_id));
 
-      let redirect3_id = modules.get_id("file:///redirect3.js").unwrap();
-      assert!(modules.is_alias("file:///dir/redirect3.js"));
-      assert!(!modules.is_alias("file:///redirect3.js"));
-      assert_eq!(
-        modules.get_id("file:///dir/redirect3.js"),
-        Some(redirect3_id)
-      );
-    } else {
-      unreachable!();
-    }
+        let redirect3_id = modules.get_id("file:///redirect3.js").unwrap();
+        assert!(modules.is_alias("file:///dir/redirect3.js"));
+        assert!(!modules.is_alias("file:///redirect3.js"));
+        assert_eq!(
+          modules.get_id("file:///dir/redirect3.js"),
+          Some(redirect3_id)
+        );
+      } else {
+        unreachable!();
+      }
+    });
   }
 
   // main.js
@@ -885,47 +914,45 @@ mod tests {
 
   #[test]
   fn slow_never_ready_modules() {
-    let loader = MockLoader::new();
-    let isolate = loader.isolate.clone();
-    let modules = loader.modules.clone();
-    let loads = loader.loads.clone();
-    let mut recursive_load =
-      RecursiveLoad::new("/main.js", loader, isolate, modules);
+    run_in_task(|cx| {
+      let loader = MockLoader::new();
+      let isolate = loader.isolate.clone();
+      let modules = loader.modules.clone();
+      let loads = loader.loads.clone();
+      let mut recursive_load =
+        RecursiveLoad::new("/main.js", loader, isolate, modules);
 
-    let result = recursive_load.poll();
-    assert!(result.is_ok());
-    assert!(result.ok().unwrap().is_not_ready());
+      assert!(recursive_load.poll_unpin(cx).is_pending());
 
-    {
-      let l = loads.lock().unwrap();
-      assert_eq!(
-        l.to_vec(),
-        vec![
-          "file:///main.js",
-          "file:///never_ready.js",
-          "file:///slow.js"
-        ]
-      );
-    }
+      {
+        let l = loads.lock().unwrap();
+        assert_eq!(
+          l.to_vec(),
+          vec![
+            "file:///main.js",
+            "file:///never_ready.js",
+            "file:///slow.js"
+          ]
+        );
+      }
 
-    for _ in 0..10 {
-      let result = recursive_load.poll();
-      assert!(result.is_ok());
-      assert!(result.ok().unwrap().is_not_ready());
-      let l = loads.lock().unwrap();;
-      assert_eq!(
-        l.to_vec(),
-        vec![
-          "file:///main.js",
-          "file:///never_ready.js",
-          "file:///slow.js",
-          "file:///a.js",
-          "file:///b.js",
-          "file:///c.js",
-          "file:///d.js"
-        ]
-      );
-    }
+      for _ in 0..10 {
+        assert!(recursive_load.poll_unpin(cx).is_pending());
+        let l = loads.lock().unwrap();;
+        assert_eq!(
+          l.to_vec(),
+          vec![
+            "file:///main.js",
+            "file:///never_ready.js",
+            "file:///slow.js",
+            "file:///a.js",
+            "file:///b.js",
+            "file:///c.js",
+            "file:///d.js"
+          ]
+        );
+      }
+    });
   }
 
   // bad_import.js
@@ -935,18 +962,23 @@ mod tests {
 
   #[test]
   fn loader_disappears_after_error() {
-    let loader = MockLoader::new();
-    let isolate = loader.isolate.clone();
-    let modules = loader.modules.clone();
-    let mut recursive_load =
-      RecursiveLoad::new("/bad_import.js", loader, isolate, modules);
-    let result = recursive_load.poll();
-    assert!(result.is_err());
-    let err = result.err().unwrap();
-    assert_eq!(
-      err.downcast_ref::<MockError>().unwrap(),
-      &MockError::ResolveErr
-    );
+    run_in_task(|cx| {
+      let loader = MockLoader::new();
+      let isolate = loader.isolate.clone();
+      let modules = loader.modules.clone();
+      let mut recursive_load =
+        RecursiveLoad::new("/bad_import.js", loader, isolate, modules);
+      if let Poll::Ready(result) = recursive_load.poll_unpin(cx) {
+        assert!(result.is_err());
+        let err = result.err().unwrap();
+        assert_eq!(
+          err.downcast_ref::<MockError>().unwrap(),
+          &MockError::ResolveErr
+        );
+      } else {
+        unreachable!();
+      }
+    });
   }
 
   #[test]

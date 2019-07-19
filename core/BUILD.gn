@@ -18,9 +18,17 @@ group("deno_core_deps") {
   ]
 }
 
+main_extern = [
+  {
+    label = "//build_extra/rust:futures_preview"
+    crate_name = "futures"
+    crate_type = "rlib"
+    crate_version = "0.3.0-alpha.17"
+  },
+]
+
 # deno does not depend on flatbuffers nor tokio.
 main_extern_rlib = [
-  "futures",
   "libc",
   "serde_json",
   "log",
@@ -32,6 +40,7 @@ rust_rlib("deno") {
   deps = [
     ":deno_core_deps",
   ]
+  extern = main_extern
   extern_rlib = main_extern_rlib
 }
 
@@ -40,6 +49,7 @@ rust_test("deno_core_test") {
   deps = [
     ":deno_core_deps",
   ]
+  extern = main_extern
   extern_rlib = main_extern_rlib
 }
 
@@ -49,9 +59,14 @@ http_bench_extern = [
     crate_name = "deno"
     crate_type = "rlib"
   },
+  {
+    label = "//build_extra/rust:futures_preview"
+    crate_name = "futures"
+    crate_type = "rlib"
+    crate_version = "0.3.0-alpha.17"
+  },
 ]
 http_bench_extern_rlib = [
-  "futures",
   "lazy_static",
   "libc",
   "log",

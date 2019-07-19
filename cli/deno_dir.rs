@@ -10,15 +10,16 @@ use crate::tokio_util;
 use deno::ErrBox;
 use deno::ModuleSpecifier;
 use dirs;
-use futures::future::{loop_fn, Either, Loop};
-use futures::Future;
+use futures::future::{self, Either, FutureExt, TryFutureExt};
 use http;
 use serde_json;
 use std;
 use std::collections::HashMap;
 use std::fs;
+use std::future::Future;
 use std::path::Path;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::result::Result;
 use std::str;
 use std::str::FromStr;
@@ -62,7 +63,7 @@ impl SourceFile {
 }
 
 pub type SourceFileFuture =
-  dyn Future<Item = SourceFile, Error = ErrBox> + Send;
+  dyn Future<Output = Result<SourceFile, ErrBox>> + Send;
 
 /// This trait implements synchronous and asynchronous methods
 /// for file fetching.
@@ -75,13 +76,15 @@ pub trait SourceFileFetcher {
   fn fetch_source_file_async(
     self: &Self,
     specifier: &ModuleSpecifier,
-  ) -> Box<SourceFileFuture>;
+  ) -> Pin<Box<SourceFileFuture>>;
 
   /// Required for TS compiler.
   fn fetch_source_file(
     self: &Self,
     specifier: &ModuleSpecifier,
-  ) -> Result<SourceFile, ErrBox>;
+  ) -> Result<SourceFile, ErrBox> {
+    tokio_util::block_on(self.fetch_source_file_async(specifier))
+  }
 }
 
 // TODO: this list should be implemented on SourceFileFetcher trait
@@ -191,14 +194,14 @@ impl SourceFileFetcher for DenoDir {
   fn fetch_source_file_async(
     self: &Self,
     specifier: &ModuleSpecifier,
-  ) -> Box<SourceFileFuture> {
+  ) -> Pin<Box<SourceFileFuture>> {
     let module_url = specifier.as_url().to_owned();
     debug!("fetch_source_file. specifier {} ", &module_url);
 
     // Check if this file was already fetched and can be retrieved from in-process cache.
     if let Some(source_file) = self.source_file_cache.get(specifier.to_string())
     {
-      return Box::new(futures::future::ok(source_file));
+      return futures::future::ok(source_file).boxed();
     }
 
     let source_file_cache = self.source_file_cache.clone();
@@ -209,14 +212,16 @@ impl SourceFileFetcher for DenoDir {
         &module_url,
         self.use_disk_cache,
         self.no_remote_fetch,
-      ).then(move |result| {
+      )
+      .map(move |result| {
         let mut out = result.map_err(|err| {
           if err.kind() == ErrorKind::NotFound {
             // For NotFound, change the message to something better.
             DenoError::new(
               ErrorKind::NotFound,
               format!("Cannot resolve module \"{}\"", module_url.to_string()),
-            ).into()
+            )
+            .into()
           } else {
             err
           }
@@ -233,14 +238,7 @@ impl SourceFileFetcher for DenoDir {
         Ok(out)
       });
 
-    Box::new(fut)
-  }
-
-  fn fetch_source_file(
-    self: &Self,
-    specifier: &ModuleSpecifier,
-  ) -> Result<SourceFile, ErrBox> {
-    tokio_util::block_on(self.fetch_source_file_async(specifier))
+    fut.boxed()
   }
 }
 
@@ -260,22 +258,22 @@ impl DenoDir {
     module_url: &Url,
     use_disk_cache: bool,
     no_remote_fetch: bool,
-  ) -> impl Future<Item = SourceFile, Error = ErrBox> {
+  ) -> impl Future<Output = Result<SourceFile, ErrBox>> {
     let url_scheme = module_url.scheme();
     let is_local_file = url_scheme == "file";
 
     if let Err(err) = DenoDir::check_if_supported_scheme(&module_url) {
-      return Either::A(futures::future::err(err));
+      return Either::Right(futures::future::err(err));
     }
 
     // Local files are always fetched from disk bypassing cache entirely.
     if is_local_file {
       match self.fetch_local_file(&module_url) {
         Ok(source_file) => {
-          return Either::A(futures::future::ok(source_file));
+          return Either::Right(futures::future::ok(source_file));
         }
         Err(err) => {
-          return Either::A(futures::future::err(err));
+          return Either::Right(futures::future::err(err));
         }
       }
     }
@@ -284,13 +282,13 @@ impl DenoDir {
     if use_disk_cache {
       match self.fetch_cached_remote_source(&module_url, None) {
         Ok(Some(source_file)) => {
-          return Either::A(futures::future::ok(source_file));
+          return Either::Right(futures::future::ok(source_file));
         }
         Ok(None) => {
           // there's no cached version
         }
         Err(err) => {
-          return Either::A(futures::future::err(err));
+          return Either::Right(futures::future::err(err));
         }
       }
     }
@@ -298,33 +296,37 @@ impl DenoDir {
     // If remote file wasn't found check if we can fetch it
     if no_remote_fetch {
       // We can't fetch remote file - bail out
-      return Either::A(futures::future::err(
+      return Either::Right(futures::future::err(
         std::io::Error::new(
           std::io::ErrorKind::NotFound,
           format!(
             "cannot find remote file '{}' in cache",
             module_url.to_string()
           ),
-        ).into(),
+        )
+        .into(),
       ));
     }
 
     // Fetch remote file and cache on-disk for subsequent access
     // not cached/local, try remote.
     let module_url_ = module_url.clone();
-    Either::B(self
+    Either::Left(
+      self
         .fetch_remote_source_async(&module_url)
         // TODO: cache fetched remote source here - `fetch_remote_source` should only fetch with
         // redirects, nothing more
         .and_then(move |maybe_remote_source| match maybe_remote_source {
-          Some(output) => Ok(output),
-          None => Err(
+          Some(output) => future::ok(output),
+          None => future::err(
             std::io::Error::new(
               std::io::ErrorKind::NotFound,
               format!("cannot find remote file '{}'", module_url_.to_string()),
-            ).into(),
+            )
+            .into(),
           ),
-        }))
+        }),
+    )
   }
 
   /// Fetch local source file.
@@ -424,7 +426,7 @@ impl DenoDir {
   fn fetch_remote_source_async(
     self: &Self,
     module_url: &Url,
-  ) -> impl Future<Item = Option<SourceFile>, Error = ErrBox> {
+  ) -> impl Future<Output = Result<Option<SourceFile>, ErrBox>> {
     use crate::http_util::FetchOnceResult;
 
     let download_job = self.progress.add("Download", &module_url.to_string());
@@ -433,89 +435,78 @@ impl DenoDir {
     // cached file, containing just the media type and possible redirect target (both are http headers).
     // If redirect target is present, the file itself if not cached.
     // In future resolutions, we would instead follow this redirect target ("redirect_to").
-    loop_fn(
-      (
-        self.clone(),
-        None,
-        module_url.clone(),
-      ),
-      |(
-        dir,
-        mut maybe_initial_module_url,
-        module_url,
-      )| {
+    let dir = self.clone();
+    let mut maybe_initial_module_url = None;
+    let mut module_url = module_url.clone();
+    let loop_fut = async move {
+      loop {
         let module_uri = url_into_uri(&module_url);
         // Single pass fetch, either yields code or yields redirect.
-        http_util::fetch_string_once(module_uri).and_then(
-          move |fetch_once_result| {
-            match fetch_once_result {
-              FetchOnceResult::Redirect(uri) => {
-                // If redirects, update module_name and filename for next looped call.
-                let new_module_url = Url::parse(&uri.to_string()).expect("http::uri::Uri should be parseable as Url");
-
-                if maybe_initial_module_url.is_none() {
-                  maybe_initial_module_url = Some(module_url);
-                }
-
-                // Not yet completed. Follow the redirect and loop.
-                Ok(Loop::Continue((
-                  dir,
-                  maybe_initial_module_url,
-                  new_module_url,
-                )))
-              }
-              FetchOnceResult::Code(source, maybe_content_type) => {
-                // TODO: move caching logic outside this function
-                // We land on the code.
-                dir.save_source_code_headers(
-                  &module_url,
-                  maybe_content_type.clone(),
-                  None,
-                ).unwrap();
-
-
-                dir.save_source_code(
-                  &module_url,
-                  &source
-                ).unwrap();
-
-                if let Some(redirect_source_url) = &maybe_initial_module_url {
-                  dir.save_source_code_headers(
-                    redirect_source_url,
-                    maybe_content_type.clone(),
-                    Some(module_url.to_string())
-                  ).unwrap()
-                }
-
-                let filepath = dir
-                  .deps_cache
-                  .location
-                  .join(dir.deps_cache.get_cache_filename(&module_url));
-
-                let media_type = map_content_type(
-                  &filepath,
-                  maybe_content_type.as_ref().map(String::as_str),
-                );
-
-                let source_file = SourceFile {
-                  url: module_url,
-                  redirect_source_url: maybe_initial_module_url,
-                  filename: filepath,
-                  media_type,
-                  source_code: source.as_bytes().to_owned(),
-                };
-
-                Ok(Loop::Break(Some(source_file)))
-              }
+        let fetch_once_result =
+          http_util::fetch_string_once(module_uri).await?;
+        match fetch_once_result {
+          FetchOnceResult::Redirect(uri) => {
+            if maybe_initial_module_url.is_none() {
+              maybe_initial_module_url = Some(module_url);
             }
-          },
-        )
-      },
-    )
-    .then(move |r| {
+
+            // If redirects, update module_name and filename for next looped call.
+            module_url = Url::parse(&uri.to_string())
+              .expect("http::uri::Uri should be parseable as Url");
+
+            // Not yet completed. Follow the redirect and loop.
+            continue;
+          }
+          FetchOnceResult::Code(source, maybe_content_type) => {
+            // TODO: move caching logic outside this function
+            // We land on the code.
+            dir
+              .save_source_code_headers(
+                &module_url,
+                maybe_content_type.clone(),
+                None,
+              )
+              .unwrap();
+
+            dir.save_source_code(&module_url, &source).unwrap();
+
+            if let Some(redirect_source_url) = &maybe_initial_module_url {
+              dir
+                .save_source_code_headers(
+                  redirect_source_url,
+                  maybe_content_type.clone(),
+                  Some(module_url.to_string()),
+                )
+                .unwrap()
+            }
+
+            let filepath = dir
+              .deps_cache
+              .location
+              .join(dir.deps_cache.get_cache_filename(&module_url));
+
+            let media_type = map_content_type(
+              &filepath,
+              maybe_content_type.as_ref().map(String::as_str),
+            );
+
+            let source_file = SourceFile {
+              url: module_url,
+              redirect_source_url: maybe_initial_module_url,
+              filename: filepath,
+              media_type,
+              source_code: source.as_bytes().to_owned(),
+            };
+
+            return Ok(Some(source_file));
+          }
+        }
+      }
+    };
+    loop_fut.then(move |r| {
       // Explicit drop to keep reference alive until future completes.
       drop(download_job);
-      r
+      future::ready(r)
     })
   }
 
@@ -875,11 +866,9 @@ mod tests {
       // If get_source_file does not call remote, this should be JavaScript
       // as we modified before! (we do not overwrite .headers.json due to no http fetch)
       assert_eq!(&(r3.media_type), &msg::MediaType::Json);
-      assert!(
-        fs::read_to_string(&headers_file_name)
-          .unwrap()
-          .contains("application/json")
-      );
+      assert!(fs::read_to_string(&headers_file_name)
+        .unwrap()
+        .contains("application/json"));
 
       // let's create fresh instance of DenoDir (simulating another freshh Deno process)
       // and don't use cache
@@ -969,7 +958,8 @@ mod tests {
     tokio_util::init(|| {
       let specifier = ModuleSpecifier::resolve_url(
         "http://localhost:4545/tests/subdir/mismatch_ext.ts",
-      ).unwrap();
+      )
+      .unwrap();
       let headers_file_name = deno_dir.deps_cache.location.join(
         deno_dir.deps_cache.get_cache_filename_with_extension(
           specifier.as_url(),

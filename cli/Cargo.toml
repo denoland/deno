@@ -23,7 +23,8 @@ atty = "0.2.11"
 clap = "2.33.0"
 dirs = "2.0.1"
 flatbuffers = "0.6.0"
-futures = "0.1.27"
+futures-preview = { version = "0.3.0-alpha.17", features = ["compat"] }
+futures_01 = { package = "futures", version = "0.1.28" }
 http = "0.1.17"
 hyper = "0.12.30"
 hyper-rustls = "0.16.1"
@@ -43,13 +44,12 @@ serde_json = { version = "1.0.39", features = [ "preserve_order" ] }
 source-map-mappings = "0.5.0"
 tempfile = "3.0.8"
 termcolor = "1.0.4"
-tokio = "0.1.21"
-tokio-executor = "0.1.7"
-tokio-fs = "0.1.6"
-tokio-io = "0.1.12"
-tokio-process = "0.2.3"
-tokio-rustls = "0.9.3"
-tokio-threadpool = "0.1.14"
+tokio = { version = "0.2.0", git = "https://github.com/tokio-rs/tokio", rev = "0d99ddd4f4adfb3ee099a5eefaea529200afcbd1" }
+tokio-executor = { version = "0.2.0", git = "https://github.com/tokio-rs/tokio", rev = "0d99ddd4f4adfb3ee099a5eefaea529200afcbd1" }
+tokio-fs = { version = "0.2.0", git = "https://github.com/tokio-rs/tokio", rev = "0d99ddd4f4adfb3ee099a5eefaea529200afcbd1" }
+tokio-io = { version = "0.2.0", git = "https://github.com/tokio-rs/tokio", rev = "0d99ddd4f4adfb3ee099a5eefaea529200afcbd1" }
+tokio-process = { version = "0.2.0", git = "https://github.com/afinch7/tokio-process", rev = "320b8b9bfe77c195a15d14e3f293ade438b7d5c5" }
+tokio-threadpool = { version = "0.2.0", git = "https://github.com/tokio-rs/tokio", rev = "0d99ddd4f4adfb3ee099a5eefaea529200afcbd1" }
 url = "1.7.2"
 utime = "0.2.1"
 

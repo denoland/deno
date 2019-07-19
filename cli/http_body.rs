@@ -1,13 +1,15 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
-use futures::Async;
-use futures::Poll;
+use futures_01::Async;
 use hyper::body::Payload;
 use hyper::Body;
 use hyper::Chunk;
 use std::cmp::min;
 use std::io;
 use std::io::Read;
+use std::pin::Pin;
+use std::task::Context;
+use std::task::Poll;
 use tokio::io::AsyncRead;
 
 /// Wraps `hyper::Body` so that it can be exposed as an `AsyncRead` and integrated
@@ -35,53 +37,58 @@ impl Read for HttpBody {
 }
 
 impl AsyncRead for HttpBody {
-  fn poll_read(&mut self, buf: &mut [u8]) -> Poll<usize, io::Error> {
-    if let Some(chunk) = self.chunk.take() {
+  fn poll_read(
+    self: Pin<&mut Self>,
+    _cx: &mut Context,
+    buf: &mut [u8],
+  ) -> Poll<io::Result<usize>> {
+    let inner = Pin::get_mut(self);
+    if let Some(chunk) = inner.chunk.take() {
       debug!(
         "HttpBody Fake Read buf {} chunk {} pos {}",
         buf.len(),
         chunk.len(),
-        self.pos
+        inner.pos
       );
-      let n = min(buf.len(), chunk.len() - self.pos);
+      let n = min(buf.len(), chunk.len() - inner.pos);
       {
-        let rest = &chunk[self.pos..];
+        let rest = &chunk[inner.pos..];
         buf[..n].clone_from_slice(&rest[..n]);
       }
-      self.pos += n;
-      if self.pos == chunk.len() {
-        self.pos = 0;
+      inner.pos += n;
+      if inner.pos == chunk.len() {
+        inner.pos = 0;
       } else {
-        self.chunk = Some(chunk);
+        inner.chunk = Some(chunk);
       }
-      return Ok(Async::Ready(n));
+      return Poll::Ready(Ok(n));
     } else {
-      assert_eq!(self.pos, 0);
+      assert_eq!(inner.pos, 0);
     }
 
-    let p = self.body.poll_data();
+    let p = inner.body.poll_data();
     match p {
-      Err(e) => Err(
+      Err(e) => Poll::Ready(Err(
         // TODO Need to map hyper::Error into std::io::Error.
         io::Error::new(io::ErrorKind::Other, e),
-      ),
-      Ok(Async::NotReady) => Ok(Async::NotReady),
+      )),
+      Ok(Async::NotReady) => Poll::Pending,
       Ok(Async::Ready(maybe_chunk)) => match maybe_chunk {
-        None => Ok(Async::Ready(0)),
+        None => Poll::Ready(Ok(0)),
         Some(chunk) => {
           debug!(
             "HttpBody Real Read buf {} chunk {} pos {}",
             buf.len(),
             chunk.len(),
-            self.pos
+            inner.pos
           );
           let n = min(buf.len(), chunk.len());
           buf[..n].clone_from_slice(&chunk[..n]);
           if buf.len() < chunk.len() {
-            self.pos = n;
-            self.chunk = Some(chunk);
+            inner.pos = n;
+            inner.chunk = Some(chunk);
           }
-          Ok(Async::Ready(n))
+          Poll::Ready(Ok(n))
         }
       },
     }

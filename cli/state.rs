@@ -18,24 +18,26 @@ use deno::ErrBox;
 use deno::Loader;
 use deno::ModuleSpecifier;
 use deno::PinnedBuf;
-use futures::future::Shared;
-use futures::Future;
+use futures::channel::mpsc;
+use futures::future::FutureExt;
+use futures::future::TryFutureExt;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use std;
 use std::collections::HashMap;
 use std::env;
+use std::future::Future;
 use std::ops::Deref;
+use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Instant;
-use tokio::sync::mpsc as async_mpsc;
 
-pub type WorkerSender = async_mpsc::Sender<Buf>;
-pub type WorkerReceiver = async_mpsc::Receiver<Buf>;
+pub type WorkerSender = mpsc::Sender<Buf>;
+pub type WorkerReceiver = mpsc::Receiver<Buf>;
 pub type WorkerChannels = (WorkerSender, WorkerReceiver);
-pub type UserWorkerTable = HashMap<ResourceId, Shared<Worker>>;
+pub type UserWorkerTable = HashMap<ResourceId, Worker>;
 
 #[derive(Default)]
 pub struct Metrics {
@@ -105,7 +107,7 @@ impl ThreadSafeState {
 pub fn fetch_source_file_and_maybe_compile_async(
   state: &ThreadSafeState,
   module_specifier: &ModuleSpecifier,
-) -> impl Future<Item = SourceFile, Error = ErrBox> {
+) -> impl Future<Output = Result<SourceFile, ErrBox>> {
   let state_ = state.clone();
 
   state_
@@ -147,18 +149,16 @@ impl Loader for ThreadSafeState {
   fn load(
     &self,
     module_specifier: &ModuleSpecifier,
-  ) -> Box<deno::SourceCodeInfoFuture> {
+  ) -> Pin<Box<deno::SourceCodeInfoFuture>> {
     self.metrics.resolve_count.fetch_add(1, Ordering::SeqCst);
-    Box::new(
-      fetch_source_file_and_maybe_compile_async(self, module_specifier).map(
-        |source_file| deno::SourceCodeInfo {
-          // Real module name, might be different from initial specifier
-          // due to redirections.
-          code: source_file.js_source(),
-          module_name: source_file.url.to_string(),
-        },
-      ),
-    )
+    fetch_source_file_and_maybe_compile_async(self, module_specifier)
+      .map_ok(|source_file| deno::SourceCodeInfo {
+        // Real module name, might be different from initial specifier
+        // due to redirections.
+        code: source_file.js_source(),
+        module_name: source_file.url.to_string(),
+      })
+      .boxed()
   }
 }
 
@@ -171,8 +171,8 @@ impl ThreadSafeState {
   ) -> Self {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
 
-    let (worker_in_tx, worker_in_rx) = async_mpsc::channel::<Buf>(1);
-    let (worker_out_tx, worker_out_rx) = async_mpsc::channel::<Buf>(1);
+    let (worker_in_tx, worker_in_rx) = mpsc::channel::<Buf>(1);
+    let (worker_out_tx, worker_out_rx) = mpsc::channel::<Buf>(1);
     let internal_channels = (worker_out_tx, worker_in_rx);
     let external_channels = (worker_in_tx, worker_out_rx);
     let resource = resources::add_worker(external_channels);
@@ -182,7 +182,8 @@ impl ThreadSafeState {
       progress.clone(),
       !flags.reload,
       flags.no_fetch,
-    ).unwrap();
+    )
+    .unwrap();
 
     let main_module: Option<ModuleSpecifier> = if argv_rest.len() <= 1 {
       None

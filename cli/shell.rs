@@ -342,18 +342,18 @@ impl ShellOut {
           None => write!(stream, " ")?,
         }
       } /*
-      ShellOut::Write(ref mut w) => {
-        if justified {
-          write!(w, "{:>12}", status)?;
-        } else {
-          write!(w, "{}", status)?;
+        ShellOut::Write(ref mut w) => {
+          if justified {
+            write!(w, "{:>12}", status)?;
+          } else {
+            write!(w, "{}", status)?;
+          }
+          match message {
+            Some(message) => writeln!(w, " {}", message)?,
+            None => write!(w, " ")?,
+          }
         }
-        match message {
-          Some(message) => writeln!(w, " {}", message)?,
-          None => write!(w, " ")?,
-        }
-      }
-      */
+        */
     }
     Ok(())
   }
@@ -479,12 +479,10 @@ mod imp {
   }
 }
 
-#[cfg(
-  any(
-    all(unix, not(any(target_os = "linux", target_os = "macos"))),
-    windows
-  )
-)]
+#[cfg(any(
+  all(unix, not(any(target_os = "linux", target_os = "macos"))),
+  windows
+))]
 fn default_err_erase_line(shell: &mut Shell) {
   if let Some(max_width) = imp::stderr_width() {
     let blank = " ".repeat(max_width);

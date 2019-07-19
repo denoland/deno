@@ -1,11 +1,12 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::deno_error;
 use deno::ErrBox;
-use futures::Async;
-use futures::Future;
-use futures::Poll;
+use std::future::Future;
 use std::net::SocketAddr;
 use std::net::ToSocketAddrs;
+use std::pin::Pin;
+use std::task::Context;
+use std::task::Poll;
 
 /// Go-style network address parsing. Returns a future.
 /// Examples:
@@ -25,23 +26,22 @@ pub struct ResolveAddrFuture {
 }
 
 impl Future for ResolveAddrFuture {
-  type Item = SocketAddr;
-  type Error = ErrBox;
+  type Output = Result<SocketAddr, ErrBox>;
 
-  fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+  fn poll(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Self::Output> {
     // The implementation of this is not actually async at the moment,
     // however we intend to use async DNS resolution in the future and
     // so we expose this as a future instead of Result.
     match split(&self.address) {
-      None => Err(deno_error::invalid_address_syntax()),
+      None => Poll::Ready(Err(deno_error::invalid_address_syntax())),
       Some(addr_port_pair) => {
         // I absolutely despise the .to_socket_addrs() API.
         let r = addr_port_pair.to_socket_addrs().map_err(ErrBox::from);
 
-        r.and_then(|mut iter| match iter.next() {
-          Some(a) => Ok(Async::Ready(a)),
+        Poll::Ready(r.and_then(|mut iter| match iter.next() {
+          Some(a) => Ok(a),
           None => panic!("There should be at least one result"),
-        })
+        }))
       }
     }
   }
@@ -106,7 +106,8 @@ mod tests {
   fn resolve_addr1() {
     let expected =
       SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 80));
-    let actual = resolve_addr("127.0.0.1:80").wait().unwrap();
+    let actual =
+      futures::executor::block_on(resolve_addr("127.0.0.1:80")).unwrap();
     assert_eq!(actual, expected);
   }
 
@@ -114,7 +115,8 @@ mod tests {
   fn resolve_addr3() {
     let expected =
       SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(192, 0, 2, 1), 25));
-    let actual = resolve_addr("192.0.2.1:25").wait().unwrap();
+    let actual =
+      futures::executor::block_on(resolve_addr("192.0.2.1:25")).unwrap();
     assert_eq!(actual, expected);
   }
 
@@ -126,7 +128,8 @@ mod tests {
       0,
       0,
     ));
-    let actual = resolve_addr("[2001:db8::1]:8080").wait().unwrap();
+    let actual =
+      futures::executor::block_on(resolve_addr("[2001:db8::1]:8080")).unwrap();
     assert_eq!(actual, expected);
   }
 }

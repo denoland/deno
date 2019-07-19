@@ -17,24 +17,29 @@ use crate::state::WorkerChannels;
 use deno::Buf;
 use deno::ErrBox;
 
-use futures;
-use futures::Future;
-use futures::Poll;
-use futures::Sink;
-use futures::Stream;
+use futures::channel::mpsc;
+use futures::future;
+use futures::future::FutureExt;
+use futures::io::AsyncRead as FutAsyncRead;
+use futures::io::AsyncWrite as FutAsyncWrite;
+use futures::stream::StreamExt;
+use futures::task::AtomicWaker;
 use hyper;
 use std;
 use std::collections::HashMap;
+use std::future::Future;
 use std::io::{Error, Read, Seek, SeekFrom, Write};
 use std::net::{Shutdown, SocketAddr};
+use std::pin::Pin;
 use std::process::ExitStatus;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
+use std::task::Context;
+use std::task::Poll;
 use tokio;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
-use tokio::sync::mpsc;
 use tokio_process;
 
 pub type ResourceId = u32; // Sometimes referred to RID.
@@ -87,7 +92,7 @@ enum Repr {
   // this pending task could be notified and die.
   // Currently TcpListener itself does not take care of this issue.
   // See: https://github.com/tokio-rs/tokio/issues/846
-  TcpListener(tokio::net::TcpListener, Option<futures::task::Task>),
+  TcpListener(tokio::net::TcpListener, Option<AtomicWaker>),
   TcpStream(tokio::net::TcpStream),
   HttpBody(HttpBody),
   Repl(Arc<Mutex<Repl>>),
@@ -155,16 +160,19 @@ pub struct Resource {
 
 impl Resource {
   // TODO Should it return a Resource instead of net::TcpStream?
-  pub fn poll_accept(&mut self) -> Poll<(TcpStream, SocketAddr), Error> {
+  pub fn poll_accept(
+    &mut self,
+    cx: &mut Context,
+  ) -> Poll<std::io::Result<(TcpStream, SocketAddr)>> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     let maybe_repr = table.get_mut(&self.rid);
     match maybe_repr {
-      None => Err(std::io::Error::new(
+      None => Poll::Ready(Err(std::io::Error::new(
         std::io::ErrorKind::Other,
         "Listener has been closed",
-      )),
+      ))),
       Some(repr) => match repr {
-        Repr::TcpListener(ref mut s, _) => s.poll_accept(),
+        Repr::TcpListener(ref mut s, _) => s.poll_accept(cx),
         _ => panic!("Cannot accept"),
       },
     }
@@ -172,7 +180,7 @@ impl Resource {
 
   /// Track the current task (for TcpListener resource).
   /// Throws an error if another task is already tracked.
-  pub fn track_task(&mut self) -> Result<(), std::io::Error> {
+  pub fn track_task(&mut self, cx: &mut Context) -> Result<(), std::io::Error> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     // Only track if is TcpListener.
     if let Some(Repr::TcpListener(_, t)) = table.get_mut(&self.rid) {
@@ -186,7 +194,9 @@ impl Resource {
           "Another accept task is ongoing",
         ));
       }
-      t.replace(futures::task::current());
+      let waker = AtomicWaker::new();
+      waker.register(cx.waker());
+      t.replace(waker);
     }
     Ok(())
   }
@@ -211,7 +221,7 @@ impl Resource {
     // If TcpListener, we must kill all pending accepts!
     if let Repr::TcpListener(_, Some(t)) = r {
       // Call notify on the tracked task, so that they would error out.
-      t.notify();
+      t.wake();
     }
   }
 
@@ -237,18 +247,22 @@ impl Read for Resource {
 }
 
 impl AsyncRead for Resource {
-  fn poll_read(&mut self, buf: &mut [u8]) -> Poll<usize, Error> {
+  fn poll_read(
+    self: Pin<&mut Self>,
+    cx: &mut Context,
+    buf: &mut [u8],
+  ) -> Poll<Result<usize, Error>> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     let maybe_repr = table.get_mut(&self.rid);
     match maybe_repr {
       None => panic!("bad rid"),
       Some(repr) => match repr {
-        Repr::FsFile(ref mut f) => f.poll_read(buf),
-        Repr::Stdin(ref mut f) => f.poll_read(buf),
-        Repr::TcpStream(ref mut f) => f.poll_read(buf),
-        Repr::HttpBody(ref mut f) => f.poll_read(buf),
-        Repr::ChildStdout(ref mut f) => f.poll_read(buf),
-        Repr::ChildStderr(ref mut f) => f.poll_read(buf),
+        Repr::FsFile(ref mut f) => Pin::new(f).poll_read(cx, buf),
+        Repr::Stdin(ref mut f) => Pin::new(f).poll_read(cx, buf),
+        Repr::TcpStream(ref mut f) => Pin::new(f).poll_read(cx, buf),
+        Repr::HttpBody(ref mut f) => Pin::new(f).poll_read(cx, buf),
+        Repr::ChildStdout(ref mut f) => Pin::new(f).poll_read(cx, buf),
+        Repr::ChildStderr(ref mut f) => Pin::new(f).poll_read(cx, buf),
         _ => panic!("Cannot read"),
       },
     }
@@ -266,24 +280,62 @@ impl Write for Resource {
 }
 
 impl AsyncWrite for Resource {
-  fn poll_write(&mut self, buf: &[u8]) -> Poll<usize, Error> {
+  fn poll_write(
+    self: Pin<&mut Self>,
+    cx: &mut Context,
+    buf: &[u8],
+  ) -> Poll<Result<usize, Error>> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     let maybe_repr = table.get_mut(&self.rid);
     match maybe_repr {
       None => panic!("bad rid"),
       Some(repr) => match repr {
-        Repr::FsFile(ref mut f) => f.poll_write(buf),
-        Repr::Stdout(ref mut f) => f.poll_write(buf),
-        Repr::Stderr(ref mut f) => f.poll_write(buf),
-        Repr::TcpStream(ref mut f) => f.poll_write(buf),
-        Repr::ChildStdin(ref mut f) => f.poll_write(buf),
+        Repr::FsFile(ref mut f) => Pin::new(f).poll_write(cx, buf),
+        Repr::Stdout(ref mut f) => Pin::new(f).poll_write(cx, buf),
+        Repr::Stderr(ref mut f) => Pin::new(f).poll_write(cx, buf),
+        Repr::TcpStream(ref mut f) => Pin::new(f).poll_write(cx, buf),
+        Repr::ChildStdin(ref mut f) => Pin::new(f).poll_write(cx, buf),
         _ => panic!("Cannot write"),
       },
     }
   }
 
-  fn shutdown(&mut self) -> futures::Poll<(), std::io::Error> {
-    unimplemented!()
+  fn poll_flush(
+    self: Pin<&mut Self>,
+    cx: &mut Context,
+  ) -> Poll<Result<(), Error>> {
+    let mut table = RESOURCE_TABLE.lock().unwrap();
+    let maybe_repr = table.get_mut(&self.rid);
+    match maybe_repr {
+      None => panic!("bad rid"),
+      Some(repr) => match repr {
+        Repr::FsFile(ref mut f) => Pin::new(f).poll_flush(cx),
+        Repr::Stdout(ref mut f) => Pin::new(f).poll_flush(cx),
+        Repr::Stderr(ref mut f) => Pin::new(f).poll_flush(cx),
+        Repr::TcpStream(ref mut f) => Pin::new(f).poll_flush(cx),
+        // Repr::ChildStdin(ref mut f) => Pin::new(f).poll_flush(cx),
+        _ => panic!("Cannot write"),
+      },
+    }
+  }
+
+  fn poll_shutdown(
+    self: Pin<&mut Self>,
+    cx: &mut Context,
+  ) -> Poll<Result<(), Error>> {
+    let mut table = RESOURCE_TABLE.lock().unwrap();
+    let maybe_repr = table.get_mut(&self.rid);
+    match maybe_repr {
+      None => panic!("bad rid"),
+      Some(repr) => match repr {
+        Repr::FsFile(ref mut f) => Pin::new(f).poll_shutdown(cx),
+        Repr::Stdout(ref mut f) => Pin::new(f).poll_shutdown(cx),
+        Repr::Stderr(ref mut f) => Pin::new(f).poll_shutdown(cx),
+        Repr::TcpStream(ref mut f) => Pin::new(f).poll_shutdown(cx),
+        // Repr::ChildStdin(ref mut f) => Pin::new(f).poll_shutdown(cx),
+        _ => panic!("Cannot write"),
+      },
+    }
   }
 }
 
@@ -342,17 +394,65 @@ pub fn add_worker(wc: WorkerChannels) -> Resource {
   Resource { rid }
 }
 
+// type PostMessageSendFuture = dyn Future<Output = DenoResult<()>> + Send + 'static;
+
+struct PostMessageFuture {
+  pub sender: Option<mpsc::Sender<Buf>>,
+  pub buf: Option<Buf>,
+}
+
+impl Future for PostMessageFuture {
+  type Output = Result<(), ErrBox>;
+
+  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+    let inner = Pin::get_mut(self);
+
+    let mut sender = inner.sender.take().unwrap();
+
+    let mut sender_pin = Pin::new(&mut sender);
+
+    match sender_pin.poll_ready(cx) {
+      Poll::Ready(Err(err)) => Poll::Ready(Err(
+        deno_error::DenoError::new(
+          deno_error::ErrorKind::Other,
+          format!("Post message error {}", err),
+        )
+        .into(),
+      )),
+      Poll::Ready(Ok(_)) => {
+        Poll::Ready(sender_pin.start_send(inner.buf.take().unwrap()).map_err(
+          |err| {
+            deno_error::DenoError::new(
+              deno_error::ErrorKind::Other,
+              format!("Post message error {}", err),
+            )
+            .into()
+          },
+        ))
+      }
+      Poll::Pending => {
+        inner.sender = Some(sender);
+
+        Poll::Pending
+      }
+    }
+  }
+}
+
 /// Post message to worker as a host or privilged overlord
 pub fn post_message_to_worker(
   rid: ResourceId,
   buf: Buf,
-) -> futures::sink::Send<mpsc::Sender<Buf>> {
+) -> impl Future<Output = Result<(), ErrBox>> {
   let mut table = RESOURCE_TABLE.lock().unwrap();
   let maybe_repr = table.get_mut(&rid);
   match maybe_repr {
-    Some(Repr::Worker(ref mut wc)) => {
-      // unwrap here is incorrect, but doing it anyway
-      wc.0.clone().send(buf)
+    Some(Repr::Worker(ref wc)) => {
+      let sender = wc.0.clone();
+      PostMessageFuture {
+        sender: Some(sender),
+        buf: Some(buf),
+      }
     }
     _ => panic!("bad resource"), // futures::future::err(bad_resource()).into(),
   }
@@ -364,44 +464,24 @@ pub struct WorkerReceiver {
 
 // Invert the dumbness that tokio_process causes by making Child itself a future.
 impl Future for WorkerReceiver {
-  type Item = Option<Buf>;
-  type Error = ErrBox;
+  type Output = Result<Option<Buf>, ErrBox>;
 
-  fn poll(&mut self) -> Poll<Option<Buf>, ErrBox> {
+  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     let maybe_repr = table.get_mut(&self.rid);
     match maybe_repr {
-      Some(Repr::Worker(ref mut wc)) => wc.1.poll().map_err(ErrBox::from),
-      _ => Err(bad_resource()),
+      Some(Repr::Worker(ref mut wc)) => match wc.1.poll_next_unpin(cx) {
+        Poll::Ready(None) => Poll::Ready(Ok(None)),
+        Poll::Ready(Some(v)) => Poll::Ready(Ok(Some(v))),
+        Poll::Pending => Poll::Pending,
+      },
+      _ => Poll::Ready(Err(bad_resource())),
     }
   }
 }
 
 pub fn get_message_from_worker(rid: ResourceId) -> WorkerReceiver {
   WorkerReceiver { rid }
-}
-
-pub struct WorkerReceiverStream {
-  rid: ResourceId,
-}
-
-// Invert the dumbness that tokio_process causes by making Child itself a future.
-impl Stream for WorkerReceiverStream {
-  type Item = Buf;
-  type Error = ErrBox;
-
-  fn poll(&mut self) -> Poll<Option<Buf>, ErrBox> {
-    let mut table = RESOURCE_TABLE.lock().unwrap();
-    let maybe_repr = table.get_mut(&self.rid);
-    match maybe_repr {
-      Some(Repr::Worker(ref mut wc)) => wc.1.poll().map_err(ErrBox::from),
-      _ => Err(bad_resource()),
-    }
-  }
-}
-
-pub fn get_message_stream_from_worker(rid: ResourceId) -> WorkerReceiverStream {
-  WorkerReceiverStream { rid }
 }
 
 pub struct ChildResources {
@@ -456,15 +536,16 @@ pub struct ChildStatus {
 
 // Invert the dumbness that tokio_process causes by making Child itself a future.
 impl Future for ChildStatus {
-  type Item = ExitStatus;
-  type Error = ErrBox;
+  type Output = Result<ExitStatus, ErrBox>;
 
-  fn poll(&mut self) -> Poll<ExitStatus, ErrBox> {
+  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     let maybe_repr = table.get_mut(&self.rid);
     match maybe_repr {
-      Some(Repr::Child(ref mut child)) => child.poll().map_err(ErrBox::from),
-      _ => Err(bad_resource()),
+      Some(Repr::Child(ref mut child)) => {
+        child.poll_unpin(cx).map_err(ErrBox::from)
+      }
+      _ => Poll::Ready(Err(bad_resource())),
     }
   }
 }
@@ -532,27 +613,30 @@ pub fn seek(
   resource: Resource,
   offset: i32,
   whence: u32,
-) -> Box<dyn Future<Item = (), Error = ErrBox> + Send> {
+) -> Pin<Box<dyn Future<Output = Result<(), ErrBox>> + Send>> {
   // Translate seek mode to Rust repr.
   let seek_from = match whence {
     0 => SeekFrom::Start(offset as u64),
     1 => SeekFrom::Current(i64::from(offset)),
     2 => SeekFrom::End(i64::from(offset)),
     _ => {
-      return Box::new(futures::future::err(
+      return futures::future::err(
         deno_error::DenoError::new(
           deno_error::ErrorKind::InvalidSeekMode,
           format!("Invalid seek mode: {}", whence),
-        ).into(),
-      ));
+        )
+        .into(),
+      )
+      .boxed();
     }
   };
 
   match get_file(resource.rid) {
-    Ok(mut file) => Box::new(futures::future::lazy(move || {
+    Ok(mut file) => future::lazy(move |_cx| {
       let result = file.seek(seek_from).map(|_| {}).map_err(ErrBox::from);
-      futures::future::result(result)
-    })),
-    Err(err) => Box::new(futures::future::err(err)),
+      result
+    })
+    .boxed(),
+    Err(err) => futures::future::err(err).boxed(),
   }
 }

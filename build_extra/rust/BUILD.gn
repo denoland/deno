@@ -321,6 +321,236 @@ rust_rlib("futures_cpupool") {
   ]
 }
 
+rust_rlib("futures_preview") {
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/futures-preview-0.3.0-alpha.17/src/lib.rs"
+  crate_name = "futures"
+  crate_version = "0.3.0-alpha.17"
+  features = [
+    "default",
+    "std",
+    "alloc",
+    "compat",
+  ]
+  extern = [
+    {
+      label = ":futures_channel_preview"
+      crate_name = "futures_channel"
+      crate_type = "rlib"
+      crate_version = "0.3.0-alpha.17"
+    },
+    {
+      label = ":futures_core_preview"
+      crate_name = "futures_core"
+      crate_type = "rlib"
+      crate_version = "0.3.0-alpha.17"
+    },
+    {
+      label = ":futures_executor_preview"
+      crate_name = "futures_executor"
+      crate_type = "rlib"
+      crate_version = "0.3.0-alpha.17"
+    },
+    {
+      label = ":futures_io_preview"
+      crate_name = "futures_io"
+      crate_type = "rlib"
+      crate_version = "0.3.0-alpha.17"
+    },
+    {
+      label = ":futures_sink_preview"
+      crate_name = "futures_sink"
+      crate_type = "rlib"
+      crate_version = "0.3.0-alpha.17"
+    },
+    {
+      label = ":futures_util_preview"
+      crate_name = "futures_util"
+      crate_type = "rlib"
+      crate_version = "0.3.0-alpha.17"
+    },
+  ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
+rust_rlib("futures_channel_preview") {
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/futures-channel-preview-0.3.0-alpha.17/src/lib.rs"
+  crate_name = "futures_channel"
+  crate_version = "0.3.0-alpha.17"
+  features = [
+    "default",
+    "std",
+    "alloc",
+    "sink",
+  ]
+  extern = [
+    {
+      label = ":futures_core_preview"
+      crate_name = "futures_core"
+      crate_type = "rlib"
+      crate_version = "0.3.0-alpha.17"
+    },
+    {
+      label = ":futures_sink_preview"
+      crate_name = "futures_sink"
+      crate_type = "rlib"
+      crate_version = "0.3.0-alpha.17"
+    },
+  ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
+rust_rlib("futures_core_preview") {
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/futures-core-preview-0.3.0-alpha.17/src/lib.rs"
+  crate_name = "futures_core"
+  crate_version = "0.3.0-alpha.17"
+  features = [
+    "default",
+    "std",
+    "alloc",
+  ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
+rust_rlib("futures_executor_preview") {
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/futures-executor-preview-0.3.0-alpha.17/src/lib.rs"
+  crate_name = "futures_executor"
+  crate_version = "0.3.0-alpha.17"
+  features = [
+    "default",
+    "std",
+    "alloc",
+  ]
+  extern_rlib = [ "num_cpus" ]
+  extern = [
+    {
+      label = ":futures_core_preview"
+      crate_name = "futures_core"
+      crate_type = "rlib"
+      crate_version = "0.3.0-alpha.17"
+    },
+    {
+      label = ":futures_sink_preview"
+      crate_name = "futures_sink"
+      crate_type = "rlib"
+      crate_version = "0.3.0-alpha.17"
+    },
+    {
+      label = ":futures_util_preview"
+      crate_name = "futures_util"
+      crate_type = "rlib"
+      crate_version = "0.3.0-alpha.17"
+    },
+  ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
+rust_rlib("futures_io_preview") {
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/futures-io-preview-0.3.0-alpha.17/src/lib.rs"
+  crate_name = "futures_io"
+  crate_version = "0.3.0-alpha.17"
+  features = [
+    "default",
+    "std",
+    "alloc",
+  ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
+rust_rlib("futures_sink_preview") {
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/futures-sink-preview-0.3.0-alpha.17/src/lib.rs"
+  crate_name = "futures_sink"
+  crate_version = "0.3.0-alpha.17"
+  features = [
+    "default",
+    "std",
+    "alloc",
+  ]
+  extern = [
+    {
+      label = ":futures_core_preview"
+      crate_name = "futures_core"
+      crate_type = "rlib"
+      crate_version = "0.3.0-alpha.17"
+    },
+  ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
+rust_rlib("futures_util_preview") {
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/futures-util-preview-0.3.0-alpha.17/src/lib.rs"
+  crate_name = "futures_util"
+  crate_version = "0.3.0-alpha.17"
+  features = [
+    "default",
+    "std",
+    "alloc",
+    "sink",
+    "io",
+    "channel",
+    "compat",
+  ]
+  extern_rlib = [
+    "futures",
+    "slab",
+    "pin_utils",
+    "memchr",
+  ]
+  extern = [
+    {
+      label = ":futures"
+      crate_name = "futures"
+      crate_type = "rlib"
+      extern_alias = "futures_01"
+    },
+    {
+      label = ":futures_channel_preview"
+      crate_name = "futures_channel"
+      crate_type = "rlib"
+      crate_version = "0.3.0-alpha.17"
+    },
+    {
+      label = ":futures_core_preview"
+      crate_name = "futures_core"
+      crate_type = "rlib"
+      crate_version = "0.3.0-alpha.17"
+    },
+    {
+      label = ":futures_io_preview"
+      crate_name = "futures_io"
+      crate_type = "rlib"
+      crate_version = "0.3.0-alpha.17"
+    },
+    {
+      label = ":futures_sink_preview"
+      crate_name = "futures_sink"
+      crate_type = "rlib"
+      crate_version = "0.3.0-alpha.17"
+    },
+  ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
 rust_rlib("h2") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/h2-0.1.23/src/lib.rs"
@@ -758,6 +988,15 @@ rust_rlib("parking_lot_core") {
 rust_rlib("percent_encoding") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/percent-encoding-1.0.1/lib.rs"
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
+rust_rlib("pin_utils") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/pin-utils-0.1.0-alpha.4/src/lib.rs"
   args = [
     "--cap-lints",
     "allow",

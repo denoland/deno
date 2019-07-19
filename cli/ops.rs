@@ -1,5 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use atty;
 use crate::ansi;
 use crate::deno_dir::SourceFileFetcher;
 use crate::deno_error;
@@ -23,34 +22,38 @@ use crate::signal::kill;
 use crate::startup_data;
 use crate::state::ThreadSafeState;
 use crate::tokio_util;
-use crate::tokio_write;
 use crate::version;
 use crate::worker::Worker;
+use atty;
 use deno::Buf;
 use deno::CoreOp;
 use deno::ErrBox;
 use deno::Loader;
 use deno::ModuleSpecifier;
 use deno::Op;
-use deno::OpResult;
 use deno::PinnedBuf;
+use deno::ResultOpResult;
 use flatbuffers::FlatBufferBuilder;
-use futures;
-use futures::Async;
-use futures::Poll;
-use futures::Sink;
-use futures::Stream;
+use futures::compat::Future01CompatExt;
+use futures::future;
+use futures::future::FutureExt;
+use futures::future::TryFutureExt;
+use futures::sink::SinkExt;
+use futures::stream::StreamExt;
 use hyper;
-use hyper::rt::Future;
 use log;
 use rand::{thread_rng, Rng};
 use remove_dir_all::remove_dir_all;
 use std;
 use std::convert::From;
 use std::fs;
+use std::future::Future;
 use std::net::Shutdown;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::process::Command;
+use std::task::Context;
+use std::task::Poll;
 use std::time::{Duration, Instant, UNIX_EPOCH};
 use tokio;
 use tokio::net::TcpListener;
@@ -65,11 +68,13 @@ use std::os::unix::fs::PermissionsExt;
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
 
-type CliOpResult = OpResult<ErrBox>;
+type CliOpResult = ResultOpResult<ErrBox>;
 
-type CliDispatchFn =
-  fn(state: &ThreadSafeState, base: &msg::Base<'_>, data: Option<PinnedBuf>)
-    -> CliOpResult;
+type CliDispatchFn = fn(
+  state: &ThreadSafeState,
+  base: &msg::Base<'_>,
+  data: Option<PinnedBuf>,
+) -> CliOpResult;
 
 pub type OpSelector = fn(inner_type: msg::Any) -> Option<CliDispatchFn>;
 
@@ -131,43 +136,46 @@ pub fn dispatch_all_legacy(
       Op::Sync(buf)
     }
     Ok(Op::Async(fut)) => {
-      let result_fut = Box::new(
-        fut.or_else(move |err: ErrBox| -> Result<Buf, ()> {
-          debug!("op err {}", err);
-          // No matter whether we got an Err or Ok, we want a serialized message to
-          // send back. So transform the DenoError into a Buf.
-          let builder = &mut FlatBufferBuilder::new();
-          let errmsg_offset = builder.create_string(&format!("{}", err));
-          Ok(serialize_response(
-            cmd_id,
-            builder,
-            msg::BaseArgs {
-              error: Some(errmsg_offset),
-              error_kind: err.kind(),
-              ..Default::default()
-            },
-          ))
-        }).and_then(move |buf: Buf| -> Result<Buf, ()> {
-          // Handle empty responses. For sync responses we just want
-          // to send null. For async we want to send a small message
-          // with the cmd_id.
-          let buf = if buf.len() > 0 {
-            buf
-          } else {
+      let result_fut = fut.then(move |res| {
+        match res {
+          Err(err) => {
+            debug!("op err {}", err);
+            // No matter whether we got an Err or Ok, we want a serialized message to
+            // send back. So transform the DenoError into a Buf.
             let builder = &mut FlatBufferBuilder::new();
-            serialize_response(
+            let errmsg_offset = builder.create_string(&format!("{}", err));
+            future::ready(serialize_response(
               cmd_id,
               builder,
               msg::BaseArgs {
+                error: Some(errmsg_offset),
+                error_kind: err.kind(),
                 ..Default::default()
               },
-            )
-          };
-          state.metrics_op_completed(buf.len());
-          Ok(buf)
-        }).map_err(|err| panic!("unexpected error {:?}", err)),
-      );
-      Op::Async(result_fut)
+            ))
+          }
+          Ok(buf) => {
+            // Handle empty responses. For sync responses we just want
+            // to send null. For async we want to send a small message
+            // with the cmd_id.
+            let buf = if buf.len() > 0 {
+              buf
+            } else {
+              let builder = &mut FlatBufferBuilder::new();
+              serialize_response(
+                cmd_id,
+                builder,
+                msg::BaseArgs {
+                  ..Default::default()
+                },
+              )
+            };
+            state.metrics_op_completed(buf.len());
+            future::ready(buf)
+          }
+        }
+      });
+      Op::Async(result_fut.boxed())
     }
     Err(err) => {
       debug!("op err {}", err);
@@ -452,7 +460,7 @@ fn serialize_response(
 
 #[inline]
 pub fn ok_future(buf: Buf) -> CliOpResult {
-  Ok(Op::Async(Box::new(futures::future::ok(buf))))
+  Ok(Op::Async(future::ok(buf).boxed()))
 }
 
 #[inline]
@@ -514,7 +522,7 @@ fn op_fetch_source_file(
         data: Some(data_off),
       };
       let inner = msg::FetchSourceFileRes::create(builder, &msg_args);
-      Ok(serialize_response(
+      future::ok(serialize_response(
         cmd_id,
         builder,
         msg::BaseArgs {
@@ -578,20 +586,23 @@ fn op_global_timer(
   let deadline = Instant::now() + Duration::from_millis(val as u64);
   let f = t.new_timeout(deadline);
 
-  Ok(Op::Async(Box::new(f.then(move |_| {
-    let builder = &mut FlatBufferBuilder::new();
-    let inner =
-      msg::GlobalTimerRes::create(builder, &msg::GlobalTimerResArgs {});
-    Ok(serialize_response(
-      cmd_id,
-      builder,
-      msg::BaseArgs {
-        inner: Some(inner.as_union_value()),
-        inner_type: msg::Any::GlobalTimerRes,
-        ..Default::default()
-      },
-    ))
-  }))))
+  Ok(Op::Async(
+    f.then(move |_| {
+      let builder = &mut FlatBufferBuilder::new();
+      let inner =
+        msg::GlobalTimerRes::create(builder, &msg::GlobalTimerResArgs {});
+      future::ok(serialize_response(
+        cmd_id,
+        builder,
+        msg::BaseArgs {
+          inner: Some(inner.as_union_value()),
+          inner_type: msg::Any::GlobalTimerRes,
+          ..Default::default()
+        },
+      ))
+    })
+    .boxed(),
+  ))
 }
 
 fn op_set_env(
@@ -715,67 +726,66 @@ fn op_fetch(
   let client = http_util::get_client();
 
   debug!("Before fetch {}", url);
-  let future = client
-    .request(req)
-    .map_err(ErrBox::from)
-    .and_then(move |res| {
-      let builder = &mut FlatBufferBuilder::new();
-      let header_off = msg_util::serialize_http_response(builder, &res);
-      let body = res.into_body();
-      let body_resource = resources::add_hyper_body(body);
-      let inner = msg::FetchRes::create(
-        builder,
-        &msg::FetchResArgs {
-          header: Some(header_off),
-          body_rid: body_resource.rid,
-        },
-      );
+  let future =
+    client
+      .request(req)
+      .compat()
+      .map_err(ErrBox::from)
+      .and_then(move |res| {
+        let builder = &mut FlatBufferBuilder::new();
+        let header_off = msg_util::serialize_http_response(builder, &res);
+        let body = res.into_body();
+        let body_resource = resources::add_hyper_body(body);
+        let inner = msg::FetchRes::create(
+          builder,
+          &msg::FetchResArgs {
+            header: Some(header_off),
+            body_rid: body_resource.rid,
+          },
+        );
 
-      Ok(serialize_response(
-        cmd_id,
-        builder,
-        msg::BaseArgs {
-          inner: Some(inner.as_union_value()),
-          inner_type: msg::Any::FetchRes,
-          ..Default::default()
-        },
-      ))
-    });
+        future::ok(serialize_response(
+          cmd_id,
+          builder,
+          msg::BaseArgs {
+            inner: Some(inner.as_union_value()),
+            inner_type: msg::Any::FetchRes,
+            ..Default::default()
+          },
+        ))
+      });
   if base.sync() {
-    let result_buf = future.wait()?;
+    let result_buf = futures::executor::block_on(future)?;
     Ok(Op::Sync(result_buf))
   } else {
-    Ok(Op::Async(Box::new(future)))
+    Ok(Op::Async(future.boxed()))
   }
 }
 
 // This is just type conversion. Implement From trait?
 // See https://github.com/tokio-rs/tokio/blob/ffd73a64e7ec497622b7f939e38017afe7124dc4/tokio-fs/src/lib.rs#L76-L85
-fn convert_blocking<F>(f: F) -> Poll<Buf, ErrBox>
+fn convert_blocking<F>(f: F) -> Poll<Result<Buf, ErrBox>>
 where
-  F: FnOnce() -> Result<Buf, ErrBox>,
+  F: FnOnce() -> Result<Buf, ErrBox> + Unpin,
 {
-  use futures::Async::*;
   match tokio_threadpool::blocking(f) {
-    Ok(Ready(Ok(v))) => Ok(v.into()),
-    Ok(Ready(Err(err))) => Err(err),
-    Ok(NotReady) => Ok(NotReady),
-    Err(err) => panic!("blocking error {}", err),
+    Poll::Ready(Ok(v)) => Poll::Ready(v),
+    Poll::Pending => Poll::Pending,
+    Poll::Ready(Err(err)) => panic!("blocking error {}", err),
   }
 }
 
 fn blocking<F>(is_sync: bool, f: F) -> CliOpResult
 where
-  F: 'static + Send + FnOnce() -> Result<Buf, ErrBox>,
+  F: 'static + Send + FnOnce() -> Result<Buf, ErrBox> + Unpin,
 {
   if is_sync {
     let result_buf = f()?;
     Ok(Op::Sync(result_buf))
   } else {
-    Ok(Op::Async(Box::new(futures::sync::oneshot::spawn(
+    Ok(Op::Async(tokio_util::spawn_on_default(
       tokio_util::poll_fn(move || convert_blocking(f)),
-      &tokio_executor::DefaultExecutor::current(),
-    ))))
+    )))
   }
 }
 
@@ -961,7 +971,7 @@ fn op_open(
       let builder = &mut FlatBufferBuilder::new();
       let inner =
         msg::OpenRes::create(builder, &msg::OpenResArgs { rid: resource.rid });
-      Ok(serialize_response(
+      future::ok(serialize_response(
         cmd_id,
         builder,
         msg::BaseArgs {
@@ -973,10 +983,10 @@ fn op_open(
     },
   );
   if base.sync() {
-    let buf = op.wait()?;
+    let buf = futures::executor::block_on(op)?;
     Ok(Op::Sync(buf))
   } else {
-    Ok(Op::Async(Box::new(op)))
+    Ok(Op::Async(op.boxed()))
   }
 }
 
@@ -1047,33 +1057,36 @@ fn op_read(
 
   match resources::lookup(rid) {
     None => Err(deno_error::bad_resource()),
-    Some(resource) => {
-      let op = tokio::io::read(resource, data.unwrap())
-        .map_err(ErrBox::from)
-        .and_then(move |(_resource, _buf, nread)| {
-          let builder = &mut FlatBufferBuilder::new();
-          let inner = msg::ReadRes::create(
-            builder,
-            &msg::ReadResArgs {
-              nread: nread as u32,
-              eof: nread == 0,
-            },
-          );
-          Ok(serialize_response(
-            cmd_id,
-            builder,
-            msg::BaseArgs {
-              inner: Some(inner.as_union_value()),
-              inner_type: msg::Any::ReadRes,
-              ..Default::default()
-            },
-          ))
-        });
+    Some(mut resource) => {
+      let op = async move {
+        let mut data = data.unwrap();
+        let nread = tokio::io::AsyncReadExt::read(&mut resource, &mut data)
+          .map_err(ErrBox::from)
+          .await?;
+
+        let builder = &mut FlatBufferBuilder::new();
+        let inner = msg::ReadRes::create(
+          builder,
+          &msg::ReadResArgs {
+            nread: nread as u32,
+            eof: nread == 0,
+          },
+        );
+        Ok(serialize_response(
+          cmd_id,
+          builder,
+          msg::BaseArgs {
+            inner: Some(inner.as_union_value()),
+            inner_type: msg::Any::ReadRes,
+            ..Default::default()
+          },
+        ))
+      };
       if base.sync() {
-        let buf = op.wait()?;
+        let buf = futures::executor::block_on(op)?;
         Ok(Op::Sync(buf))
       } else {
-        Ok(Op::Async(Box::new(op)))
+        Ok(Op::Async(op.boxed()))
       }
     }
   }
@@ -1090,32 +1103,34 @@ fn op_write(
 
   match resources::lookup(rid) {
     None => Err(deno_error::bad_resource()),
-    Some(resource) => {
-      let op = tokio_write::write(resource, data.unwrap())
-        .map_err(ErrBox::from)
-        .and_then(move |(_resource, _buf, nwritten)| {
-          let builder = &mut FlatBufferBuilder::new();
-          let inner = msg::WriteRes::create(
-            builder,
-            &msg::WriteResArgs {
-              nbyte: nwritten as u32,
-            },
-          );
-          Ok(serialize_response(
-            cmd_id,
-            builder,
-            msg::BaseArgs {
-              inner: Some(inner.as_union_value()),
-              inner_type: msg::Any::WriteRes,
-              ..Default::default()
-            },
-          ))
-        });
+    Some(mut resource) => {
+      let op = async move {
+        let data = data.unwrap();
+        let nwritten = tokio::io::AsyncWriteExt::write(&mut resource, &data)
+          .map_err(ErrBox::from)
+          .await?;
+        let builder = &mut FlatBufferBuilder::new();
+        let inner = msg::WriteRes::create(
+          builder,
+          &msg::WriteResArgs {
+            nbyte: nwritten as u32,
+          },
+        );
+        Ok(serialize_response(
+          cmd_id,
+          builder,
+          msg::BaseArgs {
+            inner: Some(inner.as_union_value()),
+            inner_type: msg::Any::WriteRes,
+            ..Default::default()
+          },
+        ))
+      };
       if base.sync() {
-        let buf = op.wait()?;
+        let buf = futures::executor::block_on(op)?;
         Ok(Op::Sync(buf))
       } else {
-        Ok(Op::Async(Box::new(op)))
+        Ok(Op::Async(op.boxed()))
       }
     }
   }
@@ -1136,12 +1151,12 @@ fn op_seek(
     None => Err(deno_error::bad_resource()),
     Some(resource) => {
       let op = resources::seek(resource, offset, whence)
-        .and_then(move |_| Ok(empty_buf()));
+        .and_then(move |_| future::ok(empty_buf()));
       if base.sync() {
-        let buf = op.wait()?;
+        let buf = futures::executor::block_on(op)?;
         Ok(Op::Sync(buf))
       } else {
-        Ok(Op::Async(Box::new(op)))
+        Ok(Op::Async(op.boxed()))
       }
     }
   }
@@ -1333,7 +1348,8 @@ fn op_read_dir(
             has_mode: cfg!(target_family = "unix"),
           },
         )
-      }).collect();
+      })
+      .collect();
 
     let entries = builder.create_vector(&entries);
     let inner = msg::ReadDirRes::create(
@@ -1578,7 +1594,7 @@ fn op_listen(
 
   state.check_net(&address)?;
 
-  let addr = resolve_addr(address).wait()?;
+  let addr = futures::executor::block_on(resolve_addr(address))?;
   let listener = TcpListener::bind(&addr)?;
   let resource = resources::add_tcp_listener(listener);
 
@@ -1636,13 +1652,13 @@ fn op_accept(
       let op = tokio_util::accept(server_resource)
         .map_err(ErrBox::from)
         .and_then(move |(tcp_stream, _socket_addr)| {
-          new_conn(cmd_id, tcp_stream)
+          future::ready(new_conn(cmd_id, tcp_stream))
         });
       if base.sync() {
-        let buf = op.wait()?;
+        let buf = futures::executor::block_on(op)?;
         Ok(Op::Sync(buf))
       } else {
-        Ok(Op::Async(Box::new(op)))
+        Ok(Op::Async(op.boxed()))
       }
     }
   }
@@ -1665,13 +1681,13 @@ fn op_dial(
   let op = resolve_addr(address).and_then(move |addr| {
     TcpStream::connect(&addr)
       .map_err(ErrBox::from)
-      .and_then(move |tcp_stream| new_conn(cmd_id, tcp_stream))
+      .and_then(move |tcp_stream| future::ready(new_conn(cmd_id, tcp_stream)))
   });
   if base.sync() {
-    let buf = op.wait()?;
+    let buf = futures::executor::block_on(op)?;
     Ok(Op::Sync(buf))
   } else {
-    Ok(Op::Async(Box::new(op)))
+    Ok(Op::Async(op.boxed()))
   }
 }
 
@@ -1750,7 +1766,8 @@ fn op_resources(
           repr: Some(repr),
         },
       )
-    }).collect();
+    })
+    .collect();
 
   let resources = builder.create_vector(&res);
   let inner = msg::ResourcesRes::create(
@@ -1877,9 +1894,9 @@ fn op_run_status(
 
   state.check_run()?;
 
-  let future = resources::child_status(rid)?;
+  let op = resources::child_status(rid)?;
 
-  let future = future.and_then(move |run_status| {
+  let op = op.and_then(move |run_status| {
     let code = run_status.code();
 
     #[cfg(unix)]
@@ -1901,7 +1918,7 @@ fn op_run_status(
         exit_signal: signal.unwrap_or(-1),
       },
     );
-    Ok(serialize_response(
+    future::ok(serialize_response(
       cmd_id,
       builder,
       msg::BaseArgs {
@@ -1912,10 +1929,10 @@ fn op_run_status(
     ))
   });
   if base.sync() {
-    let buf = future.wait()?;
+    let buf = futures::executor::block_on(op)?;
     Ok(Op::Sync(buf))
   } else {
-    Ok(Op::Async(Box::new(future)))
+    Ok(Op::Async(op.boxed()))
   }
 }
 
@@ -1924,14 +1941,21 @@ struct GetMessageFuture {
 }
 
 impl Future for GetMessageFuture {
-  type Item = Option<Buf>;
-  type Error = ();
+  type Output = Result<Buf, ErrBox>;
 
-  fn poll(&mut self) -> Result<Async<Self::Item>, Self::Error> {
+  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let mut wc = self.state.worker_channels.lock().unwrap();
-    wc.1
-      .poll()
-      .map_err(|err| panic!("worker_channel recv err {:?}", err))
+    match wc.1.poll_next_unpin(cx) {
+      Poll::Ready(None) => Poll::Ready(Err(
+        DenoError::new(
+          deno_error::ErrorKind::Other,
+          "Worker stream ended".to_string(),
+        )
+        .into(),
+      )),
+      Poll::Ready(Some(v)) => Poll::Ready(Ok(v)),
+      Poll::Pending => Poll::Pending,
+    }
   }
 }
 
@@ -1950,17 +1974,16 @@ fn op_worker_get_message(
   let op = GetMessageFuture {
     state: state.clone(),
   };
-  let op = op.map_err(move |_| -> ErrBox { unimplemented!() });
-  let op = op.and_then(move |maybe_buf| -> Result<Buf, ErrBox> {
+  let op = op.and_then(move |buf| {
     debug!("op_worker_get_message");
     let builder = &mut FlatBufferBuilder::new();
 
-    let data = maybe_buf.as_ref().map(|buf| builder.create_vector(buf));
+    let data = Some(builder.create_vector(&buf));
     let inner = msg::WorkerGetMessageRes::create(
       builder,
       &msg::WorkerGetMessageResArgs { data },
     );
-    Ok(serialize_response(
+    future::ok(serialize_response(
       cmd_id,
       builder,
       msg::BaseArgs {
@@ -1970,7 +1993,7 @@ fn op_worker_get_message(
       },
     ))
   });
-  Ok(Op::Async(Box::new(op)))
+  Ok(Op::Async(op.boxed()))
 }
 
 /// Post message to host as guest worker
@@ -1982,12 +2005,11 @@ fn op_worker_post_message(
   let cmd_id = base.cmd_id();
   let d = Vec::from(data.unwrap().as_ref()).into_boxed_slice();
 
-  let tx = {
+  let mut tx = {
     let wc = state.worker_channels.lock().unwrap();
     wc.0.clone()
   };
-  tx.send(d)
-    .wait()
+  futures::executor::block_on(tx.send(d))
     .map_err(|e| DenoError::new(ErrorKind::Other, e.to_string()))?;
   let builder = &mut FlatBufferBuilder::new();
 
@@ -2034,13 +2056,13 @@ fn op_create_worker(
       .execute_mod_async(&module_specifier, false)
       .and_then(move |()| {
         let mut workers_tl = parent_state.workers.lock().unwrap();
-        workers_tl.insert(rid, worker.shared());
+        workers_tl.insert(rid, worker);
         let builder = &mut FlatBufferBuilder::new();
         let msg_inner = msg::CreateWorkerRes::create(
           builder,
           &msg::CreateWorkerResArgs { rid },
         );
-        Ok(serialize_response(
+        future::ok(serialize_response(
           cmd_id,
           builder,
           msg::BaseArgs {
@@ -2051,7 +2073,7 @@ fn op_create_worker(
         ))
       });
 
-  let result = op.wait()?;
+  let result = tokio_util::block_on(op)?;
   Ok(Op::Sync(result))
 }
 
@@ -2070,24 +2092,24 @@ fn op_host_get_worker_closed(
   let rid = inner.rid();
   let state = state.clone();
 
-  let shared_worker_future = {
-    let workers_tl = state.workers.lock().unwrap();
-    let worker = workers_tl.get(&rid).unwrap();
-    worker.clone()
+  let worker = {
+    let mut workers_tl = state.workers.lock().unwrap();
+    let worker = workers_tl.remove(&rid).unwrap();
+    worker
   };
 
-  let op = Box::new(shared_worker_future.then(move |_result| {
+  let op = worker.then(move |_result| {
     let builder = &mut FlatBufferBuilder::new();
 
-    Ok(serialize_response(
+    future::ok(serialize_response(
       cmd_id,
       builder,
       msg::BaseArgs {
         ..Default::default()
       },
     ))
-  }));
-  Ok(Op::Async(Box::new(op)))
+  });
+  Ok(Op::Async(op.boxed()))
 }
 
 /// Get message from guest worker as host
@@ -2105,16 +2127,15 @@ fn op_host_get_message(
   let rid = inner.rid();
 
   let op = resources::get_message_from_worker(rid);
-  let op = op.map_err(move |_| -> ErrBox { unimplemented!() });
-  let op = op.and_then(move |maybe_buf| -> Result<Buf, ErrBox> {
+  let op = op.and_then(move |maybe_buf| {
     let builder = &mut FlatBufferBuilder::new();
 
-    let data = maybe_buf.as_ref().map(|buf| builder.create_vector(buf));
+    let data = maybe_buf.map(|buf| builder.create_vector(&buf));
     let msg_inner = msg::HostGetMessageRes::create(
       builder,
       &msg::HostGetMessageResArgs { data },
     );
-    Ok(serialize_response(
+    future::ok(serialize_response(
       cmd_id,
       builder,
       msg::BaseArgs {
@@ -2124,7 +2145,7 @@ fn op_host_get_message(
       },
     ))
   });
-  Ok(Op::Async(Box::new(op)))
+  Ok(Op::Async(op.boxed()))
 }
 
 /// Post message to guest worker as host
@@ -2139,8 +2160,7 @@ fn op_host_post_message(
 
   let d = Vec::from(data.unwrap().as_ref()).into_boxed_slice();
 
-  resources::post_message_to_worker(rid, d)
-    .wait()
+  tokio_util::block_on(resources::post_message_to_worker(rid, d))
     .map_err(|e| DenoError::new(ErrorKind::Other, e.to_string()))?;
   let builder = &mut FlatBufferBuilder::new();
 

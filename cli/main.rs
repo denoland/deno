@@ -1,10 +1,10 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+#![feature(async_await)]
+
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
 extern crate log;
-#[macro_use]
-extern crate futures;
 #[macro_use]
 extern crate serde_json;
 extern crate clap;
@@ -43,7 +43,6 @@ pub mod source_maps;
 mod startup_data;
 pub mod state;
 mod tokio_util;
-mod tokio_write;
 pub mod version;
 pub mod worker;
 
@@ -57,12 +56,14 @@ use deno::ModuleSpecifier;
 use flags::DenoFlags;
 use flags::DenoSubcommand;
 use futures::future;
-use futures::lazy;
-use futures::Future;
+use futures::future::lazy;
+use futures::future::FutureExt;
+use futures::future::TryFutureExt;
 use log::Level;
 use log::Metadata;
 use log::Record;
 use std::env;
+use std::future::Future;
 
 static LOGGER: Logger = Logger;
 
@@ -102,7 +103,7 @@ fn js_check(r: Result<(), ErrBox>) {
 pub fn print_file_info(
   worker: Worker,
   module_specifier: &ModuleSpecifier,
-) -> impl Future<Item = Worker, Error = ()> {
+) -> impl Future<Output = Result<Worker, ()>> {
   let state_ = worker.state.clone();
   let module_specifier_ = module_specifier.clone();
 
@@ -131,7 +132,8 @@ pub fn print_file_info(
           debug!("compiler error exiting!");
           eprintln!("\n{}", e.to_string());
           std::process::exit(1);
-        }).and_then(move |compiled| {
+        })
+        .and_then(move |compiled| {
           if out.media_type == msg::MediaType::TypeScript {
             println!(
               "{} {}",
@@ -171,7 +173,7 @@ pub fn print_file_info(
               ansi::bold("deps:".to_string()),
             );
           }
-          Ok(worker)
+          future::ok(worker)
         })
     })
 }
@@ -217,24 +219,27 @@ fn fetch_or_info_command(
   let (mut worker, state) = create_worker_and_state(flags, argv);
 
   let main_module = state.main_module().unwrap();
-  let main_future = lazy(move || {
+  let main_future = lazy(move |_cx| {
     // Setup runtime.
     js_check(worker.execute("denoMain()"));
     debug!("main_module {}", main_module);
-
+    (worker, main_module)
+  })
+  .then(move |(mut worker, main_module)| {
     worker
       .execute_mod_async(&main_module, true)
       .map_err(print_err_and_exit)
       .and_then(move |()| {
         if print_info {
-          future::Either::A(print_file_info(worker, &main_module))
+          future::Either::Left(print_file_info(worker, &main_module))
         } else {
-          future::Either::B(future::ok(worker))
+          future::Either::Right(future::ok(worker))
         }
-      }).and_then(|worker| {
+      })
+      .and_then(|worker| {
         worker.then(|result| {
           js_check(result);
-          Ok(())
+          future::ok(())
         })
       })
   });
@@ -254,15 +259,20 @@ fn eval_command(flags: DenoFlags, argv: Vec<String>) {
     &state.argv[1]
   );
 
-  let main_future = lazy(move || {
+  let main_future = lazy(move |_cx| {
     js_check(worker.execute("denoMain()"));
     // ATM imports in `deno eval` are not allowed
     // TODO Support ES modules once Worker supports evaluating anonymous modules.
     js_check(worker.execute(&js_source));
-    worker.then(|result| {
-      js_check(result);
-      Ok(())
-    })
+    worker
+  })
+  .then(move |worker| {
+    worker
+      .then(|result| {
+        js_check(result);
+        future::ok(())
+      })
+      .map_err(|(err, _worker): (ErrBox, Worker)| print_err_and_exit(err))
   });
   tokio_util::run(main_future);
 }
@@ -277,15 +287,19 @@ fn xeval_command(flags: DenoFlags, argv: Vec<String>) {
     &xeval_replvar, &state.argv[1]
   );
 
-  let main_future = lazy(move || {
+  let main_future = lazy(move |_cx| {
     // Setup runtime.
     js_check(worker.execute(&xeval_source));
     js_check(worker.execute("denoMain()"));
     worker
+  })
+  .then(move |worker| {
+    worker
       .then(|result| {
         js_check(result);
-        Ok(())
-      }).map_err(print_err_and_exit)
+        future::ok(())
+      })
+      .map_err(print_err_and_exit)
   });
   tokio_util::run(main_future);
 }
@@ -304,9 +318,10 @@ fn bundle_command(flags: DenoFlags, argv: Vec<String>) {
       debug!("diagnostics returned, exiting!");
       eprintln!("");
       print_err_and_exit(err);
-    }).and_then(move |_| {
+    })
+    .and_then(move |_| {
       debug!(">>>>> bundle_async END");
-      Ok(())
+      future::ok(())
     });
   tokio_util::run(bundle_future);
 }
@@ -315,14 +330,18 @@ fn run_repl(flags: DenoFlags, argv: Vec<String>) {
   let (mut worker, _state) = create_worker_and_state(flags, argv);
 
   // REPL situation.
-  let main_future = lazy(move || {
+  let main_future = lazy(move |_cx| {
     // Setup runtime.
     js_check(worker.execute("denoMain()"));
     worker
+  })
+  .then(move |worker| {
+    worker
       .then(|result| {
         js_check(result);
-        Ok(())
-      }).map_err(|(err, _worker): (ErrBox, Worker)| print_err_and_exit(err))
+        future::ok(())
+      })
+      .map_err(|(err, _worker): (ErrBox, Worker)| print_err_and_exit(err))
   });
   tokio_util::run(main_future);
 }
@@ -332,20 +351,23 @@ fn run_script(flags: DenoFlags, argv: Vec<String>) {
 
   let main_module = state.main_module().unwrap();
   // Normal situation of executing a module.
-  let main_future = lazy(move || {
+  let main_future = lazy(move |_cx| {
     // Setup runtime.
     js_check(worker.execute("denoMain()"));
     debug!("main_module {}", main_module);
-
+    (worker, main_module)
+  })
+  .then(|(mut worker, main_module)| {
     worker
       .execute_mod_async(&main_module, false)
       .and_then(move |()| {
         js_check(worker.execute("window.dispatchEvent(new Event('load'))"));
         worker.then(|result| {
           js_check(result);
-          Ok(())
+          future::ok(())
         })
-      }).map_err(print_err_and_exit)
+      })
+      .map_err(print_err_and_exit)
   });
   tokio_util::run(main_future);
 }

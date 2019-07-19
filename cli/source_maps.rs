@@ -78,13 +78,15 @@ fn builtin_source_map(script_name: &str) -> Option<Vec<u8>> {
       include_bytes!(concat!(
         env!("GN_OUT_DIR"),
         "/gen/cli/bundle/main.js.map"
-      )).to_vec(),
+      ))
+      .to_vec(),
     ),
     "gen/cli/bundle/compiler.js" => Some(
       include_bytes!(concat!(
         env!("GN_OUT_DIR"),
         "/gen/cli/bundle/compiler.js.map"
-      )).to_vec(),
+      ))
+      .to_vec(),
     ),
     _ => None,
   }

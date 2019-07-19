@@ -1,11 +1,14 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::resources::Resource;
 use futures;
-use futures::Future;
-use futures::Poll;
+use futures::future::FutureExt;
+use std::future::Future;
 use std::io;
 use std::mem;
 use std::net::SocketAddr;
+use std::pin::Pin;
+use std::task::Context;
+use std::task::Poll;
 use tokio;
 use tokio::net::TcpStream;
 use tokio::runtime;
@@ -19,11 +22,11 @@ pub fn create_threadpool_runtime() -> tokio::runtime::Runtime {
 
 pub fn run<F>(future: F)
 where
-  F: Future<Item = (), Error = ()> + Send + 'static,
+  F: Future<Output = Result<(), ()>> + Send + 'static,
 {
   // tokio::runtime::current_thread::run(future)
   let rt = create_threadpool_runtime();
-  rt.block_on_all(future).unwrap();
+  rt.block_on(future).unwrap();
 }
 
 /// THIS IS A HACK AND SHOULD BE AVOIDED.
@@ -34,7 +37,7 @@ where
 /// main runtime.
 pub fn block_on<F, R, E>(future: F) -> Result<R, E>
 where
-  F: Send + 'static + Future<Item = R, Error = E>,
+  F: Send + 'static + Future<Output = Result<R, E>>,
   R: Send + 'static,
   E: Send + 'static,
 {
@@ -43,11 +46,35 @@ where
   let (sender, receiver) = channel();
   // Create a new runtime to evaluate the future asynchronously.
   thread::spawn(move || {
-    let mut rt = create_threadpool_runtime();
+    let rt = create_threadpool_runtime();
     let r = rt.block_on(future);
     sender.send(r).unwrap();
   });
   receiver.recv().unwrap()
+}
+
+pub fn spawn_on_default<F, R, E>(
+  future: F,
+) -> Pin<Box<dyn Future<Output = Result<R, E>> + Send>>
+where
+  F: Send + 'static + Future<Output = Result<R, E>> + Unpin,
+  R: Send + 'static,
+  E: Send + 'static,
+{
+  use futures::channel::oneshot::channel;
+  use tokio::executor::Executor;
+  let (sender, receiver) = channel();
+  tokio::executor::DefaultExecutor::current()
+    .spawn(
+      future
+        .then(|result| {
+          assert!(sender.send(result).is_ok());
+          futures::future::ready(())
+        })
+        .boxed(),
+    )
+    .unwrap();
+  receiver.map(|result| result.unwrap()).boxed()
 }
 
 // Set the default executor so we can use tokio::spawn(). It's difficult to
@@ -86,35 +113,35 @@ pub struct Accept {
   state: AcceptState,
 }
 impl Future for Accept {
-  type Item = (TcpStream, SocketAddr);
-  type Error = io::Error;
+  type Output = Result<(TcpStream, SocketAddr), io::Error>;
 
-  fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-    let (stream, addr) = match self.state {
+  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+    let inner = Pin::get_mut(self);
+    let (stream, addr) = match inner.state {
       // Similar to try_ready!, but also track/untrack accept task
       // in TcpListener resource.
       // In this way, when the listener is closed, the task can be
       // notified to error out (instead of stuck forever).
-      AcceptState::Pending(ref mut r) => match r.poll_accept() {
-        Ok(futures::prelude::Async::Ready(t)) => {
+      AcceptState::Pending(ref mut r) => match r.poll_accept(cx) {
+        Poll::Ready(Ok(t)) => {
           r.untrack_task();
           t
         }
-        Ok(futures::prelude::Async::NotReady) => {
+        Poll::Pending => {
           // Would error out if another accept task is being tracked.
-          r.track_task()?;
-          return Ok(futures::prelude::Async::NotReady);
+          r.track_task(cx)?;
+          return Poll::Pending;
         }
-        Err(e) => {
+        Poll::Ready(Err(e)) => {
           r.untrack_task();
-          return Err(e);
+          return Poll::Ready(Err(e));
         }
       },
       AcceptState::Empty => panic!("poll Accept after it's done"),
     };
 
-    match mem::replace(&mut self.state, AcceptState::Empty) {
-      AcceptState::Pending(_) => Ok((stream, addr).into()),
+    match mem::replace(&mut inner.state, AcceptState::Empty) {
+      AcceptState::Pending(_) => Poll::Ready(Ok((stream, addr).into())),
       AcceptState::Empty => panic!("invalid internal state"),
     }
   }
@@ -125,7 +152,7 @@ impl Future for Accept {
 /// Therefore, we created our version of `poll_fn`.
 pub fn poll_fn<T, E, F>(f: F) -> PollFn<F>
 where
-  F: FnOnce() -> Poll<T, E>,
+  F: FnOnce() -> Poll<Result<T, E>> + Unpin,
 {
   PollFn { inner: Some(f) }
 }
@@ -136,21 +163,24 @@ pub struct PollFn<F> {
 
 impl<T, E, F> Future for PollFn<F>
 where
-  F: FnOnce() -> Poll<T, E>,
+  F: FnOnce() -> Poll<Result<T, E>> + Unpin,
 {
-  type Item = T;
-  type Error = E;
+  type Output = Result<T, E>;
 
-  fn poll(&mut self) -> Poll<T, E> {
-    let f = self.inner.take().expect("Inner fn has been taken.");
+  fn poll(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Self::Output> {
+    let inner = Pin::get_mut(self);
+    let f = inner.inner.take().expect("Inner fn has been taken.");
     f()
   }
 }
 
-pub fn panic_on_error<I, E, F>(f: F) -> impl Future<Item = I, Error = ()>
+pub fn panic_on_error<O, E, F>(f: F) -> impl Future<Output = O>
 where
-  F: Future<Item = I, Error = E>,
+  F: Future<Output = Result<O, E>>,
   E: std::fmt::Debug,
 {
-  f.map_err(|err| panic!("Future got unexpected error: {:?}", err))
+  f.map(|result| match result {
+    Err(err) => panic!("Future got unexpected error: {:?}", err),
+    Ok(v) => v,
+  })
 }
