@@ -550,9 +550,6 @@ impl Future for Isolate {
   type Error = ErrBox;
 
   fn poll(&mut self) -> Poll<(), ErrBox> {
-    // Lock the current thread for V8.
-    let _locker = LockerScope::new(self.libdeno_isolate);
-
     self.shared_init();
 
     let mut overflow_response: Option<Buf> = None;
@@ -590,14 +587,20 @@ impl Future for Isolate {
     }
 
     if self.shared.size() > 0 {
+      // Lock the current thread for V8.
+      let locker = LockerScope::new(self.libdeno_isolate);
       self.respond(None)?;
       // The other side should have shifted off all the messages.
       assert_eq!(self.shared.size(), 0);
+      drop(locker);
     }
 
     if overflow_response.is_some() {
+      // Lock the current thread for V8.
+      let locker = LockerScope::new(self.libdeno_isolate);
       let buf = overflow_response.take().unwrap();
       self.respond(Some(&buf))?;
+      drop(locker);
     }
 
     self.check_promise_errors();
