@@ -81,7 +81,9 @@ pub trait SourceFileFetcher {
   fn fetch_source_file(
     self: &Self,
     specifier: &ModuleSpecifier,
-  ) -> Result<SourceFile, ErrBox>;
+  ) -> Result<SourceFile, ErrBox> {
+    tokio_util::block_on(self.fetch_source_file_async(specifier))
+  }
 }
 
 // TODO: this list should be implemented on SourceFileFetcher trait
@@ -234,13 +236,6 @@ impl SourceFileFetcher for DenoDir {
       });
 
     Box::new(fut)
-  }
-
-  fn fetch_source_file(
-    self: &Self,
-    specifier: &ModuleSpecifier,
-  ) -> Result<SourceFile, ErrBox> {
-    tokio_util::block_on(self.fetch_source_file_async(specifier))
   }
 }
 
