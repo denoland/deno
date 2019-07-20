@@ -97,6 +97,10 @@ fn add_run_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .long("no-prompt")
         .help("Do not use prompts"),
     ).arg(
+      Arg::with_name("no-fetch")
+        .long("no-fetch")
+        .help("Do not download remote modules"),
+    ).arg(
       Arg::with_name("importmap")
         .long("importmap")
         .value_name("FILE")
@@ -551,6 +555,9 @@ fn parse_run_args(mut flags: DenoFlags, matches: &ArgMatches) -> DenoFlags {
   }
   if matches.is_present("no-prompt") {
     flags.no_prompts = true;
+  }
+  if matches.is_present("no-fetch") {
+    flags.no_fetch = true;
   }
   flags.import_map_path = matches.value_of("importmap").map(ToOwned::to_owned);
 
@@ -1559,5 +1566,20 @@ mod tests {
     assert_eq!(flags, DenoFlags::default());
     assert_eq!(subcommand, DenoSubcommand::Run);
     assert_eq!(argv, svec!["deno", "script.ts", "-", "foo", "bar"]);
+  }
+
+  #[test]
+  fn test_flags_from_vec_34() {
+    let (flags, subcommand, argv) =
+      flags_from_vec(svec!["deno", "--no-fetch", "script.ts"]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        no_fetch: true,
+        ..DenoFlags::default()
+      }
+    );
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "script.ts"])
   }
 }
