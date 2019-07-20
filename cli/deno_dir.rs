@@ -10,7 +10,7 @@ use crate::tokio_util;
 use deno::ErrBox;
 use deno::ModuleSpecifier;
 use dirs;
-use futures::future::{loop_fn, Either, Loop};
+use futures::future::Either;
 use futures::Future;
 use http;
 use serde_json;
@@ -316,15 +316,10 @@ impl DenoDir {
         .fetch_remote_source_async(&module_url)
         // TODO: cache fetched remote source here - `fetch_remote_source` should only fetch with
         // redirects, nothing more
-        .and_then(move |maybe_remote_source| match maybe_remote_source {
-          Some(output) => Ok(output),
-          None => Err(
-            std::io::Error::new(
+        .map_err(move |_e| std::io::Error::new(
               std::io::ErrorKind::NotFound,
               format!("cannot find remote file '{}'", module_url_.to_string()),
-            ).into(),
-          ),
-        }))
+            ).into()))
   }
 
   /// Fetch local source file.
@@ -424,99 +419,87 @@ impl DenoDir {
   fn fetch_remote_source_async(
     self: &Self,
     module_url: &Url,
-  ) -> impl Future<Item = Option<SourceFile>, Error = ErrBox> {
+  ) -> Box<dyn Future<Item = SourceFile, Error = ErrBox> + Send> {
     use crate::http_util::FetchOnceResult;
 
     let download_job = self.progress.add("Download", &module_url.to_string());
 
-    // We write a special ".headers.json" file into the `.deno/deps` directory along side the
-    // cached file, containing just the media type and possible redirect target (both are http headers).
-    // If redirect target is present, the file itself if not cached.
-    // In future resolutions, we would instead follow this redirect target ("redirect_to").
-    loop_fn(
-      (
-        self.clone(),
-        None,
-        module_url.clone(),
-      ),
-      |(
-        dir,
-        mut maybe_initial_module_url,
-        module_url,
-      )| {
-        let module_uri = url_into_uri(&module_url);
-        // Single pass fetch, either yields code or yields redirect.
-        http_util::fetch_string_once(module_uri).and_then(
-          move |fetch_once_result| {
-            match fetch_once_result {
-              FetchOnceResult::Redirect(uri) => {
-                // If redirects, update module_name and filename for next looped call.
-                let new_module_url = Url::parse(&uri.to_string()).expect("http::uri::Uri should be parseable as Url");
+    let module_uri = url_into_uri(&module_url);
 
-                if maybe_initial_module_url.is_none() {
-                  maybe_initial_module_url = Some(module_url);
-                }
+    let dir = self.clone();
+    let module_url = module_url.clone();
 
-                // Not yet completed. Follow the redirect and loop.
-                Ok(Loop::Continue((
-                  dir,
-                  maybe_initial_module_url,
-                  new_module_url,
-                )))
-              }
-              FetchOnceResult::Code(source, maybe_content_type) => {
-                // TODO: move caching logic outside this function
-                // We land on the code.
-                dir.save_source_code_headers(
-                  &module_url,
-                  maybe_content_type.clone(),
-                  None,
-                ).unwrap();
+    // Single pass fetch, either yields code or yields redirect.
+    let f = http_util::fetch_string_once(module_uri).and_then(
+      move |fetch_once_result| {
+        match fetch_once_result {
+          FetchOnceResult::Redirect(uri) => {
+            // If redirects, update module_name and filename for next looped call.
+            let new_module_url = Url::parse(&uri.to_string()).expect("http::uri::Uri should be parseable as Url");
 
+            dir.save_source_code_headers(
+              &module_url,
+              None,
+              Some(new_module_url.to_string())
+            ).unwrap();
 
-                dir.save_source_code(
-                  &module_url,
-                  &source
-                ).unwrap();
+            // Explicit drop to keep reference alive until future completes.
+            drop(download_job);
 
-                if let Some(redirect_source_url) = &maybe_initial_module_url {
-                  dir.save_source_code_headers(
-                    redirect_source_url,
-                    maybe_content_type.clone(),
-                    Some(module_url.to_string())
-                  ).unwrap()
-                }
+            let module_url = module_url.clone();
 
-                let filepath = dir
-                  .deps_cache
-                  .location
-                  .join(dir.deps_cache.get_cache_filename(&module_url));
+            // Recurse
+            let fut = dir.get_source_file_async(&new_module_url, dir.use_disk_cache, dir.no_remote_fetch)
+              .and_then(move |source_file| {
+                let mut source_file = source_file;
+                source_file.redirect_source_url = Some(module_url);
+                futures::future::ok(source_file)
+              });
 
-                let media_type = map_content_type(
-                  &filepath,
-                  maybe_content_type.as_ref().map(String::as_str),
-                );
+            Either::A(fut)
+          }
+          FetchOnceResult::Code(source, maybe_content_type) => {
+            // TODO: move caching logic outside this function
+            // We land on the code.
+            dir.save_source_code_headers(
+              &module_url,
+              maybe_content_type.clone(),
+              None,
+            ).unwrap();
 
-                let source_file = SourceFile {
-                  url: module_url,
-                  redirect_source_url: maybe_initial_module_url,
-                  filename: filepath,
-                  media_type,
-                  source_code: source.as_bytes().to_owned(),
-                };
+            dir.save_source_code(
+              &module_url,
+              &source
+            ).unwrap();
 
-                Ok(Loop::Break(Some(source_file)))
-              }
-            }
-          },
-        )
+            let filepath = dir
+              .deps_cache
+              .location
+              .join(dir.deps_cache.get_cache_filename(&module_url));
+
+            let media_type = map_content_type(
+              &filepath,
+              maybe_content_type.as_ref().map(String::as_str),
+            );
+
+            let source_file = SourceFile {
+              url: module_url.clone(),
+              redirect_source_url: None,
+              filename: filepath,
+              media_type,
+              source_code: source.as_bytes().to_owned(),
+            };
+
+            // Explicit drop to keep reference alive until future completes.
+            drop(download_job);
+
+            Either::B(futures::future::ok(source_file))
+          }
+        }
       },
-    )
-    .then(move |r| {
-      // Explicit drop to keep reference alive until future completes.
-      drop(download_job);
-      r
-    })
+    );
+
+    Box::new(f)
   }
 
   /// Get header metadata associated with a remote file.
@@ -734,7 +717,7 @@ mod tests {
       self: &Self,
       module_url: &Url,
       _filepath: &Path,
-    ) -> Result<Option<SourceFile>, ErrBox> {
+    ) -> Result<SourceFile, ErrBox> {
       tokio_util::block_on(self.fetch_remote_source_async(module_url))
     }
 
@@ -1165,7 +1148,7 @@ mod tests {
       let result =
         tokio_util::block_on(deno_dir.fetch_remote_source_async(&module_url));
       assert!(result.is_ok());
-      let r = result.unwrap().unwrap();
+      let r = result.unwrap();
       assert_eq!(r.source_code, b"export const loaded = true;\n");
       assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
       // matching ext, no .headers.json file created
@@ -1206,7 +1189,7 @@ mod tests {
 
       let result = deno_dir.fetch_remote_source(&module_url, &filepath);
       assert!(result.is_ok());
-      let r = result.unwrap().unwrap();
+      let r = result.unwrap();
       assert_eq!(r.source_code, "export const loaded = true;\n".as_bytes());
       assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
       // matching ext, no .headers.json file created
@@ -1240,7 +1223,7 @@ mod tests {
         .join("http/localhost_PORT4545/tests/subdir/no_ext");
       let result = deno_dir.fetch_remote_source(&module_url, &filepath);
       assert!(result.is_ok());
-      let r = result.unwrap().unwrap();
+      let r = result.unwrap();
       assert_eq!(r.source_code, "export const loaded = true;\n".as_bytes());
       assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
       // no ext, should create .headers.json file
@@ -1261,7 +1244,7 @@ mod tests {
         .join("http/localhost_PORT4545/tests/subdir/mismatch_ext.ts");
       let result_2 = deno_dir.fetch_remote_source(&module_url_2, &filepath_2);
       assert!(result_2.is_ok());
-      let r2 = result_2.unwrap().unwrap();
+      let r2 = result_2.unwrap();
       assert_eq!(r2.source_code, "export const loaded = true;\n".as_bytes());
       assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
       // mismatch ext, should create .headers.json file
@@ -1283,7 +1266,7 @@ mod tests {
         .join("http/localhost_PORT4545/tests/subdir/unknown_ext.deno");
       let result_3 = deno_dir.fetch_remote_source(&module_url_3, &filepath_3);
       assert!(result_3.is_ok());
-      let r3 = result_3.unwrap().unwrap();
+      let r3 = result_3.unwrap();
       assert_eq!(r3.source_code, "export const loaded = true;\n".as_bytes());
       assert_eq!(&(r3.media_type), &msg::MediaType::TypeScript);
       // unknown ext, should create .headers.json file
