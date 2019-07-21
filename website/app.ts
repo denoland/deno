@@ -127,6 +127,7 @@ export function formatReqSec(reqPerSec) {
  * @param {function} onclick action on clicking nodes of chart
  * @param {string} yLabel label of y axis
  * @param {function} yTickFormat formatter of y axis ticks
+ * @param {boolean} zoomEnabled enables the zoom feature
  */
 function generate(
   id,
@@ -134,7 +135,8 @@ function generate(
   columns,
   onclick,
   yLabel = "",
-  yTickFormat = null
+  yTickFormat = null,
+  zoomEnabled = true
 ) {
   const yAxis = {
     padding: { bottom: 0 },
@@ -173,6 +175,9 @@ function generate(
         categories
       },
       y: yAxis
+    },
+    zoom: {
+      enabled: zoomEnabled
     }
   });
 }
