@@ -8,8 +8,12 @@ use deno::ModuleSpecifier;
 use deno::StartupData;
 use futures::Async;
 use futures::Future;
+use futures::FlattenStream;
 use std::sync::Arc;
 use std::sync::Mutex;
+use tokio_signal::{IoFuture, IoStream, ctrl_c};
+#[allow(dead_code)]
+use futures::Stream;
 
 /// Wraps deno::Isolate to provide source maps, ops for the CLI, and
 /// high-level module loading
@@ -17,6 +21,7 @@ use std::sync::Mutex;
 pub struct Worker {
   isolate: Arc<Mutex<deno::Isolate>>,
   pub state: ThreadSafeState,
+  ctrl_c: Arc<Mutex<FlattenStream<IoFuture<IoStream<()>>>>>,
 }
 
 impl Worker {
@@ -37,7 +42,8 @@ impl Worker {
         JSError::from_v8_exception(v8_exception, &state_.ts_compiler)
       })
     }
-    Self { isolate, state }
+    let ctrl_c = Arc::new(Mutex::new(ctrl_c().flatten_stream()));
+    Self { isolate, state , ctrl_c}
   }
 
   /// Same as execute2() but the filename defaults to "<anonymous>".
@@ -92,6 +98,9 @@ impl Worker {
     tokio_util::block_on(self.execute_mod_async(module_specifier, is_prefetch))
   }
 }
+use std::io::Error;
+use crate::msg::ErrorKind;
+use crate::deno_error::DenoError;
 
 impl Future for Worker {
   type Item = ();
@@ -99,6 +108,14 @@ impl Future for Worker {
 
   fn poll(&mut self) -> Result<Async<()>, ErrBox> {
     let mut isolate = self.isolate.lock().unwrap();
+    let mut poll = self.ctrl_c.lock().unwrap();
+    let err =  DenoError::new(ErrorKind::NotFound, "File not found".to_string());
+    match poll.poll() {
+      Ok(Async::Ready(_)) => {
+        return Err(ErrBox::from(err));
+      },
+      _ => {},
+    }
     isolate.poll()
   }
 }
