@@ -38,7 +38,11 @@ class TestTarget(DenoTestCase):
             self._test("deno_core_test")
             self._test("deno_core_http_bench_test")
         else:
-            run(["cargo", "test", "--examples", "--all-targets"], quiet=True)
+            args = ["cargo", "test", "--examples", "--all-targets", "-vv"]
+            from test_util import TEST_ARGS
+            if TEST_ARGS.release:
+                args += ["--release"]
+            run(args, quiet=True)
 
     def test_ts_library_builder(self):
         result = run_output([

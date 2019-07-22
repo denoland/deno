@@ -74,12 +74,16 @@ def create_test_arg_parser():
 
 TestArgParser = create_test_arg_parser()
 
+TEST_ARGS = None
+
 
 def parse_test_args(argv=None):
+    global TEST_ARGS
     if argv is None:
         argv = sys.argv[1:]
 
     args = TestArgParser.parse_args(argv)
+    TEST_ARGS = args
 
     if args.executable and args.release:
         raise argparse.ArgumentError(
