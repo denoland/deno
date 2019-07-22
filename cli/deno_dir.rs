@@ -402,7 +402,7 @@ impl DenoDir {
       }
     }
 
-    // If file wasn't in cache found check if we can fetch it
+    // If file wasn't found in cache check if we can fetch it
     if no_remote_fetch {
       // We can't fetch remote file - bail out
       return Box::new(futures::future::err(
@@ -1154,8 +1154,8 @@ mod tests {
       let result =
         deno_dir.fetch_remote_source(&double_redirect_url, false, false, 1);
       assert!(result.is_err());
-
-      // TODO: add better tests
+      let err = result.err().unwrap();
+      assert_eq!(err.kind(), ErrorKind::TooManyRedirects);
     });
   }
 
