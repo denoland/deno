@@ -34,7 +34,6 @@ use url::Url;
 #[derive(Debug, Clone)]
 pub struct SourceFile {
   pub url: Url,
-  pub redirect_source_url: Option<Url>,
   pub filename: PathBuf,
   pub media_type: msg::MediaType,
   pub source_code: Vec<u8>,
@@ -281,18 +280,12 @@ impl DenoDir {
     }
 
     // Fetch remote file and cache on-disk for subsequent access
-    // not cached/local, try remote.
-    let module_url_ = module_url.clone();
-    Either::B(
-      self
-        .fetch_remote_source_async(&module_url, use_disk_cache, no_remote_fetch, 10)
-        // TODO: cache fetched remote source here - `fetch_remote_source` should only fetch with
-        // redirects, nothing more
-        .map_err(move |_e| std::io::Error::new(
-              std::io::ErrorKind::NotFound,
-              format!("cannot find remote file '{}'", module_url_.to_string()),
-            ).into()),
-    )
+    Either::B(self.fetch_remote_source_async(
+      &module_url,
+      use_disk_cache,
+      no_remote_fetch,
+      10,
+    ))
   }
 
   /// Fetch local source file.
@@ -310,7 +303,6 @@ impl DenoDir {
     let media_type = map_content_type(&filepath, None);
     Ok(SourceFile {
       url: module_url.clone(),
-      redirect_source_url: None,
       filename: filepath,
       media_type,
       source_code,
@@ -332,7 +324,6 @@ impl DenoDir {
   fn fetch_cached_remote_source(
     self: &Self,
     module_url: &Url,
-    maybe_initial_module_url: Option<Url>,
   ) -> Result<Option<SourceFile>, ErrBox> {
     let source_code_headers = self.get_source_code_headers(&module_url);
     // If source code headers says that it would redirect elsewhere,
@@ -347,16 +338,10 @@ impl DenoDir {
       // real_module_name = https://import-meta.now.sh/sub/final1.js
       let redirect_url = Url::parse(&redirect_to).expect("Should be valid URL");
 
-      let mut maybe_initial_module_url = maybe_initial_module_url;
-      // If this is the first redirect attempt,
-      // then maybe_initial_module_url should be None.
-      // In that case, use current module name as maybe_initial_module_url.
-      if maybe_initial_module_url.is_none() {
-        maybe_initial_module_url = Some(module_url.clone());
-      }
       // Recurse.
-      return self
-        .fetch_cached_remote_source(&redirect_url, maybe_initial_module_url);
+      // TODO(bartlomieju): I'm pretty sure we should call `fetch_remote_source_async` here.
+      // Should we expect that all redirects are be cached?
+      return self.fetch_cached_remote_source(&redirect_url);
     }
 
     // No redirect needed or end of redirects.
@@ -381,7 +366,6 @@ impl DenoDir {
     );
     Ok(Some(SourceFile {
       url: module_url.clone(),
-      redirect_source_url: maybe_initial_module_url,
       filename: filepath,
       media_type,
       source_code,
@@ -409,7 +393,7 @@ impl DenoDir {
 
     // We're dealing with remote file, first try local cache
     if use_disk_cache {
-      match self.fetch_cached_remote_source(&module_url, None) {
+      match self.fetch_cached_remote_source(&module_url) {
         Ok(Some(source_file)) => {
           return Box::new(futures::future::ok(source_file));
         }
@@ -444,51 +428,42 @@ impl DenoDir {
     let module_url = module_url.clone();
 
     // Single pass fetch, either yields code or yields redirect.
-    Box::new(http_util::fetch_string_once(module_uri)
-      .and_then(move |r| match r {
+    let f =
+      http_util::fetch_string_once(module_uri).and_then(move |r| match r {
         FetchOnceResult::Redirect(uri) => {
           // If redirects, update module_name and filename for next looped call.
-          let new_module_url = Url::parse(&uri.to_string()).expect("http::uri::Uri should be parseable as Url");
+          let new_module_url = Url::parse(&uri.to_string())
+            .expect("http::uri::Uri should be parseable as Url");
 
-          dir.save_source_code_headers(
-            &module_url,
-            None,
-            Some(new_module_url.to_string())
-          ).unwrap();
+          dir
+            .save_source_code_headers(
+              &module_url,
+              None,
+              Some(new_module_url.to_string()),
+            ).unwrap();
 
           // Explicit drop to keep reference alive until future completes.
           drop(download_job);
 
-          let module_url = module_url.clone();
-
           // Recurse
-          Either::A(
-            dir.fetch_remote_source_async(
-              &new_module_url,
-              use_disk_cache,
-              no_remote_fetch,
-              redirect_limit - 1
-            ).and_then(move |source_file| {
-              // TODO: to be removed, we don't need "redirect_source_url" anyway
-              let mut source_file = source_file;
-              source_file.redirect_source_url = Some(module_url);
-              futures::future::ok(source_file)
-            })
-          )
+          Either::A(dir.fetch_remote_source_async(
+            &new_module_url,
+            use_disk_cache,
+            no_remote_fetch,
+            redirect_limit - 1,
+          ))
         }
         FetchOnceResult::Code(source, maybe_content_type) => {
           // TODO: move caching logic outside this function
           // We land on the code.
-          dir.save_source_code_headers(
-            &module_url,
-            maybe_content_type.clone(),
-            None,
-          ).unwrap();
+          dir
+            .save_source_code_headers(
+              &module_url,
+              maybe_content_type.clone(),
+              None,
+            ).unwrap();
 
-          dir.save_source_code(
-            &module_url,
-            &source
-          ).unwrap();
+          dir.save_source_code(&module_url, &source).unwrap();
 
           let filepath = dir
             .deps_cache
@@ -502,7 +477,6 @@ impl DenoDir {
 
           let source_file = SourceFile {
             url: module_url.clone(),
-            redirect_source_url: None,
             filename: filepath,
             media_type,
             source_code: source.as_bytes().to_owned(),
@@ -513,8 +487,9 @@ impl DenoDir {
 
           Either::B(futures::future::ok(source_file))
         }
-      },
-    ))
+      });
+
+    Box::new(f)
   }
 
   /// Get header metadata associated with a remote file.
@@ -1057,10 +1032,6 @@ mod tests {
 
       // Examine the meta result.
       assert_eq!(mod_meta.url.clone(), target_module_url);
-      assert_eq!(
-        &mod_meta.redirect_source_url.clone().unwrap(),
-        &redirect_module_url
-      );
     });
   }
 
@@ -1123,10 +1094,6 @@ mod tests {
 
       // Examine the meta result.
       assert_eq!(mod_meta.url.clone(), target_url);
-      assert_eq!(
-        &mod_meta.redirect_source_url.clone().unwrap(),
-        &double_redirect_url
-      );
     });
   }
 
@@ -1253,7 +1220,7 @@ mod tests {
         Some("text/javascript".to_owned()),
         None,
       );
-      let result2 = deno_dir.fetch_cached_remote_source(&module_url, None);
+      let result2 = deno_dir.fetch_cached_remote_source(&module_url);
       assert!(result2.is_ok());
       let r2 = result2.unwrap().unwrap();
       assert_eq!(r2.source_code, b"export const loaded = true;\n");
@@ -1290,7 +1257,7 @@ mod tests {
         Some("text/javascript".to_owned()),
         None,
       );
-      let result2 = deno_dir.fetch_cached_remote_source(&module_url, None);
+      let result2 = deno_dir.fetch_cached_remote_source(&module_url);
       assert!(result2.is_ok());
       let r2 = result2.unwrap().unwrap();
       assert_eq!(r2.source_code, "export const loaded = true;\n".as_bytes());

@@ -447,7 +447,6 @@ impl TsCompiler {
 
     let compiled_module = SourceFile {
       url: source_file.url.clone(),
-      redirect_source_url: None,
       filename: compiled_code_filename,
       media_type: msg::MediaType::JavaScript,
       source_code: compiled_code,
@@ -515,7 +514,6 @@ impl TsCompiler {
 
     let source_map_file = SourceFile {
       url: module_specifier.as_url().to_owned(),
-      redirect_source_url: None,
       filename: source_map_filename,
       media_type: msg::MediaType::JavaScript,
       source_code,
@@ -634,7 +632,6 @@ mod tests {
 
       let mut out = SourceFile {
         url: specifier.as_url().clone(),
-        redirect_source_url: None,
         filename: PathBuf::from("/tests/002_hello.ts"),
         media_type: msg::MediaType::TypeScript,
         source_code: include_bytes!("../tests/002_hello.ts").to_vec(),
