@@ -280,41 +280,12 @@ impl DenoDir {
       }
     }
 
-    // We're dealing with remote file, first try local cache
-    if use_disk_cache {
-      match self.fetch_cached_remote_source(&module_url, None) {
-        Ok(Some(source_file)) => {
-          return Either::A(futures::future::ok(source_file));
-        }
-        Ok(None) => {
-          // there's no cached version
-        }
-        Err(err) => {
-          return Either::A(futures::future::err(err));
-        }
-      }
-    }
-
-    // If remote file wasn't found check if we can fetch it
-    if no_remote_fetch {
-      // We can't fetch remote file - bail out
-      return Either::A(futures::future::err(
-        std::io::Error::new(
-          std::io::ErrorKind::NotFound,
-          format!(
-            "cannot find remote file '{}' in cache",
-            module_url.to_string()
-          ),
-        ).into(),
-      ));
-    }
-
     // Fetch remote file and cache on-disk for subsequent access
     // not cached/local, try remote.
     let module_url_ = module_url.clone();
     Either::B(
       self
-        .fetch_remote_source_async(&module_url)
+        .fetch_remote_source_async(&module_url, use_disk_cache, no_remote_fetch)
         // TODO: cache fetched remote source here - `fetch_remote_source` should only fetch with
         // redirects, nothing more
         .map_err(move |_e| std::io::Error::new(
@@ -422,8 +393,39 @@ impl DenoDir {
   fn fetch_remote_source_async(
     self: &Self,
     module_url: &Url,
-  ) -> Box<dyn Future<Item = SourceFile, Error = ErrBox> + Send> {
+    use_disk_cache: bool,
+    no_remote_fetch: bool,
+  ) -> Box<SourceFileFuture> {
     use crate::http_util::FetchOnceResult;
+
+    // We're dealing with remote file, first try local cache
+    if use_disk_cache {
+      match self.fetch_cached_remote_source(&module_url, None) {
+        Ok(Some(source_file)) => {
+          return Box::new(futures::future::ok(source_file));
+        }
+        Ok(None) => {
+          // there's no cached version
+        }
+        Err(err) => {
+          return Box::new(futures::future::err(err));
+        }
+      }
+    }
+
+    // If remote file wasn't found check if we can fetch it
+    if no_remote_fetch {
+      // We can't fetch remote file - bail out
+      return Box::new(futures::future::err(
+        std::io::Error::new(
+          std::io::ErrorKind::NotFound,
+          format!(
+            "cannot find remote file '{}' in cache",
+            module_url.to_string()
+          ),
+        ).into(),
+      ));
+    }
 
     let download_job = self.progress.add("Download", &module_url.to_string());
 
@@ -452,7 +454,7 @@ impl DenoDir {
             let module_url = module_url.clone();
 
             // Recurse
-            let fut = dir.get_source_file_async(&new_module_url, dir.use_disk_cache, dir.no_remote_fetch)
+            let fut = dir.fetch_remote_source_async(&new_module_url, use_disk_cache, no_remote_fetch)
               .and_then(move |source_file| {
                 let mut source_file = source_file;
                 source_file.redirect_source_url = Some(module_url);
@@ -719,9 +721,14 @@ mod tests {
     fn fetch_remote_source(
       self: &Self,
       module_url: &Url,
-      _filepath: &Path,
+      use_disk_cache: bool,
+      no_remote_fetch: bool,
     ) -> Result<SourceFile, ErrBox> {
-      tokio_util::block_on(self.fetch_remote_source_async(module_url))
+      tokio_util::block_on(self.fetch_remote_source_async(
+        module_url,
+        use_disk_cache,
+        no_remote_fetch,
+      ))
     }
 
     /// Synchronous version of get_source_file_async
@@ -1195,8 +1202,11 @@ mod tests {
           .get_cache_filename_with_extension(&module_url, "headers.json"),
       );
 
-      let result =
-        tokio_util::block_on(deno_dir.fetch_remote_source_async(&module_url));
+      let result = tokio_util::block_on(deno_dir.fetch_remote_source_async(
+        &module_url,
+        false,
+        false,
+      ));
       assert!(result.is_ok());
       let r = result.unwrap();
       assert_eq!(r.source_code, b"export const loaded = true;\n");
@@ -1227,17 +1237,13 @@ mod tests {
       let module_url =
         Url::parse("http://localhost:4545/tests/subdir/mt_video_mp2t.t3.ts")
           .unwrap();
-      let filepath = deno_dir
-        .deps_cache
-        .location
-        .join("http/localhost_PORT4545/tests/subdir/mt_video_mp2t.t3.ts");
       let headers_file_name = deno_dir.deps_cache.location.join(
         deno_dir
           .deps_cache
           .get_cache_filename_with_extension(&module_url, "headers.json"),
       );
 
-      let result = deno_dir.fetch_remote_source(&module_url, &filepath);
+      let result = deno_dir.fetch_remote_source(&module_url, false, false);
       assert!(result.is_ok());
       let r = result.unwrap();
       assert_eq!(r.source_code, "export const loaded = true;\n".as_bytes());
@@ -1267,11 +1273,7 @@ mod tests {
       let (_temp_dir, deno_dir) = test_setup();
       let module_url =
         Url::parse("http://localhost:4545/tests/subdir/no_ext").unwrap();
-      let filepath = deno_dir
-        .deps_cache
-        .location
-        .join("http/localhost_PORT4545/tests/subdir/no_ext");
-      let result = deno_dir.fetch_remote_source(&module_url, &filepath);
+      let result = deno_dir.fetch_remote_source(&module_url, false, false);
       assert!(result.is_ok());
       let r = result.unwrap();
       assert_eq!(r.source_code, "export const loaded = true;\n".as_bytes());
@@ -1288,11 +1290,7 @@ mod tests {
       let module_url_2 =
         Url::parse("http://localhost:4545/tests/subdir/mismatch_ext.ts")
           .unwrap();
-      let filepath_2 = deno_dir
-        .deps_cache
-        .location
-        .join("http/localhost_PORT4545/tests/subdir/mismatch_ext.ts");
-      let result_2 = deno_dir.fetch_remote_source(&module_url_2, &filepath_2);
+      let result_2 = deno_dir.fetch_remote_source(&module_url_2, false, false);
       assert!(result_2.is_ok());
       let r2 = result_2.unwrap();
       assert_eq!(r2.source_code, "export const loaded = true;\n".as_bytes());
@@ -1310,11 +1308,7 @@ mod tests {
       let module_url_3 =
         Url::parse("http://localhost:4545/tests/subdir/unknown_ext.deno")
           .unwrap();
-      let filepath_3 = deno_dir
-        .deps_cache
-        .location
-        .join("http/localhost_PORT4545/tests/subdir/unknown_ext.deno");
-      let result_3 = deno_dir.fetch_remote_source(&module_url_3, &filepath_3);
+      let result_3 = deno_dir.fetch_remote_source(&module_url_3, false, false);
       assert!(result_3.is_ok());
       let r3 = result_3.unwrap();
       assert_eq!(r3.source_code, "export const loaded = true;\n".as_bytes());
