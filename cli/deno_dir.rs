@@ -341,7 +341,7 @@ impl DenoDir {
 
       // Recurse.
       // TODO(bartlomieju): I'm pretty sure we should call `fetch_remote_source_async` here.
-      // Should we expect that all redirects are be cached?
+      // Should we expect that all redirects are cached?
       return self.fetch_cached_remote_source(&redirect_url);
     }
 
@@ -387,7 +387,7 @@ impl DenoDir {
       return Box::new(futures::future::err(too_many_redirects()));
     }
 
-    // We're dealing with remote file, first try local cache
+    // First try local cache
     if use_disk_cache {
       match self.fetch_cached_remote_source(&module_url) {
         Ok(Some(source_file)) => {
@@ -402,7 +402,7 @@ impl DenoDir {
       }
     }
 
-    // If remote file wasn't found check if we can fetch it
+    // If file wasn't in cache found check if we can fetch it
     if no_remote_fetch {
       // We can't fetch remote file - bail out
       return Box::new(futures::future::err(
@@ -450,7 +450,6 @@ impl DenoDir {
           ))
         }
         FetchOnceResult::Code(source, maybe_content_type) => {
-          // TODO: move caching logic outside this function
           // We land on the code.
           dir
             .save_source_code_headers(
