@@ -312,14 +312,16 @@ impl DenoDir {
     // Fetch remote file and cache on-disk for subsequent access
     // not cached/local, try remote.
     let module_url_ = module_url.clone();
-    Either::B(self
+    Either::B(
+      self
         .fetch_remote_source_async(&module_url)
         // TODO: cache fetched remote source here - `fetch_remote_source` should only fetch with
         // redirects, nothing more
         .map_err(move |_e| std::io::Error::new(
               std::io::ErrorKind::NotFound,
               format!("cannot find remote file '{}'", module_url_.to_string()),
-            ).into()))
+            ).into()),
+    )
   }
 
   /// Fetch local source file.
@@ -416,6 +418,7 @@ impl DenoDir {
   }
 
   /// Asynchronously fetch remote source file specified by the URL following redirects.
+  // TODO: add limit of redirects param
   fn fetch_remote_source_async(
     self: &Self,
     module_url: &Url,
@@ -1047,64 +1050,111 @@ mod tests {
     let (_temp_dir, deno_dir) = test_setup();
     // Test double redirects and headers recording
     tokio_util::init(|| {
-      let redirect_module_url =
+      let double_redirect_url =
         Url::parse("http://localhost:4548/tests/subdir/redirects/redirect1.js")
           .unwrap();
-      let redirect_source_filepath = deno_dir
+      let double_redirect_path = deno_dir
         .deps_cache
         .location
         .join("http/localhost_PORT4548/tests/subdir/redirects/redirect1.js");
-      let redirect_source_filename =
-        redirect_source_filepath.to_str().unwrap().to_string();
-      let redirect_source_filename_intermediate = deno_dir
+
+      let redirect_url =
+        Url::parse("http://localhost:4546/tests/subdir/redirects/redirect1.js")
+          .unwrap();
+      let redirect_path = deno_dir
         .deps_cache
         .location
         .join("http/localhost_PORT4546/tests/subdir/redirects/redirect1.js");
-      let target_module_url =
+
+      let target_url =
         Url::parse("http://localhost:4545/tests/subdir/redirects/redirect1.js")
           .unwrap();
-      let target_module_name = target_module_url.to_string();
-      let redirect_target_filepath = deno_dir
+      let target_path = deno_dir
         .deps_cache
         .location
         .join("http/localhost_PORT4545/tests/subdir/redirects/redirect1.js");
-      let redirect_target_filename =
-        redirect_target_filepath.to_str().unwrap().to_string();
 
       let mod_meta = deno_dir
-        .get_source_file(&redirect_module_url, true, false)
+        .get_source_file(&double_redirect_url, true, false)
         .unwrap();
 
-      // File that requires redirection is not downloaded.
-      assert!(fs::read_to_string(&redirect_source_filename).is_err());
-      // ... but its .headers.json is created.
-      let redirect_source_headers =
-        deno_dir.get_source_code_headers(&redirect_module_url);
-      assert_eq!(
-        redirect_source_headers.redirect_to.unwrap(),
-        target_module_name
-      );
+      assert!(fs::read_to_string(&double_redirect_path).is_err());
+      assert!(fs::read_to_string(&redirect_path).is_err());
 
-      // In the intermediate redirection step, file is also not downloaded.
-      assert!(
-        fs::read_to_string(&redirect_source_filename_intermediate).is_err()
+      let double_redirect_headers =
+        deno_dir.get_source_code_headers(&double_redirect_url);
+      assert_eq!(
+        double_redirect_headers.redirect_to.unwrap(),
+        redirect_url.to_string()
+      );
+      let redirect_headers = deno_dir.get_source_code_headers(&redirect_url);
+      assert_eq!(
+        redirect_headers.redirect_to.unwrap(),
+        target_url.to_string()
       );
 
       // The target of redirection is downloaded instead.
       assert_eq!(
-        fs::read_to_string(&redirect_target_filename).unwrap(),
+        fs::read_to_string(&target_path).unwrap(),
         "export const redirect = 1;\n"
       );
       let redirect_target_headers =
-        deno_dir.get_source_code_headers(&target_module_url);
+        deno_dir.get_source_code_headers(&target_url);
       assert!(redirect_target_headers.redirect_to.is_none());
 
       // Examine the meta result.
-      assert_eq!(mod_meta.url.clone(), target_module_url);
+      assert_eq!(mod_meta.url.clone(), target_url);
       assert_eq!(
         &mod_meta.redirect_source_url.clone().unwrap(),
-        &redirect_module_url
+        &double_redirect_url
       );
+    });
+  }
+
+  #[test]
+  fn test_get_source_code_5() {
+    let (_temp_dir, deno_dir) = test_setup();
+    // Test that redirect target is not downloaded twice for different redirect source.
+    tokio_util::init(|| {
+      let double_redirect_url =
+        Url::parse("http://localhost:4548/tests/subdir/redirects/redirect1.js")
+          .unwrap();
+
+      let redirect_url =
+        Url::parse("http://localhost:4546/tests/subdir/redirects/redirect1.js")
+          .unwrap();
+
+      let target_path = deno_dir
+        .deps_cache
+        .location
+        .join("http/localhost_PORT4545/tests/subdir/redirects/redirect1.js");
+
+      deno_dir
+        .get_source_file(&double_redirect_url, true, false)
+        .unwrap();
+
+      let result = fs::File::open(&target_path);
+      assert!(result.is_ok());
+      let file = result.unwrap();
+      // save modified timestamp for headers file of redirect target
+      let file_metadata = file.metadata().unwrap();
+      let file_modified = file_metadata.modified().unwrap();
+
+      // When another file is fetched that also point to redirect target, then redirect target
+      // shouldn't be downloaded again. It can be verified using source header file creation
+      // timestamp (should be the same as after first `get_source_file`)
+      deno_dir
+        .get_source_file(&redirect_url, true, false)
+        .unwrap();
+
+      let result = fs::File::open(&target_path);
+      assert!(result.is_ok());
+      let file_2 = result.unwrap();
+      // save modified timestamp for headers file
+      let file_metadata_2 = file_2.metadata().unwrap();
+      let file_modified_2 = file_metadata_2.modified().unwrap();
+
+      assert_eq!(file_modified, file_modified_2);
     });
   }
 
@@ -1279,24 +1329,6 @@ mod tests {
       );
     });
   }
-
-  // TODO: this test no more makes sense
-  //  #[test]
-  //  fn test_fetch_source_3() {
-  //    // only local, no http_util::fetch_sync_string called
-  //    let (_temp_dir, deno_dir) = test_setup();
-  //    let cwd = std::env::current_dir().unwrap();
-  //    let module_url =
-  //      Url::parse("http://example.com/mt_text_typescript.t1.ts").unwrap();
-  //    let filepath = cwd.join("tests/subdir/mt_text_typescript.t1.ts");
-  //
-  //    let result =
-  //      deno_dir.fetch_cached_remote_source(&module_url, None);
-  //    assert!(result.is_ok());
-  //    let r = result.unwrap().unwrap();
-  //    assert_eq!(r.source_code, "export const loaded = true;\n".as_bytes());
-  //    assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
-  //  }
 
   #[test]
   fn test_fetch_source_file() {
