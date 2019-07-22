@@ -144,6 +144,7 @@ enum ErrorKind: byte {
   InvalidPath,
   ImportPrefixMissing,
   UnsupportedFetchScheme,
+  TooManyRedirects,
 
   // other kinds
   Diagnostic,
