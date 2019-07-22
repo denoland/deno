@@ -1,4 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+use crate::deno_error::too_many_redirects;
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
 use crate::deno_error::GetErrorKind;
@@ -382,13 +383,8 @@ impl DenoDir {
   ) -> Box<SourceFileFuture> {
     use crate::http_util::FetchOnceResult;
 
-    eprintln!("redirect limit {:?}", redirect_limit);
     if redirect_limit < 0 {
-      // TODO: this is not correct error type to return
-      return Box::new(futures::future::err(
-        std::io::Error::new(std::io::ErrorKind::NotFound, "too many redirects")
-          .into(),
-      ));
+      return Box::new(futures::future::err(too_many_redirects()));
     }
 
     // We're dealing with remote file, first try local cache

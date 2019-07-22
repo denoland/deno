@@ -75,6 +75,10 @@ pub fn invalid_address_syntax() -> ErrBox {
   StaticError(ErrorKind::InvalidInput, "invalid address syntax").into()
 }
 
+pub fn too_many_redirects() -> ErrBox {
+  StaticError(ErrorKind::TooManyRedirects, "too many redirects").into()
+}
+
 pub trait GetErrorKind {
   fn kind(&self) -> ErrorKind;
 }
