@@ -1,21 +1,9 @@
-import { Buffer } from "./buffer";
+import { Buffer, writeAll } from "./buffer";
 import { stdin } from "./files";
 import { TextEncoder, TextDecoder } from "./text_encoding";
 import { Reader, EOF } from "./io";
 
 export type XevalFunc = (v: string) => void;
-
-async function writeAll(buffer: Buffer, arr: Uint8Array): Promise<void> {
-  let bytesWritten = 0;
-  while (bytesWritten < arr.length) {
-    try {
-      const nwritten = await buffer.write(arr.subarray(bytesWritten));
-      bytesWritten += nwritten;
-    } catch {
-      return;
-    }
-  }
-}
 
 // TODO(kevinkassimo): Move this utility to deno_std.
 // Import from there once doable.

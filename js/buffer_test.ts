@@ -5,7 +5,7 @@
 // https://github.com/golang/go/blob/master/LICENSE
 import { assertEquals, test } from "./test_util.ts";
 
-const { Buffer, readAll, readAllSync } = Deno;
+const { Buffer, readAll, readAllSync, writeAll, writeAllSync } = Deno;
 type Buffer = Deno.Buffer;
 
 // N controls how many iterations of certain checks are performed.
@@ -248,6 +248,28 @@ test(function testReadAllSync(): void {
   init();
   const reader = new Buffer(testBytes.buffer as ArrayBuffer);
   const actualBytes = readAllSync(reader);
+  assertEquals(testBytes.byteLength, actualBytes.byteLength);
+  for (let i = 0; i < testBytes.length; ++i) {
+    assertEquals(testBytes[i], actualBytes[i]);
+  }
+});
+
+test(async function testWriteAll(): Promise<void> {
+  init();
+  const writer = new Buffer();
+  await writeAll(writer, testBytes);
+  const actualBytes = writer.bytes();
+  assertEquals(testBytes.byteLength, actualBytes.byteLength);
+  for (let i = 0; i < testBytes.length; ++i) {
+    assertEquals(testBytes[i], actualBytes[i]);
+  }
+});
+
+test(function testWriteAllSync(): void {
+  init();
+  const writer = new Buffer();
+  writeAllSync(writer, testBytes);
+  const actualBytes = writer.bytes();
   assertEquals(testBytes.byteLength, actualBytes.byteLength);
   for (let i = 0; i < testBytes.length; ++i) {
     assertEquals(testBytes[i], actualBytes[i]);

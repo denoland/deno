@@ -2,6 +2,7 @@
 import { stat, statSync } from "./stat";
 import { open, openSync } from "./files";
 import { chmod, chmodSync } from "./chmod";
+import { writeAll, writeAllSync } from "./buffer";
 
 /** Options for writing to a file.
  * `perm` would change the file's permission if set.
@@ -40,7 +41,7 @@ export function writeFileSync(
     chmodSync(filename, options.perm);
   }
 
-  file.writeSync(data);
+  writeAllSync(file, data);
   file.close();
 }
 
@@ -70,6 +71,6 @@ export async function writeFile(
     await chmod(filename, options.perm);
   }
 
-  await file.write(data);
+  await writeAll(file, data);
   file.close();
 }
