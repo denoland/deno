@@ -200,6 +200,7 @@ void HandleException(v8::Local<v8::Context> context,
   std::string json_str = EncodeExceptionAsJSON(context, exception);
   CHECK_NOT_NULL(d);
   d->last_exception_ = json_str;
+  d->last_exception_handle_.Reset(isolate, exception);
 }
 
 void HandleExceptionMessage(v8::Local<v8::Context> context,
@@ -216,6 +217,15 @@ void HandleExceptionMessage(v8::Local<v8::Context> context,
   std::string json_str = EncodeMessageAsJSON(context, message);
   CHECK_NOT_NULL(d);
   d->last_exception_ = json_str;
+}
+
+void ClearException(v8::Local<v8::Context> context) {
+  v8::Isolate* isolate = context->GetIsolate();
+  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
+  CHECK_NOT_NULL(d);
+
+  d->last_exception_.clear();
+  d->last_exception_handle_.Reset();
 }
 
 void ThrowInvalidArgument(v8::Isolate* isolate) {

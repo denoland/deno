@@ -2,6 +2,7 @@
 #include "exceptions.h"
 #include "internal.h"
 
+using deno::ClearException;
 using deno::DenoIsolate;
 using deno::HandleException;
 using v8::Boolean;
@@ -140,20 +141,35 @@ void deno_mod_evaluate(Deno* d_, void* user_data, deno_mod id) {
   v8::Context::Scope context_scope(context);
 
   auto* info = d->GetModuleInfo(id);
-  Local<Module> module = info->handle.Get(isolate);
+  auto module = info->handle.Get(isolate);
+  auto status = module->GetStatus();
 
-  CHECK_EQ(Module::kInstantiated, module->GetStatus());
+  if (status == Module::kInstantiated) {
+    bool ok = !module->Evaluate(context).IsEmpty();
+    status = module->GetStatus();  // Update status after evaluating.
+    CHECK_IMPLIES(ok, status == Module::kEvaluated);
+    CHECK_IMPLIES(!ok, status == Module::kErrored);
+  }
 
-  auto maybe_result = module->Evaluate(context);
-  if (maybe_result.IsEmpty()) {
-    CHECK_EQ(Module::kErrored, module->GetStatus());
-    HandleException(context, module->GetException());
+  switch (status) {
+    case Module::kEvaluated:
+      ClearException(context);
+      break;
+    case Module::kErrored:
+      HandleException(context, module->GetException());
+      break;
+    default:
+      FATAL("Unexpected module status: %d", static_cast<int>(status));
   }
 }
 
-void deno_dyn_import(Deno* d_, void* user_data, deno_dyn_import_id import_id,
-                     deno_mod mod_id) {
+void deno_dyn_import_done(Deno* d_, void* user_data,
+                          deno_dyn_import_id import_id, deno_mod mod_id,
+                          const char* error_str) {
   auto* d = unwrap(d_);
+  CHECK((mod_id == 0 && error_str != nullptr) ||
+        (mod_id != 0 && error_str == nullptr) ||
+        (mod_id == 0 && !d->last_exception_handle_.IsEmpty()));
   deno::UserDataScope user_data_scope(d, user_data);
 
   auto* isolate = d->isolate_;
@@ -162,8 +178,6 @@ void deno_dyn_import(Deno* d_, void* user_data, deno_dyn_import_id import_id,
   v8::HandleScope handle_scope(isolate);
   auto context = d->context_.Get(d->isolate_);
   v8::Context::Scope context_scope(context);
-
-  v8::TryCatch try_catch(isolate);
 
   auto it = d->dyn_import_map_.find(import_id);
   if (it == d->dyn_import_map_.end()) {
@@ -183,17 +197,21 @@ void deno_dyn_import(Deno* d_, void* user_data, deno_dyn_import_id import_id,
 
   if (info == nullptr) {
     // Resolution error.
-    promise->Reject(context, v8::Null(isolate)).ToChecked();
+    if (error_str != nullptr) {
+      auto msg = deno::v8_str(error_str);
+      auto exception = v8::Exception::TypeError(msg);
+      promise->Reject(context, exception).ToChecked();
+    } else {
+      auto e = d->last_exception_handle_.Get(isolate);
+      ClearException(context);
+      promise->Reject(context, e).ToChecked();
+    }
   } else {
     // Resolution success
     Local<Module> module = info->handle.Get(isolate);
-    CHECK_GE(module->GetStatus(), v8::Module::kInstantiated);
+    CHECK_EQ(module->GetStatus(), v8::Module::kEvaluated);
     Local<Value> module_namespace = module->GetModuleNamespace();
     promise->Resolve(context, module_namespace).ToChecked();
-  }
-
-  if (try_catch.HasCaught()) {
-    HandleException(context, try_catch.Exception());
   }
 }
 

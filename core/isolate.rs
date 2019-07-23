@@ -80,7 +80,8 @@ pub type OpResult<E> = Result<Op<E>, E>;
 
 type CoreDispatchFn = dyn Fn(&[u8], Option<PinnedBuf>) -> CoreOp;
 
-pub type DynImportFuture = Box<dyn Future<Item = deno_mod, Error = ()> + Send>;
+pub type DynImportFuture =
+  Box<dyn Future<Item = deno_mod, Error = ErrBox> + Send>;
 type DynImportFn = dyn Fn(&str, &str) -> DynImportFuture;
 
 type JSErrorCreateFn = dyn Fn(V8Exception) -> ErrBox;
@@ -94,13 +95,12 @@ struct DynImport {
 
 impl Future for DynImport {
   type Item = (deno_dyn_import_id, deno_mod);
-  type Error = ();
-  fn poll(&mut self) -> Poll<Self::Item, ()> {
+  type Error = (deno_mod, ErrBox);
+  fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
     match self.inner.poll() {
       Ok(Ready(mod_id)) => Ok(Ready((self.id, mod_id))),
       Ok(NotReady) => Ok(NotReady),
-      // Note that mod_id 0 indicates error.
-      Err(()) => Ok(Ready((self.id, 0))),
+      Err(e) => Err((self.id, e)),
     }
   }
 }
@@ -437,15 +437,24 @@ impl Isolate {
   fn dyn_import_done(
     &self,
     id: libdeno::deno_dyn_import_id,
-    mod_id: deno_mod,
+    result: Result<deno_mod, Option<String>>,
   ) -> Result<(), ErrBox> {
-    debug!("dyn_import_done {} {}", id, mod_id);
+    debug!("dyn_import_done {} {:?}", id, result);
+    let (mod_id, maybe_err_str) = match result {
+      Ok(mod_id) => (mod_id, None),
+      Err(None) => (0, None),
+      Err(Some(err_str)) => (0, Some(err_str)),
+    };
+    let err_ptr = maybe_err_str
+      .map(|e| e.as_ptr() as *const c_char)
+      .unwrap_or(std::ptr::null());
     unsafe {
-      libdeno::deno_dyn_import(
+      libdeno::deno_dyn_import_done(
         self.libdeno_isolate,
         self.as_raw_ptr(),
         id,
         mod_id,
+        err_ptr,
       )
     };
     self.check_last_exception().map_err(|err| {
@@ -556,13 +565,18 @@ impl Future for Isolate {
 
     loop {
       // If there are any pending dyn_import futures, do those first.
-      match self.pending_dyn_imports.poll() {
-        Err(()) => unreachable!(),
-        Ok(NotReady) => unreachable!(),
-        Ok(Ready(None)) => (),
-        Ok(Ready(Some((dyn_import_id, mod_id)))) => {
-          self.dyn_import_done(dyn_import_id, mod_id)?;
-          continue;
+      loop {
+        match self.pending_dyn_imports.poll() {
+          Ok(NotReady) | Ok(Ready(None)) => break,
+          Ok(Ready(Some((dyn_import_id, mod_id)))) => {
+            match self.mod_evaluate(mod_id) {
+              Ok(()) => self.dyn_import_done(dyn_import_id, Ok(mod_id))?,
+              Err(..) => self.dyn_import_done(dyn_import_id, Err(None))?,
+            }
+          }
+          Err((dyn_import_id, err)) => {
+            self.dyn_import_done(dyn_import_id, Err(Some(err.to_string())))?
+          }
         }
       }
 
@@ -904,7 +918,9 @@ pub mod tests {
         count_.fetch_add(1, Ordering::Relaxed);
         assert_eq!(specifier, "foo.js");
         assert_eq!(referrer, "dyn_import2.js");
-        Box::new(futures::future::err(()))
+        Box::new(futures::future::err(
+          std::io::Error::new(std::io::ErrorKind::Other, "oh no!").into(),
+        ))
       });
       js_check(isolate.execute(
         "dyn_import2.js",

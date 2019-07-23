@@ -36,7 +36,7 @@ typedef void (*deno_recv_cb)(void* user_data, deno_buf control_buf,
 
 typedef int deno_dyn_import_id;
 // Called when dynamic import is called in JS: import('foo')
-// Embedder must call deno_dyn_import() with the specified id and
+// Embedder must call deno_dyn_import_done() with the specified id and
 // the module.
 typedef void (*deno_dyn_import_cb)(void* user_data, const char* specifier,
                                    const char* referrer, deno_dyn_import_id id);
@@ -127,8 +127,12 @@ void deno_mod_evaluate(Deno* d, void* user_data, deno_mod id);
 
 // Call exactly once for every deno_dyn_import_cb.
 // Note this call will execute JS.
-void deno_dyn_import(Deno* d, void* user_data, deno_dyn_import_id id,
-                     deno_mod mod_id);
+// Either mod_id is zero and error_str is not null OR mod_id is valid and
+// error_str is null.
+// TODO(ry) The errors arising from dynamic import are not exactly the same as
+// those arising from ops in Deno.
+void deno_dyn_import_done(Deno* d, void* user_data, deno_dyn_import_id id,
+                          deno_mod mod_id, const char* error_str);
 
 #ifdef __cplusplus
 }  // extern "C"

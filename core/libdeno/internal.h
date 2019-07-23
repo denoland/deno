@@ -51,6 +51,7 @@ class DenoIsolate {
   }
 
   ~DenoIsolate() {
+    last_exception_handle_.Reset();
     shared_ab_.Reset();
     if (locker_) {
       delete locker_;
@@ -111,6 +112,7 @@ class DenoIsolate {
   v8::Persistent<v8::Context> context_;
   std::map<int, v8::Persistent<v8::Value>> pending_promise_map_;
   std::string last_exception_;
+  v8::Persistent<v8::Value> last_exception_handle_;
   v8::Persistent<v8::Function> recv_;
   v8::StartupData snapshot_;
   v8::Persistent<v8::ArrayBuffer> global_import_buf_;
