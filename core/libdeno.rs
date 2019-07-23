@@ -193,7 +193,7 @@ type deno_recv_cb = unsafe extern "C" fn(
 );
 
 /// Called when dynamic import is called in JS: import('foo')
-/// Embedder must call deno_dyn_import() with the specified id and
+/// Embedder must call deno_dyn_import_done() with the specified id and
 /// the module.
 #[allow(non_camel_case_types)]
 type deno_dyn_import_cb = unsafe extern "C" fn(
@@ -308,11 +308,12 @@ extern "C" {
   );
 
   /// Call exactly once for every deno_dyn_import_cb.
-  pub fn deno_dyn_import(
+  pub fn deno_dyn_import_done(
     i: *const isolate,
     user_data: *const c_void,
     id: deno_dyn_import_id,
     mod_id: deno_mod,
+    error_str: *const c_char,
   );
 
   pub fn deno_snapshot_new(i: *const isolate) -> Snapshot1<'static>;

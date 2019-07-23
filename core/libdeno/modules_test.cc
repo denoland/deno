@@ -158,7 +158,7 @@ TEST(ModulesTest, DynamicImportSuccess) {
     dyn_import_count++;
     EXPECT_STREQ(specifier, "foo");
     EXPECT_STREQ(referrer, "a.js");
-    deno_dyn_import(d, d, import_id, b);
+    deno_dyn_import_done(d, d, import_id, b, nullptr);
   };
   const char* src =
       "(async () => { \n"
@@ -179,6 +179,8 @@ TEST(ModulesTest, DynamicImportSuccess) {
   EXPECT_EQ(nullptr, deno_last_exception(d));
   deno_mod_instantiate(d, d, b, nullptr);
   EXPECT_EQ(nullptr, deno_last_exception(d));
+  deno_mod_evaluate(d, d, b);
+  EXPECT_EQ(nullptr, deno_last_exception(d));
   deno_mod_evaluate(d, d, a);
   EXPECT_EQ(nullptr, deno_last_exception(d));
   deno_check_promise_errors(d);
@@ -198,7 +200,7 @@ TEST(ModulesTest, DynamicImportError) {
     EXPECT_STREQ(specifier, "foo");
     EXPECT_STREQ(referrer, "a.js");
     // We indicate there was an error resolving by returning mod_id 0.
-    deno_dyn_import(d, d, import_id, 0);
+    deno_dyn_import_done(d, d, import_id, 0, "foo not found");
   };
   const char* src =
       "(async () => { \n"
@@ -218,6 +220,8 @@ TEST(ModulesTest, DynamicImportError) {
   // Now we should get an error.
   deno_check_promise_errors(d);
   EXPECT_NE(deno_last_exception(d), nullptr);
+  std::string e(deno_last_exception(d));
+  EXPECT_NE(e.find("Uncaught TypeError: foo not found"), std::string::npos);
   deno_delete(d);
   EXPECT_EQ(0, exec_count);
   EXPECT_EQ(1, dyn_import_count);
@@ -234,7 +238,7 @@ TEST(ModulesTest, DynamicImportAsync) {
     dyn_import_count++;
     EXPECT_STREQ(specifier, "foo");
     EXPECT_STREQ(referrer, "a.js");
-    // We don't call deno_dyn_import until later.
+    // We don't call deno_dyn_import_done until later.
     import_ids.push_back(import_id);
   };
   const char* src =
@@ -270,13 +274,15 @@ TEST(ModulesTest, DynamicImportAsync) {
   EXPECT_EQ(nullptr, deno_last_exception(d));
   deno_mod_instantiate(d, d, b, nullptr);
   EXPECT_EQ(nullptr, deno_last_exception(d));
+  deno_mod_evaluate(d, d, b);
+  EXPECT_EQ(nullptr, deno_last_exception(d));
 
   // Now we resolve the import.
   EXPECT_EQ(1u, import_ids.size());
   auto import_id = import_ids.back();
   import_ids.pop_back();
 
-  deno_dyn_import(d, d, import_id, b);
+  deno_dyn_import_done(d, d, import_id, b, nullptr);
 
   EXPECT_EQ(nullptr, deno_last_exception(d));
   deno_check_promise_errors(d);
@@ -288,7 +294,7 @@ TEST(ModulesTest, DynamicImportAsync) {
 
   import_id = import_ids.back();
   import_ids.pop_back();
-  deno_dyn_import(d, d, import_id, b);
+  deno_dyn_import_done(d, d, import_id, b, nullptr);
 
   EXPECT_EQ(nullptr, deno_last_exception(d));
   deno_check_promise_errors(d);
@@ -297,6 +303,122 @@ TEST(ModulesTest, DynamicImportAsync) {
   // We still have to resolve the second one
   EXPECT_EQ(2, dyn_import_count);
   EXPECT_EQ(1, exec_count);
+
+  deno_delete(d);
+}
+
+TEST(ModulesTest, DynamicImportThrows) {
+  exec_count = 0;
+  static int dyn_import_count = 0;
+  static deno_mod b = 0;
+  static std::vector<deno_dyn_import_id> import_ids = {};
+  auto dyn_import_cb = [](auto user_data, const char* specifier,
+                          const char* referrer, deno_dyn_import_id import_id) {
+    dyn_import_count++;
+    EXPECT_STREQ(specifier, "b.js");
+    EXPECT_STREQ(referrer, "a.js");
+    // We don't call deno_dyn_import_done until later.
+    import_ids.push_back(import_id);
+  };
+  Deno* d = deno_new(deno_config{0, snapshot, empty, recv_cb, dyn_import_cb});
+
+  // Instantiate and evaluate the root module. This should succeed.
+  const char* a_src =
+      "(async () => { \n"
+      "  let mod = await import('b.js'); \n"
+      // unreachable
+      "  Deno.core.send(new Uint8Array([4])); \n"
+      "})(); \n";
+  static deno_mod a = deno_mod_new(d, true, "a.js", a_src);
+  EXPECT_NE(a, 0);
+  EXPECT_EQ(nullptr, deno_last_exception(d));
+  deno_mod_instantiate(d, d, a, nullptr);
+  EXPECT_EQ(nullptr, deno_last_exception(d));
+  deno_mod_evaluate(d, d, a);
+  EXPECT_EQ(nullptr, deno_last_exception(d));
+  deno_check_promise_errors(d);
+  EXPECT_EQ(deno_last_exception(d), nullptr);
+
+  // Instantiate b.js, which should succeed.
+  const char* b_src = "throw new Error('foo')";
+  b = deno_mod_new(d, false, "b.js", b_src);
+  EXPECT_NE(b, 0);
+  EXPECT_EQ(nullptr, deno_last_exception(d));
+  deno_mod_instantiate(d, d, b, nullptr);
+  EXPECT_EQ(nullptr, deno_last_exception(d));
+
+  // Evaluate b.js. It throws in the global scope, so deno_last_exception()
+  // should be non-null afterwards.
+  deno_mod_evaluate(d, d, b);
+  EXPECT_NE(deno_last_exception(d), nullptr);
+
+  // Resolve the dynamic import of b.js. Since deno_mod_evaluate() failed,
+  // we indicate failure to deno_dyn_import_done() by setting mod_id to 0.
+  // The last error should be picked up and cleared by deno_dyn_import_done().
+  EXPECT_EQ(1u, import_ids.size());
+  auto import_id = import_ids.back();
+  import_ids.pop_back();
+  deno_dyn_import_done(d, d, import_id, 0, nullptr);
+  EXPECT_EQ(deno_last_exception(d), nullptr);
+
+  // Since the dynamically imported module threw an error,
+  // it should show up as an unhandled promise rejection.
+  deno_check_promise_errors(d);
+  EXPECT_NE(deno_last_exception(d), nullptr);
+  std::string e(deno_last_exception(d));
+  EXPECT_NE(e.find("Uncaught Error: foo"), std::string::npos);
+
+  EXPECT_EQ(1, dyn_import_count);
+  EXPECT_EQ(0, exec_count);
+
+  deno_delete(d);
+}
+
+TEST(ModulesTest, DynamicImportSyntaxError) {
+  exec_count = 0;
+  static int dyn_import_count = 0;
+  auto dyn_import_cb = [](auto user_data, const char* specifier,
+                          const char* referrer, deno_dyn_import_id import_id) {
+    auto d = reinterpret_cast<Deno*>(user_data);
+    dyn_import_count++;
+    EXPECT_STREQ(specifier, "b.js");
+    EXPECT_STREQ(referrer, "a.js");
+
+    // Compile b.js, which should fail because of the syntax error.
+    deno_mod b = deno_mod_new(d, false, "b.js", "syntax error");
+    EXPECT_EQ(b, 0);
+    EXPECT_NE(nullptr, deno_last_exception(d));
+
+    // `deno_dyn_import_done` should consume the last exception, and use it
+    // to reject the dynamic import promise.
+    deno_dyn_import_done(d, d, import_id, 0, nullptr);
+    EXPECT_EQ(nullptr, deno_last_exception(d));
+  };
+  Deno* d = deno_new(deno_config{0, snapshot, empty, recv_cb, dyn_import_cb});
+
+  // Instantiate and evaluate the root module. This should succeed.
+  const char* src =
+      "(async () => { \n"
+      "  let mod = await import('b.js'); \n"
+      // unreachable
+      "  Deno.core.send(new Uint8Array([4])); \n"
+      "})(); \n";
+  static deno_mod a = deno_mod_new(d, true, "a.js", src);
+  EXPECT_NE(a, 0);
+  EXPECT_EQ(nullptr, deno_last_exception(d));
+  deno_mod_instantiate(d, d, a, nullptr);
+  EXPECT_EQ(nullptr, deno_last_exception(d));
+  deno_mod_evaluate(d, d, a);
+  EXPECT_EQ(nullptr, deno_last_exception(d));
+
+  // The failed dynamic import should cause an unhandled promise rejection.
+  deno_check_promise_errors(d);
+  EXPECT_NE(deno_last_exception(d), nullptr);
+  EXPECT_NE(std::string(deno_last_exception(d)).find("Syntax"),
+            std::string::npos);
+
+  EXPECT_EQ(1, dyn_import_count);
+  EXPECT_EQ(0, exec_count);
 
   deno_delete(d);
 }
