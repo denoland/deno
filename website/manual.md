@@ -776,7 +776,7 @@ tabs.
 
 It is a good practice to use `import.meta.main` idiom for an entry point for
 executable file. See
-[Testing if current file is the main program](#testing-if-current-file-is-the-main-program)
+[Testing if current file is the main program](#testingifcurrentfileisthemainprogram)
 section.
 
 Example:
