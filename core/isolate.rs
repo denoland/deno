@@ -18,6 +18,7 @@ use crate::libdeno::Snapshot1;
 use crate::libdeno::Snapshot2;
 use crate::shared_queue::SharedQueue;
 use crate::shared_queue::RECOMMENDED_SIZE;
+use crate::InspectorHandle;
 use futures::stream::{FuturesUnordered, Stream};
 use futures::task;
 use futures::Async::*;
@@ -128,6 +129,7 @@ pub struct Isolate {
   pending_dyn_imports: FuturesUnordered<DynImport>,
   have_unpolled_ops: bool,
   startup_script: Option<OwnedScript>,
+  inspector_handle: Option<InspectorHandle>,
 }
 
 unsafe impl Send for Isolate {}
@@ -146,7 +148,11 @@ static DENO_INIT: Once = Once::new();
 impl Isolate {
   /// startup_data defines the snapshot or script used at startup to initialize
   /// the isolate.
-  pub fn new(startup_data: StartupData, will_snapshot: bool) -> Self {
+  pub fn new(
+    startup_data: StartupData,
+    will_snapshot: bool,
+    inspector_handle: Option<InspectorHandle>,
+  ) -> Self {
     DENO_INIT.call_once(|| {
       unsafe { libdeno::deno_init() };
     });
@@ -161,6 +167,8 @@ impl Isolate {
       shared: shared.as_deno_buf(),
       recv_cb: Self::pre_dispatch,
       dyn_import_cb: Self::dyn_import,
+      inspector_message_cb: Self::inspector_message_cb,
+      inspector_block_recv: Self::inspector_block_recv,
     };
 
     let mut startup_script: Option<OwnedScript> = None;
@@ -193,6 +201,7 @@ impl Isolate {
       have_unpolled_ops: false,
       pending_dyn_imports: FuturesUnordered::new(),
       startup_script,
+      inspector_handle,
     }
   }
 
@@ -297,6 +306,39 @@ impl Isolate {
         isolate.pending_ops.push(Box::new(fut2));
         isolate.have_unpolled_ops = true;
       }
+    }
+  }
+
+  extern "C" fn inspector_message_cb(
+    user_data: *mut c_void,
+    message: *mut c_char,
+  ) {
+    let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
+
+    if let Some(handle) = &isolate.inspector_handle {
+      let c_str = unsafe {
+        assert!(!message.is_null());
+        CStr::from_ptr(message)
+      };
+
+      let r_str = c_str.to_str().unwrap();
+      handle.tx.lock().unwrap().send(r_str.to_owned()).unwrap();
+    }
+  }
+
+  extern "C" fn inspector_block_recv(user_data: *mut c_void) {
+    let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
+    if let Some(handle) = &isolate.inspector_handle {
+      let recv = handle.rx.lock().unwrap();
+      let msg = recv.recv().unwrap();
+      isolate.inspector_message(msg);
+    }
+  }
+
+  pub fn inspector_message(&self, str: String) {
+    unsafe {
+      let cstr = CString::new(str).unwrap();
+      libdeno::deno_inspector_message(self.libdeno_isolate, cstr.as_ptr());
     }
   }
 

@@ -9,8 +9,17 @@
 
 #include "buffer.h"
 #include "deno.h"
+#include "inspector.h"
+
+#include "third_party/v8/include/v8-inspector.h"
 #include "third_party/v8/include/v8.h"
 #include "third_party/v8/src/base/logging.h"
+
+static std::unique_ptr<v8::Platform> platform;
+
+namespace v8 {
+class InspectorClient;
+}
 
 namespace deno {
 
@@ -32,16 +41,20 @@ class DenoIsolate {
  public:
   explicit DenoIsolate(deno_config config)
       : isolate_(nullptr),
+        inspector_client_(nullptr),
         locker_(nullptr),
         shared_(config.shared),
         current_args_(nullptr),
         snapshot_creator_(nullptr),
         global_import_buf_ptr_(nullptr),
         recv_cb_(config.recv_cb),
+        inspector_message_cb_(config.inspector_message_cb),
+        inspector_block_recv_(config.inspector_block_recv),
         user_data_(nullptr),
         resolve_cb_(nullptr),
         next_dyn_import_id_(0),
         dyn_import_cb_(config.dyn_import_cb),
+        hack_(nullptr),
         has_snapshotted_(false) {
     if (config.load_snapshot.data_ptr) {
       snapshot_.data =
@@ -92,12 +105,15 @@ class DenoIsolate {
   }
 
   v8::Isolate* isolate_;
+  v8::InspectorClient* inspector_client_;
   v8::Locker* locker_;
   deno_buf shared_;
   const v8::FunctionCallbackInfo<v8::Value>* current_args_;
   v8::SnapshotCreator* snapshot_creator_;
   void* global_import_buf_ptr_;
   deno_recv_cb recv_cb_;
+  deno_inspector_message_cb inspector_message_cb_;
+  deno_inspector_block_recv inspector_block_recv_;
   void* user_data_;
 
   std::map<deno_mod, ModuleInfo> mods_;
@@ -106,6 +122,7 @@ class DenoIsolate {
 
   deno_dyn_import_id next_dyn_import_id_;
   deno_dyn_import_cb dyn_import_cb_;
+  void* hack_;
   std::map<deno_dyn_import_id, v8::Persistent<v8::Promise::Resolver>>
       dyn_import_map_;
 

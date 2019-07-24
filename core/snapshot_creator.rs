@@ -29,7 +29,7 @@ fn main() {
   let js_source_str = std::str::from_utf8(&js_source).unwrap();
 
   let will_snapshot = true;
-  let mut isolate = Isolate::new(StartupData::None, will_snapshot);
+  let mut isolate = Isolate::new(StartupData::None, will_snapshot, None);
 
   js_check(isolate.execute(&js_filename, js_source_str));
 

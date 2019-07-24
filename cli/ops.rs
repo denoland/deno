@@ -2107,7 +2107,7 @@ fn op_create_worker(
   let deno_main_call = format!("denoMain({})", include_deno_namespace);
 
   let mut worker =
-    Worker::new(name, startup_data::deno_isolate_init(), child_state);
+    Worker::new(name, startup_data::deno_isolate_init(), child_state, None);
   worker.execute(&deno_main_call).unwrap();
   worker.execute("workerMain()").unwrap();
 

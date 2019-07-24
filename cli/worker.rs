@@ -24,8 +24,13 @@ impl Worker {
     _name: String,
     startup_data: StartupData,
     state: ThreadSafeState,
+    inspector_handle: Option<deno::InspectorHandle>,
   ) -> Worker {
-    let isolate = Arc::new(Mutex::new(deno::Isolate::new(startup_data, false)));
+    let isolate = Arc::new(Mutex::new(deno::Isolate::new(
+      startup_data,
+      false,
+      inspector_handle.clone(),
+    )));
     {
       let mut i = isolate.lock().unwrap();
       let state_ = state.clone();
@@ -37,6 +42,26 @@ impl Worker {
         JSError::from_v8_exception(v8_exception, &state_.ts_compiler)
       })
     }
+
+    // TODO(mtharrison): This is all wrong but I'm not sure how to structure it?
+    // perhaps this should all live inside Inspector who can call into the isolate somehow?
+    if let Some(handle) = inspector_handle {
+      let isolate_clone = isolate.clone();
+      let rx = handle.rx.clone();
+
+      std::thread::spawn(move || loop {
+        {
+          let message = { rx.lock().unwrap().try_recv() };
+
+          if let Ok(msg) = message {
+            isolate_clone.lock().unwrap().inspector_message(msg);
+          }
+        }
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+      });
+    }
+
     Self { isolate, state }
   }
 
@@ -132,7 +157,7 @@ mod tests {
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
       let mut worker =
-        Worker::new("TEST".to_string(), StartupData::None, state);
+        Worker::new("TEST".to_string(), StartupData::None, state, None);
       let result = worker.execute_mod(&module_specifier, false);
       if let Err(err) = result {
         eprintln!("execute_mod err {:?}", err);
@@ -162,7 +187,7 @@ mod tests {
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
       let mut worker =
-        Worker::new("TEST".to_string(), StartupData::None, state);
+        Worker::new("TEST".to_string(), StartupData::None, state, None);
       let result = worker.execute_mod(&module_specifier, false);
       if let Err(err) = result {
         eprintln!("execute_mod err {:?}", err);
@@ -192,6 +217,7 @@ mod tests {
         "TEST".to_string(),
         startup_data::deno_isolate_init(),
         state,
+        None,
       );
       worker.execute("denoMain()").unwrap();
       let result = worker.execute_mod(&module_specifier, false);
@@ -212,8 +238,12 @@ mod tests {
       String::from("./deno"),
       String::from("hello.js"),
     ]);
-    let mut worker =
-      Worker::new("TEST".to_string(), startup_data::deno_isolate_init(), state);
+    let mut worker = Worker::new(
+      "TEST".to_string(),
+      startup_data::deno_isolate_init(),
+      state,
+      None,
+    );
     worker.execute("denoMain()").unwrap();
     worker.execute("workerMain()").unwrap();
     worker
