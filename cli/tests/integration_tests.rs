@@ -11,6 +11,35 @@ fn benchmark_test() {
 }
 
 #[test]
+fn debug_test() {
+  use std::io::{BufRead, BufReader};
+  use std::net::TcpStream;
+  use std::process::Stdio;
+
+  let mut deno = deno_cmd()
+    .current_dir(root_path())
+    // TODO: it should be possible to put '--debug' after 'run', but that
+    // currently doesn't work.
+    .arg("--debug")
+    .arg("run")
+    .arg("cli/tests/001_hello.js")
+    .stderr(Stdio::piped())
+    .spawn()
+    .expect("failed to spawn script");
+
+  let stderr = deno.stderr.as_mut().unwrap();
+  let mut lines = BufReader::new(stderr).lines();
+  let line = lines.next().unwrap().unwrap();
+  assert!(line.starts_with("Debugger listening on ws://127.0.0.1:9888/"));
+
+  TcpStream::connect("127.0.0.1:9888").expect("connect() failed");
+
+  deno.kill().expect("kill() failed");
+  let status = deno.wait().expect("wait() failed");
+  assert!(!status.success());
+}
+
+#[test]
 fn deno_dir_test() {
   let g = http_server();
   run_python_script("tools/deno_dir_test.py");

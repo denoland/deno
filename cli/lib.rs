@@ -4,6 +4,8 @@ extern crate lazy_static;
 #[macro_use]
 extern crate log;
 #[macro_use]
+extern crate enclose;
+#[macro_use]
 extern crate futures;
 #[macro_use]
 extern crate serde_json;
@@ -17,6 +19,8 @@ extern crate rand;
 extern crate serde;
 extern crate serde_derive;
 extern crate url;
+#[macro_use]
+extern crate warp;
 
 pub mod colors;
 pub mod compilers;
@@ -32,6 +36,7 @@ mod global_timer;
 mod http_body;
 mod http_util;
 mod import_map;
+mod inspector;
 pub mod msg;
 pub mod ops;
 pub mod permissions;

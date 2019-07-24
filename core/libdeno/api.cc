@@ -11,6 +11,7 @@
 
 #include "deno.h"
 #include "exceptions.h"
+#include "inspector.h"
 #include "internal.h"
 
 extern "C" {
@@ -69,6 +70,10 @@ Deno* deno_new(deno_config config) {
       // main source code and source maps.
       deno::InitializeContext(isolate, context);
     }
+
+    v8::InspectorClient* client = new v8::InspectorClient(context, d);
+    d->inspector_client_ = client;
+
     d->context_.Reset(isolate, context);
   }
 
@@ -108,8 +113,6 @@ deno_snapshot deno_snapshot_new(Deno* d_) {
 void deno_snapshot_delete(deno_snapshot snapshot) {
   delete[] snapshot.data_ptr;
 }
-
-static std::unique_ptr<v8::Platform> platform;
 
 void deno_init() {
   if (platform.get() == nullptr) {
@@ -243,4 +246,40 @@ void deno_run_microtasks(Deno* d_, void* user_data) {
   v8::Isolate::Scope isolate_scope(d->isolate_);
   d->isolate_->RunMicrotasks();
 }
+
+void deno_setup_inspector(Deno* d_, void* user_data) {
+  auto* d = unwrap(d_);
+  // TODO(mtharrison): Find a better way to do this. This is here because we
+  // still need a pointer to the Rust isolate after the UserDataScope is over
+  d->hack_ = user_data;
 }
+
+void deno_inspector_message(Deno* d_, char* msg) {
+  auto* d = unwrap(d_);
+  auto* isolate = d->isolate_;
+
+  v8::Locker locker(isolate);
+  v8::Isolate::Scope isolate_scope(isolate);
+  v8::HandleScope handle_scope(isolate);
+
+  auto context = d->context_.Get(d->isolate_);
+  CHECK(!context.IsEmpty());
+  v8::Context::Scope context_scope(context);
+
+  v8_inspector::V8InspectorSession* session =
+      v8::InspectorClient::GetSession(context);
+  v8::Local<v8::String> message =
+      v8::String::NewFromUtf8(isolate, msg).ToLocalChecked();
+  int length = message->Length();
+  std::unique_ptr<uint16_t[]> buffer(new uint16_t[length]);
+  message->Write(isolate, buffer.get(), 0, length);
+
+  platform->GetForegroundTaskRunner(isolate)->PostTask(
+      std::make_unique<v8::DispatchOnInspectorBackendTask>(
+          session, std::move(buffer), length));
+
+  while (v8::platform::PumpMessageLoop(platform.get(), d->isolate_)) {
+  }
+}
+
+}  // extern "C"

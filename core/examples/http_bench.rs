@@ -151,7 +151,7 @@ fn main() {
       filename: "http_bench.js",
     });
 
-    let mut isolate = deno::Isolate::new(startup_data, false);
+    let mut isolate = deno::Isolate::new(startup_data, false, None);
     isolate.register_op("listen", http_op(op_listen));
     isolate.register_op("accept", http_op(op_accept));
     isolate.register_op("read", http_op(op_read));

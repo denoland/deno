@@ -16,7 +16,8 @@ void recv_cb(void* user_data, deno_op_id op_id, deno_buf buf,
 
 TEST(ModulesTest, Resolution) {
   exec_count = 0;  // Reset
-  Deno* d = deno_new(deno_config{0, empty_snapshot, empty, recv_cb, nullptr});
+  Deno* d = deno_new(deno_config{0, empty_snapshot, empty, recv_cb, nullptr,
+                                 nullptr, nullptr});
   EXPECT_EQ(0, exec_count);
 
   static deno_mod a = deno_mod_new(d, true, "a.js",
@@ -69,7 +70,8 @@ TEST(ModulesTest, Resolution) {
 
 TEST(ModulesTest, ResolutionError) {
   exec_count = 0;  // Reset
-  Deno* d = deno_new(deno_config{0, empty_snapshot, empty, recv_cb, nullptr});
+  Deno* d = deno_new(deno_config{0, empty_snapshot, empty, recv_cb, nullptr,
+                                 nullptr, nullptr});
   EXPECT_EQ(0, exec_count);
 
   static deno_mod a = deno_mod_new(d, true, "a.js",
@@ -102,7 +104,8 @@ TEST(ModulesTest, ResolutionError) {
 
 TEST(ModulesTest, ImportMetaUrl) {
   exec_count = 0;  // Reset
-  Deno* d = deno_new(deno_config{0, empty_snapshot, empty, recv_cb, nullptr});
+  Deno* d = deno_new(deno_config{0, empty_snapshot, empty, recv_cb, nullptr,
+                                 nullptr, nullptr});
   EXPECT_EQ(0, exec_count);
 
   static deno_mod a =
@@ -122,7 +125,8 @@ TEST(ModulesTest, ImportMetaUrl) {
 }
 
 TEST(ModulesTest, ImportMetaMain) {
-  Deno* d = deno_new(deno_config{0, empty_snapshot, empty, recv_cb, nullptr});
+  Deno* d = deno_new(deno_config{0, empty_snapshot, empty, recv_cb, nullptr,
+                                 nullptr, nullptr});
 
   const char* throw_not_main_src = "if (!import.meta.main) throw 'err'";
   static deno_mod throw_not_main =
@@ -169,7 +173,8 @@ TEST(ModulesTest, DynamicImportSuccess) {
       // Send a message to signify that we're done.
       "  Deno.core.send(42, new Uint8Array([4])); \n"
       "})(); \n";
-  Deno* d = deno_new(deno_config{0, snapshot, empty, recv_cb, dyn_import_cb});
+  Deno* d = deno_new(deno_config{0, snapshot, empty, recv_cb, dyn_import_cb,
+                                 nullptr, nullptr});
   static deno_mod a = deno_mod_new(d, true, "a.js", src);
   EXPECT_NE(a, 0);
   EXPECT_EQ(nullptr, deno_last_exception(d));
@@ -210,7 +215,8 @@ TEST(ModulesTest, DynamicImportError) {
       // The following should be unreachable.
       "  Deno.core.send(42, new Uint8Array([4])); \n"
       "})(); \n";
-  Deno* d = deno_new(deno_config{0, snapshot, empty, recv_cb, dyn_import_cb});
+  Deno* d = deno_new(deno_config{0, snapshot, empty, recv_cb, dyn_import_cb,
+                                 nullptr, nullptr});
   static deno_mod a = deno_mod_new(d, true, "a.js", src);
   EXPECT_NE(a, 0);
   EXPECT_EQ(nullptr, deno_last_exception(d));
@@ -253,7 +259,8 @@ TEST(ModulesTest, DynamicImportAsync) {
       // Send a message to signify that we're done.
       "  Deno.core.send(42, new Uint8Array([4])); \n"
       "})(); \n";
-  Deno* d = deno_new(deno_config{0, snapshot, empty, recv_cb, dyn_import_cb});
+  Deno* d = deno_new(deno_config{0, snapshot, empty, recv_cb, dyn_import_cb,
+                                 nullptr, nullptr});
   static deno_mod a = deno_mod_new(d, true, "a.js", src);
   EXPECT_NE(a, 0);
   EXPECT_EQ(nullptr, deno_last_exception(d));
@@ -322,7 +329,8 @@ TEST(ModulesTest, DynamicImportThrows) {
     // We don't call deno_dyn_import_done until later.
     import_ids.push_back(import_id);
   };
-  Deno* d = deno_new(deno_config{0, snapshot, empty, recv_cb, dyn_import_cb});
+  Deno* d = deno_new(deno_config{0, snapshot, empty, recv_cb, dyn_import_cb,
+                                 nullptr, nullptr});
 
   // Instantiate and evaluate the root module. This should succeed.
   const char* a_src =
@@ -396,7 +404,8 @@ TEST(ModulesTest, DynamicImportSyntaxError) {
     deno_dyn_import_done(d, d, import_id, 0, nullptr);
     EXPECT_EQ(nullptr, deno_last_exception(d));
   };
-  Deno* d = deno_new(deno_config{0, snapshot, empty, recv_cb, dyn_import_cb});
+  Deno* d = deno_new(deno_config{0, snapshot, empty, recv_cb, dyn_import_cb,
+                                 nullptr, nullptr});
 
   // Instantiate and evaluate the root module. This should succeed.
   const char* src =

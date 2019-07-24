@@ -59,6 +59,8 @@ v8_source_set("libdeno") {
     "deno.h",
     "exceptions.cc",
     "exceptions.h",
+    "inspector.cc",
+    "inspector.h",
     "internal.h",
     "modules.cc",
   ]

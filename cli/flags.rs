@@ -58,6 +58,8 @@ pub struct DenoFlags {
   pub v8_flags: Option<Vec<String>>,
   // Use tokio::runtime::current_thread
   pub current_thread: bool,
+  pub debug: bool,
+  pub debug_address: Option<String>,
 }
 
 static ENV_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
@@ -125,6 +127,15 @@ fn add_run_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
       Arg::with_name("no-fetch")
         .long("no-fetch")
         .help("Do not download remote modules"),
+    )
+    .arg(
+      Arg::with_name("debug")
+        .long("debug")
+        .takes_value(true)
+        .require_equals(true)
+        .min_values(0)
+        .value_name("ADDRESS")
+        .help("Enable debugger and pause on first statement"),
     )
 }
 
@@ -573,6 +584,13 @@ pub fn parse_flags(
   // flags specific to "test" subcommand
   if let Some(test_matches) = matches.subcommand_matches("test") {
     flags = parse_run_args(flags.clone(), test_matches);
+  }
+
+  if matches.is_present("debug") {
+    flags.debug = true;
+    if matches.value_of("debug").is_some() {
+      flags.debug_address = Some(matches.value_of("debug").unwrap().to_owned());
+    }
   }
 
   flags

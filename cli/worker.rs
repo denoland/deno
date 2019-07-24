@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::fmt_errors::JSError;
+use crate::inspector::Inspector;
 use crate::ops::json_op;
 use crate::ops::minimal_op;
 use crate::ops::*;
@@ -23,6 +24,7 @@ use url::Url;
 pub struct Worker {
   isolate: Arc<Mutex<deno::Isolate>>,
   pub state: ThreadSafeState,
+  inspector: Arc<Mutex<Inspector>>,
 }
 
 impl Worker {
@@ -31,7 +33,13 @@ impl Worker {
     startup_data: StartupData,
     state: ThreadSafeState,
   ) -> Worker {
-    let isolate = Arc::new(Mutex::new(deno::Isolate::new(startup_data, false)));
+    let inspector =
+      Inspector::new(state.flags.debug, state.flags.debug_address.clone());
+    let isolate = Arc::new(Mutex::new(deno::Isolate::new(
+      startup_data,
+      false,
+      Some(inspector.handle.clone()),
+    )));
     {
       let mut i = isolate.lock().unwrap();
       let state_ = state.clone();
@@ -299,9 +307,32 @@ impl Worker {
       let state_ = state.clone();
       i.set_js_error_create(move |v8_exception| {
         JSError::from_v8_exception(v8_exception, &state_.ts_compiler)
-      })
+      });
+      i.setup_inspector();
     }
-    Self { isolate, state }
+
+    // TODO(mtharrison): This is all wrong but I'm not sure how to structure it?
+    // perhaps this should all live inside Inspector who can call into the isolate somehow?
+    let isolate_clone = isolate.clone();
+    let rx = inspector.handle.rx.clone();
+
+    std::thread::spawn(move || loop {
+      {
+        let message = { rx.lock().unwrap().try_recv() };
+
+        if let Ok(msg) = message {
+          isolate_clone.lock().unwrap().inspector_message(msg);
+        }
+      }
+
+      std::thread::sleep(std::time::Duration::from_millis(5));
+    });
+
+    Self {
+      isolate,
+      state,
+      inspector: Arc::new(Mutex::new(inspector)),
+    }
   }
 
   /// Same as execute2() but the filename defaults to "$CWD/__anonymous__".
@@ -318,6 +349,9 @@ impl Worker {
     js_filename: &str,
     js_source: &str,
   ) -> Result<(), ErrBox> {
+    {
+      self.inspector.lock().unwrap().start();
+    }
     let mut isolate = self.isolate.lock().unwrap();
     isolate.execute(js_filename, js_source)
   }
