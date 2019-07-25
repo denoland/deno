@@ -116,7 +116,7 @@ Examples: https://github.com/WICG/import-maps#the-import-map",
 pub fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
   add_run_args(App::new("deno"))
     .bin_name("deno")
-    .global_settings(&[AppSettings::ColorNever])
+    .global_settings(&[AppSettings::ColorNever, AppSettings::UnifiedHelpMessage])
     .settings(&[AppSettings::DisableVersion, AppSettings::AllowExternalSubcommands])
     .after_help(ENV_VARIABLES_HELP)
     .long_about("A secure runtime for JavaScript and TypeScript built with V8, Rust, and Tokio.
