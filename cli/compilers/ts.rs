@@ -1,9 +1,13 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+use crate::compilers::CompiledModule;
+use crate::compilers::CompiledModuleFuture;
+use crate::deno_error::DenoError;
 use crate::diagnostics::Diagnostic;
 use crate::disk_cache::DiskCache;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::msg;
+use crate::msg::ErrorKind;
 use crate::resources;
 use crate::source_maps::SourceMapGetter;
 use crate::startup_data;
@@ -13,7 +17,6 @@ use crate::worker::Worker;
 use deno::Buf;
 use deno::ErrBox;
 use deno::ModuleSpecifier;
-use futures::future::Either;
 use futures::Future;
 use futures::Stream;
 use ring;
@@ -26,10 +29,78 @@ use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 use url::Url;
 
-/// Optional tuple which represents the state of the compiler
-/// configuration where the first is canonical name for the configuration file
-/// and a vector of the bytes of the contents of the configuration file.
-type CompilerConfig = Option<(PathBuf, Vec<u8>)>;
+/// Struct which represents the state of the compiler
+/// configuration where the first is canonical name for the configuration file,
+/// second is a vector of the bytes of the contents of the configuration file,
+/// third is bytes of the hash of contents.
+#[derive(Clone)]
+pub struct CompilerConfig {
+  pub path: Option<PathBuf>,
+  pub content: Option<Vec<u8>>,
+  pub hash: Vec<u8>,
+}
+
+impl CompilerConfig {
+  /// Take the passed flag and resolve the file name relative to the cwd.
+  pub fn load(config_path: Option<String>) -> Result<Self, ErrBox> {
+    let config_file = match &config_path {
+      Some(config_file_name) => {
+        debug!("Compiler config file: {}", config_file_name);
+        let cwd = std::env::current_dir().unwrap();
+        Some(cwd.join(config_file_name))
+      }
+      _ => None,
+    };
+
+    // Convert the PathBuf to a canonicalized string.  This is needed by the
+    // compiler to properly deal with the configuration.
+    let config_path = match &config_file {
+      Some(config_file) => Some(config_file.canonicalize().unwrap().to_owned()),
+      _ => None,
+    };
+
+    // Load the contents of the configuration file
+    let config = match &config_file {
+      Some(config_file) => {
+        debug!("Attempt to load config: {}", config_file.to_str().unwrap());
+        let config = fs::read(&config_file)?;
+        Some(config)
+      }
+      _ => None,
+    };
+
+    let config_hash = match &config {
+      Some(bytes) => bytes.clone(),
+      _ => b"".to_vec(),
+    };
+
+    let ts_config = Self {
+      path: config_path,
+      content: config,
+      hash: config_hash,
+    };
+
+    Ok(ts_config)
+  }
+
+  pub fn json(self: &Self) -> Result<serde_json::Value, ErrBox> {
+    if self.content.is_none() {
+      return Ok(serde_json::Value::Null);
+    }
+
+    let bytes = self.content.clone().unwrap();
+    let json_string = std::str::from_utf8(&bytes)?;
+    match serde_json::from_str(&json_string) {
+      Ok(json_map) => Ok(json_map),
+      Err(_) => Err(
+        DenoError::new(
+          ErrorKind::InvalidInput,
+          "Compiler config is not a valid JSON".to_string(),
+        ).into(),
+      ),
+    }
+  }
+}
 
 /// Information associated with compiled file in cache.
 /// Includes source code path and state hash.
@@ -80,19 +151,19 @@ fn req(
   compiler_config: CompilerConfig,
   bundle: Option<String>,
 ) -> Buf {
-  let j = if let Some((config_path, config_data)) = compiler_config {
-    json!({
-      "rootNames": root_names,
-      "bundle": bundle,
-      "configPath": config_path,
-      "config": str::from_utf8(&config_data).unwrap(),
-    })
-  } else {
-    json!({
-      "rootNames": root_names,
-      "bundle": bundle,
-    })
+  let j = match (compiler_config.path, compiler_config.content) {
+    (Some(config_path), Some(config_data)) => json!({
+        "rootNames": root_names,
+        "bundle": bundle,
+        "configPath": config_path,
+        "config": str::from_utf8(&config_data).unwrap(),
+      }),
+    _ => json!({
+        "rootNames": root_names,
+        "bundle": bundle,
+      }),
   };
+
   j.to_string().into_boxed_str().into_boxed_bytes()
 }
 
@@ -120,48 +191,9 @@ pub fn source_code_version_hash(
   gen_hash(vec![source_code, version.as_bytes(), config_hash])
 }
 
-fn load_config_file(
-  config_path: Option<String>,
-) -> (Option<PathBuf>, Option<Vec<u8>>) {
-  // take the passed flag and resolve the file name relative to the cwd
-  let config_file = match &config_path {
-    Some(config_file_name) => {
-      debug!("Compiler config file: {}", config_file_name);
-      let cwd = std::env::current_dir().unwrap();
-      Some(cwd.join(config_file_name))
-    }
-    _ => None,
-  };
-
-  // Convert the PathBuf to a canonicalized string.  This is needed by the
-  // compiler to properly deal with the configuration.
-  let config_path = match &config_file {
-    Some(config_file) => Some(config_file.canonicalize().unwrap().to_owned()),
-    _ => None,
-  };
-
-  // Load the contents of the configuration file
-  let config = match &config_file {
-    Some(config_file) => {
-      debug!("Attempt to load config: {}", config_file.to_str().unwrap());
-      match fs::read(&config_file) {
-        Ok(config_data) => Some(config_data.to_owned()),
-        _ => panic!(
-          "Error retrieving compiler config file at \"{}\"",
-          config_file.to_str().unwrap()
-        ),
-      }
-    }
-    _ => None,
-  };
-
-  (config_path, config)
-}
-
 pub struct TsCompiler {
   pub file_fetcher: SourceFileFetcher,
   pub config: CompilerConfig,
-  pub config_hash: Vec<u8>,
   pub disk_cache: DiskCache,
   /// Set of all URLs that have been compiled. This prevents double
   /// compilation of module.
@@ -169,6 +201,8 @@ pub struct TsCompiler {
   /// This setting is controlled by `--reload` flag. Unless the flag
   /// is provided disk cache is used.
   pub use_disk_cache: bool,
+  /// This setting is controlled by `compilerOptions.checkJs`
+  pub compile_js: bool,
 }
 
 impl TsCompiler {
@@ -177,25 +211,30 @@ impl TsCompiler {
     disk_cache: DiskCache,
     use_disk_cache: bool,
     config_path: Option<String>,
-  ) -> Self {
-    let compiler_config = match load_config_file(config_path) {
-      (Some(config_path), Some(config)) => Some((config_path, config.to_vec())),
-      _ => None,
+  ) -> Result<Self, ErrBox> {
+    let config = CompilerConfig::load(config_path)?;
+
+    // If `checkJs` is set to true in `compilerOptions` then we're gonna be compiling
+    // JavaScript files as well
+    let config_json = config.json()?;
+    let compile_js = match &config_json.get("compilerOptions") {
+      Some(serde_json::Value::Object(m)) => match m.get("checkJs") {
+        Some(serde_json::Value::Bool(bool_)) => *bool_,
+        _ => false,
+      },
+      _ => false,
     };
 
-    let config_bytes = match &compiler_config {
-      Some((_, config)) => config.clone(),
-      _ => b"".to_vec(),
-    };
-
-    Self {
+    let compiler = Self {
       file_fetcher,
       disk_cache,
-      config: compiler_config,
-      config_hash: config_bytes,
+      config,
       compiled: Mutex::new(HashSet::new()),
       use_disk_cache,
-    }
+      compile_js,
+    };
+
+    Ok(compiler)
   }
 
   /// Create a new V8 worker with snapshot of TS compiler and setup compiler's runtime.
@@ -290,22 +329,12 @@ impl TsCompiler {
     self: &Self,
     state: ThreadSafeState,
     source_file: &SourceFile,
-  ) -> impl Future<Item = SourceFile, Error = ErrBox> {
-    // TODO: maybe fetching of original SourceFile should be done here?
-
-    if source_file.media_type != msg::MediaType::TypeScript {
-      return Either::A(futures::future::ok(source_file.clone()));
-    }
-
+  ) -> Box<CompiledModuleFuture> {
     if self.has_compiled(&source_file.url) {
-      match self.get_compiled_source_file(&source_file) {
-        Ok(compiled_module) => {
-          return Either::A(futures::future::ok(compiled_module));
-        }
-        Err(err) => {
-          return Either::A(futures::future::err(err));
-        }
-      }
+      return match self.get_compiled_module(&source_file.url) {
+        Ok(compiled) => Box::new(futures::future::ok(compiled)),
+        Err(err) => Box::new(futures::future::err(err)),
+      };
     }
 
     if self.use_disk_cache {
@@ -317,20 +346,16 @@ impl TsCompiler {
         let version_hash_to_validate = source_code_version_hash(
           &source_file.source_code,
           version::DENO,
-          &self.config_hash,
+          &self.config.hash,
         );
 
         if metadata.version_hash == version_hash_to_validate {
           debug!("load_cache metadata version hash match");
           if let Ok(compiled_module) =
-            self.get_compiled_source_file(&source_file)
+            self.get_compiled_module(&source_file.url)
           {
-            debug!(
-              "found cached compiled module: {:?}",
-              compiled_module.clone().filename
-            );
-            // TODO: store in in-process cache for subsequent access
-            return Either::A(futures::future::ok(compiled_module));
+            self.mark_compiled(&source_file.url);
+            return Box::new(futures::future::ok(compiled_module));
           }
         }
       }
@@ -388,19 +413,18 @@ impl TsCompiler {
       }).and_then(move |_| {
         // if we are this far it means compilation was successful and we can
         // load compiled filed from disk
-        // TODO: can this be somehow called using `self.`?
         state_
           .ts_compiler
-          .get_compiled_source_file(&source_file_)
+          .get_compiled_module(&source_file_.url)
           .map_err(|e| {
             // TODO: this situation shouldn't happen
             panic!("Expected to find compiled file: {}", e)
           })
-      }).and_then(move |source_file_after_compile| {
+      }).and_then(move |compiled_module| {
         // Explicit drop to keep reference alive until future completes.
         drop(compiling_job);
 
-        Ok(source_file_after_compile)
+        Ok(compiled_module)
       }).then(move |r| {
         debug!(">>>>> compile_sync END");
         // TODO(ry) do this in worker's destructor.
@@ -408,7 +432,7 @@ impl TsCompiler {
         r
       });
 
-    Either::B(fut)
+    Box::new(fut)
   }
 
   /// Get associated `CompiledFileMetadata` for given module if it exists.
@@ -431,22 +455,38 @@ impl TsCompiler {
     None
   }
 
+  pub fn get_compiled_module(
+    self: &Self,
+    module_url: &Url,
+  ) -> Result<CompiledModule, ErrBox> {
+    let compiled_source_file = self.get_compiled_source_file(module_url)?;
+
+    let compiled_module = CompiledModule {
+      code: str::from_utf8(&compiled_source_file.source_code)
+        .unwrap()
+        .to_string(),
+      name: module_url.to_string(),
+    };
+
+    Ok(compiled_module)
+  }
+
   /// Return compiled JS file for given TS module.
   // TODO: ideally we shouldn't construct SourceFile by hand, but it should be delegated to
   // SourceFileFetcher
   pub fn get_compiled_source_file(
     self: &Self,
-    source_file: &SourceFile,
+    module_url: &Url,
   ) -> Result<SourceFile, ErrBox> {
     let cache_key = self
       .disk_cache
-      .get_cache_filename_with_extension(&source_file.url, "js");
+      .get_cache_filename_with_extension(&module_url, "js");
     let compiled_code = self.disk_cache.get(&cache_key)?;
     let compiled_code_filename = self.disk_cache.location.join(cache_key);
     debug!("compiled filename: {:?}", compiled_code_filename);
 
     let compiled_module = SourceFile {
-      url: source_file.url.clone(),
+      url: module_url.clone(),
       filename: compiled_code_filename,
       media_type: msg::MediaType::JavaScript,
       source_code: compiled_code,
@@ -481,7 +521,7 @@ impl TsCompiler {
         let version_hash = source_code_version_hash(
           &source_file.source_code,
           version::DENO,
-          &self.config_hash,
+          &self.config.hash,
         );
 
         let compiled_file_metadata = CompiledFileMetadata {
@@ -619,7 +659,7 @@ mod tests {
       self: &Self,
       state: ThreadSafeState,
       source_file: &SourceFile,
-    ) -> Result<SourceFile, ErrBox> {
+    ) -> Result<CompiledModule, ErrBox> {
       tokio_util::block_on(self.compile_async(state, source_file))
     }
   }
@@ -630,24 +670,25 @@ mod tests {
       let specifier =
         ModuleSpecifier::resolve_url_or_path("./tests/002_hello.ts").unwrap();
 
-      let mut out = SourceFile {
+      let out = SourceFile {
         url: specifier.as_url().clone(),
         filename: PathBuf::from("/tests/002_hello.ts"),
         media_type: msg::MediaType::TypeScript,
-        source_code: include_bytes!("../tests/002_hello.ts").to_vec(),
+        source_code: include_bytes!("../../tests/002_hello.ts").to_vec(),
       };
 
       let mock_state = ThreadSafeState::mock(vec![
         String::from("./deno"),
         String::from("hello.js"),
       ]);
-      out = mock_state
+      let compiled = mock_state
         .ts_compiler
         .compile_sync(mock_state.clone(), &out)
         .unwrap();
       assert!(
-        out
-          .source_code
+        compiled
+          .code
+          .as_bytes()
           .starts_with("console.log(\"Hello World\");".as_bytes())
       );
     })

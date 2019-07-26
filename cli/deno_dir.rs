@@ -17,8 +17,6 @@ pub struct DenoDir {
 }
 
 impl DenoDir {
-  // Must be called before using any function from this module.
-  // https://github.com/denoland/deno/blob/golang/deno_dir.go#L99-L111
   pub fn new(custom_root: Option<PathBuf>) -> std::io::Result<Self> {
     // Only setup once.
     let home_dir = dirs::home_dir().expect("Could not get home directory.");
