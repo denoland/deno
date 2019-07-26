@@ -22,6 +22,7 @@ pub mod deno_error;
 pub mod diagnostics;
 mod disk_cache;
 mod dispatch_minimal;
+mod file_fetcher;
 pub mod flags;
 pub mod fmt_errors;
 mod fs;
@@ -47,7 +48,7 @@ mod tokio_write;
 pub mod version;
 pub mod worker;
 
-use crate::deno_dir::SourceFileFetcher;
+use crate::file_fetcher::SourceFileFetcher;
 use crate::progress::Progress;
 use crate::state::ThreadSafeState;
 use crate::worker::Worker;
@@ -107,7 +108,7 @@ pub fn print_file_info(
   let module_specifier_ = module_specifier.clone();
 
   state_
-    .dir
+    .file_fetcher
     .fetch_source_file_async(&module_specifier)
     .map_err(|err| println!("{}", err))
     .and_then(move |out| {

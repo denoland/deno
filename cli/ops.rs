@@ -1,13 +1,13 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use atty;
 use crate::ansi;
-use crate::deno_dir::SourceFileFetcher;
 use crate::deno_error;
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
 use crate::deno_error::GetErrorKind;
 use crate::dispatch_minimal::dispatch_minimal;
 use crate::dispatch_minimal::parse_min_record;
+use crate::file_fetcher::SourceFileFetcher;
 use crate::fmt_errors::JSError;
 use crate::fs as deno_fs;
 use crate::http_util;
@@ -502,7 +502,7 @@ fn op_fetch_source_file(
   let resolved_specifier = state.resolve(specifier, referrer, false)?;
 
   let fut = state
-    .dir
+    .file_fetcher
     .fetch_source_file_async(&resolved_specifier)
     .and_then(move |out| {
       let builder = &mut FlatBufferBuilder::new();

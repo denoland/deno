@@ -1,8 +1,9 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::compiler::TsCompiler;
 use crate::deno_dir;
-use crate::deno_dir::SourceFile;
-use crate::deno_dir::SourceFileFetcher;
+use crate::file_fetcher::FileFetcher;
+use crate::file_fetcher::SourceFile;
+use crate::file_fetcher::SourceFileFetcher;
 use crate::flags;
 use crate::global_timer::GlobalTimer;
 use crate::import_map::ImportMap;
@@ -76,6 +77,7 @@ pub struct State {
   pub progress: Progress,
   pub seeded_rng: Option<Mutex<StdRng>>,
 
+  pub file_fetcher: FileFetcher,
   pub ts_compiler: TsCompiler,
 }
 
@@ -109,7 +111,7 @@ pub fn fetch_source_file_and_maybe_compile_async(
   let state_ = state.clone();
 
   state_
-    .dir
+    .file_fetcher
     .fetch_source_file_async(&module_specifier)
     .and_then(move |out| {
       state_
@@ -163,6 +165,7 @@ impl Loader for ThreadSafeState {
 }
 
 impl ThreadSafeState {
+  // TODO: change return type to Result<Self, ErrBox> and handle all unwraps with "?";
   pub fn new(
     flags: flags::DenoFlags,
     argv_rest: Vec<String>,
@@ -177,12 +180,21 @@ impl ThreadSafeState {
     let external_channels = (worker_in_tx, worker_out_rx);
     let resource = resources::add_worker(external_channels);
 
-    let dir = deno_dir::DenoDir::new(
-      custom_root,
+    let dir = deno_dir::DenoDir::new(custom_root).unwrap();
+
+    let file_fetcher = FileFetcher::new(
+      dir.register_cache("deps").unwrap(),
       progress.clone(),
       !flags.reload,
       flags.no_fetch,
     ).unwrap();
+
+    let ts_compiler = TsCompiler::new(
+      file_fetcher.clone(),
+      dir.register_cache("gen").unwrap(),
+      !flags.reload,
+      flags.config_path.clone(),
+    );
 
     let main_module: Option<ModuleSpecifier> = if argv_rest.len() <= 1 {
       None
@@ -220,9 +232,6 @@ impl ThreadSafeState {
 
     let modules = Arc::new(Mutex::new(deno::Modules::new()));
 
-    let ts_compiler =
-      TsCompiler::new(dir.clone(), !flags.reload, flags.config_path.clone());
-
     ThreadSafeState(Arc::new(State {
       main_module,
       modules,
@@ -240,6 +249,7 @@ impl ThreadSafeState {
       dispatch_selector,
       progress,
       seeded_rng,
+      file_fetcher,
       ts_compiler,
     }))
   }
