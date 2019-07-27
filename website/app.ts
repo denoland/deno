@@ -116,6 +116,10 @@ export function createSha1List(data) {
   return data.map(d => d.sha1);
 }
 
+export function formatKB(bytes) {
+  return (bytes / 1024).toFixed(2);
+}
+
 export function formatMB(bytes) {
   return (bytes / (1024 * 1024)).toFixed(2);
 }
@@ -282,7 +286,7 @@ export async function drawChartsFromBenchmarkData(dataUrl) {
   gen("#binary-size-chart", binarySizeColumns, "megabytes", formatMB);
   gen("#thread-count-chart", threadCountColumns, "threads");
   gen("#syscall-count-chart", syscallCountColumns, "syscalls");
-  gen("#bundle-size-chart", bundleSizeColumns, "bundle", formatMB);
+  gen("#bundle-size-chart", bundleSizeColumns, "kilobytes", formatKB);
 }
 
 export function main(): void {
