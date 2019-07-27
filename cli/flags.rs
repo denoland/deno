@@ -144,12 +144,7 @@ To get help on the another subcommands (run in this case):
       Arg::with_name("version")
         .short("v")
         .long("version")
-        .help("Print the version")
-        .long_help("Print current version of Deno.
-
-Includes versions of Deno, V8 JavaScript Engine, and the TypeScript
-compiler.",
-        )
+        .help("Print the version"),
     )
     .arg(
       Arg::with_name("log-level")
