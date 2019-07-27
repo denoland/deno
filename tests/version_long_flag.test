@@ -1,0 +1,2 @@
+args: --version
+output: tests/version.out
