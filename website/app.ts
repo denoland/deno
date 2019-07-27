@@ -108,6 +108,10 @@ export function createSyscallCountColumns(data) {
   ]);
 }
 
+export function createBundleSizeColumns(data) {
+  return createColumns(data, "bundle_size");
+}
+
 export function createSha1List(data) {
   return data.map(d => d.sha1);
 }
@@ -247,6 +251,7 @@ export async function drawChartsFromBenchmarkData(dataUrl) {
   const binarySizeColumns = createBinarySizeColumns(data);
   const threadCountColumns = createThreadCountColumns(data);
   const syscallCountColumns = createSyscallCountColumns(data);
+  const bundleSizeColumns = createBundleSizeColumns(data);
   const sha1List = createSha1List(data);
   const sha1ShortList = sha1List.map(sha1 => sha1.substring(0, 6));
 
@@ -277,6 +282,7 @@ export async function drawChartsFromBenchmarkData(dataUrl) {
   gen("#binary-size-chart", binarySizeColumns, "megabytes", formatMB);
   gen("#thread-count-chart", threadCountColumns, "threads");
   gen("#syscall-count-chart", syscallCountColumns, "syscalls");
+  gen("#bundle-size-chart", bundleSizeColumns, "bundle", formatMB);
 }
 
 export function main(): void {
