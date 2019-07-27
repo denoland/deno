@@ -100,16 +100,6 @@ fn add_run_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
       Arg::with_name("no-fetch")
         .long("no-fetch")
         .help("Do not download remote modules"),
-    ).arg(
-      Arg::with_name("importmap")
-        .long("importmap")
-        .value_name("FILE")
-        .help("Load import map file")
-        .long_help(
-          "Load import map file
-Specification: https://wicg.github.io/import-maps/
-Examples: https://github.com/WICG/import-maps#the-import-map",
-        ).takes_value(true),
     )
 }
 
@@ -166,6 +156,18 @@ To get help on the another subcommands (run in this case):
         .long("config")
         .value_name("FILE")
         .help("Load compiler configuration file")
+        .takes_value(true)
+        .global(true),
+    ).arg(
+      Arg::with_name("importmap")
+        .long("importmap")
+        .value_name("FILE")
+        .help("Load import map file")
+        .long_help(
+          "Load import map file
+Specification: https://wicg.github.io/import-maps/
+Examples: https://github.com/WICG/import-maps#the-import-map",
+        )
         .takes_value(true)
         .global(true),
     ).arg(
@@ -1367,6 +1369,22 @@ mod tests {
       }
     );
     assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "script.ts"]);
+
+    let (flags, subcommand, argv) = flags_from_vec(svec![
+      "deno",
+      "fetch",
+      "--importmap=importmap.json",
+      "script.ts"
+    ]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        import_map_path: Some("importmap.json".to_owned()),
+        ..DenoFlags::default()
+      }
+    );
+    assert_eq!(subcommand, DenoSubcommand::Fetch);
     assert_eq!(argv, svec!["deno", "script.ts"]);
   }
 
