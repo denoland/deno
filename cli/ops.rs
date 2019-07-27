@@ -64,6 +64,7 @@ use tokio_threadpool;
 use url::Url;
 use utime;
 use webpki;
+use webpki::DNSNameRef;
 use webpki_roots;
 
 #[cfg(unix)]
@@ -1630,7 +1631,7 @@ fn new_conn(cmd_id: u32, tcp_stream: TcpStream) -> Result<Buf, ErrBox> {
 fn new_tls_conn(
   cmd_id: u32,
   tls_stream: TlsStream<TcpStream, ClientSession>,
-) -> OpResult {
+) -> Result<Buf, ErrBox> {
   println!("new_tls_conn");
   let tls_stream_resource = resources::add_tls_stream(tls_stream);
 
@@ -1712,44 +1713,48 @@ fn op_dial_tls(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
-) -> Box<OpWithError> {
+) -> CliOpResult {
+  println!("------  op_dial_ts");
   assert!(data.is_none());
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_dial_tls().unwrap();
   let network = inner.network().unwrap();
+  println!("------  network: {}", network);
   assert_eq!(network, "tcp"); // TODO Support others.
-  let address = inner.address().unwrap().to_string();
-  if let Err(e) = state.check_net(&address) {
-    return odd_future(e);
-  }
+  let address = inner.address().unwrap();
+  println!("------  address: {}", address);
+
+  let parts = address.split(':').collect::<Vec<&str>>();
+  let domain = parts[0].to_string();
+  let _port = parts[1].to_string();
+  println!("------  domain: {}", domain);
+
+  state.check_net(&address)?;
 
   let op = resolve_addr(&address)
-    .map_err(DenoError::from)
-    .and_then(move |addr| TcpStream::connect(&addr).map_err(DenoError::from))
-    .and_then(move |tcp_stream| {
+    .and_then(move |socket_address| {
+      println!("------  socket_address: {:?}", socket_address);
+      TcpStream::connect(&socket_address).map_err(ErrBox::from)
+    }).and_then(move |socket| {
+      println!("------  socket: {:?}", socket);
       let mut config = ClientConfig::new();
       config
         .root_store
         .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
-      let connector = TlsConnector::from(Arc::new(config));
-      /*
-      println!("before parse");
-      let uri: hyper::Uri = address.parse().unwrap();
-      println!("after parse");
-      let host = uri.host().unwrap();
-      println!("unwrap host worked");
-      println!("try_from_ascii str {}", host);
-      */
-      let domain = webpki::DNSNameRef::try_from_ascii_str(&host).unwrap();
-      println!("try_from_ascii str worked");
+      let config = TlsConnector::from(Arc::new(config));
+      println!("------  config");
 
-      println!("connecting");
+      let domain =
+        DNSNameRef::try_from_ascii_str(&domain).expect("Invalid DNS");
 
-      connector
-        .connect(domain, tcp_stream)
-        .map_err(DenoError::from)
+      config.connect(domain, socket).map_err(ErrBox::from)
     }).and_then(move |tls_stream| new_tls_conn(cmd_id, tls_stream));
-  Box::new(op)
+  if base.sync() {
+    let buf = op.wait()?;
+    Ok(Op::Sync(buf))
+  } else {
+    Ok(Op::Async(Box::new(op)))
+  }
 }
 
 fn op_metrics(
