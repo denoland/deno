@@ -184,8 +184,8 @@ def run(server_cmd, addr, merge_env=None, origin_cmd=None):
     time.sleep(10)  # wait for server to wake up. TODO racy.
 
     try:
-        cmd = "third_party/wrk/%s/wrk -d %s http://%s/" % (util.platform(),
-                                                           DURATION, addr)
+        cmd = "third_party/wrk/%s/wrk -d %s --latency http://%s/" % (
+            util.platform(), DURATION, addr)
         print cmd
         output = subprocess.check_output(cmd, shell=True)
         stats = util.parse_wrk_output(output)
