@@ -116,8 +116,8 @@ Examples: https://github.com/WICG/import-maps#the-import-map",
 pub fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
   add_run_args(App::new("deno"))
     .bin_name("deno")
-    .global_settings(&[AppSettings::ColorNever, AppSettings::UnifiedHelpMessage])
-    .settings(&[AppSettings::DisableVersion, AppSettings::AllowExternalSubcommands])
+    .global_settings(&[AppSettings::ColorNever, AppSettings::UnifiedHelpMessage, AppSettings::DisableVersion])
+    .settings(&[AppSettings::AllowExternalSubcommands])
     .after_help(ENV_VARIABLES_HELP)
     .long_about("A secure runtime for JavaScript and TypeScript built with V8, Rust, and Tokio.
 
@@ -140,6 +140,12 @@ To evaluate code from the command line:
 To get help on the another subcommands (run in this case):
 
   deno help run")
+    .arg(
+      Arg::with_name("version")
+        .short("v")
+        .long("version")
+        .help("Print the version"),
+    )
     .arg(
       Arg::with_name("log-level")
         .short("L")
@@ -190,7 +196,6 @@ To get help on the another subcommands (run in this case):
         .global(true),
     ).subcommand(
       SubCommand::with_name("version")
-        .setting(AppSettings::DisableVersion)
         .about("Print the version")
         .long_about("Print current version of Deno.
 
@@ -199,7 +204,6 @@ compiler.",
         ),
     ).subcommand(
       SubCommand::with_name("bundle")
-        .setting(AppSettings::DisableVersion)
         .about("Bundle module and dependencies into single file")
         .long_about(
           "Output a single JavaScript file with all dependencies
@@ -212,7 +216,6 @@ Example:
           .arg(Arg::with_name("out_file").takes_value(true).required(false)),
     ).subcommand(
       SubCommand::with_name("fetch")
-        .setting(AppSettings::DisableVersion)
         .about("Fetch the dependencies")
         .long_about(
           "Fetch and compile remote dependencies recursively.
@@ -229,7 +232,6 @@ would be made unless --reload is specified.
         ).arg(Arg::with_name("file").takes_value(true).required(true)),
     ).subcommand(
       SubCommand::with_name("types")
-        .setting(AppSettings::DisableVersion)
         .about("Print runtime TypeScript declarations")
         .long_about("Print runtime TypeScript declarations.
 
@@ -239,7 +241,6 @@ The declaration file could be saved and used for typing information.",
         ),
     ).subcommand(
       SubCommand::with_name("info")
-        .setting(AppSettings::DisableVersion)
         .about("Show source file related info")
         .long_about("Show source file related info.
 
@@ -255,7 +256,6 @@ The following information is shown:
         ).arg(Arg::with_name("file").takes_value(true).required(true)),
     ).subcommand(
       SubCommand::with_name("eval")
-        .setting(AppSettings::DisableVersion)
         .about("Eval script")
         .long_about(
           "Evaluate provided script.
@@ -266,7 +266,6 @@ This command has implicit access to all permissions (equivalent to deno run --al
         ).arg(Arg::with_name("code").takes_value(true).required(true)),
     ).subcommand(
       SubCommand::with_name("fmt")
-        .setting(AppSettings::DisableVersion)
         .about("Format files")
         .long_about(
 "Auto-format JavaScript/TypeScript source code using Prettier
@@ -290,7 +289,6 @@ Automatically downloads Prettier dependencies on first run.
         .settings(&[
           AppSettings::AllowExternalSubcommands,
           AppSettings::DisableHelpSubcommand,
-          AppSettings::DisableVersion,
           AppSettings::SubcommandRequired,
         ]).about("Run a program given a filename or url to the source code")
         .long_about(
@@ -317,7 +315,6 @@ ability to spawn subprocesses.
         ),
     ).subcommand(
     SubCommand::with_name("xeval")
-        .setting(AppSettings::DisableVersion)
         .about("Eval a script on text segments from stdin")
         .long_about(
           "Eval a script on lines from stdin
@@ -357,7 +354,6 @@ Demonstrates breaking the input up by space delimiter instead of by lines:
     ).subcommand(
       SubCommand::with_name("install")
         .settings(&[
-          AppSettings::DisableVersion,
           AppSettings::DisableHelpSubcommand,
           AppSettings::AllowExternalSubcommands,
           AppSettings::SubcommandRequired,
@@ -395,7 +391,6 @@ To change installation directory use -d/--dir flag
       SubCommand::with_name("completions")
         .settings(&[
           AppSettings::DisableHelpSubcommand,
-          AppSettings::DisableVersion,
         ]).about("Generate shell completions")
         .long_about(
 "Output shell completion script to standard output.
@@ -670,6 +665,10 @@ pub fn flags_from_vec(
   let mut argv: Vec<String> = vec!["deno".to_string()];
   let mut flags = parse_flags(&matches.clone(), None);
 
+  if flags.version {
+    return (flags, DenoSubcommand::Version, argv);
+  }
+
   let subcommand = match matches.subcommand() {
     ("bundle", Some(bundle_match)) => {
       flags.allow_write = true;
@@ -805,7 +804,6 @@ pub fn flags_from_vec(
       argv.extend(vec![code.to_string()]);
       DenoSubcommand::Xeval
     }
-    ("version", Some(_)) => DenoSubcommand::Version,
     (script, Some(script_match)) => {
       argv.extend(vec![script.to_string()]);
       // check if there are any extra arguments that should
@@ -844,6 +842,28 @@ mod tests {
   #[test]
   fn test_flags_from_vec_1() {
     let (flags, subcommand, argv) = flags_from_vec(svec!["deno", "version"]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        version: true,
+        ..DenoFlags::default()
+      }
+    );
+    assert_eq!(subcommand, DenoSubcommand::Version);
+    assert_eq!(argv, svec!["deno"]);
+
+    let (flags, subcommand, argv) = flags_from_vec(svec!["deno", "--version"]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        version: true,
+        ..DenoFlags::default()
+      }
+    );
+    assert_eq!(subcommand, DenoSubcommand::Version);
+    assert_eq!(argv, svec!["deno"]);
+
+    let (flags, subcommand, argv) = flags_from_vec(svec!["deno", "-v"]);
     assert_eq!(
       flags,
       DenoFlags {
