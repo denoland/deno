@@ -170,7 +170,7 @@ impl ThreadSafeState {
     argv_rest: Vec<String>,
     dispatch_selector: ops::OpSelector,
     progress: Progress,
-  ) -> Self {
+  ) -> Result<Self, ErrBox> {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
 
     let (worker_in_tx, worker_in_rx) = async_mpsc::channel::<Buf>(1);
@@ -179,14 +179,14 @@ impl ThreadSafeState {
     let external_channels = (worker_in_tx, worker_out_rx);
     let resource = resources::add_worker(external_channels);
 
-    let dir = deno_dir::DenoDir::new(custom_root).unwrap();
+    let dir = deno_dir::DenoDir::new(custom_root)?;
 
     let file_fetcher = SourceFileFetcher::new(
       dir.deps_cache.clone(),
       progress.clone(),
       !flags.reload,
       flags.no_fetch,
-    ).unwrap();
+    )?;
 
     let ts_compiler = TsCompiler::new(
       file_fetcher.clone(),
@@ -231,7 +231,7 @@ impl ThreadSafeState {
 
     let modules = Arc::new(Mutex::new(deno::Modules::new()));
 
-    ThreadSafeState(Arc::new(State {
+    let state = State {
       main_module,
       modules,
       dir,
@@ -250,7 +250,9 @@ impl ThreadSafeState {
       seeded_rng,
       file_fetcher,
       ts_compiler,
-    }))
+    };
+
+    Ok(ThreadSafeState(Arc::new(state)))
   }
 
   /// Read main module from argv
@@ -298,7 +300,7 @@ impl ThreadSafeState {
       argv,
       ops::op_selector_std,
       Progress::new(),
-    )
+    ).unwrap()
   }
 
   pub fn metrics_op_dispatched(

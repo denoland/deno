@@ -2017,7 +2017,7 @@ fn op_create_worker(
     parent_state.argv.clone(),
     op_selector_std,
     parent_state.progress.clone(),
-  );
+  )?;
   let rid = child_state.resource.rid;
   let name = format!("USER-WORKER-{}", specifier);
 

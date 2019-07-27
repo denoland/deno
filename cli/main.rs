@@ -191,7 +191,8 @@ fn create_worker_and_state(
       s.status(status, msg).expect("shell problem");
     }
   });
-  let state = ThreadSafeState::new(flags, argv, ops::op_selector_std, progress);
+  let state =
+    ThreadSafeState::new(flags, argv, ops::op_selector_std, progress).unwrap();
   let worker = Worker::new(
     "main".to_string(),
     startup_data::deno_isolate_init(),
