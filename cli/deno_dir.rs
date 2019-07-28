@@ -1,16 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::deno_error::DenoError;
-use crate::deno_error::ErrorKind;
 use crate::disk_cache::DiskCache;
-use deno::ErrBox;
 use dirs;
 use std;
-use std::collections::HashMap;
 use std::path::PathBuf;
-use std::result::Result;
-use std::str;
-use std::sync::Arc;
-use std::sync::Mutex;
 
 /// `DenoDir` serves as coordinator for multiple `DiskCache`s containing them
 /// in single directory that can be controlled with `$DENO_DIR` env variable.
@@ -18,7 +10,10 @@ use std::sync::Mutex;
 pub struct DenoDir {
   // Example: /Users/rld/.deno/
   pub root: PathBuf,
-  cache_map: Arc<Mutex<HashMap<String, DiskCache>>>,
+  /// Used by SourceFileFetcher to cache remote modules.
+  pub deps_cache: DiskCache,
+  /// Used by TsCompiler to cache compiler output.
+  pub gen_cache: DiskCache,
 }
 
 impl DenoDir {
@@ -36,35 +31,15 @@ impl DenoDir {
       .unwrap_or(fallback);
 
     let root: PathBuf = custom_root.unwrap_or(default);
+    let deps_path = root.join("deps");
+    let gen_path = root.join("gen");
 
     let deno_dir = Self {
       root,
-      cache_map: Arc::new(Mutex::new(HashMap::default())),
+      deps_cache: DiskCache::new(&deps_path),
+      gen_cache: DiskCache::new(&gen_path),
     };
 
     Ok(deno_dir)
-  }
-
-  pub fn register_cache(self: &Self, name: &str) -> Result<DiskCache, ErrBox> {
-    let path = self.root.join(name);
-
-    if self.cache_map.lock().unwrap().contains_key(name) {
-      // TODO: change error type
-      return Err(
-        DenoError::new(
-          ErrorKind::UnsupportedFetchScheme,
-          format!("Cache with name \"{}\" was already registered", name),
-        ).into(),
-      );
-    }
-
-    let cache = DiskCache::new(&path);
-    self
-      .cache_map
-      .lock()
-      .unwrap()
-      .insert(name.to_string(), cache.clone());
-
-    Ok(cache)
   }
 }

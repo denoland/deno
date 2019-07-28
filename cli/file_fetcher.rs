@@ -201,7 +201,8 @@ impl SourceFileFetcher {
     let url_scheme = module_url.scheme();
     let is_local_file = url_scheme == "file";
 
-    if let Err(err) = SourceFileFetcher::check_if_supported_scheme(&module_url) {
+    if let Err(err) = SourceFileFetcher::check_if_supported_scheme(&module_url)
+    {
       return Either::A(futures::future::err(err));
     }
 

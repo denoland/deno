@@ -182,7 +182,7 @@ impl ThreadSafeState {
     let dir = deno_dir::DenoDir::new(custom_root).unwrap();
 
     let file_fetcher = SourceFileFetcher::new(
-      dir.register_cache("deps").unwrap(),
+      dir.deps_cache.clone(),
       progress.clone(),
       !flags.reload,
       flags.no_fetch,
@@ -190,7 +190,7 @@ impl ThreadSafeState {
 
     let ts_compiler = TsCompiler::new(
       file_fetcher.clone(),
-      dir.register_cache("gen").unwrap(),
+      dir.gen_cache.clone(),
       !flags.reload,
       flags.config_path.clone(),
     );
