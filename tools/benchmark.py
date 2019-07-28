@@ -203,6 +203,27 @@ def run_http(build_dir, new_data):
     new_data["max_latency"] = {k: v["max_latency"] for k, v in stats.items()}
 
 
+def bundle_benchmark(deno_exe):
+    bundles = {
+        "file_server": "https://deno.land/std/http/file_server.ts",
+        "gist": "https://deno.land/std/examples/gist.ts",
+    }
+
+    sizes = {}
+
+    for name, url in bundles.items():
+        # bundle
+        run([deno_exe, "bundle", url])
+        path = name + ".bundle.js"
+        # get size of bundle
+        assert os.path.exists(path)
+        sizes[name] = os.path.getsize(path)
+        # remove bundle
+        os.remove(path)
+
+    return sizes
+
+
 def main(argv):
     if len(argv) == 2:
         build_dir = sys.argv[1]
@@ -232,6 +253,7 @@ def main(argv):
     new_data["benchmark"] = run_exec_time(deno_exe, build_dir)
 
     new_data["binary_size"] = get_binary_sizes(build_dir)
+    new_data["bundle_size"] = bundle_benchmark(deno_exe)
 
     # Cannot run throughput benchmark on windows because they don't have nc or
     # pipe.
