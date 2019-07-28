@@ -49,17 +49,17 @@ class TestUtil(DenoTestCase):
         f = open(os.path.join(root_path, "tools/testdata/wrk1.txt"))
         stats = parse_wrk_output(f.read())
         assert stats['req_per_sec'] == 1837
-        assert stats['max_latency'] == 34.96
+        assert stats['max_latency'] == 6.25
 
         f2 = open(os.path.join(root_path, "tools/testdata/wrk2.txt"))
         stats2 = parse_wrk_output(f2.read())
         assert stats2['req_per_sec'] == 53435
-        assert stats2['max_latency'] == 0.00125
+        assert stats2['max_latency'] == 6.22
 
         f3 = open(os.path.join(root_path, "tools/testdata/wrk3.txt"))
         stats3 = parse_wrk_output(f3.read())
         assert stats3['req_per_sec'] == 96037
-        assert stats3['max_latency'] == 1630.0
+        assert stats3['max_latency'] == 6.36
 
 
 if __name__ == '__main__':

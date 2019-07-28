@@ -384,7 +384,7 @@ def parse_wrk_output(output):
                                                   line)
         if stats['max_latency'] is None:
             stats['max_latency'] = extract_max_latency_in_milliseconds(
-                r'Latency(?:\s+(\d+.\d+)([a-z]+)){3}', line)
+                r'\s+99%(?:\s+(\d+.\d+)([a-z]+))', line)
     return stats
 
 
