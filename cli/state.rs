@@ -164,7 +164,6 @@ impl Loader for ThreadSafeState {
 }
 
 impl ThreadSafeState {
-  // TODO: change return type to Result<Self, ErrBox> and handle all unwraps with "?";
   pub fn new(
     flags: flags::DenoFlags,
     argv_rest: Vec<String>,
