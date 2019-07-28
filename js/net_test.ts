@@ -223,30 +223,29 @@ testPerm({ net: true }, async function netDoubleCloseWrite() {
 
 testPerm({ net: true }, async function netDialTLS(): Promise<void> {
   const conn = await Deno.dialTLS("tcp", ":4443");
-  const sendBuf = new Uint8Array(1024);
-  const body = new TextEncoder().encode("GET / HTTP/1.0\r\n\r\n\n");
+  console.log("conn", conn);
+  assert(conn.rid > 0);
+  const body = new TextEncoder().encode(
+    "GET / HTTP/1.0\r\nHost: localhost:4443\r\n\r\n"
+  );
   const writeResult = await conn.write(body);
   console.log("writeResult", writeResult);
-  // assertEquals(3, readResult.nread);
-  // assert(conn.rid > 0);
+  assertEquals(35, writeResult);
 
   const buf = new Uint8Array(1024);
   const readResult = await conn.read(buf);
-  console.log(readResult);
-  const res = new TextDecoder().decode(buf.subarray(0, readResult.nread));
-  console.log(res);
+  console.log("readResult", readResult);
+  // assertEquals(3, readResult);
+  const res = new TextDecoder().decode(buf.subarray(0, readResult));
+  console.log("res", res);
 
   /*
-  // assertEquals(3, readResult.nread);
-  //
-  assert(conn.rid > 0);
-
   // TODO Currently ReadResult does not properly transmit EOF in the same call.
   // it requires a second call to get the EOF. Either ReadResult to be an
   // integer in which 0 signifies EOF or the handler should be modified so that
   // EOF is properly transmitted.
   */
-  assertEquals(false, readResult.eof);
+  // assertEquals(false, readResult);
 
   conn.close();
 });

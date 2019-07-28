@@ -1724,16 +1724,17 @@ fn op_dial_tls(
   let address = inner.address().unwrap();
   println!("------  address: {}", address);
 
-  let parts = address.split(':').collect::<Vec<&str>>();
-  let domain = parts[0].to_string();
-  let _port = parts[1].to_string();
-  println!("------  domain: {}", domain);
+  let mut domain = address.split(':').collect::<Vec<&str>>()[0].to_string();
+  if domain.is_empty() {
+    domain.push_str("localhost");
+  }
+  println!("------  domain: {:?}", domain);
 
   state.check_net(&address)?;
 
   let op = resolve_addr(&address)
     .and_then(move |socket_address| {
-      println!("------  socket_address: {:?}", socket_address);
+      println!("------  socket_address: {}", socket_address);
       TcpStream::connect(&socket_address).map_err(ErrBox::from)
     }).and_then(move |socket| {
       println!("------  socket: {:?}", socket);
