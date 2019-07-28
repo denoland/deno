@@ -1,14 +1,14 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use atty;
 use crate::ansi;
-use crate::deno_dir::resolve_from_cwd;
+use crate::deno_dir::SourceFileFetcher;
 use crate::deno_error;
-use crate::deno_error::err_check;
 use crate::deno_error::DenoError;
-use crate::deno_error::DenoResult;
 use crate::deno_error::ErrorKind;
+use crate::deno_error::GetErrorKind;
 use crate::dispatch_minimal::dispatch_minimal;
 use crate::dispatch_minimal::parse_min_record;
+use crate::fmt_errors::JSError;
 use crate::fs as deno_fs;
 use crate::http_util;
 use crate::msg;
@@ -28,7 +28,7 @@ use crate::version;
 use crate::worker::Worker;
 use deno::Buf;
 use deno::CoreOp;
-use deno::JSError;
+use deno::ErrBox;
 use deno::Loader;
 use deno::ModuleSpecifier;
 use deno::Op;
@@ -57,6 +57,7 @@ use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio_process::CommandExt;
 use tokio_threadpool;
+use url::Url;
 use utime;
 
 #[cfg(unix)]
@@ -64,7 +65,7 @@ use std::os::unix::fs::PermissionsExt;
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
 
-type CliOpResult = OpResult<DenoError>;
+type CliOpResult = OpResult<ErrBox>;
 
 type CliDispatchFn =
   fn(state: &ThreadSafeState, base: &msg::Base<'_>, data: Option<PinnedBuf>)
@@ -131,7 +132,7 @@ pub fn dispatch_all_legacy(
     }
     Ok(Op::Async(fut)) => {
       let result_fut = Box::new(
-        fut.or_else(move |err: DenoError| -> Result<Buf, ()> {
+        fut.or_else(move |err: ErrBox| -> Result<Buf, ()> {
           debug!("op err {}", err);
           // No matter whether we got an Err or Ok, we want a serialized message to
           // send back. So transform the DenoError into a Buf.
@@ -205,7 +206,7 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<CliDispatchFn> {
     msg::Any::Environ => Some(op_env),
     msg::Any::Exit => Some(op_exit),
     msg::Any::Fetch => Some(op_fetch),
-    msg::Any::FetchModuleMetaData => Some(op_fetch_module_meta_data),
+    msg::Any::FetchSourceFile => Some(op_fetch_source_file),
     msg::Any::FormatError => Some(op_format_error),
     msg::Any::GetRandomValues => Some(op_get_random_values),
     msg::Any::GlobalTimer => Some(op_global_timer),
@@ -345,8 +346,12 @@ fn op_start(
   let cwd_off =
     builder.create_string(deno_fs::normalize_path(cwd_path.as_ref()).as_ref());
 
+  let current_exe = std::env::current_exe().unwrap();
+  // Now apply URL parser to current exe to get fully resolved path, otherwise we might get
+  // `./` and `../` bits in `exec_path`
+  let exe_url = Url::from_file_path(current_exe).unwrap();
   let exec_path =
-    builder.create_string(std::env::current_exe().unwrap().to_str().unwrap());
+    builder.create_string(exe_url.to_file_path().unwrap().to_str().unwrap());
 
   let v8_version = version::v8();
   let v8_version_off = builder.create_string(v8_version);
@@ -405,11 +410,9 @@ fn op_format_error(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_format_error().unwrap();
-  let orig_error = String::from(inner.error().unwrap());
-
-  let js_error = JSError::from_v8_exception(&orig_error).unwrap();
-  let error_mapped = DenoError::from(js_error).apply_source_map(&state.dir);
-  let error_string = error_mapped.to_string();
+  let json_str = inner.error().unwrap();
+  let error = JSError::from_json(json_str, &state.ts_compiler);
+  let error_string = error.to_string();
 
   let mut builder = FlatBufferBuilder::new();
   let new_error = builder.create_string(&error_string);
@@ -469,36 +472,20 @@ fn op_cache(
   let module_id = inner.module_id().unwrap();
   let contents = inner.contents().unwrap();
 
-  state.mark_compiled(&module_id);
+  let module_specifier = ModuleSpecifier::resolve_url(module_id)
+    .expect("Should be valid module specifier");
 
-  // TODO It shouldn't be necessary to call fetch_module_meta_data() here.
-  // However, we need module_meta_data.source_code in order to calculate the
-  // cache path. In the future, checksums will not be used in the cache
-  // filenames and this requirement can be removed. See
-  // https://github.com/denoland/deno/issues/2057
-  let module_meta_data =
-    state.dir.fetch_module_meta_data(module_id, true, true)?;
-
-  let (js_cache_path, source_map_path) = state.dir.cache_path(
-    &PathBuf::from(&module_meta_data.filename),
-    &module_meta_data.source_code,
-  );
-
-  if extension == ".map" {
-    debug!("cache {:?}", source_map_path);
-    fs::write(source_map_path, contents).map_err(DenoError::from)?;
-  } else if extension == ".js" {
-    debug!("cache {:?}", js_cache_path);
-    fs::write(js_cache_path, contents).map_err(DenoError::from)?;
-  } else {
-    unreachable!();
-  }
+  state.ts_compiler.cache_compiler_output(
+    &module_specifier,
+    extension,
+    contents,
+  )?;
 
   ok_buf(empty_buf())
 }
 
 // https://github.com/denoland/deno/blob/golang/os.go#L100-L154
-fn op_fetch_module_meta_data(
+fn op_fetch_source_file(
   state: &ThreadSafeState,
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
@@ -507,39 +494,32 @@ fn op_fetch_module_meta_data(
     return Err(deno_error::no_async_support());
   }
   assert!(data.is_none());
-  let inner = base.inner_as_fetch_module_meta_data().unwrap();
+  let inner = base.inner_as_fetch_source_file().unwrap();
   let cmd_id = base.cmd_id();
   let specifier = inner.specifier().unwrap();
   let referrer = inner.referrer().unwrap();
 
-  assert_eq!(state.dir.root.join("gen"), state.dir.gen, "Sanity check");
-
-  let use_cache = !state.flags.reload;
-  let no_fetch = state.flags.no_fetch;
   let resolved_specifier = state.resolve(specifier, referrer, false)?;
 
   let fut = state
     .dir
-    .fetch_module_meta_data_async(
-      &resolved_specifier.to_string(),
-      use_cache,
-      no_fetch,
-    ).and_then(move |out| {
+    .fetch_source_file_async(&resolved_specifier)
+    .and_then(move |out| {
       let builder = &mut FlatBufferBuilder::new();
       let data_off = builder.create_vector(out.source_code.as_slice());
-      let msg_args = msg::FetchModuleMetaDataResArgs {
-        module_name: Some(builder.create_string(&out.module_name)),
+      let msg_args = msg::FetchSourceFileResArgs {
+        module_name: Some(builder.create_string(&out.url.to_string())),
         filename: Some(builder.create_string(&out.filename.to_str().unwrap())),
         media_type: out.media_type,
         data: Some(data_off),
       };
-      let inner = msg::FetchModuleMetaDataRes::create(builder, &msg_args);
+      let inner = msg::FetchSourceFileRes::create(builder, &msg_args);
       Ok(serialize_response(
         cmd_id,
         builder,
         msg::BaseArgs {
           inner: Some(inner.as_union_value()),
-          inner_type: msg::Any::FetchModuleMetaDataRes,
+          inner_type: msg::Any::FetchSourceFileRes,
           ..Default::default()
         },
       ))
@@ -729,39 +709,38 @@ fn op_fetch(
 
   let req = msg_util::deserialize_request(header, body)?;
 
-  let url_ = url::Url::parse(url).map_err(DenoError::from)?;
+  let url_ = url::Url::parse(url).map_err(ErrBox::from)?;
   state.check_net_url(url_)?;
 
   let client = http_util::get_client();
 
   debug!("Before fetch {}", url);
-  let future =
-    client
-      .request(req)
-      .map_err(DenoError::from)
-      .and_then(move |res| {
-        let builder = &mut FlatBufferBuilder::new();
-        let header_off = msg_util::serialize_http_response(builder, &res);
-        let body = res.into_body();
-        let body_resource = resources::add_hyper_body(body);
-        let inner = msg::FetchRes::create(
-          builder,
-          &msg::FetchResArgs {
-            header: Some(header_off),
-            body_rid: body_resource.rid,
-          },
-        );
+  let future = client
+    .request(req)
+    .map_err(ErrBox::from)
+    .and_then(move |res| {
+      let builder = &mut FlatBufferBuilder::new();
+      let header_off = msg_util::serialize_http_response(builder, &res);
+      let body = res.into_body();
+      let body_resource = resources::add_hyper_body(body);
+      let inner = msg::FetchRes::create(
+        builder,
+        &msg::FetchResArgs {
+          header: Some(header_off),
+          body_rid: body_resource.rid,
+        },
+      );
 
-        Ok(serialize_response(
-          cmd_id,
-          builder,
-          msg::BaseArgs {
-            inner: Some(inner.as_union_value()),
-            inner_type: msg::Any::FetchRes,
-            ..Default::default()
-          },
-        ))
-      });
+      Ok(serialize_response(
+        cmd_id,
+        builder,
+        msg::BaseArgs {
+          inner: Some(inner.as_union_value()),
+          inner_type: msg::Any::FetchRes,
+          ..Default::default()
+        },
+      ))
+    });
   if base.sync() {
     let result_buf = future.wait()?;
     Ok(Op::Sync(result_buf))
@@ -772,9 +751,9 @@ fn op_fetch(
 
 // This is just type conversion. Implement From trait?
 // See https://github.com/tokio-rs/tokio/blob/ffd73a64e7ec497622b7f939e38017afe7124dc4/tokio-fs/src/lib.rs#L76-L85
-fn convert_blocking<F>(f: F) -> Poll<Buf, DenoError>
+fn convert_blocking<F>(f: F) -> Poll<Buf, ErrBox>
 where
-  F: FnOnce() -> DenoResult<Buf>,
+  F: FnOnce() -> Result<Buf, ErrBox>,
 {
   use futures::Async::*;
   match tokio_threadpool::blocking(f) {
@@ -787,7 +766,7 @@ where
 
 fn blocking<F>(is_sync: bool, f: F) -> CliOpResult
 where
-  F: 'static + Send + FnOnce() -> DenoResult<Buf>,
+  F: 'static + Send + FnOnce() -> Result<Buf, ErrBox>,
 {
   if is_sync {
     let result_buf = f()?;
@@ -854,7 +833,7 @@ fn op_mkdir(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_mkdir().unwrap();
-  let (path, path_) = resolve_from_cwd(inner.path().unwrap())?;
+  let (path, path_) = deno_fs::resolve_from_cwd(inner.path().unwrap())?;
   let recursive = inner.recursive();
   let mode = inner.mode();
 
@@ -875,7 +854,7 @@ fn op_chmod(
   assert!(data.is_none());
   let inner = base.inner_as_chmod().unwrap();
   let _mode = inner.mode();
-  let (path, path_) = resolve_from_cwd(inner.path().unwrap())?;
+  let (path, path_) = deno_fs::resolve_from_cwd(inner.path().unwrap())?;
 
   state.check_write(&path_)?;
 
@@ -923,7 +902,8 @@ fn op_open(
   assert!(data.is_none());
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_open().unwrap();
-  let (filename, filename_) = resolve_from_cwd(inner.filename().unwrap())?;
+  let (filename, filename_) =
+    deno_fs::resolve_from_cwd(inner.filename().unwrap())?;
   let mode = inner.mode().unwrap();
 
   let mut open_options = tokio::fs::OpenOptions::new();
@@ -975,10 +955,8 @@ fn op_open(
     }
   }
 
-  let op = open_options
-    .open(filename)
-    .map_err(DenoError::from)
-    .and_then(move |fs_file| {
+  let op = open_options.open(filename).map_err(ErrBox::from).and_then(
+    move |fs_file| {
       let resource = resources::add_fs_file(fs_file);
       let builder = &mut FlatBufferBuilder::new();
       let inner =
@@ -992,7 +970,8 @@ fn op_open(
           ..Default::default()
         },
       ))
-    });
+    },
+  );
   if base.sync() {
     let buf = op.wait()?;
     Ok(Op::Sync(buf))
@@ -1070,7 +1049,7 @@ fn op_read(
     None => Err(deno_error::bad_resource()),
     Some(resource) => {
       let op = tokio::io::read(resource, data.unwrap())
-        .map_err(DenoError::from)
+        .map_err(ErrBox::from)
         .and_then(move |(_resource, _buf, nread)| {
           let builder = &mut FlatBufferBuilder::new();
           let inner = msg::ReadRes::create(
@@ -1113,7 +1092,7 @@ fn op_write(
     None => Err(deno_error::bad_resource()),
     Some(resource) => {
       let op = tokio_write::write(resource, data.unwrap())
-        .map_err(DenoError::from)
+        .map_err(ErrBox::from)
         .and_then(move |(_resource, _buf, nwritten)| {
           let builder = &mut FlatBufferBuilder::new();
           let inner = msg::WriteRes::create(
@@ -1175,7 +1154,7 @@ fn op_remove(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_remove().unwrap();
-  let (path, path_) = resolve_from_cwd(inner.path().unwrap())?;
+  let (path, path_) = deno_fs::resolve_from_cwd(inner.path().unwrap())?;
   let recursive = inner.recursive();
 
   state.check_write(&path_)?;
@@ -1201,8 +1180,8 @@ fn op_copy_file(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_copy_file().unwrap();
-  let (from, from_) = resolve_from_cwd(inner.from().unwrap())?;
-  let (to, to_) = resolve_from_cwd(inner.to().unwrap())?;
+  let (from, from_) = deno_fs::resolve_from_cwd(inner.from().unwrap())?;
+  let (to, to_) = deno_fs::resolve_from_cwd(inner.to().unwrap())?;
 
   state.check_read(&from_)?;
   state.check_write(&to_)?;
@@ -1213,10 +1192,10 @@ fn op_copy_file(
     // See https://github.com/rust-lang/rust/issues/54800
     // Once the issue is reolved, we should remove this workaround.
     if cfg!(unix) && !from.is_file() {
-      return Err(deno_error::new(
-        ErrorKind::NotFound,
-        "File not found".to_string(),
-      ));
+      return Err(
+        DenoError::new(ErrorKind::NotFound, "File not found".to_string())
+          .into(),
+      );
     }
 
     fs::copy(&from, &to)?;
@@ -1276,7 +1255,8 @@ fn op_stat(
   assert!(data.is_none());
   let inner = base.inner_as_stat().unwrap();
   let cmd_id = base.cmd_id();
-  let (filename, filename_) = resolve_from_cwd(inner.filename().unwrap())?;
+  let (filename, filename_) =
+    deno_fs::resolve_from_cwd(inner.filename().unwrap())?;
   let lstat = inner.lstat();
 
   state.check_read(&filename_)?;
@@ -1325,7 +1305,7 @@ fn op_read_dir(
   assert!(data.is_none());
   let inner = base.inner_as_read_dir().unwrap();
   let cmd_id = base.cmd_id();
-  let (path, path_) = resolve_from_cwd(inner.path().unwrap())?;
+  let (path, path_) = deno_fs::resolve_from_cwd(inner.path().unwrap())?;
 
   state.check_read(&path_)?;
 
@@ -1381,8 +1361,9 @@ fn op_rename(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_rename().unwrap();
-  let (oldpath, _) = resolve_from_cwd(inner.oldpath().unwrap())?;
-  let (newpath, newpath_) = resolve_from_cwd(inner.newpath().unwrap())?;
+  let (oldpath, _) = deno_fs::resolve_from_cwd(inner.oldpath().unwrap())?;
+  let (newpath, newpath_) =
+    deno_fs::resolve_from_cwd(inner.newpath().unwrap())?;
 
   state.check_write(&newpath_)?;
 
@@ -1400,8 +1381,9 @@ fn op_link(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_link().unwrap();
-  let (oldname, _) = resolve_from_cwd(inner.oldname().unwrap())?;
-  let (newname, newname_) = resolve_from_cwd(inner.newname().unwrap())?;
+  let (oldname, _) = deno_fs::resolve_from_cwd(inner.oldname().unwrap())?;
+  let (newname, newname_) =
+    deno_fs::resolve_from_cwd(inner.newname().unwrap())?;
 
   state.check_write(&newname_)?;
 
@@ -1419,16 +1401,16 @@ fn op_symlink(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_symlink().unwrap();
-  let (oldname, _) = resolve_from_cwd(inner.oldname().unwrap())?;
-  let (newname, newname_) = resolve_from_cwd(inner.newname().unwrap())?;
+  let (oldname, _) = deno_fs::resolve_from_cwd(inner.oldname().unwrap())?;
+  let (newname, newname_) =
+    deno_fs::resolve_from_cwd(inner.newname().unwrap())?;
 
   state.check_write(&newname_)?;
   // TODO Use type for Windows.
   if cfg!(windows) {
-    return Err(deno_error::new(
-      ErrorKind::Other,
-      "Not implemented".to_string(),
-    ));
+    return Err(
+      DenoError::new(ErrorKind::Other, "Not implemented".to_string()).into(),
+    );
   }
   blocking(base.sync(), move || {
     debug!("op_symlink {} {}", oldname.display(), newname.display());
@@ -1446,7 +1428,7 @@ fn op_read_link(
   assert!(data.is_none());
   let inner = base.inner_as_readlink().unwrap();
   let cmd_id = base.cmd_id();
-  let (name, name_) = resolve_from_cwd(inner.name().unwrap())?;
+  let (name, name_) = deno_fs::resolve_from_cwd(inner.name().unwrap())?;
 
   state.check_read(&name_)?;
 
@@ -1548,7 +1530,7 @@ fn op_truncate(
   assert!(data.is_none());
 
   let inner = base.inner_as_truncate().unwrap();
-  let (filename, filename_) = resolve_from_cwd(inner.name().unwrap())?;
+  let (filename, filename_) = deno_fs::resolve_from_cwd(inner.name().unwrap())?;
   let len = inner.len();
 
   state.check_write(&filename_)?;
@@ -1615,7 +1597,7 @@ fn op_listen(
   ok_buf(response_buf)
 }
 
-fn new_conn(cmd_id: u32, tcp_stream: TcpStream) -> DenoResult<Buf> {
+fn new_conn(cmd_id: u32, tcp_stream: TcpStream) -> Result<Buf, ErrBox> {
   let tcp_stream_resource = resources::add_tcp_stream(tcp_stream);
   // TODO forward socket_addr to client.
 
@@ -1652,7 +1634,7 @@ fn op_accept(
     None => Err(deno_error::bad_resource()),
     Some(server_resource) => {
       let op = tokio_util::accept(server_resource)
-        .map_err(DenoError::from)
+        .map_err(ErrBox::from)
         .and_then(move |(tcp_stream, _socket_addr)| {
           new_conn(cmd_id, tcp_stream)
         });
@@ -1680,14 +1662,11 @@ fn op_dial(
 
   state.check_net(&address)?;
 
-  let op =
-    resolve_addr(address)
-      .map_err(DenoError::from)
-      .and_then(move |addr| {
-        TcpStream::connect(&addr)
-          .map_err(DenoError::from)
-          .and_then(move |tcp_stream| new_conn(cmd_id, tcp_stream))
-      });
+  let op = resolve_addr(address).and_then(move |addr| {
+    TcpStream::connect(&addr)
+      .map_err(ErrBox::from)
+      .and_then(move |tcp_stream| new_conn(cmd_id, tcp_stream))
+  });
   if base.sync() {
     let buf = op.wait()?;
     Ok(Op::Sync(buf))
@@ -1852,7 +1831,7 @@ fn op_run(
   }
 
   // Spawn the command.
-  let child = c.spawn_async().map_err(DenoError::from)?;
+  let child = c.spawn_async().map_err(ErrBox::from)?;
 
   let pid = child.id();
   let resources = resources::add_child(child);
@@ -1971,8 +1950,8 @@ fn op_worker_get_message(
   let op = GetMessageFuture {
     state: state.clone(),
   };
-  let op = op.map_err(move |_| -> DenoError { unimplemented!() });
-  let op = op.and_then(move |maybe_buf| -> DenoResult<Buf> {
+  let op = op.map_err(move |_| -> ErrBox { unimplemented!() });
+  let op = op.and_then(move |maybe_buf| -> Result<Buf, ErrBox> {
     debug!("op_worker_get_message");
     let builder = &mut FlatBufferBuilder::new();
 
@@ -2009,7 +1988,7 @@ fn op_worker_post_message(
   };
   tx.send(d)
     .wait()
-    .map_err(|e| deno_error::new(ErrorKind::Other, e.to_string()))?;
+    .map_err(|e| DenoError::new(ErrorKind::Other, e.to_string()))?;
   let builder = &mut FlatBufferBuilder::new();
 
   ok_buf(serialize_response(
@@ -2045,10 +2024,10 @@ fn op_create_worker(
 
   let mut worker =
     Worker::new(name, startup_data::deno_isolate_init(), child_state);
-  err_check(worker.execute("denoMain()"));
-  err_check(worker.execute("workerMain()"));
+  worker.execute("denoMain()").unwrap();
+  worker.execute("workerMain()").unwrap();
 
-  let module_specifier = ModuleSpecifier::resolve_root(specifier)?;
+  let module_specifier = ModuleSpecifier::resolve_url_or_path(specifier)?;
 
   let op =
     worker
@@ -2126,8 +2105,8 @@ fn op_host_get_message(
   let rid = inner.rid();
 
   let op = resources::get_message_from_worker(rid);
-  let op = op.map_err(move |_| -> DenoError { unimplemented!() });
-  let op = op.and_then(move |maybe_buf| -> DenoResult<Buf> {
+  let op = op.map_err(move |_| -> ErrBox { unimplemented!() });
+  let op = op.and_then(move |maybe_buf| -> Result<Buf, ErrBox> {
     let builder = &mut FlatBufferBuilder::new();
 
     let data = maybe_buf.as_ref().map(|buf| builder.create_vector(buf));
@@ -2162,7 +2141,7 @@ fn op_host_post_message(
 
   resources::post_message_to_worker(rid, d)
     .wait()
-    .map_err(|e| deno_error::new(ErrorKind::Other, e.to_string()))?;
+    .map_err(|e| DenoError::new(ErrorKind::Other, e.to_string()))?;
   let builder = &mut FlatBufferBuilder::new();
 
   ok_buf(serialize_response(

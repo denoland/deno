@@ -1,10 +1,10 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import {
+  EOF,
   Reader,
   Writer,
   Seeker,
   Closer,
-  ReadResult,
   SeekMode,
   SyncReader,
   SyncWriter,
@@ -71,47 +71,50 @@ function reqRead(
   return [builder, msg.Any.Read, inner, p];
 }
 
-function resRead(baseRes: null | msg.Base): ReadResult {
+function resRead(baseRes: null | msg.Base): number | EOF {
   assert(baseRes != null);
   assert(msg.Any.ReadRes === baseRes!.innerType());
   const res = new msg.ReadRes();
   assert(baseRes!.inner(res) != null);
-  return { nread: res.nread(), eof: res.eof() };
+  if (res.eof()) {
+    return EOF;
+  }
+  return res.nread();
 }
 
 /** Read synchronously from a file ID into an array buffer.
  *
- * Return `ReadResult` for the operation.
+ * Return `number | EOF` for the operation.
  *
  *      const file = Deno.openSync("/foo/bar.txt");
  *      const buf = new Uint8Array(100);
- *      const { nread, eof } = Deno.readSync(file.rid, buf);
+ *      const nread = Deno.readSync(file.rid, buf);
  *      const text = new TextDecoder().decode(buf);
  *
  */
-export function readSync(rid: number, p: Uint8Array): ReadResult {
+export function readSync(rid: number, p: Uint8Array): number | EOF {
   return resRead(dispatch.sendSync(...reqRead(rid, p)));
 }
 
 /** Read from a file ID into an array buffer.
  *
- * Resolves with the `ReadResult` for the operation.
+ * Resolves with the `number | EOF` for the operation.
  *
  *       (async () => {
  *         const file = await Deno.open("/foo/bar.txt");
  *         const buf = new Uint8Array(100);
- *         const { nread, eof } = await Deno.read(file.rid, buf);
+ *         const nread = await Deno.read(file.rid, buf);
  *         const text = new TextDecoder().decode(buf);
  *       })();
  */
-export async function read(rid: number, p: Uint8Array): Promise<ReadResult> {
+export async function read(rid: number, p: Uint8Array): Promise<number | EOF> {
   const nread = await sendAsyncMinimal(OP_READ, rid, p);
   if (nread < 0) {
     throw new Error("read error");
   } else if (nread == 0) {
-    return { nread, eof: true };
+    return EOF;
   } else {
-    return { nread, eof: false };
+    return nread;
   }
 }
 
@@ -227,11 +230,11 @@ export class File
     return writeSync(this.rid, p);
   }
 
-  read(p: Uint8Array): Promise<ReadResult> {
+  read(p: Uint8Array): Promise<number | EOF> {
     return read(this.rid, p);
   }
 
-  readSync(p: Uint8Array): ReadResult {
+  readSync(p: Uint8Array): number | EOF {
     return readSync(this.rid, p);
   }
 

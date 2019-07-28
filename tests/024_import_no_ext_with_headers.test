@@ -1,2 +1,3 @@
-args: run --reload tests/024_import_no_ext_with_headers.ts
-output: tests/024_import_no_ext_with_headers.ts.out
+# FIXME(bartlomieju): this test should use remote file
+# args: run --reload tests/024_import_no_ext_with_headers.ts
+# output: tests/024_import_no_ext_with_headers.ts.out

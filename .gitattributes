@@ -3,7 +3,7 @@
 *.png -text
 
 # Tell git which symlinks point to files, and which ones point to directories.
-# This is revelevant for Windows only, and requires git >= 2.19.2 to work.
+# This is relevant for Windows only, and requires git >= 2.19.2 to work.
 /* symlink=dir
 /website/* symlink=dir
 /tools/clang symlink=dir

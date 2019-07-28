@@ -4,6 +4,7 @@ extern crate log;
 extern crate futures;
 extern crate libc;
 
+mod any_error;
 mod flags;
 mod isolate;
 mod js_errors;
@@ -12,12 +13,13 @@ mod module_specifier;
 mod modules;
 mod shared_queue;
 
+pub use crate::any_error::*;
 pub use crate::flags::v8_set_flags;
 pub use crate::isolate::*;
 pub use crate::js_errors::*;
 pub use crate::libdeno::deno_mod;
 pub use crate::libdeno::PinnedBuf;
-pub use crate::module_specifier::ModuleSpecifier;
+pub use crate::module_specifier::*;
 pub use crate::modules::*;
 
 pub fn v8_version() -> &'static str {

@@ -38,6 +38,12 @@ class TestRepl(DenoTestCase):
         self.assertEqual(err, '')
         self.assertEqual(code, 0)
 
+    def test_eof(self):
+        out, err, code = self.input("1 + 2", exit=False)
+        self.assertEqual(out, '3\n')
+        self.assertEqual(err, '')
+        self.assertEqual(code, 0)
+
     def test_exit_command(self):
         out, err, code = self.input("exit", "'ignored'", exit=False)
         self.assertEqual(out, '')

@@ -55,7 +55,12 @@ class TestIntegrations(DenoTestCase):
         test_abs = os.path.join(tests_path, test_filename)
         test = read_test(test_abs)
         exit_code = int(test.get("exit_code", 0))
-        args = test.get("args", "").split(" ")
+        args = test.get("args", None)
+
+        if not args:
+            return
+
+        args = args.split(" ")
         check_stderr = str2bool(test.get("check_stderr", "false"))
         stderr = subprocess.STDOUT if check_stderr else open(os.devnull, 'w')
         stdin_input = (test.get("input",
@@ -87,12 +92,12 @@ class TestIntegrations(DenoTestCase):
             actual_code = e.returncode
             actual_out = e.output
 
-        self.assertEqual(exit_code, actual_code)
-
         actual_out = strip_ansi_codes(actual_out)
         if not pattern_match(expected_out, actual_out):
             # This will always throw since pattern_match failed.
             self.assertEqual(expected_out, actual_out)
+
+        self.assertEqual(exit_code, actual_code)
 
 
 # Add a methods for each test file in tests_path.

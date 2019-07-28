@@ -1,12 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use rustyline;
-
-use crate::msg::ErrorKind;
-use std::error::Error;
-
 use crate::deno_dir::DenoDir;
-use crate::deno_error::new as deno_error;
-use crate::deno_error::DenoResult;
+use deno::ErrBox;
+use rustyline;
 use std::path::PathBuf;
 
 #[cfg(not(windows))]
@@ -78,25 +73,25 @@ impl Repl {
       .unwrap_or(())
   }
 
-  fn save_history(&mut self) -> DenoResult<()> {
+  fn save_history(&mut self) -> Result<(), ErrBox> {
     self
       .editor
       .save_history(&self.history_file.to_str().unwrap())
       .map(|_| debug!("Saved REPL history to: {:?}", self.history_file))
       .map_err(|e| {
         eprintln!("Unable to save REPL history: {:?} {}", self.history_file, e);
-        deno_error(ErrorKind::Other, e.description().to_string())
+        ErrBox::from(e)
       })
   }
 
-  pub fn readline(&mut self, prompt: &str) -> DenoResult<String> {
+  pub fn readline(&mut self, prompt: &str) -> Result<String, ErrBox> {
     self
       .editor
       .readline(&prompt)
       .map(|line| {
         self.editor.add_history_entry(line.clone());
         line
-      }).map_err(|e| deno_error(ErrorKind::Other, e.description().to_string()))
+      }).map_err(ErrBox::from)
     // Forward error to TS side for processing
   }
 }

@@ -9,8 +9,10 @@
 //   console.log(err.stack);
 // It would require calling into Rust from Error.prototype.prepareStackTrace.
 
+use crate::any_error::ErrBox;
 use serde_json;
 use serde_json::value::Value;
+use std::error::Error;
 use std::fmt;
 use std::str;
 
@@ -26,7 +28,7 @@ pub struct StackFrame {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct JSError {
+pub struct V8Exception {
   pub message: String,
 
   pub source_line: Option<String>,
@@ -41,77 +43,8 @@ pub struct JSError {
   pub frames: Vec<StackFrame>,
 }
 
-impl std::error::Error for JSError {
-  fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-    None
-  }
-}
-
-impl fmt::Display for StackFrame {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    // Note when we print to string, we change from 0-indexed to 1-indexed.
-    let function_name = self.function_name.clone();
-    let script_line_column =
-      format_script_line_column(&self.script_name, self.line, self.column);
-
-    if !self.function_name.is_empty() {
-      write!(f, "    at {} ({})", function_name, script_line_column)
-    } else if self.is_eval {
-      write!(f, "    at eval ({})", script_line_column)
-    } else {
-      write!(f, "    at {}", script_line_column)
-    }
-  }
-}
-
-fn format_script_line_column(
-  script_name: &str,
-  line: i64,
-  column: i64,
-) -> String {
-  // TODO match this style with how typescript displays errors.
-  let line = (1 + line).to_string();
-  let column = (1 + column).to_string();
-  let script_name = script_name.to_string();
-  format!("{}:{}:{}", script_name, line, column)
-}
-
-impl fmt::Display for JSError {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    if self.script_resource_name.is_some() {
-      let script_resource_name = self.script_resource_name.as_ref().unwrap();
-      if self.line_number.is_some() && self.start_column.is_some() {
-        assert!(self.line_number.is_some());
-        assert!(self.start_column.is_some());
-        let script_line_column = format_script_line_column(
-          script_resource_name,
-          self.line_number.unwrap() - 1,
-          self.start_column.unwrap() - 1,
-        );
-        write!(f, "{}", script_line_column)?;
-      }
-      if self.source_line.is_some() {
-        write!(f, "\n{}\n", self.source_line.as_ref().unwrap())?;
-        let mut s = String::new();
-        for i in 0..self.end_column.unwrap() {
-          if i >= self.start_column.unwrap() {
-            s.push('^');
-          } else {
-            s.push(' ');
-          }
-        }
-        writeln!(f, "{}", s)?;
-      }
-    }
-
-    write!(f, "{}", self.message.clone())?;
-
-    for frame in &self.frames {
-      write!(f, "\n{}", &frame.to_string())?;
-    }
-    Ok(())
-  }
-}
+#[derive(Debug, PartialEq, Clone)]
+pub struct CoreJSError(V8Exception);
 
 impl StackFrame {
   // TODO Maybe use serde_derive?
@@ -186,9 +119,9 @@ impl StackFrame {
   }
 }
 
-impl JSError {
-  /// Creates a new JSError by parsing the raw exception JSON string from V8.
-  pub fn from_v8_exception(json_str: &str) -> Option<Self> {
+impl V8Exception {
+  /// Creates a new V8Exception by parsing the raw exception JSON string from V8.
+  pub fn from_json(json_str: &str) -> Option<Self> {
     let v = serde_json::from_str::<serde_json::Value>(json_str);
     if v.is_err() {
       return None;
@@ -236,7 +169,7 @@ impl JSError {
       }
     }
 
-    Some(JSError {
+    Some(V8Exception {
       message,
       source_line,
       script_resource_name,
@@ -251,12 +184,79 @@ impl JSError {
   }
 }
 
+impl CoreJSError {
+  pub fn from_v8_exception(v8_exception: V8Exception) -> ErrBox {
+    let error = Self(v8_exception);
+    ErrBox::from(error)
+  }
+}
+
+fn format_source_loc(script_name: &str, line: i64, column: i64) -> String {
+  // TODO match this style with how typescript displays errors.
+  let line = line + 1;
+  let column = column + 1;
+  format!("{}:{}:{}", script_name, line, column)
+}
+
+fn format_stack_frame(frame: &StackFrame) -> String {
+  // Note when we print to string, we change from 0-indexed to 1-indexed.
+  let source_loc =
+    format_source_loc(&frame.script_name, frame.line, frame.column);
+
+  if !frame.function_name.is_empty() {
+    format!("    at {} ({})", frame.function_name, source_loc)
+  } else if frame.is_eval {
+    format!("    at eval ({})", source_loc)
+  } else {
+    format!("    at {}", source_loc)
+  }
+}
+
+impl fmt::Display for CoreJSError {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    if self.0.script_resource_name.is_some() {
+      let script_resource_name = self.0.script_resource_name.as_ref().unwrap();
+      if self.0.line_number.is_some() && self.0.start_column.is_some() {
+        assert!(self.0.line_number.is_some());
+        assert!(self.0.start_column.is_some());
+        let source_loc = format_source_loc(
+          script_resource_name,
+          self.0.line_number.unwrap() - 1,
+          self.0.start_column.unwrap() - 1,
+        );
+        write!(f, "{}", source_loc)?;
+      }
+      if self.0.source_line.is_some() {
+        write!(f, "\n{}\n", self.0.source_line.as_ref().unwrap())?;
+        let mut s = String::new();
+        for i in 0..self.0.end_column.unwrap() {
+          if i >= self.0.start_column.unwrap() {
+            s.push('^');
+          } else {
+            s.push(' ');
+          }
+        }
+        writeln!(f, "{}", s)?;
+      }
+    }
+
+    write!(f, "{}", self.0.message)?;
+
+    for frame in &self.0.frames {
+      write!(f, "\n{}", format_stack_frame(frame))?;
+    }
+    Ok(())
+  }
+}
+
+impl Error for CoreJSError {}
+
 #[cfg(test)]
 mod tests {
   use super::*;
 
-  fn error1() -> JSError {
-    JSError {
+  fn error1() -> V8Exception {
+    V8Exception {
       message: "Error: foo bar".to_string(),
       source_line: None,
       script_resource_name: None,
@@ -344,8 +344,8 @@ mod tests {
   }
 
   #[test]
-  fn js_error_from_v8_exception() {
-    let r = JSError::from_v8_exception(
+  fn v8_exception_from_json() {
+    let r = V8Exception::from_json(
       r#"{
         "message":"Uncaught Error: bad",
         "frames":[
@@ -387,8 +387,8 @@ mod tests {
   }
 
   #[test]
-  fn js_error_from_v8_exception2() {
-    let r = JSError::from_v8_exception(
+  fn v8_exception_from_json_2() {
+    let r = V8Exception::from_json(
       "{\"message\":\"Error: boo\",\"sourceLine\":\"throw Error('boo');\",\"scriptResourceName\":\"a.js\",\"lineNumber\":3,\"startPosition\":8,\"endPosition\":9,\"errorLevel\":8,\"startColumn\":6,\"endColumn\":7,\"isSharedCrossOrigin\":false,\"isOpaque\":false,\"frames\":[{\"line\":3,\"column\":7,\"functionName\":\"\",\"scriptName\":\"a.js\",\"isEval\":false,\"isConstructor\":false,\"isWasm\":false}]}"
     );
     assert!(r.is_some());
@@ -406,15 +406,8 @@ mod tests {
   }
 
   #[test]
-  fn stack_frame_to_string() {
-    let e = error1();
-    assert_eq!("    at foo (foo_bar.ts:5:17)", &e.frames[0].to_string());
-    assert_eq!("    at qat (bar_baz.ts:6:21)", &e.frames[1].to_string());
-  }
-
-  #[test]
   fn js_error_to_string() {
-    let e = error1();
+    let e = CoreJSError(error1());
     let expected = "Error: foo bar\n    at foo (foo_bar.ts:5:17)\n    at qat (bar_baz.ts:6:21)\n    at deno_main.js:2:2";
     assert_eq!(expected, &e.to_string());
   }

@@ -48,6 +48,7 @@ default_args = {
   v8_deprecation_warnings = false
   v8_enable_gdbjit = false
   v8_enable_i18n_support = false
+  v8_enable_shared_ro_heap = false  # See #2624
   v8_experimental_extra_library_files = []
   v8_extra_library_files = []
   v8_imminent_deprecation_warnings = false

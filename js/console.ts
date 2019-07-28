@@ -502,6 +502,14 @@ export class Console {
     this.indentLevel = 0;
     this.collapsedAt = null;
     this[isConsoleInstance] = true;
+
+    // ref https://console.spec.whatwg.org/#console-namespace
+    // For historical web-compatibility reasons, the namespace object for
+    // console must have as its [[Prototype]] an empty object, created as if
+    // by ObjectCreate(%ObjectPrototype%), instead of %ObjectPrototype%.
+    let console = Object.create({}) as Console;
+    Object.assign(console, this);
+    return console;
   }
 
   /** Writes the arguments to stdout */

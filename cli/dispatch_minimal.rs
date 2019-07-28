@@ -127,10 +127,11 @@ mod ops {
   use crate::deno_error;
   use crate::resources;
   use crate::tokio_write;
+  use deno::ErrBox;
   use deno::PinnedBuf;
   use futures::Future;
 
-  type MinimalOp = dyn Future<Item = i32, Error = deno_error::DenoError> + Send;
+  type MinimalOp = dyn Future<Item = i32, Error = ErrBox> + Send;
 
   pub fn read(rid: i32, zero_copy: Option<PinnedBuf>) -> Box<MinimalOp> {
     debug!("read rid={}", rid);
@@ -144,7 +145,7 @@ mod ops {
       None => Box::new(futures::future::err(deno_error::bad_resource())),
       Some(resource) => Box::new(
         tokio::io::read(resource, zero_copy)
-          .map_err(deno_error::DenoError::from)
+          .map_err(ErrBox::from)
           .and_then(move |(_resource, _buf, nread)| Ok(nread as i32)),
       ),
     }
@@ -162,7 +163,7 @@ mod ops {
       None => Box::new(futures::future::err(deno_error::bad_resource())),
       Some(resource) => Box::new(
         tokio_write::write(resource, zero_copy)
-          .map_err(deno_error::DenoError::from)
+          .map_err(ErrBox::from)
           .and_then(move |(_resource, _buf, nwritten)| Ok(nwritten as i32)),
       ),
     }

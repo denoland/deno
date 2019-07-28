@@ -90,9 +90,12 @@ v8::Local<v8::Object> EncodeMessageAsObject(v8::Local<v8::Context> context,
       auto column = v8::Integer::New(isolate, frame->GetColumn());
       CHECK(frame_obj->Set(context, v8_str("line"), line).FromJust());
       CHECK(frame_obj->Set(context, v8_str("column"), column).FromJust());
-      CHECK(frame_obj
-                ->Set(context, v8_str("functionName"), frame->GetFunctionName())
-                .FromJust());
+
+      auto function_name = frame->GetFunctionName();
+      if (!function_name.IsEmpty()) {
+        CHECK(frame_obj->Set(context, v8_str("functionName"), function_name)
+                  .FromJust());
+      }
       // scriptName can be empty in special conditions e.g. eval
       auto scriptName = frame->GetScriptNameOrSourceURL();
       if (scriptName.IsEmpty()) {
@@ -197,6 +200,7 @@ void HandleException(v8::Local<v8::Context> context,
   std::string json_str = EncodeExceptionAsJSON(context, exception);
   CHECK_NOT_NULL(d);
   d->last_exception_ = json_str;
+  d->last_exception_handle_.Reset(isolate, exception);
 }
 
 void HandleExceptionMessage(v8::Local<v8::Context> context,
@@ -213,6 +217,15 @@ void HandleExceptionMessage(v8::Local<v8::Context> context,
   std::string json_str = EncodeMessageAsJSON(context, message);
   CHECK_NOT_NULL(d);
   d->last_exception_ = json_str;
+}
+
+void ClearException(v8::Local<v8::Context> context) {
+  v8::Isolate* isolate = context->GetIsolate();
+  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
+  CHECK_NOT_NULL(d);
+
+  d->last_exception_.clear();
+  d->last_exception_handle_.Reset();
 }
 
 void ThrowInvalidArgument(v8::Isolate* isolate) {

@@ -7,6 +7,8 @@ import sys
 import os
 import re
 
+env = os.environ.copy()
+
 if sys.platform == 'win32':
     # On Windows, when gn is setting up the build toolchain, it produces a set
     # of environment variables that are required to invoke the right build
@@ -15,10 +17,9 @@ if sys.platform == 'win32':
     # The file is in 'windows environment block' format, which contains
     # multiple 'key=value' pairs, separated by '\0' bytes, and terminated by
     # two '\0' bytes at the end.
-    env_pairs = open("environment.x64").read()[:-2].split('\0')
-    env = dict([pair.split('=', 1) for pair in env_pairs])
-else:
-    env = os.environ.copy()
+    gn_env_pairs = open("environment.x64").read()[:-2].split('\0')
+    gn_env = dict([pair.split('=', 1) for pair in gn_env_pairs])
+    env.update(gn_env)
 
 # This is for src/msg.rs to know where to find msg_generated.rs.
 # When building with Cargo this variable is set by build.rs.

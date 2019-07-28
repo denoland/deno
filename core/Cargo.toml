@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "0.10.0"
+version = "0.12.0"
 edition = "2018"
 description = "A secure JavaScript/TypeScript runtime built with V8, Rust, and Tokio"
 authors = ["The deno authors <bertbelder@nodejs.org>"]
@@ -12,6 +12,10 @@ repository = "https://github.com/denoland/deno"
 
 [lib]
 path = "lib.rs"
+
+[[bin]]
+name = "snapshot_creator"
+path = "snapshot_creator.rs"
 
 [dependencies]
 futures = "0.1.27"

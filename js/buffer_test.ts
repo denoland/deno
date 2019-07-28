@@ -5,7 +5,7 @@
 // https://github.com/golang/go/blob/master/LICENSE
 import { assertEquals, test } from "./test_util.ts";
 
-const { Buffer, readAll, readAllSync } = Deno;
+const { Buffer, readAll, readAllSync, writeAll, writeAllSync } = Deno;
 type Buffer = Deno.Buffer;
 
 // N controls how many iterations of certain checks are performed.
@@ -60,10 +60,10 @@ async function empty(buf: Buffer, s: string, fub: Uint8Array): Promise<void> {
   check(buf, s);
   while (true) {
     const r = await buf.read(fub);
-    if (r.nread == 0) {
+    if (r === Deno.EOF) {
       break;
     }
-    s = s.slice(r.nread);
+    s = s.slice(r);
     check(buf, s);
   }
   check(buf, "");
@@ -126,8 +126,7 @@ test(async function bufferReadEmptyAtEOF(): Promise<void> {
   let buf = new Buffer();
   const zeroLengthTmp = new Uint8Array(0);
   let result = await buf.read(zeroLengthTmp);
-  assertEquals(result.nread, 0);
-  assertEquals(result.eof, false);
+  assertEquals(result, 0);
 });
 
 test(async function bufferLargeByteWrites(): Promise<void> {
@@ -217,7 +216,8 @@ test(async function bufferTestGrow(): Promise<void> {
     for (let growLen of [0, 100, 1000, 10000, 100000]) {
       const buf = new Buffer(xBytes.buffer as ArrayBuffer);
       // If we read, this affects buf.off, which is good to test.
-      const { nread } = await buf.read(tmp);
+      const result = await buf.read(tmp);
+      const nread = result === Deno.EOF ? 0 : result;
       buf.grow(growLen);
       const yBytes = repeat("y", growLen);
       await buf.write(yBytes);
@@ -248,6 +248,28 @@ test(function testReadAllSync(): void {
   init();
   const reader = new Buffer(testBytes.buffer as ArrayBuffer);
   const actualBytes = readAllSync(reader);
+  assertEquals(testBytes.byteLength, actualBytes.byteLength);
+  for (let i = 0; i < testBytes.length; ++i) {
+    assertEquals(testBytes[i], actualBytes[i]);
+  }
+});
+
+test(async function testWriteAll(): Promise<void> {
+  init();
+  const writer = new Buffer();
+  await writeAll(writer, testBytes);
+  const actualBytes = writer.bytes();
+  assertEquals(testBytes.byteLength, actualBytes.byteLength);
+  for (let i = 0; i < testBytes.length; ++i) {
+    assertEquals(testBytes[i], actualBytes[i]);
+  }
+});
+
+test(function testWriteAllSync(): void {
+  init();
+  const writer = new Buffer();
+  writeAllSync(writer, testBytes);
+  const actualBytes = writer.bytes();
   assertEquals(testBytes.byteLength, actualBytes.byteLength);
   for (let i = 0; i < testBytes.length; ++i) {
     assertEquals(testBytes[i], actualBytes[i]);

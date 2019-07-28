@@ -1,21 +1,9 @@
-import { Buffer } from "./buffer";
+import { Buffer, writeAll } from "./buffer";
 import { stdin } from "./files";
 import { TextEncoder, TextDecoder } from "./text_encoding";
-import { Reader } from "./io";
+import { Reader, EOF } from "./io";
 
 export type XevalFunc = (v: string) => void;
-
-async function writeAll(buffer: Buffer, arr: Uint8Array): Promise<void> {
-  let bytesWritten = 0;
-  while (bytesWritten < arr.length) {
-    try {
-      const nwritten = await buffer.write(arr.subarray(bytesWritten));
-      bytesWritten += nwritten;
-    } catch {
-      return;
-    }
-  }
-}
 
 // TODO(kevinkassimo): Move this utility to deno_std.
 // Import from there once doable.
@@ -35,12 +23,13 @@ async function* chunks(
   // Record how far we have gone with delimiter matching.
   let nextMatchIndex = 0;
   while (true) {
-    const rr = await reader.read(inspectArr);
-    if (rr.nread < 0) {
+    let result = await reader.read(inspectArr);
+    let rr = result === EOF ? 0 : result;
+    if (rr < 0) {
       // Silently fail.
       break;
     }
-    const sliceRead = inspectArr.subarray(0, rr.nread);
+    const sliceRead = inspectArr.subarray(0, rr);
     // Remember how far we have scanned through inspectArr.
     let nextSliceStartIndex = 0;
     for (let i = 0; i < sliceRead.length; i++) {
@@ -74,7 +63,7 @@ async function* chunks(
     }
     // Write all unprocessed chunk to buffer for future inspection.
     await writeAll(inputBuffer, sliceRead.subarray(nextSliceStartIndex));
-    if (rr.eof) {
+    if (result === EOF) {
       // Flush the remainder unprocessed chunk.
       const lastChunk = inputBuffer.toString();
       yield lastChunk;

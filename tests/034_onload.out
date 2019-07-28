@@ -1,0 +1,7 @@
+log from nest_imported script
+log from imported script
+log from main
+got load event in onload function
+got load event in event handler (nest_imported)
+got load event in event handler (imported)
+got load event in event handler (main)

@@ -51,24 +51,17 @@ window.window = window;
 immutableDefine(window, "Deno", deno);
 Object.freeze(window.Deno);
 
-// ref https://console.spec.whatwg.org/#console-namespace
-// For historical web-compatibility reasons, the namespace object for
-// console must have as its [[Prototype]] an empty object, created as if
-// by ObjectCreate(%ObjectPrototype%), instead of %ObjectPrototype%.
-let console = Object.create({}) as consoleTypes.Console;
-Object.assign(console, new consoleTypes.Console(core.print));
-console[consoleTypes.isConsoleInstance] = true;
-
 // Globally available functions and object instances.
 window.atob = textEncoding.atob;
 window.btoa = textEncoding.btoa;
 window.fetch = fetchTypes.fetch;
 window.clearTimeout = timers.clearTimeout;
 window.clearInterval = timers.clearInterval;
-window.console = console;
+window.console = new consoleTypes.Console(core.print);
 window.setTimeout = timers.setTimeout;
 window.setInterval = timers.setInterval;
 window.location = (undefined as unknown) as domTypes.Location;
+window.onload = undefined as undefined | Function;
 // The following Crypto interface implementation is not up to par with the
 // standard https://www.w3.org/TR/WebCryptoAPI/#crypto-interface as it does not
 // yet incorporate the SubtleCrypto interface as its "subtle" property.
@@ -134,6 +127,28 @@ window.postMessage = workers.postMessage;
 
 window.Worker = workers.WorkerImpl;
 export type Worker = workers.Worker;
+
+window[domTypes.eventTargetHost] = null;
+window[domTypes.eventTargetListeners] = {};
+window[domTypes.eventTargetMode] = "";
+window[domTypes.eventTargetNodeType] = 0;
+window[eventTarget.eventTargetAssignedSlot] = false;
+window[eventTarget.eventTargetHasActivationBehavior] = false;
+window.addEventListener = eventTarget.EventTarget.prototype.addEventListener;
+window.dispatchEvent = eventTarget.EventTarget.prototype.dispatchEvent;
+window.removeEventListener =
+  eventTarget.EventTarget.prototype.removeEventListener;
+
+// Registers the handler for window.onload function.
+window.addEventListener(
+  "load",
+  (e: domTypes.Event): void => {
+    const onload = window.onload;
+    if (typeof onload === "function") {
+      onload(e);
+    }
+  }
+);
 
 // below are interfaces that are available in TypeScript but
 // have different signatures

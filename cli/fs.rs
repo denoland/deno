@@ -5,8 +5,10 @@ use std::io::ErrorKind;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use deno::ErrBox;
 use rand;
 use rand::Rng;
+use url::Url;
 
 #[cfg(unix)]
 use nix::unistd::{chown as unix_chown, Gid, Uid};
@@ -14,8 +16,6 @@ use nix::unistd::{chown as unix_chown, Gid, Uid};
 use std::os::unix::fs::DirBuilderExt;
 #[cfg(any(unix))]
 use std::os::unix::fs::PermissionsExt;
-
-use crate::deno_error::DenoResult;
 
 pub fn write_file<T: AsRef<[u8]>>(
   filename: &Path,
@@ -114,18 +114,44 @@ pub fn normalize_path(path: &Path) -> String {
 }
 
 #[cfg(unix)]
-pub fn chown(path: &str, uid: u32, gid: u32) -> DenoResult<()> {
-  use crate::deno_error::DenoError;
+pub fn chown(path: &str, uid: u32, gid: u32) -> Result<(), ErrBox> {
   let nix_uid = Uid::from_raw(uid);
   let nix_gid = Gid::from_raw(gid);
   unix_chown(path, Option::Some(nix_uid), Option::Some(nix_gid))
-    .map_err(DenoError::from)
+    .map_err(ErrBox::from)
 }
 
 #[cfg(not(unix))]
-pub fn chown(_path: &str, _uid: u32, _gid: u32) -> DenoResult<()> {
+pub fn chown(_path: &str, _uid: u32, _gid: u32) -> Result<(), ErrBox> {
   // Noop
   // TODO: implement chown for Windows
-  use crate::deno_error;
-  Err(deno_error::op_not_implemented())
+  Err(crate::deno_error::op_not_implemented())
+}
+
+pub fn resolve_from_cwd(path: &str) -> Result<(PathBuf, String), ErrBox> {
+  let candidate_path = Path::new(path);
+
+  let resolved_path = if candidate_path.is_absolute() {
+    candidate_path.to_owned()
+  } else {
+    let cwd = std::env::current_dir().unwrap();
+    cwd.join(path)
+  };
+
+  // HACK: `Url::from_directory_path` is used here because it normalizes the path.
+  // Joining `/dev/deno/" with "./tests" using `PathBuf` yields `/deno/dev/./tests/`.
+  // On the other hand joining `/dev/deno/" with "./tests" using `Url` yields "/dev/deno/tests"
+  // - and that's what we want.
+  // There exists similar method on `PathBuf` - `PathBuf.canonicalize`, but the problem
+  // is `canonicalize` resolves symlinks and we don't want that.
+  // We just want o normalize the path...
+  let resolved_url = Url::from_file_path(resolved_path)
+    .expect("PathBuf should be parseable URL");
+  let normalized_path = resolved_url
+    .to_file_path()
+    .expect("URL from PathBuf should be valid path");
+
+  let path_string = normalized_path.to_str().unwrap().to_string();
+
+  Ok((normalized_path, path_string))
 }

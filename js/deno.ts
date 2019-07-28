@@ -20,9 +20,9 @@ export {
   OpenMode
 } from "./files";
 export {
+  EOF,
   copy,
   toAsyncIterator,
-  ReadResult,
   SeekMode,
   Reader,
   SyncReader,
@@ -38,7 +38,7 @@ export {
   ReadWriteCloser,
   ReadWriteSeeker
 } from "./io";
-export { Buffer, readAll, readAllSync } from "./buffer";
+export { Buffer, readAll, readAllSync, writeAll, writeAllSync } from "./buffer";
 export { mkdirSync, mkdir } from "./mkdir";
 export {
   makeTempDirSync,
