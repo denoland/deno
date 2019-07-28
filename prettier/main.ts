@@ -1,4 +1,4 @@
-#!/usr/bin/env deno --allow-run --allow-write
+#!/usr/bin/env -S deno --allow-run --allow-write
 /**
  * Copyright © James Long and contributors
  *

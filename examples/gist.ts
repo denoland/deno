@@ -1,4 +1,4 @@
-#!/usr/bin/env deno --allow-net --allow-env
+#!/usr/bin/env -S deno --allow-net --allow-env
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
 const { args, env, exit, readFile } = Deno;

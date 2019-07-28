@@ -6,7 +6,7 @@ import {
   assertStrictEq,
   assertThrows,
   assertThrowsAsync
-} from "../testing/asserts.ts";
+} from "./asserts.ts";
 import "./format_test.ts";
 import "./diff_test.ts";
 import "./pretty_test.ts";
