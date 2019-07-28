@@ -7,7 +7,6 @@ use crate::deno_error::ErrorKind;
 use crate::deno_error::GetErrorKind;
 use crate::dispatch_minimal::dispatch_minimal;
 use crate::dispatch_minimal::parse_min_record;
-use crate::file_fetcher::SourceFileFetcher;
 use crate::fmt_errors::JSError;
 use crate::fs as deno_fs;
 use crate::http_util;

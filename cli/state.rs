@@ -1,7 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::compiler::TsCompiler;
 use crate::deno_dir;
-use crate::file_fetcher::FileFetcher;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags;
@@ -77,7 +76,7 @@ pub struct State {
   pub progress: Progress,
   pub seeded_rng: Option<Mutex<StdRng>>,
 
-  pub file_fetcher: FileFetcher,
+  pub file_fetcher: SourceFileFetcher,
   pub ts_compiler: TsCompiler,
 }
 
@@ -182,7 +181,7 @@ impl ThreadSafeState {
 
     let dir = deno_dir::DenoDir::new(custom_root).unwrap();
 
-    let file_fetcher = FileFetcher::new(
+    let file_fetcher = SourceFileFetcher::new(
       dir.register_cache("deps").unwrap(),
       progress.clone(),
       !flags.reload,

@@ -1,7 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::diagnostics::Diagnostic;
 use crate::disk_cache::DiskCache;
-use crate::file_fetcher::FileFetcher;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::msg;
@@ -160,7 +159,7 @@ fn load_config_file(
 }
 
 pub struct TsCompiler {
-  pub file_fetcher: FileFetcher,
+  pub file_fetcher: SourceFileFetcher,
   pub config: CompilerConfig,
   pub config_hash: Vec<u8>,
   pub disk_cache: DiskCache,
@@ -174,7 +173,7 @@ pub struct TsCompiler {
 
 impl TsCompiler {
   pub fn new(
-    file_fetcher: FileFetcher,
+    file_fetcher: SourceFileFetcher,
     disk_cache: DiskCache,
     use_disk_cache: bool,
     config_path: Option<String>,

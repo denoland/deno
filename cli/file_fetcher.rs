@@ -63,31 +63,6 @@ impl SourceFile {
 pub type SourceFileFuture =
   dyn Future<Item = SourceFile, Error = ErrBox> + Send;
 
-/// This trait implements synchronous and asynchronous methods
-/// for file fetching.
-///
-/// Implementors might implement caching mechanism to
-/// minimize number of fs ops/net fetches.
-pub trait SourceFileFetcher {
-  fn check_if_supported_scheme(url: &Url) -> Result<(), ErrBox>;
-
-  fn fetch_source_file_async(
-    self: &Self,
-    specifier: &ModuleSpecifier,
-  ) -> Box<SourceFileFuture>;
-
-  /// Required for TS compiler.
-  fn fetch_source_file(
-    self: &Self,
-    specifier: &ModuleSpecifier,
-  ) -> Result<SourceFile, ErrBox> {
-    tokio_util::block_on(self.fetch_source_file_async(specifier))
-  }
-}
-
-// TODO: this list should be implemented on SourceFileFetcher trait
-const SUPPORTED_URL_SCHEMES: [&str; 3] = ["http", "https", "file"];
-
 /// Simple struct implementing in-process caching to prevent multiple
 /// fs reads/net fetches for same file.
 #[derive(Clone, Default)]
@@ -108,10 +83,12 @@ impl SourceFileCache {
   }
 }
 
+const SUPPORTED_URL_SCHEMES: [&str; 3] = ["http", "https", "file"];
+
 /// `DenoDir` serves as coordinator for multiple `DiskCache`s containing them
 /// in single directory that can be controlled with `$DENO_DIR` env variable.
 #[derive(Clone)]
-pub struct FileFetcher {
+pub struct SourceFileFetcher {
   deps_cache: DiskCache,
   progress: Progress,
   source_file_cache: SourceFileCache,
@@ -119,7 +96,7 @@ pub struct FileFetcher {
   no_remote_fetch: bool,
 }
 
-impl FileFetcher {
+impl SourceFileFetcher {
   pub fn new(
     deps_cache: DiskCache,
     progress: Progress,
@@ -136,9 +113,7 @@ impl FileFetcher {
 
     Ok(file_fetcher)
   }
-}
 
-impl SourceFileFetcher for FileFetcher {
   fn check_if_supported_scheme(url: &Url) -> Result<(), ErrBox> {
     if !SUPPORTED_URL_SCHEMES.contains(&url.scheme()) {
       return Err(
@@ -152,7 +127,15 @@ impl SourceFileFetcher for FileFetcher {
     Ok(())
   }
 
-  fn fetch_source_file_async(
+  /// Required for TS compiler.
+  pub fn fetch_source_file(
+    self: &Self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<SourceFile, ErrBox> {
+    tokio_util::block_on(self.fetch_source_file_async(specifier))
+  }
+
+  pub fn fetch_source_file_async(
     self: &Self,
     specifier: &ModuleSpecifier,
   ) -> Box<SourceFileFuture> {
@@ -199,10 +182,7 @@ impl SourceFileFetcher for FileFetcher {
 
     Box::new(fut)
   }
-}
 
-// stuff related to SourceFileFetcher
-impl FileFetcher {
   /// This is main method that is responsible for fetching local or remote files.
   ///
   /// If this is a remote module, and it has not yet been cached, the resulting
@@ -221,7 +201,7 @@ impl FileFetcher {
     let url_scheme = module_url.scheme();
     let is_local_file = url_scheme == "file";
 
-    if let Err(err) = FileFetcher::check_if_supported_scheme(&module_url) {
+    if let Err(err) = SourceFileFetcher::check_if_supported_scheme(&module_url) {
       return Either::A(futures::future::err(err));
     }
 
@@ -653,7 +633,7 @@ mod tests {
   use crate::fs as deno_fs;
   use tempfile::TempDir;
 
-  impl FileFetcher {
+  impl SourceFileFetcher {
     /// Fetch remote source code.
     fn fetch_remote_source(
       self: &Self,
@@ -685,8 +665,8 @@ mod tests {
     }
   }
 
-  fn setup_file_fetcher(dir_path: &Path) -> FileFetcher {
-    FileFetcher::new(
+  fn setup_file_fetcher(dir_path: &Path) -> SourceFileFetcher {
+    SourceFileFetcher::new(
       DiskCache::new(&dir_path.to_path_buf().join("deps")),
       Progress::new(),
       true,
@@ -694,7 +674,7 @@ mod tests {
     ).expect("setup fail")
   }
 
-  fn test_setup() -> (TempDir, FileFetcher) {
+  fn test_setup() -> (TempDir, SourceFileFetcher) {
     let temp_dir = TempDir::new().expect("tempdir fail");
     let fetcher = setup_file_fetcher(temp_dir.path());
     (temp_dir, fetcher)
@@ -1330,7 +1310,7 @@ mod tests {
     for &test in test_cases.iter() {
       let url = Url::parse(test).unwrap();
       assert_eq!(
-        FileFetcher::check_if_supported_scheme(&url)
+        SourceFileFetcher::check_if_supported_scheme(&url)
           .unwrap_err()
           .kind(),
         ErrorKind::UnsupportedFetchScheme
