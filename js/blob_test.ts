@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test, assert, assertEquals } from "./test_util.ts";
+import { build } from "./build.ts";
 
 test(function blobString(): void {
   const b1 = new Blob(["Hello World"]);
@@ -48,6 +49,20 @@ test(function blobShouldNotThrowError(): void {
   }
 
   assertEquals(hasThrown, false);
+});
+
+test(function nativeEndLine(): void {
+
+  const options: object = {
+    ending: "native"
+  };
+  let blob =new Blob(["Hello\nWorld"], options);
+  
+  assertEquals(blob.size,
+    build.os == "win" ? 
+    12 : 11 
+  )
+
 });
 
 // TODO(qti3e) Test the stored data in a Blob after implementing FileReader API.
