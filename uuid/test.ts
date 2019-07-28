@@ -1,4 +1,4 @@
-#!/usr/bin/env deno run
+#!/usr/bin/env -S deno run
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { runIfMain } from "../testing/mod.ts";
 

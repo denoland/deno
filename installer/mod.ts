@@ -1,4 +1,4 @@
-#!/usr/bin/env deno --allow-all
+#!/usr/bin/env -S deno --allow-all
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 const { env, stdin, args, exit, writeFile, chmod, run } = Deno;
 import { parse } from "../flags/mod.ts";
@@ -24,7 +24,7 @@ ARGS:
   SCRIPT_URL  Local or remote URL of script to install
   [FLAGS...]  List of flags for script, both Deno permission and script specific
               flag can be used.
-              
+
 OPTIONS:
   -d, --dir <PATH> Installation directory path (defaults to ~/.deno/bin)
 `);

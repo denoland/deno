@@ -1,4 +1,4 @@
-#!/usr/bin/env deno run -A
+#!/usr/bin/env -S deno run -A
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import "./archive/tar_test.ts";
 import "./bytes/test.ts";

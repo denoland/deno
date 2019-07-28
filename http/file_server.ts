@@ -1,4 +1,4 @@
-#!/usr/bin/env deno --allow-net
+#!/usr/bin/env -S deno --allow-net
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
 // This program serves files in the current directory over HTTP.
