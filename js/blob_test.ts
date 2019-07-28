@@ -57,7 +57,7 @@ test(function nativeEndLine(): void {
   };
   let blob = new Blob(["Hello\nWorld"], options);
 
-  assertEquals(blob.size, build.os == "win" ? 12 : 11);
+  assertEquals(blob.size, Deno.build.os === "win" ? 12 : 11);
 });
 
 // TODO(qti3e) Test the stored data in a Blob after implementing FileReader API.
