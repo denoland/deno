@@ -46,7 +46,10 @@ function convertLineEndingsToNative(s: string): string {
   return result;
 }
 
-function collectSequenceNotCRLF(s: string, position: number) {
+function collectSequenceNotCRLF(
+  s: string,
+  position: number
+): { collected: string; newPosition: number } {
   let result = "";
   while (position < s.length) {
     let c = s.charAt(position);

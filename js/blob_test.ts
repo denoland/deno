@@ -1,6 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test, assert, assertEquals } from "./test_util.ts";
-import { build } from "./build.ts";
 
 test(function blobString(): void {
   const b1 = new Blob(["Hello World"]);
