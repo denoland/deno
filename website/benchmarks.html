@@ -221,11 +221,34 @@
       <p>How many threads various programs use.</p>
       <div id="thread-count-chart"></div>
 
-      <h3 id="syscalls">Syscall count <a href="#syscalls">#</a></h3>
+      <h3 id="bundles">Syscall count <a href="#bundles">#</a></h3>
       <p>
         How many total syscalls are performed when executing a given script.
       </p>
       <div id="syscall-count-chart"></div>
+
+      <h3 id="bundles">Bundle size <a href="#syscalls">#</a></h3>
+      <p>
+        Size of different bundled scripts.
+      </p>
+
+      <ul>
+        <li>
+          <a
+            href="https://deno.land/std/http/file_server.ts"
+            >file_server</a
+          >
+        </li>
+
+        <li>
+          <a
+            href="https://deno.land/std/examples/gist.ts"
+            >gist</a
+          >
+        </li>
+      </ul>
+
+      <div id="bundle-size-chart"></div>
     </main>
     <script src="https://unpkg.com/d3@5.7.0/dist/d3.min.js"></script>
     <script src="https://unpkg.com/c3@0.6.7/c3.min.js"></script>
