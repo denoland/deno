@@ -11,7 +11,7 @@ async function startServer(): Promise<void> {
     args: ["deno", "run", "-A", "http/racing_server.ts"],
     stdout: "piped"
   });
-  // Once fileServer is ready it will write to its stdout.
+  // Once racing server is ready it will write to its stdout.
   const r = new TextProtoReader(new BufReader(server.stdout!));
   const s = await r.readLine();
   assert(s !== Deno.EOF && s.includes("Racing server listening..."));
