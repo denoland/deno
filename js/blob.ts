@@ -2,13 +2,61 @@
 import * as domTypes from "./dom_types";
 import { containsOnlyASCII, hasOwnProperty } from "./util";
 import { TextEncoder } from "./text_encoding";
+import { build } from "./build";
 
 export const bytesSymbol = Symbol("bytes");
 
 function convertLineEndingsToNative(s: string): string {
-  // TODO(qti3e) Implement convertLineEndingsToNative.
-  // https://w3c.github.io/FileAPI/#convert-line-endings-to-native
-  return s;
+  let nativeLineEnd = "\n";
+  if (build.os == "win") {
+    nativeLineEnd = "\r\n";
+  }
+
+  let result = "";
+  let position = 0;
+
+  let collectionResult = collectSequenceNotCRLF(s, position);
+
+  let token = collectionResult.collected;
+  position = collectionResult.newPosition;
+
+  result = result + token;
+
+  while (position < s.length) {
+    let c = s.charAt(position);
+    if (c == "\r") {
+      result = result + nativeLineEnd;
+      position++;
+      if (position < s.length && s.charAt(position) == "\n") {
+        position++;
+      }
+    } else if (c == "\n") {
+      position++;
+      result = result + nativeLineEnd;
+    }
+
+    collectionResult = collectSequenceNotCRLF(s, position);
+
+    token = collectionResult.collected;
+    position = collectionResult.newPosition;
+
+    result = result + token;
+  }
+
+  return result;
+}
+
+function collectSequenceNotCRLF(s: string, position: number) {
+  let result = "";
+  while (position < s.length) {
+    let c = s.charAt(position);
+    if (c == "\r" || c == "\n") {
+      break;
+    }
+    result = result.concat(c);
+    position++;
+  }
+  return { collected: result, newPosition: position };
 }
 
 function toUint8Arrays(
