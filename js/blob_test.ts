@@ -52,17 +52,12 @@ test(function blobShouldNotThrowError(): void {
 });
 
 test(function nativeEndLine(): void {
-
   const options: object = {
     ending: "native"
   };
-  let blob =new Blob(["Hello\nWorld"], options);
-  
-  assertEquals(blob.size,
-    build.os == "win" ? 
-    12 : 11 
-  )
+  let blob = new Blob(["Hello\nWorld"], options);
 
+  assertEquals(blob.size, build.os == "win" ? 12 : 11);
 });
 
 // TODO(qti3e) Test the stored data in a Blob after implementing FileReader API.
