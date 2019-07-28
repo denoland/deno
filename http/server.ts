@@ -342,10 +342,15 @@ export class Server implements AsyncIterable<ServerRequest> {
       // The connection was gracefully closed.
     } else if (err) {
       // An error was thrown while parsing request headers.
-      await writeResponse(req!.w, {
-        status: 400,
-        body: new TextEncoder().encode(`${err.message}\r\n\r\n`)
-      });
+      try {
+        await writeResponse(req!.w, {
+          status: 400,
+          body: new TextEncoder().encode(`${err.message}\r\n\r\n`)
+        });
+      } catch (_) {
+        // The connection is destroyed.
+        // Ignores the error.
+      }
     } else if (this.closing) {
       // There are more requests incoming but the server is closing.
       // TODO(ry): send a back a HTTP 503 Service Unavailable status.
