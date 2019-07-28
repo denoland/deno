@@ -1,0 +1,6 @@
+[WILDCARD]Error: foo
+    at foo ([WILDCARD]tests/error_stack.ts:2:9)
+    at [WILDCARD]tests/error_stack.ts:6:3
+error: Uncaught Error: foo
+    at foo ([WILDCARD]tests/error_stack.ts:2:9)
+    at [WILDCARD]tests/error_stack.ts:6:3
