@@ -58,6 +58,7 @@ export { statSync, lstatSync, stat, lstat } from "./stat";
 export { linkSync, link } from "./link";
 export { symlinkSync, symlink } from "./symlink";
 export { writeFileSync, writeFile, WriteFileOptions } from "./write_file";
+export { applySourceMap } from "./error_stack";
 export { ErrorKind, DenoError } from "./errors";
 export {
   permissions,
@@ -87,6 +88,9 @@ export const args: string[] = [];
 // appear in the runtime type library.
 /** @internal */
 export { core } from "./core";
+
+/** @internal */
+export { setPrepareStackTrace } from "./error_stack";
 
 // TODO Don't expose Console nor stringifyArgs.
 /** @internal */

@@ -20,6 +20,8 @@ use crate::resources;
 use crate::resources::table_entries;
 use crate::resources::Resource;
 use crate::signal::kill;
+use crate::source_maps::get_orig_position;
+use crate::source_maps::CachedMaps;
 use crate::startup_data;
 use crate::state::ThreadSafeState;
 use crate::tokio_util;
@@ -46,6 +48,7 @@ use log;
 use rand::{thread_rng, Rng};
 use remove_dir_all::remove_dir_all;
 use std;
+use std::collections::HashMap;
 use std::convert::From;
 use std::fs;
 use std::net::Shutdown;
@@ -194,6 +197,7 @@ pub fn dispatch_all_legacy(
 pub fn op_selector_std(inner_type: msg::Any) -> Option<CliDispatchFn> {
   match inner_type {
     msg::Any::Accept => Some(op_accept),
+    msg::Any::ApplySourceMap => Some(op_apply_source_map),
     msg::Any::Cache => Some(op_cache),
     msg::Any::Chdir => Some(op_chdir),
     msg::Any::Chmod => Some(op_chmod),
@@ -530,6 +534,48 @@ fn op_fetch_source_file(
   // out of threads in the main runtime.
   let result_buf = tokio_util::block_on(fut)?;
   Ok(Op::Sync(result_buf))
+}
+
+fn op_apply_source_map(
+  state: &ThreadSafeState,
+  base: &msg::Base<'_>,
+  data: Option<PinnedBuf>,
+) -> CliOpResult {
+  if !base.sync() {
+    return Err(deno_error::no_async_support());
+  }
+  assert!(data.is_none());
+  let inner = base.inner_as_apply_source_map().unwrap();
+  let cmd_id = base.cmd_id();
+  let filename = inner.filename().unwrap();
+  let line = inner.line();
+  let column = inner.column();
+
+  let mut mappings_map: CachedMaps = HashMap::new();
+  let (orig_filename, orig_line, orig_column) = get_orig_position(
+    filename.to_owned(),
+    line.into(),
+    column.into(),
+    &mut mappings_map,
+    &state.ts_compiler,
+  );
+
+  let builder = &mut FlatBufferBuilder::new();
+  let msg_args = msg::ApplySourceMapArgs {
+    filename: Some(builder.create_string(&orig_filename)),
+    line: orig_line as i32,
+    column: orig_column as i32,
+  };
+  let res_inner = msg::ApplySourceMap::create(builder, &msg_args);
+  ok_buf(serialize_response(
+    cmd_id,
+    builder,
+    msg::BaseArgs {
+      inner: Some(res_inner.as_union_value()),
+      inner_type: msg::Any::ApplySourceMap,
+      ..Default::default()
+    },
+  ))
 }
 
 fn op_chdir(

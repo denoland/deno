@@ -1,0 +1,111 @@
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+import { test, assert } from "./test_util.ts";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const { setPrepareStackTrace } = Deno as any;
+
+interface CallSite {
+  getThis(): unknown;
+  getTypeName(): string;
+  getFunction(): Function;
+  getFunctionName(): string;
+  getMethodName(): string;
+  getFileName(): string;
+  getLineNumber(): number | null;
+  getColumnNumber(): number | null;
+  getEvalOrigin(): string | null;
+  isToplevel(): boolean;
+  isEval(): boolean;
+  isNative(): boolean;
+  isConstructor(): boolean;
+  isAsync(): boolean;
+  isPromiseAll(): boolean;
+  getPromiseIndex(): number | null;
+}
+
+function getMockCallSite(
+  filename: string,
+  line: number | null,
+  column: number | null
+): CallSite {
+  return {
+    getThis(): unknown {
+      return undefined;
+    },
+    getTypeName(): string {
+      return "";
+    },
+    getFunction(): Function {
+      return (): void => {};
+    },
+    getFunctionName(): string {
+      return "";
+    },
+    getMethodName(): string {
+      return "";
+    },
+    getFileName(): string {
+      return filename;
+    },
+    getLineNumber(): number | null {
+      return line;
+    },
+    getColumnNumber(): number | null {
+      return column;
+    },
+    getEvalOrigin(): null {
+      return null;
+    },
+    isToplevel(): false {
+      return false;
+    },
+    isEval(): false {
+      return false;
+    },
+    isNative(): false {
+      return false;
+    },
+    isConstructor(): false {
+      return false;
+    },
+    isAsync(): false {
+      return false;
+    },
+    isPromiseAll(): false {
+      return false;
+    },
+    getPromiseIndex(): null {
+      return null;
+    }
+  };
+}
+
+test(function prepareStackTrace(): void {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const MockError = {} as any;
+  setPrepareStackTrace(MockError);
+  assert(typeof MockError.prepareStackTrace === "function");
+  const prepareStackTrace: (
+    error: Error,
+    structuredStackTrace: CallSite[]
+  ) => string = MockError.prepareStackTrace;
+  const result = prepareStackTrace(new Error("foo"), [
+    getMockCallSite("gen/cli/bundle/main.js", 23, 0)
+  ]);
+  assert(result.startsWith("Error: foo\n"));
+  assert(
+    result.includes("<anonymous> (js/"),
+    "should remap to something in 'js/'"
+  );
+});
+
+test(function applySourceMap(): void {
+  const result = Deno.applySourceMap({
+    filename: "gen/cli/bundle/main.js",
+    line: 23,
+    column: 0
+  });
+  assert(result.filename.startsWith("js/"));
+  assert(result.line != null);
+  assert(result.column != null);
+});

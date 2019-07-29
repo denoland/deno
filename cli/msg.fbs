@@ -1,5 +1,6 @@
 union Any {
   Accept,
+  ApplySourceMap,
   Cache,
   Chdir,
   Chmod,
@@ -255,6 +256,12 @@ table FetchSourceFileRes {
   filename: string;
   media_type: MediaType;
   data: [ubyte];
+}
+
+table ApplySourceMap {
+  filename: string;
+  line: int;
+  column: int;
 }
 
 table Cache {
