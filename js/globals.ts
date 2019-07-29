@@ -40,6 +40,29 @@ import { immutableDefine } from "./util";
 declare global {
   const console: consoleTypes.Console;
   const setTimeout: typeof timers.setTimeout;
+
+  interface CallSite {
+    getThis(): unknown;
+    getTypeName(): string;
+    getFunction(): Function;
+    getFunctionName(): string;
+    getMethodName(): string;
+    getFileName(): string;
+    getLineNumber(): number | null;
+    getColumnNumber(): number | null;
+    getEvalOrigin(): string | null;
+    isToplevel(): boolean;
+    isEval(): boolean;
+    isNative(): boolean;
+    isConstructor(): boolean;
+    isAsync(): boolean;
+    isPromiseAll(): boolean;
+    getPromiseIndex(): number | null;
+  }
+
+  interface ErrorConstructor {
+    prepareStackTrace(error: Error, structuredStackTrace: CallSite[]): string;
+  }
 }
 
 // A self reference to the global object.
