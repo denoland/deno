@@ -1,16 +1,17 @@
 use std::env::current_dir;
 use std::error::Error;
 use std::fmt;
+use std::path::PathBuf;
 use url::ParseError;
 use url::Url;
 
 /// Error indicating the reason resolving a module specifier failed.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ModuleResolutionError {
   InvalidUrl(ParseError),
   InvalidBaseUrl(ParseError),
-  InvalidPath,
-  ImportPrefixMissing,
+  InvalidPath(PathBuf),
+  ImportPrefixMissing(String),
 }
 use ModuleResolutionError::*;
 
@@ -30,10 +31,12 @@ impl fmt::Display for ModuleResolutionError {
       InvalidBaseUrl(ref err) => {
         write!(f, "invalid base URL for relative import: {}", err)
       }
-      InvalidPath => write!(f, "invalid module path"),
-      ImportPrefixMissing => {
-        write!(f, "relative import path not prefixed with / or ./ or ../")
-      }
+      InvalidPath(ref path) => write!(f, "invalid module path: {:?}", path),
+      ImportPrefixMissing(ref specifier) => write!(
+        f,
+        "relative import path \"{}\" not prefixed with / or ./ or ../",
+        specifier
+      ),
     }
   }
 }
@@ -67,7 +70,7 @@ impl ModuleSpecifier {
           || specifier.starts_with("./")
           || specifier.starts_with("../")) =>
       {
-        Err(ImportPrefixMissing)?
+        Err(ImportPrefixMissing(specifier.to_string()))?
       }
 
       // 3. Return the result of applying the URL parser to specifier with base
@@ -119,9 +122,9 @@ impl ModuleSpecifier {
     path_str: &str,
   ) -> Result<ModuleSpecifier, ModuleResolutionError> {
     let path = current_dir().unwrap().join(path_str);
-    Url::from_file_path(path)
+    Url::from_file_path(path.clone())
       .map(ModuleSpecifier)
-      .map_err(|()| ModuleResolutionError::InvalidPath)
+      .map_err(|()| ModuleResolutionError::InvalidPath(path))
   }
 
   /// Returns true if the input string starts with a sequence of characters
@@ -260,27 +263,27 @@ mod tests {
       (
         "005_more_imports.ts",
         "http://deno.land/core/tests/006_url_imports.ts",
-        ImportPrefixMissing,
+        ImportPrefixMissing("005_more_imports.ts".to_string()),
       ),
       (
         ".tomato",
         "http://deno.land/core/tests/006_url_imports.ts",
-        ImportPrefixMissing,
+        ImportPrefixMissing(".tomato".to_string()),
       ),
       (
         "..zucchini.mjs",
         "http://deno.land/core/tests/006_url_imports.ts",
-        ImportPrefixMissing,
+        ImportPrefixMissing("..zucchini.mjs".to_string()),
       ),
       (
         r".\yam.es",
         "http://deno.land/core/tests/006_url_imports.ts",
-        ImportPrefixMissing,
+        ImportPrefixMissing(r".\yam.es".to_string()),
       ),
       (
         r"..\yam.es",
         "http://deno.land/core/tests/006_url_imports.ts",
-        ImportPrefixMissing,
+        ImportPrefixMissing(r"..\yam.es".to_string()),
       ),
       (
         "https://eggplant:b/c",
@@ -409,7 +412,8 @@ mod tests {
       ("https://:8080/a/b/c", InvalidUrl(EmptyHost)),
     ];
     if cfg!(target_os = "windows") {
-      tests.push((r"\\.\c:/stuff/deno/script.ts", InvalidPath));
+      let p = r"\\.\c:/stuff/deno/script.ts";
+      tests.push((p, InvalidPath(PathBuf::from(p))));
     }
 
     for (specifier, expected_err) in tests {
