@@ -189,7 +189,7 @@ impl Isolate {
 
     let libdeno_isolate = unsafe { libdeno::deno_new(libdeno_config) };
 
-    Self {
+    Isolate {
       libdeno_isolate,
       shared_libdeno_isolate: Arc::new(Mutex::new(Some(libdeno_isolate))),
       dispatch: None,
@@ -203,6 +203,10 @@ impl Isolate {
       startup_script,
       inspector_handle,
     }
+  }
+
+  pub fn setup_inspector(&mut self) {
+    unsafe { libdeno::deno_setup_inspector(self.libdeno_isolate, self.as_raw_ptr()) };
   }
 
   /// Defines the how Deno.core.dispatch() acts.

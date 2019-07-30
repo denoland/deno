@@ -336,4 +336,7 @@ extern "C" {
 
   #[allow(dead_code)]
   pub fn deno_inspector_message(i: *const isolate, msg: *const c_char);
+
+  #[allow(dead_code)]
+  pub fn deno_setup_inspector(i: *const isolate, user_data: *const c_void);
 }

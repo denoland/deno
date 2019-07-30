@@ -148,11 +148,6 @@ void deno_execute(Deno* d_, void* user_data, const char* js_filename,
                   const char* js_source) {
   auto* d = unwrap(d_);
   deno::UserDataScope user_data_scope(d, user_data);
-
-  // TODO(mtharrison): Find a better way to do this. This is here because we
-  // still need a pointer to the Rust isolate after the UserDataScope is over
-  d->hack_ = user_data;
-
   auto* isolate = d->isolate_;
   v8::Locker locker(isolate);
   v8::Isolate::Scope isolate_scope(isolate);
@@ -240,6 +235,13 @@ void deno_delete(Deno* d_) {
 void deno_terminate_execution(Deno* d_) {
   deno::DenoIsolate* d = reinterpret_cast<deno::DenoIsolate*>(d_);
   d->isolate_->TerminateExecution();
+}
+
+void deno_setup_inspector(Deno* d_, void* user_data) {
+  auto* d = unwrap(d_);
+  // TODO(mtharrison): Find a better way to do this. This is here because we
+  // still need a pointer to the Rust isolate after the UserDataScope is over
+  d->hack_ = user_data;
 }
 
 void deno_inspector_message(Deno* d_, char* msg) {

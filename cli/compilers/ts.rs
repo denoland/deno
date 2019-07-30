@@ -249,7 +249,6 @@ impl TsCompiler {
       // TODO(ry) Maybe we should use a separate state for the compiler.
       // as was done previously.
       state.clone(),
-      None,
     );
     worker.execute("denoMain()").unwrap();
     worker.execute("workerMain()").unwrap();

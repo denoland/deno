@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::fmt_errors::JSError;
+use crate::inspector::Inspector;
 use crate::state::ThreadSafeState;
 use crate::tokio_util;
 use deno;
@@ -17,6 +18,7 @@ use std::sync::Mutex;
 pub struct Worker {
   isolate: Arc<Mutex<deno::Isolate>>,
   pub state: ThreadSafeState,
+  inspector: Arc<Mutex<Inspector>>,
 }
 
 impl Worker {
@@ -24,12 +26,12 @@ impl Worker {
     _name: String,
     startup_data: StartupData,
     state: ThreadSafeState,
-    inspector_handle: Option<deno::InspectorHandle>,
   ) -> Worker {
+    let inspector = Inspector::new(state.flags.inspector_enable, state.flags.inspector_pause_on_start);
     let isolate = Arc::new(Mutex::new(deno::Isolate::new(
       startup_data,
       false,
-      inspector_handle.clone(),
+      Some(inspector.handle.clone()),
     )));
     {
       let mut i = isolate.lock().unwrap();
@@ -40,29 +42,28 @@ impl Worker {
       let state_ = state.clone();
       i.set_js_error_create(move |v8_exception| {
         JSError::from_v8_exception(v8_exception, &state_.ts_compiler)
-      })
+      });
+      i.setup_inspector();
     }
 
     // TODO(mtharrison): This is all wrong but I'm not sure how to structure it?
     // perhaps this should all live inside Inspector who can call into the isolate somehow?
-    if let Some(handle) = inspector_handle {
-      let isolate_clone = isolate.clone();
-      let rx = handle.rx.clone();
+    let isolate_clone = isolate.clone();
+    let rx = inspector.handle.rx.clone();
 
-      std::thread::spawn(move || loop {
-        {
-          let message = { rx.lock().unwrap().try_recv() };
+    std::thread::spawn(move || loop {
+      {
+        let message = { rx.lock().unwrap().try_recv() };
 
-          if let Ok(msg) = message {
-            isolate_clone.lock().unwrap().inspector_message(msg);
-          }
+        if let Ok(msg) = message {
+          isolate_clone.lock().unwrap().inspector_message(msg);
         }
+      }
 
-        std::thread::sleep(std::time::Duration::from_millis(5));
-      });
-    }
+      std::thread::sleep(std::time::Duration::from_millis(5));
+    });
 
-    Self { isolate, state }
+    Self { isolate, state, inspector: Arc::new(Mutex::new(inspector)) }
   }
 
   /// Same as execute2() but the filename defaults to "<anonymous>".
@@ -77,6 +78,9 @@ impl Worker {
     js_filename: &str,
     js_source: &str,
   ) -> Result<(), ErrBox> {
+    {
+      self.inspector.lock().unwrap().start();
+    }
     let mut isolate = self.isolate.lock().unwrap();
     isolate.execute(js_filename, js_source)
   }
@@ -157,7 +161,7 @@ mod tests {
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
       let mut worker =
-        Worker::new("TEST".to_string(), StartupData::None, state, None);
+        Worker::new("TEST".to_string(), StartupData::None, state);
       let result = worker.execute_mod(&module_specifier, false);
       if let Err(err) = result {
         eprintln!("execute_mod err {:?}", err);
@@ -187,7 +191,7 @@ mod tests {
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
       let mut worker =
-        Worker::new("TEST".to_string(), StartupData::None, state, None);
+        Worker::new("TEST".to_string(), StartupData::None, state);
       let result = worker.execute_mod(&module_specifier, false);
       if let Err(err) = result {
         eprintln!("execute_mod err {:?}", err);
@@ -217,7 +221,6 @@ mod tests {
         "TEST".to_string(),
         startup_data::deno_isolate_init(),
         state,
-        None,
       );
       worker.execute("denoMain()").unwrap();
       let result = worker.execute_mod(&module_specifier, false);
@@ -242,7 +245,6 @@ mod tests {
       "TEST".to_string(),
       startup_data::deno_isolate_init(),
       state,
-      None,
     );
     worker.execute("denoMain()").unwrap();
     worker.execute("workerMain()").unwrap();

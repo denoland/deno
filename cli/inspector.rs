@@ -35,6 +35,8 @@ lazy_static! {
 }
 
 pub struct Inspector {
+  enable: bool,
+  pause_on_start: bool,
   // sharable handle to channels passed to isolate
   pub handle: deno::InspectorHandle,
   // sending/receving messages from isolate
@@ -46,22 +48,26 @@ pub struct Inspector {
   ready_rx: Arc<Mutex<Receiver<()>>>,
   server_spawn_handle: Option<SpawnHandle<(), ()>>,
   // TODO(mtharrison): Maybe use an atomic bool instead?
+  started: Arc<Mutex<bool>>,
   connected: Arc<Mutex<bool>>,
 }
 
 impl Inspector {
-  pub fn new() -> Self {
+  pub fn new(enable: bool, pause_on_start: bool) -> Self {
     let (inbound_tx, inbound_rx) = channel::<String>();
     let (outbound_tx, outbound_rx) = channel::<String>();
     let (ready_tx, ready_rx) = channel::<()>();
 
     Inspector {
+      enable,
+      pause_on_start,
       handle: deno::InspectorHandle::new(outbound_tx, inbound_rx),
       inbound_tx: Arc::new(Mutex::new(inbound_tx)),
       outbound_rx: Arc::new(Mutex::new(outbound_rx)),
       ready_rx: Arc::new(Mutex::new(ready_rx)),
       ready_tx: Arc::new(Mutex::new(ready_tx)),
       server_spawn_handle: None,
+      started: Arc::new(Mutex::new(false)),
       connected: Arc::new(Mutex::new(false)),
     }
   }
@@ -101,7 +107,16 @@ impl Inspector {
     warp::serve(routes).bind(addr)
   }
 
-  pub fn start(&mut self, wait: bool) {
+  pub fn start(&mut self) {
+
+    let mut started = self.started.lock().unwrap();
+
+    if *started || !self.enable {
+      return;
+    }
+
+    *started = true;
+
     self.server_spawn_handle = Some(spawn(
       self.serve(),
       &tokio_executor::DefaultExecutor::current(),
@@ -109,7 +124,7 @@ impl Inspector {
 
     println!("Debugger listening on ws://{}:{}/{}", HOST, PORT, UUID);
 
-    if wait {
+    if self.pause_on_start {
       self
         .ready_rx
         .lock()
@@ -121,8 +136,6 @@ impl Inspector {
       println!("Inspector frontend connected.");
     }
   }
-
-  pub fn stop(&mut self) {}
 }
 
 fn on_connection(
