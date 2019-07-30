@@ -1,15 +1,16 @@
 use std::env::current_dir;
 use std::error::Error;
 use std::fmt;
+use std::path::PathBuf;
 use url::ParseError;
 use url::Url;
 
 /// Error indicating the reason resolving a module specifier failed.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ModuleResolutionError {
   InvalidUrl(ParseError),
   InvalidBaseUrl(ParseError),
-  InvalidPath,
+  InvalidPath(PathBuf),
   ImportPrefixMissing,
 }
 use ModuleResolutionError::*;
@@ -30,7 +31,7 @@ impl fmt::Display for ModuleResolutionError {
       InvalidBaseUrl(ref err) => {
         write!(f, "invalid base URL for relative import: {}", err)
       }
-      InvalidPath => write!(f, "invalid module path"),
+      InvalidPath(ref path) => write!(f, "invalid module path: {:?}", path),
       ImportPrefixMissing => {
         write!(f, "relative import path not prefixed with / or ./ or ../")
       }
@@ -119,9 +120,9 @@ impl ModuleSpecifier {
     path_str: &str,
   ) -> Result<ModuleSpecifier, ModuleResolutionError> {
     let path = current_dir().unwrap().join(path_str);
-    Url::from_file_path(path)
+    Url::from_file_path(path.clone())
       .map(ModuleSpecifier)
-      .map_err(|()| ModuleResolutionError::InvalidPath)
+      .map_err(|()| ModuleResolutionError::InvalidPath(path))
   }
 
   /// Returns true if the input string starts with a sequence of characters
@@ -409,7 +410,8 @@ mod tests {
       ("https://:8080/a/b/c", InvalidUrl(EmptyHost)),
     ];
     if cfg!(target_os = "windows") {
-      tests.push((r"\\.\c:/stuff/deno/script.ts", InvalidPath));
+      let p = r"\\.\c:/stuff/deno/script.ts";
+      tests.push((p.clone(), InvalidPath(PathBuf::from(p))));
     }
 
     for (specifier, expected_err) in tests {
