@@ -11,7 +11,7 @@ pub enum ModuleResolutionError {
   InvalidUrl(ParseError),
   InvalidBaseUrl(ParseError),
   InvalidPath(PathBuf),
-  ImportPrefixMissing,
+  ImportPrefixMissing(String),
 }
 use ModuleResolutionError::*;
 
@@ -32,9 +32,11 @@ impl fmt::Display for ModuleResolutionError {
         write!(f, "invalid base URL for relative import: {}", err)
       }
       InvalidPath(ref path) => write!(f, "invalid module path: {:?}", path),
-      ImportPrefixMissing => {
-        write!(f, "relative import path not prefixed with / or ./ or ../")
-      }
+      ImportPrefixMissing(ref specifier) => write!(
+        f,
+        "relative import path \"{}\" not prefixed with / or ./ or ../",
+        specifier
+      ),
     }
   }
 }
@@ -68,7 +70,7 @@ impl ModuleSpecifier {
           || specifier.starts_with("./")
           || specifier.starts_with("../")) =>
       {
-        Err(ImportPrefixMissing)?
+        Err(ImportPrefixMissing(specifier.to_string()))?
       }
 
       // 3. Return the result of applying the URL parser to specifier with base
@@ -261,27 +263,27 @@ mod tests {
       (
         "005_more_imports.ts",
         "http://deno.land/core/tests/006_url_imports.ts",
-        ImportPrefixMissing,
+        ImportPrefixMissing("005_more_imports.ts".to_string()),
       ),
       (
         ".tomato",
         "http://deno.land/core/tests/006_url_imports.ts",
-        ImportPrefixMissing,
+        ImportPrefixMissing(".tomato".to_string()),
       ),
       (
         "..zucchini.mjs",
         "http://deno.land/core/tests/006_url_imports.ts",
-        ImportPrefixMissing,
+        ImportPrefixMissing("..zucchini.mjs".to_string()),
       ),
       (
         r".\yam.es",
         "http://deno.land/core/tests/006_url_imports.ts",
-        ImportPrefixMissing,
+        ImportPrefixMissing(r".\yam.es".to_string()),
       ),
       (
         r"..\yam.es",
         "http://deno.land/core/tests/006_url_imports.ts",
-        ImportPrefixMissing,
+        ImportPrefixMissing(r"..\yam.es".to_string()),
       ),
       (
         "https://eggplant:b/c",
