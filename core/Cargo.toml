@@ -36,5 +36,5 @@ path = "examples/http_bench.rs"
 tokio = "0.1.18"
 
 [build-dependencies]
-cargo_gn = { git = "https://github.com/denoland/cargo_gn" }
+cargo_gn = "0.0.12"
 which = "2.0.1"
