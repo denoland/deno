@@ -413,7 +413,7 @@ mod tests {
     ];
     if cfg!(target_os = "windows") {
       let p = r"\\.\c:/stuff/deno/script.ts";
-      tests.push((p.clone(), InvalidPath(PathBuf::from(p))));
+      tests.push((p, InvalidPath(PathBuf::from(p))));
     }
 
     for (specifier, expected_err) in tests {
