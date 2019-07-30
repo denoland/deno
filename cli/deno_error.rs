@@ -118,8 +118,8 @@ impl GetErrorKind for ModuleResolutionError {
     use ModuleResolutionError::*;
     match self {
       InvalidUrl(ref err) | InvalidBaseUrl(ref err) => err.kind(),
-      InvalidPath => ErrorKind::InvalidPath,
-      ImportPrefixMissing => ErrorKind::ImportPrefixMissing,
+      InvalidPath(_) => ErrorKind::InvalidPath,
+      ImportPrefixMissing(_) => ErrorKind::ImportPrefixMissing,
     }
   }
 }
