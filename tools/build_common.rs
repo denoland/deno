@@ -35,7 +35,8 @@ fn setup() -> PathBuf {
   match which("sccache") {
     Ok(sccache_path) => {
       gn_args.push(("cc_wapper".to_string(), format!("{:?}", sccache_path)));
-      gn_args.push(("rustc_wrapper".to_string(), format!("{:?}", sccache_path)));
+      gn_args
+        .push(("rustc_wrapper".to_string(), format!("{:?}", sccache_path)));
     }
     Err(_) => {}
   }
