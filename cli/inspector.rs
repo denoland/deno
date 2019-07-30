@@ -108,7 +108,6 @@ impl Inspector {
   }
 
   pub fn start(&mut self) {
-
     let mut started = self.started.lock().unwrap();
 
     if *started || !self.enable {

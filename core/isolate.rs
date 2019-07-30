@@ -206,7 +206,9 @@ impl Isolate {
   }
 
   pub fn setup_inspector(&mut self) {
-    unsafe { libdeno::deno_setup_inspector(self.libdeno_isolate, self.as_raw_ptr()) };
+    unsafe {
+      libdeno::deno_setup_inspector(self.libdeno_isolate, self.as_raw_ptr())
+    };
   }
 
   /// Defines the how Deno.core.dispatch() acts.

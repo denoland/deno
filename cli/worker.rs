@@ -27,7 +27,10 @@ impl Worker {
     startup_data: StartupData,
     state: ThreadSafeState,
   ) -> Worker {
-    let inspector = Inspector::new(state.flags.inspector_enable, state.flags.inspector_pause_on_start);
+    let inspector = Inspector::new(
+      state.flags.inspector_enable,
+      state.flags.inspector_pause_on_start,
+    );
     let isolate = Arc::new(Mutex::new(deno::Isolate::new(
       startup_data,
       false,
@@ -63,7 +66,11 @@ impl Worker {
       std::thread::sleep(std::time::Duration::from_millis(5));
     });
 
-    Self { isolate, state, inspector: Arc::new(Mutex::new(inspector)) }
+    Self {
+      isolate,
+      state,
+      inspector: Arc::new(Mutex::new(inspector)),
+    }
   }
 
   /// Same as execute2() but the filename defaults to "<anonymous>".
@@ -241,11 +248,8 @@ mod tests {
       String::from("./deno"),
       String::from("hello.js"),
     ]);
-    let mut worker = Worker::new(
-      "TEST".to_string(),
-      startup_data::deno_isolate_init(),
-      state,
-    );
+    let mut worker =
+      Worker::new("TEST".to_string(), startup_data::deno_isolate_init(), state);
     worker.execute("denoMain()").unwrap();
     worker.execute("workerMain()").unwrap();
     worker
