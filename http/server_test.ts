@@ -461,10 +461,6 @@ test({
 test({
   name: "[http] destroyed connection",
   async fn(): Promise<void> {
-    // TODO: don't skip on windows when process.kill is implemented on windows.
-    if (Deno.build.os === "win") {
-      return;
-    }
     // Runs a simple server as another process
     const p = Deno.run({
       args: [Deno.execPath, "http/testdata/simple_server.ts", "--allow-net"],
@@ -477,11 +473,13 @@ test({
       assert(s !== Deno.EOF && s.includes("server listening"));
 
       let serverIsRunning = true;
-      p.status().then(
-        (): void => {
-          serverIsRunning = false;
-        }
-      );
+      p.status()
+        .then(
+          (): void => {
+            serverIsRunning = false;
+          }
+        )
+        .catch((_): void => {}); // Ignores the error when closing the process.
 
       await delay(100);
 
@@ -496,7 +494,7 @@ test({
       assert(serverIsRunning);
     } finally {
       // Stops the sever.
-      p.kill(Deno.Signal.SIGINT);
+      p.close();
     }
   }
 });
