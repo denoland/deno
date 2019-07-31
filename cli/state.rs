@@ -302,7 +302,8 @@ impl ThreadSafeState {
       argv,
       ops::op_selector_std,
       Progress::new(),
-    ).unwrap()
+    )
+    .unwrap()
   }
 
   pub fn metrics_op_dispatched(

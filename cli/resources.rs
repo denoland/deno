@@ -543,7 +543,8 @@ pub fn seek(
         deno_error::DenoError::new(
           deno_error::ErrorKind::InvalidSeekMode,
           format!("Invalid seek mode: {}", whence),
-        ).into(),
+        )
+        .into(),
       ));
     }
   };

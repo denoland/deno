@@ -488,22 +488,20 @@ mod tests {
 
     // invalid schema: 'imports' is non-object
     for non_object in non_object_strings.to_vec() {
-      assert!(
-        ImportMap::from_json(
-          base_url,
-          &format!("{{\"imports\": {}}}", non_object),
-        ).is_err()
-      );
+      assert!(ImportMap::from_json(
+        base_url,
+        &format!("{{\"imports\": {}}}", non_object),
+      )
+      .is_err());
     }
 
     // invalid schema: 'scopes' is non-object
     for non_object in non_object_strings.to_vec() {
-      assert!(
-        ImportMap::from_json(
-          base_url,
-          &format!("{{\"scopes\": {}}}", non_object),
-        ).is_err()
-      );
+      assert!(ImportMap::from_json(
+        base_url,
+        &format!("{{\"scopes\": {}}}", non_object),
+      )
+      .is_err());
     }
   }
 
@@ -756,11 +754,9 @@ mod tests {
     let import_map =
       ImportMap::from_json("https://base.example/path1/path2/path3", json_map)
         .unwrap();
-    assert!(
-      import_map
-        .scopes
-        .contains_key("https://base.example/path1/path2/foo")
-    );
+    assert!(import_map
+      .scopes
+      .contains_key("https://base.example/path1/path2/foo"));
 
     // Should work with ./, ../, and / prefixes..
     let json_map = r#"{
@@ -773,16 +769,12 @@ mod tests {
     let import_map =
       ImportMap::from_json("https://base.example/path1/path2/path3", json_map)
         .unwrap();
-    assert!(
-      import_map
-        .scopes
-        .contains_key("https://base.example/path1/path2/foo")
-    );
-    assert!(
-      import_map
-        .scopes
-        .contains_key("https://base.example/path1/foo")
-    );
+    assert!(import_map
+      .scopes
+      .contains_key("https://base.example/path1/path2/foo"));
+    assert!(import_map
+      .scopes
+      .contains_key("https://base.example/path1/foo"));
     assert!(import_map.scopes.contains_key("https://base.example/foo"));
 
     // Should work with /s, ?s, and #s..
@@ -794,11 +786,9 @@ mod tests {
     let import_map =
       ImportMap::from_json("https://base.example/path1/path2/path3", json_map)
         .unwrap();
-    assert!(
-      import_map
-        .scopes
-        .contains_key("https://base.example/path1/path2/foo/bar?baz#qux")
-    );
+    assert!(import_map
+      .scopes
+      .contains_key("https://base.example/path1/path2/foo/bar?baz#qux"));
 
     // Should work with an empty string scope key..
     let json_map = r#"{
@@ -809,11 +799,9 @@ mod tests {
     let import_map =
       ImportMap::from_json("https://base.example/path1/path2/path3", json_map)
         .unwrap();
-    assert!(
-      import_map
-        .scopes
-        .contains_key("https://base.example/path1/path2/path3")
-    );
+    assert!(import_map
+      .scopes
+      .contains_key("https://base.example/path1/path2/path3"));
 
     // Should work with / suffixes..
     let json_map = r#"{
@@ -828,21 +816,15 @@ mod tests {
     let import_map =
       ImportMap::from_json("https://base.example/path1/path2/path3", json_map)
         .unwrap();
-    assert!(
-      import_map
-        .scopes
-        .contains_key("https://base.example/path1/path2/foo/")
-    );
-    assert!(
-      import_map
-        .scopes
-        .contains_key("https://base.example/path1/path2/foo/")
-    );
-    assert!(
-      import_map
-        .scopes
-        .contains_key("https://base.example/path1/foo/")
-    );
+    assert!(import_map
+      .scopes
+      .contains_key("https://base.example/path1/path2/foo/"));
+    assert!(import_map
+      .scopes
+      .contains_key("https://base.example/path1/path2/foo/"));
+    assert!(import_map
+      .scopes
+      .contains_key("https://base.example/path1/foo/"));
     assert!(import_map.scopes.contains_key("https://base.example/foo/"));
     assert!(import_map.scopes.contains_key("https://base.example/foo//"));
 
@@ -857,11 +839,9 @@ mod tests {
     let import_map =
       ImportMap::from_json("https://base.example/path1/path2/path3", json_map)
         .unwrap();
-    assert!(
-      import_map
-        .scopes
-        .contains_key("https://base.example/path1/path2/foo//")
-    );
+    assert!(import_map
+      .scopes
+      .contains_key("https://base.example/path1/path2/foo//"));
     assert_eq!(import_map.scopes.len(), 1);
   }
 
@@ -909,11 +889,9 @@ mod tests {
       ImportMap::from_json("https://base.example/path1/path2/path3", json_map)
         .unwrap();
     // tricky case! remember we have a base URL
-    assert!(
-      import_map
-        .scopes
-        .contains_key("https://base.example/path1/path2/example.org")
-    );
+    assert!(import_map
+      .scopes
+      .contains_key("https://base.example/path1/path2/example.org"));
     assert!(import_map.scopes.contains_key("https://example.com///"));
     assert!(import_map.scopes.contains_key("https://example.net/"));
     assert!(import_map.scopes.contains_key("https://example.com/foo/"));
@@ -1245,7 +1223,8 @@ mod tests {
       let import_map = ImportMap::from_json(
         "https://base.example/path1/path2/path3",
         &json_map.to_string(),
-      ).unwrap();
+      )
+      .unwrap();
 
       assert!(import_map.imports.get("foo").unwrap().is_empty());
     }
@@ -1370,21 +1349,15 @@ mod tests {
     assert!(import_map.resolve("%2E/foo", referrer_url).is_err());
     assert!(import_map.resolve("%2E%2Efoo", referrer_url).is_err());
     assert!(import_map.resolve(".%2Efoo", referrer_url).is_err());
-    assert!(
-      import_map
-        .resolve("https://ex ample.org", referrer_url)
-        .is_err()
-    );
-    assert!(
-      import_map
-        .resolve("https://example.org:deno", referrer_url)
-        .is_err()
-    );
-    assert!(
-      import_map
-        .resolve("https://[example.org]", referrer_url)
-        .is_err()
-    );
+    assert!(import_map
+      .resolve("https://ex ample.org", referrer_url)
+      .is_err());
+    assert!(import_map
+      .resolve("https://example.org:deno", referrer_url)
+      .is_err());
+    assert!(import_map
+      .resolve("https://[example.org]", referrer_url)
+      .is_err());
   }
 
   #[test]
@@ -1512,11 +1485,9 @@ mod tests {
     );
 
     // Should fail for attempting to get a submodule of something not declared with a trailing slash.
-    assert!(
-      import_map
-        .resolve("not-a-package/foo", referrer_url)
-        .is_err()
-    );
+    assert!(import_map
+      .resolve("not-a-package/foo", referrer_url)
+      .is_err());
   }
 
   #[test]
@@ -1575,28 +1546,20 @@ mod tests {
     );
 
     // Should fail for URLs that remap to empty arrays.
-    assert!(
-      import_map
-        .resolve("https://example.com/lib/no.mjs", referrer_url)
-        .is_err()
-    );
+    assert!(import_map
+      .resolve("https://example.com/lib/no.mjs", referrer_url)
+      .is_err());
     assert!(import_map.resolve("/lib/no.mjs", referrer_url).is_err());
     assert!(import_map.resolve("../lib/no.mjs", referrer_url).is_err());
-    assert!(
-      import_map
-        .resolve("https://example.com/app/dotrelative/no.mjs", referrer_url)
-        .is_err()
-    );
-    assert!(
-      import_map
-        .resolve("/app/dotrelative/no.mjs", referrer_url)
-        .is_err()
-    );
-    assert!(
-      import_map
-        .resolve("../app/dotrelative/no.mjs", referrer_url)
-        .is_err()
-    );
+    assert!(import_map
+      .resolve("https://example.com/app/dotrelative/no.mjs", referrer_url)
+      .is_err());
+    assert!(import_map
+      .resolve("/app/dotrelative/no.mjs", referrer_url)
+      .is_err());
+    assert!(import_map
+      .resolve("../app/dotrelative/no.mjs", referrer_url)
+      .is_err());
 
     // Should remap URLs that are just composed from / and ..
     assert_resolve(

@@ -1,5 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use atty;
 use crate::ansi;
 use crate::deno_error;
 use crate::deno_error::DenoError;
@@ -27,6 +26,7 @@ use crate::tokio_util;
 use crate::tokio_write;
 use crate::version;
 use crate::worker::Worker;
+use atty;
 use deno::Buf;
 use deno::CoreOp;
 use deno::ErrBox;
@@ -69,9 +69,11 @@ use std::os::unix::process::ExitStatusExt;
 
 type CliOpResult = OpResult<ErrBox>;
 
-type CliDispatchFn =
-  fn(state: &ThreadSafeState, base: &msg::Base<'_>, data: Option<PinnedBuf>)
-    -> CliOpResult;
+type CliDispatchFn = fn(
+  state: &ThreadSafeState,
+  base: &msg::Base<'_>,
+  data: Option<PinnedBuf>,
+) -> CliOpResult;
 
 pub type OpSelector = fn(inner_type: msg::Any) -> Option<CliDispatchFn>;
 
@@ -134,40 +136,43 @@ pub fn dispatch_all_legacy(
     }
     Ok(Op::Async(fut)) => {
       let result_fut = Box::new(
-        fut.or_else(move |err: ErrBox| -> Result<Buf, ()> {
-          debug!("op err {}", err);
-          // No matter whether we got an Err or Ok, we want a serialized message to
-          // send back. So transform the DenoError into a Buf.
-          let builder = &mut FlatBufferBuilder::new();
-          let errmsg_offset = builder.create_string(&format!("{}", err));
-          Ok(serialize_response(
-            cmd_id,
-            builder,
-            msg::BaseArgs {
-              error: Some(errmsg_offset),
-              error_kind: err.kind(),
-              ..Default::default()
-            },
-          ))
-        }).and_then(move |buf: Buf| -> Result<Buf, ()> {
-          // Handle empty responses. For sync responses we just want
-          // to send null. For async we want to send a small message
-          // with the cmd_id.
-          let buf = if buf.len() > 0 {
-            buf
-          } else {
+        fut
+          .or_else(move |err: ErrBox| -> Result<Buf, ()> {
+            debug!("op err {}", err);
+            // No matter whether we got an Err or Ok, we want a serialized message to
+            // send back. So transform the DenoError into a Buf.
             let builder = &mut FlatBufferBuilder::new();
-            serialize_response(
+            let errmsg_offset = builder.create_string(&format!("{}", err));
+            Ok(serialize_response(
               cmd_id,
               builder,
               msg::BaseArgs {
+                error: Some(errmsg_offset),
+                error_kind: err.kind(),
                 ..Default::default()
               },
-            )
-          };
-          state.metrics_op_completed(buf.len());
-          Ok(buf)
-        }).map_err(|err| panic!("unexpected error {:?}", err)),
+            ))
+          })
+          .and_then(move |buf: Buf| -> Result<Buf, ()> {
+            // Handle empty responses. For sync responses we just want
+            // to send null. For async we want to send a small message
+            // with the cmd_id.
+            let buf = if buf.len() > 0 {
+              buf
+            } else {
+              let builder = &mut FlatBufferBuilder::new();
+              serialize_response(
+                cmd_id,
+                builder,
+                msg::BaseArgs {
+                  ..Default::default()
+                },
+              )
+            };
+            state.metrics_op_completed(buf.len());
+            Ok(buf)
+          })
+          .map_err(|err| panic!("unexpected error {:?}", err)),
       );
       Op::Async(result_fut)
     }
@@ -1378,7 +1383,8 @@ fn op_read_dir(
             has_mode: cfg!(target_family = "unix"),
           },
         )
-      }).collect();
+      })
+      .collect();
 
     let entries = builder.create_vector(&entries);
     let inner = msg::ReadDirRes::create(
@@ -1795,7 +1801,8 @@ fn op_resources(
           repr: Some(repr),
         },
       )
-    }).collect();
+    })
+    .collect();
 
   let resources = builder.create_vector(&res);
   let inner = msg::ResourcesRes::create(

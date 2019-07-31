@@ -310,7 +310,8 @@ mod tests {
         "isConstructor":false,
         "isWasm":false
       }"#,
-    ).unwrap();
+    )
+    .unwrap();
     let r = StackFrame::from_json_value(&v);
     assert_eq!(
       r,
@@ -334,7 +335,8 @@ mod tests {
         "line": 2,
         "column": 11
       }"#,
-    ).unwrap();
+    )
+    .unwrap();
     let r = StackFrame::from_json_value(&v);
     assert!(r.is_some());
     let f = r.unwrap();

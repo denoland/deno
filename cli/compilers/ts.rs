@@ -96,7 +96,8 @@ impl CompilerConfig {
         DenoError::new(
           ErrorKind::InvalidInput,
           "Compiler config is not a valid JSON".to_string(),
-        ).into(),
+        )
+        .into(),
       ),
     }
   }
@@ -153,15 +154,15 @@ fn req(
 ) -> Buf {
   let j = match (compiler_config.path, compiler_config.content) {
     (Some(config_path), Some(config_data)) => json!({
-        "rootNames": root_names,
-        "bundle": bundle,
-        "configPath": config_path,
-        "config": str::from_utf8(&config_data).unwrap(),
-      }),
+      "rootNames": root_names,
+      "bundle": bundle,
+      "configPath": config_path,
+      "config": str::from_utf8(&config_data).unwrap(),
+    }),
     _ => json!({
-        "rootNames": root_names,
-        "bundle": bundle,
-      }),
+      "rootNames": root_names,
+      "bundle": bundle,
+    }),
   };
 
   j.to_string().into_boxed_str().into_boxed_bytes()
@@ -410,7 +411,8 @@ impl TsCompiler {
         }
 
         Ok(())
-      }).and_then(move |_| {
+      })
+      .and_then(move |_| {
         // if we are this far it means compilation was successful and we can
         // load compiled filed from disk
         state_
@@ -420,12 +422,14 @@ impl TsCompiler {
             // TODO: this situation shouldn't happen
             panic!("Expected to find compiled file: {}", e)
           })
-      }).and_then(move |compiled_module| {
+      })
+      .and_then(move |compiled_module| {
         // Explicit drop to keep reference alive until future completes.
         drop(compiling_job);
 
         Ok(compiled_module)
-      }).then(move |r| {
+      })
+      .then(move |r| {
         debug!(">>>>> compile_sync END");
         // TODO(ry) do this in worker's destructor.
         // resource.close();
@@ -685,12 +689,10 @@ mod tests {
         .ts_compiler
         .compile_sync(mock_state.clone(), &out)
         .unwrap();
-      assert!(
-        compiled
-          .code
-          .as_bytes()
-          .starts_with("console.log(\"Hello World\");".as_bytes())
-      );
+      assert!(compiled
+        .code
+        .as_bytes()
+        .starts_with("console.log(\"Hello World\");".as_bytes()));
     })
   }
 

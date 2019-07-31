@@ -384,7 +384,8 @@ impl Modules {
         if !i.has_child(&child_name) {
           i.children.push(child_name.to_string());
         }
-      }).is_some()
+      })
+      .is_some()
   }
 
   pub fn register(&mut self, id: deno_mod, name: &str) {

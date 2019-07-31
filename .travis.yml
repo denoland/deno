@@ -42,8 +42,9 @@ install:
     curl -sSf https://sh.rustup.rs | sh -s -- -y \
       --default-toolchain $RUST_VERSION
     rustup default $RUST_VERSION
-    rustup component add clippy
   fi
+  rustup component add clippy
+  rustup component add rustfmt
   rustc --version
   cargo --version
 - |-

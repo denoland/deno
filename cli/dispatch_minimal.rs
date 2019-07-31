@@ -137,7 +137,9 @@ mod ops {
     debug!("read rid={}", rid);
     let zero_copy = match zero_copy {
       None => {
-        return Box::new(futures::future::err(deno_error::no_buffer_specified()))
+        return Box::new(
+          futures::future::err(deno_error::no_buffer_specified()),
+        )
       }
       Some(buf) => buf,
     };
@@ -155,7 +157,9 @@ mod ops {
     debug!("write rid={}", rid);
     let zero_copy = match zero_copy {
       None => {
-        return Box::new(futures::future::err(deno_error::no_buffer_specified()))
+        return Box::new(
+          futures::future::err(deno_error::no_buffer_specified()),
+        )
       }
       Some(buf) => buf,
     };

@@ -61,7 +61,7 @@ def clang_format():
 def rustfmt():
     print "rustfmt"
     qrun([
-        "third_party/rustfmt/" + platform() + "/rustfmt",
+        "rustfmt",
         "--config-path",
         rustfmt_config,
     ] + find_exts(["cli", "core", "tools"], [".rs"]))

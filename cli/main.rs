@@ -131,7 +131,8 @@ pub fn print_file_info(
           debug!("compiler error exiting!");
           eprintln!("\n{}", e.to_string());
           std::process::exit(1);
-        }).and_then(move |compiled| {
+        })
+        .and_then(move |compiled| {
           if out.media_type == msg::MediaType::TypeScript
             || (out.media_type == msg::MediaType::JavaScript
               && state_.ts_compiler.compile_js)
@@ -236,7 +237,8 @@ fn fetch_or_info_command(
         } else {
           future::Either::B(future::ok(worker))
         }
-      }).and_then(|worker| {
+      })
+      .and_then(|worker| {
         worker.then(|result| {
           js_check(result);
           Ok(())
@@ -290,7 +292,8 @@ fn xeval_command(flags: DenoFlags, argv: Vec<String>) {
       .then(|result| {
         js_check(result);
         Ok(())
-      }).map_err(print_err_and_exit)
+      })
+      .map_err(print_err_and_exit)
   });
   tokio_util::run(main_future);
 }
@@ -309,7 +312,8 @@ fn bundle_command(flags: DenoFlags, argv: Vec<String>) {
       debug!("diagnostics returned, exiting!");
       eprintln!("");
       print_err_and_exit(err);
-    }).and_then(move |_| {
+    })
+    .and_then(move |_| {
       debug!(">>>>> bundle_async END");
       Ok(())
     });
@@ -327,7 +331,8 @@ fn run_repl(flags: DenoFlags, argv: Vec<String>) {
       .then(|result| {
         js_check(result);
         Ok(())
-      }).map_err(|(err, _worker): (ErrBox, Worker)| print_err_and_exit(err))
+      })
+      .map_err(|(err, _worker): (ErrBox, Worker)| print_err_and_exit(err))
   });
   tokio_util::run(main_future);
 }
@@ -351,7 +356,8 @@ fn run_script(flags: DenoFlags, argv: Vec<String>) {
           js_check(result);
           Ok(())
         })
-      }).map_err(print_err_and_exit)
+      })
+      .map_err(print_err_and_exit)
   });
 
   if use_current_thread {
