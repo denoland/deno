@@ -22,6 +22,7 @@ pub mod deno_error;
 pub mod diagnostics;
 mod disk_cache;
 mod dispatch_minimal;
+mod file_fetcher;
 pub mod flags;
 pub mod fmt_errors;
 mod fs;
@@ -47,7 +48,6 @@ mod tokio_write;
 pub mod version;
 pub mod worker;
 
-use crate::deno_dir::SourceFileFetcher;
 use crate::progress::Progress;
 use crate::state::ThreadSafeState;
 use crate::worker::Worker;
@@ -107,7 +107,7 @@ pub fn print_file_info(
   let module_specifier_ = module_specifier.clone();
 
   state_
-    .dir
+    .file_fetcher
     .fetch_source_file_async(&module_specifier)
     .map_err(|err| println!("{}", err))
     .and_then(move |out| {
@@ -191,7 +191,8 @@ fn create_worker_and_state(
       s.status(status, msg).expect("shell problem");
     }
   });
-  let state = ThreadSafeState::new(flags, argv, ops::op_selector_std, progress);
+  let state =
+    ThreadSafeState::new(flags, argv, ops::op_selector_std, progress).unwrap();
   let worker = Worker::new(
     "main".to_string(),
     startup_data::deno_isolate_init(),
