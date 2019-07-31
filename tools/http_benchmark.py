@@ -35,8 +35,8 @@ def deno_tcp(deno_exe):
 def deno_tcp_current_thread(deno_exe):
     addr = get_addr()
     deno_cmd = [
-        deno_exe, "run", "--current-thread",
-        "--allow-net", "tools/deno_tcp.ts", addr
+        deno_exe, "run", "--current-thread", "--allow-net",
+        "tools/deno_tcp.ts", addr
     ]
     print "http_benchmark testing DENO."
     return run(deno_cmd, addr)
