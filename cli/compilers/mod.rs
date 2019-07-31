@@ -1,9 +1,14 @@
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use deno::ErrBox;
 use futures::Future;
 
-pub mod js;
-pub mod json;
-pub mod ts;
+mod js;
+mod json;
+mod ts;
+
+pub use js::JsCompiler;
+pub use json::JsonCompiler;
+pub use ts::TsCompiler;
 
 #[derive(Debug, Clone)]
 pub struct CompiledModule {

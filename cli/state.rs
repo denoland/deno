@@ -1,8 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::compilers::js::JsCompiler;
-use crate::compilers::json::JsonCompiler;
-use crate::compilers::ts::TsCompiler;
 use crate::compilers::CompiledModule;
+use crate::compilers::JsCompiler;
+use crate::compilers::JsonCompiler;
+use crate::compilers::TsCompiler;
 use crate::deno_dir;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags;

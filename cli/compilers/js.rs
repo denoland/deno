@@ -1,3 +1,4 @@
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::compilers::CompiledModule;
 use crate::compilers::CompiledModuleFuture;
 use crate::file_fetcher::SourceFile;
