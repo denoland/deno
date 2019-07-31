@@ -26,6 +26,13 @@ where
   rt.block_on_all(future).unwrap();
 }
 
+pub fn run_on_current_thread<F>(future: F)
+where
+  F: Future<Item = (), Error = ()> + Send + 'static,
+{
+  tokio::runtime::current_thread::run(future);
+}
+
 /// THIS IS A HACK AND SHOULD BE AVOIDED.
 ///
 /// This creates a new tokio runtime, with many new threads, to execute the
