@@ -170,12 +170,14 @@ pub fn fetch_string(
             DenoError::new(
               deno_error::ErrorKind::NotFound,
               "module not found".to_string(),
-            ).into(),
+            )
+            .into(),
           );
         }
         Ok(Loop::Break(response))
       })
-  }).and_then(|response| {
+  })
+  .and_then(|response| {
     let content_type = response
       .headers()
       .get(CONTENT_TYPE)
@@ -186,7 +188,8 @@ pub fn fetch_string(
       .map(|body| String::from_utf8(body.to_vec()).unwrap())
       .map_err(ErrBox::from);
     body.join(future::ok(content_type))
-  }).and_then(|(body_string, maybe_content_type)| {
+  })
+  .and_then(|(body_string, maybe_content_type)| {
     future::ok((body_string, maybe_content_type.unwrap()))
   })
 }

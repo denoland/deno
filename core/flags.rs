@@ -39,5 +39,6 @@ pub fn v8_set_flags(args: Vec<String>) -> Vec<String> {
       let cstr = CStr::from_ptr(*ptr as *const c_char);
       let slice = cstr.to_str().unwrap();
       slice.to_string()
-    }).collect()
+    })
+    .collect()
 }

@@ -149,11 +149,13 @@ fn dispatch(control: &[u8], zero_copy_buf: Option<PinnedBuf>) -> CoreOp {
       .and_then(move |result| {
         record_a.result = result;
         Ok(record_a)
-      }).or_else(|err| -> Result<Record, ()> {
+      })
+      .or_else(|err| -> Result<Record, ()> {
         eprintln!("unexpected err {}", err);
         record_b.result = -1;
         Ok(record_b)
-      }).then(|result| -> Result<Buf, ()> {
+      })
+      .then(|result| -> Result<Buf, ()> {
         let record = result.unwrap();
         Ok(record.into())
       }),
@@ -234,7 +236,8 @@ fn op_accept(listener_rid: i32) -> Box<HttpBenchOp> {
         Some(Repr::TcpListener(ref mut listener)) => listener.poll_accept(),
         _ => panic!("bad rid {}", listener_rid),
       }
-    }).and_then(move |(stream, addr)| {
+    })
+    .and_then(move |(stream, addr)| {
       debug!("accept success {}", addr);
       let rid = new_rid();
 
@@ -283,7 +286,8 @@ fn op_read(rid: i32, zero_copy_buf: Option<PinnedBuf>) -> Box<HttpBenchOp> {
         }
         _ => panic!("bad rid"),
       }
-    }).and_then(move |nread| {
+    })
+    .and_then(move |nread| {
       debug!("read success {}", nread);
       Ok(nread as i32)
     }),
@@ -303,7 +307,8 @@ fn op_write(rid: i32, zero_copy_buf: Option<PinnedBuf>) -> Box<HttpBenchOp> {
         }
         _ => panic!("bad rid"),
       }
-    }).and_then(move |nwritten| {
+    })
+    .and_then(move |nwritten| {
       debug!("write success {}", nwritten);
       Ok(nwritten as i32)
     }),
