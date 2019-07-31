@@ -68,7 +68,9 @@ impl Repl {
     self
       .editor
       .load_history(&self.history_file.to_str().unwrap())
-      .map_err(|e| debug!("Unable to load history file: {:?} {}", self.history_file, e))
+      .map_err(|e| {
+        debug!("Unable to load history file: {:?} {}", self.history_file, e)
+      })
       // ignore this error (e.g. it occurs on first load)
       .unwrap_or(())
   }
@@ -91,7 +93,8 @@ impl Repl {
       .map(|line| {
         self.editor.add_history_entry(line.clone());
         line
-      }).map_err(ErrBox::from)
+      })
+      .map_err(ErrBox::from)
     // Forward error to TS side for processing
   }
 }

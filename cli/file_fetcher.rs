@@ -135,14 +135,16 @@ impl SourceFileFetcher {
         &module_url,
         self.use_disk_cache,
         self.no_remote_fetch,
-      ).then(move |result| {
+      )
+      .then(move |result| {
         let mut out = result.map_err(|err| {
           if err.kind() == ErrorKind::NotFound {
             // For NotFound, change the message to something better.
             DenoError::new(
               ErrorKind::NotFound,
               format!("Cannot resolve module \"{}\"", module_url.to_string()),
-            ).into()
+            )
+            .into()
           } else {
             err
           }
@@ -329,7 +331,8 @@ impl SourceFileFetcher {
             "cannot find remote file '{}' in cache",
             module_url.to_string()
           ),
-        ).into(),
+        )
+        .into(),
       ));
     }
 
@@ -353,7 +356,8 @@ impl SourceFileFetcher {
               &module_url,
               None,
               Some(new_module_url.to_string()),
-            ).unwrap();
+            )
+            .unwrap();
 
           // Explicit drop to keep reference alive until future completes.
           drop(download_job);
@@ -373,7 +377,8 @@ impl SourceFileFetcher {
               &module_url,
               maybe_content_type.clone(),
               None,
-            ).unwrap();
+            )
+            .unwrap();
 
           dir.save_source_code(&module_url, &source).unwrap();
 
@@ -651,7 +656,8 @@ mod tests {
       Progress::new(),
       true,
       false,
-    ).expect("setup fail")
+    )
+    .expect("setup fail")
   }
 
   fn test_setup() -> (TempDir, SourceFileFetcher) {
@@ -771,11 +777,9 @@ mod tests {
       // If get_source_file does not call remote, this should be JavaScript
       // as we modified before! (we do not overwrite .headers.json due to no http fetch)
       assert_eq!(&(r3.media_type), &msg::MediaType::Json);
-      assert!(
-        fs::read_to_string(&headers_file_name)
-          .unwrap()
-          .contains("application/json")
-      );
+      assert!(fs::read_to_string(&headers_file_name)
+        .unwrap()
+        .contains("application/json"));
 
       // let's create fresh instance of DenoDir (simulating another freshh Deno process)
       // and don't use cache
@@ -865,7 +869,8 @@ mod tests {
     tokio_util::init(|| {
       let specifier = ModuleSpecifier::resolve_url(
         "http://localhost:4545/tests/subdir/mismatch_ext.ts",
-      ).unwrap();
+      )
+      .unwrap();
       let headers_file_name = fetcher.deps_cache.location.join(
         fetcher.deps_cache.get_cache_filename_with_extension(
           specifier.as_url(),

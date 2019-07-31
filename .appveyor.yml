@@ -162,8 +162,9 @@ install:
           "$env:RUSTUP_HOME\tmp",
           "$env:RUSTUP_HOME\toolchains\stable-x86_64-pc-windows-msvc\share\doc"
         )
-        Exec { rustup component add clippy }
       }
+      Exec { rustup component add clippy }
+      Exec { rustup component add rustfmt }
 
   # Log installed Node.js version + processor architecture.
   - node -p "`Node ${process.version} ${process.arch}`"

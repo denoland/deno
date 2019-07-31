@@ -69,7 +69,8 @@ pub fn make_temp_dir(
   let mut buf: PathBuf = match dir {
     Some(ref p) => p.to_path_buf(),
     None => std::env::temp_dir(),
-  }.join("_");
+  }
+  .join("_");
   let mut rng = rand::thread_rng();
   loop {
     let unique = rng.gen::<u32>();

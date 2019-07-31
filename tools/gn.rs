@@ -97,7 +97,8 @@ impl Build {
         "third_party/python_packages/win32",
         "third_party/python_packages/win32/lib",
         "third_party/python_packages/Pythonwin",
-      ].into_iter()
+      ]
+      .into_iter()
       .map(|p| self.root.join(p).into_os_string().into_string().unwrap())
       .collect();
       let orig_path = String::from(";")
