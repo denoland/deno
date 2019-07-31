@@ -61,7 +61,7 @@ fwdansi = "1.0.1"
 nix = "0.13.x"
 
 [build-dependencies]
-cargo_gn = { git = "https://github.com/afinch7/cargo_gn", branch = "ninja_env" }
+cargo_gn = { git = "https://github.com/denoland/cargo_gn" }
 # To avoid building V8 twice, we make sure that the core crate is built before
 # cli starts building.
 deno = { path = "../core" }
