@@ -1,4 +1,4 @@
-#!/usr/bin/env deno run --reload --allow-run
+#!/usr/bin/env -S deno run --reload --allow-run
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import "./unit_tests.ts";
 import { permissionCombinations, parseUnitTestOutput } from "./test_util.ts";
