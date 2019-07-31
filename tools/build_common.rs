@@ -17,14 +17,14 @@ fn binary_downloads() {
 
 // This is essentially a re-write of the original tools/setup.py
 // but in rust.
-fn setup() -> PathBuf {
+fn setup() -> (PathBuf, cargo_gn::NinjaEnv) {
   let is_debug = cargo_gn::is_debug();
   let mut gn_args: cargo_gn::GnArgs = Vec::new();
   if is_debug {
-    gn_args.push(("is_debug".to_string(), "true".to_string()));
+    gn_args.push("is_debug=true".to_string());
   } else {
-    gn_args.push(("is_official_build".to_string(), "true".to_string()));
-    gn_args.push(("symbol_level".to_string(), "0".to_string()));
+    gn_args.push("is_official_build=true".to_string());
+    gn_args.push("symbol_level=0".to_string());
   }
 
   if env::var_os("DENO_NO_BINARY_DOWNLOAD").is_none() {
@@ -34,9 +34,8 @@ fn setup() -> PathBuf {
   // TODO(ry) Support prebuilt/mac/sccache
   match which("sccache") {
     Ok(sccache_path) => {
-      gn_args.push(("cc_wapper".to_string(), format!("{:?}", sccache_path)));
-      gn_args
-        .push(("rustc_wrapper".to_string(), format!("{:?}", sccache_path)));
+      gn_args.push(format!("cc_wrapper={:?}", sccache_path));
+      gn_args.push(format!("rustc_wrapper={:?}", sccache_path));
     }
     Err(_) => {}
   }
@@ -44,13 +43,49 @@ fn setup() -> PathBuf {
   match env::var("DENO_BUILD_ARGS") {
     Ok(val) => {
       for arg in val.split_whitespace() {
-        let split_pos = arg.find("=").unwrap();
-        let (arg_key, arg_value) = arg.split_at(split_pos);
-        gn_args.push((arg_key.to_string(), arg_value.to_string()));
+        gn_args.push(arg.to_string());
       }
     }
     Err(_) => {}
   };
 
-  cargo_gn::maybe_gen("..", gn_args)
+  let workspace_dir = env::current_dir()
+    .unwrap()
+    .join("../")
+    .canonicalize()
+    .unwrap();
+
+  let ninja_env: cargo_gn::NinjaEnv = if !cfg!(target_os = "windows") {
+    Vec::new()
+  } else {
+    // Windows needs special configuration. This is similar to the function of
+    // python_env() in //tools/util.py.
+    let mut env = Vec::new();
+    let python_path: Vec<String> = vec![
+      "third_party/python_packages",
+      "third_party/python_packages/win32",
+      "third_party/python_packages/win32/lib",
+      "third_party/python_packages/Pythonwin",
+    ].into_iter()
+    .map(|p| {
+      workspace_dir
+        .join(p)
+        .into_os_string()
+        .into_string()
+        .unwrap()
+    }).collect();
+    let orig_path =
+      String::from(";") + &env::var_os("PATH").unwrap().into_string().unwrap();
+    let path = workspace_dir
+      .join("third_party/python_packages/pywin32_system32")
+      .into_os_string()
+      .into_string()
+      .unwrap();
+    env.push(("PYTHONPATH".to_string(), python_path.join(";")));
+    env.push(("PATH".to_string(), path + &orig_path));
+    env.push(("DEPOT_TOOLS_WIN_TOOLCHAIN".to_string(), "0".to_string()));
+    env
+  };
+
+  (cargo_gn::maybe_gen("..", gn_args), ninja_env)
 }

@@ -34,5 +34,5 @@ path = "examples/http_bench.rs"
 tokio = "0.1.18"
 
 [build-dependencies]
-cargo_gn = "0.0.12"
+cargo_gn = { git = "https://github.com/afinch7/cargo_gn", branch = "ninja_env" }
 which = "2.0.1"
