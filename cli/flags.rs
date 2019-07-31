@@ -162,7 +162,7 @@ To get help on the another subcommands (run in this case):
         .global(true),
     )
     .arg(
-      Arg::with_name("current_thread")
+      Arg::with_name("current-thread")
         .long("current-thread")
         .global(true)
         .help("Use tokio::runtime::current_thread"),
