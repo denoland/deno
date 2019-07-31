@@ -43,6 +43,8 @@ pub struct DenoFlags {
   pub v8_flags: Option<Vec<String>>,
   pub xeval_replvar: Option<String>,
   pub xeval_delim: Option<String>,
+  // Use tokio::runtime::current_thread
+  pub current_thread: bool,
 }
 
 static ENV_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
@@ -158,6 +160,12 @@ To get help on the another subcommands (run in this case):
         .help("Load compiler configuration file")
         .takes_value(true)
         .global(true),
+    )
+    .arg(
+      Arg::with_name("current-thread")
+        .long("current-thread")
+        .global(true)
+        .help("Use tokio::runtime::current_thread"),
     ).arg(
       Arg::with_name("importmap")
         .long("importmap")
@@ -443,6 +451,9 @@ pub fn parse_flags(
 ) -> DenoFlags {
   let mut flags = maybe_flags.unwrap_or_default();
 
+  if matches.is_present("current-thread") {
+    flags.current_thread = true;
+  }
   if matches.is_present("log-level") {
     flags.log_level = match matches.value_of("log-level").unwrap() {
       "debug" => Some(Level::Debug),
@@ -1614,6 +1625,21 @@ mod tests {
       flags,
       DenoFlags {
         no_fetch: true,
+        ..DenoFlags::default()
+      }
+    );
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "script.ts"])
+  }
+
+  #[test]
+  fn test_flags_from_vec_35() {
+    let (flags, subcommand, argv) =
+      flags_from_vec(svec!["deno", "--current-thread", "script.ts"]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        current_thread: true,
         ..DenoFlags::default()
       }
     );
