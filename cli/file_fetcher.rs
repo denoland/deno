@@ -39,27 +39,6 @@ pub struct SourceFile {
   pub source_code: Vec<u8>,
 }
 
-impl SourceFile {
-  // TODO(bartlomieju): this method should be implemented on new `CompiledSourceFile`
-  // trait and should be handled by "compiler pipeline"
-  pub fn js_source(&self) -> String {
-    if self.media_type == msg::MediaType::TypeScript {
-      panic!("TypeScript module has no JS source, did you forget to run it through compiler?");
-    }
-
-    // TODO: this should be done by compiler and JS module should be returned
-    if self.media_type == msg::MediaType::Json {
-      return format!(
-        "export default {};",
-        str::from_utf8(&self.source_code).unwrap()
-      );
-    }
-
-    // it's either JS or Unknown media type
-    str::from_utf8(&self.source_code).unwrap().to_string()
-  }
-}
-
 pub type SourceFileFuture =
   dyn Future<Item = SourceFile, Error = ErrBox> + Send;
 

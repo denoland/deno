@@ -16,7 +16,7 @@ extern crate rand;
 extern crate url;
 
 mod ansi;
-pub mod compiler;
+pub mod compilers;
 pub mod deno_dir;
 pub mod deno_error;
 pub mod diagnostics;
@@ -99,6 +99,7 @@ fn js_check(r: Result<(), ErrBox>) {
   }
 }
 
+// TODO: we might want to rethink how this method works
 pub fn print_file_info(
   worker: Worker,
   module_specifier: &ModuleSpecifier,
@@ -110,7 +111,7 @@ pub fn print_file_info(
     .file_fetcher
     .fetch_source_file_async(&module_specifier)
     .map_err(|err| println!("{}", err))
-    .and_then(move |out| {
+    .and_then(|out| {
       println!(
         "{} {}",
         ansi::bold("local:".to_string()),
@@ -125,18 +126,25 @@ pub fn print_file_info(
 
       state_
         .clone()
-        .ts_compiler
-        .compile_async(state_.clone(), &out)
+        .fetch_compiled_module(&module_specifier_)
         .map_err(|e| {
           debug!("compiler error exiting!");
           eprintln!("\n{}", e.to_string());
           std::process::exit(1);
         }).and_then(move |compiled| {
-          if out.media_type == msg::MediaType::TypeScript {
+          if out.media_type == msg::MediaType::TypeScript
+            || (out.media_type == msg::MediaType::JavaScript
+              && state_.ts_compiler.compile_js)
+          {
+            let compiled_source_file = state_
+              .ts_compiler
+              .get_compiled_source_file(&out.url)
+              .unwrap();
+
             println!(
               "{} {}",
               ansi::bold("compiled:".to_string()),
-              compiled.filename.to_str().unwrap(),
+              compiled_source_file.filename.to_str().unwrap(),
             );
           }
 
@@ -152,12 +160,8 @@ pub fn print_file_info(
             );
           }
 
-          if let Some(deps) = worker
-            .state
-            .modules
-            .lock()
-            .unwrap()
-            .deps(&compiled.url.to_string())
+          if let Some(deps) =
+            worker.state.modules.lock().unwrap().deps(&compiled.name)
           {
             println!("{}{}", ansi::bold("deps:\n".to_string()), deps.name);
             if let Some(ref depsdeps) = deps.deps {

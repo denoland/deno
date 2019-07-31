@@ -18,6 +18,10 @@ impl DiskCache {
     }
   }
 
+  // TODO(bartlomieju) this method is not working properly for Windows paths,
+  // Example: file:///C:/deno/js/unit_test_runner.ts
+  // would produce: C:deno\\js\\unit_test_runner.ts
+  // it should produce: file\deno\js\unit_test_runner.ts
   pub fn get_cache_filename(self: &Self, url: &Url) -> PathBuf {
     let mut out = PathBuf::new();
 
