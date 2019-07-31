@@ -17,7 +17,7 @@ fn binary_downloads() {
 
 // This is essentially a re-write of the original tools/setup.py
 // but in rust.
-fn setup() -> (PathBuf, cargo_gn::NinjaEnv) {
+fn setup() -> (PathBuf, Option<cargo_gn::NinjaEnv>) {
   let is_debug = cargo_gn::is_debug();
   let mut gn_args: cargo_gn::GnArgs = Vec::new();
   if is_debug {
@@ -55,8 +55,8 @@ fn setup() -> (PathBuf, cargo_gn::NinjaEnv) {
     .canonicalize()
     .unwrap();
 
-  let ninja_env: cargo_gn::NinjaEnv = if !cfg!(target_os = "windows") {
-    Vec::new()
+  let ninja_env: Option<cargo_gn::NinjaEnv> = if !cfg!(target_os = "windows") {
+    None
   } else {
     // Windows needs special configuration. This is similar to the function of
     // python_env() in //tools/util.py.
@@ -84,7 +84,7 @@ fn setup() -> (PathBuf, cargo_gn::NinjaEnv) {
     env.push(("PYTHONPATH".to_string(), python_path.join(";")));
     env.push(("PATH".to_string(), path + &orig_path));
     env.push(("DEPOT_TOOLS_WIN_TOOLCHAIN".to_string(), "0".to_string()));
-    env
+    Some(env)
   };
 
   (cargo_gn::maybe_gen("..", gn_args), ninja_env)

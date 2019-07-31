@@ -114,7 +114,7 @@ dependencies = [
 [[package]]
 name = "cargo_gn"
 version = "0.0.13"
-source = "git+https://github.com/afinch7/cargo_gn?branch=ninja_env#fe11059d112acc5ca3a1688233507d25d322669d"
+source = "git+https://github.com/afinch7/cargo_gn?branch=ninja_env#7639477242cbe35d2cb37a317b0ce8e2f063f246"
 
 [[package]]
 name = "cc"
