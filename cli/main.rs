@@ -329,6 +329,7 @@ fn run_repl(flags: DenoFlags, argv: Vec<String>) {
 }
 
 fn run_script(flags: DenoFlags, argv: Vec<String>) {
+  let use_current_thread = flags.current_thread;
   let (mut worker, state) = create_worker_and_state(flags, argv);
 
   let main_module = state.main_module().unwrap();
@@ -348,7 +349,12 @@ fn run_script(flags: DenoFlags, argv: Vec<String>) {
         })
       }).map_err(print_err_and_exit)
   });
-  tokio_util::run(main_future);
+
+  if use_current_thread {
+    tokio_util::run_on_current_thread(main_future);
+  } else {
+    tokio_util::run(main_future);
+  }
 }
 
 fn main() {
