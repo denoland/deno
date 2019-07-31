@@ -6,6 +6,27 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.13.0 / 2019.07.31
+
+In deno:
+
+- feat: add debug info to ModuleResolutionError (#2697)
+- feat: expose writeAll() and writeAllSync() (#2298)
+- feat: Add --current-thread flag (#2702)
+- fix: REPL shouldn't panic when it gets SIGINT (#2662)
+- fix: Remap stack traces of unthrown errors (#2693)
+- fix: bring back --no-fetch flag (#2671)
+- fix: handle deno -v and deno --version (#2684)
+- fix: make importmap flag global (#2687)
+- fix: timer's params length (#2655)
+- perf: Remove v8::Locker calls (#2665, #2664)
+
+In deno_std:
+
+- fix: Make shebangs Linux compatible (#545)
+- fix: Ignore error of writing responses to aborted requests (#546)
+- fix: use Deno.execPath where possible (#548)
+
 ### v0.12.0 / 2019.07.16
 
 In deno:
