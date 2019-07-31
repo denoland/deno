@@ -219,6 +219,8 @@ function getExtension(
 }
 
 class Host implements ts.CompilerHost {
+  extensionCache: Record<string, ts.Extension> = {};
+
   private readonly _options: ts.CompilerOptions = {
     allowJs: true,
     allowNonTsExtensions: true,
@@ -370,10 +372,16 @@ class Host implements ts.CompilerHost {
           // This flags to the compiler to not go looking to transpile functional
           // code, anything that is in `/$asset$/` is just library code
           const isExternalLibraryImport = moduleName.startsWith(ASSETS);
+          const extension = getExtension(
+            resolvedFileName,
+            SourceFile.mediaType
+          );
+          this.extensionCache[resolvedFileName] = extension;
+
           const r = {
             resolvedFileName,
             isExternalLibraryImport,
-            extension: getExtension(resolvedFileName, SourceFile.mediaType)
+            extension
           };
           return r;
         } else {
@@ -401,6 +409,21 @@ class Host implements ts.CompilerHost {
       } else {
         assert(sourceFiles != null && sourceFiles.length == 1);
         const sourceFileName = sourceFiles![0].fileName;
+        const maybeExtension = this.extensionCache[sourceFileName];
+
+        if (maybeExtension) {
+          // NOTE: If it's a `.json` file we don't want to write it to disk.
+          // JSON files are loaded and used by TS compiler to check types, but we don't want
+          // to emit them to disk because output file is the same as input file.
+          if (maybeExtension === ts.Extension.Json) {
+            return;
+          }
+
+          // NOTE: JavaScript files are only emitted to disk if `checkJs` option in on
+          if (maybeExtension === ts.Extension.Js && !this._options.checkJs) {
+            return;
+          }
+        }
 
         if (fileName.endsWith(".map")) {
           // Source Map
