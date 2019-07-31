@@ -126,7 +126,7 @@ mod tests {
       argv,
       op_selector_std,
       Progress::new(),
-    );
+    ).unwrap();
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
       let mut worker =
@@ -154,7 +154,7 @@ mod tests {
       argv,
       op_selector_std,
       Progress::new(),
-    );
+    ).unwrap();
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
       let mut worker =
@@ -180,7 +180,8 @@ mod tests {
     let mut flags = flags::DenoFlags::default();
     flags.reload = true;
     let state =
-      ThreadSafeState::new(flags, argv, op_selector_std, Progress::new());
+      ThreadSafeState::new(flags, argv, op_selector_std, Progress::new())
+        .unwrap();
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
       let mut worker = Worker::new(

@@ -1,8 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::compiler::TsCompiler;
 use crate::deno_dir;
-use crate::deno_dir::SourceFile;
-use crate::deno_dir::SourceFileFetcher;
+use crate::file_fetcher::SourceFile;
+use crate::file_fetcher::SourceFileFetcher;
 use crate::flags;
 use crate::global_timer::GlobalTimer;
 use crate::import_map::ImportMap;
@@ -76,6 +76,7 @@ pub struct State {
   pub progress: Progress,
   pub seeded_rng: Option<Mutex<StdRng>>,
 
+  pub file_fetcher: SourceFileFetcher,
   pub ts_compiler: TsCompiler,
 }
 
@@ -109,7 +110,7 @@ pub fn fetch_source_file_and_maybe_compile_async(
   let state_ = state.clone();
 
   state_
-    .dir
+    .file_fetcher
     .fetch_source_file_async(&module_specifier)
     .and_then(move |out| {
       state_
@@ -168,7 +169,7 @@ impl ThreadSafeState {
     argv_rest: Vec<String>,
     dispatch_selector: ops::OpSelector,
     progress: Progress,
-  ) -> Self {
+  ) -> Result<Self, ErrBox> {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
 
     let (worker_in_tx, worker_in_rx) = async_mpsc::channel::<Buf>(1);
@@ -177,12 +178,21 @@ impl ThreadSafeState {
     let external_channels = (worker_in_tx, worker_out_rx);
     let resource = resources::add_worker(external_channels);
 
-    let dir = deno_dir::DenoDir::new(
-      custom_root,
+    let dir = deno_dir::DenoDir::new(custom_root)?;
+
+    let file_fetcher = SourceFileFetcher::new(
+      dir.deps_cache.clone(),
       progress.clone(),
       !flags.reload,
       flags.no_fetch,
-    ).unwrap();
+    )?;
+
+    let ts_compiler = TsCompiler::new(
+      file_fetcher.clone(),
+      dir.gen_cache.clone(),
+      !flags.reload,
+      flags.config_path.clone(),
+    );
 
     let main_module: Option<ModuleSpecifier> = if argv_rest.len() <= 1 {
       None
@@ -220,10 +230,7 @@ impl ThreadSafeState {
 
     let modules = Arc::new(Mutex::new(deno::Modules::new()));
 
-    let ts_compiler =
-      TsCompiler::new(dir.clone(), !flags.reload, flags.config_path.clone());
-
-    ThreadSafeState(Arc::new(State {
+    let state = State {
       main_module,
       modules,
       dir,
@@ -240,8 +247,11 @@ impl ThreadSafeState {
       dispatch_selector,
       progress,
       seeded_rng,
+      file_fetcher,
       ts_compiler,
-    }))
+    };
+
+    Ok(ThreadSafeState(Arc::new(state)))
   }
 
   /// Read main module from argv
@@ -289,7 +299,7 @@ impl ThreadSafeState {
       argv,
       ops::op_selector_std,
       Progress::new(),
-    )
+    ).unwrap()
   }
 
   pub fn metrics_op_dispatched(

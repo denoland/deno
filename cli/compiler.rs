@@ -1,9 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::deno_dir::DenoDir;
-use crate::deno_dir::SourceFile;
-use crate::deno_dir::SourceFileFetcher;
 use crate::diagnostics::Diagnostic;
 use crate::disk_cache::DiskCache;
+use crate::file_fetcher::SourceFile;
+use crate::file_fetcher::SourceFileFetcher;
 use crate::msg;
 use crate::resources;
 use crate::source_maps::SourceMapGetter;
@@ -160,7 +159,7 @@ fn load_config_file(
 }
 
 pub struct TsCompiler {
-  pub deno_dir: DenoDir,
+  pub file_fetcher: SourceFileFetcher,
   pub config: CompilerConfig,
   pub config_hash: Vec<u8>,
   pub disk_cache: DiskCache,
@@ -174,7 +173,8 @@ pub struct TsCompiler {
 
 impl TsCompiler {
   pub fn new(
-    deno_dir: DenoDir,
+    file_fetcher: SourceFileFetcher,
+    disk_cache: DiskCache,
     use_disk_cache: bool,
     config_path: Option<String>,
   ) -> Self {
@@ -189,8 +189,8 @@ impl TsCompiler {
     };
 
     Self {
-      disk_cache: deno_dir.clone().gen_cache,
-      deno_dir,
+      file_fetcher,
+      disk_cache,
       config: compiler_config,
       config_hash: config_bytes,
       compiled: Mutex::new(HashSet::new()),
@@ -474,7 +474,7 @@ impl TsCompiler {
         self.mark_compiled(module_specifier.as_url());
 
         let source_file = self
-          .deno_dir
+          .file_fetcher
           .fetch_source_file(&module_specifier)
           .expect("Source file not found");
 
@@ -583,7 +583,7 @@ impl TsCompiler {
     script_name: &str,
   ) -> Option<SourceFile> {
     if let Some(module_specifier) = self.try_to_resolve(script_name) {
-      return match self.deno_dir.fetch_source_file(&module_specifier) {
+      return match self.file_fetcher.fetch_source_file(&module_specifier) {
         Ok(out) => Some(out),
         Err(_) => None,
       };

@@ -1,7 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use atty;
 use crate::ansi;
-use crate::deno_dir::SourceFileFetcher;
 use crate::deno_error;
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
@@ -506,7 +505,7 @@ fn op_fetch_source_file(
   let resolved_specifier = state.resolve(specifier, referrer, false)?;
 
   let fut = state
-    .dir
+    .file_fetcher
     .fetch_source_file_async(&resolved_specifier)
     .and_then(move |out| {
       let builder = &mut FlatBufferBuilder::new();
@@ -2064,7 +2063,7 @@ fn op_create_worker(
     parent_state.argv.clone(),
     op_selector_std,
     parent_state.progress.clone(),
-  );
+  )?;
   let rid = child_state.resource.rid;
   let name = format!("USER-WORKER-{}", specifier);
 
