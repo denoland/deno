@@ -281,3 +281,24 @@ TEST(LibDenoTest, WasmInstantiate) {
 
   deno_delete(d);
 }
+
+/*
+
+ To run this test:
+
+ ./tools/build.py libdeno_test && ./target/debug/libdeno_test
+ --gtest_filter=LibDenoTest.AsyncException
+
+*/
+TEST(LibDenoTest, AsyncException) {
+  Deno* d = deno_new(deno_config{0, snapshot, empty, nullptr, nullptr});
+  EXPECT_EQ(deno_last_exception(d), nullptr);
+  deno_execute(d, nullptr, "a.js", "AsyncException()");
+
+  deno_check_promise_errors(d);
+
+  // Note that there is only one frame in the JSON output....
+  printf("deno_last_exception %s\n", deno_last_exception(d));
+
+  deno_delete(d);
+}

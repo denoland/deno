@@ -253,3 +253,13 @@ global.WasmInstantiate = () => {
     Deno.core.send(new Uint8Array([42]));
   })();
 };
+
+global.AsyncException = () => {
+  (async () => {
+    await Promise.resolve().then(() => {
+      const error = new Error;
+      Deno.core.print(error.stack + "\n");
+      throw error;
+    });
+  })()
+};
