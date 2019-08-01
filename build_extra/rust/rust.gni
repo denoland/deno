@@ -148,12 +148,10 @@ template("_rust_crate") {
     extern_outputs += [
       {
         label = info.label
-        crate_name = info.crate_name
         crate_type = info.crate_type
+        crate_name = info.crate_name
 
-        if (!defined(info.crate_version)) {
-          crate_suffix = ""
-        } else {
+        if (defined(info.crate_version)) {
           crate_version = info.crate_version
           crate_suffix = exec_script("//tools/sha256sum.py",
                                      [
@@ -161,6 +159,14 @@ template("_rust_crate") {
                                        "--format=-%.8s",
                                      ],
                                      "trim string")
+        } else {
+          crate_suffix = ""
+        }
+
+        if (defined(info.crate_alias)) {
+          crate_alias = info.crate_alias
+        } else {
+          crate_alias = info.crate_name
         }
 
         if (crate_type == "rlib") {
@@ -293,7 +299,7 @@ template("_rust_crate") {
     foreach(info, extern_outputs) {
       args += [
         "--extern",
-        info.crate_name + "=" + rebase_path(info.out_path, root_build_dir),
+        info.crate_alias + "=" + rebase_path(info.out_path, root_build_dir),
       ]
       sources += [ info.out_path ]
       deps += [ info.label ]
