@@ -2,13 +2,57 @@
 import * as domTypes from "./dom_types";
 import { containsOnlyASCII, hasOwnProperty } from "./util";
 import { TextEncoder } from "./text_encoding";
+import { build } from "./build";
 
 export const bytesSymbol = Symbol("bytes");
 
 function convertLineEndingsToNative(s: string): string {
-  // TODO(qti3e) Implement convertLineEndingsToNative.
-  // https://w3c.github.io/FileAPI/#convert-line-endings-to-native
-  return s;
+  let nativeLineEnd = build.os == "win" ? "\r\n" : "\n";
+
+  let position = 0;
+
+  let collectionResult = collectSequenceNotCRLF(s, position);
+
+  let token = collectionResult.collected;
+  position = collectionResult.newPosition;
+
+  let result = token;
+
+  while (position < s.length) {
+    let c = s.charAt(position);
+    if (c == "\r") {
+      result += nativeLineEnd;
+      position++;
+      if (position < s.length && s.charAt(position) == "\n") {
+        position++;
+      }
+    } else if (c == "\n") {
+      position++;
+      result += nativeLineEnd;
+    }
+
+    collectionResult = collectSequenceNotCRLF(s, position);
+
+    token = collectionResult.collected;
+    position = collectionResult.newPosition;
+
+    result += token;
+  }
+
+  return result;
+}
+
+function collectSequenceNotCRLF(
+  s: string,
+  position: number
+): { collected: string; newPosition: number } {
+  const start = position;
+  for (
+    let c = s.charAt(position);
+    position < s.length && !(c == "\r" || c == "\n");
+    c = s.charAt(++position)
+  );
+  return { collected: s.slice(start, position), newPosition: position };
 }
 
 function toUint8Arrays(
