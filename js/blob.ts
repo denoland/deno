@@ -7,12 +7,8 @@ import { build } from "./build";
 export const bytesSymbol = Symbol("bytes");
 
 function convertLineEndingsToNative(s: string): string {
-  let nativeLineEnd = "\n";
-  if (build.os == "win") {
-    nativeLineEnd = "\r\n";
-  }
+  let nativeLineEnd = build.os == "win" ? "\r\n" : "\n";
 
-  let result = "";
   let position = 0;
 
   let collectionResult = collectSequenceNotCRLF(s, position);
@@ -20,19 +16,19 @@ function convertLineEndingsToNative(s: string): string {
   let token = collectionResult.collected;
   position = collectionResult.newPosition;
 
-  result = result + token;
+  let result = token;
 
   while (position < s.length) {
     let c = s.charAt(position);
     if (c == "\r") {
-      result = result + nativeLineEnd;
+      result += nativeLineEnd;
       position++;
       if (position < s.length && s.charAt(position) == "\n") {
         position++;
       }
     } else if (c == "\n") {
       position++;
-      result = result + nativeLineEnd;
+      result += nativeLineEnd;
     }
 
     collectionResult = collectSequenceNotCRLF(s, position);
@@ -40,7 +36,7 @@ function convertLineEndingsToNative(s: string): string {
     token = collectionResult.collected;
     position = collectionResult.newPosition;
 
-    result = result + token;
+    result += token;
   }
 
   return result;
@@ -50,16 +46,13 @@ function collectSequenceNotCRLF(
   s: string,
   position: number
 ): { collected: string; newPosition: number } {
-  let result = "";
-  while (position < s.length) {
+  const start = position;
+  for (
     let c = s.charAt(position);
-    if (c == "\r" || c == "\n") {
-      break;
-    }
-    result = result.concat(c);
-    position++;
-  }
-  return { collected: result, newPosition: position };
+    position < s.length && !(c == "\r" || c == "\n");
+    c = s.charAt(++position)
+  );
+  return { collected: s.slice(start, position), newPosition: position };
 }
 
 function toUint8Arrays(
