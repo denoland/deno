@@ -69,6 +69,12 @@ void PromiseRejectCallback(v8::PromiseRejectMessage promise_reject_message) {
 
   v8::Context::Scope context_scope(context);
 
+  auto message = v8::Exception::CreateMessage(isolate, error);
+  auto stack_trace = message->GetStackTrace();
+  uint32_t count = static_cast<uint32_t>(stack_trace->GetFrameCount());
+  printf("FRAME COUNT %d\n", count);
+
+
   int promise_id = promise->GetIdentityHash();
   switch (promise_reject_message.GetEvent()) {
     case v8::kPromiseRejectWithNoHandler:
