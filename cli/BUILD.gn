@@ -26,7 +26,6 @@ main_extern_rlib = [
   "dirs",
   "flatbuffers",
   "futures",
-  "fwdansi",
   "http",
   "hyper",
   "hyper_rustls",
@@ -55,7 +54,10 @@ main_extern_rlib = [
   "utime",
 ]
 if (is_win) {
-  main_extern_rlib += [ "winapi" ]
+  main_extern_rlib += [
+    "fwdansi",
+    "winapi",
+  ]
 }
 if (is_posix) {
   main_extern_rlib += [ "nix" ]

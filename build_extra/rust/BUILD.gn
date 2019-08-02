@@ -12,7 +12,7 @@ cargo_home = "//third_party/rust_crates"
 
 rust_rlib("aho_corasick") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/aho-corasick-0.7.3/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/aho-corasick-0.7.4/src/lib.rs"
   features = [
     "default",
     "memchr",
@@ -27,7 +27,7 @@ rust_rlib("aho_corasick") {
 
 rust_rlib("ansi_term") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ansi_term-0.11.0/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ansi_term-0.12.0/src/lib.rs"
   args = [
     "--cap-lints",
     "allow",
@@ -39,17 +39,20 @@ rust_rlib("ansi_term") {
 
 rust_rlib("arrayvec") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/arrayvec-0.4.10/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/arrayvec-0.4.11/src/lib.rs"
   extern_rlib = [ "nodrop" ]
   args = [
     "--cap-lints",
     "allow",
   ]
+
+  # Added by custom-build script.
+  cfg = [ "has_stable_maybe_uninit" ]
 }
 
 rust_rlib("atty") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/atty-0.2.11/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/atty-0.2.13/src/lib.rs"
   args = [
     "--cap-lints",
     "allow",
@@ -116,6 +119,25 @@ rust_rlib("bytes") {
   ]
 }
 
+## Override: use rand v0.6.5 instead.
+# rust_rlib("c2_chacha") {
+#   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/c2-chacha-0.2.2/src/lib.rs"
+#   features = [
+#     "lazy_static",
+#     "ppv-lite86",
+#     "simd",
+#     "std",
+#   ]
+#   extern_rlib = [
+#     "lazy_static",
+#     "ppv_lite86",
+#   ]
+#   args = [
+#     "--cap-lints",
+#     "allow",
+#   ]
+# }
+
 rust_rlib("cfg_if") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/cfg-if-0.1.9/src/lib.rs"
@@ -149,8 +171,18 @@ rust_rlib("clap") {
     "--cap-lints",
     "allow",
   ]
+
+  # Override: use ansi_term v0.12.0 instead of v0.11.0.
   if (is_posix) {
     extern_rlib += [ "ansi_term" ]
+    # extern = [
+    #   {
+    #     label = ":ansi_term-0.11.0"
+    #     crate_type = "rlib"
+    #     crate_name = "ansi_term"
+    #     crate_version = "0.11.0"
+    #   },
+    # ]
   }
 }
 
@@ -169,7 +201,7 @@ rust_rlib("crossbeam_deque") {
 
 rust_rlib("crossbeam_epoch") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/crossbeam-epoch-0.7.1/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/crossbeam-epoch-0.7.2/src/lib.rs"
   features = [
     "crossbeam-utils",
     "default",
@@ -202,7 +234,7 @@ rust_rlib("crossbeam_queue") {
 
 rust_rlib("crossbeam_utils") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/crossbeam-utils-0.6.5/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/crossbeam-utils-0.6.6/src/lib.rs"
   features = [
     "default",
     "lazy_static",
@@ -229,7 +261,7 @@ rust_rlib("ct_logs") {
 
 rust_rlib("dirs") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/dirs-2.0.1/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/dirs-2.0.2/src/lib.rs"
   extern_rlib = [
     "cfg_if",
     "dirs_sys",
@@ -242,7 +274,7 @@ rust_rlib("dirs") {
 
 rust_rlib("dirs_sys") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/dirs-sys-0.3.3/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/dirs-sys-0.3.4/src/lib.rs"
   extern_rlib = [ "cfg_if" ]
   args = [
     "--cap-lints",
@@ -291,7 +323,7 @@ rust_rlib("fnv") {
 
 rust_rlib("futures") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/futures-0.1.27/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/futures-0.1.28/src/lib.rs"
   features = [
     "default",
     "use_std",
@@ -321,9 +353,28 @@ rust_rlib("futures_cpupool") {
   ]
 }
 
+## Override: use rand v0.6.5 instead.
+# rust_rlib("getrandom") {
+#   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/getrandom-0.1.7/src/lib.rs"
+#   features = [ "std" ]
+#   extern_rlib = [ "cfg_if" ]
+#   args = [
+#     "--cap-lints",
+#     "allow",
+#   ]
+#   if (is_posix) {
+#     extern_rlib += [ "libc" ]
+#   }
+#
+#   # Per the #[link(...)] attribute found in 'src/ios.rs'.
+#   if (is_mac) {
+#     libs = [ "Security.framework" ]
+#   }
+# }
+
 rust_rlib("h2") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/h2-0.1.23/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/h2-0.1.26/src/lib.rs"
   extern_rlib = [
     "byteorder",
     "bytes",
@@ -344,7 +395,7 @@ rust_rlib("h2") {
 
 rust_rlib("http") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/http-0.1.17/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/http-0.1.18/src/lib.rs"
   extern_rlib = [
     "bytes",
     "fnv",
@@ -373,7 +424,7 @@ rust_rlib("http_body") {
 
 rust_rlib("httparse") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/httparse-1.3.3/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/httparse-1.3.4/src/lib.rs"
   features = [
     "default",
     "std",
@@ -384,12 +435,15 @@ rust_rlib("httparse") {
   ]
 
   # Added by custom-build script.
-  cfg = [ "httparse_simd" ]
+  cfg = [
+    "httparse_min_2018",
+    "httparse_simd",
+  ]
 }
 
 rust_rlib("hyper") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/hyper-0.12.30/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/hyper-0.12.33/src/lib.rs"
   features = [
     "__internal_flaky_tests",
     "default",
@@ -430,6 +484,12 @@ rust_rlib("hyper") {
     "--cap-lints",
     "allow",
   ]
+
+  # Added by custom-build script.
+  cfg = [
+    "error_source",
+    "try_from",
+  ]
 }
 
 rust_rlib("hyper_rustls") {
@@ -461,7 +521,7 @@ rust_rlib("hyper_rustls") {
 
 rust_rlib("idna") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/idna-0.1.5/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/idna-0.2.0/src/lib.rs"
   extern_rlib = [
     "matches",
     "unicode_bidi",
@@ -505,8 +565,8 @@ rust_rlib("iovec") {
     extern = [
       {
         label = ":winapi-0.2.8"
-        crate_name = "winapi"
         crate_type = "rlib"
+        crate_name = "winapi"
         crate_version = "0.2.8"
       },
     ]
@@ -537,7 +597,7 @@ rust_rlib("lazy_static") {
 
 rust_rlib("libc") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/libc-0.2.58/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/libc-0.2.60/src/lib.rs"
   features = [
     "default",
     "std",
@@ -562,6 +622,7 @@ rust_rlib("lock_api") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/lock_api-0.1.5/src/lib.rs"
   extern_rlib = [
+    # Override: use scopeguard v1.0.0 instead of v0.3.3.
     "scopeguard",
     ## Override: avoid dependency on on 'owning_ref'.
     # "owning_ref",
@@ -573,16 +634,29 @@ rust_rlib("lock_api") {
 
   ## Override: avoid dependency on on 'owning_ref'.
   # features = [ "owning_ref" ]
+
+  ## Override: use scopeguard v1.0.0 instead of v0.3.3.
+  # extern = [
+  #   {
+  #     label = ":scopeguard-0.3.3"
+  #     crate_type = "rlib"
+  #     crate_name = "scopeguard"
+  #     crate_version = "0.3.3"
+  #   },
+  # ]
 }
 
 rust_rlib("log") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/log-0.4.6/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/log-0.4.8/src/lib.rs"
   extern_rlib = [ "cfg_if" ]
   args = [
     "--cap-lints",
     "allow",
   ]
+
+  # Added by custom-build script.
+  cfg = [ "atomic_cas" ]
 }
 
 rust_rlib("matches") {
@@ -596,7 +670,7 @@ rust_rlib("matches") {
 
 rust_rlib("memchr") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/memchr-2.2.0/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/memchr-2.2.1/src/lib.rs"
   features = [
     "default",
     "use_std",
@@ -617,11 +691,14 @@ rust_rlib("memchr") {
 
 rust_rlib("memoffset") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/memoffset-0.2.1/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/memoffset-0.5.1/src/lib.rs"
   args = [
     "--cap-lints",
     "allow",
   ]
+
+  # Added by custom-build script.
+  cfg = [ "memoffset_maybe_uninit" ]
 }
 
 rust_rlib("mio") {
@@ -649,14 +726,14 @@ rust_rlib("mio") {
     extern = [
       {
         label = ":miow-0.2.1"
-        crate_name = "miow"
         crate_type = "rlib"
+        crate_name = "miow"
         crate_version = "0.2.1"
       },
       {
         label = ":winapi-0.2.8"
-        crate_name = "winapi"
         crate_type = "rlib"
+        crate_name = "winapi"
         crate_version = "0.2.8"
       },
     ]
@@ -757,12 +834,26 @@ rust_rlib("parking_lot_core") {
 
 rust_rlib("percent_encoding") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/percent-encoding-1.0.1/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/percent-encoding-2.0.0/lib.rs"
   args = [
     "--cap-lints",
     "allow",
   ]
 }
+
+## Override: use rand v0.6.5 instead.
+# rust_rlib("ppv_lite86") {
+#   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ppv-lite86-0.2.5/src/lib.rs"
+#   features = [
+#     "default",
+#     "simd",
+#     "std",
+#   ]
+#   args = [
+#     "--cap-lints",
+#     "allow",
+#   ]
+# }
 
 rust_rlib("proc_macro2") {
   edition = "2015"
@@ -787,7 +878,7 @@ rust_rlib("proc_macro2") {
 
 rust_rlib("quote") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/quote-0.6.12/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/quote-0.6.13/src/lib.rs"
   features = [
     "default",
     "proc-macro",
@@ -812,14 +903,26 @@ rust_rlib("rand") {
     "std",
   ]
   extern_rlib = [
-    "rand_chacha",
-    "rand_core",
     "rand_hc",
     "rand_isaac",
     "rand_jitter",
     "rand_os",
     "rand_pcg",
     "rand_xorshift",
+  ]
+  extern = [
+    {
+      label = ":rand_chacha-0.1.1"
+      crate_type = "rlib"
+      crate_name = "rand_chacha"
+      crate_version = "0.1.1"
+    },
+    {
+      label = ":rand_core-0.4.0"
+      crate_type = "rlib"
+      crate_name = "rand_core"
+      crate_version = "0.4.0"
+    },
   ]
   args = [
     "--cap-lints",
@@ -840,43 +943,40 @@ rust_rlib("rand") {
   }
 }
 
-rust_rlib("rand_chacha") {
-  edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rand_chacha-0.1.1/src/lib.rs"
-  args = [
-    "--cap-lints",
-    "allow",
-  ]
+## Override: use rand v0.6.5 instead.
+# rust_rlib("rand_chacha") {
+#   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rand_chacha-0.2.1/src/lib.rs"
+#   features = [
+#     "c2-chacha",
+#     "default",
+#     "simd",
+#     "std",
+#   ]
+#   extern_rlib = [
+#     "c2_chacha",
+#     "rand_core",
+#   ]
+#   args = [
+#     "--cap-lints",
+#     "allow",
+#   ]
+# }
 
-  # Added by custom-build script.
-  cfg = [ "rustc_1_26" ]
-
-  # Override: use rand_core v0.4.0 instead of v0.3.1.
-  extern_rlib = [ "rand_core" ]
-
-  ## Override: use rand_core v0.4.0 instead of v0.3.1.
-  # extern = [
-  #   {
-  #     label = ":rand_core-0.3.1"
-  #     crate_name = "rand_core"
-  #     crate_type = "rlib"
-  #     crate_version = "0.3.1"
-  #   },
-  # ]
-}
-
-rust_rlib("rand_core") {
-  edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rand_core-0.4.0/src/lib.rs"
-  features = [
-    "alloc",
-    "std",
-  ]
-  args = [
-    "--cap-lints",
-    "allow",
-  ]
-}
+## Override: use rand v0.6.5 instead.
+# rust_rlib("rand_core") {
+#   edition = "2015"
+#   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rand_core-0.5.0/src/lib.rs"
+#   features = [
+#     "alloc",
+#     "getrandom",
+#     "std",
+#   ]
+#   extern_rlib = [ "getrandom" ]
+#   args = [
+#     "--cap-lints",
+#     "allow",
+#   ]
+# }
 
 rust_rlib("rand_hc") {
   edition = "2015"
@@ -887,17 +987,20 @@ rust_rlib("rand_hc") {
   ]
 
   # Override: use rand_core v0.4.0 instead of v0.3.1.
-  extern_rlib = [ "rand_core" ]
-
-  ## Override: use rand_core v0.4.0 instead of v0.3.1.
-  # extern = [
-  #   {
-  #     label = ":rand_core-0.3.1"
-  #     crate_name = "rand_core"
-  #     crate_type = "rlib"
-  #     crate_version = "0.3.1"
-  #   },
-  # ]
+  extern = [
+    {
+      label = ":rand_core-0.4.0"
+      crate_type = "rlib"
+      crate_name = "rand_core"
+      crate_version = "0.4.0"
+    },
+    # {
+    #   label = ":rand_core-0.3.1"
+    #   crate_type = "rlib"
+    #   crate_name = "rand_core"
+    #   crate_version = "0.3.1"
+    # },
+  ]
 }
 
 rust_rlib("rand_isaac") {
@@ -909,17 +1012,20 @@ rust_rlib("rand_isaac") {
   ]
 
   # Override: use rand_core v0.4.0 instead of v0.3.1.
-  extern_rlib = [ "rand_core" ]
-
-  ## Override: use rand_core v0.4.0 instead of v0.3.1.
-  # extern = [
-  #   {
-  #     label = ":rand_core-0.3.1"
-  #     crate_name = "rand_core"
-  #     crate_type = "rlib"
-  #     crate_version = "0.3.1"
-  #   },
-  # ]
+  extern = [
+    {
+      label = ":rand_core-0.4.0"
+      crate_type = "rlib"
+      crate_name = "rand_core"
+      crate_version = "0.4.0"
+    },
+    # {
+    #   label = ":rand_core-0.3.1"
+    #   crate_type = "rlib"
+    #   crate_name = "rand_core"
+    #   crate_version = "0.3.1"
+    # },
+  ]
 }
 
 rust_rlib("rand_jitter") {
@@ -929,29 +1035,43 @@ rust_rlib("rand_jitter") {
     "rand_core",
     "std",
   ]
-  extern_rlib = [ "rand_core" ]
+  extern = [
+    {
+      label = ":rand_core-0.4.0"
+      crate_type = "rlib"
+      crate_name = "rand_core"
+      crate_version = "0.4.0"
+    },
+  ]
   args = [
     "--cap-lints",
     "allow",
   ]
   if (is_mac) {
-    extern_rlib += [ "libc" ]
+    extern_rlib = [ "libc" ]
   }
   if (is_win) {
-    extern_rlib += [ "winapi" ]
+    extern_rlib = [ "winapi" ]
   }
 }
 
 rust_rlib("rand_os") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rand_os-0.1.3/src/lib.rs"
-  extern_rlib = [ "rand_core" ]
+  extern = [
+    {
+      label = ":rand_core-0.4.0"
+      crate_type = "rlib"
+      crate_name = "rand_core"
+      crate_version = "0.4.0"
+    },
+  ]
   args = [
     "--cap-lints",
     "allow",
   ]
   if (is_posix) {
-    extern_rlib += [ "libc" ]
+    extern_rlib = [ "libc" ]
   }
 
   # Per the #[link(...)] attribute found in 'src/macos.rs'.
@@ -959,14 +1079,21 @@ rust_rlib("rand_os") {
     libs = [ "Security.framework" ]
   }
   if (is_win) {
-    extern_rlib += [ "winapi" ]
+    extern_rlib = [ "winapi" ]
   }
 }
 
 rust_rlib("rand_pcg") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rand_pcg-0.1.2/src/lib.rs"
-  extern_rlib = [ "rand_core" ]
+  extern = [
+    {
+      label = ":rand_core-0.4.0"
+      crate_type = "rlib"
+      crate_name = "rand_core"
+      crate_version = "0.4.0"
+    },
+  ]
   args = [
     "--cap-lints",
     "allow",
@@ -985,22 +1112,25 @@ rust_rlib("rand_xorshift") {
   ]
 
   # Override: use rand_core v0.4.0 instead of v0.3.1.
-  extern_rlib = [ "rand_core" ]
-
-  ## Override: use rand_core v0.4.0 instead of v0.3.1.
-  # extern = [
-  #   {
-  #     label = ":rand_core-0.3.1"
-  #     crate_name = "rand_core"
-  #     crate_type = "rlib"
-  #     crate_version = "0.3.1"
-  #   },
-  # ]
+  extern = [
+    {
+      label = ":rand_core-0.4.0"
+      crate_type = "rlib"
+      crate_name = "rand_core"
+      crate_version = "0.4.0"
+    },
+    # {
+    #   label = ":rand_core-0.3.1"
+    #   crate_type = "rlib"
+    #   crate_name = "rand_core"
+    #   crate_version = "0.3.1"
+    # },
+  ]
 }
 
 rust_rlib("regex") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/regex-1.1.7/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/regex-1.2.0/src/lib.rs"
   features = [
     "default",
     "use_std",
@@ -1016,17 +1146,11 @@ rust_rlib("regex") {
     "--cap-lints",
     "allow",
   ]
-
-  # Added by custom-build script.
-  cfg = [
-    "regex_runtime_teddy_avx2",
-    "regex_runtime_teddy_ssse3",
-  ]
 }
 
 rust_rlib("regex_syntax") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/regex-syntax-0.6.7/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/regex-syntax-0.6.10/src/lib.rs"
   extern_rlib = [ "ucd_util" ]
   args = [
     "--cap-lints",
@@ -1184,36 +1308,24 @@ rust_rlib("rustls") {
 }
 
 rust_rlib("rustyline") {
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rustyline-4.1.0/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rustyline-5.0.1/src/lib.rs"
   features = [
     "default",
     "dirs",
     "with-dirs",
   ]
   extern_rlib = [
+    "dirs",
     "libc",
     "log",
     "memchr",
     "unicode_segmentation",
     "unicode_width",
-
-    # Override: use dirs v2.0.1 instead of v1.0.5.
-    "dirs",
   ]
   args = [
     "--cap-lints",
     "allow",
   ]
-
-  ## Override: use dirs v2.0.1 instead of v1.0.5.
-  # extern = [
-  #   {
-  #     label = ":dirs-1.0.5"
-  #     crate_name = "dirs"
-  #     crate_type = "rlib"
-  #     crate_version = "1.0.5"
-  #   },
-  # ]
   if (is_posix) {
     extern_rlib += [
       "nix",
@@ -1227,7 +1339,7 @@ rust_rlib("rustyline") {
 
 rust_rlib("ryu") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ryu-0.2.8/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ryu-1.0.0/src/lib.rs"
   args = [
     "--cap-lints",
     "allow",
@@ -1242,7 +1354,7 @@ rust_rlib("ryu") {
 
 rust_rlib("scopeguard") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/scopeguard-0.3.3/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/scopeguard-1.0.0/src/lib.rs"
   args = [
     "--cap-lints",
     "allow",
@@ -1263,7 +1375,7 @@ rust_rlib("sct") {
 
 rust_rlib("serde") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/serde-1.0.92/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/serde-1.0.98/src/lib.rs"
   features = [
     "default",
     "std",
@@ -1277,18 +1389,22 @@ rust_rlib("serde") {
   cfg = [
     "core_duration",
     "core_reverse",
+    "core_try_from",
     "de_boxed_c_str",
     "de_rc_dst",
     "integer128",
     "num_nonzero",
+    "num_nonzero_signed",
     "ops_bound",
     "range_inclusive",
+    "std_atomic",
+    "std_atomic64",
   ]
 }
 
 rust_proc_macro("serde_derive") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/serde_derive-1.0.92/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/serde_derive-1.0.98/src/lib.rs"
   features = [ "default" ]
   extern_rlib = [
     "proc_macro2",
@@ -1303,7 +1419,7 @@ rust_proc_macro("serde_derive") {
 
 rust_rlib("serde_json") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/serde_json-1.0.39/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/serde_json-1.0.40/src/lib.rs"
   features = [
     "default",
     "indexmap",
@@ -1361,8 +1477,8 @@ rust_rlib("source_map_mappings") {
   # extern = [
   #   {
   #     label = ":rand-0.4.6"
-  #     crate_name = "rand"
   #     crate_type = "rlib"
+  #     crate_name = "rand"
   #     crate_version = "0.4.6"
   #   },
   # ]
@@ -1393,7 +1509,7 @@ rust_rlib("spin") {
 
 rust_rlib("string") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/string-0.2.0/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/string-0.2.1/src/lib.rs"
   features = [
     "bytes",
     "default",
@@ -1416,7 +1532,7 @@ rust_rlib("strsim") {
 
 rust_rlib("syn") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/syn-0.15.36/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/syn-0.15.42/src/lib.rs"
   features = [
     "clone-impls",
     "default",
@@ -1442,6 +1558,7 @@ rust_rlib("syn") {
   # Added by custom-build script.
   cfg = [
     "syn_can_call_macro_by_path",
+    "syn_can_match_trailing_dollar",
     "syn_can_use_associated_constants",
     "syn_can_use_thread_id",
     "syn_disable_nightly_tests",
@@ -1449,17 +1566,28 @@ rust_rlib("syn") {
 }
 
 rust_rlib("tempfile") {
-  edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tempfile-3.0.8/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tempfile-3.1.0/src/lib.rs"
   extern_rlib = [
     "cfg_if",
-    "rand",
     "remove_dir_all",
+
+    # Override: use rand v0.6.5 instead of v0.7.0.
+    "rand",
   ]
   args = [
     "--cap-lints",
     "allow",
   ]
+
+  ## Override: use rand v0.6.5 instead of v0.7.0.
+  # extern = [
+  #   {
+  #     label = ":rand-0.7.0"
+  #     crate_type = "rlib"
+  #     crate_name = "rand"
+  #     crate_version = "0.7.0"
+  #   },
+  # ]
   if (is_posix) {
     extern_rlib += [ "libc" ]
   }
@@ -1470,7 +1598,7 @@ rust_rlib("tempfile") {
 
 rust_rlib("termcolor") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/termcolor-1.0.4/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/termcolor-1.0.5/src/lib.rs"
   args = [
     "--cap-lints",
     "allow",
@@ -1478,19 +1606,6 @@ rust_rlib("termcolor") {
   if (is_win) {
     extern_rlib = [ "wincolor" ]
   }
-}
-
-rust_rlib("fwdansi") {
-  edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/fwdansi-1.0.1/src/lib.rs"
-  args = [
-    "--cap-lints",
-    "allow",
-  ]
-  extern_rlib = [
-    "memchr",
-    "termcolor",
-  ]
 }
 
 rust_rlib("textwrap") {
@@ -1528,7 +1643,7 @@ rust_rlib("time") {
 
 rust_rlib("tokio") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-0.1.21/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-0.1.22/src/lib.rs"
   features = [
     "bytes",
     "codec",
@@ -1552,7 +1667,6 @@ rust_rlib("tokio") {
     "tokio-tcp",
     "tokio-threadpool",
     "tokio-timer",
-    "tokio-trace-core",
     "tokio-udp",
     "tokio-uds",
     "udp",
@@ -1573,7 +1687,6 @@ rust_rlib("tokio") {
     "tokio_tcp",
     "tokio_threadpool",
     "tokio_timer",
-    "tokio_trace_core",
     "tokio_udp",
   ]
   args = [
@@ -1634,7 +1747,7 @@ rust_rlib("tokio_current_thread") {
 
 rust_rlib("tokio_executor") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-executor-0.1.7/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-executor-0.1.8/src/lib.rs"
   extern_rlib = [
     "crossbeam_utils",
     "futures",
@@ -1675,10 +1788,9 @@ rust_rlib("tokio_io") {
 
 rust_rlib("tokio_process") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-process-0.2.3/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-process-0.2.4/src/lib.rs"
   extern_rlib = [
     "futures",
-    "mio",
     "tokio_io",
     "tokio_reactor",
   ]
@@ -1688,7 +1800,11 @@ rust_rlib("tokio_process") {
   ]
   if (is_posix) {
     extern_rlib += [
+      "crossbeam_queue",
+      "lazy_static",
       "libc",
+      "log",
+      "mio",
       "tokio_signal",
     ]
   }
@@ -1775,7 +1891,7 @@ rust_rlib("tokio_tcp") {
 
 rust_rlib("tokio_threadpool") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-threadpool-0.1.14/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-threadpool-0.1.15/src/lib.rs"
   extern_rlib = [
     "crossbeam_deque",
     "crossbeam_queue",
@@ -1802,16 +1918,6 @@ rust_rlib("tokio_timer") {
     "slab",
     "tokio_executor",
   ]
-  args = [
-    "--cap-lints",
-    "allow",
-  ]
-}
-
-rust_rlib("tokio_trace_core") {
-  edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tokio-trace-core-0.2.0/src/lib.rs"
-  extern_rlib = [ "lazy_static" ]
   args = [
     "--cap-lints",
     "allow",
@@ -1847,7 +1953,7 @@ rust_rlib("try_lock") {
 
 rust_rlib("ucd_util") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ucd-util-0.1.3/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ucd-util-0.1.5/src/lib.rs"
   args = [
     "--cap-lints",
     "allow",
@@ -1915,7 +2021,7 @@ rust_rlib("untrusted") {
 
 rust_rlib("url") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/url-1.7.2/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/url-2.0.0/src/lib.rs"
   extern_rlib = [
     "idna",
     "matches",
@@ -1949,8 +2055,8 @@ rust_rlib("utime") {
     extern = [
       {
         label = ":winapi-0.2.8"
-        crate_name = "winapi"
         crate_type = "rlib"
+        crate_name = "winapi"
         crate_version = "0.2.8"
       },
     ]
@@ -1964,8 +2070,8 @@ rust_rlib("utime") {
   #   extern = [
   #     {
   #       label = ":winapi-0.2.8"
-  #       crate_name = "winapi"
   #       crate_type = "rlib"
+  #       crate_name = "winapi"
   #       crate_version = "0.2.8"
   #     },
   #   ]
@@ -1992,7 +2098,7 @@ rust_rlib("vlq") {
 
 rust_rlib("want") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/want-0.0.6/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/want-0.2.0/src/lib.rs"
   extern_rlib = [
     "futures",
     "log",
@@ -2034,24 +2140,6 @@ rust_rlib("webpki_roots") {
   ]
 }
 
-## Override: use dirs v2.0.1 instead.
-# rust_rlib("dirs-1.0.5") {
-#   crate_name = "dirs"
-#   crate_version = "1.0.5"
-#   edition = "2015"
-#   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/dirs-1.0.5/src/lib.rs"
-#   args = [
-#     "--cap-lints",
-#     "allow",
-#   ]
-#   if (is_posix) {
-#     extern_rlib = [ "libc" ]
-#   }
-#   if (is_win) {
-#     extern_rlib = [ "winapi" ]
-#   }
-# }
-
 ## Override: use rand v0.6.5 instead.
 # rust_rlib("rand-0.4.6") {
 #   crate_name = "rand"
@@ -2080,13 +2168,111 @@ rust_rlib("webpki_roots") {
 #   }
 # }
 
+## Override: use rand v0.6.5 instead.
+# rust_rlib("rand-0.7.0") {
+#   crate_name = "rand"
+#   crate_version = "0.7.0"
+#   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rand-0.7.0/src/lib.rs"
+#   features = [
+#     "alloc",
+#     "default",
+#     "getrandom",
+#     "getrandom_package",
+#     "rand_core",
+#     "std",
+#   ]
+#   extern_rlib = [
+#     "rand_chacha",
+#     "rand_core",
+#   ]
+#   extern = [
+#     {
+#       label = ":getrandom"
+#       crate_type = "rlib"
+#       crate_name = "getrandom"
+#       crate_alias = "getrandom_package"
+#     },
+#   ]
+#   args = [
+#     "--cap-lints",
+#     "allow",
+#   ]
+#   if (is_posix) {
+#     extern_rlib += [ "libc" ]
+#   }
+# }
+
+rust_rlib("rand_chacha-0.1.1") {
+  crate_name = "rand_chacha"
+  crate_version = "0.1.1"
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rand_chacha-0.1.1/src/lib.rs"
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+
+  # Added by custom-build script.
+  cfg = [ "rustc_1_26" ]
+
+  # Override: use rand_core v0.4.0 instead of v0.3.1.
+  extern = [
+    {
+      label = ":rand_core-0.4.0"
+      crate_type = "rlib"
+      crate_name = "rand_core"
+      crate_version = "0.4.0"
+    },
+    # {
+    #   label = ":rand_core-0.3.1"
+    #   crate_type = "rlib"
+    #   crate_name = "rand_core"
+    #   crate_version = "0.3.1"
+    # },
+  ]
+}
+
 ## Override: use rand_core v0.4.0 instead.
 # rust_rlib("rand_core-0.3.1") {
 #   crate_name = "rand_core"
 #   crate_version = "0.3.1"
 #   edition = "2015"
 #   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rand_core-0.3.1/src/lib.rs"
-#   extern_rlib = [ "rand_core" ]
+#   extern = [
+#     {
+#       label = ":rand_core-0.4.0"
+#       crate_type = "rlib"
+#       crate_name = "rand_core"
+#       crate_version = "0.4.0"
+#     },
+#   ]
+#   args = [
+#     "--cap-lints",
+#     "allow",
+#   ]
+# }
+
+rust_rlib("rand_core-0.4.0") {
+  crate_name = "rand_core"
+  crate_version = "0.4.0"
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rand_core-0.4.0/src/lib.rs"
+  features = [
+    "alloc",
+    "std",
+  ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
+## Override: use scopeguard v1.0.0 instead.
+# rust_rlib("scopeguard-0.3.3") {
+#   crate_name = "scopeguard"
+#   crate_version = "0.3.3"
+#   edition = "2015"
+#   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/scopeguard-0.3.3/src/lib.rs"
 #   args = [
 #     "--cap-lints",
 #     "allow",
@@ -2119,7 +2305,7 @@ if (is_posix) {
 
   rust_rlib("nix") {
     edition = "2015"
-    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/nix-0.13.1/src/lib.rs"
+    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/nix-0.14.1/src/lib.rs"
     extern_rlib = [
       "bitflags",
       "cfg_if",
@@ -2134,7 +2320,7 @@ if (is_posix) {
 
   rust_rlib("signal_hook") {
     edition = "2015"
-    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/signal-hook-0.1.9/src/lib.rs"
+    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/signal-hook-0.1.10/src/lib.rs"
     extern_rlib = [
       "libc",
       "signal_hook_registry",
@@ -2147,7 +2333,7 @@ if (is_posix) {
 
   rust_rlib("signal_hook_registry") {
     edition = "2015"
-    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/signal-hook-registry-1.0.1/src/lib.rs"
+    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/signal-hook-registry-1.1.0/src/lib.rs"
     extern_rlib = [
       "arc_swap",
       "libc",
@@ -2219,17 +2405,42 @@ if (is_posix) {
       "allow",
     ]
   }
+
+  ## Override: use ansi_term v0.12.0 instead.
+  # rust_rlib("ansi_term-0.11.0") {
+  #   crate_name = "ansi_term"
+  #   crate_version = "0.11.0"
+  #   edition = "2015"
+  #   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ansi_term-0.11.0/src/lib.rs"
+  #   args = [
+  #     "--cap-lints",
+  #     "allow",
+  #   ]
+  # }
 }
 
 if (is_win) {
+  rust_rlib("fwdansi") {
+    edition = "2015"
+    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/fwdansi-1.0.1/src/lib.rs"
+    extern_rlib = [
+      "memchr",
+      "termcolor",
+    ]
+    args = [
+      "--cap-lints",
+      "allow",
+    ]
+  }
+
   rust_rlib("kernel32") {
     edition = "2015"
     source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/kernel32-sys-0.2.2/src/lib.rs"
     extern = [
       {
         label = ":winapi-0.2.8"
-        crate_name = "winapi"
         crate_type = "rlib"
+        crate_name = "winapi"
         crate_version = "0.2.8"
       },
     ]
@@ -2271,8 +2482,7 @@ if (is_win) {
   }
 
   rust_rlib("socket2") {
-    edition = "2015"
-    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/socket2-0.3.9/src/lib.rs"
+    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/socket2-0.3.10/src/lib.rs"
     extern_rlib = [ "winapi" ]
     args = [
       "--cap-lints",
@@ -2407,8 +2617,8 @@ if (is_win) {
     extern = [
       {
         label = ":winapi-0.2.8"
-        crate_name = "winapi"
         crate_type = "rlib"
+        crate_name = "winapi"
         crate_version = "0.2.8"
       },
     ]
@@ -2434,8 +2644,8 @@ if (is_win) {
     extern = [
       {
         label = ":winapi-0.2.8"
-        crate_name = "winapi"
         crate_type = "rlib"
+        crate_name = "winapi"
         crate_version = "0.2.8"
       },
     ]
