@@ -88,6 +88,53 @@ rust_rlib("bitflags") {
   cfg = [ "bitflags_const_fn" ]
 }
 
+rust_rlib("block_buffer") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/block-buffer-0.7.3/src/lib.rs"
+  extern_rlib = [
+    "block_padding",
+    "byte_tools",
+    "byteorder",
+    "generic_array",
+  ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
+rust_rlib("block_padding") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/block-padding-0.1.4/src/lib.rs"
+  extern_rlib = [ "byte_tools" ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
+rust_rlib("buf_redux") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/buf_redux-0.8.4/src/lib.rs"
+  extern_rlib = [
+    "memchr",
+    "safemem",
+  ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
+rust_rlib("byte_tools") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/byte-tools-0.3.1/src/lib.rs"
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
 rust_rlib("byteorder") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/byteorder-1.3.2/src/lib.rs"
@@ -259,6 +306,17 @@ rust_rlib("ct_logs") {
   ]
 }
 
+rust_rlib("digest") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/digest-0.8.1/src/lib.rs"
+  features = [ "std" ]
+  extern_rlib = [ "generic_array" ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
 rust_rlib("dirs") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/dirs-2.0.2/src/lib.rs"
@@ -288,6 +346,15 @@ rust_rlib("dirs_sys") {
   }
 }
 
+rust_rlib("dtoa") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/dtoa-0.4.4/src/lib.rs"
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
 rust_rlib("either") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/either-1.5.2/src/lib.rs"
@@ -295,6 +362,23 @@ rust_rlib("either") {
     "default",
     "use_std",
   ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
+rust_rlib("enclose") {
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/enclose-1.1.7/src/lib.rs"
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
+rust_rlib("fake_simd") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/fake-simd-0.1.2/src/lib.rs"
   args = [
     "--cap-lints",
     "allow",
@@ -353,6 +437,16 @@ rust_rlib("futures_cpupool") {
   ]
 }
 
+rust_rlib("generic_array") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/generic-array-0.12.3/src/lib.rs"
+  extern_rlib = [ "typenum" ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
 ## Override: use rand v0.6.5 instead.
 # rust_rlib("getrandom") {
 #   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/getrandom-0.1.7/src/lib.rs"
@@ -386,6 +480,59 @@ rust_rlib("h2") {
     "slab",
     "string",
     "tokio_io",
+  ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
+rust_rlib("headers") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/headers-0.2.1/src/lib.rs"
+  extern_rlib = [
+    "base64",
+    "bitflags",
+    "bytes",
+    "headers_core",
+    "http",
+    "mime",
+    "sha1",
+    "time",
+  ]
+  extern = [
+    {
+      label = ":headers_derive"
+      crate_type = "proc_macro"
+      crate_name = "headers_derive"
+    },
+  ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
+rust_rlib("headers_core") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/headers-core-0.1.1/src/lib.rs"
+  extern_rlib = [
+    "bytes",
+    "http",
+  ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
+rust_proc_macro("headers_derive") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/headers-derive-0.1.0/src/lib.rs"
+  extern_rlib = [
+    "proc_macro2",
+    "quote",
+    "syn",
   ]
   args = [
     "--cap-lints",
@@ -521,7 +668,7 @@ rust_rlib("hyper_rustls") {
 
 rust_rlib("idna") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/idna-0.2.0/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/idna-0.1.5/src/lib.rs"
   extern_rlib = [
     "matches",
     "unicode_bidi",
@@ -536,6 +683,16 @@ rust_rlib("idna") {
 rust_rlib("indexmap") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/indexmap-1.0.2/src/lib.rs"
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
+rust_rlib("input_buffer") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/input_buffer-0.2.0/src/lib.rs"
+  extern_rlib = [ "bytes" ]
   args = [
     "--cap-lints",
     "allow",
@@ -649,6 +806,7 @@ rust_rlib("lock_api") {
 rust_rlib("log") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/log-0.4.8/src/lib.rs"
+  features = [ "std" ]
   extern_rlib = [ "cfg_if" ]
   args = [
     "--cap-lints",
@@ -701,6 +859,37 @@ rust_rlib("memoffset") {
   cfg = [ "memoffset_maybe_uninit" ]
 }
 
+rust_rlib("mime") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/mime-0.3.13/src/lib.rs"
+  extern_rlib = [ "unicase" ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
+rust_rlib("mime_guess") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/mime_guess-2.0.1/src/lib.rs"
+  features = [
+    "default",
+    "rev-mappings",
+  ]
+  extern_rlib = [
+    "mime",
+    "unicase",
+  ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+
+  # Contains file generated by custom-build script: 'mime_types_generated.rs'.
+  generated_source_dir =
+      "$cargo_home/registry/gen/github.com-1ecc6299db9ec823/mime_guess-2.0.1"
+}
+
 rust_rlib("mio") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/mio-0.6.19/src/lib.rs"
@@ -740,6 +929,51 @@ rust_rlib("mio") {
   }
 }
 
+rust_rlib("multipart") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/multipart-0.16.1/src/lib.rs"
+  features = [
+    "buf_redux",
+    "httparse",
+    "quick-error",
+    "safemem",
+    "server",
+    "twoway",
+  ]
+  extern_rlib = [
+    "buf_redux",
+    "httparse",
+    "log",
+    "quick_error",
+    "rand",
+    "safemem",
+    "tempfile",
+    "twoway",
+
+    # Override: use mime_guess v2.0.1 instead of v1.8.7.
+    "mime_guess",
+  ]
+  extern = [
+    {
+      label = ":mime-0.2.6"
+      crate_type = "rlib"
+      crate_name = "mime"
+      crate_version = "0.2.6"
+    },
+    ## Override: use mime_guess v2.0.1 instead of v1.8.7.
+    # {
+    #   label = ":mime_guess-1.8.7"
+    #   crate_type = "rlib"
+    #   crate_name = "mime_guess"
+    #   crate_version = "1.8.7"
+    # },
+  ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
 rust_rlib("net2") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/net2-0.2.33/src/lib.rs"
@@ -773,6 +1007,15 @@ rust_rlib("num_cpus") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/num_cpus-1.10.1/src/lib.rs"
   extern_rlib = [ "libc" ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
+rust_rlib("opaque_debug") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/opaque-debug-0.2.3/src/lib.rs"
   args = [
     "--cap-lints",
     "allow",
@@ -834,12 +1077,47 @@ rust_rlib("parking_lot_core") {
 
 rust_rlib("percent_encoding") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/percent-encoding-2.0.0/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/percent-encoding-1.0.1/lib.rs"
   args = [
     "--cap-lints",
     "allow",
   ]
 }
+
+## Override: use mime_guess v2.0.1 instead.
+# rust_rlib("phf") {
+#   edition = "2015"
+#   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/phf-0.7.24/src/lib.rs"
+#   features = [
+#     "phf_shared",
+#     "unicase",
+#   ]
+#   extern_rlib = [ "phf_shared" ]
+#   args = [
+#     "--cap-lints",
+#     "allow",
+#   ]
+# }
+
+## Override: use mime_guess v2.0.1 instead.
+# rust_rlib("phf_shared") {
+#   edition = "2015"
+#   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/phf_shared-0.7.24/src/lib.rs"
+#   features = [ "unicase" ]
+#   extern_rlib = [ "siphasher" ]
+#   extern = [
+#     {
+#       label = ":unicase-1.4.2"
+#       crate_type = "rlib"
+#       crate_name = "unicase"
+#       crate_version = "1.4.2"
+#     },
+#   ]
+#   args = [
+#     "--cap-lints",
+#     "allow",
+#   ]
+# }
 
 ## Override: use rand v0.6.5 instead.
 # rust_rlib("ppv_lite86") {
@@ -873,6 +1151,15 @@ rust_rlib("proc_macro2") {
     "u128",
     "use_proc_macro",
     "wrap_proc_macro",
+  ]
+}
+
+rust_rlib("quick_error") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/quick-error-1.2.2/src/lib.rs"
+  args = [
+    "--cap-lints",
+    "allow",
   ]
 }
 
@@ -1352,6 +1639,28 @@ rust_rlib("ryu") {
   ]
 }
 
+rust_rlib("safemem") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/safemem-0.3.1/src/lib.rs"
+  features = [
+    "default",
+    "std",
+  ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
+rust_rlib("scoped_tls") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/scoped-tls-1.0.0/src/lib.rs"
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
 rust_rlib("scopeguard") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/scopeguard-1.0.0/src/lib.rs"
@@ -1436,6 +1745,51 @@ rust_rlib("serde_json") {
     "allow",
   ]
 }
+
+rust_rlib("serde_urlencoded") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/serde_urlencoded-0.5.5/src/lib.rs"
+  extern_rlib = [
+    "dtoa",
+    "itoa",
+    "serde",
+    "url",
+  ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
+rust_rlib("sha1") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/sha-1-0.8.1/src/lib.rs"
+  features = [
+    "default",
+    "digest",
+    "std",
+  ]
+  extern_rlib = [
+    "block_buffer",
+    "digest",
+    "fake_simd",
+    "opaque_debug",
+  ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
+## Override: use mime_guess v2.0.1 instead.
+# rust_rlib("siphasher") {
+#   edition = "2015"
+#   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/siphasher-0.2.3/src/lib.rs"
+#   args = [
+#     "--cap-lints",
+#     "allow",
+#   ]
+# }
 
 rust_rlib("slab") {
   edition = "2015"
@@ -1951,12 +2305,79 @@ rust_rlib("try_lock") {
   ]
 }
 
+rust_rlib("tungstenite") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/tungstenite-0.8.1/src/lib.rs"
+  extern_rlib = [
+    "base64",
+    "byteorder",
+    "bytes",
+    "http",
+    "httparse",
+    "input_buffer",
+    "log",
+    "rand",
+    "sha1",
+    "url",
+    "utf8",
+  ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
+rust_rlib("twoway") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/twoway-0.1.8/src/lib.rs"
+  features = [
+    "default",
+    "memchr",
+    "use_std",
+  ]
+  extern_rlib = [ "memchr" ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
+rust_rlib("typenum") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/typenum-1.10.0/src/lib.rs"
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+
+  # Contains file generated by custom-build script: 'consts.rs'.
+  # Contains file generated by custom-build script: 'op.rs'.
+  generated_source_dir =
+      "$cargo_home/registry/gen/github.com-1ecc6299db9ec823/typenum-1.10.0"
+}
+
 rust_rlib("ucd_util") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ucd-util-0.1.5/src/lib.rs"
   args = [
     "--cap-lints",
     "allow",
+  ]
+}
+
+rust_rlib("unicase") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/unicase-2.4.0/src/lib.rs"
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+
+  # Added by custom-build script.
+  cfg = [
+    "__unicase__const_fns",
+    "__unicase__default_hasher",
+    "__unicase__iter_cmp",
   ]
 }
 
@@ -2021,12 +2442,30 @@ rust_rlib("untrusted") {
 
 rust_rlib("url") {
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/url-2.0.0/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/url-1.7.2/src/lib.rs"
   extern_rlib = [
     "idna",
     "matches",
     "percent_encoding",
   ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
+rust_rlib("urlencoding") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/urlencoding-1.0.0/src/lib.rs"
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
+rust_rlib("utf8") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/utf-8-0.7.5/src/lib.rs"
   args = [
     "--cap-lints",
     "allow",
@@ -2110,6 +2549,35 @@ rust_rlib("want") {
   ]
 }
 
+rust_rlib("warp") {
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/warp-0.1.18/src/lib.rs"
+  extern_rlib = [
+    "bytes",
+    "futures",
+    "headers",
+    "http",
+    "hyper",
+    "log",
+    "mime",
+    "mime_guess",
+    "multipart",
+    "scoped_tls",
+    "serde",
+    "serde_json",
+    "serde_urlencoded",
+    "tokio",
+    "tokio_io",
+    "tokio_threadpool",
+    "tungstenite",
+    "urlencoding",
+  ]
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+}
+
 rust_rlib("webpki") {
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/webpki-0.19.1/src/webpki.rs"
@@ -2139,6 +2607,78 @@ rust_rlib("webpki_roots") {
     "allow",
   ]
 }
+
+## Override: use log v0.4.8 instead.
+# rust_rlib("log-0.3.9") {
+#   crate_name = "log"
+#   crate_version = "0.3.9"
+#   edition = "2015"
+#   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/log-0.3.9/src/lib.rs"
+#   features = [
+#     "default",
+#     "log",
+#     "use_std",
+#   ]
+#   extern_rlib = [ "log" ]
+#   args = [
+#     "--cap-lints",
+#     "allow",
+#   ]
+# }
+
+rust_rlib("mime-0.2.6") {
+  crate_name = "mime"
+  crate_version = "0.2.6"
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/mime-0.2.6/src/lib.rs"
+  args = [
+    "--cap-lints",
+    "allow",
+  ]
+
+  # Override: use log v0.4.8 instead of v0.3.9.
+  extern_rlib = [ "log" ]
+
+  ## Override: use log v0.4.8 instead of v0.3.9.
+  # extern = [
+  #   {
+  #     label = ":log-0.3.9"
+  #     crate_type = "rlib"
+  #     crate_name = "log"
+  #     crate_version = "0.3.9"
+  #   },
+  # ]
+}
+
+## Override: use mime_guess v2.0.1 instead.
+# rust_rlib("mime_guess-1.8.7") {
+#   crate_name = "mime_guess"
+#   crate_version = "1.8.7"
+#   edition = "2015"
+#   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/mime_guess-1.8.7/src/lib.rs"
+#   extern_rlib = [ "phf" ]
+#   extern = [
+#     {
+#       label = ":mime-0.2.6"
+#       crate_type = "rlib"
+#       crate_name = "mime"
+#       crate_version = "0.2.6"
+#     },
+#     {
+#       label = ":unicase-1.4.2"
+#       crate_type = "rlib"
+#       crate_name = "unicase"
+#       crate_version = "1.4.2"
+#     },
+#   ]
+#   args = [
+#     "--cap-lints",
+#     "allow",
+#   ]
+#
+#   # Contains file generated by custom-build script: 'mime_types_generated.rs'.
+#   generated_source_dir = "$cargo_home/registry/gen/github.com-1ecc6299db9ec823/mime_guess-1.8.7"
+# }
 
 ## Override: use rand v0.6.5 instead.
 # rust_rlib("rand-0.4.6") {
@@ -2276,6 +2816,24 @@ rust_rlib("rand_core-0.4.0") {
 #   args = [
 #     "--cap-lints",
 #     "allow",
+#   ]
+# }
+
+## Override: use mime_guess v2.0.1 instead.
+# rust_rlib("unicase-1.4.2") {
+#   crate_name = "unicase"
+#   crate_version = "1.4.2"
+#   edition = "2015"
+#   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/unicase-1.4.2/src/lib.rs"
+#   args = [
+#     "--cap-lints",
+#     "allow",
+#   ]
+#
+#   # Added by custom-build script.
+#   cfg = [
+#     "__unicase__default_hasher",
+#     "__unicase__iter_cmp",
 #   ]
 # }
 

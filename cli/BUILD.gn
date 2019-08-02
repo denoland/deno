@@ -24,6 +24,7 @@ main_extern_rlib = [
   "atty",
   "clap",
   "dirs",
+  "enclose",
   "flatbuffers",
   "futures",
   "http",
@@ -52,6 +53,7 @@ main_extern_rlib = [
   "tokio_threadpool",
   "url",
   "utime",
+  "warp",
 ]
 if (is_win) {
   main_extern_rlib += [
