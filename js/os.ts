@@ -13,7 +13,9 @@ export let pid: number;
 /** Reflects the NO_COLOR environment variable: https://no-color.org/ */
 export let noColor: boolean;
 
-/** Path to the current deno process's executable file. */
+/** Path to the current deno process's executable file.
+ * Requires the `--allow-env` flag, otherwise it'll be set to an empty `string`.
+ */
 export let execPath: string;
 
 function setGlobals(pid_: number, noColor_: boolean, execPath_: string): void {
