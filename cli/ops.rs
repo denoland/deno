@@ -354,12 +354,17 @@ fn op_start(
   let cwd_off =
     builder.create_string(deno_fs::normalize_path(cwd_path.as_ref()).as_ref());
 
-  let current_exe = std::env::current_exe().unwrap();
-  // Now apply URL parser to current exe to get fully resolved path, otherwise we might get
-  // `./` and `../` bits in `exec_path`
-  let exe_url = Url::from_file_path(current_exe).unwrap();
-  let exec_path =
-    builder.create_string(exe_url.to_file_path().unwrap().to_str().unwrap());
+  // Use permissions.allows_env() to bypass env request prompt.
+  let exec_path = if state.permissions.allows_env() {
+    let current_exe = std::env::current_exe().unwrap();
+    // Now apply URL parser to current exe to get fully resolved path, otherwise we might get
+    // `./` and `../` bits in `exec_path`
+    let exe_url = Url::from_file_path(current_exe).unwrap();
+    exe_url.to_file_path().unwrap().to_str().unwrap().to_owned()
+  } else {
+    "".to_owned()
+  };
+  let exec_path = builder.create_string(&exec_path);
 
   let v8_version = version::v8();
   let v8_version_off = builder.create_string(v8_version);
@@ -1751,12 +1756,14 @@ fn op_metrics(
 }
 
 fn op_home_dir(
-  _state: &ThreadSafeState,
+  state: &ThreadSafeState,
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
   assert!(data.is_none());
   let cmd_id = base.cmd_id();
+
+  state.check_env()?;
 
   let builder = &mut FlatBufferBuilder::new();
   let path = dirs::home_dir()
