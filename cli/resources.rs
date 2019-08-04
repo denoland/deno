@@ -24,7 +24,7 @@ use futures::Sink;
 use futures::Stream;
 use hyper;
 use std;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::io::{Error, Read, Seek, SeekFrom, Write};
 use std::net::{Shutdown, SocketAddr};
 use std::process::ExitStatus;
@@ -41,7 +41,7 @@ pub type ResourceId = u32; // Sometimes referred to RID.
 
 // These store Deno's file descriptors. These are not necessarily the operating
 // system ones.
-type ResourceTable = HashMap<ResourceId, Repr>;
+type ResourceTable = BTreeMap<ResourceId, Repr>;
 
 #[cfg(not(windows))]
 use std::os::unix::io::FromRawFd;
@@ -56,7 +56,7 @@ lazy_static! {
   // Starts at 3 because stdio is [0-2].
   static ref NEXT_RID: AtomicUsize = AtomicUsize::new(3);
   static ref RESOURCE_TABLE: Mutex<ResourceTable> = Mutex::new({
-    let mut m = HashMap::new();
+    let mut m = BTreeMap::new();
     // TODO Load these lazily during lookup?
     m.insert(0, Repr::Stdin(tokio::io::stdin()));
 
