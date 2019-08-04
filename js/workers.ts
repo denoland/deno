@@ -161,10 +161,8 @@ export interface Worker {
 export interface WorkerOptions {}
 
 export interface DenoWorkerOptions extends WorkerOptions {
-  deno?: {
-    // TODO(kevinkassimo): maybe just name this option "sandbox"?
-    noDenoNamespace?: boolean;
-  };
+  // TODO(kevinkassimo): maybe just name this option "sandbox"?
+  noDenoNamespace?: boolean;
 }
 
 export class WorkerImpl implements Worker {
@@ -177,7 +175,7 @@ export class WorkerImpl implements Worker {
 
   constructor(specifier: string, options?: DenoWorkerOptions) {
     let includeDenoNamespace = true;
-    if (options && options.deno && options.deno.noDenoNamespace) {
+    if (options && options.noDenoNamespace) {
       includeDenoNamespace = false;
     }
     this.rid = createWorker(specifier, includeDenoNamespace);
