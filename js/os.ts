@@ -145,7 +145,7 @@ export function start(
 
 /**
  * Returns the current user's home directory.
- * Does not require elevated privileges.
+ * Requires the `--allow-env` flag.
  */
 export function homeDir(): string {
   const builder = flatbuffers.createBuilder();
