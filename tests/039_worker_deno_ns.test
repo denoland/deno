@@ -1,0 +1,2 @@
+args: run --reload tests/039_worker_deno_ns.ts
+output: tests/039_worker_deno_ns.ts.out
