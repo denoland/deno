@@ -1053,10 +1053,12 @@ fn op_close(
 }
 
 fn op_kill(
-  _state: &ThreadSafeState,
+  state: &ThreadSafeState,
   base: &msg::Base<'_>,
   data: Option<PinnedBuf>,
 ) -> CliOpResult {
+  state.check_run()?;
+
   assert!(data.is_none());
   let inner = base.inner_as_kill().unwrap();
   let pid = inner.pid();
