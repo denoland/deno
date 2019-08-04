@@ -20,10 +20,17 @@ export function decodeMessage(dataIntArray: Uint8Array): any {
   return JSON.parse(dataJson);
 }
 
-function createWorker(specifier: string): number {
+function createWorker(
+  specifier: string,
+  includeDenoNamespace: boolean
+): number {
   const builder = flatbuffers.createBuilder();
   const specifier_ = builder.createString(specifier);
-  const inner = msg.CreateWorker.createCreateWorker(builder, specifier_);
+  const inner = msg.CreateWorker.createCreateWorker(
+    builder,
+    specifier_,
+    includeDenoNamespace
+  );
   const baseRes = sendSync(builder, msg.Any.CreateWorker, inner);
   assert(baseRes != null);
   assert(
@@ -149,6 +156,17 @@ export interface Worker {
   closed: Promise<void>;
 }
 
+// TODO(kevinkassimo): Maybe implement reasonable web worker options?
+// eslint-disable-next-line @typescript-eslint/no-empty-interface
+export interface WorkerOptions {}
+
+export interface DenoWorkerOptions extends WorkerOptions {
+  deno?: {
+    // TODO(kevinkassimo): maybe just name this option "sandbox"?
+    noDenoNamespace?: boolean;
+  };
+}
+
 export class WorkerImpl implements Worker {
   private readonly rid: number;
   private isClosing: boolean = false;
@@ -157,8 +175,12 @@ export class WorkerImpl implements Worker {
   public onmessage?: (data: any) => void;
   public onmessageerror?: () => void;
 
-  constructor(specifier: string) {
-    this.rid = createWorker(specifier);
+  constructor(specifier: string, options?: DenoWorkerOptions) {
+    let includeDenoNamespace = true;
+    if (options && options.deno && options.deno.noDenoNamespace) {
+      includeDenoNamespace = false;
+    }
+    this.rid = createWorker(specifier, includeDenoNamespace);
     this.run();
     this.isClosedPromise = hostGetWorkerClosed(this.rid);
     this.isClosedPromise.then(

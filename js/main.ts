@@ -18,8 +18,11 @@ import { setLocation } from "./location";
 // builtin modules
 import * as deno from "./deno";
 
-export default function denoMain(name?: string): void {
-  const startResMsg = os.start(name);
+export default function denoMain(
+  preserveDenoNamespace: boolean = true,
+  name?: string
+): void {
+  const startResMsg = os.start(preserveDenoNamespace, name);
 
   setVersions(startResMsg.denoVersion()!, startResMsg.v8Version()!);
 
