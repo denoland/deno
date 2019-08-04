@@ -5,13 +5,19 @@ import sys
 import time
 
 from test_util import DenoTestCase, run_tests
+from util import rmtree
 
 
 class TestRepl(DenoTestCase):
     def input(self, *lines, **kwargs):
         exit_ = kwargs.pop("exit", True)
         sleep_ = kwargs.pop("sleep", 0)
-        p = Popen([self.deno_exe], stdout=PIPE, stderr=PIPE, stdin=PIPE)
+        env_ = kwargs.pop("env", None)
+        p = Popen([self.deno_exe],
+                  stdout=PIPE,
+                  stderr=PIPE,
+                  stdin=PIPE,
+                  env=env_)
         try:
             # Note: The repl takes a >100ms until it's ready.
             time.sleep(sleep_)
@@ -134,6 +140,18 @@ class TestRepl(DenoTestCase):
     def test_lexical_scoped_variable(self):
         out, err, code = self.input("let a = 123;", "a")
         self.assertEqual(out, 'undefined\n123\n')
+        self.assertEqual(err, '')
+        self.assertEqual(code, 0)
+
+    def test_missing_deno_dir(self):
+        current_deno_dir = os.environ["DENO_DIR"]
+        missing_deno_dir = os.path.join(current_deno_dir, 'missing_deno_dir')
+        if os.path.isdir(missing_deno_dir):
+            rmtree(missing_deno_dir)
+        new_env = os.environ.copy()
+        new_env["DENO_DIR"] = missing_deno_dir
+        out, err, code = self.input("'noop'", exit=False, env=new_env)
+        self.assertEqual(out, 'noop\n')
         self.assertEqual(err, '')
         self.assertEqual(code, 0)
 
