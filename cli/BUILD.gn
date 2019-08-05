@@ -247,10 +247,6 @@ bundle("main_bundle") {
   deps = [
     ":deno_runtime_declaration",
     ":msg_ts",
-    ":write_gn_args",
-  ]
-  data = [
-    "$target_gen_dir/gn_args.txt",
   ]
 }
 
@@ -260,10 +256,6 @@ bundle("compiler_bundle") {
   deps = [
     ":deno_runtime_declaration",
     ":msg_ts",
-    ":write_gn_args",
-  ]
-  data = [
-    "$target_gen_dir/gn_args.txt",
   ]
 }
 
