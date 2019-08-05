@@ -160,8 +160,11 @@ export interface Worker {
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 export interface WorkerOptions {}
 
+/** Extended Deno Worker initialization options.
+ * `noDenoNamespace` hides global `window.Deno` namespace for
+ * spawned worker and nested workers spawned by it (default: false).
+ */
 export interface DenoWorkerOptions extends WorkerOptions {
-  // TODO(kevinkassimo): maybe just name this option "sandbox"?
   noDenoNamespace?: boolean;
 }
 
