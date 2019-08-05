@@ -12,9 +12,6 @@ export interface BuildInfo {
 
   /** The operating system. */
   os: OperatingSystem;
-
-  /** The arguments passed to GN during build. See `gn help buildargs`. */
-  args: string;
 }
 
 // 'build' is injected by rollup.config.js at compile time.
@@ -23,8 +20,7 @@ export const build: BuildInfo = {
   /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
   arch: `ROLLUP_REPLACE_ARCH` as any,
   /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-  os: `ROLLUP_REPLACE_OS` as any,
-  args: `ROLLUP_REPLACE_GN_ARGS`
+  os: `ROLLUP_REPLACE_OS` as any
 };
 
 // TODO(kevinkassimo): deprecate Deno.platform
