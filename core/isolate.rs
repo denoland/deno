@@ -268,8 +268,6 @@ impl Isolate {
     control_argv0: deno_buf,
     zero_copy_buf: deno_pinned_buf,
   ) {
-    // The user called Deno.core.send()
-
     let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
 
     let op = if let Some(ref f) = isolate.dispatch {
@@ -278,9 +276,7 @@ impl Isolate {
       panic!("isolate.dispatch not set")
     };
 
-    // At this point the SharedQueue should be empty.
-    assert_eq!(isolate.shared.size(), 0);
-
+    debug_assert_eq!(isolate.shared.size(), 0);
     match op {
       Op::Sync(buf) => {
         // For sync messages, we always return the response via Deno.core.send's
