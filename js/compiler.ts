@@ -25,7 +25,7 @@ const console = new Console(core.print);
 window.console = console;
 window.workerMain = workerMain;
 export default function denoMain(): void {
-  os.start("TS");
+  os.start(true, "TS");
 }
 
 const ASSETS = "$asset$";

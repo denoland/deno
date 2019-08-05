@@ -29,8 +29,12 @@ SharedQueue Binary Layout
   const INDEX_RECORDS = 3 + MAX_RECORDS;
   const HEAD_INIT = 4 * INDEX_RECORDS;
 
+  // Available on start due to bindings.
   const Deno = window[GLOBAL_NAMESPACE];
   const core = Deno[CORE_NAMESPACE];
+  // Warning: DO NOT use window.Deno after this point.
+  // It is possible that the Deno namespace has been deleted.
+  // Use the above local Deno and core variable instead.
 
   let sharedBytes;
   let shared32;
@@ -165,7 +169,7 @@ SharedQueue Binary Layout
     const success = push(control);
     // If successful, don't use first argument of core.send.
     const arg0 = success ? null : control;
-    return window.Deno.core.send(arg0, zeroCopy);
+    return Deno.core.send(arg0, zeroCopy);
   }
 
   const denoCore = {

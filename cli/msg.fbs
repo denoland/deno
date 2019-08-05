@@ -204,6 +204,7 @@ table FormatErrorRes {
 // Create worker as host
 table CreateWorker {
   specifier: string;
+  include_deno_namespace: bool;
 }
 
 table CreateWorkerRes {

@@ -2069,6 +2069,10 @@ fn op_create_worker(
   let cmd_id = base.cmd_id();
   let inner = base.inner_as_create_worker().unwrap();
   let specifier = inner.specifier().unwrap();
+  // Only include deno namespace if requested AND current worker
+  // has included namespace (to avoid escalation).
+  let include_deno_namespace =
+    inner.include_deno_namespace() && state.include_deno_namespace;
 
   let parent_state = state.clone();
 
@@ -2077,13 +2081,15 @@ fn op_create_worker(
     parent_state.argv.clone(),
     op_selector_std,
     parent_state.progress.clone(),
+    include_deno_namespace,
   )?;
   let rid = child_state.resource.rid;
   let name = format!("USER-WORKER-{}", specifier);
+  let deno_main_call = format!("denoMain({})", include_deno_namespace);
 
   let mut worker =
     Worker::new(name, startup_data::deno_isolate_init(), child_state);
-  worker.execute("denoMain()").unwrap();
+  worker.execute(&deno_main_call).unwrap();
   worker.execute("workerMain()").unwrap();
 
   let module_specifier = ModuleSpecifier::resolve_url_or_path(specifier)?;

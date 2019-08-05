@@ -84,6 +84,8 @@ pub struct State {
   pub js_compiler: JsCompiler,
   pub json_compiler: JsonCompiler,
   pub ts_compiler: TsCompiler,
+
+  pub include_deno_namespace: bool,
 }
 
 impl Clone for ThreadSafeState {
@@ -151,6 +153,7 @@ impl ThreadSafeState {
     argv_rest: Vec<String>,
     dispatch_selector: ops::OpSelector,
     progress: Progress,
+    include_deno_namespace: bool,
   ) -> Result<Self, ErrBox> {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
 
@@ -223,6 +226,7 @@ impl ThreadSafeState {
       ts_compiler,
       js_compiler: JsCompiler {},
       json_compiler: JsonCompiler {},
+      include_deno_namespace,
     };
 
     Ok(ThreadSafeState(Arc::new(state)))
@@ -302,6 +306,7 @@ impl ThreadSafeState {
       argv,
       ops::op_selector_std,
       Progress::new(),
+      true,
     )
     .unwrap()
   }

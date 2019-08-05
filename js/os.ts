@@ -112,7 +112,10 @@ function sendStart(): msg.StartRes {
 // This function bootstraps an environment within Deno, it is shared both by
 // the runtime and the compiler environments.
 // @internal
-export function start(source?: string): msg.StartRes {
+export function start(
+  preserveDenoNamespace = true,
+  source?: string
+): msg.StartRes {
   core.setAsyncHandler(handleAsyncMsgFromRust);
 
   // First we send an empty `Start` message to let the privileged side know we
@@ -124,9 +127,18 @@ export function start(source?: string): msg.StartRes {
 
   setGlobals(startResMsg.pid(), startResMsg.noColor(), startResMsg.execPath()!);
 
-  // Deno.core could ONLY be safely frozen here (not in globals.ts)
-  // since shared_queue.js will modify core properties.
-  Object.freeze(window.Deno.core);
+  if (preserveDenoNamespace) {
+    util.immutableDefine(window, "Deno", window.Deno);
+    // Deno.core could ONLY be safely frozen here (not in globals.ts)
+    // since shared_queue.js will modify core properties.
+    Object.freeze(window.Deno.core);
+    // core.sharedQueue is an object so we should also freeze it.
+    Object.freeze(window.Deno.core.sharedQueue);
+  } else {
+    // Remove window.Deno
+    delete window.Deno;
+    assert(window.Deno === undefined);
+  }
 
   return startResMsg;
 }
