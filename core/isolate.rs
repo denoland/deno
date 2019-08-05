@@ -268,30 +268,14 @@ impl Isolate {
     control_argv0: deno_buf,
     zero_copy_buf: deno_pinned_buf,
   ) {
-    let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
-    let control_shared = isolate.shared.shift();
+    // The user called Deno.core.send()
 
-    let op = if control_argv0.len() > 0 {
-      // The user called Deno.core.send(control)
-      if let Some(ref f) = isolate.dispatch {
-        f(control_argv0.as_ref(), PinnedBuf::new(zero_copy_buf))
-      } else {
-        panic!("isolate.dispatch not set")
-      }
-    } else if let Some(c) = control_shared {
-      // The user called Deno.sharedQueue.push(control)
-      if let Some(ref f) = isolate.dispatch {
-        f(&c, PinnedBuf::new(zero_copy_buf))
-      } else {
-        panic!("isolate.dispatch not set")
-      }
+    let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
+
+    let op = if let Some(ref f) = isolate.dispatch {
+      f(control_argv0.as_ref(), PinnedBuf::new(zero_copy_buf))
     } else {
-      // The sharedQueue is empty. The shouldn't happen usually, but it's also
-      // not technically a failure.
-      #[cfg(test)]
-      unreachable!();
-      #[cfg(not(test))]
-      return;
+      panic!("isolate.dispatch not set")
     };
 
     // At this point the SharedQueue should be empty.
@@ -868,43 +852,6 @@ pub mod tests {
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
       // We are idle, so the next poll should be the last.
       assert_eq!(Async::Ready(()), isolate.poll().unwrap());
-    });
-  }
-
-  #[test]
-  fn test_shared() {
-    run_in_task(|| {
-      let (mut isolate, dispatch_count) = setup(Mode::AsyncImmediate);
-
-      js_check(isolate.execute(
-        "setup2.js",
-        r#"
-        let nrecv = 0;
-        Deno.core.setAsyncHandler((buf) => {
-          assert(buf.byteLength === 1);
-          assert(buf[0] === 43);
-          nrecv++;
-        });
-        "#,
-      ));
-      assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
-
-      js_check(isolate.execute(
-        "send1.js",
-        r#"
-        let control = new Uint8Array([42]);
-        Deno.core.sharedQueue.push(control);
-        Deno.core.send();
-        assert(nrecv === 0);
-
-        Deno.core.sharedQueue.push(control);
-        Deno.core.send();
-        assert(nrecv === 0);
-        "#,
-      ));
-      assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
-      assert_eq!(Async::Ready(()), isolate.poll().unwrap());
-      js_check(isolate.execute("send1.js", "assert(nrecv === 2);"));
     });
   }
 
