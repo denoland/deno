@@ -2,6 +2,7 @@
 use crate::deno_dir::DenoDir;
 use deno::ErrBox;
 use rustyline;
+use std::fs;
 use std::path::PathBuf;
 
 #[cfg(not(windows))]
@@ -76,6 +77,11 @@ impl Repl {
   }
 
   fn save_history(&mut self) -> Result<(), ErrBox> {
+    match self.history_file.parent() {
+      Some(ref parent) => fs::create_dir_all(parent),
+      None => Ok(()),
+    }?;
+
     self
       .editor
       .save_history(&self.history_file.to_str().unwrap())
