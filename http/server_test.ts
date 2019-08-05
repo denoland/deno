@@ -74,6 +74,21 @@ test(async function responseWrite(): Promise<void> {
     const request = new ServerRequest();
     request.w = bufw;
 
+    request.conn = {
+      localAddr: "",
+      remoteAddr: "",
+      rid: -1,
+      closeRead: (): void => {},
+      closeWrite: (): void => {},
+      read: async (): Promise<number | Deno.EOF> => {
+        return 0;
+      },
+      write: async (): Promise<number> => {
+        return -1;
+      },
+      close: (): void => {}
+    };
+
     await request.respond(testCase.response);
     assertEquals(buf.toString(), testCase.raw);
     await request.done;
@@ -318,6 +333,21 @@ test(async function writeStringReaderResponse(): Promise<void> {
   assertEquals(r.more, false);
 });
 
+const mockConn = {
+  localAddr: "",
+  remoteAddr: "",
+  rid: -1,
+  closeRead: (): void => {},
+  closeWrite: (): void => {},
+  read: async (): Promise<number | Deno.EOF> => {
+    return 0;
+  },
+  write: async (): Promise<number> => {
+    return -1;
+  },
+  close: (): void => {}
+};
+
 test(async function readRequestError(): Promise<void> {
   let input = `GET / HTTP/1.1
 malformedHeader
@@ -325,7 +355,7 @@ malformedHeader
   const reader = new BufReader(new StringReader(input));
   let err;
   try {
-    await readRequest(reader);
+    await readRequest(mockConn, reader);
   } catch (e) {
     err = e;
   }
@@ -404,7 +434,7 @@ test(async function testReadRequestError(): Promise<void> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let req: any;
     try {
-      req = await readRequest(reader);
+      req = await readRequest(mockConn, reader);
     } catch (e) {
       err = e;
     }
