@@ -104,6 +104,7 @@ export class ServerRequest {
   protoMinor!: number;
   protoMajor!: number;
   headers!: Headers;
+  conn!: Conn;
   r!: BufReader;
   w!: BufWriter;
   done: Deferred<void> = deferred();
@@ -283,6 +284,7 @@ export function parseHTTPVersion(vers: string): [number, number] {
 }
 
 export async function readRequest(
+  conn: Conn,
   bufr: BufReader
 ): Promise<ServerRequest | Deno.EOF> {
   const tp = new TextProtoReader(bufr);
@@ -292,6 +294,7 @@ export async function readRequest(
   if (headers === Deno.EOF) throw new UnexpectedEOFError();
 
   const req = new ServerRequest();
+  req.conn = conn;
   req.r = bufr;
   [req.method, req.url, req.proto] = firstLine.split(" ", 3);
   [req.protoMinor, req.protoMajor] = parseHTTPVersion(req.proto);
@@ -321,7 +324,7 @@ export class Server implements AsyncIterable<ServerRequest> {
 
     while (!this.closing) {
       try {
-        req = await readRequest(bufr);
+        req = await readRequest(conn, bufr);
       } catch (e) {
         err = e;
         break;
