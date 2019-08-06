@@ -2075,6 +2075,8 @@ fn op_create_worker(
   // has included namespace (to avoid escalation).
   let include_deno_namespace =
     inner.include_deno_namespace() && state.include_deno_namespace;
+  let has_source_code = inner.has_source_code();
+  let source_code = inner.source_code().unwrap();
 
   let parent_state = state.clone();
 
@@ -2094,29 +2096,34 @@ fn op_create_worker(
   worker.execute(&deno_main_call).unwrap();
   worker.execute("workerMain()").unwrap();
 
+  let exec_cb = move |worker: Worker| {
+    let mut workers_tl = parent_state.workers.lock().unwrap();
+    workers_tl.insert(rid, worker.shared());
+    let builder = &mut FlatBufferBuilder::new();
+    let msg_inner =
+      msg::CreateWorkerRes::create(builder, &msg::CreateWorkerResArgs { rid });
+    serialize_response(
+      cmd_id,
+      builder,
+      msg::BaseArgs {
+        inner: Some(msg_inner.as_union_value()),
+        inner_type: msg::Any::CreateWorkerRes,
+        ..Default::default()
+      },
+    )
+  };
+
+  // Has provided source code, execute immediately.
+  if has_source_code {
+    worker.execute(&source_code).unwrap();
+    return ok_buf(exec_cb(worker));
+  }
+
   let module_specifier = ModuleSpecifier::resolve_url_or_path(specifier)?;
 
-  let op =
-    worker
-      .execute_mod_async(&module_specifier, false)
-      .and_then(move |()| {
-        let mut workers_tl = parent_state.workers.lock().unwrap();
-        workers_tl.insert(rid, worker.shared());
-        let builder = &mut FlatBufferBuilder::new();
-        let msg_inner = msg::CreateWorkerRes::create(
-          builder,
-          &msg::CreateWorkerResArgs { rid },
-        );
-        Ok(serialize_response(
-          cmd_id,
-          builder,
-          msg::BaseArgs {
-            inner: Some(msg_inner.as_union_value()),
-            inner_type: msg::Any::CreateWorkerRes,
-            ..Default::default()
-          },
-        ))
-      });
+  let op = worker
+    .execute_mod_async(&module_specifier, false)
+    .and_then(move |()| Ok(exec_cb(worker)));
 
   let result = op.wait()?;
   Ok(Op::Sync(result))

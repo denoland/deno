@@ -1,0 +1,2 @@
+args: run --reload tests/040_worker_blob.ts
+output: tests/040_worker_blob.ts.out
