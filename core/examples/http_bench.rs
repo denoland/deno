@@ -161,8 +161,7 @@ fn dispatch(
   );
 
   if is_sync {
-    let buf = fut.wait().unwrap();
-    Op::Sync(buf)
+    Op::Sync(fut.wait().unwrap())
   } else {
     Op::Async(fut)
   }
