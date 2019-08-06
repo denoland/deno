@@ -57,14 +57,14 @@ impl Future for AsyncType<CoreOpAsyncFuture> {
   fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
     match self {
       AsyncType::Required(ref mut r) => match r.poll() {
-        Ok(Ready(buf)) => return Ok(Ready(AsyncType::Required(buf))),
-        Ok(NotReady) => return Ok(NotReady),
-        Err(e) => return Err(e),
+        Ok(Ready(buf)) => Ok(Ready(AsyncType::Required(buf))),
+        Ok(NotReady) => Ok(NotReady),
+        Err(_) => Err(()),
       },
       AsyncType::Optional(ref mut r) => match r.poll() {
-        Ok(Ready(buf)) => return Ok(Ready(AsyncType::Optional(buf))),
-        Ok(NotReady) => return Ok(NotReady),
-        Err(e) => return Err(e),
+        Ok(Ready(buf)) => Ok(Ready(AsyncType::Optional(buf))),
+        Ok(NotReady) => Ok(NotReady),
+        Err(_) => Err(()),
       },
     }
   }

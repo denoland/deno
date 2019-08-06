@@ -261,15 +261,13 @@ impl Future for Resource {
       None => panic!("bad rid"),
       Some(repr) => match repr {
         Repr::SignalStream(ref mut s) => match s.poll() {
-          Ok(Async::Ready(Some(signo))) => return Ok(Async::Ready(signo)),
-          Ok(Async::Ready(None)) => {
-            return Err(Error::new(
-              std::io::ErrorKind::Other,
-              "Signal listen stopped.",
-            ))
-          }
-          Ok(Async::NotReady) => return Ok(Async::NotReady),
-          Err(err) => return Err(err),
+          Ok(Async::Ready(Some(signo))) => Ok(Async::Ready(signo)),
+          Ok(Async::Ready(None)) => Err(Error::new(
+            std::io::ErrorKind::Other,
+            "Signal listen stopped.",
+          )),
+          Ok(Async::NotReady) => Ok(Async::NotReady),
+          Err(err) => Err(err),
         },
         _ => panic!("Cannot poll as future"),
       },
