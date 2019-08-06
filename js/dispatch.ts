@@ -10,11 +10,9 @@ import {
   handleAsyncMsgFromRustMinimal
 } from "./dispatch_minimal";
 
-// Currently we only use two values for opId: FLATBUFFER_OP_ID or MINIMAL_OP_ID.
-// A message is either a flatbuffer message or a "minimal" (see
-// js/dispatch_minimal.ts) message.
-// TODO(ry) Later on use opId for actual individual ops, not just classes of
-// ops.
+// TODO(ry) Currently we only use three values for opId: OP_READ, OP_WRITE,
+// FLATBUFFER_OP_ID. Later on use opId for actual individual ops, not just
+// classes of ops.
 const FLATBUFFER_OP_ID = 44;
 
 const promiseTable = new Map<number, util.Resolvable<msg.Base>>();
@@ -35,13 +33,12 @@ function flatbufferRecordFromBuf(buf: Uint8Array): FlatbufferRecord {
 
 export function handleAsyncMsgFromRust(opId: number, ui8: Uint8Array): void {
   const buf32 = new Int32Array(ui8.buffer, ui8.byteOffset, ui8.byteLength / 4);
-  const recordMin = recordFromBufMinimal(opId, buf32);
-  if (recordMin) {
+  if (opId !== FLATBUFFER_OP_ID) {
     // Fast and new
+    const recordMin = recordFromBufMinimal(opId, buf32);
     handleAsyncMsgFromRustMinimal(ui8, recordMin);
   } else {
     // Legacy
-    util.assert(opId === FLATBUFFER_OP_ID);
     let { promiseId, base } = flatbufferRecordFromBuf(ui8);
     const promise = promiseTable.get(promiseId);
     util.assert(promise != null, `Expecting promise in table. ${promiseId}`);

@@ -3,7 +3,6 @@
 import * as util from "./util";
 import { core } from "./core";
 
-export const MINIMAL_OP_ID = 45;
 const promiseTableMin = new Map<number, util.Resolvable<number>>();
 let _nextPromiseId = 0;
 
