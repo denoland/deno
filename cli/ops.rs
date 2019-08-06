@@ -212,6 +212,7 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<CliDispatchFn> {
     msg::Any::Cwd => Some(op_cwd),
     msg::Any::Dial => Some(op_dial),
     msg::Any::Environ => Some(op_env),
+    msg::Any::ExecPath => Some(op_exec_path),
     msg::Any::Exit => Some(op_exit),
     msg::Any::Fetch => Some(op_fetch),
     msg::Any::FetchSourceFile => Some(op_fetch_source_file),
@@ -354,18 +355,6 @@ fn op_start(
   let cwd_off =
     builder.create_string(deno_fs::normalize_path(cwd_path.as_ref()).as_ref());
 
-  // Use permissions.allows_env() to bypass env request prompt.
-  let exec_path = if state.permissions.allows_env() {
-    let current_exe = std::env::current_exe().unwrap();
-    // Now apply URL parser to current exe to get fully resolved path, otherwise we might get
-    // `./` and `../` bits in `exec_path`
-    let exe_url = Url::from_file_path(current_exe).unwrap();
-    exe_url.to_file_path().unwrap().to_str().unwrap().to_owned()
-  } else {
-    "".to_owned()
-  };
-  let exec_path = builder.create_string(&exec_path);
-
   let v8_version = version::v8();
   let v8_version_off = builder.create_string(v8_version);
 
@@ -399,7 +388,6 @@ fn op_start(
       v8_version: Some(v8_version_off),
       deno_version: Some(deno_version_off),
       no_color: !ansi::use_color(),
-      exec_path: Some(exec_path),
       xeval_delim,
       ..Default::default()
     },
@@ -1782,6 +1770,36 @@ fn op_home_dir(
     msg::BaseArgs {
       inner: Some(inner.as_union_value()),
       inner_type: msg::Any::HomeDirRes,
+      ..Default::default()
+    },
+  ))
+}
+
+fn op_exec_path(
+  state: &ThreadSafeState,
+  base: &msg::Base<'_>,
+  data: Option<PinnedBuf>,
+) -> CliOpResult {
+  assert!(data.is_none());
+  let cmd_id = base.cmd_id();
+
+  state.check_env()?;
+
+  let builder = &mut FlatBufferBuilder::new();
+  let current_exe = std::env::current_exe().unwrap();
+  // Now apply URL parser to current exe to get fully resolved path, otherwise we might get
+  // `./` and `../` bits in `exec_path`
+  let exe_url = Url::from_file_path(current_exe).unwrap();
+  let path = exe_url.to_file_path().unwrap().to_str().unwrap().to_owned();
+  let path = Some(builder.create_string(&path));
+  let inner = msg::ExecPathRes::create(builder, &msg::ExecPathResArgs { path });
+
+  ok_buf(serialize_response(
+    cmd_id,
+    builder,
+    msg::BaseArgs {
+      inner: Some(inner.as_union_value()),
+      inner_type: msg::Any::ExecPathRes,
       ..Default::default()
     },
   ))
