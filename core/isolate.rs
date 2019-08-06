@@ -33,8 +33,9 @@ use std::sync::{Arc, Mutex, Once};
 pub type Buf = Box<[u8]>;
 
 pub type OpAsyncFuture<E> = Box<dyn Future<Item = Buf, Error = E> + Send>;
-pub type OpAsyncFuture2<E> =
-  Box<dyn Future<Item = (OpId, Buf), Error = E> + Send>;
+
+type PendingOpFuture =
+  Box<dyn Future<Item = (OpId, Buf), Error = CoreError> + Send>;
 
 pub enum Op<E> {
   Sync(Buf),
@@ -42,10 +43,6 @@ pub enum Op<E> {
 }
 
 pub type CoreError = ();
-
-// type CoreOpAsyncFuture = OpAsyncFuture<CoreError>;
-
-type CoreOpAsyncFuture2 = OpAsyncFuture2<CoreError>;
 
 pub type CoreOp = Op<CoreError>;
 
@@ -127,7 +124,7 @@ pub struct Isolate {
   js_error_create: Arc<JSErrorCreateFn>,
   needs_init: bool,
   shared: SharedQueue,
-  pending_ops: FuturesUnordered<CoreOpAsyncFuture2>,
+  pending_ops: FuturesUnordered<PendingOpFuture>,
   pending_dyn_imports: FuturesUnordered<DynImport>,
   have_unpolled_ops: bool,
   startup_script: Option<OwnedScript>,
