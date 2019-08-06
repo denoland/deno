@@ -387,7 +387,9 @@ pub fn add_signal_stream(signo: i32) -> Resource {
   let mut tg = RESOURCE_TABLE.lock().unwrap();
   let r = tg.insert(
     rid,
-    Repr::SignalStream(Box::new(TokioSignal::new(signo).flatten_stream())),
+    // Need to wait, since sigmask might have not been set
+    // if just flatten stream.
+    Repr::SignalStream(Box::new(TokioSignal::new(signo).wait().unwrap())),
   );
   assert!(r.is_none());
   Resource { rid }

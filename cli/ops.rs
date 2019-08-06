@@ -29,10 +29,12 @@ use crate::worker::Worker;
 use atty;
 use deno::Buf;
 use deno::CoreOp;
+use deno::CoreOpAsyncFuture;
 use deno::ErrBox;
 use deno::Loader;
 use deno::ModuleSpecifier;
 use deno::Op;
+use deno::OpAsyncFuture;
 use deno::OpResult;
 use deno::PinnedBuf;
 use flatbuffers::FlatBufferBuilder;
@@ -80,6 +82,53 @@ pub type OpSelector = fn(inner_type: msg::Any) -> Option<CliDispatchFn>;
 #[inline]
 fn empty_buf() -> Buf {
   Box::new([])
+}
+
+#[inline]
+fn prepare_async_op(
+  state: ThreadSafeState,
+  cmd_id: u32,
+  fut: OpAsyncFuture<ErrBox>,
+) -> CoreOpAsyncFuture {
+  Box::new(
+    fut
+      .or_else(move |err: ErrBox| -> Result<Buf, ()> {
+        debug!("op err {}", err);
+        // No matter whether we got an Err or Ok, we want a serialized message to
+        // send back. So transform the DenoError into a Buf.
+        let builder = &mut FlatBufferBuilder::new();
+        let errmsg_offset = builder.create_string(&format!("{}", err));
+        Ok(serialize_response(
+          cmd_id,
+          builder,
+          msg::BaseArgs {
+            error: Some(errmsg_offset),
+            error_kind: err.kind(),
+            ..Default::default()
+          },
+        ))
+      })
+      .and_then(move |buf: Buf| -> Result<Buf, ()> {
+        // Handle empty responses. For sync responses we just want
+        // to send null. For async we want to send a small message
+        // with the cmd_id.
+        let buf = if buf.len() > 0 {
+          buf
+        } else {
+          let builder = &mut FlatBufferBuilder::new();
+          serialize_response(
+            cmd_id,
+            builder,
+            msg::BaseArgs {
+              ..Default::default()
+            },
+          )
+        };
+        state.metrics_op_completed(buf.len());
+        Ok(buf)
+      })
+      .map_err(|err| panic!("unexpected error {:?}", err)),
+  )
 }
 
 pub fn dispatch_all(
@@ -135,87 +184,11 @@ pub fn dispatch_all_legacy(
       Op::Sync(buf)
     }
     Ok(Op::Async(fut)) => {
-      let result_fut = Box::new(
-        fut
-          .or_else(move |err: ErrBox| -> Result<Buf, ()> {
-            debug!("op err {}", err);
-            // No matter whether we got an Err or Ok, we want a serialized message to
-            // send back. So transform the DenoError into a Buf.
-            let builder = &mut FlatBufferBuilder::new();
-            let errmsg_offset = builder.create_string(&format!("{}", err));
-            Ok(serialize_response(
-              cmd_id,
-              builder,
-              msg::BaseArgs {
-                error: Some(errmsg_offset),
-                error_kind: err.kind(),
-                ..Default::default()
-              },
-            ))
-          })
-          .and_then(move |buf: Buf| -> Result<Buf, ()> {
-            // Handle empty responses. For sync responses we just want
-            // to send null. For async we want to send a small message
-            // with the cmd_id.
-            let buf = if buf.len() > 0 {
-              buf
-            } else {
-              let builder = &mut FlatBufferBuilder::new();
-              serialize_response(
-                cmd_id,
-                builder,
-                msg::BaseArgs {
-                  ..Default::default()
-                },
-              )
-            };
-            state.metrics_op_completed(buf.len());
-            Ok(buf)
-          })
-          .map_err(|err| panic!("unexpected error {:?}", err)),
-      );
+      let result_fut = prepare_async_op(state, cmd_id, fut);
       Op::Async(result_fut)
     }
     Ok(Op::AsyncOptional(fut)) => {
-      let result_fut = Box::new(
-        fut
-          .or_else(move |err: ErrBox| -> Result<Buf, ()> {
-            debug!("op err {}", err);
-            // No matter whether we got an Err or Ok, we want a serialized message to
-            // send back. So transform the DenoError into a Buf.
-            let builder = &mut FlatBufferBuilder::new();
-            let errmsg_offset = builder.create_string(&format!("{}", err));
-            Ok(serialize_response(
-              cmd_id,
-              builder,
-              msg::BaseArgs {
-                error: Some(errmsg_offset),
-                error_kind: err.kind(),
-                ..Default::default()
-              },
-            ))
-          })
-          .and_then(move |buf: Buf| -> Result<Buf, ()> {
-            // Handle empty responses. For sync responses we just want
-            // to send null. For async we want to send a small message
-            // with the cmd_id.
-            let buf = if buf.len() > 0 {
-              buf
-            } else {
-              let builder = &mut FlatBufferBuilder::new();
-              serialize_response(
-                cmd_id,
-                builder,
-                msg::BaseArgs {
-                  ..Default::default()
-                },
-              )
-            };
-            state.metrics_op_completed(buf.len());
-            Ok(buf)
-          })
-          .map_err(|err| panic!("unexpected error {:?}", err)),
-      );
+      let result_fut = prepare_async_op(state, cmd_id, fut);
       Op::AsyncOptional(result_fut)
     }
     Err(err) => {

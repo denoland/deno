@@ -41,7 +41,7 @@ pub enum Op<E> {
 
 pub type CoreError = ();
 
-type CoreOpAsyncFuture = OpAsyncFuture<CoreError>;
+pub type CoreOpAsyncFuture = OpAsyncFuture<CoreError>;
 
 pub type CoreOp = Op<CoreError>;
 

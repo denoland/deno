@@ -19,6 +19,7 @@ export {
   assertStrictEq,
   assertStrContains
 } from "./deps/https/deno.land/std/testing/asserts.ts";
+export { deferred } from "./deps/https/deno.land/std/util/async.ts";
 
 interface TestPermissions {
   read?: boolean;

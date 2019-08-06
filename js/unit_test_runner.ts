@@ -65,8 +65,14 @@ async function main(): Promise<void> {
       stdout: "piped"
     });
 
+    const output = await p.output();
+
+    if (cliPerms.length === 1 && cliPerms[0] === "--allow-run") {
+      console.log(">>>", new TextDecoder().decode(output));
+    }
+
     const { actual, expected, resultOutput } = parseUnitTestOutput(
-      await p.output(),
+      output,
       true
     );
 
