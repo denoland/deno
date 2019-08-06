@@ -165,11 +165,7 @@ SharedQueue Binary Layout
 
   function dispatch(control, zeroCopy = null) {
     maybeInit();
-    // First try to push control to shared.
-    const success = push(control);
-    // If successful, don't use first argument of core.send.
-    const arg0 = success ? null : control;
-    return Deno.core.send(arg0, zeroCopy);
+    return Deno.core.send(control, zeroCopy);
   }
 
   const denoCore = {
