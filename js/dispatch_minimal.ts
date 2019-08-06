@@ -20,9 +20,9 @@ export interface RecordMinimal {
 export function recordFromBufMinimal(
   opId: number,
   buf32: Int32Array
-): null | RecordMinimal {
+): RecordMinimal {
   if (buf32.length != 3) {
-    return null;
+    throw Error("Bad message");
   }
   return {
     promiseId: buf32[0],
