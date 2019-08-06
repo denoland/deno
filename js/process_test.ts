@@ -321,6 +321,22 @@ test(function signalNumbers(): void {
 
 // Ignore signal tests on windows for now...
 if (Deno.platform.os !== "win") {
+  test(function killPermissions(): void {
+    let caughtError = false;
+    try {
+      // Unlike the other test cases, we don't have permission to spawn a
+      // subprocess we can safely kill. Instead we send SIGCONT to the current
+      // process - assuming that Deno does not have a special handler set for it
+      // and will just continue even if a signal is erroneously sent.
+      Deno.kill(Deno.pid, Deno.Signal.SIGCONT);
+    } catch (e) {
+      caughtError = true;
+      assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
+      assertEquals(e.name, "PermissionDenied");
+    }
+    assert(caughtError);
+  });
+
   testPerm({ run: true }, async function killSuccess(): Promise<void> {
     const p = run({
       args: ["python", "-c", "from time import sleep; sleep(10000)"]
