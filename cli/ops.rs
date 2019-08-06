@@ -86,10 +86,10 @@ pub fn dispatch_all(
 ) -> CoreOp {
   let bytes_sent_control = control.len();
   let bytes_sent_zero_copy = zero_copy.as_ref().map(|b| b.len()).unwrap_or(0);
-  let op = if let Some(min_record) = parse_min_record(control) {
+  let op = if op_id != FLATBUFFER_OP_ID {
+    let min_record = parse_min_record(control).unwrap();
     dispatch_minimal(state, op_id, min_record, zero_copy)
   } else {
-    debug_assert_eq!(op_id, FLATBUFFER_OP_ID);
     dispatch_all_legacy(state, control, zero_copy, op_selector)
   };
   state.metrics_op_dispatched(bytes_sent_control, bytes_sent_zero_copy);
