@@ -36,6 +36,10 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio_process;
+#[cfg(unix)]
+use tokio_signal::unix::Signal as TokioSignal;
+#[cfg(unix)]
+pub type SignalStream = Box<dyn Stream<Item = i32, Error = Error> + Send>;
 
 pub type ResourceId = u32; // Sometimes referred to RID.
 
@@ -99,6 +103,8 @@ enum Repr {
   ChildStdout(tokio_process::ChildStdout),
   ChildStderr(tokio_process::ChildStderr),
   Worker(WorkerChannels),
+  #[cfg(unix)]
+  SignalStream(SignalStream),
 }
 
 /// If the given rid is open, this returns the type of resource, E.G. "worker".
@@ -141,6 +147,8 @@ fn inspect_repr(repr: &Repr) -> String {
     Repr::ChildStdout(_) => "childStdout",
     Repr::ChildStderr(_) => "childStderr",
     Repr::Worker(_) => "worker",
+    #[cfg(unix)]
+    Repr::SignalStream(_) => "signalStream",
   };
 
   String::from(h_repr)
@@ -233,6 +241,39 @@ impl Resource {
 impl Read for Resource {
   fn read(&mut self, _buf: &mut [u8]) -> std::io::Result<usize> {
     unimplemented!();
+  }
+}
+
+impl Future for Resource {
+  type Item = i32;
+  type Error = Error;
+  #[cfg(not(unix))]
+  fn poll(&mut self) -> Poll<i32, Error> {
+    unimplemented!();
+  }
+
+  #[cfg(unix)]
+  fn poll(&mut self) -> Poll<i32, Error> {
+    use futures::Async;
+    let mut table = RESOURCE_TABLE.lock().unwrap();
+    let maybe_repr = table.get_mut(&self.rid);
+    match maybe_repr {
+      None => panic!("bad rid"),
+      Some(repr) => match repr {
+        Repr::SignalStream(ref mut s) => match s.poll() {
+          Ok(Async::Ready(Some(signo))) => return Ok(Async::Ready(signo)),
+          Ok(Async::Ready(None)) => {
+            return Err(Error::new(
+              std::io::ErrorKind::Other,
+              "Signal listen stopped.",
+            ))
+          }
+          Ok(Async::NotReady) => return Ok(Async::NotReady),
+          Err(err) => return Err(err),
+        },
+        _ => panic!("Cannot poll as future"),
+      },
+    }
   }
 }
 
@@ -338,6 +379,18 @@ pub fn add_worker(wc: WorkerChannels) -> Resource {
   let rid = new_rid();
   let mut tg = RESOURCE_TABLE.lock().unwrap();
   let r = tg.insert(rid, Repr::Worker(wc));
+  assert!(r.is_none());
+  Resource { rid }
+}
+
+#[cfg(unix)]
+pub fn add_signal_stream(signo: i32) -> Resource {
+  let rid = new_rid();
+  let mut tg = RESOURCE_TABLE.lock().unwrap();
+  let r = tg.insert(
+    rid,
+    Repr::SignalStream(Box::new(TokioSignal::new(signo).flatten_stream())),
+  );
   assert!(r.is_none());
   Resource { rid }
 }

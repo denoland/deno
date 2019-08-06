@@ -176,6 +176,48 @@ pub fn dispatch_all_legacy(
       );
       Op::Async(result_fut)
     }
+    Ok(Op::AsyncOptional(fut)) => {
+      let result_fut = Box::new(
+        fut
+          .or_else(move |err: ErrBox| -> Result<Buf, ()> {
+            debug!("op err {}", err);
+            // No matter whether we got an Err or Ok, we want a serialized message to
+            // send back. So transform the DenoError into a Buf.
+            let builder = &mut FlatBufferBuilder::new();
+            let errmsg_offset = builder.create_string(&format!("{}", err));
+            Ok(serialize_response(
+              cmd_id,
+              builder,
+              msg::BaseArgs {
+                error: Some(errmsg_offset),
+                error_kind: err.kind(),
+                ..Default::default()
+              },
+            ))
+          })
+          .and_then(move |buf: Buf| -> Result<Buf, ()> {
+            // Handle empty responses. For sync responses we just want
+            // to send null. For async we want to send a small message
+            // with the cmd_id.
+            let buf = if buf.len() > 0 {
+              buf
+            } else {
+              let builder = &mut FlatBufferBuilder::new();
+              serialize_response(
+                cmd_id,
+                builder,
+                msg::BaseArgs {
+                  ..Default::default()
+                },
+              )
+            };
+            state.metrics_op_completed(buf.len());
+            Ok(buf)
+          })
+          .map_err(|err| panic!("unexpected error {:?}", err)),
+      );
+      Op::AsyncOptional(result_fut)
+    }
     Err(err) => {
       debug!("op err {}", err);
       // No matter whether we got an Err or Ok, we want a serialized message to
@@ -258,6 +300,11 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<CliDispatchFn> {
     // them.
     msg::Any::WorkerGetMessage => Some(op_worker_get_message),
     msg::Any::WorkerPostMessage => Some(op_worker_post_message),
+
+    #[cfg(unix)]
+    msg::Any::SignalListen => Some(op_signal_listen),
+    #[cfg(unix)]
+    msg::Any::SignalPoll => Some(op_signal_poll),
 
     _ => None,
   }
@@ -2232,4 +2279,74 @@ fn op_get_random_values(
   }
 
   ok_buf(empty_buf())
+}
+
+#[cfg(unix)]
+fn op_signal_listen(
+  _state: &ThreadSafeState,
+  base: &msg::Base<'_>,
+  data: Option<PinnedBuf>,
+) -> CliOpResult {
+  assert!(data.is_none());
+  let cmd_id = base.cmd_id();
+  let inner = base.inner_as_signal_listen().unwrap();
+  let signo = inner.signo();
+
+  let resource = resources::add_signal_stream(signo);
+
+  let builder = &mut FlatBufferBuilder::new();
+  let inner = msg::SignalListenRes::create(
+    builder,
+    &msg::SignalListenResArgs { rid: resource.rid },
+  );
+  let response_buf = serialize_response(
+    cmd_id,
+    builder,
+    msg::BaseArgs {
+      inner: Some(inner.as_union_value()),
+      inner_type: msg::Any::SignalListenRes,
+      ..Default::default()
+    },
+  );
+  ok_buf(response_buf)
+}
+
+#[cfg(unix)]
+fn op_signal_poll(
+  _state: &ThreadSafeState,
+  base: &msg::Base<'_>,
+  data: Option<PinnedBuf>,
+) -> CliOpResult {
+  assert!(data.is_none());
+  let cmd_id = base.cmd_id();
+  let inner = base.inner_as_signal_poll().unwrap();
+  let rid = inner.rid();
+
+  match resources::lookup(rid) {
+    None => Err(deno_error::bad_resource()),
+    Some(resource) => {
+      let op = resource.map_err(ErrBox::from).and_then(move |signo| {
+        let builder = &mut FlatBufferBuilder::new();
+        let inner = msg::SignalPollRes::create(
+          builder,
+          &msg::SignalPollResArgs { signo },
+        );
+        Ok(serialize_response(
+          cmd_id,
+          builder,
+          msg::BaseArgs {
+            inner: Some(inner.as_union_value()),
+            inner_type: msg::Any::SignalPollRes,
+            ..Default::default()
+          },
+        ))
+      });
+      if base.sync() {
+        let buf = op.wait()?;
+        Ok(Op::Sync(buf))
+      } else {
+        Ok(Op::AsyncOptional(Box::new(op)))
+      }
+    }
+  }
 }

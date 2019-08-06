@@ -36,6 +36,7 @@ pub type OpAsyncFuture<E> = Box<dyn Future<Item = Buf, Error = E> + Send>;
 pub enum Op<E> {
   Sync(Buf),
   Async(OpAsyncFuture<E>),
+  AsyncOptional(OpAsyncFuture<E>),
 }
 
 pub type CoreError = ();
@@ -43,6 +44,31 @@ pub type CoreError = ();
 type CoreOpAsyncFuture = OpAsyncFuture<CoreError>;
 
 pub type CoreOp = Op<CoreError>;
+
+pub enum AsyncType<D> {
+  Required(D),
+  Optional(D),
+}
+// TODO(kevinkassimo): this is ugly.
+// However I would hope we can poll these futures together.
+impl Future for AsyncType<CoreOpAsyncFuture> {
+  type Item = AsyncType<Buf>;
+  type Error = ();
+  fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+    match self {
+      AsyncType::Required(ref mut r) => match r.poll() {
+        Ok(Ready(buf)) => return Ok(Ready(AsyncType::Required(buf))),
+        Ok(NotReady) => return Ok(NotReady),
+        Err(e) => return Err(e),
+      },
+      AsyncType::Optional(ref mut r) => match r.poll() {
+        Ok(Ready(buf)) => return Ok(Ready(AsyncType::Optional(buf))),
+        Ok(NotReady) => return Ok(NotReady),
+        Err(e) => return Err(e),
+      },
+    }
+  }
+}
 
 /// Stores a script used to initalize a Isolate
 pub struct Script<'a> {
@@ -121,8 +147,9 @@ pub struct Isolate {
   js_error_create: Arc<JSErrorCreateFn>,
   needs_init: bool,
   shared: SharedQueue,
-  pending_ops: FuturesUnordered<CoreOpAsyncFuture>,
+  pending_ops: FuturesUnordered<AsyncType<CoreOpAsyncFuture>>,
   pending_dyn_imports: FuturesUnordered<DynImport>,
+  optional_ops_count: usize,
   have_unpolled_ops: bool,
   startup_script: Option<OwnedScript>,
 }
@@ -188,6 +215,7 @@ impl Isolate {
       needs_init,
       pending_ops: FuturesUnordered::new(),
       have_unpolled_ops: false,
+      optional_ops_count: 0,
       pending_dyn_imports: FuturesUnordered::new(),
       startup_script,
     }
@@ -286,7 +314,12 @@ impl Isolate {
         let _ = isolate.respond(Some(&buf));
       }
       Op::Async(fut) => {
-        isolate.pending_ops.push(fut);
+        isolate.pending_ops.push(AsyncType::Required(fut));
+        isolate.have_unpolled_ops = true;
+      }
+      Op::AsyncOptional(fut) => {
+        isolate.optional_ops_count += 1;
+        isolate.pending_ops.push(AsyncType::Optional(fut));
         isolate.have_unpolled_ops = true;
       }
     }
@@ -567,7 +600,15 @@ impl Future for Isolate {
         Err(_) => panic!("unexpected op error"),
         Ok(Ready(None)) => break,
         Ok(NotReady) => break,
-        Ok(Ready(Some(buf))) => {
+        Ok(Ready(Some(result))) => {
+          let buf = match result {
+            AsyncType::Required(buf) => buf,
+            AsyncType::Optional(buf) => {
+              self.optional_ops_count -= 1;
+              buf
+            }
+          };
+
           let successful_push = self.shared.push(&buf);
           if !successful_push {
             // If we couldn't push the response to the shared queue, because
@@ -601,7 +642,7 @@ impl Future for Isolate {
     self.check_last_exception()?;
 
     // We're idle if pending_ops is empty.
-    if self.pending_ops.is_empty() {
+    if self.pending_ops.len() <= self.optional_ops_count {
       Ok(futures::Async::Ready(()))
     } else {
       if self.have_unpolled_ops {

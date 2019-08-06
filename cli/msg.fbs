@@ -83,6 +83,12 @@ union Any {
   WorkerPostMessage,
   Write,
   WriteRes,
+
+  SignalListen,
+  SignalListenRes,
+
+  SignalPoll,
+  SignalPollRes,
 }
 
 enum ErrorKind: byte {
@@ -606,5 +612,21 @@ table Seek {
 }
 
 table GetRandomValues {}
+
+table SignalListen {
+  signo: int;
+}
+
+table SignalListenRes {
+  rid: uint32;
+}
+
+table SignalPoll {
+  rid: uint32;
+}
+
+table SignalPollRes {
+  signo: int;
+}
 
 root_type Base;

@@ -60,7 +60,10 @@ if (is_win) {
   ]
 }
 if (is_posix) {
-  main_extern_rlib += [ "nix" ]
+  main_extern_rlib += [
+    "nix",
+    "tokio_signal",
+  ]
 }
 
 ts_sources = [
@@ -121,6 +124,7 @@ ts_sources = [
   "../js/repl.ts",
   "../js/request.ts",
   "../js/resources.ts",
+  "../js/sigaction.ts",
   "../js/stat.ts",
   "../js/symlink.ts",
   "../js/text_encoding.ts",
