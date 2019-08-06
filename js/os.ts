@@ -13,16 +13,10 @@ export let pid: number;
 /** Reflects the NO_COLOR environment variable: https://no-color.org/ */
 export let noColor: boolean;
 
-/** Path to the current deno process's executable file.
- * Requires the `--allow-env` flag, otherwise it'll be set to an empty `string`.
- */
-export let execPath: string;
-
-function setGlobals(pid_: number, noColor_: boolean, execPath_: string): void {
+function setGlobals(pid_: number, noColor_: boolean): void {
   assert(!pid);
   pid = pid_;
   noColor = noColor_;
-  execPath = execPath_;
 }
 
 /** Check if running in terminal.
@@ -127,7 +121,7 @@ export function start(
 
   util.setLogDebug(startResMsg.debugFlag(), source);
 
-  setGlobals(startResMsg.pid(), startResMsg.noColor(), startResMsg.execPath()!);
+  setGlobals(startResMsg.pid(), startResMsg.noColor());
 
   if (preserveDenoNamespace) {
     util.immutableDefine(window, "Deno", window.Deno);
@@ -155,6 +149,22 @@ export function homeDir(): string {
   const baseRes = sendSync(builder, msg.Any.HomeDir, inner)!;
   assert(msg.Any.HomeDirRes === baseRes.innerType());
   const res = new msg.HomeDirRes();
+  assert(baseRes.inner(res) != null);
+  const path = res.path();
+
+  if (!path) {
+    throw new Error("Could not get home directory.");
+  }
+
+  return path;
+}
+
+export function execPath(): string {
+  const builder = flatbuffers.createBuilder();
+  const inner = msg.ExecPath.createExecPath(builder);
+  const baseRes = sendSync(builder, msg.Any.ExecPath, inner)!;
+  assert(msg.Any.ExecPathRes === baseRes.innerType());
+  const res = new msg.ExecPathRes();
   assert(baseRes.inner(res) != null);
   const path = res.path();
 

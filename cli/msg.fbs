@@ -77,6 +77,8 @@ union Any {
   Truncate,
   HomeDir,
   HomeDirRes,
+  ExecPath,
+  ExecPathRes,
   Utime,
   WorkerGetMessage,
   WorkerGetMessageRes,
@@ -181,7 +183,6 @@ table StartRes {
   cwd: string;
   pid: uint32;
   argv: [string];
-  exec_path: string;
   main_module: string; // Absolute URL.
   debug_flag: bool;
   deps_flag: bool;
@@ -465,6 +466,12 @@ table Truncate {
 table HomeDir {}
 
 table HomeDirRes {
+  path: string;
+}
+
+table ExecPath {}
+
+table ExecPathRes {
   path: string;
 }
 

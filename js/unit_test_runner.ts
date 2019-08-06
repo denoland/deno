@@ -53,7 +53,7 @@ async function main(): Promise<void> {
     const cliPerms = permsToCliFlags(perms);
     // run subsequent tests using same deno executable
     const args = [
-      Deno.execPath,
+      Deno.execPath(),
       "run",
       "--no-prompt",
       ...cliPerms,
