@@ -2,7 +2,8 @@
 import * as msg from "gen/cli/msg_generated";
 import * as flatbuffers from "./flatbuffers";
 import * as dispatch from "./dispatch";
-import { assert } from "./util";
+import { assert, notImplemented } from "./util";
+import { build } from "./build";
 
 function reqListen(
   signo: number
@@ -49,7 +50,7 @@ interface SignalInfo {
 
 const handlerMap = new Map<number, SignalInfo>();
 
-async function startSignalLoop(rid: number): void {
+async function startSignalLoop(rid: number): Promise<void> {
   while (true) {
     const signo = resPoll(await dispatch.sendAsync(...reqPoll(rid)));
     const signalInfo = handlerMap.get(signo);
@@ -63,6 +64,10 @@ async function startSignalLoop(rid: number): void {
  * same signal.
  */
 export function sigaction(signo: number, handler: SignalHandler): void {
+  if (build.os === "win") {
+    notImplemented();
+  }
+
   if (!handlerMap.has(signo)) {
     // register handler;
     const rid = resListen(dispatch.sendSync(...reqListen(signo)));
