@@ -103,6 +103,7 @@ impl SharedQueue {
     s[INDEX_OFFSETS + index] = end as u32;
   }
 
+  #[cfg(test)]
   fn get_end(&self, index: usize) -> Option<usize> {
     if index < self.num_records() {
       let s = self.as_u32_slice();
@@ -112,6 +113,7 @@ impl SharedQueue {
     }
   }
 
+  #[cfg(test)]
   fn get_offset(&self, index: usize) -> Option<usize> {
     if index < self.num_records() {
       Some(if index == 0 {
@@ -126,6 +128,7 @@ impl SharedQueue {
   }
 
   /// Returns none if empty.
+  #[cfg(test)]
   pub fn shift(&mut self) -> Option<&[u8]> {
     let u32_slice = self.as_u32_slice();
     let i = u32_slice[INDEX_NUM_SHIFTED_OFF] as usize;
