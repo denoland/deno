@@ -6,6 +6,8 @@ import * as flatbuffers from "./flatbuffers";
 import { assert, log } from "./util";
 import { TextDecoder, TextEncoder } from "./text_encoding";
 import { window } from "./window";
+import { blobURLMap } from "./url";
+import { blobBytesWeakMap } from "./blob";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -22,14 +24,19 @@ export function decodeMessage(dataIntArray: Uint8Array): any {
 
 function createWorker(
   specifier: string,
-  includeDenoNamespace: boolean
+  includeDenoNamespace: boolean,
+  hasSourceCode: boolean,
+  sourceCode: Uint8Array
 ): number {
   const builder = flatbuffers.createBuilder();
   const specifier_ = builder.createString(specifier);
+  const sourceCode_ = builder.createString(sourceCode);
   const inner = msg.CreateWorker.createCreateWorker(
     builder,
     specifier_,
-    includeDenoNamespace
+    includeDenoNamespace,
+    hasSourceCode,
+    sourceCode_
   );
   const baseRes = sendSync(builder, msg.Any.CreateWorker, inner);
   assert(baseRes != null);
@@ -177,11 +184,33 @@ export class WorkerImpl implements Worker {
   public onmessageerror?: () => void;
 
   constructor(specifier: string, options?: DenoWorkerOptions) {
+    let hasSourceCode = false;
+    let sourceCode = new Uint8Array();
+
     let includeDenoNamespace = true;
     if (options && options.noDenoNamespace) {
       includeDenoNamespace = false;
     }
-    this.rid = createWorker(specifier, includeDenoNamespace);
+    // Handle blob URL.
+    if (specifier.startsWith("blob:")) {
+      hasSourceCode = true;
+      const b = blobURLMap.get(specifier);
+      if (!b) {
+        throw new Error("No Blob associated with the given URL is found");
+      }
+      const blobBytes = blobBytesWeakMap.get(b!);
+      if (!blobBytes) {
+        throw new Error("Invalid Blob");
+      }
+      sourceCode = blobBytes!;
+    }
+
+    this.rid = createWorker(
+      specifier,
+      includeDenoNamespace,
+      hasSourceCode,
+      sourceCode
+    );
     this.run();
     this.isClosedPromise = hostGetWorkerClosed(this.rid);
     this.isClosedPromise.then(

@@ -1,5 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as urlSearchParams from "./url_search_params";
+import * as domTypes from "./dom_types";
+import { getRandomValues } from "./get_random_values";
+import { window } from "./window";
 
 interface URLParts {
   protocol: string;
@@ -62,6 +65,20 @@ function parse(url: string): URLParts | undefined {
   }
   return undefined;
 }
+
+// Based on https://github.com/kelektiv/node-uuid
+// TODO(kevinkassimo): Use deno_std version once possible.
+function generateUUID(): string {
+  return "00000000-0000-4000-8000-000000000000".replace(
+    /[0]/g,
+    (): string =>
+      // random integer from 0 to 15 as a hex digit.
+      (getRandomValues(new Uint8Array(1))[0] % 16).toString(16)
+  );
+}
+
+// Keep it outside of URL to avoid any attempts of access.
+export const blobURLMap = new Map<string, domTypes.Blob>();
 
 export class URL {
   private _parts: URLParts;
@@ -272,5 +289,28 @@ export class URL {
 
   toJSON(): string {
     return this.href;
+  }
+
+  // TODO(kevinkassimo): implement MediaSource version in the future.
+  static createObjectURL(b: domTypes.Blob): string {
+    const origin = window.location.origin || "http://deno-opaque-origin";
+    const key = `blob:${origin}/${generateUUID()}`;
+    blobURLMap.set(key, b);
+    return key;
+  }
+
+  static revokeObjectURL(url: string): void {
+    let urlObject;
+    try {
+      urlObject = new URL(url);
+    } catch {
+      throw new TypeError("Provided URL string is not valid");
+    }
+    if (urlObject.protocol !== "blob:") {
+      return;
+    }
+    // Origin match check seems irrelevant for now, unless we implement
+    // persisten storage for per window.location.origin at some point.
+    blobURLMap.delete(url);
   }
 }
