@@ -20,6 +20,7 @@ use deno::CoreOp;
 use deno::ErrBox;
 use deno::Loader;
 use deno::ModuleSpecifier;
+use deno::OpId;
 use deno::PinnedBuf;
 use futures::future::Shared;
 use futures::Future;
@@ -104,10 +105,11 @@ impl Deref for ThreadSafeState {
 impl ThreadSafeState {
   pub fn dispatch(
     &self,
+    op_id: OpId,
     control: &[u8],
     zero_copy: Option<PinnedBuf>,
   ) -> CoreOp {
-    ops::dispatch_all(self, control, zero_copy, self.dispatch_selector)
+    ops::dispatch_all(self, op_id, control, zero_copy, self.dispatch_selector)
   }
 }
 

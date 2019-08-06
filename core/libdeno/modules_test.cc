@@ -2,9 +2,11 @@
 #include "test.h"
 
 static int exec_count = 0;
-void recv_cb(void* user_data, deno_buf buf, deno_pinned_buf zero_copy_buf) {
+void recv_cb(void* user_data, deno_op_id op_id, deno_buf buf,
+             deno_pinned_buf zero_copy_buf) {
   // We use this to check that scripts have executed.
   EXPECT_EQ(1u, buf.data_len);
+  EXPECT_EQ(42u, op_id);
   EXPECT_EQ(buf.data_ptr[0], 4);
   EXPECT_EQ(zero_copy_buf.data_ptr, nullptr);
   EXPECT_EQ(zero_copy_buf.data_len, 0u);
@@ -20,7 +22,7 @@ TEST(ModulesTest, Resolution) {
   static deno_mod a = deno_mod_new(d, true, "a.js",
                                    "import { b } from 'b.js'\n"
                                    "if (b() != 'b') throw Error();\n"
-                                   "Deno.core.send(new Uint8Array([4]));");
+                                   "Deno.core.send(42, new Uint8Array([4]));");
   EXPECT_NE(a, 0);
   EXPECT_EQ(nullptr, deno_last_exception(d));
 
@@ -72,7 +74,7 @@ TEST(ModulesTest, ResolutionError) {
 
   static deno_mod a = deno_mod_new(d, true, "a.js",
                                    "import 'bad'\n"
-                                   "Deno.core.send(new Uint8Array([4]));");
+                                   "Deno.core.send(42, new Uint8Array([4]));");
   EXPECT_NE(a, 0);
   EXPECT_EQ(nullptr, deno_last_exception(d));
 
@@ -106,7 +108,7 @@ TEST(ModulesTest, ImportMetaUrl) {
   static deno_mod a =
       deno_mod_new(d, true, "a.js",
                    "if ('a.js' != import.meta.url) throw 'hmm'\n"
-                   "Deno.core.send(new Uint8Array([4]));");
+                   "Deno.core.send(42, new Uint8Array([4]));");
   EXPECT_NE(a, 0);
   EXPECT_EQ(nullptr, deno_last_exception(d));
 
@@ -165,7 +167,7 @@ TEST(ModulesTest, DynamicImportSuccess) {
       "  let mod = await import('foo'); \n"
       "  assert(mod.b() === 'b'); \n"
       // Send a message to signify that we're done.
-      "  Deno.core.send(new Uint8Array([4])); \n"
+      "  Deno.core.send(42, new Uint8Array([4])); \n"
       "})(); \n";
   Deno* d = deno_new(deno_config{0, snapshot, empty, recv_cb, dyn_import_cb});
   static deno_mod a = deno_mod_new(d, true, "a.js", src);
@@ -206,7 +208,7 @@ TEST(ModulesTest, DynamicImportError) {
       "(async () => { \n"
       "  let mod = await import('foo'); \n"
       // The following should be unreachable.
-      "  Deno.core.send(new Uint8Array([4])); \n"
+      "  Deno.core.send(42, new Uint8Array([4])); \n"
       "})(); \n";
   Deno* d = deno_new(deno_config{0, snapshot, empty, recv_cb, dyn_import_cb});
   static deno_mod a = deno_mod_new(d, true, "a.js", src);
@@ -249,7 +251,7 @@ TEST(ModulesTest, DynamicImportAsync) {
       "  mod = await import('foo'); \n"
       "  assert(mod.b() === 'b'); \n"
       // Send a message to signify that we're done.
-      "  Deno.core.send(new Uint8Array([4])); \n"
+      "  Deno.core.send(42, new Uint8Array([4])); \n"
       "})(); \n";
   Deno* d = deno_new(deno_config{0, snapshot, empty, recv_cb, dyn_import_cb});
   static deno_mod a = deno_mod_new(d, true, "a.js", src);
@@ -327,7 +329,7 @@ TEST(ModulesTest, DynamicImportThrows) {
       "(async () => { \n"
       "  let mod = await import('b.js'); \n"
       // unreachable
-      "  Deno.core.send(new Uint8Array([4])); \n"
+      "  Deno.core.send(42, new Uint8Array([4])); \n"
       "})(); \n";
   static deno_mod a = deno_mod_new(d, true, "a.js", a_src);
   EXPECT_NE(a, 0);
@@ -401,7 +403,7 @@ TEST(ModulesTest, DynamicImportSyntaxError) {
       "(async () => { \n"
       "  let mod = await import('b.js'); \n"
       // unreachable
-      "  Deno.core.send(new Uint8Array([4])); \n"
+      "  Deno.core.send(42, new Uint8Array([4])); \n"
       "})(); \n";
   static deno_mod a = deno_mod_new(d, true, "a.js", src);
   EXPECT_NE(a, 0);

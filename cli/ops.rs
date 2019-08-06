@@ -27,14 +27,7 @@ use crate::tokio_write;
 use crate::version;
 use crate::worker::Worker;
 use atty;
-use deno::Buf;
-use deno::CoreOp;
-use deno::ErrBox;
-use deno::Loader;
-use deno::ModuleSpecifier;
-use deno::Op;
-use deno::OpResult;
-use deno::PinnedBuf;
+use deno::*;
 use flatbuffers::FlatBufferBuilder;
 use futures;
 use futures::Async;
@@ -82,8 +75,11 @@ fn empty_buf() -> Buf {
   Box::new([])
 }
 
+const FLATBUFFER_OP_ID: OpId = 44;
+
 pub fn dispatch_all(
   state: &ThreadSafeState,
+  op_id: OpId,
   control: &[u8],
   zero_copy: Option<PinnedBuf>,
   op_selector: OpSelector,
@@ -91,8 +87,9 @@ pub fn dispatch_all(
   let bytes_sent_control = control.len();
   let bytes_sent_zero_copy = zero_copy.as_ref().map(|b| b.len()).unwrap_or(0);
   let op = if let Some(min_record) = parse_min_record(control) {
-    dispatch_minimal(state, min_record, zero_copy)
+    dispatch_minimal(state, op_id, min_record, zero_copy)
   } else {
+    debug_assert_eq!(op_id, FLATBUFFER_OP_ID);
     dispatch_all_legacy(state, control, zero_copy, op_selector)
   };
   state.metrics_op_dispatched(bytes_sent_control, bytes_sent_zero_copy);

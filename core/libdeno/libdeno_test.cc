@@ -49,7 +49,8 @@ void assert_null(deno_pinned_buf b) {
 
 TEST(LibDenoTest, RecvReturnEmpty) {
   static int count = 0;
-  auto recv_cb = [](auto _, auto buf, auto zero_copy_buf) {
+  auto recv_cb = [](auto _, deno_op_id op_id, auto buf, auto zero_copy_buf) {
+    EXPECT_EQ(op_id, 42u);
     assert_null(zero_copy_buf);
     count++;
     EXPECT_EQ(static_cast<size_t>(3), buf.data_len);
@@ -64,9 +65,43 @@ TEST(LibDenoTest, RecvReturnEmpty) {
   deno_delete(d);
 }
 
+TEST(LibDenoTest, BasicRecv) {
+  static int count = 0;
+  auto recv_cb = [](auto user_data, deno_op_id op_id, auto buf,
+                    auto zero_copy_buf) {
+    EXPECT_EQ(op_id, 42u);
+    // auto d = reinterpret_cast<Deno*>(user_data);
+    assert_null(zero_copy_buf);
+    count++;
+    EXPECT_EQ(static_cast<size_t>(3), buf.data_len);
+    EXPECT_EQ(buf.data_ptr[0], 1);
+    EXPECT_EQ(buf.data_ptr[1], 2);
+    EXPECT_EQ(buf.data_ptr[2], 3);
+  };
+  Deno* d = deno_new(deno_config{0, snapshot, empty, recv_cb, nullptr});
+  deno_execute(d, d, "a.js", "BasicRecv()");
+  EXPECT_EQ(nullptr, deno_last_exception(d));
+  EXPECT_EQ(count, 1);
+  deno_check_promise_errors(d);
+  EXPECT_EQ(deno_last_exception(d), nullptr);
+  {
+    deno_lock(d);
+    uint8_t response[] = {'b', 'a', 'r'};
+    deno_respond(d, nullptr, 43, {response, sizeof response});
+    deno_unlock(d);
+  }
+  EXPECT_EQ(count, 2);
+  EXPECT_EQ(nullptr, deno_last_exception(d));
+  deno_check_promise_errors(d);
+  EXPECT_EQ(deno_last_exception(d), nullptr);
+  deno_delete(d);
+}
+
 TEST(LibDenoTest, RecvReturnBar) {
   static int count = 0;
-  auto recv_cb = [](auto user_data, auto buf, auto zero_copy_buf) {
+  auto recv_cb = [](auto user_data, deno_op_id op_id, auto buf,
+                    auto zero_copy_buf) {
+    EXPECT_EQ(op_id, 42u);
     auto d = reinterpret_cast<Deno*>(user_data);
     assert_null(zero_copy_buf);
     count++;
@@ -75,7 +110,7 @@ TEST(LibDenoTest, RecvReturnBar) {
     EXPECT_EQ(buf.data_ptr[1], 'b');
     EXPECT_EQ(buf.data_ptr[2], 'c');
     uint8_t response[] = {'b', 'a', 'r'};
-    deno_respond(d, user_data, {response, sizeof response});
+    deno_respond(d, user_data, op_id, {response, sizeof response});
   };
   Deno* d = deno_new(deno_config{0, snapshot, empty, recv_cb, nullptr});
   deno_execute(d, d, "a.js", "RecvReturnBar()");
@@ -126,8 +161,9 @@ TEST(LibDenoTest, GlobalErrorHandling) {
 TEST(LibDenoTest, ZeroCopyBuf) {
   static int count = 0;
   static deno_pinned_buf zero_copy_buf2;
-  auto recv_cb = [](auto user_data, deno_buf buf,
+  auto recv_cb = [](auto user_data, deno_op_id op_id, deno_buf buf,
                     deno_pinned_buf zero_copy_buf) {
+    EXPECT_EQ(op_id, 42u);
     count++;
     EXPECT_NE(zero_copy_buf.pin, nullptr);
     zero_copy_buf.data_ptr[0] = 4;
@@ -155,7 +191,9 @@ TEST(LibDenoTest, ZeroCopyBuf) {
 
 TEST(LibDenoTest, CheckPromiseErrors) {
   static int count = 0;
-  auto recv_cb = [](auto _, auto buf, auto zero_copy_buf) { count++; };
+  auto recv_cb = [](auto _, deno_op_id op_id, auto buf, auto zero_copy_buf) {
+    count++;
+  };
   Deno* d = deno_new(deno_config{0, snapshot, empty, recv_cb, nullptr});
   EXPECT_EQ(deno_last_exception(d), nullptr);
   deno_execute(d, nullptr, "a.js", "CheckPromiseErrors()");
@@ -264,7 +302,8 @@ TEST(LibDenoTest, SharedAtomics) {
 
 TEST(LibDenoTest, WasmInstantiate) {
   static int count = 0;
-  auto recv_cb = [](auto _, auto buf, auto zero_copy_buf) {
+  auto recv_cb = [](auto _, deno_op_id op_id, auto buf, auto zero_copy_buf) {
+    EXPECT_EQ(op_id, 42u);
     EXPECT_EQ(buf.data_len, 1u);
     EXPECT_EQ(buf.data_ptr[0], 42);
     count++;

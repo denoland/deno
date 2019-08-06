@@ -28,10 +28,22 @@ typedef struct {
 
 typedef struct deno_s Deno;
 
-// A callback to receive a message from a libdeno.send() javascript call.
+typedef uint32_t deno_op_id;
+
+// A callback to receive a message from a Deno.core.send() javascript call.
 // control_buf is valid for only for the lifetime of this callback.
 // data_buf is valid until deno_respond() is called.
-typedef void (*deno_recv_cb)(void* user_data, deno_buf control_buf,
+//
+// op_id corresponds to the first argument of Deno.core.send().
+// op_id is an extra user-defined integer valued which is not interpreted by
+// libdeno.
+//
+// control_buf corresponds to the second argument of Deno.core.send().
+//
+// zero_copy_buf corresponds to the third argument of Deno.core.send().
+// The user must call deno_pinned_buf_delete on each zero_copy_buf received.
+typedef void (*deno_recv_cb)(void* user_data, deno_op_id op_id,
+                             deno_buf control_buf,
                              deno_pinned_buf zero_copy_buf);
 
 typedef int deno_dyn_import_id;
@@ -49,7 +61,7 @@ typedef struct {
   int will_snapshot;            // Default 0. If calling deno_snapshot_new 1.
   deno_snapshot load_snapshot;  // A startup snapshot to use.
   deno_buf shared;              // Shared buffer to be mapped to libdeno.shared
-  deno_recv_cb recv_cb;         // Maps to libdeno.send() calls.
+  deno_recv_cb recv_cb;         // Maps to Deno.core.send() calls.
   deno_dyn_import_cb dyn_import_cb;
 } deno_config;
 
@@ -78,21 +90,25 @@ void deno_unlock(Deno* d);
 void deno_execute(Deno* d, void* user_data, const char* js_filename,
                   const char* js_source);
 
-// deno_respond sends up to one message back for every deno_recv_cb made.
+// deno_respond sends one message back for every deno_recv_cb made.
 //
-// If this is called during deno_recv_cb, the issuing libdeno.send() in
+// If this is called during deno_recv_cb, the issuing Deno.core.send() in
 // javascript will synchronously return the specified buf as an ArrayBuffer (or
 // null if buf is empty).
 //
 // If this is called after deno_recv_cb has returned, the deno_respond
-// will call into the JS callback specified by libdeno.recv().
+// will call into the JS callback specified by Deno.core.recv().
 //
 // (Ideally, but not currently: After calling deno_respond(), the caller no
 // longer owns `buf` and must not use it; deno_respond() is responsible for
 // releasing its memory.)
 //
+// op_id is an extra user-defined integer valued which is not currently
+// interpreted by libdeno. But it should probably correspond to the op_id in
+// deno_recv_cb.
+//
 // If a JS exception was encountered, deno_last_exception() will be non-NULL.
-void deno_respond(Deno* d, void* user_data, deno_buf buf);
+void deno_respond(Deno* d, void* user_data, deno_op_id op_id, deno_buf buf);
 
 // consumes zero_copy
 void deno_pinned_buf_delete(deno_pinned_buf* buf);
