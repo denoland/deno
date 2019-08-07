@@ -13,9 +13,11 @@ repository = "https://github.com/denoland/deno"
 [lib]
 path = "lib.rs"
 
-[[bin]]
-name = "snapshot_creator"
-path = "snapshot_creator.rs"
+# NOTE: The ninja build of snapshot_creator gets clobbered by 'cargo build' if
+# the following is added. This breaks incremental 'cargo build'.
+# [[bin]]
+# name = "snapshot_creator"
+# path = "snapshot_creator.rs"
 
 [dependencies]
 futures = "0.1.28"
