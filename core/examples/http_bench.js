@@ -29,20 +29,19 @@ function createResolvable() {
   return Object.assign(promise, methods);
 }
 
-const scratch32 = new Int32Array(4);
+const scratch32 = new Int32Array(3);
 const scratchBytes = new Uint8Array(
   scratch32.buffer,
   scratch32.byteOffset,
   scratch32.byteLength
 );
-assert(scratchBytes.byteLength === 4 * 4);
+assert(scratchBytes.byteLength === 3 * 4);
 
 function send(promiseId, opId, arg, zeroCopy = null) {
   scratch32[0] = promiseId;
-  scratch32[1] = opId;
-  scratch32[2] = arg;
-  scratch32[3] = -1;
-  return Deno.core.dispatch(scratchBytes, zeroCopy);
+  scratch32[1] = arg;
+  scratch32[2] = -1;
+  return Deno.core.dispatch(opId, scratchBytes, zeroCopy);
 }
 
 /** Returns Promise<number> */
@@ -55,13 +54,12 @@ function sendAsync(opId, arg, zeroCopy = null) {
 }
 
 function recordFromBuf(buf) {
-  assert(buf.byteLength === 16);
+  assert(buf.byteLength === 3 * 4);
   const buf32 = new Int32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
   return {
     promiseId: buf32[0],
-    opId: buf32[1],
-    arg: buf32[2],
-    result: buf32[3]
+    arg: buf32[1],
+    result: buf32[2]
   };
 }
 
@@ -72,7 +70,7 @@ function sendSync(opId, arg) {
   return record.result;
 }
 
-function handleAsyncMsgFromRust(buf) {
+function handleAsyncMsgFromRust(opId, buf) {
   const record = recordFromBuf(buf);
   const { promiseId, result } = record;
   const p = promiseMap.get(promiseId);

@@ -223,22 +223,29 @@ void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::HandleScope handle_scope(isolate);
 
   deno_buf control = {nullptr, 0};
-  if (args[0]->IsArrayBufferView()) {
-    auto view = v8::Local<v8::ArrayBufferView>::Cast(args[0]);
+
+  int32_t op_id = 0;
+  if (args[0]->IsInt32()) {
+    auto context = d->context_.Get(isolate);
+    op_id = args[0]->Int32Value(context).FromJust();
+  }
+
+  if (args[1]->IsArrayBufferView()) {
+    auto view = v8::Local<v8::ArrayBufferView>::Cast(args[1]);
     auto data =
         reinterpret_cast<uint8_t*>(view->Buffer()->GetContents().Data());
     control = {data + view->ByteOffset(), view->ByteLength()};
   }
 
   PinnedBuf zero_copy =
-      args[1]->IsArrayBufferView()
-          ? PinnedBuf(v8::Local<v8::ArrayBufferView>::Cast(args[1]))
+      args[2]->IsArrayBufferView()
+          ? PinnedBuf(v8::Local<v8::ArrayBufferView>::Cast(args[2]))
           : PinnedBuf();
 
   DCHECK_NULL(d->current_args_);
   d->current_args_ = &args;
 
-  d->recv_cb_(d->user_data_, control, zero_copy.IntoRaw());
+  d->recv_cb_(d->user_data_, op_id, control, zero_copy.IntoRaw());
 
   if (d->current_args_ == nullptr) {
     // This indicates that deno_repond() was called already.

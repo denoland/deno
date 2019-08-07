@@ -12,6 +12,8 @@ use std::ptr::null;
 use std::ptr::NonNull;
 use std::slice;
 
+pub type OpId = u32;
+
 // TODO(F001): change this definition to `extern { pub type isolate; }`
 // After RFC 1861 is stablized. See https://github.com/rust-lang/rust/issues/43467.
 #[repr(C)]
@@ -188,7 +190,8 @@ impl Snapshot2<'_> {
 #[allow(non_camel_case_types)]
 type deno_recv_cb = unsafe extern "C" fn(
   user_data: *mut c_void,
-  control_buf: deno_buf, // deprecated
+  op_id: OpId,
+  control_buf: deno_buf,
   zero_copy_buf: deno_pinned_buf,
 );
 
@@ -266,6 +269,7 @@ extern "C" {
   pub fn deno_respond(
     i: *const isolate,
     user_data: *const c_void,
+    op_id: OpId,
     buf: deno_buf,
   );
   pub fn deno_pinned_buf_delete(buf: &mut deno_pinned_buf);

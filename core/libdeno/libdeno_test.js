@@ -28,15 +28,30 @@ global.TypedArraySnapshots = () => {
 global.RecvReturnEmpty = () => {
   const m1 = new Uint8Array("abc".split("").map(c => c.charCodeAt(0)));
   const m2 = m1.slice();
-  const r1 = Deno.core.send(m1);
+  const r1 = Deno.core.send(42, m1);
   assert(r1 == null);
-  const r2 = Deno.core.send(m2);
+  const r2 = Deno.core.send(42, m2);
   assert(r2 == null);
+};
+
+global.BasicRecv = () => {
+  const m = new Uint8Array([1, 2, 3]);
+  Deno.core.recv((opId, buf) => {
+    assert(opId === 43);
+    assert(buf instanceof Uint8Array);
+    assert(buf.byteLength === 3);
+    const s = String.fromCharCode(...buf);
+    assert(s === "bar");
+    const r = Deno.core.send(42, m);
+    assert(!r); // async
+  });
+  const r = Deno.core.send(42, m);
+  assert(!r); // async
 };
 
 global.RecvReturnBar = () => {
   const m = new Uint8Array("abc".split("").map(c => c.charCodeAt(0)));
-  const r = Deno.core.send(m);
+  const r = Deno.core.send(42, m);
   assert(r instanceof Uint8Array);
   assert(r.byteLength === 3);
   const rstr = String.fromCharCode(...r);
@@ -58,7 +73,7 @@ global.SendRecvSlice = () => {
     buf[0] = 100 + i;
     buf[buf.length - 1] = 100 - i;
     // On the native side, the slice is shortened by 19 bytes.
-    buf = Deno.core.send(buf);
+    buf = Deno.core.send(42, buf);
     assert(buf.byteOffset === i * 11);
     assert(buf.byteLength === abLen - i * 30 - 19);
     assert(buf.buffer.byteLength == abLen);
@@ -78,17 +93,17 @@ global.JSSendArrayBufferViewTypes = () => {
   const ab1 = new ArrayBuffer(4321);
   const u8 = new Uint8Array(ab1, 2468, 1000);
   u8[0] = 1;
-  Deno.core.send(u8);
+  Deno.core.send(42, u8);
   // Send Uint32Array.
   const ab2 = new ArrayBuffer(4321);
   const u32 = new Uint32Array(ab2, 2468, 1000 / Uint32Array.BYTES_PER_ELEMENT);
   u32[0] = 0x02020202;
-  Deno.core.send(u32);
+  Deno.core.send(42, u32);
   // Send DataView.
   const ab3 = new ArrayBuffer(4321);
   const dv = new DataView(ab3, 2468, 1000);
   dv.setUint8(0, 3);
-  Deno.core.send(dv);
+  Deno.core.send(42, dv);
 };
 
 // The following join has caused SnapshotBug to segfault when using kKeep.
@@ -110,7 +125,7 @@ global.ZeroCopyBuf = () => {
   const b = zeroCopyBuf;
   // The second parameter of send should modified by the
   // privileged side.
-  const r = Deno.core.send(a, b);
+  const r = Deno.core.send(42, a, b);
   assert(r == null);
   // b is different.
   assert(b[0] === 4);
@@ -129,7 +144,7 @@ global.CheckPromiseErrors = () => {
     try {
       await fn();
     } catch (e) {
-      Deno.core.send(new Uint8Array([42]));
+      Deno.core.send(42, new Uint8Array([42]));
     }
   })();
 };
@@ -239,17 +254,17 @@ global.WasmInstantiate = () => {
   ]);
 
   (async () => {
-    Deno.core.send(new Uint8Array([42]));
+    Deno.core.send(42, new Uint8Array([42]));
 
     const wasm = await WebAssembly.instantiate(bytes);
 
-    Deno.core.send(new Uint8Array([42]));
+    Deno.core.send(42, new Uint8Array([42]));
 
     const result = wasm.instance.exports.add(1, 3);
     if (result != 4) {
       throw Error("bad");
     }
     // To signal success, we send back a fixed buffer.
-    Deno.core.send(new Uint8Array([42]));
+    Deno.core.send(42, new Uint8Array([42]));
   })();
 };
