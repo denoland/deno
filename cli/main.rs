@@ -55,7 +55,6 @@ mod tokio_write;
 pub mod version;
 pub mod worker;
 
-use crate::deno_dir::SourceFileFetcher;
 use crate::progress::Progress;
 use crate::state::ThreadSafeState;
 use crate::worker::Worker;
@@ -359,7 +358,6 @@ fn run_script(flags: DenoFlags, argv: Vec<String>) {
   let main_future = lazy(move || {
     // Setup runtime.
     js_check(worker.execute("denoMain()"));
-
     debug!("main_module {}", main_module);
 
     worker

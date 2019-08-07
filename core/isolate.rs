@@ -189,7 +189,7 @@ impl Isolate {
 
     let libdeno_isolate = unsafe { libdeno::deno_new(libdeno_config) };
 
-    Isolate {
+    Self {
       libdeno_isolate,
       shared_libdeno_isolate: Arc::new(Mutex::new(Some(libdeno_isolate))),
       dispatch: None,
