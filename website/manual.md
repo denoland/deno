@@ -901,8 +901,10 @@ To start profiling,
 # Make sure we're only building release.
 # Build deno and V8's d8.
 ./tools/build.py --release d8 deno
+
 # Start the program we want to benchmark with --prof
-./target/release/deno tests/http_bench.ts --allow-net --prof &
+./target/release/deno tests/http_bench.ts --allow-net --v8-flags=--prof &
+
 # Exercise it.
 third_party/wrk/linux/wrk http://localhost:4500/
 kill `pgrep deno`
@@ -928,6 +930,18 @@ isolate-0x7fad98242400-v8.log --preprocess > prof.json
 
 Open `third_party/v8/tools/profview/index.html` in your browser, and select
 `prof.json` to view the distribution graphically.
+
+Useful V8 flags during profiling:
+
+- --prof
+- --log-internal-timer-events
+- --log-timer-events
+- --track-gc
+- --log-source-code
+- --track-gc-object-stats
+
+Note that you might need to run Deno with `--current-thread` flag to capture
+full V8 profiling output.
 
 To learn more about `d8` and profiling, check out the following links:
 
