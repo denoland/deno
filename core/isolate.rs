@@ -269,13 +269,13 @@ impl Isolate {
   extern "C" fn pre_dispatch(
     user_data: *mut c_void,
     op_id: OpId,
-    control_argv0: deno_buf,
+    control_buf: deno_buf,
     zero_copy_buf: deno_pinned_buf,
   ) {
     let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
 
     let op = if let Some(ref f) = isolate.dispatch {
-      f(op_id, control_argv0.as_ref(), PinnedBuf::new(zero_copy_buf))
+      f(op_id, control_buf.as_ref(), PinnedBuf::new(zero_copy_buf))
     } else {
       panic!("isolate.dispatch not set")
     };
