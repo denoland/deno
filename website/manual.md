@@ -932,14 +932,16 @@ Open `third_party/v8/tools/profview/index.html` in your browser, and select
 `prof.json` to view the distribution graphically.
 
 Useful V8 flags during profiling:
-* --prof
-* --log-internal-timer-events
-* --log-timer-events
-* --track-gc
-* --log-source-code
-* --track-gc-object-stats
 
-Note that you might need to run Deno with `--current-thread` flag to capture full V8 profiling output.
+- --prof
+- --log-internal-timer-events
+- --log-timer-events
+- --track-gc
+- --log-source-code
+- --track-gc-object-stats
+
+Note that you might need to run Deno with `--current-thread` flag to capture
+full V8 profiling output.
 
 To learn more about `d8` and profiling, check out the following links:
 
