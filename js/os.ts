@@ -159,6 +159,10 @@ export function homeDir(): string {
   return path;
 }
 
+/**
+ * Returns the path to the current deno executable.
+ * Requires the `--allow-env` flag.
+ */
 export function execPath(): string {
   const builder = flatbuffers.createBuilder();
   const inner = msg.ExecPath.createExecPath(builder);
@@ -166,11 +170,6 @@ export function execPath(): string {
   assert(msg.Any.ExecPathRes === baseRes.innerType());
   const res = new msg.ExecPathRes();
   assert(baseRes.inner(res) != null);
-  const path = res.path();
-
-  if (!path) {
-    throw new Error("Could not get home directory.");
-  }
-
+  const path = res.path()!;
   return path;
 }
