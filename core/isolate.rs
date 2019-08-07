@@ -284,11 +284,13 @@ impl Isolate {
     match op {
       Op::Sync(buf) => {
         // For sync messages, we always return the response via Deno.core.send's
-        // return value.
-        // TODO(ry) check that if JSError thrown during respond(), that it will be
-        // picked up.
-        let op_id = 0; // Sync messages ignore op_id.
-        let _ = isolate.respond(Some((op_id, &buf)));
+        // return value. Sync messages ignore the op_id.
+        let op_id = 0;
+        isolate
+          .respond(Some((op_id, &buf)))
+          // Because this is a sync op, deno_respond() does not actually call
+          // into JavaScript. We should not get an error here.
+          .expect("unexpected error");
       }
       Op::Async(fut) => {
         let fut2 = fut.map(move |buf| (op_id, buf));
