@@ -11,14 +11,15 @@ function fullRecords(q) {
   q.reset();
   const oneByte = new Uint8Array([42]);
   for (let i = 0; i < q.MAX_RECORDS; i++) {
-    assert(q.push(oneByte));
+    assert(q.push(99, oneByte));
   }
-  assert(!q.push(oneByte));
-  r = q.shift();
+  assert(!q.push(99, oneByte));
+  const [opId, r] = q.shift();
+  assert(opId == 99);
   assert(r.byteLength == 1);
   assert(r[0] == 42);
   // Even if we shift one off, we still cannot push a new record.
-  assert(!q.push(oneByte));
+  assert(!q.push(99, oneByte));
 }
 
 function main() {
@@ -29,18 +30,19 @@ function main() {
 
   let r = new Uint8Array([1, 2, 3, 4, 5]);
   let len = r.byteLength + h;
-  assert(q.push(r));
+  assert(q.push(99, r));
   assert(q.head() == len);
 
   r = new Uint8Array([6, 7]);
-  assert(q.push(r));
+  assert(q.push(99, r));
 
   r = new Uint8Array([8, 9, 10, 11]);
-  assert(q.push(r));
+  assert(q.push(99, r));
   assert(q.numRecords() == 3);
   assert(q.size() == 3);
 
-  r = q.shift();
+  let opId;
+  [opId, r] = q.shift();
   assert(r.byteLength == 5);
   assert(r[0] == 1);
   assert(r[1] == 2);
@@ -50,14 +52,15 @@ function main() {
   assert(q.numRecords() == 3);
   assert(q.size() == 2);
 
-  r = q.shift();
+  [opId, r] = q.shift();
   assert(r.byteLength == 2);
   assert(r[0] == 6);
   assert(r[1] == 7);
   assert(q.numRecords() == 3);
   assert(q.size() == 1);
 
-  r = q.shift();
+  [opId, r] = q.shift();
+  assert(opId == 99);
   assert(r.byteLength == 4);
   assert(r[0] == 8);
   assert(r[1] == 9);

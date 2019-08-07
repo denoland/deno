@@ -159,10 +159,11 @@ void deno_pinned_buf_delete(deno_pinned_buf* buf) {
   auto _ = deno::PinnedBuf(buf);
 }
 
-void deno_respond(Deno* d_, void* user_data, deno_buf buf) {
+void deno_respond(Deno* d_, void* user_data, deno_op_id op_id, deno_buf buf) {
   auto* d = unwrap(d_);
   if (d->current_args_ != nullptr) {
     // Synchronous response.
+    // Note op_id is not passed back in the case of synchronous response.
     if (buf.data_ptr != nullptr) {
       auto ab = deno::ImportBuf(d, buf);
       d->current_args_->GetReturnValue().Set(ab);
@@ -187,12 +188,13 @@ void deno_respond(Deno* d_, void* user_data, deno_buf buf) {
     return;
   }
 
-  v8::Local<v8::Value> args[1];
+  v8::Local<v8::Value> args[2];
   int argc = 0;
 
   if (buf.data_ptr != nullptr) {
-    args[0] = deno::ImportBuf(d, buf);
-    argc = 1;
+    args[0] = v8::Integer::New(d->isolate_, op_id);
+    args[1] = deno::ImportBuf(d, buf);
+    argc = 2;
   }
 
   auto v = recv_->Call(context, context->Global(), argc, args);

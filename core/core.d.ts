@@ -5,11 +5,12 @@
 // Deno and therefore do not flow through to the runtime type library.
 
 declare interface MessageCallback {
-  (msg: Uint8Array): void;
+  (opId: number, msg: Uint8Array): void;
 }
 
 declare interface DenoCore {
   dispatch(
+    opId: number,
     control: Uint8Array,
     zeroCopy?: ArrayBufferView | null
   ): Uint8Array | null;

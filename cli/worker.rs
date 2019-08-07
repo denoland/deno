@@ -29,8 +29,8 @@ impl Worker {
     {
       let mut i = isolate.lock().unwrap();
       let state_ = state.clone();
-      i.set_dispatch(move |control_buf, zero_copy_buf| {
-        state_.dispatch(control_buf, zero_copy_buf)
+      i.set_dispatch(move |op_id, control_buf, zero_copy_buf| {
+        state_.dispatch(op_id, control_buf, zero_copy_buf)
       });
       let state_ = state.clone();
       i.set_js_error_create(move |v8_exception| {

@@ -10,6 +10,11 @@ import {
   handleAsyncMsgFromRustMinimal
 } from "./dispatch_minimal";
 
+// TODO(ry) Currently we only use three values for opId: OP_READ, OP_WRITE,
+// FLATBUFFER_OP_ID. Later on use opId for actual individual ops, not just
+// classes of ops.
+const FLATBUFFER_OP_ID = 44;
+
 const promiseTable = new Map<number, util.Resolvable<msg.Base>>();
 
 interface FlatbufferRecord {
@@ -26,11 +31,11 @@ function flatbufferRecordFromBuf(buf: Uint8Array): FlatbufferRecord {
   };
 }
 
-export function handleAsyncMsgFromRust(ui8: Uint8Array): void {
+export function handleAsyncMsgFromRust(opId: number, ui8: Uint8Array): void {
   const buf32 = new Int32Array(ui8.buffer, ui8.byteOffset, ui8.byteLength / 4);
-  const recordMin = recordFromBufMinimal(buf32);
-  if (recordMin) {
+  if (opId !== FLATBUFFER_OP_ID) {
     // Fast and new
+    const recordMin = recordFromBufMinimal(opId, buf32);
     handleAsyncMsgFromRustMinimal(ui8, recordMin);
   } else {
     // Legacy
@@ -83,6 +88,7 @@ function sendInternal(
   const control = builder.asUint8Array();
 
   const response = core.dispatch(
+    FLATBUFFER_OP_ID, // TODO(ry) Use actual opId later.
     control,
     zeroCopy ? ui8FromArrayBufferView(zeroCopy) : undefined
   );

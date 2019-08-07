@@ -8,33 +8,26 @@ use crate::state::ThreadSafeState;
 use deno::Buf;
 use deno::CoreOp;
 use deno::Op;
+use deno::OpId;
 use deno::PinnedBuf;
 use futures::Future;
 
-const DISPATCH_MINIMAL_TOKEN: i32 = 0xCAFE;
-const OP_READ: i32 = 1;
-const OP_WRITE: i32 = 2;
+const OP_READ: OpId = 1;
+const OP_WRITE: OpId = 2;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 // This corresponds to RecordMinimal on the TS side.
 pub struct Record {
   pub promise_id: i32,
-  pub op_id: i32,
   pub arg: i32,
   pub result: i32,
 }
 
 impl Into<Buf> for Record {
   fn into(self) -> Buf {
-    let vec = vec![
-      DISPATCH_MINIMAL_TOKEN,
-      self.promise_id,
-      self.op_id,
-      self.arg,
-      self.result,
-    ];
+    let vec = vec![self.promise_id, self.arg, self.result];
     let buf32 = vec.into_boxed_slice();
-    let ptr = Box::into_raw(buf32) as *mut [u8; 5 * 4];
+    let ptr = Box::into_raw(buf32) as *mut [u8; 3 * 4];
     unsafe { Box::from_raw(ptr) }
   }
 }
@@ -48,32 +41,25 @@ pub fn parse_min_record(bytes: &[u8]) -> Option<Record> {
   let p32 = p as *const i32;
   let s = unsafe { std::slice::from_raw_parts(p32, bytes.len() / 4) };
 
-  if s.len() < 5 {
+  if s.len() != 3 {
     return None;
   }
   let ptr = s.as_ptr();
-  let ints = unsafe { std::slice::from_raw_parts(ptr, 5) };
-  if ints[0] != DISPATCH_MINIMAL_TOKEN {
-    return None;
-  }
+  let ints = unsafe { std::slice::from_raw_parts(ptr, 3) };
   Some(Record {
-    promise_id: ints[1],
-    op_id: ints[2],
-    arg: ints[3],
-    result: ints[4],
+    promise_id: ints[0],
+    arg: ints[1],
+    result: ints[2],
   })
 }
 
 #[test]
 fn test_parse_min_record() {
-  let buf = vec![
-    0xFE, 0xCA, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0,
-  ];
+  let buf = vec![1, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0];
   assert_eq!(
     parse_min_record(&buf),
     Some(Record {
       promise_id: 1,
-      op_id: 2,
       arg: 3,
       result: 4,
     })
@@ -88,11 +74,12 @@ fn test_parse_min_record() {
 
 pub fn dispatch_minimal(
   state: &ThreadSafeState,
+  op_id: OpId,
   mut record: Record,
   zero_copy: Option<PinnedBuf>,
 ) -> CoreOp {
   let is_sync = record.promise_id == 0;
-  let min_op = match record.op_id {
+  let min_op = match op_id {
     OP_READ => ops::read(record.arg, zero_copy),
     OP_WRITE => ops::write(record.arg, zero_copy),
     _ => unimplemented!(),
