@@ -1404,10 +1404,13 @@ fn op_rename(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_rename().unwrap();
-  let (oldpath, _) = deno_fs::resolve_from_cwd(inner.oldpath().unwrap())?;
+  let (oldpath, oldpath_) =
+    deno_fs::resolve_from_cwd(inner.oldpath().unwrap())?;
   let (newpath, newpath_) =
     deno_fs::resolve_from_cwd(inner.newpath().unwrap())?;
 
+  state.check_read(&oldpath_)?;
+  state.check_write(&oldpath_)?;
   state.check_write(&newpath_)?;
 
   blocking(base.sync(), move || {
@@ -1424,10 +1427,12 @@ fn op_link(
 ) -> CliOpResult {
   assert!(data.is_none());
   let inner = base.inner_as_link().unwrap();
-  let (oldname, _) = deno_fs::resolve_from_cwd(inner.oldname().unwrap())?;
+  let (oldname, oldpath_) =
+    deno_fs::resolve_from_cwd(inner.oldname().unwrap())?;
   let (newname, newname_) =
     deno_fs::resolve_from_cwd(inner.newname().unwrap())?;
 
+  state.check_read(&oldpath_)?;
   state.check_write(&newname_)?;
 
   blocking(base.sync(), move || {

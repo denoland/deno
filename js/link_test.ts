@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { test, testPerm, assert, assertEquals } from "./test_util.ts";
+import { testPerm, assert, assertEquals } from "./test_util.ts";
 
 testPerm({ read: true, write: true }, function linkSyncSuccess(): void {
   const testDir = Deno.makeTempDirSync();
@@ -63,7 +63,18 @@ testPerm({ read: true, write: true }, function linkSyncNotFound(): void {
   assertEquals(err.name, "NotFound");
 });
 
-test(function linkSyncPerm(): void {
+testPerm({ read: false, write: true }, function linkSyncReadPerm(): void {
+  let err;
+  try {
+    Deno.linkSync("oldbaddir", "newbaddir");
+  } catch (e) {
+    err = e;
+  }
+  assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+  assertEquals(err.name, "PermissionDenied");
+});
+
+testPerm({ read: true, write: false }, function linkSyncWritePerm(): void {
   let err;
   try {
     Deno.linkSync("oldbaddir", "newbaddir");

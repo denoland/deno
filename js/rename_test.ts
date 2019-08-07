@@ -23,7 +23,20 @@ testPerm({ read: true, write: true }, function renameSyncSuccess(): void {
   assertEquals(oldPathInfo, undefined);
 });
 
-testPerm({ read: true, write: false }, function renameSyncPerm(): void {
+testPerm({ read: false, write: true }, function renameSyncReadPerm(): void {
+  let err;
+  try {
+    const oldpath = "/oldbaddir";
+    const newpath = "/newbaddir";
+    Deno.renameSync(oldpath, newpath);
+  } catch (e) {
+    err = e;
+  }
+  assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+  assertEquals(err.name, "PermissionDenied");
+});
+
+testPerm({ read: true, write: false }, function renameSyncWritePerm(): void {
   let err;
   try {
     const oldpath = "/oldbaddir";
