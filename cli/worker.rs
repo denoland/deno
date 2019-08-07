@@ -5,6 +5,7 @@ use crate::tokio_util;
 use deno;
 use deno::ErrBox;
 use deno::ModuleSpecifier;
+use deno::RecursiveLoad;
 use deno::StartupData;
 use futures::Async;
 use futures::Future;
@@ -28,10 +29,24 @@ impl Worker {
     let isolate = Arc::new(Mutex::new(deno::Isolate::new(startup_data, false)));
     {
       let mut i = isolate.lock().unwrap();
+
       let state_ = state.clone();
       i.set_dispatch(move |op_id, control_buf, zero_copy_buf| {
         state_.dispatch(op_id, control_buf, zero_copy_buf)
       });
+
+      let state_ = state.clone();
+      i.set_dyn_import(move |id, specifier, referrer| {
+        let load_stream = RecursiveLoad::dynamic_import(
+          id,
+          specifier,
+          referrer,
+          state_.clone(),
+          state_.modules.clone(),
+        );
+        Box::new(load_stream)
+      });
+
       let state_ = state.clone();
       i.set_js_error_create(move |v8_exception| {
         JSError::from_v8_exception(v8_exception, &state_.ts_compiler)
@@ -66,12 +81,9 @@ impl Worker {
     let loader = self.state.clone();
     let isolate = self.isolate.clone();
     let modules = self.state.modules.clone();
-    let recursive_load = deno::RecursiveLoad::new(
-      &module_specifier.to_string(),
-      loader,
-      isolate,
-      modules,
-    );
+    let recursive_load =
+      RecursiveLoad::main(&module_specifier.to_string(), loader, modules)
+        .get_future(isolate);
     recursive_load.and_then(move |id| -> Result<(), ErrBox> {
       worker.state.progress.done();
       if is_prefetch {

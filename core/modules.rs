@@ -7,31 +7,25 @@
 // synchronously. The isolate.rs module should never depend on this module.
 
 use crate::any_error::ErrBox;
+use crate::isolate::ImportStream;
 use crate::isolate::Isolate;
+use crate::isolate::RecursiveLoadEvent as Event;
+use crate::isolate::SourceCodeInfo;
+use crate::libdeno::deno_dyn_import_id;
 use crate::libdeno::deno_mod;
 use crate::module_specifier::ModuleSpecifier;
-use futures::Async;
+use futures::future::loop_fn;
+use futures::future::Loop;
+use futures::stream::FuturesUnordered;
+use futures::stream::Stream;
+use futures::Async::*;
 use futures::Future;
 use futures::Poll;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
-use std::marker::PhantomData;
 use std::sync::Arc;
 use std::sync::Mutex;
-
-/// Represent result of fetching the source code of a module.
-/// Contains both module name and code.
-/// Module name might be different from initial URL used for loading
-/// due to redirections.
-/// e.g. Both https://example.com/a.ts and https://example.com/b.ts
-/// may point to https://example.com/c.ts. By specifying module_name
-/// all be https://example.com/c.ts in module_name (for aliasing),
-/// we avoid recompiling the same code for 3 different times.
-pub struct SourceCodeInfo {
-  pub module_name: String,
-  pub code: String,
-}
 
 pub type SourceCodeInfoFuture =
   dyn Future<Item = SourceCodeInfo, Error = ErrBox> + Send;
@@ -45,7 +39,7 @@ pub trait Loader: Send + Sync {
     &self,
     specifier: &str,
     referrer: &str,
-    is_root: bool,
+    is_main: bool,
   ) -> Result<ModuleSpecifier, ErrBox>;
 
   /// Given ModuleSpecifier, load its source code.
@@ -55,209 +49,269 @@ pub trait Loader: Send + Sync {
   ) -> Box<SourceCodeInfoFuture>;
 }
 
-struct PendingLoad {
-  url: String,
-  is_root: bool,
-  source_code_info_future: Box<SourceCodeInfoFuture>,
+#[derive(Debug, Eq, PartialEq)]
+enum Kind {
+  Main,
+  DynamicImport(deno_dyn_import_id),
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum State {
+  ResolveMain(String),           // specifier
+  ResolveImport(String, String), // specifier, referrer
+  LoadingRoot,
+  LoadingImports(deno_mod),
+  Instantiated(deno_mod),
 }
 
 /// This future is used to implement parallel async module loading without
-/// complicating the Isolate API. Note that RecursiveLoad will take ownership of
-/// an Isolate during load.
+/// complicating the Isolate API.
+/// TODO: RecursiveLoad desperately needs to be merged with Modules.
 pub struct RecursiveLoad<L: Loader> {
+  kind: Kind,
+  state: State,
   loader: L,
-  isolate: Arc<Mutex<Isolate>>,
   modules: Arc<Mutex<Modules>>,
-  pending: Vec<PendingLoad>,
-  is_pending: HashSet<String>,
-  phantom: PhantomData<L>,
-  // TODO(ry) The following can all be combined into a single enum State type.
-  root: Option<String>,           // Empty before polled.
-  root_specifier: Option<String>, // Empty after first poll
-  root_id: Option<deno_mod>,
+  pending: FuturesUnordered<Box<SourceCodeInfoFuture>>,
+  is_pending: HashSet<ModuleSpecifier>,
 }
 
 impl<L: Loader> RecursiveLoad<L> {
-  /// Starts a new parallel load of the given URL.
-  pub fn new(
-    url: &str,
+  /// Starts a new parallel load of the given URL of the main module.
+  pub fn main(
+    specifier: &str,
     loader: L,
-    isolate: Arc<Mutex<Isolate>>,
+    modules: Arc<Mutex<Modules>>,
+  ) -> Self {
+    let kind = Kind::Main;
+    let state = State::ResolveMain(specifier.to_owned());
+    Self::new(kind, state, loader, modules)
+  }
+
+  pub fn dynamic_import(
+    id: deno_dyn_import_id,
+    specifier: &str,
+    referrer: &str,
+    loader: L,
+    modules: Arc<Mutex<Modules>>,
+  ) -> Self {
+    let kind = Kind::DynamicImport(id);
+    let state = State::ResolveImport(specifier.to_owned(), referrer.to_owned());
+    Self::new(kind, state, loader, modules)
+  }
+
+  pub fn dyn_import_id(&self) -> Option<deno_dyn_import_id> {
+    match self.kind {
+      Kind::Main => None,
+      Kind::DynamicImport(id) => Some(id),
+    }
+  }
+
+  fn new(
+    kind: Kind,
+    state: State,
+    loader: L,
     modules: Arc<Mutex<Modules>>,
   ) -> Self {
     Self {
+      kind,
+      state,
       loader,
-      isolate,
       modules,
-      root: None,
-      root_specifier: Some(url.to_string()),
-      root_id: None,
-      pending: Vec::new(),
+      pending: FuturesUnordered::new(),
       is_pending: HashSet::new(),
-      phantom: PhantomData,
     }
   }
 
-  fn add(
+  fn add_root(&mut self) -> Result<(), ErrBox> {
+    let module_specifier = match self.state {
+      State::ResolveMain(ref specifier) => {
+        self.loader.resolve(specifier, ".", true)?
+      }
+      State::ResolveImport(ref specifier, ref referrer) => {
+        self.loader.resolve(specifier, referrer, false)?
+      }
+      _ => unreachable!(),
+    };
+
+    // We deliberately do not check if this module is already present in the
+    // module map. That's because the module map doesn't track whether a
+    // a module's dependencies have been loaded and whether it's been
+    // instantiated, so if we did find this module in the module map and used
+    // its id, this could lead to a crash.
+    //
+    // For the time being code and metadata for a module specifier is fetched
+    // multiple times, register() uses only the first result, and assigns the
+    // same module id to all instances.
+    //
+    // TODO: this is very ugly. The module map and recursive loader should be
+    // integrated into one thing.
+    self
+      .pending
+      .push(Box::new(self.loader.load(&module_specifier)));
+    self.state = State::LoadingRoot;
+
+    Ok(())
+  }
+
+  fn add_import(
     &mut self,
     specifier: &str,
     referrer: &str,
-    parent_id: Option<deno_mod>,
-  ) -> Result<String, ErrBox> {
-    let is_root = parent_id.is_none();
-    let module_specifier = self.loader.resolve(specifier, referrer, is_root)?;
-    let module_name = module_specifier.to_string();
+    parent_id: deno_mod,
+  ) -> Result<(), ErrBox> {
+    let module_specifier = self.loader.resolve(specifier, referrer, false)?;
+    let module_name = module_specifier.as_str();
 
-    if !is_root {
-      {
-        let mut m = self.modules.lock().unwrap();
-        m.add_child(parent_id.unwrap(), &module_name);
-      }
-    }
+    let mut modules = self.modules.lock().unwrap();
 
+    modules.add_child(parent_id, module_name);
+
+    if !modules.is_registered(module_name)
+      && !self.is_pending.contains(&module_specifier)
     {
-      // #B We only add modules that have not yet been resolved for RecursiveLoad.
-      // Only short circuit after add_child().
-      // This impacts possible conditions in #A.
-      let modules = self.modules.lock().unwrap();
-      if modules.is_registered(&module_name) {
-        return Ok(module_name);
-      }
+      self
+        .pending
+        .push(Box::new(self.loader.load(&module_specifier)));
+      self.is_pending.insert(module_specifier);
     }
 
-    if !self.is_pending.contains(&module_name) {
-      self.is_pending.insert(module_name.to_string());
-      let source_code_info_future = { self.loader.load(&module_specifier) };
-      self.pending.push(PendingLoad {
-        url: module_name.to_string(),
-        source_code_info_future,
-        is_root,
-      });
-    }
+    Ok(())
+  }
 
-    Ok(module_name)
+  /// Returns a future that resolves to the final module id of the root module.
+  /// This future needs to take ownership of the isolate.
+  pub fn get_future(
+    self,
+    isolate: Arc<Mutex<Isolate>>,
+  ) -> impl Future<Item = deno_mod, Error = ErrBox> {
+    loop_fn(self, move |load| {
+      let isolate = isolate.clone();
+      load.into_future().map_err(|(e, _)| e).and_then(
+        move |(event, mut load)| {
+          Ok(match event.unwrap() {
+            Event::Fetch(info) => {
+              let mut isolate = isolate.lock().unwrap();
+              load.register(info, &mut isolate)?;
+              Loop::Continue(load)
+            }
+            Event::Instantiate(id) => Loop::Break(id),
+          })
+        },
+      )
+    })
   }
 }
 
-impl<L: Loader> Future for RecursiveLoad<L> {
-  type Item = deno_mod;
-  type Error = ErrBox;
+impl<L: Loader> ImportStream for RecursiveLoad<L> {
+  // TODO: this should not be part of RecursiveLoad.
+  fn register(
+    &mut self,
+    source_code_info: SourceCodeInfo,
+    isolate: &mut Isolate,
+  ) -> Result<(), ErrBox> {
+    // #A There are 3 cases to handle at this moment:
+    // 1. Source code resolved result have the same module name as requested
+    //    and is not yet registered
+    //     -> register
+    // 2. Source code resolved result have a different name as requested:
+    //   2a. The module with resolved module name has been registered
+    //     -> alias
+    //   2b. The module with resolved module name has not yet been registerd
+    //     -> register & alias
+    let SourceCodeInfo {
+      code,
+      module_url_specified,
+      module_url_found,
+    } = source_code_info;
 
-  fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-    if self.root.is_none() && self.root_specifier.is_some() {
-      let s = self.root_specifier.take().unwrap();
-      match self.add(&s, ".", None) {
-        Err(err) => {
-          return Err(err);
-        }
-        Ok(root) => {
-          self.root = Some(root);
-        }
+    let is_main = self.kind == Kind::Main && self.state == State::LoadingRoot;
+
+    let module_id = {
+      let mut modules = self.modules.lock().unwrap();
+
+      // If necessary, register an alias.
+      if module_url_specified != module_url_found {
+        modules.alias(&module_url_specified, &module_url_found);
       }
-    }
-    assert!(self.root_specifier.is_none());
-    assert!(self.root.is_some());
 
-    let mut i = 0;
-    while i < self.pending.len() {
-      let pending = &mut self.pending[i];
-      match pending.source_code_info_future.poll() {
-        Err(err) => {
-          return Err(err);
+      match modules.get_id(&module_url_found) {
+        // Module has already been registered.
+        Some(id) => {
+          debug!(
+            "Already-registered module fetched again: {}",
+            module_url_found
+          );
+          id
         }
-        Ok(Async::NotReady) => {
-          i += 1;
+        // Module not registered yet, do it now.
+        None => {
+          let id = isolate.mod_new(is_main, &module_url_found, &code)?;
+          modules.register(id, &module_url_found);
+          id
         }
-        Ok(Async::Ready(source_code_info)) => {
-          // We have completed loaded one of the modules.
-          let completed = self.pending.remove(i);
-
-          // #A There are 3 cases to handle at this moment:
-          // 1. Source code resolved result have the same module name as requested
-          //    and is not yet registered
-          //     -> register
-          // 2. Source code resolved result have a different name as requested:
-          //   2a. The module with resolved module name has been registered
-          //     -> alias
-          //   2b. The module with resolved module name has not yet been registerd
-          //     -> register & alias
-          let is_module_registered = {
-            let modules = self.modules.lock().unwrap();
-            modules.is_registered(&source_code_info.module_name)
-          };
-
-          let need_alias = source_code_info.module_name != completed.url;
-
-          if !is_module_registered {
-            let module_name = &source_code_info.module_name;
-
-            let mod_id = {
-              let isolate = self.isolate.lock().unwrap();
-              isolate.mod_new(
-                completed.is_root,
-                module_name,
-                &source_code_info.code,
-              )
-            }?;
-
-            if completed.is_root {
-              assert!(self.root_id.is_none());
-              self.root_id = Some(mod_id);
-            }
-
-            // Register new module.
-            {
-              let mut modules = self.modules.lock().unwrap();
-              modules.register(mod_id, module_name);
-              // If necessary, register the alias.
-              if need_alias {
-                let module_alias = &completed.url;
-                modules.alias(module_alias, module_name);
-              }
-            }
-
-            // Now we must iterate over all imports of the module and load them.
-            let imports = {
-              let isolate = self.isolate.lock().unwrap();
-              isolate.mod_get_imports(mod_id)
-            };
-            let referrer = module_name;
-            for specifier in imports {
-              self.add(&specifier, referrer, Some(mod_id))?;
-            }
-          } else if need_alias {
-            let mut modules = self.modules.lock().unwrap();
-            modules.alias(&completed.url, &source_code_info.module_name);
-          }
-        }
-      }
-    }
-
-    if !self.pending.is_empty() {
-      return Ok(Async::NotReady);
-    }
-
-    let root_id = self.root_id.unwrap();
-
-    let mut resolve_cb = |specifier: &str, referrer_id: deno_mod| -> deno_mod {
-      let modules = self.modules.lock().unwrap();
-      let referrer = modules.get_name(referrer_id).unwrap();
-      // this callback is only called for non-root modules
-      match self.loader.resolve(specifier, &referrer, false) {
-        Ok(specifier) => match modules.get_id(&specifier.to_string()) {
-          Some(id) => id,
-          None => 0,
-        },
-        // We should have already resolved and loaded this module, so
-        // resolve() will not fail this time.
-        Err(_err) => unreachable!(),
       }
     };
 
-    let mut isolate = self.isolate.lock().unwrap();
-    isolate
-      .mod_instantiate(root_id, &mut resolve_cb)
-      .map(|_| Async::Ready(root_id))
+    // Now we must iterate over all imports of the module and load them.
+    let imports = isolate.mod_get_imports(module_id);
+    for import in imports {
+      self.add_import(&import, &module_url_found, module_id)?;
+    }
+
+    // If we just finished loading the root module, store the root module id.
+    match self.state {
+      State::LoadingRoot => self.state = State::LoadingImports(module_id),
+      State::LoadingImports(..) => {}
+      _ => unreachable!(),
+    };
+
+    // If all imports have been loaded, instantiate the root module.
+    if self.pending.is_empty() {
+      let root_id = match self.state {
+        State::LoadingImports(mod_id) => mod_id,
+        _ => unreachable!(),
+      };
+
+      let mut resolve_cb =
+        |specifier: &str, referrer_id: deno_mod| -> deno_mod {
+          let modules = self.modules.lock().unwrap();
+          let referrer = modules.get_name(referrer_id).unwrap();
+          match self.loader.resolve(specifier, &referrer, is_main) {
+            Ok(specifier) => modules.get_id(specifier.as_str()).unwrap_or(0),
+            // We should have already resolved and Ready this module, so
+            // resolve() will not fail this time.
+            Err(..) => unreachable!(),
+          }
+        };
+      isolate.mod_instantiate(root_id, &mut resolve_cb)?;
+
+      self.state = State::Instantiated(root_id);
+    }
+
+    Ok(())
+  }
+}
+
+impl<L: Loader> Stream for RecursiveLoad<L> {
+  type Item = Event;
+  type Error = ErrBox;
+
+  fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
+    Ok(match self.state {
+      State::ResolveMain(..) | State::ResolveImport(..) => {
+        self.add_root()?;
+        self.poll()?
+      }
+      State::LoadingRoot | State::LoadingImports(..) => {
+        match self.pending.poll()? {
+          Ready(None) => unreachable!(),
+          Ready(Some(info)) => Ready(Some(Event::Fetch(info))),
+          NotReady => NotReady,
+        }
+      }
+      State::Instantiated(id) => Ready(Some(Event::Instantiate(id))),
+    })
   }
 }
 
@@ -519,6 +573,7 @@ mod tests {
   use super::*;
   use crate::isolate::js_check;
   use crate::isolate::tests::*;
+  use futures::Async;
   use std::error::Error;
   use std::fmt;
 
@@ -557,7 +612,7 @@ mod tests {
       "/dir/redirect3.js" => Some((REDIRECT3_SRC, "file:///redirect3.js")),
       "/slow.js" => Some((SLOW_SRC, "file:///slow.js")),
       "/never_ready.js" => {
-        Some(("should never be loaded", "file:///never_ready.js"))
+        Some(("should never be Ready", "file:///never_ready.js"))
       }
       "/main.js" => Some((MAIN_SRC, "file:///main.js")),
       "/bad_import.js" => Some((BAD_IMPORT_SRC, "file:///bad_import.js")),
@@ -594,15 +649,20 @@ mod tests {
 
     fn poll(&mut self) -> Poll<Self::Item, ErrBox> {
       self.counter += 1;
-      if self.url == "file:///never_ready.js"
-        || (self.url == "file:///slow.js" && self.counter < 2)
-      {
+      if self.url == "file:///never_ready.js" {
+        return Ok(Async::NotReady);
+      }
+      if self.url == "file:///slow.js" && self.counter < 2 {
+        // TODO(ry) Hopefully in the future we can remove current task
+        // notification. See comment above run_in_task.
+        futures::task::current().notify();
         return Ok(Async::NotReady);
       }
       match mock_source_code(&self.url) {
         Some(src) => Ok(Async::Ready(SourceCodeInfo {
           code: src.0.to_owned(),
-          module_name: src.1.to_owned(),
+          module_url_specified: self.url.clone(),
+          module_url_found: src.1.to_owned(),
         })),
         None => Err(MockError::LoadErr.into()),
       }
@@ -679,20 +739,34 @@ mod tests {
     if (import.meta.url != 'file:///d.js') throw Error();
   "#;
 
+  // TODO(ry) Sadly FuturesUnordered requires the current task to be set. So
+  // even though we are only using poll() in these tests and not Tokio, we must
+  // nevertheless run it in the tokio executor. Ideally run_in_task can be
+  // removed in the future.
+  use crate::isolate::tests::run_in_task;
+
   #[test]
   fn test_recursive_load() {
-    let loader = MockLoader::new();
-    let modules = loader.modules.clone();
-    let modules_ = modules.clone();
-    let isolate = loader.isolate.clone();
-    let isolate_ = isolate.clone();
-    let loads = loader.loads.clone();
-    let mut recursive_load =
-      RecursiveLoad::new("/a.js", loader, isolate, modules);
+    run_in_task(|| {
+      let loader = MockLoader::new();
+      let modules = loader.modules.clone();
+      let modules_ = modules.clone();
+      let isolate = loader.isolate.clone();
+      let isolate_ = isolate.clone();
+      let loads = loader.loads.clone();
+      let mut recursive_load = RecursiveLoad::main("/a.js", loader, modules);
 
-    let result = recursive_load.poll();
-    assert!(result.is_ok());
-    if let Async::Ready(a_id) = result.ok().unwrap() {
+      let a_id = loop {
+        match recursive_load.poll() {
+          Ok(Ready(Some(Event::Fetch(info)))) => {
+            let mut isolate = isolate.lock().unwrap();
+            recursive_load.register(info, &mut isolate).unwrap();
+          }
+          Ok(Ready(Some(Event::Instantiate(id)))) => break id,
+          _ => panic!("unexpected result"),
+        };
+      };
+
       let mut isolate = isolate_.lock().unwrap();
       js_check(isolate.mod_evaluate(a_id));
 
@@ -730,9 +804,7 @@ mod tests {
         Some(&vec!["file:///d.js".to_string()])
       );
       assert_eq!(modules.get_children(d_id), Some(&vec![]));
-    } else {
-      unreachable!();
-    }
+    })
   }
 
   const CIRCULAR1_SRC: &str = r#"
@@ -753,58 +825,59 @@ mod tests {
 
   #[test]
   fn test_circular_load() {
-    let loader = MockLoader::new();
-    let isolate = loader.isolate.clone();
-    let isolate_ = isolate.clone();
-    let modules = loader.modules.clone();
-    let modules_ = modules.clone();
-    let loads = loader.loads.clone();
-    let mut recursive_load =
-      RecursiveLoad::new("/circular1.js", loader, isolate, modules);
+    run_in_task(|| {
+      let loader = MockLoader::new();
+      let isolate = loader.isolate.clone();
+      let isolate_ = isolate.clone();
+      let modules = loader.modules.clone();
+      let modules_ = modules.clone();
+      let loads = loader.loads.clone();
+      let recursive_load =
+        RecursiveLoad::main("/circular1.js", loader, modules);
+      let result = recursive_load.get_future(isolate.clone()).poll();
+      assert!(result.is_ok());
+      if let Async::Ready(circular1_id) = result.ok().unwrap() {
+        let mut isolate = isolate_.lock().unwrap();
+        js_check(isolate.mod_evaluate(circular1_id));
 
-    let result = recursive_load.poll();
-    assert!(result.is_ok());
-    if let Async::Ready(circular1_id) = result.ok().unwrap() {
-      let mut isolate = isolate_.lock().unwrap();
-      js_check(isolate.mod_evaluate(circular1_id));
+        let l = loads.lock().unwrap();
+        assert_eq!(
+          l.to_vec(),
+          vec![
+            "file:///circular1.js",
+            "file:///circular2.js",
+            "file:///circular3.js"
+          ]
+        );
 
-      let l = loads.lock().unwrap();
-      assert_eq!(
-        l.to_vec(),
-        vec![
-          "file:///circular1.js",
-          "file:///circular2.js",
-          "file:///circular3.js"
-        ]
-      );
+        let modules = modules_.lock().unwrap();
 
-      let modules = modules_.lock().unwrap();
+        assert_eq!(modules.get_id("file:///circular1.js"), Some(circular1_id));
+        let circular2_id = modules.get_id("file:///circular2.js").unwrap();
 
-      assert_eq!(modules.get_id("file:///circular1.js"), Some(circular1_id));
-      let circular2_id = modules.get_id("file:///circular2.js").unwrap();
+        assert_eq!(
+          modules.get_children(circular1_id),
+          Some(&vec!["file:///circular2.js".to_string()])
+        );
 
-      assert_eq!(
-        modules.get_children(circular1_id),
-        Some(&vec!["file:///circular2.js".to_string()])
-      );
+        assert_eq!(
+          modules.get_children(circular2_id),
+          Some(&vec!["file:///circular3.js".to_string()])
+        );
 
-      assert_eq!(
-        modules.get_children(circular2_id),
-        Some(&vec!["file:///circular3.js".to_string()])
-      );
-
-      assert!(modules.get_id("file:///circular3.js").is_some());
-      let circular3_id = modules.get_id("file:///circular3.js").unwrap();
-      assert_eq!(
-        modules.get_children(circular3_id),
-        Some(&vec![
-          "file:///circular1.js".to_string(),
-          "file:///circular2.js".to_string()
-        ])
-      );
-    } else {
-      unreachable!();
-    }
+        assert!(modules.get_id("file:///circular3.js").is_some());
+        let circular3_id = modules.get_id("file:///circular3.js").unwrap();
+        assert_eq!(
+          modules.get_children(circular3_id),
+          Some(&vec![
+            "file:///circular1.js".to_string(),
+            "file:///circular2.js".to_string()
+          ])
+        );
+      } else {
+        unreachable!();
+      }
+    })
   }
 
   const REDIRECT1_SRC: &str = r#"
@@ -823,49 +896,51 @@ mod tests {
 
   #[test]
   fn test_redirect_load() {
-    let loader = MockLoader::new();
-    let isolate = loader.isolate.clone();
-    let isolate_ = isolate.clone();
-    let modules = loader.modules.clone();
-    let modules_ = modules.clone();
-    let loads = loader.loads.clone();
-    let mut recursive_load =
-      RecursiveLoad::new("/redirect1.js", loader, isolate, modules);
+    run_in_task(|| {
+      let loader = MockLoader::new();
+      let isolate = loader.isolate.clone();
+      let isolate_ = isolate.clone();
+      let modules = loader.modules.clone();
+      let modules_ = modules.clone();
+      let loads = loader.loads.clone();
+      let recursive_load =
+        RecursiveLoad::main("/redirect1.js", loader, modules);
+      let result = recursive_load.get_future(isolate.clone()).poll();
+      println!(">> result {:?}", result);
+      assert!(result.is_ok());
+      if let Async::Ready(redirect1_id) = result.ok().unwrap() {
+        let mut isolate = isolate_.lock().unwrap();
+        js_check(isolate.mod_evaluate(redirect1_id));
+        let l = loads.lock().unwrap();
+        assert_eq!(
+          l.to_vec(),
+          vec![
+            "file:///redirect1.js",
+            "file:///redirect2.js",
+            "file:///dir/redirect3.js"
+          ]
+        );
 
-    let result = recursive_load.poll();
-    assert!(result.is_ok());
-    if let Async::Ready(redirect1_id) = result.ok().unwrap() {
-      let mut isolate = isolate_.lock().unwrap();
-      js_check(isolate.mod_evaluate(redirect1_id));
-      let l = loads.lock().unwrap();
-      assert_eq!(
-        l.to_vec(),
-        vec![
-          "file:///redirect1.js",
-          "file:///redirect2.js",
-          "file:///dir/redirect3.js"
-        ]
-      );
+        let modules = modules_.lock().unwrap();
 
-      let modules = modules_.lock().unwrap();
+        assert_eq!(modules.get_id("file:///redirect1.js"), Some(redirect1_id));
 
-      assert_eq!(modules.get_id("file:///redirect1.js"), Some(redirect1_id));
+        let redirect2_id = modules.get_id("file:///dir/redirect2.js").unwrap();
+        assert!(modules.is_alias("file:///redirect2.js"));
+        assert!(!modules.is_alias("file:///dir/redirect2.js"));
+        assert_eq!(modules.get_id("file:///redirect2.js"), Some(redirect2_id));
 
-      let redirect2_id = modules.get_id("file:///dir/redirect2.js").unwrap();
-      assert!(modules.is_alias("file:///redirect2.js"));
-      assert!(!modules.is_alias("file:///dir/redirect2.js"));
-      assert_eq!(modules.get_id("file:///redirect2.js"), Some(redirect2_id));
-
-      let redirect3_id = modules.get_id("file:///redirect3.js").unwrap();
-      assert!(modules.is_alias("file:///dir/redirect3.js"));
-      assert!(!modules.is_alias("file:///redirect3.js"));
-      assert_eq!(
-        modules.get_id("file:///dir/redirect3.js"),
-        Some(redirect3_id)
-      );
-    } else {
-      unreachable!();
-    }
+        let redirect3_id = modules.get_id("file:///redirect3.js").unwrap();
+        assert!(modules.is_alias("file:///dir/redirect3.js"));
+        assert!(!modules.is_alias("file:///redirect3.js"));
+        assert_eq!(
+          modules.get_id("file:///dir/redirect3.js"),
+          Some(redirect3_id)
+        );
+      } else {
+        unreachable!();
+      }
+    })
   }
 
   // main.js
@@ -886,47 +961,46 @@ mod tests {
 
   #[test]
   fn slow_never_ready_modules() {
-    let loader = MockLoader::new();
-    let isolate = loader.isolate.clone();
-    let modules = loader.modules.clone();
-    let loads = loader.loads.clone();
-    let mut recursive_load =
-      RecursiveLoad::new("/main.js", loader, isolate, modules);
+    run_in_task(|| {
+      let loader = MockLoader::new();
+      let isolate = loader.isolate.clone();
+      let modules = loader.modules.clone();
+      let loads = loader.loads.clone();
+      let mut recursive_load =
+        RecursiveLoad::main("/main.js", loader, modules).get_future(isolate);
 
-    let result = recursive_load.poll();
-    assert!(result.is_ok());
-    assert!(result.ok().unwrap().is_not_ready());
-
-    {
-      let l = loads.lock().unwrap();
-      assert_eq!(
-        l.to_vec(),
-        vec![
-          "file:///main.js",
-          "file:///never_ready.js",
-          "file:///slow.js"
-        ]
-      );
-    }
-
-    for _ in 0..10 {
       let result = recursive_load.poll();
       assert!(result.is_ok());
       assert!(result.ok().unwrap().is_not_ready());
-      let l = loads.lock().unwrap();;
-      assert_eq!(
-        l.to_vec(),
-        vec![
-          "file:///main.js",
-          "file:///never_ready.js",
-          "file:///slow.js",
-          "file:///a.js",
-          "file:///b.js",
-          "file:///c.js",
-          "file:///d.js"
-        ]
-      );
-    }
+
+      // TODO(ry) Arguably the first time we poll only the following modules
+      // should be loaded:
+      //      "file:///main.js",
+      //      "file:///never_ready.js",
+      //      "file:///slow.js"
+      // But due to current task notification in DelayedSourceCodeFuture they
+      // all get loaded in a single poll. Also see the comment above
+      // run_in_task.
+
+      for _ in 0..10 {
+        let result = recursive_load.poll();
+        assert!(result.is_ok());
+        assert!(result.ok().unwrap().is_not_ready());
+        let l = loads.lock().unwrap();;
+        assert_eq!(
+          l.to_vec(),
+          vec![
+            "file:///main.js",
+            "file:///never_ready.js",
+            "file:///slow.js",
+            "file:///a.js",
+            "file:///b.js",
+            "file:///c.js",
+            "file:///d.js"
+          ]
+        );
+      }
+    })
   }
 
   // bad_import.js
@@ -936,18 +1010,20 @@ mod tests {
 
   #[test]
   fn loader_disappears_after_error() {
-    let loader = MockLoader::new();
-    let isolate = loader.isolate.clone();
-    let modules = loader.modules.clone();
-    let mut recursive_load =
-      RecursiveLoad::new("/bad_import.js", loader, isolate, modules);
-    let result = recursive_load.poll();
-    assert!(result.is_err());
-    let err = result.err().unwrap();
-    assert_eq!(
-      err.downcast_ref::<MockError>().unwrap(),
-      &MockError::ResolveErr
-    );
+    run_in_task(|| {
+      let loader = MockLoader::new();
+      let isolate = loader.isolate.clone();
+      let modules = loader.modules.clone();
+      let recursive_load =
+        RecursiveLoad::main("/bad_import.js", loader, modules);
+      let result = recursive_load.get_future(isolate).poll();
+      assert!(result.is_err());
+      let err = result.err().unwrap();
+      assert_eq!(
+        err.downcast_ref::<MockError>().unwrap(),
+        &MockError::ResolveErr
+      );
+    })
   }
 
   #[test]

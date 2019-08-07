@@ -41,13 +41,17 @@ impl fmt::Display for ModuleResolutionError {
   }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Eq, Hash, PartialEq)]
 /// Resolved module specifier
 pub struct ModuleSpecifier(Url);
 
 impl ModuleSpecifier {
   pub fn as_url(&self) -> &Url {
     &self.0
+  }
+
+  pub fn as_str(&self) -> &str {
+    self.0.as_str()
   }
 
   /// Resolves module using this algorithm:
