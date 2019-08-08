@@ -11,7 +11,12 @@ class TestRepl(DenoTestCase):
     def input(self, *lines, **kwargs):
         exit_ = kwargs.pop("exit", True)
         sleep_ = kwargs.pop("sleep", 0)
-        p = Popen([self.deno_exe], stdout=PIPE, stderr=PIPE, stdin=PIPE)
+        env_ = kwargs.pop("env", None)
+        p = Popen([self.deno_exe],
+                  stdout=PIPE,
+                  stderr=PIPE,
+                  stdin=PIPE,
+                  env=env_)
         try:
             # Note: The repl takes a >100ms until it's ready.
             time.sleep(sleep_)
@@ -135,6 +140,14 @@ class TestRepl(DenoTestCase):
         out, err, code = self.input("let a = 123;", "a")
         self.assertEqual(out, 'undefined\n123\n')
         self.assertEqual(err, '')
+        self.assertEqual(code, 0)
+
+    def test_missing_deno_dir(self):
+        new_env = os.environ.copy()
+        new_env["DENO_DIR"] = os.path.abspath("doesnt_exist")
+        out, err, code = self.input("'noop'", exit=False, env=new_env)
+        self.assertEqual(out, "noop\n")
+        self.assertTrue(err.startswith("Unable to save REPL history:"))
         self.assertEqual(code, 0)
 
 
