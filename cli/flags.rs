@@ -45,8 +45,8 @@ pub struct DenoFlags {
   pub xeval_delim: Option<String>,
   // Use tokio::runtime::current_thread
   pub current_thread: bool,
-  pub inspector_enable: bool,
-  pub inspector_pause_on_start: bool,
+  pub debug: bool,
+  pub debug_endpoint: Option<String>,
 }
 
 static ENV_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
@@ -113,14 +113,11 @@ fn add_run_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .long("no-fetch")
         .help("Do not download remote modules"),
     ).arg(
-      // TODO(mtharrison): Copied from Node for now - Discuss what the ideal flags are. Also include flag for host/port binding
-      Arg::with_name("inspect")
-        .long("inspect")
-        .help("Enable inspector"),
-    ).arg(
-      Arg::with_name("inspect-brk")
-        .long("inspect-brk")
-        .help("Enable inspector and pause on first statement")
+      Arg::with_name("debug")
+        .long("debug")
+        .takes_value(true)
+        .require_equals(true)
+        .help("Enable debugger and pause on first statement"),
     )
 }
 
@@ -524,14 +521,11 @@ pub fn parse_flags(
     flags = parse_run_args(flags.clone(), run_matches);
   }
 
-  // TODO (matt): Do we also need to set a v8 flag here too? - Seems not required
-  // TODO (matt): handle the inspector host/port flags here
-  if matches.is_present("inspect") {
-    flags.inspector_enable = true;
-  }
-  if matches.is_present("inspect-brk") {
-    flags.inspector_pause_on_start = true;
-    flags.inspector_enable = true;
+  if matches.is_present("debug") {
+    flags.debug = true;
+    if matches.value_of("debug").is_some() {
+      flags.debug_endpoint = Some(matches.value_of("debug").unwrap().to_owned());
+    }
   }
 
   flags

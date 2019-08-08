@@ -8,8 +8,6 @@ extern crate enclose;
 #[macro_use]
 extern crate futures;
 #[macro_use]
-extern crate serde_derive;
-#[macro_use]
 extern crate serde_json;
 extern crate clap;
 extern crate deno;
@@ -348,8 +346,6 @@ fn run_repl(flags: DenoFlags, argv: Vec<String>) {
 
 fn run_script(flags: DenoFlags, argv: Vec<String>) {
   let use_current_thread = flags.current_thread;
-  let inspector_enable = flags.inspector_enable;
-  let inspector_pause_on_start = flags.inspector_pause_on_start;
 
   let (mut worker, state) = create_worker_and_state(flags, argv);
 

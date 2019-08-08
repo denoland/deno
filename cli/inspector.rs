@@ -1,43 +1,15 @@
 use crate::version::DENO;
 use futures::sync::oneshot::{spawn, SpawnHandle};
 use futures::{Future, Sink, Stream};
-use serde_json::Value;
 use std::net::SocketAddrV4;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use warp::ws::{Message, WebSocket};
 use warp::Filter;
 
-static UUID: &str = "97690037-256e-4e27-add0-915ca5421e2f";
-// TODO(mtharrison): Make these configurable with flags, defaulting to below values
-static HOST: &str = "127.0.0.1";
-static PORT: &str = "9888";
-
-lazy_static! {
-  #[derive(Serialize)]
-  pub static ref RESPONSE_JSON: Value = json!([{
-    "description": "deno",
-    "devtoolsFrontendUrl": format!("chrome-devtools://devtools/bundled/js_app.html?experiments=true&v8only=true&ws={}:{}/websocket", HOST, PORT),
-    "devtoolsFrontendUrlCompat": format!("chrome-devtools://devtools/bundled/inspector.html?experiments=true&v8only=true&ws={}:{}/websocket", HOST, PORT),
-    "faviconUrl": "https://www.deno-play.app/images/deno.svg",
-    "id": UUID,
-    "title": format!("deno[{}]", std::process::id()),
-    "type": "deno",
-    "url": "file://",
-    "webSocketDebuggerUrl": format!("ws://{}:{}/websocket", HOST, PORT)
-  }]);
-
-  #[derive(Serialize)]
-  pub static ref RESPONSE_VERSION: Value = json!({
-    "Browser": format!("Deno/{}", DENO),
-    "Protocol-Version": "1.1",
-    "webSocketDebuggerUrl": format!("ws://{}:{}/{}", HOST, PORT, UUID)
-  });
-}
-
 pub struct Inspector {
   enable: bool,
-  pause_on_start: bool,
+  address: SocketAddrV4,
   // sharable handle to channels passed to isolate
   pub handle: deno::InspectorHandle,
   // sending/receving messages from isolate
@@ -54,14 +26,19 @@ pub struct Inspector {
 }
 
 impl Inspector {
-  pub fn new(enable: bool, pause_on_start: bool) -> Self {
+  pub fn new(enable: bool, endpoint: Option<String>) -> Self {
     let (inbound_tx, inbound_rx) = channel::<String>();
     let (outbound_tx, outbound_rx) = channel::<String>();
     let (ready_tx, ready_rx) = channel::<()>();
 
+    let address = match endpoint {
+      Some(endpoint) => endpoint.parse::<SocketAddrV4>().unwrap(),
+      None => "127.0.0.1:9888".parse::<SocketAddrV4>().unwrap(),
+    };
+
     Inspector {
       enable,
-      pause_on_start,
+      address,
       handle: deno::InspectorHandle::new(outbound_tx, inbound_rx),
       inbound_tx: Arc::new(Mutex::new(inbound_tx)),
       outbound_rx: Arc::new(Mutex::new(outbound_rx)),
@@ -91,17 +68,38 @@ impl Inspector {
           }))
         }));
 
-    let json = warp::path("json").map(|| warp::reply::json(&*RESPONSE_JSON));
+    // todo(matt): Make this unique per run (https://github.com/denoland/deno/pull/2696#discussion_r309282566)
+    let uuid = "97690037-256e-4e27-add0-915ca5421e2f";
+
+    let ip = format!("{}", self.address.ip());
+    let port = self.address.port();
+
+    let response_json = json!([{
+      "description": "deno",
+      "devtoolsFrontendUrl": format!("chrome-devtools://devtools/bundled/js_app.html?experiments=true&v8only=true&ws={}:{}/websocket", ip, port),
+      "devtoolsFrontendUrlCompat": format!("chrome-devtools://devtools/bundled/inspector.html?experiments=true&v8only=true&ws={}:{}/websocket", ip, port),
+      "faviconUrl": "https://www.deno-play.app/images/deno.svg",
+      "id": uuid,
+      "title": format!("deno[{}]", std::process::id()),
+      "type": "deno",
+      "url": "file://",
+      "webSocketDebuggerUrl": format!("ws://{}:{}/websocket", ip, port)
+    }]);
+
+    let response_version = json!({
+      "Browser": format!("Deno/{}", DENO),
+      "Protocol-Version": "1.1",
+      "webSocketDebuggerUrl": format!("ws://{}:{}/{}", ip, port, uuid)
+    });
+
+    let json = warp::path("json").map(move || warp::reply::json(&response_json));
 
     let version =
-      path!("json" / "version").map(|| warp::reply::json(&*RESPONSE_VERSION));
+      path!("json" / "version").map(move || warp::reply::json(&response_version));
 
     let routes = websocket.or(version).or(json);
 
-    let endpoint = format!("{}:{}", HOST, PORT);
-    let addr = endpoint.parse::<SocketAddrV4>().unwrap();
-
-    warp::serve(routes).bind(addr)
+    warp::serve(routes).bind(self.address)
   }
 
   pub fn start(&mut self) {
@@ -118,19 +116,17 @@ impl Inspector {
       &tokio_executor::DefaultExecutor::current(),
     ));
 
-    println!("Debugger listening on ws://{}:{}/{}", HOST, PORT, UUID);
+    println!("Debugger listening on ws://{}:{}/{}", self.address.ip(), self.address.port(), "97690037-256e-4e27-add0-915ca5421e2f");
 
-    if self.pause_on_start {
-      self
-        .ready_rx
-        .lock()
-        .unwrap()
-        .recv()
-        .expect("Error waiting for inspector server to start.");
-      // TODO(mtharrison): This is to allow v8 to ingest some inspector messages - find a more reliable way
-      std::thread::sleep(std::time::Duration::from_secs(1));
-      println!("Inspector frontend connected.");
-    }
+    self
+      .ready_rx
+      .lock()
+      .unwrap()
+      .recv()
+      .expect("Error waiting for inspector server to start.");
+    // TODO(mtharrison): This is to allow v8 to ingest some inspector messages - find a more reliable way
+    std::thread::sleep(std::time::Duration::from_secs(1));
+    println!("Inspector frontend connected.");
   }
 }
 
