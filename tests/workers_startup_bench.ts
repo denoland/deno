@@ -4,7 +4,7 @@ const workerCount = 50;
 async function bench(): Promise<void> {
   const workers: Worker[] = [];
   for (var i = 1; i <= workerCount; ++i) {
-    const worker = new Worker("tests/subdir/bench_worker.ts");
+    const worker = new Worker("./subdir/bench_worker.ts");
     const promise = new Promise(
       (resolve): void => {
         worker.onmessage = (e): void => {

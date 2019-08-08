@@ -1,5 +1,5 @@
-const jsWorker = new Worker("./tests/subdir/test_worker.js");
-const tsWorker = new Worker("./tests/subdir/test_worker.ts");
+const jsWorker = new Worker("./subdir/test_worker.js");
+const tsWorker = new Worker("./subdir/test_worker.ts");
 
 tsWorker.onmessage = (e): void => {
   console.log("Received ts: " + e.data);
