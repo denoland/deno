@@ -2100,13 +2100,10 @@ fn op_create_worker(
   let mut child_argv = parent_state.argv.clone();
 
   if !has_source_code {
-    match state.main_module() {
-      Some(module) => {
-        module_specifier =
-          ModuleSpecifier::resolve_import(specifier, &module.to_string())?;
-        child_argv[1] = module_specifier.to_string();
-      }
-      None => {}
+    if let Some(module) = state.main_module() {
+      module_specifier =
+        ModuleSpecifier::resolve_import(specifier, &module.to_string())?;
+      child_argv[1] = module_specifier.to_string();
     }
   }
 
