@@ -95,7 +95,7 @@ impl Repl {
   }
 
   fn history_dir_exists(&self) -> bool {
-    return self
+    self
       .history_file
       .parent()
       .map(|ref p| p.exists())
