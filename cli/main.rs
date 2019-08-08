@@ -149,7 +149,7 @@ fn print_cache_info(worker: Worker) {
   println!(
     "{} {:?}",
     ansi::bold("TypeScript compiler cache:".to_string()),
-    state.dir.deps_cache.location
+    state.dir.gen_cache.location
   );
 }
 
