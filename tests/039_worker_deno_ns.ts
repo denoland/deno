@@ -1,5 +1,5 @@
-const w1 = new Worker("./tests/039_worker_deno_ns/has_ns.ts");
-const w2 = new Worker("./tests/039_worker_deno_ns/no_ns.ts", {
+const w1 = new Worker("./039_worker_deno_ns/has_ns.ts");
+const w2 = new Worker("./039_worker_deno_ns/no_ns.ts", {
   noDenoNamespace: true
 });
 let w1MsgCount = 0;
