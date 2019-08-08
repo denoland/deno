@@ -76,6 +76,14 @@ impl Repl {
   }
 
   fn save_history(&mut self) -> Result<(), ErrBox> {
+    if !self.history_dir_exists() {
+      eprintln!(
+        "Unable to save REPL history: {:?} directory does not exist",
+        self.history_file
+      );
+      return Ok(());
+    }
+
     self
       .editor
       .save_history(&self.history_file.to_str().unwrap())
@@ -84,6 +92,14 @@ impl Repl {
         eprintln!("Unable to save REPL history: {:?} {}", self.history_file, e);
         ErrBox::from(e)
       })
+  }
+
+  fn history_dir_exists(&self) -> bool {
+    self
+      .history_file
+      .parent()
+      .map(|ref p| p.exists())
+      .unwrap_or(false)
   }
 
   pub fn readline(&mut self, prompt: &str) -> Result<String, ErrBox> {
