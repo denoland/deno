@@ -2102,7 +2102,6 @@ fn op_create_worker(
   if !has_source_code {
     match state.main_module() {
       Some(module) => {
-        dbg!(&specifier);
         module_specifier =
           ModuleSpecifier::resolve_import(specifier, &module.to_string())?;
         child_argv[1] = module_specifier.to_string();
