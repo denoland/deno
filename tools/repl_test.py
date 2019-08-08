@@ -5,7 +5,6 @@ import sys
 import time
 
 from test_util import DenoTestCase, run_tests
-from util import rmtree
 
 
 class TestRepl(DenoTestCase):
@@ -147,8 +146,8 @@ class TestRepl(DenoTestCase):
         new_env = os.environ.copy()
         new_env["DENO_DIR"] = os.path.abspath("doesnt_exist")
         out, err, code = self.input("'noop'", exit=False, env=new_env)
-        self.assertEqual(out, 'noop\n')
-        self.assertTrue(err.startswith('Unable to save REPL history:'))
+        self.assertEqual(out, "noop\n")
+        self.assertTrue(err.startswith("Unable to save REPL history:"))
         self.assertEqual(code, 0)
 
 
