@@ -145,10 +145,10 @@ class TestRepl(DenoTestCase):
 
     def test_missing_deno_dir(self):
         new_env = os.environ.copy()
-        new_env["DENO_DIR"] = "/doesnt_exist"
+        new_env["DENO_DIR"] = os.path.abspath("doesnt_exist")
         out, err, code = self.input("'noop'", exit=False, env=new_env)
         self.assertEqual(out, 'noop\n')
-        self.assertEqual(err, 'Unable to save REPL history: "/doesnt_exist/deno_history.txt" directory does not exist\n')
+        self.assertTrue(err.startswith('Unable to save REPL history:'))
         self.assertEqual(code, 0)
 
 
