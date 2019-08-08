@@ -219,6 +219,7 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<CliDispatchFn> {
     msg::Any::GlobalTimerStop => Some(op_global_timer_stop),
     msg::Any::HostGetMessage => Some(op_host_get_message),
     msg::Any::HostGetWorkerClosed => Some(op_host_get_worker_closed),
+    msg::Any::Hostname => Some(op_hostname),
     msg::Any::HostPostMessage => Some(op_host_post_message),
     msg::Any::IsTTY => Some(op_is_tty),
     msg::Any::Kill => Some(op_kill),
@@ -2214,6 +2215,28 @@ fn op_host_get_message(
     ))
   });
   Ok(Op::Async(Box::new(op)))
+}
+
+fn op_hostname(
+  _state: &ThreadSafeState,
+  base: &msg::Base<'_>,
+  data: Option<PinnedBuf>,
+) -> CliOpResult {
+  assert!(data.is_none());
+  let cmd_id = base.cmd_id();
+  let builder = &mut FlatBufferBuilder::new();
+  let hostname = builder.create_string("hostname");
+  let inner = msg::HostnameRes::create(builder, &msg::HostnameResArgs { hostname: Some(hostname) });
+  let response_buf = serialize_response(
+    cmd_id,
+    builder,
+    msg::BaseArgs {
+      inner: Some(inner.as_union_value()),
+      inner_type: msg::Any::HostnameRes,
+      ..Default::default()
+    },
+  );
+  ok_buf(response_buf)
 }
 
 /// Post message to guest worker as host

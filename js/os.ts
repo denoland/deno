@@ -173,3 +173,18 @@ export function execPath(): string {
   const path = res.path()!;
   return path;
 }
+
+/**
+ * Get the hostname of the current machine.
+ */
+export function hostname(): string {
+  const builder = flatbuffers.createBuilder();
+  msg.Hostname.startHostname(builder);
+  const inner = msg.Hostname.endHostname(builder);
+  const baseRes = sendSync(builder, msg.Any.Hostname, inner)!;
+  assert(baseRes != null);
+  assert(msg.Any.HostnameRes === baseRes.innerType());
+  const res = new msg.HostnameRes();
+  assert(baseRes.inner(res) != null);
+  return res.hostname()!;
+}

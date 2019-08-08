@@ -28,6 +28,8 @@ union Any {
   HostGetMessage,
   HostGetMessageRes,
   HostGetWorkerClosed,
+  Hostname,
+  HostnameRes,
   HostPostMessage,
   IsTTY,
   IsTTYRes,
@@ -225,6 +227,13 @@ table HostGetMessage {
 
 table HostGetMessageRes {
   data: [ubyte];
+}
+
+// Ask what the hostname of this machine is
+table Hostname {}
+
+table HostnameRes {
+  hostname: string;
 }
 
 // Post message to guest worker as host
