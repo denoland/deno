@@ -99,6 +99,26 @@ fn js_check(r: Result<(), ErrBox>) {
   }
 }
 
+fn print_cache_info(worker: Worker) {
+  let state = worker.state;
+
+  println!(
+    "{} {:?}",
+    ansi::bold("DENO_DIR location:".to_string()),
+    state.dir.root
+  );
+  println!(
+    "{} {:?}",
+    ansi::bold("remote modules cache:".to_string()),
+    state.dir.deps_cache.location
+  );
+  println!(
+    "{} {:?}",
+    ansi::bold("TypeScript compiler cache:".to_string()),
+    state.dir.deps_cache.location
+  );
+}
+
 // TODO: we might want to rethink how this method works
 pub fn print_file_info(
   worker: Worker,
@@ -217,12 +237,13 @@ fn types_command() {
   println!("{}", content);
 }
 
-fn fetch_or_info_command(
-  flags: DenoFlags,
-  argv: Vec<String>,
-  print_info: bool,
-) {
-  let (mut worker, state) = create_worker_and_state(flags, argv);
+fn info_command(flags: DenoFlags, argv: Vec<String>) {
+  let (mut worker, state) = create_worker_and_state(flags, argv.clone());
+
+  // If it was just "deno info" print location of caches and exit
+  if argv.len() == 1 {
+    return print_cache_info(worker);
+  }
 
   let main_module = state.main_module().unwrap();
   let main_future = lazy(move || {
@@ -233,13 +254,30 @@ fn fetch_or_info_command(
     worker
       .execute_mod_async(&main_module, true)
       .map_err(print_err_and_exit)
-      .and_then(move |()| {
-        if print_info {
-          future::Either::A(print_file_info(worker, &main_module))
-        } else {
-          future::Either::B(future::ok(worker))
-        }
+      .and_then(move |()| print_file_info(worker, &main_module))
+      .and_then(|worker| {
+        worker.then(|result| {
+          js_check(result);
+          Ok(())
+        })
       })
+  });
+  tokio_util::run(main_future);
+}
+
+fn fetch_command(flags: DenoFlags, argv: Vec<String>) {
+  let (mut worker, state) = create_worker_and_state(flags, argv.clone());
+
+  let main_module = state.main_module().unwrap();
+  let main_future = lazy(move || {
+    // Setup runtime.
+    js_check(worker.execute("denoMain()"));
+    debug!("main_module {}", main_module);
+
+    worker
+      .execute_mod_async(&main_module, true)
+      .map_err(print_err_and_exit)
+      .and_then(move |()| future::ok(worker))
       .and_then(|worker| {
         worker.then(|result| {
           js_check(result);
@@ -391,8 +429,8 @@ fn main() {
     DenoSubcommand::Bundle => bundle_command(flags, argv),
     DenoSubcommand::Completions => {}
     DenoSubcommand::Eval => eval_command(flags, argv),
-    DenoSubcommand::Fetch => fetch_or_info_command(flags, argv, false),
-    DenoSubcommand::Info => fetch_or_info_command(flags, argv, true),
+    DenoSubcommand::Fetch => fetch_command(flags, argv),
+    DenoSubcommand::Info => info_command(flags, argv),
     DenoSubcommand::Install => run_script(flags, argv),
     DenoSubcommand::Repl => run_repl(flags, argv),
     DenoSubcommand::Run => run_script(flags, argv),

@@ -271,7 +271,7 @@ The following information is shown:
   compiled: TypeScript only. shown local path of compiled source code.
   map:      TypeScript only. shown local path of source map.
   deps:     Dependency tree of the source file.",
-        ).arg(Arg::with_name("file").takes_value(true).required(true)),
+        ).arg(Arg::with_name("file").takes_value(true).required(false)),
     ).subcommand(
       SubCommand::with_name("eval")
         .about("Eval script")
@@ -748,8 +748,9 @@ pub fn flags_from_vec(
       DenoSubcommand::Run
     }
     ("info", Some(info_match)) => {
-      let file: &str = info_match.value_of("file").unwrap();
-      argv.extend(vec![file.to_string()]);
+      if info_match.is_present("file") {
+        argv.push(info_match.value_of("file").unwrap().to_string());
+      }
       DenoSubcommand::Info
     }
     ("install", Some(install_match)) => {
@@ -1119,6 +1120,11 @@ mod tests {
     assert_eq!(flags, DenoFlags::default());
     assert_eq!(subcommand, DenoSubcommand::Info);
     assert_eq!(argv, svec!["deno", "script.ts"]);
+
+    let (flags, subcommand, argv) = flags_from_vec(svec!["deno", "info"]);
+    assert_eq!(flags, DenoFlags::default());
+    assert_eq!(subcommand, DenoSubcommand::Info);
+    assert_eq!(argv, svec!["deno"]);
   }
 
   #[test]
