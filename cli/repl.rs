@@ -99,7 +99,7 @@ impl Repl {
       .history_file
       .parent()
       .map(|ref p| p.exists())
-      .unwrap_or(false);
+      .unwrap_or(false)
   }
 
   pub fn readline(&mut self, prompt: &str) -> Result<String, ErrBox> {
