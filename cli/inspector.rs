@@ -26,13 +26,13 @@ pub struct Inspector {
 }
 
 impl Inspector {
-  pub fn new(enable: bool, endpoint: Option<String>) -> Self {
+  pub fn new(enable: bool, address: Option<String>) -> Self {
     let (inbound_tx, inbound_rx) = channel::<String>();
     let (outbound_tx, outbound_rx) = channel::<String>();
     let (ready_tx, ready_rx) = channel::<()>();
 
-    let address = match endpoint {
-      Some(endpoint) => endpoint.parse::<SocketAddrV4>().unwrap(),
+    let address = match address {
+      Some(address) => address.parse::<SocketAddrV4>().unwrap(),
       None => "127.0.0.1:9888".parse::<SocketAddrV4>().unwrap(),
     };
 
