@@ -6,6 +6,27 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.14.0 / 2019.08.09
+
+In deno:
+
+- feat: remove `Deno.build.args` (#2728)
+- feat: support native line ending conversion in the `Blob` constructor (#2695)
+- feat: add option to delete the `Deno` namespace in a worker (#2717)
+- feat: support starting workers using a blob: URL (#2729)
+- feat: make `Deno.execPath()` a function (#2743, #2744)
+- feat: support `await import(...)` syntax for dynamic module imports (#2516)
+- fix: enforce permissions on `Deno.kill()`, `Deno.homeDir()` and
+  `Deno.execPath()` (#2714, #2723)
+- fix: `cargo build` now builds incrementally (#2740)
+- fix: avoid REPL crash when DENO_DIR doesn't exist (#2727)
+- fix: resolve worker module URLs relative to the host main module URL (#2751)
+- doc: improve documentation on using the V8 profiler (#2742)
+
+In deno_std:
+
+- fix: make the 'ws' module (websockets) work again (denoland/deno_std#550)
+
 ### v0.13.0 / 2019.07.31
 
 In deno:
@@ -23,9 +44,9 @@ In deno:
 
 In deno_std:
 
-- fix: Make shebangs Linux compatible (#545)
-- fix: Ignore error of writing responses to aborted requests (#546)
-- fix: use Deno.execPath where possible (#548)
+- fix: Make shebangs Linux compatible (denoland/deno_std#545)
+- fix: Ignore error of writing responses to aborted requests (denoland/deno_std#546)
+- fix: use Deno.execPath where possible (denoland/deno_std#548)
 
 ### v0.12.0 / 2019.07.16
 
