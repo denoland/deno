@@ -1,0 +1,2 @@
+args: run --reload tests/042_dyn_import_evalcontext.ts
+output: tests/042_dyn_import_evalcontext.ts.out
