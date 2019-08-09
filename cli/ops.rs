@@ -22,6 +22,7 @@ use crate::source_maps::get_orig_position;
 use crate::source_maps::CachedMaps;
 use crate::startup_data;
 use crate::state::ThreadSafeState;
+use crate::sys;
 use crate::tokio_util;
 use crate::tokio_write;
 use crate::version;
@@ -2225,7 +2226,7 @@ fn op_hostname(
   assert!(data.is_none());
   let cmd_id = base.cmd_id();
   let builder = &mut FlatBufferBuilder::new();
-  let hostname = builder.create_string("hostname");
+  let hostname = builder.create_string(&sys::get_hostname().unwrap_or("".to_string()));
   let inner = msg::HostnameRes::create(builder, &msg::HostnameResArgs { hostname: Some(hostname) });
   let response_buf = serialize_response(
     cmd_id,

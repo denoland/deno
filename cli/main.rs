@@ -42,6 +42,7 @@ mod shell;
 mod signal;
 pub mod source_maps;
 mod startup_data;
+mod sys;
 pub mod state;
 mod tokio_util;
 mod tokio_write;
