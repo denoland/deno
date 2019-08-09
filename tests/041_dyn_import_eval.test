@@ -1,0 +1,2 @@
+args: eval import('./tests/subdir/mod4.js').then(console.log)
+output: tests/041_dyn_import_eval.out

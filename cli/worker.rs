@@ -9,8 +9,10 @@ use deno::RecursiveLoad;
 use deno::StartupData;
 use futures::Async;
 use futures::Future;
+use std::env;
 use std::sync::Arc;
 use std::sync::Mutex;
+use url::Url;
 
 /// Wraps deno::Isolate to provide source maps, ops for the CLI, and
 /// high-level module loading
@@ -55,9 +57,11 @@ impl Worker {
     Self { isolate, state }
   }
 
-  /// Same as execute2() but the filename defaults to "<anonymous>".
+  /// Same as execute2() but the filename defaults to "$CWD/__anonymous__".
   pub fn execute(&mut self, js_source: &str) -> Result<(), ErrBox> {
-    self.execute2("<anonymous>", js_source)
+    let path = env::current_dir().unwrap().join("__anonymous__");
+    let url = Url::from_file_path(path).unwrap();
+    self.execute2(url.as_str(), js_source)
   }
 
   /// Executes the provided JavaScript source code. The js_filename argument is
