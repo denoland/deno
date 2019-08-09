@@ -7,6 +7,7 @@ import sys
 import os
 import re
 
+args = sys.argv[1:]
 env = os.environ.copy()
 
 if sys.platform == 'win32':
@@ -26,9 +27,19 @@ if sys.platform == 'win32':
 env["GN_OUT_DIR"] = os.path.abspath(".")
 assert os.path.isdir(env["GN_OUT_DIR"])
 
+# Some crates (e.g. 'typenum') generate source files and place them in the
+# directory indicated by the 'OUT_DIR' environment variable, which is normally
+# set by Cargo. We pre-generate these files and store them in the source repo.
+# Therefore, set 'OUT_DIR' so these crates can find their generated sources.
+for i, arg in enumerate(args):
+    match = re.search('--generated-source-dir=(.*)', arg)
+    if match:
+        env["OUT_DIR"] = os.path.abspath(match.group(1))
+        del args[i]
+        break
+
 # Set the CARGO_PKG_VERSION env variable if provided as an argument
 # When building with Cargo this variable is set automatically
-args = sys.argv[1:]
 for i, arg in enumerate(args):
     match = re.search('--cargo-pkg-version="?([^"]*)"?', arg)
     if match:
