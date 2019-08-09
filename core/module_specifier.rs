@@ -46,6 +46,10 @@ impl fmt::Display for ModuleResolutionError {
 pub struct ModuleSpecifier(Url);
 
 impl ModuleSpecifier {
+  fn is_dummy_specifier(specifier: &str) -> bool {
+    specifier == "<unknown>"
+  }
+
   pub fn as_url(&self) -> &Url {
     &self.0
   }
@@ -80,7 +84,18 @@ impl ModuleSpecifier {
       // 3. Return the result of applying the URL parser to specifier with base
       //    URL as the base URL.
       Err(ParseError::RelativeUrlWithoutBase) => {
-        let base = Url::parse(base).map_err(InvalidBaseUrl)?;
+        let base = if ModuleSpecifier::is_dummy_specifier(base) {
+          // Handle <unknown> case, happening under e.g. repl.
+          // Use CWD for such case.
+
+          // Forcefully join base to current dir.
+          // Otherwise, later joining in Url would be interpreted in
+          // the parent directory (appending trailing slash does not work)
+          let path = current_dir().unwrap().join(base);
+          Url::from_file_path(path).unwrap()
+        } else {
+          Url::parse(base).map_err(InvalidBaseUrl)?
+        };
         base.join(&specifier).map_err(InvalidUrl)?
       }
 

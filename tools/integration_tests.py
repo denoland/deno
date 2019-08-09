@@ -60,6 +60,7 @@ class TestIntegrations(DenoTestCase):
         if not args:
             return
 
+        # TODO(kevinkassimo): better args parsing with quotation marks.
         args = args.split(" ")
         check_stderr = str2bool(test.get("check_stderr", "false"))
         stderr = subprocess.STDOUT if check_stderr else open(os.devnull, 'w')
