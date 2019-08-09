@@ -1,7 +1,16 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
 // Public deno module.
-export { noColor, pid, env, exit, isTTY, execPath, homeDir, hostname } from "./os";
+export {
+  noColor,
+  pid,
+  env,
+  exit,
+  isTTY,
+  execPath,
+  homeDir,
+  hostname
+} from "./os";
 export { chdir, cwd } from "./dir";
 export {
   File,

@@ -2226,8 +2226,14 @@ fn op_hostname(
   assert!(data.is_none());
   let cmd_id = base.cmd_id();
   let builder = &mut FlatBufferBuilder::new();
-  let hostname = builder.create_string(&sys::get_hostname().unwrap_or_default());
-  let inner = msg::HostnameRes::create(builder, &msg::HostnameResArgs { hostname: Some(hostname) });
+  let hostname =
+    builder.create_string(&sys::get_hostname().unwrap_or_default());
+  let inner = msg::HostnameRes::create(
+    builder,
+    &msg::HostnameResArgs {
+      hostname: Some(hostname),
+    },
+  );
   let response_buf = serialize_response(
     cmd_id,
     builder,

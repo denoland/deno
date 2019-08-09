@@ -17,12 +17,18 @@ pub fn get_hostname() -> Result<String, ErrBox> {
   unsafe {
     match libc::gethostname(result_ptr, buffer_len as libc::size_t) {
       0 => Ok(CStr::from_ptr(result_ptr).to_string_lossy().into_owned()),
-      _ => Err(ErrBox::from(Error::new(ErrorKind::Other, "gethostname syscall failed"))),
+      _ => Err(ErrBox::from(Error::new(
+        ErrorKind::Other,
+        "gethostname syscall failed",
+      ))),
     }
   }
 }
 
 #[cfg(windows)]
 pub fn get_hostname() -> Result<String, ErrBox> {
-  Err(ErrBox::from(Error::new(ErrorKind::Other, "not implemented")))
+  Err(ErrBox::from(Error::new(
+    ErrorKind::Other,
+    "not implemented",
+  )))
 }
