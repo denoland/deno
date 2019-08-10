@@ -26,6 +26,7 @@ impl DiskCache {
 
     let scheme = url.scheme();
     out.push(scheme);
+
     match scheme {
       "http" | "https" => {
         let host = url.host_str().unwrap();
@@ -43,7 +44,7 @@ impl DiskCache {
       }
       "file" => {
         let path = url.to_file_path().unwrap();
-
+        let path_ = path.clone();
         let mut path_components = path.components();
 
         if cfg!(target_os = "windows") {
@@ -64,9 +65,20 @@ impl DiskCache {
           }
         }
 
-        out.join(path_components.as_path());
+        // Must be relative, so strip forward slash
+        let mut remaining_components = path_components.as_path();
+        if let Ok(stripped) = remaining_components.strip_prefix("/") {
+          remaining_components = stripped;
+        };
+
+        out = out.join(remaining_components);
       }
-      _ => {}
+      scheme => {
+        unimplemented!(
+          "Don't know how to create cache name for scheme: {}",
+          scheme
+        );
+      }
     };
 
     out
