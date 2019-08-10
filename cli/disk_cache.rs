@@ -44,7 +44,6 @@ impl DiskCache {
       }
       "file" => {
         let path = url.to_file_path().unwrap();
-        let path_ = path.clone();
         let mut path_components = path.components();
 
         if cfg!(target_os = "windows") {
