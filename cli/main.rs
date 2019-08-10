@@ -144,7 +144,7 @@ fn print_cache_info(worker: Worker) {
   );
   println!(
     "{} {:?}",
-    ansi::bold("remote modules cache:".to_string()),
+    ansi::bold("Remote modules cache:".to_string()),
     state.dir.deps_cache.location
   );
   println!(
