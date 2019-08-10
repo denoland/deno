@@ -47,20 +47,19 @@ impl DiskCache {
         let mut path_components = path.components();
 
         if cfg!(target_os = "windows") {
-          match path_components.next().unwrap() {
-            Component::Prefix(prefix_component) => {
-              // Windows doesn't support ":" in filenames, so we need to extract disk prefix
-              // Example: file:///C:/deno/js/unit_test_runner.ts
-              // it should produce: file\c\deno\js\unit_test_runner.ts
-              match prefix_component.kind() {
-                Prefix::Disk(disk_byte) | Prefix::VerbatimDisk(disk_byte) => {
-                  let disk = (disk_byte as char).to_string();
-                  out.push(disk);
-                }
-                _ => {}
+          if let Component::Prefix(prefix_component) =
+            path_components.next().unwrap()
+          {
+            // Windows doesn't support ":" in filenames, so we need to extract disk prefix
+            // Example: file:///C:/deno/js/unit_test_runner.ts
+            // it should produce: file\c\deno\js\unit_test_runner.ts
+            match prefix_component.kind() {
+              Prefix::Disk(disk_byte) | Prefix::VerbatimDisk(disk_byte) => {
+                let disk = (disk_byte as char).to_string();
+                out.push(disk);
               }
+              _ => {}
             }
-            _ => {}
           }
         }
 
