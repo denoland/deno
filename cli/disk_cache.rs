@@ -41,6 +41,8 @@ impl DiskCache {
       _ => {}
     };
 
+    eprintln!("path segments: {:?}", url.path_segments().unwrap());
+
     for path_seg in url.path_segments().unwrap() {
       out.push(path_seg);
     }
@@ -92,7 +94,7 @@ mod tests {
   fn test_get_cache_filename() {
     let cache = DiskCache::new(&PathBuf::from("foo"));
 
-    let test_cases = [
+    let mut test_cases = [
       (
         "http://deno.land/std/http/file_server.ts",
         "http/deno.land/std/http/file_server.ts",
@@ -110,6 +112,15 @@ mod tests {
         "file/std/http/file_server.ts",
       ),
     ];
+
+    if cfg!(target_os = "windows") {
+      test_cases.push(
+        (
+          "file:///D:/a/1/s/format.ts",
+          "file/D/a/1/s/format.ts",
+        ),
+      )
+    }
 
     for test_case in &test_cases {
       assert_eq!(
