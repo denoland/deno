@@ -259,8 +259,17 @@ The declaration file could be saved and used for typing information.",
         ),
     ).subcommand(
       SubCommand::with_name("info")
-        .about("Show source file related info")
-        .long_about("Show source file related info.
+        .about("Show info about cache or info related to source file")
+        .long_about("Show info about cache or info related to source file.
+
+  deno info
+
+The following information is shown:
+
+  DENO_DIR:                  location of directory containing Deno-related files
+  Remote modules cache:      location of directory containing remote modules
+  TypeScript compiler cache: location of directory containing TS compiler output
+
 
   deno info https://deno.land/std@v0.11/http/file_server.ts
 
