@@ -58,7 +58,7 @@ impl DiskCache {
                 let disk = (disk_byte as char).to_string();
                 out.push(disk);
               }
-              _ => {}
+              _ => unreachable!(),
             }
           }
         }
