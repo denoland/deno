@@ -47,9 +47,10 @@ impl DiskCache {
         let mut path_components = path.components();
 
         if cfg!(target_os = "windows") {
-          if let Component::Prefix(prefix_component) =
-            path_components.next().unwrap()
+          if let Ok(Component::Prefix(prefix_component)) =
+            path_components.next()
           {
+            eprintln!("prefix component {:?}", prefix_component);
             // Windows doesn't support ":" in filenames, so we need to extract disk prefix
             // Example: file:///C:/deno/js/unit_test_runner.ts
             // it should produce: file\c\deno\js\unit_test_runner.ts
@@ -60,6 +61,8 @@ impl DiskCache {
               }
               _ => {}
             }
+          } else {
+            eprintln!("no prefix component {:?}", path);
           }
         }
 
