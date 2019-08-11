@@ -47,7 +47,7 @@ impl DiskCache {
         let mut path_components = path.components();
 
         if cfg!(target_os = "windows") {
-          if let Ok(Component::Prefix(prefix_component)) =
+          if let Some(Component::Prefix(prefix_component)) =
             path_components.next()
           {
             eprintln!("prefix component {:?}", prefix_component);
