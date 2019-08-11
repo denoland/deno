@@ -185,7 +185,7 @@ mod tests {
       test_cases.push((
         "file:///D:/std/http/file_server",
         "js",
-        "file/D/a/1/s/format.ts",
+        "file/D/a/1/s/file_server.js",
       ));
     } else {
       test_cases.push((
