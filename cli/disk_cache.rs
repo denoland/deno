@@ -43,7 +43,6 @@ impl DiskCache {
         }
       }
       "file" => {
-        eprintln!("url file path {:?} {:?}", url.to_file_path(), url);
         let path = url.to_file_path().unwrap();
         let mut path_components = path.components();
 
@@ -51,7 +50,6 @@ impl DiskCache {
           if let Some(Component::Prefix(prefix_component)) =
             path_components.next()
           {
-            eprintln!("prefix component {:?}", prefix_component);
             // Windows doesn't support ":" in filenames, so we need to extract disk prefix
             // Example: file:///C:/deno/js/unit_test_runner.ts
             // it should produce: file\c\deno\js\unit_test_runner.ts
@@ -62,8 +60,6 @@ impl DiskCache {
               }
               _ => {}
             }
-          } else {
-            eprintln!("no prefix component {:?}", path);
           }
         }
 
@@ -150,14 +146,15 @@ mod tests {
         "https://deno.land/std/http/file_server.ts",
         "https/deno.land/std/http/file_server.ts",
       ),
-      (
-        "file:///std/http/file_server.ts",
-        "file/std/http/file_server.ts",
-      ),
     ];
 
     if cfg!(target_os = "windows") {
-      test_cases.push(("file:///D:/a/1/s/format.ts", "file/D/a/1/s/format.ts"))
+      test_cases.push(("file:///D:/a/1/s/format.ts", "file/D/a/1/s/format.ts"));
+    } else {
+      test_cases.push((
+        "file:///std/http/file_server.ts",
+        "file/std/http/file_server.ts",
+      ));
     }
 
     for test_case in &test_cases {
@@ -171,16 +168,11 @@ mod tests {
   fn test_get_cache_filename_with_extension() {
     let cache = DiskCache::new(&PathBuf::from("foo"));
 
-    let test_cases = [
+    let mut test_cases = vec![
       (
         "http://deno.land/std/http/file_server.ts",
         "js",
         "http/deno.land/std/http/file_server.ts.js",
-      ),
-      (
-        "file:///std/http/file_server",
-        "js",
-        "file/std/http/file_server.js",
       ),
       (
         "http://deno.land/std/http/file_server.ts",
@@ -188,6 +180,20 @@ mod tests {
         "http/deno.land/std/http/file_server.ts.js.map",
       ),
     ];
+
+    if cfg!(target_os = "windows") {
+      test_cases.push((
+        "file:///D:/std/http/file_server",
+        "js",
+        "file/D/a/1/s/format.ts",
+      ));
+    } else {
+      test_cases.push((
+        "file:///std/http/file_server",
+        "js",
+        "file/std/http/file_server.js",
+      ));
+    }
 
     for test_case in &test_cases {
       assert_eq!(
