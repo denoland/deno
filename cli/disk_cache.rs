@@ -43,7 +43,7 @@ impl DiskCache {
         }
       }
       "file" => {
-        eprintln!("url file path {:?}", url.to_file_path());
+        eprintln!("url file path {:?} {:?}", url.to_file_path(), url);
         let path = url.to_file_path().unwrap();
         let mut path_components = path.components();
 
