@@ -259,8 +259,17 @@ The declaration file could be saved and used for typing information.",
         ),
     ).subcommand(
       SubCommand::with_name("info")
-        .about("Show source file related info")
-        .long_about("Show source file related info.
+        .about("Show info about cache or info related to source file")
+        .long_about("Show info about cache or info related to source file.
+
+  deno info
+
+The following information is shown:
+
+  DENO_DIR:                  location of directory containing Deno-related files
+  Remote modules cache:      location of directory containing remote modules
+  TypeScript compiler cache: location of directory containing TS compiler output
+
 
   deno info https://deno.land/std@v0.11/http/file_server.ts
 
@@ -271,7 +280,7 @@ The following information is shown:
   compiled: TypeScript only. shown local path of compiled source code.
   map:      TypeScript only. shown local path of source map.
   deps:     Dependency tree of the source file.",
-        ).arg(Arg::with_name("file").takes_value(true).required(true)),
+        ).arg(Arg::with_name("file").takes_value(true).required(false)),
     ).subcommand(
       SubCommand::with_name("eval")
         .about("Eval script")
@@ -748,8 +757,9 @@ pub fn flags_from_vec(
       DenoSubcommand::Run
     }
     ("info", Some(info_match)) => {
-      let file: &str = info_match.value_of("file").unwrap();
-      argv.extend(vec![file.to_string()]);
+      if info_match.is_present("file") {
+        argv.push(info_match.value_of("file").unwrap().to_string());
+      }
       DenoSubcommand::Info
     }
     ("install", Some(install_match)) => {
@@ -1119,6 +1129,11 @@ mod tests {
     assert_eq!(flags, DenoFlags::default());
     assert_eq!(subcommand, DenoSubcommand::Info);
     assert_eq!(argv, svec!["deno", "script.ts"]);
+
+    let (flags, subcommand, argv) = flags_from_vec(svec!["deno", "info"]);
+    assert_eq!(flags, DenoFlags::default());
+    assert_eq!(subcommand, DenoSubcommand::Info);
+    assert_eq!(argv, svec!["deno"]);
   }
 
   #[test]
