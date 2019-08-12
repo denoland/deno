@@ -722,6 +722,19 @@ mod tests {
   }
 
   #[test]
+  fn test_invalid_fetch_local_file() {
+    let (_temp_dir, fetcher) = test_setup();
+    let u = Url::parse("file:///etc/passwd").unwrap();
+    let r = fetcher.fetch_local_file(&u);
+    if cfg!(target_os = "windows") {
+      let err = r.unwrap_err();
+      assert_eq!(err.kind(), ErrorKind::InvalidPath);
+    } else {
+      assert!(r.is_ok());
+    }
+  }
+
+  #[test]
   fn test_get_source_code_1() {
     let (temp_dir, fetcher) = test_setup();
     // http_util::fetch_sync_string requires tokio
