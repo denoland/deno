@@ -112,7 +112,8 @@ fn add_run_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
       Arg::with_name("no-fetch")
         .long("no-fetch")
         .help("Do not download remote modules"),
-    ).arg(
+    )
+    .arg(
       Arg::with_name("debug")
         .long("debug")
         .takes_value(true)

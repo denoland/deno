@@ -180,7 +180,7 @@ fn main() {
       filename: "http_bench.js",
     });
 
-    let mut isolate = deno::Isolate::new(startup_data, false);
+    let mut isolate = deno::Isolate::new(startup_data, false, None);
     isolate.set_dispatch(dispatch);
 
     isolate.then(|r| {

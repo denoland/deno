@@ -28,7 +28,8 @@ impl Worker {
     startup_data: StartupData,
     state: ThreadSafeState,
   ) -> Worker {
-    let inspector = Inspector::new(state.flags.debug, state.flags.debug_address.clone());
+    let inspector =
+      Inspector::new(state.flags.debug, state.flags.debug_address.clone());
     let isolate = Arc::new(Mutex::new(deno::Isolate::new(
       startup_data,
       false,

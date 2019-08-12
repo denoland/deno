@@ -831,7 +831,7 @@ pub mod tests {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let dispatch_count_ = dispatch_count.clone();
 
-    let mut isolate = Isolate::new(StartupData::None, false);
+    let mut isolate = Isolate::new(StartupData::None, false, None);
     isolate.set_dispatch(move |op_id, control, _| -> CoreOp {
       println!("op_id {}", op_id);
       dispatch_count_.fetch_add(1, Ordering::Relaxed);
@@ -1035,7 +1035,7 @@ pub mod tests {
     run_in_task(|| {
       let count = Arc::new(AtomicUsize::new(0));
       let count_ = count.clone();
-      let mut isolate = Isolate::new(StartupData::None, false);
+      let mut isolate = Isolate::new(StartupData::None, false, None);
       isolate.set_dyn_import(move |_, specifier, referrer| {
         count_.fetch_add(1, Ordering::Relaxed);
         assert_eq!(specifier, "foo.js");
@@ -1070,7 +1070,7 @@ pub mod tests {
       let mod_b = Arc::new(Mutex::new(0));
       let mod_b2 = mod_b.clone();
 
-      let mut isolate = Isolate::new(StartupData::None, false);
+      let mut isolate = Isolate::new(StartupData::None, false, None);
       isolate.set_dyn_import(move |_id, specifier, referrer| {
         let c = count_.fetch_add(1, Ordering::Relaxed);
         match c {
@@ -1347,7 +1347,7 @@ pub mod tests {
   #[test]
   fn will_snapshot() {
     let snapshot = {
-      let mut isolate = Isolate::new(StartupData::None, true);
+      let mut isolate = Isolate::new(StartupData::None, true, None);
       js_check(isolate.execute("a.js", "a = 1 + 2"));
       let s = isolate.snapshot().unwrap();
       drop(isolate);
@@ -1355,7 +1355,7 @@ pub mod tests {
     };
 
     let startup_data = StartupData::LibdenoSnapshot(snapshot);
-    let mut isolate2 = Isolate::new(startup_data, false);
+    let mut isolate2 = Isolate::new(startup_data, false, None);
     js_check(isolate2.execute("check.js", "if (a != 3) throw Error('x')"));
   }
 }

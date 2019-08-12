@@ -58,15 +58,14 @@ impl Inspector {
       connected: self.connected.clone(),
     };
 
-    let websocket =
-      warp::path("websocket")
-        .and(warp::ws2())
-        .map(enclose!((state) move |ws: warp::ws::Ws2| {
-          ws.on_upgrade(enclose!((state) move |socket| {
-            let client = Client::new(state, socket);
-            client.on_connection()
-          }))
-        }));
+    let websocket = warp::path("websocket").and(warp::ws2()).map(
+      enclose!((state) move |ws: warp::ws::Ws2| {
+        ws.on_upgrade(enclose!((state) move |socket| {
+          let client = Client::new(state, socket);
+          client.on_connection()
+        }))
+      }),
+    );
 
     // todo(matt): Make this unique per run (https://github.com/denoland/deno/pull/2696#discussion_r309282566)
     let uuid = "97690037-256e-4e27-add0-915ca5421e2f";
@@ -92,10 +91,11 @@ impl Inspector {
       "webSocketDebuggerUrl": format!("ws://{}:{}/{}", ip, port, uuid)
     });
 
-    let json = warp::path("json").map(move || warp::reply::json(&response_json));
+    let json =
+      warp::path("json").map(move || warp::reply::json(&response_json));
 
-    let version =
-      path!("json" / "version").map(move || warp::reply::json(&response_version));
+    let version = path!("json" / "version")
+      .map(move || warp::reply::json(&response_version));
 
     let routes = websocket.or(version).or(json);
 
@@ -116,7 +116,12 @@ impl Inspector {
       &tokio_executor::DefaultExecutor::current(),
     ));
 
-    println!("Debugger listening on ws://{}:{}/{}", self.address.ip(), self.address.port(), "97690037-256e-4e27-add0-915ca5421e2f");
+    println!(
+      "Debugger listening on ws://{}:{}/{}",
+      self.address.ip(),
+      self.address.port(),
+      "97690037-256e-4e27-add0-915ca5421e2f"
+    );
 
     self
       .ready_rx
@@ -152,15 +157,11 @@ pub struct Client {
 }
 
 impl Client {
-
   fn new(state: ClientState, socket: WebSocket) -> Client {
-    Client {
-      state, socket
-    }
+    Client { state, socket }
   }
 
   fn on_connection(self) -> impl Future<Item = (), Error = ()> {
-
     let socket = self.socket;
     let sender = self.state.sender;
     let receiver = self.state.receiver;
@@ -178,7 +179,8 @@ impl Client {
           .send(msg_str.to_owned())
           .unwrap_or_else(|err| println!("Err: {}", err));
         Ok(())
-      }).map_err(|_| {});
+      })
+      .map_err(|_| {});
 
     // TODO(mtharrison): This is a mess. There must be a better way to do this - maybe use async channels or wrap them with a stream?
 
@@ -196,5 +198,4 @@ impl Client {
 
     fut_rx
   }
-
 }
