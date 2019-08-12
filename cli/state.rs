@@ -119,6 +119,7 @@ impl Loader for ThreadSafeState {
     specifier: &str,
     referrer: &str,
     is_main: bool,
+    is_dyn_import: bool,
   ) -> Result<ModuleSpecifier, ErrBox> {
     if !is_main {
       if let Some(import_map) = &self.import_map {
@@ -128,8 +129,14 @@ impl Loader for ThreadSafeState {
         }
       }
     }
+    let module_specifier =
+      ModuleSpecifier::resolve_import(specifier, referrer)?;
 
-    ModuleSpecifier::resolve_import(specifier, referrer).map_err(ErrBox::from)
+    if is_dyn_import {
+      self.check_dyn_import(&module_specifier)?;
+    }
+
+    Ok(module_specifier)
   }
 
   /// Given an absolute url, load its source code.
@@ -294,13 +301,37 @@ impl ThreadSafeState {
   }
 
   #[inline]
-  pub fn check_net_url(&self, url: url::Url) -> Result<(), ErrBox> {
+  pub fn check_net_url(&self, url: &url::Url) -> Result<(), ErrBox> {
     self.permissions.check_net_url(url)
   }
 
   #[inline]
   pub fn check_run(&self) -> Result<(), ErrBox> {
     self.permissions.check_run()
+  }
+
+  pub fn check_dyn_import(
+    self: &Self,
+    module_specifier: &ModuleSpecifier,
+  ) -> Result<(), ErrBox> {
+    let u = module_specifier.as_url();
+    match u.scheme() {
+      "http" | "https" => {
+        self.check_net_url(u)?;
+      }
+      "file" => {
+        let filename = u
+          .to_file_path()
+          .unwrap()
+          .into_os_string()
+          .into_string()
+          .unwrap();
+        self.check_read(&filename)?;
+      }
+      // TODO(ry) Handle error without gracefully.
+      _ => panic!("Unsupported scheme for dynamic import"),
+    }
+    Ok(())
   }
 
   #[cfg(test)]

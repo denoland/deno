@@ -39,14 +39,13 @@ impl Worker {
 
       let state_ = state.clone();
       i.set_dyn_import(move |id, specifier, referrer| {
-        let load_stream = RecursiveLoad::dynamic_import(
+        Box::new(RecursiveLoad::dynamic_import(
           id,
           specifier,
           referrer,
           state_.clone(),
           state_.modules.clone(),
-        );
-        Box::new(load_stream)
+        ))
       });
 
       let state_ = state.clone();
