@@ -147,7 +147,7 @@ void deno_mod_evaluate(Deno* d_, void* user_data, deno_mod id) {
   // TODO(mtharrison): Only pause if --break flag is set
   v8_inspector::V8InspectorSession* session =
       v8::InspectorClient::GetSession(context);
-  const uint8_t* reason = reinterpret_cast<uint8_t*>("Break on start");
+  const uint8_t* reason = reinterpret_cast<const uint8_t*>("Break on start");
   v8_inspector::StringView strview(reason, 14);
   session->schedulePauseOnNextStatement(strview, strview);
 
