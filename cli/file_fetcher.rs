@@ -722,16 +722,13 @@ mod tests {
   }
 
   #[test]
-  fn test_invalid_fetch_local_file() {
+  #[cfg(windows)]
+  fn test_fetch_local_file_windows_hang() {
     let (_temp_dir, fetcher) = test_setup();
     let u = Url::parse("file:///etc/passwd").unwrap();
     let r = fetcher.fetch_local_file(&u);
-    if cfg!(target_os = "windows") {
-      let err = r.unwrap_err();
-      assert_eq!(err.kind(), ErrorKind::InvalidPath);
-    } else {
-      assert!(r.is_ok());
-    }
+    let err = r.unwrap_err();
+    assert_eq!(err.kind(), ErrorKind::InvalidPath);
   }
 
   #[test]
