@@ -118,9 +118,9 @@ impl Loader for ThreadSafeState {
     &self,
     specifier: &str,
     referrer: &str,
-    is_root: bool,
+    is_main: bool,
   ) -> Result<ModuleSpecifier, ErrBox> {
-    if !is_root {
+    if !is_main {
       if let Some(import_map) = &self.import_map {
         let result = import_map.resolve(specifier, referrer)?;
         if result.is_some() {
@@ -138,12 +138,14 @@ impl Loader for ThreadSafeState {
     module_specifier: &ModuleSpecifier,
   ) -> Box<deno::SourceCodeInfoFuture> {
     self.metrics.resolve_count.fetch_add(1, Ordering::SeqCst);
+    let module_url_specified = module_specifier.to_string();
     Box::new(self.fetch_compiled_module(module_specifier).map(
       |compiled_module| deno::SourceCodeInfo {
         // Real module name, might be different from initial specifier
         // due to redirections.
         code: compiled_module.code,
-        module_name: compiled_module.name,
+        module_url_specified,
+        module_url_found: compiled_module.name,
       },
     ))
   }
