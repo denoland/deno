@@ -113,10 +113,17 @@ fn create_worker_and_state(
       s.status(status, msg).expect("shell problem");
     }
   });
-  // TODO(kevinkassimo): maybe make include_deno_namespace also configurable?
-  let state =
-    ThreadSafeState::new(flags, argv, ops::op_selector_std, progress, true)
-      .unwrap();
+  let state = {
+    // TODO(kevinkassimo): maybe make include_deno_namespace also configurable?
+    let maybe_state =
+      ThreadSafeState::new(flags, argv, ops::op_selector_std, progress, true);
+    if let Err(e) = maybe_state {
+      // Just exit, as this is only called on Deno startup.
+      eprintln!("Failed to start Deno: {}", &e);
+      std::process::exit(1);
+    }
+    maybe_state.unwrap()
+  };
   let worker = Worker::new(
     "main".to_string(),
     startup_data::deno_isolate_init(),
