@@ -213,7 +213,12 @@ impl SourceFileFetcher {
     self: &Self,
     module_url: &Url,
   ) -> Result<SourceFile, ErrBox> {
-    let filepath = module_url.to_file_path().expect("File URL expected");
+    let filepath = module_url.to_file_path().map_err(|()| {
+      ErrBox::from(DenoError::new(
+        ErrorKind::InvalidPath,
+        "File URL contains invalid path".to_owned(),
+      ))
+    })?;
 
     let source_code = match fs::read(filepath.clone()) {
       Ok(c) => c,
