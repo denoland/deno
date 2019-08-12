@@ -20,3 +20,11 @@ impl<'a> From<&'a state::Metrics> for MetricsResArgs {
     }
   }
 }
+
+pub fn as_string_vec<'a>(
+  offsets: flatbuffers::Vector<flatbuffers::ForwardsUOffset<&'a str>>,
+) -> Vec<String> {
+  let mut v: Vec<String> = vec![];
+  (0..offsets.len()).for_each(|i| v.push(offsets.get(i).to_owned()));
+  v
+}

@@ -156,3 +156,30 @@ pub fn resolve_from_cwd(path: &str) -> Result<(PathBuf, String), ErrBox> {
 
   Ok((normalized_path, path_string))
 }
+
+pub fn resolve_path(path: &str) -> Option<String> {
+  let result = resolve_from_cwd(path);
+  if result.is_err() {
+    eprintln!("Unrecognized path to whitelist: {}", path);
+    return None;
+  }
+  let mut full_path = result.unwrap().1;
+  // Remove trailing slash.
+  if full_path.len() > 1 && full_path.ends_with('/') {
+    full_path.pop();
+  }
+  Some(full_path)
+}
+
+/// Convert paths supplied into full path.
+/// If a path is invalid, we print out a warning
+/// and ignore this path in the output.
+pub fn resolve_paths(paths: Vec<String>) -> Vec<String> {
+  let mut out: Vec<String> = vec![];
+  for pathstr in paths.iter() {
+    if let Some(full_path) = resolve_path(pathstr) {
+      out.push(full_path);
+    }
+  }
+  out
+}

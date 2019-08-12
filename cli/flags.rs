@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::fs as deno_fs;
+use crate::fs::resolve_paths;
 use clap::App;
 use clap::AppSettings;
 use clap::Arg;
@@ -11,6 +11,9 @@ use log::Level;
 use std;
 use std::str;
 use std::str::FromStr;
+
+#[cfg(test)]
+use crate::fs as deno_fs;
 
 // Creates vector of strings, Vec<String>
 macro_rules! svec {
@@ -428,27 +431,6 @@ Example:
       // entry point script
       SubCommand::with_name("[SCRIPT]").about("Script to run"),
     )
-}
-
-/// Convert paths supplied into full path.
-/// If a path is invalid, we print out a warning
-/// and ignore this path in the output.
-fn resolve_paths(paths: Vec<String>) -> Vec<String> {
-  let mut out: Vec<String> = vec![];
-  for pathstr in paths.iter() {
-    let result = deno_fs::resolve_from_cwd(pathstr);
-    if result.is_err() {
-      eprintln!("Unrecognized path to whitelist: {}", pathstr);
-      continue;
-    }
-    let mut full_path = result.unwrap().1;
-    // Remove trailing slash.
-    if full_path.len() > 1 && full_path.ends_with('/') {
-      full_path.pop();
-    }
-    out.push(full_path);
-  }
-  out
 }
 
 /// Parse ArgMatches into internal DenoFlags structure.

@@ -1,0 +1,3 @@
+# Reuse previous script with different flags
+args: run --allow-read=. --allow-write=./tests/043_worker_perm/a,./tests/043_worker_perm/b --allow-net=127.0.0.1:4545,127.0.0.1:4546 --no-prompt tests/043_worker_perm.ts
+output: tests/043_worker_perm.ts.out

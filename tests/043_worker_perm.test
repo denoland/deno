@@ -1,0 +1,2 @@
+args: run -A --no-prompt tests/043_worker_perm.ts
+output: tests/043_worker_perm.ts.out

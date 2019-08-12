@@ -208,6 +208,14 @@ table CreateWorker {
   include_deno_namespace: bool;
   has_source_code: bool;
   source_code: string;
+
+  has_read_whitelist: bool;
+  has_write_whitelist: bool;
+  has_net_whitelist: bool;
+
+  read_whitelist: [string];
+  write_whitelist: [string];
+  net_whitelist: [string];
 }
 
 table CreateWorkerRes {

@@ -2093,6 +2093,10 @@ fn op_create_worker(
   let has_source_code = inner.has_source_code();
   let source_code = inner.source_code().unwrap();
 
+  let has_read_whitelist = inner.has_read_whitelist();
+  let has_write_whitelist = inner.has_write_whitelist();
+  let has_net_whitelist = inner.has_net_whitelist();
+
   let parent_state = state.clone();
 
   let mut module_specifier = ModuleSpecifier::resolve_url_or_path(specifier)?;
@@ -2107,8 +2111,104 @@ fn op_create_worker(
     }
   }
 
+  let mut child_flags = parent_state.flags.clone();
+  // TODO(kevinkassimo): Use macros to remove dup code after ops.rs split.
+  // Seems hard since nightly concat_idents! is effectively useless.
+  // Maybe we should try https://github.com/dtolnay/paste.
+  if has_read_whitelist {
+    let raw_whitelist = msg::as_string_vec(inner.read_whitelist().unwrap());
+    let mut whitelist: Vec<String> = vec![];
+    let mut has_allow_all = false;
+
+    for ent in raw_whitelist.iter() {
+      if ent == "*" {
+        has_allow_all = true;
+      } else if let Some(path) = deno_fs::resolve_path(ent) {
+        parent_state.check_read(&path)?;
+        whitelist.push(path);
+      }
+    }
+    whitelist = deno_fs::resolve_paths(whitelist);
+
+    if parent_state.flags.allow_read {
+      // If allowed all and has '*', no change.
+      // Otherwise, turn off allow_read flag and set whitelist.
+      if !has_allow_all {
+        child_flags.allow_read = false;
+        child_flags.read_whitelist = whitelist;
+      }
+    } else {
+      // If has "*", append parent whitelist to child whitelist.
+      if has_allow_all {
+        whitelist.extend(parent_state.flags.read_whitelist.iter().cloned());
+      }
+      child_flags.read_whitelist = whitelist;
+    }
+  }
+
+  if has_write_whitelist {
+    let raw_whitelist = msg::as_string_vec(inner.write_whitelist().unwrap());
+    let mut whitelist: Vec<String> = vec![];
+    let mut has_allow_all = false;
+
+    for ent in raw_whitelist.iter() {
+      if ent == "*" {
+        has_allow_all = true;
+      } else if let Some(path) = deno_fs::resolve_path(ent) {
+        parent_state.check_write(&path)?;
+        whitelist.push(path);
+      }
+    }
+    whitelist = deno_fs::resolve_paths(whitelist);
+
+    if parent_state.flags.allow_write {
+      // If allowed all and has '*', no change.
+      // Otherwise, turn off allow_write flag and set whitelist.
+      if !has_allow_all {
+        child_flags.allow_write = false;
+        child_flags.write_whitelist = whitelist;
+      }
+    } else {
+      // If has "*", append parent whitelist to child whitelist.
+      if has_allow_all {
+        whitelist.extend(parent_state.flags.write_whitelist.iter().cloned());
+      }
+      child_flags.write_whitelist = whitelist;
+    }
+  }
+
+  if has_net_whitelist {
+    let raw_whitelist = msg::as_string_vec(inner.net_whitelist().unwrap());
+    let mut whitelist: Vec<String> = vec![];
+    let mut has_allow_all = false;
+
+    for ent in raw_whitelist.iter() {
+      if ent == "*" {
+        has_allow_all = true;
+      } else {
+        parent_state.check_net(ent)?;
+        whitelist.push(ent.to_owned());
+      }
+    }
+
+    if parent_state.flags.allow_net {
+      // If allowed all and has '*', no change.
+      // Otherwise, turn off allow_net flag and set whitelist.
+      if !has_allow_all {
+        child_flags.allow_net = false;
+        child_flags.net_whitelist = whitelist;
+      }
+    } else {
+      // If has "*", append parent whitelist to child whitelist.
+      if has_allow_all {
+        whitelist.extend(parent_state.flags.net_whitelist.iter().cloned());
+      }
+      child_flags.net_whitelist = whitelist;
+    }
+  }
+
   let child_state = ThreadSafeState::new(
-    parent_state.flags.clone(),
+    child_flags,
     child_argv,
     op_selector_std,
     parent_state.progress.clone(),

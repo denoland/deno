@@ -22,22 +22,61 @@ export function decodeMessage(dataIntArray: Uint8Array): any {
   return JSON.parse(dataJson);
 }
 
+function createStringVector(
+  builder: flatbuffers.Builder,
+  arr: string[],
+  createFunc: (builder: flatbuffers.Builder, data: number[]) => number
+): number {
+  const offsetArr = arr.map((entry): number => builder.createString(entry));
+  return createFunc(builder, offsetArr);
+}
+
 function createWorker(
   specifier: string,
   includeDenoNamespace: boolean,
   hasSourceCode: boolean,
-  sourceCode: Uint8Array
+  sourceCode: Uint8Array,
+  readWhitelist?: string[],
+  writeWhitelist?: string[],
+  netWhitelist?: string[]
 ): number {
   const builder = flatbuffers.createBuilder();
   const specifier_ = builder.createString(specifier);
   const sourceCode_ = builder.createString(sourceCode);
+
+  const readWhitelistVector = createStringVector(
+    builder,
+    readWhitelist || [],
+    msg.CreateWorker.createReadWhitelistVector
+  );
+  const writeWhitelistVector = createStringVector(
+    builder,
+    writeWhitelist || [],
+    msg.CreateWorker.createWriteWhitelistVector
+  );
+  const netWhitelistVector = createStringVector(
+    builder,
+    netWhitelist || [],
+    msg.CreateWorker.createNetWhitelistVector
+  );
+
   const inner = msg.CreateWorker.createCreateWorker(
     builder,
     specifier_,
     includeDenoNamespace,
     hasSourceCode,
-    sourceCode_
+    sourceCode_,
+
+    // Not specified means inherit!
+    !!readWhitelist,
+    !!writeWhitelist,
+    !!netWhitelist,
+
+    readWhitelistVector,
+    writeWhitelistVector,
+    netWhitelistVector
   );
+
   const baseRes = sendSync(builder, msg.Any.CreateWorker, inner);
   assert(baseRes != null);
   assert(
@@ -170,9 +209,17 @@ export interface WorkerOptions {}
 /** Extended Deno Worker initialization options.
  * `noDenoNamespace` hides global `window.Deno` namespace for
  * spawned worker and nested workers spawned by it (default: false).
+ * `allowRead`, `allowWrite`, and `allowNet` sets access permissions
+ * for the worker. They take an array of paths similar to ones taken by
+ * the `--allow-*` CLI flags. `*` means allow any.
+ * If `allow*` are not specified, parent worker permissions would be
+ * inherited.
  */
 export interface DenoWorkerOptions extends WorkerOptions {
   noDenoNamespace?: boolean;
+  allowRead?: string[];
+  allowWrite?: string[];
+  allowNet?: string[];
 }
 
 export class WorkerImpl implements Worker {
@@ -209,7 +256,10 @@ export class WorkerImpl implements Worker {
       specifier,
       includeDenoNamespace,
       hasSourceCode,
-      sourceCode
+      sourceCode,
+      options ? options.allowRead : undefined,
+      options ? options.allowWrite : undefined,
+      options ? options.allowNet : undefined
     );
     this.run();
     this.isClosedPromise = hostGetWorkerClosed(this.rid);
