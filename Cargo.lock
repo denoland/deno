@@ -212,7 +212,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "futures 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -225,12 +225,12 @@ dependencies = [
 
 [[package]]
 name = "deno_cli"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "ansi_term 0.12.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "atty 0.2.13 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "deno 0.14.0",
+ "deno 0.15.0",
  "dirs 2.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "flatbuffers 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
