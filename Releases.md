@@ -6,6 +6,19 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.15.0 / 2019.08.13
+
+In deno:
+
+- feat: print cache location when no arg in deno info (#2752)
+- fix: Dynamic import should respect permissions (#2764)
+- fix: Propagate Url::to_file_path() errors instead of panicking (#2771)
+- fix: cache paths on Windows are broken (#2760)
+- fix: dynamic import base path problem for REPL and eval (#2757)
+- fix: permission requirements for Deno.rename() and Deno.link() (#2737)
+
+In deno_std: None
+
 ### v0.14.0 / 2019.08.09
 
 In deno:
