@@ -71,7 +71,7 @@ enum State {
 pub struct RecursiveLoad<L: Loader> {
   kind: Kind,
   state: State,
-  pub loader: L,
+  loader: L,
   modules: Arc<Mutex<Modules>>,
   pending: FuturesUnordered<Box<SourceCodeInfoFuture>>,
   is_pending: HashSet<ModuleSpecifier>,
