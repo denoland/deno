@@ -1,0 +1,6 @@
+{
+  "compilerOptions": {
+    // this is not a valid JSON, but TSC adds comments anyway
+    "checkJs": true
+  }
+}

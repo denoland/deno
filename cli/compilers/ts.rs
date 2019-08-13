@@ -1,13 +1,11 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::compilers::CompiledModule;
 use crate::compilers::CompiledModuleFuture;
-use crate::deno_error::DenoError;
 use crate::diagnostics::Diagnostic;
 use crate::disk_cache::DiskCache;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::msg;
-use crate::msg::ErrorKind;
 use crate::resources;
 use crate::source_maps::SourceMapGetter;
 use crate::startup_data;
@@ -19,6 +17,7 @@ use deno::ErrBox;
 use deno::ModuleSpecifier;
 use futures::Future;
 use futures::Stream;
+use regex::Regex;
 use ring;
 use std::collections::HashSet;
 use std::fmt::Write;
@@ -28,6 +27,11 @@ use std::str;
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 use url::Url;
+
+lazy_static! {
+  static ref CHECK_JS_RE: Regex =
+    Regex::new(r#""checkJs"\s*?:\s*?true"#).unwrap();
+}
 
 /// Struct which represents the state of the compiler
 /// configuration where the first is canonical name for the configuration file,
@@ -83,23 +87,15 @@ impl CompilerConfig {
     Ok(ts_config)
   }
 
-  pub fn json(self: &Self) -> Result<serde_json::Value, ErrBox> {
+  pub fn string(&self) -> Result<String, ErrBox> {
     if self.content.is_none() {
-      return Ok(serde_json::Value::Null);
+      return Ok("".to_string());
     }
 
     let bytes = self.content.clone().unwrap();
-    let json_string = std::str::from_utf8(&bytes)?;
-    match serde_json::from_str(&json_string) {
-      Ok(json_map) => Ok(json_map),
-      Err(_) => Err(
-        DenoError::new(
-          ErrorKind::InvalidInput,
-          "Compiler config is not a valid JSON".to_string(),
-        )
-        .into(),
-      ),
-    }
+    std::str::from_utf8(&bytes)
+      .map_err(ErrBox::from)
+      .map(move |s| s.to_owned())
   }
 }
 
@@ -217,14 +213,8 @@ impl TsCompiler {
 
     // If `checkJs` is set to true in `compilerOptions` then we're gonna be compiling
     // JavaScript files as well
-    let config_json = config.json()?;
-    let compile_js = match &config_json.get("compilerOptions") {
-      Some(serde_json::Value::Object(m)) => match m.get("checkJs") {
-        Some(serde_json::Value::Bool(bool_)) => *bool_,
-        _ => false,
-      },
-      _ => false,
-    };
+    let config_str = config.string()?;
+    let compile_js = CHECK_JS_RE.is_match(&config_str);
 
     let compiler = Self {
       file_fetcher,
