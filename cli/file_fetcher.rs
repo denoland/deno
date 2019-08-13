@@ -722,10 +722,17 @@ mod tests {
   }
 
   #[test]
-  fn test_fetch_local_file_panic() {
+  fn test_fetch_local_file_no_panic() {
     let (_temp_dir, fetcher) = test_setup();
-    let u = Url::parse("file:///etc/passwd").unwrap();
-    let _ = fetcher.fetch_local_file(&u);
+    if cfg!(windows) {
+      // Should fail: missing drive letter.
+      let u = Url::parse("file:///etc/passwd").unwrap();
+      fetcher.fetch_local_file(&u).unwrap_err();
+    } else {
+      // Should fail: local network paths are not supported on unix.
+      let u = Url::parse("file://server/etc/passwd").unwrap();
+      fetcher.fetch_local_file(&u).unwrap_err();
+    }
   }
 
   #[test]
