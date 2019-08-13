@@ -1,3 +1,5 @@
+#![allow(clippy::mutex_atomic)]
+
 use crate::version::DENO;
 use futures::sync::oneshot::{spawn, SpawnHandle};
 use futures::{Future, Sink, Stream};
@@ -117,10 +119,9 @@ impl Inspector {
     ));
 
     println!(
-      "Debugger listening on ws://{}:{}/{}",
+      "Debugger listening on ws://{}:{}/97690037-256e-4e27-add0-915ca5421e2f",
       self.address.ip(),
       self.address.port(),
-      "97690037-256e-4e27-add0-915ca5421e2f"
     );
 
     self
@@ -137,7 +138,7 @@ impl Inspector {
 
 impl Drop for Inspector {
   fn drop(&mut self) {
-    if *self.connected.lock().unwrap() == true {
+    if *self.connected.lock().unwrap() {
       println!("Waiting for debugger to disconnect...");
     }
   }
