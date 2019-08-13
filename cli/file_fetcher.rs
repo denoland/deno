@@ -213,7 +213,12 @@ impl SourceFileFetcher {
     self: &Self,
     module_url: &Url,
   ) -> Result<SourceFile, ErrBox> {
-    let filepath = module_url.to_file_path().expect("File URL expected");
+    let filepath = module_url.to_file_path().map_err(|()| {
+      ErrBox::from(DenoError::new(
+        ErrorKind::InvalidPath,
+        "File URL contains invalid path".to_owned(),
+      ))
+    })?;
 
     let source_code = match fs::read(filepath.clone()) {
       Ok(c) => c,
@@ -714,6 +719,20 @@ mod tests {
       headers2.redirect_to.clone().unwrap(),
       "http://deno.land/a.js"
     );
+  }
+
+  #[test]
+  fn test_fetch_local_file_no_panic() {
+    let (_temp_dir, fetcher) = test_setup();
+    if cfg!(windows) {
+      // Should fail: missing drive letter.
+      let u = Url::parse("file:///etc/passwd").unwrap();
+      fetcher.fetch_local_file(&u).unwrap_err();
+    } else {
+      // Should fail: local network paths are not supported on unix.
+      let u = Url::parse("file://server/etc/passwd").unwrap();
+      fetcher.fetch_local_file(&u).unwrap_err();
+    }
   }
 
   #[test]
