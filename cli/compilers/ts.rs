@@ -732,7 +732,7 @@ mod tests {
     let temp_dir = TempDir::new().expect("tempdir fail");
     let temp_dir_path = temp_dir.path();
 
-    let test_cases = [
+    let test_cases = vec![
       // valid JSON
       (
         r#"{ "compilerOptions": { "checkJs": true } } "#,
@@ -758,10 +758,10 @@ mod tests {
     let path = temp_dir_path.join("tsconfig.json");
     let path_str = path.to_str().unwrap().to_string();
 
-    for test_case in &test_cases {
-      deno_fs::write_file(&path, test_case.0.as_bytes(), 0o666).unwrap();
+    for (json_str, expected) in test_cases {
+      deno_fs::write_file(&path, json_str.as_bytes(), 0o666).unwrap();
       let config = CompilerConfig::load(Some(path_str.clone())).unwrap();
-      assert_eq!(config.compile_js, test_case.1);
+      assert_eq!(config.compile_js, expected);
     }
   }
 }
