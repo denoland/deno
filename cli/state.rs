@@ -4,6 +4,7 @@ use crate::compilers::JsCompiler;
 use crate::compilers::JsonCompiler;
 use crate::compilers::TsCompiler;
 use crate::deno_dir;
+use crate::deno_error::permission_denied;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags;
 use crate::global_timer::GlobalTimer;
@@ -318,6 +319,7 @@ impl ThreadSafeState {
     match u.scheme() {
       "http" | "https" => {
         self.check_net_url(u)?;
+        Ok(())
       }
       "file" => {
         let filename = u
@@ -327,11 +329,10 @@ impl ThreadSafeState {
           .into_string()
           .unwrap();
         self.check_read(&filename)?;
+        Ok(())
       }
-      // TODO(ry) Handle error without gracefully.
-      _ => panic!("Unsupported scheme for dynamic import"),
+      _ => Err(permission_denied()),
     }
-    Ok(())
   }
 
   #[cfg(test)]
