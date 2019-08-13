@@ -274,7 +274,7 @@ impl DenoPermissions {
     }
   }
 
-  pub fn check_net_url(&self, url: url::Url) -> Result<(), ErrBox> {
+  pub fn check_net_url(&self, url: &url::Url) -> Result<(), ErrBox> {
     let msg = &format!("network access to \"{}\"", url);
     match self.allow_net.get_state() {
       PermissionAccessorState::Allow => {
@@ -627,7 +627,7 @@ mod tests {
 
     for (url_str, is_ok) in url_tests.iter() {
       let u = url::Url::parse(url_str).unwrap();
-      assert_eq!(*is_ok, perms.check_net_url(u).is_ok());
+      assert_eq!(*is_ok, perms.check_net_url(&u).is_ok());
     }
 
     for (domain, is_ok) in domain_tests.iter() {

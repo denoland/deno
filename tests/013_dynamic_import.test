@@ -1,2 +1,2 @@
-args: tests/013_dynamic_import.ts --reload
+args: tests/013_dynamic_import.ts --reload --allow-read
 output: tests/013_dynamic_import.ts.out

@@ -40,6 +40,7 @@ pub trait Loader: Send + Sync {
     specifier: &str,
     referrer: &str,
     is_main: bool,
+    is_dyn_import: bool,
   ) -> Result<ModuleSpecifier, ErrBox>;
 
   /// Given ModuleSpecifier, load its source code.
@@ -125,12 +126,15 @@ impl<L: Loader> RecursiveLoad<L> {
 
   fn add_root(&mut self) -> Result<(), ErrBox> {
     let module_specifier = match self.state {
-      State::ResolveMain(ref specifier) => {
-        self.loader.resolve(specifier, ".", true)?
-      }
-      State::ResolveImport(ref specifier, ref referrer) => {
-        self.loader.resolve(specifier, referrer, false)?
-      }
+      State::ResolveMain(ref specifier) => self.loader.resolve(
+        specifier,
+        ".",
+        true,
+        self.dyn_import_id().is_some(),
+      )?,
+      State::ResolveImport(ref specifier, ref referrer) => self
+        .loader
+        .resolve(specifier, referrer, false, self.dyn_import_id().is_some())?,
       _ => unreachable!(),
     };
 
@@ -160,7 +164,12 @@ impl<L: Loader> RecursiveLoad<L> {
     referrer: &str,
     parent_id: deno_mod,
   ) -> Result<(), ErrBox> {
-    let module_specifier = self.loader.resolve(specifier, referrer, false)?;
+    let module_specifier = self.loader.resolve(
+      specifier,
+      referrer,
+      false,
+      self.dyn_import_id().is_some(),
+    )?;
     let module_name = module_specifier.as_str();
 
     let mut modules = self.modules.lock().unwrap();
@@ -277,7 +286,12 @@ impl<L: Loader> ImportStream for RecursiveLoad<L> {
         |specifier: &str, referrer_id: deno_mod| -> deno_mod {
           let modules = self.modules.lock().unwrap();
           let referrer = modules.get_name(referrer_id).unwrap();
-          match self.loader.resolve(specifier, &referrer, is_main) {
+          match self.loader.resolve(
+            specifier,
+            &referrer,
+            is_main,
+            self.dyn_import_id().is_some(),
+          ) {
             Ok(specifier) => modules.get_id(specifier.as_str()).unwrap_or(0),
             // We should have already resolved and Ready this module, so
             // resolve() will not fail this time.
@@ -675,6 +689,7 @@ mod tests {
       specifier: &str,
       referrer: &str,
       _is_root: bool,
+      _is_dyn_import: bool,
     ) -> Result<ModuleSpecifier, ErrBox> {
       let referrer = if referrer == "." {
         "file:///"
