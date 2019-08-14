@@ -77,7 +77,6 @@ function recordFromBuf(buf) {
 }
 
 function handleAsyncMsgFromRust(opId, buf) {
-  // println(`handleAsyncMsgFromRust op ${opId} len ${buf.length}`);
   const record = recordFromBuf(buf);
   const { promiseId, result } = record;
   const p = promiseMap.get(promiseId);
@@ -125,10 +124,6 @@ async function serve(rid) {
     }
   }
   close(rid);
-}
-
-function println(x) {
-  Deno.core.print(x + "\n");
 }
 
 async function main() {
