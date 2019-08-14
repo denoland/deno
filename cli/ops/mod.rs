@@ -12,7 +12,8 @@ use hyper::rt::Future;
 use tokio_threadpool;
 
 mod dispatch_minimal;
-use dispatch_minimal::{dispatch_minimal, parse_min_record};
+mod io;
+
 mod compiler;
 use compiler::{op_cache, op_fetch_source_file};
 mod errors;
@@ -71,6 +72,8 @@ fn empty_buf() -> Buf {
 }
 
 const FLATBUFFER_OP_ID: OpId = 44;
+const OP_READ: OpId = 1;
+const OP_WRITE: OpId = 2;
 
 pub fn dispatch_all(
   state: &ThreadSafeState,
@@ -81,11 +84,18 @@ pub fn dispatch_all(
 ) -> CoreOp {
   let bytes_sent_control = control.len();
   let bytes_sent_zero_copy = zero_copy.as_ref().map(|b| b.len()).unwrap_or(0);
-  let op = if op_id != FLATBUFFER_OP_ID {
-    let min_record = parse_min_record(control).unwrap();
-    dispatch_minimal(state, op_id, min_record, zero_copy)
-  } else {
-    dispatch_all_legacy(state, control, zero_copy, op_selector)
+
+  let op = match op_id {
+    OP_READ => {
+      dispatch_minimal::dispatch(io::op_read, state, control, zero_copy)
+    }
+    OP_WRITE => {
+      dispatch_minimal::dispatch(io::op_write, state, control, zero_copy)
+    }
+    FLATBUFFER_OP_ID => {
+      dispatch_all_legacy(state, control, zero_copy, op_selector)
+    }
+    _ => panic!("bad op_id"),
   };
   state.metrics_op_dispatched(bytes_sent_control, bytes_sent_zero_copy);
   op

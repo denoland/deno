@@ -16,8 +16,7 @@ import * as msg from "gen/cli/msg_generated";
 import { assert } from "./util";
 import * as flatbuffers from "./flatbuffers";
 
-// Warning: these constants defined in two places. Here and in
-// dispatch_minimal.rs
+// Warning: These constants defined in two places. Here and in cli/ops/mod.rs.
 const OP_READ = 1;
 const OP_WRITE = 2;
 
