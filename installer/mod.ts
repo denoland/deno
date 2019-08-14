@@ -227,7 +227,7 @@ export async function install(
 
   // ensure script that is being installed exists
   const ps = run({
-    args: [Deno.execPath, "fetch", "--reload", moduleUrl],
+    args: [Deno.execPath(), "fetch", "--reload", moduleUrl],
     stdout: "inherit",
     stderr: "inherit"
   });

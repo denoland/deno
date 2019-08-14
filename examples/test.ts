@@ -16,7 +16,7 @@ test(function t2(): void {
 test(async function catSmoke(): Promise<void> {
   const p = run({
     args: [
-      Deno.execPath,
+      Deno.execPath(),
       "run",
       "--allow-read",
       "examples/cat.ts",

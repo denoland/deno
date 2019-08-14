@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --allow-run --allow-write --allow-read
+#!/usr/bin/env -S deno run --allow-run --allow-write --allow-read --allow-env
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 const { exit, args, execPath } = Deno;
 import { parse } from "./flags/mod.ts";
@@ -6,7 +6,7 @@ import { xrun } from "./prettier/util.ts";
 
 async function main(opts): Promise<void> {
   const args = [
-    execPath,
+    execPath(),
     "run",
     "--allow-write",
     "--allow-read",
@@ -23,6 +23,8 @@ async function main(opts): Promise<void> {
   if (opts.check) {
     args.push("--check");
   }
+
+  args.push(".");
 
   exit((await xrun({ args }).status()).code);
 }
