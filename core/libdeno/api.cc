@@ -164,9 +164,12 @@ void deno_respond(Deno* d_, void* user_data, deno_op_id op_id, deno_buf buf) {
   if (d->current_args_ != nullptr) {
     // Synchronous response.
     // Note op_id is not passed back in the case of synchronous response.
-    if (buf.data_ptr != nullptr) {
+    if (buf.data_ptr != nullptr && buf.data_len > 0) {
       auto ab = deno::ImportBuf(d, buf);
       d->current_args_->GetReturnValue().Set(ab);
+      printf("deno_respond non-optimal sync %d\n", op_id);
+    } else {
+      // printf("deno_respond optimal sync %d\n", op_id);
     }
     d->current_args_ = nullptr;
     return;
