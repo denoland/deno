@@ -143,7 +143,7 @@ test(function consoleTestStringifyCircular(): void {
   assertEquals(stringify(JSON), "{}");
   assertEquals(
     stringify(console),
-    "{ printFunc, log, debug, info, dir, warn, error, assert, count, countReset, table, time, timeLog, timeEnd, group, groupCollapsed, groupEnd, clear, indentLevel, collapsedAt }"
+    "{ printFunc, log, debug, info, dir, warn, error, assert, count, countReset, table, time, timeLog, timeEnd, group, groupCollapsed, groupEnd, clear, trace, indentLevel, collapsedAt }"
   );
   // test inspect is working the same
   assertEquals(inspect(nestedObj), nestedObjExpected);
@@ -649,6 +649,16 @@ test(function consoleLogShouldNotThrowError(): void {
     (console, out): void => {
       console.log(new Error("foo"));
       assertEquals(out.toString().includes("Uncaught"), false);
+    }
+  );
+});
+
+// console.trace test
+test(function consoleTrace(): void {
+  mockConsole(
+    (console, _out, err): void => {
+      console.trace("%s", "custom message");
+      assert(err.toString().includes("Trace: custom message"));
     }
   );
 });

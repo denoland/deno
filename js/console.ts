@@ -12,6 +12,7 @@ type ConsoleOptions = Partial<{
   colors: boolean;
   indentLevel: number;
   collapsedAt: number | null;
+  noTrailingNewline: boolean;
 }>;
 
 // Default depth of logging nested objects
@@ -469,7 +470,7 @@ export function stringifyArgs(
     a++;
   }
 
-  const { collapsedAt, indentLevel } = options;
+  const { collapsedAt, indentLevel, noTrailingNewline } = options;
   const isCollapsed =
     collapsedAt != null && indentLevel != null && collapsedAt <= indentLevel;
   if (!isCollapsed) {
@@ -480,7 +481,9 @@ export function stringifyArgs(
       }
       str = groupIndent + str;
     }
-    str += "\n";
+    if (!noTrailingNewline) {
+      str += "\n";
+    }
   }
 
   return str;
@@ -753,6 +756,21 @@ export class Console {
     this.indentLevel = 0;
     cursorTo(stdout, 0, 0);
     clearScreenDown(stdout);
+  };
+
+  trace = (...args: unknown[]): void => {
+    const message = stringifyArgs(args, {
+      indentLevel: this.indentLevel,
+      collapsedAt: this.collapsedAt,
+      noTrailingNewline: true
+    });
+    const err = {
+      name: "Trace",
+      message
+    };
+    // @ts-ignore
+    Error.captureStackTrace(err, this.trace);
+    this.error((err as Error).stack);
   };
 
   static [Symbol.hasInstance](instance: Console): boolean {
