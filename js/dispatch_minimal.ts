@@ -52,6 +52,19 @@ export function handleAsyncMsgFromRustMinimal(
   promise!.resolve(result);
 }
 
+export function sendSyncMinimal(
+  opId: number,
+  arg: number,
+  zeroCopy: Uint8Array
+): number {
+  scratch32[0] = 0; // promiseId 0 indicates sync
+  scratch32[1] = arg;
+  const res = core.dispatch(opId, scratchBytes, zeroCopy)!;
+  const res32 = new Int32Array(res.buffer, res.byteOffset, 3);
+  const resRecord = recordFromBufMinimal(opId, res32);
+  return resRecord.result;
+}
+
 export function sendAsyncMinimal(
   opId: number,
   arg: number,

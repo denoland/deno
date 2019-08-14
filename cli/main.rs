@@ -21,7 +21,6 @@ pub mod deno_dir;
 pub mod deno_error;
 pub mod diagnostics;
 mod disk_cache;
-mod dispatch_minimal;
 mod file_fetcher;
 pub mod flags;
 pub mod fmt_errors;
