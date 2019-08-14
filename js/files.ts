@@ -11,11 +11,12 @@ import {
   SyncSeeker
 } from "./io";
 import * as dispatch from "./dispatch";
-import { sendAsyncMinimal } from "./dispatch_minimal";
+import { sendAsyncMinimal, sendSyncMinimal } from "./dispatch_minimal";
 import * as msg from "gen/cli/msg_generated";
 import { assert } from "./util";
 import * as flatbuffers from "./flatbuffers";
 
+// Warning: These constants defined in two places. Here and in cli/ops/mod.rs.
 const OP_READ = 1;
 const OP_WRITE = 2;
 
@@ -62,26 +63,6 @@ export async function open(
   return resOpen(await dispatch.sendAsync(...reqOpen(filename, mode)));
 }
 
-function reqRead(
-  rid: number,
-  p: Uint8Array
-): [flatbuffers.Builder, msg.Any, flatbuffers.Offset, Uint8Array] {
-  const builder = flatbuffers.createBuilder();
-  const inner = msg.Read.createRead(builder, rid);
-  return [builder, msg.Any.Read, inner, p];
-}
-
-function resRead(baseRes: null | msg.Base): number | EOF {
-  assert(baseRes != null);
-  assert(msg.Any.ReadRes === baseRes!.innerType());
-  const res = new msg.ReadRes();
-  assert(baseRes!.inner(res) != null);
-  if (res.eof()) {
-    return EOF;
-  }
-  return res.nread();
-}
-
 /** Read synchronously from a file ID into an array buffer.
  *
  * Return `number | EOF` for the operation.
@@ -93,7 +74,14 @@ function resRead(baseRes: null | msg.Base): number | EOF {
  *
  */
 export function readSync(rid: number, p: Uint8Array): number | EOF {
-  return resRead(dispatch.sendSync(...reqRead(rid, p)));
+  const nread = sendSyncMinimal(OP_READ, rid, p);
+  if (nread < 0) {
+    throw new Error("read error");
+  } else if (nread == 0) {
+    return EOF;
+  } else {
+    return nread;
+  }
 }
 
 /** Read from a file ID into an array buffer.
@@ -118,23 +106,6 @@ export async function read(rid: number, p: Uint8Array): Promise<number | EOF> {
   }
 }
 
-function reqWrite(
-  rid: number,
-  p: Uint8Array
-): [flatbuffers.Builder, msg.Any, flatbuffers.Offset, Uint8Array] {
-  const builder = flatbuffers.createBuilder();
-  const inner = msg.Write.createWrite(builder, rid);
-  return [builder, msg.Any.Write, inner, p];
-}
-
-function resWrite(baseRes: null | msg.Base): number {
-  assert(baseRes != null);
-  assert(msg.Any.WriteRes === baseRes!.innerType());
-  const res = new msg.WriteRes();
-  assert(baseRes!.inner(res) != null);
-  return res.nbyte();
-}
-
 /** Write synchronously to the file ID the contents of the array buffer.
  *
  * Resolves with the number of bytes written.
@@ -145,7 +116,12 @@ function resWrite(baseRes: null | msg.Base): number {
  *       Deno.writeSync(file.rid, data);
  */
 export function writeSync(rid: number, p: Uint8Array): number {
-  return resWrite(dispatch.sendSync(...reqWrite(rid, p)));
+  let result = sendSyncMinimal(OP_WRITE, rid, p);
+  if (result < 0) {
+    throw new Error("write error");
+  } else {
+    return result;
+  }
 }
 
 /** Write to the file ID the contents of the array buffer.
