@@ -32,9 +32,13 @@ function flatbufferRecordFromBuf(buf: Uint8Array): FlatbufferRecord {
 }
 
 export function handleAsyncMsgFromRust(opId: number, ui8: Uint8Array): void {
-  const buf32 = new Int32Array(ui8.buffer, ui8.byteOffset, ui8.byteLength / 4);
   if (opId !== FLATBUFFER_OP_ID) {
     // Fast and new
+    const buf32 = new Int32Array(
+      ui8.buffer,
+      ui8.byteOffset,
+      ui8.byteLength / 4
+    );
     const recordMin = recordFromBufMinimal(opId, buf32);
     handleAsyncMsgFromRustMinimal(ui8, recordMin);
   } else {
