@@ -33,7 +33,7 @@ pub fn op_fetch(
   let req = msg_util::deserialize_request(header, body)?;
 
   let url_ = url::Url::parse(url).map_err(ErrBox::from)?;
-  state.check_net_url(url_)?;
+  state.check_net_url(&url_)?;
 
   let client = http_util::get_client();
 
