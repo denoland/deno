@@ -10,6 +10,7 @@ use crate::js_errors::CoreJSError;
 use crate::js_errors::V8Exception;
 use crate::libdeno;
 use crate::libdeno::deno_buf;
+use crate::libdeno::deno_buf_mut;
 use crate::libdeno::deno_dyn_import_id;
 use crate::libdeno::deno_mod;
 use crate::libdeno::deno_pinned_buf;
@@ -31,6 +32,7 @@ use libc::c_void;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::fmt;
+use std::ops::DerefMut;
 use std::ptr::null;
 use std::sync::{Arc, Mutex, Once};
 
@@ -53,7 +55,7 @@ pub type CoreOp = Op<CoreError>;
 pub type OpResult<E> = Result<Op<E>, E>;
 
 /// Args: op_id, control_buf, zero_copy_buf
-type CoreDispatchFn = dyn Fn(OpId, &[u8], Option<PinnedBuf>) -> CoreOp;
+type CoreDispatchFn = dyn Fn(OpId, &mut [u8], Option<PinnedBuf>) -> CoreOp;
 
 /// Stores a script used to initalize a Isolate
 pub struct Script<'a> {
@@ -252,7 +254,7 @@ impl Isolate {
   /// corresponds to the second argument of Deno.core.dispatch().
   pub fn set_dispatch<F>(&mut self, f: F)
   where
-    F: Fn(OpId, &[u8], Option<PinnedBuf>) -> CoreOp + Send + Sync + 'static,
+    F: Fn(OpId, &mut [u8], Option<PinnedBuf>) -> CoreOp + Send + Sync + 'static,
   {
     self.dispatch = Some(Arc::new(f));
   }
@@ -323,13 +325,17 @@ impl Isolate {
   extern "C" fn pre_dispatch(
     user_data: *mut c_void,
     op_id: OpId,
-    control_buf: deno_buf,
+    mut control_buf: deno_buf_mut,
     zero_copy_buf: deno_pinned_buf,
   ) {
     let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
 
     let op = if let Some(ref f) = isolate.dispatch {
-      f(op_id, control_buf.as_ref(), PinnedBuf::new(zero_copy_buf))
+      f(
+        op_id,
+        control_buf.deref_mut(),
+        PinnedBuf::new(zero_copy_buf),
+      )
     } else {
       panic!("isolate.dispatch not set")
     };

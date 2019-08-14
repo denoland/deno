@@ -108,10 +108,10 @@ pub type HttpBenchOp = dyn Future<Item = i32, Error = std::io::Error> + Send;
 
 fn dispatch(
   op_id: OpId,
-  control: &[u8],
+  control: &mut [u8],
   zero_copy_buf: Option<PinnedBuf>,
 ) -> CoreOp {
-  let record = Record::from(control);
+  let record = Record::from(control as &[u8]);
   let is_sync = record.promise_id == 0;
   let http_bench_op = match op_id {
     OP_LISTEN => {
