@@ -86,9 +86,24 @@ function filter(name: string): boolean {
   }
 }
 
-export function test(t: TestDefinition | TestFunction): void {
-  const fn: TestFunction = typeof t === "function" ? t : t.fn;
-  const name: string = t.name;
+export function test(t: TestDefinition): void;
+export function test(fn: TestFunction): void;
+export function test(name: string, fn: TestFunction): void;
+export function test(
+  t: string | TestDefinition | TestFunction,
+  fn?: TestFunction
+): void {
+  let name: string;
+
+  if (typeof t === "string") {
+    if (!fn) {
+      throw new Error("Missing test function");
+    }
+    name = t;
+  } else {
+    fn = typeof t === "function" ? t : t.fn;
+    name = t.name;
+  }
 
   if (!name) {
     throw new Error("Test function may not be anonymous");
