@@ -4,10 +4,10 @@ import { test } from "../testing/mod.ts";
 import {
   assert,
   AssertionError,
+  assertEquals,
   assertStrictEq,
   assertThrowsAsync
 } from "../testing/asserts.ts";
-import { assertEquals } from "../testing/pretty.ts";
 import { evaluate, instantiate, load, ModuleMetaData } from "./utils.ts";
 
 /* eslint-disable @typescript-eslint/no-namespace */
