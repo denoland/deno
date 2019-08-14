@@ -1,7 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::deno_error::GetErrorKind;
-use crate::dispatch_minimal::dispatch_minimal;
-use crate::dispatch_minimal::parse_min_record;
 use crate::msg;
 use crate::state::ThreadSafeState;
 use crate::tokio_util;
@@ -13,12 +11,14 @@ use hyper;
 use hyper::rt::Future;
 use tokio_threadpool;
 
+mod dispatch_minimal;
+use dispatch_minimal::{dispatch_minimal, parse_min_record};
 mod compiler;
 use compiler::{op_cache, op_fetch_source_file};
 mod errors;
 use errors::{op_apply_source_map, op_format_error};
 mod files;
-use files::{op_close, op_open, op_read, op_seek, op_write};
+use files::{op_close, op_open, op_seek};
 mod fetch;
 use fetch::op_fetch;
 mod fs;
@@ -226,7 +226,6 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<CliDispatchFn> {
     msg::Any::Open => Some(op_open),
     msg::Any::PermissionRevoke => Some(op_revoke_permission),
     msg::Any::Permissions => Some(op_permissions),
-    msg::Any::Read => Some(op_read),
     msg::Any::ReadDir => Some(op_read_dir),
     msg::Any::Readlink => Some(op_read_link),
     msg::Any::Remove => Some(op_remove),
@@ -245,7 +244,6 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<CliDispatchFn> {
     msg::Any::Truncate => Some(op_truncate),
     msg::Any::HomeDir => Some(op_home_dir),
     msg::Any::Utime => Some(op_utime),
-    msg::Any::Write => Some(op_write),
 
     // TODO(ry) split these out so that only the appropriate Workers can access
     // them.
