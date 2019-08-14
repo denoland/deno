@@ -345,7 +345,7 @@ impl Isolate {
       Op::Sync(buf) => {
         // For sync messages, we always return the response via Deno.core.send's
         // return value. Sync messages ignore the op_id.
-        println!("-sync {}", op_id);
+        let op_id = 0;
         isolate
           .respond(Some((op_id, &buf)))
           // Because this is a sync op, deno_respond() does not actually call
@@ -353,7 +353,6 @@ impl Isolate {
           .expect("unexpected error");
       }
       Op::Async(fut) => {
-        println!("async {}", op_id);
         let fut2 = fut.map(move |buf| (op_id, buf));
         isolate.pending_ops.push(Box::new(fut2));
         isolate.have_unpolled_ops = true;
