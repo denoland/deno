@@ -16,7 +16,7 @@ const isWindows = Deno.platform.os === "win";
 async function startFileServer(): Promise<void> {
   fileServer = run({
     args: [
-      Deno.execPath,
+      Deno.execPath(),
       "run",
       "--allow-read",
       "--allow-net",

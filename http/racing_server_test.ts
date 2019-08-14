@@ -8,7 +8,7 @@ import { TextProtoReader } from "../textproto/mod.ts";
 let server: Deno.Process;
 async function startServer(): Promise<void> {
   server = run({
-    args: [Deno.execPath, "run", "-A", "http/racing_server.ts"],
+    args: [Deno.execPath(), "run", "-A", "http/racing_server.ts"],
     stdout: "piped"
   });
   // Once racing server is ready it will write to its stdout.

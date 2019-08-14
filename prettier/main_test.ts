@@ -21,7 +21,7 @@ async function run(
 }
 
 const cmd = [
-  execPath,
+  execPath(),
   "run",
   "--allow-run",
   "--allow-write",
@@ -254,13 +254,13 @@ test(async function testPrettierReadFromStdin(): Promise<void> {
   ): Promise<void> {
     const inputCode = stdin;
     const p1 = Deno.run({
-      args: [execPath, "./prettier/testdata/echox.ts", `${inputCode}`],
+      args: [execPath(), "./prettier/testdata/echox.ts", `${inputCode}`],
       stdout: "piped"
     });
 
     const p2 = Deno.run({
       args: [
-        execPath,
+        execPath(),
         "run",
         "./prettier/main.ts",
         "--stdin",
