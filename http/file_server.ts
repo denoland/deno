@@ -13,7 +13,7 @@ import {
   setContentLength,
   Response
 } from "./server.ts";
-import { extname } from "../fs/path.ts";
+import { extname, posix } from "../fs/path.ts";
 import { contentType } from "../media_types/mod.ts";
 
 const dirViewerTemplate = `
@@ -53,11 +53,10 @@ for (let i = 0; i < serverArgs.length; i++) {
     break;
   }
 }
-let currentDir = cwd();
-const target = serverArgs[1];
-if (target) {
-  currentDir = `${currentDir}/${target}`;
-}
+const targetArg = serverArgs[1] || "";
+const target = posix.isAbsolute(targetArg)
+  ? posix.normalize(targetArg)
+  : posix.join(cwd(), targetArg);
 const addr = `0.0.0.0:${serverArgs[2] || 4500}`;
 const encoder = new TextEncoder();
 
@@ -104,7 +103,7 @@ function fileLenToString(len: number): string {
 
 function createDirEntryDisplay(
   name: string,
-  path: string,
+  url: string,
   size: number | null,
   mode: number | null,
   isDir: boolean
@@ -114,7 +113,7 @@ function createDirEntryDisplay(
   <tr><td class="mode">${modeToString(
     isDir,
     mode
-  )}</td><td>${sizeStr}</td><td><a href="${path}">${name}${
+  )}</td><td>${sizeStr}</td><td><a href="${url}">${name}${
     isDir ? "/" : ""
   }</a></td>
   </tr>
@@ -123,13 +122,13 @@ function createDirEntryDisplay(
 
 async function serveFile(
   req: ServerRequest,
-  filename: string
+  filePath: string
 ): Promise<Response> {
-  const file = await open(filename);
-  const fileInfo = await stat(filename);
+  const file = await open(filePath);
+  const fileInfo = await stat(filePath);
   const headers = new Headers();
   headers.set("content-length", fileInfo.len.toString());
-  headers.set("content-type", contentType(extname(filename)) || "text/plain");
+  headers.set("content-type", contentType(extname(filePath)) || "text/plain");
 
   const res = {
     status: 200,
@@ -142,41 +141,42 @@ async function serveFile(
 // TODO: simplify this after deno.stat and deno.readDir are fixed
 async function serveDir(
   req: ServerRequest,
-  dirPath: string,
-  dirName: string
+  dirPath: string
 ): Promise<Response> {
   interface ListItem {
     name: string;
     template: string;
   }
-  // dirname has no prefix
+  const dirUrl = `/${posix.relative(target, dirPath)}`;
   const listEntry: ListItem[] = [];
   const fileInfos = await readDir(dirPath);
-  for (const info of fileInfos) {
-    let fn = dirPath + "/" + info.name;
-    if (info.name === "index.html" && info.isFile()) {
+  for (const fileInfo of fileInfos) {
+    const filePath = posix.join(dirPath, fileInfo.name);
+    let fileUrl = posix.join(dirUrl, fileInfo.name);
+    if (fileInfo.name === "index.html" && fileInfo.isFile()) {
       // in case index.html as dir...
-      return await serveFile(req, fn);
+      return await serveFile(req, filePath);
     }
     // Yuck!
     let mode = null;
     try {
-      mode = (await stat(fn)).mode;
+      mode = (await stat(filePath)).mode;
     } catch (e) {}
     listEntry.push({
-      name: info.name,
+      name: fileInfo.name,
       template: createDirEntryDisplay(
-        info.name,
-        fn.replace(currentDir, ""),
-        info.isFile() ? info.len : null,
+        fileInfo.name,
+        fileUrl,
+        fileInfo.isFile() ? fileInfo.len : null,
         mode,
-        info.isDirectory()
+        fileInfo.isDirectory()
       )
     });
   }
 
+  const formattedDirUrl = `${dirUrl.replace(/\/$/, "")}/`;
   const page = new TextEncoder().encode(
-    dirViewerTemplate.replace("<%DIRNAME%>", dirName + "/").replace(
+    dirViewerTemplate.replace("<%DIRNAME%>", formattedDirUrl).replace(
       "<%CONTENTS%>",
       listEntry
         .sort(
@@ -238,19 +238,17 @@ function setCORS(res: Response): void {
 listenAndServe(
   addr,
   async (req): Promise<void> => {
-    const fileName = req.url.replace(/\/$/, "");
-    const filePath = currentDir + fileName;
+    const normalizedUrl = posix.normalize(req.url);
+    const fsPath = posix.join(target, normalizedUrl);
 
     let response: Response;
 
     try {
-      const fileInfo = await stat(filePath);
-      if (fileInfo.isDirectory()) {
-        // Bug with deno.stat: name and path not populated
-        // Yuck!
-        response = await serveDir(req, filePath, fileName);
+      const info = await stat(fsPath);
+      if (info.isDirectory()) {
+        response = await serveDir(req, fsPath);
       } else {
-        response = await serveFile(req, filePath);
+        response = await serveFile(req, fsPath);
       }
     } catch (e) {
       response = await serveFallback(req, e);
