@@ -58,25 +58,36 @@ def import_data_from_gh_pages():
         write_json(all_data_file, [])  # writes empty json data
 
 
+def is_gn_build(build_dir):
+    # TODO(afinch7) maybe find a better check for this?
+    return os.path.exists(
+        os.path.join(build_dir, "cli_test" + executable_suffix))
+
+
 def get_binary_sizes(build_dir):
+    path_prefix = "gn_out/gen"
+    if is_gn_build(build_dir):
+        path_prefix = "gen"
+
     path_dict = {
         "deno":
         os.path.join(build_dir, "deno" + executable_suffix),
         "main.js":
-        os.path.join(build_dir, "gen/cli/bundle/main.js"),
+        os.path.join(build_dir, path_prefix + "/cli/bundle/main.js"),
         "main.js.map":
-        os.path.join(build_dir, "gen/cli/bundle/main.js.map"),
+        os.path.join(build_dir, path_prefix + "/cli/bundle/main.js.map"),
         "compiler.js":
-        os.path.join(build_dir, "gen/cli/bundle/compiler.js"),
+        os.path.join(build_dir, path_prefix + "/cli/bundle/compiler.js"),
         "compiler.js.map":
-        os.path.join(build_dir, "gen/cli/bundle/compiler.js.map"),
+        os.path.join(build_dir, path_prefix + "/cli/bundle/compiler.js.map"),
         "snapshot_deno.bin":
-        os.path.join(build_dir, "gen/cli/snapshot_deno.bin"),
+        os.path.join(build_dir, path_prefix + "/cli/snapshot_deno.bin"),
         "snapshot_compiler.bin":
-        os.path.join(build_dir, "gen/cli/snapshot_compiler.bin")
+        os.path.join(build_dir, path_prefix + "/cli/snapshot_compiler.bin")
     }
     sizes = {}
     for name, path in path_dict.items():
+        print path
         assert os.path.exists(path)
         sizes[name] = os.path.getsize(path)
     return sizes

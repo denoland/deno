@@ -34,3 +34,7 @@ path = "examples/http_bench.rs"
 # tokio is only used for deno_core_http_bench
 [dev_dependencies]
 tokio = "0.1.18"
+
+[build-dependencies]
+cargo_gn = { git = "https://github.com/denoland/cargo_gn" }
+which = "2.0.1"

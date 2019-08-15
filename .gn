@@ -39,7 +39,14 @@ default_args = {
   use_jumbo_build = true
 
   symbol_level = 1
-  treat_warnings_as_errors = true
+
+  # TODO(ry) Change this back to 'true'. This is to workaround windows error
+  # that is only encountered when building with cargo_gn.
+  #   clang-cl: error: argument unused during compilation:
+  #   '-mno-incremental-linker-compatible'
+  #   [-Werror,-Wunused-command-line-argument]
+  treat_warnings_as_errors = false
+
   rust_treat_warnings_as_errors = true
 
   # https://cs.chromium.org/chromium/src/docs/ccache_mac.md

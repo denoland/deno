@@ -9,7 +9,6 @@ env:
   - CARGO_HOME=$TRAVIS_BUILD_DIR/third_party/rust_crates/
   - RUSTUP_HOME=$HOME/.rustup/
   - RUST_BACKTRACE=full
-  - CARGO_TARGET_DIR=$HOME/target
   - PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH
   - PYTHONPATH=third_party/python_packages
   - RUSTC_WRAPPER=sccache
@@ -115,10 +114,16 @@ jobs:
     - name: "cargo release linux x86_64"
       os: linux
       script:
+      # CARGO_GN_PATH and CARGO_NINJA_PATH allivate the need to build these
+      # tools from scratch. See docs at https://crates.io/crates/cargo_gn
+      - export GN=$TRAVIS_BUILD_DIR/buildtools/linux64/gn
+      - export NINJA=$TRAVIS_BUILD_DIR/third_party/depot_tools/ninja
       - ./tools/lint.py
       - ./tools/test_format.py
       - cargo build -vv --release --locked
       - cargo clippy --all-targets --release --locked -- -D clippy::all
+      # TODO(ry) Warning! The following does not run libdeno_test
+      - ./tools/test.py --release
 
     # LSAN: We are in the process of getting a completely clean LSAN build,
     # but it will take some work. So for now we just run a subset of the
