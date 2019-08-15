@@ -312,6 +312,40 @@ Automatically downloads Prettier dependencies on first run.
             .required(true),
         ),
     ).subcommand(
+      add_run_args(SubCommand::with_name("test"))
+        .about("Run tests")
+        .long_about(
+"Run tests using test runner
+
+Automatically downloads test runner on first run.
+
+  deno test **/*_test.ts **/test.ts",
+        ).arg(
+          Arg::with_name("failfast")
+            .short("f")
+            .long("failfast")
+            .help("Stop on first error")
+            .takes_value(false),
+        ).arg(
+          Arg::with_name("quiet")
+            .short("q")
+            .long("quiet")
+            .help("Don't show output from test cases")
+            .takes_value(false)
+        ).arg(
+          Arg::with_name("exclude")
+            .short("e")
+            .long("exclude")
+            .help("List of file names to exclude from run")
+            .takes_value(true)
+            .multiple(true)
+        ).arg(
+          Arg::with_name("files")
+            .help("List of file names to run")
+            .takes_value(true)
+            .multiple(true)
+        ),
+    ).subcommand(
       add_run_args(SubCommand::with_name("run"))
         .settings(&[
           AppSettings::AllowExternalSubcommands,
@@ -521,6 +555,10 @@ pub fn parse_flags(
   if let Some(run_matches) = matches.subcommand_matches("run") {
     flags = parse_run_args(flags.clone(), run_matches);
   }
+  // flags specific to "test" subcommand
+  if let Some(test_matches) = matches.subcommand_matches("test") {
+    flags = parse_run_args(flags.clone(), test_matches);
+  }
 
   flags
 }
@@ -643,6 +681,8 @@ fn parse_script_args(
 const PRETTIER_URL: &str = "https://deno.land/std@v0.11/prettier/main.ts";
 /// Used for `deno install...` subcommand
 const INSTALLER_URL: &str = "https://deno.land/std@v0.11/installer/mod.ts";
+/// Used for `deno test...` subcommand
+const TEST_RUNNER_URL: &str = "https://deno.land/std@c44e536/testing/runner.ts";
 
 /// These are currently handled subcommands.
 /// There is no "Help" subcommand because it's handled by `clap::App` itself.
@@ -794,6 +834,40 @@ pub fn flags_from_vec(
         }
         _ => unreachable!(),
       }
+    }
+    ("test", Some(test_match)) => {
+      flags.allow_read = true;
+      argv.push(TEST_RUNNER_URL.to_string());
+
+      if test_match.is_present("quiet") {
+        argv.push("--quiet".to_string());
+      }
+
+      if test_match.is_present("failfast") {
+        argv.push("--failfast".to_string());
+      }
+
+      if test_match.is_present("exclude") {
+        argv.push("--exclude".to_string());
+        let exclude: Vec<String> = test_match
+          .values_of("exclude")
+          .unwrap()
+          .map(String::from)
+          .collect();
+        argv.extend(exclude);
+      }
+
+      if test_match.is_present("files") {
+        argv.push("--".to_string());
+        let files: Vec<String> = test_match
+          .values_of("files")
+          .unwrap()
+          .map(String::from)
+          .collect();
+        argv.extend(files);
+      }
+
+      DenoSubcommand::Run
     }
     ("types", Some(_)) => DenoSubcommand::Types,
     ("run", Some(run_match)) => {
