@@ -315,6 +315,8 @@ export interface RunOptions {
  * Runs specified test cases.
  * Parallel execution can be enabled via the boolean option; default: serial.
  */
+// TODO: change return type to `Promise<boolean>` - ie. don't
+// exit but return value
 export async function runTests({
   parallel = false,
   exitOnFail = false,

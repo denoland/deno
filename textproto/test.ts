@@ -6,7 +6,6 @@
 import { append } from "./mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
 import { test } from "../testing/mod.ts";
-import "./reader_test.ts";
 
 test(async function textprotoAppend(): Promise<void> {
   const enc = new TextEncoder();

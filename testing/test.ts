@@ -7,10 +7,6 @@ import {
   assertThrows,
   assertThrowsAsync
 } from "./asserts.ts";
-import "./format_test.ts";
-import "./diff_test.ts";
-import "./asserts_test.ts";
-import "./bench_test.ts";
 
 test(function testingAssertEqualActualUncoercable(): void {
   let didThrow = false;

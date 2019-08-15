@@ -1,5 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import "./sha1_test.ts";
 import { BufReader } from "../io/bufio.ts";
 import { assert, assertEquals } from "../testing/asserts.ts";
 import { runIfMain, test } from "../testing/mod.ts";
