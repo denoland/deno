@@ -11,8 +11,6 @@ type ConsoleOptions = Partial<{
   depth: number;
   colors: boolean;
   indentLevel: number;
-  collapsedAt: number | null;
-  noTrailingNewline: boolean;
 }>;
 
 // Default depth of logging nested objects
@@ -470,20 +468,13 @@ export function stringifyArgs(
     a++;
   }
 
-  const { collapsedAt, indentLevel, noTrailingNewline } = options;
-  const isCollapsed =
-    collapsedAt != null && indentLevel != null && collapsedAt <= indentLevel;
-  if (!isCollapsed) {
-    if (indentLevel != null && indentLevel > 0) {
-      const groupIndent = " ".repeat(indentLevel);
-      if (str.indexOf("\n") !== -1) {
-        str = str.replace(/\n/g, `\n${groupIndent}`);
-      }
-      str = groupIndent + str;
+  const { indentLevel } = options;
+  if (indentLevel != null && indentLevel > 0) {
+    const groupIndent = " ".repeat(indentLevel);
+    if (str.indexOf("\n") !== -1) {
+      str = str.replace(/\n/g, `\n${groupIndent}`);
     }
-    if (!noTrailingNewline) {
-      str += "\n";
-    }
+    str = groupIndent + str;
   }
 
   return str;
@@ -497,13 +488,11 @@ export const isConsoleInstance = Symbol("isConsoleInstance");
 
 export class Console {
   indentLevel: number;
-  collapsedAt: number | null;
   [isConsoleInstance]: boolean = false;
 
   /** @internal */
   constructor(private printFunc: PrintFunc) {
     this.indentLevel = 0;
-    this.collapsedAt = null;
     this[isConsoleInstance] = true;
 
     // ref https://console.spec.whatwg.org/#console-namespace
@@ -519,9 +508,8 @@ export class Console {
   log = (...args: unknown[]): void => {
     this.printFunc(
       stringifyArgs(args, {
-        indentLevel: this.indentLevel,
-        collapsedAt: this.collapsedAt
-      }),
+        indentLevel: this.indentLevel
+      }) + "\n",
       false
     );
   };
@@ -533,16 +521,15 @@ export class Console {
 
   /** Writes the properties of the supplied `obj` to stdout */
   dir = (obj: unknown, options: ConsoleOptions = {}): void => {
-    this.log(stringifyArgs([obj], options));
+    this.printFunc(stringifyArgs([obj], options) + "\n", false);
   };
 
   /** Writes the arguments to stdout */
   warn = (...args: unknown[]): void => {
     this.printFunc(
       stringifyArgs(args, {
-        indentLevel: this.indentLevel,
-        collapsedAt: this.collapsedAt
-      }),
+        indentLevel: this.indentLevel
+      }) + "\n",
       true
     );
   };
@@ -735,20 +722,11 @@ export class Console {
     this.indentLevel += 2;
   };
 
-  groupCollapsed = (...label: unknown[]): void => {
-    if (this.collapsedAt == null) {
-      this.collapsedAt = this.indentLevel;
-    }
-    this.group(...label);
-  };
+  groupCollapsed = this.group;
 
   groupEnd = (): void => {
     if (this.indentLevel > 0) {
       this.indentLevel -= 2;
-    }
-    if (this.collapsedAt != null && this.collapsedAt >= this.indentLevel) {
-      this.collapsedAt = null;
-      this.log(); // When the collapsed state ended, outputs a sinle new line.
     }
   };
 
@@ -759,11 +737,7 @@ export class Console {
   };
 
   trace = (...args: unknown[]): void => {
-    const message = stringifyArgs(args, {
-      indentLevel: this.indentLevel,
-      collapsedAt: this.collapsedAt,
-      noTrailingNewline: true
-    });
+    const message = stringifyArgs(args, { indentLevel: 0 });
     const err = {
       name: "Trace",
       message
