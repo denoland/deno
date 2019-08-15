@@ -1743,4 +1743,27 @@ mod tests {
     assert_eq!(subcommand, DenoSubcommand::Run);
     assert_eq!(argv, svec!["deno", "script.ts"])
   }
+
+  #[test]
+  fn test_flags_from_vec_36() {
+    let (flags, subcommand, argv) = flags_from_vec(svec![
+      "deno",
+      "test",
+      "--exclude",
+      "some_dir/",
+      "**/*_test.ts"
+    ]);
+    assert_eq!(flags, DenoFlags::default());
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(
+      argv,
+      svec![
+        "deno",
+        TEST_RUNNER_URL,
+        "--exclude",
+        "some_dir/",
+        "**/*_test.ts"
+      ]
+    )
+  }
 }
