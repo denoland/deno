@@ -473,6 +473,15 @@ mod tests {
   use super::*;
 
   #[test]
+  fn load_nonexistent() {
+    let file_path = "nonexistent_import_map.json";
+    let file_url = ModuleSpecifier::resolve_url_or_path(file_path)
+      .unwrap()
+      .to_string();
+    assert!(ImportMap::load(&file_url, file_path).is_err());
+  }
+
+  #[test]
   fn from_json_1() {
     let base_url = "https://deno.land";
 
