@@ -1,3 +1,4 @@
+use deno::ErrBox;
 use deno::ModuleSpecifier;
 use indexmap::IndexMap;
 use serde_json::Map;
@@ -6,6 +7,7 @@ use std::cmp::Ordering;
 use std::error::Error;
 use std::fmt;
 use std::fs;
+use std::io;
 use url::Url;
 
 #[derive(Debug)]
@@ -44,7 +46,7 @@ pub struct ImportMap {
 }
 
 impl ImportMap {
-  pub fn load(base_url: &str, file_name: &str) -> Result<Self, ImportMapError> {
+  pub fn load(base_url: &str, file_name: &str) -> Result<Self, ErrBox> {
     let cwd = std::env::current_dir().unwrap();
     let resolved_path = cwd.join(file_name);
     debug!(
@@ -53,13 +55,18 @@ impl ImportMap {
     );
 
     // Load the contents of import map
-    match fs::read_to_string(&resolved_path) {
-      Ok(json_string) => ImportMap::from_json(base_url, &json_string),
-      _ => panic!(
-        "Error retrieving import map file at \"{}\"",
-        resolved_path.to_str().unwrap()
-      ),
-    }
+    let json_string = fs::read_to_string(&resolved_path).map_err(|err| {
+      io::Error::new(
+        io::ErrorKind::InvalidInput,
+        format!(
+          "Error retrieving import map file at \"{}\": {}",
+          resolved_path.to_str().unwrap(),
+          err.to_string()
+        )
+        .as_str(),
+      )
+    })?;
+    ImportMap::from_json(base_url, &json_string).map_err(ErrBox::from)
   }
 
   pub fn from_json(
