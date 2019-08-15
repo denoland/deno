@@ -113,7 +113,7 @@ export async function main(root: string = cwd()): Promise<void> {
   console.log(`Found ${foundTestFiles.length} matching test files.`);
 
   for (const filename of foundTestFiles) {
-    await import(filename);
+    await import(`file://${filename}`);
   }
 
   await runTests({
