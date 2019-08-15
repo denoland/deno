@@ -1753,7 +1753,13 @@ mod tests {
       "some_dir/",
       "**/*_test.ts"
     ]);
-    assert_eq!(flags, DenoFlags::default());
+    assert_eq!(
+      flags,
+      DenoFlags {
+        allow_read: true,
+        ..DenoFlags::default()
+      }
+    );
     assert_eq!(subcommand, DenoSubcommand::Run);
     assert_eq!(
       argv,
