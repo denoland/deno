@@ -380,3 +380,17 @@ fn thread_safe() {
     String::from("hello.js"),
   ]));
 }
+
+#[test]
+fn import_map_given_for_repl() {
+  let _result = ThreadSafeState::new(
+    flags::DenoFlags {
+      import_map_path: Some("import_map.json".to_string()),
+      ..flags::DenoFlags::default()
+    },
+    vec![String::from("./deno")],
+    ops::op_selector_std,
+    Progress::new(),
+    true,
+  );
+}
