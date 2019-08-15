@@ -28,10 +28,13 @@ use futures::Future;
 use futures::Poll;
 use libc::c_char;
 use libc::c_void;
+use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::fmt;
 use std::ptr::null;
+use std::sync::atomic::{ Ordering, AtomicU32 };
 use std::sync::{Arc, Mutex, Once};
 
 pub type Buf = Box<[u8]>;
@@ -54,6 +57,96 @@ pub type OpResult<E> = Result<Op<E>, E>;
 
 /// Args: op_id, control_buf, zero_copy_buf
 type CoreDispatchFn = dyn Fn(OpId, &[u8], Option<PinnedBuf>) -> CoreOp;
+
+pub trait OpDispatcher: Send + Sync {
+    fn dispatch(&self, args: &[u8], buf: Option<PinnedBuf>) -> CoreOp;
+}
+
+// Use a separate trait to give the op a name, because a trait object
+// object (dyn Opdispatcher) can't have associated constants.
+pub trait NamedOpDispatcher: OpDispatcher {
+    const NAME: &'static str;
+}
+
+pub struct DispatcherRegistry {
+    // Quick lookups by unique "op id"/"resource id"
+    // The main goal of op_registry is to perform lookups as fast
+    // as possible at all times. 
+    op_registry: Mutex<BTreeMap<OpId, Arc<Box<dyn OpDispatcher>>>>,
+    // This doesn't have to be a atomic, but I like the fetch_add
+    // pattern and speed isn't the #1 priority. Uniqueness of ids,
+    // and consistency are far more important here.
+    next_op_id: AtomicU32,
+    // "phone book" for op_registry
+    // This should only be referenced for initial lookups. It isn't
+    // possible to achieve the level of perfromance we want if we
+    // have to query this for every dispatch.
+    op_id_registry: Mutex<HashMap<String, HashMap<&'static str, OpId>>>,
+}
+
+impl DispatcherRegistry {
+    pub fn new() -> Self {
+        Self {
+            op_registry: Mutex::new(BTreeMap::new()),
+            next_op_id: AtomicU32::new(0),
+            op_id_registry: Mutex::new(HashMap::new()),
+        }
+    }
+
+    pub fn register_op<D: NamedOpDispatcher + 'static>(
+        &self,
+        namespace: &str,
+        d: D,
+    ) -> (OpId, String, String) {
+        let rid = self.next_op_id.fetch_add(1, Ordering::SeqCst);
+        let namespace_string = namespace.to_string();
+        // Ensure the op isn't a duplicate, and can be registed.
+        self.op_id_registry
+            .lock()
+            .unwrap()
+            .entry(namespace_string.clone())
+            .or_default()
+            .entry(D::NAME)
+            .and_modify(|_| panic!("Op already registered"))
+            .or_insert(rid);
+        // If we can successfully add the rid to the "phone book" then add this
+        // op to the primary registry.
+        self.op_registry
+            .lock()
+            .unwrap()
+            .entry(rid)
+            .and_modify(|_| unreachable!("Op id already registered"))
+            .or_insert(Arc::new(Box::new(d)));
+        (rid, namespace_string, D::NAME.to_string())
+    }
+
+    pub fn dispatch_op(
+        &self,
+        op_id: OpId,
+        args: &[u8],
+        buf: Option<PinnedBuf>,
+    ) -> CoreOp {
+        let lock = self.op_registry.lock().unwrap();
+        if let Some(op) = lock.get(&op_id) {
+            let op_ = Arc::clone(op);
+            drop(lock);
+            op_.dispatch(args, buf)
+        } else {
+            unimplemented!("Bad op id");
+        }
+    }
+
+    pub fn lookup_op_id(
+        &self,
+        namespace: &str,
+        name: &str,
+    ) -> Option<OpId> {
+        match self.op_id_registry.lock().unwrap().get(namespace) {
+            Some(ns) => ns.get(&name).copied(),
+            None => None,
+        }
+    }
+}
 
 /// Stores a script used to initalize a Isolate
 pub struct Script<'a> {
@@ -170,7 +263,6 @@ type JSErrorCreateFn = dyn Fn(V8Exception) -> ErrBox;
 pub struct Isolate {
   libdeno_isolate: *const libdeno::isolate,
   shared_libdeno_isolate: Arc<Mutex<Option<*const libdeno::isolate>>>,
-  dispatch: Option<Arc<CoreDispatchFn>>,
   dyn_import: Option<Arc<DynImportFn>>,
   js_error_create: Arc<JSErrorCreateFn>,
   needs_init: bool,
@@ -179,6 +271,7 @@ pub struct Isolate {
   pending_dyn_imports: FuturesUnordered<StreamFuture<DynImport>>,
   have_unpolled_ops: bool,
   startup_script: Option<OwnedScript>,
+  dispatcher_registry: Arc<DispatcherRegistry>,
 }
 
 unsafe impl Send for Isolate {}
@@ -235,7 +328,6 @@ impl Isolate {
     Self {
       libdeno_isolate,
       shared_libdeno_isolate: Arc::new(Mutex::new(Some(libdeno_isolate))),
-      dispatch: None,
       dyn_import: None,
       js_error_create: Arc::new(CoreJSError::from_v8_exception),
       shared,
@@ -244,17 +336,26 @@ impl Isolate {
       have_unpolled_ops: false,
       pending_dyn_imports: FuturesUnordered::new(),
       startup_script,
+      dispatcher_registry: Arc::new(DispatcherRegistry::new()),
     }
   }
 
-  /// Defines the how Deno.core.dispatch() acts.
-  /// Called whenever Deno.core.dispatch() is called in JavaScript. zero_copy_buf
-  /// corresponds to the second argument of Deno.core.dispatch().
-  pub fn set_dispatch<F>(&mut self, f: F)
-  where
-    F: Fn(OpId, &[u8], Option<PinnedBuf>) -> CoreOp + Send + Sync + 'static,
-  {
-    self.dispatch = Some(Arc::new(f));
+  pub fn register_op<D: NamedOpDispatcher + 'static>(
+    &self,
+    namespace: &str,
+    d: D,
+  ) -> (OpId, String, String) {
+    let (op_id, namespace, name) = self.dispatcher_registry.register_op(namespace, d);
+    // TODO(afinch7) call into js to update op registry.
+    (op_id, namespace, name)
+  }
+
+  pub fn lookup_op_id(
+    &self,
+    namespace: &str,
+    name: &str,
+  ) -> Option<OpId> {
+    self.dispatcher_registry.lookup_op_id(namespace, name)
   }
 
   pub fn set_dyn_import<F>(&mut self, f: F)
@@ -328,11 +429,7 @@ impl Isolate {
   ) {
     let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
 
-    let op = if let Some(ref f) = isolate.dispatch {
-      f(op_id, control_buf.as_ref(), PinnedBuf::new(zero_copy_buf))
-    } else {
-      panic!("isolate.dispatch not set")
-    };
+    let op = isolate.dispatcher_registry.dispatch_op(op_id, control_buf.as_ref(), PinnedBuf::new(zero_copy_buf));
 
     debug_assert_eq!(isolate.shared.size(), 0);
     match op {
