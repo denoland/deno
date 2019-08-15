@@ -115,6 +115,7 @@ fn create_worker_and_state(
   // TODO(kevinkassimo): maybe make include_deno_namespace also configurable?
   let state =
     ThreadSafeState::new(flags, argv, ops::op_selector_std, progress, true)
+      .map_err(print_err_and_exit)
       .unwrap();
   let worker = Worker::new(
     "main".to_string(),
