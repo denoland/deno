@@ -4,9 +4,6 @@ import { assertEquals } from "../testing/asserts.ts";
 import * as log from "./mod.ts";
 import { LogLevel } from "./levels.ts";
 
-import "./handlers_test.ts";
-import "./logger_test.ts";
-
 class TestHandler extends log.handlers.BaseHandler {
   public messages: string[] = [];
 
