@@ -200,14 +200,7 @@ impl ThreadSafeState {
 
     let import_map: Option<ImportMap> = match &flags.import_map_path {
       None => None,
-      Some(file_name) => {
-        let base_url = match &main_module {
-          Some(module_specifier) => module_specifier.clone(),
-          None => unreachable!(),
-        };
-        let import_map = ImportMap::load(&base_url.to_string(), file_name)?;
-        Some(import_map)
-      }
+      Some(file_path) => Some(ImportMap::load(file_path)?),
     };
 
     let mut seeded_rng = None;

@@ -46,9 +46,9 @@ pub struct ImportMap {
 }
 
 impl ImportMap {
-  pub fn load(base_url: &str, file_name: &str) -> Result<Self, ErrBox> {
-    let cwd = std::env::current_dir().unwrap();
-    let resolved_path = cwd.join(file_name);
+  pub fn load(file_path: &str) -> Result<Self, ErrBox> {
+    let file_url = ModuleSpecifier::resolve_url_or_path(file_path)?.to_string();
+    let resolved_path = std::env::current_dir().unwrap().join(file_path);
     debug!(
       "Attempt to load import map: {}",
       resolved_path.to_str().unwrap()
@@ -66,7 +66,8 @@ impl ImportMap {
         .as_str(),
       )
     })?;
-    ImportMap::from_json(base_url, &json_string).map_err(ErrBox::from)
+    // The URL of the import map is the base URL for its values.
+    ImportMap::from_json(&file_url, &json_string).map_err(ErrBox::from)
   }
 
   pub fn from_json(
@@ -482,10 +483,7 @@ mod tests {
   #[test]
   fn load_nonexistent() {
     let file_path = "nonexistent_import_map.json";
-    let file_url = ModuleSpecifier::resolve_url_or_path(file_path)
-      .unwrap()
-      .to_string();
-    assert!(ImportMap::load(&file_url, file_path).is_err());
+    assert!(ImportMap::load(file_path).is_err());
   }
 
   #[test]
