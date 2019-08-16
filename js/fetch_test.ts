@@ -18,6 +18,11 @@ test(async function fetchPerm(): Promise<void> {
   assertEquals(err.name, "PermissionDenied");
 });
 
+testPerm({ net: true }, async function fetchUrl(): Promise<void> {
+  const response = await fetch("http://localhost:4545/package.json");
+  assertEquals(response.url, "http://localhost:4545/package.json");
+});
+
 testPerm({ net: true }, async function fetchHeaders(): Promise<void> {
   const response = await fetch("http://localhost:4545/package.json");
   const headers = response.headers;
@@ -102,6 +107,7 @@ testPerm(
 testPerm({ net: true }, async function fetchWithRedirection(): Promise<void> {
   const response = await fetch("http://localhost:4546/"); // will redirect to http://localhost:4545/
   assertEquals(response.status, 200);
+  assertEquals(response.url, "http://localhost:4545/");
   const body = await response.text();
   assert(body.includes("<title>Directory listing for /</title>"));
 });
