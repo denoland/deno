@@ -244,7 +244,6 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
 }
 
 export class Response implements domTypes.Response {
-  readonly url: string = "";
   statusText = "FIXME"; // TODO
   readonly type = "basic"; // TODO
   readonly redirected: boolean;
@@ -254,6 +253,7 @@ export class Response implements domTypes.Response {
   readonly body: Body;
 
   constructor(
+    readonly url: string,
     readonly status: number,
     headersList: Array<[string, string]>,
     rid: number,
@@ -312,6 +312,7 @@ export class Response implements domTypes.Response {
     }
 
     return new Response(
+      this.url,
       this.status,
       headersList,
       -1,
@@ -458,7 +459,13 @@ export async function fetch(
 
     const headersList = deserializeHeaderFields(header);
 
-    const response = new Response(status, headersList, bodyRid, redirected);
+    const response = new Response(
+      url,
+      status,
+      headersList,
+      bodyRid,
+      redirected
+    );
     if ([301, 302, 303, 307, 308].includes(response.status)) {
       // We're in a redirect status
       switch ((init && init.redirect) || "follow") {
