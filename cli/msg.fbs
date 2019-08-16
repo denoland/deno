@@ -48,8 +48,10 @@ union Any {
   PermissionRevoke,
   Permissions,
   PermissionsRes,
+  Read,
   ReadDir,
   ReadDirRes,
+  ReadRes,
   Readlink,
   ReadlinkRes,
   Remove,
@@ -81,6 +83,8 @@ union Any {
   WorkerGetMessage,
   WorkerGetMessageRes,
   WorkerPostMessage,
+  Write,
+  WriteRes,
 }
 
 enum ErrorKind: byte {
@@ -485,6 +489,24 @@ table Open {
 
 table OpenRes {
   rid: uint32;
+}
+
+table Read {
+  rid: uint32;
+  // (ptr, len) is passed as second parameter to Deno.core.send().
+}
+
+table ReadRes {
+  nread: uint;
+  eof: bool;
+}
+
+table Write {
+  rid: uint32;
+}
+
+table WriteRes {
+  nbyte: uint;
 }
 
 table Close {

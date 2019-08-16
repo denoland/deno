@@ -8,6 +8,7 @@ use crate::ops::serialize_response;
 use crate::ops::CliOpResult;
 use crate::resources;
 use crate::state::ThreadSafeState;
+use crate::tokio_write;
 use deno::*;
 use flatbuffers::FlatBufferBuilder;
 use futures::Future;
@@ -114,6 +115,91 @@ pub fn op_close(
     Some(resource) => {
       resource.close();
       ok_buf(empty_buf())
+    }
+  }
+}
+
+pub fn op_read(
+  _state: &ThreadSafeState,
+  base: &msg::Base<'_>,
+  data: Option<PinnedBuf>,
+) -> CliOpResult {
+  let cmd_id = base.cmd_id();
+  let inner = base.inner_as_read().unwrap();
+  let rid = inner.rid();
+
+  match resources::lookup(rid) {
+    None => Err(deno_error::bad_resource()),
+    Some(resource) => {
+      let op = tokio::io::read(resource, data.unwrap())
+        .map_err(ErrBox::from)
+        .and_then(move |(_resource, _buf, nread)| {
+          let builder = &mut FlatBufferBuilder::new();
+          let inner = msg::ReadRes::create(
+            builder,
+            &msg::ReadResArgs {
+              nread: nread as u32,
+              eof: nread == 0,
+            },
+          );
+          Ok(serialize_response(
+            cmd_id,
+            builder,
+            msg::BaseArgs {
+              inner: Some(inner.as_union_value()),
+              inner_type: msg::Any::ReadRes,
+              ..Default::default()
+            },
+          ))
+        });
+      if base.sync() {
+        let buf = op.wait()?;
+        Ok(Op::Sync(buf))
+      } else {
+        Ok(Op::Async(Box::new(op)))
+      }
+    }
+  }
+}
+
+pub fn op_write(
+  _state: &ThreadSafeState,
+  base: &msg::Base<'_>,
+  data: Option<PinnedBuf>,
+) -> CliOpResult {
+  let cmd_id = base.cmd_id();
+  let inner = base.inner_as_write().unwrap();
+  let rid = inner.rid();
+
+  match resources::lookup(rid) {
+    None => Err(deno_error::bad_resource()),
+    Some(resource) => {
+      let op = tokio_write::write(resource, data.unwrap())
+        .map_err(ErrBox::from)
+        .and_then(move |(_resource, _buf, nwritten)| {
+          let builder = &mut FlatBufferBuilder::new();
+          let inner = msg::WriteRes::create(
+            builder,
+            &msg::WriteResArgs {
+              nbyte: nwritten as u32,
+            },
+          );
+          Ok(serialize_response(
+            cmd_id,
+            builder,
+            msg::BaseArgs {
+              inner: Some(inner.as_union_value()),
+              inner_type: msg::Any::WriteRes,
+              ..Default::default()
+            },
+          ))
+        });
+      if base.sync() {
+        let buf = op.wait()?;
+        Ok(Op::Sync(buf))
+      } else {
+        Ok(Op::Async(Box::new(op)))
+      }
     }
   }
 }
