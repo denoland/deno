@@ -556,8 +556,8 @@ pub struct SourceCodeHeaders {
   pub redirect_to: Option<String>,
 }
 
-static MIME_TYPE: &'static str = "mime_type";
-static REDIRECT_TO: &'static str = "redirect_to";
+static MIME_TYPE: &str = "mime_type";
+static REDIRECT_TO: &str = "redirect_to";
 
 impl SourceCodeHeaders {
   pub fn from_json_string(headers_string: String) -> Self {
