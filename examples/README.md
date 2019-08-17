@@ -22,7 +22,7 @@ deno install echo_server https://deno.land/std/examples/echo_server.ts --allow-n
 ### cat - print file to standard output
 
 ```shell
-deno install deno_cat https://deno.land/stdexamples/cat.ts --allow-read
+deno install deno_cat https://deno.land/std/examples/cat.ts --allow-read
 deno_cat file.txt
 ```
 
