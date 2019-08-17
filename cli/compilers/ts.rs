@@ -112,8 +112,8 @@ pub struct CompiledFileMetadata {
   pub version_hash: String,
 }
 
-static SOURCE_PATH: &'static str = "source_path";
-static VERSION_HASH: &'static str = "version_hash";
+static SOURCE_PATH: &str = "source_path";
+static VERSION_HASH: &str = "version_hash";
 
 impl CompiledFileMetadata {
   pub fn from_json_string(metadata_string: String) -> Option<Self> {

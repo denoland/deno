@@ -91,7 +91,7 @@ pub trait ImportStream: Stream {
 type DynImportStream =
   Box<dyn ImportStream<Item = RecursiveLoadEvent, Error = ErrBox> + Send>;
 
-type DynImportFn = Fn(deno_dyn_import_id, &str, &str) -> DynImportStream;
+type DynImportFn = dyn Fn(deno_dyn_import_id, &str, &str) -> DynImportStream;
 
 /// Wraps DynImportStream to include the deno_dyn_import_id, so that it doesn't
 /// need to be exposed.
