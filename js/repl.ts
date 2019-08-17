@@ -8,6 +8,23 @@ import { exit } from "./os";
 import { window } from "./window";
 import { core } from "./core";
 import { formatError } from "./format_error";
+import { stringifyArgs } from "./console";
+
+/**
+ * REPL logging.
+ * In favor of console.log to avoid unwanted indentation
+ */
+function replLog(...args: unknown[]): void {
+  core.print(stringifyArgs(args) + "\n");
+}
+
+/**
+ * REPL logging for errors.
+ * In favor of console.error to avoid unwanted indentation
+ */
+function replError(...args: unknown[]): void {
+  core.print(stringifyArgs(args) + "\n", true);
+}
 
 const helpMsg = [
   "exit    Exit the REPL",
@@ -86,7 +103,7 @@ function isRecoverableError(e: Error): boolean {
 function evaluate(code: string): boolean {
   const [result, errInfo] = core.evalContext(code);
   if (!errInfo) {
-    console.log(result);
+    replLog(result);
   } else if (errInfo.isCompileError && isRecoverableError(errInfo.thrown)) {
     // Recoverable compiler error
     return false; // don't consume code.
@@ -95,9 +112,9 @@ function evaluate(code: string): boolean {
       const formattedError = formatError(
         core.errorToJSON(errInfo.thrown as Error)
       );
-      console.error(formattedError);
+      replError(formattedError);
     } else {
-      console.error("Thrown:", errInfo.thrown);
+      replError("Thrown:", errInfo.thrown);
     }
   }
   return true;
@@ -135,7 +152,7 @@ export async function replLoop(): Promise<void> {
           // e.g. this happens when we have deno.close(3).
           // We want to display the problem.
           const formattedError = formatError(core.errorToJSON(err));
-          console.error(formattedError);
+          replError(formattedError);
         }
         // Quit REPL anyways.
         quitRepl(1);
@@ -157,7 +174,7 @@ export async function replLoop(): Promise<void> {
           // e.g. this happens when we have deno.close(3).
           // We want to display the problem.
           const formattedError = formatError(core.errorToJSON(err));
-          console.error(formattedError);
+          replError(formattedError);
           quitRepl(1);
         }
       }
