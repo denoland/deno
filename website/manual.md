@@ -580,6 +580,48 @@ import { test, assertEquals } from "./deps.ts";
 This design circumvents a plethora of complexity spawned by package management
 software, centralized code repositories, and superfluous file formats.
 
+### Using external type definitions
+
+Deno supports both JavaScript and TypeScript as first class languages at
+runtime. This means it requires fully qualified module names, including the
+extension (or a server providing the correct media type). In addition, Deno has
+no "magical" module resolution.
+
+The out of the box TypeScript compiler though relies on both extension-less
+modules and the Node.js module resolution logic to apply types to JavaScript
+modules.
+
+In order to bridge this gap, Deno supports compiler hints that inform Deno the
+location of `.d.ts` files and the JavaScript code they relate to. A compiler
+hint looks like this:
+
+```ts
+// @deno-types="./foo.d.ts"
+import * as foo from "./foo.js";
+```
+
+Where the hint effects the next `import` statement (or `export ... from`
+statement) where the value of the `@deno-types` will be substituted at compile
+time instead of the specified module. Like in the above example, the Deno
+compiler will load `./foo.d.ts` instead of `./foo.js`. Deno will still load
+`./foo.js` when it runs the program.
+
+**Not all type definitions are supported.**
+
+Deno will use the compiler hint to load the indicated `.d.ts` files, but some
+`.d.ts` files contain unsupported features. Specifically, some `.d.ts` files
+expect to be able to load or reference type definitions from other packages
+using the module resolution logic. For example a type reference directive to
+include `node`, expecting to resolve to some path like
+`./node_modules/@types/node/index.d.ts`. Since this depends on non-relative
+"magical" resolution, Deno cannot resolve this.
+
+**Why not use the triple-slash type reference?**
+
+The TypeScript compiler supports triple-slash directives, including a type
+reference directive. If Deno used this, it would interfere with the behavior of
+the TypeScript compiler.
+
 ### Testing if current file is the main program
 
 To test if the current script has been executed as the main input to the program
