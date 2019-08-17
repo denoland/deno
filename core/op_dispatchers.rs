@@ -2,9 +2,10 @@ use crate::libdeno::OpId;
 use crate::libdeno::PinnedBuf;
 use futures::future::Future;
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
-use std::sync::Mutex;
+use std::sync::RwLock;
 
 pub type Buf = Box<[u8]>;
 
@@ -35,10 +36,6 @@ pub trait OpDispatcher: Send + Sync {
   fn dispatch(&self, args: &[u8], buf: Option<PinnedBuf>) -> CoreOp;
 }
 
-trait OpDispatcherAlt: Send + Sync {
-  fn dispatch_alt(&self, args: &[u8], buf: Option<PinnedBuf>) -> CoreOp;
-}
-
 impl<D: OpDispatcher + 'static> OpDispatcher for Arc<D> {
   fn dispatch(&self, args: &[u8], buf: Option<PinnedBuf>) -> CoreOp {
     D::dispatch(self, args, buf)
@@ -53,33 +50,83 @@ impl<D: Named + 'static> Named for Arc<D> {
   const NAME: &'static str = D::NAME;
 }
 
+type NotifyOpFn = dyn Fn(OpId, String, String) + Send + Sync + 'static;
+
+struct NotifyerReg {
+  notifiers: Vec<Option<Box<NotifyOpFn>>>,
+  free_slots: VecDeque<usize>,
+}
+
+impl NotifyerReg {
+  pub fn new() -> Self {
+    Self {
+      notifiers: Vec::new(),
+      free_slots: VecDeque::new(),
+    }
+  }
+
+  pub fn add_notifier(&mut self, n: Box<NotifyOpFn>) -> usize {
+    match self.free_slots.pop_front() {
+      Some(slot) => {
+        assert!(self.notifiers[slot].is_none());
+        self.notifiers[slot] = Some(n);
+        slot
+      }
+      None => {
+        let slot = self.notifiers.len();
+        self.notifiers.push(Some(n));
+        assert!(self.notifiers.len() == (slot + 1));
+        slot
+      }
+    }
+  }
+
+  pub fn remove_notifier(&mut self, slot: usize) {
+    // This assert isn't really needed, but it might help us locate bugs
+    // before they become a problem.
+    assert!(self.notifiers[slot].is_some());
+    self.notifiers[slot] = None;
+    self.free_slots.push_back(slot);
+  }
+
+  pub fn notify(&self, op_id: OpId, namespace: String, name: String) {
+    for maybe_notifier in &self.notifiers {
+      if let Some(notifier) = maybe_notifier {
+        notifier(op_id, namespace.clone(), name.clone())
+      }
+    }
+  }
+}
+
 /// Op dispatcher registry. Used to keep track of dynamicly registered dispatchers
 /// and make them addressable by id.
 pub struct OpDisReg {
   // Quick lookups by unique "op id"/"resource id"
   // The main goal of op_dis_registry is to perform lookups as fast
   // as possible at all times.
-  op_dis_registry: Mutex<Vec<Option<Arc<Box<dyn OpDispatcher>>>>>,
+  op_dis_registry: RwLock<Vec<Option<Arc<Box<dyn OpDispatcher>>>>>,
   next_op_dis_id: AtomicU32,
   // Serves as "phone book" for op_dis_registry
   // This should only be referenced for initial lookups. It isn't
   // possible to achieve the level of perfromance we want if we
   // have to query this for every dispatch, but it may be needed
   // to build caches for subseqent lookups.
-  op_dis_id_registry: Mutex<HashMap<String, HashMap<&'static str, OpId>>>,
+  op_dis_id_registry: RwLock<HashMap<String, HashMap<&'static str, OpId>>>,
+  notifier_reg: RwLock<NotifyerReg>,
 }
 
 impl OpDisReg {
   pub fn new() -> Self {
     Self {
-      op_dis_registry: Mutex::new(Vec::new()),
+      op_dis_registry: RwLock::new(Vec::new()),
       next_op_dis_id: AtomicU32::new(0),
-      op_dis_id_registry: Mutex::new(HashMap::new()),
+      op_dis_id_registry: RwLock::new(HashMap::new()),
+      notifier_reg: RwLock::new(NotifyerReg::new()),
     }
   }
 
   fn add_op_dis<D: Named + OpDispatcher + 'static>(&self, op_id: OpId, d: D) {
-    let mut holder = self.op_dis_registry.lock().unwrap();
+    let mut holder = self.op_dis_registry.write().unwrap();
     let new_len = holder.len().max(op_id as usize) + 1;
     holder.resize(new_len, None);
     holder.insert(op_id as usize, Some(Arc::new(Box::new(d))));
@@ -95,7 +142,7 @@ impl OpDisReg {
     // Ensure the op isn't a duplicate, and can be registed.
     self
       .op_dis_id_registry
-      .lock()
+      .write()
       .unwrap()
       .entry(namespace_string.clone())
       .or_default()
@@ -105,6 +152,11 @@ impl OpDisReg {
     // If we can successfully add the rid to the "phone book" then add this
     // op to the primary registry.
     self.add_op_dis(op_id, d);
+    self.notifier_reg.read().unwrap().notify(
+      op_id,
+      namespace_string.clone(),
+      D::NAME.to_string(),
+    );
     (op_id, namespace_string, D::NAME.to_string())
   }
 
@@ -114,7 +166,7 @@ impl OpDisReg {
     args: &[u8],
     buf: Option<PinnedBuf>,
   ) -> CoreOp {
-    let lock = self.op_dis_registry.lock().unwrap();
+    let lock = self.op_dis_registry.read().unwrap();
     if let Some(op) = &lock[op_id as usize] {
       let op_ = Arc::clone(&op);
       drop(lock);
@@ -125,15 +177,38 @@ impl OpDisReg {
   }
 
   pub fn lookup_op_id(&self, namespace: &str, name: &str) -> Option<OpId> {
-    match self.op_dis_id_registry.lock().unwrap().get(namespace) {
+    match self.op_dis_id_registry.read().unwrap().get(namespace) {
       Some(ns) => ns.get(&name).copied(),
       None => None,
     }
   }
-}
 
-unsafe impl Send for OpDisReg {}
-unsafe impl Sync for OpDisReg {}
+  pub fn sync_ops_and_add_notify<S, N>(&self, sync_fn: S, notifiy_fn: N)
+  where
+    S: FnOnce(Vec<(OpId, String, String)>),
+    N: Fn(OpId, String, String),
+    N: Send + Sync + 'static,
+  {
+    // Add notifier first so no ops get missed.
+    let mut notifier_reg = self.notifier_reg.write().unwrap();
+    notifier_reg.add_notifier(Box::new(notifiy_fn));
+    // Drop the lock so we don't hold onto this longer then needed.
+    drop(notifier_reg);
+    let op_id_reg = self.op_dis_id_registry.read().unwrap();
+    let mut ops: Vec<(OpId, String, String)> = Vec::new();
+    for (namespace_str, namespace) in op_id_reg.iter() {
+      for (name, op_id) in namespace.iter() {
+        ops.push((*op_id, namespace_str.clone(), name.to_string()));
+      }
+    }
+    sync_fn(ops);
+  }
+
+  pub fn remove_notify(&self, slot: usize) {
+    let mut notifier_reg = self.notifier_reg.write().unwrap();
+    notifier_reg.remove_notifier(slot);
+  }
+}
 
 #[cfg(test)]
 mod tests {
@@ -344,4 +419,6 @@ mod tests {
       .unwrap();
     assert_eq!(register_op_id, lookup_op_id);
   }
+
+  // TODO(afinch7) add multithreaded test with isolates.
 }

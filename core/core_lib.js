@@ -41,7 +41,7 @@ SharedQueue Binary Layout
   let initialized = false;
 
   // Internal mutable records object
-  const opRecords = {};
+  let opRecords = {};
   // Cloned version of records that is frozen, so we can avoid cloning records for every access.
   let opRecordsFrozen = Object.freeze(Object.assign({}, opRecords));
 
@@ -180,6 +180,12 @@ SharedQueue Binary Layout
   }
 
   function handleOpRegister(opId, namespace, name) {
+    // If we recieve a call with no params reset opRecords
+    if (opId === undefined) {
+      opRecords = {};
+      opRecordsFrozen = Object.freeze(Object.assign({}, opRecords));
+      return;
+    }
     if (opRecords[namespace] === undefined) {
       opRecords[namespace] = {};
     }

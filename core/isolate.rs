@@ -146,7 +146,45 @@ pub enum StartupData<'a> {
   None,
 }
 
-type JSErrorCreateFn = dyn Fn(V8Exception) -> ErrBox;
+type JSErrorCreateFn = dyn Fn(V8Exception) -> ErrBox + Send + 'static;
+
+fn notify_op_id_inner(
+  isolate: *const libdeno::isolate,
+  js_error_create: Arc<Mutex<Box<JSErrorCreateFn>>>,
+  op_id: OpId,
+  namespace: String,
+  name: String,
+) {
+  let namespace_cstr = CString::new(namespace.clone()).unwrap();
+  let name_cstr = CString::new(name.clone()).unwrap();
+  unsafe {
+    libdeno::deno_register_op_id(
+      isolate,
+      op_id,
+      namespace_cstr.as_ptr(),
+      name_cstr.as_ptr(),
+    )
+  }
+  // TODO(afinch7) handle errors here.
+  check_last_exception_inner(isolate, js_error_create).unwrap();
+}
+
+fn check_last_exception_inner(
+  isolate: *const libdeno::isolate,
+  js_error_create: Arc<Mutex<Box<JSErrorCreateFn>>>,
+) -> Result<(), ErrBox> {
+  let ptr = unsafe { libdeno::deno_last_exception(isolate) };
+  if ptr.is_null() {
+    Ok(())
+  } else {
+    let js_error_create_lock = js_error_create.lock().unwrap();
+    let cstr = unsafe { CStr::from_ptr(ptr) };
+    let json_str = cstr.to_str().unwrap();
+    let v8_exception = V8Exception::from_json(json_str).unwrap();
+    let js_error = js_error_create_lock(v8_exception);
+    Err(js_error)
+  }
+}
 
 /// A single execution context of JavaScript. Corresponds roughly to the "Web
 /// Worker" concept in the DOM. An Isolate is a Future that can be used with
@@ -160,7 +198,7 @@ pub struct Isolate {
   libdeno_isolate: *const libdeno::isolate,
   shared_libdeno_isolate: Arc<Mutex<Option<*const libdeno::isolate>>>,
   dyn_import: Option<Arc<DynImportFn>>,
-  js_error_create: Arc<JSErrorCreateFn>,
+  js_error_create: Arc<Mutex<Box<JSErrorCreateFn>>>,
   needs_init: AtomicBool,
   // I know this kinda sucks, but without it things are really slow.
   has_polled_once: bool,
@@ -169,7 +207,8 @@ pub struct Isolate {
   pending_dyn_imports: FuturesUnordered<StreamFuture<DynImport>>,
   have_unpolled_ops: bool,
   startup_script: Mutex<Option<OwnedScript>>,
-  op_dis_reg: Arc<OpDisReg>,
+  op_dis_reg: Option<Arc<OpDisReg>>,
+  op_dis_notify_slot: usize,
 }
 
 unsafe impl Send for Isolate {}
@@ -228,7 +267,9 @@ impl Isolate {
       libdeno_isolate,
       shared_libdeno_isolate: Arc::new(Mutex::new(Some(libdeno_isolate))),
       dyn_import: None,
-      js_error_create: Arc::new(CoreJSError::from_v8_exception),
+      js_error_create: Arc::new(Mutex::new(Box::new(
+        CoreJSError::from_v8_exception,
+      ))),
       shared,
       needs_init,
       has_polled_once: false,
@@ -236,7 +277,62 @@ impl Isolate {
       have_unpolled_ops: false,
       pending_dyn_imports: FuturesUnordered::new(),
       startup_script,
-      op_dis_reg: Arc::new(OpDisReg::new()),
+      op_dis_reg: None,
+      op_dis_notify_slot: 0,
+    }
+  }
+
+  fn notify_op_id(&self, op_id: OpId, namespace: String, name: String) {
+    notify_op_id_inner(
+      self.libdeno_isolate,
+      Arc::clone(&self.js_error_create),
+      op_id,
+      namespace,
+      name,
+    );
+  }
+
+  pub fn set_dispatcher_registry(&mut self, reg: Arc<OpDisReg>) {
+    // We really only need to be able to set this once for deno cli, but
+    // I figure this is a nice feature for embedders that want more
+    // flexibility. It's not perfect right now. We really need a notifier
+    // system in js to make this better.
+    // TODO(afinch7) add a notifier system in js to make dispatcher
+    // registry changes seamless.
+    self.core_lib_init();
+    if let Some(old_reg) = self.op_dis_reg.replace(reg) {
+      old_reg.remove_notify(self.op_dis_notify_slot);
+      self.op_dis_notify_slot = 0;
+    }
+    assert!(self.op_dis_notify_slot == 0);
+    // Reset op ids before to avoid preserving old op ids.
+    unsafe { libdeno::deno_reset_op_ids(self.libdeno_isolate) };
+
+    let shared_isolate_handle = self.shared_isolate_handle();
+    let shared_js_error_create = Arc::clone(&self.js_error_create);
+    if let Some(op_dis_reg) = &self.op_dis_reg {
+      op_dis_reg.sync_ops_and_add_notify(
+        |ops| {
+          for op in ops {
+            self.notify_op_id(op.0, op.1, op.2);
+          }
+        },
+        move |op_id, namespace, name| {
+          if let Some(isolate) =
+            *shared_isolate_handle.shared_libdeno_isolate.lock().unwrap()
+          {
+            notify_op_id_inner(
+              isolate,
+              Arc::clone(&shared_js_error_create),
+              op_id,
+              namespace,
+              name,
+            );
+          }
+        },
+      );
+    } else {
+      unreachable!("op_dis_reg not set");
     }
   }
 
@@ -245,28 +341,19 @@ impl Isolate {
     namespace: &str,
     d: D,
   ) -> (OpId, String, String) {
-    let (op_id, namespace, name) = self.op_dis_reg.register_op(namespace, d);
-    self.core_lib_init();
-    // TODO(afinch7) add hook to the op registry to do this with externally
-    // shared op registries.
-    let namespace_cstr = CString::new(namespace.clone()).unwrap();
-    let name_cstr = CString::new(name.clone()).unwrap();
-    unsafe {
-      libdeno::deno_register_op_id(
-        self.libdeno_isolate,
-        self.as_raw_ptr(),
-        op_id,
-        namespace_cstr.as_ptr(),
-        name_cstr.as_ptr(),
-      )
+    if let Some(op_dis_reg) = &self.op_dis_reg {
+      op_dis_reg.register_op(namespace, d)
+    } else {
+      panic!("isolate.op_dis_reg not set");
     }
-    // TODO(afinch7) handle these errors.
-    self.check_last_exception().unwrap();
-    (op_id, namespace, name)
   }
 
   pub fn lookup_op_id(&self, namespace: &str, name: &str) -> Option<OpId> {
-    self.op_dis_reg.lookup_op_id(namespace, name)
+    if let Some(op_dis_reg) = &self.op_dis_reg {
+      op_dis_reg.lookup_op_id(namespace, name)
+    } else {
+      panic!("isolate.op_dis_reg not set");
+    }
   }
 
   pub fn set_dyn_import<F>(&mut self, f: F)
@@ -282,17 +369,18 @@ impl Isolate {
   /// Allows a callback to be set whenever a V8 exception is made. This allows
   /// the caller to wrap the V8Exception into an error. By default this callback
   /// is set to CoreJSError::from_v8_exception.
-  pub fn set_js_error_create<F>(&mut self, f: F)
+  pub fn set_js_error_create<F>(&self, f: F)
   where
-    F: Fn(V8Exception) -> ErrBox + 'static,
+    F: Fn(V8Exception) -> ErrBox + Send + Sync + 'static,
   {
-    self.js_error_create = Arc::new(f);
+    let mut js_error_create = self.js_error_create.lock().unwrap();
+    *js_error_create = Box::new(f);
   }
 
   /// Get a thread safe handle on the isolate.
   pub fn shared_isolate_handle(&mut self) -> IsolateHandle {
     IsolateHandle {
-      shared_libdeno_isolate: self.shared_libdeno_isolate.clone(),
+      shared_libdeno_isolate: Arc::clone(&self.shared_libdeno_isolate),
     }
   }
 
@@ -338,11 +426,17 @@ impl Isolate {
   ) {
     let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
 
-    let op = isolate.op_dis_reg.dispatch_op(
-      op_id,
-      control_buf.as_ref(),
-      PinnedBuf::new(zero_copy_buf),
-    );
+    let op = {
+      if let Some(op_dis_reg) = &isolate.op_dis_reg {
+        op_dis_reg.dispatch_op(
+          op_id,
+          control_buf.as_ref(),
+          PinnedBuf::new(zero_copy_buf),
+        )
+      } else {
+        panic!("isolate.op_dis_reg not set");
+      }
+    };
 
     debug_assert_eq!(isolate.shared.size(), 0);
     match op {
@@ -400,17 +494,10 @@ impl Isolate {
   }
 
   fn check_last_exception(&self) -> Result<(), ErrBox> {
-    let ptr = unsafe { libdeno::deno_last_exception(self.libdeno_isolate) };
-    if ptr.is_null() {
-      Ok(())
-    } else {
-      let js_error_create = &*self.js_error_create;
-      let cstr = unsafe { CStr::from_ptr(ptr) };
-      let json_str = cstr.to_str().unwrap();
-      let v8_exception = V8Exception::from_json(json_str).unwrap();
-      let js_error = js_error_create(v8_exception);
-      Err(js_error)
-    }
+    check_last_exception_inner(
+      self.libdeno_isolate,
+      Arc::clone(&self.js_error_create),
+    )
   }
 
   fn check_promise_errors(&self) {
@@ -719,6 +806,7 @@ pub struct IsolateHandle {
 }
 
 unsafe impl Send for IsolateHandle {}
+unsafe impl Sync for IsolateHandle {}
 
 impl IsolateHandle {
   /// Terminate the execution of any currently running javascript.
@@ -841,12 +929,14 @@ pub mod tests {
   }
 
   pub fn setup(mode: Mode) -> (Isolate, Arc<MockDispatch>) {
-    let isolate = Isolate::new(StartupData::None, false);
+    let mut isolate = Isolate::new(StartupData::None, false);
     let dispatcher = Arc::new(MockDispatch {
       mode,
       dispatch_count: AtomicUsize::new(0),
     });
-    isolate.register_op("testing", Arc::clone(&dispatcher));
+    let registry = Arc::new(OpDisReg::new());
+    registry.register_op("testing", Arc::clone(&dispatcher));
+    isolate.set_dispatcher_registry(registry);
     js_check(isolate.execute(
       "setup.js",
       r#"

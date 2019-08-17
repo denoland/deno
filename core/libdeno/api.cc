@@ -205,11 +205,10 @@ void deno_respond(Deno* d_, void* user_data, deno_op_id op_id, deno_buf buf) {
   }
 }
 
-void deno_register_op_id(Deno* d_, void* user_data, deno_op_id op_id,
-                         const char* space, const char* name) {
+void deno_register_op_id(Deno* d_, deno_op_id op_id, const char* space,
+                         const char* name) {
   auto* d = unwrap(d_);
 
-  deno::UserDataScope user_data_scope(d, user_data);
   v8::Locker locker(d->isolate_);
   v8::Isolate::Scope isolate_scope(d->isolate_);
   v8::HandleScope handle_scope(d->isolate_);
@@ -235,6 +234,35 @@ void deno_register_op_id(Deno* d_, void* user_data, deno_op_id op_id,
   args[2] =
       v8::String::NewFromUtf8(d->isolate_, name, v8::NewStringType::kNormal)
           .ToLocalChecked();
+
+  auto v = recv_op_reg_->Call(context, context->Global(), argc, args);
+
+  if (try_catch.HasCaught()) {
+    CHECK(v.IsEmpty());
+    deno::HandleException(context, try_catch.Exception());
+  }
+}
+
+void deno_reset_op_ids(Deno* d_) {
+  auto* d = unwrap(d_);
+
+  v8::Locker locker(d->isolate_);
+  v8::Isolate::Scope isolate_scope(d->isolate_);
+  v8::HandleScope handle_scope(d->isolate_);
+
+  auto context = d->context_.Get(d->isolate_);
+  v8::Context::Scope context_scope(context);
+
+  v8::TryCatch try_catch(d->isolate_);
+
+  auto recv_op_reg_ = d->recv_op_reg_.Get(d->isolate_);
+  if (recv_op_reg_.IsEmpty()) {
+    d->last_exception_ = "Deno.core.recvOpReg has not been called.";
+    return;
+  }
+
+  v8::Local<v8::Value> args[0];
+  int argc = 0;
 
   auto v = recv_op_reg_->Call(context, context->Global(), argc, args);
 

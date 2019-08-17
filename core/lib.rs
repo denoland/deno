@@ -27,6 +27,7 @@ pub use crate::op_dispatchers::Buf;
 pub use crate::op_dispatchers::CoreOp;
 pub use crate::op_dispatchers::Named;
 pub use crate::op_dispatchers::Op;
+pub use crate::op_dispatchers::OpDisReg;
 pub use crate::op_dispatchers::OpDispatcher;
 pub use crate::op_dispatchers::OpResult;
 

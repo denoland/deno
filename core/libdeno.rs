@@ -283,11 +283,12 @@ extern "C" {
 
   pub fn deno_register_op_id(
     i: *const isolate,
-    user_data: *const c_void,
     op_id: OpId,
     space: *const c_char,
     name: *const c_char,
   );
+
+  pub fn deno_reset_op_ids(i: *const isolate);
 
   // Modules
 

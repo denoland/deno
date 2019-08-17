@@ -19,6 +19,7 @@ use std::env;
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use std::sync::Mutex;
 use tokio::prelude::*;
 
@@ -338,8 +339,9 @@ fn main() {
 
     let js_source = include_str!("http_bench.js");
 
-    let isolate = deno::Isolate::new(StartupData::None, false);
+    let mut isolate = deno::Isolate::new(StartupData::None, false);
     let namespace = "builtins".to_string();
+    isolate.set_dispatcher_registry(Arc::new(OpDisReg::new()));
     isolate.register_op(&namespace, WrappedMinimalOpDispatcher::from(OpListen));
     isolate.register_op(&namespace, WrappedMinimalOpDispatcher::from(OpClose));
     isolate.register_op(&namespace, WrappedMinimalOpDispatcher::from(OpAccept));
