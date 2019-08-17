@@ -143,7 +143,7 @@ test(function consoleTestStringifyCircular(): void {
   assertEquals(stringify(JSON), "{}");
   assertEquals(
     stringify(console),
-    "{ printFunc, log, debug, info, dir, warn, error, assert, count, countReset, table, time, timeLog, timeEnd, group, groupCollapsed, groupEnd, clear, indentLevel, collapsedAt }"
+    "{ printFunc, log, debug, info, dir, warn, error, assert, count, countReset, table, time, timeLog, timeEnd, group, groupCollapsed, groupEnd, clear, trace, indentLevel }"
   );
   // test inspect is working the same
   assertEquals(inspect(nestedObj), nestedObjExpected);
@@ -155,16 +155,16 @@ test(function consoleTestStringifyWithDepth(): void {
   const nestedObj: any = { a: { b: { c: { d: { e: { f: 42 } } } } } };
   assertEquals(
     stringifyArgs([nestedObj], { depth: 3 }),
-    "{ a: { b: { c: [Object] } } }\n"
+    "{ a: { b: { c: [Object] } } }"
   );
   assertEquals(
     stringifyArgs([nestedObj], { depth: 4 }),
-    "{ a: { b: { c: { d: [Object] } } } }\n"
+    "{ a: { b: { c: { d: [Object] } } } }"
   );
-  assertEquals(stringifyArgs([nestedObj], { depth: 0 }), "[Object]\n");
+  assertEquals(stringifyArgs([nestedObj], { depth: 0 }), "[Object]");
   assertEquals(
     stringifyArgs([nestedObj], { depth: null }),
-    "{ a: { b: { c: { d: [Object] } } } }\n"
+    "{ a: { b: { c: { d: [Object] } } } }"
   );
   // test inspect is working the same way
   assertEquals(
@@ -378,15 +378,8 @@ test(function consoleGroup(): void {
       console.log("4");
       console.groupEnd();
       console.groupEnd();
-
-      console.groupCollapsed("5");
+      console.log("5");
       console.log("6");
-      console.group("7");
-      console.log("8");
-      console.groupEnd();
-      console.groupEnd();
-      console.log("9");
-      console.log("10");
 
       assertEquals(
         out.toString(),
@@ -394,9 +387,8 @@ test(function consoleGroup(): void {
   2
   3
     4
-5678
-9
-10
+5
+6
 `
       );
     }
@@ -417,16 +409,8 @@ test(function consoleGroupWarn(): void {
       console.groupEnd();
       console.warn("5");
 
-      console.groupCollapsed();
       console.warn("6");
-      console.group();
       console.warn("7");
-      console.groupEnd();
-      console.warn("8");
-      console.groupEnd();
-
-      console.warn("9");
-      console.warn("10");
       assertEquals(
         both.toString(),
         `1
@@ -434,9 +418,8 @@ test(function consoleGroupWarn(): void {
     3
   4
 5
-678
-9
-10
+6
+7
 `
       );
     }
@@ -649,6 +632,32 @@ test(function consoleLogShouldNotThrowError(): void {
     (console, out): void => {
       console.log(new Error("foo"));
       assertEquals(out.toString().includes("Uncaught"), false);
+    }
+  );
+});
+
+// console.dir test
+test(function consoleDir(): void {
+  mockConsole(
+    (console, out): void => {
+      console.dir("DIR");
+      assertEquals(out.toString(), "DIR\n");
+    }
+  );
+  mockConsole(
+    (console, out): void => {
+      console.dir("DIR", { indentLevel: 2 });
+      assertEquals(out.toString(), "  DIR\n");
+    }
+  );
+});
+
+// console.trace test
+test(function consoleTrace(): void {
+  mockConsole(
+    (console, _out, err): void => {
+      console.trace("%s", "custom message");
+      assert(err.toString().includes("Trace: custom message"));
     }
   );
 });
