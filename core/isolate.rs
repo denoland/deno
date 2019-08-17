@@ -162,6 +162,8 @@ pub struct Isolate {
   dyn_import: Option<Arc<DynImportFn>>,
   js_error_create: Arc<JSErrorCreateFn>,
   needs_init: AtomicBool,
+  // I know this kinda sucks, but without it things are really slow.
+  has_polled_once: bool,
   shared: SharedQueue,
   pending_ops: FuturesUnordered<PendingOpFuture>,
   pending_dyn_imports: FuturesUnordered<StreamFuture<DynImport>>,
@@ -229,6 +231,7 @@ impl Isolate {
       js_error_create: Arc::new(CoreJSError::from_v8_exception),
       shared,
       needs_init,
+      has_polled_once: false,
       pending_ops: FuturesUnordered::new(),
       have_unpolled_ops: false,
       pending_dyn_imports: FuturesUnordered::new(),
@@ -646,7 +649,10 @@ impl Future for Isolate {
   type Error = ErrBox;
 
   fn poll(&mut self) -> Poll<(), ErrBox> {
-    self.core_lib_init();
+    if !self.has_polled_once {
+      self.has_polled_once = true;
+      self.core_lib_init();
+    }
 
     let mut overflow_response: Option<(OpId, Buf)> = None;
 
