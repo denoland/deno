@@ -180,7 +180,6 @@ SharedQueue Binary Layout
   }
 
   function handleOpRegister(opId, namespace, name) {
-    Deno.core.print(`REGISTER NEW OP ${opId} ${namespace} ${name}`);
     if (opRecords[namespace] === undefined) {
       opRecords[namespace] = {};
     }
