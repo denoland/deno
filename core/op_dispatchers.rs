@@ -1,7 +1,6 @@
 use crate::libdeno::OpId;
 use crate::libdeno::PinnedBuf;
 use futures::future::Future;
-use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
@@ -60,7 +59,7 @@ pub struct OpDisReg {
   // Quick lookups by unique "op id"/"resource id"
   // The main goal of op_dis_registry is to perform lookups as fast
   // as possible at all times.
-  op_dis_registry: Mutex<BTreeMap<OpId, Arc<Box<dyn OpDispatcher>>>>,
+  op_dis_registry: Mutex<Vec<Option<Arc<Box<dyn OpDispatcher>>>>>,
   next_op_dis_id: AtomicU32,
   // Serves as "phone book" for op_dis_registry
   // This should only be referenced for initial lookups. It isn't
@@ -73,10 +72,17 @@ pub struct OpDisReg {
 impl OpDisReg {
   pub fn new() -> Self {
     Self {
-      op_dis_registry: Mutex::new(BTreeMap::new()),
+      op_dis_registry: Mutex::new(Vec::new()),
       next_op_dis_id: AtomicU32::new(0),
       op_dis_id_registry: Mutex::new(HashMap::new()),
     }
+  }
+
+  fn add_op_dis<D: Named + OpDispatcher + 'static>(&self, op_id: OpId, d: D) {
+    let mut holder = self.op_dis_registry.lock().unwrap();
+    let new_len = holder.len().max(op_id as usize) + 1;
+    holder.resize(new_len, None);
+    holder.insert(op_id as usize, Some(Arc::new(Box::new(d))));
   }
 
   pub fn register_op<D: Named + OpDispatcher + 'static>(
@@ -98,13 +104,7 @@ impl OpDisReg {
       .or_insert(op_id);
     // If we can successfully add the rid to the "phone book" then add this
     // op to the primary registry.
-    self
-      .op_dis_registry
-      .lock()
-      .unwrap()
-      .entry(op_id)
-      .and_modify(|_| unreachable!("Op id already registered"))
-      .or_insert(Arc::new(Box::new(d)));
+    self.add_op_dis(op_id, d);
     (op_id, namespace_string, D::NAME.to_string())
   }
 
@@ -115,8 +115,8 @@ impl OpDisReg {
     buf: Option<PinnedBuf>,
   ) -> CoreOp {
     let lock = self.op_dis_registry.lock().unwrap();
-    if let Some(op) = lock.get(&op_id) {
-      let op_ = Arc::clone(op);
+    if let Some(op) = &lock[op_id as usize] {
+      let op_ = Arc::clone(&op);
       drop(lock);
       op_.dispatch(args, buf)
     } else {
@@ -131,6 +131,9 @@ impl OpDisReg {
     }
   }
 }
+
+unsafe impl Send for OpDisReg {}
+unsafe impl Sync for OpDisReg {}
 
 #[cfg(test)]
 mod tests {
