@@ -1,13 +1,11 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::compilers::CompiledModule;
 use crate::compilers::CompiledModuleFuture;
-use crate::deno_error::DenoError;
 use crate::diagnostics::Diagnostic;
 use crate::disk_cache::DiskCache;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::msg;
-use crate::msg::ErrorKind;
 use crate::resources;
 use crate::source_maps::SourceMapGetter;
 use crate::startup_data;
@@ -19,6 +17,7 @@ use deno::ErrBox;
 use deno::ModuleSpecifier;
 use futures::Future;
 use futures::Stream;
+use regex::Regex;
 use ring;
 use std::collections::HashSet;
 use std::fmt::Write;
@@ -29,6 +28,11 @@ use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 use url::Url;
 
+lazy_static! {
+  static ref CHECK_JS_RE: Regex =
+    Regex::new(r#""checkJs"\s*?:\s*?true"#).unwrap();
+}
+
 /// Struct which represents the state of the compiler
 /// configuration where the first is canonical name for the configuration file,
 /// second is a vector of the bytes of the contents of the configuration file,
@@ -38,6 +42,7 @@ pub struct CompilerConfig {
   pub path: Option<PathBuf>,
   pub content: Option<Vec<u8>>,
   pub hash: Vec<u8>,
+  pub compile_js: bool,
 }
 
 impl CompilerConfig {
@@ -74,32 +79,23 @@ impl CompilerConfig {
       _ => b"".to_vec(),
     };
 
+    // If `checkJs` is set to true in `compilerOptions` then we're gonna be compiling
+    // JavaScript files as well
+    let compile_js = if let Some(config_content) = config.clone() {
+      let config_str = std::str::from_utf8(&config_content)?;
+      CHECK_JS_RE.is_match(config_str)
+    } else {
+      false
+    };
+
     let ts_config = Self {
       path: config_path,
       content: config,
       hash: config_hash,
+      compile_js,
     };
 
     Ok(ts_config)
-  }
-
-  pub fn json(self: &Self) -> Result<serde_json::Value, ErrBox> {
-    if self.content.is_none() {
-      return Ok(serde_json::Value::Null);
-    }
-
-    let bytes = self.content.clone().unwrap();
-    let json_string = std::str::from_utf8(&bytes)?;
-    match serde_json::from_str(&json_string) {
-      Ok(json_map) => Ok(json_map),
-      Err(_) => Err(
-        DenoError::new(
-          ErrorKind::InvalidInput,
-          "Compiler config is not a valid JSON".to_string(),
-        )
-        .into(),
-      ),
-    }
   }
 }
 
@@ -215,24 +211,13 @@ impl TsCompiler {
   ) -> Result<Self, ErrBox> {
     let config = CompilerConfig::load(config_path)?;
 
-    // If `checkJs` is set to true in `compilerOptions` then we're gonna be compiling
-    // JavaScript files as well
-    let config_json = config.json()?;
-    let compile_js = match &config_json.get("compilerOptions") {
-      Some(serde_json::Value::Object(m)) => match m.get("checkJs") {
-        Some(serde_json::Value::Bool(bool_)) => *bool_,
-        _ => false,
-      },
-      _ => false,
-    };
-
     let compiler = Self {
       file_fetcher,
       disk_cache,
+      compile_js: config.compile_js,
       config,
       compiled: Mutex::new(HashSet::new()),
       use_disk_cache,
-      compile_js,
     };
 
     Ok(compiler)
@@ -654,9 +639,11 @@ impl TsCompiler {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::fs as deno_fs;
   use crate::tokio_util;
   use deno::ModuleSpecifier;
   use std::path::PathBuf;
+  use tempfile::TempDir;
 
   impl TsCompiler {
     fn compile_sync(
@@ -738,5 +725,43 @@ mod tests {
       "3b35db249b26a27decd68686f073a58266b2aec2",
       source_code_version_hash(b"1", "0.4.0", b"{\"compilerOptions\": {}}")
     );
+  }
+
+  #[test]
+  fn test_compile_js() {
+    let temp_dir = TempDir::new().expect("tempdir fail");
+    let temp_dir_path = temp_dir.path();
+
+    let test_cases = vec![
+      // valid JSON
+      (
+        r#"{ "compilerOptions": { "checkJs": true } } "#,
+        true,
+      ),
+      // JSON with comment
+      (
+        r#"{ "compilerOptions": { // force .js file compilation by Deno "checkJs": true } } "#,
+        true,
+      ),
+      // invalid JSON
+      (
+        r#"{ "compilerOptions": { "checkJs": true },{ } "#,
+        true,
+      ),
+      // without content
+      (
+        "",
+        false,
+      ),
+    ];
+
+    let path = temp_dir_path.join("tsconfig.json");
+    let path_str = path.to_str().unwrap().to_string();
+
+    for (json_str, expected) in test_cases {
+      deno_fs::write_file(&path, json_str.as_bytes(), 0o666).unwrap();
+      let config = CompilerConfig::load(Some(path_str.clone())).unwrap();
+      assert_eq!(config.compile_js, expected);
+    }
   }
 }
