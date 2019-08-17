@@ -114,6 +114,7 @@ class DenoIsolate {
   std::string last_exception_;
   v8::Persistent<v8::Value> last_exception_handle_;
   v8::Persistent<v8::Function> recv_;
+  v8::Persistent<v8::Function> recv_op_reg_;
   v8::StartupData snapshot_;
   v8::Persistent<v8::ArrayBuffer> global_import_buf_;
   v8::Persistent<v8::SharedArrayBuffer> shared_ab_;

@@ -110,6 +110,9 @@ void deno_execute(Deno* d, void* user_data, const char* js_filename,
 // If a JS exception was encountered, deno_last_exception() will be non-NULL.
 void deno_respond(Deno* d, void* user_data, deno_op_id op_id, deno_buf buf);
 
+void deno_register_op_id(Deno* d, void* user_data, deno_op_id op_id,
+                         const char* space, const char* name);
+
 // consumes zero_copy
 void deno_pinned_buf_delete(deno_pinned_buf* buf);
 

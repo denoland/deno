@@ -281,6 +281,14 @@ extern "C" {
   );
   pub fn deno_terminate_execution(i: *const isolate);
 
+  pub fn deno_register_op_id(
+    i: *const isolate,
+    user_data: *const c_void,
+    op_id: OpId,
+    space: *const c_char,
+    name: *const c_char,
+  );
+
   // Modules
 
   pub fn deno_mod_new(

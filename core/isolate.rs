@@ -17,6 +17,12 @@ use crate::libdeno::OpId;
 use crate::libdeno::PinnedBuf;
 use crate::libdeno::Snapshot1;
 use crate::libdeno::Snapshot2;
+use crate::op_dispatchers::Buf;
+use crate::op_dispatchers::CoreError;
+use crate::op_dispatchers::Named;
+use crate::op_dispatchers::Op;
+use crate::op_dispatchers::OpDisReg;
+use crate::op_dispatchers::OpDispatcher;
 use crate::shared_queue::SharedQueue;
 use crate::shared_queue::RECOMMENDED_SIZE;
 use futures::stream::FuturesUnordered;
@@ -28,125 +34,15 @@ use futures::Future;
 use futures::Poll;
 use libc::c_char;
 use libc::c_void;
-use std::collections::BTreeMap;
-use std::collections::HashMap;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::fmt;
 use std::ptr::null;
-use std::sync::atomic::{ Ordering, AtomicU32 };
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Once};
-
-pub type Buf = Box<[u8]>;
-
-pub type OpAsyncFuture<E> = Box<dyn Future<Item = Buf, Error = E> + Send>;
 
 type PendingOpFuture =
   Box<dyn Future<Item = (OpId, Buf), Error = CoreError> + Send>;
-
-pub enum Op<E> {
-  Sync(Buf),
-  Async(OpAsyncFuture<E>),
-}
-
-pub type CoreError = ();
-
-pub type CoreOp = Op<CoreError>;
-
-pub type OpResult<E> = Result<Op<E>, E>;
-
-/// Args: op_id, control_buf, zero_copy_buf
-type CoreDispatchFn = dyn Fn(OpId, &[u8], Option<PinnedBuf>) -> CoreOp;
-
-pub trait OpDispatcher: Send + Sync {
-    fn dispatch(&self, args: &[u8], buf: Option<PinnedBuf>) -> CoreOp;
-}
-
-// Use a separate trait to give the op a name, because a trait object
-// object (dyn Opdispatcher) can't have associated constants.
-pub trait NamedOpDispatcher: OpDispatcher {
-    const NAME: &'static str;
-}
-
-pub struct DispatcherRegistry {
-    // Quick lookups by unique "op id"/"resource id"
-    // The main goal of op_registry is to perform lookups as fast
-    // as possible at all times. 
-    op_registry: Mutex<BTreeMap<OpId, Arc<Box<dyn OpDispatcher>>>>,
-    // This doesn't have to be a atomic, but I like the fetch_add
-    // pattern and speed isn't the #1 priority. Uniqueness of ids,
-    // and consistency are far more important here.
-    next_op_id: AtomicU32,
-    // "phone book" for op_registry
-    // This should only be referenced for initial lookups. It isn't
-    // possible to achieve the level of perfromance we want if we
-    // have to query this for every dispatch.
-    op_id_registry: Mutex<HashMap<String, HashMap<&'static str, OpId>>>,
-}
-
-impl DispatcherRegistry {
-    pub fn new() -> Self {
-        Self {
-            op_registry: Mutex::new(BTreeMap::new()),
-            next_op_id: AtomicU32::new(0),
-            op_id_registry: Mutex::new(HashMap::new()),
-        }
-    }
-
-    pub fn register_op<D: NamedOpDispatcher + 'static>(
-        &self,
-        namespace: &str,
-        d: D,
-    ) -> (OpId, String, String) {
-        let rid = self.next_op_id.fetch_add(1, Ordering::SeqCst);
-        let namespace_string = namespace.to_string();
-        // Ensure the op isn't a duplicate, and can be registed.
-        self.op_id_registry
-            .lock()
-            .unwrap()
-            .entry(namespace_string.clone())
-            .or_default()
-            .entry(D::NAME)
-            .and_modify(|_| panic!("Op already registered"))
-            .or_insert(rid);
-        // If we can successfully add the rid to the "phone book" then add this
-        // op to the primary registry.
-        self.op_registry
-            .lock()
-            .unwrap()
-            .entry(rid)
-            .and_modify(|_| unreachable!("Op id already registered"))
-            .or_insert(Arc::new(Box::new(d)));
-        (rid, namespace_string, D::NAME.to_string())
-    }
-
-    pub fn dispatch_op(
-        &self,
-        op_id: OpId,
-        args: &[u8],
-        buf: Option<PinnedBuf>,
-    ) -> CoreOp {
-        let lock = self.op_registry.lock().unwrap();
-        if let Some(op) = lock.get(&op_id) {
-            let op_ = Arc::clone(op);
-            drop(lock);
-            op_.dispatch(args, buf)
-        } else {
-            unimplemented!("Bad op id");
-        }
-    }
-
-    pub fn lookup_op_id(
-        &self,
-        namespace: &str,
-        name: &str,
-    ) -> Option<OpId> {
-        match self.op_id_registry.lock().unwrap().get(namespace) {
-            Some(ns) => ns.get(&name).copied(),
-            None => None,
-        }
-    }
-}
 
 /// Stores a script used to initalize a Isolate
 pub struct Script<'a> {
@@ -265,13 +161,13 @@ pub struct Isolate {
   shared_libdeno_isolate: Arc<Mutex<Option<*const libdeno::isolate>>>,
   dyn_import: Option<Arc<DynImportFn>>,
   js_error_create: Arc<JSErrorCreateFn>,
-  needs_init: bool,
+  needs_init: AtomicBool,
   shared: SharedQueue,
   pending_ops: FuturesUnordered<PendingOpFuture>,
   pending_dyn_imports: FuturesUnordered<StreamFuture<DynImport>>,
   have_unpolled_ops: bool,
-  startup_script: Option<OwnedScript>,
-  dispatcher_registry: Arc<DispatcherRegistry>,
+  startup_script: Mutex<Option<OwnedScript>>,
+  op_dis_reg: Arc<OpDisReg>,
 }
 
 unsafe impl Send for Isolate {}
@@ -297,7 +193,7 @@ impl Isolate {
 
     let shared = SharedQueue::new(RECOMMENDED_SIZE);
 
-    let needs_init = true;
+    let needs_init = AtomicBool::new(true);
 
     let mut libdeno_config = libdeno::deno_config {
       will_snapshot: will_snapshot.into(),
@@ -307,12 +203,13 @@ impl Isolate {
       dyn_import_cb: Self::dyn_import,
     };
 
-    let mut startup_script: Option<OwnedScript> = None;
+    let startup_script: Mutex<Option<OwnedScript>> = Mutex::new(None);
 
     // Separate into Option values for each startup type
     match startup_data {
       StartupData::Script(d) => {
-        startup_script = Some(d.into());
+        let mut lock = startup_script.lock().unwrap();
+        lock.replace(d.into());
       }
       StartupData::Snapshot(d) => {
         libdeno_config.load_snapshot = d.into();
@@ -336,26 +233,37 @@ impl Isolate {
       have_unpolled_ops: false,
       pending_dyn_imports: FuturesUnordered::new(),
       startup_script,
-      dispatcher_registry: Arc::new(DispatcherRegistry::new()),
+      op_dis_reg: Arc::new(OpDisReg::new()),
     }
   }
 
-  pub fn register_op<D: NamedOpDispatcher + 'static>(
+  pub fn register_op<D: Named + OpDispatcher + 'static>(
     &self,
     namespace: &str,
     d: D,
   ) -> (OpId, String, String) {
-    let (op_id, namespace, name) = self.dispatcher_registry.register_op(namespace, d);
-    // TODO(afinch7) call into js to update op registry.
+    let (op_id, namespace, name) = self.op_dis_reg.register_op(namespace, d);
+    self.core_lib_init();
+    // TODO(afinch7) add hook to the op registry to do this with externally
+    // shared op registries.
+    let namespace_cstr = CString::new(namespace.clone()).unwrap();
+    let name_cstr = CString::new(name.clone()).unwrap();
+    unsafe {
+      libdeno::deno_register_op_id(
+        self.libdeno_isolate,
+        self.as_raw_ptr(),
+        op_id,
+        namespace_cstr.as_ptr(),
+        name_cstr.as_ptr(),
+      )
+    }
+    // TODO(afinch7) handle these errors.
+    self.check_last_exception().unwrap();
     (op_id, namespace, name)
   }
 
-  pub fn lookup_op_id(
-    &self,
-    namespace: &str,
-    name: &str,
-  ) -> Option<OpId> {
-    self.dispatcher_registry.lookup_op_id(namespace, name)
+  pub fn lookup_op_id(&self, namespace: &str, name: &str) -> Option<OpId> {
+    self.op_dis_reg.lookup_op_id(namespace, name)
   }
 
   pub fn set_dyn_import<F>(&mut self, f: F)
@@ -386,14 +294,12 @@ impl Isolate {
   }
 
   /// Executes a bit of built-in JavaScript to provide Deno.sharedQueue.
-  fn shared_init(&mut self) {
-    if self.needs_init {
-      self.needs_init = false;
-      js_check(
-        self.execute("shared_queue.js", include_str!("shared_queue.js")),
-      );
+  fn core_lib_init(&self) {
+    if self.needs_init.fetch_and(false, Ordering::SeqCst) {
+      js_check(self.execute("core_lib.js", include_str!("core_lib.js")));
       // Maybe execute the startup script.
-      if let Some(s) = self.startup_script.take() {
+      let mut lock = self.startup_script.lock().unwrap();
+      if let Some(s) = lock.take() {
         self.execute(&s.filename, &s.source).unwrap()
       }
     }
@@ -429,7 +335,11 @@ impl Isolate {
   ) {
     let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
 
-    let op = isolate.dispatcher_registry.dispatch_op(op_id, control_buf.as_ref(), PinnedBuf::new(zero_copy_buf));
+    let op = isolate.op_dis_reg.dispatch_op(
+      op_id,
+      control_buf.as_ref(),
+      PinnedBuf::new(zero_copy_buf),
+    );
 
     debug_assert_eq!(isolate.shared.size(), 0);
     match op {
@@ -468,11 +378,11 @@ impl Isolate {
   /// the V8 exception. By default this type is CoreJSError, however it may be a
   /// different type if Isolate::set_js_error_create() has been used.
   pub fn execute(
-    &mut self,
+    &self,
     js_filename: &str,
     js_source: &str,
   ) -> Result<(), ErrBox> {
-    self.shared_init();
+    self.core_lib_init();
     let filename = CString::new(js_filename).unwrap();
     let source = CString::new(js_source).unwrap();
     unsafe {
@@ -669,7 +579,7 @@ impl Isolate {
   /// the V8 exception. By default this type is CoreJSError, however it may be a
   /// different type if Isolate::set_js_error_create() has been used.
   pub fn mod_instantiate(
-    &mut self,
+    &self,
     id: deno_mod,
     resolve_fn: &mut ResolveFn,
   ) -> Result<(), ErrBox> {
@@ -705,8 +615,8 @@ impl Isolate {
   /// ErrBox can be downcast to a type that exposes additional information about
   /// the V8 exception. By default this type is CoreJSError, however it may be a
   /// different type if Isolate::set_js_error_create() has been used.
-  pub fn mod_evaluate(&mut self, id: deno_mod) -> Result<(), ErrBox> {
-    self.shared_init();
+  pub fn mod_evaluate(&self, id: deno_mod) -> Result<(), ErrBox> {
+    self.core_lib_init();
     unsafe {
       libdeno::deno_mod_evaluate(self.libdeno_isolate, self.as_raw_ptr(), id)
     };
@@ -736,7 +646,7 @@ impl Future for Isolate {
   type Error = ErrBox;
 
   fn poll(&mut self) -> Poll<(), ErrBox> {
-    self.shared_init();
+    self.core_lib_init();
 
     let mut overflow_response: Option<(OpId, Buf)> = None;
 
@@ -827,6 +737,9 @@ pub fn js_check<T>(r: Result<T, ErrBox>) -> T {
 #[cfg(test)]
 pub mod tests {
   use super::*;
+  use crate::op_dispatchers::CoreOp;
+  use crate::op_dispatchers::Named;
+  use crate::op_dispatchers::OpDispatcher;
   use futures::executor::spawn;
   use futures::future::lazy;
   use futures::future::ok;
@@ -870,15 +783,15 @@ pub mod tests {
     OverflowResAsync,
   }
 
-  pub fn setup(mode: Mode) -> (Isolate, Arc<AtomicUsize>) {
-    let dispatch_count = Arc::new(AtomicUsize::new(0));
-    let dispatch_count_ = dispatch_count.clone();
+  pub struct MockDispatch {
+    pub mode: Mode,
+    pub dispatch_count: AtomicUsize,
+  }
 
-    let mut isolate = Isolate::new(StartupData::None, false);
-    isolate.set_dispatch(move |op_id, control, _| -> CoreOp {
-      println!("op_id {}", op_id);
-      dispatch_count_.fetch_add(1, Ordering::Relaxed);
-      match mode {
+  impl OpDispatcher for MockDispatch {
+    fn dispatch(&self, control: &[u8], _buf: Option<PinnedBuf>) -> CoreOp {
+      self.dispatch_count.fetch_add(1, Ordering::Relaxed);
+      match self.mode {
         Mode::AsyncImmediate => {
           assert_eq!(control.len(), 1);
           assert_eq!(control[0], 42);
@@ -914,7 +827,20 @@ pub mod tests {
           Op::Async(Box::new(futures::future::ok(buf)))
         }
       }
+    }
+  }
+
+  impl Named for MockDispatch {
+    const NAME: &'static str = "TestOp";
+  }
+
+  pub fn setup(mode: Mode) -> (Isolate, Arc<MockDispatch>) {
+    let isolate = Isolate::new(StartupData::None, false);
+    let dispatcher = Arc::new(MockDispatch {
+      mode,
+      dispatch_count: AtomicUsize::new(0),
     });
+    isolate.register_op("testing", Arc::clone(&dispatcher));
     js_check(isolate.execute(
       "setup.js",
       r#"
@@ -923,32 +849,37 @@ pub mod tests {
             throw Error("assert");
           }
         }
+
+        assert(Deno.core.ids.testing !== undefined);
+        assert(Deno.core.ids.testing.TestOp !== undefined);
+
+        const testOpId = Deno.core.ids.testing.TestOp;
         "#,
     ));
-    assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
-    (isolate, dispatch_count)
+    assert_eq!(dispatcher.dispatch_count.load(Ordering::Relaxed), 0);
+    (isolate, dispatcher)
   }
 
   #[test]
   fn test_dispatch() {
-    let (mut isolate, dispatch_count) = setup(Mode::AsyncImmediate);
+    let (isolate, dispatcher) = setup(Mode::AsyncImmediate);
     js_check(isolate.execute(
       "filename.js",
       r#"
         let control = new Uint8Array([42]);
-        Deno.core.send(42, control);
+        Deno.core.send(testOpId, control);
         async function main() {
-          Deno.core.send(42, control);
+          Deno.core.send(testOpId, control);
         }
         main();
         "#,
     ));
-    assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
+    assert_eq!(dispatcher.dispatch_count.load(Ordering::Relaxed), 2);
   }
 
   #[test]
   fn test_mods() {
-    let (mut isolate, dispatch_count) = setup(Mode::AsyncImmediate);
+    let (isolate, dispatcher) = setup(Mode::AsyncImmediate);
     let mod_a = isolate
       .mod_new(
         true,
@@ -957,11 +888,11 @@ pub mod tests {
         import { b } from 'b.js'
         if (b() != 'b') throw Error();
         let control = new Uint8Array([42]);
-        Deno.core.send(42, control);
+        Deno.core.send(testOpId, control);
       "#,
       )
       .unwrap();
-    assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
+    assert_eq!(dispatcher.dispatch_count.load(Ordering::Relaxed), 0);
 
     let imports = isolate.mod_get_imports(mod_a);
     assert_eq!(imports, vec!["b.js".to_string()]);
@@ -982,22 +913,22 @@ pub mod tests {
     };
 
     js_check(isolate.mod_instantiate(mod_b, &mut resolve));
-    assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
+    assert_eq!(dispatcher.dispatch_count.load(Ordering::Relaxed), 0);
     assert_eq!(resolve_count.load(Ordering::SeqCst), 0);
 
     js_check(isolate.mod_instantiate(mod_a, &mut resolve));
-    assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
+    assert_eq!(dispatcher.dispatch_count.load(Ordering::Relaxed), 0);
     assert_eq!(resolve_count.load(Ordering::SeqCst), 1);
 
     js_check(isolate.mod_evaluate(mod_a));
-    assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
+    assert_eq!(dispatcher.dispatch_count.load(Ordering::Relaxed), 1);
     assert_eq!(resolve_count.load(Ordering::SeqCst), 1);
   }
 
   #[test]
   fn test_poll_async_immediate_ops() {
     run_in_task(|| {
-      let (mut isolate, dispatch_count) = setup(Mode::AsyncImmediate);
+      let (mut isolate, dispatcher) = setup(Mode::AsyncImmediate);
 
       js_check(isolate.execute(
         "setup2.js",
@@ -1008,31 +939,31 @@ pub mod tests {
         });
         "#,
       ));
-      assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
+      assert_eq!(dispatcher.dispatch_count.load(Ordering::Relaxed), 0);
       js_check(isolate.execute(
         "check1.js",
         r#"
         assert(nrecv == 0);
         let control = new Uint8Array([42]);
-        Deno.core.send(42, control);
+        Deno.core.send(testOpId, control);
         assert(nrecv == 0);
         "#,
       ));
-      assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
+      assert_eq!(dispatcher.dispatch_count.load(Ordering::Relaxed), 1);
       assert_eq!(Async::Ready(()), isolate.poll().unwrap());
-      assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
+      assert_eq!(dispatcher.dispatch_count.load(Ordering::Relaxed), 1);
       js_check(isolate.execute(
         "check2.js",
         r#"
         assert(nrecv == 1);
-        Deno.core.send(42, control);
+        Deno.core.send(testOpId, control);
         assert(nrecv == 1);
         "#,
       ));
-      assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
+      assert_eq!(dispatcher.dispatch_count.load(Ordering::Relaxed), 2);
       assert_eq!(Async::Ready(()), isolate.poll().unwrap());
       js_check(isolate.execute("check3.js", "assert(nrecv == 2)"));
-      assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
+      assert_eq!(dispatcher.dispatch_count.load(Ordering::Relaxed), 2);
       // We are idle, so the next poll should be the last.
       assert_eq!(Async::Ready(()), isolate.poll().unwrap());
     });
@@ -1231,7 +1162,7 @@ pub mod tests {
     let (tx, rx) = std::sync::mpsc::channel::<bool>();
     let tx_clone = tx.clone();
 
-    let (mut isolate, _dispatch_count) = setup(Mode::AsyncImmediate);
+    let (mut isolate, _dispatcher) = setup(Mode::AsyncImmediate);
     let shared = isolate.shared_isolate_handle();
 
     let t1 = std::thread::spawn(move || {
@@ -1288,7 +1219,7 @@ pub mod tests {
   fn dangling_shared_isolate() {
     let shared = {
       // isolate is dropped at the end of this block
-      let (mut isolate, _dispatch_count) = setup(Mode::AsyncImmediate);
+      let (mut isolate, _dispatcher) = setup(Mode::AsyncImmediate);
       isolate.shared_isolate_handle()
     };
 
@@ -1298,7 +1229,7 @@ pub mod tests {
 
   #[test]
   fn overflow_req_sync() {
-    let (mut isolate, dispatch_count) = setup(Mode::OverflowReqSync);
+    let (isolate, dispatcher) = setup(Mode::OverflowReqSync);
     js_check(isolate.execute(
       "overflow_req_sync.js",
       r#"
@@ -1306,21 +1237,21 @@ pub mod tests {
         Deno.core.setAsyncHandler((opId, buf) => { asyncRecv++ });
         // Large message that will overflow the shared space.
         let control = new Uint8Array(100 * 1024 * 1024);
-        let response = Deno.core.dispatch(99, control);
+        let response = Deno.core.dispatch(testOpId, control);
         assert(response instanceof Uint8Array);
         assert(response.length == 4);
         assert(response[0] == 43);
         assert(asyncRecv == 0);
         "#,
     ));
-    assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
+    assert_eq!(dispatcher.dispatch_count.load(Ordering::Relaxed), 1);
   }
 
   #[test]
   fn overflow_res_sync() {
     // TODO(ry) This test is quite slow due to memcpy-ing 100MB into JS. We
     // should optimize this.
-    let (mut isolate, dispatch_count) = setup(Mode::OverflowResSync);
+    let (isolate, dispatcher) = setup(Mode::OverflowResSync);
     js_check(isolate.execute(
       "overflow_res_sync.js",
       r#"
@@ -1328,20 +1259,20 @@ pub mod tests {
         Deno.core.setAsyncHandler((opId, buf) => { asyncRecv++ });
         // Large message that will overflow the shared space.
         let control = new Uint8Array([42]);
-        let response = Deno.core.dispatch(99, control);
+        let response = Deno.core.dispatch(testOpId, control);
         assert(response instanceof Uint8Array);
         assert(response.length == 100 * 1024 * 1024);
         assert(response[0] == 99);
         assert(asyncRecv == 0);
         "#,
     ));
-    assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
+    assert_eq!(dispatcher.dispatch_count.load(Ordering::Relaxed), 1);
   }
 
   #[test]
   fn overflow_req_async() {
     run_in_task(|| {
-      let (mut isolate, dispatch_count) = setup(Mode::OverflowReqAsync);
+      let (mut isolate, dispatcher) = setup(Mode::OverflowReqAsync);
       js_check(isolate.execute(
         "overflow_req_async.js",
         r#"
@@ -1354,13 +1285,13 @@ pub mod tests {
         });
         // Large message that will overflow the shared space.
         let control = new Uint8Array(100 * 1024 * 1024);
-        let response = Deno.core.dispatch(99, control);
+        let response = Deno.core.dispatch(testOpId, control);
         // Async messages always have null response.
         assert(response == null);
         assert(asyncRecv == 0);
         "#,
       ));
-      assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
+      assert_eq!(dispatcher.dispatch_count.load(Ordering::Relaxed), 1);
       assert_eq!(Async::Ready(()), js_check(isolate.poll()));
       js_check(isolate.execute("check.js", "assert(asyncRecv == 1);"));
     });
@@ -1371,7 +1302,7 @@ pub mod tests {
     run_in_task(|| {
       // TODO(ry) This test is quite slow due to memcpy-ing 100MB into JS. We
       // should optimize this.
-      let (mut isolate, dispatch_count) = setup(Mode::OverflowResAsync);
+      let (mut isolate, dispatcher) = setup(Mode::OverflowResAsync);
       js_check(isolate.execute(
         "overflow_res_async.js",
         r#"
@@ -1384,12 +1315,12 @@ pub mod tests {
         });
         // Large message that will overflow the shared space.
         let control = new Uint8Array([42]);
-        let response = Deno.core.dispatch(99, control);
+        let response = Deno.core.dispatch(testOpId, control);
         assert(response == null);
         assert(asyncRecv == 0);
         "#,
       ));
-      assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
+      assert_eq!(dispatcher.dispatch_count.load(Ordering::Relaxed), 1);
       poll_until_ready(&mut isolate, 3).unwrap();
       js_check(isolate.execute("check.js", "assert(asyncRecv == 1);"));
     });
@@ -1400,7 +1331,7 @@ pub mod tests {
     // TODO(ry) This test is quite slow due to memcpy-ing 100MB into JS. We
     // should optimize this.
     run_in_task(|| {
-      let (mut isolate, dispatch_count) = setup(Mode::OverflowResAsync);
+      let (mut isolate, dispatcher) = setup(Mode::OverflowResAsync);
       js_check(isolate.execute(
         "overflow_res_multiple_dispatch_async.js",
         r#"
@@ -1413,15 +1344,15 @@ pub mod tests {
         });
         // Large message that will overflow the shared space.
         let control = new Uint8Array([42]);
-        let response = Deno.core.dispatch(99, control);
+        let response = Deno.core.dispatch(testOpId, control);
         assert(response == null);
         assert(asyncRecv == 0);
         // Dispatch another message to verify that pending ops
         // are done even if shared space overflows
-        Deno.core.dispatch(99, control);
+        Deno.core.dispatch(testOpId, control);
         "#,
       ));
-      assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
+      assert_eq!(dispatcher.dispatch_count.load(Ordering::Relaxed), 2);
       poll_until_ready(&mut isolate, 3).unwrap();
       js_check(isolate.execute("check.js", "assert(asyncRecv == 2);"));
     });
@@ -1430,7 +1361,7 @@ pub mod tests {
   #[test]
   fn test_js() {
     run_in_task(|| {
-      let (mut isolate, _dispatch_count) = setup(Mode::AsyncImmediate);
+      let (mut isolate, _dispatcher) = setup(Mode::AsyncImmediate);
       js_check(
         isolate.execute(
           "shared_queue_test.js",
@@ -1444,7 +1375,7 @@ pub mod tests {
   #[test]
   fn will_snapshot() {
     let snapshot = {
-      let mut isolate = Isolate::new(StartupData::None, true);
+      let isolate = Isolate::new(StartupData::None, true);
       js_check(isolate.execute("a.js", "a = 1 + 2"));
       let s = isolate.snapshot().unwrap();
       drop(isolate);
@@ -1452,7 +1383,7 @@ pub mod tests {
     };
 
     let startup_data = StartupData::LibdenoSnapshot(snapshot);
-    let mut isolate2 = Isolate::new(startup_data, false);
+    let isolate2 = Isolate::new(startup_data, false);
     js_check(isolate2.execute("check.js", "if (a != 3) throw Error('x')"));
   }
 }

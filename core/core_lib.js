@@ -40,6 +40,11 @@ SharedQueue Binary Layout
   let shared32;
   let initialized = false;
 
+  // Internal mutable records object
+  const opRecords = {};
+  // Cloned version of records that is frozen, so we can avoid cloning records for every access.
+  let opRecordsFrozen = Object.freeze(Object.assign({}, opRecords));
+
   function maybeInit() {
     if (!initialized) {
       init();
@@ -56,6 +61,7 @@ SharedQueue Binary Layout
     shared32 = new Int32Array(shared);
     // Callers should not call Deno.core.recv, use setAsyncHandler.
     Deno.core.recv(handleAsyncMsgFromRust);
+    Deno.core.recvOpReg(handleOpRegister);
   }
 
   function assert(cond) {
@@ -173,6 +179,16 @@ SharedQueue Binary Layout
     }
   }
 
+  function handleOpRegister(opId, namespace, name) {
+    Deno.core.print(`REGISTER NEW OP ${opId} ${namespace} ${name}`);
+    if (opRecords[namespace] === undefined) {
+      opRecords[namespace] = {};
+    }
+    opRecords[namespace][name] = opId;
+    // Clone, freeze, and assign records to recordsFrozen.
+    opRecordsFrozen = Object.freeze(Object.assign({}, opRecords));
+  }
+
   function dispatch(opId, control, zeroCopy = null) {
     maybeInit();
     return Deno.core.send(opId, control, zeroCopy);
@@ -195,4 +211,10 @@ SharedQueue Binary Layout
   assert(window[GLOBAL_NAMESPACE] != null);
   assert(window[GLOBAL_NAMESPACE][CORE_NAMESPACE] != null);
   Object.assign(core, denoCore);
+  Object.defineProperty(core, "ids", {
+    get: function() {
+      return opRecordsFrozen;
+    }
+  });
+  maybeInit();
 })(this);
