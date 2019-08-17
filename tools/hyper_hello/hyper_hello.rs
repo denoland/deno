@@ -9,7 +9,7 @@ use hyper::service::service_fn_ok;
 use hyper::{Body, Response, Server};
 use std::env;
 
-static PHRASE: &'static [u8] = b"Hello World!";
+static PHRASE: &[u8] = b"Hello World!";
 
 fn main() {
   let mut port: u16 = 4544;
