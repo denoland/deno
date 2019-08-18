@@ -1,0 +1,4 @@
+args: run --allow-read --reload tests/043_dyn_import_error.ts
+output: tests/043_dyn_import_error.ts.out
+exit_code: 1
+check_stderr: true
