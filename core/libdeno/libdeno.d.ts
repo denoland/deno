@@ -16,8 +16,15 @@ declare interface MessageCallback {
   (opId: number, msg: Uint8Array): void;
 }
 
+declare interface OpRegisterCallback {
+  (): void;
+  (opId: number, namespace: string, name: string): void;
+}
+
 declare interface DenoCore {
   recv(cb: MessageCallback): void;
+
+  recvOpReg(cb: OpRegisterCallback): void;
 
   send(
     opId: number,

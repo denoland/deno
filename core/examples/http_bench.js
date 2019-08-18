@@ -10,6 +10,8 @@ const responseBuf = new Uint8Array(
 const promiseMap = new Map();
 let nextPromiseId = 1;
 
+const opNamespace = Deno.ops.builtins;
+
 function assert(cond) {
   if (!cond) {
     throw Error("assert");
@@ -74,49 +76,49 @@ function handleAsyncMsgFromRust(opId, buf) {
 }
 
 let listenOpId;
+opNamespace.OpListen = id => {
+  listenOpId = id;
+};
 /** Listens on 0.0.0.0:4500, returns rid. */
 function listen() {
-  if (!listenOpId) {
-    listenOpId = Deno.core.ids.builtins.OpListen;
-  }
   return sendSync(listenOpId, -1);
 }
 
 let acceptOpId;
+opNamespace.OpAccept = id => {
+  acceptOpId = id;
+};
 /** Accepts a connection, returns rid. */
 async function accept(rid) {
-  if (!acceptOpId) {
-    acceptOpId = Deno.core.ids.builtins.OpAccept;
-  }
   return await sendAsync(acceptOpId, rid);
 }
 
 let readOpId;
+opNamespace.OpRead = id => {
+  readOpId = id;
+};
 /**
  * Reads a packet from the rid, presumably an http request. data is ignored.
  * Returns bytes read.
  */
 async function read(rid, data) {
-  if (!readOpId) {
-    readOpId = Deno.core.ids.builtins.OpRead;
-  }
-  return await sendAsync(Deno.core.ids.builtins.OpRead, rid, data);
+  return await sendAsync(readOpId, rid, data);
 }
 
 let writeOpId;
+opNamespace.OpWrite = id => {
+  writeOpId = id;
+};
 /** Writes a fixed HTTP response to the socket rid. Returns bytes written. */
 async function write(rid, data) {
-  if (!writeOpId) {
-    writeOpId = Deno.core.ids.builtins.OpWrite;
-  }
   return await sendAsync(writeOpId, rid, data);
 }
 
 let closeOpId;
+opNamespace.OpClose = id => {
+  closeOpId = id;
+};
 function close(rid) {
-  if (!closeOpId) {
-    closeOpId = Deno.core.ids.builtins.OpClose;
-  }
   return sendSync(closeOpId, rid);
 }
 

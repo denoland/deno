@@ -946,10 +946,12 @@ pub mod tests {
           }
         }
 
-        assert(Deno.core.ids.testing !== undefined);
-        assert(Deno.core.ids.testing.TestOp !== undefined);
+        let testOpId;
+        Deno.ops.testing.TestOp = (id) => {
+          testOpId = id;
+        };
 
-        const testOpId = Deno.core.ids.testing.TestOp;
+        assert(testOpId !== undefined);
         "#,
     ));
     assert_eq!(dispatcher.dispatch_count.load(Ordering::Relaxed), 0);

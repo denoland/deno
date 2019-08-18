@@ -20,6 +20,7 @@ SharedQueue Binary Layout
 
 (window => {
   const GLOBAL_NAMESPACE = "Deno";
+  const OPS_NAMESPACE = "ops";
   const CORE_NAMESPACE = "core";
   const MAX_RECORDS = 100;
   const INDEX_NUM_RECORDS = 0;
@@ -40,11 +41,6 @@ SharedQueue Binary Layout
   let shared32;
   let initialized = false;
 
-  // Internal mutable records object
-  let opRecords = {};
-  // Cloned version of records that is frozen, so we can avoid cloning records for every access.
-  let opRecordsFrozen = Object.freeze(Object.assign({}, opRecords));
-
   function maybeInit() {
     if (!initialized) {
       init();
@@ -61,7 +57,7 @@ SharedQueue Binary Layout
     shared32 = new Int32Array(shared);
     // Callers should not call Deno.core.recv, use setAsyncHandler.
     Deno.core.recv(handleAsyncMsgFromRust);
-    Deno.core.recvOpReg(handleOpRegister);
+    Deno.core.recvOpReg(handleOpUpdate);
   }
 
   function assert(cond) {
@@ -179,25 +175,124 @@ SharedQueue Binary Layout
     }
   }
 
-  function handleOpRegister(opId, namespace, name) {
-    // If we recieve a call with no params reset opRecords
-    if (opId === undefined) {
-      opRecords = {};
-      opRecordsFrozen = Object.freeze(Object.assign({}, opRecords));
-      return;
-    }
-    if (opRecords[namespace] === undefined) {
-      opRecords[namespace] = {};
-    }
-    opRecords[namespace][name] = opId;
-    // Clone, freeze, and assign records to recordsFrozen.
-    opRecordsFrozen = Object.freeze(Object.assign({}, opRecords));
-  }
-
   function dispatch(opId, control, zeroCopy = null) {
     maybeInit();
     return Deno.core.send(opId, control, zeroCopy);
   }
+
+  // Op registry state
+
+  // Internal mutable records object
+  let opRecords = {};
+  const opListeners = {};
+
+  // Op registry handlers
+
+  function handleOpUpdate(opId, namespace, name) {
+    // If we recieve a call with no params reset opRecords
+    if (opId === undefined) {
+      resetOps();
+      return;
+    }
+    registerOp(opId, namespace, name);
+  }
+
+  function resetOps() {
+    // Reset records
+    opRecords = {};
+    // Call all listeners with undefined
+    for (const space in opListeners) {
+      for (const name in opListeners[space]) {
+        for (const listener of opListeners[space][name]) {
+          listener(undefined);
+        }
+      }
+    }
+  }
+
+  function registerOp(opId, namespace, name) {
+    // Ensure namespace exists in object
+    if (opRecords[namespace] === undefined) {
+      opRecords[namespace] = {};
+    }
+    // Set record to opId
+    opRecords[namespace][name] = opId;
+    // Check for listeners
+    if (opListeners[namespace] !== undefined) {
+      if (opListeners[namespace][name] !== undefined) {
+        // Call all listeners with new id
+        for (const listener of opListeners[namespace][name]) {
+          listener(opId);
+        }
+      }
+    }
+  }
+
+  // Op registry external backplane
+  // (stuff that makes the external interface work)
+  // This part relies on Proxy for custom index handling. I would normally
+  // avoid Proxy, but I don't think there is a preferable way to do this.
+
+  // TODO(afinch7) maybe implement enumerablity, and some others functions?
+
+  const namespaceHandler = {
+    get: (target, prop, _receiver) => {
+      if (typeof prop === "symbol") {
+        throw new TypeError("symbol isn't a valid index");
+      }
+      // If namespace exists return value of op from namespace (maybe undefined)
+      if (target.root.ops[target.namespace]) {
+        return target.root.ops[target.namespace][prop];
+      }
+      // Otherwise return undefined
+      return undefined;
+    },
+    set: (target, prop, value, _receiver) => {
+      if (typeof prop === "symbol") {
+        throw new TypeError("symbol isn't a valid index");
+      }
+      // Init namespace if not present
+      if (target.root.listeners[target.namespace] === undefined) {
+        target.root.listeners[target.namespace] = {};
+      }
+      // Init op in namespace if not present
+      if (target.root.listeners[target.namespace][prop] === undefined) {
+        target.root.listeners[target.namespace][prop] = [];
+      }
+      // Notify the listener of the current value.
+      if (target.root.ops[target.namespace]) {
+        value(target.root.ops[target.namespace][prop]);
+      }
+      // Push our new listener
+      target.root.listeners[target.namespace][prop].push(value);
+      return true;
+    }
+  };
+
+  const rootHandler = {
+    get: (target, prop, _receiver) => {
+      const namespaceObject = {
+        root: target,
+        namespace: prop.toString()
+      };
+
+      const namespaceProxy = new Proxy(namespaceObject, namespaceHandler);
+
+      return namespaceProxy;
+    }
+  };
+
+  const registryRootObject = {
+    // This needs to be a accessor since opRecords is let
+    get ops() {
+      return opRecords;
+    },
+    listeners: opListeners
+  };
+
+  const registryProxy = new Proxy(registryRootObject, rootHandler);
+
+  Object.seal(registryProxy);
 
   const denoCore = {
     setAsyncHandler,
@@ -216,10 +311,9 @@ SharedQueue Binary Layout
   assert(window[GLOBAL_NAMESPACE] != null);
   assert(window[GLOBAL_NAMESPACE][CORE_NAMESPACE] != null);
   Object.assign(core, denoCore);
-  Object.defineProperty(core, "ids", {
-    get: function() {
-      return opRecordsFrozen;
-    }
+  Object.defineProperty(Deno, OPS_NAMESPACE, {
+    value: registryProxy,
+    writable: false
   });
   maybeInit();
 })(this);

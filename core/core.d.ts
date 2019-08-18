@@ -8,6 +8,12 @@ declare interface MessageCallback {
   (opId: number, msg: Uint8Array): void;
 }
 
+declare type DenoOpListener = (id: number | undefined) => void;
+
+declare interface DenoOps {
+  [namespace: string]: { [name: string]: number | DenoOpListener };
+}
+
 declare interface DenoCore {
   dispatch(
     opId: number,
