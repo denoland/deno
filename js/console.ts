@@ -326,7 +326,9 @@ function createObjectString(
   value: {},
   ...args: [ConsoleContext, number, number]
 ): string {
-  if (value instanceof Error) {
+  if (customInspect in value && typeof value[customInspect] === "function") {
+    return String(value[customInspect]!());
+  } else if (value instanceof Error) {
     return String(value.stack);
   } else if (Array.isArray(value)) {
     return createArrayString(value, ...args);
@@ -751,6 +753,11 @@ export class Console {
     return instance[isConsoleInstance];
   }
 }
+
+/** A symbol which can be used as a key for a custom method which will be called
+ * when `Deno.inspect()` is called, or when the object is logged to the console.
+ */
+export const customInspect = Symbol.for("Deno.customInspect");
 
 /**
  * `inspect()` converts input into string that has the same format
