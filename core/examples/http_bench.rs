@@ -338,8 +338,12 @@ fn main() {
     // using v8::MicrotasksPolicy::kExplicit
 
     let js_source = include_str!("http_bench.js");
+    let startup_data = StartupData::Script(Script {
+      source: js_source,
+      filename: "http_bench.js",
+    });
 
-    let mut isolate = deno::Isolate::new(StartupData::None, false);
+    let mut isolate = deno::Isolate::new(startup_data, false);
     let namespace = "builtins".to_string();
     isolate.set_dispatcher_registry(Arc::new(OpDisReg::new()));
     isolate.register_op(&namespace, WrappedMinimalOpDispatcher::from(OpListen));
@@ -348,7 +352,7 @@ fn main() {
     isolate.register_op(&namespace, WrappedMinimalOpDispatcher::from(OpRead));
     isolate.register_op(&namespace, WrappedMinimalOpDispatcher::from(OpWrite));
 
-    isolate.execute("http_bench.js", js_source).unwrap();
+    isolate.execute("<anonymous>", "httpBenchMain()").unwrap();
 
     isolate.then(|r| {
       js_check(r);

@@ -137,7 +137,8 @@ async function serve(rid) {
   close(rid);
 }
 
-async function main() {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+async function httpBenchMain() {
   Deno.core.setAsyncHandler(handleAsyncMsgFromRust);
 
   Deno.core.print("http_bench.js start\n");
@@ -154,5 +155,3 @@ async function main() {
     serve(rid);
   }
 }
-
-main();

@@ -223,7 +223,7 @@ void RecvOpReg(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::HandleScope handle_scope(isolate);
 
   if (!d->recv_op_reg_.IsEmpty()) {
-    isolate->ThrowException(v8_str("Deno.core.recv already called."));
+    isolate->ThrowException(v8_str("Deno.core.recvOpReg already called."));
     return;
   }
 
@@ -485,6 +485,9 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context) {
 
   auto core_val = v8::Object::New(isolate);
   CHECK(deno_val->Set(context, deno::v8_str("core"), core_val).FromJust());
+
+  auto ops_val = v8::Object::New(isolate);
+  CHECK(deno_val->Set(context, deno::v8_str("ops"), ops_val).FromJust());
 
   auto print_tmpl = v8::FunctionTemplate::New(isolate, Print);
   auto print_val = print_tmpl->GetFunction(context).ToLocalChecked();

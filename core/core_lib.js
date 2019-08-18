@@ -37,8 +37,14 @@ SharedQueue Binary Layout
   // It is possible that the Deno namespace has been deleted.
   // Use the above local Deno and core variable instead.
 
+  // SharedQueue state
   let sharedBytes;
   let shared32;
+
+  // Op registry state
+  let opRecords = {};
+  const opListeners = {};
+
   let initialized = false;
 
   function maybeInit() {
@@ -180,12 +186,6 @@ SharedQueue Binary Layout
     return Deno.core.send(opId, control, zeroCopy);
   }
 
-  // Op registry state
-
-  // Internal mutable records object
-  let opRecords = {};
-  const opListeners = {};
-
   // Op registry handlers
 
   function handleOpUpdate(opId, namespace, name) {
@@ -287,7 +287,9 @@ SharedQueue Binary Layout
     get ops() {
       return opRecords;
     },
-    listeners: opListeners
+    get listeners() {
+      return opListeners;
+    }
   };
 
   const registryProxy = new Proxy(registryRootObject, rootHandler);
@@ -297,6 +299,7 @@ SharedQueue Binary Layout
   const denoCore = {
     setAsyncHandler,
     dispatch,
+    maybeInit,
     sharedQueue: {
       MAX_RECORDS,
       head,
@@ -310,10 +313,10 @@ SharedQueue Binary Layout
 
   assert(window[GLOBAL_NAMESPACE] != null);
   assert(window[GLOBAL_NAMESPACE][CORE_NAMESPACE] != null);
+  assert(window[GLOBAL_NAMESPACE][OPS_NAMESPACE] != null);
   Object.assign(core, denoCore);
   Object.defineProperty(Deno, OPS_NAMESPACE, {
     value: registryProxy,
     writable: false
   });
-  maybeInit();
 })(this);

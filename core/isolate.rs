@@ -384,8 +384,9 @@ impl Isolate {
     }
   }
 
-  /// Executes a bit of built-in JavaScript to provide Deno.sharedQueue.
-  fn core_lib_init(&self) {
+  /// Executes a bit of built-in JavaScript to provide Deno.core.sharedQueue
+  /// and Deno.ops.
+  fn core_lib_load(&self) {
     if self.needs_init.fetch_and(false, Ordering::SeqCst) {
       js_check(self.execute("core_lib.js", include_str!("core_lib.js")));
       // Maybe execute the startup script.
@@ -394,6 +395,11 @@ impl Isolate {
         self.execute(&s.filename, &s.source).unwrap()
       }
     }
+  }
+
+  fn core_lib_init(&self) {
+    self.core_lib_load();
+    js_check(self.execute("<anonymous>", "Deno.core.maybeInit()"));
   }
 
   extern "C" fn dyn_import(
@@ -479,7 +485,7 @@ impl Isolate {
     js_filename: &str,
     js_source: &str,
   ) -> Result<(), ErrBox> {
-    self.core_lib_init();
+    self.core_lib_load();
     let filename = CString::new(js_filename).unwrap();
     let source = CString::new(js_source).unwrap();
     unsafe {
@@ -706,7 +712,7 @@ impl Isolate {
   /// the V8 exception. By default this type is CoreJSError, however it may be a
   /// different type if Isolate::set_js_error_create() has been used.
   pub fn mod_evaluate(&self, id: deno_mod) -> Result<(), ErrBox> {
-    self.core_lib_init();
+    self.core_lib_load();
     unsafe {
       libdeno::deno_mod_evaluate(self.libdeno_isolate, self.as_raw_ptr(), id)
     };
@@ -738,7 +744,7 @@ impl Future for Isolate {
   fn poll(&mut self) -> Poll<(), ErrBox> {
     if !self.has_polled_once {
       self.has_polled_once = true;
-      self.core_lib_init();
+      self.core_lib_load();
     }
 
     let mut overflow_response: Option<(OpId, Buf)> = None;
@@ -1406,7 +1412,7 @@ pub mod tests {
         r#"
         let asyncRecv = 0;
         Deno.core.setAsyncHandler((opId, buf) => {
-          assert(opId == 99);
+          assert(opId == testOpId);
           assert(buf.byteLength === 100 * 1024 * 1024);
           assert(buf[0] === 4);
           asyncRecv++;
@@ -1435,7 +1441,7 @@ pub mod tests {
         r#"
         let asyncRecv = 0;
         Deno.core.setAsyncHandler((opId, buf) => {
-          assert(opId === 99);
+          assert(opId === testOpId);
           assert(buf.byteLength === 100 * 1024 * 1024);
           assert(buf[0] === 4);
           asyncRecv++;
