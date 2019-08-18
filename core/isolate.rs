@@ -503,10 +503,7 @@ impl Isolate {
         err_str_ptr,
       )
     };
-    self.check_last_exception().map_err(|err| {
-      assert_eq!(id, 0);
-      err
-    })
+    self.check_last_exception().map_err(|err| err)
   }
 
   fn poll_dyn_imports(&mut self) -> Poll<(), ErrBox> {
