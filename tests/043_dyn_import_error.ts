@@ -1,4 +1,4 @@
-async function main() {
+async function main(): Promise<void> {
   const root = `file://${Deno.cwd()}/`;
   await import(root + "tests/001_hello.js");
   // error occurred only for 2nd and following dynamic imports
