@@ -98,13 +98,15 @@ impl NotifyerReg {
   }
 }
 
+type OpDispatcherRegistry = Vec<Option<Arc<Box<dyn OpDispatcher>>>>;
+
 /// Op dispatcher registry. Used to keep track of dynamicly registered dispatchers
 /// and make them addressable by id.
 pub struct OpDisReg {
   // Quick lookups by unique "op id"/"resource id"
   // The main goal of op_dis_registry is to perform lookups as fast
   // as possible at all times.
-  op_dis_registry: RwLock<Vec<Option<Arc<Box<dyn OpDispatcher>>>>>,
+  op_dis_registry: RwLock<OpDispatcherRegistry>,
   next_op_dis_id: AtomicU32,
   // Serves as "phone book" for op_dis_registry
   // This should only be referenced for initial lookups. It isn't
@@ -207,6 +209,12 @@ impl OpDisReg {
   pub fn remove_notify(&self, slot: usize) {
     let mut notifier_reg = self.notifier_reg.write().unwrap();
     notifier_reg.remove_notifier(slot);
+  }
+}
+
+impl Default for OpDisReg {
+  fn default() -> Self {
+    Self::new()
   }
 }
 
