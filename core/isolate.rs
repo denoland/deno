@@ -440,10 +440,7 @@ impl Isolate {
       libdeno::deno_mod_new(self.libdeno_isolate, main, name_ptr, source_ptr)
     };
 
-    self.check_last_exception().map(|_| id).map_err(|err| {
-      assert_eq!(id, 0);
-      err
-    })
+    self.check_last_exception().map(|_| id)
   }
 
   pub fn mod_get_imports(&self, id: deno_mod) -> Vec<String> {
