@@ -157,6 +157,18 @@ fn notify_op_id_inner(
 ) {
   let namespace_cstr = CString::new(namespace.clone()).unwrap();
   let name_cstr = CString::new(name.clone()).unwrap();
+  // TODO(afinch7) if this triggers any call stack that might require
+  // the user_data_ field to be set correctly on libdeno::isolate via
+  // we may see deref null pointer or similar. I.E.
+  // Deno.ops.namespace.name = (id) => {
+  //   Deno.core.dispatch(id, someData);
+  // }
+  // or
+  // Deno.ops.namespace.name = (id) => {
+  //   import(someDataModule);
+  // }
+  // This should be fixed, but I wouldn't consider this critical as
+  // this isn't really within the bounds of intended use cases.
   unsafe {
     libdeno::deno_register_op_id(
       isolate,

@@ -221,6 +221,9 @@ impl Default for OpDisReg {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::isolate::js_check;
+  use crate::isolate::Isolate;
+  use crate::isolate::StartupData;
   use std::convert::TryInto;
   use std::ops::Deref;
 
@@ -428,5 +431,118 @@ mod tests {
     assert_eq!(register_op_id, lookup_op_id);
   }
 
-  // TODO(afinch7) add multithreaded test with isolates.
+  #[test]
+  fn isolate_shared_dynamic_register_multithread() {
+    // This is intended to represent the most complicated use case,
+    // synced state and registries in different threads and isolates.
+    let op_dis_reg = Arc::new(OpDisReg::new());
+
+    let state = ThreadSafeMockState::new(Arc::clone(&op_dis_reg));
+
+    let namespace = "MockNamespace";
+
+    // After isolate 1 is setup and dispatcher registry is set.
+    let (sync_1_tx, sync_1_rx) = std::sync::mpsc::channel::<()>();
+    // After isolate 2 is setup, dispatcher registry is set, register op
+    // dispatcher is registed, and the op id notifyer for
+    // MockStatefulDispatcherCounter is set.
+    let (sync_2_tx, sync_2_rx) = std::sync::mpsc::channel::<()>();
+    // After isolate 1 disptaches MockStatefulDispatcherRegisterOp.
+    // MockStatefulDispatcherCounter should be registed for both isolates.
+    let (sync_3_tx, sync_3_rx) = std::sync::mpsc::channel::<()>();
+    // After isolate 2 calls counter op sucessfully.
+    let (sync_4_tx, sync_4_rx) = std::sync::mpsc::channel::<()>();
+    let op_dis_reg_ = Arc::clone(&op_dis_reg);
+    let t1 = std::thread::spawn(move || {
+      let mut isolate = Isolate::new(StartupData::None, false);
+
+      isolate.set_dispatcher_registry(op_dis_reg_);
+      sync_1_tx.send(()).ok();
+      sync_2_rx.recv().unwrap();
+      js_check(isolate.execute(
+        "register_op.js",
+        r#"
+          function assert(cond) {
+            if (!cond) {
+              throw Error("assert");
+            }
+          }
+
+          let registerOpId;
+          Deno.ops.MockNamespace.MockStatefulDispatcherRegisterOp = (id) => {
+            registerOpId = id;
+          };
+
+          // "MockNamespace" as Uint8Array;
+          const namespaceStrBuffer = new Uint8Array([77, 111, 99, 107, 78, 97, 109, 101, 115, 112, 97, 99, 101]);
+
+          function registerOp() {
+            assert(registerOpId !== undefined);
+            Deno.core.dispatch(registerOpId, namespaceStrBuffer);
+          }
+        "#,
+      ));
+      js_check(isolate.execute("<anonymous>", "registerOp();"));
+      sync_3_tx.send(()).ok();
+    });
+
+    let op_dis_reg_ = Arc::clone(&op_dis_reg);
+    let state_ = state.clone();
+    let t2 = std::thread::spawn(move || {
+      sync_1_rx.recv().unwrap();
+      let mut isolate = Isolate::new(StartupData::None, false);
+
+      isolate.set_dispatcher_registry(op_dis_reg_);
+      isolate.register_op(
+        namespace,
+        Arc::new(MockStatefulDispatcherRegisterOp::new(state.clone())),
+      );
+      js_check(isolate.execute(
+        "count_op.js",
+        r#"
+          function assert(cond) {
+            if (!cond) {
+              throw Error("assert");
+            }
+          }
+
+          let counterOpId;
+          Deno.ops.MockNamespace.MockStatefulDispatcherCounter = (id) => {
+            counterOpId = id;
+          };
+
+          function countOp(number) {
+            assert(counterOpId !== undefined);
+            return Deno.core.dispatch(counterOpId, new Uint32Array([number]));
+          }
+        "#,
+      ));
+      sync_2_tx.send(()).ok();
+      sync_3_rx.recv().unwrap();
+      let state = state_.clone();
+      let intial_counter_value = state.get_count();
+      let ammount = 25u32;
+      js_check(isolate.execute(
+        "<anonymous>",
+        &format!(
+          r#"
+            const response = countOp({});
+            assert(response instanceof Uint8Array);
+            assert(response.length == 4);
+            assert(new DataView(response.buffer).getUint32(0, true) == 0);
+          "#,
+          ammount,
+        ),
+      ));
+      let expected_final_counter_value = ammount + intial_counter_value;
+      let final_counter_value = state.get_count();
+      assert_eq!(final_counter_value, expected_final_counter_value);
+      sync_4_tx.send(()).ok();
+    });
+
+    sync_4_rx.recv().unwrap();
+
+    t1.join().unwrap();
+    t2.join().unwrap();
+  }
 }
