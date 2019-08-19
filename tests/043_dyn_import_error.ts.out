@@ -1,8 +1,0 @@
-Compile [WILDCARD]
-Hello World
-error: Uncaught SyntaxError: Invalid or unexpected token
-► file://[WILDCARD]README.md:1:1
-
-1 # deno
-  ^
-
