@@ -3,7 +3,6 @@ import { assert, assertEquals, test } from "./test_util.ts";
 
 // Some of these APIs aren't exposed in the types and so we have to cast to any
 // in order to "trick" TypeScript.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const {
   Console,
   customInspect,
@@ -11,6 +10,7 @@ const {
   inspect,
   write,
   stdout
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 } = Deno as any;
 
 function stringify(...args: unknown[]): string {
