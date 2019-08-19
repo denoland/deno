@@ -983,26 +983,42 @@ pub mod tests {
       let count_ = count.clone();
       let mut isolate = Isolate::new(StartupData::None, false);
       isolate.set_dyn_import(move |_, specifier, referrer| {
-        count_.fetch_add(1, Ordering::Relaxed);
-        assert_eq!(specifier, "foo.js");
-        assert_eq!(referrer, "dyn_import2.js");
+        let c = count_.fetch_add(1, Ordering::Relaxed);
+        match c {
+          0 => assert_eq!(specifier, "foo1.js"),
+          1 => assert_eq!(specifier, "foo2.js"),
+          2 => assert_eq!(specifier, "foo3.js"),
+          _ => unreachable!(),
+        }
+        assert_eq!(referrer, "dyn_import_error.js");
         let err = io::Error::from(io::ErrorKind::NotFound);
         let stream = MockImportStream(vec![Err(err.into())]);
         Box::new(stream)
       });
+
+      // Try to import multiple modules to demonstrate
+      // that after failed dynamic import another
+      // dynamic import can still be run
       js_check(isolate.execute(
-        "dyn_import2.js",
+        "dyn_import_error.js",
         r#"
         (async () => {
-          await import("foo.js");
+          await import("foo1.js");
+        })();
+        (async () => {
+          await import("foo2.js");
+        })();
+        (async () => {
+          await import("foo3.js");
         })();
         "#,
       ));
-      assert_eq!(count.load(Ordering::Relaxed), 1);
 
-      // We should get an error here.
-      let result = isolate.poll();
-      assert!(result.is_err());
+      assert_eq!(count.load(Ordering::Relaxed), 3);
+      // Now each poll should return error
+      assert!(isolate.poll().is_err());
+      assert!(isolate.poll().is_err());
+      assert!(isolate.poll().is_err());
     })
   }
 
