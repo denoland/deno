@@ -79,7 +79,7 @@ export {
   ProcessStatus,
   Signal
 } from "./process";
-export { inspect } from "./console";
+export { inspect, customInspect } from "./console";
 export { build, platform, OperatingSystem, Arch } from "./build";
 export { version } from "./version";
 export const args: string[] = [];

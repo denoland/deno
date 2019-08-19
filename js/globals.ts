@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 // This is a "special" module, in that it define the global runtime scope of
-// Deno, and therefore it defines a lot of the runtime environemnt that code
+// Deno, and therefore it defines a lot of the runtime environment that code
 // is evaluated in.  We use this file to automatically build the runtime type
 // library.
 
@@ -12,7 +12,7 @@ import * as blob from "./blob";
 import * as consoleTypes from "./console";
 import * as csprng from "./get_random_values";
 import * as customEvent from "./custom_event";
-import * as deno from "./deno";
+import * as Deno from "./deno";
 import * as domTypes from "./dom_types";
 import * as domFile from "./dom_file";
 import * as event from "./event";
@@ -62,6 +62,10 @@ declare global {
   interface ErrorConstructor {
     prepareStackTrace(error: Error, structuredStackTrace: CallSite[]): string;
   }
+
+  interface Object {
+    [consoleTypes.customInspect]?(): string;
+  }
 }
 
 // A self reference to the global object.
@@ -70,7 +74,7 @@ window.window = window;
 // This is the Deno namespace, it is handled differently from other window
 // properties when building the runtime type library, as the whole module
 // is flattened into a single namespace.
-window.Deno = deno;
+window.Deno = Deno;
 Object.freeze(window.Deno);
 
 // Globally available functions and object instances.
