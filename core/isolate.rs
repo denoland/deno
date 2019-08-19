@@ -983,6 +983,38 @@ pub mod tests {
       let count_ = count.clone();
       let mut isolate = Isolate::new(StartupData::None, false);
       isolate.set_dyn_import(move |_, specifier, referrer| {
+        count_.fetch_add(1, Ordering::Relaxed);
+        assert_eq!(specifier, "foo.js");
+        assert_eq!(referrer, "dyn_import2.js");
+        let err = io::Error::from(io::ErrorKind::NotFound);
+        let stream = MockImportStream(vec![Err(err.into())]);
+        Box::new(stream)
+      });
+      js_check(isolate.execute(
+        "dyn_import2.js",
+        r#"
+        (async () => {
+          await import("foo.js");
+        })();
+        "#,
+      ));
+      assert_eq!(count.load(Ordering::Relaxed), 1);
+
+      // We should get an error here.
+      let result = isolate.poll();
+      assert!(result.is_err());
+    })
+  }
+
+  #[test]
+  fn dyn_import_err2() {
+    // Import multiple modules to demonstrate that after failed dynamic import
+    // another dynamic import can still be run
+    run_in_task(|| {
+      let count = Arc::new(AtomicUsize::new(0));
+      let count_ = count.clone();
+      let mut isolate = Isolate::new(StartupData::None, false);
+      isolate.set_dyn_import(move |_, specifier, referrer| {
         let c = count_.fetch_add(1, Ordering::Relaxed);
         match c {
           0 => assert_eq!(specifier, "foo1.js"),
@@ -996,9 +1028,6 @@ pub mod tests {
         Box::new(stream)
       });
 
-      // Try to import multiple modules to demonstrate
-      // that after failed dynamic import another
-      // dynamic import can still be run
       js_check(isolate.execute(
         "dyn_import_error.js",
         r#"
