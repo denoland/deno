@@ -390,7 +390,9 @@ impl Isolate {
   }
 
   fn run_microtasks(&self) {
-    unsafe { libdeno::deno_run_microtasks(self.libdeno_isolate, self.as_raw_ptr()) };
+    unsafe {
+      libdeno::deno_run_microtasks(self.libdeno_isolate, self.as_raw_ptr())
+    };
   }
 
   fn check_last_exception(&self) -> Result<(), ErrBox> {
