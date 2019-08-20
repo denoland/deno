@@ -280,7 +280,7 @@ extern "C" {
     js_source: *const c_char,
   );
   pub fn deno_terminate_execution(i: *const isolate);
-  pub fn deno_run_microtasks(i: *const isolate);
+  pub fn deno_run_microtasks(i: *const isolate, user_data: *const c_void);
 
   // Modules
 

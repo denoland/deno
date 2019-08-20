@@ -234,8 +234,10 @@ void deno_terminate_execution(Deno* d_) {
   d->isolate_->TerminateExecution();
 }
 
-void deno_run_microtasks(Deno* d_) {
+void deno_run_microtasks(Deno* d_, void* user_data) {
   deno::DenoIsolate* d = reinterpret_cast<deno::DenoIsolate*>(d_);
+
+  deno::UserDataScope user_data_scope(d, user_data);
   v8::Locker locker(d->isolate_);
   v8::Isolate::Scope isolate_scope(d->isolate_);
   d->isolate_->RunMicrotasks();
