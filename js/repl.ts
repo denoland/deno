@@ -1,9 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as msg from "gen/cli/msg_generated";
-import * as flatbuffers from "./flatbuffers";
 import { assert } from "./util";
 import { close } from "./files";
-import * as dispatch from "./dispatch";
+import { sendSync, sendAsync, msg, flatbuffers } from "./dispatch_flatbuffers";
 import { exit } from "./os";
 import { window } from "./window";
 import { core } from "./core";
@@ -49,7 +47,7 @@ function startRepl(historyFile: string): number {
   const historyFile_ = builder.createString(historyFile);
   const inner = msg.ReplStart.createReplStart(builder, historyFile_);
 
-  const baseRes = dispatch.sendSync(builder, msg.Any.ReplStart, inner);
+  const baseRes = sendSync(builder, msg.Any.ReplStart, inner);
   assert(baseRes != null);
   assert(msg.Any.ReplStartRes === baseRes!.innerType());
   const innerRes = new msg.ReplStartRes();
@@ -64,11 +62,7 @@ export async function readline(rid: number, prompt: string): Promise<string> {
   const prompt_ = builder.createString(prompt);
   const inner = msg.ReplReadline.createReplReadline(builder, rid, prompt_);
 
-  const baseRes = await dispatch.sendAsync(
-    builder,
-    msg.Any.ReplReadline,
-    inner
-  );
+  const baseRes = await sendAsync(builder, msg.Any.ReplReadline, inner);
 
   assert(baseRes != null);
   assert(msg.Any.ReplReadlineRes === baseRes!.innerType());

@@ -1,8 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as msg from "gen/cli/msg_generated";
-import * as flatbuffers from "./flatbuffers";
 import { assert } from "./util";
-import * as dispatch from "./dispatch";
+import { sendSync, msg, flatbuffers } from "./dispatch_flatbuffers";
 
 export interface Metrics {
   opsDispatched: number;
@@ -47,5 +45,5 @@ function res(baseRes: null | msg.Base): Metrics {
  *      └──────────────────┴────────┘
  */
 export function metrics(): Metrics {
-  return res(dispatch.sendSync(...req()));
+  return res(sendSync(...req()));
 }

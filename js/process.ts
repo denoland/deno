@@ -1,7 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as dispatch from "./dispatch";
-import * as flatbuffers from "./flatbuffers";
-import * as msg from "gen/cli/msg_generated";
+import { sendSync, sendAsync, msg, flatbuffers } from "./dispatch_flatbuffers";
 
 import { File, close } from "./files";
 import { ReadCloser, WriteCloser } from "./io";
@@ -37,7 +35,7 @@ async function runStatus(rid: number): Promise<ProcessStatus> {
   const builder = flatbuffers.createBuilder();
   const inner = msg.RunStatus.createRunStatus(builder, rid);
 
-  const baseRes = await dispatch.sendAsync(builder, msg.Any.RunStatus, inner);
+  const baseRes = await sendAsync(builder, msg.Any.RunStatus, inner);
   assert(baseRes != null);
   assert(msg.Any.RunStatusRes === baseRes!.innerType());
   const res = new msg.RunStatusRes();
@@ -60,7 +58,7 @@ async function runStatus(rid: number): Promise<ProcessStatus> {
 export function kill(pid: number, signo: number): void {
   const builder = flatbuffers.createBuilder();
   const inner = msg.Kill.createKill(builder, pid, signo);
-  dispatch.sendSync(builder, msg.Any.Kill, inner);
+  sendSync(builder, msg.Any.Kill, inner);
 }
 
 export class Process {
@@ -227,7 +225,7 @@ export function run(opt: RunOptions): Process {
     stdoutRidOffset,
     stderrRidOffset
   );
-  const baseRes = dispatch.sendSync(builder, msg.Any.Run, inner);
+  const baseRes = sendSync(builder, msg.Any.Run, inner);
   assert(baseRes != null);
   assert(msg.Any.RunRes === baseRes!.innerType());
   const res = new msg.RunRes();

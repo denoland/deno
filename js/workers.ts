@@ -1,8 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { sendAsync, sendSync } from "./dispatch";
-import * as msg from "gen/cli/msg_generated";
-import * as flatbuffers from "./flatbuffers";
+import { sendAsync, sendSync, msg, flatbuffers } from "./dispatch_flatbuffers";
 import { assert, log } from "./util";
 import { TextDecoder, TextEncoder } from "./text_encoding";
 import { window } from "./window";

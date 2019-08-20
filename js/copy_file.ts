@@ -1,7 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as msg from "gen/cli/msg_generated";
-import * as flatbuffers from "./flatbuffers";
-import * as dispatch from "./dispatch";
+import { sendSync, sendAsync, msg, flatbuffers } from "./dispatch_flatbuffers";
 
 function req(
   from: string,
@@ -24,7 +22,7 @@ function req(
  *       Deno.copyFileSync("from.txt", "to.txt");
  */
 export function copyFileSync(from: string, to: string): void {
-  dispatch.sendSync(...req(from, to));
+  sendSync(...req(from, to));
 }
 
 /** Copies the contents of a file to another by name.
@@ -38,5 +36,5 @@ export function copyFileSync(from: string, to: string): void {
  *       await Deno.copyFile("from.txt", "to.txt");
  */
 export async function copyFile(from: string, to: string): Promise<void> {
-  await dispatch.sendAsync(...req(from, to));
+  await sendAsync(...req(from, to));
 }

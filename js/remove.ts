@@ -1,7 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as msg from "gen/cli/msg_generated";
-import * as flatbuffers from "./flatbuffers";
-import * as dispatch from "./dispatch";
+import { sendSync, sendAsync, msg, flatbuffers } from "./dispatch_flatbuffers";
 
 export interface RemoveOption {
   recursive?: boolean;
@@ -25,7 +23,7 @@ function req(
  *       Deno.removeSync("/path/to/dir/or/file", {recursive: false});
  */
 export function removeSync(path: string, options: RemoveOption = {}): void {
-  dispatch.sendSync(...req(path, options));
+  sendSync(...req(path, options));
 }
 
 /** Removes the named file or directory. Would throw error if
@@ -39,5 +37,5 @@ export async function remove(
   path: string,
   options: RemoveOption = {}
 ): Promise<void> {
-  await dispatch.sendAsync(...req(path, options));
+  await sendAsync(...req(path, options));
 }

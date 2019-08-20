@@ -1,7 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as msg from "gen/cli/msg_generated";
-import * as flatbuffers from "./flatbuffers";
-import * as dispatch from "./dispatch";
+import { sendSync, sendAsync, msg, flatbuffers } from "./dispatch_flatbuffers";
 
 function req(
   path: string,
@@ -19,7 +17,7 @@ function req(
  *       Deno.chmodSync("/path/to/file", 0o666);
  */
 export function chmodSync(path: string, mode: number): void {
-  dispatch.sendSync(...req(path, mode));
+  sendSync(...req(path, mode));
 }
 
 /** Changes the permission of a specific file/directory of specified path.
@@ -27,5 +25,5 @@ export function chmodSync(path: string, mode: number): void {
  *       await Deno.chmod("/path/to/file", 0o666);
  */
 export async function chmod(path: string, mode: number): Promise<void> {
-  await dispatch.sendAsync(...req(path, mode));
+  await sendAsync(...req(path, mode));
 }

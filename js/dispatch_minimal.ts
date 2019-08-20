@@ -4,9 +4,9 @@ import * as util from "./util";
 import { core } from "./core";
 
 const promiseTableMin = new Map<number, util.Resolvable<number>>();
-let _nextPromiseId = 0;
+let _nextPromiseId = 1;
 
-export function nextPromiseId(): number {
+function nextPromiseId(): number {
   return _nextPromiseId++;
 }
 
@@ -40,12 +40,9 @@ const scratchBytes = new Uint8Array(
 );
 util.assert(scratchBytes.byteLength === scratch32.length * 4);
 
-export function handleAsyncMsgFromRustMinimal(
-  ui8: Uint8Array,
-  record: RecordMinimal
-): void {
-  // Fast and new
-  util.log("minimal handleAsyncMsgFromRust ", ui8.length);
+export function handleAsyncMsgFromRust(opId: number, ui8: Uint8Array): void {
+  const buf32 = new Int32Array(ui8.buffer, ui8.byteOffset, ui8.byteLength / 4);
+  const record = recordFromBufMinimal(opId, buf32);
   const { promiseId, result } = record;
   const promise = promiseTableMin.get(promiseId);
   promiseTableMin.delete(promiseId);

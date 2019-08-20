@@ -1,8 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as msg from "gen/cli/msg_generated";
-import * as flatbuffers from "./flatbuffers";
 import { assert } from "./util";
-import * as dispatch from "./dispatch";
+import { sendSync, sendAsync, msg, flatbuffers } from "./dispatch_flatbuffers";
 
 function req(name: string): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
   const builder = flatbuffers.createBuilder();
@@ -26,7 +24,7 @@ function res(baseRes: null | msg.Base): string {
  *       const targetPath = Deno.readlinkSync("symlink/path");
  */
 export function readlinkSync(name: string): string {
-  return res(dispatch.sendSync(...req(name)));
+  return res(sendSync(...req(name)));
 }
 
 /** Returns the destination of the named symbolic link.
@@ -34,5 +32,5 @@ export function readlinkSync(name: string): string {
  *       const targetPath = await Deno.readlink("symlink/path");
  */
 export async function readlink(name: string): Promise<string> {
-  return res(await dispatch.sendAsync(...req(name)));
+  return res(await sendAsync(...req(name)));
 }

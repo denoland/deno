@@ -21,7 +21,6 @@ pub mod deno_dir;
 pub mod deno_error;
 pub mod diagnostics;
 mod disk_cache;
-mod dispatch_minimal;
 mod file_fetcher;
 pub mod flags;
 pub mod fmt_errors;
@@ -114,10 +113,9 @@ fn create_worker_and_state(
     }
   });
   // TODO(kevinkassimo): maybe make include_deno_namespace also configurable?
-  let state =
-    ThreadSafeState::new(flags, argv, ops::op_selector_std, progress, true)
-      .map_err(print_err_and_exit)
-      .unwrap();
+  let state = ThreadSafeState::new(flags, argv, progress, true)
+    .map_err(print_err_and_exit)
+    .unwrap();
   let worker = Worker::new(
     "main".to_string(),
     startup_data::deno_isolate_init(),

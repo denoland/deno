@@ -1,7 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as msg from "gen/cli/msg_generated";
-import * as flatbuffers from "./flatbuffers";
-import * as dispatch from "./dispatch";
+import { sendSync, sendAsync, msg, flatbuffers } from "./dispatch_flatbuffers";
 import { assert } from "./util";
 import { FileInfo, FileInfoImpl } from "./file_info";
 
@@ -30,7 +28,7 @@ function res(baseRes: null | msg.Base): FileInfo {
  *       assert(fileInfo.isFile());
  */
 export async function lstat(filename: string): Promise<FileInfo> {
-  return res(await dispatch.sendAsync(...req(filename, true)));
+  return res(await sendAsync(...req(filename, true)));
 }
 
 /** Queries the file system for information on the path provided synchronously.
@@ -41,7 +39,7 @@ export async function lstat(filename: string): Promise<FileInfo> {
  *       assert(fileInfo.isFile());
  */
 export function lstatSync(filename: string): FileInfo {
-  return res(dispatch.sendSync(...req(filename, true)));
+  return res(sendSync(...req(filename, true)));
 }
 
 /** Queries the file system for information on the path provided. `stat` Will
@@ -51,7 +49,7 @@ export function lstatSync(filename: string): FileInfo {
  *       assert(fileInfo.isFile());
  */
 export async function stat(filename: string): Promise<FileInfo> {
-  return res(await dispatch.sendAsync(...req(filename, false)));
+  return res(await sendAsync(...req(filename, false)));
 }
 
 /** Queries the file system for information on the path provided synchronously.
@@ -61,5 +59,5 @@ export async function stat(filename: string): Promise<FileInfo> {
  *       assert(fileInfo.isFile());
  */
 export function statSync(filename: string): FileInfo {
-  return res(dispatch.sendSync(...req(filename, false)));
+  return res(sendSync(...req(filename, false)));
 }

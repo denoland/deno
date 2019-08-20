@@ -1,7 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as msg from "gen/cli/msg_generated";
-import * as flatbuffers from "./flatbuffers";
-import * as dispatch from "./dispatch";
+import { sendSync, msg, flatbuffers } from "./dispatch_flatbuffers";
 import { assert } from "./util";
 
 /** Permissions as granted by the caller */
@@ -42,7 +40,7 @@ function createPermissions(inner: msg.PermissionsRes): Permissions {
  *       }
  */
 export function permissions(): Permissions {
-  const baseRes = dispatch.sendSync(...getReq())!;
+  const baseRes = sendSync(...getReq())!;
   assert(msg.Any.PermissionsRes === baseRes.innerType());
   const res = new msg.PermissionsRes();
   assert(baseRes.inner(res) != null);
@@ -71,5 +69,5 @@ function revokeReq(
  *       Deno.readFile("example.test"); // -> error or permission prompt
  */
 export function revokePermission(permission: Permission): void {
-  dispatch.sendSync(...revokeReq(permission));
+  sendSync(...revokeReq(permission));
 }

@@ -1,7 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as msg from "gen/cli/msg_generated";
-import * as flatbuffers from "./flatbuffers";
-import * as dispatch from "./dispatch";
+import { sendSync, sendAsync, msg, flatbuffers } from "./dispatch_flatbuffers";
 
 function req(
   oldname: string,
@@ -19,7 +17,7 @@ function req(
  *       Deno.linkSync("old/name", "new/name");
  */
 export function linkSync(oldname: string, newname: string): void {
-  dispatch.sendSync(...req(oldname, newname));
+  sendSync(...req(oldname, newname));
 }
 
 /** Creates `newname` as a hard link to `oldname`.
@@ -27,5 +25,5 @@ export function linkSync(oldname: string, newname: string): void {
  *       await Deno.link("old/name", "new/name");
  */
 export async function link(oldname: string, newname: string): Promise<void> {
-  await dispatch.sendAsync(...req(oldname, newname));
+  await sendAsync(...req(oldname, newname));
 }

@@ -1,7 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as msg from "gen/cli/msg_generated";
-import * as flatbuffers from "./flatbuffers";
-import * as dispatch from "./dispatch";
+import { sendSync, sendAsync, msg, flatbuffers } from "./dispatch_flatbuffers";
 
 function req(
   path: string,
@@ -24,7 +22,7 @@ function req(
  *       Deno.mkdirSync("nested/directories", true);
  */
 export function mkdirSync(path: string, recursive = false, mode = 0o777): void {
-  dispatch.sendSync(...req(path, recursive, mode));
+  sendSync(...req(path, recursive, mode));
 }
 
 /** Creates a new directory with the specified path.
@@ -41,5 +39,5 @@ export async function mkdir(
   recursive = false,
   mode = 0o777
 ): Promise<void> {
-  await dispatch.sendAsync(...req(path, recursive, mode));
+  await sendAsync(...req(path, recursive, mode));
 }
