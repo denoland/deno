@@ -1,3 +1,16 @@
+// This file is run through flatc (flatbuffers) to produce
+//    //cli/msg_generated.rs
+//    //js/msg_generated.ts
+//    //js/msg_generated_error_kind.ts
+// 
+// These files are no longer automatically built, so any changes here
+// necessitate manually done updating the generated files:
+//
+//   flatc --ts --no-fb-import --gen-mutable -o js/ cli/msg.fbs
+//   flatc --rust -o cli/ cli/msg.fbs
+//
+// Last good build was uing flatc version 1.10.0.
+
 union Any {
   Accept,
   ApplySourceMap,

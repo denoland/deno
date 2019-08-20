@@ -2,7 +2,7 @@
 // Some of the code here is adapted directly from V8 and licensed under a BSD
 // style license available here: https://github.com/v8/v8/blob/24886f2d1c565287d33d71e4109a53bf0b54b75c/LICENSE.v8
 
-import * as msg from "gen/cli/msg_generated";
+import * as msg from "./msg_generated";
 import * as flatbuffers from "./flatbuffers";
 import * as dispatch from "./dispatch";
 import { assert } from "./util";

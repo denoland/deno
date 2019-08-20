@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { Base, ErrorKind } from "gen/cli/msg_generated";
-export { ErrorKind } from "gen/cli/msg_generated";
+import { Base } from "./msg_generated";
+export { ErrorKind } from "./msg_generated_error_kind";
+import { ErrorKind } from "./msg_generated_error_kind";
 
 /** A Deno specific error.  The `kind` property is set to a specific error code
  * which can be used to in application logic.

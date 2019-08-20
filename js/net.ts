@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { EOF, Reader, Writer, Closer } from "./io";
-import * as msg from "gen/cli/msg_generated";
+import * as msg from "./msg_generated";
 import { assert, notImplemented } from "./util";
 import * as dispatch from "./dispatch";
 import * as flatbuffers from "./flatbuffers";

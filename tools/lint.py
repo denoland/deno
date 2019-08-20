@@ -19,10 +19,9 @@ run([
     "--repository=core/libdeno", "--extensions=cc,h", "--recursive", "core"
 ])
 
-run([
-    "node", eslint, "--max-warnings=0", "./js/**/*.{ts,js}",
-    "./core/**/*.{ts,js}", "./tests/**/*.{ts,js}"
-])
+f = find_exts(["core", "js"], [".ts", ".js"], skip=["js/deps"])
+f = [x for x in f if "msg_generated.ts" not in x]
+run(["node", eslint, "--max-warnings=0"] + f)
 
 run([sys.executable, "third_party/depot_tools/pylint.py"] +
     find_exts(["tools", "build_extra"], [".py"], skip=["tools/clang"]))

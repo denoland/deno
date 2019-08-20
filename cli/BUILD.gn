@@ -1,7 +1,5 @@
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import("//build/toolchain/cc_wrapper.gni")
-import("//build_extra/flatbuffers/flatbuffer.gni")
-import("//build_extra/flatbuffers/rust/rust_flatbuffer.gni")
 import("//build_extra/rust/rust.gni")
 import("//third_party/v8/gni/snapshot_toolchain.gni")
 import("//third_party/v8/gni/v8.gni")
@@ -83,6 +81,7 @@ ts_sources = [
   "../js/dir.ts",
   "../js/dispatch.ts",
   "../js/dispatch_minimal.ts",
+  "../js/dom_file.ts",
   "../js/dom_types.ts",
   "../js/dom_util.ts",
   "../js/error_stack.ts",
@@ -90,12 +89,11 @@ ts_sources = [
   "../js/event.ts",
   "../js/event_target.ts",
   "../js/fetch.ts",
-  "../js/format_error.ts",
-  "../js/dom_file.ts",
   "../js/file_info.ts",
   "../js/files.ts",
   "../js/flatbuffers.ts",
   "../js/form_data.ts",
+  "../js/format_error.ts",
   "../js/get_random_values.ts",
   "../js/globals.ts",
   "../js/headers.ts",
@@ -108,8 +106,11 @@ ts_sources = [
   "../js/metrics.ts",
   "../js/mkdir.ts",
   "../js/mock_builtin.js",
+  "../js/msg_generated.ts",
+  "../js/msg_generated_error_kind.ts",
   "../js/net.ts",
   "../js/os.ts",
+  "../js/performance.ts",
   "../js/permissions.ts",
   "../js/plugins.d.ts",
   "../js/process.ts",
@@ -131,11 +132,10 @@ ts_sources = [
   "../js/url_search_params.ts",
   "../js/util.ts",
   "../js/utime.ts",
+  "../js/version.ts",
   "../js/window.ts",
   "../js/workers.ts",
   "../js/write_file.ts",
-  "../js/performance.ts",
-  "../js/version.ts",
   "../js/xeval.ts",
   "../tsconfig.json",
 
@@ -149,7 +149,6 @@ ts_sources = [
 # targets. Cargo handles all Rust source files and the final linking step.
 group("deno_deps") {
   deps = [
-    ":msg_rs",
     ":snapshot_compiler",
     ":snapshot_deno",
   ]
@@ -162,7 +161,6 @@ group("deno_deps_cross") {
   deps = [
     ":compiler_bundle",
     ":main_bundle",
-    ":msg_rs",
   ]
 }
 
@@ -211,9 +209,6 @@ run_node("deno_runtime_declaration") {
   outputs = [
     "$out_dir/lib/lib.deno_runtime.d.ts",
   ]
-  deps = [
-    ":msg_ts",
-  ]
   inputs = ts_sources + [
              "//tools/ts_library_builder/tsconfig.json",
              "//tools/ts_library_builder/main.ts",
@@ -246,7 +241,6 @@ bundle("main_bundle") {
   out_name = "main"
   deps = [
     ":deno_runtime_declaration",
-    ":msg_ts",
   ]
 }
 
@@ -255,19 +249,6 @@ bundle("compiler_bundle") {
   out_name = "compiler"
   deps = [
     ":deno_runtime_declaration",
-    ":msg_ts",
-  ]
-}
-
-ts_flatbuffer("msg_ts") {
-  sources = [
-    "msg.fbs",
-  ]
-}
-
-rust_flatbuffer("msg_rs") {
-  sources = [
-    "msg.fbs",
   ]
 }
 

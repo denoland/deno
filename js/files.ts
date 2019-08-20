@@ -12,7 +12,7 @@ import {
 } from "./io";
 import * as dispatch from "./dispatch";
 import { sendAsyncMinimal } from "./dispatch_minimal";
-import * as msg from "gen/cli/msg_generated";
+import * as msg from "./msg_generated";
 import { assert } from "./util";
 import * as flatbuffers from "./flatbuffers";
 

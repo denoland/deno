@@ -5,9 +5,7 @@ use crate::state;
 use flatbuffers;
 use std::sync::atomic::Ordering;
 
-// GN_OUT_DIR is set either by build.rs (for the Cargo build), or by
-// build_extra/rust/run.py (for the GN+Ninja build).
-include!(concat!(env!("GN_OUT_DIR"), "/gen/cli/msg_generated.rs"));
+include!("msg_generated.rs");
 
 impl<'a> From<&'a state::Metrics> for MetricsResArgs {
   fn from(m: &'a state::Metrics) -> Self {
