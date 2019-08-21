@@ -682,7 +682,7 @@ const PRETTIER_URL: &str = "https://deno.land/std@v0.11/prettier/main.ts";
 /// Used for `deno install...` subcommand
 const INSTALLER_URL: &str = "https://deno.land/std@v0.11/installer/mod.ts";
 /// Used for `deno test...` subcommand
-const TEST_RUNNER_URL: &str = "https://deno.land/std@15afc61/testing/runner.ts";
+const TEST_RUNNER_URL: &str = "https://deno.land/std@4531fa8/testing/runner.ts";
 
 /// These are currently handled subcommands.
 /// There is no "Help" subcommand because it's handled by `clap::App` itself.
