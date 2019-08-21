@@ -1008,6 +1008,7 @@ pub mod tests {
 
   #[test]
   fn dyn_import_err2() {
+    use std::convert::TryInto;
     // Import multiple modules to demonstrate that after failed dynamic import
     // another dynamic import can still be run
     run_in_task(|| {
@@ -1023,8 +1024,16 @@ pub mod tests {
           _ => unreachable!(),
         }
         assert_eq!(referrer, "dyn_import_error.js");
-        let err = io::Error::from(io::ErrorKind::NotFound);
-        let stream = MockImportStream(vec![Err(err.into())]);
+
+        let source_code_info = SourceCodeInfo {
+          module_url_specified: specifier.to_owned(),
+          module_url_found: specifier.to_owned(),
+          code: "# not valid JS".to_owned(),
+        };
+        let stream = MockImportStream(vec![
+          Ok(RecursiveLoadEvent::Fetch(source_code_info)),
+          Ok(RecursiveLoadEvent::Instantiate(c.try_into().unwrap())),
+        ]);
         Box::new(stream)
       });
 
