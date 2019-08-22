@@ -43,7 +43,7 @@ function toDenoError(err: JsonError): DenoError<ErrorKind> {
   return new DenoError(err.kind, err.message);
 }
 
-export function handleAsyncMsgFromRust(opId: number, res: Uint8Array): void {
+export function asyncMsgFromRust(opId: number, res: Uint8Array): void {
   const { ok, err, promiseId } = decode(res);
   const promise = promiseTable.get(promiseId!)!;
   if (!promise) {

@@ -40,7 +40,7 @@ const scratchBytes = new Uint8Array(
 );
 util.assert(scratchBytes.byteLength === scratch32.length * 4);
 
-export function handleAsyncMsgFromRust(opId: number, ui8: Uint8Array): void {
+export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
   const buf32 = new Int32Array(ui8.buffer, ui8.byteOffset, ui8.byteLength / 4);
   const record = recordFromBufMinimal(opId, buf32);
   const { promiseId, result } = record;

@@ -81,7 +81,7 @@ export function start(
   preserveDenoNamespace = true,
   source?: string
 ): msg.StartRes {
-  core.setAsyncHandler(dispatch.handleAsyncMsgFromRust);
+  core.setAsyncHandler(dispatch.asyncMsgFromRust);
 
   // First we send an empty `Start` message to let the privileged side know we
   // are ready. The response should be a `StartRes` message containing the CLI

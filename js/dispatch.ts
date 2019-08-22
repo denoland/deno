@@ -13,17 +13,17 @@ export const OP_ENV = 5;
 export const OP_EXEC_PATH = 6;
 export const OP_UTIME = 7;
 
-export function handleAsyncMsgFromRust(opId: number, ui8: Uint8Array): void {
+export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
   switch (opId) {
     case OP_FLATBUFFER:
-      flatbuffers.handleAsyncMsgFromRust(opId, ui8);
+      flatbuffers.asyncMsgFromRust(opId, ui8);
       break;
     case OP_WRITE:
     case OP_READ:
-      minimal.handleAsyncMsgFromRust(opId, ui8);
+      minimal.asyncMsgFromRust(opId, ui8);
       break;
     case OP_UTIME:
-      json.handleAsyncMsgFromRust(opId, ui8);
+      json.asyncMsgFromRust(opId, ui8);
       break;
     default:
       throw Error("bad opId");
