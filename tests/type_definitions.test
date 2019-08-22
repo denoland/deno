@@ -1,0 +1,2 @@
+args: run --reload tests/type_definitions.ts
+output: tests/type_definitions.ts.out
