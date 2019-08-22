@@ -29,25 +29,34 @@ function nextPromiseId(): number {
   return _nextPromiseId++;
 }
 
-export function handleAsyncMsgFromRust(opId: number, resUi8: Uint8Array): void {
-  const resStr = new TextDecoder().decode(resUi8);
-  const res = JSON.parse(resStr) as JsonResponse;
-  const promiseId = res.promiseId!;
-  const promise = promiseTable.get(promiseId)!;
-  if (!promise) {
-    throw Error(`Async op ${opId} had bad promiseId: ${resStr}`);
-  }
-  promiseTable.delete(promiseId);
+function decode(ui8: Uint8Array): JsonResponse {
+  const s = new TextDecoder().decode(ui8);
+  return JSON.parse(s) as JsonResponse;
+}
 
-  if (res.err) {
-    let err = maybeError(res.err);
-    if (err) {
-      promise.reject(err);
-    } else {
-      promise.resolve();
-    }
+function encode(args: object): Uint8Array {
+  const s = JSON.stringify(args);
+  return new TextEncoder().encode(s);
+}
+
+function toDenoError(err: JsonError): DenoError<ErrorKind> {
+  return new DenoError(err.kind, err.message);
+}
+
+export function handleAsyncMsgFromRust(opId: number, res: Uint8Array): void {
+  const { ok, err, promiseId } = decode(res);
+  const promise = promiseTable.get(promiseId!)!;
+  if (!promise) {
+    throw Error(`Async op ${opId} had bad promiseId`);
+  }
+  promiseTable.delete(promiseId!);
+
+  if (err) {
+    promise.reject(toDenoError(err));
+  } else if (ok) {
+    promise.resolve(ok);
   } else {
-    promise.resolve(res.ok!);
+    util.unreachable();
   }
 }
 
@@ -56,22 +65,17 @@ export function sendSync(
   args: object = {},
   zeroCopy?: Uint8Array
 ): Ok {
-  const argsStr = JSON.stringify(args);
-  const argsUi8 = new TextEncoder().encode(argsStr);
-  const resUi8 = core.dispatch(opId, argsUi8, zeroCopy);
-  if (!resUi8) {
+  const argsUi8 = encode(args);
+  const res = core.dispatch(opId, argsUi8, zeroCopy);
+  if (!res) {
     return;
   }
-  const resStr = new TextDecoder().decode(resUi8);
-  const res = JSON.parse(resStr) as JsonResponse;
-  util.assert(!res.promiseId);
-  if (res.err) {
-    const err = maybeError(res.err);
-    if (err != null) {
-      throw err;
-    }
+  const { ok, err, promiseId } = decode(res);
+  util.assert(!promiseId);
+  if (err) {
+    throw toDenoError(err);
   }
-  return res.ok;
+  return ok;
 }
 
 export function sendAsync(
@@ -81,19 +85,10 @@ export function sendAsync(
 ): Promise<Ok> {
   const promiseId = nextPromiseId();
   args = Object.assign(args, { promiseId });
-  const argsStr = JSON.stringify(args);
-  const argsUi8 = new TextEncoder().encode(argsStr);
+  const argsUi8 = encode(args);
   const promise = util.createResolvable<Ok>();
   promiseTable.set(promiseId, promise);
   const r = core.dispatch(opId, argsUi8, zeroCopy);
   util.assert(!r);
   return promise;
-}
-
-function maybeError(err: JsonError): null | DenoError<ErrorKind> {
-  if (err.kind === ErrorKind.NoError) {
-    return null;
-  } else {
-    return new DenoError(err.kind, err.message);
-  }
 }
