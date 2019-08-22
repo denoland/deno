@@ -129,6 +129,7 @@ ts_sources = [
   "../js/text_encoding.ts",
   "../js/timers.ts",
   "../js/truncate.ts",
+  "../js/type_directives.ts",
   "../js/types.ts",
   "../js/url.ts",
   "../js/url_search_params.ts",
