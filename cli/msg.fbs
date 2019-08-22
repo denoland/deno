@@ -32,8 +32,6 @@ union Any {
   ListenRes,
   MakeTempDir,
   MakeTempDirRes,
-  Metrics,
-  MetricsRes,
   Mkdir,
   NewConn,
   Now,
@@ -516,16 +514,6 @@ table NewConn {
   rid: uint32;
   remote_addr: string;
   local_addr: string;
-}
-
-table Metrics {}
-
-table MetricsRes {
-  ops_dispatched: uint64;
-  ops_completed: uint64;
-  bytes_sent_control: uint64;
-  bytes_sent_data: uint64;
-  bytes_received: uint64;
 }
 
 enum ProcessStdio: byte { Inherit, Piped, Null }

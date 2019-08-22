@@ -12,6 +12,7 @@ export const OP_IS_TTY = 4;
 export const OP_ENV = 5;
 export const OP_EXEC_PATH = 6;
 export const OP_UTIME = 7;
+export const OP_METRICS = 8;
 
 export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
   switch (opId) {
@@ -23,6 +24,7 @@ export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
       minimal.asyncMsgFromRust(opId, ui8);
       break;
     case OP_UTIME:
+    case OP_METRICS:
       json.asyncMsgFromRust(opId, ui8);
       break;
     default:

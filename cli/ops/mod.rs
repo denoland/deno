@@ -34,6 +34,7 @@ pub const OP_IS_TTY: OpId = 4;
 pub const OP_ENV: OpId = 5;
 pub const OP_EXEC_PATH: OpId = 6;
 pub const OP_UTIME: OpId = 7;
+pub const OP_METRICS: OpId = 8;
 
 pub fn dispatch(
   state: &ThreadSafeState,
@@ -61,6 +62,9 @@ pub fn dispatch(
     }
     OP_UTIME => {
       dispatch_json::dispatch(fs::op_utime, state, control, zero_copy)
+    }
+    OP_METRICS => {
+      dispatch_json::dispatch(metrics::op_metrics, state, control, zero_copy)
     }
     OP_FLATBUFFER => dispatch_flatbuffers::dispatch(state, control, zero_copy),
     _ => panic!("bad op_id"),

@@ -15,7 +15,6 @@ use super::fs::{
   op_make_temp_dir, op_mkdir, op_read_dir, op_read_link, op_remove, op_rename,
   op_stat, op_symlink, op_truncate,
 };
-use super::metrics::op_metrics;
 use super::net::{op_accept, op_dial, op_listen, op_shutdown};
 use super::os::{op_home_dir, op_set_env, op_start};
 use super::performance::op_now;
@@ -166,7 +165,6 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<CliDispatchFn> {
     msg::Any::Link => Some(op_link),
     msg::Any::Listen => Some(op_listen),
     msg::Any::MakeTempDir => Some(op_make_temp_dir),
-    msg::Any::Metrics => Some(op_metrics),
     msg::Any::Mkdir => Some(op_mkdir),
     msg::Any::Now => Some(op_now),
     msg::Any::Open => Some(op_open),
