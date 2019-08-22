@@ -67,5 +67,20 @@ pub fn dispatch(
   };
 
   state.metrics_op_dispatched(bytes_sent_control, bytes_sent_zero_copy);
-  op
+
+  match op {
+    Op::Sync(buf) => {
+      state.metrics_op_completed(buf.len());
+      Op::Sync(buf)
+    }
+    Op::Async(fut) => {
+      use crate::futures::Future;
+      let state = state.clone();
+      let result_fut = Box::new(fut.map(move |buf: Buf| {
+        state.clone().metrics_op_completed(buf.len());
+        buf
+      }));
+      Op::Async(result_fut)
+    }
+  }
 }

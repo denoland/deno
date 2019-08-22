@@ -22,10 +22,6 @@ export function handleAsyncMsgFromRust(opId: number, ui8: Uint8Array): void {
     case OP_READ:
       minimal.handleAsyncMsgFromRust(opId, ui8);
       break;
-    case OP_EXIT:
-    case OP_IS_TTY:
-    case OP_ENV:
-    case OP_EXEC_PATH:
     case OP_UTIME:
       json.handleAsyncMsgFromRust(opId, ui8);
       break;

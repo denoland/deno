@@ -63,13 +63,8 @@ pub fn dispatch(
 
   let op_result = op_func(state, &base, zero_copy);
 
-  let state = state.clone();
-
   match op_result {
-    Ok(Op::Sync(buf)) => {
-      state.metrics_op_completed(buf.len());
-      Op::Sync(buf)
-    }
+    Ok(Op::Sync(buf)) => Op::Sync(buf),
     Ok(Op::Async(fut)) => {
       let result_fut = Box::new(
         fut
@@ -105,7 +100,6 @@ pub fn dispatch(
                 },
               )
             };
-            state.metrics_op_completed(buf.len());
             Ok(buf)
           })
           .map_err(|err| panic!("unexpected error {:?}", err)),
@@ -127,7 +121,6 @@ pub fn dispatch(
           ..Default::default()
         },
       );
-      state.metrics_op_completed(response_buf.len());
       Op::Sync(response_buf)
     }
   }
