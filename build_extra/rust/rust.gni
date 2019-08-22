@@ -69,7 +69,6 @@ template("_rust_crate") {
                            "libs",
                            "source_root",
                            "testonly",
-                           "treat_warnings_as_errors",
                          ])
 
   if (!defined(crate_name)) {
@@ -89,10 +88,6 @@ template("_rust_crate") {
   }
   if (!defined(libs)) {
     libs = []
-  }
-  if (!defined(treat_warnings_as_errors)) {
-    # Use global setting if not explicitly specified for this target.
-    treat_warnings_as_errors = rust_treat_warnings_as_errors
   }
 
   if (defined(crate_version)) {
@@ -282,7 +277,7 @@ template("_rust_crate") {
     if (is_test) {
       args += [ "--test" ]
     }
-    if (treat_warnings_as_errors) {
+    if (rust_treat_warnings_as_errors) {
       args += [ "-Dwarnings" ]
     }
     if (defined(invoker.args)) {
