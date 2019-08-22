@@ -6,6 +6,31 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.16.0 / 2019.08.22
+
+In deno:
+
+- feat: "deno test" subcommand (#2783, #2784, #2800)
+- feat: implement console.trace() (#2780)
+- feat: support .d.ts files (#2746)
+- feat: support custom inspection of objects (#2791)
+- fix: dynamic import panic (#2792)
+- fix: handle tsconfig.json with comments (#2773)
+- fix: import map panics, use import map's location as its base URL (#2770)
+- fix: set response.url (#2782)
+
+In deno_std:
+
+- feat: add overloaded form of unit test declaration (denoland/deno_std#563)
+- feat: add printf implementation (fmt/sprintf.ts) (denoland/deno_std#566)
+- feat: print out the failed tests after the summary (denoland/deno_std#554)
+- feat: test runner (denoland/deno_std#516, denoland/deno_std#564,
+  denoland/deno_std#568)
+- fix: accept absolute root directories in the file server
+  (denoland/deno_std#558)
+- fix: refactor 'assertEquals' (denoland/deno_std#560)
+- fix: test all text functions in colors module (denoland/deno_std#553)
+
 ### v0.15.0 / 2019.08.13
 
 In deno:
@@ -58,7 +83,8 @@ In deno:
 In deno_std:
 
 - fix: Make shebangs Linux compatible (denoland/deno_std#545)
-- fix: Ignore error of writing responses to aborted requests (denoland/deno_std#546)
+- fix: Ignore error of writing responses to aborted requests
+  (denoland/deno_std#546)
 - fix: use Deno.execPath where possible (denoland/deno_std#548)
 
 ### v0.12.0 / 2019.07.16
