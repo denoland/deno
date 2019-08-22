@@ -34,3 +34,4 @@ path = "examples/http_bench.rs"
 # tokio is only used for deno_core_http_bench
 [dev_dependencies]
 tokio = "0.1.18"
+serde = { version = "1.0.98", features = ["derive"] }
