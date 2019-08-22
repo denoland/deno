@@ -56,6 +56,7 @@ template("_rust_crate") {
 
   forward_variables_from(invoker,
                          [
+                           "cap_lints",
                            "cfg",
                            "crate_name",
                            "crate_type",
@@ -279,6 +280,12 @@ template("_rust_crate") {
     }
     if (rust_treat_warnings_as_errors) {
       args += [ "-Dwarnings" ]
+    }
+    if (defined(cap_lints)) {
+      args += [
+        "--cap-lints",
+        cap_lints,
+      ]
     }
     if (defined(invoker.args)) {
       args += invoker.args
