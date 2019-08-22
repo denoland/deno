@@ -138,6 +138,7 @@ export function test(
 
 const RED_FAILED = red("FAILED");
 const GREEN_OK = green("OK");
+const RED_BG_FAIL = bgRed(" FAIL ");
 
 interface TestStats {
   filtered: number;
@@ -201,6 +202,17 @@ function report(result: TestResult): void {
   result.printed = true;
 }
 
+function printFailedSummary(results: TestResults): void {
+  results.cases.forEach(
+    (v): void => {
+      if (!v.ok) {
+        console.error(`${RED_BG_FAIL} ${red(v.name)}`);
+        console.error(v.error);
+      }
+    }
+  );
+}
+
 function printResults(
   stats: TestStats,
   results: TestResults,
@@ -220,7 +232,7 @@ function printResults(
   }
   // Attempting to match the output of Rust's test runner.
   print(
-    `\ntest result: ${stats.failed ? RED_FAILED : GREEN_OK}. ` +
+    `\ntest result: ${stats.failed ? RED_BG_FAIL : GREEN_OK} ` +
       `${stats.passed} passed; ${stats.failed} failed; ` +
       `${stats.ignored} ignored; ${stats.measured} measured; ` +
       `${stats.filtered} filtered out ` +
@@ -287,6 +299,7 @@ async function runTestsParallel(
 
 async function runTestsSerial(
   stats: TestStats,
+  results: TestResults,
   tests: TestDefinition[],
   exitOnFail: boolean,
   disableLog: boolean
@@ -309,6 +322,14 @@ async function runTestsSerial(
       print(
         GREEN_OK + "     " + name + " " + promptTestTime(end - start, true)
       );
+      results.cases.forEach(
+        (v): void => {
+          if (v.name === name) {
+            v.ok = true;
+            v.printed = true;
+          }
+        }
+      );
     } catch (err) {
       if (disableLog) {
         print(CLEAR_LINE, false);
@@ -316,6 +337,15 @@ async function runTestsSerial(
       print(`${RED_FAILED} ${name}`);
       print(err.stack);
       stats.failed++;
+      results.cases.forEach(
+        (v): void => {
+          if (v.name === name) {
+            v.error = err;
+            v.ok = false;
+            v.printed = true;
+          }
+        }
+      );
       if (exitOnFail) {
         break;
       }
@@ -367,7 +397,7 @@ export async function runTests({
   if (parallel) {
     await runTestsParallel(stats, results, tests, exitOnFail);
   } else {
-    await runTestsSerial(stats, tests, exitOnFail, disableLog);
+    await runTestsSerial(stats, results, tests, exitOnFail, disableLog);
   }
   const end = performance.now();
   if (disableLog) {
@@ -379,6 +409,7 @@ export async function runTests({
     // promise rejections being swallowed.
     setTimeout((): void => {
       console.error(`There were ${stats.failed} test failures.`);
+      printFailedSummary(results);
       Deno.exit(1);
     }, 0);
   }
