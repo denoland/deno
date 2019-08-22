@@ -1,8 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+use super::utils::*;
 use crate::msg;
-use crate::ops::empty_buf;
-use crate::ops::ok_buf;
-use crate::ops::CliOpResult;
 use crate::state::ThreadSafeState;
 use deno::*;
 use rand::thread_rng;

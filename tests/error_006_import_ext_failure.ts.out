@@ -1,9 +1,9 @@
 [WILDCARD]error: Uncaught NotFound: Cannot resolve module "[WILDCARD]/non-existent"
-[WILDCARD] js/errors.ts:[WILDCARD]
+[WILDCARD] js/dispatch_flatbuffers.ts:[WILDCARD]
     at DenoError (js/errors.ts:[WILDCARD])
-    at maybeError (js/errors.ts:[WILDCARD])
-    at maybeThrowError (js/errors.ts:[WILDCARD])
-    at sendSync (js/dispatch.ts:[WILDCARD])
+    at maybeError (js/dispatch_flatbuffers.ts:[WILDCARD])
+    at maybeThrowError (js/dispatch_flatbuffers.ts:[WILDCARD])
+    at sendSync (js/dispatch_flatbuffers.ts:[WILDCARD])
     at fetchSourceFile (js/compiler.ts:[WILDCARD])
     at _resolveModule (js/compiler.ts:[WILDCARD])
     at js/compiler.ts:[WILDCARD]

@@ -1,12 +1,11 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+use super::dispatch_flatbuffers::serialize_response;
+use super::utils::ok_buf;
+use super::utils::CliOpResult;
 use crate::deno_error;
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
 use crate::msg;
-use crate::ops::ok_buf;
-use crate::ops::op_selector_std;
-use crate::ops::serialize_response;
-use crate::ops::CliOpResult;
 use crate::resources;
 use crate::startup_data;
 use crate::state::ThreadSafeState;
@@ -136,7 +135,6 @@ pub fn op_create_worker(
   let child_state = ThreadSafeState::new(
     parent_state.flags.clone(),
     child_argv,
-    op_selector_std,
     parent_state.progress.clone(),
     include_deno_namespace,
   )?;

@@ -1,7 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as msg from "gen/cli/msg_generated";
-import * as flatbuffers from "./flatbuffers";
-import * as dispatch from "./dispatch";
+import { sendSync, sendAsync, msg, flatbuffers } from "./dispatch_flatbuffers";
 import * as util from "./util";
 
 function req(
@@ -34,7 +32,7 @@ export function utimeSync(
   atime: number | Date,
   mtime: number | Date
 ): void {
-  dispatch.sendSync(...req(filename, atime, mtime));
+  sendSync(...req(filename, atime, mtime));
 }
 
 /** Changes the access and modification times of a file system object
@@ -48,5 +46,5 @@ export async function utime(
   atime: number | Date,
   mtime: number | Date
 ): Promise<void> {
-  await dispatch.sendAsync(...req(filename, atime, mtime));
+  await sendAsync(...req(filename, atime, mtime));
 }

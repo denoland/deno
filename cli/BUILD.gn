@@ -82,6 +82,7 @@ ts_sources = [
   "../js/diagnostics.ts",
   "../js/dir.ts",
   "../js/dispatch.ts",
+  "../js/dispatch_flatbuffers.ts",
   "../js/dispatch_minimal.ts",
   "../js/dom_types.ts",
   "../js/dom_util.ts",

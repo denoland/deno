@@ -1,11 +1,9 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+use super::dispatch_flatbuffers::serialize_response;
+use super::utils::*;
 use crate::deno_error;
 use crate::fs as deno_fs;
 use crate::msg;
-use crate::ops::empty_buf;
-use crate::ops::ok_buf;
-use crate::ops::serialize_response;
-use crate::ops::CliOpResult;
 use crate::resources;
 use crate::state::ThreadSafeState;
 use crate::tokio_write;

@@ -7,13 +7,13 @@
 use crate::state::ThreadSafeState;
 use deno::Buf;
 use deno::CoreOp;
+use deno::ErrBox;
 use deno::Op;
-use deno::OpId;
 use deno::PinnedBuf;
 use futures::Future;
 
-const OP_READ: OpId = 1;
-const OP_WRITE: OpId = 2;
+pub type MinimalOp = dyn Future<Item = i32, Error = ErrBox> + Send;
+pub type Dispatcher = fn(i32, Option<PinnedBuf>) -> Box<MinimalOp>;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 // This corresponds to RecordMinimal on the TS side.
@@ -72,20 +72,23 @@ fn test_parse_min_record() {
   assert_eq!(parse_min_record(&buf), None);
 }
 
-pub fn dispatch_minimal(
+pub fn dispatch(
+  d: Dispatcher,
   state: &ThreadSafeState,
-  op_id: OpId,
-  mut record: Record,
+  control: &[u8],
   zero_copy: Option<PinnedBuf>,
 ) -> CoreOp {
+  let mut record = parse_min_record(control).unwrap();
   let is_sync = record.promise_id == 0;
-  let min_op = match op_id {
-    OP_READ => ops::read(record.arg, zero_copy),
-    OP_WRITE => ops::write(record.arg, zero_copy),
-    _ => unimplemented!(),
-  };
+
+  // TODO(ry) Currently there aren't any sync minimal ops. This is just a sanity
+  // check. Remove later.
+  assert!(!is_sync);
 
   let state = state.clone();
+
+  let rid = record.arg;
+  let min_op = d(rid, zero_copy);
 
   let fut = Box::new(min_op.then(move |result| -> Result<Buf, ()> {
     match result {
@@ -107,56 +110,5 @@ pub fn dispatch_minimal(
     Op::Sync(fut.wait().unwrap())
   } else {
     Op::Async(fut)
-  }
-}
-
-mod ops {
-  use crate::deno_error;
-  use crate::resources;
-  use crate::tokio_write;
-  use deno::ErrBox;
-  use deno::PinnedBuf;
-  use futures::Future;
-
-  type MinimalOp = dyn Future<Item = i32, Error = ErrBox> + Send;
-
-  pub fn read(rid: i32, zero_copy: Option<PinnedBuf>) -> Box<MinimalOp> {
-    debug!("read rid={}", rid);
-    let zero_copy = match zero_copy {
-      None => {
-        return Box::new(
-          futures::future::err(deno_error::no_buffer_specified()),
-        )
-      }
-      Some(buf) => buf,
-    };
-    match resources::lookup(rid as u32) {
-      None => Box::new(futures::future::err(deno_error::bad_resource())),
-      Some(resource) => Box::new(
-        tokio::io::read(resource, zero_copy)
-          .map_err(ErrBox::from)
-          .and_then(move |(_resource, _buf, nread)| Ok(nread as i32)),
-      ),
-    }
-  }
-
-  pub fn write(rid: i32, zero_copy: Option<PinnedBuf>) -> Box<MinimalOp> {
-    debug!("write rid={}", rid);
-    let zero_copy = match zero_copy {
-      None => {
-        return Box::new(
-          futures::future::err(deno_error::no_buffer_specified()),
-        )
-      }
-      Some(buf) => buf,
-    };
-    match resources::lookup(rid as u32) {
-      None => Box::new(futures::future::err(deno_error::bad_resource())),
-      Some(resource) => Box::new(
-        tokio_write::write(resource, zero_copy)
-          .map_err(ErrBox::from)
-          .and_then(move |(_resource, _buf, nwritten)| Ok(nwritten as i32)),
-      ),
-    }
   }
 }

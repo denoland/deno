@@ -10,14 +10,10 @@ import {
   SyncWriter,
   SyncSeeker
 } from "./io";
-import * as dispatch from "./dispatch";
 import { sendAsyncMinimal } from "./dispatch_minimal";
-import * as msg from "gen/cli/msg_generated";
 import { assert } from "./util";
-import * as flatbuffers from "./flatbuffers";
-
-const OP_READ = 1;
-const OP_WRITE = 2;
+import { sendAsync, sendSync, msg, flatbuffers } from "./dispatch_flatbuffers";
+import { OP_READ, OP_WRITE } from "./dispatch";
 
 function reqOpen(
   filename: string,
@@ -46,7 +42,7 @@ function resOpen(baseRes: null | msg.Base): File {
  *       const file = Deno.openSync("/foo/bar.txt");
  */
 export function openSync(filename: string, mode: OpenMode = "r"): File {
-  return resOpen(dispatch.sendSync(...reqOpen(filename, mode)));
+  return resOpen(sendSync(...reqOpen(filename, mode)));
 }
 
 /** Open a file and return an instance of the `File` object.
@@ -59,7 +55,7 @@ export async function open(
   filename: string,
   mode: OpenMode = "r"
 ): Promise<File> {
-  return resOpen(await dispatch.sendAsync(...reqOpen(filename, mode)));
+  return resOpen(await sendAsync(...reqOpen(filename, mode)));
 }
 
 function reqRead(
@@ -93,7 +89,7 @@ function resRead(baseRes: null | msg.Base): number | EOF {
  *
  */
 export function readSync(rid: number, p: Uint8Array): number | EOF {
-  return resRead(dispatch.sendSync(...reqRead(rid, p)));
+  return resRead(sendSync(...reqRead(rid, p)));
 }
 
 /** Read from a file ID into an array buffer.
@@ -145,7 +141,7 @@ function resWrite(baseRes: null | msg.Base): number {
  *       Deno.writeSync(file.rid, data);
  */
 export function writeSync(rid: number, p: Uint8Array): number {
-  return resWrite(dispatch.sendSync(...reqWrite(rid, p)));
+  return resWrite(sendSync(...reqWrite(rid, p)));
 }
 
 /** Write to the file ID the contents of the array buffer.
@@ -185,7 +181,7 @@ function reqSeek(
  *       Deno.seekSync(file.rid, 0, 0);
  */
 export function seekSync(rid: number, offset: number, whence: SeekMode): void {
-  dispatch.sendSync(...reqSeek(rid, offset, whence));
+  sendSync(...reqSeek(rid, offset, whence));
 }
 
 /** Seek a file ID to the given offset under mode given by `whence`.
@@ -200,14 +196,14 @@ export async function seek(
   offset: number,
   whence: SeekMode
 ): Promise<void> {
-  await dispatch.sendAsync(...reqSeek(rid, offset, whence));
+  await sendAsync(...reqSeek(rid, offset, whence));
 }
 
 /** Close the file ID. */
 export function close(rid: number): void {
   const builder = flatbuffers.createBuilder();
   const inner = msg.Close.createClose(builder, rid);
-  dispatch.sendSync(builder, msg.Any.Close, inner);
+  sendSync(builder, msg.Any.Close, inner);
 }
 
 /** The Deno abstraction for reading and writing files. */

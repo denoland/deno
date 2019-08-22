@@ -1,7 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as msg from "gen/cli/msg_generated";
-import * as flatbuffers from "./flatbuffers";
-import * as dispatch from "./dispatch";
+import { sendSync, sendAsync, msg, flatbuffers } from "./dispatch_flatbuffers";
 
 function req(
   oldpath: string,
@@ -22,7 +20,7 @@ function req(
  *       Deno.renameSync("old/path", "new/path");
  */
 export function renameSync(oldpath: string, newpath: string): void {
-  dispatch.sendSync(...req(oldpath, newpath));
+  sendSync(...req(oldpath, newpath));
 }
 
 /** Renames (moves) `oldpath` to `newpath`. If `newpath` already exists and is
@@ -32,5 +30,5 @@ export function renameSync(oldpath: string, newpath: string): void {
  *       await Deno.rename("old/path", "new/path");
  */
 export async function rename(oldpath: string, newpath: string): Promise<void> {
-  await dispatch.sendAsync(...req(oldpath, newpath));
+  await sendAsync(...req(oldpath, newpath));
 }

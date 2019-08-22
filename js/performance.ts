@@ -1,7 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as msg from "gen/cli/msg_generated";
-import { sendSync } from "./dispatch";
-import * as flatbuffers from "./flatbuffers";
+import { sendSync, msg, flatbuffers } from "./dispatch_flatbuffers";
 import { assert } from "./util";
 
 export class Performance {

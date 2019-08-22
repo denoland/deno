@@ -1,8 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+use super::dispatch_flatbuffers::serialize_response;
+use super::utils::ok_buf;
+use super::utils::CliOpResult;
 use crate::msg;
-use crate::ops::ok_buf;
-use crate::ops::serialize_response;
-use crate::ops::CliOpResult;
 use crate::resources::table_entries;
 use crate::state::ThreadSafeState;
 use deno::*;

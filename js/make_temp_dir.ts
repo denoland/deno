@@ -1,7 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as msg from "gen/cli/msg_generated";
-import * as flatbuffers from "./flatbuffers";
-import * as dispatch from "./dispatch";
+import { sendSync, sendAsync, msg, flatbuffers } from "./dispatch_flatbuffers";
 import { assert } from "./util";
 
 export interface MakeTempDirOptions {
@@ -44,7 +42,7 @@ function res(baseRes: null | msg.Base): string {
  *       const tempDirName1 = Deno.makeTempDirSync({ prefix: 'my_temp' });
  */
 export function makeTempDirSync(options: MakeTempDirOptions = {}): string {
-  return res(dispatch.sendSync(...req(options)));
+  return res(sendSync(...req(options)));
 }
 
 /** makeTempDir creates a new temporary directory in the directory `dir`, its
@@ -61,5 +59,5 @@ export function makeTempDirSync(options: MakeTempDirOptions = {}): string {
 export async function makeTempDir(
   options: MakeTempDirOptions = {}
 ): Promise<string> {
-  return res(await dispatch.sendAsync(...req(options)));
+  return res(await sendAsync(...req(options)));
 }
