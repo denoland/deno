@@ -1,7 +1,7 @@
 import { sprintf } from "./sprintf.ts";
 
-import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-import { test, runTests } from "https://deno.land/std/testing/mod.ts";
+import { assertEquals } from "../testing/asserts.ts";
+import { test, runIfMain } from "../testing/mod.ts";
 
 let S = sprintf;
 
@@ -667,4 +667,4 @@ test(function testErrors(): void {
   assertEquals(S("%.[5]*f"), "%!(BAD INDEX)");
 });
 
-runTests();
+runIfMain(import.meta);
