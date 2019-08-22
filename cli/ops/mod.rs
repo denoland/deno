@@ -34,6 +34,14 @@ pub const OP_IS_TTY: OpId = 4;
 pub const OP_ENV: OpId = 5;
 pub const OP_EXEC_PATH: OpId = 6;
 pub const OP_UTIME: OpId = 7;
+pub const OP_APPLY_SOURCE_MAP: OpId = 11;
+pub const OP_FORMAT_ERROR: OpId = 12;
+pub const OP_CACHE: OpId = 13;
+pub const OP_FETCH_SOURCE_FILE: OpId = 14;
+pub const OP_OPEN: OpId = 15;
+pub const OP_CLOSE: OpId = 16;
+pub const OP_SEEK: OpId = 17;
+pub const OP_FETCH: OpId = 18;
 
 pub fn dispatch(
   state: &ThreadSafeState,
@@ -61,6 +69,39 @@ pub fn dispatch(
     }
     OP_UTIME => {
       dispatch_json::dispatch(fs::op_utime, state, control, zero_copy)
+    }
+    OP_APPLY_SOURCE_MAP => dispatch_json::dispatch(
+      errors::op_apply_source_map,
+      state,
+      control,
+      zero_copy,
+    ),
+    OP_FORMAT_ERROR => dispatch_json::dispatch(
+      errors::op_format_error,
+      state,
+      control,
+      zero_copy,
+    ),
+    OP_CACHE => {
+      dispatch_json::dispatch(compiler::op_cache, state, control, zero_copy)
+    }
+    OP_FETCH_SOURCE_FILE => dispatch_json::dispatch(
+      compiler::op_fetch_source_file,
+      state,
+      control,
+      zero_copy,
+    ),
+    OP_OPEN => {
+      dispatch_json::dispatch(files::op_open, state, control, zero_copy)
+    }
+    OP_CLOSE => {
+      dispatch_json::dispatch(files::op_close, state, control, zero_copy)
+    }
+    OP_SEEK => {
+      dispatch_json::dispatch(files::op_seek, state, control, zero_copy)
+    }
+    OP_FETCH => {
+      dispatch_json::dispatch(fetch::op_fetch, state, control, zero_copy)
     }
     OP_FLATBUFFER => dispatch_flatbuffers::dispatch(state, control, zero_copy),
     _ => panic!("bad op_id"),
