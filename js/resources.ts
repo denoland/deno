@@ -1,8 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as msg from "gen/cli/msg_generated";
-import * as flatbuffers from "./flatbuffers";
 import { assert } from "./util";
-import * as dispatch from "./dispatch";
+import { sendSync, msg, flatbuffers } from "./dispatch_flatbuffers";
 
 export interface ResourceMap {
   [rid: number]: string;
@@ -14,7 +12,7 @@ export interface ResourceMap {
 export function resources(): ResourceMap {
   const builder = flatbuffers.createBuilder();
   const inner = msg.Resource.createResource(builder, 0, 0);
-  const baseRes = dispatch.sendSync(builder, msg.Any.Resources, inner);
+  const baseRes = sendSync(builder, msg.Any.Resources, inner);
   assert(baseRes !== null);
   assert(msg.Any.ResourcesRes === baseRes!.innerType());
   const res = new msg.ResourcesRes();

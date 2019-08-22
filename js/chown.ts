@@ -1,7 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as flatbuffers from "./flatbuffers";
-import * as msg from "gen/cli/msg_generated";
-import * as dispatch from "./dispatch";
+import { sendSync, sendAsync, msg, flatbuffers } from "./dispatch_flatbuffers";
 
 function req(
   path: string,
@@ -21,7 +19,7 @@ function req(
  * @param gid group id of the new owner
  */
 export function chownSync(path: string, uid: number, gid: number): void {
-  dispatch.sendSync(...req(path, uid, gid));
+  sendSync(...req(path, uid, gid));
 }
 
 /**
@@ -35,5 +33,5 @@ export async function chown(
   uid: number,
   gid: number
 ): Promise<void> {
-  await dispatch.sendAsync(...req(path, uid, gid));
+  await sendAsync(...req(path, uid, gid));
 }

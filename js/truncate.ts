@@ -1,7 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as msg from "gen/cli/msg_generated";
-import * as flatbuffers from "./flatbuffers";
-import * as dispatch from "./dispatch";
+import { sendSync, sendAsync, msg, flatbuffers } from "./dispatch_flatbuffers";
 
 function req(
   name: string,
@@ -20,7 +18,7 @@ function req(
  *       Deno.truncateSync("hello.txt", 10);
  */
 export function truncateSync(name: string, len?: number): void {
-  dispatch.sendSync(...req(name, len));
+  sendSync(...req(name, len));
 }
 
 /**
@@ -30,5 +28,5 @@ export function truncateSync(name: string, len?: number): void {
  *       await Deno.truncate("hello.txt", 10);
  */
 export async function truncate(name: string, len?: number): Promise<void> {
-  await dispatch.sendAsync(...req(name, len));
+  await sendAsync(...req(name, len));
 }

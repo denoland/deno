@@ -1,10 +1,9 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+use super::dispatch_flatbuffers::serialize_response;
+use super::utils::*;
 use crate::deno_error;
 use crate::msg;
-use crate::ops::empty_buf;
-use crate::ops::ok_buf;
-use crate::ops::serialize_response;
-use crate::ops::CliOpResult;
+use crate::resolve_addr::resolve_addr;
 use crate::resources;
 use crate::resources::Resource;
 use crate::state::ThreadSafeState;
@@ -13,15 +12,11 @@ use deno::*;
 use flatbuffers::FlatBufferBuilder;
 use futures::Future;
 use std;
+use std::convert::From;
 use std::net::Shutdown;
 use tokio;
-
-use crate::resolve_addr::resolve_addr;
-use std::convert::From;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
-
-use crate::ops::blocking;
 
 pub fn op_accept(
   _state: &ThreadSafeState,

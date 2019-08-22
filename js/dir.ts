@@ -1,8 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as msg from "gen/cli/msg_generated";
 import { assert } from "./util";
-import * as flatbuffers from "./flatbuffers";
-import { sendSync } from "./dispatch";
+import { sendSync, flatbuffers, msg } from "./dispatch_flatbuffers";
 
 /**
  * `cwd()` Return a string representing the current working directory.

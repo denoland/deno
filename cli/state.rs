@@ -77,7 +77,6 @@ pub struct State {
   pub start_time: Instant,
   /// A reference to this worker's resource.
   pub resource: resources::Resource,
-  pub dispatch_selector: ops::OpSelector,
   /// Reference to global progress bar.
   pub progress: Progress,
   pub seeded_rng: Option<Mutex<StdRng>>,
@@ -110,7 +109,7 @@ impl ThreadSafeState {
     control: &[u8],
     zero_copy: Option<PinnedBuf>,
   ) -> CoreOp {
-    ops::dispatch_all(self, op_id, control, zero_copy, self.dispatch_selector)
+    ops::dispatch(self, op_id, control, zero_copy)
   }
 }
 
@@ -163,7 +162,6 @@ impl ThreadSafeState {
   pub fn new(
     flags: flags::DenoFlags,
     argv_rest: Vec<String>,
-    dispatch_selector: ops::OpSelector,
     progress: Progress,
     include_deno_namespace: bool,
   ) -> Result<Self, ErrBox> {
@@ -224,7 +222,6 @@ impl ThreadSafeState {
       workers: Mutex::new(UserWorkerTable::new()),
       start_time: Instant::now(),
       resource,
-      dispatch_selector,
       progress,
       seeded_rng,
       file_fetcher,
@@ -333,7 +330,6 @@ impl ThreadSafeState {
     ThreadSafeState::new(
       flags::DenoFlags::default(),
       argv,
-      ops::op_selector_std,
       Progress::new(),
       true,
     )
@@ -382,7 +378,6 @@ fn import_map_given_for_repl() {
       ..flags::DenoFlags::default()
     },
     vec![String::from("./deno")],
-    ops::op_selector_std,
     Progress::new(),
     true,
   );

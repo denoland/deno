@@ -1,7 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as msg from "gen/cli/msg_generated";
-import * as flatbuffers from "./flatbuffers";
-import * as dispatch from "./dispatch";
+import { sendSync, sendAsync, msg, flatbuffers } from "./dispatch_flatbuffers";
 import { FileInfo, FileInfoImpl } from "./file_info";
 import { assert } from "./util";
 
@@ -30,7 +28,7 @@ function res(baseRes: null | msg.Base): FileInfo[] {
  *       const files = Deno.readDirSync("/");
  */
 export function readDirSync(path: string): FileInfo[] {
-  return res(dispatch.sendSync(...req(path)));
+  return res(sendSync(...req(path)));
 }
 
 /** Reads the directory given by path and returns a list of file info.
@@ -38,5 +36,5 @@ export function readDirSync(path: string): FileInfo[] {
  *       const files = await Deno.readDir("/");
  */
 export async function readDir(path: string): Promise<FileInfo[]> {
-  return res(await dispatch.sendAsync(...req(path)));
+  return res(await sendAsync(...req(path)));
 }

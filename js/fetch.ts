@@ -1,8 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { assert, createResolvable, notImplemented, isTypedArray } from "./util";
-import * as flatbuffers from "./flatbuffers";
-import { sendAsync } from "./dispatch";
-import * as msg from "gen/cli/msg_generated";
+import { sendAsync, msg, flatbuffers } from "./dispatch_flatbuffers";
 import * as domTypes from "./dom_types";
 import { TextDecoder, TextEncoder } from "./text_encoding";
 import { DenoBlob, bytesSymbol as blobBytesSymbol } from "./blob";

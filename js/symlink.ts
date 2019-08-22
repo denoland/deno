@@ -1,7 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as msg from "gen/cli/msg_generated";
-import * as flatbuffers from "./flatbuffers";
-import * as dispatch from "./dispatch";
+import { sendSync, sendAsync, msg, flatbuffers } from "./dispatch_flatbuffers";
 import * as util from "./util";
 import { platform } from "./build";
 
@@ -31,7 +29,7 @@ export function symlinkSync(
   newname: string,
   type?: string
 ): void {
-  dispatch.sendSync(...req(oldname, newname, type));
+  sendSync(...req(oldname, newname, type));
 }
 
 /** Creates `newname` as a symbolic link to `oldname`. The type argument can be
@@ -45,5 +43,5 @@ export async function symlink(
   newname: string,
   type?: string
 ): Promise<void> {
-  await dispatch.sendAsync(...req(oldname, newname, type));
+  await sendAsync(...req(oldname, newname, type));
 }

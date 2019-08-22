@@ -1,8 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as msg from "gen/cli/msg_generated";
 import { core } from "./core";
-import { handleAsyncMsgFromRust, sendSync } from "./dispatch";
-import * as flatbuffers from "./flatbuffers";
+import { handleAsyncMsgFromRust } from "./dispatch";
+import { sendSync, msg, flatbuffers } from "./dispatch_flatbuffers";
 import { assert } from "./util";
 import * as util from "./util";
 import { window } from "./window";

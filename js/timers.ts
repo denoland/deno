@@ -1,8 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { assert } from "./util";
-import * as msg from "gen/cli/msg_generated";
-import * as flatbuffers from "./flatbuffers";
-import { sendAsync, sendSync } from "./dispatch";
+import { sendAsync, sendSync, msg, flatbuffers } from "./dispatch_flatbuffers";
 import { window } from "./window";
 
 interface Timer {

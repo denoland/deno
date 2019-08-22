@@ -1,5 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as msg from "gen/cli/msg_generated";
 import * as ts from "typescript";
 
 import { assetSourceCode } from "./assets";
@@ -8,8 +7,7 @@ import { Console } from "./console";
 import { core } from "./core";
 import { Diagnostic, fromTypeScriptDiagnostic } from "./diagnostics";
 import { cwd } from "./dir";
-import { sendSync } from "./dispatch";
-import * as flatbuffers from "./flatbuffers";
+import { sendSync, msg, flatbuffers } from "./dispatch_flatbuffers";
 import * as os from "./os";
 import { TextDecoder, TextEncoder } from "./text_encoding";
 import { assert, notImplemented } from "./util";
