@@ -34,6 +34,9 @@ pub const OP_IS_TTY: OpId = 4;
 pub const OP_ENV: OpId = 5;
 pub const OP_EXEC_PATH: OpId = 6;
 pub const OP_UTIME: OpId = 7;
+pub const OP_SET_ENV: OpId = 8;
+pub const OP_HOME_DIR: OpId = 9;
+pub const OP_START: OpId = 10;
 
 pub fn dispatch(
   state: &ThreadSafeState,
@@ -59,8 +62,17 @@ pub fn dispatch(
     OP_EXEC_PATH => {
       dispatch_json::dispatch(os::op_exec_path, state, control, zero_copy)
     }
+    OP_HOME_DIR => {
+      dispatch_json::dispatch(os::op_home_dir, state, control, zero_copy)
+    }
     OP_UTIME => {
       dispatch_json::dispatch(fs::op_utime, state, control, zero_copy)
+    }
+    OP_SET_ENV => {
+      dispatch_json::dispatch(os::op_set_env, state, control, zero_copy)
+    }
+    OP_START => {
+      dispatch_json::dispatch(os::op_start, state, control, zero_copy)
     }
     OP_FLATBUFFER => dispatch_flatbuffers::dispatch(state, control, zero_copy),
     _ => panic!("bad op_id"),
