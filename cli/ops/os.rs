@@ -1,16 +1,18 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_flatbuffers::serialize_response;
+use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::utils::*;
 use crate::ansi;
 use crate::fs as deno_fs;
 use crate::msg;
-use crate::msg_util;
 use crate::state::ThreadSafeState;
 use crate::version;
 use atty;
 use deno::*;
 use flatbuffers::FlatBufferBuilder;
 use log;
+use std::collections::HashMap;
+use std::env;
 use url::Url;
 
 pub fn op_start(
@@ -25,7 +27,7 @@ pub fn op_start(
   let argv = state.argv.iter().map(String::as_str).collect::<Vec<_>>();
   let argv_off = builder.create_vector_of_strings(argv.as_slice());
 
-  let cwd_path = std::env::current_dir().unwrap();
+  let cwd_path = env::current_dir().unwrap();
   let cwd_off =
     builder.create_string(deno_fs::normalize_path(cwd_path.as_ref()).as_ref());
 
@@ -110,32 +112,16 @@ pub fn op_home_dir(
 
 pub fn op_exec_path(
   state: &ThreadSafeState,
-  base: &msg::Base<'_>,
-  data: Option<PinnedBuf>,
-) -> CliOpResult {
-  assert!(data.is_none());
-  let cmd_id = base.cmd_id();
-
+  _args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
   state.check_env()?;
-
-  let builder = &mut FlatBufferBuilder::new();
-  let current_exe = std::env::current_exe().unwrap();
-  // Now apply URL parser to current exe to get fully resolved path, otherwise we might get
-  // `./` and `../` bits in `exec_path`
+  let current_exe = env::current_exe().unwrap();
+  // Now apply URL parser to current exe to get fully resolved path, otherwise
+  // we might get `./` and `../` bits in `exec_path`
   let exe_url = Url::from_file_path(current_exe).unwrap();
-  let path = exe_url.to_file_path().unwrap().to_str().unwrap().to_owned();
-  let path = Some(builder.create_string(&path));
-  let inner = msg::ExecPathRes::create(builder, &msg::ExecPathResArgs { path });
-
-  ok_buf(serialize_response(
-    cmd_id,
-    builder,
-    msg::BaseArgs {
-      inner: Some(inner.as_union_value()),
-      inner_type: msg::Any::ExecPathRes,
-      ..Default::default()
-    },
-  ))
+  let path = exe_url.to_file_path().unwrap();
+  Ok(JsonOp::Sync(json!(path)))
 }
 
 pub fn op_set_env(
@@ -148,71 +134,42 @@ pub fn op_set_env(
   let key = inner.key().unwrap();
   let value = inner.value().unwrap();
   state.check_env()?;
-  std::env::set_var(key, value);
+  env::set_var(key, value);
   ok_buf(empty_buf())
 }
 
 pub fn op_env(
   state: &ThreadSafeState,
-  base: &msg::Base<'_>,
-  data: Option<PinnedBuf>,
-) -> CliOpResult {
-  assert!(data.is_none());
-  let cmd_id = base.cmd_id();
-
+  _args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
   state.check_env()?;
+  let v = env::vars().collect::<HashMap<String, String>>();
+  Ok(JsonOp::Sync(json!(v)))
+}
 
-  let builder = &mut FlatBufferBuilder::new();
-  let vars: Vec<_> = std::env::vars()
-    .map(|(key, value)| msg_util::serialize_key_value(builder, &key, &value))
-    .collect();
-  let tables = builder.create_vector(&vars);
-  let inner = msg::EnvironRes::create(
-    builder,
-    &msg::EnvironResArgs { map: Some(tables) },
-  );
-  let response_buf = serialize_response(
-    cmd_id,
-    builder,
-    msg::BaseArgs {
-      inner: Some(inner.as_union_value()),
-      inner_type: msg::Any::EnvironRes,
-      ..Default::default()
-    },
-  );
-  ok_buf(response_buf)
+#[derive(Deserialize)]
+struct Exit {
+  code: i32,
 }
 
 pub fn op_exit(
-  _state: &ThreadSafeState,
-  base: &msg::Base<'_>,
-  _data: Option<PinnedBuf>,
-) -> CliOpResult {
-  let inner = base.inner_as_exit().unwrap();
-  std::process::exit(inner.code())
+  _s: &ThreadSafeState,
+  args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: Exit = serde_json::from_value(args)?;
+  std::process::exit(args.code)
 }
 
 pub fn op_is_tty(
-  _state: &ThreadSafeState,
-  base: &msg::Base<'_>,
-  _data: Option<PinnedBuf>,
-) -> CliOpResult {
-  let builder = &mut FlatBufferBuilder::new();
-  let inner = msg::IsTTYRes::create(
-    builder,
-    &msg::IsTTYResArgs {
-      stdin: atty::is(atty::Stream::Stdin),
-      stdout: atty::is(atty::Stream::Stdout),
-      stderr: atty::is(atty::Stream::Stderr),
-    },
-  );
-  ok_buf(serialize_response(
-    base.cmd_id(),
-    builder,
-    msg::BaseArgs {
-      inner: Some(inner.as_union_value()),
-      inner_type: msg::Any::IsTTYRes,
-      ..Default::default()
-    },
-  ))
+  _s: &ThreadSafeState,
+  _args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  Ok(JsonOp::Sync(json!({
+    "stdin": atty::is(atty::Stream::Stdin),
+    "stdout": atty::is(atty::Stream::Stdout),
+    "stderr": atty::is(atty::Stream::Stderr),
+  })))
 }

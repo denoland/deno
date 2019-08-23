@@ -13,13 +13,11 @@ use super::files::{op_close, op_open, op_read, op_seek, op_write};
 use super::fs::{
   op_chdir, op_chmod, op_chown, op_copy_file, op_cwd, op_link,
   op_make_temp_dir, op_mkdir, op_read_dir, op_read_link, op_remove, op_rename,
-  op_stat, op_symlink, op_truncate, op_utime,
+  op_stat, op_symlink, op_truncate,
 };
 use super::metrics::op_metrics;
 use super::net::{op_accept, op_dial, op_listen, op_shutdown};
-use super::os::{
-  op_env, op_exec_path, op_exit, op_home_dir, op_is_tty, op_set_env, op_start,
-};
+use super::os::{op_home_dir, op_set_env, op_start};
 use super::performance::op_now;
 use super::permissions::{op_permissions, op_revoke_permission};
 use super::process::{op_kill, op_run, op_run_status};
@@ -65,13 +63,8 @@ pub fn dispatch(
 
   let op_result = op_func(state, &base, zero_copy);
 
-  let state = state.clone();
-
   match op_result {
-    Ok(Op::Sync(buf)) => {
-      state.metrics_op_completed(buf.len());
-      Op::Sync(buf)
-    }
+    Ok(Op::Sync(buf)) => Op::Sync(buf),
     Ok(Op::Async(fut)) => {
       let result_fut = Box::new(
         fut
@@ -107,7 +100,6 @@ pub fn dispatch(
                 },
               )
             };
-            state.metrics_op_completed(buf.len());
             Ok(buf)
           })
           .map_err(|err| panic!("unexpected error {:?}", err)),
@@ -129,7 +121,6 @@ pub fn dispatch(
           ..Default::default()
         },
       );
-      state.metrics_op_completed(response_buf.len());
       Op::Sync(response_buf)
     }
   }
@@ -162,9 +153,6 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<CliDispatchFn> {
     msg::Any::CreateWorker => Some(op_create_worker),
     msg::Any::Cwd => Some(op_cwd),
     msg::Any::Dial => Some(op_dial),
-    msg::Any::Environ => Some(op_env),
-    msg::Any::ExecPath => Some(op_exec_path),
-    msg::Any::Exit => Some(op_exit),
     msg::Any::Fetch => Some(op_fetch),
     msg::Any::FetchSourceFile => Some(op_fetch_source_file),
     msg::Any::FormatError => Some(op_format_error),
@@ -174,7 +162,6 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<CliDispatchFn> {
     msg::Any::HostGetMessage => Some(op_host_get_message),
     msg::Any::HostGetWorkerClosed => Some(op_host_get_worker_closed),
     msg::Any::HostPostMessage => Some(op_host_post_message),
-    msg::Any::IsTTY => Some(op_is_tty),
     msg::Any::Kill => Some(op_kill),
     msg::Any::Link => Some(op_link),
     msg::Any::Listen => Some(op_listen),
@@ -203,7 +190,6 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<CliDispatchFn> {
     msg::Any::Symlink => Some(op_symlink),
     msg::Any::Truncate => Some(op_truncate),
     msg::Any::HomeDir => Some(op_home_dir),
-    msg::Any::Utime => Some(op_utime),
     msg::Any::Write => Some(op_write),
 
     // TODO(ry) split these out so that only the appropriate Workers can access

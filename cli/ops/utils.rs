@@ -19,7 +19,7 @@ pub fn empty_buf() -> Buf {
 
 // This is just type conversion. Implement From trait?
 // See https://github.com/tokio-rs/tokio/blob/ffd73a64e7ec497622b7f939e38017afe7124dc4/tokio-fs/src/lib.rs#L76-L85
-fn convert_blocking<F>(f: F) -> Poll<Buf, ErrBox>
+pub fn convert_blocking<F>(f: F) -> Poll<Buf, ErrBox>
 where
   F: FnOnce() -> Result<Buf, ErrBox>,
 {

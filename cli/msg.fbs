@@ -12,9 +12,6 @@ union Any {
   Cwd,
   CwdRes,
   Dial,
-  Environ,
-  EnvironRes,
-  Exit,
   Fetch,
   FetchSourceFile,
   FetchSourceFileRes,
@@ -29,8 +26,6 @@ union Any {
   HostGetMessageRes,
   HostGetWorkerClosed,
   HostPostMessage,
-  IsTTY,
-  IsTTYRes,
   Kill,
   Link,
   Listen,
@@ -77,9 +72,6 @@ union Any {
   Truncate,
   HomeDir,
   HomeDirRes,
-  ExecPath,
-  ExecPathRes,
-  Utime,
   WorkerGetMessage,
   WorkerGetMessageRes,
   WorkerPostMessage,
@@ -286,19 +278,9 @@ table GlobalTimerRes { }
 
 table GlobalTimerStop { }
 
-table Exit {
-  code: int;
-}
-
-table Environ {}
-
 table SetEnv {
   key: string;
   value: string;
-}
-
-table EnvironRes {
-  map: [KeyValue];
 }
 
 table KeyValue {
@@ -469,18 +451,6 @@ table HomeDirRes {
   path: string;
 }
 
-table ExecPath {}
-
-table ExecPathRes {
-  path: string;
-}
-
-table Utime {
-  filename: string;
-  atime: uint64;
-  mtime: uint64;
-}
-
 table Open {
   filename: string;
   perm: uint;
@@ -598,14 +568,6 @@ table Now {}
 table NowRes {
   seconds: uint64;
   subsec_nanos: uint32;
-}
-
-table IsTTY {}
-
-table IsTTYRes {
-  stdin: bool;
-  stdout: bool;
-  stderr: bool;
 }
 
 table Seek {

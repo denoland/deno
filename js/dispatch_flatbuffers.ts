@@ -19,7 +19,7 @@ interface FlatbufferRecord {
   base: msg.Base;
 }
 
-export function handleAsyncMsgFromRust(opId: number, ui8: Uint8Array): void {
+export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
   let { promiseId, base } = flatbufferRecordFromBuf(ui8);
   const promise = promiseTable.get(promiseId);
   util.assert(promise != null, `Expecting promise in table. ${promiseId}`);
