@@ -35,17 +35,12 @@ export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
     case OP_ENV:
     case OP_EXEC_PATH:
     case OP_UTIME:
-    case OP_APPLY_SOURCE_MAP:
-    case OP_FORMAT_ERROR:
-    case OP_CACHE:
-    case OP_FETCH_SOURCE_FILE:
     case OP_OPEN:
-    case OP_CLOSE:
     case OP_SEEK:
     case OP_FETCH:
       json.asyncMsgFromRust(opId, ui8);
       break;
     default:
-      throw Error("bad opId");
+      throw Error("bad async opId");
   }
 }

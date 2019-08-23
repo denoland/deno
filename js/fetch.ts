@@ -333,11 +333,9 @@ async function sendFetchReq(
   headers: domTypes.Headers | null,
   body: ArrayBufferView | undefined
 ): Promise<FetchResponse> {
-  const serializedHeaders = [];
+  let headerArray = [];
   if (headers) {
-    for (const headerPair of headers.entries()) {
-      serializedHeaders.push(headerPair);
-    }
+    headerArray = Array.from(headers.entries());
   }
 
   let zeroCopy = undefined;
@@ -348,7 +346,7 @@ async function sendFetchReq(
   const args = {
     method,
     url,
-    headers: serializedHeaders
+    headers: headerArray
   };
 
   return (await sendAsync(dispatch.OP_FETCH, args, zeroCopy)) as FetchResponse;
