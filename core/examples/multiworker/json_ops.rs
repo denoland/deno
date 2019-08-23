@@ -1,11 +1,9 @@
 use deno::Buf;
 use deno::CoreOp;
 use deno::ErrBox;
-use deno::Op;
 use deno::PinnedBuf;
 use futures::future::Future;
 use serde::Deserialize;
-use serde::Serialize;
 use serde_json::json;
 use serde_json::Value;
 

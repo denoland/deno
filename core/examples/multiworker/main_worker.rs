@@ -10,7 +10,6 @@ use futures::future::Future;
 use futures::stream::Stream;
 use serde::Deserialize;
 use serde_json::json;
-use std::sync::Arc;
 
 struct OpListen {
   state: ThreadSafeState,

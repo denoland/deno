@@ -337,7 +337,7 @@ fn main() {
     // lazy(). It would be nice to not have that contraint. Probably requires
     // using v8::MicrotasksPolicy::kExplicit
 
-    let js_source = include_str!("http_bench.js");
+    let js_source = include_str!("main.js");
     let startup_data = StartupData::Script(Script {
       source: js_source,
       filename: "http_bench.js",

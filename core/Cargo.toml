@@ -35,3 +35,4 @@ path = "examples/http_bench.rs"
 [dev_dependencies]
 tokio = "0.1.18"
 serde = { version = "1.0.98", features = ["derive"] }
+serde_derive = "1.0.99"

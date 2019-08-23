@@ -6,6 +6,8 @@ group("default") {
     ":deno",
     ":deno_core_http_bench",
     ":deno_core_http_bench_test",
+    ":deno_core_multiworker_bench",
+    ":deno_core_multiworker_test",
     ":deno_core_test",
     ":snapshot_creator",
   ]
@@ -43,40 +45,65 @@ rust_test("deno_core_test") {
   extern_rlib = main_extern_rlib
 }
 
-http_bench_extern = [
+example_extern = [
   {
     label = ":deno"
     crate_name = "deno"
     crate_type = "rlib"
   },
+  {
+    label = "$rust_build:serde_derive"
+    crate_name = "serde_derive"
+    crate_type = "proc_macro"
+  },
 ]
-http_bench_extern_rlib = [
+example_extern_rlib = [
   "futures",
   "lazy_static",
   "libc",
   "log",
   "tokio",
+  "serde_json",
+  "serde",
 ]
 if (is_win) {
   http_bench_extern_rlib += [ "winapi" ]
 }
 
 rust_executable("deno_core_http_bench") {
-  source_root = "examples/http_bench.rs"
+  source_root = "examples/http_bench/main.rs"
   deps = [
     ":deno_core_deps",
   ]
-  extern = http_bench_extern
-  extern_rlib = http_bench_extern_rlib
+  extern = example_extern
+  extern_rlib = example_extern_rlib
 }
 
 rust_test("deno_core_http_bench_test") {
-  source_root = "examples/http_bench.rs"
+  source_root = "examples/http_bench/main.rs"
   deps = [
     ":deno_core_deps",
   ]
-  extern = http_bench_extern
-  extern_rlib = http_bench_extern_rlib
+  extern = example_extern
+  extern_rlib = example_extern_rlib
+}
+
+rust_executable("deno_core_multiworker_bench") {
+  source_root = "examples/multiworker/main.rs"
+  deps = [
+    ":deno_core_deps",
+  ]
+  extern = example_extern
+  extern_rlib = example_extern_rlib
+}
+
+rust_test("deno_core_multiworker_test") {
+  source_root = "examples/multiworker/main.rs"
+  deps = [
+    ":deno_core_deps",
+  ]
+  extern = example_extern
+  extern_rlib = example_extern_rlib
 }
 
 rust_executable("snapshot_creator") {

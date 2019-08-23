@@ -10,7 +10,6 @@ use deno::OpDispatcher;
 use deno::PinnedBuf;
 use futures::future::Future;
 use futures::sink::Sink;
-use std::convert::TryInto;
 use std::sync::Arc;
 use std::sync::Mutex;
 use tokio::io::AsyncRead;
