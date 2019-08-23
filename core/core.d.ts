@@ -20,7 +20,7 @@ declare interface DenoCore {
     control: Uint8Array,
     zeroCopy?: ArrayBufferView | null
   ): Uint8Array | null;
-  setAsyncHandler(cb: MessageCallback): void;
+  setAsyncHandler(opId: number, cb: MessageCallback): void;
   sharedQueue: {
     head(): number;
     numRecords(): number;

@@ -78,6 +78,7 @@ function handleAsyncMsgFromRust(opId, buf) {
 let listenOpId;
 opNamespace.OpListen = id => {
   listenOpId = id;
+  Deno.core.setAsyncHandler(id, buf => handleAsyncMsgFromRust(id, buf));
 };
 /** Listens on 0.0.0.0:4500, returns rid. */
 function listen() {
@@ -87,6 +88,7 @@ function listen() {
 let acceptOpId;
 opNamespace.OpAccept = id => {
   acceptOpId = id;
+  Deno.core.setAsyncHandler(id, buf => handleAsyncMsgFromRust(id, buf));
 };
 /** Accepts a connection, returns rid. */
 async function accept(rid) {
@@ -96,6 +98,7 @@ async function accept(rid) {
 let readOpId;
 opNamespace.OpRead = id => {
   readOpId = id;
+  Deno.core.setAsyncHandler(id, buf => handleAsyncMsgFromRust(id, buf));
 };
 /**
  * Reads a packet from the rid, presumably an http request. data is ignored.
@@ -108,6 +111,7 @@ async function read(rid, data) {
 let writeOpId;
 opNamespace.OpWrite = id => {
   writeOpId = id;
+  Deno.core.setAsyncHandler(id, buf => handleAsyncMsgFromRust(id, buf));
 };
 /** Writes a fixed HTTP response to the socket rid. Returns bytes written. */
 async function write(rid, data) {
@@ -117,6 +121,7 @@ async function write(rid, data) {
 let closeOpId;
 opNamespace.OpClose = id => {
   closeOpId = id;
+  Deno.core.setAsyncHandler(id, buf => handleAsyncMsgFromRust(id, buf));
 };
 function close(rid) {
   return sendSync(closeOpId, rid);
