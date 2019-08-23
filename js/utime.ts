@@ -19,6 +19,7 @@ export function utimeSync(
 ): void {
   sendSync(OP_UTIME, {
     filename,
+    // TODO(ry) split atime, mtime into [seconds, nanoseconds] tuple
     atime: toSecondsFromEpoch(atime),
     mtime: toSecondsFromEpoch(mtime)
   });
@@ -37,6 +38,7 @@ export async function utime(
 ): Promise<void> {
   await sendAsync(OP_UTIME, {
     filename,
+    // TODO(ry) split atime, mtime into [seconds, nanoseconds] tuple
     atime: toSecondsFromEpoch(atime),
     mtime: toSecondsFromEpoch(mtime)
   });
