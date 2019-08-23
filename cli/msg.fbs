@@ -7,9 +7,6 @@ union Any {
   CreateWorkerRes,
   Cwd,
   CwdRes,
-  GlobalTimer,
-  GlobalTimerRes,
-  GlobalTimerStop,
   HostGetMessage,
   HostGetMessageRes,
   HostGetWorkerClosed,
@@ -194,14 +191,6 @@ table WorkerPostMessage {
 table Chdir {
   directory: string;
 }
-
-table GlobalTimer {
-  timeout: int;
-}
-
-table GlobalTimerRes { }
-
-table GlobalTimerStop { }
 
 table KeyValue {
   key: string;

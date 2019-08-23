@@ -53,6 +53,8 @@ pub const OP_SHUTDOWN: OpId = 24;
 pub const OP_LISTEN: OpId = 25;
 pub const OP_RESOURCES: OpId = 26;
 pub const OP_GET_RANDOM_VALUES: OpId = 27;
+pub const OP_GLOBAL_TIMER_STOP: OpId = 28;
+pub const OP_GLOBAL_TIMER: OpId = 29;
 
 pub fn dispatch(
   state: &ThreadSafeState,
@@ -146,6 +148,18 @@ pub fn dispatch(
     ),
     OP_GET_RANDOM_VALUES => dispatch_json::dispatch(
       random::op_get_random_values,
+      state,
+      control,
+      zero_copy,
+    ),
+    OP_GLOBAL_TIMER_STOP => dispatch_json::dispatch(
+      timers::op_global_timer_stop,
+      state,
+      control,
+      zero_copy,
+    ),
+    OP_GLOBAL_TIMER => dispatch_json::dispatch(
+      timers::op_global_timer,
       state,
       control,
       zero_copy,

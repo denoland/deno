@@ -31,6 +31,8 @@ export const OP_SHUTDOWN = 24;
 export const OP_LISTEN = 25;
 export const OP_RESOURCES = 26;
 export const OP_GET_RANDOM_VALUES = 27;
+export const OP_GLOBAL_TIMER_STOP = 28;
+export const OP_GLOBAL_TIMER = 29;
 
 export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
   switch (opId) {
@@ -53,6 +55,7 @@ export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
     case OP_REPL_READLINE:
     case OP_ACCEPT:
     case OP_DIAL:
+    case OP_GLOBAL_TIMER:
       json.asyncMsgFromRust(opId, ui8);
       break;
     default:

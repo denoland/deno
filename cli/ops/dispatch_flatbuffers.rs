@@ -16,7 +16,6 @@ use super::metrics::op_metrics;
 use super::performance::op_now;
 use super::permissions::{op_permissions, op_revoke_permission};
 use super::process::{op_kill, op_run, op_run_status};
-use super::timers::{op_global_timer, op_global_timer_stop};
 use super::workers::{
   op_create_worker, op_host_get_message, op_host_get_worker_closed,
   op_host_post_message, op_worker_get_message, op_worker_post_message,
@@ -140,8 +139,6 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<CliDispatchFn> {
     msg::Any::CopyFile => Some(op_copy_file),
     msg::Any::CreateWorker => Some(op_create_worker),
     msg::Any::Cwd => Some(op_cwd),
-    msg::Any::GlobalTimer => Some(op_global_timer),
-    msg::Any::GlobalTimerStop => Some(op_global_timer_stop),
     msg::Any::HostGetMessage => Some(op_host_get_message),
     msg::Any::HostGetWorkerClosed => Some(op_host_get_worker_closed),
     msg::Any::HostPostMessage => Some(op_host_post_message),
