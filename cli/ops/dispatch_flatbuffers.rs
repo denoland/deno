@@ -13,16 +13,7 @@ use super::fs::{
   op_stat, op_symlink, op_truncate,
 };
 use super::metrics::op_metrics;
-<<<<<<< HEAD
-use super::permissions::{op_permissions, op_revoke_permission};
-=======
-use super::os::{op_home_dir, op_set_env, op_start};
->>>>>>> port cli/ops/permissions.rs to json ops
 use super::process::{op_kill, op_run, op_run_status};
-use super::workers::{
-  op_create_worker, op_host_get_message, op_host_get_worker_closed,
-  op_host_post_message, op_worker_get_message, op_worker_post_message,
-};
 
 type CliDispatchFn = fn(
   state: &ThreadSafeState,
@@ -140,22 +131,12 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<CliDispatchFn> {
     msg::Any::Chmod => Some(op_chmod),
     msg::Any::Chown => Some(op_chown),
     msg::Any::CopyFile => Some(op_copy_file),
-    msg::Any::CreateWorker => Some(op_create_worker),
     msg::Any::Cwd => Some(op_cwd),
-    msg::Any::HostGetMessage => Some(op_host_get_message),
-    msg::Any::HostGetWorkerClosed => Some(op_host_get_worker_closed),
-    msg::Any::HostPostMessage => Some(op_host_post_message),
     msg::Any::Kill => Some(op_kill),
     msg::Any::Link => Some(op_link),
     msg::Any::MakeTempDir => Some(op_make_temp_dir),
     msg::Any::Metrics => Some(op_metrics),
     msg::Any::Mkdir => Some(op_mkdir),
-<<<<<<< HEAD
-    msg::Any::PermissionRevoke => Some(op_revoke_permission),
-    msg::Any::Permissions => Some(op_permissions),
-=======
-    msg::Any::Open => Some(op_open),
->>>>>>> port cli/ops/permissions.rs to json ops
     msg::Any::Read => Some(op_read),
     msg::Any::ReadDir => Some(op_read_dir),
     msg::Any::Readlink => Some(op_read_link),
@@ -167,11 +148,6 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<CliDispatchFn> {
     msg::Any::Symlink => Some(op_symlink),
     msg::Any::Truncate => Some(op_truncate),
     msg::Any::Write => Some(op_write),
-
-    // TODO(ry) split these out so that only the appropriate Workers can access
-    // them.
-    msg::Any::WorkerGetMessage => Some(op_worker_get_message),
-    msg::Any::WorkerPostMessage => Some(op_worker_post_message),
 
     _ => None,
   }

@@ -36,6 +36,12 @@ export const OP_GLOBAL_TIMER = 29;
 export const OP_NOW = 30;
 export const OP_PERMISSIONS = 31;
 export const OP_REVOKE_PERMISSION = 32;
+export const OP_CREATE_WORKER = 33;
+export const OP_HOST_GET_WORKER_CLOSED = 34;
+export const OP_HOST_POST_MESSAGE = 35;
+export const OP_HOST_GET_MESSAGE = 36;
+export const OP_WORKER_POST_MESSAGE = 37;
+export const OP_WORKER_GET_MESSAGE = 38;
 
 export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
   switch (opId) {
@@ -59,6 +65,9 @@ export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
     case OP_ACCEPT:
     case OP_DIAL:
     case OP_GLOBAL_TIMER:
+    case OP_HOST_GET_WORKER_CLOSED:
+    case OP_HOST_GET_MESSAGE:
+    case OP_WORKER_GET_MESSAGE:
       json.asyncMsgFromRust(opId, ui8);
       break;
     default:

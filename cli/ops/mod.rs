@@ -58,6 +58,12 @@ pub const OP_GLOBAL_TIMER: OpId = 29;
 pub const OP_NOW: OpId = 30;
 pub const OP_PERMISSIONS: OpId = 31;
 pub const OP_REVOKE_PERMISSION: OpId = 32;
+pub const OP_CREATE_WORKER: OpId = 33;
+pub const OP_HOST_GET_WORKER_CLOSED: OpId = 34;
+pub const OP_HOST_POST_MESSAGE: OpId = 35;
+pub const OP_HOST_GET_MESSAGE: OpId = 36;
+pub const OP_WORKER_POST_MESSAGE: OpId = 37;
+pub const OP_WORKER_GET_MESSAGE: OpId = 38;
 
 pub fn dispatch(
   state: &ThreadSafeState,
@@ -178,6 +184,43 @@ pub fn dispatch(
     ),
     OP_REVOKE_PERMISSION => dispatch_json::dispatch(
       permissions::op_revoke_permission,
+      state,
+      control,
+      zero_copy,
+    ),
+    OP_CREATE_WORKER => dispatch_json::dispatch(
+      workers::op_create_worker,
+      state,
+      control,
+      zero_copy,
+    ),
+    OP_HOST_GET_WORKER_CLOSED => dispatch_json::dispatch(
+      workers::op_host_get_worker_closed,
+      state,
+      control,
+      zero_copy,
+    ),
+    OP_HOST_POST_MESSAGE => dispatch_json::dispatch(
+      workers::op_host_post_message,
+      state,
+      control,
+      zero_copy,
+    ),
+    OP_HOST_GET_MESSAGE => dispatch_json::dispatch(
+      workers::op_host_get_message,
+      state,
+      control,
+      zero_copy,
+    ),
+    // TODO: make sure these two ops are only accessible to appropriate Workers
+    OP_WORKER_POST_MESSAGE => dispatch_json::dispatch(
+      workers::op_worker_post_message,
+      state,
+      control,
+      zero_copy,
+    ),
+    OP_WORKER_GET_MESSAGE => dispatch_json::dispatch(
+      workers::op_worker_get_message,
       state,
       control,
       zero_copy,

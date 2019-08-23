@@ -3,14 +3,8 @@ union Any {
   Chmod,
   Chown,
   CopyFile,
-  CreateWorker,
-  CreateWorkerRes,
   Cwd,
   CwdRes,
-  HostGetMessage,
-  HostGetMessageRes,
-  HostGetWorkerClosed,
-  HostPostMessage,
   Kill,
   Link,
   MakeTempDir,
@@ -35,9 +29,6 @@ union Any {
   StatRes,
   Symlink,
   Truncate,
-  WorkerGetMessage,
-  WorkerGetMessageRes,
-  WorkerPostMessage,
   Write,
   WriteRes,
 }
@@ -136,51 +127,6 @@ table FormatError {
 
 table FormatErrorRes {
   error: string;
-}
-
-// Create worker as host
-table CreateWorker {
-  specifier: string;
-  include_deno_namespace: bool;
-  has_source_code: bool;
-  source_code: string;
-}
-
-table CreateWorkerRes {
-  rid: uint32;
-}
-
-table HostGetWorkerClosed {
-  rid: uint32;
-}
-
-// Get message from guest worker as host
-table HostGetMessage {
-  rid: uint32;
-}
-
-table HostGetMessageRes {
-  data: [ubyte];
-}
-
-// Post message to guest worker as host
-table HostPostMessage {
-  rid: uint32;
-  // data passed thru the zero-copy data parameter.
-}
-
-// Get message from host as guest worker
-table WorkerGetMessage {
-  unused: int8;
-}
-
-table WorkerGetMessageRes {
-  data: [ubyte];
-}
-
-// Post message to host as guest worker
-table WorkerPostMessage {
-  // data passed thru the zero-copy data parameter.
 }
 
 table Chdir {
