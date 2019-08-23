@@ -36,7 +36,7 @@ pub fn op_global_timer(
   let deadline = Instant::now() + Duration::from_millis(val as u64);
   let f = t
     .new_timeout(deadline)
-    .then(move |_| futures::future::ok(Value::Null));
+    .then(move |_| futures::future::ok(json!({})));
 
   Ok(JsonOp::Async(Box::new(f)))
 }
