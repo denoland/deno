@@ -52,6 +52,7 @@ pub const OP_DIAL: OpId = 23;
 pub const OP_SHUTDOWN: OpId = 24;
 pub const OP_LISTEN: OpId = 25;
 pub const OP_RESOURCES: OpId = 26;
+pub const OP_GET_RANDOM_VALUES: OpId = 27;
 
 pub fn dispatch(
   state: &ThreadSafeState,
@@ -139,6 +140,12 @@ pub fn dispatch(
     }
     OP_RESOURCES => dispatch_json::dispatch(
       resources::op_resources,
+      state,
+      control,
+      zero_copy,
+    ),
+    OP_GET_RANDOM_VALUES => dispatch_json::dispatch(
+      random::op_get_random_values,
       state,
       control,
       zero_copy,

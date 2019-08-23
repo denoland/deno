@@ -7,7 +7,6 @@ union Any {
   CreateWorkerRes,
   Cwd,
   CwdRes,
-  GetRandomValues,
   GlobalTimer,
   GlobalTimerRes,
   GlobalTimerStop,
@@ -394,7 +393,5 @@ table Seek {
   offset: int;
   whence: uint;
 }
-
-table GetRandomValues {}
 
 root_type Base;
