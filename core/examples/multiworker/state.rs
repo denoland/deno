@@ -3,6 +3,8 @@ use crate::stateless_worker;
 use crate::worker::Worker;
 use deno::js_check;
 use deno::StartupData;
+use futures::future::Future;
+use futures::stream::FuturesUnordered;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::ops::Deref;
@@ -55,7 +57,10 @@ impl ThreadSafeState {
     &self,
     listener_rid: ResourceId,
     script: &str,
-  ) -> ResourceId {
+  ) -> (
+    ResourceId,
+    Box<dyn Future<Item = (), Error = ()> + Send + 'static>,
+  ) {
     let mut lock = self.stateless_workers.write().unwrap();
     let rid: ResourceId = lock.len() as ResourceId;
     let worker = Arc::new(Worker::new(StartupData::None, self.clone()));
@@ -67,8 +72,7 @@ impl ThreadSafeState {
     lock.push(Some((stateless_worker_state, Arc::clone(&worker))));
     js_check(worker.execute("stateless_worker.js", STATELESS_WORKER_SOURCE));
     js_check(worker.execute("main.js", script));
-    worker.run_in_thread();
-    rid
+    (rid, Box::new(worker.run_in_thread()))
   }
 
   #[allow(dead_code)]
@@ -85,15 +89,26 @@ impl ThreadSafeState {
     rid
   }
 
-  pub fn listen(&self, addr: String, worker_script: &str, worker_count: u32) {
+  pub fn listen(
+    &self,
+    addr: String,
+    worker_script: &str,
+    worker_count: u32,
+  ) -> FuturesUnordered<Box<dyn Future<Item = (), Error = ()> + Send + 'static>>
+  {
     let addr = addr.parse::<SocketAddr>().unwrap();
     let listener = tokio::net::TcpListener::bind(&addr).unwrap();
     let mut listeners = self.listeners.lock().unwrap();
     let listener_rid: ResourceId = listeners.len() as ResourceId;
     listeners.push(Some(listener));
     drop(listeners);
+    let mut worker_futures: FuturesUnordered<
+      Box<dyn Future<Item = (), Error = ()> + Send + 'static>,
+    > = FuturesUnordered::new();
     for _ in 0..worker_count {
-      self.add_stateless_worker(listener_rid, worker_script);
+      worker_futures
+        .push(self.add_stateless_worker(listener_rid, worker_script).1);
     }
+    worker_futures
   }
 }

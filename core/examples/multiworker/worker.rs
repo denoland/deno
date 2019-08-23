@@ -1,10 +1,13 @@
 use crate::state::ThreadSafeState;
+use deno::js_check;
 use deno::ErrBox;
 use deno::Named;
 use deno::OpDisReg;
 use deno::OpDispatcher;
 use deno::StartupData;
 use futures::future::Future;
+use futures::sync::oneshot;
+use futures::Async;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -43,15 +46,29 @@ impl Worker {
     isolate.execute(js_filename, js_source)
   }
 
-  pub fn run_in_thread(&self) {
+  pub fn run_in_thread(&self) -> impl Future<Item = (), Error = ()> {
     let isolate = Arc::clone(&self.isolate);
-    std::thread::spawn(move || {
-      let poll_fut = futures::future::poll_fn(move || {
-        let mut i = isolate.lock().unwrap();
-        i.poll()
-      })
-      .map_err(|e| panic!("{}", e));
-      tokio::run(poll_fut);
+    let (tx, rx) = oneshot::channel();
+    let poll_fut = futures::future::poll_fn(move || {
+      let mut i = isolate.lock().unwrap();
+      i.poll()
+    })
+    .then(|r| {
+      js_check(r);
+      tx.send(()).unwrap();
+      Ok(())
     });
+    tokio::spawn(poll_fut);
+    rx.map_err(|e| panic!("channel closed {}", e))
+  }
+}
+
+impl Future for Worker {
+  type Item = ();
+  type Error = ErrBox;
+
+  fn poll(&mut self) -> Result<Async<()>, ErrBox> {
+    let mut isolate = self.isolate.lock().unwrap();
+    isolate.poll()
   }
 }

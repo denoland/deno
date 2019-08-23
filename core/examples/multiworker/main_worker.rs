@@ -1,5 +1,4 @@
 use crate::json_ops::wrap_json_op;
-use crate::json_ops::EmptyResponse;
 use crate::json_ops::JsonOp;
 use crate::state::ThreadSafeState;
 use crate::worker::Worker;
@@ -7,7 +6,10 @@ use deno::CoreOp;
 use deno::Named;
 use deno::OpDispatcher;
 use deno::PinnedBuf;
+use futures::future::Future;
+use futures::stream::Stream;
 use serde::Deserialize;
+use serde_json::json;
 use std::sync::Arc;
 
 struct OpListen {
@@ -34,13 +36,16 @@ impl OpDispatcher for OpListen {
       |args, _buf| {
         let options: OpListenOptions = serde_json::from_value(args).unwrap();
 
-        self.state.listen(
-          options.address,
-          &options.worker_script,
-          options.worker_count,
-        );
+        let fut = self
+          .state
+          .listen(
+            options.address,
+            &options.worker_script,
+            options.worker_count,
+          )
+          .into_future();
 
-        JsonOp::Sync(EmptyResponse)
+        Ok(JsonOp::Async(Box::new(fut.then(|_| Ok(json!({}))))))
       },
       args,
       buf,
@@ -54,7 +59,7 @@ impl Named for OpListen {
 
 static MAIN_WORKER_NAMESPACE: &'static str = "mainWorker";
 
-pub fn register_op_dispatchers(worker: Arc<Worker>) {
+pub fn register_op_dispatchers(worker: &Worker) {
   let state = worker.state.clone();
 
   worker.register_op(MAIN_WORKER_NAMESPACE, OpListen::new(state.clone()));

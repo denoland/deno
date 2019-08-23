@@ -99,20 +99,57 @@ function createResolvable() {
   return Object.assign(promise, methods);
 }
 
-const textEncoder = new TextEncoder();
+function decode(ui8) {
+  const s = new TextDecoder().decode(ui8);
+  return JSON.parse(s);
+}
+
+function encode(args) {
+  const s = JSON.stringify(args);
+  return new TextEncoder().encode(s);
+}
+
+function handleAsyncMsgFromRust(opId, res) {
+  const { ok, err, promiseId } = decode(res);
+  const promise = promiseMap.get(promiseId);
+  if (!promise) {
+    throw Error(`Async op ${opId} had bad promiseId`);
+  }
+  promiseMap.delete(promiseId);
+
+  if (err) {
+    promise.reject(err);
+  } else if (ok) {
+    promise.resolve(ok);
+  } else {
+    throw new Error("Unreachable!");
+  }
+}
+
+function sendAsync(opId, args, zeroCopy) {
+  const promiseId = nextPromiseId++;
+  args = Object.assign(args, { promiseId });
+  const argsUi8 = encode(args);
+  const promise = createResolvable();
+  promiseMap.set(promiseId, promise);
+  const r = Deno.core.dispatch(opId, argsUi8, zeroCopy);
+  assert(!r);
+  return promise;
+}
 
 let listenOpId;
 opNamespace.listen = id => {
   listenOpId = id;
+  Deno.core.setAsyncHandler(id, buf => handleAsyncMsgFromRust(id, buf));
 };
 /** Accepts a connection, returns rid. */
 function listen(options) {
-  Deno.core.dispatch(listenOpId, textEncoder.encode(JSON.stringify(options)));
+  sendAsync(listenOpId, options);
 }
 
 const listenParams = {
   address: "127.0.0.1:4544",
-  workerCount: 16,
+  workerCount: 10,
   workerScript: `
         const requestBuf = new Uint8Array(64 * 1024);
         const responseString = "HTTP/1.1 200 OK\\r\\nContent-Length: 12\\r\\n\\r\\nHello World\\n";
@@ -155,4 +192,8 @@ const listenParams = {
     `
 };
 
-listen(listenParams);
+async function run() {
+  await listen(listenParams);
+}
+
+run();

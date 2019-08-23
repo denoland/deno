@@ -1,3 +1,4 @@
+use crate::minimal_ops::wrap_minimal;
 use crate::state::ResourceId;
 use crate::state::ThreadSafeState;
 use crate::worker::Worker;
@@ -79,36 +80,34 @@ impl OpAccept {
 }
 
 impl OpDispatcher for OpAccept {
-  fn dispatch(&self, args: &[u8], _buf: Option<PinnedBuf>) -> CoreOp {
-    let (promise_id_bytes, _rest) = args.split_at(std::mem::size_of::<i32>());
-    let promise_id = i32::from_ne_bytes(promise_id_bytes.try_into().unwrap());
+  fn dispatch(&self, args: &[u8], buf: Option<PinnedBuf>) -> CoreOp {
+    wrap_minimal(
+      move |_rid, _zero_copy| {
+        let state = self.state.clone();
+        let stateless_worker_state = Arc::clone(&self.stateless_worker_state);
+        let stateless_worker_state_ = Arc::clone(&self.stateless_worker_state);
 
-    let state = self.state.clone();
-    let stateless_worker_state = Arc::clone(&self.stateless_worker_state);
-    let stateless_worker_state_ = Arc::clone(&self.stateless_worker_state);
-    Op::Async(Box::new(
-      futures::future::poll_fn(move || {
-        let mut table = state.listeners.lock().unwrap();
-        match &mut table[stateless_worker_state.listener_rid as usize] {
-          Some(listener) => listener.poll_accept(),
-          _ => panic!("bad rid {}", stateless_worker_state.listener_rid),
-        }
-      })
-      .map_err(|e| panic!(e))
-      .and_then(move |(stream, _addr)| {
-        let mut guard = stateless_worker_state_.connections.lock().unwrap();
-        let rid = guard.len();
-        guard.push(Some(stream));
+        Box::new(
+          futures::future::poll_fn(move || {
+            let mut table = state.listeners.lock().unwrap();
+            match &mut table[stateless_worker_state.listener_rid as usize] {
+              Some(listener) => listener.poll_accept(),
+              _ => panic!("bad rid {}", stateless_worker_state.listener_rid),
+            }
+          })
+          .map_err(|e| panic!(e))
+          .and_then(move |(stream, _addr)| {
+            let mut guard = stateless_worker_state_.connections.lock().unwrap();
+            let rid = guard.len();
+            guard.push(Some(stream));
 
-        Ok(
-          Response {
-            promise_id,
-            result: rid as i32,
-          }
-          .into(),
+            Ok(rid as i32)
+          }),
         )
-      }),
-    ))
+      },
+      args,
+      buf,
+    )
   }
 }
 
@@ -135,16 +134,20 @@ impl OpClose {
 }
 
 impl OpDispatcher for OpClose {
-  fn dispatch(&self, args: &[u8], _buf: Option<PinnedBuf>) -> CoreOp {
-    let (connection_rid_bytes, _) = args.split_at(std::mem::size_of::<i32>());
-    let connection_rid =
-      i32::from_ne_bytes(connection_rid_bytes.try_into().unwrap());
-
-    let stateless_worker_state = Arc::clone(&self.stateless_worker_state);
-    let mut table = stateless_worker_state.connections.lock().unwrap();
-    let r = table[connection_rid as usize].take();
-    let result: i32 = if r.is_some() { 0i32 } else { -1i32 };
-    Op::Sync(result.to_ne_bytes()[..].into())
+  fn dispatch(&self, args: &[u8], buf: Option<PinnedBuf>) -> CoreOp {
+    wrap_minimal(
+      move |rid, _zero_copy| {
+        let stateless_worker_state = Arc::clone(&self.stateless_worker_state);
+        Box::new(futures::future::lazy(move || {
+          let mut table = stateless_worker_state.connections.lock().unwrap();
+          let r = table[rid as usize].take();
+          let result: i32 = if r.is_some() { 0i32 } else { -1i32 };
+          Ok(result)
+        }))
+      },
+      args,
+      buf,
+    )
   }
 }
 
@@ -172,33 +175,25 @@ impl OpRead {
 
 impl OpDispatcher for OpRead {
   fn dispatch(&self, args: &[u8], buf: Option<PinnedBuf>) -> CoreOp {
-    let (promise_id_bytes, rest) = args.split_at(std::mem::size_of::<i32>());
-    let promise_id = i32::from_ne_bytes(promise_id_bytes.try_into().unwrap());
-    let (connection_rid_bytes, _) = rest.split_at(std::mem::size_of::<i32>());
-    let connection_rid =
-      i32::from_ne_bytes(connection_rid_bytes.try_into().unwrap());
-
-    let stateless_worker_state = Arc::clone(&self.stateless_worker_state);
-    let mut buf = buf.unwrap();
-    Op::Async(Box::new(
-      futures::future::poll_fn(move || {
-        let mut table = stateless_worker_state.connections.lock().unwrap();
-        match table[connection_rid as usize] {
-          Some(ref mut stream) => stream.poll_read(&mut buf),
-          _ => panic!("bad rid"),
-        }
-      })
-      .map_err(|e| panic!("{}", e))
-      .and_then(move |nread| {
-        Ok(
-          Response {
-            promise_id,
-            result: nread as i32,
-          }
-          .into(),
+    wrap_minimal(
+      move |rid, zero_copy| {
+        let stateless_worker_state = Arc::clone(&self.stateless_worker_state);
+        let mut zero_copy = zero_copy.unwrap();
+        Box::new(
+          futures::future::poll_fn(move || {
+            let mut table = stateless_worker_state.connections.lock().unwrap();
+            match table[rid as usize] {
+              Some(ref mut stream) => stream.poll_read(&mut zero_copy),
+              _ => panic!("bad rid"),
+            }
+          })
+          .map_err(|e| panic!("{}", e))
+          .and_then(move |nread| Ok(nread as i32)),
         )
-      }),
-    ))
+      },
+      args,
+      buf,
+    )
   }
 }
 
@@ -226,33 +221,25 @@ impl OpWrite {
 
 impl OpDispatcher for OpWrite {
   fn dispatch(&self, args: &[u8], buf: Option<PinnedBuf>) -> CoreOp {
-    let (promise_id_bytes, rest) = args.split_at(std::mem::size_of::<i32>());
-    let promise_id = i32::from_ne_bytes(promise_id_bytes.try_into().unwrap());
-    let (connection_rid_bytes, _) = rest.split_at(std::mem::size_of::<i32>());
-    let connection_rid =
-      i32::from_ne_bytes(connection_rid_bytes.try_into().unwrap());
-
-    let stateless_worker_state = Arc::clone(&self.stateless_worker_state);
-    let buf = buf.unwrap();
-    Op::Async(Box::new(
-      futures::future::poll_fn(move || {
-        let mut table = stateless_worker_state.connections.lock().unwrap();
-        match table[connection_rid as usize] {
-          Some(ref mut stream) => stream.poll_write(&buf),
-          _ => panic!("bad rid"),
-        }
-      })
-      .map_err(|e| panic!(e))
-      .and_then(move |nwritten| {
-        Ok(
-          Response {
-            promise_id,
-            result: nwritten as i32,
-          }
-          .into(),
+    wrap_minimal(
+      move |rid, zero_copy| {
+        let stateless_worker_state = Arc::clone(&self.stateless_worker_state);
+        let zero_copy = zero_copy.unwrap();
+        Box::new(
+          futures::future::poll_fn(move || {
+            let mut table = stateless_worker_state.connections.lock().unwrap();
+            match table[rid as usize] {
+              Some(ref mut stream) => stream.poll_write(&zero_copy),
+              _ => panic!("bad rid"),
+            }
+          })
+          .map_err(|e| panic!(e))
+          .and_then(move |nwritten| Ok(nwritten as i32)),
         )
-      }),
-    ))
+      },
+      args,
+      buf,
+    )
   }
 }
 
