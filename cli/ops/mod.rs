@@ -56,6 +56,8 @@ pub const OP_GET_RANDOM_VALUES: OpId = 27;
 pub const OP_GLOBAL_TIMER_STOP: OpId = 28;
 pub const OP_GLOBAL_TIMER: OpId = 29;
 pub const OP_NOW: OpId = 30;
+pub const OP_PERMISSIONS: OpId = 31;
+pub const OP_REVOKE_PERMISSION: OpId = 32;
 
 pub fn dispatch(
   state: &ThreadSafeState,
@@ -168,6 +170,18 @@ pub fn dispatch(
     OP_NOW => {
       dispatch_json::dispatch(performance::op_now, state, control, zero_copy)
     }
+    OP_PERMISSIONS => dispatch_json::dispatch(
+      permissions::op_permissions,
+      state,
+      control,
+      zero_copy,
+    ),
+    OP_REVOKE_PERMISSION => dispatch_json::dispatch(
+      permissions::op_revoke_permission,
+      state,
+      control,
+      zero_copy,
+    ),
     OP_FLATBUFFER => dispatch_flatbuffers::dispatch(state, control, zero_copy),
     _ => panic!("bad op_id"),
   };

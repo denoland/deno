@@ -13,7 +13,11 @@ use super::fs::{
   op_stat, op_symlink, op_truncate,
 };
 use super::metrics::op_metrics;
+<<<<<<< HEAD
 use super::permissions::{op_permissions, op_revoke_permission};
+=======
+use super::os::{op_home_dir, op_set_env, op_start};
+>>>>>>> port cli/ops/permissions.rs to json ops
 use super::process::{op_kill, op_run, op_run_status};
 use super::workers::{
   op_create_worker, op_host_get_message, op_host_get_worker_closed,
@@ -146,8 +150,12 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<CliDispatchFn> {
     msg::Any::MakeTempDir => Some(op_make_temp_dir),
     msg::Any::Metrics => Some(op_metrics),
     msg::Any::Mkdir => Some(op_mkdir),
+<<<<<<< HEAD
     msg::Any::PermissionRevoke => Some(op_revoke_permission),
     msg::Any::Permissions => Some(op_permissions),
+=======
+    msg::Any::Open => Some(op_open),
+>>>>>>> port cli/ops/permissions.rs to json ops
     msg::Any::Read => Some(op_read),
     msg::Any::ReadDir => Some(op_read_dir),
     msg::Any::Readlink => Some(op_read_link),

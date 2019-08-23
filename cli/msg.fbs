@@ -18,9 +18,6 @@ union Any {
   Metrics,
   MetricsRes,
   Mkdir,
-  PermissionRevoke,
-  Permissions,
-  PermissionsRes,
   Read,
   ReadDir,
   ReadDirRes,
@@ -193,21 +190,6 @@ table Chdir {
 table KeyValue {
   key: string;
   value: string;
-}
-
-table Permissions {}
-
-table PermissionRevoke {
-  permission: string;
-}
-
-table PermissionsRes {
-  run: bool;
-  read: bool;
-  write: bool;
-  net: bool;
-  env: bool;
-  hrtime: bool;
 }
 
 table MakeTempDir {

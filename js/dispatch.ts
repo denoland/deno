@@ -34,6 +34,8 @@ export const OP_GET_RANDOM_VALUES = 27;
 export const OP_GLOBAL_TIMER_STOP = 28;
 export const OP_GLOBAL_TIMER = 29;
 export const OP_NOW = 30;
+export const OP_PERMISSIONS = 31;
+export const OP_REVOKE_PERMISSION = 32;
 
 export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
   switch (opId) {
