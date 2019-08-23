@@ -18,7 +18,6 @@ use super::performance::op_now;
 use super::permissions::{op_permissions, op_revoke_permission};
 use super::process::{op_kill, op_run, op_run_status};
 use super::random::op_get_random_values;
-use super::repl::{op_repl_readline, op_repl_start};
 use super::resources::op_resources;
 use super::timers::{op_global_timer, op_global_timer_stop};
 use super::workers::{
@@ -166,8 +165,6 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<CliDispatchFn> {
     msg::Any::Readlink => Some(op_read_link),
     msg::Any::Remove => Some(op_remove),
     msg::Any::Rename => Some(op_rename),
-    msg::Any::ReplReadline => Some(op_repl_readline),
-    msg::Any::ReplStart => Some(op_repl_start),
     msg::Any::Resources => Some(op_resources),
     msg::Any::Run => Some(op_run),
     msg::Any::RunStatus => Some(op_run_status),

@@ -40,10 +40,6 @@ union Any {
   ReadlinkRes,
   Remove,
   Rename,
-  ReplReadline,
-  ReplReadlineRes,
-  ReplStart,
-  ReplStartRes,
   Resources,
   ResourcesRes,
   Run,
@@ -292,24 +288,6 @@ table Readlink {
 
 table ReadlinkRes {
   path: string;
-}
-
-table ReplStart {
-  history_file: string;
-  // TODO add config
-}
-
-table ReplStartRes {
-  rid: uint32;
-}
-
-table ReplReadline {
-  rid: uint32;
-  prompt: string;
-}
-
-table ReplReadlineRes {
-  line: string;
 }
 
 table Resources {}

@@ -23,6 +23,8 @@ export const OP_OPEN = 15;
 export const OP_CLOSE = 16;
 export const OP_SEEK = 17;
 export const OP_FETCH = 18;
+export const OP_REPL_START = 20;
+export const OP_REPL_READLINE = 21;
 
 export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
   switch (opId) {
@@ -41,6 +43,8 @@ export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
     case OP_OPEN:
     case OP_SEEK:
     case OP_FETCH:
+    case OP_REPL_START:
+    case OP_REPL_READLINE:
       json.asyncMsgFromRust(opId, ui8);
       break;
     default:

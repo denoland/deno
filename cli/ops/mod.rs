@@ -45,6 +45,8 @@ pub const OP_OPEN: OpId = 15;
 pub const OP_CLOSE: OpId = 16;
 pub const OP_SEEK: OpId = 17;
 pub const OP_FETCH: OpId = 18;
+pub const OP_REPL_START: OpId = 20;
+pub const OP_REPL_READLINE: OpId = 21;
 
 pub fn dispatch(
   state: &ThreadSafeState,
@@ -114,6 +116,11 @@ pub fn dispatch(
     }
     OP_FETCH => {
       dispatch_json::dispatch(fetch::op_fetch, state, control, zero_copy)
+    OP_REPL_START => {
+      dispatch_json::dispatch(repl::op_repl_start, state, control, zero_copy)
+    }
+    OP_REPL_READLINE => {
+      dispatch_json::dispatch(repl::op_repl_readline, state, control, zero_copy)
     }
     OP_FLATBUFFER => dispatch_flatbuffers::dispatch(state, control, zero_copy),
     _ => panic!("bad op_id"),
