@@ -76,7 +76,7 @@ interface Start {
 // the runtime and the compiler environments.
 // @internal
 export function start(preserveDenoNamespace = true, source?: string): Start {
-  core.setAsyncHandler(dispatch.handleAsyncMsgFromRust);
+  core.setAsyncHandler(dispatch.asyncMsgFromRust);
 
   // First we send an empty `Start` message to let the privileged side know we
   // are ready. The response should be a `StartRes` message containing the CLI
