@@ -15,7 +15,7 @@ pub fn op_global_timer_stop(
   let state = state;
   let mut t = state.global_timer.lock().unwrap();
   t.cancel();
-  Ok(JsonOp::Sync(Value::Null))
+  Ok(JsonOp::Sync(json!({})))
 }
 
 #[derive(Deserialize)]

@@ -2,6 +2,11 @@
 import * as dispatch from "./dispatch";
 import { sendSync } from "./dispatch_json";
 
+interface NowResponse {
+  seconds: number;
+  subsecNanos: number;
+}
+
 export class Performance {
   /** Returns a current time from Deno's start in milliseconds.
    *
@@ -11,7 +16,7 @@ export class Performance {
    *       console.log(`${t} ms since start!`);
    */
   now(): number {
-    const res = sendSync(dispatch.OP_NOW);
-    return res.seconds().toFloat64() * 1e3 + res.subsecNanos() / 1e6;
+    const res = sendSync(dispatch.OP_NOW) as NowResponse;
+    return res.seconds * 1e3 + res.subsecNanos / 1e6;
   }
 }

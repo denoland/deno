@@ -40,5 +40,5 @@ pub fn op_revoke_permission(
     _ => Ok(()),
   }?;
 
-  Ok(JsonOp::Sync(Value::Null))
+  Ok(JsonOp::Sync(json!({})))
 }
