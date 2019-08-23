@@ -55,6 +55,7 @@ pub const OP_RESOURCES: OpId = 26;
 pub const OP_GET_RANDOM_VALUES: OpId = 27;
 pub const OP_GLOBAL_TIMER_STOP: OpId = 28;
 pub const OP_GLOBAL_TIMER: OpId = 29;
+pub const OP_NOW: OpId = 30;
 
 pub fn dispatch(
   state: &ThreadSafeState,
@@ -164,6 +165,9 @@ pub fn dispatch(
       control,
       zero_copy,
     ),
+    OP_NOW => {
+      dispatch_json::dispatch(performance::op_now, state, control, zero_copy)
+    }
     OP_FLATBUFFER => dispatch_flatbuffers::dispatch(state, control, zero_copy),
     _ => panic!("bad op_id"),
   };

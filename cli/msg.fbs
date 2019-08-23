@@ -18,8 +18,6 @@ union Any {
   Metrics,
   MetricsRes,
   Mkdir,
-  Now,
-  NowRes,
   PermissionRevoke,
   Permissions,
   PermissionsRes,
@@ -368,13 +366,6 @@ table RunStatusRes {
   got_signal: bool;
   exit_code: int;
   exit_signal: int;
-}
-
-table Now {}
-
-table NowRes {
-  seconds: uint64;
-  subsec_nanos: uint32;
 }
 
 table Seek {

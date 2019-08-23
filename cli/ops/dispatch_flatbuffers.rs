@@ -13,7 +13,6 @@ use super::fs::{
   op_stat, op_symlink, op_truncate,
 };
 use super::metrics::op_metrics;
-use super::performance::op_now;
 use super::permissions::{op_permissions, op_revoke_permission};
 use super::process::{op_kill, op_run, op_run_status};
 use super::workers::{
@@ -147,7 +146,6 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<CliDispatchFn> {
     msg::Any::MakeTempDir => Some(op_make_temp_dir),
     msg::Any::Metrics => Some(op_metrics),
     msg::Any::Mkdir => Some(op_mkdir),
-    msg::Any::Now => Some(op_now),
     msg::Any::PermissionRevoke => Some(op_revoke_permission),
     msg::Any::Permissions => Some(op_permissions),
     msg::Any::Read => Some(op_read),
