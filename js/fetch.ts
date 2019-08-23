@@ -333,7 +333,7 @@ async function sendFetchReq(
   headers: domTypes.Headers | null,
   body: ArrayBufferView | undefined
 ): Promise<FetchResponse> {
-  let headerArray = [];
+  let headerArray: Array<[string, string]> = [];
   if (headers) {
     headerArray = Array.from(headers.entries());
   }
