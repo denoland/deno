@@ -37,7 +37,7 @@ regex = "1.2.1"
 remove_dir_all = "0.5.2"
 ring = "~0.14.6"
 rustyline = "5.0.2"
-serde = "1.0.99"
+serde = { version = "1.0.99", features = ["derive"] }
 serde_derive = "1.0.99"
 serde_json = { version = "1.0.40", features = [ "preserve_order" ] }
 source-map-mappings = "0.5.0"

@@ -1153,7 +1153,16 @@ rust_rlib("serde") {
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/serde-1.0.99/src/lib.rs"
   features = [
     "default",
+    "derive",
+    "serde_derive",
     "std",
+  ]
+  extern = [
+    {
+      label = ":serde_derive"
+      crate_type = "proc_macro"
+      crate_name = "serde_derive"
+    },
   ]
 
   # Added by custom-build script.
