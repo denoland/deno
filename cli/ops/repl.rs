@@ -23,9 +23,7 @@ pub fn op_repl_start(
   let repl = repl::Repl::new(history_path);
   let resource = resources::add_repl(repl);
 
-  Ok(JsonOp::Sync(json!(
-    resource.rid
-  )))
+  Ok(JsonOp::Sync(json!(resource.rid)))
 }
 
 #[derive(Deserialize)]

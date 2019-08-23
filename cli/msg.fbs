@@ -1,5 +1,4 @@
 union Any {
-  Accept,
   Chdir,
   Chmod,
   Chown,
@@ -8,7 +7,6 @@ union Any {
   CreateWorkerRes,
   Cwd,
   CwdRes,
-  Dial,
   GetRandomValues,
   GlobalTimer,
   GlobalTimerRes,
@@ -19,14 +17,11 @@ union Any {
   HostPostMessage,
   Kill,
   Link,
-  Listen,
-  ListenRes,
   MakeTempDir,
   MakeTempDirRes,
   Metrics,
   MetricsRes,
   Mkdir,
-  NewConn,
   Now,
   NowRes,
   PermissionRevoke,
@@ -47,7 +42,6 @@ union Any {
   RunStatus,
   RunStatusRes,
   Seek,
-  Shutdown,
   Stat,
   StatRes,
   Symlink,
@@ -354,36 +348,6 @@ table WriteRes {
 table Kill {
   pid: int32;
   signo: int32;
-}
-
-table Shutdown {
-  rid: uint32;
-  how: uint;
-}
-
-table Listen {
-  network: string;
-  address: string;
-}
-
-table ListenRes {
-  rid: uint32;
-}
-
-table Accept {
-  rid: uint32;
-}
-
-table Dial {
-  network: string;
-  address: string;
-}
-
-// Response to Accept and Dial.
-table NewConn {
-  rid: uint32;
-  remote_addr: string;
-  local_addr: string;
 }
 
 table Metrics {}

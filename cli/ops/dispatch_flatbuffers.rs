@@ -13,7 +13,6 @@ use super::fs::{
   op_stat, op_symlink, op_truncate,
 };
 use super::metrics::op_metrics;
-use super::net::{op_accept, op_dial, op_listen, op_shutdown};
 use super::performance::op_now;
 use super::permissions::{op_permissions, op_revoke_permission};
 use super::process::{op_kill, op_run, op_run_status};
@@ -137,14 +136,12 @@ pub fn serialize_response(
 /// Standard ops set for most isolates
 pub fn op_selector_std(inner_type: msg::Any) -> Option<CliDispatchFn> {
   match inner_type {
-    msg::Any::Accept => Some(op_accept),
     msg::Any::Chdir => Some(op_chdir),
     msg::Any::Chmod => Some(op_chmod),
     msg::Any::Chown => Some(op_chown),
     msg::Any::CopyFile => Some(op_copy_file),
     msg::Any::CreateWorker => Some(op_create_worker),
     msg::Any::Cwd => Some(op_cwd),
-    msg::Any::Dial => Some(op_dial),
     msg::Any::GetRandomValues => Some(op_get_random_values),
     msg::Any::GlobalTimer => Some(op_global_timer),
     msg::Any::GlobalTimerStop => Some(op_global_timer_stop),
@@ -153,7 +150,6 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<CliDispatchFn> {
     msg::Any::HostPostMessage => Some(op_host_post_message),
     msg::Any::Kill => Some(op_kill),
     msg::Any::Link => Some(op_link),
-    msg::Any::Listen => Some(op_listen),
     msg::Any::MakeTempDir => Some(op_make_temp_dir),
     msg::Any::Metrics => Some(op_metrics),
     msg::Any::Mkdir => Some(op_mkdir),
@@ -168,7 +164,6 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<CliDispatchFn> {
     msg::Any::Resources => Some(op_resources),
     msg::Any::Run => Some(op_run),
     msg::Any::RunStatus => Some(op_run_status),
-    msg::Any::Shutdown => Some(op_shutdown),
     msg::Any::Stat => Some(op_stat),
     msg::Any::Symlink => Some(op_symlink),
     msg::Any::Truncate => Some(op_truncate),
