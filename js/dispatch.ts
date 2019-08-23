@@ -29,6 +29,7 @@ export const OP_ACCEPT = 22;
 export const OP_DIAL = 23;
 export const OP_SHUTDOWN = 24;
 export const OP_LISTEN = 25;
+export const OP_RESOURCES = 26;
 
 export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
   switch (opId) {
@@ -53,6 +54,7 @@ export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
     case OP_DIAL:
     case OP_SHUTDOWN:
     case OP_LISTEN:
+    case OP_RESOURCES:
       json.asyncMsgFromRust(opId, ui8);
       break;
     default:

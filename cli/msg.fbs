@@ -35,8 +35,6 @@ union Any {
   ReadlinkRes,
   Remove,
   Rename,
-  Resources,
-  ResourcesRes,
   Run,
   RunRes,
   RunStatus,
@@ -282,17 +280,6 @@ table Readlink {
 
 table ReadlinkRes {
   path: string;
-}
-
-table Resources {}
-
-table Resource {
-  rid: uint32;
-  repr: string;
-}
-
-table ResourcesRes {
-  resources: [Resource];
 }
 
 table Symlink {
