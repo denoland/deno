@@ -1,7 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { core } from "./core";
-import { handleAsyncMsgFromRust } from "./dispatch";
+import * as dispatch from "./dispatch";
 import { sendSync, msg, flatbuffers } from "./dispatch_flatbuffers";
+import * as dispatchJson from "./dispatch_json";
 import { assert } from "./util";
 import * as util from "./util";
 import { window } from "./window";
@@ -23,21 +24,12 @@ function setGlobals(pid_: number, noColor_: boolean): void {
  *       console.log(Deno.isTTY().stdout);
  */
 export function isTTY(): { stdin: boolean; stdout: boolean; stderr: boolean } {
-  const builder = flatbuffers.createBuilder();
-  const inner = msg.IsTTY.createIsTTY(builder);
-  const baseRes = sendSync(builder, msg.Any.IsTTY, inner)!;
-  assert(msg.Any.IsTTYRes === baseRes.innerType());
-  const res = new msg.IsTTYRes();
-  assert(baseRes.inner(res) != null);
-
-  return { stdin: res.stdin(), stdout: res.stdout(), stderr: res.stderr() };
+  return dispatchJson.sendSync(dispatch.OP_IS_TTY);
 }
 
 /** Exit the Deno process with optional exit code. */
-export function exit(exitCode = 0): never {
-  const builder = flatbuffers.createBuilder();
-  const inner = msg.Exit.createExit(builder, exitCode);
-  sendSync(builder, msg.Any.Exit, inner);
+export function exit(code = 0): never {
+  dispatchJson.sendSync(dispatch.OP_EXIT, { code });
   return util.unreachable();
 }
 
@@ -47,22 +39,6 @@ function setEnv(key: string, value: string): void {
   const value_ = builder.createString(value);
   const inner = msg.SetEnv.createSetEnv(builder, key_, value_);
   sendSync(builder, msg.Any.SetEnv, inner);
-}
-
-function createEnv(inner: msg.EnvironRes): { [index: string]: string } {
-  const env: { [index: string]: string } = {};
-
-  for (let i = 0; i < inner.mapLength(); i++) {
-    const item = inner.map(i)!;
-    env[item.key()!] = item.value()!;
-  }
-
-  return new Proxy(env, {
-    set(obj, prop: string, value: string): boolean {
-      setEnv(prop, value);
-      return Reflect.set(obj, prop, value);
-    }
-  });
 }
 
 /** Returns a snapshot of the environment variables at invocation. Mutating a
@@ -77,19 +53,13 @@ function createEnv(inner: msg.EnvironRes): { [index: string]: string } {
  *       console.log(myEnv.TEST_VAR == newEnv.TEST_VAR);
  */
 export function env(): { [index: string]: string } {
-  /* Ideally we could write
-  const res = sendSync({
-    command: msg.Command.ENV,
+  const env = dispatchJson.sendSync(dispatch.OP_ENV);
+  return new Proxy(env, {
+    set(obj, prop: string, value: string): boolean {
+      setEnv(prop, value);
+      return Reflect.set(obj, prop, value);
+    }
   });
-  */
-  const builder = flatbuffers.createBuilder();
-  const inner = msg.Environ.createEnviron(builder);
-  const baseRes = sendSync(builder, msg.Any.Environ, inner)!;
-  assert(msg.Any.EnvironRes === baseRes.innerType());
-  const res = new msg.EnvironRes();
-  assert(baseRes.inner(res) != null);
-  // TypeScript cannot track assertion above, therefore not null assertion
-  return createEnv(res);
 }
 
 /** Send to the privileged side that we have setup and are ready. */
@@ -111,7 +81,7 @@ export function start(
   preserveDenoNamespace = true,
   source?: string
 ): msg.StartRes {
-  core.setAsyncHandler(handleAsyncMsgFromRust);
+  core.setAsyncHandler(dispatch.asyncMsgFromRust);
 
   // First we send an empty `Start` message to let the privileged side know we
   // are ready. The response should be a `StartRes` message containing the CLI
@@ -163,12 +133,5 @@ export function homeDir(): string {
  * Requires the `--allow-env` flag.
  */
 export function execPath(): string {
-  const builder = flatbuffers.createBuilder();
-  const inner = msg.ExecPath.createExecPath(builder);
-  const baseRes = sendSync(builder, msg.Any.ExecPath, inner)!;
-  assert(msg.Any.ExecPathRes === baseRes.innerType());
-  const res = new msg.ExecPathRes();
-  assert(baseRes.inner(res) != null);
-  const path = res.path()!;
-  return path;
+  return dispatchJson.sendSync(dispatch.OP_EXEC_PATH);
 }

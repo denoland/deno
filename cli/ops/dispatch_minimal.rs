@@ -74,19 +74,15 @@ fn test_parse_min_record() {
 
 pub fn dispatch(
   d: Dispatcher,
-  state: &ThreadSafeState,
+  _state: &ThreadSafeState,
   control: &[u8],
   zero_copy: Option<PinnedBuf>,
 ) -> CoreOp {
   let mut record = parse_min_record(control).unwrap();
   let is_sync = record.promise_id == 0;
-
   // TODO(ry) Currently there aren't any sync minimal ops. This is just a sanity
   // check. Remove later.
   assert!(!is_sync);
-
-  let state = state.clone();
-
   let rid = record.arg;
   let min_op = d(rid, zero_copy);
 
@@ -102,10 +98,9 @@ pub fn dispatch(
         record.result = -1;
       }
     }
-    let buf: Buf = record.into();
-    state.metrics_op_completed(buf.len());
-    Ok(buf)
+    Ok(record.into())
   }));
+
   if is_sync {
     Op::Sync(fut.wait().unwrap())
   } else {

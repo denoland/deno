@@ -13,6 +13,8 @@ extern crate indexmap;
 #[cfg(unix)]
 extern crate nix;
 extern crate rand;
+extern crate serde;
+extern crate serde_derive;
 extern crate url;
 
 mod ansi;

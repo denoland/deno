@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_flatbuffers::serialize_response;
+use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
 use super::utils::*;
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
@@ -13,7 +14,6 @@ use std::convert::From;
 use std::fs;
 use std::path::PathBuf;
 use std::time::UNIX_EPOCH;
-use utime;
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -456,24 +456,27 @@ pub fn op_make_temp_dir(
   })
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Utime {
+  promise_id: Option<u64>,
+  filename: String,
+  atime: u64,
+  mtime: u64,
+}
+
 pub fn op_utime(
   state: &ThreadSafeState,
-  base: &msg::Base<'_>,
-  data: Option<PinnedBuf>,
-) -> CliOpResult {
-  assert!(data.is_none());
-
-  let inner = base.inner_as_utime().unwrap();
-  let filename = String::from(inner.filename().unwrap());
-  let atime = inner.atime();
-  let mtime = inner.mtime();
-
-  state.check_write(&filename)?;
-
-  blocking(base.sync(), move || {
-    debug!("op_utimes {} {} {}", filename, atime, mtime);
-    utime::set_file_times(filename, atime, mtime)?;
-    Ok(empty_buf())
+  args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: Utime = serde_json::from_value(args)?;
+  state.check_write(&args.filename)?;
+  let is_sync = args.promise_id.is_none();
+  blocking_json(is_sync, move || {
+    debug!("op_utimes {} {} {}", args.filename, args.atime, args.mtime);
+    utime::set_file_times(args.filename, args.atime, args.mtime)?;
+    Ok(json!({}))
   })
 }
 
