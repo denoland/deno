@@ -1,6 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { assert } from "./util";
 import { sendSync, flatbuffers, msg } from "./dispatch_flatbuffers";
+import { sendSync as sendSyncJson } from "./dispatch_json";
+import * as dispatch from "./dispatch";
 
 /**
  * `cwd()` Return a string representing the current working directory.
@@ -26,8 +28,5 @@ export function cwd(): string {
  * throws `NotFound` exception if directory not available
  */
 export function chdir(directory: string): void {
-  const builder = flatbuffers.createBuilder();
-  const directory_ = builder.createString(directory);
-  const inner = msg.Chdir.createChdir(builder, directory_);
-  sendSync(builder, msg.Any.Chdir, inner);
+  sendSyncJson(dispatch.OP_CHDIR, { directory });
 }

@@ -18,81 +18,104 @@ use std::time::UNIX_EPOCH;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
+#[derive(Deserialize)]
+struct ChdirArgs {
+  directory: String,
+}
+
 pub fn op_chdir(
   _state: &ThreadSafeState,
-  base: &msg::Base<'_>,
-  data: Option<PinnedBuf>,
-) -> CliOpResult {
-  assert!(data.is_none());
-  let inner = base.inner_as_chdir().unwrap();
-  let directory = inner.directory().unwrap();
-  std::env::set_current_dir(&directory)?;
-  ok_buf(empty_buf())
+  args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: ChdirArgs = serde_json::from_value(args)?;
+  std::env::set_current_dir(&args.directory)?;
+  Ok(JsonOp::Sync(json!({})))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MkdirArgs {
+  promise_id: Option<u64>,
+  path: String,
+  recursive: bool,
+  mode: u32,
 }
 
 pub fn op_mkdir(
   state: &ThreadSafeState,
-  base: &msg::Base<'_>,
-  data: Option<PinnedBuf>,
-) -> CliOpResult {
-  assert!(data.is_none());
-  let inner = base.inner_as_mkdir().unwrap();
-  let (path, path_) = deno_fs::resolve_from_cwd(inner.path().unwrap())?;
-  let recursive = inner.recursive();
-  let mode = inner.mode();
+  args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: MkdirArgs = serde_json::from_value(args)?;
+  let (path, path_) = deno_fs::resolve_from_cwd(args.path.as_ref())?;
 
   state.check_write(&path_)?;
 
-  blocking(base.sync(), move || {
+  let is_sync = args.promise_id.is_none();
+  blocking_json(is_sync, move || {
     debug!("op_mkdir {}", path_);
-    deno_fs::mkdir(&path, mode, recursive)?;
-    Ok(empty_buf())
+    deno_fs::mkdir(&path, args.mode, args.recursive)?;
+    Ok(json!({}))
   })
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ChmodArgs {
+  promise_id: Option<u64>,
+  path: String,
+  mode: u32,
 }
 
 pub fn op_chmod(
   state: &ThreadSafeState,
-  base: &msg::Base<'_>,
-  data: Option<PinnedBuf>,
-) -> CliOpResult {
-  assert!(data.is_none());
-  let inner = base.inner_as_chmod().unwrap();
-  let _mode = inner.mode();
-  let (path, path_) = deno_fs::resolve_from_cwd(inner.path().unwrap())?;
+  args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: ChmodArgs = serde_json::from_value(args)?;
+  let (path, path_) = deno_fs::resolve_from_cwd(args.path.as_ref())?;
 
   state.check_write(&path_)?;
 
-  blocking(base.sync(), move || {
+  let is_sync = args.promise_id.is_none();
+  blocking_json(is_sync, move || {
     debug!("op_chmod {}", &path_);
     // Still check file/dir exists on windows
     let _metadata = fs::metadata(&path)?;
     #[cfg(any(unix))]
     {
       let mut permissions = _metadata.permissions();
-      permissions.set_mode(_mode);
+      permissions.set_mode(args.mode);
       fs::set_permissions(&path, permissions)?;
     }
-    Ok(empty_buf())
+    Ok(json!({}))
   })
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ChownArgs {
+  promise_id: Option<u64>,
+  path: String,
+  uid: u32,
+  gid: u32,
 }
 
 pub fn op_chown(
   state: &ThreadSafeState,
-  base: &msg::Base<'_>,
-  data: Option<PinnedBuf>,
-) -> CliOpResult {
-  assert!(data.is_none());
-  let inner = base.inner_as_chown().unwrap();
-  let path = String::from(inner.path().unwrap());
-  let uid = inner.uid();
-  let gid = inner.gid();
+  args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: ChownArgs = serde_json::from_value(args)?;
 
-  state.check_write(&path)?;
+  state.check_write(&args.path)?;
 
-  blocking(base.sync(), move || {
-    debug!("op_chown {}", &path);
-    match deno_fs::chown(&path, uid, gid) {
-      Ok(_) => Ok(empty_buf()),
+  let is_sync = args.promise_id.is_none();
+  blocking_json(is_sync, move || {
+    debug!("op_chown {}", &args.path);
+    match deno_fs::chown(args.path.as_ref(), args.uid, args.gid) {
+      Ok(_) => Ok(json!({})),
       Err(e) => Err(e),
     }
   })

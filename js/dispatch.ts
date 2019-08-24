@@ -4,7 +4,7 @@ import * as flatbuffers from "./dispatch_flatbuffers";
 import * as json from "./dispatch_json";
 
 // These consts are shared with Rust. Update with care.
-export const OP_FLATBUFFER = 44;
+export const OP_FLATBUFFER = 100;
 export const OP_READ = 1;
 export const OP_WRITE = 2;
 export const OP_EXIT = 3;
@@ -46,6 +46,10 @@ export const OP_WORKER_GET_MESSAGE = 38;
 export const OP_RUN = 39;
 export const OP_RUN_STATUS = 40;
 export const OP_KILL = 41;
+export const OP_CHDIR = 42;
+export const OP_MKDIR = 43;
+export const OP_CHMOD = 44;
+export const OP_CHOWN = 45;
 
 export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
   switch (opId) {
@@ -73,6 +77,9 @@ export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
     case OP_HOST_GET_MESSAGE:
     case OP_WORKER_GET_MESSAGE:
     case OP_RUN_STATUS:
+    case OP_MKDIR:
+    case OP_CHMOD:
+    case OP_CHOWN:
       json.asyncMsgFromRust(opId, ui8);
       break;
     default:

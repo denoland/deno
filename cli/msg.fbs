@@ -1,14 +1,10 @@
 union Any {
-  Chdir,
-  Chmod,
-  Chown,
   CopyFile,
   Cwd,
   CwdRes,
   Link,
   MakeTempDir,
   MakeTempDirRes,
-  Mkdir,
   Read,
   ReadDir,
   ReadDirRes,
@@ -122,10 +118,6 @@ table FormatErrorRes {
   error: string;
 }
 
-table Chdir {
-  directory: string;
-}
-
 table KeyValue {
   key: string;
   value: string;
@@ -139,23 +131,6 @@ table MakeTempDir {
 
 table MakeTempDirRes {
   path: string;
-}
-
-table Mkdir {
-  path: string;
-  recursive: bool;
-  mode: uint; // Specified by https://godoc.org/os#FileMode
-}
-
-table Chmod {
-  path: string;
-  mode: uint; // Specified by https://godoc.org/os#FileMode
-}
-
-table Chown {
-  path: string;
-  uid: uint;
-  gid: uint;  // Specified by https://godoc.org/os#Chown
 }
 
 table Remove {
