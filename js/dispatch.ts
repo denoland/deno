@@ -50,6 +50,10 @@ export const OP_CHDIR = 42;
 export const OP_MKDIR = 43;
 export const OP_CHMOD = 44;
 export const OP_CHOWN = 45;
+export const OP_REMOVE = 46;
+export const OP_COPY_FILE = 47;
+export const OP_STAT = 48;
+export const OP_READ_DIR = 49;
 
 export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
   switch (opId) {
@@ -80,6 +84,10 @@ export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
     case OP_MKDIR:
     case OP_CHMOD:
     case OP_CHOWN:
+    case OP_REMOVE:
+    case OP_COPY_FILE:
+    case OP_STAT:
+    case OP_READ_DIR:
       json.asyncMsgFromRust(opId, ui8);
       break;
     default:

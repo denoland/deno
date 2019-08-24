@@ -72,6 +72,10 @@ pub const OP_CHDIR: OpId = 42;
 pub const OP_MKDIR: OpId = 43;
 pub const OP_CHMOD: OpId = 44;
 pub const OP_CHOWN: OpId = 45;
+pub const OP_REMOVE: OpId = 46;
+pub const OP_COPY_FILE: OpId = 47;
+pub const OP_STAT: OpId = 48;
+pub const OP_READ_DIR: OpId = 49;
 
 pub fn dispatch(
   state: &ThreadSafeState,
@@ -257,6 +261,16 @@ pub fn dispatch(
     }
     OP_CHOWN => {
       dispatch_json::dispatch(fs::op_chown, state, control, zero_copy)
+    }
+    OP_REMOVE => {
+      dispatch_json::dispatch(fs::op_remove, state, control, zero_copy)
+    }
+    OP_COPY_FILE => {
+      dispatch_json::dispatch(fs::op_copy_file, state, control, zero_copy)
+    }
+    OP_STAT => dispatch_json::dispatch(fs::op_stat, state, control, zero_copy),
+    OP_READ_DIR => {
+      dispatch_json::dispatch(fs::op_read_dir, state, control, zero_copy)
     }
     OP_FLATBUFFER => dispatch_flatbuffers::dispatch(state, control, zero_copy),
     _ => panic!("bad op_id"),

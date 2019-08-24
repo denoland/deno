@@ -8,8 +8,8 @@ use hyper::rt::Future;
 
 use super::files::{op_read, op_write};
 use super::fs::{
-  op_copy_file, op_cwd, op_link, op_make_temp_dir, op_read_dir, op_read_link,
-  op_remove, op_rename, op_stat, op_symlink, op_truncate,
+  op_cwd, op_link, op_make_temp_dir, op_read_link, op_rename, op_symlink,
+  op_truncate,
 };
 
 type CliDispatchFn = fn(
@@ -124,16 +124,12 @@ pub fn serialize_response(
 /// Standard ops set for most isolates
 pub fn op_selector_std(inner_type: msg::Any) -> Option<CliDispatchFn> {
   match inner_type {
-    msg::Any::CopyFile => Some(op_copy_file),
     msg::Any::Cwd => Some(op_cwd),
     msg::Any::Link => Some(op_link),
     msg::Any::MakeTempDir => Some(op_make_temp_dir),
     msg::Any::Read => Some(op_read),
-    msg::Any::ReadDir => Some(op_read_dir),
     msg::Any::Readlink => Some(op_read_link),
-    msg::Any::Remove => Some(op_remove),
     msg::Any::Rename => Some(op_rename),
-    msg::Any::Stat => Some(op_stat),
     msg::Any::Symlink => Some(op_symlink),
     msg::Any::Truncate => Some(op_truncate),
     msg::Any::Write => Some(op_write),

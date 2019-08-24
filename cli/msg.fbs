@@ -1,21 +1,15 @@
 union Any {
-  CopyFile,
   Cwd,
   CwdRes,
   Link,
   MakeTempDir,
   MakeTempDirRes,
   Read,
-  ReadDir,
-  ReadDirRes,
   ReadRes,
   Readlink,
   ReadlinkRes,
-  Remove,
   Rename,
   Seek,
-  Stat,
-  StatRes,
   Symlink,
   Truncate,
   Write,
@@ -133,24 +127,6 @@ table MakeTempDirRes {
   path: string;
 }
 
-table Remove {
-  path: string;
-  recursive: bool;
-}
-
-table ReadDir {
-  path: string;
-}
-
-table ReadDirRes {
-  entries: [StatRes];
-}
-
-table CopyFile {
-  from: string;
-  to: string;
-}
-
 table Rename {
   oldpath: string;
   newpath: string;
@@ -172,23 +148,6 @@ table Symlink {
 table Link {
   oldname: string;
   newname: string;
-}
-
-table Stat {
-  filename: string;
-  lstat: bool;
-}
-
-table StatRes {
-  is_file: bool;
-  is_symlink: bool;
-  len: ulong;
-  modified:ulong;
-  accessed:ulong;
-  created:ulong;
-  mode: uint;
-  has_mode: bool; // false on windows
-  name: string;
 }
 
 table Truncate {
