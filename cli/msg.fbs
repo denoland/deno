@@ -8,8 +8,6 @@ union Any {
   Link,
   MakeTempDir,
   MakeTempDirRes,
-  Metrics,
-  MetricsRes,
   Mkdir,
   Read,
   ReadDir,
@@ -239,16 +237,6 @@ table Write {
 
 table WriteRes {
   nbyte: uint;
-}
-
-table Metrics {}
-
-table MetricsRes {
-  ops_dispatched: uint64;
-  ops_completed: uint64;
-  bytes_sent_control: uint64;
-  bytes_sent_data: uint64;
-  bytes_received: uint64;
 }
 
 table Seek {

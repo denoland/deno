@@ -23,6 +23,7 @@ export const OP_OPEN = 15;
 export const OP_CLOSE = 16;
 export const OP_SEEK = 17;
 export const OP_FETCH = 18;
+export const OP_METRICS = 19;
 export const OP_REPL_START = 20;
 export const OP_REPL_READLINE = 21;
 export const OP_ACCEPT = 22;

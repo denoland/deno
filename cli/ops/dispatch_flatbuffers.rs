@@ -12,7 +12,6 @@ use super::fs::{
   op_make_temp_dir, op_mkdir, op_read_dir, op_read_link, op_remove, op_rename,
   op_stat, op_symlink, op_truncate,
 };
-use super::metrics::op_metrics;
 
 type CliDispatchFn = fn(
   state: &ThreadSafeState,
@@ -133,7 +132,6 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<CliDispatchFn> {
     msg::Any::Cwd => Some(op_cwd),
     msg::Any::Link => Some(op_link),
     msg::Any::MakeTempDir => Some(op_make_temp_dir),
-    msg::Any::Metrics => Some(op_metrics),
     msg::Any::Mkdir => Some(op_mkdir),
     msg::Any::Read => Some(op_read),
     msg::Any::ReadDir => Some(op_read_dir),

@@ -45,6 +45,7 @@ pub const OP_OPEN: OpId = 15;
 pub const OP_CLOSE: OpId = 16;
 pub const OP_SEEK: OpId = 17;
 pub const OP_FETCH: OpId = 18;
+pub const OP_METRICS: OpId = 19;
 pub const OP_REPL_START: OpId = 20;
 pub const OP_REPL_READLINE: OpId = 21;
 pub const OP_ACCEPT: OpId = 22;
@@ -133,6 +134,9 @@ pub fn dispatch(
     }
     OP_SEEK => {
       dispatch_json::dispatch(files::op_seek, state, control, zero_copy)
+    }
+    OP_METRICS => {
+      dispatch_json::dispatch(metrics::op_metrics, state, control, zero_copy)
     }
     OP_FETCH => {
       dispatch_json::dispatch(fetch::op_fetch, state, control, zero_copy)
