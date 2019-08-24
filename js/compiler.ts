@@ -7,11 +7,9 @@ import { Console } from "./console";
 import { core } from "./core";
 import { Diagnostic, fromTypeScriptDiagnostic } from "./diagnostics";
 import { cwd } from "./dir";
-import * as dispatch from "./dispatch";
-import { sendSync } from "./dispatch_json";
-import { msg } from "./dispatch_flatbuffers";
+import { sendSync, msg, flatbuffers } from "./dispatch_flatbuffers";
 import * as os from "./os";
-import { TextEncoder } from "./text_encoding";
+import { TextDecoder, TextEncoder } from "./text_encoding";
 import { getMappedModuleName, parseTypeDirectives } from "./type_directives";
 import { assert, notImplemented } from "./util";
 import * as util from "./util";
@@ -123,15 +121,35 @@ interface EmitResult {
 
 /** Ops to Rust to resolve and fetch a modules meta data. */
 function fetchSourceFile(specifier: string, referrer: string): SourceFile {
-  util.log("compiler.fetchSourceFile", { specifier, referrer });
-  const res = sendSync(dispatch.OP_FETCH_SOURCE_FILE, {
-    specifier,
-    referrer
-  });
-
+  util.log("fetchSourceFile", { specifier, referrer });
+  // Send FetchSourceFile message
+  const builder = flatbuffers.createBuilder();
+  const specifier_ = builder.createString(specifier);
+  const referrer_ = builder.createString(referrer);
+  const inner = msg.FetchSourceFile.createFetchSourceFile(
+    builder,
+    specifier_,
+    referrer_
+  );
+  const baseRes = sendSync(builder, msg.Any.FetchSourceFile, inner);
+  assert(baseRes != null);
+  assert(
+    msg.Any.FetchSourceFileRes === baseRes!.innerType(),
+    `base.innerType() unexpectedly is ${baseRes!.innerType()}`
+  );
+  const fetchSourceFileRes = new msg.FetchSourceFileRes();
+  assert(baseRes!.inner(fetchSourceFileRes) != null);
+  const dataArray = fetchSourceFileRes.dataArray();
+  const decoder = new TextDecoder();
+  const sourceCode = dataArray ? decoder.decode(dataArray) : undefined;
+  // flatbuffers returns `null` for an empty value, this does not fit well with
+  // idiomatic TypeScript under strict null checks, so converting to `undefined`
   return {
-    ...res,
-    typeDirectives: parseTypeDirectives(res.sourceCode)
+    moduleName: fetchSourceFileRes.moduleName() || undefined,
+    filename: fetchSourceFileRes.filename() || undefined,
+    mediaType: fetchSourceFileRes.mediaType(),
+    sourceCode,
+    typeDirectives: parseTypeDirectives(sourceCode)
   };
 }
 
@@ -153,7 +171,19 @@ function humanFileSize(bytes: number): string {
 
 /** Ops to rest for caching source map and compiled js */
 function cache(extension: string, moduleId: string, contents: string): void {
-  sendSync(dispatch.OP_CACHE, { extension, moduleId, contents });
+  util.log("cache", extension, moduleId);
+  const builder = flatbuffers.createBuilder();
+  const extension_ = builder.createString(extension);
+  const moduleId_ = builder.createString(moduleId);
+  const contents_ = builder.createString(contents);
+  const inner = msg.Cache.createCache(
+    builder,
+    extension_,
+    moduleId_,
+    contents_
+  );
+  const baseRes = sendSync(builder, msg.Any.Cache, inner);
+  assert(baseRes == null);
 }
 
 const encoder = new TextEncoder();

@@ -1,14 +1,48 @@
 union Any {
+  Accept,
+  ApplySourceMap,
+  Cache,
   Chdir,
   Chmod,
   Chown,
+  Close,
   CopyFile,
+  CreateWorker,
+  CreateWorkerRes,
   Cwd,
   CwdRes,
+  Dial,
+  Fetch,
+  FetchSourceFile,
+  FetchSourceFileRes,
+  FetchRes,
+  FormatError,
+  FormatErrorRes,
+  GetRandomValues,
+  GlobalTimer,
+  GlobalTimerRes,
+  GlobalTimerStop,
+  HostGetMessage,
+  HostGetMessageRes,
+  HostGetWorkerClosed,
+  HostPostMessage,
+  Kill,
   Link,
+  Listen,
+  ListenRes,
   MakeTempDir,
   MakeTempDirRes,
+  Metrics,
+  MetricsRes,
   Mkdir,
+  NewConn,
+  Now,
+  NowRes,
+  Open,
+  OpenRes,
+  PermissionRevoke,
+  Permissions,
+  PermissionsRes,
   Read,
   ReadDir,
   ReadDirRes,
@@ -17,11 +51,30 @@ union Any {
   ReadlinkRes,
   Remove,
   Rename,
+  ReplReadline,
+  ReplReadlineRes,
+  ReplStart,
+  ReplStartRes,
+  Resources,
+  ResourcesRes,
+  Run,
+  RunRes,
+  RunStatus,
+  RunStatusRes,
   Seek,
+  SetEnv,
+  Shutdown,
+  Start,
+  StartRes,
   Stat,
   StatRes,
   Symlink,
   Truncate,
+  HomeDir,
+  HomeDirRes,
+  WorkerGetMessage,
+  WorkerGetMessageRes,
+  WorkerPostMessage,
   Write,
   WriteRes,
 }
@@ -114,6 +167,25 @@ table Base {
   inner: Any;
 }
 
+table Start {
+  unused: int8;
+}
+
+table StartRes {
+  cwd: string;
+  pid: uint32;
+  argv: [string];
+  main_module: string; // Absolute URL.
+  debug_flag: bool;
+  deps_flag: bool;
+  types_flag: bool;
+  version_flag: bool;
+  deno_version: string;
+  v8_version: string;
+  no_color: bool;
+  xeval_delim: string;
+}
+
 table FormatError {
   error: string;
 }
@@ -122,13 +194,136 @@ table FormatErrorRes {
   error: string;
 }
 
+// Create worker as host
+table CreateWorker {
+  specifier: string;
+  include_deno_namespace: bool;
+  has_source_code: bool;
+  source_code: string;
+}
+
+table CreateWorkerRes {
+  rid: uint32;
+}
+
+table HostGetWorkerClosed {
+  rid: uint32;
+}
+
+// Get message from guest worker as host
+table HostGetMessage {
+  rid: uint32;
+}
+
+table HostGetMessageRes {
+  data: [ubyte];
+}
+
+// Post message to guest worker as host
+table HostPostMessage {
+  rid: uint32;
+  // data passed thru the zero-copy data parameter.
+}
+
+// Get message from host as guest worker
+table WorkerGetMessage {
+  unused: int8;
+}
+
+table WorkerGetMessageRes {
+  data: [ubyte];
+}
+
+// Post message to host as guest worker
+table WorkerPostMessage {
+  // data passed thru the zero-copy data parameter.
+}
+
+table FetchSourceFile {
+  specifier: string;
+  referrer: string;
+}
+
+table FetchSourceFileRes {
+  // If it's a non-http module, moduleName and filename will be the same.
+  // For http modules, module_name is its resolved http URL, and filename
+  // is the location of the locally downloaded source code.
+  module_name: string;
+  filename: string;
+  media_type: MediaType;
+  data: [ubyte];
+}
+
+table ApplySourceMap {
+  filename: string;
+  line: int;
+  column: int;
+}
+
+table Cache {
+  extension: string;
+  module_id: string;
+  contents: string;
+}
+
 table Chdir {
   directory: string;
+}
+
+table GlobalTimer {
+  timeout: int;
+}
+
+table GlobalTimerRes { }
+
+table GlobalTimerStop { }
+
+table SetEnv {
+  key: string;
+  value: string;
 }
 
 table KeyValue {
   key: string;
   value: string;
+}
+
+table Permissions {}
+
+table PermissionRevoke {
+  permission: string;
+}
+
+table PermissionsRes {
+  run: bool;
+  read: bool;
+  write: bool;
+  net: bool;
+  env: bool;
+  hrtime: bool;
+}
+
+// Note this represents The WHOLE header of an http message, not just the key
+// value pairs. That means it includes method and url for Requests and status
+// for responses. This is why it is singular "Header" instead of "Headers".
+table HttpHeader {
+  is_request: bool;
+  // Request only:
+  method: string;
+  url: string;
+  // Response only:
+  status: uint16;
+  // Both:
+  fields: [KeyValue];
+}
+
+table Fetch {
+  header: HttpHeader;
+}
+
+table FetchRes {
+  header: HttpHeader;
+  body_rid: uint32;
 }
 
 table MakeTempDir {
@@ -189,6 +384,35 @@ table ReadlinkRes {
   path: string;
 }
 
+table ReplStart {
+  history_file: string;
+  // TODO add config
+}
+
+table ReplStartRes {
+  rid: uint32;
+}
+
+table ReplReadline {
+  rid: uint32;
+  prompt: string;
+}
+
+table ReplReadlineRes {
+  line: string;
+}
+
+table Resources {}
+
+table Resource {
+  rid: uint32;
+  repr: string;
+}
+
+table ResourcesRes {
+  resources: [Resource];
+}
+
 table Symlink {
   oldname: string;
   newname: string;
@@ -221,6 +445,22 @@ table Truncate {
   len: uint;
 }
 
+table HomeDir {}
+
+table HomeDirRes {
+  path: string;
+}
+
+table Open {
+  filename: string;
+  perm: uint;
+  mode: string;
+}
+
+table OpenRes {
+  rid: uint32;
+}
+
 table Read {
   rid: uint32;
   // (ptr, len) is passed as second parameter to Deno.core.send().
@@ -239,10 +479,103 @@ table WriteRes {
   nbyte: uint;
 }
 
+table Close {
+  rid: uint32;
+}
+
+table Kill {
+  pid: int32;
+  signo: int32;
+}
+
+table Shutdown {
+  rid: uint32;
+  how: uint;
+}
+
+table Listen {
+  network: string;
+  address: string;
+}
+
+table ListenRes {
+  rid: uint32;
+}
+
+table Accept {
+  rid: uint32;
+}
+
+table Dial {
+  network: string;
+  address: string;
+}
+
+// Response to Accept and Dial.
+table NewConn {
+  rid: uint32;
+  remote_addr: string;
+  local_addr: string;
+}
+
+table Metrics {}
+
+table MetricsRes {
+  ops_dispatched: uint64;
+  ops_completed: uint64;
+  bytes_sent_control: uint64;
+  bytes_sent_data: uint64;
+  bytes_received: uint64;
+}
+
+enum ProcessStdio: byte { Inherit, Piped, Null }
+
+table Run {
+  args: [string];
+  cwd: string;
+  env: [KeyValue];
+  stdin: ProcessStdio;
+  stdout: ProcessStdio;
+  stderr: ProcessStdio;
+  stdin_rid: uint32;
+  stdout_rid: uint32;
+  stderr_rid: uint32;
+}
+
+table RunRes {
+  rid: uint32;
+  pid: uint32;
+  // The following stdio rids are only valid if "Piped" was specified for the
+  // corresponding stdio stream. The caller MUST issue a close op for all valid
+  // stdio streams.
+  stdin_rid: uint32;
+  stdout_rid: uint32;
+  stderr_rid: uint32;
+}
+
+table RunStatus {
+  rid: uint32;
+}
+
+table RunStatusRes {
+  got_signal: bool;
+  exit_code: int;
+  exit_signal: int;
+}
+
+table Now {}
+
+table NowRes {
+  seconds: uint64;
+  subsec_nanos: uint32;
+}
+
 table Seek {
   rid: uint32;
   offset: int;
   whence: uint;
 }
+
+table GetRandomValues {}
 
 root_type Base;

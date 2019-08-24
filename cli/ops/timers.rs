@@ -1,7 +1,12 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{Deserialize, JsonOp, Value};
+use super::dispatch_flatbuffers::serialize_response;
+use super::utils::empty_buf;
+use super::utils::CliOpResult;
+use crate::deno_error;
+use crate::msg;
 use crate::state::ThreadSafeState;
 use deno::*;
+use flatbuffers::FlatBufferBuilder;
 use futures::Future;
 use std;
 use std::time::Duration;
@@ -9,34 +14,50 @@ use std::time::Instant;
 
 pub fn op_global_timer_stop(
   state: &ThreadSafeState,
-  _args: Value,
-  _zero_copy: Option<PinnedBuf>,
-) -> Result<JsonOp, ErrBox> {
+  base: &msg::Base<'_>,
+  data: Option<PinnedBuf>,
+) -> CliOpResult {
+  if !base.sync() {
+    return Err(deno_error::no_async_support());
+  }
+  assert!(data.is_none());
   let state = state;
   let mut t = state.global_timer.lock().unwrap();
   t.cancel();
-  Ok(JsonOp::Sync(json!({})))
-}
-
-#[derive(Deserialize)]
-struct GlobalTimerArgs {
-  timeout: u64,
+  Ok(Op::Sync(empty_buf()))
 }
 
 pub fn op_global_timer(
   state: &ThreadSafeState,
-  args: Value,
-  _zero_copy: Option<PinnedBuf>,
-) -> Result<JsonOp, ErrBox> {
-  let args: GlobalTimerArgs = serde_json::from_value(args)?;
-  let val = args.timeout;
+  base: &msg::Base<'_>,
+  data: Option<PinnedBuf>,
+) -> CliOpResult {
+  if base.sync() {
+    return Err(deno_error::no_sync_support());
+  }
+  assert!(data.is_none());
+  let cmd_id = base.cmd_id();
+  let inner = base.inner_as_global_timer().unwrap();
+  let val = inner.timeout();
+  assert!(val >= 0);
 
   let state = state;
   let mut t = state.global_timer.lock().unwrap();
   let deadline = Instant::now() + Duration::from_millis(val as u64);
-  let f = t
-    .new_timeout(deadline)
-    .then(move |_| futures::future::ok(json!({})));
+  let f = t.new_timeout(deadline);
 
-  Ok(JsonOp::Async(Box::new(f)))
+  Ok(Op::Async(Box::new(f.then(move |_| {
+    let builder = &mut FlatBufferBuilder::new();
+    let inner =
+      msg::GlobalTimerRes::create(builder, &msg::GlobalTimerResArgs {});
+    Ok(serialize_response(
+      cmd_id,
+      builder,
+      msg::BaseArgs {
+        inner: Some(inner.as_union_value()),
+        inner_type: msg::Any::GlobalTimerRes,
+        ..Default::default()
+      },
+    ))
+  }))))
 }

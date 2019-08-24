@@ -1,21 +1,31 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{JsonOp, Value};
+use super::dispatch_flatbuffers::serialize_response;
+use super::utils::*;
+use crate::msg;
 use crate::state::ThreadSafeState;
 use deno::*;
-use std::sync::atomic::Ordering;
+use flatbuffers::FlatBufferBuilder;
 
 pub fn op_metrics(
   state: &ThreadSafeState,
-  _args: Value,
-  _zero_copy: Option<PinnedBuf>,
-) -> Result<JsonOp, ErrBox> {
-  let m = &state.metrics;
+  base: &msg::Base<'_>,
+  data: Option<PinnedBuf>,
+) -> CliOpResult {
+  assert!(data.is_none());
+  let cmd_id = base.cmd_id();
 
-  Ok(JsonOp::Sync(json!({
-    "opsDispatched": m.ops_dispatched.load(Ordering::SeqCst) as u64,
-    "opsCompleted": m.ops_completed.load(Ordering::SeqCst) as u64,
-    "bytesSentControl": m.bytes_sent_control.load(Ordering::SeqCst) as u64,
-    "bytesSentData": m.bytes_sent_data.load(Ordering::SeqCst) as u64,
-    "bytesReceived": m.bytes_received.load(Ordering::SeqCst) as u64
-  })))
+  let builder = &mut FlatBufferBuilder::new();
+  let inner = msg::MetricsRes::create(
+    builder,
+    &msg::MetricsResArgs::from(&state.metrics),
+  );
+  ok_buf(serialize_response(
+    cmd_id,
+    builder,
+    msg::BaseArgs {
+      inner: Some(inner.as_union_value()),
+      inner_type: msg::Any::MetricsRes,
+      ..Default::default()
+    },
+  ))
 }

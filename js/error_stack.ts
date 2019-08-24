@@ -1,8 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 // Some of the code here is adapted directly from V8 and licensed under a BSD
 // style license available here: https://github.com/v8/v8/blob/24886f2d1c565287d33d71e4109a53bf0b54b75c/LICENSE.v8
-import * as dispatch from "./dispatch";
-import { sendSync } from "./dispatch_json";
+
+import { sendSync, msg, flatbuffers } from "./dispatch_flatbuffers";
 import { assert } from "./util";
 
 export interface Location {
@@ -15,6 +15,40 @@ export interface Location {
 
   /** The column number in the file.  It is assumed to be 1-indexed. */
   column: number;
+}
+
+function req(
+  filename: string,
+  line: number,
+  column: number
+): [flatbuffers.Builder, msg.Any.ApplySourceMap, flatbuffers.Offset] {
+  const builder = flatbuffers.createBuilder();
+  const filename_ = builder.createString(filename);
+  const inner = msg.ApplySourceMap.createApplySourceMap(
+    builder,
+    filename_,
+    // On this side, line/column are 1 based, but in the source maps, they are
+    // 0 based, so we have to convert back and forth
+    line - 1,
+    column - 1
+  );
+  return [builder, msg.Any.ApplySourceMap, inner];
+}
+
+function res(baseRes: msg.Base | null): Location {
+  assert(baseRes != null);
+  assert(baseRes!.innerType() === msg.Any.ApplySourceMap);
+  const res = new msg.ApplySourceMap();
+  assert(baseRes!.inner(res) != null);
+  const filename = res.filename()!;
+  assert(filename != null);
+  return {
+    filename,
+    // On this side, line/column are 1 based, but in the source maps, they are
+    // 0 based, so we have to convert back and forth
+    line: res.line() + 1,
+    column: res.column() + 1
+  };
 }
 
 /** Given a current location in a module, lookup the source location and
@@ -41,18 +75,7 @@ export interface Location {
  */
 export function applySourceMap(location: Location): Location {
   const { filename, line, column } = location;
-  // On this side, line/column are 1 based, but in the source maps, they are
-  // 0 based, so we have to convert back and forth
-  const res = sendSync(dispatch.OP_APPLY_SOURCE_MAP, {
-    filename,
-    line: line - 1,
-    column: column - 1
-  });
-  return {
-    filename: res.filename,
-    line: res.line + 1,
-    column: res.column + 1
-  };
+  return res(sendSync(...req(filename, line, column)));
 }
 
 /** Mutate the call site so that it returns the location, instead of its
