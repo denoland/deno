@@ -13,7 +13,6 @@ use super::fs::{
   op_stat, op_symlink, op_truncate,
 };
 use super::metrics::op_metrics;
-use super::process::{op_kill, op_run, op_run_status};
 
 type CliDispatchFn = fn(
   state: &ThreadSafeState,
@@ -132,7 +131,6 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<CliDispatchFn> {
     msg::Any::Chown => Some(op_chown),
     msg::Any::CopyFile => Some(op_copy_file),
     msg::Any::Cwd => Some(op_cwd),
-    msg::Any::Kill => Some(op_kill),
     msg::Any::Link => Some(op_link),
     msg::Any::MakeTempDir => Some(op_make_temp_dir),
     msg::Any::Metrics => Some(op_metrics),
@@ -142,8 +140,6 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<CliDispatchFn> {
     msg::Any::Readlink => Some(op_read_link),
     msg::Any::Remove => Some(op_remove),
     msg::Any::Rename => Some(op_rename),
-    msg::Any::Run => Some(op_run),
-    msg::Any::RunStatus => Some(op_run_status),
     msg::Any::Stat => Some(op_stat),
     msg::Any::Symlink => Some(op_symlink),
     msg::Any::Truncate => Some(op_truncate),

@@ -42,6 +42,9 @@ export const OP_HOST_POST_MESSAGE = 35;
 export const OP_HOST_GET_MESSAGE = 36;
 export const OP_WORKER_POST_MESSAGE = 37;
 export const OP_WORKER_GET_MESSAGE = 38;
+export const OP_RUN = 39;
+export const OP_RUN_STATUS = 40;
+export const OP_KILL = 41;
 
 export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
   switch (opId) {
@@ -68,6 +71,7 @@ export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
     case OP_HOST_GET_WORKER_CLOSED:
     case OP_HOST_GET_MESSAGE:
     case OP_WORKER_GET_MESSAGE:
+    case OP_RUN_STATUS:
       json.asyncMsgFromRust(opId, ui8);
       break;
     default:

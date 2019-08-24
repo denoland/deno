@@ -64,6 +64,9 @@ pub const OP_HOST_POST_MESSAGE: OpId = 35;
 pub const OP_HOST_GET_MESSAGE: OpId = 36;
 pub const OP_WORKER_POST_MESSAGE: OpId = 37;
 pub const OP_WORKER_GET_MESSAGE: OpId = 38;
+pub const OP_RUN: OpId = 39;
+pub const OP_RUN_STATUS: OpId = 40;
+pub const OP_KILL: OpId = 41;
 
 pub fn dispatch(
   state: &ThreadSafeState,
@@ -133,6 +136,7 @@ pub fn dispatch(
     }
     OP_FETCH => {
       dispatch_json::dispatch(fetch::op_fetch, state, control, zero_copy)
+    }
     OP_REPL_START => {
       dispatch_json::dispatch(repl::op_repl_start, state, control, zero_copy)
     }
@@ -225,6 +229,15 @@ pub fn dispatch(
       control,
       zero_copy,
     ),
+    OP_RUN => {
+      dispatch_json::dispatch(process::op_run, state, control, zero_copy)
+    }
+    OP_RUN_STATUS => {
+      dispatch_json::dispatch(process::op_run_status, state, control, zero_copy)
+    }
+    OP_KILL => {
+      dispatch_json::dispatch(process::op_kill, state, control, zero_copy)
+    }
     OP_FLATBUFFER => dispatch_flatbuffers::dispatch(state, control, zero_copy),
     _ => panic!("bad op_id"),
   };
