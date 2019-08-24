@@ -1,6 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { assert, createResolvable, notImplemented, isTypedArray } from "./util";
-import { sendAsync, msg, flatbuffers } from "./dispatch_flatbuffers";
 import * as domTypes from "./dom_types";
 import { TextDecoder, TextEncoder } from "./text_encoding";
 import { DenoBlob, bytesSymbol as blobBytesSymbol } from "./blob";
@@ -10,6 +9,8 @@ import { read, close } from "./files";
 import { Buffer } from "./buffer";
 import { FormData } from "./form_data";
 import { URLSearchParams } from "./url_search_params";
+import * as dispatch from "./dispatch";
+import { sendAsync } from "./dispatch_json";
 
 function getHeaderValueParams(value: string): Map<string, string> {
   const params = new Map();
@@ -320,67 +321,35 @@ export class Response implements domTypes.Response {
   }
 }
 
-function msgHttpRequest(
-  builder: flatbuffers.Builder,
-  url: string,
-  method: null | string,
-  headers: null | domTypes.Headers
-): flatbuffers.Offset {
-  const methodOffset = !method ? 0 : builder.createString(method);
-  let fieldsOffset: flatbuffers.Offset = 0;
-  const urlOffset = builder.createString(url);
-  if (headers) {
-    const kvOffsets: flatbuffers.Offset[] = [];
-    for (const [key, val] of headers.entries()) {
-      const keyOffset = builder.createString(key);
-      const valOffset = builder.createString(val);
-      kvOffsets.push(
-        msg.KeyValue.createKeyValue(builder, keyOffset, valOffset)
-      );
-    }
-    fieldsOffset = msg.HttpHeader.createFieldsVector(builder, kvOffsets);
-  } else {
-  }
-  return msg.HttpHeader.createHttpHeader(
-    builder,
-    true,
-    methodOffset,
-    urlOffset,
-    0,
-    fieldsOffset
-  );
+interface FetchResponse {
+  bodyRid: number;
+  status: number;
+  headers: Array<[string, string]>;
 }
 
-function deserializeHeaderFields(m: msg.HttpHeader): Array<[string, string]> {
-  const out: Array<[string, string]> = [];
-  for (let i = 0; i < m.fieldsLength(); i++) {
-    const item = m.fields(i)!;
-    out.push([item.key()!, item.value()!]);
-  }
-  return out;
-}
-
-async function getFetchRes(
+async function sendFetchReq(
   url: string,
   method: string | null,
   headers: domTypes.Headers | null,
   body: ArrayBufferView | undefined
-): Promise<msg.FetchRes> {
-  // Send Fetch message
-  const builder = flatbuffers.createBuilder();
-  const headerOff = msgHttpRequest(builder, url, method, headers);
-  const resBase = await sendAsync(
-    builder,
-    msg.Any.Fetch,
-    msg.Fetch.createFetch(builder, headerOff),
-    body
-  );
+): Promise<FetchResponse> {
+  let headerArray: Array<[string, string]> = [];
+  if (headers) {
+    headerArray = Array.from(headers.entries());
+  }
 
-  // Decode FetchRes
-  assert(msg.Any.FetchRes === resBase.innerType());
-  const inner = new msg.FetchRes();
-  assert(resBase.inner(inner) != null);
-  return inner;
+  let zeroCopy = undefined;
+  if (body) {
+    zeroCopy = new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
+  }
+
+  const args = {
+    method,
+    url,
+    headers: headerArray
+  };
+
+  return (await sendAsync(dispatch.OP_FETCH, args, zeroCopy)) as FetchResponse;
 }
 
 /** Fetch a resource from the network. */
@@ -448,20 +417,13 @@ export async function fetch(
   }
 
   while (remRedirectCount) {
-    const inner = await getFetchRes(url, method, headers, body);
-
-    const header = inner.header()!;
-    const bodyRid = inner.bodyRid();
-    assert(!header.isRequest());
-    const status = header.status();
-
-    const headersList = deserializeHeaderFields(header);
+    const fetchResponse = await sendFetchReq(url, method, headers, body);
 
     const response = new Response(
       url,
-      status,
-      headersList,
-      bodyRid,
+      fetchResponse.status,
+      fetchResponse.headers,
+      fetchResponse.bodyRid,
       redirected
     );
     if ([301, 302, 303, 307, 308].includes(response.status)) {
