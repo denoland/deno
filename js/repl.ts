@@ -1,12 +1,12 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+import { assert } from "./util";
 import { close } from "./files";
+import { sendSync, sendAsync, msg, flatbuffers } from "./dispatch_flatbuffers";
 import { exit } from "./os";
 import { window } from "./window";
 import { core } from "./core";
 import { formatError } from "./format_error";
 import { stringifyArgs } from "./console";
-import * as dispatch from "./dispatch";
-import { sendSync, sendAsync } from "./dispatch_json";
 
 /**
  * REPL logging.
@@ -43,12 +43,34 @@ const replCommands = {
 };
 
 function startRepl(historyFile: string): number {
-  return sendSync(dispatch.OP_REPL_START, { historyFile });
+  const builder = flatbuffers.createBuilder();
+  const historyFile_ = builder.createString(historyFile);
+  const inner = msg.ReplStart.createReplStart(builder, historyFile_);
+
+  const baseRes = sendSync(builder, msg.Any.ReplStart, inner);
+  assert(baseRes != null);
+  assert(msg.Any.ReplStartRes === baseRes!.innerType());
+  const innerRes = new msg.ReplStartRes();
+  assert(baseRes!.inner(innerRes) != null);
+  const rid = innerRes.rid();
+  return rid;
 }
 
 // @internal
 export async function readline(rid: number, prompt: string): Promise<string> {
-  return sendAsync(dispatch.OP_REPL_READLINE, { rid, prompt });
+  const builder = flatbuffers.createBuilder();
+  const prompt_ = builder.createString(prompt);
+  const inner = msg.ReplReadline.createReplReadline(builder, rid, prompt_);
+
+  const baseRes = await sendAsync(builder, msg.Any.ReplReadline, inner);
+
+  assert(baseRes != null);
+  assert(msg.Any.ReplReadlineRes === baseRes!.innerType());
+  const innerRes = new msg.ReplReadlineRes();
+  assert(baseRes!.inner(innerRes) != null);
+  const line = innerRes.line();
+  assert(line !== null);
+  return line || "";
 }
 
 // Error messages that allow users to continue input

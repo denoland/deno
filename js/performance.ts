@@ -1,11 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as dispatch from "./dispatch";
-import { sendSync } from "./dispatch_json";
-
-interface NowResponse {
-  seconds: number;
-  subsecNanos: number;
-}
+import { sendSync, msg, flatbuffers } from "./dispatch_flatbuffers";
+import { assert } from "./util";
 
 export class Performance {
   /** Returns a current time from Deno's start in milliseconds.
@@ -16,7 +11,12 @@ export class Performance {
    *       console.log(`${t} ms since start!`);
    */
   now(): number {
-    const res = sendSync(dispatch.OP_NOW) as NowResponse;
-    return res.seconds * 1e3 + res.subsecNanos / 1e6;
+    const builder = flatbuffers.createBuilder();
+    const inner = msg.Now.createNow(builder);
+    const baseRes = sendSync(builder, msg.Any.Now, inner)!;
+    assert(msg.Any.NowRes === baseRes.innerType());
+    const res = new msg.NowRes();
+    assert(baseRes.inner(res) != null);
+    return res.seconds().toFloat64() * 1e3 + res.subsecNanos() / 1e6;
   }
 }

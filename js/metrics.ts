@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as dispatch from "./dispatch";
-import { sendSync } from "./dispatch_json";
+import { assert } from "./util";
+import { sendSync, msg, flatbuffers } from "./dispatch_flatbuffers";
 
 export interface Metrics {
   opsDispatched: number;
@@ -8,6 +8,27 @@ export interface Metrics {
   bytesSentControl: number;
   bytesSentData: number;
   bytesReceived: number;
+}
+
+function req(): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
+  const builder = flatbuffers.createBuilder();
+  const inner = msg.Metrics.createMetrics(builder);
+  return [builder, msg.Any.Metrics, inner];
+}
+
+function res(baseRes: null | msg.Base): Metrics {
+  assert(baseRes !== null);
+  assert(msg.Any.MetricsRes === baseRes!.innerType());
+  const res = new msg.MetricsRes();
+  assert(baseRes!.inner(res) !== null);
+
+  return {
+    opsDispatched: res.opsDispatched().toFloat64(),
+    opsCompleted: res.opsCompleted().toFloat64(),
+    bytesSentControl: res.bytesSentControl().toFloat64(),
+    bytesSentData: res.bytesSentData().toFloat64(),
+    bytesReceived: res.bytesReceived().toFloat64()
+  };
 }
 
 /** Receive metrics from the privileged side of Deno.
@@ -24,5 +45,5 @@ export interface Metrics {
  *      └──────────────────┴────────┘
  */
 export function metrics(): Metrics {
-  return sendSync(dispatch.OP_METRICS);
+  return res(sendSync(...req()));
 }

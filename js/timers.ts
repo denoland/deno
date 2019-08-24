@@ -1,8 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { assert } from "./util";
+import { sendAsync, sendSync, msg, flatbuffers } from "./dispatch_flatbuffers";
 import { window } from "./window";
-import * as dispatch from "./dispatch";
-import { sendSync, sendAsync } from "./dispatch_json";
 
 interface Timer {
   id: number;
@@ -38,8 +37,11 @@ function getTime(): number {
 }
 
 function clearGlobalTimeout(): void {
+  const builder = flatbuffers.createBuilder();
+  const inner = msg.GlobalTimerStop.createGlobalTimerStop(builder);
   globalTimeoutDue = null;
-  sendSync(dispatch.OP_GLOBAL_TIMER_STOP);
+  let res = sendSync(builder, msg.Any.GlobalTimerStop, inner);
+  assert(res == null);
 }
 
 async function setGlobalTimeout(due: number, now: number): Promise<void> {
@@ -50,8 +52,12 @@ async function setGlobalTimeout(due: number, now: number): Promise<void> {
   assert(timeout >= 0);
 
   // Send message to the backend.
+  const builder = flatbuffers.createBuilder();
+  msg.GlobalTimer.startGlobalTimer(builder);
+  msg.GlobalTimer.addTimeout(builder, timeout);
+  const inner = msg.GlobalTimer.endGlobalTimer(builder);
   globalTimeoutDue = due;
-  await sendAsync(dispatch.OP_GLOBAL_TIMER, { timeout });
+  await sendAsync(builder, msg.Any.GlobalTimer, inner);
   // eslint-disable-next-line @typescript-eslint/no-use-before-define
   fireTimers();
 }
