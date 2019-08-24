@@ -1,9 +1,13 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{Deserialize, JsonOp, Value};
+use super::dispatch_flatbuffers::serialize_response;
+use super::utils::*;
+use crate::deno_error;
+use crate::msg;
 use crate::resources;
 use crate::signal::kill;
 use crate::state::ThreadSafeState;
 use deno::*;
+use flatbuffers::FlatBufferBuilder;
 use futures;
 use futures::Future;
 use std;
@@ -14,72 +18,63 @@ use tokio_process::CommandExt;
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
 
-fn subprocess_stdio_map(s: &str) -> std::process::Stdio {
-  match s {
-    "inherit" => std::process::Stdio::inherit(),
-    "piped" => std::process::Stdio::piped(),
-    "null" => std::process::Stdio::null(),
-    _ => unreachable!(),
+fn subprocess_stdio_map(v: msg::ProcessStdio) -> std::process::Stdio {
+  match v {
+    msg::ProcessStdio::Inherit => std::process::Stdio::inherit(),
+    msg::ProcessStdio::Piped => std::process::Stdio::piped(),
+    msg::ProcessStdio::Null => std::process::Stdio::null(),
   }
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct RunArgs {
-  args: Vec<String>,
-  cwd: Option<String>,
-  env: Vec<(String, String)>,
-  stdin: String,
-  stdout: String,
-  stderr: String,
-  stdin_rid: u32,
-  stdout_rid: u32,
-  stderr_rid: u32,
 }
 
 pub fn op_run(
   state: &ThreadSafeState,
-  args: Value,
-  _zero_copy: Option<PinnedBuf>,
-) -> Result<JsonOp, ErrBox> {
-  let run_args: RunArgs = serde_json::from_value(args)?;
+  base: &msg::Base<'_>,
+  data: Option<PinnedBuf>,
+) -> CliOpResult {
+  if !base.sync() {
+    return Err(deno_error::no_async_support());
+  }
+  let cmd_id = base.cmd_id();
 
   state.check_run()?;
 
-  let args = run_args.args;
-  let env = run_args.env;
-  let cwd = run_args.cwd;
+  assert!(data.is_none());
+  let inner = base.inner_as_run().unwrap();
+  let args = inner.args().unwrap();
+  let env = inner.env().unwrap();
+  let cwd = inner.cwd();
 
-  let mut c = Command::new(args.get(0).unwrap());
+  let mut c = Command::new(args.get(0));
   (1..args.len()).for_each(|i| {
-    let arg = args.get(i).unwrap();
+    let arg = args.get(i);
     c.arg(arg);
   });
   cwd.map(|d| c.current_dir(d));
-  for (key, value) in &env {
-    c.env(key, value);
-  }
+  (0..env.len()).for_each(|i| {
+    let entry = env.get(i);
+    c.env(entry.key().unwrap(), entry.value().unwrap());
+  });
 
   // TODO: make this work with other resources, eg. sockets
-  let stdin_rid = run_args.stdin_rid;
+  let stdin_rid = inner.stdin_rid();
   if stdin_rid > 0 {
     c.stdin(resources::get_file(stdin_rid)?);
   } else {
-    c.stdin(subprocess_stdio_map(run_args.stdin.as_ref()));
+    c.stdin(subprocess_stdio_map(inner.stdin()));
   }
 
-  let stdout_rid = run_args.stdout_rid;
+  let stdout_rid = inner.stdout_rid();
   if stdout_rid > 0 {
     c.stdout(resources::get_file(stdout_rid)?);
   } else {
-    c.stdout(subprocess_stdio_map(run_args.stdout.as_ref()));
+    c.stdout(subprocess_stdio_map(inner.stdout()));
   }
 
-  let stderr_rid = run_args.stderr_rid;
+  let stderr_rid = inner.stderr_rid();
   if stderr_rid > 0 {
     c.stderr(resources::get_file(stderr_rid)?);
   } else {
-    c.stderr(subprocess_stdio_map(run_args.stderr.as_ref()));
+    c.stderr(subprocess_stdio_map(inner.stderr()));
   }
 
   // Spawn the command.
@@ -88,28 +83,44 @@ pub fn op_run(
   let pid = child.id();
   let resources = resources::add_child(child);
 
-  Ok(JsonOp::Sync(json!({
-    "rid": resources.child_rid,
-    "pid": pid,
-    "stdinRid": resources.stdin_rid,
-    "stdoutRid": resources.stdout_rid,
-    "stderrRid": resources.stderr_rid,
-  })))
-}
+  let mut res_args = msg::RunResArgs {
+    rid: resources.child_rid,
+    pid,
+    ..Default::default()
+  };
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct RunStatusArgs {
-  rid: i32,
+  if let Some(stdin_rid) = resources.stdin_rid {
+    res_args.stdin_rid = stdin_rid;
+  }
+  if let Some(stdout_rid) = resources.stdout_rid {
+    res_args.stdout_rid = stdout_rid;
+  }
+  if let Some(stderr_rid) = resources.stderr_rid {
+    res_args.stderr_rid = stderr_rid;
+  }
+
+  let builder = &mut FlatBufferBuilder::new();
+  let inner = msg::RunRes::create(builder, &res_args);
+  Ok(Op::Sync(serialize_response(
+    cmd_id,
+    builder,
+    msg::BaseArgs {
+      inner: Some(inner.as_union_value()),
+      inner_type: msg::Any::RunRes,
+      ..Default::default()
+    },
+  )))
 }
 
 pub fn op_run_status(
   state: &ThreadSafeState,
-  args: Value,
-  _zero_copy: Option<PinnedBuf>,
-) -> Result<JsonOp, ErrBox> {
-  let args: RunStatusArgs = serde_json::from_value(args)?;
-  let rid = args.rid as u32;
+  base: &msg::Base<'_>,
+  data: Option<PinnedBuf>,
+) -> CliOpResult {
+  assert!(data.is_none());
+  let cmd_id = base.cmd_id();
+  let inner = base.inner_as_run_status().unwrap();
+  let rid = inner.rid();
 
   state.check_run()?;
 
@@ -128,30 +139,44 @@ pub fn op_run_status(
       .expect("Should have either an exit code or a signal.");
     let got_signal = signal.is_some();
 
-    futures::future::ok(json!({
-      "gotSignal": got_signal,
-       "exitCode": code.unwrap_or(-1),
-       "exitSignal": signal.unwrap_or(-1),
-    }))
+    let builder = &mut FlatBufferBuilder::new();
+    let inner = msg::RunStatusRes::create(
+      builder,
+      &msg::RunStatusResArgs {
+        got_signal,
+        exit_code: code.unwrap_or(-1),
+        exit_signal: signal.unwrap_or(-1),
+      },
+    );
+    Ok(serialize_response(
+      cmd_id,
+      builder,
+      msg::BaseArgs {
+        inner: Some(inner.as_union_value()),
+        inner_type: msg::Any::RunStatusRes,
+        ..Default::default()
+      },
+    ))
   });
-
-  Ok(JsonOp::Async(Box::new(future)))
-}
-
-#[derive(Deserialize)]
-struct KillArgs {
-  pid: i32,
-  signo: i32,
+  if base.sync() {
+    let buf = future.wait()?;
+    Ok(Op::Sync(buf))
+  } else {
+    Ok(Op::Async(Box::new(future)))
+  }
 }
 
 pub fn op_kill(
   state: &ThreadSafeState,
-  args: Value,
-  _zero_copy: Option<PinnedBuf>,
-) -> Result<JsonOp, ErrBox> {
+  base: &msg::Base<'_>,
+  data: Option<PinnedBuf>,
+) -> CliOpResult {
   state.check_run()?;
 
-  let args: KillArgs = serde_json::from_value(args)?;
-  kill(args.pid, args.signo)?;
-  Ok(JsonOp::Sync(json!({})))
+  assert!(data.is_none());
+  let inner = base.inner_as_kill().unwrap();
+  let pid = inner.pid();
+  let signo = inner.signo();
+  kill(pid, signo)?;
+  ok_buf(empty_buf())
 }

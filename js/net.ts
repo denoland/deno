@@ -1,9 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { EOF, Reader, Writer, Closer } from "./io";
-import { notImplemented } from "./util";
+import { assert, notImplemented } from "./util";
+import { sendSync, sendAsync, msg, flatbuffers } from "./dispatch_flatbuffers";
 import { read, write, close } from "./files";
-import * as dispatch from "./dispatch";
-import { sendSync, sendAsync } from "./dispatch_json";
 
 export type Network = "tcp";
 // TODO support other types:
@@ -37,7 +36,10 @@ enum ShutdownMode {
 }
 
 function shutdown(rid: number, how: ShutdownMode): void {
-  sendSync(dispatch.OP_SHUTDOWN, { rid, how });
+  const builder = flatbuffers.createBuilder();
+  const inner = msg.Shutdown.createShutdown(builder, rid, how);
+  const baseRes = sendSync(builder, msg.Any.Shutdown, inner);
+  assert(baseRes == null);
 }
 
 class ConnImpl implements Conn {
@@ -78,9 +80,14 @@ class ListenerImpl implements Listener {
   constructor(readonly rid: number) {}
 
   async accept(): Promise<Conn> {
-    const res = await sendAsync(dispatch.OP_ACCEPT, { rid: this.rid });
-    // TODO(bartlomieju): add remoteAddr and localAddr on Rust side
-    return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);
+    const builder = flatbuffers.createBuilder();
+    const inner = msg.Accept.createAccept(builder, this.rid);
+    const baseRes = await sendAsync(builder, msg.Any.Accept, inner);
+    assert(baseRes != null);
+    assert(msg.Any.NewConn === baseRes!.innerType());
+    const res = new msg.NewConn();
+    assert(baseRes!.inner(res) != null);
+    return new ConnImpl(res.rid(), res.remoteAddr()!, res.localAddr()!);
   }
 
   close(): void {
@@ -136,8 +143,16 @@ export interface Conn extends Reader, Writer, Closer {
  * See `dial()` for a description of the network and address parameters.
  */
 export function listen(network: Network, address: string): Listener {
-  const rid = sendSync(dispatch.OP_LISTEN, { network, address });
-  return new ListenerImpl(rid);
+  const builder = flatbuffers.createBuilder();
+  const network_ = builder.createString(network);
+  const address_ = builder.createString(address);
+  const inner = msg.Listen.createListen(builder, network_, address_);
+  const baseRes = sendSync(builder, msg.Any.Listen, inner);
+  assert(baseRes != null);
+  assert(msg.Any.ListenRes === baseRes!.innerType());
+  const res = new msg.ListenRes();
+  assert(baseRes!.inner(res) != null);
+  return new ListenerImpl(res.rid());
 }
 
 /** Dial connects to the address on the named network.
@@ -168,9 +183,16 @@ export function listen(network: Network, address: string): Listener {
  *     dial("tcp", ":80")
  */
 export async function dial(network: Network, address: string): Promise<Conn> {
-  const res = await sendAsync(dispatch.OP_DIAL, { network, address });
-  // TODO(bartlomieju): add remoteAddr and localAddr on Rust side
-  return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);
+  const builder = flatbuffers.createBuilder();
+  const network_ = builder.createString(network);
+  const address_ = builder.createString(address);
+  const inner = msg.Dial.createDial(builder, network_, address_);
+  const baseRes = await sendAsync(builder, msg.Any.Dial, inner);
+  assert(baseRes != null);
+  assert(msg.Any.NewConn === baseRes!.innerType());
+  const res = new msg.NewConn();
+  assert(baseRes!.inner(res) != null);
+  return new ConnImpl(res.rid(), res.remoteAddr()!, res.localAddr()!);
 }
 
 /** **RESERVED** */
