@@ -4,7 +4,7 @@ type File = Deno.File;
 type Writer = Deno.Writer;
 import { getLevelByName, LogLevel } from "./levels.ts";
 import { LogRecord } from "./logger.ts";
-import { red, yellow, blue, bold } from "../colors/mod.ts";
+import { red, yellow, blue, bold } from "../fmt/colors.ts";
 
 const DEFAULT_FORMATTER = "{levelName} {msg}";
 type FormatterFunction = (logRecord: LogRecord) => string;

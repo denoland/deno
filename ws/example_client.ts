@@ -7,7 +7,7 @@ import {
 import { encode } from "../strings/mod.ts";
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
-import { blue, green, red, yellow } from "../colors/mod.ts";
+import { blue, green, red, yellow } from "../fmt/colors.ts";
 
 const endpoint = Deno.args[1] || "ws://127.0.0.1:8080";
 /** simple websocket cli */

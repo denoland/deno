@@ -85,7 +85,7 @@ import {
 import { encode } from "https://deno.land/std/strings/mod.ts";
 import { BufReader } from "https://deno.land/std/io/bufio.ts";
 import { TextProtoReader } from "https://deno.land/std/textproto/mod.ts";
-import { blue, green, red, yellow } from "https://deno.land/std/colors/mod.ts";
+import { blue, green, red, yellow } from "https://deno.land/std/fmt/colors.ts";
 
 const endpoint = Deno.args[1] || "ws://127.0.0.1:8080";
 async function main(): Promise<void> {

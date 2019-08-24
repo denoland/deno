@@ -9,7 +9,7 @@ import {
   gray,
   yellow,
   italic
-} from "../colors/mod.ts";
+} from "../fmt/colors.ts";
 export type TestFunction = () => void | Promise<void>;
 
 export interface TestDefinition {
