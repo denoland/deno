@@ -12,6 +12,9 @@ export const OP_IS_TTY = 4;
 export const OP_ENV = 5;
 export const OP_EXEC_PATH = 6;
 export const OP_UTIME = 7;
+export const OP_SET_ENV = 8;
+export const OP_HOME_DIR = 9;
+export const OP_START = 10;
 
 export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
   switch (opId) {

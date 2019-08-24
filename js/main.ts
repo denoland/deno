@@ -22,12 +22,12 @@ export default function denoMain(
   preserveDenoNamespace: boolean = true,
   name?: string
 ): void {
-  const startResMsg = os.start(preserveDenoNamespace, name);
+  const s = os.start(preserveDenoNamespace, name);
 
-  setVersions(startResMsg.denoVersion()!, startResMsg.v8Version()!);
+  setVersions(s.denoVersion, s.v8Version);
 
   // handle `--version`
-  if (startResMsg.versionFlag()) {
+  if (s.versionFlag) {
     console.log("deno:", deno.version.deno);
     console.log("v8:", deno.version.v8);
     console.log("typescript:", deno.version.typescript);
@@ -36,24 +36,22 @@ export default function denoMain(
 
   setPrepareStackTrace(Error);
 
-  const mainModule = startResMsg.mainModule();
-  if (mainModule) {
-    assert(mainModule.length > 0);
-    setLocation(mainModule);
+  if (s.mainModule) {
+    assert(s.mainModule.length > 0);
+    setLocation(s.mainModule);
   }
 
-  const cwd = startResMsg.cwd();
-  log("cwd", cwd);
+  log("cwd", s.cwd);
 
-  for (let i = 1; i < startResMsg.argvLength(); i++) {
-    args.push(startResMsg.argv(i));
+  for (let i = 1; i < s.argv.length; i++) {
+    args.push(s.argv[i]);
   }
   log("args", args);
   Object.freeze(args);
 
   if (window["_xevalWrapper"] !== undefined) {
-    xevalMain(window["_xevalWrapper"] as XevalFunc, startResMsg.xevalDelim());
-  } else if (!mainModule) {
+    xevalMain(window["_xevalWrapper"] as XevalFunc, s.xevalDelim);
+  } else if (!s.mainModule) {
     replLoop();
   }
 }

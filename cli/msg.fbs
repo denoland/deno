@@ -62,16 +62,11 @@ union Any {
   RunStatus,
   RunStatusRes,
   Seek,
-  SetEnv,
   Shutdown,
-  Start,
-  StartRes,
   Stat,
   StatRes,
   Symlink,
   Truncate,
-  HomeDir,
-  HomeDirRes,
   WorkerGetMessage,
   WorkerGetMessageRes,
   WorkerPostMessage,
@@ -167,25 +162,6 @@ table Base {
   inner: Any;
 }
 
-table Start {
-  unused: int8;
-}
-
-table StartRes {
-  cwd: string;
-  pid: uint32;
-  argv: [string];
-  main_module: string; // Absolute URL.
-  debug_flag: bool;
-  deps_flag: bool;
-  types_flag: bool;
-  version_flag: bool;
-  deno_version: string;
-  v8_version: string;
-  no_color: bool;
-  xeval_delim: string;
-}
-
 table FormatError {
   error: string;
 }
@@ -277,11 +253,6 @@ table GlobalTimer {
 table GlobalTimerRes { }
 
 table GlobalTimerStop { }
-
-table SetEnv {
-  key: string;
-  value: string;
-}
 
 table KeyValue {
   key: string;
@@ -443,12 +414,6 @@ table StatRes {
 table Truncate {
   name: string;
   len: uint;
-}
-
-table HomeDir {}
-
-table HomeDirRes {
-  path: string;
 }
 
 table Open {

@@ -17,7 +17,6 @@ use super::fs::{
 };
 use super::metrics::op_metrics;
 use super::net::{op_accept, op_dial, op_listen, op_shutdown};
-use super::os::{op_home_dir, op_set_env, op_start};
 use super::performance::op_now;
 use super::permissions::{op_permissions, op_revoke_permission};
 use super::process::{op_kill, op_run, op_run_status};
@@ -183,13 +182,10 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<CliDispatchFn> {
     msg::Any::Run => Some(op_run),
     msg::Any::RunStatus => Some(op_run_status),
     msg::Any::Seek => Some(op_seek),
-    msg::Any::SetEnv => Some(op_set_env),
     msg::Any::Shutdown => Some(op_shutdown),
-    msg::Any::Start => Some(op_start),
     msg::Any::Stat => Some(op_stat),
     msg::Any::Symlink => Some(op_symlink),
     msg::Any::Truncate => Some(op_truncate),
-    msg::Any::HomeDir => Some(op_home_dir),
     msg::Any::Write => Some(op_write),
 
     // TODO(ry) split these out so that only the appropriate Workers can access
