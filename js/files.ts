@@ -12,13 +12,29 @@ import {
 } from "./io";
 import { sendAsyncMinimal } from "./dispatch_minimal";
 import { assert } from "./util";
-import * as dispatch from "./dispatch";
-import {
-  sendSync as sendSyncJson,
-  sendAsync as sendAsyncJson
-} from "./dispatch_json";
-import { sendSync, msg, flatbuffers } from "./dispatch_flatbuffers";
+import { sendAsync, sendSync, msg, flatbuffers } from "./dispatch_flatbuffers";
 import { OP_READ, OP_WRITE } from "./dispatch";
+
+function reqOpen(
+  filename: string,
+  mode: OpenMode
+): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
+  const builder = flatbuffers.createBuilder();
+  const filename_ = builder.createString(filename);
+  const mode_ = builder.createString(mode);
+  const inner = msg.Open.createOpen(builder, filename_, 0, mode_);
+  return [builder, msg.Any.Open, inner];
+}
+
+function resOpen(baseRes: null | msg.Base): File {
+  assert(baseRes != null);
+  assert(msg.Any.OpenRes === baseRes!.innerType());
+  const res = new msg.OpenRes();
+  assert(baseRes!.inner(res) != null);
+  const rid = res.rid();
+  // eslint-disable-next-line @typescript-eslint/no-use-before-define
+  return new File(rid);
+}
 
 /** Open a file and return an instance of the `File` object
  *  synchronously.
@@ -26,8 +42,7 @@ import { OP_READ, OP_WRITE } from "./dispatch";
  *       const file = Deno.openSync("/foo/bar.txt");
  */
 export function openSync(filename: string, mode: OpenMode = "r"): File {
-  const rid = sendSyncJson(dispatch.OP_OPEN, { filename, mode });
-  return new File(rid);
+  return resOpen(sendSync(...reqOpen(filename, mode)));
 }
 
 /** Open a file and return an instance of the `File` object.
@@ -40,8 +55,7 @@ export async function open(
   filename: string,
   mode: OpenMode = "r"
 ): Promise<File> {
-  const rid = await sendAsyncJson(dispatch.OP_OPEN, { filename, mode });
-  return new File(rid);
+  return resOpen(await sendAsync(...reqOpen(filename, mode)));
 }
 
 function reqRead(
@@ -151,13 +165,23 @@ export async function write(rid: number, p: Uint8Array): Promise<number> {
   }
 }
 
+function reqSeek(
+  rid: number,
+  offset: number,
+  whence: SeekMode
+): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
+  const builder = flatbuffers.createBuilder();
+  const inner = msg.Seek.createSeek(builder, rid, offset, whence);
+  return [builder, msg.Any.Seek, inner];
+}
+
 /** Seek a file ID synchronously to the given offset under mode given by `whence`.
  *
  *       const file = Deno.openSync("/foo/bar.txt");
  *       Deno.seekSync(file.rid, 0, 0);
  */
 export function seekSync(rid: number, offset: number, whence: SeekMode): void {
-  sendSyncJson(dispatch.OP_SEEK, { rid, offset, whence });
+  sendSync(...reqSeek(rid, offset, whence));
 }
 
 /** Seek a file ID to the given offset under mode given by `whence`.
@@ -172,12 +196,14 @@ export async function seek(
   offset: number,
   whence: SeekMode
 ): Promise<void> {
-  await sendAsyncJson(dispatch.OP_SEEK, { rid, offset, whence });
+  await sendAsync(...reqSeek(rid, offset, whence));
 }
 
 /** Close the file ID. */
 export function close(rid: number): void {
-  sendSyncJson(dispatch.OP_CLOSE, { rid });
+  const builder = flatbuffers.createBuilder();
+  const inner = msg.Close.createClose(builder, rid);
+  sendSync(builder, msg.Any.Close, inner);
 }
 
 /** The Deno abstraction for reading and writing files. */
