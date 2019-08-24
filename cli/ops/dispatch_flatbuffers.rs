@@ -6,10 +6,7 @@ use deno::*;
 use flatbuffers::FlatBufferBuilder;
 use hyper::rt::Future;
 
-use super::compiler::{op_cache, op_fetch_source_file};
-use super::errors::{op_apply_source_map, op_format_error};
-use super::fetch::op_fetch;
-use super::files::{op_close, op_open, op_read, op_seek, op_write};
+use super::files::{op_read, op_write};
 use super::fs::{
   op_chdir, op_chmod, op_chown, op_copy_file, op_cwd, op_link,
   op_make_temp_dir, op_mkdir, op_read_dir, op_read_link, op_remove, op_rename,
@@ -142,19 +139,13 @@ pub fn serialize_response(
 pub fn op_selector_std(inner_type: msg::Any) -> Option<CliDispatchFn> {
   match inner_type {
     msg::Any::Accept => Some(op_accept),
-    msg::Any::ApplySourceMap => Some(op_apply_source_map),
-    msg::Any::Cache => Some(op_cache),
     msg::Any::Chdir => Some(op_chdir),
     msg::Any::Chmod => Some(op_chmod),
     msg::Any::Chown => Some(op_chown),
-    msg::Any::Close => Some(op_close),
     msg::Any::CopyFile => Some(op_copy_file),
     msg::Any::CreateWorker => Some(op_create_worker),
     msg::Any::Cwd => Some(op_cwd),
     msg::Any::Dial => Some(op_dial),
-    msg::Any::Fetch => Some(op_fetch),
-    msg::Any::FetchSourceFile => Some(op_fetch_source_file),
-    msg::Any::FormatError => Some(op_format_error),
     msg::Any::GetRandomValues => Some(op_get_random_values),
     msg::Any::GlobalTimer => Some(op_global_timer),
     msg::Any::GlobalTimerStop => Some(op_global_timer_stop),
@@ -168,7 +159,6 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<CliDispatchFn> {
     msg::Any::Metrics => Some(op_metrics),
     msg::Any::Mkdir => Some(op_mkdir),
     msg::Any::Now => Some(op_now),
-    msg::Any::Open => Some(op_open),
     msg::Any::PermissionRevoke => Some(op_revoke_permission),
     msg::Any::Permissions => Some(op_permissions),
     msg::Any::Read => Some(op_read),
@@ -181,7 +171,6 @@ pub fn op_selector_std(inner_type: msg::Any) -> Option<CliDispatchFn> {
     msg::Any::Resources => Some(op_resources),
     msg::Any::Run => Some(op_run),
     msg::Any::RunStatus => Some(op_run_status),
-    msg::Any::Seek => Some(op_seek),
     msg::Any::Shutdown => Some(op_shutdown),
     msg::Any::Stat => Some(op_stat),
     msg::Any::Symlink => Some(op_symlink),
