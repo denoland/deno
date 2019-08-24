@@ -1,78 +1,50 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_flatbuffers::serialize_response;
-use super::utils::blocking;
-use super::utils::ok_buf;
-use super::utils::CliOpResult;
-use crate::msg;
+use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
 use crate::repl;
 use crate::resources;
 use crate::state::ThreadSafeState;
 use deno::*;
-use flatbuffers::FlatBufferBuilder;
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReplStartArgs {
+  history_file: String,
+}
 
 pub fn op_repl_start(
   state: &ThreadSafeState,
-  base: &msg::Base<'_>,
-  data: Option<PinnedBuf>,
-) -> CliOpResult {
-  assert!(data.is_none());
-  let inner = base.inner_as_repl_start().unwrap();
-  let cmd_id = base.cmd_id();
-  let history_file = String::from(inner.history_file().unwrap());
+  args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: ReplStartArgs = serde_json::from_value(args)?;
 
-  debug!("op_repl_start {}", history_file);
-  let history_path = repl::history_path(&state.dir, &history_file);
+  debug!("op_repl_start {}", args.history_file);
+  let history_path = repl::history_path(&state.dir, &args.history_file);
   let repl = repl::Repl::new(history_path);
   let resource = resources::add_repl(repl);
 
-  let builder = &mut FlatBufferBuilder::new();
-  let inner = msg::ReplStartRes::create(
-    builder,
-    &msg::ReplStartResArgs { rid: resource.rid },
-  );
-  ok_buf(serialize_response(
-    cmd_id,
-    builder,
-    msg::BaseArgs {
-      inner: Some(inner.as_union_value()),
-      inner_type: msg::Any::ReplStartRes,
-      ..Default::default()
-    },
-  ))
+  Ok(JsonOp::Sync(json!(resource.rid)))
+}
+
+#[derive(Deserialize)]
+struct ReplReadlineArgs {
+  rid: i32,
+  prompt: String,
 }
 
 pub fn op_repl_readline(
   _state: &ThreadSafeState,
-  base: &msg::Base<'_>,
-  data: Option<PinnedBuf>,
-) -> CliOpResult {
-  assert!(data.is_none());
-  let inner = base.inner_as_repl_readline().unwrap();
-  let cmd_id = base.cmd_id();
-  let rid = inner.rid();
-  let prompt = inner.prompt().unwrap().to_owned();
+  args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: ReplReadlineArgs = serde_json::from_value(args)?;
+  let rid = args.rid;
+  let prompt = args.prompt;
   debug!("op_repl_readline {} {}", rid, prompt);
 
-  blocking(base.sync(), move || {
-    let repl = resources::get_repl(rid)?;
+  blocking_json(false, move || {
+    let repl = resources::get_repl(rid as u32)?;
     let line = repl.lock().unwrap().readline(&prompt)?;
-
-    let builder = &mut FlatBufferBuilder::new();
-    let line_off = builder.create_string(&line);
-    let inner = msg::ReplReadlineRes::create(
-      builder,
-      &msg::ReplReadlineResArgs {
-        line: Some(line_off),
-      },
-    );
-    Ok(serialize_response(
-      cmd_id,
-      builder,
-      msg::BaseArgs {
-        inner: Some(inner.as_union_value()),
-        inner_type: msg::Any::ReplReadlineRes,
-        ..Default::default()
-      },
-    ))
+    Ok(json!(line))
   })
 }
