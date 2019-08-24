@@ -42,7 +42,6 @@ pub fn op_repl_readline(
   let prompt = args.prompt;
   debug!("op_repl_readline {} {}", rid, prompt);
 
-  // TODO(bartlomieju): this is a sync operation, why is it async in repl.ts?
   blocking_json(false, move || {
     let repl = resources::get_repl(rid as u32)?;
     let line = repl.lock().unwrap().readline(&prompt)?;
