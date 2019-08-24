@@ -1,16 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { sendSync, sendAsync, msg, flatbuffers } from "./dispatch_flatbuffers";
-
-function req(
-  oldpath: string,
-  newpath: string
-): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
-  const builder = flatbuffers.createBuilder();
-  const oldpath_ = builder.createString(oldpath);
-  const newpath_ = builder.createString(newpath);
-  const inner = msg.Rename.createRename(builder, oldpath_, newpath_);
-  return [builder, msg.Any.Rename, inner];
-}
+import { sendSync, sendAsync } from "./dispatch_json";
+import * as dispatch from "./dispatch";
 
 /** Synchronously renames (moves) `oldpath` to `newpath`. If `newpath` already
  * exists and is not a directory, `renameSync()` replaces it. OS-specific
@@ -20,7 +10,7 @@ function req(
  *       Deno.renameSync("old/path", "new/path");
  */
 export function renameSync(oldpath: string, newpath: string): void {
-  sendSync(...req(oldpath, newpath));
+  sendSync(dispatch.OP_RENAME, { oldpath, newpath });
 }
 
 /** Renames (moves) `oldpath` to `newpath`. If `newpath` already exists and is
@@ -30,5 +20,5 @@ export function renameSync(oldpath: string, newpath: string): void {
  *       await Deno.rename("old/path", "new/path");
  */
 export async function rename(oldpath: string, newpath: string): Promise<void> {
-  await sendAsync(...req(oldpath, newpath));
+  await sendAsync(dispatch.OP_RENAME, { oldpath, newpath });
 }

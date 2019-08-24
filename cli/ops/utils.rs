@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use crate::tokio_util;
 use deno::Buf;
 use deno::ErrBox;

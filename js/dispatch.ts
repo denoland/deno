@@ -54,6 +54,13 @@ export const OP_REMOVE = 46;
 export const OP_COPY_FILE = 47;
 export const OP_STAT = 48;
 export const OP_READ_DIR = 49;
+export const OP_RENAME = 50;
+export const OP_LINK = 51;
+export const OP_SYMLINK = 52;
+export const OP_READ_LINK = 53;
+export const OP_TRUNCATE = 54;
+export const OP_MAKE_TEMP_DIR = 55;
+export const OP_CWD = 56;
 
 export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
   switch (opId) {
@@ -88,6 +95,12 @@ export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
     case OP_COPY_FILE:
     case OP_STAT:
     case OP_READ_DIR:
+    case OP_RENAME:
+    case OP_LINK:
+    case OP_SYMLINK:
+    case OP_READ_LINK:
+    case OP_TRUNCATE:
+    case OP_MAKE_TEMP_DIR:
       json.asyncMsgFromRust(opId, ui8);
       break;
     default:

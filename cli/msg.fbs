@@ -1,17 +1,7 @@
 union Any {
-  Cwd,
-  CwdRes,
-  Link,
-  MakeTempDir,
-  MakeTempDirRes,
   Read,
   ReadRes,
-  Readlink,
-  ReadlinkRes,
-  Rename,
   Seek,
-  Symlink,
-  Truncate,
   Write,
   WriteRes,
 }
@@ -115,44 +105,6 @@ table FormatErrorRes {
 table KeyValue {
   key: string;
   value: string;
-}
-
-table MakeTempDir {
-  dir: string;
-  prefix: string;
-  suffix: string;
-}
-
-table MakeTempDirRes {
-  path: string;
-}
-
-table Rename {
-  oldpath: string;
-  newpath: string;
-}
-
-table Readlink {
-  name: string;
-}
-
-table ReadlinkRes {
-  path: string;
-}
-
-table Symlink {
-  oldname: string;
-  newname: string;
-}
-
-table Link {
-  oldname: string;
-  newname: string;
-}
-
-table Truncate {
-  name: string;
-  len: uint;
 }
 
 table Read {

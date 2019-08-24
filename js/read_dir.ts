@@ -4,8 +4,6 @@ import * as dispatch from "./dispatch";
 import { FileInfo, FileInfoImpl } from "./file_info";
 import { StatResponse } from "./stat";
 
-// NOTE: "entries" contains list of serialized `StatResponse`s that need
-// to be deserialized
 interface ReadDirResponse {
   entries: StatResponse[];
 }
