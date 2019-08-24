@@ -8,7 +8,7 @@
 
 /* eslint-disable @typescript-eslint/no-use-before-define */
 import { parse } from "../flags/mod.ts";
-import * as colors from "../colors/mod.ts";
+import * as colors from "../fmt/colors.ts";
 
 const decoder = new TextDecoder();
 

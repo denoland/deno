@@ -15,7 +15,7 @@ import {
   unreachable
 } from "./asserts.ts";
 import { test } from "./mod.ts";
-import { red, green, white, gray, bold } from "../colors/mod.ts";
+import { red, green, white, gray, bold } from "../fmt/colors.ts";
 
 test(function testingEqual(): void {
   assert(equal("world", "world"));
