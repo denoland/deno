@@ -159,6 +159,8 @@ impl SharedQueue {
     Some((op_id, &self.bytes[off..end]))
   }
 
+  /// Because JS-side may cast `record` to Int32Array it is required
+  /// that `record`'s length is divisible by 4.
   pub fn push(&mut self, op_id: OpId, record: &[u8]) -> bool {
     let off = self.head();
     let end = off + record.len();
