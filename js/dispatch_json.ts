@@ -30,10 +30,8 @@ function nextPromiseId(): number {
 }
 
 function decode(ui8: Uint8Array): JsonResponse {
-  // Received JSON string may be padded with "space" characters
-  // at the end, so make sure to trim it before parsing.
   let s = new TextDecoder().decode(ui8);
-  return JSON.parse(s.trimEnd()) as JsonResponse;
+  return JSON.parse(s) as JsonResponse;
 }
 
 function encode(args: object): Uint8Array {
