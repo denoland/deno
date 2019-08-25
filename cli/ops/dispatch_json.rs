@@ -37,7 +37,18 @@ fn serialize_result(
     Ok(v) => json!({ "ok": v, "promiseId": promise_id }),
     Err(err) => json!({ "err": json_err(err), "promiseId": promise_id }),
   };
-  let vec = serde_json::to_vec(&value).unwrap();
+  let mut vec = serde_json::to_vec(&value).unwrap();
+
+  debug!("JSON response pre-align, len={}", vec.len());
+  let len = vec.len();
+  let modulo = len % 4;
+
+  if modulo != 0 {
+    let new_len = len + (4 - modulo);
+    vec.resize(new_len, 0);
+  }
+
+  debug!("JSON response post-align, len={}", vec.len());
   vec.into_boxed_slice()
 }
 

@@ -30,7 +30,10 @@ function nextPromiseId(): number {
 }
 
 function decode(ui8: Uint8Array): JsonResponse {
-  const s = new TextDecoder().decode(ui8);
+  let s = new TextDecoder().decode(ui8);
+  // TODO: this is make-shift solution
+  const closingBracket = s.lastIndexOf("}");
+  s = s.slice(0, closingBracket + 1);
   return JSON.parse(s) as JsonResponse;
 }
 
