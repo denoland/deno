@@ -30,7 +30,7 @@ function nextPromiseId(): number {
 }
 
 function decode(ui8: Uint8Array): JsonResponse {
-  let s = new TextDecoder().decode(ui8);
+  const s = new TextDecoder().decode(ui8);
   return JSON.parse(s) as JsonResponse;
 }
 
