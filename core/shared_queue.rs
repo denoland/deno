@@ -276,4 +276,12 @@ mod tests {
     let _ignored = q.shift().unwrap();
     assert_eq!(q.push(0, &alloc_buf(4)), false);
   }
+
+  #[test]
+  #[should_panic]
+  fn bad_buf_length() {
+    let mut q = SharedQueue::new(RECOMMENDED_SIZE);
+    // check that `record` that has length not a multiple of 4 will cause panic
+    q.push(0, &alloc_buf(3));
+  }
 }
