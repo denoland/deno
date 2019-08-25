@@ -46,7 +46,7 @@ fn serialize_result(
   // Pad string with "space" character. Required by shared_queue.
   if modulo != 0 {
     let new_len = len + (4 - modulo);
-    vec.resize(new_len, ' ' as u8);
+    vec.resize(new_len, b' ');
   }
 
   debug!("JSON response post-align, len={}", vec.len());
