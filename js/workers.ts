@@ -1,7 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { sendAsync, sendSync, msg, flatbuffers } from "./dispatch_flatbuffers";
-import { assert, log } from "./util";
+import * as dispatch from "./dispatch";
+import { sendAsync, sendSync } from "./dispatch_json";
+import { log } from "./util";
 import { TextDecoder, TextEncoder } from "./text_encoding";
 import { window } from "./window";
 import { blobURLMap } from "./url";
@@ -26,61 +27,28 @@ function createWorker(
   hasSourceCode: boolean,
   sourceCode: Uint8Array
 ): number {
-  const builder = flatbuffers.createBuilder();
-  const specifier_ = builder.createString(specifier);
-  const sourceCode_ = builder.createString(sourceCode);
-  const inner = msg.CreateWorker.createCreateWorker(
-    builder,
-    specifier_,
+  return sendSync(dispatch.OP_CREATE_WORKER, {
+    specifier,
     includeDenoNamespace,
     hasSourceCode,
-    sourceCode_
-  );
-  const baseRes = sendSync(builder, msg.Any.CreateWorker, inner);
-  assert(baseRes != null);
-  assert(
-    msg.Any.CreateWorkerRes === baseRes!.innerType(),
-    `base.innerType() unexpectedly is ${baseRes!.innerType()}`
-  );
-  const res = new msg.CreateWorkerRes();
-  assert(baseRes!.inner(res) != null);
-  return res.rid();
+    sourceCode: new TextDecoder().decode(sourceCode)
+  });
 }
 
 async function hostGetWorkerClosed(rid: number): Promise<void> {
-  const builder = flatbuffers.createBuilder();
-  const inner = msg.HostGetWorkerClosed.createHostGetWorkerClosed(builder, rid);
-  await sendAsync(builder, msg.Any.HostGetWorkerClosed, inner);
+  await sendAsync(dispatch.OP_HOST_GET_WORKER_CLOSED, { rid });
 }
 
 function hostPostMessage(rid: number, data: any): void {
   const dataIntArray = encodeMessage(data);
-  const builder = flatbuffers.createBuilder();
-  const inner = msg.HostPostMessage.createHostPostMessage(builder, rid);
-  const baseRes = sendSync(
-    builder,
-    msg.Any.HostPostMessage,
-    inner,
-    dataIntArray
-  );
-  assert(baseRes != null);
+  sendSync(dispatch.OP_HOST_POST_MESSAGE, { rid }, dataIntArray);
 }
 
 async function hostGetMessage(rid: number): Promise<any> {
-  const builder = flatbuffers.createBuilder();
-  const inner = msg.HostGetMessage.createHostGetMessage(builder, rid);
-  const baseRes = await sendAsync(builder, msg.Any.HostGetMessage, inner);
-  assert(baseRes != null);
-  assert(
-    msg.Any.HostGetMessageRes === baseRes!.innerType(),
-    `base.innerType() unexpectedly is ${baseRes!.innerType()}`
-  );
-  const res = new msg.HostGetMessageRes();
-  assert(baseRes!.inner(res) != null);
+  const res = await sendAsync(dispatch.OP_HOST_GET_MESSAGE, { rid });
 
-  const dataArray = res.dataArray();
-  if (dataArray != null) {
-    return decodeMessage(dataArray);
+  if (res.data != null) {
+    return decodeMessage(new Uint8Array(res.data));
   } else {
     return null;
   }
@@ -91,36 +59,15 @@ export let onmessage: (e: { data: any }) => void = (): void => {};
 
 export function postMessage(data: any): void {
   const dataIntArray = encodeMessage(data);
-  const builder = flatbuffers.createBuilder();
-  const inner = msg.WorkerPostMessage.createWorkerPostMessage(builder);
-  const baseRes = sendSync(
-    builder,
-    msg.Any.WorkerPostMessage,
-    inner,
-    dataIntArray
-  );
-  assert(baseRes != null);
+  sendSync(dispatch.OP_WORKER_POST_MESSAGE, {}, dataIntArray);
 }
 
 export async function getMessage(): Promise<any> {
   log("getMessage");
-  const builder = flatbuffers.createBuilder();
-  const inner = msg.WorkerGetMessage.createWorkerGetMessage(
-    builder,
-    0 /* unused */
-  );
-  const baseRes = await sendAsync(builder, msg.Any.WorkerGetMessage, inner);
-  assert(baseRes != null);
-  assert(
-    msg.Any.WorkerGetMessageRes === baseRes!.innerType(),
-    `base.innerType() unexpectedly is ${baseRes!.innerType()}`
-  );
-  const res = new msg.WorkerGetMessageRes();
-  assert(baseRes!.inner(res) != null);
+  const res = await sendAsync(dispatch.OP_WORKER_GET_MESSAGE);
 
-  const dataArray = res.dataArray();
-  if (dataArray != null) {
-    return decodeMessage(dataArray);
+  if (res.data != null) {
+    return decodeMessage(new Uint8Array(res.data));
   } else {
     return null;
   }
