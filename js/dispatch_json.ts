@@ -30,11 +30,10 @@ function nextPromiseId(): number {
 }
 
 function decode(ui8: Uint8Array): JsonResponse {
+  // Received JSON string may be padded with "space" characters
+  // at the end, so make sure to trim it before parsing.
   let s = new TextDecoder().decode(ui8);
-  // TODO: this is make-shift solution
-  const closingBracket = s.lastIndexOf("}");
-  s = s.slice(0, closingBracket + 1);
-  return JSON.parse(s) as JsonResponse;
+  return JSON.parse(s.trimEnd()) as JsonResponse;
 }
 
 function encode(args: object): Uint8Array {
