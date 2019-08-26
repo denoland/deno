@@ -26,7 +26,7 @@ mod workers;
 
 // Warning! These values are duplicated in the TypeScript code (js/dispatch.ts),
 // update with care.
-pub const OP_FLATBUFFER: OpId = 44;
+pub const OP_FLATBUFFER: OpId = 100;
 pub const OP_READ: OpId = 1;
 pub const OP_WRITE: OpId = 2;
 pub const OP_EXIT: OpId = 3;
@@ -68,6 +68,21 @@ pub const OP_WORKER_GET_MESSAGE: OpId = 38;
 pub const OP_RUN: OpId = 39;
 pub const OP_RUN_STATUS: OpId = 40;
 pub const OP_KILL: OpId = 41;
+pub const OP_CHDIR: OpId = 42;
+pub const OP_MKDIR: OpId = 43;
+pub const OP_CHMOD: OpId = 44;
+pub const OP_CHOWN: OpId = 45;
+pub const OP_REMOVE: OpId = 46;
+pub const OP_COPY_FILE: OpId = 47;
+pub const OP_STAT: OpId = 48;
+pub const OP_READ_DIR: OpId = 49;
+pub const OP_RENAME: OpId = 50;
+pub const OP_LINK: OpId = 51;
+pub const OP_SYMLINK: OpId = 52;
+pub const OP_READ_LINK: OpId = 53;
+pub const OP_TRUNCATE: OpId = 54;
+pub const OP_MAKE_TEMP_DIR: OpId = 55;
+pub const OP_CWD: OpId = 56;
 
 pub fn dispatch(
   state: &ThreadSafeState,
@@ -242,6 +257,45 @@ pub fn dispatch(
     OP_KILL => {
       dispatch_json::dispatch(process::op_kill, state, control, zero_copy)
     }
+    OP_CHDIR => {
+      dispatch_json::dispatch(fs::op_chdir, state, control, zero_copy)
+    }
+    OP_MKDIR => {
+      dispatch_json::dispatch(fs::op_mkdir, state, control, zero_copy)
+    }
+    OP_CHMOD => {
+      dispatch_json::dispatch(fs::op_chmod, state, control, zero_copy)
+    }
+    OP_CHOWN => {
+      dispatch_json::dispatch(fs::op_chown, state, control, zero_copy)
+    }
+    OP_REMOVE => {
+      dispatch_json::dispatch(fs::op_remove, state, control, zero_copy)
+    }
+    OP_COPY_FILE => {
+      dispatch_json::dispatch(fs::op_copy_file, state, control, zero_copy)
+    }
+    OP_STAT => dispatch_json::dispatch(fs::op_stat, state, control, zero_copy),
+    OP_READ_DIR => {
+      dispatch_json::dispatch(fs::op_read_dir, state, control, zero_copy)
+    }
+    OP_RENAME => {
+      dispatch_json::dispatch(fs::op_rename, state, control, zero_copy)
+    }
+    OP_LINK => dispatch_json::dispatch(fs::op_link, state, control, zero_copy),
+    OP_SYMLINK => {
+      dispatch_json::dispatch(fs::op_symlink, state, control, zero_copy)
+    }
+    OP_READ_LINK => {
+      dispatch_json::dispatch(fs::op_read_link, state, control, zero_copy)
+    }
+    OP_TRUNCATE => {
+      dispatch_json::dispatch(fs::op_truncate, state, control, zero_copy)
+    }
+    OP_MAKE_TEMP_DIR => {
+      dispatch_json::dispatch(fs::op_make_temp_dir, state, control, zero_copy)
+    }
+    OP_CWD => dispatch_json::dispatch(fs::op_cwd, state, control, zero_copy),
     OP_FLATBUFFER => dispatch_flatbuffers::dispatch(state, control, zero_copy),
     _ => panic!("bad op_id"),
   };

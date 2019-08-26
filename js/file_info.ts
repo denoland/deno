@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as msg from "gen/cli/msg_generated";
+import { StatResponse } from "./stat";
 
 /** A FileInfo describes a file and is returned by `stat`, `lstat`,
  * `statSync`, `lstatSync`.
@@ -58,17 +58,17 @@ export class FileInfoImpl implements FileInfo {
   name: string | null;
 
   /* @internal */
-  constructor(private _inner: msg.StatRes) {
-    const modified = this._inner.modified().toFloat64();
-    const accessed = this._inner.accessed().toFloat64();
-    const created = this._inner.created().toFloat64();
-    const hasMode = this._inner.hasMode();
-    const mode = this._inner.mode(); // negative for invalid mode (Windows)
-    const name = this._inner.name();
+  constructor(private _res: StatResponse) {
+    const modified = this._res.modified;
+    const accessed = this._res.accessed;
+    const created = this._res.created;
+    const hasMode = this._res.hasMode;
+    const mode = this._res.mode; // negative for invalid mode (Windows)
+    const name = this._res.name;
 
-    this._isFile = this._inner.isFile();
-    this._isSymlink = this._inner.isSymlink();
-    this.len = this._inner.len().toFloat64();
+    this._isFile = this._res.isFile;
+    this._isSymlink = this._res.isSymlink;
+    this.len = this._res.len;
     this.modified = modified ? modified : null;
     this.accessed = accessed ? accessed : null;
     this.created = created ? created : null;
