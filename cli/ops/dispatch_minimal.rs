@@ -80,9 +80,6 @@ pub fn dispatch(
 ) -> CoreOp {
   let mut record = parse_min_record(control).unwrap();
   let is_sync = record.promise_id == 0;
-  // TODO(ry) Currently there aren't any sync minimal ops. This is just a sanity
-  // check. Remove later.
-  assert!(!is_sync);
   let rid = record.arg;
   let min_op = d(rid, zero_copy);
 
@@ -102,6 +99,11 @@ pub fn dispatch(
   }));
 
   if is_sync {
+    // Warning! Possible deadlocks can occur if we try to wait for a future
+    // while in a future. The safe but expensive alternative is to use
+    // tokio_util::block_on.
+    // This block is only exercised for readSync and writeSync, which I think
+    // works since they're simple polling futures.
     Op::Sync(fut.wait().unwrap())
   } else {
     Op::Async(fut)

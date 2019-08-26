@@ -1,11 +1,3 @@
-union Any {
-  Read,
-  ReadRes,
-  Seek,
-  Write,
-  WriteRes,
-}
-
 enum ErrorKind: byte {
   NoError = 0,
 
@@ -73,62 +65,9 @@ enum ErrorKind: byte {
   JSError,
 }
 
-table Cwd {}
-
-table CwdRes {
-  cwd: string;
-}
-
 enum MediaType: byte {
   JavaScript = 0,
   TypeScript,
   Json,
   Unknown
 }
-
-table Base {
-  cmd_id: uint32;
-  sync: bool = false;
-  error_kind: ErrorKind = NoError;
-  error: string;
-  inner: Any;
-}
-
-table FormatError {
-  error: string;
-}
-
-table FormatErrorRes {
-  error: string;
-}
-
-table KeyValue {
-  key: string;
-  value: string;
-}
-
-table Read {
-  rid: uint32;
-  // (ptr, len) is passed as second parameter to Deno.core.send().
-}
-
-table ReadRes {
-  nread: uint;
-  eof: bool;
-}
-
-table Write {
-  rid: uint32;
-}
-
-table WriteRes {
-  nbyte: uint;
-}
-
-table Seek {
-  rid: uint32;
-  offset: int;
-  whence: uint;
-}
-
-root_type Base;

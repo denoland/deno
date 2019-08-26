@@ -10,15 +10,12 @@ import {
   SyncWriter,
   SyncSeeker
 } from "./io";
-import { sendAsyncMinimal } from "./dispatch_minimal";
-import { assert } from "./util";
+import { sendAsyncMinimal, sendSyncMinimal } from "./dispatch_minimal";
 import * as dispatch from "./dispatch";
 import {
   sendSync as sendSyncJson,
   sendAsync as sendAsyncJson
 } from "./dispatch_json";
-import { sendSync, msg, flatbuffers } from "./dispatch_flatbuffers";
-import { OP_READ, OP_WRITE } from "./dispatch";
 
 /** Open a file and return an instance of the `File` object
  *  synchronously.
@@ -44,26 +41,6 @@ export async function open(
   return new File(rid);
 }
 
-function reqRead(
-  rid: number,
-  p: Uint8Array
-): [flatbuffers.Builder, msg.Any, flatbuffers.Offset, Uint8Array] {
-  const builder = flatbuffers.createBuilder();
-  const inner = msg.Read.createRead(builder, rid);
-  return [builder, msg.Any.Read, inner, p];
-}
-
-function resRead(baseRes: null | msg.Base): number | EOF {
-  assert(baseRes != null);
-  assert(msg.Any.ReadRes === baseRes!.innerType());
-  const res = new msg.ReadRes();
-  assert(baseRes!.inner(res) != null);
-  if (res.eof()) {
-    return EOF;
-  }
-  return res.nread();
-}
-
 /** Read synchronously from a file ID into an array buffer.
  *
  * Return `number | EOF` for the operation.
@@ -75,7 +52,14 @@ function resRead(baseRes: null | msg.Base): number | EOF {
  *
  */
 export function readSync(rid: number, p: Uint8Array): number | EOF {
-  return resRead(sendSync(...reqRead(rid, p)));
+  const nread = sendSyncMinimal(dispatch.OP_READ, rid, p);
+  if (nread < 0) {
+    throw new Error("read error");
+  } else if (nread == 0) {
+    return EOF;
+  } else {
+    return nread;
+  }
 }
 
 /** Read from a file ID into an array buffer.
@@ -90,7 +74,7 @@ export function readSync(rid: number, p: Uint8Array): number | EOF {
  *       })();
  */
 export async function read(rid: number, p: Uint8Array): Promise<number | EOF> {
-  const nread = await sendAsyncMinimal(OP_READ, rid, p);
+  const nread = await sendAsyncMinimal(dispatch.OP_READ, rid, p);
   if (nread < 0) {
     throw new Error("read error");
   } else if (nread == 0) {
@@ -98,23 +82,6 @@ export async function read(rid: number, p: Uint8Array): Promise<number | EOF> {
   } else {
     return nread;
   }
-}
-
-function reqWrite(
-  rid: number,
-  p: Uint8Array
-): [flatbuffers.Builder, msg.Any, flatbuffers.Offset, Uint8Array] {
-  const builder = flatbuffers.createBuilder();
-  const inner = msg.Write.createWrite(builder, rid);
-  return [builder, msg.Any.Write, inner, p];
-}
-
-function resWrite(baseRes: null | msg.Base): number {
-  assert(baseRes != null);
-  assert(msg.Any.WriteRes === baseRes!.innerType());
-  const res = new msg.WriteRes();
-  assert(baseRes!.inner(res) != null);
-  return res.nbyte();
 }
 
 /** Write synchronously to the file ID the contents of the array buffer.
@@ -127,7 +94,12 @@ function resWrite(baseRes: null | msg.Base): number {
  *       Deno.writeSync(file.rid, data);
  */
 export function writeSync(rid: number, p: Uint8Array): number {
-  return resWrite(sendSync(...reqWrite(rid, p)));
+  const result = sendSyncMinimal(dispatch.OP_WRITE, rid, p);
+  if (result < 0) {
+    throw new Error("write error");
+  } else {
+    return result;
+  }
 }
 
 /** Write to the file ID the contents of the array buffer.
@@ -143,7 +115,7 @@ export function writeSync(rid: number, p: Uint8Array): number {
  *
  */
 export async function write(rid: number, p: Uint8Array): Promise<number> {
-  let result = await sendAsyncMinimal(OP_WRITE, rid, p);
+  let result = await sendAsyncMinimal(dispatch.OP_WRITE, rid, p);
   if (result < 0) {
     throw new Error("write error");
   } else {
