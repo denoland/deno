@@ -1,6 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as ts from "typescript";
-
 import { assetSourceCode } from "./assets";
 import { bold, cyan, yellow } from "./colors";
 import { Console } from "./console";
@@ -9,7 +8,6 @@ import { Diagnostic, fromTypeScriptDiagnostic } from "./diagnostics";
 import { cwd } from "./dir";
 import * as dispatch from "./dispatch";
 import { sendSync } from "./dispatch_json";
-import { msg } from "./dispatch_flatbuffers";
 import * as os from "./os";
 import { TextEncoder } from "./text_encoding";
 import { getMappedModuleName, parseTypeDirectives } from "./type_directives";
@@ -18,6 +16,9 @@ import * as util from "./util";
 import { window } from "./window";
 import { postMessage, workerClose, workerMain } from "./workers";
 import { writeFileSync } from "./write_file";
+
+// TODO(ry) msg_generated import will be removed soon.
+import * as msg from "gen/cli/msg_generated";
 
 // Startup boilerplate. This is necessary because the compiler has its own
 // snapshot. (It would be great if we could remove these things or centralize
