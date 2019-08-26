@@ -6,15 +6,10 @@ mod gn {
 
 fn main() {
   let build = gn::Build::setup();
-
-  let gn_target = if build.check_only {
-    // When RLS is running "cargo check" to analyze the source code, we're not
-    // trying to build a working executable, rather we're just compiling all
-    // rust code. Therefore, make ninja build only 'msg_generated.rs'.
-    "cli:msg_rs"
-  } else {
-    "cli:deno_deps"
-  };
-
-  build.run(gn_target);
+  // When RLS is running "cargo check" to analyze the source code, we're not
+  // trying to build a working executable, rather we're just compiling all
+  // rust code.
+  if !build.check_only {
+    build.run("cli:deno_deps");
+  }
 }
