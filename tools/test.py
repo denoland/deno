@@ -46,11 +46,11 @@ def main():
         TestDenoDir,
         TestBenchmark,
         TestIsTty,
-        # It is very slow, so do TestFmt at the end.
-        TestFmt,
     ]
     test_cases += permission_prompt_tests()
     test_cases += complex_permissions_tests()
+    # It is very slow, so do TestFmt at the end.
+    test_cases += [TestFmt]
 
     with http_server.spawn():
         run_tests(test_cases)
