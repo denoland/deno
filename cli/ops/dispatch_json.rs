@@ -38,18 +38,9 @@ fn serialize_result(
     Err(err) => json!({ "err": json_err(err), "promiseId": promise_id }),
   };
   let mut vec = serde_json::to_vec(&value).unwrap();
-
   debug!("JSON response pre-align, len={}", vec.len());
-  let len = vec.len();
-  let modulo = len % 4;
-
-  // Pad string with "space" character. Required by shared_queue.
-  if modulo != 0 {
-    let new_len = len + (4 - modulo);
-    vec.resize(new_len, b' ');
-  }
-
-  debug!("JSON response post-align, len={}", vec.len());
+  // Align to 32bit word, padding with the space character.
+  vec.resize((vec.len() + 3usize) & !3usize, b' ');
   vec.into_boxed_slice()
 }
 
