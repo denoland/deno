@@ -1,5 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-// Do not add flatbuffer dependencies to this module.
 import * as util from "./util";
 import { core } from "./core";
 

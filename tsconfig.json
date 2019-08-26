@@ -10,9 +10,6 @@
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
     "noUnusedLocals": true,
-    "paths": {
-      "*": ["*", "target/debug/*", "target/release/*"]
-    },
     "preserveConstEnums": true,
     "pretty": true,
     "removeComments": true,
