@@ -1,14 +1,12 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_flatbuffers::serialize_response;
+// Some deserializer fields are only used on Unix and Windows build fails without it
+#![allow(dead_code)]
 use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
-use super::utils::*;
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
 use crate::fs as deno_fs;
-use crate::msg;
 use crate::state::ThreadSafeState;
 use deno::*;
-use flatbuffers::FlatBufferBuilder;
 use remove_dir_all::remove_dir_all;
 use std::convert::From;
 use std::fs;
@@ -18,99 +16,130 @@ use std::time::UNIX_EPOCH;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
+#[derive(Deserialize)]
+struct ChdirArgs {
+  directory: String,
+}
+
 pub fn op_chdir(
   _state: &ThreadSafeState,
-  base: &msg::Base<'_>,
-  data: Option<PinnedBuf>,
-) -> CliOpResult {
-  assert!(data.is_none());
-  let inner = base.inner_as_chdir().unwrap();
-  let directory = inner.directory().unwrap();
-  std::env::set_current_dir(&directory)?;
-  ok_buf(empty_buf())
+  args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: ChdirArgs = serde_json::from_value(args)?;
+  std::env::set_current_dir(&args.directory)?;
+  Ok(JsonOp::Sync(json!({})))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MkdirArgs {
+  promise_id: Option<u64>,
+  path: String,
+  recursive: bool,
+  mode: u32,
 }
 
 pub fn op_mkdir(
   state: &ThreadSafeState,
-  base: &msg::Base<'_>,
-  data: Option<PinnedBuf>,
-) -> CliOpResult {
-  assert!(data.is_none());
-  let inner = base.inner_as_mkdir().unwrap();
-  let (path, path_) = deno_fs::resolve_from_cwd(inner.path().unwrap())?;
-  let recursive = inner.recursive();
-  let mode = inner.mode();
+  args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: MkdirArgs = serde_json::from_value(args)?;
+  let (path, path_) = deno_fs::resolve_from_cwd(args.path.as_ref())?;
 
   state.check_write(&path_)?;
 
-  blocking(base.sync(), move || {
+  let is_sync = args.promise_id.is_none();
+  blocking_json(is_sync, move || {
     debug!("op_mkdir {}", path_);
-    deno_fs::mkdir(&path, mode, recursive)?;
-    Ok(empty_buf())
+    deno_fs::mkdir(&path, args.mode, args.recursive)?;
+    Ok(json!({}))
   })
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ChmodArgs {
+  promise_id: Option<u64>,
+  path: String,
+  mode: u32,
 }
 
 pub fn op_chmod(
   state: &ThreadSafeState,
-  base: &msg::Base<'_>,
-  data: Option<PinnedBuf>,
-) -> CliOpResult {
-  assert!(data.is_none());
-  let inner = base.inner_as_chmod().unwrap();
-  let _mode = inner.mode();
-  let (path, path_) = deno_fs::resolve_from_cwd(inner.path().unwrap())?;
+  args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: ChmodArgs = serde_json::from_value(args)?;
+  let (path, path_) = deno_fs::resolve_from_cwd(args.path.as_ref())?;
 
   state.check_write(&path_)?;
 
-  blocking(base.sync(), move || {
+  let is_sync = args.promise_id.is_none();
+  blocking_json(is_sync, move || {
     debug!("op_chmod {}", &path_);
     // Still check file/dir exists on windows
     let _metadata = fs::metadata(&path)?;
     #[cfg(any(unix))]
     {
       let mut permissions = _metadata.permissions();
-      permissions.set_mode(_mode);
+      permissions.set_mode(args.mode);
       fs::set_permissions(&path, permissions)?;
     }
-    Ok(empty_buf())
+    Ok(json!({}))
   })
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ChownArgs {
+  promise_id: Option<u64>,
+  path: String,
+  uid: u32,
+  gid: u32,
 }
 
 pub fn op_chown(
   state: &ThreadSafeState,
-  base: &msg::Base<'_>,
-  data: Option<PinnedBuf>,
-) -> CliOpResult {
-  assert!(data.is_none());
-  let inner = base.inner_as_chown().unwrap();
-  let path = String::from(inner.path().unwrap());
-  let uid = inner.uid();
-  let gid = inner.gid();
+  args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: ChownArgs = serde_json::from_value(args)?;
 
-  state.check_write(&path)?;
+  state.check_write(&args.path)?;
 
-  blocking(base.sync(), move || {
-    debug!("op_chown {}", &path);
-    match deno_fs::chown(&path, uid, gid) {
-      Ok(_) => Ok(empty_buf()),
+  let is_sync = args.promise_id.is_none();
+  blocking_json(is_sync, move || {
+    debug!("op_chown {}", &args.path);
+    match deno_fs::chown(args.path.as_ref(), args.uid, args.gid) {
+      Ok(_) => Ok(json!({})),
       Err(e) => Err(e),
     }
   })
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RemoveArgs {
+  promise_id: Option<u64>,
+  path: String,
+  recursive: bool,
+}
+
 pub fn op_remove(
   state: &ThreadSafeState,
-  base: &msg::Base<'_>,
-  data: Option<PinnedBuf>,
-) -> CliOpResult {
-  assert!(data.is_none());
-  let inner = base.inner_as_remove().unwrap();
-  let (path, path_) = deno_fs::resolve_from_cwd(inner.path().unwrap())?;
-  let recursive = inner.recursive();
+  args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: RemoveArgs = serde_json::from_value(args)?;
+  let (path, path_) = deno_fs::resolve_from_cwd(args.path.as_ref())?;
+  let recursive = args.recursive;
 
   state.check_write(&path_)?;
 
-  blocking(base.sync(), move || {
+  let is_sync = args.promise_id.is_none();
+  blocking_json(is_sync, move || {
     debug!("op_remove {}", path.display());
     let metadata = fs::metadata(&path)?;
     if metadata.is_file() {
@@ -120,25 +149,34 @@ pub fn op_remove(
     } else {
       fs::remove_dir(&path)?;
     }
-    Ok(empty_buf())
+    Ok(json!({}))
   })
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CopyFileArgs {
+  promise_id: Option<u64>,
+  from: String,
+  to: String,
 }
 
 pub fn op_copy_file(
   state: &ThreadSafeState,
-  base: &msg::Base<'_>,
-  data: Option<PinnedBuf>,
-) -> CliOpResult {
-  assert!(data.is_none());
-  let inner = base.inner_as_copy_file().unwrap();
-  let (from, from_) = deno_fs::resolve_from_cwd(inner.from().unwrap())?;
-  let (to, to_) = deno_fs::resolve_from_cwd(inner.to().unwrap())?;
+  args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: CopyFileArgs = serde_json::from_value(args)?;
+
+  let (from, from_) = deno_fs::resolve_from_cwd(args.from.as_ref())?;
+  let (to, to_) = deno_fs::resolve_from_cwd(args.to.as_ref())?;
 
   state.check_read(&from_)?;
   state.check_write(&to_)?;
 
   debug!("op_copy_file {} {}", from.display(), to.display());
-  blocking(base.sync(), move || {
+  let is_sync = args.promise_id.is_none();
+  blocking_json(is_sync, move || {
     // On *nix, Rust deem non-existent path as invalid input
     // See https://github.com/rust-lang/rust/issues/54800
     // Once the issue is reolved, we should remove this workaround.
@@ -150,7 +188,7 @@ pub fn op_copy_file(
     }
 
     fs::copy(&from, &to)?;
-    Ok(empty_buf())
+    Ok(json!({}))
   })
 }
 
@@ -174,22 +212,29 @@ fn get_mode(_perm: &fs::Permissions) -> u32 {
   0
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StatArgs {
+  promise_id: Option<u64>,
+  filename: String,
+  lstat: bool,
+}
+
 pub fn op_stat(
   state: &ThreadSafeState,
-  base: &msg::Base<'_>,
-  data: Option<PinnedBuf>,
-) -> CliOpResult {
-  assert!(data.is_none());
-  let inner = base.inner_as_stat().unwrap();
-  let cmd_id = base.cmd_id();
+  args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: StatArgs = serde_json::from_value(args)?;
+
   let (filename, filename_) =
-    deno_fs::resolve_from_cwd(inner.filename().unwrap())?;
-  let lstat = inner.lstat();
+    deno_fs::resolve_from_cwd(args.filename.as_ref())?;
+  let lstat = args.lstat;
 
   state.check_read(&filename_)?;
 
-  blocking(base.sync(), move || {
-    let builder = &mut FlatBufferBuilder::new();
+  let is_sync = args.promise_id.is_none();
+  blocking_json(is_sync, move || {
     debug!("op_stat {} {}", filename.display(), lstat);
     let metadata = if lstat {
       fs::symlink_metadata(&filename)?
@@ -197,146 +242,140 @@ pub fn op_stat(
       fs::metadata(&filename)?
     };
 
-    let inner = msg::StatRes::create(
-      builder,
-      &msg::StatResArgs {
-        is_file: metadata.is_file(),
-        is_symlink: metadata.file_type().is_symlink(),
-        len: metadata.len(),
-        modified: to_seconds!(metadata.modified()),
-        accessed: to_seconds!(metadata.accessed()),
-        created: to_seconds!(metadata.created()),
-        mode: get_mode(&metadata.permissions()),
-        has_mode: cfg!(target_family = "unix"),
-        ..Default::default()
-      },
-    );
-
-    Ok(serialize_response(
-      cmd_id,
-      builder,
-      msg::BaseArgs {
-        inner: Some(inner.as_union_value()),
-        inner_type: msg::Any::StatRes,
-        ..Default::default()
-      },
-    ))
+    Ok(json!({
+      "isFile": metadata.is_file(),
+      "isSymlink": metadata.file_type().is_symlink(),
+      "len": metadata.len(),
+      "modified":to_seconds!(metadata.modified()),
+      "accessed":to_seconds!(metadata.accessed()),
+      "created":to_seconds!(metadata.created()),
+      "mode": get_mode(&metadata.permissions()),
+      "hasMode": cfg!(target_family = "unix"), // false on windows,
+    }))
   })
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReadDirArgs {
+  promise_id: Option<u64>,
+  path: String,
 }
 
 pub fn op_read_dir(
   state: &ThreadSafeState,
-  base: &msg::Base<'_>,
-  data: Option<PinnedBuf>,
-) -> CliOpResult {
-  assert!(data.is_none());
-  let inner = base.inner_as_read_dir().unwrap();
-  let cmd_id = base.cmd_id();
-  let (path, path_) = deno_fs::resolve_from_cwd(inner.path().unwrap())?;
+  args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: ReadDirArgs = serde_json::from_value(args)?;
+  let (path, path_) = deno_fs::resolve_from_cwd(args.path.as_ref())?;
 
   state.check_read(&path_)?;
 
-  blocking(base.sync(), move || {
+  let is_sync = args.promise_id.is_none();
+  blocking_json(is_sync, move || {
     debug!("op_read_dir {}", path.display());
-    let builder = &mut FlatBufferBuilder::new();
+
     let entries: Vec<_> = fs::read_dir(path)?
       .map(|entry| {
         let entry = entry.unwrap();
         let metadata = entry.metadata().unwrap();
         let file_type = metadata.file_type();
-        let name = builder.create_string(entry.file_name().to_str().unwrap());
 
-        msg::StatRes::create(
-          builder,
-          &msg::StatResArgs {
-            is_file: file_type.is_file(),
-            is_symlink: file_type.is_symlink(),
-            len: metadata.len(),
-            modified: to_seconds!(metadata.modified()),
-            accessed: to_seconds!(metadata.accessed()),
-            created: to_seconds!(metadata.created()),
-            name: Some(name),
-            mode: get_mode(&metadata.permissions()),
-            has_mode: cfg!(target_family = "unix"),
-          },
-        )
+        json!({
+          "isFile": file_type.is_file(),
+          "isSymlink": file_type.is_symlink(),
+          "len": metadata.len(),
+          "modified": to_seconds!(metadata.modified()),
+          "accessed": to_seconds!(metadata.accessed()),
+          "created": to_seconds!(metadata.created()),
+          "mode": get_mode(&metadata.permissions()),
+          "name": entry.file_name().to_str().unwrap(),
+          "hasMode": cfg!(target_family = "unix"), // false on windows,
+        })
       })
       .collect();
 
-    let entries = builder.create_vector(&entries);
-    let inner = msg::ReadDirRes::create(
-      builder,
-      &msg::ReadDirResArgs {
-        entries: Some(entries),
-      },
-    );
-    Ok(serialize_response(
-      cmd_id,
-      builder,
-      msg::BaseArgs {
-        inner: Some(inner.as_union_value()),
-        inner_type: msg::Any::ReadDirRes,
-        ..Default::default()
-      },
-    ))
+    Ok(json!({ "entries": entries }))
   })
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RenameArgs {
+  promise_id: Option<u64>,
+  oldpath: String,
+  newpath: String,
 }
 
 pub fn op_rename(
   state: &ThreadSafeState,
-  base: &msg::Base<'_>,
-  data: Option<PinnedBuf>,
-) -> CliOpResult {
-  assert!(data.is_none());
-  let inner = base.inner_as_rename().unwrap();
-  let (oldpath, oldpath_) =
-    deno_fs::resolve_from_cwd(inner.oldpath().unwrap())?;
-  let (newpath, newpath_) =
-    deno_fs::resolve_from_cwd(inner.newpath().unwrap())?;
+  args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: RenameArgs = serde_json::from_value(args)?;
+
+  let (oldpath, oldpath_) = deno_fs::resolve_from_cwd(args.oldpath.as_ref())?;
+  let (newpath, newpath_) = deno_fs::resolve_from_cwd(args.newpath.as_ref())?;
 
   state.check_read(&oldpath_)?;
   state.check_write(&oldpath_)?;
   state.check_write(&newpath_)?;
 
-  blocking(base.sync(), move || {
+  let is_sync = args.promise_id.is_none();
+  blocking_json(is_sync, move || {
     debug!("op_rename {} {}", oldpath.display(), newpath.display());
     fs::rename(&oldpath, &newpath)?;
-    Ok(empty_buf())
+    Ok(json!({}))
   })
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LinkArgs {
+  promise_id: Option<u64>,
+  oldname: String,
+  newname: String,
 }
 
 pub fn op_link(
   state: &ThreadSafeState,
-  base: &msg::Base<'_>,
-  data: Option<PinnedBuf>,
-) -> CliOpResult {
-  assert!(data.is_none());
-  let inner = base.inner_as_link().unwrap();
-  let (oldname, oldpath_) =
-    deno_fs::resolve_from_cwd(inner.oldname().unwrap())?;
-  let (newname, newname_) =
-    deno_fs::resolve_from_cwd(inner.newname().unwrap())?;
+  args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: LinkArgs = serde_json::from_value(args)?;
 
-  state.check_read(&oldpath_)?;
+  let (oldname, oldname_) = deno_fs::resolve_from_cwd(args.oldname.as_ref())?;
+  let (newname, newname_) = deno_fs::resolve_from_cwd(args.newname.as_ref())?;
+
+  state.check_read(&oldname_)?;
   state.check_write(&newname_)?;
 
-  blocking(base.sync(), move || {
+  let is_sync = args.promise_id.is_none();
+  blocking_json(is_sync, move || {
     debug!("op_link {} {}", oldname.display(), newname.display());
     std::fs::hard_link(&oldname, &newname)?;
-    Ok(empty_buf())
+    Ok(json!({}))
   })
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SymlinkArgs {
+  promise_id: Option<u64>,
+  oldname: String,
+  newname: String,
 }
 
 pub fn op_symlink(
   state: &ThreadSafeState,
-  base: &msg::Base<'_>,
-  data: Option<PinnedBuf>,
-) -> CliOpResult {
-  assert!(data.is_none());
-  let inner = base.inner_as_symlink().unwrap();
-  let (oldname, _) = deno_fs::resolve_from_cwd(inner.oldname().unwrap())?;
-  let (newname, newname_) =
-    deno_fs::resolve_from_cwd(inner.newname().unwrap())?;
+  args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: SymlinkArgs = serde_json::from_value(args)?;
+
+  let (oldname, _oldname_) = deno_fs::resolve_from_cwd(args.oldname.as_ref())?;
+  let (newname, newname_) = deno_fs::resolve_from_cwd(args.newname.as_ref())?;
 
   state.check_write(&newname_)?;
   // TODO Use type for Windows.
@@ -345,88 +384,97 @@ pub fn op_symlink(
       DenoError::new(ErrorKind::Other, "Not implemented".to_string()).into(),
     );
   }
-  blocking(base.sync(), move || {
+  let is_sync = args.promise_id.is_none();
+  blocking_json(is_sync, move || {
     debug!("op_symlink {} {}", oldname.display(), newname.display());
     #[cfg(any(unix))]
     std::os::unix::fs::symlink(&oldname, &newname)?;
-    Ok(empty_buf())
+    Ok(json!({}))
   })
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReadLinkArgs {
+  promise_id: Option<u64>,
+  name: String,
 }
 
 pub fn op_read_link(
   state: &ThreadSafeState,
-  base: &msg::Base<'_>,
-  data: Option<PinnedBuf>,
-) -> CliOpResult {
-  assert!(data.is_none());
-  let inner = base.inner_as_readlink().unwrap();
-  let cmd_id = base.cmd_id();
-  let (name, name_) = deno_fs::resolve_from_cwd(inner.name().unwrap())?;
+  args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: ReadLinkArgs = serde_json::from_value(args)?;
+
+  let (name, name_) = deno_fs::resolve_from_cwd(args.name.as_ref())?;
 
   state.check_read(&name_)?;
 
-  blocking(base.sync(), move || {
+  let is_sync = args.promise_id.is_none();
+  blocking_json(is_sync, move || {
     debug!("op_read_link {}", name.display());
     let path = fs::read_link(&name)?;
-    let builder = &mut FlatBufferBuilder::new();
-    let path_off = builder.create_string(path.to_str().unwrap());
-    let inner = msg::ReadlinkRes::create(
-      builder,
-      &msg::ReadlinkResArgs {
-        path: Some(path_off),
-      },
-    );
-    Ok(serialize_response(
-      cmd_id,
-      builder,
-      msg::BaseArgs {
-        inner: Some(inner.as_union_value()),
-        inner_type: msg::Any::ReadlinkRes,
-        ..Default::default()
-      },
-    ))
+    let path_str = path.to_str().unwrap();
+
+    Ok(json!(path_str))
   })
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TruncateArgs {
+  promise_id: Option<u64>,
+  name: String,
+  len: u64,
 }
 
 pub fn op_truncate(
   state: &ThreadSafeState,
-  base: &msg::Base<'_>,
-  data: Option<PinnedBuf>,
-) -> CliOpResult {
-  assert!(data.is_none());
+  args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: TruncateArgs = serde_json::from_value(args)?;
 
-  let inner = base.inner_as_truncate().unwrap();
-  let (filename, filename_) = deno_fs::resolve_from_cwd(inner.name().unwrap())?;
-  let len = inner.len();
+  let (filename, filename_) = deno_fs::resolve_from_cwd(args.name.as_ref())?;
+  let len = args.len;
 
   state.check_write(&filename_)?;
 
-  blocking(base.sync(), move || {
+  let is_sync = args.promise_id.is_none();
+  blocking_json(is_sync, move || {
     debug!("op_truncate {} {}", filename_, len);
     let f = fs::OpenOptions::new().write(true).open(&filename)?;
-    f.set_len(u64::from(len))?;
-    Ok(empty_buf())
+    f.set_len(len)?;
+    Ok(json!({}))
   })
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MakeTempDirArgs {
+  promise_id: Option<u64>,
+  dir: Option<String>,
+  prefix: Option<String>,
+  suffix: Option<String>,
 }
 
 pub fn op_make_temp_dir(
   state: &ThreadSafeState,
-  base: &msg::Base<'_>,
-  data: Option<PinnedBuf>,
-) -> CliOpResult {
-  assert!(data.is_none());
-  let base = Box::new(*base);
-  let inner = base.inner_as_make_temp_dir().unwrap();
-  let cmd_id = base.cmd_id();
+  args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: MakeTempDirArgs = serde_json::from_value(args)?;
 
   // FIXME
   state.check_write("make_temp")?;
 
-  let dir = inner.dir().map(PathBuf::from);
-  let prefix = inner.prefix().map(String::from);
-  let suffix = inner.suffix().map(String::from);
+  let dir = args.dir.map(PathBuf::from);
+  let prefix = args.prefix.map(String::from);
+  let suffix = args.suffix.map(String::from);
 
-  blocking(base.sync(), move || {
+  let is_sync = args.promise_id.is_none();
+  blocking_json(is_sync, move || {
     // TODO(piscisaureus): use byte vector for paths, not a string.
     // See https://github.com/denoland/deno/issues/627.
     // We can't assume that paths are always valid utf8 strings.
@@ -436,23 +484,9 @@ pub fn op_make_temp_dir(
       prefix.as_ref().map(|x| &**x),
       suffix.as_ref().map(|x| &**x),
     )?;
-    let builder = &mut FlatBufferBuilder::new();
-    let path_off = builder.create_string(path.to_str().unwrap());
-    let inner = msg::MakeTempDirRes::create(
-      builder,
-      &msg::MakeTempDirResArgs {
-        path: Some(path_off),
-      },
-    );
-    Ok(serialize_response(
-      cmd_id,
-      builder,
-      msg::BaseArgs {
-        inner: Some(inner.as_union_value()),
-        inner_type: msg::Any::MakeTempDirRes,
-        ..Default::default()
-      },
-    ))
+    let path_str = path.to_str().unwrap();
+
+    Ok(json!(path_str))
   })
 }
 
@@ -482,24 +516,10 @@ pub fn op_utime(
 
 pub fn op_cwd(
   _state: &ThreadSafeState,
-  base: &msg::Base<'_>,
-  data: Option<PinnedBuf>,
-) -> CliOpResult {
-  assert!(data.is_none());
-  let cmd_id = base.cmd_id();
+  _args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
   let path = std::env::current_dir()?;
-  let builder = &mut FlatBufferBuilder::new();
-  let cwd =
-    builder.create_string(&path.into_os_string().into_string().unwrap());
-  let inner = msg::CwdRes::create(builder, &msg::CwdResArgs { cwd: Some(cwd) });
-  let response_buf = serialize_response(
-    cmd_id,
-    builder,
-    msg::BaseArgs {
-      inner: Some(inner.as_union_value()),
-      inner_type: msg::Any::CwdRes,
-      ..Default::default()
-    },
-  );
-  ok_buf(response_buf)
+  let path_str = path.into_os_string().into_string().unwrap();
+  Ok(JsonOp::Sync(json!(path_str)))
 }

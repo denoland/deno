@@ -1,27 +1,7 @@
 union Any {
-  Chdir,
-  Chmod,
-  Chown,
-  CopyFile,
-  Cwd,
-  CwdRes,
-  Link,
-  MakeTempDir,
-  MakeTempDirRes,
-  Mkdir,
   Read,
-  ReadDir,
-  ReadDirRes,
   ReadRes,
-  Readlink,
-  ReadlinkRes,
-  Remove,
-  Rename,
   Seek,
-  Stat,
-  StatRes,
-  Symlink,
-  Truncate,
   Write,
   WriteRes,
 }
@@ -122,103 +102,9 @@ table FormatErrorRes {
   error: string;
 }
 
-table Chdir {
-  directory: string;
-}
-
 table KeyValue {
   key: string;
   value: string;
-}
-
-table MakeTempDir {
-  dir: string;
-  prefix: string;
-  suffix: string;
-}
-
-table MakeTempDirRes {
-  path: string;
-}
-
-table Mkdir {
-  path: string;
-  recursive: bool;
-  mode: uint; // Specified by https://godoc.org/os#FileMode
-}
-
-table Chmod {
-  path: string;
-  mode: uint; // Specified by https://godoc.org/os#FileMode
-}
-
-table Chown {
-  path: string;
-  uid: uint;
-  gid: uint;  // Specified by https://godoc.org/os#Chown
-}
-
-table Remove {
-  path: string;
-  recursive: bool;
-}
-
-table ReadDir {
-  path: string;
-}
-
-table ReadDirRes {
-  entries: [StatRes];
-}
-
-table CopyFile {
-  from: string;
-  to: string;
-}
-
-table Rename {
-  oldpath: string;
-  newpath: string;
-}
-
-table Readlink {
-  name: string;
-}
-
-table ReadlinkRes {
-  path: string;
-}
-
-table Symlink {
-  oldname: string;
-  newname: string;
-}
-
-table Link {
-  oldname: string;
-  newname: string;
-}
-
-table Stat {
-  filename: string;
-  lstat: bool;
-}
-
-table StatRes {
-  is_file: bool;
-  is_symlink: bool;
-  len: ulong;
-  modified:ulong;
-  accessed:ulong;
-  created:ulong;
-  mode: uint;
-  has_mode: bool; // false on windows
-  name: string;
-}
-
-table Truncate {
-  name: string;
-  len: uint;
 }
 
 table Read {

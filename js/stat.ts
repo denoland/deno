@@ -1,24 +1,18 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { sendSync, sendAsync, msg, flatbuffers } from "./dispatch_flatbuffers";
-import { assert } from "./util";
+import { sendSync, sendAsync } from "./dispatch_json";
+import * as dispatch from "./dispatch";
 import { FileInfo, FileInfoImpl } from "./file_info";
 
-function req(
-  filename: string,
-  lstat: boolean
-): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
-  const builder = flatbuffers.createBuilder();
-  const filename_ = builder.createString(filename);
-  const inner = msg.Stat.createStat(builder, filename_, lstat);
-  return [builder, msg.Any.Stat, inner];
-}
-
-function res(baseRes: null | msg.Base): FileInfo {
-  assert(baseRes != null);
-  assert(msg.Any.StatRes === baseRes!.innerType());
-  const res = new msg.StatRes();
-  assert(baseRes!.inner(res) != null);
-  return new FileInfoImpl(res);
+export interface StatResponse {
+  isFile: boolean;
+  isSymlink: boolean;
+  len: number;
+  modified: number;
+  accessed: number;
+  created: number;
+  mode: number;
+  hasMode: boolean; // false on windows
+  name: string | null;
 }
 
 /** Queries the file system for information on the path provided. If the given
@@ -28,7 +22,11 @@ function res(baseRes: null | msg.Base): FileInfo {
  *       assert(fileInfo.isFile());
  */
 export async function lstat(filename: string): Promise<FileInfo> {
-  return res(await sendAsync(...req(filename, true)));
+  const res = (await sendAsync(dispatch.OP_STAT, {
+    filename,
+    lstat: true
+  })) as StatResponse;
+  return new FileInfoImpl(res);
 }
 
 /** Queries the file system for information on the path provided synchronously.
@@ -39,7 +37,11 @@ export async function lstat(filename: string): Promise<FileInfo> {
  *       assert(fileInfo.isFile());
  */
 export function lstatSync(filename: string): FileInfo {
-  return res(sendSync(...req(filename, true)));
+  const res = sendSync(dispatch.OP_STAT, {
+    filename,
+    lstat: true
+  }) as StatResponse;
+  return new FileInfoImpl(res);
 }
 
 /** Queries the file system for information on the path provided. `stat` Will
@@ -49,7 +51,11 @@ export function lstatSync(filename: string): FileInfo {
  *       assert(fileInfo.isFile());
  */
 export async function stat(filename: string): Promise<FileInfo> {
-  return res(await sendAsync(...req(filename, false)));
+  const res = (await sendAsync(dispatch.OP_STAT, {
+    filename,
+    lstat: false
+  })) as StatResponse;
+  return new FileInfoImpl(res);
 }
 
 /** Queries the file system for information on the path provided synchronously.
@@ -59,5 +65,9 @@ export async function stat(filename: string): Promise<FileInfo> {
  *       assert(fileInfo.isFile());
  */
 export function statSync(filename: string): FileInfo {
-  return res(sendSync(...req(filename, false)));
+  const res = sendSync(dispatch.OP_STAT, {
+    filename,
+    lstat: false
+  }) as StatResponse;
+  return new FileInfoImpl(res);
 }
