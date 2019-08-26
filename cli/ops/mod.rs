@@ -3,7 +3,6 @@ use crate::state::ThreadSafeState;
 use deno::*;
 
 mod compiler;
-mod dispatch_flatbuffers;
 mod dispatch_json;
 mod dispatch_minimal;
 mod errors;
@@ -26,7 +25,6 @@ mod workers;
 
 // Warning! These values are duplicated in the TypeScript code (js/dispatch.ts),
 // update with care.
-pub const OP_FLATBUFFER: OpId = 100;
 pub const OP_READ: OpId = 1;
 pub const OP_WRITE: OpId = 2;
 pub const OP_EXIT: OpId = 3;
@@ -296,7 +294,6 @@ pub fn dispatch(
       dispatch_json::dispatch(fs::op_make_temp_dir, state, control, zero_copy)
     }
     OP_CWD => dispatch_json::dispatch(fs::op_cwd, state, control, zero_copy),
-    OP_FLATBUFFER => dispatch_flatbuffers::dispatch(state, control, zero_copy),
     _ => panic!("bad op_id"),
   };
 

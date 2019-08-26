@@ -4,6 +4,9 @@ import * as util from "./util";
 import { core } from "./core";
 
 const promiseTableMin = new Map<number, util.Resolvable<number>>();
+// Note it's important that promiseId starts at 1 instead of 0, because sync
+// messages are indicated with promiseId 0. If we ever add wrap around logic for
+// overflows, this should be taken into account.
 let _nextPromiseId = 1;
 
 function nextPromiseId(): number {
@@ -62,4 +65,17 @@ export function sendAsyncMinimal(
   promiseTableMin.set(promiseId, promise);
   core.dispatch(opId, scratchBytes, zeroCopy);
   return promise;
+}
+
+export function sendSyncMinimal(
+  opId: number,
+  arg: number,
+  zeroCopy: Uint8Array
+): number {
+  scratch32[0] = 0; // promiseId 0 indicates sync
+  scratch32[1] = arg;
+  const res = core.dispatch(opId, scratchBytes, zeroCopy)!;
+  const res32 = new Int32Array(res.buffer, res.byteOffset, 3);
+  const resRecord = recordFromBufMinimal(opId, res32);
+  return resRecord.result;
 }

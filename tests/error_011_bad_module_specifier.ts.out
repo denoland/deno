@@ -2,7 +2,7 @@
 [WILDCARD] js/dispatch_json.ts:[WILDCARD]
     at DenoError (js/errors.ts:[WILDCARD])
     at toDenoError (js/dispatch_json.ts:[WILDCARD])
-    at sendSync$1 (js/dispatch_json.ts:[WILDCARD])
+    at sendSync[WILDCARD] (js/dispatch_json.ts:[WILDCARD])
     at fetchSourceFile (js/compiler.ts:[WILDCARD])
     at _resolveModule (js/compiler.ts:[WILDCARD])
     at js/compiler.ts:[WILDCARD]
