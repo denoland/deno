@@ -785,12 +785,12 @@ pub mod tests {
         Mode::AsyncImmediate => {
           assert_eq!(control.len(), 1);
           assert_eq!(control[0], 42);
-          let buf = vec![43u8].into_boxed_slice();
+          let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
           Op::Async(Box::new(futures::future::ok(buf)))
         }
         Mode::OverflowReqSync => {
           assert_eq!(control.len(), 100 * 1024 * 1024);
-          let buf = vec![43u8].into_boxed_slice();
+          let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
           Op::Sync(buf)
         }
         Mode::OverflowResSync => {
@@ -804,7 +804,7 @@ pub mod tests {
         }
         Mode::OverflowReqAsync => {
           assert_eq!(control.len(), 100 * 1024 * 1024);
-          let buf = vec![43u8].into_boxed_slice();
+          let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
           Op::Async(Box::new(futures::future::ok(buf)))
         }
         Mode::OverflowResAsync => {
@@ -1211,7 +1211,7 @@ pub mod tests {
         let control = new Uint8Array(100 * 1024 * 1024);
         let response = Deno.core.dispatch(99, control);
         assert(response instanceof Uint8Array);
-        assert(response.length == 1);
+        assert(response.length == 4);
         assert(response[0] == 43);
         assert(asyncRecv == 0);
         "#,
@@ -1251,7 +1251,7 @@ pub mod tests {
         let asyncRecv = 0;
         Deno.core.setAsyncHandler((opId, buf) => {
           assert(opId == 99);
-          assert(buf.byteLength === 1);
+          assert(buf.byteLength === 4);
           assert(buf[0] === 43);
           asyncRecv++;
         });

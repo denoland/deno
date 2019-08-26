@@ -159,9 +159,19 @@ impl SharedQueue {
     Some((op_id, &self.bytes[off..end]))
   }
 
+  /// Because JS-side may cast `record` to Int32Array it is required
+  /// that `record`'s length is divisible by 4.
   pub fn push(&mut self, op_id: OpId, record: &[u8]) -> bool {
     let off = self.head();
     let end = off + record.len();
+    debug!(
+      "rust:shared_queue:pre-push: op={}, off={}, end={}, len={}",
+      op_id,
+      off,
+      end,
+      record.len()
+    );
+    assert_eq!(record.len() % 4, 0);
     let index = self.num_records();
     if end > self.bytes.len() || index >= MAX_RECORDS {
       debug!("WARNING the sharedQueue overflowed");
@@ -195,31 +205,31 @@ mod tests {
     let h = q.head();
     assert!(h > 0);
 
-    let r = vec![1u8, 2, 3, 4, 5].into_boxed_slice();
+    let r = vec![1u8, 2, 3, 4].into_boxed_slice();
     let len = r.len() + h;
     assert!(q.push(0, &r));
     assert_eq!(q.head(), len);
 
-    let r = vec![6, 7].into_boxed_slice();
+    let r = vec![5, 6, 7, 8].into_boxed_slice();
     assert!(q.push(0, &r));
 
-    let r = vec![8, 9, 10, 11].into_boxed_slice();
+    let r = vec![9, 10, 11, 12].into_boxed_slice();
     assert!(q.push(0, &r));
     assert_eq!(q.num_records(), 3);
     assert_eq!(q.size(), 3);
 
     let (_op_id, r) = q.shift().unwrap();
-    assert_eq!(r, vec![1, 2, 3, 4, 5].as_slice());
+    assert_eq!(r, vec![1, 2, 3, 4].as_slice());
     assert_eq!(q.num_records(), 3);
     assert_eq!(q.size(), 2);
 
     let (_op_id, r) = q.shift().unwrap();
-    assert_eq!(r, vec![6, 7].as_slice());
+    assert_eq!(r, vec![5, 6, 7, 8].as_slice());
     assert_eq!(q.num_records(), 3);
     assert_eq!(q.size(), 1);
 
     let (_op_id, r) = q.shift().unwrap();
-    assert_eq!(r, vec![8, 9, 10, 11].as_slice());
+    assert_eq!(r, vec![9, 10, 11, 12].as_slice());
     assert_eq!(q.num_records(), 0);
     assert_eq!(q.size(), 0);
 
@@ -239,21 +249,21 @@ mod tests {
   #[test]
   fn overflow() {
     let mut q = SharedQueue::new(RECOMMENDED_SIZE);
-    assert!(q.push(0, &alloc_buf(RECOMMENDED_SIZE - 1)));
+    assert!(q.push(0, &alloc_buf(RECOMMENDED_SIZE - 4)));
     assert_eq!(q.size(), 1);
-    assert!(!q.push(0, &alloc_buf(2)));
+    assert!(!q.push(0, &alloc_buf(8)));
     assert_eq!(q.size(), 1);
-    assert!(q.push(0, &alloc_buf(1)));
+    assert!(q.push(0, &alloc_buf(4)));
     assert_eq!(q.size(), 2);
 
     let (_op_id, buf) = q.shift().unwrap();
-    assert_eq!(buf.len(), RECOMMENDED_SIZE - 1);
+    assert_eq!(buf.len(), RECOMMENDED_SIZE - 4);
     assert_eq!(q.size(), 1);
 
-    assert!(!q.push(0, &alloc_buf(1)));
+    assert!(!q.push(0, &alloc_buf(4)));
 
     let (_op_id, buf) = q.shift().unwrap();
-    assert_eq!(buf.len(), 1);
+    assert_eq!(buf.len(), 4);
     assert_eq!(q.size(), 0);
   }
 
@@ -261,11 +271,19 @@ mod tests {
   fn full_records() {
     let mut q = SharedQueue::new(RECOMMENDED_SIZE);
     for _ in 0..MAX_RECORDS {
-      assert!(q.push(0, &alloc_buf(1)))
+      assert!(q.push(0, &alloc_buf(4)))
     }
-    assert_eq!(q.push(0, &alloc_buf(1)), false);
+    assert_eq!(q.push(0, &alloc_buf(4)), false);
     // Even if we shift one off, we still cannot push a new record.
     let _ignored = q.shift().unwrap();
-    assert_eq!(q.push(0, &alloc_buf(1)), false);
+    assert_eq!(q.push(0, &alloc_buf(4)), false);
+  }
+
+  #[test]
+  #[should_panic]
+  fn bad_buf_length() {
+    let mut q = SharedQueue::new(RECOMMENDED_SIZE);
+    // check that `record` that has length not a multiple of 4 will cause panic
+    q.push(0, &alloc_buf(3));
   }
 }
