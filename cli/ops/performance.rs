@@ -1,10 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_flatbuffers::serialize_response;
-use super::utils::*;
-use crate::msg;
+use super::dispatch_json::{JsonOp, Value};
 use crate::state::ThreadSafeState;
 use deno::*;
-use flatbuffers::FlatBufferBuilder;
 
 // Returns a milliseconds and nanoseconds subsec
 // since the start time of the deno runtime.
@@ -12,10 +9,9 @@ use flatbuffers::FlatBufferBuilder;
 // nanoseconds are rounded on 2ms.
 pub fn op_now(
   state: &ThreadSafeState,
-  base: &msg::Base<'_>,
-  data: Option<PinnedBuf>,
-) -> CliOpResult {
-  assert!(data.is_none());
+  _args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
   let seconds = state.start_time.elapsed().as_secs();
   let mut subsec_nanos = state.start_time.elapsed().subsec_nanos();
   let reduced_time_precision = 2_000_000; // 2ms in nanoseconds
@@ -27,22 +23,8 @@ pub fn op_now(
     subsec_nanos -= subsec_nanos % reduced_time_precision
   }
 
-  let builder = &mut FlatBufferBuilder::new();
-  let inner = msg::NowRes::create(
-    builder,
-    &msg::NowResArgs {
-      seconds,
-      subsec_nanos,
-    },
-  );
-
-  ok_buf(serialize_response(
-    base.cmd_id(),
-    builder,
-    msg::BaseArgs {
-      inner: Some(inner.as_union_value()),
-      inner_type: msg::Any::NowRes,
-      ..Default::default()
-    },
-  ))
+  Ok(JsonOp::Sync(json!({
+    "seconds": seconds,
+    "subsecNanos": subsec_nanos,
+  })))
 }

@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { sendSync, msg, flatbuffers } from "./dispatch_flatbuffers";
-import { assert } from "./util";
+import * as dispatch from "./dispatch";
+import { sendSync } from "./dispatch_json";
 
 /** Permissions as granted by the caller */
 export interface Permissions {
@@ -15,23 +15,6 @@ export interface Permissions {
 
 export type Permission = keyof Permissions;
 
-function getReq(): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
-  const builder = flatbuffers.createBuilder();
-  const inner = msg.Permissions.createPermissions(builder);
-  return [builder, msg.Any.Permissions, inner];
-}
-
-function createPermissions(inner: msg.PermissionsRes): Permissions {
-  return {
-    read: inner.read(),
-    write: inner.write(),
-    net: inner.net(),
-    env: inner.env(),
-    run: inner.run(),
-    hrtime: inner.hrtime()
-  };
-}
-
 /** Inspect granted permissions for the current program.
  *
  *       if (Deno.permissions().read) {
@@ -40,24 +23,7 @@ function createPermissions(inner: msg.PermissionsRes): Permissions {
  *       }
  */
 export function permissions(): Permissions {
-  const baseRes = sendSync(...getReq())!;
-  assert(msg.Any.PermissionsRes === baseRes.innerType());
-  const res = new msg.PermissionsRes();
-  assert(baseRes.inner(res) != null);
-  // TypeScript cannot track assertion above, therefore not null assertion
-  return createPermissions(res);
-}
-
-function revokeReq(
-  permission: string
-): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
-  const builder = flatbuffers.createBuilder();
-  const permission_ = builder.createString(permission);
-  const inner = msg.PermissionRevoke.createPermissionRevoke(
-    builder,
-    permission_
-  );
-  return [builder, msg.Any.PermissionRevoke, inner];
+  return sendSync(dispatch.OP_PERMISSIONS) as Permissions;
 }
 
 /** Revoke a permission. When the permission was already revoked nothing changes
@@ -69,5 +35,5 @@ function revokeReq(
  *       Deno.readFile("example.test"); // -> error or permission prompt
  */
 export function revokePermission(permission: Permission): void {
-  sendSync(...revokeReq(permission));
+  sendSync(dispatch.OP_REVOKE_PERMISSION, { permission });
 }

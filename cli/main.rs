@@ -32,7 +32,6 @@ mod http_body;
 mod http_util;
 mod import_map;
 pub mod msg;
-pub mod msg_util;
 pub mod ops;
 pub mod permissions;
 mod progress;

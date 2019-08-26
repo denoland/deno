@@ -1,38 +1,57 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_flatbuffers::serialize_response;
-use super::utils::CliOpResult;
+use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::http_util;
-use crate::msg;
-use crate::msg_util;
 use crate::resources;
 use crate::state::ThreadSafeState;
 use deno::*;
-use flatbuffers::FlatBufferBuilder;
+use http::header::HeaderName;
+use http::uri::Uri;
+use http::Method;
 use hyper;
+use hyper::header::HeaderValue;
 use hyper::rt::Future;
+use hyper::Request;
 use std;
 use std::convert::From;
+use std::str::FromStr;
+
+#[derive(Deserialize)]
+struct FetchArgs {
+  method: Option<String>,
+  url: String,
+  headers: Vec<(String, String)>,
+}
 
 pub fn op_fetch(
   state: &ThreadSafeState,
-  base: &msg::Base<'_>,
+  args: Value,
   data: Option<PinnedBuf>,
-) -> CliOpResult {
-  let inner = base.inner_as_fetch().unwrap();
-  let cmd_id = base.cmd_id();
-
-  let header = inner.header().unwrap();
-  assert!(header.is_request());
-  let url = header.url().unwrap();
+) -> Result<JsonOp, ErrBox> {
+  let args: FetchArgs = serde_json::from_value(args)?;
+  let url = args.url;
 
   let body = match data {
     None => hyper::Body::empty(),
     Some(buf) => hyper::Body::from(Vec::from(&*buf)),
   };
 
-  let req = msg_util::deserialize_request(header, body)?;
+  let mut req = Request::new(body);
+  let uri = Uri::from_str(&url).map_err(ErrBox::from)?;
+  *req.uri_mut() = uri;
 
-  let url_ = url::Url::parse(url).map_err(ErrBox::from)?;
+  if let Some(method) = args.method {
+    let method = Method::from_str(&method).unwrap();
+    *req.method_mut() = method;
+  }
+
+  let headers = req.headers_mut();
+  for header_pair in args.headers {
+    let name = HeaderName::from_bytes(header_pair.0.as_bytes()).unwrap();
+    let v = HeaderValue::from_str(&header_pair.1).unwrap();
+    headers.insert(name, v);
+  }
+
+  let url_ = url::Url::parse(&url).map_err(ErrBox::from)?;
   state.check_net_url(&url_)?;
 
   let client = http_util::get_client();
@@ -42,32 +61,22 @@ pub fn op_fetch(
     .request(req)
     .map_err(ErrBox::from)
     .and_then(move |res| {
-      let builder = &mut FlatBufferBuilder::new();
-      let header_off = msg_util::serialize_http_response(builder, &res);
+      let status = res.status().as_u16();
+      let mut res_headers = Vec::new();
+      for (key, val) in res.headers().iter() {
+        res_headers.push((key.to_string(), val.to_str().unwrap().to_owned()));
+      }
       let body = res.into_body();
       let body_resource = resources::add_hyper_body(body);
-      let inner = msg::FetchRes::create(
-        builder,
-        &msg::FetchResArgs {
-          header: Some(header_off),
-          body_rid: body_resource.rid,
-        },
-      );
 
-      Ok(serialize_response(
-        cmd_id,
-        builder,
-        msg::BaseArgs {
-          inner: Some(inner.as_union_value()),
-          inner_type: msg::Any::FetchRes,
-          ..Default::default()
-        },
-      ))
+      let json_res = json!({
+        "bodyRid": body_resource.rid,
+        "status": status,
+        "headers": res_headers
+      });
+
+      futures::future::ok(json_res)
     });
-  if base.sync() {
-    let result_buf = future.wait()?;
-    Ok(Op::Sync(result_buf))
-  } else {
-    Ok(Op::Async(Box::new(future)))
-  }
+
+  Ok(JsonOp::Async(Box::new(future)))
 }
