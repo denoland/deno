@@ -17,8 +17,14 @@ import { window } from "./window";
 import { postMessage, workerClose, workerMain } from "./workers";
 import { writeFileSync } from "./write_file";
 
-// TODO(ry) msg_generated import will be removed soon.
-import * as msg from "gen/cli/msg_generated";
+// Warning! The values in this enum are duplicated in cli/msg.rs
+// Update carefully!
+enum MediaType {
+  JavaScript = 0,
+  TypeScript = 1,
+  Json = 2,
+  Unknown = 3
+}
 
 // Startup boilerplate. This is necessary because the compiler has its own
 // snapshot. (It would be great if we could remove these things or centralize
@@ -112,7 +118,7 @@ const ignoredCompilerOptions: ReadonlyArray<string> = [
 interface SourceFile {
   moduleName: string | undefined;
   filename: string | undefined;
-  mediaType: msg.MediaType;
+  mediaType: MediaType;
   sourceCode: string | undefined;
   typeDirectives?: Record<string, string>;
 }
@@ -173,18 +179,15 @@ function emitBundle(fileName: string, data: string): void {
 }
 
 /** Returns the TypeScript Extension enum for a given media type. */
-function getExtension(
-  fileName: string,
-  mediaType: msg.MediaType
-): ts.Extension {
+function getExtension(fileName: string, mediaType: MediaType): ts.Extension {
   switch (mediaType) {
-    case msg.MediaType.JavaScript:
+    case MediaType.JavaScript:
       return ts.Extension.Js;
-    case msg.MediaType.TypeScript:
+    case MediaType.TypeScript:
       return fileName.endsWith(".d.ts") ? ts.Extension.Dts : ts.Extension.Ts;
-    case msg.MediaType.Json:
+    case MediaType.Json:
       return ts.Extension.Json;
-    case msg.MediaType.Unknown:
+    case MediaType.Unknown:
     default:
       throw TypeError("Cannot resolve extension.");
   }
@@ -224,7 +227,7 @@ class Host implements ts.CompilerHost {
       const sourceFile = {
         moduleName,
         filename: specifier,
-        mediaType: msg.MediaType.TypeScript,
+        mediaType: MediaType.TypeScript,
         sourceCode
       };
       this._sourceFileCache[moduleName] = sourceFile;

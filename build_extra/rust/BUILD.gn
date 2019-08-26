@@ -241,13 +241,6 @@ rust_rlib("either") {
   ]
 }
 
-rust_rlib("flatbuffers") {
-  cap_lints = "allow"
-  edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/flatbuffers-0.6.0/src/lib.rs"
-  extern_rlib = [ "smallvec" ]
-}
-
 rust_rlib("fnv") {
   cap_lints = "allow"
   edition = "2015"
