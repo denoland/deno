@@ -1,12 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-// Do not add flatbuffer dependencies to this module.
-// TODO(ry) Currently ErrorKind enum is defined in FlatBuffers. Therefore
-// we must still reference the msg_generated.ts. This should be removed!
-import { ErrorKind } from "gen/cli/msg_generated";
 import * as util from "./util";
 import { TextEncoder, TextDecoder } from "./text_encoding";
 import { core } from "./core";
-import { DenoError } from "./errors";
+import { ErrorKind, DenoError } from "./errors";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Ok = any;

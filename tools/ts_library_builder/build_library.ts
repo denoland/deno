@@ -89,27 +89,6 @@ const libPreamble = `// Copyright 2018-2019 the Deno authors. All rights reserve
 
 `;
 
-// The path to the msg_generated file relative to the build path
-const MSG_GENERATED_PATH = "/gen/cli/msg_generated.ts";
-
-// An array of enums we want to expose pub
-const MSG_GENERATED_ENUMS = ["ErrorKind"];
-
-/** Extracts enums from a source file */
-function extract(sourceFile: SourceFile, enumNames: string[]): string {
-  // Copy specified enums from msg_generated
-  let output = "";
-  for (const enumName of enumNames) {
-    const enumDeclaration = sourceFile.getEnumOrThrow(enumName);
-    enumDeclaration.setHasDeclareKeyword(false);
-    // we are not copying JSDocs or other trivia here because msg_generated only
-    // contains some non-useful JSDocs and comments that are not ideal to copy
-    // over
-    output += enumDeclaration.getText();
-  }
-  return output;
-}
-
 interface FlattenOptions {
   basePath: string;
   customSources: { [filePath: string]: string };
@@ -499,20 +478,8 @@ export function main({
 
   // Deal with `js/deno.ts`
 
-  // `gen/msg_generated.d.ts` contains too much exported information that is not
-  // part of the public API surface of Deno, so we are going to extract just the
-  // information we need.
-  const msgGeneratedDts = inputProject.getSourceFileOrThrow(
-    `${buildPath}${MSG_GENERATED_PATH}`
-  );
-  const msgGeneratedDtsText = extract(msgGeneratedDts, MSG_GENERATED_ENUMS);
-
   // Generate a object hash of substitutions of modules to use when flattening
-  const customSources = {
-    [msgGeneratedDts.getFilePath().replace(/(\.d)?\.ts$/, "")]: `${
-      debug ? getSourceComment(msgGeneratedDts, basePath) : ""
-    }${msgGeneratedDtsText}\n`
-  };
+  const customSources = {};
 
   const prepareForMergeOpts: PrepareFileForMergeOptions = {
     globalVarName: "window",
