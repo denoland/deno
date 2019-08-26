@@ -38,7 +38,7 @@ v8_source_set("v8") {
 }
 
 # Only functionality needed for libdeno_test and snapshot_creator
-# In particular no flatbuffers, no assets, no rust, no msg handlers.
+# In particular no assets, no rust, no msg handlers.
 # Because snapshots are slow, it's important that snapshot_creator's
 # dependencies are minimal.
 v8_source_set("libdeno") {
