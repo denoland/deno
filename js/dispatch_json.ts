@@ -15,10 +15,10 @@ interface JsonError {
 interface JsonResponse {
   ok?: Ok;
   err?: JsonError;
-  promiseId?: number; // only present in async mesasges.
+  promiseId?: number; // Only present in async messages.
 }
 
-const promiseTable = new Map<number, util.Resolvable<number>>();
+const promiseTable = new Map<number, util.Resolvable<JsonResponse>>();
 let _nextPromiseId = 1;
 
 function nextPromiseId(): number {
@@ -35,25 +35,22 @@ function encode(args: object): Uint8Array {
   return new TextEncoder().encode(s);
 }
 
-function toDenoError(err: JsonError): DenoError<ErrorKind> {
-  return new DenoError(err.kind, err.message);
+function unwrapResponse(res: JsonResponse): Ok {
+  if (res.err != null) {
+    throw new DenoError(res.err!.kind, res.err!.message);
+  }
+  util.assert(res.ok != null);
+  return res.ok!;
 }
 
-export function asyncMsgFromRust(opId: number, res: Uint8Array): void {
-  const { ok, err, promiseId } = decode(res);
-  const promise = promiseTable.get(promiseId!)!;
-  if (!promise) {
-    throw Error(`Async op ${opId} had bad promiseId`);
-  }
-  promiseTable.delete(promiseId!);
+export function asyncMsgFromRust(opId: number, resUi8: Uint8Array): void {
+  const res = decode(resUi8);
+  util.assert(res.promiseId != null);
 
-  if (err) {
-    promise.reject(toDenoError(err));
-  } else if (ok) {
-    promise.resolve(ok);
-  } else {
-    util.unreachable();
-  }
+  const promise = promiseTable.get(res.promiseId!);
+  util.assert(promise != null);
+  promiseTable.delete(res.promiseId!);
+  promise!.resolve(res);
 }
 
 export function sendSync(
@@ -62,29 +59,28 @@ export function sendSync(
   zeroCopy?: Uint8Array
 ): Ok {
   const argsUi8 = encode(args);
-  const res = core.dispatch(opId, argsUi8, zeroCopy);
-  if (!res) {
-    return;
-  }
-  const { ok, err, promiseId } = decode(res);
-  util.assert(!promiseId);
-  if (err) {
-    throw toDenoError(err);
-  }
-  return ok;
+  const resUi8 = core.dispatch(opId, argsUi8, zeroCopy);
+  util.assert(resUi8 != null);
+
+  const res = decode(resUi8!);
+  util.assert(res.promiseId == null);
+  return unwrapResponse(res);
 }
 
-export function sendAsync(
+export async function sendAsync(
   opId: number,
   args: object = {},
   zeroCopy?: Uint8Array
 ): Promise<Ok> {
   const promiseId = nextPromiseId();
   args = Object.assign(args, { promiseId });
-  const argsUi8 = encode(args);
   const promise = util.createResolvable<Ok>();
   promiseTable.set(promiseId, promise);
-  const r = core.dispatch(opId, argsUi8, zeroCopy);
-  util.assert(!r);
-  return promise;
+
+  const argsUi8 = encode(args);
+  const resUi8 = core.dispatch(opId, argsUi8, zeroCopy);
+  util.assert(resUi8 == null);
+
+  const res = await promise;
+  return unwrapResponse(res);
 }
