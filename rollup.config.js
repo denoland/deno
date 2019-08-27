@@ -88,20 +88,6 @@ const osNodeToDeno = {
   linux: "linux"
 };
 
-// This plugin resolves at bundle time any generated resources that are
-// in the build path under `gen` and specified with a MID starting with `gen/`.
-// The plugin assumes that the MID needs to have the `.ts` extension appended.
-function resolveGenerated() {
-  return {
-    name: "resolve-msg-generated",
-    resolveId(importee) {
-      if (importee.startsWith("gen/cli/msg_generated")) {
-        return path.resolve(`${importee}.ts`);
-      }
-    }
-  };
-}
-
 function generateDepFile({ outputFile, sourceFiles = [], configFiles = [] }) {
   let timestamp = new Date();
 
@@ -213,9 +199,6 @@ export default function makeConfig(commandOptions) {
           `${process.cwd()}/**/*.d.ts`
         ]
       }),
-
-      // Resolves any resources that have been generated at build time
-      resolveGenerated(),
 
       // Allows rollup to resolve modules based on Node.js resolution
       nodeResolve(),
