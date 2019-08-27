@@ -60,12 +60,6 @@ like this:
 - We process the `deno` namespace/module, by "flattening" the type definition
   file.
   - We determine the exported symbols for `js/deno.ts`.
-  - We create a custom extraction of the `gen/msg_generated.ts` which is
-    generated during the build process and contains the type information related
-    to flatbuffer structures that communicate between the privileged part of
-    deno and the user land. Currently, the tool doesn't do full complex
-    dependency analysis to be able to determine what is required out of this
-    file, so we explicitly extract the type information we need.
   - We recurse over all imports/exports of the modules, only exporting those
     symbols which are finally exported by `js/deno.ts`.
   - We replace the import/export with the type information from the source file.

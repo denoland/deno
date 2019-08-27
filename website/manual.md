@@ -46,10 +46,8 @@ Deno provides <a href="https://github.com/denoland/deno_std">a set of reviewed
 
 - File system and network access can be controlled in order to run sandboxed
   code. Access between V8 (unprivileged) and Rust (privileged) is only done via
-  serialized messages defined in this
-  [flatbuffer](https://github.com/denoland/deno/blob/master/cli/msg.fbs). This
-  makes it easy to audit. For example, to enable write access use the flag
-  `--allow-write` or for network access `--allow-net`.
+  serialized messages. This makes it easy to audit. For example, to enable write
+  access use the flag `--allow-write` or for network access `--allow-net`.
 
 - Only ship a single executable.
 
@@ -1028,12 +1026,6 @@ The core binding layer for Deno. It is released as a
 [standalone crate](https://crates.io/crates/deno). Inside of core is V8 itself,
 with a binding API called "libdeno". See the crate documentation for more
 details.
-
-### Flatbuffers
-
-We use Flatbuffers to define common structs and enums between TypeScript and
-Rust. These common data structures are defined in
-[msg.fbs](https://github.com/denoland/deno/blob/master/cli/msg.fbs)
 
 ### Updating prebuilt binaries
 

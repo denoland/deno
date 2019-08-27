@@ -20,7 +20,6 @@ mod random;
 mod repl;
 mod resources;
 mod timers;
-mod utils;
 mod workers;
 
 // Warning! These values are duplicated in the TypeScript code (js/dispatch.ts),
