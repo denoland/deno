@@ -34,9 +34,13 @@ pub fn op_accept(
       let op = tokio_util::accept(server_resource)
         .map_err(ErrBox::from)
         .and_then(move |(tcp_stream, _socket_addr)| {
+          let local_addr = tcp_stream.local_addr().unwrap();
+          let remote_addr = tcp_stream.peer_addr().unwrap();
           let tcp_stream_resource = resources::add_tcp_stream(tcp_stream);
           futures::future::ok(json!({
-            "rid": tcp_stream_resource.rid
+            "rid": tcp_stream_resource.rid,
+            "localAddr": local_addr.to_string(),
+            "remoteAddr": remote_addr.to_string(),
           }))
         });
 
@@ -66,9 +70,13 @@ pub fn op_dial(
   let op = resolve_addr(&address).and_then(move |addr| {
     TcpStream::connect(&addr).map_err(ErrBox::from).and_then(
       move |tcp_stream| {
+        let local_addr = tcp_stream.local_addr().unwrap();
+        let remote_addr = tcp_stream.peer_addr().unwrap();
         let tcp_stream_resource = resources::add_tcp_stream(tcp_stream);
         futures::future::ok(json!({
-          "rid": tcp_stream_resource.rid
+          "rid": tcp_stream_resource.rid,
+          "localAddr": local_addr.to_string(),
+          "remoteAddr": remote_addr.to_string(),
         }))
       },
     )
@@ -129,7 +137,11 @@ pub fn op_listen(
 
   let addr = resolve_addr(&address).wait()?;
   let listener = TcpListener::bind(&addr)?;
+  let local_addr = listener.local_addr()?;
   let resource = resources::add_tcp_listener(listener);
 
-  Ok(JsonOp::Sync(json!(resource.rid)))
+  Ok(JsonOp::Sync(json!({
+    "rid": resource.rid,
+    "localAddr": local_addr.to_string()
+  })))
 }
