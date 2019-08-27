@@ -3,6 +3,9 @@ import { testPerm, assert, assertEquals } from "./test_util.ts";
 
 testPerm({ net: true }, function netListenClose(): void {
   const listener = Deno.listen("tcp", "127.0.0.1:4500");
+  const addr = listener.addr();
+  assertEquals(addr.network, "tcp");
+  assertEquals(addr.address, "127.0.0.1:4500");
   listener.close();
 });
 
@@ -46,11 +49,15 @@ testPerm({ net: true }, async function netDialListen(): Promise<void> {
   const listener = Deno.listen("tcp", ":4500");
   listener.accept().then(
     async (conn): Promise<void> => {
+      assert(conn.remoteAddr != null);
+      assertEquals(conn.localAddr, "127.0.0.1:4500");
       await conn.write(new Uint8Array([1, 2, 3]));
       conn.close();
     }
   );
   const conn = await Deno.dial("tcp", "127.0.0.1:4500");
+  assertEquals(conn.remoteAddr, "127.0.0.1:4500");
+  assert(conn.localAddr != null);
   const buf = new Uint8Array(1024);
   const readResult = await conn.read(buf);
   assertEquals(3, readResult);
