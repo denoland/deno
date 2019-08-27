@@ -32,11 +32,14 @@ pub fn op_accept(
     None => Err(deno_error::bad_resource()),
     Some(server_resource) => {
       let op = tokio_util::accept(server_resource)
-        .map_err(ErrBox::from)
         .and_then(move |(tcp_stream, _socket_addr)| {
-          let local_addr = tcp_stream.local_addr().unwrap();
-          let remote_addr = tcp_stream.peer_addr().unwrap();
+          let local_addr = tcp_stream.local_addr()?;
+          let remote_addr = tcp_stream.peer_addr()?;
           let tcp_stream_resource = resources::add_tcp_stream(tcp_stream);
+          Ok((tcp_stream_resource, local_addr, remote_addr))
+        })
+        .map_err(ErrBox::from)
+        .and_then(move |(tcp_stream_resource, local_addr, remote_addr)| {
           futures::future::ok(json!({
             "rid": tcp_stream_resource.rid,
             "localAddr": local_addr.to_string(),
@@ -68,18 +71,22 @@ pub fn op_dial(
   state.check_net(&address)?;
 
   let op = resolve_addr(&address).and_then(move |addr| {
-    TcpStream::connect(&addr).map_err(ErrBox::from).and_then(
-      move |tcp_stream| {
-        let local_addr = tcp_stream.local_addr().unwrap();
-        let remote_addr = tcp_stream.peer_addr().unwrap();
+    TcpStream::connect(&addr)
+      .map_err(ErrBox::from)
+      .and_then(move |tcp_stream| {
+        let local_addr = tcp_stream.local_addr()?;
+        let remote_addr = tcp_stream.peer_addr()?;
         let tcp_stream_resource = resources::add_tcp_stream(tcp_stream);
+        Ok((tcp_stream_resource, local_addr, remote_addr))
+      })
+      .map_err(ErrBox::from)
+      .and_then(move |(tcp_stream_resource, local_addr, remote_addr)| {
         futures::future::ok(json!({
           "rid": tcp_stream_resource.rid,
           "localAddr": local_addr.to_string(),
           "remoteAddr": remote_addr.to_string(),
         }))
-      },
-    )
+      })
   });
 
   Ok(JsonOp::Async(Box::new(op)))
