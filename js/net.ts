@@ -9,8 +9,10 @@ export type Network = "tcp";
 // TODO support other types:
 // export type Network = "tcp" | "tcp4" | "tcp6" | "unix" | "unixpacket";
 
-// TODO Support finding network from Addr, see https://golang.org/pkg/net/#Addr
-export type Addr = string;
+export interface Addr {
+  network: Network;
+  address: string;
+}
 
 /** A Listener is a generic network listener for stream-oriented protocols. */
 export interface Listener extends AsyncIterator<Conn> {
@@ -75,12 +77,15 @@ class ConnImpl implements Conn {
 }
 
 class ListenerImpl implements Listener {
-  constructor(readonly rid: number) {}
+  constructor(
+    readonly rid: number,
+    private network: Network,
+    private localAddr: string
+  ) {}
 
   async accept(): Promise<Conn> {
     const res = await sendAsync(dispatch.OP_ACCEPT, { rid: this.rid });
-    // TODO(bartlomieju): add remoteAddr and localAddr on Rust side
-    return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);
+    return new ConnImpl(res.rid, res.remoteAddr, res.localAddr);
   }
 
   close(): void {
@@ -88,7 +93,10 @@ class ListenerImpl implements Listener {
   }
 
   addr(): Addr {
-    return notImplemented();
+    return {
+      network: this.network,
+      address: this.localAddr
+    };
   }
 
   async next(): Promise<IteratorResult<Conn>> {
@@ -136,8 +144,8 @@ export interface Conn extends Reader, Writer, Closer {
  * See `dial()` for a description of the network and address parameters.
  */
 export function listen(network: Network, address: string): Listener {
-  const rid = sendSync(dispatch.OP_LISTEN, { network, address });
-  return new ListenerImpl(rid);
+  const res = sendSync(dispatch.OP_LISTEN, { network, address });
+  return new ListenerImpl(res.rid, network, res.localAddr);
 }
 
 /** Dial connects to the address on the named network.
