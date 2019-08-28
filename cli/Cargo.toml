@@ -49,7 +49,7 @@ tokio-io = "0.1.12"
 tokio-process = "0.2.4"
 tokio-rustls = "0.9.3"
 tokio-threadpool = "0.1.15"
-url = "2.1.0"
+url = "1.7.2"
 utime = "0.2.1"
 
 [target.'cfg(windows)'.dependencies]
