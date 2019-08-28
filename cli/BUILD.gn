@@ -97,6 +97,7 @@ ts_sources = [
   "../js/globals.ts",
   "../js/headers.ts",
   "../js/io.ts",
+  "../js/lib.deno_runtime.d.ts",
   "../js/lib.web_assembly.d.ts",
   "../js/link.ts",
   "../js/location.ts",
