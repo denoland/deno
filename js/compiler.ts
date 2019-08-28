@@ -1,6 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as ts from "typescript";
-import { assetSourceCode } from "./assets";
 import { bold, cyan, yellow } from "./colors";
 import { Console } from "./console";
 import { core } from "./core";
@@ -128,6 +127,10 @@ interface EmitResult {
   diagnostics?: Diagnostic;
 }
 
+function fetchAsset(name: string): string {
+  return sendSync(dispatch.OP_FETCH_ASSET, { name });
+}
+
 /** Ops to Rust to resolve and fetch a modules meta data. */
 function fetchSourceFile(specifier: string, referrer: string): SourceFile {
   util.log("compiler.fetchSourceFile", { specifier, referrer });
@@ -222,8 +225,7 @@ class Host implements ts.CompilerHost {
       const assetName = moduleName.includes(".")
         ? moduleName
         : `${moduleName}.d.ts`;
-      assert(assetName in assetSourceCode, `No such asset "${assetName}"`);
-      const sourceCode = assetSourceCode[assetName];
+      const sourceCode = fetchAsset(assetName);
       const sourceFile = {
         moduleName,
         filename: specifier,
