@@ -425,7 +425,7 @@ rust_rlib("hyper_rustls") {
 rust_rlib("idna") {
   cap_lints = "allow"
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/idna-0.2.0/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/idna-0.1.5/src/lib.rs"
   extern_rlib = [
     "matches",
     "unicode_bidi",
@@ -680,7 +680,7 @@ rust_rlib("parking_lot_core") {
 rust_rlib("percent_encoding") {
   cap_lints = "allow"
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/percent-encoding-2.1.0/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/percent-encoding-1.0.1/lib.rs"
 }
 
 ## Override: use rand v0.6.5 instead.
@@ -1665,7 +1665,7 @@ rust_rlib("untrusted") {
 rust_rlib("url") {
   cap_lints = "allow"
   edition = "2015"
-  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/url-2.1.0/src/lib.rs"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/url-1.7.2/src/lib.rs"
   extern_rlib = [
     "idna",
     "matches",
