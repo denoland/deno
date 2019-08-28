@@ -9,13 +9,13 @@ import {
   SyncReader,
   SyncWriter,
   SyncSeeker
-} from "./io";
-import { sendAsyncMinimal, sendSyncMinimal } from "./dispatch_minimal";
-import * as dispatch from "./dispatch";
+} from "./io.ts";
+import { sendAsyncMinimal, sendSyncMinimal } from "./dispatch_minimal.ts";
+import * as dispatch from "./dispatch.ts";
 import {
   sendSync as sendSyncJson,
   sendAsync as sendAsyncJson
-} from "./dispatch_json";
+} from "./dispatch_json.ts";
 
 /** Open a file and return an instance of the `File` object
  *  synchronously.

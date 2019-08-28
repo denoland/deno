@@ -1,8 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as domTypes from "./dom_types";
-import { containsOnlyASCII, hasOwnProperty } from "./util";
-import { TextEncoder } from "./text_encoding";
-import { build } from "./build";
+import * as domTypes from "./dom_types.ts";
+import { containsOnlyASCII, hasOwnProperty } from "./util.ts";
+import { TextEncoder } from "./text_encoding.ts";
+import { build } from "./build.ts";
 
 export const bytesSymbol = Symbol("bytes");
 

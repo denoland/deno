@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as domTypes from "./dom_types";
-import { DomIterableMixin } from "./mixins/dom_iterable";
-import { requiredArguments } from "./util";
+import * as domTypes from "./dom_types.ts";
+import { DomIterableMixin } from "./mixins/dom_iterable.ts";
+import { requiredArguments } from "./util.ts";
 
 // From node-fetch
 // Copyright (c) 2016 David Frank. MIT License.

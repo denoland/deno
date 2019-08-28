@@ -3,20 +3,22 @@
 // eslint-disable-next-line @typescript-eslint/no-triple-slash-reference
 /// <reference path="./plugins.d.ts" />
 
-import "./globals";
+import "./globals.ts";
 
-import { assert, log } from "./util";
-import * as os from "./os";
-import { args } from "./deno";
-import { setPrepareStackTrace } from "./error_stack";
-import { replLoop } from "./repl";
-import { xevalMain, XevalFunc } from "./xeval";
-import { setVersions } from "./version";
-import { window } from "./window";
-import { setLocation } from "./location";
+import { assert, log } from "./util.ts";
+import * as os from "./os.ts";
+import { args } from "./deno.ts";
+import { setPrepareStackTrace } from "./error_stack.ts";
+import { replLoop } from "./repl.ts";
+import { xevalMain, XevalFunc } from "./xeval.ts";
+import { setVersions } from "./version.ts";
+import { window } from "./window.ts";
+import { setLocation } from "./location.ts";
 
 // builtin modules
-import * as deno from "./deno";
+import * as deno from "./deno.ts";
+
+const { console } = window;
 
 export default function denoMain(
   preserveDenoNamespace: boolean = true,
@@ -55,3 +57,4 @@ export default function denoMain(
     replLoop();
   }
 }
+window["denoMain"] = denoMain;

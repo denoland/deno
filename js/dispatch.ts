@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as minimal from "./dispatch_minimal";
-import * as json from "./dispatch_json";
+import * as minimal from "./dispatch_minimal.ts";
+import * as json from "./dispatch_json.ts";
 
 // These consts are shared with Rust. Update with care.
 export const OP_READ = 1;

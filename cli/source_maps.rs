@@ -73,22 +73,12 @@ fn builtin_source_map(_: &str) -> Option<Vec<u8>> {
 
 #[cfg(not(feature = "check-only"))]
 fn builtin_source_map(script_name: &str) -> Option<Vec<u8>> {
-  match script_name {
-    "gen/cli/bundle/main.js" => Some(
-      include_bytes!(concat!(
-        env!("GN_OUT_DIR"),
-        "/gen/cli/bundle/main.js.map"
-      ))
-      .to_vec(),
-    ),
-    "gen/cli/bundle/compiler.js" => Some(
-      include_bytes!(concat!(
-        env!("GN_OUT_DIR"),
-        "/gen/cli/bundle/compiler.js.map"
-      ))
-      .to_vec(),
-    ),
-    _ => None,
+  if script_name.ends_with("CLI_SNAPSHOT.js") {
+    return Some(deno_cli_snapshots::CLI_SNAPSHOT_MAP.to_vec());
+  } else if script_name.ends_with("COMPILER_SNAPSHOT.js") {
+    Some(deno_cli_snapshots::COMPILER_SNAPSHOT_MAP.to_vec())
+  } else {
+    None
   }
 }
 

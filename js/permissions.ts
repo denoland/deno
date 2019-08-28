@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as dispatch from "./dispatch";
-import { sendSync } from "./dispatch_json";
+import * as dispatch from "./dispatch.ts";
+import { sendSync } from "./dispatch_json.ts";
 
 /** Permissions as granted by the caller */
 export interface Permissions {

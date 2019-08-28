@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { StatResponse } from "./stat";
+import { StatResponse } from "./stat.ts";
 
 /** A FileInfo describes a file and is returned by `stat`, `lstat`,
  * `statSync`, `lstatSync`.

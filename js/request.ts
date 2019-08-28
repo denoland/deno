@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as headers from "./headers";
-import * as body from "./body";
-import * as domTypes from "./dom_types";
+import * as headers from "./headers.ts";
+import * as body from "./body.ts";
+import * as domTypes from "./dom_types.ts";
 
 const { Headers } = headers;
 

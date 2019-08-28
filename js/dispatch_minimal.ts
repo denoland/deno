@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as util from "./util";
-import { core } from "./core";
+import * as util from "./util.ts";
+import { core } from "./core.ts";
 
 const promiseTableMin = new Map<number, util.Resolvable<number>>();
 // Note it's important that promiseId starts at 1 instead of 0, because sync

@@ -1,10 +1,10 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { core } from "./core";
-import * as dispatch from "./dispatch";
-import { sendSync } from "./dispatch_json";
-import { assert } from "./util";
-import * as util from "./util";
-import { window } from "./window";
+import { core } from "./core.ts";
+import * as dispatch from "./dispatch.ts";
+import { sendSync } from "./dispatch_json.ts";
+import { assert } from "./util.ts";
+import * as util from "./util.ts";
+import { window } from "./window.ts";
 
 /** The current process id of the runtime. */
 export let pid: number;

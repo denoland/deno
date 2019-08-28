@@ -1,8 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { URL } from "./url";
-import { notImplemented } from "./util";
-import { Location } from "./dom_types";
-import { window } from "./window";
+import { URL } from "./url.ts";
+import { notImplemented } from "./util.ts";
+import { Location } from "./dom_types.ts";
+import { window } from "./window.ts";
 
 export class LocationImpl implements Location {
   constructor(url: string) {
