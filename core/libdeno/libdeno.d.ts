@@ -13,7 +13,7 @@ interface EvalErrorInfo {
 }
 
 declare interface MessageCallback {
-  (opId: number, msg: Uint8Array): void;
+  (msg: Uint8Array): void;
 }
 
 declare interface OpRegisterCallback {

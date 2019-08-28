@@ -165,7 +165,9 @@ SharedQueue Binary Layout
 
     function setAsyncHandler(opId, cb) {
       maybeInit();
-      asyncHandlerMap[opId] = cb;
+      if (typeof opId === "number") {
+        asyncHandlerMap[opId] = cb;
+      }
     }
 
     function handleAsyncMsgFromRust(opId, buf) {

@@ -5,7 +5,7 @@
 // Deno and therefore do not flow through to the runtime type library.
 
 declare interface MessageCallback {
-  (opId: number, msg: Uint8Array): void;
+  (msg: Uint8Array): void;
 }
 
 declare type DenoOpListener = (id: number | undefined) => void;
