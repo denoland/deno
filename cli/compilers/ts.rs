@@ -165,7 +165,7 @@ fn req(
 }
 
 fn gen_hash(v: Vec<&[u8]>) -> String {
-  let mut ctx = ring::digest::Context::new(&ring::digest::SHA1);
+  let mut ctx = ring::digest::Context::new(&ring::digest::SHA256);
   for src in v.iter() {
     ctx.update(src);
   }
@@ -178,7 +178,7 @@ fn gen_hash(v: Vec<&[u8]>) -> String {
   out
 }
 
-/// Emit a SHA1 hash based on source code, deno version and TS config.
+/// Emit a SHA256 hash based on source code, deno version and TS config.
 /// Used to check if a recompilation for source code is needed.
 pub fn source_code_version_hash(
   source_code: &[u8],
@@ -707,22 +707,22 @@ mod tests {
   #[test]
   fn test_source_code_version_hash() {
     assert_eq!(
-      "08574f9cdeb94fd3fb9cdc7a20d086daeeb42bca",
+      "0185b42de0686b4c93c314daaa8dee159f768a9e9a336c2a5e3d5b8ca6c4208c",
       source_code_version_hash(b"1+2", "0.4.0", b"{}")
     );
     // Different source_code should result in different hash.
     assert_eq!(
-      "d8abe2ead44c3ff8650a2855bf1b18e559addd06",
+      "e58631f1b6b6ce2b300b133ec2ad16a8a5ba6b7ecf812a8c06e59056638571ac",
       source_code_version_hash(b"1", "0.4.0", b"{}")
     );
     // Different version should result in different hash.
     assert_eq!(
-      "d6feffc5024d765d22c94977b4fe5975b59d6367",
+      "307e6200347a88dbbada453102deb91c12939c65494e987d2d8978f6609b5633",
       source_code_version_hash(b"1", "0.1.0", b"{}")
     );
     // Different config should result in different hash.
     assert_eq!(
-      "3b35db249b26a27decd68686f073a58266b2aec2",
+      "195eaf104a591d1d7f69fc169c60a41959c2b7a21373cd23a8f675f877ec385f",
       source_code_version_hash(b"1", "0.4.0", b"{\"compilerOptions\": {}}")
     );
   }
