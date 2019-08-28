@@ -1,4 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+#![feature(type_alias_enum_variants)]
+
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
