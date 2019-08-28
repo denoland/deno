@@ -1,13 +1,9 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as headers from "./headers";
 import * as body from "./body";
-
-import * as streams from "@stardazed/streams";
-
 import * as domTypes from "./dom_types";
 
 const { Headers } = headers;
-const { ReadableStream } = streams;
 
 function byteUpperCase(s: string): string {
   return String(s).replace(/[a-z]/g, function byteUpperCaseReplace(c): string {
@@ -144,11 +140,6 @@ export class Request extends body.Body implements domTypes.Request {
 
     let body2 = this._bodySource;
 
-    if (this._bodySource instanceof ReadableStream) {
-      const tees = (this._bodySource as domTypes.ReadableStream).tee();
-      this._stream = this._bodySource = tees[0];
-      body2 = tees[1];
-    }
     const cloned = new Request(this.url, {
       body: body2,
       method: this.method,
