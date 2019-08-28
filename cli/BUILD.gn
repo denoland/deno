@@ -62,6 +62,7 @@ if (is_posix) {
 
 ts_sources = [
   "../js/assets.ts",
+  "../js/base64.ts",
   "../js/blob.ts",
   "../js/body.ts",
   "../js/buffer.ts",

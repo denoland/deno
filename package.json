@@ -2,11 +2,9 @@
   "name": "deno",
   "devDependencies": {
     "@stardazed/streams": "3.0.0",
-    "@types/base64-js": "1.2.5",
     "@types/prettier": "1.16.1",
     "@typescript-eslint/eslint-plugin": "1.6.0",
     "@typescript-eslint/parser": "1.6.0",
-    "base64-js": "1.3.0",
     "eslint": "5.15.1",
     "eslint-config-prettier": "4.1.0",
     "magic-string": "0.25.2",
