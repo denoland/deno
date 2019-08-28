@@ -10,7 +10,6 @@ use crate::flags;
 use crate::global_timer::GlobalTimer;
 use crate::import_map::ImportMap;
 use crate::msg;
-use crate::ops;
 use crate::permissions::DenoPermissions;
 use crate::progress::Progress;
 use crate::resources;
@@ -21,7 +20,9 @@ use deno::CoreOp;
 use deno::ErrBox;
 use deno::Loader;
 use deno::ModuleSpecifier;
-use deno::OpId;
+use deno::Named;
+use deno::Op;
+use deno::OpDispatcher;
 use deno::PinnedBuf;
 use futures::future::Shared;
 use futures::Future;
@@ -99,17 +100,6 @@ impl Deref for ThreadSafeState {
   type Target = Arc<State>;
   fn deref(&self) -> &Self::Target {
     &self.0
-  }
-}
-
-impl ThreadSafeState {
-  pub fn dispatch(
-    &self,
-    op_id: OpId,
-    control: &[u8],
-    zero_copy: Option<PinnedBuf>,
-  ) -> CoreOp {
-    ops::dispatch(self, op_id, control, zero_copy)
   }
 }
 
@@ -359,6 +349,72 @@ impl ThreadSafeState {
       .bytes_received
       .fetch_add(bytes_received, Ordering::SeqCst);
   }
+
+  pub fn wrap_op<D>(&self, d: D) -> WrappedDenoOpDispatcher<D>
+  where
+    D: DenoOpDispatcher,
+  {
+    WrappedDenoOpDispatcher::new(d, self.clone())
+  }
+}
+
+pub trait DenoOpDispatcher: Send + Sync {
+  fn dispatch(
+    &self,
+    state: &ThreadSafeState,
+    args: &[u8],
+    buf: Option<PinnedBuf>,
+  ) -> CoreOp;
+
+  const NAME: &'static str;
+}
+
+pub struct WrappedDenoOpDispatcher<D: DenoOpDispatcher> {
+  inner: D,
+  state: ThreadSafeState,
+}
+
+impl<D: DenoOpDispatcher> WrappedDenoOpDispatcher<D> {
+  pub fn new(d: D, state: ThreadSafeState) -> Self {
+    Self { inner: d, state }
+  }
+}
+
+impl<D> OpDispatcher for WrappedDenoOpDispatcher<D>
+where
+  D: DenoOpDispatcher,
+{
+  fn dispatch(&self, control: &[u8], zero_copy: Option<PinnedBuf>) -> CoreOp {
+    let bytes_sent_control = control.len();
+    let bytes_sent_zero_copy = zero_copy.as_ref().map(|b| b.len()).unwrap_or(0);
+
+    let op = self.inner.dispatch(&self.state, control, zero_copy);
+
+    self
+      .state
+      .metrics_op_dispatched(bytes_sent_control, bytes_sent_zero_copy);
+    let state = self.state.clone();
+    match op {
+      Op::Sync(buf) => {
+        state.metrics_op_completed(buf.len());
+        Op::Sync(buf)
+      }
+      Op::Async(fut) => {
+        let fut_final = Box::new(fut.and_then(move |buf| {
+          state.metrics_op_completed(buf.len());
+          Ok(buf)
+        }));
+        Op::Async(fut_final)
+      }
+    }
+  }
+}
+
+impl<D> Named for WrappedDenoOpDispatcher<D>
+where
+  D: DenoOpDispatcher,
+{
+  const NAME: &'static str = D::NAME;
 }
 
 #[test]

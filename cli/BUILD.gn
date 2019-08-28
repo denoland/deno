@@ -107,6 +107,7 @@ ts_sources = [
   "../js/mkdir.ts",
   "../js/mock_builtin.js",
   "../js/net.ts",
+  "../js/ops.ts",
   "../js/os.ts",
   "../js/performance.ts",
   "../js/permissions.ts",

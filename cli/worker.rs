@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::fmt_errors::JSError;
+use crate::ops;
 use crate::state::ThreadSafeState;
 use crate::tokio_util;
 use deno;
@@ -32,10 +33,8 @@ impl Worker {
     {
       let mut i = isolate.lock().unwrap();
 
-      let state_ = state.clone();
-      i.set_dispatch(move |op_id, control_buf, zero_copy_buf| {
-        state_.dispatch(op_id, control_buf, zero_copy_buf)
-      });
+      let registry = ops::setup_dispatcher_registry(state.clone());
+      i.set_dispatcher_registry(registry);
 
       let state_ = state.clone();
       i.set_dyn_import(move |id, specifier, referrer| {
@@ -71,7 +70,7 @@ impl Worker {
     js_filename: &str,
     js_source: &str,
   ) -> Result<(), ErrBox> {
-    let mut isolate = self.isolate.lock().unwrap();
+    let isolate = self.isolate.lock().unwrap();
     isolate.execute(js_filename, js_source)
   }
 
@@ -93,7 +92,7 @@ impl Worker {
       if is_prefetch {
         Ok(())
       } else {
-        let mut isolate = worker.isolate.lock().unwrap();
+        let isolate = worker.isolate.lock().unwrap();
         isolate.mod_evaluate(id)
       }
     })

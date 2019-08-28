@@ -1,5 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { core } from "./core";
 import * as dispatch from "./dispatch";
 import { sendSync } from "./dispatch_json";
 import { assert } from "./util";
@@ -76,8 +75,6 @@ interface Start {
 // the runtime and the compiler environments.
 // @internal
 export function start(preserveDenoNamespace = true, source?: string): Start {
-  core.setAsyncHandler(dispatch.asyncMsgFromRust);
-
   // First we send an empty `Start` message to let the privileged side know we
   // are ready. The response should be a `StartRes` message containing the CLI
   // args and other info.

@@ -4,7 +4,6 @@
 //! alternative to flatbuffers using a very simple list of int32s to lay out
 //! messages. The first i32 is used to determine if a message a flatbuffer
 //! message or a "minimal" message.
-use crate::state::ThreadSafeState;
 use deno::Buf;
 use deno::CoreOp;
 use deno::ErrBox;
@@ -13,7 +12,6 @@ use deno::PinnedBuf;
 use futures::Future;
 
 pub type MinimalOp = dyn Future<Item = i32, Error = ErrBox> + Send;
-pub type Dispatcher = fn(i32, Option<PinnedBuf>) -> Box<MinimalOp>;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 // This corresponds to RecordMinimal on the TS side.
@@ -72,12 +70,14 @@ fn test_parse_min_record() {
   assert_eq!(parse_min_record(&buf), None);
 }
 
-pub fn dispatch(
-  d: Dispatcher,
-  _state: &ThreadSafeState,
+pub fn wrap_minimal_op<D>(
+  d: D,
   control: &[u8],
   zero_copy: Option<PinnedBuf>,
-) -> CoreOp {
+) -> CoreOp
+where
+  D: FnOnce(i32, Option<PinnedBuf>) -> Box<MinimalOp>,
+{
   let mut record = parse_min_record(control).unwrap();
   let is_sync = record.promise_id == 0;
   let rid = record.arg;

@@ -90,6 +90,9 @@ export const args: string[] = [];
 export { core } from "./core";
 
 /** @internal */
+export { ops } from "./ops";
+
+/** @internal */
 export { setPrepareStackTrace } from "./error_stack";
 
 // TODO Don't expose Console nor stringifyArgs.
