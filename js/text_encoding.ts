@@ -23,7 +23,7 @@
 // ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 // OTHER DEALINGS IN THE SOFTWARE.
 
-import * as base64 from "base64-js";
+import * as base64 from "./base64";
 import * as domTypes from "./dom_types";
 import { DenoError, ErrorKind } from "./errors";
 
