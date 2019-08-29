@@ -150,7 +150,7 @@ test(function consoleTestStringifyCircular(): void {
   assertEquals(stringify(JSON), "{}");
   assertEquals(
     stringify(console),
-    "{ printFunc, log, debug, info, dir, warn, error, assert, count, countReset, table, time, timeLog, timeEnd, group, groupCollapsed, groupEnd, clear, trace, indentLevel }"
+    "{ printFunc, log, debug, info, dir, dirxml, warn, error, assert, count, countReset, table, time, timeLog, timeEnd, group, groupCollapsed, groupEnd, clear, trace, indentLevel }"
   );
   // test inspect is working the same
   assertEquals(inspect(nestedObj), nestedObjExpected);
@@ -320,6 +320,7 @@ test(function consoleTestClear(): void {
 test(function consoleDetachedLog(): void {
   const log = console.log;
   const dir = console.dir;
+  const dirxml = console.dirxml;
   const debug = console.debug;
   const info = console.info;
   const warn = console.warn;
@@ -336,6 +337,7 @@ test(function consoleDetachedLog(): void {
   const consoleClear = console.clear;
   log("Hello world");
   dir("Hello world");
+  dirxml("Hello world");
   debug("Hello world");
   info("Hello world");
   warn("Hello world");
@@ -665,6 +667,22 @@ test(function consoleDir(): void {
     (console, out): void => {
       console.dir("DIR", { indentLevel: 2 });
       assertEquals(out.toString(), "  DIR\n");
+    }
+  );
+});
+
+// console.dir test
+test(function consoleDirXml(): void {
+  mockConsole(
+    (console, out): void => {
+      console.dirxml("DIRXML");
+      assertEquals(out.toString(), "DIRXML\n");
+    }
+  );
+  mockConsole(
+    (console, out): void => {
+      console.dirxml("DIRXML", { indentLevel: 2 });
+      assertEquals(out.toString(), "  DIRXML\n");
     }
   );
 });
