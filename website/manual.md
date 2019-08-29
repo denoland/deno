@@ -638,6 +638,29 @@ if (import.meta.main) {
 Use `deno help` to see the help text.
 
 ```
+deno
+A secure runtime for JavaScript and TypeScript built with V8, Rust, and Tokio.
+
+Docs: https://deno.land/manual.html
+Modules: https://github.com/denoland/deno_std
+Bugs: https://github.com/denoland/deno/issues
+
+To run the REPL:
+
+  deno
+
+To execute a sandboxed script:
+
+  deno https://deno.land/welcome.ts
+
+To evaluate code from the command line:
+
+  deno eval "console.log(30933 + 404)"
+
+To get help on the another subcommands (run in this case):
+
+  deno help run
+
 USAGE:
     deno [OPTIONS] [SUBCOMMAND]
 
@@ -650,6 +673,7 @@ OPTIONS:
         --allow-run                    Allow running subprocesses
         --allow-write=<allow-write>    Allow file system write access
     -c, --config <FILE>                Load compiler configuration file
+        --current-thread               Use tokio::runtime::current_thread
     -h, --help                         Prints help information
         --importmap <FILE>             Load import map file
     -L, --log-level <log-level>        Set log level [possible values: debug, info]
@@ -659,6 +683,7 @@ OPTIONS:
         --seed <NUMBER>                Seed Math.random()
         --v8-flags=<v8-flags>          Set V8 command line options
         --v8-options                   Print V8 command line options
+    -v, --version                      Print the version
 
 SUBCOMMANDS:
     [SCRIPT]       Script to run
@@ -668,9 +693,10 @@ SUBCOMMANDS:
     fetch          Fetch the dependencies
     fmt            Format files
     help           Prints this message or the help of the given subcommand(s)
-    info           Show source file related info
+    info           Show info about cache or info related to source file
     install        Install script as executable
     run            Run a program given a filename or url to the source code
+    test           Run tests
     types          Print runtime TypeScript declarations
     version        Print the version
     xeval          Eval a script on text segments from stdin
