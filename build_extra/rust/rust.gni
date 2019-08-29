@@ -253,10 +253,7 @@ template("_rust_crate") {
       args += [ "-g" ]
     }
     if (is_official_build) {
-      args += [
-        "-C",
-        "opt-level=3",
-      ]
+      args += [ "-O" ]
     }
     if (is_test) {
       args += [ "--test" ]
