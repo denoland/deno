@@ -10,6 +10,12 @@ import("rust.gni")
 
 cargo_home = "//third_party/rust_crates"
 
+rust_rlib("adler32") {
+  cap_lints = "allow"
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/adler32-1.0.3/src/lib.rs"
+}
+
 rust_rlib("aho_corasick") {
   cap_lints = "allow"
   edition = "2015"
@@ -151,6 +157,51 @@ rust_rlib("clap") {
   }
 }
 
+rust_rlib("cookie") {
+  cap_lints = "allow"
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/cookie-0.12.0/src/lib.rs"
+  features = [
+    "percent-encode",
+    "url",
+  ]
+  extern_rlib = [
+    "time",
+    "url",
+  ]
+}
+
+rust_rlib("cookie_store") {
+  cap_lints = "allow"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/cookie_store-0.7.0/src/lib.rs"
+  extern_rlib = [
+    "cookie",
+    "failure",
+    "idna",
+    "log",
+    "publicsuffix",
+    "serde",
+    "serde_json",
+    "time",
+    "try_from",
+    "url",
+  ]
+}
+
+rust_rlib("crc32fast") {
+  cap_lints = "allow"
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/crc32fast-1.2.0/src/lib.rs"
+  features = [
+    "default",
+    "std",
+  ]
+  extern_rlib = [ "cfg_if" ]
+
+  # Added by custom-build script.
+  cfg = [ "crc32fast_stdarchx86" ]
+}
+
 rust_rlib("crossbeam_deque") {
   cap_lints = "allow"
   edition = "2015"
@@ -231,6 +282,12 @@ rust_rlib("dirs_sys") {
   }
 }
 
+rust_rlib("dtoa") {
+  cap_lints = "allow"
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/dtoa-0.4.4/src/lib.rs"
+}
+
 rust_rlib("either") {
   cap_lints = "allow"
   edition = "2015"
@@ -238,6 +295,120 @@ rust_rlib("either") {
   features = [
     "default",
     "use_std",
+  ]
+}
+
+rust_rlib("encoding_rs") {
+  cap_lints = "allow"
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/encoding_rs-0.8.17/src/lib.rs"
+  extern_rlib = [ "cfg_if" ]
+}
+
+rust_rlib("error_chain") {
+  cap_lints = "allow"
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/error-chain-0.12.1/src/lib.rs"
+  features = [
+    "default",
+    "example_generated",
+  ]
+
+  # Added by custom-build script.
+  cfg = [ "has_error_source" ]
+  if (is_win) {
+    features += [ "backtrace" ]
+    extern_rlib = [ "backtrace" ]
+  }
+
+  ## Override: 'backtrace' is not supported on POSIX platforms.
+  # if (is_posix) {
+  #   features += [ "backtrace" ]
+  # }
+}
+
+rust_rlib("failure") {
+  cap_lints = "allow"
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/failure-0.1.5/src/lib.rs"
+  features = [
+    "default",
+    "derive",
+    "failure_derive",
+    "std",
+  ]
+  extern = [
+    {
+      label = ":failure_derive"
+      crate_type = "proc_macro"
+      crate_name = "failure_derive"
+    },
+  ]
+  if (is_win) {
+    features += [ "backtrace" ]
+    extern_rlib = [ "backtrace" ]
+  }
+
+  ## Override: 'backtrace' is not supported on POSIX platforms.
+  # if (is_posix) {
+  #   features += [ "backtrace" ]
+  # }
+}
+
+rust_proc_macro("failure_derive") {
+  cap_lints = "allow"
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/failure_derive-0.1.5/src/lib.rs"
+  extern_rlib = [
+    "synstructure",
+
+    # Override: use proc_macro2 v1.0.1 instead of v0.4.30.
+    "proc_macro2",
+
+    # Override: use quote v1.0.2 instead of v0.6.13.
+    "quote",
+  ]
+  extern = [
+    {
+      label = ":syn-0.15.44"
+      crate_type = "rlib"
+      crate_name = "syn"
+      crate_version = "0.15.44"
+    },
+
+    ## Override: use proc_macro2 v1.0.1 instead of v0.4.30.
+    # {
+    #   label = ":proc_macro2-0.4.30"
+    #   crate_type = "rlib"
+    #   crate_name = "proc_macro2"
+    #   crate_version = "0.4.30"
+    # },
+
+    ## Override: use quote v1.0.2 instead of v0.6.13.
+    # {
+    #   label = ":quote-0.6.13"
+    #   crate_type = "rlib"
+    #   crate_name = "quote"
+    #   crate_version = "0.6.13"
+    # },
+  ]
+
+  # Added by custom-build script.
+  cfg = [ "has_dyn_trait" ]
+}
+
+rust_rlib("flate2") {
+  cap_lints = "allow"
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/flate2-1.0.11/src/lib.rs"
+  features = [
+    "miniz_oxide",
+    "rust_backend",
+  ]
+  extern_rlib = [
+    "crc32fast",
+    "libc",
+    "miniz_oxide",
   ]
 }
 
@@ -568,6 +739,37 @@ rust_rlib("memoffset") {
   cfg = [ "memoffset_maybe_uninit" ]
 }
 
+rust_rlib("mime") {
+  cap_lints = "allow"
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/mime-0.3.13/src/lib.rs"
+  extern_rlib = [ "unicase" ]
+}
+
+rust_rlib("mime_guess") {
+  cap_lints = "allow"
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/mime_guess-2.0.1/src/lib.rs"
+  features = [
+    "default",
+    "rev-mappings",
+  ]
+  extern_rlib = [
+    "mime",
+    "unicase",
+  ]
+
+  # Contains file generated by custom-build script: 'mime_types_generated.rs'.
+  generated_source_dir =
+      "$cargo_home/registry/gen/github.com-1ecc6299db9ec823/mime_guess-2.0.1"
+}
+
+rust_rlib("miniz_oxide") {
+  cap_lints = "allow"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/miniz_oxide-0.3.2/src/lib.rs"
+  extern_rlib = [ "adler32" ]
+}
+
 rust_rlib("mio") {
   cap_lints = "allow"
   edition = "2015"
@@ -706,6 +908,19 @@ rust_rlib("proc_macro2") {
   cfg = [
     "use_proc_macro",
     "wrap_proc_macro",
+  ]
+}
+
+rust_rlib("publicsuffix") {
+  cap_lints = "allow"
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/publicsuffix-1.5.2/src/lib.rs"
+  extern_rlib = [
+    "error_chain",
+    "idna",
+    "lazy_static",
+    "regex",
+    "url",
   ]
 }
 
@@ -954,6 +1169,58 @@ rust_rlib("remove_dir_all") {
   }
 }
 
+rust_rlib("reqwest") {
+  cap_lints = "allow"
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/reqwest-0.9.20/src/lib.rs"
+  features = [
+    "hyper-rustls",
+    "rustls",
+    "rustls-tls",
+    "tls",
+    "tokio-rustls",
+    "webpki-roots",
+  ]
+  extern_rlib = [
+    "base64",
+    "bytes",
+    "cookie",
+    "cookie_store",
+    "encoding_rs",
+    "flate2",
+    "futures",
+    "http",
+    "hyper",
+    "hyper_rustls",
+    "log",
+    "mime",
+    "mime_guess",
+    "rustls",
+    "serde",
+    "serde_json",
+    "serde_urlencoded",
+    "time",
+    "tokio",
+    "tokio_executor",
+    "tokio_io",
+    "tokio_rustls",
+    "tokio_threadpool",
+    "tokio_timer",
+    "url",
+    "uuid",
+    "webpki_roots",
+  ]
+
+  # These env vars are used by reqwest to set its user-agent string.
+  env = [
+    "CARGO_PKG_NAME=reqwest",
+    "CARGO_PKG_VERSION=0.9.20",
+  ]
+  if (is_win) {
+    extern_rlib += [ "winreg" ]
+  }
+}
+
 rust_rlib("ring") {
   cap_lints = "allow"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ring-0.16.8/src/lib.rs"
@@ -1073,6 +1340,7 @@ rust_rlib("rustls") {
   cap_lints = "allow"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rustls-0.16.0/src/lib.rs"
   features = [
+    "dangerous_configuration",
     "default",
     "log",
     "logging",
@@ -1204,6 +1472,18 @@ rust_rlib("serde_json") {
   ]
 }
 
+rust_rlib("serde_urlencoded") {
+  cap_lints = "allow"
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/serde_urlencoded-0.5.5/src/lib.rs"
+  extern_rlib = [
+    "dtoa",
+    "itoa",
+    "serde",
+    "url",
+  ]
+}
+
 rust_rlib("slab") {
   cap_lints = "allow"
   edition = "2015"
@@ -1298,6 +1578,54 @@ rust_rlib("syn") {
 
   # Added by custom-build script.
   cfg = [ "syn_disable_nightly_tests" ]
+}
+
+rust_rlib("synstructure") {
+  cap_lints = "allow"
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/synstructure-0.10.2/src/lib.rs"
+  extern_rlib = [
+    # Override: use proc_macro2 v1.0.1 instead of v0.4.30.
+    "proc_macro2",
+
+    # Override: use quote v1.0.2 instead of v0.6.13.
+    "quote",
+
+    # Override: use unicode_xid v0.2.0 instead of v0.1.0.
+    "unicode_xid",
+  ]
+  extern = [
+    {
+      label = ":syn-0.15.44"
+      crate_type = "rlib"
+      crate_name = "syn"
+      crate_version = "0.15.44"
+    },
+
+    ## Override: use proc_macro2 v1.0.1 instead of v0.4.30.
+    # {
+    #   label = ":proc_macro2-0.4.30"
+    #   crate_type = "rlib"
+    #   crate_name = "proc_macro2"
+    #   crate_version = "0.4.30"
+    # },
+
+    ## Override: use quote v1.0.2 instead of v0.6.13.
+    # {
+    #   label = ":quote-0.6.13"
+    #   crate_type = "rlib"
+    #   crate_name = "quote"
+    #   crate_version = "0.6.13"
+    # },
+
+    ## Override: use unicode_xid v0.2.0 instead of v0.1.0.
+    # {
+    #   label = ":unicode_xid-0.1.0"
+    #   crate_type = "rlib"
+    #   crate_name = "unicode_xid"
+    #   crate_version = "0.1.0"
+    # },
+  ]
 }
 
 rust_rlib("tempfile") {
@@ -1612,10 +1940,30 @@ rust_rlib("tokio_udp") {
   ]
 }
 
+rust_rlib("try_from") {
+  cap_lints = "allow"
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/try_from-0.3.2/src/lib.rs"
+  extern_rlib = [ "cfg_if" ]
+}
+
 rust_rlib("try_lock") {
   cap_lints = "allow"
   edition = "2015"
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/try-lock-0.2.2/src/lib.rs"
+}
+
+rust_rlib("unicase") {
+  cap_lints = "allow"
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/unicase-2.4.0/src/lib.rs"
+
+  # Added by custom-build script.
+  cfg = [
+    "__unicase__const_fns",
+    "__unicase__default_hasher",
+    "__unicase__iter_cmp",
+  ]
 }
 
 rust_rlib("unicode_bidi") {
@@ -1702,6 +2050,19 @@ rust_rlib("utime") {
   # }
 }
 
+rust_rlib("uuid") {
+  cap_lints = "allow"
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/uuid-0.7.4/src/lib.rs"
+  features = [
+    "default",
+    "rand",
+    "std",
+    "v4",
+  ]
+  extern_rlib = [ "rand" ]
+}
+
 rust_rlib("vec_map") {
   cap_lints = "allow"
   edition = "2015"
@@ -1744,6 +2105,68 @@ rust_rlib("webpki_roots") {
   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/webpki-roots-0.17.0/src/lib.rs"
   extern_rlib = [ "webpki" ]
 }
+
+## Override: use proc_macro2 v1.0.1 instead.
+# rust_rlib("proc_macro2-0.4.30") {
+#   crate_name = "proc_macro2"
+#   crate_version = "0.4.30"
+#   cap_lints = "allow"
+#   edition = "2015"
+#   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/proc-macro2-0.4.30/src/lib.rs"
+#   features = [
+#     "default",
+#     "proc-macro",
+#   ]
+#   extern = [
+#     {
+#       label = ":unicode_xid-0.1.0"
+#       crate_type = "rlib"
+#       crate_name = "unicode_xid"
+#       crate_version = "0.1.0"
+#     },
+#   ]
+#
+#   # Added by custom-build script.
+#   cfg = [
+#     "u128",
+#     "use_proc_macro",
+#     "wrap_proc_macro",
+#   ]
+# }
+
+# rust_rlib("quote-0.6.13") {
+#   crate_name = "quote"
+#   crate_version = "0.6.13"
+#
+#   # Override: use proc_macro2 v1.0.1 instead of v0.4.30.
+#   extern = [
+#     {
+#       label = ":proc_macro2-0.4.30"
+#       crate_type = "rlib"
+#       crate_name = "proc_macro2"
+#       crate_version = "0.4.30"
+#     },
+#   ]
+#
+#   # Override: use quote v1.0.2 instead.
+#   cap_lints = "allow"
+#
+#   # Override: use quote v1.0.2 instead.
+#   edition = "2015"
+#
+#   # Override: use quote v1.0.2 instead.
+#   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/quote-0.6.13/src/lib.rs"
+#
+#   # Override: use quote v1.0.2 instead.
+#   features = [
+#     "default",
+#     "proc-macro",
+#   ]
+#
+#   # Override: use proc_macro2 v1.0.1 instead of v0.4.30.
+#   # Override: use quote v1.0.2 instead.
+#   extern_rlib = [ "proc_macro2" ]
+# }
 
 ## Override: use rand v0.6.5 instead.
 # rust_rlib("rand-0.4.6") {
@@ -1865,6 +2288,80 @@ rust_rlib("rand_core-0.4.2") {
 #   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/scopeguard-0.3.3/src/lib.rs"
 # }
 
+rust_rlib("syn-0.15.44") {
+  crate_name = "syn"
+  crate_version = "0.15.44"
+  cap_lints = "allow"
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/syn-0.15.44/src/lib.rs"
+  features = [
+    "clone-impls",
+    "default",
+    "derive",
+    "extra-traits",
+    "parsing",
+    "printing",
+    "proc-macro",
+    "quote",
+    "visit",
+  ]
+  extern_rlib = [
+    # Override: use proc_macro2 v1.0.1 instead of v0.4.30.
+    "proc_macro2",
+
+    # Override: use quote v1.0.2 instead of v0.6.13.
+    "quote",
+
+    # Override: use unicode_xid v0.2.0 instead of v0.1.0.
+    "unicode_xid",
+  ]
+
+  # Added by custom-build script.
+  cfg = [
+    "syn_can_call_macro_by_path",
+    "syn_can_match_trailing_dollar",
+    "syn_can_use_associated_constants",
+    "syn_can_use_thread_id",
+    "syn_disable_nightly_tests",
+  ]
+
+  # extern = [
+  #   # Override: use proc_macro2 v1.0.1 instead of v0.4.30.
+  #   {
+  #     label = ":proc_macro2-0.4.30"
+  #     crate_type = "rlib"
+  #     crate_name = "proc_macro2"
+  #     crate_version = "0.4.30"
+  #   },
+  #
+  #   # Override: use quote v1.0.2 instead of v0.6.13.
+  #   {
+  #     label = ":quote-0.6.13"
+  #     crate_type = "rlib"
+  #     crate_name = "quote"
+  #     crate_version = "0.6.13"
+  #   },
+  #
+  #   # Override: use unicode_xid v0.2.0 instead of v0.1.0.
+  #   {
+  #     label = ":unicode_xid-0.1.0"
+  #     crate_type = "rlib"
+  #     crate_name = "unicode_xid"
+  #     crate_version = "0.1.0"
+  #   },
+  # ]
+}
+
+## Override: use unicode_xid v0.2.0 instead.
+# rust_rlib("unicode_xid-0.1.0") {
+#   crate_name = "unicode_xid"
+#   crate_version = "0.1.0"
+#   cap_lints = "allow"
+#   edition = "2015"
+#   source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/unicode-xid-0.1.0/src/lib.rs"
+#   features = [ "default" ]
+# }
+
 if (is_posix) {
   rust_rlib("arc_swap") {
     cap_lints = "allow"
@@ -1976,6 +2473,36 @@ if (is_posix) {
 }
 
 if (is_win) {
+  rust_rlib("backtrace") {
+    cap_lints = "allow"
+    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/backtrace-0.3.35/src/lib.rs"
+    features = [
+      "backtrace-sys",
+      "dbghelp",
+      "default",
+      "dladdr",
+      "libbacktrace",
+      "libunwind",
+      "std",
+    ]
+    extern_rlib = [
+      "backtrace_sys",
+      "cfg_if",
+      "libc",
+      "rustc_demangle",
+    ]
+  }
+
+  rust_rlib("backtrace_sys") {
+    cap_lints = "allow"
+    edition = "2015"
+    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/backtrace-sys-0.1.31/src/lib.rs"
+    extern_rlib = [ "libc" ]
+
+    # Added by custom-build script.
+    cfg = [ "empty" ]
+  }
+
   rust_rlib("fwdansi") {
     cap_lints = "allow"
     edition = "2015"
@@ -2025,6 +2552,12 @@ if (is_win) {
     ]
   }
 
+  rust_rlib("rustc_demangle") {
+    cap_lints = "allow"
+    edition = "2015"
+    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rustc-demangle-0.1.16/src/lib.rs"
+  }
+
   rust_rlib("socket2") {
     cap_lints = "allow"
     source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/socket2-0.3.11/src/lib.rs"
@@ -2040,6 +2573,8 @@ if (is_win) {
       "errhandlingapi",
       "fileapi",
       "handleapi",
+      "impl-debug",
+      "impl-default",
       "ioapiset",
       "knownfolders",
       "minwinbase",
@@ -2062,6 +2597,7 @@ if (is_win) {
       "wincon",
       "winerror",
       "winnt",
+      "winreg",
       "winsock2",
       "winuser",
       "ws2def",
@@ -2101,7 +2637,6 @@ if (is_win) {
       "wincred",
       "windef",
       "wingdi",
-      "winreg",
       "wtypes",
     ]
 
@@ -2141,6 +2676,13 @@ if (is_win) {
       "winapi",
       "winapi_util",
     ]
+  }
+
+  rust_rlib("winreg") {
+    cap_lints = "allow"
+    edition = "2015"
+    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/winreg-0.6.2/src/lib.rs"
+    extern_rlib = [ "winapi" ]
   }
 
   rust_rlib("ws2_32") {
