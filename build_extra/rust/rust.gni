@@ -63,6 +63,7 @@ template("_rust_crate") {
                            "crate_version",
                            "deps",
                            "edition",
+                           "env",
                            "features",
                            "generated_source_dir",
                            "inputs",
@@ -234,24 +235,6 @@ template("_rust_crate") {
       "--color=always",
     ]
 
-    if (defined(generated_source_dir)) {
-      args += [
-        # Some crates (e.g. 'typenum') generate source files and place them in
-        # the directory indicated by the 'OUT_DIR' environment variable, which
-        # is normally set by Cargo. This flag tells run.py to set 'OUT_DIR' to
-        # the path where the current crate can find its generated sources.
-        "--generated-source-dir=" +
-            rebase_path(generated_source_dir, root_build_dir),
-      ]
-    }
-
-    if (defined(crate_version)) {
-      args += [
-        # This is used to set env variables for Cargo build compatibility
-        "--cargo-pkg-version=$crate_version",
-      ]
-    }
-
     if (is_win) {
       # Proc-macro crates need to be linked by rustc itself, because rustc
       # doesn't expose all the information necessary to produce the correct
@@ -317,6 +300,22 @@ template("_rust_crate") {
       ]
       sources += [ info.out_path ]
       deps += [ info.label ]
+    }
+
+    if (defined(generated_source_dir)) {
+      args += [
+        # Some crates (e.g. 'typenum') generate source files and place them in
+        # the directory indicated by the 'OUT_DIR' environment variable, which
+        # is normally set by Cargo. This flag tells run.py to set 'OUT_DIR' to
+        # the path where the current crate can find its generated sources.
+        "--env=OUT_DIR=" + rebase_path(generated_source_dir, root_build_dir),
+      ]
+    }
+
+    if (defined(env)) {
+      foreach(e, env) {
+        args += [ "--env=$e" ]
+      }
     }
   }
 }

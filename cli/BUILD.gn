@@ -179,10 +179,10 @@ rust_executable("deno") {
   # Extract version from Cargo.toml
   # TODO integrate this into rust.gni by allowing the rust_executable template
   # to specify a cargo.toml from which it will extract a version.
-  crate_version = deno_cargo_info.version
   inputs = [
     "Cargo.toml",
   ]
+  env = [ "CARGO_PKG_VERSION=${deno_cargo_info.version}" ]
 }
 
 rust_test("cli_test") {
@@ -194,10 +194,10 @@ rust_test("cli_test") {
   ]
 
   # Extract version from Cargo.toml
-  crate_version = deno_cargo_info.version
   inputs = [
     "Cargo.toml",
   ]
+  env = [ "CARGO_PKG_VERSION=${deno_cargo_info.version}" ]
 }
 
 # Generates the core TypeScript type library for deno that will be
