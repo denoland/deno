@@ -638,7 +638,7 @@ if (import.meta.main) {
 Use `deno help` to see the help text.
 
 ```
-deno 
+deno
 A secure runtime for JavaScript and TypeScript built with V8, Rust, and Tokio.
 
 Docs: https://deno.land/manual.html
