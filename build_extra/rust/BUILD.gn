@@ -305,6 +305,42 @@ rust_rlib("encoding_rs") {
   extern_rlib = [ "cfg_if" ]
 }
 
+rust_proc_macro("enum_as_inner") {
+  cap_lints = "allow"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/enum-as-inner-0.2.1/src/lib.rs"
+  extern_rlib = [
+    # Override: use proc_macro2 v1.0.1 instead of v0.4.30.
+    "proc_macro2",
+
+    # Override: use quote v1.0.2 instead of v0.6.13.
+    "quote",
+  ]
+  extern = [
+    {
+      label = ":syn-0.15.44"
+      crate_type = "rlib"
+      crate_name = "syn"
+      crate_version = "0.15.44"
+    },
+
+    ## Override: use proc_macro2 v1.0.1 instead of v0.4.30.
+    # {
+    #   label = ":proc_macro2-0.4.30"
+    #   crate_type = "rlib"
+    #   crate_name = "proc_macro2"
+    #   crate_version = "0.4.30"
+    # },
+
+    ## Override: use quote v1.0.2 instead of v0.6.13.
+    # {
+    #   label = ":quote-0.6.13"
+    #   crate_type = "rlib"
+    #   crate_name = "quote"
+    #   crate_version = "0.6.13"
+    # },
+  ]
+}
+
 rust_rlib("error_chain") {
   cap_lints = "allow"
   edition = "2015"
@@ -481,6 +517,18 @@ rust_rlib("h2") {
     "string",
     "tokio_io",
   ]
+}
+
+rust_rlib("hostname") {
+  cap_lints = "allow"
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/hostname-0.1.5/src/lib.rs"
+  if (is_posix) {
+    extern_rlib = [ "libc" ]
+  }
+  if (is_win) {
+    extern_rlib = [ "winutil" ]
+  }
 }
 
 rust_rlib("http") {
@@ -671,6 +719,12 @@ rust_rlib("libc") {
   ]
 }
 
+rust_rlib("linked_hash_map") {
+  cap_lints = "allow"
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/linked-hash-map-0.5.2/src/lib.rs"
+}
+
 rust_rlib("lock_api") {
   cap_lints = "allow"
   edition = "2015"
@@ -704,6 +758,13 @@ rust_rlib("log") {
 
   # Added by custom-build script.
   cfg = [ "atomic_cas" ]
+}
+
+rust_rlib("lru_cache") {
+  cap_lints = "allow"
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/lru-cache-0.1.2/src/lib.rs"
+  extern_rlib = [ "linked_hash_map" ]
 }
 
 rust_rlib("matches") {
@@ -922,6 +983,12 @@ rust_rlib("publicsuffix") {
     "regex",
     "url",
   ]
+}
+
+rust_rlib("quick_error") {
+  cap_lints = "allow"
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/quick-error-1.2.2/src/lib.rs"
 }
 
 rust_rlib("quote") {
@@ -1179,6 +1246,8 @@ rust_rlib("reqwest") {
     "rustls-tls",
     "tls",
     "tokio-rustls",
+    "trust-dns",
+    "trust-dns-resolver",
     "webpki-roots",
   ]
   extern_rlib = [
@@ -1206,6 +1275,7 @@ rust_rlib("reqwest") {
     "tokio_rustls",
     "tokio_threadpool",
     "tokio_timer",
+    "trust_dns_resolver",
     "url",
     "uuid",
     "webpki_roots",
@@ -1219,6 +1289,20 @@ rust_rlib("reqwest") {
   if (is_win) {
     extern_rlib += [ "winreg" ]
   }
+}
+
+rust_rlib("resolv_conf") {
+  cap_lints = "allow"
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/resolv-conf-0.6.2/src/lib.rs"
+  features = [
+    "hostname",
+    "system",
+  ]
+  extern_rlib = [
+    "hostname",
+    "quick_error",
+  ]
 }
 
 rust_rlib("ring") {
@@ -1498,6 +1582,20 @@ rust_rlib("smallvec") {
     "default",
     "std",
   ]
+}
+
+rust_rlib("socket2") {
+  cap_lints = "allow"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/socket2-0.3.11/src/lib.rs"
+  if (is_posix) {
+    extern_rlib = [
+      "cfg_if",
+      "libc",
+    ]
+  }
+  if (is_win) {
+    extern_rlib = [ "winapi" ]
+  }
 }
 
 rust_rlib("source_map_mappings") {
@@ -1938,6 +2036,65 @@ rust_rlib("tokio_udp") {
     "tokio_io",
     "tokio_reactor",
   ]
+}
+
+rust_rlib("trust_dns_proto") {
+  cap_lints = "allow"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/trust-dns-proto-0.7.4/src/lib.rs"
+  extern_rlib = [
+    "byteorder",
+    "failure",
+    "futures",
+    "idna",
+    "lazy_static",
+    "log",
+    "rand",
+    "smallvec",
+    "socket2",
+    "tokio_executor",
+    "tokio_io",
+    "tokio_reactor",
+    "tokio_tcp",
+    "tokio_timer",
+    "tokio_udp",
+    "url",
+  ]
+  extern = [
+    {
+      label = ":enum_as_inner"
+      crate_type = "proc_macro"
+      crate_name = "enum_as_inner"
+    },
+  ]
+}
+
+rust_rlib("trust_dns_resolver") {
+  cap_lints = "allow"
+  edition = "2015"
+  source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/trust-dns-resolver-0.11.1/src/lib.rs"
+  features = [
+    "default",
+    "tokio",
+  ]
+  extern_rlib = [
+    "cfg_if",
+    "failure",
+    "futures",
+    "lazy_static",
+    "log",
+    "lru_cache",
+    "resolv_conf",
+    "smallvec",
+    "tokio",
+    "tokio_executor",
+    "trust_dns_proto",
+  ]
+
+  # This env var is used by trust-dns-resolver to implement `version()`.
+  env = [ "CARGO_PKG_VERSION=0.11.1" ]
+  if (is_win) {
+    extern_rlib += [ "ipconfig" ]
+  }
 }
 
 rust_rlib("try_from") {
@@ -2513,6 +2670,20 @@ if (is_win) {
     ]
   }
 
+  rust_rlib("ipconfig") {
+    cap_lints = "allow"
+    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/ipconfig-0.2.1/src/lib.rs"
+    extern_rlib = [
+      "socket2",
+      "widestring",
+      "winapi",
+      "winreg",
+    ]
+
+    # Added by custom-build script.
+    libs = [ "iphlpapi.lib" ]
+  }
+
   rust_rlib("kernel32") {
     cap_lints = "allow"
     edition = "2015"
@@ -2558,10 +2729,10 @@ if (is_win) {
     source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/rustc-demangle-0.1.16/src/lib.rs"
   }
 
-  rust_rlib("socket2") {
+  rust_rlib("widestring") {
     cap_lints = "allow"
-    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/socket2-0.3.11/src/lib.rs"
-    extern_rlib = [ "winapi" ]
+    edition = "2015"
+    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/widestring-0.4.0/src/lib.rs"
   }
 
   rust_rlib("winapi") {
@@ -2600,6 +2771,7 @@ if (is_win) {
       "winreg",
       "winsock2",
       "winuser",
+      "wow64apiset",
       "ws2def",
       "ws2ipdef",
       "ws2tcpip",
@@ -2682,6 +2854,13 @@ if (is_win) {
     cap_lints = "allow"
     edition = "2015"
     source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/winreg-0.6.2/src/lib.rs"
+    extern_rlib = [ "winapi" ]
+  }
+
+  rust_rlib("winutil") {
+    cap_lints = "allow"
+    edition = "2015"
+    source_root = "$cargo_home/registry/src/github.com-1ecc6299db9ec823/winutil-0.1.1/src/lib.rs"
     extern_rlib = [ "winapi" ]
   }
 
