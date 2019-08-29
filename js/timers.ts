@@ -179,6 +179,12 @@ function checkThis(thisArg: unknown): void {
   }
 }
 
+function checkBigInt(n: unknown): void {
+  if (typeof n === "bigint") {
+    throw new TypeError("Cannot convert a BigInt value to a number");
+  }
+}
+
 function setTimer(
   cb: (...args: Args) => void,
   delay: number,
@@ -224,6 +230,7 @@ export function setTimeout(
   delay: number = 0,
   ...args: Args
 ): number {
+  checkBigInt(delay);
   // @ts-ignore
   checkThis(this);
   return setTimer(cb, delay, args, false);
@@ -235,6 +242,7 @@ export function setInterval(
   delay: number = 0,
   ...args: Args
 ): number {
+  checkBigInt(delay);
   // @ts-ignore
   checkThis(this);
   return setTimer(cb, delay, args, true);
