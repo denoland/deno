@@ -244,6 +244,21 @@ test(async function clearTimeoutShouldConvertToNumber(): Promise<void> {
   assert(called);
 });
 
+test(function setTimeoutShouldThrowWithBigint(): void {
+  let hasThrown = 0;
+  try {
+    setTimeout((): void => {}, (1n as unknown) as number);
+    hasThrown = 1;
+  } catch (err) {
+    if (err instanceof TypeError) {
+      hasThrown = 2;
+    } else {
+      hasThrown = 3;
+    }
+  }
+  assertEquals(hasThrown, 2);
+});
+
 test(function testFunctionName(): void {
   assertEquals(clearTimeout.name, "clearTimeout");
   assertEquals(clearInterval.name, "clearInterval");
