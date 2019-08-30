@@ -1,8 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
-// eslint-disable-next-line @typescript-eslint/no-triple-slash-reference
-/// <reference path="./plugins.d.ts" />
-
 import "./globals.ts";
 
 import { assert, log } from "./util.ts";
@@ -20,7 +17,7 @@ import * as deno from "./deno.ts";
 
 const { console } = window;
 
-export default function denoMain(
+function denoMain(
   preserveDenoNamespace: boolean = true,
   name?: string
 ): void {

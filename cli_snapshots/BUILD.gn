@@ -56,7 +56,6 @@ ts_sources = [
   "../js/os.ts",
   "../js/performance.ts",
   "../js/permissions.ts",
-  "../js/plugins.d.ts",
   "../js/process.ts",
   "../js/read_dir.ts",
   "../js/read_file.ts",

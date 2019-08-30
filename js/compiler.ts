@@ -1,4 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// TODO(ry) Combine this implementation with //deno_typescript/compiler_main.js
 
 /// <reference types="../third_party/node_modules/typescript/lib/typescript.d.ts"/>
 
@@ -35,7 +36,7 @@ enum MediaType {
 const console = new Console(core.print);
 window.console = console;
 window.workerMain = workerMain;
-export default function denoMain(): void {
+function denoMain(): void {
   os.start(true, "TS");
 }
 window["denoMain"] = denoMain;
