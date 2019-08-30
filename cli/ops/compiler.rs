@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
+use crate::assets;
 use crate::state::ThreadSafeState;
 use crate::tokio_util;
 use deno::*;
@@ -65,4 +66,22 @@ pub fn op_fetch_source_file(
     "mediaType": out.media_type as i32,
     "sourceCode": String::from_utf8(out.source_code).unwrap(),
   })))
+}
+
+#[derive(Deserialize)]
+struct FetchAssetArgs {
+  name: String,
+}
+
+pub fn op_fetch_asset(
+  _state: &ThreadSafeState,
+  args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: FetchAssetArgs = serde_json::from_value(args)?;
+  if let Some(source_code) = assets::get_source_code(&args.name) {
+    Ok(JsonOp::Sync(json!(source_code)))
+  } else {
+    panic!("op_fetch_asset bad asset {}", args.name)
+  }
 }

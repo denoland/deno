@@ -34,16 +34,6 @@ class TestTarget(DenoTestCase):
     def test_core_http_benchmark(self):
         self._test("deno_core_http_bench_test")
 
-    def test_ts_library_builder(self):
-        result = run_output([
-            "node", "./node_modules/.bin/ts-node", "--project",
-            "tools/ts_library_builder/tsconfig.json",
-            "tools/ts_library_builder/test.ts"
-        ],
-                            quiet=True)
-        self.assertEqual(result.code, 0)
-        assert "ts_library_builder ok" in result.out
-
     def test_no_color(self):
         t = os.path.join(tests_path, "no_color.js")
         result = run_output([self.deno_exe, "run", t],

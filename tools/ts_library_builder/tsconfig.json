@@ -1,9 +1,0 @@
-{
-  "compilerOptions": {
-    "lib": ["esnext"],
-    "moduleResolution": "node",
-    "strict": true,
-    "target": "esnext"
-  },
-  "files": ["./build_library.ts"]
-}
