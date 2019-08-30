@@ -262,6 +262,7 @@ function clearTimer(id: number): void {
 }
 
 export function clearTimeout(id: number = 0): void {
+  checkBigInt(id);
   if (id === 0) {
     return;
   }
@@ -269,6 +270,7 @@ export function clearTimeout(id: number = 0): void {
 }
 
 export function clearInterval(id: number = 0): void {
+  checkBigInt(id);
   if (id === 0) {
     return;
   }
