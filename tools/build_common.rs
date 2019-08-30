@@ -95,3 +95,18 @@ fn setup() -> (PathBuf, Option<cargo_gn::NinjaEnv>) {
 
   (cargo_gn::maybe_gen("..", gn_args), ninja_env)
 }
+
+/// Detect if we're being invoked by the rust language server (RLS).
+/// When RLS is running "cargo check" to analyze the source code, we're not
+/// trying to build a working executable, rather we're just compiling all
+/// rust code.
+/// Unfortunately we can't detect whether we're being run by `cargo check`.
+fn is_rls_build() -> bool {
+  env::var_os("CARGO")
+    .map(PathBuf::from)
+    .as_ref()
+    .and_then(|p| p.file_stem())
+    .and_then(|f| f.to_str())
+    .map(|s| s.starts_with("rls"))
+    .unwrap_or(false)
+}
