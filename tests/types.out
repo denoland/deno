@@ -1,7 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-
-/// <reference no-default-lib="true" />
-/// <reference lib="esnext" />
+[WILDCARD]
 
 declare namespace Deno {
 [WILDCARD]

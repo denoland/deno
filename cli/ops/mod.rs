@@ -80,6 +80,7 @@ pub const OP_READ_LINK: OpId = 53;
 pub const OP_TRUNCATE: OpId = 54;
 pub const OP_MAKE_TEMP_DIR: OpId = 55;
 pub const OP_CWD: OpId = 56;
+pub const OP_FETCH_ASSET: OpId = 57;
 
 pub fn dispatch(
   state: &ThreadSafeState,
@@ -293,6 +294,12 @@ pub fn dispatch(
       dispatch_json::dispatch(fs::op_make_temp_dir, state, control, zero_copy)
     }
     OP_CWD => dispatch_json::dispatch(fs::op_cwd, state, control, zero_copy),
+    OP_FETCH_ASSET => dispatch_json::dispatch(
+      compiler::op_fetch_asset,
+      state,
+      control,
+      zero_copy,
+    ),
     _ => panic!("bad op_id"),
   };
 

@@ -61,7 +61,6 @@ if (is_posix) {
 }
 
 ts_sources = [
-  "../js/assets.ts",
   "../js/base64.ts",
   "../js/blob.ts",
   "../js/body.ts",
@@ -98,6 +97,7 @@ ts_sources = [
   "../js/globals.ts",
   "../js/headers.ts",
   "../js/io.ts",
+  "../js/lib.deno_runtime.d.ts",
   "../js/lib.web_assembly.d.ts",
   "../js/link.ts",
   "../js/location.ts",
@@ -200,55 +200,16 @@ rust_test("cli_test") {
   env = [ "CARGO_PKG_VERSION=${deno_cargo_info.version}" ]
 }
 
-# Generates the core TypeScript type library for deno that will be
-# included in the runtime bundle
-run_node("deno_runtime_declaration") {
-  out_dir = target_gen_dir
-  sources = ts_sources
-  outputs = [
-    "$out_dir/lib/lib.deno_runtime.d.ts",
-  ]
-  inputs = ts_sources + [
-             "//tools/ts_library_builder/tsconfig.json",
-             "//tools/ts_library_builder/main.ts",
-             "//tools/ts_library_builder/build_library.ts",
-             "//tools/ts_library_builder/ast_util.ts",
-           ]
-  args = [
-    rebase_path("//node_modules/ts-node/dist/bin.js", root_build_dir),
-    "--project",
-    rebase_path("//tools/ts_library_builder/tsconfig.json"),
-    "--skip-ignore",
-    rebase_path("//tools/ts_library_builder/main.ts", root_build_dir),
-    "--basePath",
-    rebase_path("//", root_build_dir),
-    "--inline",
-    rebase_path("//js/lib.web_assembly.d.ts", root_build_dir),
-    "--buildPath",
-    rebase_path(root_build_dir, root_build_dir),
-    "--outFile",
-    rebase_path(outputs[0], root_build_dir),
-    "--silent",
-  ]
-  if (is_debug) {
-    args += [ "--debug" ]
-  }
-}
-
 bundle("main_bundle") {
+  sources = ts_sources
   out_dir = "$target_gen_dir/bundle/"
   out_name = "main"
-  deps = [
-    ":deno_runtime_declaration",
-  ]
 }
 
 bundle("compiler_bundle") {
+  sources = ts_sources
   out_dir = "$target_gen_dir/bundle/"
   out_name = "compiler"
-  deps = [
-    ":deno_runtime_declaration",
-  ]
 }
 
 # Generates $target_gen_dir/snapshot_deno.bin

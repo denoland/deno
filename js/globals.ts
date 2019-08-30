@@ -37,9 +37,6 @@ import { core } from "./core";
 // file are tracked and created as part of default library that is built into
 // Deno, we only need to declare the enough to compile Deno.
 declare global {
-  const console: consoleTypes.Console;
-  const setTimeout: typeof timers.setTimeout;
-
   interface CallSite {
     getThis(): unknown;
     getTypeName(): string;

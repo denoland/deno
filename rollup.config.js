@@ -29,56 +29,6 @@ const tsconfigOverride = {
   }
 };
 
-/** this is a rollup plugin which will look for imports ending with `!string` and resolve
- * them with a module that will inline the contents of the file as a string.  Needed to
- * support `js/assets.ts`.
- * @param {any} param0
- */
-function strings(
-  { include, exclude } = { include: undefined, exclude: undefined }
-) {
-  if (!include) {
-    throw new Error("include option must be passed");
-  }
-
-  const filter = createFilter(include, exclude);
-
-  return {
-    name: "strings",
-
-    /**
-     * @param {string} importee
-     */
-    resolveId(importee) {
-      if (importee.endsWith("!string")) {
-        // strip the `!string` from `importee`
-        importee = importee.slice(0, importee.lastIndexOf("!string"));
-        if (!importee.startsWith("gen/")) {
-          // this is a static asset which is located relative to the root of
-          // the source project
-          return path.resolve(path.join(__dirname, importee));
-        }
-        // this is an asset which has been generated, therefore it will be
-        // located within the build path
-        return path.resolve(path.join(process.cwd(), importee));
-      }
-    },
-
-    /**
-     * @param {any} code
-     * @param {string} id
-     */
-    transform(code, id) {
-      if (filter(id)) {
-        return {
-          code: `export default ${JSON.stringify(code)};`,
-          map: { mappings: "" }
-        };
-      }
-    }
-  };
-}
-
 const archNodeToDeno = {
   x64: "x64"
 };
@@ -189,15 +139,6 @@ export default function makeConfig(commandOptions) {
         crypto: mockPath,
         buffer: mockPath,
         module: mockPath
-      }),
-
-      // Provides inlining of file contents for `js/assets.ts`
-      strings({
-        include: [
-          "*.d.ts",
-          `${__dirname}/**/*.d.ts`,
-          `${process.cwd()}/**/*.d.ts`
-        ]
       }),
 
       // Allows rollup to resolve modules based on Node.js resolution

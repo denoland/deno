@@ -18,6 +18,7 @@ extern crate serde_derive;
 extern crate url;
 
 mod ansi;
+mod assets;
 pub mod compilers;
 pub mod deno_dir;
 pub mod deno_error;
@@ -127,10 +128,7 @@ fn create_worker_and_state(
 }
 
 fn types_command() {
-  let content = include_str!(concat!(
-    env!("GN_OUT_DIR"),
-    "/gen/cli/lib/lib.deno_runtime.d.ts"
-  ));
+  let content = assets::get_source_code("lib.deno_runtime.d.ts").unwrap();
   println!("{}", content);
 }
 
