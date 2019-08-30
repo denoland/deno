@@ -210,7 +210,7 @@ pub fn mksnapshot_bundle(
     runtime_isolate.execute("amd_runtime.js", include_str!("amd_runtime.js")),
   );
 
-  js_check(runtime_isolate.execute("bundle", &source_code));
+  js_check(runtime_isolate.execute(&bundle.to_string_lossy(), &source_code));
 
   // execute main.
 

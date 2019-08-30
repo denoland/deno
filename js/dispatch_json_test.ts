@@ -2,9 +2,9 @@ import { testPerm, assertMatch, unreachable } from "./test_util.ts";
 
 const openErrorStackPattern = new RegExp(
   `^.*
-    at unwrapResponse \\(js\\/dispatch_json\\.ts:.*\\)
-    at sendAsync.* \\(js\\/dispatch_json\\.ts:.*\\)
-    at async Object\\.open \\(js\\/files\\.ts:.*\\).*$`,
+    at unwrapResponse \\(.*dispatch_json\\.ts:.*\\)
+    at Object.sendAsync \\(.*dispatch_json\\.ts:.*\\)
+    at async Object\\.open \\(.*files\\.ts:.*\\).*$`,
   "ms"
 );
 
