@@ -49,11 +49,8 @@ fn setup() -> (PathBuf, Option<cargo_gn::NinjaEnv>) {
     Err(_) => {}
   };
 
-  let workspace_dir = env::current_dir()
-    .unwrap()
-    .join("../")
-    .canonicalize()
-    .unwrap();
+  let cwd = env::current_dir().unwrap();
+  let workspace_dir = cwd.parent().unwrap();
 
   let ninja_env: Option<cargo_gn::NinjaEnv> = if !cfg!(target_os = "windows") {
     None
