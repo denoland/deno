@@ -87,11 +87,11 @@ action("deno_cli_snapshots_build_run") {
   script = "run.py"
   inputs = ts_sources
   outputs = [
-    "$root_out_dir/CLI_SNAPSHOT",
+    "$root_out_dir/CLI_SNAPSHOT.bin",
     "$root_out_dir/CLI_SNAPSHOT.js",
     "$root_out_dir/CLI_SNAPSHOT.js.map",
     "$root_out_dir/CLI_SNAPSHOT.d.ts",
-    "$root_out_dir/COMPILER_SNAPSHOT",
+    "$root_out_dir/COMPILER_SNAPSHOT.bin",
     "$root_out_dir/COMPILER_SNAPSHOT.js",
     "$root_out_dir/COMPILER_SNAPSHOT.js.map",
     "$root_out_dir/COMPILER_SNAPSHOT.d.ts",

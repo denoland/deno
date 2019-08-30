@@ -292,9 +292,9 @@ fn snapshot_to_env(
   let snapshot_slice =
     unsafe { std::slice::from_raw_parts(snapshot.data_ptr, snapshot.data_len) };
   println!("snapshot bytes {}", snapshot_slice.len());
-  //
+
   let out_dir = PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
-  let snapshot_path = out_dir.join(env_var);
+  let snapshot_path = out_dir.join(String::from(env_var) + ".bin");
 
   fs::write(&snapshot_path, snapshot_slice)?;
   println!("snapshot path {} ", snapshot_path.display());
