@@ -9,7 +9,7 @@ export const version: Version = {
   deno: "",
   v8: "",
   // This string will be replaced by rollup
-  typescript: `ROLLUP_REPLACE_TS_VERSION`
+  typescript: `DENO_REPLACE_TS_VERSION`
 };
 
 /**
