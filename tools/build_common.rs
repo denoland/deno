@@ -18,10 +18,17 @@ fn binary_downloads() {
 // This is essentially a re-write of the original tools/setup.py
 // but in rust.
 fn setup() -> (PathBuf, Option<cargo_gn::NinjaEnv>) {
+  let is_win = cfg!(target_os = "windows");
   let is_debug = cargo_gn::is_debug();
+
   let mut gn_args: cargo_gn::GnArgs = Vec::new();
-  if is_debug {
+  if is_debug && !is_win {
     gn_args.push("is_debug=true".to_string());
+  } else if is_debug && is_win {
+    // Rust always links with the release flavor of the CRT. Chromium //build
+    // uses the debug version of the CRT when 'is_debug` is set, and there's no
+    // override. Therefore, we cannot build a debug V8 and use Rust to link it.
+    gn_args.push("is_debug=false".to_string());
   } else {
     gn_args.push("is_official_build=true".to_string());
     gn_args.push("symbol_level=0".to_string());
@@ -52,7 +59,7 @@ fn setup() -> (PathBuf, Option<cargo_gn::NinjaEnv>) {
   let cwd = env::current_dir().unwrap();
   let workspace_dir = cwd.parent().unwrap();
 
-  let ninja_env: Option<cargo_gn::NinjaEnv> = if !cfg!(target_os = "windows") {
+  let ninja_env: Option<cargo_gn::NinjaEnv> = if !is_win {
     None
   } else {
     // Windows needs special configuration. This is similar to the function of
