@@ -66,14 +66,16 @@ fn setup() -> (PathBuf, Option<cargo_gn::NinjaEnv>) {
       "third_party/python_packages/win32",
       "third_party/python_packages/win32/lib",
       "third_party/python_packages/Pythonwin",
-    ].into_iter()
+    ]
+    .into_iter()
     .map(|p| {
       workspace_dir
         .join(p)
         .into_os_string()
         .into_string()
         .unwrap()
-    }).collect();
+    })
+    .collect();
     let orig_path =
       String::from(";") + &env::var_os("PATH").unwrap().into_string().unwrap();
     let path = workspace_dir
