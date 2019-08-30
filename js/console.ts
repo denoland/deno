@@ -526,6 +526,18 @@ export class Console {
     this.printFunc(stringifyArgs([obj], options) + "\n", false);
   };
 
+  /** From MDN:
+   * Displays an interactive tree of the descendant elements of
+   * the specified XML/HTML element. If it is not possible to display
+   * as an element the JavaScript Object view is shown instead.
+   * The output is presented as a hierarchical listing of expandable
+   * nodes that let you see the contents of child nodes.
+   *
+   * Since we write to stdout, we can't display anything interactive
+   * we just fall back to `console.dir`.
+   */
+  dirxml = this.dir;
+
   /** Writes the arguments to stdout */
   warn = (...args: unknown[]): void => {
     this.printFunc(

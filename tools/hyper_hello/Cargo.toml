@@ -4,7 +4,7 @@ version = "0.0.1"
 
 [dependencies]
 hyper = "0.12.33"
-ring = "0.14.6"
+ring = "0.16.8"
 
 [[bin]]
 name = "hyper_hello"

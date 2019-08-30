@@ -30,6 +30,7 @@ In deno_std:
   (denoland/deno_std#558)
 - fix: refactor 'assertEquals' (denoland/deno_std#560)
 - fix: test all text functions in colors module (denoland/deno_std#553)
+- fix: move colors module into fmt module (denoland/deno_std#571)
 
 ### v0.15.0 / 2019.08.13
 
