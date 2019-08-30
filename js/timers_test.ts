@@ -259,6 +259,21 @@ test(function setTimeoutShouldThrowWithBigint(): void {
   assertEquals(hasThrown, 2);
 });
 
+test(function clearTimeoutShouldThrowWithBigint(): void {
+  let hasThrown = 0;
+  try {
+    clearTimeout((1n as unknown) as number);
+    hasThrown = 1;
+  } catch (err) {
+    if (err instanceof TypeError) {
+      hasThrown = 2;
+    } else {
+      hasThrown = 3;
+    }
+  }
+  assertEquals(hasThrown, 2);
+});
+
 test(function testFunctionName(): void {
   assertEquals(clearTimeout.name, "clearTimeout");
   assertEquals(clearInterval.name, "clearInterval");
