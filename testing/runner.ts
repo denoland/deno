@@ -1,4 +1,4 @@
-#!/usr/bin/env deno -A
+#!/usr/bin/env -S deno -A
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { parse } from "../flags/mod.ts";
 import { glob, isGlob, walk } from "../fs/mod.ts";
@@ -35,12 +35,68 @@ ARGS:
 
 function filePathToRegExp(str: string): RegExp {
   if (isGlob(str)) {
-    return glob(str);
+    return glob(str, { flags: "g" });
   }
 
-  return RegExp(str);
+  return RegExp(str, "g");
 }
 
+function isRemoteUrl(url: string): boolean {
+  return /^https?:\/\//.test(url);
+}
+
+function partition(
+  arr: string[],
+  callback: (el: string) => boolean
+): [string[], string[]] {
+  return arr.reduce(
+    (paritioned: [string[], string[]], el: string): [string[], string[]] => {
+      paritioned[callback(el) ? 1 : 0].push(el);
+      return paritioned;
+    },
+    [[], []]
+  );
+}
+
+/**
+ * Given list of globs or URLs to include and exclude and root directory return
+ * list of file URLs that should be imported for test runner.
+ */
+export async function getMatchingUrls(
+  matchPaths: string[],
+  excludePaths: string[],
+  root: string
+): Promise<string[]> {
+  const [includeLocal, includeRemote] = partition(matchPaths, isRemoteUrl);
+  const [excludeLocal, excludeRemote] = partition(excludePaths, isRemoteUrl);
+
+  const localFileIterator = walk(root, {
+    match: includeLocal.map((f: string): RegExp => filePathToRegExp(f)),
+    skip: excludeLocal.map((f: string): RegExp => filePathToRegExp(f))
+  });
+
+  let matchingLocalUrls: string[] = [];
+  for await (const { filename } of localFileIterator) {
+    matchingLocalUrls.push(`file://${filename}`);
+  }
+
+  const excludeRemotePatterns = excludeRemote.map(
+    (url: string): RegExp => RegExp(url)
+  );
+  const matchingRemoteUrls = includeRemote.filter(
+    (candidateUrl: string): boolean => {
+      return !excludeRemotePatterns.some(
+        (pattern: RegExp): boolean => {
+          const r = pattern.test(candidateUrl);
+          pattern.lastIndex = 0;
+          return r;
+        }
+      );
+    }
+  );
+
+  return matchingLocalUrls.concat(matchingRemoteUrls);
+}
 /**
  * This function runs matching test files in `root` directory.
  *
@@ -95,25 +151,17 @@ export async function main(root: string = cwd()): Promise<void> {
     excludeFiles = [];
   }
 
-  const filesIterator = walk(root, {
-    match: includeFiles.map((f: string): RegExp => filePathToRegExp(f)),
-    skip: excludeFiles.map((f: string): RegExp => filePathToRegExp(f))
-  });
+  const foundTestUrls = await getMatchingUrls(includeFiles, excludeFiles, root);
 
-  const foundTestFiles: string[] = [];
-  for await (const { filename } of filesIterator) {
-    foundTestFiles.push(filename);
-  }
-
-  if (foundTestFiles.length === 0) {
+  if (foundTestUrls.length === 0) {
     console.error("No matching test files found.");
     return;
   }
 
-  console.log(`Found ${foundTestFiles.length} matching test files.`);
+  console.log(`Found ${foundTestUrls.length} matching test files.`);
 
-  for (const filename of foundTestFiles) {
-    await import(`file://${filename}`);
+  for (const url of foundTestUrls) {
+    await import(url);
   }
 
   await runTests({
