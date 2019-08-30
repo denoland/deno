@@ -28,6 +28,7 @@ fn setup() -> (PathBuf, Option<cargo_gn::NinjaEnv>) {
     // Rust always links with the release flavor of the CRT. Chromium //build
     // uses the debug version of the CRT when 'is_debug` is set, and there's no
     // override. Therefore, we cannot build a debug V8 and use Rust to link it.
+    // Rust issue: https://github.com/rust-lang/rust/issues/39016
     gn_args.push("is_debug=false".to_string());
   } else {
     gn_args.push("is_official_build=true".to_string());
