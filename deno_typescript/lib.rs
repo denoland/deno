@@ -45,6 +45,23 @@ pub struct TSIsolate {
 static TYPESCRIPT_CODE: &str =
   include_str!("../third_party/node_modules/typescript/lib/typescript.js");
 
+fn preprocessor_replacements_json() -> String {
+  /// BUILD_OS and BUILD_ARCH match the values in Deno.build. See js/build.ts.
+  #[cfg(target_os = "macos")]
+  static BUILD_OS: &str = "mac";
+  #[cfg(target_os = "linux")]
+  static BUILD_OS: &str = "linux";
+  #[cfg(target_os = "windows")]
+  static BUILD_OS: &str = "win";
+  #[cfg(target_arch = "x86_64")]
+  static BUILD_ARCH: &str = "x64";
+
+  let mut replacements = HashMap::new();
+  replacements.insert("DENO_REPLACE_OS", BUILD_OS);
+  replacements.insert("DENO_REPLACE_ARCH", BUILD_ARCH);
+  serde_json::json!(replacements).to_string()
+}
+
 impl TSIsolate {
   fn new(bundle: bool) -> TSIsolate {
     let mut isolate = Isolate::new(StartupData::None, false);
@@ -78,8 +95,12 @@ impl TSIsolate {
     root_names: Vec<String>,
   ) -> Result<Arc<Mutex<TSState>>, ErrBox> {
     let root_names_json = serde_json::json!(root_names).to_string();
-    let source =
-      &format!("main({:?}, {})", config_json.to_string(), root_names_json);
+    let source = &format!(
+      "main({:?}, {}, {})",
+      config_json.to_string(),
+      root_names_json,
+      preprocessor_replacements_json()
+    );
     self.isolate.execute("<anon>", source)?;
     Ok(self.state.clone())
   }

@@ -3,9 +3,15 @@
 
 const ASSETS = "$asset$";
 
-function main(configText, rootNames) {
+let replacements;
+
+function main(configText, rootNames, replacements_) {
   println(`>>> ts version ${ts.version}`);
   println(`>>> rootNames ${rootNames}`);
+
+  replacements = replacements_;
+  println(`>>> replacements ${JSON.stringify(replacements)}`);
+
   const host = new Host();
 
   assert(rootNames.length > 0);
@@ -152,6 +158,12 @@ class Host {
     // TODO(ry) A terrible hack. Please remove ASAP.
     if (fileName.endsWith("typescript.d.ts")) {
       sourceCode = sourceCode.replace("export = ts;", "");
+    }
+
+    // TODO(ry) A terrible hack. Please remove ASAP.
+    for (let key of Object.keys(replacements)) {
+      let val = replacements[key];
+      sourceCode = sourceCode.replace(key, val);
     }
 
     let sourceFile = ts.createSourceFile(fileName, sourceCode, languageVersion);
@@ -314,7 +326,6 @@ function getExtension(fileName) {
   } else if (fileName.endsWith(".js")) {
     return ts.Extension.Js;
   } else {
-    // return  msg.MediaType.Unknown:
     throw TypeError(`Cannot resolve extension for ${fileName}`);
   }
 }

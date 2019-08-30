@@ -17,10 +17,7 @@ import * as deno from "./deno.ts";
 
 const { console } = window;
 
-function denoMain(
-  preserveDenoNamespace: boolean = true,
-  name?: string
-): void {
+function denoMain(preserveDenoNamespace: boolean = true, name?: string): void {
   const s = os.start(preserveDenoNamespace, name);
 
   setVersions(s.denoVersion, s.v8Version);
