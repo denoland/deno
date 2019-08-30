@@ -11,7 +11,8 @@ import sys
 import json
 import time
 import shutil
-from util import find_exts, root_path, run, run_output, build_path, executable_suffix
+from util import find_exts, root_path, run, run_output
+from util import build_path, executable_suffix
 import tempfile
 import http_server
 import throughput_benchmark
