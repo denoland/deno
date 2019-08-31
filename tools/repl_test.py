@@ -58,7 +58,8 @@ class TestRepl(DenoTestCase):
     def test_help_command(self):
         out, err, code = self.input("help")
         expectedOut = '\n'.join([
-            "_       Print last execution output",
+            "_       Get last evaluation result",
+            "_error  Get last thrown error",
             "exit    Exit the REPL",
             "help    Print this help message",
             "",
@@ -151,10 +152,30 @@ class TestRepl(DenoTestCase):
         self.assertTrue(err.startswith("Unable to save REPL history:"))
         self.assertEqual(code, 0)
 
-    def test_save_last_output(self):
+    def test_save_last_eval(self):
         out, err, code = self.input("1", "_")
         self.assertEqual(out, '1\n1\n')
         self.assertEqual(err, '')
+        self.assertEqual(code, 0)
+
+    def test_save_last_thrown(self):
+        out, err, code = self.input("throw 1", "_error")
+        self.assertEqual(out, '1\n')
+        self.assertEqual(err, 'Thrown: 1\n')
+        self.assertEqual(code, 0)
+
+    def test_assign_underscore(self):
+        out, err, code = self.input("_ = 1", "2", "_")
+        self.assertEqual(
+            out, 'Last evaluation result is no longer saved to _.\n1\n2\n1\n')
+        self.assertEqual(err, '')
+        self.assertEqual(code, 0)
+
+    def test_assign_underscore_error(self):
+        out, err, code = self.input("_error = 1", "throw 2", "_error")
+        self.assertEqual(
+            out, 'Last thrown error is no longer saved to _error.\n1\n1\n')
+        self.assertEqual(err, 'Thrown: 2\n')
         self.assertEqual(code, 0)
 
 
