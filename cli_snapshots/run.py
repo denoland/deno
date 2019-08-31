@@ -11,8 +11,6 @@ exe = sys.argv[1]
 d = sys.argv[2]
 root_out_dir = sys.argv[3]
 
-assert os.path.exists(exe)
-
 env = os.environ.copy()
 env["CARGO_MANIFEST_DIR"] = os.path.abspath(d)
 env["OUT_DIR"] = root_out_dir
