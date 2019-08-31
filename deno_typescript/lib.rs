@@ -325,13 +325,16 @@ fn snapshot_to_env(
 
 macro_rules! inc {
   ($e:expr) => {
-    include_str!(concat!("../third_party/node_modules/typescript/lib/", $e))
+    Some(include_str!(concat!(
+      "../third_party/node_modules/typescript/lib/",
+      $e
+    )))
   };
 }
 
-pub fn get_asset(asset: &str) -> String {
-  String::from(match asset {
-    "lib.deno_core.d.ts" => include_str!("lib.deno_core.d.ts"),
+pub fn get_asset(name: &str) -> Option<&'static str> {
+  match name {
+    "lib.deno_core.d.ts" => Some(include_str!("lib.deno_core.d.ts")),
     "lib.esnext.d.ts" => inc!("lib.esnext.d.ts"),
     "lib.es2019.d.ts" => inc!("lib.es2019.d.ts"),
     "lib.es2018.d.ts" => inc!("lib.es2018.d.ts"),
@@ -366,6 +369,6 @@ pub fn get_asset(asset: &str) -> String {
     "lib.es2019.symbol.d.ts" => inc!("lib.es2019.symbol.d.ts"),
     "lib.esnext.bigint.d.ts" => inc!("lib.esnext.bigint.d.ts"),
     "lib.esnext.intl.d.ts" => inc!("lib.esnext.intl.d.ts"),
-    _ => panic!("Unknown asset {}", asset),
-  })
+    _ => None,
+  }
 }

@@ -14,6 +14,11 @@ main_extern = [
     crate_type = "rlib"
   },
   {
+    label = "../deno_typescript:deno_typescript"
+    crate_name = "deno_typescript"
+    crate_type = "rlib"
+  },
+  {
     label = "$rust_build:serde_derive"
     crate_name = "serde_derive"
     crate_type = "proc_macro"
