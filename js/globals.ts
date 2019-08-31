@@ -89,6 +89,7 @@ window.onload = undefined as undefined | Function;
 // standard https://www.w3.org/TR/WebCryptoAPI/#crypto-interface as it does not
 // yet incorporate the SubtleCrypto interface as its "subtle" property.
 window.crypto = (csprng as unknown) as Crypto;
+// window.queueMicrotask added by hand to self-maintained lib.deno_runtime.d.ts
 
 // When creating the runtime type library, we use modifications to `window` to
 // determine what is in the global namespace.  When we put a class in the
