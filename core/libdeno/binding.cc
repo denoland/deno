@@ -455,6 +455,16 @@ void EvalContext(const v8::FunctionCallbackInfo<v8::Value>& args) {
   args.GetReturnValue().Set(output);
 }
 
+void QueueMicrotask(const v8::FunctionCallbackInfo<v8::Value>& args) {
+  v8::Isolate* isolate = args.GetIsolate();
+
+  if (!(args[0]->IsFunction())) {
+    ThrowInvalidArgument(isolate);
+    return;
+  }
+  isolate->EnqueueMicrotask(args[0].As<v8::Function>());
+}
+
 void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context) {
   v8::HandleScope handle_scope(isolate);
   v8::Context::Scope context_scope(context);
@@ -493,6 +503,15 @@ void InitializeContext(v8::Isolate* isolate, v8::Local<v8::Context> context) {
 
   CHECK(core_val->SetAccessor(context, deno::v8_str("shared"), Shared)
             .FromJust());
+
+  // Direct bindings on `window`.
+  auto queue_microtask_tmpl =
+      v8::FunctionTemplate::New(isolate, QueueMicrotask);
+  auto queue_microtask_val =
+      queue_microtask_tmpl->GetFunction(context).ToLocalChecked();
+  CHECK(
+      global->Set(context, deno::v8_str("queueMicrotask"), queue_microtask_val)
+          .FromJust());
 }
 
 void MessageCallback(v8::Local<v8::Message> message,
