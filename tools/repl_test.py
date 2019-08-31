@@ -58,7 +58,8 @@ class TestRepl(DenoTestCase):
     def test_help_command(self):
         out, err, code = self.input("help")
         expectedOut = '\n'.join([
-            "_       Print last execution output",
+            "_       Get last evaluation result",
+            "_error  Get last thrown error",
             "exit    Exit the REPL",
             "help    Print this help message",
             "",
