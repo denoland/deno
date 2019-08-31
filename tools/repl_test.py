@@ -58,6 +58,7 @@ class TestRepl(DenoTestCase):
     def test_help_command(self):
         out, err, code = self.input("help")
         expectedOut = '\n'.join([
+            "_       Print last execution output",
             "exit    Exit the REPL",
             "help    Print this help message",
             "",
@@ -148,6 +149,12 @@ class TestRepl(DenoTestCase):
         out, err, code = self.input("'noop'", exit=False, env=new_env)
         self.assertEqual(out, "noop\n")
         self.assertTrue(err.startswith("Unable to save REPL history:"))
+        self.assertEqual(code, 0)
+
+    def test_save_last_output(self):
+        out, err, code = self.input("1", "_")
+        self.assertEqual(out, '1\n1\n')
+        self.assertEqual(err, '')
         self.assertEqual(code, 0)
 
 

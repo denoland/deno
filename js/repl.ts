@@ -25,6 +25,7 @@ function replError(...args: unknown[]): void {
 }
 
 const helpMsg = [
+  "_       Print last execution output",
   "exit    Exit the REPL",
   "help    Print this help message"
 ].join("\n");
@@ -71,10 +72,15 @@ function isRecoverableError(e: Error): boolean {
 
 // Evaluate code.
 // Returns true if code is consumed (no error/irrecoverable error).
+// Also attempts setting window._ to last valid execute output.
 // Returns false if error is recoverable
 function evaluate(code: string): boolean {
   const [result, errInfo] = core.evalContext(code);
   if (!errInfo) {
+    // Try setting `window._` to the returned result
+    try {
+      window._ = result;
+    } catch {} // Silently fail on error.
     replLog(result);
   } else if (errInfo.isCompileError && isRecoverableError(errInfo.thrown)) {
     // Recoverable compiler error
@@ -106,6 +112,9 @@ export async function replLoop(): Promise<void> {
     } catch {}
     exit(exitCode);
   };
+
+  // Make _ a valid property on window to avoid confusing error.
+  window._ = undefined;
 
   while (true) {
     let code = "";
