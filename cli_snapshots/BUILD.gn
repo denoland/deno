@@ -97,7 +97,7 @@ action("deno_cli_snapshots_build_run") {
     "$root_out_dir/COMPILER_SNAPSHOT.js.map",
     "$root_out_dir/COMPILER_SNAPSHOT.d.ts",
   ]
-  args = [ rebase_path("$root_out_dir/deno_cli_snapshots_build") ]
+  args = [ rebase_path("$root_out_dir/deno_cli_snapshots_build", ".") ]
   deps = [
     ":deno_cli_snapshots_build",
   ]
