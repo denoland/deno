@@ -1264,8 +1264,8 @@ declare interface Window {
     callback: (event: domTypes.Event) => void | null,
     options?: boolean | domTypes.EventListenerOptions | undefined
   ) => void;
-  Deno: typeof Deno;
   queueMicrotask: (task: () => void) => void;
+  Deno: typeof Deno;
 }
 
 declare const window: Window;
