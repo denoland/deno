@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
 // Public deno module.
-export { noColor, pid, env, exit, isTTY, execPath, homeDir } from "./os.ts";
+export { env, exit, isTTY, execPath, homeDir } from "./os.ts";
 export { chdir, cwd } from "./dir.ts";
 export {
   File,
@@ -104,3 +104,15 @@ export { Console, stringifyArgs } from "./console.ts";
 // TODO Don't expose DomIterableMixin.
 /** @internal */
 export { DomIterableMixin } from "./mixins/dom_iterable.ts";
+
+/** The current process id of the runtime. */
+export let pid: number;
+
+/** Reflects the NO_COLOR environment variable: https://no-color.org/ */
+export let noColor: boolean;
+
+// TODO(ry) This should not be exposed to Deno.
+export function _setGlobals(pid_: number, noColor_: boolean): void {
+  pid = pid_;
+  noColor = noColor_;
+}

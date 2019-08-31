@@ -72,7 +72,6 @@ window.window = window;
 // properties when building the runtime type library, as the whole module
 // is flattened into a single namespace.
 window.Deno = Deno;
-Object.freeze(window.Deno);
 
 // Globally available functions and object instances.
 window.atob = textEncoding.atob;

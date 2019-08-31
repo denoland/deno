@@ -11,11 +11,7 @@ import { xevalMain, XevalFunc } from "./xeval.ts";
 import { setVersions } from "./version.ts";
 import { window } from "./window.ts";
 import { setLocation } from "./location.ts";
-
-// builtin modules
-import * as deno from "./deno.ts";
-
-const { console } = window;
+import * as Deno from "./deno.ts";
 
 function denoMain(preserveDenoNamespace: boolean = true, name?: string): void {
   const s = os.start(preserveDenoNamespace, name);
@@ -24,9 +20,10 @@ function denoMain(preserveDenoNamespace: boolean = true, name?: string): void {
 
   // handle `--version`
   if (s.versionFlag) {
-    console.log("deno:", deno.version.deno);
-    console.log("v8:", deno.version.v8);
-    console.log("typescript:", deno.version.typescript);
+    const { console } = window;
+    console.log("deno:", Deno.version.deno);
+    console.log("v8:", Deno.version.v8);
+    console.log("typescript:", Deno.version.typescript);
     os.exit(0);
   }
 
