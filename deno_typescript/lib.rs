@@ -3,7 +3,6 @@ extern crate serde;
 extern crate serde_json;
 
 mod ops;
-use deno::deno_mod;
 use deno::js_check;
 pub use deno::v8_set_flags;
 use deno::ErrBox;
@@ -197,6 +196,8 @@ fn print_source_code(code: &str) {
   }
 }
 
+/// Create a snapshot and store the resulting path in the provided enviromental
+/// variable.
 pub fn mksnapshot_bundle(
   bundle: &Path,
   env_var: &str,
@@ -216,7 +217,6 @@ pub fn mksnapshot_bundle(
 
   let state = state.lock().unwrap();
   let main = state.written_files.last().unwrap().module_name.clone();
-  // let main = "file:///Users/rld/src/deno_typescript/cli_snapshots/js/main.ts";
   js_check(runtime_isolate.execute("anon", &format!("require('{}')", main)));
 
   snapshot_to_env(runtime_isolate, env_var)?;
@@ -224,6 +224,9 @@ pub fn mksnapshot_bundle(
   Ok(())
 }
 
+/// Create a snapshot and store the resulting path in the provided enviromental
+/// variable. This differs from mksnapshot_bundle in that is also Runs
+/// typescript.js.
 pub fn mksnapshot_bundle_ts(
   bundle: &Path,
   env_var: &str,
@@ -246,61 +249,6 @@ pub fn mksnapshot_bundle_ts(
 
   snapshot_to_env(runtime_isolate, env_var)?;
 
-  Ok(())
-}
-
-// TODO(ry) Instead of state: Arc<Mutex<TSState>>, take something like state:
-// &TSState
-pub fn mksnapshot(
-  env_var: &str,
-  state: Arc<Mutex<TSState>>,
-) -> Result<(), ErrBox> {
-  assert!(!state.lock().unwrap().bundle);
-
-  let mut runtime_isolate = Isolate::new(StartupData::None, true);
-  let mut url2id: HashMap<String, deno_mod> = HashMap::new();
-  let mut id2url: HashMap<deno_mod, String> = HashMap::new();
-
-  let state = state.lock().unwrap();
-
-  let main = state.written_files.last().unwrap().module_name.clone();
-
-  for f in state.written_files.iter() {
-    if f.url.ends_with(".js") {
-      let is_main = f.module_name == main;
-      let id =
-        js_check(runtime_isolate.mod_new(is_main, &f.url, &f.source_code));
-      url2id.insert(f.module_name.clone(), id);
-      id2url.insert(id, f.module_name.clone());
-
-      if f.url.ends_with("flatbuffers/flatbuffers.js") {
-        print_source_code(&f.source_code);
-      }
-    }
-  }
-
-  let url2id_ = url2id.clone(); // FIXME
-  let mut resolve = move |specifier: &str, referrer: deno_mod| -> deno_mod {
-    let referrer_url = id2url.get(&referrer).unwrap();
-    let import_url =
-      ModuleSpecifier::resolve_import(specifier, referrer_url.as_str())
-        .unwrap();
-    let import_url_str = import_url.as_str();
-    *url2id_.get(import_url_str).unwrap_or_else(|| {
-      panic!("Could not resolve {}", import_url_str);
-    })
-  };
-
-  // Instantiate each module.
-  for (_url, id) in url2id.iter() {
-    js_check(runtime_isolate.mod_instantiate(*id, &mut resolve));
-  }
-
-  // Execute the main module.
-  let main_id = url2id.get(main.as_str()).unwrap();
-  js_check(runtime_isolate.mod_evaluate(*main_id));
-
-  snapshot_to_env(runtime_isolate, env_var)?;
   Ok(())
 }
 
