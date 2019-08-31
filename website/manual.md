@@ -598,7 +598,7 @@ hint looks like this:
 import * as foo from "./foo.js";
 ```
 
-Where the hint effects the next `import` statement (or `export ... from`
+Where the hint affects the next `import` statement (or `export ... from`
 statement) where the value of the `@deno-types` will be substituted at compile
 time instead of the specified module. Like in the above example, the Deno
 compiler will load `./foo.d.ts` instead of `./foo.js`. Deno will still load
