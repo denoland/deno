@@ -1264,6 +1264,7 @@ declare interface Window {
     callback: (event: domTypes.Event) => void | null,
     options?: boolean | domTypes.EventListenerOptions | undefined
   ) => void;
+  queueMicrotask: (task: () => void) => void;
   Deno: typeof Deno;
 }
 

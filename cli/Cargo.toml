@@ -34,6 +34,7 @@ log = "0.4.8"
 rand = "0.6.5"
 regex = "1.2.1"
 remove_dir_all = "0.5.2"
+reqwest = { version = "0.9.20", default-features = false, features = ["rustls-tls"] }
 ring = "0.16.8"
 rustyline = "5.0.2"
 serde = { version = "1.0.99", features = ["derive"] }

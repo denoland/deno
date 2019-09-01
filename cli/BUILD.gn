@@ -40,6 +40,7 @@ main_extern_rlib = [
   "rand",
   "regex",
   "remove_dir_all",
+  "reqwest",
   "ring",
   "rustyline",
   "serde",

@@ -693,7 +693,6 @@ pub enum DenoSubcommand {
   Eval,
   Fetch,
   Info,
-  Install,
   Repl,
   Run,
   Types,
@@ -830,7 +829,7 @@ pub fn flags_from_vec(
               .collect();
             argv.extend(flags);
           }
-          DenoSubcommand::Install
+          DenoSubcommand::Run
         }
         _ => unreachable!(),
       }
@@ -1553,7 +1552,7 @@ mod tests {
         ..DenoFlags::default()
       }
     );
-    assert_eq!(subcommand, DenoSubcommand::Install);
+    assert_eq!(subcommand, DenoSubcommand::Run);
     assert_eq!(
       argv,
       svec![
@@ -1583,7 +1582,7 @@ mod tests {
         ..DenoFlags::default()
       }
     );
-    assert_eq!(subcommand, DenoSubcommand::Install);
+    assert_eq!(subcommand, DenoSubcommand::Run);
     assert_eq!(
       argv,
       svec![
@@ -1617,7 +1616,7 @@ mod tests {
         ..DenoFlags::default()
       }
     );
-    assert_eq!(subcommand, DenoSubcommand::Install);
+    assert_eq!(subcommand, DenoSubcommand::Run);
     assert_eq!(
       argv,
       svec![

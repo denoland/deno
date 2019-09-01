@@ -156,6 +156,7 @@ void ErrorToJSON(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Shared(v8::Local<v8::Name> property,
             const v8::PropertyCallbackInfo<v8::Value>& info);
 void MessageCallback(v8::Local<v8::Message> message, v8::Local<v8::Value> data);
+void QueueMicrotask(const v8::FunctionCallbackInfo<v8::Value>& args);
 static intptr_t external_references[] = {
     reinterpret_cast<intptr_t>(Print),
     reinterpret_cast<intptr_t>(Recv),
@@ -164,6 +165,7 @@ static intptr_t external_references[] = {
     reinterpret_cast<intptr_t>(ErrorToJSON),
     reinterpret_cast<intptr_t>(Shared),
     reinterpret_cast<intptr_t>(MessageCallback),
+    reinterpret_cast<intptr_t>(QueueMicrotask),
     0};
 
 static const deno_buf empty_buf = {nullptr, 0};
