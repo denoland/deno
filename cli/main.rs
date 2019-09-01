@@ -421,7 +421,6 @@ fn main() {
     DenoSubcommand::Eval => eval_command(flags, argv),
     DenoSubcommand::Fetch => fetch_command(flags, argv),
     DenoSubcommand::Info => info_command(flags, argv),
-    DenoSubcommand::Install => run_script(flags, argv),
     DenoSubcommand::Repl => run_repl(flags, argv),
     DenoSubcommand::Run => run_script(flags, argv),
     DenoSubcommand::Types => types_command(),
