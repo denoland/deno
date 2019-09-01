@@ -12,7 +12,7 @@ readme = "../README.md"
 path = "lib.rs"
 
 [dev-dependencies]
-deno = "0.15.0"
+deno = { path = "../core", version = "0.16.0" }
 
 [build-dependencies]
 deno_typescript = { path = "../deno_typescript", version = "0.0.3" }

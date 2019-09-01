@@ -214,22 +214,6 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "0.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-dependencies = [
- "deno-x86_64-apple-darwin 0.15.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "deno-x86_64-pc-windows-msvc 0.15.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "deno-x86_64-unknown-linux-gnu 0.15.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "futures 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
- "lazy_static 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "libc 0.2.62 (registry+https://github.com/rust-lang/crates.io-index)",
- "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
- "serde_json 1.0.40 (registry+https://github.com/rust-lang/crates.io-index)",
- "url 2.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "deno"
 version = "0.16.0"
 dependencies = [
  "futures 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -240,21 +224,6 @@ dependencies = [
  "tokio 0.1.22 (registry+https://github.com/rust-lang/crates.io-index)",
  "url 1.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
-
-[[package]]
-name = "deno-x86_64-apple-darwin"
-version = "0.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-
-[[package]]
-name = "deno-x86_64-pc-windows-msvc"
-version = "0.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-
-[[package]]
-name = "deno-x86_64-unknown-linux-gnu"
-version = "0.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "deno_cli"
@@ -305,7 +274,7 @@ dependencies = [
 name = "deno_cli_snapshots"
 version = "0.0.3"
 dependencies = [
- "deno 0.15.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "deno 0.16.0",
  "deno_typescript 0.0.3",
 ]
 
@@ -535,16 +504,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "idna"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-dependencies = [
- "matches 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)",
- "unicode-bidi 0.3.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "unicode-normalization 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
 name = "indexmap"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -764,11 +723,6 @@ dependencies = [
 [[package]]
 name = "percent-encoding"
 version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-
-[[package]]
-name = "percent-encoding"
-version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
@@ -1569,16 +1523,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "url"
-version = "2.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-dependencies = [
- "idna 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "matches 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)",
- "percent-encoding 2.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
 name = "utf8parse"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1812,10 +1756,6 @@ dependencies = [
 "checksum crossbeam-queue 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)" = "7c979cd6cfe72335896575c6b5688da489e420d36a27a0b9eb0c73db574b4a4b"
 "checksum crossbeam-utils 0.6.6 (registry+https://github.com/rust-lang/crates.io-index)" = "04973fa96e96579258a5091af6003abde64af786b860f18622b82e026cca60e6"
 "checksum ct-logs 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)" = "4d3686f5fa27dbc1d76c751300376e167c5a43387f44bb451fd1c24776e49113"
-"checksum deno 0.15.0 (registry+https://github.com/rust-lang/crates.io-index)" = "8f4c3038311f8cabdd13eb37a6f186a55fc7eac511d1ae8204920fe7f0bdd68e"
-"checksum deno-x86_64-apple-darwin 0.15.0 (registry+https://github.com/rust-lang/crates.io-index)" = "ccde4d5ec90ca1696b5c844054253cbe901761e60ab26fba6b4fbb591e5e535d"
-"checksum deno-x86_64-pc-windows-msvc 0.15.0 (registry+https://github.com/rust-lang/crates.io-index)" = "a3207176cb4d5095216d4378965ac4ee299415c1ea5037910fb5002c99b8b7d9"
-"checksum deno-x86_64-unknown-linux-gnu 0.15.0 (registry+https://github.com/rust-lang/crates.io-index)" = "99ee4c7861b8be58e11b6f1d0700f419718f235309b1338690abc8b1062ce89d"
 "checksum dirs 2.0.2 (registry+https://github.com/rust-lang/crates.io-index)" = "13aea89a5c93364a98e9b37b2fa237effbb694d5cfe01c5b70941f7eb087d5e3"
 "checksum dirs-sys 0.3.4 (registry+https://github.com/rust-lang/crates.io-index)" = "afa0b23de8fd801745c471deffa6e12d248f962c9fd4b4c33787b055599bde7b"
 "checksum either 1.5.2 (registry+https://github.com/rust-lang/crates.io-index)" = "5527cfe0d098f36e3f8839852688e63c8fff1c90b2b405aef730615f9a7bcf7b"
@@ -1837,7 +1777,6 @@ dependencies = [
 "checksum hyper 0.12.33 (registry+https://github.com/rust-lang/crates.io-index)" = "7cb44cbce9d8ee4fb36e4c0ad7b794ac44ebaad924b9c8291a63215bb44c2c8f"
 "checksum hyper-rustls 0.17.1 (registry+https://github.com/rust-lang/crates.io-index)" = "719d85c7df4a7f309a77d145340a063ea929dcb2e025bae46a80345cffec2952"
 "checksum idna 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)" = "38f09e0f0b1fb55fdee1f17470ad800da77af5186a1a76c026b679358b7e844e"
-"checksum idna 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "02e2673c30ee86b5b96a9cb52ad15718aa1f966f5ab9ad54a8b95d5ca33120a9"
 "checksum indexmap 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "a4d6d89e0948bf10c08b9ecc8ac5b83f07f857ebe2c0cbe38de15b4e4f510356"
 "checksum integer-atomics 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)" = "5c33cd4d18b4ade167caace0e92364e8568c1e47c193738397b4b48a3e414139"
 "checksum iovec 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)" = "dbe6e417e7d0975db6512b90796e8ce223145ac4e33c377e4a42882a0e88bb08"
@@ -1865,7 +1804,6 @@ dependencies = [
 "checksum parking_lot 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)" = "ab41b4aed082705d1056416ae4468b6ea99d52599ecf3169b00088d43113e337"
 "checksum parking_lot_core 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "94c8c7923936b28d546dfd14d4472eaf34c99b14e1c973a32b3e6d4eb04298c9"
 "checksum percent-encoding 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)" = "31010dd2e1ac33d5b46a5b413495239882813e0369f8ed8a5e266f173602f831"
-"checksum percent-encoding 2.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "d4fd5641d01c8f18a23da7b6fe29298ff4b55afcccdf78973b24cf3175fee32e"
 "checksum ppv-lite86 0.2.5 (registry+https://github.com/rust-lang/crates.io-index)" = "e3cbf9f658cdb5000fcf6f362b8ea2ba154b9f146a61c7a20d647034c6b6561b"
 "checksum proc-macro2 0.4.30 (registry+https://github.com/rust-lang/crates.io-index)" = "cf3d2011ab5c909338f7887f4fc896d35932e29146c12c8d01da6b22a80ba759"
 "checksum proc-macro2 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)" = "4c5c2380ae88876faae57698be9e9775e3544decad214599c3a6266cca6ac802"
@@ -1952,7 +1890,6 @@ dependencies = [
 "checksum unicode-xid 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "826e7639553986605ec5979c7dd957c7895e93eabed50ab2ffa7f6128a75097c"
 "checksum untrusted 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)" = "60369ef7a31de49bcb3f6ca728d4ba7300d9a1658f94c727d4cab8c8d9f4aece"
 "checksum url 1.7.2 (registry+https://github.com/rust-lang/crates.io-index)" = "dd4e7c0d531266369519a4aa4f399d748bd37043b00bde1e4ff1f60a120b355a"
-"checksum url 2.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "75b414f6c464c879d7f9babf951f23bc3743fb7313c081b2e6ca719067ea9d61"
 "checksum utf8parse 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)" = "8772a4ccbb4e89959023bc5b7cb8623a795caa7092d99f3aa9501b9484d4557d"
 "checksum utime 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "055058552ca15c566082fc61da433ae678f78986a6f16957e33162d1b218792a"
 "checksum vec_map 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)" = "05c78687fb1a80548ae3250346c3db86a80a7cdd77bda190189f2d0a0987c81a"
