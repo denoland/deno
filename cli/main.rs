@@ -397,6 +397,21 @@ fn run_script(flags: DenoFlags, argv: Vec<String>) {
   }
 }
 
+fn version_command() {
+  // The TypeScript version is only available in JS at the moment.
+  // TODO: Rewrite if this changes.
+  eval_command(
+    DenoFlags::default(),
+    vec![
+      "eval".to_string(),
+      "console.log(\"deno:\", Deno.version.deno);
+       console.log(\"v8:\", Deno.version.v8);
+       console.log(\"typescript:\", Deno.version.typescript);"
+        .to_string(),
+    ],
+  );
+}
+
 fn main() {
   #[cfg(windows)]
   ansi_term::enable_ansi_support().ok(); // For Windows 10
@@ -424,7 +439,7 @@ fn main() {
     DenoSubcommand::Repl => run_repl(flags, argv),
     DenoSubcommand::Run => run_script(flags, argv),
     DenoSubcommand::Types => types_command(),
-    DenoSubcommand::Version => run_repl(flags, argv),
+    DenoSubcommand::Version => version_command(),
     DenoSubcommand::Xeval => xeval_command(flags, argv),
   }
 }

@@ -15,9 +15,6 @@ import { setVersions } from "./version";
 import { window } from "./window";
 import { setLocation } from "./location";
 
-// builtin modules
-import * as deno from "./deno";
-
 export default function denoMain(
   preserveDenoNamespace: boolean = true,
   name?: string
@@ -25,14 +22,6 @@ export default function denoMain(
   const s = os.start(preserveDenoNamespace, name);
 
   setVersions(s.denoVersion, s.v8Version);
-
-  // handle `--version`
-  if (s.versionFlag) {
-    console.log("deno:", deno.version.deno);
-    console.log("v8:", deno.version.v8);
-    console.log("typescript:", deno.version.typescript);
-    os.exit(0);
-  }
 
   setPrepareStackTrace(Error);
 
