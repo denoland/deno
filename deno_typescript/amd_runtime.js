@@ -18,14 +18,12 @@ let require, define;
   }
 
   require = name => {
-    // println("globalRequire");
     return createOrLoadModule(name).exports;
   };
 
   define = (name, deps, factory) => {
     const currentModule = createOrLoadModule(name);
     const localExports = currentModule.exports;
-    // println("localDefine", name, deps, localExports);
     const args = deps.map(dep => {
       if (dep === "require") {
         return require;

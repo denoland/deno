@@ -30,17 +30,6 @@ function main(configText, rootNames, replacements_) {
     if (code === 2691) return false;
     // TS5009: Cannot find the common subdirectory path for the input files.
     if (code === 5009) return false;
-    /*
-    // TS5055: Cannot write file
-    // 'http://localhost:4545/tests/subdir/mt_application_x_javascript.j4.js'
-    // because it would overwrite input file.
-    if (code === 5055) return false;
-    // TypeScript is overly opinionated that only CommonJS modules kinds can
-    // support JSON imports.  Allegedly this was fixed in
-    // Microsoft/TypeScript#26825 but that doesn't seem to be working here,
-    // so we will ignore complaints about this compiler setting.
-    if (code === 5070) return false;
-    */
     return true;
   });
   handleDiagnostics(host, diagnostics);
@@ -77,7 +66,6 @@ function decodeAscii(ui8) {
 function encode(str) {
   const charCodes = str.split("").map(c => c.charCodeAt(0));
   const ui8 = new Uint8Array(charCodes);
-  // println(`encode ${ui8}`);
   return ui8;
 }
 
@@ -93,9 +81,7 @@ const ops = {
 class Host {
   // fileExists(fileName: string): boolean;
   fileExists(fileName) {
-    println(`fileExists ${fileName}`);
     return true;
-    // unreachable();
   }
 
   // readFile(fileName: string): string | undefined;
