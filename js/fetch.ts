@@ -243,7 +243,6 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
 }
 
 export class Response implements domTypes.Response {
-  statusText = "FIXME"; // TODO
   readonly type = "basic"; // TODO
   readonly redirected: boolean;
   headers: domTypes.Headers;
@@ -254,6 +253,7 @@ export class Response implements domTypes.Response {
   constructor(
     readonly url: string,
     readonly status: number,
+    readonly statusText: string,
     headersList: Array<[string, string]>,
     rid: number,
     redirected_: boolean,
@@ -313,6 +313,7 @@ export class Response implements domTypes.Response {
     return new Response(
       this.url,
       this.status,
+      this.statusText,
       headersList,
       -1,
       this.redirected,
@@ -324,6 +325,7 @@ export class Response implements domTypes.Response {
 interface FetchResponse {
   bodyRid: number;
   status: number;
+  statusText: string;
   headers: Array<[string, string]>;
 }
 
@@ -422,6 +424,7 @@ export async function fetch(
     const response = new Response(
       url,
       fetchResponse.status,
+      fetchResponse.statusText,
       fetchResponse.headers,
       fetchResponse.bodyRid,
       redirected
