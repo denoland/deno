@@ -2,6 +2,7 @@ import("//build_extra/rust/rust.gni")
 
 rust_rlib("deno_cli_snapshots") {
   source_root = "lib.rs"
+  generated_source_dir = rebase_path(root_out_dir)
   deps = [
     ":deno_cli_snapshots_build_run",
   ]

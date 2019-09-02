@@ -2,6 +2,7 @@ import("//build_extra/rust/rust.gni")
 
 rust_rlib("deno_typescript") {
   source_root = "lib.rs"
+  generated_source_dir = "."
   extern = [
     {
       label = "../core:deno"

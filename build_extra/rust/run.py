@@ -28,7 +28,6 @@ if sys.platform == 'win32':
 # When building with Cargo this variable is set by build.rs.
 env["GN_OUT_DIR"] = os.path.abspath(".")
 assert os.path.isdir(env["GN_OUT_DIR"])
-env["OUT_DIR"] = os.path.abspath(".")
 
 # Environment variables can be specified on the command line using
 # '--env=variable=value' flags. These flags are not passed through to rustc.

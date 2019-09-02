@@ -3,6 +3,7 @@ use std::env;
 use std::path::PathBuf;
 
 fn main() {
+  // To debug snapshot issues uncomment:
   // deno_typescript::trace_serializer();
 
   let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
@@ -13,12 +14,11 @@ fn main() {
   let bundle = o.join("CLI_SNAPSHOT.js");
   let state = deno_typescript::compile_bundle(&bundle, root_names).unwrap();
   assert!(bundle.exists());
-  deno_typescript::mksnapshot_bundle(&bundle, "CLI_SNAPSHOT", state).unwrap();
+  deno_typescript::mksnapshot_bundle(&bundle, state).unwrap();
 
   let root_names = vec![js_dir.join("compiler.ts")];
   let bundle = o.join("COMPILER_SNAPSHOT.js");
   let state = deno_typescript::compile_bundle(&bundle, root_names).unwrap();
   assert!(bundle.exists());
-  deno_typescript::mksnapshot_bundle_ts(&bundle, "COMPILER_SNAPSHOT", state)
-    .unwrap();
+  deno_typescript::mksnapshot_bundle_ts(&bundle, state).unwrap();
 }

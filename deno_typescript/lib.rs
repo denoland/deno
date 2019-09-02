@@ -143,11 +143,9 @@ fn print_source_code(code: &str) {
   }
 }
 
-/// Create a snapshot and store the resulting path in the provided enviromental
-/// variable.
+/// Create a V8 snapshot.
 pub fn mksnapshot_bundle(
   bundle: &Path,
-  env_var: &str,
   state: Arc<Mutex<TSState>>,
 ) -> Result<(), ErrBox> {
   let mut runtime_isolate = Isolate::new(StartupData::None, true);
@@ -155,25 +153,20 @@ pub fn mksnapshot_bundle(
   let source_code = std::str::from_utf8(&source_code_vec)?;
 
   js_check(runtime_isolate.execute("amd_runtime.js", AMD_RUNTIME_CODE));
-
   js_check(runtime_isolate.execute(&bundle.to_string_lossy(), &source_code));
-
-  // execute main.
 
   let main = state.lock().unwrap().main_module_name();
   js_check(runtime_isolate.execute("anon", &format!("require('{}')", main)));
 
-  snapshot_to_env(runtime_isolate, env_var)?;
+  write_snapshot(runtime_isolate, bundle)?;
 
   Ok(())
 }
 
-/// Create a snapshot and store the resulting path in the provided enviromental
-/// variable. This differs from mksnapshot_bundle in that is also Runs
-/// typescript.js.
+/// Create a V8 snapshot. This differs from mksnapshot_bundle in that is also
+/// runs typescript.js
 pub fn mksnapshot_bundle_ts(
   bundle: &Path,
-  env_var: &str,
   state: Arc<Mutex<TSState>>,
 ) -> Result<(), ErrBox> {
   let mut runtime_isolate = Isolate::new(StartupData::None, true);
@@ -181,21 +174,20 @@ pub fn mksnapshot_bundle_ts(
   let source_code = std::str::from_utf8(&source_code_vec)?;
 
   js_check(runtime_isolate.execute("amd_runtime.js", AMD_RUNTIME_CODE));
+  js_check(runtime_isolate.execute("typescript.js", TYPESCRIPT_CODE));
   js_check(runtime_isolate.execute(&bundle.to_string_lossy(), &source_code));
 
   let main = state.lock().unwrap().main_module_name();
-
-  js_check(runtime_isolate.execute("typescript.js", TYPESCRIPT_CODE));
   js_check(runtime_isolate.execute("anon", &format!("require('{}')", main)));
 
-  snapshot_to_env(runtime_isolate, env_var)?;
+  write_snapshot(runtime_isolate, bundle)?;
 
   Ok(())
 }
 
-fn snapshot_to_env(
+fn write_snapshot(
   runtime_isolate: Isolate,
-  env_var: &str,
+  bundle: &Path,
 ) -> Result<(), ErrBox> {
   println!("creating snapshot...");
   let snapshot = runtime_isolate.snapshot()?;
@@ -203,12 +195,10 @@ fn snapshot_to_env(
     unsafe { std::slice::from_raw_parts(snapshot.data_ptr, snapshot.data_len) };
   println!("snapshot bytes {}", snapshot_slice.len());
 
-  let out_dir = PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
-  let snapshot_path = out_dir.join(String::from(env_var) + ".bin");
+  let snapshot_path = bundle.with_extension("bin");
 
   fs::write(&snapshot_path, snapshot_slice)?;
   println!("snapshot path {} ", snapshot_path.display());
-  println!("cargo:rustc-env={}={}", env_var, snapshot_path.display());
   Ok(())
 }
 
