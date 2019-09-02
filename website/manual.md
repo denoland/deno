@@ -62,16 +62,21 @@ Deno provides <a href="https://github.com/denoland/deno_std">a set of reviewed
 - Be able to serve HTTP efficiently.
   ([Currently it is relatively slow.](https://deno.land/benchmarks.html#req-per-sec))
 
+<!-- prettier-ignore-start -->
+<!-- see https://github.com/prettier/prettier/issues/3679 -->
+
 - Provide useful tooling out of the box:
-  - dependency inspector (`deno info`)
-  - code formatter (`deno fmt`),
-  - bundling (`deno bundle`)
-  - runtime type info (`deno types`)
-  - test runner (`deno test`)
-    [not yet](https://github.com/denoland/deno_std/issues/193)
-  - command-line debugger (`--debug`)
-    [not yet](https://github.com/denoland/deno/issues/1120)
-  - linter (`deno lint`) [not yet](https://github.com/denoland/deno/issues/1880)
+    - dependency inspector (`deno info`)
+    - code formatter (`deno fmt`),
+    - bundling (`deno bundle`)
+    - runtime type info (`deno types`)
+    - test runner (`deno test`)
+      [not yet](https://github.com/denoland/deno_std/issues/193)
+    - command-line debugger (`--debug`)
+      [not yet](https://github.com/denoland/deno/issues/1120)
+    - linter (`deno lint`) [not yet](https://github.com/denoland/deno/issues/1880)
+
+<!-- prettier-ignore-end -->
 
 ### Non-goals
 
