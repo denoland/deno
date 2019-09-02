@@ -4,7 +4,6 @@ version = "0.0.3"
 license = "MIT"
 description = "To compile TypeScript to a snapshot during build.rs"
 repository = "https://github.com/ry/deno_typescript"
-readme = "../README.md"
 authors = ["Ryan Dahl <ry@tinyclouds.org>"]
 edition = "2018"
 
@@ -12,6 +11,6 @@ edition = "2018"
 path = "lib.rs"
 
 [dependencies]
-deno = { version = "0.16.0", path = "../core" }
+deno = { path = "../core" }
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
