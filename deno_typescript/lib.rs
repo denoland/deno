@@ -211,6 +211,17 @@ macro_rules! inc {
   };
 }
 
+/// Same as get_asset() but returns NotFound intead of None.
+pub fn get_asset2(name: &str) -> Result<&'static str, ErrBox> {
+  match get_asset(name) {
+    Some(a) => Ok(a),
+    None => Err(
+      std::io::Error::new(std::io::ErrorKind::NotFound, "Asset not found")
+        .into(),
+    ),
+  }
+}
+
 pub fn get_asset(name: &str) -> Option<&'static str> {
   match name {
     "lib.deno_core.d.ts" => Some(include_str!("lib.deno_core.d.ts")),

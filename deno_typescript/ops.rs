@@ -1,4 +1,3 @@
-use crate::get_asset;
 use crate::TSState;
 use deno::CoreOp;
 use deno::ErrBox;
@@ -57,8 +56,7 @@ fn read_file(_s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
   let v: ReadFile = serde_json::from_value(v)?;
   let (module_name, source_code) = if v.file_name.starts_with("$asset$/") {
     let asset = v.file_name.replace("$asset$/", "");
-    // TODO(ry) remove unwrap below, return error "no such asset"
-    let source_code = get_asset(&asset).unwrap().to_string();
+    let source_code = crate::get_asset2(&asset)?.to_string();
     (asset, source_code)
   } else {
     assert!(!v.file_name.starts_with("$assets$"), "you meant $asset$");
