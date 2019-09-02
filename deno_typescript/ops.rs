@@ -22,6 +22,8 @@ fn dispatch2(
   control_buf: &[u8],
 ) -> Result<Value, ErrBox> {
   let v = serde_json::from_slice(control_buf)?;
+  // Warning! The op_id values below are shared between this code and
+  // compiler_main.js. Update with care!
   match op_id {
     49 => read_file(s, v),
     50 => exit(s, v),

@@ -69,6 +69,8 @@ function encode(str) {
   return ui8;
 }
 
+// Warning! The op_id values below are shared between this code and
+// the Rust side. Update with care!
 const ops = {
   readFile: 49,
   exit: 50,
