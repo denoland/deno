@@ -11,7 +11,8 @@ import sys
 import json
 import time
 import shutil
-from util import root_path, run, run_output, build_path, executable_suffix
+from util import find_exts, root_path, run, run_output
+from util import build_path, executable_suffix
 import tempfile
 import http_server
 import throughput_benchmark
@@ -59,22 +60,26 @@ def import_data_from_gh_pages():
 
 
 def get_binary_sizes(build_dir):
+    # Because cargo's OUT_DIR is not predictable, we have to search the build
+    # tree for these files...
+    files = find_exts([build_dir], ["js", "map", "bin"])
     path_dict = {
-        "deno":
-        os.path.join(build_dir, "deno" + executable_suffix),
-        "main.js":
-        os.path.join(build_dir, "gen/cli/bundle/main.js"),
-        "main.js.map":
-        os.path.join(build_dir, "gen/cli/bundle/main.js.map"),
-        "compiler.js":
-        os.path.join(build_dir, "gen/cli/bundle/compiler.js"),
-        "compiler.js.map":
-        os.path.join(build_dir, "gen/cli/bundle/compiler.js.map"),
-        "snapshot_deno.bin":
-        os.path.join(build_dir, "gen/cli/snapshot_deno.bin"),
-        "snapshot_compiler.bin":
-        os.path.join(build_dir, "gen/cli/snapshot_compiler.bin")
+        "deno": os.path.join(build_dir, "deno" + executable_suffix),
     }
+    for f in files:
+        if f.endswith("CLI_SNAPSHOT.js"):
+            path_dict["CLI_SNAPSHOT.js"] = f
+        elif f.endswith("CLI_SNAPSHOT.js.map"):
+            path_dict["CLI_SNAPSHOT.js.map"] = f
+        elif f.endswith("CLI_SNAPSHOT.bin"):
+            path_dict["CLI_SNAPSHOT.bin"] = f
+        elif f.endswith("COMPILER_SNAPSHOT.js"):
+            path_dict["COMPILER_SNAPSHOT.js"] = f
+        elif f.endswith("COMPILER_SNAPSHOT.js.map"):
+            path_dict["COMPILER_SNAPSHOT.js.map"] = f
+        elif f.endswith("COMPILER_SNAPSHOT.bin"):
+            path_dict["COMPILER_SNAPSHOT.bin"] = f
+
     sizes = {}
     for name, path in path_dict.items():
         assert os.path.exists(path)

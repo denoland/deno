@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { sendSync, sendAsync } from "./dispatch_json";
-import * as dispatch from "./dispatch";
-import { FileInfo, FileInfoImpl } from "./file_info";
+import { sendSync, sendAsync } from "./dispatch_json.ts";
+import * as dispatch from "./dispatch.ts";
+import { FileInfo, FileInfoImpl } from "./file_info.ts";
 
 export interface StatResponse {
   isFile: boolean;

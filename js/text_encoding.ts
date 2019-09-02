@@ -23,9 +23,9 @@
 // ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 // OTHER DEALINGS IN THE SOFTWARE.
 
-import * as base64 from "./base64";
-import * as domTypes from "./dom_types";
-import { DenoError, ErrorKind } from "./errors";
+import * as base64 from "./base64.ts";
+import * as domTypes from "./dom_types.ts";
+import { DenoError, ErrorKind } from "./errors.ts";
 
 const CONTINUE = null;
 const END_OF_STREAM = -1;

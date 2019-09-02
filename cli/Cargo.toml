@@ -52,6 +52,8 @@ tokio-rustls = "0.10.0"
 tokio-threadpool = "0.1.15"
 url = "1.7.2"
 utime = "0.2.1"
+deno_cli_snapshots = { path = "../cli_snapshots" }
+deno_typescript = { path = "../deno_typescript" }
 
 [target.'cfg(windows)'.dependencies]
 winapi = "0.3.7"

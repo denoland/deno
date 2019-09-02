@@ -1,11 +1,11 @@
 [WILDCARD]error: Uncaught ImportPrefixMissing: relative import path "bad-module.ts" not prefixed with / or ./ or ../
-[WILDCARD] js/dispatch_json.ts:[WILDCARD]
-    at DenoError (js/errors.ts:[WILDCARD])
-    at unwrapResponse (js/dispatch_json.ts:[WILDCARD])
-    at sendSync[WILDCARD] (js/dispatch_json.ts:[WILDCARD])
-    at fetchSourceFile (js/compiler.ts:[WILDCARD])
-    at _resolveModule (js/compiler.ts:[WILDCARD])
-    at js/compiler.ts:[WILDCARD]
+[WILDCARD]dispatch_json.ts:[WILDCARD]
+    at DenoError ([WILDCARD]errors.ts:[WILDCARD])
+    at unwrapResponse ([WILDCARD]dispatch_json.ts:[WILDCARD])
+    at sendSync[WILDCARD] ([WILDCARD]dispatch_json.ts:[WILDCARD])
+    at fetchSourceFile ([WILDCARD]compiler.ts:[WILDCARD])
+    at _resolveModule ([WILDCARD]compiler.ts:[WILDCARD])
+    at [WILDCARD]compiler.ts:[WILDCARD]
     at resolveModuleNamesWorker ([WILDCARD])
     at resolveModuleNamesReusingOldState ([WILDCARD]typescript.js:[WILDCARD])
     at processImportedModules ([WILDCARD]typescript.js:[WILDCARD])

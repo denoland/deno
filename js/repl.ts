@@ -1,12 +1,14 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { close } from "./files";
-import { exit } from "./os";
-import { window } from "./window";
-import { core } from "./core";
-import { formatError } from "./format_error";
-import { stringifyArgs } from "./console";
-import * as dispatch from "./dispatch";
-import { sendSync, sendAsync } from "./dispatch_json";
+import { close } from "./files.ts";
+import { exit } from "./os.ts";
+import { window } from "./window.ts";
+import { core } from "./core.ts";
+import { formatError } from "./format_error.ts";
+import { stringifyArgs } from "./console.ts";
+import * as dispatch from "./dispatch.ts";
+import { sendSync, sendAsync } from "./dispatch_json.ts";
+
+const { console } = window;
 
 /**
  * REPL logging.

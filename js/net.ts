@@ -1,9 +1,9 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { EOF, Reader, Writer, Closer } from "./io";
-import { notImplemented } from "./util";
-import { read, write, close } from "./files";
-import * as dispatch from "./dispatch";
-import { sendSync, sendAsync } from "./dispatch_json";
+import { EOF, Reader, Writer, Closer } from "./io.ts";
+import { notImplemented } from "./util.ts";
+import { read, write, close } from "./files.ts";
+import * as dispatch from "./dispatch.ts";
+import { sendSync, sendAsync } from "./dispatch_json.ts";
 
 export type Network = "tcp";
 // TODO support other types:

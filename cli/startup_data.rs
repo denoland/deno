@@ -3,6 +3,8 @@
 use deno::Script;
 
 use deno::StartupData;
+use deno_cli_snapshots::CLI_SNAPSHOT;
+use deno_cli_snapshots::COMPILER_SNAPSHOT;
 
 #[cfg(feature = "no-snapshot-init")]
 pub fn deno_isolate_init() -> StartupData<'static> {
@@ -23,8 +25,7 @@ pub fn deno_isolate_init() -> StartupData<'static> {
 pub fn deno_isolate_init() -> StartupData<'static> {
   debug!("Deno isolate init with snapshots.");
   #[cfg(not(feature = "check-only"))]
-  let data =
-    include_bytes!(concat!(env!("GN_OUT_DIR"), "/gen/cli/snapshot_deno.bin"));
+  let data = CLI_SNAPSHOT;
   #[cfg(feature = "check-only")]
   let data = b"";
 
@@ -50,10 +51,7 @@ pub fn compiler_isolate_init() -> StartupData<'static> {
 pub fn compiler_isolate_init() -> StartupData<'static> {
   debug!("Deno isolate init with snapshots.");
   #[cfg(not(feature = "check-only"))]
-  let data = include_bytes!(concat!(
-    env!("GN_OUT_DIR"),
-    "/gen/cli/snapshot_compiler.bin"
-  ));
+  let data = COMPILER_SNAPSHOT;
   #[cfg(feature = "check-only")]
   let data = b"";
 

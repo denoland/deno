@@ -3,7 +3,7 @@
 // TODO(kitsonk) Replace with `deno_std/colors/mod.ts` when we can load modules
 // which end in `.ts`.
 
-import { noColor } from "./os";
+import { noColor } from "./deno.ts";
 
 interface Code {
   open: string;

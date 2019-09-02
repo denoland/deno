@@ -1,14 +1,21 @@
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import("//build/toolchain/cc_wrapper.gni")
 import("//build_extra/rust/rust.gni")
-import("//third_party/v8/gni/snapshot_toolchain.gni")
-import("//third_party/v8/gni/v8.gni")
-import("deno.gni")
 
 main_extern = [
   {
     label = "../core:deno"
     crate_name = "deno"
+    crate_type = "rlib"
+  },
+  {
+    label = "../cli_snapshots:deno_cli_snapshots"
+    crate_name = "deno_cli_snapshots"
+    crate_type = "rlib"
+  },
+  {
+    label = "../deno_typescript:deno_typescript"
+    crate_name = "deno_typescript"
     crate_type = "rlib"
   },
   {
@@ -61,109 +68,6 @@ if (is_posix) {
   main_extern_rlib += [ "nix" ]
 }
 
-ts_sources = [
-  "../js/base64.ts",
-  "../js/blob.ts",
-  "../js/body.ts",
-  "../js/buffer.ts",
-  "../js/build.ts",
-  "../js/chmod.ts",
-  "../js/chown.ts",
-  "../js/colors.ts",
-  "../js/compiler.ts",
-  "../js/console.ts",
-  "../js/console_table.ts",
-  "../js/copy_file.ts",
-  "../js/core.ts",
-  "../js/custom_event.ts",
-  "../js/deno.ts",
-  "../js/diagnostics.ts",
-  "../js/dir.ts",
-  "../js/dispatch.ts",
-  "../js/dispatch_json.ts",
-  "../js/dispatch_minimal.ts",
-  "../js/dom_file.ts",
-  "../js/dom_types.ts",
-  "../js/dom_util.ts",
-  "../js/error_stack.ts",
-  "../js/errors.ts",
-  "../js/event.ts",
-  "../js/event_target.ts",
-  "../js/fetch.ts",
-  "../js/file_info.ts",
-  "../js/files.ts",
-  "../js/form_data.ts",
-  "../js/format_error.ts",
-  "../js/get_random_values.ts",
-  "../js/globals.ts",
-  "../js/headers.ts",
-  "../js/io.ts",
-  "../js/lib.deno_runtime.d.ts",
-  "../js/lib.web_assembly.d.ts",
-  "../js/link.ts",
-  "../js/location.ts",
-  "../js/main.ts",
-  "../js/make_temp_dir.ts",
-  "../js/metrics.ts",
-  "../js/mkdir.ts",
-  "../js/mock_builtin.js",
-  "../js/net.ts",
-  "../js/os.ts",
-  "../js/performance.ts",
-  "../js/permissions.ts",
-  "../js/plugins.d.ts",
-  "../js/process.ts",
-  "../js/read_dir.ts",
-  "../js/read_file.ts",
-  "../js/read_link.ts",
-  "../js/remove.ts",
-  "../js/rename.ts",
-  "../js/repl.ts",
-  "../js/request.ts",
-  "../js/resources.ts",
-  "../js/stat.ts",
-  "../js/symlink.ts",
-  "../js/text_encoding.ts",
-  "../js/timers.ts",
-  "../js/truncate.ts",
-  "../js/type_directives.ts",
-  "../js/types.ts",
-  "../js/url.ts",
-  "../js/url_search_params.ts",
-  "../js/util.ts",
-  "../js/utime.ts",
-  "../js/version.ts",
-  "../js/window.ts",
-  "../js/workers.ts",
-  "../js/write_file.ts",
-  "../js/xeval.ts",
-  "../tsconfig.json",
-
-  # Listing package.json and yarn.lock as sources ensures the bundle is rebuilt
-  # when npm packages are added/removed or their contents changes.
-  "../package.json",
-  "../third_party/yarn.lock",
-]
-
-# When Cargo is driving the build, GN/Ninja are used to produce these non-Rust
-# targets. Cargo handles all Rust source files and the final linking step.
-group("deno_deps") {
-  deps = [
-    ":snapshot_compiler",
-    ":snapshot_deno",
-  ]
-}
-
-# Optimized dependencies for cross compiled builds.
-# This can be removed once we get snapshots into cross compiled builds.
-group("deno_deps_cross") {
-  testonly = true
-  deps = [
-    ":compiler_bundle",
-    ":main_bundle",
-  ]
-}
-
 # Reads the cargo info from Cargo.toml
 deno_cargo_info = exec_script("../build_extra/rust/get_cargo_info.py",
                               [ rebase_path("Cargo.toml", root_build_dir) ],
@@ -173,9 +77,6 @@ rust_executable("deno") {
   source_root = "main.rs"
   extern = main_extern
   extern_rlib = main_extern_rlib
-  deps = [
-    ":deno_deps",
-  ]
 
   # Extract version from Cargo.toml
   # TODO integrate this into rust.gni by allowing the rust_executable template
@@ -190,41 +91,10 @@ rust_test("cli_test") {
   source_root = "main.rs"
   extern = main_extern
   extern_rlib = main_extern_rlib
-  deps = [
-    ":deno_deps",
-  ]
 
   # Extract version from Cargo.toml
   inputs = [
     "Cargo.toml",
   ]
   env = [ "CARGO_PKG_VERSION=${deno_cargo_info.version}" ]
-}
-
-bundle("main_bundle") {
-  sources = ts_sources
-  out_dir = "$target_gen_dir/bundle/"
-  out_name = "main"
-}
-
-bundle("compiler_bundle") {
-  sources = ts_sources
-  out_dir = "$target_gen_dir/bundle/"
-  out_name = "compiler"
-}
-
-# Generates $target_gen_dir/snapshot_deno.bin
-snapshot("snapshot_deno") {
-  source_root = "$target_gen_dir/bundle/main.js"
-  deps = [
-    ":main_bundle",
-  ]
-}
-
-# Generates $target_gen_dir/snapshot_compiler.bin
-snapshot("snapshot_compiler") {
-  source_root = "$target_gen_dir/bundle/compiler.js"
-  deps = [
-    ":compiler_bundle",
-  ]
 }

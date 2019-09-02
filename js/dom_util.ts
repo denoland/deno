@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 // Utility functions for DOM nodes
-import * as domTypes from "./dom_types";
+import * as domTypes from "./dom_types.ts";
 
 export function isNode(nodeImpl: domTypes.EventTarget | null): boolean {
   return Boolean(nodeImpl && "nodeType" in nodeImpl);

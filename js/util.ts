@@ -1,5 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { TypedArray } from "./types";
+import { TypedArray } from "./types.ts";
+import { window } from "./window.ts";
+const { console } = window;
 
 let logDebug = false;
 let logSource = "JS";
