@@ -200,10 +200,6 @@ test_script:
   - ps: Exec { & python tools\test.py --build-dir $env:DENO_BUILD_PATH }
 
 after_test:
-  # Delete the the rollup cache, which is unreliable, so that it doesn't get
-  # persisted in the appveyor cache.
-  - ps: if (Get-SaveCache) { Delete-Tree "$env:DENO_BUILD_PATH\.rpt2_cache" }
-
   # Stop sccache and show stats.
   - ps: sccache --stop-server
 
@@ -215,9 +211,8 @@ after_test:
         throw "Build should be up-to-date but isn't."
       }
 
-  # Verify that javascript and typescript files which are bundled by rollup are
-  # listed explicitly in cli_snapshots\BUILD.gn. This is not an air-tight check.
-  # TODO: make rollup or another bundler write a depfile.
+  # Verify that the bundled javascript and typescript files are listed
+  # explicitly in cli_snapshots\BUILD.gn. This is not an air-tight check.
   - ps: |-
       $ignore = "test_util.ts", "unit_tests.ts", "unit_test_runner.ts", "*_test.ts"
       Get-ChildItem "js" -File -Force -Name                               |

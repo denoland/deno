@@ -1,3 +1,4 @@
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 extern crate deno;
 extern crate serde;
 extern crate serde_json;
@@ -18,22 +19,26 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-/// Sets the --trace-serializer V8 flag for debugging snapshots.
-pub fn trace_serializer() {
-  let dummy = "foo".to_string();
-  let r =
-    deno::v8_set_flags(vec![dummy.clone(), "--trace-serializer".to_string()]);
-  assert_eq!(r, vec![dummy]);
-}
+static TYPESCRIPT_CODE: &str =
+  include_str!("../third_party/node_modules/typescript/lib/typescript.js");
+static COMPILER_CODE: &str = include_str!("compiler_main.js");
+static AMD_RUNTIME_CODE: &str = include_str!("amd_runtime.js");
 
 #[derive(Debug)]
 pub struct TSState {
   bundle: bool,
   exit_code: i32,
-
   emit_result: Option<EmitResult>,
-  // (url, corresponding_module, source_code)
+  /// A list of files emitted by typescript. WrittenFile is tuple of the form
+  /// (url, corresponding_module, source_code)
   written_files: Vec<WrittenFile>,
+}
+
+impl TSState {
+  fn main_module_name(&self) -> String {
+    // Assuming that TypeScript has emitted the main file last.
+    self.written_files.last().unwrap().module_name.clone()
+  }
 }
 
 pub struct TSIsolate {
@@ -41,32 +46,11 @@ pub struct TSIsolate {
   state: Arc<Mutex<TSState>>,
 }
 
-static TYPESCRIPT_CODE: &str =
-  include_str!("../third_party/node_modules/typescript/lib/typescript.js");
-
-fn preprocessor_replacements_json() -> String {
-  /// BUILD_OS and BUILD_ARCH match the values in Deno.build. See js/build.ts.
-  #[cfg(target_os = "macos")]
-  static BUILD_OS: &str = "mac";
-  #[cfg(target_os = "linux")]
-  static BUILD_OS: &str = "linux";
-  #[cfg(target_os = "windows")]
-  static BUILD_OS: &str = "win";
-  #[cfg(target_arch = "x86_64")]
-  static BUILD_ARCH: &str = "x64";
-
-  let mut replacements = HashMap::new();
-  replacements.insert("DENO_REPLACE_OS", BUILD_OS);
-  replacements.insert("DENO_REPLACE_ARCH", BUILD_ARCH);
-  serde_json::json!(replacements).to_string()
-}
-
 impl TSIsolate {
   fn new(bundle: bool) -> TSIsolate {
     let mut isolate = Isolate::new(StartupData::None, false);
-    let main_code = include_str!("compiler_main.js");
     js_check(isolate.execute("assets/typescript.js", TYPESCRIPT_CODE));
-    js_check(isolate.execute("compiler_main.js", main_code));
+    js_check(isolate.execute("compiler_main.js", COMPILER_CODE));
 
     let state = Arc::new(Mutex::new(TSState {
       bundle,
@@ -103,43 +87,6 @@ impl TSIsolate {
     self.isolate.execute("<anon>", source)?;
     Ok(self.state.clone())
   }
-}
-
-// TODO(ry) Instead of Result<Arc<Mutex<TSState>>, ErrBox>, return something
-// like Result<TSState, ErrBox>
-pub fn compile(
-  root_names: Vec<PathBuf>,
-) -> Result<Arc<Mutex<TSState>>, ErrBox> {
-  let ts_isolate = TSIsolate::new(false);
-
-  let config_json = serde_json::json!({
-    "compilerOptions": {
-      "declaration": true,
-      "lib": ["esnext"],
-      "module": "esnext",
-      "target": "esnext",
-      "listFiles": true,
-      "listEmittedFiles": true,
-      // Emit the source alongside the sourcemaps within a single file;
-      // requires --inlineSourceMap or --sourceMap to be set.
-      // "inlineSources": true,
-      "sourceMap": true,
-    },
-  });
-
-  let mut root_names_str: Vec<String> = root_names
-    .iter()
-    .map(|p| {
-      assert!(p.exists());
-      p.to_string_lossy().to_string()
-    })
-    .collect();
-  root_names_str.push("$asset$/lib.deno_core.d.ts".to_string());
-
-  // TODO lift js_check to caller?
-  let state = js_check(ts_isolate.compile(&config_json, root_names_str));
-
-  Ok(state)
 }
 
 pub fn compile_bundle(
@@ -207,16 +154,13 @@ pub fn mksnapshot_bundle(
   let source_code_vec = std::fs::read(bundle)?;
   let source_code = std::str::from_utf8(&source_code_vec)?;
 
-  js_check(
-    runtime_isolate.execute("amd_runtime.js", include_str!("amd_runtime.js")),
-  );
+  js_check(runtime_isolate.execute("amd_runtime.js", AMD_RUNTIME_CODE));
 
   js_check(runtime_isolate.execute(&bundle.to_string_lossy(), &source_code));
 
   // execute main.
 
-  let state = state.lock().unwrap();
-  let main = state.written_files.last().unwrap().module_name.clone();
+  let main = state.lock().unwrap().main_module_name();
   js_check(runtime_isolate.execute("anon", &format!("require('{}')", main)));
 
   snapshot_to_env(runtime_isolate, env_var)?;
@@ -236,13 +180,10 @@ pub fn mksnapshot_bundle_ts(
   let source_code_vec = std::fs::read(bundle)?;
   let source_code = std::str::from_utf8(&source_code_vec)?;
 
-  js_check(
-    runtime_isolate.execute("amd_runtime.js", include_str!("amd_runtime.js")),
-  );
+  js_check(runtime_isolate.execute("amd_runtime.js", AMD_RUNTIME_CODE));
   js_check(runtime_isolate.execute(&bundle.to_string_lossy(), &source_code));
 
-  let state = state.lock().unwrap();
-  let main = state.written_files.last().unwrap().module_name.clone();
+  let main = state.lock().unwrap().main_module_name();
 
   js_check(runtime_isolate.execute("typescript.js", TYPESCRIPT_CODE));
   js_check(runtime_isolate.execute("anon", &format!("require('{}')", main)));
@@ -319,4 +260,29 @@ pub fn get_asset(name: &str) -> Option<&'static str> {
     "lib.esnext.intl.d.ts" => inc!("lib.esnext.intl.d.ts"),
     _ => None,
   }
+}
+
+/// Sets the --trace-serializer V8 flag for debugging snapshots.
+pub fn trace_serializer() {
+  let dummy = "foo".to_string();
+  let r =
+    deno::v8_set_flags(vec![dummy.clone(), "--trace-serializer".to_string()]);
+  assert_eq!(r, vec![dummy]);
+}
+
+fn preprocessor_replacements_json() -> String {
+  /// BUILD_OS and BUILD_ARCH match the values in Deno.build. See js/build.ts.
+  #[cfg(target_os = "macos")]
+  static BUILD_OS: &str = "mac";
+  #[cfg(target_os = "linux")]
+  static BUILD_OS: &str = "linux";
+  #[cfg(target_os = "windows")]
+  static BUILD_OS: &str = "win";
+  #[cfg(target_arch = "x86_64")]
+  static BUILD_ARCH: &str = "x64";
+
+  let mut replacements = HashMap::new();
+  replacements.insert("DENO_REPLACE_OS", BUILD_OS);
+  replacements.insert("DENO_REPLACE_ARCH", BUILD_ARCH);
+  serde_json::json!(replacements).to_string()
 }
