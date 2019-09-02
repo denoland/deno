@@ -50,7 +50,7 @@ pub fn op_fetch(
   }
   debug!("Before fetch {}", url);
   let future = request.send().map_err(ErrBox::from).and_then(move |res| {
-    let status = res.status().as_u16();
+    let status = res.status();
     let mut res_headers = Vec::new();
     for (key, val) in res.headers().iter() {
       res_headers.push((key.to_string(), val.to_str().unwrap().to_owned()));
@@ -61,7 +61,8 @@ pub fn op_fetch(
 
     let json_res = json!({
       "bodyRid": body_resource.rid,
-      "status": status,
+      "status": status.as_u16(),
+      "statusText": status.canonical_reason().unwrap_or(""),
       "headers": res_headers
     });
 
