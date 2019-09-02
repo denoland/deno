@@ -123,7 +123,6 @@ pub fn compile_bundle(
       let module_specifier =
         ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
       module_specifier.as_str().to_string()
-      // p.to_string_lossy().to_string()
     })
     .collect();
   root_names_str.push("$asset$/lib.deno_core.d.ts".to_string());

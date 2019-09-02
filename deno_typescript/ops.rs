@@ -40,7 +40,7 @@ pub fn dispatch_op(s: &mut TSState, op_id: OpId, control_buf: &[u8]) -> CoreOp {
     Err(err) => json!({ "err": err.to_string() }),
   };
   let x = serde_json::to_string(&response).unwrap();
-  let vec = x.to_string().into_bytes();
+  let vec = x.into_bytes();
   Op::Sync(vec.into_boxed_slice())
 }
 
@@ -106,30 +106,11 @@ struct ResolveModuleNames {
 fn resolve_module_names(_s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
   let v: ResolveModuleNames = serde_json::from_value(v).unwrap();
   let mut resolved = Vec::<String>::new();
-
-  /*
-  use std::path::Path;
-  let referrer = Path::new(&v.containing_file).parent().unwrap();
-  for specifier in v.module_names {
-    let s = referrer.join(specifier);
-    resolved.push(s.to_string_lossy().to_string());
-  }
-  */
-
-  /* TODO Using ModuleSpecifier and URLs results in
-
-    TS5009: Cannot find the common subdirectory path for the input files.
-
-    If that error disabled/ignored, then the writeFile orders are issued to
-    write them as neighbors.
-  */
-
   let referrer = ModuleSpecifier::resolve_url_or_path(&v.containing_file)?;
   for specifier in v.module_names {
     let ms = ModuleSpecifier::resolve_import(&specifier, referrer.as_str())?;
     resolved.push(ms.as_str().to_string());
   }
-
   Ok(json!(resolved))
 }
 
@@ -150,7 +131,7 @@ fn exit(s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
 pub struct EmitResult {
   pub emit_skipped: bool,
   pub diagnostics: Vec<String>,
-  pub emitted_files: Vec<String>, // "sourceMaps": []
+  pub emitted_files: Vec<String>,
 }
 
 fn set_emit_result(s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
