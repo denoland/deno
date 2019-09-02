@@ -1,8 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { DomIterable } from "../dom_types";
-import { window } from "../window";
-import { requiredArguments } from "../util";
+import { DomIterable } from "../dom_types.ts";
+import { window } from "../window.ts";
+import { requiredArguments } from "../util.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Constructor<T = {}> = new (...args: any[]) => T;

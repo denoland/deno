@@ -1,8 +1,10 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { assert } from "./util";
-import { window } from "./window";
-import * as dispatch from "./dispatch";
-import { sendSync, sendAsync } from "./dispatch_json";
+import { assert } from "./util.ts";
+import { window } from "./window.ts";
+import * as dispatch from "./dispatch.ts";
+import { sendSync, sendAsync } from "./dispatch_json.ts";
+
+const { console } = window;
 
 interface Timer {
   id: number;

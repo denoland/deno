@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { window } from "./window";
+import { window } from "./window.ts";
 
 // This allows us to access core in API even if we
 // dispose window.Deno

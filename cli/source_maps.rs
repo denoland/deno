@@ -73,22 +73,12 @@ fn builtin_source_map(_: &str) -> Option<Vec<u8>> {
 
 #[cfg(not(feature = "check-only"))]
 fn builtin_source_map(script_name: &str) -> Option<Vec<u8>> {
-  match script_name {
-    "gen/cli/bundle/main.js" => Some(
-      include_bytes!(concat!(
-        env!("GN_OUT_DIR"),
-        "/gen/cli/bundle/main.js.map"
-      ))
-      .to_vec(),
-    ),
-    "gen/cli/bundle/compiler.js" => Some(
-      include_bytes!(concat!(
-        env!("GN_OUT_DIR"),
-        "/gen/cli/bundle/compiler.js.map"
-      ))
-      .to_vec(),
-    ),
-    _ => None,
+  if script_name.ends_with("CLI_SNAPSHOT.js") {
+    Some(deno_cli_snapshots::CLI_SNAPSHOT_MAP.to_vec())
+  } else if script_name.ends_with("COMPILER_SNAPSHOT.js") {
+    Some(deno_cli_snapshots::COMPILER_SNAPSHOT_MAP.to_vec())
+  } else {
+    None
   }
 }
 
@@ -405,7 +395,7 @@ mod tests {
       frames: vec![StackFrame {
         line: 11,
         column: 12,
-        script_name: "gen/cli/bundle/main.js".to_string(),
+        script_name: "CLI_SNAPSHOT.js".to_string(),
         function_name: "setLogDebug".to_string(),
         is_eval: false,
         is_constructor: false,
@@ -417,7 +407,7 @@ mod tests {
     assert_eq!(actual.message, "TypeError: baz");
     // Because this is accessing the live bundle, this test might be more fragile
     assert_eq!(actual.frames.len(), 1);
-    assert!(actual.frames[0].script_name.ends_with("js/util.ts"));
+    assert!(actual.frames[0].script_name.ends_with("js/window.ts"));
   }
 
   #[test]

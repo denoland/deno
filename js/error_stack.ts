@@ -1,9 +1,9 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 // Some of the code here is adapted directly from V8 and licensed under a BSD
 // style license available here: https://github.com/v8/v8/blob/24886f2d1c565287d33d71e4109a53bf0b54b75c/LICENSE.v8
-import * as dispatch from "./dispatch";
-import { sendSync } from "./dispatch_json";
-import { assert } from "./util";
+import * as dispatch from "./dispatch.ts";
+import { sendSync } from "./dispatch_json.ts";
+import { assert } from "./util.ts";
 
 export interface Location {
   /** The full url for the module, e.g. `file://some/file.ts` or

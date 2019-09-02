@@ -200,10 +200,6 @@ test_script:
   - ps: Exec { & python tools\test.py --build-dir $env:DENO_BUILD_PATH }
 
 after_test:
-  # Delete the the rollup cache, which is unreliable, so that it doesn't get
-  # persisted in the appveyor cache.
-  - ps: if (Get-SaveCache) { Delete-Tree "$env:DENO_BUILD_PATH\.rpt2_cache" }
-
   # Stop sccache and show stats.
   - ps: sccache --stop-server
 
@@ -215,36 +211,15 @@ after_test:
         throw "Build should be up-to-date but isn't."
       }
 
-  # Verify that javascript and typescript files which are bundled by rollup are
-  # listed explicitly in cli\BUILD.gn. This is not an air-tight check.
-  # TODO: make rollup or another bundler write a depfile.
+  # Verify that the bundled javascript and typescript files are listed
+  # explicitly in cli_snapshots\BUILD.gn. This is not an air-tight check.
   - ps: |-
       $ignore = "test_util.ts", "unit_tests.ts", "unit_test_runner.ts", "*_test.ts"
       Get-ChildItem "js" -File -Force -Name                               |
         where   { $name = $_; -not ($ignore | where { $name -like $_ }) } |
-        where   { -not (Select-String -Pattern $_ -Path cli\BUILD.gn `
+        where   { -not (Select-String -Pattern $_ -Path cli_snapshots\BUILD.gn `
                                       -SimpleMatch -CaseSensitive) }      |
-        foreach { throw "$_ should be listed in cli\BUILD.gn but isn't." }
-
-  # Verify that generated ninja files do not use absolute path names.
-  # If they do, it makes ccache/sccache much less effective.
-  - ps: |-
-      $trap = "NO_ABS_PATH_PLS"
-      $dir = "$env:APPVEYOR_BUILD_FOLDER\out\$trap"
-      Exec { gn gen $dir | Out-Null }
-      $files = Get-Tree $dir -File -Force -Recurse | where Extension -ne ".dll"
-      Select-String $trap -Path $files -SimpleMatch | where {
-        # V8 took the liberty to produce an absolute path in their ninja
-        # output. We can't do much about that, so we just ignore it.
-        $_.Line -notmatch "v8/builtins-generated/bytecodes-builtins-list.h"
-      } | tee -Variable line_matches
-      if ($line_matches) {
-        $ctx = $line_matches.Line                                          |
-          Select-String "[^\s;,]*[\s=]*[^\s;,=]*$trap[^\s;,]*" -AllMatches |
-          foreach { $_.Matches.Value -replace '\$(.)', '$1' }              |
-          sort -Unique
-        throw @("Absolute path(s) found in build script:") + $ctx -join "`n  "
-      }
+        foreach { throw "$_ should be listed in cli_snapshots\BUILD.gn but isn't." }
 
   # If this build is going to be deployed, build a zip file.
   - ps: |-

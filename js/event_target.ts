@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as domTypes from "./dom_types";
-import { DenoError, ErrorKind } from "./errors";
-import { hasOwnProperty, requiredArguments } from "./util";
+import * as domTypes from "./dom_types.ts";
+import { DenoError, ErrorKind } from "./errors.ts";
+import { hasOwnProperty, requiredArguments } from "./util.ts";
 import {
   getRoot,
   isNode,
@@ -9,7 +9,7 @@ import {
   isShadowInclusiveAncestor,
   isSlotable,
   retarget
-} from "./dom_util";
+} from "./dom_util.ts";
 
 // https://dom.spec.whatwg.org/#get-the-parent
 // Note: Nodes, shadow roots, and documents override this algorithm so we set it to null.

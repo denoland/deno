@@ -1,0 +1,121 @@
+import("//build_extra/rust/rust.gni")
+
+rust_rlib("deno_cli_snapshots") {
+  source_root = "lib.rs"
+  generated_source_dir = rebase_path(root_out_dir)
+  deps = [
+    ":deno_cli_snapshots_build_run",
+  ]
+}
+
+ts_sources = [
+  "../js/base64.ts",
+  "../js/blob.ts",
+  "../js/body.ts",
+  "../js/buffer.ts",
+  "../js/build.ts",
+  "../js/chmod.ts",
+  "../js/chown.ts",
+  "../js/colors.ts",
+  "../js/compiler.ts",
+  "../js/console.ts",
+  "../js/console_table.ts",
+  "../js/copy_file.ts",
+  "../js/core.ts",
+  "../js/custom_event.ts",
+  "../js/deno.ts",
+  "../js/diagnostics.ts",
+  "../js/dir.ts",
+  "../js/dispatch.ts",
+  "../js/dispatch_json.ts",
+  "../js/dispatch_minimal.ts",
+  "../js/dom_file.ts",
+  "../js/dom_types.ts",
+  "../js/dom_util.ts",
+  "../js/error_stack.ts",
+  "../js/errors.ts",
+  "../js/event.ts",
+  "../js/event_target.ts",
+  "../js/fetch.ts",
+  "../js/file_info.ts",
+  "../js/files.ts",
+  "../js/form_data.ts",
+  "../js/format_error.ts",
+  "../js/get_random_values.ts",
+  "../js/globals.ts",
+  "../js/headers.ts",
+  "../js/io.ts",
+  "../js/lib.deno_runtime.d.ts",
+  "../js/lib.web_assembly.d.ts",
+  "../js/link.ts",
+  "../js/location.ts",
+  "../js/main.ts",
+  "../js/make_temp_dir.ts",
+  "../js/metrics.ts",
+  "../js/mkdir.ts",
+  "../js/mock_builtin.js",
+  "../js/net.ts",
+  "../js/os.ts",
+  "../js/performance.ts",
+  "../js/permissions.ts",
+  "../js/process.ts",
+  "../js/read_dir.ts",
+  "../js/read_file.ts",
+  "../js/read_link.ts",
+  "../js/remove.ts",
+  "../js/rename.ts",
+  "../js/repl.ts",
+  "../js/request.ts",
+  "../js/resources.ts",
+  "../js/stat.ts",
+  "../js/symlink.ts",
+  "../js/text_encoding.ts",
+  "../js/timers.ts",
+  "../js/truncate.ts",
+  "../js/type_directives.ts",
+  "../js/types.ts",
+  "../js/url.ts",
+  "../js/url_search_params.ts",
+  "../js/util.ts",
+  "../js/utime.ts",
+  "../js/version.ts",
+  "../js/window.ts",
+  "../js/workers.ts",
+  "../js/write_file.ts",
+  "../js/xeval.ts",
+]
+
+action("deno_cli_snapshots_build_run") {
+  script = "run.py"
+  inputs = ts_sources
+  outputs = [
+    "$root_out_dir/CLI_SNAPSHOT.bin",
+    "$root_out_dir/CLI_SNAPSHOT.js",
+    "$root_out_dir/CLI_SNAPSHOT.js.map",
+    "$root_out_dir/CLI_SNAPSHOT.d.ts",
+    "$root_out_dir/COMPILER_SNAPSHOT.bin",
+    "$root_out_dir/COMPILER_SNAPSHOT.js",
+    "$root_out_dir/COMPILER_SNAPSHOT.js.map",
+    "$root_out_dir/COMPILER_SNAPSHOT.d.ts",
+  ]
+  args = [ rebase_path("$root_out_dir/deno_cli_snapshots_build", ".") ]
+  deps = [
+    ":deno_cli_snapshots_build",
+  ]
+}
+
+rust_executable("deno_cli_snapshots_build") {
+  source_root = "build.rs"
+  extern = [
+    {
+      label = "../deno_typescript:deno_typescript"
+      crate_name = "deno_typescript"
+      crate_type = "rlib"
+    },
+    {
+      label = "../core:deno"
+      crate_name = "deno"
+      crate_type = "rlib"
+    },
+  ]
+}

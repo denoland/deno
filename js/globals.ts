@@ -7,31 +7,31 @@
 // Modules which will make up part of the global public API surface should be
 // imported as namespaces, so when the runtime type library is generated they
 // can be expressed as a namespace in the type library.
-import { window } from "./window";
-import * as blob from "./blob";
-import * as consoleTypes from "./console";
-import * as csprng from "./get_random_values";
-import * as customEvent from "./custom_event";
-import * as Deno from "./deno";
-import * as domTypes from "./dom_types";
-import * as domFile from "./dom_file";
-import * as event from "./event";
-import * as eventTarget from "./event_target";
-import * as formData from "./form_data";
-import * as fetchTypes from "./fetch";
-import * as headers from "./headers";
-import * as textEncoding from "./text_encoding";
-import * as timers from "./timers";
-import * as url from "./url";
-import * as urlSearchParams from "./url_search_params";
-import * as workers from "./workers";
-import * as performanceUtil from "./performance";
+import { window } from "./window.ts";
+import * as blob from "./blob.ts";
+import * as consoleTypes from "./console.ts";
+import * as csprng from "./get_random_values.ts";
+import * as customEvent from "./custom_event.ts";
+import * as Deno from "./deno.ts";
+import * as domTypes from "./dom_types.ts";
+import * as domFile from "./dom_file.ts";
+import * as event from "./event.ts";
+import * as eventTarget from "./event_target.ts";
+import * as formData from "./form_data.ts";
+import * as fetchTypes from "./fetch.ts";
+import * as headers from "./headers.ts";
+import * as textEncoding from "./text_encoding.ts";
+import * as timers from "./timers.ts";
+import * as url from "./url.ts";
+import * as urlSearchParams from "./url_search_params.ts";
+import * as workers from "./workers.ts";
+import * as performanceUtil from "./performance.ts";
 
-import * as request from "./request";
+import * as request from "./request.ts";
 
 // These imports are not exposed and therefore are fine to just import the
 // symbols required.
-import { core } from "./core";
+import { core } from "./core.ts";
 
 // During the build process, augmentations to the variable `window` in this
 // file are tracked and created as part of default library that is built into
@@ -72,7 +72,6 @@ window.window = window;
 // properties when building the runtime type library, as the whole module
 // is flattened into a single namespace.
 window.Deno = Deno;
-Object.freeze(window.Deno);
 
 // Globally available functions and object instances.
 window.atob = textEncoding.atob;

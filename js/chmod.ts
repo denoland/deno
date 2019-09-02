@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { sendSync, sendAsync } from "./dispatch_json";
-import * as dispatch from "./dispatch";
+import { sendSync, sendAsync } from "./dispatch_json.ts";
+import * as dispatch from "./dispatch.ts";
 
 /** Changes the permission of a specific file/directory of specified path
  * synchronously.

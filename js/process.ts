@@ -1,11 +1,11 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { sendSync, sendAsync } from "./dispatch_json";
-import * as dispatch from "./dispatch";
-import { File, close } from "./files";
-import { ReadCloser, WriteCloser } from "./io";
-import { readAll } from "./buffer";
-import { assert, unreachable } from "./util";
-import { platform } from "./build";
+import { sendSync, sendAsync } from "./dispatch_json.ts";
+import * as dispatch from "./dispatch.ts";
+import { File, close } from "./files.ts";
+import { ReadCloser, WriteCloser } from "./io.ts";
+import { readAll } from "./buffer.ts";
+import { assert, unreachable } from "./util.ts";
+import { platform } from "./build.ts";
 
 /** How to handle subprocess stdio.
  *

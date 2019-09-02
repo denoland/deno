@@ -1,22 +1,13 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { core } from "./core";
-import * as dispatch from "./dispatch";
-import { sendSync } from "./dispatch_json";
-import { assert } from "./util";
-import * as util from "./util";
-import { window } from "./window";
+import { core } from "./core.ts";
+import * as dispatch from "./dispatch.ts";
+import { sendSync } from "./dispatch_json.ts";
+import { assert } from "./util.ts";
+import * as util from "./util.ts";
+import { window } from "./window.ts";
 
-/** The current process id of the runtime. */
-export let pid: number;
-
-/** Reflects the NO_COLOR environment variable: https://no-color.org/ */
-export let noColor: boolean;
-
-function setGlobals(pid_: number, noColor_: boolean): void {
-  assert(!pid);
-  pid = pid_;
-  noColor = noColor_;
-}
+// builtin modules
+import { _setGlobals } from "./deno.ts";
 
 /** Check if running in terminal.
  *
@@ -85,7 +76,11 @@ export function start(preserveDenoNamespace = true, source?: string): Start {
 
   util.setLogDebug(s.debugFlag, source);
 
-  setGlobals(s.pid, s.noColor);
+  // pid and noColor need to be set in the Deno module before it's set to be
+  // frozen.
+  _setGlobals(s.pid, s.noColor);
+  delete window.Deno._setGlobals;
+  Object.freeze(window.Deno);
 
   if (preserveDenoNamespace) {
     util.immutableDefine(window, "Deno", window.Deno);

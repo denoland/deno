@@ -1,36 +1,29 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
-// eslint-disable-next-line @typescript-eslint/no-triple-slash-reference
-/// <reference path="./plugins.d.ts" />
+import "./globals.ts";
 
-import "./globals";
+import { assert, log } from "./util.ts";
+import * as os from "./os.ts";
+import { args } from "./deno.ts";
+import { setPrepareStackTrace } from "./error_stack.ts";
+import { replLoop } from "./repl.ts";
+import { xevalMain, XevalFunc } from "./xeval.ts";
+import { setVersions } from "./version.ts";
+import { window } from "./window.ts";
+import { setLocation } from "./location.ts";
+import * as Deno from "./deno.ts";
 
-import { assert, log } from "./util";
-import * as os from "./os";
-import { args } from "./deno";
-import { setPrepareStackTrace } from "./error_stack";
-import { replLoop } from "./repl";
-import { xevalMain, XevalFunc } from "./xeval";
-import { setVersions } from "./version";
-import { window } from "./window";
-import { setLocation } from "./location";
-
-// builtin modules
-import * as deno from "./deno";
-
-export default function denoMain(
-  preserveDenoNamespace: boolean = true,
-  name?: string
-): void {
+function denoMain(preserveDenoNamespace: boolean = true, name?: string): void {
   const s = os.start(preserveDenoNamespace, name);
 
   setVersions(s.denoVersion, s.v8Version);
 
   // handle `--version`
   if (s.versionFlag) {
-    console.log("deno:", deno.version.deno);
-    console.log("v8:", deno.version.v8);
-    console.log("typescript:", deno.version.typescript);
+    const { console } = window;
+    console.log("deno:", Deno.version.deno);
+    console.log("v8:", Deno.version.v8);
+    console.log("typescript:", Deno.version.typescript);
     os.exit(0);
   }
 
@@ -55,3 +48,4 @@ export default function denoMain(
     replLoop();
   }
 }
+window["denoMain"] = denoMain;
