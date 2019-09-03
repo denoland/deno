@@ -119,7 +119,7 @@ jobs:
       - ./tools/test_format.py
       - cargo build -vv --release --locked
       - cargo clippy --all-targets --release --locked -- -D clippy::all
-      - CARGO_BUILD=1 ./tools/test.py --release
+      - CARGO_BUILD=1 ./tools/test.py --release --build-dir=$CARGO_TARGET_DIR/release
 
     # LSAN: We are in the process of getting a completely clean LSAN build,
     # but it will take some work. So for now we just run a subset of the
