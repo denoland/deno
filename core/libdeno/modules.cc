@@ -213,6 +213,7 @@ void deno_dyn_import_done(Deno* d_, void* user_data,
     Local<Value> module_namespace = module->GetModuleNamespace();
     promise->Resolve(context, module_namespace).ToChecked();
   }
+  d->isolate_->RunMicrotasks();
 }
 
 }  // extern "C"
