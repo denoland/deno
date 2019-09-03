@@ -94,11 +94,27 @@ function encode(str) {
  * @type {Record<string, number>}
  */
 const ops = {
-  readFile: 49,
-  exit: 50,
-  writeFile: 51,
-  resolveModuleNames: 52,
-  setEmitResult: 53
+  readFile: undefined,
+  exit: undefined,
+  writeFile: undefined,
+  resolveModuleNames: undefined,
+  setEmitResult: undefined
+};
+const opNamespace = Deno.ops.builtins;
+opNamespace.readFile = id => {
+  ops.readFile = id;
+};
+opNamespace.exit = id => {
+  ops.exit = id;
+};
+opNamespace.writeFile = id => {
+  ops.writeFile = id;
+};
+opNamespace.resolveModuleNames = id => {
+  ops.resolveModuleNames = id;
+};
+opNamespace.emitResult = id => {
+  ops.setEmitResult = id;
 };
 
 /**

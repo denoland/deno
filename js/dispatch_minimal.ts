@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as util from "./util.ts";
 import { core } from "./core.ts";
+import { ops } from "./ops.ts";
 
 const promiseTableMin = new Map<number, util.Resolvable<number>>();
 // Note it's important that promiseId starts at 1 instead of 0, because sync
@@ -77,4 +78,30 @@ export function sendSyncMinimal(
   const res32 = new Int32Array(res.buffer, res.byteOffset, 3);
   const resRecord = recordFromBufMinimal(opId, res32);
   return resRecord.result;
+}
+
+export class DispatchMinimalOp {
+  private opId?: number;
+
+  constructor(
+    private readonly namespace: string,
+    private readonly name: string
+  ) {
+    ops[this.namespace][this.name] = (id?: number): void => {
+      this.opId = id;
+      if (id !== undefined) {
+        core.setAsyncHandler(id, (ui8: Uint8Array) =>
+          asyncMsgFromRust(id, ui8)
+        );
+      }
+    };
+  }
+
+  sendSync(args: number, zeroCopy: Uint8Array): number {
+    return sendSyncMinimal(this.opId!, args, zeroCopy);
+  }
+
+  async sendAsync(args: number, zeroCopy: Uint8Array): Promise<number> {
+    return sendAsyncMinimal(this.opId!, args, zeroCopy);
+  }
 }

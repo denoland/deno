@@ -114,6 +114,7 @@ class DenoIsolate {
   std::string last_exception_;
   v8::Persistent<v8::Value> last_exception_handle_;
   v8::Persistent<v8::Function> recv_;
+  v8::Persistent<v8::Function> recv_op_reg_;
   v8::StartupData snapshot_;
   v8::Persistent<v8::ArrayBuffer> global_import_buf_;
   v8::Persistent<v8::SharedArrayBuffer> shared_ab_;
@@ -150,6 +151,7 @@ static inline v8::Local<v8::String> v8_str(const char* x) {
 
 void Print(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Recv(const v8::FunctionCallbackInfo<v8::Value>& args);
+void RecvOpReg(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Send(const v8::FunctionCallbackInfo<v8::Value>& args);
 void EvalContext(const v8::FunctionCallbackInfo<v8::Value>& args);
 void ErrorToJSON(const v8::FunctionCallbackInfo<v8::Value>& args);
@@ -160,6 +162,7 @@ void QueueMicrotask(const v8::FunctionCallbackInfo<v8::Value>& args);
 static intptr_t external_references[] = {
     reinterpret_cast<intptr_t>(Print),
     reinterpret_cast<intptr_t>(Recv),
+    reinterpret_cast<intptr_t>(RecvOpReg),
     reinterpret_cast<intptr_t>(Send),
     reinterpret_cast<intptr_t>(EvalContext),
     reinterpret_cast<intptr_t>(ErrorToJSON),

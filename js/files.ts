@@ -10,7 +10,6 @@ import {
   SyncWriter,
   SyncSeeker
 } from "./io.ts";
-import { sendAsyncMinimal, sendSyncMinimal } from "./dispatch_minimal.ts";
 import * as dispatch from "./dispatch.ts";
 import {
   sendSync as sendSyncJson,
@@ -52,7 +51,7 @@ export async function open(
  *
  */
 export function readSync(rid: number, p: Uint8Array): number | EOF {
-  const nread = sendSyncMinimal(dispatch.OP_READ, rid, p);
+  const nread = dispatch.OP_READ.sendSync(rid, p);
   if (nread < 0) {
     throw new Error("read error");
   } else if (nread == 0) {
@@ -74,7 +73,7 @@ export function readSync(rid: number, p: Uint8Array): number | EOF {
  *       })();
  */
 export async function read(rid: number, p: Uint8Array): Promise<number | EOF> {
-  const nread = await sendAsyncMinimal(dispatch.OP_READ, rid, p);
+  const nread = await dispatch.OP_READ.sendAsync(rid, p);
   if (nread < 0) {
     throw new Error("read error");
   } else if (nread == 0) {
@@ -94,7 +93,7 @@ export async function read(rid: number, p: Uint8Array): Promise<number | EOF> {
  *       Deno.writeSync(file.rid, data);
  */
 export function writeSync(rid: number, p: Uint8Array): number {
-  const result = sendSyncMinimal(dispatch.OP_WRITE, rid, p);
+  const result = dispatch.OP_WRITE.sendSync(rid, p);
   if (result < 0) {
     throw new Error("write error");
   } else {
@@ -115,7 +114,7 @@ export function writeSync(rid: number, p: Uint8Array): number {
  *
  */
 export async function write(rid: number, p: Uint8Array): Promise<number> {
-  const result = await sendAsyncMinimal(dispatch.OP_WRITE, rid, p);
+  const result = await dispatch.OP_WRITE.sendAsync(rid, p);
   if (result < 0) {
     throw new Error("write error");
   } else {

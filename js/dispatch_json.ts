@@ -3,6 +3,7 @@ import * as util from "./util.ts";
 import { TextEncoder, TextDecoder } from "./text_encoding.ts";
 import { core } from "./core.ts";
 import { ErrorKind, DenoError } from "./errors.ts";
+import { JSON_OP } from "./dispatch.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Ok = any;
@@ -43,7 +44,7 @@ function unwrapResponse(res: JsonResponse): Ok {
   return res.ok!;
 }
 
-export function asyncMsgFromRust(opId: number, resUi8: Uint8Array): void {
+export function asyncMsgFromRust(resUi8: Uint8Array): void {
   const res = decode(resUi8);
   util.assert(res.promiseId != null);
 
@@ -58,8 +59,9 @@ export function sendSync(
   args: object = {},
   zeroCopy?: Uint8Array
 ): Ok {
+  args = Object.assign(args, { opId });
   const argsUi8 = encode(args);
-  const resUi8 = core.dispatch(opId, argsUi8, zeroCopy);
+  const resUi8 = core.dispatch(JSON_OP, argsUi8, zeroCopy);
   util.assert(resUi8 != null);
 
   const res = decode(resUi8!);
@@ -73,12 +75,12 @@ export async function sendAsync(
   zeroCopy?: Uint8Array
 ): Promise<Ok> {
   const promiseId = nextPromiseId();
-  args = Object.assign(args, { promiseId });
+  args = Object.assign(args, { promiseId, opId });
   const promise = util.createResolvable<Ok>();
   promiseTable.set(promiseId, promise);
 
   const argsUi8 = encode(args);
-  const resUi8 = core.dispatch(opId, argsUi8, zeroCopy);
+  const resUi8 = core.dispatch(JSON_OP, argsUi8, zeroCopy);
   util.assert(resUi8 == null);
 
   const res = await promise;

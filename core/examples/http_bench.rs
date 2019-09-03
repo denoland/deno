@@ -19,6 +19,7 @@ use std::env;
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use std::sync::Mutex;
 use tokio::prelude::*;
 
@@ -35,12 +36,6 @@ impl log::Log for Logger {
   }
   fn flush(&self) {}
 }
-
-const OP_LISTEN: OpId = 1;
-const OP_ACCEPT: OpId = 2;
-const OP_READ: OpId = 3;
-const OP_WRITE: OpId = 4;
-const OP_CLOSE: OpId = 5;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Record {
@@ -106,46 +101,40 @@ fn test_record_from() {
 
 pub type HttpBenchOp = dyn Future<Item = i32, Error = std::io::Error> + Send;
 
-fn dispatch(
-  op_id: OpId,
-  control: &[u8],
-  zero_copy_buf: Option<PinnedBuf>,
-) -> CoreOp {
-  let record = Record::from(control);
-  let is_sync = record.promise_id == 0;
-  let http_bench_op = match op_id {
-    OP_LISTEN => {
-      assert!(is_sync);
-      op_listen()
-    }
-    OP_CLOSE => {
-      assert!(is_sync);
-      let rid = record.arg;
-      op_close(rid)
-    }
-    OP_ACCEPT => {
-      assert!(!is_sync);
-      let listener_rid = record.arg;
-      op_accept(listener_rid)
-    }
-    OP_READ => {
-      assert!(!is_sync);
-      let rid = record.arg;
-      op_read(rid, zero_copy_buf)
-    }
-    OP_WRITE => {
-      assert!(!is_sync);
-      let rid = record.arg;
-      op_write(rid, zero_copy_buf)
-    }
-    _ => panic!("bad op {}", op_id),
-  };
-  let mut record_a = record.clone();
-  let mut record_b = record.clone();
+trait MinimalOpDispatcher: Send + Sync {
+  fn dispatch_min(
+    &self,
+    record: Record,
+    buf: Option<PinnedBuf>,
+  ) -> Box<HttpBenchOp>;
+}
 
-  let fut = Box::new(
-    http_bench_op
-      .and_then(move |result| {
+struct WrappedMinimalOpDispatcher<D: MinimalOpDispatcher + Named> {
+  pub minimal_dispatcher: D,
+}
+
+impl<D> From<D> for WrappedMinimalOpDispatcher<D>
+where
+  D: MinimalOpDispatcher + Named,
+{
+  fn from(minimal_dispatcher: D) -> Self {
+    Self { minimal_dispatcher }
+  }
+}
+
+impl<D> OpDispatcher for WrappedMinimalOpDispatcher<D>
+where
+  D: MinimalOpDispatcher + Named,
+{
+  fn dispatch(&self, control: &[u8], buf: Option<PinnedBuf>) -> CoreOp {
+    let record = Record::from(control);
+    let is_sync = record.promise_id == 0;
+    let op = self.minimal_dispatcher.dispatch_min(record.clone(), buf);
+    let mut record_a = record.clone();
+    let mut record_b = record.clone();
+
+    let fut = Box::new(
+      op.and_then(move |result| {
         record_a.result = result;
         Ok(record_a)
       })
@@ -158,13 +147,188 @@ fn dispatch(
         let record = result.unwrap();
         Ok(record.into())
       }),
-  );
+    );
 
-  if is_sync {
-    Op::Sync(fut.wait().unwrap())
-  } else {
-    Op::Async(fut)
+    if is_sync {
+      Op::Sync(fut.wait().unwrap())
+    } else {
+      Op::Async(fut)
+    }
   }
+}
+
+impl<D> Named for WrappedMinimalOpDispatcher<D>
+where
+  D: MinimalOpDispatcher + Named,
+{
+  const NAME: &'static str = D::NAME;
+}
+
+struct OpListen;
+
+impl MinimalOpDispatcher for OpListen {
+  fn dispatch_min(
+    &self,
+    record: Record,
+    _buf: Option<PinnedBuf>,
+  ) -> Box<HttpBenchOp> {
+    // is sync
+    assert!(record.promise_id == 0);
+    debug!("listen");
+
+    Box::new(lazy(move || {
+      let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
+      let listener = tokio::net::TcpListener::bind(&addr).unwrap();
+      let rid = new_rid();
+
+      let mut guard = RESOURCE_TABLE.lock().unwrap();
+      guard.insert(rid, Repr::TcpListener(listener));
+      futures::future::ok(rid)
+    }))
+  }
+}
+
+impl Named for OpListen {
+  const NAME: &'static str = "OpListen";
+}
+
+struct OpClose;
+
+impl MinimalOpDispatcher for OpClose {
+  fn dispatch_min(
+    &self,
+    record: Record,
+    _buf: Option<PinnedBuf>,
+  ) -> Box<HttpBenchOp> {
+    // is sync
+    assert!(record.promise_id == 0);
+    let rid = record.arg;
+
+    debug!("close");
+    Box::new(lazy(move || {
+      let mut table = RESOURCE_TABLE.lock().unwrap();
+      let r = table.remove(&rid);
+      let result = if r.is_some() { 0 } else { -1 };
+      futures::future::ok(result)
+    }))
+  }
+}
+
+impl Named for OpClose {
+  const NAME: &'static str = "OpClose";
+}
+
+struct OpAccept;
+
+impl MinimalOpDispatcher for OpAccept {
+  fn dispatch_min(
+    &self,
+    record: Record,
+    _buf: Option<PinnedBuf>,
+  ) -> Box<HttpBenchOp> {
+    // is sync
+    assert!(record.promise_id != 0);
+    let listener_rid = record.arg;
+
+    debug!("accept {}", listener_rid);
+    Box::new(
+      futures::future::poll_fn(move || {
+        let mut table = RESOURCE_TABLE.lock().unwrap();
+        let maybe_repr = table.get_mut(&listener_rid);
+        match maybe_repr {
+          Some(Repr::TcpListener(ref mut listener)) => listener.poll_accept(),
+          _ => panic!("bad rid {}", listener_rid),
+        }
+      })
+      .and_then(move |(stream, addr)| {
+        debug!("accept success {}", addr);
+        let rid = new_rid();
+
+        let mut guard = RESOURCE_TABLE.lock().unwrap();
+        guard.insert(rid, Repr::TcpStream(stream));
+
+        Ok(rid as i32)
+      }),
+    )
+  }
+}
+
+impl Named for OpAccept {
+  const NAME: &'static str = "OpAccept";
+}
+
+struct OpRead;
+
+impl MinimalOpDispatcher for OpRead {
+  fn dispatch_min(
+    &self,
+    record: Record,
+    zero_copy_buf: Option<PinnedBuf>,
+  ) -> Box<HttpBenchOp> {
+    // is sync
+    assert!(record.promise_id != 0);
+    let rid = record.arg;
+
+    debug!("read rid={}", rid);
+    let mut zero_copy_buf = zero_copy_buf.unwrap();
+    Box::new(
+      futures::future::poll_fn(move || {
+        let mut table = RESOURCE_TABLE.lock().unwrap();
+        let maybe_repr = table.get_mut(&rid);
+        match maybe_repr {
+          Some(Repr::TcpStream(ref mut stream)) => {
+            stream.poll_read(&mut zero_copy_buf)
+          }
+          _ => panic!("bad rid"),
+        }
+      })
+      .and_then(move |nread| {
+        debug!("read success {}", nread);
+        Ok(nread as i32)
+      }),
+    )
+  }
+}
+
+impl Named for OpRead {
+  const NAME: &'static str = "OpRead";
+}
+
+struct OpWrite;
+
+impl MinimalOpDispatcher for OpWrite {
+  fn dispatch_min(
+    &self,
+    record: Record,
+    zero_copy_buf: Option<PinnedBuf>,
+  ) -> Box<HttpBenchOp> {
+    // is sync
+    assert!(record.promise_id != 0);
+    let rid = record.arg;
+
+    debug!("write rid={}", rid);
+    let zero_copy_buf = zero_copy_buf.unwrap();
+    Box::new(
+      futures::future::poll_fn(move || {
+        let mut table = RESOURCE_TABLE.lock().unwrap();
+        let maybe_repr = table.get_mut(&rid);
+        match maybe_repr {
+          Some(Repr::TcpStream(ref mut stream)) => {
+            stream.poll_write(&zero_copy_buf)
+          }
+          _ => panic!("bad rid"),
+        }
+      })
+      .and_then(move |nwritten| {
+        debug!("write success {}", nwritten);
+        Ok(nwritten as i32)
+      }),
+    )
+  }
+}
+
+impl Named for OpWrite {
+  const NAME: &'static str = "OpWrite";
 }
 
 fn main() {
@@ -174,14 +338,21 @@ fn main() {
     // using v8::MicrotasksPolicy::kExplicit
 
     let js_source = include_str!("http_bench.js");
-
     let startup_data = StartupData::Script(Script {
       source: js_source,
       filename: "http_bench.js",
     });
 
     let mut isolate = deno::Isolate::new(startup_data, false);
-    isolate.set_dispatch(dispatch);
+    let namespace = "builtins".to_string();
+    isolate.set_dispatcher_registry(Arc::new(OpDisReg::new()));
+    isolate.register_op(&namespace, WrappedMinimalOpDispatcher::from(OpListen));
+    isolate.register_op(&namespace, WrappedMinimalOpDispatcher::from(OpClose));
+    isolate.register_op(&namespace, WrappedMinimalOpDispatcher::from(OpAccept));
+    isolate.register_op(&namespace, WrappedMinimalOpDispatcher::from(OpRead));
+    isolate.register_op(&namespace, WrappedMinimalOpDispatcher::from(OpWrite));
+
+    isolate.execute("<anonymous>", "httpBenchMain()").unwrap();
 
     isolate.then(|r| {
       js_check(r);
@@ -223,95 +394,6 @@ lazy_static! {
 fn new_rid() -> i32 {
   let rid = NEXT_RID.fetch_add(1, Ordering::SeqCst);
   rid as i32
-}
-
-fn op_accept(listener_rid: i32) -> Box<HttpBenchOp> {
-  debug!("accept {}", listener_rid);
-  Box::new(
-    futures::future::poll_fn(move || {
-      let mut table = RESOURCE_TABLE.lock().unwrap();
-      let maybe_repr = table.get_mut(&listener_rid);
-      match maybe_repr {
-        Some(Repr::TcpListener(ref mut listener)) => listener.poll_accept(),
-        _ => panic!("bad rid {}", listener_rid),
-      }
-    })
-    .and_then(move |(stream, addr)| {
-      debug!("accept success {}", addr);
-      let rid = new_rid();
-
-      let mut guard = RESOURCE_TABLE.lock().unwrap();
-      guard.insert(rid, Repr::TcpStream(stream));
-
-      Ok(rid as i32)
-    }),
-  )
-}
-
-fn op_listen() -> Box<HttpBenchOp> {
-  debug!("listen");
-
-  Box::new(lazy(move || {
-    let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
-    let listener = tokio::net::TcpListener::bind(&addr).unwrap();
-    let rid = new_rid();
-
-    let mut guard = RESOURCE_TABLE.lock().unwrap();
-    guard.insert(rid, Repr::TcpListener(listener));
-    futures::future::ok(rid)
-  }))
-}
-
-fn op_close(rid: i32) -> Box<HttpBenchOp> {
-  debug!("close");
-  Box::new(lazy(move || {
-    let mut table = RESOURCE_TABLE.lock().unwrap();
-    let r = table.remove(&rid);
-    let result = if r.is_some() { 0 } else { -1 };
-    futures::future::ok(result)
-  }))
-}
-
-fn op_read(rid: i32, zero_copy_buf: Option<PinnedBuf>) -> Box<HttpBenchOp> {
-  debug!("read rid={}", rid);
-  let mut zero_copy_buf = zero_copy_buf.unwrap();
-  Box::new(
-    futures::future::poll_fn(move || {
-      let mut table = RESOURCE_TABLE.lock().unwrap();
-      let maybe_repr = table.get_mut(&rid);
-      match maybe_repr {
-        Some(Repr::TcpStream(ref mut stream)) => {
-          stream.poll_read(&mut zero_copy_buf)
-        }
-        _ => panic!("bad rid"),
-      }
-    })
-    .and_then(move |nread| {
-      debug!("read success {}", nread);
-      Ok(nread as i32)
-    }),
-  )
-}
-
-fn op_write(rid: i32, zero_copy_buf: Option<PinnedBuf>) -> Box<HttpBenchOp> {
-  debug!("write rid={}", rid);
-  let zero_copy_buf = zero_copy_buf.unwrap();
-  Box::new(
-    futures::future::poll_fn(move || {
-      let mut table = RESOURCE_TABLE.lock().unwrap();
-      let maybe_repr = table.get_mut(&rid);
-      match maybe_repr {
-        Some(Repr::TcpStream(ref mut stream)) => {
-          stream.poll_write(&zero_copy_buf)
-        }
-        _ => panic!("bad rid"),
-      }
-    })
-    .and_then(move |nwritten| {
-      debug!("write success {}", nwritten);
-      Ok(nwritten as i32)
-    }),
-  )
 }
 
 fn js_check(r: Result<(), ErrBox>) {

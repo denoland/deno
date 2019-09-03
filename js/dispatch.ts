@@ -1,10 +1,22 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as minimal from "./dispatch_minimal.ts";
+import { DispatchMinimalOp } from "./dispatch_minimal.ts";
 import * as json from "./dispatch_json.ts";
+import { core } from "./core.ts";
+import { ops } from "./ops.ts";
+
+const opNamespace = "builtins";
 
 // These consts are shared with Rust. Update with care.
-export const OP_READ = 1;
-export const OP_WRITE = 2;
+export const OP_READ = new DispatchMinimalOp(opNamespace, "read");
+export const OP_WRITE = new DispatchMinimalOp(opNamespace, "write");
+export let JSON_OP: number | undefined;
+ops[opNamespace].jsonOp = (id?: number): void => {
+  JSON_OP = id;
+  if (id !== undefined) {
+    core.setAsyncHandler(id, json.asyncMsgFromRust);
+  }
+};
+
 export const OP_EXIT = 3;
 export const OP_IS_TTY = 4;
 export const OP_ENV = 5;
@@ -60,46 +72,3 @@ export const OP_TRUNCATE = 54;
 export const OP_MAKE_TEMP_DIR = 55;
 export const OP_CWD = 56;
 export const OP_FETCH_ASSET = 57;
-
-export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
-  switch (opId) {
-    case OP_WRITE:
-    case OP_READ:
-      minimal.asyncMsgFromRust(opId, ui8);
-      break;
-    case OP_EXIT:
-    case OP_IS_TTY:
-    case OP_ENV:
-    case OP_EXEC_PATH:
-    case OP_UTIME:
-    case OP_OPEN:
-    case OP_SEEK:
-    case OP_FETCH:
-    case OP_REPL_START:
-    case OP_REPL_READLINE:
-    case OP_ACCEPT:
-    case OP_DIAL:
-    case OP_GLOBAL_TIMER:
-    case OP_HOST_GET_WORKER_CLOSED:
-    case OP_HOST_GET_MESSAGE:
-    case OP_WORKER_GET_MESSAGE:
-    case OP_RUN_STATUS:
-    case OP_MKDIR:
-    case OP_CHMOD:
-    case OP_CHOWN:
-    case OP_REMOVE:
-    case OP_COPY_FILE:
-    case OP_STAT:
-    case OP_READ_DIR:
-    case OP_RENAME:
-    case OP_LINK:
-    case OP_SYMLINK:
-    case OP_READ_LINK:
-    case OP_TRUNCATE:
-    case OP_MAKE_TEMP_DIR:
-      json.asyncMsgFromRust(opId, ui8);
-      break;
-    default:
-      throw Error("bad async opId");
-  }
-}
