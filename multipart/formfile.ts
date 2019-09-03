@@ -1,4 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+import { hasOwnProperty } from "../util/has_own_property.ts";
 
 /** FormFile object */
 export interface FormFile {
@@ -19,9 +20,5 @@ export interface FormFile {
 /** Type guard for FormFile */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function isFormFile(x: any): x is FormFile {
-  return (
-    typeof x === "object" &&
-    x.hasOwnProperty("filename") &&
-    x.hasOwnProperty("type")
-  );
+  return hasOwnProperty(x, "filename") && hasOwnProperty(x, "type");
 }
