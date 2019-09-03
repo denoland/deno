@@ -10,7 +10,6 @@ function main(configText, rootNames, replacements_) {
   println(`>>> rootNames ${rootNames}`);
 
   replacements = replacements_;
-  replacements["DENO_REPLACE_TS_VERSION"] = ts.version;
   println(`>>> replacements ${JSON.stringify(replacements)}`);
 
   const host = new Host();

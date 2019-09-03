@@ -399,18 +399,9 @@ fn run_script(flags: DenoFlags, argv: Vec<String>) {
 }
 
 fn version_command() {
-  // The TypeScript version is only available in JS at the moment.
-  // TODO: Rewrite if this changes.
-  eval_command(
-    DenoFlags::default(),
-    vec![
-      "eval".to_string(),
-      "console.log(\"deno:\", Deno.version.deno);
-       console.log(\"v8:\", Deno.version.v8);
-       console.log(\"typescript:\", Deno.version.typescript);"
-        .to_string(),
-    ],
-  );
+  println!("deno: {}", version::DENO);
+  println!("v8: {}", version::v8());
+  println!("typescript: {}", version::typescript());
 }
 
 fn main() {

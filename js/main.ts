@@ -10,15 +10,11 @@ import { xevalMain, XevalFunc } from "./xeval.ts";
 import { setVersions } from "./version.ts";
 import { window } from "./window.ts";
 import { setLocation } from "./location.ts";
-import * as Deno from "./deno.ts";
 
-export default function denoMain(
-  preserveDenoNamespace: boolean = true,
-  name?: string
-): void {
+function denoMain(preserveDenoNamespace: boolean = true, name?: string): void {
   const s = os.start(preserveDenoNamespace, name);
 
-  setVersions(s.denoVersion, s.v8Version);
+  setVersions(s.denoVersion, s.v8Version, s.tsVersion);
 
   setPrepareStackTrace(Error);
 
