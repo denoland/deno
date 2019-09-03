@@ -161,6 +161,7 @@ void deno_mod_evaluate(Deno* d_, void* user_data, deno_mod id) {
     default:
       FATAL("Unexpected module status: %d", static_cast<int>(status));
   }
+  isolate->RunMicrotasks();
 }
 
 void deno_dyn_import_done(Deno* d_, void* user_data,

@@ -152,6 +152,7 @@ void deno_execute(Deno* d_, void* user_data, const char* js_filename,
   auto context = d->context_.Get(d->isolate_);
   CHECK(!context.IsEmpty());
   deno::Execute(context, js_filename, js_source);
+  isolate->RunMicrotasks();
 }
 
 void deno_pinned_buf_delete(deno_pinned_buf* buf) {
