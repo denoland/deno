@@ -1957,7 +1957,7 @@ declare namespace consoleTypes {
     static kClear: string;
     static kClearScreenDown: string;
   }
-  export const isConsoleInstance: unique symbol;
+  const isConsoleInstance: unique symbol;
   export class Console {
     private printFunc;
     indentLevel: number;
