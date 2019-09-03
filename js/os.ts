@@ -1,69 +1,30 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as msg from "gen/cli/msg_generated";
-import { core } from "./core";
-import { handleAsyncMsgFromRust, sendSync } from "./dispatch";
-import * as flatbuffers from "./flatbuffers";
-import { assert } from "./util";
-import * as util from "./util";
-import { window } from "./window";
+import { core } from "./core.ts";
+import * as dispatch from "./dispatch.ts";
+import { sendSync } from "./dispatch_json.ts";
+import { assert } from "./util.ts";
+import * as util from "./util.ts";
+import { window } from "./window.ts";
 
-/** The current process id of the runtime. */
-export let pid: number;
-
-/** Reflects the NO_COLOR environment variable: https://no-color.org/ */
-export let noColor: boolean;
-
-function setGlobals(pid_: number, noColor_: boolean): void {
-  assert(!pid);
-  pid = pid_;
-  noColor = noColor_;
-}
+// builtin modules
+import { _setGlobals } from "./deno.ts";
 
 /** Check if running in terminal.
  *
  *       console.log(Deno.isTTY().stdout);
  */
 export function isTTY(): { stdin: boolean; stdout: boolean; stderr: boolean } {
-  const builder = flatbuffers.createBuilder();
-  const inner = msg.IsTTY.createIsTTY(builder);
-  const baseRes = sendSync(builder, msg.Any.IsTTY, inner)!;
-  assert(msg.Any.IsTTYRes === baseRes.innerType());
-  const res = new msg.IsTTYRes();
-  assert(baseRes.inner(res) != null);
-
-  return { stdin: res.stdin(), stdout: res.stdout(), stderr: res.stderr() };
+  return sendSync(dispatch.OP_IS_TTY);
 }
 
 /** Exit the Deno process with optional exit code. */
-export function exit(exitCode = 0): never {
-  const builder = flatbuffers.createBuilder();
-  const inner = msg.Exit.createExit(builder, exitCode);
-  sendSync(builder, msg.Any.Exit, inner);
+export function exit(code = 0): never {
+  sendSync(dispatch.OP_EXIT, { code });
   return util.unreachable();
 }
 
 function setEnv(key: string, value: string): void {
-  const builder = flatbuffers.createBuilder();
-  const key_ = builder.createString(key);
-  const value_ = builder.createString(value);
-  const inner = msg.SetEnv.createSetEnv(builder, key_, value_);
-  sendSync(builder, msg.Any.SetEnv, inner);
-}
-
-function createEnv(inner: msg.EnvironRes): { [index: string]: string } {
-  const env: { [index: string]: string } = {};
-
-  for (let i = 0; i < inner.mapLength(); i++) {
-    const item = inner.map(i)!;
-    env[item.key()!] = item.value()!;
-  }
-
-  return new Proxy(env, {
-    set(obj, prop: string, value: string): boolean {
-      setEnv(prop, value);
-      return Reflect.set(obj, prop, value);
-    }
-  });
+  sendSync(dispatch.OP_SET_ENV, { key, value });
 }
 
 /** Returns a snapshot of the environment variables at invocation. Mutating a
@@ -78,50 +39,48 @@ function createEnv(inner: msg.EnvironRes): { [index: string]: string } {
  *       console.log(myEnv.TEST_VAR == newEnv.TEST_VAR);
  */
 export function env(): { [index: string]: string } {
-  /* Ideally we could write
-  const res = sendSync({
-    command: msg.Command.ENV,
+  const env = sendSync(dispatch.OP_ENV);
+  return new Proxy(env, {
+    set(obj, prop: string, value: string): boolean {
+      setEnv(prop, value);
+      return Reflect.set(obj, prop, value);
+    }
   });
-  */
-  const builder = flatbuffers.createBuilder();
-  const inner = msg.Environ.createEnviron(builder);
-  const baseRes = sendSync(builder, msg.Any.Environ, inner)!;
-  assert(msg.Any.EnvironRes === baseRes.innerType());
-  const res = new msg.EnvironRes();
-  assert(baseRes.inner(res) != null);
-  // TypeScript cannot track assertion above, therefore not null assertion
-  return createEnv(res);
 }
 
-/** Send to the privileged side that we have setup and are ready. */
-function sendStart(): msg.StartRes {
-  const builder = flatbuffers.createBuilder();
-  const startOffset = msg.Start.createStart(builder, 0 /* unused */);
-  const baseRes = sendSync(builder, msg.Any.Start, startOffset);
-  assert(baseRes != null);
-  assert(msg.Any.StartRes === baseRes!.innerType());
-  const startResMsg = new msg.StartRes();
-  assert(baseRes!.inner(startResMsg) != null);
-  return startResMsg;
+interface Start {
+  cwd: string;
+  pid: number;
+  argv: string[];
+  mainModule: string; // Absolute URL.
+  debugFlag: boolean;
+  depsFlag: boolean;
+  typesFlag: boolean;
+  versionFlag: boolean;
+  denoVersion: string;
+  v8Version: string;
+  noColor: boolean;
+  xevalDelim: string;
 }
 
 // This function bootstraps an environment within Deno, it is shared both by
 // the runtime and the compiler environments.
 // @internal
-export function start(
-  preserveDenoNamespace = true,
-  source?: string
-): msg.StartRes {
-  core.setAsyncHandler(handleAsyncMsgFromRust);
+export function start(preserveDenoNamespace = true, source?: string): Start {
+  core.setAsyncHandler(dispatch.asyncMsgFromRust);
 
   // First we send an empty `Start` message to let the privileged side know we
   // are ready. The response should be a `StartRes` message containing the CLI
   // args and other info.
-  const startResMsg = sendStart();
+  const s = sendSync(dispatch.OP_START);
 
-  util.setLogDebug(startResMsg.debugFlag(), source);
+  util.setLogDebug(s.debugFlag, source);
 
-  setGlobals(startResMsg.pid(), startResMsg.noColor());
+  // pid and noColor need to be set in the Deno module before it's set to be
+  // frozen.
+  _setGlobals(s.pid, s.noColor);
+  delete window.Deno._setGlobals;
+  Object.freeze(window.Deno);
 
   if (preserveDenoNamespace) {
     util.immutableDefine(window, "Deno", window.Deno);
@@ -136,7 +95,7 @@ export function start(
     assert(window.Deno === undefined);
   }
 
-  return startResMsg;
+  return s;
 }
 
 /**
@@ -144,18 +103,10 @@ export function start(
  * Requires the `--allow-env` flag.
  */
 export function homeDir(): string {
-  const builder = flatbuffers.createBuilder();
-  const inner = msg.HomeDir.createHomeDir(builder);
-  const baseRes = sendSync(builder, msg.Any.HomeDir, inner)!;
-  assert(msg.Any.HomeDirRes === baseRes.innerType());
-  const res = new msg.HomeDirRes();
-  assert(baseRes.inner(res) != null);
-  const path = res.path();
-
+  const path = sendSync(dispatch.OP_HOME_DIR);
   if (!path) {
     throw new Error("Could not get home directory.");
   }
-
   return path;
 }
 
@@ -164,12 +115,5 @@ export function homeDir(): string {
  * Requires the `--allow-env` flag.
  */
 export function execPath(): string {
-  const builder = flatbuffers.createBuilder();
-  const inner = msg.ExecPath.createExecPath(builder);
-  const baseRes = sendSync(builder, msg.Any.ExecPath, inner)!;
-  assert(msg.Any.ExecPathRes === baseRes.innerType());
-  const res = new msg.ExecPathRes();
-  assert(baseRes.inner(res) != null);
-  const path = res.path()!;
-  return path;
+  return sendSync(dispatch.OP_EXEC_PATH);
 }

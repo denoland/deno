@@ -1,27 +1,19 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as msg from "gen/cli/msg_generated";
-import * as flatbuffers from "./flatbuffers";
-import * as dispatch from "./dispatch";
-import { FileInfo, FileInfoImpl } from "./file_info";
-import { assert } from "./util";
+import { sendSync, sendAsync } from "./dispatch_json.ts";
+import * as dispatch from "./dispatch.ts";
+import { FileInfo, FileInfoImpl } from "./file_info.ts";
+import { StatResponse } from "./stat.ts";
 
-function req(path: string): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
-  const builder = flatbuffers.createBuilder();
-  const path_ = builder.createString(path);
-  const inner = msg.ReadDir.createReadDir(builder, path_);
-  return [builder, msg.Any.ReadDir, inner];
+interface ReadDirResponse {
+  entries: StatResponse[];
 }
 
-function res(baseRes: null | msg.Base): FileInfo[] {
-  assert(baseRes != null);
-  assert(msg.Any.ReadDirRes === baseRes!.innerType());
-  const res = new msg.ReadDirRes();
-  assert(baseRes!.inner(res) != null);
-  const fileInfos: FileInfo[] = [];
-  for (let i = 0; i < res.entriesLength(); i++) {
-    fileInfos.push(new FileInfoImpl(res.entries(i)!));
-  }
-  return fileInfos;
+function res(response: ReadDirResponse): FileInfo[] {
+  return response.entries.map(
+    (statRes: StatResponse): FileInfo => {
+      return new FileInfoImpl(statRes);
+    }
+  );
 }
 
 /** Reads the directory given by path and returns a list of file info
@@ -30,7 +22,7 @@ function res(baseRes: null | msg.Base): FileInfo[] {
  *       const files = Deno.readDirSync("/");
  */
 export function readDirSync(path: string): FileInfo[] {
-  return res(dispatch.sendSync(...req(path)));
+  return res(sendSync(dispatch.OP_READ_DIR, { path }));
 }
 
 /** Reads the directory given by path and returns a list of file info.
@@ -38,5 +30,5 @@ export function readDirSync(path: string): FileInfo[] {
  *       const files = await Deno.readDir("/");
  */
 export async function readDir(path: string): Promise<FileInfo[]> {
-  return res(await dispatch.sendAsync(...req(path)));
+  return res(await sendAsync(dispatch.OP_READ_DIR, { path }));
 }

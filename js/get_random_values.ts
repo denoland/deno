@@ -1,16 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as msg from "gen/cli/msg_generated";
-import * as flatbuffers from "./flatbuffers";
-import * as dispatch from "./dispatch";
-import { assert } from "./util";
-
-function req(
-  typedArray: ArrayBufferView
-): [flatbuffers.Builder, msg.Any, flatbuffers.Offset, ArrayBufferView] {
-  const builder = flatbuffers.createBuilder();
-  const inner = msg.GetRandomValues.createGetRandomValues(builder);
-  return [builder, msg.Any.GetRandomValues, inner, typedArray];
-}
+import * as dispatch from "./dispatch.ts";
+import { sendSync } from "./dispatch_json.ts";
+import { assert } from "./util.ts";
 
 /** Synchronously collects cryptographically secure random values. The
  * underlying CSPRNG in use is Rust's `rand::rngs::ThreadRng`.
@@ -30,6 +21,11 @@ export function getRandomValues<
 >(typedArray: T): T {
   assert(typedArray !== null, "Input must not be null");
   assert(typedArray.length <= 65536, "Input must not be longer than 65536");
-  dispatch.sendSync(...req(typedArray as ArrayBufferView));
+  const ui8 = new Uint8Array(
+    typedArray.buffer,
+    typedArray.byteOffset,
+    typedArray.byteLength
+  );
+  sendSync(dispatch.OP_GET_RANDOM_VALUES, {}, ui8);
   return typedArray;
 }

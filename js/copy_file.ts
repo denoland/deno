@@ -1,18 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as msg from "gen/cli/msg_generated";
-import * as flatbuffers from "./flatbuffers";
-import * as dispatch from "./dispatch";
-
-function req(
-  from: string,
-  to: string
-): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
-  const builder = flatbuffers.createBuilder();
-  const from_ = builder.createString(from);
-  const to_ = builder.createString(to);
-  const inner = msg.CopyFile.createCopyFile(builder, from_, to_);
-  return [builder, msg.Any.CopyFile, inner];
-}
+import { sendSync, sendAsync } from "./dispatch_json.ts";
+import * as dispatch from "./dispatch.ts";
 
 /** Copies the contents of a file to another by name synchronously.
  * Creates a new file if target does not exists, and if target exists,
@@ -24,7 +12,7 @@ function req(
  *       Deno.copyFileSync("from.txt", "to.txt");
  */
 export function copyFileSync(from: string, to: string): void {
-  dispatch.sendSync(...req(from, to));
+  sendSync(dispatch.OP_COPY_FILE, { from, to });
 }
 
 /** Copies the contents of a file to another by name.
@@ -38,5 +26,5 @@ export function copyFileSync(from: string, to: string): void {
  *       await Deno.copyFile("from.txt", "to.txt");
  */
 export async function copyFile(from: string, to: string): Promise<void> {
-  await dispatch.sendAsync(...req(from, to));
+  await sendAsync(dispatch.OP_COPY_FILE, { from, to });
 }

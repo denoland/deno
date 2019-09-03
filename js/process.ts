@@ -1,13 +1,11 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as dispatch from "./dispatch";
-import * as flatbuffers from "./flatbuffers";
-import * as msg from "gen/cli/msg_generated";
-
-import { File, close } from "./files";
-import { ReadCloser, WriteCloser } from "./io";
-import { readAll } from "./buffer";
-import { assert, unreachable } from "./util";
-import { platform } from "./build";
+import { sendSync, sendAsync } from "./dispatch_json.ts";
+import * as dispatch from "./dispatch.ts";
+import { File, close } from "./files.ts";
+import { ReadCloser, WriteCloser } from "./io.ts";
+import { readAll } from "./buffer.ts";
+import { assert, unreachable } from "./util.ts";
+import { platform } from "./build.ts";
 
 /** How to handle subprocess stdio.
  *
@@ -33,21 +31,22 @@ export interface RunOptions {
   stdin?: ProcessStdio | number;
 }
 
+interface RunStatusResponse {
+  gotSignal: boolean;
+  exitCode: number;
+  exitSignal: number;
+}
+
 async function runStatus(rid: number): Promise<ProcessStatus> {
-  const builder = flatbuffers.createBuilder();
-  const inner = msg.RunStatus.createRunStatus(builder, rid);
+  const res = (await sendAsync(dispatch.OP_RUN_STATUS, {
+    rid
+  })) as RunStatusResponse;
 
-  const baseRes = await dispatch.sendAsync(builder, msg.Any.RunStatus, inner);
-  assert(baseRes != null);
-  assert(msg.Any.RunStatusRes === baseRes!.innerType());
-  const res = new msg.RunStatusRes();
-  assert(baseRes!.inner(res) != null);
-
-  if (res.gotSignal()) {
-    const signal = res.exitSignal();
+  if (res.gotSignal) {
+    const signal = res.exitSignal;
     return { signal, success: false };
   } else {
-    const code = res.exitCode();
+    const code = res.exitCode;
     return { code, success: code === 0 };
   }
 }
@@ -58,9 +57,7 @@ async function runStatus(rid: number): Promise<ProcessStatus> {
  * Requires the `--allow-run` flag.
  */
 export function kill(pid: number, signo: number): void {
-  const builder = flatbuffers.createBuilder();
-  const inner = msg.Kill.createKill(builder, pid, signo);
-  dispatch.sendSync(builder, msg.Any.Kill, inner);
+  sendSync(dispatch.OP_KILL, { pid, signo });
 }
 
 export class Process {
@@ -71,20 +68,20 @@ export class Process {
   readonly stderr?: ReadCloser;
 
   // @internal
-  constructor(res: msg.RunRes) {
-    this.rid = res.rid();
-    this.pid = res.pid();
+  constructor(res: RunResponse) {
+    this.rid = res.rid;
+    this.pid = res.pid;
 
-    if (res.stdinRid() > 0) {
-      this.stdin = new File(res.stdinRid());
+    if (res.stdinRid && res.stdinRid > 0) {
+      this.stdin = new File(res.stdinRid);
     }
 
-    if (res.stdoutRid() > 0) {
-      this.stdout = new File(res.stdoutRid());
+    if (res.stdoutRid && res.stdoutRid > 0) {
+      this.stdout = new File(res.stdoutRid);
     }
 
-    if (res.stderrRid() > 0) {
-      this.stderr = new File(res.stderrRid());
+    if (res.stderrRid && res.stderrRid > 0) {
+      this.stderr = new File(res.stderrRid);
     }
   }
 
@@ -137,14 +134,13 @@ export interface ProcessStatus {
   signal?: number; // TODO: Make this a string, e.g. 'SIGTERM'.
 }
 
-function stdioMap(s: ProcessStdio): msg.ProcessStdio {
+// TODO: this method is only used to validate proper option, probably can be renamed
+function stdioMap(s: string): string {
   switch (s) {
     case "inherit":
-      return msg.ProcessStdio.Inherit;
     case "piped":
-      return msg.ProcessStdio.Piped;
     case "null":
-      return msg.ProcessStdio.Null;
+      return s;
     default:
       return unreachable();
   }
@@ -154,6 +150,13 @@ function isRid(arg: unknown): arg is number {
   return !isNaN(arg as number);
 }
 
+interface RunResponse {
+  rid: number;
+  pid: number;
+  stdinRid: number | null;
+  stdoutRid: number | null;
+  stderrRid: number | null;
+}
 /**
  * Spawns new subprocess.
  *
@@ -168,71 +171,56 @@ function isRid(arg: unknown): arg is number {
  * they can be set to either `ProcessStdio` or `rid` of open file.
  */
 export function run(opt: RunOptions): Process {
-  const builder = flatbuffers.createBuilder();
-  const argsOffset = msg.Run.createArgsVector(
-    builder,
-    opt.args.map((a): number => builder.createString(a))
-  );
-  const cwdOffset = opt.cwd == null ? 0 : builder.createString(opt.cwd);
-  const kvOffset: flatbuffers.Offset[] = [];
+  assert(opt.args.length > 0);
+  let env: Array<[string, string]> = [];
   if (opt.env) {
-    for (const [key, val] of Object.entries(opt.env)) {
-      const keyOffset = builder.createString(key);
-      const valOffset = builder.createString(String(val));
-      kvOffset.push(msg.KeyValue.createKeyValue(builder, keyOffset, valOffset));
-    }
+    env = Array.from(Object.entries(opt.env));
   }
-  const envOffset = msg.Run.createEnvVector(builder, kvOffset);
 
-  let stdInOffset = stdioMap("inherit");
-  let stdOutOffset = stdioMap("inherit");
-  let stdErrOffset = stdioMap("inherit");
-  let stdinRidOffset = 0;
-  let stdoutRidOffset = 0;
-  let stderrRidOffset = 0;
+  let stdin = stdioMap("inherit");
+  let stdout = stdioMap("inherit");
+  let stderr = stdioMap("inherit");
+  let stdinRid = 0;
+  let stdoutRid = 0;
+  let stderrRid = 0;
 
   if (opt.stdin) {
     if (isRid(opt.stdin)) {
-      stdinRidOffset = opt.stdin;
+      stdinRid = opt.stdin;
     } else {
-      stdInOffset = stdioMap(opt.stdin);
+      stdin = stdioMap(opt.stdin);
     }
   }
 
   if (opt.stdout) {
     if (isRid(opt.stdout)) {
-      stdoutRidOffset = opt.stdout;
+      stdoutRid = opt.stdout;
     } else {
-      stdOutOffset = stdioMap(opt.stdout);
+      stdout = stdioMap(opt.stdout);
     }
   }
 
   if (opt.stderr) {
     if (isRid(opt.stderr)) {
-      stderrRidOffset = opt.stderr;
+      stderrRid = opt.stderr;
     } else {
-      stdErrOffset = stdioMap(opt.stderr);
+      stderr = stdioMap(opt.stderr);
     }
   }
 
-  const inner = msg.Run.createRun(
-    builder,
-    argsOffset,
-    cwdOffset,
-    envOffset,
-    stdInOffset,
-    stdOutOffset,
-    stdErrOffset,
-    stdinRidOffset,
-    stdoutRidOffset,
-    stderrRidOffset
-  );
-  const baseRes = dispatch.sendSync(builder, msg.Any.Run, inner);
-  assert(baseRes != null);
-  assert(msg.Any.RunRes === baseRes!.innerType());
-  const res = new msg.RunRes();
-  assert(baseRes!.inner(res) != null);
+  const req = {
+    args: opt.args.map(String),
+    cwd: opt.cwd,
+    env,
+    stdin,
+    stdout,
+    stderr,
+    stdinRid,
+    stdoutRid,
+    stderrRid
+  };
 
+  const res = sendSync(dispatch.OP_RUN, req) as RunResponse;
   return new Process(res);
 }
 

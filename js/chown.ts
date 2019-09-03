@@ -1,18 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as flatbuffers from "./flatbuffers";
-import * as msg from "gen/cli/msg_generated";
-import * as dispatch from "./dispatch";
-
-function req(
-  path: string,
-  uid: number,
-  gid: number
-): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
-  const builder = flatbuffers.createBuilder();
-  const path_ = builder.createString(path);
-  const inner = msg.Chown.createChown(builder, path_, uid, gid);
-  return [builder, msg.Any.Chown, inner];
-}
+import { sendSync, sendAsync } from "./dispatch_json.ts";
+import * as dispatch from "./dispatch.ts";
 
 /**
  * Change owner of a regular file or directory synchronously. Unix only at the moment.
@@ -21,7 +9,7 @@ function req(
  * @param gid group id of the new owner
  */
 export function chownSync(path: string, uid: number, gid: number): void {
-  dispatch.sendSync(...req(path, uid, gid));
+  sendSync(dispatch.OP_CHOWN, { path, uid, gid });
 }
 
 /**
@@ -35,5 +23,5 @@ export async function chown(
   uid: number,
   gid: number
 ): Promise<void> {
-  await dispatch.sendAsync(...req(path, uid, gid));
+  await sendAsync(dispatch.OP_CHOWN, { path, uid, gid });
 }

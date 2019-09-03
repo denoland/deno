@@ -123,7 +123,6 @@ impl Future for Worker {
 mod tests {
   use super::*;
   use crate::flags;
-  use crate::ops::op_selector_std;
   use crate::progress::Progress;
   use crate::resources;
   use crate::startup_data;
@@ -140,7 +139,6 @@ mod tests {
     let state = ThreadSafeState::new(
       flags::DenoFlags::default(),
       argv,
-      op_selector_std,
       Progress::new(),
       true,
     )
@@ -170,7 +168,6 @@ mod tests {
     let state = ThreadSafeState::new(
       flags::DenoFlags::default(),
       argv,
-      op_selector_std,
       Progress::new(),
       true,
     )
@@ -200,8 +197,7 @@ mod tests {
     let mut flags = flags::DenoFlags::default();
     flags.reload = true;
     let state =
-      ThreadSafeState::new(flags, argv, op_selector_std, Progress::new(), true)
-        .unwrap();
+      ThreadSafeState::new(flags, argv, Progress::new(), true).unwrap();
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
       let mut worker = Worker::new(

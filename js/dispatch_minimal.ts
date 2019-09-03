@@ -1,12 +1,14 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-// Do not add flatbuffer dependencies to this module.
-import * as util from "./util";
-import { core } from "./core";
+import * as util from "./util.ts";
+import { core } from "./core.ts";
 
 const promiseTableMin = new Map<number, util.Resolvable<number>>();
-let _nextPromiseId = 0;
+// Note it's important that promiseId starts at 1 instead of 0, because sync
+// messages are indicated with promiseId 0. If we ever add wrap around logic for
+// overflows, this should be taken into account.
+let _nextPromiseId = 1;
 
-export function nextPromiseId(): number {
+function nextPromiseId(): number {
   return _nextPromiseId++;
 }
 
@@ -40,12 +42,9 @@ const scratchBytes = new Uint8Array(
 );
 util.assert(scratchBytes.byteLength === scratch32.length * 4);
 
-export function handleAsyncMsgFromRustMinimal(
-  ui8: Uint8Array,
-  record: RecordMinimal
-): void {
-  // Fast and new
-  util.log("minimal handleAsyncMsgFromRust ", ui8.length);
+export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
+  const buf32 = new Int32Array(ui8.buffer, ui8.byteOffset, ui8.byteLength / 4);
+  const record = recordFromBufMinimal(opId, buf32);
   const { promiseId, result } = record;
   const promise = promiseTableMin.get(promiseId);
   promiseTableMin.delete(promiseId);
@@ -65,4 +64,17 @@ export function sendAsyncMinimal(
   promiseTableMin.set(promiseId, promise);
   core.dispatch(opId, scratchBytes, zeroCopy);
   return promise;
+}
+
+export function sendSyncMinimal(
+  opId: number,
+  arg: number,
+  zeroCopy: Uint8Array
+): number {
+  scratch32[0] = 0; // promiseId 0 indicates sync
+  scratch32[1] = arg;
+  const res = core.dispatch(opId, scratchBytes, zeroCopy)!;
+  const res32 = new Int32Array(res.buffer, res.byteOffset, 3);
+  const resRecord = recordFromBufMinimal(opId, res32);
+  return resRecord.result;
 }

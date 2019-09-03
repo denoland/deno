@@ -440,10 +440,7 @@ impl Isolate {
       libdeno::deno_mod_new(self.libdeno_isolate, main, name_ptr, source_ptr)
     };
 
-    self.check_last_exception().map(|_| id).map_err(|err| {
-      assert_eq!(id, 0);
-      err
-    })
+    self.check_last_exception().map(|_| id)
   }
 
   pub fn mod_get_imports(&self, id: deno_mod) -> Vec<String> {
@@ -503,10 +500,7 @@ impl Isolate {
         err_str_ptr,
       )
     };
-    self.check_last_exception().map_err(|err| {
-      assert_eq!(id, 0);
-      err
-    })
+    self.check_last_exception()
   }
 
   fn poll_dyn_imports(&mut self) -> Poll<(), ErrBox> {
@@ -791,12 +785,12 @@ pub mod tests {
         Mode::AsyncImmediate => {
           assert_eq!(control.len(), 1);
           assert_eq!(control[0], 42);
-          let buf = vec![43u8].into_boxed_slice();
+          let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
           Op::Async(Box::new(futures::future::ok(buf)))
         }
         Mode::OverflowReqSync => {
           assert_eq!(control.len(), 100 * 1024 * 1024);
-          let buf = vec![43u8].into_boxed_slice();
+          let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
           Op::Sync(buf)
         }
         Mode::OverflowResSync => {
@@ -810,7 +804,7 @@ pub mod tests {
         }
         Mode::OverflowReqAsync => {
           assert_eq!(control.len(), 100 * 1024 * 1024);
-          let buf = vec![43u8].into_boxed_slice();
+          let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
           Op::Async(Box::new(futures::future::ok(buf)))
         }
         Mode::OverflowResAsync => {
@@ -1013,6 +1007,60 @@ pub mod tests {
   }
 
   #[test]
+  fn dyn_import_err2() {
+    use std::convert::TryInto;
+    // Import multiple modules to demonstrate that after failed dynamic import
+    // another dynamic import can still be run
+    run_in_task(|| {
+      let count = Arc::new(AtomicUsize::new(0));
+      let count_ = count.clone();
+      let mut isolate = Isolate::new(StartupData::None, false);
+      isolate.set_dyn_import(move |_, specifier, referrer| {
+        let c = count_.fetch_add(1, Ordering::Relaxed);
+        match c {
+          0 => assert_eq!(specifier, "foo1.js"),
+          1 => assert_eq!(specifier, "foo2.js"),
+          2 => assert_eq!(specifier, "foo3.js"),
+          _ => unreachable!(),
+        }
+        assert_eq!(referrer, "dyn_import_error.js");
+
+        let source_code_info = SourceCodeInfo {
+          module_url_specified: specifier.to_owned(),
+          module_url_found: specifier.to_owned(),
+          code: "# not valid JS".to_owned(),
+        };
+        let stream = MockImportStream(vec![
+          Ok(RecursiveLoadEvent::Fetch(source_code_info)),
+          Ok(RecursiveLoadEvent::Instantiate(c.try_into().unwrap())),
+        ]);
+        Box::new(stream)
+      });
+
+      js_check(isolate.execute(
+        "dyn_import_error.js",
+        r#"
+        (async () => {
+          await import("foo1.js");
+        })();
+        (async () => {
+          await import("foo2.js");
+        })();
+        (async () => {
+          await import("foo3.js");
+        })();
+        "#,
+      ));
+
+      assert_eq!(count.load(Ordering::Relaxed), 3);
+      // Now each poll should return error
+      assert!(isolate.poll().is_err());
+      assert!(isolate.poll().is_err());
+      assert!(isolate.poll().is_err());
+    })
+  }
+
+  #[test]
   fn dyn_import_ok() {
     run_in_task(|| {
       let count = Arc::new(AtomicUsize::new(0));
@@ -1163,7 +1211,7 @@ pub mod tests {
         let control = new Uint8Array(100 * 1024 * 1024);
         let response = Deno.core.dispatch(99, control);
         assert(response instanceof Uint8Array);
-        assert(response.length == 1);
+        assert(response.length == 4);
         assert(response[0] == 43);
         assert(asyncRecv == 0);
         "#,
@@ -1203,7 +1251,7 @@ pub mod tests {
         let asyncRecv = 0;
         Deno.core.setAsyncHandler((opId, buf) => {
           assert(opId == 99);
-          assert(buf.byteLength === 1);
+          assert(buf.byteLength === 4);
           assert(buf[0] === 43);
           asyncRecv++;
         });

@@ -64,13 +64,15 @@ def rustfmt():
         "rustfmt",
         "--config-path",
         rustfmt_config,
-    ] + find_exts(["cli", "core", "tools"], [".rs"]))
+    ] + find_exts(["cli", "core", "tools", "deno_typescript", "cli_snapshots"],
+                  [".rs"]))
 
 
 def gn_format():
     print "gn format"
-    for fn in ["BUILD.gn", ".gn"] + find_exts(["build_extra", "cli", "core"],
-                                              [".gn", ".gni"]):
+    for fn in ["BUILD.gn", ".gn"] + find_exts(
+        ["build_extra", "cli", "core", "deno_typescript", "cli_snapshots"],
+        [".gn", ".gni"]):
         qrun(["third_party/depot_tools/gn", "format", fn], env=google_env())
 
 
@@ -78,14 +80,18 @@ def yapf():
     print "yapf"
     qrun(
         [sys.executable, "third_party/python_packages/bin/yapf", "-i"] +
-        find_exts(["tools", "build_extra"], [".py"], skip=["tools/clang"]),
+        find_exts(["tools", "build_extra", "deno_typescript", "cli_snapshots"],
+                  [".py"],
+                  skip=["tools/clang"]),
         env=python_env())
 
 
 def prettier():
     print "prettier"
-    files = find_exts([".github", "js", "tests", "tools", "website", "core"],
-                      [".js", ".json", ".ts", ".md"],
+    files = find_exts([
+        ".github", "js", "tests", "tools", "website", "core",
+        "deno_typescript", "cli_snapshots"
+    ], [".js", ".json", ".ts", ".md"],
                       skip=["tools/clang", "js/deps", "js/gen"])
     qrun(["node", prettier_path, "--write", "--loglevel=error"] +
          ["rollup.config.js"] + files)

@@ -1,9 +1,9 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as domTypes from "./dom_types";
-import * as blob from "./blob";
-import * as domFile from "./dom_file";
-import { DomIterableMixin } from "./mixins/dom_iterable";
-import { requiredArguments } from "./util";
+import * as domTypes from "./dom_types.ts";
+import * as blob from "./blob.ts";
+import * as domFile from "./dom_file.ts";
+import { DomIterableMixin } from "./mixins/dom_iterable.ts";
+import { requiredArguments } from "./util.ts";
 
 const dataSymbol = Symbol("data");
 

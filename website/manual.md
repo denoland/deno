@@ -46,10 +46,8 @@ Deno provides <a href="https://github.com/denoland/deno_std">a set of reviewed
 
 - File system and network access can be controlled in order to run sandboxed
   code. Access between V8 (unprivileged) and Rust (privileged) is only done via
-  serialized messages defined in this
-  [flatbuffer](https://github.com/denoland/deno/blob/master/cli/msg.fbs). This
-  makes it easy to audit. For example, to enable write access use the flag
-  `--allow-write` or for network access `--allow-net`.
+  serialized messages. This makes it easy to audit. For example, to enable write
+  access use the flag `--allow-write` or for network access `--allow-net`.
 
 - Only ship a single executable.
 
@@ -64,16 +62,21 @@ Deno provides <a href="https://github.com/denoland/deno_std">a set of reviewed
 - Be able to serve HTTP efficiently.
   ([Currently it is relatively slow.](https://deno.land/benchmarks.html#req-per-sec))
 
+<!-- prettier-ignore-start -->
+<!-- see https://github.com/prettier/prettier/issues/3679 -->
+
 - Provide useful tooling out of the box:
-  - dependency inspector (`deno info`)
-  - code formatter (`deno fmt`),
-  - bundling (`deno bundle`)
-  - runtime type info (`deno types`)
-  - test runner (`deno test`)
-    [not yet](https://github.com/denoland/deno_std/issues/193)
-  - command-line debugger (`--debug`)
-    [not yet](https://github.com/denoland/deno/issues/1120)
-  - linter (`deno lint`) [not yet](https://github.com/denoland/deno/issues/1880)
+    - dependency inspector (`deno info`)
+    - code formatter (`deno fmt`),
+    - bundling (`deno bundle`)
+    - runtime type info (`deno types`)
+    - test runner (`deno test`)
+      [not yet](https://github.com/denoland/deno_std/issues/193)
+    - command-line debugger (`--debug`)
+      [not yet](https://github.com/denoland/deno/issues/1120)
+    - linter (`deno lint`) [not yet](https://github.com/denoland/deno/issues/1880)
+
+<!-- prettier-ignore-end -->
 
 ### Non-goals
 
@@ -176,8 +179,7 @@ To ensure reproducible builds, deno has most of its dependencies in a git
 submodule. However, you need to install separately:
 
 1. [Rust](https://www.rust-lang.org/en-US/install.html) >= 1.36.0
-2. [Node](https://nodejs.org/)
-3. Python 2.
+2. Python 2.
    [Not 3](https://github.com/denoland/deno/issues/464#issuecomment-411795578).
 
 Extra steps for Mac users: install [XCode](https://developer.apple.com/xcode/)
@@ -580,6 +582,48 @@ import { test, assertEquals } from "./deps.ts";
 This design circumvents a plethora of complexity spawned by package management
 software, centralized code repositories, and superfluous file formats.
 
+### Using external type definitions
+
+Deno supports both JavaScript and TypeScript as first class languages at
+runtime. This means it requires fully qualified module names, including the
+extension (or a server providing the correct media type). In addition, Deno has
+no "magical" module resolution.
+
+The out of the box TypeScript compiler though relies on both extension-less
+modules and the Node.js module resolution logic to apply types to JavaScript
+modules.
+
+In order to bridge this gap, Deno supports compiler hints that inform Deno the
+location of `.d.ts` files and the JavaScript code they relate to. A compiler
+hint looks like this:
+
+```ts
+// @deno-types="./foo.d.ts"
+import * as foo from "./foo.js";
+```
+
+Where the hint affects the next `import` statement (or `export ... from`
+statement) where the value of the `@deno-types` will be substituted at compile
+time instead of the specified module. Like in the above example, the Deno
+compiler will load `./foo.d.ts` instead of `./foo.js`. Deno will still load
+`./foo.js` when it runs the program.
+
+**Not all type definitions are supported.**
+
+Deno will use the compiler hint to load the indicated `.d.ts` files, but some
+`.d.ts` files contain unsupported features. Specifically, some `.d.ts` files
+expect to be able to load or reference type definitions from other packages
+using the module resolution logic. For example a type reference directive to
+include `node`, expecting to resolve to some path like
+`./node_modules/@types/node/index.d.ts`. Since this depends on non-relative
+"magical" resolution, Deno cannot resolve this.
+
+**Why not use the triple-slash type reference?**
+
+The TypeScript compiler supports triple-slash directives, including a type
+reference directive. If Deno used this, it would interfere with the behavior of
+the TypeScript compiler.
+
 ### Testing if current file is the main program
 
 To test if the current script has been executed as the main input to the program
@@ -598,6 +642,29 @@ if (import.meta.main) {
 Use `deno help` to see the help text.
 
 ```
+deno
+A secure runtime for JavaScript and TypeScript built with V8, Rust, and Tokio.
+
+Docs: https://deno.land/manual.html
+Modules: https://github.com/denoland/deno_std
+Bugs: https://github.com/denoland/deno/issues
+
+To run the REPL:
+
+  deno
+
+To execute a sandboxed script:
+
+  deno https://deno.land/welcome.ts
+
+To evaluate code from the command line:
+
+  deno eval "console.log(30933 + 404)"
+
+To get help on the another subcommands (run in this case):
+
+  deno help run
+
 USAGE:
     deno [OPTIONS] [SUBCOMMAND]
 
@@ -610,6 +677,7 @@ OPTIONS:
         --allow-run                    Allow running subprocesses
         --allow-write=<allow-write>    Allow file system write access
     -c, --config <FILE>                Load compiler configuration file
+        --current-thread               Use tokio::runtime::current_thread
     -h, --help                         Prints help information
         --importmap <FILE>             Load import map file
     -L, --log-level <log-level>        Set log level [possible values: debug, info]
@@ -619,6 +687,7 @@ OPTIONS:
         --seed <NUMBER>                Seed Math.random()
         --v8-flags=<v8-flags>          Set V8 command line options
         --v8-options                   Print V8 command line options
+    -v, --version                      Print the version
 
 SUBCOMMANDS:
     [SCRIPT]       Script to run
@@ -628,9 +697,10 @@ SUBCOMMANDS:
     fetch          Fetch the dependencies
     fmt            Format files
     help           Prints this message or the help of the given subcommand(s)
-    info           Show source file related info
+    info           Show info about cache or info related to source file
     install        Install script as executable
     run            Run a program given a filename or url to the source code
+    test           Run tests
     types          Print runtime TypeScript declarations
     version        Print the version
     xeval          Eval a script on text segments from stdin
@@ -799,6 +869,16 @@ installation command to your repository:
 
 $ deno install awesome_cli https://example.com/awesome/cli.ts
 ```
+
+## Proxies
+
+Deno supports proxies.
+
+`HTTP_PROXY` and `HTTPS_PROXY` environmental variables are used to configure
+them.
+
+For Windows if environmental variables are not found Deno will fall back to
+reading proxies from registry.
 
 ## Import maps
 
@@ -986,12 +1066,6 @@ The core binding layer for Deno. It is released as a
 [standalone crate](https://crates.io/crates/deno). Inside of core is V8 itself,
 with a binding API called "libdeno". See the crate documentation for more
 details.
-
-### Flatbuffers
-
-We use Flatbuffers to define common structs and enums between TypeScript and
-Rust. These common data structures are defined in
-[msg.fbs](https://github.com/denoland/deno/blob/master/cli/msg.fbs)
 
 ### Updating prebuilt binaries
 

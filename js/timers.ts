@@ -1,9 +1,10 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { assert } from "./util";
-import * as msg from "gen/cli/msg_generated";
-import * as flatbuffers from "./flatbuffers";
-import { sendAsync, sendSync } from "./dispatch";
-import { window } from "./window";
+import { assert } from "./util.ts";
+import { window } from "./window.ts";
+import * as dispatch from "./dispatch.ts";
+import { sendSync, sendAsync } from "./dispatch_json.ts";
+
+const { console } = window;
 
 interface Timer {
   id: number;
@@ -39,11 +40,8 @@ function getTime(): number {
 }
 
 function clearGlobalTimeout(): void {
-  const builder = flatbuffers.createBuilder();
-  const inner = msg.GlobalTimerStop.createGlobalTimerStop(builder);
   globalTimeoutDue = null;
-  let res = sendSync(builder, msg.Any.GlobalTimerStop, inner);
-  assert(res == null);
+  sendSync(dispatch.OP_GLOBAL_TIMER_STOP);
 }
 
 async function setGlobalTimeout(due: number, now: number): Promise<void> {
@@ -54,12 +52,8 @@ async function setGlobalTimeout(due: number, now: number): Promise<void> {
   assert(timeout >= 0);
 
   // Send message to the backend.
-  const builder = flatbuffers.createBuilder();
-  msg.GlobalTimer.startGlobalTimer(builder);
-  msg.GlobalTimer.addTimeout(builder, timeout);
-  const inner = msg.GlobalTimer.endGlobalTimer(builder);
   globalTimeoutDue = due;
-  await sendAsync(builder, msg.Any.GlobalTimer, inner);
+  await sendAsync(dispatch.OP_GLOBAL_TIMER, { timeout });
   // eslint-disable-next-line @typescript-eslint/no-use-before-define
   fireTimers();
 }
@@ -187,6 +181,12 @@ function checkThis(thisArg: unknown): void {
   }
 }
 
+function checkBigInt(n: unknown): void {
+  if (typeof n === "bigint") {
+    throw new TypeError("Cannot convert a BigInt value to a number");
+  }
+}
+
 function setTimer(
   cb: (...args: Args) => void,
   delay: number,
@@ -232,6 +232,7 @@ export function setTimeout(
   delay: number = 0,
   ...args: Args
 ): number {
+  checkBigInt(delay);
   // @ts-ignore
   checkThis(this);
   return setTimer(cb, delay, args, false);
@@ -243,6 +244,7 @@ export function setInterval(
   delay: number = 0,
   ...args: Args
 ): number {
+  checkBigInt(delay);
   // @ts-ignore
   checkThis(this);
   return setTimer(cb, delay, args, true);
@@ -262,6 +264,7 @@ function clearTimer(id: number): void {
 }
 
 export function clearTimeout(id: number = 0): void {
+  checkBigInt(id);
   if (id === 0) {
     return;
   }
@@ -269,6 +272,7 @@ export function clearTimeout(id: number = 0): void {
 }
 
 export function clearInterval(id: number = 0): void {
+  checkBigInt(id);
   if (id === 0) {
     return;
   }

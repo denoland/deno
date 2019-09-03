@@ -174,7 +174,6 @@ impl GetErrorKind for url::ParseError {
       }
       RelativeUrlWithoutBase => ErrorKind::RelativeUrlWithoutBase,
       SetHostOnCannotBeABaseUrl => ErrorKind::SetHostOnCannotBeABaseUrl,
-      _ => ErrorKind::Other,
     }
   }
 }
@@ -201,6 +200,18 @@ impl GetErrorKind for ReadlineError {
       #[cfg(unix)]
       Errno(err) => err.kind(),
       _ => unimplemented!(),
+    }
+  }
+}
+
+impl GetErrorKind for serde_json::error::Error {
+  fn kind(&self) -> ErrorKind {
+    use serde_json::error::*;
+    match self.classify() {
+      Category::Io => ErrorKind::InvalidInput,
+      Category::Syntax => ErrorKind::InvalidInput,
+      Category::Data => ErrorKind::InvalidData,
+      Category::Eof => ErrorKind::UnexpectedEof,
     }
   }
 }
@@ -251,6 +262,11 @@ impl GetErrorKind for dyn AnyError {
       .or_else(|| self.downcast_ref::<uri::InvalidUri>().map(Get::kind))
       .or_else(|| self.downcast_ref::<url::ParseError>().map(Get::kind))
       .or_else(|| self.downcast_ref::<ReadlineError>().map(Get::kind))
+      .or_else(|| {
+        self
+          .downcast_ref::<serde_json::error::Error>()
+          .map(Get::kind)
+      })
       .or_else(|| unix_error_kind(self))
       .unwrap_or_else(|| {
         panic!("Can't get ErrorKind for {:?}", self);

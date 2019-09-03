@@ -56,19 +56,21 @@ template("_rust_crate") {
 
   forward_variables_from(invoker,
                          [
+                           "cap_lints",
                            "cfg",
                            "crate_name",
                            "crate_type",
                            "crate_version",
                            "deps",
                            "edition",
-                           "inputs",
+                           "env",
                            "features",
+                           "generated_source_dir",
+                           "inputs",
                            "is_test",
                            "libs",
                            "source_root",
                            "testonly",
-                           "treat_warnings_as_errors",
                          ])
 
   if (!defined(crate_name)) {
@@ -88,10 +90,6 @@ template("_rust_crate") {
   }
   if (!defined(libs)) {
     libs = []
-  }
-  if (!defined(treat_warnings_as_errors)) {
-    # Use global setting if not explicitly specified for this target.
-    treat_warnings_as_errors = rust_treat_warnings_as_errors
   }
 
   if (defined(crate_version)) {
@@ -237,13 +235,6 @@ template("_rust_crate") {
       "--color=always",
     ]
 
-    if (defined(crate_version)) {
-      args += [
-        # This is used to set env variables for Cargo build compatibility
-        "--cargo-pkg-version=$crate_version",
-      ]
-    }
-
     if (is_win) {
       # Proc-macro crates need to be linked by rustc itself, because rustc
       # doesn't expose all the information necessary to produce the correct
@@ -262,16 +253,19 @@ template("_rust_crate") {
       args += [ "-g" ]
     }
     if (is_official_build) {
-      args += [
-        "-C",
-        "opt-level=3",
-      ]
+      args += [ "-O" ]
     }
     if (is_test) {
       args += [ "--test" ]
     }
-    if (treat_warnings_as_errors) {
+    if (rust_treat_warnings_as_errors) {
       args += [ "-Dwarnings" ]
+    }
+    if (defined(cap_lints)) {
+      args += [
+        "--cap-lints",
+        cap_lints,
+      ]
     }
     if (defined(invoker.args)) {
       args += invoker.args
@@ -303,6 +297,22 @@ template("_rust_crate") {
       ]
       sources += [ info.out_path ]
       deps += [ info.label ]
+    }
+
+    if (defined(generated_source_dir)) {
+      args += [
+        # Some crates (e.g. 'typenum') generate source files and place them in
+        # the directory indicated by the 'OUT_DIR' environment variable, which
+        # is normally set by Cargo. This flag tells run.py to set 'OUT_DIR' to
+        # the path where the current crate can find its generated sources.
+        "--env=OUT_DIR=" + rebase_path(generated_source_dir, root_build_dir),
+      ]
+    }
+
+    if (defined(env)) {
+      foreach(e, env) {
+        args += [ "--env=$e" ]
+      }
     }
   }
 }

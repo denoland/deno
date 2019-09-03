@@ -54,16 +54,21 @@ When designing function interfaces, stick to the following rules.
    there is only one, and it seems inconceivable that we would add more optional
    parameters in the future.
 
+<!-- prettier-ignore-start -->
+<!-- see https://github.com/prettier/prettier/issues/3679 -->
+
 3. The 'options' argument is the only argument that is a regular 'Object'.
 
    Other arguments can be objects, but they must be distinguishable from a
    'plain' Object runtime, by having either:
 
-   - a distinguishing prototype (e.g. `Array`, `Map`, `Date`, `class MyThing`)
-   - a well-known symbol property (e.g. an iterable with `Symbol.iterator`).
+    - a distinguishing prototype (e.g. `Array`, `Map`, `Date`, `class MyThing`)
+    - a well-known symbol property (e.g. an iterable with `Symbol.iterator`).
 
    This allows the API to evolve in a backwards compatible way, even when the
    position of the options object changes.
+
+<!-- prettier-ignore-end -->
 
 ```ts
 // BAD: optional parameters not part of options object. (#2)

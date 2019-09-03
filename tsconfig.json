@@ -10,9 +10,6 @@
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
     "noUnusedLocals": true,
-    "paths": {
-      "*": ["*", "target/debug/*", "target/release/*"]
-    },
     "preserveConstEnums": true,
     "pretty": true,
     "removeComments": true,
@@ -24,6 +21,7 @@
   },
   "files": [
     "js/lib.web_assembly.d.ts",
+    "js/lib.deno_runtime.d.ts",
     "core/core.d.ts",
     "core/libdeno/libdeno.d.ts",
     "js/main.ts",

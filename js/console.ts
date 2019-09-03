@@ -1,9 +1,9 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { isTypedArray } from "./util";
-import { TypedArray } from "./types";
-import { TextEncoder } from "./text_encoding";
-import { File, stdout } from "./files";
-import { cliTable } from "./console_table";
+import { isTypedArray } from "./util.ts";
+import { TypedArray } from "./types.ts";
+import { TextEncoder } from "./text_encoding.ts";
+import { File, stdout } from "./files.ts";
+import { cliTable } from "./console_table.ts";
 
 type ConsoleContext = Set<unknown>;
 type ConsoleOptions = Partial<{
@@ -326,7 +326,9 @@ function createObjectString(
   value: {},
   ...args: [ConsoleContext, number, number]
 ): string {
-  if (value instanceof Error) {
+  if (customInspect in value && typeof value[customInspect] === "function") {
+    return String(value[customInspect]!());
+  } else if (value instanceof Error) {
     return String(value.stack);
   } else if (Array.isArray(value)) {
     return createArrayString(value, ...args);
@@ -484,7 +486,7 @@ type PrintFunc = (x: string, isErr?: boolean) => void;
 
 const countMap = new Map<string, number>();
 const timerMap = new Map<string, number>();
-export const isConsoleInstance = Symbol("isConsoleInstance");
+const isConsoleInstance = Symbol("isConsoleInstance");
 
 export class Console {
   indentLevel: number;
@@ -523,6 +525,18 @@ export class Console {
   dir = (obj: unknown, options: ConsoleOptions = {}): void => {
     this.printFunc(stringifyArgs([obj], options) + "\n", false);
   };
+
+  /** From MDN:
+   * Displays an interactive tree of the descendant elements of
+   * the specified XML/HTML element. If it is not possible to display
+   * as an element the JavaScript Object view is shown instead.
+   * The output is presented as a hierarchical listing of expandable
+   * nodes that let you see the contents of child nodes.
+   *
+   * Since we write to stdout, we can't display anything interactive
+   * we just fall back to `console.dir`.
+   */
+  dirxml = this.dir;
 
   /** Writes the arguments to stdout */
   warn = (...args: unknown[]): void => {
@@ -751,6 +765,11 @@ export class Console {
     return instance[isConsoleInstance];
   }
 }
+
+/** A symbol which can be used as a key for a custom method which will be called
+ * when `Deno.inspect()` is called, or when the object is logged to the console.
+ */
+export const customInspect = Symbol.for("Deno.customInspect");
 
 /**
  * `inspect()` converts input into string that has the same format

@@ -9,19 +9,22 @@ extern crate futures;
 extern crate serde_json;
 extern crate clap;
 extern crate deno;
+extern crate deno_typescript;
 extern crate indexmap;
 #[cfg(unix)]
 extern crate nix;
 extern crate rand;
+extern crate serde;
+extern crate serde_derive;
 extern crate url;
 
 mod ansi;
+mod assets;
 pub mod compilers;
 pub mod deno_dir;
 pub mod deno_error;
 pub mod diagnostics;
 mod disk_cache;
-mod dispatch_minimal;
 mod file_fetcher;
 pub mod flags;
 pub mod fmt_errors;
@@ -31,7 +34,6 @@ mod http_body;
 mod http_util;
 mod import_map;
 pub mod msg;
-pub mod msg_util;
 pub mod ops;
 pub mod permissions;
 mod progress;
@@ -114,10 +116,9 @@ fn create_worker_and_state(
     }
   });
   // TODO(kevinkassimo): maybe make include_deno_namespace also configurable?
-  let state =
-    ThreadSafeState::new(flags, argv, ops::op_selector_std, progress, true)
-      .map_err(print_err_and_exit)
-      .unwrap();
+  let state = ThreadSafeState::new(flags, argv, progress, true)
+    .map_err(print_err_and_exit)
+    .unwrap();
   let worker = Worker::new(
     "main".to_string(),
     startup_data::deno_isolate_init(),
@@ -128,10 +129,7 @@ fn create_worker_and_state(
 }
 
 fn types_command() {
-  let content = include_str!(concat!(
-    env!("GN_OUT_DIR"),
-    "/gen/cli/lib/lib.deno_runtime.d.ts"
-  ));
+  let content = assets::get_source_code("lib.deno_runtime.d.ts").unwrap();
   println!("{}", content);
 }
 
@@ -424,7 +422,6 @@ fn main() {
     DenoSubcommand::Eval => eval_command(flags, argv),
     DenoSubcommand::Fetch => fetch_command(flags, argv),
     DenoSubcommand::Info => info_command(flags, argv),
-    DenoSubcommand::Install => run_script(flags, argv),
     DenoSubcommand::Repl => run_repl(flags, argv),
     DenoSubcommand::Run => run_script(flags, argv),
     DenoSubcommand::Types => types_command(),

@@ -9,36 +9,13 @@ import {
   SyncReader,
   SyncWriter,
   SyncSeeker
-} from "./io";
-import * as dispatch from "./dispatch";
-import { sendAsyncMinimal } from "./dispatch_minimal";
-import * as msg from "gen/cli/msg_generated";
-import { assert } from "./util";
-import * as flatbuffers from "./flatbuffers";
-
-const OP_READ = 1;
-const OP_WRITE = 2;
-
-function reqOpen(
-  filename: string,
-  mode: OpenMode
-): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
-  const builder = flatbuffers.createBuilder();
-  const filename_ = builder.createString(filename);
-  const mode_ = builder.createString(mode);
-  const inner = msg.Open.createOpen(builder, filename_, 0, mode_);
-  return [builder, msg.Any.Open, inner];
-}
-
-function resOpen(baseRes: null | msg.Base): File {
-  assert(baseRes != null);
-  assert(msg.Any.OpenRes === baseRes!.innerType());
-  const res = new msg.OpenRes();
-  assert(baseRes!.inner(res) != null);
-  const rid = res.rid();
-  // eslint-disable-next-line @typescript-eslint/no-use-before-define
-  return new File(rid);
-}
+} from "./io.ts";
+import { sendAsyncMinimal, sendSyncMinimal } from "./dispatch_minimal.ts";
+import * as dispatch from "./dispatch.ts";
+import {
+  sendSync as sendSyncJson,
+  sendAsync as sendAsyncJson
+} from "./dispatch_json.ts";
 
 /** Open a file and return an instance of the `File` object
  *  synchronously.
@@ -46,7 +23,8 @@ function resOpen(baseRes: null | msg.Base): File {
  *       const file = Deno.openSync("/foo/bar.txt");
  */
 export function openSync(filename: string, mode: OpenMode = "r"): File {
-  return resOpen(dispatch.sendSync(...reqOpen(filename, mode)));
+  const rid = sendSyncJson(dispatch.OP_OPEN, { filename, mode });
+  return new File(rid);
 }
 
 /** Open a file and return an instance of the `File` object.
@@ -59,27 +37,8 @@ export async function open(
   filename: string,
   mode: OpenMode = "r"
 ): Promise<File> {
-  return resOpen(await dispatch.sendAsync(...reqOpen(filename, mode)));
-}
-
-function reqRead(
-  rid: number,
-  p: Uint8Array
-): [flatbuffers.Builder, msg.Any, flatbuffers.Offset, Uint8Array] {
-  const builder = flatbuffers.createBuilder();
-  const inner = msg.Read.createRead(builder, rid);
-  return [builder, msg.Any.Read, inner, p];
-}
-
-function resRead(baseRes: null | msg.Base): number | EOF {
-  assert(baseRes != null);
-  assert(msg.Any.ReadRes === baseRes!.innerType());
-  const res = new msg.ReadRes();
-  assert(baseRes!.inner(res) != null);
-  if (res.eof()) {
-    return EOF;
-  }
-  return res.nread();
+  const rid = await sendAsyncJson(dispatch.OP_OPEN, { filename, mode });
+  return new File(rid);
 }
 
 /** Read synchronously from a file ID into an array buffer.
@@ -93,7 +52,14 @@ function resRead(baseRes: null | msg.Base): number | EOF {
  *
  */
 export function readSync(rid: number, p: Uint8Array): number | EOF {
-  return resRead(dispatch.sendSync(...reqRead(rid, p)));
+  const nread = sendSyncMinimal(dispatch.OP_READ, rid, p);
+  if (nread < 0) {
+    throw new Error("read error");
+  } else if (nread == 0) {
+    return EOF;
+  } else {
+    return nread;
+  }
 }
 
 /** Read from a file ID into an array buffer.
@@ -108,7 +74,7 @@ export function readSync(rid: number, p: Uint8Array): number | EOF {
  *       })();
  */
 export async function read(rid: number, p: Uint8Array): Promise<number | EOF> {
-  const nread = await sendAsyncMinimal(OP_READ, rid, p);
+  const nread = await sendAsyncMinimal(dispatch.OP_READ, rid, p);
   if (nread < 0) {
     throw new Error("read error");
   } else if (nread == 0) {
@@ -116,23 +82,6 @@ export async function read(rid: number, p: Uint8Array): Promise<number | EOF> {
   } else {
     return nread;
   }
-}
-
-function reqWrite(
-  rid: number,
-  p: Uint8Array
-): [flatbuffers.Builder, msg.Any, flatbuffers.Offset, Uint8Array] {
-  const builder = flatbuffers.createBuilder();
-  const inner = msg.Write.createWrite(builder, rid);
-  return [builder, msg.Any.Write, inner, p];
-}
-
-function resWrite(baseRes: null | msg.Base): number {
-  assert(baseRes != null);
-  assert(msg.Any.WriteRes === baseRes!.innerType());
-  const res = new msg.WriteRes();
-  assert(baseRes!.inner(res) != null);
-  return res.nbyte();
 }
 
 /** Write synchronously to the file ID the contents of the array buffer.
@@ -145,7 +94,12 @@ function resWrite(baseRes: null | msg.Base): number {
  *       Deno.writeSync(file.rid, data);
  */
 export function writeSync(rid: number, p: Uint8Array): number {
-  return resWrite(dispatch.sendSync(...reqWrite(rid, p)));
+  const result = sendSyncMinimal(dispatch.OP_WRITE, rid, p);
+  if (result < 0) {
+    throw new Error("write error");
+  } else {
+    return result;
+  }
 }
 
 /** Write to the file ID the contents of the array buffer.
@@ -161,22 +115,12 @@ export function writeSync(rid: number, p: Uint8Array): number {
  *
  */
 export async function write(rid: number, p: Uint8Array): Promise<number> {
-  let result = await sendAsyncMinimal(OP_WRITE, rid, p);
+  let result = await sendAsyncMinimal(dispatch.OP_WRITE, rid, p);
   if (result < 0) {
     throw new Error("write error");
   } else {
     return result;
   }
-}
-
-function reqSeek(
-  rid: number,
-  offset: number,
-  whence: SeekMode
-): [flatbuffers.Builder, msg.Any, flatbuffers.Offset] {
-  const builder = flatbuffers.createBuilder();
-  const inner = msg.Seek.createSeek(builder, rid, offset, whence);
-  return [builder, msg.Any.Seek, inner];
 }
 
 /** Seek a file ID synchronously to the given offset under mode given by `whence`.
@@ -185,7 +129,7 @@ function reqSeek(
  *       Deno.seekSync(file.rid, 0, 0);
  */
 export function seekSync(rid: number, offset: number, whence: SeekMode): void {
-  dispatch.sendSync(...reqSeek(rid, offset, whence));
+  sendSyncJson(dispatch.OP_SEEK, { rid, offset, whence });
 }
 
 /** Seek a file ID to the given offset under mode given by `whence`.
@@ -200,14 +144,12 @@ export async function seek(
   offset: number,
   whence: SeekMode
 ): Promise<void> {
-  await dispatch.sendAsync(...reqSeek(rid, offset, whence));
+  await sendAsyncJson(dispatch.OP_SEEK, { rid, offset, whence });
 }
 
 /** Close the file ID. */
 export function close(rid: number): void {
-  const builder = flatbuffers.createBuilder();
-  const inner = msg.Close.createClose(builder, rid);
-  dispatch.sendSync(builder, msg.Any.Close, inner);
+  sendSyncJson(dispatch.OP_CLOSE, { rid });
 }
 
 /** The Deno abstraction for reading and writing files. */

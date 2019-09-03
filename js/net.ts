@@ -1,17 +1,18 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { EOF, Reader, Writer, Closer } from "./io";
-import * as msg from "gen/cli/msg_generated";
-import { assert, notImplemented } from "./util";
-import * as dispatch from "./dispatch";
-import * as flatbuffers from "./flatbuffers";
-import { read, write, close } from "./files";
+import { EOF, Reader, Writer, Closer } from "./io.ts";
+import { notImplemented } from "./util.ts";
+import { read, write, close } from "./files.ts";
+import * as dispatch from "./dispatch.ts";
+import { sendSync, sendAsync } from "./dispatch_json.ts";
 
 export type Network = "tcp";
 // TODO support other types:
 // export type Network = "tcp" | "tcp4" | "tcp6" | "unix" | "unixpacket";
 
-// TODO Support finding network from Addr, see https://golang.org/pkg/net/#Addr
-export type Addr = string;
+export interface Addr {
+  network: Network;
+  address: string;
+}
 
 /** A Listener is a generic network listener for stream-oriented protocols. */
 export interface Listener extends AsyncIterator<Conn> {
@@ -38,10 +39,7 @@ enum ShutdownMode {
 }
 
 function shutdown(rid: number, how: ShutdownMode): void {
-  const builder = flatbuffers.createBuilder();
-  const inner = msg.Shutdown.createShutdown(builder, rid, how);
-  const baseRes = dispatch.sendSync(builder, msg.Any.Shutdown, inner);
-  assert(baseRes == null);
+  sendSync(dispatch.OP_SHUTDOWN, { rid, how });
 }
 
 class ConnImpl implements Conn {
@@ -79,17 +77,15 @@ class ConnImpl implements Conn {
 }
 
 class ListenerImpl implements Listener {
-  constructor(readonly rid: number) {}
+  constructor(
+    readonly rid: number,
+    private network: Network,
+    private localAddr: string
+  ) {}
 
   async accept(): Promise<Conn> {
-    const builder = flatbuffers.createBuilder();
-    const inner = msg.Accept.createAccept(builder, this.rid);
-    const baseRes = await dispatch.sendAsync(builder, msg.Any.Accept, inner);
-    assert(baseRes != null);
-    assert(msg.Any.NewConn === baseRes!.innerType());
-    const res = new msg.NewConn();
-    assert(baseRes!.inner(res) != null);
-    return new ConnImpl(res.rid(), res.remoteAddr()!, res.localAddr()!);
+    const res = await sendAsync(dispatch.OP_ACCEPT, { rid: this.rid });
+    return new ConnImpl(res.rid, res.remoteAddr, res.localAddr);
   }
 
   close(): void {
@@ -97,7 +93,10 @@ class ListenerImpl implements Listener {
   }
 
   addr(): Addr {
-    return notImplemented();
+    return {
+      network: this.network,
+      address: this.localAddr
+    };
   }
 
   async next(): Promise<IteratorResult<Conn>> {
@@ -145,16 +144,8 @@ export interface Conn extends Reader, Writer, Closer {
  * See `dial()` for a description of the network and address parameters.
  */
 export function listen(network: Network, address: string): Listener {
-  const builder = flatbuffers.createBuilder();
-  const network_ = builder.createString(network);
-  const address_ = builder.createString(address);
-  const inner = msg.Listen.createListen(builder, network_, address_);
-  const baseRes = dispatch.sendSync(builder, msg.Any.Listen, inner);
-  assert(baseRes != null);
-  assert(msg.Any.ListenRes === baseRes!.innerType());
-  const res = new msg.ListenRes();
-  assert(baseRes!.inner(res) != null);
-  return new ListenerImpl(res.rid());
+  const res = sendSync(dispatch.OP_LISTEN, { network, address });
+  return new ListenerImpl(res.rid, network, res.localAddr);
 }
 
 /** Dial connects to the address on the named network.
@@ -185,16 +176,9 @@ export function listen(network: Network, address: string): Listener {
  *     dial("tcp", ":80")
  */
 export async function dial(network: Network, address: string): Promise<Conn> {
-  const builder = flatbuffers.createBuilder();
-  const network_ = builder.createString(network);
-  const address_ = builder.createString(address);
-  const inner = msg.Dial.createDial(builder, network_, address_);
-  const baseRes = await dispatch.sendAsync(builder, msg.Any.Dial, inner);
-  assert(baseRes != null);
-  assert(msg.Any.NewConn === baseRes!.innerType());
-  const res = new msg.NewConn();
-  assert(baseRes!.inner(res) != null);
-  return new ConnImpl(res.rid(), res.remoteAddr()!, res.localAddr()!);
+  const res = await sendAsync(dispatch.OP_DIAL, { network, address });
+  // TODO(bartlomieju): add remoteAddr and localAddr on Rust side
+  return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);
 }
 
 /** **RESERVED** */
