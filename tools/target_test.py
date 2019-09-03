@@ -5,8 +5,13 @@ from test_util import DenoTestCase, run_tests
 from util import executable_suffix, tests_path, run, run_output
 
 
-def is_cargo_build():
-    return "CARGO_BUILD" in os.environ
+# In the ninja/gn we build and test individually libdeno_test, cli_test,
+# deno_core_test, deno_core_http_bench_test. When building with cargo, however
+# we just run "cargo test".
+# This is hacky but is only temporarily here until the ninja/gn build is
+# removed.
+def is_cargo_test():
+    return "CARGO_TEST" in os.environ
 
 
 class TestTarget(DenoTestCase):
@@ -27,26 +32,26 @@ class TestTarget(DenoTestCase):
         run([bin_file], quiet=True)
 
     def test_cargo_test(self):
-        if is_cargo_build():
+        if is_cargo_test():
             if os.environ["DENO_BUILD_MODE"] == "release":
                 run(["cargo", "test", "--all", "--release"])
             else:
                 run(["cargo", "test", "--all"])
 
     def test_libdeno(self):
-        if not is_cargo_build():
+        if not is_cargo_test():
             self._test("libdeno_test")
 
     def test_cli(self):
-        if not is_cargo_build():
+        if not is_cargo_test():
             self._test("cli_test")
 
     def test_core(self):
-        if not is_cargo_build():
+        if not is_cargo_test():
             self._test("deno_core_test")
 
     def test_core_http_benchmark(self):
-        if not is_cargo_build():
+        if not is_cargo_test():
             self._test("deno_core_http_bench_test")
 
     def test_no_color(self):
