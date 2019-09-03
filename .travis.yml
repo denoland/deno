@@ -9,7 +9,6 @@ env:
   - CARGO_HOME=$TRAVIS_BUILD_DIR/third_party/rust_crates/
   - RUSTUP_HOME=$HOME/.rustup/
   - RUST_BACKTRACE=full
-  - CARGO_TARGET_DIR=$HOME/target
   - PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH
   - PYTHONPATH=third_party/python_packages
   - RUSTC_WRAPPER=sccache
@@ -119,7 +118,7 @@ jobs:
       - ./tools/test_format.py
       - cargo build -vv --release --locked
       - cargo clippy --all-targets --release --locked -- -D clippy::all
-      - CARGO_BUILD=1 ./tools/test.py --release --build-dir=$CARGO_TARGET_DIR/release
+      - CARGO_BUILD=1 ./tools/test.py --release
 
     # LSAN: We are in the process of getting a completely clean LSAN build,
     # but it will take some work. So for now we just run a subset of the
