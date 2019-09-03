@@ -28,7 +28,10 @@ class TestTarget(DenoTestCase):
 
     def test_cargo_test(self):
         if is_cargo_build():
-            run(["cargo", "test", "--all"], quiet=True)
+            if os.environ["DENO_BUILD_MODE"] == "release":
+                run(["cargo", "test", "--all", "--release"])
+            else:
+                run(["cargo", "test", "--all"])
 
     def test_libdeno(self):
         if not is_cargo_build():
