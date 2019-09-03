@@ -1,5 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::state::ThreadSafeState;
 use crate::tokio_util;
 use deno::*;
 use futures::Future;
@@ -23,12 +22,6 @@ fn json_err(err: ErrBox) -> Value {
   })
 }
 
-pub type Dispatcher = fn(
-  state: &ThreadSafeState,
-  args: Value,
-  zero_copy: Option<PinnedBuf>,
-) -> Result<JsonOp, ErrBox>;
-
 fn serialize_result(
   promise_id: Option<u64>,
   result: Result<Value, ErrBox>,
@@ -50,19 +43,22 @@ struct AsyncArgs {
   promise_id: Option<u64>,
 }
 
-pub fn dispatch(
-  d: Dispatcher,
-  state: &ThreadSafeState,
+pub fn wrap_json_op<D>(
+  d: D,
   control: &[u8],
   zero_copy: Option<PinnedBuf>,
-) -> CoreOp {
+) -> CoreOp
+where
+  D: FnOnce(Value, Option<PinnedBuf>) -> Result<JsonOp, ErrBox>,
+{
   let async_args: AsyncArgs = serde_json::from_slice(control).unwrap();
   let promise_id = async_args.promise_id;
   let is_sync = promise_id.is_none();
 
   let result = serde_json::from_slice(control)
     .map_err(ErrBox::from)
-    .and_then(move |args| d(state, args, zero_copy));
+    .and_then(move |args| d(args, zero_copy));
+
   match result {
     Ok(JsonOp::Sync(sync_value)) => {
       assert!(promise_id.is_none());

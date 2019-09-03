@@ -782,7 +782,7 @@ mod tests {
         };
       };
 
-      let mut isolate = isolate_.lock().unwrap();
+      let isolate = isolate_.lock().unwrap();
       js_check(isolate.mod_evaluate(a_id));
 
       let l = loads.lock().unwrap();
@@ -852,7 +852,7 @@ mod tests {
       let result = recursive_load.get_future(isolate.clone()).poll();
       assert!(result.is_ok());
       if let Async::Ready(circular1_id) = result.ok().unwrap() {
-        let mut isolate = isolate_.lock().unwrap();
+        let isolate = isolate_.lock().unwrap();
         js_check(isolate.mod_evaluate(circular1_id));
 
         let l = loads.lock().unwrap();
@@ -924,7 +924,7 @@ mod tests {
       println!(">> result {:?}", result);
       assert!(result.is_ok());
       if let Async::Ready(redirect1_id) = result.ok().unwrap() {
-        let mut isolate = isolate_.lock().unwrap();
+        let isolate = isolate_.lock().unwrap();
         js_check(isolate.mod_evaluate(redirect1_id));
         let l = loads.lock().unwrap();
         assert_eq!(

@@ -6,12 +6,21 @@ extern crate serde_json;
 mod ops;
 use deno::js_check;
 pub use deno::v8_set_flags;
+use deno::CoreOp;
 use deno::ErrBox;
 use deno::Isolate;
 use deno::ModuleSpecifier;
+use deno::Named;
+use deno::Op;
+use deno::OpDisReg;
+use deno::OpDispatcher;
+use deno::PinnedBuf;
 use deno::StartupData;
 pub use ops::EmitResult;
 use ops::WrittenFile;
+use serde_json::json;
+use serde_json::Value;
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
@@ -22,6 +31,7 @@ static TYPESCRIPT_CODE: &str =
   include_str!("../third_party/node_modules/typescript/lib/typescript.js");
 static COMPILER_CODE: &str = include_str!("compiler_main.js");
 static AMD_RUNTIME_CODE: &str = include_str!("amd_runtime.js");
+static OP_NAMESPACE: &str = "builtins";
 
 #[derive(Debug)]
 pub struct TSState {
@@ -37,6 +47,54 @@ impl TSState {
   fn main_module_name(&self) -> String {
     // Assuming that TypeScript has emitted the main file last.
     self.written_files.last().unwrap().module_name.clone()
+  }
+}
+
+pub trait TSOpDispatcher: Send + Sync {
+  fn dispatch(&self, s: &mut TSState, v: Value) -> Result<Value, ErrBox>;
+
+  const NAME: &'static str;
+}
+
+pub struct WrappedTSOpDispatcher<D: TSOpDispatcher> {
+  inner: D,
+  state: Arc<Mutex<TSState>>,
+}
+
+impl<D> OpDispatcher for WrappedTSOpDispatcher<D>
+where
+  D: TSOpDispatcher,
+{
+  fn dispatch(&self, control: &[u8], _zero_copy: Option<PinnedBuf>) -> CoreOp {
+    let v = serde_json::from_slice(control).unwrap();
+    let mut s = self.state.lock().unwrap();
+    let result = self.inner.dispatch(&mut s, v);
+    let response = match result {
+      Ok(v) => json!({ "ok": v }),
+      Err(err) => json!({ "err": err.to_string() }),
+    };
+    let x = serde_json::to_string(&response).unwrap();
+    let vec = x.into_bytes();
+    Op::Sync(vec.into_boxed_slice())
+  }
+}
+
+impl<D> Named for WrappedTSOpDispatcher<D>
+where
+  D: TSOpDispatcher,
+{
+  const NAME: &'static str = D::NAME;
+}
+
+impl<D> From<(&Arc<Mutex<TSState>>, D)> for WrappedTSOpDispatcher<D>
+where
+  D: TSOpDispatcher,
+{
+  fn from(from: (&Arc<Mutex<TSState>>, D)) -> WrappedTSOpDispatcher<D> {
+    WrappedTSOpDispatcher {
+      inner: from.1,
+      state: Arc::clone(from.0),
+    }
   }
 }
 
@@ -57,12 +115,30 @@ impl TSIsolate {
       emit_result: None,
       written_files: Vec::new(),
     }));
-    let state_ = state.clone();
-    isolate.set_dispatch(move |op_id, control_buf, zero_copy_buf| {
-      assert!(zero_copy_buf.is_none()); // zero_copy_buf unused in compiler.
-      let mut s = state_.lock().unwrap();
-      ops::dispatch_op(&mut s, op_id, control_buf)
-    });
+
+    let registry = Arc::new(OpDisReg::new());
+    registry.register_op(
+      OP_NAMESPACE,
+      WrappedTSOpDispatcher::from((&state, ops::OpReadFile)),
+    );
+    registry.register_op(
+      OP_NAMESPACE,
+      WrappedTSOpDispatcher::from((&state, ops::OpWriteFile)),
+    );
+    registry.register_op(
+      OP_NAMESPACE,
+      WrappedTSOpDispatcher::from((&state, ops::OpResolveModuleNames)),
+    );
+    registry.register_op(
+      OP_NAMESPACE,
+      WrappedTSOpDispatcher::from((&state, ops::OpExit)),
+    );
+    registry.register_op(
+      OP_NAMESPACE,
+      WrappedTSOpDispatcher::from((&state, ops::OpEmitResult)),
+    );
+    isolate.set_dispatcher_registry(registry);
+
     TSIsolate { isolate, state }
   }
 
@@ -72,7 +148,7 @@ impl TSIsolate {
   /// Compiles each module to ESM. Doesn't write any files to disk.
   /// Passes all output via state.
   fn compile(
-    mut self,
+    self,
     config_json: &serde_json::Value,
     root_names: Vec<String>,
   ) -> Result<Arc<Mutex<TSState>>, ErrBox> {
@@ -142,7 +218,7 @@ pub fn mksnapshot_bundle(
   bundle: &Path,
   state: Arc<Mutex<TSState>>,
 ) -> Result<(), ErrBox> {
-  let mut runtime_isolate = Isolate::new(StartupData::None, true);
+  let runtime_isolate = Isolate::new(StartupData::None, true);
   let source_code_vec = std::fs::read(bundle)?;
   let source_code = std::str::from_utf8(&source_code_vec)?;
 
@@ -163,7 +239,7 @@ pub fn mksnapshot_bundle_ts(
   bundle: &Path,
   state: Arc<Mutex<TSState>>,
 ) -> Result<(), ErrBox> {
-  let mut runtime_isolate = Isolate::new(StartupData::None, true);
+  let runtime_isolate = Isolate::new(StartupData::None, true);
   let source_code_vec = std::fs::read(bundle)?;
   let source_code = std::str::from_utf8(&source_code_vec)?;
 

@@ -1,11 +1,6 @@
 // This is not a real HTTP server. We read blindly one time into 'requestBuf',
 // then write this fixed 'responseBuf'. The point of this benchmark is to
 // exercise the event loop in a simple yet semi-realistic way.
-const OP_LISTEN = 1;
-const OP_ACCEPT = 2;
-const OP_READ = 3;
-const OP_WRITE = 4;
-const OP_CLOSE = 5;
 const requestBuf = new Uint8Array(64 * 1024);
 const responseBuf = new Uint8Array(
   "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n"
@@ -14,6 +9,8 @@ const responseBuf = new Uint8Array(
 );
 const promiseMap = new Map();
 let nextPromiseId = 1;
+
+const opNamespace = Deno.ops.builtins;
 
 function assert(cond) {
   if (!cond) {
@@ -78,31 +75,56 @@ function handleAsyncMsgFromRust(opId, buf) {
   p.resolve(result);
 }
 
+let listenOpId;
+opNamespace.OpListen = id => {
+  listenOpId = id;
+  Deno.core.setAsyncHandler(id, buf => handleAsyncMsgFromRust(id, buf));
+};
 /** Listens on 0.0.0.0:4500, returns rid. */
 function listen() {
-  return sendSync(OP_LISTEN, -1);
+  return sendSync(listenOpId, -1);
 }
 
+let acceptOpId;
+opNamespace.OpAccept = id => {
+  acceptOpId = id;
+  Deno.core.setAsyncHandler(id, buf => handleAsyncMsgFromRust(id, buf));
+};
 /** Accepts a connection, returns rid. */
 async function accept(rid) {
-  return await sendAsync(OP_ACCEPT, rid);
+  return await sendAsync(acceptOpId, rid);
 }
 
+let readOpId;
+opNamespace.OpRead = id => {
+  readOpId = id;
+  Deno.core.setAsyncHandler(id, buf => handleAsyncMsgFromRust(id, buf));
+};
 /**
  * Reads a packet from the rid, presumably an http request. data is ignored.
  * Returns bytes read.
  */
 async function read(rid, data) {
-  return await sendAsync(OP_READ, rid, data);
+  return await sendAsync(readOpId, rid, data);
 }
 
+let writeOpId;
+opNamespace.OpWrite = id => {
+  writeOpId = id;
+  Deno.core.setAsyncHandler(id, buf => handleAsyncMsgFromRust(id, buf));
+};
 /** Writes a fixed HTTP response to the socket rid. Returns bytes written. */
 async function write(rid, data) {
-  return await sendAsync(OP_WRITE, rid, data);
+  return await sendAsync(writeOpId, rid, data);
 }
 
+let closeOpId;
+opNamespace.OpClose = id => {
+  closeOpId = id;
+  Deno.core.setAsyncHandler(id, buf => handleAsyncMsgFromRust(id, buf));
+};
 function close(rid) {
-  return sendSync(OP_CLOSE, rid);
+  return sendSync(closeOpId, rid);
 }
 
 async function serve(rid) {
@@ -120,7 +142,8 @@ async function serve(rid) {
   close(rid);
 }
 
-async function main() {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+async function httpBenchMain() {
   Deno.core.setAsyncHandler(handleAsyncMsgFromRust);
 
   Deno.core.print("http_bench.js start\n");
@@ -137,5 +160,3 @@ async function main() {
     serve(rid);
   }
 }
-
-main();

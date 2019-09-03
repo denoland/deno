@@ -11,6 +11,7 @@ mod js_errors;
 mod libdeno;
 mod module_specifier;
 mod modules;
+mod op_dispatchers;
 mod shared_queue;
 
 pub use crate::any_error::*;
@@ -22,6 +23,13 @@ pub use crate::libdeno::OpId;
 pub use crate::libdeno::PinnedBuf;
 pub use crate::module_specifier::*;
 pub use crate::modules::*;
+pub use crate::op_dispatchers::Buf;
+pub use crate::op_dispatchers::CoreOp;
+pub use crate::op_dispatchers::Named;
+pub use crate::op_dispatchers::Op;
+pub use crate::op_dispatchers::OpDisReg;
+pub use crate::op_dispatchers::OpDispatcher;
+pub use crate::op_dispatchers::OpResult;
 
 pub fn v8_version() -> &'static str {
   use std::ffi::CStr;

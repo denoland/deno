@@ -5,7 +5,7 @@
 // Deno and therefore do not flow through to the runtime type library.
 
 declare interface MessageCallback {
-  (opId: number, msg: Uint8Array): void;
+  (msg: Uint8Array): void;
 }
 
 interface EvalErrorInfo {
@@ -20,14 +20,22 @@ interface EvalErrorInfo {
   thrown: any;
 }
 
+declare interface OpRegisterCallback {
+  (): void;
+  (opId: number, namespace: string, name: string): void;
+}
+
+declare type DenoOpListener = (id: number | undefined) => void;
+
+declare type DenoOps = Record<string, Record<string, number | DenoOpListener>>;
+
 declare interface DenoCore {
-  print(s: string, is_err?: boolean);
   dispatch(
     opId: number,
     control: Uint8Array,
     zeroCopy?: ArrayBufferView | null
   ): Uint8Array | null;
-  setAsyncHandler(cb: MessageCallback): void;
+  setAsyncHandler(opId: number, cb: MessageCallback): void;
   sharedQueue: {
     head(): number;
     numRecords(): number;
@@ -38,6 +46,8 @@ declare interface DenoCore {
   };
 
   recv(cb: MessageCallback): void;
+
+  recvOpReg(cb: OpRegisterCallback): void;
 
   send(
     opId: number,
@@ -62,5 +72,6 @@ declare interface DenoCore {
 
 declare interface DenoInterface {
   core: DenoCore;
+  ops: DenoOps;
 }
 declare var Deno: DenoInterface;
