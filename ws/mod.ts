@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
 import { decode, encode } from "../strings/mod.ts";
+import { hasOwnProperty } from "../util/has_own_property.ts";
 
 type Conn = Deno.Conn;
 type Writer = Deno.Writer;
@@ -34,7 +35,7 @@ export interface WebSocketCloseEvent {
 export function isWebSocketCloseEvent(
   a: WebSocketEvent
 ): a is WebSocketCloseEvent {
-  return typeof a === "object" && a.hasOwnProperty("code");
+  return hasOwnProperty(a, "code");
 }
 
 export type WebSocketPingEvent = ["ping", Uint8Array];

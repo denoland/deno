@@ -18,3 +18,15 @@ test(function multipartIsFormFile(): void {
     false
   );
 });
+
+test(function isFormFileShouldNotThrow(): void {
+  assertEquals(
+    isFormFile({
+      filename: "foo",
+      type: "application/json",
+      hasOwnProperty: "bar"
+    }),
+    true
+  );
+  assertEquals(isFormFile(Object.create(null)), false);
+});
