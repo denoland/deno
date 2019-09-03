@@ -69,8 +69,6 @@ def create_test_arg_parser():
         '--pattern', '-p', help='Run tests that match provided pattern')
     parser.add_argument(
         '--build-dir', dest="build_dir", help='Deno build directory')
-    parser.add_argument(
-        '--cargo', dest="cargo_test", help='Use if built with cargo build')
     return parser
 
 
