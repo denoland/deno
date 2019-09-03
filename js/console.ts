@@ -486,7 +486,7 @@ type PrintFunc = (x: string, isErr?: boolean) => void;
 
 const countMap = new Map<string, number>();
 const timerMap = new Map<string, number>();
-export const isConsoleInstance = Symbol("isConsoleInstance");
+const isConsoleInstance = Symbol("isConsoleInstance");
 
 export class Console {
   indentLevel: number;
