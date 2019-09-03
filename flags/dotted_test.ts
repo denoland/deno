@@ -8,7 +8,6 @@ test(function dottedAlias(): void {
     default: { "a.b": 11 },
     alias: { "a.b": "aa.bb" }
   });
-  console.log(argv.a);
   assertEquals(argv.a.b, 22);
   assertEquals(argv.aa.bb, 22);
 });
