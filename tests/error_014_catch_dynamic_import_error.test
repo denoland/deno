@@ -1,2 +1,0 @@
-args: tests/error_014_catch_dynamic_import_error.js --reload --allow-read
-output: tests/error_014_catch_dynamic_import_error.js.out

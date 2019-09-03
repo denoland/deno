@@ -2,35 +2,10 @@
 import os
 
 from test_util import DenoTestCase, run_tests
-from util import (pattern_match, parse_exit_code, shell_quote_win,
-                  parse_wrk_output, root_path)
+from util import (parse_exit_code, shell_quote_win, parse_wrk_output, root_path)
 
 
 class TestUtil(DenoTestCase):
-    def test_pattern_match(self):
-        # yapf: disable
-        fixtures = [("foobarbaz", "foobarbaz", True),
-                    ("[WILDCARD]", "foobarbaz", True),
-                    ("foobar", "foobarbaz", False),
-                    ("foo[WILDCARD]baz", "foobarbaz", True),
-                    ("foo[WILDCARD]baz", "foobazbar", False),
-                    ("foo[WILDCARD]baz[WILDCARD]qux", "foobarbazqatqux", True),
-                    ("foo[WILDCARD]", "foobar", True),
-                    ("foo[WILDCARD]baz[WILDCARD]", "foobarbazqat", True)]
-        # yapf: enable
-
-        # Iterate through the fixture lists, testing each one
-        for (pattern, string, expected) in fixtures:
-            actual = pattern_match(pattern, string)
-            assert expected == actual, \
-                "expected %s for\nExpected:\n%s\nTo equal actual:\n%s" % (
-                expected, pattern, string)
-
-        assert pattern_match("foo[BAR]baz", "foobarbaz",
-                             "[BAR]") == True, "expected wildcard to be set"
-        assert pattern_match("foo[BAR]baz", "foobazbar",
-                             "[BAR]") == False, "expected wildcard to be set"
-
     def test_parse_exit_code(self):
         assert 54 == parse_exit_code('hello_error54_world')
         assert 1 == parse_exit_code('hello_error_world')

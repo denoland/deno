@@ -1,2 +1,0 @@
-args: run --reload tests/026_workers.ts
-output: tests/026_workers.ts.out
