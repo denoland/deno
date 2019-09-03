@@ -5,6 +5,10 @@ from test_util import DenoTestCase, run_tests
 from util import executable_suffix, tests_path, run, run_output
 
 
+def is_cargo_build():
+    return "CARGO_BUILD" in os.environ
+
+
 class TestTarget(DenoTestCase):
     @staticmethod
     def check_exists(filename):
@@ -22,17 +26,25 @@ class TestTarget(DenoTestCase):
         self.check_exists(bin_file)
         run([bin_file], quiet=True)
 
+    def test_cargo_test(self):
+        if is_cargo_build():
+            run(["cargo", "test", "--all"], quiet=True)
+
     def test_libdeno(self):
-        self._test("libdeno_test")
+        if not is_cargo_build():
+            self._test("libdeno_test")
 
     def test_cli(self):
-        self._test("cli_test")
+        if not is_cargo_build():
+            self._test("cli_test")
 
     def test_core(self):
-        self._test("deno_core_test")
+        if not is_cargo_build():
+            self._test("deno_core_test")
 
     def test_core_http_benchmark(self):
-        self._test("deno_core_http_bench_test")
+        if not is_cargo_build():
+            self._test("deno_core_http_bench_test")
 
     def test_no_color(self):
         t = os.path.join(tests_path, "no_color.js")

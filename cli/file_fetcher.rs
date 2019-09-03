@@ -1264,7 +1264,7 @@ mod tests {
 
       // Assuming cwd is the deno repo root.
       let specifier =
-        ModuleSpecifier::resolve_url_or_path("js/main.ts").unwrap();
+        ModuleSpecifier::resolve_url_or_path("../js/main.ts").unwrap();
       let r = fetcher.fetch_source_file(&specifier);
       assert!(r.is_ok());
     })
@@ -1282,9 +1282,9 @@ mod tests {
       let r = fetcher.fetch_source_file(&specifier);
       assert!(r.is_err());
 
-      // Assuming cwd is the deno repo root.
+      // Assuming cwd is the cli directory.
       let specifier =
-        ModuleSpecifier::resolve_url_or_path("js/main.ts").unwrap();
+        ModuleSpecifier::resolve_url_or_path("../js/main.ts").unwrap();
       let r = fetcher.fetch_source_file(&specifier);
       assert!(r.is_ok());
     })
