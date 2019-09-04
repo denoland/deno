@@ -1262,9 +1262,13 @@ mod tests {
       let r = fetcher.fetch_source_file(&specifier);
       assert!(r.is_err());
 
-      // Assuming cwd is the deno repo root.
+      let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("js/main.ts")
+        .to_owned();
       let specifier =
-        ModuleSpecifier::resolve_url_or_path("js/main.ts").unwrap();
+        ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
       let r = fetcher.fetch_source_file(&specifier);
       assert!(r.is_ok());
     })
@@ -1282,9 +1286,13 @@ mod tests {
       let r = fetcher.fetch_source_file(&specifier);
       assert!(r.is_err());
 
-      // Assuming cwd is the deno repo root.
+      let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("js/main.ts")
+        .to_owned();
       let specifier =
-        ModuleSpecifier::resolve_url_or_path("js/main.ts").unwrap();
+        ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
       let r = fetcher.fetch_source_file(&specifier);
       assert!(r.is_ok());
     })
