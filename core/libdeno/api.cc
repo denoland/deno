@@ -68,8 +68,6 @@ Deno* deno_new(deno_config config) {
       // If no snapshot is provided, we initialize the context with empty
       // main source code and source maps.
       deno::InitializeContext(isolate, context);
-    } else {
-      delete[] d->snapshot_.data;
     }
     d->context_.Reset(isolate, context);
   }
