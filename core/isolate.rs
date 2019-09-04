@@ -389,6 +389,7 @@ impl Isolate {
     self.check_last_exception()
   }
 
+  #[allow(dead_code)]
   fn run_microtasks(&self) {
     unsafe {
       libdeno::deno_run_microtasks(self.libdeno_isolate, self.as_raw_ptr())
@@ -692,7 +693,7 @@ impl Future for Isolate {
       drop(locker);
     }
 
-    self.run_microtasks();
+    //    self.run_microtasks();
     self.check_promise_errors();
     self.check_last_exception()?;
 

@@ -199,6 +199,7 @@ void deno_respond(Deno* d_, void* user_data, deno_op_id op_id, deno_buf buf) {
   }
 
   auto v = recv_->Call(context, context->Global(), argc, args);
+  d->isolate_->RunMicrotasks();
 
   if (try_catch.HasCaught()) {
     CHECK(v.IsEmpty());
