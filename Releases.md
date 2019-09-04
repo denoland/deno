@@ -6,6 +6,34 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.17.0 / 2019.09.04
+
+In deno:
+
+- feat: Add window.queueMicrotask (#2844)
+- feat: Support HTTP proxies in fetch (#2822)
+- feat: Support `_` and `_error` in REPL (#2845, #2843)
+- feat: add statusText for fetch (#2851)
+- feat: implement Addr interface (#2821)
+- fix: Improve error stacks for async ops (#2820)
+- fix: add console.dirxml (#2835)
+- fix: do not export `isConsoleInstance` (#2850)
+- fix: set/clearTimeout's params should not be bigint (#2834, #2838)
+- fix: shared queue requires aligned buffer (#2816)
+- refactor: Remove Node build dependency and change how internal V8 snapshots
+  are built  (#2825, #2827, #2826, #2826)
+- refactor: Remove flatbuffers (#2818, #2819, #2817, #2812, #2815, #2799)
+- regression: Introduce regression in fetch's Request/Response stream API to
+  support larger refactor (#2826)
+
+In deno_std:
+
+- fix: better paths handling in test runner (denoland/deno_std#574)
+- fix: avoid prototype builtin `hasOwnProperty` (denoland/deno_std#577)
+- fix: boolean regexp (denoland/deno_std#582)
+- fix: printf should use padEnd and padStart (denoland/deno_std#583)
+- fix: ws should use crypto getRandomValues (denoland/deno_std#584)
+
 ### v0.16.0 / 2019.08.22
 
 In deno:
