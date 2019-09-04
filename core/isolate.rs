@@ -624,10 +624,12 @@ impl Isolate {
   }
 }
 
+#[allow(dead_code)]
 struct LockerScope {
   libdeno_isolate: *const libdeno::isolate,
 }
 
+#[allow(dead_code)]
 impl LockerScope {
   fn new(libdeno_isolate: *const libdeno::isolate) -> LockerScope {
     unsafe { libdeno::deno_lock(libdeno_isolate) }
@@ -635,6 +637,7 @@ impl LockerScope {
   }
 }
 
+#[allow(dead_code)]
 impl Drop for LockerScope {
   fn drop(&mut self) {
     unsafe { libdeno::deno_unlock(self.libdeno_isolate) }
@@ -678,19 +681,19 @@ impl Future for Isolate {
 
     if self.shared.size() > 0 {
       // Lock the current thread for V8.
-      let locker = LockerScope::new(self.libdeno_isolate);
+      //      let locker = LockerScope::new(self.libdeno_isolate);
       self.respond(None)?;
       // The other side should have shifted off all the messages.
       assert_eq!(self.shared.size(), 0);
-      drop(locker);
+      //      drop(locker);
     }
 
     if overflow_response.is_some() {
       // Lock the current thread for V8.
-      let locker = LockerScope::new(self.libdeno_isolate);
+      //      let locker = LockerScope::new(self.libdeno_isolate);
       let (op_id, buf) = overflow_response.take().unwrap();
       self.respond(Some((op_id, &buf)))?;
-      drop(locker);
+      //      drop(locker);
     }
 
     //    self.run_microtasks();
