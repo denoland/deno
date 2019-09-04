@@ -365,14 +365,12 @@ class Printf {
 
   pad(s: string): string {
     const padding = this.flags.zero ? "0" : " ";
-    while (s.length < this.flags.width) {
-      if (this.flags.dash) {
-        s += padding;
-      } else {
-        s = padding + s;
-      }
+
+    if (this.flags.dash) {
+      return s.padEnd(this.flags.width, padding);
     }
-    return s;
+
+    return s.padStart(this.flags.width, padding);
   }
   padNum(nStr: string, neg: boolean): string {
     let sign: string;
@@ -393,13 +391,12 @@ class Printf {
     const pad = zero ? "0" : " ";
     const len = zero ? this.flags.width - sign.length : this.flags.width;
 
-    while (nStr.length < len) {
-      if (this.flags.dash) {
-        nStr += pad; // left justify - right pad
-      } else {
-        nStr = pad + nStr; // right just - left pad
-      }
+    if (this.flags.dash) {
+      nStr = nStr.padEnd(len, pad);
+    } else {
+      nStr = nStr.padStart(len, pad);
     }
+
     if (zero) {
       // see above
       nStr = sign + nStr;
