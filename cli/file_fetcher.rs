@@ -1268,7 +1268,7 @@ mod tests {
         .join("js/main.ts")
         .to_owned();
       let specifier =
-        ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
+        ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
       let r = fetcher.fetch_source_file(&specifier);
       assert!(r.is_ok());
     })
@@ -1292,7 +1292,7 @@ mod tests {
         .join("js/main.ts")
         .to_owned();
       let specifier =
-        ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
+        ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
       let r = fetcher.fetch_source_file(&specifier);
       assert!(r.is_ok());
     })

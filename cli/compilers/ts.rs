@@ -664,11 +664,11 @@ mod tests {
         .join("tests/002_hello.ts")
         .to_owned();
       let specifier =
-        ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
+        ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
 
       let out = SourceFile {
         url: specifier.as_url().clone(),
-        filename: PathBuf::from(p.to_string_lossy().to_string()),
+        filename: PathBuf::from(p.to_str().unwrap().to_string()),
         media_type: msg::MediaType::TypeScript,
         source_code: include_bytes!("../../tests/002_hello.ts").to_vec(),
       };
@@ -696,10 +696,9 @@ mod tests {
       .join("tests/002_hello.ts")
       .to_owned();
     use deno::ModuleSpecifier;
-    let module_name =
-      ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy())
-        .unwrap()
-        .to_string();
+    let module_name = ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap())
+      .unwrap()
+      .to_string();
 
     let state = ThreadSafeState::mock(vec![
       String::from("deno"),
