@@ -1274,6 +1274,7 @@ declare const fetch: typeof fetchTypes.fetch;
 declare const clearTimeout: typeof timers.clearTimeout;
 declare const clearInterval: typeof timers.clearInterval;
 declare const console: consoleTypes.Console;
+declare const Console: typeof consoleTypes.Console;
 declare const setTimeout: typeof timers.setTimeout;
 declare const setInterval: typeof timers.setInterval;
 declare const location: domTypes.Location;
@@ -1314,6 +1315,7 @@ declare const removeEventListener: (
 ) => void;
 
 declare type Blob = blob.DenoBlob;
+declare type Console = typeof consoleTypes.Console;
 declare type File = domTypes.DomFile;
 declare type CustomEventInit = customEvent.CustomEventInit;
 declare type CustomEvent = customEvent.CustomEvent;
@@ -1957,7 +1959,9 @@ declare namespace consoleTypes {
     static kClearScreenDown: string;
   }
   const isConsoleInstance: unique symbol;
+  type PrintFunc = (x: string, isErr?: boolean) => void;
   export class Console {
+    constructor(printFunc: PrintFunc);
     private printFunc;
     indentLevel: number;
     [isConsoleInstance]: boolean;

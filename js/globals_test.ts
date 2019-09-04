@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { test, assert } from "./test_util.ts";
+import {test, assert, assertArrayContains, assertEquals} from "./test_util.ts";
 
 test(function globalThisExists(): void {
   assert(globalThis != null);
@@ -102,4 +102,25 @@ test(async function windowQueueMicrotask(): Promise<void> {
   setTimeout(resolve2!, 0);
   await p1;
   await p2;
+});
+
+test(function consoleAssignToWindow(): void {
+  const originalConsole = window.console;
+  const captured: Array<[string, boolean]> = [];
+  const capturingConsole = new Console((x: string, isErr?: boolean): void => {
+    captured.push([x, !!isErr]);
+  });
+
+  window.console = capturingConsole;
+  console.log("this is log");
+  console.error("this is error");
+  window.console = originalConsole;
+
+  assertEquals(
+    JSON.stringify([
+      ["this is log\n", false],
+      ["this is error\n", true],
+    ]),
+    JSON.stringify(captured)
+  );
 });

@@ -80,6 +80,7 @@ window.fetch = fetchTypes.fetch;
 window.clearTimeout = timers.clearTimeout;
 window.clearInterval = timers.clearInterval;
 window.console = new consoleTypes.Console(core.print);
+window.Console = consoleTypes.Console;
 window.setTimeout = timers.setTimeout;
 window.setInterval = timers.setInterval;
 window.location = (undefined as unknown) as domTypes.Location;

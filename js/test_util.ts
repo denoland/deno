@@ -19,6 +19,7 @@ export {
   assertNotEquals,
   assertStrictEq,
   assertStrContains,
+  assertArrayContains,
   unreachable
 } from "./deps/https/deno.land/std/testing/asserts.ts";
 
