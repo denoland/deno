@@ -5,6 +5,27 @@ import { Reader, EOF } from "./io.ts";
 
 export type XevalFunc = (v: string) => void;
 
+// Generate longest proper prefix which is also suffix array.
+function createLPS(pat: Uint8Array): Uint8Array {
+  const lps = new Uint8Array(pat.length);
+  lps[0] = 0;
+  let prefixEnd = 0;
+  let i = 1;
+  while (i < lps.length) {
+    if (pat[i] == pat[prefixEnd]) {
+      prefixEnd++;
+      lps[i] = prefixEnd;
+      i++;
+    } else if (prefixEnd === 0) {
+      lps[i] = 0;
+      i++;
+    } else {
+      prefixEnd = pat[prefixEnd - 1];
+    }
+  }
+  return lps;
+}
+
 // TODO(kevinkassimo): Move this utility to deno_std.
 // Import from there once doable.
 // Read from reader until EOF and emit string chunks separated
@@ -13,62 +34,62 @@ async function* chunks(
   reader: Reader,
   delim: string
 ): AsyncIterableIterator<string> {
-  const inputBuffer = new Buffer();
-  const inspectArr = new Uint8Array(1024);
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
   // Avoid unicode problems
   const delimArr = encoder.encode(delim);
+  const delimLen = delimArr.length;
+  const delimLPS = createLPS(delimArr);
 
-  // Record how far we have gone with delimiter matching.
-  let nextMatchIndex = 0;
+  let inputBuffer = new Buffer();
+  const inspectArr = new Uint8Array(Math.max(1024, delimLen + 1));
+
+  // Modified KMP
+  let inspectIndex = 0;
+  let matchIndex = 0;
   while (true) {
     let result = await reader.read(inspectArr);
-    let rr = result === EOF ? 0 : result;
-    if (rr < 0) {
-      // Silently fail.
-      break;
-    }
-    const sliceRead = inspectArr.subarray(0, rr);
-    // Remember how far we have scanned through inspectArr.
-    let nextSliceStartIndex = 0;
-    for (let i = 0; i < sliceRead.length; i++) {
-      if (sliceRead[i] == delimArr[nextMatchIndex]) {
-        // One byte matches with delimiter, move 1 step forward.
-        nextMatchIndex++;
-      } else {
-        // Match delimiter failed. Start from beginning.
-        nextMatchIndex = 0;
-      }
-      // A complete match is found.
-      if (nextMatchIndex === delimArr.length) {
-        nextMatchIndex = 0; // Reset delim match index.
-        const sliceToJoin = sliceRead.subarray(nextSliceStartIndex, i + 1);
-        // Record where to start next chunk when a subsequent match is found.
-        nextSliceStartIndex = i + 1;
-        // Write slice to buffer before processing, since potentially
-        // part of the delimiter is stored in the buffer.
-        await writeAll(inputBuffer, sliceToJoin);
-
-        let readyBytes = inputBuffer.bytes();
-        inputBuffer.reset();
-        // Remove delimiter from buffer bytes.
-        readyBytes = readyBytes.subarray(
-          0,
-          readyBytes.length - delimArr.length
-        );
-        let readyChunk = decoder.decode(readyBytes);
-        yield readyChunk;
-      }
-    }
-    // Write all unprocessed chunk to buffer for future inspection.
-    await writeAll(inputBuffer, sliceRead.subarray(nextSliceStartIndex));
     if (result === EOF) {
-      // Flush the remainder unprocessed chunk.
+      // Yield last chunk.
       const lastChunk = inputBuffer.toString();
       yield lastChunk;
-      break;
+      return;
     }
+    if ((result as number) < 0) {
+      // Discard all remaining and silently fail.
+      return;
+    }
+    let sliceRead = inspectArr.subarray(0, result as number);
+    await writeAll(inputBuffer, sliceRead);
+
+    let sliceToProcess = inputBuffer.bytes();
+    while (inspectIndex < sliceToProcess.length) {
+      if (sliceToProcess[inspectIndex] === delimArr[matchIndex]) {
+        inspectIndex++;
+        matchIndex++;
+        if (matchIndex === delimLen) {
+          // Full match
+          const matchEnd = inspectIndex - delimLen;
+          const readyBytes = sliceToProcess.subarray(0, matchEnd);
+          // Copy
+          const pendingBytes = sliceToProcess.slice(inspectIndex);
+          const readyChunk = decoder.decode(readyBytes);
+          yield readyChunk;
+          // Reset match, different from KMP.
+          sliceToProcess = pendingBytes;
+          inspectIndex = 0;
+          matchIndex = 0;
+        }
+      } else {
+        if (matchIndex === 0) {
+          inspectIndex++;
+        } else {
+          matchIndex = delimLPS[matchIndex - 1];
+        }
+      }
+    }
+    // Keep inspectIndex and matchIndex.
+    inputBuffer = new Buffer(sliceToProcess);
   }
 }
 
