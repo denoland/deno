@@ -189,11 +189,7 @@ export async function readFrame(buf: BufReader): Promise<WebSocketFrame> {
 
 // Create client-to-server mask, random 32bit number
 function createMask(): Uint8Array {
-  // TODO: use secure and immutable random function. Crypto.getRandomValues()
-  const arr = Array.from({ length: 4 }).map(
-    (): number => Math.round(Math.random() * 0xff)
-  );
-  return new Uint8Array(arr);
+  return crypto.getRandomValues(new Uint8Array(4));
 }
 
 class WebSocketImpl implements WebSocket {
