@@ -405,7 +405,7 @@ impl TsCompiler {
           .get_compiled_module(&source_file_.url)
           .map_err(|e| {
             // TODO: this situation shouldn't happen
-            panic!("Expected to find compiled file: {}", e)
+            panic!("Expected to find compiled file: {} {}", e, source_file_.url)
           })
       })
       .and_then(move |compiled_module| {
@@ -658,18 +658,23 @@ mod tests {
   #[test]
   fn test_compile_sync() {
     tokio_util::init(|| {
+      let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("tests/002_hello.ts")
+        .to_owned();
       let specifier =
-        ModuleSpecifier::resolve_url_or_path("./tests/002_hello.ts").unwrap();
+        ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
 
       let out = SourceFile {
         url: specifier.as_url().clone(),
-        filename: PathBuf::from("/tests/002_hello.ts"),
+        filename: PathBuf::from(p.to_str().unwrap().to_string()),
         media_type: msg::MediaType::TypeScript,
         source_code: include_bytes!("../../tests/002_hello.ts").to_vec(),
       };
 
       let mock_state = ThreadSafeState::mock(vec![
-        String::from("./deno"),
+        String::from("deno"),
         String::from("hello.js"),
       ]);
       let compiled = mock_state
@@ -685,15 +690,19 @@ mod tests {
 
   #[test]
   fn test_bundle_async() {
-    let specifier = "./tests/002_hello.ts";
+    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+      .parent()
+      .unwrap()
+      .join("tests/002_hello.ts")
+      .to_owned();
     use deno::ModuleSpecifier;
-    let module_name = ModuleSpecifier::resolve_url_or_path(specifier)
+    let module_name = ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap())
       .unwrap()
       .to_string();
 
     let state = ThreadSafeState::mock(vec![
-      String::from("./deno"),
-      String::from("./tests/002_hello.ts"),
+      String::from("deno"),
+      p.to_string_lossy().into(),
       String::from("$deno$/bundle.js"),
     ]);
     let out = state.ts_compiler.bundle_async(

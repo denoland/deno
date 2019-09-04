@@ -96,5 +96,8 @@ rust_test("cli_test") {
   inputs = [
     "Cargo.toml",
   ]
-  env = [ "CARGO_PKG_VERSION=${deno_cargo_info.version}" ]
+  env = [
+    "CARGO_PKG_VERSION=${deno_cargo_info.version}",
+    "CARGO_MANIFEST_DIR=" + rebase_path("."),
+  ]
 }
