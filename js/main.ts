@@ -1,5 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-
 import "./globals.ts";
 
 import { assert, log } from "./util.ts";
@@ -11,21 +10,11 @@ import { xevalMain, XevalFunc } from "./xeval.ts";
 import { setVersions } from "./version.ts";
 import { window } from "./window.ts";
 import { setLocation } from "./location.ts";
-import * as Deno from "./deno.ts";
 
 function denoMain(preserveDenoNamespace: boolean = true, name?: string): void {
   const s = os.start(preserveDenoNamespace, name);
 
-  setVersions(s.denoVersion, s.v8Version);
-
-  // handle `--version`
-  if (s.versionFlag) {
-    const { console } = window;
-    console.log("deno:", Deno.version.deno);
-    console.log("v8:", Deno.version.v8);
-    console.log("typescript:", Deno.version.typescript);
-    os.exit(0);
-  }
+  setVersions(s.denoVersion, s.v8Version, s.tsVersion);
 
   setPrepareStackTrace(Error);
 
