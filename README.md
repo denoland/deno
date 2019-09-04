@@ -1,6 +1,6 @@
 # deno
 
-A secure runtime for JavaScript and TypeScript built with V8, Rust, and Tokio.
+A secure runtime for JavaScript and TypeScript built with V8, Rust and Tokio.
 
 |      **Linux & Mac**       |        **Windows**         |
 | :------------------------: | :------------------------: |
@@ -13,7 +13,7 @@ A secure runtime for JavaScript and TypeScript built with V8, Rust, and Tokio.
 [tci link]: https://travis-ci.com/denoland/deno
 
 Deno aims to provide a productive and secure scripting environment for the
-modern programmer. It is built on top of V8, Rust, and TypeScript.
+modern programmer. It is built on top of V8, Rust and TypeScript.
 
 Please read the [introduction](https://deno.land/manual.html#introduction) for
 more specifics.
