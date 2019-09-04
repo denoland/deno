@@ -1,6 +1,6 @@
 [package]
 name = "deno_cli_snapshots"
-version = "0.0.3"
+version = "0.17.0"
 license = "MIT"
 authors = ["Ryan Dahl <ry@tinyclouds.org>"]
 edition = "2018"
@@ -14,5 +14,5 @@ path = "lib.rs"
 deno = { path = "../core" }
 
 [build-dependencies]
-deno_typescript = { path = "../deno_typescript", version = "0.0.3" }
+deno_typescript = { path = "../deno_typescript" }
 
