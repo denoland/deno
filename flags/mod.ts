@@ -271,7 +271,7 @@ export function parse(
         ) {
           setArg(key, args[i + 1], arg);
           i++;
-        } else if (args[i + 1] && /true|false/.test(args[i + 1])) {
+        } else if (args[i + 1] && /^(true|false)$/.test(args[i + 1])) {
           setArg(key, args[i + 1] === "true", arg);
           i++;
         } else {

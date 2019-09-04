@@ -155,3 +155,14 @@ test(function booleanParsingFalse(): void {
 
   assertEquals(parsed.boool, false);
 });
+
+test(function booleanParsingTrueLike(): void {
+  const parsed = parse(["-t", "true123"], { boolean: ["t"] });
+  assertEquals(parsed.t, true);
+
+  const parsed2 = parse(["-t", "123"], { boolean: ["t"] });
+  assertEquals(parsed2.t, true);
+
+  const parsed3 = parse(["-t", "false123"], { boolean: ["t"] });
+  assertEquals(parsed3.t, true);
+});
