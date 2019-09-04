@@ -398,6 +398,12 @@ fn run_script(flags: DenoFlags, argv: Vec<String>) {
   }
 }
 
+fn version_command() {
+  println!("deno: {}", version::DENO);
+  println!("v8: {}", version::v8());
+  println!("typescript: {}", version::typescript());
+}
+
 fn main() {
   #[cfg(windows)]
   ansi_term::enable_ansi_support().ok(); // For Windows 10
@@ -425,7 +431,7 @@ fn main() {
     DenoSubcommand::Repl => run_repl(flags, argv),
     DenoSubcommand::Run => run_script(flags, argv),
     DenoSubcommand::Types => types_command(),
-    DenoSubcommand::Version => run_repl(flags, argv),
+    DenoSubcommand::Version => version_command(),
     DenoSubcommand::Xeval => xeval_command(flags, argv),
   }
 }

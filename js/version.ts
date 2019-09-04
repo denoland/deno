@@ -8,17 +8,21 @@ interface Version {
 export const version: Version = {
   deno: "",
   v8: "",
-  // This string will be replaced by rollup
-  typescript: `DENO_REPLACE_TS_VERSION`
+  typescript: ""
 };
 
 /**
- * Sets the deno and v8 versions and freezes the version object.
+ * Sets the deno, v8, and typescript versions and freezes the version object.
  * @internal
  */
-export function setVersions(denoVersion: string, v8Version: string): void {
+export function setVersions(
+  denoVersion: string,
+  v8Version: string,
+  tsVersion: string
+): void {
   version.deno = denoVersion;
   version.v8 = v8Version;
+  version.typescript = tsVersion;
 
   Object.freeze(version);
 }
