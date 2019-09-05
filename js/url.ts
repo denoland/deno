@@ -80,6 +80,66 @@ function generateUUID(): string {
 // Keep it outside of URL to avoid any attempts of access.
 export const blobURLMap = new Map<string, domTypes.Blob>();
 
+function isAbsolutePath(path: string): boolean {
+  return path.startsWith("/");
+}
+
+// Resolves `.`s and `..`s where possible.
+// Preserves repeating and trailing `/`s by design.
+function normalizePath(path: string): string {
+  const isAbsolute = isAbsolutePath(path);
+  path = path.replace(/^\//, "");
+  const pathSegments = path.split("/");
+
+  const newPathSegments: string[] = [];
+  for (let i = 0; i < pathSegments.length; i++) {
+    const previous = newPathSegments[newPathSegments.length - 1];
+    if (
+      pathSegments[i] == ".." &&
+      previous != ".." &&
+      (previous != undefined || isAbsolute)
+    ) {
+      newPathSegments.pop();
+    } else if (pathSegments[i] != ".") {
+      newPathSegments.push(pathSegments[i]);
+    }
+  }
+
+  let newPath = newPathSegments.join("/");
+  if (!isAbsolute) {
+    if (newPathSegments.length == 0) {
+      newPath = ".";
+    }
+  } else {
+    newPath = `/${newPath}`;
+  }
+  return newPath;
+}
+
+// Standard URL basing logic, applied to paths.
+function resolvePathFromBase(path: string, basePath: string): string {
+  const normalizedPath = normalizePath(path);
+  if (isAbsolutePath(normalizedPath)) {
+    return normalizedPath;
+  }
+  const normalizedBasePath = normalizePath(basePath);
+  if (!isAbsolutePath(normalizedBasePath)) {
+    throw new TypeError("Base path must be absolute.");
+  }
+
+  // Special case.
+  if (path == "") {
+    return normalizedBasePath;
+  }
+
+  // Remove everything after the last `/` in `normalizedBasePath`.
+  const prefix = normalizedBasePath.replace(/[^\/]*$/, "");
+  // If `normalizedPath` ends with `.` or `..`, add a trailing space.
+  const suffix = normalizedPath.replace(/(?<=(^|\/)(\.|\.\.))$/, "/");
+
+  return normalizePath(prefix + suffix);
+}
+
 export class URL {
   private _parts: URLParts;
   private _searchParams!: urlSearchParams.URLSearchParams;
@@ -254,7 +314,7 @@ export class URL {
     let baseParts: URLParts | undefined;
     if (base) {
       baseParts = typeof base === "string" ? parse(base) : base._parts;
-      if (!baseParts) {
+      if (!baseParts || baseParts.protocol == "") {
         throw new TypeError("Invalid base URL.");
       }
     }
@@ -273,8 +333,8 @@ export class URL {
         password: baseParts.password,
         hostname: baseParts.hostname,
         port: baseParts.port,
-        path: urlParts.path || baseParts.path,
-        query: urlParts.query || baseParts.query,
+        path: resolvePathFromBase(urlParts.path, baseParts.path),
+        query: urlParts.query,
         hash: urlParts.hash
       };
     } else {
