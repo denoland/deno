@@ -36,7 +36,7 @@ jobs:
           architecture: x64
       - name: Setup python package dir
         if: startsWith(matrix.os, 'windows')
-        run: set PYTHONPATH "third_party\python_packages"
+        run: setx PYTHONPATH "third_party\python_packages" /M
       - name: Check versions
         run: |
           node -v
