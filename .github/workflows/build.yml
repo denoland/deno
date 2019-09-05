@@ -9,7 +9,6 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macOS-latest]
-    env:
     steps:
       - name: Checkout the repository
         uses: actions/checkout@v1
@@ -32,13 +31,16 @@ jobs:
           cargo --version
       - name: Add 'prebuilt' to path (linux)
         if: contains(matrix.os, "linux")
-        run: export PATH="`pwd`/prebuilt/linux64:$PATH"
+        env:
+          PATH: "`pwd`/prebuilt/linux64:$PATH"
       - name: Add 'prebuilt' to path (macos)
         if: contains(matrix.os, "macOS")
-        run: export PATH="`pwd`/prebuilt/mac:$PATH"
+        env:
+          PATH: "`pwd`/prebuilt/mac:$PATH"
       - name: Add 'prebuilt' to path (windows)
         if: contains(matrix.os, "windows")
-        run: set PATH=%PATH%;%cd%\prebuilt\mac:$PATH
+        env:
+          PATH: "%PATH%;%cd%\\prebuilt\\windows"
       - name: Run tools/setup.py
         run: ./tools/setup.py
       - name: Start sccache
