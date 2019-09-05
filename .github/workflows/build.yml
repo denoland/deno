@@ -33,14 +33,17 @@ jobs:
         if: contains(matrix.os, "linux")
         env:
           PATH: "`pwd`/prebuilt/linux64:$PATH"
+        run: echo $PATH
       - name: Add 'prebuilt' to path (macos)
         if: contains(matrix.os, "macOS")
         env:
           PATH: "`pwd`/prebuilt/mac:$PATH"
+        run: echo $PATH
       - name: Add 'prebuilt' to path (windows)
         if: contains(matrix.os, "windows")
         env:
           PATH: "%PATH%;%cd%\\prebuilt\\windows"
+        run: echo %PATH%
       - name: Run tools/setup.py
         run: ./tools/setup.py
       - name: Start sccache
