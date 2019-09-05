@@ -33,6 +33,7 @@ jobs:
           cargo --version
       - name: Run tools/setup.py
         run: ./tools/setup.py
+        shell: bash
       - name: Start sccache (linux)
         if: contains(matrix.os, 'linux')
         run: "`pwd`/prebuilt/linux64/sccache --start-server"
@@ -44,12 +45,16 @@ jobs:
         run: "%cd%\\prebuilt\\windows\\sccache.exe --start-server"
       - name: Lint
         run: ./tools/lint.py
+        shell: bash
       - name: Format
         run: ./tools/test_format.py
+        shell: bash
       - name: Build
         run: ./tools/build.py -C target/release
+        shell: bash
       - name: Run tests
         run: DENO_BUILD_MODE=release ./tools/test.py
+        shell: bash
       - name: Upload linux and macOS artifacts
         uses: actions/upload-artifact@master
         if: contains(matrix.os, 'linux') || contains(matrix.os, 'macOS')
