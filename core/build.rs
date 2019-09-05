@@ -12,5 +12,5 @@ fn main() {
     build.gn_out_dir
   );
 
-  build.run("core:deno_core_deps");
+  build.run("core/libdeno:default");
 }

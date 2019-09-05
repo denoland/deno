@@ -1,8 +1,6 @@
 group("default") {
   testonly = true
   deps = [
-    "core/libdeno:v8",
-    "core/libdeno:libdeno_static_lib",
-    "core/libdeno:libdeno_test",
+    "core/libdeno:default",
   ]
 }
