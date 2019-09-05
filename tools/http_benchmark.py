@@ -151,7 +151,8 @@ def hyper_http(hyper_hello_exe):
 
 def http_benchmark(build_dir):
     hyper_hello_exe = os.path.join(build_dir, "hyper_hello")
-    core_http_bench_exe = os.path.join(build_dir, "deno_core_http_bench")
+    core_http_bench_exe = os.path.join(build_dir,
+                                       "examples/deno_core_http_bench")
     deno_exe = os.path.join(build_dir, "deno")
     return {
         # "deno_tcp" was once called "deno"
