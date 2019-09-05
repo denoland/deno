@@ -11,6 +11,9 @@ jobs:
         os: [ubuntu-latest, windows-latest, macOS-latest]
     steps:
       # Checkout the repository
+      - name: Enable symlinks (windows)
+        if: startsWith(matrix.os, 'windows')
+        run: git config --global core.symlinks=true
       - name: Checkout the repository
         uses: actions/checkout@v1
         with:
