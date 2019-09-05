@@ -31,25 +31,17 @@ jobs:
           node -v
           rustc --version
           cargo --version
-      - name: Add 'prebuilt' to path (linux)
-        if: contains(matrix.os, 'linux')
-        env:
-          PATH: "`pwd`/prebuilt/linux64:$PATH"
-        run: echo $PATH
-      - name: Add 'prebuilt' to path (macos)
-        if: contains(matrix.os, 'macOS')
-        env:
-          PATH: "`pwd`/prebuilt/mac:$PATH"
-        run: echo $PATH
-      - name: Add 'prebuilt' to path (windows)
-        if: contains(matrix.os, 'windows')
-        env:
-          PATH: "%PATH%;%cd%\\prebuilt\\windows"
-        run: echo %PATH%
       - name: Run tools/setup.py
         run: ./tools/setup.py
-      - name: Start sccache
-        run: sccache --start-server
+      - name: Start sccache (linux)
+        if: contains(matrix.os, 'linux')
+        run: "`pwd`/prebuilt/linux64/sccache --start-server"
+      - name: Start sccache (macos)
+        if: contains(matrix.os, 'macos')
+        run: "`pwd`/prebuilt/mac/sccache --start-server"
+      - name: Start sccache (windows)
+        if: contains(matrix.os, 'windows')
+        run: "%cd%\\prebuilt\\windows\\sccache.exe --start-server"
       - name: Lint
         run: ./tools/lint.py
       - name: Format
