@@ -29,9 +29,15 @@ jobs:
         run: |
           rustup component add clippy
           rustup component add rustfmt
+      - name: Setup python
+        uses: actions/setup-python@v1
+        with:
+          python-version: "2.7.16"
+          architecture: x64
       - name: Check versions
         run: |
           node -v
+          python --version
           rustc --version
           cargo --version
 
