@@ -142,6 +142,16 @@ test(function urlBaseString(): void {
   assertEquals(url.href, "https://foo:bar@baz.qat:8000/foo/bar?baz=foo#qux");
 });
 
+test(function urlRelativeWithBase(): void {
+  assertEquals(new URL("", "file:///a/a/a").href, "file:///a/a/a");
+  assertEquals(new URL(".", "file:///a/a/a").href, "file:///a/a/");
+  assertEquals(new URL("..", "file:///a/a/a").href, "file:///a/");
+  assertEquals(new URL("b", "file:///a/a/a").href, "file:///a/a/b");
+  assertEquals(new URL("b", "file:///a/a/a/").href, "file:///a/a/a/b");
+  assertEquals(new URL("b/", "file:///a/a/a").href, "file:///a/a/b/");
+  assertEquals(new URL("../b", "file:///a/a/a").href, "file:///a/b");
+});
+
 test(function deletingAllParamsRemovesQuestionMarkFromURL(): void {
   const url = new URL("http://example.com/?param1&param2");
   url.searchParams.delete("param1");
