@@ -277,7 +277,6 @@ version = "0.17.0"
 dependencies = [
  "ansi_term 0.12.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "atty 0.2.13 (registry+https://github.com/rust-lang/crates.io-index)",
- "cargo_gn 0.0.13 (git+https://github.com/denoland/cargo_gn)",
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "deno 0.17.0",
  "deno_cli_snapshots 0.17.0",
