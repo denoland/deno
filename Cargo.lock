@@ -258,7 +258,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "cargo_gn 0.0.13 (git+https://github.com/denoland/cargo_gn)",
  "futures 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -273,13 +273,15 @@ dependencies = [
 
 [[package]]
 name = "deno_cli"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "ansi_term 0.12.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "atty 0.2.13 (registry+https://github.com/rust-lang/crates.io-index)",
  "cargo_gn 0.0.13 (git+https://github.com/denoland/cargo_gn)",
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "deno 0.16.0",
+ "deno 0.17.0",
+ "deno_cli_snapshots 0.17.0",
+ "deno_typescript 0.17.0",
  "dirs 2.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "fwdansi 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -315,6 +317,23 @@ dependencies = [
  "utime 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "which 2.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "winapi 0.3.7 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "deno_cli_snapshots"
+version = "0.17.0"
+dependencies = [
+ "deno 0.17.0",
+ "deno_typescript 0.17.0",
+]
+
+[[package]]
+name = "deno_typescript"
+version = "0.17.0"
+dependencies = [
+ "deno 0.17.0",
+ "serde 1.0.99 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde_json 1.0.40 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

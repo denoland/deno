@@ -1,8 +1,8 @@
 // Copyright Joyent, Inc. and other Node contributors. MIT license.
 // Forked from Node's lib/internal/cli_table.js
 
-import { TextEncoder } from "./text_encoding";
-import { hasOwnProperty } from "./util";
+import { TextEncoder } from "./text_encoding.ts";
+import { hasOwnProperty } from "./util.ts";
 
 const encoder = new TextEncoder();
 

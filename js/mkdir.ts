@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { sendSync, sendAsync } from "./dispatch_json";
-import * as dispatch from "./dispatch";
+import { sendSync, sendAsync } from "./dispatch_json.ts";
+import * as dispatch from "./dispatch.ts";
 
 /** Creates a new directory with the specified path synchronously.
  * If `recursive` is set to true, nested directories will be created (also known

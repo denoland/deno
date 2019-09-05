@@ -1,9 +1,9 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { isTypedArray } from "./util";
-import { TypedArray } from "./types";
-import { TextEncoder } from "./text_encoding";
-import { File, stdout } from "./files";
-import { cliTable } from "./console_table";
+import { isTypedArray } from "./util.ts";
+import { TypedArray } from "./types.ts";
+import { TextEncoder } from "./text_encoding.ts";
+import { File, stdout } from "./files.ts";
+import { cliTable } from "./console_table.ts";
 
 type ConsoleContext = Set<unknown>;
 type ConsoleOptions = Partial<{
@@ -486,7 +486,7 @@ type PrintFunc = (x: string, isErr?: boolean) => void;
 
 const countMap = new Map<string, number>();
 const timerMap = new Map<string, number>();
-export const isConsoleInstance = Symbol("isConsoleInstance");
+const isConsoleInstance = Symbol("isConsoleInstance");
 
 export class Console {
   indentLevel: number;

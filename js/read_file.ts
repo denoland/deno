@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { open, openSync } from "./files";
-import { readAll, readAllSync } from "./buffer";
+import { open, openSync } from "./files.ts";
+import { readAll, readAllSync } from "./buffer.ts";
 
 /** Read the entire contents of a file synchronously.
  *

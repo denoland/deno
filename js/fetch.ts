@@ -1,16 +1,21 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { assert, createResolvable, notImplemented, isTypedArray } from "./util";
-import * as domTypes from "./dom_types";
-import { TextDecoder, TextEncoder } from "./text_encoding";
-import { DenoBlob, bytesSymbol as blobBytesSymbol } from "./blob";
-import { Headers } from "./headers";
-import * as io from "./io";
-import { read, close } from "./files";
-import { Buffer } from "./buffer";
-import { FormData } from "./form_data";
-import { URLSearchParams } from "./url_search_params";
-import * as dispatch from "./dispatch";
-import { sendAsync } from "./dispatch_json";
+import {
+  assert,
+  createResolvable,
+  notImplemented,
+  isTypedArray
+} from "./util.ts";
+import * as domTypes from "./dom_types.ts";
+import { TextDecoder, TextEncoder } from "./text_encoding.ts";
+import { DenoBlob, bytesSymbol as blobBytesSymbol } from "./blob.ts";
+import { Headers } from "./headers.ts";
+import * as io from "./io.ts";
+import { read, close } from "./files.ts";
+import { Buffer } from "./buffer.ts";
+import { FormData } from "./form_data.ts";
+import { URLSearchParams } from "./url_search_params.ts";
+import * as dispatch from "./dispatch.ts";
+import { sendAsync } from "./dispatch_json.ts";
 
 function getHeaderValueParams(value: string): Map<string, string> {
   const params = new Map();
@@ -243,7 +248,6 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
 }
 
 export class Response implements domTypes.Response {
-  statusText = "FIXME"; // TODO
   readonly type = "basic"; // TODO
   readonly redirected: boolean;
   headers: domTypes.Headers;
@@ -254,6 +258,7 @@ export class Response implements domTypes.Response {
   constructor(
     readonly url: string,
     readonly status: number,
+    readonly statusText: string,
     headersList: Array<[string, string]>,
     rid: number,
     redirected_: boolean,
@@ -313,6 +318,7 @@ export class Response implements domTypes.Response {
     return new Response(
       this.url,
       this.status,
+      this.statusText,
       headersList,
       -1,
       this.redirected,
@@ -324,6 +330,7 @@ export class Response implements domTypes.Response {
 interface FetchResponse {
   bodyRid: number;
   status: number;
+  statusText: string;
   headers: Array<[string, string]>;
 }
 
@@ -422,6 +429,7 @@ export async function fetch(
     const response = new Response(
       url,
       fetchResponse.status,
+      fetchResponse.statusText,
       fetchResponse.headers,
       fetchResponse.bodyRid,
       redirected

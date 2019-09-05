@@ -62,16 +62,21 @@ Deno provides <a href="https://github.com/denoland/deno_std">a set of reviewed
 - Be able to serve HTTP efficiently.
   ([Currently it is relatively slow.](https://deno.land/benchmarks.html#req-per-sec))
 
+<!-- prettier-ignore-start -->
+<!-- see https://github.com/prettier/prettier/issues/3679 -->
+
 - Provide useful tooling out of the box:
-  - dependency inspector (`deno info`)
-  - code formatter (`deno fmt`),
-  - bundling (`deno bundle`)
-  - runtime type info (`deno types`)
-  - test runner (`deno test`)
-    [not yet](https://github.com/denoland/deno_std/issues/193)
-  - command-line debugger (`--debug`)
-    [not yet](https://github.com/denoland/deno/issues/1120)
-  - linter (`deno lint`) [not yet](https://github.com/denoland/deno/issues/1880)
+    - dependency inspector (`deno info`)
+    - code formatter (`deno fmt`),
+    - bundling (`deno bundle`)
+    - runtime type info (`deno types`)
+    - test runner (`deno test`)
+      [not yet](https://github.com/denoland/deno_std/issues/193)
+    - command-line debugger (`--debug`)
+      [not yet](https://github.com/denoland/deno/issues/1120)
+    - linter (`deno lint`) [not yet](https://github.com/denoland/deno/issues/1880)
+
+<!-- prettier-ignore-end -->
 
 ### Non-goals
 
@@ -174,8 +179,7 @@ To ensure reproducible builds, deno has most of its dependencies in a git
 submodule. However, you need to install separately:
 
 1. [Rust](https://www.rust-lang.org/en-US/install.html) >= 1.36.0
-2. [Node](https://nodejs.org/)
-3. Python 2.
+2. Python 2.
    [Not 3](https://github.com/denoland/deno/issues/464#issuecomment-411795578).
 
 Extra steps for Mac users: install [XCode](https://developer.apple.com/xcode/)
@@ -598,7 +602,7 @@ hint looks like this:
 import * as foo from "./foo.js";
 ```
 
-Where the hint effects the next `import` statement (or `export ... from`
+Where the hint affects the next `import` statement (or `export ... from`
 statement) where the value of the `@deno-types` will be substituted at compile
 time instead of the specified module. Like in the above example, the Deno
 compiler will load `./foo.d.ts` instead of `./foo.js`. Deno will still load

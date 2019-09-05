@@ -645,7 +645,9 @@ impl Future for Isolate {
 
     loop {
       // If there are any pending dyn_import futures, do those first.
-      self.poll_dyn_imports()?;
+      if !self.pending_dyn_imports.is_empty() {
+        self.poll_dyn_imports()?;
+      }
 
       // Now handle actual ops.
       self.have_unpolled_ops = false;

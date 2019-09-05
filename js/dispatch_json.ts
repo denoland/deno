@@ -1,8 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as util from "./util";
-import { TextEncoder, TextDecoder } from "./text_encoding";
-import { core } from "./core";
-import { ErrorKind, DenoError } from "./errors";
+import * as util from "./util.ts";
+import { TextEncoder, TextDecoder } from "./text_encoding.ts";
+import { core } from "./core.ts";
+import { ErrorKind, DenoError } from "./errors.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Ok = any;

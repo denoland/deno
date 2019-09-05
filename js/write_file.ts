@@ -1,8 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { stat, statSync } from "./stat";
-import { open, openSync } from "./files";
-import { chmod, chmodSync } from "./chmod";
-import { writeAll, writeAllSync } from "./buffer";
+import { stat, statSync } from "./stat.ts";
+import { open, openSync } from "./files.ts";
+import { chmod, chmodSync } from "./chmod.ts";
+import { writeAll, writeAllSync } from "./buffer.ts";
 
 /** Options for writing to a file.
  * `perm` would change the file's permission if set.

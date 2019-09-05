@@ -1,12 +1,14 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { close } from "./files";
-import { exit } from "./os";
-import { window } from "./window";
-import { core } from "./core";
-import { formatError } from "./format_error";
-import { stringifyArgs } from "./console";
-import * as dispatch from "./dispatch";
-import { sendSync, sendAsync } from "./dispatch_json";
+import { close } from "./files.ts";
+import { exit } from "./os.ts";
+import { window } from "./window.ts";
+import { core } from "./core.ts";
+import { formatError } from "./format_error.ts";
+import { stringifyArgs } from "./console.ts";
+import * as dispatch from "./dispatch.ts";
+import { sendSync, sendAsync } from "./dispatch_json.ts";
+
+const { console } = window;
 
 /**
  * REPL logging.
@@ -25,6 +27,8 @@ function replError(...args: unknown[]): void {
 }
 
 const helpMsg = [
+  "_       Get last evaluation result",
+  "_error  Get last thrown error",
   "exit    Exit the REPL",
   "help    Print this help message"
 ].join("\n");
@@ -69,17 +73,25 @@ function isRecoverableError(e: Error): boolean {
   return recoverableErrorMessages.includes(e.message);
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Value = any;
+
+let lastEvalResult: Value = undefined;
+let lastThrownError: Value = undefined;
+
 // Evaluate code.
 // Returns true if code is consumed (no error/irrecoverable error).
 // Returns false if error is recoverable
 function evaluate(code: string): boolean {
   const [result, errInfo] = core.evalContext(code);
   if (!errInfo) {
+    lastEvalResult = result;
     replLog(result);
   } else if (errInfo.isCompileError && isRecoverableError(errInfo.thrown)) {
     // Recoverable compiler error
     return false; // don't consume code.
   } else {
+    lastThrownError = errInfo.thrown;
     if (errInfo.isNativeError) {
       const formattedError = formatError(
         core.errorToJSON(errInfo.thrown as Error)
@@ -106,6 +118,36 @@ export async function replLoop(): Promise<void> {
     } catch {}
     exit(exitCode);
   };
+
+  // Configure window._ to give the last evaluation result.
+  Object.defineProperty(window, "_", {
+    configurable: true,
+    get: (): Value => lastEvalResult,
+    set: (value: Value): Value => {
+      Object.defineProperty(window, "_", {
+        value: value,
+        writable: true,
+        enumerable: true,
+        configurable: true
+      });
+      console.log("Last evaluation result is no longer saved to _.");
+    }
+  });
+
+  // Configure window._error to give the last thrown error.
+  Object.defineProperty(window, "_error", {
+    configurable: true,
+    get: (): Value => lastThrownError,
+    set: (value: Value): Value => {
+      Object.defineProperty(window, "_error", {
+        value: value,
+        writable: true,
+        enumerable: true,
+        configurable: true
+      });
+      console.log("Last thrown error is no longer saved to _error.");
+    }
+  });
 
   while (true) {
     let code = "";

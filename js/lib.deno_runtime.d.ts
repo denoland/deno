@@ -1176,7 +1176,6 @@ declare namespace Deno {
     colors: boolean;
     indentLevel: number;
   }>;
-  export const isConsoleInstance: unique symbol;
   /** A symbol which can be used as a key for a custom method which will be called
    * when `Deno.inspect()` is called, or when the object is logged to the console.
    */
@@ -1264,6 +1263,7 @@ declare interface Window {
     callback: (event: domTypes.Event) => void | null,
     options?: boolean | domTypes.EventListenerOptions | undefined
   ) => void;
+  queueMicrotask: (task: () => void) => void;
   Deno: typeof Deno;
 }
 
@@ -1956,7 +1956,7 @@ declare namespace consoleTypes {
     static kClear: string;
     static kClearScreenDown: string;
   }
-  export const isConsoleInstance: unique symbol;
+  const isConsoleInstance: unique symbol;
   export class Console {
     private printFunc;
     indentLevel: number;

@@ -1,20 +1,25 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as ts from "typescript";
-import { bold, cyan, yellow } from "./colors";
-import { Console } from "./console";
-import { core } from "./core";
-import { Diagnostic, fromTypeScriptDiagnostic } from "./diagnostics";
-import { cwd } from "./dir";
-import * as dispatch from "./dispatch";
-import { sendSync } from "./dispatch_json";
-import * as os from "./os";
-import { TextEncoder } from "./text_encoding";
-import { getMappedModuleName, parseTypeDirectives } from "./type_directives";
-import { assert, notImplemented } from "./util";
-import * as util from "./util";
-import { window } from "./window";
-import { postMessage, workerClose, workerMain } from "./workers";
-import { writeFileSync } from "./write_file";
+// TODO(ry) Combine this implementation with //deno_typescript/compiler_main.js
+
+/// <reference types="../third_party/node_modules/typescript/lib/typescript.d.ts"/>
+
+import "./globals.ts";
+
+import { bold, cyan, yellow } from "./colors.ts";
+import { Console } from "./console.ts";
+import { core } from "./core.ts";
+import { Diagnostic, fromTypeScriptDiagnostic } from "./diagnostics.ts";
+import { cwd } from "./dir.ts";
+import * as dispatch from "./dispatch.ts";
+import { sendSync } from "./dispatch_json.ts";
+import * as os from "./os.ts";
+import { TextEncoder } from "./text_encoding.ts";
+import { getMappedModuleName, parseTypeDirectives } from "./type_directives.ts";
+import { assert, notImplemented } from "./util.ts";
+import * as util from "./util.ts";
+import { window } from "./window.ts";
+import { postMessage, workerClose, workerMain } from "./workers.ts";
+import { writeFileSync } from "./write_file.ts";
 
 // Warning! The values in this enum are duplicated in cli/msg.rs
 // Update carefully!
@@ -31,9 +36,10 @@ enum MediaType {
 const console = new Console(core.print);
 window.console = console;
 window.workerMain = workerMain;
-export default function denoMain(): void {
+function denoMain(): void {
   os.start(true, "TS");
 }
+window["denoMain"] = denoMain;
 
 const ASSETS = "$asset$";
 const OUT_DIR = "$deno$";

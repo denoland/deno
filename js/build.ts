@@ -18,9 +18,9 @@ export interface BuildInfo {
 export const build: BuildInfo = {
   // These string will be replaced by rollup
   /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-  arch: `ROLLUP_REPLACE_ARCH` as any,
+  arch: `DENO_REPLACE_ARCH` as any,
   /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-  os: `ROLLUP_REPLACE_OS` as any
+  os: `DENO_REPLACE_OS` as any
 };
 
 // TODO(kevinkassimo): deprecate Deno.platform
