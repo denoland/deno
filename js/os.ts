@@ -5,6 +5,7 @@ import { sendSync } from "./dispatch_json.ts";
 import { assert } from "./util.ts";
 import * as util from "./util.ts";
 import { window } from "./window.ts";
+import { OperatingSystem, Arch } from "./build.ts";
 
 // builtin modules
 import { _setGlobals } from "./deno.ts";
@@ -62,6 +63,8 @@ interface Start {
   tsVersion: string;
   noColor: boolean;
   xevalDelim: string;
+  os: OperatingSystem;
+  arch: Arch;
 }
 
 // This function bootstraps an environment within Deno, it is shared both by

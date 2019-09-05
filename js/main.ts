@@ -10,10 +10,12 @@ import { xevalMain, XevalFunc } from "./xeval.ts";
 import { setVersions } from "./version.ts";
 import { window } from "./window.ts";
 import { setLocation } from "./location.ts";
+import { setBuildInfo } from "./build.ts";
 
 function denoMain(preserveDenoNamespace: boolean = true, name?: string): void {
   const s = os.start(preserveDenoNamespace, name);
 
+  setBuildInfo(s.os, s.arch);
   setVersions(s.denoVersion, s.v8Version, s.tsVersion);
 
   setPrepareStackTrace(Error);
