@@ -1,0 +1,65 @@
+name: Build and test
+
+on: [push]
+
+jobs:
+  build:
+    name: Build and test for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macOS-latest]
+    env:
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v1
+      - name: Setup node
+        uses: actions/setup-node@v1
+        with:
+          node-version: "12.x"
+      - name: Setup rust
+        uses: hecrj/setup-rust-action@v1
+        with:
+          rust-version: "1.37.0"
+      - name: Install rust components
+        run: |
+          rustup component add clippy
+          rustup component add rustfmt
+      - name: Check versions
+        run: |
+          node -v
+          rustc --version
+          cargo --version
+      - name: Add 'prebuilt' to path (linux)
+        if: contains(matrix.os, "linux")
+        run: export PATH="`pwd`/prebuilt/linux64:$PATH"
+      - name: Add 'prebuilt' to path (macos)
+        if: contains(matrix.os, "macOS")
+        run: export PATH="`pwd`/prebuilt/mac:$PATH"
+      - name: Add 'prebuilt' to path (windows)
+        if: contains(matrix.os, "windows")
+        run: set PATH=%PATH%;%cd%\prebuilt\mac:$PATH
+      - name: Run tools/setup.py
+        run: ./tools/setup.py
+      - name: Start sccache
+        run: sccache --start-server
+      - name: Lint
+        run: ./tools/lint.py
+      - name: Format
+        run: ./tools/test_format.py
+      - name: Build
+        run: ./tools/build.py -C target/release
+      - name: Run tests
+        run: DENO_BUILD_MODE=release ./tools/test.py
+      - name: Upload linux and macOS artifacts
+        uses: actions/upload-artifact@master
+        if: contains(matrix.os, "linux") || contains(matrix.os, "macOS")
+        with:
+          name: deno
+          path: target/release/deno
+      - name: Upload windows artifacts
+        uses: actions/upload-artifact@master
+        if: contains(matrix.os, "windows")
+        with:
+          name: deno
+          path: target\release\deno.exe
