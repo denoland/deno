@@ -34,6 +34,9 @@ jobs:
         with:
           python-version: "2.7.16"
           architecture: x64
+      - name: Setup python package dir
+        if: startsWith(matrix.os, 'windows')
+        run: export PYTHONPATH="third_party\python_packages"
       - name: Check versions
         run: |
           node -v
@@ -76,11 +79,11 @@ jobs:
         if: startsWith(matrix.os, 'windows')
         run: python "%cd%\\tools\\build.py"
 
-      # Formatting
-      - name: Run format script (unix)
+      # Formatting test
+      - name: Run test format script (unix)
         if: startsWith(matrix.os, 'ubuntu') || startsWith(matrix.os, 'macos')
         run: ./tools/test_format.py
-      - name: Run format script (windows)
+      - name: Run test format script (windows)
         if: startsWith(matrix.os, 'windows')
         run: "python %cd%\\tools\\test_format.py"
 
