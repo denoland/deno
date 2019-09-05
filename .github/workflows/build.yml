@@ -10,10 +10,13 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macOS-latest]
     steps:
+      # Checkout the repository
       - name: Checkout the repository
         uses: actions/checkout@v1
         with:
           submodules: true
+
+      # Setup compilers
       - name: Setup node
         uses: actions/setup-node@v1
         with:
@@ -31,9 +34,16 @@ jobs:
           node -v
           rustc --version
           cargo --version
-      - name: Run tools/setup.py
+      
+      # Setup
+      - name: Run setup script (unix)
+        if: contains(matrix.os, 'linux') || contains(matrix.os, 'macos')
         run: ./tools/setup.py
-        shell: bash
+      - name: Run setup script (windows)
+        if: contains(matrix.os, 'windows')
+        run: "%cd%\\tools\\setup.py"
+
+      # Start sscache
       - name: Start sccache (linux)
         if: contains(matrix.os, 'linux')
         run: "`pwd`/prebuilt/linux64/sccache --start-server"
@@ -43,18 +53,44 @@ jobs:
       - name: Start sccache (windows)
         if: contains(matrix.os, 'windows')
         run: "%cd%\\prebuilt\\windows\\sccache.exe --start-server"
-      - name: Lint
+
+      # Linting
+      - name: Run lint script (unix)
+        if: contains(matrix.os, 'linux') || contains(matrix.os, 'macos')
         run: ./tools/lint.py
-        shell: bash
-      - name: Format
+      - name: Run lint script (windows)
+        if: contains(matrix.os, 'windows')
+        run: "%cd%\\tools\\lint.py"
+
+      # Building
+      - name: Run build script (unix)
+        if: contains(matrix.os, 'linux') || contains(matrix.os, 'macos')
+        run: ./tools/build.py
+      - name: Run build script (windows)
+        if: contains(matrix.os, 'windows')
+        run: "%cd%\\tools\\build.py"
+  
+      # Formatting  
+      - name: Run format script (unix)
+        if: contains(matrix.os, 'linux') || contains(matrix.os, 'macos')
         run: ./tools/test_format.py
-        shell: bash
-      - name: Build
-        run: ./tools/build.py -C target/release
-        shell: bash
-      - name: Run tests
-        run: DENO_BUILD_MODE=release ./tools/test.py
-        shell: bash
+      - name: Run format script (windows)
+        if: contains(matrix.os, 'windows')
+        run: "%cd%\\tools\\test_format.py"
+
+      # Test  
+      - name: Run tests (unix)
+        if: contains(matrix.os, 'linux') || contains(matrix.os, 'macos')
+        run: ./tools/test.py
+        env:
+          DENO_BUILD_MODE: release
+      - name: Run tests (windows)
+        if: contains(matrix.os, 'windows')
+        run: "%cd%\\tools\\test.py"
+        env:
+          DENO_BUILD_MODE: release
+
+      # Upload artifacts
       - name: Upload linux and macOS artifacts
         uses: actions/upload-artifact@master
         if: contains(matrix.os, 'linux') || contains(matrix.os, 'macOS')
