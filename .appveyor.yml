@@ -200,14 +200,6 @@ after_test:
   # Stop sccache and show stats.
   - ps: sccache --stop-server
 
-  # Verify that the build is fully up-to-date. Running ninja should be a no-op.
-  # This catches erroneous file cleanup, and incorrectly set up build deps.
-  - ps: |-
-      $out = ninja -C $env:DENO_BUILD_PATH -n -d explain
-      if ($out -notcontains "ninja: no work to do.") {
-        throw "Build should be up-to-date but isn't."
-      }
-
   # If this build is going to be deployed, build a zip file.
   - ps: |-
       if ($env:APPVEYOR_REPO_TAG -eq "true") {
