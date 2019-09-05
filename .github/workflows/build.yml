@@ -30,17 +30,17 @@ jobs:
           rustc --version
           cargo --version
       - name: Add 'prebuilt' to path (linux)
-        if: contains(matrix.os, "linux")
+        if: contains(matrix.os, 'linux')
         env:
           PATH: "`pwd`/prebuilt/linux64:$PATH"
         run: echo $PATH
       - name: Add 'prebuilt' to path (macos)
-        if: contains(matrix.os, "macOS")
+        if: contains(matrix.os, 'macOS')
         env:
           PATH: "`pwd`/prebuilt/mac:$PATH"
         run: echo $PATH
       - name: Add 'prebuilt' to path (windows)
-        if: contains(matrix.os, "windows")
+        if: contains(matrix.os, 'windows')
         env:
           PATH: "%PATH%;%cd%\\prebuilt\\windows"
         run: echo %PATH%
@@ -58,13 +58,13 @@ jobs:
         run: DENO_BUILD_MODE=release ./tools/test.py
       - name: Upload linux and macOS artifacts
         uses: actions/upload-artifact@master
-        if: contains(matrix.os, "linux") || contains(matrix.os, "macOS")
+        if: contains(matrix.os, 'linux') || contains(matrix.os, 'macOS')
         with:
           name: deno
           path: target/release/deno
       - name: Upload windows artifacts
         uses: actions/upload-artifact@master
-        if: contains(matrix.os, "windows")
+        if: contains(matrix.os, 'windows')
         with:
           name: deno
           path: target\release\deno.exe
