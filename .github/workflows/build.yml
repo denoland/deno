@@ -34,58 +34,58 @@ jobs:
           node -v
           rustc --version
           cargo --version
-      
+
       # Setup
       - name: Run setup script (unix)
-        if: contains(matrix.os, 'linux') || contains(matrix.os, 'macos')
+        if: startsWith(matrix.os, 'ubuntu') || startsWith(matrix.os, 'macOS')
         run: ./tools/setup.py
       - name: Run setup script (windows)
-        if: contains(matrix.os, 'windows')
+        if: startsWith(matrix.os, 'windows')
         run: "%cd%\\tools\\setup.py"
 
       # Start sscache
       - name: Start sccache (linux)
-        if: contains(matrix.os, 'linux')
+        if: startsWith(matrix.os, 'ubuntu')
         run: "`pwd`/prebuilt/linux64/sccache --start-server"
       - name: Start sccache (macos)
-        if: contains(matrix.os, 'macos')
+        if: startsWith(matrix.os, 'macos')
         run: "`pwd`/prebuilt/mac/sccache --start-server"
       - name: Start sccache (windows)
-        if: contains(matrix.os, 'windows')
-        run: "%cd%\\prebuilt\\windows\\sccache.exe --start-server"
+        if: startsWith(matrix.os, 'windows')
+        run: "%cd%\\prebuilt\\win\\sccache.exe --start-server"
 
       # Linting
       - name: Run lint script (unix)
-        if: contains(matrix.os, 'linux') || contains(matrix.os, 'macos')
+        if: startsWith(matrix.os, 'ubuntu') || startsWith(matrix.os, 'macos')
         run: ./tools/lint.py
       - name: Run lint script (windows)
-        if: contains(matrix.os, 'windows')
+        if: startsWith(matrix.os, 'windows')
         run: "%cd%\\tools\\lint.py"
 
       # Building
       - name: Run build script (unix)
-        if: contains(matrix.os, 'linux') || contains(matrix.os, 'macos')
+        if: startsWith(matrix.os, 'ubuntu') || startsWith(matrix.os, 'macos')
         run: ./tools/build.py
       - name: Run build script (windows)
-        if: contains(matrix.os, 'windows')
+        if: startsWith(matrix.os, 'windows')
         run: "%cd%\\tools\\build.py"
-  
-      # Formatting  
+
+      # Formatting
       - name: Run format script (unix)
-        if: contains(matrix.os, 'linux') || contains(matrix.os, 'macos')
+        if: startsWith(matrix.os, 'ubuntu') || startsWith(matrix.os, 'macos')
         run: ./tools/test_format.py
       - name: Run format script (windows)
-        if: contains(matrix.os, 'windows')
+        if: startsWith(matrix.os, 'windows')
         run: "%cd%\\tools\\test_format.py"
 
-      # Test  
+      # Test
       - name: Run tests (unix)
-        if: contains(matrix.os, 'linux') || contains(matrix.os, 'macos')
+        if: startsWith(matrix.os, 'ubuntu') || startsWith(matrix.os, 'macos')
         run: ./tools/test.py
         env:
           DENO_BUILD_MODE: release
       - name: Run tests (windows)
-        if: contains(matrix.os, 'windows')
+        if: startsWith(matrix.os, 'windows')
         run: "%cd%\\tools\\test.py"
         env:
           DENO_BUILD_MODE: release
@@ -93,13 +93,13 @@ jobs:
       # Upload artifacts
       - name: Upload linux and macOS artifacts
         uses: actions/upload-artifact@master
-        if: contains(matrix.os, 'linux') || contains(matrix.os, 'macOS')
+        if: startsWith(matrix.os, 'ubuntu') || startsWith(matrix.os, 'macOS')
         with:
           name: deno
           path: target/release/deno
       - name: Upload windows artifacts
         uses: actions/upload-artifact@master
-        if: contains(matrix.os, 'windows')
+        if: startsWith(matrix.os, 'windows')
         with:
           name: deno
           path: target\release\deno.exe
