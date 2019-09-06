@@ -56,7 +56,7 @@ jobs:
         env:
           GYP_MSVS_OVERRIDE_PATH: C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise
         run: |
-          "python %cd%\\tools\\setup.py"
+          "python %cd%/tools/setup.py"
 
       # Start sscache
       - name: Start sccache (linux)
