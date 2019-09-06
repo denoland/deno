@@ -3,14 +3,9 @@
 
 const ASSETS = "$asset$";
 
-let replacements;
-
-function main(configText, rootNames, replacements_) {
+function main(configText, rootNames) {
   println(`>>> ts version ${ts.version}`);
   println(`>>> rootNames ${rootNames}`);
-
-  replacements = replacements_;
-  println(`>>> replacements ${JSON.stringify(replacements)}`);
 
   const host = new Host();
 
@@ -146,12 +141,6 @@ class Host {
     // TODO(ry) A terrible hack. Please remove ASAP.
     if (fileName.endsWith("typescript.d.ts")) {
       sourceCode = sourceCode.replace("export = ts;", "");
-    }
-
-    // TODO(ry) A terrible hack. Please remove ASAP.
-    for (let key of Object.keys(replacements)) {
-      let val = replacements[key];
-      sourceCode = sourceCode.replace(key, val);
     }
 
     let sourceFile = ts.createSourceFile(fileName, sourceCode, languageVersion);

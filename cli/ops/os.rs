@@ -11,6 +11,16 @@ use std::collections::HashMap;
 use std::env;
 use url::Url;
 
+/// BUILD_OS and BUILD_ARCH match the values in Deno.build. See js/build.ts.
+#[cfg(target_os = "macos")]
+static BUILD_OS: &str = "mac";
+#[cfg(target_os = "linux")]
+static BUILD_OS: &str = "linux";
+#[cfg(target_os = "windows")]
+static BUILD_OS: &str = "win";
+#[cfg(target_arch = "x86_64")]
+static BUILD_ARCH: &str = "x64";
+
 pub fn op_start(
   state: &ThreadSafeState,
   _args: Value,
@@ -31,6 +41,8 @@ pub fn op_start(
     "tsVersion": version::typescript(),
     "noColor": !ansi::use_color(),
     "xevalDelim": state.flags.xeval_delim.clone(),
+    "os": BUILD_OS,
+    "arch": BUILD_ARCH,
   })))
 }
 
