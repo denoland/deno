@@ -221,13 +221,13 @@ git submodule update
 
 # Skip downloading binary build tools and point the build
 # to the system provided ones (for packagers of deno ...).
-./tools/setup.py --no-binary-download
 export DENO_BUILD_ARGS="clang_base_path=/usr clang_use_chrome_plugins=false"
+export DENO_NO_BINARY_DOWNLOAD=1
 DENO_GN_PATH=/usr/bin/gn DENO_NINJA_PATH=/usr/bin/ninja cargo build
 ```
 
 Environment variables: `DENO_BUILD_MODE`, `DENO_BUILD_PATH`, `DENO_BUILD_ARGS`,
-`DENO_DIR`, `DENO_GN_PATH`, `DENO_NINJA_PATH`.
+`DENO_DIR`, `DENO_GN_PATH`, `DENO_NINJA_PATH`, `DENO_NO_BINARY_DOWNLOAD`.
 
 ## API reference
 
