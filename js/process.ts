@@ -5,7 +5,7 @@ import { File, close } from "./files.ts";
 import { ReadCloser, WriteCloser } from "./io.ts";
 import { readAll } from "./buffer.ts";
 import { assert, unreachable } from "./util.ts";
-import { platform } from "./build.ts";
+import { build } from "./build.ts";
 
 /** How to handle subprocess stdio.
  *
@@ -296,4 +296,12 @@ enum MacOSSignal {
 
 /** Signals numbers. This is platform dependent.
  */
-export const Signal = platform.os === "mac" ? MacOSSignal : LinuxSignal;
+export const Signal = {};
+
+export function setSignals(): void {
+  if (build.os === "mac") {
+    Object.assign(Signal, MacOSSignal);
+  } else {
+    Object.assign(Signal, LinuxSignal);
+  }
+}
