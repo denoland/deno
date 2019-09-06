@@ -58,7 +58,7 @@ jobs:
       - name: Run setup script (windows)
         if: startsWith(matrix.os, 'windows')
         run: |
-          echo GYP_MSVS_OVERRIDE_PATH
+          echo %GYP_MSVS_OVERRIDE_PATH%
           "python %cd%\\tools\\setup.py"
 
       # Start sscache
