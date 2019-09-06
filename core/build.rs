@@ -87,13 +87,15 @@ mod gn {
 
     pub fn run(&self, gn_target: &str) {
       if !self.gn_out_path.join("build.ninja").exists() {
-        let status = Command::new("python")
-          .env("DENO_BUILD_PATH", &self.gn_out_dir)
-          .env("DENO_BUILD_MODE", &self.gn_mode)
-          .env("DEPOT_TOOLS_WIN_TOOLCHAIN", "0")
-          .arg("./tools/setup.py")
-          .status()
-          .expect("setup.py failed");
+        let mut cmd = Command::new("python");
+        cmd.env("DENO_BUILD_PATH", &self.gn_out_dir);
+        cmd.env("DENO_BUILD_MODE", &self.gn_mode);
+        cmd.env("DEPOT_TOOLS_WIN_TOOLCHAIN", "0");
+        cmd.arg("./tools/setup.py");
+        if env::var_os("DENO_NO_BINARY_DOWNLOAD").is_some() {
+          cmd.arg("--no-binary-download");
+        }
+        let status = cmd.status().expect("setup.py failed");
         assert!(status.success());
       }
 
