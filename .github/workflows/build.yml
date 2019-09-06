@@ -39,11 +39,11 @@ jobs:
           architecture: x64
       - name: Setup python package dir
         if: startsWith(matrix.os, 'windows')
-        run: setx PYTHONPATH "third_party\python_packages" /M
+        run: setx PYTHONPATH "third_party\python_packages" /m
       - name: Override VS path
         if: startsWith(matrix.os, 'windows')
         run: |
-          setx GYP_MSVS_OVERRIDE_PATH "C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise" /M
+          setx GYP_MSVS_OVERRIDE_PATH "C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise" /m
       - name: Check versions
         run: |
           node -v
