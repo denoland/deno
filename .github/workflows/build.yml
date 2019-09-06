@@ -81,11 +81,14 @@ jobs:
       # Building
       - name: Run build script (unix)
         if: startsWith(matrix.os, 'ubuntu') || startsWith(matrix.os, 'macos')
+        env:
+          DENO_BUILD_MODE: release
         run: ./tools/build.py
       - name: Run build script (windows)
         if: startsWith(matrix.os, 'windows')
         env:
           GYP_MSVS_OVERRIDE_PATH: C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise
+          DENO_BUILD_MODE: release
         run: python %cd%\tools\build.py
 
       # Formatting test
