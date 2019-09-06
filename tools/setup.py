@@ -123,14 +123,6 @@ def generate_gn_args(mode):
         print "Bad mode {}. Use 'release' or 'debug' (default)" % mode
         sys.exit(1)
 
-    if "DENO_ASAN" in os.environ:
-        out += ["is_asan=true", "is_lsan=true"]
-        # TODO(ry) sccache doesn't support "-Xclang -fdebug-compilation-dir"
-        # Which is enabled for ASAN builds if symbol_level != 0.
-        # https://cs.chromium.org/chromium/src/build/config/compiler/BUILD.gn?l=1087&rcl=573da77f569b41e23527f2952938f492678ab4bb
-        # Ideally we can remove this constraint in the future.
-        out += ["symbol_level=0"]
-
     if "DENO_BUILD_ARGS" in os.environ:
         out += os.environ["DENO_BUILD_ARGS"].split()
 

@@ -110,15 +110,3 @@ jobs:
           branch: master
           repo: denoland/deno
         skip-cleanup: true
-
-    # AddressSanitizer (ASAN)
-    # https://www.chromium.org/developers/testing/addresssanitizer
-    - name: "asan/lsan linux"
-      os: linux
-      script:
-      - ./tools/lint.py
-      - ./tools/test_format.py
-      - export ASAN_OPTIONS=detect_leaks=1
-      - export DENO_ASAN=1
-      - cargo build
-      - ./target/debug/libdeno_test
