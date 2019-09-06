@@ -83,10 +83,10 @@ jobs:
       # Building
       - name: Run build script (unix)
         if: startsWith(matrix.os, 'ubuntu') || startsWith(matrix.os, 'macos')
-        run: ./tools/build.py
+        run: cargo build --release
       - name: Run build script (windows)
         if: startsWith(matrix.os, 'windows')
-        run: python "%cd%\\tools\\build.py"
+        run: cargo build --release
 
       # Formatting test
       - name: Run test format script (unix)
