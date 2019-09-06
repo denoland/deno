@@ -17,8 +17,8 @@ pub fn op_read(rid: i32, zero_copy: Option<PinnedBuf>) -> Box<MinimalOp> {
   let resource = Resource { rid: rid as u32 };
   Box::new(
     tokio::io::read(resource, zero_copy)
-    .map_err(ErrBox::from)
-    .and_then(move |(_resource, _buf, nread)| Ok(nread as i32)),
+      .map_err(ErrBox::from)
+      .and_then(move |(_resource, _buf, nread)| Ok(nread as i32)),
   )
 }
 
