@@ -8,7 +8,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macOS-latest]
+        os: [ubuntu-latest, windows-2016, macOS-latest]
     steps:
       # Checkout the repository
       - name: Enable symlinks (windows)
@@ -39,11 +39,7 @@ jobs:
           architecture: x64
       - name: Setup python package dir
         if: startsWith(matrix.os, 'windows')
-        run: setx PYTHONPATH "third_party\python_packages" /M
-      - name: Override VS path
-        if: startsWith(matrix.os, 'windows')
-        run: |
-          setx GYP_MSVS_OVERRIDE_PATH "C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise" /M
+        run: setx PYTHONPATH "third_party\python_packages" /m
       - name: Check versions
         run: |
           node -v
@@ -57,9 +53,9 @@ jobs:
         run: ./tools/setup.py
       - name: Run setup script (windows)
         if: startsWith(matrix.os, 'windows')
-        run: |
-          echo %GYP_MSVS_OVERRIDE_PATH%
-          "python %cd%\\tools\\setup.py"
+        env:
+          GYP_MSVS_OVERRIDE_PATH: C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise
+        run: python %cd%\tools\setup.py
 
       # Start sscache
       - name: Start sccache (linux)
@@ -78,15 +74,9 @@ jobs:
         run: ./tools/lint.py
       - name: Run lint script (windows)
         if: startsWith(matrix.os, 'windows')
-        run: "python %cd%\\tools\\lint.py"
-
-      # Building
-      - name: Run build script (unix)
-        if: startsWith(matrix.os, 'ubuntu') || startsWith(matrix.os, 'macos')
-        run: cargo build --release
-      - name: Run build script (windows)
-        if: startsWith(matrix.os, 'windows')
-        run: cargo build --release
+        env:
+          GYP_MSVS_OVERRIDE_PATH: C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise
+        run: python %cd%\tools\lint.py
 
       # Formatting test
       - name: Run test format script (unix)
@@ -94,19 +84,35 @@ jobs:
         run: ./tools/test_format.py
       - name: Run test format script (windows)
         if: startsWith(matrix.os, 'windows')
-        run: "python %cd%\\tools\\test_format.py"
+        env:
+          GYP_MSVS_OVERRIDE_PATH: C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise
+        run: python %cd%\tools\test_format.py
+
+      # Building
+      - name: Run build script (unix)
+        if: startsWith(matrix.os, 'ubuntu') || startsWith(matrix.os, 'macos')
+        env:
+          DENO_BUILD_MODE: release
+        run: cargo build --release
+      - name: Run build script (windows)
+        if: startsWith(matrix.os, 'windows')
+        env:
+          GYP_MSVS_OVERRIDE_PATH: C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise
+          DENO_BUILD_MODE: release
+        run: cargo build --release
 
       # Test
       - name: Run tests (unix)
         if: startsWith(matrix.os, 'ubuntu') || startsWith(matrix.os, 'macos')
-        run: ./tools/test.py
         env:
           DENO_BUILD_MODE: release
+        run: ./tools/test.py
       - name: Run tests (windows)
         if: startsWith(matrix.os, 'windows')
-        run: "python %cd%\\tools\\test.py"
         env:
           DENO_BUILD_MODE: release
+          GYP_MSVS_OVERRIDE_PATH: C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise
+        run: python %cd%\tools\test.py
 
       # Upload artifacts
       - name: Upload linux and macOS artifacts
