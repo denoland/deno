@@ -71,7 +71,7 @@ before_script:
 script:
 - ./tools/lint.py
 - ./tools/test_format.py
-- cargo build --release --locked --all
+- cargo build --release --locked --all-targets
 - cargo clippy --all-targets --release --locked -- -D clippy::all
 - DENO_BUILD_MODE=release ./tools/test.py
 

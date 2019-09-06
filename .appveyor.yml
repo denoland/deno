@@ -185,10 +185,8 @@ before_build:
       $env:AWS_SECRET_ACCESS_KEY = $null
 
 build_script:
-  # Build with Cargo first. Both builds produce a deno.exe in the same dir. We
-  # want the final one (which gets tested and released) to be built by Ninja.
-  - cargo build -vv --release --locked
   - cargo clippy --all-targets --release --locked -- -D clippy::all
+  - cargo build -vv --release --all-targets --locked
 
 test_script:
   - python tools\lint.py
