@@ -42,7 +42,8 @@ jobs:
         run: setx PYTHONPATH "third_party\python_packages" /M
       - name: Override VS path
         if: startsWith(matrix.os, 'windows')
-        run: setx GYP_MSVS_VERSION "2017" /M
+        run: |
+          setx GYP_MSVS_OVERRIDE_PATH "C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise" /M
       - name: Check versions
         run: |
           node -v
@@ -56,7 +57,9 @@ jobs:
         run: ./tools/setup.py
       - name: Run setup script (windows)
         if: startsWith(matrix.os, 'windows')
-        run: "python %cd%\\tools\\setup.py"
+        run: |
+          echo GYP_MSVS_OVERRIDE_PATH
+          "python %cd%\\tools\\setup.py"
 
       # Start sscache
       - name: Start sccache (linux)
