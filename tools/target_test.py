@@ -23,7 +23,7 @@ class TestTarget(DenoTestCase):
         run([bin_file], quiet=True)
 
     def test_cargo_test(self):
-        cargo_test = ["cargo", "test", "--all-targets", "--locked"]
+        cargo_test = ["cargo", "test", "--all", "--locked"]
         if "DENO_BUILD_MODE" in os.environ and \
           os.environ["DENO_BUILD_MODE"] == "release":
             run(cargo_test + ["--release"])
