@@ -110,3 +110,21 @@ jobs:
           branch: master
           repo: denoland/deno
         skip-cleanup: true
+
+    # AddressSanitizer (ASAN)
+    # https://www.chromium.org/developers/testing/addresssanitizer
+    - name: "asan/lsan linux"
+      os: linux
+      script:
+      - ./tools/lint.py
+      - ./tools/test_format.py
+      - echo is_asan=true >> target/debug/args.gn
+      - echo is_lsan=true >> target/debug/args.gn
+      # TODO(ry) sccache doesn't support "-Xclang -fdebug-compilation-dir"
+      # Which is enabled for ASAN builds if symbol_level != 0.
+      # https://cs.chromium.org/chromium/src/build/config/compiler/BUILD.gn?l=1087&rcl=573da77f569b41e23527f2952938f492678ab4bb
+      # Ideally we can remove this constraint in the future.
+      - echo symbol_level=0 >> target/debug/args.gn
+      - export ASAN_OPTIONS=detect_leaks=1
+      - cargo build
+      - ./target/debug/libdeno_test
