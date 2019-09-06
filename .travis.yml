@@ -5,7 +5,6 @@ git:
   depth: 1
 env:
   global:
-  - CARGO_TEST=1
   - RUST_VERSION=1.37.0
   - CARGO_HOME=$TRAVIS_BUILD_DIR/third_party/rust_crates/
   - RUSTUP_HOME=$HOME/.rustup/
@@ -74,7 +73,7 @@ script:
 - ./tools/test_format.py
 - cargo build --release --locked --all
 - cargo clippy --all-targets --release --locked -- -D clippy::all
-- DENO_BUILD_MODE=release CARGO_TEST=1 ./tools/test.py
+- DENO_BUILD_MODE=release ./tools/test.py
 
 jobs:
   fast_finish: true

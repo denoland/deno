@@ -9,7 +9,6 @@ clone_depth: 1
 environment:
   APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2017
   DENO_BUILD_MODE: release
-  CARGO_TEST: 1
   DENO_BUILD_PATH: $(APPVEYOR_BUILD_FOLDER)\target\release
   DENO_THIRD_PARTY_PATH: $(APPVEYOR_BUILD_FOLDER)\third_party
   RELEASE_ARTIFACT: deno_win_x64.zip
