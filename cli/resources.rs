@@ -224,7 +224,9 @@ impl Resource {
 
   pub fn shutdown(&mut self, how: Shutdown) -> Result<(), ErrBox> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
-    let repr = table.get_mut(&self.rid).ok_or(not_found(self.rid))?;
+    let repr = table
+      .get_mut(&self.rid)
+      .ok_or_else(|| not_found(self.rid))?;
 
     match repr {
       Repr::TcpStream(ref mut f) => {
@@ -250,7 +252,9 @@ impl Read for Resource {
 impl AsyncRead for Resource {
   fn poll_read(&mut self, buf: &mut [u8]) -> Poll<usize, Error> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
-    let repr = table.get_mut(&self.rid).ok_or(not_found(self.rid))?;
+    let repr = table
+      .get_mut(&self.rid)
+      .ok_or_else(|| not_found(self.rid))?;
 
     match repr {
       Repr::FsFile(ref mut f) => f.poll_read(buf),
@@ -280,7 +284,9 @@ impl Write for Resource {
 impl AsyncWrite for Resource {
   fn poll_write(&mut self, buf: &[u8]) -> Poll<usize, Error> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
-    let repr = table.get_mut(&self.rid).ok_or(not_found(self.rid))?;
+    let repr = table
+      .get_mut(&self.rid)
+      .ok_or_else(|| not_found(self.rid))?;
 
     match repr {
       Repr::FsFile(ref mut f) => f.poll_write(buf),
