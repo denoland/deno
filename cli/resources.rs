@@ -224,21 +224,19 @@ impl Resource {
 
   pub fn shutdown(&mut self, how: Shutdown) -> Result<(), ErrBox> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
-    let maybe_repr = table.get_mut(&self.rid);
-    match maybe_repr {
-      None => Err(not_found(self.rid).into()),
-      Some(repr) => match repr {
-        Repr::TcpStream(ref mut f) => {
-          TcpStream::shutdown(f, how).map_err(ErrBox::from)
-        }
-        r => Err(
-          Error::new(
-            ErrorKind::Other,
-            format!("Cannot shutdown {:?}", inspect_repr(r)),
-          )
-          .into(),
-        ),
-      },
+    let repr = table.get_mut(&self.rid).ok_or(not_found(self.rid))?;
+
+    match repr {
+      Repr::TcpStream(ref mut f) => {
+        TcpStream::shutdown(f, how).map_err(ErrBox::from)
+      }
+      r => Err(
+        Error::new(
+          ErrorKind::Other,
+          format!("Cannot shutdown {:?}", inspect_repr(r)),
+        )
+        .into(),
+      ),
     }
   }
 }
@@ -252,21 +250,19 @@ impl Read for Resource {
 impl AsyncRead for Resource {
   fn poll_read(&mut self, buf: &mut [u8]) -> Poll<usize, Error> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
-    let maybe_repr = table.get_mut(&self.rid);
-    match maybe_repr {
-      None => Err(not_found(self.rid)),
-      Some(repr) => match repr {
-        Repr::FsFile(ref mut f) => f.poll_read(buf),
-        Repr::Stdin(ref mut f) => f.poll_read(buf),
-        Repr::TcpStream(ref mut f) => f.poll_read(buf),
-        Repr::HttpBody(ref mut f) => f.poll_read(buf),
-        Repr::ChildStdout(ref mut f) => f.poll_read(buf),
-        Repr::ChildStderr(ref mut f) => f.poll_read(buf),
-        r => Err(Error::new(
-          ErrorKind::Other,
-          format!("Cannot read from {:?}", inspect_repr(r)),
-        )),
-      },
+    let repr = table.get_mut(&self.rid).ok_or(not_found(self.rid))?;
+
+    match repr {
+      Repr::FsFile(ref mut f) => f.poll_read(buf),
+      Repr::Stdin(ref mut f) => f.poll_read(buf),
+      Repr::TcpStream(ref mut f) => f.poll_read(buf),
+      Repr::HttpBody(ref mut f) => f.poll_read(buf),
+      Repr::ChildStdout(ref mut f) => f.poll_read(buf),
+      Repr::ChildStderr(ref mut f) => f.poll_read(buf),
+      r => Err(Error::new(
+        ErrorKind::Other,
+        format!("Cannot read from {:?}", inspect_repr(r)),
+      )),
     }
   }
 }
@@ -284,20 +280,18 @@ impl Write for Resource {
 impl AsyncWrite for Resource {
   fn poll_write(&mut self, buf: &[u8]) -> Poll<usize, Error> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
-    let maybe_repr = table.get_mut(&self.rid);
-    match maybe_repr {
-      None => Err(not_found(self.rid)),
-      Some(repr) => match repr {
-        Repr::FsFile(ref mut f) => f.poll_write(buf),
-        Repr::Stdout(ref mut f) => f.poll_write(buf),
-        Repr::Stderr(ref mut f) => f.poll_write(buf),
-        Repr::TcpStream(ref mut f) => f.poll_write(buf),
-        Repr::ChildStdin(ref mut f) => f.poll_write(buf),
-        r => Err(Error::new(
-          ErrorKind::Other,
-          format!("Cannot write to {:?}", inspect_repr(r)),
-        )),
-      },
+    let repr = table.get_mut(&self.rid).ok_or(not_found(self.rid))?;
+
+    match repr {
+      Repr::FsFile(ref mut f) => f.poll_write(buf),
+      Repr::Stdout(ref mut f) => f.poll_write(buf),
+      Repr::Stderr(ref mut f) => f.poll_write(buf),
+      Repr::TcpStream(ref mut f) => f.poll_write(buf),
+      Repr::ChildStdin(ref mut f) => f.poll_write(buf),
+      r => Err(Error::new(
+        ErrorKind::Other,
+        format!("Cannot write to {:?}", inspect_repr(r)),
+      )),
     }
   }
 
