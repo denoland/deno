@@ -25,7 +25,7 @@ use futures::Stream;
 use reqwest::r#async::Decoder as ReqwestDecoder;
 use std;
 use std::collections::BTreeMap;
-use std::io::{Error, Read, Seek, SeekFrom, Write};
+use std::io::{Error, ErrorKind, Read, Seek, SeekFrom, Write};
 use std::net::{Shutdown, SocketAddr};
 use std::process::ExitStatus;
 use std::sync::atomic::AtomicUsize;
@@ -99,6 +99,13 @@ enum Repr {
   ChildStdout(tokio_process::ChildStdout),
   ChildStderr(tokio_process::ChildStderr),
   Worker(WorkerChannels),
+}
+
+fn not_found(rid: ResourceId) -> Error {
+  Error::new(
+    ErrorKind::NotFound,
+    format!("Resource with rid {:?} not found", rid),
+  )
 }
 
 /// If the given rid is open, this returns the type of resource, E.G. "worker".
@@ -219,12 +226,18 @@ impl Resource {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     let maybe_repr = table.get_mut(&self.rid);
     match maybe_repr {
-      None => panic!("bad rid"),
+      None => Err(not_found(self.rid).into()),
       Some(repr) => match repr {
         Repr::TcpStream(ref mut f) => {
           TcpStream::shutdown(f, how).map_err(ErrBox::from)
         }
-        _ => panic!("Cannot shutdown"),
+        r => Err(
+          Error::new(
+            ErrorKind::Other,
+            format!("Cannot shutdown {:?}", inspect_repr(r)),
+          )
+          .into(),
+        ),
       },
     }
   }
@@ -241,7 +254,7 @@ impl AsyncRead for Resource {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     let maybe_repr = table.get_mut(&self.rid);
     match maybe_repr {
-      None => panic!("bad rid"),
+      None => Err(not_found(self.rid)),
       Some(repr) => match repr {
         Repr::FsFile(ref mut f) => f.poll_read(buf),
         Repr::Stdin(ref mut f) => f.poll_read(buf),
@@ -249,7 +262,10 @@ impl AsyncRead for Resource {
         Repr::HttpBody(ref mut f) => f.poll_read(buf),
         Repr::ChildStdout(ref mut f) => f.poll_read(buf),
         Repr::ChildStderr(ref mut f) => f.poll_read(buf),
-        _ => panic!("Cannot read"),
+        r => Err(Error::new(
+          ErrorKind::Other,
+          format!("Cannot read from {:?}", inspect_repr(r)),
+        )),
       },
     }
   }
@@ -270,14 +286,17 @@ impl AsyncWrite for Resource {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     let maybe_repr = table.get_mut(&self.rid);
     match maybe_repr {
-      None => panic!("bad rid"),
+      None => Err(not_found(self.rid)),
       Some(repr) => match repr {
         Repr::FsFile(ref mut f) => f.poll_write(buf),
         Repr::Stdout(ref mut f) => f.poll_write(buf),
         Repr::Stderr(ref mut f) => f.poll_write(buf),
         Repr::TcpStream(ref mut f) => f.poll_write(buf),
         Repr::ChildStdin(ref mut f) => f.poll_write(buf),
-        _ => panic!("Cannot write"),
+        r => Err(Error::new(
+          ErrorKind::Other,
+          format!("Cannot write to {:?}", inspect_repr(r)),
+        )),
       },
     }
   }
