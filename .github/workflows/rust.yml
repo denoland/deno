@@ -4,11 +4,31 @@ on: [push]
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
+    env:
 
     steps:
     - uses: actions/checkout@v1
+    - uses: srt32/git-actions@v0.0.3
+      with:
+        args: git submodule update --init --recursive
+    - name: Set env variables:
+      run: |
+      export RUST_VERSION=1.37.0
+      export CARGO_HOME=$TRAVIS_BUILD_DIR/third_party/rust_crates/
+      export RUSTUP_HOME=$HOME/.rustup/
+      export RUST_BACKTRACE=full
+      export PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$CARGO_HOME/bin:$PATH
+      export PYTHONPATH=third_party/python_packages
+      export RUSTC_WRAPPER=sccache
+      export SCCACHE_BUCKET=deno-sccache
+      export AWS_ACCESS_KEY_ID=AKIAIVRN52PLDBP55LBQ
+      export AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      export PATH="`pwd`/prebuilt/linux64:$PATH"
+    - name: Install clippy and fmt
+      run: rustup component add clippy && rustup component add rustfmt
+    - name: Run sccache
+      run: sccache --start-server
     - name: Lint
       run: ./tools/lint.py
     - name: Test format
