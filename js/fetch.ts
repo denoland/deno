@@ -35,7 +35,7 @@ function hasHeaderValueOf(s: string, value: string): boolean {
 }
 
 class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
-  bodyUsed = false;
+  private _bodyUsed = false;
   private _bodyPromise: null | Promise<ArrayBuffer> = null;
   private _data: ArrayBuffer | null = null;
   readonly locked: boolean = false; // TODO
@@ -223,6 +223,7 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
   }
 
   read(p: Uint8Array): Promise<number | io.EOF> {
+    this._bodyUsed = true;
     return read(this.rid, p);
   }
 
@@ -245,6 +246,10 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
   [Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array> {
     return io.toAsyncIterator(this);
   }
+
+  get bodyUsed(): boolean {
+    return this._bodyUsed;
+  }
 }
 
 export class Response implements domTypes.Response {
@@ -252,7 +257,6 @@ export class Response implements domTypes.Response {
   readonly redirected: boolean;
   headers: domTypes.Headers;
   readonly trailer: Promise<domTypes.Headers>;
-  bodyUsed = false;
   readonly body: Body;
 
   constructor(
@@ -300,6 +304,10 @@ export class Response implements domTypes.Response {
 
   get ok(): boolean {
     return 200 <= this.status && this.status < 300;
+  }
+
+  get bodyUsed(): boolean {
+    return this.body.bodyUsed;
   }
 
   clone(): domTypes.Response {

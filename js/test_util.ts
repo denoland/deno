@@ -14,6 +14,7 @@ import {
 } from "./deps/https/deno.land/std/testing/asserts.ts";
 export {
   assert,
+  assertThrows,
   assertEquals,
   assertMatch,
   assertNotEquals,
