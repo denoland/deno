@@ -153,21 +153,14 @@ git clone --recurse-submodules https://github.com/denoland/deno.git
 Now we can start the build:
 
 ```bash
-cd deno
-./tools/setup.py
-
-# You may need to ensure that sccache is running.
-# (TODO it's unclear if this is necessary or not.)
-# prebuilt/mac/sccache --start-server
-
 # Build.
-./tools/build.py
+cargo build -vv
 
 # Run.
 ./target/debug/deno tests/002_hello.ts
 
 # Test.
-./tools/test.py
+CARGO_TEST=1 ./tools/test.py
 
 # Format code.
 ./tools/format.py
@@ -205,36 +198,36 @@ Extra steps for Windows users:
 
 ```bash
 # Call ninja manually.
-./third_party/depot_tools/ninja -C target/debug
+ninja -C target/debug
 
 # Build a release binary.
-./tools/build.py --release deno
+cargo build --release
 
 # List executable targets.
-./third_party/depot_tools/gn ls target/debug //:* --as=output --type=executable
+gn ls target/debug //:* --as=output --type=executable
 
 # List build configuration.
-./third_party/depot_tools/gn args target/debug/ --list
+gn args target/debug/ --list
 
 # Edit build configuration.
-./third_party/depot_tools/gn args target/debug/
+gn args target/debug/
 
 # Describe a target.
-./third_party/depot_tools/gn desc target/debug/ :deno
-./third_party/depot_tools/gn help
+gn desc target/debug/ :deno
+gn help
 
 # Update third_party modules
 git submodule update
 
 # Skip downloading binary build tools and point the build
 # to the system provided ones (for packagers of deno ...).
-./tools/setup.py --no-binary-download
 export DENO_BUILD_ARGS="clang_base_path=/usr clang_use_chrome_plugins=false"
-DENO_GN_PATH=/usr/bin/gn DENO_NINJA_PATH=/usr/bin/ninja ./tools/build.py
+export DENO_NO_BINARY_DOWNLOAD=1
+DENO_GN_PATH=/usr/bin/gn DENO_NINJA_PATH=/usr/bin/ninja cargo build
 ```
 
 Environment variables: `DENO_BUILD_MODE`, `DENO_BUILD_PATH`, `DENO_BUILD_ARGS`,
-`DENO_DIR`, `DENO_GN_PATH`, `DENO_NINJA_PATH`.
+`DENO_DIR`, `DENO_GN_PATH`, `DENO_NINJA_PATH`, `DENO_NO_BINARY_DOWNLOAD`.
 
 ## API reference
 
@@ -980,7 +973,7 @@ To start profiling,
 ```sh
 # Make sure we're only building release.
 # Build deno and V8's d8.
-./tools/build.py --release d8 deno
+ninja -C target/release d8
 
 # Start the program we want to benchmark with --prof
 ./target/release/deno tests/http_bench.ts --allow-net --v8-flags=--prof &

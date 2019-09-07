@@ -179,20 +179,14 @@ install:
   - cargo --version
 
 before_build:
-  # Download clang and gn, generate ninja files.
-  - python tools\setup.py
-
   # Start sccache, then throw away the S3 access key.
   - ps: |-
       sccache --start-server
       $env:AWS_SECRET_ACCESS_KEY = $null
 
 build_script:
-  # Build with Cargo first. Both builds produce a deno.exe in the same dir. We
-  # want the final one (which gets tested and released) to be built by Ninja.
-  - cargo build -vv --release --locked
   - cargo clippy --all-targets --release --locked -- -D clippy::all
-  - python tools\build.py
+  - cargo build -vv --release --all-targets --locked
 
 test_script:
   - python tools\lint.py
@@ -202,24 +196,6 @@ test_script:
 after_test:
   # Stop sccache and show stats.
   - ps: sccache --stop-server
-
-  # Verify that the build is fully up-to-date. Running ninja should be a no-op.
-  # This catches erroneous file cleanup, and incorrectly set up build deps.
-  - ps: |-
-      $out = ninja -C $env:DENO_BUILD_PATH -n -d explain
-      if ($out -notcontains "ninja: no work to do.") {
-        throw "Build should be up-to-date but isn't."
-      }
-
-  # Verify that the bundled javascript and typescript files are listed
-  # explicitly in cli_snapshots\BUILD.gn. This is not an air-tight check.
-  - ps: |-
-      $ignore = "test_util.ts", "unit_tests.ts", "unit_test_runner.ts", "*_test.ts"
-      Get-ChildItem "js" -File -Force -Name                               |
-        where   { $name = $_; -not ($ignore | where { $name -like $_ }) } |
-        where   { -not (Select-String -Pattern $_ -Path cli_snapshots\BUILD.gn `
-                                      -SimpleMatch -CaseSensitive) }      |
-        foreach { throw "$_ should be listed in cli_snapshots\BUILD.gn but isn't." }
 
   # If this build is going to be deployed, build a zip file.
   - ps: |-
