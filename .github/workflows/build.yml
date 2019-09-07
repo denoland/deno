@@ -93,13 +93,17 @@ jobs:
         if: startsWith(matrix.os, 'ubuntu') || startsWith(matrix.os, 'macos')
         env:
           DENO_BUILD_MODE: release
-        run: cargo build --release
+        run: |
+          cargo clippy --all-targets --release --locked -- -D clippy::all
+          cargo build --release --locked --all-targets
       - name: Run build script (windows)
         if: startsWith(matrix.os, 'windows')
         env:
           GYP_MSVS_OVERRIDE_PATH: C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise
           DENO_BUILD_MODE: release
-        run: cargo build --release
+        run: |
+          cargo clippy --all-targets --release --locked -- -D clippy::all
+          cargo build --release --locked --all-targets
 
       # Test
       - name: Run tests (unix)
