@@ -26,7 +26,9 @@ jobs:
     - name: Install clippy and fmt
       run: rustup component add clippy && rustup component add rustfmt
     - name: Run sccache
-      run: sccache --start-server
+      run: |
+        echo $PATH
+        ./prebuilt/linux64/sccache --start-server
     - name: Lint
       run: ./tools/lint.py
     - name: Test format
