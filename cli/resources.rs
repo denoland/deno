@@ -9,7 +9,6 @@
 // handlers) look up resources by their integer id here.
 
 use crate::deno_error;
-use crate::deno_error::bad_resource;
 use crate::http_body::HttpBody;
 use crate::repl::Repl;
 use crate::state::WorkerChannels;
@@ -101,11 +100,15 @@ enum Repr {
   Worker(WorkerChannels),
 }
 
-/// Error with code 9 is EBADF "Bad file number"
-/// Unfortunately it's not available as std::io::ErrorKind
-/// so we're constructing it from raw os error code.
-fn resource_not_found() -> Error {
-  Error::from_raw_os_error(9)
+fn bad_resource(rid: ResourceId) -> Error {
+  Error::new(ErrorKind::Other, format!("Bad resource descriptor {}", rid))
+}
+
+fn bad_resource_kind(rid: ResourceId) -> Error {
+  Error::new(
+    ErrorKind::Other,
+    format!("Bad resource kind {} ({:?})", rid, get_type(rid)),
+  )
 }
 
 /// If the given rid is open, this returns the type of resource, E.G. "worker".
@@ -224,19 +227,15 @@ impl Resource {
 
   pub fn shutdown(&mut self, how: Shutdown) -> Result<(), ErrBox> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
-    let repr = table.get_mut(&self.rid).ok_or_else(resource_not_found)?;
+    let repr = table
+      .get_mut(&self.rid)
+      .ok_or_else(|| bad_resource(self.rid))?;
 
     match repr {
       Repr::TcpStream(ref mut f) => {
         TcpStream::shutdown(f, how).map_err(ErrBox::from)
       }
-      r => Err(
-        Error::new(
-          ErrorKind::Other,
-          format!("Cannot shutdown {:?}", inspect_repr(r)),
-        )
-        .into(),
-      ),
+      _ => Err(bad_resource_kind(self.rid).into()),
     }
   }
 }
@@ -250,7 +249,9 @@ impl Read for Resource {
 impl AsyncRead for Resource {
   fn poll_read(&mut self, buf: &mut [u8]) -> Poll<usize, Error> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
-    let repr = table.get_mut(&self.rid).ok_or_else(resource_not_found)?;
+    let repr = table
+      .get_mut(&self.rid)
+      .ok_or_else(|| bad_resource(self.rid))?;
 
     match repr {
       Repr::FsFile(ref mut f) => f.poll_read(buf),
@@ -259,10 +260,7 @@ impl AsyncRead for Resource {
       Repr::HttpBody(ref mut f) => f.poll_read(buf),
       Repr::ChildStdout(ref mut f) => f.poll_read(buf),
       Repr::ChildStderr(ref mut f) => f.poll_read(buf),
-      r => Err(Error::new(
-        ErrorKind::Other,
-        format!("Cannot read from {:?}", inspect_repr(r)),
-      )),
+      _ => Err(bad_resource_kind(self.rid).into()),
     }
   }
 }
@@ -280,7 +278,9 @@ impl Write for Resource {
 impl AsyncWrite for Resource {
   fn poll_write(&mut self, buf: &[u8]) -> Poll<usize, Error> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
-    let repr = table.get_mut(&self.rid).ok_or_else(resource_not_found)?;
+    let repr = table
+      .get_mut(&self.rid)
+      .ok_or_else(|| bad_resource(self.rid))?;
 
     match repr {
       Repr::FsFile(ref mut f) => f.poll_write(buf),
@@ -288,10 +288,7 @@ impl AsyncWrite for Resource {
       Repr::Stderr(ref mut f) => f.poll_write(buf),
       Repr::TcpStream(ref mut f) => f.poll_write(buf),
       Repr::ChildStdin(ref mut f) => f.poll_write(buf),
-      r => Err(Error::new(
-        ErrorKind::Other,
-        format!("Cannot write to {:?}", inspect_repr(r)),
-      )),
+      _ => Err(bad_resource_kind(self.rid)),
     }
   }
 
@@ -385,7 +382,7 @@ impl Future for WorkerReceiver {
     let maybe_repr = table.get_mut(&self.rid);
     match maybe_repr {
       Some(Repr::Worker(ref mut wc)) => wc.1.poll().map_err(ErrBox::from),
-      _ => Err(bad_resource()),
+      _ => Err(bad_resource(self.rid).into()),
     }
   }
 }
@@ -408,7 +405,7 @@ impl Stream for WorkerReceiverStream {
     let maybe_repr = table.get_mut(&self.rid);
     match maybe_repr {
       Some(Repr::Worker(ref mut wc)) => wc.1.poll().map_err(ErrBox::from),
-      _ => Err(bad_resource()),
+      _ => Err(bad_resource(self.rid).into()),
     }
   }
 }
@@ -477,7 +474,7 @@ impl Future for ChildStatus {
     let maybe_repr = table.get_mut(&self.rid);
     match maybe_repr {
       Some(Repr::Child(ref mut child)) => child.poll().map_err(ErrBox::from),
-      _ => Err(bad_resource()),
+      _ => Err(bad_resource(self.rid).into()),
     }
   }
 }
@@ -487,7 +484,7 @@ pub fn child_status(rid: ResourceId) -> Result<ChildStatus, ErrBox> {
   let maybe_repr = table.get_mut(&rid);
   match maybe_repr {
     Some(Repr::Child(ref mut _child)) => Ok(ChildStatus { rid }),
-    _ => Err(bad_resource()),
+    _ => Err(bad_resource(rid).into()),
   }
 }
 
@@ -496,7 +493,7 @@ pub fn get_repl(rid: ResourceId) -> Result<Arc<Mutex<Repl>>, ErrBox> {
   let maybe_repr = table.get_mut(&rid);
   match maybe_repr {
     Some(Repr::Repl(ref mut r)) => Ok(r.clone()),
-    _ => Err(bad_resource()),
+    _ => Err(bad_resource(rid).into()),
   }
 }
 
@@ -531,8 +528,8 @@ pub fn get_file(rid: ResourceId) -> Result<std::fs::File, ErrBox> {
 
       Ok(std_file_copy)
     }
-    None => Err(resource_not_found().into()),
-    _ => Err(bad_resource()),
+    None => Err(bad_resource(rid).into()),
+    _ => Err(bad_resource_kind(rid).into()),
   }
 }
 
@@ -541,7 +538,7 @@ pub fn lookup(rid: ResourceId) -> std::io::Result<Resource> {
   let table = RESOURCE_TABLE.lock().unwrap();
   table
     .get(&rid)
-    .ok_or_else(resource_not_found)
+    .ok_or_else(|| bad_resource(rid))
     .map(|_| Resource { rid })
 }
 
