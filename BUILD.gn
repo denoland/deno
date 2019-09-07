@@ -1,20 +1,6 @@
-import("//build_extra/rust/rust.gni")
-
 group("default") {
   testonly = true
   deps = [
-    ":hyper_hello",
-    "cli:cli_test",
-    "cli:deno",
-    "core:default",
-    "core/libdeno:libdeno_test",
-  ]
-}
-
-rust_executable("hyper_hello") {
-  source_root = "tools/hyper_hello/hyper_hello.rs"
-  extern_rlib = [
-    "hyper",
-    "ring",
+    "core/libdeno:default",
   ]
 }

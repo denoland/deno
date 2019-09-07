@@ -140,11 +140,6 @@ def generate_gn_args(mode):
             # https://github.com/mozilla/sccache/issues/264
             out += ["treat_warnings_as_errors=false"]
 
-    # Look for sccache; if found, set rustc_wrapper.
-    rustc_wrapper = cacher
-    if rustc_wrapper:
-        out += ['rustc_wrapper=%s' % gn_string(rustc_wrapper)]
-
     return out
 
 

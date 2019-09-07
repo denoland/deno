@@ -14,14 +14,17 @@ export interface BuildInfo {
   os: OperatingSystem;
 }
 
-// 'build' is injected by rollup.config.js at compile time.
 export const build: BuildInfo = {
-  // These string will be replaced by rollup
-  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-  arch: `DENO_REPLACE_ARCH` as any,
-  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-  os: `DENO_REPLACE_OS` as any
+  arch: "" as Arch,
+  os: "" as OperatingSystem
 };
+
+export function setBuildInfo(os: OperatingSystem, arch: Arch): void {
+  build.os = os;
+  build.arch = arch;
+
+  Object.freeze(build);
+}
 
 // TODO(kevinkassimo): deprecate Deno.platform
 export const platform = build;
