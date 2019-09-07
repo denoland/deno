@@ -138,7 +138,7 @@ export class Request extends body.Body implements domTypes.Request {
       headersList.push(header);
     }
 
-    let body2 = this._bodySource;
+    const body2 = this._bodySource;
 
     const cloned = new Request(this.url, {
       body: body2,

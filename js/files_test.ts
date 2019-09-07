@@ -323,7 +323,7 @@ testPerm({ read: true }, async function seekMode(): Promise<void> {
 
   // We should still be able to read the file
   // since it is still open.
-  let buf = new Uint8Array(1);
+  const buf = new Uint8Array(1);
   await file.read(buf); // "H"
   assertEquals(new TextDecoder().decode(buf), "H");
 });

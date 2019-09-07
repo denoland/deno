@@ -24,8 +24,8 @@ test(function atobWithAsciiWhitespace(): void {
                 d29ybGQ=`
   ];
 
-  for (let encoded of encodedList) {
-    let decoded = atob(encoded);
+  for (const encoded of encodedList) {
+    const decoded = atob(encoded);
     assertEquals(decoded, "hello world");
   }
 });

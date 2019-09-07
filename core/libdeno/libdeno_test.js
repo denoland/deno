@@ -3,6 +3,7 @@
 // A simple runtime that doesn't involve typescript or protobufs to test
 // libdeno. Invoked by libdeno_test.cc
 
+// eslint-disable-next-line @typescript-eslint/no-this-alias
 const global = this;
 
 function assert(cond) {
