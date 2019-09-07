@@ -498,7 +498,7 @@ impl IntegrationTest {
     let expected =
       std::fs::read_to_string(output_path).expect("cannot read output");
 
-    if !pattern_match(&expected, &actual) {
+    if !wildcard_match(&expected, &actual) {
       println!("OUTPUT\n{}\nOUTPUT", actual);
       println!("EXPECTED\n{}\nEXPECTED", expected);
       assert!(false, "pattern match failed");
@@ -506,8 +506,11 @@ impl IntegrationTest {
   }
 }
 
-fn pattern_match(pattern: &str, s: &str) -> bool {
-  let wildcard = "[WILDCARD]";
+fn wildcard_match(pattern: &str, s: &str) -> bool {
+  pattern_match(pattern, s, "[WILDCARD]")
+}
+
+fn pattern_match(pattern: &str, s: &str, wildcard: &str) -> bool {
   if pattern == wildcard {
     return true;
   }
@@ -548,7 +551,7 @@ fn pattern_match(pattern: &str, s: &str) -> bool {
 }
 
 #[test]
-fn test_pattern_match() {
+fn test_wildcard_match() {
   let fixtures = vec![
     ("foobarbaz", "foobarbaz", true),
     ("[WILDCARD]", "foobarbaz", true),
@@ -562,7 +565,7 @@ fn test_pattern_match() {
 
   // Iterate through the fixture lists, testing each one
   for (pattern, string, expected) in fixtures {
-    let actual = pattern_match(pattern, string);
+    let actual = wildcard_match(pattern, string);
     dbg!(pattern, string, expected);
     assert_eq!(actual, expected);
   }
@@ -570,4 +573,10 @@ fn test_pattern_match() {
   // TODO different wild cards?
   // assert!(pattern_match("foo[BAR]baz", "foobarbaz", "[BAR]"));
   // assert!(!pattern_match("foo[BAR]baz", "foobazbar", "[BAR]"));
+}
+
+#[test]
+fn test_pattern_match() {
+  assert!(pattern_match("foo[BAR]baz", "foobarbaz", "[BAR]"));
+  assert!(!pattern_match("foo[BAR]baz", "foobazbar", "[BAR]"));
 }
