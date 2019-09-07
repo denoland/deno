@@ -103,7 +103,7 @@ pub fn op_close(
 ) -> Result<JsonOp, ErrBox> {
   let args: CloseArgs = serde_json::from_value(args)?;
 
-  let resource = resources::lookup_err(args.rid as u32)?;
+  let resource = resources::lookup(args.rid as u32)?;
   resource.close();
   Ok(JsonOp::Sync(json!({})))
 }
@@ -124,7 +124,7 @@ pub fn op_seek(
 ) -> Result<JsonOp, ErrBox> {
   let args: SeekArgs = serde_json::from_value(args)?;
 
-  let resource = resources::lookup_err(args.rid as u32)?;
+  let resource = resources::lookup(args.rid as u32)?;
   let op = resources::seek(resource, args.offset, args.whence as u32)
     .and_then(move |_| futures::future::ok(json!({})));
   if args.promise_id.is_none() {

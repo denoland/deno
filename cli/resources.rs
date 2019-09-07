@@ -536,14 +536,7 @@ pub fn get_file(rid: ResourceId) -> Result<std::fs::File, ErrBox> {
   }
 }
 
-pub fn lookup(rid: ResourceId) -> Option<Resource> {
-  debug!("resource lookup {}", rid);
-  let table = RESOURCE_TABLE.lock().unwrap();
-  table.get(&rid).map(|_| Resource { rid })
-}
-
-// TODO: merge with `lookup`
-pub fn lookup_err(rid: ResourceId) -> std::io::Result<Resource> {
+pub fn lookup(rid: ResourceId) -> std::io::Result<Resource> {
   debug!("resource lookup {}", rid);
   let table = RESOURCE_TABLE.lock().unwrap();
   table
