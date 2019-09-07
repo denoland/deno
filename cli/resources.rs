@@ -542,6 +542,16 @@ pub fn lookup(rid: ResourceId) -> Option<Resource> {
   table.get(&rid).map(|_| Resource { rid })
 }
 
+// TODO: merge with `lookup`
+pub fn lookup_err(rid: ResourceId) -> std::io::Result<Resource> {
+  debug!("resource lookup {}", rid);
+  let table = RESOURCE_TABLE.lock().unwrap();
+  table
+    .get(&rid)
+    .ok_or_else(resource_not_found)
+    .map(|_| Resource { rid })
+}
+
 pub fn seek(
   resource: Resource,
   offset: i32,
