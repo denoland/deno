@@ -481,7 +481,7 @@ export class TextEncoder {
         break;
       }
       if (Array.isArray(result)) {
-        output.push.apply(output, result);
+        output.push(...result);
       } else {
         output.push(result);
       }

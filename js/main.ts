@@ -13,7 +13,7 @@ import { setLocation } from "./location.ts";
 import { setBuildInfo } from "./build.ts";
 import { setSignals } from "./process.ts";
 
-function denoMain(preserveDenoNamespace: boolean = true, name?: string): void {
+function denoMain(preserveDenoNamespace = true, name?: string): void {
   const s = os.start(preserveDenoNamespace, name);
 
   setBuildInfo(s.os, s.arch);

@@ -16,8 +16,8 @@ const bytes = new Uint8Array([
 ]);
 
 async function main() {
-  let wasm = await WebAssembly.instantiate(bytes);
-  let result = wasm.instance.exports.add(1, 3);
+  const wasm = await WebAssembly.instantiate(bytes);
+  const result = wasm.instance.exports.add(1, 3);
   console.log("1 + 3 =", result);
   if (result != 4) {
     throw Error("bad");

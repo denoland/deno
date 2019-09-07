@@ -7,7 +7,7 @@ import { build } from "./build.ts";
 export const bytesSymbol = Symbol("bytes");
 
 function convertLineEndingsToNative(s: string): string {
-  let nativeLineEnd = build.os == "win" ? "\r\n" : "\n";
+  const nativeLineEnd = build.os == "win" ? "\r\n" : "\n";
 
   let position = 0;
 
@@ -19,7 +19,7 @@ function convertLineEndingsToNative(s: string): string {
   let result = token;
 
   while (position < s.length) {
-    let c = s.charAt(position);
+    const c = s.charAt(position);
     if (c == "\r") {
       result += nativeLineEnd;
       position++;

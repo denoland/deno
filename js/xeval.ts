@@ -48,7 +48,7 @@ async function* chunks(
   let inspectIndex = 0;
   let matchIndex = 0;
   while (true) {
-    let result = await reader.read(inspectArr);
+    const result = await reader.read(inspectArr);
     if (result === EOF) {
       // Yield last chunk.
       const lastChunk = inputBuffer.toString();
@@ -59,7 +59,7 @@ async function* chunks(
       // Discard all remaining and silently fail.
       return;
     }
-    let sliceRead = inspectArr.subarray(0, result as number);
+    const sliceRead = inspectArr.subarray(0, result as number);
     await writeAll(inputBuffer, sliceRead);
 
     let sliceToProcess = inputBuffer.bytes();

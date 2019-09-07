@@ -6,7 +6,7 @@
 // TODO(kt3k): EOF should be `unique symbol` type.
 // That might require some changes of ts_library_builder.
 // See #2591 for more details.
-export const EOF: null = null;
+export const EOF = null;
 export type EOF = null;
 
 // Seek whence values.

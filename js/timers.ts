@@ -48,7 +48,7 @@ async function setGlobalTimeout(due: number, now: number): Promise<void> {
   // Since JS and Rust don't use the same clock, pass the time to rust as a
   // relative time value. On the Rust side we'll turn that into an absolute
   // value again.
-  let timeout = due - now;
+  const timeout = due - now;
   assert(timeout >= 0);
 
   // Send message to the backend.
@@ -229,7 +229,7 @@ function setTimer(
 /** Sets a timer which executes a function once after the timer expires. */
 export function setTimeout(
   cb: (...args: Args) => void,
-  delay: number = 0,
+  delay = 0,
   ...args: Args
 ): number {
   checkBigInt(delay);
@@ -241,7 +241,7 @@ export function setTimeout(
 /** Repeatedly calls a function , with a fixed time delay between each call. */
 export function setInterval(
   cb: (...args: Args) => void,
-  delay: number = 0,
+  delay = 0,
   ...args: Args
 ): number {
   checkBigInt(delay);
@@ -263,7 +263,7 @@ function clearTimer(id: number): void {
   idMap.delete(timer.id);
 }
 
-export function clearTimeout(id: number = 0): void {
+export function clearTimeout(id = 0): void {
   checkBigInt(id);
   if (id === 0) {
     return;
@@ -271,7 +271,7 @@ export function clearTimeout(id: number = 0): void {
   clearTimer(id);
 }
 
-export function clearInterval(id: number = 0): void {
+export function clearInterval(id = 0): void {
   checkBigInt(id);
   if (id === 0) {
     return;

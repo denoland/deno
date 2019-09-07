@@ -490,7 +490,7 @@ const isConsoleInstance = Symbol("isConsoleInstance");
 
 export class Console {
   indentLevel: number;
-  [isConsoleInstance]: boolean = false;
+  [isConsoleInstance] = false;
 
   /** @internal */
   constructor(private printFunc: PrintFunc) {
@@ -501,7 +501,7 @@ export class Console {
     // For historical web-compatibility reasons, the namespace object for
     // console must have as its [[Prototype]] an empty object, created as if
     // by ObjectCreate(%ObjectPrototype%), instead of %ObjectPrototype%.
-    let console = Object.create({}) as Console;
+    const console = Object.create({}) as Console;
     Object.assign(console, this);
     return console;
   }

@@ -11,7 +11,7 @@ interface Code {
   regexp: RegExp;
 }
 
-let enabled = !noColor;
+const enabled = !noColor;
 
 function code(open: number, close: number): Code {
   return {

@@ -61,7 +61,7 @@ interface ConfigureResponse {
 
 /** Options that either do nothing in Deno, or would cause undesired behavior
  * if modified. */
-const ignoredCompilerOptions: ReadonlyArray<string> = [
+const ignoredCompilerOptions: readonly string[] = [
   "allowSyntheticDefaultImports",
   "baseUrl",
   "build",
@@ -415,7 +415,7 @@ class Host implements ts.CompilerHost {
     data: string,
     writeByteOrderMark: boolean,
     onError?: (message: string) => void,
-    sourceFiles?: ReadonlyArray<ts.SourceFile>
+    sourceFiles?: readonly ts.SourceFile[]
   ): void {
     util.log("writeFile", fileName);
     try {

@@ -115,7 +115,7 @@ export function writeSync(rid: number, p: Uint8Array): number {
  *
  */
 export async function write(rid: number, p: Uint8Array): Promise<number> {
-  let result = await sendAsyncMinimal(dispatch.OP_WRITE, rid, p);
+  const result = await sendAsyncMinimal(dispatch.OP_WRITE, rid, p);
   if (result < 0) {
     throw new Error("write error");
   } else {
