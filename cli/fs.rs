@@ -167,19 +167,19 @@ mod tests {
   #[test]
   fn resolve_from_cwd_child() {
     let cwd = std::env::current_dir().unwrap();
-    assert!(resolve_from_cwd("a").unwrap().0 == cwd.join("a"));
+    assert_eq!(resolve_from_cwd("a").unwrap().0, cwd.join("a"));
   }
 
   #[test]
   fn resolve_from_cwd_dot() {
     let cwd = std::env::current_dir().unwrap();
-    assert!(resolve_from_cwd(".").unwrap().0 == cwd);
+    assert_eq!(resolve_from_cwd(".").unwrap().0, cwd);
   }
 
   #[test]
   fn resolve_from_cwd_parent() {
     let cwd = std::env::current_dir().unwrap();
-    assert!(resolve_from_cwd("a/..").unwrap().0 == cwd);
+    assert_eq!(resolve_from_cwd("a/..").unwrap().0, cwd);
   }
 
   #[test]
@@ -189,6 +189,6 @@ mod tests {
     } else {
       Path::new("/a")
     };
-    assert!(resolve_from_cwd("/a").unwrap().0 == expected);
+    assert_eq!(resolve_from_cwd("/a").unwrap().0, expected);
   }
 }
