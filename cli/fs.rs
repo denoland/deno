@@ -139,18 +139,21 @@ pub fn resolve_from_cwd(path: &str) -> Result<(PathBuf, String), ErrBox> {
     cwd.join(path)
   };
 
-  // HACK: `Url::from_directory_path` is used here because it normalizes the path.
+  // HACK: `Url::parse` is used here because it normalizes the path.
   // Joining `/dev/deno/" with "./tests" using `PathBuf` yields `/deno/dev/./tests/`.
   // On the other hand joining `/dev/deno/" with "./tests" using `Url` yields "/dev/deno/tests"
   // - and that's what we want.
   // There exists similar method on `PathBuf` - `PathBuf.canonicalize`, but the problem
   // is `canonicalize` resolves symlinks and we don't want that.
-  // We just want o normalize the path...
-  let resolved_url = Url::from_file_path(resolved_path)
-    .expect("PathBuf should be parseable URL");
-  let normalized_path = resolved_url
+  // We just want to normalize the path...
+  // This only works on absolute paths - not worth extracting as a public utility.
+  let resolved_url =
+    Url::from_file_path(resolved_path).expect("Path should be absolute");
+  let normalized_url = Url::parse(resolved_url.as_str())
+    .expect("String from a URL should parse to a URL");
+  let normalized_path = normalized_url
     .to_file_path()
-    .expect("URL from PathBuf should be valid path");
+    .expect("URL from a path should contain a valid path");
 
   let path_string = normalized_path.to_str().unwrap().to_string();
 
