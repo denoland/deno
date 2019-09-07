@@ -1,5 +1,11 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { test, testPerm, assert, assertEquals } from "./test_util.ts";
+import {
+  test,
+  testPerm,
+  assert,
+  assertEquals,
+  assertThrows
+} from "./test_util.ts";
 
 testPerm({ net: true }, async function fetchJsonSuccess(): Promise<void> {
   const response = await fetch("http://localhost:4545/package.json");
@@ -36,6 +42,19 @@ testPerm({ net: true }, async function fetchBlob(): Promise<void> {
   const blob = await response.blob();
   assertEquals(blob.type, headers.get("Content-Type"));
   assertEquals(blob.size, Number(headers.get("Content-Length")));
+});
+
+testPerm({ net: true }, async function fetchBodyUsed(): Promise<void> {
+  const response = await fetch("http://localhost:4545/package.json");
+  assertEquals(response.bodyUsed, false);
+  assertThrows(
+    (): void => {
+      // Assigning to read-only property throws in the strict mode.
+      response.bodyUsed = true;
+    }
+  );
+  await response.blob();
+  assertEquals(response.bodyUsed, true);
 });
 
 testPerm({ net: true }, async function fetchAsyncIterator(): Promise<void> {
