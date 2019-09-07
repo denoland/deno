@@ -175,7 +175,7 @@ impl Resource {
       )),
       Some(repr) => match repr {
         Repr::TcpListener(ref mut s, _) => s.poll_accept(),
-        _ => panic!("Cannot accept"),
+        _ => Err(bad_resource_kind(self.rid)),
       },
     }
   }
@@ -260,7 +260,7 @@ impl AsyncRead for Resource {
       Repr::HttpBody(ref mut f) => f.poll_read(buf),
       Repr::ChildStdout(ref mut f) => f.poll_read(buf),
       Repr::ChildStderr(ref mut f) => f.poll_read(buf),
-      _ => Err(bad_resource_kind(self.rid).into()),
+      _ => Err(bad_resource_kind(self.rid)),
     }
   }
 }
@@ -305,10 +305,9 @@ fn new_rid() -> ResourceId {
 pub fn add_fs_file(fs_file: tokio::fs::File) -> Resource {
   let rid = new_rid();
   let mut tg = RESOURCE_TABLE.lock().unwrap();
-  match tg.insert(rid, Repr::FsFile(fs_file)) {
-    Some(_) => panic!("There is already a file with that rid"),
-    None => Resource { rid },
-  }
+  let r = tg.insert(rid, Repr::FsFile(fs_file));
+  assert!(r.is_none());
+  Resource { rid }
 }
 
 pub fn add_tcp_listener(listener: tokio::net::TcpListener) -> Resource {
@@ -364,6 +363,7 @@ pub fn post_message_to_worker(
       // unwrap here is incorrect, but doing it anyway
       wc.0.clone().send(buf)
     }
+    // TODO: replace this panic with `bad_resource_kind`
     _ => panic!("bad resource"), // futures::future::err(bad_resource()).into(),
   }
 }
