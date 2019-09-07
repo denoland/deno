@@ -44,10 +44,10 @@ testPerm({ run: true }, async function runSuccess(): Promise<void> {
 testPerm({ run: true }, async function runCommandFailedWithCode(): Promise<
   void
 > {
-  let p = run({
+  const p = run({
     args: ["python", "-c", "import sys;sys.exit(41 + 1)"]
   });
-  let status = await p.status();
+  const status = await p.status();
   assertEquals(status.success, false);
   assertEquals(status.code, 42);
   assertEquals(status.signal, undefined);
@@ -133,8 +133,8 @@ testPerm({ run: true }, async function runStdinPiped(): Promise<void> {
   assert(!p.stdout);
   assert(!p.stderr);
 
-  let msg = new TextEncoder().encode("hello");
-  let n = await p.stdin.write(msg);
+  const msg = new TextEncoder().encode("hello");
+  const n = await p.stdin.write(msg);
   assertEquals(n, msg.byteLength);
 
   p.stdin.close();
@@ -307,7 +307,7 @@ testPerm({ run: true }, async function runClose(): Promise<void> {
   p.close();
 
   const data = new Uint8Array(10);
-  let r = await p.stderr.read(data);
+  const r = await p.stderr.read(data);
   assertEquals(r, Deno.EOF);
 });
 

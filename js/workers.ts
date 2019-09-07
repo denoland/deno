@@ -55,7 +55,7 @@ async function hostGetMessage(rid: number): Promise<any> {
 }
 
 // Stuff for workers
-export let onmessage: (e: { data: any }) => void = (): void => {};
+export const onmessage: (e: { data: any }) => void = (): void => {};
 
 export function postMessage(data: any): void {
   const dataIntArray = encodeMessage(data);
@@ -122,7 +122,7 @@ export interface DenoWorkerOptions extends WorkerOptions {
 
 export class WorkerImpl implements Worker {
   private readonly rid: number;
-  private isClosing: boolean = false;
+  private isClosing = false;
   private readonly isClosedPromise: Promise<void>;
   public onerror?: () => void;
   public onmessage?: (data: any) => void;

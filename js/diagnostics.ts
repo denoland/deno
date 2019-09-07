@@ -204,7 +204,7 @@ function parseRelatedInformation(
 export function fromTypeScriptDiagnostic(
   diagnostics: readonly ts.Diagnostic[]
 ): Diagnostic {
-  let items: DiagnosticItem[] = [];
+  const items: DiagnosticItem[] = [];
   for (const sourceDiagnostic of diagnostics) {
     const item: DiagnosticItem = parseDiagnostic(sourceDiagnostic);
     if (sourceDiagnostic.relatedInformation) {

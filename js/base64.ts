@@ -5,7 +5,7 @@ const lookup: string[] = [];
 const revLookup: number[] = [];
 
 const code = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-for (var i = 0, len = code.length; i < len; ++i) {
+for (let i = 0, len = code.length; i < len; ++i) {
   lookup[i] = code[i];
   revLookup[code.charCodeAt(i)] = i;
 }
@@ -16,7 +16,7 @@ revLookup["-".charCodeAt(0)] = 62;
 revLookup["_".charCodeAt(0)] = 63;
 
 function getLens(b64: string): [number, number] {
-  var len = b64.length;
+  const len = b64.length;
 
   if (len % 4 > 0) {
     throw new Error("Invalid string. Length must be a multiple of 4");
@@ -24,19 +24,19 @@ function getLens(b64: string): [number, number] {
 
   // Trim off extra bytes after placeholder bytes are found
   // See: https://github.com/beatgammit/base64-js/issues/42
-  var validLen = b64.indexOf("=");
+  let validLen = b64.indexOf("=");
   if (validLen === -1) validLen = len;
 
-  var placeHoldersLen = validLen === len ? 0 : 4 - (validLen % 4);
+  const placeHoldersLen = validLen === len ? 0 : 4 - (validLen % 4);
 
   return [validLen, placeHoldersLen];
 }
 
 // base64 is 4/3 + up to two characters of the original data
 export function byteLength(b64: string): number {
-  var lens = getLens(b64);
-  var validLen = lens[0];
-  var placeHoldersLen = lens[1];
+  const lens = getLens(b64);
+  const validLen = lens[0];
+  const placeHoldersLen = lens[1];
   return ((validLen + placeHoldersLen) * 3) / 4 - placeHoldersLen;
 }
 
@@ -49,19 +49,20 @@ function _byteLength(
 }
 
 export function toByteArray(b64: string): Uint8Array {
-  var tmp;
-  var lens = getLens(b64);
-  var validLen = lens[0];
-  var placeHoldersLen = lens[1];
+  let tmp;
+  const lens = getLens(b64);
+  const validLen = lens[0];
+  const placeHoldersLen = lens[1];
 
-  var arr = new Uint8Array(_byteLength(b64, validLen, placeHoldersLen));
+  const arr = new Uint8Array(_byteLength(b64, validLen, placeHoldersLen));
 
-  var curByte = 0;
+  let curByte = 0;
 
   // if there are placeholders, only get up to the last complete 4 chars
-  var len = placeHoldersLen > 0 ? validLen - 4 : validLen;
+  const len = placeHoldersLen > 0 ? validLen - 4 : validLen;
 
-  for (var i = 0; i < len; i += 4) {
+  let i;
+  for (i = 0; i < len; i += 4) {
     tmp =
       (revLookup[b64.charCodeAt(i)] << 18) |
       (revLookup[b64.charCodeAt(i + 1)] << 12) |
@@ -101,9 +102,9 @@ function tripletToBase64(num: number): string {
 }
 
 function encodeChunk(uint8: Uint8Array, start: number, end: number): string {
-  var tmp;
-  var output = [];
-  for (var i = start; i < end; i += 3) {
+  let tmp;
+  const output = [];
+  for (let i = start; i < end; i += 3) {
     tmp =
       ((uint8[i] << 16) & 0xff0000) +
       ((uint8[i + 1] << 8) & 0xff00) +
@@ -114,14 +115,14 @@ function encodeChunk(uint8: Uint8Array, start: number, end: number): string {
 }
 
 export function fromByteArray(uint8: Uint8Array): string {
-  var tmp;
-  var len = uint8.length;
-  var extraBytes = len % 3; // if we have 1 byte left, pad 2 bytes
-  var parts = [];
-  var maxChunkLength = 16383; // must be multiple of 3
+  let tmp;
+  const len = uint8.length;
+  const extraBytes = len % 3; // if we have 1 byte left, pad 2 bytes
+  const parts = [];
+  const maxChunkLength = 16383; // must be multiple of 3
 
   // go through the array every three bytes, we'll deal with trailing stuff later
-  for (var i = 0, len2 = len - extraBytes; i < len2; i += maxChunkLength) {
+  for (let i = 0, len2 = len - extraBytes; i < len2; i += maxChunkLength) {
     parts.push(
       encodeChunk(
         uint8,

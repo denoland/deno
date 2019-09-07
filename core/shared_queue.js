@@ -48,7 +48,7 @@ SharedQueue Binary Layout
   }
 
   function init() {
-    let shared = Deno.core.shared;
+    const shared = Deno.core.shared;
     assert(shared.byteLength > 0);
     assert(sharedBytes == null);
     assert(shared32 == null);
@@ -113,9 +113,9 @@ SharedQueue Binary Layout
   }
 
   function push(opId, buf) {
-    let off = head();
-    let end = off + buf.byteLength;
-    let index = numRecords();
+    const off = head();
+    const end = off + buf.byteLength;
+    const index = numRecords();
     if (end > shared32.byteLength || index >= MAX_RECORDS) {
       // console.log("shared_queue.js push fail");
       return false;
@@ -130,7 +130,7 @@ SharedQueue Binary Layout
 
   /// Returns null if empty.
   function shift() {
-    let i = shared32[INDEX_NUM_SHIFTED_OFF];
+    const i = shared32[INDEX_NUM_SHIFTED_OFF];
     if (size() == 0) {
       assert(i == 0);
       return null;
@@ -164,7 +164,7 @@ SharedQueue Binary Layout
       asyncHandler(opId, buf);
     } else {
       while (true) {
-        let opIdBuf = shift();
+        const opIdBuf = shift();
         if (opIdBuf == null) {
           break;
         }

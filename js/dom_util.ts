@@ -50,7 +50,7 @@ export function isShadowInclusiveAncestor(
 export function getRoot(
   node: domTypes.EventTarget | null
 ): domTypes.EventTarget | null {
-  let root = node;
+  const root = node;
 
   // for (const ancestor of domSymbolTree.ancestorsIterator(node)) {
   //   root = ancestor;

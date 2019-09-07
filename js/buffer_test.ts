@@ -45,7 +45,7 @@ async function fillBytes(
 ): Promise<string> {
   check(buf, s);
   for (; n > 0; n--) {
-    let m = await buf.write(fub);
+    const m = await buf.write(fub);
     assertEquals(m, fub.byteLength);
     const decoder = new TextDecoder();
     s += decoder.decode(fub);
@@ -84,7 +84,7 @@ test(function bufferNewBuffer(): void {
 
 test(async function bufferBasicOperations(): Promise<void> {
   init();
-  let buf = new Buffer();
+  const buf = new Buffer();
   for (let i = 0; i < 5; i++) {
     check(buf, "");
 
@@ -123,9 +123,9 @@ test(async function bufferBasicOperations(): Promise<void> {
 test(async function bufferReadEmptyAtEOF(): Promise<void> {
   // check that EOF of 'buf' is not reached (even though it's empty) if
   // results are written to buffer that has 0 length (ie. it can't store any data)
-  let buf = new Buffer();
+  const buf = new Buffer();
   const zeroLengthTmp = new Uint8Array(0);
-  let result = await buf.read(zeroLengthTmp);
+  const result = await buf.read(zeroLengthTmp);
   assertEquals(result, 0);
 });
 
@@ -211,9 +211,9 @@ test(async function bufferReadFromSync(): Promise<void> {
 
 test(async function bufferTestGrow(): Promise<void> {
   const tmp = new Uint8Array(72);
-  for (let startLen of [0, 100, 1000, 10000, 100000]) {
+  for (const startLen of [0, 100, 1000, 10000, 100000]) {
     const xBytes = repeat("x", startLen);
-    for (let growLen of [0, 100, 1000, 10000, 100000]) {
+    for (const growLen of [0, 100, 1000, 10000, 100000]) {
       const buf = new Buffer(xBytes.buffer as ArrayBuffer);
       // If we read, this affects buf.off, which is good to test.
       const result = await buf.read(tmp);

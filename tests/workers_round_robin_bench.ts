@@ -38,7 +38,7 @@ function handleAsyncMsgFromWorker(
 
 async function main(): Promise<void> {
   const workers: Array<[Map<number, Resolvable<string>>, Worker]> = [];
-  for (var i = 1; i <= workerCount; ++i) {
+  for (let i = 1; i <= workerCount; ++i) {
     const worker = new Worker("./subdir/bench_worker.ts");
     const promise = new Promise(
       (resolve): void => {
