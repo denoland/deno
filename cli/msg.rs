@@ -25,6 +25,8 @@ pub enum ErrorKind {
   WriteZero = 16,
   Other = 17,
   UnexpectedEof = 18,
+  // TODO: currently this ErrorKind is unused, but we want
+  // to use it (see `bad_resource` in cli/resources.rs)
   BadResource = 19,
   CommandFailed = 20,
   EmptyHost = 21,

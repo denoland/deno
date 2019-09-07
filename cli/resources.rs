@@ -100,10 +100,17 @@ enum Repr {
   Worker(WorkerChannels),
 }
 
+// TODO: originally this function was in `cli/deno_error.rs` and was using
+// `msg.rs::ErrorKind::BadResource` but unfortunately `AsyncRead` and `AsyncWrite` traits
+// require `std::io::Error` type which makes it impossible to reconcile without
+// writing custom infrastructure for read/write operations.
 fn bad_resource(rid: ResourceId) -> Error {
   Error::new(ErrorKind::Other, format!("Bad resource descriptor {}", rid))
 }
 
+// TODO: this error might indicate bad design - it is returned in case of trying to perform
+// certain operation on a resource that it makes no sense - eg. trying to "shutdown"
+// tokio::fs::File or "read" from Repl
 fn bad_resource_kind(rid: ResourceId) -> Error {
   Error::new(
     ErrorKind::Other,
