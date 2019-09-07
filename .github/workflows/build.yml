@@ -110,7 +110,7 @@ jobs:
         if: startsWith(matrix.os, 'ubuntu') || startsWith(matrix.os, 'macos')
         env:
           DENO_BUILD_MODE: release
-        run: 0<&- script -qefc "./tools/test.py" /dev/null | cat
+        run: ./tools/test.py
       - name: Run tests (windows)
         if: startsWith(matrix.os, 'windows')
         env:
