@@ -101,11 +101,11 @@ enum Repr {
   Worker(WorkerChannels),
 }
 
-fn not_found(rid: ResourceId) -> Error {
-  Error::new(
-    ErrorKind::NotFound,
-    format!("Resource with rid {:?} not found", rid),
-  )
+/// Error with code 9 is EBADF "Bad file number"
+/// Unfortunately it's not available as std::io::ErrorKind
+/// so we're constructing it from raw os error code.
+fn resource_not_found() -> Error {
+  Error::from_raw_os_error(9)
 }
 
 /// If the given rid is open, this returns the type of resource, E.G. "worker".
@@ -224,9 +224,7 @@ impl Resource {
 
   pub fn shutdown(&mut self, how: Shutdown) -> Result<(), ErrBox> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
-    let repr = table
-      .get_mut(&self.rid)
-      .ok_or_else(|| not_found(self.rid))?;
+    let repr = table.get_mut(&self.rid).ok_or_else(resource_not_found)?;
 
     match repr {
       Repr::TcpStream(ref mut f) => {
@@ -252,9 +250,7 @@ impl Read for Resource {
 impl AsyncRead for Resource {
   fn poll_read(&mut self, buf: &mut [u8]) -> Poll<usize, Error> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
-    let repr = table
-      .get_mut(&self.rid)
-      .ok_or_else(|| not_found(self.rid))?;
+    let repr = table.get_mut(&self.rid).ok_or_else(resource_not_found)?;
 
     match repr {
       Repr::FsFile(ref mut f) => f.poll_read(buf),
@@ -284,9 +280,7 @@ impl Write for Resource {
 impl AsyncWrite for Resource {
   fn poll_write(&mut self, buf: &[u8]) -> Poll<usize, Error> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
-    let repr = table
-      .get_mut(&self.rid)
-      .ok_or_else(|| not_found(self.rid))?;
+    let repr = table.get_mut(&self.rid).ok_or_else(resource_not_found)?;
 
     match repr {
       Repr::FsFile(ref mut f) => f.poll_write(buf),
@@ -537,6 +531,7 @@ pub fn get_file(rid: ResourceId) -> Result<std::fs::File, ErrBox> {
 
       Ok(std_file_copy)
     }
+    None => Err(resource_not_found().into()),
     _ => Err(bad_resource()),
   }
 }
