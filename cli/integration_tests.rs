@@ -1,8 +1,10 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 // TODO(ry) support stdin input!
 use crate::ansi::strip_ansi_codes;
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
+use std::process::Stdio;
 
 macro_rules! itest(
   ($name:ident {$( $key:ident: $value:expr,)*})  => {
@@ -151,25 +153,23 @@ itest!(_029_eval {
   output: "tests/029_eval.out",
 });
 
-/*
 itest!(_030_xeval {
   args: "xeval console.log($.toUpperCase())",
-input: a\nb\n\nc
+  input: Some("a\nb\n\nc"),
   output: "tests/030_xeval.out",
 });
 
 itest!(_031_xeval_replvar {
   args: "xeval -I val console.log(val.toUpperCase());",
-input: a\nb\n\nc
+  input: Some("a\nb\n\nc"),
   output: "tests/031_xeval_replvar.out",
 });
 
 itest!(_032_xeval_delim {
   args: "xeval -d DELIM console.log($.toUpperCase());",
-input: aDELIMbDELIMDELIMc
+  input: Some("aDELIMbDELIMDELIMc"),
   output: "tests/032_xeval_delim.out",
 });
-*/
 
 itest!(_033_import_map {
   args:
@@ -470,22 +470,37 @@ itest!(wasm_async {
 struct IntegrationTest {
   args: &'static str,
   output: &'static str,
+  input: Option<&'static str>,
   exit_code: i32,
   check_stderr: bool,
 }
 
 impl IntegrationTest {
   pub fn run(&self) {
-    let args = self.args.split_whitespace();;
+    let args = self.args.split_whitespace();
     let root = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/.."));
 
     debug!("root path {}", root.display());
-    let output = Command::new(root.join("target/debug/deno"))
+    let mut process = Command::new(root.join("target/debug/deno"))
       .args(args)
+      .stdin(Stdio::piped())
+      .stdout(Stdio::piped())
+      .stderr(Stdio::piped())
       .current_dir(root.join("tests"))
-      .output()
+      .spawn()
       .expect("failed to execute process");
-    assert_eq!(self.exit_code, output.status.code().unwrap());
+
+    if let Some(input) = self.input {
+      let mut p_stdin = process.stdin.take().unwrap();
+      write!(p_stdin, "{}", input).unwrap();
+    }
+
+    let output = process
+      .wait_with_output()
+      .expect("failed to read output of process");
+    let exit_code = output.status.code().unwrap();
+    eprintln!("exit code {:?} {:?}", exit_code, self.exit_code);
+    assert_eq!(self.exit_code, exit_code);
 
     let mut actual = String::from(std::str::from_utf8(&output.stdout).unwrap());
     if self.check_stderr {
