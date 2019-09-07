@@ -160,7 +160,7 @@ cargo build -vv
 ./target/debug/deno tests/002_hello.ts
 
 # Test.
-CARGO_TEST=1 ./tools/test.py
+./tools/test.py
 
 # Format code.
 ./tools/format.py
