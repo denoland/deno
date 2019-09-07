@@ -105,19 +105,6 @@ jobs:
           cargo clippy --all-targets --release --locked -- -D clippy::all
           cargo build --release --locked --all-targets
 
-      # Test
-      - name: Run tests (unix)
-        if: startsWith(matrix.os, 'ubuntu') || startsWith(matrix.os, 'macos')
-        env:
-          DENO_BUILD_MODE: release
-        run: ./tools/test.py
-      - name: Run tests (windows)
-        if: startsWith(matrix.os, 'windows')
-        env:
-          DENO_BUILD_MODE: release
-          GYP_MSVS_OVERRIDE_PATH: C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise
-        run: python %cd%\tools\test.py
-
       # Upload artifacts
       - name: Upload linux and macOS artifacts
         uses: actions/upload-artifact@master
@@ -131,3 +118,16 @@ jobs:
         with:
           name: deno
           path: target\release\deno.exe
+
+      # Test
+      - name: Run tests (unix)
+        if: startsWith(matrix.os, 'ubuntu') || startsWith(matrix.os, 'macos')
+        env:
+          DENO_BUILD_MODE: release
+        run: ./tools/test.py
+      - name: Run tests (windows)
+        if: startsWith(matrix.os, 'windows')
+        env:
+          DENO_BUILD_MODE: release
+          GYP_MSVS_OVERRIDE_PATH: C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise
+        run: python %cd%\tools\test.py
