@@ -1,6 +1,15 @@
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import("//third_party/v8/gni/v8.gni")
 
+group("default") {
+  testonly = true
+  deps = [
+    ":libdeno_static_lib",
+    ":libdeno_test",
+    ":v8",
+  ]
+}
+
 config("deno_config") {
   include_dirs = [ "//third_party/v8" ]  # This allows us to v8/src/base/ libraries.
   configs = [ "//third_party/v8:external_config" ]

@@ -61,7 +61,6 @@ install:
   rm -rf "$RUSTUP_HOME"toolchains/*/share
 
 before_script:
-- ./tools/setup.py
 # Start sccache, then throw away the S3 access key.
 - |-
   sccache --start-server
@@ -72,13 +71,14 @@ before_script:
 script:
 - ./tools/lint.py
 - ./tools/test_format.py
-- ./tools/build.py -C target/release
+- cargo clippy --all-targets --release --locked -- -D clippy::all
+- cargo build --release --locked --all-targets
 - DENO_BUILD_MODE=release ./tools/test.py
 
 jobs:
   fast_finish: true
   include:
-    - name: "gn release mac x86_64"
+    - name: "release mac x86_64"
       os: osx
       after_success:
         - &gzip_release
@@ -94,7 +94,7 @@ jobs:
           repo: denoland/deno
         skip-cleanup: true
 
-    - name: "gn release linux x86_64"
+    - name: "release linux x86_64"
       os: linux
       after_success:
         - *gzip_release
@@ -110,36 +110,3 @@ jobs:
           branch: master
           repo: denoland/deno
         skip-cleanup: true
-
-    - name: "cargo release linux x86_64"
-      os: linux
-      script:
-      - ./tools/lint.py
-      - ./tools/test_format.py
-      - cargo build --release --locked
-      - cargo clippy --all-targets --release --locked -- -D clippy::all
-      - DENO_BUILD_MODE=release CARGO_TEST=1 ./tools/test.py
-
-    # LSAN: We are in the process of getting a completely clean LSAN build,
-    # but it will take some work. So for now we just run a subset of the
-    # tests.  We want to detect leaks during the build process as well as
-    # when executing the tests. So set the ASAN_OPTIONS env var before
-    # build.py is run.
-    - name: "asan/lsan linux"
-      os: linux
-      script:
-      - ./tools/lint.py
-      - ./tools/test_format.py
-      - echo is_asan=true >> target/debug/args.gn
-      - echo is_lsan=true >> target/debug/args.gn
-      # TODO(ry) sccache doesn't support "-Xclang -fdebug-compilation-dir"
-      # Which is enabled for ASAN builds if symbol_level != 0.
-      # https://cs.chromium.org/chromium/src/build/config/compiler/BUILD.gn?l=1087&rcl=573da77f569b41e23527f2952938f492678ab4bb
-      # Ideally we can remove this constraint in the future.
-      - echo symbol_level=0 >> target/debug/args.gn
-      # Call gn gen again to make sure new args are recognized.
-      - third_party/depot_tools/gn gen target/debug
-      - export ASAN_OPTIONS=detect_leaks=1
-      - ./tools/build.py libdeno_test
-      - ./target/debug/libdeno_test
-
