@@ -184,6 +184,11 @@ mod tests {
 
   #[test]
   fn resolve_from_cwd_absolute() {
-    assert!(resolve_from_cwd("/a").unwrap().0 == Path::new("/a"));
+    let expected = if cfg!(windows) {
+      Path::new("C:\\a")
+    } else {
+      Path::new("/a")
+    };
+    assert!(resolve_from_cwd("/a").unwrap().0 == expected);
   }
 }
