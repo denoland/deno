@@ -1,0 +1,21 @@
+name: Rust
+
+on: [push]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v1
+    - name: Lint
+      run: ./tools/lint.py
+    - name: Test format
+      run: ./tools/test_format.py
+    - name: Clippy
+      run: cargo clippy --all-targets --release --locked -- -D clippy::all
+    - name: Build
+      run: cargo build --release --locked --all-targets --verbose
+    - name: Run tests
+      run: DENO_BUILD_MODE=release ./tools/test.py
