@@ -529,7 +529,7 @@ impl IntegrationTest {
     if !wildcard_match(&expected, &actual) {
       println!("OUTPUT\n{}\nOUTPUT", actual);
       println!("EXPECTED\n{}\nEXPECTED", expected);
-      assert!(false, "pattern match failed");
+      panic!("pattern match failed");
     }
   }
 }
@@ -573,7 +573,7 @@ fn pattern_match(pattern: &str, s: &str, wildcard: &str) -> bool {
   }
 
   dbg!("end ", t.1.len());
-  t.1.len() == 0
+  t.1.is_empty()
 }
 
 #[test]
