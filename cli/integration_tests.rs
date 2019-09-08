@@ -559,11 +559,9 @@ fn pattern_match(pattern: &str, s: &str, wildcard: &str) -> bool {
       continue;
     }
     dbg!(part, i);
-    if i == parts.len() - 1 {
-      if *part == "" || *part == "\n" {
-        dbg!("exit 1 true", i);
-        return true;
-      }
+    if i == parts.len() - 1 && (*part == "" || *part == "\n") {
+      dbg!("exit 1 true", i);
+      return true;
     }
     if let Some(found) = t.1.find(*part) {
       dbg!("found ", found);
