@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-// TODO(ry) support stdin input!
 use crate::ansi::strip_ansi_codes;
+use os_pipe::pipe;
+use std::io::Read;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
@@ -479,33 +480,45 @@ impl IntegrationTest {
   pub fn run(&self) {
     let args = self.args.split_whitespace();
     let root = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/.."));
+    let bin = root.join("target/debug/deno");
+    let (mut reader, writer) = pipe().unwrap();
 
     debug!("root path {}", root.display());
-    let mut process = Command::new(root.join("target/debug/deno"))
-      .args(args)
-      .stdin(Stdio::piped())
-      .stdout(Stdio::piped())
-      .stderr(Stdio::piped())
-      .current_dir(root.join("tests"))
-      .spawn()
-      .expect("failed to execute process");
+
+    let mut command = Command::new(bin);
+    command.args(args);
+    command.current_dir(root.join("tests"));
+    command.stdin(Stdio::piped());
+    command.stderr(Stdio::null());
+
+    if self.check_stderr {
+      let writer_clone = writer.try_clone().unwrap();
+      command.stderr(writer_clone);
+    }
+
+    command.stdout(writer);
+
+    let mut process = command.spawn().expect("failed to execute process");
 
     if let Some(input) = self.input {
       let mut p_stdin = process.stdin.take().unwrap();
       write!(p_stdin, "{}", input).unwrap();
     }
 
-    let output = process
-      .wait_with_output()
-      .expect("failed to read output of process");
-    let exit_code = output.status.code().unwrap();
+    // Very important when using pipes: This parent process is still
+    // holding its copies of the write ends, and we have to close them
+    // before we read, otherwise the read end will never report EOF. The
+    // Command object owns the writers now, and dropping it closes them.
+    drop(command);
+
+    let mut actual = String::new();
+    reader.read_to_string(&mut actual).unwrap();
+
+    let status = process.wait().expect("failed to finish process");
+    let exit_code = status.code().unwrap();
     eprintln!("exit code {:?} {:?}", exit_code, self.exit_code);
     assert_eq!(self.exit_code, exit_code);
 
-    let mut actual = String::from(std::str::from_utf8(&output.stdout).unwrap());
-    if self.check_stderr {
-      actual += std::str::from_utf8(&output.stderr).unwrap();
-    }
     actual = strip_ansi_codes(&actual).to_string();
 
     let output_path = root.join(self.output);

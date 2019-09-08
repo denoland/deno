@@ -62,3 +62,6 @@ fwdansi = "1.0.1"
 
 [target.'cfg(unix)'.dependencies]
 nix = "0.14.1"
+
+[dev-dependencies]
+os_pipe = "0.8.2"
