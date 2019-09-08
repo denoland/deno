@@ -46,11 +46,11 @@ impl fmt::Display for StaticError {
   }
 }
 
-pub fn bad_resource(_rid: u32) -> ErrBox {
+pub fn bad_resource() -> ErrBox {
   StaticError(ErrorKind::BadResource, "bad resource id").into()
 }
 
-pub fn bad_resource_kind(_rid: u32) -> ErrBox {
+pub fn bad_resource_kind() -> ErrBox {
   StaticError(ErrorKind::BadResource, "bad resource kind").into()
 }
 
@@ -426,6 +426,20 @@ mod tests {
     let err = ErrBox::from(import_map_error());
     assert_eq!(err.kind(), ErrorKind::ImportMapError);
     assert_eq!(err.to_string(), "an import map error");
+  }
+
+  #[test]
+  fn test_bad_resource() {
+    let err = bad_resource();
+    assert_eq!(err.kind(), ErrorKind::BadResource);
+    assert_eq!(err.to_string(), "bad resource id");
+  }
+
+  #[test]
+  fn test_bad_resource_kind() {
+    let err = bad_resource_kind();
+    assert_eq!(err.kind(), ErrorKind::BadResource);
+    assert_eq!(err.to_string(), "bad resource kind");
   }
 
   #[test]
