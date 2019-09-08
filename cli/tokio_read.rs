@@ -20,7 +20,7 @@ where
   T: AsMut<[u8]>,
 {
   Read {
-    state: State::Pending { rd: rd, buf: buf },
+    state: State::Pending { rd, buf },
   }
 }
 
