@@ -218,13 +218,13 @@ impl Resource {
 
   pub fn shutdown(&mut self, how: Shutdown) -> Result<(), ErrBox> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
-    let repr = table.get_mut(&self.rid).ok_or_else(|| bad_resource())?;
+    let repr = table.get_mut(&self.rid).ok_or_else(bad_resource)?;
 
     match repr {
       Repr::TcpStream(ref mut f) => {
         TcpStream::shutdown(f, how).map_err(ErrBox::from)
       }
-      _ => Err(bad_resource_kind().into()),
+      _ => Err(bad_resource_kind()),
     }
   }
 }
@@ -242,9 +242,7 @@ pub trait DenoAsyncRead {
 impl DenoAsyncRead for Resource {
   fn poll_read(&mut self, buf: &mut [u8]) -> Poll<usize, ErrBox> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
-    let repr = table
-      .get_mut(&self.rid)
-      .ok_or_else(|| ErrBox::from(bad_resource()))?;
+    let repr = table.get_mut(&self.rid).ok_or_else(bad_resource)?;
 
     let r = match repr {
       Repr::FsFile(ref mut f) => f.poll_read(buf),
@@ -281,9 +279,7 @@ pub trait DenoAsyncWrite {
 impl DenoAsyncWrite for Resource {
   fn poll_write(&mut self, buf: &[u8]) -> Poll<usize, ErrBox> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
-    let repr = table
-      .get_mut(&self.rid)
-      .ok_or_else(|| ErrBox::from(bad_resource()))?;
+    let repr = table.get_mut(&self.rid).ok_or_else(bad_resource)?;
 
     let r = match repr {
       Repr::FsFile(ref mut f) => f.poll_write(buf),
@@ -389,7 +385,7 @@ impl Future for WorkerReceiver {
     let maybe_repr = table.get_mut(&self.rid);
     match maybe_repr {
       Some(Repr::Worker(ref mut wc)) => wc.1.poll().map_err(ErrBox::from),
-      _ => Err(bad_resource().into()),
+      _ => Err(bad_resource()),
     }
   }
 }
@@ -412,7 +408,7 @@ impl Stream for WorkerReceiverStream {
     let maybe_repr = table.get_mut(&self.rid);
     match maybe_repr {
       Some(Repr::Worker(ref mut wc)) => wc.1.poll().map_err(ErrBox::from),
-      _ => Err(bad_resource().into()),
+      _ => Err(bad_resource()),
     }
   }
 }
@@ -481,7 +477,7 @@ impl Future for ChildStatus {
     let maybe_repr = table.get_mut(&self.rid);
     match maybe_repr {
       Some(Repr::Child(ref mut child)) => child.poll().map_err(ErrBox::from),
-      _ => Err(bad_resource().into()),
+      _ => Err(bad_resource()),
     }
   }
 }
@@ -491,7 +487,7 @@ pub fn child_status(rid: ResourceId) -> Result<ChildStatus, ErrBox> {
   let maybe_repr = table.get_mut(&rid);
   match maybe_repr {
     Some(Repr::Child(ref mut _child)) => Ok(ChildStatus { rid }),
-    _ => Err(bad_resource().into()),
+    _ => Err(bad_resource()),
   }
 }
 
@@ -500,7 +496,7 @@ pub fn get_repl(rid: ResourceId) -> Result<Arc<Mutex<Repl>>, ErrBox> {
   let maybe_repr = table.get_mut(&rid);
   match maybe_repr {
     Some(Repr::Repl(ref mut r)) => Ok(r.clone()),
-    _ => Err(bad_resource().into()),
+    _ => Err(bad_resource()),
   }
 }
 
@@ -535,8 +531,8 @@ pub fn get_file(rid: ResourceId) -> Result<std::fs::File, ErrBox> {
 
       Ok(std_file_copy)
     }
-    None => Err(bad_resource().into()),
-    _ => Err(bad_resource_kind().into()),
+    None => Err(bad_resource()),
+    _ => Err(bad_resource_kind()),
   }
 }
 
@@ -545,7 +541,7 @@ pub fn lookup(rid: ResourceId) -> Result<Resource, ErrBox> {
   let table = RESOURCE_TABLE.lock().unwrap();
   table
     .get(&rid)
-    .ok_or_else(|| bad_resource())
+    .ok_or_else(bad_resource)
     .map(|_| Resource { rid })
 }
 

@@ -17,7 +17,7 @@ pub fn op_read(rid: i32, zero_copy: Option<PinnedBuf>) -> Box<MinimalOp> {
   };
 
   match resources::lookup(rid as u32) {
-    Err(e) => Box::new(futures::future::err(e.into())),
+    Err(e) => Box::new(futures::future::err(e)),
     Ok(resource) => Box::new(
       tokio_read::read(resource, zero_copy)
         .map_err(ErrBox::from)
@@ -36,7 +36,7 @@ pub fn op_write(rid: i32, zero_copy: Option<PinnedBuf>) -> Box<MinimalOp> {
   };
 
   match resources::lookup(rid as u32) {
-    Err(e) => Box::new(futures::future::err(e.into())),
+    Err(e) => Box::new(futures::future::err(e)),
     Ok(resource) => Box::new(
       tokio_write::write(resource, zero_copy)
         .map_err(ErrBox::from)
