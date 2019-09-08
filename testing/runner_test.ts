@@ -2,9 +2,13 @@
 import { test } from "./mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
 import { getMatchingUrls } from "./runner.ts";
+import { join } from "../fs/path/mod.ts";
 
-const fileName = window.location.href;
-const TEST_ROOT_PATH = fileName.slice(7, fileName.indexOf("testing")) + "fmt";
+/**
+ * IMPORTANT: This file assumes it is run from root of repository.
+ */
+const cwd = Deno.cwd();
+const TEST_ROOT_PATH = join(cwd, "fmt");
 
 test(async function getMatchingUrlsRemote(): Promise<void> {
   const matches = [
@@ -16,7 +20,6 @@ test(async function getMatchingUrlsRemote(): Promise<void> {
   assertEquals(urls, matches);
 });
 
-/* TODO re-enable test
 test(async function getMatchingUrlsLocal(): Promise<void> {
   const urls = await getMatchingUrls(
     ["fmt/*_test.ts"],
@@ -25,4 +28,3 @@ test(async function getMatchingUrlsLocal(): Promise<void> {
   );
   assertEquals(urls.length, 1);
 });
-*/
