@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::ansi::strip_ansi_codes;
 use os_pipe::pipe;
+use std::env;
 use std::io::Read;
 use std::io::Write;
 use std::path::PathBuf;
@@ -480,11 +481,19 @@ impl IntegrationTest {
   pub fn run(&self) {
     let args = self.args.split_whitespace();
     let root = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/.."));
-    let bin = root.join("target/debug/deno");
-    let (mut reader, writer) = pipe().unwrap();
+    let mut target = "debug";
 
+    if let Ok(build_mode) = env::var("DENO_BUILD_MODE") {
+      if build_mode == "release" {
+        target = "release";
+      }
+    }
+
+    let bin = root.join(format!("target/{}/deno", target));
     debug!("root path {}", root.display());
+    debug!("bin path {}", bin.display());
 
+    let (mut reader, writer) = pipe().unwrap();
     let mut command = Command::new(bin);
     command.args(args);
     command.current_dir(root.join("tests"));
