@@ -192,3 +192,10 @@ test(function nestedDottedObjects(): void {
   });
   assertEquals(argv.beep, { boop: true });
 });
+
+test(function flagBuiltinProperty(): void {
+  const argv = parse(["--toString", "--valueOf", "foo"]);
+  assertEquals(argv, { toString: true, valueOf: "foo", _: [] });
+  assertEquals(typeof argv.toString, "boolean");
+  assertEquals(typeof argv.valueOf, "string");
+});
