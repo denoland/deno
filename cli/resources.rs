@@ -9,6 +9,8 @@
 // handlers) look up resources by their integer id here.
 
 use crate::deno_error;
+use crate::deno_error::bad_resource;
+use crate::deno_error::bad_resource_kind;
 use crate::http_body::HttpBody;
 use crate::repl::Repl;
 use crate::state::WorkerChannels;
@@ -24,7 +26,7 @@ use futures::Stream;
 use reqwest::r#async::Decoder as ReqwestDecoder;
 use std;
 use std::collections::BTreeMap;
-use std::io::{Error, ErrorKind, Read, Seek, SeekFrom, Write};
+use std::io::{Error, Read, Seek, SeekFrom, Write};
 use std::net::{Shutdown, SocketAddr};
 use std::process::ExitStatus;
 use std::sync::atomic::AtomicUsize;
@@ -100,24 +102,6 @@ enum Repr {
   Worker(WorkerChannels),
 }
 
-// TODO: originally this function was in `cli/deno_error.rs` and was using
-// `msg.rs::ErrorKind::BadResource` but unfortunately `AsyncRead` and `AsyncWrite` traits
-// require `std::io::Error` type which makes it impossible to reconcile without
-// writing custom infrastructure for read/write operations.
-fn bad_resource(rid: ResourceId) -> Error {
-  Error::new(ErrorKind::Other, format!("Bad resource descriptor {}", rid))
-}
-
-// TODO: this error might indicate bad design - it is returned in case of trying to perform
-// certain operation on a resource that it makes no sense - eg. trying to "shutdown"
-// tokio::fs::File or "read" from Repl
-fn bad_resource_kind(rid: ResourceId) -> Error {
-  Error::new(
-    ErrorKind::Other,
-    format!("Bad resource kind {} ({:?})", rid, get_type(rid)),
-  )
-}
-
 /// If the given rid is open, this returns the type of resource, E.G. "worker".
 /// If the rid is closed or was never open, it returns None.
 pub fn get_type(rid: ResourceId) -> Option<String> {
@@ -182,7 +166,7 @@ impl Resource {
       )),
       Some(repr) => match repr {
         Repr::TcpListener(ref mut s, _) => s.poll_accept(),
-        _ => Err(bad_resource_kind(self.rid)),
+        _ => panic!("Cannot accept"),
       },
     }
   }
@@ -253,22 +237,30 @@ impl Read for Resource {
   }
 }
 
-impl AsyncRead for Resource {
-  fn poll_read(&mut self, buf: &mut [u8]) -> Poll<usize, Error> {
+pub trait DenoAsyncRead {
+  fn poll_read(&mut self, buf: &mut [u8]) -> Poll<usize, ErrBox>;
+}
+
+impl DenoAsyncRead for Resource {
+  fn poll_read(&mut self, buf: &mut [u8]) -> Poll<usize, ErrBox> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     let repr = table
       .get_mut(&self.rid)
-      .ok_or_else(|| bad_resource(self.rid))?;
+      .ok_or_else(|| ErrBox::from(bad_resource(self.rid)))?;
 
-    match repr {
+    let r = match repr {
       Repr::FsFile(ref mut f) => f.poll_read(buf),
       Repr::Stdin(ref mut f) => f.poll_read(buf),
       Repr::TcpStream(ref mut f) => f.poll_read(buf),
       Repr::HttpBody(ref mut f) => f.poll_read(buf),
       Repr::ChildStdout(ref mut f) => f.poll_read(buf),
       Repr::ChildStderr(ref mut f) => f.poll_read(buf),
-      _ => Err(bad_resource_kind(self.rid)),
-    }
+      _ => {
+        return Err(bad_resource_kind(self.rid));
+      }
+    };
+
+    r.map_err(ErrBox::from)
   }
 }
 
@@ -282,24 +274,34 @@ impl Write for Resource {
   }
 }
 
-impl AsyncWrite for Resource {
-  fn poll_write(&mut self, buf: &[u8]) -> Poll<usize, Error> {
+pub trait DenoAsyncWrite {
+  fn poll_write(&mut self, buf: &[u8]) -> Poll<usize, ErrBox>;
+
+  fn shutdown(&mut self) -> Poll<(), ErrBox>;
+}
+
+impl DenoAsyncWrite for Resource {
+  fn poll_write(&mut self, buf: &[u8]) -> Poll<usize, ErrBox> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     let repr = table
       .get_mut(&self.rid)
-      .ok_or_else(|| bad_resource(self.rid))?;
+      .ok_or_else(|| ErrBox::from(bad_resource(self.rid)))?;
 
-    match repr {
+    let r = match repr {
       Repr::FsFile(ref mut f) => f.poll_write(buf),
       Repr::Stdout(ref mut f) => f.poll_write(buf),
       Repr::Stderr(ref mut f) => f.poll_write(buf),
       Repr::TcpStream(ref mut f) => f.poll_write(buf),
       Repr::ChildStdin(ref mut f) => f.poll_write(buf),
-      _ => Err(bad_resource_kind(self.rid)),
-    }
+      _ => {
+        return Err(bad_resource_kind(self.rid));
+      }
+    };
+
+    r.map_err(ErrBox::from)
   }
 
-  fn shutdown(&mut self) -> futures::Poll<(), std::io::Error> {
+  fn shutdown(&mut self) -> futures::Poll<(), ErrBox> {
     unimplemented!()
   }
 }
@@ -540,7 +542,7 @@ pub fn get_file(rid: ResourceId) -> Result<std::fs::File, ErrBox> {
   }
 }
 
-pub fn lookup(rid: ResourceId) -> std::io::Result<Resource> {
+pub fn lookup(rid: ResourceId) -> Result<Resource, ErrBox> {
   debug!("resource lookup {}", rid);
   let table = RESOURCE_TABLE.lock().unwrap();
   table

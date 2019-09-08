@@ -46,6 +46,14 @@ impl fmt::Display for StaticError {
   }
 }
 
+pub fn bad_resource(_rid: u32) -> ErrBox {
+  StaticError(ErrorKind::BadResource, "bad resource id").into()
+}
+
+pub fn bad_resource_kind(_rid: u32) -> ErrBox {
+  StaticError(ErrorKind::BadResource, "bad resource kind").into()
+}
+
 pub fn permission_denied() -> ErrBox {
   StaticError(ErrorKind::PermissionDenied, "permission denied").into()
 }

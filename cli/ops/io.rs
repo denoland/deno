@@ -1,6 +1,7 @@
 use super::dispatch_minimal::MinimalOp;
 use crate::deno_error;
 use crate::resources;
+use crate::tokio_read;
 use crate::tokio_write;
 use deno::ErrBox;
 use deno::PinnedBuf;
@@ -18,7 +19,7 @@ pub fn op_read(rid: i32, zero_copy: Option<PinnedBuf>) -> Box<MinimalOp> {
   match resources::lookup(rid as u32) {
     Err(e) => Box::new(futures::future::err(e.into())),
     Ok(resource) => Box::new(
-      tokio::io::read(resource, zero_copy)
+      tokio_read::read(resource, zero_copy)
         .map_err(ErrBox::from)
         .and_then(move |(_resource, _buf, nread)| Ok(nread as i32)),
     ),
