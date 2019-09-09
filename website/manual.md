@@ -168,7 +168,7 @@ cargo build -vv
 
 #### Prerequisites
 
-To ensure reproducible builds, deno has most of its dependencies in a git
+To ensure reproducible builds, Deno has most of its dependencies in a git
 submodule. However, you need to install separately:
 
 1. [Rust](https://www.rust-lang.org/en-US/install.html) >= 1.36.0
@@ -307,7 +307,7 @@ $ deno https://deno.land/std/examples/echo_server.ts
 ⚠️  Deno requests network access to "listen". Grant? [a/y/n/d (a = allow always, y = allow once, n = deny once, d = deny always)]
 ```
 
-For security reasons, deno does not allow programs to access the network without
+For security reasons, Deno does not allow programs to access the network without
 explicit permission. To avoid the console prompt, use a command-line flag:
 
 ```shell
@@ -381,7 +381,7 @@ $ file_server --reload
 
 ### Permissions whitelist
 
-deno also provides permissions whitelist.
+Deno also provides permissions whitelist.
 
 This is an example to restrict File system access by whitelist.
 
@@ -559,14 +559,14 @@ external libraries in a central `deps.ts` file (which serves the same purpose as
 Node's `package.json` file). For example, let's say you were using the above
 testing library across a large project. Rather than importing
 `"https://deno.land/std/testing/mod.ts"` everywhere, you could create a
-`deps.ts` file the exports the third-party code:
+`deps.ts` file that exports the third-party code:
 
 ```ts
 export { test, assertEquals } from "https://deno.land/std/testing/mod.ts";
 ```
 
-And throughout project one can import from the `deps.ts` and avoid having many
-references to the same URL:
+And throughout the same project, you can import from the `deps.ts` and avoid
+having many references to the same URL:
 
 ```ts
 import { test, assertEquals } from "./deps.ts";
@@ -947,7 +947,7 @@ close(3);
 
 #### Metrics
 
-Metrics is deno's internal counters for various statics.
+Metrics is Deno's internal counters for various statics.
 
 ```shell
 > console.table(Deno.metrics())
@@ -1023,7 +1023,7 @@ To learn more about `d8` and profiling, check out the following links:
 
 ### Debugging with LLDB
 
-We can use LLDB to debug deno.
+We can use LLDB to debug Deno.
 
 ```shell
 $ lldb -- target/debug/deno run tests/worker.js
