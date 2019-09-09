@@ -1,15 +1,16 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::state::ThreadSafeState;
 use deno::*;
+use deno_ops_fs as fs;
 use std::sync::Arc;
 
 mod compiler;
+//  TODO(afinch7) remove this.
 mod dispatch_json;
 mod dispatch_minimal;
 mod errors;
 mod fetch;
 mod files;
-mod fs;
 mod io;
 mod metrics;
 mod net;
@@ -46,23 +47,40 @@ pub fn setup_dispatcher_registry(state: ThreadSafeState) -> Arc<OpDisReg> {
   registry.register_op(OP_NAMESPACE, state.wrap_op(files::OpClose));
   registry.register_op(OP_NAMESPACE, state.wrap_op(files::OpSeek));
 
+  let state_ = state.clone();
+  let state__ = state.clone();
+  let fs_state = fs::TSFsOpsState::new(
+    move |filename| {
+      state_
+        .check_read(filename)
+        .map_err(crate::deno_error::CliOpError::from)
+        .map_err(deno_dispatch_json::JsonErrBox::from)
+    },
+    move |filename| {
+      state__
+        .check_write(filename)
+        .map_err(crate::deno_error::CliOpError::from)
+        .map_err(deno_dispatch_json::JsonErrBox::from)
+    },
+  );
+
   // Fs
-  registry.register_op(OP_NAMESPACE, state.wrap_op(fs::OpChdir));
-  registry.register_op(OP_NAMESPACE, state.wrap_op(fs::OpMkdir));
-  registry.register_op(OP_NAMESPACE, state.wrap_op(fs::OpChmod));
-  registry.register_op(OP_NAMESPACE, state.wrap_op(fs::OpChown));
-  registry.register_op(OP_NAMESPACE, state.wrap_op(fs::OpRemove));
-  registry.register_op(OP_NAMESPACE, state.wrap_op(fs::OpCopyFile));
-  registry.register_op(OP_NAMESPACE, state.wrap_op(fs::OpStat));
-  registry.register_op(OP_NAMESPACE, state.wrap_op(fs::OpReadDir));
-  registry.register_op(OP_NAMESPACE, state.wrap_op(fs::OpRename));
-  registry.register_op(OP_NAMESPACE, state.wrap_op(fs::OpLink));
-  registry.register_op(OP_NAMESPACE, state.wrap_op(fs::OpSymlink));
-  registry.register_op(OP_NAMESPACE, state.wrap_op(fs::OpReadLink));
-  registry.register_op(OP_NAMESPACE, state.wrap_op(fs::OpTruncate));
-  registry.register_op(OP_NAMESPACE, state.wrap_op(fs::OpMakeTempDir));
-  registry.register_op(OP_NAMESPACE, state.wrap_op(fs::OpUtime));
-  registry.register_op(OP_NAMESPACE, state.wrap_op(fs::OpCwd));
+  registry.register_op(OP_NAMESPACE, fs_state.wrap_op(fs::OpChdir));
+  registry.register_op(OP_NAMESPACE, fs_state.wrap_op(fs::OpMkdir));
+  registry.register_op(OP_NAMESPACE, fs_state.wrap_op(fs::OpChmod));
+  registry.register_op(OP_NAMESPACE, fs_state.wrap_op(fs::OpChown));
+  registry.register_op(OP_NAMESPACE, fs_state.wrap_op(fs::OpRemove));
+  registry.register_op(OP_NAMESPACE, fs_state.wrap_op(fs::OpCopyFile));
+  registry.register_op(OP_NAMESPACE, fs_state.wrap_op(fs::OpStat));
+  registry.register_op(OP_NAMESPACE, fs_state.wrap_op(fs::OpReadDir));
+  registry.register_op(OP_NAMESPACE, fs_state.wrap_op(fs::OpRename));
+  registry.register_op(OP_NAMESPACE, fs_state.wrap_op(fs::OpLink));
+  registry.register_op(OP_NAMESPACE, fs_state.wrap_op(fs::OpSymlink));
+  registry.register_op(OP_NAMESPACE, fs_state.wrap_op(fs::OpReadLink));
+  registry.register_op(OP_NAMESPACE, fs_state.wrap_op(fs::OpTruncate));
+  registry.register_op(OP_NAMESPACE, fs_state.wrap_op(fs::OpMakeTempDir));
+  registry.register_op(OP_NAMESPACE, fs_state.wrap_op(fs::OpUtime));
+  registry.register_op(OP_NAMESPACE, fs_state.wrap_op(fs::OpCwd));
 
   // Io
   registry.register_op(OP_NAMESPACE, state.wrap_op(io::OpRead));

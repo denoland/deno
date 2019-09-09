@@ -801,7 +801,7 @@ declare namespace Deno {
    *       } catch (e) {
    *         if (
    *           e instanceof Deno.DenoError &&
-   *           e.kind === Deno.ErrorKind.Overflow
+   *           e.kind === Deno.StandardErrorKinds.Overflow
    *         ) {
    *           console.error("Overflow error!");
    *         }
@@ -812,58 +812,60 @@ declare namespace Deno {
     readonly kind: T;
     constructor(kind: T, msg: string);
   }
-  export enum ErrorKind {
-    NoError = 0,
-    NotFound = 1,
-    PermissionDenied = 2,
-    ConnectionRefused = 3,
-    ConnectionReset = 4,
-    ConnectionAborted = 5,
-    NotConnected = 6,
-    AddrInUse = 7,
-    AddrNotAvailable = 8,
-    BrokenPipe = 9,
-    AlreadyExists = 10,
-    WouldBlock = 11,
-    InvalidInput = 12,
-    InvalidData = 13,
-    TimedOut = 14,
-    Interrupted = 15,
-    WriteZero = 16,
-    Other = 17,
-    UnexpectedEof = 18,
-    BadResource = 19,
-    CommandFailed = 20,
-    EmptyHost = 21,
-    IdnaError = 22,
-    InvalidPort = 23,
-    InvalidIpv4Address = 24,
-    InvalidIpv6Address = 25,
-    InvalidDomainCharacter = 26,
-    RelativeUrlWithoutBase = 27,
-    RelativeUrlWithCannotBeABaseBase = 28,
-    SetHostOnCannotBeABaseUrl = 29,
-    Overflow = 30,
-    HttpUser = 31,
-    HttpClosed = 32,
-    HttpCanceled = 33,
-    HttpParse = 34,
-    HttpOther = 35,
-    TooLarge = 36,
-    InvalidUri = 37,
-    InvalidSeekMode = 38,
-    OpNotAvailable = 39,
-    WorkerInitFailed = 40,
-    UnixError = 41,
-    NoAsyncSupport = 42,
-    NoSyncSupport = 43,
-    ImportMapError = 44,
-    InvalidPath = 45,
-    ImportPrefixMissing = 46,
-    UnsupportedFetchScheme = 47,
-    TooManyRedirects = 48,
-    Diagnostic = 49,
-    JSError = 50
+  export type ErrorKind = string;
+
+  export enum StandardErrorKinds {
+    NoError = "NoError",
+    NotFound = "NotFound",
+    PermissionDenied = "PermissionDenied",
+    ConnectionRefused = "ConnectionRefused",
+    ConnectionReset = "ConnectionReset",
+    ConnectionAborted = "ConnectionAborted",
+    NotConnected = "NotConnected",
+    AddrInUse = "AddrInUse",
+    AddrNotAvailable = "AddrNotAvailable",
+    BrokenPipe = "BrokenPipe",
+    AlreadyExists = "AlreadyExists",
+    WouldBlock = "WouldBlock",
+    InvalidInput = "InvalidInput",
+    InvalidData = "InvalidData",
+    TimedOut = "TimedOut",
+    Interrupted = "Interrupted",
+    WriteZero = "WriteZero",
+    Other = "Other",
+    UnexpectedEof = "UnexpectedEof",
+    BadResource = "BadResource",
+    CommandFailed = "CommandFailed",
+    EmptyHost = "EmptyHost",
+    IdnaError = "IdnaError",
+    InvalidPort = "InvalidPort",
+    InvalidIpv4Address = "InvalidIpv4Address",
+    InvalidIpv6Address = "InvalidIpv6Address",
+    InvalidDomainCharacter = "InvalidDomainCharacter",
+    RelativeUrlWithoutBase = "RelativeUrlWithoutBase",
+    RelativeUrlWithCannotBeABaseBase = "RelativeUrlWithCannotBeABaseBase",
+    SetHostOnCannotBeABaseUrl = "SetHostOnCannotBeABaseUrl",
+    Overflow = "Overflow",
+    HttpUser = "HttpUser",
+    HttpClosed = "HttpClosed",
+    HttpCanceled = "HttpCanceled",
+    HttpParse = "HttpParse",
+    HttpOther = "HttpOther",
+    TooLarge = "TooLarge",
+    InvalidUri = "InvalidUri",
+    InvalidSeekMode = "InvalidSeekMode",
+    OpNotAvailable = "OpNotAvailable",
+    WorkerInitFailed = "WorkerInitFailed",
+    UnixError = "UnixError",
+    NoAsyncSupport = "NoAsyncSupport",
+    NoSyncSupport = "NoSyncSupport",
+    ImportMapError = "ImportMapError",
+    InvalidPath = "InvalidPath",
+    ImportPrefixMissing = "ImportPrefixMissing",
+    UnsupportedFetchScheme = "UnsupportedFetchScheme",
+    TooManyRedirects = "TooManyRedirects",
+    Diagnostic = "Diagnostic",
+    JSError = "JSError"
   }
 
   // @url js/permissions.d.ts
@@ -1198,7 +1200,6 @@ declare namespace Deno {
     os: OperatingSystem;
   }
   export const build: BuildInfo;
-  export const platform: BuildInfo;
 
   // @url js/version.d.ts
 

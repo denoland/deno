@@ -15,4 +15,6 @@ deno = { path = "../core" }
 
 [build-dependencies]
 deno_typescript = { path = "../deno_typescript" }
-
+deno_bundle_util = { path = "../bundle_util", version = "0.16.0" }
+deno_ops_fs_bundle = { path = "../ops/fs/bundle", version = "0.16.0" }
+deno_dispatch_json_bundle = { path = "../dispatch_json/bundle", version = "0.16.0" }

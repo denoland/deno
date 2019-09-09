@@ -607,7 +607,7 @@ impl SourceCodeHeaders {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::fs as deno_fs;
+  use deno_ops_fs::fs as deno_fs;
   use tempfile::TempDir;
 
   impl SourceFileFetcher {

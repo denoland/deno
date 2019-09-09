@@ -1,8 +1,13 @@
 [workspace]
 members = [
+  "bundle_util",
   "cli",
-  "core",
   "tools/hyper_hello",
-  "deno_typescript",
   "cli_snapshots",
+  "core",
+  "deno_typescript",
+  "dispatch_json",
+  "dispatch_json/bundle",
+  "ops/fs",
+  "ops/fs/bundle",
 ]

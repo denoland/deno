@@ -64,8 +64,10 @@ def rustfmt():
         "rustfmt",
         "--config-path",
         rustfmt_config,
-    ] + find_exts(["cli", "core", "tools", "deno_typescript", "cli_snapshots"],
-                  [".rs"]))
+    ] + find_exts([
+        "cli", "core", "tools", "deno_typescript", "cli_snapshots", "ops",
+        "dispatch_json", "bundle_util"
+    ], [".rs"]))
 
 
 def gn_format():

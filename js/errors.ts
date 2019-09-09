@@ -8,7 +8,7 @@
  *       } catch (e) {
  *         if (
  *           e instanceof Deno.DenoError &&
- *           e.kind === Deno.ErrorKind.Overflow
+ *           e.kind === Deno.StandardErrorKinds.Overflow
  *         ) {
  *           console.error("Overflow error!");
  *         }

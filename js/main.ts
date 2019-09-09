@@ -1,16 +1,14 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import "./globals.ts";
 
-import { assert, log } from "./util.ts";
+import { assert, log, window, setBuildInfo } from "deno_util";
 import * as os from "./os.ts";
 import { args } from "./deno.ts";
 import { setPrepareStackTrace } from "./error_stack.ts";
 import { replLoop } from "./repl.ts";
 import { xevalMain, XevalFunc } from "./xeval.ts";
 import { setVersions } from "./version.ts";
-import { window } from "./window.ts";
 import { setLocation } from "./location.ts";
-import { setBuildInfo } from "./build.ts";
 import { setSignals } from "./process.ts";
 
 function denoMain(preserveDenoNamespace = true, name?: string): void {

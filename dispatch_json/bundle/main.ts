@@ -1,8 +1,7 @@
+
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as util from "./util.ts";
-import { TextEncoder, TextDecoder } from "./text_encoding.ts";
-import { core } from "./core.ts";
-import { ErrorKind, DenoError } from "./errors.ts";
+import * as util from "deno_util";
+import { TextEncoder, TextDecoder, core, ops, ErrorKind, DenoError } from "deno_util";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Ok = any;
@@ -83,4 +82,35 @@ export async function sendAsync(
 
   const res = await promise;
   return unwrapResponse(res);
+}
+
+export class JsonOp {
+
+  private opId?: number; 
+  
+  constructor(
+    private readonly opNamespace: string,
+    private readonly opName: string,
+  ) {
+    ops[this.opNamespace][this.opName] = (id?: number): void => {
+      this.opId = id;
+      if (id !== undefined) {
+        core.setAsyncHandler(id, asyncMsgFromRust);
+      }
+    }
+  }
+
+  sendSync(
+    args: object = {},
+    zeroCopy?: Uint8Array,
+  ): Ok {
+    return sendSync(this.opId, args, zeroCopy);
+  }
+
+  async sendAsync(
+    args: object = {},
+    zeroCopy?: Uint8Array,
+  ): Promise<Ok> {
+    return sendAsync(this.opId, args, zeroCopy);
+  }
 }

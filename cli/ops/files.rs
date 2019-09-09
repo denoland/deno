@@ -1,11 +1,11 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{wrap_json_op, Deserialize, JsonOp};
 use crate::deno_error;
-use crate::fs as deno_fs;
 use crate::resources;
 use crate::state::DenoOpDispatcher;
 use crate::state::ThreadSafeState;
 use deno::*;
+use deno_ops_fs::fs as deno_fs;
 use futures::Future;
 use std;
 use std::convert::From;
@@ -33,7 +33,8 @@ impl DenoOpDispatcher for OpOpen {
     wrap_json_op(
       move |args, _zero_copy| {
         let args: OpenArgs = serde_json::from_value(args)?;
-        let (filename, filename_) = deno_fs::resolve_from_cwd(&args.filename)?;
+        let (filename, filename_) =
+          deno_fs::resolve_from_cwd(&args.filename).map_err(ErrBox::from)?;
         let mode = args.mode.as_ref();
 
         let mut open_options = tokio::fs::OpenOptions::new();

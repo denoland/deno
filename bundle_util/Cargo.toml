@@ -1,0 +1,14 @@
+[package]
+name = "deno_bundle_util"
+version = "0.16.0"
+edition = "2018"
+authors = ["The deno authors <bertbelder@nodejs.org>"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/denoland/deno"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+deno_typescript = { path = "../deno_typescript" }

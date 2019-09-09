@@ -23,7 +23,7 @@ testPerm({ write: true }, function makeTempDirSyncSuccess(): void {
   } catch (err_) {
     err = err_;
   }
-  assertEquals(err.kind, Deno.ErrorKind.NotFound);
+  assertEquals(err.kind, Deno.StandardErrorKinds.NotFound);
   assertEquals(err.name, "NotFound");
 });
 
@@ -35,7 +35,7 @@ test(function makeTempDirSyncPerm(): void {
   } catch (err_) {
     err = err_;
   }
-  assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+  assertEquals(err.kind, Deno.StandardErrorKinds.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });
 
@@ -61,6 +61,6 @@ testPerm({ write: true }, async function makeTempDirSuccess(): Promise<void> {
   } catch (err_) {
     err = err_;
   }
-  assertEquals(err.kind, Deno.ErrorKind.NotFound);
+  assertEquals(err.kind, Deno.StandardErrorKinds.NotFound);
   assertEquals(err.name, "NotFound");
 });

@@ -17,7 +17,12 @@
     "sourceMap": true,
     "strict": true,
     "target": "esnext",
-    "types": []
+    "types": [],
+    "paths": {
+      "deno_util": ["./bundle_util/main.ts"],
+      "deno_dispatch_json": ["./dispatch_json/bundle/main.ts"],
+      "deno_ops_fs": ["./ops/fs/bundle/main.ts"]
+    }
   },
   "files": [
     "js/lib.web_assembly.d.ts",

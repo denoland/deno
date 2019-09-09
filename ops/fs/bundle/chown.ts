@@ -1,6 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { sendSync, sendAsync } from "./dispatch_json.ts";
-import * as dispatch from "./dispatch.ts";
+import { JsonOp } from "deno_dispatch_json";
+import { opNamespace } from "./namespace.ts";
+
+const OP_CHOWN = new JsonOp(opNamespace, "chown");
 
 /**
  * Change owner of a regular file or directory synchronously. Unix only at the moment.
@@ -9,7 +11,7 @@ import * as dispatch from "./dispatch.ts";
  * @param gid group id of the new owner
  */
 export function chownSync(path: string, uid: number, gid: number): void {
-  sendSync(dispatch.OP_CHOWN, { path, uid, gid });
+  OP_CHOWN.sendSync({ path, uid, gid });
 }
 
 /**
@@ -23,5 +25,5 @@ export async function chown(
   uid: number,
   gid: number
 ): Promise<void> {
-  await sendAsync(dispatch.OP_CHOWN, { path, uid, gid });
+  await OP_CHOWN.sendAsync({ path, uid, gid });
 }

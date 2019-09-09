@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as dispatch from "./dispatch.ts";
-import { sendSync } from "./dispatch_json.ts";
-import { assert } from "./util.ts";
+import { sendSync } from "deno_dispatch_json";
+import { assert } from "deno_util";
 
 /** Synchronously collects cryptographically secure random values. The
  * underlying CSPRNG in use is Rust's `rand::rngs::ThreadRng`.

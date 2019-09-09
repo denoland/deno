@@ -32,7 +32,7 @@ testPerm({ read: false }, function readDirSyncPerm(): void {
     Deno.readDirSync("tests/");
   } catch (e) {
     caughtError = true;
-    assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
+    assertEquals(e.kind, Deno.StandardErrorKinds.PermissionDenied);
     assertEquals(e.name, "PermissionDenied");
   }
   assert(caughtError);
@@ -46,7 +46,7 @@ testPerm({ read: true }, function readDirSyncNotDir(): void {
     src = Deno.readDirSync("package.json");
   } catch (err) {
     caughtError = true;
-    assertEquals(err.kind, Deno.ErrorKind.Other);
+    assertEquals(err.kind, Deno.StandardErrorKinds.Other);
   }
   assert(caughtError);
   assertEquals(src, undefined);
@@ -60,7 +60,7 @@ testPerm({ read: true }, function readDirSyncNotFound(): void {
     src = Deno.readDirSync("bad_dir_name");
   } catch (err) {
     caughtError = true;
-    assertEquals(err.kind, Deno.ErrorKind.NotFound);
+    assertEquals(err.kind, Deno.StandardErrorKinds.NotFound);
   }
   assert(caughtError);
   assertEquals(src, undefined);
@@ -77,7 +77,7 @@ testPerm({ read: false }, async function readDirPerm(): Promise<void> {
     await Deno.readDir("tests/");
   } catch (e) {
     caughtError = true;
-    assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
+    assertEquals(e.kind, Deno.StandardErrorKinds.PermissionDenied);
     assertEquals(e.name, "PermissionDenied");
   }
   assert(caughtError);

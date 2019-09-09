@@ -18,6 +18,8 @@ default-run = "deno"
 
 [dependencies]
 deno = { path = "../core" }
+deno_dispatch_json = { path = "../dispatch_json" }
+deno_ops_fs = { path = "../ops/fs" }
 
 ansi_term = "0.12.0"
 atty = "0.2.13"

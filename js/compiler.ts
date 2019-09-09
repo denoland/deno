@@ -7,17 +7,20 @@ import "./globals.ts";
 
 import { bold, cyan, yellow } from "./colors.ts";
 import { Console } from "./console.ts";
-import { core } from "./core.ts";
+import {
+  log,
+  TextEncoder,
+  core,
+  assert,
+  notImplemented,
+  window
+} from "deno_util";
 import { Diagnostic, fromTypeScriptDiagnostic } from "./diagnostics.ts";
-import { cwd } from "./dir.ts";
+import { cwd } from "deno_ops_fs";
 import * as dispatch from "./dispatch.ts";
-import { sendSync } from "./dispatch_json.ts";
+import { sendSync } from "deno_dispatch_json";
 import * as os from "./os.ts";
-import { TextEncoder } from "./text_encoding.ts";
 import { getMappedModuleName, parseTypeDirectives } from "./type_directives.ts";
-import { assert, notImplemented } from "./util.ts";
-import * as util from "./util.ts";
-import { window } from "./window.ts";
 import { postMessage, workerClose, workerMain } from "./workers.ts";
 import { writeFileSync } from "./write_file.ts";
 
@@ -139,7 +142,7 @@ function fetchAsset(name: string): string {
 
 /** Ops to Rust to resolve and fetch a modules meta data. */
 function fetchSourceFile(specifier: string, referrer: string): SourceFile {
-  util.log("compiler.fetchSourceFile", { specifier, referrer });
+  log("compiler.fetchSourceFile", { specifier, referrer });
   const res = sendSync(dispatch.OP_FETCH_SOURCE_FILE, {
     specifier,
     referrer
@@ -221,7 +224,7 @@ class Host implements ts.CompilerHost {
   private _sourceFileCache: Record<string, SourceFile> = {};
 
   private _resolveModule(specifier: string, referrer: string): SourceFile {
-    util.log("host._resolveModule", { specifier, referrer });
+    log("host._resolveModule", { specifier, referrer });
     // Handle built-in assets specially.
     if (specifier.startsWith(ASSETS)) {
       const moduleName = specifier.split("/").pop()!;
@@ -276,7 +279,7 @@ class Host implements ts.CompilerHost {
    * options which were ignored, or `undefined`.
    */
   configure(path: string, configurationText: string): ConfigureResponse {
-    util.log("host.configure", path);
+    log("host.configure", path);
     const { config, error } = ts.parseConfigFileTextToJson(
       path,
       configurationText
@@ -320,7 +323,7 @@ class Host implements ts.CompilerHost {
   }
 
   getCompilationSettings(): ts.CompilerOptions {
-    util.log("getCompilationSettings()");
+    log("getCompilationSettings()");
     return this._options;
   }
 
@@ -343,7 +346,7 @@ class Host implements ts.CompilerHost {
     shouldCreateNewSourceFile?: boolean
   ): ts.SourceFile | undefined {
     assert(!shouldCreateNewSourceFile);
-    util.log("getSourceFile", fileName);
+    log("getSourceFile", fileName);
     const sourceFile =
       fileName in this._sourceFileCache
         ? this._sourceFileCache[fileName]
@@ -367,7 +370,7 @@ class Host implements ts.CompilerHost {
     moduleNames: string[],
     containingFile: string
   ): Array<ts.ResolvedModuleFull | undefined> {
-    util.log("resolveModuleNames()", { moduleNames, containingFile });
+    log("resolveModuleNames()", { moduleNames, containingFile });
     const typeDirectives: Record<string, string> | undefined =
       containingFile in this._sourceFileCache
         ? this._sourceFileCache[containingFile].typeDirectives
@@ -417,7 +420,7 @@ class Host implements ts.CompilerHost {
     onError?: (message: string) => void,
     sourceFiles?: readonly ts.SourceFile[]
   ): void {
-    util.log("writeFile", fileName);
+    log("writeFile", fileName);
     try {
       if (this._bundle) {
         emitBundle(this._bundle, data);

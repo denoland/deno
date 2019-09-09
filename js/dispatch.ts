@@ -1,8 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as minimal from "./dispatch_minimal.ts";
-import * as json from "./dispatch_json.ts";
-import { core } from "./core.ts";
-import { ops } from "./ops.ts";
+import * as json from "deno_dispatch_json";
+import { core, ops } from "deno_util";
 
 const opNamespace = ops.builtins;
 
@@ -45,11 +44,6 @@ opNamespace.env = (id: MaybeOpId): void => {
 export let OP_EXEC_PATH: OpId;
 opNamespace.execPath = (id: MaybeOpId): void => {
   OP_EXEC_PATH = id!;
-  core.setAsyncHandler(id!, json.asyncMsgFromRust);
-};
-export let OP_UTIME: OpId;
-opNamespace.utime = (id: MaybeOpId): void => {
-  OP_UTIME = id!;
   core.setAsyncHandler(id!, json.asyncMsgFromRust);
 };
 export let OP_SET_ENV: OpId;
@@ -222,66 +216,6 @@ opNamespace.kill = (id: MaybeOpId): void => {
   OP_KILL = id!;
   core.setAsyncHandler(id!, json.asyncMsgFromRust);
 };
-export let OP_CHDIR: OpId;
-opNamespace.chdir = (id: MaybeOpId): void => {
-  OP_CHDIR = id!;
-  core.setAsyncHandler(id!, json.asyncMsgFromRust);
-};
-export let OP_MKDIR: OpId;
-opNamespace.mkdir = (id: MaybeOpId): void => {
-  OP_MKDIR = id!;
-  core.setAsyncHandler(id!, json.asyncMsgFromRust);
-};
-export let OP_CHMOD: OpId;
-opNamespace.chmod = (id: MaybeOpId): void => {
-  OP_CHMOD = id!;
-  core.setAsyncHandler(id!, json.asyncMsgFromRust);
-};
-export let OP_CHOWN: OpId;
-opNamespace.chown = (id: MaybeOpId): void => {
-  OP_CHOWN = id!;
-  core.setAsyncHandler(id!, json.asyncMsgFromRust);
-};
-export let OP_REMOVE: OpId;
-opNamespace.remove = (id: MaybeOpId): void => {
-  OP_REMOVE = id!;
-  core.setAsyncHandler(id!, json.asyncMsgFromRust);
-};
-export let OP_COPY_FILE: OpId;
-opNamespace.copyFile = (id: MaybeOpId): void => {
-  OP_COPY_FILE = id!;
-  core.setAsyncHandler(id!, json.asyncMsgFromRust);
-};
-export let OP_STAT: OpId;
-opNamespace.stat = (id: MaybeOpId): void => {
-  OP_STAT = id!;
-  core.setAsyncHandler(id!, json.asyncMsgFromRust);
-};
-export let OP_READ_DIR: OpId;
-opNamespace.readDir = (id: MaybeOpId): void => {
-  OP_READ_DIR = id!;
-  core.setAsyncHandler(id!, json.asyncMsgFromRust);
-};
-export let OP_RENAME: OpId;
-opNamespace.rename = (id: MaybeOpId): void => {
-  OP_RENAME = id!;
-  core.setAsyncHandler(id!, json.asyncMsgFromRust);
-};
-export let OP_LINK: OpId;
-opNamespace.link = (id: MaybeOpId): void => {
-  OP_LINK = id!;
-  core.setAsyncHandler(id!, json.asyncMsgFromRust);
-};
-export let OP_SYMLINK: OpId;
-opNamespace.symlink = (id: MaybeOpId): void => {
-  OP_SYMLINK = id!;
-  core.setAsyncHandler(id!, json.asyncMsgFromRust);
-};
-export let OP_READ_LINK: OpId;
-opNamespace.readLink = (id: MaybeOpId): void => {
-  OP_READ_LINK = id!;
-  core.setAsyncHandler(id!, json.asyncMsgFromRust);
-};
 export let OP_TRUNCATE: OpId;
 opNamespace.truncate = (id: MaybeOpId): void => {
   OP_TRUNCATE = id!;
@@ -290,11 +224,6 @@ opNamespace.truncate = (id: MaybeOpId): void => {
 export let OP_MAKE_TEMP_DIR: OpId;
 opNamespace.makeTempDir = (id: MaybeOpId): void => {
   OP_MAKE_TEMP_DIR = id!;
-  core.setAsyncHandler(id!, json.asyncMsgFromRust);
-};
-export let OP_CWD: OpId;
-opNamespace.cwd = (id: MaybeOpId): void => {
-  OP_CWD = id!;
   core.setAsyncHandler(id!, json.asyncMsgFromRust);
 };
 export let OP_FETCH_ASSET: OpId;

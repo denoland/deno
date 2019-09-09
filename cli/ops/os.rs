@@ -1,12 +1,12 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{wrap_json_op, Deserialize, JsonOp};
 use crate::ansi;
-use crate::fs as deno_fs;
 use crate::state::DenoOpDispatcher;
 use crate::state::ThreadSafeState;
 use crate::version;
 use atty;
 use deno::*;
+use deno_ops_fs::fs as deno_fs;
 use log;
 use std::collections::HashMap;
 use std::env;

@@ -1,8 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { DomIterable } from "../dom_types.ts";
-import { window } from "../window.ts";
-import { requiredArguments } from "../util.ts";
+import { domTypes, window, requiredArguments } from "deno_util";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Constructor<T = {}> = new (...args: any[]) => T;
@@ -15,7 +13,7 @@ type Constructor<T = {}> = new (...args: any[]) => T;
 export function DomIterableMixin<K, V, TBase extends Constructor>(
   Base: TBase,
   dataSymbol: symbol
-): TBase & Constructor<DomIterable<K, V>> {
+): TBase & Constructor<domTypes.DomIterable<K, V>> {
   // we have to cast `this` as `any` because there is no way to describe the
   // Base class in a way where the Symbol `dataSymbol` is defined.  So the
   // runtime code works, but we do lose a little bit of type safety.

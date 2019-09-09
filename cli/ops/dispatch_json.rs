@@ -18,7 +18,7 @@ fn json_err(err: ErrBox) -> Value {
   use crate::deno_error::GetErrorKind;
   json!({
     "message": err.to_string(),
-    "kind": err.kind() as u32,
+    "kind": crate::msg::error_kind_str(err.kind()),
   })
 }
 

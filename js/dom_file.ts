@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as domTypes from "./dom_types.ts";
+import { domTypes } from "deno_util";
 import * as blob from "./blob.ts";
 
 // TODO Rename this to DomFileImpl

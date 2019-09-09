@@ -10,7 +10,7 @@ const {
   kill,
   run,
   DenoError,
-  ErrorKind,
+  StandardErrorKinds,
   readFile,
   open,
   makeTempDir,
@@ -23,7 +23,7 @@ test(function runPermissions(): void {
     Deno.run({ args: ["python", "-c", "print('hello world')"] });
   } catch (e) {
     caughtError = true;
-    assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
+    assertEquals(e.kind, Deno.StandardErrorKinds.PermissionDenied);
     assertEquals(e.name, "PermissionDenied");
   }
   assert(caughtError);
@@ -79,7 +79,7 @@ testPerm({ run: true }, function runNotFound(): void {
   }
   assert(error !== undefined);
   assert(error instanceof DenoError);
-  assertEquals(error.kind, ErrorKind.NotFound);
+  assertEquals(error.kind, StandardErrorKinds.NotFound);
 });
 
 testPerm(
@@ -312,15 +312,15 @@ testPerm({ run: true }, async function runClose(): Promise<void> {
 });
 
 test(function signalNumbers(): void {
-  if (Deno.platform.os === "mac") {
+  if (Deno.build.os === "mac") {
     assertEquals(Deno.Signal.SIGSTOP, 17);
-  } else if (Deno.platform.os === "linux") {
+  } else if (Deno.build.os === "linux") {
     assertEquals(Deno.Signal.SIGSTOP, 19);
   }
 });
 
 // Ignore signal tests on windows for now...
-if (Deno.platform.os !== "win") {
+if (Deno.build.os !== "win") {
   test(function killPermissions(): void {
     let caughtError = false;
     try {
@@ -331,7 +331,7 @@ if (Deno.platform.os !== "win") {
       Deno.kill(Deno.pid, Deno.Signal.SIGCONT);
     } catch (e) {
       caughtError = true;
-      assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
+      assertEquals(e.kind, Deno.StandardErrorKinds.PermissionDenied);
       assertEquals(e.name, "PermissionDenied");
     }
     assert(caughtError);
@@ -369,7 +369,7 @@ if (Deno.platform.os !== "win") {
     }
 
     assert(!!err);
-    assertEquals(err.kind, Deno.ErrorKind.InvalidInput);
+    assertEquals(err.kind, Deno.StandardErrorKinds.InvalidInput);
     assertEquals(err.name, "InvalidInput");
 
     p.close();

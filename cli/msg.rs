@@ -59,6 +59,63 @@ pub enum ErrorKind {
   JSError = 50,
 }
 
+pub fn error_kind_str(e: ErrorKind) -> &'static str {
+  use ErrorKind::*;
+  match e {
+    NoError => "NoError",
+    NotFound => "NotFound",
+    PermissionDenied => "PermissionDenied",
+    ConnectionRefused => "ConnectionRefused",
+    ConnectionReset => "ConnectionReset",
+    ConnectionAborted => "ConnectionAborted",
+    NotConnected => "NotConnected",
+    AddrInUse => "AddrInUse",
+    AddrNotAvailable => "AddrNotAvailable",
+    BrokenPipe => "BrokenPipe",
+    AlreadyExists => "AlreadyExists",
+    WouldBlock => "WouldBlock",
+    InvalidInput => "InvalidInput",
+    InvalidData => "InvalidData",
+    TimedOut => "TimedOut",
+    Interrupted => "Interrupted",
+    WriteZero => "WriteZero",
+    Other => "Other",
+    UnexpectedEof => "UnexpectedEof",
+    BadResource => "BadResource",
+    CommandFailed => "CommandFailed",
+    EmptyHost => "EmptyHost",
+    IdnaError => "IdnaError",
+    InvalidPort => "InvalidPort",
+    InvalidIpv4Address => "InvalidIpv4Address",
+    InvalidIpv6Address => "InvalidIpv6Address",
+    InvalidDomainCharacter => "InvalidDomainCharacter",
+    RelativeUrlWithoutBase => "RelativeUrlWithoutBase",
+    RelativeUrlWithCannotBeABaseBase => "RelativeUrlWithCannotBeABaseBase",
+    SetHostOnCannotBeABaseUrl => "SetHostOnCannotBeABaseUrl",
+    Overflow => "Overflow",
+    HttpUser => "HttpUser",
+    HttpClosed => "HttpClosed",
+    HttpCanceled => "HttpCanceled",
+    HttpParse => "HttpParse",
+    HttpOther => "HttpOther",
+    TooLarge => "TooLarge",
+    InvalidUri => "InvalidUri",
+    InvalidSeekMode => "InvalidSeekMode",
+    OpNotAvailable => "OpNotAvailable",
+    WorkerInitFailed => "WorkerInitFailed",
+    UnixError => "UnixError",
+    NoAsyncSupport => "NoAsyncSupport",
+    NoSyncSupport => "NoSyncSupport",
+    ImportMapError => "ImportMapError",
+    InvalidPath => "InvalidPath",
+    ImportPrefixMissing => "ImportPrefixMissing",
+    UnsupportedFetchScheme => "UnsupportedFetchScheme",
+    TooManyRedirects => "TooManyRedirects",
+    Diagnostic => "Diagnostic",
+    JSError => "JSError",
+  }
+}
+
 // Warning! The values in this enum are duplicated in js/compiler.ts
 // Update carefully!
 #[allow(non_camel_case_types)]

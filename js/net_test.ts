@@ -20,7 +20,7 @@ testPerm({ net: true }, async function netCloseWhileAccept(): Promise<void> {
     err = e;
   }
   assert(!!err);
-  assertEquals(err.kind, Deno.ErrorKind.Other);
+  assertEquals(err.kind, Deno.StandardErrorKinds.Other);
   assertEquals(err.message, "Listener has been closed");
 });
 
@@ -28,7 +28,7 @@ testPerm({ net: true }, async function netConcurrentAccept(): Promise<void> {
   const listener = Deno.listen("tcp", ":4502");
   let acceptErrCount = 0;
   const checkErr = (e): void => {
-    assertEquals(e.kind, Deno.ErrorKind.Other);
+    assertEquals(e.kind, Deno.StandardErrorKinds.Other);
     if (e.message === "Listener has been closed") {
       assertEquals(acceptErrCount, 1);
     } else if (e.message === "Another accept task is ongoing") {
@@ -156,7 +156,7 @@ testPerm({ net: true }, async function netDoubleCloseRead() {
     err = e;
   }
   assert(!!err);
-  assertEquals(err.kind, Deno.ErrorKind.NotConnected);
+  assertEquals(err.kind, Deno.StandardErrorKinds.NotConnected);
   assertEquals(err.name, "NotConnected");
   closeDeferred.resolve();
   listener.close();
@@ -191,7 +191,7 @@ testPerm({ net: true }, async function netCloseWriteSuccess() {
     err = e;
   }
   assert(!!err);
-  assertEquals(err.kind, Deno.ErrorKind.BrokenPipe);
+  assertEquals(err.kind, Deno.StandardErrorKinds.BrokenPipe);
   assertEquals(err.name, "BrokenPipe");
   closeDeferred.resolve();
   listener.close();
@@ -218,7 +218,7 @@ testPerm({ net: true }, async function netDoubleCloseWrite() {
     err = e;
   }
   assert(!!err);
-  assertEquals(err.kind, Deno.ErrorKind.NotConnected);
+  assertEquals(err.kind, Deno.StandardErrorKinds.NotConnected);
   assertEquals(err.name, "NotConnected");
   closeDeferred.resolve();
   listener.close();

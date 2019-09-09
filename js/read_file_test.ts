@@ -16,7 +16,7 @@ testPerm({ read: false }, function readFileSyncPerm(): void {
     Deno.readFileSync("package.json");
   } catch (e) {
     caughtError = true;
-    assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
+    assertEquals(e.kind, Deno.StandardErrorKinds.PermissionDenied);
     assertEquals(e.name, "PermissionDenied");
   }
   assert(caughtError);
@@ -29,7 +29,7 @@ testPerm({ read: true }, function readFileSyncNotFound(): void {
     data = Deno.readFileSync("bad_filename");
   } catch (e) {
     caughtError = true;
-    assertEquals(e.kind, Deno.ErrorKind.NotFound);
+    assertEquals(e.kind, Deno.StandardErrorKinds.NotFound);
   }
   assert(caughtError);
   assert(data === undefined);
@@ -50,7 +50,7 @@ testPerm({ read: false }, async function readFilePerm(): Promise<void> {
     await Deno.readFile("package.json");
   } catch (e) {
     caughtError = true;
-    assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
+    assertEquals(e.kind, Deno.StandardErrorKinds.PermissionDenied);
     assertEquals(e.name, "PermissionDenied");
   }
   assert(caughtError);

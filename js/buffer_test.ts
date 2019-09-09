@@ -155,7 +155,7 @@ test(async function bufferTooLargeByteWrites(): Promise<void> {
     err = e;
   }
 
-  assertEquals(err.kind, Deno.ErrorKind.TooLarge);
+  assertEquals(err.kind, Deno.StandardErrorKinds.TooLarge);
   assertEquals(err.name, "TooLarge");
 });
 

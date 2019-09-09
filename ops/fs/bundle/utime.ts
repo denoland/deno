@@ -1,6 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { sendSync, sendAsync } from "./dispatch_json.ts";
-import { OP_UTIME } from "./dispatch.ts";
+import { JsonOp } from "deno_dispatch_json";
+import { opNamespace } from "./namespace.ts";
+
+const OP_UTIME = new JsonOp(opNamespace, "utime");
 
 function toSecondsFromEpoch(v: number | Date): number {
   return v instanceof Date ? v.valueOf() / 1000 : v;
@@ -17,7 +19,7 @@ export function utimeSync(
   atime: number | Date,
   mtime: number | Date
 ): void {
-  sendSync(OP_UTIME, {
+  OP_UTIME.sendSync({
     filename,
     // TODO(ry) split atime, mtime into [seconds, nanoseconds] tuple
     atime: toSecondsFromEpoch(atime),
@@ -36,7 +38,7 @@ export async function utime(
   atime: number | Date,
   mtime: number | Date
 ): Promise<void> {
-  await sendAsync(OP_UTIME, {
+  await OP_UTIME.sendAsync({
     filename,
     // TODO(ry) split atime, mtime into [seconds, nanoseconds] tuple
     atime: toSecondsFromEpoch(atime),

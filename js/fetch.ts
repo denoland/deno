@@ -1,12 +1,13 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import {
+  domTypes,
+  TextDecoder,
+  TextEncoder,
   assert,
   createResolvable,
   notImplemented,
   isTypedArray
-} from "./util.ts";
-import * as domTypes from "./dom_types.ts";
-import { TextDecoder, TextEncoder } from "./text_encoding.ts";
+} from "deno_util";
 import { DenoBlob, bytesSymbol as blobBytesSymbol } from "./blob.ts";
 import { Headers } from "./headers.ts";
 import * as io from "./io.ts";
@@ -15,7 +16,7 @@ import { Buffer } from "./buffer.ts";
 import { FormData } from "./form_data.ts";
 import { URLSearchParams } from "./url_search_params.ts";
 import * as dispatch from "./dispatch.ts";
-import { sendAsync } from "./dispatch_json.ts";
+import { sendAsync } from "deno_dispatch_json";
 
 function getHeaderValueParams(value: string): Map<string, string> {
   const params = new Map();

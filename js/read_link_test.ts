@@ -21,7 +21,7 @@ testPerm({ read: false }, async function readlinkSyncPerm(): Promise<void> {
     Deno.readlinkSync("/symlink");
   } catch (e) {
     caughtError = true;
-    assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
+    assertEquals(e.kind, Deno.StandardErrorKinds.PermissionDenied);
     assertEquals(e.name, "PermissionDenied");
   }
   assert(caughtError);
@@ -34,7 +34,7 @@ testPerm({ read: true }, function readlinkSyncNotFound(): void {
     data = Deno.readlinkSync("bad_filename");
   } catch (e) {
     caughtError = true;
-    assertEquals(e.kind, Deno.ErrorKind.NotFound);
+    assertEquals(e.kind, Deno.StandardErrorKinds.NotFound);
   }
   assert(caughtError);
   assertEquals(data, undefined);
@@ -62,7 +62,7 @@ testPerm({ read: false }, async function readlinkPerm(): Promise<void> {
     await Deno.readlink("/symlink");
   } catch (e) {
     caughtError = true;
-    assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
+    assertEquals(e.kind, Deno.StandardErrorKinds.PermissionDenied);
     assertEquals(e.name, "PermissionDenied");
   }
   assert(caughtError);

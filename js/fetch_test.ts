@@ -20,7 +20,7 @@ test(async function fetchPerm(): Promise<void> {
   } catch (err_) {
     err = err_;
   }
-  assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+  assertEquals(err.kind, Deno.StandardErrorKinds.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });
 
@@ -88,7 +88,7 @@ testPerm({ net: true }, async function fetchEmptyInvalid(): Promise<void> {
   } catch (err_) {
     err = err_;
   }
-  assertEquals(err.kind, Deno.ErrorKind.RelativeUrlWithoutBase);
+  assertEquals(err.kind, Deno.StandardErrorKinds.RelativeUrlWithoutBase);
   assertEquals(err.name, "RelativeUrlWithoutBase");
 });
 

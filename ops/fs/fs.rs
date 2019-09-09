@@ -5,7 +5,8 @@ use std::io::ErrorKind;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use deno::ErrBox;
+use crate::error::FsOpError;
+use deno_dispatch_json::JsonErrBox;
 use rand;
 use rand::Rng;
 use url::Url;
@@ -115,21 +116,22 @@ pub fn normalize_path(path: &Path) -> String {
 }
 
 #[cfg(unix)]
-pub fn chown(path: &str, uid: u32, gid: u32) -> Result<(), ErrBox> {
+pub fn chown(path: &str, uid: u32, gid: u32) -> Result<(), JsonErrBox> {
   let nix_uid = Uid::from_raw(uid);
   let nix_gid = Gid::from_raw(gid);
   unix_chown(path, Option::Some(nix_uid), Option::Some(nix_gid))
-    .map_err(ErrBox::from)
+    .map_err(FsOpError::from)
+    .map_err(JsonErrBox::from)
 }
 
 #[cfg(not(unix))]
-pub fn chown(_path: &str, _uid: u32, _gid: u32) -> Result<(), ErrBox> {
+pub fn chown(_path: &str, _uid: u32, _gid: u32) -> Result<(), JsonErrBox> {
   // Noop
   // TODO: implement chown for Windows
   Err(crate::deno_error::op_not_implemented())
 }
 
-pub fn resolve_from_cwd(path: &str) -> Result<(PathBuf, String), ErrBox> {
+pub fn resolve_from_cwd(path: &str) -> Result<(PathBuf, String), JsonErrBox> {
   let candidate_path = Path::new(path);
 
   let resolved_path = if candidate_path.is_absolute() {
@@ -139,56 +141,20 @@ pub fn resolve_from_cwd(path: &str) -> Result<(PathBuf, String), ErrBox> {
     cwd.join(path)
   };
 
-  // HACK: `Url::parse` is used here because it normalizes the path.
+  // HACK: `Url::from_directory_path` is used here because it normalizes the path.
   // Joining `/dev/deno/" with "./tests" using `PathBuf` yields `/deno/dev/./tests/`.
   // On the other hand joining `/dev/deno/" with "./tests" using `Url` yields "/dev/deno/tests"
   // - and that's what we want.
   // There exists similar method on `PathBuf` - `PathBuf.canonicalize`, but the problem
   // is `canonicalize` resolves symlinks and we don't want that.
-  // We just want to normalize the path...
-  // This only works on absolute paths - not worth extracting as a public utility.
-  let resolved_url =
-    Url::from_file_path(resolved_path).expect("Path should be absolute");
-  let normalized_url = Url::parse(resolved_url.as_str())
-    .expect("String from a URL should parse to a URL");
-  let normalized_path = normalized_url
+  // We just want o normalize the path...
+  let resolved_url = Url::from_file_path(resolved_path)
+    .expect("PathBuf should be parseable URL");
+  let normalized_path = resolved_url
     .to_file_path()
-    .expect("URL from a path should contain a valid path");
+    .expect("URL from PathBuf should be valid path");
 
   let path_string = normalized_path.to_str().unwrap().to_string();
 
   Ok((normalized_path, path_string))
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn resolve_from_cwd_child() {
-    let cwd = std::env::current_dir().unwrap();
-    assert_eq!(resolve_from_cwd("a").unwrap().0, cwd.join("a"));
-  }
-
-  #[test]
-  fn resolve_from_cwd_dot() {
-    let cwd = std::env::current_dir().unwrap();
-    assert_eq!(resolve_from_cwd(".").unwrap().0, cwd);
-  }
-
-  #[test]
-  fn resolve_from_cwd_parent() {
-    let cwd = std::env::current_dir().unwrap();
-    assert_eq!(resolve_from_cwd("a/..").unwrap().0, cwd);
-  }
-
-  #[test]
-  fn resolve_from_cwd_absolute() {
-    let expected = if cfg!(windows) {
-      Path::new("C:\\a")
-    } else {
-      Path::new("/a")
-    };
-    assert_eq!(resolve_from_cwd("/a").unwrap().0, expected);
-  }
 }

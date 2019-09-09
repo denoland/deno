@@ -1,4 +1,4 @@
-use crate::fs as deno_fs;
+use deno_ops_fs::fs as deno_fs;
 use std::ffi::OsStr;
 use std::fs;
 use std::path::Component;

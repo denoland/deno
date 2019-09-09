@@ -14,7 +14,7 @@ pub static COMPILER_SNAPSHOT_DTS: &[u8] =
 
 #[test]
 fn cli_snapshot() {
-  let mut isolate =
+  let isolate =
     deno::Isolate::new(deno::StartupData::Snapshot(CLI_SNAPSHOT), false);
   deno::js_check(isolate.execute(
     "<anon>",
@@ -29,7 +29,7 @@ fn cli_snapshot() {
 
 #[test]
 fn compiler_snapshot() {
-  let mut isolate =
+  let isolate =
     deno::Isolate::new(deno::StartupData::Snapshot(COMPILER_SNAPSHOT), false);
   deno::js_check(isolate.execute(
     "<anon>",

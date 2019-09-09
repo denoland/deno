@@ -1,13 +1,10 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-// Some deserializer fields are only used on Unix and Windows build fails without it
-#![allow(dead_code)]
-use super::dispatch_json::{blocking_json, wrap_json_op, Deserialize, JsonOp};
-use crate::deno_error::DenoError;
-use crate::deno_error::ErrorKind;
+use crate::error::FsOpError;
 use crate::fs as deno_fs;
-use crate::state::DenoOpDispatcher;
-use crate::state::ThreadSafeState;
-use deno::*;
+use crate::state::FsOpDispatcher;
+use crate::state::TSFsOpsState;
+use deno::CoreOp;
+use deno::PinnedBuf;
+use deno_dispatch_json::{blocking_json, wrap_json_op, Deserialize, JsonOp};
 use remove_dir_all::remove_dir_all;
 use std::convert::From;
 use std::fs;
@@ -26,17 +23,17 @@ struct ChdirArgs {
   directory: String,
 }
 
-impl DenoOpDispatcher for OpChdir {
+impl FsOpDispatcher for OpChdir {
   fn dispatch(
     &self,
-    _state: &ThreadSafeState,
+    _state: &TSFsOpsState,
     control: &[u8],
     buf: Option<PinnedBuf>,
   ) -> CoreOp {
     wrap_json_op(
       move |args, _zero_copy| {
         let args: ChdirArgs = serde_json::from_value(args)?;
-        std::env::set_current_dir(&args.directory)?;
+        std::env::set_current_dir(&args.directory).map_err(FsOpError::from)?;
         Ok(JsonOp::Sync(json!({})))
       },
       control,
@@ -60,10 +57,10 @@ struct MkdirArgs {
   mode: u32,
 }
 
-impl DenoOpDispatcher for OpMkdir {
+impl FsOpDispatcher for OpMkdir {
   fn dispatch(
     &self,
-    state: &ThreadSafeState,
+    state: &TSFsOpsState,
     control: &[u8],
     buf: Option<PinnedBuf>,
   ) -> CoreOp {
@@ -77,7 +74,8 @@ impl DenoOpDispatcher for OpMkdir {
         let is_sync = args.promise_id.is_none();
         blocking_json(is_sync, move || {
           debug!("op_mkdir {}", path_);
-          deno_fs::mkdir(&path, args.mode, args.recursive)?;
+          deno_fs::mkdir(&path, args.mode, args.recursive)
+            .map_err(FsOpError::from)?;
           Ok(json!({}))
         })
       },
@@ -101,10 +99,10 @@ struct ChmodArgs {
   mode: u32,
 }
 
-impl DenoOpDispatcher for OpChmod {
+impl FsOpDispatcher for OpChmod {
   fn dispatch(
     &self,
-    state: &ThreadSafeState,
+    state: &TSFsOpsState,
     control: &[u8],
     buf: Option<PinnedBuf>,
   ) -> CoreOp {
@@ -119,12 +117,12 @@ impl DenoOpDispatcher for OpChmod {
         blocking_json(is_sync, move || {
           debug!("op_chmod {}", &path_);
           // Still check file/dir exists on windows
-          let _metadata = fs::metadata(&path)?;
+          let _metadata = fs::metadata(&path).map_err(FsOpError::from)?;
           #[cfg(any(unix))]
           {
             let mut permissions = _metadata.permissions();
             permissions.set_mode(args.mode);
-            fs::set_permissions(&path, permissions)?;
+            fs::set_permissions(&path, permissions).map_err(FsOpError::from)?;
           }
           Ok(json!({}))
         })
@@ -150,10 +148,10 @@ struct ChownArgs {
   gid: u32,
 }
 
-impl DenoOpDispatcher for OpChown {
+impl FsOpDispatcher for OpChown {
   fn dispatch(
     &self,
-    state: &ThreadSafeState,
+    state: &TSFsOpsState,
     control: &[u8],
     buf: Option<PinnedBuf>,
   ) -> CoreOp {
@@ -192,10 +190,10 @@ struct RemoveArgs {
   recursive: bool,
 }
 
-impl DenoOpDispatcher for OpRemove {
+impl FsOpDispatcher for OpRemove {
   fn dispatch(
     &self,
-    state: &ThreadSafeState,
+    state: &TSFsOpsState,
     control: &[u8],
     buf: Option<PinnedBuf>,
   ) -> CoreOp {
@@ -210,13 +208,13 @@ impl DenoOpDispatcher for OpRemove {
         let is_sync = args.promise_id.is_none();
         blocking_json(is_sync, move || {
           debug!("op_remove {}", path.display());
-          let metadata = fs::metadata(&path)?;
+          let metadata = fs::metadata(&path).map_err(FsOpError::from)?;
           if metadata.is_file() {
-            fs::remove_file(&path)?;
+            fs::remove_file(&path).map_err(FsOpError::from)?;
           } else if recursive {
-            remove_dir_all(&path)?;
+            remove_dir_all(&path).map_err(FsOpError::from)?;
           } else {
-            fs::remove_dir(&path)?;
+            fs::remove_dir(&path).map_err(FsOpError::from)?;
           }
           Ok(json!({}))
         })
@@ -241,10 +239,10 @@ struct CopyFileArgs {
   to: String,
 }
 
-impl DenoOpDispatcher for OpCopyFile {
+impl FsOpDispatcher for OpCopyFile {
   fn dispatch(
     &self,
-    state: &ThreadSafeState,
+    state: &TSFsOpsState,
     control: &[u8],
     buf: Option<PinnedBuf>,
   ) -> CoreOp {
@@ -266,12 +264,15 @@ impl DenoOpDispatcher for OpCopyFile {
           // Once the issue is reolved, we should remove this workaround.
           if cfg!(unix) && !from.is_file() {
             return Err(
-              DenoError::new(ErrorKind::NotFound, "File not found".to_string())
-                .into(),
+              FsOpError::from(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "File not found".to_string(),
+              ))
+              .into(),
             );
           }
 
-          fs::copy(&from, &to)?;
+          fs::copy(&from, &to).map_err(FsOpError::from)?;
           Ok(json!({}))
         })
       },
@@ -315,10 +316,10 @@ struct StatArgs {
   lstat: bool,
 }
 
-impl DenoOpDispatcher for OpStat {
+impl FsOpDispatcher for OpStat {
   fn dispatch(
     &self,
-    state: &ThreadSafeState,
+    state: &TSFsOpsState,
     control: &[u8],
     buf: Option<PinnedBuf>,
   ) -> CoreOp {
@@ -336,9 +337,9 @@ impl DenoOpDispatcher for OpStat {
         blocking_json(is_sync, move || {
           debug!("op_stat {} {}", filename.display(), lstat);
           let metadata = if lstat {
-            fs::symlink_metadata(&filename)?
+            fs::symlink_metadata(&filename).map_err(FsOpError::from)?
           } else {
-            fs::metadata(&filename)?
+            fs::metadata(&filename).map_err(FsOpError::from)?
           };
 
           Ok(json!({
@@ -372,10 +373,10 @@ struct ReadDirArgs {
   path: String,
 }
 
-impl DenoOpDispatcher for OpReadDir {
+impl FsOpDispatcher for OpReadDir {
   fn dispatch(
     &self,
-    state: &ThreadSafeState,
+    state: &TSFsOpsState,
     control: &[u8],
     buf: Option<PinnedBuf>,
   ) -> CoreOp {
@@ -390,7 +391,8 @@ impl DenoOpDispatcher for OpReadDir {
         blocking_json(is_sync, move || {
           debug!("op_read_dir {}", path.display());
 
-          let entries: Vec<_> = fs::read_dir(path)?
+          let entries: Vec<_> = fs::read_dir(path)
+            .map_err(FsOpError::from)?
             .map(|entry| {
               let entry = entry.unwrap();
               let metadata = entry.metadata().unwrap();
@@ -433,10 +435,10 @@ struct RenameArgs {
   newpath: String,
 }
 
-impl DenoOpDispatcher for OpRename {
+impl FsOpDispatcher for OpRename {
   fn dispatch(
     &self,
-    state: &ThreadSafeState,
+    state: &TSFsOpsState,
     control: &[u8],
     buf: Option<PinnedBuf>,
   ) -> CoreOp {
@@ -456,7 +458,7 @@ impl DenoOpDispatcher for OpRename {
         let is_sync = args.promise_id.is_none();
         blocking_json(is_sync, move || {
           debug!("op_rename {} {}", oldpath.display(), newpath.display());
-          fs::rename(&oldpath, &newpath)?;
+          fs::rename(&oldpath, &newpath).map_err(FsOpError::from)?;
           Ok(json!({}))
         })
       },
@@ -480,10 +482,10 @@ struct LinkArgs {
   newname: String,
 }
 
-impl DenoOpDispatcher for OpLink {
+impl FsOpDispatcher for OpLink {
   fn dispatch(
     &self,
-    state: &ThreadSafeState,
+    state: &TSFsOpsState,
     control: &[u8],
     buf: Option<PinnedBuf>,
   ) -> CoreOp {
@@ -502,7 +504,7 @@ impl DenoOpDispatcher for OpLink {
         let is_sync = args.promise_id.is_none();
         blocking_json(is_sync, move || {
           debug!("op_link {} {}", oldname.display(), newname.display());
-          std::fs::hard_link(&oldname, &newname)?;
+          std::fs::hard_link(&oldname, &newname).map_err(FsOpError::from)?;
           Ok(json!({}))
         })
       },
@@ -526,10 +528,10 @@ struct SymlinkArgs {
   newname: String,
 }
 
-impl DenoOpDispatcher for OpSymlink {
+impl FsOpDispatcher for OpSymlink {
   fn dispatch(
     &self,
-    state: &ThreadSafeState,
+    state: &TSFsOpsState,
     control: &[u8],
     buf: Option<PinnedBuf>,
   ) -> CoreOp {
@@ -546,15 +548,19 @@ impl DenoOpDispatcher for OpSymlink {
         // TODO Use type for Windows.
         if cfg!(windows) {
           return Err(
-            DenoError::new(ErrorKind::Other, "Not implemented".to_string())
-              .into(),
+            FsOpError::from(std::io::Error::new(
+              std::io::ErrorKind::Other,
+              "Not implemented".to_string(),
+            ))
+            .into(),
           );
         }
         let is_sync = args.promise_id.is_none();
         blocking_json(is_sync, move || {
           debug!("op_symlink {} {}", oldname.display(), newname.display());
           #[cfg(any(unix))]
-          std::os::unix::fs::symlink(&oldname, &newname)?;
+          std::os::unix::fs::symlink(&oldname, &newname)
+            .map_err(FsOpError::from)?;
           Ok(json!({}))
         })
       },
@@ -577,10 +583,10 @@ struct ReadLinkArgs {
   name: String,
 }
 
-impl DenoOpDispatcher for OpReadLink {
+impl FsOpDispatcher for OpReadLink {
   fn dispatch(
     &self,
-    state: &ThreadSafeState,
+    state: &TSFsOpsState,
     control: &[u8],
     buf: Option<PinnedBuf>,
   ) -> CoreOp {
@@ -595,7 +601,7 @@ impl DenoOpDispatcher for OpReadLink {
         let is_sync = args.promise_id.is_none();
         blocking_json(is_sync, move || {
           debug!("op_read_link {}", name.display());
-          let path = fs::read_link(&name)?;
+          let path = fs::read_link(&name).map_err(FsOpError::from)?;
           let path_str = path.to_str().unwrap();
 
           Ok(json!(path_str))
@@ -621,10 +627,10 @@ struct TruncateArgs {
   len: u64,
 }
 
-impl DenoOpDispatcher for OpTruncate {
+impl FsOpDispatcher for OpTruncate {
   fn dispatch(
     &self,
-    state: &ThreadSafeState,
+    state: &TSFsOpsState,
     control: &[u8],
     buf: Option<PinnedBuf>,
   ) -> CoreOp {
@@ -641,8 +647,11 @@ impl DenoOpDispatcher for OpTruncate {
         let is_sync = args.promise_id.is_none();
         blocking_json(is_sync, move || {
           debug!("op_truncate {} {}", filename_, len);
-          let f = fs::OpenOptions::new().write(true).open(&filename)?;
-          f.set_len(len)?;
+          let f = fs::OpenOptions::new()
+            .write(true)
+            .open(&filename)
+            .map_err(FsOpError::from)?;
+          f.set_len(len).map_err(FsOpError::from)?;
           Ok(json!({}))
         })
       },
@@ -667,10 +676,10 @@ struct MakeTempDirArgs {
   suffix: Option<String>,
 }
 
-impl DenoOpDispatcher for OpMakeTempDir {
+impl FsOpDispatcher for OpMakeTempDir {
   fn dispatch(
     &self,
-    state: &ThreadSafeState,
+    state: &TSFsOpsState,
     control: &[u8],
     buf: Option<PinnedBuf>,
   ) -> CoreOp {
@@ -695,7 +704,8 @@ impl DenoOpDispatcher for OpMakeTempDir {
             dir.as_ref().map(|x| &**x),
             prefix.as_ref().map(|x| &**x),
             suffix.as_ref().map(|x| &**x),
-          )?;
+          )
+          .map_err(FsOpError::from)?;
           let path_str = path.to_str().unwrap();
 
           Ok(json!(path_str))
@@ -722,10 +732,10 @@ struct UtimeArgs {
   mtime: u64,
 }
 
-impl DenoOpDispatcher for OpUtime {
+impl FsOpDispatcher for OpUtime {
   fn dispatch(
     &self,
-    state: &ThreadSafeState,
+    state: &TSFsOpsState,
     control: &[u8],
     buf: Option<PinnedBuf>,
   ) -> CoreOp {
@@ -736,7 +746,8 @@ impl DenoOpDispatcher for OpUtime {
         let is_sync = args.promise_id.is_none();
         blocking_json(is_sync, move || {
           debug!("op_utimes {} {} {}", args.filename, args.atime, args.mtime);
-          utime::set_file_times(args.filename, args.atime, args.mtime)?;
+          utime::set_file_times(args.filename, args.atime, args.mtime)
+            .map_err(FsOpError::from)?;
           Ok(json!({}))
         })
       },
@@ -752,16 +763,16 @@ impl DenoOpDispatcher for OpUtime {
 
 pub struct OpCwd;
 
-impl DenoOpDispatcher for OpCwd {
+impl FsOpDispatcher for OpCwd {
   fn dispatch(
     &self,
-    _state: &ThreadSafeState,
+    _state: &TSFsOpsState,
     control: &[u8],
     buf: Option<PinnedBuf>,
   ) -> CoreOp {
     wrap_json_op(
       move |_args, _zero_copy| {
-        let path = std::env::current_dir()?;
+        let path = std::env::current_dir().map_err(FsOpError::from)?;
         let path_str = path.into_os_string().into_string().unwrap();
         Ok(JsonOp::Sync(json!(path_str)))
       },
@@ -771,4 +782,12 @@ impl DenoOpDispatcher for OpCwd {
   }
 
   const NAME: &'static str = "cwd";
+}
+
+#[cfg(test)]
+mod tests {
+  #[test]
+  fn it_works() {
+    assert_eq!(2 + 2, 4);
+  }
 }

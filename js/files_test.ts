@@ -73,7 +73,7 @@ testPerm({ write: false }, async function writePermFailure(): Promise<void> {
       err = e;
     }
     assert(!!err);
-    assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+    assertEquals(err.kind, Deno.StandardErrorKinds.PermissionDenied);
     assertEquals(err.name, "PermissionDenied");
   }
 });
@@ -84,7 +84,7 @@ testPerm({ read: false }, async function readPermFailure(): Promise<void> {
     await Deno.open("package.json", "r");
   } catch (e) {
     caughtError = true;
-    assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
+    assertEquals(e.kind, Deno.StandardErrorKinds.PermissionDenied);
     assertEquals(e.name, "PermissionDenied");
   }
   assert(caughtError);
@@ -146,7 +146,7 @@ testPerm(
         err = e;
       }
       assert(!!err);
-      assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+      assertEquals(err.kind, Deno.StandardErrorKinds.PermissionDenied);
       assertEquals(err.name, "PermissionDenied");
     }
   }
@@ -318,7 +318,7 @@ testPerm({ read: true }, async function seekMode(): Promise<void> {
     err = e;
   }
   assert(!!err);
-  assertEquals(err.kind, Deno.ErrorKind.InvalidSeekMode);
+  assertEquals(err.kind, Deno.StandardErrorKinds.InvalidSeekMode);
   assertEquals(err.name, "InvalidSeekMode");
 
   // We should still be able to read the file

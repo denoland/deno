@@ -88,12 +88,18 @@ struct ResolveModuleNamesArgs {
 }
 
 impl TSOpDispatcher for OpResolveModuleNames {
-  fn dispatch(&self, _s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
+  fn dispatch(&self, s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
     let v: ResolveModuleNamesArgs = serde_json::from_value(v).unwrap();
     let mut resolved = Vec::<String>::new();
     let referrer = ModuleSpecifier::resolve_url_or_path(&v.containing_file)?;
     for specifier in v.module_names {
-      let ms = ModuleSpecifier::resolve_import(&specifier, referrer.as_str())?;
+      let ms = match s.import_map.get(&specifier) {
+        Some(module_name) => {
+          dbg!(module_name);
+          ModuleSpecifier::resolve_url_or_path(&module_name)?
+        }
+        None => ModuleSpecifier::resolve_import(&specifier, referrer.as_str())?,
+      };
       resolved.push(ms.as_str().to_string());
     }
     Ok(json!(resolved))

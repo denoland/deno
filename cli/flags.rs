@@ -1,5 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::fs as deno_fs;
 use clap::App;
 use clap::AppSettings;
 use clap::Arg;
@@ -7,6 +6,7 @@ use clap::ArgMatches;
 use clap::Shell;
 use clap::SubCommand;
 use deno::ModuleSpecifier;
+use deno_ops_fs::fs as deno_fs;
 use log::Level;
 use std;
 use std::str;

@@ -1,6 +1,6 @@
 import { Buffer, writeAll } from "./buffer.ts";
 import { stdin } from "./files.ts";
-import { TextEncoder, TextDecoder } from "./text_encoding.ts";
+import { TextEncoder, TextDecoder } from "deno_util";
 import { Reader, EOF } from "./io.ts";
 
 export type XevalFunc = (v: string) => void;

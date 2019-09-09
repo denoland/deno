@@ -1,8 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { assert } from "./util.ts";
-import { window } from "./window.ts";
+import { assert, window } from "deno_util";
 import * as dispatch from "./dispatch.ts";
-import { sendSync, sendAsync } from "./dispatch_json.ts";
+import { sendSync, sendAsync } from "deno_dispatch_json";
 
 const { console } = window;
 

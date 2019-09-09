@@ -1,0 +1,22 @@
+[package]
+name = "deno_dispatch_json"
+version = "0.16.0"
+edition = "2018"
+authors = ["The deno authors <bertbelder@nodejs.org>"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/denoland/deno"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+deno = { path = "../core" }
+
+log = "0.4.8"
+futures = "0.1.28"
+serde = { version = "1.0.99", features = ["derive"] }
+serde_derive = "1.0.99"
+serde_json = { version = "1.0.40", features = [ "preserve_order" ] }
+tokio-executor = "0.1.8"
+tokio-threadpool = "0.1.15"

@@ -13,14 +13,13 @@ import * as consoleTypes from "./console.ts";
 import * as csprng from "./get_random_values.ts";
 import * as customEvent from "./custom_event.ts";
 import * as Deno from "./deno.ts";
-import * as domTypes from "./dom_types.ts";
 import * as domFile from "./dom_file.ts";
 import * as event from "./event.ts";
 import * as eventTarget from "./event_target.ts";
 import * as formData from "./form_data.ts";
 import * as fetchTypes from "./fetch.ts";
 import * as headers from "./headers.ts";
-import * as textEncoding from "./text_encoding.ts";
+import * as denoUtil from "deno_util";
 import * as timers from "./timers.ts";
 import * as url from "./url.ts";
 import * as urlSearchParams from "./url_search_params.ts";
@@ -28,10 +27,6 @@ import * as workers from "./workers.ts";
 import * as performanceUtil from "./performance.ts";
 
 import * as request from "./request.ts";
-
-// These imports are not exposed and therefore are fine to just import the
-// symbols required.
-import { core } from "./core.ts";
 
 // During the build process, augmentations to the variable `window` in this
 // file are tracked and created as part of default library that is built into
@@ -74,15 +69,15 @@ window.window = window;
 window.Deno = Deno;
 
 // Globally available functions and object instances.
-window.atob = textEncoding.atob;
-window.btoa = textEncoding.btoa;
+window.atob = denoUtil.atob;
+window.btoa = denoUtil.btoa;
 window.fetch = fetchTypes.fetch;
 window.clearTimeout = timers.clearTimeout;
 window.clearInterval = timers.clearInterval;
-window.console = new consoleTypes.Console(core.print);
+window.console = new consoleTypes.Console(denoUtil.core.print);
 window.setTimeout = timers.setTimeout;
 window.setInterval = timers.setInterval;
-window.location = (undefined as unknown) as domTypes.Location;
+window.location = (undefined as unknown) as denoUtil.domTypes.Location;
 window.onload = undefined as undefined | Function;
 // The following Crypto interface implementation is not up to par with the
 // standard https://www.w3.org/TR/WebCryptoAPI/#crypto-interface as it does not
@@ -99,8 +94,8 @@ window.crypto = (csprng as unknown) as Crypto;
 window.Blob = blob.DenoBlob;
 export type Blob = blob.DenoBlob;
 
-window.File = domFile.DenoFile as domTypes.DomFileConstructor;
-export type File = domTypes.DomFile;
+window.File = domFile.DenoFile as denoUtil.domTypes.DomFileConstructor;
+export type File = denoUtil.domTypes.DomFile;
 
 window.CustomEventInit = customEvent.CustomEventInit;
 export type CustomEventInit = customEvent.CustomEventInit;
@@ -122,21 +117,21 @@ export type URLSearchParams = urlSearchParams.URLSearchParams;
 // Using the `as` keyword to use standard compliant interfaces as the Deno
 // implementations contain some implementation details we wouldn't want to
 // expose in the runtime type library.
-window.Headers = headers.Headers as domTypes.HeadersConstructor;
-export type Headers = domTypes.Headers;
-window.FormData = formData.FormData as domTypes.FormDataConstructor;
-export type FormData = domTypes.FormData;
+window.Headers = headers.Headers as denoUtil.domTypes.HeadersConstructor;
+export type Headers = denoUtil.domTypes.Headers;
+window.FormData = formData.FormData as denoUtil.domTypes.FormDataConstructor;
+export type FormData = denoUtil.domTypes.FormData;
 
-window.TextEncoder = textEncoding.TextEncoder;
-export type TextEncoder = textEncoding.TextEncoder;
-window.TextDecoder = textEncoding.TextDecoder;
-export type TextDecoder = textEncoding.TextDecoder;
+window.TextEncoder = denoUtil.TextEncoder;
+export type TextEncoder = denoUtil.TextEncoder;
+window.TextDecoder = denoUtil.TextDecoder;
+export type TextDecoder = denoUtil.TextDecoder;
 
-window.Request = request.Request as domTypes.RequestConstructor;
-export type Request = domTypes.Request;
+window.Request = request.Request as denoUtil.domTypes.RequestConstructor;
+export type Request = denoUtil.domTypes.Request;
 
 window.Response = fetchTypes.Response;
-export type Response = domTypes.Response;
+export type Response = denoUtil.domTypes.Response;
 
 window.performance = new performanceUtil.Performance();
 
@@ -151,10 +146,10 @@ window.postMessage = workers.postMessage;
 window.Worker = workers.WorkerImpl;
 export type Worker = workers.Worker;
 
-window[domTypes.eventTargetHost] = null;
-window[domTypes.eventTargetListeners] = {};
-window[domTypes.eventTargetMode] = "";
-window[domTypes.eventTargetNodeType] = 0;
+window[denoUtil.domTypes.eventTargetHost] = null;
+window[denoUtil.domTypes.eventTargetListeners] = {};
+window[denoUtil.domTypes.eventTargetMode] = "";
+window[denoUtil.domTypes.eventTargetNodeType] = 0;
 window[eventTarget.eventTargetAssignedSlot] = false;
 window[eventTarget.eventTargetHasActivationBehavior] = false;
 window.addEventListener = eventTarget.EventTarget.prototype.addEventListener;
@@ -165,7 +160,7 @@ window.removeEventListener =
 // Registers the handler for window.onload function.
 window.addEventListener(
   "load",
-  (e: domTypes.Event): void => {
+  (e: denoUtil.domTypes.Event): void => {
     const onload = window.onload;
     if (typeof onload === "function") {
       onload(e);

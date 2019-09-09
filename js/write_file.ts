@@ -1,7 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { stat, statSync } from "./stat.ts";
+import { stat, statSync, chmod, chmodSync } from "deno_ops_fs";
 import { open, openSync } from "./files.ts";
-import { chmod, chmodSync } from "./chmod.ts";
 import { writeAll, writeAllSync } from "./buffer.ts";
 
 /** Options for writing to a file.

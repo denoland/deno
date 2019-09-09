@@ -2,11 +2,11 @@
 import { close } from "./files.ts";
 import { exit } from "./os.ts";
 import { window } from "./window.ts";
-import { core } from "./core.ts";
+import { core } from "deno_util";
 import { formatError } from "./format_error.ts";
 import { stringifyArgs } from "./console.ts";
 import * as dispatch from "./dispatch.ts";
-import { sendSync, sendAsync } from "./dispatch_json.ts";
+import { sendSync, sendAsync } from "deno_dispatch_json";
 
 const { console } = window;
 

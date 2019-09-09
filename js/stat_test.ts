@@ -23,7 +23,7 @@ testPerm({ read: false }, async function statSyncPerm(): Promise<void> {
     Deno.statSync("package.json");
   } catch (e) {
     caughtError = true;
-    assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
+    assertEquals(e.kind, Deno.StandardErrorKinds.PermissionDenied);
     assertEquals(e.name, "PermissionDenied");
   }
   assert(caughtError);
@@ -37,7 +37,7 @@ testPerm({ read: true }, async function statSyncNotFound(): Promise<void> {
     badInfo = Deno.statSync("bad_file_name");
   } catch (err) {
     caughtError = true;
-    assertEquals(err.kind, Deno.ErrorKind.NotFound);
+    assertEquals(err.kind, Deno.StandardErrorKinds.NotFound);
     assertEquals(err.name, "NotFound");
   }
 
@@ -65,7 +65,7 @@ testPerm({ read: false }, async function lstatSyncPerm(): Promise<void> {
     Deno.lstatSync("package.json");
   } catch (e) {
     caughtError = true;
-    assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
+    assertEquals(e.kind, Deno.StandardErrorKinds.PermissionDenied);
     assertEquals(e.name, "PermissionDenied");
   }
   assert(caughtError);
@@ -79,7 +79,7 @@ testPerm({ read: true }, async function lstatSyncNotFound(): Promise<void> {
     badInfo = Deno.lstatSync("bad_file_name");
   } catch (err) {
     caughtError = true;
-    assertEquals(err.kind, Deno.ErrorKind.NotFound);
+    assertEquals(err.kind, Deno.StandardErrorKinds.NotFound);
     assertEquals(err.name, "NotFound");
   }
 
@@ -107,7 +107,7 @@ testPerm({ read: false }, async function statPerm(): Promise<void> {
     await Deno.stat("package.json");
   } catch (e) {
     caughtError = true;
-    assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
+    assertEquals(e.kind, Deno.StandardErrorKinds.PermissionDenied);
     assertEquals(e.name, "PermissionDenied");
   }
   assert(caughtError);
@@ -121,7 +121,7 @@ testPerm({ read: true }, async function statNotFound(): Promise<void> {
     badInfo = await Deno.stat("bad_file_name");
   } catch (err) {
     caughtError = true;
-    assertEquals(err.kind, Deno.ErrorKind.NotFound);
+    assertEquals(err.kind, Deno.StandardErrorKinds.NotFound);
     assertEquals(err.name, "NotFound");
   }
 
@@ -149,7 +149,7 @@ testPerm({ read: false }, async function lstatPerm(): Promise<void> {
     await Deno.lstat("package.json");
   } catch (e) {
     caughtError = true;
-    assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
+    assertEquals(e.kind, Deno.StandardErrorKinds.PermissionDenied);
     assertEquals(e.name, "PermissionDenied");
   }
   assert(caughtError);
@@ -163,7 +163,7 @@ testPerm({ read: true }, async function lstatNotFound(): Promise<void> {
     badInfo = await Deno.lstat("bad_file_name");
   } catch (err) {
     caughtError = true;
-    assertEquals(err.kind, Deno.ErrorKind.NotFound);
+    assertEquals(err.kind, Deno.StandardErrorKinds.NotFound);
     assertEquals(err.name, "NotFound");
   }
 

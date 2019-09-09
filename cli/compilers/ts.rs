@@ -639,9 +639,9 @@ impl TsCompiler {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::fs as deno_fs;
   use crate::tokio_util;
   use deno::ModuleSpecifier;
+  use deno_ops_fs::fs as deno_fs;
   use std::path::PathBuf;
   use tempfile::TempDir;
 

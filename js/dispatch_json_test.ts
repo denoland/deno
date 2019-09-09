@@ -2,8 +2,8 @@ import { testPerm, assertMatch, unreachable } from "./test_util.ts";
 
 const openErrorStackPattern = new RegExp(
   `^.*
-    at unwrapResponse \\(.*dispatch_json\\.ts:.*\\)
-    at Object.sendAsync \\(.*dispatch_json\\.ts:.*\\)
+    at unwrapResponse \\(.*main\\.ts:.*\\)
+    at Object.sendAsync \\(.*main\\.ts:.*\\)
     at async Object\\.open \\(.*files\\.ts:.*\\).*$`,
   "ms"
 );

@@ -28,7 +28,6 @@ mod disk_cache;
 mod file_fetcher;
 pub mod flags;
 pub mod fmt_errors;
-mod fs;
 mod global_timer;
 mod http_body;
 mod http_util;

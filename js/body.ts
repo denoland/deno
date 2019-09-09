@@ -1,14 +1,12 @@
 import * as formData from "./form_data.ts";
 import * as blob from "./blob.ts";
-import * as encoding from "./text_encoding.ts";
+import { domTypes, TextEncoder, TextDecoder } from "deno_util";
 import * as headers from "./headers.ts";
-import * as domTypes from "./dom_types.ts";
 
 const { Headers } = headers;
 
 // only namespace imports work for now, plucking out what we need
 const { FormData } = formData;
-const { TextEncoder, TextDecoder } = encoding;
 const Blob = blob.DenoBlob;
 const DenoBlob = blob.DenoBlob;
 

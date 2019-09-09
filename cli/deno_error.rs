@@ -6,6 +6,7 @@ pub use crate::msg::ErrorKind;
 use deno::AnyError;
 use deno::ErrBox;
 use deno::ModuleResolutionError;
+use deno_dispatch_json::GetErrorKind as JsonGetErrorKind;
 use http::uri;
 use hyper;
 use rustyline::error::ReadlineError;
@@ -274,6 +275,29 @@ impl GetErrorKind for dyn AnyError {
   }
 }
 
+#[derive(Debug)]
+pub struct CliOpError(ErrBox);
+
+impl fmt::Display for CliOpError {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fmt::Display::fmt(&self.0, f)
+  }
+}
+
+impl Error for CliOpError {}
+
+impl From<ErrBox> for CliOpError {
+  fn from(e: ErrBox) -> Self {
+    Self(e)
+  }
+}
+
+impl JsonGetErrorKind for CliOpError {
+  fn kind(&self) -> &str {
+    crate::msg::error_kind_str(GetErrorKind::kind(self.0.as_ref()))
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -383,21 +407,21 @@ mod tests {
   fn test_simple_error() {
     let err =
       ErrBox::from(DenoError::new(ErrorKind::NoError, "foo".to_string()));
-    assert_eq!(err.kind(), ErrorKind::NoError);
+    assert_eq!(GetErrorKind::kind(&(**err)), ErrorKind::NoError);
     assert_eq!(err.to_string(), "foo");
   }
 
   #[test]
   fn test_io_error() {
     let err = ErrBox::from(io_error());
-    assert_eq!(err.kind(), ErrorKind::NotFound);
+    assert_eq!(GetErrorKind::kind(&(**err)), ErrorKind::NotFound);
     assert_eq!(err.to_string(), "entity not found");
   }
 
   #[test]
   fn test_url_error() {
     let err = ErrBox::from(url_error());
-    assert_eq!(err.kind(), ErrorKind::EmptyHost);
+    assert_eq!(GetErrorKind::kind(&(**err)), ErrorKind::EmptyHost);
     assert_eq!(err.to_string(), "empty host");
   }
 
@@ -406,63 +430,63 @@ mod tests {
   #[test]
   fn test_diagnostic() {
     let err = ErrBox::from(diagnostic());
-    assert_eq!(err.kind(), ErrorKind::Diagnostic);
+    assert_eq!(GetErrorKind::kind(&(**err)), ErrorKind::Diagnostic);
     assert_eq!(strip_ansi_codes(&err.to_string()), "error TS2322: Example 1\n\n► deno/tests/complex_diagnostics.ts:19:3\n\n19   values: o => [\n     ~~~~~~\n\nerror TS2000: Example 2\n\n► /foo/bar.ts:129:3\n\n129   values: undefined,\n      ~~~~~~\n\n\nFound 2 errors.\n");
   }
 
   #[test]
   fn test_js_error() {
     let err = ErrBox::from(js_error());
-    assert_eq!(err.kind(), ErrorKind::JSError);
+    assert_eq!(GetErrorKind::kind(&(**err)), ErrorKind::JSError);
     assert_eq!(strip_ansi_codes(&err.to_string()), "error: Error: foo bar\n    at foo (foo_bar.ts:5:17)\n    at qat (bar_baz.ts:6:21)\n    at deno_main.js:2:2");
   }
 
   #[test]
   fn test_import_map_error() {
     let err = ErrBox::from(import_map_error());
-    assert_eq!(err.kind(), ErrorKind::ImportMapError);
+    assert_eq!(GetErrorKind::kind(&(**err)), ErrorKind::ImportMapError);
     assert_eq!(err.to_string(), "an import map error");
   }
 
   #[test]
   fn test_bad_resource() {
     let err = bad_resource();
-    assert_eq!(err.kind(), ErrorKind::BadResource);
+    assert_eq!(GetErrorKind::kind(&(**err)), ErrorKind::BadResource);
     assert_eq!(err.to_string(), "bad resource id");
   }
 
   #[test]
   fn test_permission_denied() {
     let err = permission_denied();
-    assert_eq!(err.kind(), ErrorKind::PermissionDenied);
+    assert_eq!(GetErrorKind::kind(&(**err)), ErrorKind::PermissionDenied);
     assert_eq!(err.to_string(), "permission denied");
   }
 
   #[test]
   fn test_op_not_implemented() {
     let err = op_not_implemented();
-    assert_eq!(err.kind(), ErrorKind::OpNotAvailable);
+    assert_eq!(GetErrorKind::kind(&(**err)), ErrorKind::OpNotAvailable);
     assert_eq!(err.to_string(), "op not implemented");
   }
 
   #[test]
   fn test_no_buffer_specified() {
     let err = no_buffer_specified();
-    assert_eq!(err.kind(), ErrorKind::InvalidInput);
+    assert_eq!(GetErrorKind::kind(&(**err)), ErrorKind::InvalidInput);
     assert_eq!(err.to_string(), "no buffer specified");
   }
 
   #[test]
   fn test_no_async_support() {
     let err = no_async_support();
-    assert_eq!(err.kind(), ErrorKind::NoAsyncSupport);
+    assert_eq!(GetErrorKind::kind(&(**err)), ErrorKind::NoAsyncSupport);
     assert_eq!(err.to_string(), "op doesn't support async calls");
   }
 
   #[test]
   fn test_no_sync_support() {
     let err = no_sync_support();
-    assert_eq!(err.kind(), ErrorKind::NoSyncSupport);
+    assert_eq!(GetErrorKind::kind(&(**err)), ErrorKind::NoSyncSupport);
     assert_eq!(err.to_string(), "op doesn't support sync calls");
   }
 }

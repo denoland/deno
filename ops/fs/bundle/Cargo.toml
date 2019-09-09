@@ -1,0 +1,16 @@
+[package]
+name = "deno_ops_fs_bundle"
+version = "0.16.0"
+edition = "2018"
+authors = ["The deno authors <bertbelder@nodejs.org>"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/denoland/deno"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+deno_typescript = { path = "../../../deno_typescript" }
+deno_dispatch_json_bundle = { path = "../../../dispatch_json/bundle" }
+deno_bundle_util = { path = "../../../bundle_util" }

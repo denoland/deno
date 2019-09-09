@@ -1,0 +1,27 @@
+[package]
+name = "deno_ops_fs"
+version = "0.16.0"
+edition = "2018"
+authors = ["The deno authors <bertbelder@nodejs.org>"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/denoland/deno"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+deno = { path = "../../core" }
+deno_dispatch_json = { path = "../../dispatch_json" }
+
+log = "0.4.8"
+rand = "0.6.5"
+remove_dir_all = "0.5.2"
+serde = { version = "1.0.99", features = ["derive"] }
+serde_derive = "1.0.99"
+serde_json = { version = "1.0.40", features = [ "preserve_order" ] }
+url = "2.1.0"
+utime = "0.2.1"
+
+[target.'cfg(unix)'.dependencies]
+nix = "0.14.1"

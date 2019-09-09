@@ -1,8 +1,9 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { sendSync, sendAsync } from "./dispatch_json.ts";
-import * as dispatch from "./dispatch.ts";
-import * as util from "./util.ts";
-import { platform } from "./build.ts";
+import { JsonOp } from "deno_dispatch_json";
+import { opNamespace } from "./namespace.ts";
+import { notImplemented, build } from "deno_util";
+
+const OP_SYMLINK = new JsonOp(opNamespace, "symlink")
 
 /** Synchronously creates `newname` as a symbolic link to `oldname`. The type
  * argument can be set to `dir` or `file` and is only available on Windows
@@ -15,10 +16,10 @@ export function symlinkSync(
   newname: string,
   type?: string
 ): void {
-  if (platform.os === "win" && type) {
-    return util.notImplemented();
+  if (build.os === "win" && type) {
+    return notImplemented();
   }
-  sendSync(dispatch.OP_SYMLINK, { oldname, newname });
+  OP_SYMLINK.sendSync({ oldname, newname });
 }
 
 /** Creates `newname` as a symbolic link to `oldname`. The type argument can be
@@ -32,8 +33,8 @@ export async function symlink(
   newname: string,
   type?: string
 ): Promise<void> {
-  if (platform.os === "win" && type) {
-    return util.notImplemented();
+  if (build.os === "win" && type) {
+    return notImplemented();
   }
-  await sendAsync(dispatch.OP_SYMLINK, { oldname, newname });
+  await OP_SYMLINK.sendAsync({ oldname, newname });
 }

@@ -1,7 +1,11 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as domTypes from "./dom_types.ts";
-import { DenoError, ErrorKind } from "./errors.ts";
-import { hasOwnProperty, requiredArguments } from "./util.ts";
+import {
+  domTypes,
+  hasOwnProperty,
+  requiredArguments,
+  DenoError,
+  StandardErrorKinds
+} from "deno_util";
 import {
   getRoot,
   isNode,
@@ -199,14 +203,14 @@ export class EventTarget implements domTypes.EventTarget {
 
     if (event.dispatched || !event.initialized) {
       throw new DenoError(
-        ErrorKind.InvalidData,
+        StandardErrorKinds.InvalidData,
         "Tried to dispatch an uninitialized event"
       );
     }
 
     if (event.eventPhase !== domTypes.EventPhase.NONE) {
       throw new DenoError(
-        ErrorKind.InvalidData,
+        StandardErrorKinds.InvalidData,
         "Tried to dispatch a dispatching event"
       );
     }
@@ -484,7 +488,7 @@ const eventTargetHelpers = {
           listener.handleEvent(eventImpl);
         }
       } catch (error) {
-        throw new DenoError(ErrorKind.Interrupted, error.message);
+        throw new DenoError(StandardErrorKinds.Interrupted, error.message);
       }
 
       eventImpl.inPassiveListener = false;

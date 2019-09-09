@@ -41,6 +41,7 @@ pub struct TSState {
   /// A list of files emitted by typescript. WrittenFile is tuple of the form
   /// (url, corresponding_module, source_code)
   written_files: Vec<WrittenFile>,
+  import_map: HashMap<String, String>,
 }
 
 impl TSState {
@@ -104,7 +105,10 @@ pub struct TSIsolate {
 }
 
 impl TSIsolate {
-  fn new(bundle: bool) -> TSIsolate {
+  fn new(
+    bundle: bool,
+    import_map: Option<HashMap<String, String>>,
+  ) -> TSIsolate {
     let mut isolate = Isolate::new(StartupData::None, false);
     js_check(isolate.execute("assets/typescript.js", TYPESCRIPT_CODE));
     js_check(isolate.execute("compiler_main.js", COMPILER_CODE));
@@ -114,6 +118,7 @@ impl TSIsolate {
       exit_code: 0,
       emit_result: None,
       written_files: Vec::new(),
+      import_map: import_map.unwrap_or_default(),
     }));
 
     let registry = Arc::new(OpDisReg::new());
@@ -160,11 +165,37 @@ impl TSIsolate {
   }
 }
 
+pub type ImportMap = Vec<(String, PathBuf)>;
+
+pub fn merge_import_maps(import_maps: Vec<ImportMap>) -> ImportMap {
+  let mut final_map: HashMap<String, PathBuf> = HashMap::new();
+  for import_map in import_maps {
+    for record in import_map {
+      final_map.insert(record.0, record.1);
+    }
+  }
+  final_map
+    .iter()
+    .map(|record| (record.0.to_string(), record.1.clone()))
+    .collect()
+}
+
 pub fn compile_bundle(
   bundle: &Path,
   root_names: Vec<PathBuf>,
+  import_map: Option<Vec<(String, PathBuf)>>,
 ) -> Result<Arc<Mutex<TSState>>, ErrBox> {
-  let ts_isolate = TSIsolate::new(true);
+  let import_map: Option<HashMap<String, String>> = import_map.map(|map| {
+    map
+      .iter()
+      .map(|record| {
+        assert!(record.1.exists());
+        (record.0.to_string(), record.1.to_string_lossy().to_string())
+      })
+      .collect()
+  });
+
+  let ts_isolate = TSIsolate::new(true, import_map);
 
   let config_json = serde_json::json!({
     "compilerOptions": {

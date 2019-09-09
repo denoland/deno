@@ -25,7 +25,7 @@
 
 import * as base64 from "./base64.ts";
 import * as domTypes from "./dom_types.ts";
-import { DenoError, ErrorKind } from "./errors.ts";
+import { DenoError, StandardErrorKinds } from "./errors.ts";
 
 const CONTINUE = null;
 const END_OF_STREAM = -1;
@@ -187,7 +187,7 @@ export function atob(s: string): string {
   if (rem === 1 || /[^+/0-9A-Za-z]/.test(s)) {
     // TODO: throw `DOMException`
     throw new DenoError(
-      ErrorKind.InvalidInput,
+      StandardErrorKinds.InvalidInput,
       "The string to be decoded is not correctly encoded"
     );
   }
@@ -212,7 +212,7 @@ export function btoa(s: string): string {
     const charCode = s[i].charCodeAt(0);
     if (charCode > 0xff) {
       throw new DenoError(
-        ErrorKind.InvalidInput,
+        StandardErrorKinds.InvalidInput,
         "The string to be encoded contains characters " +
           "outside of the Latin1 range."
       );
@@ -481,7 +481,7 @@ export class TextEncoder {
         break;
       }
       if (Array.isArray(result)) {
-        output.push(...result);
+        output.push.apply(output, result);
       } else {
         output.push(result);
       }

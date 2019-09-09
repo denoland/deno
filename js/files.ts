@@ -15,7 +15,7 @@ import * as dispatch from "./dispatch.ts";
 import {
   sendSync as sendSyncJson,
   sendAsync as sendAsyncJson
-} from "./dispatch_json.ts";
+} from "deno_dispatch_json";
 
 /** Open a file and return an instance of the `File` object
  *  synchronously.

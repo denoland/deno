@@ -1,6 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { sendSync, sendAsync } from "./dispatch_json.ts";
-import * as dispatch from "./dispatch.ts";
+import { JsonOp } from "deno_dispatch_json";
+import { opNamespace } from "./namespace.ts";
+
+const OP_COPY_FILE = new JsonOp(opNamespace, "copyFile");
 
 /** Copies the contents of a file to another by name synchronously.
  * Creates a new file if target does not exists, and if target exists,
@@ -12,7 +14,7 @@ import * as dispatch from "./dispatch.ts";
  *       Deno.copyFileSync("from.txt", "to.txt");
  */
 export function copyFileSync(from: string, to: string): void {
-  sendSync(dispatch.OP_COPY_FILE, { from, to });
+  OP_COPY_FILE.sendSync({ from, to });
 }
 
 /** Copies the contents of a file to another by name.
@@ -26,5 +28,5 @@ export function copyFileSync(from: string, to: string): void {
  *       await Deno.copyFile("from.txt", "to.txt");
  */
 export async function copyFile(from: string, to: string): Promise<void> {
-  await sendAsync(dispatch.OP_COPY_FILE, { from, to });
+  await OP_COPY_FILE.sendAsync({ from, to });
 }

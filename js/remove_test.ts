@@ -18,7 +18,7 @@ testPerm({ write: true }, function removeSyncDirSuccess(): void {
     err = e;
   }
   // Directory is gone
-  assertEquals(err.kind, Deno.ErrorKind.NotFound);
+  assertEquals(err.kind, Deno.StandardErrorKinds.NotFound);
   assertEquals(err.name, "NotFound");
 });
 
@@ -39,7 +39,7 @@ testPerm({ write: true }, function removeSyncFileSuccess(): void {
     err = e;
   }
   // File is gone
-  assertEquals(err.kind, Deno.ErrorKind.NotFound);
+  assertEquals(err.kind, Deno.StandardErrorKinds.NotFound);
   assertEquals(err.name, "NotFound");
 });
 
@@ -61,7 +61,7 @@ testPerm({ write: true }, function removeSyncFail(): void {
     err = e;
   }
   // TODO(ry) Is Other really the error we should get here? What would Go do?
-  assertEquals(err.kind, Deno.ErrorKind.Other);
+  assertEquals(err.kind, Deno.StandardErrorKinds.Other);
   assertEquals(err.name, "Other");
   // NON-EXISTENT DIRECTORY/FILE
   try {
@@ -70,7 +70,7 @@ testPerm({ write: true }, function removeSyncFail(): void {
   } catch (e) {
     err = e;
   }
-  assertEquals(err.kind, Deno.ErrorKind.NotFound);
+  assertEquals(err.kind, Deno.StandardErrorKinds.NotFound);
   assertEquals(err.name, "NotFound");
 });
 
@@ -81,7 +81,7 @@ testPerm({ write: false }, function removeSyncPerm(): void {
   } catch (e) {
     err = e;
   }
-  assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+  assertEquals(err.kind, Deno.StandardErrorKinds.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });
 
@@ -100,7 +100,7 @@ testPerm({ write: true }, function removeAllSyncDirSuccess(): void {
     err = e;
   }
   // Directory is gone
-  assertEquals(err.kind, Deno.ErrorKind.NotFound);
+  assertEquals(err.kind, Deno.StandardErrorKinds.NotFound);
   assertEquals(err.name, "NotFound");
   // REMOVE NON-EMPTY DIRECTORY
   path = Deno.makeTempDirSync() + "/dir/subdir";
@@ -119,7 +119,7 @@ testPerm({ write: true }, function removeAllSyncDirSuccess(): void {
     err = e;
   }
   // Directory is gone
-  assertEquals(err.kind, Deno.ErrorKind.NotFound);
+  assertEquals(err.kind, Deno.StandardErrorKinds.NotFound);
   assertEquals(err.name, "NotFound");
 });
 
@@ -140,7 +140,7 @@ testPerm({ write: true }, function removeAllSyncFileSuccess(): void {
     err = e;
   }
   // File is gone
-  assertEquals(err.kind, Deno.ErrorKind.NotFound);
+  assertEquals(err.kind, Deno.StandardErrorKinds.NotFound);
   assertEquals(err.name, "NotFound");
 });
 
@@ -153,7 +153,7 @@ testPerm({ write: true }, function removeAllSyncFail(): void {
   } catch (e) {
     err = e;
   }
-  assertEquals(err.kind, Deno.ErrorKind.NotFound);
+  assertEquals(err.kind, Deno.StandardErrorKinds.NotFound);
   assertEquals(err.name, "NotFound");
 });
 
@@ -164,7 +164,7 @@ testPerm({ write: false }, function removeAllSyncPerm(): void {
   } catch (e) {
     err = e;
   }
-  assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+  assertEquals(err.kind, Deno.StandardErrorKinds.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });
 
@@ -185,7 +185,7 @@ testPerm({ write: true }, async function removeDirSuccess(): Promise<void> {
     err = e;
   }
   // Directory is gone
-  assertEquals(err.kind, Deno.ErrorKind.NotFound);
+  assertEquals(err.kind, Deno.StandardErrorKinds.NotFound);
   assertEquals(err.name, "NotFound");
 });
 
@@ -206,7 +206,7 @@ testPerm({ write: true }, async function removeFileSuccess(): Promise<void> {
     err = e;
   }
   // File is gone
-  assertEquals(err.kind, Deno.ErrorKind.NotFound);
+  assertEquals(err.kind, Deno.StandardErrorKinds.NotFound);
   assertEquals(err.name, "NotFound");
 });
 
@@ -227,7 +227,7 @@ testPerm({ write: true }, async function removeFail(): Promise<void> {
   } catch (e) {
     err = e;
   }
-  assertEquals(err.kind, Deno.ErrorKind.Other);
+  assertEquals(err.kind, Deno.StandardErrorKinds.Other);
   assertEquals(err.name, "Other");
   // NON-EXISTENT DIRECTORY/FILE
   try {
@@ -236,7 +236,7 @@ testPerm({ write: true }, async function removeFail(): Promise<void> {
   } catch (e) {
     err = e;
   }
-  assertEquals(err.kind, Deno.ErrorKind.NotFound);
+  assertEquals(err.kind, Deno.StandardErrorKinds.NotFound);
   assertEquals(err.name, "NotFound");
 });
 
@@ -247,7 +247,7 @@ testPerm({ write: false }, async function removePerm(): Promise<void> {
   } catch (e) {
     err = e;
   }
-  assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+  assertEquals(err.kind, Deno.StandardErrorKinds.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });
 
@@ -266,7 +266,7 @@ testPerm({ write: true }, async function removeAllDirSuccess(): Promise<void> {
     err = e;
   }
   // Directory is gone
-  assertEquals(err.kind, Deno.ErrorKind.NotFound);
+  assertEquals(err.kind, Deno.StandardErrorKinds.NotFound);
   assertEquals(err.name, "NotFound");
   // REMOVE NON-EMPTY DIRECTORY
   path = Deno.makeTempDirSync() + "/dir/subdir";
@@ -285,7 +285,7 @@ testPerm({ write: true }, async function removeAllDirSuccess(): Promise<void> {
     err = e;
   }
   // Directory is gone
-  assertEquals(err.kind, Deno.ErrorKind.NotFound);
+  assertEquals(err.kind, Deno.StandardErrorKinds.NotFound);
   assertEquals(err.name, "NotFound");
 });
 
@@ -306,7 +306,7 @@ testPerm({ write: true }, async function removeAllFileSuccess(): Promise<void> {
     err = e;
   }
   // File is gone
-  assertEquals(err.kind, Deno.ErrorKind.NotFound);
+  assertEquals(err.kind, Deno.StandardErrorKinds.NotFound);
   assertEquals(err.name, "NotFound");
 });
 
@@ -319,7 +319,7 @@ testPerm({ write: true }, async function removeAllFail(): Promise<void> {
   } catch (e) {
     err = e;
   }
-  assertEquals(err.kind, Deno.ErrorKind.NotFound);
+  assertEquals(err.kind, Deno.StandardErrorKinds.NotFound);
   assertEquals(err.name, "NotFound");
 });
 
@@ -330,6 +330,6 @@ testPerm({ write: false }, async function removeAllPerm(): Promise<void> {
   } catch (e) {
     err = e;
   }
-  assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+  assertEquals(err.kind, Deno.StandardErrorKinds.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });

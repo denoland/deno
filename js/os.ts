@@ -1,10 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as dispatch from "./dispatch.ts";
-import { sendSync } from "./dispatch_json.ts";
-import { assert } from "./util.ts";
-import * as util from "./util.ts";
-import { window } from "./window.ts";
-import { OperatingSystem, Arch } from "./build.ts";
+import { sendSync } from "deno_dispatch_json";
+import { assert, window, OperatingSystem, Arch } from "deno_util";
+import * as util from "deno_util";
 
 // builtin modules
 import { _setGlobals } from "./deno.ts";
