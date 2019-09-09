@@ -185,6 +185,7 @@ itest!(_034_onload {
 itest!(_035_no_fetch_flag {
   args: "--reload --no-fetch http://127.0.0.1:4545/tests/019_media_types.ts",
   output: "tests/035_no_fetch_flag.out",
+  exit_code: 1,
 });
 
 itest!(_036_import_map_fetch {
