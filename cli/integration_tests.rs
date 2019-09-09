@@ -105,7 +105,7 @@ itest!(_021_mjs_modules {
 // The output assumes 003_relative_import.ts has already been run earlier
 // and its output is cached to $DENO_DIR.
 itest!(_022_info_flag_script {
-  args: "info http://127.0.0.1:4545/019_media_types.ts",
+  args: "info http://127.0.0.1:4545/tests/019_media_types.ts",
   output: "tests/022_info_flag_script.out",
 });
 
@@ -187,7 +187,7 @@ itest!(_034_onload {
 // The output assumes 003_relative_import.ts has already been run earlier
 // and its output is cached to $DENO_DIR.
 itest!(_035_no_fetch_flag {
-  args: "--no-fetch http://127.0.0.1:4545/019_media_types.ts",
+  args: "--no-fetch http://127.0.0.1:4545/tests/019_media_types.ts",
   output: "tests/035_no_fetch_flag.out",
 });
 
