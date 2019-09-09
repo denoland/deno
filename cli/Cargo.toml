@@ -45,6 +45,8 @@ tokio-rustls = "0.10.0"
 tokio-threadpool = "0.1.15"
 url = "1.7.2"
 utime = "0.2.1"
+webpki = "0.21.0"
+webpki-roots = "0.17.0"
 deno_cli_snapshots = { path = "../cli_snapshots" }
 deno_typescript = { path = "../deno_typescript" }
 

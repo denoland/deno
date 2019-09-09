@@ -191,7 +191,17 @@ export async function dial(
     network: options.network,
     address
   });
-  // TODO(bartlomieju): add remoteAddr and localAddr on Rust side
+  return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);
+}
+
+export async function dialTLS(
+  address: string,
+  options: NetworkOptions = { network: "tcp" }
+): Promise<Conn> {
+  const res = await sendAsync(dispatch.OP_DIAL_TLS, {
+    network: options.network,
+    address
+  });
   return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);
 }
 

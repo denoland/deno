@@ -225,3 +225,14 @@ testPerm({ net: true }, async function netDoubleCloseWrite() {
   conn.close();
 });
 */
+
+testPerm({ net: true }, async function netDialTLS(): Promise<void> {
+  const conn = await Deno.dialTLS("tcp", "github.com:443");
+  assert(conn.rid > 0);
+  const body = new TextEncoder().encode(
+    "GET / HTTP/1.0\r\nHost: github.com\r\n\r\n"
+  );
+  const writeResult = await conn.write(body);
+  assertEquals(36, writeResult);
+  conn.close();
+});

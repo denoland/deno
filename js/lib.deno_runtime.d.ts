@@ -997,6 +997,15 @@ declare namespace Deno {
     address: string,
     options?: NetworkOptions
   ): Promise<Conn>;
+
+  /** Dial connects to the address on the named network over TLS.
+   *
+   * Supports same options as `dial`.
+   */
+  export function dialTLS(
+    address: string,
+    options?: NetworkOptions
+  ): Promise<Conn>;
   /** **RESERVED** */
   export function connect(_network: Network, _address: string): Promise<Conn>;
 
