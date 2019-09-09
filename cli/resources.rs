@@ -10,7 +10,6 @@
 
 use crate::deno_error;
 use crate::deno_error::bad_resource;
-use crate::deno_error::bad_resource_kind;
 use crate::http_body::HttpBody;
 use crate::repl::Repl;
 use crate::state::WorkerChannels;
@@ -224,7 +223,7 @@ impl Resource {
       Repr::TcpStream(ref mut f) => {
         TcpStream::shutdown(f, how).map_err(ErrBox::from)
       }
-      _ => Err(bad_resource_kind()),
+      _ => Err(bad_resource()),
     }
   }
 }
@@ -252,7 +251,7 @@ impl DenoAsyncRead for Resource {
       Repr::ChildStdout(ref mut f) => f.poll_read(buf),
       Repr::ChildStderr(ref mut f) => f.poll_read(buf),
       _ => {
-        return Err(bad_resource_kind());
+        return Err(bad_resource());
       }
     };
 
@@ -288,7 +287,7 @@ impl DenoAsyncWrite for Resource {
       Repr::TcpStream(ref mut f) => f.poll_write(buf),
       Repr::ChildStdin(ref mut f) => f.poll_write(buf),
       _ => {
-        return Err(bad_resource_kind());
+        return Err(bad_resource());
       }
     };
 
@@ -366,7 +365,7 @@ pub fn post_message_to_worker(
       // unwrap here is incorrect, but doing it anyway
       wc.0.clone().send(buf)
     }
-    // TODO: replace this panic with `bad_resource_kind`
+    // TODO: replace this panic with `bad_resource`
     _ => panic!("bad resource"), // futures::future::err(bad_resource()).into(),
   }
 }
@@ -531,8 +530,7 @@ pub fn get_file(rid: ResourceId) -> Result<std::fs::File, ErrBox> {
 
       Ok(std_file_copy)
     }
-    None => Err(bad_resource()),
-    _ => Err(bad_resource_kind()),
+    _ => Err(bad_resource()),
   }
 }
 

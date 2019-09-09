@@ -50,10 +50,6 @@ pub fn bad_resource() -> ErrBox {
   StaticError(ErrorKind::BadResource, "bad resource id").into()
 }
 
-pub fn bad_resource_kind() -> ErrBox {
-  StaticError(ErrorKind::BadResource, "bad resource kind").into()
-}
-
 pub fn permission_denied() -> ErrBox {
   StaticError(ErrorKind::PermissionDenied, "permission denied").into()
 }
@@ -433,13 +429,6 @@ mod tests {
     let err = bad_resource();
     assert_eq!(err.kind(), ErrorKind::BadResource);
     assert_eq!(err.to_string(), "bad resource id");
-  }
-
-  #[test]
-  fn test_bad_resource_kind() {
-    let err = bad_resource_kind();
-    assert_eq!(err.kind(), ErrorKind::BadResource);
-    assert_eq!(err.to_string(), "bad resource kind");
   }
 
   #[test]
