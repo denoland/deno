@@ -10,7 +10,7 @@ import * as fs from "../fs/mod.ts";
 import { install, isRemoteUrl } from "./mod.ts";
 
 let fileServer: Deno.Process;
-const isWindows = Deno.platform.os === "win";
+const isWindows = Deno.build.os === "win";
 
 // copied from `http/file_server_test.ts`
 async function startFileServer(): Promise<void> {

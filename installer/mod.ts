@@ -10,7 +10,7 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8");
 // Regular expression to test disk driver letter. eg "C:\\User\username\path\to"
 const driverLetterReg = /^[c-z]:/i;
-const isWindows = Deno.platform.os === "win";
+const isWindows = Deno.build.os === "win";
 
 function showHelp(): void {
   console.log(`deno installer
