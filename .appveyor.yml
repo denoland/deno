@@ -186,13 +186,13 @@ before_build:
       $env:AWS_SECRET_ACCESS_KEY = $null
 
 build_script:
-  - cargo clippy --all-targets --release --locked -- -D clippy::all
   - cargo build -vv --release --all-targets --locked
 
 test_script:
   - python tools\lint.py
   - python tools\test_format.py
   - ps: Exec { & python tools\test.py --build-dir $env:DENO_BUILD_PATH }
+  - cargo clippy --all-targets --release --locked -- -D clippy::all
 
 after_test:
   # Stop sccache and show stats.
