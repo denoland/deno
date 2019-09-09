@@ -11,9 +11,9 @@ test(function resourcesStdio(): void {
 
 testPerm({ net: true }, async function resourcesNet(): Promise<void> {
   const addr = "127.0.0.1:4501";
-  const listener = Deno.listen("tcp", addr);
+  const listener = Deno.listen(addr, { transport: "tcp" });
 
-  const dialerConn = await Deno.dial("tcp", addr);
+  const dialerConn = await Deno.dial(addr, { transport: "tcp" });
   const listenerConn = await listener.accept();
 
   const res = Deno.resources();

@@ -14,6 +14,10 @@ export interface Addr {
   address: string;
 }
 
+export interface NetworkOptions {
+  transport: Network;
+}
+
 /** A Listener is a generic network listener for stream-oriented protocols. */
 export interface Listener extends AsyncIterator<Conn> {
   /** Waits for and resolves to the next connection to the `Listener`. */
@@ -130,8 +134,6 @@ export interface Conn extends Reader, Writer, Closer {
 
 /** Listen announces on the local network address.
  *
- * The network must be `tcp`, `tcp4`, `tcp6`, `unix` or `unixpacket`.
- *
  * For TCP networks, if the host in the address parameter is empty or a literal
  * unspecified IP address, `listen()` listens on all available unicast and
  * anycast IP addresses of the local system. To only use IPv4, use network
@@ -141,20 +143,20 @@ export interface Conn extends Reader, Writer, Closer {
  * `127.0.0.1:` or `[::1]:0`, a port number is automatically chosen. The
  * `addr()` method of `Listener` can be used to discover the chosen port.
  *
- * See `dial()` for a description of the network and address parameters.
+ * See `dial()` for a description of the address parameters and network options.
  */
-export function listen(network: Network, address: string): Listener {
-  const res = sendSync(dispatch.OP_LISTEN, { network, address });
-  return new ListenerImpl(res.rid, network, res.localAddr);
+export function listen(
+  address: string,
+  options: NetworkOptions = { transport: "tcp" }
+): Listener {
+  const res = sendSync(dispatch.OP_LISTEN, {
+    network: options.transport,
+    address
+  });
+  return new ListenerImpl(res.rid, options.transport, res.localAddr);
 }
 
 /** Dial connects to the address on the named network.
- *
- * Supported networks are only `tcp` currently.
- *
- * TODO: `tcp4` (IPv4-only), `tcp6` (IPv6-only), `udp`, `udp4` (IPv4-only),
- * `udp6` (IPv6-only), `ip`, `ip4` (IPv4-only), `ip6` (IPv6-only), `unix`,
- * `unixgram` and `unixpacket`.
  *
  * For TCP and UDP networks, the address has the form `host:port`. The host must
  * be a literal IP address, or a host name that can be resolved to IP addresses.
@@ -166,17 +168,30 @@ export function listen(network: Network, address: string): Listener {
  * TCP, and the host resolves to multiple IP addresses, Dial will try each IP
  * address in order until one succeeds.
  *
+ * You can use the network options to select which transport to use.
+ * Supported networks are only `tcp` currently.
+ *
+ * TODO: `tcp4` (IPv4-only), `tcp6` (IPv6-only), `udp`, `udp4` (IPv4-only),
+ * `udp6` (IPv6-only), `ip`, `ip4` (IPv4-only), `ip6` (IPv6-only), `unix`,
+ * `unixgram` and `unixpacket`.
+ *
  * Examples:
  *
- *     dial("tcp", "golang.org:http")
- *     dial("tcp", "192.0.2.1:http")
- *     dial("tcp", "198.51.100.1:80")
- *     dial("udp", "[2001:db8::1]:domain")
- *     dial("udp", "[fe80::1%lo0]:53")
- *     dial("tcp", ":80")
+ *     dial("golang.org:http", { transport: "tcp" })
+ *     dial("192.0.2.1:http", { transport: "tcp" })
+ *     dial("198.51.100.1:80", { transport: "tcp" })
+ *     dial("[2001:db8::1]:domain", { transport: "udp" })
+ *     dial("[fe80::1%lo0]:53", { transport: "udp" })
+ *     dial(":80", { transport: "tcp" })
  */
-export async function dial(network: Network, address: string): Promise<Conn> {
-  const res = await sendAsync(dispatch.OP_DIAL, { network, address });
+export async function dial(
+  address: string,
+  options: NetworkOptions = { transport: "tcp" }
+): Promise<Conn> {
+  const res = await sendAsync(dispatch.OP_DIAL, {
+    network: options.transport,
+    address
+  });
   // TODO(bartlomieju): add remoteAddr and localAddr on Rust side
   return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);
 }

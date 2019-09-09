@@ -919,6 +919,9 @@ declare namespace Deno {
     network: Network;
     address: string;
   }
+  export interface NetworkOptions {
+    transport: Network;
+  }
   /** A Listener is a generic network listener for stream-oriented protocols. */
   export interface Listener extends AsyncIterator<Conn> {
     /** Waits for and resolves to the next connection to the `Listener`. */
@@ -962,7 +965,7 @@ declare namespace Deno {
    *
    * See `dial()` for a description of the network and address parameters.
    */
-  export function listen(network: Network, address: string): Listener;
+  export function listen(address: string, options?: NetworkOptions): Listener;
   /** Dial connects to the address on the named network.
    *
    * Supported networks are only `tcp` currently.
@@ -983,14 +986,17 @@ declare namespace Deno {
    *
    * Examples:
    *
-   *     dial("tcp", "golang.org:http")
-   *     dial("tcp", "192.0.2.1:http")
-   *     dial("tcp", "198.51.100.1:80")
-   *     dial("udp", "[2001:db8::1]:domain")
-   *     dial("udp", "[fe80::1%lo0]:53")
-   *     dial("tcp", ":80")
+   *     dial("golang.org:http", { transport: "tcp" })
+   *     dial("192.0.2.1:http", { transport: "tcp" })
+   *     dial("198.51.100.1:80", { transport: "tcp" })
+   *     dial("[2001:db8::1]:domain", { transport: "udp" })
+   *     dial("[fe80::1%lo0]:53", { transport: "udp" })
+   *     dial(":80", { transport: "tcp" })
    */
-  export function dial(network: Network, address: string): Promise<Conn>;
+  export function dial(
+    address: string,
+    options?: NetworkOptions
+  ): Promise<Conn>;
   /** **RESERVED** */
   export function connect(_network: Network, _address: string): Promise<Conn>;
 
