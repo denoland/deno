@@ -234,6 +234,8 @@ impl Read for Resource {
   }
 }
 
+/// `DenoAsyncRead` is the same as the `tokio_io::AsyncRead` trait
+/// but uses an `ErrBox` error instead of `std::io:Error`
 pub trait DenoAsyncRead {
   fn poll_read(&mut self, buf: &mut [u8]) -> Poll<usize, ErrBox>;
 }
@@ -269,6 +271,8 @@ impl Write for Resource {
   }
 }
 
+/// `DenoAsyncWrite` is the same as the `tokio_io::AsyncWrite` trait
+/// but uses an `ErrBox` error instead of `std::io:Error`
 pub trait DenoAsyncWrite {
   fn poll_write(&mut self, buf: &[u8]) -> Poll<usize, ErrBox>;
 

@@ -1,5 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-// TODO Submit this file upstream into tokio-io/src/io/write.rs
 use crate::resources::DenoAsyncWrite;
 use deno::ErrBox;
 use futures::{Future, Poll};
@@ -36,7 +35,7 @@ where
   }
 }
 
-/// This is almost the same implementation as in tokio, the only difference is
+/// This is almost the same implementation as in tokio, difference is
 /// that error type is `ErrBox` instead of `std::io::Error`.
 impl<A, T> Future for Write<A, T>
 where

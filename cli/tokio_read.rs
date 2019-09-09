@@ -1,7 +1,13 @@
+// Copyright (c) 2019 Tokio Contributors. All rights reserved. MIT license.
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Forked from: https://github.com/tokio-rs/tokio/blob/9b3f8564af4bb1aee07fab3c401eb412ca5eeac5/tokio-io/src/io/read.rs
 use crate::resources::DenoAsyncRead;
 use deno::ErrBox;
 use futures::{Future, Poll};
 use std::mem;
+
+/// This is almost the same implementation as in tokio, the only difference is
+/// that error type is `ErrBox` instead of `std::io::Error`.
 
 #[derive(Debug)]
 enum State<R, T> {
@@ -33,8 +39,6 @@ pub struct Read<R, T> {
   state: State<R, T>,
 }
 
-/// This is almost the same implementation as in tokio, the only difference is
-/// that error type is `ErrBox` instead of `std::io::Error`.
 impl<R, T> Future for Read<R, T>
 where
   R: DenoAsyncRead,
