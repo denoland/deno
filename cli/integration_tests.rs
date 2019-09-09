@@ -602,10 +602,6 @@ fn test_wildcard_match() {
     dbg!(pattern, string, expected);
     assert_eq!(actual, expected);
   }
-
-  // TODO different wild cards?
-  // assert!(pattern_match("foo[BAR]baz", "foobarbaz", "[BAR]"));
-  // assert!(!pattern_match("foo[BAR]baz", "foobazbar", "[BAR]"));
 }
 
 #[test]
