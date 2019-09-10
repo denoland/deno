@@ -1,5 +1,4 @@
-# Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-version: '{build}.{branch}'
+# Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.version: '{build}.{branch}'
 
 skip_branch_with_pr: true
 
@@ -186,13 +185,13 @@ before_build:
       $env:AWS_SECRET_ACCESS_KEY = $null
 
 build_script:
+  - cargo clippy --all-targets --release --locked -- -D clippy::all
   - cargo build -vv --release --all-targets --locked
 
 test_script:
   - python tools\lint.py
   - python tools\test_format.py
   - python tools\test.py
-  - cargo clippy --all-targets --release --locked -- -D clippy::all
 
 after_test:
   # Stop sccache and show stats.
