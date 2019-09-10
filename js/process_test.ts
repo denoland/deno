@@ -312,15 +312,15 @@ testPerm({ run: true }, async function runClose(): Promise<void> {
 });
 
 test(function signalNumbers(): void {
-  if (Deno.platform.os === "mac") {
+  if (Deno.build.os === "mac") {
     assertEquals(Deno.Signal.SIGSTOP, 17);
-  } else if (Deno.platform.os === "linux") {
+  } else if (Deno.build.os === "linux") {
     assertEquals(Deno.Signal.SIGSTOP, 19);
   }
 });
 
 // Ignore signal tests on windows for now...
-if (Deno.platform.os !== "win") {
+if (Deno.build.os !== "win") {
   test(function killPermissions(): void {
     let caughtError = false;
     try {

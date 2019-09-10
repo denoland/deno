@@ -14,7 +14,7 @@ testPerm({ read: true, write: true }, function symlinkSyncSuccess(): void {
     errOnWindows = e;
   }
   if (errOnWindows) {
-    assertEquals(Deno.platform.os, "win");
+    assertEquals(Deno.build.os, "win");
     assertEquals(errOnWindows.kind, Deno.ErrorKind.Other);
     assertEquals(errOnWindows.message, "Not implemented");
   } else {
@@ -49,7 +49,7 @@ testPerm({ write: true }, function symlinkSyncNotImplemented(): void {
     err = e;
   }
   if (err) {
-    assertEquals(Deno.platform.os, "win");
+    assertEquals(Deno.build.os, "win");
     assertEquals(err.message, "Not implemented");
   }
 });

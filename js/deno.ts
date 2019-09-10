@@ -86,7 +86,7 @@ export {
   Signal
 } from "./process.ts";
 export { inspect, customInspect } from "./console.ts";
-export { build, platform, OperatingSystem, Arch } from "./build.ts";
+export { build, OperatingSystem, Arch } from "./build.ts";
 export { version } from "./version.ts";
 export const args: string[] = [];
 
