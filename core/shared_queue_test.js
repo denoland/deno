@@ -25,11 +25,11 @@ function fullRecords(q) {
 function main() {
   const q = Deno.core.sharedQueue;
 
-  let h = q.head();
+  const h = q.head();
   assert(h > 0);
 
   let r = new Uint8Array([1, 2, 3, 4, 5]);
-  let len = r.byteLength + h;
+  const len = r.byteLength + h;
   assert(q.push(99, r));
   assert(q.head() == len);
 

@@ -1,2 +1,0 @@
-args: run --reload tests/028_args.ts --arg1 val1 --arg2=val2 -- arg3 arg4
-output: tests/028_args.ts.out

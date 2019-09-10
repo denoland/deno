@@ -1,5 +1,0 @@
-# checking if JS file is run through TS compiler
-args: run --reload --config tests/038_checkjs.tsconfig.json tests/038_checkjs.js
-check_stderr: true
-exit_code: 1
-output: tests/038_checkjs.js.out

@@ -1,2 +1,0 @@
-args: run tests/wasm.ts
-output: tests/wasm.ts.out

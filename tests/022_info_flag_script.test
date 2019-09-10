@@ -1,4 +1,0 @@
-# The output assumes 003_relative_import.ts has already been run earlier
-# and its output is cached to $DENO_DIR.
-args: info http://127.0.0.1:4545/tests/019_media_types.ts
-output: tests/022_info_flag_script.out

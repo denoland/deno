@@ -1,8 +1,16 @@
-// Because we're bootstrapping the TS compiler without dependencies on Node,
-// this is written in JS.
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+
+// Because we're bootstrapping the TypeScript compiler without dependencies on
+// Node, this is written in JavaScript, but leverages JSDoc that can be
+// understood by the TypeScript language service, so it allows type safety
+// checking in VSCode.
 
 const ASSETS = "$asset$";
 
+/**
+ * @param {string} configText
+ * @param {Array<string>} rootNames
+ */
 function main(configText, rootNames) {
   println(`>>> ts version ${ts.version}`);
   println(`>>> rootNames ${rootNames}`);
@@ -34,37 +42,57 @@ function main(configText, rootNames) {
   dispatch("setEmitResult", emitResult);
 }
 
+/**
+ * @param {...string} s
+ */
 function println(...s) {
   Deno.core.print(s.join(" ") + "\n");
 }
 
+/**
+ * @returns {never}
+ */
 function unreachable() {
   throw Error("unreachable");
 }
 
+/**
+ * @param {unknown} cond
+ */
 function assert(cond) {
   if (!cond) {
     throw Error("assert");
   }
 }
 
-// decode(Uint8Array): string
+/**
+ * @param {Uint8Array | null} ui8
+ */
 function decodeAscii(ui8) {
   let out = "";
+  if (!ui8) {
+    return out;
+  }
   for (let i = 0; i < ui8.length; i++) {
     out += String.fromCharCode(ui8[i]);
   }
   return out;
 }
 
+/**
+ * @param {string} str
+ */
 function encode(str) {
   const charCodes = str.split("").map(c => c.charCodeAt(0));
   const ui8 = new Uint8Array(charCodes);
   return ui8;
 }
 
-// Warning! The op_id values below are shared between this code and
-// the Rust side. Update with care!
+//
+/** **Warning!** The op_id values below are shared between this code and the
+ * Rust side. Update with care!
+ * @type {Record<string, number>}
+ */
 const ops = {
   readFile: 49,
   exit: 50,
@@ -73,53 +101,56 @@ const ops = {
   setEmitResult: 53
 };
 
-// interface CompilerHost extends ModuleResolutionHost {
+/**
+ * @implements {ts.CompilerHost}
+ */
 class Host {
-  // fileExists(fileName: string): boolean;
+  /**
+   * @param {string} fileName
+   */
   fileExists(fileName) {
     return true;
   }
 
-  // readFile(fileName: string): string | undefined;
-  readFile() {
+  /**
+   * @param {string} fileName
+   */
+  readFile(fileName) {
     unreachable();
+    return undefined;
   }
 
-  // trace?(s: string): void;
-  // directoryExists?(directoryName: string): boolean;
-  // realpath?(path: string): string;
-  // getCurrentDirectory?(): string;
-  // getDirectories?(path: string): string[];
-
-  // useCaseSensitiveFileNames(): boolean;
   useCaseSensitiveFileNames() {
     return false;
   }
 
-  // getDefaultLibFileName(options: CompilerOptions): string;
-  getDefaultLibFileName(options) {
+  /**
+   * @param {ts.CompilerOptions} _options
+   */
+  getDefaultLibFileName(_options) {
     return "lib.deno_core.d.ts";
   }
 
-  // getDefaultLibLocation?(): string;
   getDefaultLibLocation() {
     return ASSETS;
   }
 
-  // getCurrentDirectory(): string;
   getCurrentDirectory() {
     return ".";
   }
 
-  // getCanonicalFileName(fileName: string): string
-  getCanonicalFileName(fileName) {
-    unreachable();
-  }
-
-  // getSourceFile(fileName: string, languageVersion: ScriptTarget, onError?:
-  // (message: string) => void, shouldCreateNewSourceFile?: boolean): SourceFile
-  // | undefined;
-  getSourceFile(fileName, languageVersion, onError, shouldCreateNewSourceFile) {
+  /**
+   * @param {string} fileName
+   * @param {ts.ScriptTarget} languageVersion
+   * @param {(message: string) => void} _onError
+   * @param {boolean} shouldCreateNewSourceFile
+   */
+  getSourceFile(
+    fileName,
+    languageVersion,
+    _onError,
+    shouldCreateNewSourceFile
+  ) {
     assert(!shouldCreateNewSourceFile); // We haven't yet encountered this.
 
     // This hacks around the fact that TypeScript tries to magically guess the
@@ -148,27 +179,34 @@ class Host {
     return sourceFile;
   }
 
-  /*
-    writeFile(
-      fileName: string,
-      data: string,
-      writeByteOrderMark: boolean,
-      onError?: (message: string) => void,
-      sourceFiles?: ReadonlyArray<ts.SourceFile>
-    ): void
-  */
+  /**
+   * @param {string} fileName
+   * @param {string} data
+   * @param {boolean} _writeByteOrderMark
+   * @param {((message: string) => void)?} _onError
+   * @param {ReadonlyArray<ts.SourceFile>?} sourceFiles
+   */
   writeFile(
     fileName,
     data,
-    writeByteOrderMark,
-    onError = null,
+    _writeByteOrderMark,
+    _onError = null,
     sourceFiles = null
   ) {
+    if (sourceFiles == null) {
+      return;
+    }
     const moduleName = sourceFiles[sourceFiles.length - 1].moduleName;
     return dispatch("writeFile", { fileName, moduleName, data });
   }
 
-  // getSourceFileByPath?(fileName: string, path: Path, languageVersion: ScriptTarget, onError?: (message: string) => void, shouldCreateNewSourceFile?: boolean): SourceFile | undefined;
+  /**
+   * @param {string} fileName
+   * @param {ts.Path} path
+   * @param {ts.ScriptTarget} languageVersion
+   * @param {*} onError
+   * @param {boolean} shouldCreateNewSourceFile
+   */
   getSourceFileByPath(
     fileName,
     path,
@@ -177,35 +215,27 @@ class Host {
     shouldCreateNewSourceFile
   ) {
     unreachable();
+    return undefined;
   }
 
-  // getCancellationToken?(): CancellationToken;
-  getCancellationToken() {
-    unreachable();
-  }
-
-  // getCanonicalFileName(fileName: string): string;
+  /**
+   * @param {string} fileName
+   */
   getCanonicalFileName(fileName) {
     return fileName;
   }
 
-  // getNewLine(): string
   getNewLine() {
     return "\n";
   }
 
-  // readDirectory?(rootDir: string, extensions: ReadonlyArray<string>, excludes: ReadonlyArray<string> | undefined, includes: ReadonlyArray<string>, depth?: number): string[];
-  readDirectory() {
-    unreachable();
-  }
-
-  // resolveModuleNames?(
-  //   moduleNames: string[],
-  //   containingFile: string,
-  //   reusedNames?: string[],
-  //   redirectedReference?: ResolvedProjectReference
-  // ): (ResolvedModule | undefined)[];
+  /**
+   * @param {string[]} moduleNames
+   * @param {string} containingFile
+   * @return {Array<ts.ResolvedModule | undefined>}
+   */
   resolveModuleNames(moduleNames, containingFile) {
+    /** @type {string[]} */
     const resolvedNames = dispatch("resolveModuleNames", {
       moduleNames,
       containingFile
@@ -216,37 +246,18 @@ class Host {
     });
     return r;
   }
-
-  // resolveTypeReferenceDirectives?(typeReferenceDirectiveNames: string[], containingFile: string, redirectedReference?: ResolvedProjectReference): (ResolvedTypeReferenceDirective | undefined)[];
-  /*
-  resolveTypeReferenceDirectives() {
-    unreachable();
-  }
-  */
-
-  // getEnvironmentVariable?(name: string): string | undefined;
-  getEnvironmentVariable() {
-    unreachable();
-  }
-
-  // createHash?(data: string): string;
-  createHash() {
-    unreachable();
-  }
-
-  // getParsedCommandLine?(fileName: string): ParsedCommandLine | undefined;
-  getParsedCommandLine() {
-    unreachable();
-  }
 }
 
+/**
+ * @param {string} configurationText
+ */
 function configure(configurationText) {
   const { config, error } = ts.parseConfigFileTextToJson(
     "tsconfig.json",
     configurationText
   );
   if (error) {
-    return { diagnostics: [error] };
+    return { options: {}, diagnostics: [error] };
   }
   const { options, errors } = ts.convertCompilerOptionsFromJson(
     config.compilerOptions,
@@ -258,6 +269,10 @@ function configure(configurationText) {
   };
 }
 
+/**
+ * @param {string} opName
+ * @param {Record<string,any>} obj
+ */
 function dispatch(opName, obj) {
   const s = JSON.stringify(obj);
   const msg = encode(s);
@@ -270,14 +285,21 @@ function dispatch(opName, obj) {
   return res["ok"];
 }
 
+/**
+ * @param {number} code
+ */
 function exit(code) {
   dispatch("exit", { code });
-  unreachable();
+  return unreachable();
 }
 
 // Maximum number of diagnostics to display.
 const MAX_ERRORS = 5;
 
+/**
+ * @param {ts.CompilerHost} host
+ * @param {ReadonlyArray<ts.Diagnostic> | undefined} diagnostics
+ */
 function handleDiagnostics(host, diagnostics) {
   if (diagnostics && diagnostics.length) {
     let rest = 0;
@@ -294,7 +316,10 @@ function handleDiagnostics(host, diagnostics) {
   }
 }
 
-/** Returns the TypeScript Extension enum for a given media type. */
+/** Returns the TypeScript Extension enum for a given media type.
+ * @param {string} fileName
+ * @returns {ts.Extension}
+ */
 function getExtension(fileName) {
   if (fileName.endsWith(".d.ts")) {
     return ts.Extension.Dts;

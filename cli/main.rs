@@ -18,6 +18,9 @@ extern crate serde;
 extern crate serde_derive;
 extern crate url;
 
+#[cfg(test)]
+mod integration_tests;
+
 mod ansi;
 mod assets;
 pub mod compilers;
@@ -45,6 +48,7 @@ mod signal;
 pub mod source_maps;
 mod startup_data;
 pub mod state;
+mod tokio_read;
 mod tokio_util;
 mod tokio_write;
 pub mod version;

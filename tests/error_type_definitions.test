@@ -1,4 +1,0 @@
-args: run --reload tests/error_type_definitions.ts
-check_stderr: true
-exit_code: 1
-output: tests/error_type_definitions.ts.out

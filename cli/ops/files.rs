@@ -1,6 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use crate::deno_error;
 use crate::fs as deno_fs;
 use crate::resources;
 use crate::state::ThreadSafeState;
@@ -104,13 +103,9 @@ pub fn op_close(
 ) -> Result<JsonOp, ErrBox> {
   let args: CloseArgs = serde_json::from_value(args)?;
 
-  match resources::lookup(args.rid as u32) {
-    None => Err(deno_error::bad_resource()),
-    Some(resource) => {
-      resource.close();
-      Ok(JsonOp::Sync(json!({})))
-    }
-  }
+  let resource = resources::lookup(args.rid as u32)?;
+  resource.close();
+  Ok(JsonOp::Sync(json!({})))
 }
 
 #[derive(Deserialize)]
@@ -129,17 +124,13 @@ pub fn op_seek(
 ) -> Result<JsonOp, ErrBox> {
   let args: SeekArgs = serde_json::from_value(args)?;
 
-  match resources::lookup(args.rid as u32) {
-    None => Err(deno_error::bad_resource()),
-    Some(resource) => {
-      let op = resources::seek(resource, args.offset, args.whence as u32)
-        .and_then(move |_| futures::future::ok(json!({})));
-      if args.promise_id.is_none() {
-        let buf = op.wait()?;
-        Ok(JsonOp::Sync(buf))
-      } else {
-        Ok(JsonOp::Async(Box::new(op)))
-      }
-    }
+  let resource = resources::lookup(args.rid as u32)?;
+  let op = resources::seek(resource, args.offset, args.whence as u32)
+    .and_then(move |_| futures::future::ok(json!({})));
+  if args.promise_id.is_none() {
+    let buf = op.wait()?;
+    Ok(JsonOp::Sync(buf))
+  } else {
+    Ok(JsonOp::Async(Box::new(op)))
   }
 }

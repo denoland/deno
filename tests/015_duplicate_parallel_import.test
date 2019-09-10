@@ -1,2 +1,0 @@
-args: tests/015_duplicate_parallel_import.js --reload --allow-read
-output: tests/015_duplicate_parallel_import.js.out

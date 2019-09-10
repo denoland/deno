@@ -214,34 +214,6 @@ def build_path():
         return os.path.join(root_path, "target", build_mode())
 
 
-# Returns True if the expected matches the actual output, allowing variation
-# from actual where expected has the wildcard (e.g. matches /.*/)
-def pattern_match(pattern, string, wildcard="[WILDCARD]"):
-    if pattern == wildcard:
-        return True
-
-    parts = str.split(pattern, wildcard)
-
-    if len(parts) == 1:
-        return pattern == string
-
-    if string.startswith(parts[0]):
-        string = string[len(parts[0]):]
-    else:
-        return False
-
-    for i in range(1, len(parts)):
-        if i == (len(parts) - 1):
-            if parts[i] == "" or parts[i] == "\n":
-                return True
-        found = string.find(parts[i])
-        if found < 0:
-            return False
-        string = string[(found + len(parts[i])):]
-
-    return len(string) == 0
-
-
 def parse_exit_code(s):
     codes = [int(d or 1) for d in re.findall(r'error(\d*)', s)]
     if len(codes) > 1:

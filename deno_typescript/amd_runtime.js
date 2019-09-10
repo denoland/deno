@@ -1,20 +1,34 @@
+// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+
 // A very very basic AMD preamble to support the output of TypeScript outFile
 // bundles.
-let require, define;
+
+/**
+ * @type {(name: string) => any}
+ */
+let require;
+
+/**
+ * @type {(name: string, deps: ReadonlyArray<string>, factory: (...deps: any[]) => void) => void}
+ */
+let define;
 
 (function() {
+  /**
+   * @type {Map<string, { name: string, exports: any }>}
+   */
   const modules = new Map();
 
-  function println(first, ...s) {
-    Deno.core.print(first + " " + s.map(JSON.stringify).join(" ") + "\n");
-  }
-
+  /**
+   * @param {string} name
+   */
   function createOrLoadModule(name) {
-    if (!modules.has(name)) {
-      const m = { name, exports: {} };
+    let m = modules.get(name);
+    if (!m) {
+      m = { name, exports: {} };
       modules.set(name, m);
     }
-    return modules.get(name);
+    return m;
   }
 
   require = name => {

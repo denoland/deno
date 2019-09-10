@@ -2,8 +2,8 @@
   "name": "deno",
   "devDependencies": {
     "@types/prettier": "1.16.1",
-    "@typescript-eslint/eslint-plugin": "1.6.0",
-    "@typescript-eslint/parser": "1.6.0",
+    "@typescript-eslint/eslint-plugin": "2.1.0",
+    "@typescript-eslint/parser": "2.1.0",
     "eslint": "5.15.1",
     "eslint-config-prettier": "4.1.0",
     "magic-string": "0.25.2",

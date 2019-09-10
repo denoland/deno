@@ -2,7 +2,7 @@
 import { sendSync, sendAsync } from "./dispatch_json.ts";
 import * as dispatch from "./dispatch.ts";
 import * as util from "./util.ts";
-import { platform } from "./build.ts";
+import { build } from "./build.ts";
 
 /** Synchronously creates `newname` as a symbolic link to `oldname`. The type
  * argument can be set to `dir` or `file` and is only available on Windows
@@ -15,7 +15,7 @@ export function symlinkSync(
   newname: string,
   type?: string
 ): void {
-  if (platform.os === "win" && type) {
+  if (build.os === "win" && type) {
     return util.notImplemented();
   }
   sendSync(dispatch.OP_SYMLINK, { oldname, newname });
@@ -32,7 +32,7 @@ export async function symlink(
   newname: string,
   type?: string
 ): Promise<void> {
-  if (platform.os === "win" && type) {
+  if (build.os === "win" && type) {
     return util.notImplemented();
   }
   await sendAsync(dispatch.OP_SYMLINK, { oldname, newname });
