@@ -133,15 +133,15 @@ jobs:
         run: python %cd%\tools\test.py --build-dir target\release
       
       # Rebuild docs
-      - name: Rebuild docs (only macOS)
-        if: startsWith(matrix.os, 'macOS')
+      - name: Rebuild docs (only linux)
+        if: startsWith(matrix.os, 'ubuntu')
         run: |
           ./tools/benchmark.py target/release
           cp -r website/* gh-pages/
       
       # Upload docs
-      - name: Upload docs (only macOS)
-        if: startsWith(matrix.os, 'macOS')
+      - name: Upload docs (only linux)
+        if: startsWith(matrix.os, 'ubuntu')
         uses: JamesIves/github-pages-deploy-action@master
         env:
           ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
