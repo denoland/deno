@@ -11,6 +11,7 @@ const ASSETS = "$asset$";
  * @param {string} configText
  * @param {Array<string>} rootNames
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function main(configText, rootNames) {
   println(`>>> ts version ${ts.version}`);
   println(`>>> rootNames ${rootNames}`);
@@ -19,22 +20,26 @@ function main(configText, rootNames) {
 
   assert(rootNames.length > 0);
 
-  let { options, diagnostics } = configure(configText);
+  const { options, diagnostics } = configure(configText);
   handleDiagnostics(host, diagnostics);
 
   println(`>>> TS config: ${JSON.stringify(options)}`);
 
   const program = ts.createProgram(rootNames, options, host);
 
-  diagnostics = ts.getPreEmitDiagnostics(program).filter(({ code }) => {
-    // TS2691: An import path cannot end with a '.ts' extension. Consider
-    // importing 'bad-module' instead.
-    if (code === 2691) return false;
-    // TS5009: Cannot find the common subdirectory path for the input files.
-    if (code === 5009) return false;
-    return true;
-  });
-  handleDiagnostics(host, diagnostics);
+  handleDiagnostics(
+    host,
+    ts.getPreEmitDiagnostics(program).filter(({ code }) => {
+      // TS1063: An export assignment cannot be used in a namespace.
+      if (code === 1063) return false;
+      // TS2691: An import path cannot end with a '.ts' extension. Consider
+      // importing 'bad-module' instead.
+      if (code === 2691) return false;
+      // TS5009: Cannot find the common subdirectory path for the input files.
+      if (code === 5009) return false;
+      return true;
+    })
+  );
 
   const emitResult = program.emit();
   handleDiagnostics(host, emitResult.diagnostics);
@@ -102,20 +107,19 @@ const ops = {
 };
 
 /**
+ * This is a minimal implementation of a compiler host to be able to allow the
+ * creation of runtime bundles.  Some of the methods are implemented in a way
+ * to just appease the TypeScript compiler, not to necessarily be a general
+ * purpose implementation.
+ *
  * @implements {ts.CompilerHost}
  */
 class Host {
-  /**
-   * @param {string} fileName
-   */
-  fileExists(fileName) {
+  fileExists() {
     return true;
   }
 
-  /**
-   * @param {string} fileName
-   */
-  readFile(fileName) {
+  readFile() {
     unreachable();
     return undefined;
   }
@@ -124,10 +128,7 @@ class Host {
     return false;
   }
 
-  /**
-   * @param {ts.CompilerOptions} _options
-   */
-  getDefaultLibFileName(_options) {
+  getDefaultLibFileName() {
     return "lib.deno_core.d.ts";
   }
 
@@ -163,18 +164,17 @@ class Host {
         .replace("/index.d.ts", "");
     }
 
-    let { sourceCode, moduleName } = dispatch("readFile", {
+    const { sourceCode, moduleName } = dispatch("readFile", {
       fileName,
       languageVersion,
       shouldCreateNewSourceFile
     });
 
-    // TODO(ry) A terrible hack. Please remove ASAP.
-    if (fileName.endsWith("typescript.d.ts")) {
-      sourceCode = sourceCode.replace("export = ts;", "");
-    }
-
-    let sourceFile = ts.createSourceFile(fileName, sourceCode, languageVersion);
+    const sourceFile = ts.createSourceFile(
+      fileName,
+      sourceCode,
+      languageVersion
+    );
     sourceFile.moduleName = moduleName;
     return sourceFile;
   }
@@ -200,20 +200,7 @@ class Host {
     return dispatch("writeFile", { fileName, moduleName, data });
   }
 
-  /**
-   * @param {string} fileName
-   * @param {ts.Path} path
-   * @param {ts.ScriptTarget} languageVersion
-   * @param {*} onError
-   * @param {boolean} shouldCreateNewSourceFile
-   */
-  getSourceFileByPath(
-    fileName,
-    path,
-    languageVersion,
-    onError,
-    shouldCreateNewSourceFile
-  ) {
+  getSourceFileByPath() {
     unreachable();
     return undefined;
   }
