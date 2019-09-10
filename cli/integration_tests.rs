@@ -552,12 +552,13 @@ fn wildcard_match(pattern: &str, s: &str) -> bool {
 }
 
 fn pattern_match(pattern: &str, s: &str, wildcard: &str) -> bool {
+  // Normalize line endings
+  let s = s.replace("\r\n", "\n");
+  let pattern = pattern.replace("\r\n", "\n");
+
   if pattern == wildcard {
     return true;
   }
-
-  // Normalize line endings
-  let s = s.replace("\r\n", "\n");
 
   let parts = pattern.split(wildcard).collect::<Vec<&str>>();
   if parts.len() == 1 {
