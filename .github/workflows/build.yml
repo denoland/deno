@@ -130,7 +130,7 @@ jobs:
         env:
           DENO_BUILD_MODE: release
           GYP_MSVS_OVERRIDE_PATH: C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise
-        run: python %cd%\tools\test.py
+        run: python %cd%\tools\test.py --build-dir target\release
       
       # Rebuild docs
       - name: Rebuild docs (only macOS)
