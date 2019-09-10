@@ -10,7 +10,6 @@ env:
   - RUST_BACKTRACE=full
   - PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$PATH
   - PYTHONPATH=third_party/python_packages
-  - RUSTC_WRAPPER=sccache
   - SCCACHE_BUCKET=deno-sccache
   - AWS_ACCESS_KEY_ID=AKIAIVRN52PLDBP55LBQ
   # AWS_SECRET_ACCESS_KEY=...

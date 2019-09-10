@@ -18,7 +18,6 @@ environment:
   CARGO_HOME: $(RUST_DIR)\cargo
   RUSTUP_HOME: $(RUST_DIR)\rustup
   RUST_BACKTRACE: full
-  RUSTC_WRAPPER: sccache
   PYTHONPATH: third_party\python_packages
   SCCACHE_BUCKET: deno-sccache
   AWS_ACCESS_KEY_ID: AKIAIVRN52PLDBP55LBQ
@@ -90,6 +89,7 @@ for:
 cache:
   # Rust stuff.
   - $(RUST_DIR)
+  - $(APPVEYOR_BUILD_FOLDER)\target\release\
   - $(APPVEYOR_BUILD_FOLDER)\prebuilt\win\
 
 init:
@@ -192,7 +192,7 @@ build_script:
 test_script:
   - python tools\lint.py
   - python tools\test_format.py
-  - ps: Exec { & python tools\test.py --build-dir $env:DENO_BUILD_PATH }
+  - python tools\test.py
 
 after_test:
   # Stop sccache and show stats.
