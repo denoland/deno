@@ -29,7 +29,7 @@ test(function consoleShouldBeANamespace(): void {
 
 test(function consoleHasRightInstance(): void {
   assert(console instanceof Console);
-  assertEquals({} instanceof Console, true);
+  assertEquals({} instanceof Console, false);
 });
 
 test(function consoleTestAssertShouldNotThrowError(): void {
