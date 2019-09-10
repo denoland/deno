@@ -110,13 +110,13 @@ jobs:
         uses: actions/upload-artifact@master
         if: startsWith(matrix.os, 'ubuntu') || startsWith(matrix.os, 'macOS')
         with:
-          name: deno
+          name: deno_${{matrix.os}}
           path: target/release/deno
       - name: Upload windows artifacts
         uses: actions/upload-artifact@master
         if: startsWith(matrix.os, 'windows')
         with:
-          name: deno
+          name: deno_${{matrix.os}}.exe
           path: target\release\deno.exe
 
       # Test
