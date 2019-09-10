@@ -85,11 +85,6 @@ jobs:
         if: startsWith(matrix.os, 'macos')
         run: ./tools/test_format.py
 
-      # Run clippy
-      - name: Run clippy (macos)
-        if: startsWith(matrix.os, 'macos')
-        run: cargo clippy --all-targets --release --locked -- -D clippy::all
-
       # Building
       - name: Run build script (unix)
         if: startsWith(matrix.os, 'ubuntu') || startsWith(matrix.os, 'macos')
@@ -104,6 +99,11 @@ jobs:
           DENO_BUILD_MODE: release
         run: |
           cargo build --release --locked --all-targets
+
+      # Run clippy
+      - name: Run clippy (macos)
+        if: startsWith(matrix.os, 'macos')
+        run: cargo clippy --all-targets --release --locked -- -D clippy::all
 
       # Upload artifacts
       - name: Upload artifacts (unix)
