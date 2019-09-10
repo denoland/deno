@@ -131,19 +131,3 @@ jobs:
           DENO_BUILD_MODE: release
           GYP_MSVS_OVERRIDE_PATH: C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise
         run: python %cd%\tools\test.py --build-dir target\release
-      
-      # Rebuild docs
-      - name: Rebuild docs (only linux)
-        if: startsWith(matrix.os, 'ubuntu')
-        run: |
-          ./tools/benchmark.py target/release
-          cp -r website/* gh-pages/
-      
-      # Upload docs
-      - name: Upload docs (only linux)
-        if: startsWith(matrix.os, 'ubuntu')
-        uses: JamesIves/github-pages-deploy-action@master
-        env:
-          ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
-          BRANCH: gh-pages
-          FOLDER: gh-pages
