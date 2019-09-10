@@ -1,4 +1,0 @@
-args: run --reload missing_file_name
-check_stderr: true
-exit_code: 1
-output: tests/error_013_missing_script.out

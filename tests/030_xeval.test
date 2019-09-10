@@ -1,3 +1,0 @@
-args: xeval console.log($.toUpperCase())
-input: a\nb\n\nc
-output: tests/030_xeval.out

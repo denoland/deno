@@ -1,2 +1,0 @@
-args: run --v8-flags=--expose-gc tests/v8_flags.js
-output: tests/v8_flags.js.out

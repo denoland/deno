@@ -1,3 +1,0 @@
-exit_code: 42
-args: run --reload tests/exit_error42.ts
-output: tests/exit_error42.ts.out

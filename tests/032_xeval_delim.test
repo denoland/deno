@@ -1,3 +1,0 @@
-args: xeval -d DELIM console.log($.toUpperCase());
-input: aDELIMbDELIMDELIMc
-output: tests/032_xeval_delim.out

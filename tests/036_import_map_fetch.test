@@ -1,2 +1,0 @@
-args: fetch --reload --importmap=tests/importmaps/import_map.json tests/importmaps/test.ts
-output: tests/036_import_map_fetch.out

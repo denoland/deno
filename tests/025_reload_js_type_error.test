@@ -1,2 +1,0 @@
-args: run --reload tests/025_reload_js_type_error.js
-output: tests/025_reload_js_type_error.js.out
