@@ -186,6 +186,7 @@ before_build:
       $env:AWS_SECRET_ACCESS_KEY = $null
 
 build_script:
+  - python tools\setup.py
   - cargo clippy --all-targets --release --locked -- -D clippy::all
   - cargo build -vv --release --all-targets --locked
 
