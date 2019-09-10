@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::resources::Resource;
+use deno::ErrBox;
 use futures;
 use futures::Future;
 use futures::Poll;
@@ -10,11 +11,19 @@ use tokio;
 use tokio::net::TcpStream;
 use tokio::runtime;
 
+// TODO: this function should return Error - because it panics on
+//  `unwrap` with `Too many open files`
 pub fn create_threadpool_runtime() -> tokio::runtime::Runtime {
   runtime::Builder::new()
     .panic_handler(|err| std::panic::resume_unwind(err))
     .build()
     .unwrap()
+}
+
+pub fn create_threadpool_runtime_err() -> Result<tokio::runtime::Runtime, tokio::io::Error> {
+  runtime::Builder::new()
+    .panic_handler(|err| std::panic::resume_unwind(err))
+    .build()
 }
 
 pub fn run<F>(future: F)
@@ -39,21 +48,27 @@ where
 /// given future. This is useful when we want to block the main runtime to
 /// resolve a future without worrying that we'll use up all the threads in the
 /// main runtime.
-pub fn block_on<F, R, E>(future: F) -> Result<R, E>
+pub fn block_on<F, R>(future: F) -> Result<R, ErrBox>
 where
-  F: Send + 'static + Future<Item = R, Error = E>,
+  F: Send + 'static + Future<Item = R, Error = ErrBox>,
   R: Send + 'static,
-  E: Send + 'static,
 {
   use std::sync::mpsc::channel;
   use std::thread;
   let (sender, receiver) = channel();
   // Create a new runtime to evaluate the future asynchronously.
   thread::spawn(move || {
-    let mut rt = create_threadpool_runtime();
-    let r = rt.block_on(future);
-    sender.send(r).unwrap();
+    // TODO: if any of `create_threadpool_runtime` or `block_on` fails
+    // then error should be sent over the channel
+    match create_threadpool_runtime_err() {
+      Ok(mut rt) => {
+        let fut_r = rt.block_on(future);
+        sender.send(fut_r).unwrap()
+      },
+      Err(e) => sender.send(Err(ErrBox::from(e))).unwrap()
+    }
   });
+  // TODO: this unwrap is bad it should be handled gracefully
   receiver.recv().unwrap()
 }
 
