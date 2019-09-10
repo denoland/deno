@@ -79,7 +79,6 @@ export function parseTypeDirectives(
     if (maybeMatch) {
       const [, , fromPath] = maybeMatch;
       directiveRecords[fromPath] = path;
-      break;
     }
     sourceCode = sourceCode.substring(0, start);
   }
