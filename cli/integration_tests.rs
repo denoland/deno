@@ -523,10 +523,16 @@ impl IntegrationTest {
 
     let status = process.wait().expect("failed to finish process");
     let exit_code = status.code().unwrap();
-    eprintln!("exit code {:?} {:?}", exit_code, self.exit_code);
-    assert_eq!(self.exit_code, exit_code);
 
     actual = strip_ansi_codes(&actual).to_string();
+
+    if self.exit_code != exit_code {
+      println!("OUTPUT\n{}\nOUTPUT", actual);
+      panic!(
+        "bad exit code, expected: {:?}, actual: {:?}",
+        self.exit_code, exit_code
+      );
+    }
 
     let output_path = root.join(self.output);
     debug!("output path {}", output_path.display());
