@@ -106,13 +106,13 @@ jobs:
           cargo build --release --locked --all-targets
 
       # Upload artifacts
-      - name: Upload linux and macOS artifacts
+      - name: Upload artifacts (unix)
         uses: actions/upload-artifact@master
         if: startsWith(matrix.os, 'ubuntu') || startsWith(matrix.os, 'macOS')
         with:
           name: deno_${{matrix.os}}
           path: target/release/deno
-      - name: Upload windows artifacts
+      - name: Upload artifacts (windows)
         uses: actions/upload-artifact@master
         if: startsWith(matrix.os, 'windows')
         with:
