@@ -25,6 +25,3 @@ export function setBuildInfo(os: OperatingSystem, arch: Arch): void {
 
   Object.freeze(build);
 }
-
-// TODO(kevinkassimo): deprecate Deno.platform
-export const platform = build;
