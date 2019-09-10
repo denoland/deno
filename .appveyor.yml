@@ -90,6 +90,7 @@ for:
 cache:
   # Rust stuff.
   - $(RUST_DIR)
+  - $(APPVEYOR_BUILD_FOLDER)\target\release\
   - $(APPVEYOR_BUILD_FOLDER)\prebuilt\win\
 
 init:
