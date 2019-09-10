@@ -1313,6 +1313,7 @@ declare const removeEventListener: (
 ) => void;
 
 declare type Blob = blob.DenoBlob;
+declare type Body = domTypes.Body;
 declare type File = domTypes.DomFile;
 declare type CustomEventInit = customEvent.CustomEventInit;
 declare type CustomEvent = customEvent.CustomEvent;
