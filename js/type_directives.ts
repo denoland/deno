@@ -1,5 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-
 interface DirectiveInfo {
   path: string;
   start: number;
@@ -19,6 +18,12 @@ export function getMappedModuleName(
     return moduleName;
   }
   if (moduleName in typeDirectives) {
+    // @ts-ignore
+    console.error(
+      "getMappedModuleName",
+      moduleName,
+      typeDirectives[moduleName]
+    );
     return typeDirectives[moduleName];
   }
   return moduleName;
@@ -33,7 +38,16 @@ export function getMappedModuleName(
  */
 const typeDirectiveRegEx = /@deno-types\s*=\s*(["'])((?:(?=(\\?))\3.)*?)\1/gi;
 
-/** Matches `import` or `export from` statements and parses out the value of the
+/** Matches `import` statements and parses out the value of the
+ * module specifier in the second capture group:
+ *
+ *      import "./foo.js"
+ *
+ * [See Diagram](https://bit.ly/2maRCm8)
+ */
+const importRegEx = /(?:import|export)\s+(["'])((?:(?=(\\?))\3.)*?)\1/;
+
+/** Matches `import from` or `export from` statements and parses out the value of the
  * module specifier in the second capture group:
  *
  *      import * as foo from "./foo.js"
@@ -41,7 +55,7 @@ const typeDirectiveRegEx = /@deno-types\s*=\s*(["'])((?:(?=(\\?))\3.)*?)\1/gi;
  *
  * [See Diagram](http://bit.ly/2GSkJlF)
  */
-const importExportRegEx = /(?:import|export)\s+[\s\S]*?from\s+(["'])((?:(?=(\\?))\3.)*?)\1/;
+const importExportFromRegEx = /(?:import|export)\s+[\s\S]*?from\s+(["'])((?:(?=(\\?))\3.)*?)\1/;
 
 /** Parses out any Deno type directives that are part of the source code, or
  * returns `undefined` if there are not any.
@@ -75,10 +89,13 @@ export function parseTypeDirectives(
   const directiveRecords: Record<string, string> = {};
   for (const { path, start, end } of directives) {
     const searchString = sourceCode.substring(end);
-    const maybeMatch = importExportRegEx.exec(searchString);
-    if (maybeMatch) {
-      const [, , fromPath] = maybeMatch;
-      directiveRecords[fromPath] = path;
+    for (const regex of [importRegEx, importExportFromRegEx]) {
+      let maybeMatch = regex.exec(searchString);
+      if (maybeMatch) {
+        const [, , fromPath] = maybeMatch;
+        directiveRecords[fromPath] = path;
+        break;
+      }
     }
     sourceCode = sourceCode.substring(0, start);
   }
