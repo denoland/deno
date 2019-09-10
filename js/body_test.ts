@@ -3,11 +3,11 @@ import { test, testPerm, assertEquals, assert } from "./test_util.ts";
 
 // just a hack to get a body object
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function buildBody(body: any): domTypes.Body {
+function buildBody(body: any): Body {
   const stub = new Request("", {
     body: body
   });
-  return stub as domTypes.Body;
+  return stub as Body;
 }
 
 const intArrays = [
