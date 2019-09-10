@@ -1,2 +1,0 @@
-args: run --reload tests/017_import_redirect.ts
-output: tests/017_import_redirect.ts.out

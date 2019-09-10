@@ -1,4 +1,0 @@
-args: run --reload --config tests/config.tsconfig.json tests/config.ts
-check_stderr: true
-exit_code: 1
-output: tests/config.ts.out

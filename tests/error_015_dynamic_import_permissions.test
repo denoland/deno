@@ -1,4 +1,0 @@
-args: --reload --no-prompt tests/error_015_dynamic_import_permissions.js
-output: tests/error_015_dynamic_import_permissions.out
-check_stderr: true
-exit_code: 1

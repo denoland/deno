@@ -1,4 +1,0 @@
-args: run --reload tests/error_012_bad_dynamic_import_specifier.ts
-check_stderr: true
-exit_code: 1
-output: tests/error_012_bad_dynamic_import_specifier.ts.out

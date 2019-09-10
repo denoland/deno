@@ -1,2 +1,0 @@
-args: --v8-options
-output: tests/v8_help.out
