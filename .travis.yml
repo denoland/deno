@@ -65,6 +65,7 @@ jobs:
   include:
     - name: "release mac x86_64"
       os: osx
+      osx_image: xcode11
       after_success:
         - &gzip_release
           gzip -c target/release/deno > target/release/deno_${TRAVIS_OS_NAME}_x64.gz
