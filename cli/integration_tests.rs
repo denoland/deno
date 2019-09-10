@@ -604,6 +604,28 @@ fn test_wildcard_match() {
     ("foo[WILDCARD]baz[WILDCARD]qux", "foobarbazqatqux", true),
     ("foo[WILDCARD]", "foobar", true),
     ("foo[WILDCARD]baz[WILDCARD]", "foobarbazqat", true),
+    // check with different line endings
+    ("foo[WILDCARD]\nbaz[WILDCARD]\n", "foobar\nbazqat\n", true),
+    (
+      "foo[WILDCARD]\nbaz[WILDCARD]\n",
+      "foobar\r\nbazqat\r\n",
+      true,
+    ),
+    (
+      "foo[WILDCARD]\r\nbaz[WILDCARD]\n",
+      "foobar\nbazqat\r\n",
+      true,
+    ),
+    (
+      "foo[WILDCARD]\r\nbaz[WILDCARD]\r\n",
+      "foobar\nbazqat\n",
+      true,
+    ),
+    (
+      "foo[WILDCARD]\r\nbaz[WILDCARD]\r\n",
+      "foobar\r\nbazqat\r\n",
+      true,
+    ),
   ];
 
   // Iterate through the fixture lists, testing each one
