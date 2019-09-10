@@ -20,6 +20,8 @@ def tp(*subpath_parts):
     return root("third_party", *subpath_parts)
 
 
+build_path = root("build")
+
 third_party_path = tp()
 depot_tools_path = tp("depot_tools")
 rust_crates_path = tp("rust_crates")
@@ -52,6 +54,7 @@ def python_env(env=None, merge_env=None):
         python_site_env = {}
         temp = os.environ["PATH"], sys.path
         os.environ["PATH"], sys.path = "", []
+        site.addsitedir(build_path)  # Modifies PATH and sys.path.
         site.addsitedir(python_packages_path)  # Modifies PATH and sys.path.
         python_site_env = {"PATH": os.environ["PATH"], "PYTHONPATH": sys.path}
         os.environ["PATH"], sys.path = temp
