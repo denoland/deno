@@ -550,6 +550,9 @@ fn pattern_match(pattern: &str, s: &str, wildcard: &str) -> bool {
     return true;
   }
 
+  // Normalize line endings
+  let s = s.replace("\r\n", "\n");
+
   let parts = pattern.split(wildcard).collect::<Vec<&str>>();
   if parts.len() == 1 {
     return pattern == s;
