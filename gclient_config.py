@@ -24,7 +24,7 @@ solutions = [{
     }
 }, {
     'url':
-    'https://chromium.googlesource.com/chromium/tools/depot_tools@40bacee96a94600ad2179d69a8025469d119960f',
+    'https://chromium.googlesource.com/chromium/tools/depot_tools@efce0d1b7657c440c90f0f4bce614b96672b9e0b',
     'name':
     'depot_tools'
 }, {
