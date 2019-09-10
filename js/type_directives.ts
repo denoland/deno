@@ -39,7 +39,7 @@ const typeDirectiveRegEx = /@deno-types\s*=\s*(["'])((?:(?=(\\?))\3.)*?)\1/gi;
  *      import * as foo from "./foo.js"
  *      export { a, b, c } from "./bar.js"
  *
- * [See Diagram](http://bit.ly/2GSkJlF)
+ * [See Diagram](https://bit.ly/2lK0izL)
  */
 const importExportRegEx = /(?:import|export)\s+(?:[\s\S]*?from\s+)?(["'])((?:(?=(\\?))\3.)*?)\1/;
 
