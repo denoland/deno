@@ -1198,7 +1198,6 @@ declare namespace Deno {
     os: OperatingSystem;
   }
   export const build: BuildInfo;
-  export const platform: BuildInfo;
 
   // @url js/version.d.ts
 
