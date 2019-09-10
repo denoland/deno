@@ -4,6 +4,7 @@
 
 import os
 from os import path
+import re
 import site
 import sys
 from tempfile import mkdtemp
@@ -208,9 +209,47 @@ def download_from_google_storage(item, bucket):
         env=google_env())
 
 
+# Download the given item from Chrome Infrastructure Package Deployment.
+def download_from_cipd(item, deps_name):
+    if sys.platform == 'win32':
+        root_dir = "v8/buildtools/win"
+        item += "windows-amd64"
+    elif sys.platform == 'darwin':
+        root_dir = "v8/buildtools/mac"
+        item += "mac-amd64"
+    elif sys.platform.startswith('linux'):
+        root_dir = "v8/buildtools/linux64"
+        item += "linux-amd64"
+
+    # init cipd if necessary
+    if not os.path.exists(path.join(tp(root_dir), ".cipd")):
+        run([
+            tp('depot_tools/cipd'),
+            'init',
+            tp(root_dir),
+            '-force',
+        ],
+            env=google_env())
+
+    # read CIPD version from the DEPS file
+    deps = open(tp('v8/DEPS'), 'rb').read()
+    regex = r"'" + re.escape(deps_name) + r"': '(git_revision:[0-9a-f]{40})'"
+    version = re.search(regex, deps).group(1)
+
+    run([
+        tp('depot_tools/cipd'),
+        'install',
+        item,
+        version,
+        '-root',
+        tp(root_dir),
+    ],
+        env=google_env())
+
+
 # Download gn from Google storage.
 def download_gn():
-    download_from_google_storage('gn', 'chromium-gn')
+    download_from_cipd('gn/gn/', 'gn_version')
 
 
 # Download clang-format from Google storage.
