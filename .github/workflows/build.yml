@@ -2,6 +2,11 @@ name: Build and test
 
 on: [push]
 
+# Certain checks only get run on macOS because right now (10-sep-2019) it seems to be the fastest of the runners.
+# macos: lint, format check, build, artifact, test
+# linux: build, artifact, test
+# windows: build, artifact, test
+
 jobs:
   build:
     name: Build and test for ${{ matrix.os }}
@@ -20,7 +25,8 @@ jobs:
           submodules: true
 
       # Setup compilers
-      - name: Setup node
+      - name: Setup node (macos)
+        if: startsWith(matrix.os, 'macos')
         uses: actions/setup-node@v1
         with:
           node-version: "12.x"
@@ -28,7 +34,8 @@ jobs:
         uses: hecrj/setup-rust-action@v1
         with:
           rust-version: "1.37.0"
-      - name: Install rust components
+      - name: Install rust lint/format components (macos)
+        if: startsWith(matrix.os, 'macos')
         run: |
           rustup component add clippy
           rustup component add rustfmt
@@ -69,24 +76,19 @@ jobs:
         run: "%cd%\\prebuilt\\win\\sccache.exe --start-server"
 
       # Linting
-      - name: Run lint script (unix)
-        if: startsWith(matrix.os, 'ubuntu') || startsWith(matrix.os, 'macos')
+      - name: Run lint script (macos)
+        if: startsWith(matrix.os, 'macos')
         run: ./tools/lint.py
-      - name: Run lint script (windows)
-        if: startsWith(matrix.os, 'windows')
-        env:
-          GYP_MSVS_OVERRIDE_PATH: C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise
-        run: python %cd%\tools\lint.py
 
       # Formatting test
-      - name: Run test format script (unix)
-        if: startsWith(matrix.os, 'ubuntu') || startsWith(matrix.os, 'macos')
+      - name: Run test format script (macos)
+        if: startsWith(matrix.os, 'macos')
         run: ./tools/test_format.py
-      - name: Run test format script (windows)
-        if: startsWith(matrix.os, 'windows')
-        env:
-          GYP_MSVS_OVERRIDE_PATH: C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise
-        run: python %cd%\tools\test_format.py
+
+      # Run clippy
+      - name: Run clippy (macos)
+        if: startsWith(matrix.os, 'macos')
+        run: cargo clippy --all-targets --release --locked -- -D clippy::all
 
       # Building
       - name: Run build script (unix)
@@ -95,7 +97,6 @@ jobs:
           DENO_BUILD_MODE: release
         run: |
           cargo build --release --locked --all-targets
-          cargo clippy --all-targets --release --locked -- -D clippy::all
       - name: Run build script (windows)
         if: startsWith(matrix.os, 'windows')
         env:
@@ -103,7 +104,6 @@ jobs:
           DENO_BUILD_MODE: release
         run: |
           cargo build --release --locked --all-targets
-          cargo clippy --all-targets --release --locked -- -D clippy::all
 
       # Upload artifacts
       - name: Upload artifacts (unix)
