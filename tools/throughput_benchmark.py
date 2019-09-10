@@ -32,7 +32,7 @@ def tcp(deno_exe, megs):
     # Run deno echo server in the background.
     echo_server = subprocess.Popen(
         [deno_exe, "run", "--allow-net", "tests/echo_server.ts", ADDR])
-    
+
     time.sleep(5)  # wait for deno to wake up. TODO racy.
     try:
         start = time.time()
