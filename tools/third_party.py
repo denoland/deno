@@ -100,28 +100,6 @@ def run_yarn():
     run(["yarn", "install"], cwd=third_party_path)
 
 
-# Run Cargo to install Rust dependencies.
-def run_cargo():
-    # Deletes the cargo index lockfile; it appears that cargo itself doesn't do
-    # it.  If the lockfile ends up in the git repo, it'll make cargo hang for
-    # everyone else who tries to run sync_third_party.
-    def delete_lockfile():
-        lockfiles = find_exts([path.join(rust_crates_path, "registry/index")],
-                              ['.cargo-index-lock'])
-        for lockfile in lockfiles:
-            os.remove(lockfile)
-
-    # Delete the index lockfile in case someone accidentally checked it in.
-    delete_lockfile()
-
-    run(["cargo", "fetch", "--manifest-path=" + root("Cargo.toml")],
-        cwd=third_party_path,
-        merge_env={'CARGO_HOME': rust_crates_path})
-
-    # Delete the lockfile again so it doesn't end up in the git repo.
-    delete_lockfile()
-
-
 # Install python packages with pip.
 def run_pip():
     # Install an recent version of pip into a temporary directory. The version
