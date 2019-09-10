@@ -1,10 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-// TODO Submit this file upstream into tokio-io/src/io/write.rs
-use std::io;
-use std::mem;
-
+use crate::resources::DenoAsyncWrite;
+use deno::ErrBox;
 use futures::{Future, Poll};
-use tokio::io::AsyncWrite;
+use std::mem;
 
 /// A future used to write some data to a stream.
 ///
@@ -29,7 +27,7 @@ enum State<A, T> {
 /// buffer to get destroyed.
 pub fn write<A, T>(a: A, buf: T) -> Write<A, T>
 where
-  A: AsyncWrite,
+  A: DenoAsyncWrite,
   T: AsRef<[u8]>,
 {
   Write {
@@ -37,15 +35,17 @@ where
   }
 }
 
+/// This is almost the same implementation as in tokio, difference is
+/// that error type is `ErrBox` instead of `std::io::Error`.
 impl<A, T> Future for Write<A, T>
 where
-  A: AsyncWrite,
+  A: DenoAsyncWrite,
   T: AsRef<[u8]>,
 {
   type Item = (A, T, usize);
-  type Error = io::Error;
+  type Error = ErrBox;
 
-  fn poll(&mut self) -> Poll<(A, T, usize), io::Error> {
+  fn poll(&mut self) -> Poll<(A, T, usize), ErrBox> {
     let nwritten = match self.state {
       State::Pending {
         ref mut a,

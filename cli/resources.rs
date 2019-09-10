@@ -217,15 +217,13 @@ impl Resource {
 
   pub fn shutdown(&mut self, how: Shutdown) -> Result<(), ErrBox> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
-    let maybe_repr = table.get_mut(&self.rid);
-    match maybe_repr {
-      None => panic!("bad rid"),
-      Some(repr) => match repr {
-        Repr::TcpStream(ref mut f) => {
-          TcpStream::shutdown(f, how).map_err(ErrBox::from)
-        }
-        _ => panic!("Cannot shutdown"),
-      },
+    let repr = table.get_mut(&self.rid).ok_or_else(bad_resource)?;
+
+    match repr {
+      Repr::TcpStream(ref mut f) => {
+        TcpStream::shutdown(f, how).map_err(ErrBox::from)
+      }
+      _ => Err(bad_resource()),
     }
   }
 }
@@ -236,22 +234,30 @@ impl Read for Resource {
   }
 }
 
-impl AsyncRead for Resource {
-  fn poll_read(&mut self, buf: &mut [u8]) -> Poll<usize, Error> {
+/// `DenoAsyncRead` is the same as the `tokio_io::AsyncRead` trait
+/// but uses an `ErrBox` error instead of `std::io:Error`
+pub trait DenoAsyncRead {
+  fn poll_read(&mut self, buf: &mut [u8]) -> Poll<usize, ErrBox>;
+}
+
+impl DenoAsyncRead for Resource {
+  fn poll_read(&mut self, buf: &mut [u8]) -> Poll<usize, ErrBox> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
-    let maybe_repr = table.get_mut(&self.rid);
-    match maybe_repr {
-      None => panic!("bad rid"),
-      Some(repr) => match repr {
-        Repr::FsFile(ref mut f) => f.poll_read(buf),
-        Repr::Stdin(ref mut f) => f.poll_read(buf),
-        Repr::TcpStream(ref mut f) => f.poll_read(buf),
-        Repr::HttpBody(ref mut f) => f.poll_read(buf),
-        Repr::ChildStdout(ref mut f) => f.poll_read(buf),
-        Repr::ChildStderr(ref mut f) => f.poll_read(buf),
-        _ => panic!("Cannot read"),
-      },
-    }
+    let repr = table.get_mut(&self.rid).ok_or_else(bad_resource)?;
+
+    let r = match repr {
+      Repr::FsFile(ref mut f) => f.poll_read(buf),
+      Repr::Stdin(ref mut f) => f.poll_read(buf),
+      Repr::TcpStream(ref mut f) => f.poll_read(buf),
+      Repr::HttpBody(ref mut f) => f.poll_read(buf),
+      Repr::ChildStdout(ref mut f) => f.poll_read(buf),
+      Repr::ChildStderr(ref mut f) => f.poll_read(buf),
+      _ => {
+        return Err(bad_resource());
+      }
+    };
+
+    r.map_err(ErrBox::from)
   }
 }
 
@@ -265,24 +271,34 @@ impl Write for Resource {
   }
 }
 
-impl AsyncWrite for Resource {
-  fn poll_write(&mut self, buf: &[u8]) -> Poll<usize, Error> {
+/// `DenoAsyncWrite` is the same as the `tokio_io::AsyncWrite` trait
+/// but uses an `ErrBox` error instead of `std::io:Error`
+pub trait DenoAsyncWrite {
+  fn poll_write(&mut self, buf: &[u8]) -> Poll<usize, ErrBox>;
+
+  fn shutdown(&mut self) -> Poll<(), ErrBox>;
+}
+
+impl DenoAsyncWrite for Resource {
+  fn poll_write(&mut self, buf: &[u8]) -> Poll<usize, ErrBox> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
-    let maybe_repr = table.get_mut(&self.rid);
-    match maybe_repr {
-      None => panic!("bad rid"),
-      Some(repr) => match repr {
-        Repr::FsFile(ref mut f) => f.poll_write(buf),
-        Repr::Stdout(ref mut f) => f.poll_write(buf),
-        Repr::Stderr(ref mut f) => f.poll_write(buf),
-        Repr::TcpStream(ref mut f) => f.poll_write(buf),
-        Repr::ChildStdin(ref mut f) => f.poll_write(buf),
-        _ => panic!("Cannot write"),
-      },
-    }
+    let repr = table.get_mut(&self.rid).ok_or_else(bad_resource)?;
+
+    let r = match repr {
+      Repr::FsFile(ref mut f) => f.poll_write(buf),
+      Repr::Stdout(ref mut f) => f.poll_write(buf),
+      Repr::Stderr(ref mut f) => f.poll_write(buf),
+      Repr::TcpStream(ref mut f) => f.poll_write(buf),
+      Repr::ChildStdin(ref mut f) => f.poll_write(buf),
+      _ => {
+        return Err(bad_resource());
+      }
+    };
+
+    r.map_err(ErrBox::from)
   }
 
-  fn shutdown(&mut self) -> futures::Poll<(), std::io::Error> {
+  fn shutdown(&mut self) -> futures::Poll<(), ErrBox> {
     unimplemented!()
   }
 }
@@ -295,10 +311,9 @@ fn new_rid() -> ResourceId {
 pub fn add_fs_file(fs_file: tokio::fs::File) -> Resource {
   let rid = new_rid();
   let mut tg = RESOURCE_TABLE.lock().unwrap();
-  match tg.insert(rid, Repr::FsFile(fs_file)) {
-    Some(_) => panic!("There is already a file with that rid"),
-    None => Resource { rid },
-  }
+  let r = tg.insert(rid, Repr::FsFile(fs_file));
+  assert!(r.is_none());
+  Resource { rid }
 }
 
 pub fn add_tcp_listener(listener: tokio::net::TcpListener) -> Resource {
@@ -354,6 +369,7 @@ pub fn post_message_to_worker(
       // unwrap here is incorrect, but doing it anyway
       wc.0.clone().send(buf)
     }
+    // TODO: replace this panic with `bad_resource`
     _ => panic!("bad resource"), // futures::future::err(bad_resource()).into(),
   }
 }
@@ -522,10 +538,13 @@ pub fn get_file(rid: ResourceId) -> Result<std::fs::File, ErrBox> {
   }
 }
 
-pub fn lookup(rid: ResourceId) -> Option<Resource> {
+pub fn lookup(rid: ResourceId) -> Result<Resource, ErrBox> {
   debug!("resource lookup {}", rid);
   let table = RESOURCE_TABLE.lock().unwrap();
-  table.get(&rid).map(|_| Resource { rid })
+  table
+    .get(&rid)
+    .ok_or_else(bad_resource)
+    .map(|_| Resource { rid })
 }
 
 pub fn seek(
