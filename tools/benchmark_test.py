@@ -2,8 +2,8 @@
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import sys
 import os
-import benchmark
 import unittest
+import benchmark
 from test_util import DenoTestCase, run_tests
 
 

@@ -3,11 +3,11 @@
 # This script contains helper functions to work with the third_party subrepo.
 
 import os
+from os import path
 import site
 import sys
-from os import path
-from util import add_env_path, find_exts, make_env, rmtree, root_path, run
 from tempfile import mkdtemp
+from util import add_env_path, find_exts, make_env, rmtree, root_path, run
 
 
 # Helper function that returns the full path to a subpath of the repo root.
@@ -126,6 +126,13 @@ def run_pip():
     run([
         sys.executable, "-m", "pip", "install", "--upgrade", "--target",
         python_packages_path, "yapf"
+    ],
+        cwd=third_party_path,
+        merge_env=pip_env)
+
+    run([
+        sys.executable, "-m", "pip", "install", "--upgrade", "--target",
+        python_packages_path, "pylint==1.5.6"
     ],
         cwd=third_party_path,
         merge_env=pip_env)

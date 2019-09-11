@@ -8,18 +8,18 @@ from util import (parse_exit_code, shell_quote_win, parse_wrk_output,
 
 class TestUtil(DenoTestCase):
     def test_parse_exit_code(self):
-        assert 54 == parse_exit_code('hello_error54_world')
-        assert 1 == parse_exit_code('hello_error_world')
-        assert 0 == parse_exit_code('hello_world')
+        assert parse_exit_code('hello_error54_world') == 54
+        assert parse_exit_code('hello_error_world') == 1
+        assert parse_exit_code('hello_world') == 0
 
     def test_shell_quote_win(self):
-        assert 'simple' == shell_quote_win('simple')
-        assert 'roof/\\isoprojection' == shell_quote_win(
-            'roof/\\isoprojection')
-        assert '"with space"' == shell_quote_win('with space')
-        assert '"embedded""quote"' == shell_quote_win('embedded"quote')
-        assert '"a""b""""c\\d\\\\""e\\\\\\\\"' == shell_quote_win(
-            'a"b""c\\d\\"e\\\\')
+        assert shell_quote_win('simple') == 'simple'
+        assert shell_quote_win(
+            'roof/\\isoprojection') == 'roof/\\isoprojection'
+        assert shell_quote_win('with space') == '"with space"'
+        assert shell_quote_win('embedded"quote') == '"embedded""quote"'
+        assert shell_quote_win(
+            'a"b""c\\d\\"e\\\\') == '"a""b""""c\\d\\\\""e\\\\\\\\"'
 
     def test_parse_wrk_output(self):
         f = open(os.path.join(root_path, "tools/testdata/wrk1.txt"))

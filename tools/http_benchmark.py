@@ -2,9 +2,9 @@
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import os
 import sys
-import util
 import time
 import subprocess
+import util
 
 # Some of the benchmarks in this file have been renamed. In case the history
 # somehow gets messed up:
