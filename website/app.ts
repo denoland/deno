@@ -34,6 +34,30 @@ export function createColumns(data, benchmarkName) {
   ]);
 }
 
+export function createNormalizedColumns(data, benchmarkName, baselineVariety) {
+  const varieties = getBenchmarkVarieties(data, benchmarkName);
+  return varieties.map(variety => [
+    variety,
+    ...data.map(d => {
+      if (d[benchmarkName] != null) {
+        if (d[benchmarkName][baselineVariety] != null) {
+          const baseline = d[benchmarkName][baselineVariety];
+          if (d[benchmarkName][variety] != null && baseline != 0) {
+            const v = d[benchmarkName][variety];
+            if (benchmarkName == "benchmark") {
+              const meanValue = v ? v.mean : 0;
+              return meanValue || null;
+            } else {
+              return v / baseline;
+            }
+          }
+        }
+      }
+      return null;
+    })
+  ]);
+}
+
 export function createExecTimeColumns(data) {
   return createColumns(data, "benchmark");
 }
@@ -46,8 +70,16 @@ export function createProxyColumns(data) {
   return createColumns(data, "req_per_sec_proxy");
 }
 
+export function createNormalizedProxyColumns(data) {
+  return createNormalizedColumns(data, "req_per_sec_proxy", "node_proxy_tcp");
+}
+
 export function createReqPerSecColumns(data) {
   return createColumns(data, "req_per_sec");
+}
+
+export function createNormalizedReqPerSecColumns(data) {
+  return createNormalizedColumns(data, "req_per_sec", "hyper");
 }
 
 export function createMaxLatencyColumns(data) {
@@ -126,6 +158,10 @@ export function formatMB(bytes) {
 
 export function formatReqSec(reqPerSec) {
   return reqPerSec / 1000;
+}
+
+export function formatPercentage(decimal) {
+  return (decimal * 100).toFixed(2);
 }
 
 /**
@@ -249,7 +285,9 @@ export async function drawChartsFromBenchmarkData(dataUrl) {
   const execTimeColumns = createExecTimeColumns(data);
   const throughputColumns = createThroughputColumns(data);
   const reqPerSecColumns = createReqPerSecColumns(data);
+  const normalizedReqPerSecColumns = createNormalizedReqPerSecColumns(data);
   const proxyColumns = createProxyColumns(data);
+  const normalizedProxyColumns = createNormalizedProxyColumns(data);
   const maxLatencyColumns = createMaxLatencyColumns(data);
   const maxMemoryColumns = createMaxMemoryColumns(data);
   const binarySizeColumns = createBinarySizeColumns(data);
@@ -280,6 +318,18 @@ export async function drawChartsFromBenchmarkData(dataUrl) {
   gen("#exec-time-chart", execTimeColumns, "seconds", logScale);
   gen("#throughput-chart", throughputColumns, "seconds", logScale);
   gen("#req-per-sec-chart", reqPerSecColumns, "1000 req/sec", formatReqSec);
+  gen(
+    "#normalized-req-per-sec-chart",
+    normalizedReqPerSecColumns,
+    "%",
+    formatPercentage
+  );
+  gen(
+    "#normalized-proxy-req-per-sec-chart",
+    normalizedProxyColumns,
+    "%",
+    formatPercentage
+  );
   gen("#proxy-req-per-sec-chart", proxyColumns, "req/sec");
   gen("#max-latency-chart", maxLatencyColumns, "milliseconds", logScale);
   gen("#max-memory-chart", maxMemoryColumns, "megabytes", formatMB);
@@ -287,6 +337,24 @@ export async function drawChartsFromBenchmarkData(dataUrl) {
   gen("#thread-count-chart", threadCountColumns, "threads");
   gen("#syscall-count-chart", syscallCountColumns, "syscalls");
   gen("#bundle-size-chart", bundleSizeColumns, "kilobytes", formatKB);
+}
+
+function registerNormalizedSwitcher(checkboxID, chartID, normalizedChartID) {
+  const checkbox = window["document"].getElementById(checkboxID);
+  const regularChart = window["document"].getElementById(chartID);
+  const normalizedChart = window["document"].getElementById(normalizedChartID);
+
+  checkbox.addEventListener("change", event => {
+    // If checked is true the normalized variant should be shown
+    // @ts-ignore
+    if (checkbox.checked) {
+      regularChart.setAttribute("hidden", "hidden");
+      normalizedChart.removeAttribute("hidden");
+    } else {
+      normalizedChart.setAttribute("hidden", "hidden");
+      regularChart.removeAttribute("hidden");
+    }
+  });
 }
 
 export function main(): void {
@@ -311,6 +379,18 @@ export function main(): void {
       .catch(hideSpinner);
   }
   updateCharts();
+
+  registerNormalizedSwitcher(
+    "req-per-sec-chart-show-normalized",
+    "req-per-sec-chart",
+    "normalized-req-per-sec-chart"
+  );
+
+  registerNormalizedSwitcher(
+    "proxy-req-per-sec-chart-show-normalized",
+    "proxy-req-per-sec-chart",
+    "normalized-proxy-req-per-sec-chart"
+  );
 
   window["onhashchange"] = updateCharts;
 }
