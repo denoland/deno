@@ -192,7 +192,8 @@ function generate(
   onclick,
   yLabel = "",
   yTickFormat = null,
-  zoomEnabled = true
+  zoomEnabled = true,
+  onrendered = () => {}
 ) {
   const yAxis = {
     padding: { bottom: 0 },
@@ -220,6 +221,7 @@ function generate(
   // @ts-ignore
   c3.generate({
     bindto: id,
+    onrendered,
     data: {
       columns,
       onclick
@@ -316,14 +318,22 @@ export async function drawChartsFromBenchmarkData(dataUrl) {
     );
   };
 
-  function gen(id, columns, yLabel = "", yTickFormat = null) {
+  function gen(
+    id,
+    columns,
+    yLabel = "",
+    yTickFormat = null,
+    onrendered = () => {}
+  ) {
     generate(
       id,
       sha1ShortList,
       columns,
       viewCommitOnClick(sha1List),
       yLabel,
-      yTickFormat
+      yTickFormat,
+      true,
+      onrendered
     );
   }
 
@@ -334,21 +344,34 @@ export async function drawChartsFromBenchmarkData(dataUrl) {
     "#normalized-req-per-sec-chart",
     normalizedReqPerSecColumns,
     "% of hyper througput",
-    formatPercentage
+    formatPercentage,
+    hideOnRender("normalized-req-per-sec-chart")
   );
+  gen("#proxy-req-per-sec-chart", proxyColumns, "req/sec");
   gen(
     "#normalized-proxy-req-per-sec-chart",
     normalizedProxyColumns,
     "% of hyper througput",
-    formatPercentage
+    formatPercentage,
+    hideOnRender("normalized-proxy-req-per-sec-chart")
   );
-  gen("#proxy-req-per-sec-chart", proxyColumns, "req/sec");
   gen("#max-latency-chart", maxLatencyColumns, "milliseconds", logScale);
   gen("#max-memory-chart", maxMemoryColumns, "megabytes", formatMB);
   gen("#binary-size-chart", binarySizeColumns, "megabytes", formatMB);
   gen("#thread-count-chart", threadCountColumns, "threads");
   gen("#syscall-count-chart", syscallCountColumns, "syscalls");
   gen("#bundle-size-chart", bundleSizeColumns, "kilobytes", formatKB);
+}
+
+function hideOnRender(elementID) {
+  return () => {
+    const chart = window["document"].getElementById(elementID);
+    console.log(chart);
+    if (!chart.getAttribute("data-inital-hide-done")) {
+      chart.setAttribute("data-inital-hide-done", "true");
+      chart.classList.add("hidden");
+    }
+  };
 }
 
 function registerNormalizedSwitcher(checkboxID, chartID, normalizedChartID) {
@@ -360,11 +383,11 @@ function registerNormalizedSwitcher(checkboxID, chartID, normalizedChartID) {
     // If checked is true the normalized variant should be shown
     // @ts-ignore
     if (checkbox.checked) {
-      regularChart.setAttribute("hidden", "hidden");
-      normalizedChart.removeAttribute("hidden");
+      regularChart.classList.add("hidden");
+      normalizedChart.classList.remove("hidden");
     } else {
-      normalizedChart.setAttribute("hidden", "hidden");
-      regularChart.removeAttribute("hidden");
+      normalizedChart.classList.add("hidden");
+      regularChart.classList.remove("hidden");
     }
   });
 }
