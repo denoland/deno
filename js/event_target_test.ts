@@ -88,7 +88,7 @@ test(function constructedEventTargetUseObjectPrototype(): void {
   assertEquals(callCount, 2);
 });
 
-test(function toStringShouldBeWebCompatibility(): void {
+test(function toStringShouldBeWebCompatible(): void {
   const target = new EventTarget();
   assertEquals(target.toString(), "[object EventTarget]");
 });
@@ -110,4 +110,33 @@ test(function dispatchEventShouldNotThrowError(): void {
   }
 
   assertEquals(hasThrown, false);
+});
+
+test(function eventTargetThisShouldDefaultToWindow(): void {
+  const {
+    addEventListener,
+    dispatchEvent,
+    removeEventListener
+  } = EventTarget.prototype;
+  let n = 1;
+  const event = new Event("hello");
+  const listener = (): void => {
+    n = 2;
+  };
+
+  addEventListener("hello", listener);
+  window.dispatchEvent(event);
+  assertEquals(n, 2);
+  n = 1;
+  removeEventListener("hello", listener);
+  window.dispatchEvent(event);
+  assertEquals(n, 1);
+
+  window.addEventListener("hello", listener);
+  dispatchEvent(event);
+  assertEquals(n, 2);
+  n = 1;
+  window.removeEventListener("hello", listener);
+  dispatchEvent(event);
+  assertEquals(n, 1);
 });
