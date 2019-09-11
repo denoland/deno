@@ -38,7 +38,7 @@ jobs:
 
       # Start sscache
       - name: Start sccache
-        run: "`pwd`/prebuilt/mac/sccache --start-server"
+        run: "`pwd`/prebuilt/linux/sccache --start-server"
 
       # Building
       - name: Run build script
