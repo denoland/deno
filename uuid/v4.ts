@@ -10,10 +10,26 @@ export function validate(id: string): boolean {
 }
 
 export default function generate(): string {
-  return "00000000-0000-4000-8000-000000000000".replace(
-    /[0]/g,
-    (): string =>
-      // random integer from 0 to 15 as a hex digit.
-      (crypto.getRandomValues(new Uint8Array(1))[0] % 16).toString(16)
+  const rnds = crypto.getRandomValues(new Uint8Array(16));
+
+  rnds[6] = (rnds[6] & 0x0f) | 0x40; // Version 4
+  rnds[8] = (rnds[8] & 0x3f) | 0x80; // Variant 10
+
+  const bits: string[] = [...rnds].map(
+    (bit): string => {
+      const s: string = bit.toString(16);
+      return bit < 0x10 ? "0" + s : s;
+    }
   );
+  return [
+    ...bits.slice(0, 4),
+    "-",
+    ...bits.slice(4, 6),
+    "-",
+    ...bits.slice(6, 8),
+    "-",
+    ...bits.slice(8, 10),
+    "-",
+    ...bits.slice(10)
+  ].join("");
 }
