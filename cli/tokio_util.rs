@@ -49,17 +49,18 @@ where
   use std::thread;
   let (sender, receiver) = channel();
   // Create a new runtime to evaluate the future asynchronously.
-  thread::spawn(move || match create_threadpool_runtime() {
-    Ok(mut rt) => {
-      let fut_r = rt.block_on(future);
-      sender.send(fut_r).unwrap()
-    }
-    Err(e) => {
-      let err = Err(ErrBox::from(e));
-      sender.send(err).unwrap()
-    }
+  thread::spawn(move || {
+    let r = match create_threadpool_runtime() {
+      Ok(mut rt) => rt.block_on(future),
+      Err(e) => Err(ErrBox::from(e)),
+    };
+    sender
+      .send(r)
+      .expect("Unable to send blocking future result")
   });
-  receiver.recv().unwrap()
+  receiver
+    .recv()
+    .expect("Unable to receive blocking future result")
 }
 
 // Set the default executor so we can use tokio::spawn(). It's difficult to
