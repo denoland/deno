@@ -682,7 +682,7 @@ test(function consoleDirXml(): void {
   mockConsole(
     (console, out): void => {
       console.dirxml("DIRXML", { indentLevel: 2 });
-      assertEquals(out.toString(), "  DIRXML\n");
+      assertEquals(out.toString(), "  DIRXML BREAK\n");
     }
   );
 });
