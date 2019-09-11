@@ -366,7 +366,6 @@ export async function drawChartsFromBenchmarkData(dataUrl) {
 function hideOnRender(elementID) {
   return () => {
     const chart = window["document"].getElementById(elementID);
-    console.log(chart);
     if (!chart.getAttribute("data-inital-hide-done")) {
       chart.setAttribute("data-inital-hide-done", "true");
       chart.classList.add("hidden");
