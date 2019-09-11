@@ -1,0 +1,62 @@
+name: Benchmark updating
+
+on:
+  push:
+    branch:
+      - master
+
+jobs:
+  update_benchmark:
+    name: Update benchmarks
+    runs-on: macOS-latest
+    steps:
+      # Checkout the repository
+      - name: Checkout the repository
+        uses: actions/checkout@v1
+        with:
+          submodules: true
+
+      # Setup compilers
+      - name: Setup rust
+        uses: hecrj/setup-rust-action@v1
+        with:
+          rust-version: "1.37.0"
+      - name: Setup python
+        uses: actions/setup-python@v1
+        with:
+          python-version: "2.7.16"
+          architecture: x64
+      - name: Check versions
+        run: |
+          python --version
+          rustc --version
+          cargo --version
+
+      # Setup
+      - name: Run setup script
+        run: ./tools/setup.py
+
+      # Start sscache
+      - name: Start sccache
+        run: "`pwd`/prebuilt/mac/sccache --start-server"
+
+      # Building
+      - name: Run build script
+        env:
+          DENO_BUILD_MODE: release
+        run: |
+          cargo build --release --locked --all-targets
+      
+      # Run benchmarks
+      - name: Run benchmarks
+        run: |
+          ./tools/benchmark.py target/release
+          cp -r website/* gh-pages/
+      
+      # Push to pages
+      - name: Push to pages
+        run: |
+          cd gh-pages
+          git add .
+          git commit --message "Update benchmarks"
+          git push origin gh-pages
