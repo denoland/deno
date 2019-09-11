@@ -333,7 +333,7 @@ export class URL {
         password: baseParts.password,
         hostname: baseParts.hostname,
         port: baseParts.port,
-        path: resolvePathFromBase(urlParts.path, baseParts.path),
+        path: resolvePathFromBase(urlParts.path, baseParts.path || "/"),
         query: urlParts.query,
         hash: urlParts.hash
       };
