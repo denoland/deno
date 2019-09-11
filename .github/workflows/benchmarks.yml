@@ -52,11 +52,19 @@ jobs:
         run: |
           ./tools/benchmark.py target/release
           cp -r website/* gh-pages/
-      
+            
+      # Upload benchmarks
+      - name: Upload benchmarks as artifact (macos)
+        uses: actions/upload-artifact@master
+        if: startsWith(matrix.os, 'macos')
+        with:
+          name: benchmarks
+          path: gh-pages
+
       # Push to pages
-      - name: Push to pages
-        run: |
-          cd gh-pages
-          git add .
-          git commit --message "Update benchmarks"
-          git push origin gh-pages
+      #- name: Push to pages (macos)
+      #  run: |
+      #    cd gh-pages
+      #    git add .
+      #    git commit --message "Update benchmarks"
+      #    git push origin gh-pages

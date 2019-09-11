@@ -36,7 +36,7 @@ def tcp(deno_exe, megs):
     time.sleep(5)  # wait for deno to wake up. TODO racy.
     try:
         start = time.time()
-        cmd = ("head -c %s /dev/zero " % size) + "| nc -q1 " + ADDR.replace(
+        cmd = ("head -c %s /dev/zero " % size) + "| nc " + ADDR.replace(
             ":", " ")
         print cmd
         subprocess.check_output(cmd, shell=True)
