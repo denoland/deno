@@ -102,6 +102,11 @@
 
       <div id="req-per-sec-chart"></div>
 
+      <div id="normalized-req-per-sec-chart"></div>
+
+      <input type="checkbox" id="req-per-sec-chart-show-normalized" />
+      <label for="req-per-sec-chart-show-normalized">Show Normalized</label>
+
       <h3 id="proxy-req-per-sec">
         Proxy Req/Sec <a href="#proxy-eq-per-sec">#</a>
       </h3>
@@ -150,6 +155,13 @@
       </ul>
 
       <div id="proxy-req-per-sec-chart"></div>
+
+      <div id="normalized-proxy-req-per-sec-chart"></div>
+
+      <input type="checkbox" id="proxy-req-per-sec-chart-show-normalized" />
+      <label for="proxy-req-per-sec-chart-show-normalized"
+        >Show Normalized</label
+      >
 
       <h3 id="max-latency">Max Latency <a href="#max-latency">#</a></h3>
 
@@ -234,17 +246,11 @@
 
       <ul>
         <li>
-          <a
-            href="https://deno.land/std/http/file_server.ts"
-            >file_server</a
-          >
+          <a href="https://deno.land/std/http/file_server.ts">file_server</a>
         </li>
 
         <li>
-          <a
-            href="https://deno.land/std/examples/gist.ts"
-            >gist</a
-          >
+          <a href="https://deno.land/std/examples/gist.ts">gist</a>
         </li>
       </ul>
 
@@ -257,7 +263,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js"></script>
     <script src="app.bundle.js"></script>
     <script>
-    requirejs(['app'], (app) => app.main());
+      requirejs(["app"], app => app.main());
     </script>
   </body>
 </html>
