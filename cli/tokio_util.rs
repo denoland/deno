@@ -11,16 +11,8 @@ use tokio;
 use tokio::net::TcpStream;
 use tokio::runtime;
 
-// TODO: this function should return Error - because it panics on
-//  `unwrap` with `Too many open files`
-pub fn create_threadpool_runtime() -> tokio::runtime::Runtime {
-  runtime::Builder::new()
-    .panic_handler(|err| std::panic::resume_unwind(err))
-    .build()
-    .unwrap()
-}
-
-pub fn create_threadpool_runtime_err() -> Result<tokio::runtime::Runtime, tokio::io::Error> {
+pub fn create_threadpool_runtime(
+) -> Result<tokio::runtime::Runtime, tokio::io::Error> {
   runtime::Builder::new()
     .panic_handler(|err| std::panic::resume_unwind(err))
     .build()
@@ -31,7 +23,7 @@ where
   F: Future<Item = (), Error = ()> + Send + 'static,
 {
   // tokio::runtime::current_thread::run(future)
-  let rt = create_threadpool_runtime();
+  let rt = create_threadpool_runtime().expect("Unable to create Tokio runtime");
   rt.block_on_all(future).unwrap();
 }
 
@@ -57,18 +49,16 @@ where
   use std::thread;
   let (sender, receiver) = channel();
   // Create a new runtime to evaluate the future asynchronously.
-  thread::spawn(move || {
-    // TODO: if any of `create_threadpool_runtime` or `block_on` fails
-    // then error should be sent over the channel
-    match create_threadpool_runtime_err() {
-      Ok(mut rt) => {
-        let fut_r = rt.block_on(future);
-        sender.send(fut_r).unwrap()
-      },
-      Err(e) => sender.send(Err(ErrBox::from(e))).unwrap()
+  thread::spawn(move || match create_threadpool_runtime_err() {
+    Ok(mut rt) => {
+      let fut_r = rt.block_on(future);
+      sender.send(fut_r).unwrap()
+    }
+    Err(e) => {
+      let err = Err(ErrBox::from(e));
+      sender.send(err).unwrap()
     }
   });
-  // TODO: this unwrap is bad it should be handled gracefully
   receiver.recv().unwrap()
 }
 
