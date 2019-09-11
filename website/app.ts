@@ -34,21 +34,28 @@ export function createColumns(data, benchmarkName) {
   ]);
 }
 
-export function createNormalizedColumns(data, benchmarkName, baselineVariety) {
+export function createNormalizedColumns(
+  data,
+  benchmarkName,
+  baselineBenchmark,
+  baselineVariety
+) {
   const varieties = getBenchmarkVarieties(data, benchmarkName);
   return varieties.map(variety => [
     variety,
     ...data.map(d => {
-      if (d[benchmarkName] != null) {
-        if (d[benchmarkName][baselineVariety] != null) {
-          const baseline = d[benchmarkName][baselineVariety];
-          if (d[benchmarkName][variety] != null && baseline != 0) {
-            const v = d[benchmarkName][variety];
-            if (benchmarkName == "benchmark") {
-              const meanValue = v ? v.mean : 0;
-              return meanValue || null;
-            } else {
-              return v / baseline;
+      if (d[baselineBenchmark] != null) {
+        if (d[baselineBenchmark][baselineVariety] != null) {
+          const baseline = d[baselineBenchmark][baselineVariety];
+          if (d[benchmarkName] != null) {
+            if (d[benchmarkName][variety] != null && baseline != 0) {
+              const v = d[benchmarkName][variety];
+              if (benchmarkName == "benchmark") {
+                const meanValue = v ? v.mean : 0;
+                return meanValue || null;
+              } else {
+                return v / baseline;
+              }
             }
           }
         }
@@ -71,7 +78,12 @@ export function createProxyColumns(data) {
 }
 
 export function createNormalizedProxyColumns(data) {
-  return createNormalizedColumns(data, "req_per_sec_proxy", "node_proxy_tcp");
+  return createNormalizedColumns(
+    data,
+    "req_per_sec_proxy",
+    "req_per_sec",
+    "hyper"
+  );
 }
 
 export function createReqPerSecColumns(data) {
@@ -79,7 +91,7 @@ export function createReqPerSecColumns(data) {
 }
 
 export function createNormalizedReqPerSecColumns(data) {
-  return createNormalizedColumns(data, "req_per_sec", "hyper");
+  return createNormalizedColumns(data, "req_per_sec", "req_per_sec", "hyper");
 }
 
 export function createMaxLatencyColumns(data) {
@@ -321,13 +333,13 @@ export async function drawChartsFromBenchmarkData(dataUrl) {
   gen(
     "#normalized-req-per-sec-chart",
     normalizedReqPerSecColumns,
-    "%",
+    "% of hyper througput",
     formatPercentage
   );
   gen(
     "#normalized-proxy-req-per-sec-chart",
     normalizedProxyColumns,
-    "%",
+    "% of hyper througput",
     formatPercentage
   );
   gen("#proxy-req-per-sec-chart", proxyColumns, "req/sec");
