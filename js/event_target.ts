@@ -10,6 +10,7 @@ import {
   isSlotable,
   retarget
 } from "./dom_util.ts";
+import { window } from "./window.ts";
 
 // https://dom.spec.whatwg.org/#get-the-parent
 // Note: Nodes, shadow roots, and documents override this algorithm so we set it to null.
@@ -117,6 +118,8 @@ export class EventTarget implements domTypes.EventTarget {
     callback: (event: domTypes.Event) => void | null,
     options?: domTypes.AddEventListenerOptions | boolean
   ): void {
+    const this_ = this || window;
+
     requiredArguments("EventTarget.addEventListener", arguments.length, 2);
     const normalizedOptions: domTypes.AddEventListenerOptions = eventTargetHelpers.normalizeAddEventHandlerOptions(
       options
@@ -126,7 +129,7 @@ export class EventTarget implements domTypes.EventTarget {
       return;
     }
 
-    const listeners = this[domTypes.eventTargetListeners];
+    const listeners = this_[domTypes.eventTargetListeners];
 
     if (!hasOwnProperty(listeners, type)) {
       listeners[type] = [];
@@ -153,8 +156,10 @@ export class EventTarget implements domTypes.EventTarget {
     callback: (event: domTypes.Event) => void | null,
     options?: domTypes.EventListenerOptions | boolean
   ): void {
+    const this_ = this || window;
+
     requiredArguments("EventTarget.removeEventListener", arguments.length, 2);
-    const listeners = this[domTypes.eventTargetListeners];
+    const listeners = this_[domTypes.eventTargetListeners];
     if (hasOwnProperty(listeners, type) && callback !== null) {
       listeners[type] = listeners[type].filter(
         (listener): boolean => listener.callback !== callback
@@ -191,8 +196,10 @@ export class EventTarget implements domTypes.EventTarget {
   }
 
   public dispatchEvent(event: domTypes.Event): boolean {
+    const this_ = this || window;
+
     requiredArguments("EventTarget.dispatchEvent", arguments.length, 1);
-    const listeners = this[domTypes.eventTargetListeners];
+    const listeners = this_[domTypes.eventTargetListeners];
     if (!hasOwnProperty(listeners, event.type)) {
       return true;
     }
@@ -211,7 +218,7 @@ export class EventTarget implements domTypes.EventTarget {
       );
     }
 
-    return eventTargetHelpers.dispatch(this, event);
+    return eventTargetHelpers.dispatch(this_, event);
   }
 
   get [Symbol.toStringTag](): string {
