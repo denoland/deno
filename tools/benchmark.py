@@ -11,14 +11,14 @@ import sys
 import json
 import time
 import shutil
+import tempfile
+import subprocess
 from util import find_exts, root_path, run, run_output
 from util import build_path, executable_suffix
-import tempfile
-import http_server
-import throughput_benchmark
-from http_benchmark import http_benchmark
 import prebuilt
-import subprocess
+from http_benchmark import http_benchmark
+import throughput_benchmark
+import http_server
 
 # The list of the tuples of the benchmark name and arguments
 exec_time_benchmarks = [
