@@ -210,7 +210,7 @@ def download_from_google_storage(item, bucket):
 
 
 # Download the given item from Chrome Infrastructure Package Deployment.
-def download_from_cipd(item, deps_name):
+def download_from_cipd(item, version):
     if sys.platform == 'win32':
         root_dir = "v8/buildtools/win"
         item += "windows-amd64"
@@ -231,16 +231,11 @@ def download_from_cipd(item, deps_name):
         ],
             env=google_env())
 
-    # read CIPD version from the DEPS file
-    deps = open(tp('v8/DEPS'), 'rb').read()
-    regex = r"'" + re.escape(deps_name) + r"': '(git_revision:[0-9a-f]{40})'"
-    version = re.search(regex, deps).group(1)
-
     run([
         tp('depot_tools/cipd'),
         'install',
         item,
-        version,
+        'git_revision:' + version,
         '-root',
         tp(root_dir),
     ],
@@ -249,7 +244,7 @@ def download_from_cipd(item, deps_name):
 
 # Download gn from Google storage.
 def download_gn():
-    download_from_cipd('gn/gn/', 'gn_version')
+    download_from_cipd('gn/gn/', '152c5144ceed9592c20f0c8fd55769646077569b')
 
 
 # Download clang-format from Google storage.
