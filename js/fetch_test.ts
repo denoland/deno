@@ -220,6 +220,16 @@ testPerm({ net: true }, async function fetchInitBlobBody(): Promise<void> {
   assert(response.headers.get("content-type").startsWith("text/javascript"));
 });
 
+testPerm({ net: true }, async function fetchUserAgent(): Promise<void> {
+  const data = "Hello World";
+  const response = await fetch("http://localhost:4545/echo_server", {
+    method: "POST",
+    body: new TextEncoder().encode(data)
+  });
+  assertEquals(response.headers.get("user-agent"), `Deno/${Deno.version.deno}`);
+  await response.text();
+});
+
 // TODO(ry) The following tests work but are flaky. There's a race condition
 // somewhere. Here is what one of these flaky failures looks like:
 //
