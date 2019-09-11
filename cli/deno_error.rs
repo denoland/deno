@@ -8,6 +8,7 @@ use deno::ErrBox;
 use deno::ModuleResolutionError;
 use http::uri;
 use hyper;
+use reqwest;
 use rustyline::error::ReadlineError;
 use std;
 use std::error::Error;
@@ -190,6 +191,26 @@ impl GetErrorKind for hyper::Error {
   }
 }
 
+impl GetErrorKind for reqwest::Error {
+  fn kind(&self) -> ErrorKind {
+    use self::GetErrorKind as Get;
+
+    match self.get_ref() {
+      Some(err_ref) => None
+        .or_else(|| err_ref.downcast_ref::<hyper::Error>().map(Get::kind))
+        .or_else(|| err_ref.downcast_ref::<url::ParseError>().map(Get::kind))
+        .or_else(|| err_ref.downcast_ref::<io::Error>().map(Get::kind))
+        .or_else(|| {
+          err_ref
+            .downcast_ref::<serde_json::error::Error>()
+            .map(Get::kind)
+        })
+        .unwrap_or_else(|| ErrorKind::HttpOther),
+      _ => ErrorKind::HttpOther,
+    }
+  }
+}
+
 impl GetErrorKind for ReadlineError {
   fn kind(&self) -> ErrorKind {
     use ReadlineError::*;
@@ -254,6 +275,7 @@ impl GetErrorKind for dyn AnyError {
       .or_else(|| self.downcast_ref::<DenoError>().map(Get::kind))
       .or_else(|| self.downcast_ref::<Diagnostic>().map(Get::kind))
       .or_else(|| self.downcast_ref::<hyper::Error>().map(Get::kind))
+      .or_else(|| self.downcast_ref::<reqwest::Error>().map(Get::kind))
       .or_else(|| self.downcast_ref::<ImportMapError>().map(Get::kind))
       .or_else(|| self.downcast_ref::<io::Error>().map(Get::kind))
       .or_else(|| self.downcast_ref::<JSError>().map(Get::kind))
