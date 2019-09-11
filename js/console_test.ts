@@ -692,7 +692,7 @@ test(function consoleTrace(): void {
   mockConsole(
     (console, _out, err): void => {
       console.trace("%s", "custom message");
-      assert(err.toString().includes("Trace: custom messag"));
+      assert(err.toString().includes("Trace: custom message"));
     }
   );
 });
