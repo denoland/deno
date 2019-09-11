@@ -135,7 +135,7 @@ pub fn resolve_from_cwd(path: &str) -> Result<(PathBuf, String), ErrBox> {
   let resolved_path = if candidate_path.is_absolute() {
     candidate_path.to_owned()
   } else {
-    let cwd = std::env::current_dir()?;
+    let cwd = std::env::current_dir().unwrap();
     cwd.join(path)
   };
 
