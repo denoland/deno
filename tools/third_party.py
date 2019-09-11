@@ -20,6 +20,8 @@ def tp(*subpath_parts):
     return root("third_party", *subpath_parts)
 
 
+build_path = root("build")
+
 third_party_path = tp()
 depot_tools_path = tp("depot_tools")
 rust_crates_path = tp("rust_crates")
@@ -52,6 +54,7 @@ def python_env(env=None, merge_env=None):
         python_site_env = {}
         temp = os.environ["PATH"], sys.path
         os.environ["PATH"], sys.path = "", []
+        site.addsitedir(build_path)  # Modifies PATH and sys.path.
         site.addsitedir(python_packages_path)  # Modifies PATH and sys.path.
         python_site_env = {"PATH": os.environ["PATH"], "PYTHONPATH": sys.path}
         os.environ["PATH"], sys.path = temp
@@ -98,28 +101,6 @@ def google_env(env=None, merge_env=None, depot_tools_path_=depot_tools_path):
 # Run Yarn to install JavaScript dependencies.
 def run_yarn():
     run(["yarn", "install"], cwd=third_party_path)
-
-
-# Run Cargo to install Rust dependencies.
-def run_cargo():
-    # Deletes the cargo index lockfile; it appears that cargo itself doesn't do
-    # it.  If the lockfile ends up in the git repo, it'll make cargo hang for
-    # everyone else who tries to run sync_third_party.
-    def delete_lockfile():
-        lockfiles = find_exts([path.join(rust_crates_path, "registry/index")],
-                              ['.cargo-index-lock'])
-        for lockfile in lockfiles:
-            os.remove(lockfile)
-
-    # Delete the index lockfile in case someone accidentally checked it in.
-    delete_lockfile()
-
-    run(["cargo", "fetch", "--manifest-path=" + root("Cargo.toml")],
-        cwd=third_party_path,
-        merge_env={'CARGO_HOME': rust_crates_path})
-
-    # Delete the lockfile again so it doesn't end up in the git repo.
-    delete_lockfile()
 
 
 # Install python packages with pip.

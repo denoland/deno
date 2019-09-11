@@ -61,6 +61,9 @@ class ContentTypeHandler(QuietSimpleHTTPRequestHandler):
             if self.headers.has_key('content-type'):
                 self.send_header('content-type',
                                  self.headers.getheader('content-type'))
+            if self.headers.has_key('user-agent'):
+                self.send_header('user-agent',
+                                 self.headers.getheader('user-agent'))
             self.end_headers()
             data_string = self.rfile.read(int(self.headers['Content-Length']))
             self.wfile.write(bytes(data_string))

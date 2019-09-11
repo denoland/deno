@@ -182,16 +182,10 @@ mod tests {
     assert_eq!(resolve_from_cwd("a/..").unwrap().0, cwd);
   }
 
-  //TODO(lucacasonato): reenable after @nayeemrmn fixes C:\ assumption
-  /*
+  #[cfg(not(windows))]
   #[test]
   fn resolve_from_cwd_absolute() {
-    let expected = if cfg!(windows) {
-      Path::new("C:\\a")
-    } else {
-      Path::new("/a")
-    };
+    let expected = Path::new("/a");
     assert_eq!(resolve_from_cwd("/a").unwrap().0, expected);
   }
-  */
 }
