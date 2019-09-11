@@ -8,7 +8,7 @@ on:
 jobs:
   update_benchmark:
     name: Update benchmarks
-    runs-on: macOS-latest
+    runs-on: ubuntu-latest
     steps:
       # Checkout the repository
       - name: Checkout the repository
@@ -51,12 +51,13 @@ jobs:
       - name: Run benchmarks
         run: |
           ./tools/benchmark.py target/release
-          cp -r website/* gh-pages/
-            
+
+      - name: Copy benchmarks
+        run: cp -r website/* gh-pages/
+
       # Upload benchmarks
-      - name: Upload benchmarks as artifact (macos)
+      - name: Upload benchmarks as artifact
         uses: actions/upload-artifact@master
-        if: startsWith(matrix.os, 'macos')
         with:
           name: benchmarks
           path: gh-pages
