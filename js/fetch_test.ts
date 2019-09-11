@@ -4,8 +4,21 @@ import {
   testPerm,
   assert,
   assertEquals,
+  assertStrContains,
   assertThrows
 } from "./test_util.ts";
+
+testPerm({ net: true }, async function fetchConnectionError(): Promise<void> {
+  let err;
+  try {
+    await fetch("http://localhost:4000");
+  } catch (err_) {
+    err = err_;
+  }
+  assertEquals(err.kind, Deno.ErrorKind.HttpOther);
+  assertEquals(err.name, "HttpOther");
+  assertStrContains(err.message, "error trying to connect");
+});
 
 testPerm({ net: true }, async function fetchJsonSuccess(): Promise<void> {
   const response = await fetch("http://localhost:4545/package.json");
