@@ -8,9 +8,9 @@
 
 import os
 import sys
-import util
 import time
 import subprocess
+import util
 
 MB = 1024 * 1024
 ADDR = "127.0.0.1:4544"

@@ -27,9 +27,9 @@ class BasePromptTest(object):
         code, stdout, stderr = self._run_deno(
             ["--allow-" + test_type], ["needs" + test_type.capitalize()], b'')
         assert code == 0
-        assert not PROMPT_PATTERN in stderr
-        assert not FIRST_CHECK_FAILED_PATTERN in stdout
-        assert not PERMISSION_DENIED_PATTERN in stderr
+        assert PROMPT_PATTERN not in stderr
+        assert FIRST_CHECK_FAILED_PATTERN not in stdout
+        assert PERMISSION_DENIED_PATTERN not in stderr
 
     def test_yes_yes(self):
         test_type = self.test_type
@@ -37,8 +37,8 @@ class BasePromptTest(object):
             [], ["needs" + test_type.capitalize()], b'y\ny\n')
         assert code == 0
         assert PROMPT_PATTERN in stderr
-        assert not FIRST_CHECK_FAILED_PATTERN in stdout
-        assert not PERMISSION_DENIED_PATTERN in stderr
+        assert FIRST_CHECK_FAILED_PATTERN not in stdout
+        assert PERMISSION_DENIED_PATTERN not in stderr
 
     def test_yes_no(self):
         test_type = self.test_type
@@ -46,7 +46,7 @@ class BasePromptTest(object):
             [], ["needs" + test_type.capitalize()], b'y\nn\n')
         assert code == 1
         assert PROMPT_PATTERN in stderr
-        assert not FIRST_CHECK_FAILED_PATTERN in stdout
+        assert FIRST_CHECK_FAILED_PATTERN not in stdout
         assert PERMISSION_DENIED_PATTERN in stderr
 
     def test_no_no(self):
@@ -66,7 +66,7 @@ class BasePromptTest(object):
 
         assert PROMPT_PATTERN in stderr
         assert FIRST_CHECK_FAILED_PATTERN in stdout
-        assert not PERMISSION_DENIED_PATTERN in stderr
+        assert PERMISSION_DENIED_PATTERN not in stderr
 
     def test_allow(self):
         test_type = self.test_type
@@ -74,8 +74,8 @@ class BasePromptTest(object):
             [], ["needs" + test_type.capitalize()], b'a\n')
         assert code == 0
         assert PROMPT_PATTERN in stderr
-        assert not FIRST_CHECK_FAILED_PATTERN in stdout
-        assert not PERMISSION_DENIED_PATTERN in stderr
+        assert FIRST_CHECK_FAILED_PATTERN not in stdout
+        assert PERMISSION_DENIED_PATTERN not in stderr
 
     def test_deny(self):
         test_type = self.test_type
@@ -92,8 +92,8 @@ class BasePromptTest(object):
             [], ["needs" + test_type.capitalize()], b'e\na\n')
         assert code == 0
         assert PROMPT_PATTERN in stderr
-        assert not FIRST_CHECK_FAILED_PATTERN in stdout
-        assert not PERMISSION_DENIED_PATTERN in stderr
+        assert FIRST_CHECK_FAILED_PATTERN not in stdout
+        assert PERMISSION_DENIED_PATTERN not in stderr
         assert b'Unrecognized option' in stderr
 
     def test_no_prompt(self):
@@ -101,7 +101,7 @@ class BasePromptTest(object):
         code, stdout, stderr = self._run_deno(
             ["--no-prompt"], ["needs" + test_type.capitalize()], b'')
         assert code == 1
-        assert not PROMPT_PATTERN in stderr
+        assert PROMPT_PATTERN not in stderr
         assert FIRST_CHECK_FAILED_PATTERN in stdout
         assert PERMISSION_DENIED_PATTERN in stderr
 
@@ -111,9 +111,9 @@ class BasePromptTest(object):
             ["--no-prompt", "--allow-" + test_type],
             ["needs" + test_type.capitalize()], b'')
         assert code == 0
-        assert not PROMPT_PATTERN in stderr
-        assert not FIRST_CHECK_FAILED_PATTERN in stdout
-        assert not PERMISSION_DENIED_PATTERN in stderr
+        assert PROMPT_PATTERN not in stderr
+        assert FIRST_CHECK_FAILED_PATTERN not in stdout
+        assert PERMISSION_DENIED_PATTERN not in stderr
 
 
 class ReadPromptTest(DenoTestCase, BasePromptTest):

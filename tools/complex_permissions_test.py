@@ -31,8 +31,8 @@ class BaseReadWritePermissionsTest(object):
             ["--allow-" + self.test_type + "=" + root_path],
             [self.test_type, "package.json", "tests/subdir/config.json"])
         assert code == 0
-        assert not PROMPT_PATTERN in stderr
-        assert not PERMISSION_DENIED_PATTERN in stderr
+        assert PROMPT_PATTERN not in stderr
+        assert PERMISSION_DENIED_PATTERN not in stderr
 
     def test_outside_test_dir(self):
         code, _stdout, stderr = self._run_deno([
@@ -40,7 +40,7 @@ class BaseReadWritePermissionsTest(object):
                 root_path, "tests")
         ], [self.test_type, "package.json"])
         assert code == 1
-        assert not PROMPT_PATTERN in stderr
+        assert PROMPT_PATTERN not in stderr
         assert PERMISSION_DENIED_PATTERN in stderr
 
     def test_inside_test_dir(self):
@@ -49,8 +49,8 @@ class BaseReadWritePermissionsTest(object):
                 root_path, "tests")
         ], [self.test_type, "tests/subdir/config.json"])
         assert code == 0
-        assert not PROMPT_PATTERN in stderr
-        assert not PERMISSION_DENIED_PATTERN in stderr
+        assert PROMPT_PATTERN not in stderr
+        assert PERMISSION_DENIED_PATTERN not in stderr
 
     def test_outside_test_and_js_dir(self):
         code, _stdout, stderr = self._run_deno([
@@ -58,7 +58,7 @@ class BaseReadWritePermissionsTest(object):
                 root_path, "tests") + "," + os.path.join(root_path, "js")
         ], [self.test_type, "package.json"])
         assert code == 1
-        assert not PROMPT_PATTERN in stderr
+        assert PROMPT_PATTERN not in stderr
         assert PERMISSION_DENIED_PATTERN in stderr
 
     def test_inside_test_and_js_dir(self):
@@ -67,8 +67,8 @@ class BaseReadWritePermissionsTest(object):
                 root_path, "tests") + "," + os.path.join(root_path, "js")
         ], [self.test_type, "js/dir_test.ts", "tests/subdir/config.json"])
         assert code == 0
-        assert not PROMPT_PATTERN in stderr
-        assert not PERMISSION_DENIED_PATTERN in stderr
+        assert PROMPT_PATTERN not in stderr
+        assert PERMISSION_DENIED_PATTERN not in stderr
 
     def test_relative(self):
         # Save and restore curdir
@@ -78,8 +78,8 @@ class BaseReadWritePermissionsTest(object):
             ["--allow-" + self.test_type + "=" + "./tests"],
             [self.test_type, "tests/subdir/config.json"])
         assert code == 0
-        assert not PROMPT_PATTERN in stderr
-        assert not PERMISSION_DENIED_PATTERN in stderr
+        assert PROMPT_PATTERN not in stderr
+        assert PERMISSION_DENIED_PATTERN not in stderr
         os.chdir(saved_curdir)
 
     def test_no_prefix(self):
@@ -90,8 +90,8 @@ class BaseReadWritePermissionsTest(object):
             ["--allow-" + self.test_type + "=" + "tests"],
             [self.test_type, "tests/subdir/config.json"])
         assert code == 0
-        assert not PROMPT_PATTERN in stderr
-        assert not PERMISSION_DENIED_PATTERN in stderr
+        assert PROMPT_PATTERN not in stderr
+        assert PERMISSION_DENIED_PATTERN not in stderr
         os.chdir(saved_curdir)
 
 
@@ -113,15 +113,15 @@ class TestNetFetchPermissions(BaseComplexPermissionTest):
             ["--allow-net=localhost:4545"],
             [self.test_type, "http://localhost:4545"])
         assert code == 0
-        assert not PROMPT_PATTERN in stderr
-        assert not PERMISSION_DENIED_PATTERN in stderr
+        assert PROMPT_PATTERN not in stderr
+        assert PERMISSION_DENIED_PATTERN not in stderr
 
     def test_allow_deno_land(self):
         code, _stdout, stderr = self._run_deno(
             ["--allow-net=deno.land"],
             [self.test_type, "http://localhost:4545"])
         assert code == 1
-        assert not PROMPT_PATTERN in stderr
+        assert PROMPT_PATTERN not in stderr
         assert PERMISSION_DENIED_PATTERN in stderr
 
     def test_allow_localhost_4545_fail(self):
@@ -129,7 +129,7 @@ class TestNetFetchPermissions(BaseComplexPermissionTest):
             ["--allow-net=localhost:4545"],
             [self.test_type, "http://localhost:4546"])
         assert code == 1
-        assert not PROMPT_PATTERN in stderr
+        assert PROMPT_PATTERN not in stderr
         assert PERMISSION_DENIED_PATTERN in stderr
 
     def test_allow_localhost(self):
@@ -138,8 +138,8 @@ class TestNetFetchPermissions(BaseComplexPermissionTest):
             "http://localhost:4547"
         ])
         assert code == 0
-        assert not PROMPT_PATTERN in stderr
-        assert not PERMISSION_DENIED_PATTERN in stderr
+        assert PROMPT_PATTERN not in stderr
+        assert PERMISSION_DENIED_PATTERN not in stderr
 
 
 class TestNetDialPermissions(BaseComplexPermissionTest):
@@ -149,21 +149,21 @@ class TestNetDialPermissions(BaseComplexPermissionTest):
         code, _stdout, stderr = self._run_deno(
             ["--allow-net=127.0.0.1:4545"], [self.test_type, "127.0.0.1:4545"])
         assert code == 0
-        assert not PROMPT_PATTERN in stderr
-        assert not PERMISSION_DENIED_PATTERN in stderr
+        assert PROMPT_PATTERN not in stderr
+        assert PERMISSION_DENIED_PATTERN not in stderr
 
     def test_allow_deno_land(self):
         code, _stdout, stderr = self._run_deno(
             ["--allow-net=deno.land"], [self.test_type, "127.0.0.1:4545"])
         assert code == 1
-        assert not PROMPT_PATTERN in stderr
+        assert PROMPT_PATTERN not in stderr
         assert PERMISSION_DENIED_PATTERN in stderr
 
     def test_allow_localhost_ip_4545_fail(self):
         code, _stdout, stderr = self._run_deno(
             ["--allow-net=127.0.0.1:4545"], [self.test_type, "127.0.0.1:4546"])
         assert code == 1
-        assert not PROMPT_PATTERN in stderr
+        assert PROMPT_PATTERN not in stderr
         assert PERMISSION_DENIED_PATTERN in stderr
 
     def test_allow_localhost_ip(self):
@@ -172,8 +172,8 @@ class TestNetDialPermissions(BaseComplexPermissionTest):
             "127.0.0.1:4547"
         ])
         assert code == 0
-        assert not PROMPT_PATTERN in stderr
-        assert not PERMISSION_DENIED_PATTERN in stderr
+        assert PROMPT_PATTERN not in stderr
+        assert PERMISSION_DENIED_PATTERN not in stderr
 
 
 class TestNetListenPermissions(BaseComplexPermissionTest):
@@ -183,21 +183,21 @@ class TestNetListenPermissions(BaseComplexPermissionTest):
         code, _stdout, stderr = self._run_deno(
             ["--allow-net=localhost:4555"], [self.test_type, "localhost:4555"])
         assert code == 0
-        assert not PROMPT_PATTERN in stderr
-        assert not PERMISSION_DENIED_PATTERN in stderr
+        assert PROMPT_PATTERN not in stderr
+        assert PERMISSION_DENIED_PATTERN not in stderr
 
     def test_allow_deno_land(self):
         code, _stdout, stderr = self._run_deno(
             ["--allow-net=deno.land"], [self.test_type, "localhost:4545"])
         assert code == 1
-        assert not PROMPT_PATTERN in stderr
+        assert PROMPT_PATTERN not in stderr
         assert PERMISSION_DENIED_PATTERN in stderr
 
     def test_allow_localhost_4555_fail(self):
         code, _stdout, stderr = self._run_deno(
             ["--allow-net=localhost:4555"], [self.test_type, "localhost:4556"])
         assert code == 1
-        assert not PROMPT_PATTERN in stderr
+        assert PROMPT_PATTERN not in stderr
         assert PERMISSION_DENIED_PATTERN in stderr
 
     def test_allow_localhost(self):
@@ -206,8 +206,8 @@ class TestNetListenPermissions(BaseComplexPermissionTest):
             "localhost:4557"
         ])
         assert code == 0
-        assert not PROMPT_PATTERN in stderr
-        assert not PERMISSION_DENIED_PATTERN in stderr
+        assert PROMPT_PATTERN not in stderr
+        assert PERMISSION_DENIED_PATTERN not in stderr
 
 
 def complex_permissions_tests():
