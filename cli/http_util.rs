@@ -5,10 +5,10 @@ use crate::version;
 use deno::ErrBox;
 use futures::{future, Future};
 use reqwest;
+use reqwest::header::HeaderMap;
 use reqwest::header::CONTENT_TYPE;
 use reqwest::header::LOCATION;
 use reqwest::header::USER_AGENT;
-use reqwest::header::HeaderMap;
 use reqwest::r#async::Client;
 use reqwest::RedirectPolicy;
 use url::Url;
@@ -16,10 +16,10 @@ use url::Url;
 /// Create new instance of async reqwest::Client. This client supports
 /// proxies and doesn't follow redirects.
 pub fn get_client() -> Client {
-  let headers = HeaderMap::new();
+  let mut headers = HeaderMap::new();
   headers.insert(
-    USER_AGENT, 
-    format!("Deno/{}", version::DENO).parse().unwrap()
+    USER_AGENT,
+    format!("Deno/{}", version::DENO).parse().unwrap(),
   );
   Client::builder()
     .redirect(RedirectPolicy::none())
