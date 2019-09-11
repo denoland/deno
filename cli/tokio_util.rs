@@ -49,7 +49,7 @@ where
   use std::thread;
   let (sender, receiver) = channel();
   // Create a new runtime to evaluate the future asynchronously.
-  thread::spawn(move || match create_threadpool_runtime_err() {
+  thread::spawn(move || match create_threadpool_runtime() {
     Ok(mut rt) => {
       let fut_r = rt.block_on(future);
       sender.send(fut_r).unwrap()
@@ -70,7 +70,7 @@ pub fn init<F>(f: F)
 where
   F: FnOnce(),
 {
-  let rt = create_threadpool_runtime();
+  let rt = create_threadpool_runtime().expect("Unable to create Tokio runtime");
   let mut executor = rt.executor();
   let mut enter = tokio_executor::enter().expect("Multiple executors at once");
   tokio_executor::with_default(&mut executor, &mut enter, move |_enter| f());
