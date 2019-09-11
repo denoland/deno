@@ -1,5 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-
 interface DirectiveInfo {
   path: string;
   start: number;
@@ -33,15 +32,16 @@ export function getMappedModuleName(
  */
 const typeDirectiveRegEx = /@deno-types\s*=\s*(["'])((?:(?=(\\?))\3.)*?)\1/gi;
 
-/** Matches `import` or `export from` statements and parses out the value of the
+/** Matches `import`, `import from` or `export from` statements and parses out the value of the
  * module specifier in the second capture group:
  *
+ *      import "./foo.js"
  *      import * as foo from "./foo.js"
  *      export { a, b, c } from "./bar.js"
  *
- * [See Diagram](http://bit.ly/2GSkJlF)
+ * [See Diagram](https://bit.ly/2lK0izL)
  */
-const importExportRegEx = /(?:import|export)\s+[\s\S]*?from\s+(["'])((?:(?=(\\?))\3.)*?)\1/;
+const importExportRegEx = /(?:import|export)\s+(?:[\s\S]*?from\s+)?(["'])((?:(?=(\\?))\3.)*?)\1/;
 
 /** Parses out any Deno type directives that are part of the source code, or
  * returns `undefined` if there are not any.
