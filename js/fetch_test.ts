@@ -17,7 +17,7 @@ testPerm({ net: true }, async function fetchConnectionError(): Promise<void> {
   }
   assertEquals(err.kind, Deno.ErrorKind.HttpOther);
   assertEquals(err.name, "HttpOther");
-  assertStrContains(err.message, "Connection refused");
+  assertStrContains(err.message, "error trying to connect");
 });
 
 testPerm({ net: true }, async function fetchJsonSuccess(): Promise<void> {
