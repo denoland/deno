@@ -280,6 +280,8 @@ extern "C" {
     js_source: *const c_char,
   );
   pub fn deno_terminate_execution(i: *const isolate);
+  #[allow(dead_code)]
+  pub fn deno_run_microtasks(i: *const isolate, user_data: *const c_void);
 
   // Modules
 
