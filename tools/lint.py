@@ -17,12 +17,12 @@ eslint = os.path.join(third_party_path, "node_modules", "eslint", "bin",
 os.chdir(root_path)
 run([
     "python", cpplint, "--filter=-build/include_subdir",
-    "--repository=core/libdeno", "--extensions=cc,h", "--recursive", "core"
-])
+    "--repository=core/libdeno"
+] + find_exts(["core"], [".cc", ".h"], skip=["core/libdeno/build"]))
 
 run([
-    "node", eslint, "--max-warnings=0", "./js/**/*.{ts,js}",
-    "./core/**/*.{ts,js}", "./tests/**/*.{ts,js}"
+    "node", eslint, "--max-warnings=0", "--ignore-pattern=core/libdeno/build/",
+    "./js/**/*.{ts,js}", "./core/**/*.{ts,js}", "./tests/**/*.{ts,js}"
 ])
 
 run([
