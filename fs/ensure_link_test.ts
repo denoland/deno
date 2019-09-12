@@ -31,11 +31,9 @@ test(function ensureLinkSyncIfItNotExist(): void {
   const testFile = path.join(testDir, "test.txt");
   const linkFile = path.join(testDir, "link.txt");
 
-  assertThrows(
-    (): void => {
-      ensureLinkSync(testFile, linkFile);
-    }
-  );
+  assertThrows((): void => {
+    ensureLinkSync(testFile, linkFile);
+  });
 
   Deno.removeSync(testDir, { recursive: true });
 });

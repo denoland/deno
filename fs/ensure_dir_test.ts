@@ -15,11 +15,9 @@ test(async function ensureDirIfItNotExist(): Promise<void> {
 
   await assertThrowsAsync(
     async (): Promise<void> => {
-      await Deno.stat(testDir).then(
-        (): void => {
-          throw new Error("test dir should exists.");
-        }
-      );
+      await Deno.stat(testDir).then((): void => {
+        throw new Error("test dir should exists.");
+      });
     }
   );
 
@@ -48,11 +46,9 @@ test(async function ensureDirIfItExist(): Promise<void> {
 
   await assertThrowsAsync(
     async (): Promise<void> => {
-      await Deno.stat(testDir).then(
-        (): void => {
-          throw new Error("test dir should still exists.");
-        }
-      );
+      await Deno.stat(testDir).then((): void => {
+        throw new Error("test dir should still exists.");
+      });
     }
   );
 
@@ -68,12 +64,10 @@ test(function ensureDirSyncIfItExist(): void {
 
   ensureDirSync(testDir);
 
-  assertThrows(
-    (): void => {
-      Deno.statSync(testDir);
-      throw new Error("test dir should still exists.");
-    }
-  );
+  assertThrows((): void => {
+    Deno.statSync(testDir);
+    throw new Error("test dir should still exists.");
+  });
 
   Deno.removeSync(baseDir, { recursive: true });
 });

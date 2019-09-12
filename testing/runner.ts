@@ -85,13 +85,11 @@ export async function getMatchingUrls(
   );
   const matchingRemoteUrls = includeRemote.filter(
     (candidateUrl: string): boolean => {
-      return !excludeRemotePatterns.some(
-        (pattern: RegExp): boolean => {
-          const r = pattern.test(candidateUrl);
-          pattern.lastIndex = 0;
-          return r;
-        }
-      );
+      return !excludeRemotePatterns.some((pattern: RegExp): boolean => {
+        const r = pattern.test(candidateUrl);
+        pattern.lastIndex = 0;
+        return r;
+      });
     }
   );
 
@@ -135,11 +133,9 @@ export async function main(root: string = cwd()): Promise<void> {
 
   if (parsedArgs._.length) {
     includeFiles = (parsedArgs._ as string[])
-      .map(
-        (fileGlob: string): string[] => {
-          return fileGlob.split(",");
-        }
-      )
+      .map((fileGlob: string): string[] => {
+        return fileGlob.split(",");
+      })
       .flat();
   } else {
     includeFiles = DEFAULT_GLOBS;

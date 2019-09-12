@@ -65,31 +65,25 @@ test(async function readValidObjJsonFileWithRelativePath(): Promise<void> {
 test(function readJsonFileNotExistsSync(): void {
   const emptyJsonFile = path.join(testdataDir, "json_not_exists.json");
 
-  assertThrows(
-    (): void => {
-      readJsonSync(emptyJsonFile);
-    }
-  );
+  assertThrows((): void => {
+    readJsonSync(emptyJsonFile);
+  });
 });
 
 test(function readEmptyJsonFileSync(): void {
   const emptyJsonFile = path.join(testdataDir, "json_empty.json");
 
-  assertThrows(
-    (): void => {
-      readJsonSync(emptyJsonFile);
-    }
-  );
+  assertThrows((): void => {
+    readJsonSync(emptyJsonFile);
+  });
 });
 
 test(function readInvalidJsonFile(): void {
   const invalidJsonFile = path.join(testdataDir, "json_invalid.json");
 
-  assertThrows(
-    (): void => {
-      readJsonSync(invalidJsonFile);
-    }
-  );
+  assertThrows((): void => {
+    readJsonSync(invalidJsonFile);
+  });
 });
 
 test(function readValidArrayJsonFileSync(): void {

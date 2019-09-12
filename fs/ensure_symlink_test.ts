@@ -24,11 +24,9 @@ test(async function ensureSymlinkIfItNotExist(): Promise<void> {
 
   assertThrowsAsync(
     async (): Promise<void> => {
-      await Deno.stat(testFile).then(
-        (): void => {
-          throw new Error("test file should exists.");
-        }
-      );
+      await Deno.stat(testFile).then((): void => {
+        throw new Error("test file should exists.");
+      });
     }
   );
 });
@@ -37,18 +35,14 @@ test(function ensureSymlinkSyncIfItNotExist(): void {
   const testDir = path.join(testdataDir, "link_file_2");
   const testFile = path.join(testDir, "test.txt");
 
-  assertThrows(
-    (): void => {
-      ensureSymlinkSync(testFile, path.join(testDir, "test1.txt"));
-    }
-  );
+  assertThrows((): void => {
+    ensureSymlinkSync(testFile, path.join(testDir, "test1.txt"));
+  });
 
-  assertThrows(
-    (): void => {
-      Deno.statSync(testFile);
-      throw new Error("test file should exists.");
-    }
-  );
+  assertThrows((): void => {
+    Deno.statSync(testFile);
+    throw new Error("test file should exists.");
+  });
 });
 
 test(async function ensureSymlinkIfItExist(): Promise<void> {

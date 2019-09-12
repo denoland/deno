@@ -15,12 +15,10 @@ export default function generate(): string {
   rnds[6] = (rnds[6] & 0x0f) | 0x40; // Version 4
   rnds[8] = (rnds[8] & 0x3f) | 0x80; // Variant 10
 
-  const bits: string[] = [...rnds].map(
-    (bit): string => {
-      const s: string = bit.toString(16);
-      return bit < 0x10 ? "0" + s : s;
-    }
-  );
+  const bits: string[] = [...rnds].map((bit): string => {
+    const s: string = bit.toString(16);
+    return bit < 0x10 ? "0" + s : s;
+  });
   return [
     ...bits.slice(0, 4),
     "-",

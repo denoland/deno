@@ -504,11 +504,9 @@ test({
 
       let serverIsRunning = true;
       p.status()
-        .then(
-          (): void => {
-            serverIsRunning = false;
-          }
-        )
+        .then((): void => {
+          serverIsRunning = false;
+        })
         .catch((_): void => {}); // Ignores the error when closing the process.
 
       await delay(100);
