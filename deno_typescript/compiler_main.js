@@ -115,11 +115,17 @@ const ops = {
  * @implements {ts.CompilerHost}
  */
 class Host {
-  fileExists() {
+  /**
+   * @param {string} _fileName
+   */
+  fileExists(_fileName) {
     return true;
   }
 
-  readFile() {
+  /**
+   * @param {string} _fileName
+   */
+  readFile(_fileName) {
     unreachable();
     return undefined;
   }
@@ -128,7 +134,10 @@ class Host {
     return false;
   }
 
-  getDefaultLibFileName() {
+  /**
+   * @param {ts.CompilerOptions} _options
+   */
+  getDefaultLibFileName(_options) {
     return "lib.deno_core.d.ts";
   }
 
@@ -200,7 +209,20 @@ class Host {
     return dispatch("writeFile", { fileName, moduleName, data });
   }
 
-  getSourceFileByPath() {
+  /**
+   * @param {string} _fileName
+   * @param {ts.Path} _path
+   * @param {ts.ScriptTarget} _languageVersion
+   * @param {*} _onError
+   * @param {boolean} _shouldCreateNewSourceFile
+   */
+  getSourceFileByPath(
+    _fileName,
+    _path,
+    _languageVersion,
+    _onError,
+    _shouldCreateNewSourceFile
+  ) {
     unreachable();
     return undefined;
   }
