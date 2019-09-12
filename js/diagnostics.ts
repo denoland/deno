@@ -4,8 +4,6 @@
 // compiler, which is strongly influenced by the format of TypeScript
 // diagnostics.
 
-/// <reference types="../third_party/node_modules/typescript/lib/typescript.d.ts"/>
-
 /** The log category for a diagnostic message */
 export enum DiagnosticCategory {
   Log = 0,

@@ -1,9 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 // TODO(ry) Combine this implementation with //deno_typescript/compiler_main.js
 
-/// <reference types="../third_party/node_modules/typescript/lib/typescript.d.ts"/>
-
 import "./globals.ts";
+import "./ts_global.d.ts";
 
 import { bold, cyan, yellow } from "./colors.ts";
 import { Console } from "./console.ts";
