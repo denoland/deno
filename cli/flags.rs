@@ -12,6 +12,19 @@ use std;
 use std::str;
 use std::str::FromStr;
 
+macro_rules! std_url {
+  ($x:expr) => {
+    concat!("https://deno.land/std@06958a4/", $x)
+  };
+}
+
+/// Used for `deno fmt <files>...` subcommand
+const PRETTIER_URL: &str = std_url!("prettier/main.ts");
+/// Used for `deno install...` subcommand
+const INSTALLER_URL: &str = std_url!("installer/mod.ts");
+/// Used for `deno test...` subcommand
+const TEST_RUNNER_URL: &str = std_url!("testing/runner.ts");
+
 // Creates vector of strings, Vec<String>
 macro_rules! svec {
     ($($x:expr),*) => (vec![$($x.to_string()),*]);
@@ -676,13 +689,6 @@ fn parse_script_args(
 
   (argv, flags)
 }
-
-/// Used for `deno fmt <files>...` subcommand
-const PRETTIER_URL: &str = "https://deno.land/std@06958a4/prettier/main.ts";
-/// Used for `deno install...` subcommand
-const INSTALLER_URL: &str = "https://deno.land/std@v0.11/installer/mod.ts";
-/// Used for `deno test...` subcommand
-const TEST_RUNNER_URL: &str = "https://deno.land/std@4531fa8/testing/runner.ts";
 
 /// These are currently handled subcommands.
 /// There is no "Help" subcommand because it's handled by `clap::App` itself.
