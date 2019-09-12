@@ -48,14 +48,16 @@ def main():
         prettier()
 
 
-def qrun(cmd, env=None):
-    run(cmd, quiet=True, env=env)
+def qrun(cmd, cwd=None, env=None):
+    run(cmd, quiet=True, cwd=cwd, env=env)
 
 
 def clang_format():
     print "clang_format"
-    qrun([clang_format_path, "-i", "-style", "Google"] +
-         find_exts(["core"], [".cc", ".h"]))
+    qrun(
+        [clang_format_path, "-i", "-style", "Google"] + find_exts(
+            ["core"], [".cc", ".h"], skip=["core/libdeno/build"]),
+        env={"CHROMIUM_BUILDTOOLS_PATH": "third_party/v8/buildtools"})
 
 
 def rustfmt():
@@ -65,34 +67,36 @@ def rustfmt():
         "--config-path",
         rustfmt_config,
     ] + find_exts(["cli", "core", "tools", "deno_typescript", "cli_snapshots"],
-                  [".rs"]))
+                  [".rs"],
+                  skip=["core/libdeno/build"]))
 
 
 def gn_format():
     print "gn format"
-    for fn in ["BUILD.gn", ".gn"] + find_exts(
-        ["build_extra", "cli", "core", "deno_typescript", "cli_snapshots"],
-        [".gn", ".gni"]):
-        qrun(["third_party/depot_tools/gn", "format", fn], env=google_env())
+    for fn in find_exts(["core/libdeno"], [".gn", ".gni"],
+                        skip=["core/libdeno/build"]):
+        qrun(["third_party/depot_tools/gn", "format", fn[13:]],
+             cwd=os.path.join(root_path, "core/libdeno"),
+             env=google_env())
 
 
 def yapf():
     print "yapf"
     qrun(
         [sys.executable, "third_party/python_packages/bin/yapf", "-i"] +
-        find_exts(["tools", "build_extra", "deno_typescript", "cli_snapshots"],
-                  [".py"],
+        find_exts(["tools", "deno_typescript", "cli_snapshots"], [".py"],
                   skip=["tools/clang"]),
         env=python_env())
 
 
 def prettier():
     print "prettier"
-    files = find_exts([
-        ".github", "js", "tests", "tools", "website", "core",
-        "deno_typescript", "cli_snapshots"
-    ], [".js", ".json", ".ts", ".md"],
-                      skip=["tools/clang", "js/deps", "js/gen"])
+    files = find_exts(
+        [
+            ".github", "js", "tests", "tools", "website", "core",
+            "deno_typescript", "cli_snapshots"
+        ], [".js", ".json", ".ts", ".md"],
+        skip=["tools/clang", "js/deps", "js/gen", "core/libdeno/build"])
     qrun(["node", prettier_path, "--write", "--loglevel=error"] +
          ["rollup.config.js"] + files)
 

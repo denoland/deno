@@ -261,8 +261,9 @@ def maybe_download_sysroot():
     if sys.platform.startswith('linux'):
         run([
             'python',
-            os.path.join(root_path,
-                         'core/libdeno/build/linux/sysroot_scripts/install-sysroot.py'),
+            os.path.join(
+                root_path,
+                'core/libdeno/build/linux/sysroot_scripts/install-sysroot.py'),
             '--arch=amd64'
         ],
             env=google_env())
