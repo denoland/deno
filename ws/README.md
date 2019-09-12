@@ -60,11 +60,9 @@ async function main(): Promise<void> {
           }
         }
       )
-      .catch(
-        (err: Error): void => {
-          console.error(`failed to accept websocket: ${err}`);
-        }
-      );
+      .catch((err: Error): void => {
+        console.error(`failed to accept websocket: ${err}`);
+      });
   }
 }
 

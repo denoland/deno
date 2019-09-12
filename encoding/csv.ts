@@ -84,25 +84,23 @@ async function read(
   result = line.split(opt.comma!);
 
   let quoteError = false;
-  result = result.map(
-    (r): string => {
-      if (opt.trimLeadingSpace) {
-        r = r.trimLeft();
-      }
-      if (r[0] === '"' && r[r.length - 1] === '"') {
-        r = r.substring(1, r.length - 1);
-      } else if (r[0] === '"') {
-        r = r.substring(1, r.length);
-      }
-
-      if (!opt.lazyQuotes) {
-        if (r[0] !== '"' && r.indexOf('"') !== -1) {
-          quoteError = true;
-        }
-      }
-      return r;
+  result = result.map((r): string => {
+    if (opt.trimLeadingSpace) {
+      r = r.trimLeft();
     }
-  );
+    if (r[0] === '"' && r[r.length - 1] === '"') {
+      r = r.substring(1, r.length - 1);
+    } else if (r[0] === '"') {
+      r = r.substring(1, r.length);
+    }
+
+    if (!opt.lazyQuotes) {
+      if (r[0] !== '"' && r.indexOf('"') !== -1) {
+        quoteError = true;
+      }
+    }
+    return r;
+  });
   if (quoteError) {
     throw new ParseError(Startline, lineIndex, 'bare " in non-quoted-field');
   }
@@ -226,27 +224,25 @@ export async function parse(
       );
       i++;
     }
-    return r.map(
-      (e): unknown => {
-        if (e.length !== headers.length) {
-          throw `Error number of fields line:${i}`;
-        }
-        i++;
-        let out: Record<string, unknown> = {};
-        for (let j = 0; j < e.length; j++) {
-          const h = headers[j];
-          if (h.parse) {
-            out[h.name] = h.parse(e[j]);
-          } else {
-            out[h.name] = e[j];
-          }
-        }
-        if (opt.parse) {
-          return opt.parse(out);
-        }
-        return out;
+    return r.map((e): unknown => {
+      if (e.length !== headers.length) {
+        throw `Error number of fields line:${i}`;
       }
-    );
+      i++;
+      let out: Record<string, unknown> = {};
+      for (let j = 0; j < e.length; j++) {
+        const h = headers[j];
+        if (h.parse) {
+          out[h.name] = h.parse(e[j]);
+        } else {
+          out[h.name] = e[j];
+        }
+      }
+      if (opt.parse) {
+        return opt.parse(out);
+      }
+      return out;
+    });
   }
   if (opt.parse) {
     return r.map((e: string[]): unknown => opt.parse!(e));

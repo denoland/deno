@@ -384,27 +384,25 @@ export class Tar {
    */
   getReader(): Deno.Reader {
     const readers: Deno.Reader[] = [];
-    this.data.forEach(
-      (tarData): void => {
-        let { filePath, reader } = tarData,
-          headerArr = formatHeader(tarData);
-        readers.push(new Deno.Buffer(headerArr));
-        if (!reader) {
-          reader = new FileReader(filePath!);
-        }
-        readers.push(reader);
-
-        // to the nearest multiple of recordSize
-        readers.push(
-          new Deno.Buffer(
-            clean(
-              recordSize -
-                (parseInt(tarData.fileSize!, 8) % recordSize || recordSize)
-            )
-          )
-        );
+    this.data.forEach((tarData): void => {
+      let { filePath, reader } = tarData,
+        headerArr = formatHeader(tarData);
+      readers.push(new Deno.Buffer(headerArr));
+      if (!reader) {
+        reader = new FileReader(filePath!);
       }
-    );
+      readers.push(reader);
+
+      // to the nearest multiple of recordSize
+      readers.push(
+        new Deno.Buffer(
+          clean(
+            recordSize -
+              (parseInt(tarData.fileSize!, 8) % recordSize || recordSize)
+          )
+        )
+      );
+    });
 
     // append 2 empty records
     readers.push(new Deno.Buffer(clean(recordSize * 2)));
@@ -461,22 +459,18 @@ export class Untar {
       "mtime",
       "uid",
       "gid"
-    ]).forEach(
-      (key): void => {
-        const arr = trim(header[key]);
-        if (arr.byteLength > 0) {
-          meta[key] = parseInt(decoder.decode(arr), 8);
-        }
+    ]).forEach((key): void => {
+      const arr = trim(header[key]);
+      if (arr.byteLength > 0) {
+        meta[key] = parseInt(decoder.decode(arr), 8);
       }
-    );
-    (["owner", "group"] as ["owner", "group"]).forEach(
-      (key): void => {
-        const arr = trim(header[key]);
-        if (arr.byteLength > 0) {
-          meta[key] = decoder.decode(arr);
-        }
+    });
+    (["owner", "group"] as ["owner", "group"]).forEach((key): void => {
+      const arr = trim(header[key]);
+      if (arr.byteLength > 0) {
+        meta[key] = decoder.decode(arr);
       }
-    );
+    });
 
     // read the file content
     const len = parseInt(decoder.decode(header.fileSize), 8);

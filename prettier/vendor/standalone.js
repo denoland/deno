@@ -1,4 +1,4 @@
-// This file is copied from prettier@1.17.1
+// This file is copied from prettier@1.18.2
 /**
  * Copyright © James Long and contributors
  * 
@@ -15,7 +15,7 @@
 }(globalThis, (function () { 'use strict';
 
 var name = "prettier";
-var version$1 = "1.17.1";
+var version$1 = "1.18.2";
 var description = "Prettier is an opinionated code formatter";
 var bin = {
   "prettier": "./bin/prettier.js"
@@ -32,8 +32,8 @@ var dependencies = {
   "@angular/compiler": "7.2.9",
   "@babel/code-frame": "7.0.0",
   "@babel/parser": "7.2.0",
-  "@glimmer/syntax": "0.30.3",
-  "@iarna/toml": "2.0.0",
+  "@glimmer/syntax": "0.38.4",
+  "@iarna/toml": "2.2.3",
   "@typescript-eslint/typescript-estree": "1.6.0",
   "angular-estree-parser": "1.1.5",
   "angular-html-parser": "1.2.0",
@@ -111,7 +111,7 @@ var devDependencies = {
   "jest-snapshot-serializer-raw": "1.1.0",
   "jest-watch-typeahead": "0.1.0",
   "mkdirp": "0.5.1",
-  "prettier": "1.17.0",
+  "prettier": "1.18.0",
   "prettylint": "1.0.0",
   "rimraf": "2.6.2",
   "rollup": "0.47.6",
@@ -13898,7 +13898,7 @@ function printString(raw, options, isDirectiveLiteral) {
   // sure that we consistently output the minimum amount of escaped quotes.
 
 
-  return makeString(rawContent, enclosingQuote, !(options.parser === "css" || options.parser === "less" || options.parser === "scss" || options.parentParser === "html" || options.parentParser === "vue" || options.parentParser === "angular" || options.parentParser === "lwc"));
+  return makeString(rawContent, enclosingQuote, !(options.parser === "css" || options.parser === "less" || options.parser === "scss" || options.embeddedInHtml));
 }
 
 function makeString(rawContent, enclosingQuote, unescapeUnnecessaryEscapes) {
@@ -13952,6 +13952,53 @@ function getMaxContinuousCount(str, target) {
   return results.reduce(function (maxCount, result) {
     return Math.max(maxCount, result.length / target.length);
   }, 0);
+}
+
+function getMinNotPresentContinuousCount(str, target) {
+  var matches = str.match(new RegExp("(".concat(escapeStringRegexp(target), ")+"), "g"));
+
+  if (matches === null) {
+    return 0;
+  }
+
+  var countPresent = new Map();
+  var max = 0;
+  var _iteratorNormalCompletion = true;
+  var _didIteratorError = false;
+  var _iteratorError = undefined;
+
+  try {
+    for (var _iterator = matches[Symbol.iterator](), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true) {
+      var match = _step.value;
+      var count = match.length / target.length;
+      countPresent.set(count, true);
+
+      if (count > max) {
+        max = count;
+      }
+    }
+  } catch (err) {
+    _didIteratorError = true;
+    _iteratorError = err;
+  } finally {
+    try {
+      if (!_iteratorNormalCompletion && _iterator.return != null) {
+        _iterator.return();
+      }
+    } finally {
+      if (_didIteratorError) {
+        throw _iteratorError;
+      }
+    }
+  }
+
+  for (var i = 1; i < max; i++) {
+    if (!countPresent.get(i)) {
+      return i;
+    }
+  }
+
+  return max + 1;
 }
 
 function getStringWidth$1(text) {
@@ -14044,13 +14091,13 @@ function isWithinParentArrayProperty(path, propertyName) {
 
 function replaceEndOfLineWith(text, replacement) {
   var parts = [];
-  var _iteratorNormalCompletion = true;
-  var _didIteratorError = false;
-  var _iteratorError = undefined;
+  var _iteratorNormalCompletion2 = true;
+  var _didIteratorError2 = false;
+  var _iteratorError2 = undefined;
 
   try {
-    for (var _iterator = text.split("\n")[Symbol.iterator](), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true) {
-      var part = _step.value;
+    for (var _iterator2 = text.split("\n")[Symbol.iterator](), _step2; !(_iteratorNormalCompletion2 = (_step2 = _iterator2.next()).done); _iteratorNormalCompletion2 = true) {
+      var part = _step2.value;
 
       if (parts.length !== 0) {
         parts.push(replacement);
@@ -14059,16 +14106,16 @@ function replaceEndOfLineWith(text, replacement) {
       parts.push(part);
     }
   } catch (err) {
-    _didIteratorError = true;
-    _iteratorError = err;
+    _didIteratorError2 = true;
+    _iteratorError2 = err;
   } finally {
     try {
-      if (!_iteratorNormalCompletion && _iterator.return != null) {
-        _iterator.return();
+      if (!_iteratorNormalCompletion2 && _iterator2.return != null) {
+        _iterator2.return();
       }
     } finally {
-      if (_didIteratorError) {
-        throw _iteratorError;
+      if (_didIteratorError2) {
+        throw _iteratorError2;
       }
     }
   }
@@ -14080,6 +14127,7 @@ var util = {
   replaceEndOfLineWith: replaceEndOfLineWith,
   getStringWidth: getStringWidth$1,
   getMaxContinuousCount: getMaxContinuousCount,
+  getMinNotPresentContinuousCount: getMinNotPresentContinuousCount,
   getPrecedence: getPrecedence,
   shouldFlatten: shouldFlatten,
   isBitwiseOperator: isBitwiseOperator,
@@ -14970,6 +15018,7 @@ var docUtils = {
   willBreak: willBreak,
   isLineNext: isLineNext,
   traverseDoc: traverseDoc,
+  findInDoc: findInDoc,
   mapDoc: mapDoc$1,
   propagateBreaks: propagateBreaks,
   removeLines: removeLines,
@@ -15783,6 +15832,7 @@ function printSubtree(path, print, options$$1, printAstToDoc) {
 function textToDoc(text, partialNextOptions, parentOptions, printAstToDoc) {
   var nextOptions = normalize$3(Object.assign({}, parentOptions, partialNextOptions, {
     parentParser: parentOptions.parser,
+    embeddedInHtml: !!(parentOptions.embeddedInHtml || parentOptions.parser === "html" || parentOptions.parser === "vue" || parentOptions.parser === "angular" || parentOptions.parser === "lwc"),
     originalText: text
   }), {
     passThrough: true
@@ -15850,7 +15900,7 @@ function printAstToDoc(ast, options) {
 
     var res;
 
-    if (printer.willPrintOwnComments && printer.willPrintOwnComments(path)) {
+    if (printer.willPrintOwnComments && printer.willPrintOwnComments(path, options)) {
       res = callPluginPrintFunction(path, options, printGenerically, args);
     } else {
       // printComments will call the plugin print function and check for
@@ -18527,26 +18577,14 @@ function print(path, options, print) {
         var isGlimmerComponent = tagFirstChar.toUpperCase() === tagFirstChar || isLocal;
         var hasChildren = n.children.length > 0;
         var isVoid = isGlimmerComponent && !hasChildren || voidTags.indexOf(n.tag) !== -1;
-        var closeTag = isVoid ? concat$7([" />", softline$3]) : ">";
+        var closeTagForNoBreak = isVoid ? concat$7([" />", softline$3]) : ">";
+        var closeTagForBreak = isVoid ? "/>" : ">";
 
         var _getParams = function _getParams(path, print) {
           return indent$4(concat$7([n.attributes.length ? line$5 : "", join$4(line$5, path.map(print, "attributes")), n.modifiers.length ? line$5 : "", join$4(line$5, path.map(print, "modifiers")), n.comments.length ? line$5 : "", join$4(line$5, path.map(print, "comments"))]));
-        }; // The problem here is that I want to not break at all if the children
-        // would not break but I need to force an indent, so I use a hardline.
+        };
 
-        /**
-         * What happens now:
-         * <div>
-         *   Hello
-         * </div>
-         * ==>
-         * <div>Hello</div>
-         * This is due to me using hasChildren to decide to put the hardline in.
-         * I would rather use a {DOES THE WHOLE THING NEED TO BREAK}
-         */
-
-
-        return concat$7([group$6(concat$7(["<", n.tag, _getParams(path, print), n.blockParams.length ? " as |".concat(n.blockParams.join(" "), "|") : "", ifBreak$3(softline$3, ""), closeTag])), group$6(concat$7([indent$4(join$4(softline$3, [""].concat(path.map(print, "children")))), ifBreak$3(hasChildren ? hardline$6 : "", ""), !isVoid ? concat$7(["</", n.tag, ">"]) : ""]))]);
+        return concat$7([group$6(concat$7(["<", n.tag, _getParams(path, print), n.blockParams.length ? " as |".concat(n.blockParams.join(" "), "|") : "", ifBreak$3(softline$3, ""), ifBreak$3(closeTagForBreak, closeTagForNoBreak)])), group$6(concat$7([indent$4(join$4(softline$3, [""].concat(path.map(print, "children")))), ifBreak$3(hasChildren ? hardline$6 : "", ""), !isVoid ? concat$7(["</", n.tag, ">"]) : ""]))]);
       }
 
     case "BlockStatement":
@@ -20667,7 +20705,7 @@ function embed$2(path, print, textToDoc, options) {
         } // lit-html: html`<my-element obj=${obj}></my-element>`
 
 
-        if (/^PRETTIER_HTML_PLACEHOLDER_\d+_IN_JS$/.test(options.originalText.slice(node.valueSpan.start.offset, node.valueSpan.end.offset))) {
+        if (/^PRETTIER_HTML_PLACEHOLDER_\d+_\d+_IN_JS$/.test(options.originalText.slice(node.valueSpan.start.offset, node.valueSpan.end.offset))) {
           return concat$8([node.rawName, "=", node.value]);
         } // lwc: html`<my-element data-for={value}></my-elememt>`
 
@@ -21765,7 +21803,7 @@ function handleCommentInEmptyParens(text, enclosingNode, comment, options) {
   // i.e. a function without any argument.
 
 
-  if (enclosingNode && ((enclosingNode.type === "FunctionDeclaration" || enclosingNode.type === "FunctionExpression" || enclosingNode.type === "ArrowFunctionExpression" && (enclosingNode.body.type !== "CallExpression" || enclosingNode.body.arguments.length === 0) || enclosingNode.type === "ClassMethod" || enclosingNode.type === "ObjectMethod") && enclosingNode.params.length === 0 || (enclosingNode.type === "CallExpression" || enclosingNode.type === "NewExpression") && enclosingNode.arguments.length === 0)) {
+  if (enclosingNode && ((enclosingNode.type === "FunctionDeclaration" || enclosingNode.type === "FunctionExpression" || enclosingNode.type === "ArrowFunctionExpression" || enclosingNode.type === "ClassMethod" || enclosingNode.type === "ObjectMethod") && enclosingNode.params.length === 0 || (enclosingNode.type === "CallExpression" || enclosingNode.type === "NewExpression") && enclosingNode.arguments.length === 0)) {
     addDanglingComment$2(enclosingNode, comment);
     return true;
   }
@@ -21995,9 +22033,7 @@ var _require$$1$utils = doc.utils;
 var mapDoc$5 = _require$$1$utils.mapDoc;
 var stripTrailingHardline$2 = _require$$1$utils.stripTrailingHardline;
 
-function embed$4(path, print, textToDoc
-/*, options */
-) {
+function embed$4(path, print, textToDoc, options) {
   var node = path.getValue();
   var parent = path.getParentNode();
   var parentParent = path.getParentNode(1);
@@ -22103,12 +22139,10 @@ function embed$4(path, print, textToDoc
           return concat$12(["`", indent$7(concat$12([hardline$9, join$8(hardline$9, parts)])), hardline$9, "`"]);
         }
 
-        if (isHtml(path)) {
-          return printHtmlTemplateLiteral(path, print, textToDoc, "html");
-        }
+        var htmlParser = isHtml(path) ? "html" : isAngularComponentTemplate(path) ? "angular" : undefined;
 
-        if (isAngularComponentTemplate(path)) {
-          return printHtmlTemplateLiteral(path, print, textToDoc, "angular");
+        if (htmlParser) {
+          return printHtmlTemplateLiteral(path, print, textToDoc, htmlParser, options.embeddedInHtml);
         }
 
         break;
@@ -22148,6 +22182,10 @@ function getIndentation(str) {
   return firstMatchedIndent === null ? "" : firstMatchedIndent[1];
 }
 
+function uncook(cookedValue) {
+  return cookedValue.replace(/([\\`]|\$\{)/g, "\\$1");
+}
+
 function escapeTemplateCharacters(doc$$2, raw) {
   return mapDoc$5(doc$$2, function (currentDoc) {
     if (!currentDoc.parts) {
@@ -22157,7 +22195,7 @@ function escapeTemplateCharacters(doc$$2, raw) {
     var parts = [];
     currentDoc.parts.forEach(function (part) {
       if (typeof part === "string") {
-        parts.push(raw ? part.replace(/(\\*)`/g, "$1$1\\`") : part.replace(/([\\`]|\$\{)/g, "\\$1"));
+        parts.push(raw ? part.replace(/(\\*)`/g, "$1$1\\`") : uncook(part));
       } else {
         parts.push(part);
       }
@@ -22268,8 +22306,11 @@ function printGraphqlComments(lines) {
   return parts.length === 0 ? null : join$8(hardline$9, parts);
 }
 /**
- * Template literal in this context:
+ * Template literal in these contexts:
  * <style jsx>{`div{color:red}`}</style>
+ * css``
+ * css.global``
+ * css.resolve``
  */
 
 
@@ -22279,7 +22320,7 @@ function isStyledJsx(path) {
   var parentParent = path.getParentNode(1);
   return parentParent && node.quasis && parent.type === "JSXExpressionContainer" && parentParent.type === "JSXElement" && parentParent.openingElement.name.name === "style" && parentParent.openingElement.attributes.some(function (attribute) {
     return attribute.name.name === "jsx";
-  });
+  }) || parent && parent.type === "TaggedTemplateExpression" && parent.tag.type === "Identifier" && parent.tag.name === "css" || parent && parent.type === "TaggedTemplateExpression" && parent.tag.type === "MemberExpression" && parent.tag.object.name === "css" && (parent.tag.property.name === "global" || parent.tag.property.name === "resolve");
 }
 /**
  * Angular Components can have:
@@ -22347,9 +22388,9 @@ function isStyledComponents(path) {
 
     case "CallExpression":
       return (// styled(Component)``
-        isStyledIdentifier(tag.callee) || tag.callee.type === "MemberExpression" && (tag.callee.object.type === "MemberExpression" && ( // styled.foo.attr({})``
-        isStyledIdentifier(tag.callee.object.object) || // Component.extend.attr({)``
-        isStyledExtend(tag.callee.object)) || // styled(Component).attr({})``
+        isStyledIdentifier(tag.callee) || tag.callee.type === "MemberExpression" && (tag.callee.object.type === "MemberExpression" && ( // styled.foo.attrs({})``
+        isStyledIdentifier(tag.callee.object.object) || // Component.extend.attrs({})``
+        isStyledExtend(tag.callee.object)) || // styled(Component).attrs({})``
         tag.callee.object.type === "CallExpression" && isStyledIdentifier(tag.callee.object.callee))
       );
 
@@ -22467,16 +22508,22 @@ function isHtml(path) {
   }, function (node, name) {
     return node.type === "TaggedTemplateExpression" && node.tag.type === "Identifier" && node.tag.name === "html" && name === "quasi";
   }]);
-}
+} // The counter is needed to distinguish nested embeds.
 
-function printHtmlTemplateLiteral(path, print, textToDoc, parser) {
+
+var htmlTemplateLiteralCounter = 0;
+
+function printHtmlTemplateLiteral(path, print, textToDoc, parser, escapeClosingScriptTag) {
   var node = path.getValue();
-  var placeholderPattern = "PRETTIER_HTML_PLACEHOLDER_(\\d+)_IN_JS";
-  var placeholders = node.expressions.map(function (_, i) {
-    return "PRETTIER_HTML_PLACEHOLDER_".concat(i, "_IN_JS");
-  });
+  var counter = htmlTemplateLiteralCounter;
+  htmlTemplateLiteralCounter = htmlTemplateLiteralCounter + 1 >>> 0;
+
+  var composePlaceholder = function composePlaceholder(index) {
+    return "PRETTIER_HTML_PLACEHOLDER_".concat(index, "_").concat(counter, "_IN_JS");
+  };
+
   var text = node.quasis.map(function (quasi, index, quasis) {
-    return index === quasis.length - 1 ? quasi.value.raw : quasi.value.raw + placeholders[index];
+    return index === quasis.length - 1 ? quasi.value.cooked : quasi.value.cooked + composePlaceholder(index);
   }).join("");
   var expressionDocs = path.map(print, "expressions");
 
@@ -22484,13 +22531,11 @@ function printHtmlTemplateLiteral(path, print, textToDoc, parser) {
     return "``";
   }
 
+  var placeholderRegex = RegExp(composePlaceholder("(\\d+)"), "g");
   var contentDoc = mapDoc$5(stripTrailingHardline$2(textToDoc(text, {
     parser: parser
   })), function (doc$$2) {
-    var placeholderRegex = new RegExp(placeholderPattern, "g");
-    var hasPlaceholder = typeof doc$$2 === "string" && placeholderRegex.test(doc$$2);
-
-    if (!hasPlaceholder) {
+    if (typeof doc$$2 !== "string") {
       return doc$$2;
     }
 
@@ -22502,6 +22547,12 @@ function printHtmlTemplateLiteral(path, print, textToDoc, parser) {
 
       if (i % 2 === 0) {
         if (component) {
+          component = uncook(component);
+
+          if (escapeClosingScriptTag) {
+            component = component.replace(/<\/(script)\b/gi, "<\\/$1");
+          }
+
           parts.push(component);
         }
 
@@ -22708,12 +22759,65 @@ function hasNode$1(node, fn) {
   });
 }
 
+function hasNakedLeftSide$2(node) {
+  return node.type === "AssignmentExpression" || node.type === "BinaryExpression" || node.type === "LogicalExpression" || node.type === "NGPipeExpression" || node.type === "ConditionalExpression" || node.type === "CallExpression" || node.type === "OptionalCallExpression" || node.type === "MemberExpression" || node.type === "OptionalMemberExpression" || node.type === "SequenceExpression" || node.type === "TaggedTemplateExpression" || node.type === "BindExpression" || node.type === "UpdateExpression" && !node.prefix || node.type === "TSAsExpression" || node.type === "TSNonNullExpression";
+}
+
+function getLeftSide$1(node) {
+  if (node.expressions) {
+    return node.expressions[0];
+  }
+
+  return node.left || node.test || node.callee || node.object || node.tag || node.argument || node.expression;
+}
+
+function getLeftSidePathName$2(path, node) {
+  if (node.expressions) {
+    return ["expressions", 0];
+  }
+
+  if (node.left) {
+    return ["left"];
+  }
+
+  if (node.test) {
+    return ["test"];
+  }
+
+  if (node.object) {
+    return ["object"];
+  }
+
+  if (node.callee) {
+    return ["callee"];
+  }
+
+  if (node.tag) {
+    return ["tag"];
+  }
+
+  if (node.argument) {
+    return ["argument"];
+  }
+
+  if (node.expression) {
+    return ["expression"];
+  }
+
+  throw new Error("Unexpected node has no left side", node);
+}
+
 var utils$8 = {
+  getLeftSide: getLeftSide$1,
+  getLeftSidePathName: getLeftSidePathName$2,
+  hasNakedLeftSide: hasNakedLeftSide$2,
   hasNode: hasNode$1,
   hasFlowShorthandAnnotationComment: hasFlowShorthandAnnotationComment$2,
   hasFlowAnnotationComment: hasFlowAnnotationComment$1
 };
 
+var getLeftSidePathName$1 = utils$8.getLeftSidePathName;
+var hasNakedLeftSide$1 = utils$8.hasNakedLeftSide;
 var hasFlowShorthandAnnotationComment$1 = utils$8.hasFlowShorthandAnnotationComment;
 
 function hasClosureCompilerTypeCastComment(text, path) {
@@ -22745,7 +22849,7 @@ function hasClosureCompilerTypeCastComment(text, path) {
       return line.replace(/^[\s*]+/, "");
     }).join(" ").trim();
 
-    if (!/^@type\s+\{[^]+\}$/.test(cleaned)) {
+    if (!/^@type\s*\{[^]+\}$/.test(cleaned)) {
       return false;
     }
 
@@ -22837,6 +22941,15 @@ function needsParens(path, options) {
 
 
   if (node.type === "Identifier") {
+    // ...unless those identifiers are embed placeholders. They might be substituted by complex
+    // expressions, so the parens around them should not be dropped. Example (JS-in-HTML-in-JS):
+    //     let tpl = html`<script> f((${expr}) / 2); </script>`;
+    // If the inner JS formatter removes the parens, the expression might change its meaning:
+    //     f((a + b) / 2)  vs  f(a + b / 2)
+    if (node.extra && node.extra.parenthesized && /^PRETTIER_HTML_PLACEHOLDER_\d+_\d+_IN_JS$/.test(node.name)) {
+      return true;
+    }
+
     return false;
   }
 
@@ -22848,6 +22961,13 @@ function needsParens(path, options) {
 
   if ((parent.type === "ClassDeclaration" || parent.type === "ClassExpression") && parent.superClass === node && (node.type === "ArrowFunctionExpression" || node.type === "AssignmentExpression" || node.type === "AwaitExpression" || node.type === "BinaryExpression" || node.type === "ConditionalExpression" || node.type === "LogicalExpression" || node.type === "NewExpression" || node.type === "ObjectExpression" || node.type === "ParenthesizedExpression" || node.type === "SequenceExpression" || node.type === "TaggedTemplateExpression" || node.type === "UnaryExpression" || node.type === "UpdateExpression" || node.type === "YieldExpression")) {
     return true;
+  } // `export default function` or `export default class` can't be followed by
+  // anything after. So an expression like `export default (function(){}).toString()`
+  // needs to be followed by a parentheses
+
+
+  if (parent.type === "ExportDefaultDeclaration") {
+    return shouldWrapFunctionForExportDefault(path, options);
   }
 
   if (parent.type === "Decorator" && parent.expression === node) {
@@ -22899,9 +23019,11 @@ function needsParens(path, options) {
     case "CallExpression":
       {
         var firstParentNotMemberExpression = parent;
-        var i = 0;
+        var i = 0; // tagged templates are basically member expressions from a grammar perspective
+        // see https://tc39.github.io/ecma262/#prod-MemberExpression
+        // so are typescript's non-null assertions, though there's no grammar to point to
 
-        while (firstParentNotMemberExpression && firstParentNotMemberExpression.type === "MemberExpression") {
+        while (firstParentNotMemberExpression && (firstParentNotMemberExpression.type === "MemberExpression" && firstParentNotMemberExpression.object === path.getParentNode(i - 1) || firstParentNotMemberExpression.type === "TaggedTemplateExpression" || firstParentNotMemberExpression.type === "TSNonNullExpression")) {
           firstParentNotMemberExpression = path.getParentNode(++i);
         }
 
@@ -23005,6 +23127,7 @@ function needsParens(path, options) {
         case "TSTypeAssertion":
         case "TaggedTemplateExpression":
         case "UnaryExpression":
+        case "JSXSpreadAttribute":
         case "SpreadElement":
         case "SpreadProperty":
         case "BindExpression":
@@ -23084,7 +23207,7 @@ function needsParens(path, options) {
         } // Delegate to inner TSParenthesizedType
 
 
-        if (node.typeAnnotation.type === "TSParenthesizedType") {
+        if (node.typeAnnotation.type === "TSParenthesizedType" && parent.type !== "TSArrayType") {
           return false;
         }
 
@@ -23258,9 +23381,6 @@ function needsParens(path, options) {
           return true;
         // This is basically a kind of IIFE.
 
-        case "ExportDefaultDeclaration":
-          return true;
-
         default:
           return false;
       }
@@ -23295,9 +23415,6 @@ function needsParens(path, options) {
 
     case "ClassExpression":
       switch (parent.type) {
-        case "ExportDefaultDeclaration":
-          return true;
-
         case "NewExpression":
           return name === "callee" && parent.callee === node;
 
@@ -23328,7 +23445,7 @@ function needsParens(path, options) {
       return false;
 
     case "BindExpression":
-      if (parent.type === "BindExpression" && name === "callee" && parent.callee === node || parent.type === "MemberExpression") {
+      if (parent.type === "BindExpression" && name === "callee" && parent.callee === node || parent.type === "MemberExpression" && name === "object" && parent.object === node || parent.type === "NewExpression" && name === "callee" && parent.callee === node) {
         return true;
       }
 
@@ -23408,6 +23525,26 @@ function isFollowedByRightBracket(path) {
   }
 
   return false;
+}
+
+function shouldWrapFunctionForExportDefault(path, options) {
+  var node = path.getValue();
+  var parent = path.getParentNode();
+
+  if (node.type === "FunctionExpression" || node.type === "ClassExpression") {
+    return parent.type === "ExportDefaultDeclaration" || // in some cases the function is already wrapped
+    // (e.g. `export default (function() {})();`)
+    // in this case we don't need to add extra parens
+    !needsParens(path, options);
+  }
+
+  if (!hasNakedLeftSide$1(node) || parent.type !== "ExportDefaultDeclaration" && needsParens(path, options)) {
+    return false;
+  }
+
+  return path.call.apply(path, [function (childPath) {
+    return shouldWrapFunctionForExportDefault(childPath, options);
+  }].concat(getLeftSidePathName$1(path, node)));
 }
 
 var needsParens_1 = needsParens;
@@ -23515,6 +23652,9 @@ var isIdentifierName = utils$2.keyword.isIdentifierNameES5;
 var insertPragma$7 = pragma$2.insertPragma;
 var printHtmlBinding = htmlBinding.printHtmlBinding;
 var isVueEventBindingExpression$2 = htmlBinding.isVueEventBindingExpression;
+var getLeftSide = utils$8.getLeftSide;
+var getLeftSidePathName = utils$8.getLeftSidePathName;
+var hasNakedLeftSide = utils$8.hasNakedLeftSide;
 var hasNode = utils$8.hasNode;
 var hasFlowAnnotationComment = utils$8.hasFlowAnnotationComment;
 var hasFlowShorthandAnnotationComment = utils$8.hasFlowShorthandAnnotationComment;
@@ -25089,85 +25229,23 @@ function printPathNoParens(path, options, print, args) {
         var expressions = path.map(print, "expressions");
 
         var _parentNode = path.getParentNode();
-        /**
-         * describe.each`table`(name, fn)
-         * describe.only.each`table`(name, fn)
-         * describe.skip.each`table`(name, fn)
-         * test.each`table`(name, fn)
-         * test.only.each`table`(name, fn)
-         * test.skip.each`table`(name, fn)
-         *
-         * Ref: https://github.com/facebook/jest/pull/6102
-         */
 
+        if (isJestEachTemplateLiteral(n, _parentNode)) {
+          var _printed2 = printJestEachTemplateLiteral(n, expressions, options);
 
-        var jestEachTriggerRegex = /^[xf]?(describe|it|test)$/;
-
-        if (_parentNode.type === "TaggedTemplateExpression" && _parentNode.quasi === n && _parentNode.tag.type === "MemberExpression" && _parentNode.tag.property.type === "Identifier" && _parentNode.tag.property.name === "each" && (_parentNode.tag.object.type === "Identifier" && jestEachTriggerRegex.test(_parentNode.tag.object.name) || _parentNode.tag.object.type === "MemberExpression" && _parentNode.tag.object.property.type === "Identifier" && (_parentNode.tag.object.property.name === "only" || _parentNode.tag.object.property.name === "skip") && _parentNode.tag.object.object.type === "Identifier" && jestEachTriggerRegex.test(_parentNode.tag.object.object.name))) {
-          /**
-           * a    | b    | expected
-           * ${1} | ${1} | ${2}
-           * ${1} | ${2} | ${3}
-           * ${2} | ${1} | ${3}
-           */
-          var headerNames = n.quasis[0].value.raw.trim().split(/\s*\|\s*/);
-
-          if (headerNames.length > 1 || headerNames.some(function (headerName) {
-            return headerName.length !== 0;
-          })) {
-            var stringifiedExpressions = expressions.map(function (doc$$2) {
-              return "${" + printDocToString$1(doc$$2, Object.assign({}, options, {
-                printWidth: Infinity,
-                endOfLine: "lf"
-              })).formatted + "}";
-            });
-            var tableBody = [{
-              hasLineBreak: false,
-              cells: []
-            }];
-
-            for (var _i = 1; _i < n.quasis.length; _i++) {
-              var row = tableBody[tableBody.length - 1];
-              var correspondingExpression = stringifiedExpressions[_i - 1];
-              row.cells.push(correspondingExpression);
-
-              if (correspondingExpression.indexOf("\n") !== -1) {
-                row.hasLineBreak = true;
-              }
-
-              if (n.quasis[_i].value.raw.indexOf("\n") !== -1) {
-                tableBody.push({
-                  hasLineBreak: false,
-                  cells: []
-                });
-              }
-            }
-
-            var maxColumnCount = tableBody.reduce(function (maxColumnCount, row) {
-              return Math.max(maxColumnCount, row.cells.length);
-            }, headerNames.length);
-            var maxColumnWidths = Array.from(new Array(maxColumnCount), function () {
-              return 0;
-            });
-            var table = [{
-              cells: headerNames
-            }].concat(tableBody.filter(function (row) {
-              return row.cells.length !== 0;
-            }));
-            table.filter(function (row) {
-              return !row.hasLineBreak;
-            }).forEach(function (row) {
-              row.cells.forEach(function (cell, index) {
-                maxColumnWidths[index] = Math.max(maxColumnWidths[index], getStringWidth$2(cell));
-              });
-            });
-            parts.push("`", indent$6(concat$11([hardline$8, join$7(hardline$8, table.map(function (row) {
-              return join$7(" | ", row.cells.map(function (cell, index) {
-                return row.hasLineBreak ? cell : cell + " ".repeat(maxColumnWidths[index] - getStringWidth$2(cell));
-              }));
-            }))])), hardline$8, "`");
-            return concat$11(parts);
+          if (_printed2) {
+            return _printed2;
           }
+        }
+
+        var isSimple = isSimpleTemplateLiteral(n);
+
+        if (isSimple) {
+          expressions = expressions.map(function (doc$$2) {
+            return printDocToString$1(doc$$2, Object.assign({}, options, {
+              printWidth: Infinity
+            })).formatted;
+          });
         }
 
         parts.push("`");
@@ -25190,13 +25268,17 @@ function printPathNoParens(path, options, print, args) {
             var tabWidth = options.tabWidth;
             var quasi = childPath.getValue();
             var indentSize = getIndentSize$1(quasi.value.raw, tabWidth);
-            var _printed2 = expressions[i];
+            var _printed3 = expressions[i];
 
-            if (n.expressions[i].comments && n.expressions[i].comments.length || n.expressions[i].type === "MemberExpression" || n.expressions[i].type === "OptionalMemberExpression" || n.expressions[i].type === "ConditionalExpression") {
-              _printed2 = concat$11([indent$6(concat$11([softline$5, _printed2])), softline$5]);
+            if (!isSimple) {
+              // Breaks at the template element boundaries (${ and }) are preferred to breaking
+              // in the middle of a MemberExpression
+              if (n.expressions[i].comments && n.expressions[i].comments.length || n.expressions[i].type === "MemberExpression" || n.expressions[i].type === "OptionalMemberExpression" || n.expressions[i].type === "ConditionalExpression") {
+                _printed3 = concat$11([indent$6(concat$11([softline$5, _printed3])), softline$5]);
+              }
             }
 
-            var aligned = indentSize === 0 && quasi.value.raw.endsWith("\n") ? align$1(-Infinity, _printed2) : addAlignmentToDoc$2(_printed2, indentSize, tabWidth);
+            var aligned = indentSize === 0 && quasi.value.raw.endsWith("\n") ? align$1(-Infinity, _printed3) : addAlignmentToDoc$2(_printed3, indentSize, tabWidth);
             parts.push(group$10(concat$11(["${", aligned, lineSuffixBoundary$1, "}"])));
           }
         }, "quasis");
@@ -25243,8 +25325,7 @@ function printPathNoParens(path, options, print, args) {
     case "TupleTypeAnnotation":
       {
         var typesField = n.type === "TSTupleType" ? "elementTypes" : "types";
-        return group$10(concat$11(["[", indent$6(concat$11([softline$5, printArrayItems(path, options, typesField, print)])), // TypeScript doesn't support trailing commas in tuple types
-        n.type === "TSTupleType" ? "" : ifBreak$6(shouldPrintComma$1(options) ? "," : ""), comments.printDanglingComments(path, options,
+        return group$10(concat$11(["[", indent$6(concat$11([softline$5, printArrayItems(path, options, typesField, print)])), ifBreak$6(shouldPrintComma$1(options, "all") ? "," : ""), comments.printDanglingComments(path, options,
         /* sameIndent */
         true), softline$5, "]"]));
       }
@@ -25412,22 +25493,22 @@ function printPathNoParens(path, options, print, args) {
         var result = [];
         var wasIndented = false;
 
-        for (var _i2 = 0; _i2 < types.length; ++_i2) {
-          if (_i2 === 0) {
-            result.push(types[_i2]);
-          } else if (isObjectType(n.types[_i2 - 1]) && isObjectType(n.types[_i2])) {
+        for (var _i = 0; _i < types.length; ++_i) {
+          if (_i === 0) {
+            result.push(types[_i]);
+          } else if (isObjectType(n.types[_i - 1]) && isObjectType(n.types[_i])) {
             // If both are objects, don't indent
-            result.push(concat$11([" & ", wasIndented ? indent$6(types[_i2]) : types[_i2]]));
-          } else if (!isObjectType(n.types[_i2 - 1]) && !isObjectType(n.types[_i2])) {
+            result.push(concat$11([" & ", wasIndented ? indent$6(types[_i]) : types[_i]]));
+          } else if (!isObjectType(n.types[_i - 1]) && !isObjectType(n.types[_i])) {
             // If no object is involved, go to the next line if it breaks
-            result.push(indent$6(concat$11([" &", line$8, types[_i2]])));
+            result.push(indent$6(concat$11([" &", line$8, types[_i]])));
           } else {
             // If you go from object to non-object or vis-versa, then inline it
-            if (_i2 > 1) {
+            if (_i > 1) {
               wasIndented = true;
             }
 
-            result.push(" & ", _i2 > 1 ? indent$6(types[_i2]) : types[_i2]);
+            result.push(" & ", _i > 1 ? indent$6(types[_i]) : types[_i]);
           }
         }
 
@@ -25456,7 +25537,7 @@ function printPathNoParens(path, options, print, args) {
         // // comment
         // | child2
 
-        var _printed3 = path.map(function (typePath) {
+        var _printed4 = path.map(function (typePath) {
           var printedType = typePath.call(print);
 
           if (!shouldHug) {
@@ -25469,11 +25550,11 @@ function printPathNoParens(path, options, print, args) {
         }, "types");
 
         if (shouldHug) {
-          return join$7(" | ", _printed3);
+          return join$7(" | ", _printed4);
         }
 
         var shouldAddStartLine = shouldIndent && !hasLeadingOwnLineComment(options.originalText, n, options);
-        var code = concat$11([ifBreak$6(concat$11([shouldAddStartLine ? line$8 : "", "| "])), join$7(concat$11([line$8, "| "]), _printed3)]);
+        var code = concat$11([ifBreak$6(concat$11([shouldAddStartLine ? line$8 : "", "| "])), join$7(concat$11([line$8, "| "]), _printed4)]);
         var hasParens;
 
         if (n.type === "TSUnionType") {
@@ -25559,9 +25640,9 @@ function printPathNoParens(path, options, print, args) {
           parts.push("declare ");
         }
 
-        var _printed4 = printAssignmentRight(n.id, n.right, path.call(print, "right"), options);
+        var _printed5 = printAssignmentRight(n.id, n.right, path.call(print, "right"), options);
 
-        parts.push("type ", path.call(print, "id"), path.call(print, "typeParameters"), " =", _printed4, semi);
+        parts.push("type ", path.call(print, "id"), path.call(print, "typeParameters"), " =", _printed5, semi);
         return group$10(concat$11(parts));
       }
 
@@ -25638,6 +25719,15 @@ function printPathNoParens(path, options, print, args) {
 
         if (n["default"]) {
           parts.push(" = ", path.call(print, "default"));
+        } // Keep comma if the file extension is .tsx and
+        // has one type parameter that isn't extend with any types.
+        // Because, otherwise formatted result will be invalid as tsx.
+
+
+        var _grandParent = path.getNode(2);
+
+        if (_parent9.params && _parent9.params.length === 1 && options.filepath && /\.tsx$/i.test(options.filepath) && !n.constraint && _grandParent.type === "ArrowFunctionExpression") {
+          parts.push(",");
         }
 
         return concat$11(parts);
@@ -25852,9 +25942,15 @@ function printPathNoParens(path, options, print, args) {
       return concat$11([n.operator, " ", path.call(print, "typeAnnotation")]);
 
     case "TSMappedType":
-      return group$10(concat$11(["{", indent$6(concat$11([options.bracketSpacing ? line$8 : softline$5, n.readonly ? concat$11([getTypeScriptMappedTypeModifier(n.readonly, "readonly"), " "]) : "", printTypeScriptModifiers(path, options, print), path.call(print, "typeParameter"), n.optional ? getTypeScriptMappedTypeModifier(n.optional, "?") : "", ": ", path.call(print, "typeAnnotation")])), comments.printDanglingComments(path, options,
-      /* sameIndent */
-      true), options.bracketSpacing ? line$8 : softline$5, "}"]));
+      {
+        var _shouldBreak2 = hasNewlineInRange$1(options.originalText, options.locStart(n), options.locEnd(n));
+
+        return group$10(concat$11(["{", indent$6(concat$11([options.bracketSpacing ? line$8 : softline$5, n.readonly ? concat$11([getTypeScriptMappedTypeModifier(n.readonly, "readonly"), " "]) : "", printTypeScriptModifiers(path, options, print), path.call(print, "typeParameter"), n.optional ? getTypeScriptMappedTypeModifier(n.optional, "?") : "", ": ", path.call(print, "typeAnnotation"), _shouldBreak2 && options.semi ? ";" : ""])), comments.printDanglingComments(path, options,
+        /* sameIndent */
+        true), options.bracketSpacing ? line$8 : softline$5, "}"]), {
+          shouldBreak: _shouldBreak2
+        });
+      }
 
     case "TSMethodSignature":
       parts.push(n.accessibility ? concat$11([n.accessibility, " "]) : "", n.export ? "export " : "", n.static ? "static " : "", n.readonly ? "readonly " : "", n.computed ? "[" : "", path.call(print, "key"), n.computed ? "]" : "", printOptionalToken(path), printFunctionParams(path, print, options,
@@ -26132,7 +26228,7 @@ function printPropertyKey(path, options, print) {
 
   if (options.quoteProps === "consistent" && !needsQuoteProps.has(parent)) {
     var objectHasStringProp = (parent.properties || parent.body || parent.members).some(function (prop) {
-      return prop.key && prop.key.type !== "Identifier" && !isStringPropSafeToCoerceToIdentifier(prop, options);
+      return !prop.computed && prop.key && isStringLiteral(prop.key) && !isStringPropSafeToCoerceToIdentifier(prop, options);
     });
     needsQuoteProps.set(parent, objectHasStringProp);
   }
@@ -26147,7 +26243,7 @@ function printPropertyKey(path, options, print) {
     }, "key");
   }
 
-  if (isStringPropSafeToCoerceToIdentifier(node, options) && (options.quoteProps === "as-needed" || options.quoteProps === "consistent" && !needsQuoteProps.get(parent))) {
+  if (!node.computed && isStringPropSafeToCoerceToIdentifier(node, options) && (options.quoteProps === "as-needed" || options.quoteProps === "consistent" && !needsQuoteProps.get(parent))) {
     // 'a' -> a
     return path.call(function (keyPath) {
       return comments.printComments(keyPath, function () {
@@ -26202,7 +26298,18 @@ function printMethod(path, options, print) {
 }
 
 function couldGroupArg(arg) {
-  return arg.type === "ObjectExpression" && (arg.properties.length > 0 || arg.comments) || arg.type === "ArrayExpression" && (arg.elements.length > 0 || arg.comments) || arg.type === "TSTypeAssertion" || arg.type === "TSAsExpression" || arg.type === "FunctionExpression" || arg.type === "ArrowFunctionExpression" && !arg.returnType && (arg.body.type === "BlockStatement" || arg.body.type === "ArrowFunctionExpression" || arg.body.type === "ObjectExpression" || arg.body.type === "ArrayExpression" || arg.body.type === "CallExpression" || arg.body.type === "OptionalCallExpression" || arg.body.type === "ConditionalExpression" || isJSXNode(arg.body));
+  return arg.type === "ObjectExpression" && (arg.properties.length > 0 || arg.comments) || arg.type === "ArrayExpression" && (arg.elements.length > 0 || arg.comments) || arg.type === "TSTypeAssertion" || arg.type === "TSAsExpression" || arg.type === "FunctionExpression" || arg.type === "ArrowFunctionExpression" && ( // we want to avoid breaking inside composite return types but not simple keywords
+  // https://github.com/prettier/prettier/issues/4070
+  // export class Thing implements OtherThing {
+  //   do: (type: Type) => Provider<Prop> = memoize(
+  //     (type: ObjectType): Provider<Opts> => {}
+  //   );
+  // }
+  // https://github.com/prettier/prettier/issues/6099
+  // app.get("/", (req, res): void => {
+  //   res.send("Hello World!");
+  // });
+  !arg.returnType || !arg.returnType.typeAnnotation || arg.returnType.typeAnnotation.type !== "TSTypeReference") && (arg.body.type === "BlockStatement" || arg.body.type === "ArrowFunctionExpression" || arg.body.type === "ObjectExpression" || arg.body.type === "ArrayExpression" || arg.body.type === "CallExpression" || arg.body.type === "OptionalCallExpression" || arg.body.type === "ConditionalExpression" || isJSXNode(arg.body));
 }
 
 function shouldGroupLastArg(args) {
@@ -26226,6 +26333,129 @@ function shouldGroupFirstArg(args) {
 function isSimpleFlowType(node) {
   var flowTypeAnnotations = ["AnyTypeAnnotation", "NullLiteralTypeAnnotation", "GenericTypeAnnotation", "ThisTypeAnnotation", "NumberTypeAnnotation", "VoidTypeAnnotation", "EmptyTypeAnnotation", "MixedTypeAnnotation", "BooleanTypeAnnotation", "BooleanLiteralTypeAnnotation", "StringTypeAnnotation"];
   return node && flowTypeAnnotations.indexOf(node.type) !== -1 && !(node.type === "GenericTypeAnnotation" && node.typeParameters);
+}
+
+function isJestEachTemplateLiteral(node, parentNode) {
+  /**
+   * describe.each`table`(name, fn)
+   * describe.only.each`table`(name, fn)
+   * describe.skip.each`table`(name, fn)
+   * test.each`table`(name, fn)
+   * test.only.each`table`(name, fn)
+   * test.skip.each`table`(name, fn)
+   *
+   * Ref: https://github.com/facebook/jest/pull/6102
+   */
+  var jestEachTriggerRegex = /^[xf]?(describe|it|test)$/;
+  return parentNode.type === "TaggedTemplateExpression" && parentNode.quasi === node && parentNode.tag.type === "MemberExpression" && parentNode.tag.property.type === "Identifier" && parentNode.tag.property.name === "each" && (parentNode.tag.object.type === "Identifier" && jestEachTriggerRegex.test(parentNode.tag.object.name) || parentNode.tag.object.type === "MemberExpression" && parentNode.tag.object.property.type === "Identifier" && (parentNode.tag.object.property.name === "only" || parentNode.tag.object.property.name === "skip") && parentNode.tag.object.object.type === "Identifier" && jestEachTriggerRegex.test(parentNode.tag.object.object.name));
+}
+
+function printJestEachTemplateLiteral(node, expressions, options) {
+  /**
+   * a    | b    | expected
+   * ${1} | ${1} | ${2}
+   * ${1} | ${2} | ${3}
+   * ${2} | ${1} | ${3}
+   */
+  var headerNames = node.quasis[0].value.raw.trim().split(/\s*\|\s*/);
+
+  if (headerNames.length > 1 || headerNames.some(function (headerName) {
+    return headerName.length !== 0;
+  })) {
+    var parts = [];
+    var stringifiedExpressions = expressions.map(function (doc$$2) {
+      return "${" + printDocToString$1(doc$$2, Object.assign({}, options, {
+        printWidth: Infinity,
+        endOfLine: "lf"
+      })).formatted + "}";
+    });
+    var tableBody = [{
+      hasLineBreak: false,
+      cells: []
+    }];
+
+    for (var i = 1; i < node.quasis.length; i++) {
+      var row = tableBody[tableBody.length - 1];
+      var correspondingExpression = stringifiedExpressions[i - 1];
+      row.cells.push(correspondingExpression);
+
+      if (correspondingExpression.indexOf("\n") !== -1) {
+        row.hasLineBreak = true;
+      }
+
+      if (node.quasis[i].value.raw.indexOf("\n") !== -1) {
+        tableBody.push({
+          hasLineBreak: false,
+          cells: []
+        });
+      }
+    }
+
+    var maxColumnCount = tableBody.reduce(function (maxColumnCount, row) {
+      return Math.max(maxColumnCount, row.cells.length);
+    }, headerNames.length);
+    var maxColumnWidths = Array.from(new Array(maxColumnCount), function () {
+      return 0;
+    });
+    var table = [{
+      cells: headerNames
+    }].concat(tableBody.filter(function (row) {
+      return row.cells.length !== 0;
+    }));
+    table.filter(function (row) {
+      return !row.hasLineBreak;
+    }).forEach(function (row) {
+      row.cells.forEach(function (cell, index) {
+        maxColumnWidths[index] = Math.max(maxColumnWidths[index], getStringWidth$2(cell));
+      });
+    });
+    parts.push("`", indent$6(concat$11([hardline$8, join$7(hardline$8, table.map(function (row) {
+      return join$7(" | ", row.cells.map(function (cell, index) {
+        return row.hasLineBreak ? cell : cell + " ".repeat(maxColumnWidths[index] - getStringWidth$2(cell));
+      }));
+    }))])), hardline$8, "`");
+    return concat$11(parts);
+  }
+}
+
+
+function isSimpleTemplateLiteral(node) {
+  if (node.expressions.length === 0) {
+    return false;
+  }
+
+  return node.expressions.every(function (expr) {
+    // Disallow comments since printDocToString can't print them here
+    if (expr.comments) {
+      return false;
+    } // Allow `x` and `this`
+
+
+    if (expr.type === "Identifier" || expr.type === "ThisExpression") {
+      return true;
+    } // Allow `a.b.c`, `a.b[c]`, and `this.x.y`
+
+
+    if ((expr.type === "MemberExpression" || expr.type === "OptionalMemberExpression") && (expr.property.type === "Identifier" || expr.property.type === "Literal")) {
+      var ancestor = expr;
+
+      while (ancestor.type === "MemberExpression" || ancestor.type === "OptionalMemberExpression") {
+        ancestor = ancestor.object;
+
+        if (ancestor.comments) {
+          return false;
+        }
+      }
+
+      if (ancestor.type === "Identifier" || ancestor.type === "ThisExpression") {
+        return true;
+      }
+
+      return false;
+    }
+
+    return false;
+  });
 }
 
 var functionCompositionFunctionNames = new Set(["pipe", // RxJS, Ramda
@@ -27363,11 +27593,10 @@ function printJSXChildren(path, options, print, jsxWhitespace, isFacebookTransla
 
 
 function printJSXElement(path, options, print) {
-  var n = path.getValue(); // Turn <div></div> into <div />
+  var n = path.getValue();
 
   if (n.type === "JSXElement" && isEmptyJSXElement(n)) {
-    n.openingElement.selfClosing = true;
-    return path.call(print, "openingElement");
+    return concat$11([path.call(print, "openingElement"), path.call(print, "closingElement")]);
   }
 
   var openingLines = n.type === "JSXElement" ? path.call(print, "openingElement") : path.call(print, "openingFragment");
@@ -27609,7 +27838,7 @@ function printAssignmentRight(leftNode, rightNode, printedRight, options) {
   }
 
   var canBreak = isBinaryish(rightNode) && !shouldInlineLogicalExpression(rightNode) || rightNode.type === "ConditionalExpression" && isBinaryish(rightNode.test) && !shouldInlineLogicalExpression(rightNode.test) || rightNode.type === "StringLiteralTypeAnnotation" || rightNode.type === "ClassExpression" && rightNode.decorators && rightNode.decorators.length || (leftNode.type === "Identifier" || isStringLiteral(leftNode) || leftNode.type === "MemberExpression") && (isStringLiteral(rightNode) || isMemberExpressionChain(rightNode)) && // do not put values on a separate line from the key in json
-  options.parser !== "json" && options.parser !== "json5";
+  options.parser !== "json" && options.parser !== "json5" || rightNode.type === "SequenceExpression";
 
   if (canBreak) {
     return group$10(indent$6(concat$11([line$8, printedRight])));
@@ -27687,58 +27916,10 @@ function hasLeadingOwnLineComment(text, node, options) {
   return res;
 }
 
-function hasNakedLeftSide(node) {
-  return node.type === "AssignmentExpression" || node.type === "BinaryExpression" || node.type === "LogicalExpression" || node.type === "NGPipeExpression" || node.type === "ConditionalExpression" || node.type === "CallExpression" || node.type === "OptionalCallExpression" || node.type === "MemberExpression" || node.type === "OptionalMemberExpression" || node.type === "SequenceExpression" || node.type === "TaggedTemplateExpression" || node.type === "BindExpression" || node.type === "UpdateExpression" && !node.prefix || node.type === "TSNonNullExpression";
-}
-
 function isFlowAnnotationComment(text, typeAnnotation, options) {
   var start = options.locStart(typeAnnotation);
   var end = skipWhitespace$1(text, options.locEnd(typeAnnotation));
   return text.substr(start, 2) === "/*" && text.substr(end, 2) === "*/";
-}
-
-function getLeftSide(node) {
-  if (node.expressions) {
-    return node.expressions[0];
-  }
-
-  return node.left || node.test || node.callee || node.object || node.tag || node.argument || node.expression;
-}
-
-function getLeftSidePathName(path, node) {
-  if (node.expressions) {
-    return ["expressions", 0];
-  }
-
-  if (node.left) {
-    return ["left"];
-  }
-
-  if (node.test) {
-    return ["test"];
-  }
-
-  if (node.object) {
-    return ["object"];
-  }
-
-  if (node.callee) {
-    return ["callee"];
-  }
-
-  if (node.tag) {
-    return ["tag"];
-  }
-
-  if (node.argument) {
-    return ["argument"];
-  }
-
-  if (node.expression) {
-    return ["expression"];
-  }
-
-  throw new Error("Unexpected node has no left side", node);
 }
 
 function exprNeedsASIProtection(path, options) {
@@ -27983,7 +28164,7 @@ function isLiteral(node) {
 }
 
 function isStringPropSafeToCoerceToIdentifier(node, options) {
-  return isStringLiteral(node.key) && isIdentifierName(node.key.value) && !node.computed && options.parser !== "json" && !(options.parser === "typescript" && node.type === "ClassProperty");
+  return isStringLiteral(node.key) && isIdentifierName(node.key.value) && options.parser !== "json" && !(options.parser === "typescript" && node.type === "ClassProperty");
 }
 
 function isNumericLiteral(node) {
@@ -28069,7 +28250,9 @@ function isTheOnlyJSXElementInMarkdown(options, path) {
   return parent.type === "Program" && parent.body.length == 1;
 }
 
-function willPrintOwnComments(path) {
+function willPrintOwnComments(path
+/*, options */
+) {
   var node = path.getValue();
   var parent = path.getParentNode();
   return (node && (isJSXNode(node) || hasFlowShorthandAnnotationComment(node) || parent && parent.type === "CallExpression" && (hasFlowAnnotationComment(node.leadingComments) || hasFlowAnnotationComment(node.trailingComments))) || parent && (parent.type === "JSXSpreadAttribute" || parent.type === "JSXSpreadChild" || parent.type === "UnionTypeAnnotation" || parent.type === "TSUnionType" || (parent.type === "ClassDeclaration" || parent.type === "ClassExpression") && parent.superClass === node)) && !hasIgnoreComment$3(path);
@@ -29267,9 +29450,9 @@ function genericPrint$5(path, options, print) {
 
     case "inlineCode":
       {
-        var backtickCount = util.getMaxContinuousCount(node.value, "`");
+        var backtickCount = util.getMinNotPresentContinuousCount(node.value, "`");
 
-        var _style = backtickCount === 1 ? "``" : "`";
+        var _style = "`".repeat(backtickCount || 1);
 
         var gap = backtickCount ? " " : "";
         return concat$15([_style, gap, node.value, gap, _style]);

@@ -36,11 +36,9 @@ export class Logger {
       level: level,
       levelName: getLevelName(level)
     };
-    this.handlers.forEach(
-      (handler): void => {
-        handler.handle(record);
-      }
-    );
+    this.handlers.forEach((handler): void => {
+      handler.handle(record);
+    });
   }
 
   debug(msg: string, ...args: unknown[]): void {

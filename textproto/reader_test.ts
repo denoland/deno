@@ -114,11 +114,9 @@ test({
     assertEquals(m.get("SID"), "0");
     assertEquals(m.get("Privilege"), "127");
     // Not a legal http header
-    assertThrows(
-      (): void => {
-        assertEquals(m.get("Audio Mode"), "None");
-      }
-    );
+    assertThrows((): void => {
+      assertEquals(m.get("Audio Mode"), "None");
+    });
   }
 });
 
