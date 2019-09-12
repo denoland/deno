@@ -3,8 +3,8 @@ name = "hyper_hello"
 version = "0.0.1"
 
 [dependencies]
-hyper = "0.12.33"
-ring = "0.16.8"
+hyper = "0.12.34"
+ring = "0.16.9"
 
 [[bin]]
 name = "hyper_hello"
