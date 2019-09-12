@@ -1,5 +1,5 @@
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import("//third_party/v8/gni/v8.gni")
+import("//v8/gni/v8.gni")
 
 group("default") {
   testonly = true
@@ -11,8 +11,8 @@ group("default") {
 }
 
 config("deno_config") {
-  include_dirs = [ "//third_party/v8" ]  # This allows us to v8/src/base/ libraries.
-  configs = [ "//third_party/v8:external_config" ]
+  include_dirs = [ "//v8" ]  # This allows us to v8/src/base/ libraries.
+  configs = [ "//v8:external_config" ]
   cflags = []
 
   if (is_debug) {
@@ -39,10 +39,10 @@ config("deno_config") {
 
 v8_source_set("v8") {
   deps = [
-    "//third_party/v8:v8",
-    "//third_party/v8:v8_libbase",
-    "//third_party/v8:v8_libplatform",
-    "//third_party/v8:v8_libsampler",
+    "//v8:v8",
+    "//v8:v8_libbase",
+    "//v8:v8_libplatform",
+    "//v8:v8_libsampler",
   ]
   configs = [ ":deno_config" ]
 }

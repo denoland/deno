@@ -14,8 +14,8 @@
 #include <windows.h>
 #endif  // _WIN32
 
-#include "third_party/v8/include/v8.h"
-#include "third_party/v8/src/base/logging.h"
+#include "v8/include/v8.h"
+#include "v8/src/base/logging.h"
 
 #include "deno.h"
 #include "exceptions.h"

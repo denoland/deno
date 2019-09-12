@@ -7,10 +7,9 @@ import re
 import site
 import sys
 from tempfile import mkdtemp
-from util import add_env_path, executable_suffix, make_env, rmtree, root_path
-from util import run, third_party_path
+from util import add_env_path, executable_suffix, libdeno_path, make_env, rmtree
+from util import root_path, run, third_party_path
 
-chromium_build_path = os.path.join(root_path, "build")
 depot_tools_path = os.path.join(third_party_path, "depot_tools")
 prebuilt_path = os.path.join(root_path, "prebuilt")
 python_packages_path = os.path.join(third_party_path, "python_packages")
@@ -32,7 +31,8 @@ def python_env(env=None, merge_env=None):
         python_site_env = {}
         temp = os.environ["PATH"], sys.path
         os.environ["PATH"], sys.path = "", []
-        site.addsitedir(chromium_build_path)  # Modifies PATH and sys.path.
+        site.addsitedir(os.path.join(libdeno_path,
+                                     "build"))  # Modifies PATH and sys.path.
         site.addsitedir(python_packages_path)  # Modifies PATH and sys.path.
         python_site_env = {"PATH": os.environ["PATH"], "PYTHONPATH": sys.path}
         os.environ["PATH"], sys.path = temp
@@ -181,6 +181,11 @@ def get_prebuilt_tool_path(tool):
                         tool + executable_suffix)
 
 
+def get_buildtools_tool_path(tool):
+    return os.path.join(libdeno_path, "buildtools", get_platform_dir_name(),
+                        tool + executable_suffix)
+
+
 # Download the given item from Google storage.
 def download_from_google_storage(item, bucket, base_dir):
     download_script = os.path.join(depot_tools_path,
@@ -202,7 +207,7 @@ def download_from_google_storage(item, bucket, base_dir):
 # Download the given item from Chrome Infrastructure Package Deployment.
 def download_from_cipd(item, version):
     cipd_exe = os.path.join(depot_tools_path, "cipd")
-    download_dir = os.path.join(third_party_path, "v8", "buildtools",
+    download_dir = os.path.join(libdeno_path, "buildtools",
                                 get_platform_dir_name())
 
     if sys.platform == "win32":
@@ -239,9 +244,8 @@ def download_gn():
 
 # Download clang-format from Google storage.
 def download_clang_format():
-    download_from_google_storage(
-        "clang-format", "chromium-clang-format",
-        os.path.join(third_party_path, "v8", "buildtools"))
+    download_from_google_storage("clang-format", "chromium-clang-format",
+                                 os.path.join(libdeno_path, "buildtools"))
 
 
 def download_sccache():
@@ -254,13 +258,13 @@ def download_hyperfine():
 
 # Download clang by calling the clang update script.
 def download_clang():
-    update_script = os.path.join(third_party_path, "v8", "tools", "clang",
+    update_script = os.path.join(libdeno_path, "v8", "tools", "clang",
                                  "scripts", "update.py")
     run([sys.executable, update_script], env=google_env())
 
 
 def maybe_download_sysroot():
     if sys.platform.startswith("linux"):
-        install_script = os.path.join(chromium_build_path, "linux",
+        install_script = os.path.join(libdeno_path, "build", "linux",
                                       "sysroot_scripts", "install-sysroot.py")
         run([sys.executable, install_script, "--arch=amd64"], env=google_env())

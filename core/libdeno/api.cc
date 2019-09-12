@@ -5,9 +5,9 @@
 #include <iostream>
 #include <string>
 
-#include "third_party/v8/include/libplatform/libplatform.h"
-#include "third_party/v8/include/v8.h"
-#include "third_party/v8/src/base/logging.h"
+#include "v8/include/libplatform/libplatform.h"
+#include "v8/include/v8.h"
+#include "v8/src/base/logging.h"
 
 #include "deno.h"
 #include "exceptions.h"

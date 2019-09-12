@@ -20,6 +20,7 @@ else:
 executable_suffix = ".exe" if os.name == "nt" else ""
 
 root_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+libdeno_path = os.path.join(root_path, "core", "libdeno")
 tests_path = os.path.join(root_path, "tests")
 third_party_path = os.path.join(root_path, "third_party")
 
