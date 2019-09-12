@@ -678,7 +678,7 @@ fn parse_script_args(
 }
 
 /// Used for `deno fmt <files>...` subcommand
-const PRETTIER_URL: &str = "https://deno.land/std@v0.11/prettier/main.ts";
+const PRETTIER_URL: &str = "https://deno.land/std@06958a4/prettier/main.ts";
 /// Used for `deno install...` subcommand
 const INSTALLER_URL: &str = "https://deno.land/std@v0.11/installer/mod.ts";
 /// Used for `deno test...` subcommand
