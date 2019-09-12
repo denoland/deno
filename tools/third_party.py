@@ -10,7 +10,7 @@ from tempfile import mkdtemp
 from util import add_env_path, executable_suffix, make_env, rmtree, root_path
 from util import run, third_party_path
 
-chromium_build_path = os.path.join(root_path, "build")
+chromium_build_path = os.path.join(root_path, "core", "libdeno", "build")
 depot_tools_path = os.path.join(third_party_path, "depot_tools")
 prebuilt_path = os.path.join(root_path, "prebuilt")
 python_packages_path = os.path.join(third_party_path, "python_packages")
