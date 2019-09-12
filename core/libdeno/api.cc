@@ -152,7 +152,6 @@ void deno_execute(Deno* d_, void* user_data, const char* js_filename,
   auto context = d->context_.Get(d->isolate_);
   CHECK(!context.IsEmpty());
   deno::Execute(context, js_filename, js_source);
-  isolate->RunMicrotasks();
 }
 
 void deno_pinned_buf_delete(deno_pinned_buf* buf) {
@@ -174,7 +173,6 @@ void deno_respond(Deno* d_, void* user_data, deno_op_id op_id, deno_buf buf) {
   }
 
   // Asynchronous response.
-  v8::Locker locker(d->isolate_);
   deno::UserDataScope user_data_scope(d, user_data);
   v8::Isolate::Scope isolate_scope(d->isolate_);
   v8::HandleScope handle_scope(d->isolate_);
@@ -200,7 +198,6 @@ void deno_respond(Deno* d_, void* user_data, deno_op_id op_id, deno_buf buf) {
   }
 
   auto v = recv_->Call(context, context->Global(), argc, args);
-  d->isolate_->RunMicrotasks();
 
   if (try_catch.HasCaught()) {
     CHECK(v.IsEmpty());

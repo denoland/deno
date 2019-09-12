@@ -583,7 +583,6 @@ v8::MaybeLocal<v8::Promise> HostImportModuleDynamicallyCallback(
 
 void DenoIsolate::AddIsolate(v8::Isolate* isolate) {
   isolate_ = isolate;
-  isolate_->SetMicrotasksPolicy(v8::MicrotasksPolicy::kExplicit);
   isolate_->SetCaptureStackTraceForUncaughtExceptions(
       true, 10, v8::StackTrace::kDetailed);
   isolate_->SetPromiseRejectCallback(deno::PromiseRejectCallback);
