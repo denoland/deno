@@ -152,13 +152,15 @@ install:
   - cargo --version
 
 before_build:
+  # setup.py downloads sccache if necessary.
+  - python tools\setup.py
+
   # Start sccache, then throw away the S3 access key.
   - ps: |-
-      sccache --start-server
+      prebuilt\win\sccache --start-server
       $env:AWS_SECRET_ACCESS_KEY = $null
 
 build_script:
-  - python tools\setup.py
   - cargo clippy --all-targets --release --locked -- -D clippy::all
   - cargo build -vv --release --all-targets --locked
 
@@ -169,7 +171,7 @@ test_script:
 
 after_test:
   # Stop sccache and show stats.
-  - ps: sccache --stop-server
+  - prebuilt\win\sccache --stop-server
 
   # If this build is going to be deployed, build a zip file.
   - ps: |-
