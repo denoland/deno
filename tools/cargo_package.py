@@ -30,7 +30,7 @@ elif sys.platform == "win32":
 else:
     assert (False)
 
-lib_name = os.path.join(root_path, "target/release/obj/core/libdeno",
+lib_name = os.path.join(root_path, "target", "release", "obj",
                         "libdeno" + static_lib_suffix)
 
 
