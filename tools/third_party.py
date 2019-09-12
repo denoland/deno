@@ -21,7 +21,7 @@ def tp(*subpath_parts):
     return root("third_party", *subpath_parts)
 
 
-build_path = root("build")
+build_path = root("core/libdeno/build")
 
 third_party_path = tp()
 depot_tools_path = tp("depot_tools")
@@ -262,7 +262,7 @@ def maybe_download_sysroot():
         run([
             'python',
             os.path.join(root_path,
-                         'build/linux/sysroot_scripts/install-sysroot.py'),
+                         'core/libdeno/build/linux/sysroot_scripts/install-sysroot.py'),
             '--arch=amd64'
         ],
             env=google_env())

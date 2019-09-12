@@ -51,14 +51,17 @@ def write_if_not_exists(filename, contents):
 
 def write_lastchange():
     write_if_not_exists(
-        "build/util/LASTCHANGE",
+        "core/libdeno/build/util/LASTCHANGE",
         "LASTCHANGE=c42e4ddbb7973bfb0c57a49ab6bf6dc432baad7e-\n")
-    write_if_not_exists("build/util/LASTCHANGE.committime", "1535518087")
+    write_if_not_exists(
+        "core/libdeno/build/util/LASTCHANGE.committime",
+        "1535518087")
     # TODO Properly we should call the following script, but it seems to cause
     # a rebuild on every commit.
     # run([
     #    sys.executable, "build/util/lastchange.py", "-o",
-    #    "build/util/LASTCHANGE", "--source-dir", root_path, "--filter="
+    #    "core/libdeno/build/util/LASTCHANGE", "--source-dir", root_path,
+    #    "--filter="
     # ])
 
 
@@ -170,6 +173,7 @@ def gn_gen(mode):
         print "  " + line
 
     run([third_party.gn_path, "gen", build_path()],
+        cwd=os.path.join(root_path, "core/libdeno"),
         env=third_party.google_env())
 
 
