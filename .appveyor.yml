@@ -102,12 +102,6 @@ install:
         Exec -NoNewLines { & git submodule update --init --force --depth 1 }
       }
 
-  # Configure depot_tools and add it to the search path. This is necessary
-  # because, later in this script, we need to invoke ninja directly.
-  - ps: |-
-      $env:PATH = "$env:DENO_THIRD_PARTY_PATH\depot_tools;$env:PATH"
-      $env:DEPOT_TOOLS_WIN_TOOLCHAIN = "0"
-
   # Install a recent Node.js version.
   # TODO(ry) Upgrade to v12 once Install-Produce supports it.
   - ps: Install-Product -Product node -Version 10 -Platform x64
