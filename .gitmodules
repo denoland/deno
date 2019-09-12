@@ -2,7 +2,7 @@
 	path = third_party
 	url = https://github.com/denoland/deno_third_party.git
 [submodule "build"]
-	path = build
+	path = core/libdeno/build
 	url = https://github.com/denoland/chromium_build.git
 [submodule "js/deps/https/deno.land/x/std"]
 	path = js/deps/https/deno.land/std
