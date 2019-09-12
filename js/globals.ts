@@ -99,6 +99,8 @@ window.crypto = (csprng as unknown) as Crypto;
 window.Blob = blob.DenoBlob;
 export type Blob = blob.DenoBlob;
 
+export type Body = domTypes.Body;
+
 window.File = domFile.DenoFile as domTypes.DomFileConstructor;
 export type File = domTypes.DomFile;
 

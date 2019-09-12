@@ -5,7 +5,7 @@ use std::fmt;
 use std::ops::Deref;
 
 // The Send and Sync traits are required because deno is multithreaded and we
-// need to beable to handle errors across threads.
+// need to be able to handle errors across threads.
 pub trait AnyError: Any + Error + Send + Sync + 'static {}
 impl<T> AnyError for T where T: Any + Error + Send + Sync + Sized + 'static {}
 

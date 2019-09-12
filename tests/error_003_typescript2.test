@@ -1,8 +1,0 @@
-# Supposing that we've already attempted to run error_003_typescript.ts
-# we want to make sure that JS wasn't emitted. Running again without reload flag
-# should result in the same output.
-# https://github.com/denoland/deno/issues/2436
-args: run tests/error_003_typescript.ts
-check_stderr: true
-exit_code: 1
-output: tests/error_003_typescript.ts.out

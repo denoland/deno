@@ -5,6 +5,7 @@
 import os
 import sys
 from util import enable_ansi_colors, find_exts, root_path, run
+from third_party import python_env
 
 enable_ansi_colors()
 
@@ -24,5 +25,8 @@ run([
     "./core/**/*.{ts,js}", "./tests/**/*.{ts,js}"
 ])
 
-run([sys.executable, "third_party/depot_tools/pylint.py"] +
-    find_exts(["tools", "build_extra"], [".py"], skip=["tools/clang"]))
+run([
+    sys.executable, "third_party/python_packages/pylint",
+    "--rcfile=third_party/depot_tools/pylintrc"
+] + find_exts(["tools", "build_extra"], [".py"], skip=["tools/clang"]),
+    env=python_env())

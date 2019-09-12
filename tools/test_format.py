@@ -2,9 +2,8 @@
 # This program fails if ./tools/format.py changes any files.
 
 import sys
-import util
-import sys
 import subprocess
+import util
 
 
 def main():

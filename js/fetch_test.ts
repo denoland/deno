@@ -4,8 +4,21 @@ import {
   testPerm,
   assert,
   assertEquals,
+  assertStrContains,
   assertThrows
 } from "./test_util.ts";
+
+testPerm({ net: true }, async function fetchConnectionError(): Promise<void> {
+  let err;
+  try {
+    await fetch("http://localhost:4000");
+  } catch (err_) {
+    err = err_;
+  }
+  assertEquals(err.kind, Deno.ErrorKind.HttpOther);
+  assertEquals(err.name, "HttpOther");
+  assertStrContains(err.message, "error trying to connect");
+});
 
 testPerm({ net: true }, async function fetchJsonSuccess(): Promise<void> {
   const response = await fetch("http://localhost:4545/package.json");
@@ -218,6 +231,16 @@ testPerm({ net: true }, async function fetchInitBlobBody(): Promise<void> {
   const text = await response.text();
   assertEquals(text, data);
   assert(response.headers.get("content-type").startsWith("text/javascript"));
+});
+
+testPerm({ net: true }, async function fetchUserAgent(): Promise<void> {
+  const data = "Hello World";
+  const response = await fetch("http://localhost:4545/echo_server", {
+    method: "POST",
+    body: new TextEncoder().encode(data)
+  });
+  assertEquals(response.headers.get("user-agent"), `Deno/${Deno.version.deno}`);
+  await response.text();
 });
 
 // TODO(ry) The following tests work but are flaky. There's a race condition

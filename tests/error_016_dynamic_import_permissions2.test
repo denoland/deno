@@ -1,5 +1,0 @@
-# We have an allow-net flag but not allow-read, it should still result in error.
-args: --no-prompt --reload --allow-net tests/error_016_dynamic_import_permissions2.js
-output: tests/error_016_dynamic_import_permissions2.out
-check_stderr: true
-exit_code: 1

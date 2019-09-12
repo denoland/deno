@@ -152,6 +152,10 @@ test(function urlRelativeWithBase(): void {
   assertEquals(new URL("../b", "file:///a/a/a").href, "file:///a/b");
 });
 
+test(function emptyBasePath(): void {
+  assertEquals(new URL("", "http://example.com").href, "http://example.com/");
+});
+
 test(function deletingAllParamsRemovesQuestionMarkFromURL(): void {
   const url = new URL("http://example.com/?param1&param2");
   url.searchParams.delete("param1");

@@ -18,6 +18,9 @@ extern crate serde;
 extern crate serde_derive;
 extern crate url;
 
+#[cfg(test)]
+mod integration_tests;
+
 mod ansi;
 mod assets;
 pub mod compilers;

@@ -1,7 +1,7 @@
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 solutions = [{
     'url':
-    'https://chromium.googlesource.com/v8/v8.git@7.7.200',
+    'https://chromium.googlesource.com/v8/v8.git@7.9.8',
     'name': 'v8',
     'deps_file': 'DEPS',
     'custom_deps': {
@@ -24,7 +24,7 @@ solutions = [{
     }
 }, {
     'url':
-    'https://chromium.googlesource.com/chromium/tools/depot_tools@40bacee96a94600ad2179d69a8025469d119960f',
+    'https://chromium.googlesource.com/chromium/tools/depot_tools@efce0d1b7657c440c90f0f4bce614b96672b9e0b',
     'name':
     'depot_tools'
 }, {

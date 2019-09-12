@@ -7,7 +7,6 @@ clone_folder: C:\deno
 clone_depth: 1
 
 environment:
-  SCCACHE_IDLE_TIMEOUT: 0
   APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2017
   DENO_BUILD_MODE: release
   DENO_BUILD_PATH: $(APPVEYOR_BUILD_FOLDER)\target\release
@@ -18,13 +17,11 @@ environment:
   CARGO_HOME: $(RUST_DIR)\cargo
   RUSTUP_HOME: $(RUST_DIR)\rustup
   RUST_BACKTRACE: full
-  RUSTC_WRAPPER: sccache
-  PYTHONPATH: third_party\python_packages
+  SCCACHE_IDLE_TIMEOUT: 0
   SCCACHE_BUCKET: deno-sccache
   AWS_ACCESS_KEY_ID: AKIAIVRN52PLDBP55LBQ
   AWS_SECRET_ACCESS_KEY:
     secure: 8ybpi/y5qE2baChsCBhNHmykng3FitELAtTYOiqZd0mw38i88dzdAX8ETNtBogMV
-
 
   # Appveyor uses 7zip to pack cache directories. We use these options:
   #   -t7z  : Use '7z' format.
@@ -45,19 +42,6 @@ environment:
         if ($LastExitCode -ne 0) { throw "Failure. Exit code: $LastExitCode" }
       }
 
-      # Get-Tree lists all objects in a tree. It's different from Get-ChildItem
-      # in that the latter recurses through symlinks, which is problematic.
-      function Get-Tree([string[]] $Path, [switch] $Recurse, [switch] $Force) {
-        function Get-SubDirs([string[]] $Path) {
-          Get-ChildItem $Path -Force:$Force `
-                        -Attributes Directory+!ReparsePoint |
-            foreach { $_.FullName }                         |
-            foreach { $_; Get-SubDirs $_ }
-        }
-        if ($Recurse) { $Path += Get-SubDirs $Path }
-        Get-ChildItem $Path -Force:$Force @args
-      }
-
       # `Delete-Tree` is a simple wrapper around Remove-Item. It doesn't set
       # an error status if one of the paths to be deleted doesn't exist.
       function Delete-Tree([string[]] $Path) {
@@ -72,12 +56,6 @@ environment:
         }
       }
 
-      # Get-SaveCache returns $true if the cache will be saved at the end.
-      function Get-SaveCache {
-        -not $env:APPVEYOR_PULL_REQUEST_NUMBER -and
-        -not ($env:APPVEYOR_CACHE_SKIP_SAVE -eq "true")
-      }
-
 for:
   # Do no save the build cache for feature branches. TODO: Once we have multiple
   # permanent branches, use a build matrix so each branch has it's own cache.
@@ -88,8 +66,8 @@ for:
       APPVEYOR_CACHE_SKIP_SAVE: true
 
 cache:
-  # Rust stuff.
   - $(RUST_DIR)
+  - $(APPVEYOR_BUILD_FOLDER)\target\release\
   - $(APPVEYOR_BUILD_FOLDER)\prebuilt\win\
 
 init:
@@ -100,7 +78,7 @@ init:
   # TODO: remove when Appveyor upgrades to version 2.19.2.windows.1 or higher.
   - ps: |-
       $git_setup_uri = "https://github.com/git-for-windows/git/releases/" +
-                       "download/v2.21.0.windows.1/Git-2.21.0-64-bit.exe"
+                       "download/v2.23.0.windows.1/Git-2.23.0-64-bit.exe"
       Invoke-WebRequest -Uri $git_setup_uri -OutFile "$env:TEMP\git-setup.exe"
       Start-Process -FilePath "$env:TEMP\git-setup.exe" `
                     -ArgumentList "/verysilent"         `
@@ -123,12 +101,6 @@ install:
         Delete-Tree $env:DENO_THIRD_PARTY_PATH
         Exec -NoNewLines { & git submodule update --init --force --depth 1 }
       }
-
-  # Configure depot_tools and add it to the search path. This is necessary
-  # because, later in this script, we need to invoke ninja directly.
-  - ps: |-
-      $env:PATH = "$env:DENO_THIRD_PARTY_PATH\depot_tools;$env:PATH"
-      $env:DEPOT_TOOLS_WIN_TOOLCHAIN = "0"
 
   # Install a recent Node.js version.
   # TODO(ry) Upgrade to v12 once Install-Produce supports it.
@@ -180,9 +152,12 @@ install:
   - cargo --version
 
 before_build:
+  # setup.py downloads sccache if necessary.
+  - python tools\setup.py
+
   # Start sccache, then throw away the S3 access key.
   - ps: |-
-      sccache --start-server
+      prebuilt\win\sccache --start-server
       $env:AWS_SECRET_ACCESS_KEY = $null
 
 build_script:
@@ -192,11 +167,11 @@ build_script:
 test_script:
   - python tools\lint.py
   - python tools\test_format.py
-  - ps: Exec { & python tools\test.py --build-dir $env:DENO_BUILD_PATH }
+  - python tools\test.py
 
 after_test:
   # Stop sccache and show stats.
-  - ps: sccache --stop-server
+  - prebuilt\win\sccache --stop-server
 
   # If this build is going to be deployed, build a zip file.
   - ps: |-

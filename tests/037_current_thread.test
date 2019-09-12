@@ -1,2 +1,0 @@
-args: run --current-thread --reload tests/034_onload/main.ts
-output: tests/034_onload.out

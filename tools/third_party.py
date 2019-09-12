@@ -3,11 +3,12 @@
 # This script contains helper functions to work with the third_party subrepo.
 
 import os
+from os import path
+import re
 import site
 import sys
-from os import path
-from util import add_env_path, find_exts, make_env, rmtree, root_path, run
 from tempfile import mkdtemp
+from util import add_env_path, find_exts, make_env, rmtree, root_path, run
 
 
 # Helper function that returns the full path to a subpath of the repo root.
@@ -19,6 +20,8 @@ def root(*subpath_parts):
 def tp(*subpath_parts):
     return root("third_party", *subpath_parts)
 
+
+build_path = root("build")
 
 third_party_path = tp()
 depot_tools_path = tp("depot_tools")
@@ -52,6 +55,7 @@ def python_env(env=None, merge_env=None):
         python_site_env = {}
         temp = os.environ["PATH"], sys.path
         os.environ["PATH"], sys.path = "", []
+        site.addsitedir(build_path)  # Modifies PATH and sys.path.
         site.addsitedir(python_packages_path)  # Modifies PATH and sys.path.
         python_site_env = {"PATH": os.environ["PATH"], "PYTHONPATH": sys.path}
         os.environ["PATH"], sys.path = temp
@@ -100,28 +104,6 @@ def run_yarn():
     run(["yarn", "install"], cwd=third_party_path)
 
 
-# Run Cargo to install Rust dependencies.
-def run_cargo():
-    # Deletes the cargo index lockfile; it appears that cargo itself doesn't do
-    # it.  If the lockfile ends up in the git repo, it'll make cargo hang for
-    # everyone else who tries to run sync_third_party.
-    def delete_lockfile():
-        lockfiles = find_exts([path.join(rust_crates_path, "registry/index")],
-                              ['.cargo-index-lock'])
-        for lockfile in lockfiles:
-            os.remove(lockfile)
-
-    # Delete the index lockfile in case someone accidentally checked it in.
-    delete_lockfile()
-
-    run(["cargo", "fetch", "--manifest-path=" + root("Cargo.toml")],
-        cwd=third_party_path,
-        merge_env={'CARGO_HOME': rust_crates_path})
-
-    # Delete the lockfile again so it doesn't end up in the git repo.
-    delete_lockfile()
-
-
 # Install python packages with pip.
 def run_pip():
     # Install an recent version of pip into a temporary directory. The version
@@ -145,6 +127,13 @@ def run_pip():
     run([
         sys.executable, "-m", "pip", "install", "--upgrade", "--target",
         python_packages_path, "yapf"
+    ],
+        cwd=third_party_path,
+        merge_env=pip_env)
+
+    run([
+        sys.executable, "-m", "pip", "install", "--upgrade", "--target",
+        python_packages_path, "pylint==1.5.6"
     ],
         cwd=third_party_path,
         merge_env=pip_env)
@@ -220,9 +209,42 @@ def download_from_google_storage(item, bucket):
         env=google_env())
 
 
+# Download the given item from Chrome Infrastructure Package Deployment.
+def download_from_cipd(item, version):
+    if sys.platform == 'win32':
+        root_dir = "v8/buildtools/win"
+        item += "windows-amd64"
+    elif sys.platform == 'darwin':
+        root_dir = "v8/buildtools/mac"
+        item += "mac-amd64"
+    elif sys.platform.startswith('linux'):
+        root_dir = "v8/buildtools/linux64"
+        item += "linux-amd64"
+
+    # init cipd if necessary
+    if not os.path.exists(path.join(tp(root_dir), ".cipd")):
+        run([
+            tp('depot_tools/cipd'),
+            'init',
+            tp(root_dir),
+            '-force',
+        ],
+            env=google_env())
+
+    run([
+        tp('depot_tools/cipd'),
+        'install',
+        item,
+        'git_revision:' + version,
+        '-root',
+        tp(root_dir),
+    ],
+        env=google_env())
+
+
 # Download gn from Google storage.
 def download_gn():
-    download_from_google_storage('gn', 'chromium-gn')
+    download_from_cipd('gn/gn/', '152c5144ceed9592c20f0c8fd55769646077569b')
 
 
 # Download clang-format from Google storage.

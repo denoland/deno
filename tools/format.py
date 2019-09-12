@@ -3,10 +3,10 @@
 from glob import glob
 import os
 import sys
+import argparse
 from third_party import google_env, python_env
 from third_party import clang_format_path, third_party_path
 from util import root_path, run, find_exts, platform
-import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--js", help="only run prettier", action="store_true")

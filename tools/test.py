@@ -8,7 +8,6 @@ from benchmark_test import TestBenchmark
 from deno_dir_test import TestDenoDir
 from fetch_test import TestFetch
 from fmt_test import TestFmt
-from integration_tests import TestIntegrations
 from repl_test import TestRepl
 from setup_test import TestSetup
 from target_test import TestTarget
@@ -41,7 +40,6 @@ def main():
         TestTarget,
         JsUnitTests,
         TestFetch,
-        TestIntegrations,
         TestRepl,
         TestDenoDir,
         TestBenchmark,

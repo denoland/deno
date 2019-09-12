@@ -1,14 +1,14 @@
 #!/usr/bin/env python
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import third_party
-from util import (build_mode, build_path, enable_ansi_colors, root_path, run,
-                  shell_quote)
 import os
 import re
 import sys
 from distutils.spawn import find_executable
-import prebuilt
 import argparse
+import prebuilt
+import third_party
+from util import (build_mode, build_path, enable_ansi_colors, root_path, run,
+                  shell_quote)
 
 parser = argparse.ArgumentParser()
 parser.add_argument(

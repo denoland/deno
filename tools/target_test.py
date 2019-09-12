@@ -10,7 +10,6 @@ class TestTarget(DenoTestCase):
     def check_exists(filename):
         if not os.path.exists(filename):
             print "Required target doesn't exist:", filename
-            print "Run ./tools/build.py"
             sys.exit(1)
 
     def test_executable_exists(self):
