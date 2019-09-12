@@ -32,6 +32,6 @@ more specifics.
 
 [Releases](Releases.md)
 
-[Chat](https://gitter.im/denolife/Lobby)
+[Chat Here](https://gitter.im/denolife/Lobby)
 
 [More links](https://github.com/denolib/awesome-deno)
