@@ -141,7 +141,7 @@ impl DispatchManager {
     let op = match op_id / 1000 {
       1 => self.minimal.dispatch(op_id, state, control, zero_copy),
       2 => self.json.dispatch(op_id, state, control, zero_copy),
-      _ => panic!("unknown dispatch!"),
+      _ => panic!("unknown dispatch! op_id: {}", op_id),
     };
 
     state.metrics_op_dispatched(bytes_sent_control, bytes_sent_zero_copy);
