@@ -6,6 +6,39 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.18.0 / 2019.09.13
+
+In deno:
+
+- build: remove tools/build.py; cargo build is the build frontend now (#2865,
+  #2874, #2876)
+- feat: Make integration tests rust unit tests (#2884)
+- feat: Set user agent for http client (#2916)
+- feat: add bindings to run microtasks from Isolate (#2793)
+- fix(fetch): implement bodyUsed (#2877)
+- fix(url): basing in constructor (#2867, #2921)
+- fix(xeval): incorrect chunk matching behavior (#2857)
+- fix: Default 'this' to window in EventTarget (#2918)
+- fix: Expose the DOM Body interface globally (#2903)
+- fix: Keep all deno_std URLs in sync (#2930)
+- fix: make 'deno fmt' faster (#2928)
+- fix: panic during block_on (#2905)
+- fix: panic during fetch (#2925) 
+- fix: path normalization in resolve_from_cwd() (#2875)
+- fix: remove deprecated Deno.platform (#2895)
+- fix: replace bad rid panics with errors (#2870)
+- fix: type directives import (#2910)
+- upgrade: V8 7.9.8 (#2907)
+- upgrade: rust crates (#2937)
+
+In deno_std:
+
+- feat: Add xeval (denoland/deno_std#581)
+- fix(flags): Parse builtin properties (denoland/deno_std#579)
+- fix(uuid): Make it v4 rfc4122 compliant (denoland/deno_std#580)
+- perf: Improve prettier speed by adding d.ts files (denoland/deno_std#591)
+- upgrade: prettier to 1.18.2 (denoland/deno_std#592)
+
 ### v0.17.0 / 2019.09.04
 
 In deno:
