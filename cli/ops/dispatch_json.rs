@@ -1,4 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+use crate::ops::dispatcher::{Dispatch, OpDispatcher};
 use crate::ops::*;
 use crate::state::ThreadSafeState;
 use crate::tokio_util;
@@ -9,7 +10,7 @@ pub use serde_derive::Deserialize;
 use serde_json::json;
 pub use serde_json::Value;
 use std::collections::BTreeMap;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::AtomicU32;
 use std::sync::RwLock;
 
 pub type AsyncJsonOp = Box<dyn Future<Item = Value, Error = ErrBox> + Send>;
@@ -55,12 +56,7 @@ struct AsyncArgs {
   promise_id: Option<u64>,
 }
 
-#[derive(Default)]
-pub struct JsonDispatcher {
-  op_registry: RwLock<BTreeMap<OpId, JsonOpHandler>>,
-  name_registry: RwLock<BTreeMap<String, OpId>>,
-  next_op_id: AtomicU32,
-}
+pub type JsonDispatcher = OpDispatcher<JsonOpHandler>;
 
 impl JsonDispatcher {
   pub fn new() -> Self {
@@ -70,45 +66,10 @@ impl JsonDispatcher {
       name_registry: RwLock::new(BTreeMap::new()),
     }
   }
+}
 
-  pub fn register_op(&self, name: &str, handler: JsonOpHandler) -> OpId {
-    let op_id = self.next_op_id.fetch_add(1, Ordering::SeqCst);
-    // TODO: verify that we didn't overflow 1000 ops
-
-    // Ensure the op isn't a duplicate, and can be registered.
-    self
-      .op_registry
-      .write()
-      .unwrap()
-      .entry(op_id)
-      .and_modify(|_| panic!("Op already registered {}", op_id))
-      .or_insert(handler);
-
-    self
-      .name_registry
-      .write()
-      .unwrap()
-      .entry(name.to_string())
-      .and_modify(|_| panic!("Op already registered {}", op_id))
-      .or_insert(op_id);
-
-    op_id
-  }
-
-  pub fn get_map(&self) -> BTreeMap<String, OpId> {
-    self.name_registry.read().unwrap().clone()
-  }
-
-  fn select_op(&self, op_id: OpId) -> JsonOpHandler {
-    *self
-      .op_registry
-      .read()
-      .unwrap()
-      .get(&op_id)
-      .expect("Op not found!")
-  }
-
-  pub fn dispatch(
+impl Dispatch for JsonDispatcher {
+  fn dispatch(
     &self,
     op_id: OpId,
     state: &ThreadSafeState,

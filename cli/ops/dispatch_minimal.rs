@@ -4,6 +4,7 @@
 //! alternative to flatbuffers using a very simple list of int32s to lay out
 //! messages. The first i32 is used to determine if a message a flatbuffer
 //! message or a "minimal" message.
+use crate::ops::dispatcher::{Dispatch, OpDispatcher};
 use crate::state::ThreadSafeState;
 use deno::Buf;
 use deno::CoreOp;
@@ -13,11 +14,10 @@ use deno::OpId;
 use deno::PinnedBuf;
 use futures::Future;
 use std::collections::BTreeMap;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::AtomicU32;
 use std::sync::RwLock;
 
 pub type MinimalOp = dyn Future<Item = i32, Error = ErrBox> + Send;
-#[allow(dead_code)]
 pub type MinimalOpHandler = fn(i32, Option<PinnedBuf>) -> Box<MinimalOp>;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -77,12 +77,7 @@ fn test_parse_min_record() {
   assert_eq!(parse_min_record(&buf), None);
 }
 
-#[derive(Default)]
-pub struct MinimalDispatcher {
-  op_registry: RwLock<BTreeMap<OpId, MinimalOpHandler>>,
-  name_registry: RwLock<BTreeMap<String, OpId>>,
-  next_op_id: AtomicU32,
-}
+pub type MinimalDispatcher = OpDispatcher<MinimalOpHandler>;
 
 impl MinimalDispatcher {
   pub fn new() -> Self {
@@ -92,45 +87,10 @@ impl MinimalDispatcher {
       name_registry: RwLock::new(BTreeMap::new()),
     }
   }
+}
 
-  pub fn register_op(&self, name: &str, handler: MinimalOpHandler) -> OpId {
-    let op_id = self.next_op_id.fetch_add(1, Ordering::SeqCst);
-    // TODO: verify that we didn't overflow 1000 ops
-
-    // Ensure the op isn't a duplicate, and can be registered.
-    self
-      .op_registry
-      .write()
-      .unwrap()
-      .entry(op_id)
-      .and_modify(|_| panic!("Op already registered {}", op_id))
-      .or_insert(handler);
-
-    self
-      .name_registry
-      .write()
-      .unwrap()
-      .entry(name.to_string())
-      .and_modify(|_| panic!("Op already registered {}", op_id))
-      .or_insert(op_id);
-
-    op_id
-  }
-
-  fn select_op(&self, op_id: OpId) -> MinimalOpHandler {
-    *self
-      .op_registry
-      .read()
-      .unwrap()
-      .get(&op_id)
-      .expect("Op not found!")
-  }
-
-  pub fn get_map(&self) -> BTreeMap<String, OpId> {
-    self.name_registry.read().unwrap().clone()
-  }
-
-  pub fn dispatch(
+impl Dispatch for MinimalDispatcher {
+  fn dispatch(
     &self,
     op_id: OpId,
     _state: &ThreadSafeState,

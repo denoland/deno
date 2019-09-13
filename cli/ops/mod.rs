@@ -5,6 +5,7 @@ use deno::*;
 mod compiler;
 mod dispatch_json;
 mod dispatch_minimal;
+mod dispatcher;
 mod errors;
 mod fetch;
 mod files;
@@ -24,14 +25,9 @@ mod workers;
 
 use dispatch_json::{JsonDispatcher, JsonOpHandler};
 use dispatch_minimal::{MinimalDispatcher, MinimalOpHandler};
+use dispatcher::Dispatch;
 
-pub type OpDispatcher = fn(
-  op_id: OpId,
-  state: &ThreadSafeState,
-  control: &[u8],
-  zero_copy: Option<PinnedBuf>,
-) -> CoreOp;
-
+#[allow(clippy::new_without_default)]
 pub struct DispatchManager {
   pub minimal: MinimalDispatcher,
   pub json: JsonDispatcher,
@@ -40,11 +36,11 @@ pub struct DispatchManager {
 impl DispatchManager {
   #[allow(clippy::new_without_default)]
   pub fn new() -> Self {
-    let minimal_dispatcher = MinimalDispatcher::default();
+    let minimal_dispatcher = MinimalDispatcher::new();
     minimal_dispatcher.register_op("read", io::op_read);
     minimal_dispatcher.register_op("write", io::op_write);
 
-    let json_dispatcher = JsonDispatcher::default();
+    let json_dispatcher = JsonDispatcher::new();
     json_dispatcher.register_op("exit", os::op_exit);
     json_dispatcher.register_op("is_tty", os::op_is_tty);
     json_dispatcher.register_op("env", os::op_env);
