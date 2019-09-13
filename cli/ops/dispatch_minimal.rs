@@ -4,16 +4,20 @@
 //! alternative to flatbuffers using a very simple list of int32s to lay out
 //! messages. The first i32 is used to determine if a message a flatbuffer
 //! message or a "minimal" message.
+use crate::ops::io;
+use crate::ops::*;
 use crate::state::ThreadSafeState;
 use deno::Buf;
 use deno::CoreOp;
 use deno::ErrBox;
 use deno::Op;
+use deno::OpId;
 use deno::PinnedBuf;
 use futures::Future;
 
 pub type MinimalOp = dyn Future<Item = i32, Error = ErrBox> + Send;
-pub type Dispatcher = fn(i32, Option<PinnedBuf>) -> Box<MinimalOp>;
+#[allow(dead_code)]
+pub type MinimalOpHandler = fn(i32, Option<PinnedBuf>) -> Box<MinimalOp>;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 // This corresponds to RecordMinimal on the TS side.
@@ -72,8 +76,29 @@ fn test_parse_min_record() {
   assert_eq!(parse_min_record(&buf), None);
 }
 
+// TODO: pass
+trait MinimalOpDispatcher {
+  fn dispatch_minimal(
+    op_id: OpId,
+    state: &ThreadSafeState,
+    control: &[u8],
+    zero_copy: Option<PinnedBuf>,
+  ) -> CoreOp;
+
+  fn register_minimal_op(name: &str, handler: MinimalOpHandler) -> OpId;
+}
+
+fn op_selector(op_id: OpId) -> MinimalOpHandler {
+  match op_id {
+    OP_READ => io::op_read,
+    OP_WRITE => io::op_write,
+    _ => panic!("Unknown op id for minimal dispatch {:?}", op_id),
+  }
+}
+
+/// This is type called "OpDispatcher"
 pub fn dispatch(
-  d: Dispatcher,
+  op_id: OpId,
   _state: &ThreadSafeState,
   control: &[u8],
   zero_copy: Option<PinnedBuf>,
@@ -81,8 +106,12 @@ pub fn dispatch(
   let mut record = parse_min_record(control).unwrap();
   let is_sync = record.promise_id == 0;
   let rid = record.arg;
-  let min_op = d(rid, zero_copy);
 
+  // Select and run MinimalOpHandler
+  let handler = op_selector(op_id);
+  let min_op = handler(rid, zero_copy);
+
+  // Convert to CoreOp
   let fut = Box::new(min_op.then(move |result| -> Result<Buf, ()> {
     match result {
       Ok(r) => {

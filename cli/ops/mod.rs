@@ -82,6 +82,78 @@ pub const OP_MAKE_TEMP_DIR: OpId = 55;
 pub const OP_CWD: OpId = 56;
 pub const OP_FETCH_ASSET: OpId = 57;
 
+pub type OpDispatcher = fn(
+  op_id: OpId,
+  state: &ThreadSafeState,
+  control: &[u8],
+  zero_copy: Option<PinnedBuf>,
+) -> CoreOp;
+
+fn dispatch_selector(op_id: OpId) -> OpDispatcher {
+  match op_id {
+    | OP_READ
+    | OP_WRITE => dispatch_minimal::dispatch,
+    | OP_EXIT
+    | OP_IS_TTY
+    | OP_ENV
+    | OP_EXEC_PATH
+    | OP_HOME_DIR
+    | OP_UTIME
+    | OP_SET_ENV
+    | OP_START
+    | OP_APPLY_SOURCE_MAP
+    | OP_FORMAT_ERROR
+    | OP_CACHE
+    | OP_FETCH_SOURCE_FILE
+    | OP_OPEN
+    | OP_CLOSE
+    | OP_SEEK
+    | OP_METRICS
+    | OP_FETCH
+    | OP_REPL_START
+    | OP_REPL_READLINE
+    | OP_ACCEPT
+    | OP_DIAL
+    | OP_SHUTDOWN
+    | OP_LISTEN
+    | OP_RESOURCES
+    | OP_GET_RANDOM_VALUES
+    | OP_GLOBAL_TIMER_STOP
+    | OP_GLOBAL_TIMER
+    | OP_NOW
+    | OP_PERMISSIONS
+    | OP_REVOKE_PERMISSION
+    | OP_CREATE_WORKER
+    | OP_HOST_GET_WORKER_CLOSED
+    | OP_HOST_POST_MESSAGE
+    | OP_HOST_GET_MESSAGE
+    // TODO: make sure these two ops are only accessible to appropriate Workers
+    | OP_WORKER_POST_MESSAGE
+    | OP_WORKER_GET_MESSAGE
+    | OP_RUN
+    | OP_RUN_STATUS
+    | OP_KILL
+    | OP_CHDIR
+    | OP_MKDIR
+    | OP_CHMOD
+    | OP_CHOWN
+    | OP_REMOVE
+    | OP_COPY_FILE
+    | OP_STAT
+    | OP_READ_DIR
+    | OP_RENAME
+    | OP_LINK
+    | OP_SYMLINK
+    | OP_READ_LINK
+    | OP_TRUNCATE
+    | OP_MAKE_TEMP_DIR
+    | OP_CWD
+    | OP_FETCH_ASSET => dispatch_json::dispatch,
+    _ => panic!("Unknown dispatcher for op id {:?}", op_id),
+  }
+}
+
+/// This is main cli dispatch
 pub fn dispatch(
   state: &ThreadSafeState,
   op_id: OpId,
@@ -91,218 +163,8 @@ pub fn dispatch(
   let bytes_sent_control = control.len();
   let bytes_sent_zero_copy = zero_copy.as_ref().map(|b| b.len()).unwrap_or(0);
 
-  let op = match op_id {
-    OP_READ => {
-      dispatch_minimal::dispatch(io::op_read, state, control, zero_copy)
-    }
-    OP_WRITE => {
-      dispatch_minimal::dispatch(io::op_write, state, control, zero_copy)
-    }
-    OP_EXIT => dispatch_json::dispatch(os::op_exit, state, control, zero_copy),
-    OP_IS_TTY => {
-      dispatch_json::dispatch(os::op_is_tty, state, control, zero_copy)
-    }
-    OP_ENV => dispatch_json::dispatch(os::op_env, state, control, zero_copy),
-    OP_EXEC_PATH => {
-      dispatch_json::dispatch(os::op_exec_path, state, control, zero_copy)
-    }
-    OP_HOME_DIR => {
-      dispatch_json::dispatch(os::op_home_dir, state, control, zero_copy)
-    }
-    OP_UTIME => {
-      dispatch_json::dispatch(fs::op_utime, state, control, zero_copy)
-    }
-    OP_SET_ENV => {
-      dispatch_json::dispatch(os::op_set_env, state, control, zero_copy)
-    }
-    OP_START => {
-      dispatch_json::dispatch(os::op_start, state, control, zero_copy)
-    }
-    OP_APPLY_SOURCE_MAP => dispatch_json::dispatch(
-      errors::op_apply_source_map,
-      state,
-      control,
-      zero_copy,
-    ),
-    OP_FORMAT_ERROR => dispatch_json::dispatch(
-      errors::op_format_error,
-      state,
-      control,
-      zero_copy,
-    ),
-    OP_CACHE => {
-      dispatch_json::dispatch(compiler::op_cache, state, control, zero_copy)
-    }
-    OP_FETCH_SOURCE_FILES => dispatch_json::dispatch(
-      compiler::op_fetch_source_files,
-      state,
-      control,
-      zero_copy,
-    ),
-    OP_OPEN => {
-      dispatch_json::dispatch(files::op_open, state, control, zero_copy)
-    }
-    OP_CLOSE => {
-      dispatch_json::dispatch(files::op_close, state, control, zero_copy)
-    }
-    OP_SEEK => {
-      dispatch_json::dispatch(files::op_seek, state, control, zero_copy)
-    }
-    OP_METRICS => {
-      dispatch_json::dispatch(metrics::op_metrics, state, control, zero_copy)
-    }
-    OP_FETCH => {
-      dispatch_json::dispatch(fetch::op_fetch, state, control, zero_copy)
-    }
-    OP_REPL_START => {
-      dispatch_json::dispatch(repl::op_repl_start, state, control, zero_copy)
-    }
-    OP_REPL_READLINE => {
-      dispatch_json::dispatch(repl::op_repl_readline, state, control, zero_copy)
-    }
-    OP_ACCEPT => {
-      dispatch_json::dispatch(net::op_accept, state, control, zero_copy)
-    }
-    OP_DIAL => dispatch_json::dispatch(net::op_dial, state, control, zero_copy),
-    OP_SHUTDOWN => {
-      dispatch_json::dispatch(net::op_shutdown, state, control, zero_copy)
-    }
-    OP_LISTEN => {
-      dispatch_json::dispatch(net::op_listen, state, control, zero_copy)
-    }
-    OP_RESOURCES => dispatch_json::dispatch(
-      resources::op_resources,
-      state,
-      control,
-      zero_copy,
-    ),
-    OP_GET_RANDOM_VALUES => dispatch_json::dispatch(
-      random::op_get_random_values,
-      state,
-      control,
-      zero_copy,
-    ),
-    OP_GLOBAL_TIMER_STOP => dispatch_json::dispatch(
-      timers::op_global_timer_stop,
-      state,
-      control,
-      zero_copy,
-    ),
-    OP_GLOBAL_TIMER => dispatch_json::dispatch(
-      timers::op_global_timer,
-      state,
-      control,
-      zero_copy,
-    ),
-    OP_NOW => {
-      dispatch_json::dispatch(performance::op_now, state, control, zero_copy)
-    }
-    OP_PERMISSIONS => dispatch_json::dispatch(
-      permissions::op_permissions,
-      state,
-      control,
-      zero_copy,
-    ),
-    OP_REVOKE_PERMISSION => dispatch_json::dispatch(
-      permissions::op_revoke_permission,
-      state,
-      control,
-      zero_copy,
-    ),
-    OP_CREATE_WORKER => dispatch_json::dispatch(
-      workers::op_create_worker,
-      state,
-      control,
-      zero_copy,
-    ),
-    OP_HOST_GET_WORKER_CLOSED => dispatch_json::dispatch(
-      workers::op_host_get_worker_closed,
-      state,
-      control,
-      zero_copy,
-    ),
-    OP_HOST_POST_MESSAGE => dispatch_json::dispatch(
-      workers::op_host_post_message,
-      state,
-      control,
-      zero_copy,
-    ),
-    OP_HOST_GET_MESSAGE => dispatch_json::dispatch(
-      workers::op_host_get_message,
-      state,
-      control,
-      zero_copy,
-    ),
-    // TODO: make sure these two ops are only accessible to appropriate Workers
-    OP_WORKER_POST_MESSAGE => dispatch_json::dispatch(
-      workers::op_worker_post_message,
-      state,
-      control,
-      zero_copy,
-    ),
-    OP_WORKER_GET_MESSAGE => dispatch_json::dispatch(
-      workers::op_worker_get_message,
-      state,
-      control,
-      zero_copy,
-    ),
-    OP_RUN => {
-      dispatch_json::dispatch(process::op_run, state, control, zero_copy)
-    }
-    OP_RUN_STATUS => {
-      dispatch_json::dispatch(process::op_run_status, state, control, zero_copy)
-    }
-    OP_KILL => {
-      dispatch_json::dispatch(process::op_kill, state, control, zero_copy)
-    }
-    OP_CHDIR => {
-      dispatch_json::dispatch(fs::op_chdir, state, control, zero_copy)
-    }
-    OP_MKDIR => {
-      dispatch_json::dispatch(fs::op_mkdir, state, control, zero_copy)
-    }
-    OP_CHMOD => {
-      dispatch_json::dispatch(fs::op_chmod, state, control, zero_copy)
-    }
-    OP_CHOWN => {
-      dispatch_json::dispatch(fs::op_chown, state, control, zero_copy)
-    }
-    OP_REMOVE => {
-      dispatch_json::dispatch(fs::op_remove, state, control, zero_copy)
-    }
-    OP_COPY_FILE => {
-      dispatch_json::dispatch(fs::op_copy_file, state, control, zero_copy)
-    }
-    OP_STAT => dispatch_json::dispatch(fs::op_stat, state, control, zero_copy),
-    OP_READ_DIR => {
-      dispatch_json::dispatch(fs::op_read_dir, state, control, zero_copy)
-    }
-    OP_RENAME => {
-      dispatch_json::dispatch(fs::op_rename, state, control, zero_copy)
-    }
-    OP_LINK => dispatch_json::dispatch(fs::op_link, state, control, zero_copy),
-    OP_SYMLINK => {
-      dispatch_json::dispatch(fs::op_symlink, state, control, zero_copy)
-    }
-    OP_READ_LINK => {
-      dispatch_json::dispatch(fs::op_read_link, state, control, zero_copy)
-    }
-    OP_TRUNCATE => {
-      dispatch_json::dispatch(fs::op_truncate, state, control, zero_copy)
-    }
-    OP_MAKE_TEMP_DIR => {
-      dispatch_json::dispatch(fs::op_make_temp_dir, state, control, zero_copy)
-    }
-    OP_CWD => dispatch_json::dispatch(fs::op_cwd, state, control, zero_copy),
-    OP_FETCH_ASSET => dispatch_json::dispatch(
-      compiler::op_fetch_asset,
-      state,
-      control,
-      zero_copy,
-    ),
-    _ => panic!("bad op_id"),
-  };
-
+  let dispatcher = dispatch_selector(op_id);
+  let op = dispatcher(op_id, state, control, zero_copy);
   state.metrics_op_dispatched(bytes_sent_control, bytes_sent_zero_copy);
 
   match op {
