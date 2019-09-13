@@ -49,7 +49,7 @@ version = get_version(cargo_toml_path)
 def main():
     os.chdir(root_path)
 
-    run(["tools/build.py", "libdeno_static_lib", "--release"])
+    run(["cargo", "build", "--release"])
     assert (os.path.exists(lib_name))
 
     root_temp = mkdtemp()
