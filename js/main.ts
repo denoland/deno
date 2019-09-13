@@ -14,7 +14,7 @@ import { setLocation } from "./location.ts";
 import { setBuildInfo } from "./build.ts";
 import { setSignals } from "./process.ts";
 
-export function setOpMap(opMaps: Record<string, Record<string, number>>) {
+export function setOpMap(opMaps: Record<string, Record<string, number>>): void {
   for (const [key, value] of Object.entries(opMaps.minimal)) {
     const name = `OP_${key.toUpperCase()}`;
     dispatch[name] = value;
