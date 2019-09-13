@@ -55,9 +55,9 @@ def qrun(cmd, cwd=None, env=None):
 def clang_format():
     print "clang_format"
     qrun(
-        [clang_format_path, "-i", "-style", "Google"] + find_exts(
-            ["core"], [".cc", ".h"],
-            skip=["core/libdeno/build", "core/libdeno/third_party"]),
+        [sys.executable, clang_format_path, "-i", "-style", "Google"] +
+        find_exts(["core"], [".cc", ".h"],
+                  skip=["core/libdeno/build", "core/libdeno/third_party"]),
         env={"CHROMIUM_BUILDTOOLS_PATH": "third_party/v8/buildtools"})
 
 

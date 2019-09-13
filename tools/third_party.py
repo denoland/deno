@@ -27,7 +27,7 @@ third_party_path = tp()
 depot_tools_path = tp("depot_tools")
 rust_crates_path = tp("rust_crates")
 python_packages_path = tp("python_packages")
-clang_format_path = tp(depot_tools_path, "clang-format")
+clang_format_path = tp(depot_tools_path, "clang_format.py")
 
 if "DENO_GN_PATH" in os.environ:
     gn_path = os.environ["DENO_GN_PATH"]
