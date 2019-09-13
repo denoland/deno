@@ -18,7 +18,8 @@ os.chdir(root_path)
 run([
     "python", cpplint, "--filter=-build/include_subdir",
     "--repository=core/libdeno"
-] + find_exts(["core"], [".cc", ".h"], skip=["core/libdeno/build"]))
+] + find_exts(["core"], [".cc", ".h"],
+              skip=["core/libdeno/build", "core/libdeno/third_party"]))
 
 run([
     "node", eslint, "--max-warnings=0", "--ignore-pattern=core/libdeno/build/",

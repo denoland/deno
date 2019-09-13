@@ -56,7 +56,8 @@ def clang_format():
     print "clang_format"
     qrun(
         [clang_format_path, "-i", "-style", "Google"] + find_exts(
-            ["core"], [".cc", ".h"], skip=["core/libdeno/build"]),
+            ["core"], [".cc", ".h"],
+            skip=["core/libdeno/build", "core/libdeno/third_party"]),
         env={"CHROMIUM_BUILDTOOLS_PATH": "third_party/v8/buildtools"})
 
 
@@ -68,13 +69,14 @@ def rustfmt():
         rustfmt_config,
     ] + find_exts(["cli", "core", "tools", "deno_typescript", "cli_snapshots"],
                   [".rs"],
-                  skip=["core/libdeno/build"]))
+                  skip=["core/libdeno/build", "core/libdeno/third_party"]))
 
 
 def gn_format():
     print "gn format"
-    for fn in find_exts(["core/libdeno"], [".gn", ".gni"],
-                        skip=["core/libdeno/build"]):
+    for fn in find_exts(
+        ["core"], [".gn", ".gni"],
+            skip=["core/libdeno/build", "core/libdeno/third_party"]):
         qrun(["third_party/depot_tools/gn", "format", fn[13:]],
              cwd=os.path.join(root_path, "core/libdeno"),
              env=google_env())
@@ -91,12 +93,14 @@ def yapf():
 
 def prettier():
     print "prettier"
-    files = find_exts(
-        [
-            ".github", "js", "tests", "tools", "website", "core",
-            "deno_typescript", "cli_snapshots"
-        ], [".js", ".json", ".ts", ".md"],
-        skip=["tools/clang", "js/deps", "js/gen", "core/libdeno/build"])
+    files = find_exts([
+        ".github", "js", "tests", "tools", "website", "core",
+        "deno_typescript", "cli_snapshots"
+    ], [".js", ".json", ".ts", ".md"],
+                      skip=[
+                          "tools/clang", "js/deps", "js/gen",
+                          "core/libdeno/build", "core/libdeno/third_party"
+                      ])
     qrun(["node", prettier_path, "--write", "--loglevel=error"] +
          ["rollup.config.js"] + files)
 
