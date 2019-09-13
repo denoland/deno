@@ -108,8 +108,12 @@ fn resolve_module_names(_s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
   let mut resolved = Vec::<String>::new();
   let referrer = ModuleSpecifier::resolve_url_or_path(&v.containing_file)?;
   for specifier in v.module_names {
-    let ms = ModuleSpecifier::resolve_import(&specifier, referrer.as_str())?;
-    resolved.push(ms.as_str().to_string());
+    if specifier.starts_with("$asset$/") {
+      resolved.push(specifier.clone());
+    } else {
+      let ms = ModuleSpecifier::resolve_import(&specifier, referrer.as_str())?;
+      resolved.push(ms.as_str().to_string());
+    }
   }
   Ok(json!(resolved))
 }
