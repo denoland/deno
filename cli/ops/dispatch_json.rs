@@ -57,6 +57,7 @@ struct AsyncArgs {
 
 pub struct JsonDispatcher {
   op_registry: RwLock<BTreeMap<OpId, JsonOpHandler>>,
+  name_registry: RwLock<BTreeMap<String, OpId>>,
   next_op_id: AtomicU32,
 }
 
@@ -65,10 +66,11 @@ impl JsonDispatcher {
     Self {
       next_op_id: AtomicU32::new(2003),
       op_registry: RwLock::new(BTreeMap::new()),
+      name_registry: RwLock::new(BTreeMap::new()),
     }
   }
 
-  pub fn register_op(&self, handler: JsonOpHandler) -> OpId {
+  pub fn register_op(&self, name: &str, handler: JsonOpHandler) -> OpId {
     let op_id = self.next_op_id.fetch_add(1, Ordering::SeqCst);
     // TODO: verify that we didn't overflow 1000 ops
 
@@ -80,6 +82,14 @@ impl JsonDispatcher {
       .entry(op_id)
       .and_modify(|_| panic!("Op already registered {}", op_id))
       .or_insert(handler);
+
+    self
+      .name_registry
+      .write()
+      .unwrap()
+      .entry(name.to_string())
+      .and_modify(|_| panic!("Op already registered {}", op_id))
+      .or_insert(op_id);
 
     op_id
   }
