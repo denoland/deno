@@ -29,13 +29,27 @@ enum MediaType {
   Unknown = 3
 }
 
+// TODO: duplicated in main.ts
+function setOpMap(opMaps: Record<string, Record<string, number>>): void {
+  for (const [key, value] of Object.entries(opMaps.minimal)) {
+    const name = `OP_${key.toUpperCase()}`;
+    dispatch[name] = value;
+  }
+
+  for (const [key, value] of Object.entries(opMaps.json)) {
+    const name = `OP_${key.toUpperCase()}`;
+    dispatch[name] = value;
+  }
+}
+
 // Startup boilerplate. This is necessary because the compiler has its own
 // snapshot. (It would be great if we could remove these things or centralize
 // them somewhere else.)
 const console = new Console(core.print);
 window.console = console;
 window.workerMain = workerMain;
-function denoMain(): void {
+function denoMain(opMaps: Record<string, Record<string, number>>): void {
+  setOpMap(opMaps);
   os.start(true, "TS");
 }
 window["denoMain"] = denoMain;
