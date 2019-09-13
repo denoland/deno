@@ -12,7 +12,7 @@ use deno::Op;
 use deno::OpId;
 use deno::PinnedBuf;
 use futures::Future;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::RwLock;
 
@@ -78,7 +78,7 @@ fn test_parse_min_record() {
 }
 
 pub struct MinimalDispatcher {
-  op_registry: RwLock<HashMap<OpId, MinimalOpHandler>>,
+  op_registry: RwLock<BTreeMap<OpId, MinimalOpHandler>>,
   next_op_id: AtomicU32,
 }
 
@@ -86,7 +86,7 @@ impl MinimalDispatcher {
   pub fn new() -> Self {
     Self {
       next_op_id: AtomicU32::new(1001),
-      op_registry: RwLock::new(HashMap::new()),
+      op_registry: RwLock::new(BTreeMap::new()),
     }
   }
 

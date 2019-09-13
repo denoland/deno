@@ -8,7 +8,7 @@ use futures::Poll;
 pub use serde_derive::Deserialize;
 use serde_json::json;
 pub use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::RwLock;
 
@@ -56,15 +56,15 @@ struct AsyncArgs {
 }
 
 pub struct JsonDispatcher {
-  op_registry: RwLock<HashMap<OpId, JsonOpHandler>>,
+  op_registry: RwLock<BTreeMap<OpId, JsonOpHandler>>,
   next_op_id: AtomicU32,
 }
 
 impl JsonDispatcher {
   pub fn new() -> Self {
     Self {
-      next_op_id: AtomicU32::new(2001),
-      op_registry: RwLock::new(HashMap::new()),
+      next_op_id: AtomicU32::new(2003),
+      op_registry: RwLock::new(BTreeMap::new()),
     }
   }
 
