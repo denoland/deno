@@ -50,7 +50,7 @@ def main():
     os.chdir(root_path)
 
     run([
-        "cargo", "build", "-vv", "--manifest-path", "core/Cargo.toml", "--lib",
+        "cargo", "build", "-vv", "--manifest-path", cargo_toml_path, "--lib",
         "--release", "--locked"
     ])
     assert (os.path.exists(lib_name))
