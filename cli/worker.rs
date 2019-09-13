@@ -9,6 +9,7 @@ use deno::RecursiveLoad;
 use deno::StartupData;
 use futures::Async;
 use futures::Future;
+use std::collections::HashMap;
 use std::env;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -63,6 +64,14 @@ impl Worker {
     let path = env::current_dir().unwrap().join("__anonymous__");
     let url = Url::from_file_path(path).unwrap();
     self.execute2(url.as_str(), js_source)
+  }
+
+  pub fn deno_main(&mut self) -> Result<(), ErrBox> {
+    let mut op_map = HashMap::new();
+    op_map.insert("minimal", self.state.dispatch_manager.minimal.get_map());
+    op_map.insert("json", self.state.dispatch_manager.json.get_map());
+    let deno_main_call = format!("denoMain({})", json!(op_map));
+    self.execute(&deno_main_call)
   }
 
   /// Executes the provided JavaScript source code. The js_filename argument is
@@ -222,7 +231,7 @@ mod tests {
         startup_data::deno_isolate_init(),
         state,
       );
-      worker.execute("denoMain()").unwrap();
+      worker.deno_main().unwrap();
       let result = worker.execute_mod(&module_specifier, false);
       if let Err(err) = result {
         eprintln!("execute_mod err {:?}", err);
@@ -244,7 +253,7 @@ mod tests {
     ]);
     let mut worker =
       Worker::new("TEST".to_string(), startup_data::deno_isolate_init(), state);
-    worker.execute("denoMain()").unwrap();
+    worker.deno_main().unwrap();
     worker.execute("workerMain()").unwrap();
     worker
   }

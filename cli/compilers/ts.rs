@@ -235,7 +235,7 @@ impl TsCompiler {
       // as was done previously.
       state.clone(),
     );
-    worker.execute("denoMain()").unwrap();
+    worker.deno_main().unwrap();
     worker.execute("workerMain()").unwrap();
     worker.execute("compilerMain()").unwrap();
     worker

@@ -25,66 +25,6 @@ mod workers;
 use dispatch_json::{JsonDispatcher, JsonOpHandler};
 use dispatch_minimal::{MinimalDispatcher, MinimalOpHandler};
 
-// Warning! These values are duplicated in the TypeScript code (js/dispatch.ts),
-// update with care.
-pub const OP_READ: OpId = 1001;
-pub const OP_WRITE: OpId = 1002;
-pub const OP_EXIT: OpId = 2003;
-pub const OP_IS_TTY: OpId = 2004;
-pub const OP_ENV: OpId = 2005;
-pub const OP_EXEC_PATH: OpId = 2006;
-pub const OP_UTIME: OpId = 2007;
-pub const OP_SET_ENV: OpId = 2008;
-pub const OP_HOME_DIR: OpId = 2009;
-pub const OP_START: OpId = 2010;
-pub const OP_APPLY_SOURCE_MAP: OpId = 2011;
-pub const OP_FORMAT_ERROR: OpId = 2012;
-pub const OP_CACHE: OpId = 2013;
-pub const OP_FETCH_SOURCE_FILE: OpId = 2014;
-pub const OP_OPEN: OpId = 2015;
-pub const OP_CLOSE: OpId = 2016;
-pub const OP_SEEK: OpId = 2017;
-pub const OP_FETCH: OpId = 2018;
-pub const OP_METRICS: OpId = 2019;
-pub const OP_REPL_START: OpId = 2020;
-pub const OP_REPL_READLINE: OpId = 2021;
-pub const OP_ACCEPT: OpId = 2022;
-pub const OP_DIAL: OpId = 2023;
-pub const OP_SHUTDOWN: OpId = 2024;
-pub const OP_LISTEN: OpId = 2025;
-pub const OP_RESOURCES: OpId = 2026;
-pub const OP_GET_RANDOM_VALUES: OpId = 2027;
-pub const OP_GLOBAL_TIMER_STOP: OpId = 2028;
-pub const OP_GLOBAL_TIMER: OpId = 2029;
-pub const OP_NOW: OpId = 2030;
-pub const OP_PERMISSIONS: OpId = 2031;
-pub const OP_REVOKE_PERMISSION: OpId = 2032;
-pub const OP_CREATE_WORKER: OpId = 2033;
-pub const OP_HOST_GET_WORKER_CLOSED: OpId = 2034;
-pub const OP_HOST_POST_MESSAGE: OpId = 2035;
-pub const OP_HOST_GET_MESSAGE: OpId = 2036;
-pub const OP_WORKER_POST_MESSAGE: OpId = 2037;
-pub const OP_WORKER_GET_MESSAGE: OpId = 2038;
-pub const OP_RUN: OpId = 2039;
-pub const OP_RUN_STATUS: OpId = 2040;
-pub const OP_KILL: OpId = 2041;
-pub const OP_CHDIR: OpId = 2042;
-pub const OP_MKDIR: OpId = 2043;
-pub const OP_CHMOD: OpId = 2044;
-pub const OP_CHOWN: OpId = 2045;
-pub const OP_REMOVE: OpId = 2046;
-pub const OP_COPY_FILE: OpId = 2047;
-pub const OP_STAT: OpId = 2048;
-pub const OP_READ_DIR: OpId = 2049;
-pub const OP_RENAME: OpId = 2050;
-pub const OP_LINK: OpId = 2051;
-pub const OP_SYMLINK: OpId = 2052;
-pub const OP_READ_LINK: OpId = 2053;
-pub const OP_TRUNCATE: OpId = 2054;
-pub const OP_MAKE_TEMP_DIR: OpId = 2055;
-pub const OP_CWD: OpId = 2056;
-pub const OP_FETCH_ASSET: OpId = 2057;
-
 pub type OpDispatcher = fn(
   op_id: OpId,
   state: &ThreadSafeState,
@@ -93,8 +33,8 @@ pub type OpDispatcher = fn(
 ) -> CoreOp;
 
 pub struct DispatchManager {
-  minimal: MinimalDispatcher,
-  json: JsonDispatcher,
+  pub minimal: MinimalDispatcher,
+  pub json: JsonDispatcher,
 }
 
 impl DispatchManager {

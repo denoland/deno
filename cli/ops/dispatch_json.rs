@@ -64,7 +64,7 @@ pub struct JsonDispatcher {
 impl JsonDispatcher {
   pub fn new() -> Self {
     Self {
-      next_op_id: AtomicU32::new(2003),
+      next_op_id: AtomicU32::new(2000),
       op_registry: RwLock::new(BTreeMap::new()),
       name_registry: RwLock::new(BTreeMap::new()),
     }
@@ -92,6 +92,10 @@ impl JsonDispatcher {
       .or_insert(op_id);
 
     op_id
+  }
+
+  pub fn get_map(&self) -> BTreeMap<String, OpId> {
+    self.name_registry.read().unwrap().clone()
   }
 
   fn select_op(&self, op_id: OpId) -> JsonOpHandler {

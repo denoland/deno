@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import "./globals.ts";
 
+import * as dispatch from "./dispatch.ts";
 import { assert, log } from "./util.ts";
 import * as os from "./os.ts";
 import { args } from "./deno.ts";
@@ -13,7 +14,24 @@ import { setLocation } from "./location.ts";
 import { setBuildInfo } from "./build.ts";
 import { setSignals } from "./process.ts";
 
-function denoMain(preserveDenoNamespace = true, name?: string): void {
+export function setOpMap(opMaps: Record<string, Record<string, number>>) {
+  for (const [key, value] of Object.entries(opMaps.minimal)) {
+    const name = `OP_${key.toUpperCase()}`;
+    dispatch[name] = value;
+  }
+
+  for (const [key, value] of Object.entries(opMaps.json)) {
+    const name = `OP_${key.toUpperCase()}`;
+    dispatch[name] = value;
+  }
+}
+
+function denoMain(
+  opMaps: Record<string, Record<string, number>>,
+  preserveDenoNamespace = true,
+  name?: string
+): void {
+  setOpMap(opMaps);
   const s = os.start(preserveDenoNamespace, name);
 
   setBuildInfo(s.os, s.arch);

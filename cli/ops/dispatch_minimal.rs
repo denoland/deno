@@ -86,7 +86,7 @@ pub struct MinimalDispatcher {
 impl MinimalDispatcher {
   pub fn new() -> Self {
     Self {
-      next_op_id: AtomicU32::new(1001),
+      next_op_id: AtomicU32::new(1000),
       op_registry: RwLock::new(BTreeMap::new()),
       name_registry: RwLock::new(BTreeMap::new()),
     }
@@ -123,6 +123,10 @@ impl MinimalDispatcher {
       .unwrap()
       .get(&op_id)
       .expect("Op not found!")
+  }
+
+  pub fn get_map(&self) -> BTreeMap<String, OpId> {
+    self.name_registry.read().unwrap().clone()
   }
 
   pub fn dispatch(
