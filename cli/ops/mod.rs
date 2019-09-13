@@ -38,12 +38,13 @@ pub struct DispatchManager {
 }
 
 impl DispatchManager {
+  #[allow(clippy::new_without_default)]
   pub fn new() -> Self {
-    let minimal_dispatcher = MinimalDispatcher::new();
+    let minimal_dispatcher = MinimalDispatcher::default();
     minimal_dispatcher.register_op("read", io::op_read);
     minimal_dispatcher.register_op("write", io::op_write);
 
-    let json_dispatcher = JsonDispatcher::new();
+    let json_dispatcher = JsonDispatcher::default();
     json_dispatcher.register_op("exit", os::op_exit);
     json_dispatcher.register_op("is_tty", os::op_is_tty);
     json_dispatcher.register_op("env", os::op_env);

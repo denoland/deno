@@ -2,7 +2,7 @@
 use crate::ops::*;
 use crate::state::ThreadSafeState;
 use crate::tokio_util;
-use deno::*;
+use deno::OpId;
 use futures::Future;
 use futures::Poll;
 pub use serde_derive::Deserialize;
@@ -55,6 +55,7 @@ struct AsyncArgs {
   promise_id: Option<u64>,
 }
 
+#[derive(Default)]
 pub struct JsonDispatcher {
   op_registry: RwLock<BTreeMap<OpId, JsonOpHandler>>,
   name_registry: RwLock<BTreeMap<String, OpId>>,

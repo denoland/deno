@@ -77,6 +77,7 @@ fn test_parse_min_record() {
   assert_eq!(parse_min_record(&buf), None);
 }
 
+#[derive(Default)]
 pub struct MinimalDispatcher {
   op_registry: RwLock<BTreeMap<OpId, MinimalOpHandler>>,
   name_registry: RwLock<BTreeMap<String, OpId>>,
