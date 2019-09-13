@@ -49,7 +49,10 @@ version = get_version(cargo_toml_path)
 def main():
     os.chdir(root_path)
 
-    run(["cargo", "build", "-vv", "--release", "--locked"])
+    run([
+        "cargo", "build", "-vv", "--manifest-path", "core/Cargo.toml", "--lib",
+        "--release", "--locked"
+    ])
     assert (os.path.exists(lib_name))
 
     root_temp = mkdtemp()
