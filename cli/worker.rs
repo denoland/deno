@@ -34,7 +34,6 @@ impl Worker {
 
       let state_ = state.clone();
       // TODO: register ops here
-
       i.set_dispatch(move |op_id, control_buf, zero_copy_buf| {
         state_.dispatch(op_id, control_buf, zero_copy_buf)
       });

@@ -4,8 +4,6 @@
 //! alternative to flatbuffers using a very simple list of int32s to lay out
 //! messages. The first i32 is used to determine if a message a flatbuffer
 //! message or a "minimal" message.
-use crate::ops::io;
-use crate::ops::*;
 use crate::state::ThreadSafeState;
 use deno::Buf;
 use deno::CoreOp;
@@ -14,6 +12,9 @@ use deno::Op;
 use deno::OpId;
 use deno::PinnedBuf;
 use futures::Future;
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::RwLock;
 
 pub type MinimalOp = dyn Future<Item = i32, Error = ErrBox> + Send;
 #[allow(dead_code)]
@@ -76,65 +77,84 @@ fn test_parse_min_record() {
   assert_eq!(parse_min_record(&buf), None);
 }
 
-// TODO: pass
-trait MinimalOpDispatcher {
-  fn dispatch_minimal(
+pub struct MinimalDispatcher {
+  op_registry: RwLock<HashMap<OpId, MinimalOpHandler>>,
+  next_op_id: AtomicU32,
+}
+
+impl MinimalDispatcher {
+  pub fn new() -> Self {
+    Self {
+      next_op_id: AtomicU32::new(1001),
+      op_registry: RwLock::new(HashMap::new()),
+    }
+  }
+
+  pub fn register_op(&self, handler: MinimalOpHandler) -> OpId {
+    let op_id = self.next_op_id.fetch_add(1, Ordering::SeqCst);
+    // TODO: verify that we didn't overflow 1000 ops
+
+    // Ensure the op isn't a duplicate, and can be registered.
+    self
+      .op_registry
+      .write()
+      .unwrap()
+      .entry(op_id)
+      .and_modify(|_| panic!("Op already registered {}", op_id))
+      .or_insert(handler);
+
+    op_id
+  }
+
+  fn select_op(&self, op_id: OpId) -> MinimalOpHandler {
+    *self
+      .op_registry
+      .read()
+      .unwrap()
+      .get(&op_id)
+      .expect("Op not found!")
+  }
+
+  pub fn dispatch(
+    &self,
     op_id: OpId,
-    state: &ThreadSafeState,
+    _state: &ThreadSafeState,
     control: &[u8],
     zero_copy: Option<PinnedBuf>,
-  ) -> CoreOp;
+  ) -> CoreOp {
+    let mut record = parse_min_record(control).unwrap();
+    let is_sync = record.promise_id == 0;
+    let rid = record.arg;
 
-  fn register_minimal_op(name: &str, handler: MinimalOpHandler) -> OpId;
-}
+    // Select and run MinimalOpHandler
+    let handler = self.select_op(op_id);
+    let min_op = handler(rid, zero_copy);
 
-fn op_selector(op_id: OpId) -> MinimalOpHandler {
-  match op_id {
-    OP_READ => io::op_read,
-    OP_WRITE => io::op_write,
-    _ => panic!("Unknown op id for minimal dispatch {:?}", op_id),
-  }
-}
-
-/// This is type called "OpDispatcher"
-pub fn dispatch(
-  op_id: OpId,
-  _state: &ThreadSafeState,
-  control: &[u8],
-  zero_copy: Option<PinnedBuf>,
-) -> CoreOp {
-  let mut record = parse_min_record(control).unwrap();
-  let is_sync = record.promise_id == 0;
-  let rid = record.arg;
-
-  // Select and run MinimalOpHandler
-  let handler = op_selector(op_id);
-  let min_op = handler(rid, zero_copy);
-
-  // Convert to CoreOp
-  let fut = Box::new(min_op.then(move |result| -> Result<Buf, ()> {
-    match result {
-      Ok(r) => {
-        record.result = r;
+    // Convert to CoreOp
+    let fut = Box::new(min_op.then(move |result| -> Result<Buf, ()> {
+      match result {
+        Ok(r) => {
+          record.result = r;
+        }
+        Err(err) => {
+          // TODO(ry) The dispatch_minimal doesn't properly pipe errors back to
+          // the caller.
+          debug!("swallowed err {}", err);
+          record.result = -1;
+        }
       }
-      Err(err) => {
-        // TODO(ry) The dispatch_minimal doesn't properly pipe errors back to
-        // the caller.
-        debug!("swallowed err {}", err);
-        record.result = -1;
-      }
+      Ok(record.into())
+    }));
+
+    if is_sync {
+      // Warning! Possible deadlocks can occur if we try to wait for a future
+      // while in a future. The safe but expensive alternative is to use
+      // tokio_util::block_on.
+      // This block is only exercised for readSync and writeSync, which I think
+      // works since they're simple polling futures.
+      Op::Sync(fut.wait().unwrap())
+    } else {
+      Op::Async(fut)
     }
-    Ok(record.into())
-  }));
-
-  if is_sync {
-    // Warning! Possible deadlocks can occur if we try to wait for a future
-    // while in a future. The safe but expensive alternative is to use
-    // tokio_util::block_on.
-    // This block is only exercised for readSync and writeSync, which I think
-    // works since they're simple polling futures.
-    Op::Sync(fut.wait().unwrap())
-  } else {
-    Op::Async(fut)
   }
 }

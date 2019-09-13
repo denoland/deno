@@ -1,20 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::ops::compiler;
-use crate::ops::errors;
-use crate::ops::fetch;
-use crate::ops::files;
-use crate::ops::fs;
-use crate::ops::metrics;
-use crate::ops::net;
-use crate::ops::os;
-use crate::ops::performance;
-use crate::ops::permissions;
-use crate::ops::process;
-use crate::ops::random;
-use crate::ops::repl;
-use crate::ops::resources;
-use crate::ops::timers;
-use crate::ops::workers;
 use crate::ops::*;
 use crate::state::ThreadSafeState;
 use crate::tokio_util;
@@ -24,6 +8,9 @@ use futures::Poll;
 pub use serde_derive::Deserialize;
 use serde_json::json;
 pub use serde_json::Value;
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::RwLock;
 
 pub type AsyncJsonOp = Box<dyn Future<Item = Value, Error = ErrBox> + Send>;
 
@@ -68,116 +55,81 @@ struct AsyncArgs {
   promise_id: Option<u64>,
 }
 
-#[allow(dead_code)]
-trait _JsonOpDispatcher {
-  fn dispatch_json(
+pub struct JsonDispatcher {
+  op_registry: RwLock<HashMap<OpId, JsonOpHandler>>,
+  next_op_id: AtomicU32,
+}
+
+impl JsonDispatcher {
+  pub fn new() -> Self {
+    Self {
+      next_op_id: AtomicU32::new(2001),
+      op_registry: RwLock::new(HashMap::new()),
+    }
+  }
+
+  pub fn register_op(&self, handler: JsonOpHandler) -> OpId {
+    let op_id = self.next_op_id.fetch_add(1, Ordering::SeqCst);
+    // TODO: verify that we didn't overflow 1000 ops
+
+    // Ensure the op isn't a duplicate, and can be registered.
+    self
+      .op_registry
+      .write()
+      .unwrap()
+      .entry(op_id)
+      .and_modify(|_| panic!("Op already registered {}", op_id))
+      .or_insert(handler);
+
+    op_id
+  }
+
+  fn select_op(&self, op_id: OpId) -> JsonOpHandler {
+    *self
+      .op_registry
+      .read()
+      .unwrap()
+      .get(&op_id)
+      .expect("Op not found!")
+  }
+
+  pub fn dispatch(
+    &self,
     op_id: OpId,
     state: &ThreadSafeState,
     control: &[u8],
     zero_copy: Option<PinnedBuf>,
-  ) -> CoreOp;
+  ) -> CoreOp {
+    let async_args: AsyncArgs = serde_json::from_slice(control).unwrap();
+    let promise_id = async_args.promise_id;
+    let is_sync = promise_id.is_none();
 
-  fn register_json_op(name: &str, handler: JsonOpHandler) -> OpId;
-}
+    // Select and run JsonOpHandler
+    let handler = self.select_op(op_id);
+    let result = serde_json::from_slice(control)
+      .map_err(ErrBox::from)
+      .and_then(move |args| handler(state, args, zero_copy));
 
-fn op_selector(op_id: OpId) -> JsonOpHandler {
-  match op_id {
-    OP_EXIT => os::op_exit,
-    OP_IS_TTY => os::op_is_tty,
-    OP_ENV => os::op_env,
-    OP_EXEC_PATH => os::op_exec_path,
-    OP_HOME_DIR => os::op_home_dir,
-    OP_UTIME => fs::op_utime,
-    OP_SET_ENV => os::op_set_env,
-    OP_START => os::op_start,
-    OP_APPLY_SOURCE_MAP => errors::op_apply_source_map,
-    OP_FORMAT_ERROR => errors::op_format_error,
-    OP_CACHE => compiler::op_cache,
-    OP_FETCH_SOURCE_FILE => compiler::op_fetch_source_file,
-    OP_OPEN => files::op_open,
-    OP_CLOSE => files::op_close,
-    OP_SEEK => files::op_seek,
-    OP_METRICS => metrics::op_metrics,
-    OP_FETCH => fetch::op_fetch,
-    OP_REPL_START => repl::op_repl_start,
-    OP_REPL_READLINE => repl::op_repl_readline,
-    OP_ACCEPT => net::op_accept,
-    OP_DIAL => net::op_dial,
-    OP_SHUTDOWN => net::op_shutdown,
-    OP_LISTEN => net::op_listen,
-    OP_RESOURCES => resources::op_resources,
-    OP_GET_RANDOM_VALUES => random::op_get_random_values,
-    OP_GLOBAL_TIMER_STOP => timers::op_global_timer_stop,
-    OP_GLOBAL_TIMER => timers::op_global_timer,
-    OP_NOW => performance::op_now,
-    OP_PERMISSIONS => permissions::op_permissions,
-    OP_REVOKE_PERMISSION => permissions::op_revoke_permission,
-    OP_CREATE_WORKER => workers::op_create_worker,
-    OP_HOST_GET_WORKER_CLOSED => workers::op_host_get_worker_closed,
-    OP_HOST_POST_MESSAGE => workers::op_host_post_message,
-    OP_HOST_GET_MESSAGE => workers::op_host_get_message,
-    // TODO: make sure these two ops are only accessible to appropriate Workers
-    OP_WORKER_POST_MESSAGE => workers::op_worker_post_message,
-    OP_WORKER_GET_MESSAGE => workers::op_worker_get_message,
-    OP_RUN => process::op_run,
-    OP_RUN_STATUS => process::op_run_status,
-    OP_KILL => process::op_kill,
-    OP_CHDIR => fs::op_chdir,
-    OP_MKDIR => fs::op_mkdir,
-    OP_CHMOD => fs::op_chmod,
-    OP_CHOWN => fs::op_chown,
-    OP_REMOVE => fs::op_remove,
-    OP_COPY_FILE => fs::op_copy_file,
-    OP_STAT => fs::op_stat,
-    OP_READ_DIR => fs::op_read_dir,
-    OP_RENAME => fs::op_rename,
-    OP_LINK => fs::op_link,
-    OP_SYMLINK => fs::op_symlink,
-    OP_READ_LINK => fs::op_read_link,
-    OP_TRUNCATE => fs::op_truncate,
-    OP_MAKE_TEMP_DIR => fs::op_make_temp_dir,
-    OP_CWD => fs::op_cwd,
-    OP_FETCH_ASSET => compiler::op_fetch_asset,
-    _ => panic!("bad op_id"),
-  }
-}
-
-/// This is type called "OpDispatcher"
-pub fn dispatch(
-  op_id: OpId,
-  state: &ThreadSafeState,
-  control: &[u8],
-  zero_copy: Option<PinnedBuf>,
-) -> CoreOp {
-  let async_args: AsyncArgs = serde_json::from_slice(control).unwrap();
-  let promise_id = async_args.promise_id;
-  let is_sync = promise_id.is_none();
-
-  // Select and run JsonOpHandler
-  let handler = op_selector(op_id);
-  let result = serde_json::from_slice(control)
-    .map_err(ErrBox::from)
-    .and_then(move |args| handler(state, args, zero_copy));
-
-  // Convert to CoreOp
-  match result {
-    Ok(JsonOp::Sync(sync_value)) => {
-      assert!(promise_id.is_none());
-      CoreOp::Sync(serialize_result(promise_id, Ok(sync_value)))
-    }
-    Ok(JsonOp::Async(fut)) => {
-      assert!(promise_id.is_some());
-      let fut2 = Box::new(fut.then(move |result| -> Result<Buf, ()> {
-        Ok(serialize_result(promise_id, result))
-      }));
-      CoreOp::Async(fut2)
-    }
-    Err(sync_err) => {
-      let buf = serialize_result(promise_id, Err(sync_err));
-      if is_sync {
-        CoreOp::Sync(buf)
-      } else {
-        CoreOp::Async(Box::new(futures::future::ok(buf)))
+    // Convert to CoreOp
+    match result {
+      Ok(JsonOp::Sync(sync_value)) => {
+        assert!(promise_id.is_none());
+        CoreOp::Sync(serialize_result(promise_id, Ok(sync_value)))
+      }
+      Ok(JsonOp::Async(fut)) => {
+        assert!(promise_id.is_some());
+        let fut2 = Box::new(fut.then(move |result| -> Result<Buf, ()> {
+          Ok(serialize_result(promise_id, result))
+        }));
+        CoreOp::Async(fut2)
+      }
+      Err(sync_err) => {
+        let buf = serialize_result(promise_id, Err(sync_err));
+        if is_sync {
+          CoreOp::Sync(buf)
+        } else {
+          CoreOp::Async(Box::new(futures::future::ok(buf)))
+        }
       }
     }
   }
