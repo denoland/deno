@@ -136,20 +136,6 @@ function fetchAsset(name: string): string {
   return sendSync(dispatch.OP_FETCH_ASSET, { name });
 }
 
-/** Ops to Rust to resolve and fetch a modules meta data. */
-function fetchSourceFile(specifier: string, referrer: string): SourceFile {
-  util.log("compiler.fetchSourceFile", { specifier, referrer });
-  const res = sendSync(dispatch.OP_FETCH_SOURCE_FILE, {
-    specifier,
-    referrer
-  });
-
-  return {
-    ...res,
-    typeDirectives: parseTypeDirectives(res.sourceCode)
-  };
-}
-
 /** Ops to Rust to resolve and fetch modules meta data. */
 function fetchSourceFiles(
   specifiers: string[],
@@ -240,36 +226,6 @@ class Host implements ts.CompilerHost {
 
   private _sourceFileCache: Record<string, SourceFile> = {};
 
-  private _resolveModule(specifier: string, referrer: string): SourceFile {
-    util.log("host._resolveModule", { specifier, referrer });
-    // Handle built-in assets specially.
-    if (specifier.startsWith(ASSETS)) {
-      const moduleName = specifier.split("/").pop()!;
-      if (moduleName in this._sourceFileCache) {
-        return this._sourceFileCache[moduleName];
-      }
-      const assetName = moduleName.includes(".")
-        ? moduleName
-        : `${moduleName}.d.ts`;
-      const sourceCode = fetchAsset(assetName);
-      const sourceFile = {
-        moduleName,
-        filename: specifier,
-        mediaType: MediaType.TypeScript,
-        sourceCode
-      };
-      this._sourceFileCache[moduleName] = sourceFile;
-      return sourceFile;
-    }
-    const sourceFile = fetchSourceFile(specifier, referrer);
-    assert(sourceFile.moduleName != null);
-    const { moduleName } = sourceFile;
-    if (!(moduleName! in this._sourceFileCache)) {
-      this._sourceFileCache[moduleName!] = sourceFile;
-    }
-    return sourceFile;
-  }
-
   private _getAsset(specifier: string): SourceFile {
     const moduleName = specifier.split("/").pop()!;
     if (moduleName in this._sourceFileCache) {
@@ -289,6 +245,10 @@ class Host implements ts.CompilerHost {
     return sourceFile;
   }
 
+  private _resolveModule(specifier: string, referrer: string): SourceFile {
+    return this._resolveModules([specifier], referrer)[0];
+  }
+
   private _resolveModules(
     specifiers: string[],
     referrer: string
@@ -301,7 +261,7 @@ class Host implements ts.CompilerHost {
         : undefined;
     // First of all built-in assets are handled specially, so they should
     // be removed from array of files will be requesting from Rust.
-    let resolvedModules: (SourceFile | undefined)[] = [];
+    const resolvedModules: Array<SourceFile | undefined> = [];
     const modulesToRequest = [];
 
     for (const specifier of specifiers) {
@@ -315,6 +275,10 @@ class Host implements ts.CompilerHost {
         const assetFile = this._getAsset(mappedModuleName);
         resolvedModules.push(assetFile);
         continue;
+      } else if (mappedModuleName in this._sourceFileCache) {
+        const module = this._sourceFileCache[mappedModuleName];
+        resolvedModules.push(module);
+        continue;
       }
 
       modulesToRequest.push(mappedModuleName);
@@ -324,7 +288,7 @@ class Host implements ts.CompilerHost {
     }
 
     // Now get files from Rust.
-    let sourceFiles = fetchSourceFiles(modulesToRequest, referrer);
+    const sourceFiles = fetchSourceFiles(modulesToRequest, referrer);
 
     for (const sourceFile of sourceFiles) {
       assert(sourceFile.moduleName != null);
@@ -433,8 +397,6 @@ class Host implements ts.CompilerHost {
   ): ts.SourceFile | undefined {
     assert(!shouldCreateNewSourceFile);
     util.log("getSourceFile", fileName);
-    // TODO: file should be already in the cache
-
     const sourceFile =
       fileName in this._sourceFileCache
         ? this._sourceFileCache[fileName]

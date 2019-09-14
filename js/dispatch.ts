@@ -16,7 +16,7 @@ export const OP_START = 10;
 export const OP_APPLY_SOURCE_MAP = 11;
 export const OP_FORMAT_ERROR = 12;
 export const OP_CACHE = 13;
-export const OP_FETCH_SOURCE_FILE = 14;
+export const OP_FETCH_SOURCE_FILES = 14;
 export const OP_OPEN = 15;
 export const OP_CLOSE = 16;
 export const OP_SEEK = 17;
@@ -60,7 +60,6 @@ export const OP_TRUNCATE = 54;
 export const OP_MAKE_TEMP_DIR = 55;
 export const OP_CWD = 56;
 export const OP_FETCH_ASSET = 57;
-export const OP_FETCH_SOURCE_FILES = 58;
 
 export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
   switch (opId) {
