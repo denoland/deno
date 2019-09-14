@@ -1,102 +1,96 @@
 #!/usr/bin/env python
 # Copyright 2018 the Deno authors. All rights reserved. MIT license.
-from glob import glob
 import os
 import sys
 import argparse
 from third_party import google_env, python_env
-from util import root_path, run, find_exts, platform, third_party_path
-
-parser = argparse.ArgumentParser()
-parser.add_argument("--js", help="only run prettier", action="store_true")
-parser.add_argument("--rs", help="only run rustfmt", action="store_true")
-parser.add_argument("--py", help="only run yapf", action="store_true")
-parser.add_argument("--gn", help="only run gn format", action="store_true")
-parser.add_argument("--cc", help="only run clang format", action="store_true")
-
-clang_format_path = os.path.join(third_party_path, "depot_tools",
-                                 "clang-format")
-prettier_path = os.path.join(third_party_path, "node_modules", "prettier",
-                             "bin-prettier.js")
-tools_path = os.path.join(root_path, "tools")
-rustfmt_config = os.path.join(root_path, ".rustfmt.toml")
+from util import git_ls_files, third_party_path, root_path, run
 
 
 def main():
     os.chdir(root_path)
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--cc", help="run clang-format", action="store_true")
+    parser.add_argument("--gn", help="run gn format", action="store_true")
+    parser.add_argument("--js", help="run prettier", action="store_true")
+    parser.add_argument("--py", help="run yapf", action="store_true")
+    parser.add_argument("--rs", help="run rustfmt", action="store_true")
     args = parser.parse_args()
+
     did_fmt = False
-    if args.rs:
-        rustfmt()
-        did_fmt = True
     if args.cc:
         clang_format()
         did_fmt = True
     if args.gn:
         gn_format()
         did_fmt = True
-    if args.py:
-        yapf()
-        did_fmt = True
     if args.js:
         prettier()
         did_fmt = True
-    if not did_fmt:
+    if args.py:
+        yapf()
+        did_fmt = True
+    if args.rs:
         rustfmt()
+        did_fmt = True
+
+    if not did_fmt:
         clang_format()
         gn_format()
-        yapf()
         prettier()
-
-
-def qrun(cmd, env=None):
-    run(cmd, quiet=True, env=env)
+        yapf()
+        rustfmt()
 
 
 def clang_format():
     print "clang_format"
-    qrun([clang_format_path, "-i", "-style", "Google"] +
-         find_exts(["core"], [".cc", ".h"]))
-
-
-def rustfmt():
-    print "rustfmt"
-    qrun([
-        "rustfmt",
-        "--config-path",
-        rustfmt_config,
-    ] + find_exts(["cli", "core", "tools", "deno_typescript", "cli_snapshots"],
-                  [".rs"]))
+    exe = os.path.join(third_party_path, "depot_tools", "clang-format")
+    source_files = git_ls_files(root_path, ["*.cc", "*.h"])
+    run([exe, "-i", "-style", "Google", "--"] + source_files,
+        env=google_env(),
+        quiet=True)
 
 
 def gn_format():
     print "gn format"
-    for fn in ["BUILD.gn", ".gn"] + find_exts(
-        ["build_extra", "cli", "core", "deno_typescript", "cli_snapshots"],
-        [".gn", ".gni"]):
-        qrun(["third_party/depot_tools/gn", "format", fn], env=google_env())
-
-
-def yapf():
-    print "yapf"
-    qrun(
-        [sys.executable, "third_party/python_packages/bin/yapf", "-i"] +
-        find_exts(["tools", "build_extra", "deno_typescript", "cli_snapshots"],
-                  [".py"],
-                  skip=["tools/clang"]),
-        env=python_env())
+    exe = os.path.join(third_party_path, "depot_tools", "gn")
+    source_files = git_ls_files(root_path, ["*.gn", "*.gni"])
+    run([exe, "format", "--"] + source_files, env=google_env(), quiet=True)
 
 
 def prettier():
     print "prettier"
-    files = find_exts([
-        ".github", "js", "tests", "tools", "website", "core",
-        "deno_typescript", "cli_snapshots"
-    ], [".js", ".json", ".ts", ".md"],
-                      skip=["tools/clang", "js/deps", "js/gen"])
-    qrun(["node", prettier_path, "--write", "--loglevel=error"] +
-         ["rollup.config.js"] + files)
+    script = os.path.join(third_party_path, "node_modules", "prettier",
+                          "bin-prettier.js")
+    source_files = git_ls_files(root_path, ["*.js", "*.json", "*.ts", "*.md"])
+    run(["node", script, "--write", "--loglevel=error", "--"] + source_files,
+        shell=False,
+        quiet=True)
 
 
-if __name__ == '__main__':
+def yapf():
+    print "yapf"
+    script = os.path.join(third_party_path, "python_packages", "bin", "yapf")
+    source_files = git_ls_files(root_path, ["*.py"])
+    run([sys.executable, script, "-i", "--"] + source_files,
+        env=python_env(),
+        shell=False,
+        quiet=True)
+
+
+def rustfmt():
+    print "rustfmt"
+    config_file = os.path.join(root_path, ".rustfmt.toml")
+    source_files = git_ls_files(root_path, ["*.rs"])
+    run([
+        "rustfmt",
+        "--config-path=" + config_file,
+        "--",
+    ] + source_files,
+        shell=False,
+        quiet=True)
+
+
+if __name__ == "__main__":
     sys.exit(main())
