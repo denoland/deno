@@ -7,7 +7,7 @@ from third_party import tp, google_env
 
 def download_prebuilt(sha1_file):
     run([
-        "python",
+        sys.executable,
         tp('depot_tools/download_from_google_storage.py'),
         '--platform=' + sys.platform,
         '--no_auth',
