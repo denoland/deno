@@ -5,8 +5,7 @@ import os
 import sys
 import argparse
 from third_party import google_env, python_env
-from third_party import clang_format_path, third_party_path
-from util import root_path, run, find_exts, platform
+from util import root_path, run, find_exts, platform, third_party_path
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--js", help="only run prettier", action="store_true")
@@ -15,6 +14,8 @@ parser.add_argument("--py", help="only run yapf", action="store_true")
 parser.add_argument("--gn", help="only run gn format", action="store_true")
 parser.add_argument("--cc", help="only run clang format", action="store_true")
 
+clang_format_path = os.path.join(third_party_path, "depot_tools",
+                                 "clang-format")
 prettier_path = os.path.join(third_party_path, "node_modules", "prettier",
                              "bin-prettier.js")
 tools_path = os.path.join(root_path, "tools")

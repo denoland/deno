@@ -3,40 +3,17 @@
 # This script contains helper functions to work with the third_party subrepo.
 
 import os
-from os import path
 import re
 import site
 import sys
 from tempfile import mkdtemp
-from util import add_env_path, find_exts, make_env, rmtree, root_path, run
+from util import add_env_path, executable_suffix, make_env, rmtree, root_path
+from util import run, third_party_path
 
-
-# Helper function that returns the full path to a subpath of the repo root.
-def root(*subpath_parts):
-    return path.normpath(path.join(root_path, *subpath_parts))
-
-
-# Helper function that returns the full path to a file/dir in third_party.
-def tp(*subpath_parts):
-    return root("third_party", *subpath_parts)
-
-
-build_path = root("build")
-
-third_party_path = tp()
-depot_tools_path = tp("depot_tools")
-rust_crates_path = tp("rust_crates")
-python_packages_path = tp("python_packages")
-clang_format_path = tp(depot_tools_path, "clang-format")
-
-if "DENO_GN_PATH" in os.environ:
-    gn_path = os.environ["DENO_GN_PATH"]
-else:
-    gn_path = tp(depot_tools_path, "gn")
-if "DENO_NINJA_PATH" in os.environ:
-    ninja_path = os.environ["DENO_NINJA_PATH"]
-else:
-    ninja_path = tp(depot_tools_path, "ninja")
+chromium_build_path = os.path.join(root_path, "build")
+depot_tools_path = os.path.join(third_party_path, "depot_tools")
+prebuilt_path = os.path.join(root_path, "prebuilt")
+python_packages_path = os.path.join(third_party_path, "python_packages")
 
 python_site_env = None
 
@@ -55,7 +32,7 @@ def python_env(env=None, merge_env=None):
         python_site_env = {}
         temp = os.environ["PATH"], sys.path
         os.environ["PATH"], sys.path = "", []
-        site.addsitedir(build_path)  # Modifies PATH and sys.path.
+        site.addsitedir(chromium_build_path)  # Modifies PATH and sys.path.
         site.addsitedir(python_packages_path)  # Modifies PATH and sys.path.
         python_site_env = {"PATH": os.environ["PATH"], "PYTHONPATH": sys.path}
         os.environ["PATH"], sys.path = temp
@@ -137,6 +114,7 @@ def run_pip():
     ],
         cwd=third_party_path,
         merge_env=pip_env)
+
     # Remove the temporary pip installation.
     rmtree(temp_python_home)
 
@@ -152,7 +130,7 @@ def run_gclient_sync():
     # Since depot_tools is listed in .gclient_entries, gclient will install a
     # fresh copy in `third_party/depot_tools`.
     # If it all works out, we remove the depot_tools_temp directory afterwards.
-    depot_tools_temp_path = root("depot_tools_temp")
+    depot_tools_temp_path = os.path.join(root_path, "depot_tools_temp")
 
     # Rename depot_tools to depot_tools_temp.
     try:
@@ -163,7 +141,7 @@ def run_gclient_sync():
         # failed half-way, before we got the chance to remove the temp dir.
         # We'll use whatever is in the temp dir that was already there.
         # If not, the user can recover by removing the temp directory manually.
-        if path.isdir(depot_tools_temp_path):
+        if os.path.isdir(depot_tools_temp_path):
             pass
         else:
             raise
@@ -172,8 +150,8 @@ def run_gclient_sync():
         "gclient", "sync", "--reset", "--shallow", "--no-history", "--nohooks"
     ]
     envs = {
-        'DEPOT_TOOLS_UPDATE': "0",
-        'GCLIENT_FILE': root("gclient_config.py")
+        "DEPOT_TOOLS_UPDATE": "0",
+        "GCLIENT_FILE": os.path.join(root_path, "gclient_config.py")
     }
     env = google_env(depot_tools_path_=depot_tools_temp_path, merge_env=envs)
     run(args, cwd=third_party_path, env=env)
@@ -182,89 +160,107 @@ def run_gclient_sync():
     # gclient did indeed install a fresh copy.
     # Also check that `{depot_tools_temp_path}/gclient.py` exists, so a typo in
     # this script won't accidentally blow out someone's home dir.
-    if (path.isdir(path.join(depot_tools_path, ".git"))
-            and path.isfile(path.join(depot_tools_path, "gclient.py"))
-            and path.isfile(path.join(depot_tools_temp_path, "gclient.py"))):
+    if (os.path.isdir(os.path.join(depot_tools_path, ".git"))
+            and os.path.isfile(os.path.join(depot_tools_path, "gclient.py"))
+            and os.path.isfile(
+                os.path.join(depot_tools_temp_path, "gclient.py"))):
         rmtree(depot_tools_temp_path)
 
 
-# Download the given item from Google storage.
-def download_from_google_storage(item, bucket):
-    if sys.platform == 'win32':
-        sha1_file = "v8/buildtools/win/%s.exe.sha1" % item
-    elif sys.platform == 'darwin':
-        sha1_file = "v8/buildtools/mac/%s.sha1" % item
-    elif sys.platform.startswith('linux'):
-        sha1_file = "v8/buildtools/linux64/%s.sha1" % item
+def get_platform_dir_name():
+    if sys.platform == "win32":
+        return "win"
+    elif sys.platform == "darwin":
+        return "mac"
+    elif sys.platform.startswith("linux"):
+        return "linux64"
 
+
+def get_prebuilt_tool_path(tool):
+    return os.path.join(prebuilt_path, get_platform_dir_name(),
+                        tool + executable_suffix)
+
+
+# Download the given item from Google storage.
+def download_from_google_storage(item, bucket, base_dir):
+    download_script = os.path.join(depot_tools_path,
+                                   "download_from_google_storage.py")
+    sha1_file = os.path.join(base_dir, get_platform_dir_name(),
+                             item + executable_suffix + ".sha1")
     run([
         sys.executable,
-        tp('depot_tools/download_from_google_storage.py'),
-        '--platform=' + sys.platform,
-        '--no_auth',
-        '--bucket=%s' % bucket,
-        '--sha1_file',
-        tp(sha1_file),
+        download_script,
+        "--platform=" + sys.platform,
+        "--no_auth",
+        "--bucket=%s" % bucket,
+        "--sha1_file",
+        sha1_file,
     ],
         env=google_env())
 
 
 # Download the given item from Chrome Infrastructure Package Deployment.
 def download_from_cipd(item, version):
-    if sys.platform == 'win32':
-        root_dir = "v8/buildtools/win"
+    cipd_exe = os.path.join(depot_tools_path, "cipd")
+    download_dir = os.path.join(third_party_path, "v8", "buildtools",
+                                get_platform_dir_name())
+
+    if sys.platform == "win32":
         item += "windows-amd64"
-    elif sys.platform == 'darwin':
-        root_dir = "v8/buildtools/mac"
+    elif sys.platform == "darwin":
         item += "mac-amd64"
-    elif sys.platform.startswith('linux'):
-        root_dir = "v8/buildtools/linux64"
+    elif sys.platform.startswith("linux"):
         item += "linux-amd64"
 
-    # init cipd if necessary
-    if not os.path.exists(path.join(tp(root_dir), ".cipd")):
+    # Init cipd if necessary.
+    if not os.path.exists(os.path.join(download_dir, ".cipd")):
         run([
-            tp('depot_tools/cipd'),
-            'init',
-            tp(root_dir),
-            '-force',
-        ],
-            env=google_env())
+            cipd_exe,
+            "init",
+            download_dir,
+            "-force",
+        ], env=google_env())
 
     run([
-        tp('depot_tools/cipd'),
-        'install',
+        cipd_exe,
+        "install",
         item,
-        'git_revision:' + version,
-        '-root',
-        tp(root_dir),
+        "git_revision:" + version,
+        "-root",
+        download_dir,
     ],
         env=google_env())
 
 
 # Download gn from Google storage.
 def download_gn():
-    download_from_cipd('gn/gn/', '152c5144ceed9592c20f0c8fd55769646077569b')
+    download_from_cipd("gn/gn/", "152c5144ceed9592c20f0c8fd55769646077569b")
 
 
 # Download clang-format from Google storage.
 def download_clang_format():
-    download_from_google_storage('clang-format', 'chromium-clang-format')
+    download_from_google_storage(
+        "clang-format", "chromium-clang-format",
+        os.path.join(third_party_path, "v8", "buildtools"))
+
+
+def download_sccache():
+    download_from_google_storage("sccache", "denoland", prebuilt_path)
+
+
+def download_hyperfine():
+    download_from_google_storage("hyperfine", "denoland", prebuilt_path)
 
 
 # Download clang by calling the clang update script.
 def download_clang():
-    run([sys.executable,
-         tp('v8/tools/clang/scripts/update.py')],
-        env=google_env())
+    update_script = os.path.join(third_party_path, "v8", "tools", "clang",
+                                 "scripts", "update.py")
+    run([sys.executable, update_script], env=google_env())
 
 
 def maybe_download_sysroot():
-    if sys.platform.startswith('linux'):
-        run([
-            sys.executable,
-            os.path.join(root_path,
-                         'build/linux/sysroot_scripts/install-sysroot.py'),
-            '--arch=amd64'
-        ],
-            env=google_env())
+    if sys.platform.startswith("linux"):
+        install_script = os.path.join(chromium_build_path, "linux",
+                                      "sysroot_scripts", "install-sysroot.py")
+        run([sys.executable, install_script, "--arch=amd64"], env=google_env())
