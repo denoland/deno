@@ -31,11 +31,11 @@ const test = {
   },
   needsNet: () => {
     try {
-      listen("tcp", "127.0.0.1:4540");
+      listen("127.0.0.1:4540");
     } catch (e) {
       console.log(firstCheckFailedMessage);
     }
-    listen("tcp", "127.0.0.1:4541");
+    listen("127.0.0.1:4541");
   },
   needsRun: () => {
     try {

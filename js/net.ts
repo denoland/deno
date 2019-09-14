@@ -15,7 +15,7 @@ export interface Addr {
 }
 
 export interface NetworkOptions {
-  transport: Network;
+  network: Network;
 }
 
 /** A Listener is a generic network listener for stream-oriented protocols. */
@@ -147,13 +147,13 @@ export interface Conn extends Reader, Writer, Closer {
  */
 export function listen(
   address: string,
-  options: NetworkOptions = { transport: "tcp" }
+  options: NetworkOptions = { network: "tcp" }
 ): Listener {
   const res = sendSync(dispatch.OP_LISTEN, {
-    network: options.transport,
+    network: options.network,
     address
   });
-  return new ListenerImpl(res.rid, options.transport, res.localAddr);
+  return new ListenerImpl(res.rid, options.network, res.localAddr);
 }
 
 /** Dial connects to the address on the named network.
@@ -168,7 +168,6 @@ export function listen(
  * TCP, and the host resolves to multiple IP addresses, Dial will try each IP
  * address in order until one succeeds.
  *
- * You can use the network options to select which transport to use.
  * Supported networks are only `tcp` currently.
  *
  * TODO: `tcp4` (IPv4-only), `tcp6` (IPv6-only), `udp`, `udp4` (IPv4-only),
@@ -177,19 +176,19 @@ export function listen(
  *
  * Examples:
  *
- *     dial("golang.org:http", { transport: "tcp" })
- *     dial("192.0.2.1:http", { transport: "tcp" })
- *     dial("198.51.100.1:80", { transport: "tcp" })
- *     dial("[2001:db8::1]:domain", { transport: "udp" })
- *     dial("[fe80::1%lo0]:53", { transport: "udp" })
- *     dial(":80", { transport: "tcp" })
+ *     dial("golang.org:http", { network: "tcp" })
+ *     dial("192.0.2.1:http", { network: "tcp" })
+ *     dial("198.51.100.1:80", { network: "tcp" })
+ *     dial("[2001:db8::1]:domain", { network: "udp" })
+ *     dial("[fe80::1%lo0]:53", { network: "udp" })
+ *     dial(":80", { network: "tcp" })
  */
 export async function dial(
   address: string,
-  options: NetworkOptions = { transport: "tcp" }
+  options: NetworkOptions = { network: "tcp" }
 ): Promise<Conn> {
   const res = await sendAsync(dispatch.OP_DIAL, {
-    network: options.transport,
+    network: options.network,
     address
   });
   // TODO(bartlomieju): add remoteAddr and localAddr on Rust side
