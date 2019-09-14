@@ -16,7 +16,7 @@ eslint = os.path.join(third_party_path, "node_modules", "eslint", "bin",
 
 os.chdir(root_path)
 run([
-    "python", cpplint, "--filter=-build/include_subdir",
+    sys.executable, cpplint, "--filter=-build/include_subdir",
     "--repository=core/libdeno", "--extensions=cc,h", "--recursive", "core"
 ])
 
