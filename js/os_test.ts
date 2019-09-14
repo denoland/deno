@@ -14,6 +14,7 @@ testPerm({ env: true }, function envSuccess(): void {
   env.test_var = "Hello World";
   const newEnv = Deno.env();
   assertEquals(env.test_var, newEnv.test_var);
+  assertEquals(Deno.env("test_var"), env.test_var);
 });
 
 test(function envFailure(): void {

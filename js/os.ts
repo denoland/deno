@@ -33,14 +33,22 @@ function setEnv(key: string, value: string): void {
  * the process. The environment object will only accept `string`s
  * as values.
  *
+ *       console.log(Deno.env("SHELL"));
  *       const myEnv = Deno.env();
  *       console.log(myEnv.SHELL);
  *       myEnv.TEST_VAR = "HELLO";
  *       const newEnv = Deno.env();
  *       console.log(myEnv.TEST_VAR == newEnv.TEST_VAR);
  */
-export function env(): { [index: string]: string } {
+export function env(): { [index: string]: string };
+export function env(key: string): string | undefined;
+export function env(
+  key?: string
+): { [index: string]: string } | string | undefined {
   const env = sendSync(dispatch.OP_ENV);
+  if (key) {
+    return env[key];
+  }
   return new Proxy(env, {
     set(obj, prop: string, value: string): boolean {
       setEnv(prop, value);
