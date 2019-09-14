@@ -15,7 +15,7 @@ import tempfile
 import subprocess
 from util import find_exts, root_path, run, run_output
 from util import build_path, executable_suffix
-import prebuilt
+import third_party
 from http_benchmark import http_benchmark
 import throughput_benchmark
 import http_server
@@ -178,10 +178,11 @@ def run_max_mem_benchmark(deno_exe):
 
 
 def run_exec_time(deno_exe, build_dir):
+    third_party.download_hyperfine()
+    hyperfine_exe = third_party.get_prebuilt_tool_path("hyperfine")
     benchmark_file = os.path.join(build_dir, "hyperfine_results.json")
-    hyperfine = prebuilt.load_hyperfine()
     run([
-        hyperfine, "--ignore-failure", "--export-json", benchmark_file,
+        hyperfine_exe, "--ignore-failure", "--export-json", benchmark_file,
         "--warmup", "3"
     ] + [
         deno_exe + " run " + " ".join(args)

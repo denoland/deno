@@ -4,12 +4,11 @@
 
 import os
 import sys
-from util import enable_ansi_colors, find_exts, root_path, run
+from util import enable_ansi_colors, find_exts, root_path, run, third_party_path
 from third_party import python_env
 
 enable_ansi_colors()
 
-third_party_path = os.path.join(root_path, "third_party")
 cpplint = os.path.join(third_party_path, "cpplint", "cpplint.py")
 eslint = os.path.join(third_party_path, "node_modules", "eslint", "bin",
                       "eslint")

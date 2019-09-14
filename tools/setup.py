@@ -5,10 +5,9 @@ import re
 import sys
 from distutils.spawn import find_executable
 import argparse
-import prebuilt
 import third_party
-from util import (build_mode, build_path, enable_ansi_colors, root_path, run,
-                  shell_quote)
+from util import build_mode, build_path, enable_ansi_colors, run, shell_quote
+from util import root_path, third_party_path
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -30,8 +29,8 @@ def main():
         third_party.download_gn()
         third_party.download_clang_format()
         third_party.download_clang()
+        third_party.download_sccache()
         third_party.maybe_download_sysroot()
-        prebuilt.load_sccache()
 
     write_lastchange()
 
@@ -126,7 +125,7 @@ def generate_gn_args(mode):
     if "DENO_BUILD_ARGS" in os.environ:
         out += os.environ["DENO_BUILD_ARGS"].split()
 
-    cacher = os.path.join(root_path, prebuilt.get_platform_path("sccache"))
+    cacher = third_party.get_prebuilt_tool_path("sccache")
     if not os.path.exists(cacher):
         cacher = find_executable("sccache") or find_executable("ccache")
 
@@ -141,6 +140,13 @@ def generate_gn_args(mode):
             out += ["treat_warnings_as_errors=false"]
 
     return out
+
+
+def gn_exe():
+    if "DENO_GN_PATH" in os.environ:
+        return os.environ["DENO_GN_PATH"]
+    else:
+        return os.path.join(third_party_path, "depot_tools", "gn")
 
 
 # gn gen.
@@ -169,8 +175,7 @@ def gn_gen(mode):
     for line in gn_args:
         print "  " + line
 
-    run([third_party.gn_path, "gen", build_path()],
-        env=third_party.google_env())
+    run([gn_exe(), "gen", build_path()], env=third_party.google_env())
 
 
 if __name__ == '__main__':
