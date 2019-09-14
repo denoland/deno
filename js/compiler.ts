@@ -254,15 +254,12 @@ class Host implements ts.CompilerHost {
     referrer: string
   ): SourceFile[] {
     util.log("host._resolveModules", { specifiers, referrer });
-
+    const resolvedModules: Array<SourceFile | undefined> = [];
+    const modulesToRequest = [];
     const typeDirectives: Record<string, string> | undefined =
       referrer in this._sourceFileCache
         ? this._sourceFileCache[referrer].typeDirectives
         : undefined;
-    // First of all built-in assets are handled specially, so they should
-    // be removed from array of files will be requesting from Rust.
-    const resolvedModules: Array<SourceFile | undefined> = [];
-    const modulesToRequest = [];
 
     for (const specifier of specifiers) {
       const mappedModuleName = getMappedModuleName(
@@ -271,20 +268,20 @@ class Host implements ts.CompilerHost {
         typeDirectives
       );
 
+      // Firstly built-in assets are handled specially, so they should
+      // be removed from array of files that we'll be requesting from Rust.
       if (specifier.startsWith(ASSETS)) {
         const assetFile = this._getAsset(mappedModuleName);
         resolvedModules.push(assetFile);
-        continue;
       } else if (mappedModuleName in this._sourceFileCache) {
         const module = this._sourceFileCache[mappedModuleName];
         resolvedModules.push(module);
-        continue;
+      } else {
+        // Temporarily fill with undefined, after fetching file from
+        // Rust it will be filled with proper value.
+        resolvedModules.push(undefined);
+        modulesToRequest.push(mappedModuleName);
       }
-
-      modulesToRequest.push(mappedModuleName);
-      // Temporarily fill with undefined, after fetch file from
-      // Rust it will be filled with proper value.
-      resolvedModules.push(undefined);
     }
 
     // Now get files from Rust.
@@ -296,6 +293,7 @@ class Host implements ts.CompilerHost {
       if (!(moduleName! in this._sourceFileCache)) {
         this._sourceFileCache[moduleName!] = sourceFile;
       }
+      // And fill temporary `undefined`s with actual files.
       const index = resolvedModules.indexOf(undefined);
       resolvedModules[index] = sourceFile;
     }
