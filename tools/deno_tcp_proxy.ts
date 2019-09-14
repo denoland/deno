@@ -2,10 +2,10 @@
 const addr = Deno.args[1] || "127.0.0.1:4500";
 const originAddr = Deno.args[2] || "127.0.0.1:4501";
 
-const listener = Deno.listen("tcp", addr);
+const listener = Deno.listen(addr);
 
 async function handle(conn: Deno.Conn): Promise<void> {
-  const origin = await Deno.dial("tcp", originAddr);
+  const origin = await Deno.dial(originAddr);
   try {
     await Promise.all([Deno.copy(conn, origin), Deno.copy(origin, conn)]);
   } catch (err) {

@@ -3,7 +3,7 @@
 // https://github.com/denoland/deno/issues/726 is completed.
 // Note: this is a keep-alive server.
 const addr = Deno.args[1] || "127.0.0.1:4500";
-const listener = Deno.listen("tcp", addr);
+const listener = Deno.listen(addr);
 const response = new TextEncoder().encode(
   "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n"
 );
