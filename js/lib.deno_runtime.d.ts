@@ -920,7 +920,7 @@ declare namespace Deno {
     address: string;
   }
   export interface NetworkOptions {
-    transport: Network;
+    network: Network;
   }
   /** A Listener is a generic network listener for stream-oriented protocols. */
   export interface Listener extends AsyncIterator<Conn> {
@@ -986,12 +986,12 @@ declare namespace Deno {
    *
    * Examples:
    *
-   *     dial("golang.org:http", { transport: "tcp" })
-   *     dial("192.0.2.1:http", { transport: "tcp" })
-   *     dial("198.51.100.1:80", { transport: "tcp" })
-   *     dial("[2001:db8::1]:domain", { transport: "udp" })
-   *     dial("[fe80::1%lo0]:53", { transport: "udp" })
-   *     dial(":80", { transport: "tcp" })
+   *     dial("golang.org:http", { network: "tcp" })
+   *     dial("192.0.2.1:http", { network: "tcp" })
+   *     dial("198.51.100.1:80", { network: "tcp" })
+   *     dial("[2001:db8::1]:domain", { network: "udp" })
+   *     dial("[fe80::1%lo0]:53", { network: "udp" })
+   *     dial(":80", { network: "tcp" })
    */
   export function dial(
     address: string,
