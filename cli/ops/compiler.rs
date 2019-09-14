@@ -49,17 +49,10 @@ pub fn op_fetch_source_files(
   // to this. Need a test to demonstrate the hole.
   let is_dyn_import = false;
 
-  let mut resolved_specifiers = vec![];
-
+  let mut futures = vec![];
   for specifier in &args.specifiers {
     let resolved_specifier =
       state.resolve(specifier, &args.referrer, false, is_dyn_import)?;
-    resolved_specifiers.push(resolved_specifier);
-  }
-
-  let mut futures = vec![];
-
-  for resolved_specifier in resolved_specifiers {
     let fut = state
       .file_fetcher
       .fetch_source_file_async(&resolved_specifier);
@@ -67,7 +60,7 @@ pub fn op_fetch_source_files(
   }
 
   // WARNING: Here we use tokio_util::block_on() which starts a new Tokio
-  // runtime for executing the future. This is so we don't inadvernently run
+  // runtime for executing the future. This is so we don't inadvertently run
   // out of threads in the main runtime.
   let files = tokio_util::block_on(futures::future::join_all(futures))?;
   let res: Vec<serde_json::value::Value> = files
