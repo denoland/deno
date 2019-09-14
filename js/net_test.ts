@@ -75,22 +75,6 @@ testPerm({ net: true }, async function netDialListen(): Promise<void> {
   conn.close();
 });
 
-testPerm({ net: true }, async function netDefaultTransportIsTCP(): Promise<
-  void
-> {
-  const listener = Deno.listen(":4500");
-  listener.accept().then(
-    async (conn): Promise<void> => {
-      assertEquals(conn.localAddr, "127.0.0.1:4500");
-      conn.close();
-    }
-  );
-  const conn = await Deno.dial("127.0.0.1:4500");
-
-  listener.close();
-  conn.close();
-});
-
 /* TODO(ry) Re-enable this test.
 testPerm({ net: true }, async function netListenAsyncIterator(): Promise<void> {
   const listener = Deno.listen(":4500");
