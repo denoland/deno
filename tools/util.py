@@ -192,30 +192,6 @@ def git_ls_files(base_dir, patterns=None):
     return files
 
 
-# Recursive search for files of certain extensions.
-#   * Recursive glob doesn't exist in python 2.7.
-#   * On windows, `os.walk()` unconditionally follows symlinks.
-#     The `skip`  parameter should be used to avoid recursing through those.
-def find_exts(directories, extensions, skip=None):
-    if skip is None:
-        skip = []
-    assert isinstance(directories, list)
-    assert isinstance(extensions, list)
-    skip = [os.path.normpath(i) for i in skip]
-    matches = []
-    for directory in directories:
-        for root, dirnames, filenames in os.walk(directory):
-            if root in skip:
-                dirnames[:] = []  # Don't recurse further into this directory.
-                continue
-            for filename in filenames:
-                for ext in extensions:
-                    if filename.endswith(ext):
-                        matches.append(os.path.join(root, filename))
-                        break
-    return matches
-
-
 # The Python equivalent of `rm -rf`.
 def rmtree(directory):
     # On Windows, shutil.rmtree() won't delete files that have a readonly bit.
