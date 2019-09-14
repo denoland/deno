@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-const { args, readFileSync, writeFileSync, exit, dial } = Deno;
+const { args, readFileSync, writeFileSync, exit, dial, listen } = Deno;
 
 const name = args[1];
 const test: (args: string[]) => void = {
@@ -17,14 +17,14 @@ const test: (args: string[]) => void = {
   net_listen: (hosts: string[]): void => {
     hosts.forEach(
       (host): any => {
-        const listener = Deno.listen("tcp", host);
+        const listener = listen(host);
         listener.close();
       }
     );
   },
   net_dial: async (hosts: string[]): Promise<void> => {
     for (const host of hosts) {
-      const listener = await Deno.dial("tcp", host);
+      const listener = await dial(host);
       listener.close();
     }
   }
