@@ -16,4 +16,3 @@ node_modules
 /website/data.json
 /website/recent.json
 /website/*.bundle.js
-/js/gen

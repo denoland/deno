@@ -166,6 +166,32 @@ def touch(fname):
         open(fname, 'a').close()
 
 
+# Recursively list all files in (a subdirectory of) a git worktree.
+#   * Optionally, glob patterns may be specified to e.g. only list files with a
+#     certain extension.
+#   * Untracked files are included, unless they're listed in .gitignore.
+#   * Directory names themselves are not listed (but the files inside are).
+#   * Submodules and their contents are ignored entirely.
+#   * This function fails if the query matches no files.
+def git_ls_files(base_dir, patterns=None):
+    base_dir = os.path.abspath(base_dir)
+    args = [
+        "git", "-C", base_dir, "ls-files", "-z", "--exclude-standard",
+        "--cached", "--modified", "--others"
+    ]
+    if patterns:
+        args += ["--"] + patterns
+    output = subprocess.check_output(args)
+    files = [
+        os.path.normpath(os.path.join(base_dir, f)) for f in output.split("\0")
+        if f != ""
+    ]
+    if not files:
+        raise RuntimeError("git_ls_files: no files in '%s'" % base_dir +
+                           (" matching %s" % patterns if patterns else ""))
+    return files
+
+
 # Recursive search for files of certain extensions.
 #   * Recursive glob doesn't exist in python 2.7.
 #   * On windows, `os.walk()` unconditionally follows symlinks.
