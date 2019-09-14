@@ -81,6 +81,7 @@ pub const OP_TRUNCATE: OpId = 54;
 pub const OP_MAKE_TEMP_DIR: OpId = 55;
 pub const OP_CWD: OpId = 56;
 pub const OP_FETCH_ASSET: OpId = 57;
+pub const OP_FETCH_SOURCE_FILES: OpId = 58;
 
 pub fn dispatch(
   state: &ThreadSafeState,
@@ -296,6 +297,12 @@ pub fn dispatch(
     OP_CWD => dispatch_json::dispatch(fs::op_cwd, state, control, zero_copy),
     OP_FETCH_ASSET => dispatch_json::dispatch(
       compiler::op_fetch_asset,
+      state,
+      control,
+      zero_copy,
+    ),
+    OP_FETCH_SOURCE_FILES => dispatch_json::dispatch(
+      compiler::op_fetch_source_files,
       state,
       control,
       zero_copy,

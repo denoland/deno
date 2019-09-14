@@ -150,6 +150,27 @@ function fetchSourceFile(specifier: string, referrer: string): SourceFile {
   };
 }
 
+/** Ops to Rust to resolve and fetch modules meta data. */
+function fetchSourceFiles(
+  specifiers: string[],
+  referrer: string
+): SourceFile[] {
+  util.log("compiler.fetchSourceFiles", { specifiers, referrer });
+  const res = sendSync(dispatch.OP_FETCH_SOURCE_FILES, {
+    specifiers,
+    referrer
+  });
+
+  return res.map(
+    (sourceFile: SourceFile): SourceFile => {
+      return {
+        ...sourceFile,
+        typeDirectives: parseTypeDirectives(res.sourceCode)
+      };
+    }
+  );
+}
+
 /** Utility function to turn the number of bytes into a human readable
  * unit */
 function humanFileSize(bytes: number): string {
@@ -249,6 +270,75 @@ class Host implements ts.CompilerHost {
     return sourceFile;
   }
 
+  private _getAsset(specifier: string): SourceFile {
+    const moduleName = specifier.split("/").pop()!;
+    if (moduleName in this._sourceFileCache) {
+      return this._sourceFileCache[moduleName];
+    }
+    const assetName = moduleName.includes(".")
+      ? moduleName
+      : `${moduleName}.d.ts`;
+    const sourceCode = fetchAsset(assetName);
+    const sourceFile = {
+      moduleName,
+      filename: specifier,
+      mediaType: MediaType.TypeScript,
+      sourceCode
+    };
+    this._sourceFileCache[moduleName] = sourceFile;
+    return sourceFile;
+  }
+
+  private _resolveModules(
+    specifiers: string[],
+    referrer: string
+  ): SourceFile[] {
+    util.log("host._resolveModules", { specifiers, referrer });
+
+    const typeDirectives: Record<string, string> | undefined =
+      referrer in this._sourceFileCache
+        ? this._sourceFileCache[referrer].typeDirectives
+        : undefined;
+    // First of all built-in assets are handled specially, so they should
+    // be removed from array of files will be requesting from Rust.
+    let resolvedModules: (SourceFile | undefined)[] = [];
+    const modulesToRequest = [];
+
+    for (const specifier of specifiers) {
+      const mappedModuleName = getMappedModuleName(
+        specifier,
+        referrer,
+        typeDirectives
+      );
+
+      if (specifier.startsWith(ASSETS)) {
+        const assetFile = this._getAsset(mappedModuleName);
+        resolvedModules.push(assetFile);
+        continue;
+      }
+
+      modulesToRequest.push(mappedModuleName);
+      // Temporarily fill with undefined, after fetch file from
+      // Rust it will be filled with proper value.
+      resolvedModules.push(undefined);
+    }
+
+    // Now get files from Rust.
+    let sourceFiles = fetchSourceFiles(modulesToRequest, referrer);
+
+    for (const sourceFile of sourceFiles) {
+      assert(sourceFile.moduleName != null);
+      const { moduleName } = sourceFile;
+      if (!(moduleName! in this._sourceFileCache)) {
+        this._sourceFileCache[moduleName!] = sourceFile;
+      }
+      const index = resolvedModules.indexOf(undefined);
+      resolvedModules[index] = sourceFile;
+    }
+
+    return resolvedModules as SourceFile[];
+  }
+
   /* Deno specific APIs */
 
   /** Provides the `ts.HostCompiler` interface for Deno.
@@ -343,6 +433,8 @@ class Host implements ts.CompilerHost {
   ): ts.SourceFile | undefined {
     assert(!shouldCreateNewSourceFile);
     util.log("getSourceFile", fileName);
+    // TODO: file should be already in the cache
+
     const sourceFile =
       fileName in this._sourceFileCache
         ? this._sourceFileCache[fileName]
@@ -367,26 +459,15 @@ class Host implements ts.CompilerHost {
     containingFile: string
   ): Array<ts.ResolvedModuleFull | undefined> {
     util.log("resolveModuleNames()", { moduleNames, containingFile });
-    const typeDirectives: Record<string, string> | undefined =
-      containingFile in this._sourceFileCache
-        ? this._sourceFileCache[containingFile].typeDirectives
-        : undefined;
-    return moduleNames.map(
-      (moduleName): ts.ResolvedModuleFull | undefined => {
-        const mappedModuleName = getMappedModuleName(
-          moduleName,
-          containingFile,
-          typeDirectives
-        );
-        const sourceFile = this._resolveModule(
-          mappedModuleName,
-          containingFile
-        );
+    return this._resolveModules(moduleNames, containingFile).map(
+      (sourceFile: SourceFile): ts.ResolvedModuleFull | undefined => {
         if (sourceFile.moduleName) {
           const resolvedFileName = sourceFile.moduleName;
           // This flags to the compiler to not go looking to transpile functional
           // code, anything that is in `/$asset$/` is just library code
-          const isExternalLibraryImport = moduleName.startsWith(ASSETS);
+          const isExternalLibraryImport = sourceFile.moduleName.startsWith(
+            ASSETS
+          );
           const extension = getExtension(
             resolvedFileName,
             sourceFile.mediaType
