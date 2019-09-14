@@ -37,7 +37,7 @@ pub const OP_START: OpId = 10;
 pub const OP_APPLY_SOURCE_MAP: OpId = 11;
 pub const OP_FORMAT_ERROR: OpId = 12;
 pub const OP_CACHE: OpId = 13;
-pub const OP_FETCH_SOURCE_FILE: OpId = 14;
+pub const OP_FETCH_SOURCE_FILES: OpId = 14;
 pub const OP_OPEN: OpId = 15;
 pub const OP_CLOSE: OpId = 16;
 pub const OP_SEEK: OpId = 17;
@@ -133,8 +133,8 @@ pub fn dispatch(
     OP_CACHE => {
       dispatch_json::dispatch(compiler::op_cache, state, control, zero_copy)
     }
-    OP_FETCH_SOURCE_FILE => dispatch_json::dispatch(
-      compiler::op_fetch_source_file,
+    OP_FETCH_SOURCE_FILES => dispatch_json::dispatch(
+      compiler::op_fetch_source_files,
       state,
       control,
       zero_copy,

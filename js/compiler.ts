@@ -136,18 +136,25 @@ function fetchAsset(name: string): string {
   return sendSync(dispatch.OP_FETCH_ASSET, { name });
 }
 
-/** Ops to Rust to resolve and fetch a modules meta data. */
-function fetchSourceFile(specifier: string, referrer: string): SourceFile {
-  util.log("compiler.fetchSourceFile", { specifier, referrer });
-  const res = sendSync(dispatch.OP_FETCH_SOURCE_FILE, {
-    specifier,
+/** Ops to Rust to resolve and fetch modules meta data. */
+function fetchSourceFiles(
+  specifiers: string[],
+  referrer: string
+): SourceFile[] {
+  util.log("compiler.fetchSourceFiles", { specifiers, referrer });
+  const res = sendSync(dispatch.OP_FETCH_SOURCE_FILES, {
+    specifiers,
     referrer
   });
 
-  return {
-    ...res,
-    typeDirectives: parseTypeDirectives(res.sourceCode)
-  };
+  return res.map(
+    (sourceFile: SourceFile): SourceFile => {
+      return {
+        ...sourceFile,
+        typeDirectives: parseTypeDirectives(sourceFile.sourceCode)
+      };
+    }
+  );
 }
 
 /** Utility function to turn the number of bytes into a human readable
@@ -219,34 +226,69 @@ class Host implements ts.CompilerHost {
 
   private _sourceFileCache: Record<string, SourceFile> = {};
 
-  private _resolveModule(specifier: string, referrer: string): SourceFile {
-    util.log("host._resolveModule", { specifier, referrer });
-    // Handle built-in assets specially.
-    if (specifier.startsWith(ASSETS)) {
-      const moduleName = specifier.split("/").pop()!;
-      if (moduleName in this._sourceFileCache) {
-        return this._sourceFileCache[moduleName];
-      }
-      const assetName = moduleName.includes(".")
-        ? moduleName
-        : `${moduleName}.d.ts`;
-      const sourceCode = fetchAsset(assetName);
-      const sourceFile = {
-        moduleName,
-        filename: specifier,
-        mediaType: MediaType.TypeScript,
-        sourceCode
-      };
-      this._sourceFileCache[moduleName] = sourceFile;
-      return sourceFile;
+  private _getAsset(specifier: string): SourceFile {
+    const moduleName = specifier.split("/").pop()!;
+    if (moduleName in this._sourceFileCache) {
+      return this._sourceFileCache[moduleName];
     }
-    const sourceFile = fetchSourceFile(specifier, referrer);
-    assert(sourceFile.moduleName != null);
-    const { moduleName } = sourceFile;
-    if (!(moduleName! in this._sourceFileCache)) {
-      this._sourceFileCache[moduleName!] = sourceFile;
-    }
+    const assetName = moduleName.includes(".")
+      ? moduleName
+      : `${moduleName}.d.ts`;
+    const sourceCode = fetchAsset(assetName);
+    const sourceFile = {
+      moduleName,
+      filename: specifier,
+      mediaType: MediaType.TypeScript,
+      sourceCode
+    };
+    this._sourceFileCache[moduleName] = sourceFile;
     return sourceFile;
+  }
+
+  private _resolveModule(specifier: string, referrer: string): SourceFile {
+    return this._resolveModules([specifier], referrer)[0];
+  }
+
+  private _resolveModules(
+    specifiers: string[],
+    referrer: string
+  ): SourceFile[] {
+    util.log("host._resolveModules", { specifiers, referrer });
+    const resolvedModules: Array<SourceFile | undefined> = [];
+    const modulesToRequest = [];
+
+    for (const specifier of specifiers) {
+      // Firstly built-in assets are handled specially, so they should
+      // be removed from array of files that we'll be requesting from Rust.
+      if (specifier.startsWith(ASSETS)) {
+        const assetFile = this._getAsset(specifier);
+        resolvedModules.push(assetFile);
+      } else if (specifier in this._sourceFileCache) {
+        const module = this._sourceFileCache[specifier];
+        resolvedModules.push(module);
+      } else {
+        // Temporarily fill with undefined, after fetching file from
+        // Rust it will be filled with proper value.
+        resolvedModules.push(undefined);
+        modulesToRequest.push(specifier);
+      }
+    }
+
+    // Now get files from Rust.
+    const sourceFiles = fetchSourceFiles(modulesToRequest, referrer);
+
+    for (const sourceFile of sourceFiles) {
+      assert(sourceFile.moduleName != null);
+      const { moduleName } = sourceFile;
+      if (!(moduleName! in this._sourceFileCache)) {
+        this._sourceFileCache[moduleName!] = sourceFile;
+      }
+      // And fill temporary `undefined`s with actual files.
+      const index = resolvedModules.indexOf(undefined);
+      resolvedModules[index] = sourceFile;
+    }
+
+    return resolvedModules as SourceFile[];
   }
 
   /* Deno specific APIs */
@@ -371,22 +413,25 @@ class Host implements ts.CompilerHost {
       containingFile in this._sourceFileCache
         ? this._sourceFileCache[containingFile].typeDirectives
         : undefined;
-    return moduleNames.map(
-      (moduleName): ts.ResolvedModuleFull | undefined => {
-        const mappedModuleName = getMappedModuleName(
-          moduleName,
-          containingFile,
-          typeDirectives
-        );
-        const sourceFile = this._resolveModule(
-          mappedModuleName,
-          containingFile
-        );
+
+    const mappedModuleNames = moduleNames.map(
+      (moduleName: string): string => {
+        return getMappedModuleName(moduleName, containingFile, typeDirectives);
+      }
+    );
+
+    return this._resolveModules(mappedModuleNames, containingFile).map(
+      (
+        sourceFile: SourceFile,
+        index: number
+      ): ts.ResolvedModuleFull | undefined => {
         if (sourceFile.moduleName) {
           const resolvedFileName = sourceFile.moduleName;
           // This flags to the compiler to not go looking to transpile functional
           // code, anything that is in `/$asset$/` is just library code
-          const isExternalLibraryImport = moduleName.startsWith(ASSETS);
+          const isExternalLibraryImport = mappedModuleNames[index].startsWith(
+            ASSETS
+          );
           const extension = getExtension(
             resolvedFileName,
             sourceFile.mediaType
