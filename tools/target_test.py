@@ -21,14 +21,6 @@ class TestTarget(DenoTestCase):
         self.check_exists(bin_file)
         run([bin_file], quiet=True)
 
-    def test_cargo_test(self):
-        cargo_test = ["cargo", "test", "--all", "--locked"]
-        if "DENO_BUILD_MODE" in os.environ and \
-          os.environ["DENO_BUILD_MODE"] == "release":
-            run(cargo_test + ["--release"])
-        else:
-            run(cargo_test)
-
     def test_libdeno(self):
         self._test("libdeno_test")
 

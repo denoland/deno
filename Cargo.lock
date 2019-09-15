@@ -319,6 +319,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_tty_tests"
+version = "0.18.0"
+
+[[package]]
 name = "deno_typescript"
 version = "0.18.0"
 dependencies = [

@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "cli",
+  "cli/tty_tests",
   "core",
   "tools/hyper_hello",
   "deno_typescript",

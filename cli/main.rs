@@ -20,6 +20,8 @@ extern crate url;
 
 #[cfg(test)]
 mod integration_tests;
+#[cfg(test)]
+mod misc_tests;
 
 mod ansi;
 mod assets;

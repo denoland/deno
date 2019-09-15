@@ -4,24 +4,9 @@
 # Usage: ./tools/test.py out/Debug
 import os
 
-from benchmark_test import TestBenchmark
-from deno_dir_test import TestDenoDir
-from fetch_test import TestFetch
-from fmt_test import TestFmt
-from repl_test import TestRepl
-from setup_test import TestSetup
-from target_test import TestTarget
-from unit_tests import JsUnitTests
-from util_test import TestUtil
-# NOTE: These tests are skipped on Windows
-from is_tty_test import TestIsTty
-from permission_prompt_test import permission_prompt_tests
-from complex_permissions_test import complex_permissions_tests
-
 import http_server
-from util import (enable_ansi_colors, build_path, RESET, FG_RED, FG_GREEN,
-                  executable_suffix, rmtree, tests_path)
-from test_util import parse_test_args, run_tests
+from util import enable_ansi_colors, rmtree, run
+from test_util import parse_test_args
 
 
 def main():
@@ -34,25 +19,14 @@ def main():
 
     enable_ansi_colors()
 
-    test_cases = [
-        TestSetup,
-        TestUtil,
-        TestTarget,
-        JsUnitTests,
-        TestFetch,
-        TestRepl,
-        TestDenoDir,
-        TestBenchmark,
-        TestIsTty,
-    ]
-    test_cases += permission_prompt_tests()
-    test_cases += complex_permissions_tests()
-    # It is very slow, so do TestFmt at the end.
-    test_cases += [TestFmt]
-
-    with http_server.spawn():
-        run_tests(test_cases)
+    cargo_test = ["cargo", "test", "--locked"]
+    if "DENO_BUILD_MODE" in os.environ and \
+      os.environ["DENO_BUILD_MODE"] == "release":
+        run(cargo_test + ["--release"])
+    else:
+        run(cargo_test)
 
 
 if __name__ == '__main__':
-    main()
+    with http_server.spawn():
+        main()
