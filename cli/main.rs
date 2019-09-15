@@ -21,8 +21,8 @@ extern crate url;
 #[cfg(test)]
 mod integration_tests;
 
-mod colors;
 mod assets;
+mod colors;
 pub mod compilers;
 pub mod deno_dir;
 pub mod deno_error;

@@ -191,7 +191,8 @@ impl DisplayFormatter for DiagnosticItem {
       _ => "".to_string(),
     };
 
-    let code = colors::bold(format!(" TS{}", self.code.to_string())).to_string();
+    let code =
+      colors::bold(format!(" TS{}", self.code.to_string())).to_string();
 
     format!("{}{}: ", category, code)
   }
