@@ -299,7 +299,7 @@ impl GetErrorKind for dyn AnyError {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::ansi::strip_ansi_codes;
+  use crate::colors::strip_ansi_codes;
   use crate::diagnostics::Diagnostic;
   use crate::diagnostics::DiagnosticCategory;
   use crate::diagnostics::DiagnosticItem;

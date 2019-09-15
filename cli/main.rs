@@ -21,8 +21,8 @@ extern crate url;
 #[cfg(test)]
 mod integration_tests;
 
-mod ansi;
 mod assets;
+mod colors;
 pub mod compilers;
 pub mod deno_dir;
 pub mod deno_error;
@@ -142,17 +142,17 @@ fn print_cache_info(worker: Worker) {
 
   println!(
     "{} {:?}",
-    ansi::bold("DENO_DIR location:".to_string()),
+    colors::bold("DENO_DIR location:".to_string()),
     state.dir.root
   );
   println!(
     "{} {:?}",
-    ansi::bold("Remote modules cache:".to_string()),
+    colors::bold("Remote modules cache:".to_string()),
     state.dir.deps_cache.location
   );
   println!(
     "{} {:?}",
-    ansi::bold("TypeScript compiler cache:".to_string()),
+    colors::bold("TypeScript compiler cache:".to_string()),
     state.dir.gen_cache.location
   );
 }
@@ -171,13 +171,13 @@ pub fn print_file_info(
     .and_then(|out| {
       println!(
         "{} {}",
-        ansi::bold("local:".to_string()),
+        colors::bold("local:".to_string()),
         out.filename.to_str().unwrap()
       );
 
       println!(
         "{} {}",
-        ansi::bold("type:".to_string()),
+        colors::bold("type:".to_string()),
         msg::enum_name_media_type(out.media_type)
       );
 
@@ -201,7 +201,7 @@ pub fn print_file_info(
 
             println!(
               "{} {}",
-              ansi::bold("compiled:".to_string()),
+              colors::bold("compiled:".to_string()),
               compiled_source_file.filename.to_str().unwrap(),
             );
           }
@@ -213,7 +213,7 @@ pub fn print_file_info(
           {
             println!(
               "{} {}",
-              ansi::bold("map:".to_string()),
+              colors::bold("map:".to_string()),
               source_map.filename.to_str().unwrap()
             );
           }
@@ -221,7 +221,7 @@ pub fn print_file_info(
           if let Some(deps) =
             worker.state.modules.lock().unwrap().deps(&compiled.name)
           {
-            println!("{}{}", ansi::bold("deps:\n".to_string()), deps.name);
+            println!("{}{}", colors::bold("deps:\n".to_string()), deps.name);
             if let Some(ref depsdeps) = deps.deps {
               for d in depsdeps {
                 println!("{}", d);
@@ -230,7 +230,7 @@ pub fn print_file_info(
           } else {
             println!(
               "{} cannot retrieve full dependency graph",
-              ansi::bold("deps:".to_string()),
+              colors::bold("deps:".to_string()),
             );
           }
           Ok(worker)

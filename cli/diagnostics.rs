@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 //! This module encodes TypeScript errors (diagnostics) into Rust structs and
 //! contains code for printing them to the console.
-use crate::ansi;
+use crate::colors;
 use crate::fmt_errors::format_maybe_source_line;
 use crate::fmt_errors::format_maybe_source_name;
 use crate::fmt_errors::DisplayFormatter;
@@ -183,7 +183,7 @@ impl DisplayFormatter for DiagnosticItem {
   fn format_category_and_code(&self) -> String {
     let category = match self.category {
       DiagnosticCategory::Error => {
-        format!("{}", ansi::red_bold("error".to_string()))
+        format!("{}", colors::red_bold("error".to_string()))
       }
       DiagnosticCategory::Warning => "warn".to_string(),
       DiagnosticCategory::Debug => "debug".to_string(),
@@ -191,7 +191,8 @@ impl DisplayFormatter for DiagnosticItem {
       _ => "".to_string(),
     };
 
-    let code = ansi::bold(format!(" TS{}", self.code.to_string())).to_string();
+    let code =
+      colors::bold(format!(" TS{}", self.code.to_string())).to_string();
 
     format!("{}{}: ", category, code)
   }
@@ -340,7 +341,7 @@ impl From<i64> for DiagnosticCategory {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::ansi::strip_ansi_codes;
+  use crate::colors::strip_ansi_codes;
 
   fn diagnostic1() -> Diagnostic {
     Diagnostic {
