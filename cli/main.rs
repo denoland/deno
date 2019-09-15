@@ -9,7 +9,7 @@ extern crate futures;
 extern crate serde_json;
 extern crate clap;
 extern crate deno;
-extern crate deno_typescript;
+extern crate deno_cli_snapshots;
 extern crate indexmap;
 #[cfg(unix)]
 extern crate nix;
@@ -21,7 +21,6 @@ extern crate url;
 #[cfg(test)]
 mod integration_tests;
 
-mod assets;
 mod colors;
 pub mod compilers;
 pub mod deno_dir;
@@ -133,7 +132,7 @@ fn create_worker_and_state(
 }
 
 fn types_command() {
-  let content = assets::get_source_code("lib.deno_runtime.d.ts").unwrap();
+  let content = deno_cli_snapshots::get_asset("lib.deno_runtime.d.ts").unwrap();
   println!("{}", content);
 }
 
@@ -405,7 +404,7 @@ fn run_script(flags: DenoFlags, argv: Vec<String>) {
 fn version_command() {
   println!("deno: {}", version::DENO);
   println!("v8: {}", version::v8());
-  println!("typescript: {}", version::typescript());
+  println!("typescript: {}", version::TYPESCRIPT);
 }
 
 fn main() {

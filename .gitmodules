@@ -7,3 +7,6 @@
 [submodule "js/deps/https/deno.land/x/std"]
 	path = js/deps/https/deno.land/std
 	url = https://github.com/denoland/deno_std.git
+[submodule "deno_typescript/typescript"]
+	path = deno_typescript/typescript
+	url = https://github.com/microsoft/TypeScript.git

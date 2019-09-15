@@ -44,7 +44,10 @@ function main(configText, rootNames) {
   const emitResult = program.emit();
   handleDiagnostics(host, emitResult.diagnostics);
 
-  dispatch("setEmitResult", emitResult);
+  dispatch(
+    "setEmitResult",
+    Object.assign(emitResult, { tsVersion: ts.version })
+  );
 }
 
 /**

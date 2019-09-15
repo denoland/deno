@@ -1,3 +1,5 @@
+pub const TS_VERSION: &str = env!("TS_VERSION");
+
 pub static CLI_SNAPSHOT: &[u8] =
   include_bytes!(concat!(env!("OUT_DIR"), "/CLI_SNAPSHOT.bin"));
 pub static CLI_SNAPSHOT_MAP: &[u8] =
@@ -11,6 +13,16 @@ pub static COMPILER_SNAPSHOT_MAP: &[u8] =
   include_bytes!(concat!(env!("OUT_DIR"), "/COMPILER_SNAPSHOT.js.map"));
 pub static COMPILER_SNAPSHOT_DTS: &[u8] =
   include_bytes!(concat!(env!("OUT_DIR"), "/COMPILER_SNAPSHOT.d.ts"));
+
+static DENO_RUNTIME: &str = include_str!("lib.deno_runtime.d.ts");
+
+/// Same as deno_typescript::get_asset but also has lib.deno_runtime.d.ts
+pub fn get_asset(name: &str) -> Option<&'static str> {
+  match name {
+    "lib.deno_runtime.d.ts" => Some(DENO_RUNTIME),
+    _ => deno_typescript::get_asset(name),
+  }
+}
 
 #[test]
 fn cli_snapshot() {
