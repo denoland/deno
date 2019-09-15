@@ -181,6 +181,11 @@ def get_prebuilt_tool_path(tool):
                         tool + executable_suffix)
 
 
+def get_buildtools_tool_path(tool):
+    return os.path.join(third_party_path, "v8", "buildtools",
+                        get_platform_dir_name(), tool + executable_suffix)
+
+
 # Download the given item from Google storage.
 def download_from_google_storage(item, bucket, base_dir):
     download_script = os.path.join(depot_tools_path,

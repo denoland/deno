@@ -3,7 +3,7 @@
 import os
 import sys
 import argparse
-from third_party import google_env, python_env
+from third_party import get_buildtools_tool_path, google_env, python_env
 from util import git_ls_files, third_party_path, root_path, run
 
 
@@ -45,7 +45,7 @@ def main():
 
 def clang_format():
     print "clang_format"
-    exe = os.path.join(third_party_path, "depot_tools", "clang-format")
+    exe = get_buildtools_tool_path("clang-format")
     source_files = git_ls_files(root_path, ["*.cc", "*.h"])
     run([exe, "-i", "-style", "Google", "--"] + source_files,
         env=google_env(),
@@ -56,7 +56,10 @@ def gn_format():
     print "gn format"
     exe = os.path.join(third_party_path, "depot_tools", "gn")
     source_files = git_ls_files(root_path, ["*.gn", "*.gni"])
-    run([exe, "format", "--"] + source_files, env=google_env(), quiet=True)
+    run([exe, "format", "--"] + source_files,
+        cwd=os.path.join(root_path, "core", "libdeno"),
+        env=google_env(),
+        quiet=True)
 
 
 def prettier():
