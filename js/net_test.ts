@@ -227,7 +227,7 @@ testPerm({ net: true }, async function netDoubleCloseWrite() {
 */
 
 testPerm({ net: true }, async function netDialTLS(): Promise<void> {
-  const conn = await Deno.dialTLS("tcp", "github.com:443");
+  const conn = await Deno.dialTLS("github.com:443");
   assert(conn.rid > 0);
   const body = new TextEncoder().encode(
     "GET / HTTP/1.0\r\nHost: github.com\r\n\r\n"
