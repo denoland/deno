@@ -13,8 +13,7 @@ import time
 import shutil
 import tempfile
 import subprocess
-from util import find_exts, root_path, run, run_output
-from util import build_path, executable_suffix
+from util import build_path, executable_suffix, root_path, run, run_output
 import third_party
 from http_benchmark import http_benchmark
 import throughput_benchmark
@@ -60,30 +59,31 @@ def import_data_from_gh_pages():
 
 
 def get_binary_sizes(build_dir):
-    # Because cargo's OUT_DIR is not predictable, we have to search the build
-    # tree for these files...
-    files = find_exts([build_dir], ["js", "map", "bin"])
-    path_dict = {
-        "deno": os.path.join(build_dir, "deno" + executable_suffix),
-    }
-    for f in files:
-        if f.endswith("CLI_SNAPSHOT.js"):
-            path_dict["CLI_SNAPSHOT.js"] = f
-        elif f.endswith("CLI_SNAPSHOT.js.map"):
-            path_dict["CLI_SNAPSHOT.js.map"] = f
-        elif f.endswith("CLI_SNAPSHOT.bin"):
-            path_dict["CLI_SNAPSHOT.bin"] = f
-        elif f.endswith("COMPILER_SNAPSHOT.js"):
-            path_dict["COMPILER_SNAPSHOT.js"] = f
-        elif f.endswith("COMPILER_SNAPSHOT.js.map"):
-            path_dict["COMPILER_SNAPSHOT.js.map"] = f
-        elif f.endswith("COMPILER_SNAPSHOT.bin"):
-            path_dict["COMPILER_SNAPSHOT.bin"] = f
-
     sizes = {}
-    for name, path in path_dict.items():
-        assert os.path.exists(path)
-        sizes[name] = os.path.getsize(path)
+    mtimes = {}
+    # The deno executable should be located at the root of the build tree.
+    deno_exe = os.path.join(build_dir, "deno" + executable_suffix)
+    sizes["deno"] = os.path.getsize(deno_exe)
+    # Because cargo's OUT_DIR is not predictable, search the build tree for
+    # snapshot related files.
+    for parent_dir, _, file_names in os.walk(build_dir):
+        for file_name in file_names:
+            if not file_name in [
+                    "CLI_SNAPSHOT.bin",
+                    "CLI_SNAPSHOT.js",
+                    "CLI_SNAPSHOT.js.map",
+                    "COMPILER_SNAPSHOT.bin",
+                    "COMPILER_SNAPSHOT.js",
+                    "COMPILER_SNAPSHOT.js.map",
+            ]:
+                continue
+            file_path = os.path.join(parent_dir, file_name)
+            file_mtime = os.path.getmtime(file_path)
+            # If multiple copies of a file are found, use the most recent one.
+            if file_name in mtimes and mtimes[file_name] > file_mtime:
+                continue
+            mtimes[file_name] = file_mtime
+            sizes[file_name] = os.path.getsize(file_path)
     return sizes
 
 
