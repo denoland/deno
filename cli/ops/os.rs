@@ -38,7 +38,7 @@ pub fn op_start(
     "versionFlag": state.flags.version,
     "v8Version": version::v8(),
     "denoVersion": version::DENO,
-    "tsVersion": version::typescript(),
+    "tsVersion": version::TYPESCRIPT,
     "noColor": !colors::use_color(),
     "xevalDelim": state.flags.xeval_delim.clone(),
     "os": BUILD_OS,

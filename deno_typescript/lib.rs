@@ -18,10 +18,15 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-static TYPESCRIPT_CODE: &str =
-  include_str!("../third_party/node_modules/typescript/lib/typescript.js");
+static TYPESCRIPT_CODE: &str = include_str!("typescript/lib/typescript.js");
 static COMPILER_CODE: &str = include_str!("compiler_main.js");
 static AMD_RUNTIME_CODE: &str = include_str!("amd_runtime.js");
+
+pub fn ts_version() -> String {
+  let data = include_str!("typescript/package.json");
+  let pkg: serde_json::Value = serde_json::from_str(data).unwrap();
+  pkg["version"].as_str().unwrap().to_string()
+}
 
 #[derive(Debug)]
 pub struct TSState {
@@ -196,15 +201,6 @@ fn write_snapshot(
   Ok(())
 }
 
-macro_rules! inc {
-  ($e:expr) => {
-    Some(include_str!(concat!(
-      "../third_party/node_modules/typescript/lib/",
-      $e
-    )))
-  };
-}
-
 /// Same as get_asset() but returns NotFound intead of None.
 pub fn get_asset2(name: &str) -> Result<&'static str, ErrBox> {
   match get_asset(name) {
@@ -217,8 +213,14 @@ pub fn get_asset2(name: &str) -> Result<&'static str, ErrBox> {
 }
 
 pub fn get_asset(name: &str) -> Option<&'static str> {
+  macro_rules! inc {
+    ($e:expr) => {
+      Some(include_str!(concat!("typescript/lib/", $e)))
+    };
+  }
   match name {
     "lib.deno_core.d.ts" => Some(include_str!("lib.deno_core.d.ts")),
+    "typescript.d.ts" => inc!("typescript.d.ts"),
     "lib.esnext.d.ts" => inc!("lib.esnext.d.ts"),
     "lib.es2019.d.ts" => inc!("lib.es2019.d.ts"),
     "lib.es2018.d.ts" => inc!("lib.es2018.d.ts"),

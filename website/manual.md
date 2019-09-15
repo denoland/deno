@@ -120,7 +120,14 @@ Using [Homebrew](https://brew.sh/) (mac):
 brew install deno
 ```
 
-Deno can also be installed manually, by downloading a tarball or zip file at
+To install from source:
+
+```shell
+cargo install deno_cli
+```
+
+Deno binaries can also be installed manually, by downloading a tarball or zip
+file at
 [github.com/denoland/deno/releases](https://github.com/denoland/deno/releases).
 These packages contain just a single executable file. You will have to set the
 executable bit on Mac and Linux.
