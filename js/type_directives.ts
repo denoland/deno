@@ -39,9 +39,9 @@ const typeDirectiveRegEx = /@deno-types\s*=\s*(["'])((?:(?=(\\?))\3.)*?)\1/gi;
  *      import * as foo from "./foo.js"
  *      export { a, b, c } from "./bar.js"
  *
- * [See Diagram](https://bit.ly/2lK0izL)
+ * [See Diagram](http://bit.ly/2lOsp0K)
  */
-const importExportRegEx = /(?:import|export)\s+(?:[\s\S]*?from\s+)?(["'])((?:(?=(\\?))\3.)*?)\1/;
+const importExportRegEx = /(?:import|export)(?:\s+|\s+[\s\S]*?from\s+)?(["'])((?:(?=(\\?))\3.)*?)\1/;
 
 /** Parses out any Deno type directives that are part of the source code, or
  * returns `undefined` if there are not any.

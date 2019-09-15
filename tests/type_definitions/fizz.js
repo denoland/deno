@@ -1,1 +1,1 @@
-export const fizz = "fizz";
+globalThis.fizz = "fizz";
