@@ -49,14 +49,16 @@ def add_env_path(add, env, key="PATH", prepend=False):
     env[key] = os.pathsep.join(dirs_left)
 
 
-def run(args, quiet=False, cwd=None, env=None, merge_env=None):
-    if merge_env is None:
-        merge_env = {}
+def run(args, quiet=False, cwd=None, env=None, merge_env=None, shell=None):
     args[0] = os.path.normpath(args[0])
-    if not quiet:
-        print " ".join(args)
     env = make_env(env=env, merge_env=merge_env)
-    shell = os.name == "nt"  # Run through shell to make .bat/.cmd files work.
+    if shell is None:
+        # Use the default value for 'shell' parameter.
+        #   - Posix: do not use shell.
+        #   - Windows: use shell; this makes .bat/.cmd files work.
+        shell = os.name == "nt"
+    if not quiet:
+        print " ".join([shell_quote(arg) for arg in args])
     rc = subprocess.call(args, cwd=cwd, env=env, shell=shell)
     if rc != 0:
         sys.exit(rc)
