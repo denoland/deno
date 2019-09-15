@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 //! This mod provides DenoError to unify errors across Deno.
-use crate::ansi;
+use crate::colors;
 use crate::source_maps::apply_source_map;
 use crate::source_maps::SourceMapGetter;
 use deno::ErrBox;
@@ -20,9 +20,9 @@ pub trait DisplayFormatter {
 }
 
 fn format_source_name(script_name: String, line: i64, column: i64) -> String {
-  let script_name_c = ansi::cyan(script_name);
-  let line_c = ansi::yellow((1 + line).to_string());
-  let column_c = ansi::yellow((1 + column).to_string());
+  let script_name_c = colors::cyan(script_name);
+  let line_c = colors::yellow((1 + line).to_string());
+  let column_c = colors::yellow((1 + column).to_string());
   format!("{}:{}:{}", script_name_c, line_c, column_c,)
 }
 
@@ -65,10 +65,10 @@ pub fn format_maybe_source_line(
   assert!(start_column.is_some());
   assert!(end_column.is_some());
   let line = (1 + line_number.unwrap()).to_string();
-  let line_color = ansi::black_on_white(line.to_string());
+  let line_color = colors::black_on_white(line.to_string());
   let line_len = line.clone().len();
   let line_padding =
-    ansi::black_on_white(format!("{:indent$}", "", indent = line_len))
+    colors::black_on_white(format!("{:indent$}", "", indent = line_len))
       .to_string();
   let mut s = String::new();
   let start_column = start_column.unwrap();
@@ -89,9 +89,9 @@ pub fn format_maybe_source_line(
     }
   }
   let color_underline = if is_error {
-    ansi::red(s).to_string()
+    colors::red(s).to_string()
   } else {
-    ansi::cyan(s).to_string()
+    colors::cyan(s).to_string()
   };
 
   let indent = format!("{:indent$}", "", indent = level);
@@ -104,13 +104,13 @@ pub fn format_maybe_source_line(
 
 /// Format a message to preface with `error: ` with ansi codes for red.
 pub fn format_error_message(msg: String) -> String {
-  let preamble = ansi::red("error:".to_string());
+  let preamble = colors::red("error:".to_string());
   format!("{} {}", preamble, msg)
 }
 
 fn format_stack_frame(frame: &StackFrame) -> String {
   // Note when we print to string, we change from 0-indexed to 1-indexed.
-  let function_name = ansi::italic_bold(frame.function_name.clone());
+  let function_name = colors::italic_bold(frame.function_name.clone());
   let source_loc =
     format_source_name(frame.script_name.clone(), frame.line, frame.column);
 
@@ -159,7 +159,7 @@ impl DisplayFormatter for JSError {
   fn format_message(&self, _level: usize) -> String {
     format!(
       "{}{}",
-      ansi::red_bold("error: ".to_string()),
+      colors::red_bold("error: ".to_string()),
       self.0.message.clone()
     )
   }
@@ -218,7 +218,7 @@ impl Error for JSError {}
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::ansi::strip_ansi_codes;
+  use crate::colors::strip_ansi_codes;
 
   fn error1() -> V8Exception {
     V8Exception {

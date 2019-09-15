@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use crate::ansi;
+use crate::colors;
 use crate::fs as deno_fs;
 use crate::state::ThreadSafeState;
 use crate::version;
@@ -39,7 +39,7 @@ pub fn op_start(
     "v8Version": version::v8(),
     "denoVersion": version::DENO,
     "tsVersion": version::typescript(),
-    "noColor": !ansi::use_color(),
+    "noColor": !colors::use_color(),
     "xevalDelim": state.flags.xeval_delim.clone(),
     "os": BUILD_OS,
     "arch": BUILD_ARCH,
