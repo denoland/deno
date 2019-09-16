@@ -138,9 +138,9 @@ testPerm({ read: true }, async function lstatSuccess(): Promise<void> {
   assert(!modulesInfo.isDirectory());
   assert(modulesInfo.isSymlink());
 
-  const testsInfo = await Deno.lstat("website");
-  assert(testsInfo.isDirectory());
-  assert(!testsInfo.isSymlink());
+  const i = await Deno.lstat("website");
+  assert(i.isDirectory());
+  assert(!i.isSymlink());
 });
 
 testPerm({ read: false }, async function lstatPerm(): Promise<void> {
