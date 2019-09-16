@@ -5,10 +5,9 @@ import re
 import sys
 from distutils.spawn import find_executable
 import argparse
-import prebuilt
 import third_party
-from util import (build_mode, build_path, enable_ansi_colors, root_path, run,
-                  shell_quote)
+from util import build_mode, build_path, enable_ansi_colors, libdeno_path
+from util import shell_quote, root_path, run, third_party_path
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -30,8 +29,8 @@ def main():
         third_party.download_gn()
         third_party.download_clang_format()
         third_party.download_clang()
+        third_party.download_sccache()
         third_party.maybe_download_sysroot()
-        prebuilt.load_sccache()
 
     write_lastchange()
 
@@ -50,15 +49,17 @@ def write_if_not_exists(filename, contents):
 
 
 def write_lastchange():
+    lastchange_file = os.path.join(libdeno_path, "build", "util", "LASTCHANGE")
+    committime_file = lastchange_file + ".committime"
     write_if_not_exists(
-        "build/util/LASTCHANGE",
+        lastchange_file,
         "LASTCHANGE=c42e4ddbb7973bfb0c57a49ab6bf6dc432baad7e-\n")
-    write_if_not_exists("build/util/LASTCHANGE.committime", "1535518087")
+    write_if_not_exists(committime_file, "1535518087")
     # TODO Properly we should call the following script, but it seems to cause
     # a rebuild on every commit.
     # run([
-    #    sys.executable, "build/util/lastchange.py", "-o",
-    #    "build/util/LASTCHANGE", "--source-dir", root_path, "--filter="
+    #    sys.executable, "build/util/lastchange.py", "-o", lastchange_file,
+    #    "--source-dir", root_path, "--filter="
     # ])
 
 
@@ -126,7 +127,7 @@ def generate_gn_args(mode):
     if "DENO_BUILD_ARGS" in os.environ:
         out += os.environ["DENO_BUILD_ARGS"].split()
 
-    cacher = os.path.join(root_path, prebuilt.get_platform_path("sccache"))
+    cacher = third_party.get_prebuilt_tool_path("sccache")
     if not os.path.exists(cacher):
         cacher = find_executable("sccache") or find_executable("ccache")
 
@@ -141,6 +142,13 @@ def generate_gn_args(mode):
             out += ["treat_warnings_as_errors=false"]
 
     return out
+
+
+def gn_exe():
+    if "DENO_GN_PATH" in os.environ:
+        return os.environ["DENO_GN_PATH"]
+    else:
+        return third_party.get_buildtools_tool_path("gn")
 
 
 # gn gen.
@@ -169,7 +177,8 @@ def gn_gen(mode):
     for line in gn_args:
         print "  " + line
 
-    run([third_party.gn_path, "gen", build_path()],
+    run([gn_exe(), "gen", build_path()],
+        cwd=libdeno_path,
         env=third_party.google_env())
 
 

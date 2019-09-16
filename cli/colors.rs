@@ -1,5 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-// TODO(ry) Rename this file to colors.rs
 // TODO(ry) Replace ansi_term with termcolor.
 use ansi_term::Color::Black;
 use ansi_term::Color::Fixed;

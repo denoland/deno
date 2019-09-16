@@ -54,7 +54,7 @@ before_script:
 
 # Default script for release builds.
 script:
-- cargo build --release --locked --all-targets
+- cargo build -vv --release --locked --all-targets
 - DENO_BUILD_MODE=release ./tools/test.py
 # For some reason it's faster to run clippy after build.
 - rustup component add clippy
@@ -90,7 +90,7 @@ jobs:
     # Run benchmarks and publish the result to github pages.
     - name: "benchmarks"
       script:
-        - cargo build --release --locked --all-targets
+        - cargo build -vv --release --locked --all-targets
         - ./tools/benchmark.py target/release && cp -r website/* gh-pages/
       deploy:
       - provider: pages

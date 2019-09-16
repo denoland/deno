@@ -11,6 +11,7 @@ let require;
 /**
  * @type {(name: string, deps: ReadonlyArray<string>, factory: (...deps: any[]) => void) => void}
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 let define;
 
 (function() {

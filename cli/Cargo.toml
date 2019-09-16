@@ -5,12 +5,18 @@ path = "main.rs"
 
 [package]
 name = "deno_cli"
-version = "0.18.0"
+version = "0.18.3"
+license = "MIT"
+authors = ["the Deno authors"]
 edition = "2018"
+description = "Provides the deno executable"
+repository = "https://github.com/denoland/deno"
 default-run = "deno"
 
 [dependencies]
-deno = { path = "../core" }
+deno = { path = "../core", version = "0.18.0" }
+deno_cli_snapshots = { path = "../js", version = "0.18.3" }
+deno_typescript = { path = "../deno_typescript", version = "0.18.3" }
 
 ansi_term = "0.12.1"
 atty = "0.2.13"
@@ -45,8 +51,6 @@ tokio-rustls = "0.10.0"
 tokio-threadpool = "0.1.15"
 url = "1.7.2"
 utime = "0.2.1"
-deno_cli_snapshots = { path = "../cli_snapshots" }
-deno_typescript = { path = "../deno_typescript" }
 
 [target.'cfg(windows)'.dependencies]
 winapi = "0.3.8"

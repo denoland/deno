@@ -120,7 +120,14 @@ Using [Homebrew](https://brew.sh/) (mac):
 brew install deno
 ```
 
-Deno can also be installed manually, by downloading a tarball or zip file at
+To install from source:
+
+```shell
+cargo install deno_cli
+```
+
+Deno binaries can also be installed manually, by downloading a tarball or zip
+file at
 [github.com/denoland/deno/releases](https://github.com/denoland/deno/releases).
 These packages contain just a single executable file. You will have to set the
 executable bit on Mac and Linux.
@@ -204,16 +211,16 @@ ninja -C target/debug
 cargo build --release
 
 # List executable targets.
-gn ls target/debug //:* --as=output --type=executable
+gn --root=core/libdeno ls target/debug "//:*" --as=output --type=executable
 
 # List build configuration.
-gn args target/debug/ --list
+gn --root=core/libdeno args target/debug/ --list
 
 # Edit build configuration.
-gn args target/debug/
+gn --root=core/libdeno args target/debug/
 
 # Describe a target.
-gn desc target/debug/ :deno
+gn --root=core/libdeno desc target/debug/ :deno
 gn help
 
 # Update third_party modules

@@ -5,5 +5,5 @@ members = [
   "core",
   "tools/hyper_hello",
   "deno_typescript",
-  "cli_snapshots",
+  "js",
 ]

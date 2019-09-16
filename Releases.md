@@ -23,7 +23,7 @@ In deno:
 - fix: Keep all deno_std URLs in sync (#2930)
 - fix: make 'deno fmt' faster (#2928)
 - fix: panic during block_on (#2905)
-- fix: panic during fetch (#2925) 
+- fix: panic during fetch (#2925)
 - fix: path normalization in resolve_from_cwd() (#2875)
 - fix: remove deprecated Deno.platform (#2895)
 - fix: replace bad rid panics with errors (#2870)
@@ -54,7 +54,7 @@ In deno:
 - fix: set/clearTimeout's params should not be bigint (#2834, #2838)
 - fix: shared queue requires aligned buffer (#2816)
 - refactor: Remove Node build dependency and change how internal V8 snapshots
-  are built  (#2825, #2827, #2826, #2826)
+  are built (#2825, #2827, #2826, #2826)
 - refactor: Remove flatbuffers (#2818, #2819, #2817, #2812, #2815, #2799)
 - regression: Introduce regression in fetch's Request/Response stream API to
   support larger refactor (#2826)

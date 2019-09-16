@@ -1,2 +1,2 @@
-/** An exported value. */
-export const fizz: string;
+/** A global value. */
+declare const fizz: string;
