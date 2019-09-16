@@ -1,0 +1,79 @@
+name: Build and test
+
+on: [push]
+
+jobs:
+  build:
+    name: Build and test for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-2016, macOS-latest]
+    steps:
+      - name: Configure git
+        run: git config --global core.symlinks true
+
+      - name: Clone repository
+        uses: actions/checkout@v1
+        with:
+          fetch-depth: 1
+          submodules: true
+
+      - name: Install rust
+        uses: hecrj/setup-rust-action@v1
+        with:
+          rust-version: "1.37.0"
+
+      - name: Install python
+        uses: actions/setup-python@v1
+        with:
+          python-version: "2.7.16"
+          architecture: x64
+
+      - name: Environment (common)
+        run: |
+          echo ::set-env name=GH_ACTIONS::1
+          echo ::set-env name=RUSTC_WRAPPER::sccache
+          echo ::set-env name=DENO_BUILD_MODE::release
+
+      - name: Environment (linux)
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          echo ::add-path::`pwd`/prebuilt/linux64
+
+      - name: Environment (mac)
+        if: startsWith(matrix.os, 'macOS')
+        run: |
+          echo ::add-path::`pwd`/prebuilt/mac
+
+      - name: Environment (windows)
+        if: startsWith(matrix.os, 'windows')
+        run: |
+          echo ::add-path::%cd%\prebuilt\win
+
+      - name: Log versions
+        run: |
+          node -v
+          python --version
+          rustc --version
+          cargo --version
+
+      - name: Run setup.py
+        run: python ./tools/setup.py
+
+      - name: Start sccache
+        env:
+          AWS_ACCESS_KEY_ID: AKIAIVRN52PLDBP55LBQ
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          SCCACHE_BUCKET: deno-sccache
+          SCCACHE_IDLE_TIMEOUT: 0
+        run: sccache --start-server
+
+      - name: Build
+        run: cargo build -vv --release --locked --all-targets
+
+      - name: Test
+        run: python ./tools/test.py
+
+      - name: Stop sccache
+        run: sccache --stop-server
