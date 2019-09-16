@@ -499,7 +499,7 @@ impl IntegrationTest {
     debug!("bin path {}", bin.display());
 
     let http_server_guard = if self.http_server {
-      Some(crate::mock_http_server::run())
+      Some(crate::test_http_server::run())
     } else {
       None
     };

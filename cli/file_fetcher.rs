@@ -724,7 +724,7 @@ mod tests {
 
   #[test]
   fn test_get_source_code_1() {
-    let http_server_guard = crate::mock_http_server::run();
+    let http_server_guard = crate::test_http_server::run();
     let (temp_dir, fetcher) = test_setup();
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
@@ -806,7 +806,7 @@ mod tests {
 
   #[test]
   fn test_get_source_code_2() {
-    let http_server_guard = crate::mock_http_server::run();
+    let http_server_guard = crate::test_http_server::run();
     let (temp_dir, fetcher) = test_setup();
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
@@ -874,7 +874,7 @@ mod tests {
 
   #[test]
   fn test_get_source_code_multiple_downloads_of_same_file() {
-    let http_server_guard = crate::mock_http_server::run();
+    let http_server_guard = crate::test_http_server::run();
     let (_temp_dir, fetcher) = test_setup();
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
@@ -920,7 +920,7 @@ mod tests {
 
   #[test]
   fn test_get_source_code_3() {
-    let http_server_guard = crate::mock_http_server::run();
+    let http_server_guard = crate::test_http_server::run();
     let (_temp_dir, fetcher) = test_setup();
     // Test basic follow and headers recording
     tokio_util::init(|| {
@@ -972,7 +972,7 @@ mod tests {
 
   #[test]
   fn test_get_source_code_4() {
-    let http_server_guard = crate::mock_http_server::run();
+    let http_server_guard = crate::test_http_server::run();
     let (_temp_dir, fetcher) = test_setup();
     // Test double redirects and headers recording
     tokio_util::init(|| {
@@ -1036,7 +1036,7 @@ mod tests {
 
   #[test]
   fn test_get_source_code_5() {
-    let http_server_guard = crate::mock_http_server::run();
+    let http_server_guard = crate::test_http_server::run();
     let (_temp_dir, fetcher) = test_setup();
     // Test that redirect target is not downloaded twice for different redirect source.
     tokio_util::init(|| {
@@ -1083,7 +1083,7 @@ mod tests {
 
   #[test]
   fn test_get_source_code_6() {
-    let http_server_guard = crate::mock_http_server::run();
+    let http_server_guard = crate::test_http_server::run();
     let (_temp_dir, fetcher) = test_setup();
     // Test that redirections can be limited
     tokio_util::init(|| {
@@ -1105,7 +1105,7 @@ mod tests {
 
   #[test]
   fn test_get_source_code_no_fetch() {
-    let http_server_guard = crate::mock_http_server::run();
+    let http_server_guard = crate::test_http_server::run();
     let (_temp_dir, fetcher) = test_setup();
     tokio_util::init(|| {
       let module_url =
@@ -1130,7 +1130,7 @@ mod tests {
 
   #[test]
   fn test_fetch_source_async_1() {
-    let http_server_guard = crate::mock_http_server::run();
+    let http_server_guard = crate::test_http_server::run();
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
       let (_temp_dir, fetcher) = test_setup();
@@ -1174,7 +1174,7 @@ mod tests {
 
   #[test]
   fn test_fetch_source_1() {
-    let http_server_guard = crate::mock_http_server::run();
+    let http_server_guard = crate::test_http_server::run();
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
       let (_temp_dir, fetcher) = test_setup();
@@ -1213,7 +1213,7 @@ mod tests {
 
   #[test]
   fn test_fetch_source_2() {
-    let http_server_guard = crate::mock_http_server::run();
+    let http_server_guard = crate::test_http_server::run();
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
       let (_temp_dir, fetcher) = test_setup();

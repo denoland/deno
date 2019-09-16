@@ -20,7 +20,7 @@ fn benchmark_test() {
 
 #[test]
 fn deno_dir_test() {
-  let g = crate::mock_http_server::run();
+  let g = crate::test_http_server::run();
   assert!(run_python_script("tools/deno_dir_test.py"));
   drop(g);
 }
@@ -28,7 +28,7 @@ fn deno_dir_test() {
 // TODO(#2933): Rewrite this test in rust.
 #[test]
 fn fetch_test() {
-  let g = crate::mock_http_server::run();
+  let g = crate::test_http_server::run();
   assert!(run_python_script("tools/fetch_test.py"));
   drop(g);
 }
@@ -42,7 +42,7 @@ fn fmt_test() {
 // TODO(#2933): Rewrite this test in rust.
 #[test]
 fn js_unit_tests() {
-  let g = crate::mock_http_server::run();
+  let g = crate::test_http_server::run();
   assert!(run_python_script("tools/unit_tests.py"));
   drop(g);
 }

@@ -23,7 +23,7 @@ mod integration_tests;
 #[cfg(test)]
 mod misc_tests;
 #[cfg(test)]
-mod mock_http_server;
+mod test_http_server;
 
 mod colors;
 pub mod compilers;
