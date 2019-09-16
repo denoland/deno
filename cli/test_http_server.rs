@@ -12,12 +12,12 @@ lazy_static! {
   static ref GUARD: Mutex<()> = Mutex::new(());
 }
 
-pub struct MockHttpServerGuard<'a> {
+pub struct Guard<'a> {
   g: MutexGuard<'a, ()>,
   child: Child,
 }
 
-impl<'a> Drop for MockHttpServerGuard<'a> {
+impl<'a> Drop for Guard<'a> {
   fn drop(&mut self) {
     self.child.kill().expect("failed to kill http_server.py");
     drop(&self.g);
@@ -25,7 +25,7 @@ impl<'a> Drop for MockHttpServerGuard<'a> {
 }
 
 // TODO(ry) Allow tests to use the http server in parallel.
-pub fn run<'a>() -> MockHttpServerGuard<'a> {
+pub fn run<'a>() -> Guard<'a> {
   let g = GUARD.lock().unwrap();
 
   let child = Command::new("python")
@@ -37,5 +37,5 @@ pub fn run<'a>() -> MockHttpServerGuard<'a> {
   // Wait 1 second for the server to come up. TODO(ry) this is Racy.
   thread::sleep(time::Duration::from_secs(1));
 
-  MockHttpServerGuard { child, g }
+  Guard { child, g }
 }

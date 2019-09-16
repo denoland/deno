@@ -1,4 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+#![cfg(test)]
+
 use std::process::Command;
 
 fn run_python_script(script: &str) -> bool {
