@@ -21,7 +21,6 @@ lazy_static! {
 }
 
 /// Helper function to strip ansi codes.
-#[cfg(test)]
 pub fn strip_ansi_codes(s: &str) -> std::borrow::Cow<str> {
   STRIP_ANSI_RE.replace_all(s, "")
 }

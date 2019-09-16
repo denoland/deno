@@ -1,5 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::colors::strip_ansi_codes;
+#[macro_use]
+extern crate log;
+
+use deno_cli::colors::strip_ansi_codes;
 use os_pipe::pipe;
 use std::env;
 use std::io::Read;

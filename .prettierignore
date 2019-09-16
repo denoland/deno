@@ -1,3 +1,5 @@
 js/flatbuffers.js
 tests/error_syntax.js
 tests/badly_formatted.js
+cli/tests/error_syntax.js
+cli/tests/badly_formatted.js
