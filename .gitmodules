@@ -1,12 +1,12 @@
-[submodule "third_party"]
-	path = third_party
-	url = https://github.com/denoland/deno_third_party.git
-[submodule "build"]
+[submodule "chromium_build"]
 	path = core/libdeno/build
 	url = https://github.com/denoland/chromium_build.git
-[submodule "js/deps/https/deno.land/x/std"]
+[submodule "deno_std"]
 	path = js/deps/https/deno.land/std
 	url = https://github.com/denoland/deno_std.git
-[submodule "deno_typescript/typescript"]
+[submodule "deno_third_party"]
+	path = third_party
+	url = https://github.com/denoland/deno_third_party.git
+[submodule "typescript"]
 	path = deno_typescript/typescript
 	url = https://github.com/microsoft/TypeScript.git
