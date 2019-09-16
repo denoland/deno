@@ -38,12 +38,8 @@ def eslint():
     print "eslint"
     script = os.path.join(third_party_path, "node_modules", "eslint", "bin",
                           "eslint")
-    # TODO: Files in 'deno_typescript', 'tools' and 'website' directories are
-    # currently not linted, but they should.
-    source_files = git_ls_files(
-        root_path,
-        ["*.js", "*.ts", ":!:deno_typescript/", ":!:tools/", ":!:website/"])
     # Find all *directories* in the main repo that contain .ts/.js files.
+    source_files = git_ls_files(root_path, ["*.js", "*.ts"])
     source_dirs = set([os.path.dirname(f) for f in source_files])
     # Within the source dirs, eslint does its own globbing, taking into account
     # the exclusion rules listed in '.eslintignore'.

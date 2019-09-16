@@ -106,7 +106,7 @@ class TestWritePermissions(BaseReadWritePermissionsTest,
 
 
 class TestNetFetchPermissions(BaseComplexPermissionTest):
-    test_type = "net_fetch"
+    test_type = "netFetch"
 
     def test_allow_localhost_4545(self):
         code, _stdout, stderr = self._run_deno(
@@ -143,7 +143,7 @@ class TestNetFetchPermissions(BaseComplexPermissionTest):
 
 
 class TestNetDialPermissions(BaseComplexPermissionTest):
-    test_type = "net_dial"
+    test_type = "netDial"
 
     def test_allow_localhost_ip_4555(self):
         code, _stdout, stderr = self._run_deno(
@@ -177,7 +177,7 @@ class TestNetDialPermissions(BaseComplexPermissionTest):
 
 
 class TestNetListenPermissions(BaseComplexPermissionTest):
-    test_type = "net_listen"
+    test_type = "netListen"
 
     def test_allow_localhost_4555(self):
         code, _stdout, stderr = self._run_deno(

@@ -1,8 +1,9 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
-import { test, testPerm, assert, assertEquals } from "../js/test_util.ts";
+import { test, assertEquals } from "../js/test_util.ts";
 import { runIfMain } from "../js/deps/https/deno.land/std/testing/mod.ts";
 import {
+  BenchmarkRun,
   createBinarySizeColumns,
   createExecTimeColumns,
   createThreadCountColumns,
@@ -10,7 +11,8 @@ import {
   createSha1List
 } from "./app.ts";
 
-const regularData = [
+/* eslint-disable @typescript-eslint/camelcase */
+const regularData: BenchmarkRun[] = [
   {
     created_at: "2018-01-01T01:00:00Z",
     sha1: "abcdef",
@@ -97,7 +99,7 @@ const regularData = [
   }
 ];
 
-const irregularData = [
+const irregularData: BenchmarkRun[] = [
   {
     created_at: "2018-01-01T01:00:00Z",
     sha1: "123",
@@ -132,6 +134,7 @@ const irregularData = [
     }
   }
 ];
+/* eslint-enable @typescript-eslint/camelcase */
 
 test(function createExecTimeColumnsRegularData() {
   const columns = createExecTimeColumns(regularData);
