@@ -44,6 +44,7 @@ mod signal;
 pub mod source_maps;
 mod startup_data;
 pub mod state;
+pub mod test_util;
 mod tokio_read;
 mod tokio_util;
 mod tokio_write;

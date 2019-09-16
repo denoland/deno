@@ -201,10 +201,11 @@ mod tests {
 
   #[test]
   fn execute_006_url_imports() {
+    let http_server_guard = crate::test_util::http_server();
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
       .parent()
       .unwrap()
-      .join("tests/006_url_imports.ts")
+      .join("cli/tests/006_url_imports.ts")
       .to_owned();
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
@@ -232,6 +233,7 @@ mod tests {
     assert_eq!(metrics.resolve_count.load(Ordering::SeqCst), 3);
     // Check that we've only invoked the compiler once.
     assert_eq!(metrics.compiler_starts.load(Ordering::SeqCst), 1);
+    drop(http_server_guard);
   }
 
   fn create_test_worker() -> Worker {

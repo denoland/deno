@@ -127,9 +127,9 @@ def generate_gn_args(mode):
     if "DENO_BUILD_ARGS" in os.environ:
         out += os.environ["DENO_BUILD_ARGS"].split()
 
-    cacher = third_party.get_prebuilt_tool_path("sccache")
+    cacher = find_executable("sccache")
     if not os.path.exists(cacher):
-        cacher = find_executable("sccache") or find_executable("ccache")
+        cacher = third_party.get_prebuilt_tool_path("sccache")
 
     # Check if ccache or sccache are in the path, and if so we set cc_wrapper.
     cc_wrapper = cacher
