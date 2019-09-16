@@ -50,6 +50,7 @@ itest!(_005_more_imports {
 itest!(_006_url_imports {
   args: "run --reload 006_url_imports.ts",
   output: "tests/006_url_imports.ts.out",
+  http_server: true,
 });
 
 itest!(_012_async {
@@ -90,6 +91,7 @@ itest!(_018_async_catch {
 itest!(_019_media_types {
   args: "run --reload 019_media_types.ts",
   output: "tests/019_media_types.ts.out",
+  http_server: true,
 });
 
 itest!(_020_json_modules {
@@ -105,6 +107,7 @@ itest!(_021_mjs_modules {
 itest!(_022_info_flag_script {
   args: "info http://127.0.0.1:4545/tests/019_media_types.ts",
   output: "tests/022_info_flag_script.out",
+  http_server: true,
 });
 
 itest!(_023_no_ext_with_headers {
@@ -131,6 +134,7 @@ itest!(_025_reload_js_type_error {
 itest!(_026_redirect_javascript {
   args: "run --reload 026_redirect_javascript.js",
   output: "tests/026_redirect_javascript.js.out",
+  http_server: true,
 });
 
 itest!(_026_workers {
@@ -141,6 +145,7 @@ itest!(_026_workers {
 itest!(_027_redirect_typescript {
   args: "run --reload 027_redirect_typescript.ts",
   output: "tests/027_redirect_typescript.ts.out",
+  http_server: true,
 });
 
 itest!(_028_args {
@@ -359,6 +364,7 @@ itest!(error_016_dynamic_import_permissions2 {
   output: "tests/error_016_dynamic_import_permissions2.out",
   check_stderr: true,
   exit_code: 1,
+  http_server: true,
 });
 
 itest!(error_stack {
@@ -473,6 +479,7 @@ struct IntegrationTest {
   input: Option<&'static str>,
   exit_code: i32,
   check_stderr: bool,
+  http_server: bool,
 }
 
 impl IntegrationTest {
@@ -490,6 +497,12 @@ impl IntegrationTest {
     let bin = root.join(format!("target/{}/deno", target));
     debug!("root path {}", root.display());
     debug!("bin path {}", bin.display());
+
+    let http_server_guard = if self.http_server {
+      Some(crate::mock_http_server::run())
+    } else {
+      None
+    };
 
     let (mut reader, writer) = pipe().unwrap();
     let mut command = Command::new(bin);
@@ -523,6 +536,8 @@ impl IntegrationTest {
 
     let status = process.wait().expect("failed to finish process");
     let exit_code = status.code().unwrap();
+
+    drop(http_server_guard);
 
     actual = strip_ansi_codes(&actual).to_string();
 
