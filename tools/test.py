@@ -1,30 +1,30 @@
 #!/usr/bin/env python
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 # Runs the full test suite.
-# Usage: ./tools/test.py out/Debug
+# This script is wrapper of `cargo test`.
+#
+# Usage: ./tools/test.py <filter_pattern>
+#
+# See `./tools/test.py -h` for the available options.
 import os
+import sys
 
 import http_server
-from util import enable_ansi_colors, rmtree, run
-from test_util import parse_test_args
+from util import build_path, enable_ansi_colors, rmtree, run
 
 
 def main():
-    args = parse_test_args()
-
-    deno_dir = os.path.join(args.build_dir, ".deno_test")
+    deno_dir = os.path.join(build_path(), ".deno_test")
     if os.path.isdir(deno_dir):
         rmtree(deno_dir)
     os.environ["DENO_DIR"] = deno_dir
 
     enable_ansi_colors()
 
-    cargo_test = ["cargo", "test", "--locked"]
-    if "DENO_BUILD_MODE" in os.environ and \
-      os.environ["DENO_BUILD_MODE"] == "release":
-        run(cargo_test + ["--release"])
-    else:
-        run(cargo_test)
+    cmd = ["cargo", "test", "--locked"] + sys.argv[1:]
+    if "--release" in cmd:
+        os.environ["DENO_BUILD_MODE"] = "release"
+    run(cmd)
 
 
 if __name__ == '__main__':
