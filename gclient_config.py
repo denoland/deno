@@ -31,12 +31,6 @@ solutions = [
     },
     {
         'url':
-        'https://chromium.googlesource.com/chromium/src/third_party/zlib@39b4a6260702da4c089eca57136abf40a39667e9',
-        'name':
-        'zlib'
-    },
-    {
-        'url':
         'https://github.com/cpplint/cpplint.git@a33992f68f36fcaa6d0f531a25012a4c474d3542',
         'name':
         'cpplint'
