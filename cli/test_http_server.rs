@@ -13,6 +13,7 @@ lazy_static! {
 }
 
 pub struct Guard<'a> {
+  #[allow(dead_code)]
   g: MutexGuard<'a, ()>,
   child: Child,
 }
@@ -20,7 +21,6 @@ pub struct Guard<'a> {
 impl<'a> Drop for Guard<'a> {
   fn drop(&mut self) {
     self.child.kill().expect("failed to kill http_server.py");
-    drop(&self.g);
   }
 }
 
