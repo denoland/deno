@@ -145,6 +145,7 @@ mod tests {
 
   #[test]
   fn test_fetch_sync_string() {
+    let g = crate::test_http_server::run();
     // Relies on external http server. See tools/http_server.py
     let url = Url::parse("http://127.0.0.1:4545/package.json").unwrap();
     tokio_util::init(|| match fetch_string_once_sync(&url).unwrap() {
@@ -154,10 +155,12 @@ mod tests {
       }
       _ => unreachable!(),
     });
+    drop(g);
   }
 
   #[test]
   fn test_fetch_string_once_with_redirect() {
+    let g = crate::test_http_server::run();
     // Relies on external http server. See tools/http_server.py
     let url = Url::parse("http://127.0.0.1:4546/package.json").unwrap();
     // Dns resolver substitutes `127.0.0.1` with `localhost`
@@ -166,6 +169,7 @@ mod tests {
       let result = fetch_string_once_sync(&url).unwrap();
       assert_eq!(result, FetchOnceResult::Redirect(target_url));
     });
+    drop(g);
   }
 
   #[test]
