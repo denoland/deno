@@ -1,17 +1,22 @@
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-[[bin]]
-name = "deno"
-path = "main.rs"
 
 [package]
 name = "deno_cli"
-version = "0.18.3"
+version = "0.18.4"
 license = "MIT"
 authors = ["the Deno authors"]
 edition = "2018"
 description = "Provides the deno executable"
 repository = "https://github.com/denoland/deno"
 default-run = "deno"
+
+[lib]
+name = "deno_cli"
+path = "lib.rs"
+
+[[bin]]
+name = "deno"
+path = "main.rs"
 
 [dependencies]
 deno = { path = "../core", version = "0.18.0" }
