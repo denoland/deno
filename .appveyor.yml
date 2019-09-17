@@ -94,7 +94,7 @@ install:
   # Clone the third_party submodule.
   - ps: |-
       try {
-        Exec { & git submodule update --init --force --depth 1 }
+        Exec { & git submodule update --init --force --depth 1 --jobs 4 }
       } catch {
         # Git will fail if the `third_party` directory was restored from cache,
         # but the `.git/modules` directory wasn't. Rebuild it from scratch.
