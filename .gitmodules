@@ -10,3 +10,5 @@
 [submodule "typescript"]
 	path = deno_typescript/typescript
 	url = https://github.com/microsoft/TypeScript.git
+	fetchRecurseSubmodules = false
+	shallow = true
