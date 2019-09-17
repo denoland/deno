@@ -4,12 +4,12 @@ import { test, assertEquals } from "./test_util.ts";
 test(function customEventInitializedWithDetail(): void {
   const type = "touchstart";
   const detail = { message: "hello" };
-  const customEventDict = new CustomEventInit({
+  const customEventInit = {
     bubbles: true,
     cancelable: true,
     detail
-  });
-  const event = new CustomEvent(type, customEventDict);
+  } as CustomEventInit;
+  const event = new CustomEvent(type, customEventInit);
 
   assertEquals(event.bubbles, true);
   assertEquals(event.cancelable, true);

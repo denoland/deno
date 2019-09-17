@@ -15,8 +15,8 @@ test(function eventInitializedWithType(): void {
 
 test(function eventInitializedWithTypeAndDict(): void {
   const init = "submit";
-  const eventInitDict = new EventInit({ bubbles: true, cancelable: true });
-  const event = new Event(init, eventInitDict);
+  const eventInit = { bubbles: true, cancelable: true } as EventInit;
+  const event = new Event(init, eventInit);
 
   assertEquals(event.isTrusted, false);
   assertEquals(event.target, null);
@@ -62,8 +62,8 @@ test(function eventPreventDefaultSuccess(): void {
   event.preventDefault();
   assertEquals(event.defaultPrevented, false);
 
-  const eventInitDict = new EventInit({ bubbles: true, cancelable: true });
-  const cancelableEvent = new Event(type, eventInitDict);
+  const eventInit = { bubbles: true, cancelable: true } as EventInit;
+  const cancelableEvent = new Event(type, eventInit);
   assertEquals(cancelableEvent.defaultPrevented, false);
   cancelableEvent.preventDefault();
   assertEquals(cancelableEvent.defaultPrevented, true);
