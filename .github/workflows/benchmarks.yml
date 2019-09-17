@@ -63,7 +63,7 @@ jobs:
 
       # Push to pages
       - name: Push to pages
-        if: (github.ref == "master" || github.ref == "github-ci")
+        if: (secrets.GH_PAT != '') && (github.ref == 'master' || github.ref == 'github-ci')
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
         run: |
