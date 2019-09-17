@@ -97,29 +97,26 @@ window.crypto = (csprng as unknown) as Crypto;
 // We have to export the type aliases, so that TypeScript _knows_ they are
 // being used, which it cannot statically determine within this module.
 window.Blob = blob.DenoBlob;
-export type Blob = blob.DenoBlob;
+export type Blob = domTypes.Blob;
 
 export type Body = domTypes.Body;
 
 window.File = domFile.DenoFile as domTypes.DomFileConstructor;
 export type File = domTypes.DomFile;
 
-window.CustomEventInit = customEvent.CustomEventInit;
-export type CustomEventInit = customEvent.CustomEventInit;
+export type CustomEventInit = domTypes.CustomEventInit;
 window.CustomEvent = customEvent.CustomEvent;
-export type CustomEvent = customEvent.CustomEvent;
-window.EventInit = event.EventInit;
-export type EventInit = event.EventInit;
+export type CustomEvent = domTypes.CustomEvent;
+export type EventInit = domTypes.EventInit;
 window.Event = event.Event;
-export type Event = event.Event;
-window.EventListener = eventTarget.EventListener;
-export type EventListener = eventTarget.EventListener;
+export type Event = domTypes.Event;
+export type EventListener = domTypes.EventListener;
 window.EventTarget = eventTarget.EventTarget;
-export type EventTarget = eventTarget.EventTarget;
+export type EventTarget = domTypes.EventTarget;
 window.URL = url.URL;
 export type URL = url.URL;
 window.URLSearchParams = urlSearchParams.URLSearchParams;
-export type URLSearchParams = urlSearchParams.URLSearchParams;
+export type URLSearchParams = domTypes.URLSearchParams;
 
 // Using the `as` keyword to use standard compliant interfaces as the Deno
 // implementations contain some implementation details we wouldn't want to

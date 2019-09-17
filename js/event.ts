@@ -10,18 +10,6 @@ function isTrusted(this: Event): boolean {
   return getPrivateValue(this, eventAttributes, "isTrusted");
 }
 
-export class EventInit implements domTypes.EventInit {
-  bubbles = false;
-  cancelable = false;
-  composed = false;
-
-  constructor({ bubbles = false, cancelable = false, composed = false } = {}) {
-    this.bubbles = bubbles;
-    this.cancelable = cancelable;
-    this.composed = composed;
-  }
-}
-
 export class Event implements domTypes.Event {
   // The default value is `false`.
   // Use `defineProperty` to define on each instance, NOT on the prototype.
