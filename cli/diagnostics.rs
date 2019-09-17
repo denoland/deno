@@ -80,7 +80,7 @@ pub struct DiagnosticItem {
 
   /// A chain of messages, code, and categories of messages which indicate the
   /// full diagnostic information.
-  pub message_chain: Option<Box<DiagnosticMessageChain>>,
+  pub message_chain: Option<DiagnosticMessageChain>,
 
   /// Other diagnostic items that are related to the diagnostic, usually these
   /// are suggestions of why an error occurred.
@@ -198,21 +198,12 @@ impl DisplayFormatter for DiagnosticItem {
   }
 
   fn format_message(&self, level: usize) -> String {
+    debug!("format_message");
     if self.message_chain.is_none() {
       return format!("{:indent$}{}", "", self.message, indent = level);
     }
 
-    let mut s = String::new();
-    let mut i = level / 2;
-    let mut item_o = self.message_chain.clone();
-    while item_o.is_some() {
-      let item = item_o.unwrap();
-      s.push_str(&std::iter::repeat(" ").take(i * 2).collect::<String>());
-      s.push_str(&item.message);
-      s.push('\n');
-      item_o = item.next.clone();
-      i += 1;
-    }
+    let mut s = self.message_chain.clone().unwrap().format_message(level);
     s.pop();
 
     s
@@ -280,15 +271,11 @@ pub struct DiagnosticMessageChain {
   pub message: String,
   pub code: i64,
   pub category: DiagnosticCategory,
-  pub next: Option<Box<DiagnosticMessageChain>>,
+  pub next: Option<Vec<DiagnosticMessageChain>>,
 }
 
 impl DiagnosticMessageChain {
-  pub fn from_json_value(v: &serde_json::Value) -> Option<Box<Self>> {
-    if !v.is_object() {
-      return None;
-    }
-
+  fn from_value(v: &serde_json::Value) -> Self {
     let obj = v.as_object().unwrap();
     let message = obj
       .get("message")
@@ -301,16 +288,55 @@ impl DiagnosticMessageChain {
 
     let next_v = obj.get("next");
     let next = match next_v {
-      Some(n) => DiagnosticMessageChain::from_json_value(n),
+      Some(n) => DiagnosticMessageChain::from_next_array(n),
       _ => None,
     };
 
-    Some(Box::new(Self {
+    Self {
       message,
       code,
       category,
       next,
-    }))
+    }
+  }
+
+  fn from_next_array(v: &serde_json::Value) -> Option<Vec<Self>> {
+    if !v.is_array() {
+      return None;
+    }
+
+    let vec = v
+      .as_array()
+      .unwrap()
+      .iter()
+      .map(|item| Self::from_value(&item))
+      .collect::<Vec<Self>>();
+
+    Some(vec)
+  }
+
+  pub fn from_json_value(v: &serde_json::Value) -> Option<Self> {
+    if !v.is_object() {
+      return None;
+    }
+
+    Some(Self::from_value(v))
+  }
+
+  pub fn format_message(&self, level: usize) -> String {
+    let mut s = String::new();
+
+    s.push_str(&std::iter::repeat(" ").take(level * 2).collect::<String>());
+    s.push_str(&self.message);
+    s.push('\n');
+    if self.next.is_some() {
+      let arr = self.next.clone().unwrap();
+      for dm in arr {
+        s.push_str(&dm.format_message(level + 1));
+      }
+    }
+
+    s
   }
 }
 
@@ -348,22 +374,22 @@ mod tests {
       items: vec![
         DiagnosticItem {
           message: "Type '(o: T) => { v: any; f: (x: B) => string; }[]' is not assignable to type '(r: B) => Value<B>[]'.".to_string(),
-          message_chain: Some(Box::new(DiagnosticMessageChain {
+          message_chain: Some(DiagnosticMessageChain {
             message: "Type '(o: T) => { v: any; f: (x: B) => string; }[]' is not assignable to type '(r: B) => Value<B>[]'.".to_string(),
             code: 2322,
             category: DiagnosticCategory::Error,
-            next: Some(Box::new(DiagnosticMessageChain {
+            next: Some(vec![DiagnosticMessageChain {
               message: "Types of parameters 'o' and 'r' are incompatible.".to_string(),
               code: 2328,
               category: DiagnosticCategory::Error,
-              next: Some(Box::new(DiagnosticMessageChain {
+              next: Some(vec![DiagnosticMessageChain {
                 message: "Type 'B' is not assignable to type 'T'.".to_string(),
                 code: 2322,
                 category: DiagnosticCategory::Error,
                 next: None,
-              })),
-            })),
-          })),
+              }]),
+            }]),
+          }),
           code: 2322,
           category: DiagnosticCategory::Error,
           start_position: Some(267),
@@ -437,124 +463,67 @@ mod tests {
       &r#"{
         "items": [
           {
-            "message": "Type '(o: T) => { v: any; f: (x: B) => string; }[]' is not assignable to type '(r: B) => Value<B>[]'.",
+            "message": "Type '{ a(): { b: number; }; }' is not assignable to type '{ a(): { b: string; }; }'.",
             "messageChain": {
-              "message": "Type '(o: T) => { v: any; f: (x: B) => string; }[]' is not assignable to type '(r: B) => Value<B>[]'.",
+              "message": "Type '{ a(): { b: number; }; }' is not assignable to type '{ a(): { b: string; }; }'.",
               "code": 2322,
               "category": 3,
-              "next": {
-                "message": "Types of parameters 'o' and 'r' are incompatible.",
-                "code": 2328,
-                "category": 3,
-                "next": {
-                  "message": "Type 'B' is not assignable to type 'T'.",
-                  "code": 2322,
+              "next": [
+                {
+                  "message": "Types of property 'a' are incompatible.",
+                  "code": 2326,
                   "category": 3
                 }
-              }
+              ]
             },
             "code": 2322,
             "category": 3,
-            "startPosition": 235,
-            "endPosition": 241,
-            "sourceLine": "  values: o => [",
-            "lineNumber": 18,
-            "scriptResourceName": "/deno/tests/complex_diagnostics.ts",
-            "startColumn": 2,
-            "endColumn": 8,
-            "relatedInformation": [
-              {
-                "message": "The expected type comes from property 'values' which is declared here on type 'C<B>'",
-                "code": 6500,
-                "category": 2,
-                "startPosition": 78,
-                "endPosition": 84,
-                "sourceLine": "  values?: (r: T) => Array<Value<T>>;",
-                "lineNumber": 6,
-                "scriptResourceName": "/deno/tests/complex_diagnostics.ts",
-                "startColumn": 2,
-                "endColumn": 8
-              }
-            ]
-          },
-          {
-            "message": "Property 't' does not exist on type 'T'.",
-            "code": 2339,
-            "category": 3,
-            "startPosition": 267,
-            "endPosition": 268,
-            "sourceLine": "      v: o.t,",
-            "lineNumber": 20,
-            "scriptResourceName": "/deno/tests/complex_diagnostics.ts",
-            "startColumn": 11,
-            "endColumn": 12
+            "startPosition": 352,
+            "endPosition": 353,
+            "sourceLine": "x = y;",
+            "lineNumber": 29,
+            "scriptResourceName": "/deno/tests/error_003_typescript.ts",
+            "startColumn": 0,
+            "endColumn": 1
           }
         ]
       }"#,
     ).unwrap();
     let r = Diagnostic::from_json_value(&v);
-    let expected = Some(Diagnostic {
-      items: vec![
-        DiagnosticItem {
-          message: "Type '(o: T) => { v: any; f: (x: B) => string; }[]' is not assignable to type '(r: B) => Value<B>[]'.".to_string(),
-          message_chain: Some(Box::new(DiagnosticMessageChain {
-            message: "Type '(o: T) => { v: any; f: (x: B) => string; }[]' is not assignable to type '(r: B) => Value<B>[]'.".to_string(),
-            code: 2322,
-            category: DiagnosticCategory::Error,
-            next: Some(Box::new(DiagnosticMessageChain {
-              message: "Types of parameters 'o' and 'r' are incompatible.".to_string(),
-              code: 2328,
-              category: DiagnosticCategory::Error,
-              next: Some(Box::new(DiagnosticMessageChain {
-                message: "Type 'B' is not assignable to type 'T'.".to_string(),
+    let expected = Some(
+      Diagnostic {
+        items: vec![
+          DiagnosticItem {
+            message: "Type \'{ a(): { b: number; }; }\' is not assignable to type \'{ a(): { b: string; }; }\'.".to_string(),
+            message_chain: Some(
+              DiagnosticMessageChain {
+                message: "Type \'{ a(): { b: number; }; }\' is not assignable to type \'{ a(): { b: string; }; }\'.".to_string(),
                 code: 2322,
                 category: DiagnosticCategory::Error,
-                next: None,
-              })),
-            })),
-          })),
-          related_information: Some(vec![
-            DiagnosticItem {
-              message: "The expected type comes from property 'values' which is declared here on type 'C<B>'".to_string(),
-              message_chain: None,
-              related_information: None,
-              source_line: Some("  values?: (r: T) => Array<Value<T>>;".to_string()),
-              line_number: Some(6),
-              script_resource_name: Some("/deno/tests/complex_diagnostics.ts".to_string()),
-              start_position: Some(78),
-              end_position: Some(84),
-              category: DiagnosticCategory::Info,
-              code: 6500,
-              start_column: Some(2),
-              end_column: Some(8),
-            }
-          ]),
-          source_line: Some("  values: o => [".to_string()),
-          line_number: Some(18),
-          script_resource_name: Some("/deno/tests/complex_diagnostics.ts".to_string()),
-          start_position: Some(235),
-          end_position: Some(241),
-          category: DiagnosticCategory::Error,
-          code: 2322,
-          start_column: Some(2),
-          end_column: Some(8),
-        },
-        DiagnosticItem {
-          message: "Property 't' does not exist on type 'T'.".to_string(),
-          message_chain: None,
-          related_information: None,
-          source_line: Some("      v: o.t,".to_string()),
-          line_number: Some(20),
-          script_resource_name: Some("/deno/tests/complex_diagnostics.ts".to_string()),
-          start_position: Some(267),
-          end_position: Some(268),
-          category: DiagnosticCategory::Error,
-          code: 2339,
-          start_column: Some(11),
-          end_column: Some(12),
-        },
-      ],
-    });
+                next: Some(vec![
+                  DiagnosticMessageChain {
+                    message: "Types of property \'a\' are incompatible.".to_string(),
+                    code: 2326,
+                    category: DiagnosticCategory::Error,
+                    next: None,
+                  }
+                ])
+              }
+            ),
+            related_information: None,
+            source_line: Some("x = y;".to_string()),
+            line_number: Some(29),
+            script_resource_name: Some("/deno/tests/error_003_typescript.ts".to_string()),
+            start_position: Some(352),
+            end_position: Some(353),
+            category: DiagnosticCategory::Error,
+            code: 2322,
+            start_column: Some(0),
+            end_column: Some(1)
+          }
+        ]
+      }
+    );
     assert_eq!(expected, r);
   }
 
