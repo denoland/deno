@@ -245,6 +245,7 @@ pub fn get_asset(name: &str) -> Option<&'static str> {
     "lib.es2017.string.d.ts" => inc!("lib.es2017.string.d.ts"),
     "lib.es2017.intl.d.ts" => inc!("lib.es2017.intl.d.ts"),
     "lib.es2017.typedarrays.d.ts" => inc!("lib.es2017.typedarrays.d.ts"),
+    "lib.es2018.asyncgenerator.d.ts" => inc!("lib.es2018.asyncgenerator.d.ts"),
     "lib.es2018.asynciterable.d.ts" => inc!("lib.es2018.asynciterable.d.ts"),
     "lib.es2018.promise.d.ts" => inc!("lib.es2018.promise.d.ts"),
     "lib.es2018.regexp.d.ts" => inc!("lib.es2018.regexp.d.ts"),

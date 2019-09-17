@@ -18,7 +18,7 @@ export interface DiagnosticMessageChain {
   message: string;
   category: DiagnosticCategory;
   code: number;
-  next?: DiagnosticMessageChain;
+  next?: DiagnosticMessageChain[];
 }
 
 export interface DiagnosticItem {
@@ -130,19 +130,20 @@ function getSourceInformation(
 
 /** Converts a TypeScript diagnostic message chain to a Deno one. */
 function fromDiagnosticMessageChain(
-  messageChain: ts.DiagnosticMessageChain | undefined
-): DiagnosticMessageChain | undefined {
+  messageChain: ts.DiagnosticMessageChain[] | undefined
+): DiagnosticMessageChain[] | undefined {
   if (!messageChain) {
     return undefined;
   }
 
-  const { messageText: message, code, category, next } = messageChain;
-  return {
-    message,
-    code,
-    category: fromDiagnosticCategory(category),
-    next: fromDiagnosticMessageChain(next)
-  };
+  return messageChain.map(({ messageText: message, code, category, next }) => {
+    return {
+      message,
+      code,
+      category: fromDiagnosticCategory(category),
+      next: fromDiagnosticMessageChain(next)
+    };
+  });
 }
 
 /** Parse out information from a TypeScript diagnostic structure. */
@@ -171,7 +172,7 @@ function parseDiagnostic(
     message = messageText;
   } else {
     message = messageText.messageText;
-    messageChain = fromDiagnosticMessageChain(messageText);
+    messageChain = fromDiagnosticMessageChain([messageText])![0];
   }
 
   const base = {

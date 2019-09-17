@@ -1,28 +1,16 @@
-[WILDCARD]error TS2322: Type '(o: T) => { v: any; f: (x: B) => string; }[]' is not assignable to type '(r: B) => Value<B>[]'.
-  Types of parameters 'o' and 'r' are incompatible.
-    Type 'B' is not assignable to type 'T'.
-      'B' is assignable to the constraint of type 'T', but 'T' could be instantiated with a different subtype of constraint '{}'.
+[WILDCARD]error TS2322: Type '{ a: { b: { c(): { d: number; }; }; }; }' is not assignable to type '{ a: { b: { c(): { d: string; }; }; }; }'.
+  Types of property 'a' are incompatible.
+    Type '{ b: { c(): { d: number; }; }; }' is not assignable to type '{ b: { c(): { d: string; }; }; }'.
+      Types of property 'b' are incompatible.
+        Type '{ c(): { d: number; }; }' is not assignable to type '{ c(): { d: string; }; }'.
+          Types of property 'c' are incompatible.
+            Type '() => { d: number; }' is not assignable to type '() => { d: string; }'.
+              Type '{ d: number; }' is not assignable to type '{ d: string; }'.
+                Types of property 'd' are incompatible.
+                  Type 'number' is not assignable to type 'string'.
 
-[WILDCARD]tests/error_003_typescript.ts:20:3
+[WILDCARD]/tests/error_003_typescript.ts:20:1
 
-20   values: o => [
-     ~~~~~~
-
-  The expected type comes from property 'values' which is declared here on type 'C<B>'
-
-    [WILDCARD]tests/error_003_typescript.ts:8:3
-
-    8   values?: (r: T) => Array<Value<T>>;
-        ~~~~~~
-
-
-error TS2339: Property 't' does not exist on type 'T'.
-
-[WILDCARD]tests/error_003_typescript.ts:22:12
-
-22       v: o.t,
-              ^
-
-
-Found 2 errors.
+20 x = y;
+   ^
 
