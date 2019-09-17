@@ -70,6 +70,7 @@ export class EventTarget implements domTypes.EventTarget {
       }
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const eventTarget = this;
     listeners[type].push({
       callback,
