@@ -14,8 +14,7 @@ from target_test import TestTarget
 from unit_tests import JsUnitTests
 from util_test import TestUtil
 # NOTE: These tests are skipped on Windows
-# NOTE: skip for now because of #2885
-# from is_tty_test import TestIsTty
+from is_tty_test import TestIsTty
 from permission_prompt_test import permission_prompt_tests
 from complex_permissions_test import complex_permissions_tests
 
@@ -44,8 +43,7 @@ def main():
         TestRepl,
         TestDenoDir,
         TestBenchmark,
-        # NOTE: skip for now because of #2885
-        # TestIsTty,
+        TestIsTty,
     ]
     test_cases += permission_prompt_tests()
     test_cases += complex_permissions_tests()
