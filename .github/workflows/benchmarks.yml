@@ -1,9 +1,6 @@
 name: Benchmark updating
 
-on:
-  push:
-    branch:
-      - master
+on: [push]
 
 jobs:
   update_benchmark:
@@ -46,7 +43,7 @@ jobs:
           DENO_BUILD_MODE: release
         run: |
           cargo build --release --locked --all-targets
-      
+
       # Run benchmarks
       - name: Run benchmarks
         run: |
@@ -56,16 +53,22 @@ jobs:
         run: cp -r website/* gh-pages/
 
       # Upload benchmarks
+      - name: Compress benchmarks
+        run: zip gh-pages.zip gh-pages/**
       - name: Upload benchmarks as artifact
         uses: actions/upload-artifact@master
         with:
           name: benchmarks
-          path: gh-pages
+          path: gh-pages.zip
 
       # Push to pages
-      #- name: Push to pages (macos)
-      #  run: |
-      #    cd gh-pages
-      #    git add .
-      #    git commit --message "Update benchmarks"
-      #    git push origin gh-pages
+      - name: Push to pages
+        if: secrets.GH_PAT != "" && (github.ref == "master" || github.ref == "github-ci")
+        env:
+          GH_PAT: ${{secrets.GH_PAT}}
+        run: |
+          cd gh-pages
+          git add .
+          git commit --message "Update benchmarks"
+          git push origin gh-pages
+          curl -XPOST -H 'Accept: application/vnd.github.mister-fantastic-preview+json' -H 'Authorization: token $GH_PAT' 'https://api.github.com/repos/$GITHUB_REPOSITORY/pages/builds/latest'
