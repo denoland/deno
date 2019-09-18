@@ -14,10 +14,6 @@ export interface Addr {
   address: string;
 }
 
-export interface NetworkOptions {
-  network: Network;
-}
-
 /** A Listener is a generic network listener for stream-oriented protocols. */
 export interface Listener extends AsyncIterator<Conn> {
   /** Waits for and resolves to the next connection to the `Listener`. */
@@ -132,35 +128,46 @@ export interface Conn extends Reader, Writer, Closer {
   closeWrite(): void;
 }
 
+export interface ListenOptions {
+  port: number;
+  hostname?: string;
+  transport?: "tcp";
+}
+const listenDefaults = { hostname: "0.0.0.0", transport: "tcp" };
+
 /** Listen announces on the local network address.
  *
- * For TCP networks, if the host in the address parameter is empty or a literal
- * unspecified IP address, `listen()` listens on all available unicast and
- * anycast IP addresses of the local system. To only use IPv4, use network
- * `tcp4`. The address can use a host name, but this is not recommended,
- * because it will create a listener for at most one of the host's IP
- * addresses. If the port in the address parameter is empty or `0`, as in
- * `127.0.0.1:` or `[::1]:0`, a port number is automatically chosen. The
- * `addr()` method of `Listener` can be used to discover the chosen port.
+ * @param options
+ * @param options.port The port to connect to. (Required.)
+ * @param options.hostname A literal IP address or host name that can be
+ *   resolved to an IP address. If not specified, defaults to 0.0.0.0
+ * @param options.transport Defaults to "tcp". Later we plan to add "tcp4",
+ *   "tcp6", "udp", "udp4", "udp6", "ip", "ip4", "ip6", "unix", "unixgram" and
+ *   "unixpacket".
  *
- * See `dial()` for a description of the address parameters and network options.
+ * Examples:
+ *
+ *     listen({ port: 80 })
+ *     listen({ hostname: "192.0.2.1", port: 80 })
+ *     listen({ hostname: "[2001:db8::1]", port: 80 });
+ *     listen({ hostname: "golang.org", port: 80, transport: "tcp" })
  */
-export function listen(
-  address: string,
-  options: NetworkOptions = { network: "tcp" }
-): Listener {
-  const res = sendSync(dispatch.OP_LISTEN, {
-    network: options.network,
-    address
-  });
+export function listen(options: ListenOptions): Listener {
+  options = Object.assign(listenDefaults, options);
+  const res = sendSync(dispatch.OP_LISTEN, options);
   return new ListenerImpl(res.rid, options.network, res.localAddr);
 }
 
+export interface DialOptions {
+  port: number;
+  hostname?: string;
+  transport?: "tcp";
+}
+const dialDefaults = { hostname: "127.0.0.1", transport: "tcp" };
+
 /** Dial connects to the address on the named network.
  *
- * Options: port, hostname, transport.
- *
- * @param options 
+ * @param options
  * @param options.port The port to connect to. (Required.)
  * @param options.hostname A literal IP address or host name that can be
  *   resolved to an IP address. If not specified, defaults to 127.0.0.1
@@ -175,13 +182,9 @@ export function listen(
  *     dial({ hostname: "[2001:db8::1]", port: 80 });
  *     dial({ hostname: "golang.org", port: 80, transport: "tcp" })
  */
-export async function dial(
-  options: NetworkOptions = { }
-): Promise<Conn> {
-  const res = await sendAsync(dispatch.OP_DIAL, {
-    network: options.network,
-    address
-  });
+export async function dial(options: DialOptions): Promise<Conn> {
+  options = Object.assign(dialDefaults, options);
+  const res = await sendAsync(dispatch.OP_DIAL, options);
   // TODO(bartlomieju): add remoteAddr and localAddr on Rust side
   return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);
 }
