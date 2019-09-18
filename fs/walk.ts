@@ -1,13 +1,14 @@
 // Documentation and interface for walk were adapted from Go
 // https://golang.org/pkg/path/filepath/#Walk
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
-const { readDir, readDirSync } = Deno;
+const { readDir, readDirSync, stat, statSync } = Deno;
 type FileInfo = Deno.FileInfo;
 import { unimplemented } from "../testing/asserts.ts";
 import { join } from "./path/mod.ts";
 
 export interface WalkOptions {
   maxDepth?: number;
+  includeDirs?: boolean;
   exts?: string[];
   match?: RegExp[];
   skip?: RegExp[];
@@ -47,13 +48,14 @@ export interface WalkInfo {
   info: FileInfo;
 }
 
-/** Walks the file tree rooted at root, calling walkFn for each file or
- * directory in the tree, including root. The files are walked in lexical
+/** Walks the file tree rooted at root, yielding each file or directory in the
+ * tree filtered according to the given options. The files are walked in lexical
  * order, which makes the output deterministic but means that for very large
  * directories walk() can be inefficient.
  *
  * Options:
  * - maxDepth?: number;
+ * - includeDirs?: boolean;
  * - exts?: string[];
  * - match?: RegExp[];
  * - skip?: RegExp[];
@@ -70,6 +72,10 @@ export async function* walk(
   options: WalkOptions = {}
 ): AsyncIterableIterator<WalkInfo> {
   options.maxDepth! -= 1;
+  if (options.includeDirs && include(root, options)) {
+    const rootInfo = await stat(root);
+    yield { filename: root, info: rootInfo };
+  }
   let ls: FileInfo[] = [];
   try {
     ls = await readDir(root);
@@ -108,6 +114,10 @@ export function* walkSync(
   options: WalkOptions = {}
 ): IterableIterator<WalkInfo> {
   options.maxDepth! -= 1;
+  if (options.includeDirs && include(root, options)) {
+    const rootInfo = statSync(root);
+    yield { filename: root, info: rootInfo };
+  }
   let ls: FileInfo[] = [];
   try {
     ls = readDirSync(root);

@@ -120,6 +120,20 @@ testWalk(
 
 testWalk(
   async (d: string): Promise<void> => {
+    await touch(d + "/a");
+    await mkdir(d + "/b");
+    await touch(d + "/b/c");
+  },
+  async function includeDirs(): Promise<void> {
+    assertReady(2);
+    const arr = await walkArray(".", { includeDirs: true });
+    assertEquals(arr.length, 4);
+    assertEquals(arr, [".", "a", "b", "b/c"]);
+  }
+);
+
+testWalk(
+  async (d: string): Promise<void> => {
     await touch(d + "/x.ts");
     await touch(d + "/y.rs");
   },
