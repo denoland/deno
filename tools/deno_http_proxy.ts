@@ -15,7 +15,7 @@ async function main(): Promise<void> {
   }
 }
 
-async function proxyRequest(req: ServerRequest) {
+async function proxyRequest(req: ServerRequest): Promise<void> {
   const url = `http://${originAddr}${req.url}`;
   const resp = await fetch(url, {
     method: req.method,

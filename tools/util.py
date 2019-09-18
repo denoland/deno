@@ -18,8 +18,11 @@ else:
     FG_GREEN = "\x1b[32m"
 
 executable_suffix = ".exe" if os.name == "nt" else ""
+
 root_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+libdeno_path = os.path.join(root_path, "core", "libdeno")
 tests_path = os.path.join(root_path, "tests")
+third_party_path = os.path.join(root_path, "third_party")
 
 
 def make_env(merge_env=None, env=None):
@@ -47,14 +50,16 @@ def add_env_path(add, env, key="PATH", prepend=False):
     env[key] = os.pathsep.join(dirs_left)
 
 
-def run(args, quiet=False, cwd=None, env=None, merge_env=None):
-    if merge_env is None:
-        merge_env = {}
+def run(args, quiet=False, cwd=None, env=None, merge_env=None, shell=None):
     args[0] = os.path.normpath(args[0])
-    if not quiet:
-        print " ".join(args)
     env = make_env(env=env, merge_env=merge_env)
-    shell = os.name == "nt"  # Run through shell to make .bat/.cmd files work.
+    if shell is None:
+        # Use the default value for 'shell' parameter.
+        #   - Posix: do not use shell.
+        #   - Windows: use shell; this makes .bat/.cmd files work.
+        shell = os.name == "nt"
+    if not quiet:
+        print " ".join([shell_quote(arg) for arg in args])
     rc = subprocess.call(args, cwd=cwd, env=env, shell=shell)
     if rc != 0:
         sys.exit(rc)
@@ -162,28 +167,30 @@ def touch(fname):
         open(fname, 'a').close()
 
 
-# Recursive search for files of certain extensions.
-#   * Recursive glob doesn't exist in python 2.7.
-#   * On windows, `os.walk()` unconditionally follows symlinks.
-#     The `skip`  parameter should be used to avoid recursing through those.
-def find_exts(directories, extensions, skip=None):
-    if skip is None:
-        skip = []
-    assert isinstance(directories, list)
-    assert isinstance(extensions, list)
-    skip = [os.path.normpath(i) for i in skip]
-    matches = []
-    for directory in directories:
-        for root, dirnames, filenames in os.walk(directory):
-            if root in skip:
-                dirnames[:] = []  # Don't recurse further into this directory.
-                continue
-            for filename in filenames:
-                for ext in extensions:
-                    if filename.endswith(ext):
-                        matches.append(os.path.join(root, filename))
-                        break
-    return matches
+# Recursively list all files in (a subdirectory of) a git worktree.
+#   * Optionally, glob patterns may be specified to e.g. only list files with a
+#     certain extension.
+#   * Untracked files are included, unless they're listed in .gitignore.
+#   * Directory names themselves are not listed (but the files inside are).
+#   * Submodules and their contents are ignored entirely.
+#   * This function fails if the query matches no files.
+def git_ls_files(base_dir, patterns=None):
+    base_dir = os.path.abspath(base_dir)
+    args = [
+        "git", "-C", base_dir, "ls-files", "-z", "--exclude-standard",
+        "--cached", "--modified", "--others"
+    ]
+    if patterns:
+        args += ["--"] + patterns
+    output = subprocess.check_output(args)
+    files = [
+        os.path.normpath(os.path.join(base_dir, f)) for f in output.split("\0")
+        if f != ""
+    ]
+    if not files:
+        raise RuntimeError("git_ls_files: no files in '%s'" % base_dir +
+                           (" matching %s" % patterns if patterns else ""))
+    return files
 
 
 # The Python equivalent of `rm -rf`.

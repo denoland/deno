@@ -1,30 +1,28 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-const { args, readFileSync, writeFileSync, exit, dial, listen } = Deno;
+const { args, readFileSync, writeFileSync, exit } = Deno;
 
 const name = args[1];
 const test: (args: string[]) => void = {
-  read: (files: string[]): void => {
-    files.forEach((file): any => readFileSync(file));
+  read(files: string[]): void {
+    files.forEach(file => readFileSync(file));
   },
-  write: (files: string[]): void => {
-    files.forEach(
-      (file): any => writeFileSync(file, new Uint8Array(), { append: true })
+  write(files: string[]): void {
+    files.forEach(file =>
+      writeFileSync(file, new Uint8Array(0), { append: true })
     );
   },
-  net_fetch: (hosts: string[]): void => {
-    hosts.forEach((host): any => fetch(host));
+  netFetch(hosts: string[]): void {
+    hosts.forEach(host => fetch(host));
   },
-  net_listen: (hosts: string[]): void => {
-    hosts.forEach(
-      (host): any => {
-        const listener = listen(host);
-        listener.close();
-      }
-    );
+  netListen(hosts: string[]): void {
+    hosts.forEach(host => {
+      const listener = Deno.listen("tcp", host);
+      listener.close();
+    });
   },
-  net_dial: async (hosts: string[]): Promise<void> => {
+  async netDial(hosts: string[]): Promise<void> {
     for (const host of hosts) {
-      const listener = await dial(host);
+      const listener = await Deno.dial(host);
       listener.close();
     }
   }

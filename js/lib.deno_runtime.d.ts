@@ -1237,11 +1237,8 @@ declare interface Window {
   crypto: Crypto;
   Blob: typeof blob.DenoBlob;
   File: domTypes.DomFileConstructor;
-  CustomEventInit: typeof customEvent.CustomEventInit;
   CustomEvent: typeof customEvent.CustomEvent;
-  EventInit: typeof event.EventInit;
   Event: typeof event.Event;
-  EventListener: typeof eventTarget.EventListener;
   EventTarget: typeof eventTarget.EventTarget;
   URL: typeof url.URL;
   URLSearchParams: typeof urlSearchParams.URLSearchParams;
@@ -1318,17 +1315,17 @@ declare const removeEventListener: (
   options?: boolean | domTypes.EventListenerOptions | undefined
 ) => void;
 
-declare type Blob = blob.DenoBlob;
+declare type Blob = domTypes.Blob;
 declare type Body = domTypes.Body;
 declare type File = domTypes.DomFile;
-declare type CustomEventInit = customEvent.CustomEventInit;
-declare type CustomEvent = customEvent.CustomEvent;
-declare type EventInit = event.EventInit;
-declare type Event = event.Event;
-declare type EventListener = eventTarget.EventListener;
-declare type EventTarget = eventTarget.EventTarget;
+declare type CustomEventInit = domTypes.CustomEventInit;
+declare type CustomEvent = domTypes.CustomEvent;
+declare type EventInit = domTypes.EventInit;
+declare type Event = domTypes.Event;
+declare type EventListener = domTypes.EventListener;
+declare type EventTarget = domTypes.EventTarget;
 declare type URL = url.URL;
-declare type URLSearchParams = urlSearchParams.URLSearchParams;
+declare type URLSearchParams = domTypes.URLSearchParams;
 declare type Headers = domTypes.Headers;
 declare type FormData = domTypes.FormData;
 declare type TextEncoder = textEncoding.TextEncoder;

@@ -7,22 +7,6 @@ import { getPrivateValue, requiredArguments } from "./util.ts";
 // https://developer.mozilla.org/en-US/docs/Archive/Add-ons/Add-on_SDK/Guides/Contributor_s_Guide/Private_Properties#Using_WeakMaps
 export const customEventAttributes = new WeakMap();
 
-export class CustomEventInit extends event.EventInit
-  implements domTypes.CustomEventInit {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  detail: any;
-
-  constructor({
-    bubbles = false,
-    cancelable = false,
-    composed = false,
-    detail = null
-  }: domTypes.CustomEventInit) {
-    super({ bubbles, cancelable, composed });
-    this.detail = detail;
-  }
-}
-
 export class CustomEvent extends event.Event implements domTypes.CustomEvent {
   constructor(
     type: string,
