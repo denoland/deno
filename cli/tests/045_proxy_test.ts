@@ -7,7 +7,7 @@ import { assertEquals } from "../../js/deps/https/deno.land/std/testing/asserts.
 
 const addr = Deno.args[1] || "127.0.0.1:4500";
 
-async function proxyServer() {
+async function proxyServer(): Promise<void> {
   const server = serve(addr);
 
   console.log(`Proxy server listening on http://${addr}/`);
@@ -25,7 +25,7 @@ async function proxyRequest(req: ServerRequest): Promise<void> {
   req.respond(resp);
 }
 
-async function testFetch() {
+async function testFetch(): Promise<void> {
   const c = Deno.run({
     args: [
       Deno.execPath(),
@@ -45,7 +45,7 @@ async function testFetch() {
   c.close();
 }
 
-async function testModuleDownload() {
+async function testModuleDownload(): Promise<void> {
   const http = Deno.run({
     args: [
       Deno.execPath(),
