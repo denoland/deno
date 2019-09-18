@@ -3,20 +3,22 @@ import {
   serve,
   ServerRequest
 } from "../../js/deps/https/deno.land/std/http/server.ts";
+import { assertEquals } from "../../js/deps/https/deno.land/std/testing/asserts";
 
 const addr = Deno.args[1] || "127.0.0.1:4500";
+const decoder = new TextDecoder();
 
 async function proxyServer() {
   const server = serve(addr);
 
-  console.log(`Proxy listening on http://${addr}/`);
+  console.log(`Proxy server listening on http://${addr}/`);
   for await (const req of server) {
     proxyRequest(req);
   }
 }
 
 async function proxyRequest(req: ServerRequest): Promise<void> {
-  console.log(`Proxying request to: ${req.url}`);
+  console.log(`Proxy request to: ${req.url}`);
   const resp = await fetch(req.url, {
     method: req.method,
     headers: req.headers
@@ -24,13 +26,12 @@ async function proxyRequest(req: ServerRequest): Promise<void> {
   req.respond(resp);
 }
 
-async function main(): Promise<void> {
-  proxyServer();
-
+async function testFetch() {
   const c = Deno.run({
     args: [
       Deno.execPath(),
       "--no-prompt",
+      "--reload",
       "--allow-net",
       "cli/tests/045_proxy_client.ts"
     ],
@@ -41,12 +42,57 @@ async function main(): Promise<void> {
     }
   });
 
-  console.log("before status");
-  await c.status();
-  console.log("AFTER status");
-  const clientOutput = await c.output();
-  console.log("Client output", clientOutput);
+  const status = await c.status();
+  assertEquals(status.code, 0);
   c.close();
+}
+
+async function testModuleDownload() {
+  const http = Deno.run({
+    args: [
+      Deno.execPath(),
+      "--no-prompt",
+      "--reload",
+      "fetch",
+      "http://deno.land/welcome.ts"
+    ],
+    stdout: "piped",
+    env: {
+      HTTP_PROXY: `http://${addr}`
+    }
+  });
+
+  await http.status();
+  const httpStatus = await http.status();
+  assertEquals(httpStatus.code, 0);
+  http.close();
+
+  // TODO:
+  // const https = Deno.run({
+  //   args: [
+  //     Deno.execPath(),
+  //     "--no-prompt",
+  //     "--reload",
+  //     "fetch",
+  //     "https://deno.land/welcome.ts"
+  //   ],
+  //   stdout: "piped",
+  //   env: {
+  //     HTTPS_PROXY: `http://${addr}`
+  //   }
+  // });
+  //
+  // await https.status();
+  // const httpsStatus = await https.status();
+  // assertEquals(httpsStatus.code, 0);
+  // https.close();
+}
+
+async function main(): Promise<void> {
+  proxyServer();
+  await testFetch();
+  await testModuleDownload();
+  Deno.exit(0);
 }
 
 main();

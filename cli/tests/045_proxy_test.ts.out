@@ -1,5 +1,5 @@
-Proxy listening on http://127.0.0.1:4500/
-Proxying request to: http://deno.land/welcome.ts
-Proxying request to: deno.land:443
-Response http: console.log("Welcome to Deno 🦕");
-Response https: console.log("Welcome to Deno 🦕");
+Proxy server listening on http://127.0.0.1:4500/
+Proxy request to: http://deno.land/welcome.ts
+Proxy request to: https://deno.land/welcome.ts
+Proxy request to: http://deno.land/welcome.ts
+Proxy request to: https://deno.land/welcome.ts
