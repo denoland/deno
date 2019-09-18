@@ -6,5 +6,4 @@
 # This is relevant for Windows only, and requires git >= 2.19.2 to work.
 /core/libdeno/* symlink=dir
 /node_modules symlink=dir
-/tools/memory symlink=dir
 /website/* symlink=dir

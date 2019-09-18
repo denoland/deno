@@ -1,18 +1,12 @@
-# build
-*.swp
-/out/
-/target/
+*.orig
 *.pyc
-gclient_config.py_entries
-yarn.lock
-# npm deps
-node_modules
-# editor files
-.idea
-.vscode
-# export dir for gh-pages
-/gh-pages
-# temp benchmark data
+*.swp
+
+/.idea/
+/.vscode/
+/gclient_config.py_entries
+/gh-pages/
+/target/
+/website/*.bundle.js
 /website/data.json
 /website/recent.json
-/website/*.bundle.js
