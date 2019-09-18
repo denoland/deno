@@ -304,6 +304,12 @@ itest!(_042_dyn_import_evalcontext {
   output: "042_dyn_import_evalcontext.ts.out",
 });
 
+itest!(_045_proxy {
+  args: "run --allow-read --reload 045_proxy_test.ts",
+  output: "tests/045_proxy_test.ts.out",
+  check_stderr: true,
+});
+
 itest!(async_error {
   exit_code: 1,
   args: "run --reload async_error.ts",
