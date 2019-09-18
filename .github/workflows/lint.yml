@@ -1,6 +1,6 @@
 name: lint
 
-on: [push]
+on: [push, pull_request]
 
 jobs:
   clippy:
@@ -21,7 +21,7 @@ jobs:
           rustup component add clippy
           rustup component add rustfmt
 
-      - name: Environment (common)
+      - name: Environment
         run: |
           echo ::set-env name=RUSTC_WRAPPER::sccache
           echo ::set-env name=DENO_BUILD_MODE::release
