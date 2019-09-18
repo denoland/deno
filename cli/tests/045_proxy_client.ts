@@ -2,10 +2,6 @@
 async function main(): Promise<void> {
   const res = await fetch("http://deno.land/welcome.ts");
   console.log(`Response http: ${await res.text()}`);
-
-  // TODO:
-  // const res1 = await fetch("https://deno.land/welcome.ts");
-  // console.log(`Response https: ${await res1.text()}`);
 }
 
 main();
