@@ -1,0 +1,51 @@
+name: lint
+
+on: [push]
+
+jobs:
+  clippy:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure git
+        run: git config --global core.symlinks true
+
+      - name: Clone repository
+        uses: actions/checkout@v1
+        with:
+          fetch-depth: 1
+          submodules: true
+
+      - name: Install clippy and rustfmt
+        run: |
+          rustup component add clippy
+          rustup component add rustfmt
+
+      - name: Environment (common)
+        run: |
+          echo ::set-env name=RUSTC_WRAPPER::sccache
+          echo ::set-env name=DENO_BUILD_MODE::release
+          echo ::add-path::`pwd`/prebuilt/linux64
+
+      - name: Run setup.py
+        run: python ./tools/setup.py
+
+      - name: Start sccache
+        env:
+          AWS_ACCESS_KEY_ID: AKIAIVRN52PLDBP55LBQ
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          SCCACHE_BUCKET: deno-sccache
+          SCCACHE_IDLE_TIMEOUT: 0
+        run: sccache --start-server
+
+      - name: lint.py
+        run: python ./tools/lint.py
+
+      - name: test_format.py
+        run: python ./tools/test_format.py
+
+      - name: Clippy
+        run: cargo clippy --all-targets --release --locked -- -D clippy::all
+
+      - name: Stop sccache
+        run: sccache --stop-server
