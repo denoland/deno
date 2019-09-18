@@ -4,8 +4,7 @@
 
 import { test } from "../testing/mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
-import { globrex, GlobrexResult } from "./globrex.ts";
-import { GlobOptions } from "./glob.ts";
+import { globrex } from "./globrex.ts";
 
 const isWin = Deno.build.os === "win";
 const t = { equal: assertEquals, is: assertEquals };
@@ -22,31 +21,6 @@ function match(
   }
   let res = globrex(glob, opts);
   return res.regex.test(isWin && strWin ? strWin : strUnix);
-}
-
-function matchRegex(
-  pattern: string,
-  ifUnix: string,
-  ifWin: string,
-  opts: GlobOptions
-): GlobrexResult {
-  const res = globrex(pattern, opts);
-  const { regex } = opts.filepath ? res.path! : res;
-  t.is(regex.toString(), isWin ? ifWin : ifUnix, "~> regex matches expectant");
-  return res;
-}
-
-function matchSegments(
-  pattern: string,
-  ifUnix: RegExp[],
-  ifWin: RegExp[],
-  opts: GlobOptions
-): GlobrexResult {
-  const res = globrex(pattern, { filepath: true, ...opts });
-  const str = res.path!.segments.join(" ");
-  const exp = (isWin ? ifWin : ifUnix).join(" ");
-  t.is(str, exp);
-  return res;
 }
 
 test({
@@ -805,103 +779,6 @@ test({
     t.equal(match("foo//bar.txt", "foo/bar.txt"), true);
     t.equal(match("foo///bar.txt", "foo/bar.txt"), true);
     t.equal(match("foo///bar.txt", "foo/bar.txt", { strict: true }), false);
-  }
-});
-
-test({
-  name: "globrex: filepath path-regex",
-  fn(): void {
-    let opts = { extended: true, filepath: true, globstar: false },
-      res,
-      pattern;
-
-    res = globrex("", opts);
-    t.is(res.hasOwnProperty("path"), true);
-    t.is(res.path!.hasOwnProperty("regex"), true);
-    t.is(res.path!.hasOwnProperty("segments"), true);
-    t.is(Array.isArray(res.path!.segments), true);
-
-    pattern = "foo/bar/baz.js";
-    res = matchRegex(
-      pattern,
-      "/^foo\\/bar\\/baz\\.js$/",
-      "/^foo\\\\+bar\\\\+baz\\.js$/",
-      opts
-    );
-    t.is(res.path!.segments.length, 3);
-
-    res = matchRegex(
-      "../foo/bar.js",
-      "/^\\.\\.\\/foo\\/bar\\.js$/",
-      "/^\\.\\.\\\\+foo\\\\+bar\\.js$/",
-      opts
-    );
-    t.is(res.path!.segments.length, 3);
-
-    res = matchRegex(
-      "*/bar.js",
-      "/^.*\\/bar\\.js$/",
-      "/^.*\\\\+bar\\.js$/",
-      opts
-    );
-    t.is(res.path!.segments.length, 2);
-
-    opts.globstar = true;
-    res = matchRegex(
-      "**/bar.js",
-      "/^((?:[^\\/]*(?:\\/|$))*)bar\\.js$/",
-      "/^((?:[^\\\\]*(?:\\\\|$))*)bar\\.js$/",
-      opts
-    );
-    t.is(res.path!.segments.length, 2);
-  }
-});
-
-test({
-  name: "globrex: filepath path segments",
-  fn(): void {
-    let opts = { extended: true },
-      win,
-      unix;
-
-    unix = [/^foo$/, /^bar$/, /^([^\/]*)$/, /^baz\.(md|js|txt)$/];
-    win = [/^foo$/, /^bar$/, /^([^\\]*)$/, /^baz\.(md|js|txt)$/];
-    matchSegments("foo/bar/*/baz.{md,js,txt}", unix, win, {
-      ...opts,
-      globstar: true
-    });
-
-    unix = [/^foo$/, /^.*$/, /^baz\.md$/];
-    win = [/^foo$/, /^.*$/, /^baz\.md$/];
-    matchSegments("foo/*/baz.md", unix, win, opts);
-
-    unix = [/^foo$/, /^.*$/, /^baz\.md$/];
-    win = [/^foo$/, /^.*$/, /^baz\.md$/];
-    matchSegments("foo/**/baz.md", unix, win, opts);
-
-    unix = [/^foo$/, /^((?:[^\/]*(?:\/|$))*)$/, /^baz\.md$/];
-    win = [/^foo$/, /^((?:[^\\]*(?:\\|$))*)$/, /^baz\.md$/];
-    matchSegments("foo/**/baz.md", unix, win, { ...opts, globstar: true });
-
-    unix = [/^foo$/, /^.*$/, /^.*\.md$/];
-    win = [/^foo$/, /^.*$/, /^.*\.md$/];
-    matchSegments("foo/**/*.md", unix, win, opts);
-
-    unix = [/^foo$/, /^((?:[^\/]*(?:\/|$))*)$/, /^([^\/]*)\.md$/];
-    win = [/^foo$/, /^((?:[^\\]*(?:\\|$))*)$/, /^([^\\]*)\.md$/];
-    matchSegments("foo/**/*.md", unix, win, { ...opts, globstar: true });
-
-    unix = [/^foo$/, /^:$/, /^b:az$/];
-    win = [/^foo$/, /^:$/, /^b:az$/];
-    matchSegments("foo/:/b:az", unix, win, opts);
-
-    unix = [/^foo$/, /^baz\.md$/];
-    win = [/^foo$/, /^baz\.md$/];
-    matchSegments("foo///baz.md", unix, win, { ...opts, strict: true });
-
-    unix = [/^foo$/, /^baz\.md$/];
-    win = [/^foo$/, /^baz\.md$/];
-    matchSegments("foo///baz.md", unix, win, { ...opts, strict: false });
   }
 });
 
