@@ -7,6 +7,7 @@ git:
   depth: 1
 env:
   global:
+  - RUSTC_WRAPPER=sccache
   - RUST_BACKTRACE=full
   - PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$PATH
   - PYTHONPATH=third_party/python_packages
