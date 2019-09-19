@@ -305,9 +305,8 @@ itest!(_042_dyn_import_evalcontext {
 });
 
 itest!(_045_proxy {
-  args: "run --allow-read --reload 045_proxy_test.ts",
+  args: "run --allow-net --allow-env --reload 045_proxy_test.ts",
   output: "tests/045_proxy_test.ts.out",
-  check_stderr: true,
 });
 
 itest!(async_error {
