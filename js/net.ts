@@ -5,16 +5,18 @@ import { read, write, close } from "./files.ts";
 import * as dispatch from "./dispatch.ts";
 import { sendSync, sendAsync } from "./dispatch_json.ts";
 
-export type Network = "tcp";
+export type Transport = "tcp";
 // TODO support other types:
-// export type Network = "tcp" | "tcp4" | "tcp6" | "unix" | "unixpacket";
+// export type Transport = "tcp" | "tcp4" | "tcp6" | "unix" | "unixpacket";
 
+// TODO(ry) Replace 'address' with 'hostname' and 'port', similar to DialOptions
+// and ListenOptions.
 export interface Addr {
-  network: Network;
+  transport: Transport;
   address: string;
 }
 
-/** A Listener is a generic network listener for stream-oriented protocols. */
+/** A Listener is a generic transport listener for stream-oriented protocols. */
 export interface Listener extends AsyncIterator<Conn> {
   /** Waits for and resolves to the next connection to the `Listener`. */
   accept(): Promise<Conn>;
@@ -79,7 +81,7 @@ class ConnImpl implements Conn {
 class ListenerImpl implements Listener {
   constructor(
     readonly rid: number,
-    private network: Network,
+    private transport: Transport,
     private localAddr: string
   ) {}
 
@@ -94,7 +96,7 @@ class ListenerImpl implements Listener {
 
   addr(): Addr {
     return {
-      network: this.network,
+      transport: this.transport,
       address: this.localAddr
     };
   }
@@ -131,11 +133,11 @@ export interface Conn extends Reader, Writer, Closer {
 export interface ListenOptions {
   port: number;
   hostname?: string;
-  transport?: "tcp";
+  transport?: Transport;
 }
 const listenDefaults = { hostname: "0.0.0.0", transport: "tcp" };
 
-/** Listen announces on the local network address.
+/** Listen announces on the local transport address.
  *
  * @param options
  * @param options.port The port to connect to. (Required.)
@@ -155,17 +157,17 @@ const listenDefaults = { hostname: "0.0.0.0", transport: "tcp" };
 export function listen(options: ListenOptions): Listener {
   options = Object.assign(listenDefaults, options);
   const res = sendSync(dispatch.OP_LISTEN, options);
-  return new ListenerImpl(res.rid, options.network, res.localAddr);
+  return new ListenerImpl(res.rid, options.transport, res.localAddr);
 }
 
 export interface DialOptions {
   port: number;
   hostname?: string;
-  transport?: "tcp";
+  transport?: Transport;
 }
 const dialDefaults = { hostname: "127.0.0.1", transport: "tcp" };
 
-/** Dial connects to the address on the named network.
+/** Dial connects to the address on the named transport.
  *
  * @param options
  * @param options.port The port to connect to. (Required.)
@@ -191,7 +193,7 @@ export async function dial(options: DialOptions): Promise<Conn> {
 
 /** **RESERVED** */
 export async function connect(
-  _network: Network,
+  _transport: Transport,
   _address: string
 ): Promise<Conn> {
   return notImplemented();
