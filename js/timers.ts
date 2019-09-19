@@ -138,8 +138,8 @@ function fire(timer: Timer): void {
 
 function fireTimers(): void {
   const now = getTime();
-  // Bail out if we're not expecting the global timer to fire (yet).
-  if (globalTimeoutDue === null || now < globalTimeoutDue) {
+  // Bail out if we're not expecting the global timer to fire.
+  if (globalTimeoutDue === null) {
     return;
   }
   // After firing the timers that are due now, this will hold the due time of
