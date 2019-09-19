@@ -69,21 +69,19 @@ async function main(): Promise<void> {
     const s = await p.status();
     let { success } = s;
 
-    const { actual, expected, resultOutput } = parseUnitTestOutput(
-      await p.output(),
-      true
-    );
-
+    let resultOutput: string;
     if (success) {
-      if (!actual && !expected) {
+      const o = parseUnitTestOutput(await p.output(), true);
+      resultOutput = o.resultOutput;
+      if (!o.actual && !o.expected) {
         console.error("Bad js/unit_test.ts output");
         success = false;
-      } else if (expected !== actual) {
+      } else if (o.expected !== o.actual) {
         success = false;
       }
     } else {
-      console.log(`FAILURE during ${permsFmt}`);
-      console.log(`FAILURE exit code ${s.code}`);
+      resultOutput = "FAILURE code ${s.code} for ${permsFmt}";
+      console.error(resultOutput);
     }
 
     testResults.add({

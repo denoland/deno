@@ -5,6 +5,7 @@ on: [push, pull_request]
 jobs:
   build:
     name: Build and test for ${{ matrix.os }}
+    timeout-minutes: 60
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
