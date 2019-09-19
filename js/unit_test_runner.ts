@@ -6,7 +6,8 @@ import { permissionCombinations, parseUnitTestOutput } from "./test_util.ts";
 interface TestResult {
   perms: string;
   output: string;
-  result: number;
+  success: boolean;
+  code: number;
 }
 
 function permsToCliFlags(perms: Deno.Permissions): string[] {
@@ -65,24 +66,28 @@ async function main(): Promise<void> {
       stdout: "piped"
     });
 
+    const s = await p.status();
+    let { success } = s;
+
     const { actual, expected, resultOutput } = parseUnitTestOutput(
       await p.output(),
       true
     );
 
-    let result = 0;
-
-    if (!actual && !expected) {
-      console.error("Bad js/unit_test.ts output");
-      result = 1;
-    } else if (expected !== actual) {
-      result = 1;
+    if (!success) {
+      if (!actual && !expected) {
+        console.error("Bad js/unit_test.ts output");
+        success = false;
+      } else if (expected !== actual) {
+        success = false;
+      }
     }
 
     testResults.add({
       perms: permsFmt,
       output: resultOutput,
-      result
+      success,
+      code: s.code
     });
   }
 
@@ -93,7 +98,10 @@ async function main(): Promise<void> {
   for (const testResult of testResults) {
     console.log(`Summary for ${testResult.perms}`);
     console.log(testResult.output + "\n");
-    testsFailed = testsFailed || Boolean(testResult.result);
+    if (!testResult.success) {
+      console.log(`FAILURE exit code ${testResult.code}`);
+      testsFailed = true;
+    }
   }
 
   if (testsFailed) {
