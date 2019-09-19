@@ -15,8 +15,7 @@ import errno
 from shutil import copytree, ignore_patterns, copyfile
 from tempfile import mkdtemp
 from string import Template
-from util import root_path
-from util import run
+from util import root_path, run
 
 if sys.platform == "linux2":
     llvm_target = "x86_64-unknown-linux-gnu"

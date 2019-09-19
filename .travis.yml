@@ -55,7 +55,7 @@ before_script:
 # Default script for release builds.
 script:
 - cargo build -vv --release --locked --all-targets
-- DENO_BUILD_MODE=release ./tools/test.py
+- cargo test -vv --release --all-targets --locked
 # For some reason it's faster to run clippy after build.
 - rustup component add clippy
 - cargo clippy --all-targets --release --locked -- -D clippy::all
