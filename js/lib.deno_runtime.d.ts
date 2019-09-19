@@ -1217,7 +1217,7 @@ declare namespace Deno {
 // @url js/globals.ts
 
 declare interface Window {
-  window: Window;
+  window: Window & typeof globalThis;
   atob: typeof textEncoding.atob;
   btoa: typeof textEncoding.btoa;
   fetch: typeof fetchTypes.fetch;
@@ -1263,7 +1263,7 @@ declare interface Window {
   Deno: typeof Deno;
 }
 
-declare const window: Window;
+declare const window: Window & typeof globalThis;
 declare const atob: typeof textEncoding.atob;
 declare const btoa: typeof textEncoding.btoa;
 declare const fetch: typeof fetchTypes.fetch;

@@ -10,5 +10,5 @@ declare interface Window {
   Deno: typeof Deno;
 }
 
-declare const window: Window;
+declare const window: Window & typeof globalThis;
 [WILDCARD]
