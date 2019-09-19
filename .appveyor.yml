@@ -7,6 +7,7 @@ clone_folder: C:\deno
 clone_depth: 1
 
 environment:
+  RUSTC_WRAPPER: sccache
   APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2017
   DENO_BUILD_MODE: release
   DENO_BUILD_PATH: $(APPVEYOR_BUILD_FOLDER)\target\release
