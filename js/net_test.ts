@@ -55,7 +55,7 @@ testPerm({ net: true }, async function netDialListen(): Promise<void> {
       conn.close();
     }
   );
-  const conn = await Deno.dial("127.0.0.1:4500");
+  const conn = await Deno.dial({ hostname: "127.0.0.1", port: 4500 });
   assertEquals(conn.remoteAddr, "127.0.0.1:4500");
   assert(conn.localAddr != null);
   const buf = new Uint8Array(1024);
