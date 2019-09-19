@@ -70,10 +70,10 @@ jobs:
         run: sccache --start-server
 
       - name: Build
-        run: cargo build -vv --release --locked --all-targets
+        run: cargo build --release --locked --all-targets
 
       - name: Test
-        run: python ./tools/test.py
+        run: cargo test --release --locked --all-targets
 
       - name: Stop sccache
         run: sccache --stop-server

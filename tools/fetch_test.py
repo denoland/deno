@@ -29,5 +29,4 @@ class TestFetch(DenoTestCase):
 
 
 if __name__ == "__main__":
-    with http_server.spawn():
-        run_tests()
+    run_tests()
