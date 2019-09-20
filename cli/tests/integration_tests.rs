@@ -304,11 +304,6 @@ itest!(_042_dyn_import_evalcontext {
   output: "042_dyn_import_evalcontext.ts.out",
 });
 
-itest!(_042_dyn_import_evalcontext {
-  args: "run --allow-read --reload 042_dyn_import_evalcontext.ts",
-  output: "042_dyn_import_evalcontext.ts.out",
-});
-
 itest!(_043_xeval_delim2 {
   args: "xeval -d MADAM console.log($)",
   input: Some("!MADMADAMADAM!"),
