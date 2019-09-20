@@ -32,7 +32,7 @@ async function testFetch(): Promise<void> {
       "--no-prompt",
       "--reload",
       "--allow-net",
-      "cli/tests/045_proxy_client.ts"
+      "045_proxy_client.ts"
     ],
     stdout: "piped",
     env: {
