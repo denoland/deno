@@ -58,12 +58,9 @@ where
   }
 }
 
-pub trait Dispatch {
-  fn dispatch(
-    &self,
-    op_id: OpId,
-    _state: &ThreadSafeState,
-    control: &[u8],
-    zero_copy: Option<PinnedBuf>,
-  ) -> CoreOp;
+pub trait OpSerializer<F>
+where
+  F: FnOnce() + Copy + 'static
+{
+  fn serialize(&self, f: F) -> CoreOp;
 }

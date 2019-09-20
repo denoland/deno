@@ -1,17 +1,12 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::ops::dispatcher::{Dispatch, OpDispatcher};
 use crate::ops::*;
 use crate::state::ThreadSafeState;
 use crate::tokio_util;
-use deno::OpId;
 use futures::Future;
 use futures::Poll;
 pub use serde_derive::Deserialize;
 use serde_json::json;
 pub use serde_json::Value;
-use std::collections::BTreeMap;
-use std::sync::atomic::AtomicU32;
-use std::sync::RwLock;
 
 pub type AsyncJsonOp = Box<dyn Future<Item = Value, Error = ErrBox> + Send>;
 
@@ -19,6 +14,12 @@ pub enum JsonOp {
   Sync(Value),
   Async(AsyncJsonOp),
 }
+
+pub type JsonOpHandler = fn(
+  state: &ThreadSafeState,
+  args: Value,
+  zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox>;
 
 fn json_err(err: ErrBox) -> Value {
   use crate::deno_error::GetErrorKind;
@@ -28,14 +29,7 @@ fn json_err(err: ErrBox) -> Value {
   })
 }
 
-#[allow(dead_code)]
-pub type JsonOpHandler = fn(
-  state: &ThreadSafeState,
-  args: Value,
-  zero_copy: Option<PinnedBuf>,
-) -> Result<JsonOp, ErrBox>;
-
-fn serialize_result(
+fn serialize_op_result(
   promise_id: Option<u64>,
   result: Result<Value, ErrBox>,
 ) -> Buf {
@@ -56,32 +50,14 @@ struct AsyncArgs {
   promise_id: Option<u64>,
 }
 
-pub type JsonDispatcher = OpDispatcher<JsonOpHandler>;
-
-impl JsonDispatcher {
-  pub fn new() -> Self {
-    Self {
-      next_op_id: AtomicU32::new(2000),
-      op_registry: RwLock::new(BTreeMap::new()),
-      name_registry: RwLock::new(BTreeMap::new()),
-    }
-  }
-}
-
-impl Dispatch for JsonDispatcher {
-  fn dispatch(
-    &self,
-    op_id: OpId,
-    state: &ThreadSafeState,
-    control: &[u8],
-    zero_copy: Option<PinnedBuf>,
-  ) -> CoreOp {
+pub fn serialize_json(
+  handler: JsonOpHandler,
+) -> Box<CliOp> {
+  let serialized_op = move |state: &ThreadSafeState, control: &[u8], zero_copy: Option<PinnedBuf>| {
     let async_args: AsyncArgs = serde_json::from_slice(control).unwrap();
     let promise_id = async_args.promise_id;
     let is_sync = promise_id.is_none();
 
-    // Select and run JsonOpHandler
-    let handler = self.select_op(op_id);
     let result = serde_json::from_slice(control)
       .map_err(ErrBox::from)
       .and_then(move |args| handler(state, args, zero_copy));
@@ -90,17 +66,17 @@ impl Dispatch for JsonDispatcher {
     match result {
       Ok(JsonOp::Sync(sync_value)) => {
         assert!(promise_id.is_none());
-        CoreOp::Sync(serialize_result(promise_id, Ok(sync_value)))
+        CoreOp::Sync(serialize_op_result(promise_id, Ok(sync_value)))
       }
       Ok(JsonOp::Async(fut)) => {
         assert!(promise_id.is_some());
         let fut2 = Box::new(fut.then(move |result| -> Result<Buf, ()> {
-          Ok(serialize_result(promise_id, result))
+          Ok(serialize_op_result(promise_id, result))
         }));
         CoreOp::Async(fut2)
       }
       Err(sync_err) => {
-        let buf = serialize_result(promise_id, Err(sync_err));
+        let buf = serialize_op_result(promise_id, Err(sync_err));
         if is_sync {
           CoreOp::Sync(buf)
         } else {
@@ -108,7 +84,9 @@ impl Dispatch for JsonDispatcher {
         }
       }
     }
-  }
+  };
+
+  Box::new(serialized_op)
 }
 
 // This is just type conversion. Implement From trait?

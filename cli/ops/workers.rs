@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{Deserialize, JsonOp, Value};
+use super::serializer_json::{Deserialize, JsonOp, Value};
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
 use crate::resources;
@@ -13,7 +13,6 @@ use futures::Future;
 use futures::Sink;
 use futures::Stream;
 use std;
-use std::collections::HashMap;
 use std::convert::From;
 
 struct GetMessageFuture {
@@ -121,9 +120,7 @@ pub fn op_create_worker(
   )?;
   let rid = child_state.resource.rid;
   let name = format!("USER-WORKER-{}", specifier);
-  let mut op_map = HashMap::new();
-  op_map.insert("minimal", state.dispatch_manager.minimal.get_map());
-  op_map.insert("json", state.dispatch_manager.json.get_map());
+  let op_map = state.op_registry.get_op_map();
   let deno_main_call =
     format!("denoMain({}, {})", json!(op_map), include_deno_namespace);
 

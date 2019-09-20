@@ -1,4 +1,4 @@
-use super::dispatch_minimal::MinimalOp;
+use super::serializer_minimal::MinimalOp;
 use crate::deno_error;
 use crate::resources;
 use crate::tokio_read;

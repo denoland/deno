@@ -9,7 +9,6 @@ use deno::RecursiveLoad;
 use deno::StartupData;
 use futures::Async;
 use futures::Future;
-use std::collections::HashMap;
 use std::env;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -67,9 +66,7 @@ impl Worker {
   }
 
   pub fn deno_main(&mut self) -> Result<(), ErrBox> {
-    let mut op_map = HashMap::new();
-    op_map.insert("minimal", self.state.dispatch_manager.minimal.get_map());
-    op_map.insert("json", self.state.dispatch_manager.json.get_map());
+    let op_map = self.state.op_registry.get_op_map();
     let deno_main_call = format!("denoMain({})", json!(op_map));
     self.execute(&deno_main_call)
   }

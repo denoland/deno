@@ -4,18 +4,13 @@
 //! alternative to flatbuffers using a very simple list of int32s to lay out
 //! messages. The first i32 is used to determine if a message a flatbuffer
 //! message or a "minimal" message.
-use crate::ops::dispatcher::{Dispatch, OpDispatcher};
+use crate::ops::*;
 use crate::state::ThreadSafeState;
 use deno::Buf;
-use deno::CoreOp;
 use deno::ErrBox;
 use deno::Op;
-use deno::OpId;
 use deno::PinnedBuf;
 use futures::Future;
-use std::collections::BTreeMap;
-use std::sync::atomic::AtomicU32;
-use std::sync::RwLock;
 
 pub type MinimalOp = dyn Future<Item = i32, Error = ErrBox> + Send;
 pub type MinimalOpHandler = fn(i32, Option<PinnedBuf>) -> Box<MinimalOp>;
@@ -77,32 +72,15 @@ fn test_parse_min_record() {
   assert_eq!(parse_min_record(&buf), None);
 }
 
-pub type MinimalDispatcher = OpDispatcher<MinimalOpHandler>;
-
-impl MinimalDispatcher {
-  pub fn new() -> Self {
-    Self {
-      next_op_id: AtomicU32::new(1000),
-      op_registry: RwLock::new(BTreeMap::new()),
-      name_registry: RwLock::new(BTreeMap::new()),
-    }
-  }
-}
-
-impl Dispatch for MinimalDispatcher {
-  fn dispatch(
-    &self,
-    op_id: OpId,
-    _state: &ThreadSafeState,
-    control: &[u8],
-    zero_copy: Option<PinnedBuf>,
-  ) -> CoreOp {
+pub fn serialize_minimal(
+  handler: MinimalOpHandler,
+) -> Box<CliOp> {
+  let serialized_op = move |_state: &ThreadSafeState, control: &[u8], zero_copy: Option<PinnedBuf>| {
     let mut record = parse_min_record(control).unwrap();
     let is_sync = record.promise_id == 0;
     let rid = record.arg;
 
     // Select and run MinimalOpHandler
-    let handler = self.select_op(op_id);
     let min_op = handler(rid, zero_copy);
 
     // Convert to CoreOp
@@ -131,5 +109,7 @@ impl Dispatch for MinimalDispatcher {
     } else {
       Op::Async(fut)
     }
-  }
+  };
+
+  Box::new(serialized_op)
 }

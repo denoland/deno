@@ -30,13 +30,10 @@ enum MediaType {
 }
 
 // TODO: duplicated in main.ts
-function setOpMap(opMaps: Record<string, Record<string, number>>): void {
-  for (const [key, value] of Object.entries(opMaps.minimal)) {
-    const name = `OP_${key.toUpperCase()}`;
-    dispatch[name] = value;
-  }
-
-  for (const [key, value] of Object.entries(opMaps.json)) {
+export function setOpMap(opMaps: Record<string, Record<string, number>>): void {
+  // @ts-ignore
+  window.console.error("setopmaps", JSON.stringify(opMaps));
+  for (const [key, value] of Object.entries(opMaps)) {
     const name = `OP_${key.toUpperCase()}`;
     dispatch[name] = value;
   }

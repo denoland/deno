@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{Deserialize, JsonOp, Value};
+use super::serializer_json::{Deserialize, JsonOp, Value};
 use crate::http_util::get_client;
 use crate::resources;
 use crate::state::ThreadSafeState;

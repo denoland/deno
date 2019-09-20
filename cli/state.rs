@@ -88,7 +88,7 @@ pub struct State {
 
   pub include_deno_namespace: bool,
 
-  pub dispatch_manager: ops::DispatchManager,
+  pub op_registry: ops::OpRegistry,
 }
 
 impl Clone for ThreadSafeState {
@@ -112,7 +112,7 @@ impl ThreadSafeState {
     zero_copy: Option<PinnedBuf>,
   ) -> CoreOp {
     self
-      .dispatch_manager
+      .op_registry
       .dispatch(self, op_id, control, zero_copy)
   }
 }
@@ -233,7 +233,7 @@ impl ThreadSafeState {
       js_compiler: JsCompiler {},
       json_compiler: JsonCompiler {},
       include_deno_namespace,
-      dispatch_manager: ops::DispatchManager::new(),
+      op_registry: ops::OpRegistry::new(),
     };
 
     Ok(ThreadSafeState(Arc::new(state)))
