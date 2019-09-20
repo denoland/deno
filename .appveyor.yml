@@ -57,20 +57,6 @@ environment:
         }
       }
 
-for:
-  # Do no save the build cache for feature branches. TODO: Once we have multiple
-  # permanent branches, use a build matrix so each branch has it's own cache.
-  - branches:
-      except:
-        - master
-    environment:
-      APPVEYOR_CACHE_SKIP_SAVE: true
-
-cache:
-  - $(RUST_DIR)
-  - $(APPVEYOR_BUILD_FOLDER)\target\release\
-  - $(APPVEYOR_BUILD_FOLDER)\prebuilt\win\
-
 init:
   # Load utility functions
   - ps: Invoke-Expression $env:PS_UTILS
