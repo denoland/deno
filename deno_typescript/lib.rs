@@ -256,6 +256,7 @@ pub fn get_asset(name: &str) -> Option<&'static str> {
     "lib.es2019.symbol.d.ts" => inc!("lib.es2019.symbol.d.ts"),
     "lib.esnext.bigint.d.ts" => inc!("lib.esnext.bigint.d.ts"),
     "lib.esnext.intl.d.ts" => inc!("lib.esnext.intl.d.ts"),
+    "main.ts" => Some("export {};\n\nDeno;\n"),
     _ => None,
   }
 }

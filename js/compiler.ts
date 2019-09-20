@@ -209,6 +209,7 @@ function getExtension(fileName: string, mediaType: MediaType): ts.Extension {
 }
 
 class Host implements ts.CompilerHost {
+  private _bundle?: string;
   private _extensionCache: Record<string, ts.Extension> = {};
 
   private readonly _options: ts.CompilerOptions = {
@@ -293,25 +294,6 @@ class Host implements ts.CompilerHost {
 
   /* Deno specific APIs */
 
-  /** Provides the `ts.HostCompiler` interface for Deno.
-   *
-   * @param _bundle Set to a string value to configure the host to write out a
-   *   bundle instead of caching individual files.
-   */
-  constructor(private _bundle?: string) {
-    if (this._bundle) {
-      // options we need to change when we are generating a bundle
-      const bundlerOptions: ts.CompilerOptions = {
-        module: ts.ModuleKind.AMD,
-        inlineSourceMap: true,
-        outDir: undefined,
-        outFile: `${OUT_DIR}/bundle.js`,
-        sourceMap: false
-      };
-      Object.assign(this._options, bundlerOptions);
-    }
-  }
-
   /** Take a configuration string, parse it, and use it to merge with the
    * compiler's configuration options.  The method returns an array of compiler
    * options which were ignored, or `undefined`.
@@ -344,6 +326,19 @@ class Host implements ts.CompilerHost {
       ignoredOptions: ignoredOptions.length ? ignoredOptions : undefined,
       diagnostics: errors.length ? errors : undefined
     };
+  }
+
+  /** configure the host to output to a bundle, versus individual modules */
+  setBundle(bundle: string): void {
+    this._bundle = bundle;
+    // options we need to change when we are generating a bundle
+    Object.assign(this._options, {
+      module: ts.ModuleKind.AMD,
+      inlineSourceMap: true,
+      outDir: undefined,
+      outFile: `${OUT_DIR}/bundle.js`,
+      sourceMap: false
+    } as ts.CompilerOptions);
   }
 
   /* TypeScript CompilerHost APIs */
@@ -504,13 +499,23 @@ class Host implements ts.CompilerHost {
   }
 }
 
+const host = new Host();
+
+const oldProgram = ts.createProgram({
+  host,
+  options: host.getCompilationSettings(),
+  rootNames: ["$asset$/"]
+});
+
 // provide the "main" function that will be called by the privileged side when
 // lazy instantiating the compiler web worker
 window.compilerMain = function compilerMain(): void {
   // workerMain should have already been called since a compiler is a worker.
   window.onmessage = ({ data }: { data: CompilerReq }): void => {
     const { rootNames, configPath, config, bundle } = data;
-    const host = new Host(bundle);
+    if (bundle) {
+      host.setBundle(bundle);
+    }
 
     let emitSkipped = true;
     let diagnostics: ts.Diagnostic[] | undefined;
@@ -534,8 +539,12 @@ window.compilerMain = function compilerMain(): void {
     // if there was a configuration and no diagnostics with it, we will continue
     // to generate the program and possibly emit it.
     if (!diagnostics || (diagnostics && diagnostics.length === 0)) {
-      const options = host.getCompilationSettings();
-      const program = ts.createProgram(rootNames, options, host);
+      const program = ts.createProgram({
+        host,
+        oldProgram,
+        options: host.getCompilationSettings(),
+        rootNames
+      });
 
       diagnostics = ts.getPreEmitDiagnostics(program).filter(
         ({ code }): boolean => {
