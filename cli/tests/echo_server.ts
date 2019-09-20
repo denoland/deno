@@ -1,6 +1,7 @@
 const { args, listen, copy } = Deno;
 const addr = args[1] || "127.0.0.1:4544";
-const listener = listen("tcp", addr);
+const [hostname, port] = addr.split(":");
+const listener = listen({ hostname, port: Number(port) });
 console.log("listening on", addr);
 listener.accept().then(
   async (conn): Promise<void> => {

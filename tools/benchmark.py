@@ -211,8 +211,8 @@ def run_http(build_dir, new_data):
 
 def bundle_benchmark(deno_exe):
     bundles = {
-        "file_server": "https://deno.land/std/http/file_server.ts",
-        "gist": "https://deno.land/std/examples/gist.ts",
+        "file_server": "./js/deps/https/deno.land/std/http/file_server.ts",
+        "gist": "./js/deps/https/deno.land/std/examples/gist.ts",
     }
 
     sizes = {}
