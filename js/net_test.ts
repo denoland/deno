@@ -2,15 +2,17 @@
 import { testPerm, assert, assertEquals } from "./test_util.ts";
 
 testPerm({ net: true }, function netListenClose(): void {
-  const listener = Deno.listen("127.0.0.1:4500");
+  const listener = Deno.listen({ hostname: "127.0.0.1", port: 4500 });
   const addr = listener.addr();
-  assertEquals(addr.network, "tcp");
+  assertEquals(addr.transport, "tcp");
+  // TODO(ry) Replace 'address' with 'hostname' and 'port', similar to
+  // DialOptions and ListenOptions.
   assertEquals(addr.address, "127.0.0.1:4500");
   listener.close();
 });
 
 testPerm({ net: true }, async function netCloseWhileAccept(): Promise<void> {
-  const listener = Deno.listen(":4501");
+  const listener = Deno.listen({ port: 4501 });
   const p = listener.accept();
   listener.close();
   let err;
@@ -25,7 +27,7 @@ testPerm({ net: true }, async function netCloseWhileAccept(): Promise<void> {
 });
 
 testPerm({ net: true }, async function netConcurrentAccept(): Promise<void> {
-  const listener = Deno.listen(":4502");
+  const listener = Deno.listen({ port: 4502 });
   let acceptErrCount = 0;
   const checkErr = (e): void => {
     assertEquals(e.kind, Deno.ErrorKind.Other);
@@ -46,7 +48,7 @@ testPerm({ net: true }, async function netConcurrentAccept(): Promise<void> {
 });
 
 testPerm({ net: true }, async function netDialListen(): Promise<void> {
-  const listener = Deno.listen(":4500");
+  const listener = Deno.listen({ port: 4500 });
   listener.accept().then(
     async (conn): Promise<void> => {
       assert(conn.remoteAddr != null);
@@ -55,7 +57,7 @@ testPerm({ net: true }, async function netDialListen(): Promise<void> {
       conn.close();
     }
   );
-  const conn = await Deno.dial("127.0.0.1:4500");
+  const conn = await Deno.dial({ hostname: "127.0.0.1", port: 4500 });
   assertEquals(conn.remoteAddr, "127.0.0.1:4500");
   assert(conn.localAddr != null);
   const buf = new Uint8Array(1024);

@@ -21,84 +21,6 @@ function getEventTargetParent(
   return null;
 }
 
-export class EventListenerOptions implements domTypes.EventListenerOptions {
-  _capture = false;
-
-  constructor({ capture = false } = {}) {
-    this._capture = capture;
-  }
-
-  get capture(): boolean {
-    return this._capture;
-  }
-}
-
-export class AddEventListenerOptions extends EventListenerOptions
-  implements domTypes.AddEventListenerOptions {
-  _passive = false;
-  _once = false;
-
-  constructor({ capture = false, passive = false, once = false } = {}) {
-    super({ capture });
-    this._passive = passive;
-    this._once = once;
-  }
-
-  get passive(): boolean {
-    return this._passive;
-  }
-
-  get once(): boolean {
-    return this._once;
-  }
-}
-
-export class EventListener implements domTypes.EventListener {
-  allEvents: domTypes.Event[] = [];
-  atEvents: domTypes.Event[] = [];
-  bubbledEvents: domTypes.Event[] = [];
-  capturedEvents: domTypes.Event[] = [];
-
-  private _callback: (event: domTypes.Event) => void | null;
-  private _options: boolean | domTypes.AddEventListenerOptions = false;
-
-  constructor(
-    callback: (event: domTypes.Event) => void | null,
-    options: boolean | domTypes.AddEventListenerOptions
-  ) {
-    this._callback = callback;
-    this._options = options;
-  }
-
-  public handleEvent(event: domTypes.Event): void {
-    this.allEvents.push(event);
-
-    switch (event.eventPhase) {
-      case domTypes.EventPhase.CAPTURING_PHASE:
-        this.capturedEvents.push(event);
-        break;
-      case domTypes.EventPhase.AT_TARGET:
-        this.atEvents.push(event);
-        break;
-      case domTypes.EventPhase.BUBBLING_PHASE:
-        this.bubbledEvents.push(event);
-        break;
-      default:
-        throw new Error("Unspecified event phase");
-    }
-
-    this._callback(event);
-  }
-
-  get callback(): (event: domTypes.Event) => void | null {
-    return this._callback;
-  }
-
-  get options(): domTypes.AddEventListenerOptions | boolean {
-    return this._options;
-  }
-}
-
 export const eventTargetAssignedSlot: unique symbol = Symbol();
 export const eventTargetHasActivationBehavior: unique symbol = Symbol();
 
@@ -148,7 +70,15 @@ export class EventTarget implements domTypes.EventTarget {
       }
     }
 
-    listeners[type].push(new EventListener(callback, normalizedOptions));
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const eventTarget = this;
+    listeners[type].push({
+      callback,
+      options: normalizedOptions,
+      handleEvent(event: domTypes.Event): void {
+        this.callback.call(eventTarget, event);
+      }
+    } as domTypes.EventListener);
   }
 
   public removeEventListener(
@@ -487,7 +417,7 @@ const eventTargetHelpers = {
       }
 
       try {
-        if (listener.callback && typeof listener.handleEvent === "function") {
+        if (listener.callback) {
           listener.handleEvent(eventImpl);
         }
       } catch (error) {

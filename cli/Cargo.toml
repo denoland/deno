@@ -1,16 +1,27 @@
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+
+[package]
+name = "deno_cli"
+version = "0.18.4"
+license = "MIT"
+authors = ["the Deno authors"]
+edition = "2018"
+description = "Provides the deno executable"
+repository = "https://github.com/denoland/deno"
+default-run = "deno"
+
+[lib]
+name = "deno_cli"
+path = "lib.rs"
+
 [[bin]]
 name = "deno"
 path = "main.rs"
 
-[package]
-name = "deno_cli"
-version = "0.18.0"
-edition = "2018"
-default-run = "deno"
-
 [dependencies]
-deno = { path = "../core" }
+deno = { path = "../core", version = "0.18.0" }
+deno_cli_snapshots = { path = "../js", version = "0.18.3" }
+deno_typescript = { path = "../deno_typescript", version = "0.18.3" }
 
 ansi_term = "0.12.1"
 atty = "0.2.13"
@@ -47,8 +58,6 @@ url = "1.7.2"
 utime = "0.2.1"
 webpki = "0.21.0"
 webpki-roots = "0.17.0"
-deno_cli_snapshots = { path = "../cli_snapshots" }
-deno_typescript = { path = "../deno_typescript" }
 
 [target.'cfg(windows)'.dependencies]
 winapi = "0.3.8"

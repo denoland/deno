@@ -724,6 +724,7 @@ mod tests {
 
   #[test]
   fn test_get_source_code_1() {
+    let http_server_guard = crate::test_util::http_server();
     let (temp_dir, fetcher) = test_setup();
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
@@ -800,10 +801,12 @@ mod tests {
       assert_eq!(&(r4.media_type), &msg::MediaType::TypeScript);
       assert!(fs::read_to_string(&headers_file_name).is_err());
     });
+    drop(http_server_guard);
   }
 
   #[test]
   fn test_get_source_code_2() {
+    let http_server_guard = crate::test_util::http_server();
     let (temp_dir, fetcher) = test_setup();
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
@@ -866,10 +869,12 @@ mod tests {
         "text/javascript"
       );
     });
+    drop(http_server_guard);
   }
 
   #[test]
   fn test_get_source_code_multiple_downloads_of_same_file() {
+    let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     // http_util::fetch_sync_string requires tokio
     tokio_util::init(|| {
@@ -910,10 +915,12 @@ mod tests {
 
       assert_eq!(headers_file_modified, headers_file_modified_2);
     });
+    drop(http_server_guard);
   }
 
   #[test]
   fn test_get_source_code_3() {
+    let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     // Test basic follow and headers recording
     tokio_util::init(|| {
@@ -960,10 +967,12 @@ mod tests {
       // Examine the meta result.
       assert_eq!(mod_meta.url.clone(), target_module_url);
     });
+    drop(http_server_guard);
   }
 
   #[test]
   fn test_get_source_code_4() {
+    let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     // Test double redirects and headers recording
     tokio_util::init(|| {
@@ -1022,10 +1031,12 @@ mod tests {
       // Examine the meta result.
       assert_eq!(mod_meta.url.clone(), target_url);
     });
+    drop(http_server_guard);
   }
 
   #[test]
   fn test_get_source_code_5() {
+    let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     // Test that redirect target is not downloaded twice for different redirect source.
     tokio_util::init(|| {
@@ -1067,10 +1078,12 @@ mod tests {
 
       assert_eq!(file_modified, file_modified_2);
     });
+    drop(http_server_guard);
   }
 
   #[test]
   fn test_get_source_code_6() {
+    let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     // Test that redirections can be limited
     tokio_util::init(|| {
@@ -1087,10 +1100,12 @@ mod tests {
       let err = result.err().unwrap();
       assert_eq!(err.kind(), ErrorKind::TooManyRedirects);
     });
+    drop(http_server_guard);
   }
 
   #[test]
   fn test_get_source_code_no_fetch() {
+    let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     tokio_util::init(|| {
       let module_url =
@@ -1110,11 +1125,12 @@ mod tests {
       let result = fetcher.get_source_file(&module_url, true, true);
       assert!(result.is_ok());
     });
+    drop(http_server_guard);
   }
 
   #[test]
   fn test_fetch_source_async_1() {
-    // http_util::fetch_sync_string requires tokio
+    let http_server_guard = crate::test_util::http_server();
     tokio_util::init(|| {
       let (_temp_dir, fetcher) = test_setup();
       let module_url =
@@ -1152,11 +1168,12 @@ mod tests {
       // Not MediaType::TypeScript due to .headers.json modification
       assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
     });
+    drop(http_server_guard);
   }
 
   #[test]
   fn test_fetch_source_1() {
-    // http_util::fetch_sync_string requires tokio
+    let http_server_guard = crate::test_util::http_server();
     tokio_util::init(|| {
       let (_temp_dir, fetcher) = test_setup();
       let module_url =
@@ -1189,11 +1206,12 @@ mod tests {
       // Not MediaType::TypeScript due to .headers.json modification
       assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
     });
+    drop(http_server_guard);
   }
 
   #[test]
   fn test_fetch_source_2() {
-    // http_util::fetch_sync_string requires tokio
+    let http_server_guard = crate::test_util::http_server();
     tokio_util::init(|| {
       let (_temp_dir, fetcher) = test_setup();
       let module_url =
@@ -1249,6 +1267,7 @@ mod tests {
         "text/typescript"
       );
     });
+    drop(http_server_guard);
   }
 
   #[test]

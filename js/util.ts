@@ -1,7 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { TypedArray } from "./types.ts";
 import { window } from "./window.ts";
-const { console } = window;
 
 let logDebug = false;
 let logSource = "JS";
@@ -20,7 +19,9 @@ export function setLogDebug(debug: boolean, source?: string): void {
  */
 export function log(...args: unknown[]): void {
   if (logDebug) {
-    console.log(`DEBUG ${logSource} -`, ...args);
+    // if we destructure `console` off `window` too early, we don't bind to
+    // the right console, therefore we don't log anything out.
+    window.console.log(`DEBUG ${logSource} -`, ...args);
   }
 }
 

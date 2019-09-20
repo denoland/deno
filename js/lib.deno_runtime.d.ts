@@ -914,14 +914,12 @@ declare namespace Deno {
 
   // @url js/net.d.ts
 
-  type Network = "tcp";
+  type Transport = "tcp";
   interface Addr {
-    network: Network;
+    transport: Transport;
     address: string;
   }
-  export interface NetworkOptions {
-    network: Network;
-  }
+
   /** A Listener is a generic network listener for stream-oriented protocols. */
   export interface Listener extends AsyncIterator<Conn> {
     /** Waits for and resolves to the next connection to the `Listener`. */
@@ -950,65 +948,62 @@ declare namespace Deno {
      */
     closeWrite(): void;
   }
-  /** Listen announces on the local network address.
+
+  export interface ListenOptions {
+    port: number;
+    hostname?: string;
+    transport?: Transport;
+  }
+
+  /** Listen announces on the local transport address.
    *
-   * The network must be `tcp`, `tcp4`, `tcp6`, `unix` or `unixpacket`.
-   *
-   * For TCP networks, if the host in the address parameter is empty or a literal
-   * unspecified IP address, `listen()` listens on all available unicast and
-   * anycast IP addresses of the local system. To only use IPv4, use network
-   * `tcp4`. The address can use a host name, but this is not recommended,
-   * because it will create a listener for at most one of the host's IP
-   * addresses. If the port in the address parameter is empty or `0`, as in
-   * `127.0.0.1:` or `[::1]:0`, a port number is automatically chosen. The
-   * `addr()` method of `Listener` can be used to discover the chosen port.
-   *
-   * See `dial()` for a description of the network and address parameters.
-   */
-  export function listen(address: string, options?: NetworkOptions): Listener;
-  /** Dial connects to the address on the named network.
-   *
-   * Supported networks are only `tcp` currently.
-   *
-   * TODO: `tcp4` (IPv4-only), `tcp6` (IPv6-only), `udp`, `udp4` (IPv4-only),
-   * `udp6` (IPv6-only), `ip`, `ip4` (IPv4-only), `ip6` (IPv6-only), `unix`,
-   * `unixgram` and `unixpacket`.
-   *
-   * For TCP and UDP networks, the address has the form `host:port`. The host must
-   * be a literal IP address, or a host name that can be resolved to IP addresses.
-   * The port must be a literal port number or a service name. If the host is a
-   * literal IPv6 address it must be enclosed in square brackets, as in
-   * `[2001:db8::1]:80` or `[fe80::1%zone]:80`. The zone specifies the scope of
-   * the literal IPv6 address as defined in RFC 4007. The functions JoinHostPort
-   * and SplitHostPort manipulate a pair of host and port in this form. When using
-   * TCP, and the host resolves to multiple IP addresses, Dial will try each IP
-   * address in order until one succeeds.
+   * @param options
+   * @param options.port The port to connect to. (Required.)
+   * @param options.hostname A literal IP address or host name that can be
+   *   resolved to an IP address. If not specified, defaults to 0.0.0.0
+   * @param options.transport Defaults to "tcp". Later we plan to add "tcp4",
+   *   "tcp6", "udp", "udp4", "udp6", "ip", "ip4", "ip6", "unix", "unixgram" and
+   *   "unixpacket".
    *
    * Examples:
    *
-   *     dial("golang.org:http", { network: "tcp" })
-   *     dial("192.0.2.1:http", { network: "tcp" })
-   *     dial("198.51.100.1:80", { network: "tcp" })
-   *     dial("[2001:db8::1]:domain", { network: "udp" })
-   *     dial("[fe80::1%lo0]:53", { network: "udp" })
-   *     dial(":80", { network: "tcp" })
+   *     listen({ port: 80 })
+   *     listen({ hostname: "192.0.2.1", port: 80 })
+   *     listen({ hostname: "[2001:db8::1]", port: 80 });
+   *     listen({ hostname: "golang.org", port: 80, transport: "tcp" })
    */
-  export function dial(
-    address: string,
-    options?: NetworkOptions
-  ): Promise<Conn>;
+  export function listen(options: ListenOptions): Listener;
 
-  /** Dial connects to the address on the named network over TLS.
+  export interface DialOptions {
+    port: number;
+    hostname?: string;
+    transport?: Transport;
+  }
+
+  /** Dial connects to the address on the named transport.
    *
-   * Supports same options as `dial`.
+   * @param options
+   * @param options.port The port to connect to. (Required.)
+   * @param options.hostname A literal IP address or host name that can be
+   *   resolved to an IP address. If not specified, defaults to 127.0.0.1
+   * @param options.transport Defaults to "tcp". Later we plan to add "tcp4",
+   *   "tcp6", "udp", "udp4", "udp6", "ip", "ip4", "ip6", "unix", "unixgram" and
+   *   "unixpacket".
+   *
+   * Examples:
+   *
+   *     dial({ port: 80 })
+   *     dial({ hostname: "192.0.2.1", port: 80 })
+   *     dial({ hostname: "[2001:db8::1]", port: 80 });
+   *     dial({ hostname: "golang.org", port: 80, transport: "tcp" })
    */
-  export function dialTLS(
-    address: string,
-    options?: NetworkOptions
-  ): Promise<Conn>;
-  /** **RESERVED** */
-  export function connect(_network: Network, _address: string): Promise<Conn>;
+  export function dial(options: DialOptions): Promise<Conn>;
 
+  /** DialTls connects to the address on the named transport over TLS.
+   *
+   * Support the same options as `dial`.
+   */
+  export function dialTls(options: DialOptions): Promise<Conn>
   // @url js/metrics.d.ts
 
   export interface Metrics {
@@ -1232,7 +1227,7 @@ declare namespace Deno {
 // @url js/globals.ts
 
 declare interface Window {
-  window: Window;
+  window: Window & typeof globalThis;
   atob: typeof textEncoding.atob;
   btoa: typeof textEncoding.btoa;
   fetch: typeof fetchTypes.fetch;
@@ -1246,11 +1241,8 @@ declare interface Window {
   crypto: Crypto;
   Blob: typeof blob.DenoBlob;
   File: domTypes.DomFileConstructor;
-  CustomEventInit: typeof customEvent.CustomEventInit;
   CustomEvent: typeof customEvent.CustomEvent;
-  EventInit: typeof event.EventInit;
   Event: typeof event.Event;
-  EventListener: typeof eventTarget.EventListener;
   EventTarget: typeof eventTarget.EventTarget;
   URL: typeof url.URL;
   URLSearchParams: typeof urlSearchParams.URLSearchParams;
@@ -1281,7 +1273,7 @@ declare interface Window {
   Deno: typeof Deno;
 }
 
-declare const window: Window;
+declare const window: Window & typeof globalThis;
 declare const atob: typeof textEncoding.atob;
 declare const btoa: typeof textEncoding.btoa;
 declare const fetch: typeof fetchTypes.fetch;
@@ -1327,17 +1319,17 @@ declare const removeEventListener: (
   options?: boolean | domTypes.EventListenerOptions | undefined
 ) => void;
 
-declare type Blob = blob.DenoBlob;
+declare type Blob = domTypes.Blob;
 declare type Body = domTypes.Body;
 declare type File = domTypes.DomFile;
-declare type CustomEventInit = customEvent.CustomEventInit;
-declare type CustomEvent = customEvent.CustomEvent;
-declare type EventInit = event.EventInit;
-declare type Event = event.Event;
-declare type EventListener = eventTarget.EventListener;
-declare type EventTarget = eventTarget.EventTarget;
+declare type CustomEventInit = domTypes.CustomEventInit;
+declare type CustomEvent = domTypes.CustomEvent;
+declare type EventInit = domTypes.EventInit;
+declare type Event = domTypes.Event;
+declare type EventListener = domTypes.EventListener;
+declare type EventTarget = domTypes.EventTarget;
 declare type URL = url.URL;
-declare type URLSearchParams = urlSearchParams.URLSearchParams;
+declare type URLSearchParams = domTypes.URLSearchParams;
 declare type Headers = domTypes.Headers;
 declare type FormData = domTypes.FormData;
 declare type TextEncoder = textEncoding.TextEncoder;

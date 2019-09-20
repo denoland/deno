@@ -7,6 +7,7 @@ clone_folder: C:\deno
 clone_depth: 1
 
 environment:
+  RUSTC_WRAPPER: sccache
   APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2017
   DENO_BUILD_MODE: release
   DENO_BUILD_PATH: $(APPVEYOR_BUILD_FOLDER)\target\release
@@ -94,7 +95,7 @@ install:
   # Clone the third_party submodule.
   - ps: |-
       try {
-        Exec { & git submodule update --init --force --depth 1 }
+        Exec { & git submodule update --init --force --depth 1 --jobs 4 }
       } catch {
         # Git will fail if the `third_party` directory was restored from cache,
         # but the `.git/modules` directory wasn't. Rebuild it from scratch.
@@ -103,8 +104,7 @@ install:
       }
 
   # Install a recent Node.js version.
-  # TODO(ry) Upgrade to v12 once Install-Produce supports it.
-  - ps: Install-Product -Product node -Version 10 -Platform x64
+  - ps: Install-Product -Product node -Version 12 -Platform x64
 
   # Make sure the right Python version is in PATH, and others are not.
   - ps: |-
@@ -167,7 +167,7 @@ build_script:
 test_script:
   - python tools\lint.py
   - python tools\test_format.py
-  - python tools\test.py
+  - cargo test -vv --release --all-targets --locked
 
 after_test:
   # Stop sccache and show stats.

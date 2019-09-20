@@ -4,12 +4,9 @@
 fn main() {
   let build = gn::Build::setup();
 
-  println!(
-    "cargo:rustc-link-search=native={}/obj/core/libdeno",
-    build.gn_out_dir
-  );
+  println!("cargo:rustc-link-search=native={}/obj", build.gn_out_dir);
 
-  build.run("core/libdeno:default");
+  build.run("default");
 }
 
 mod gn {

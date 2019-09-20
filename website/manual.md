@@ -120,7 +120,14 @@ Using [Homebrew](https://brew.sh/) (mac):
 brew install deno
 ```
 
-Deno can also be installed manually, by downloading a tarball or zip file at
+To install from source:
+
+```shell
+cargo install deno_cli
+```
+
+Deno binaries can also be installed manually, by downloading a tarball or zip
+file at
 [github.com/denoland/deno/releases](https://github.com/denoland/deno/releases).
 These packages contain just a single executable file. You will have to set the
 executable bit on Mac and Linux.
@@ -160,7 +167,7 @@ cargo build -vv
 ./target/debug/deno tests/002_hello.ts
 
 # Test.
-./tools/test.py
+cargo test
 
 # Format code.
 ./tools/format.py
@@ -180,19 +187,24 @@ Extra steps for Mac users: install [XCode](https://developer.apple.com/xcode/)
 
 Extra steps for Windows users:
 
+<!-- prettier-ignore-start -->
+<!-- see https://github.com/prettier/prettier/issues/3679 -->
+
 1. Add `python.exe` to `PATH` (e.g. `set PATH=%PATH%;C:\Python27\python.exe`)
 2. Get [VS Community 2017](https://www.visualstudio.com/downloads/) with
    "Desktop development with C++" toolkit and make sure to select the following
    required tools listed below along with all C++ tools.
-   - Windows 10 SDK >= 10.0.17134
-   - Visual C++ ATL for x86 and x64
-   - Visual C++ MFC for x86 and x64
-   - C++ profiling tools
+    - Windows 10 SDK >= 10.0.17134
+    - Visual C++ ATL for x86 and x64
+    - Visual C++ MFC for x86 and x64
+    - C++ profiling tools
 3. Enable "Debugging Tools for Windows". Go to "Control Panel" → "Programs" →
    "Programs and Features" → Select "Windows Software Development Kit - Windows
    10" → "Change" → "Change" → Check "Debugging Tools For Windows" → "Change" ->
    "Finish".
 4. Make sure you are using git version 2.19.2.windows.1 or newer.
+
+<!-- prettier-ignore-end -->
 
 #### Other useful commands
 
@@ -204,16 +216,16 @@ ninja -C target/debug
 cargo build --release
 
 # List executable targets.
-gn ls target/debug //:* --as=output --type=executable
+gn --root=core/libdeno ls target/debug "//:*" --as=output --type=executable
 
 # List build configuration.
-gn args target/debug/ --list
+gn --root=core/libdeno args target/debug/ --list
 
 # Edit build configuration.
-gn args target/debug/
+gn --root=core/libdeno args target/debug/
 
 # Describe a target.
-gn desc target/debug/ :deno
+gn --root=core/libdeno desc target/debug/ :deno
 gn help
 
 # Update third_party modules
@@ -222,12 +234,11 @@ git submodule update
 # Skip downloading binary build tools and point the build
 # to the system provided ones (for packagers of deno ...).
 export DENO_BUILD_ARGS="clang_base_path=/usr clang_use_chrome_plugins=false"
-export DENO_NO_BINARY_DOWNLOAD=1
-DENO_GN_PATH=/usr/bin/gn DENO_NINJA_PATH=/usr/bin/ninja cargo build
+DENO_NO_BINARY_DOWNLOAD=1 DENO_GN_PATH=/usr/bin/gn cargo build
 ```
 
 Environment variables: `DENO_BUILD_MODE`, `DENO_BUILD_PATH`, `DENO_BUILD_ARGS`,
-`DENO_DIR`, `DENO_GN_PATH`, `DENO_NINJA_PATH`, `DENO_NO_BINARY_DOWNLOAD`.
+`DENO_DIR`, `DENO_GN_PATH`, `DENO_NO_BINARY_DOWNLOAD`.
 
 ## API reference
 
@@ -1137,7 +1148,7 @@ Before submitting, please make sure the following is done:
 
 1. That there is a related issue and it is referenced in the PR text.
 2. There are tests that cover the changes.
-3. Ensure `./tools/test.py` passes.
+3. Ensure `cargo test` passes.
 4. Format your code with `tools/format.py`
 5. Make sure `./tools/lint.py` passes.
 
