@@ -54,7 +54,7 @@ impl DispatchManager {
     json_dispatcher.register_op("format_error", errors::op_format_error);
     json_dispatcher.register_op("cache", compiler::op_cache);
     json_dispatcher
-      .register_op("fetch_source_file", compiler::op_fetch_source_file);
+      .register_op("fetch_source_files", compiler::op_fetch_source_files);
     json_dispatcher.register_op("open", files::op_open);
     json_dispatcher.register_op("close", files::op_close);
     json_dispatcher.register_op("seek", files::op_seek);

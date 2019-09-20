@@ -9,7 +9,7 @@ extern crate futures;
 extern crate serde_json;
 extern crate clap;
 extern crate deno;
-extern crate deno_typescript;
+extern crate deno_cli_snapshots;
 extern crate indexmap;
 #[cfg(unix)]
 extern crate nix;
@@ -18,11 +18,7 @@ extern crate serde;
 extern crate serde_derive;
 extern crate url;
 
-#[cfg(test)]
-mod integration_tests;
-
-mod ansi;
-mod assets;
+pub mod colors;
 pub mod compilers;
 pub mod deno_dir;
 pub mod deno_error;
@@ -48,6 +44,7 @@ mod signal;
 pub mod source_maps;
 mod startup_data;
 pub mod state;
+pub mod test_util;
 mod tokio_read;
 mod tokio_util;
 mod tokio_write;
@@ -132,7 +129,7 @@ fn create_worker_and_state(
 }
 
 fn types_command() {
-  let content = assets::get_source_code("lib.deno_runtime.d.ts").unwrap();
+  let content = deno_cli_snapshots::get_asset("lib.deno_runtime.d.ts").unwrap();
   println!("{}", content);
 }
 
@@ -141,17 +138,17 @@ fn print_cache_info(worker: Worker) {
 
   println!(
     "{} {:?}",
-    ansi::bold("DENO_DIR location:".to_string()),
+    colors::bold("DENO_DIR location:".to_string()),
     state.dir.root
   );
   println!(
     "{} {:?}",
-    ansi::bold("Remote modules cache:".to_string()),
+    colors::bold("Remote modules cache:".to_string()),
     state.dir.deps_cache.location
   );
   println!(
     "{} {:?}",
-    ansi::bold("TypeScript compiler cache:".to_string()),
+    colors::bold("TypeScript compiler cache:".to_string()),
     state.dir.gen_cache.location
   );
 }
@@ -170,13 +167,13 @@ pub fn print_file_info(
     .and_then(|out| {
       println!(
         "{} {}",
-        ansi::bold("local:".to_string()),
+        colors::bold("local:".to_string()),
         out.filename.to_str().unwrap()
       );
 
       println!(
         "{} {}",
-        ansi::bold("type:".to_string()),
+        colors::bold("type:".to_string()),
         msg::enum_name_media_type(out.media_type)
       );
 
@@ -200,7 +197,7 @@ pub fn print_file_info(
 
             println!(
               "{} {}",
-              ansi::bold("compiled:".to_string()),
+              colors::bold("compiled:".to_string()),
               compiled_source_file.filename.to_str().unwrap(),
             );
           }
@@ -212,7 +209,7 @@ pub fn print_file_info(
           {
             println!(
               "{} {}",
-              ansi::bold("map:".to_string()),
+              colors::bold("map:".to_string()),
               source_map.filename.to_str().unwrap()
             );
           }
@@ -220,7 +217,7 @@ pub fn print_file_info(
           if let Some(deps) =
             worker.state.modules.lock().unwrap().deps(&compiled.name)
           {
-            println!("{}{}", ansi::bold("deps:\n".to_string()), deps.name);
+            println!("{}{}", colors::bold("deps:\n".to_string()), deps.name);
             if let Some(ref depsdeps) = deps.deps {
               for d in depsdeps {
                 println!("{}", d);
@@ -229,7 +226,7 @@ pub fn print_file_info(
           } else {
             println!(
               "{} cannot retrieve full dependency graph",
-              ansi::bold("deps:".to_string()),
+              colors::bold("deps:".to_string()),
             );
           }
           Ok(worker)
@@ -404,5 +401,37 @@ fn run_script(flags: DenoFlags, argv: Vec<String>) {
 fn version_command() {
   println!("deno: {}", version::DENO);
   println!("v8: {}", version::v8());
-  println!("typescript: {}", version::typescript());
+  println!("typescript: {}", version::TYPESCRIPT);
+}
+
+pub fn main() {
+  #[cfg(windows)]
+  ansi_term::enable_ansi_support().ok(); // For Windows 10
+
+  log::set_logger(&LOGGER).unwrap();
+  let args: Vec<String> = env::args().collect();
+  let (flags, subcommand, argv) = flags::flags_from_vec(args);
+
+  if let Some(ref v8_flags) = flags.v8_flags {
+    v8_set_flags(v8_flags.clone());
+  }
+
+  let log_level = match flags.log_level {
+    Some(level) => level,
+    None => Level::Warn,
+  };
+  log::set_max_level(log_level.to_level_filter());
+
+  match subcommand {
+    DenoSubcommand::Bundle => bundle_command(flags, argv),
+    DenoSubcommand::Completions => {}
+    DenoSubcommand::Eval => eval_command(flags, argv),
+    DenoSubcommand::Fetch => fetch_command(flags, argv),
+    DenoSubcommand::Info => info_command(flags, argv),
+    DenoSubcommand::Repl => run_repl(flags, argv),
+    DenoSubcommand::Run => run_script(flags, argv),
+    DenoSubcommand::Types => types_command(),
+    DenoSubcommand::Version => version_command(),
+    DenoSubcommand::Xeval => xeval_command(flags, argv),
+  }
 }
