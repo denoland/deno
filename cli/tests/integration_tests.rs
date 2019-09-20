@@ -306,7 +306,7 @@ itest!(_042_dyn_import_evalcontext {
 
 itest!(_045_proxy {
   args: "run --allow-net --allow-env --allow-run --reload 045_proxy_test.ts",
-  output: "tests/045_proxy_test.ts.out",
+  output: "045_proxy_test.ts.out",
 });
 
 itest!(async_error {
