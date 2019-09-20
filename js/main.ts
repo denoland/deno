@@ -16,7 +16,8 @@ import { setSignals } from "./process.ts";
 
 export function setOpMap(opMaps: Record<string, Record<string, number>>): void {
   // @ts-ignore
-  window.console.error("setopmaps", JSON.stringify(opMaps));
+  // window.console.error("setopmaps", JSON.stringify(opMaps));
+
   for (const [key, value] of Object.entries(opMaps)) {
     const name = `OP_${key.toUpperCase()}`;
     dispatch[name] = value;
