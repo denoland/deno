@@ -101,13 +101,15 @@ pub fn op_dial_tls(
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: DialArgs = serde_json::from_value(args)?;
-  let network = args.network;
-  assert_eq!(network, "tcp"); // TODO Support others.
-  let address = args.address;
+  assert_eq!(args.transport, "tcp"); // TODO Support others.
+
+  // TODO(ry) Using format! is suboptimal here. Better would be if
+  // state.check_net and resolve_addr() took hostname and port directly.
+  let address = format!("{}:{}", args.hostname, args.port);
 
   state.check_net(&address)?;
 
-  let mut domain = address.split(':').collect::<Vec<&str>>()[0].to_string();
+  let mut domain = args.hostname;
   if domain.is_empty() {
     domain.push_str("localhost");
   }
