@@ -1,11 +1,12 @@
 // This is not a real HTTP server. We read blindly one time into 'requestBuf',
 // then write this fixed 'responseBuf'. The point of this benchmark is to
 // exercise the event loop in a simple yet semi-realistic way.
+// TODO: sync these ops via `Deno.core.ops`;
 const OP_LISTEN = 1;
 const OP_ACCEPT = 2;
 const OP_READ = 3;
 const OP_WRITE = 4;
-const OP_CLOSE = 5;
+const OP_CLOSE = 0;
 const requestBuf = new Uint8Array(64 * 1024);
 const responseBuf = new Uint8Array(
   "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n"

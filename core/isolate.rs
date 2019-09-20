@@ -17,6 +17,7 @@ use crate::libdeno::OpId;
 use crate::libdeno::PinnedBuf;
 use crate::libdeno::Snapshot1;
 use crate::libdeno::Snapshot2;
+use crate::ops::OpRegistry;
 use crate::shared_queue::SharedQueue;
 use crate::shared_queue::RECOMMENDED_SIZE;
 use futures::stream::FuturesUnordered;
@@ -54,6 +55,8 @@ pub type OpResult<E> = Result<Op<E>, E>;
 
 /// Args: op_id, control_buf, zero_copy_buf
 type CoreDispatchFn = dyn Fn(OpId, &[u8], Option<PinnedBuf>) -> CoreOp;
+/// Main type describing op
+pub type CoreOpHandler = dyn Fn(&[u8], Option<PinnedBuf>) -> CoreOp;
 
 /// Stores a script used to initalize a Isolate
 pub struct Script<'a> {
@@ -179,6 +182,7 @@ pub struct Isolate {
   pending_dyn_imports: FuturesUnordered<StreamFuture<DynImport>>,
   have_unpolled_ops: bool,
   startup_script: Option<OwnedScript>,
+  op_registry: OpRegistry,
 }
 
 unsafe impl Send for Isolate {}
@@ -244,6 +248,7 @@ impl Isolate {
       have_unpolled_ops: false,
       pending_dyn_imports: FuturesUnordered::new(),
       startup_script,
+      op_registry: OpRegistry::default(),
     }
   }
 
@@ -255,6 +260,21 @@ impl Isolate {
     F: Fn(OpId, &[u8], Option<PinnedBuf>) -> CoreOp + Send + Sync + 'static,
   {
     self.dispatch = Some(Arc::new(f));
+  }
+
+  pub fn register_op(&mut self, name: &str, op: Box<CoreOpHandler>) -> OpId {
+    self.op_registry.register_op(name, op)
+  }
+
+  pub fn call_op(
+    &self,
+    op_id: OpId,
+    control: &[u8],
+    zero_copy_buf: Option<PinnedBuf>,
+  ) -> CoreOp {
+    let ops = &self.op_registry.ops;
+    let op_handler = &*ops.get(op_id as usize).expect("Op not found!");
+    op_handler(control, zero_copy_buf)
   }
 
   pub fn set_dyn_import<F>(&mut self, f: F)
@@ -331,7 +351,11 @@ impl Isolate {
     let op = if let Some(ref f) = isolate.dispatch {
       f(op_id, control_buf.as_ref(), PinnedBuf::new(zero_copy_buf))
     } else {
-      panic!("isolate.dispatch not set")
+      isolate.call_op(
+        op_id,
+        control_buf.as_ref(),
+        PinnedBuf::new(zero_copy_buf),
+      )
     };
 
     debug_assert_eq!(isolate.shared.size(), 0);

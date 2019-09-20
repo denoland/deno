@@ -11,6 +11,7 @@ mod js_errors;
 mod libdeno;
 mod module_specifier;
 mod modules;
+mod ops;
 mod shared_queue;
 
 pub use crate::any_error::*;
