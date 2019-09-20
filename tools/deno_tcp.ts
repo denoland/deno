@@ -4,7 +4,7 @@
 // Note: this is a keep-alive server.
 const addr = Deno.args[1] || "127.0.0.1:4500";
 const [hostname, port] = addr.split(":");
-const listener = Deno.listen({ hostname, port });
+const listener = Deno.listen({ hostname, port: Number(port) });
 const response = new TextEncoder().encode(
   "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n"
 );
