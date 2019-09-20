@@ -178,6 +178,10 @@ SharedQueue Binary Layout
     return Deno.core.send(opId, control, zeroCopy);
   }
 
+  const opsMapBytes = dispatch(0, []);
+  const opsMapJson = String.fromCharCode.apply(null, opsMapBytes);
+  const opsMap = JSON.parse(opsMapJson);
+
   const denoCore = {
     setAsyncHandler,
     dispatch,
@@ -189,7 +193,8 @@ SharedQueue Binary Layout
       push,
       reset,
       shift
-    }
+    },
+    opsMap
   };
 
   assert(window[GLOBAL_NAMESPACE] != null);

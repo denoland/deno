@@ -248,7 +248,7 @@ impl Isolate {
       have_unpolled_ops: false,
       pending_dyn_imports: FuturesUnordered::new(),
       startup_script,
-      op_registry: OpRegistry::default(),
+      op_registry: OpRegistry::new(),
     }
   }
 
@@ -272,6 +272,12 @@ impl Isolate {
     control: &[u8],
     zero_copy_buf: Option<PinnedBuf>,
   ) -> CoreOp {
+    if op_id == 0 {
+      let op_map = self.op_registry.get_op_map();
+      let op_map_json = serde_json::to_string(&op_map).unwrap();
+      let buf = op_map_json.as_bytes().to_owned().into_boxed_slice();
+      return Op::Sync(buf);
+    }
     let ops = &self.op_registry.ops;
     let op_handler = &*ops.get(op_id as usize).expect("Op not found!");
     op_handler(control, zero_copy_buf)

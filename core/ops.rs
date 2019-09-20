@@ -1,6 +1,9 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+use crate::CoreOp;
 use crate::CoreOpHandler;
+use crate::Op;
 use crate::OpId;
+use crate::PinnedBuf;
 use std::collections::HashMap;
 
 #[derive(Default)]
@@ -9,8 +12,18 @@ pub struct OpRegistry {
   pub phone_book: HashMap<String, OpId>,
 }
 
+fn get_op_map(_control: &[u8], _zero_copy_buf: Option<PinnedBuf>) -> CoreOp {
+  Op::Sync(Box::new([]))
+}
+
 impl OpRegistry {
-  #[allow(dead_code)]
+  pub fn new() -> Self {
+    // TODO: this is make shift fix for get op map
+    let mut registry = Self::default();
+    registry.register_op("get_op_map", Box::new(get_op_map));
+    registry
+  }
+
   pub fn get_op_map(&self) -> HashMap<String, OpId> {
     self.phone_book.clone()
   }

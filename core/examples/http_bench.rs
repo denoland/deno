@@ -156,11 +156,11 @@ fn main() {
     });
 
     let mut isolate = deno::Isolate::new(startup_data, false);
-    isolate.register_op("close", serialize_http_bench_op(op_close));
     isolate.register_op("listen", serialize_http_bench_op(op_listen));
     isolate.register_op("accept", serialize_http_bench_op(op_accept));
     isolate.register_op("read", serialize_http_bench_op(op_read));
     isolate.register_op("write", serialize_http_bench_op(op_write));
+    isolate.register_op("close", serialize_http_bench_op(op_close));
 
     isolate.then(|r| {
       js_check(r);
