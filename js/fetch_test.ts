@@ -264,7 +264,7 @@ testPerm({ net: true }, async function fetchUserAgent(): Promise<void> {
 
 /*
 function bufferServer(addr: string): Deno.Buffer {
-  const listener = Deno.listen("tcp", addr);
+  const listener = Deno.listen(addr);
   const buf = new Deno.Buffer();
   listener.accept().then(async conn => {
     const p1 = buf.readFrom(conn);

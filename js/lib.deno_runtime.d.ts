@@ -914,11 +914,12 @@ declare namespace Deno {
 
   // @url js/net.d.ts
 
-  type Network = "tcp";
+  type Transport = "tcp";
   interface Addr {
-    network: Network;
+    transport: Transport;
     address: string;
   }
+
   /** A Listener is a generic network listener for stream-oriented protocols. */
   export interface Listener extends AsyncIterator<Conn> {
     /** Waits for and resolves to the next connection to the `Listener`. */
@@ -947,52 +948,56 @@ declare namespace Deno {
      */
     closeWrite(): void;
   }
-  /** Listen announces on the local network address.
+
+  export interface ListenOptions {
+    port: number;
+    hostname?: string;
+    transport?: Transport;
+  }
+
+  /** Listen announces on the local transport address.
    *
-   * The network must be `tcp`, `tcp4`, `tcp6`, `unix` or `unixpacket`.
-   *
-   * For TCP networks, if the host in the address parameter is empty or a literal
-   * unspecified IP address, `listen()` listens on all available unicast and
-   * anycast IP addresses of the local system. To only use IPv4, use network
-   * `tcp4`. The address can use a host name, but this is not recommended,
-   * because it will create a listener for at most one of the host's IP
-   * addresses. If the port in the address parameter is empty or `0`, as in
-   * `127.0.0.1:` or `[::1]:0`, a port number is automatically chosen. The
-   * `addr()` method of `Listener` can be used to discover the chosen port.
-   *
-   * See `dial()` for a description of the network and address parameters.
-   */
-  export function listen(network: Network, address: string): Listener;
-  /** Dial connects to the address on the named network.
-   *
-   * Supported networks are only `tcp` currently.
-   *
-   * TODO: `tcp4` (IPv4-only), `tcp6` (IPv6-only), `udp`, `udp4` (IPv4-only),
-   * `udp6` (IPv6-only), `ip`, `ip4` (IPv4-only), `ip6` (IPv6-only), `unix`,
-   * `unixgram` and `unixpacket`.
-   *
-   * For TCP and UDP networks, the address has the form `host:port`. The host must
-   * be a literal IP address, or a host name that can be resolved to IP addresses.
-   * The port must be a literal port number or a service name. If the host is a
-   * literal IPv6 address it must be enclosed in square brackets, as in
-   * `[2001:db8::1]:80` or `[fe80::1%zone]:80`. The zone specifies the scope of
-   * the literal IPv6 address as defined in RFC 4007. The functions JoinHostPort
-   * and SplitHostPort manipulate a pair of host and port in this form. When using
-   * TCP, and the host resolves to multiple IP addresses, Dial will try each IP
-   * address in order until one succeeds.
+   * @param options
+   * @param options.port The port to connect to. (Required.)
+   * @param options.hostname A literal IP address or host name that can be
+   *   resolved to an IP address. If not specified, defaults to 0.0.0.0
+   * @param options.transport Defaults to "tcp". Later we plan to add "tcp4",
+   *   "tcp6", "udp", "udp4", "udp6", "ip", "ip4", "ip6", "unix", "unixgram" and
+   *   "unixpacket".
    *
    * Examples:
    *
-   *     dial("tcp", "golang.org:http")
-   *     dial("tcp", "192.0.2.1:http")
-   *     dial("tcp", "198.51.100.1:80")
-   *     dial("udp", "[2001:db8::1]:domain")
-   *     dial("udp", "[fe80::1%lo0]:53")
-   *     dial("tcp", ":80")
+   *     listen({ port: 80 })
+   *     listen({ hostname: "192.0.2.1", port: 80 })
+   *     listen({ hostname: "[2001:db8::1]", port: 80 });
+   *     listen({ hostname: "golang.org", port: 80, transport: "tcp" })
    */
-  export function dial(network: Network, address: string): Promise<Conn>;
-  /** **RESERVED** */
-  export function connect(_network: Network, _address: string): Promise<Conn>;
+  export function listen(options: ListenOptions): Listener;
+
+  export interface DialOptions {
+    port: number;
+    hostname?: string;
+    transport?: Transport;
+  }
+
+  /** Dial connects to the address on the named transport.
+   *
+   * @param options
+   * @param options.port The port to connect to. (Required.)
+   * @param options.hostname A literal IP address or host name that can be
+   *   resolved to an IP address. If not specified, defaults to 127.0.0.1
+   * @param options.transport Defaults to "tcp". Later we plan to add "tcp4",
+   *   "tcp6", "udp", "udp4", "udp6", "ip", "ip4", "ip6", "unix", "unixgram" and
+   *   "unixpacket".
+   *
+   * Examples:
+   *
+   *     dial({ port: 80 })
+   *     dial({ hostname: "192.0.2.1", port: 80 })
+   *     dial({ hostname: "[2001:db8::1]", port: 80 });
+   *     dial({ hostname: "golang.org", port: 80, transport: "tcp" })
+   */
+  export function dial(options: DialOptions): Promise<Conn>;
 
   // @url js/metrics.d.ts
 
