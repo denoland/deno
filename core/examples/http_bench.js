@@ -1,6 +1,7 @@
 // This is not a real HTTP server. We read blindly one time into 'requestBuf',
 // then write this fixed 'responseBuf'. The point of this benchmark is to
 // exercise the event loop in a simple yet semi-realistic way.
+Deno.core.refreshOpsMap();
 const OP_LISTEN = Deno.core.opsMap["listen"];
 const OP_ACCEPT = Deno.core.opsMap["accept"];
 const OP_READ = Deno.core.opsMap["read"];
