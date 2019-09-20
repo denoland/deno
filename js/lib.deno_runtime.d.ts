@@ -1003,7 +1003,7 @@ declare namespace Deno {
    *
    * Support the same options as `dial`.
    */
-  export function dialTls(options: DialOptions): Promise<Conn>
+  export function dialTls(options: DialOptions): Promise<Conn>;
   // @url js/metrics.d.ts
 
   export interface Metrics {
