@@ -5,6 +5,7 @@ rust:
   - 1.37.0
 git:
   depth: 1
+  submodules_depth: 1
 env:
   global:
   - RUSTC_WRAPPER=sccache
