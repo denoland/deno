@@ -14,13 +14,32 @@
     --background-color: #444;
     --text-color: #f0f0f0;
     --link-color: #4498ff;
-    --pre-color: #e8e8e8;	
+    --pre-color: #e8e8e8;
     --pre-link-color: #cee4ff;
     --code-color: #ccc;
   }
-  
+
   #logo {
-    filter: invert(); 
+    filter: invert();
+  }
+
+  .c3-tooltip th {
+    background: #6f6f6f;
+  }
+
+  .c3-tooltip td {
+    background: var(--background-color);
+  }
+
+  .c3-axis g,
+  .c3-axis text,
+  .c3-legend-item text {
+    fill: var(--text-color);
+  }
+
+  .c3-axis line,
+  .c3-axis path.domain {
+    stroke: var(--text-color);
   }
 }
 
@@ -41,13 +60,20 @@ body {
   max-width: 800px;
 }
 
-
-h1, h2, h3, h4 {
+h1,
+h2,
+h3,
+h4 {
   font-weight: normal;
   margin-bottom: 0;
 }
 
-h1, h2, h3, h4, p, table {
+h1,
+h2,
+h3,
+h4,
+p,
+table {
   margin-left: 8px;
   margin-right: 8px;
 }
@@ -56,7 +82,8 @@ table {
   border-collapse: collapse;
   margin-top: 8px;
 }
-td, th {
+td,
+th {
   font-weight: normal;
   text-align: center;
   border: 1px dotted var(--table-border);
@@ -77,14 +104,15 @@ pre a {
   color: var(--pre-link-color);
 }
 
-h2 a, h3 a {
+h2 a,
+h3 a {
   display: none;
   color: #3bace5;
   text-decoration: none;
 }
 
 h2:hover a,
-h3:hover a  {
+h3:hover a {
   display: inline;
 }
 
@@ -111,7 +139,6 @@ header > * {
 header h1 {
   margin: 8px 0;
 }
-
 
 @media only screen and (max-device-width: 480px) {
   body {
@@ -140,11 +167,13 @@ code {
 }
 
 @keyframes spinner {
-  to {transform: rotate(360deg);}
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .spinner:before {
-  content: '';
+  content: "";
   box-sizing: border-box;
   position: absolute;
   top: 50%;
@@ -156,7 +185,7 @@ code {
   border-radius: 50%;
   border: 2px solid #ccc;
   border-top-color: #000;
-  animation: spinner .6s linear infinite;
+  animation: spinner 0.6s linear infinite;
 }
 
 .hidden {
