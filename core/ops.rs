@@ -1,6 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::CoreOpHandler;
-#[allow(dead_code)]
 use crate::OpId;
 use std::collections::HashMap;
 
