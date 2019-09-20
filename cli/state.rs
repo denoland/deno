@@ -111,9 +111,7 @@ impl ThreadSafeState {
     control: &[u8],
     zero_copy: Option<PinnedBuf>,
   ) -> CoreOp {
-    self
-      .op_registry
-      .dispatch(self, op_id, control, zero_copy)
+    self.op_registry.dispatch(self, op_id, control, zero_copy)
   }
 }
 

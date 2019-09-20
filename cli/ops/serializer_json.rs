@@ -50,41 +50,42 @@ struct AsyncArgs {
   promise_id: Option<u64>,
 }
 
-pub fn serialize_json(
-  handler: JsonOpHandler,
-) -> Box<CliOp> {
-  let serialized_op = move |state: &ThreadSafeState, control: &[u8], zero_copy: Option<PinnedBuf>| {
-    let async_args: AsyncArgs = serde_json::from_slice(control).unwrap();
-    let promise_id = async_args.promise_id;
-    let is_sync = promise_id.is_none();
+pub fn serialize_json(handler: JsonOpHandler) -> Box<CliOp> {
+  let serialized_op =
+    move |state: &ThreadSafeState,
+          control: &[u8],
+          zero_copy: Option<PinnedBuf>| {
+      let async_args: AsyncArgs = serde_json::from_slice(control).unwrap();
+      let promise_id = async_args.promise_id;
+      let is_sync = promise_id.is_none();
 
-    let result = serde_json::from_slice(control)
-      .map_err(ErrBox::from)
-      .and_then(move |args| handler(state, args, zero_copy));
+      let result = serde_json::from_slice(control)
+        .map_err(ErrBox::from)
+        .and_then(move |args| handler(state, args, zero_copy));
 
-    // Convert to CoreOp
-    match result {
-      Ok(JsonOp::Sync(sync_value)) => {
-        assert!(promise_id.is_none());
-        CoreOp::Sync(serialize_op_result(promise_id, Ok(sync_value)))
-      }
-      Ok(JsonOp::Async(fut)) => {
-        assert!(promise_id.is_some());
-        let fut2 = Box::new(fut.then(move |result| -> Result<Buf, ()> {
-          Ok(serialize_op_result(promise_id, result))
-        }));
-        CoreOp::Async(fut2)
-      }
-      Err(sync_err) => {
-        let buf = serialize_op_result(promise_id, Err(sync_err));
-        if is_sync {
-          CoreOp::Sync(buf)
-        } else {
-          CoreOp::Async(Box::new(futures::future::ok(buf)))
+      // Convert to CoreOp
+      match result {
+        Ok(JsonOp::Sync(sync_value)) => {
+          assert!(promise_id.is_none());
+          CoreOp::Sync(serialize_op_result(promise_id, Ok(sync_value)))
+        }
+        Ok(JsonOp::Async(fut)) => {
+          assert!(promise_id.is_some());
+          let fut2 = Box::new(fut.then(move |result| -> Result<Buf, ()> {
+            Ok(serialize_op_result(promise_id, result))
+          }));
+          CoreOp::Async(fut2)
+        }
+        Err(sync_err) => {
+          let buf = serialize_op_result(promise_id, Err(sync_err));
+          if is_sync {
+            CoreOp::Sync(buf)
+          } else {
+            CoreOp::Async(Box::new(futures::future::ok(buf)))
+          }
         }
       }
-    }
-  };
+    };
 
   Box::new(serialized_op)
 }
