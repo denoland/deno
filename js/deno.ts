@@ -74,7 +74,7 @@ export {
 } from "./permissions.ts";
 export { truncateSync, truncate } from "./truncate.ts";
 export { FileInfo } from "./file_info.ts";
-export { connect, dial, dialTLS, listen, Listener, Conn } from "./net.ts";
+export { connect, dial, dialTls, listen, Listener, Conn } from "./net.ts";
 export { metrics, Metrics } from "./metrics.ts";
 export { resources } from "./resources.ts";
 export {
