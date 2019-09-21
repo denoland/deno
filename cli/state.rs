@@ -363,8 +363,8 @@ impl ThreadSafeState {
         let bytes_sent_zero_copy =
           zero_copy.as_ref().map(|b| b.len()).unwrap_or(0);
 
-        state.metrics_op_dispatched(bytes_sent_control, bytes_sent_zero_copy);
         let op = handler(&state.clone(), control, zero_copy);
+        state.metrics_op_dispatched(bytes_sent_control, bytes_sent_zero_copy);
 
         match op {
           Op::Sync(buf) => {
