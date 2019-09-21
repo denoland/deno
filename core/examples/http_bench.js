@@ -1,12 +1,58 @@
 // This is not a real HTTP server. We read blindly one time into 'requestBuf',
 // then write this fixed 'responseBuf'. The point of this benchmark is to
 // exercise the event loop in a simple yet semi-realistic way.
-Deno.core.refreshOpsMap();
-const OP_LISTEN = Deno.core.opsMap["listen"];
-const OP_ACCEPT = Deno.core.opsMap["accept"];
-const OP_READ = Deno.core.opsMap["read"];
-const OP_WRITE = Deno.core.opsMap["write"];
-const OP_CLOSE = Deno.core.opsMap["close"];
+class Op {
+  constructor(name) {
+    this.name = name;
+    this.opId = 0;
+    Deno.core.registerOp(this);
+  }
+
+  setOpId(opId) {
+    this.opId = opId;
+  }
+}
+
+class HttpOp extends Op {
+  static handleAsyncMsgFromRust(opId, buf) {
+    const record = recordFromBuf(buf);
+    const { promiseId, result } = record;
+    const p = promiseMap.get(promiseId);
+    promiseMap.delete(promiseId);
+    p.resolve(result);
+  }
+
+  /** Returns i32 number */
+  static sendSync(opId, arg, zeroCopy) {
+    const buf = send(0, opId, arg, zeroCopy);
+    const record = recordFromBuf(buf);
+    return record.result;
+  }
+
+  /** Returns Promise<number> */
+  static sendAsync(opId, arg, zeroCopy = null) {
+    const promiseId = nextPromiseId++;
+    const p = createResolvable();
+    promiseMap.set(promiseId, p);
+    send(promiseId, opId, arg, zeroCopy);
+    return p;
+  }
+
+  sendSync(arg, zeroCopy = null) {
+    return HttpOp.sendSync(this.opId, arg, zeroCopy);
+  }
+
+  sendAsync(arg, zeroCopy = null) {
+    return HttpOp.sendAsync(this.opId, arg, zeroCopy);
+  }
+}
+
+const OP_LISTEN = new HttpOp("listen");
+const OP_ACCEPT = new HttpOp("accept");
+const OP_READ = new HttpOp("read");
+const OP_WRITE = new HttpOp("write");
+const OP_CLOSE = new HttpOp("close");
+
 const requestBuf = new Uint8Array(64 * 1024);
 const responseBuf = new Uint8Array(
   "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n"
@@ -45,15 +91,6 @@ function send(promiseId, opId, arg, zeroCopy = null) {
   return Deno.core.dispatch(opId, scratchBytes, zeroCopy);
 }
 
-/** Returns Promise<number> */
-function sendAsync(opId, arg, zeroCopy = null) {
-  const promiseId = nextPromiseId++;
-  const p = createResolvable();
-  promiseMap.set(promiseId, p);
-  send(promiseId, opId, arg, zeroCopy);
-  return p;
-}
-
 function recordFromBuf(buf) {
   assert(buf.byteLength === 3 * 4);
   const buf32 = new Int32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
@@ -64,29 +101,14 @@ function recordFromBuf(buf) {
   };
 }
 
-/** Returns i32 number */
-function sendSync(opId, arg) {
-  const buf = send(0, opId, arg);
-  const record = recordFromBuf(buf);
-  return record.result;
-}
-
-function handleAsyncMsgFromRust(opId, buf) {
-  const record = recordFromBuf(buf);
-  const { promiseId, result } = record;
-  const p = promiseMap.get(promiseId);
-  promiseMap.delete(promiseId);
-  p.resolve(result);
-}
-
 /** Listens on 0.0.0.0:4500, returns rid. */
 function listen() {
-  return sendSync(OP_LISTEN, -1);
+  return OP_LISTEN.sendSync(-1);
 }
 
 /** Accepts a connection, returns rid. */
 async function accept(rid) {
-  return await sendAsync(OP_ACCEPT, rid);
+  return await OP_ACCEPT.sendAsync(rid);
 }
 
 /**
@@ -94,16 +116,16 @@ async function accept(rid) {
  * Returns bytes read.
  */
 async function read(rid, data) {
-  return await sendAsync(OP_READ, rid, data);
+  return await OP_READ.sendAsync(rid, data);
 }
 
 /** Writes a fixed HTTP response to the socket rid. Returns bytes written. */
 async function write(rid, data) {
-  return await sendAsync(OP_WRITE, rid, data);
+  return await OP_WRITE.sendAsync(rid, data);
 }
 
 function close(rid) {
-  return sendSync(OP_CLOSE, rid);
+  return OP_CLOSE.sendSync(rid);
 }
 
 async function serve(rid) {
@@ -122,11 +144,8 @@ async function serve(rid) {
 }
 
 async function main() {
-  Deno.core.setAsyncHandler(handleAsyncMsgFromRust);
-
+  Deno.core.initOps();
   Deno.core.print("http_bench.js start\n");
-
-  Deno.core.print("ops map " + JSON.stringify(Deno.core.opsMap) + "\n");
 
   const listenerRid = listen();
   Deno.core.print(`listening http://127.0.0.1:4544/ rid = ${listenerRid}\n`);

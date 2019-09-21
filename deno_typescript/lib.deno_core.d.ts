@@ -37,8 +37,9 @@ declare interface DenoCore {
     shift(): Uint8Array | null;
   };
 
-  refreshOpsMap(): void;
-  opsMap: Record<string, number>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  registerOp(op: any): void;
+  initOps(): void;
 
   recv(cb: MessageCallback): void;
 

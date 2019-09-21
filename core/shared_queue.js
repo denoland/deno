@@ -38,6 +38,9 @@ SharedQueue Binary Layout
 
   let sharedBytes;
   let shared32;
+  let opsMap;
+  const ops = [];
+  let opsCb;
   let initialized = false;
 
   function maybeInit() {
@@ -56,6 +59,33 @@ SharedQueue Binary Layout
     shared32 = new Int32Array(shared);
     // Callers should not call Deno.core.recv, use setAsyncHandler.
     Deno.core.recv(handleAsyncMsgFromRust);
+  }
+
+  function registerOp(op) {
+    ops.push(op);
+  }
+
+  function initOps() {
+    const opsMapBytes = Deno.core.send(0, new Uint8Array([]), null);
+    // core.print("op map bytes" + opsMapBytes + "\n");
+    const opsMapJson = String.fromCharCode.apply(null, opsMapBytes);
+    // core.print("op map" + opsMapJson + "\n");
+    opsMap = JSON.parse(opsMapJson);
+    // core.print("ops map parsed" + opsMap + "\n");
+    const opVector = [];
+
+    for (const [name, opId] of Object.entries(opsMap)) {
+      const op = ops.find(op => op.name === name);
+      // core.print("op, name: " + name + " op: " + op + " opId: " + opId + "\n");
+      if (!op) {
+        continue;
+      }
+
+      op.setOpId(opId);
+      opVector[opId] = op.constructor.handleAsyncMsgFromRust;
+    }
+
+    opsCb = opVector;
   }
 
   function assert(cond) {
@@ -161,14 +191,14 @@ SharedQueue Binary Layout
   function handleAsyncMsgFromRust(opId, buf) {
     if (buf) {
       // This is the overflow_response case of deno::Isolate::poll().
-      asyncHandler(opId, buf);
+      opsCb[opId](opId, buf);
     } else {
       while (true) {
         const opIdBuf = shift();
         if (opIdBuf == null) {
           break;
         }
-        asyncHandler(...opIdBuf);
+        opsCb[opIdBuf[0]](...opIdBuf);
       }
     }
   }
@@ -176,12 +206,6 @@ SharedQueue Binary Layout
   function dispatch(opId, control, zeroCopy = null) {
     maybeInit();
     return Deno.core.send(opId, control, zeroCopy);
-  }
-
-  function refreshOpsMap() {
-    const opsMapBytes = dispatch(0, []);
-    const opsMapJson = String.fromCharCode.apply(null, opsMapBytes);
-    Deno.core.opsMap = JSON.parse(opsMapJson);
   }
 
   const denoCore = {
@@ -196,8 +220,8 @@ SharedQueue Binary Layout
       reset,
       shift
     },
-    opsMap: {},
-    refreshOpsMap
+    initOps,
+    registerOp
   };
 
   assert(window[GLOBAL_NAMESPACE] != null);
