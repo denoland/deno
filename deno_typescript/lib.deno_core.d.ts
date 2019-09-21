@@ -32,7 +32,7 @@ declare class Op {
 
   static handleAsyncMsgFromRust(opId: OpId, buf: Uint8Array): void;
 
-  // eslint-disable @typescript-eslint/no-explicit-any
+  /* eslint-disable @typescript-eslint/no-explicit-any */
   static sendSync(opId: OpId, control: any, zeroCopy?: Uint8Array): any;
 
   static sendAsync(
@@ -40,7 +40,7 @@ declare class Op {
     control: any,
     zeroCopy?: Uint8Array
   ): Promise<any>;
-  // eslint-enable @typescript-eslint/no-explicit-any
+  /* eslint-enable @typescript-eslint/no-explicit-any */
 }
 
 declare interface DenoCore {
@@ -61,7 +61,8 @@ declare interface DenoCore {
   };
 
   Op: typeof Op;
-  initOps(): void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  initOps(map: Record<string, any>): void;
 
   recv(cb: MessageCallback): void;
 

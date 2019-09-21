@@ -132,7 +132,7 @@ interface EmitResult {
 }
 
 const OP_FETCH_ASSET = new JsonOp("fetch_asset");
-const OP_FETCH_SOURCE_FILES = new JsonOp("op_fetch_source_files");
+const OP_FETCH_SOURCE_FILES = new JsonOp("fetch_source_files");
 const OP_CACHE = new JsonOp("cache");
 
 function fetchAsset(name: string): string {

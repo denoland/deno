@@ -5,6 +5,7 @@ import { assert } from "./util.ts";
 import * as util from "./util.ts";
 import { window } from "./window.ts";
 import { OperatingSystem, Arch } from "./build.ts";
+import { dispatch } from "./dispatch.ts";
 
 // builtin modules
 import { _setGlobals } from "./deno.ts";
@@ -80,9 +81,11 @@ const OP_START = new JsonOp("start");
 // the runtime and the compiler environments.
 // @internal
 export function start(preserveDenoNamespace = true, source?: string): Start {
-  core.initOps();
   // @ts-ignore
-  window.console.error("op start", OP_START, OP_START.opId);
+  // window.console.error("dispatch", JSON.stringify(Object.keys(dispatch)));
+  core.initOps(dispatch);
+  // @ts-ignore
+  // window.console.error("op start", OP_START, OP_START.opId);
   // First we send an empty `Start` message to let the privileged side know we
   // are ready. The response should be a `StartRes` message containing the CLI
   // args and other info.

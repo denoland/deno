@@ -3,7 +3,7 @@ import * as util from "./util.ts";
 import { TextEncoder, TextDecoder } from "./text_encoding.ts";
 import { core } from "./core.ts";
 import { ErrorKind, DenoError } from "./errors.ts";
-
+import { DispatchOp } from "./dispatch.ts";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Ok = any;
 
@@ -18,16 +18,15 @@ interface JsonResponse {
   promiseId?: number; // Only present in async messages.
 }
 
-core.print("JSON op");
-export class JsonOp extends core.Op {
+export class JsonOp extends DispatchOp {
   public opId!: number;
 
   constructor(public name: string) {
     super(name);
-    core.print("registering op " + name + "\n", true);
+    // core.print("registering op " + name + "\n", true);
   }
 
-  static asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
+  static handleAsyncMsgFromRust(opId: number, ui8: Uint8Array): void {
     const res = decode(ui8);
     util.assert(res.promiseId != null);
 
@@ -92,7 +91,6 @@ function encode(args: object): Uint8Array {
 }
 
 function unwrapResponse(res: JsonResponse): Ok {
-  core.print("json response" + JSON.stringify(res));
   if (res.err != null) {
     throw new DenoError(res.err!.kind, res.err!.message);
   }

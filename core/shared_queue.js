@@ -39,7 +39,7 @@ SharedQueue Binary Layout
   let sharedBytes;
   let shared32;
   let rustOpsMap;
-  const jsOpsMap = new Map();
+  // const jsOpsMap = {};
   let jsOpsAsyncHandlers;
   let initialized = false;
 
@@ -61,24 +61,28 @@ SharedQueue Binary Layout
     Deno.core.recv(handleAsyncMsgFromRust);
   }
 
-  function initOps() {
+  function initOps(jsOpsMap) {
     const opsMapBytes = Deno.core.send(0, new Uint8Array([]), null);
     const opsMapJson = String.fromCharCode.apply(null, opsMapBytes);
     rustOpsMap = JSON.parse(opsMapJson);
     const opVector = new Array(Object.keys(rustOpsMap).length);
 
-    core.print(`rustOpsMap ${opsMapJson}\n`);
-    core.print(`jsOpsMap ${JSON.stringify(jsOpsMap)}\n`);
+    // core.print(`rustOpsMap ${opsMapJson}\n`);
+    // core.print(`jsOpsMap ${JSON.stringify(jsOpsMap)}\n`);
 
     for (const [name, opId] of Object.entries(rustOpsMap)) {
-      const op = jsOpsMap.get(name);
+      const op = jsOpsMap[name];
 
       if (!op) {
         continue;
       }
 
-      core.print(`op ${opId} ${name} ${op}`);
+      // core.print(`op ${opId} ${name} ${op}`);
       op.setOpId(opId);
+      // core.print(`${op.constructor.handleAsyncMsgFromRust}\n`, true);
+      // core.print(`${op.handleAsyncMsgFromRust}\n`, true);
+      // core.print(`${op.constructor}\n`, true);
+      // core.print(`${op}\n`, true);
       opVector[opId] = op.constructor.handleAsyncMsgFromRust;
     }
 
@@ -209,15 +213,15 @@ SharedQueue Binary Layout
 
   class Op {
     constructor(name) {
-      core.print("registering op " + name + "\n", true);
-      throw new Error(`Registering op: ${name}`);
-      if (typeof jsOpsMap.get(name) !== "undefined") {
-        throw new Error(`Duplicate op: ${name}`);
-      }
+      // core.print("registering op " + name + "\n", true);
+      // throw new Error(`Registering op: ${name}`);
+      // if (typeof jsOpsMap[name] !== "undefined") {
+      //   throw new Error(`Duplicate op: ${name}`);
+      // }
 
       this.name = name;
       this.opId = 0;
-      jsOpsMap.set(name, this);
+      // jsOpsMap[name] = this;
     }
 
     setOpId(opId) {
