@@ -251,8 +251,8 @@ SharedQueue Binary Layout
       shift
     },
     initOps,
-    Op
-    // opsMap: null,
+    Op,
+    opsMap: {},
     refreshOpsMap
   };
 
