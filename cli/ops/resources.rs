@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{JsonOp, Value};
+use super::serializer_json::{JsonOp, Value};
 use crate::resources::table_entries;
 use crate::state::ThreadSafeState;
 use deno::*;

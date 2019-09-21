@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{Deserialize, JsonOp, Value};
+use super::serializer_json::{Deserialize, JsonOp, Value};
 use crate::state::ThreadSafeState;
 use crate::tokio_util;
 use deno::*;

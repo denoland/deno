@@ -10,7 +10,7 @@ use crate::flags;
 use crate::global_timer::GlobalTimer;
 use crate::import_map::ImportMap;
 use crate::msg;
-use crate::ops;
+use crate::ops::CliOpHandler;
 use crate::permissions::DenoPermissions;
 use crate::progress::Progress;
 use crate::resources;
@@ -18,10 +18,11 @@ use crate::resources::ResourceId;
 use crate::worker::Worker;
 use deno::Buf;
 use deno::CoreOp;
+use deno::CoreOpHandler;
 use deno::ErrBox;
 use deno::Loader;
 use deno::ModuleSpecifier;
-use deno::OpId;
+use deno::Op;
 use deno::PinnedBuf;
 use futures::future::Shared;
 use futures::Future;
@@ -99,17 +100,6 @@ impl Deref for ThreadSafeState {
   type Target = Arc<State>;
   fn deref(&self) -> &Self::Target {
     &self.0
-  }
-}
-
-impl ThreadSafeState {
-  pub fn dispatch(
-    &self,
-    op_id: OpId,
-    control: &[u8],
-    zero_copy: Option<PinnedBuf>,
-  ) -> CoreOp {
-    ops::dispatch(self, op_id, control, zero_copy)
   }
 }
 
@@ -358,6 +348,41 @@ impl ThreadSafeState {
       .metrics
       .bytes_received
       .fetch_add(bytes_received, Ordering::SeqCst);
+  }
+
+  /// Wrap standard `CoreOpHandler` so we can pass additional argument (state) to
+  /// each handler.
+  pub fn serialize_cli_op(
+    &self,
+    handler: Box<CliOpHandler>,
+  ) -> Box<CoreOpHandler> {
+    let state = self.clone();
+    let serialized_op =
+      move |control: &[u8], zero_copy: Option<PinnedBuf>| -> CoreOp {
+        let bytes_sent_control = control.len();
+        let bytes_sent_zero_copy =
+          zero_copy.as_ref().map(|b| b.len()).unwrap_or(0);
+
+        state.metrics_op_dispatched(bytes_sent_control, bytes_sent_zero_copy);
+        let op = handler(&state.clone(), control, zero_copy);
+
+        match op {
+          Op::Sync(buf) => {
+            state.metrics_op_completed(buf.len());
+            Op::Sync(buf)
+          }
+          Op::Async(fut) => {
+            let state = state.clone();
+            let result_fut = Box::new(fut.map(move |buf: Buf| {
+              state.clone().metrics_op_completed(buf.len());
+              buf
+            }));
+            Op::Async(result_fut)
+          }
+        }
+      };
+
+    Box::new(serialized_op)
   }
 }
 

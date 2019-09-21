@@ -28,6 +28,7 @@ use futures::Future;
 use futures::Poll;
 use libc::c_char;
 use libc::c_void;
+use std::collections::HashMap;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::fmt;
@@ -243,6 +244,14 @@ impl Isolate {
 
   pub fn register_op(&mut self, name: &str, op: Box<CoreOpHandler>) -> OpId {
     self.op_registry.register_op(name, op)
+  }
+
+  pub fn get_ops_map(&self) -> HashMap<String, OpId> {
+    self.op_registry.get_op_map()
+  }
+
+  pub fn get_ops(&self) -> &Vec<Box<CoreOpHandler>> {
+    &self.op_registry.ops
   }
 
   pub fn call_op(

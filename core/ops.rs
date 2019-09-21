@@ -57,7 +57,7 @@ impl OpRegistry {
     self
       .op_map
       .entry(name.to_string())
-      .and_modify(|_| panic!("Op already registered {}", op_id))
+      .and_modify(|_| panic!("Op already registered {}", name))
       .or_insert(op_id);
 
     self.ops.push(serialized_op);

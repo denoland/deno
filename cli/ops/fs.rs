@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 // Some deserializer fields are only used on Unix and Windows build fails without it
 #![allow(dead_code)]
-use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
+use super::serializer_json::{blocking_json, Deserialize, JsonOp, Value};
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
 use crate::fs as deno_fs;
