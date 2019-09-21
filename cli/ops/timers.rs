@@ -33,7 +33,7 @@ pub fn op_global_timer(
 
   let state = state;
   let mut t = state.global_timer.lock().unwrap();
-  let deadline = Instant::now() + Duration::from_millis(val as u64);
+  let deadline = Instant::now() + Duration::from_millis(val);
   let f = t
     .new_timeout(deadline)
     .then(move |_| futures::future::ok(json!({})));

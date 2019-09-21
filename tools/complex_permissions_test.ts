@@ -16,13 +16,15 @@ const test: (args: string[]) => void = {
   },
   netListen(hosts: string[]): void {
     hosts.forEach(host => {
-      const listener = Deno.listen("tcp", host);
+      const [hostname, port] = host.split(":");
+      const listener = Deno.listen({ hostname, port: Number(port) });
       listener.close();
     });
   },
   async netDial(hosts: string[]): Promise<void> {
     for (const host of hosts) {
-      const listener = await Deno.dial("tcp", host);
+      const [hostname, port] = host.split(":");
+      const listener = await Deno.dial({ hostname, port: Number(port) });
       listener.close();
     }
   }

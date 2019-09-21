@@ -22,6 +22,7 @@ use ring;
 use std::collections::HashSet;
 use std::fmt::Write;
 use std::fs;
+use std::io;
 use std::path::PathBuf;
 use std::str;
 use std::sync::atomic::Ordering;
@@ -60,7 +61,20 @@ impl CompilerConfig {
     // Convert the PathBuf to a canonicalized string.  This is needed by the
     // compiler to properly deal with the configuration.
     let config_path = match &config_file {
-      Some(config_file) => Some(config_file.canonicalize().unwrap().to_owned()),
+      Some(config_file) => Some(
+        config_file
+          .canonicalize()
+          .map_err(|_| {
+            io::Error::new(
+              io::ErrorKind::InvalidInput,
+              format!(
+                "Could not find the config file: {}",
+                config_file.to_string_lossy()
+              ),
+            )
+          })?
+          .to_owned(),
+      ),
       _ => None,
     };
 
@@ -772,5 +786,15 @@ mod tests {
       let config = CompilerConfig::load(Some(path_str.clone())).unwrap();
       assert_eq!(config.compile_js, expected);
     }
+  }
+
+  #[test]
+  fn test_compiler_config_load() {
+    let temp_dir = TempDir::new().expect("tempdir fail");
+    let temp_dir_path = temp_dir.path();
+    let path = temp_dir_path.join("doesnotexist.json");
+    let path_str = path.to_str().unwrap().to_string();
+    let res = CompilerConfig::load(Some(path_str.clone()));
+    assert!(res.is_err());
   }
 }
