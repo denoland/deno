@@ -20,6 +20,27 @@ interface EvalErrorInfo {
   thrown: any;
 }
 
+declare type OpId = number;
+
+declare class Op {
+  name: string;
+  opId: OpId;
+
+  constructor(name: string);
+
+  setOpId(opId: Opid): void;
+
+  static handleAsyncMsgFromRust(opId: OpId, buf: Uint8Array): void;
+
+  static sendSync(opId: OpId, control: Uint8Array, zeroCopy?: Uint8Array): void;
+
+  static sendAsync(
+    opId: OpId,
+    control: Uint8Array,
+    zeroCopy?: Uint8Array
+  ): void;
+}
+
 declare interface DenoCore {
   print(s: string, isErr?: boolean);
   dispatch(
@@ -37,8 +58,7 @@ declare interface DenoCore {
     shift(): Uint8Array | null;
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  registerOp(op: any): void;
+  Op: Op;
   initOps(): void;
 
   recv(cb: MessageCallback): void;

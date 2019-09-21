@@ -1,19 +1,7 @@
 // This is not a real HTTP server. We read blindly one time into 'requestBuf',
 // then write this fixed 'responseBuf'. The point of this benchmark is to
 // exercise the event loop in a simple yet semi-realistic way.
-class Op {
-  constructor(name) {
-    this.name = name;
-    this.opId = 0;
-    Deno.core.registerOp(this);
-  }
-
-  setOpId(opId) {
-    this.opId = opId;
-  }
-}
-
-class HttpOp extends Op {
+class HttpOp extends Deno.core.Op {
   static handleAsyncMsgFromRust(opId, buf) {
     const record = recordFromBuf(buf);
     const { promiseId, result } = record;

@@ -38,9 +38,9 @@ SharedQueue Binary Layout
 
   let sharedBytes;
   let shared32;
-  let opsMap;
-  const ops = [];
-  let opsCb;
+  let rustOpsMap;
+  const jsOpsMap = new Map();
+  let jsOpsAsyncHandlers;
   let initialized = false;
 
   function maybeInit() {
@@ -61,22 +61,15 @@ SharedQueue Binary Layout
     Deno.core.recv(handleAsyncMsgFromRust);
   }
 
-  function registerOp(op) {
-    ops.push(op);
-  }
-
   function initOps() {
     const opsMapBytes = Deno.core.send(0, new Uint8Array([]), null);
-    // core.print("op map bytes" + opsMapBytes + "\n");
     const opsMapJson = String.fromCharCode.apply(null, opsMapBytes);
-    // core.print("op map" + opsMapJson + "\n");
-    opsMap = JSON.parse(opsMapJson);
-    // core.print("ops map parsed" + opsMap + "\n");
-    const opVector = [];
+    rustOpsMap = JSON.parse(opsMapJson);
+    const opVector = new Array(Object.keys(rustOpsMap).length);
 
-    for (const [name, opId] of Object.entries(opsMap)) {
-      const op = ops.find(op => op.name === name);
-      // core.print("op, name: " + name + " op: " + op + " opId: " + opId + "\n");
+    for (const [name, opId] of Object.entries(rustOpsMap)) {
+      const op = jsOpsMap.get(name);
+
       if (!op) {
         continue;
       }
@@ -85,7 +78,7 @@ SharedQueue Binary Layout
       opVector[opId] = op.constructor.handleAsyncMsgFromRust;
     }
 
-    opsCb = opVector;
+    jsOpsAsyncHandlers = opVector;
   }
 
   function assert(cond) {
@@ -191,7 +184,7 @@ SharedQueue Binary Layout
   function handleAsyncMsgFromRust(opId, buf) {
     if (buf) {
       // This is the overflow_response case of deno::Isolate::poll().
-      const cb = asyncHandler ? asyncHandler : opsCb[opId];
+      const cb = asyncHandler ? asyncHandler : jsOpsAsyncHandlers[opId];
       cb(opId, buf);
     } else {
       while (true) {
@@ -199,7 +192,7 @@ SharedQueue Binary Layout
         if (opIdBuf == null) {
           break;
         }
-        const cb = asyncHandler ? asyncHandler : opsCb[opIdBuf[0]];
+        const cb = asyncHandler ? asyncHandler : jsOpsAsyncHandlers[opIdBuf[0]];
         cb(...opIdBuf);
       }
     }
@@ -208,6 +201,34 @@ SharedQueue Binary Layout
   function dispatch(opId, control, zeroCopy = null) {
     maybeInit();
     return Deno.core.send(opId, control, zeroCopy);
+  }
+
+  class Op {
+    constructor(name) {
+      if (typeof jsOpsMap.get(name) !== "undefined") {
+        throw new Error(`Duplicate op: ${name}`);
+      }
+
+      this.name = name;
+      this.opId = 0;
+      jsOpsMap.set(name, this);
+    }
+
+    setOpId(opId) {
+      this.opId = opId;
+    }
+
+    static handleAsyncMsgFromRust(_opId, _buf) {
+      throw new Error("Unimplemented");
+    }
+
+    static sendSync(_opId, _control, _zeroCopy = null) {
+      throw new Error("Unimplemented");
+    }
+
+    static sendAsync(_opId, _control, _zeroCopy = null) {
+      throw new Error("Unimplemented");
+    }
   }
 
   const denoCore = {
@@ -223,7 +244,7 @@ SharedQueue Binary Layout
       shift
     },
     initOps,
-    registerOp
+    Op
   };
 
   assert(window[GLOBAL_NAMESPACE] != null);
