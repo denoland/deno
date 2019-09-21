@@ -9,7 +9,7 @@ use std::collections::HashMap;
 #[derive(Default)]
 pub struct OpRegistry {
   pub ops: Vec<Box<CoreOpHandler>>,
-  pub phone_book: HashMap<String, OpId>,
+  pub op_map: HashMap<String, OpId>,
 }
 
 fn get_op_map(_control: &[u8], _zero_copy_buf: Option<PinnedBuf>) -> CoreOp {
@@ -25,7 +25,7 @@ impl OpRegistry {
   }
 
   pub fn get_op_map(&self) -> HashMap<String, OpId> {
-    self.phone_book.clone()
+    self.op_map.clone()
   }
 
   pub fn register_op(
@@ -36,7 +36,7 @@ impl OpRegistry {
     let op_id = self.ops.len() as u32;
 
     self
-      .phone_book
+      .op_map
       .entry(name.to_string())
       .and_modify(|_| panic!("Op already registered {}", op_id))
       .or_insert(op_id);
