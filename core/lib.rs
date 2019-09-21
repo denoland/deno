@@ -23,6 +23,7 @@ pub use crate::libdeno::OpId;
 pub use crate::libdeno::PinnedBuf;
 pub use crate::module_specifier::*;
 pub use crate::modules::*;
+pub use crate::ops::*;
 
 pub fn v8_version() -> &'static str {
   use std::ffi::CStr;

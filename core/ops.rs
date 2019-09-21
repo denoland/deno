@@ -1,10 +1,29 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::CoreOp;
-use crate::CoreOpHandler;
-use crate::Op;
-use crate::OpId;
+pub use crate::libdeno::OpId;
 use crate::PinnedBuf;
+use futures::Future;
 use std::collections::HashMap;
+
+pub type Buf = Box<[u8]>;
+
+pub type OpAsyncFuture<E> = Box<dyn Future<Item = Buf, Error = E> + Send>;
+
+pub(crate) type PendingOpFuture =
+  Box<dyn Future<Item = (OpId, Buf), Error = CoreError> + Send>;
+
+pub type OpResult<E> = Result<Op<E>, E>;
+
+pub enum Op<E> {
+  Sync(Buf),
+  Async(OpAsyncFuture<E>),
+}
+
+pub type CoreError = ();
+
+pub type CoreOp = Op<CoreError>;
+
+/// Main type describing op
+pub type CoreOpHandler = dyn Fn(&[u8], Option<PinnedBuf>) -> CoreOp;
 
 #[derive(Default)]
 pub struct OpRegistry {
