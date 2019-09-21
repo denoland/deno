@@ -1,6 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as dispatch from "./dispatch.ts";
-import { sendSync } from "./dispatch_json.ts";
+import { JsonOp } from "./dispatch_json.ts";
 
 /** Permissions as granted by the caller */
 export interface Permissions {
@@ -15,6 +14,8 @@ export interface Permissions {
 
 export type Permission = keyof Permissions;
 
+const OP_PERMISSIONS = new JsonOp("permissions");
+
 /** Inspect granted permissions for the current program.
  *
  *       if (Deno.permissions().read) {
@@ -23,8 +24,10 @@ export type Permission = keyof Permissions;
  *       }
  */
 export function permissions(): Permissions {
-  return sendSync(dispatch.OP_PERMISSIONS) as Permissions;
+  return OP_PERMISSIONS.sendSync() as Permissions;
 }
+
+const OP_REVOKE_PERMISSION = new JsonOp("revoke_permission");
 
 /** Revoke a permission. When the permission was already revoked nothing changes
  *
@@ -35,5 +38,5 @@ export function permissions(): Permissions {
  *       Deno.readFile("example.test"); // -> error or permission prompt
  */
 export function revokePermission(permission: Permission): void {
-  sendSync(dispatch.OP_REVOKE_PERMISSION, { permission });
+  return OP_REVOKE_PERMISSION.sendSync({ permission });
 }

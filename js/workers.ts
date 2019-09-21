@@ -1,7 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import * as dispatch from "./dispatch.ts";
-import { sendAsync, sendSync } from "./dispatch_json.ts";
+import { JsonOp } from "./dispatch_json.ts";
 import { log } from "./util.ts";
 import { TextDecoder, TextEncoder } from "./text_encoding.ts";
 import { window } from "./window.ts";
@@ -10,6 +9,13 @@ import { blobBytesWeakMap } from "./blob.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
+
+const OP_CREATE_WORKER = new JsonOp("create_worker");
+const OP_HOST_GET_WORKER_CLOSED = new JsonOp("host_get_worker_closed");
+const OP_HOST_POST_MESSAGE = new JsonOp("host_post_message");
+const OP_HOST_GET_MESSAGE = new JsonOp("host_get_message");
+const OP_WORKER_POST_MESSAGE = new JsonOp("worker_post_message");
+const OP_WORKER_GET_MESSAGE = new JsonOp("worker_get_message");
 
 export function encodeMessage(data: any): Uint8Array {
   const dataJson = JSON.stringify(data);
@@ -27,7 +33,7 @@ function createWorker(
   hasSourceCode: boolean,
   sourceCode: Uint8Array
 ): number {
-  return sendSync(dispatch.OP_CREATE_WORKER, {
+  return OP_CREATE_WORKER.sendSync({
     specifier,
     includeDenoNamespace,
     hasSourceCode,
@@ -36,16 +42,16 @@ function createWorker(
 }
 
 async function hostGetWorkerClosed(rid: number): Promise<void> {
-  await sendAsync(dispatch.OP_HOST_GET_WORKER_CLOSED, { rid });
+  await OP_HOST_GET_WORKER_CLOSED.sendAsync({ rid });
 }
 
 function hostPostMessage(rid: number, data: any): void {
   const dataIntArray = encodeMessage(data);
-  sendSync(dispatch.OP_HOST_POST_MESSAGE, { rid }, dataIntArray);
+  OP_HOST_POST_MESSAGE.sendSync({ rid }, dataIntArray);
 }
 
 async function hostGetMessage(rid: number): Promise<any> {
-  const res = await sendAsync(dispatch.OP_HOST_GET_MESSAGE, { rid });
+  const res = await OP_HOST_GET_MESSAGE.sendAsync({ rid });
 
   if (res.data != null) {
     return decodeMessage(new Uint8Array(res.data));
@@ -59,12 +65,12 @@ export const onmessage: (e: { data: any }) => void = (): void => {};
 
 export function postMessage(data: any): void {
   const dataIntArray = encodeMessage(data);
-  sendSync(dispatch.OP_WORKER_POST_MESSAGE, {}, dataIntArray);
+  OP_WORKER_POST_MESSAGE.sendSync({}, dataIntArray);
 }
 
 export async function getMessage(): Promise<any> {
   log("getMessage");
-  const res = await sendAsync(dispatch.OP_WORKER_GET_MESSAGE);
+  const res = await OP_WORKER_GET_MESSAGE.sendAsync();
 
   if (res.data != null) {
     return decodeMessage(new Uint8Array(res.data));

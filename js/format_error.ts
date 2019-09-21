@@ -1,9 +1,10 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as dispatch from "./dispatch.ts";
-import { sendSync } from "./dispatch_json.ts";
+import { JsonOp } from "./dispatch_json.ts";
+
+const OP_FORMAT_ERROR = new JsonOp("format_error");
 
 // TODO(bartlomieju): move to `repl.ts`?
 export function formatError(errString: string): string {
-  const res = sendSync(dispatch.OP_FORMAT_ERROR, { error: errString });
+  const res = OP_FORMAT_ERROR.sendSync({ error: errString });
   return res.error;
 }

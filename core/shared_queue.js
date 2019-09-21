@@ -67,6 +67,9 @@ SharedQueue Binary Layout
     rustOpsMap = JSON.parse(opsMapJson);
     const opVector = new Array(Object.keys(rustOpsMap).length);
 
+    core.print(`rustOpsMap ${opsMapJson}\n`);
+    core.print(`jsOpsMap ${JSON.stringify(jsOpsMap)}\n`);
+
     for (const [name, opId] of Object.entries(rustOpsMap)) {
       const op = jsOpsMap.get(name);
 
@@ -74,6 +77,7 @@ SharedQueue Binary Layout
         continue;
       }
 
+      core.print(`op ${opId} ${name} ${op}`);
       op.setOpId(opId);
       opVector[opId] = op.constructor.handleAsyncMsgFromRust;
     }
@@ -203,9 +207,10 @@ SharedQueue Binary Layout
     return Deno.core.send(opId, control, zeroCopy);
   }
 
-
   class Op {
     constructor(name) {
+      core.print("registering op " + name + "\n", true);
+      throw new Error(`Registering op: ${name}`);
       if (typeof jsOpsMap.get(name) !== "undefined") {
         throw new Error(`Duplicate op: ${name}`);
       }
@@ -232,12 +237,6 @@ SharedQueue Binary Layout
     }
   }
 
-  function refreshOpsMap() {
-    const opsMapBytes = Deno.core.send(0, []);
-    const opsMapJson = String.fromCharCode.apply(null, opsMapBytes);
-    Deno.core.opsMap = JSON.parse(opsMapJson);
-  }
-
   const denoCore = {
     setAsyncHandler,
     dispatch,
@@ -251,9 +250,7 @@ SharedQueue Binary Layout
       shift
     },
     initOps,
-    Op,
-    opsMap: {},
-    refreshOpsMap
+    Op
   };
 
   assert(window[GLOBAL_NAMESPACE] != null);

@@ -23,8 +23,8 @@ interface EvalErrorInfo {
 declare type OpId = number;
 
 declare class Op {
-  name: string;
-  opId: OpId;
+  public name: string;
+  public opId: OpId;
 
   constructor(name: string);
 
@@ -32,13 +32,15 @@ declare class Op {
 
   static handleAsyncMsgFromRust(opId: OpId, buf: Uint8Array): void;
 
-  static sendSync(opId: OpId, control: Uint8Array, zeroCopy?: Uint8Array): void;
+  // eslint-disable @typescript-eslint/no-explicit-any
+  static sendSync(opId: OpId, control: any, zeroCopy?: Uint8Array): any;
 
   static sendAsync(
     opId: OpId,
-    control: Uint8Array,
+    control: any,
     zeroCopy?: Uint8Array
-  ): void;
+  ): Promise<any>;
+  // eslint-enable @typescript-eslint/no-explicit-any
 }
 
 declare interface DenoCore {

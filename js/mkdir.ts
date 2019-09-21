@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { sendSync, sendAsync } from "./dispatch_json.ts";
-import * as dispatch from "./dispatch.ts";
+import { JsonOp } from "./dispatch_json.ts";
+
+const OP_MKDIR = new JsonOp("mkdir");
 
 /** Creates a new directory with the specified path synchronously.
  * If `recursive` is set to true, nested directories will be created (also known
@@ -12,7 +13,7 @@ import * as dispatch from "./dispatch.ts";
  *       Deno.mkdirSync("nested/directories", true);
  */
 export function mkdirSync(path: string, recursive = false, mode = 0o777): void {
-  sendSync(dispatch.OP_MKDIR, { path, recursive, mode });
+  OP_MKDIR.sendSync({ path, recursive, mode });
 }
 
 /** Creates a new directory with the specified path.
@@ -29,5 +30,5 @@ export async function mkdir(
   recursive = false,
   mode = 0o777
 ): Promise<void> {
-  await sendAsync(dispatch.OP_MKDIR, { path, recursive, mode });
+  await OP_MKDIR.sendAsync({ path, recursive, mode });
 }

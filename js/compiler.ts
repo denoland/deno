@@ -9,8 +9,7 @@ import { Console } from "./console.ts";
 import { core } from "./core.ts";
 import { Diagnostic, fromTypeScriptDiagnostic } from "./diagnostics.ts";
 import { cwd } from "./dir.ts";
-import * as dispatch from "./dispatch.ts";
-import { sendSync } from "./dispatch_json.ts";
+import { JsonOp } from "./dispatch_json.ts";
 import * as os from "./os.ts";
 import { TextEncoder } from "./text_encoding.ts";
 import { getMappedModuleName, parseTypeDirectives } from "./type_directives.ts";
@@ -132,8 +131,12 @@ interface EmitResult {
   diagnostics?: Diagnostic;
 }
 
+const OP_FETCH_ASSET = new JsonOp("fetch_asset");
+const OP_FETCH_SOURCE_FILES = new JsonOp("op_fetch_source_files");
+const OP_CACHE = new JsonOp("cache");
+
 function fetchAsset(name: string): string {
-  return sendSync(dispatch.OP_FETCH_ASSET, { name });
+  return OP_FETCH_ASSET.sendSync({ name });
 }
 
 /** Ops to Rust to resolve and fetch modules meta data. */
@@ -142,7 +145,7 @@ function fetchSourceFiles(
   referrer: string
 ): SourceFile[] {
   util.log("compiler.fetchSourceFiles", { specifiers, referrer });
-  const res = sendSync(dispatch.OP_FETCH_SOURCE_FILES, {
+  const res = OP_FETCH_SOURCE_FILES.sendSync({
     specifiers,
     referrer
   });
@@ -175,7 +178,7 @@ function humanFileSize(bytes: number): string {
 
 /** Ops to rest for caching source map and compiled js */
 function cache(extension: string, moduleId: string, contents: string): void {
-  sendSync(dispatch.OP_CACHE, { extension, moduleId, contents });
+  OP_CACHE.sendSync({ extension, moduleId, contents });
 }
 
 const encoder = new TextEncoder();

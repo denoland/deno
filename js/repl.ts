@@ -5,8 +5,7 @@ import { window } from "./window.ts";
 import { core } from "./core.ts";
 import { formatError } from "./format_error.ts";
 import { stringifyArgs } from "./console.ts";
-import * as dispatch from "./dispatch.ts";
-import { sendSync, sendAsync } from "./dispatch_json.ts";
+import { JsonOp } from "./dispatch_json.ts";
 
 const { console } = window;
 
@@ -46,13 +45,16 @@ const replCommands = {
   }
 };
 
+const OP_REPL_START = new JsonOp("repl_start");
+const OP_REPL_READLINE = new JsonOp("repl_readline");
+
 function startRepl(historyFile: string): number {
-  return sendSync(dispatch.OP_REPL_START, { historyFile });
+  return OP_REPL_START.sendSync({ historyFile });
 }
 
 // @internal
 export async function readline(rid: number, prompt: string): Promise<string> {
-  return sendAsync(dispatch.OP_REPL_READLINE, { rid, prompt });
+  return OP_REPL_READLINE.sendAsync({ rid, prompt });
 }
 
 // Error messages that allow users to continue input

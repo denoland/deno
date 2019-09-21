@@ -1,8 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 // Some of the code here is adapted directly from V8 and licensed under a BSD
 // style license available here: https://github.com/v8/v8/blob/24886f2d1c565287d33d71e4109a53bf0b54b75c/LICENSE.v8
-import * as dispatch from "./dispatch.ts";
-import { sendSync } from "./dispatch_json.ts";
+import { JsonOp } from "./dispatch_json.ts";
 import { assert } from "./util.ts";
 
 export interface Location {
@@ -16,6 +15,8 @@ export interface Location {
   /** The column number in the file.  It is assumed to be 1-indexed. */
   column: number;
 }
+
+const OP_APPLY_SOURCE_MAP = new JsonOp("apply_source_map");
 
 /** Given a current location in a module, lookup the source location and
  * return it.
@@ -43,7 +44,7 @@ export function applySourceMap(location: Location): Location {
   const { filename, line, column } = location;
   // On this side, line/column are 1 based, but in the source maps, they are
   // 0 based, so we have to convert back and forth
-  const res = sendSync(dispatch.OP_APPLY_SOURCE_MAP, {
+  const res = OP_APPLY_SOURCE_MAP.sendSync({
     filename,
     line: line - 1,
     column: column - 1

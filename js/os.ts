@@ -1,7 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { core } from "./core.ts";
-import * as dispatch from "./dispatch.ts";
-import { sendSync } from "./dispatch_json.ts";
+import { JsonOp } from "./dispatch_json.ts";
 import { assert } from "./util.ts";
 import * as util from "./util.ts";
 import { window } from "./window.ts";
@@ -10,23 +9,31 @@ import { OperatingSystem, Arch } from "./build.ts";
 // builtin modules
 import { _setGlobals } from "./deno.ts";
 
+const OP_IS_TTY = new JsonOp("is_tty");
+
 /** Check if running in terminal.
  *
  *       console.log(Deno.isTTY().stdout);
  */
 export function isTTY(): { stdin: boolean; stdout: boolean; stderr: boolean } {
-  return sendSync(dispatch.OP_IS_TTY);
+  return OP_IS_TTY.sendSync();
 }
+
+const OP_EXIT = new JsonOp("exit");
 
 /** Exit the Deno process with optional exit code. */
 export function exit(code = 0): never {
-  sendSync(dispatch.OP_EXIT, { code });
+  OP_EXIT.sendSync({ code });
   return util.unreachable();
 }
 
+const OP_SET_ENV = new JsonOp("set_env");
+
 function setEnv(key: string, value: string): void {
-  sendSync(dispatch.OP_SET_ENV, { key, value });
+  OP_SET_ENV.sendSync({ key, value });
 }
+
+const OP_ENV = new JsonOp("env");
 
 /** Returns a snapshot of the environment variables at invocation. Mutating a
  * property in the object will set that variable in the environment for
@@ -40,7 +47,7 @@ function setEnv(key: string, value: string): void {
  *       console.log(myEnv.TEST_VAR == newEnv.TEST_VAR);
  */
 export function env(): { [index: string]: string } {
-  const env = sendSync(dispatch.OP_ENV);
+  const env = OP_ENV.sendSync();
   return new Proxy(env, {
     set(obj, prop: string, value: string): boolean {
       setEnv(prop, value);
@@ -67,16 +74,19 @@ interface Start {
   arch: Arch;
 }
 
+const OP_START = new JsonOp("start");
+
 // This function bootstraps an environment within Deno, it is shared both by
 // the runtime and the compiler environments.
 // @internal
 export function start(preserveDenoNamespace = true, source?: string): Start {
-  core.setAsyncHandler(dispatch.asyncMsgFromRust);
-
+  core.initOps();
+  // @ts-ignore
+  window.console.error("op start", OP_START, OP_START.opId);
   // First we send an empty `Start` message to let the privileged side know we
   // are ready. The response should be a `StartRes` message containing the CLI
   // args and other info.
-  const s = sendSync(dispatch.OP_START);
+  const s = OP_START.sendSync();
 
   util.setLogDebug(s.debugFlag, source);
 
@@ -102,22 +112,25 @@ export function start(preserveDenoNamespace = true, source?: string): Start {
   return s;
 }
 
+const OP_HOME_DIR = new JsonOp("home_dir");
+
 /**
  * Returns the current user's home directory.
  * Requires the `--allow-env` flag.
  */
 export function homeDir(): string {
-  const path = sendSync(dispatch.OP_HOME_DIR);
+  const path = OP_HOME_DIR.sendSync();
   if (!path) {
     throw new Error("Could not get home directory.");
   }
   return path;
 }
 
+const OP_EXEC_PATH = new JsonOp("exec_path");
 /**
  * Returns the path to the current deno executable.
  * Requires the `--allow-env` flag.
  */
 export function execPath(): string {
-  return sendSync(dispatch.OP_EXEC_PATH);
+  return OP_EXEC_PATH.sendSync();
 }

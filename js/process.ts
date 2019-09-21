@@ -1,6 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { sendSync, sendAsync } from "./dispatch_json.ts";
-import * as dispatch from "./dispatch.ts";
+import { JsonOp } from "./dispatch_json.ts";
 import { File, close } from "./files.ts";
 import { ReadCloser, WriteCloser } from "./io.ts";
 import { readAll } from "./buffer.ts";
@@ -37,8 +36,10 @@ interface RunStatusResponse {
   exitSignal: number;
 }
 
+const OP_RUN_STATUS = new JsonOp("run_status");
+
 async function runStatus(rid: number): Promise<ProcessStatus> {
-  const res = (await sendAsync(dispatch.OP_RUN_STATUS, {
+  const res = (await OP_RUN_STATUS.sendAsync({
     rid
   })) as RunStatusResponse;
 
@@ -51,13 +52,15 @@ async function runStatus(rid: number): Promise<ProcessStatus> {
   }
 }
 
+const OP_KILL = new JsonOp("kill");
+
 /** Send a signal to process under given PID. Unix only at this moment.
  * If pid is negative, the signal will be sent to the process group identified
  * by -pid.
  * Requires the `--allow-run` flag.
  */
 export function kill(pid: number, signo: number): void {
-  sendSync(dispatch.OP_KILL, { pid, signo });
+  OP_KILL.sendSync({ pid, signo });
 }
 
 export class Process {
@@ -157,6 +160,9 @@ interface RunResponse {
   stdoutRid: number | null;
   stderrRid: number | null;
 }
+
+const OP_RUN = new JsonOp("run");
+
 /**
  * Spawns new subprocess.
  *
@@ -220,7 +226,7 @@ export function run(opt: RunOptions): Process {
     stderrRid
   };
 
-  const res = sendSync(dispatch.OP_RUN, req) as RunResponse;
+  const res = OP_RUN.sendSync(req) as RunResponse;
   return new Process(res);
 }
 

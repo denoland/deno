@@ -1,8 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { assert } from "./util.ts";
 import { window } from "./window.ts";
-import * as dispatch from "./dispatch.ts";
-import { sendSync, sendAsync } from "./dispatch_json.ts";
+import { JsonOp } from "./dispatch_json.ts";
 
 const { console } = window;
 
@@ -39,9 +38,12 @@ function getTime(): number {
   return now;
 }
 
+const OP_GLOBAL_TIMER_STOP = new JsonOp("global_timer_stop");
+const OP_GLOBAL_TIMER = new JsonOp("global_timer");
+
 function clearGlobalTimeout(): void {
   globalTimeoutDue = null;
-  sendSync(dispatch.OP_GLOBAL_TIMER_STOP);
+  OP_GLOBAL_TIMER_STOP.sendSync();
 }
 
 async function setGlobalTimeout(due: number, now: number): Promise<void> {
@@ -53,7 +55,7 @@ async function setGlobalTimeout(due: number, now: number): Promise<void> {
 
   // Send message to the backend.
   globalTimeoutDue = due;
-  await sendAsync(dispatch.OP_GLOBAL_TIMER, { timeout });
+  await OP_GLOBAL_TIMER.sendAsync({ timeout });
   // eslint-disable-next-line @typescript-eslint/no-use-before-define
   fireTimers();
 }

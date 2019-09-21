@@ -1,6 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { sendSync, sendAsync } from "./dispatch_json.ts";
-import * as dispatch from "./dispatch.ts";
+import { JsonOp } from "./dispatch_json.ts";
 import { FileInfo, FileInfoImpl } from "./file_info.ts";
 import { StatResponse } from "./stat.ts";
 
@@ -16,13 +15,15 @@ function res(response: ReadDirResponse): FileInfo[] {
   );
 }
 
+const OP_READ_DIR = new JsonOp("read_dir");
+
 /** Reads the directory given by path and returns a list of file info
  * synchronously.
  *
  *       const files = Deno.readDirSync("/");
  */
 export function readDirSync(path: string): FileInfo[] {
-  return res(sendSync(dispatch.OP_READ_DIR, { path }));
+  return res(OP_READ_DIR.sendSync({ path }));
 }
 
 /** Reads the directory given by path and returns a list of file info.
@@ -30,5 +31,5 @@ export function readDirSync(path: string): FileInfo[] {
  *       const files = await Deno.readDir("/");
  */
 export async function readDir(path: string): Promise<FileInfo[]> {
-  return res(await sendAsync(dispatch.OP_READ_DIR, { path }));
+  return res(await OP_READ_DIR.sendAsync({ path }));
 }

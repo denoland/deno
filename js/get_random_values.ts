@@ -1,7 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import * as dispatch from "./dispatch.ts";
-import { sendSync } from "./dispatch_json.ts";
+import { JsonOp } from "./dispatch_json.ts";
 import { assert } from "./util.ts";
+
+const OP_GET_RANDOM_VALUES = new JsonOp("op_random_values");
 
 /** Synchronously collects cryptographically secure random values. The
  * underlying CSPRNG in use is Rust's `rand::rngs::ThreadRng`.
@@ -26,6 +27,6 @@ export function getRandomValues<
     typedArray.byteOffset,
     typedArray.byteLength
   );
-  sendSync(dispatch.OP_GET_RANDOM_VALUES, {}, ui8);
+  OP_GET_RANDOM_VALUES.sendSync({}, ui8);
   return typedArray;
 }

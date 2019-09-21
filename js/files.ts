@@ -10,12 +10,10 @@ import {
   SyncWriter,
   SyncSeeker
 } from "./io.ts";
-import { sendAsyncMinimal, sendSyncMinimal } from "./dispatch_minimal.ts";
-import * as dispatch from "./dispatch.ts";
-import {
-  sendSync as sendSyncJson,
-  sendAsync as sendAsyncJson
-} from "./dispatch_json.ts";
+import { MinimalOp } from "./dispatch_minimal.ts";
+import { JsonOp } from "./dispatch_json.ts";
+
+const OP_OPEN = new JsonOp("open");
 
 /** Open a file and return an instance of the `File` object
  *  synchronously.
@@ -23,7 +21,7 @@ import {
  *       const file = Deno.openSync("/foo/bar.txt");
  */
 export function openSync(filename: string, mode: OpenMode = "r"): File {
-  const rid = sendSyncJson(dispatch.OP_OPEN, { filename, mode });
+  const rid = OP_OPEN.sendSync({ filename, mode });
   return new File(rid);
 }
 
@@ -37,9 +35,11 @@ export async function open(
   filename: string,
   mode: OpenMode = "r"
 ): Promise<File> {
-  const rid = await sendAsyncJson(dispatch.OP_OPEN, { filename, mode });
+  const rid = await OP_OPEN.sendAsync({ filename, mode });
   return new File(rid);
 }
+
+const OP_READ = new MinimalOp("read");
 
 /** Read synchronously from a file ID into an array buffer.
  *
@@ -52,7 +52,7 @@ export async function open(
  *
  */
 export function readSync(rid: number, p: Uint8Array): number | EOF {
-  const nread = sendSyncMinimal(dispatch.OP_READ, rid, p);
+  const nread = OP_READ.sendSync(rid, p);
   if (nread < 0) {
     throw new Error("read error");
   } else if (nread == 0) {
@@ -74,7 +74,7 @@ export function readSync(rid: number, p: Uint8Array): number | EOF {
  *       })();
  */
 export async function read(rid: number, p: Uint8Array): Promise<number | EOF> {
-  const nread = await sendAsyncMinimal(dispatch.OP_READ, rid, p);
+  const nread = await OP_READ.sendAsync(rid, p);
   if (nread < 0) {
     throw new Error("read error");
   } else if (nread == 0) {
@@ -83,6 +83,8 @@ export async function read(rid: number, p: Uint8Array): Promise<number | EOF> {
     return nread;
   }
 }
+
+const OP_WRITE = new MinimalOp("write");
 
 /** Write synchronously to the file ID the contents of the array buffer.
  *
@@ -94,7 +96,7 @@ export async function read(rid: number, p: Uint8Array): Promise<number | EOF> {
  *       Deno.writeSync(file.rid, data);
  */
 export function writeSync(rid: number, p: Uint8Array): number {
-  const result = sendSyncMinimal(dispatch.OP_WRITE, rid, p);
+  const result = OP_WRITE.sendSync(rid, p);
   if (result < 0) {
     throw new Error("write error");
   } else {
@@ -115,7 +117,7 @@ export function writeSync(rid: number, p: Uint8Array): number {
  *
  */
 export async function write(rid: number, p: Uint8Array): Promise<number> {
-  const result = await sendAsyncMinimal(dispatch.OP_WRITE, rid, p);
+  const result = await OP_WRITE.sendAsync(rid, p);
   if (result < 0) {
     throw new Error("write error");
   } else {
@@ -123,13 +125,15 @@ export async function write(rid: number, p: Uint8Array): Promise<number> {
   }
 }
 
+const OP_SEEK = new JsonOp("seek");
+
 /** Seek a file ID synchronously to the given offset under mode given by `whence`.
  *
  *       const file = Deno.openSync("/foo/bar.txt");
  *       Deno.seekSync(file.rid, 0, 0);
  */
 export function seekSync(rid: number, offset: number, whence: SeekMode): void {
-  sendSyncJson(dispatch.OP_SEEK, { rid, offset, whence });
+  OP_SEEK.sendSync({ rid, offset, whence });
 }
 
 /** Seek a file ID to the given offset under mode given by `whence`.
@@ -144,12 +148,14 @@ export async function seek(
   offset: number,
   whence: SeekMode
 ): Promise<void> {
-  await sendAsyncJson(dispatch.OP_SEEK, { rid, offset, whence });
+  await OP_SEEK.sendAsync({ rid, offset, whence });
 }
+
+const OP_CLOSE = new JsonOp("close");
 
 /** Close the file ID. */
 export function close(rid: number): void {
-  sendSyncJson(dispatch.OP_CLOSE, { rid });
+  OP_CLOSE.sendSync({ rid });
 }
 
 /** The Deno abstraction for reading and writing files. */

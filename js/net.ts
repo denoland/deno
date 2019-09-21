@@ -2,8 +2,7 @@
 import { EOF, Reader, Writer, Closer } from "./io.ts";
 import { notImplemented } from "./util.ts";
 import { read, write, close } from "./files.ts";
-import * as dispatch from "./dispatch.ts";
-import { sendSync, sendAsync } from "./dispatch_json.ts";
+import { JsonOp } from "./dispatch_json.ts";
 
 export type Transport = "tcp";
 // TODO support other types:
@@ -40,8 +39,10 @@ enum ShutdownMode {
   ReadWrite // unused
 }
 
+const OP_SHUTDOWN = new JsonOp("shutdown");
+
 function shutdown(rid: number, how: ShutdownMode): void {
-  sendSync(dispatch.OP_SHUTDOWN, { rid, how });
+  OP_SHUTDOWN.sendSync({ rid, how });
 }
 
 class ConnImpl implements Conn {
@@ -78,6 +79,8 @@ class ConnImpl implements Conn {
   }
 }
 
+const OP_ACCEPT = new JsonOp("accept");
+
 class ListenerImpl implements Listener {
   constructor(
     readonly rid: number,
@@ -86,7 +89,7 @@ class ListenerImpl implements Listener {
   ) {}
 
   async accept(): Promise<Conn> {
-    const res = await sendAsync(dispatch.OP_ACCEPT, { rid: this.rid });
+    const res = await OP_ACCEPT.sendAsync({ rid: this.rid });
     return new ConnImpl(res.rid, res.remoteAddr, res.localAddr);
   }
 
@@ -137,6 +140,7 @@ export interface ListenOptions {
 }
 const listenDefaults = { hostname: "0.0.0.0", transport: "tcp" };
 
+const OP_LISTEN = new JsonOp("listen");
 /** Listen announces on the local transport address.
  *
  * @param options
@@ -156,7 +160,7 @@ const listenDefaults = { hostname: "0.0.0.0", transport: "tcp" };
  */
 export function listen(options: ListenOptions): Listener {
   options = Object.assign(listenDefaults, options);
-  const res = sendSync(dispatch.OP_LISTEN, options);
+  const res = OP_LISTEN.sendSync(options);
   return new ListenerImpl(res.rid, options.transport, res.localAddr);
 }
 
@@ -167,6 +171,7 @@ export interface DialOptions {
 }
 const dialDefaults = { hostname: "127.0.0.1", transport: "tcp" };
 
+const OP_DIAL = new JsonOp("dial");
 /** Dial connects to the address on the named transport.
  *
  * @param options
@@ -186,8 +191,7 @@ const dialDefaults = { hostname: "127.0.0.1", transport: "tcp" };
  */
 export async function dial(options: DialOptions): Promise<Conn> {
   options = Object.assign(dialDefaults, options);
-  const res = await sendAsync(dispatch.OP_DIAL, options);
-  // TODO(bartlomieju): add remoteAddr and localAddr on Rust side
+  const res = await OP_DIAL.sendAsync(options);
   return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);
 }
 

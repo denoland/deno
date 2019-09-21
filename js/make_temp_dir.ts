@@ -1,6 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { sendSync, sendAsync } from "./dispatch_json.ts";
-import * as dispatch from "./dispatch.ts";
+import { JsonOp } from "./dispatch_json.ts";
 
 export interface MakeTempDirOptions {
   dir?: string;
@@ -8,13 +7,15 @@ export interface MakeTempDirOptions {
   suffix?: string;
 }
 
+const OP_MAKE_TEMP_DIR = new JsonOp("make_temp_dir");
+
 /** makeTempDirSync is the synchronous version of `makeTempDir`.
  *
  *       const tempDirName0 = Deno.makeTempDirSync();
  *       const tempDirName1 = Deno.makeTempDirSync({ prefix: 'my_temp' });
  */
 export function makeTempDirSync(options: MakeTempDirOptions = {}): string {
-  return sendSync(dispatch.OP_MAKE_TEMP_DIR, options);
+  return OP_MAKE_TEMP_DIR.sendSync(options);
 }
 
 /** makeTempDir creates a new temporary directory in the directory `dir`, its
@@ -31,5 +32,5 @@ export function makeTempDirSync(options: MakeTempDirOptions = {}): string {
 export async function makeTempDir(
   options: MakeTempDirOptions = {}
 ): Promise<string> {
-  return await sendAsync(dispatch.OP_MAKE_TEMP_DIR, options);
+  return await OP_MAKE_TEMP_DIR.sendAsync(options);
 }
