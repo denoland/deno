@@ -28,7 +28,7 @@ declare class Op {
 
   constructor(name: string);
 
-  setOpId(opId: Opid): void;
+  setOpId(opId: OpId): void;
 
   static handleAsyncMsgFromRust(opId: OpId, buf: Uint8Array): void;
 
@@ -58,7 +58,7 @@ declare interface DenoCore {
     shift(): Uint8Array | null;
   };
 
-  Op: Op;
+  Op: typeof Op;
   initOps(): void;
 
   recv(cb: MessageCallback): void;
