@@ -59,16 +59,16 @@ impl Worker {
         state_.serialize_cli_op(serialize_json(os::op_exec_path)),
       );
       i.register_op(
-        "home_dir",
-        state_.serialize_cli_op(serialize_json(os::op_home_dir)),
-      );
-      i.register_op(
         "utime",
         state_.serialize_cli_op(serialize_json(fs::op_utime)),
       );
       i.register_op(
         "set_env",
         state_.serialize_cli_op(serialize_json(os::op_set_env)),
+      );
+      i.register_op(
+        "home_dir",
+        state_.serialize_cli_op(serialize_json(os::op_home_dir)),
       );
       i.register_op(
         "start",
@@ -104,12 +104,12 @@ impl Worker {
         state_.serialize_cli_op(serialize_json(files::op_seek)),
       );
       i.register_op(
-        "metrics",
-        state_.serialize_cli_op(serialize_json(metrics::op_metrics)),
-      );
-      i.register_op(
         "fetch",
         state_.serialize_cli_op(serialize_json(fetch::op_fetch)),
+      );
+      i.register_op(
+        "metrics",
+        state_.serialize_cli_op(serialize_json(metrics::op_metrics)),
       );
       i.register_op(
         "repl_start",
