@@ -191,14 +191,16 @@ SharedQueue Binary Layout
   function handleAsyncMsgFromRust(opId, buf) {
     if (buf) {
       // This is the overflow_response case of deno::Isolate::poll().
-      opsCb[opId](opId, buf);
+      const cb = asyncHandler ? asyncHandler : opsCb[opId];
+      cb(opId, buf);
     } else {
       while (true) {
         const opIdBuf = shift();
         if (opIdBuf == null) {
           break;
         }
-        opsCb[opIdBuf[0]](...opIdBuf);
+        const cb = asyncHandler ? asyncHandler : opsCb[opIdBuf[0]];
+        cb(...opIdBuf);
       }
     }
   }
