@@ -160,6 +160,23 @@ test(async function bufioBufferFull(): Promise<void> {
   assertEquals(actual, "world!");
 });
 
+test(async function bufioReadString(): Promise<void> {
+  const string = "And now, hello, world!";
+  const buf = new BufReader(stringsReader(string), MIN_READ_BUFFER_SIZE);
+
+  const line = assertNotEOF(await buf.readString(","));
+  assertEquals(line, "And now,");
+  assertEquals(line.length, 8);
+
+  try {
+    await buf.readString("deno");
+
+    fail("should throw");
+  } catch (err) {
+    assert(err.message, "Delimiter should be a single character");
+  }
+});
+
 const testInput = encoder.encode(
   "012\n345\n678\n9ab\ncde\nfgh\nijk\nlmn\nopq\nrst\nuvw\nxy"
 );
