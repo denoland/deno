@@ -999,8 +999,17 @@ declare namespace Deno {
    */
   export function dial(options: DialOptions): Promise<Conn>;
 
-  // @url js/metrics.d.ts
+  export interface DialTLSOptions {
+    port: number;
+    hostname?: string;
+  }
 
+  /**
+   * dialTLS establishes a secure connection over TLS (transport layer security).
+   */
+  export function dialTLS(options: DialTLSOptions): Promise<Conn>;
+
+  // @url js/metrics.d.ts
   export interface Metrics {
     opsDispatched: number;
     opsCompleted: number;
