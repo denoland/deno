@@ -14,7 +14,7 @@ import util
 
 MB = 1024 * 1024
 SERVER_ADDR = "0.0.0.0:4544"
-CLIEN_ADDR = "127.0.0.1:4544"
+CLIENT_ADDR = "127.0.0.1 4544"
 
 
 def cat(deno_exe, megs):
@@ -37,8 +37,7 @@ def tcp(deno_exe, megs):
     time.sleep(5)  # wait for deno to wake up. TODO racy.
     try:
         start = time.time()
-        cmd = ("head -c %s /dev/zero " % size) + "| nc " + CLIENT_ADDR.replace(
-            ":", " ")
+        cmd = ("head -c %s /dev/zero " % size) + "| nc " + CLIENT_ADDR
         print cmd
         subprocess.check_output(cmd, shell=True)
         end = time.time()
