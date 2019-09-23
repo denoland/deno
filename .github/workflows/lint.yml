@@ -5,7 +5,7 @@ on: [push, pull_request]
 jobs:
   clippy:
     name: lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-16.04
     steps:
       - name: Configure git
         run: git config --global core.symlinks true
