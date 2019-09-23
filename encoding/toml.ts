@@ -387,6 +387,18 @@ class Parser {
   }
 }
 
+// Bare keys may only contain ASCII letters,
+// ASCII digits, underscores, and dashes (A-Za-z0-9_-).
+function joinKeys(keys: string[]): string {
+  // Dotted keys are a sequence of bare or quoted keys joined with a dot.
+  // This allows for grouping similar properties together:
+  return keys
+    .map((str: string): string => {
+      return str.match(/[^A-Za-z0-9_-]/) ? `"${str}"` : str;
+    })
+    .join(".");
+}
+
 class Dumper {
   maxPad: number = 0;
   srcObject: object;
@@ -400,7 +412,7 @@ class Dumper {
     this.output = this._format();
     return this.output;
   }
-  _parse(obj: Record<string, unknown>, path: string = ""): string[] {
+  _parse(obj: Record<string, unknown>, keys: string[] = []): string[] {
     const out = [];
     const props = Object.keys(obj);
     const propObj = props.filter((e: string): boolean => {
@@ -422,17 +434,17 @@ class Dumper {
       const prop = k[i];
       const value = obj[prop];
       if (value instanceof Date) {
-        out.push(this._dateDeclaration(prop, value));
+        out.push(this._dateDeclaration([prop], value));
       } else if (typeof value === "string" || value instanceof RegExp) {
-        out.push(this._strDeclaration(prop, value.toString()));
+        out.push(this._strDeclaration([prop], value.toString()));
       } else if (typeof value === "number") {
-        out.push(this._numberDeclaration(prop, value));
+        out.push(this._numberDeclaration([prop], value));
       } else if (
         value instanceof Array &&
         this._isSimplySerializable(value[0])
       ) {
         // only if primitives types in the array
-        out.push(this._arrayDeclaration(prop, value));
+        out.push(this._arrayDeclaration([prop], value));
       } else if (
         value instanceof Array &&
         !this._isSimplySerializable(value[0])
@@ -440,15 +452,15 @@ class Dumper {
         // array of objects
         for (let i = 0; i < value.length; i++) {
           out.push("");
-          out.push(this._headerGroup(path + prop));
-          out.push(...this._parse(value[i], `${path}${prop}.`));
+          out.push(this._headerGroup([...keys, prop]));
+          out.push(...this._parse(value[i], [...keys, prop]));
         }
       } else if (typeof value === "object") {
         out.push("");
-        out.push(this._header(path + prop));
+        out.push(this._header([...keys, prop]));
         if (value) {
           const toParse = value as Record<string, unknown>;
-          out.push(...this._parse(toParse, `${path}${prop}.`));
+          out.push(...this._parse(toParse, [...keys, prop]));
         }
         // out.push(...this._parse(value, `${path}${prop}.`));
       }
@@ -465,35 +477,36 @@ class Dumper {
       value instanceof Array
     );
   }
-  _header(title: string): string {
-    return `[${title}]`;
+  _header(keys: string[]): string {
+    return `[${joinKeys(keys)}]`;
   }
-  _headerGroup(title: string): string {
-    return `[[${title}]]`;
+  _headerGroup(keys: string[]): string {
+    return `[[${joinKeys(keys)}]]`;
   }
-  _declaration(title: string): string {
+  _declaration(keys: string[]): string {
+    const title = joinKeys(keys);
     if (title.length > this.maxPad) {
       this.maxPad = title.length;
     }
     return `${title} = `;
   }
-  _arrayDeclaration(title: string, value: unknown[]): string {
-    return `${this._declaration(title)}${JSON.stringify(value)}`;
+  _arrayDeclaration(keys: string[], value: unknown[]): string {
+    return `${this._declaration(keys)}${JSON.stringify(value)}`;
   }
-  _strDeclaration(title: string, value: string): string {
-    return `${this._declaration(title)}"${value}"`;
+  _strDeclaration(keys: string[], value: string): string {
+    return `${this._declaration(keys)}"${value}"`;
   }
-  _numberDeclaration(title: string, value: number): string {
+  _numberDeclaration(keys: string[], value: number): string {
     switch (value) {
       case Infinity:
-        return `${this._declaration(title)}inf`;
+        return `${this._declaration(keys)}inf`;
       case -Infinity:
-        return `${this._declaration(title)}-inf`;
+        return `${this._declaration(keys)}-inf`;
       default:
-        return `${this._declaration(title)}${value}`;
+        return `${this._declaration(keys)}${value}`;
     }
   }
-  _dateDeclaration(title: string, value: Date): string {
+  _dateDeclaration(keys: string[], value: Date): string {
     function dtPad(v: string, lPad: number = 2): string {
       return pad(v, lPad, { char: "0" });
     }
@@ -505,7 +518,7 @@ class Dumper {
     const ms = dtPad(value.getUTCMilliseconds().toString(), 3);
     // formated date
     const fData = `${value.getUTCFullYear()}-${m}-${d}T${h}:${min}:${s}.${ms}`;
-    return `${this._declaration(title)}${fData}`;
+    return `${this._declaration(keys)}${fData}`;
   }
   _format(): string[] {
     const rDeclaration = /(.*)\s=/;
@@ -542,9 +555,7 @@ class Dumper {
 }
 
 export function stringify(srcObj: object): string {
-  let out: string[] = [];
-  out = new Dumper(srcObj).dump();
-  return out.join("\n");
+  return new Dumper(srcObj).dump().join("\n");
 }
 
 export function parse(tomlString: string): object {
