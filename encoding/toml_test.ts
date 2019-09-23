@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { test } from "../testing/mod.ts";
+import { runIfMain, test } from "../testing/mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
 import { existsSync } from "../fs/exists.ts";
 import { readFileStrSync } from "../fs/read_file_str.ts";
@@ -301,6 +301,17 @@ test({
     const src = {
       foo: { bar: "deno" },
       this: { is: { nested: "denonono" } },
+      "https://deno.land/std": {
+        $: "doller"
+      },
+      "##": {
+        deno: {
+          "https://deno.land": {
+            proto: "https",
+            ":80": "port"
+          }
+        }
+      },
       arrayObjects: [{ stuff: "in" }, {}, { the: "array" }],
       deno: "is",
       not: "[node]",
@@ -376,6 +387,13 @@ bar     = "deno"
 [this.is]
 nested  = "denonono"
 
+["https://deno.land/std"]
+"$"     = "doller"
+
+["##".deno."https://deno.land"]
+proto   = "https"
+":80"   = "port"
+
 [[arrayObjects]]
 stuff   = "in"
 
@@ -388,3 +406,5 @@ the     = "array"
     assertEquals(actual, expected);
   }
 });
+
+runIfMain(import.meta);
