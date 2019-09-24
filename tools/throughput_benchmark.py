@@ -43,7 +43,9 @@ def tcp(deno_exe, megs):
 
         nc_args = "nc "
         if sys.platform == "linux2":
-            nc_args += " -N "
+            # TODO(ry) Only some linuxes need this.. annoying.
+            # nc_args += " -N "
+            pass
 
         cmd = ("head -c %s /dev/zero " % size) + " | " + nc_args + CLIENT_ADDR
         print cmd
