@@ -147,7 +147,6 @@ void deno_mod_evaluate(Deno* d_, void* user_data, deno_mod id) {
   if (status == Module::kInstantiated) {
     bool ok = !module->Evaluate(context).IsEmpty();
     status = module->GetStatus();  // Update status after evaluating.
-    CHECK_IMPLIES(ok, status == Module::kEvaluated);
     CHECK_IMPLIES(!ok, status == Module::kErrored);
   }
 

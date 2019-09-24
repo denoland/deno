@@ -120,8 +120,9 @@ void deno_init() {
     // remove this to make it work asynchronously too. But that requires getting
     // PumpMessageLoop and RunMicrotasks setup correctly.
     // See https://github.com/denoland/deno/issues/2544
-    const char* argv[2] = {"", "--no-wasm-async-compilation"};
-    int argc = 2;
+    const char* argv[3] = {"", "--no-wasm-async-compilation",
+                           "--harmony-top-level-await"};
+    int argc = 3;
     v8::V8::SetFlagsFromCommandLine(&argc, const_cast<char**>(argv), false);
   }
 }
