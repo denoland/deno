@@ -134,7 +134,7 @@ def node_tcp():
 
 
 def http_proxy_origin(hyper_hello_exe, port):
-    return [hyper_hello_exe, port]
+    return [hyper_hello_exe, str(port)]
 
 
 def hyper_http(hyper_hello_exe):
@@ -186,13 +186,14 @@ def run(server_cmd, port, merge_env=None, origin_cmd=None):
     if origin_cmd is not None:
         origin = subprocess.Popen(origin_cmd, env=env)
 
+    print server_cmd
     server = subprocess.Popen(server_cmd, env=env)
 
-    time.sleep(10)  # wait for server to wake up. TODO racy.
+    time.sleep(5)  # wait for server to wake up. TODO racy.
 
     try:
-        cmd = "third_party/wrk/%s/wrk -d %s --latency http://127.0.0.1:%d/" % (
-            util.platform(), DURATION, port)
+        cmd = "third_party/wrk/%s/wrk -d %s --latency http://127.0.0.1:%s/" % (
+            util.platform(), DURATION, str(port))
         print cmd
         output = subprocess.check_output(cmd, shell=True)
         stats = util.parse_wrk_output(output)

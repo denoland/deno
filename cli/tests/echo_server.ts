@@ -1,5 +1,5 @@
 const { args, listen, copy } = Deno;
-const addr = args[1] || "127.0.0.1:4544";
+const addr = args[1] || "0.0.0.0:4544";
 const [hostname, port] = addr.split(":");
 const listener = listen({ hostname, port: Number(port) });
 console.log("listening on", addr);

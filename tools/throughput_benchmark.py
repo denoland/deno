@@ -31,13 +31,21 @@ def cat(deno_exe, megs):
 def tcp(deno_exe, megs):
     size = megs * MB
     # Run deno echo server in the background.
-    echo_server = subprocess.Popen(
-        [deno_exe, "run", "--allow-net", "tests/echo_server.ts", SERVER_ADDR])
+    args = [
+        deno_exe, "run", "--allow-net", "tests/echo_server.ts", SERVER_ADDR
+    ]
+    print args
+    echo_server = subprocess.Popen(args)
 
     time.sleep(5)  # wait for deno to wake up. TODO racy.
     try:
         start = time.time()
-        cmd = ("head -c %s /dev/zero " % size) + "| nc " + CLIENT_ADDR
+
+        nc_args = "nc "
+        if sys.platform == "linux2":
+            nc_args += " -N "
+
+        cmd = ("head -c %s /dev/zero " % size) + " | " + nc_args + CLIENT_ADDR
         print cmd
         subprocess.check_output(cmd, shell=True)
         end = time.time()
