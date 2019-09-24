@@ -103,7 +103,7 @@ def deno_core_multi(exe):
 
 def node_http():
     port = get_port()
-    node_cmd = ["node", "tools/node_http.js", port]
+    node_cmd = ["node", "tools/node_http.js", str(port)]
     print "http_benchmark testing NODE."
     return run(node_cmd, port)
 
@@ -111,7 +111,11 @@ def node_http():
 def node_http_proxy(hyper_hello_exe):
     port = get_port()
     origin_port = get_port()
-    node_cmd = ["node", "tools/node_http_proxy.js", port, origin_port]
+    node_cmd = [
+        "node", "tools/node_http_proxy.js",
+        str(port),
+        str(origin_port)
+    ]
     print "http_proxy_benchmark testing NODE."
     return run(node_cmd, port, None,
                http_proxy_origin(hyper_hello_exe, origin_port))
@@ -120,7 +124,7 @@ def node_http_proxy(hyper_hello_exe):
 def node_tcp_proxy(hyper_hello_exe):
     port = get_port()
     origin_port = get_port()
-    node_cmd = ["node", "tools/node_tcp_proxy.js", port, origin_port]
+    node_cmd = ["node", "tools/node_tcp_proxy.js", str(port), str(origin_port)]
     print "http_proxy_benchmark testing NODE tcp."
     return run(node_cmd, port, None,
                http_proxy_origin(hyper_hello_exe, origin_port))
@@ -128,7 +132,7 @@ def node_tcp_proxy(hyper_hello_exe):
 
 def node_tcp():
     port = get_port()
-    node_cmd = ["node", "tools/node_tcp.js", port]
+    node_cmd = ["node", "tools/node_tcp.js", str(port)]
     print "http_benchmark testing node_tcp.js"
     return run(node_cmd, port)
 
