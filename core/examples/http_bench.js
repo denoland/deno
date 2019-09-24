@@ -38,13 +38,11 @@ class Op {
     p.resolve(record);
   }
 
-  /** Returns i32 number */
   static sendSync(opId, arg, zeroCopy) {
     const buf = send(0, opId, arg, zeroCopy);
     return recordFromBuf(buf);
   }
 
-  /** Returns Promise<number> */
   static sendAsync(opId, arg, zeroCopy = null) {
     const promiseId = nextPromiseId++;
     const p = createResolvable();
@@ -55,11 +53,13 @@ class Op {
 }
 
 class HttpOp extends Op {
+  /** Returns i32 number */
   sendSync(arg, zeroCopy = null) {
     const res = HttpOp.sendSync(this.opId, arg, zeroCopy);
     return res.result;
   }
 
+  /** Returns Promise<number> */
   async sendAsync(arg, zeroCopy = null) {
     const res = await HttpOp.sendAsync(this.opId, arg, zeroCopy);
     return res.result;

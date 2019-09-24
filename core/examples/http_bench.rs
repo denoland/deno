@@ -98,15 +98,15 @@ fn test_record_from() {
   // TODO test From<&[u8]> for Record
 }
 
-pub type HttpBenchOp = dyn Future<Item = i32, Error = std::io::Error> + Send;
+pub type HttpOp = dyn Future<Item = i32, Error = std::io::Error> + Send;
 
-pub type HttpBenchOpHandler = fn(
+pub type HttpOpHandler = fn(
   is_sync: bool,
   record: Record,
   zero_copy_buf: Option<PinnedBuf>,
-) -> Box<HttpBenchOp>;
+) -> Box<HttpOp>;
 
-fn serialize_http_bench_op(handler: HttpBenchOpHandler) -> Box<CoreOpHandler> {
+fn serialize_http_op(handler: HttpOpHandler) -> Box<CoreOpHandler> {
   let serialized_op =
     move |control: &[u8], zero_copy_buf: Option<PinnedBuf>| -> CoreOp {
       let record = Record::from(control);
@@ -156,11 +156,11 @@ fn main() {
     });
 
     let mut isolate = deno::Isolate::new(startup_data, false);
-    isolate.register_op("listen", serialize_http_bench_op(op_listen));
-    isolate.register_op("accept", serialize_http_bench_op(op_accept));
-    isolate.register_op("read", serialize_http_bench_op(op_read));
-    isolate.register_op("write", serialize_http_bench_op(op_write));
-    isolate.register_op("close", serialize_http_bench_op(op_close));
+    isolate.register_op("listen", serialize_http_op(op_listen));
+    isolate.register_op("accept", serialize_http_op(op_accept));
+    isolate.register_op("read", serialize_http_op(op_read));
+    isolate.register_op("write", serialize_http_op(op_write));
+    isolate.register_op("close", serialize_http_op(op_close));
 
     isolate.then(|r| {
       js_check(r);
@@ -208,7 +208,7 @@ fn op_accept(
   is_sync: bool,
   record: Record,
   _zero_copy_buf: Option<PinnedBuf>,
-) -> Box<HttpBenchOp> {
+) -> Box<HttpOp> {
   assert!(!is_sync);
   let listener_rid = record.arg;
   debug!("accept {}", listener_rid);
@@ -237,7 +237,7 @@ fn op_listen(
   is_sync: bool,
   _record: Record,
   _zero_copy_buf: Option<PinnedBuf>,
-) -> Box<HttpBenchOp> {
+) -> Box<HttpOp> {
   assert!(is_sync);
   debug!("listen");
   Box::new(lazy(move || {
@@ -255,7 +255,7 @@ fn op_close(
   is_sync: bool,
   record: Record,
   _zero_copy_buf: Option<PinnedBuf>,
-) -> Box<HttpBenchOp> {
+) -> Box<HttpOp> {
   assert!(is_sync);
   debug!("close");
   let rid = record.arg;
@@ -271,7 +271,7 @@ fn op_read(
   is_sync: bool,
   record: Record,
   zero_copy_buf: Option<PinnedBuf>,
-) -> Box<HttpBenchOp> {
+) -> Box<HttpOp> {
   assert!(!is_sync);
   let rid = record.arg;
   debug!("read rid={}", rid);
@@ -298,7 +298,7 @@ fn op_write(
   is_sync: bool,
   record: Record,
   zero_copy_buf: Option<PinnedBuf>,
-) -> Box<HttpBenchOp> {
+) -> Box<HttpOp> {
   assert!(!is_sync);
   let rid = record.arg;
   debug!("write rid={}", rid);
