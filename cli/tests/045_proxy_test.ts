@@ -60,7 +60,6 @@ async function testModuleDownload(): Promise<void> {
     }
   });
 
-  await http.status();
   const httpStatus = await http.status();
   assertEquals(httpStatus.code, 0);
   http.close();
