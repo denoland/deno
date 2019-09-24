@@ -93,12 +93,12 @@ def deno_http_proxy(deno_exe, hyper_hello_exe):
 
 def deno_core_single(exe):
     print "http_benchmark testing deno_core_single"
-    return run([exe, "--single-thread"], "0.0.0.0:4544")
+    return run([exe, "--single-thread"], 4544)
 
 
 def deno_core_multi(exe):
     print "http_benchmark testing deno_core_multi"
-    return run([exe, "--multi-thread"], "0.0.0.0:4544")
+    return run([exe, "--multi-thread"], 4544)
 
 
 def node_http():
