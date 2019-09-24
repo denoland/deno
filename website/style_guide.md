@@ -39,7 +39,7 @@ Example: Instead of `file-server.ts` use `file_server.ts`.
 ## Format code using prettier.
 
 More specifically, code should be wrapped at 80 columns and use 2-space
-indentation and use camel-case. Use `//format.ts` to invoke prettier.
+indentation and use camel-case. Use `./format.ts` to invoke prettier.
 
 ## Exported functions: max 2 args, put the rest into an options object.
 
