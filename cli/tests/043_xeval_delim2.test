@@ -1,3 +1,0 @@
-args: xeval -d MADAM console.log($);
-input: !MADMADAMADAM!
-output: tests/043_xeval_delim2.out
