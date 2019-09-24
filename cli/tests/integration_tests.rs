@@ -304,6 +304,19 @@ itest!(_042_dyn_import_evalcontext {
   output: "042_dyn_import_evalcontext.ts.out",
 });
 
+itest!(_043_xeval_delim2 {
+  args: "xeval -d MADAM console.log($)",
+  input: Some("!MADMADAMADAM!"),
+  output: "043_xeval_delim2.out",
+});
+
+itest!(_044_bad_resource {
+  args: "run --reload --allow-read 044_bad_resource.ts",
+  output: "044_bad_resource.ts.out",
+  check_stderr: true,
+  exit_code: 1,
+});
+
 itest!(_045_proxy {
   args: "run --allow-net --allow-env --allow-run --reload 045_proxy_test.ts",
   output: "045_proxy_test.ts.out",

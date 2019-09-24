@@ -1,4 +1,0 @@
-args: run --reload --allow-read tests/044_bad_resource.ts
-output: tests/044_bad_resource.ts.out
-check_stderr: true
-exit_code: 1

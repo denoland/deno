@@ -2,8 +2,7 @@
 import * as domTypes from "./dom_types.ts";
 import * as blob from "./blob.ts";
 
-// TODO Rename this to DomFileImpl
-export class DenoFile extends blob.DenoBlob implements domTypes.DomFile {
+export class DomFileImpl extends blob.DenoBlob implements domTypes.DomFile {
   lastModified: number;
   name: string;
 
