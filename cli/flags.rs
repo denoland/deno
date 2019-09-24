@@ -62,7 +62,9 @@ pub struct DenoFlags {
 
 static ENV_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
     DENO_DIR        Set deno's base directory
-    NO_COLOR        Set to disable color";
+    NO_COLOR        Set to disable color
+    HTTP_PROXY      Set proxy address for HTTP requests (module downloads, fetch)
+    HTTPS_PROXY     Set proxy address for HTTPS requests (module downloads, fetch)";
 
 fn add_run_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
   app

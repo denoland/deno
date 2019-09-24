@@ -712,6 +712,8 @@ SUBCOMMANDS:
 ENVIRONMENT VARIABLES:
     DENO_DIR        Set deno's base directory
     NO_COLOR        Set to disable color
+    HTTP_PROXY      Set proxy address for HTTP requests (module downloads, fetch)
+    HTTPS_PROXY     Set proxy address for HTTPS requests (module downloads, fetch)
 ```
 
 ### Environmental variables
