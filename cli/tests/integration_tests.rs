@@ -427,6 +427,7 @@ itest!(error_013_missing_script {
 itest!(error_014_catch_dynamic_import_error {
   args: "error_014_catch_dynamic_import_error.js --reload --allow-read",
   output: "error_014_catch_dynamic_import_error.js.out",
+  exit_code: 1,
 });
 
 itest!(error_015_dynamic_import_permissions {
@@ -548,4 +549,9 @@ itest!(wasm {
 itest!(wasm_async {
   args: "wasm_async.js",
   output: "wasm_async.out",
+});
+
+itest!(top_level_await {
+  args: "--allow-read top_level_await.js",
+  output: "top_level_await.out",
 });
