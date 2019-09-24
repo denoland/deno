@@ -1,20 +1,47 @@
 // This is not a real HTTP server. We read blindly one time into 'requestBuf',
 // then write this fixed 'responseBuf'. The point of this benchmark is to
 // exercise the event loop in a simple yet semi-realistic way.
-class HttpOp extends Deno.core.Op {
+const registry = {};
+
+function initOps(opsMap) {
+  for (const [name, opId] of Object.entries(opsMap)) {
+    const op = registry[name];
+
+    if (!op) {
+      continue;
+    }
+
+    op.setOpId(opId);
+  }
+}
+
+class Op {
+  constructor(name) {
+    if (typeof registry[name] !== "undefined") {
+      throw new Error(`Duplicate op: ${name}`);
+    }
+
+    this.name = name;
+    this.opId = 0;
+    registry[name] = this;
+  }
+
+  setOpId(opId) {
+    this.opId = opId;
+  }
+
   static handleAsyncMsgFromRust(opId, buf) {
     const record = recordFromBuf(buf);
-    const { promiseId, result } = record;
+    const { promiseId } = record;
     const p = promiseMap.get(promiseId);
     promiseMap.delete(promiseId);
-    p.resolve(result);
+    p.resolve(record);
   }
 
   /** Returns i32 number */
   static sendSync(opId, arg, zeroCopy) {
     const buf = send(0, opId, arg, zeroCopy);
-    const record = recordFromBuf(buf);
-    return record.result;
+    return recordFromBuf(buf);
   }
 
   /** Returns Promise<number> */
@@ -25,13 +52,17 @@ class HttpOp extends Deno.core.Op {
     send(promiseId, opId, arg, zeroCopy);
     return p;
   }
+}
 
+class HttpOp extends Op {
   sendSync(arg, zeroCopy = null) {
-    return HttpOp.sendSync(this.opId, arg, zeroCopy);
+    const res = HttpOp.sendSync(this.opId, arg, zeroCopy);
+    return res.result;
   }
 
-  sendAsync(arg, zeroCopy = null) {
-    return HttpOp.sendAsync(this.opId, arg, zeroCopy);
+  async sendAsync(arg, zeroCopy = null) {
+    const res = await HttpOp.sendAsync(this.opId, arg, zeroCopy);
+    return res.result;
   }
 }
 
@@ -132,7 +163,8 @@ async function serve(rid) {
 }
 
 async function main() {
-  Deno.core.initOps();
+  Deno.core.setAsyncHandler(Op.handleAsyncMsgFromRust);
+  initOps(Deno.core.getOps());
   Deno.core.print("http_bench.js start\n");
 
   const listenerRid = listen();

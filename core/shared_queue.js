@@ -38,9 +38,6 @@ SharedQueue Binary Layout
 
   let sharedBytes;
   let shared32;
-  let rustOpsMap;
-  const jsOpsMap = new Map();
-  let jsOpsAsyncHandlers;
   let initialized = false;
 
   function maybeInit() {
@@ -61,24 +58,10 @@ SharedQueue Binary Layout
     Deno.core.recv(handleAsyncMsgFromRust);
   }
 
-  function initOps() {
+  function getOps() {
     const opsMapBytes = Deno.core.send(0, new Uint8Array([]), null);
     const opsMapJson = String.fromCharCode.apply(null, opsMapBytes);
-    rustOpsMap = JSON.parse(opsMapJson);
-    const opVector = new Array(Object.keys(rustOpsMap).length);
-
-    for (const [name, opId] of Object.entries(rustOpsMap)) {
-      const op = jsOpsMap.get(name);
-
-      if (!op) {
-        continue;
-      }
-
-      op.setOpId(opId);
-      opVector[opId] = op.constructor.handleAsyncMsgFromRust;
-    }
-
-    jsOpsAsyncHandlers = opVector;
+    return JSON.parse(opsMapJson);
   }
 
   function assert(cond) {
@@ -107,17 +90,18 @@ SharedQueue Binary Layout
     return shared32[INDEX_NUM_RECORDS] - shared32[INDEX_NUM_SHIFTED_OFF];
   }
 
-  // TODO(ry) rename to setMeta
-  function setMeta(index, end, opId) {
+  function setMeta(index, end, opId, promiseId) {
     shared32[INDEX_OFFSETS + 2 * index] = end;
     shared32[INDEX_OFFSETS + 2 * index + 1] = opId;
+    shared32[INDEX_OFFSETS + 2 * index + 2] = promiseId;
   }
 
   function getMeta(index) {
     if (index < numRecords()) {
       const buf = shared32[INDEX_OFFSETS + 2 * index];
       const opId = shared32[INDEX_OFFSETS + 2 * index + 1];
-      return [opId, buf];
+      const promiseId = shared32[INDEX_OFFSETS + 2 * index + 2];
+      return [opId, promiseId, buf];
     } else {
       return null;
     }
@@ -135,7 +119,7 @@ SharedQueue Binary Layout
     }
   }
 
-  function push(opId, buf) {
+  function push(opId, promiseId, buf) {
     const off = head();
     const end = off + buf.byteLength;
     const index = numRecords();
@@ -143,7 +127,7 @@ SharedQueue Binary Layout
       // console.log("shared_queue.js push fail");
       return false;
     }
-    setMeta(index, end, opId);
+    setMeta(index, end, opId, promiseId);
     assert(end - off == buf.byteLength);
     sharedBytes.set(buf, off);
     shared32[INDEX_NUM_RECORDS] += 1;
@@ -160,7 +144,7 @@ SharedQueue Binary Layout
     }
 
     const off = getOffset(i);
-    const [opId, end] = getMeta(i);
+    const [opId, promiseId, end] = getMeta(i);
 
     if (size() > 1) {
       shared32[INDEX_NUM_SHIFTED_OFF] += 1;
@@ -171,7 +155,7 @@ SharedQueue Binary Layout
     assert(off != null);
     assert(end != null);
     const buf = sharedBytes.subarray(off, end);
-    return [opId, buf];
+    return [opId, promiseId, buf];
   }
 
   let asyncHandler;
@@ -184,16 +168,14 @@ SharedQueue Binary Layout
   function handleAsyncMsgFromRust(opId, buf) {
     if (buf) {
       // This is the overflow_response case of deno::Isolate::poll().
-      const cb = asyncHandler ? asyncHandler : jsOpsAsyncHandlers[opId];
-      cb(opId, buf);
+      asyncHandler(opId, buf);
     } else {
       while (true) {
         const opIdBuf = shift();
         if (opIdBuf == null) {
           break;
         }
-        const cb = asyncHandler ? asyncHandler : jsOpsAsyncHandlers[opIdBuf[0]];
-        cb(...opIdBuf);
+        asyncHandler(opId, buf);
       }
     }
   }
@@ -201,34 +183,6 @@ SharedQueue Binary Layout
   function dispatch(opId, control, zeroCopy = null) {
     maybeInit();
     return Deno.core.send(opId, control, zeroCopy);
-  }
-
-  class Op {
-    constructor(name) {
-      if (typeof jsOpsMap.get(name) !== "undefined") {
-        throw new Error(`Duplicate op: ${name}`);
-      }
-
-      this.name = name;
-      this.opId = 0;
-      jsOpsMap.set(name, this);
-    }
-
-    setOpId(opId) {
-      this.opId = opId;
-    }
-
-    static handleAsyncMsgFromRust(_opId, _buf) {
-      throw new Error("Unimplemented");
-    }
-
-    static sendSync(_opId, _control, _zeroCopy = null) {
-      throw new Error("Unimplemented");
-    }
-
-    static sendAsync(_opId, _control, _zeroCopy = null) {
-      throw new Error("Unimplemented");
-    }
   }
 
   const denoCore = {
@@ -243,8 +197,7 @@ SharedQueue Binary Layout
       reset,
       shift
     },
-    initOps,
-    Op
+    getOps
   };
 
   assert(window[GLOBAL_NAMESPACE] != null);
