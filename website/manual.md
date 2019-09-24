@@ -712,6 +712,8 @@ SUBCOMMANDS:
 ENVIRONMENT VARIABLES:
     DENO_DIR        Set deno's base directory
     NO_COLOR        Set to disable color
+    HTTP_PROXY      Set proxy address for HTTP requests (module downloads, fetch)
+    HTTPS_PROXY     Set proxy address for HTTPS requests (module downloads, fetch)
 ```
 
 ### Environmental variables
@@ -876,12 +878,12 @@ $ deno install awesome_cli https://example.com/awesome/cli.ts
 
 ## Proxies
 
-Deno supports proxies.
+Deno supports proxies for module downloads and `fetch` API.
 
-`HTTP_PROXY` and `HTTPS_PROXY` environmental variables are used to configure
-them.
+Proxy configuration is read from environmental variables: `HTTP_PROXY` and
+`HTTPS_PROXY`.
 
-For Windows if environmental variables are not found Deno will fall back to
+In case of Windows if environmental variables are not found Deno falls back to
 reading proxies from registry.
 
 ## Import maps
