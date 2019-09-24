@@ -5,7 +5,7 @@ import {
 } from "../../js/deps/https/deno.land/std/http/server.ts";
 import { assertEquals } from "../../js/deps/https/deno.land/std/testing/asserts.ts";
 
-const addr = Deno.args[1] || "127.0.0.1:4500";
+const addr = Deno.args[1] || "127.0.0.1:4555";
 
 async function proxyServer(): Promise<void> {
   const server = serve(addr);
