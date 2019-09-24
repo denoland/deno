@@ -90,18 +90,16 @@ SharedQueue Binary Layout
     return shared32[INDEX_NUM_RECORDS] - shared32[INDEX_NUM_SHIFTED_OFF];
   }
 
-  function setMeta(index, end, opId, promiseId) {
+  function setMeta(index, end, opId) {
     shared32[INDEX_OFFSETS + 2 * index] = end;
     shared32[INDEX_OFFSETS + 2 * index + 1] = opId;
-    shared32[INDEX_OFFSETS + 2 * index + 2] = promiseId;
   }
 
   function getMeta(index) {
     if (index < numRecords()) {
       const buf = shared32[INDEX_OFFSETS + 2 * index];
       const opId = shared32[INDEX_OFFSETS + 2 * index + 1];
-      const promiseId = shared32[INDEX_OFFSETS + 2 * index + 2];
-      return [opId, promiseId, buf];
+      return [opId, buf];
     } else {
       return null;
     }
@@ -119,7 +117,7 @@ SharedQueue Binary Layout
     }
   }
 
-  function push(opId, promiseId, buf) {
+  function push(opId, buf) {
     const off = head();
     const end = off + buf.byteLength;
     const index = numRecords();
@@ -127,7 +125,7 @@ SharedQueue Binary Layout
       // console.log("shared_queue.js push fail");
       return false;
     }
-    setMeta(index, end, opId, promiseId);
+    setMeta(index, end, opId);
     assert(end - off == buf.byteLength);
     sharedBytes.set(buf, off);
     shared32[INDEX_NUM_RECORDS] += 1;
@@ -144,7 +142,7 @@ SharedQueue Binary Layout
     }
 
     const off = getOffset(i);
-    const [opId, promiseId, end] = getMeta(i);
+    const [opId, end] = getMeta(i);
 
     if (size() > 1) {
       shared32[INDEX_NUM_SHIFTED_OFF] += 1;
@@ -155,7 +153,7 @@ SharedQueue Binary Layout
     assert(off != null);
     assert(end != null);
     const buf = sharedBytes.subarray(off, end);
-    return [opId, promiseId, buf];
+    return [opId, buf];
   }
 
   let asyncHandler;
@@ -175,7 +173,7 @@ SharedQueue Binary Layout
         if (opIdBuf == null) {
           break;
         }
-        asyncHandler(opId, buf);
+        asyncHandler(...opIdBuf);
       }
     }
   }
