@@ -317,6 +317,11 @@ itest!(_044_bad_resource {
   exit_code: 1,
 });
 
+itest!(_045_proxy {
+  args: "run --allow-net --allow-env --allow-run --reload 045_proxy_test.ts",
+  output: "045_proxy_test.ts.out",
+});
+
 itest!(async_error {
   exit_code: 1,
   args: "run --reload async_error.ts",
