@@ -134,8 +134,6 @@ mod tests {
   #[test]
   fn execute_mod_esm_imports_a() {
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-      .parent()
-      .unwrap()
       .join("tests/esm_imports_a.js")
       .to_owned();
     let module_specifier =
@@ -351,8 +349,6 @@ mod tests {
       // tests).
       let mut worker = create_test_worker();
       let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
         .join("tests/002_hello.ts")
         .to_owned();
       let module_specifier =

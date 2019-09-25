@@ -40,7 +40,7 @@ def get_version(toml_path):
             return match.group(1)
 
 
-core_path = os.path.join(root_path, "core")
+core_path = os.path.join(root_path, "src", "core")
 cargo_toml_path = os.path.join(core_path, "Cargo.toml")
 version = get_version(cargo_toml_path)
 
@@ -124,7 +124,7 @@ platform_cargo_toml = Template("""
 [package]
 name = "deno-$TARGET"
 description = "Binary dependencies for the 'deno' crate"
-authors = ["The deno authors <bertbelder@nodejs.org>"]
+authors = ["the Deno authors"]
 version = "$VERSION"
 build = "build.rs"
 include = ["src/*", "lib/*", "Cargo.toml", "build.rs"]
