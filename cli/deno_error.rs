@@ -22,6 +22,17 @@ pub struct DenoError {
   msg: String,
 }
 
+pub fn print_err_and_exit(err: ErrBox) {
+  eprintln!("{}", err.to_string());
+  std::process::exit(1);
+}
+
+pub fn js_check(r: Result<(), ErrBox>) {
+  if let Err(err) = r {
+    print_err_and_exit(err);
+  }
+}
+
 impl DenoError {
   pub fn new(kind: ErrorKind, msg: String) -> Self {
     Self { kind, msg }
