@@ -13,7 +13,8 @@ import time
 import shutil
 import tempfile
 import subprocess
-from util import build_path, executable_suffix, root_path, run, run_output, tests_path
+from util import executable_suffix, run, run_output
+from util import build_path, root_path, tests_path
 import third_party
 from http_benchmark import http_benchmark
 import throughput_benchmark
