@@ -150,6 +150,8 @@ async function serve(rid) {
 
 async function main() {
   Deno.core.setAsyncHandler(HttpOp.handleAsyncMsgFromRust);
+  // Initialize ops by getting their ids from Rust
+  // and assign id for each of our ops.
   const opsMap = Deno.core.getOps();
   for (const [name, opId] of Object.entries(opsMap)) {
     const op = registry[name];
