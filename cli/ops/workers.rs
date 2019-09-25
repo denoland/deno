@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
+use crate::deno_error::js_check;
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
 use crate::resources;
@@ -124,8 +125,8 @@ pub fn op_create_worker(
 
   let mut worker =
     Worker::new(name, startup_data::deno_isolate_init(), child_state);
-  worker.execute(&deno_main_call).unwrap();
-  worker.execute("workerMain()").unwrap();
+  js_check(worker.execute(&deno_main_call));
+  js_check(worker.execute("workerMain()"));
 
   let exec_cb = move |worker: Worker| {
     let mut workers_tl = parent_state.workers.lock().unwrap();
@@ -135,7 +136,7 @@ pub fn op_create_worker(
 
   // Has provided source code, execute immediately.
   if has_source_code {
-    worker.execute(&source_code).unwrap();
+    js_check(worker.execute(&source_code));
     return Ok(JsonOp::Sync(exec_cb(worker)));
   }
 
