@@ -145,7 +145,7 @@ def hyper_http(hyper_hello_exe):
     port = get_port()
     hyper_cmd = [hyper_hello_exe, port]
     print "http_benchmark testing RUST hyper."
-    return run(hyper_cmd, port)
+    return run(hyper_cmd, str(port))
 
 
 def http_benchmark(build_dir):
