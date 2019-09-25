@@ -98,11 +98,16 @@ fn test_op_registry() {
   assert!(op_id != 0);
 
   let mut expected_map = HashMap::new();
-  expected_map.insert("get_op_map", 0);
-  expected_map.insert("test", 1);
+  expected_map.insert("get_op_map".to_string(), 0);
+  expected_map.insert("test".to_string(), 1);
   let op_map = op_registry.get_op_map();
   assert_eq!(op_map, expected_map);
 
-  let res = op_registry.call_op(1, [], None);
-  assert_eq!(op_map, Op::Sync(Box::new([])));
+  let res = op_registry.call_op(1, &[], None);
+  match res {
+    Op::Sync(buf) => {
+      assert_eq!(buf.len(), 0);
+    }
+    _ => panic!(),
+  }
 }
