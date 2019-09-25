@@ -474,6 +474,13 @@ itest!(error_type_definitions {
   output: "error_type_definitions.ts.out",
 });
 
+itest!(error_worker_dynamic {
+  args: "run --reload error_worker_dynamic.ts",
+  check_stderr: true,
+  exit_code: 1,
+  output: "error_worker_dynamic.ts.out",
+});
+
 itest!(exit_error42 {
   exit_code: 42,
   args: "run --reload exit_error42.ts",
