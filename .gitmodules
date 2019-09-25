@@ -1,14 +1,14 @@
 [submodule "chromium_build"]
-	path = core/libdeno/build
+	path = src/core/libdeno/build
 	url = https://github.com/denoland/chromium_build.git
 [submodule "deno_std"]
-	path = js/deps/https/deno.land/std
+	path = src/js/deps/https/deno.land/std
 	url = https://github.com/denoland/deno_std.git
 [submodule "deno_third_party"]
 	path = third_party
 	url = https://github.com/denoland/deno_third_party.git
 [submodule "typescript"]
-	path = deno_typescript/typescript
+	path = src/deno_typescript/typescript
 	url = https://github.com/microsoft/TypeScript.git
 	fetchRecurseSubmodules = false
 	shallow = true

@@ -36,7 +36,7 @@ mod gn {
       };
 
       // cd into workspace root.
-      assert!(env::set_current_dir("..").is_ok());
+      assert!(env::set_current_dir("../..").is_ok());
 
       let root = env::current_dir().unwrap();
       // If not using host default target the output folder will change

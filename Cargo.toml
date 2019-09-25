@@ -1,8 +1,8 @@
 [workspace]
 members = [
-  "cli",
-  "core",
+  "src/cli",
+  "src/core",
+  "src/deno_typescript",
+  "src/js",
   "tools/hyper_hello",
-  "deno_typescript",
-  "js",
 ]
