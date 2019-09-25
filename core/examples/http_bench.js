@@ -164,7 +164,7 @@ async function main() {
     const op = opRegistry.get(name);
 
     if (!op) {
-      continue;
+      throw new Error(`Unknown op: ${name}`);
     }
 
     op.setOpId(opId);

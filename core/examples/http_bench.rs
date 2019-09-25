@@ -100,18 +100,15 @@ fn test_record_from() {
 
 pub type HttpOp = dyn Future<Item = i32, Error = std::io::Error> + Send;
 
-pub type HttpOpHandler = fn(
-  is_sync: bool,
-  record: Record,
-  zero_copy_buf: Option<PinnedBuf>,
-) -> Box<HttpOp>;
+pub type HttpOpHandler =
+  fn(record: Record, zero_copy_buf: Option<PinnedBuf>) -> Box<HttpOp>;
 
-fn serialize_http_op(handler: HttpOpHandler) -> Box<CoreOpHandler> {
+fn http_op(handler: HttpOpHandler) -> Box<CoreOpHandler> {
   let serialized_op =
     move |control: &[u8], zero_copy_buf: Option<PinnedBuf>| -> CoreOp {
       let record = Record::from(control);
       let is_sync = record.promise_id == 0;
-      let op = handler(is_sync, record.clone(), zero_copy_buf);
+      let op = handler(record.clone(), zero_copy_buf);
 
       let mut record_a = record.clone();
       let mut record_b = record.clone();
@@ -156,11 +153,11 @@ fn main() {
     });
 
     let mut isolate = deno::Isolate::new(startup_data, false);
-    isolate.register_op("listen", serialize_http_op(op_listen));
-    isolate.register_op("accept", serialize_http_op(op_accept));
-    isolate.register_op("read", serialize_http_op(op_read));
-    isolate.register_op("write", serialize_http_op(op_write));
-    isolate.register_op("close", serialize_http_op(op_close));
+    isolate.register_op("listen", http_op(op_listen));
+    isolate.register_op("accept", http_op(op_accept));
+    isolate.register_op("read", http_op(op_read));
+    isolate.register_op("write", http_op(op_write));
+    isolate.register_op("close", http_op(op_close));
 
     isolate.then(|r| {
       js_check(r);
@@ -204,12 +201,7 @@ fn new_rid() -> i32 {
   rid as i32
 }
 
-fn op_accept(
-  is_sync: bool,
-  record: Record,
-  _zero_copy_buf: Option<PinnedBuf>,
-) -> Box<HttpOp> {
-  assert!(!is_sync);
+fn op_accept(record: Record, _zero_copy_buf: Option<PinnedBuf>) -> Box<HttpOp> {
   let listener_rid = record.arg;
   debug!("accept {}", listener_rid);
   Box::new(
@@ -234,11 +226,9 @@ fn op_accept(
 }
 
 fn op_listen(
-  is_sync: bool,
   _record: Record,
   _zero_copy_buf: Option<PinnedBuf>,
 ) -> Box<HttpOp> {
-  assert!(is_sync);
   debug!("listen");
   Box::new(lazy(move || {
     let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
@@ -251,12 +241,7 @@ fn op_listen(
   }))
 }
 
-fn op_close(
-  is_sync: bool,
-  record: Record,
-  _zero_copy_buf: Option<PinnedBuf>,
-) -> Box<HttpOp> {
-  assert!(is_sync);
+fn op_close(record: Record, _zero_copy_buf: Option<PinnedBuf>) -> Box<HttpOp> {
   debug!("close");
   let rid = record.arg;
   Box::new(lazy(move || {
@@ -267,12 +252,7 @@ fn op_close(
   }))
 }
 
-fn op_read(
-  is_sync: bool,
-  record: Record,
-  zero_copy_buf: Option<PinnedBuf>,
-) -> Box<HttpOp> {
-  assert!(!is_sync);
+fn op_read(record: Record, zero_copy_buf: Option<PinnedBuf>) -> Box<HttpOp> {
   let rid = record.arg;
   debug!("read rid={}", rid);
   let mut zero_copy_buf = zero_copy_buf.unwrap();
@@ -294,12 +274,7 @@ fn op_read(
   )
 }
 
-fn op_write(
-  is_sync: bool,
-  record: Record,
-  zero_copy_buf: Option<PinnedBuf>,
-) -> Box<HttpOp> {
-  assert!(!is_sync);
+fn op_write(record: Record, zero_copy_buf: Option<PinnedBuf>) -> Box<HttpOp> {
   let rid = record.arg;
   debug!("write rid={}", rid);
   let zero_copy_buf = zero_copy_buf.unwrap();

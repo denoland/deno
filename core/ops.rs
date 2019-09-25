@@ -53,7 +53,10 @@ impl OpRegistry {
   }
 
   pub fn get_op_map(&self) -> HashMap<String, OpId> {
-    self.op_map.clone()
+    let mut op_map = self.op_map.clone();
+    // Don't send "get_op_map" to JS, if JS encounters unknown op it should throw.
+    op_map.remove("get_op_map");
+    op_map
   }
 
   pub fn register_op(
@@ -98,7 +101,6 @@ fn test_op_registry() {
   assert!(op_id != 0);
 
   let mut expected_map = HashMap::new();
-  expected_map.insert("get_op_map".to_string(), 0);
   expected_map.insert("test".to_string(), 1);
   let op_map = op_registry.get_op_map();
   assert_eq!(op_map, expected_map);
