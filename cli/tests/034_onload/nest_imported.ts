@@ -4,4 +4,10 @@ window.addEventListener(
     console.log(`got ${e.type} event in event handler (nest_imported)`);
   }
 );
+window.addEventListener(
+  "unload",
+  (e: Event): void => {
+    console.log(`got ${e.type} event in event handler (nest_imported)`);
+  }
+);
 console.log("log from nest_imported script");
