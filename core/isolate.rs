@@ -237,6 +237,7 @@ impl Isolate {
   ///
   /// If this method is used then ops registered using `op_register` function are
   /// ignored and all dispatching must be handled manually in provided callback.
+  // TODO: we want to deprecate and remove this API and move to `register_op` API
   pub fn set_dispatch<F>(&mut self, f: F)
   where
     F: Fn(OpId, &[u8], Option<PinnedBuf>) -> CoreOp + Send + Sync + 'static,
@@ -250,6 +251,10 @@ impl Isolate {
   /// Ops added using this method are only usable if `dispatch` is not set
   /// (using `set_dispatch` method).
   pub fn register_op(&mut self, name: &str, op: Box<CoreOpHandler>) -> OpId {
+    assert!(
+      self.dispatch.is_none(),
+      "set_dispatch should not be used in conjunction with register_op"
+    );
     self.op_registry.register_op(name, op)
   }
 
