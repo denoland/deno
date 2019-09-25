@@ -66,11 +66,11 @@ impl OpRegistry {
   ) -> OpId {
     let op_id = self.ops.len() as u32;
 
-    self
-      .op_map
-      .entry(name.to_string())
-      .and_modify(|_| panic!("Op already registered {}", op_id))
-      .or_insert(op_id);
+    let existing = self.op_map.insert(name.to_string(), op_id);
+    assert!(
+      existing.is_none(),
+      format!("Op already registered: {}", name)
+    );
 
     self.ops.push(serialized_op);
     op_id
