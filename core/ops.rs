@@ -39,7 +39,7 @@ fn op_get_op_map(op_registry: &OpRegistry) -> CoreOp {
   let op_map = op_registry.get_op_map();
   let op_map_json = serde_json::to_string(&op_map).unwrap();
   let buf = op_map_json.as_bytes().to_owned().into_boxed_slice();
-  return Op::Sync(buf);
+  Op::Sync(buf)
 }
 
 impl OpRegistry {
