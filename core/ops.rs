@@ -31,15 +31,21 @@ pub struct OpRegistry {
   pub op_map: HashMap<String, OpId>,
 }
 
-fn get_op_map(_control: &[u8], _zero_copy_buf: Option<PinnedBuf>) -> CoreOp {
+fn op_noop(_control: &[u8], _zero_copy_buf: Option<PinnedBuf>) -> CoreOp {
   Op::Sync(Box::new([]))
 }
 
 impl OpRegistry {
   pub fn new() -> Self {
-    // TODO: this is make shift fix for get op map
     let mut registry = Self::default();
-    registry.register_op("get_op_map", Box::new(get_op_map));
+    // TODO: We should register actual "get_op_map" op here, but I couldn't
+    // get past borrow checker when I wanted to do:
+    //    registry.register_op("get_op_map", Box::new(self.op_noop));
+
+    // Add single noop symbolizing "get_op_map" function. The actual
+    // handling is done in `isolate.rs`.
+    let op_id = registry.register_op("get_op_map", Box::new(op_noop));
+    assert_eq!(op_id, 0);
     registry
   }
 
@@ -63,4 +69,11 @@ impl OpRegistry {
     self.ops.push(serialized_op);
     op_id
   }
+}
+
+#[test]
+fn test_register_op() {
+  let mut op_registry = OpRegistry::new();
+  let op_id = op_registry.register_op("test", Box::new(op_noop));
+  assert!(op_id != 0);
 }

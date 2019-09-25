@@ -3,19 +3,7 @@
 // exercise the event loop in a simple yet semi-realistic way.
 const registry = {};
 
-function initOps(opsMap) {
-  for (const [name, opId] of Object.entries(opsMap)) {
-    const op = registry[name];
-
-    if (!op) {
-      continue;
-    }
-
-    op.setOpId(opId);
-  }
-}
-
-class Op {
+class HttpOp {
   constructor(name) {
     if (typeof registry[name] !== "undefined") {
       throw new Error(`Duplicate op: ${name}`);
@@ -50,9 +38,7 @@ class Op {
     send(promiseId, opId, arg, zeroCopy);
     return p;
   }
-}
 
-class HttpOp extends Op {
   /** Returns i32 number */
   sendSync(arg, zeroCopy = null) {
     const res = HttpOp.sendSync(this.opId, arg, zeroCopy);
@@ -163,8 +149,18 @@ async function serve(rid) {
 }
 
 async function main() {
-  Deno.core.setAsyncHandler(Op.handleAsyncMsgFromRust);
-  initOps(Deno.core.getOps());
+  Deno.core.setAsyncHandler(HttpOp.handleAsyncMsgFromRust);
+  const opsMap = Deno.core.getOps();
+  for (const [name, opId] of Object.entries(opsMap)) {
+    const op = registry[name];
+
+    if (!op) {
+      continue;
+    }
+
+    op.setOpId(opId);
+  }
+
   Deno.core.print("http_bench.js start\n");
 
   const listenerRid = listen();

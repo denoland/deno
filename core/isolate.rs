@@ -245,7 +245,7 @@ impl Isolate {
     self.op_registry.register_op(name, op)
   }
 
-  pub fn call_op(
+  fn call_op(
     &self,
     op_id: OpId,
     control: &[u8],
@@ -334,6 +334,7 @@ impl Isolate {
     let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
 
     let op = if let Some(ref f) = isolate.dispatch {
+      assert!(op_id != 0);
       f(op_id, control_buf.as_ref(), PinnedBuf::new(zero_copy_buf))
     } else {
       isolate.call_op(
