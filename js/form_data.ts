@@ -22,7 +22,7 @@ class FormDataBase {
     requiredArguments("FormData.append", arguments.length, 2);
     name = String(name);
     if (value instanceof blob.DenoBlob) {
-      const dfile = new domFile.DenoFile([value], filename || name);
+      const dfile = new domFile.DomFileImpl([value], filename || name);
       this[dataSymbol].push([name, dfile]);
     } else {
       this[dataSymbol].push([name, String(value)]);
@@ -112,7 +112,7 @@ class FormDataBase {
       if (this[dataSymbol][i][0] === name) {
         if (!found) {
           if (value instanceof blob.DenoBlob) {
-            const dfile = new domFile.DenoFile([value], filename || name);
+            const dfile = new domFile.DomFileImpl([value], filename || name);
             this[dataSymbol][i][1] = dfile;
           } else {
             this[dataSymbol][i][1] = String(value);
@@ -129,7 +129,7 @@ class FormDataBase {
     // Otherwise, append entry to the context object’s entry list.
     if (!found) {
       if (value instanceof blob.DenoBlob) {
-        const dfile = new domFile.DenoFile([value], filename || name);
+        const dfile = new domFile.DomFileImpl([value], filename || name);
         this[dataSymbol].push([name, dfile]);
       } else {
         this[dataSymbol].push([name, String(value)]);

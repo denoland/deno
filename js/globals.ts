@@ -101,7 +101,7 @@ export type Blob = domTypes.Blob;
 
 export type Body = domTypes.Body;
 
-window.File = domFile.DenoFile as domTypes.DomFileConstructor;
+window.File = domFile.DomFileImpl as domTypes.DomFileConstructor;
 export type File = domTypes.DomFile;
 
 export type CustomEventInit = domTypes.CustomEventInit;
