@@ -13,7 +13,7 @@ import time
 import shutil
 import tempfile
 import subprocess
-from util import build_path, executable_suffix, root_path, run, run_output
+from util import build_path, executable_suffix, root_path, run, run_output, tests_path
 import third_party
 from http_benchmark import http_benchmark
 import throughput_benchmark
@@ -21,13 +21,18 @@ import http_server
 
 # The list of the tuples of the benchmark name and arguments
 exec_time_benchmarks = [
-    ("hello", ["tests/002_hello.ts"]),
-    ("relative_import", ["tests/003_relative_import.ts"]),
-    ("error_001", ["tests/error_001.ts"]),
-    ("cold_hello", ["--reload", "tests/002_hello.ts"]),
-    ("cold_relative_import", ["--reload", "tests/003_relative_import.ts"]),
-    ("workers_startup", ["tests/workers_startup_bench.ts"]),
-    ("workers_round_robin", ["tests/workers_round_robin_bench.ts"]),
+    ("hello", [os.path.join(tests_path, " 002_hello.ts")]),
+    ("relative_import", [os.path.join(tests_path, "003_relative_import.ts")]),
+    ("error_001", [os.path.join(tests_path, "error_001.ts")]),
+    ("cold_hello", ["--reload",
+                    os.path.join(tests_path, "002_hello.ts")]),
+    ("cold_relative_import",
+     ["--reload",
+      os.path.join(tests_path, "003_relative_import.ts")]),
+    ("workers_startup", [os.path.join(tests_path,
+                                      "workers_startup_bench.ts")]),
+    ("workers_round_robin",
+     [os.path.join(tests_path, "workers_round_robin_bench.ts")]),
 ]
 
 gh_pages_data_file = "gh-pages/data.json"
@@ -211,8 +216,8 @@ def run_http(build_dir, new_data):
 
 def bundle_benchmark(deno_exe):
     bundles = {
-        "file_server": "./js/deps/https/deno.land/std/http/file_server.ts",
-        "gist": "./js/deps/https/deno.land/std/examples/gist.ts",
+        "file_server": "./src/js/deps/https/deno.land/std/http/file_server.ts",
+        "gist": "./src/js/deps/https/deno.land/std/examples/gist.ts",
     }
 
     sizes = {}

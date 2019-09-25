@@ -46,7 +46,7 @@ def deno_http(deno_exe):
     addr = get_addr()
     deno_cmd = [
         deno_exe, "run", "--allow-net",
-        "js/deps/https/deno.land/std/http/http_bench.ts", addr
+        "src/js/deps/https/deno.land/std/http/http_bench.ts", addr
     ]
     print "http_benchmark testing DENO using net/http."
     return run(deno_cmd, addr)
