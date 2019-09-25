@@ -3,6 +3,7 @@ use crate::state::ThreadSafeState;
 use deno::*;
 
 mod compiler;
+mod deps;
 mod dispatch_json;
 mod dispatch_minimal;
 mod errors;
@@ -83,6 +84,7 @@ pub const OP_MAKE_TEMP_DIR: OpId = 55;
 pub const OP_CWD: OpId = 56;
 pub const OP_FETCH_ASSET: OpId = 57;
 pub const OP_DIAL_TLS: OpId = 58;
+pub const OP_DEPS: OpId = 59;
 
 pub fn dispatch(
   state: &ThreadSafeState,
@@ -304,6 +306,9 @@ pub fn dispatch(
     ),
     OP_DIAL_TLS => {
       dispatch_json::dispatch(tls::op_dial_tls, state, control, zero_copy)
+    }
+    OP_DEPS => {
+      dispatch_json::dispatch(deps::op_deps, state, control, zero_copy)
     }
     _ => panic!("bad op_id"),
   };

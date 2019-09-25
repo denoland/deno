@@ -556,6 +556,22 @@ impl Deps {
 
     format!("[\"{}\",{}]", self.name, children)
   }
+
+  pub fn to_json_object(&self) -> String {
+    let mut children = "[".to_string();
+
+    if let Some(ref deps) = self.deps {
+      for d in deps {
+        children.push_str(&d.to_json_object());
+        if !d.is_last {
+          children.push_str(",");
+        }
+      }
+    }
+    children.push_str("]");
+
+    format!("{{\"name\": \"{}\", \"deps\": {}}}", self.name, children)
+  }
 }
 
 impl fmt::Display for Deps {

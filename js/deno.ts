@@ -53,6 +53,7 @@ export {
 } from "./make_temp_dir.ts";
 export { chmodSync, chmod } from "./chmod.ts";
 export { chownSync, chown } from "./chown.ts";
+export { deps } from "./deps.ts";
 export { utimeSync, utime } from "./utime.ts";
 export { removeSync, remove, RemoveOption } from "./remove.ts";
 export { renameSync, rename } from "./rename.ts";

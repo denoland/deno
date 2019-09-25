@@ -464,6 +464,14 @@ declare namespace Deno {
    */
   export function chown(path: string, uid: number, gid: number): Promise<void>;
 
+  // @url js/deps.d.ts
+  interface DepsRes {
+    name: string;
+    deps: [DepsRes]
+  }
+
+  export function deps(url: string): Promise<DepsRes>;
+
   // @url js/utime.d.ts
 
   /** Synchronously changes the access and modification times of a file system
