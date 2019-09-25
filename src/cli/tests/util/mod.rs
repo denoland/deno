@@ -64,7 +64,7 @@ impl CheckOutputIntegrationTest {
     };
 
     let (mut reader, writer) = pipe().unwrap();
-    let tests_dir = root.join("cli").join("tests");
+    let tests_dir = root.join("src").join("cli").join("tests");
     let mut command = deno_cmd();
     command.args(args);
     command.current_dir(&tests_dir);

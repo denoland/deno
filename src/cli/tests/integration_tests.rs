@@ -169,7 +169,7 @@ itest!(_021_mjs_modules {
 });
 
 itest!(_022_info_flag_script {
-  args: "info http://127.0.0.1:4545/cli/tests/019_media_types.ts",
+  args: "info http://127.0.0.1:4545/src/cli/tests/019_media_types.ts",
   output: "022_info_flag_script.out",
   http_server: true,
 });
@@ -253,7 +253,7 @@ itest!(_034_onload {
 
 itest!(_035_no_fetch_flag {
   args:
-    "--reload --no-fetch http://127.0.0.1:4545/cli/tests/019_media_types.ts",
+    "--reload --no-fetch http://127.0.0.1:4545/src/cli/tests/019_media_types.ts",
   output: "035_no_fetch_flag.out",
   exit_code: 1,
   check_stderr: true,

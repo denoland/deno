@@ -673,8 +673,6 @@ mod tests {
   fn test_compile_sync() {
     tokio_util::init(|| {
       let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
         .join("tests/002_hello.ts")
         .to_owned();
       let specifier =
@@ -705,8 +703,6 @@ mod tests {
   #[test]
   fn test_bundle_async() {
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-      .parent()
-      .unwrap()
       .join("tests/002_hello.ts")
       .to_owned();
     use deno::ModuleSpecifier;

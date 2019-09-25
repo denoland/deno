@@ -203,9 +203,7 @@ mod tests {
   fn execute_006_url_imports() {
     let http_server_guard = crate::test_util::http_server();
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-      .parent()
-      .unwrap()
-      .join("cli/tests/006_url_imports.ts")
+      .join("tests/006_url_imports.ts")
       .to_owned();
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
