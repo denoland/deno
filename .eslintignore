@@ -1,2 +1,2 @@
-/js/deps/
-cli/tests/error_syntax.js
+src/js/deps/
+src/cli/tests/error_syntax.js

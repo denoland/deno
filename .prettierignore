@@ -1,2 +1,2 @@
-cli/tests/error_syntax.js
-cli/tests/badly_formatted.js
+src/cli/tests/error_syntax.js
+src/cli/tests/badly_formatted.js

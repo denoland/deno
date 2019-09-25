@@ -216,16 +216,16 @@ ninja -C target/debug
 cargo build --release
 
 # List executable targets.
-gn --root=core/libdeno ls target/debug "//:*" --as=output --type=executable
+gn --root=src/core/libdeno ls target/debug "//:*" --as=output --type=executable
 
 # List build configuration.
-gn --root=core/libdeno args target/debug/ --list
+gn --root=src/core/libdeno args target/debug/ --list
 
 # Edit build configuration.
-gn --root=core/libdeno args target/debug/
+gn --root=src/core/libdeno args target/debug/
 
 # Describe a target.
-gn --root=core/libdeno desc target/debug/ :deno
+gn --root=src/core/libdeno desc target/debug/ :deno
 gn help
 
 # Update third_party modules
