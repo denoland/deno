@@ -1,17 +1,24 @@
 // This is not a real HTTP server. We read blindly one time into 'requestBuf',
 // then write this fixed 'responseBuf'. The point of this benchmark is to
 // exercise the event loop in a simple yet semi-realistic way.
-const registry = {};
+
+/** This structure is used to collect all ops
+ * and assign ids to them after we get them
+ * from Rust.
+ *
+ * @type {Map<string, HttpOp>}
+ */
+const opRegistry = new Map();
 
 class HttpOp {
   constructor(name) {
-    if (typeof registry[name] !== "undefined") {
+    if (typeof opRegistry.get(name) !== "undefined") {
       throw new Error(`Duplicate op: ${name}`);
     }
 
     this.name = name;
     this.opId = 0;
-    registry[name] = this;
+    opRegistry.set(name, this);
   }
 
   setOpId(opId) {
@@ -154,7 +161,7 @@ async function main() {
   // and assign id for each of our ops.
   const opsMap = Deno.core.getOps();
   for (const [name, opId] of Object.entries(opsMap)) {
-    const op = registry[name];
+    const op = opRegistry.get(name);
 
     if (!op) {
       continue;

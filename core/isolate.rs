@@ -244,29 +244,13 @@ impl Isolate {
     self.dispatch = Some(Arc::new(f));
   }
 
+  /// New dispatch mechanism. Requires runtime to explicitly ask for op ids
+  /// before using any of the ops.
+  ///
+  /// Ops added using this method are only usable if `dispatch` is not set
+  /// (using `set_dispatch` method).
   pub fn register_op(&mut self, name: &str, op: Box<CoreOpHandler>) -> OpId {
     self.op_registry.register_op(name, op)
-  }
-
-  fn call_op(
-    &self,
-    op_id: OpId,
-    control: &[u8],
-    zero_copy_buf: Option<PinnedBuf>,
-  ) -> CoreOp {
-    // TODO: see TODO in `core/ops.rs` to handle this op via public API
-    // Op with id 0 has special meaning - it's special op that is
-    // always provided to retrieve op id map.
-    // Op id map consists of name to `OpId` mappings.
-    if op_id == 0 {
-      let op_map = self.op_registry.get_op_map();
-      let op_map_json = serde_json::to_string(&op_map).unwrap();
-      let buf = op_map_json.as_bytes().to_owned().into_boxed_slice();
-      return Op::Sync(buf);
-    }
-    let ops = &self.op_registry.ops;
-    let op_handler = &*ops.get(op_id as usize).expect("Op not found!");
-    op_handler(control, zero_copy_buf)
   }
 
   pub fn set_dyn_import<F>(&mut self, f: F)
@@ -344,7 +328,7 @@ impl Isolate {
       assert!(op_id != 0);
       f(op_id, control_buf.as_ref(), PinnedBuf::new(zero_copy_buf))
     } else {
-      isolate.call_op(
+      isolate.op_registry.call_op(
         op_id,
         control_buf.as_ref(),
         PinnedBuf::new(zero_copy_buf),

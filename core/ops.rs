@@ -35,15 +35,18 @@ fn op_noop(_control: &[u8], _zero_copy_buf: Option<PinnedBuf>) -> CoreOp {
   Op::Sync(Box::new([]))
 }
 
+fn op_get_op_map(op_registry: &OpRegistry) -> CoreOp {
+  let op_map = op_registry.get_op_map();
+  let op_map_json = serde_json::to_string(&op_map).unwrap();
+  let buf = op_map_json.as_bytes().to_owned().into_boxed_slice();
+  return Op::Sync(buf);
+}
+
 impl OpRegistry {
   pub fn new() -> Self {
     let mut registry = Self::default();
-    // TODO: We should register actual "get_op_map" op here, but I couldn't
-    // get past borrow checker when I wanted to do:
-    //    registry.register_op("get_op_map", Box::new(registry.op_noop));
-
     // Add single noop symbolizing "get_op_map" function. The actual
-    // handling is done in `isolate.rs`.
+    // handling is done in `call_op` method.
     let op_id = registry.register_op("get_op_map", Box::new(op_noop));
     assert_eq!(op_id, 0);
     registry
@@ -69,6 +72,23 @@ impl OpRegistry {
     self.ops.push(serialized_op);
     op_id
   }
+
+  pub fn call_op(
+    &self,
+    op_id: OpId,
+    control: &[u8],
+    zero_copy_buf: Option<PinnedBuf>,
+  ) -> CoreOp {
+    // Op with id 0 has special meaning - it's a special op that is
+    // always provided to retrieve op id map.
+    // Op id map consists of name to `OpId` mappings.
+    if op_id == 0 {
+      return op_get_op_map(self);
+    }
+
+    let op_handler = &*self.ops.get(op_id as usize).expect("Op not found!");
+    op_handler(control, zero_copy_buf)
+  }
 }
 
 #[test]
@@ -82,4 +102,7 @@ fn test_op_registry() {
   expected_map.insert("test", 1);
   let op_map = op_registry.get_op_map();
   assert_eq!(op_map, expected_map);
+
+  let res = op_registry.call_op(1, [], None);
+  assert_eq!(op_map, Op::Sync(Box::new([])));
 }
