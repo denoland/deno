@@ -6,7 +6,7 @@ import unittest
 
 import http_server
 from test_util import DenoTestCase, run_tests
-from util import root_path, tty_capture
+from util import root_path, tty_capture, tests_path, js_path
 
 PERMISSIONS_PROMPT_TEST_TS = "tools/complex_permissions_test.ts"
 
@@ -28,44 +28,44 @@ class BaseReadWritePermissionsTest(object):
 
     def test_inside_project_dir(self):
         code, _stdout, stderr = self._run_deno(
-            ["--allow-" + self.test_type + "=" + root_path],
-            [self.test_type, "package.json", "cli/tests/subdir/config.json"])
+            ["--allow-" + self.test_type + "=" + root_path], [
+                self.test_type, "package.json",
+                tests_path + "/subdir/config.json"
+            ])
         assert code == 0
         assert PROMPT_PATTERN not in stderr
         assert PERMISSION_DENIED_PATTERN not in stderr
 
     def test_outside_test_dir(self):
-        code, _stdout, stderr = self._run_deno([
-            "--allow-" + self.test_type + "=" + os.path.join(
-                root_path, "cli/tests")
-        ], [self.test_type, "package.json"])
+        code, _stdout, stderr = self._run_deno(
+            ["--allow-" + self.test_type + "=" + tests_path],
+            [self.test_type, "package.json"])
         assert code == 1
         assert PROMPT_PATTERN not in stderr
         assert PERMISSION_DENIED_PATTERN in stderr
 
     def test_inside_test_dir(self):
-        code, _stdout, stderr = self._run_deno([
-            "--allow-" + self.test_type + "=" + os.path.join(
-                root_path, "cli/tests")
-        ], [self.test_type, "cli/tests/subdir/config.json"])
+        code, _stdout, stderr = self._run_deno(
+            ["--allow-" + self.test_type + "=" + tests_path],
+            [self.test_type, tests_path + "/subdir/config.json"])
         assert code == 0
         assert PROMPT_PATTERN not in stderr
         assert PERMISSION_DENIED_PATTERN not in stderr
 
     def test_outside_test_and_js_dir(self):
-        code, _stdout, stderr = self._run_deno([
-            "--allow-" + self.test_type + "=" + os.path.join(
-                root_path, "cli/tests") + "," + os.path.join(root_path, "js")
-        ], [self.test_type, "package.json"])
+        code, _stdout, stderr = self._run_deno(
+            ["--allow-" + self.test_type + "=" + tests_path + "," + js_path],
+            [self.test_type, "package.json"])
         assert code == 1
         assert PROMPT_PATTERN not in stderr
         assert PERMISSION_DENIED_PATTERN in stderr
 
     def test_inside_test_and_js_dir(self):
-        code, _stdout, stderr = self._run_deno([
-            "--allow-" + self.test_type + "=" + os.path.join(
-                root_path, "cli/tests") + "," + os.path.join(root_path, "js")
-        ], [self.test_type, "js/dir_test.ts", "cli/tests/subdir/config.json"])
+        code, _stdout, stderr = self._run_deno(
+            ["--allow-" + self.test_type + "=" + tests_path + "," + js_path], [
+                self.test_type, js_path + "/dir_test.ts",
+                tests_path + "/subdir/config.json"
+            ])
         assert code == 0
         assert PROMPT_PATTERN not in stderr
         assert PERMISSION_DENIED_PATTERN not in stderr
@@ -75,8 +75,8 @@ class BaseReadWritePermissionsTest(object):
         saved_curdir = os.getcwd()
         os.chdir(root_path)
         code, _stdout, stderr = self._run_deno(
-            ["--allow-" + self.test_type + "=" + "./cli/tests"],
-            [self.test_type, "cli/tests/subdir/config.json"])
+            ["--allow-" + self.test_type + "=" + "./src/cli/tests"],
+            [self.test_type, "src/cli/tests/subdir/config.json"])
         assert code == 0
         assert PROMPT_PATTERN not in stderr
         assert PERMISSION_DENIED_PATTERN not in stderr
@@ -87,8 +87,8 @@ class BaseReadWritePermissionsTest(object):
         saved_curdir = os.getcwd()
         os.chdir(root_path)
         code, _stdout, stderr = self._run_deno(
-            ["--allow-" + self.test_type + "=" + "cli/tests"],
-            [self.test_type, "cli/tests/subdir/config.json"])
+            ["--allow-" + self.test_type + "=" + tests_path],
+            [self.test_type, tests_path + "/subdir/config.json"])
         assert code == 0
         assert PROMPT_PATTERN not in stderr
         assert PERMISSION_DENIED_PATTERN not in stderr
