@@ -6,6 +6,32 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.19.0 / 2019.09.24
+
+In deno:
+
+- feat: Add Deno.dialTLS()
+- feat: Make deno_cli installable via crates.io (#2946)
+- feat: Remove test.py, use cargo test as test frontend (#2967)
+- feat: dial/listen API change (#3000)
+- feat: parallelize downloads from TS compiler (#2949)
+- fix: Make `window` compatible with ts 3.6 (#2984)
+- fix: Remove some non-standard web API constructors (#2970)
+- fix: debug logging in runtime/compiler (#2953)
+- fix: flag parsing of config file (#2996)
+- fix: reschedule global timer if it fires earlier than expected (#2989)
+- fix: type directive parsing (#2954)
+- upgrade: V8 to 7.9.110 for top-level-await (#3015)
+- upgrade: to TypeScript 3.6.3 (#2969)
+
+In deno_std:
+
+- feat: Implement BufReader.readString (denoland/deno_std#607)
+- fix: TOML's key encoding (denoland/deno_std#612)
+- fix: remove //testing/main.ts (denoland/deno_std#605)
+- fix: types in example_client for ws module (denoland/deno_std#609)
+- upgrade: mime-db to commit c50e0d1 (denoland/deno_std#608)
+
 ### v0.18.0 / 2019.09.13
 
 In deno:
