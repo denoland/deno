@@ -40,7 +40,7 @@ impl OpRegistry {
     let mut registry = Self::default();
     // TODO: We should register actual "get_op_map" op here, but I couldn't
     // get past borrow checker when I wanted to do:
-    //    registry.register_op("get_op_map", Box::new(self.op_noop));
+    //    registry.register_op("get_op_map", Box::new(registry.op_noop));
 
     // Add single noop symbolizing "get_op_map" function. The actual
     // handling is done in `isolate.rs`.
@@ -72,8 +72,14 @@ impl OpRegistry {
 }
 
 #[test]
-fn test_register_op() {
+fn test_op_registry() {
   let mut op_registry = OpRegistry::new();
   let op_id = op_registry.register_op("test", Box::new(op_noop));
   assert!(op_id != 0);
+
+  let mut expected_map = HashMap::new();
+  expected_map.insert("get_op_map", 0);
+  expected_map.insert("test", 1);
+  let op_map = op_registry.get_op_map();
+  assert_eq!(op_map, expected_map);
 }

@@ -234,6 +234,9 @@ impl Isolate {
   /// Defines the how Deno.core.dispatch() acts.
   /// Called whenever Deno.core.dispatch() is called in JavaScript. zero_copy_buf
   /// corresponds to the second argument of Deno.core.dispatch().
+  ///
+  /// If this method is used then ops registered using `op_register` function are
+  /// ignored and all dispatching must be handled manually in provided callback.
   pub fn set_dispatch<F>(&mut self, f: F)
   where
     F: Fn(OpId, &[u8], Option<PinnedBuf>) -> CoreOp + Send + Sync + 'static,
@@ -251,6 +254,10 @@ impl Isolate {
     control: &[u8],
     zero_copy_buf: Option<PinnedBuf>,
   ) -> CoreOp {
+    // TODO: see TODO in `core/ops.rs` to handle this op via public API
+    // Op with id 0 has special meaning - it's special op that is
+    // always provided to retrieve op id map.
+    // Op id map consists of name to `OpId` mappings.
     if op_id == 0 {
       let op_map = self.op_registry.get_op_map();
       let op_map_json = serde_json::to_string(&op_map).unwrap();
