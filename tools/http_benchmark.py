@@ -18,7 +18,7 @@ LAST_PORT = 4544
 
 
 def server_addr(port):
-    return "0.0.0.0:%d" % port
+    return "0.0.0.0:%s" % port
 
 
 def get_port(port=None):
@@ -26,7 +26,9 @@ def get_port(port=None):
     if port is None:
         port = LAST_PORT
         LAST_PORT = LAST_PORT + 1
-    return port
+    # Return port as str because all usages below are as a str and having it an
+    # integer just adds complexity.
+    return str(port)
 
 
 def deno_tcp(deno_exe):
@@ -103,7 +105,7 @@ def deno_core_multi(exe):
 
 def node_http():
     port = get_port()
-    node_cmd = ["node", "tools/node_http.js", str(port)]
+    node_cmd = ["node", "tools/node_http.js", port]
     print "http_benchmark testing NODE."
     return run(node_cmd, port)
 
@@ -111,11 +113,7 @@ def node_http():
 def node_http_proxy(hyper_hello_exe):
     port = get_port()
     origin_port = get_port()
-    node_cmd = [
-        "node", "tools/node_http_proxy.js",
-        str(port),
-        str(origin_port)
-    ]
+    node_cmd = ["node", "tools/node_http_proxy.js", port, origin_port]
     print "http_proxy_benchmark testing NODE."
     return run(node_cmd, port, None,
                http_proxy_origin(hyper_hello_exe, origin_port))
@@ -124,7 +122,7 @@ def node_http_proxy(hyper_hello_exe):
 def node_tcp_proxy(hyper_hello_exe):
     port = get_port()
     origin_port = get_port()
-    node_cmd = ["node", "tools/node_tcp_proxy.js", str(port), str(origin_port)]
+    node_cmd = ["node", "tools/node_tcp_proxy.js", port, origin_port]
     print "http_proxy_benchmark testing NODE tcp."
     return run(node_cmd, port, None,
                http_proxy_origin(hyper_hello_exe, origin_port))
@@ -132,20 +130,20 @@ def node_tcp_proxy(hyper_hello_exe):
 
 def node_tcp():
     port = get_port()
-    node_cmd = ["node", "tools/node_tcp.js", str(port)]
+    node_cmd = ["node", "tools/node_tcp.js", port]
     print "http_benchmark testing node_tcp.js"
     return run(node_cmd, port)
 
 
 def http_proxy_origin(hyper_hello_exe, port):
-    return [hyper_hello_exe, str(port)]
+    return [hyper_hello_exe, port]
 
 
 def hyper_http(hyper_hello_exe):
     port = get_port()
     hyper_cmd = [hyper_hello_exe, port]
     print "http_benchmark testing RUST hyper."
-    return run(hyper_cmd, str(port))
+    return run(hyper_cmd, port)
 
 
 def http_benchmark(build_dir):
@@ -197,7 +195,7 @@ def run(server_cmd, port, merge_env=None, origin_cmd=None):
 
     try:
         cmd = "third_party/wrk/%s/wrk -d %s --latency http://127.0.0.1:%s/" % (
-            util.platform(), DURATION, str(port))
+            util.platform(), DURATION, port)
         print cmd
         output = subprocess.check_output(cmd, shell=True)
         stats = util.parse_wrk_output(output)
