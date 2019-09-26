@@ -158,7 +158,7 @@ export function listen(options: ListenOptions): Listener {
   const res = sendSync(dispatch.OP_LISTEN, {
     hostname: options.hostname || listenDefaults.hostname,
     port: options.port,
-    transport: options.transport || listenDefaults.hostname
+    transport: options.transport || listenDefaults.transport
   });
   return new ListenerImpl(res.rid, options.transport, res.localAddr);
 }
