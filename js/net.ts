@@ -135,7 +135,6 @@ export interface ListenOptions {
   hostname?: string;
   transport?: Transport;
 }
-const listenDefaults = { hostname: "0.0.0.0", transport: "tcp" };
 
 /** Listen announces on the local transport address.
  *
@@ -155,12 +154,14 @@ const listenDefaults = { hostname: "0.0.0.0", transport: "tcp" };
  *     listen({ hostname: "golang.org", port: 80, transport: "tcp" })
  */
 export function listen(options: ListenOptions): Listener {
+  const hostname = options.hostname || "0.0.0.0";
+  const transport = options.transport || "tcp";
   const res = sendSync(dispatch.OP_LISTEN, {
-    hostname: options.hostname || listenDefaults.hostname,
+    hostname,
     port: options.port,
-    transport: options.transport || listenDefaults.transport
+    transport
   });
-  return new ListenerImpl(res.rid, options.transport, res.localAddr);
+  return new ListenerImpl(res.rid, transport, res.localAddr);
 }
 
 export interface DialOptions {
@@ -168,7 +169,6 @@ export interface DialOptions {
   hostname?: string;
   transport?: Transport;
 }
-const dialDefaults = { hostname: "127.0.0.1", transport: "tcp" };
 
 /** Dial connects to the address on the named transport.
  *
@@ -189,9 +189,9 @@ const dialDefaults = { hostname: "127.0.0.1", transport: "tcp" };
  */
 export async function dial(options: DialOptions): Promise<Conn> {
   const res = await sendAsync(dispatch.OP_DIAL, {
-    hostname: options.hostname || dialDefaults.hostname,
+    hostname: options.hostname || "127.0.0.1",
     port: options.port,
-    transport: options.transport || dialDefaults.transport
+    transport: options.transport || "tcp"
   });
   return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);
 }
