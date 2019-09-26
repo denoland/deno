@@ -39,7 +39,6 @@ SharedQueue Binary Layout
   let sharedBytes;
   let shared32;
   let initialized = false;
-  let opsMap = {};
 
   function maybeInit() {
     if (!initialized) {
@@ -59,22 +58,11 @@ SharedQueue Binary Layout
     Deno.core.recv(handleAsyncMsgFromRust);
   }
 
-  function initOps() {
+  function ops() {
+    // op id 0 is a special value to retreive the map of registered ops.
     const opsMapBytes = Deno.core.send(0, new Uint8Array([]), null);
     const opsMapJson = String.fromCharCode.apply(null, opsMapBytes);
-    opsMap = JSON.parse(opsMapJson);
-  }
-
-  function getOpId(name) {
-    const opId = opsMap[name];
-
-    if (!opId) {
-      throw new Error(
-        `Unknown op: "${key}". Did you forget to initialize ops with Deno.core.ops.init()?`
-      );
-    }
-
-    return opId;
+    return JSON.parse(opsMapJson);
   }
 
   function assert(cond) {
@@ -208,10 +196,7 @@ SharedQueue Binary Layout
       reset,
       shift
     },
-    ops: {
-      init: initOps,
-      get: getOpId
-    }
+    ops
   };
 
   assert(window[GLOBAL_NAMESPACE] != null);

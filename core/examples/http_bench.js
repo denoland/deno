@@ -75,12 +75,12 @@ function handleAsyncMsgFromRust(opId, buf) {
 
 /** Listens on 0.0.0.0:4500, returns rid. */
 function listen() {
-  return sendSync(Deno.core.ops.get("listen"), -1);
+  return sendSync(ops["listen"], -1);
 }
 
 /** Accepts a connection, returns rid. */
 async function accept(rid) {
-  return await sendAsync(Deno.core.ops.get("accept"), rid);
+  return await sendAsync(ops["accept"], rid);
 }
 
 /**
@@ -88,16 +88,16 @@ async function accept(rid) {
  * Returns bytes read.
  */
 async function read(rid, data) {
-  return await sendAsync(Deno.core.ops.get("read"), rid, data);
+  return await sendAsync(ops["read"], rid, data);
 }
 
 /** Writes a fixed HTTP response to the socket rid. Returns bytes written. */
 async function write(rid, data) {
-  return await sendAsync(Deno.core.ops.get("write"), rid, data);
+  return await sendAsync(ops["write"], rid, data);
 }
 
 function close(rid) {
-  return sendSync(Deno.core.ops.get("close"), rid);
+  return sendSync(ops["close"], rid);
 }
 
 async function serve(rid) {
@@ -115,9 +115,11 @@ async function serve(rid) {
   close(rid);
 }
 
+let ops;
+
 async function main() {
   Deno.core.setAsyncHandler(handleAsyncMsgFromRust);
-  Deno.core.ops.init();
+  ops = Deno.core.ops();
 
   Deno.core.print("http_bench.js start\n");
 
