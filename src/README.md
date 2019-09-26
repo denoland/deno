@@ -17,6 +17,10 @@ https://crates.io/crates/deno_cli_snapshots
 `cli` provides the main Deno executable. It contains a lot of integration tests
 in `cli/tests`. It's published at https://crates.io/crates/deno_cli
 
+`std` provides a set of standard modules for Deno. These modules do not get
+builtin to the Deno executable like the code in `src/js`. Rather the standard
+modules are accessable from https://deno.land/std/
+
 Ongoing directory tree reorg:
 
 TODO(ry) Merge deno_std repo into this repo, place it at `//src/std`
