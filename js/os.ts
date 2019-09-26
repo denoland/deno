@@ -28,6 +28,10 @@ function setEnv(key: string, value: string): void {
   sendSync(dispatch.OP_SET_ENV, { key, value });
 }
 
+function getEnv(key: string): string {
+  return sendSync(dispatch.OP_GET_ENV, { key });
+}
+
 /** Returns a snapshot of the environment variables at invocation. Mutating a
  * property in the object will set that variable in the environment for
  * the process. The environment object will only accept `string`s
@@ -45,10 +49,10 @@ export function env(key: string): string | undefined;
 export function env(
   key?: string
 ): { [index: string]: string } | string | undefined {
-  const env = sendSync(dispatch.OP_ENV);
   if (key) {
-    return env[key];
+    return getEnv(key);
   }
+  const env = sendSync(dispatch.OP_ENV);
   return new Proxy(env, {
     set(obj, prop: string, value: string): boolean {
       setEnv(prop, value);
