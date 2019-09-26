@@ -1,8 +1,18 @@
-// TODO here we're referencing files accross crate boundaries, which has two
-// problems:
-// 1. "cargo package" breaks when you do this.
-// 2. Using this crate outside of the deno tree becomes impossible.
-import { test, assert } from "./src/js/test_util.ts";
+// TODO  We need some way to import test modules.
+// Attempt one:
+//
+//   import { test, assert } from "../../js/test_util.ts";
+//
+// Here it is referencing files across crate boundaries, which will break
+// 'cargo package' and means the crate is not useable outside the deno tree.
+// This might be okay for a first pass, but it's not the best solution.
+//
+// Attempt two:
+// we invent a new URL for referencing files in other crates.
+// this is magic and not browser compatible.. Browser compatibility for
+// ops is not so important.
+import { test, assert } from "crate://deno_cli_snapshots@0.19.0/test_util.ts";
+
 import { hello } from "./hello.ts";
 
 test(function testHello(): void {
