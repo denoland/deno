@@ -250,7 +250,10 @@ impl Isolate {
   ///
   /// Ops added using this method are only usable if `dispatch` is not set
   /// (using `set_dispatch` method).
-  pub fn register_op(&mut self, name: &str, op: Box<CoreOpHandler>) -> OpId {
+  pub fn register_op<F>(&mut self, name: &str, op: F) -> OpId
+  where
+    F: Fn(&[u8], Option<PinnedBuf>) -> CoreOp + Send + Sync + 'static,
+  {
     assert!(
       self.dispatch.is_none(),
       "set_dispatch should not be used in conjunction with register_op"
