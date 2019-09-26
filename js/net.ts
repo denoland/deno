@@ -155,8 +155,11 @@ const listenDefaults = { hostname: "0.0.0.0", transport: "tcp" };
  *     listen({ hostname: "golang.org", port: 80, transport: "tcp" })
  */
 export function listen(options: ListenOptions): Listener {
-  options = Object.assign(listenDefaults, options);
-  const res = sendSync(dispatch.OP_LISTEN, options);
+  const res = sendSync(dispatch.OP_LISTEN, {
+    hostname: options.hostname || listenDefaults.hostname,
+    port: options.port,
+    transport: options.transport || listenDefaults.hostname
+  });
   return new ListenerImpl(res.rid, options.transport, res.localAddr);
 }
 
@@ -185,8 +188,11 @@ const dialDefaults = { hostname: "127.0.0.1", transport: "tcp" };
  *     dial({ hostname: "golang.org", port: 80, transport: "tcp" })
  */
 export async function dial(options: DialOptions): Promise<Conn> {
-  options = Object.assign(dialDefaults, options);
-  const res = await sendAsync(dispatch.OP_DIAL, options);
+  const res = await sendAsync(dispatch.OP_DIAL, {
+    hostname: options.hostname || dialDefaults.hostname,
+    port: options.port,
+    transport: options.transport || dialDefaults.transport
+  });
   return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);
 }
 
