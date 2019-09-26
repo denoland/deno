@@ -7,9 +7,8 @@ version = "0.1.0"
 authors = ["Ryan Dahl <ry@tinyclouds.org>"]
 edition = "2018"
 
-# Note: I am explicitly attempting to not have a build.rs file. I think it might
-# be unnecessary for each op crate to implement their own. Then again, it might
-# be unavoidable... Let's try without first.
+[lib]
+path = "lib.rs"
 
 [dependencies]
 deno = "0.19.0"
