@@ -1,4 +1,4 @@
-// TODO  We need some way to import test modules.
+// We need some way to import test modules.
 // Attempt one:
 //
 //   import { test } from "../../js/test_util.ts";
@@ -11,7 +11,13 @@
 // we invent a new URL for referencing files in other crates.
 // this is magic and not browser compatible.. Browser compatibility for
 // ops is not so important.
-import { test } from "crate://deno_std@0.19.0/testing/mod.ts";
+//
+//  import { test } from "crate://deno_std@0.19.0/testing/mod.ts";
+//
+// This is quite nice. But the version of deno_std already specified in
+// Cargo.toml. I think we shouldn't repeat it.
+import { test } from "crate://deno_std/testing/mod.ts";
+
 import { hello } from "./hello.ts";
 
 test("hello test", () => {
