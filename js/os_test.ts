@@ -17,17 +17,33 @@ testPerm({ env: true }, function envSuccess(): void {
   assertEquals(Deno.env("test_var"), env.test_var);
 });
 
-test(function envFailure(): void {
-  let caughtError = false;
+testPerm({ env: true }, function envNotFound(): void {
+  const r = Deno.env("env_var_does_not_exist!");
+  assertEquals(r, undefined);
+});
+
+test(function envPermissionDenied1(): void {
+  let err;
   try {
     Deno.env();
-  } catch (err) {
-    caughtError = true;
-    assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
-    assertEquals(err.name, "PermissionDenied");
+  } catch (e) {
+    err = e;
   }
+  assertNotEquals(err, undefined);
+  assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+  assertEquals(err.name, "PermissionDenied");
+});
 
-  assert(caughtError);
+test(function envPermissionDenied2(): void {
+  let err;
+  try {
+    Deno.env("PATH");
+  } catch (e) {
+    err = e;
+  }
+  assertNotEquals(err, undefined);
+  assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+  assertEquals(err.name, "PermissionDenied");
 });
 
 if (Deno.build.os === "win") {
