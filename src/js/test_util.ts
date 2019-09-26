@@ -7,11 +7,11 @@
 // tests by the special string. permW1N0 means allow-write but not allow-net.
 // See tools/unit_tests.py for more details.
 
-import * as testing from "./deps/https/deno.land/std/testing/mod.ts";
+import * as testing from "../std/testing/mod.ts";
 import {
   assert,
   assertEquals
-} from "./deps/https/deno.land/std/testing/asserts.ts";
+} from "../std/testing/asserts.ts";
 export {
   assert,
   assertThrows,
@@ -21,7 +21,7 @@ export {
   assertStrictEq,
   assertStrContains,
   unreachable
-} from "./deps/https/deno.land/std/testing/asserts.ts";
+} from "../std/testing/asserts.ts";
 
 interface TestPermissions {
   read?: boolean;

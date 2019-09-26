@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
 import { test, assertEquals } from "../src/js/test_util.ts";
-import { runIfMain } from "../src/js/deps/https/deno.land/std/testing/mod.ts";
+import { runIfMain } from "../src/std/testing/mod.ts";
 import {
   BenchmarkRun,
   createBinarySizeColumns,

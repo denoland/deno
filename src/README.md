@@ -34,3 +34,5 @@ TODO(ry) Rename `deno_cli` to `deno` after `deno_core` rename is complete.
 TODO(ry) Replace `//src/core/libdeno` with `//src/v8` a new Rust V8 binding.
 
 TODO(ry) Remove `//tests` symlink.
+
+TODO(ry) Move `//website` to `//src/website`
