@@ -40,14 +40,8 @@ def tcp(deno_exe, megs):
     time.sleep(5)  # wait for deno to wake up. TODO racy.
     try:
         start = time.time()
-
-        nc_args = "nc "
-        if sys.platform == "linux2":
-            # TODO(ry) Only some linuxes need this.. annoying.
-            # nc_args += " -N "
-            pass
-
-        cmd = ("head -c %s /dev/zero " % size) + " | " + nc_args + CLIENT_ADDR
+        nc_cmd = "nc " + CLIENT_ADDR
+        cmd = ("head -c %s /dev/zero " % size) + " | " + nc_cmd
         print cmd
         subprocess.check_output(cmd, shell=True)
         end = time.time()
