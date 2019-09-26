@@ -18,8 +18,17 @@
 // Cargo.toml. I think we shouldn't repeat it.
 import { test } from "crate://deno_std/testing/mod.ts";
 
+// If we don't do the //src reorg that I've proposed in #3022, then we might be
+// able to have a very elegant URL some day using the deno crate.
+//
+//  import { test } from "crate://deno/std/testing/mod.ts";
+
 import "./hello.ts";
 
 test("hello test", () => {
+  Deno.hello();
+});
+
+test("hello test2", () => {
   Deno.hello();
 });
