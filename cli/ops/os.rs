@@ -113,8 +113,11 @@ pub fn op_get_env(
 ) -> Result<JsonOp, ErrBox> {
   let args: GetEnv = serde_json::from_value(args)?;
   state.check_env()?;
-  let v = env::var(args.key)?;
-  Ok(JsonOp::Sync(json!(v)))
+  let r = match env::var(args.key) {
+    Err(env::VarError::NotPresent) => json!([]),
+    v => json!([v?]),
+  };
+  Ok(JsonOp::Sync(r))
 }
 
 #[derive(Deserialize)]

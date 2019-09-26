@@ -28,8 +28,8 @@ function setEnv(key: string, value: string): void {
   sendSync(dispatch.OP_SET_ENV, { key, value });
 }
 
-function getEnv(key: string): string {
-  return sendSync(dispatch.OP_GET_ENV, { key });
+function getEnv(key: string): string | undefined {
+  return sendSync(dispatch.OP_GET_ENV, { key })[0];
 }
 
 /** Returns a snapshot of the environment variables at invocation. Mutating a
