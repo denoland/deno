@@ -39,6 +39,7 @@ SharedQueue Binary Layout
   let sharedBytes;
   let shared32;
   let initialized = false;
+  let opsMap = {};
 
   function maybeInit() {
     if (!initialized) {
@@ -58,10 +59,12 @@ SharedQueue Binary Layout
     Deno.core.recv(handleAsyncMsgFromRust);
   }
 
-  function getOps() {
+  function initOps() {
     const opsMapBytes = Deno.core.send(0, new Uint8Array([]), null);
     const opsMapJson = String.fromCharCode.apply(null, opsMapBytes);
-    return JSON.parse(opsMapJson);
+    for (const [key, value] of Object.entries(JSON.parse(opsMapJson))) {
+      opsMap[key] = value;
+    }
   }
 
   function assert(cond) {
@@ -195,7 +198,8 @@ SharedQueue Binary Layout
       reset,
       shift
     },
-    getOps
+    initOps,
+    ops: opsMap
   };
 
   assert(window[GLOBAL_NAMESPACE] != null);

@@ -1,70 +1,6 @@
 // This is not a real HTTP server. We read blindly one time into 'requestBuf',
 // then write this fixed 'responseBuf'. The point of this benchmark is to
 // exercise the event loop in a simple yet semi-realistic way.
-
-/** This structure is used to collect all ops
- * and assign ids to them after we get them
- * from Rust.
- *
- * @type {Map<string, HttpOp>}
- */
-const opRegistry = new Map();
-
-class HttpOp {
-  constructor(name) {
-    if (typeof opRegistry.get(name) !== "undefined") {
-      throw new Error(`Duplicate op: ${name}`);
-    }
-
-    this.name = name;
-    this.opId = 0;
-    opRegistry.set(name, this);
-  }
-
-  setOpId(opId) {
-    this.opId = opId;
-  }
-
-  static handleAsyncMsgFromRust(opId, buf) {
-    const record = recordFromBuf(buf);
-    const { promiseId } = record;
-    const p = promiseMap.get(promiseId);
-    promiseMap.delete(promiseId);
-    p.resolve(record);
-  }
-
-  static sendSync(opId, arg, zeroCopy) {
-    const buf = send(0, opId, arg, zeroCopy);
-    return recordFromBuf(buf);
-  }
-
-  static sendAsync(opId, arg, zeroCopy = null) {
-    const promiseId = nextPromiseId++;
-    const p = createResolvable();
-    promiseMap.set(promiseId, p);
-    send(promiseId, opId, arg, zeroCopy);
-    return p;
-  }
-
-  /** Returns i32 number */
-  sendSync(arg, zeroCopy = null) {
-    const res = HttpOp.sendSync(this.opId, arg, zeroCopy);
-    return res.result;
-  }
-
-  /** Returns Promise<number> */
-  async sendAsync(arg, zeroCopy = null) {
-    const res = await HttpOp.sendAsync(this.opId, arg, zeroCopy);
-    return res.result;
-  }
-}
-
-const OP_LISTEN = new HttpOp("listen");
-const OP_ACCEPT = new HttpOp("accept");
-const OP_READ = new HttpOp("read");
-const OP_WRITE = new HttpOp("write");
-const OP_CLOSE = new HttpOp("close");
-
 const requestBuf = new Uint8Array(64 * 1024);
 const responseBuf = new Uint8Array(
   "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n"
@@ -103,6 +39,15 @@ function send(promiseId, opId, arg, zeroCopy = null) {
   return Deno.core.dispatch(opId, scratchBytes, zeroCopy);
 }
 
+/** Returns Promise<number> */
+function sendAsync(opId, arg, zeroCopy = null) {
+  const promiseId = nextPromiseId++;
+  const p = createResolvable();
+  promiseMap.set(promiseId, p);
+  send(promiseId, opId, arg, zeroCopy);
+  return p;
+}
+
 function recordFromBuf(buf) {
   assert(buf.byteLength === 3 * 4);
   const buf32 = new Int32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
@@ -113,14 +58,29 @@ function recordFromBuf(buf) {
   };
 }
 
+/** Returns i32 number */
+function sendSync(opId, arg) {
+  const buf = send(0, opId, arg);
+  const record = recordFromBuf(buf);
+  return record.result;
+}
+
+function handleAsyncMsgFromRust(opId, buf) {
+  const record = recordFromBuf(buf);
+  const { promiseId, result } = record;
+  const p = promiseMap.get(promiseId);
+  promiseMap.delete(promiseId);
+  p.resolve(result);
+}
+
 /** Listens on 0.0.0.0:4500, returns rid. */
 function listen() {
-  return OP_LISTEN.sendSync(-1);
+  return sendSync(Deno.core.ops["listen"], -1);
 }
 
 /** Accepts a connection, returns rid. */
 async function accept(rid) {
-  return await OP_ACCEPT.sendAsync(rid);
+  return await sendAsync(Deno.core.ops["accept"], rid);
 }
 
 /**
@@ -128,16 +88,16 @@ async function accept(rid) {
  * Returns bytes read.
  */
 async function read(rid, data) {
-  return await OP_READ.sendAsync(rid, data);
+  return await sendAsync(Deno.core.ops["read"], rid, data);
 }
 
 /** Writes a fixed HTTP response to the socket rid. Returns bytes written. */
 async function write(rid, data) {
-  return await OP_WRITE.sendAsync(rid, data);
+  return await sendAsync(Deno.core.ops["write"], rid, data);
 }
 
 function close(rid) {
-  return OP_CLOSE.sendSync(rid);
+  return sendSync(Deno.core.ops["close"], rid);
 }
 
 async function serve(rid) {
@@ -156,19 +116,8 @@ async function serve(rid) {
 }
 
 async function main() {
-  Deno.core.setAsyncHandler(HttpOp.handleAsyncMsgFromRust);
-  // Initialize ops by getting their ids from Rust
-  // and assign id for each of our ops.
-  const opsMap = Deno.core.getOps();
-  for (const [name, opId] of Object.entries(opsMap)) {
-    const op = opRegistry.get(name);
-
-    if (!op) {
-      throw new Error(`Unknown op: ${name}`);
-    }
-
-    op.setOpId(opId);
-  }
+  Deno.core.setAsyncHandler(handleAsyncMsgFromRust);
+  Deno.core.initOps();
 
   Deno.core.print("http_bench.js start\n");
 
