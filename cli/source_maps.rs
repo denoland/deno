@@ -110,8 +110,8 @@ pub fn apply_source_map<G: SourceMapGetter>(
   // source file map.
   let end_column = match v8_exception.end_column {
     Some(ec) => {
-      if start_column.is_some() {
-        Some(ec - (v8_exception.start_column.unwrap() - start_column.unwrap()))
+      if let Some(sc) = start_column {
+        Some(ec - (v8_exception.start_column.unwrap() - sc))
       } else {
         None
       }
