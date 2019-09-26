@@ -37,8 +37,10 @@ declare interface DenoCore {
     shift(): Uint8Array | null;
   };
 
-  initOps(): void;
-  ops: Record<string, number>;
+  ops: {
+    init(): void;
+    get(name: string): number;
+  };
 
   recv(cb: MessageCallback): void;
 
