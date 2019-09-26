@@ -11,6 +11,7 @@ use hyper;
 use reqwest;
 use rustyline::error::ReadlineError;
 use std;
+use std::env::VarError;
 use std::error::Error;
 use std::fmt;
 use std::io;
@@ -132,6 +133,16 @@ impl GetErrorKind for ModuleResolutionError {
       InvalidUrl(ref err) | InvalidBaseUrl(ref err) => err.kind(),
       InvalidPath(_) => ErrorKind::InvalidPath,
       ImportPrefixMissing(_) => ErrorKind::ImportPrefixMissing,
+    }
+  }
+}
+
+impl GetErrorKind for VarError {
+  fn kind(&self) -> ErrorKind {
+    use VarError::*;
+    match self {
+      NotPresent => ErrorKind::NotFound,
+      NotUnicode(..) => ErrorKind::InvalidData,
     }
   }
 }
@@ -294,6 +305,7 @@ impl GetErrorKind for dyn AnyError {
       .or_else(|| self.downcast_ref::<StaticError>().map(Get::kind))
       .or_else(|| self.downcast_ref::<uri::InvalidUri>().map(Get::kind))
       .or_else(|| self.downcast_ref::<url::ParseError>().map(Get::kind))
+      .or_else(|| self.downcast_ref::<VarError>().map(Get::kind))
       .or_else(|| self.downcast_ref::<ReadlineError>().map(Get::kind))
       .or_else(|| {
         self
