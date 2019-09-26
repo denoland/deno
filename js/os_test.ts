@@ -44,66 +44,62 @@ test(function envFailure(): void {
 });
 
 if (Deno.build.os === "win") {
+  // This test verifies that on Windows, environment variables are
+  // case-insensitive. Case normalization needs be done using the collation
+  // that Windows uses, rather than naively using String.toLowerCase().
   testPerm({ env: true, run: true }, async function envCaseInsensitive() {
-    // This test verifies that on Windows, environment variables are
-    // case-insensitive. Case normalization needs be done using the collation
-    // that Windows uses, rather than naively using String.toLowerCase().
+    // Utility function that runs a Deno subprocess with the environment
+    // specified in `inputEnv`. The subprocess reads the environment variables
+    // which are in the keys of `expectedEnv` and writes them to stdout as JSON.
+    // It is then verified that these match with the values of `expectedEnv`.
+    const checkChildEnv = async (inputEnv, expectedEnv): Promise<void> => {
+      const src = `
+        Deno.stdout.write((new TextEncoder()).encode(JSON.stringify(
+          ${JSON.stringify(Object.keys(expectedEnv))}.map(k => Deno.env(k))
+        )))`;
+      const proc = Deno.run({
+        args: [Deno.execPath(), "eval", src],
+        env: inputEnv,
+        stdout: "piped"
+      });
+      const status = await proc.status();
+      assertEquals(status.success, true);
+      const expectedValues = Object.values(expectedEnv);
+      const actualValues = JSON.parse(
+        new TextDecoder().decode(await proc.output())
+      );
+      assertEquals(actualValues, expectedValues);
+    };
 
     assertEquals(Deno.env("path"), Deno.env("PATH"));
     assertEquals(Deno.env("Path"), Deno.env("PATH"));
 
-    // Utility function that runs a Deno subprocess with the environment
-    // specified in `env`. The subprocess reads the environment variables
-    // specified in `keys` and outputs them as a JSON object.
-    const runGetEnv = async (env, keys) => {
-      const src = `
-        Deno.stdout.write((new TextEncoder()).encode(JSON.stringify(
-          ${JSON.stringify(keys)}.map(k => Deno.env(k))
-        )))`;
-      const proc = Deno.run({
-        args: [Deno.execPath(), "eval", src],
-        env,
-        stdout: "piped"
-      });
-      const [output, status] = await Promise.all([
-        proc.output(),
-        proc.status()
-      ]);
-      assertEquals(status.success, true);
-      return JSON.parse(new TextDecoder().decode(output));
-    };
-
-    // That 'foo', 'Foo' and 'Foo' are case folded.
-    assertEquals(await runGetEnv({ foo: "same" }, ["foo", "Foo", "FOO"]), [
-      "same",
-      "same",
-      "same"
-    ]);
+    // Check 'foo', 'Foo' and 'Foo' are case folded.
+    await checkChildEnv({ foo: "X" }, { foo: "X", Foo: "X", FOO: "X" });
 
     // Check that 'µ' and 'Μ' are not case folded.
-    {
-      const lc = "µ";
-      const uc = lc.toUpperCase();
-      assertNotEquals(lc, uc);
-      assertEquals(await runGetEnv({ [lc]: "mu", [uc]: "MU" }, [lc, uc]), [
-        "mu",
-        "MU"
-      ]);
-    }
-    {
-      // Check that 'ǆ' and 'Ǆ' are folded, but 'ǅ' is ignored.
-      const c = "ǅ";
-      const lc = c.toLowerCase();
-      const uc = c.toUpperCase();
-      assertNotEquals(c, lc);
-      assertNotEquals(c, uc);
-      assertEquals(
-        await runGetEnv({ [c]: "Dz", [lc]: "folded" }, [c, lc, uc]),
-        ["Dz", "folded", "folded"]
-      );
-      assertEquals(await runGetEnv({ [lc]: "dz" }, [lc, uc]), ["dz", "dz"]);
-      assertEquals(await runGetEnv({ [uc]: "DZ" }, [lc, uc]), ["DZ", "DZ"]);
-    }
+    const lc1 = "µ";
+    const uc1 = lc1.toUpperCase();
+    assertNotEquals(lc1, uc1);
+    await checkChildEnv(
+      { [lc1]: "mu", [uc1]: "MU" },
+      { [lc1]: "mu", [uc1]: "MU" }
+    );
+
+    // Check that 'ǆ' and 'Ǆ' are folded, but 'ǅ' is preserved.
+    const c2 = "ǅ";
+    const lc2 = c2.toLowerCase();
+    const uc2 = c2.toUpperCase();
+    assertNotEquals(c2, lc2);
+    assertNotEquals(c2, uc2);
+    await checkChildEnv(
+      { [c2]: "Dz", [lc2]: "dz" },
+      { [c2]: "Dz", [lc2]: "dz", [uc2]: "dz" }
+    );
+    await checkChildEnv(
+      { [c2]: "Dz", [uc2]: "DZ" },
+      { [c2]: "Dz", [uc2]: "DZ", [lc2]: "DZ" }
+    );
   });
 }
 
