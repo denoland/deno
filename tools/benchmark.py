@@ -22,7 +22,7 @@ import http_server
 
 # The list of the tuples of the benchmark name and arguments
 exec_time_benchmarks = [
-    ("hello", [os.path.join(tests_path, " 002_hello.ts")]),
+    ("hello", [os.path.join(tests_path, "002_hello.ts")]),
     ("relative_import", [os.path.join(tests_path, "003_relative_import.ts")]),
     ("error_001", [os.path.join(tests_path, "error_001.ts")]),
     ("cold_hello", ["--reload",
