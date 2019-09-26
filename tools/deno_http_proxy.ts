@@ -2,7 +2,7 @@
 import {
   serve,
   ServerRequest
-} from "../js/deps/https/deno.land/std/http/server.ts";
+} from "../src/js/deps/https/deno.land/std/http/server.ts";
 
 const addr = Deno.args[1] || "127.0.0.1:4500";
 const originAddr = Deno.args[2] || "127.0.0.1:4501";
