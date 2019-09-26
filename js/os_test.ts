@@ -30,19 +30,6 @@ test(function envFailure(): void {
   assert(caughtError);
 });
 
-test(function envFailure(): void {
-  let caughtError = false;
-  try {
-    Deno.env();
-  } catch (err) {
-    caughtError = true;
-    assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
-    assertEquals(err.name, "PermissionDenied");
-  }
-
-  assert(caughtError);
-});
-
 if (Deno.build.os === "win") {
   // This test verifies that on Windows, environment variables are
   // case-insensitive. Case normalization needs be done using the collation
@@ -54,9 +41,9 @@ if (Deno.build.os === "win") {
     // It is then verified that these match with the values of `expectedEnv`.
     const checkChildEnv = async (inputEnv, expectedEnv): Promise<void> => {
       const src = `
-        Deno.stdout.write((new TextEncoder()).encode(JSON.stringify(
+        console.log(
           ${JSON.stringify(Object.keys(expectedEnv))}.map(k => Deno.env(k))
-        )))`;
+        )`;
       const proc = Deno.run({
         args: [Deno.execPath(), "eval", src],
         env: inputEnv,
