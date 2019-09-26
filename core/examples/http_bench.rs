@@ -103,40 +103,39 @@ pub type HttpOp = dyn Future<Item = i32, Error = std::io::Error> + Send;
 pub type HttpOpHandler =
   fn(record: Record, zero_copy_buf: Option<PinnedBuf>) -> Box<HttpOp>;
 
-fn http_op(handler: HttpOpHandler) -> Box<CoreOpHandler> {
-  let serialized_op =
-    move |control: &[u8], zero_copy_buf: Option<PinnedBuf>| -> CoreOp {
-      let record = Record::from(control);
-      let is_sync = record.promise_id == 0;
-      let op = handler(record.clone(), zero_copy_buf);
+fn http_op(
+  handler: HttpOpHandler,
+) -> impl Fn(&[u8], Option<PinnedBuf>) -> CoreOp {
+  move |control: &[u8], zero_copy_buf: Option<PinnedBuf>| -> CoreOp {
+    let record = Record::from(control);
+    let is_sync = record.promise_id == 0;
+    let op = handler(record.clone(), zero_copy_buf);
 
-      let mut record_a = record.clone();
-      let mut record_b = record.clone();
+    let mut record_a = record.clone();
+    let mut record_b = record.clone();
 
-      let fut = Box::new(
-        op.and_then(move |result| {
-          record_a.result = result;
-          Ok(record_a)
-        })
-        .or_else(|err| -> Result<Record, ()> {
-          eprintln!("unexpected err {}", err);
-          record_b.result = -1;
-          Ok(record_b)
-        })
-        .then(|result| -> Result<Buf, ()> {
-          let record = result.unwrap();
-          Ok(record.into())
-        }),
-      );
+    let fut = Box::new(
+      op.and_then(move |result| {
+        record_a.result = result;
+        Ok(record_a)
+      })
+      .or_else(|err| -> Result<Record, ()> {
+        eprintln!("unexpected err {}", err);
+        record_b.result = -1;
+        Ok(record_b)
+      })
+      .then(|result| -> Result<Buf, ()> {
+        let record = result.unwrap();
+        Ok(record.into())
+      }),
+    );
 
-      if is_sync {
-        Op::Sync(fut.wait().unwrap())
-      } else {
-        Op::Async(fut)
-      }
-    };
-
-  Box::new(serialized_op)
+    if is_sync {
+      Op::Sync(fut.wait().unwrap())
+    } else {
+      Op::Async(fut)
+    }
+  }
 }
 
 fn main() {
