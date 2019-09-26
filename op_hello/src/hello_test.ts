@@ -18,8 +18,8 @@
 // Cargo.toml. I think we shouldn't repeat it.
 import { test } from "crate://deno_std/testing/mod.ts";
 
-import { hello } from "./hello.ts";
+import "./hello.ts";
 
 test("hello test", () => {
-  hello();
+  Deno.hello();
 });
