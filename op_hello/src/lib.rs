@@ -25,7 +25,7 @@ fn op_hello(_control_buf: &[u8], _zero_copy_buf: Option<PinnedBuf>) -> CoreOp {
 }
 
 #[test]
-fn hello_rust() {
+fn rust_test() {
   match op_hello() {
     CoreOp::Sync(buf) => {
       assert_eq!(buf.len(), 0);
@@ -35,6 +35,7 @@ fn hello_rust() {
 }
 
 #[test]
-fn hello_js() {
-  deno_test("src/hello_test.ts"); // TODO implement deno_test
+fn js_test() {
+  // This should execute src/hello_test.ts
+  deno_test();
 }
