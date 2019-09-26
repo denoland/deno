@@ -6,6 +6,32 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.19.0 / 2019.09.24
+
+In deno:
+
+- feat: Add Deno.dialTLS()
+- feat: Make deno_cli installable via crates.io (#2946)
+- feat: Remove test.py, use cargo test as test frontend (#2967)
+- feat: dial/listen API change (#3000)
+- feat: parallelize downloads from TS compiler (#2949)
+- fix: Make `window` compatible with ts 3.6 (#2984)
+- fix: Remove some non-standard web API constructors (#2970)
+- fix: debug logging in runtime/compiler (#2953)
+- fix: flag parsing of config file (#2996)
+- fix: reschedule global timer if it fires earlier than expected (#2989)
+- fix: type directive parsing (#2954)
+- upgrade: V8 to 7.9.110 for top-level-await (#3015)
+- upgrade: to TypeScript 3.6.3 (#2969)
+
+In deno_std:
+
+- feat: Implement BufReader.readString (denoland/deno_std#607)
+- fix: TOML's key encoding (denoland/deno_std#612)
+- fix: remove //testing/main.ts (denoland/deno_std#605)
+- fix: types in example_client for ws module (denoland/deno_std#609)
+- upgrade: mime-db to commit c50e0d1 (denoland/deno_std#608)
+
 ### v0.18.0 / 2019.09.13
 
 In deno:
@@ -23,7 +49,7 @@ In deno:
 - fix: Keep all deno_std URLs in sync (#2930)
 - fix: make 'deno fmt' faster (#2928)
 - fix: panic during block_on (#2905)
-- fix: panic during fetch (#2925) 
+- fix: panic during fetch (#2925)
 - fix: path normalization in resolve_from_cwd() (#2875)
 - fix: remove deprecated Deno.platform (#2895)
 - fix: replace bad rid panics with errors (#2870)
@@ -54,7 +80,7 @@ In deno:
 - fix: set/clearTimeout's params should not be bigint (#2834, #2838)
 - fix: shared queue requires aligned buffer (#2816)
 - refactor: Remove Node build dependency and change how internal V8 snapshots
-  are built  (#2825, #2827, #2826, #2826)
+  are built (#2825, #2827, #2826, #2826)
 - refactor: Remove flatbuffers (#2818, #2819, #2817, #2812, #2815, #2799)
 - regression: Introduce regression in fetch's Request/Response stream API to
   support larger refactor (#2826)

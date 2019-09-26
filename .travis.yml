@@ -7,6 +7,7 @@ git:
   depth: 1
 env:
   global:
+  - RUSTC_WRAPPER=sccache
   - RUST_BACKTRACE=full
   - PATH=$TRAVIS_BUILD_DIR/third_party/llvm-build/Release+Asserts/bin:$PATH
   - PYTHONPATH=third_party/python_packages
@@ -54,8 +55,8 @@ before_script:
 
 # Default script for release builds.
 script:
-- cargo build --release --locked --all-targets
-- DENO_BUILD_MODE=release ./tools/test.py
+- cargo build -vv --release --locked --all-targets
+- cargo test -vv --release --all-targets --locked
 # For some reason it's faster to run clippy after build.
 - rustup component add clippy
 - cargo clippy --all-targets --release --locked -- -D clippy::all
@@ -90,7 +91,7 @@ jobs:
     # Run benchmarks and publish the result to github pages.
     - name: "benchmarks"
       script:
-        - cargo build --release --locked --all-targets
+        - cargo build -vv --release --locked --all-targets
         - ./tools/benchmark.py target/release && cp -r website/* gh-pages/
       deploy:
       - provider: pages

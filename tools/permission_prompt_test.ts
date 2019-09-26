@@ -1,11 +1,11 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-const { args, listen, env, exit, makeTempDirSync, readFileSync, run } = Deno;
+const { args, env, exit, makeTempDirSync, readFileSync, run } = Deno;
 
 const firstCheckFailedMessage = "First check failed";
 
 const name = args[1];
 const test = {
-  needsRead: async () => {
+  async needsRead(): Promise<void> {
     try {
       readFileSync("package.json");
     } catch (e) {
@@ -13,7 +13,7 @@ const test = {
     }
     readFileSync("package.json");
   },
-  needsWrite: () => {
+  needsWrite(): void {
     try {
       makeTempDirSync();
     } catch (e) {
@@ -21,7 +21,7 @@ const test = {
     }
     makeTempDirSync();
   },
-  needsEnv: () => {
+  needsEnv(): void {
     try {
       env().home;
     } catch (e) {
@@ -29,17 +29,17 @@ const test = {
     }
     env().home;
   },
-  needsNet: () => {
+  needsNet(): void {
     try {
-      listen("tcp", "127.0.0.1:4540");
+      Deno.listen({ hostname: "127.0.0.1", port: 4540 });
     } catch (e) {
       console.log(firstCheckFailedMessage);
     }
-    listen("tcp", "127.0.0.1:4541");
+    Deno.listen({ hostname: "127.0.0.1", port: 4541 });
   },
-  needsRun: () => {
+  needsRun(): void {
     try {
-      const process = run({
+      run({
         args: [
           "python",
           "-c",
@@ -49,7 +49,7 @@ const test = {
     } catch (e) {
       console.log(firstCheckFailedMessage);
     }
-    const process = run({
+    run({
       args: [
         "python",
         "-c",

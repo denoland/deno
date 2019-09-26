@@ -2,10 +2,16 @@
 const addr = Deno.args[1] || "127.0.0.1:4500";
 const originAddr = Deno.args[2] || "127.0.0.1:4501";
 
-const listener = Deno.listen("tcp", addr);
+const [hostname, port] = addr.split(":");
+const [originHostname, originPort] = originAddr.split(":");
+
+const listener = Deno.listen({ hostname, port: Number(port) });
 
 async function handle(conn: Deno.Conn): Promise<void> {
-  const origin = await Deno.dial("tcp", originAddr);
+  const origin = await Deno.dial({
+    hostname: originHostname,
+    port: Number(originPort)
+  });
   try {
     await Promise.all([Deno.copy(conn, origin), Deno.copy(origin, conn)]);
   } catch (err) {

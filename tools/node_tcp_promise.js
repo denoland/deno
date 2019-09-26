@@ -9,7 +9,7 @@ const response = Buffer.from(
 );
 
 async function write(socket, buffer) {
-  let p = new Promise((resolve, reject) => {
+  const p = new Promise((resolve, _) => {
     socket.write(buffer, resolve);
   });
   return p;
@@ -19,7 +19,7 @@ Server(async socket => {
   socket.on("error", _ => {
     socket.destroy();
   });
-  for await (const data of socket) {
+  for await (const _ of socket) {
     write(socket, response);
   }
 }).listen(port);

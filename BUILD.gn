@@ -1,6 +1,0 @@
-group("default") {
-  testonly = true
-  deps = [
-    "core/libdeno:default",
-  ]
-}

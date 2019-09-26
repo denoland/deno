@@ -22,6 +22,17 @@ pub struct DenoError {
   msg: String,
 }
 
+pub fn print_err_and_exit(err: ErrBox) {
+  eprintln!("{}", err.to_string());
+  std::process::exit(1);
+}
+
+pub fn js_check(r: Result<(), ErrBox>) {
+  if let Err(err) = r {
+    print_err_and_exit(err);
+  }
+}
+
 impl DenoError {
   pub fn new(kind: ErrorKind, msg: String) -> Self {
     Self { kind, msg }
@@ -299,7 +310,7 @@ impl GetErrorKind for dyn AnyError {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::ansi::strip_ansi_codes;
+  use crate::colors::strip_ansi_codes;
   use crate::diagnostics::Diagnostic;
   use crate::diagnostics::DiagnosticCategory;
   use crate::diagnostics::DiagnosticItem;

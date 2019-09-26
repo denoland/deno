@@ -44,7 +44,10 @@ function main(configText, rootNames) {
   const emitResult = program.emit();
   handleDiagnostics(host, emitResult.diagnostics);
 
-  dispatch("setEmitResult", emitResult);
+  dispatch(
+    "setEmitResult",
+    Object.assign(emitResult, { tsVersion: ts.version })
+  );
 }
 
 /**
@@ -105,6 +108,13 @@ const ops = {
   resolveModuleNames: 52,
   setEmitResult: 53
 };
+
+/**
+ * @type {Map<string, string>}
+ */
+const moduleMap = new Map();
+
+const externalSpecifierRegEx = /^file:\/{3}\S+\/js(\/\S+\.ts)$/;
 
 /**
  * This is a minimal implementation of a compiler host to be able to allow the
@@ -173,18 +183,34 @@ class Host {
         .replace("/index.d.ts", "");
     }
 
+    // This looks up any modules that have been mapped to internal names
+    if (moduleMap.has(fileName)) {
+      fileName = moduleMap.get(fileName);
+    }
+
     const { sourceCode, moduleName } = dispatch("readFile", {
       fileName,
       languageVersion,
       shouldCreateNewSourceFile
     });
 
+    // If we match the external specifier regex, we will then create an internal
+    // specifier and then use that when creating the source file
+    let internalModuleName = moduleName;
+    const result = externalSpecifierRegEx.exec(moduleName);
+    if (result) {
+      const [, specifier] = result;
+      const internalSpecifier = `$deno$${specifier}`;
+      moduleMap.set(internalSpecifier, moduleName);
+      internalModuleName = internalSpecifier;
+    }
+
     const sourceFile = ts.createSourceFile(
-      fileName,
+      internalModuleName,
       sourceCode,
       languageVersion
     );
-    sourceFile.moduleName = moduleName;
+    sourceFile.moduleName = internalModuleName;
     return sourceFile;
   }
 
@@ -244,11 +270,17 @@ class Host {
    * @return {Array<ts.ResolvedModule | undefined>}
    */
   resolveModuleNames(moduleNames, containingFile) {
+    // If the containing file is an internal specifier, map it back to the
+    // external specifier
+    containingFile = moduleMap.has(containingFile)
+      ? moduleMap.get(containingFile)
+      : containingFile;
     /** @type {string[]} */
     const resolvedNames = dispatch("resolveModuleNames", {
       moduleNames,
       containingFile
     });
+    /** @type {ts.ResolvedModule[]} */
     const r = resolvedNames.map(resolvedFileName => {
       const extension = getExtension(resolvedFileName);
       return { resolvedFileName, extension };

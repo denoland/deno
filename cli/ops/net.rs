@@ -49,8 +49,9 @@ pub fn op_accept(
 
 #[derive(Deserialize)]
 struct DialArgs {
-  network: String,
-  address: String,
+  transport: String,
+  hostname: String,
+  port: u16,
 }
 
 pub fn op_dial(
@@ -59,9 +60,11 @@ pub fn op_dial(
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: DialArgs = serde_json::from_value(args)?;
-  let network = args.network;
-  assert_eq!(network, "tcp"); // TODO Support others.
-  let address = args.address;
+  assert_eq!(args.transport, "tcp"); // TODO Support others.
+
+  // TODO(ry) Using format! is suboptimal here. Better would be if
+  // state.check_net and resolve_addr() took hostname and port directly.
+  let address = format!("{}:{}", args.hostname, args.port);
 
   state.check_net(&address)?;
 
@@ -117,8 +120,9 @@ pub fn op_shutdown(
 
 #[derive(Deserialize)]
 struct ListenArgs {
-  network: String,
-  address: String,
+  transport: String,
+  hostname: String,
+  port: u16,
 }
 
 pub fn op_listen(
@@ -127,10 +131,11 @@ pub fn op_listen(
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: ListenArgs = serde_json::from_value(args)?;
+  assert_eq!(args.transport, "tcp");
 
-  let network = args.network;
-  assert_eq!(network, "tcp");
-  let address = args.address;
+  // TODO(ry) Using format! is suboptimal here. Better would be if
+  // state.check_net and resolve_addr() took hostname and port directly.
+  let address = format!("{}:{}", args.hostname, args.port);
 
   state.check_net(&address)?;
 

@@ -2,10 +2,10 @@
 
 [package]
 name = "deno"
-version = "0.18.0"
+version = "0.19.0"
 edition = "2018"
 description = "A secure JavaScript/TypeScript runtime built with V8, Rust, and Tokio"
-authors = ["The deno authors <bertbelder@nodejs.org>"]
+authors = ["the Deno authors"]
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/denoland/deno"
