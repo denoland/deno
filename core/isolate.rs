@@ -333,7 +333,10 @@ impl Isolate {
     let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
 
     let op = if let Some(ref f) = isolate.dispatch {
-      assert!(op_id != 0);
+      assert!(
+        op_id != 0,
+        "op_id 0 is a special value that shouldn't be used with dispatch"
+      );
       f(op_id, control_buf.as_ref(), PinnedBuf::new(zero_copy_buf))
     } else {
       isolate.op_registry.call_op(
