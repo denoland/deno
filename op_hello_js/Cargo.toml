@@ -11,4 +11,13 @@ edition = "2018"
 path = "lib.rs"
 
 [dependencies]
-deno = "0.19.0"
+deno = { path = "../core", version = "0.19.0" }
+
+[[example]]
+name = "op_hello_example"
+path = "examples/hello.rs"
+
+# tokio is only used for op_hello_example
+[dev_dependencies]
+futures = "0.1.29"
+tokio = "0.1.18"

@@ -2,6 +2,7 @@
 members = [
   "cli",
   "core",
+  "op_hello_js",
   "tools/hyper_hello",
   "deno_typescript",
   "js",

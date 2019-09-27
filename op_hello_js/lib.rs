@@ -1,9 +1,9 @@
 extern crate deno;
 use deno::*;
 
-pub fn init(&mut isolate: Isolate) -> Result<(), ErrBox> {
+pub fn init(isolate: &mut Isolate) -> Result<(), ErrBox> {
   isolate.register_op("hello", op_hello); // register_op defined by #3002
-  isolate.execute("hello.js")?;
+  isolate.execute("hello.js", include_str!("hello.js"))?;
   Ok(())
 }
 
