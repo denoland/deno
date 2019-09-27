@@ -50,7 +50,7 @@ World 4
 test(async function serverPipelineRace(): Promise<void> {
   await startServer();
 
-  const conn = await dial("tcp", "127.0.0.1:4501");
+  const conn = await dial({ port: 4501 });
   const r = new TextProtoReader(new BufReader(conn));
   await conn.write(new TextEncoder().encode(input));
   const outLines = output.split("\n");

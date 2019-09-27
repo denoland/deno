@@ -488,7 +488,7 @@ export async function connectWebSocket(
       throw new Error("currently https/wss is not supported");
     }
   }
-  const conn = await Deno.dial("tcp", `${hostname}:${port}`);
+  const conn = await Deno.dial({ hostname, port: Number(port) });
   const bufWriter = new BufWriter(conn);
   const bufReader = new BufReader(conn);
   try {
