@@ -134,6 +134,6 @@ pub fn op_hostname(
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   state.check_env()?;
-  let hostname = sys_info::hostname().unwrap_or("".to_owned());
+  let hostname = sys_info::hostname().unwrap_or_else(|_| "".to_owned());
   Ok(JsonOp::Sync(json!(hostname)))
 }
