@@ -9,6 +9,7 @@ use deno::*;
 use log;
 use std::collections::HashMap;
 use std::env;
+use sys_info;
 use url::Url;
 
 /// BUILD_OS and BUILD_ARCH match the values in Deno.build. See js/build.ts.
@@ -125,4 +126,14 @@ pub fn op_is_tty(
     "stdout": atty::is(atty::Stream::Stdout),
     "stderr": atty::is(atty::Stream::Stderr),
   })))
+}
+
+pub fn op_hostname(
+  state: &ThreadSafeState,
+  _args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  state.check_env()?;
+  let hostname = sys_info::hostname().unwrap_or_else(|_| "".to_owned());
+  Ok(JsonOp::Sync(json!(hostname)))
 }

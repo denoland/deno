@@ -22,6 +22,12 @@ declare namespace Deno {
     stdout: boolean;
     stderr: boolean;
   };
+  /** Get the hostname.
+   * Requires the `--allow-env` flag.
+   *
+   *       console.log(Deno.hostname());
+   */
+  export function hostname(): string;
   /** Exit the Deno process with optional exit code. */
   export function exit(code?: number): never;
   /** Returns a snapshot of the environment variables at invocation. Mutating a
