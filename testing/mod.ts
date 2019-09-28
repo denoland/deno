@@ -348,7 +348,7 @@ async function runTestsSerial(
 }
 
 /** Defines options for controlling execution details of a test suite. */
-export interface RunOptions {
+export interface RunTestsOptions {
   parallel?: boolean;
   exitOnFail?: boolean;
   only?: RegExp;
@@ -368,7 +368,7 @@ export async function runTests({
   only = /[^\s]/,
   skip = /^\s*$/,
   disableLog = false
-}: RunOptions = {}): Promise<void> {
+}: RunTestsOptions = {}): Promise<void> {
   const tests: TestDefinition[] = candidates.filter(
     ({ name }): boolean => only.test(name) && !skip.test(name)
   );
@@ -415,7 +415,7 @@ export async function runTests({
  */
 export async function runIfMain(
   meta: ImportMeta,
-  opts?: RunOptions
+  opts?: RunTestsOptions
 ): Promise<void> {
   if (meta.main) {
     return runTests(opts);
