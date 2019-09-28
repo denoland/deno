@@ -1,9 +1,10 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { BufReader } from "../io/bufio.ts";
-import { assert, assertEquals } from "../testing/asserts.ts";
+import { assert, assertEquals, assertThrowsAsync } from "../testing/asserts.ts";
 import { runIfMain, test } from "../testing/mod.ts";
 import {
   acceptable,
+  connectWebSocket,
   createSecAccept,
   OpCode,
   readFrame,
@@ -46,7 +47,6 @@ test(async function wsReadMaskedTextFrame(): Promise<void> {
     )
   );
   const frame = await readFrame(buf);
-  console.dir(frame);
   assertEquals(frame.opcode, OpCode.TextFrame);
   unmask(frame.payload, frame.mask);
   assertEquals(new Buffer(frame.payload).toString(), "Hello");
@@ -189,6 +189,16 @@ test(function wsAcceptableInvalid(): void {
       headers: new Headers({ upgrade: "websocket", "sec-websocket-ky": "" })
     }),
     false
+  );
+});
+
+test("connectWebSocket should throw invalid scheme of url", async (): Promise<
+  void
+> => {
+  await assertThrowsAsync(
+    async (): Promise<void> => {
+      await connectWebSocket("file://hoge/hoge");
+    }
   );
 });
 

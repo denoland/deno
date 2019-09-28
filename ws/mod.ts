@@ -480,15 +480,17 @@ export async function connectWebSocket(
   headers: Headers = new Headers()
 ): Promise<WebSocket> {
   const url = new URL(endpoint);
-  let { hostname, port } = url;
-  if (!port) {
-    if (url.protocol === "http" || url.protocol === "ws") {
-      port = "80";
-    } else if (url.protocol === "https" || url.protocol === "wss") {
-      throw new Error("currently https/wss is not supported");
-    }
+  let { hostname } = url;
+  let conn: Conn;
+  if (url.protocol === "http:" || url.protocol === "ws:") {
+    const port = parseInt(url.port || "80");
+    conn = await Deno.dial({ hostname, port });
+  } else if (url.protocol === "https:" || url.protocol === "wss:") {
+    const port = parseInt(url.port || "443");
+    conn = await Deno.dialTLS({ hostname, port });
+  } else {
+    throw new Error("ws: unsupported protocol: " + url.protocol);
   }
-  const conn = await Deno.dial({ hostname, port: Number(port) });
   const bufWriter = new BufWriter(conn);
   const bufReader = new BufReader(conn);
   try {
