@@ -1,44 +1,46 @@
 #!/usr/bin/env -S deno -A
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { parse } from "../flags/mod.ts";
-import { glob, isGlob, walk } from "../fs/mod.ts";
-import { runTests } from "./mod.ts";
-const { args, cwd } = Deno;
+import {
+  WalkInfo,
+  expandGlobSync,
+  glob,
+  ExpandGlobOptions
+} from "../fs/mod.ts";
+import { isWindows } from "../fs/path/constants.ts";
+import { isAbsolute, join } from "../fs/path/mod.ts";
+import { RunTestsOptions, runTests } from "./mod.ts";
+const { DenoError, ErrorKind, args, cwd, exit } = Deno;
 
-const DEFAULT_GLOBS = [
-  "**/*_test.ts",
-  "**/*_test.js",
-  "**/test.ts",
-  "**/test.js"
-];
+const DIR_GLOBS = [join("**", "?(*_)test.{js,ts}")];
 
-/* eslint-disable max-len */
 function showHelp(): void {
   console.log(`Deno test runner
 
 USAGE:
-  deno -A https://deno.land/std/testing/runner.ts [OPTIONS] [FILES...]
+  deno -A https://deno.land/std/testing/runner.ts [OPTIONS] [MODULES...]
 
 OPTIONS:
-  -q, --quiet               Don't show output from test cases 
-  -f, --failfast            Stop test suite on first error
-  -e, --exclude <FILES...>  List of file names to exclude from run. If this options is 
-                            used files to match must be specified after "--". 
-  
+  -q, --quiet                 Don't show output from test cases
+  -f, --failfast              Stop running tests on first error
+  -e, --exclude <MODULES...>  List of comma-separated modules to exclude
+  --allow-none                Exit with status 0 even when no test modules are
+                              found
+
 ARGS:
-  [FILES...]  List of file names to run. Defaults to: ${DEFAULT_GLOBS.join(
-    ","
-  )} 
-`);
-}
-/* eslint-enable max-len */
+  [MODULES...]  List of test modules to run.
+                A directory <dir> will expand to:
+                  ${DIR_GLOBS.map((s: string): string => `${join("<dir>", s)}`)
+                    .join(`
+                  `)}
+                Defaults to "." when none are provided.
 
-function filePathToRegExp(str: string): RegExp {
-  if (isGlob(str)) {
-    return glob(str, { flags: "g" });
-  }
+Note that modules can refer to file paths or URLs. File paths support glob
+expansion.
 
-  return RegExp(str, "g");
+Examples:
+      deno test src/**/*_test.ts
+      deno test tests`);
 }
 
 function isRemoteUrl(url: string): boolean {
@@ -58,112 +60,184 @@ function partition(
   );
 }
 
+function filePathToUrl(path: string): string {
+  return `file://${isWindows ? "/" : ""}${path.replace(/\\/g, "/")}`;
+}
+
+function expandDirectory(dir: string, options: ExpandGlobOptions): WalkInfo[] {
+  return DIR_GLOBS.flatMap((s: string): WalkInfo[] => [
+    ...expandGlobSync(s, { ...options, root: dir })
+  ]);
+}
+
 /**
- * Given list of globs or URLs to include and exclude and root directory return
- * list of file URLs that should be imported for test runner.
+ * Given a list of globs or URLs to include and exclude and a root directory
+ * from which to expand relative globs, return a list of URLs
+ * (file: or remote) that should be imported for the test runner.
  */
-export async function getMatchingUrls(
-  matchPaths: string[],
-  excludePaths: string[],
-  root: string
+export async function findTestModules(
+  includeModules: string[],
+  excludeModules: string[],
+  root: string = cwd()
 ): Promise<string[]> {
-  const [includeLocal, includeRemote] = partition(matchPaths, isRemoteUrl);
-  const [excludeLocal, excludeRemote] = partition(excludePaths, isRemoteUrl);
+  const [includePaths, includeUrls] = partition(includeModules, isRemoteUrl);
+  const [excludePaths, excludeUrls] = partition(excludeModules, isRemoteUrl);
 
-  const localFileIterator = walk(root, {
-    match: includeLocal.map((f: string): RegExp => filePathToRegExp(f)),
-    skip: excludeLocal.map((f: string): RegExp => filePathToRegExp(f))
-  });
+  const expandGlobOpts = {
+    root,
+    extended: true,
+    globstar: true,
+    filepath: true
+  };
 
-  let matchingLocalUrls: string[] = [];
-  for await (const { filename } of localFileIterator) {
-    matchingLocalUrls.push(`file://${filename}`);
-  }
-
-  const excludeRemotePatterns = excludeRemote.map(
+  // TODO: We use the `g` flag here to support path prefixes when specifying
+  // excludes. Replace with a solution that does this more correctly.
+  const excludePathPatterns = excludePaths.map(
+    (s: string): RegExp =>
+      glob(isAbsolute(s) ? s : join(root, s), { ...expandGlobOpts, flags: "g" })
+  );
+  const excludeUrlPatterns = excludeUrls.map(
     (url: string): RegExp => RegExp(url)
   );
-  const matchingRemoteUrls = includeRemote.filter(
-    (candidateUrl: string): boolean => {
-      return !excludeRemotePatterns.some((pattern: RegExp): boolean => {
-        const r = pattern.test(candidateUrl);
-        pattern.lastIndex = 0;
-        return r;
-      });
-    }
-  );
+  const notExcludedPath = ({ filename }: WalkInfo): boolean =>
+    !excludePathPatterns.some((p: RegExp): boolean => !!filename.match(p));
+  const notExcludedUrl = (url: string): boolean =>
+    !excludeUrlPatterns.some((p: RegExp): boolean => !!url.match(p));
 
-  return matchingLocalUrls.concat(matchingRemoteUrls);
+  const matchedPaths = includePaths
+    .flatMap((s: string): WalkInfo[] => [...expandGlobSync(s, expandGlobOpts)])
+    .filter(notExcludedPath)
+    .flatMap(({ filename, info }): string[] =>
+      info.isDirectory()
+        ? expandDirectory(filename, { ...expandGlobOpts, includeDirs: false })
+            .filter(notExcludedPath)
+            .map(({ filename }): string => filename)
+        : [filename]
+    );
+
+  const matchedUrls = includeUrls.filter(notExcludedUrl);
+
+  return [...matchedPaths.map(filePathToUrl), ...matchedUrls];
 }
+
+export interface RunTestModulesOptions extends RunTestsOptions {
+  include?: string[];
+  exclude?: string[];
+  allowNone?: boolean;
+}
+
 /**
- * This function runs matching test files in `root` directory.
+ * Import the specified test modules and run their tests as a suite.
  *
- * File matching and excluding supports glob syntax, ie. if encountered arg is
- * a glob it will be expanded using `glob` method from `fs` module.
+ * Test modules are specified as an array of strings and can include local files
+ * or URLs.
  *
- * Note that your shell may expand globs for you:
- *    $ deno -A ./runner.ts **\/*_test.ts **\/test.ts
+ * File matching and excluding support glob syntax - arguments recognized as
+ * globs will be expanded using `glob()` from the `fs` module.
  *
- * Expanding using `fs.glob`:
- *    $ deno -A ./runner.ts \*\*\/\*_test.ts \*\*\/test.ts
+ * Example:
  *
- *  `**\/*_test.ts` and `**\/test.ts"` are arguments that will be parsed and
- *  expanded as: [glob("**\/*_test.ts"), glob("**\/test.ts")]
+ *       runTestModules({ include: ["**\/*_test.ts", "**\/test.ts"] });
+ *
+ * Any matched directory `<dir>` will expand to:
+ *   <dir>/**\/?(*_)test.{js,ts}
+ *
+ * So the above example is captured naturally by:
+ *
+ *       runTestModules({ include: ["."] });
+ *
+ * Which is the default used for:
+ *
+ *       runTestModules();
  */
-// TODO: change return type to `Promise<void>` once, `runTests` is updated
-// to return boolean instead of exiting
-export async function main(root: string = cwd()): Promise<void> {
-  const parsedArgs = parse(args.slice(1), {
-    boolean: ["quiet", "failfast", "help"],
-    string: ["exclude"],
-    alias: {
-      help: ["h"],
-      quiet: ["q"],
-      failfast: ["f"],
-      exclude: ["e"]
+// TODO: Change return type to `Promise<void>` once, `runTests` is updated
+// to return boolean instead of exiting.
+export async function runTestModules({
+  include = ["."],
+  exclude = [],
+  allowNone = false,
+  parallel = false,
+  exitOnFail = false,
+  only = /[^\s]/,
+  skip = /^\s*$/,
+  disableLog = false
+}: RunTestModulesOptions = {}): Promise<void> {
+  const testModuleUrls = await findTestModules(include, exclude);
+
+  if (testModuleUrls.length == 0) {
+    const noneFoundMessage = "No matching test modules found.";
+    if (!allowNone) {
+      throw new DenoError(ErrorKind.NotFound, noneFoundMessage);
+    } else if (!disableLog) {
+      console.log(noneFoundMessage);
     }
-  });
-
-  if (parsedArgs.help) {
-    return showHelp();
-  }
-
-  let includeFiles: string[];
-  let excludeFiles: string[];
-
-  if (parsedArgs._.length) {
-    includeFiles = (parsedArgs._ as string[])
-      .map((fileGlob: string): string[] => {
-        return fileGlob.split(",");
-      })
-      .flat();
-  } else {
-    includeFiles = DEFAULT_GLOBS;
-  }
-
-  if (parsedArgs.exclude) {
-    excludeFiles = (parsedArgs.exclude as string).split(",");
-  } else {
-    excludeFiles = [];
-  }
-
-  const foundTestUrls = await getMatchingUrls(includeFiles, excludeFiles, root);
-
-  if (foundTestUrls.length === 0) {
-    console.error("No matching test files found.");
     return;
   }
 
-  console.log(`Found ${foundTestUrls.length} matching test files.`);
+  if (!disableLog) {
+    console.log(`Found ${testModuleUrls.length} matching test modules.`);
+  }
 
-  for (const url of foundTestUrls) {
+  for (const url of testModuleUrls) {
     await import(url);
   }
 
   await runTests({
-    exitOnFail: !!parsedArgs.failfast,
-    disableLog: !!parsedArgs.quiet
+    parallel,
+    exitOnFail,
+    only,
+    skip,
+    disableLog
   });
+}
+
+async function main(): Promise<void> {
+  const parsedArgs = parse(args.slice(1), {
+    boolean: ["allow-none", "failfast", "help", "quiet"],
+    string: ["exclude"],
+    alias: {
+      exclude: ["e"],
+      failfast: ["f"],
+      help: ["h"],
+      quiet: ["q"]
+    },
+    default: {
+      "allow-none": false,
+      failfast: false,
+      help: false,
+      quiet: false
+    }
+  });
+  if (parsedArgs.help) {
+    return showHelp();
+  }
+
+  const include =
+    parsedArgs._.length > 0
+      ? (parsedArgs._ as string[]).flatMap((fileGlob: string): string[] =>
+          fileGlob.split(",")
+        )
+      : ["."];
+  const exclude =
+    parsedArgs.exclude != null ? (parsedArgs.exclude as string).split(",") : [];
+  const allowNone = parsedArgs["allow-none"];
+  const exitOnFail = parsedArgs.failfast;
+  const disableLog = parsedArgs.quiet;
+
+  try {
+    await runTestModules({
+      include,
+      exclude,
+      allowNone,
+      exitOnFail,
+      disableLog
+    });
+  } catch (error) {
+    if (!disableLog) {
+      console.error(error.message);
+    }
+    exit(1);
+  }
 }
 
 if (import.meta.main) {

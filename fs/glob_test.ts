@@ -1,9 +1,16 @@
-const { mkdir } = Deno;
-type FileInfo = Deno.FileInfo;
+const { cwd, mkdir } = Deno;
 import { test, runIfMain } from "../testing/mod.ts";
 import { assert, assertEquals } from "../testing/asserts.ts";
-import { glob, isGlob } from "./glob.ts";
-import { join } from "./path.ts";
+import { isWindows } from "./path/constants.ts";
+import {
+  ExpandGlobOptions,
+  expandGlob,
+  glob,
+  isGlob,
+  expandGlobSync
+} from "./glob.ts";
+import { join, normalize, relative } from "./path.ts";
+import { WalkInfo } from "./walk.ts";
 import { testWalk } from "./walk_test.ts";
 import { touch, walkArray } from "./walk_test.ts";
 
@@ -131,7 +138,6 @@ testWalk(
     const arr = await walkArray(".", {
       match: [glob("x.*", { flags: "g", globstar: true })]
     });
-    console.log(arr);
     assertEquals(arr.length, 2);
     assertEquals(arr[0], "x.js");
     assertEquals(arr[1], "x.ts");
@@ -251,6 +257,78 @@ test({
     assert(!isGlob("abc/\\(aaa|bbb).js"));
     assert(!isGlob("abc/\\?.js"));
   }
+});
+
+async function expandGlobArray(
+  globString: string,
+  options: ExpandGlobOptions
+): Promise<string[]> {
+  const infos: WalkInfo[] = [];
+  for await (const info of expandGlob(globString, options)) {
+    infos.push(info);
+  }
+  infos.sort();
+  const infosSync = [...expandGlobSync(globString, options)];
+  infosSync.sort();
+  assertEquals(infos, infosSync);
+  const root = normalize(options.root || cwd());
+  const paths = infos.map(({ filename }): string => filename);
+  for (const path of paths) {
+    assert(path.startsWith(root));
+  }
+  const relativePaths = paths.map((path: string): string =>
+    relative(root, path)
+  );
+  relativePaths.sort();
+  return relativePaths;
+}
+
+function urlToFilePath(url: URL): string {
+  // Since `new URL('file:///C:/a').pathname` is `/C:/a`, remove leading slash.
+  return url.pathname.slice(url.protocol == "file:" && isWindows ? 1 : 0);
+}
+
+const EG_OPTIONS = {
+  root: urlToFilePath(new URL(join("testdata", "glob"), import.meta.url)),
+  includeDirs: true,
+  extended: false,
+  globstar: false,
+  strict: false,
+  filepath: false,
+  flags: ""
+};
+
+test(async function expandGlobExt(): Promise<void> {
+  const options = { ...EG_OPTIONS, extended: true };
+  assertEquals(await expandGlobArray("abc?(def|ghi)", options), [
+    "abc",
+    "abcdef"
+  ]);
+  assertEquals(await expandGlobArray("abc*(def|ghi)", options), [
+    "abc",
+    "abcdef",
+    "abcdefghi"
+  ]);
+  assertEquals(await expandGlobArray("abc+(def|ghi)", options), [
+    "abcdef",
+    "abcdefghi"
+  ]);
+  assertEquals(await expandGlobArray("abc@(def|ghi)", options), ["abcdef"]);
+  assertEquals(await expandGlobArray("abc{def,ghi}", options), ["abcdef"]);
+  assertEquals(await expandGlobArray("abc!(def|ghi)", options), ["abc"]);
+});
+
+test(async function expandGlobGlobstar(): Promise<void> {
+  const options = { ...EG_OPTIONS, globstar: true };
+  assertEquals(await expandGlobArray(join("**", "abc"), options), [
+    "abc",
+    join("subdir", "abc")
+  ]);
+});
+
+test(async function expandGlobIncludeDirs(): Promise<void> {
+  const options = { ...EG_OPTIONS, includeDirs: false };
+  assertEquals(await expandGlobArray("subdir", options), []);
 });
 
 runIfMain(import.meta);
