@@ -203,9 +203,9 @@ class WebSocketImpl implements WebSocket {
       bufReader?: BufReader;
       bufWriter?: BufWriter;
       mask?: Uint8Array;
-    } = {}
+    }
   ) {
-    this.mask = opts.mask || createMask();
+    this.mask = opts.mask;
     this.bufReader = opts.bufReader || new BufReader(conn);
     this.bufWriter = opts.bufWriter || new BufWriter(conn);
   }
@@ -501,6 +501,7 @@ export async function connectWebSocket(
   }
   return new WebSocketImpl(conn, {
     bufWriter,
-    bufReader
+    bufReader,
+    mask: createMask()
   });
 }
