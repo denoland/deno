@@ -45,11 +45,11 @@ export class BufReader implements Reader {
   // private lastCharSize: number;
 
   /** return new BufReader unless r is BufReader */
-  static create(r: Reader, size = DEFAULT_BUF_SIZE): BufReader {
+  static create(r: Reader, size: number = DEFAULT_BUF_SIZE): BufReader {
     return r instanceof BufReader ? r : new BufReader(r, size);
   }
 
-  constructor(rd: Reader, size = DEFAULT_BUF_SIZE) {
+  constructor(rd: Reader, size: number = DEFAULT_BUF_SIZE) {
     if (size < MIN_BUF_SIZE) {
       size = MIN_BUF_SIZE;
     }
@@ -411,11 +411,11 @@ export class BufWriter implements Writer {
   err: Error | null = null;
 
   /** return new BufWriter unless w is BufWriter */
-  static create(w: Writer, size = DEFAULT_BUF_SIZE): BufWriter {
+  static create(w: Writer, size: number = DEFAULT_BUF_SIZE): BufWriter {
     return w instanceof BufWriter ? w : new BufWriter(w, size);
   }
 
-  constructor(private wr: Writer, size = DEFAULT_BUF_SIZE) {
+  constructor(private wr: Writer, size: number = DEFAULT_BUF_SIZE) {
     if (size <= 0) {
       size = DEFAULT_BUF_SIZE;
     }
