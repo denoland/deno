@@ -197,7 +197,6 @@ function emitBundle(fileName: string, data: string): void {
 
 /** Returns the TypeScript Extension enum for a given media type. */
 function getExtension(fileName: string, mediaType: MediaType): ts.Extension {
-  console.log(fileName, mediaType);
   switch (mediaType) {
     case MediaType.JavaScript:
       return ts.Extension.Js;
