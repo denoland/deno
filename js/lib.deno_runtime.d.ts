@@ -1206,6 +1206,47 @@ declare namespace Deno {
    */
   export function inspect(value: unknown, options?: ConsoleOptions): string;
 
+  // @url js/jsx.d.ts
+  export type Element = null | string | number | View | View[];
+  export type ElementFactory = string | Component;
+  export type PropsWithChildren<P = {}> = { children?: Element[] } & P;
+  export type Component<P = {}> = (
+    params: PropsWithChildren<P>
+  ) => View<Component, P>;
+
+  export type ElementAttribute = number | string | boolean | undefined | null;
+  export type View<T extends ElementFactory = Component, P = {}> = {
+    type: T;
+    props: P;
+    children?: Element[];
+  };
+  export function h<P = {}>(type: Component<P>): View<Component, P>;
+  export function h<P = {}>(
+    type: string,
+    props?: P,
+    ...children: Element[]
+  ): View<string, P>;
+  /** Create JSX View from function component. This is default JSX Factory for typescript compiler.
+   *
+   *       // JSX expressions are only available in TSX/JSX files.
+   *       const Link: Deno.Component<{href: string, class: string}> = ({children, ...props}) => (
+   *         <a {...props}>{children}</a>
+   *       )
+   */
+  export function h<T extends ElementFactory, P = {}>(
+    type: T,
+    props?: P,
+    ...children: Element[]
+  ): View<T, P>;
+  /** Render JSX Element to string.
+   *
+   *       // JSX expressions are only available in TSX/JSX files.
+   *       Deno.renderToString(<a href="https://deno.land">Deno</a>)
+   *       // In plain js/ts files, use with `Deno.h()`.
+   *       Deno.renderToString(Deno.h("a", {href: "https://deno.land"}, "Deno"))
+   */
+  export function renderToString(node: Element): string;
+
   // @url js/build.d.ts
 
   export type OperatingSystem = "mac" | "win" | "linux";

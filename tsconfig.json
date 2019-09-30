@@ -17,6 +17,8 @@
     "sourceMap": true,
     "strict": true,
     "target": "esnext",
+    "jsx": "react",
+    "jsxFactory": "h",
     "types": []
   },
   "files": [

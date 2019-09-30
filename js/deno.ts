@@ -89,6 +89,7 @@ export {
 export { inspect, customInspect } from "./console.ts";
 export { build, OperatingSystem, Arch } from "./build.ts";
 export { version } from "./version.ts";
+export { h, renderToString } from "./jsx.ts";
 export const args: string[] = [];
 
 // These are internal Deno APIs.  We are marking them as internal so they do not

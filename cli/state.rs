@@ -250,10 +250,10 @@ impl ThreadSafeState {
         msg::MediaType::Json => {
           state_.json_compiler.compile_async(state_.clone(), &out)
         }
-        msg::MediaType::TypeScript => {
+        msg::MediaType::TypeScript | msg::MediaType::TSX => {
           state_.ts_compiler.compile_async(state_.clone(), &out)
         }
-        msg::MediaType::JavaScript => {
+        msg::MediaType::JavaScript | msg::MediaType::JSX => {
           if state_.ts_compiler.compile_js {
             state_.ts_compiler.compile_async(state_.clone(), &out)
           } else {
