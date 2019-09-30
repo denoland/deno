@@ -246,9 +246,9 @@ itest!(_033_import_map {
   output: "033_import_map.out",
 });
 
-itest!(_034_onload {
-  args: "run --reload 034_onload/main.ts",
-  output: "034_onload.out",
+itest!(_034_onload_onunload {
+  args: "run --reload 034_onload_onunload/main.ts",
+  output: "034_onload_onunload.out",
 });
 
 itest!(_035_no_fetch_flag {
