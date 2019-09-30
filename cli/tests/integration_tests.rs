@@ -267,8 +267,8 @@ itest!(_036_import_map_fetch {
 });
 
 itest!(_037_current_thread {
-  args: "run --current-thread --reload 034_onload/main.ts",
-  output: "034_onload.out",
+  args: "run --current-thread --reload 034_onload_onunload/main.ts",
+  output: "034_onload_onunload.out",
 });
 
 itest!(_038_checkjs {
