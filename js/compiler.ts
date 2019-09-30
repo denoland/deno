@@ -230,7 +230,7 @@ class Host implements ts.CompilerHost {
     stripComments: true,
     target: ts.ScriptTarget.ESNext,
     jsx: ts.JsxEmit.React,
-    jsxFactory: "Deno.h"
+    jsxFactory: "h"
   };
 
   private _sourceFileCache: Record<string, SourceFile> = {};
