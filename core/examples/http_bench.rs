@@ -36,12 +36,6 @@ impl log::Log for Logger {
   fn flush(&self) {}
 }
 
-const OP_LISTEN: OpId = 1;
-const OP_ACCEPT: OpId = 2;
-const OP_READ: OpId = 3;
-const OP_WRITE: OpId = 4;
-const OP_CLOSE: OpId = 5;
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct Record {
   pub promise_id: i32,
@@ -104,48 +98,24 @@ fn test_record_from() {
   // TODO test From<&[u8]> for Record
 }
 
-pub type HttpBenchOp = dyn Future<Item = i32, Error = std::io::Error> + Send;
+pub type HttpOp = dyn Future<Item = i32, Error = std::io::Error> + Send;
 
-fn dispatch(
-  op_id: OpId,
-  control: &[u8],
-  zero_copy_buf: Option<PinnedBuf>,
-) -> CoreOp {
-  let record = Record::from(control);
-  let is_sync = record.promise_id == 0;
-  let http_bench_op = match op_id {
-    OP_LISTEN => {
-      assert!(is_sync);
-      op_listen()
-    }
-    OP_CLOSE => {
-      assert!(is_sync);
-      let rid = record.arg;
-      op_close(rid)
-    }
-    OP_ACCEPT => {
-      assert!(!is_sync);
-      let listener_rid = record.arg;
-      op_accept(listener_rid)
-    }
-    OP_READ => {
-      assert!(!is_sync);
-      let rid = record.arg;
-      op_read(rid, zero_copy_buf)
-    }
-    OP_WRITE => {
-      assert!(!is_sync);
-      let rid = record.arg;
-      op_write(rid, zero_copy_buf)
-    }
-    _ => panic!("bad op {}", op_id),
-  };
-  let mut record_a = record.clone();
-  let mut record_b = record.clone();
+pub type HttpOpHandler =
+  fn(record: Record, zero_copy_buf: Option<PinnedBuf>) -> Box<HttpOp>;
 
-  let fut = Box::new(
-    http_bench_op
-      .and_then(move |result| {
+fn http_op(
+  handler: HttpOpHandler,
+) -> impl Fn(&[u8], Option<PinnedBuf>) -> CoreOp {
+  move |control: &[u8], zero_copy_buf: Option<PinnedBuf>| -> CoreOp {
+    let record = Record::from(control);
+    let is_sync = record.promise_id == 0;
+    let op = handler(record.clone(), zero_copy_buf);
+
+    let mut record_a = record.clone();
+    let mut record_b = record.clone();
+
+    let fut = Box::new(
+      op.and_then(move |result| {
         record_a.result = result;
         Ok(record_a)
       })
@@ -158,12 +128,13 @@ fn dispatch(
         let record = result.unwrap();
         Ok(record.into())
       }),
-  );
+    );
 
-  if is_sync {
-    Op::Sync(fut.wait().unwrap())
-  } else {
-    Op::Async(fut)
+    if is_sync {
+      Op::Sync(fut.wait().unwrap())
+    } else {
+      Op::Async(fut)
+    }
   }
 }
 
@@ -181,7 +152,11 @@ fn main() {
     });
 
     let mut isolate = deno::Isolate::new(startup_data, false);
-    isolate.set_dispatch(dispatch);
+    isolate.register_op("listen", http_op(op_listen));
+    isolate.register_op("accept", http_op(op_accept));
+    isolate.register_op("read", http_op(op_read));
+    isolate.register_op("write", http_op(op_write));
+    isolate.register_op("close", http_op(op_close));
 
     isolate.then(|r| {
       js_check(r);
@@ -225,7 +200,8 @@ fn new_rid() -> i32 {
   rid as i32
 }
 
-fn op_accept(listener_rid: i32) -> Box<HttpBenchOp> {
+fn op_accept(record: Record, _zero_copy_buf: Option<PinnedBuf>) -> Box<HttpOp> {
+  let listener_rid = record.arg;
   debug!("accept {}", listener_rid);
   Box::new(
     futures::future::poll_fn(move || {
@@ -248,9 +224,11 @@ fn op_accept(listener_rid: i32) -> Box<HttpBenchOp> {
   )
 }
 
-fn op_listen() -> Box<HttpBenchOp> {
+fn op_listen(
+  _record: Record,
+  _zero_copy_buf: Option<PinnedBuf>,
+) -> Box<HttpOp> {
   debug!("listen");
-
   Box::new(lazy(move || {
     let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
     let listener = tokio::net::TcpListener::bind(&addr).unwrap();
@@ -262,8 +240,9 @@ fn op_listen() -> Box<HttpBenchOp> {
   }))
 }
 
-fn op_close(rid: i32) -> Box<HttpBenchOp> {
+fn op_close(record: Record, _zero_copy_buf: Option<PinnedBuf>) -> Box<HttpOp> {
   debug!("close");
+  let rid = record.arg;
   Box::new(lazy(move || {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     let r = table.remove(&rid);
@@ -272,7 +251,8 @@ fn op_close(rid: i32) -> Box<HttpBenchOp> {
   }))
 }
 
-fn op_read(rid: i32, zero_copy_buf: Option<PinnedBuf>) -> Box<HttpBenchOp> {
+fn op_read(record: Record, zero_copy_buf: Option<PinnedBuf>) -> Box<HttpOp> {
+  let rid = record.arg;
   debug!("read rid={}", rid);
   let mut zero_copy_buf = zero_copy_buf.unwrap();
   Box::new(
@@ -293,7 +273,8 @@ fn op_read(rid: i32, zero_copy_buf: Option<PinnedBuf>) -> Box<HttpBenchOp> {
   )
 }
 
-fn op_write(rid: i32, zero_copy_buf: Option<PinnedBuf>) -> Box<HttpBenchOp> {
+fn op_write(record: Record, zero_copy_buf: Option<PinnedBuf>) -> Box<HttpOp> {
+  let rid = record.arg;
   debug!("write rid={}", rid);
   let zero_copy_buf = zero_copy_buf.unwrap();
   Box::new(

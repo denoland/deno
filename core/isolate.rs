@@ -13,10 +13,10 @@ use crate::libdeno::deno_buf;
 use crate::libdeno::deno_dyn_import_id;
 use crate::libdeno::deno_mod;
 use crate::libdeno::deno_pinned_buf;
-use crate::libdeno::OpId;
 use crate::libdeno::PinnedBuf;
 use crate::libdeno::Snapshot1;
 use crate::libdeno::Snapshot2;
+use crate::ops::*;
 use crate::shared_queue::SharedQueue;
 use crate::shared_queue::RECOMMENDED_SIZE;
 use futures::stream::FuturesUnordered;
@@ -33,24 +33,6 @@ use std::ffi::CString;
 use std::fmt;
 use std::ptr::null;
 use std::sync::{Arc, Mutex, Once};
-
-pub type Buf = Box<[u8]>;
-
-pub type OpAsyncFuture<E> = Box<dyn Future<Item = Buf, Error = E> + Send>;
-
-type PendingOpFuture =
-  Box<dyn Future<Item = (OpId, Buf), Error = CoreError> + Send>;
-
-pub enum Op<E> {
-  Sync(Buf),
-  Async(OpAsyncFuture<E>),
-}
-
-pub type CoreError = ();
-
-pub type CoreOp = Op<CoreError>;
-
-pub type OpResult<E> = Result<Op<E>, E>;
 
 /// Args: op_id, control_buf, zero_copy_buf
 type CoreDispatchFn = dyn Fn(OpId, &[u8], Option<PinnedBuf>) -> CoreOp;
@@ -179,6 +161,7 @@ pub struct Isolate {
   pending_dyn_imports: FuturesUnordered<StreamFuture<DynImport>>,
   have_unpolled_ops: bool,
   startup_script: Option<OwnedScript>,
+  op_registry: OpRegistry,
 }
 
 unsafe impl Send for Isolate {}
@@ -244,17 +227,38 @@ impl Isolate {
       have_unpolled_ops: false,
       pending_dyn_imports: FuturesUnordered::new(),
       startup_script,
+      op_registry: OpRegistry::new(),
     }
   }
 
   /// Defines the how Deno.core.dispatch() acts.
   /// Called whenever Deno.core.dispatch() is called in JavaScript. zero_copy_buf
   /// corresponds to the second argument of Deno.core.dispatch().
+  ///
+  /// If this method is used then ops registered using `op_register` function are
+  /// ignored and all dispatching must be handled manually in provided callback.
+  // TODO: we want to deprecate and remove this API and move to `register_op` API
   pub fn set_dispatch<F>(&mut self, f: F)
   where
     F: Fn(OpId, &[u8], Option<PinnedBuf>) -> CoreOp + Send + Sync + 'static,
   {
     self.dispatch = Some(Arc::new(f));
+  }
+
+  /// New dispatch mechanism. Requires runtime to explicitly ask for op ids
+  /// before using any of the ops.
+  ///
+  /// Ops added using this method are only usable if `dispatch` is not set
+  /// (using `set_dispatch` method).
+  pub fn register_op<F>(&mut self, name: &str, op: F) -> OpId
+  where
+    F: Fn(&[u8], Option<PinnedBuf>) -> CoreOp + Send + Sync + 'static,
+  {
+    assert!(
+      self.dispatch.is_none(),
+      "set_dispatch should not be used in conjunction with register_op"
+    );
+    self.op_registry.register(name, op)
   }
 
   pub fn set_dyn_import<F>(&mut self, f: F)
@@ -329,9 +333,17 @@ impl Isolate {
     let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
 
     let op = if let Some(ref f) = isolate.dispatch {
+      assert!(
+        op_id != 0,
+        "op_id 0 is a special value that shouldn't be used with dispatch"
+      );
       f(op_id, control_buf.as_ref(), PinnedBuf::new(zero_copy_buf))
     } else {
-      panic!("isolate.dispatch not set")
+      isolate.op_registry.call(
+        op_id,
+        control_buf.as_ref(),
+        PinnedBuf::new(zero_copy_buf),
+      )
     };
 
     debug_assert_eq!(isolate.shared.size(), 0);

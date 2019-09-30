@@ -58,6 +58,13 @@ SharedQueue Binary Layout
     Deno.core.recv(handleAsyncMsgFromRust);
   }
 
+  function ops() {
+    // op id 0 is a special value to retreive the map of registered ops.
+    const opsMapBytes = Deno.core.send(0, new Uint8Array([]), null);
+    const opsMapJson = String.fromCharCode.apply(null, opsMapBytes);
+    return JSON.parse(opsMapJson);
+  }
+
   function assert(cond) {
     if (!cond) {
       throw Error("assert");
@@ -84,7 +91,6 @@ SharedQueue Binary Layout
     return shared32[INDEX_NUM_RECORDS] - shared32[INDEX_NUM_SHIFTED_OFF];
   }
 
-  // TODO(ry) rename to setMeta
   function setMeta(index, end, opId) {
     shared32[INDEX_OFFSETS + 2 * index] = end;
     shared32[INDEX_OFFSETS + 2 * index + 1] = opId;
@@ -189,7 +195,8 @@ SharedQueue Binary Layout
       push,
       reset,
       shift
-    }
+    },
+    ops
   };
 
   assert(window[GLOBAL_NAMESPACE] != null);
