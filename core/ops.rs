@@ -23,47 +23,47 @@ pub type CoreError = ();
 pub type CoreOp = Op<CoreError>;
 
 /// Main type describing op
-pub type CoreOpHandler = dyn Fn(&[u8], Option<PinnedBuf>) -> CoreOp;
+type OpDispatcher = dyn Fn(&[u8], Option<PinnedBuf>) -> CoreOp;
 
 #[derive(Default)]
 pub struct OpRegistry {
-  pub ops: Vec<Box<CoreOpHandler>>,
-  pub op_map: HashMap<String, OpId>,
+  dispatchers: Vec<Box<OpDispatcher>>,
+  name_to_id: HashMap<String, OpId>,
 }
 
 impl OpRegistry {
   pub fn new() -> Self {
     let mut registry = Self::default();
-    let op_id = registry.register_op("get_op_map", |_, _| {
-      // get_op_map is a special op which is handled in call_op.
+    let op_id = registry.register("ops", |_, _| {
+      // ops is a special op which is handled in call.
       unreachable!()
     });
     assert_eq!(op_id, 0);
     registry
   }
 
-  pub fn register_op<F>(&mut self, name: &str, op: F) -> OpId
+  pub fn register<F>(&mut self, name: &str, op: F) -> OpId
   where
     F: Fn(&[u8], Option<PinnedBuf>) -> CoreOp + Send + Sync + 'static,
   {
-    let op_id = self.ops.len() as u32;
+    let op_id = self.dispatchers.len() as u32;
 
-    let existing = self.op_map.insert(name.to_string(), op_id);
+    let existing = self.name_to_id.insert(name.to_string(), op_id);
     assert!(
       existing.is_none(),
       format!("Op already registered: {}", name)
     );
 
-    self.ops.push(Box::new(op));
+    self.dispatchers.push(Box::new(op));
     op_id
   }
 
   fn json_map(&self) -> Buf {
-    let op_map_json = serde_json::to_string(&self.op_map).unwrap();
+    let op_map_json = serde_json::to_string(&self.name_to_id).unwrap();
     op_map_json.as_bytes().to_owned().into_boxed_slice()
   }
 
-  pub fn call_op(
+  pub fn call(
     &self,
     op_id: OpId,
     control: &[u8],
@@ -76,8 +76,8 @@ impl OpRegistry {
       return Op::Sync(self.json_map());
     }
 
-    let op_handler = &*self.ops.get(op_id as usize).expect("Op not found!");
-    op_handler(control, zero_copy_buf)
+    let d = &*self.dispatchers.get(op_id as usize).expect("Op not found!");
+    d(control, zero_copy_buf)
   }
 }
 
@@ -90,18 +90,18 @@ fn test_op_registry() {
   let c = Arc::new(atomic::AtomicUsize::new(0));
   let c_ = c.clone();
 
-  let test_id = op_registry.register_op("test", move |_, _| {
+  let test_id = op_registry.register("test", move |_, _| {
     c_.fetch_add(1, atomic::Ordering::SeqCst);
     CoreOp::Sync(Box::new([]))
   });
   assert!(test_id != 0);
 
-  let mut expected_map = HashMap::new();
-  expected_map.insert("get_op_map".to_string(), 0);
-  expected_map.insert("test".to_string(), 1);
-  assert_eq!(op_registry.op_map, expected_map);
+  let mut expected = HashMap::new();
+  expected.insert("ops".to_string(), 0);
+  expected.insert("test".to_string(), 1);
+  assert_eq!(op_registry.name_to_id, expected);
 
-  let res = op_registry.call_op(test_id, &[], None);
+  let res = op_registry.call(test_id, &[], None);
   if let Op::Sync(buf) = res {
     assert_eq!(buf.len(), 0);
   } else {

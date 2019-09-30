@@ -258,7 +258,7 @@ impl Isolate {
       self.dispatch.is_none(),
       "set_dispatch should not be used in conjunction with register_op"
     );
-    self.op_registry.register_op(name, op)
+    self.op_registry.register(name, op)
   }
 
   pub fn set_dyn_import<F>(&mut self, f: F)
@@ -339,7 +339,7 @@ impl Isolate {
       );
       f(op_id, control_buf.as_ref(), PinnedBuf::new(zero_copy_buf))
     } else {
-      isolate.op_registry.call_op(
+      isolate.op_registry.call(
         op_id,
         control_buf.as_ref(),
         PinnedBuf::new(zero_copy_buf),
