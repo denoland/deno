@@ -539,6 +539,9 @@ window.compilerMain = function compilerMain(): void {
 
       diagnostics = ts.getPreEmitDiagnostics(program).filter(
         ({ code }): boolean => {
+          // TS1308: 'await' expression is only allowed within an async
+          // function.
+          if (code === 1308) return false;
           // TS2691: An import path cannot end with a '.ts' extension. Consider
           // importing 'bad-module' instead.
           if (code === 2691) return false;
