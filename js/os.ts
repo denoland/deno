@@ -18,6 +18,15 @@ export function isTTY(): { stdin: boolean; stdout: boolean; stderr: boolean } {
   return sendSync(dispatch.OP_IS_TTY);
 }
 
+/** Get the hostname.
+ * Requires the `--allow-env` flag.
+ *
+ *       console.log(Deno.hostname());
+ */
+export function hostname(): string {
+  return sendSync(dispatch.OP_HOSTNAME);
+}
+
 /** Exit the Deno process with optional exit code. */
 export function exit(code = 0): never {
   sendSync(dispatch.OP_EXIT, { code });

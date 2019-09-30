@@ -61,6 +61,7 @@ export const OP_MAKE_TEMP_DIR = 55;
 export const OP_CWD = 56;
 export const OP_FETCH_ASSET = 57;
 export const OP_DIAL_TLS = 58;
+export const OP_HOSTNAME = 59;
 
 export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
   switch (opId) {
