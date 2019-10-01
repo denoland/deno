@@ -228,8 +228,7 @@ class Host implements ts.CompilerHost {
     sourceMap: true,
     stripComments: true,
     target: ts.ScriptTarget.ESNext,
-    jsx: ts.JsxEmit.React,
-    jsxFactory: "h"
+    jsx: ts.JsxEmit.React
   };
 
   private _sourceFileCache: Record<string, SourceFile> = {};

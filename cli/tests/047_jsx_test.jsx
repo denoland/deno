@@ -1,5 +1,5 @@
 const React = {
-  createElement(factory: any, props: any, ...children: any[]) {
+  createElement(factory, props, ...children) {
     return {factory, props, children}
   }
 }
