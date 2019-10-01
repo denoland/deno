@@ -246,9 +246,9 @@ itest!(_033_import_map {
   output: "033_import_map.out",
 });
 
-itest!(_034_onload_onunload {
-  args: "run --reload 034_onload_onunload/main.ts",
-  output: "034_onload_onunload.out",
+itest!(_034_onload {
+  args: "run --reload 034_onload/main.ts",
+  output: "034_onload.out",
 });
 
 itest!(_035_no_fetch_flag {
@@ -267,8 +267,8 @@ itest!(_036_import_map_fetch {
 });
 
 itest!(_037_current_thread {
-  args: "run --current-thread --reload 034_onload_onunload/main.ts",
-  output: "034_onload_onunload.out",
+  args: "run --current-thread --reload 034_onload/main.ts",
+  output: "034_onload.out",
 });
 
 itest!(_038_checkjs {
