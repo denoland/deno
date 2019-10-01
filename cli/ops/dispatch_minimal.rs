@@ -4,7 +4,6 @@
 //! alternative to flatbuffers using a very simple list of int32s to lay out
 //! messages. The first i32 is used to determine if a message a flatbuffer
 //! message or a "minimal" message.
-use crate::state::ThreadSafeState;
 use deno::Buf;
 use deno::CoreOp;
 use deno::ErrBox;
@@ -74,10 +73,8 @@ fn test_parse_min_record() {
 
 pub fn minimal_op(
   d: Dispatcher,
-) -> impl Fn(&ThreadSafeState, &[u8], Option<PinnedBuf>) -> CoreOp {
-  move |_state: &ThreadSafeState,
-        control: &[u8],
-        zero_copy: Option<PinnedBuf>| {
+) -> impl Fn(&[u8], Option<PinnedBuf>) -> CoreOp {
+  move |control: &[u8], zero_copy: Option<PinnedBuf>| {
     let mut record = parse_min_record(control).unwrap();
     let is_sync = record.promise_id == 0;
     let rid = record.arg;

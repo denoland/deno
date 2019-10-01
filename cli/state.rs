@@ -10,6 +10,7 @@ use crate::flags;
 use crate::global_timer::GlobalTimer;
 use crate::import_map::ImportMap;
 use crate::msg;
+use crate::ops::JsonOp;
 use crate::permissions::DenoPermissions;
 use crate::progress::Progress;
 use crate::resources;
@@ -26,6 +27,7 @@ use futures::future::Shared;
 use futures::Future;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
+use serde_json::Value;
 use std;
 use std::collections::HashMap;
 use std::env;
@@ -102,14 +104,14 @@ impl Deref for ThreadSafeState {
 }
 
 impl ThreadSafeState {
-  /// Wrap core `OpDispatcher` so we can pass additional argument (state) to
-  /// each handler.
+  // TODO: better name welcome
+  /// Wrap core `OpDispatcher` to collect metrics.
   pub fn cli_op<D>(
     &self,
     dispatcher: D,
   ) -> impl Fn(&[u8], Option<PinnedBuf>) -> CoreOp
   where
-    D: Fn(&ThreadSafeState, &[u8], Option<PinnedBuf>) -> CoreOp,
+    D: Fn(&[u8], Option<PinnedBuf>) -> CoreOp,
   {
     let state = self.clone();
 
@@ -118,7 +120,7 @@ impl ThreadSafeState {
       let bytes_sent_zero_copy =
         zero_copy.as_ref().map(|b| b.len()).unwrap_or(0);
 
-      let op = dispatcher(&state.clone(), control, zero_copy);
+      let op = dispatcher(control, zero_copy);
       state.metrics_op_dispatched(bytes_sent_control, bytes_sent_zero_copy);
 
       match op {
@@ -135,6 +137,25 @@ impl ThreadSafeState {
           Op::Async(result_fut)
         }
       }
+    }
+  }
+
+  /// This is a special function that provides `state` argument to dispatcher.
+  ///
+  /// NOTE: This only works with JSON dispatcher.
+  /// This is a band-aid for transition to `Isolate.register_op` API as most of our
+  /// ops require `state` argument.
+  pub fn stateful_op<D>(
+    &self,
+    dispatcher: D,
+  ) -> impl Fn(Value, Option<PinnedBuf>) -> Result<JsonOp, ErrBox>
+  where
+    D: Fn(&ThreadSafeState, Value, Option<PinnedBuf>) -> Result<JsonOp, ErrBox>,
+  {
+    let state = self.clone();
+
+    move |args: Value, zero_copy: Option<PinnedBuf>| -> Result<JsonOp, ErrBox> {
+      dispatcher(&state, args, zero_copy)
     }
   }
 }
