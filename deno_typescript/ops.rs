@@ -3,7 +3,6 @@ use deno::CoreOp;
 use deno::ErrBox;
 use deno::ModuleSpecifier;
 use deno::Op;
-use deno::OpId;
 use serde::Deserialize;
 use serde_json::json;
 use serde_json::Value;
@@ -15,33 +14,23 @@ pub struct WrittenFile {
   pub source_code: String,
 }
 
-fn dispatch2(
-  s: &mut TSState,
-  op_id: OpId,
-  control_buf: &[u8],
-) -> Result<Value, ErrBox> {
-  let v = serde_json::from_slice(control_buf)?;
-  // Warning! The op_id values below are shared between this code and
-  // compiler_main.js. Update with care!
-  match op_id {
-    49 => read_file(s, v),
-    50 => exit(s, v),
-    51 => write_file(s, v),
-    52 => resolve_module_names(s, v),
-    53 => set_emit_result(s, v),
-    _ => unreachable!(),
-  }
-}
+type Dispatcher = fn(state: &mut TSState, args: Value) -> Result<Value, ErrBox>;
 
-pub fn dispatch_op(s: &mut TSState, op_id: OpId, control_buf: &[u8]) -> CoreOp {
-  let result = dispatch2(s, op_id, control_buf);
-  let response = match result {
-    Ok(v) => json!({ "ok": v }),
-    Err(err) => json!({ "err": err.to_string() }),
-  };
-  let x = serde_json::to_string(&response).unwrap();
-  let vec = x.into_bytes();
-  Op::Sync(vec.into_boxed_slice())
+pub fn json_op(d: Dispatcher) -> impl Fn(&mut TSState, &[u8]) -> CoreOp {
+  move |state: &mut TSState, control: &[u8]| {
+    let result = serde_json::from_slice(control)
+      .map_err(ErrBox::from)
+      .and_then(move |args| d(state, args));
+
+    let response = match result {
+      Ok(v) => json!({ "ok": v }),
+      Err(err) => json!({ "err": err.to_string() }),
+    };
+
+    let x = serde_json::to_string(&response).unwrap();
+    let vec = x.into_bytes();
+    Op::Sync(vec.into_boxed_slice())
+  }
 }
 
 #[derive(Debug, Deserialize)]
@@ -52,7 +41,7 @@ struct ReadFile {
   should_create_new_source_file: bool,
 }
 
-fn read_file(_s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
+pub fn read_file(_s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
   let v: ReadFile = serde_json::from_value(v)?;
   let (module_name, source_code) = if v.file_name.starts_with("$asset$/") {
     let asset = v.file_name.replace("$asset$/", "");
@@ -82,7 +71,7 @@ struct WriteFile {
   module_name: String,
 }
 
-fn write_file(s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
+pub fn write_file(s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
   let v: WriteFile = serde_json::from_value(v)?;
   let module_specifier = ModuleSpecifier::resolve_url_or_path(&v.file_name)?;
   if s.bundle {
@@ -103,7 +92,10 @@ struct ResolveModuleNames {
   containing_file: String,
 }
 
-fn resolve_module_names(_s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
+pub fn resolve_module_names(
+  _s: &mut TSState,
+  v: Value,
+) -> Result<Value, ErrBox> {
   let v: ResolveModuleNames = serde_json::from_value(v).unwrap();
   let mut resolved = Vec::<String>::new();
   let referrer = ModuleSpecifier::resolve_url_or_path(&v.containing_file)?;
@@ -124,7 +116,7 @@ struct Exit {
   code: i32,
 }
 
-fn exit(s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
+pub fn exit(s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
   let v: Exit = serde_json::from_value(v)?;
   s.exit_code = v.code;
   std::process::exit(v.code)
@@ -138,7 +130,7 @@ pub struct EmitResult {
   pub emitted_files: Vec<String>,
 }
 
-fn set_emit_result(s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
+pub fn set_emit_result(s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
   let v: EmitResult = serde_json::from_value(v)?;
   s.emit_result = Some(v);
   Ok(json!(true))
