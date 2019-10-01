@@ -10,7 +10,7 @@ use crate::flags;
 use crate::global_timer::GlobalTimer;
 use crate::import_map::ImportMap;
 use crate::msg;
-use crate::ops;
+use crate::ops::JsonOp;
 use crate::permissions::DenoPermissions;
 use crate::progress::Progress;
 use crate::resources;
@@ -21,12 +21,13 @@ use deno::CoreOp;
 use deno::ErrBox;
 use deno::Loader;
 use deno::ModuleSpecifier;
-use deno::OpId;
+use deno::Op;
 use deno::PinnedBuf;
 use futures::future::Shared;
 use futures::Future;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
+use serde_json::Value;
 use std;
 use std::collections::HashMap;
 use std::env;
@@ -103,13 +104,59 @@ impl Deref for ThreadSafeState {
 }
 
 impl ThreadSafeState {
-  pub fn dispatch(
+  // TODO: better name welcome
+  /// Wrap core `OpDispatcher` to collect metrics.
+  pub fn cli_op<D>(
     &self,
-    op_id: OpId,
-    control: &[u8],
-    zero_copy: Option<PinnedBuf>,
-  ) -> CoreOp {
-    ops::dispatch(self, op_id, control, zero_copy)
+    dispatcher: D,
+  ) -> impl Fn(&[u8], Option<PinnedBuf>) -> CoreOp
+  where
+    D: Fn(&[u8], Option<PinnedBuf>) -> CoreOp,
+  {
+    let state = self.clone();
+
+    move |control: &[u8], zero_copy: Option<PinnedBuf>| -> CoreOp {
+      let bytes_sent_control = control.len();
+      let bytes_sent_zero_copy =
+        zero_copy.as_ref().map(|b| b.len()).unwrap_or(0);
+
+      let op = dispatcher(control, zero_copy);
+      state.metrics_op_dispatched(bytes_sent_control, bytes_sent_zero_copy);
+
+      match op {
+        Op::Sync(buf) => {
+          state.metrics_op_completed(buf.len());
+          Op::Sync(buf)
+        }
+        Op::Async(fut) => {
+          let state = state.clone();
+          let result_fut = Box::new(fut.map(move |buf: Buf| {
+            state.clone().metrics_op_completed(buf.len());
+            buf
+          }));
+          Op::Async(result_fut)
+        }
+      }
+    }
+  }
+
+  /// This is a special function that provides `state` argument to dispatcher.
+  ///
+  /// NOTE: This only works with JSON dispatcher.
+  /// This is a band-aid for transition to `Isolate.register_op` API as most of our
+  /// ops require `state` argument.
+  pub fn stateful_op<D>(
+    &self,
+    dispatcher: D,
+  ) -> impl Fn(Value, Option<PinnedBuf>) -> Result<JsonOp, ErrBox>
+  where
+    D: Fn(&ThreadSafeState, Value, Option<PinnedBuf>) -> Result<JsonOp, ErrBox>,
+  {
+    let state = self.clone();
+
+    move |args: Value, zero_copy: Option<PinnedBuf>| -> Result<JsonOp, ErrBox> {
+      dispatcher(&state, args, zero_copy)
+    }
   }
 }
 

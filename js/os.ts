@@ -81,7 +81,14 @@ interface Start {
 // @internal
 export function start(preserveDenoNamespace = true, source?: string): Start {
   core.setAsyncHandler(dispatch.asyncMsgFromRust);
-
+  const ops = core.ops();
+  // TODO(bartlomieju): this is a prototype, we should come up with
+  // something a bit more sophisticated
+  for (const [name, opId] of Object.entries(ops)) {
+    const opName = `OP_${name.toUpperCase()}`;
+    // Assign op ids to actual variables
+    dispatch[opName] = opId;
+  }
   // First we send an empty `Start` message to let the privileged side know we
   // are ready. The response should be a `StartRes` message containing the CLI
   // args and other info.
