@@ -28,13 +28,13 @@ type OpDispatcher = dyn Fn(&[u8], Option<PinnedBuf>) -> CoreOp;
 #[derive(Default)]
 pub struct OpRegistry {
   dispatchers: Vec<Box<OpDispatcher>>,
-  name_to_id: HashMap<String, OpId>,
+  name_to_id: HashMap<String, HashMap<String, OpId>>,
 }
 
 impl OpRegistry {
   pub fn new() -> Self {
     let mut registry = Self::default();
-    let op_id = registry.register("ops", |_, _| {
+    let op_id = registry.register("deno_core", "ops", |_, _| {
       // ops is a special op which is handled in call.
       unreachable!()
     });
@@ -42,13 +42,23 @@ impl OpRegistry {
     registry
   }
 
-  pub fn register<F>(&mut self, name: &str, op: F) -> OpId
+  pub fn register<F>(&mut self, namespace: &str, name: &str, op: F) -> OpId
   where
     F: Fn(&[u8], Option<PinnedBuf>) -> CoreOp + Send + Sync + 'static,
   {
     let op_id = self.dispatchers.len() as u32;
 
-    let existing = self.name_to_id.insert(name.to_string(), op_id);
+    if !self.name_to_id.contains_key(namespace) {
+      self
+        .name_to_id
+        .insert(namespace.to_string(), HashMap::new());
+    }
+
+    let existing = self
+      .name_to_id
+      .get_mut(namespace)
+      .unwrap()
+      .insert(name.to_string(), op_id);
     assert!(
       existing.is_none(),
       format!("Op already registered: {}", name)
@@ -90,15 +100,21 @@ fn test_op_registry() {
   let c = Arc::new(atomic::AtomicUsize::new(0));
   let c_ = c.clone();
 
-  let test_id = op_registry.register("test", move |_, _| {
+  let test_id = op_registry.register("testspace", "test", move |_, _| {
     c_.fetch_add(1, atomic::Ordering::SeqCst);
     CoreOp::Sync(Box::new([]))
   });
   assert!(test_id != 0);
 
-  let mut expected = HashMap::new();
-  expected.insert("ops".to_string(), 0);
-  expected.insert("test".to_string(), 1);
+  let mut expected: HashMap<String, HashMap<String, OpId>> = HashMap::new();
+  expected.insert(
+    "deno_core".to_string(),
+    vec![("ops".to_string(), 0 as OpId)].into_iter().collect(),
+  );
+  expected.insert(
+    "testspace".to_string(),
+    vec![("test".to_string(), 1 as OpId)].into_iter().collect(),
+  );
   assert_eq!(op_registry.name_to_id, expected);
 
   let res = op_registry.call(test_id, &[], None);

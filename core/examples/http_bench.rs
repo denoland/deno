@@ -152,11 +152,12 @@ fn main() {
     });
 
     let mut isolate = deno::Isolate::new(startup_data, false);
-    isolate.register_op("listen", http_op(op_listen));
-    isolate.register_op("accept", http_op(op_accept));
-    isolate.register_op("read", http_op(op_read));
-    isolate.register_op("write", http_op(op_write));
-    isolate.register_op("close", http_op(op_close));
+    let namespace = "http_bench";
+    isolate.register_op(namespace, "listen", http_op(op_listen));
+    isolate.register_op(namespace, "accept", http_op(op_accept));
+    isolate.register_op(namespace, "read", http_op(op_read));
+    isolate.register_op(namespace, "write", http_op(op_write));
+    isolate.register_op(namespace, "close", http_op(op_close));
 
     isolate.then(|r| {
       js_check(r);
