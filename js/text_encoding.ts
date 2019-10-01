@@ -81,21 +81,20 @@ class UTF8Decoder implements Decoder {
     if (this._ignoreBOM) {
       if (
         (this._bytesSeen === 0 && byte !== 0xef) ||
-        (this._bytesSeen === 1 && byte !== 0xbb) ||
-        (this._bytesSeen === 2 && byte !== 0xbf)
+        (this._bytesSeen === 1 && byte !== 0xbb)
       ) {
         this._ignoreBOM = false;
       }
 
-      if (this._ignoreBOM && this._bytesSeen === 2 && byte === 0xbf) {
-        //Ignore BOM
-        this._codePoint = 0;
-        this._bytesNeeded = 0;
-        this._bytesSeen = 0;
-
-        this._ignoreBOM = false; //Ignore BOM only once.
-
-        return CONTINUE;
+      if (this._bytesSeen === 2) {
+        this._ignoreBOM = false;
+        if (byte === 0xbf) {
+          //Ignore BOM
+          this._codePoint = 0;
+          this._bytesNeeded = 0;
+          this._bytesSeen = 0;
+          return CONTINUE;
+        }
       }
     }
 
