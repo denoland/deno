@@ -1,7 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::state::ThreadSafeState;
-use deno::*;
-
 mod dispatch_json;
 mod dispatch_minimal;
 
@@ -25,9 +22,3 @@ pub mod repl;
 pub mod resources;
 pub mod timers;
 pub mod workers;
-
-pub type CliOpDispatcher =
-  dyn Fn(&ThreadSafeState, &[u8], Option<PinnedBuf>) -> CoreOp
-    + Send
-    + Sync
-    + 'static;

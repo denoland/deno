@@ -36,44 +36,17 @@ impl Worker {
       let mut i = isolate.lock().unwrap();
       let state_ = state.clone();
 
-      i.register_op(
-        "read",
-        state_.cli_op(minimal_op(io::op_read)),
-      );
-      i.register_op(
-        "write",
-        state_.cli_op(minimal_op(io::op_write)),
-      );
+      i.register_op("read", state_.cli_op(minimal_op(io::op_read)));
+      i.register_op("write", state_.cli_op(minimal_op(io::op_write)));
 
-      i.register_op(
-        "exit",
-        state_.cli_op(json_op(os::op_exit)),
-      );
-      i.register_op(
-        "is_tty",
-        state_.cli_op(json_op(os::op_is_tty)),
-      );
+      i.register_op("exit", state_.cli_op(json_op(os::op_exit)));
+      i.register_op("is_tty", state_.cli_op(json_op(os::op_is_tty)));
       i.register_op("env", state_.cli_op(json_op(os::op_env)));
-      i.register_op(
-        "exec_path",
-        state_.cli_op(json_op(os::op_exec_path)),
-      );
-      i.register_op(
-        "utime",
-        state_.cli_op(json_op(fs::op_utime)),
-      );
-      i.register_op(
-        "set_env",
-        state_.cli_op(json_op(os::op_set_env)),
-      );
-      i.register_op(
-        "home_dir",
-        state_.cli_op(json_op(os::op_home_dir)),
-      );
-      i.register_op(
-        "start",
-        state_.cli_op(json_op(os::op_start)),
-      );
+      i.register_op("exec_path", state_.cli_op(json_op(os::op_exec_path)));
+      i.register_op("utime", state_.cli_op(json_op(fs::op_utime)));
+      i.register_op("set_env", state_.cli_op(json_op(os::op_set_env)));
+      i.register_op("home_dir", state_.cli_op(json_op(os::op_home_dir)));
+      i.register_op("start", state_.cli_op(json_op(os::op_start)));
       i.register_op(
         "apply_source_map",
         state_.cli_op(json_op(errors::op_apply_source_map)),
@@ -82,59 +55,25 @@ impl Worker {
         "format_error",
         state_.cli_op(json_op(errors::op_format_error)),
       );
-      i.register_op(
-        "cache",
-        state_.cli_op(json_op(compiler::op_cache)),
-      );
+      i.register_op("cache", state_.cli_op(json_op(compiler::op_cache)));
       i.register_op(
         "fetch_source_files",
-        state_
-          .cli_op(json_op(compiler::op_fetch_source_files)),
+        state_.cli_op(json_op(compiler::op_fetch_source_files)),
       );
-      i.register_op(
-        "open",
-        state_.cli_op(json_op(files::op_open)),
-      );
-      i.register_op(
-        "close",
-        state_.cli_op(json_op(files::op_close)),
-      );
-      i.register_op(
-        "seek",
-        state_.cli_op(json_op(files::op_seek)),
-      );
-      i.register_op(
-        "fetch",
-        state_.cli_op(json_op(fetch::op_fetch)),
-      );
-      i.register_op(
-        "metrics",
-        state_.cli_op(json_op(metrics::op_metrics)),
-      );
-      i.register_op(
-        "repl_start",
-        state_.cli_op(json_op(repl::op_repl_start)),
-      );
+      i.register_op("open", state_.cli_op(json_op(files::op_open)));
+      i.register_op("close", state_.cli_op(json_op(files::op_close)));
+      i.register_op("seek", state_.cli_op(json_op(files::op_seek)));
+      i.register_op("fetch", state_.cli_op(json_op(fetch::op_fetch)));
+      i.register_op("metrics", state_.cli_op(json_op(metrics::op_metrics)));
+      i.register_op("repl_start", state_.cli_op(json_op(repl::op_repl_start)));
       i.register_op(
         "repl_readline",
         state_.cli_op(json_op(repl::op_repl_readline)),
       );
-      i.register_op(
-        "accept",
-        state_.cli_op(json_op(net::op_accept)),
-      );
-      i.register_op(
-        "dial",
-        state_.cli_op(json_op(net::op_dial)),
-      );
-      i.register_op(
-        "shutdown",
-        state_.cli_op(json_op(net::op_shutdown)),
-      );
-      i.register_op(
-        "listen",
-        state_.cli_op(json_op(net::op_listen)),
-      );
+      i.register_op("accept", state_.cli_op(json_op(net::op_accept)));
+      i.register_op("dial", state_.cli_op(json_op(net::op_dial)));
+      i.register_op("shutdown", state_.cli_op(json_op(net::op_shutdown)));
+      i.register_op("listen", state_.cli_op(json_op(net::op_listen)));
       i.register_op(
         "resources",
         state_.cli_op(json_op(resources::op_resources)),
@@ -151,18 +90,14 @@ impl Worker {
         "global_timer",
         state_.cli_op(json_op(timers::op_global_timer)),
       );
-      i.register_op(
-        "now",
-        state_.cli_op(json_op(performance::op_now)),
-      );
+      i.register_op("now", state_.cli_op(json_op(performance::op_now)));
       i.register_op(
         "permissions",
         state_.cli_op(json_op(permissions::op_permissions)),
       );
       i.register_op(
         "revoke_permission",
-        state_
-          .cli_op(json_op(permissions::op_revoke_permission)),
+        state_.cli_op(json_op(permissions::op_revoke_permission)),
       );
       i.register_op(
         "create_worker",
@@ -170,8 +105,7 @@ impl Worker {
       );
       i.register_op(
         "host_get_worker_closed",
-        state_
-          .cli_op(json_op(workers::op_host_get_worker_closed)),
+        state_.cli_op(json_op(workers::op_host_get_worker_closed)),
       );
       i.register_op(
         "host_post_message",
@@ -184,77 +118,31 @@ impl Worker {
       // TODO: make sure these two ops are only accessible to appropriate Worker
       i.register_op(
         "worker_post_message",
-        state_
-          .cli_op(json_op(workers::op_worker_post_message)),
+        state_.cli_op(json_op(workers::op_worker_post_message)),
       );
       i.register_op(
         "worker_get_message",
         state_.cli_op(json_op(workers::op_worker_get_message)),
       );
-      i.register_op(
-        "run",
-        state_.cli_op(json_op(process::op_run)),
-      );
+      i.register_op("run", state_.cli_op(json_op(process::op_run)));
       i.register_op(
         "run_status",
         state_.cli_op(json_op(process::op_run_status)),
       );
-      i.register_op(
-        "kill",
-        state_.cli_op(json_op(process::op_kill)),
-      );
-      i.register_op(
-        "chdir",
-        state_.cli_op(json_op(fs::op_chdir)),
-      );
-      i.register_op(
-        "mkdir",
-        state_.cli_op(json_op(fs::op_mkdir)),
-      );
-      i.register_op(
-        "chmod",
-        state_.cli_op(json_op(fs::op_chmod)),
-      );
-      i.register_op(
-        "chown",
-        state_.cli_op(json_op(fs::op_chown)),
-      );
-      i.register_op(
-        "remove",
-        state_.cli_op(json_op(fs::op_remove)),
-      );
-      i.register_op(
-        "copy_file",
-        state_.cli_op(json_op(fs::op_copy_file)),
-      );
-      i.register_op(
-        "stat",
-        state_.cli_op(json_op(fs::op_stat)),
-      );
-      i.register_op(
-        "read_dir",
-        state_.cli_op(json_op(fs::op_read_dir)),
-      );
-      i.register_op(
-        "rename",
-        state_.cli_op(json_op(fs::op_rename)),
-      );
-      i.register_op(
-        "link",
-        state_.cli_op(json_op(fs::op_link)),
-      );
-      i.register_op(
-        "symlink",
-        state_.cli_op(json_op(fs::op_symlink)),
-      );
-      i.register_op(
-        "read_link",
-        state_.cli_op(json_op(fs::op_read_link)),
-      );
-      i.register_op(
-        "truncate",
-        state_.cli_op(json_op(fs::op_truncate)),
-      );
+      i.register_op("kill", state_.cli_op(json_op(process::op_kill)));
+      i.register_op("chdir", state_.cli_op(json_op(fs::op_chdir)));
+      i.register_op("mkdir", state_.cli_op(json_op(fs::op_mkdir)));
+      i.register_op("chmod", state_.cli_op(json_op(fs::op_chmod)));
+      i.register_op("chown", state_.cli_op(json_op(fs::op_chown)));
+      i.register_op("remove", state_.cli_op(json_op(fs::op_remove)));
+      i.register_op("copy_file", state_.cli_op(json_op(fs::op_copy_file)));
+      i.register_op("stat", state_.cli_op(json_op(fs::op_stat)));
+      i.register_op("read_dir", state_.cli_op(json_op(fs::op_read_dir)));
+      i.register_op("rename", state_.cli_op(json_op(fs::op_rename)));
+      i.register_op("link", state_.cli_op(json_op(fs::op_link)));
+      i.register_op("symlink", state_.cli_op(json_op(fs::op_symlink)));
+      i.register_op("read_link", state_.cli_op(json_op(fs::op_read_link)));
+      i.register_op("truncate", state_.cli_op(json_op(fs::op_truncate)));
       i.register_op(
         "make_temp_dir",
         state_.cli_op(json_op(fs::op_make_temp_dir)),

@@ -10,7 +10,6 @@ use crate::flags;
 use crate::global_timer::GlobalTimer;
 use crate::import_map::ImportMap;
 use crate::msg;
-use crate::ops::CliOpDispatcher;
 use crate::permissions::DenoPermissions;
 use crate::progress::Progress;
 use crate::resources;
@@ -18,7 +17,6 @@ use crate::resources::ResourceId;
 use crate::worker::Worker;
 use deno::Buf;
 use deno::CoreOp;
-use deno::OpDispatcher;
 use deno::ErrBox;
 use deno::Loader;
 use deno::ModuleSpecifier;
@@ -106,10 +104,13 @@ impl Deref for ThreadSafeState {
 impl ThreadSafeState {
   /// Wrap `OpDispatcher` so we can pass additional argument (state) to
   /// each handler.
-  pub fn cli_op(
+  pub fn cli_op<D>(
     &self,
-    handler: Box<CliOpDispatcher>,
-  ) -> OpDispatcher {
+    dispatcher: D,
+  ) -> impl Fn(&[u8], Option<PinnedBuf>) -> CoreOp
+  where
+    D: Fn(&ThreadSafeState, &[u8], Option<PinnedBuf>) -> CoreOp,
+  {
     let state = self.clone();
 
     move |control: &[u8], zero_copy: Option<PinnedBuf>| -> CoreOp {
@@ -117,7 +118,7 @@ impl ThreadSafeState {
       let bytes_sent_zero_copy =
         zero_copy.as_ref().map(|b| b.len()).unwrap_or(0);
 
-      let op = handler(&state.clone(), control, zero_copy);
+      let op = dispatcher(&state.clone(), control, zero_copy);
       state.metrics_op_dispatched(bytes_sent_control, bytes_sent_zero_copy);
 
       match op {

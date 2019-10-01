@@ -4,9 +4,9 @@
 //! alternative to flatbuffers using a very simple list of int32s to lay out
 //! messages. The first i32 is used to determine if a message a flatbuffer
 //! message or a "minimal" message.
-use crate::ops::CliOpDispatcher;
 use crate::state::ThreadSafeState;
 use deno::Buf;
+use deno::CoreOp;
 use deno::ErrBox;
 use deno::Op;
 use deno::PinnedBuf;
@@ -72,45 +72,44 @@ fn test_parse_min_record() {
   assert_eq!(parse_min_record(&buf), None);
 }
 
-pub fn minimal_op(dispatcher: MinimalOpDispatcher) -> Box<CliOpDispatcher> {
-  let serialized_op =
-    move |_state: &ThreadSafeState,
-          control: &[u8],
-          zero_copy: Option<PinnedBuf>| {
-      let mut record = parse_min_record(control).unwrap();
-      let is_sync = record.promise_id == 0;
-      let rid = record.arg;
+pub fn minimal_op(
+  dispatcher: MinimalOpDispatcher,
+) -> impl Fn(&ThreadSafeState, &[u8], Option<PinnedBuf>) -> CoreOp {
+  move |_state: &ThreadSafeState,
+        control: &[u8],
+        zero_copy: Option<PinnedBuf>| {
+    let mut record = parse_min_record(control).unwrap();
+    let is_sync = record.promise_id == 0;
+    let rid = record.arg;
 
-      // Select and run MinimalOpHandler
-      let min_op = dispatcher(rid, zero_copy);
+    // Select and run MinimalOpHandler
+    let min_op = dispatcher(rid, zero_copy);
 
-      // Convert to CoreOp
-      let fut = Box::new(min_op.then(move |result| -> Result<Buf, ()> {
-        match result {
-          Ok(r) => {
-            record.result = r;
-          }
-          Err(err) => {
-            // TODO(ry) The dispatch_minimal doesn't properly pipe errors back to
-            // the caller.
-            debug!("swallowed err {}", err);
-            record.result = -1;
-          }
+    // Convert to CoreOp
+    let fut = Box::new(min_op.then(move |result| -> Result<Buf, ()> {
+      match result {
+        Ok(r) => {
+          record.result = r;
         }
-        Ok(record.into())
-      }));
-
-      if is_sync {
-        // Warning! Possible deadlocks can occur if we try to wait for a future
-        // while in a future. The safe but expensive alternative is to use
-        // tokio_util::block_on.
-        // This block is only exercised for readSync and writeSync, which I think
-        // works since they're simple polling futures.
-        Op::Sync(fut.wait().unwrap())
-      } else {
-        Op::Async(fut)
+        Err(err) => {
+          // TODO(ry) The dispatch_minimal doesn't properly pipe errors back to
+          // the caller.
+          debug!("swallowed err {}", err);
+          record.result = -1;
+        }
       }
-    };
+      Ok(record.into())
+    }));
 
-  Box::new(serialized_op)
+    if is_sync {
+      // Warning! Possible deadlocks can occur if we try to wait for a future
+      // while in a future. The safe but expensive alternative is to use
+      // tokio_util::block_on.
+      // This block is only exercised for readSync and writeSync, which I think
+      // works since they're simple polling futures.
+      Op::Sync(fut.wait().unwrap())
+    } else {
+      Op::Async(fut)
+    }
+  }
 }
