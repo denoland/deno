@@ -72,6 +72,7 @@ impl Worker {
       );
       i.register_op("accept", state_.cli_op(json_op(net::op_accept)));
       i.register_op("dial", state_.cli_op(json_op(net::op_dial)));
+      i.register_op("dial_tls", state_.cli_op(json_op(net::op_dial)));
       i.register_op("shutdown", state_.cli_op(json_op(net::op_shutdown)));
       i.register_op("listen", state_.cli_op(json_op(net::op_listen)));
       i.register_op(
@@ -152,6 +153,7 @@ impl Worker {
         "fetch_asset",
         state_.cli_op(json_op(compiler::op_fetch_asset)),
       );
+      i.register_op("hostname", state_.cli_op(json_op(os::op_hostname)));
 
       let state_ = state.clone();
       i.set_dyn_import(move |id, specifier, referrer| {
