@@ -1,0 +1,19 @@
+# This is an imagined crate directory structure for Deno ops.
+
+[package]
+name = "op_hello"
+version = "0.1.0"
+authors = ["Ryan Dahl <ry@tinyclouds.org>"]
+edition = "2018"
+
+# Note: I am explicitly attempting to not have a build.rs file. I think it might
+# be unnecessary for each op crate to implement their own. Then again, it might
+# be unavoidable... Let's try without first.
+
+[dependencies]
+deno = "0.19.0"
+# deno_std is needed because hello_test.ts depends on the "testing/mod.ts" file
+# inside of deno_std.
+# TODO deno_std is not yet published as crate
+deno_std = "0.19.0"
+

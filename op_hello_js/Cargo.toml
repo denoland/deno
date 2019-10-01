@@ -1,0 +1,14 @@
+# This is an imagined crate directory structure for Deno ops.
+# Same as op_hello but done with JS and not TS.
+
+[package]
+name = "op_hello_js"
+version = "0.1.0"
+authors = ["Ryan Dahl <ry@tinyclouds.org>"]
+edition = "2018"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+deno = "0.19.0"
