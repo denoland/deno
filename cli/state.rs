@@ -10,7 +10,7 @@ use crate::flags;
 use crate::global_timer::GlobalTimer;
 use crate::import_map::ImportMap;
 use crate::msg;
-use crate::ops;
+use crate::ops::CliOpDispatcher;
 use crate::permissions::DenoPermissions;
 use crate::progress::Progress;
 use crate::resources;
@@ -18,10 +18,11 @@ use crate::resources::ResourceId;
 use crate::worker::Worker;
 use deno::Buf;
 use deno::CoreOp;
+use deno::OpDispatcher;
 use deno::ErrBox;
 use deno::Loader;
 use deno::ModuleSpecifier;
-use deno::OpId;
+use deno::Op;
 use deno::PinnedBuf;
 use futures::future::Shared;
 use futures::Future;
@@ -103,13 +104,37 @@ impl Deref for ThreadSafeState {
 }
 
 impl ThreadSafeState {
-  pub fn dispatch(
+  /// Wrap `OpDispatcher` so we can pass additional argument (state) to
+  /// each handler.
+  pub fn cli_op(
     &self,
-    op_id: OpId,
-    control: &[u8],
-    zero_copy: Option<PinnedBuf>,
-  ) -> CoreOp {
-    ops::dispatch(self, op_id, control, zero_copy)
+    handler: Box<CliOpDispatcher>,
+  ) -> OpDispatcher {
+    let state = self.clone();
+
+    move |control: &[u8], zero_copy: Option<PinnedBuf>| -> CoreOp {
+      let bytes_sent_control = control.len();
+      let bytes_sent_zero_copy =
+        zero_copy.as_ref().map(|b| b.len()).unwrap_or(0);
+
+      let op = handler(&state.clone(), control, zero_copy);
+      state.metrics_op_dispatched(bytes_sent_control, bytes_sent_zero_copy);
+
+      match op {
+        Op::Sync(buf) => {
+          state.metrics_op_completed(buf.len());
+          Op::Sync(buf)
+        }
+        Op::Async(fut) => {
+          let state = state.clone();
+          let result_fut = Box::new(fut.map(move |buf: Buf| {
+            state.clone().metrics_op_completed(buf.len());
+            buf
+          }));
+          Op::Async(result_fut)
+        }
+      }
+    }
   }
 }
 

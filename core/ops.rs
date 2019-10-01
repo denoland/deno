@@ -23,7 +23,7 @@ pub type CoreError = ();
 pub type CoreOp = Op<CoreError>;
 
 /// Main type describing op
-type OpDispatcher = dyn Fn(&[u8], Option<PinnedBuf>) -> CoreOp;
+pub type OpDispatcher = dyn Fn(&[u8], Option<PinnedBuf>) -> CoreOp;
 
 #[derive(Default)]
 pub struct OpRegistry {
