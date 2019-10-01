@@ -13,7 +13,7 @@ use deno::PinnedBuf;
 use futures::Future;
 
 pub type MinimalOp = dyn Future<Item = i32, Error = ErrBox> + Send;
-pub type MinimalOpDispatcher = fn(i32, Option<PinnedBuf>) -> Box<MinimalOp>;
+pub type Dispatcher = fn(i32, Option<PinnedBuf>) -> Box<MinimalOp>;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 // This corresponds to RecordMinimal on the TS side.
@@ -73,7 +73,7 @@ fn test_parse_min_record() {
 }
 
 pub fn minimal_op(
-  dispatcher: MinimalOpDispatcher,
+  d: Dispatcher,
 ) -> impl Fn(&ThreadSafeState, &[u8], Option<PinnedBuf>) -> CoreOp {
   move |_state: &ThreadSafeState,
         control: &[u8],
@@ -81,9 +81,7 @@ pub fn minimal_op(
     let mut record = parse_min_record(control).unwrap();
     let is_sync = record.promise_id == 0;
     let rid = record.arg;
-
-    // Select and run MinimalOpHandler
-    let min_op = dispatcher(rid, zero_copy);
+    let min_op = d(rid, zero_copy);
 
     // Convert to CoreOp
     let fut = Box::new(min_op.then(move |result| -> Result<Buf, ()> {

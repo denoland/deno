@@ -23,7 +23,7 @@ fn json_err(err: ErrBox) -> Value {
   })
 }
 
-pub type JsonOpDispatcher = fn(
+pub type Dispatcher = fn(
   state: &ThreadSafeState,
   args: Value,
   zero_copy: Option<PinnedBuf>,
@@ -51,7 +51,7 @@ struct AsyncArgs {
 }
 
 pub fn json_op(
-  dispatcher: JsonOpDispatcher,
+  d: Dispatcher,
 ) -> impl Fn(&ThreadSafeState, &[u8], Option<PinnedBuf>) -> CoreOp {
   move |state: &ThreadSafeState,
         control: &[u8],
@@ -62,7 +62,7 @@ pub fn json_op(
 
     let result = serde_json::from_slice(control)
       .map_err(ErrBox::from)
-      .and_then(move |args| dispatcher(state, args, zero_copy));
+      .and_then(move |args| d(state, args, zero_copy));
 
     // Convert to CoreOp
     match result {

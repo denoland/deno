@@ -102,7 +102,7 @@ impl Deref for ThreadSafeState {
 }
 
 impl ThreadSafeState {
-  /// Wrap `OpDispatcher` so we can pass additional argument (state) to
+  /// Wrap core `OpDispatcher` so we can pass additional argument (state) to
   /// each handler.
   pub fn cli_op<D>(
     &self,
