@@ -1,53 +1,54 @@
 const { cwd, mkdir } = Deno;
 import { test, runIfMain } from "../testing/mod.ts";
 import { assert, assertEquals } from "../testing/asserts.ts";
-import { isWindows } from "./path/constants.ts";
+import { SEP, isWindows } from "./path/constants.ts";
 import {
   ExpandGlobOptions,
   expandGlob,
-  glob,
+  expandGlobSync,
+  globToRegExp,
   isGlob,
-  expandGlobSync
+  joinGlobs,
+  normalizeGlob
 } from "./glob.ts";
 import { join, normalize, relative } from "./path.ts";
-import { WalkInfo } from "./walk.ts";
 import { testWalk } from "./walk_test.ts";
 import { touch, walkArray } from "./walk_test.ts";
 
 test({
   name: "glob: glob to regex",
   fn(): void {
-    assertEquals(glob("unicorn.*") instanceof RegExp, true);
-    assertEquals(glob("unicorn.*").test("poney.ts"), false);
-    assertEquals(glob("unicorn.*").test("unicorn.py"), true);
-    assertEquals(glob("*.ts").test("poney.ts"), true);
-    assertEquals(glob("*.ts").test("unicorn.js"), false);
+    assertEquals(globToRegExp("unicorn.*") instanceof RegExp, true);
+    assertEquals(globToRegExp("unicorn.*").test("poney.ts"), false);
+    assertEquals(globToRegExp("unicorn.*").test("unicorn.py"), true);
+    assertEquals(globToRegExp("*.ts").test("poney.ts"), true);
+    assertEquals(globToRegExp("*.ts").test("unicorn.js"), false);
     assertEquals(
-      glob(join("unicorn", "**", "cathedral.ts")).test(
+      globToRegExp(join("unicorn", "**", "cathedral.ts")).test(
         join("unicorn", "in", "the", "cathedral.ts")
       ),
       true
     );
     assertEquals(
-      glob(join("unicorn", "**", "cathedral.ts")).test(
+      globToRegExp(join("unicorn", "**", "cathedral.ts")).test(
         join("unicorn", "in", "the", "kitchen.ts")
       ),
       false
     );
     assertEquals(
-      glob(join("unicorn", "**", "bathroom.*")).test(
+      globToRegExp(join("unicorn", "**", "bathroom.*")).test(
         join("unicorn", "sleeping", "in", "bathroom.py")
       ),
       true
     );
     assertEquals(
-      glob(join("unicorn", "!(sleeping)", "bathroom.ts"), {
+      globToRegExp(join("unicorn", "!(sleeping)", "bathroom.ts"), {
         extended: true
       }).test(join("unicorn", "flying", "bathroom.ts")),
       true
     );
     assertEquals(
-      glob(join("unicorn", "(!sleeping)", "bathroom.ts"), {
+      globToRegExp(join("unicorn", "(!sleeping)", "bathroom.ts"), {
         extended: true
       }).test(join("unicorn", "sleeping", "bathroom.ts")),
       false
@@ -61,7 +62,7 @@ testWalk(
     await touch(d + "/a/x.ts");
   },
   async function globInWalk(): Promise<void> {
-    const arr = await walkArray(".", { match: [glob("*.ts")] });
+    const arr = await walkArray(".", { match: [globToRegExp("*.ts")] });
     assertEquals(arr.length, 1);
     assertEquals(arr[0], "a/x.ts");
   }
@@ -76,7 +77,7 @@ testWalk(
     await touch(d + "/b/z.js");
   },
   async function globInWalkWildcardFiles(): Promise<void> {
-    const arr = await walkArray(".", { match: [glob("*.ts")] });
+    const arr = await walkArray(".", { match: [globToRegExp("*.ts")] });
     assertEquals(arr.length, 2);
     assertEquals(arr[0], "a/x.ts");
     assertEquals(arr[1], "b/z.ts");
@@ -92,7 +93,7 @@ testWalk(
   async function globInWalkFolderWildcard(): Promise<void> {
     const arr = await walkArray(".", {
       match: [
-        glob(join("a", "**", "*.ts"), {
+        globToRegExp(join("a", "**", "*.ts"), {
           flags: "g",
           globstar: true
         })
@@ -116,7 +117,7 @@ testWalk(
   async function globInWalkFolderExtended(): Promise<void> {
     const arr = await walkArray(".", {
       match: [
-        glob(join("a", "+(raptor|deno)", "*.ts"), {
+        globToRegExp(join("a", "+(raptor|deno)", "*.ts"), {
           flags: "g",
           extended: true
         })
@@ -136,7 +137,7 @@ testWalk(
   },
   async function globInWalkWildcardExtension(): Promise<void> {
     const arr = await walkArray(".", {
-      match: [glob("x.*", { flags: "g", globstar: true })]
+      match: [globToRegExp("x.*", { flags: "g", globstar: true })]
     });
     assertEquals(arr.length, 2);
     assertEquals(arr[0], "x.js");
@@ -259,25 +260,34 @@ test({
   }
 });
 
+test(function normalizeGlobGlobstar(): void {
+  assertEquals(normalizeGlob(`**${SEP}..`, { globstar: true }), `**${SEP}..`);
+});
+
+test(function joinGlobsGlobstar(): void {
+  assertEquals(joinGlobs(["**", ".."], { globstar: true }), `**${SEP}..`);
+});
+
 async function expandGlobArray(
   globString: string,
   options: ExpandGlobOptions
 ): Promise<string[]> {
-  const infos: WalkInfo[] = [];
-  for await (const info of expandGlob(globString, options)) {
-    infos.push(info);
+  const paths: string[] = [];
+  for await (const { filename } of expandGlob(globString, options)) {
+    paths.push(filename);
   }
-  infos.sort();
-  const infosSync = [...expandGlobSync(globString, options)];
-  infosSync.sort();
-  assertEquals(infos, infosSync);
+  paths.sort();
+  const pathsSync = [...expandGlobSync(globString, options)].map(
+    ({ filename }): string => filename
+  );
+  pathsSync.sort();
+  assertEquals(paths, pathsSync);
   const root = normalize(options.root || cwd());
-  const paths = infos.map(({ filename }): string => filename);
   for (const path of paths) {
     assert(path.startsWith(root));
   }
-  const relativePaths = paths.map((path: string): string =>
-    relative(root, path)
+  const relativePaths = paths.map(
+    (path: string): string => relative(root, path) || "."
   );
   relativePaths.sort();
   return relativePaths;
@@ -288,15 +298,37 @@ function urlToFilePath(url: URL): string {
   return url.pathname.slice(url.protocol == "file:" && isWindows ? 1 : 0);
 }
 
-const EG_OPTIONS = {
+const EG_OPTIONS: ExpandGlobOptions = {
   root: urlToFilePath(new URL(join("testdata", "glob"), import.meta.url)),
   includeDirs: true,
   extended: false,
-  globstar: false,
-  strict: false,
-  filepath: false,
-  flags: ""
+  globstar: false
 };
+
+test(async function expandGlobWildcard(): Promise<void> {
+  const options = EG_OPTIONS;
+  assertEquals(await expandGlobArray("*", options), [
+    "abc",
+    "abcdef",
+    "abcdefghi",
+    "subdir"
+  ]);
+});
+
+test(async function expandGlobTrailingSeparator(): Promise<void> {
+  const options = EG_OPTIONS;
+  assertEquals(await expandGlobArray("*/", options), ["subdir"]);
+});
+
+test(async function expandGlobParent(): Promise<void> {
+  const options = EG_OPTIONS;
+  assertEquals(await expandGlobArray("subdir/../*", options), [
+    "abc",
+    "abcdef",
+    "abcdefghi",
+    "subdir"
+  ]);
+});
 
 test(async function expandGlobExt(): Promise<void> {
   const options = { ...EG_OPTIONS, extended: true };
@@ -320,10 +352,18 @@ test(async function expandGlobExt(): Promise<void> {
 
 test(async function expandGlobGlobstar(): Promise<void> {
   const options = { ...EG_OPTIONS, globstar: true };
-  assertEquals(await expandGlobArray(join("**", "abc"), options), [
-    "abc",
-    join("subdir", "abc")
-  ]);
+  assertEquals(
+    await expandGlobArray(joinGlobs(["**", "abc"], options), options),
+    ["abc", join("subdir", "abc")]
+  );
+});
+
+test(async function expandGlobGlobstarParent(): Promise<void> {
+  const options = { ...EG_OPTIONS, globstar: true };
+  assertEquals(
+    await expandGlobArray(joinGlobs(["subdir", "**", ".."], options), options),
+    ["."]
+  );
 });
 
 test(async function expandGlobIncludeDirs(): Promise<void> {

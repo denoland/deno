@@ -14,9 +14,9 @@ async function main(opts): Promise<void> {
     "--ignore",
     "node_modules",
     "--ignore",
-    "testdata",
+    "**/testdata",
     "--ignore",
-    "vendor",
+    "**/vendor",
     "--write"
   ];
 

@@ -23,11 +23,10 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 // This script formats the given source files. If the files are omitted, it
 // formats the all files in the repository.
-const { args, exit, readFile, writeFile, stdout, stdin, readAll } = Deno;
-import { glob, isGlob, GlobOptions } from "../fs/glob.ts";
-import { walk, WalkInfo } from "../fs/walk.ts";
 import { parse } from "../flags/mod.ts";
+import { ExpandGlobOptions, WalkInfo, expandGlob } from "../fs/mod.ts";
 import { prettier, prettierPlugins } from "./prettier.ts";
+const { args, cwd, exit, readAll, readFile, stdin, stdout, writeFile } = Deno;
 
 const HELP_MESSAGE = `
 Formats the given files. If no arg is passed, then formats the all files.
@@ -289,65 +288,47 @@ async function formatFromStdin(
 
 /**
  * Get the files to format.
- * @param selectors The glob patterns to select the files.
- *                  eg `cmd/*.ts` to select all the typescript files in cmd
+ * @param include The glob patterns to select the files.
+ *                  eg `"cmd/*.ts"` to select all the typescript files in cmd
  *                  directory.
- *                  eg `cmd/run.ts` to select `cmd/run.ts` file as only.
- * @param ignore The glob patterns to ignore files.
- *                  eg `*_test.ts` to ignore all the test file.
- * @param options options to pass to `glob(selector, options)`
+ *                  eg `"cmd/run.ts"` to select `cmd/run.ts` file as only.
+ * @param exclude The glob patterns to ignore files.
+ *                  eg `"*_test.ts"` to ignore all the test file.
+ * @param root    The directory from which to apply default globs.
  * @returns returns an async iterable object
  */
-function getTargetFiles(
-  selectors: string[],
-  ignore: string[] = [],
-  options: GlobOptions = {}
+async function* getTargetFiles(
+  include: string[],
+  exclude: string[],
+  root: string = cwd()
 ): AsyncIterableIterator<WalkInfo> {
-  const matchers: Array<string | RegExp> = [];
+  const expandGlobOpts: ExpandGlobOptions = {
+    root,
+    exclude,
+    includeDirs: true,
+    extended: true,
+    globstar: true
+  };
 
-  const selectorMap: { [k: string]: boolean } = {};
-
-  for (const selector of selectors) {
-    // If the selector already exists then ignore it.
-    if (selectorMap[selector]) continue;
-    selectorMap[selector] = true;
-    if (isGlob(selector) || selector === ".") {
-      matchers.push(glob(selector, options));
-    } else {
-      matchers.push(selector);
+  async function* expandDirectory(d: string): AsyncIterableIterator<WalkInfo> {
+    for await (const walkInfo of expandGlob("**/*", {
+      ...expandGlobOpts,
+      root: d,
+      includeDirs: false
+    })) {
+      yield walkInfo;
     }
   }
 
-  const skip = ignore.map((i: string): RegExp => glob(i, options));
-
-  return (async function*(): AsyncIterableIterator<WalkInfo> {
-    for (const match of matchers) {
-      if (typeof match === "string") {
-        const fileInfo = await Deno.stat(match);
-
-        if (fileInfo.isDirectory()) {
-          const files = walk(match, { skip });
-
-          for await (const info of files) {
-            yield info;
-          }
-        } else {
-          const info: WalkInfo = {
-            filename: match,
-            info: fileInfo
-          };
-
-          yield info;
-        }
+  for (const globString of include) {
+    for await (const walkInfo of expandGlob(globString, expandGlobOpts)) {
+      if (walkInfo.info.isDirectory()) {
+        yield* expandDirectory(walkInfo.filename);
       } else {
-        const files = walk(".", { match: [match], skip });
-
-        for await (const info of files) {
-          yield info;
-        }
+        yield walkInfo;
       }
     }
-  })();
+  }
 }
 
 async function main(opts): Promise<void> {
@@ -371,12 +352,10 @@ async function main(opts): Promise<void> {
     console.log(HELP_MESSAGE);
     exit(0);
   }
-  const options: GlobOptions = { flags: "g" };
 
   const files = getTargetFiles(
     args.length ? args : ["."],
-    Array.isArray(ignore) ? ignore : [ignore],
-    options
+    Array.isArray(ignore) ? ignore : [ignore]
   );
 
   const tty = Deno.isTTY();
