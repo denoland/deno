@@ -87,18 +87,3 @@ jobs:
         - *gzip_release
       deploy:
       - *release_provider
-
-    # Run benchmarks and publish the result to github pages.
-    - name: "benchmarks"
-      script:
-        - cargo build -vv --release --locked --all-targets
-        - ./tools/benchmark.py target/release && cp -r website/* gh-pages/
-      deploy:
-      - provider: pages
-        github-token: *github-token
-        keep-history: true
-        local-dir: gh-pages
-        on:
-          branch: master
-          repo: denoland/deno
-        skip-cleanup: true

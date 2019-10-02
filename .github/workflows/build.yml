@@ -103,5 +103,11 @@ jobs:
           git commit --message "Update benchmarks"
           git push origin2 gh-pages
 
+      - name: Worker info
+        if: matrix.kind == 'bench'
+        run: |
+          cat /proc/cpuinfo
+          cat /proc/meminfo
+
       - name: Stop sccache
         run: sccache --stop-server
