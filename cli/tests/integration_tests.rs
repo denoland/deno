@@ -322,6 +322,16 @@ itest!(_045_proxy {
   output: "045_proxy_test.ts.out",
 });
 
+itest!(_046_tsx {
+  args: "run --reload 046_jsx_test.tsx",
+  output: "046_jsx_test.tsx.out",
+});
+
+itest!(_047_jsx {
+  args: "run  --reload 047_jsx_test.jsx",
+  output: "047_jsx_test.jsx.out",
+});
+
 itest!(async_error {
   exit_code: 1,
   args: "run --reload async_error.ts",
