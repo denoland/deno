@@ -11,6 +11,7 @@ export let OP_ENV: number;
 export let OP_EXEC_PATH: number;
 export let OP_UTIME: number;
 export let OP_SET_ENV: number;
+export let OP_GET_ENV: number;
 export let OP_HOME_DIR: number;
 export let OP_START: number;
 export let OP_APPLY_SOURCE_MAP: number;
