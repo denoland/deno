@@ -1,5 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::state::ThreadSafeState;
 use crate::tokio_util;
 use deno::*;
 use futures::Future;
@@ -23,12 +22,6 @@ fn json_err(err: ErrBox) -> Value {
   })
 }
 
-pub type Dispatcher = fn(
-  state: &ThreadSafeState,
-  args: Value,
-  zero_copy: Option<PinnedBuf>,
-) -> Result<JsonOp, ErrBox>;
-
 fn serialize_result(
   promise_id: Option<u64>,
   result: Result<Value, ErrBox>,
@@ -50,37 +43,39 @@ struct AsyncArgs {
   promise_id: Option<u64>,
 }
 
-pub fn dispatch(
-  d: Dispatcher,
-  state: &ThreadSafeState,
-  control: &[u8],
-  zero_copy: Option<PinnedBuf>,
-) -> CoreOp {
-  let async_args: AsyncArgs = serde_json::from_slice(control).unwrap();
-  let promise_id = async_args.promise_id;
-  let is_sync = promise_id.is_none();
+pub fn json_op<D>(d: D) -> impl Fn(&[u8], Option<PinnedBuf>) -> CoreOp
+where
+  D: Fn(Value, Option<PinnedBuf>) -> Result<JsonOp, ErrBox>,
+{
+  move |control: &[u8], zero_copy: Option<PinnedBuf>| {
+    let async_args: AsyncArgs = serde_json::from_slice(control).unwrap();
+    let promise_id = async_args.promise_id;
+    let is_sync = promise_id.is_none();
 
-  let result = serde_json::from_slice(control)
-    .map_err(ErrBox::from)
-    .and_then(move |args| d(state, args, zero_copy));
-  match result {
-    Ok(JsonOp::Sync(sync_value)) => {
-      assert!(promise_id.is_none());
-      CoreOp::Sync(serialize_result(promise_id, Ok(sync_value)))
-    }
-    Ok(JsonOp::Async(fut)) => {
-      assert!(promise_id.is_some());
-      let fut2 = Box::new(fut.then(move |result| -> Result<Buf, ()> {
-        Ok(serialize_result(promise_id, result))
-      }));
-      CoreOp::Async(fut2)
-    }
-    Err(sync_err) => {
-      let buf = serialize_result(promise_id, Err(sync_err));
-      if is_sync {
-        CoreOp::Sync(buf)
-      } else {
-        CoreOp::Async(Box::new(futures::future::ok(buf)))
+    let result = serde_json::from_slice(control)
+      .map_err(ErrBox::from)
+      .and_then(|args| d(args, zero_copy));
+
+    // Convert to CoreOp
+    match result {
+      Ok(JsonOp::Sync(sync_value)) => {
+        assert!(promise_id.is_none());
+        CoreOp::Sync(serialize_result(promise_id, Ok(sync_value)))
+      }
+      Ok(JsonOp::Async(fut)) => {
+        assert!(promise_id.is_some());
+        let fut2 = Box::new(fut.then(move |result| -> Result<Buf, ()> {
+          Ok(serialize_result(promise_id, result))
+        }));
+        CoreOp::Async(fut2)
+      }
+      Err(sync_err) => {
+        let buf = serialize_result(promise_id, Err(sync_err));
+        if is_sync {
+          CoreOp::Sync(buf)
+        } else {
+          CoreOp::Async(Box::new(futures::future::ok(buf)))
+        }
       }
     }
   }
