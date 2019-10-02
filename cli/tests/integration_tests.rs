@@ -304,6 +304,34 @@ itest!(_042_dyn_import_evalcontext {
   output: "042_dyn_import_evalcontext.ts.out",
 });
 
+itest!(_043_xeval_delim2 {
+  args: "xeval -d MADAM console.log($)",
+  input: Some("!MADMADAMADAM!"),
+  output: "043_xeval_delim2.out",
+});
+
+itest!(_044_bad_resource {
+  args: "run --reload --allow-read 044_bad_resource.ts",
+  output: "044_bad_resource.ts.out",
+  check_stderr: true,
+  exit_code: 1,
+});
+
+itest!(_045_proxy {
+  args: "run --allow-net --allow-env --allow-run --reload 045_proxy_test.ts",
+  output: "045_proxy_test.ts.out",
+});
+
+itest!(_046_tsx {
+  args: "run --reload 046_jsx_test.tsx",
+  output: "046_jsx_test.tsx.out",
+});
+
+itest!(_047_jsx {
+  args: "run  --reload 047_jsx_test.jsx",
+  output: "047_jsx_test.jsx.out",
+});
+
 itest!(async_error {
   exit_code: 1,
   args: "run --reload async_error.ts",
@@ -414,6 +442,7 @@ itest!(error_013_missing_script {
 itest!(error_014_catch_dynamic_import_error {
   args: "error_014_catch_dynamic_import_error.js --reload --allow-read",
   output: "error_014_catch_dynamic_import_error.js.out",
+  exit_code: 1,
 });
 
 itest!(error_015_dynamic_import_permissions {
@@ -453,6 +482,13 @@ itest!(error_type_definitions {
   check_stderr: true,
   exit_code: 1,
   output: "error_type_definitions.ts.out",
+});
+
+itest!(error_worker_dynamic {
+  args: "run --reload error_worker_dynamic.ts",
+  check_stderr: true,
+  exit_code: 1,
+  output: "error_worker_dynamic.ts.out",
 });
 
 itest!(exit_error42 {
@@ -535,4 +571,14 @@ itest!(wasm {
 itest!(wasm_async {
   args: "wasm_async.js",
   output: "wasm_async.out",
+});
+
+itest!(top_level_await {
+  args: "--allow-read top_level_await.js",
+  output: "top_level_await.out",
+});
+
+itest!(top_level_await_ts {
+  args: "--allow-read top_level_await.ts",
+  output: "top_level_await.out",
 });

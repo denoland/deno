@@ -51,6 +51,8 @@ mod tokio_write;
 pub mod version;
 pub mod worker;
 
+use crate::deno_error::js_check;
+use crate::deno_error::print_err_and_exit;
 use crate::progress::Progress;
 use crate::state::ThreadSafeState;
 use crate::worker::Worker;
@@ -90,17 +92,6 @@ impl log::Log for Logger {
   fn flush(&self) {}
 }
 
-fn print_err_and_exit(err: ErrBox) {
-  eprintln!("{}", err.to_string());
-  std::process::exit(1);
-}
-
-fn js_check(r: Result<(), ErrBox>) {
-  if let Err(err) = r {
-    print_err_and_exit(err);
-  }
-}
-
 fn create_worker_and_state(
   flags: DenoFlags,
   argv: Vec<String>,
@@ -118,7 +109,7 @@ fn create_worker_and_state(
   });
   // TODO(kevinkassimo): maybe make include_deno_namespace also configurable?
   let state = ThreadSafeState::new(flags, argv, progress, true)
-    .map_err(print_err_and_exit)
+    .map_err(deno_error::print_err_and_exit)
     .unwrap();
   let worker = Worker::new(
     "main".to_string(),
@@ -380,12 +371,17 @@ fn run_script(flags: DenoFlags, argv: Vec<String>) {
     js_check(worker.execute("denoMain()"));
     debug!("main_module {}", main_module);
 
+    let mut worker_ = worker.clone();
+
     worker
       .execute_mod_async(&main_module, false)
       .and_then(move |()| {
         js_check(worker.execute("window.dispatchEvent(new Event('load'))"));
-        worker.then(|result| {
+        worker.then(move |result| {
           js_check(result);
+          js_check(
+            worker_.execute("window.dispatchEvent(new Event('unload'))"),
+          );
           Ok(())
         })
       })

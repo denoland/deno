@@ -70,3 +70,19 @@ testPerm({ env: false }, function execPathPerm(): void {
   }
   assert(caughtError);
 });
+
+testPerm({ env: true }, function hostnameDir(): void {
+  assertNotEquals(Deno.hostname(), "");
+});
+
+testPerm({ env: false }, function hostnamePerm(): void {
+  let caughtError = false;
+  try {
+    Deno.hostname();
+  } catch (err) {
+    caughtError = true;
+    assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+    assertEquals(err.name, "PermissionDenied");
+  }
+  assert(caughtError);
+});

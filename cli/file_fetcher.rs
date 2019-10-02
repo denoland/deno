@@ -481,7 +481,9 @@ fn map_file_extension(path: &Path) -> msg::MediaType {
     None => msg::MediaType::Unknown,
     Some(os_str) => match os_str.to_str() {
       Some("ts") => msg::MediaType::TypeScript,
+      Some("tsx") => msg::MediaType::TSX,
       Some("js") => msg::MediaType::JavaScript,
+      Some("jsx") => msg::MediaType::JSX,
       Some("mjs") => msg::MediaType::JavaScript,
       Some("json") => msg::MediaType::Json,
       _ => msg::MediaType::Unknown,
@@ -1343,12 +1345,20 @@ mod tests {
       msg::MediaType::TypeScript
     );
     assert_eq!(
+      map_file_extension(Path::new("foo/bar.tsx")),
+      msg::MediaType::TSX
+    );
+    assert_eq!(
       map_file_extension(Path::new("foo/bar.d.ts")),
       msg::MediaType::TypeScript
     );
     assert_eq!(
       map_file_extension(Path::new("foo/bar.js")),
       msg::MediaType::JavaScript
+    );
+    assert_eq!(
+      map_file_extension(Path::new("foo/bar.jsx")),
+      msg::MediaType::JSX
     );
     assert_eq!(
       map_file_extension(Path::new("foo/bar.json")),
@@ -1372,12 +1382,20 @@ mod tests {
       msg::MediaType::TypeScript
     );
     assert_eq!(
+      map_content_type(Path::new("foo/bar.tsx"), None),
+      msg::MediaType::TSX
+    );
+    assert_eq!(
       map_content_type(Path::new("foo/bar.d.ts"), None),
       msg::MediaType::TypeScript
     );
     assert_eq!(
       map_content_type(Path::new("foo/bar.js"), None),
       msg::MediaType::JavaScript
+    );
+    assert_eq!(
+      map_content_type(Path::new("foo/bar.jsx"), None),
+      msg::MediaType::JSX
     );
     assert_eq!(
       map_content_type(Path::new("foo/bar.json"), None),

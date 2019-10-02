@@ -84,6 +84,7 @@ window.setTimeout = timers.setTimeout;
 window.setInterval = timers.setInterval;
 window.location = (undefined as unknown) as domTypes.Location;
 window.onload = undefined as undefined | Function;
+window.onunload = undefined as undefined | Function;
 // The following Crypto interface implementation is not up to par with the
 // standard https://www.w3.org/TR/WebCryptoAPI/#crypto-interface as it does not
 // yet incorporate the SubtleCrypto interface as its "subtle" property.
@@ -101,7 +102,7 @@ export type Blob = domTypes.Blob;
 
 export type Body = domTypes.Body;
 
-window.File = domFile.DenoFile as domTypes.DomFileConstructor;
+window.File = domFile.DomFileImpl as domTypes.DomFileConstructor;
 export type File = domTypes.DomFile;
 
 export type CustomEventInit = domTypes.CustomEventInit;
@@ -168,6 +169,16 @@ window.addEventListener(
     const onload = window.onload;
     if (typeof onload === "function") {
       onload(e);
+    }
+  }
+);
+// Registers the handler for window.onunload function.
+window.addEventListener(
+  "unload",
+  (e: domTypes.Event): void => {
+    const onunload = window.onunload;
+    if (typeof onunload === "function") {
+      onunload(e);
     }
   }
 );
