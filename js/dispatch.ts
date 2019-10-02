@@ -101,6 +101,7 @@ export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
     case OP_TRUNCATE:
     case OP_MAKE_TEMP_DIR:
     case OP_DIAL_TLS:
+    case OP_FETCH_SOURCE_FILES:
       json.asyncMsgFromRust(opId, ui8);
       break;
     default:
