@@ -11,15 +11,15 @@ function fullRecords(q) {
   q.reset();
   const oneByte = new Uint8Array([42]);
   for (let i = 0; i < q.MAX_RECORDS; i++) {
-    assert(q.push(99, oneByte));
+    assert(q.push(1, oneByte));
   }
-  assert(!q.push(99, oneByte));
+  assert(!q.push(1, oneByte));
   const [opId, r] = q.shift();
-  assert(opId == 99);
+  assert(opId == 1);
   assert(r.byteLength == 1);
   assert(r[0] == 42);
   // Even if we shift one off, we still cannot push a new record.
-  assert(!q.push(99, oneByte));
+  assert(!q.push(1, oneByte));
 }
 
 function main() {
@@ -30,14 +30,14 @@ function main() {
 
   let r = new Uint8Array([1, 2, 3, 4, 5]);
   const len = r.byteLength + h;
-  assert(q.push(99, r));
+  assert(q.push(1, r));
   assert(q.head() == len);
 
   r = new Uint8Array([6, 7]);
-  assert(q.push(99, r));
+  assert(q.push(1, r));
 
   r = new Uint8Array([8, 9, 10, 11]);
-  assert(q.push(99, r));
+  assert(q.push(1, r));
   assert(q.numRecords() == 3);
   assert(q.size() == 3);
 
@@ -60,7 +60,7 @@ function main() {
   assert(q.size() == 1);
 
   [opId, r] = q.shift();
-  assert(opId == 99);
+  assert(opId == 1);
   assert(r.byteLength == 4);
   assert(r[0] == 8);
   assert(r[1] == 9);

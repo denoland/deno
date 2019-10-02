@@ -13,6 +13,7 @@ const ASSETS = "$asset$";
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 function main(configText, rootNames) {
+  ops = Deno.core.ops();
   println(`>>> ts version ${ts.version}`);
   println(`>>> rootNames ${rootNames}`);
 
@@ -97,17 +98,11 @@ function encode(str) {
 }
 
 //
-/** **Warning!** The op_id values below are shared between this code and the
- * Rust side. Update with care!
+/** **Warning!** Op ids must be acquired from Rust using `Deno.core.ops()`
+ * before dispatching any action.
  * @type {Record<string, number>}
  */
-const ops = {
-  readFile: 49,
-  exit: 50,
-  writeFile: 51,
-  resolveModuleNames: 52,
-  setEmitResult: 53
-};
+let ops;
 
 /**
  * @type {Map<string, string>}
@@ -315,9 +310,15 @@ function configure(configurationText) {
  * @param {Record<string,any>} obj
  */
 function dispatch(opName, obj) {
+  const opId = ops[opName];
+
+  if (!opId) {
+    throw new Error(`Unknown op: ${opName}`);
+  }
+
   const s = JSON.stringify(obj);
   const msg = encode(s);
-  const resUi8 = Deno.core.dispatch(ops[opName], msg);
+  const resUi8 = Deno.core.dispatch(opId, msg);
   const resStr = decodeAscii(resUi8);
   const res = JSON.parse(resStr);
   if (!res["ok"]) {
