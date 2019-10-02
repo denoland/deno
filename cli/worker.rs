@@ -64,6 +64,10 @@ impl Worker {
         state_.cli_op(json_op(state_.stateful_op(os::op_set_env))),
       );
       i.register_op(
+        "get_env",
+        state_.cli_op(json_op(state_.stateful_op(os::op_get_env))),
+      );
+      i.register_op(
         "home_dir",
         state_.cli_op(json_op(state_.stateful_op(os::op_home_dir))),
       );
