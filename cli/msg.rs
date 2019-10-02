@@ -66,15 +66,19 @@ pub enum ErrorKind {
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum MediaType {
   JavaScript = 0,
-  TypeScript = 1,
-  Json = 2,
-  Unknown = 3,
+  JSX = 1,
+  TypeScript = 2,
+  TSX = 3,
+  Json = 4,
+  Unknown = 5,
 }
 
 pub fn enum_name_media_type(mt: MediaType) -> &'static str {
   match mt {
     MediaType::JavaScript => "JavaScript",
+    MediaType::JSX => "JSX",
     MediaType::TypeScript => "TypeScript",
+    MediaType::TSX => "TSX",
     MediaType::Json => "Json",
     MediaType::Unknown => "Unknown",
   }

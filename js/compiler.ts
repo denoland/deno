@@ -24,9 +24,11 @@ import { writeFileSync } from "./write_file.ts";
 // Update carefully!
 enum MediaType {
   JavaScript = 0,
-  TypeScript = 1,
-  Json = 2,
-  Unknown = 3
+  JSX = 1,
+  TypeScript = 2,
+  TSX = 3,
+  Json = 4,
+  Unknown = 5
 }
 
 // Startup boilerplate. This is necessary because the compiler has its own
@@ -198,8 +200,12 @@ function getExtension(fileName: string, mediaType: MediaType): ts.Extension {
   switch (mediaType) {
     case MediaType.JavaScript:
       return ts.Extension.Js;
+    case MediaType.JSX:
+      return ts.Extension.Jsx;
     case MediaType.TypeScript:
       return fileName.endsWith(".d.ts") ? ts.Extension.Dts : ts.Extension.Ts;
+    case MediaType.TSX:
+      return ts.Extension.Tsx;
     case MediaType.Json:
       return ts.Extension.Json;
     case MediaType.Unknown:
@@ -221,7 +227,8 @@ class Host implements ts.CompilerHost {
     resolveJsonModule: true,
     sourceMap: true,
     stripComments: true,
-    target: ts.ScriptTarget.ESNext
+    target: ts.ScriptTarget.ESNext,
+    jsx: ts.JsxEmit.React
   };
 
   private _sourceFileCache: Record<string, SourceFile> = {};
@@ -511,7 +518,6 @@ window.compilerMain = function compilerMain(): void {
   window.onmessage = ({ data }: { data: CompilerReq }): void => {
     const { rootNames, configPath, config, bundle } = data;
     const host = new Host(bundle);
-
     let emitSkipped = true;
     let diagnostics: ts.Diagnostic[] | undefined;
 
