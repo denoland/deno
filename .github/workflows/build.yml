@@ -87,7 +87,7 @@ jobs:
         run: python ./tools/benchmark.py target/release
 
       - name: Post Benchmarks
-        if: matrix.kind == 'bench' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/gh_actions_benchmark2')
+        if: matrix.kind == 'bench' && github.ref == 'refs/heads/master'
         env:
           DENOBOT_PAT: ${{ secrets.DENOBOT_PAT }}
         run: |
