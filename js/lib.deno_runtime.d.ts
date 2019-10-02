@@ -2372,7 +2372,7 @@ declare namespace textEncoding {
   }
   export interface TextDecoderOptions {
     fatal?: boolean;
-    ignoreBOM?: false;
+    ignoreBOM?: boolean;
   }
   export class TextDecoder {
     private _encoding;
