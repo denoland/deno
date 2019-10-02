@@ -129,11 +129,17 @@ interface SourceFileJson {
   sourceCode: string;
 }
 
-/** A self regis */
+/** A self registering abstraction of source files. */
 class SourceFile {
   extension!: ts.Extension;
   filename!: string;
+
+  /** An array of tuples which represent the imports for the source file.  The
+   * first element is the one that will be requested at compile time, the
+   * second is the one that should be actually resolved.  This provides the
+   * feature of type directives for Deno. */
   importedFiles?: Array<[string, string]>;
+
   mediaType!: MediaType;
   processed = false;
   sourceCode!: string;
@@ -150,8 +156,7 @@ class SourceFile {
   }
 
   /** Cache the source file to be able to be retrieved by `moduleSpecifier` and
-   * `containingFile`.
-   */
+   * `containingFile`. */
   cache(moduleSpecifier: string, containingFile: string): void {
     let innerCache = SourceFile._specifierCache.get(containingFile);
     if (!innerCache) {
@@ -258,7 +263,11 @@ function fetchSourceFiles(
 }
 
 /** Recursively process the imports of modules, generating `SourceFile`s of any
- * imported files. */
+ * imported files.
+ *
+ * Specifiers are supplied in an array of tupples where the first is the
+ * specifier that will be requested in the code and the second is the specifier
+ * that should be actually resolved. */
 async function processImports(
   specifiers: Array<[string, string]>,
   referrer = ""
@@ -461,14 +470,14 @@ class Host implements ts.CompilerHost {
         ? this._getAsset(fileName)
         : SourceFile.get(fileName);
       assert(sourceFile != null);
-      return (
-        sourceFile!.tsSourceFile ||
-        (sourceFile!.tsSourceFile = ts.createSourceFile(
+      if (!sourceFile!.tsSourceFile) {
+        sourceFile!.tsSourceFile = ts.createSourceFile(
           fileName,
           sourceFile!.sourceCode,
           languageVersion
-        ))
-      );
+        );
+      }
+      return sourceFile!.tsSourceFile;
     } catch (e) {
       if (onError) {
         onError(String(e));
@@ -574,6 +583,9 @@ window.compilerMain = function compilerMain(): void {
     const { rootNames, configPath, config, bundle } = data;
     util.log(">>> compile start", { rootNames, bundle });
 
+    // This will recursively analyse all the code for other imports, requesting
+    // those from the privileged side, populating the in memory cache which
+    // will be used by the host, before resolving.
     await processImports(rootNames.map(rootName => [rootName, rootName]));
 
     const host = new Host(bundle);
