@@ -1,4 +1,4 @@
-This crate provides utilies to compile typescript, bundle it up, and create a V8
+This crate provides utilities to compile typescript, bundle it up, and create a V8
 snapshot, all during build. This allows users to startup fast.
 
 The cli_snapshots crate, neighboring this one uses deno_typescript at build
