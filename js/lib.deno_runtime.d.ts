@@ -44,6 +44,16 @@ declare namespace Deno {
   export function env(): {
     [index: string]: string;
   };
+  /** Returns the value of an environment variable at invocation.
+   * If the variable is not present, `undefined` will be returned.
+   *
+   *       const myEnv = Deno.env();
+   *       console.log(myEnv.SHELL);
+   *       myEnv.TEST_VAR = "HELLO";
+   *       const newEnv = Deno.env();
+   *       console.log(myEnv.TEST_VAR == newEnv.TEST_VAR);
+   */
+  export function env(key: string): string | undefined;
   /**
    * Returns the current user's home directory.
    * Requires the `--allow-env` flag.

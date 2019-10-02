@@ -103,6 +103,25 @@ pub fn op_env(
 }
 
 #[derive(Deserialize)]
+struct GetEnv {
+  key: String,
+}
+
+pub fn op_get_env(
+  state: &ThreadSafeState,
+  args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: GetEnv = serde_json::from_value(args)?;
+  state.check_env()?;
+  let r = match env::var(args.key) {
+    Err(env::VarError::NotPresent) => json!([]),
+    v => json!([v?]),
+  };
+  Ok(JsonOp::Sync(r))
+}
+
+#[derive(Deserialize)]
 struct Exit {
   code: i32,
 }
