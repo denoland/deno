@@ -87,16 +87,16 @@ jobs:
         run: python ./tools/benchmark.py target/release
 
       - name: Post Benchmarks
-        if: matrix.kind == 'bench' && (github.ref == 'refs/heads/master' || github.ref == 'refs/pull/3008/merge')
+        if: matrix.kind == 'bench' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/gh_actions_benchmark2')
         env:
-          DENOBOT_PAT1: ${{ secrets.DENOBOT_PAT }}
+          DENOBOT_PAT: ${{ secrets.DENOBOT_PAT }}
         run: |
           # Note gh-pages branch is cloned into //gh-pages/ by
           # tools/benchmark.py, hence the following copy is ok:
           cp -r website/* gh-pages/
           cd gh-pages
           # git remote add origin-ssh git@github.com:denoland/deno.git
-          git remote add origin2 https://${DENOBOT_PAT1}@github.com/denoland/deno.git
+          git remote add origin2 https://${DENOBOT_PAT}@github.com/denoland/deno.git
           git config user.email "propelml@gmail.com"
           git config user.name "denobot"
           git add .
