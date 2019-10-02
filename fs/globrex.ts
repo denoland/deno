@@ -2,8 +2,6 @@
 // MIT License
 // Copyright (c) 2018 Terkel Gjervig Nielsen
 
-import { GlobOptions } from "./glob.ts";
-
 const isWin = Deno.build.os === "win";
 const SEP = isWin ? `(\\\\+|\\/)` : `\\/`;
 const SEP_ESC = isWin ? `\\\\` : `/`;
@@ -12,6 +10,22 @@ const GLOBSTAR = `((?:[^${SEP_ESC}/]*(?:${SEP_ESC}|\/|$))*)`;
 const WILDCARD = `([^${SEP_ESC}/]*)`;
 const GLOBSTAR_SEGMENT = `((?:[^${SEP_ESC}/]*(?:${SEP_ESC}|\/|$))*)`;
 const WILDCARD_SEGMENT = `([^${SEP_ESC}/]*)`;
+
+export interface GlobrexOptions {
+  // Allow ExtGlob features
+  extended?: boolean;
+  // When globstar is true, '/foo/**' is equivelant
+  // to '/foo/*' when globstar is false.
+  // Having globstar set to true is the same usage as
+  // using wildcards in bash
+  globstar?: boolean;
+  // be laissez faire about mutiple slashes
+  strict?: boolean;
+  // Parse as filepath for extra path related features
+  filepath?: boolean;
+  // Flag to use in the generated RegExp
+  flags?: string;
+}
 
 export interface GlobrexResult {
   regex: RegExp;
@@ -41,7 +55,7 @@ export function globrex(
     strict = false,
     filepath = false,
     flags = ""
-  }: GlobOptions = {}
+  }: GlobrexOptions = {}
 ): GlobrexResult {
   let regex = "";
   let segment = "";

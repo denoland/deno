@@ -1,19 +1,20 @@
 // Documentation and interface for walk were adapted from Go
 // https://golang.org/pkg/path/filepath/#Walk
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
-const { readDir, readDirSync, stat, statSync } = Deno;
-type FileInfo = Deno.FileInfo;
 import { unimplemented } from "../testing/asserts.ts";
 import { join } from "./path/mod.ts";
+const { readDir, readDirSync, stat, statSync } = Deno;
+type FileInfo = Deno.FileInfo;
 
 export interface WalkOptions {
   maxDepth?: number;
+  includeFiles?: boolean;
   includeDirs?: boolean;
+  followSymlinks?: boolean;
   exts?: string[];
   match?: RegExp[];
   skip?: RegExp[];
   onError?: (err: Error) => void;
-  followSymlinks?: boolean;
 }
 
 function patternTest(patterns: RegExp[], path: string): boolean {
@@ -54,13 +55,14 @@ export interface WalkInfo {
  * directories walk() can be inefficient.
  *
  * Options:
- * - maxDepth?: number;
- * - includeDirs?: boolean;
+ * - maxDepth?: number = Infinity;
+ * - includeFiles?: boolean = true;
+ * - includeDirs?: boolean = true;
+ * - followSymlinks?: boolean = false;
  * - exts?: string[];
  * - match?: RegExp[];
  * - skip?: RegExp[];
  * - onError?: (err: Error) => void;
- * - followSymlinks?: boolean;
  *
  *      for await (const { filename, info } of walk(".")) {
  *        console.log(filename);
@@ -71,10 +73,24 @@ export async function* walk(
   root: string,
   options: WalkOptions = {}
 ): AsyncIterableIterator<WalkInfo> {
-  options.maxDepth! -= 1;
-  if (options.includeDirs && include(root, options)) {
-    const rootInfo = await stat(root);
-    yield { filename: root, info: rootInfo };
+  const maxDepth = options.maxDepth != undefined ? options.maxDepth! : Infinity;
+  if (maxDepth < 0) {
+    return;
+  }
+  if (options.includeDirs != false && include(root, options)) {
+    let rootInfo: FileInfo;
+    try {
+      rootInfo = await stat(root);
+    } catch (err) {
+      if (options.onError) {
+        options.onError(err);
+        return;
+      }
+    }
+    yield { filename: root, info: rootInfo! };
+  }
+  if (maxDepth < 1 || patternTest(options.skip || [], root)) {
+    return;
   }
   let ls: FileInfo[] = [];
   try {
@@ -97,26 +113,38 @@ export async function* walk(
     const filename = join(root, info.name!);
 
     if (info.isFile()) {
-      if (include(filename, options)) {
+      if (options.includeFiles != false && include(filename, options)) {
         yield { filename, info };
       }
     } else {
-      if (!(options.maxDepth! < 0)) {
-        yield* walk(filename, options);
-      }
+      yield* walk(filename, { ...options, maxDepth: maxDepth - 1 });
     }
   }
 }
 
 /** Same as walk() but uses synchronous ops */
 export function* walkSync(
-  root: string = ".",
+  root: string,
   options: WalkOptions = {}
 ): IterableIterator<WalkInfo> {
-  options.maxDepth! -= 1;
-  if (options.includeDirs && include(root, options)) {
-    const rootInfo = statSync(root);
-    yield { filename: root, info: rootInfo };
+  const maxDepth = options.maxDepth != undefined ? options.maxDepth! : Infinity;
+  if (maxDepth < 0) {
+    return;
+  }
+  if (options.includeDirs != false && include(root, options)) {
+    let rootInfo: FileInfo;
+    try {
+      rootInfo = statSync(root);
+    } catch (err) {
+      if (options.onError) {
+        options.onError(err);
+        return;
+      }
+    }
+    yield { filename: root, info: rootInfo! };
+  }
+  if (maxDepth < 1 || patternTest(options.skip || [], root)) {
+    return;
   }
   let ls: FileInfo[] = [];
   try {
@@ -138,13 +166,11 @@ export function* walkSync(
     const filename = join(root, info.name!);
 
     if (info.isFile()) {
-      if (include(filename, options)) {
+      if (options.includeFiles != false && include(filename, options)) {
         yield { filename, info };
       }
     } else {
-      if (!(options.maxDepth! < 0)) {
-        yield* walkSync(filename, options);
-      }
+      yield* walkSync(filename, { ...options, maxDepth: maxDepth - 1 });
     }
   }
 }
