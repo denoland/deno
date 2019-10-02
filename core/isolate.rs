@@ -803,7 +803,7 @@ pub mod tests {
           Op::Async(Box::new(futures::future::ok(buf)))
         }
         Mode::OverflowReqSync => {
-          assert_eq!(control.len(), 100 * 1024 * 1024);
+          assert_eq!(control.len(), 1024 * 1024);
           let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
           Op::Sync(buf)
         }
@@ -811,13 +811,13 @@ pub mod tests {
           assert_eq!(control.len(), 1);
           assert_eq!(control[0], 42);
           let mut vec = Vec::<u8>::new();
-          vec.resize(100 * 1024 * 1024, 0);
+          vec.resize(1024 * 1024, 0);
           vec[0] = 99;
           let buf = vec.into_boxed_slice();
           Op::Sync(buf)
         }
         Mode::OverflowReqAsync => {
-          assert_eq!(control.len(), 100 * 1024 * 1024);
+          assert_eq!(control.len(), 1024 * 1024);
           let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
           Op::Async(Box::new(futures::future::ok(buf)))
         }
@@ -825,7 +825,7 @@ pub mod tests {
           assert_eq!(control.len(), 1);
           assert_eq!(control[0], 42);
           let mut vec = Vec::<u8>::new();
-          vec.resize(100 * 1024 * 1024, 0);
+          vec.resize(1024 * 1024, 0);
           vec[0] = 4;
           let buf = vec.into_boxed_slice();
           Op::Async(Box::new(futures::future::ok(buf)))
@@ -1222,7 +1222,7 @@ pub mod tests {
         let asyncRecv = 0;
         Deno.core.setAsyncHandler((opId, buf) => { asyncRecv++ });
         // Large message that will overflow the shared space.
-        let control = new Uint8Array(100 * 1024 * 1024);
+        let control = new Uint8Array(1024 * 1024);
         let response = Deno.core.dispatch(99, control);
         assert(response instanceof Uint8Array);
         assert(response.length == 4);
@@ -1235,8 +1235,6 @@ pub mod tests {
 
   #[test]
   fn overflow_res_sync() {
-    // TODO(ry) This test is quite slow due to memcpy-ing 100MB into JS. We
-    // should optimize this.
     let (mut isolate, dispatch_count) = setup(Mode::OverflowResSync);
     js_check(isolate.execute(
       "overflow_res_sync.js",
@@ -1247,7 +1245,7 @@ pub mod tests {
         let control = new Uint8Array([42]);
         let response = Deno.core.dispatch(99, control);
         assert(response instanceof Uint8Array);
-        assert(response.length == 100 * 1024 * 1024);
+        assert(response.length == 1024 * 1024);
         assert(response[0] == 99);
         assert(asyncRecv == 0);
         "#,
@@ -1270,7 +1268,7 @@ pub mod tests {
           asyncRecv++;
         });
         // Large message that will overflow the shared space.
-        let control = new Uint8Array(100 * 1024 * 1024);
+        let control = new Uint8Array(1024 * 1024);
         let response = Deno.core.dispatch(99, control);
         // Async messages always have null response.
         assert(response == null);
@@ -1286,8 +1284,6 @@ pub mod tests {
   #[test]
   fn overflow_res_async() {
     run_in_task(|| {
-      // TODO(ry) This test is quite slow due to memcpy-ing 100MB into JS. We
-      // should optimize this.
       let (mut isolate, dispatch_count) = setup(Mode::OverflowResAsync);
       js_check(isolate.execute(
         "overflow_res_async.js",
@@ -1295,7 +1291,7 @@ pub mod tests {
         let asyncRecv = 0;
         Deno.core.setAsyncHandler((opId, buf) => {
           assert(opId == 99);
-          assert(buf.byteLength === 100 * 1024 * 1024);
+          assert(buf.byteLength === 1024 * 1024);
           assert(buf[0] === 4);
           asyncRecv++;
         });
@@ -1314,8 +1310,6 @@ pub mod tests {
 
   #[test]
   fn overflow_res_multiple_dispatch_async() {
-    // TODO(ry) This test is quite slow due to memcpy-ing 100MB into JS. We
-    // should optimize this.
     run_in_task(|| {
       let (mut isolate, dispatch_count) = setup(Mode::OverflowResAsync);
       js_check(isolate.execute(
@@ -1324,7 +1318,7 @@ pub mod tests {
         let asyncRecv = 0;
         Deno.core.setAsyncHandler((opId, buf) => {
           assert(opId === 99);
-          assert(buf.byteLength === 100 * 1024 * 1024);
+          assert(buf.byteLength === 1024 * 1024);
           assert(buf[0] === 4);
           asyncRecv++;
         });
