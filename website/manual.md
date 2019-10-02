@@ -928,6 +928,76 @@ window.onload = async function() {
 $ deno run --importmap=import_map.json hello_server.ts
 ```
 
+## Program lifecycle
+
+Deno supports browser compatible lifecycle events: `load` and `unload`. You can
+use these event to provide setup and cleanup code in your program.
+
+`load` event listener supports asynchronous functions and will await these
+functions. `unload` event listener supports only synchronous code. Both events
+are not cancellable.
+
+Example:
+
+```typescript
+// main.ts
+import "./imported.ts";
+
+const handler = (e: Event): void => {
+  console.log(`got ${e.type} event in event handler (main)`);
+};
+
+window.addEventListener("load", handler);
+
+window.addEventListener("unload", handler);
+
+window.onload = (e: Event): void => {
+  console.log(`got ${e.type} event in onload function (main)`);
+};
+
+window.onunload = (e: Event): void => {
+  console.log(`got ${e.type} event in onunload function (main)`);
+};
+
+// imported.ts
+const handler = (e: Event): void => {
+  console.log(`got ${e.type} event in event handler (imported)`);
+};
+
+window.addEventListener("load", handler);
+window.addEventListener("unload", handler);
+
+window.onload = (e: Event): void => {
+  console.log(`got ${e.type} event in onload function (imported)`);
+};
+
+window.onunload = (e: Event): void => {
+  console.log(`got ${e.type} event in onunload function (imported)`);
+};
+
+console.log("log from imported script");
+```
+
+Note that you can use both `window.addEventListener` and
+`window.onload`/`window.onunload` to define handlers for events. There is a
+major difference between them, let's run example:
+
+```shell
+$ deno main.ts
+log from imported script
+log from main script
+got load event in onload function (main)
+got load event in event handler (imported)
+got load event in event handler (main)
+got unload event in onunload function (main)
+got unload event in event handler (imported)
+got unload event in event handler (main)
+```
+
+All listeners added using `window.addEventListener` were run, but
+`window.onload` and `window.onunload` defined in `main.ts` overridden handlers
+defined in `imported.ts`.
+
 ## Internal details
 
 ### Deno and Linux analogy
