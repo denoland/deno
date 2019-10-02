@@ -87,7 +87,7 @@ jobs:
         run: python ./tools/benchmark.py target/release
 
       - name: Post Benchmarks
-        if: matrix.kind == 'bench' && github.ref == 'refs/heads/master'
+        if: matrix.kind == 'bench' && github.repository == 'denoland/deno' && github.ref == 'refs/heads/master'
         env:
           DENOBOT_PAT: ${{ secrets.DENOBOT_PAT }}
         run: |
@@ -95,7 +95,6 @@ jobs:
           # tools/benchmark.py, hence the following copy is ok:
           cp -r website/* gh-pages/
           cd gh-pages
-          # git remote add origin-ssh git@github.com:denoland/deno.git
           git remote add origin2 https://${DENOBOT_PAT}@github.com/denoland/deno.git
           git config user.email "propelml@gmail.com"
           git config user.name "denobot"
