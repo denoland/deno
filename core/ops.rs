@@ -23,7 +23,7 @@ pub type CoreError = ();
 pub type CoreOp = Op<CoreError>;
 
 /// Main type describing op
-type OpDispatcher = dyn Fn(&[u8], Option<PinnedBuf>) -> CoreOp;
+type OpDispatcher = dyn Fn(&mut [u8], Option<PinnedBuf>) -> CoreOp;
 
 #[derive(Default)]
 pub struct OpRegistry {
@@ -44,7 +44,7 @@ impl OpRegistry {
 
   pub fn register<F>(&mut self, name: &str, op: F) -> OpId
   where
-    F: Fn(&[u8], Option<PinnedBuf>) -> CoreOp + Send + Sync + 'static,
+    F: Fn(&mut [u8], Option<PinnedBuf>) -> CoreOp + Send + Sync + 'static,
   {
     let op_id = self.dispatchers.len() as u32;
 
@@ -66,7 +66,7 @@ impl OpRegistry {
   pub fn call(
     &self,
     op_id: OpId,
-    control: &[u8],
+    control: &mut [u8],
     zero_copy_buf: Option<PinnedBuf>,
   ) -> CoreOp {
     // Op with id 0 has special meaning - it's a special op that is always

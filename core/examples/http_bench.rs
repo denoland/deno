@@ -98,42 +98,86 @@ fn test_record_from() {
   // TODO test From<&[u8]> for Record
 }
 
-pub type HttpOp = dyn Future<Item = i32, Error = std::io::Error> + Send;
+pub enum HttpOp {
+  Sync(Result<i32, std::io::Error>),
+  Async(Box<dyn Future<Item = i32, Error = std::io::Error> + Send>),
+}
 
 pub type HttpOpHandler =
-  fn(record: Record, zero_copy_buf: Option<PinnedBuf>) -> Box<HttpOp>;
+  fn(record: Record, zero_copy_buf: Option<PinnedBuf>) -> HttpOp;
 
 fn http_op(
   handler: HttpOpHandler,
-) -> impl Fn(&[u8], Option<PinnedBuf>) -> CoreOp {
-  move |control: &[u8], zero_copy_buf: Option<PinnedBuf>| -> CoreOp {
-    let record = Record::from(control);
-    let is_sync = record.promise_id == 0;
+) -> impl Fn(&mut [u8], Option<PinnedBuf>) -> CoreOp {
+  move |control: &mut [u8], zero_copy_buf: Option<PinnedBuf>| -> CoreOp {
+    let control_ptr = control.as_mut_ptr() as *mut i32;
+    let control_ints =
+      unsafe { std::slice::from_raw_parts_mut(control_ptr, 3) };
+
+    let record = Record::from(control as &[u8]);
     let op = handler(record.clone(), zero_copy_buf);
 
-    let mut record_a = record.clone();
-    let mut record_b = record.clone();
+    let op = greedy_poll(op);
+    let promise_id = record.promise_id;
 
-    let fut = Box::new(
-      op.and_then(move |result| {
-        record_a.result = result;
-        Ok(record_a)
-      })
-      .or_else(|err| -> Result<Record, ()> {
-        eprintln!("unexpected err {}", err);
-        record_b.result = -1;
-        Ok(record_b)
-      })
-      .then(|result| -> Result<Buf, ()> {
-        let record = result.unwrap();
-        Ok(record.into())
-      }),
-    );
+    match op {
+      HttpOp::Sync(result) => {
+        match result {
+          Ok(retval) => {
+            control_ints[2] = retval;
+          }
+          Err(_err) => {
+            control_ints[2] = -1;
+          }
+        }
+        Op::Sync(empty_buf())
+      }
+      HttpOp::Async(fut) => {
+        Op::Async(Box::new(fut.then(move |result| -> Result<Buf, ()> {
+          Ok(result_to_record(promise_id, result).into())
+        })))
+      }
+    }
+  }
+}
 
-    if is_sync {
-      Op::Sync(fut.wait().unwrap())
-    } else {
-      Op::Async(fut)
+/// Tries to greedily poll async ops once. Often they are immediately ready, in
+/// which case they can be turned into a sync op before we return to V8. This
+/// can save a boundary crossing.
+fn greedy_poll(http_op: HttpOp) -> HttpOp {
+  if let HttpOp::Async(mut fut) = http_op {
+    match fut.poll() {
+      Err(err) => HttpOp::Sync(Err(err)),
+      Ok(Async::Ready(n)) => HttpOp::Sync(Ok(n as i32)),
+      Ok(Async::NotReady) => HttpOp::Async(fut),
+    }
+  } else {
+    http_op
+  }
+}
+
+#[inline]
+fn empty_buf() -> Buf {
+  Box::new([])
+}
+
+fn result_to_record(
+  promise_id: i32,
+  result: Result<i32, std::io::Error>,
+) -> Record {
+  match result {
+    Ok(retval) => Record {
+      promise_id,
+      arg: -1,
+      result: retval,
+    },
+    Err(err) => {
+      eprintln!("unexpected err {}", err);
+      Record {
+        promise_id,
+        arg: -1,
+        result: -1,
+      }
     }
   }
 }
@@ -200,10 +244,10 @@ fn new_rid() -> i32 {
   rid as i32
 }
 
-fn op_accept(record: Record, _zero_copy_buf: Option<PinnedBuf>) -> Box<HttpOp> {
+fn op_accept(record: Record, _zero_copy_buf: Option<PinnedBuf>) -> HttpOp {
   let listener_rid = record.arg;
   debug!("accept {}", listener_rid);
-  Box::new(
+  HttpOp::Async(Box::new(
     futures::future::poll_fn(move || {
       let mut table = RESOURCE_TABLE.lock().unwrap();
       let maybe_repr = table.get_mut(&listener_rid);
@@ -221,63 +265,56 @@ fn op_accept(record: Record, _zero_copy_buf: Option<PinnedBuf>) -> Box<HttpOp> {
 
       Ok(rid as i32)
     }),
-  )
+  ))
 }
 
-fn op_listen(
-  _record: Record,
-  _zero_copy_buf: Option<PinnedBuf>,
-) -> Box<HttpOp> {
+fn op_listen(_record: Record, _zero_copy_buf: Option<PinnedBuf>) -> HttpOp {
   debug!("listen");
-  Box::new(lazy(move || {
-    let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
-    let listener = tokio::net::TcpListener::bind(&addr).unwrap();
-    let rid = new_rid();
+  let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
+  let listener = tokio::net::TcpListener::bind(&addr).unwrap();
+  let rid = new_rid();
 
-    let mut guard = RESOURCE_TABLE.lock().unwrap();
-    guard.insert(rid, Repr::TcpListener(listener));
-    futures::future::ok(rid)
-  }))
+  let mut guard = RESOURCE_TABLE.lock().unwrap();
+  guard.insert(rid, Repr::TcpListener(listener));
+
+  HttpOp::Sync(Ok(rid))
 }
 
-fn op_close(record: Record, _zero_copy_buf: Option<PinnedBuf>) -> Box<HttpOp> {
+fn op_close(record: Record, _zero_copy_buf: Option<PinnedBuf>) -> HttpOp {
   debug!("close");
   let rid = record.arg;
-  Box::new(lazy(move || {
-    let mut table = RESOURCE_TABLE.lock().unwrap();
-    let r = table.remove(&rid);
-    let result = if r.is_some() { 0 } else { -1 };
-    futures::future::ok(result)
-  }))
+  let mut table = RESOURCE_TABLE.lock().unwrap();
+  let r = table.remove(&rid);
+  let result = if r.is_some() { 0 } else { -1 };
+  HttpOp::Sync(Ok(result))
 }
 
-fn op_read(record: Record, zero_copy_buf: Option<PinnedBuf>) -> Box<HttpOp> {
+fn op_read(record: Record, zero_copy_buf: Option<PinnedBuf>) -> HttpOp {
   let rid = record.arg;
   debug!("read rid={}", rid);
   let mut zero_copy_buf = zero_copy_buf.unwrap();
-  Box::new(
+  HttpOp::Async(Box::new(
     futures::future::poll_fn(move || {
       let mut table = RESOURCE_TABLE.lock().unwrap();
       let maybe_repr = table.get_mut(&rid);
-      match maybe_repr {
-        Some(Repr::TcpStream(ref mut stream)) => {
-          stream.poll_read(&mut zero_copy_buf)
-        }
-        _ => panic!("bad rid"),
+      if let Some(Repr::TcpStream(ref mut stream)) = maybe_repr {
+        stream.poll_read(&mut zero_copy_buf)
+      } else {
+        panic!("bad rid")
       }
     })
     .and_then(move |nread| {
       debug!("read success {}", nread);
       Ok(nread as i32)
     }),
-  )
+  ))
 }
 
-fn op_write(record: Record, zero_copy_buf: Option<PinnedBuf>) -> Box<HttpOp> {
+fn op_write(record: Record, zero_copy_buf: Option<PinnedBuf>) -> HttpOp {
   let rid = record.arg;
   debug!("write rid={}", rid);
   let zero_copy_buf = zero_copy_buf.unwrap();
-  Box::new(
+  HttpOp::Async(Box::new(
     futures::future::poll_fn(move || {
       let mut table = RESOURCE_TABLE.lock().unwrap();
       let maybe_repr = table.get_mut(&rid);
@@ -292,7 +329,7 @@ fn op_write(record: Record, zero_copy_buf: Option<PinnedBuf>) -> Box<HttpOp> {
       debug!("write success {}", nwritten);
       Ok(nwritten as i32)
     }),
-  )
+  ))
 }
 
 fn js_check(r: Result<(), ErrBox>) {
