@@ -59,11 +59,13 @@ class UTF8Decoder implements Decoder {
   private _bytesSeen = 0;
   private _bytesNeeded = 0;
   private _fatal: boolean;
+  private _ignoreBOM: boolean;
   private _lowerBoundary = 0x80;
   private _upperBoundary = 0xbf;
 
   constructor(options: DecoderOptions) {
     this._fatal = options.fatal || false;
+    this._ignoreBOM = options.ignoreBOM || false;
   }
 
   handler(stream: Stream, byte: number): number | null {
@@ -74,6 +76,26 @@ class UTF8Decoder implements Decoder {
 
     if (byte === END_OF_STREAM) {
       return FINISHED;
+    }
+
+    if (this._ignoreBOM) {
+      if (
+        (this._bytesSeen === 0 && byte !== 0xef) ||
+        (this._bytesSeen === 1 && byte !== 0xbb)
+      ) {
+        this._ignoreBOM = false;
+      }
+
+      if (this._bytesSeen === 2) {
+        this._ignoreBOM = false;
+        if (byte === 0xbf) {
+          //Ignore BOM
+          this._codePoint = 0;
+          this._bytesNeeded = 0;
+          this._bytesSeen = 0;
+          return CONTINUE;
+        }
+      }
     }
 
     if (this._bytesNeeded === 0) {
@@ -225,6 +247,7 @@ export function btoa(s: string): string {
 
 interface DecoderOptions {
   fatal?: boolean;
+  ignoreBOM?: boolean;
 }
 
 interface Decoder {
@@ -240,6 +263,9 @@ class SingleByteDecoder implements Decoder {
   private _fatal: boolean;
 
   constructor(index: number[], options: DecoderOptions) {
+    if (options.ignoreBOM) {
+      throw new TypeError("Ignoring the BOM is available only with utf-8.");
+    }
     this._fatal = options.fatal || false;
     this._index = index;
   }
@@ -367,7 +393,7 @@ export interface TextDecodeOptions {
 
 export interface TextDecoderOptions {
   fatal?: boolean;
-  ignoreBOM?: false;
+  ignoreBOM?: boolean;
 }
 
 type EitherArrayBuffer = SharedArrayBuffer | ArrayBuffer;
@@ -387,11 +413,11 @@ export class TextDecoder {
   /** Returns `true` if error mode is "fatal", and `false` otherwise. */
   readonly fatal: boolean = false;
   /** Returns `true` if ignore BOM flag is set, and `false` otherwise. */
-  readonly ignoreBOM = false;
+  readonly ignoreBOM: boolean = false;
 
   constructor(label = "utf-8", options: TextDecoderOptions = { fatal: false }) {
     if (options.ignoreBOM) {
-      throw new TypeError("Ignoring the BOM not supported.");
+      this.ignoreBOM = true;
     }
     if (options.fatal) {
       this.fatal = true;
@@ -435,7 +461,10 @@ export class TextDecoder {
       bytes = new Uint8Array(0);
     }
 
-    const decoder = decoders.get(this._encoding)!({ fatal: this.fatal });
+    const decoder = decoders.get(this._encoding)!({
+      fatal: this.fatal,
+      ignoreBOM: this.ignoreBOM
+    });
     const inputStream = new Stream(bytes);
     const output: number[] = [];
 
