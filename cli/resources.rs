@@ -539,13 +539,7 @@ pub fn get_file(rid: ResourceId) -> Result<std::fs::File, ErrBox> {
       // Insert the entry back with the same rid.
       table.insert(rid, Repr::FsFile(tokio_fs::File::from_std(std_file)));
 
-      if maybe_std_file_copy.is_err() {
-        return Err(ErrBox::from(maybe_std_file_copy.unwrap_err()));
-      }
-
-      let std_file_copy = maybe_std_file_copy.unwrap();
-
-      Ok(std_file_copy)
+      maybe_std_file_copy.map_err(ErrBox::from)
     }
     _ => Err(bad_resource()),
   }
