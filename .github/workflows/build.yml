@@ -119,6 +119,7 @@ jobs:
             target/release/deno_win_x64.gz
             target/release/deno_osx_x64.gz
           draft: true
+          name: 0.19.0-test
 
       - name: Stop sccache
         run: sccache --stop-server
