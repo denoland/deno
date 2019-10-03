@@ -35,7 +35,7 @@ assert(scratchBytes.byteLength === 3 * 4);
 function send(promiseId, opId, arg, zeroCopy = null) {
   scratch32[0] = promiseId;
   scratch32[1] = arg;
-  scratch32[2] = -2;
+  scratch32[2] = -1;
   return Deno.core.dispatch(opId, scratchBytes, zeroCopy);
 }
 
@@ -43,22 +43,23 @@ function send(promiseId, opId, arg, zeroCopy = null) {
 function sendAsync(opId, arg, zeroCopy = null) {
   const promiseId = nextPromiseId++;
   const p = createResolvable();
-  send(promiseId, opId, arg, zeroCopy);
-  const retval = scratch32[2];
-  if (retval == -2) {
+  const buf = send(promiseId, opId, arg, zeroCopy);
+  if (buf) {
+    const record = recordFromBuf(buf);
+    // Sync result.
+    p.resolve(record.result);
+  } else {
     // Async result.
     promiseMap.set(promiseId, p);
-  } else {
-    // Sync result.
-    p.resolve(retval);
   }
   return p;
 }
 
 /** Returns i32 number */
 function sendSync(opId, arg) {
-  send(0, opId, arg);
-  return scratch32[2];
+  const buf = send(0, opId, arg);
+  const record = recordFromBuf(buf);
+  return record.result;
 }
 
 function recordFromBuf(buf) {

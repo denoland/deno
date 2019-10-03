@@ -108,29 +108,29 @@ pub type HttpOpHandler =
 
 fn http_op(
   handler: HttpOpHandler,
-) -> impl Fn(&mut [u8], Option<PinnedBuf>) -> CoreOp {
-  move |control: &mut [u8], zero_copy_buf: Option<PinnedBuf>| -> CoreOp {
-    let control_ptr = control.as_mut_ptr() as *mut i32;
-    let control_ints =
-      unsafe { std::slice::from_raw_parts_mut(control_ptr, 3) };
-
-    let record = Record::from(control as &[u8]);
+) -> impl Fn(&[u8], Option<PinnedBuf>) -> CoreOp {
+  move |control: &[u8], zero_copy_buf: Option<PinnedBuf>| -> CoreOp {
+    let record = Record::from(control);
     let op = handler(record.clone(), zero_copy_buf);
 
     let op = greedy_poll(op);
     let promise_id = record.promise_id;
 
+    let mut record_a = record.clone();
+
     match op {
       HttpOp::Sync(result) => {
         match result {
           Ok(retval) => {
-            control_ints[2] = retval;
+            record_a.result = retval;
           }
-          Err(_err) => {
-            control_ints[2] = -1;
+          Err(err) => {
+            eprintln!("unexpected err {}", err);
+            record_a.result = -1;
           }
         }
-        Op::Sync(empty_buf())
+        let buf: Buf = record_a.into();
+        Op::Sync(buf)
       }
       HttpOp::Async(fut) => {
         Op::Async(Box::new(fut.then(move |result| -> Result<Buf, ()> {

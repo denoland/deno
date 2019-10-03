@@ -28,16 +28,9 @@ pub struct deno_buf {
   data_len: usize,
 }
 
-#[repr(C)]
-pub struct deno_buf_mut {
-  data_ptr: *mut u8,
-  data_len: usize,
-}
-
 /// `deno_buf` can not clone, and there is no interior mutability.
 /// This type satisfies Send bound.
 unsafe impl Send for deno_buf {}
-unsafe impl Send for deno_buf_mut {}
 
 impl deno_buf {
   #[inline]
@@ -73,21 +66,6 @@ impl Deref for deno_buf {
   #[inline]
   fn deref(&self) -> &[u8] {
     unsafe { std::slice::from_raw_parts(self.data_ptr, self.data_len) }
-  }
-}
-
-impl Deref for deno_buf_mut {
-  type Target = [u8];
-  #[inline]
-  fn deref(&self) -> &[u8] {
-    unsafe { std::slice::from_raw_parts(self.data_ptr, self.data_len) }
-  }
-}
-
-impl DerefMut for deno_buf_mut {
-  #[inline]
-  fn deref_mut(&mut self) -> &mut [u8] {
-    unsafe { std::slice::from_raw_parts_mut(self.data_ptr, self.data_len) }
   }
 }
 
@@ -213,7 +191,7 @@ impl Snapshot2<'_> {
 type deno_recv_cb = unsafe extern "C" fn(
   user_data: *mut c_void,
   op_id: OpId,
-  control_buf: deno_buf_mut,
+  control_buf: deno_buf,
   zero_copy_buf: deno_pinned_buf,
 );
 

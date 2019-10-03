@@ -10,7 +10,6 @@ use crate::js_errors::CoreJSError;
 use crate::js_errors::V8Exception;
 use crate::libdeno;
 use crate::libdeno::deno_buf;
-use crate::libdeno::deno_buf_mut;
 use crate::libdeno::deno_dyn_import_id;
 use crate::libdeno::deno_mod;
 use crate::libdeno::deno_pinned_buf;
@@ -32,7 +31,6 @@ use libc::c_void;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::fmt;
-use std::ops::DerefMut;
 use std::ptr::null;
 use std::sync::{Arc, Mutex, Once};
 
@@ -235,7 +233,7 @@ impl Isolate {
   /// Requires runtime to explicitly ask for op ids before using any of the ops.
   pub fn register_op<F>(&mut self, name: &str, op: F) -> OpId
   where
-    F: Fn(&mut [u8], Option<PinnedBuf>) -> CoreOp + Send + Sync + 'static,
+    F: Fn(&[u8], Option<PinnedBuf>) -> CoreOp + Send + Sync + 'static,
   {
     self.op_registry.register(name, op)
   }
@@ -306,7 +304,7 @@ impl Isolate {
   extern "C" fn pre_dispatch(
     user_data: *mut c_void,
     op_id: OpId,
-    mut control_buf: deno_buf_mut,
+    control_buf: deno_buf,
     zero_copy_buf: deno_pinned_buf,
   ) {
     let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
