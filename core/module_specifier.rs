@@ -78,7 +78,7 @@ impl ModuleSpecifier {
           || specifier.starts_with("./")
           || specifier.starts_with("../")) =>
       {
-        Err(ImportPrefixMissing(specifier.to_string()))?
+        return Err(ImportPrefixMissing(specifier.to_string()))
       }
 
       // 3. Return the result of applying the URL parser to specifier with base
@@ -103,7 +103,7 @@ impl ModuleSpecifier {
       // it being relative, always return the original error. We don't want to
       // return `ImportPrefixMissing` or `InvalidBaseUrl` if the real
       // problem lies somewhere else.
-      Err(err) => Err(InvalidUrl(err))?,
+      Err(err) => return Err(InvalidUrl(err)),
     };
 
     Ok(ModuleSpecifier(url))

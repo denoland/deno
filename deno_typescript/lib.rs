@@ -6,9 +6,11 @@ extern crate serde_json;
 mod ops;
 use deno::js_check;
 pub use deno::v8_set_flags;
+use deno::CoreOp;
 use deno::ErrBox;
 use deno::Isolate;
 use deno::ModuleSpecifier;
+use deno::PinnedBuf;
 use deno::StartupData;
 pub use ops::EmitResult;
 use ops::WrittenFile;
@@ -45,6 +47,20 @@ impl TSState {
   }
 }
 
+fn compiler_op<D>(
+  ts_state: Arc<Mutex<TSState>>,
+  dispatcher: D,
+) -> impl Fn(&[u8], Option<PinnedBuf>) -> CoreOp
+where
+  D: Fn(&mut TSState, &[u8]) -> CoreOp,
+{
+  move |control: &[u8], zero_copy_buf: Option<PinnedBuf>| -> CoreOp {
+    assert!(zero_copy_buf.is_none()); // zero_copy_buf unused in compiler.
+    let mut s = ts_state.lock().unwrap();
+    dispatcher(&mut s, control)
+  }
+}
+
 pub struct TSIsolate {
   isolate: Isolate,
   state: Arc<Mutex<TSState>>,
@@ -62,12 +78,26 @@ impl TSIsolate {
       emit_result: None,
       written_files: Vec::new(),
     }));
-    let state_ = state.clone();
-    isolate.set_dispatch(move |op_id, control_buf, zero_copy_buf| {
-      assert!(zero_copy_buf.is_none()); // zero_copy_buf unused in compiler.
-      let mut s = state_.lock().unwrap();
-      ops::dispatch_op(&mut s, op_id, control_buf)
-    });
+
+    isolate.register_op(
+      "readFile",
+      compiler_op(state.clone(), ops::json_op(ops::read_file)),
+    );
+    isolate
+      .register_op("exit", compiler_op(state.clone(), ops::json_op(ops::exit)));
+    isolate.register_op(
+      "writeFile",
+      compiler_op(state.clone(), ops::json_op(ops::write_file)),
+    );
+    isolate.register_op(
+      "resolveModuleNames",
+      compiler_op(state.clone(), ops::json_op(ops::resolve_module_names)),
+    );
+    isolate.register_op(
+      "setEmitResult",
+      compiler_op(state.clone(), ops::json_op(ops::set_emit_result)),
+    );
+
     TSIsolate { isolate, state }
   }
 

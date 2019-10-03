@@ -37,18 +37,30 @@ function setEnv(key: string, value: string): void {
   sendSync(dispatch.OP_SET_ENV, { key, value });
 }
 
+function getEnv(key: string): string | undefined {
+  return sendSync(dispatch.OP_GET_ENV, { key })[0];
+}
+
 /** Returns a snapshot of the environment variables at invocation. Mutating a
  * property in the object will set that variable in the environment for
  * the process. The environment object will only accept `string`s
  * as values.
  *
+ *       console.log(Deno.env("SHELL"));
  *       const myEnv = Deno.env();
  *       console.log(myEnv.SHELL);
  *       myEnv.TEST_VAR = "HELLO";
  *       const newEnv = Deno.env();
  *       console.log(myEnv.TEST_VAR == newEnv.TEST_VAR);
  */
-export function env(): { [index: string]: string } {
+export function env(): { [index: string]: string };
+export function env(key: string): string | undefined;
+export function env(
+  key?: string
+): { [index: string]: string } | string | undefined {
+  if (key) {
+    return getEnv(key);
+  }
   const env = sendSync(dispatch.OP_ENV);
   return new Proxy(env, {
     set(obj, prop: string, value: string): boolean {

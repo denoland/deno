@@ -1,16 +1,8 @@
-# deno
+# Deno
 
 A secure runtime for JavaScript and TypeScript built with V8, Rust, and Tokio.
 
-|      **Linux & Mac**       |        **Windows**         |
-| :------------------------: | :------------------------: |
-| [![][tci badge]][tci link] | [![][avy badge]][avy link] |
-
-<!-- prettier-ignore -->
-[avy badge]: https://ci.appveyor.com/api/projects/status/yel7wtcqwoy0to8x?branch=master&svg=true
-[avy link]: https://ci.appveyor.com/project/deno/deno
-[tci badge]: https://travis-ci.com/denoland/deno.svg?branch=master
-[tci link]: https://travis-ci.com/denoland/deno
+[![Build Status](https://github.com/denoland/deno/workflows/build/badge.svg)](https://github.com/denoland/deno/actions)
 
 Deno aims to provide a productive and secure scripting environment for the
 modern programmer. It is built on top of V8, Rust, and TypeScript.

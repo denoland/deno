@@ -3,7 +3,7 @@ name = "deno_typescript"
 version = "0.19.0"
 license = "MIT"
 description = "To compile TypeScript to a snapshot during build.rs"
-repository = "https://github.com/ry/deno_typescript"
+repository = "https://github.com/denoland/deno"
 authors = ["the Deno authors"]
 edition = "2018"
 

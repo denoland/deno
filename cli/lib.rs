@@ -371,12 +371,17 @@ fn run_script(flags: DenoFlags, argv: Vec<String>) {
     js_check(worker.execute("denoMain()"));
     debug!("main_module {}", main_module);
 
+    let mut worker_ = worker.clone();
+
     worker
       .execute_mod_async(&main_module, false)
       .and_then(move |()| {
         js_check(worker.execute("window.dispatchEvent(new Event('load'))"));
-        worker.then(|result| {
+        worker.then(move |result| {
           js_check(result);
+          js_check(
+            worker_.execute("window.dispatchEvent(new Event('unload'))"),
+          );
           Ok(())
         })
       })

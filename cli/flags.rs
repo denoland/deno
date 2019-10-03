@@ -682,8 +682,8 @@ fn parse_script_args(
     let matches =
       cli_app.get_matches_from_safe(vec!["deno".to_string(), arg.to_string()]);
 
-    if matches.is_ok() {
-      flags = parse_flags(&matches.unwrap(), Some(flags));
+    if let Ok(m) = matches {
+      flags = parse_flags(&m, Some(flags));
     } else {
       argv.push(arg.to_string());
     }
