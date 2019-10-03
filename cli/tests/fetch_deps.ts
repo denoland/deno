@@ -1,5 +1,5 @@
 // Run ./tools/http_server.py too in order for this test to run.
-import { assert } from "../js/deps/https/deno.land/std/testing/asserts.ts";
+import { assert } from "../std/testing/asserts.ts";
 
 // TODO Top level await https://github.com/denoland/deno/issues/471
 async function main(): Promise<void> {
