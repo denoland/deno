@@ -75,11 +75,16 @@ export async function sendAsync(
   const promiseId = nextPromiseId();
   args = Object.assign(args, { promiseId });
   const promise = util.createResolvable<Ok>();
-  promiseTable.set(promiseId, promise);
 
   const argsUi8 = encode(args);
-  const resUi8 = core.dispatch(opId, argsUi8, zeroCopy);
-  util.assert(resUi8 == null);
+  const buf = core.dispatch(opId, argsUi8, zeroCopy);
+  if (buf) {
+    // Sync result.
+    promise.resolve(buf);
+  } else {
+    // Async result.
+    promiseTable.set(promiseId, promise);
+  }
 
   const res = await promise;
   return unwrapResponse(res);
