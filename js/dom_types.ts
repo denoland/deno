@@ -100,7 +100,7 @@ export interface ProgressEventInit extends EventInit {
   total?: number;
 }
 
-export interface URLSearchParams {
+export interface URLSearchParams extends DomIterable<string, string> {
   /**
    * Appends a specified key/value pair as a new search parameter.
    */
@@ -142,7 +142,7 @@ export interface URLSearchParams {
    * and invokes the given function.
    */
   forEach(
-    callbackfn: (value: string, key: string, parent: URLSearchParams) => void,
+    callbackfn: (value: string, key: string, parent: this) => void,
     thisArg?: any
   ): void;
 }
