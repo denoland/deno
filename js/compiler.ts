@@ -10,7 +10,7 @@ import { core } from "./core.ts";
 import { Diagnostic, fromTypeScriptDiagnostic } from "./diagnostics.ts";
 import { cwd } from "./dir.ts";
 import * as dispatch from "./dispatch.ts";
-import { sendSync } from "./dispatch_json.ts";
+import { sendAsync, sendSync } from "./dispatch_json.ts";
 import * as os from "./os.ts";
 import { TextEncoder } from "./text_encoding.ts";
 import { getMappedModuleName, parseTypeDirectives } from "./type_directives.ts";
@@ -121,12 +121,123 @@ const ignoredCompilerOptions: readonly string[] = [
   "watch"
 ];
 
-interface SourceFile {
-  moduleName: string | undefined;
-  filename: string | undefined;
+/** The shape of the SourceFile that comes from the privileged side */
+interface SourceFileJson {
+  url: string;
+  filename: string;
   mediaType: MediaType;
-  sourceCode: string | undefined;
-  typeDirectives?: Record<string, string>;
+  sourceCode: string;
+}
+
+/** A self registering abstraction of source files. */
+class SourceFile {
+  extension!: ts.Extension;
+  filename!: string;
+
+  /** An array of tuples which represent the imports for the source file.  The
+   * first element is the one that will be requested at compile time, the
+   * second is the one that should be actually resolved.  This provides the
+   * feature of type directives for Deno. */
+  importedFiles?: Array<[string, string]>;
+
+  mediaType!: MediaType;
+  processed = false;
+  sourceCode!: string;
+  tsSourceFile?: ts.SourceFile;
+  url!: string;
+
+  constructor(json: SourceFileJson) {
+    if (SourceFile._moduleCache.has(json.url)) {
+      throw new TypeError("SourceFile already exists");
+    }
+    Object.assign(this, json);
+    this.extension = getExtension(this.url, this.mediaType);
+    SourceFile._moduleCache.set(this.url, this);
+  }
+
+  /** Cache the source file to be able to be retrieved by `moduleSpecifier` and
+   * `containingFile`. */
+  cache(moduleSpecifier: string, containingFile: string): void {
+    let innerCache = SourceFile._specifierCache.get(containingFile);
+    if (!innerCache) {
+      innerCache = new Map();
+      SourceFile._specifierCache.set(containingFile, innerCache);
+    }
+    innerCache.set(moduleSpecifier, this);
+  }
+
+  /** Process the imports for the file and return them. */
+  imports(): Array<[string, string]> {
+    if (this.processed) {
+      throw new Error("SourceFile has already been processed.");
+    }
+    assert(this.sourceCode != null);
+    const preProcessedFileInfo = ts.preProcessFile(
+      this.sourceCode!,
+      true,
+      true
+    );
+    this.processed = true;
+    const files = (this.importedFiles = [] as Array<[string, string]>);
+
+    function process(references: ts.FileReference[]): void {
+      for (const { fileName } of references) {
+        files.push([fileName, fileName]);
+      }
+    }
+
+    const {
+      importedFiles,
+      referencedFiles,
+      libReferenceDirectives,
+      typeReferenceDirectives
+    } = preProcessedFileInfo;
+    const typeDirectives = parseTypeDirectives(this.sourceCode);
+    if (typeDirectives) {
+      for (const importedFile of importedFiles) {
+        files.push([
+          importedFile.fileName,
+          getMappedModuleName(importedFile, typeDirectives)
+        ]);
+      }
+    } else {
+      process(importedFiles);
+    }
+    process(referencedFiles);
+    process(libReferenceDirectives);
+    process(typeReferenceDirectives);
+    return files;
+  }
+
+  /** A cache of all the source files which have been loaded indexed by the
+   * url. */
+  private static _moduleCache: Map<string, SourceFile> = new Map();
+
+  /** A cache of source files based on module specifiers and containing files
+   * which is used by the TypeScript compiler to resolve the url */
+  private static _specifierCache: Map<
+    string,
+    Map<string, SourceFile>
+  > = new Map();
+
+  /** Retrieve a `SourceFile` based on a `moduleSpecifier` and `containingFile`
+   * or return `undefined` if not preset. */
+  static getUrl(
+    moduleSpecifier: string,
+    containingFile: string
+  ): string | undefined {
+    const containingCache = this._specifierCache.get(containingFile);
+    if (containingCache) {
+      const sourceFile = containingCache.get(moduleSpecifier);
+      return sourceFile && sourceFile.url;
+    }
+    return undefined;
+  }
+
+  /** Retrieve a `SourceFile` based on a `url` */
+  static get(url: string): SourceFile | undefined {
+    return this._moduleCache.get(url);
+  }
 }
 
 interface EmitResult {
@@ -134,6 +245,7 @@ interface EmitResult {
   diagnostics?: Diagnostic;
 }
 
+/** Ops to Rust to resolve special static assets. */
 function fetchAsset(name: string): string {
   return sendSync(dispatch.OP_FETCH_ASSET, { name });
 }
@@ -142,21 +254,39 @@ function fetchAsset(name: string): string {
 function fetchSourceFiles(
   specifiers: string[],
   referrer: string
-): SourceFile[] {
-  util.log("compiler.fetchSourceFiles", { specifiers, referrer });
-  const res = sendSync(dispatch.OP_FETCH_SOURCE_FILES, {
+): Promise<SourceFileJson[]> {
+  util.log("compiler::fetchSourceFiles", { specifiers, referrer });
+  return sendAsync(dispatch.OP_FETCH_SOURCE_FILES, {
     specifiers,
     referrer
   });
+}
 
-  return res.map(
-    (sourceFile: SourceFile): SourceFile => {
-      return {
-        ...sourceFile,
-        typeDirectives: parseTypeDirectives(sourceFile.sourceCode)
-      };
+/** Recursively process the imports of modules, generating `SourceFile`s of any
+ * imported files.
+ *
+ * Specifiers are supplied in an array of tupples where the first is the
+ * specifier that will be requested in the code and the second is the specifier
+ * that should be actually resolved. */
+async function processImports(
+  specifiers: Array<[string, string]>,
+  referrer = ""
+): Promise<void> {
+  if (!specifiers.length) {
+    return;
+  }
+  const sources = specifiers.map(([, moduleSpecifier]) => moduleSpecifier);
+  const sourceFiles = await fetchSourceFiles(sources, referrer);
+  assert(sourceFiles.length === specifiers.length);
+  for (let i = 0; i < sourceFiles.length; i++) {
+    const sourceFileJson = sourceFiles[i];
+    const sourceFile =
+      SourceFile.get(sourceFileJson.url) || new SourceFile(sourceFileJson);
+    sourceFile.cache(specifiers[i][0], referrer);
+    if (!sourceFile.processed) {
+      await processImports(sourceFile.imports(), sourceFile.url);
     }
-  );
+  }
 }
 
 /** Utility function to turn the number of bytes into a human readable
@@ -177,6 +307,7 @@ function humanFileSize(bytes: number): string {
 
 /** Ops to rest for caching source map and compiled js */
 function cache(extension: string, moduleId: string, contents: string): void {
+  util.log("compiler::cache", { extension, moduleId });
   sendSync(dispatch.OP_CACHE, { extension, moduleId, contents });
 }
 
@@ -215,8 +346,6 @@ function getExtension(fileName: string, mediaType: MediaType): ts.Extension {
 }
 
 class Host implements ts.CompilerHost {
-  private _extensionCache: Record<string, ts.Extension> = {};
-
   private readonly _options: ts.CompilerOptions = {
     allowJs: true,
     allowNonTsExtensions: true,
@@ -231,71 +360,20 @@ class Host implements ts.CompilerHost {
     jsx: ts.JsxEmit.React
   };
 
-  private _sourceFileCache: Record<string, SourceFile> = {};
-
-  private _getAsset(specifier: string): SourceFile {
-    const moduleName = specifier.split("/").pop()!;
-    if (moduleName in this._sourceFileCache) {
-      return this._sourceFileCache[moduleName];
+  private _getAsset(filename: string): SourceFile {
+    const sourceFile = SourceFile.get(filename);
+    if (sourceFile) {
+      return sourceFile;
     }
-    const assetName = moduleName.includes(".")
-      ? moduleName
-      : `${moduleName}.d.ts`;
+    const url = filename.split("/").pop()!;
+    const assetName = url.includes(".") ? url : `${url}.d.ts`;
     const sourceCode = fetchAsset(assetName);
-    const sourceFile = {
-      moduleName,
-      filename: specifier,
+    return new SourceFile({
+      url,
+      filename,
       mediaType: MediaType.TypeScript,
       sourceCode
-    };
-    this._sourceFileCache[moduleName] = sourceFile;
-    return sourceFile;
-  }
-
-  private _resolveModule(specifier: string, referrer: string): SourceFile {
-    return this._resolveModules([specifier], referrer)[0];
-  }
-
-  private _resolveModules(
-    specifiers: string[],
-    referrer: string
-  ): SourceFile[] {
-    util.log("host._resolveModules", { specifiers, referrer });
-    const resolvedModules: Array<SourceFile | undefined> = [];
-    const modulesToRequest = [];
-
-    for (const specifier of specifiers) {
-      // Firstly built-in assets are handled specially, so they should
-      // be removed from array of files that we'll be requesting from Rust.
-      if (specifier.startsWith(ASSETS)) {
-        const assetFile = this._getAsset(specifier);
-        resolvedModules.push(assetFile);
-      } else if (specifier in this._sourceFileCache) {
-        const module = this._sourceFileCache[specifier];
-        resolvedModules.push(module);
-      } else {
-        // Temporarily fill with undefined, after fetching file from
-        // Rust it will be filled with proper value.
-        resolvedModules.push(undefined);
-        modulesToRequest.push(specifier);
-      }
-    }
-
-    // Now get files from Rust.
-    const sourceFiles = fetchSourceFiles(modulesToRequest, referrer);
-
-    for (const sourceFile of sourceFiles) {
-      assert(sourceFile.moduleName != null);
-      const { moduleName } = sourceFile;
-      if (!(moduleName! in this._sourceFileCache)) {
-        this._sourceFileCache[moduleName!] = sourceFile;
-      }
-      // And fill temporary `undefined`s with actual files.
-      const index = resolvedModules.indexOf(undefined);
-      resolvedModules[index] = sourceFile;
-    }
-
-    return resolvedModules as SourceFile[];
+    });
   }
 
   /* Deno specific APIs */
@@ -321,10 +399,9 @@ class Host implements ts.CompilerHost {
 
   /** Take a configuration string, parse it, and use it to merge with the
    * compiler's configuration options.  The method returns an array of compiler
-   * options which were ignored, or `undefined`.
-   */
+   * options which were ignored, or `undefined`. */
   configure(path: string, configurationText: string): ConfigureResponse {
-    util.log("host.configure", path);
+    util.log("compiler::host.configure", path);
     const { config, error } = ts.parseConfigFileTextToJson(
       path,
       configurationText
@@ -355,20 +432,16 @@ class Host implements ts.CompilerHost {
 
   /* TypeScript CompilerHost APIs */
 
-  fileExists(fileName: string): boolean {
-    if (fileName.endsWith("package.json")) {
-      throw new TypeError("Automatic type resolution not supported");
-    }
+  fileExists(_fileName: string): boolean {
     return notImplemented();
   }
 
   getCanonicalFileName(fileName: string): string {
-    // console.log("getCanonicalFileName", fileName);
     return fileName;
   }
 
   getCompilationSettings(): ts.CompilerOptions {
-    util.log("getCompilationSettings()");
+    util.log("compiler::host.getCompilationSettings()");
     return this._options;
   }
 
@@ -390,21 +463,29 @@ class Host implements ts.CompilerHost {
     onError?: (message: string) => void,
     shouldCreateNewSourceFile?: boolean
   ): ts.SourceFile | undefined {
-    assert(!shouldCreateNewSourceFile);
-    util.log("getSourceFile", fileName);
-    const sourceFile =
-      fileName in this._sourceFileCache
-        ? this._sourceFileCache[fileName]
-        : this._resolveModule(fileName, ".");
-    assert(sourceFile != null);
-    if (!sourceFile.sourceCode) {
+    util.log("compiler::host.getSourceFile", fileName);
+    try {
+      assert(!shouldCreateNewSourceFile);
+      const sourceFile = fileName.startsWith(ASSETS)
+        ? this._getAsset(fileName)
+        : SourceFile.get(fileName);
+      assert(sourceFile != null);
+      if (!sourceFile!.tsSourceFile) {
+        sourceFile!.tsSourceFile = ts.createSourceFile(
+          fileName,
+          sourceFile!.sourceCode,
+          languageVersion
+        );
+      }
+      return sourceFile!.tsSourceFile;
+    } catch (e) {
+      if (onError) {
+        onError(String(e));
+      } else {
+        throw e;
+      }
       return undefined;
     }
-    return ts.createSourceFile(
-      fileName,
-      sourceFile.sourceCode,
-      languageVersion
-    );
   }
 
   readFile(_fileName: string): string | undefined {
@@ -415,46 +496,26 @@ class Host implements ts.CompilerHost {
     moduleNames: string[],
     containingFile: string
   ): Array<ts.ResolvedModuleFull | undefined> {
-    util.log("resolveModuleNames()", { moduleNames, containingFile });
-    const typeDirectives: Record<string, string> | undefined =
-      containingFile in this._sourceFileCache
-        ? this._sourceFileCache[containingFile].typeDirectives
+    util.log("compiler::host.resolveModuleNames", {
+      moduleNames,
+      containingFile
+    });
+    return moduleNames.map(specifier => {
+      const url = SourceFile.getUrl(specifier, containingFile);
+      const sourceFile = specifier.startsWith(ASSETS)
+        ? this._getAsset(specifier)
+        : url
+        ? SourceFile.get(url)
         : undefined;
-
-    const mappedModuleNames = moduleNames.map(
-      (moduleName: string): string => {
-        return getMappedModuleName(moduleName, containingFile, typeDirectives);
+      if (!sourceFile) {
+        return undefined;
       }
-    );
-
-    return this._resolveModules(mappedModuleNames, containingFile).map(
-      (
-        sourceFile: SourceFile,
-        index: number
-      ): ts.ResolvedModuleFull | undefined => {
-        if (sourceFile.moduleName) {
-          const resolvedFileName = sourceFile.moduleName;
-          // This flags to the compiler to not go looking to transpile functional
-          // code, anything that is in `/$asset$/` is just library code
-          const isExternalLibraryImport = mappedModuleNames[index].startsWith(
-            ASSETS
-          );
-          const extension = getExtension(
-            resolvedFileName,
-            sourceFile.mediaType
-          );
-          this._extensionCache[resolvedFileName] = extension;
-
-          return {
-            resolvedFileName,
-            isExternalLibraryImport,
-            extension
-          };
-        } else {
-          return undefined;
-        }
-      }
-    );
+      return {
+        resolvedFileName: sourceFile.url,
+        isExternalLibraryImport: specifier.startsWith(ASSETS),
+        extension: sourceFile.extension
+      };
+    });
   }
 
   useCaseSensitiveFileNames(): boolean {
@@ -464,39 +525,42 @@ class Host implements ts.CompilerHost {
   writeFile(
     fileName: string,
     data: string,
-    writeByteOrderMark: boolean,
+    _writeByteOrderMark: boolean,
     onError?: (message: string) => void,
     sourceFiles?: readonly ts.SourceFile[]
   ): void {
-    util.log("writeFile", fileName);
+    util.log("compiler::host.writeFile", fileName);
     try {
       if (this._bundle) {
         emitBundle(this._bundle, data);
       } else {
         assert(sourceFiles != null && sourceFiles.length == 1);
-        const sourceFileName = sourceFiles![0].fileName;
-        const maybeExtension = this._extensionCache[sourceFileName];
+        const url = sourceFiles![0].fileName;
+        const sourceFile = SourceFile.get(url);
 
-        if (maybeExtension) {
+        if (sourceFile) {
           // NOTE: If it's a `.json` file we don't want to write it to disk.
           // JSON files are loaded and used by TS compiler to check types, but we don't want
           // to emit them to disk because output file is the same as input file.
-          if (maybeExtension === ts.Extension.Json) {
+          if (sourceFile.extension === ts.Extension.Json) {
             return;
           }
 
           // NOTE: JavaScript files are only emitted to disk if `checkJs` option in on
-          if (maybeExtension === ts.Extension.Js && !this._options.checkJs) {
+          if (
+            sourceFile.extension === ts.Extension.Js &&
+            !this._options.checkJs
+          ) {
             return;
           }
         }
 
         if (fileName.endsWith(".map")) {
           // Source Map
-          cache(".map", sourceFileName, data);
+          cache(".map", url, data);
         } else if (fileName.endsWith(".js") || fileName.endsWith(".json")) {
           // Compiled JavaScript
-          cache(".js", sourceFileName, data);
+          cache(".js", url, data);
         } else {
           assert(false, "Trying to cache unhandled file type " + fileName);
         }
@@ -515,8 +579,15 @@ class Host implements ts.CompilerHost {
 // lazy instantiating the compiler web worker
 window.compilerMain = function compilerMain(): void {
   // workerMain should have already been called since a compiler is a worker.
-  window.onmessage = ({ data }: { data: CompilerReq }): void => {
+  window.onmessage = async ({ data }: { data: CompilerReq }): Promise<void> => {
     const { rootNames, configPath, config, bundle } = data;
+    util.log(">>> compile start", { rootNames, bundle });
+
+    // This will recursively analyse all the code for other imports, requesting
+    // those from the privileged side, populating the in memory cache which
+    // will be used by the host, before resolving.
+    await processImports(rootNames.map(rootName => [rootName, rootName]));
+
     const host = new Host(bundle);
     let emitSkipped = true;
     let diagnostics: ts.Diagnostic[] | undefined;
@@ -587,6 +658,8 @@ window.compilerMain = function compilerMain(): void {
     };
 
     postMessage(result);
+
+    util.log("<<< compile end", { rootNames, bundle });
 
     // The compiler isolate exits after a single message.
     workerClose();
