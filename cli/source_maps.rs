@@ -110,8 +110,8 @@ pub fn apply_source_map<G: SourceMapGetter>(
   // source file map.
   let end_column = match v8_exception.end_column {
     Some(ec) => {
-      if start_column.is_some() {
-        Some(ec - (v8_exception.start_column.unwrap() - start_column.unwrap()))
+      if let Some(sc) = start_column {
+        Some(ec - (v8_exception.start_column.unwrap() - sc))
       } else {
         None
       }
@@ -120,16 +120,17 @@ pub fn apply_source_map<G: SourceMapGetter>(
   };
   // if there is a source line that we might be different in the source file, we
   // will go fetch it from the getter
-  let source_line = if v8_exception.source_line.is_some()
-    && script_resource_name.is_some()
-    && line_number.is_some()
-  {
-    getter.get_source_line(
-      &v8_exception.script_resource_name.clone().unwrap(),
-      line_number.unwrap() as usize,
-    )
-  } else {
-    v8_exception.source_line.clone()
+  let source_line = match line_number {
+    Some(ln)
+      if v8_exception.source_line.is_some()
+        && script_resource_name.is_some() =>
+    {
+      getter.get_source_line(
+        &v8_exception.script_resource_name.clone().unwrap(),
+        ln as usize,
+      )
+    }
+    _ => v8_exception.source_line.clone(),
   };
 
   V8Exception {

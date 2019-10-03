@@ -2,11 +2,4 @@
 [WILDCARD]dispatch_json.ts:[WILDCARD]
     at DenoError ([WILDCARD]errors.ts:[WILDCARD])
     at unwrapResponse ([WILDCARD]dispatch_json.ts:[WILDCARD])
-    at sendSync[WILDCARD] ([WILDCARD]dispatch_json.ts:[WILDCARD])
-    at fetchSourceFiles ([WILDCARD]compiler.ts:[WILDCARD])
-    at _resolveModules ([WILDCARD]compiler.ts:[WILDCARD])
-    at [WILDCARD]compiler.ts:[WILDCARD]
-    at resolveModuleNamesWorker ([WILDCARD])
-    at resolveModuleNamesReusingOldState ([WILDCARD]typescript.js:[WILDCARD])
-    at processImportedModules ([WILDCARD]typescript.js:[WILDCARD])
-    at findSourceFile ([WILDCARD]typescript.js:[WILDCARD])
+    at sendAsync[WILDCARD] ([WILDCARD]dispatch_json.ts:[WILDCARD])

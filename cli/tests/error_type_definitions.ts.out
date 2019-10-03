@@ -1,4 +1,5 @@
-[WILDCARD]error: Uncaught TypeError: Automatic type resolution not supported
-[WILDCARD]compiler.ts:[WILDCARD]
-    at fileExists ([WILDCARD]compiler.ts:[WILDCARD])
-[WILDCARD]
+[WILDCARD]error: Uncaught ImportPrefixMissing: relative import path "baz" not prefixed with / or ./ or ../
+[WILDCARD]dispatch_json.ts:[WILDCARD]
+    at DenoError ([WILDCARD]errors.ts:[WILDCARD])
+    at unwrapResponse ([WILDCARD]dispatch_json.ts:[WILDCARD])
+    at sendAsync[WILDCARD] ([WILDCARD]dispatch_json.ts:[WILDCARD])
