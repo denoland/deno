@@ -14,7 +14,7 @@ use std::str::FromStr;
 
 macro_rules! std_url {
   ($x:expr) => {
-    concat!("https://deno.land/std@17a214b/", $x)
+    concat!("https://deno.land/std@8c90bd9/", $x)
   };
 }
 
