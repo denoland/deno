@@ -108,5 +108,29 @@ jobs:
           cat /proc/cpuinfo
           cat /proc/meminfo
 
+      - name: Pre-release (linux)
+        if: startsWith(matrix.os, 'ubuntu')
+        run: gzip -c target/release/deno > target/release/deno_linux_x64.gz
+
+      - name: Pre-release (mac)
+        if: startsWith(matrix.os, 'macOS')
+        run: gzip -c target/release/deno > target/release/deno_osx_x64.gz
+
+      - name: Pre-release (windows)
+        if: startsWith(matrix.os, 'windows')
+        run: PowerShell -Command "& {Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno_win_x64.zip}"
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        if: matrix.kind == 'test' && startsWith(github.ref, 'refs/tags/')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          files: |
+            target/release/deno_win_x64.zip
+            target/release/deno_linux_x64.gz
+            target/release/deno_osx_x64.gz
+          draft: true
+
       - name: Stop sccache
         run: sccache --stop-server
