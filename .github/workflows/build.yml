@@ -118,7 +118,7 @@ jobs:
 
       - name: Pre-release (windows)
         if: startsWith(matrix.os, 'windows')
-        run: Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno_win_x64.zip
+        run: PowerShell -Command {Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno_win_x64.zip}
 
       - name: Release
         uses: softprops/action-gh-release@v1
