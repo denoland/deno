@@ -112,53 +112,17 @@ fn http_op(
   move |control: &[u8], zero_copy_buf: Option<PinnedBuf>| -> CoreOp {
     let record = Record::from(control);
     let op = handler(record.clone(), zero_copy_buf);
-
-    let op = greedy_poll(op);
     let promise_id = record.promise_id;
-
-    let mut record_a = record.clone();
-
     match op {
-      HttpOp::Sync(result) => {
-        match result {
-          Ok(retval) => {
-            record_a.result = retval;
-          }
-          Err(err) => {
-            eprintln!("unexpected err {}", err);
-            record_a.result = -1;
-          }
-        }
-        let buf: Buf = record_a.into();
-        Op::Sync(buf)
-      }
+      HttpOp::Sync(result) => Op::Sync(result_to_record(0, result).into()),
       HttpOp::Async(fut) => {
-        Op::Async(Box::new(fut.then(move |result| -> Result<Buf, ()> {
+        let fut = fut.then(move |result| -> Result<Buf, ()> {
           Ok(result_to_record(promise_id, result).into())
-        })))
+        });
+        Op::Async(Box::new(fut))
       }
     }
   }
-}
-
-/// Tries to greedily poll async ops once. Often they are immediately ready, in
-/// which case they can be turned into a sync op before we return to V8. This
-/// can save a boundary crossing.
-fn greedy_poll(http_op: HttpOp) -> HttpOp {
-  if let HttpOp::Async(mut fut) = http_op {
-    match fut.poll() {
-      Err(err) => HttpOp::Sync(Err(err)),
-      Ok(Async::Ready(n)) => HttpOp::Sync(Ok(n as i32)),
-      Ok(Async::NotReady) => HttpOp::Async(fut),
-    }
-  } else {
-    http_op
-  }
-}
-
-#[inline]
-fn empty_buf() -> Buf {
-  Box::new([])
 }
 
 fn result_to_record(

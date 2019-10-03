@@ -315,6 +315,20 @@ impl Isolate {
       PinnedBuf::new(zero_copy_buf),
     );
 
+    let op = match op {
+      Op::Async(mut fut) => {
+        // Tries to greedily poll async ops once. Often they are immediately ready, in
+        // which case they can be turned into a sync op before we return to V8. This
+        // can save a boundary crossing.
+        match fut.poll() {
+          Err(_) => panic!("unexpected op error"),
+          Ok(Ready(buf)) => Op::Sync(buf),
+          Ok(NotReady) => Op::Async(fut),
+        }
+      }
+      Op::Sync(buf) => Op::Sync(buf),
+    };
+
     debug_assert_eq!(isolate.shared.size(), 0);
     match op {
       Op::Sync(buf) => {
