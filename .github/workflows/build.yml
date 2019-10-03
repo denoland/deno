@@ -122,13 +122,13 @@ jobs:
 
       - name: Release
         uses: softprops/action-gh-release@v1
-        if: matrix.kind == 'test' && (startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/gha-release')
+        if: matrix.kind == 'test' && startsWith(github.ref, 'refs/tags/')
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           files: |
+            target/release/deno_win_x64.zip
             target/release/deno_linux_x64.gz
-            target/release/deno_win_x64.gz
             target/release/deno_osx_x64.gz
           draft: true
 
