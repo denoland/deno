@@ -1459,7 +1459,7 @@ declare namespace domTypes {
     loaded?: number;
     total?: number;
   }
-  export interface URLSearchParams {
+  export interface URLSearchParams extends DomIterable<string, string> {
     /**
      * Appends a specified key/value pair as a new search parameter.
      */
@@ -1501,7 +1501,7 @@ declare namespace domTypes {
      * and invokes the given function.
      */
     forEach(
-      callbackfn: (value: string, key: string, parent: URLSearchParams) => void,
+      callbackfn: (value: string, key: string, parent: this) => void,
       thisArg?: any
     ): void;
   }
@@ -2495,7 +2495,7 @@ declare namespace urlSearchParams {
      *
      */
     forEach(
-      callbackfn: (value: string, key: string, parent: URLSearchParams) => void,
+      callbackfn: (value: string, key: string, parent: this) => void,
       thisArg?: any
     ): void;
     /** Returns an iterator allowing to go through all keys contained
@@ -2505,7 +2505,7 @@ declare namespace urlSearchParams {
      *         console.log(key);
      *       }
      */
-    keys(): Iterable<string>;
+    keys(): IterableIterator<string>;
     /** Returns an iterator allowing to go through all values contained
      * in this object.
      *
@@ -2513,7 +2513,7 @@ declare namespace urlSearchParams {
      *         console.log(value);
      *       }
      */
-    values(): Iterable<string>;
+    values(): IterableIterator<string>;
     /** Returns an iterator allowing to go through all key/value
      * pairs contained in this object.
      *
@@ -2521,7 +2521,7 @@ declare namespace urlSearchParams {
      *         console.log(key, value);
      *       }
      */
-    entries(): Iterable<[string, string]>;
+    entries(): IterableIterator<[string, string]>;
     /** Returns an iterator allowing to go through all key/value
      * pairs contained in this object.
      *
@@ -2529,7 +2529,7 @@ declare namespace urlSearchParams {
      *         console.log(key, value);
      *       }
      */
-    [Symbol.iterator](): Iterable<[string, string]>;
+    [Symbol.iterator](): IterableIterator<[string, string]>;
     /** Returns a query string suitable for use in a URL.
      *
      *        searchParams.toString();

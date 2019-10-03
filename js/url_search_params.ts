@@ -184,7 +184,7 @@ export class URLSearchParams {
    *
    */
   forEach(
-    callbackfn: (value: string, key: string, parent: URLSearchParams) => void,
+    callbackfn: (value: string, key: string, parent: this) => void,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     thisArg?: any
   ): void {
@@ -206,7 +206,7 @@ export class URLSearchParams {
    *         console.log(key);
    *       }
    */
-  *keys(): Iterable<string> {
+  *keys(): IterableIterator<string> {
     for (const entry of this.params) {
       yield entry[0];
     }
@@ -219,7 +219,7 @@ export class URLSearchParams {
    *         console.log(value);
    *       }
    */
-  *values(): Iterable<string> {
+  *values(): IterableIterator<string> {
     for (const entry of this.params) {
       yield entry[1];
     }
@@ -232,7 +232,7 @@ export class URLSearchParams {
    *         console.log(key, value);
    *       }
    */
-  *entries(): Iterable<[string, string]> {
+  *entries(): IterableIterator<[string, string]> {
     yield* this.params;
   }
 
@@ -243,7 +243,7 @@ export class URLSearchParams {
    *         console.log(key, value);
    *       }
    */
-  *[Symbol.iterator](): Iterable<[string, string]> {
+  *[Symbol.iterator](): IterableIterator<[string, string]> {
     yield* this.params;
   }
 
