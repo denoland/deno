@@ -28,7 +28,7 @@ jobs:
       - name: Install rust
         uses: hecrj/setup-rust-action@v1
         with:
-          rust-version: "1.37.0"
+          rust-version: "1.38.0"
 
       - name: Install python
         uses: actions/setup-python@v1

@@ -2,7 +2,7 @@
 sudo: false
 language: rust
 rust:
-  - 1.37.0
+  - 1.38.0
 git:
   depth: 1
 env:

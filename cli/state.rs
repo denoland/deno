@@ -171,8 +171,8 @@ impl Loader for ThreadSafeState {
     if !is_main {
       if let Some(import_map) = &self.import_map {
         let result = import_map.resolve(specifier, referrer)?;
-        if result.is_some() {
-          return Ok(result.unwrap());
+        if let Some(r) = result {
+          return Ok(r);
         }
       }
     }
