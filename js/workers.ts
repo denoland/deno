@@ -91,7 +91,10 @@ export async function workerMain(): Promise<void> {
 
     if (window["onmessage"]) {
       const event = { data };
-      window.onmessage(event);
+      const result: void | Promise<void> = window.onmessage(event);
+      if (result && "then" in result) {
+        await result;
+      }
     }
 
     if (!window["onmessage"]) {
