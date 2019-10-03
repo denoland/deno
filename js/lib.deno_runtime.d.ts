@@ -22,6 +22,12 @@ declare namespace Deno {
     stdout: boolean;
     stderr: boolean;
   };
+  /** Get the hostname.
+   * Requires the `--allow-env` flag.
+   *
+   *       console.log(Deno.hostname());
+   */
+  export function hostname(): string;
   /** Exit the Deno process with optional exit code. */
   export function exit(code?: number): never;
   /** Returns a snapshot of the environment variables at invocation. Mutating a
@@ -38,6 +44,16 @@ declare namespace Deno {
   export function env(): {
     [index: string]: string;
   };
+  /** Returns the value of an environment variable at invocation.
+   * If the variable is not present, `undefined` will be returned.
+   *
+   *       const myEnv = Deno.env();
+   *       console.log(myEnv.SHELL);
+   *       myEnv.TEST_VAR = "HELLO";
+   *       const newEnv = Deno.env();
+   *       console.log(myEnv.TEST_VAR == newEnv.TEST_VAR);
+   */
+  export function env(key: string): string | undefined;
   /**
    * Returns the current user's home directory.
    * Requires the `--allow-env` flag.
@@ -1242,6 +1258,7 @@ declare interface Window {
   setInterval: typeof timers.setInterval;
   location: domTypes.Location;
   onload: Function | undefined;
+  onunload: Function | undefined;
   crypto: Crypto;
   Blob: typeof blob.DenoBlob;
   File: domTypes.DomFileConstructor;
@@ -1288,6 +1305,7 @@ declare const setTimeout: typeof timers.setTimeout;
 declare const setInterval: typeof timers.setInterval;
 declare const location: domTypes.Location;
 declare const onload: Function | undefined;
+declare const onunload: Function | undefined;
 declare const crypto: Crypto;
 declare const Blob: typeof blob.DenoBlob;
 declare const File: domTypes.DomFileConstructor;
@@ -2366,7 +2384,7 @@ declare namespace textEncoding {
   }
   export interface TextDecoderOptions {
     fatal?: boolean;
-    ignoreBOM?: false;
+    ignoreBOM?: boolean;
   }
   export class TextDecoder {
     private _encoding;

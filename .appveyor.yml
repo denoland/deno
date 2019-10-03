@@ -89,6 +89,10 @@ init:
   - git config --global core.symlinks true
 
 install:
+  # Because prebuilt/ is cached, we need to manually reset changes that might
+  # happen to the sha1 files here.
+  - git checkout -- prebuilt
+
   # Make sure the PATH includes the prebuilt files (downloaded during setup.py)
   - set PATH=%PATH%;%CD%\prebuilt\win\
 

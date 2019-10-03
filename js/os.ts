@@ -18,6 +18,15 @@ export function isTTY(): { stdin: boolean; stdout: boolean; stderr: boolean } {
   return sendSync(dispatch.OP_IS_TTY);
 }
 
+/** Get the hostname.
+ * Requires the `--allow-env` flag.
+ *
+ *       console.log(Deno.hostname());
+ */
+export function hostname(): string {
+  return sendSync(dispatch.OP_HOSTNAME);
+}
+
 /** Exit the Deno process with optional exit code. */
 export function exit(code = 0): never {
   sendSync(dispatch.OP_EXIT, { code });
@@ -28,18 +37,30 @@ function setEnv(key: string, value: string): void {
   sendSync(dispatch.OP_SET_ENV, { key, value });
 }
 
+function getEnv(key: string): string | undefined {
+  return sendSync(dispatch.OP_GET_ENV, { key })[0];
+}
+
 /** Returns a snapshot of the environment variables at invocation. Mutating a
  * property in the object will set that variable in the environment for
  * the process. The environment object will only accept `string`s
  * as values.
  *
+ *       console.log(Deno.env("SHELL"));
  *       const myEnv = Deno.env();
  *       console.log(myEnv.SHELL);
  *       myEnv.TEST_VAR = "HELLO";
  *       const newEnv = Deno.env();
  *       console.log(myEnv.TEST_VAR == newEnv.TEST_VAR);
  */
-export function env(): { [index: string]: string } {
+export function env(): { [index: string]: string };
+export function env(key: string): string | undefined;
+export function env(
+  key?: string
+): { [index: string]: string } | string | undefined {
+  if (key) {
+    return getEnv(key);
+  }
   const env = sendSync(dispatch.OP_ENV);
   return new Proxy(env, {
     set(obj, prop: string, value: string): boolean {
@@ -72,7 +93,14 @@ interface Start {
 // @internal
 export function start(preserveDenoNamespace = true, source?: string): Start {
   core.setAsyncHandler(dispatch.asyncMsgFromRust);
-
+  const ops = core.ops();
+  // TODO(bartlomieju): this is a prototype, we should come up with
+  // something a bit more sophisticated
+  for (const [name, opId] of Object.entries(ops)) {
+    const opName = `OP_${name.toUpperCase()}`;
+    // Assign op ids to actual variables
+    dispatch[opName] = opId;
+  }
   // First we send an empty `Start` message to let the privileged side know we
   // are ready. The response should be a `StartRes` message containing the CLI
   // args and other info.

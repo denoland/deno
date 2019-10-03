@@ -196,7 +196,7 @@ impl SharedQueue {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::isolate::Buf;
+  use crate::ops::Buf;
 
   #[test]
   fn basic() {

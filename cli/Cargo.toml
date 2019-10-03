@@ -45,6 +45,7 @@ serde = { version = "1.0.100", features = ["derive"] }
 serde_derive = "1.0.100"
 serde_json = { version = "1.0.40", features = [ "preserve_order" ] }
 source-map-mappings = "0.5.0"
+sys-info = "0.5.8"
 tempfile = "3.1.0"
 termcolor = "1.0.5"
 tokio = "0.1.22"

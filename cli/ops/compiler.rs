@@ -1,7 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
+use crate::futures::future::join_all;
+use crate::futures::Future;
 use crate::state::ThreadSafeState;
-use crate::tokio_util;
 use deno::*;
 
 #[derive(Deserialize)]
@@ -40,7 +41,7 @@ struct FetchSourceFilesArgs {
 pub fn op_fetch_source_files(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _data: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: FetchSourceFilesArgs = serde_json::from_value(args)?;
 
@@ -58,23 +59,25 @@ pub fn op_fetch_source_files(
     futures.push(fut);
   }
 
-  // WARNING: Here we use tokio_util::block_on() which starts a new Tokio
-  // runtime for executing the future. This is so we don't inadvertently run
-  // out of threads in the main runtime.
-  let files = tokio_util::block_on(futures::future::join_all(futures))?;
-  let res: Vec<serde_json::value::Value> = files
-    .into_iter()
-    .map(|file| {
-      json!({
-        "moduleName": file.url.to_string(),
-        "filename": file.filename.to_str().unwrap(),
-        "mediaType": file.media_type as i32,
-        "sourceCode": String::from_utf8(file.source_code).unwrap(),
-      })
-    })
-    .collect();
+  let future = join_all(futures)
+    .map_err(ErrBox::from)
+    .and_then(move |files| {
+      let res = files
+        .into_iter()
+        .map(|file| {
+          json!({
+            "url": file.url.to_string(),
+            "filename": file.filename.to_str().unwrap(),
+            "mediaType": file.media_type as i32,
+            "sourceCode": String::from_utf8(file.source_code).unwrap(),
+          })
+        })
+        .collect();
 
-  Ok(JsonOp::Sync(json!(res)))
+      futures::future::ok(res)
+    });
+
+  Ok(JsonOp::Async(Box::new(future)))
 }
 
 #[derive(Deserialize)]

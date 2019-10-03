@@ -1,26 +1,23 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-interface DirectiveInfo {
-  path: string;
-  start: number;
+
+interface FileReference {
+  fileName: string;
+  pos: number;
   end: number;
 }
 
 /** Remap the module name based on any supplied type directives passed. */
 export function getMappedModuleName(
-  moduleName: string,
-  containingFile: string,
-  typeDirectives?: Record<string, string>
+  source: FileReference,
+  typeDirectives: Map<FileReference, string>
 ): string {
-  if (containingFile.endsWith(".d.ts") && !moduleName.endsWith(".d.ts")) {
-    moduleName = `${moduleName}.d.ts`;
+  const { fileName: sourceFileName, pos: sourcePos } = source;
+  for (const [{ fileName, pos }, value] of typeDirectives.entries()) {
+    if (sourceFileName === fileName && sourcePos === pos) {
+      return value;
+    }
   }
-  if (!typeDirectives) {
-    return moduleName;
-  }
-  if (moduleName in typeDirectives) {
-    return typeDirectives[moduleName];
-  }
-  return moduleName;
+  return source.fileName;
 }
 
 /** Matches directives that look something like this and parses out the value
@@ -48,21 +45,21 @@ const importExportRegEx = /(?:import|export)(?:\s+|\s+[\s\S]*?from\s+)?(["'])((?
  */
 export function parseTypeDirectives(
   sourceCode: string | undefined
-): Record<string, string> | undefined {
+): Map<FileReference, string> | undefined {
   if (!sourceCode) {
     return;
   }
 
   // collect all the directives in the file and their start and end positions
-  const directives: DirectiveInfo[] = [];
+  const directives: FileReference[] = [];
   let maybeMatch: RegExpExecArray | null = null;
   while ((maybeMatch = typeDirectiveRegEx.exec(sourceCode))) {
-    const [matchString, , path] = maybeMatch;
-    const { index: start } = maybeMatch;
+    const [matchString, , fileName] = maybeMatch;
+    const { index: pos } = maybeMatch;
     directives.push({
-      path,
-      start,
-      end: start + matchString.length
+      fileName,
+      pos,
+      end: pos + matchString.length
     });
   }
   if (!directives.length) {
@@ -72,16 +69,23 @@ export function parseTypeDirectives(
   // work from the last directive backwards for the next `import`/`export`
   // statement
   directives.reverse();
-  const directiveRecords: Record<string, string> = {};
-  for (const { path, start, end } of directives) {
+  const results = new Map<FileReference, string>();
+  for (const { end, fileName, pos } of directives) {
     const searchString = sourceCode.substring(end);
     const maybeMatch = importExportRegEx.exec(searchString);
     if (maybeMatch) {
-      const [, , fromPath] = maybeMatch;
-      directiveRecords[fromPath] = path;
+      const [matchString, , targetFileName] = maybeMatch;
+      const targetPos =
+        end + maybeMatch.index + matchString.indexOf(targetFileName) - 1;
+      const target: FileReference = {
+        fileName: targetFileName,
+        pos: targetPos,
+        end: targetPos + targetFileName.length
+      };
+      results.set(target, fileName);
     }
-    sourceCode = sourceCode.substring(0, start);
+    sourceCode = sourceCode.substring(0, pos);
   }
 
-  return directiveRecords;
+  return results;
 }

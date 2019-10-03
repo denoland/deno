@@ -1,14 +1,20 @@
-name: Build and test
+name: build
 
 on: [push, pull_request]
 
 jobs:
   build:
-    name: Build and test for ${{ matrix.os }}
+    name: ${{ matrix.kind }} ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-2016, macOS-latest]
+        os: [macOS-10.14, windows-2016, ubuntu-16.04]
+        kind: ['test', 'bench']
+        exclude:
+          - os: windows-2016
+            kind: 'bench'
+          - os: macOS-10.14
+            kind: 'bench'
     steps:
       - name: Configure git
         run: git config --global core.symlinks true
@@ -73,7 +79,34 @@ jobs:
         run: cargo build --release --locked --all-targets
 
       - name: Test
+        if: matrix.kind == 'test'
         run: cargo test --release --locked --all-targets
+
+      - name: Run Benchmarks
+        if: matrix.kind == 'bench'
+        run: python ./tools/benchmark.py target/release
+
+      - name: Post Benchmarks
+        if: matrix.kind == 'bench' && github.ref == 'refs/heads/master'
+        env:
+          DENOBOT_PAT: ${{ secrets.DENOBOT_PAT }}
+        run: |
+          # Note gh-pages branch is cloned into //gh-pages/ by
+          # tools/benchmark.py, hence the following copy is ok:
+          cp -r website/* gh-pages/
+          cd gh-pages
+          git remote add origin2 https://${DENOBOT_PAT}@github.com/denoland/deno.git
+          git config user.email "propelml@gmail.com"
+          git config user.name "denobot"
+          git add .
+          git commit --message "Update benchmarks"
+          git push origin2 gh-pages
+
+      - name: Worker info
+        if: matrix.kind == 'bench'
+        run: |
+          cat /proc/cpuinfo
+          cat /proc/meminfo
 
       - name: Stop sccache
         run: sccache --stop-server

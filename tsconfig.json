@@ -17,6 +17,7 @@
     "sourceMap": true,
     "strict": true,
     "target": "esnext",
+    "jsx": "react",
     "types": []
   },
   "files": [

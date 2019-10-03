@@ -5,3 +5,7 @@ got load event in onload function
 got load event in event handler (nest_imported)
 got load event in event handler (imported)
 got load event in event handler (main)
+got unload event in onunload function
+got unload event in event handler (nest_imported)
+got unload event in event handler (imported)
+got unload event in event handler (main)
