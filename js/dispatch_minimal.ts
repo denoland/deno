@@ -63,7 +63,11 @@ export function sendAsyncMinimal(
   const promise = util.createResolvable<number>();
   const buf = core.dispatch(opId, scratchBytes, zeroCopy);
   if (buf) {
-    const buf32 = new Int32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
+    const buf32 = new Int32Array(
+      buf.buffer,
+      buf.byteOffset,
+      buf.byteLength / 4
+    );
     const record = recordFromBufMinimal(opId, buf32);
     // Sync result.
     promise.resolve(record.result);

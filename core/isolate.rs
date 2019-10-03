@@ -320,6 +320,7 @@ impl Isolate {
         // Tries to greedily poll async ops once. Often they are immediately ready, in
         // which case they can be turned into a sync op before we return to V8. This
         // can save a boundary crossing.
+        #[allow(clippy::match_wild_err_arm)]
         match fut.poll() {
           Err(_) => panic!("unexpected op error"),
           Ok(Ready(buf)) => Op::Sync(buf),
@@ -342,6 +343,7 @@ impl Isolate {
           .expect("unexpected error");
       }
       Op::Async(fut) => {
+        // TODO: move this map into the greedy poll - that way `Isolate::poll` can be simplified
         let fut2 = fut.map(move |buf| (op_id, buf));
         isolate.pending_ops.push(Box::new(fut2));
         isolate.have_unpolled_ops = true;
