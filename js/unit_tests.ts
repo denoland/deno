@@ -55,7 +55,7 @@ import "./version_test.ts";
 
 import "../website/app_test.ts";
 
-import { runIfMain } from "./deps/https/deno.land/std/testing/mod.ts";
+import { runIfMain } from "../std/testing/mod.ts";
 
 async function main(): Promise<void> {
   // Testing entire test suite serially

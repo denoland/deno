@@ -7,8 +7,8 @@ edition = "2018"
 description = "Provides snapshots for the deno CLI"
 repository = "https://github.com/denoland/deno"
 exclude = [
-  "deps/https/deno.land/std/fs/testdata/0-link.ts",
-  "deps/https/deno.land/std/fs/testdata/copy_dir_link_file/0.txt",
+  "std/fs/testdata/0-link.ts",
+  "std/fs/testdata/copy_dir_link_file/0.txt",
 ]
 
 [lib]
