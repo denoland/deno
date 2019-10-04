@@ -1,4 +1,4 @@
-import { assert } from "../../../js/deps/https/deno.land/std/testing/asserts.ts";
+import { assert } from "../../../std/testing/asserts.ts";
 import "./nest_imported.ts";
 
 const handler = (e: Event): void => {
