@@ -41,7 +41,6 @@ pub fn op_start(
     "denoVersion": version::DENO,
     "tsVersion": version::TYPESCRIPT,
     "noColor": !colors::use_color(),
-    "xevalDelim": state.flags.xeval_delim.clone(),
     "os": BUILD_OS,
     "arch": BUILD_ARCH,
   })))
