@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
 // This test is executed as part of tools/test.py
-// But it can also be run manually: ./target/debug/deno js/unit_tests.ts
+// But it can also be run manually: ./target/debug/deno cli/js/unit_tests.ts
 
 import "./blob_test.ts";
 import "./body_test.ts";
@@ -53,9 +53,9 @@ import "./performance_test.ts";
 import "./permissions_test.ts";
 import "./version_test.ts";
 
-import "../website/app_test.ts";
+import "../../website/app_test.ts";
 
-import { runIfMain } from "../std/testing/mod.ts";
+import { runIfMain } from "../../std/testing/mod.ts";
 
 async function main(): Promise<void> {
   // Testing entire test suite serially

@@ -9,7 +9,6 @@ extern crate futures;
 extern crate serde_json;
 extern crate clap;
 extern crate deno;
-extern crate deno_cli_snapshots;
 extern crate indexmap;
 #[cfg(unix)]
 extern crate nix;
@@ -32,6 +31,7 @@ mod global_timer;
 mod http_body;
 mod http_util;
 mod import_map;
+mod js;
 pub mod msg;
 pub mod ops;
 pub mod permissions;
@@ -121,7 +121,7 @@ fn create_worker_and_state(
 }
 
 fn types_command() {
-  let content = deno_cli_snapshots::get_asset("lib.deno_runtime.d.ts").unwrap();
+  let content = crate::js::get_asset("lib.deno_runtime.d.ts").unwrap();
   println!("{}", content);
 }
 
