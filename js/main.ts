@@ -6,7 +6,6 @@ import * as os from "./os.ts";
 import { args } from "./deno.ts";
 import { setPrepareStackTrace } from "./error_stack.ts";
 import { replLoop } from "./repl.ts";
-import { xevalMain, XevalFunc } from "./xeval.ts";
 import { setVersions } from "./version.ts";
 import { window } from "./window.ts";
 import { setLocation } from "./location.ts";
@@ -35,9 +34,7 @@ function denoMain(preserveDenoNamespace = true, name?: string): void {
   log("args", args);
   Object.freeze(args);
 
-  if (window["_xevalWrapper"] !== undefined) {
-    xevalMain(window["_xevalWrapper"] as XevalFunc, s.xevalDelim);
-  } else if (!s.mainModule) {
+  if (!s.mainModule) {
     replLoop();
   }
 }

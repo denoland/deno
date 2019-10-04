@@ -14,7 +14,7 @@ use std::str::FromStr;
 
 macro_rules! std_url {
   ($x:expr) => {
-    concat!("https://deno.land/std@17a214b/", $x)
+    concat!("https://deno.land/std@8c90bd9/", $x)
   };
 }
 
@@ -24,6 +24,8 @@ const PRETTIER_URL: &str = std_url!("prettier/main.ts");
 const INSTALLER_URL: &str = std_url!("installer/mod.ts");
 /// Used for `deno test...` subcommand
 const TEST_RUNNER_URL: &str = std_url!("testing/runner.ts");
+/// Used for `deno xeval...` subcommand
+const XEVAL_URL: &str = std_url!("xeval/mod.ts");
 
 // Creates vector of strings, Vec<String>
 macro_rules! svec {
@@ -54,8 +56,6 @@ pub struct DenoFlags {
   pub no_fetch: bool,
   pub seed: Option<u64>,
   pub v8_flags: Option<Vec<String>>,
-  pub xeval_replvar: Option<String>,
-  pub xeval_delim: Option<String>,
   // Use tokio::runtime::current_thread
   pub current_thread: bool,
 }
@@ -705,7 +705,6 @@ pub enum DenoSubcommand {
   Run,
   Types,
   Version,
-  Xeval,
 }
 
 fn get_default_bundle_filename(source_file: &str) -> String {
@@ -899,22 +898,31 @@ pub fn flags_from_vec(
         _ => unreachable!(),
       }
     }
-    ("xeval", Some(eval_match)) => {
+    ("xeval", Some(xeval_match)) => {
       flags.allow_net = true;
       flags.allow_env = true;
       flags.allow_run = true;
       flags.allow_read = true;
       flags.allow_write = true;
       flags.allow_hrtime = true;
-      let code: &str = eval_match.value_of("code").unwrap();
-      flags.xeval_replvar =
-        Some(eval_match.value_of("replvar").unwrap_or("$").to_owned());
-      // Currently clap never escapes string,
-      // So -d "\n" won't expand to newline.
-      // Instead, do -d $'\n'
-      flags.xeval_delim = eval_match.value_of("delim").map(String::from);
-      argv.extend(vec![code.to_string()]);
-      DenoSubcommand::Xeval
+      argv.push(XEVAL_URL.to_string());
+
+      if xeval_match.is_present("delim") {
+        let delim = xeval_match.value_of("delim").unwrap();
+        argv.push("--delim".to_string());
+        argv.push(delim.to_string());
+      }
+
+      if xeval_match.is_present("replvar") {
+        let replvar = xeval_match.value_of("replvar").unwrap();
+        argv.push("--replvar".to_string());
+        argv.push(replvar.to_string());
+      }
+
+      let code: &str = xeval_match.value_of("code").unwrap();
+      argv.push(code.to_string());
+
+      DenoSubcommand::Run
     }
     (script, Some(script_match)) => {
       argv.extend(vec![script.to_string()]);
@@ -1291,13 +1299,22 @@ mod tests {
         allow_read: true,
         allow_write: true,
         allow_hrtime: true,
-        xeval_replvar: Some("val".to_owned()),
-        xeval_delim: Some(" ".to_owned()),
         ..DenoFlags::default()
       }
     );
-    assert_eq!(subcommand, DenoSubcommand::Xeval);
-    assert_eq!(argv, svec!["deno", "console.log(val)"]);
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(
+      argv,
+      svec![
+        "deno",
+        XEVAL_URL,
+        "--delim",
+        " ",
+        "--replvar",
+        "val",
+        "console.log(val)"
+      ]
+    );
   }
 
   #[test]
