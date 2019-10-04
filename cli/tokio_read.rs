@@ -2,7 +2,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 // Forked from: https://github.com/tokio-rs/tokio/blob/9b3f8564af4bb1aee07fab3c401eb412ca5eeac5/tokio-io/src/io/read.rs
 use crate::resources::DenoAsyncRead;
-use deno::ErrBox;
+use deno_core::ErrBox;
 use futures::{Future, Poll};
 use std::mem;
 

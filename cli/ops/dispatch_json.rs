@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::tokio_util;
-use deno::*;
+use deno_core::*;
 use futures::Future;
 use futures::Poll;
 pub use serde_derive::Deserialize;

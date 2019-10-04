@@ -4,11 +4,11 @@
 //! alternative to flatbuffers using a very simple list of int32s to lay out
 //! messages. The first i32 is used to determine if a message a flatbuffer
 //! message or a "minimal" message.
-use deno::Buf;
-use deno::CoreOp;
-use deno::ErrBox;
-use deno::Op;
-use deno::PinnedBuf;
+use deno_core::Buf;
+use deno_core::CoreOp;
+use deno_core::ErrBox;
+use deno_core::Op;
+use deno_core::PinnedBuf;
 use futures::Future;
 
 pub type MinimalOp = dyn Future<Item = i32, Error = ErrBox> + Send;

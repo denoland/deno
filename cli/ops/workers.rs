@@ -7,7 +7,7 @@ use crate::resources;
 use crate::startup_data;
 use crate::state::ThreadSafeState;
 use crate::worker::Worker;
-use deno::*;
+use deno_core::*;
 use futures;
 use futures::Async;
 use futures::Future;

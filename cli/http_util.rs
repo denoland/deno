@@ -2,7 +2,7 @@
 use crate::deno_error;
 use crate::deno_error::DenoError;
 use crate::version;
-use deno::ErrBox;
+use deno_core::ErrBox;
 use futures::{future, Future};
 use reqwest;
 use reqwest::header::HeaderMap;

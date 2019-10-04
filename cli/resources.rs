@@ -14,8 +14,8 @@ use crate::http_body::HttpBody;
 use crate::repl::Repl;
 use crate::state::WorkerChannels;
 
-use deno::Buf;
-use deno::ErrBox;
+use deno_core::Buf;
+use deno_core::ErrBox;
 
 use futures;
 use futures::Future;

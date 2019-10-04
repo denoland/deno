@@ -19,11 +19,11 @@ name = "deno"
 path = "main.rs"
 
 [build-dependencies]
-deno_typescript = { path = "../deno_typescript", version = "0.19.0" }
+deno_typescript = { path = "../ts", version = "0.19.0" }
 
 [dependencies]
-deno = { path = "../core", version = "0.19.0" }
-deno_typescript = { path = "../deno_typescript", version = "0.19.0" }
+deno_core = { path = "../core", version = "0.19.0" }
+deno_typescript = { path = "../ts", version = "0.19.0" }
 
 ansi_term = "0.12.1"
 atty = "0.2.13"

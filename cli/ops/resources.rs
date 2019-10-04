@@ -2,7 +2,7 @@
 use super::dispatch_json::{JsonOp, Value};
 use crate::resources::table_entries;
 use crate::state::ThreadSafeState;
-use deno::*;
+use deno_core::*;
 
 pub fn op_resources(
   _state: &ThreadSafeState,

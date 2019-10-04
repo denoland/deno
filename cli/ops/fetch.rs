@@ -3,7 +3,7 @@ use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::http_util::get_client;
 use crate::resources;
 use crate::state::ThreadSafeState;
-use deno::*;
+use deno_core::*;
 use http::header::HeaderName;
 use http::header::HeaderValue;
 use http::Method;

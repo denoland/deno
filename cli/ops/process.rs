@@ -3,7 +3,7 @@ use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::resources;
 use crate::signal::kill;
 use crate::state::ThreadSafeState;
-use deno::*;
+use deno_core::*;
 use futures;
 use futures::Future;
 use std;

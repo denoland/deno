@@ -3,7 +3,7 @@ use crate::deno_error::permission_denied;
 use crate::flags::DenoFlags;
 use ansi_term::Style;
 use atty;
-use deno::ErrBox;
+use deno_core::ErrBox;
 use log;
 use std::collections::HashSet;
 use std::fmt;

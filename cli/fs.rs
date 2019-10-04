@@ -5,7 +5,7 @@ use std::io::ErrorKind;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use deno::ErrBox;
+use deno_core::ErrBox;
 use rand;
 use rand::Rng;
 use url::Url;

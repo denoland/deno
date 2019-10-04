@@ -3,8 +3,8 @@ use crate::deno_error;
 use crate::resources;
 use crate::tokio_read;
 use crate::tokio_write;
-use deno::ErrBox;
-use deno::PinnedBuf;
+use deno_core::ErrBox;
+use deno_core::PinnedBuf;
 use futures::Future;
 
 pub fn op_read(rid: i32, zero_copy: Option<PinnedBuf>) -> Box<MinimalOp> {

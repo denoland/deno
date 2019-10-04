@@ -16,13 +16,13 @@ use crate::progress::Progress;
 use crate::resources;
 use crate::resources::ResourceId;
 use crate::worker::Worker;
-use deno::Buf;
-use deno::CoreOp;
-use deno::ErrBox;
-use deno::Loader;
-use deno::ModuleSpecifier;
-use deno::Op;
-use deno::PinnedBuf;
+use deno_core::Buf;
+use deno_core::CoreOp;
+use deno_core::ErrBox;
+use deno_core::Loader;
+use deno_core::ModuleSpecifier;
+use deno_core::Op;
+use deno_core::PinnedBuf;
 use futures::future::Shared;
 use futures::Future;
 use rand::rngs::StdRng;
@@ -62,7 +62,7 @@ pub struct ThreadSafeState(Arc<State>);
 
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct State {
-  pub modules: Arc<Mutex<deno::Modules>>,
+  pub modules: Arc<Mutex<deno_core::Modules>>,
   pub main_module: Option<ModuleSpecifier>,
   pub dir: deno_dir::DenoDir,
   pub argv: Vec<String>,
@@ -190,11 +190,11 @@ impl Loader for ThreadSafeState {
   fn load(
     &self,
     module_specifier: &ModuleSpecifier,
-  ) -> Box<deno::SourceCodeInfoFuture> {
+  ) -> Box<deno_core::SourceCodeInfoFuture> {
     self.metrics.resolve_count.fetch_add(1, Ordering::SeqCst);
     let module_url_specified = module_specifier.to_string();
     Box::new(self.fetch_compiled_module(module_specifier).map(
-      |compiled_module| deno::SourceCodeInfo {
+      |compiled_module| deno_core::SourceCodeInfo {
         // Real module name, might be different from initial specifier
         // due to redirections.
         code: compiled_module.code,
@@ -253,7 +253,7 @@ impl ThreadSafeState {
       seeded_rng = Some(Mutex::new(StdRng::seed_from_u64(seed)));
     };
 
-    let modules = Arc::new(Mutex::new(deno::Modules::new()));
+    let modules = Arc::new(Mutex::new(deno_core::Modules::new()));
 
     let state = State {
       main_module,

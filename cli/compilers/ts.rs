@@ -12,9 +12,9 @@ use crate::startup_data;
 use crate::state::*;
 use crate::version;
 use crate::worker::Worker;
-use deno::Buf;
-use deno::ErrBox;
-use deno::ModuleSpecifier;
+use deno_core::Buf;
+use deno_core::ErrBox;
+use deno_core::ModuleSpecifier;
 use futures::Future;
 use futures::Stream;
 use regex::Regex;
@@ -655,7 +655,7 @@ mod tests {
   use super::*;
   use crate::fs as deno_fs;
   use crate::tokio_util;
-  use deno::ModuleSpecifier;
+  use deno_core::ModuleSpecifier;
   use std::path::PathBuf;
   use tempfile::TempDir;
 
@@ -709,7 +709,7 @@ mod tests {
       .unwrap()
       .join("tests/002_hello.ts")
       .to_owned();
-    use deno::ModuleSpecifier;
+    use deno_core::ModuleSpecifier;
     let module_name = ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap())
       .unwrap()
       .to_string();

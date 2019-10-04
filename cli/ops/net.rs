@@ -5,7 +5,7 @@ use crate::resources;
 use crate::resources::Resource;
 use crate::state::ThreadSafeState;
 use crate::tokio_util;
-use deno::*;
+use deno_core::*;
 use futures::Future;
 use std;
 use std::convert::From;

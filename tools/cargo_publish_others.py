@@ -18,7 +18,7 @@ def main():
         cargo_publish += ["--dry-run"]
 
     # Publish the deno_typescript crate.
-    os.chdir(os.path.join(root_path, "deno_typescript"))
+    os.chdir(os.path.join(root_path, "ts"))
     run(cargo_publish)
 
     # Publish the deno_cli crate.

@@ -6,7 +6,7 @@ use clap::Arg;
 use clap::ArgMatches;
 use clap::Shell;
 use clap::SubCommand;
-use deno::ModuleSpecifier;
+use deno_core::ModuleSpecifier;
 use log::Level;
 use std;
 use std::str;

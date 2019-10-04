@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::deno_dir::DenoDir;
-use deno::ErrBox;
+use deno_core::ErrBox;
 use rustyline;
 use std::path::PathBuf;
 

@@ -3,7 +3,7 @@ use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
 use crate::repl;
 use crate::resources;
 use crate::state::ThreadSafeState;
-use deno::*;
+use deno_core::*;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]

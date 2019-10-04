@@ -5,7 +5,7 @@ use crate::fs as deno_fs;
 use crate::state::ThreadSafeState;
 use crate::version;
 use atty;
-use deno::*;
+use deno_core::*;
 use log;
 use std::collections::HashMap;
 use std::env;

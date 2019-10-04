@@ -1,8 +1,8 @@
 use crate::TSState;
-use deno::CoreOp;
-use deno::ErrBox;
-use deno::ModuleSpecifier;
-use deno::Op;
+use deno_core::CoreOp;
+use deno_core::ErrBox;
+use deno_core::ModuleSpecifier;
+use deno_core::Op;
 use serde::Deserialize;
 use serde_json::json;
 use serde_json::Value;

@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::resources::DenoAsyncWrite;
-use deno::ErrBox;
+use deno_core::ErrBox;
 use futures::{Future, Poll};
 use std::mem;
 

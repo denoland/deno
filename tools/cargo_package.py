@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 # Because of limitations in Cargo, Deno must dynamically build temporary source
 # directories in order to publish to crates.io.
-# The "deno" crate corresponds to the //core/ directory and depends on a
+# The "deno_core" crate corresponds to the //core/ directory and depends on a
 # platform dependent crate binary crate containing pre-compiled libdeno
-# https://crates.io/crates/deno
+# https://crates.io/crates/deno_core
 # https://crates.io/crates/deno-x86_64-pc-windows-msvc
 # https://crates.io/crates/deno-x86_64-apple-darwin
 # https://crates.io/crates/deno-x86_64-unknown-linux-gnu

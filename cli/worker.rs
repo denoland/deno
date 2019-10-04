@@ -5,11 +5,10 @@ use crate::ops::minimal_op;
 use crate::ops::*;
 use crate::state::ThreadSafeState;
 use crate::tokio_util;
-use deno;
-use deno::ErrBox;
-use deno::ModuleSpecifier;
-use deno::RecursiveLoad;
-use deno::StartupData;
+use deno_core::ErrBox;
+use deno_core::ModuleSpecifier;
+use deno_core::RecursiveLoad;
+use deno_core::StartupData;
 use futures::Async;
 use futures::Future;
 use std::env;
@@ -17,11 +16,11 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use url::Url;
 
-/// Wraps deno::Isolate to provide source maps, ops for the CLI, and
+/// Wraps deno_core::Isolate to provide source maps, ops for the CLI, and
 /// high-level module loading
 #[derive(Clone)]
 pub struct Worker {
-  isolate: Arc<Mutex<deno::Isolate>>,
+  isolate: Arc<Mutex<deno_core::Isolate>>,
   pub state: ThreadSafeState,
 }
 
@@ -31,7 +30,8 @@ impl Worker {
     startup_data: StartupData,
     state: ThreadSafeState,
   ) -> Worker {
-    let isolate = Arc::new(Mutex::new(deno::Isolate::new(startup_data, false)));
+    let isolate =
+      Arc::new(Mutex::new(deno_core::Isolate::new(startup_data, false)));
     {
       let mut i = isolate.lock().unwrap();
       let state_ = state.clone();

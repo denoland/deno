@@ -4,7 +4,7 @@ use crate::fmt_errors::JSError;
 use crate::source_maps::get_orig_position;
 use crate::source_maps::CachedMaps;
 use crate::state::ThreadSafeState;
-use deno::*;
+use deno_core::*;
 use std::collections::HashMap;
 
 #[derive(Deserialize)]

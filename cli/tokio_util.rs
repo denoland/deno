@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::resources::Resource;
-use deno::ErrBox;
+use deno_core::ErrBox;
 use futures;
 use futures::Future;
 use futures::Poll;

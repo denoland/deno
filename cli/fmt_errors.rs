@@ -3,9 +3,9 @@
 use crate::colors;
 use crate::source_maps::apply_source_map;
 use crate::source_maps::SourceMapGetter;
-use deno::ErrBox;
-use deno::StackFrame;
-use deno::V8Exception;
+use deno_core::ErrBox;
+use deno_core::StackFrame;
+use deno_core::V8Exception;
 use std::error::Error;
 use std::fmt;
 

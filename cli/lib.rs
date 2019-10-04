@@ -8,7 +8,7 @@ extern crate futures;
 #[macro_use]
 extern crate serde_json;
 extern crate clap;
-extern crate deno;
+extern crate deno_core;
 extern crate indexmap;
 #[cfg(unix)]
 extern crate nix;
@@ -56,9 +56,9 @@ use crate::deno_error::print_err_and_exit;
 use crate::progress::Progress;
 use crate::state::ThreadSafeState;
 use crate::worker::Worker;
-use deno::v8_set_flags;
-use deno::ErrBox;
-use deno::ModuleSpecifier;
+use deno_core::v8_set_flags;
+use deno_core::ErrBox;
+use deno_core::ModuleSpecifier;
 use flags::DenoFlags;
 use flags::DenoSubcommand;
 use futures::lazy;

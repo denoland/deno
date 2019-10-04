@@ -2,7 +2,7 @@
 ///
 /// > DENO_BUILD_MODE=release ./tools/build.py && \
 ///   ./target/release/deno_core_http_bench --multi-thread
-extern crate deno;
+extern crate deno_core;
 extern crate futures;
 extern crate libc;
 extern crate tokio;
@@ -12,7 +12,7 @@ extern crate log;
 #[macro_use]
 extern crate lazy_static;
 
-use deno::*;
+use deno_core::*;
 use futures::future::lazy;
 use std::collections::HashMap;
 use std::env;
@@ -151,7 +151,7 @@ fn main() {
       filename: "http_bench.js",
     });
 
-    let mut isolate = deno::Isolate::new(startup_data, false);
+    let mut isolate = Isolate::new(startup_data, false);
     isolate.register_op("listen", http_op(op_listen));
     isolate.register_op("accept", http_op(op_accept));
     isolate.register_op("read", http_op(op_read));
@@ -166,7 +166,7 @@ fn main() {
 
   let args: Vec<String> = env::args().collect();
   // NOTE: `--help` arg will display V8 help and exit
-  let args = deno::v8_set_flags(args);
+  let args = v8_set_flags(args);
 
   log::set_logger(&LOGGER).unwrap();
   log::set_max_level(if args.iter().any(|a| a == "-D") {

@@ -3,7 +3,7 @@ use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::resolve_addr::resolve_addr;
 use crate::resources;
 use crate::state::ThreadSafeState;
-use deno::*;
+use deno_core::*;
 use futures::Future;
 use std;
 use std::convert::From;
