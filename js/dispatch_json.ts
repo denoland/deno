@@ -80,7 +80,8 @@ export async function sendAsync(
   const buf = core.dispatch(opId, argsUi8, zeroCopy);
   if (buf) {
     // Sync result.
-    promise.resolve(buf);
+    const res = decode(buf);
+    promise.resolve(res);
   } else {
     // Async result.
     promiseTable.set(promiseId, promise);
