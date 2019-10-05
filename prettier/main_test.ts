@@ -54,21 +54,21 @@ test(async function testPrettierCheckAndFormatFiles(): Promise<void> {
     join(tempDir, "2.ts")
   ];
 
-  var { code, stdout } = await run([...cmd, "--check", ...files]);
-  assertEquals(code, 1);
-  assertEquals(normalizeOutput(stdout), "Some files are not formatted");
+  let p = await run([...cmd, "--check", ...files]);
+  assertEquals(p.code, 1);
+  assertEquals(normalizeOutput(p.stdout), "Some files are not formatted");
 
-  var { code, stdout } = await run([...cmd, "--write", ...files]);
-  assertEquals(code, 0);
+  p = await run([...cmd, "--write", ...files]);
+  assertEquals(p.code, 0);
   assertEquals(
-    normalizeOutput(stdout),
+    normalizeOutput(p.stdout),
     normalizeOutput(`Formatting ${tempDir}/0.ts
 Formatting ${tempDir}/1.js`)
   );
 
-  var { code, stdout } = await run([...cmd, "--check", ...files]);
-  assertEquals(code, 0);
-  assertEquals(normalizeOutput(stdout), "Every file is formatted");
+  p = await run([...cmd, "--check", ...files]);
+  assertEquals(p.code, 0);
+  assertEquals(normalizeOutput(p.stdout), "Every file is formatted");
 
   emptyDir(tempDir);
 });
@@ -79,23 +79,23 @@ test(async function testPrettierCheckAndFormatDirs(): Promise<void> {
 
   const dirs = [join(tempDir, "foo"), join(tempDir, "bar")];
 
-  var { code, stdout } = await run([...cmd, "--check", ...dirs]);
-  assertEquals(code, 1);
-  assertEquals(normalizeOutput(stdout), "Some files are not formatted");
+  let p = await run([...cmd, "--check", ...dirs]);
+  assertEquals(p.code, 1);
+  assertEquals(normalizeOutput(p.stdout), "Some files are not formatted");
 
-  var { code, stdout } = await run([...cmd, "--write", ...dirs]);
-  assertEquals(code, 0);
+  p = await run([...cmd, "--write", ...dirs]);
+  assertEquals(p.code, 0);
   assertEquals(
-    normalizeOutput(stdout),
+    normalizeOutput(p.stdout),
     normalizeOutput(`Formatting ${tempDir}/bar/0.ts
 Formatting ${tempDir}/bar/1.js
 Formatting ${tempDir}/foo/0.ts
 Formatting ${tempDir}/foo/1.js`)
   );
 
-  var { code, stdout } = await run([...cmd, "--check", ...dirs]);
-  assertEquals(code, 0);
-  assertEquals(normalizeOutput(stdout), "Every file is formatted");
+  p = await run([...cmd, "--check", ...dirs]);
+  assertEquals(p.code, 0);
+  assertEquals(normalizeOutput(p.stdout), "Every file is formatted");
 
   emptyDir(tempDir);
 });

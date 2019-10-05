@@ -83,7 +83,7 @@ export function join(...paths: string[]): string {
   if (paths.length === 0) return ".";
   let joined: string | undefined;
   for (let i = 0, len = paths.length; i < len; ++i) {
-    let path = paths[i];
+    const path = paths[i];
     assertPath(path);
     if (path.length > 0) {
       if (!joined) joined = path;
@@ -107,11 +107,11 @@ export function relative(from: string, to: string): string {
 
   // Trim any leading backslashes
   let fromStart = 1;
-  let fromEnd = from.length;
+  const fromEnd = from.length;
   for (; fromStart < fromEnd; ++fromStart) {
     if (from.charCodeAt(fromStart) !== CHAR_FORWARD_SLASH) break;
   }
-  let fromLen = fromEnd - fromStart;
+  const fromLen = fromEnd - fromStart;
 
   // Trim any leading backslashes
   let toStart = 1;
@@ -119,10 +119,10 @@ export function relative(from: string, to: string): string {
   for (; toStart < toEnd; ++toStart) {
     if (to.charCodeAt(toStart) !== CHAR_FORWARD_SLASH) break;
   }
-  let toLen = toEnd - toStart;
+  const toLen = toEnd - toStart;
 
   // Compare paths to find the longest common path from root
-  let length = fromLen < toLen ? fromLen : toLen;
+  const length = fromLen < toLen ? fromLen : toLen;
   let lastCommonSep = -1;
   let i = 0;
   for (; i <= length; ++i) {
@@ -150,8 +150,8 @@ export function relative(from: string, to: string): string {
       }
       break;
     }
-    let fromCode = from.charCodeAt(fromStart + i);
-    let toCode = to.charCodeAt(toStart + i);
+    const fromCode = from.charCodeAt(fromStart + i);
+    const toCode = to.charCodeAt(toStart + i);
     if (fromCode !== toCode) break;
     else if (fromCode === CHAR_FORWARD_SLASH) lastCommonSep = i;
   }
@@ -328,6 +328,7 @@ export function extname(path: string): string {
 }
 
 export function format(pathObject: FormatInputPathObject): string {
+  /* eslint-disable max-len */
   if (pathObject === null || typeof pathObject !== "object") {
     throw new TypeError(
       `The "pathObject" argument must be of type Object. Received type ${typeof pathObject}`
@@ -339,9 +340,9 @@ export function format(pathObject: FormatInputPathObject): string {
 export function parse(path: string): ParsedPath {
   assertPath(path);
 
-  let ret: ParsedPath = { root: "", dir: "", base: "", ext: "", name: "" };
+  const ret: ParsedPath = { root: "", dir: "", base: "", ext: "", name: "" };
   if (path.length === 0) return ret;
-  let isAbsolute = path.charCodeAt(0) === CHAR_FORWARD_SLASH;
+  const isAbsolute = path.charCodeAt(0) === CHAR_FORWARD_SLASH;
   let start: number;
   if (isAbsolute) {
     ret.root = "/";

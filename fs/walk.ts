@@ -22,7 +22,7 @@ function patternTest(patterns: RegExp[], path: string): boolean {
   // consistent results.
   // See: https://stackoverflow.com/a/1520853
   return patterns.some((pattern): boolean => {
-    let r = pattern.test(path);
+    const r = pattern.test(path);
     pattern.lastIndex = 0;
     return r;
   });
@@ -100,7 +100,7 @@ export async function* walk(
       options.onError(err);
     }
   }
-  for (let info of ls) {
+  for (const info of ls) {
     if (info.isSymlink()) {
       if (options.followSymlinks) {
         // TODO(ry) Re-enable followSymlinks.
@@ -154,7 +154,7 @@ export function* walkSync(
       options.onError(err);
     }
   }
-  for (let info of ls) {
+  for (const info of ls) {
     if (info.isSymlink()) {
       if (options.followSymlinks) {
         unimplemented();

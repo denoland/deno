@@ -56,7 +56,7 @@ async function read(
   const tp = new TextProtoReader(reader);
   let line: string;
   let result: string[] = [];
-  let lineIndex = Startline;
+  const lineIndex = Startline;
 
   const r = await tp.readLine();
   if (r === Deno.EOF) return Deno.EOF;
@@ -229,7 +229,7 @@ export async function parse(
         throw `Error number of fields line:${i}`;
       }
       i++;
-      let out: Record<string, unknown> = {};
+      const out: Record<string, unknown> = {};
       for (let j = 0; j < e.length; j++) {
         const h = headers[j];
         if (h.parse) {

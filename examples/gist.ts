@@ -53,11 +53,11 @@ async function main(): Promise<void> {
   });
 
   if (res.ok) {
-    let resObj = await res.json();
+    const resObj = await res.json();
     console.log("Success");
     console.log(resObj["html_url"]);
   } else {
-    let err = await res.text();
+    const err = await res.text();
     console.error("Failure to POST", err);
   }
 }

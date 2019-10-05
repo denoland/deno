@@ -12,6 +12,7 @@ import { instantiate, load, ModuleMetaData } from "./utils.ts";
 /* eslint-disable @typescript-eslint/no-namespace */
 declare global {
   namespace globalThis {
+    // eslint-disable-next-line no-var
     var __results: [string, string] | undefined;
   }
 }

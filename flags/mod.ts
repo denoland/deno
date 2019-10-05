@@ -286,7 +286,7 @@ export function parse(
         argv._.push(flags.strings["_"] || !isNumber(arg) ? arg : Number(arg));
       }
       if (options.stopEarly) {
-        argv._.push.apply(argv._, args.slice(i + 1));
+        argv._.push(...args.slice(i + 1));
         break;
       }
     }

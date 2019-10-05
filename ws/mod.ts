@@ -368,7 +368,7 @@ export function createSecAccept(nonce: string): string {
   const sha1 = new Sha1();
   sha1.update(nonce + kGUID);
   const bytes = sha1.digest();
-  return btoa(String.fromCharCode.apply(String, bytes));
+  return btoa(String.fromCharCode(...bytes));
 }
 
 /** Upgrade given TCP connection into websocket connection */
@@ -480,7 +480,7 @@ export async function connectWebSocket(
   headers: Headers = new Headers()
 ): Promise<WebSocket> {
   const url = new URL(endpoint);
-  let { hostname } = url;
+  const { hostname } = url;
   let conn: Conn;
   if (url.protocol === "http:" || url.protocol === "ws:") {
     const port = parseInt(url.port || "80");

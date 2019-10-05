@@ -21,11 +21,9 @@ async function ensureValidCopy(
   src: string,
   dest: string,
   options: CopyOptions,
-  isCopyFolder: boolean = false
+  isCopyFolder = false
 ): Promise<Deno.FileInfo> {
-  let destStat: Deno.FileInfo | null;
-
-  destStat = await Deno.lstat(dest).catch(
+  const destStat: Deno.FileInfo | null = await Deno.lstat(dest).catch(
     (): Promise<null> => Promise.resolve(null)
   );
 
@@ -47,7 +45,7 @@ function ensureValidCopySync(
   src: string,
   dest: string,
   options: CopyOptions,
-  isCopyFolder: boolean = false
+  isCopyFolder = false
 ): Deno.FileInfo {
   let destStat: Deno.FileInfo | null;
 

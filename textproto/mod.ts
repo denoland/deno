@@ -66,7 +66,7 @@ export class TextProtoReader {
    *	}
    */
   async readMIMEHeader(): Promise<Headers | Deno.EOF> {
-    let m = new Headers();
+    const m = new Headers();
     let line: Uint8Array;
 
     // The first line cannot start with a leading space.
@@ -87,7 +87,7 @@ export class TextProtoReader {
     }
 
     while (true) {
-      let kv = await this.readLineSlice(); // readContinuedLineSlice
+      const kv = await this.readLineSlice(); // readContinuedLineSlice
       if (kv === Deno.EOF) throw new UnexpectedEOFError();
       if (kv.byteLength === 0) return m;
 
@@ -104,7 +104,7 @@ export class TextProtoReader {
       }
 
       //let key = canonicalMIMEHeaderKey(kv.subarray(0, endKey));
-      let key = str(kv.subarray(0, endKey));
+      const key = str(kv.subarray(0, endKey));
 
       // As per RFC 7230 field-name is a token,
       // tokens consist of one or more chars.
@@ -123,7 +123,7 @@ export class TextProtoReader {
       ) {
         i++;
       }
-      let value = str(kv.subarray(i));
+      const value = str(kv.subarray(i));
 
       // In case of invalid header we swallow the error
       // example: "Audio Mode" => invalid due to space in the key

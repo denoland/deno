@@ -60,7 +60,7 @@ export function pad(
       out = out.padEnd(strLen, opts.char);
     }
   } else if (opts.strict && outL > strLen) {
-    let addChar = opts.strictChar ? opts.strictChar : "";
+    const addChar = opts.strictChar ? opts.strictChar : "";
     if (opts.strictSide === "left") {
       let toDrop = outL - strLen;
       if (opts.strictChar) {

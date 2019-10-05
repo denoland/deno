@@ -21,7 +21,7 @@ function killServer(): void {
   server.stdout!.close();
 }
 
-let input = `GET / HTTP/1.1
+const input = `GET / HTTP/1.1
 
 GET / HTTP/1.1
 
@@ -31,7 +31,7 @@ GET / HTTP/1.1
 
 `;
 const HUGE_BODY_SIZE = 1024 * 1024;
-let output = `HTTP/1.1 200 OK
+const output = `HTTP/1.1 200 OK
 content-length: 8
 
 Hello 1

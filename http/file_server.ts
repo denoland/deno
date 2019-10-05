@@ -150,7 +150,7 @@ async function serveDir(
   const fileInfos = await readDir(dirPath);
   for (const fileInfo of fileInfos) {
     const filePath = posix.join(dirPath, fileInfo.name);
-    let fileUrl = posix.join(dirUrl, fileInfo.name);
+    const fileUrl = posix.join(dirUrl, fileInfo.name);
     if (fileInfo.name === "index.html" && fileInfo.isFile()) {
       // in case index.html as dir...
       return await serveFile(req, filePath);

@@ -17,8 +17,8 @@ class Flags {
   space?: boolean;
   zero?: boolean;
   lessthan?: boolean;
-  width: number = -1;
-  precision: number = -1;
+  width = -1;
+  precision = -1;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -44,9 +44,9 @@ class Printf {
   i: number;
 
   state: State = State.PASSTHROUGH;
-  verb: string = "";
-  buf: string = "";
-  argNum: number = 0;
+  verb = "";
+  buf = "";
+  argNum = 0;
   flags: Flags = new Flags();
 
   haveSeen: boolean[];
@@ -64,7 +64,7 @@ class Printf {
 
   doPrintf(): string {
     for (; this.i < this.format.length; ++this.i) {
-      let c = this.format[this.i];
+      const c = this.format[this.i];
       switch (this.state) {
         case State.PASSTHROUGH:
           if (c === "%") {
@@ -104,9 +104,9 @@ class Printf {
   // %[<positional>]<flag>...<verb>
   handleFormat(): void {
     this.flags = new Flags();
-    let flags = this.flags;
+    const flags = this.flags;
     for (; this.i < this.format.length; ++this.i) {
-      let c = this.format[this.i];
+      const c = this.format[this.i];
       switch (this.state) {
         case State.PERCENT:
           switch (c) {
@@ -152,7 +152,7 @@ class Printf {
           break;
         case State.POSITIONAL: // either a verb or * only verb for now, TODO
           if (c === "*") {
-            let worp =
+            const worp =
               this.flags.precision === -1 ? WorP.WIDTH : WorP.PRECISION;
             this.handleWidthOrPrecisionRef(worp);
             this.state = State.PERCENT;
@@ -171,7 +171,7 @@ class Printf {
       // handle Positional should have already taken care of it...
       return;
     }
-    let arg = this.args[this.argNum];
+    const arg = this.args[this.argNum];
     this.haveSeen[this.argNum] = true;
     if (typeof arg === "number") {
       switch (wOrP) {
@@ -182,7 +182,7 @@ class Printf {
           this.flags.precision = arg;
       }
     } else {
-      let tmp = wOrP === WorP.WIDTH ? "WIDTH" : "PREC";
+      const tmp = wOrP === WorP.WIDTH ? "WIDTH" : "PREC";
       this.tmpError = `%!(BAD ${tmp} '${this.args[this.argNum]}')`;
     }
     this.argNum++;
@@ -271,7 +271,7 @@ class Printf {
     return;
   }
   handleLessThan(): string {
-    let arg = this.args[this.argNum];
+    const arg = this.args[this.argNum];
     if ((arg || {}).constructor.name !== "Array") {
       throw new Error(`arg ${arg} is not an array. Todo better error handling`);
     }
@@ -294,7 +294,7 @@ class Printf {
     } else if (this.args.length <= this.argNum) {
       this.buf += `%!(MISSING '${verb}')`;
     } else {
-      let arg = this.args[this.argNum]; // check out of range
+      const arg = this.args[this.argNum]; // check out of range
       this.haveSeen[this.argNum] = true; // keep track of used args
       if (this.flags.lessthan) {
         this.buf += this.handleLessThan();
@@ -404,7 +404,7 @@ class Printf {
     return nStr;
   }
 
-  fmtNumber(n: number, radix: number, upcase: boolean = false): string {
+  fmtNumber(n: number, radix: number, upcase = false): string {
     let num = Math.abs(n).toString(radix);
     const prec = this.flags.precision;
     if (prec !== -1) {
@@ -484,7 +484,7 @@ class Printf {
     return fractional;
   }
 
-  fmtFloatE(n: number, upcase: boolean = false): string {
+  fmtFloatE(n: number, upcase = false): string {
     const special = this.fmtFloatSpecial(n);
     if (special !== "") {
       return special;
@@ -553,7 +553,7 @@ class Printf {
     return this.padNum(`${dig}.${fractional}`, n < 0);
   }
 
-  fmtFloatG(n: number, upcase: boolean = false): string {
+  fmtFloatG(n: number, upcase = false): string {
     const special = this.fmtFloatSpecial(n);
     if (special !== "") {
       return special;
@@ -591,7 +591,7 @@ class Printf {
       throw Error("can't happen");
     }
 
-    let X = parseInt(m[F.exponent]) * (m[F.esign] === "-" ? -1 : 1);
+    const X = parseInt(m[F.exponent]) * (m[F.esign] === "-" ? -1 : 1);
     let nStr = "";
     if (P > X && X >= -4) {
       this.flags.precision = P - (X + 1);
@@ -616,14 +616,14 @@ class Printf {
     return this.pad(s);
   }
 
-  fmtHex(val: string | number, upper: boolean = false): string {
+  fmtHex(val: string | number, upper = false): string {
     // allow others types ?
     switch (typeof val) {
       case "number":
         return this.fmtNumber(val as number, 16, upper);
         break;
       case "string":
-        let sharp = this.flags.sharp && val.length !== 0;
+        const sharp = this.flags.sharp && val.length !== 0;
         let hex = sharp ? "0x" : "";
         const prec = this.flags.precision;
         const end = prec !== -1 ? min(prec, val.length) : val.length;
@@ -634,7 +634,7 @@ class Printf {
           // TODO: for now only taking into account the
           // lower half of the codePoint, ie. as if a string
           // is a list of 8bit values instead of UCS2 runes
-          let c = (val.charCodeAt(i) & 0xff).toString(16);
+          const c = (val.charCodeAt(i) & 0xff).toString(16);
           hex += c.length === 1 ? `0${c}` : c;
         }
         if (upper) {
@@ -652,7 +652,7 @@ class Printf {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   fmtV(val: any): string {
     if (this.flags.sharp) {
-      let options =
+      const options =
         this.flags.precision !== -1 ? { depth: this.flags.precision } : {};
       return this.pad(Deno.inspect(val, options));
     } else {
@@ -669,6 +669,6 @@ class Printf {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function sprintf(format: string, ...args: any[]): string {
-  let printf = new Printf(format, ...args);
+  const printf = new Printf(format, ...args);
   return printf.doPrintf();
 }

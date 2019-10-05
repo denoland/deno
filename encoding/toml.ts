@@ -64,8 +64,8 @@ class Parser {
       return line.match(/'''/) ? true : false;
     }
 
-    let merged = [],
-      acc = [],
+    const merged = [];
+    let acc = [],
       isLiteral = false,
       capture = false,
       captureType = "",
@@ -123,14 +123,14 @@ class Parser {
     this.tomlLines = merged;
   }
   _unflat(keys: string[], values: object = {}, cObj: object = {}): object {
-    let out: Record<string, unknown> = {};
+    const out: Record<string, unknown> = {};
     if (keys.length === 0) {
       return cObj;
     } else {
       if (Object.keys(cObj).length === 0) {
         cObj = values;
       }
-      let key: string | undefined = keys.pop();
+      const key: string | undefined = keys.pop();
       if (key) {
         out[key] = cObj;
       }
@@ -152,7 +152,7 @@ class Parser {
     delete this.context.currentGroup;
   }
   _split(str: string): string[] {
-    let out = [];
+    const out = [];
     out.push(...str.split("\n"));
     return out;
   }
@@ -233,8 +233,8 @@ class Parser {
       const reg = /([a-zA-Z0-9-_\.]*) (=)/gi;
       let result;
       while ((result = reg.exec(dataString))) {
-        let ogVal = result[0];
-        let newVal = ogVal
+        const ogVal = result[0];
+        const newVal = ogVal
           .replace(result[1], `"${result[1]}"`)
           .replace(result[2], ":");
         dataString = dataString.replace(ogVal, newVal);
@@ -332,9 +332,9 @@ class Parser {
         }
       }
       if (this._isDeclaration(line)) {
-        let kv = this._processDeclaration(line);
-        let key = kv.key;
-        let value = kv.value;
+        const kv = this._processDeclaration(line);
+        const key = kv.key;
+        const value = kv.value;
         if (!this.context.currentGroup) {
           this.context.output[key] = value;
         } else {
@@ -360,7 +360,7 @@ class Parser {
       let k = keys[i];
       if (k) {
         let v = obj[k];
-        let pathDeclaration = this._parseDeclarationName(k);
+        const pathDeclaration = this._parseDeclarationName(k);
         delete obj[k];
         if (pathDeclaration.length > 1) {
           const shift = pathDeclaration.shift();
@@ -400,7 +400,7 @@ function joinKeys(keys: string[]): string {
 }
 
 class Dumper {
-  maxPad: number = 0;
+  maxPad = 0;
   srcObject: object;
   output: string[] = [];
   constructor(srcObjc: object) {
@@ -507,11 +507,11 @@ class Dumper {
     }
   }
   _dateDeclaration(keys: string[], value: Date): string {
-    function dtPad(v: string, lPad: number = 2): string {
+    function dtPad(v: string, lPad = 2): string {
       return pad(v, lPad, { char: "0" });
     }
-    let m = dtPad((value.getUTCMonth() + 1).toString());
-    let d = dtPad(value.getUTCDate().toString());
+    const m = dtPad((value.getUTCMonth() + 1).toString());
+    const d = dtPad(value.getUTCDate().toString());
     const h = dtPad(value.getUTCHours().toString());
     const min = dtPad(value.getUTCMinutes().toString());
     const s = dtPad(value.getUTCSeconds().toString());

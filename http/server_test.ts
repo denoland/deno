@@ -349,7 +349,7 @@ const mockConn = {
 };
 
 test(async function readRequestError(): Promise<void> {
-  let input = `GET / HTTP/1.1
+  const input = `GET / HTTP/1.1
 malformedHeader
 `;
   const reader = new BufReader(new StringReader(input));
