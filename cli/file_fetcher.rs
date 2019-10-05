@@ -1284,8 +1284,6 @@ mod tests {
       assert!(r.is_err());
 
       let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
         .join("js/main.ts")
         .to_owned();
       let specifier =
@@ -1308,8 +1306,6 @@ mod tests {
       assert!(r.is_err());
 
       let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
         .join("js/main.ts")
         .to_owned();
       let specifier =

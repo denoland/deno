@@ -2,9 +2,9 @@
 #[cfg(feature = "no-snapshot-init")]
 use deno::Script;
 
+use crate::js::CLI_SNAPSHOT;
+use crate::js::COMPILER_SNAPSHOT;
 use deno::StartupData;
-use deno_cli_snapshots::CLI_SNAPSHOT;
-use deno_cli_snapshots::COMPILER_SNAPSHOT;
 
 #[cfg(feature = "no-snapshot-init")]
 pub fn deno_isolate_init() -> StartupData<'static> {

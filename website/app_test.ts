@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
-import { test, assertEquals } from "../js/test_util.ts";
+import { test, assertEquals } from "../cli/js/test_util.ts";
 import { runIfMain } from "../std/testing/mod.ts";
 import {
   BenchmarkRun,
