@@ -21,9 +21,9 @@
     "types": []
   },
   "files": [
-    "js/lib.web_assembly.d.ts",
-    "js/lib.deno_runtime.d.ts",
-    "js/main.ts",
-    "js/compiler.ts"
+    "cli/js/lib.web_assembly.d.ts",
+    "cli/js/lib.deno_runtime.d.ts",
+    "cli/js/main.ts",
+    "cli/js/compiler.ts"
   ]
 }

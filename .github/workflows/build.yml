@@ -6,15 +6,20 @@ jobs:
   build:
     name: ${{ matrix.kind }} ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     strategy:
       matrix:
         os: [macOS-10.14, windows-2016, ubuntu-16.04]
-        kind: ['test', 'bench']
+        kind: ['test', 'bench', 'lint']
         exclude:
           - os: windows-2016
             kind: 'bench'
+          - os: windows-2016
+            kind: 'lint'
           - os: macOS-10.14
             kind: 'bench'
+          - os: macOS-10.14
+            kind: 'lint'
     steps:
       - name: Configure git
         run: git config --global core.symlinks true
@@ -29,6 +34,12 @@ jobs:
         uses: hecrj/setup-rust-action@v1
         with:
           rust-version: "1.38.0"
+
+      - name: Install clippy and rustfmt
+        if: matrix.kind == 'lint'
+        run: |
+          rustup component add clippy
+          rustup component add rustfmt
 
       - name: Install python
         uses: actions/setup-python@v1
@@ -75,6 +86,18 @@ jobs:
           SCCACHE_IDLE_TIMEOUT: 0
         run: sccache --start-server
 
+      - name: lint.py
+        if: matrix.kind == 'lint'
+        run: python ./tools/lint.py
+
+      - name: test_format.py
+        if: matrix.kind == 'lint'
+        run: python ./tools/test_format.py
+
+      - name: Clippy
+        if: matrix.kind == 'lint'
+        run: cargo clippy --all-targets --release --locked -- -D clippy::all
+
       - name: Build
         run: cargo build --release --locked --all-targets
 
@@ -107,6 +130,30 @@ jobs:
         run: |
           cat /proc/cpuinfo
           cat /proc/meminfo
+
+      - name: Pre-release (linux)
+        if: startsWith(matrix.os, 'ubuntu')
+        run: gzip -c target/release/deno > target/release/deno_linux_x64.gz
+
+      - name: Pre-release (mac)
+        if: startsWith(matrix.os, 'macOS')
+        run: gzip -c target/release/deno > target/release/deno_osx_x64.gz
+
+      - name: Pre-release (windows)
+        if: startsWith(matrix.os, 'windows')
+        run: PowerShell -Command "& {Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno_win_x64.zip}"
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        if: matrix.kind == 'test' && startsWith(github.ref, 'refs/tags/')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          files: |
+            target/release/deno_win_x64.zip
+            target/release/deno_linux_x64.gz
+            target/release/deno_osx_x64.gz
+          draft: true
 
       - name: Stop sccache
         run: sccache --stop-server

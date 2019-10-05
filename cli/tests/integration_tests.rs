@@ -42,7 +42,7 @@ fn js_unit_tests() {
     .arg("--reload")
     .arg("--allow-run")
     .arg("--allow-env")
-    .arg("js/unit_test_runner.ts")
+    .arg("cli/js/unit_test_runner.ts")
     .spawn()
     .expect("failed to spawn script");
   let status = deno.wait().expect("failed to wait for the child process");
@@ -302,12 +302,6 @@ itest!(_041_info_flag {
 itest!(_042_dyn_import_evalcontext {
   args: "run --allow-read --reload 042_dyn_import_evalcontext.ts",
   output: "042_dyn_import_evalcontext.ts.out",
-});
-
-itest!(_043_xeval_delim2 {
-  args: "xeval -d MADAM console.log($)",
-  input: Some("!MADMADAMADAM!"),
-  output: "043_xeval_delim2.out",
 });
 
 itest!(_044_bad_resource {

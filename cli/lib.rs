@@ -9,7 +9,6 @@ extern crate futures;
 extern crate serde_json;
 extern crate clap;
 extern crate deno;
-extern crate deno_cli_snapshots;
 extern crate indexmap;
 #[cfg(unix)]
 extern crate nix;
@@ -32,6 +31,7 @@ mod global_timer;
 mod http_body;
 mod http_util;
 mod import_map;
+mod js;
 pub mod msg;
 pub mod ops;
 pub mod permissions;
@@ -121,7 +121,7 @@ fn create_worker_and_state(
 }
 
 fn types_command() {
-  let content = deno_cli_snapshots::get_asset("lib.deno_runtime.d.ts").unwrap();
+  let content = crate::js::get_asset("lib.deno_runtime.d.ts").unwrap();
   println!("{}", content);
 }
 
@@ -297,30 +297,6 @@ fn eval_command(flags: DenoFlags, argv: Vec<String>) {
   tokio_util::run(main_future);
 }
 
-fn xeval_command(flags: DenoFlags, argv: Vec<String>) {
-  let xeval_replvar = flags.xeval_replvar.clone().unwrap();
-  let (mut worker, state) = create_worker_and_state(flags, argv);
-  let xeval_source = format!(
-    "window._xevalWrapper = async function ({}){{
-        {}
-      }}",
-    &xeval_replvar, &state.argv[1]
-  );
-
-  let main_future = lazy(move || {
-    // Setup runtime.
-    js_check(worker.execute(&xeval_source));
-    js_check(worker.execute("denoMain()"));
-    worker
-      .then(|result| {
-        js_check(result);
-        Ok(())
-      })
-      .map_err(print_err_and_exit)
-  });
-  tokio_util::run(main_future);
-}
-
 fn bundle_command(flags: DenoFlags, argv: Vec<String>) {
   let (mut _worker, state) = create_worker_and_state(flags, argv);
 
@@ -429,6 +405,5 @@ pub fn main() {
     DenoSubcommand::Run => run_script(flags, argv),
     DenoSubcommand::Types => types_command(),
     DenoSubcommand::Version => version_command(),
-    DenoSubcommand::Xeval => xeval_command(flags, argv),
   }
 }

@@ -4,5 +4,4 @@ members = [
   "core",
   "tools/hyper_hello",
   "deno_typescript",
-  "js",
 ]
