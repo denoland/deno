@@ -21,10 +21,6 @@ def main():
     os.chdir(os.path.join(root_path, "deno_typescript"))
     run(cargo_publish)
 
-    # Publish the deno_cli_snapshots crate.
-    os.chdir(os.path.join(root_path, "js"))
-    run(cargo_publish)
-
     # Publish the deno_cli crate.
     os.chdir(os.path.join(root_path, "cli"))
     run(cargo_publish)

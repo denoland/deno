@@ -91,7 +91,7 @@ pub fn op_fetch_asset(
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: FetchAssetArgs = serde_json::from_value(args)?;
-  if let Some(source_code) = deno_cli_snapshots::get_asset(&args.name) {
+  if let Some(source_code) = crate::js::get_asset(&args.name) {
     Ok(JsonOp::Sync(json!(source_code)))
   } else {
     panic!("op_fetch_asset bad asset {}", args.name)

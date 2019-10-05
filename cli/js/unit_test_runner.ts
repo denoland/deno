@@ -57,7 +57,7 @@ async function main(): Promise<void> {
       "run",
       "--no-prompt",
       ...cliPerms,
-      "js/unit_tests.ts"
+      "cli/js/unit_tests.ts"
     ];
 
     const p = Deno.run({
@@ -73,7 +73,7 @@ async function main(): Promise<void> {
     let result = 0;
 
     if (!actual && !expected) {
-      console.error("Bad js/unit_test.ts output");
+      console.error("Bad cli/js/unit_test.ts output");
       result = 1;
     } else if (expected !== actual) {
       result = 1;
