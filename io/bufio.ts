@@ -407,7 +407,7 @@ export class BufReader implements Reader {
  */
 export class BufWriter implements Writer {
   buf: Uint8Array;
-  n: number = 0;
+  n = 0;
   err: Error | null = null;
 
   /** return new BufWriter unless w is BufWriter */

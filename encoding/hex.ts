@@ -85,7 +85,7 @@ export function decode(
   dst: Uint8Array,
   src: Uint8Array
 ): [number, Error | void] {
-  var i = 0;
+  let i = 0;
   for (; i < Math.floor(src.length / 2); i++) {
     const [a, aOK] = fromHexChar(src[i * 2]);
     if (!aOK) {

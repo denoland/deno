@@ -271,7 +271,7 @@ function printIteratorEntries(
   // Too bad, so sad that separator for ECMAScript Map has been ' => '
   // What a distracting diff if you change a data structure to/from
   // ECMAScript Object or Immutable.Map/OrderedMap which use the default.
-  separator: string = ": "
+  separator = ": "
 ): string {
   let result = "";
   let current = iterator.next();

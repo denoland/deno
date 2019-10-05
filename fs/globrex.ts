@@ -127,7 +127,7 @@ export function globrex(
     if (c === ")") {
       if (ext.length) {
         add(c);
-        let type: string | undefined = ext.pop();
+        const type: string | undefined = ext.pop();
         if (type === "@") {
           add("{1}");
         } else if (type === "!") {
@@ -264,19 +264,19 @@ export function globrex(
       }
       // Move over all consecutive "*"'s.
       // Also store the previous and next characters
-      let prevChar = glob[i - 1];
+      const prevChar = glob[i - 1];
       let starCount = 1;
       while (glob[i + 1] === "*") {
         starCount++;
         i++;
       }
-      let nextChar = glob[i + 1];
+      const nextChar = glob[i + 1];
       if (!globstar) {
         // globstar is disabled, so treat any number of "*" as one
         add(".*");
       } else {
         // globstar is enabled, so determine if this is a globstar segment
-        let isGlobstar =
+        const isGlobstar =
           starCount > 1 && // multiple "*"'s
           // from the start of the segment
           [SEP_RAW, "/", undefined].includes(prevChar) &&

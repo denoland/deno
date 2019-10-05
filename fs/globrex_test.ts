@@ -19,14 +19,14 @@ function match(
     opts = strWin;
     strWin = "";
   }
-  let res = globrex(glob, opts);
+  const res = globrex(glob, opts);
   return res.regex.test(isWin && strWin ? strWin : strUnix);
 }
 
 test({
   name: "globrex: standard",
   fn(): void {
-    let res = globrex("*.js");
+    const res = globrex("*.js");
     t.equal(typeof globrex, "function", "constructor is a typeof function");
     t.equal(res instanceof Object, true, "returns object");
     t.equal(res.regex.toString(), "/^.*\\.js$/", "returns regex object");

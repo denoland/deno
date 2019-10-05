@@ -79,7 +79,7 @@ function getFlagFromPermission(perm: Permission): string {
 function getInstallerDir(): string {
   // In Windows's Powershell $HOME environmental variable maybe null
   // if so use $HOMEPATH instead.
-  let { HOME, HOMEPATH } = env();
+  const { HOME, HOMEPATH } = env();
 
   const HOME_PATH = HOME || HOMEPATH;
 
@@ -109,7 +109,7 @@ function checkIfExistsInPath(filePath: string): boolean {
   // $HOMEDRIVE is only used on Windows.
   const { PATH, Path, HOMEDRIVE } = env();
 
-  let envPath = (PATH as string) || (Path as string) || "";
+  const envPath = (PATH as string) || (Path as string) || "";
 
   const paths = envPath.split(isWindows ? ";" : ":");
 

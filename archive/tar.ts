@@ -96,7 +96,7 @@ function clean(length: number): Uint8Array {
 }
 
 function pad(num: number, bytes: number, base?: number): string {
-  var numString = num.toString(base || 8);
+  const numString = num.toString(base || 8);
   return "000000000000".substr(numString.length + 12 - bytes) + numString;
 }
 
@@ -328,7 +328,7 @@ export class Tar {
     // set meta data
     const info = opts.filePath && (await Deno.stat(opts.filePath));
 
-    let mode =
+    const mode =
         opts.fileMode || (info && info.mode) || parseInt("777", 8) & 0xfff,
       mtime =
         opts.mtime ||
@@ -385,8 +385,9 @@ export class Tar {
   getReader(): Deno.Reader {
     const readers: Deno.Reader[] = [];
     this.data.forEach((tarData): void => {
-      let { filePath, reader } = tarData,
-        headerArr = formatHeader(tarData);
+      let { reader } = tarData;
+      const { filePath } = tarData;
+      const headerArr = formatHeader(tarData);
       readers.push(new Deno.Buffer(headerArr));
       if (!reader) {
         reader = new FileReader(filePath!);

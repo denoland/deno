@@ -1,5 +1,7 @@
 // Copyright the Browserify authors. MIT License.
 // Ported from https://github.com/browserify/path-browserify/
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// TODO(kt3k): fix any types in this file
 
 import { test } from "../../testing/mod.ts";
 import { assertEquals } from "../../testing/asserts.ts";
@@ -80,7 +82,7 @@ const unixSpecialCaseFormatTests = [
 ];
 
 function checkParseFormat(path: any, paths: any): void {
-  paths.forEach(function(p: Record<string, unknown>[]) {
+  paths.forEach(function(p: Array<Record<string, unknown>>) {
     const element = p[0];
     const output = path.parse(element);
     assertEquals(typeof output.root, "string");
@@ -96,7 +98,7 @@ function checkParseFormat(path: any, paths: any): void {
 }
 
 function checkSpecialCaseParseFormat(path: any, testCases: any): void {
-  testCases.forEach(function(testCase: Record<string, unknown>[]) {
+  testCases.forEach(function(testCase: Array<Record<string, unknown>>) {
     const element = testCase[0];
     const expect = testCase[1];
     const output = path.parse(element);

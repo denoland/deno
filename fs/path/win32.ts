@@ -304,7 +304,7 @@ export function join(...paths: string[]): string {
   let joined: string | undefined;
   let firstPart: string;
   for (let i = 0; i < pathsCount; ++i) {
-    let path = paths[i];
+    const path = paths[i];
     assertPath(path);
     if (path.length > 0) {
       if (joined === undefined) joined = firstPart = path;
@@ -369,8 +369,8 @@ export function relative(from: string, to: string): string {
 
   if (from === to) return "";
 
-  let fromOrig = resolve(from);
-  let toOrig = resolve(to);
+  const fromOrig = resolve(from);
+  const toOrig = resolve(to);
 
   if (fromOrig === toOrig) return "";
 
@@ -389,7 +389,7 @@ export function relative(from: string, to: string): string {
   for (; fromEnd - 1 > fromStart; --fromEnd) {
     if (from.charCodeAt(fromEnd - 1) !== CHAR_BACKWARD_SLASH) break;
   }
-  let fromLen = fromEnd - fromStart;
+  const fromLen = fromEnd - fromStart;
 
   // Trim any leading backslashes
   let toStart = 0;
@@ -401,10 +401,10 @@ export function relative(from: string, to: string): string {
   for (; toEnd - 1 > toStart; --toEnd) {
     if (to.charCodeAt(toEnd - 1) !== CHAR_BACKWARD_SLASH) break;
   }
-  let toLen = toEnd - toStart;
+  const toLen = toEnd - toStart;
 
   // Compare paths to find the longest common path from root
-  let length = fromLen < toLen ? fromLen : toLen;
+  const length = fromLen < toLen ? fromLen : toLen;
   let lastCommonSep = -1;
   let i = 0;
   for (; i <= length; ++i) {
@@ -433,8 +433,8 @@ export function relative(from: string, to: string): string {
       }
       break;
     }
-    let fromCode = from.charCodeAt(fromStart + i);
-    let toCode = to.charCodeAt(toStart + i);
+    const fromCode = from.charCodeAt(fromStart + i);
+    const toCode = to.charCodeAt(toStart + i);
     if (fromCode !== toCode) break;
     else if (fromCode === CHAR_BACKWARD_SLASH) lastCommonSep = i;
   }
@@ -737,6 +737,7 @@ export function extname(path: string): string {
 }
 
 export function format(pathObject: FormatInputPathObject): string {
+  /* eslint-disable max-len */
   if (pathObject === null || typeof pathObject !== "object") {
     throw new TypeError(
       `The "pathObject" argument must be of type Object. Received type ${typeof pathObject}`
@@ -748,7 +749,7 @@ export function format(pathObject: FormatInputPathObject): string {
 export function parse(path: string): ParsedPath {
   assertPath(path);
 
-  let ret: ParsedPath = { root: "", dir: "", base: "", ext: "", name: "" };
+  const ret: ParsedPath = { root: "", dir: "", base: "", ext: "", name: "" };
 
   const len = path.length;
   if (len === 0) return ret;

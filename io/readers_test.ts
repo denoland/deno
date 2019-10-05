@@ -17,13 +17,13 @@ test(async function ioStringReader(): Promise<void> {
 test(async function ioStringReader(): Promise<void> {
   const r = new StringReader("abcdef");
   const buf = new Uint8Array(3);
-  let res1 = await r.read(buf);
+  const res1 = await r.read(buf);
   assertEquals(res1, 3);
   assertEquals(decode(buf), "abc");
-  let res2 = await r.read(buf);
+  const res2 = await r.read(buf);
   assertEquals(res2, 3);
   assertEquals(decode(buf), "def");
-  let res3 = await r.read(buf);
+  const res3 = await r.read(buf);
   assertEquals(res3, Deno.EOF);
   assertEquals(decode(buf), "def");
 });

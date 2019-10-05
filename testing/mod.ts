@@ -62,7 +62,7 @@ function disableConsole(): void {
 }
 
 const encoder = new TextEncoder();
-function print(txt: string, newline: boolean = true): void {
+function print(txt: string, newline = true): void {
   if (newline) {
     txt += "\n";
   }
@@ -172,11 +172,11 @@ function createTestResults(tests: TestDefinition[]): TestResults {
   );
 }
 
-function formatTestTime(time: number = 0): string {
+function formatTestTime(time = 0): string {
   return `${time.toFixed(2)}ms`;
 }
 
-function promptTestTime(time: number = 0, displayWarning = false): string {
+function promptTestTime(time = 0, displayWarning = false): string {
   // if time > 5s we display a warning
   // only for test time, not the full runtime
   if (displayWarning && time >= 5000) {
@@ -308,10 +308,9 @@ async function runTestsSerial(
       print(`${yellow("RUNNING")} ${name}`, false);
     }
     try {
-      let start, end;
-      start = performance.now();
+      const start = performance.now();
       await fn();
-      end = performance.now();
+      const end = performance.now();
       if (disableLog) {
         // Rewriting the current prompt line to erase `running ....`
         print(CLEAR_LINE, false);

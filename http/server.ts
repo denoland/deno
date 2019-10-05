@@ -139,7 +139,7 @@ export class ServerRequest {
           let line = await tp.readLine();
           if (line === Deno.EOF) throw new UnexpectedEOFError();
           // TODO: handle chunk extension
-          let [chunkSizeString] = line.split(";");
+          const [chunkSizeString] = line.split(";");
           let chunkSize = parseInt(chunkSizeString, 16);
           if (Number.isNaN(chunkSize) || chunkSize < 0) {
             throw new Error("Invalid chunk size");
@@ -157,7 +157,7 @@ export class ServerRequest {
           }
           const entityHeaders = await tp.readMIMEHeader();
           if (entityHeaders !== Deno.EOF) {
-            for (let [k, v] of entityHeaders) {
+            for (const [k, v] of entityHeaders) {
               this.headers.set(k, v);
             }
           }
@@ -242,8 +242,6 @@ export function parseHTTPVersion(vers: string): [number, number] {
     default: {
       const Big = 1000000; // arbitrary upper bound
       const digitReg = /^\d+$/; // test if string is only digit
-      let major: number;
-      let minor: number;
 
       if (!vers.startsWith("HTTP/")) {
         break;
@@ -254,8 +252,8 @@ export function parseHTTPVersion(vers: string): [number, number] {
         break;
       }
 
-      let majorStr = vers.substring(vers.indexOf("/") + 1, dot);
-      major = parseInt(majorStr);
+      const majorStr = vers.substring(vers.indexOf("/") + 1, dot);
+      const major = parseInt(majorStr);
       if (
         !digitReg.test(majorStr) ||
         isNaN(major) ||
@@ -265,8 +263,8 @@ export function parseHTTPVersion(vers: string): [number, number] {
         break;
       }
 
-      let minorStr = vers.substring(dot + 1);
-      minor = parseInt(minorStr);
+      const minorStr = vers.substring(dot + 1);
+      const minor = parseInt(minorStr);
       if (
         !digitReg.test(minorStr) ||
         isNaN(minor) ||

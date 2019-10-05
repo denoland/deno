@@ -7,7 +7,7 @@ import { test } from "../testing/mod.ts";
 test({
   name: "[HTTP] Cookie parser",
   fn(): void {
-    let req = new ServerRequest();
+    const req = new ServerRequest();
     req.headers = new Headers();
     assertEquals(getCookies(req), {});
     req.headers = new Headers();
@@ -35,7 +35,7 @@ test({
 test({
   name: "[HTTP] Cookie Delete",
   fn(): void {
-    let res: Response = {};
+    const res: Response = {};
     delCookie(res, "deno");
     assertEquals(
       res.headers!.get("Set-Cookie"),
@@ -47,7 +47,7 @@ test({
 test({
   name: "[HTTP] Cookie Set",
   fn(): void {
-    let res: Response = {};
+    const res: Response = {};
 
     res.headers = new Headers();
     setCookie(res, { name: "Space", value: "Cat" });

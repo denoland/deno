@@ -1,5 +1,5 @@
 {
-  "extends": "tsconfig.test.json",
+  "extends": "./tsconfig.test.json",
   "compilerOptions": {
     "allowJs": true,
     "baseUrl": ".",

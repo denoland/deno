@@ -27,7 +27,8 @@ test(function normalizeZeroLength() {
 });
 
 test(function isAbsoluteZeroLength() {
-  // Since '' is not a valid path in any of the common environments, return false
+  // Since '' is not a valid path in any of the common environments,
+  // return false
   assertEquals(path.posix.isAbsolute(""), false);
   if (path.win32) assertEquals(path.win32.isAbsolute(""), false);
 });
@@ -40,7 +41,8 @@ test(function resolveZeroLength() {
 });
 
 test(function relativeZeroLength() {
-  // relative, internally calls resolve. So, '' is actually the current directory
+  // relative, internally calls resolve. So, '' is actually the current
+  // directory
   assertEquals(path.relative("", pwd), "");
   assertEquals(path.relative(pwd, ""), "");
   assertEquals(path.relative(pwd, pwd), "");

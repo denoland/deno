@@ -59,7 +59,7 @@ function toString(cookie: Cookie): string {
     out.push(`Path=${cookie.path}`);
   }
   if (cookie.expires) {
-    let dateString = toIMF(cookie.expires);
+    const dateString = toIMF(cookie.expires);
     out.push(`Expires=${dateString}`);
   }
   if (cookie.unparsed) {

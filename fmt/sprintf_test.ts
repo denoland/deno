@@ -3,7 +3,7 @@ import { sprintf } from "./sprintf.ts";
 import { assertEquals } from "../testing/asserts.ts";
 import { test, runIfMain } from "../testing/mod.ts";
 
-let S = sprintf;
+const S = sprintf;
 
 test(function noVerb(): void {
   assertEquals(sprintf("bla"), "bla");
@@ -589,8 +589,8 @@ const tests: Array<[string, any, string]> = [
 test(function testThorough(): void {
   tests.forEach((t, i): void => {
     //            p(t)
-    let is = S(t[0], t[1]);
-    let should = t[2];
+    const is = S(t[0], t[1]);
+    const should = t[2];
     assertEquals(
       is,
       should,
@@ -608,7 +608,7 @@ test(function testWeirdos(): void {
 });
 
 test(function formatV(): void {
-  let a = { a: { a: { a: { a: { a: { a: { a: {} } } } } } } };
+  const a = { a: { a: { a: { a: { a: { a: { a: {} } } } } } } };
   assertEquals(S("%v", a), "[object Object]");
   assertEquals(S("%#v", a), "{ a: { a: { a: { a: [Object] } } } }");
   assertEquals(
@@ -619,18 +619,18 @@ test(function formatV(): void {
 });
 
 test(function formatJ(): void {
-  let a = { a: { a: { a: { a: { a: { a: { a: {} } } } } } } };
+  const a = { a: { a: { a: { a: { a: { a: { a: {} } } } } } } };
   assertEquals(S("%j", a), `{"a":{"a":{"a":{"a":{"a":{"a":{"a":{}}}}}}}}`);
 });
 
 test(function flagLessThan(): void {
-  let a = { a: { a: { a: { a: { a: { a: { a: {} } } } } } } };
-  let aArray = [a, a, a];
+  const a = { a: { a: { a: { a: { a: { a: { a: {} } } } } } } };
+  const aArray = [a, a, a];
   assertEquals(
     S("%<#.1v", aArray),
     "[ { a: [Object] }, { a: [Object] }, { a: [Object] } ]"
   );
-  let fArray = [1.2345, 0.98765, 123456789.5678];
+  const fArray = [1.2345, 0.98765, 123456789.5678];
   assertEquals(S("%<.2f", fArray), "[ 1.23, 0.99, 123456789.57 ]");
 });
 

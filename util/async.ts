@@ -100,7 +100,7 @@ export async function collectUint8Arrays(
   }
   const collected = new Uint8Array(length);
   let offset = 0;
-  for (let chunk of chunks) {
+  for (const chunk of chunks) {
     collected.set(chunk, offset);
     offset += chunk.length;
   }

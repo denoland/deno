@@ -32,7 +32,7 @@ async function readBytes(buf: BufReader): Promise<string> {
   const b = new Uint8Array(1000);
   let nb = 0;
   while (true) {
-    let c = await buf.readByte();
+    const c = await buf.readByte();
     if (c === Deno.EOF) {
       break; // EOF
     }
@@ -122,10 +122,10 @@ test(async function bufioBufReader(): Promise<void> {
   }
   texts[texts.length - 1] = all;
 
-  for (let text of texts) {
-    for (let readmaker of readMakers) {
-      for (let bufreader of bufreaders) {
-        for (let bufsize of bufsizes) {
+  for (const text of texts) {
+    for (const readmaker of readMakers) {
+      for (const bufreader of bufreaders) {
+        for (const bufsize of bufsizes) {
           const read = readmaker.fn(stringsReader(text));
           const buf = new BufReader(read, bufsize);
           const s = await bufreader.fn(buf);
@@ -210,8 +210,8 @@ class TestReader implements Reader {
 async function testReadLine(input: Uint8Array): Promise<void> {
   for (let stride = 1; stride < 2; stride++) {
     let done = 0;
-    let reader = new TestReader(input, stride);
-    let l = new BufReader(reader, input.byteLength + 1);
+    const reader = new TestReader(input, stride);
+    const l = new BufReader(reader, input.byteLength + 1);
     while (true) {
       const r = await l.readLine();
       if (r === Deno.EOF) {
@@ -220,7 +220,7 @@ async function testReadLine(input: Uint8Array): Promise<void> {
       const { line, more } = r;
       assertEquals(more, false);
       // eslint-disable-next-line @typescript-eslint/restrict-plus-operands
-      let want = testOutput.subarray(done, done + line.byteLength);
+      const want = testOutput.subarray(done, done + line.byteLength);
       assertEquals(
         line,
         want,
@@ -244,9 +244,9 @@ test(async function bufioReadLine(): Promise<void> {
 
 test(async function bufioPeek(): Promise<void> {
   const decoder = new TextDecoder();
-  let p = new Uint8Array(10);
+  const p = new Uint8Array(10);
   // string is 16 (minReadBufferSize) long.
-  let buf = new BufReader(
+  const buf = new BufReader(
     stringsReader("abcdefghijklmnop"),
     MIN_READ_BUFFER_SIZE
   );
@@ -281,7 +281,7 @@ test(async function bufioPeek(): Promise<void> {
   actual = assertNotEOF(await buf.peek(2));
   assertEquals(decoder.decode(actual), "de");
 
-  let res = await buf.read(p.subarray(0, 3));
+  const res = await buf.read(p.subarray(0, 3));
   assertEquals(decoder.decode(p.subarray(0, 3)), "def");
   assert(res !== Deno.EOF);
 
@@ -327,8 +327,8 @@ test(async function bufioWriter(): Promise<void> {
   }
 
   const w = new Buffer();
-  for (let nwrite of bufsizes) {
-    for (let bs of bufsizes) {
+  for (const nwrite of bufsizes) {
+    for (const bs of bufsizes) {
       // Write nwrite bytes using buffer size bs.
       // Check that the right amount makes it out
       // and that the data is correct.

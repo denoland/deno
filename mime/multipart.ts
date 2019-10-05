@@ -130,7 +130,7 @@ export function scanUntilBoundary(
 
 class PartReader implements Reader, Closer {
   n: number | Deno.EOF = 0;
-  total: number = 0;
+  total = 0;
 
   constructor(private mr: MultipartReader, public readonly headers: Headers) {}
 
@@ -312,7 +312,7 @@ export class MultipartReader {
   }
 
   private currentPart: PartReader | undefined;
-  private partsRead: number = 0;
+  private partsRead = 0;
 
   private async nextPart(): Promise<PartReader | Deno.EOF> {
     if (this.currentPart) {
@@ -359,7 +359,7 @@ export class MultipartReader {
     if (!hasPrefix(line, this.dashBoundaryDash)) {
       return false;
     }
-    let rest = line.slice(this.dashBoundaryDash.length, line.length);
+    const rest = line.slice(this.dashBoundaryDash.length, line.length);
     return rest.length === 0 || equal(skipLWSPChar(rest), this.newLine);
   }
 
@@ -375,7 +375,7 @@ export class MultipartReader {
 class PartWriter implements Writer {
   closed = false;
   private readonly partHeader: string;
-  private headersWritten: boolean = false;
+  private headersWritten = false;
 
   constructor(
     private writer: Writer,
@@ -436,7 +436,7 @@ export class MultipartWriter {
 
   private lastPart: PartWriter | undefined;
   private bufWriter: BufWriter;
-  private isClosed: boolean = false;
+  private isClosed = false;
 
   constructor(private readonly writer: Writer, boundary?: string) {
     if (boundary !== void 0) {

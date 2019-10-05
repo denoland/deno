@@ -118,7 +118,7 @@ export function currentDayOfYear(): number {
  * @return IMF date formated string
  */
 export function toIMF(date: Date): string {
-  function dtPad(v: string, lPad: number = 2): string {
+  function dtPad(v: string, lPad = 2): string {
     return pad(v, lPad, { char: "0" });
   }
   const d = dtPad(date.getUTCDate().toString());

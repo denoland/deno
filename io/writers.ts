@@ -5,7 +5,7 @@ import { decode, encode } from "../strings/mod.ts";
 /** Writer utility for buffering string chunks */
 export class StringWriter implements Writer {
   private chunks: Uint8Array[] = [];
-  private byteLength: number = 0;
+  private byteLength = 0;
   private cache: string | undefined;
 
   constructor(private base: string = "") {

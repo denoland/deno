@@ -6,7 +6,7 @@ import { copyBytes, tempFile } from "./util.ts";
 import * as path from "../fs/path.ts";
 
 test(function testCopyBytes(): void {
-  let dst = new Uint8Array(4);
+  const dst = new Uint8Array(4);
 
   dst.fill(0);
   let src = Uint8Array.of(1, 2);

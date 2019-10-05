@@ -23,6 +23,7 @@ type Define = (
 /* eslint-disable @typescript-eslint/no-namespace */
 declare global {
   namespace globalThis {
+    // eslint-disable-next-line no-var
     var define: Define | undefined;
   }
 }
