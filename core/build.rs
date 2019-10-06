@@ -51,8 +51,6 @@ mod gn {
       // Tell Cargo when to re-run this file. We do this first, so these directives
       // can take effect even if something goes wrong later in the build process.
       println!("cargo:rerun-if-env-changed=DENO_BUILD_PATH");
-      // TODO: this is obviously not appropriate here.
-      println!("cargo:rerun-if-env-changed=APPVEYOR_REPO_COMMIT");
 
       // This helps Rust source files locate the snapshot, source map etc.
       println!("cargo:rustc-env=GN_OUT_DIR={}", gn_out_dir);
