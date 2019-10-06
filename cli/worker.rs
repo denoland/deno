@@ -4,7 +4,6 @@ use crate::ops::json_op;
 use crate::ops::minimal_op;
 use crate::ops::*;
 use crate::state::ThreadSafeState;
-use crate::tokio_util;
 use deno;
 use deno::ErrBox;
 use deno::ModuleSpecifier;
@@ -345,15 +344,6 @@ impl Worker {
       }
     })
   }
-
-  /// Executes the provided JavaScript module.
-  pub fn execute_mod(
-    &mut self,
-    module_specifier: &ModuleSpecifier,
-    is_prefetch: bool,
-  ) -> Result<(), ErrBox> {
-    tokio_util::block_on(self.execute_mod_async(module_specifier, is_prefetch))
-  }
 }
 
 impl Future for Worker {
@@ -399,11 +389,14 @@ mod tests {
     tokio_util::run(lazy(move || {
       let mut worker =
         Worker::new("TEST".to_string(), StartupData::None, state);
-      let result = worker.execute_mod(&module_specifier, false);
-      if let Err(err) = result {
-        eprintln!("execute_mod err {:?}", err);
-      }
-      tokio_util::panic_on_error(worker)
+      worker
+        .execute_mod_async(&module_specifier, false)
+        .then(|result| {
+          if let Err(err) = result {
+            eprintln!("execute_mod err {:?}", err);
+          }
+          tokio_util::panic_on_error(worker)
+        })
     }));
 
     let metrics = &state_.metrics;
@@ -433,11 +426,14 @@ mod tests {
     tokio_util::run(lazy(move || {
       let mut worker =
         Worker::new("TEST".to_string(), StartupData::None, state);
-      let result = worker.execute_mod(&module_specifier, false);
-      if let Err(err) = result {
-        eprintln!("execute_mod err {:?}", err);
-      }
-      tokio_util::panic_on_error(worker)
+      worker
+        .execute_mod_async(&module_specifier, false)
+        .then(|result| {
+          if let Err(err) = result {
+            eprintln!("execute_mod err {:?}", err);
+          }
+          tokio_util::panic_on_error(worker)
+        })
     }));
 
     let metrics = &state_.metrics;
@@ -449,6 +445,7 @@ mod tests {
   #[test]
   fn execute_006_url_imports() {
     let http_server_guard = crate::test_util::http_server();
+
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
       .parent()
       .unwrap()
@@ -469,11 +466,14 @@ mod tests {
         state,
       );
       worker.execute("denoMain()").unwrap();
-      let result = worker.execute_mod(&module_specifier, false);
-      if let Err(err) = result {
-        eprintln!("execute_mod err {:?}", err);
-      }
-      tokio_util::panic_on_error(worker)
+      worker
+        .execute_mod_async(&module_specifier, false)
+        .then(|result| {
+          if let Err(err) = result {
+            eprintln!("execute_mod err {:?}", err);
+          }
+          tokio_util::panic_on_error(worker)
+        })
     }));
 
     let metrics = &state_.metrics;
