@@ -160,6 +160,9 @@ git clone --recurse-submodules https://github.com/denoland/deno.git
 Now we can start the build:
 
 ```bash
+# Initialize third party modules
+git submodule update --init
+
 # Build.
 cargo build -vv
 
