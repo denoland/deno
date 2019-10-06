@@ -6,6 +6,36 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.20.0 / 2019.10.06
+
+In deno:
+
+- feat: Add Deno.hostname() (#3032)
+- feat: Add support for passing a key to Deno.env() (#2952)
+- feat: JSX Support (#3038)
+- feat: Replace Isolate::set_dispatch with Isolate::register_op (#3002, #3039,
+  #3041)
+- feat: window.onunload (#3023)
+- fix: Async compiler processing (#3043)
+- fix: Implement ignoreBOM option of UTF8Decoder in text_encoding (#3040)
+- fix: Support top-level-await in TypeScript (#3024)
+- fix: iterators on UrlSearchParams (#3044)
+- fix: listenDefaults/dialDefaults may be overriden in some cases (#3027)
+- upgrade: V8 to 7.9.218 (#3067)
+- upgrade: rust to 1.38.0 (#3030)
+- chore: Migrate CI to github actions (#3052, #3056, #3049, #3071, #3076, #3070,
+  #3066, #3061, #3010)
+- chore: Remove deno_cli_snapshots crate. Move //js to //cli/js (#3064)
+- chore: use xeval from deno_std (#3058)
+
+In deno_std:
+
+- feat: test runner v2 (denoland/deno_std#604)
+- feat: wss support with dialTLS (denoland/deno_std#615)
+- fix(ws): mask must not be set by default for server (denoland/deno_std#616)
+- fix: Implement expandGlob() and expandGlobSync() (denoland/deno_std#617)
+- upgrade: eslint and @typescript-eslint (denoland/deno_std#621)
+
 ### v0.19.0 / 2019.09.24
 
 In deno:
