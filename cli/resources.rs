@@ -184,10 +184,12 @@ impl Resource {
       // Caveat: TcpListener by itself also only tracks an accept task at a time.
       // See https://github.com/tokio-rs/tokio/issues/846#issuecomment-454208883
       if t.is_some() {
-        return Err(std::io::Error::new(
-          std::io::ErrorKind::Other,
-          "Another accept task is ongoing",
-        ));
+        return Ok(());
+        // TODO(bartlomieju):
+        // return Err(std::io::Error::new(
+        //   std::io::ErrorKind::Other,
+        //   "Another accept task is ongoing",
+        // ));
       }
       t.replace(futures::task::current());
     }
