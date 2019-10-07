@@ -109,16 +109,16 @@ impl Future for Accept {
       // notified to error out (instead of stuck forever).
       AcceptState::Pending(ref mut r) => match r.poll_accept() {
         Ok(futures::prelude::Async::Ready(t)) => {
-          //          r.untrack_task();
+          r.untrack_task();
           t
         }
         Ok(futures::prelude::Async::NotReady) => {
           // Would error out if another accept task is being tracked.
-          //          r.track_task()?;
+          r.track_task()?;
           return Ok(futures::prelude::Async::NotReady);
         }
         Err(e) => {
-          //          r.untrack_task();
+          r.untrack_task();
           return Err(e);
         }
       },
