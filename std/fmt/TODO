@@ -1,0 +1,12 @@
+
+* "native" formatting, json, arrays, object/structs, functions ...
+* %q %U
+* Java has a %n flag to print the plattform native newline... in POSIX
+  that means "number of chars printed so far", though.
+* use of Writer and Buffer internally in order to make FPrintf, Printf, etc.
+  easier and more elegant.
+* see "Discussion" in README
+
+*scanf , pack,unpack, annotated hex
+* error handling, consistantly
+* probably rewrite, now that I konw how it's done.

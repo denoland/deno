@@ -1,0 +1,3 @@
+steps:
+  - bash: curl -L https://deno.land/x/install/install.sh | sh -s $(DENO_VERSION)
+  - bash: echo '##vso[task.prependpath]$(HOME)/.deno/bin/'
