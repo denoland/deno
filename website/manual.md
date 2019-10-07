@@ -270,14 +270,12 @@ In this program each command-line argument is assumed to be a filename, the file
 is opened, and printed to stdout.
 
 ```ts
-(async () => {
-  for (let i = 1; i < Deno.args.length; i++) {
-    let filename = Deno.args[i];
-    let file = await Deno.open(filename);
-    await Deno.copy(Deno.stdout, file);
-    file.close();
-  }
-})();
+for (let i = 1; i < Deno.args.length; i++) {
+  let filename = Deno.args[i];
+  let file = await Deno.open(filename);
+  await Deno.copy(Deno.stdout, file);
+  file.close();
+}
 ```
 
 The `copy()` function here actually makes no more than the necessary kernel ->
@@ -297,17 +295,12 @@ This is an example of a simple server which accepts connections on port 8080,
 and returns to the client anything it sends.
 
 ```ts
-const { listen, copy } = Deno;
-
-(async () => {
-  const addr = "0.0.0.0:8080";
-  const listener = listen("tcp", addr);
-  console.log("listening on", addr);
-  while (true) {
-    const conn = await listener.accept();
-    copy(conn, conn);
-  }
-})();
+const listener = Deno.listen({ port: 8080 });
+console.log("listening on 0.0.0.0:8080");
+while (true) {
+  const conn = await listener.accept();
+  Deno.copy(conn, conn);
+}
 ```
 
 When this program is started, the user is prompted for permission to listen on
@@ -346,25 +339,23 @@ presented to the user.
 ```ts
 const { permissions, revokePermission, open, remove } = Deno;
 
-(async () => {
-  // lookup a permission
-  if (!permissions().write) {
-    throw new Error("need write permission");
-  }
+// lookup a permission
+if (!permissions().write) {
+  throw new Error("need write permission");
+}
 
-  const log = await open("request.log", "a+");
+const log = await open("request.log", "a+");
 
-  // revoke some permissions
-  revokePermission("read");
-  revokePermission("write");
+// revoke some permissions
+revokePermission("read");
+revokePermission("write");
 
-  // use the log file
-  const encoder = new TextEncoder();
-  await log.write(encoder.encode("hello\n"));
+// use the log file
+const encoder = new TextEncoder();
+await log.write(encoder.encode("hello\n"));
 
-  // this will prompt for the write permission or fail.
-  await remove("request.log");
-})();
+// this will prompt for the write permission or fail.
+await remove("request.log");
 ```
 
 ### File server
@@ -412,9 +403,7 @@ $ deno --allow-read=/etc https://deno.land/std/examples/cat.ts /etc/passwd
 This is an example to restrict host.
 
 ```ts
-(async () => {
-  const result = await fetch("https://deno.land/std/examples/echo_server.ts");
-})();
+const result = await fetch("https://deno.land/std/examples/echo_server.ts");
 ```
 
 ```shell
@@ -428,15 +417,13 @@ $ deno --allow-net=deno.land allow-net-whitelist-example.ts
 Example:
 
 ```ts
-window.onload = async function() {
-  // create subprocess
-  const p = Deno.run({
-    args: ["echo", "hello"]
-  });
+// create subprocess
+const p = Deno.run({
+  args: ["echo", "hello"]
+});
 
-  // await its completion
-  await p.status();
-};
+// await its completion
+await p.status();
 ```
 
 Run it:
@@ -456,36 +443,32 @@ By default when you use `Deno.run()` subprocess inherits `stdin`, `stdout` and
 you can use `"piped"` option.
 
 ```ts
-window.onload = async function() {
-  const decoder = new TextDecoder();
+const fileNames = Deno.args.slice(1);
 
-  const fileNames = Deno.args.slice(1);
+const p = Deno.run({
+  args: [
+    "deno",
+    "run",
+    "--allow-read",
+    "https://deno.land/std/examples/cat.ts",
+    ...fileNames
+  ],
+  stdout: "piped",
+  stderr: "piped"
+});
 
-  const p = Deno.run({
-    args: [
-      "deno",
-      "run",
-      "--allow-read",
-      "https://deno.land/std/examples/cat.ts",
-      ...fileNames
-    ],
-    stdout: "piped",
-    stderr: "piped"
-  });
+const { code } = await p.status();
 
-  const { code } = await p.status();
+if (code === 0) {
+  const rawOutput = await p.output();
+  await Deno.stdout.write(rawOutput);
+} else {
+  const rawError = await p.stderrOutput();
+  const errorString = new TextDecoder().decode(rawError);
+  console.log(errorString);
+}
 
-  if (code === 0) {
-    const rawOutput = await p.output();
-    await Deno.stdout.write(rawOutput);
-  } else {
-    const rawError = await p.stderrOutput();
-    const errorString = decoder.decode(rawError);
-    console.log(errorString);
-  }
-
-  Deno.exit(code);
-};
+Deno.exit(code);
 ```
 
 When you run it:
