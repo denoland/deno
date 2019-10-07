@@ -75,9 +75,11 @@ function modeToString(isDir: boolean, maybeMode: number | null): string {
     .split("")
     .reverse()
     .slice(0, 3)
-    .forEach((v): void => {
-      output = modeMap[+v] + output;
-    });
+    .forEach(
+      (v): void => {
+        output = modeMap[+v] + output;
+      }
+    );
   output = `(${isDir ? "d" : "-"}${output})`;
   return output;
 }
@@ -177,8 +179,9 @@ async function serveDir(
     dirViewerTemplate.replace("<%DIRNAME%>", formattedDirUrl).replace(
       "<%CONTENTS%>",
       listEntry
-        .sort((a, b): number =>
-          a.name.toLowerCase() > b.name.toLowerCase() ? 1 : -1
+        .sort(
+          (a, b): number =>
+            a.name.toLowerCase() > b.name.toLowerCase() ? 1 : -1
         )
         .map((v): string => v.template)
         .join("")

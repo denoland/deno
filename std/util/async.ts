@@ -20,9 +20,11 @@ export interface Deferred<T> extends Promise<T> {
  */
 export function deferred<T>(): Deferred<T> {
   let methods;
-  const promise = new Promise<T>((resolve, reject): void => {
-    methods = { resolve, reject };
-  });
+  const promise = new Promise<T>(
+    (resolve, reject): void => {
+      methods = { resolve, reject };
+    }
+  );
   return Object.assign(promise, methods)! as Deferred<T>;
 }
 
@@ -109,9 +111,10 @@ export async function collectUint8Arrays(
 
 // Delays the given milliseconds and resolves.
 export function delay(ms: number): Promise<void> {
-  return new Promise((res): number =>
-    setTimeout((): void => {
-      res();
-    }, ms)
+  return new Promise(
+    (res): number =>
+      setTimeout((): void => {
+        res();
+      }, ms)
   );
 }

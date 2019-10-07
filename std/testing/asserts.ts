@@ -56,10 +56,12 @@ function buildMessage(diffResult: ReadonlyArray<DiffResult<string>>): string[] {
   );
   messages.push("");
   messages.push("");
-  diffResult.forEach((result: DiffResult<string>): void => {
-    const c = createColor(result.type);
-    messages.push(c(`${createSign(result.type)}${result.value}`));
-  });
+  diffResult.forEach(
+    (result: DiffResult<string>): void => {
+      const c = createColor(result.type);
+      messages.push(c(`${createSign(result.type)}${result.value}`));
+    }
+  );
   messages.push("");
 
   return messages;

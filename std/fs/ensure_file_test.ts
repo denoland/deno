@@ -14,9 +14,11 @@ test(async function ensureFileIfItNotExist(): Promise<void> {
 
   await assertThrowsAsync(
     async (): Promise<void> => {
-      await Deno.stat(testFile).then((): void => {
-        throw new Error("test file should exists.");
-      });
+      await Deno.stat(testFile).then(
+        (): void => {
+          throw new Error("test file should exists.");
+        }
+      );
     }
   );
 
@@ -29,10 +31,12 @@ test(function ensureFileSyncIfItNotExist(): void {
 
   ensureFileSync(testFile);
 
-  assertThrows((): void => {
-    Deno.statSync(testFile);
-    throw new Error("test file should exists.");
-  });
+  assertThrows(
+    (): void => {
+      Deno.statSync(testFile);
+      throw new Error("test file should exists.");
+    }
+  );
 
   Deno.removeSync(testDir, { recursive: true });
 });
@@ -48,9 +52,11 @@ test(async function ensureFileIfItExist(): Promise<void> {
 
   await assertThrowsAsync(
     async (): Promise<void> => {
-      await Deno.stat(testFile).then((): void => {
-        throw new Error("test file should exists.");
-      });
+      await Deno.stat(testFile).then(
+        (): void => {
+          throw new Error("test file should exists.");
+        }
+      );
     }
   );
 
@@ -66,10 +72,12 @@ test(function ensureFileSyncIfItExist(): void {
 
   ensureFileSync(testFile);
 
-  assertThrows((): void => {
-    Deno.statSync(testFile);
-    throw new Error("test file should exists.");
-  });
+  assertThrows(
+    (): void => {
+      Deno.statSync(testFile);
+      throw new Error("test file should exists.");
+    }
+  );
 
   Deno.removeSync(testDir, { recursive: true });
 });
