@@ -10,7 +10,6 @@ import os
 import sys
 import json
 import time
-import shutil
 import tempfile
 import subprocess
 from util import build_path, executable_suffix, root_path, run, run_output
@@ -30,10 +29,6 @@ exec_time_benchmarks = [
     ("workers_round_robin", ["tests/workers_round_robin_bench.ts"]),
 ]
 
-gh_pages_data_file = "gh-pages/data.json"
-all_data_file = "website/data.json"  # Includes all benchmark data.
-recent_data_file = "website/recent.json"  # Includes recent 20 benchmark data.
-
 
 def read_json(filename):
     with open(filename) as json_file:
@@ -43,19 +38,6 @@ def read_json(filename):
 def write_json(filename, data):
     with open(filename, 'w') as outfile:
         json.dump(data, outfile)
-
-
-def import_data_from_gh_pages():
-    if os.path.exists(all_data_file):
-        return
-    try:
-        run([
-            "git", "clone", "--depth", "1", "-b", "gh-pages",
-            "https://github.com/denoland/deno.git", "gh-pages"
-        ])
-        shutil.copy(gh_pages_data_file, all_data_file)
-    except ValueError:
-        write_json(all_data_file, [])  # writes empty json data
 
 
 def get_binary_sizes(build_dir):
@@ -246,7 +228,6 @@ def main(argv):
     deno_exe = os.path.join(build_dir, "deno")
 
     os.chdir(root_path)
-    import_data_from_gh_pages()
 
     new_data = {
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -275,11 +256,7 @@ def main(argv):
     print json.dumps(new_data, indent=2)
     print "===== </BENCHMARK RESULTS>"
 
-    all_data = read_json(all_data_file)
-    all_data.append(new_data)
-
-    write_json(all_data_file, all_data)
-    write_json(recent_data_file, all_data[-20:])
+    write_json(os.path.join(build_dir, "bench.json"), new_data)
 
 
 if __name__ == '__main__':

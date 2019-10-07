@@ -40,17 +40,13 @@ default_args = {
 
   symbol_level = 1
   treat_warnings_as_errors = true
-  rust_treat_warnings_as_errors = true
 
   # https://cs.chromium.org/chromium/src/docs/ccache_mac.md
   clang_use_chrome_plugins = false
 
-  v8_deprecation_warnings = false
   v8_enable_gdbjit = false
   v8_enable_i18n_support = false
   v8_enable_shared_ro_heap = false  # See #2624
-  v8_experimental_extra_library_files = []
-  v8_extra_library_files = []
   v8_imminent_deprecation_warnings = false
   v8_monolithic = false
   v8_untrusted_code_mitigations = false

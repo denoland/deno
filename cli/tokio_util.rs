@@ -36,8 +36,10 @@ where
 
 /// THIS IS A HACK AND SHOULD BE AVOIDED.
 ///
-/// This creates a new tokio runtime, with many new threads, to execute the
-/// given future. This is useful when we want to block the main runtime to
+/// This spawns a new thread and creates a single-threaded tokio runtime on that thread,
+/// to execute the given future.
+///
+/// This is useful when we want to block the main runtime to
 /// resolve a future without worrying that we'll use up all the threads in the
 /// main runtime.
 pub fn block_on<F, R>(future: F) -> Result<R, ErrBox>
@@ -50,10 +52,7 @@ where
   let (sender, receiver) = channel();
   // Create a new runtime to evaluate the future asynchronously.
   thread::spawn(move || {
-    let r = match create_threadpool_runtime() {
-      Ok(mut rt) => rt.block_on(future),
-      Err(e) => Err(ErrBox::from(e)),
-    };
+    let r = tokio::runtime::current_thread::block_on_all(future);
     sender
       .send(r)
       .expect("Unable to send blocking future result")

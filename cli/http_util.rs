@@ -139,22 +139,22 @@ mod tests {
   use super::*;
   use crate::tokio_util;
 
-  pub fn fetch_string_once_sync(url: &Url) -> Result<FetchOnceResult, ErrBox> {
-    tokio_util::block_on(fetch_string_once(url))
-  }
-
   #[test]
   fn test_fetch_sync_string() {
     let http_server_guard = crate::test_util::http_server();
     // Relies on external http server. See tools/http_server.py
     let url = Url::parse("http://127.0.0.1:4545/package.json").unwrap();
-    tokio_util::init(|| match fetch_string_once_sync(&url).unwrap() {
-      FetchOnceResult::Code(code, maybe_content_type) => {
+
+    let fut = fetch_string_once(&url).then(|result| match result {
+      Ok(FetchOnceResult::Code(code, maybe_content_type)) => {
         assert!(!code.is_empty());
         assert_eq!(maybe_content_type, Some("application/json".to_string()));
+        Ok(())
       }
-      _ => unreachable!(),
+      _ => panic!(),
     });
+
+    tokio_util::run(fut);
     drop(http_server_guard);
   }
 
@@ -165,10 +165,15 @@ mod tests {
     let url = Url::parse("http://127.0.0.1:4546/package.json").unwrap();
     // Dns resolver substitutes `127.0.0.1` with `localhost`
     let target_url = Url::parse("http://localhost:4545/package.json").unwrap();
-    tokio_util::init(|| {
-      let result = fetch_string_once_sync(&url).unwrap();
-      assert_eq!(result, FetchOnceResult::Redirect(target_url));
+    let fut = fetch_string_once(&url).then(move |result| match result {
+      Ok(FetchOnceResult::Redirect(url)) => {
+        assert_eq!(url, target_url);
+        Ok(())
+      }
+      _ => panic!(),
     });
+
+    tokio_util::run(fut);
     drop(http_server_guard);
   }
 
