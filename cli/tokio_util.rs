@@ -173,7 +173,10 @@ pub fn run_in_task<F>(f: F)
 where
   F: FnOnce() + Send + 'static,
 {
-  let fut = futures::future::lazy(move || futures::future::ok::<(), ()>(f()));
+  let fut = futures::future::lazy(move || {
+    f();
+    futures::future::ok(())
+  });
 
   run(fut)
 }
