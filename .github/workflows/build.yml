@@ -107,7 +107,9 @@ jobs:
       # TODO(ry) Remove the "cd std".
       - name: std test
         if: matrix.kind == 'test_std'
-        run: cd std && "../target/release/deno" test -A
+        run: |
+          cd std
+          "../target/release/deno" test -A
 
       - name: Test
         if: matrix.kind == 'test'
