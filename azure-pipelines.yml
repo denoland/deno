@@ -1,5 +1,5 @@
 variables:
-  DENO_VERSION: "v0.19.0"
+  DENO_VERSION: "v0.20.0"
   TS_VERSION: "3.4.5"
   ESLINT_VERSION: "6.5.1"
   TS_ESLINT_VERSION: "2.3.2"
