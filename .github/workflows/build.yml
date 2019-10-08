@@ -10,7 +10,7 @@ jobs:
     strategy:
       matrix:
         os: [macOS-10.14, windows-2016, ubuntu-16.04]
-        kind: ['test', 'bench', 'lint']
+        kind: ['test', 'test_std', 'bench', 'lint']
         exclude:
           - os: windows-2016
             kind: 'bench'
@@ -101,6 +101,10 @@ jobs:
       - name: Build
         if: matrix.kind != 'lint'
         run: cargo build --release --locked --all-targets
+
+      - name: std test
+        if: matrix.kind == 'test_std'
+        run: target/release/deno test -A ./std
 
       - name: Test
         if: matrix.kind == 'test'

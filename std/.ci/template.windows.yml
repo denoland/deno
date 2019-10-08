@@ -1,8 +1,0 @@
-steps:
-  - bash: npm install eslint@$(ESLINT_VERSION) typescript@$(TS_VERSION) @typescript-eslint/eslint-plugin@$(TS_ESLINT_VERSION) @typescript-eslint/parser@$(TS_ESLINT_VERSION) eslint-config-prettier
-  - powershell: iwr https://deno.land/x/install/install.ps1 -out install.ps1; .\install.ps1 $(DENO_VERSION)
-  - bash: echo "##vso[task.prependpath]C:\Users\VssAdministrator\.deno\\bin"
-  - bash: npx eslint "**/*.ts" --max-warnings=0
-  - template: ./template.common.yml
-    parameters:
-      exe_suffix: ".exe"
