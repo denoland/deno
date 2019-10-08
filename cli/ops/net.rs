@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
+use crate::ops::json_op;
 use crate::resolve_addr::resolve_addr;
 use crate::resources;
 use crate::resources::Resource;
@@ -14,12 +15,20 @@ use tokio;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 
+pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+  i.register_op("accept", s.core_op(json_op(s.stateful_op(op_accept))));
+  i.register_op("dial", s.core_op(json_op(s.stateful_op(op_dial))));
+  i.register_op("dial_tls", s.core_op(json_op(s.stateful_op(op_dial))));
+  i.register_op("shutdown", s.core_op(json_op(s.stateful_op(op_shutdown))));
+  i.register_op("listen", s.core_op(json_op(s.stateful_op(op_listen))));
+}
+
 #[derive(Deserialize)]
 struct AcceptArgs {
   rid: i32,
 }
 
-pub fn op_accept(
+fn op_accept(
   _state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
@@ -54,7 +63,7 @@ struct DialArgs {
   port: u16,
 }
 
-pub fn op_dial(
+fn op_dial(
   state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
@@ -96,7 +105,7 @@ struct ShutdownArgs {
   how: i32,
 }
 
-pub fn op_shutdown(
+fn op_shutdown(
   _state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
@@ -125,7 +134,7 @@ struct ListenArgs {
   port: u16,
 }
 
-pub fn op_listen(
+fn op_listen(
   state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,

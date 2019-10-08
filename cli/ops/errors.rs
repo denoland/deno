@@ -1,18 +1,30 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::fmt_errors::JSError;
+use crate::ops::json_op;
 use crate::source_maps::get_orig_position;
 use crate::source_maps::CachedMaps;
 use crate::state::ThreadSafeState;
 use deno::*;
 use std::collections::HashMap;
 
+pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+  i.register_op(
+    "apply_source_map",
+    s.core_op(json_op(s.stateful_op(op_apply_source_map))),
+  );
+  i.register_op(
+    "format_error",
+    s.core_op(json_op(s.stateful_op(op_format_error))),
+  );
+}
+
 #[derive(Deserialize)]
 struct FormatErrorArgs {
   error: String,
 }
 
-pub fn op_format_error(
+fn op_format_error(
   state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
@@ -32,7 +44,7 @@ struct ApplySourceMap {
   column: i32,
 }
 
-pub fn op_apply_source_map(
+fn op_apply_source_map(
   state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,

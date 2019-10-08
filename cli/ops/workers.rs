@@ -3,6 +3,7 @@ use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::deno_error::js_check;
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
+use crate::ops::json_op;
 use crate::resources;
 use crate::startup_data;
 use crate::state::ThreadSafeState;
@@ -15,6 +16,36 @@ use futures::Sink;
 use futures::Stream;
 use std;
 use std::convert::From;
+use std::sync::atomic::Ordering;
+
+pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+  i.register_op(
+    "create_worker",
+    s.core_op(json_op(s.stateful_op(op_create_worker))),
+  );
+  i.register_op(
+    "host_get_worker_closed",
+    s.core_op(json_op(s.stateful_op(op_host_get_worker_closed))),
+  );
+  i.register_op(
+    "host_post_message",
+    s.core_op(json_op(s.stateful_op(op_host_post_message))),
+  );
+  i.register_op(
+    "host_get_message",
+    s.core_op(json_op(s.stateful_op(op_host_get_message))),
+  );
+  // TODO: make sure these two ops are only accessible to appropriate Worker
+  i.register_op(
+    "worker_post_message",
+    s.core_op(json_op(s.stateful_op(op_worker_post_message))),
+  );
+  i.register_op(
+    "worker_get_message",
+    s.core_op(json_op(s.stateful_op(op_worker_get_message))),
+  );
+  i.register_op("metrics", s.core_op(json_op(s.stateful_op(op_metrics))));
+}
 
 struct GetMessageFuture {
   pub state: ThreadSafeState,
@@ -33,7 +64,7 @@ impl Future for GetMessageFuture {
 }
 
 /// Get message from host as guest worker
-pub fn op_worker_get_message(
+fn op_worker_get_message(
   state: &ThreadSafeState,
   _args: Value,
   _data: Option<PinnedBuf>,
@@ -56,7 +87,7 @@ pub fn op_worker_get_message(
 }
 
 /// Post message to host as guest worker
-pub fn op_worker_post_message(
+fn op_worker_post_message(
   state: &ThreadSafeState,
   _args: Value,
   data: Option<PinnedBuf>,
@@ -84,7 +115,7 @@ struct CreateWorkerArgs {
 }
 
 /// Create worker as the host
-pub fn op_create_worker(
+fn op_create_worker(
   state: &ThreadSafeState,
   args: Value,
   _data: Option<PinnedBuf>,
@@ -154,7 +185,7 @@ struct HostGetWorkerClosedArgs {
 }
 
 /// Return when the worker closes
-pub fn op_host_get_worker_closed(
+fn op_host_get_worker_closed(
   state: &ThreadSafeState,
   args: Value,
   _data: Option<PinnedBuf>,
@@ -183,7 +214,7 @@ struct HostGetMessageArgs {
 }
 
 /// Get message from guest worker as host
-pub fn op_host_get_message(
+fn op_host_get_message(
   _state: &ThreadSafeState,
   args: Value,
   _data: Option<PinnedBuf>,
@@ -208,7 +239,7 @@ struct HostPostMessageArgs {
 }
 
 /// Post message to guest worker as host
-pub fn op_host_post_message(
+fn op_host_post_message(
   _state: &ThreadSafeState,
   args: Value,
   data: Option<PinnedBuf>,
@@ -224,4 +255,20 @@ pub fn op_host_post_message(
     .map_err(|e| DenoError::new(ErrorKind::Other, e.to_string()))?;
 
   Ok(JsonOp::Sync(json!({})))
+}
+
+fn op_metrics(
+  state: &ThreadSafeState,
+  _args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let m = &state.metrics;
+
+  Ok(JsonOp::Sync(json!({
+    "opsDispatched": m.ops_dispatched.load(Ordering::SeqCst) as u64,
+    "opsCompleted": m.ops_completed.load(Ordering::SeqCst) as u64,
+    "bytesSentControl": m.bytes_sent_control.load(Ordering::SeqCst) as u64,
+    "bytesSentData": m.bytes_sent_data.load(Ordering::SeqCst) as u64,
+    "bytesReceived": m.bytes_received.load(Ordering::SeqCst) as u64
+  })))
 }

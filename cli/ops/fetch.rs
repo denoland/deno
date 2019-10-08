@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::http_util::get_client;
+use crate::ops::json_op;
 use crate::resources;
 use crate::state::ThreadSafeState;
 use deno::*;
@@ -11,6 +12,10 @@ use hyper;
 use hyper::rt::Future;
 use std;
 use std::convert::From;
+
+pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+  i.register_op("fetch", s.core_op(json_op(s.stateful_op(op_fetch))));
+}
 
 #[derive(Deserialize)]
 struct FetchArgs {
