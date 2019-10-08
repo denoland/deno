@@ -39,7 +39,9 @@ def eslint():
     script = os.path.join(third_party_path, "node_modules", "eslint", "bin",
                           "eslint")
     # Find all *directories* in the main repo that contain .ts/.js files.
-    source_files = git_ls_files(root_path, ["*.js", "*.ts"])
+    source_files = git_ls_files(
+        root_path,
+        ["*.js", "*.ts", ":!:std/prettier/vendor/*", ":!:std/**/testdata/*"])
     source_dirs = set([os.path.dirname(f) for f in source_files])
     # Within the source dirs, eslint does its own globbing, taking into account
     # the exclusion rules listed in '.eslintignore'.

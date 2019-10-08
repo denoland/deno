@@ -15,7 +15,7 @@ async function main(startTime: number): Promise<void> {
     .filter(file => {
       const stat = Deno.lstatSync(file);
       if (stat != null) {
-        return (stat as any).modified * 1000 > startTime;
+        return stat.modified * 1000 > startTime;
       }
     });
   if (changed.length > 0) {
