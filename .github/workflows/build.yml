@@ -104,7 +104,7 @@ jobs:
 
       - name: std test
         if: matrix.kind == 'test_std'
-        run: target/release/deno test -A ./std
+        run: cd std && ../target/release/deno test -A
 
       - name: Test
         if: matrix.kind == 'test'
