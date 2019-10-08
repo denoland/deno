@@ -1,6 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-const { readFile, run } = Deno;
-
 import { test } from "../testing/mod.ts";
 import { assert, assertEquals } from "../testing/asserts.ts";
 import { BufReader } from "../io/bufio.ts";
@@ -9,7 +7,7 @@ import { TextProtoReader } from "../textproto/mod.ts";
 let fileServer: Deno.Process;
 
 async function startFileServer(): Promise<void> {
-  fileServer = run({
+  fileServer = Deno.run({
     args: [
       Deno.execPath(),
       "run",
@@ -42,7 +40,7 @@ test(async function serveFile(): Promise<void> {
     assertEquals(res.headers.get("content-type"), "text/yaml; charset=utf-8");
     const downloadedFile = await res.text();
     const localFile = new TextDecoder().decode(
-      await readFile("./azure-pipelines.yml")
+      await Deno.readFile("./azure-pipelines.yml")
     );
     assertEquals(downloadedFile, localFile);
   } finally {
