@@ -1,7 +1,5 @@
 # Deno Standard Modules
 
-[![Build Status](https://dev.azure.com/denoland/deno_std/_apis/build/status/denoland.deno_std?branchName=master)](https://dev.azure.com/denoland/deno_std/_build/latest?definitionId=2?branchName=master)
-
 These modules do not have external dependencies and they are reviewed by the
 Deno core team. The intention is to have a standard set of high quality code
 that all Deno projects can use fearlessly.
