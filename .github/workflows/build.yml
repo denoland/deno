@@ -102,6 +102,9 @@ jobs:
         if: matrix.kind != 'lint'
         run: cargo build --release --locked --all-targets
 
+      # TODO(ry) Remove this step, and move the following test to
+      # cli/tests/std_tests.rs
+      # TODO(ry) Remove the "cd std".
       - name: std test
         if: matrix.kind == 'test_std'
         run: cd std && ../target/release/deno test -A
