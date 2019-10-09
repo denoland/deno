@@ -4,8 +4,8 @@
 
 - **`readAll(reader: BufReader, opt: ParseOptions = { comma: ",", trimLeadingSpace: false, lazyQuotes: false } ): Promise<[string[][], BufState]>`**:
   Read the whole buffer and output the structured CSV datas
-- **`parse(csvString: string, opt: ParseOption): Promise<unknown[]>`**:
-  See [parse](###Parse)
+- **`parse(csvString: string, opt: ParseOption): Promise<unknown[]>`**: See
+  [parse](###Parse)
 
 ### Parse
 
@@ -17,8 +17,7 @@ Parse the CSV string with the options provided.
 
 - **`header: boolean | string[] | HeaderOption[];`**: If a boolean is provided,
   the first line will be used as Header definitions. If `string[]` or
-  `HeaderOption[]`
-  those names will be used for header definition.
+  `HeaderOption[]` those names will be used for header definition.
 - **`parse?: (input: unknown) => unknown;`**: Parse function for the row, which
   will be executed after parsing of all columns. Therefore if you don't provide
   header and parse function with headers, input will be `string[]`.
@@ -26,9 +25,9 @@ Parse the CSV string with the options provided.
 ##### HeaderOption
 
 - **`name: string;`**: Name of the header to be used as property.
-- **`parse?: (input: string) => unknown;`**: Parse function for the column.
-  This is executed on each entry of the header. This can be combined with the
-  Parse function of the rows.
+- **`parse?: (input: string) => unknown;`**: Parse function for the column. This
+  is executed on each entry of the header. This can be combined with the Parse
+  function of the rows.
 
 #### Usage
 
@@ -123,8 +122,10 @@ TypeScript side is a bit different.
 - :heavy_check_mark: [Local Date](https://github.com/toml-lang/toml#local-date)
 - :exclamation: [Local Time](https://github.com/toml-lang/toml#local-time)
 - :heavy_check_mark: [Table](https://github.com/toml-lang/toml#table)
-- :heavy_check_mark: [Inline Table](https://github.com/toml-lang/toml#inline-table)
-- :exclamation: [Array of Tables](https://github.com/toml-lang/toml#array-of-tables)
+- :heavy_check_mark:
+  [Inline Table](https://github.com/toml-lang/toml#inline-table)
+- :exclamation:
+  [Array of Tables](https://github.com/toml-lang/toml#array-of-tables)
 
 :exclamation: _Supported with warnings see [Warning](#Warning)._
 
@@ -132,17 +133,18 @@ TypeScript side is a bit different.
 
 ##### String
 
-- Regex : Due to the spec, there is no flag to detect regex properly
-  in a TOML declaration. So the regex is stored as string.
+- Regex : Due to the spec, there is no flag to detect regex properly in a TOML
+  declaration. So the regex is stored as string.
 
 ##### Integer
 
-For **Binary** / **Octal** / **Hexadecimal** numbers,
-they are stored as string to be not interpreted as Decimal.
+For **Binary** / **Octal** / **Hexadecimal** numbers, they are stored as string
+to be not interpreted as Decimal.
 
 ##### Local Time
 
-Because local time does not exist in JavaScript, the local time is stored as a string.
+Because local time does not exist in JavaScript, the local time is stored as a
+string.
 
 ##### Inline Table
 

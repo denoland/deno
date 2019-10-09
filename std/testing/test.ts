@@ -51,10 +51,12 @@ test(function testingAssertNotStrictEqual(): void {
 
 test(function testingDoesThrow(): void {
   let count = 0;
-  assertThrows((): void => {
-    count++;
-    throw new Error();
-  });
+  assertThrows(
+    (): void => {
+      count++;
+      throw new Error();
+    }
+  );
   assert(count === 1);
 });
 
@@ -62,10 +64,12 @@ test(function testingDoesNotThrow(): void {
   let count = 0;
   let didThrow = false;
   try {
-    assertThrows((): void => {
-      count++;
-      console.log("Hello world");
-    });
+    assertThrows(
+      (): void => {
+        count++;
+        console.log("Hello world");
+      }
+    );
   } catch (e) {
     assert(e.message === "Expected function to throw.");
     didThrow = true;

@@ -70,18 +70,20 @@ export function instantiate(
     assert(module != null);
     assert(module.factory != null);
 
-    const dependencies = module.dependencies.map((id): object => {
-      if (id === "require") {
-        // TODO(kitsonk) support dynamic import by passing a `require()` that
-        // can return a local module or dynamically import one.
-        return (): void => {};
-      } else if (id === "exports") {
-        return module.exports;
+    const dependencies = module.dependencies.map(
+      (id): object => {
+        if (id === "require") {
+          // TODO(kitsonk) support dynamic import by passing a `require()` that
+          // can return a local module or dynamically import one.
+          return (): void => {};
+        } else if (id === "exports") {
+          return module.exports;
+        }
+        const dep = modules.get(id)!;
+        assert(dep != null);
+        return dep.exports;
       }
-      const dep = modules.get(id)!;
-      assert(dep != null);
-      return dep.exports;
-    });
+    );
 
     if (typeof module.factory === "function") {
       module.factory!(...dependencies);
