@@ -1,5 +1,0 @@
-steps:
-  - bash: npm install eslint@$(ESLINT_VERSION) typescript@$(TS_VERSION) @typescript-eslint/eslint-plugin@$(TS_ESLINT_VERSION) @typescript-eslint/parser@$(TS_ESLINT_VERSION) eslint-config-prettier
-  - template: ./template.unix.yml
-  - bash: npx eslint "**/*.ts" --max-warnings=0
-  - template: ./template.common.yml
