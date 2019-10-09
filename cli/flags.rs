@@ -172,6 +172,10 @@ To get help on the another subcommands (run in this case):
     ).arg(
       Arg::with_name("reload")
         .short("r")
+        .min_values(0)
+        .takes_value(true)
+        .use_delimiter(true)
+        .require_equals(true)
         .long("reload")
         .help("Reload source code cache (recompile TypeScript)")
         .global(true),
