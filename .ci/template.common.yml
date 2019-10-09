@@ -1,8 +1,0 @@
-parameters:
-  exe_suffix: ""
-
-steps:
-  - bash: deno${{ parameters.exe_suffix }} run --allow-run --allow-write --allow-read --allow-env ./format.ts --check
-  - bash: export START_TIME=$(date +%s)
-  - bash: deno${{ parameters.exe_suffix }} run --allow-run --allow-net --allow-write --allow-read --allow-env --config=tsconfig.test.json ./testing/runner.ts --exclude node_modules,**/testdata
-  - bash: deno${{ parameters.exe_suffix }} run --allow-run --allow-read .ci/check_source_file_changes.ts $START_TIME
