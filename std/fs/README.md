@@ -8,9 +8,9 @@ All the following modules are exposed in `mod.ts`
 
 ### emptyDir
 
-Ensures that a directory is empty. Deletes directory contents if the directory is not empty.
-If the directory does not exist, it is created.
-The directory itself is not deleted.
+Ensures that a directory is empty. Deletes directory contents if the directory
+is not empty. If the directory does not exist, it is created. The directory
+itself is not deleted.
 
 ```ts
 import { emptyDir, emptyDirSync } from "https://deno.land/std/fs/mod.ts";
@@ -21,8 +21,8 @@ emptyDirSync("./foo"); // void
 
 ### ensureDir
 
-Ensures that the directory exists.
-If the directory structure does not exist, it is created. Like mkdir -p.
+Ensures that the directory exists. If the directory structure does not exist, it
+is created. Like mkdir -p.
 
 ```ts
 import { ensureDir, ensureDirSync } from "https://deno.land/std/fs/mod.ts";
@@ -33,10 +33,9 @@ ensureDirSync("./ensureDirSync"); // void
 
 ### ensureFile
 
-Ensures that the file exists.
-If the file that is requested to be created is in directories
-that do not exist, these directories are created.
-If the file already exists, it is **NOT MODIFIED**.
+Ensures that the file exists. If the file that is requested to be created is in
+directories that do not exist, these directories are created. If the file
+already exists, it is **NOT MODIFIED**.
 
 ```ts
 import { ensureFile, ensureFileSync } from "https://deno.land/std/fs/mod.ts";
@@ -47,8 +46,8 @@ ensureFileSync("./folder/targetFile.dat"); // void
 
 ### ensureSymlink
 
-Ensures that the link exists.
-If the directory structure does not exist, it is created.
+Ensures that the link exists. If the directory structure does not exist, it is
+created.
 
 ```ts
 import {
@@ -102,9 +101,8 @@ existsSync("./foo"); // returns boolean
 
 ### globToRegExp
 
-Generate a regex based on glob pattern and options
-This was meant to be using the the `fs.walk` function
-but can be used anywhere else.
+Generate a regex based on glob pattern and options This was meant to be using
+the the `fs.walk` function but can be used anywhere else.
 
 ```ts
 import { globToRegExp } from "https://deno.land/std/fs/mod.ts";
@@ -180,8 +178,10 @@ Writes an object to a JSON file.
 
 **WriteJsonOptions**
 
-- replacer : An array of strings and numbers that acts as a approved list for selecting the object properties that will be stringified.
-- space : Adds indentation, white space, and line break characters to the return-value JSON text to make it easier to read.
+- replacer : An array of strings and numbers that acts as a approved list for
+  selecting the object properties that will be stringified.
+- space : Adds indentation, white space, and line break characters to the
+  return-value JSON text to make it easier to read.
 
 ```ts
 import { writeJson, writeJsonSync } from "https://deno.land/std/fs/mod.ts";

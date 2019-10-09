@@ -79,9 +79,11 @@ export function parse(
           ? [options.boolean]
           : options.boolean;
 
-      booleanArgs.filter(Boolean).forEach((key: string): void => {
-        flags.bools[key] = true;
-      });
+      booleanArgs.filter(Boolean).forEach(
+        (key: string): void => {
+          flags.bools[key] = true;
+        }
+      );
     }
   }
 
@@ -112,9 +114,11 @@ export function parse(
       flags.strings[key] = true;
       const alias = get(aliases, key);
       if (alias) {
-        alias.forEach((alias: string): void => {
-          flags.strings[alias] = true;
-        });
+        alias.forEach(
+          (alias: string): void => {
+            flags.strings[alias] = true;
+          }
+        );
       }
     });
   }

@@ -6,8 +6,10 @@ Simple helper to help parse date strings into `Date`, with additional functions.
 
 ### parseDate / parseDateTime
 
-- `parseDate()` - Take an input string and a format to parse the date. Supported formats are exported in `DateFormat`.
-- `parseDateTime()` - Take an input string and a format to parse the dateTime. Supported formats are exported in `DateTimeFormat`.
+- `parseDate()` - Take an input string and a format to parse the date. Supported
+  formats are exported in `DateFormat`.
+- `parseDateTime()` - Take an input string and a format to parse the dateTime.
+  Supported formats are exported in `DateTimeFormat`.
 
 ```ts
 import { parseDate, parseDateTime } from 'https://deno.land/std/datetime/mod.ts'

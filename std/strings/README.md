@@ -6,9 +6,9 @@ This module provides a few basic utilities to manipulate strings.
 
 ### pad
 
-Input string is processed to output a string with a minimal length.
-If the parameter `strict` is set to true, the output string length
-is equal to the `strLen` parameter.
+Input string is processed to output a string with a minimal length. If the
+parameter `strict` is set to true, the output string length is equal to the
+`strLen` parameter.
 
 Basic usage:
 

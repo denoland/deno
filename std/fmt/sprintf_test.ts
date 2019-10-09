@@ -587,16 +587,18 @@ const tests: Array<[string, any, string]> = [
 ];
 
 test(function testThorough(): void {
-  tests.forEach((t, i): void => {
-    //            p(t)
-    const is = S(t[0], t[1]);
-    const should = t[2];
-    assertEquals(
-      is,
-      should,
-      `failed case[${i}] : is >${is}< should >${should}<`
-    );
-  });
+  tests.forEach(
+    (t, i): void => {
+      //            p(t)
+      const is = S(t[0], t[1]);
+      const should = t[2];
+      assertEquals(
+        is,
+        should,
+        `failed case[${i}] : is >${is}< should >${should}<`
+      );
+    }
+  );
 });
 
 test(function testWeirdos(): void {

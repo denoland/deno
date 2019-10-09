@@ -393,9 +393,11 @@ function joinKeys(keys: string[]): string {
   // Dotted keys are a sequence of bare or quoted keys joined with a dot.
   // This allows for grouping similar properties together:
   return keys
-    .map((str: string): string => {
-      return str.match(/[^A-Za-z0-9_-]/) ? `"${str}"` : str;
-    })
+    .map(
+      (str: string): string => {
+        return str.match(/[^A-Za-z0-9_-]/) ? `"${str}"` : str;
+      }
+    )
     .join(".");
 }
 
@@ -415,20 +417,24 @@ class Dumper {
   _parse(obj: Record<string, unknown>, keys: string[] = []): string[] {
     const out = [];
     const props = Object.keys(obj);
-    const propObj = props.filter((e: string): boolean => {
-      if (obj[e] instanceof Array) {
-        const d: unknown[] = obj[e] as unknown[];
-        return !this._isSimplySerializable(d[0]);
+    const propObj = props.filter(
+      (e: string): boolean => {
+        if (obj[e] instanceof Array) {
+          const d: unknown[] = obj[e] as unknown[];
+          return !this._isSimplySerializable(d[0]);
+        }
+        return !this._isSimplySerializable(obj[e]);
       }
-      return !this._isSimplySerializable(obj[e]);
-    });
-    const propPrim = props.filter((e: string): boolean => {
-      if (obj[e] instanceof Array) {
-        const d: unknown[] = obj[e] as unknown[];
-        return this._isSimplySerializable(d[0]);
+    );
+    const propPrim = props.filter(
+      (e: string): boolean => {
+        if (obj[e] instanceof Array) {
+          const d: unknown[] = obj[e] as unknown[];
+          return this._isSimplySerializable(d[0]);
+        }
+        return this._isSimplySerializable(obj[e]);
       }
-      return this._isSimplySerializable(obj[e]);
-    });
+    );
     const k = propPrim.concat(propObj);
     for (let i = 0; i < k.length; i++) {
       const prop = k[i];
