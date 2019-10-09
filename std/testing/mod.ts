@@ -203,12 +203,14 @@ function report(result: TestResult): void {
 }
 
 function printFailedSummary(results: TestResults): void {
-  results.cases.forEach((v): void => {
-    if (!v.ok) {
-      console.error(`${RED_BG_FAIL} ${red(v.name)}`);
-      console.error(v.error);
+  results.cases.forEach(
+    (v): void => {
+      if (!v.ok) {
+        console.error(`${RED_BG_FAIL} ${red(v.name)}`);
+        console.error(v.error);
+      }
     }
-  });
+  );
 }
 
 function printResults(
@@ -319,12 +321,14 @@ async function runTestsSerial(
       print(
         GREEN_OK + "     " + name + " " + promptTestTime(end - start, true)
       );
-      results.cases.forEach((v): void => {
-        if (v.name === name) {
-          v.ok = true;
-          v.printed = true;
+      results.cases.forEach(
+        (v): void => {
+          if (v.name === name) {
+            v.ok = true;
+            v.printed = true;
+          }
         }
-      });
+      );
     } catch (err) {
       if (disableLog) {
         print(CLEAR_LINE, false);
@@ -332,13 +336,15 @@ async function runTestsSerial(
       print(`${RED_FAILED} ${name}`);
       print(err.stack);
       stats.failed++;
-      results.cases.forEach((v): void => {
-        if (v.name === name) {
-          v.error = err;
-          v.ok = false;
-          v.printed = true;
+      results.cases.forEach(
+        (v): void => {
+          if (v.name === name) {
+            v.error = err;
+            v.ok = false;
+            v.printed = true;
+          }
         }
-      });
+      );
       if (exitOnFail) {
         break;
       }

@@ -39,7 +39,8 @@ HTTP server listening on http://0.0.0.0:4500/
 
 ## Custom installation directory
 
-By default installer uses `~/.deno/bin` to store installed scripts so make sure it's in your `$PATH`.
+By default installer uses `~/.deno/bin` to store installed scripts so make sure
+it's in your `$PATH`.
 
 ```
 echo 'export PATH="$HOME/.deno/bin:$PATH"' >> ~/.bashrc # change this to your shell

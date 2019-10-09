@@ -182,9 +182,11 @@ test(function moveSyncDirectoryIfSrcNotExists(): void {
   const srcDir = path.join(testdataDir, "move_sync_test_src_1");
   const destDir = path.join(testdataDir, "move_sync_test_dest_1");
   // if src directory not exist
-  assertThrows((): void => {
-    moveSync(srcDir, destDir);
-  });
+  assertThrows(
+    (): void => {
+      moveSync(srcDir, destDir);
+    }
+  );
 });
 
 test(function moveSyncDirectoryIfDestNotExists(): void {
@@ -211,9 +213,11 @@ test(function moveSyncFileIfSrcNotExists(): void {
   const destFile = path.join(testdataDir, "move_sync_test_dest_3", "test.txt");
 
   // if src directory not exist
-  assertThrows((): void => {
-    moveSync(srcFile, destFile);
-  });
+  assertThrows(
+    (): void => {
+      moveSync(srcFile, destFile);
+    }
+  );
 });
 
 test(function moveSyncFileIfDestExists(): void {

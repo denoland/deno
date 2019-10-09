@@ -1,15 +1,16 @@
 # Testing
 
-This module provides a few basic utilities to make testing easier and
-consistent in Deno.
+This module provides a few basic utilities to make testing easier and consistent
+in Deno.
 
 ## Usage
 
 The module exports a `test` function which is the test harness in Deno. It
 accepts either a function (including async functions) or an object which
 contains a `name` property and a `fn` property. When running tests and
-outputting the results, the name of the past function is used, or if the
-object is passed, the `name` property is used to identify the test. If the assertion is false an `AssertionError` will be thrown.
+outputting the results, the name of the past function is used, or if the object
+is passed, the `name` property is used to identify the test. If the assertion is
+false an `AssertionError` will be thrown.
 
 Asserts are exposed in `testing/asserts.ts` module.
 
@@ -18,13 +19,14 @@ Asserts are exposed in `testing/asserts.ts` module.
 - `assert()` - Expects a boolean value, throws if the value is `false`.
 - `assertEquals()` - Uses the `equal` comparison and throws if the `actual` and
   `expected` are not equal.
-- `assertNotEquals()` - Uses the `equal` comparison and throws if the `actual` and
-  `expected` are equal.
-- `assertStrictEq()` - Compares `actual` and `expected` strictly, therefore
-  for non-primitives the values must reference the same instance.
+- `assertNotEquals()` - Uses the `equal` comparison and throws if the `actual`
+  and `expected` are equal.
+- `assertStrictEq()` - Compares `actual` and `expected` strictly, therefore for
+  non-primitives the values must reference the same instance.
 - `assertStrContains()` - Make an assertion that `actual` contains `expected`.
 - `assertMatch()` - Make an assertion that `actual` match RegExp `expected`.
-- `assertArrayContains()` - Make an assertion that `actual` array contains the `expected` values.
+- `assertArrayContains()` - Make an assertion that `actual` array contains the
+  `expected` values.
 - `assertThrows()` - Expects the passed `fn` to throw. If `fn` does not throw,
   this function does. Also compares any errors thrown to an optional expected
   `Error` class and checks that the error `.message` includes an optional
@@ -40,7 +42,8 @@ Asserts are exposed in `testing/asserts.ts` module.
 `runTests()` executes the declared tests. It accepts a `RunOptions` parameter:
 
 - parallel : Execute tests in a parallel way.
-- exitOnFail : if one test fails, test will throw an error and stop the tests. If not all tests will be processed.
+- exitOnFail : if one test fails, test will throw an error and stop the tests.
+  If not all tests will be processed.
 
 Basic usage:
 
@@ -89,9 +92,11 @@ Using `assertThrows()`:
 
 ```ts
 test(function doesThrow(): void {
-  assertThrows((): void => {
-    throw new TypeError("hello world!");
-  });
+  assertThrows(
+    (): void => {
+      throw new TypeError("hello world!");
+    }
+  );
   assertThrows((): void => {
     throw new TypeError("hello world!");
   }, TypeError);
@@ -106,9 +111,11 @@ test(function doesThrow(): void {
 
 // This test will not pass
 test(function fails(): void {
-  assertThrows((): void => {
-    console.log("Hello world");
-  });
+  assertThrows(
+    (): void => {
+      console.log("Hello world");
+    }
+  );
 });
 ```
 
@@ -187,7 +194,8 @@ Registers a benchmark that will be run once `runBenchmarks` is called.
 ##### `runBenchmarks(opts?: BenchmarkRunOptions): Promise<void>`
 
 Runs all registered benchmarks serially. Filtering can be applied by setting
-`BenchmarkRunOptions.only` and/or `BenchmarkRunOptions.skip` to regular expressions matching benchmark names.
+`BenchmarkRunOptions.only` and/or `BenchmarkRunOptions.skip` to regular
+expressions matching benchmark names.
 
 ##### `runIfMain(meta: ImportMeta, opts?: BenchmarkRunOptions): Promise<void>`
 

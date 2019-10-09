@@ -23,10 +23,10 @@ lookup("folder/.htaccess"); // undefined
 
 ### `contentType(type)`
 
-Return a full `Content-Type` header value for a given content type or
-extension. When an extension is used, `lookup()` is used to resolve the
-content type first. A default charset is added if not present. The
-function will return `undefined` if the content type cannot be resolved:
+Return a full `Content-Type` header value for a given content type or extension.
+When an extension is used, `lookup()` is used to resolve the content type first.
+A default charset is added if not present. The function will return `undefined`
+if the content type cannot be resolved:
 
 ```ts
 import { contentType } from "https://deno.land/std/media_types/mod.ts";
@@ -53,8 +53,8 @@ extension("application/octet-stream"); // "bin"
 
 ### `charset(type)`
 
-Lookup the implied default charset for a given content type. If the content
-type cannot be resolved, `undefined` is returned:
+Lookup the implied default charset for a given content type. If the content type
+cannot be resolved, `undefined` is returned:
 
 ```ts
 import { charset } from "https://deno.land/std/media_types/mod.ts";
