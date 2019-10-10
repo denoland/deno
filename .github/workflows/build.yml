@@ -10,7 +10,7 @@ jobs:
     strategy:
       matrix:
         os: [macOS-10.14, windows-2016, ubuntu-16.04]
-        kind: ['test', 'bench', 'lint']
+        kind: ['test', 'test_std', 'bench', 'lint']
         exclude:
           - os: windows-2016
             kind: 'bench'
@@ -101,6 +101,15 @@ jobs:
       - name: Build
         if: matrix.kind != 'lint'
         run: cargo build --release --locked --all-targets
+
+      # TODO(ry) Remove this step, and move the following test to
+      # cli/tests/std_tests.rs
+      # TODO(ry) Remove the "cd std".
+      - name: std test
+        if: matrix.kind == 'test_std'
+        run: |
+          cd std
+          "../target/release/deno" test -A
 
       - name: Test
         if: matrix.kind == 'test'
