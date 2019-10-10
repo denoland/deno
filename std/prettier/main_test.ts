@@ -1,9 +1,9 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { EOL, join } from "../fs/path/mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
 import { test, runIfMain } from "../testing/mod.ts";
-import { xrun } from "./util.ts";
 import { copy, emptyDir } from "../fs/mod.ts";
+import { EOL, join } from "../path/mod.ts";
+import { xrun } from "./util.ts";
 const { readAll, execPath } = Deno;
 
 const decoder = new TextDecoder();

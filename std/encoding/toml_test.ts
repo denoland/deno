@@ -3,8 +3,8 @@ import { runIfMain, test } from "../testing/mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
 import { existsSync } from "../fs/exists.ts";
 import { readFileStrSync } from "../fs/read_file_str.ts";
+import * as path from "../path/mod.ts";
 import { parse, stringify } from "./toml.ts";
-import * as path from "../fs/path/mod.ts";
 
 const testFilesDir = path.resolve("encoding", "testdata");
 

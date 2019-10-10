@@ -1,8 +1,8 @@
 // Copyright the Browserify authors. MIT License.
 // Ported from https://github.com/browserify/path-browserify/
 
-import { test } from "../../testing/mod.ts";
-import { assertEquals } from "../../testing/asserts.ts";
+import { test } from "../testing/mod.ts";
+import { assertEquals } from "../testing/asserts.ts";
 import * as path from "./mod.ts";
 
 test(function basename() {

@@ -8,13 +8,13 @@ import {
   assertThrowsAsync
 } from "../testing/asserts.ts";
 import { test, runIfMain } from "../testing/mod.ts";
+import * as path from "../path/mod.ts";
 import {
   matchAfterPrefix,
   MultipartReader,
   MultipartWriter,
   scanUntilBoundary
 } from "./multipart.ts";
-import * as path from "../fs/path/mod.ts";
 import { FormFile, isFormFile } from "../multipart/formfile.ts";
 import { StringWriter } from "../io/writers.ts";
 

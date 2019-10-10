@@ -24,5 +24,7 @@ export const parse = path.parse;
 export const sep = path.sep;
 export const delimiter = path.delimiter;
 
-export {EOL, SEP, SEP_PATTERN, isWindows} from "./constants.ts";
+export { EOL, SEP, SEP_PATTERN, isWindows } from "./constants.ts";
 export * from "./interface.ts";
+export * from "./glob.ts";
+export * from "./globrex.ts";
