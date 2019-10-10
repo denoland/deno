@@ -304,7 +304,7 @@ fn bundle_command(flags: DenoFlags, argv: Vec<String>) {
   assert!(state.argv.len() >= 3);
   let out_file = state.argv[2].clone();
   debug!(">>>>> bundle_async START");
-  // TODO(bartlomieju): without polling worker bundling does not work properly
+  // NOTE: we need to poll `worker` otherwise TS compiler worker won't run properly
   let main_future = lazy(move || {
     worker.then(move |result| {
       js_check(result);

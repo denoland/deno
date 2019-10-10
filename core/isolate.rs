@@ -743,7 +743,6 @@ pub mod tests {
     spawn(lazy(move || ok::<R, ()>(f()))).wait_future().unwrap()
   }
 
-  #[allow(dead_code)]
   fn poll_until_ready<F>(
     future: &mut F,
     max_poll_count: usize,
@@ -962,9 +961,9 @@ pub mod tests {
       js_check(isolate.execute(
         "check2.js",
         r#"
-         // assert(nrecv == 0);
+         assert(nrecv == 0);
          Deno.core.send(1, control);
-         // assert(nrecv == 0);
+         assert(nrecv == 0);
          "#,
       ));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
