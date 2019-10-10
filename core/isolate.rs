@@ -791,6 +791,7 @@ pub mod tests {
 
   pub enum Mode {
     AsyncImmediate,
+    AsyncDelayed,
     OverflowReqSync,
     OverflowResSync,
     OverflowReqAsync,
@@ -808,6 +809,12 @@ pub mod tests {
         dispatch_count_.fetch_add(1, Ordering::Relaxed);
         match mode {
           Mode::AsyncImmediate => {
+            assert_eq!(control.len(), 1);
+            assert_eq!(control[0], 42);
+            let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
+            Op::Async(Box::new(futures::future::ok(buf)))
+          }
+          Mode::AsyncDelayed => {
             assert_eq!(control.len(), 1);
             assert_eq!(control[0], 42);
             let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
@@ -929,6 +936,50 @@ pub mod tests {
   fn test_poll_async_immediate_ops() {
     run_in_task(|| {
       let (mut isolate, dispatch_count) = setup(Mode::AsyncImmediate);
+
+      js_check(isolate.execute(
+        "setup2.js",
+        r#"
+         let nrecv = 0;
+         Deno.core.setAsyncHandler((opId, buf) => {
+           nrecv++;
+         });
+         "#,
+      ));
+      assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
+      js_check(isolate.execute(
+        "check1.js",
+        r#"
+         assert(nrecv == 0);
+         let control = new Uint8Array([42]);
+         const res1 = Deno.core.send(1, control);
+         assert(res1);
+         assert(nrecv == 0);
+         "#,
+      ));
+      assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
+      assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
+      js_check(isolate.execute(
+        "check2.js",
+        r#"
+         // assert(nrecv == 0);
+         Deno.core.send(1, control);
+         // assert(nrecv == 0);
+         "#,
+      ));
+      assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
+      assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
+      assert_eq!(Async::Ready(()), isolate.poll().unwrap());
+      js_check(isolate.execute("check3.js", "assert(nrecv == 0)"));
+      // We are idle, so the next poll should be the last.
+      assert_eq!(Async::Ready(()), isolate.poll().unwrap());
+    });
+  }
+
+  #[test]
+  fn test_poll_async_delayed_ops() {
+    run_in_task(|| {
+      let (mut isolate, dispatch_count) = setup(Mode::AsyncDelayed);
 
       js_check(isolate.execute(
         "setup2.js",
