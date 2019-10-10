@@ -1,7 +1,6 @@
 const { cwd, mkdir } = Deno;
 import { test, runIfMain } from "../testing/mod.ts";
 import { assert, assertEquals } from "../testing/asserts.ts";
-import { SEP, isWindows } from "./path/constants.ts";
 import {
   ExpandGlobOptions,
   expandGlob,
@@ -11,7 +10,7 @@ import {
   joinGlobs,
   normalizeGlob
 } from "./glob.ts";
-import { join, normalize, relative } from "./path/mod.ts";
+import { SEP, isWindows, join, normalize, relative } from "./path/mod.ts";
 import { testWalk } from "./walk_test.ts";
 import { touch, walkArray } from "./walk_test.ts";
 

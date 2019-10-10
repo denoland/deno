@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test } from "./mod.ts";
 import { findTestModules } from "./runner.ts";
-import { isWindows } from "../fs/path/constants.ts";
+import { isWindows } from "../fs/path/mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
 const { cwd } = Deno;
 

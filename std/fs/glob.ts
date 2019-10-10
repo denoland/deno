@@ -1,6 +1,5 @@
 import { globrex } from "./globrex.ts";
-import { SEP, SEP_PATTERN, isWindows } from "./path/constants.ts";
-import { isAbsolute, join, normalize } from "./path/mod.ts";
+import { SEP, SEP_PATTERN, isAbsolute, isWindows, join, normalize } from "./path/mod.ts";
 import { WalkInfo, walk, walkSync } from "./walk.ts";
 const { DenoError, ErrorKind, cwd, stat, statSync } = Deno;
 type FileInfo = Deno.FileInfo;

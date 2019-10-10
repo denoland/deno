@@ -2,8 +2,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { parse } from "../flags/mod.ts";
 import { ExpandGlobOptions, expandGlob } from "../fs/mod.ts";
-import { isWindows } from "../fs/path/constants.ts";
-import { join } from "../fs/path/mod.ts";
+import { isWindows, join } from "../fs/path/mod.ts";
 import { RunTestsOptions, runTests } from "./mod.ts";
 const { DenoError, ErrorKind, args, cwd, exit } = Deno;
 
