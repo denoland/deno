@@ -3,5 +3,5 @@
 Usage:
 
 ```ts
-import * as path from "https://deno.land/std/fs/path.ts";
+import * as path from "https://deno.land/std/fs/path/mod.ts";
 ```

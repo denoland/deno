@@ -11,7 +11,7 @@ import {
   joinGlobs,
   normalizeGlob
 } from "./glob.ts";
-import { join, normalize, relative } from "./path.ts";
+import { join, normalize, relative } from "./path/mod.ts";
 import { testWalk } from "./walk_test.ts";
 import { touch, walkArray } from "./walk_test.ts";
 

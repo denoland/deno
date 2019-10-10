@@ -2,7 +2,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 const { env, stdin, args, exit, writeFile, chmod, run } = Deno;
 import { parse } from "../flags/mod.ts";
-import * as path from "../fs/path.ts";
+import * as path from "../fs/path/mod.ts";
 import { exists } from "../fs/exists.ts";
 import { ensureDir } from "../fs/ensure_dir.ts";
 

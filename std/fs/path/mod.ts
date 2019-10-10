@@ -23,3 +23,5 @@ export const format = path.format;
 export const parse = path.parse;
 export const sep = path.sep;
 export const delimiter = path.delimiter;
+
+export * from "./interface.ts";

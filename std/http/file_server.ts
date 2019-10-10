@@ -13,7 +13,7 @@ import {
   setContentLength,
   Response
 } from "./server.ts";
-import { extname, posix } from "../fs/path.ts";
+import { extname, posix } from "../fs/path/mod.ts";
 import { contentType } from "../media_types/mod.ts";
 
 const dirViewerTemplate = `

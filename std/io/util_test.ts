@@ -3,7 +3,7 @@ const { remove } = Deno;
 import { test } from "../testing/mod.ts";
 import { assert, assertEquals } from "../testing/asserts.ts";
 import { copyBytes, tempFile } from "./util.ts";
-import * as path from "../fs/path.ts";
+import * as path from "../fs/path/mod.ts";
 
 test(function testCopyBytes(): void {
   const dst = new Uint8Array(4);

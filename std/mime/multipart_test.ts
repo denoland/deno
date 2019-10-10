@@ -14,7 +14,7 @@ import {
   MultipartWriter,
   scanUntilBoundary
 } from "./multipart.ts";
-import * as path from "../fs/path.ts";
+import * as path from "../fs/path/mod.ts";
 import { FormFile, isFormFile } from "../multipart/formfile.ts";
 import { StringWriter } from "../io/writers.ts";
 

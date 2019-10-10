@@ -7,7 +7,7 @@ type Reader = Deno.Reader;
 type Writer = Deno.Writer;
 import { FormFile } from "../multipart/formfile.ts";
 import { equal, findIndex, findLastIndex, hasPrefix } from "../bytes/mod.ts";
-import { extname } from "../fs/path.ts";
+import { extname } from "../fs/path/mod.ts";
 import { copyN } from "../io/ioutil.ts";
 import { MultiReader } from "../io/readers.ts";
 import { tempFile } from "../io/util.ts";

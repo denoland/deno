@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { join } from "../fs/path.ts";
 import { EOL } from "../fs/path/constants.ts";
+import { join } from "../fs/path/mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
 import { test, runIfMain } from "../testing/mod.ts";
 import { xrun } from "./util.ts";
