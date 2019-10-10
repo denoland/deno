@@ -12,21 +12,28 @@ use reqwest::header::USER_AGENT;
 use reqwest::r#async::Client;
 use reqwest::RedirectPolicy;
 use url::Url;
+#[macro_use]
+extern crate lazy_static;
 
-/// Create new instance of async reqwest::Client. This client supports
-/// proxies and doesn't follow redirects.
-pub fn get_client() -> Client {
-  let mut headers = HeaderMap::new();
-  headers.insert(
-    USER_AGENT,
-    format!("Deno/{}", version::DENO).parse().unwrap(),
-  );
-  Client::builder()
-    .redirect(RedirectPolicy::none())
-    .default_headers(headers)
-    .use_sys_proxy()
-    .build()
-    .unwrap()
+lazy_static! {
+    static ref CLIENTPROVIDER: Client = {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            USER_AGENT,
+            format!("Deno/{}", version::DENO).parse().unwrap(),
+        );
+        Client::builder()
+            .redirect(RedirectPolicy::none())
+            .default_headers(headers)
+            .use_sys_proxy()
+            .build()
+            .unwrap()
+    };
+}
+
+
+fn get_client() -> &'static Client {
+    &CLIENTPROVIDER
 }
 
 /// Construct the next uri based on base uri and location header fragment
