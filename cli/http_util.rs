@@ -32,7 +32,7 @@ lazy_static! {
 }
 
 
-fn get_client() -> &'static Client {
+pub fn get_client() -> &'static Client {
     &CLIENTPROVIDER
 }
 
