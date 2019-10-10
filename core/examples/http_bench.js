@@ -43,9 +43,23 @@ function send(promiseId, opId, arg, zeroCopy = null) {
 function sendAsync(opId, arg, zeroCopy = null) {
   const promiseId = nextPromiseId++;
   const p = createResolvable();
-  promiseMap.set(promiseId, p);
-  send(promiseId, opId, arg, zeroCopy);
+  const buf = send(promiseId, opId, arg, zeroCopy);
+  if (buf) {
+    const record = recordFromBuf(buf);
+    // Sync result.
+    p.resolve(record.result);
+  } else {
+    // Async result.
+    promiseMap.set(promiseId, p);
+  }
   return p;
+}
+
+/** Returns i32 number */
+function sendSync(opId, arg) {
+  const buf = send(0, opId, arg);
+  const record = recordFromBuf(buf);
+  return record.result;
 }
 
 function recordFromBuf(buf) {
@@ -56,13 +70,6 @@ function recordFromBuf(buf) {
     arg: buf32[1],
     result: buf32[2]
   };
-}
-
-/** Returns i32 number */
-function sendSync(opId, arg) {
-  const buf = send(0, opId, arg);
-  const record = recordFromBuf(buf);
-  return record.result;
 }
 
 function handleAsyncMsgFromRust(opId, buf) {

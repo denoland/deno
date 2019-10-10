@@ -7,6 +7,7 @@ use futures::Poll;
 use std::io;
 use std::mem;
 use std::net::SocketAddr;
+use std::ops::FnOnce;
 use tokio;
 use tokio::net::TcpStream;
 use tokio::runtime;
@@ -165,4 +166,17 @@ where
   E: std::fmt::Debug,
 {
   f.map_err(|err| panic!("Future got unexpected error: {:?}", err))
+}
+
+#[cfg(test)]
+pub fn run_in_task<F>(f: F)
+where
+  F: FnOnce() + Send + 'static,
+{
+  let fut = futures::future::lazy(move || {
+    f();
+    futures::future::ok(())
+  });
+
+  run(fut)
 }
