@@ -26,27 +26,26 @@ testPerm({ net: true }, async function netCloseWhileAccept(): Promise<void> {
   assertEquals(err.message, "Listener has been closed");
 });
 
-// TODO(bartlomieju): reenable before landing
-// testPerm({ net: true }, async function netConcurrentAccept(): Promise<void> {
-//   const listener = Deno.listen({ port: 4502 });
-//   let acceptErrCount = 0;
-//   const checkErr = (e): void => {
-//     assertEquals(e.kind, Deno.ErrorKind.Other);
-//     if (e.message === "Listener has been closed") {
-//       assertEquals(acceptErrCount, 1);
-//     } else if (e.message === "Another accept task is ongoing") {
-//       acceptErrCount++;
-//     } else {
-//       throw new Error("Unexpected error message");
-//     }
-//   };
-//   const p = listener.accept().catch(checkErr);
-//   const p1 = listener.accept().catch(checkErr);
-//   await Promise.race([p, p1]);
-//   listener.close();
-//   await [p, p1];
-//   assertEquals(acceptErrCount, 1);
-// });
+testPerm({ net: true }, async function netConcurrentAccept(): Promise<void> {
+  const listener = Deno.listen({ port: 4502 });
+  let acceptErrCount = 0;
+  const checkErr = (e): void => {
+    assertEquals(e.kind, Deno.ErrorKind.Other);
+    if (e.message === "Listener has been closed") {
+      assertEquals(acceptErrCount, 1);
+    } else if (e.message === "Another accept task is ongoing") {
+      acceptErrCount++;
+    } else {
+      throw new Error("Unexpected error message");
+    }
+  };
+  const p = listener.accept().catch(checkErr);
+  const p1 = listener.accept().catch(checkErr);
+  await Promise.race([p, p1]);
+  listener.close();
+  await [p, p1];
+  assertEquals(acceptErrCount, 1);
+});
 
 testPerm({ net: true }, async function netDialListen(): Promise<void> {
   const listener = Deno.listen({ port: 4500 });

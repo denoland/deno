@@ -79,6 +79,7 @@ where
 
 #[derive(Debug)]
 enum AcceptState {
+  Eager(Resource),
   Pending(Resource),
   Empty,
 }
@@ -86,7 +87,7 @@ enum AcceptState {
 /// Simply accepts a connection.
 pub fn accept(r: Resource) -> Accept {
   Accept {
-    state: AcceptState::Pending(r),
+    state: AcceptState::Eager(r),
   }
 }
 
@@ -108,6 +109,16 @@ impl Future for Accept {
       // in TcpListener resource.
       // In this way, when the listener is closed, the task can be
       // notified to error out (instead of stuck forever).
+      AcceptState::Eager(ref mut r) => match r.poll_accept() {
+        Ok(futures::prelude::Async::Ready(t)) => t,
+        Ok(futures::prelude::Async::NotReady) => {
+          self.state = AcceptState::Pending(r.to_owned());
+          return Ok(futures::prelude::Async::NotReady);
+        }
+        Err(e) => {
+          return Err(e);
+        }
+      },
       AcceptState::Pending(ref mut r) => match r.poll_accept() {
         Ok(futures::prelude::Async::Ready(t)) => {
           r.untrack_task();
@@ -127,8 +138,8 @@ impl Future for Accept {
     };
 
     match mem::replace(&mut self.state, AcceptState::Empty) {
-      AcceptState::Pending(_) => Ok((stream, addr).into()),
       AcceptState::Empty => panic!("invalid internal state"),
+      _ => Ok((stream, addr).into()),
     }
   }
 }
