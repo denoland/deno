@@ -12,28 +12,25 @@ use reqwest::header::USER_AGENT;
 use reqwest::r#async::Client;
 use reqwest::RedirectPolicy;
 use url::Url;
-#[macro_use]
-extern crate lazy_static;
 
 lazy_static! {
-    static ref CLIENTPROVIDER: Client = {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            USER_AGENT,
-            format!("Deno/{}", version::DENO).parse().unwrap(),
-        );
-        Client::builder()
-            .redirect(RedirectPolicy::none())
-            .default_headers(headers)
-            .use_sys_proxy()
-            .build()
-            .unwrap()
-    };
+  static ref CLIENTPROVIDER: Client = {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+      USER_AGENT,
+      format!("Deno/{}", version::DENO).parse().unwrap(),
+    );
+    Client::builder()
+      .redirect(RedirectPolicy::none())
+      .default_headers(headers)
+      .use_sys_proxy()
+      .build()
+      .unwrap()
+  };
 }
 
-
 pub fn get_client() -> &'static Client {
-    &CLIENTPROVIDER
+  &CLIENTPROVIDER
 }
 
 /// Construct the next uri based on base uri and location header fragment
