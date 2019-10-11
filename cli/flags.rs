@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::fs as deno_fs;
+use url::Url;
 use clap::App;
 use clap::AppSettings;
 use clap::Arg;
@@ -45,6 +46,7 @@ pub struct DenoFlags {
   pub import_map_path: Option<String>,
   pub allow_read: bool,
   pub read_whitelist: Vec<String>,
+  pub cache_blacklist: Vec<String>,
   pub allow_write: bool,
   pub write_whitelist: Vec<String>,
   pub allow_net: bool,
@@ -513,6 +515,23 @@ fn resolve_paths(paths: Vec<String>) -> Vec<String> {
   out
 }
 
+fn resolve_urls(urls: Vec<String>) -> Vec<String> {
+  let mut out : Vec<String> = vec![];
+  for urlstr in urls.iter() {
+    let result = Url::from_str(urlstr);
+    if result.is_err() {
+      eprintln!("Bad Url: {}", urlstr);
+      continue;
+    }
+    let mut full_url = String::from(result.unwrap().as_str());
+    if full_url.len() > 1 && full_url.ends_with('/'){
+      full_url.pop();
+    }
+    out.push(full_url);
+  }
+  out
+}
+
 /// Parse ArgMatches into internal DenoFlags structure.
 /// This method should not make any side effects.
 pub fn parse_flags(
@@ -535,7 +554,15 @@ pub fn parse_flags(
     flags.version = true;
   }
   if matches.is_present("reload") {
-    flags.reload = true;
+    if matches.value_of("reload").is_some() {
+      let cache_bl = matches.values_of("reload").unwrap();
+      let raw_cache_blacklist: Vec<String> = cache_bl.map(std::string::ToString::to_string).collect();
+      flags.cache_blacklist = resolve_urls(raw_cache_blacklist);
+      debug!("cache blacklist: {:#?}", &flags.cache_blacklist);
+      flags.reload = false;
+    }else {
+      flags.reload = true;
+    }
   }
   flags.config_path = matches.value_of("config").map(ToOwned::to_owned);
   if matches.is_present("v8-options") {

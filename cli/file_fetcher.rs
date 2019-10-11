@@ -70,6 +70,7 @@ pub struct SourceFileFetcher {
   deps_cache: DiskCache,
   progress: Progress,
   source_file_cache: SourceFileCache,
+  cache_blacklist: Vec<String>,
   use_disk_cache: bool,
   no_remote_fetch: bool,
 }
@@ -79,12 +80,14 @@ impl SourceFileFetcher {
     deps_cache: DiskCache,
     progress: Progress,
     use_disk_cache: bool,
+    cache_blacklist: Vec<String>,
     no_remote_fetch: bool,
   ) -> std::io::Result<Self> {
     let file_fetcher = Self {
       deps_cache,
       progress,
       source_file_cache: SourceFileCache::default(),
+      cache_blacklist,
       use_disk_cache,
       no_remote_fetch,
     };
@@ -308,8 +311,9 @@ impl SourceFileFetcher {
       return Box::new(futures::future::err(too_many_redirects()));
     }
 
+    let is_blacklisted = check_cache_blacklist(module_url, self.cache_blacklist.as_ref());
     // First try local cache
-    if use_disk_cache {
+    if use_disk_cache && !is_blacklisted {
       match self.fetch_cached_remote_source(&module_url) {
         Ok(Some(source_file)) => {
           return Box::new(futures::future::ok(source_file));
@@ -533,6 +537,22 @@ fn filter_shebang(bytes: Vec<u8>) -> Vec<u8> {
   }
 }
 
+fn check_cache_blacklist(
+  url: &Url,
+  black_list: &Vec<String>,
+) -> bool {
+  let mut path_buf = PathBuf::from(url.as_str());
+  loop {
+    if black_list.contains(&String::from(path_buf.to_str().unwrap())) {
+      return true;
+    }
+    if !path_buf.pop() {
+      break;
+    }
+  }
+  false
+}
+
 #[derive(Debug, Default)]
 /// Header metadata associated with a particular "symbolic" source code file.
 /// (the associated source code file might not be cached, while remaining
@@ -617,6 +637,7 @@ mod tests {
       DiskCache::new(&dir_path.to_path_buf().join("deps")),
       Progress::new(),
       true,
+      vec![],
       false,
     )
     .expect("setup fail")
@@ -636,6 +657,20 @@ mod tests {
         concat!("file://", $path)
       }
     };
+  }
+
+  #[test]
+  fn test_cache_blacklist(){
+    let args = vec![String::from("http://deno.land/std"), String::from("http://github.com/example/mod.ts")];
+    let url1 : Url = "http://deno.land/std/fs/mod.ts".parse().unwrap();
+    let url2 : Url = "http://github.com/example/file.ts".parse().unwrap();
+    let url3 : Url = "http://github.com/example/mod.ts".parse().unwrap();
+    let result1 = check_cache_blacklist(&url1, &args);
+    let result2 = check_cache_blacklist(&url2, &args);
+    let result3 = check_cache_blacklist(&url3, &args);
+    assert_eq!(result1, true);
+    assert_eq!(result2, false);
+    assert_eq!(result3, true);
   }
 
   #[test]
