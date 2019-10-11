@@ -2,7 +2,8 @@
 // Project: https://github.com/prettier/prettier, https://prettier.io
 // Definitions by: Ika <https://github.com/ikatyang>,
 //                 Ifiok Jr. <https://github.com/ifiokjr>,
-//                 Florian Keller <https://github.com/ffflorian>
+//                 Florian Keller <https://github.com/ffflorian>,
+//                 Sosuke Suzuki <https://github.com/sosukesuzuki>
 // Definitions: https://github.com/DefinitelyTyped/DefinitelyTyped
 // TypeScript Version: 2.8
 
@@ -254,6 +255,22 @@ export interface ResolveConfigOptions {
 export function resolveConfig(filePath: string, options?: ResolveConfigOptions): Promise<null | Options>;
 export namespace resolveConfig {
     function sync(filePath: string, options?: ResolveConfigOptions): null | Options;
+}
+
+/**
+ * `resolveConfigFile` can be used to find the path of the Prettier configuration file,
+ * that will be used when resolving the config (i.e. when calling `resolveConfig`).
+ *
+ * A promise is returned which will resolve to:
+ *
+ * - The path of the configuration file.
+ * - `null`, if no file was found.
+ *
+ * The promise will be rejected if there was an error parsing the configuration file.
+ */
+export function resolveConfigFile(filePath?: string): Promise<null | string>;
+export namespace resolveConfigFile {
+    function sync(filePath?: string): null | string;
 }
 
 /**
