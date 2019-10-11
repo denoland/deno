@@ -150,11 +150,11 @@ class TestRepl(DenoTestCase):
         new_env = os.environ.copy()
         new_env["DENO_DIR"] = deno_dir
         out, err, code = self.input("1", exit=False, env=new_env)
+        self.assertTrue(os.path.isdir(deno_dir))
+        shutil.rmtree(deno_dir)
         self.assertEqual(out, "1\n")
         self.assertEqual(err, "")
         self.assertEqual(code, 0)
-        self.assertTrue(os.path.isdir(deno_dir))
-        shutil.rmtree(deno_dir)
 
     def test_save_last_eval(self):
         out, err, code = self.input("1", "_")
