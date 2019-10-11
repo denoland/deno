@@ -2,8 +2,21 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::futures::future::join_all;
 use crate::futures::Future;
+use crate::ops::json_op;
 use crate::state::ThreadSafeState;
 use deno::*;
+
+pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+  i.register_op("cache", s.core_op(json_op(s.stateful_op(op_cache))));
+  i.register_op(
+    "fetch_source_files",
+    s.core_op(json_op(s.stateful_op(op_fetch_source_files))),
+  );
+  i.register_op(
+    "fetch_asset",
+    s.core_op(json_op(s.stateful_op(op_fetch_asset))),
+  );
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -13,7 +26,7 @@ struct CacheArgs {
   extension: String,
 }
 
-pub fn op_cache(
+fn op_cache(
   state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
@@ -38,7 +51,7 @@ struct FetchSourceFilesArgs {
   referrer: String,
 }
 
-pub fn op_fetch_source_files(
+fn op_fetch_source_files(
   state: &ThreadSafeState,
   args: Value,
   _data: Option<PinnedBuf>,
@@ -85,7 +98,7 @@ struct FetchAssetArgs {
   name: String,
 }
 
-pub fn op_fetch_asset(
+fn op_fetch_asset(
   _state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
