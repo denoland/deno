@@ -538,7 +538,7 @@ fn filter_shebang(bytes: Vec<u8>) -> Vec<u8> {
   }
 }
 
-fn check_cache_blacklist(url: &Url, black_list: &Vec<String>) -> bool {
+fn check_cache_blacklist(url: &Url, black_list: &[String]) -> bool {
   let mut path_buf = PathBuf::from(url.as_str());
   loop {
     if black_list.contains(&String::from(path_buf.to_str().unwrap())) {
