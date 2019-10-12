@@ -20,15 +20,19 @@ async function run(
   return { stdout, code };
 }
 
+function resolve(path: string): string {
+  return new URL(path, import.meta.url).pathname;
+}
 const cmd = [
   execPath(),
   "run",
   "--allow-run",
   "--allow-write",
   "--allow-read",
-  "prettier/main.ts"
+  resolve("./main.ts")
 ];
-const testdata = join("prettier", "testdata");
+
+const testdata = resolve("./testdata");
 
 function normalizeOutput(output: string): string {
   return output
@@ -51,7 +55,9 @@ test(async function testPrettierCheckAndFormatFiles(): Promise<void> {
   const files = [
     join(tempDir, "0.ts"),
     join(tempDir, "1.js"),
-    join(tempDir, "2.ts")
+    join(tempDir, "2.ts"),
+    join(tempDir, "3.jsx"),
+    join(tempDir, "4.tsx")
   ];
 
   let p = await run([...cmd, "--check", ...files]);
@@ -63,7 +69,10 @@ test(async function testPrettierCheckAndFormatFiles(): Promise<void> {
   assertEquals(
     normalizeOutput(p.stdout),
     normalizeOutput(`Formatting ${tempDir}/0.ts
-Formatting ${tempDir}/1.js`)
+Formatting ${tempDir}/1.js
+Formatting ${tempDir}/3.jsx
+Formatting ${tempDir}/4.tsx
+`)
   );
 
   p = await run([...cmd, "--check", ...files]);
@@ -256,7 +265,7 @@ test(async function testPrettierReadFromStdin(): Promise<void> {
   ): Promise<void> {
     const inputCode = stdin;
     const p1 = Deno.run({
-      args: [execPath(), "./prettier/testdata/echox.ts", `${inputCode}`],
+      args: [execPath(), resolve("./testdata/echox.ts"), `${inputCode}`],
       stdout: "piped"
     });
 
@@ -264,7 +273,7 @@ test(async function testPrettierReadFromStdin(): Promise<void> {
       args: [
         execPath(),
         "run",
-        "./prettier/main.ts",
+        resolve("./main.ts"),
         "--stdin",
         ...(parser ? ["--stdin-parser", parser] : [])
       ],
