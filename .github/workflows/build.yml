@@ -108,7 +108,6 @@ jobs:
       - name: std test
         if: matrix.kind == 'test_std'
         run: |
-          eslint -c ./.eslintrc.jsdoc.json std/**/*.ts --ignore-pattern '**/*_test.ts' --quiet
           cd std
           "../target/release/deno" test -A
 
