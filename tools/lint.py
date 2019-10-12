@@ -52,7 +52,7 @@ def eslint():
         quiet=True)
 
 def jsdoc():
-    print "eslint"
+    print "eslint jsdoc"
     script = os.path.join(third_party_path, "node_modules", "eslint", "bin",
                           "eslint")
     # Find all *directories* in the main repo that contain .ts/.js files.
