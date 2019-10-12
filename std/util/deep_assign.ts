@@ -1,6 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 /**
- * Do a deep assignation of Objects
+ * Do a deep assignment of Objects
  * @param target Target object of assignation
  * @param sources Source objects to assign
  */
