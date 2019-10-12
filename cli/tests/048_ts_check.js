@@ -1,7 +1,3 @@
-// @ts-check
-// console.log intentionally misspelled to trigger a type error
-consol.log("hello world!");
-
-// the following error should be ignored and not output to the console
-// eslint-disable-next-line
-const foo = new Foo();
+// Import a file with `ts-check` pragma to ensure that
+// transient dependencies are type checked.
+import "./048_ts_check_import.js";

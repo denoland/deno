@@ -240,6 +240,12 @@ class SourceFile {
   }
 }
 
+const TS_CHECK_PRAGMA_RE = /^\/\/\s?@ts-check/;
+
+function hasTsCheckPragma(sourceCode: string): boolean {
+  return TS_CHECK_PRAGMA_RE.test(sourceCode);
+}
+
 interface EmitResult {
   emitSkipped: boolean;
   diagnostics?: Diagnostic;
@@ -547,11 +553,14 @@ class Host implements ts.CompilerHost {
           }
 
           // NOTE: JavaScript files are only emitted to disk if `checkJs` option in on
-          if (
-            sourceFile.extension === ts.Extension.Js &&
-            !this._options.checkJs
-          ) {
-            return;
+          if (sourceFile.extension === ts.Extension.Js) {
+            if (
+              !(
+                this._options.checkJs || hasTsCheckPragma(sourceFile.sourceCode)
+              )
+            ) {
+              return;
+            }
           }
         }
 
