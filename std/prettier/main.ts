@@ -191,9 +191,9 @@ async function formatFile(
  * Selects the right prettier parser for the given path.
  */
 function selectParser(path: string): ParserLabel | null {
-  if (/\.ts$/.test(path)) {
+  if (/\.tsx?$/.test(path)) {
     return "typescript";
-  } else if (/\.js$/.test(path)) {
+  } else if (/\.jsx?$/.test(path)) {
     return "babel";
   } else if (/\.json$/.test(path)) {
     return "json";
