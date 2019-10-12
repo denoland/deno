@@ -109,7 +109,10 @@ export async function collectUint8Arrays(
   return collected;
 }
 
-// Delays the given milliseconds and resolves.
+/**
+ * Delays the given milliseconds and resolves.
+ * @param ms Time to delay in milliseconds
+ */
 export function delay(ms: number): Promise<void> {
   return new Promise(
     (res): number =>

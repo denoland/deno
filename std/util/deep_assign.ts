@@ -1,4 +1,9 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+/**
+ * Do a deep assignation of Objects
+ * @param target Target object of assignation
+ * @param sources Source objects to assign
+ */
 export function deepAssign(
   target: Record<string, unknown>,
   ...sources: object[]

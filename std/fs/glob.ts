@@ -151,13 +151,13 @@ function split(path: string): SplitPath {
   };
 }
 
+// TODO: Use a proper glob expansion algorithm.
+// This is a very incomplete solution. The whole directory tree from `root` is
+// walked and parent paths are not supported.
 /**
  * Expand the glob string from the specified `root` directory and yield each
  * result as a `WalkInfo` object.
  */
-// TODO: Use a proper glob expansion algorithm.
-// This is a very incomplete solution. The whole directory tree from `root` is
-// walked and parent paths are not supported.
 export async function* expandGlob(
   glob: string,
   {
@@ -258,8 +258,8 @@ export async function* expandGlob(
   yield* currentMatches;
 }
 
-/** Synchronous version of `expandGlob()`. */
 // TODO: As `expandGlob()`.
+/** Synchronous version of `expandGlob()`. */
 export function* expandGlobSync(
   glob: string,
   {

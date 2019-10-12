@@ -109,6 +109,11 @@ async function read(
   return result;
 }
 
+/**
+ * Read and parse the whole BufReader
+ * @param reader Input BufReader
+ * @param opt Parsing options
+ */
 export async function readAll(
   reader: BufReader,
   opt: ParseOptions = {
