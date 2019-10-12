@@ -6,6 +6,9 @@
       {
         "publicOnly": true
       }
-    ]
+    ],
+    "jsdoc/require-param-description": ["error"],
+    "jsdoc/require-returns-description": ["error"],
+    "jsdoc/require-description": ["error"]
   }
 }
