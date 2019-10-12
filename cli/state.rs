@@ -303,7 +303,9 @@ impl ThreadSafeState {
           state_.ts_compiler.compile_async(state_.clone(), &out)
         }
         msg::MediaType::JavaScript => {
-          if state_.ts_compiler.compile_js {
+          if state_.ts_compiler.compile_js
+            || TsCompiler::file_has_ts_check_pragma(&out.source_code)
+          {
             state_.ts_compiler.compile_async(state_.clone(), &out)
           } else {
             state_.js_compiler.compile_async(state_.clone(), &out)

@@ -326,6 +326,14 @@ itest!(_047_jsx {
   output: "047_jsx_test.jsx.out",
 });
 
+itest!(_048_ts_check {
+  // checking if JS file is run through TS compiler
+  args: "run --reload 048_ts_check.js",
+  check_stderr: true,
+  exit_code: 1,
+  output: "048_ts_check.js.out",
+});
+
 itest!(async_error {
   exit_code: 1,
   args: "run --reload async_error.ts",

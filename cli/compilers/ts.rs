@@ -32,6 +32,8 @@ use url::Url;
 lazy_static! {
   static ref CHECK_JS_RE: Regex =
     Regex::new(r#""checkJs"\s*?:\s*?true"#).unwrap();
+  static ref TS_CHECK_PRAGMA_RE: Regex =
+    Regex::new(r#"^//\s?@ts-check"#).unwrap();
 }
 
 /// Struct which represents the state of the compiler
@@ -589,6 +591,11 @@ impl TsCompiler {
       ".js" => self.cache_compiled_file(module_specifier, contents),
       _ => unreachable!(),
     }
+  }
+
+  pub fn file_has_ts_check_pragma(source_code: &[u8]) -> bool {
+    let code_str = str::from_utf8(source_code).unwrap();
+    TS_CHECK_PRAGMA_RE.is_match(code_str)
   }
 }
 
