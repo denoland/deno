@@ -20,19 +20,16 @@ async function run(
   return { stdout, code };
 }
 
-function resolve(path: string): string {
-  return new URL(path, import.meta.url).pathname;
-}
 const cmd = [
   execPath(),
   "run",
   "--allow-run",
   "--allow-write",
   "--allow-read",
-  resolve("./main.ts")
+  "./prettier/main.ts"
 ];
 
-const testdata = resolve("./testdata");
+const testdata = join("prettier", "testdata");
 
 function normalizeOutput(output: string): string {
   return output
@@ -265,7 +262,7 @@ test(async function testPrettierReadFromStdin(): Promise<void> {
   ): Promise<void> {
     const inputCode = stdin;
     const p1 = Deno.run({
-      args: [execPath(), resolve("./testdata/echox.ts"), `${inputCode}`],
+      args: [execPath(), "./prettier/testdata/echox.ts", `${inputCode}`],
       stdout: "piped"
     });
 
@@ -273,7 +270,7 @@ test(async function testPrettierReadFromStdin(): Promise<void> {
       args: [
         execPath(),
         "run",
-        resolve("./main.ts"),
+        "./prettier/main.ts",
         "--stdin",
         ...(parser ? ["--stdin-parser", parser] : [])
       ],
