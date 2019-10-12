@@ -137,7 +137,7 @@ pub fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
     .long_about("A secure runtime for JavaScript and TypeScript built with V8, Rust, and Tokio.
 
 Docs: https://deno.land/manual.html
-Modules: https://github.com/denoland/deno_std
+Modules: https://deno.land/x/
 Bugs: https://github.com/denoland/deno/issues
 
 To run the REPL:
