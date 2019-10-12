@@ -135,6 +135,9 @@ function checkIfExistsInPath(filePath: string): boolean {
   return false;
 }
 
+/**
+ * Check if the input url is remote or not
+ */
 export function isRemoteUrl(url: string): boolean {
   return /^https?:\/\//.test(url);
 }
@@ -195,6 +198,13 @@ exit $ret
   await chmod(filePath, 0o755);
 }
 
+/**
+ * Install modules
+ * @param moduleName
+ * @param moduleUrl
+ * @param flags
+ * @param installationDir
+ */
 export async function install(
   moduleName: string,
   moduleUrl: string,

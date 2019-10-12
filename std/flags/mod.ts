@@ -52,6 +52,11 @@ function hasKey(obj: NestedMapping, keys: string[]): boolean {
   return key in o;
 }
 
+/**
+ * Parse flags
+ * @param args
+ * @param initialOptions
+ */
 export function parse(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   args: any[],
