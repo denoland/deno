@@ -67,6 +67,10 @@ function buildMessage(diffResult: ReadonlyArray<DiffResult<string>>): string[] {
   return messages;
 }
 
+/**
+ * Make an assertion that `actual` and `expected` are equal, shallow. If not
+ * equal, then throw. For deepEqual assertions use `assertEquals`
+ */
 export function equal(c: unknown, d: unknown): boolean {
   const seen = new Map();
   return (function compare(a: unknown, b: unknown): boolean {
