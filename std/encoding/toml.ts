@@ -562,7 +562,7 @@ class Dumper {
 
 /**
  * Stringify the object to a TOML format
- * @param srcObj
+ * @param srcObj Source object to be serialized
  */
 export function stringify(srcObj: object): string {
   return new Dumper(srcObj).dump().join("\n");
@@ -570,7 +570,7 @@ export function stringify(srcObj: object): string {
 
 /**
  * Parse the TOML string
- * @param tomlString
+ * @param tomlString toml string to be parsed
  */
 export function parse(tomlString: string): object {
   // File is potentially using EOL CRLF
