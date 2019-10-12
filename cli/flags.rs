@@ -509,6 +509,41 @@ fn resolve_paths(paths: Vec<String>) -> Vec<String> {
   out
 }
 
+/// This function expands "bare port" paths (eg. ":8080")
+/// into full paths with hosts. It expands to such paths
+/// into 3 paths with following hosts: `0.0.0.0:port`, `127.0.0.1:port` and `localhost:port`.
+fn resolve_hosts(paths: Vec<String>) -> Vec<String> {
+  let mut out: Vec<String> = vec![];
+  for host_and_port in paths.iter() {
+    let parts = host_and_port.split(':').collect::<Vec<&str>>();
+
+    match parts.len() {
+      // host only
+      1 => {
+        out.push(host_and_port.to_owned());
+      }
+      // host and port (NOTE: host might be empty string)
+      2 => {
+        let host = parts[0];
+        let port = parts[1];
+
+        if !host.is_empty() {
+          out.push(host_and_port.to_owned());
+          continue;
+        }
+
+        // we got bare port, let's add default hosts
+        for host in ["0.0.0.0", "127.0.0.1", "localhost"].iter() {
+          out.push(format!("{}:{}", host, port));
+        }
+      }
+      _ => panic!("Bad host:port pair: {}", host_and_port),
+    }
+  }
+
+  out
+}
+
 /// Parse ArgMatches into internal DenoFlags structure.
 /// This method should not make any side effects.
 pub fn parse_flags(
@@ -606,8 +641,9 @@ fn parse_run_args(mut flags: DenoFlags, matches: &ArgMatches) -> DenoFlags {
   if matches.is_present("allow-net") {
     if matches.value_of("allow-net").is_some() {
       let net_wl = matches.values_of("allow-net").unwrap();
-      flags.net_whitelist =
+      let raw_net_whitelist =
         net_wl.map(std::string::ToString::to_string).collect();
+      flags.net_whitelist = resolve_hosts(raw_net_whitelist);
       debug!("net whitelist: {:#?}", &flags.net_whitelist);
     } else {
       flags.allow_net = true;
@@ -1795,5 +1831,31 @@ mod tests {
         "**/*_test.ts"
       ]
     )
+  }
+
+  #[test]
+  fn test_flags_from_vec_37() {
+    let (flags, subcommand, argv) = flags_from_vec(svec![
+      "deno",
+      "--allow-net=deno.land,:8000,:4545",
+      "script.ts"
+    ]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        net_whitelist: svec![
+          "deno.land",
+          "0.0.0.0:8000",
+          "127.0.0.1:8000",
+          "localhost:8000",
+          "0.0.0.0:4545",
+          "127.0.0.1:4545",
+          "localhost:4545"
+        ],
+        ..DenoFlags::default()
+      }
+    );
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "script.ts"])
   }
 }
