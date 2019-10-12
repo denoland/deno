@@ -7,6 +7,7 @@ use crate::state::ThreadSafeState;
 use deno::*;
 use futures::Future;
 use std;
+use std::collections::HashMap;
 use std::convert::From;
 use tokio;
 
@@ -21,7 +22,7 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
 struct OpenArgs {
   promise_id: Option<u64>,
   filename: String,
-  mode: String,
+  mode: HashMap<String, bool>,
 }
 
 fn op_open(
@@ -31,55 +32,24 @@ fn op_open(
 ) -> Result<JsonOp, ErrBox> {
   let args: OpenArgs = serde_json::from_value(args)?;
   let (filename, filename_) = deno_fs::resolve_from_cwd(&args.filename)?;
-  let mode = args.mode.as_ref();
+  let mode = args.mode;
 
   let mut open_options = tokio::fs::OpenOptions::new();
 
-  match mode {
-    "r" => {
-      open_options.read(true);
-    }
-    "r+" => {
-      open_options.read(true).write(true);
-    }
-    "w" => {
-      open_options.create(true).write(true).truncate(true);
-    }
-    "w+" => {
-      open_options
-        .read(true)
-        .create(true)
-        .write(true)
-        .truncate(true);
-    }
-    "a" => {
-      open_options.create(true).append(true);
-    }
-    "a+" => {
-      open_options.read(true).create(true).append(true);
-    }
-    "x" => {
-      open_options.create_new(true).write(true);
-    }
-    "x+" => {
-      open_options.create_new(true).read(true).write(true);
-    }
-    &_ => {
-      panic!("Unknown file open mode.");
-    }
+  open_options
+    .read(*mode.get("read").unwrap_or(&false))
+    .create(*mode.get("create").unwrap_or(&false))
+    .write(*mode.get("write").unwrap_or(&false))
+    .truncate(*mode.get("truncate").unwrap_or(&false))
+    .append(*mode.get("append").unwrap_or(&false))
+    .create_new(*mode.get("createNew").unwrap_or(&false));
+
+  if mode.contains_key("read") {
+    state.check_read(&filename_)?;
   }
 
-  match mode {
-    "r" => {
-      state.check_read(&filename_)?;
-    }
-    "w" | "a" | "x" => {
-      state.check_write(&filename_)?;
-    }
-    &_ => {
-      state.check_read(&filename_)?;
-      state.check_write(&filename_)?;
-    }
+  if mode.contains_key("write") || mode.contains_key("append") {
+    state.check_write(&filename_)?;
   }
 
   let is_sync = args.promise_id.is_none();

@@ -22,9 +22,17 @@ import {
  *
  *       const file = Deno.openSync("/foo/bar.txt");
  */
-export function openSync(filename: string, mode: OpenMode = "r"): File {
-  const rid = sendSyncJson(dispatch.OP_OPEN, { filename, mode });
-  return new File(rid);
+export function openSync(
+  filename: string,
+  mode: OpenMode = { read: true }
+): File {
+  let [modeIsValid, errMsg] = checkOpenMode(mode);
+  if (modeIsValid) {
+    const rid = sendSyncJson(dispatch.OP_OPEN, { filename, mode });
+    return new File(rid);
+  } else {
+    throw new Error(errMsg);
+  }
 }
 
 /** Open a file and return an instance of the `File` object.
@@ -35,10 +43,15 @@ export function openSync(filename: string, mode: OpenMode = "r"): File {
  */
 export async function open(
   filename: string,
-  mode: OpenMode = "r"
+  mode: OpenMode = { read: true }
 ): Promise<File> {
-  const rid = await sendAsyncJson(dispatch.OP_OPEN, { filename, mode });
-  return new File(rid);
+  let [modeIsValid, errMsg] = checkOpenMode(mode);
+  if (modeIsValid) {
+    const rid = await sendAsyncJson(dispatch.OP_OPEN, { filename, mode });
+    return new File(rid);
+  } else {
+    throw new Error(errMsg);
+  }
 }
 
 /** Read synchronously from a file ID into an array buffer.
@@ -200,36 +213,64 @@ export const stdout = new File(1);
 /** An instance of `File` for stderr. */
 export const stderr = new File(2);
 
-export type OpenMode =
-  /** Read-only. Default. Starts at beginning of file. */
-  | "r"
-  /** Read-write. Start at beginning of file. */
-  | "r+"
-  /** Write-only. Opens and truncates existing file or creates new one for
-   * writing only.
+export interface OpenMode {
+  /** Sets the option for read access. This option, when true, will indicate that the file should be read-able if opened. */
+  read?: boolean;
+  /** Sets the option for write access.
+   * This option, when true, will indicate that the file should be write-able if opened.
+   * If the file already exists, any write calls on it will overwrite its contents, without truncating it.
    */
-  | "w"
-  /** Read-write. Opens and truncates existing file or creates new one for
-   * writing and reading.
+  write?: boolean;
+  /* Sets the option for creating a new file.
+   * This option indicates whether a new file will be created if the file does not yet already exist.
+   * In order for the file to be created, write or append access must be used.
    */
-  | "w+"
-  /** Write-only. Opens existing file or creates new one. Each write appends
-   * content to the end of file.
+  create?: boolean;
+  /** Sets the option for truncating a previous file.
+   * If a file is successfully opened with this option set it will truncate the file to 0 length if it already exists.
+   * The file must be opened with write access for truncate to work.
    */
-  | "a"
-  /** Read-write. Behaves like "a" and allows to read from file. */
-  | "a+"
-  /** Write-only. Exclusive create - creates new file only if one doesn't exist
-   * already.
+  truncate?: boolean;
+  /**Sets the option for the append mode.
+   * This option, when true, means that writes will append to a file instead of overwriting previous contents.
+   * Note that setting { write: true, append: true } has the same effect as setting only { append: true }.
    */
-  | "x"
-  /** Read-write. Behaves like `x` and allows to read from file. */
-  | "x+";
+  append?: boolean;
+  /** Sets the option to always create a new file.
+   * This option indicates whether a new file will be created. No file is allowed to exist at the target location, also no (dangling) symlink.
+   * If { createNew: true } is set, create and truncate are ignored.
+   */
+  createNew?: boolean;
+}
 
 /** A factory function for creating instances of `File` associated with the
  * supplied file name.
  * @internal
  */
 export function create(filename: string): Promise<File> {
-  return open(filename, "w+");
+  return open(filename, {
+    read: true,
+    create: true,
+    write: true,
+    truncate: true
+  });
+}
+
+/** Check if OpenMode is set to something that is valid.
+ *  @returns Tuple representing if openMode is valid and error message if it's not
+ *  @internal
+ */
+function checkOpenMode(mode: OpenMode): [boolean, string] {
+  let allOptionsAreFalse =
+    Object.values(mode).filter(val => val == true).length === 0;
+  let truncateOptionWithoutWriteAccess = mode.truncate && !mode.write;
+  let createOrCreateNewWithoutWriteOrAppend =
+    (mode.create || mode.createNew) && !(mode.write || mode.append);
+  if (allOptionsAreFalse)
+    return [false, "OpenMode require at least one option to be true"];
+  if (truncateOptionWithoutWriteAccess)
+    return [false, "Truncate option require write accesss"];
+  if (createOrCreateNewWithoutWriteOrAppend)
+    return [false, "Create or create new requires write or append access"];
+  return [true, ""];
 }

@@ -34,7 +34,7 @@ export function writeFileSync(
     }
   }
 
-  const openMode = !!options.append ? "a" : "w";
+  const openMode = !!options.append ? { append: true } : { write: true };
   const file = openSync(filename, openMode);
 
   if (options.perm !== undefined && options.perm !== null) {
@@ -64,7 +64,7 @@ export async function writeFile(
     }
   }
 
-  const openMode = !!options.append ? "a" : "w";
+  const openMode = !!options.append ? { append: true } : { write: true };
   const file = await open(filename, openMode);
 
   if (options.perm !== undefined && options.perm !== null) {
