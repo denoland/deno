@@ -10,3 +10,4 @@
 /website/*.bundle.js
 /website/data.json
 /website/recent.json
+/node_modules

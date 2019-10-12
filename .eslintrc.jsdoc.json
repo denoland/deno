@@ -1,0 +1,11 @@
+{
+  "plugins": ["jsdoc"],
+  "rules": {
+    "jsdoc/require-jsdoc": [
+      "error",
+      {
+        "publicOnly": true
+      }
+    ]
+  }
+}
