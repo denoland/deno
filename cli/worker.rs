@@ -39,6 +39,7 @@ impl Worker {
       ops::fs::init(&mut i, &state);
       ops::io::init(&mut i, &state);
       ops::net::init(&mut i, &state);
+      ops::tls::init(&mut i, &state);
       ops::os::init(&mut i, &state);
       ops::permissions::init(&mut i, &state);
       ops::process::init(&mut i, &state);
