@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
+use crate::ops::json_op;
 use crate::resolve_addr::resolve_addr;
 use crate::resources;
 use crate::state::ThreadSafeState;
@@ -19,6 +20,9 @@ use webpki_roots;
 struct DialTLSArgs {
   hostname: String,
   port: u16,
+}
+pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+  i.register_op("dial_tls", s.core_op(json_op(s.stateful_op(op_dial_tls))));
 }
 
 pub fn op_dial_tls(
