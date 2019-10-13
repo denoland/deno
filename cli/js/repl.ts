@@ -7,6 +7,57 @@ import { formatError } from "./format_error.ts";
 import { stringifyArgs } from "./console.ts";
 import * as dispatch from "./dispatch.ts";
 import { sendSync, sendAsync } from "./dispatch_json.ts";
+import { tokTypes, Parser as AcornParser } from "./vendor/acorn.js";
+
+// Following function modified from Node.js lib/internal/repl/utils.js
+// Copyright Node.js contributors. MIT License.
+// https://github.com/nodejs/node/blob/57c70835af07485948bb3690b78adbf52d2205cd/lib/internal/repl/utils.js
+function isRecoverableError(e: Error, code: string): boolean {
+  if (/^\s*\{/.test(code) && isRecoverableError(e, `(${code}`)) {
+    return true;
+  }
+
+  let recoverable = false;
+
+  const RecoverableParser = AcornParser.extend(
+    // privateMethods,
+    // classFields,
+    // numericSeparator,
+    // staticClassFeatures,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (Parser: any) => {
+      return class extends Parser {
+        nextToken(): void {
+          super.nextToken();
+          if (this.type === tokTypes.eof) recoverable = true;
+        }
+        raise(pos: number, message: string): void {
+          switch (message) {
+            case "Unterminated template":
+            case "Unterminated comment":
+              recoverable = true;
+              break;
+
+            case "Unterminated string constant":
+              const token = this.input.slice(this.lastTokStart, this.pos);
+              // See https://www.ecma-international.org/ecma-262/#sec-line-terminators
+              if (/\\(?:\r\n?|\n|\u2028|\u2029)$/.test(token)) {
+                recoverable = true;
+              }
+          }
+          super.raise(pos, message);
+        }
+      };
+    }
+  );
+
+  try {
+    RecoverableParser.parse(code, { ecmaVersion: 11 });
+    return false;
+  } catch {
+    return recoverable;
+  }
+}
 
 const { console } = window;
 
@@ -55,24 +106,6 @@ export async function readline(rid: number, prompt: string): Promise<string> {
   return sendAsync(dispatch.OP_REPL_READLINE, { rid, prompt });
 }
 
-// Error messages that allow users to continue input
-// instead of throwing an error to REPL
-// ref: https://github.com/v8/v8/blob/master/src/message-template.h
-// TODO(kevinkassimo): this list might not be comprehensive
-const recoverableErrorMessages = [
-  "Unexpected end of input", // { or [ or (
-  "Missing initializer in const declaration", // const a
-  "Missing catch or finally after try", // try {}
-  "missing ) after argument list", // console.log(1
-  "Unterminated template literal" // `template
-  // TODO(kevinkassimo): need a parser to handling errors such as:
-  // "Missing } in template expression" // `${ or `${ a 123 }`
-];
-
-function isRecoverableError(e: Error): boolean {
-  return recoverableErrorMessages.includes(e.message);
-}
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Value = any;
 
@@ -87,7 +120,10 @@ function evaluate(code: string): boolean {
   if (!errInfo) {
     lastEvalResult = result;
     replLog(result);
-  } else if (errInfo.isCompileError && isRecoverableError(errInfo.thrown)) {
+  } else if (
+    errInfo.isCompileError &&
+    isRecoverableError(errInfo.thrown, code)
+  ) {
     // Recoverable compiler error
     return false; // don't consume code.
   } else {
