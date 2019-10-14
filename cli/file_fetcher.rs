@@ -1521,6 +1521,41 @@ mod tests {
       map_content_type(Path::new("foo/bar.ts"), Some("foo/bar")),
       msg::MediaType::Unknown
     );
+    assert_eq!(
+      map_content_type(
+        Path::new("foo/bar.tsx"),
+        Some("application/typescript")
+      ),
+      msg::MediaType::TSX
+    );
+    assert_eq!(
+      map_content_type(
+        Path::new("foo/bar.tsx"),
+        Some("application/javascript")
+      ),
+      msg::MediaType::TSX
+    );
+    assert_eq!(
+      map_content_type(
+        Path::new("foo/bar.tsx"),
+        Some("application/x-typescript")
+      ),
+      msg::MediaType::TSX
+    );
+    assert_eq!(
+      map_content_type(
+        Path::new("foo/bar.jsx"),
+        Some("application/javascript")
+      ),
+      msg::MediaType::JSX
+    );
+    assert_eq!(
+      map_content_type(
+        Path::new("foo/bar.jsx"),
+        Some("application/x-typescript")
+      ),
+      msg::MediaType::JSX
+    );
   }
 
   #[test]

@@ -5,10 +5,18 @@ map: [WILDCARD].js.map
 deps:
 http://127.0.0.1:4545/cli/tests/019_media_types.ts
   ├── http://localhost:4545/cli/tests/subdir/mt_text_typescript.t1.ts
+  ├── http://localhost:4545/cli/tests/subdir/mt_text_typescript_tsx.t1.tsx
   ├── http://localhost:4545/cli/tests/subdir/mt_video_vdn.t2.ts
+  ├── http://localhost:4545/cli/tests/subdir/mt_video_vdn_tsx.t2.tsx
   ├── http://localhost:4545/cli/tests/subdir/mt_video_mp2t.t3.ts
+  ├── http://localhost:4545/cli/tests/subdir/mt_video_mp2t_tsx.t3.tsx
   ├── http://localhost:4545/cli/tests/subdir/mt_application_x_typescript.t4.ts
+  ├── http://localhost:4545/cli/tests/subdir/mt_application_x_typescript_tsx.t4.tsx
   ├── http://localhost:4545/cli/tests/subdir/mt_text_javascript.j1.js
+  ├── http://localhost:4545/cli/tests/subdir/mt_text_javascript_jsx.j1.jsx
   ├── http://localhost:4545/cli/tests/subdir/mt_application_ecmascript.j2.js
+  ├── http://localhost:4545/cli/tests/subdir/mt_application_ecmascript_jsx.j2.jsx
   ├── http://localhost:4545/cli/tests/subdir/mt_text_ecmascript.j3.js
-  └── http://localhost:4545/cli/tests/subdir/mt_application_x_javascript.j4.js
+  ├── http://localhost:4545/cli/tests/subdir/mt_text_ecmascript_jsx.j3.jsx
+  ├── http://localhost:4545/cli/tests/subdir/mt_application_x_javascript.j4.js
+  └── http://localhost:4545/cli/tests/subdir/mt_application_x_javascript_jsx.j4.jsx
