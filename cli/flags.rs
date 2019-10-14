@@ -515,15 +515,16 @@ fn resolve_paths(paths: Vec<String>) -> Vec<String> {
   out
 }
 
-fn resolve_urls(urls: Vec<String>) -> Vec<String> {
+pub fn resolve_urls(urls: Vec<String>) -> Vec<String> {
   let mut out: Vec<String> = vec![];
   for urlstr in urls.iter() {
     let result = Url::from_str(urlstr);
     if result.is_err() {
-      eprintln!("Bad Url: {}", urlstr);
-      continue;
+      panic!("Bad Url: {}", urlstr);
     }
-    let mut full_url = String::from(result.unwrap().as_str());
+    let mut url = result.unwrap();
+    url.set_fragment(None);
+    let mut full_url = String::from(url.as_str());
     if full_url.len() > 1 && full_url.ends_with('/') {
       full_url.pop();
     }
