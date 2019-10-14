@@ -175,11 +175,17 @@ To get help on the another subcommands (run in this case):
       Arg::with_name("reload")
         .short("r")
         .min_values(0)
+        .multiple(true)
         .takes_value(true)
         .use_delimiter(true)
         .require_equals(true)
         .long("reload")
-        .help("Reload source code cache (recompile TypeScript)")
+        .help("Reload source code cache (recompile TypeScript). Supports blacklist")
+        .value_name("blacklist")
+        .long_help("Reload source code cache (recompile TypeScript). Supports blacklist\
+        --reload    // Reload everything\
+        --reload=https://deno.land/std    // Reload everything from the standard module\
+        --reload=https://deno.land/std/fs/utils.ts,https://deno.land/std/fmt/colors.ts  // Reload only fs/utils and fmt/colors modules")
         .global(true),
     ).arg(
       Arg::with_name("config")
