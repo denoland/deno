@@ -505,12 +505,16 @@ fn map_content_type(path: &Path, content_type: Option<&str>) -> msg::MediaType {
         | "text/typescript"
         | "video/vnd.dlna.mpeg-tts"
         | "video/mp2t"
-        | "application/x-typescript" => msg::MediaType::TypeScript,
+        | "application/x-typescript" => {
+          map_js_like_extension(path, msg::MediaType::TypeScript)
+        }
         "application/javascript"
         | "text/javascript"
         | "application/ecmascript"
         | "text/ecmascript"
-        | "application/x-javascript" => msg::MediaType::JavaScript,
+        | "application/x-javascript" => {
+          map_js_like_extension(path, msg::MediaType::JavaScript)
+        }
         "application/json" | "text/json" => msg::MediaType::Json,
         "text/plain" => map_file_extension(path),
         _ => {
@@ -520,6 +524,21 @@ fn map_content_type(path: &Path, content_type: Option<&str>) -> msg::MediaType {
       }
     }
     None => map_file_extension(path),
+  }
+}
+
+fn map_js_like_extension(
+  path: &Path,
+  default: msg::MediaType,
+) -> msg::MediaType {
+  match path.extension() {
+    None => default,
+    Some(os_str) => match os_str.to_str() {
+      None => default,
+      Some("jsx") => msg::MediaType::JSX,
+      Some("tsx") => msg::MediaType::TSX,
+      Some(_) => default,
+    },
   }
 }
 

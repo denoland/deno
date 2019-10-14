@@ -326,6 +326,16 @@ itest!(_047_jsx {
   output: "047_jsx_test.jsx.out",
 });
 
+itest!(_048_remote_jsx {
+  args: "run  --reload 048_remote_jsx.ts",
+  output: "048_remote_jsx.ts.out",
+});
+
+itest!(_049_remote_tsx {
+  args: "run  --reload 049_remote_tsx.ts",
+  output: "049_remote_tsx.ts.out",
+});
+
 itest!(async_error {
   exit_code: 1,
   args: "run --reload async_error.ts",
