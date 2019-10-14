@@ -1005,9 +1005,9 @@ pub mod tests {
       js_check(isolate.execute(
         "check2.js",
         r#"
-         // assert(nrecv == 1);
+         assert(nrecv == 1);
          Deno.core.send(1, control);
-         // assert(nrecv == 1);
+         assert(nrecv == 1);
          "#,
       ));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
