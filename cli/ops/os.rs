@@ -2,6 +2,7 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::colors;
 use crate::fs as deno_fs;
+use crate::ops::json_op;
 use crate::state::ThreadSafeState;
 use crate::version;
 use atty;
@@ -22,7 +23,19 @@ static BUILD_OS: &str = "win";
 #[cfg(target_arch = "x86_64")]
 static BUILD_ARCH: &str = "x64";
 
-pub fn op_start(
+pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+  i.register_op("exit", s.core_op(json_op(s.stateful_op(op_exit))));
+  i.register_op("is_tty", s.core_op(json_op(s.stateful_op(op_is_tty))));
+  i.register_op("env", s.core_op(json_op(s.stateful_op(op_env))));
+  i.register_op("exec_path", s.core_op(json_op(s.stateful_op(op_exec_path))));
+  i.register_op("set_env", s.core_op(json_op(s.stateful_op(op_set_env))));
+  i.register_op("get_env", s.core_op(json_op(s.stateful_op(op_get_env))));
+  i.register_op("home_dir", s.core_op(json_op(s.stateful_op(op_home_dir))));
+  i.register_op("hostname", s.core_op(json_op(s.stateful_op(op_hostname))));
+  i.register_op("start", s.core_op(json_op(s.stateful_op(op_start))));
+}
+
+fn op_start(
   state: &ThreadSafeState,
   _args: Value,
   _zero_copy: Option<PinnedBuf>,
@@ -46,7 +59,7 @@ pub fn op_start(
   })))
 }
 
-pub fn op_home_dir(
+fn op_home_dir(
   state: &ThreadSafeState,
   _args: Value,
   _zero_copy: Option<PinnedBuf>,
@@ -60,7 +73,7 @@ pub fn op_home_dir(
   Ok(JsonOp::Sync(json!(path)))
 }
 
-pub fn op_exec_path(
+fn op_exec_path(
   state: &ThreadSafeState,
   _args: Value,
   _zero_copy: Option<PinnedBuf>,
@@ -80,7 +93,7 @@ struct SetEnv {
   value: String,
 }
 
-pub fn op_set_env(
+fn op_set_env(
   state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
@@ -91,7 +104,7 @@ pub fn op_set_env(
   Ok(JsonOp::Sync(json!({})))
 }
 
-pub fn op_env(
+fn op_env(
   state: &ThreadSafeState,
   _args: Value,
   _zero_copy: Option<PinnedBuf>,
@@ -106,7 +119,7 @@ struct GetEnv {
   key: String,
 }
 
-pub fn op_get_env(
+fn op_get_env(
   state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
@@ -125,7 +138,7 @@ struct Exit {
   code: i32,
 }
 
-pub fn op_exit(
+fn op_exit(
   _s: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
@@ -134,7 +147,7 @@ pub fn op_exit(
   std::process::exit(args.code)
 }
 
-pub fn op_is_tty(
+fn op_is_tty(
   _s: &ThreadSafeState,
   _args: Value,
   _zero_copy: Option<PinnedBuf>,
@@ -146,7 +159,7 @@ pub fn op_is_tty(
   })))
 }
 
-pub fn op_hostname(
+fn op_hostname(
   state: &ThreadSafeState,
   _args: Value,
   _zero_copy: Option<PinnedBuf>,

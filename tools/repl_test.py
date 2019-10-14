@@ -1,5 +1,6 @@
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import os
+import shutil
 from subprocess import CalledProcessError, PIPE, Popen
 import sys
 import time
@@ -145,11 +146,14 @@ class TestRepl(DenoTestCase):
         self.assertEqual(code, 0)
 
     def test_missing_deno_dir(self):
+        deno_dir = "nonexistent"
         new_env = os.environ.copy()
-        new_env["DENO_DIR"] = os.path.abspath("doesnt_exist")
-        out, err, code = self.input("'noop'", exit=False, env=new_env)
-        self.assertEqual(out, "noop\n")
-        self.assertTrue(err.startswith("Unable to save REPL history:"))
+        new_env["DENO_DIR"] = deno_dir
+        out, err, code = self.input("1", exit=False, env=new_env)
+        self.assertTrue(os.path.isdir(deno_dir))
+        shutil.rmtree(deno_dir)
+        self.assertEqual(out, "1\n")
+        self.assertEqual(err, "")
         self.assertEqual(code, 0)
 
     def test_save_last_eval(self):

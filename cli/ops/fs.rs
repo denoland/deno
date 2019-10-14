@@ -1,10 +1,10 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 // Some deserializer fields are only used on Unix and Windows build fails without it
-#![allow(dead_code)]
 use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
 use crate::fs as deno_fs;
+use crate::ops::json_op;
 use crate::state::ThreadSafeState;
 use deno::*;
 use remove_dir_all::remove_dir_all;
@@ -16,12 +16,34 @@ use std::time::UNIX_EPOCH;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
+pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+  i.register_op("chdir", s.core_op(json_op(s.stateful_op(op_chdir))));
+  i.register_op("mkdir", s.core_op(json_op(s.stateful_op(op_mkdir))));
+  i.register_op("chmod", s.core_op(json_op(s.stateful_op(op_chmod))));
+  i.register_op("chown", s.core_op(json_op(s.stateful_op(op_chown))));
+  i.register_op("remove", s.core_op(json_op(s.stateful_op(op_remove))));
+  i.register_op("copy_file", s.core_op(json_op(s.stateful_op(op_copy_file))));
+  i.register_op("stat", s.core_op(json_op(s.stateful_op(op_stat))));
+  i.register_op("read_dir", s.core_op(json_op(s.stateful_op(op_read_dir))));
+  i.register_op("rename", s.core_op(json_op(s.stateful_op(op_rename))));
+  i.register_op("link", s.core_op(json_op(s.stateful_op(op_link))));
+  i.register_op("symlink", s.core_op(json_op(s.stateful_op(op_symlink))));
+  i.register_op("read_link", s.core_op(json_op(s.stateful_op(op_read_link))));
+  i.register_op("truncate", s.core_op(json_op(s.stateful_op(op_truncate))));
+  i.register_op(
+    "make_temp_dir",
+    s.core_op(json_op(s.stateful_op(op_make_temp_dir))),
+  );
+  i.register_op("cwd", s.core_op(json_op(s.stateful_op(op_cwd))));
+  i.register_op("utime", s.core_op(json_op(s.stateful_op(op_utime))));
+}
+
 #[derive(Deserialize)]
 struct ChdirArgs {
   directory: String,
 }
 
-pub fn op_chdir(
+fn op_chdir(
   _state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
@@ -40,7 +62,7 @@ struct MkdirArgs {
   mode: u32,
 }
 
-pub fn op_mkdir(
+fn op_mkdir(
   state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
@@ -66,7 +88,7 @@ struct ChmodArgs {
   mode: u32,
 }
 
-pub fn op_chmod(
+fn op_chmod(
   state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
@@ -100,7 +122,7 @@ struct ChownArgs {
   gid: u32,
 }
 
-pub fn op_chown(
+fn op_chown(
   state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
@@ -127,7 +149,7 @@ struct RemoveArgs {
   recursive: bool,
 }
 
-pub fn op_remove(
+fn op_remove(
   state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
@@ -161,7 +183,7 @@ struct CopyFileArgs {
   to: String,
 }
 
-pub fn op_copy_file(
+fn op_copy_file(
   state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
@@ -220,7 +242,7 @@ struct StatArgs {
   lstat: bool,
 }
 
-pub fn op_stat(
+fn op_stat(
   state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
@@ -262,7 +284,7 @@ struct ReadDirArgs {
   path: String,
 }
 
-pub fn op_read_dir(
+fn op_read_dir(
   state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
@@ -308,7 +330,7 @@ struct RenameArgs {
   newpath: String,
 }
 
-pub fn op_rename(
+fn op_rename(
   state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
@@ -338,7 +360,7 @@ struct LinkArgs {
   newname: String,
 }
 
-pub fn op_link(
+fn op_link(
   state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
@@ -367,7 +389,7 @@ struct SymlinkArgs {
   newname: String,
 }
 
-pub fn op_symlink(
+fn op_symlink(
   state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
@@ -400,7 +422,7 @@ struct ReadLinkArgs {
   name: String,
 }
 
-pub fn op_read_link(
+fn op_read_link(
   state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
@@ -429,7 +451,7 @@ struct TruncateArgs {
   len: u64,
 }
 
-pub fn op_truncate(
+fn op_truncate(
   state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
@@ -459,7 +481,7 @@ struct MakeTempDirArgs {
   suffix: Option<String>,
 }
 
-pub fn op_make_temp_dir(
+fn op_make_temp_dir(
   state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
@@ -499,7 +521,7 @@ struct Utime {
   mtime: u64,
 }
 
-pub fn op_utime(
+fn op_utime(
   state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
@@ -514,7 +536,7 @@ pub fn op_utime(
   })
 }
 
-pub fn op_cwd(
+fn op_cwd(
   _state: &ThreadSafeState,
   _args: Value,
   _zero_copy: Option<PinnedBuf>,
