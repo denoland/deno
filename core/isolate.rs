@@ -319,11 +319,7 @@ impl Isolate {
 
     let op = match call_result {
       Ok(op) => op,
-      Err(_) => {
-        isolate
-          .throw_exception("Deno.core.send called with unknown op number: ");
-        return;
-      }
+      Err(err_str) => return isolate.throw_exception(&err_str),
     };
 
     // To avoid latency problems we eagerly poll 50 futures and then
@@ -1431,6 +1427,26 @@ pub mod tests {
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
       poll_until_ready(&mut isolate, 3).unwrap();
       js_check(isolate.execute("check.js", "assert(asyncRecv == 2);"));
+    });
+  }
+
+  #[test]
+  fn test_pre_dispatch() {
+    run_in_task(|| {
+      let (mut isolate, _dispatch_count) = setup(Mode::OverflowResAsync);
+      js_check(isolate.execute(
+        "bad_op_id.js",
+        r#"
+          let thrown;
+          try {
+            Deno.core.dispatch(100, []);
+          } catch (e) {
+            thrown = e;
+          }
+          assert(thrown == "Unknown op id: 100");
+         "#,
+      ));
+      assert_eq!(Async::Ready(()), isolate.poll().unwrap());
     });
   }
 

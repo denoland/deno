@@ -68,7 +68,7 @@ impl OpRegistry {
     op_id: OpId,
     control: &[u8],
     zero_copy_buf: Option<PinnedBuf>,
-  ) -> Result<CoreOp, ()> {
+  ) -> Result<CoreOp, String> {
     // Op with id 0 has special meaning - it's a special op that is always
     // provided to retrieve op id map. The map consists of name to `OpId`
     // mappings.
@@ -78,7 +78,7 @@ impl OpRegistry {
 
     let d = match self.dispatchers.get(op_id as usize) {
       Some(handler) => &*handler,
-      None => return Err(()),
+      None => return Err(format!("Unknown op id: {}", op_id)),
     };
 
     Ok(d(control, zero_copy_buf))
@@ -106,10 +106,13 @@ fn test_op_registry() {
   assert_eq!(op_registry.name_to_id, expected);
 
   let res = op_registry.call(test_id, &[], None);
-  if let Op::Sync(buf) = res {
+  if let Op::Sync(buf) = res.unwrap() {
     assert_eq!(buf.len(), 0);
   } else {
     unreachable!();
   }
   assert_eq!(c.load(atomic::Ordering::SeqCst), 1);
+
+  let res = op_registry.call(100, &[], None);
+  assert!(res.is_err());
 }
