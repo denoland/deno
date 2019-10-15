@@ -2,6 +2,7 @@
 import * as domTypes from "./dom_types.ts";
 import { DomIterableMixin } from "./mixins/dom_iterable.ts";
 import { requiredArguments } from "./util.ts";
+import { customInspect } from "./console.ts";
 
 // From node-fetch
 // Copyright (c) 2016 David Frank. MIT License.
@@ -83,6 +84,18 @@ class HeadersBase {
         }
       }
     }
+  }
+
+  [customInspect](): string {
+    let headerSize = this[headerMap].size;
+    let output = "";
+    this[headerMap].forEach((value, key) => {
+      const prefix = headerSize === this[headerMap].size ? " " : "";
+      const postfix = headerSize === 1 ? " " : ", ";
+      output = output + `${prefix}${key}: ${value}${postfix}`;
+      headerSize--;
+    });
+    return `Headers {${output}}`;
   }
 
   // ref: https://fetch.spec.whatwg.org/#concept-headers-append
