@@ -311,11 +311,20 @@ impl Isolate {
   ) {
     let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
 
-    let op = isolate.op_registry.call(
+    let call_result = isolate.op_registry.call(
       op_id,
       control_buf.as_ref(),
       PinnedBuf::new(zero_copy_buf),
     );
+
+    let op = match call_result {
+      Ok(op) => op,
+      Err(_) => {
+        isolate
+          .throw_exception("Deno.core.send called with unknown op number: ");
+        return;
+      }
+    };
 
     // To avoid latency problems we eagerly poll 50 futures and then
     // allow to poll ops from `pending_ops`
@@ -411,6 +420,13 @@ impl Isolate {
   fn check_promise_errors(&self) {
     unsafe {
       libdeno::deno_check_promise_errors(self.libdeno_isolate);
+    }
+  }
+
+  fn throw_exception(&mut self, exception_text: &str) {
+    let text = CString::new(exception_text).unwrap();
+    unsafe {
+      libdeno::deno_throw_exception(self.libdeno_isolate, text.as_ptr())
     }
   }
 

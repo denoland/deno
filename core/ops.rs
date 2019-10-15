@@ -68,16 +68,20 @@ impl OpRegistry {
     op_id: OpId,
     control: &[u8],
     zero_copy_buf: Option<PinnedBuf>,
-  ) -> CoreOp {
+  ) -> Result<CoreOp, ()> {
     // Op with id 0 has special meaning - it's a special op that is always
     // provided to retrieve op id map. The map consists of name to `OpId`
     // mappings.
     if op_id == 0 {
-      return Op::Sync(self.json_map());
+      return Ok(Op::Sync(self.json_map()));
     }
 
-    let d = &*self.dispatchers.get(op_id as usize).expect("Op not found!");
-    d(control, zero_copy_buf)
+    let d = match self.dispatchers.get(op_id as usize) {
+      Some(handler) => &*handler,
+      None => return Err(()),
+    };
+
+    Ok(d(control, zero_copy_buf))
   }
 }
 
