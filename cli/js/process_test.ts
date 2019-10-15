@@ -227,7 +227,12 @@ testPerm(
   async function runRedirectStdoutStderr(): Promise<void> {
     const tempDir = await makeTempDir();
     const fileName = tempDir + "/redirected_stdio.txt";
-    const file = await open(fileName, "w");
+    const w = {
+      write: true,
+      truncate: true,
+      create: true
+    };
+    const file = await open(fileName, w);
 
     const p = run({
       args: [
@@ -259,7 +264,8 @@ testPerm(
     const fileName = tempDir + "/redirected_stdio.txt";
     const encoder = new TextEncoder();
     await writeFile(fileName, encoder.encode("hello"));
-    const file = await open(fileName, "r");
+    const r = { read: true };
+    const file = await open(fileName, r);
 
     const p = run({
       args: ["python", "-c", "import sys; assert 'hello' == sys.stdin.read();"],

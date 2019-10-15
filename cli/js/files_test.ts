@@ -164,7 +164,27 @@ testPerm(
   { write: false, read: false },
   async function readWritePermFailure(): Promise<void> {
     const filename = "tests/hello.txt";
-    const writeModes: Deno.OpenMode[] = ["r+", "w+", "a+", "x+"];
+    const rplus = {
+      read: true,
+      write: true
+    };
+    const wplus = {
+      write: true,
+      truncate: true,
+      create: true,
+      read: true
+    };
+    const aplus = {
+      append: true,
+      create: true,
+      read: true
+    };
+    const xplus = {
+      write: true,
+      createNew: true,
+      read: true
+    };
+    const writeModes: Deno.OpenMode[] = [rplus, wplus, aplus, xplus];
     for (const mode of writeModes) {
       let err;
       try {
