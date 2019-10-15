@@ -158,6 +158,7 @@ pub struct Isolate {
   have_unpolled_ops: bool,
   startup_script: Option<OwnedScript>,
   op_registry: OpRegistry,
+  eager_poll_count: u32,
 }
 
 unsafe impl Send for Isolate {}
@@ -223,6 +224,7 @@ impl Isolate {
       pending_dyn_imports: FuturesUnordered::new(),
       startup_script,
       op_registry: OpRegistry::new(),
+      eager_poll_count: 0,
     }
   }
 
@@ -315,19 +317,26 @@ impl Isolate {
       PinnedBuf::new(zero_copy_buf),
     );
 
-    let op = match op {
-      Op::Async(mut fut) => {
-        // Tries to greedily poll async ops once. Often they are immediately ready, in
-        // which case they can be turned into a sync op before we return to V8. This
-        // can save a boundary crossing.
-        #[allow(clippy::match_wild_err_arm)]
-        match fut.poll() {
-          Err(_) => panic!("unexpected op error"),
-          Ok(Ready(buf)) => Op::Sync(buf),
-          Ok(NotReady) => Op::Async(fut),
+    // To avoid latency problems we eagerly poll 50 futures and then
+    // allow to poll ops from `pending_ops`
+    let op = if isolate.eager_poll_count != 50 {
+      isolate.eager_poll_count += 1;
+      match op {
+        Op::Async(mut fut) => {
+          // Tries to eagerly poll async ops once. Often they are immediately ready, in
+          // which case they can be turned into a sync op before we return to V8. This
+          // can save a boundary crossing.
+          #[allow(clippy::match_wild_err_arm)]
+          match fut.poll() {
+            Err(_) => panic!("unexpected op error"),
+            Ok(Ready(buf)) => Op::Sync(buf),
+            Ok(NotReady) => Op::Async(fut),
+          }
         }
+        Op::Sync(buf) => Op::Sync(buf),
       }
-      Op::Sync(buf) => Op::Sync(buf),
+    } else {
+      op
     };
 
     debug_assert_eq!(isolate.shared.size(), 0);
@@ -647,6 +656,7 @@ impl Future for Isolate {
 
       // Now handle actual ops.
       self.have_unpolled_ops = false;
+      self.eager_poll_count = 0;
       #[allow(clippy::match_wild_err_arm)]
       match self.pending_ops.poll() {
         Err(_) => panic!("unexpected op error"),
