@@ -26,7 +26,7 @@ export function openSync(
   filename: string,
   mode: OpenMode = { read: true }
 ): File {
-  let [modeIsValid, errMsg] = checkOpenMode(mode);
+  const [modeIsValid, errMsg] = checkOpenMode(mode);
   if (modeIsValid) {
     const rid = sendSyncJson(dispatch.OP_OPEN, { filename, mode });
     return new File(rid);
@@ -45,7 +45,7 @@ export async function open(
   filename: string,
   mode: OpenMode = { read: true }
 ): Promise<File> {
-  let [modeIsValid, errMsg] = checkOpenMode(mode);
+  const [modeIsValid, errMsg] = checkOpenMode(mode);
   if (modeIsValid) {
     const rid = await sendAsyncJson(dispatch.OP_OPEN, { filename, mode });
     return new File(rid);
@@ -261,10 +261,10 @@ export function create(filename: string): Promise<File> {
  *  @internal
  */
 function checkOpenMode(mode: OpenMode): [boolean, string] {
-  let allOptionsAreFalse =
+  const allOptionsAreFalse =
     Object.values(mode).filter(val => val == true).length === 0;
-  let truncateOptionWithoutWriteAccess = mode.truncate && !mode.write;
-  let createOrCreateNewWithoutWriteOrAppend =
+  const truncateOptionWithoutWriteAccess = mode.truncate && !mode.write;
+  const createOrCreateNewWithoutWriteOrAppend =
     (mode.create || mode.createNew) && !(mode.write || mode.append);
   if (allOptionsAreFalse)
     return [false, "OpenMode require at least one option to be true"];

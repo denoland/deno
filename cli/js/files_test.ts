@@ -258,7 +258,7 @@ testPerm(
       read: true
     };
 
-    const file = await Deno.open(filename, "w+");
+    const file = await Deno.open(filename, wplus);
     // assert file was created
     let fileInfo = Deno.statSync(filename);
     assert(fileInfo.isFile());
