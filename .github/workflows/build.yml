@@ -10,16 +10,22 @@ jobs:
     strategy:
       matrix:
         os: [macOS-10.14, windows-2016, ubuntu-16.04]
-        kind: ['test', 'test_std', 'bench', 'lint']
+        kind: ['test', 'test_debug', 'test_std', 'bench', 'lint']
         exclude:
           - os: windows-2016
             kind: 'bench'
+          - os: macOS-10.14
+            kind: 'bench'
+
           - os: windows-2016
             kind: 'lint'
           - os: macOS-10.14
-            kind: 'bench'
-          - os: macOS-10.14
             kind: 'lint'
+
+          - os: windows-2016
+            kind: 'test_debug'
+          - os: macOS-10.14
+            kind: 'test_debug'
     steps:
       - name: Configure git
         run: git config --global core.symlinks true
@@ -99,7 +105,7 @@ jobs:
         run: cargo clippy --all-targets --release --locked -- -D clippy::all
 
       - name: Build
-        if: matrix.kind != 'lint'
+        if: matrix.kind == 'test' || matrix.kind == 'bench' || matrix.kind == 'test_std'
         run: cargo build --release --locked --all-targets
 
       # TODO(ry) Remove this step, and move the following test to
@@ -114,6 +120,12 @@ jobs:
       - name: Test
         if: matrix.kind == 'test'
         run: cargo test --release --locked --all-targets
+
+      - name: Test debug
+        if: matrix.kind == 'test_debug'
+        run: |
+          echo ::set-env name=DENO_BUILD_MODE::debug
+          cargo test --locked --all-targets
 
       - name: Run Benchmarks
         if: matrix.kind == 'bench'
@@ -141,15 +153,15 @@ jobs:
           cat /proc/meminfo
 
       - name: Pre-release (linux)
-        if: startsWith(matrix.os, 'ubuntu') && matrix.kind != 'lint'
+        if: startsWith(matrix.os, 'ubuntu') && matrix.kind == 'test'
         run: gzip -c target/release/deno > target/release/deno_linux_x64.gz
 
       - name: Pre-release (mac)
-        if: startsWith(matrix.os, 'macOS') && matrix.kind != 'lint'
+        if: startsWith(matrix.os, 'macOS') && matrix.kind == 'test'
         run: gzip -c target/release/deno > target/release/deno_osx_x64.gz
 
       - name: Pre-release (windows)
-        if: startsWith(matrix.os, 'windows') && matrix.kind != 'lint'
+        if: startsWith(matrix.os, 'windows') && matrix.kind == 'test'
         run: PowerShell -Command "& {Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno_win_x64.zip}"
 
       - name: Release

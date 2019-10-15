@@ -298,25 +298,31 @@ fn eval_command(flags: DenoFlags, argv: Vec<String>) {
 }
 
 fn bundle_command(flags: DenoFlags, argv: Vec<String>) {
-  let (mut _worker, state) = create_worker_and_state(flags, argv);
+  let (worker, state) = create_worker_and_state(flags, argv);
 
   let main_module = state.main_module().unwrap();
   assert!(state.argv.len() >= 3);
   let out_file = state.argv[2].clone();
   debug!(">>>>> bundle_async START");
-  let bundle_future = state
-    .ts_compiler
-    .bundle_async(state.clone(), main_module.to_string(), out_file)
-    .map_err(|err| {
-      debug!("diagnostics returned, exiting!");
-      eprintln!("");
-      print_err_and_exit(err);
+  // NOTE: we need to poll `worker` otherwise TS compiler worker won't run properly
+  let main_future = lazy(move || {
+    worker.then(move |result| {
+      js_check(result);
+      state
+        .ts_compiler
+        .bundle_async(state.clone(), main_module.to_string(), out_file)
+        .map_err(|err| {
+          debug!("diagnostics returned, exiting!");
+          eprintln!("");
+          print_err_and_exit(err);
+        })
+        .and_then(move |_| {
+          debug!(">>>>> bundle_async END");
+          Ok(())
+        })
     })
-    .and_then(move |_| {
-      debug!(">>>>> bundle_async END");
-      Ok(())
-    });
-  tokio_util::run(bundle_future);
+  });
+  tokio_util::run(main_future);
 }
 
 fn run_repl(flags: DenoFlags, argv: Vec<String>) {
