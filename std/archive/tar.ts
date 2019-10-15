@@ -38,7 +38,10 @@ const ustar = "ustar\u000000";
 export class FileReader implements Deno.Reader {
   private file?: Deno.File;
 
-  constructor(private filePath: string, private mode: Deno.OpenMode = "r") {}
+  constructor(
+    private filePath: string,
+    private mode: Deno.OpenMode = { read: true }
+  ) {}
 
   public async read(p: Uint8Array): Promise<number | Deno.EOF> {
     if (!this.file) {
@@ -59,7 +62,10 @@ export class FileReader implements Deno.Reader {
 export class FileWriter implements Deno.Writer {
   private file?: Deno.File;
 
-  constructor(private filePath: string, private mode: Deno.OpenMode = "w") {}
+  constructor(
+    private filePath: string,
+    private mode: Deno.OpenMode = { write: true, truncate: true, create: true }
+  ) {}
 
   public async write(p: Uint8Array): Promise<number> {
     if (!this.file) {

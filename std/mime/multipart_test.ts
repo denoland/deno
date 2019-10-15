@@ -94,7 +94,9 @@ test(async function multipartMultipartWriter(): Promise<void> {
   const mw = new MultipartWriter(buf);
   await mw.writeField("foo", "foo");
   await mw.writeField("bar", "bar");
-  const f = await open(path.resolve("./multipart/fixtures/sample.txt"), "r");
+  const f = await open(path.resolve("./multipart/fixtures/sample.txt"), {
+    read: true
+  });
   await mw.writeFile("file", "sample.txt", f);
   await mw.close();
 });

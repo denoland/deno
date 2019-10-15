@@ -40,6 +40,6 @@ export async function tempFile(
     `${dir}/${opts.prefix || ""}${r}${opts.postfix || ""}`
   );
   await mkdir(path.dirname(filepath), true);
-  const file = await open(filepath, "a");
+  const file = await open(filepath, { append: true, create: true });
   return { file, filepath };
 }
