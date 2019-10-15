@@ -221,13 +221,11 @@ impl ThreadSafeState {
 
     let dir = deno_dir::DenoDir::new(custom_root)?;
 
-    let cache_bl = flags.cache_blacklist.clone();
-
     let file_fetcher = SourceFileFetcher::new(
       dir.deps_cache.clone(),
       progress.clone(),
       !flags.reload,
-      cache_bl,
+      flags.cache_blacklist.clone(),
       flags.no_fetch,
     )?;
 
