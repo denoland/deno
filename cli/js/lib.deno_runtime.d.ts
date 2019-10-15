@@ -275,30 +275,36 @@ declare namespace Deno {
   export const stdout: File;
   /** An instance of `File` for stderr. */
   export const stderr: File;
-  export type OpenMode =
-    | "r"
-    /** Read-write. Start at beginning of file. */
-    | "r+"
-    /** Write-only. Opens and truncates existing file or creates new one for
-     * writing only.
+
+  export interface OpenMode {
+    /** Sets the option for read access. This option, when true, will indicate that the file should be read-able if opened. */
+    read?: boolean;
+    /** Sets the option for write access.
+     * This option, when true, will indicate that the file should be write-able if opened.
+     * If the file already exists, any write calls on it will overwrite its contents, without truncating it.
      */
-    | "w"
-    /** Read-write. Opens and truncates existing file or creates new one for
-     * writing and reading.
+    write?: boolean;
+    /* Sets the option for creating a new file.
+     * This option indicates whether a new file will be created if the file does not yet already exist.
+     * In order for the file to be created, write or append access must be used.
      */
-    | "w+"
-    /** Write-only. Opens existing file or creates new one. Each write appends
-     * content to the end of file.
+    create?: boolean;
+    /** Sets the option for truncating a previous file.
+     * If a file is successfully opened with this option set it will truncate the file to 0 length if it already exists.
+     * The file must be opened with write access for truncate to work.
      */
-    | "a"
-    /** Read-write. Behaves like "a" and allows to read from file. */
-    | "a+"
-    /** Write-only. Exclusive create - creates new file only if one doesn't exist
-     * already.
+    truncate?: boolean;
+    /**Sets the option for the append mode.
+     * This option, when true, means that writes will append to a file instead of overwriting previous contents.
+     * Note that setting { write: true, append: true } has the same effect as setting only { append: true }.
      */
-    | "x"
-    /** Read-write. Behaves like `x` and allows to read from file. */
-    | "x+";
+    append?: boolean;
+    /** Sets the option to always create a new file.
+     * This option indicates whether a new file will be created. No file is allowed to exist at the target location, also no (dangling) symlink.
+     * If { createNew: true } is set, create and truncate are ignored.
+     */
+    createNew?: boolean;
+  }
 
   // @url js/buffer.d.ts
 
