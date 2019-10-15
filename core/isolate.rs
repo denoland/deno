@@ -158,6 +158,7 @@ pub struct Isolate {
   have_unpolled_ops: bool,
   startup_script: Option<OwnedScript>,
   op_registry: OpRegistry,
+  eager_count: u32,
 }
 
 unsafe impl Send for Isolate {}
@@ -223,6 +224,7 @@ impl Isolate {
       pending_dyn_imports: FuturesUnordered::new(),
       startup_script,
       op_registry: OpRegistry::new(),
+      eager_count: 0,
     }
   }
 
@@ -315,19 +317,25 @@ impl Isolate {
       PinnedBuf::new(zero_copy_buf),
     );
 
-    let op = match op {
-      Op::Async(mut fut) => {
-        // Tries to greedily poll async ops once. Often they are immediately ready, in
-        // which case they can be turned into a sync op before we return to V8. This
-        // can save a boundary crossing.
-        #[allow(clippy::match_wild_err_arm)]
-        match fut.poll() {
-          Err(_) => panic!("unexpected op error"),
-          Ok(Ready(buf)) => Op::Sync(buf),
-          Ok(NotReady) => Op::Async(fut),
+    let op = if isolate.eager_count != 50 {
+      isolate.eager_count += 1;
+      match op {
+        Op::Async(mut fut) => {
+          // Tries to greedily poll async ops once. Often they are immediately ready, in
+          // which case they can be turned into a sync op before we return to V8. This
+          // can save a boundary crossing.
+          #[allow(clippy::match_wild_err_arm)]
+          match fut.poll() {
+            Err(_) => panic!("unexpected op error"),
+            Ok(Ready(buf)) => Op::Sync(buf),
+            Ok(NotReady) => Op::Async(fut),
+          }
         }
+        Op::Sync(buf) => Op::Sync(buf),
       }
-      Op::Sync(buf) => Op::Sync(buf),
+    } else {
+      isolate.eager_count = 0;
+      op
     };
 
     debug_assert_eq!(isolate.shared.size(), 0);
