@@ -24,11 +24,8 @@ import {
  */
 export function openSync(
   filename: string,
-  mode: OpenMode | OpenModeLegacy = { read: true }
+  mode: OpenMode = { read: true }
 ): File {
-  if (typeof mode === "string") {
-    mode = convertOpenModeLegacy(mode);
-  }
   const [modeIsValid, errMsg] = checkOpenMode(mode);
   if (modeIsValid) {
     const rid = sendSyncJson(dispatch.OP_OPEN, { filename, mode });
@@ -46,11 +43,8 @@ export function openSync(
  */
 export async function open(
   filename: string,
-  mode: OpenMode | OpenModeLegacy = { read: true }
+  mode: OpenMode = { read: true }
 ): Promise<File> {
-  if (typeof mode === "string") {
-    mode = convertOpenModeLegacy(mode);
-  }
   const [modeIsValid, errMsg] = checkOpenMode(mode);
   if (modeIsValid) {
     const rid = await sendAsyncJson(dispatch.OP_OPEN, { filename, mode });
@@ -249,33 +243,6 @@ export interface OpenMode {
   createNew?: boolean;
 }
 
-/** @deprecated use @see OpenMode */
-export type OpenModeLegacy =
-  /** Read-only. Default. Starts at beginning of file. */
-  | "r"
-  /** Read-write. Start at beginning of file. */
-  | "r+"
-  /** Write-only. Opens and truncates existing file or creates new one for
-   * writing only.
-   */
-  | "w"
-  /** Read-write. Opens and truncates existing file or creates new one for
-   * writing and reading.
-   */
-  | "w+"
-  /** Write-only. Opens existing file or creates new one. Each write appends
-   * content to the end of file.
-   */
-  | "a"
-  /** Read-write. Behaves like "a" and allows to read from file. */
-  | "a+"
-  /** Write-only. Exclusive create - creates new file only if one doesn't exist
-   * already.
-   */
-  | "x"
-  /** Read-write. Behaves like `x` and allows to read from file. */
-  | "x+";
-
 /** A factory function for creating instances of `File` associated with the
  * supplied file name.
  * @internal
@@ -306,57 +273,4 @@ function checkOpenMode(mode: OpenMode): [boolean, string] {
   if (createOrCreateNewWithoutWriteOrAppend)
     return [false, "Create or create new requires write or append access"];
   return [true, ""];
-}
-
-/** Converts OpenModeLegacy to Legacy
- *  @internal
- */
-function convertOpenModeLegacy(mode: OpenModeLegacy): OpenMode {
-  const r = {
-    read: true
-  };
-  const rplus = {
-    read: true,
-    write: true
-  };
-  const w = {
-    write: true,
-    truncate: true,
-    create: true
-  };
-  const wplus = {
-    write: true,
-    truncate: true,
-    create: true,
-    read: true
-  };
-  const a = {
-    append: true,
-    create: true
-  };
-  const aplus = {
-    append: true,
-    create: true,
-    read: true
-  };
-  const x = {
-    write: true,
-    createNew: true
-  };
-  const xplus = {
-    write: true,
-    createNew: true,
-    read: true
-  };
-
-  const map = {};
-  map["r"] = r;
-  map["r+"] = rplus;
-  map["w"] = w;
-  map["w+"] = wplus;
-  map["a"] = a;
-  map["a+"] = aplus;
-  map["x"] = x;
-  map["x+"] = xplus;
-  return map[mode];
 }

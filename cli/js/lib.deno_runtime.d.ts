@@ -175,20 +175,14 @@ declare namespace Deno {
    *
    *       const file = Deno.openSync("/foo/bar.txt");
    */
-  export function openSync(
-    filename: string,
-    mode?: OpenMode | OpenModeLegacy
-  ): File;
+  export function openSync(filename: string, mode?: OpenMode): File;
   /** Open a file and return an instance of the `File` object.
    *
    *       (async () => {
    *         const file = await Deno.open("/foo/bar.txt");
    *       })();
    */
-  export function open(
-    filename: string,
-    mode?: OpenMode | OpenModeLegacy
-  ): Promise<File>;
+  export function open(filename: string, mode?: OpenMode): Promise<File>;
   /** Read synchronously from a file ID into an array buffer.
    *
    * Return `number | EOF` for the operation.
@@ -311,38 +305,6 @@ declare namespace Deno {
      */
     createNew?: boolean;
   }
-
-  /** @deprecated use @see OpenMode */
-  export type OpenModeLegacy =
-    /** Read-only. Default. Starts at beginning of file. */
-    | "r"
-    /** Read-write. Start at beginning of file. */
-    | "r+"
-    /** Write-only. Opens and truncates existing file or creates new one for
-     * writing only.
-     */
-    | "w"
-    /** Read-write. Opens and truncates existing file or creates new one for
-     * writing and reading.
-     */
-    | "w+"
-    /** Write-only. Opens existing file or creates new one. Each write appends
-     * content to the end of file.
-     */
-    | "a"
-    /** Read-write. Behaves like "a" and allows to read from file. */
-    | "a+"
-    /** Write-only. Exclusive create - creates new file only if one doesn't exist
-     * already.
-     */
-    | "x"
-    /** Read-write. Behaves like `x` and allows to read from file. */
-    | "x+";
-
-  /** A factory function for creating instances of `File` associated with the
-   * supplied file name.
-   * @internal
-   */
 
   // @url js/buffer.d.ts
 
