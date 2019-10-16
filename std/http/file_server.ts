@@ -7,14 +7,14 @@
 // https://github.com/indexzero/http-server/blob/master/test/http-server-test.js
 
 const { ErrorKind, cwd, args, stat, readDir, open } = Deno;
+import { contentType } from "../media_types/mod.ts";
+import { extname, posix } from "../path/mod.ts";
 import {
   listenAndServe,
   ServerRequest,
   setContentLength,
   Response
 } from "./server.ts";
-import { extname, posix } from "../fs/path.ts";
-import { contentType } from "../media_types/mod.ts";
 
 const dirViewerTemplate = `
 <!DOCTYPE html>
