@@ -8,7 +8,6 @@
 // descriptors". This module implements a global resource table. Ops (AKA
 // handlers) look up resources by their integer id here.
 
-use crate::deno_error;
 use crate::deno_error::bad_resource;
 use crate::http_body::HttpBody;
 use crate::repl::Repl;
@@ -25,7 +24,7 @@ use futures::Stream;
 use reqwest::r#async::Decoder as ReqwestDecoder;
 use std;
 use std::collections::BTreeMap;
-use std::io::{Error, Read, Seek, SeekFrom, Write};
+use std::io::{Error, Read, Write};
 use std::net::{Shutdown, SocketAddr};
 use std::process::ExitStatus;
 use std::sync::atomic::AtomicUsize;
@@ -42,7 +41,7 @@ pub type ResourceId = u32; // Sometimes referred to RID.
 
 // These store Deno's file descriptors. These are not necessarily the operating
 // system ones.
-type ResourceTable = BTreeMap<ResourceId, Repr>;
+type ResourceTable = BTreeMap<ResourceId, Box<Repr>>;
 
 #[cfg(not(windows))]
 use std::os::unix::io::FromRawFd;
@@ -56,12 +55,12 @@ extern crate winapi;
 lazy_static! {
   // Starts at 3 because stdio is [0-2].
   static ref NEXT_RID: AtomicUsize = AtomicUsize::new(3);
-  static ref RESOURCE_TABLE: Mutex<ResourceTable> = Mutex::new({
+  pub static ref RESOURCE_TABLE: Mutex<ResourceTable> = Mutex::new({
     let mut m = BTreeMap::new();
     // TODO Load these lazily during lookup?
-    m.insert(0, Repr::Stdin(tokio::io::stdin()));
+    m.insert(0, Box::new(Repr::Stdin(tokio::io::stdin())));
 
-    m.insert(1, Repr::Stdout({
+    m.insert(1, Box::new(Repr::Stdout({
       #[cfg(not(windows))]
       let stdout = unsafe { std::fs::File::from_raw_fd(1) };
       #[cfg(windows)]
@@ -70,15 +69,15 @@ lazy_static! {
             winapi::um::winbase::STD_OUTPUT_HANDLE))
       };
       tokio::fs::File::from_std(stdout)
-    }));
+    })));
 
-    m.insert(2, Repr::Stderr(tokio::io::stderr()));
+    m.insert(2, Box::new(Repr::Stderr(tokio::io::stderr())));
     m
   });
 }
 
 // Internal representation of Resource.
-enum Repr {
+pub enum Repr {
   Stdin(tokio::io::Stdin),
   Stdout(tokio::fs::File),
   Stderr(tokio::io::Stderr),
@@ -107,7 +106,7 @@ enum Repr {
 /// If the rid is closed or was never open, it returns None.
 pub fn get_type(rid: ResourceId) -> Option<String> {
   let table = RESOURCE_TABLE.lock().unwrap();
-  table.get(&rid).map(inspect_repr)
+  table.get(&rid).map(|r| inspect_repr(r.clone()))
 }
 
 pub fn table_entries() -> Vec<(u32, String)> {
@@ -166,7 +165,7 @@ impl Resource {
         std::io::ErrorKind::Other,
         "Listener has been closed",
       )),
-      Some(repr) => match repr {
+      Some(repr) => match **repr {
         Repr::TcpListener(ref mut s, _) => s.poll_accept(),
         _ => panic!("Cannot accept"),
       },
@@ -178,18 +177,26 @@ impl Resource {
   pub fn track_task(&mut self) -> Result<(), std::io::Error> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     // Only track if is TcpListener.
-    if let Some(Repr::TcpListener(_, t)) = table.get_mut(&self.rid) {
-      // Currently, we only allow tracking a single accept task for a listener.
-      // This might be changed in the future with multiple workers.
-      // Caveat: TcpListener by itself also only tracks an accept task at a time.
-      // See https://github.com/tokio-rs/tokio/issues/846#issuecomment-454208883
-      if t.is_some() {
-        return Err(std::io::Error::new(
-          std::io::ErrorKind::Other,
-          "Another accept task is ongoing",
-        ));
+    let repr = match table.get_mut(&self.rid) {
+      Some(repr) => repr,
+      None => return Ok(()),
+    };
+
+    match **repr {
+      Repr::TcpListener(_, ref mut t) => {
+        // Currently, we only allow tracking a single accept task for a listener.
+        // This might be changed in the future with multiple workers.
+        // Caveat: TcpListener by itself also only tracks an accept task at a time.
+        // See https://github.com/tokio-rs/tokio/issues/846#issuecomment-454208883
+        if t.is_some() {
+          return Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "Another accept task is ongoing",
+          ));
+        }
+        t.replace(futures::task::current());
       }
-      t.replace(futures::task::current());
+      _ => {}
     }
     Ok(())
   }
@@ -199,10 +206,18 @@ impl Resource {
   pub fn untrack_task(&mut self) {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     // Only untrack if is TcpListener.
-    if let Some(Repr::TcpListener(_, t)) = table.get_mut(&self.rid) {
-      if t.is_some() {
-        t.take();
+    let repr = match table.get_mut(&self.rid) {
+      Some(repr) => repr,
+      None => panic!("bad resource"),
+    };
+
+    match **repr {
+      Repr::TcpListener(_, ref mut t) => {
+        if t.is_some() {
+          t.take();
+        }
       }
+      _ => panic!("bad resource"),
     }
   }
 
@@ -212,7 +227,7 @@ impl Resource {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     let r = table.remove(&self.rid).unwrap();
     // If TcpListener, we must kill all pending accepts!
-    if let Repr::TcpListener(_, Some(t)) = r {
+    if let Repr::TcpListener(_, Some(t)) = *r {
       // Call notify on the tracked task, so that they would error out.
       t.notify();
     }
@@ -222,7 +237,7 @@ impl Resource {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     let repr = table.get_mut(&self.rid).ok_or_else(bad_resource)?;
 
-    match repr {
+    match **repr {
       Repr::TcpStream(ref mut f) => {
         TcpStream::shutdown(f, how).map_err(ErrBox::from)
       }
@@ -248,7 +263,7 @@ impl DenoAsyncRead for Resource {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     let repr = table.get_mut(&self.rid).ok_or_else(bad_resource)?;
 
-    let r = match repr {
+    let r = match **repr {
       Repr::FsFile(ref mut f) => f.poll_read(buf),
       Repr::Stdin(ref mut f) => f.poll_read(buf),
       Repr::TcpStream(ref mut f) => f.poll_read(buf),
@@ -288,7 +303,7 @@ impl DenoAsyncWrite for Resource {
     let mut table = RESOURCE_TABLE.lock().unwrap();
     let repr = table.get_mut(&self.rid).ok_or_else(bad_resource)?;
 
-    let r = match repr {
+    let r = match **repr {
       Repr::FsFile(ref mut f) => f.poll_write(buf),
       Repr::Stdout(ref mut f) => f.poll_write(buf),
       Repr::Stderr(ref mut f) => f.poll_write(buf),
@@ -316,7 +331,7 @@ fn new_rid() -> ResourceId {
 pub fn add_fs_file(fs_file: tokio::fs::File) -> Resource {
   let rid = new_rid();
   let mut tg = RESOURCE_TABLE.lock().unwrap();
-  let r = tg.insert(rid, Repr::FsFile(fs_file));
+  let r = tg.insert(rid, Box::new(Repr::FsFile(fs_file)));
   assert!(r.is_none());
   Resource { rid }
 }
@@ -324,7 +339,7 @@ pub fn add_fs_file(fs_file: tokio::fs::File) -> Resource {
 pub fn add_tcp_listener(listener: tokio::net::TcpListener) -> Resource {
   let rid = new_rid();
   let mut tg = RESOURCE_TABLE.lock().unwrap();
-  let r = tg.insert(rid, Repr::TcpListener(listener, None));
+  let r = tg.insert(rid, Box::new(Repr::TcpListener(listener, None)));
   assert!(r.is_none());
   Resource { rid }
 }
@@ -332,7 +347,7 @@ pub fn add_tcp_listener(listener: tokio::net::TcpListener) -> Resource {
 pub fn add_tcp_stream(stream: tokio::net::TcpStream) -> Resource {
   let rid = new_rid();
   let mut tg = RESOURCE_TABLE.lock().unwrap();
-  let r = tg.insert(rid, Repr::TcpStream(stream));
+  let r = tg.insert(rid, Box::new(Repr::TcpStream(stream)));
   assert!(r.is_none());
   Resource { rid }
 }
@@ -340,7 +355,7 @@ pub fn add_tcp_stream(stream: tokio::net::TcpStream) -> Resource {
 pub fn add_tls_stream(stream: TlsStream<TcpStream>) -> Resource {
   let rid = new_rid();
   let mut tg = RESOURCE_TABLE.lock().unwrap();
-  let r = tg.insert(rid, Repr::TlsStream(Box::new(stream)));
+  let r = tg.insert(rid, Box::new(Repr::TlsStream(Box::new(stream))));
   assert!(r.is_none());
   Resource { rid }
 }
@@ -349,7 +364,7 @@ pub fn add_reqwest_body(body: ReqwestDecoder) -> Resource {
   let rid = new_rid();
   let mut tg = RESOURCE_TABLE.lock().unwrap();
   let body = HttpBody::from(body);
-  let r = tg.insert(rid, Repr::HttpBody(body));
+  let r = tg.insert(rid, Box::new(Repr::HttpBody(body)));
   assert!(r.is_none());
   Resource { rid }
 }
@@ -357,7 +372,7 @@ pub fn add_reqwest_body(body: ReqwestDecoder) -> Resource {
 pub fn add_repl(repl: Repl) -> Resource {
   let rid = new_rid();
   let mut tg = RESOURCE_TABLE.lock().unwrap();
-  let r = tg.insert(rid, Repr::Repl(Arc::new(Mutex::new(repl))));
+  let r = tg.insert(rid, Box::new(Repr::Repl(Arc::new(Mutex::new(repl)))));
   assert!(r.is_none());
   Resource { rid }
 }
@@ -365,7 +380,7 @@ pub fn add_repl(repl: Repl) -> Resource {
 pub fn add_worker(wc: WorkerChannels) -> Resource {
   let rid = new_rid();
   let mut tg = RESOURCE_TABLE.lock().unwrap();
-  let r = tg.insert(rid, Repr::Worker(wc));
+  let r = tg.insert(rid, Box::new(Repr::Worker(wc)));
   assert!(r.is_none());
   Resource { rid }
 }
@@ -377,8 +392,14 @@ pub fn post_message_to_worker(
 ) -> futures::sink::Send<mpsc::Sender<Buf>> {
   let mut table = RESOURCE_TABLE.lock().unwrap();
   let maybe_repr = table.get_mut(&rid);
-  match maybe_repr {
-    Some(Repr::Worker(ref mut wc)) => {
+  let repr = match maybe_repr {
+    Some(repr) => repr,
+    // TODO: replace this panic with `bad_resource`
+    _ => panic!("bad resource"), // futures::future::err(bad_resource()).into(),
+  };
+
+  match **repr {
+    Repr::Worker(ref mut wc) => {
       // unwrap here is incorrect, but doing it anyway
       wc.0.clone().send(buf)
     }
@@ -398,9 +419,9 @@ impl Future for WorkerReceiver {
 
   fn poll(&mut self) -> Poll<Option<Buf>, ErrBox> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
-    let maybe_repr = table.get_mut(&self.rid);
-    match maybe_repr {
-      Some(Repr::Worker(ref mut wc)) => wc.1.poll().map_err(ErrBox::from),
+    let repr = table.get_mut(&self.rid).ok_or(bad_resource())?;
+    match **repr {
+      Repr::Worker(ref mut wc) => wc.1.poll().map_err(ErrBox::from),
       _ => Err(bad_resource()),
     }
   }
@@ -421,9 +442,9 @@ impl Stream for WorkerReceiverStream {
 
   fn poll(&mut self) -> Poll<Option<Buf>, ErrBox> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
-    let maybe_repr = table.get_mut(&self.rid);
-    match maybe_repr {
-      Some(Repr::Worker(ref mut wc)) => wc.1.poll().map_err(ErrBox::from),
+    let repr = table.get_mut(&self.rid).ok_or(bad_resource())?;
+    match **repr {
+      Repr::Worker(ref mut wc) => wc.1.poll().map_err(ErrBox::from),
       _ => Err(bad_resource()),
     }
   }
@@ -440,6 +461,7 @@ pub struct ChildResources {
   pub stderr_rid: Option<ResourceId>,
 }
 
+// TODO: move to process
 pub fn add_child(mut c: tokio_process::Child) -> ChildResources {
   let child_rid = new_rid();
   let mut tg = RESOURCE_TABLE.lock().unwrap();
@@ -454,26 +476,26 @@ pub fn add_child(mut c: tokio_process::Child) -> ChildResources {
   if c.stdin().is_some() {
     let stdin = c.stdin().take().unwrap();
     let rid = new_rid();
-    let r = tg.insert(rid, Repr::ChildStdin(stdin));
+    let r = tg.insert(rid, Box::new(Repr::ChildStdin(stdin)));
     assert!(r.is_none());
     resources.stdin_rid = Some(rid);
   }
   if c.stdout().is_some() {
     let stdout = c.stdout().take().unwrap();
     let rid = new_rid();
-    let r = tg.insert(rid, Repr::ChildStdout(stdout));
+    let r = tg.insert(rid, Box::new(Repr::ChildStdout(stdout)));
     assert!(r.is_none());
     resources.stdout_rid = Some(rid);
   }
   if c.stderr().is_some() {
     let stderr = c.stderr().take().unwrap();
     let rid = new_rid();
-    let r = tg.insert(rid, Repr::ChildStderr(stderr));
+    let r = tg.insert(rid, Box::new(Repr::ChildStderr(stderr)));
     assert!(r.is_none());
     resources.stderr_rid = Some(rid);
   }
 
-  let r = tg.insert(child_rid, Repr::Child(Box::new(c)));
+  let r = tg.insert(child_rid, Box::new(Repr::Child(Box::new(c))));
   assert!(r.is_none());
 
   resources
@@ -490,28 +512,28 @@ impl Future for ChildStatus {
 
   fn poll(&mut self) -> Poll<ExitStatus, ErrBox> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
-    let maybe_repr = table.get_mut(&self.rid);
-    match maybe_repr {
-      Some(Repr::Child(ref mut child)) => child.poll().map_err(ErrBox::from),
+    let repr = table.get_mut(&self.rid).ok_or(bad_resource())?;
+    match **repr {
+      Repr::Child(ref mut child) => child.poll().map_err(ErrBox::from),
       _ => Err(bad_resource()),
     }
   }
 }
 
 pub fn child_status(rid: ResourceId) -> Result<ChildStatus, ErrBox> {
-  let mut table = RESOURCE_TABLE.lock().unwrap();
-  let maybe_repr = table.get_mut(&rid);
-  match maybe_repr {
-    Some(Repr::Child(ref mut _child)) => Ok(ChildStatus { rid }),
+  let table = RESOURCE_TABLE.lock().unwrap();
+  let repr = table.get(&rid).ok_or(bad_resource())?;
+  match **repr {
+    Repr::Child(ref _child) => Ok(ChildStatus { rid }),
     _ => Err(bad_resource()),
   }
 }
 
 pub fn get_repl(rid: ResourceId) -> Result<Arc<Mutex<Repl>>, ErrBox> {
-  let mut table = RESOURCE_TABLE.lock().unwrap();
-  let maybe_repr = table.get_mut(&rid);
-  match maybe_repr {
-    Some(Repr::Repl(ref mut r)) => Ok(r.clone()),
+  let table = RESOURCE_TABLE.lock().unwrap();
+  let repr = table.get(&rid).ok_or(bad_resource())?;
+  match **repr {
+    Repr::Repl(ref r) => Ok(r.clone()),
     _ => Err(bad_resource()),
   }
 }
@@ -522,10 +544,10 @@ pub fn get_file(rid: ResourceId) -> Result<std::fs::File, ErrBox> {
   let mut table = RESOURCE_TABLE.lock().unwrap();
   // We take ownership of File here.
   // It is put back below while still holding the lock.
-  let maybe_repr = table.remove(&rid);
+  let repr = table.remove(&rid).ok_or(bad_resource())?;
 
-  match maybe_repr {
-    Some(Repr::FsFile(r)) => {
+  match *repr {
+    Repr::FsFile(r) => {
       // Trait Clone not implemented on tokio::fs::File,
       // so convert to std File first.
       let std_file = r.into_std();
@@ -537,7 +559,10 @@ pub fn get_file(rid: ResourceId) -> Result<std::fs::File, ErrBox> {
       // to write back.
       let maybe_std_file_copy = std_file.try_clone();
       // Insert the entry back with the same rid.
-      table.insert(rid, Repr::FsFile(tokio_fs::File::from_std(std_file)));
+      table.insert(
+        rid,
+        Box::new(Repr::FsFile(tokio_fs::File::from_std(std_file))),
+      );
 
       maybe_std_file_copy.map_err(ErrBox::from)
     }
@@ -552,34 +577,4 @@ pub fn lookup(rid: ResourceId) -> Result<Resource, ErrBox> {
     .get(&rid)
     .ok_or_else(bad_resource)
     .map(|_| Resource { rid })
-}
-
-pub fn seek(
-  resource: Resource,
-  offset: i32,
-  whence: u32,
-) -> Box<dyn Future<Item = (), Error = ErrBox> + Send> {
-  // Translate seek mode to Rust repr.
-  let seek_from = match whence {
-    0 => SeekFrom::Start(offset as u64),
-    1 => SeekFrom::Current(i64::from(offset)),
-    2 => SeekFrom::End(i64::from(offset)),
-    _ => {
-      return Box::new(futures::future::err(
-        deno_error::DenoError::new(
-          deno_error::ErrorKind::InvalidSeekMode,
-          format!("Invalid seek mode: {}", whence),
-        )
-        .into(),
-      ));
-    }
-  };
-
-  match get_file(resource.rid) {
-    Ok(mut file) => Box::new(futures::future::lazy(move || {
-      let result = file.seek(seek_from).map(|_| {}).map_err(ErrBox::from);
-      futures::future::result(result)
-    })),
-    Err(err) => Box::new(futures::future::err(err)),
-  }
 }

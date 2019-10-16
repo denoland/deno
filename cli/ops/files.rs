@@ -1,13 +1,18 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
+use crate::deno_error;
 use crate::fs as deno_fs;
 use crate::ops::json_op;
 use crate::resources;
+use crate::resources::get_file;
+use crate::resources::ResourceId;
 use crate::state::ThreadSafeState;
 use deno::*;
 use futures::Future;
 use std;
 use std::convert::From;
+use std::io::Seek;
+use std::io::SeekFrom;
 use tokio;
 
 pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
@@ -124,6 +129,36 @@ struct SeekArgs {
   whence: i32,
 }
 
+pub fn seek(
+  rid: ResourceId,
+  offset: i32,
+  whence: u32,
+) -> Box<dyn Future<Item = (), Error = ErrBox> + Send> {
+  // Translate seek mode to Rust repr.
+  let seek_from = match whence {
+    0 => SeekFrom::Start(offset as u64),
+    1 => SeekFrom::Current(i64::from(offset)),
+    2 => SeekFrom::End(i64::from(offset)),
+    _ => {
+      return Box::new(futures::future::err(
+        deno_error::DenoError::new(
+          deno_error::ErrorKind::InvalidSeekMode,
+          format!("Invalid seek mode: {}", whence),
+        )
+        .into(),
+      ));
+    }
+  };
+
+  match get_file(rid) {
+    Ok(mut file) => Box::new(futures::future::lazy(move || {
+      let result = file.seek(seek_from).map(|_| {}).map_err(ErrBox::from);
+      futures::future::result(result)
+    })),
+    Err(err) => Box::new(futures::future::err(err)),
+  }
+}
+
 fn op_seek(
   _state: &ThreadSafeState,
   args: Value,
@@ -131,8 +166,7 @@ fn op_seek(
 ) -> Result<JsonOp, ErrBox> {
   let args: SeekArgs = serde_json::from_value(args)?;
 
-  let resource = resources::lookup(args.rid as u32)?;
-  let op = resources::seek(resource, args.offset, args.whence as u32)
+  let op = seek(args.rid as u32, args.offset, args.whence as u32)
     .and_then(move |_| futures::future::ok(json!({})));
   if args.promise_id.is_none() {
     let buf = op.wait()?;
