@@ -111,6 +111,8 @@ def server():
     Handler.extensions_map.update({
         ".ts": "application/typescript",
         ".js": "application/javascript",
+        ".tsx": "application/typescript",
+        ".jsx": "application/javascript",
         ".json": "application/json",
     })
     SocketServer.TCPServer.allow_reuse_address = True
