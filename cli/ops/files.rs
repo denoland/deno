@@ -7,7 +7,6 @@ use crate::state::ThreadSafeState;
 use deno::*;
 use futures::Future;
 use std;
-use std::collections::HashMap;
 use std::convert::From;
 use tokio;
 
@@ -22,7 +21,18 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
 struct OpenArgs {
   promise_id: Option<u64>,
   filename: String,
-  mode: HashMap<String, bool>,
+  mode: OpenMode,
+}
+#[derive(Deserialize, Default, Debug)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+struct OpenMode {
+  read: bool,
+  write: bool,
+  create: bool,
+  truncate: bool,
+  append: bool,
+  create_new: bool,
 }
 
 fn op_open(
@@ -37,18 +47,18 @@ fn op_open(
   let mut open_options = tokio::fs::OpenOptions::new();
 
   open_options
-    .read(*mode.get("read").unwrap_or(&false))
-    .create(*mode.get("create").unwrap_or(&false))
-    .write(*mode.get("write").unwrap_or(&false))
-    .truncate(*mode.get("truncate").unwrap_or(&false))
-    .append(*mode.get("append").unwrap_or(&false))
-    .create_new(*mode.get("createNew").unwrap_or(&false));
+    .read(mode.read)
+    .create(mode.create)
+    .write(mode.write)
+    .truncate(mode.truncate)
+    .append(mode.append)
+    .create_new(mode.create_new);
 
-  if mode.contains_key("read") {
+  if mode.read {
     state.check_read(&filename_)?;
   }
 
-  if mode.contains_key("write") || mode.contains_key("append") {
+  if mode.write || mode.append {
     state.check_write(&filename_)?;
   }
 
