@@ -61,8 +61,20 @@ export function sendAsyncMinimal(
   scratch32[1] = arg;
   scratch32[2] = 0; // result
   const promise = util.createResolvable<number>();
-  promiseTableMin.set(promiseId, promise);
-  core.dispatch(opId, scratchBytes, zeroCopy);
+  const buf = core.dispatch(opId, scratchBytes, zeroCopy);
+  if (buf) {
+    const buf32 = new Int32Array(
+      buf.buffer,
+      buf.byteOffset,
+      buf.byteLength / 4
+    );
+    const record = recordFromBufMinimal(opId, buf32);
+    // Sync result.
+    promise.resolve(record.result);
+  } else {
+    // Async result.
+    promiseTableMin.set(promiseId, promise);
+  }
   return promise;
 }
 
