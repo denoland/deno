@@ -1429,7 +1429,7 @@ mod tests {
   }
 
   #[test]
-  fn test_map_content_type() {
+  fn test_map_content_type_extension_only() {
     // Extension only
     assert_eq!(
       map_content_type(Path::new("foo/bar.ts"), None),
@@ -1448,6 +1448,10 @@ mod tests {
       msg::MediaType::JavaScript
     );
     assert_eq!(
+      map_content_type(Path::new("foo/bar.txt"), None),
+      msg::MediaType::Unknown
+    );
+    assert_eq!(
       map_content_type(Path::new("foo/bar.jsx"), None),
       msg::MediaType::JSX
     );
@@ -1456,14 +1460,13 @@ mod tests {
       msg::MediaType::Json
     );
     assert_eq!(
-      map_content_type(Path::new("foo/bar.txt"), None),
-      msg::MediaType::Unknown
-    );
-    assert_eq!(
       map_content_type(Path::new("foo/bar"), None),
       msg::MediaType::Unknown
     );
+  }
 
+  #[test]
+  fn test_map_content_type_media_type_with_no_extension() {
     // Media Type
     assert_eq!(
       map_content_type(Path::new("foo/bar"), Some("application/typescript")),
@@ -1513,6 +1516,10 @@ mod tests {
       map_content_type(Path::new("foo/bar"), Some("text/json")),
       msg::MediaType::Json
     );
+  }
+
+  #[test]
+  fn test_map_file_extension_media_type_with_extension() {
     assert_eq!(
       map_content_type(Path::new("foo/bar.ts"), Some("text/plain")),
       msg::MediaType::TypeScript
@@ -1544,6 +1551,17 @@ mod tests {
     );
     assert_eq!(
       map_content_type(
+        Path::new("foo/bar.tsx"),
+        Some("video/vnd.dlna.mpeg-tts")
+      ),
+      msg::MediaType::TSX
+    );
+    assert_eq!(
+      map_content_type(Path::new("foo/bar.tsx"), Some("video/mp2t")),
+      msg::MediaType::TSX
+    );
+    assert_eq!(
+      map_content_type(
         Path::new("foo/bar.jsx"),
         Some("application/javascript")
       ),
@@ -1553,6 +1571,24 @@ mod tests {
       map_content_type(
         Path::new("foo/bar.jsx"),
         Some("application/x-typescript")
+      ),
+      msg::MediaType::JSX
+    );
+    assert_eq!(
+      map_content_type(
+        Path::new("foo/bar.jsx"),
+        Some("application/ecmascript")
+      ),
+      msg::MediaType::JSX
+    );
+    assert_eq!(
+      map_content_type(Path::new("foo/bar.jsx"), Some("text/ecmascript")),
+      msg::MediaType::JSX
+    );
+    assert_eq!(
+      map_content_type(
+        Path::new("foo/bar.jsx"),
+        Some("application/x-javascript")
       ),
       msg::MediaType::JSX
     );

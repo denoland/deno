@@ -329,6 +329,7 @@ itest!(_047_jsx {
 itest!(_048_media_types_jsx {
   args: "run  --reload 048_media_types_jsx.ts",
   output: "048_media_types_jsx.ts.out",
+  http_server: true,
 });
 
 itest!(_049_info_flag_script_jsx {
