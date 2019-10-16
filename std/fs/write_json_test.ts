@@ -5,8 +5,8 @@ import {
   assertThrowsAsync,
   assertThrows
 } from "../testing/asserts.ts";
+import * as path from "../path/mod.ts";
 import { writeJson, writeJsonSync } from "./write_json.ts";
-import * as path from "./path/mod.ts";
 
 const testdataDir = path.resolve("fs", "testdata");
 

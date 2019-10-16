@@ -2,8 +2,8 @@
 
 import { test } from "../testing/mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
+import * as path from "../path/mod.ts";
 import { isSubdir, getFileInfoType, PathType } from "./utils.ts";
-import * as path from "./path/mod.ts";
 import { ensureFileSync } from "./ensure_file.ts";
 import { ensureDirSync } from "./ensure_dir.ts";
 
