@@ -49,7 +49,7 @@ body {
   padding: 0;
 
   line-height: 1.5;
-  font-family: sans-serif;
+  font-family: -apple-system,BlinkMacSystemFont,avenir next,avenir,helvetica neue,helvetica,ubuntu,roboto,noto,segoe ui,arial,sans-serif;
 
   margin: 5ex 10ex;
   max-width: 80ex;
@@ -64,8 +64,16 @@ h1,
 h2,
 h3,
 h4 {
-  font-weight: normal;
+  font-weight: 500;
+  margin-top: 2em;
   margin-bottom: 0;
+}
+
+h1:first-child,
+h2:first-child,
+h3:first-child,
+h4:first-child {
+  margin-top: 0;
 }
 
 h1,
