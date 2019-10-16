@@ -674,58 +674,53 @@ mod tests {
       String::from("http://queryandfragment.com/mod.ts?foo=bar#fragment"),
     ]);
 
-    let url1: Url = "http://deno.land/std/fs/mod.ts".parse().unwrap();
-    let url2: Url = "http://github.com/example/file.ts".parse().unwrap();
-    let url3: Url = "http://github.com/example/mod.ts".parse().unwrap();
-    let url4: Url = "http://github.com/example/mod.ts?foo=bar".parse().unwrap();
-    let url5: Url =
-      "http://github.com/example/mod.ts#fragment".parse().unwrap();
-    let url6: Url = "http://fragment.com/mod.ts".parse().unwrap();
-    let url7: Url = "http://query.com/mod.ts".parse().unwrap();
-    let url8: Url = "http://fragment.com/mod.ts#fragment".parse().unwrap();
-    let url9: Url = "http://query.com/mod.ts?foo=bar".parse().unwrap();
-    let url10: Url = "http://queryandfragment.com/mod.ts".parse().unwrap();
-    let url11: Url = "http://queryandfragment.com/mod.ts?foo=bar"
-      .parse()
-      .unwrap();
-    let url12: Url = "http://queryandfragment.com/mod.ts#fragment"
-      .parse()
-      .unwrap();
-    let url13: Url =
-      "http://query.com/mod.ts?foo=bar#fragment".parse().unwrap();
-    let url14: Url = "http://fragment.com/mod.ts?foo=bar#fragment"
-      .parse()
-      .unwrap();
+    let u: Url = "http://deno.land/std/fs/mod.ts".parse().unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), true);
 
-    let result1 = check_cache_blacklist(&url1, &args);
-    let result2 = check_cache_blacklist(&url2, &args);
-    let result3 = check_cache_blacklist(&url3, &args);
-    let result4 = check_cache_blacklist(&url4, &args);
-    let result5 = check_cache_blacklist(&url5, &args);
-    let result6 = check_cache_blacklist(&url6, &args);
-    let result7 = check_cache_blacklist(&url7, &args);
-    let result8 = check_cache_blacklist(&url8, &args);
-    let result9 = check_cache_blacklist(&url9, &args);
-    let result10 = check_cache_blacklist(&url10, &args);
-    let result11 = check_cache_blacklist(&url11, &args);
-    let result12 = check_cache_blacklist(&url12, &args);
-    let result13 = check_cache_blacklist(&url13, &args);
-    let result14 = check_cache_blacklist(&url14, &args);
+    let u: Url = "http://github.com/example/file.ts".parse().unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), false);
 
-    assert_eq!(result1, true);
-    assert_eq!(result2, false);
-    assert_eq!(result3, true);
-    assert_eq!(result4, true);
-    assert_eq!(result5, true);
-    assert_eq!(result6, true);
-    assert_eq!(result7, false);
-    assert_eq!(result8, true);
-    assert_eq!(result9, true);
-    assert_eq!(result10, false);
-    assert_eq!(result11, true);
-    assert_eq!(result12, false);
-    assert_eq!(result13, true);
-    assert_eq!(result14, true);
+    let u: Url = "http://github.com/example/mod.ts".parse().unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), true);
+
+    let u: Url = "http://github.com/example/mod.ts?foo=bar".parse().unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), true);
+
+    let u: Url = "http://github.com/example/mod.ts#fragment".parse().unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), true);
+
+    let u: Url = "http://fragment.com/mod.ts".parse().unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), true);
+
+    let u: Url = "http://query.com/mod.ts".parse().unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), false);
+
+    let u: Url = "http://fragment.com/mod.ts#fragment".parse().unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), true);
+
+    let u: Url = "http://query.com/mod.ts?foo=bar".parse().unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), true);
+
+    let u: Url = "http://queryandfragment.com/mod.ts".parse().unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), false);
+
+    let u: Url = "http://queryandfragment.com/mod.ts?foo=bar"
+      .parse()
+      .unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), true);
+
+    let u: Url = "http://queryandfragment.com/mod.ts#fragment"
+      .parse()
+      .unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), false);
+
+    let u: Url = "http://query.com/mod.ts?foo=bar#fragment".parse().unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), true);
+
+    let u: Url = "http://fragment.com/mod.ts?foo=bar#fragment"
+      .parse()
+      .unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), true);
   }
 
   #[test]

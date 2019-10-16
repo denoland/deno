@@ -179,15 +179,15 @@ To get help on the another subcommands (run in this case):
         .use_delimiter(true)
         .require_equals(true)
         .long("reload")
-        .help("Reload source code cache (recompile TypeScript). Supports blacklist")
-        .value_name("blacklist")
-        .long_help("Reload source code cache (recompile TypeScript). Supports blacklist
+        .help("Reload source code cache (recompile TypeScript)")
+        .value_name("CACHE_BLACKLIST")
+        .long_help("Reload source code cache (recompile TypeScript)
           --reload
             Reload everything
           --reload=https://deno.land/std
-            Reload everything from the standard module
+            Reload all standard modules
           --reload=https://deno.land/std/fs/utils.ts,https://deno.land/std/fmt/colors.ts
-            Reloads only fs/utils and fmt/colors modules")
+            Reloads specific modules")
         .global(true),
     ).arg(
       Arg::with_name("config")
