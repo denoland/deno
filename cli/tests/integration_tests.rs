@@ -326,6 +326,18 @@ itest!(_047_jsx {
   output: "047_jsx_test.jsx.out",
 });
 
+itest!(_048_media_types_jsx {
+  args: "run  --reload 048_media_types_jsx.ts",
+  output: "048_media_types_jsx.ts.out",
+  http_server: true,
+});
+
+itest!(_049_info_flag_script_jsx {
+  args: "info http://127.0.0.1:4545/cli/tests/048_media_types_jsx.ts",
+  output: "049_info_flag_script_jsx.out",
+  http_server: true,
+});
+
 itest!(async_error {
   exit_code: 1,
   args: "run --reload async_error.ts",
