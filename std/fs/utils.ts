@@ -1,4 +1,4 @@
-import * as path from "./path/mod.ts";
+import * as path from "../path/mod.ts";
 
 /**
  * Test whether or not `dest` is a sub-directory of `src`

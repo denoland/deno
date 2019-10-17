@@ -39,6 +39,7 @@ impl Worker {
       ops::fs::init(&mut i, &state);
       ops::io::init(&mut i, &state);
       ops::net::init(&mut i, &state);
+      ops::tls::init(&mut i, &state);
       ops::os::init(&mut i, &state);
       ops::permissions::init(&mut i, &state);
       ops::process::init(&mut i, &state);
@@ -262,7 +263,7 @@ mod tests {
 
   #[test]
   fn test_worker_messages() {
-    tokio_util::init(|| {
+    tokio_util::run_in_task(|| {
       let mut worker = create_test_worker();
       let source = r#"
         onmessage = function(e) {
@@ -313,7 +314,7 @@ mod tests {
 
   #[test]
   fn removed_from_resource_table_on_close() {
-    tokio_util::init(|| {
+    tokio_util::run_in_task(|| {
       let mut worker = create_test_worker();
       worker
         .execute("onmessage = () => { delete window.onmessage; }")
@@ -348,7 +349,7 @@ mod tests {
 
   #[test]
   fn execute_mod_resolve_error() {
-    tokio_util::init(|| {
+    tokio_util::run_in_task(|| {
       // "foo" is not a valid module specifier so this should return an error.
       let mut worker = create_test_worker();
       let module_specifier =
@@ -360,7 +361,7 @@ mod tests {
 
   #[test]
   fn execute_mod_002_hello() {
-    tokio_util::init(|| {
+    tokio_util::run_in_task(|| {
       // This assumes cwd is project root (an assumption made throughout the
       // tests).
       let mut worker = create_test_worker();

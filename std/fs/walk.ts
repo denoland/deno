@@ -2,7 +2,7 @@
 // https://golang.org/pkg/path/filepath/#Walk
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
 import { unimplemented } from "../testing/asserts.ts";
-import { join } from "./path/mod.ts";
+import { join } from "../path/mod.ts";
 const { readDir, readDirSync, stat, statSync } = Deno;
 type FileInfo = Deno.FileInfo;
 

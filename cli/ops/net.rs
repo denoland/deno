@@ -18,7 +18,6 @@ use tokio::net::TcpStream;
 pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op("accept", s.core_op(json_op(s.stateful_op(op_accept))));
   i.register_op("dial", s.core_op(json_op(s.stateful_op(op_dial))));
-  i.register_op("dial_tls", s.core_op(json_op(s.stateful_op(op_dial))));
   i.register_op("shutdown", s.core_op(json_op(s.stateful_op(op_shutdown))));
   i.register_op("listen", s.core_op(json_op(s.stateful_op(op_listen))));
 }

@@ -26,8 +26,9 @@ standard browser-compatible protocol for loading modules: URLs.
 Deno provides security guarantees about how programs can access your system with
 the default being the most restrictive secure sandbox.
 
-Deno provides <a href="https://github.com/denoland/deno_std">a set of reviewed
-(audited) standard modules</a> that are guaranteed to work with Deno.
+Deno provides <a href="https://github.com/denoland/deno/tree/master/std">a set
+of reviewed (audited) standard modules</a> that are guaranteed to work with
+Deno.
 
 ### Goals
 
@@ -71,7 +72,6 @@ Deno provides <a href="https://github.com/denoland/deno_std">a set of reviewed
     - bundling (`deno bundle`)
     - runtime type info (`deno types`)
     - test runner (`deno test`)
-      [not yet](https://github.com/denoland/deno_std/issues/193)
     - command-line debugger (`--debug`)
       [not yet](https://github.com/denoland/deno/issues/1120)
     - linter (`deno lint`) [not yet](https://github.com/denoland/deno/issues/1880)
@@ -633,7 +633,7 @@ deno
 A secure runtime for JavaScript and TypeScript built with V8, Rust, and Tokio.
 
 Docs: https://deno.land/manual.html
-Modules: https://github.com/denoland/deno_std
+Modules: https://deno.land/x/
 Bugs: https://github.com/denoland/deno/issues
 
 To run the REPL:
@@ -991,7 +991,7 @@ defined in `imported.ts`.
 |                        Syscalls | Ops                              |
 |           File descriptors (fd) | [Resource ids (rid)](#resources) |
 |                       Scheduler | Tokio                            |
-| Userland: libc++ / glib / boost | deno_std                         |
+| Userland: libc++ / glib / boost | https://deno.land/std/           |
 |                 /proc/\$\$/stat | [Deno.metrics()](#metrics)       |
 |                       man pages | deno types                       |
 

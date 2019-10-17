@@ -166,3 +166,39 @@ test(function booleanParsingTrueLike(): void {
   const parsed3 = parse(["-t", "false123"], { boolean: ["t"] });
   assertEquals(parsed3.t, true);
 });
+
+test(function booleanNegationAfterBoolean(): void {
+  const parsed = parse(["--foo", "--no-foo"], { boolean: ["foo"] });
+  assertEquals(parsed.foo, false);
+
+  const parsed2 = parse(["--foo", "--no-foo", "123"], { boolean: ["foo"] });
+  assertEquals(parsed2.foo, false);
+});
+
+test(function booleanAfterBooleanNegation(): void {
+  const parsed = parse(["--no--foo", "--foo"], { boolean: ["foo"] });
+  assertEquals(parsed.foo, true);
+
+  const parsed2 = parse(["--no--foo", "--foo", "123"], { boolean: ["foo"] });
+  assertEquals(parsed2.foo, true);
+});
+
+test(function latestFlagIsBooleanNegation(): void {
+  const parsed = parse(["--no-foo", "--foo", "--no-foo"], { boolean: ["foo"] });
+  assertEquals(parsed.foo, false);
+
+  const parsed2 = parse(["--no-foo", "--foo", "--no-foo", "123"], {
+    boolean: ["foo"]
+  });
+  assertEquals(parsed2.foo, false);
+});
+
+test(function latestFlagIsBoolean(): void {
+  const parsed = parse(["--foo", "--no-foo", "--foo"], { boolean: ["foo"] });
+  assertEquals(parsed.foo, true);
+
+  const parsed2 = parse(["--foo", "--no-foo", "--foo", "123"], {
+    boolean: ["foo"]
+  });
+  assertEquals(parsed2.foo, true);
+});

@@ -5,11 +5,11 @@ import {
   assertThrows,
   assertThrowsAsync
 } from "../testing/asserts.ts";
+import * as path from "../path/mod.ts";
 import { move, moveSync } from "./move.ts";
 import { ensureFile, ensureFileSync } from "./ensure_file.ts";
 import { ensureDir, ensureDirSync } from "./ensure_dir.ts";
 import { exists, existsSync } from "./exists.ts";
-import * as path from "./path/mod.ts";
 
 const testdataDir = path.resolve("fs", "testdata");
 

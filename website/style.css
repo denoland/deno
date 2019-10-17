@@ -140,7 +140,7 @@ header h1 {
   margin: 8px 0;
 }
 
-@media only screen and (max-device-width: 480px) {
+@media only screen and (max-width: 480px) {
   body {
     margin: 0;
   }
