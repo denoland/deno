@@ -381,6 +381,24 @@ And if you ever want to upgrade to the latest published version:
 $ file_server --reload
 ```
 
+### Reload specific modules
+
+Sometimes we want to upgrade only some modules. You can control it by passing an
+argument to a `--reload` flag.
+
+To reload everything
+
+`--reload`
+
+To reload all standard modules
+
+`--reload=https://deno.land/std`
+
+To reload specific modules (in this example - colors and file system utils) use
+a comma to separate URLs
+
+`--reload=https://deno.land/std/fs/utils.ts,https://deno.land/std/fmt/colors.ts`
+
 ### Permissions whitelist
 
 Deno also provides permissions whitelist.
@@ -670,7 +688,7 @@ OPTIONS:
     -L, --log-level <log-level>        Set log level [possible values: debug, info]
         --no-fetch                     Do not download remote modules
         --no-prompt                    Do not use prompts
-    -r, --reload                       Reload source code cache (recompile TypeScript)
+    -r, --reload=<CACHE_BLACKLIST>     Reload source code cache (recompile TypeScript)
         --seed <NUMBER>                Seed Math.random()
         --v8-flags=<v8-flags>          Set V8 command line options
         --v8-options                   Print V8 command line options

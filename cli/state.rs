@@ -225,6 +225,7 @@ impl ThreadSafeState {
       dir.deps_cache.clone(),
       progress.clone(),
       !flags.reload,
+      flags.cache_blacklist.clone(),
       flags.no_fetch,
     )?;
 
