@@ -77,7 +77,7 @@ testPerm({ write: false }, async function writePermFailure(): Promise<void> {
     write: true,
     createNew: true
   };
-  const writeModes: Deno.OpenMode[] = [w, a, x];
+  const writeModes: Deno.OpenCapability[] = [w, a, x];
   for (const mode of writeModes) {
     let err;
     try {
@@ -184,7 +184,7 @@ testPerm(
       createNew: true,
       read: true
     };
-    const writeModes: Deno.OpenMode[] = [rplus, wplus, aplus, xplus];
+    const writeModes: Deno.OpenCapability[] = [rplus, wplus, aplus, xplus];
     for (const mode of writeModes) {
       let err;
       try {

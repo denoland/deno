@@ -177,7 +177,7 @@ declare namespace Deno {
    */
   export function openSync(
     filename: string,
-    mode?: OpenMode | OpenModePosix
+    mode?: OpenCapability | OpenMode
   ): File;
   /** Open a file and return an instance of the `File` object.
    *
@@ -187,7 +187,7 @@ declare namespace Deno {
    */
   export function open(
     filename: string,
-    mode?: OpenMode | OpenModePosix
+    mode?: OpenCapability | OpenMode
   ): Promise<File>;
   /** Read synchronously from a file ID into an array buffer.
    *
@@ -282,7 +282,7 @@ declare namespace Deno {
   /** An instance of `File` for stderr. */
   export const stderr: File;
 
-  export interface OpenMode {
+  export interface OpenCapability {
     /** Sets the option for read access. This option, when true, will indicate that the file should be read-able if opened. */
     read?: boolean;
     /** Sets the option for write access.
@@ -312,7 +312,7 @@ declare namespace Deno {
     createNew?: boolean;
   }
 
-  export type OpenModePosix =
+  export type OpenMode =
     /** Read-only. Default. Starts at beginning of file. */
     | "r"
     /** Read-write. Start at beginning of file. */

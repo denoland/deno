@@ -24,12 +24,12 @@ import {
  */
 export function openSync(
   filename: string,
-  mode: OpenMode | OpenModePosix = { read: true }
+  mode: OpenCapability | OpenMode = { read: true }
 ): File {
   if (typeof mode === "string") {
-    mode = convertOpenModePosix(mode);
+    mode = convertOpenMode(mode);
   }
-  const [modeIsValid, errMsg] = checkOpenMode(mode);
+  const [modeIsValid, errMsg] = checkOpenCapability(mode);
   if (modeIsValid) {
     const rid = sendSyncJson(dispatch.OP_OPEN, { filename, mode });
     return new File(rid);
@@ -46,12 +46,12 @@ export function openSync(
  */
 export async function open(
   filename: string,
-  mode: OpenMode | OpenModePosix = { read: true }
+  mode: OpenCapability | OpenMode = { read: true }
 ): Promise<File> {
   if (typeof mode === "string") {
-    mode = convertOpenModePosix(mode);
+    mode = convertOpenMode(mode);
   }
-  const [modeIsValid, errMsg] = checkOpenMode(mode);
+  const [modeIsValid, errMsg] = checkOpenCapability(mode);
   if (modeIsValid) {
     const rid = await sendAsyncJson(dispatch.OP_OPEN, { filename, mode });
     return new File(rid);
@@ -219,7 +219,7 @@ export const stdout = new File(1);
 /** An instance of `File` for stderr. */
 export const stderr = new File(2);
 
-export interface OpenMode {
+export interface OpenCapability {
   /** Sets the option for read access. This option, when true, will indicate that the file should be read-able if opened. */
   read?: boolean;
   /** Sets the option for write access.
@@ -249,7 +249,7 @@ export interface OpenMode {
   createNew?: boolean;
 }
 
-export type OpenModePosix =
+export type OpenMode =
   /** Read-only. Default. Starts at beginning of file. */
   | "r"
   /** Read-write. Start at beginning of file. */
@@ -292,7 +292,7 @@ export function create(filename: string): Promise<File> {
  *  @returns Tuple representing if openMode is valid and error message if it's not
  *  @internal
  */
-function checkOpenMode(mode: OpenMode): [boolean, string] {
+function checkOpenCapability(mode: OpenCapability): [boolean, string] {
   const allOptionsAreFalse =
     Object.values(mode).filter(val => val == true).length === 0;
   const truncateOptionWithoutWriteAccess = mode.truncate && !mode.write;
@@ -307,7 +307,7 @@ function checkOpenMode(mode: OpenMode): [boolean, string] {
   return [true, ""];
 }
 
-const openModPosixMap = {
+const openModMap = {
   r: {
     read: true
   },
@@ -349,6 +349,6 @@ const openModPosixMap = {
 /** Converts OpenModePosix to OpenMode
  *  @internal
  */
-function convertOpenModePosix(mode: OpenModePosix): OpenMode {
-  return openModPosixMap[mode];
+function convertOpenMode(mode: OpenMode): OpenCapability {
+  return openModMap[mode];
 }

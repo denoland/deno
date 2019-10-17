@@ -40,7 +40,7 @@ export class FileReader implements Deno.Reader {
 
   constructor(
     private filePath: string,
-    private mode: Deno.OpenMode = { read: true }
+    private mode: Deno.OpenCapability = { read: true }
   ) {}
 
   public async read(p: Uint8Array): Promise<number | Deno.EOF> {
@@ -64,7 +64,11 @@ export class FileWriter implements Deno.Writer {
 
   constructor(
     private filePath: string,
-    private mode: Deno.OpenMode = { write: true, truncate: true, create: true }
+    private mode: Deno.OpenCapability = {
+      write: true,
+      truncate: true,
+      create: true
+    }
   ) {}
 
   public async write(p: Uint8Array): Promise<number> {
