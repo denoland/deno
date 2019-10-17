@@ -383,20 +383,21 @@ $ file_server --reload
 
 ### Reload specific modules
 
-Sometimes we want to upgrade only some modules. You can control it by passing an argument to a `--reload` flag.
+Sometimes we want to upgrade only some modules. You can control it by passing an
+argument to a `--reload` flag.
 
-To reload everything 
+To reload everything
 
 `--reload`
 
-To reload all standard modules 
+To reload all standard modules
 
 `--reload=https://deno.land/std`
 
-To reload specific modules (in this example - colors and file system utils) use a comma to separate URLs
+To reload specific modules (in this example - colors and file system utils) use
+a comma to separate URLs
 
 `--reload=https://deno.land/std/fs/utils.ts,https://deno.land/std/fmt/colors.ts`
-
 
 ### Permissions whitelist
 
