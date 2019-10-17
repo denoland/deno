@@ -24,10 +24,10 @@ import {
  */
 export function openSync(
   filename: string,
-  mode: OpenMode | OpenModeLegacy = { read: true }
+  mode: OpenMode | OpenModePosix = { read: true }
 ): File {
   if (typeof mode === "string") {
-    mode = convertOpenModeLegacy(mode);
+    mode = convertOpenModePosix(mode);
   }
   const [modeIsValid, errMsg] = checkOpenMode(mode);
   if (modeIsValid) {
@@ -46,10 +46,10 @@ export function openSync(
  */
 export async function open(
   filename: string,
-  mode: OpenMode | OpenModeLegacy = { read: true }
+  mode: OpenMode | OpenModePosix = { read: true }
 ): Promise<File> {
   if (typeof mode === "string") {
-    mode = convertOpenModeLegacy(mode);
+    mode = convertOpenModePosix(mode);
   }
   const [modeIsValid, errMsg] = checkOpenMode(mode);
   if (modeIsValid) {
@@ -249,8 +249,7 @@ export interface OpenMode {
   createNew?: boolean;
 }
 
-/** @deprecated use @see OpenMode */
-export type OpenModeLegacy =
+export type OpenModePosix =
   /** Read-only. Default. Starts at beginning of file. */
   | "r"
   /** Read-write. Start at beginning of file. */
@@ -308,55 +307,48 @@ function checkOpenMode(mode: OpenMode): [boolean, string] {
   return [true, ""];
 }
 
-/** Converts OpenModeLegacy to Legacy
- *  @internal
- */
-function convertOpenModeLegacy(mode: OpenModeLegacy): OpenMode {
-  const r = {
+const openModPosixMap = {
+  "r": {
     read: true
-  };
-  const rplus = {
+  },
+  "r+": {
     read: true,
     write: true
-  };
-  const w = {
+  },
+  "w": {
     write: true,
     truncate: true,
     create: true
-  };
-  const wplus = {
+  },
+  "w+": {
     write: true,
     truncate: true,
     create: true,
     read: true
-  };
-  const a = {
+  },
+  "a": {
     append: true,
     create: true
-  };
-  const aplus = {
+  },
+  "a+": {
     append: true,
     create: true,
     read: true
-  };
-  const x = {
+  },
+  "x": {
     write: true,
     createNew: true
-  };
-  const xplus = {
+  },
+  "x+": {
     write: true,
     createNew: true,
     read: true
-  };
+  }
+};
 
-  const map = {};
-  map["r"] = r;
-  map["r+"] = rplus;
-  map["w"] = w;
-  map["w+"] = wplus;
-  map["a"] = a;
-  map["a+"] = aplus;
-  map["x"] = x;
-  map["x+"] = xplus;
-  return map[mode];
+/** Converts OpenModePosix to OpenMode
+ *  @internal
+ */
+function convertOpenModePosix(mode: OpenModePosix): OpenMode {
+  return openModPosixMap[mode];
 }

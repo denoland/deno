@@ -177,7 +177,7 @@ declare namespace Deno {
    */
   export function openSync(
     filename: string,
-    mode?: OpenMode | OpenModeLegacy
+    mode?: OpenMode | OpenModePosix
   ): File;
   /** Open a file and return an instance of the `File` object.
    *
@@ -187,7 +187,7 @@ declare namespace Deno {
    */
   export function open(
     filename: string,
-    mode?: OpenMode | OpenModeLegacy
+    mode?: OpenMode | OpenModePosix
   ): Promise<File>;
   /** Read synchronously from a file ID into an array buffer.
    *
@@ -312,8 +312,7 @@ declare namespace Deno {
     createNew?: boolean;
   }
 
-  /** @deprecated use @see OpenMode */
-  export type OpenModeLegacy =
+  export type OpenModePosix =
     /** Read-only. Default. Starts at beginning of file. */
     | "r"
     /** Read-write. Start at beginning of file. */
@@ -338,12 +337,7 @@ declare namespace Deno {
     | "x"
     /** Read-write. Behaves like `x` and allows to read from file. */
     | "x+";
-
-  /** A factory function for creating instances of `File` associated with the
-   * supplied file name.
-   * @internal
-   */
-
+    
   // @url js/buffer.d.ts
 
   /** A Buffer is a variable-sized buffer of bytes with read() and write()
