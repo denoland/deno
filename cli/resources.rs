@@ -68,54 +68,6 @@ lazy_static! {
   });
 }
 
-//struct ResourceTable {
-//  map: Mutex<ResourceMap>,
-//  next_rid: AtomicUsize,
-//}
-//
-//
-//impl ResourceTable {
-//  pub fn add(&self, _resource: Box<dyn DenoResource>) -> Resource {
-//    unimplemented!();
-//  }
-//
-//  pub fn get(&self, rid: &ResourceId) -> Result<&Box<dyn DenoResource>, ErrBox> {
-//    let m = self.map.lock().unwrap();
-//    m.get(rid).ok_or_else(bad_resource)
-//  }
-//
-//  pub fn get_as<T: DenoResource>(&self, rid: &ResourceId) -> Result<&T, ErrBox> {
-//    self.get(rid)?.downcast_ref::<T>().ok_or_else(bad_resource)
-//  }
-//
-//  pub fn get_mut(&self, rid: &ResourceId) -> Result<&mut Box<dyn DenoResource>, ErrBox> {
-//    let mut m = self.map.lock().unwrap();
-//    m.get_mut(rid).ok_or_else(bad_resource)
-//  }
-//
-//  pub fn get_mut_as<T: DenoResource>(&self, rid: &ResourceId) -> Result<&mut T, ErrBox> {
-//    self.get_mut(rid)?.downcast_mut::<T>().ok_or_else(bad_resource)
-//  }
-//
-//  pub fn with_resource<F>(&self, rid: &ResourceId, f: F)
-//  where
-//    F: Fn(&Box<dyn DenoResource>),
-//  {
-//    let m = self.map.lock().unwrap();
-//    let resource = m.get(rid).ok_or_else(bad_resource);
-//    f(resource)
-//  }
-//
-//  pub fn with_mut_resource<F>(&self, rid: &ResourceId, f: F) -> Result<(), ErrBox>
-//  where
-//    F: Fn(&mut Box<dyn DenoResource>),
-//  {
-//    let mut m = self.map.lock().unwrap();
-//    let resource = m.get_mut(rid).ok_or_else(bad_resource)?;
-//    f(resource)
-//  }
-//}
-
 pub fn with_resource<F, R>(rid: &ResourceId, f: F) -> Result<R, ErrBox>
 where
   F: FnOnce(&Box<dyn DenoResource>) -> Result<R, ErrBox>,
