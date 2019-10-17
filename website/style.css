@@ -49,7 +49,7 @@ body {
   padding: 0;
 
   line-height: 1.5;
-  font-family: sans-serif;
+  font-family: -apple-system,BlinkMacSystemFont,avenir next,avenir,helvetica neue,helvetica,ubuntu,roboto,noto,segoe ui,arial,sans-serif;
 
   margin: 5ex 10ex;
   max-width: 80ex;
@@ -64,8 +64,16 @@ h1,
 h2,
 h3,
 h4 {
-  font-weight: normal;
+  font-weight: 500;
+  margin-top: 2em;
   margin-bottom: 0;
+}
+
+h1:first-child,
+h2:first-child,
+h3:first-child,
+h4:first-child {
+  margin-top: 0;
 }
 
 h1,
@@ -82,12 +90,20 @@ table {
   border-collapse: collapse;
   margin-top: 8px;
 }
+
 td,
 th {
   font-weight: normal;
   text-align: center;
-  border: 1px dotted var(--table-border);
+  border: 1px solid var(--table-border);
   padding: 4px;
+}
+
+@media only screen and (min-width: 768px) {
+  td,
+  th {
+    padding: 8px 16px;
+  }
 }
 
 svg {
