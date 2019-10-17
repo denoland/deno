@@ -18,6 +18,7 @@ extern crate serde_derive;
 extern crate url;
 #[macro_use]
 extern crate downcast_rs;
+extern crate tokio;
 
 pub mod colors;
 pub mod compilers;

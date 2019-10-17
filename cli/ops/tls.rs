@@ -3,6 +3,7 @@ use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::ops::json_op;
 use crate::resolve_addr::resolve_addr;
 use crate::resources;
+use crate::resources::DenoResource;
 use crate::state::ThreadSafeState;
 use deno::*;
 use futures::Future;
@@ -11,19 +12,25 @@ use std::convert::From;
 use std::sync::Arc;
 use tokio;
 use tokio::net::TcpStream;
+use tokio_rustls::client::TlsStream;
 use tokio_rustls::{rustls::ClientConfig, TlsConnector};
 use webpki;
 use webpki::DNSNameRef;
 use webpki_roots;
+
+pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+  i.register_op("dial_tls", s.core_op(json_op(s.stateful_op(op_dial_tls))));
+}
 
 #[derive(Deserialize)]
 struct DialTLSArgs {
   hostname: String,
   port: u16,
 }
-pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
-  i.register_op("dial_tls", s.core_op(json_op(s.stateful_op(op_dial_tls))));
-}
+
+struct ResourceTlsStream(TlsStream<TcpStream>);
+
+impl DenoResource for ResourceTlsStream {}
 
 pub fn op_dial_tls(
   state: &ThreadSafeState,
@@ -65,7 +72,8 @@ pub fn op_dial_tls(
             .connect(dnsname, tcp_stream)
             .map_err(ErrBox::from)
             .and_then(move |tls_stream| {
-              let tls_stream_resource = resources::add_tls_stream(tls_stream);
+              let r = Box::new(ResourceTlsStream(tls_stream));
+              let tls_stream_resource = resources::add_resource(r);
               futures::future::ok(json!({
                 "rid": tls_stream_resource.rid,
                 "localAddr": local_addr.to_string(),

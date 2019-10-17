@@ -114,9 +114,7 @@ fn op_close(
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: CloseArgs = serde_json::from_value(args)?;
-
-  let resource = resources::lookup(args.rid as u32)?;
-  resource.close();
+  resources::close(&(args.rid as u32))?;
   Ok(JsonOp::Sync(json!({})))
 }
 

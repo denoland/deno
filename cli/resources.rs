@@ -21,16 +21,13 @@ use futures::Stream;
 use std;
 use std::any::Any;
 use std::collections::BTreeMap;
-use std::io::{Error, Read, Write};
-use std::net::{Shutdown, SocketAddr};
+use std::io::{Read, Write};
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 use tokio;
 use tokio::io::{AsyncRead, AsyncWrite};
-use tokio::net::TcpStream;
 use tokio::sync::mpsc;
-use tokio_rustls::client::TlsStream;
 
 pub type ResourceId = u32; // Sometimes referred to RID.
 
@@ -139,42 +136,27 @@ where
   Ok(rv)
 }
 
+// close(2) is done by dropping the value. Therefore we just need to remove
+// the resource from the RESOURCE_TABLE.
+pub fn close(rid: &ResourceId) -> Result<(), ErrBox> {
+  let mut table = RESOURCE_TABLE.lock().unwrap();
+  let repr = table.remove(rid).ok_or_else(bad_resource)?;
+  // Give resource a chance to cleanup (notify tasks, etc.)
+  repr.close();
+  Ok(())
+}
+
 // TODO: rename
 /// Abstract type representing resource in Deno.
 pub trait DenoResource: Downcast + Any + Send {
+  /// Method that allows to cleanup resource.
+  fn close(&self) {}
+
   fn inspect_repr(&self) -> &str {
     unimplemented!();
   }
 }
 impl_downcast!(DenoResource);
-
-//impl Clone for Box<dyn DenoResource> {
-//  fn clone(&self) -> Box<dyn DenoResource> {
-//    self.box_clone()
-//  }
-//}
-
-//impl dyn DenoResource {
-//  pub fn downcast_ref<T: DenoResource>(&self) -> Option<&T> {
-//    if Any::type_id(self) == TypeId::of::<T>() {
-//      let target = self as *const Self as *const T;
-//      let target = unsafe { &*target };
-//      Some(target)
-//    } else {
-//      None
-//    }
-//  }
-//
-//  pub fn downcast_mut<T: DenoResource>(&mut self) -> Option<&mut T> {
-//    if Any::type_id(self) == TypeId::of::<T>() {
-//      let target = self as *mut Self as *mut T;
-//      let target = unsafe { &mut *target };
-//      Some(target)
-//    } else {
-//      None
-//    }
-//  }
-//}
 
 struct ResourceStdin(tokio::io::Stdin);
 
@@ -191,26 +173,6 @@ impl DenoResource for ResourceStderr {}
 struct ResourceFsFile(tokio::fs::File);
 
 impl DenoResource for ResourceFsFile {}
-
-// Since TcpListener might be closed while there is a pending accept task,
-// we need to track the task so that when the listener is closed,
-// this pending task could be notified and die.
-// Currently TcpListener itself does not take care of this issue.
-// See: https://github.com/tokio-rs/tokio/issues/846
-struct ResourceTcpListener(
-  tokio::net::TcpListener,
-  Option<futures::task::Task>,
-);
-
-impl DenoResource for ResourceTcpListener {}
-
-struct ResourceTcpStream(tokio::net::TcpStream);
-
-impl DenoResource for ResourceTcpStream {}
-
-struct ResourceTlsStream(TlsStream<TcpStream>);
-
-impl DenoResource for ResourceTlsStream {}
 
 struct ResourceWorker(WorkerChannels);
 
@@ -245,6 +207,7 @@ fn inspect_repr(resource: &Box<dyn DenoResource>) -> String {
   String::from(resource.inspect_repr())
 }
 
+// TODO: deprecated, remove it
 // Abstract async file interface.
 // Ideally in unix, if Resource represents an OS rid, it will be the same.
 #[derive(Clone, Debug)]
@@ -253,100 +216,9 @@ pub struct Resource {
 }
 
 impl Resource {
-  // TODO Should it return a Resource instead of net::TcpStream?
-  pub fn poll_accept(&mut self) -> Poll<(TcpStream, SocketAddr), Error> {
-    let mut table = RESOURCE_TABLE.lock().unwrap();
-    let maybe_repr = table.get_mut(&self.rid);
-
-    match maybe_repr {
-      None => Err(std::io::Error::new(
-        std::io::ErrorKind::Other,
-        "Listener has been closed",
-      )),
-      Some(repr) => match repr.downcast_mut::<ResourceTcpListener>() {
-        Some(ref mut listener) => {
-          let stream = &mut listener.0;
-          stream.poll_accept()
-        }
-        _ => panic!("Cannot accept"),
-      },
-    }
-  }
-
-  /// Track the current task (for TcpListener resource).
-  /// Throws an error if another task is already tracked.
-  pub fn track_task(&mut self) -> Result<(), std::io::Error> {
-    let mut table = RESOURCE_TABLE.lock().unwrap();
-    // Only track if is TcpListener.
-    let repr = match table.get_mut(&self.rid) {
-      Some(repr) => repr,
-      None => return Ok(()),
-    };
-
-    match repr.downcast_mut::<ResourceTcpListener>() {
-      Some(ref mut stream) => {
-        let t = &mut stream.1;
-        // Currently, we only allow tracking a single accept task for a listener.
-        // This might be changed in the future with multiple workers.
-        // Caveat: TcpListener by itself also only tracks an accept task at a time.
-        // See https://github.com/tokio-rs/tokio/issues/846#issuecomment-454208883
-        if t.is_some() {
-          return Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "Another accept task is ongoing",
-          ));
-        }
-        t.replace(futures::task::current());
-      }
-      _ => {}
-    }
-
-    Ok(())
-  }
-
-  /// Stop tracking a task (for TcpListener resource).
-  /// Happens when the task is done and thus no further tracking is needed.
-  pub fn untrack_task(&mut self) {
-    // Only untrack if is TcpListener.
-    let mut table = RESOURCE_TABLE.lock().unwrap();
-    let repr = match table.get_mut(&self.rid) {
-      Some(repr) => repr,
-      None => panic!("bad resource"),
-    };
-
-    // If TcpListener, we must kill all pending accepts!
-    match repr.downcast_mut::<ResourceTcpListener>() {
-      Some(ref mut stream) => {
-        let t = &mut stream.1;
-        if t.is_some() {
-          t.take();
-        }
-      }
-      None => panic!("bad resource"),
-    }
-  }
-
-  // close(2) is done by dropping the value. Therefore we just need to remove
-  // the resource from the RESOURCE_TABLE.
+  // TODO: used only by worker
   pub fn close(&self) {
-    let mut table = RESOURCE_TABLE.lock().unwrap();
-    let repr = table.remove(&self.rid).unwrap();
-    // If TcpListener, we must kill all pending accepts!
-    if let Some(stream) = repr.downcast_ref::<ResourceTcpListener>() {
-      if let Some(t) = &stream.1 {
-        // Call notify on the tracked task, so that they would error out.
-        t.notify();
-      }
-    }
-  }
-
-  pub fn shutdown(&mut self, how: Shutdown) -> Result<(), ErrBox> {
-    let table = RESOURCE_TABLE.lock().unwrap();
-    let repr = table.get(&self.rid).ok_or_else(bad_resource)?;
-    let stream = &repr
-      .downcast_ref::<ResourceTcpStream>()
-      .ok_or_else(bad_resource)?;
-    TcpStream::shutdown(&stream.0, how).map_err(ErrBox::from)
+    close(&self.rid).unwrap();
   }
 }
 
@@ -376,17 +248,17 @@ impl DenoAsyncRead for Resource {
         repr
           .downcast_mut::<ResourceStdin>()
           .map(|f| f.0.poll_read(buf))
-      })
-      .or_else(|| {
-        repr
-          .downcast_mut::<ResourceTcpStream>()
-          .map(|f| f.0.poll_read(buf))
-      })
-      .or_else(|| {
-        repr
-          .downcast_mut::<ResourceTlsStream>()
-          .map(|f| f.0.poll_read(buf))
       });
+    //      .or_else(|| {
+    //        repr
+    //          .downcast_mut::<ResourceTcpStream>()
+    //          .map(|f| f.0.poll_read(buf))
+    //      })
+    //      .or_else(|| {
+    //        repr
+    //          .downcast_mut::<ResourceTlsStream>()
+    //          .map(|f| f.0.poll_read(buf))
+    //      });
     //      .or_else(|| {
     //        repr
     //          .downcast_mut::<ResourceHttpBody>()
@@ -447,17 +319,17 @@ impl DenoAsyncWrite for Resource {
         repr
           .downcast_mut::<ResourceStderr>()
           .map(|f| f.0.poll_write(buf))
-      })
-      .or_else(|| {
-        repr
-          .downcast_mut::<ResourceTcpStream>()
-          .map(|f| f.0.poll_write(buf))
-      })
-      .or_else(|| {
-        repr
-          .downcast_mut::<ResourceTlsStream>()
-          .map(|f| f.0.poll_write(buf))
       });
+    //      .or_else(|| {
+    //        repr
+    //          .downcast_mut::<ResourceTcpStream>()
+    //          .map(|f| f.0.poll_write(buf))
+    //      })
+    //      .or_else(|| {
+    //        repr
+    //          .downcast_mut::<ResourceTlsStream>()
+    //          .map(|f| f.0.poll_write(buf))
+    //      });
     //      .or_else(|| {
     //        repr
     //          .downcast_mut::<ResourceChildStdin>()
@@ -490,18 +362,6 @@ pub fn add_resource(resource: Box<dyn DenoResource>) -> Resource {
 
 pub fn add_fs_file(fs_file: tokio::fs::File) -> Resource {
   add_resource(Box::new(ResourceFsFile(fs_file)))
-}
-
-pub fn add_tcp_listener(listener: tokio::net::TcpListener) -> Resource {
-  add_resource(Box::new(ResourceTcpListener(listener, None)))
-}
-
-pub fn add_tcp_stream(stream: tokio::net::TcpStream) -> Resource {
-  add_resource(Box::new(ResourceTcpStream(stream)))
-}
-
-pub fn add_tls_stream(stream: TlsStream<TcpStream>) -> Resource {
-  add_resource(Box::new(ResourceTlsStream(stream)))
 }
 
 pub fn add_worker(wc: WorkerChannels) -> Resource {
