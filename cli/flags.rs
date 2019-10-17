@@ -11,6 +11,7 @@ use log::Level;
 use std;
 use std::str;
 use std::str::FromStr;
+use url::Url;
 
 macro_rules! std_url {
   ($x:expr) => {
@@ -45,6 +46,7 @@ pub struct DenoFlags {
   pub import_map_path: Option<String>,
   pub allow_read: bool,
   pub read_whitelist: Vec<String>,
+  pub cache_blacklist: Vec<String>,
   pub allow_write: bool,
   pub write_whitelist: Vec<String>,
   pub allow_net: bool,
@@ -172,8 +174,20 @@ To get help on the another subcommands (run in this case):
     ).arg(
       Arg::with_name("reload")
         .short("r")
+        .min_values(0)
+        .takes_value(true)
+        .use_delimiter(true)
+        .require_equals(true)
         .long("reload")
         .help("Reload source code cache (recompile TypeScript)")
+        .value_name("CACHE_BLACKLIST")
+        .long_help("Reload source code cache (recompile TypeScript)
+          --reload
+            Reload everything
+          --reload=https://deno.land/std
+            Reload all standard modules
+          --reload=https://deno.land/std/fs/utils.ts,https://deno.land/std/fmt/colors.ts
+            Reloads specific modules")
         .global(true),
     ).arg(
       Arg::with_name("config")
@@ -509,6 +523,23 @@ fn resolve_paths(paths: Vec<String>) -> Vec<String> {
   out
 }
 
+pub fn resolve_urls(urls: Vec<String>) -> Vec<String> {
+  let mut out: Vec<String> = vec![];
+  for urlstr in urls.iter() {
+    let result = Url::from_str(urlstr);
+    if result.is_err() {
+      panic!("Bad Url: {}", urlstr);
+    }
+    let mut url = result.unwrap();
+    url.set_fragment(None);
+    let mut full_url = String::from(url.as_str());
+    if full_url.len() > 1 && full_url.ends_with('/') {
+      full_url.pop();
+    }
+    out.push(full_url);
+  }
+  out
+}
 /// This function expands "bare port" paths (eg. ":8080")
 /// into full paths with hosts. It expands to such paths
 /// into 3 paths with following hosts: `0.0.0.0:port`, `127.0.0.1:port` and `localhost:port`.
@@ -566,7 +597,16 @@ pub fn parse_flags(
     flags.version = true;
   }
   if matches.is_present("reload") {
-    flags.reload = true;
+    if matches.value_of("reload").is_some() {
+      let cache_bl = matches.values_of("reload").unwrap();
+      let raw_cache_blacklist: Vec<String> =
+        cache_bl.map(std::string::ToString::to_string).collect();
+      flags.cache_blacklist = resolve_urls(raw_cache_blacklist);
+      debug!("cache blacklist: {:#?}", &flags.cache_blacklist);
+      flags.reload = false;
+    } else {
+      flags.reload = true;
+    }
   }
   flags.config_path = matches.value_of("config").map(ToOwned::to_owned);
   if matches.is_present("v8-options") {

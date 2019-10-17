@@ -70,6 +70,7 @@ pub struct SourceFileFetcher {
   deps_cache: DiskCache,
   progress: Progress,
   source_file_cache: SourceFileCache,
+  cache_blacklist: Vec<String>,
   use_disk_cache: bool,
   no_remote_fetch: bool,
 }
@@ -79,12 +80,14 @@ impl SourceFileFetcher {
     deps_cache: DiskCache,
     progress: Progress,
     use_disk_cache: bool,
+    cache_blacklist: Vec<String>,
     no_remote_fetch: bool,
   ) -> std::io::Result<Self> {
     let file_fetcher = Self {
       deps_cache,
       progress,
       source_file_cache: SourceFileCache::default(),
+      cache_blacklist,
       use_disk_cache,
       no_remote_fetch,
     };
@@ -308,8 +311,10 @@ impl SourceFileFetcher {
       return Box::new(futures::future::err(too_many_redirects()));
     }
 
+    let is_blacklisted =
+      check_cache_blacklist(module_url, self.cache_blacklist.as_ref());
     // First try local cache
-    if use_disk_cache {
+    if use_disk_cache && !is_blacklisted {
       match self.fetch_cached_remote_source(&module_url) {
         Ok(Some(source_file)) => {
           return Box::new(futures::future::ok(source_file));
@@ -552,6 +557,26 @@ fn filter_shebang(bytes: Vec<u8>) -> Vec<u8> {
   }
 }
 
+fn check_cache_blacklist(url: &Url, black_list: &[String]) -> bool {
+  let mut url_without_fragmets = url.clone();
+  url_without_fragmets.set_fragment(None);
+  if black_list.contains(&String::from(url_without_fragmets.as_str())) {
+    return true;
+  }
+  let mut url_without_query_strings = url_without_fragmets;
+  url_without_query_strings.set_query(None);
+  let mut path_buf = PathBuf::from(url_without_query_strings.as_str());
+  loop {
+    if black_list.contains(&String::from(path_buf.to_str().unwrap())) {
+      return true;
+    }
+    if !path_buf.pop() {
+      break;
+    }
+  }
+  false
+}
+
 #[derive(Debug, Default)]
 /// Header metadata associated with a particular "symbolic" source code file.
 /// (the associated source code file might not be cached, while remaining
@@ -636,6 +661,7 @@ mod tests {
       DiskCache::new(&dir_path.to_path_buf().join("deps")),
       Progress::new(),
       true,
+      vec![],
       false,
     )
     .expect("setup fail")
@@ -655,6 +681,65 @@ mod tests {
         concat!("file://", $path)
       }
     };
+  }
+
+  #[test]
+  fn test_cache_blacklist() {
+    let args = crate::flags::resolve_urls(vec![
+      String::from("http://deno.land/std"),
+      String::from("http://github.com/example/mod.ts"),
+      String::from("http://fragment.com/mod.ts#fragment"),
+      String::from("http://query.com/mod.ts?foo=bar"),
+      String::from("http://queryandfragment.com/mod.ts?foo=bar#fragment"),
+    ]);
+
+    let u: Url = "http://deno.land/std/fs/mod.ts".parse().unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), true);
+
+    let u: Url = "http://github.com/example/file.ts".parse().unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), false);
+
+    let u: Url = "http://github.com/example/mod.ts".parse().unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), true);
+
+    let u: Url = "http://github.com/example/mod.ts?foo=bar".parse().unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), true);
+
+    let u: Url = "http://github.com/example/mod.ts#fragment".parse().unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), true);
+
+    let u: Url = "http://fragment.com/mod.ts".parse().unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), true);
+
+    let u: Url = "http://query.com/mod.ts".parse().unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), false);
+
+    let u: Url = "http://fragment.com/mod.ts#fragment".parse().unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), true);
+
+    let u: Url = "http://query.com/mod.ts?foo=bar".parse().unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), true);
+
+    let u: Url = "http://queryandfragment.com/mod.ts".parse().unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), false);
+
+    let u: Url = "http://queryandfragment.com/mod.ts?foo=bar"
+      .parse()
+      .unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), true);
+
+    let u: Url = "http://queryandfragment.com/mod.ts#fragment"
+      .parse()
+      .unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), false);
+
+    let u: Url = "http://query.com/mod.ts?foo=bar#fragment".parse().unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), true);
+
+    let u: Url = "http://fragment.com/mod.ts?foo=bar#fragment"
+      .parse()
+      .unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), true);
   }
 
   #[test]
