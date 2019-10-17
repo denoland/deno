@@ -337,7 +337,7 @@ declare namespace Deno {
     | "x"
     /** Read-write. Behaves like `x` and allows to read from file. */
     | "x+";
-    
+
   // @url js/buffer.d.ts
 
   /** A Buffer is a variable-sized buffer of bytes with read() and write()

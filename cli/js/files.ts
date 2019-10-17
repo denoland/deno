@@ -308,14 +308,14 @@ function checkOpenMode(mode: OpenMode): [boolean, string] {
 }
 
 const openModPosixMap = {
-  "r": {
+  r: {
     read: true
   },
   "r+": {
     read: true,
     write: true
   },
-  "w": {
+  w: {
     write: true,
     truncate: true,
     create: true
@@ -326,7 +326,7 @@ const openModPosixMap = {
     create: true,
     read: true
   },
-  "a": {
+  a: {
     append: true,
     create: true
   },
@@ -335,7 +335,7 @@ const openModPosixMap = {
     create: true,
     read: true
   },
-  "x": {
+  x: {
     write: true,
     createNew: true
   },
