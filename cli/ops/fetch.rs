@@ -1,8 +1,10 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
+use crate::http_body::HttpBody;
 use crate::http_util::get_client;
 use crate::ops::json_op;
 use crate::resources;
+use crate::resources::DenoResource;
 use crate::state::ThreadSafeState;
 use deno::*;
 use http::header::HeaderName;
@@ -15,6 +17,14 @@ use std::convert::From;
 
 pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op("fetch", s.core_op(json_op(s.stateful_op(op_fetch))));
+}
+
+struct ResourceHttpBody(HttpBody);
+
+impl DenoResource for ResourceHttpBody {
+  fn inspect_repr(&self) -> &str {
+    "httpBody"
+  }
 }
 
 #[derive(Deserialize)]
@@ -62,7 +72,8 @@ pub fn op_fetch(
     }
 
     let body = res.into_body();
-    let body_resource = resources::add_reqwest_body(body);
+    let body_resource =
+      resources::add_resource(Box::new(ResourceHttpBody(HttpBody::from(body))));
 
     let json_res = json!({
       "bodyRid": body_resource.rid,

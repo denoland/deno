@@ -1,15 +1,20 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
+use crate::deno_error::bad_resource;
 use crate::ops::json_op;
 use crate::resources;
+use crate::resources::DenoResource;
+use crate::resources::ResourceId;
 use crate::signal::kill;
 use crate::state::ThreadSafeState;
 use deno::*;
 use futures;
 use futures::Future;
+use futures::Poll;
 use std;
 use std::convert::From;
 use std::process::Command;
+use std::process::ExitStatus;
 use tokio_process::CommandExt;
 
 #[cfg(unix)]
@@ -31,6 +36,45 @@ fn subprocess_stdio_map(s: &str) -> std::process::Stdio {
     "null" => std::process::Stdio::null(),
     _ => unreachable!(),
   }
+}
+
+struct ResourceChild(tokio_process::Child);
+
+impl DenoResource for ResourceChild {
+  fn inspect_repr(&self) -> &str {
+    "child"
+  }
+}
+
+struct ResourceChildStdin(tokio_process::ChildStdin);
+
+impl DenoResource for ResourceChildStdin {
+  fn inspect_repr(&self) -> &str {
+    "childStdin"
+  }
+}
+
+struct ResourceChildStdout(tokio_process::ChildStdout);
+
+impl DenoResource for ResourceChildStdout {
+  fn inspect_repr(&self) -> &str {
+    "childStdout"
+  }
+}
+
+struct ResourceChildStderr(tokio_process::ChildStderr);
+
+impl DenoResource for ResourceChildStderr {
+  fn inspect_repr(&self) -> &str {
+    "childStderr"
+  }
+}
+
+pub struct ChildResources {
+  pub child_rid: Option<ResourceId>,
+  pub stdin_rid: Option<ResourceId>,
+  pub stdout_rid: Option<ResourceId>,
+  pub stderr_rid: Option<ResourceId>,
 }
 
 #[derive(Deserialize)]
@@ -93,18 +137,70 @@ fn op_run(
   }
 
   // Spawn the command.
-  let child = c.spawn_async().map_err(ErrBox::from)?;
-
+  let mut child = c.spawn_async().map_err(ErrBox::from)?;
   let pid = child.id();
-  let resources = resources::add_child(child);
+
+  let mut resources = ChildResources {
+    child_rid: None,
+    stdin_rid: None,
+    stdout_rid: None,
+    stderr_rid: None,
+  };
+
+  if child.stdin().is_some() {
+    let stdin = child.stdin().take().unwrap();
+    let res = resources::add_resource(Box::new(ResourceChildStdin(stdin)));
+    resources.stdin_rid = Some(res.rid);
+  }
+  if child.stdout().is_some() {
+    let stdout = child.stdout().take().unwrap();
+    let res = resources::add_resource(Box::new(ResourceChildStdout(stdout)));
+    resources.stdout_rid = Some(res.rid);
+  }
+  if child.stderr().is_some() {
+    let stderr = child.stderr().take().unwrap();
+    let res = resources::add_resource(Box::new(ResourceChildStderr(stderr)));
+    resources.stderr_rid = Some(res.rid);
+  }
+
+  let res = resources::add_resource(Box::new(ResourceChild(child)));
+  resources.child_rid = Some(res.rid);
 
   Ok(JsonOp::Sync(json!({
-    "rid": resources.child_rid,
+    "rid": resources.child_rid.unwrap(),
     "pid": pid,
     "stdinRid": resources.stdin_rid,
     "stdoutRid": resources.stdout_rid,
     "stderrRid": resources.stderr_rid,
   })))
+}
+
+pub struct ChildStatus {
+  rid: ResourceId,
+}
+
+// Invert the dumbness that tokio_process causes by making Child itself a future.
+impl Future for ChildStatus {
+  type Item = ExitStatus;
+  type Error = ErrBox;
+
+  fn poll(&mut self) -> Poll<ExitStatus, ErrBox> {
+    resources::with_mut_resource(&self.rid, move |repr| {
+      let resource = repr
+        .downcast_mut::<ResourceChild>()
+        .ok_or_else(bad_resource)?;
+      resource.0.poll().map_err(ErrBox::from)
+    })
+  }
+}
+
+pub fn child_status(rid: ResourceId) -> Result<ChildStatus, ErrBox> {
+  resources::with_resource(&rid, move |repr| {
+    let _resource = repr
+      .downcast_ref::<ResourceChild>()
+      .ok_or_else(bad_resource)?;
+    Ok(ChildStatus { rid })
+  })
 }
 
 #[derive(Deserialize)]
@@ -123,7 +219,7 @@ fn op_run_status(
 
   state.check_run()?;
 
-  let future = resources::child_status(rid)?;
+  let future = child_status(rid)?;
 
   let future = future.and_then(move |run_status| {
     let code = run_status.code();

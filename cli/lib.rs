@@ -16,6 +16,8 @@ extern crate rand;
 extern crate serde;
 extern crate serde_derive;
 extern crate url;
+#[macro_use]
+extern crate downcast_rs;
 
 pub mod colors;
 pub mod compilers;
