@@ -13,7 +13,7 @@ run(["cargo", "doc", "--all", "--no-deps", "-vv"])
 
 # 'deno types' is stored in js/lib.deno_runtime.d.ts
 # We want to run typedoc on that declaration file only.
-os.chdir(os.path.join(root_path, "js"))
+os.chdir(os.path.join(root_path, "cli/js"))
 
 # You must have typedoc installed seprately.
 # TODO Replace typedoc with something else ASAP. It's very awful.

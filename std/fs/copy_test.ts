@@ -6,9 +6,9 @@ import {
   assertThrowsAsync,
   assert
 } from "../testing/asserts.ts";
+import * as path from "../path/mod.ts";
 import { copy, copySync } from "./copy.ts";
 import { exists, existsSync } from "./exists.ts";
-import * as path from "./path/mod.ts";
 import { ensureDir, ensureDirSync } from "./ensure_dir.ts";
 import { ensureFile, ensureFileSync } from "./ensure_file.ts";
 import { ensureSymlink, ensureSymlinkSync } from "./ensure_symlink.ts";
