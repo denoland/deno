@@ -66,12 +66,7 @@ export { symlinkSync, symlink } from "./symlink.ts";
 export { writeFileSync, writeFile, WriteFileOptions } from "./write_file.ts";
 export { applySourceMap } from "./error_stack.ts";
 export { ErrorKind, DenoError } from "./errors.ts";
-export {
-  permissions,
-  revokePermission,
-  Permission,
-  Permissions
-} from "./permissions.ts";
+export { permissions } from "./permissions.ts";
 export { truncateSync, truncate } from "./truncate.ts";
 export { FileInfo } from "./file_info.ts";
 export { connect, dial, listen, Listener, Conn } from "./net.ts";

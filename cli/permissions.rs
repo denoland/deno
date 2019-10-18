@@ -9,7 +9,7 @@ use std::collections::HashSet;
 use std::fmt;
 use std::io;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 const PERMISSION_EMOJI: &str = "⚠️";
@@ -91,6 +91,15 @@ impl PermissionAccessor {
     self.set_state(PermissionAccessorState::Deny)
   }
 
+  pub fn to_string(&self) -> String {
+    match self.get_state() {
+      PermissionAccessorState::Allow => "granted".to_string(),
+      PermissionAccessorState::Ask => "prompt".to_string(),
+      PermissionAccessorState::Deny => "denied".to_string(),
+      _ => "".to_string(),
+    }
+  }
+
   /// Update this accessors state based on a PromptResult value
   /// This will only update the state if the PromptResult value
   /// is one of the "Always" values
@@ -127,7 +136,7 @@ impl Default for PermissionAccessor {
 
 #[derive(Debug, Default)]
 pub struct DenoPermissions {
-  // Keep in sync with src/permissions.ts
+  // Keep in sync with cli/js/permissions.ts
   pub allow_read: PermissionAccessor,
   pub read_whitelist: Arc<HashSet<String>>,
   pub allow_write: PermissionAccessor,
@@ -137,7 +146,6 @@ pub struct DenoPermissions {
   pub allow_env: PermissionAccessor,
   pub allow_run: PermissionAccessor,
   pub allow_hrtime: PermissionAccessor,
-  pub no_prompts: AtomicBool,
 }
 
 impl DenoPermissions {
@@ -154,11 +162,10 @@ impl DenoPermissions {
       allow_env: PermissionAccessor::from(flags.allow_env),
       allow_run: PermissionAccessor::from(flags.allow_run),
       allow_hrtime: PermissionAccessor::from(flags.allow_hrtime),
-      no_prompts: AtomicBool::new(flags.no_prompts),
     }
   }
 
-  pub fn check_run(&self) -> Result<(), ErrBox> {
+  pub fn request_run(&self) -> Result<(), ErrBox> {
     let msg = "access to run a subprocess";
 
     match self.allow_run.get_state() {
@@ -179,7 +186,7 @@ impl DenoPermissions {
     }
   }
 
-  pub fn check_read(&self, filename: &str) -> Result<(), ErrBox> {
+  pub fn request_read(&self, filename: &str) -> Result<(), ErrBox> {
     let msg = &format!("read access to \"{}\"", filename);
     match self.allow_read.get_state() {
       PermissionAccessorState::Allow => {
@@ -211,7 +218,7 @@ impl DenoPermissions {
     }
   }
 
-  pub fn check_write(&self, filename: &str) -> Result<(), ErrBox> {
+  pub fn request_write(&self, filename: &str) -> Result<(), ErrBox> {
     let msg = &format!("write access to \"{}\"", filename);
     match self.allow_write.get_state() {
       PermissionAccessorState::Allow => {
@@ -243,7 +250,7 @@ impl DenoPermissions {
     }
   }
 
-  pub fn check_net(&self, host_and_port: &str) -> Result<(), ErrBox> {
+  pub fn request_net(&self, host_and_port: &str) -> Result<(), ErrBox> {
     let msg = &format!("network access to \"{}\"", host_and_port);
     match self.allow_net.get_state() {
       PermissionAccessorState::Allow => {
@@ -268,13 +275,13 @@ impl DenoPermissions {
           self.log_perm_access(msg);
           Ok(())
         } else {
-          self.check_net_inner(state, msg)
+          self.request_net_inner(state, msg)
         }
       }
     }
   }
 
-  pub fn check_net_url(&self, url: &url::Url) -> Result<(), ErrBox> {
+  pub fn request_net_url(&self, url: &url::Url) -> Result<(), ErrBox> {
     let msg = &format!("network access to \"{}\"", url);
     match self.allow_net.get_state() {
       PermissionAccessorState::Allow => {
@@ -299,13 +306,13 @@ impl DenoPermissions {
           self.log_perm_access(msg);
           Ok(())
         } else {
-          self.check_net_inner(state, msg)
+          self.request_net_inner(state, msg)
         }
       }
     }
   }
 
-  fn check_net_inner(
+  fn request_net_inner(
     &self,
     state: PermissionAccessorState,
     prompt_str: &str,
@@ -327,7 +334,7 @@ impl DenoPermissions {
     }
   }
 
-  pub fn check_env(&self) -> Result<(), ErrBox> {
+  pub fn request_env(&self) -> Result<(), ErrBox> {
     let msg = "access to environment variables";
     match self.allow_env.get_state() {
       PermissionAccessorState::Allow => {
@@ -347,15 +354,88 @@ impl DenoPermissions {
     }
   }
 
+  pub fn request_hrtime(&self) -> Result<(), ErrBox> {
+    let msg = "use high resolution time";
+
+    match self.allow_hrtime.get_state() {
+      PermissionAccessorState::Allow => {
+        self.log_perm_access(msg);
+        Ok(())
+      }
+      PermissionAccessorState::Ask => match self.try_permissions_prompt(msg) {
+        Err(e) => Err(e),
+        Ok(v) => {
+          self.allow_hrtime.update_with_prompt_result(&v);
+          v.check()?;
+          self.log_perm_access(msg);
+          Ok(())
+        }
+      },
+      PermissionAccessorState::Deny => Err(permission_denied()),
+    }
+  }
+
+  pub fn check_run(&self) -> Result<(), ErrBox> {
+    if self.allows_run() {
+      Ok(())
+    } else {
+      Err(permission_denied())
+    }
+  }
+
+  pub fn check_read(&self, _filename: &str) -> Result<(), ErrBox> {
+    if self.allows_read() {
+      Ok(())
+    } else {
+      Err(permission_denied())
+    }
+  }
+
+  pub fn check_write(&self, _filename: &str) -> Result<(), ErrBox> {
+    if self.allows_write() {
+      Ok(())
+    } else {
+      Err(permission_denied())
+    }
+  }
+
+  pub fn check_net(&self, _host_and_port: &str) -> Result<(), ErrBox> {
+    if self.allows_net() {
+      Ok(())
+    } else {
+      Err(permission_denied())
+    }
+  }
+
+  pub fn check_net_url(&self, _url: &url::Url) -> Result<(), ErrBox> {
+    if self.allows_net() {
+      Ok(())
+    } else {
+      Err(permission_denied())
+    }
+  }
+
+  pub fn check_env(&self) -> Result<(), ErrBox> {
+    if self.allows_env() {
+      Ok(())
+    } else {
+      Err(permission_denied())
+    }
+  }
+
+  pub fn check_hrtime(&self) -> Result<(), ErrBox> {
+    if self.allows_hrtime() {
+      Ok(())
+    } else {
+      Err(permission_denied())
+    }
+  }
+
   /// Try to present the user with a permission prompt
-  /// will error with permission_denied if no_prompts is enabled
   fn try_permissions_prompt(
     &self,
     message: &str,
   ) -> Result<PromptResult, ErrBox> {
-    if self.no_prompts.load(Ordering::SeqCst) {
-      return Err(permission_denied());
-    }
     if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) {
       return Err(permission_denied());
     };
@@ -424,6 +504,18 @@ impl DenoPermissions {
   pub fn revoke_hrtime(&self) -> Result<(), ErrBox> {
     self.allow_hrtime.revoke();
     Ok(())
+  }
+
+  pub fn get_permission_string(&self, name: String) -> Result<String, ErrBox> {
+    match name.as_ref() {
+      "run" => Ok(self.allow_run.to_string()),
+      "read" => Ok(self.allow_read.to_string()),
+      "write" => Ok(self.allow_write.to_string()),
+      "net" => Ok(self.allow_net.to_string()),
+      "env" => Ok(self.allow_env.to_string()),
+      "hrtime" => Ok(self.allow_hrtime.to_string()),
+      _ => Err(permission_denied()),
+    }
   }
 }
 
