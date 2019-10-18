@@ -55,14 +55,17 @@ export function openSync(
  *         const file = await Deno.open("/foo/bar.txt", { read: true});
  *       })();
  */
-export async function open(filename: string, capability?: OpenCapability);
+export async function open(
+  filename: string,
+  capability?: OpenCapability
+): Promise<File>;
 /** Open a file and return an instance of the `File` object.
  *
  *       (async () => {
  *         const file = await Deno.open("/foo/bar.txt, "r");
  *       })();
  */
-export async function open(filename: string, mode?: OpenMode);
+export async function open(filename: string, mode?: OpenMode): Promise<File>;
 /**@internal*/
 export async function open(
   filename: string,
