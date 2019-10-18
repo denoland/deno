@@ -54,7 +54,6 @@ pub struct DenoFlags {
   pub allow_env: bool,
   pub allow_run: bool,
   pub allow_hrtime: bool,
-  pub no_prompts: bool,
   pub no_fetch: bool,
   pub seed: Option<u64>,
   pub v8_flags: Option<Vec<String>>,
@@ -117,11 +116,6 @@ fn add_run_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .short("A")
         .long("allow-all")
         .help("Allow all permissions"),
-    )
-    .arg(
-      Arg::with_name("no-prompt")
-        .long("no-prompt")
-        .help("Do not use prompts"),
     )
     .arg(
       Arg::with_name("no-fetch")
@@ -706,9 +700,6 @@ fn parse_run_args(mut flags: DenoFlags, matches: &ArgMatches) -> DenoFlags {
     flags.allow_read = true;
     flags.allow_write = true;
     flags.allow_hrtime = true;
-  }
-  if matches.is_present("no-prompt") {
-    flags.no_prompts = true;
   }
   if matches.is_present("no-fetch") {
     flags.no_fetch = true;

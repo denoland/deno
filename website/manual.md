@@ -702,7 +702,6 @@ OPTIONS:
         --importmap <FILE>             Load import map file
     -L, --log-level <log-level>        Set log level [possible values: debug, info]
         --no-fetch                     Do not download remote modules
-        --no-prompt                    Do not use prompts
     -r, --reload=<CACHE_BLACKLIST>     Reload source code cache (recompile TypeScript)
         --seed <NUMBER>                Seed Math.random()
         --v8-flags=<v8-flags>          Set V8 command line options

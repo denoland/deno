@@ -1,7 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as dispatch from "./dispatch.ts";
 import { sendSync } from "./dispatch_json.ts";
-import * as eventTarget from "./event_target.ts";
 
 /** Permissions as granted by the caller
  * See: https://w3c.github.io/permissions/#permission-registry
@@ -21,47 +20,43 @@ export type PermissionState = "granted" | "denied" | "prompt";
 /** See: https://w3c.github.io/permissions/#permission-descriptor */
 interface PermissionDescriptor {
   name: PermissionName;
+  url?: string;
+  path?: string;
 }
 
 export class Permissions {
   /**
    */
   async query(desc: PermissionDescriptor): Promise<PermissionStatus> {
-    const { state } = await sendSync(dispatch.OP_QUERY_PERMISSION, {
-      name: desc.name
+    const { state } = sendSync(dispatch.OP_QUERY_PERMISSION, {
+      ...desc
     });
-    return new PermissionStatus(desc, state);
+    return new PermissionStatus(state);
   }
 
   /**
    */
   async revoke(desc: PermissionDescriptor): Promise<PermissionStatus> {
-    const { state } = await sendSync(dispatch.OP_REVOKE_PERMISSION, {
-      name: desc.name
+    const { state } = sendSync(dispatch.OP_REVOKE_PERMISSION, {
+      ...desc
     });
-    return new PermissionStatus(desc, state);
+    return new PermissionStatus(state);
   }
 
   /**
    */
   async request(desc: PermissionDescriptor): Promise<PermissionStatus> {
-    const { state } = await sendSync(dispatch.OP_REQUEST_PERMISSION, {
-      name: desc.name
+    const { state } = sendSync(dispatch.OP_REQUEST_PERMISSION, {
+      ...desc
     });
-    return new PermissionStatus(desc, state);
+    return new PermissionStatus(state);
   }
 }
 
 export const permissions = new Permissions();
 
 /** https://w3c.github.io/permissions/#permissionstatus */
-export class PermissionStatus extends eventTarget.EventTarget {
-  private _desc: PermissionDescriptor;
-  state: PermissionState;
-  constructor(desc: PermissionDescriptor, state: PermissionState) {
-    super();
-    this._desc = desc;
-    this.state = state;
-  }
+export class PermissionStatus {
+  constructor(public state: PermissionState) {}
   // TODO(kt3k): implement onchange handler
 }

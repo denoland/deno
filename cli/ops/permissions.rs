@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::ops::json_op;
+use crate::permissions;
 use crate::state::ThreadSafeState;
 use deno::*;
 
@@ -19,26 +20,30 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   );
 }
 
-pub fn op_permissions(
-  state: &ThreadSafeState,
-  _args: Value,
-  _zero_copy: Option<PinnedBuf>,
-) -> Result<JsonOp, ErrBox> {
-  Ok(JsonOp::Sync(json!({
-    "run": state.permissions.allows_run(),
-    "read": state.permissions.allows_read(),
-    "write": state.permissions.allows_write(),
-    "net": state.permissions.allows_net(),
-    "env": state.permissions.allows_env(),
-    "hrtime": state.permissions.allows_hrtime(),
-  })))
-}
-
 #[derive(Deserialize)]
 struct PermissionArgs {
   name: String,
   url: Option<String>,
   path: Option<String>,
+}
+
+fn get_current_permission(
+  state: &ThreadSafeState,
+  args: &PermissionArgs,
+) -> Result<permissions::PermissionAccessorState, ErrBox> {
+  Ok(
+    state
+      .permissions
+      .get_permission_state(&args.name, &args.path, &args.url)?,
+  )
+}
+
+fn permission_state_to_json_op(
+  state: permissions::PermissionAccessorState,
+) -> JsonOp {
+  JsonOp::Sync(json!({
+    "state": state.to_string()
+  }))
 }
 
 pub fn op_query_permission(
@@ -47,9 +52,8 @@ pub fn op_query_permission(
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: PermissionArgs = serde_json::from_value(args)?;
-  Ok(JsonOp::Sync(json!({
-    "state": state.permissions.get_permission_string(args.name)?
-  })))
+  let perm = get_current_permission(state, &args)?;
+  Ok(permission_state_to_json_op(perm))
 }
 
 pub fn op_request_permission(
@@ -58,19 +62,26 @@ pub fn op_request_permission(
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: PermissionArgs = serde_json::from_value(value)?;
+  let path = args.path.as_ref();
+  let url = args.url.as_ref();
   let name = args.name.as_ref();
+  let perm = get_current_permission(state, &args)?;
+  if perm != permissions::PermissionAccessorState::Ask {
+    return Ok(permission_state_to_json_op(perm));
+  }
+
   match name {
     "run" => state.permissions.request_run(),
-    "read" => state.permissions.request_read(args.path.unwrap().as_ref()),
-    "write" => state.permissions.request_write(args.path.unwrap().as_ref()),
-    "net" => state.permissions.request_net(args.url.unwrap().as_ref()),
+    "read" => state.permissions.request_read(path.unwrap().as_ref()),
+    "write" => state.permissions.request_write(path.unwrap().as_ref()),
+    "net" => state.permissions.request_net(url.unwrap().as_ref()),
     "env" => state.permissions.request_env(),
     "hrtime" => state.permissions.request_hrtime(),
     _ => Ok(()),
   }?;
-  Ok(JsonOp::Sync(json!({
-    "state": state.permissions.get_permission_string(args.name)?
-  })))
+
+  let perm1 = get_current_permission(state, &args)?;
+  Ok(permission_state_to_json_op(perm1))
 }
 
 pub fn op_revoke_permission(
@@ -86,9 +97,9 @@ pub fn op_revoke_permission(
     "net" => state.permissions.revoke_net(),
     "env" => state.permissions.revoke_env(),
     "hrtime" => state.permissions.revoke_hrtime(),
-    _ => Ok(()),
-  }?;
-  Ok(JsonOp::Sync(json!({
-    "state": state.permissions.get_permission_string(args.name)?
-  })))
+    _ => {}
+  };
+
+  let perm = get_current_permission(state, &args)?;
+  Ok(permission_state_to_json_op(perm))
 }
