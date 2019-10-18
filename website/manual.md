@@ -570,18 +570,20 @@ everywhere in a large project?** The solution is to import and re-export your
 external libraries in a central `deps.ts` file (which serves the same purpose as
 Node's `package.json` file). For example, let's say you were using the above
 testing library across a large project. Rather than importing
-`"https://deno.land/std/testing/mod.ts"` everywhere, you could create a
+`"https://deno.land/std/testing/mod.ts"` or
+`"https://deno.land/std/testing/asserts.ts"` everywhere, you could create a
 `deps.ts` file that exports the third-party code:
 
 ```ts
-export { test, assertEquals } from "https://deno.land/std/testing/mod.ts";
+export { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+export { test, runIfMain } from "https://deno.land/std/testing/mod.ts";
 ```
 
 And throughout the same project, you can import from the `deps.ts` and avoid
 having many references to the same URL:
 
 ```ts
-import { test, assertEquals } from "./deps.ts";
+import { test, assertEquals, runIfMain } from "./deps.ts";
 ```
 
 This design circumvents a plethora of complexity spawned by package management
