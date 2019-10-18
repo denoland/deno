@@ -21,12 +21,12 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
 struct OpenArgs {
   promise_id: Option<u64>,
   filename: String,
-  mode: OpenMode,
+  capability: OpenCapability,
 }
 #[derive(Deserialize, Default, Debug)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
-struct OpenMode {
+struct OpenCapability {
   read: bool,
   write: bool,
   create: bool,
@@ -42,23 +42,23 @@ fn op_open(
 ) -> Result<JsonOp, ErrBox> {
   let args: OpenArgs = serde_json::from_value(args)?;
   let (filename, filename_) = deno_fs::resolve_from_cwd(&args.filename)?;
-  let mode = args.mode;
+  let capability = args.capability;
 
   let mut open_options = tokio::fs::OpenOptions::new();
 
   open_options
-    .read(mode.read)
-    .create(mode.create)
-    .write(mode.write)
-    .truncate(mode.truncate)
-    .append(mode.append)
-    .create_new(mode.create_new);
+    .read(capability.read)
+    .create(capability.create)
+    .write(capability.write)
+    .truncate(capability.truncate)
+    .append(capability.append)
+    .create_new(capability.create_new);
 
-  if mode.read {
+  if capability.read {
     state.check_read(&filename_)?;
   }
 
-  if mode.write || mode.append {
+  if capability.write || capability.append {
     state.check_write(&filename_)?;
   }
 

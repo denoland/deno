@@ -20,18 +20,29 @@ import {
 /** Open a file and return an instance of the `File` object
  *  synchronously.
  *
- *       const file = Deno.openSync("/foo/bar.txt");
+ *       const file = Deno.openSync("/foo/bar.txt", { read: true });
  */
+export function openSync(filename: string, capability?: OpenCapability): File;
+/** Open a file and return an instance of the `File` object
+ *  synchronously.
+ *
+ *       const file = Deno.openSync("/foo/bar.txt", "r");
+ */
+export function openSync(filename: string, mode?: OpenMode): File;
+/**@internal*/
 export function openSync(
   filename: string,
-  mode: OpenCapability | OpenMode = { read: true }
+  openCapOrMode: OpenCapability | OpenMode = { read: true }
 ): File {
-  if (typeof mode === "string") {
-    mode = convertOpenMode(mode);
+  let capability = openCapOrMode;
+  if (typeof openCapOrMode === "string") {
+    capability = convertOpenMode(openCapOrMode);
   }
-  const [modeIsValid, errMsg] = checkOpenCapability(mode);
+  const [modeIsValid, errMsg] = checkOpenCapability(
+    capability as OpenCapability
+  );
   if (modeIsValid) {
-    const rid = sendSyncJson(dispatch.OP_OPEN, { filename, mode });
+    const rid = sendSyncJson(dispatch.OP_OPEN, { filename, capability });
     return new File(rid);
   } else {
     throw new Error(errMsg);
@@ -41,14 +52,14 @@ export function openSync(
 /** Open a file and return an instance of the `File` object.
  *
  *       (async () => {
- *         const file = await Deno.open("/foo/bar.txt", "r");
+ *         const file = await Deno.open("/foo/bar.txt", { read: true});
  *       })();
  */
 export async function open(filename: string, capability?: OpenCapability);
 /** Open a file and return an instance of the `File` object.
  *
  *       (async () => {
- *         const file = await Deno.open("/foo/bar.txt, { read: true }");
+ *         const file = await Deno.open("/foo/bar.txt, "r");
  *       })();
  */
 export async function open(filename: string, mode?: OpenMode);
@@ -57,14 +68,17 @@ export async function open(
   filename: string,
   openCapOrMode: OpenCapability | OpenMode = { read: true }
 ): Promise<File> {
+  let capability = openCapOrMode;
   if (typeof openCapOrMode === "string") {
-    openCapOrMode = convertOpenMode(openCapOrMode);
+    capability = convertOpenMode(openCapOrMode);
   }
-  const [modeIsValid, errMsg] = checkOpenCapability(openCapOrMode);
+  const [modeIsValid, errMsg] = checkOpenCapability(
+    capability as OpenCapability
+  );
   if (modeIsValid) {
     const rid = await sendAsyncJson(dispatch.OP_OPEN, {
       filename,
-      mode: openCapOrMode
+      capability
     });
     return new File(rid);
   } else {
