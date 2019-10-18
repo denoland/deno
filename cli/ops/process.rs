@@ -1,6 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use crate::deno_error::bad_resource;
 use crate::ops::json_op;
 use crate::resources;
 use crate::resources::DenoResource;
@@ -185,20 +184,17 @@ impl Future for ChildStatus {
   type Error = ErrBox;
 
   fn poll(&mut self) -> Poll<ExitStatus, ErrBox> {
-    resources::with_mut_resource(&self.rid, move |repr| {
-      let resource = repr
-        .downcast_mut::<ResourceChild>()
-        .ok_or_else(bad_resource)?;
-      resource.0.poll().map_err(ErrBox::from)
-    })
+    resources::with_mut_resource(
+      &self.rid,
+      move |resource: &mut ResourceChild| {
+        resource.0.poll().map_err(ErrBox::from)
+      },
+    )
   }
 }
 
 pub fn child_status(rid: ResourceId) -> Result<ChildStatus, ErrBox> {
-  resources::with_resource(&rid, move |repr| {
-    let _resource = repr
-      .downcast_ref::<ResourceChild>()
-      .ok_or_else(bad_resource)?;
+  resources::with_resource(&rid, |_resource: &ResourceChild| {
     Ok(ChildStatus { rid })
   })
 }

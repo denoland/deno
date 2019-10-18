@@ -1,6 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use crate::deno_error::bad_resource;
 use crate::ops::json_op;
 use crate::resolve_addr::resolve_addr;
 use crate::resources;
@@ -80,55 +79,53 @@ impl Accept {
   pub fn poll_accept(
     rid: &ResourceId,
   ) -> Poll<(TcpStream, SocketAddr), ErrBox> {
-    resources::with_mut_resource(rid, move |resource| {
-      let resource = resource
-        .downcast_mut::<ResourceTcpListener>()
-        .ok_or_else(bad_resource)?;
-      let stream = &mut resource.0;
-      stream.poll_accept().map_err(ErrBox::from)
-    })
+    resources::with_mut_resource(
+      rid,
+      move |resource: &mut ResourceTcpListener| {
+        let stream = &mut resource.0;
+        stream.poll_accept().map_err(ErrBox::from)
+      },
+    )
   }
 
   /// Track the current task (for TcpListener resource).
   /// Throws an error if another task is already tracked.
   pub fn track_task(&self) -> Result<(), ErrBox> {
-    resources::with_mut_resource(&self.rid, move |resource| {
-      let resource = resource
-        .downcast_mut::<ResourceTcpListener>()
-        .ok_or_else(bad_resource)?;
-
-      let t = &mut resource.1;
-      // Currently, we only allow tracking a single accept task for a listener.
-      // This might be changed in the future with multiple workers.
-      // Caveat: TcpListener by itself also only tracks an accept task at a time.
-      // See https://github.com/tokio-rs/tokio/issues/846#issuecomment-454208883
-      if t.is_some() {
-        let e = std::io::Error::new(
-          std::io::ErrorKind::Other,
-          "Another accept task is ongoing",
-        );
-        return Err(ErrBox::from(e));
-      }
-      t.replace(futures::task::current());
-      Ok(())
-    })
+    resources::with_mut_resource(
+      &self.rid,
+      move |resource: &mut ResourceTcpListener| {
+        let task = &mut resource.1;
+        // Currently, we only allow tracking a single accept task for a listener.
+        // This might be changed in the future with multiple workers.
+        // Caveat: TcpListener by itself also only tracks an accept task at a time.
+        // See https://github.com/tokio-rs/tokio/issues/846#issuecomment-454208883
+        if task.is_some() {
+          let e = std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "Another accept task is ongoing",
+          );
+          return Err(ErrBox::from(e));
+        }
+        task.replace(futures::task::current());
+        Ok(())
+      },
+    )
   }
 
   /// Stop tracking a task (for TcpListener resource).
   /// Happens when the task is done and thus no further tracking is needed.
   pub fn untrack_task(&self) {
-    let res = resources::with_mut_resource(&self.rid, move |resource| {
-      let resource = resource
-        .downcast_mut::<ResourceTcpListener>()
-        .ok_or_else(bad_resource)?;
-
-      // If TcpListener, we must kill all pending accepts!
-      let task = &mut resource.1;
-      if task.is_some() {
-        task.take();
-      }
-      Ok(())
-    });
+    let res = resources::with_mut_resource(
+      &self.rid,
+      move |resource: &mut ResourceTcpListener| {
+        // If TcpListener, we must kill all pending accepts!
+        let task = &mut resource.1;
+        if task.is_some() {
+          task.take();
+        }
+        Ok(())
+      },
+    );
     // TODO: why don't we return result?
     res.unwrap();
   }
@@ -284,11 +281,8 @@ fn op_shutdown(
     _ => unimplemented!(),
   };
 
-  resources::with_resource(&rid, |resource| {
-    let stream = &resource
-      .downcast_ref::<ResourceTcpStream>()
-      .ok_or_else(bad_resource)?;
-    TcpStream::shutdown(&stream.0, mode).map_err(ErrBox::from)
+  resources::with_resource(&rid, |resource: &ResourceTcpStream| {
+    TcpStream::shutdown(&resource.0, mode).map_err(ErrBox::from)
   })?;
 
   Ok(JsonOp::Sync(json!({})))

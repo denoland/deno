@@ -68,23 +68,27 @@ lazy_static! {
   });
 }
 
-pub fn with_resource<F, R>(rid: &ResourceId, f: F) -> Result<R, ErrBox>
+pub fn with_resource<T, F, R>(rid: &ResourceId, f: F) -> Result<R, ErrBox>
 where
-  F: FnOnce(&Box<dyn DenoResource>) -> Result<R, ErrBox>,
+  T: DenoResource,
+  F: FnOnce(&T) -> Result<R, ErrBox>,
 {
   let table = RESOURCE_TABLE.lock().unwrap();
-  let repr = table.get(&rid).ok_or_else(bad_resource)?;
-  let rv = f(repr)?;
+  let resource = table.get(&rid).ok_or_else(bad_resource)?;
+  let resource = &resource.downcast_ref::<T>().ok_or_else(bad_resource)?;
+  let rv = f(resource)?;
   Ok(rv)
 }
 
-pub fn with_mut_resource<F, R>(rid: &ResourceId, f: F) -> Result<R, ErrBox>
+pub fn with_mut_resource<T, F, R>(rid: &ResourceId, f: F) -> Result<R, ErrBox>
 where
-  F: FnOnce(&mut Box<dyn DenoResource>) -> Result<R, ErrBox>,
+  T: DenoResource,
+  F: FnOnce(&mut T) -> Result<R, ErrBox>,
 {
   let mut table = RESOURCE_TABLE.lock().unwrap();
-  let repr = table.get_mut(&rid).ok_or_else(bad_resource)?;
-  let rv = f(repr)?;
+  let resource = table.get_mut(&rid).ok_or_else(bad_resource)?;
+  let resource = resource.downcast_mut::<T>().ok_or_else(bad_resource)?;
+  let rv = f(resource)?;
   Ok(rv)
 }
 

@@ -1,6 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
-use crate::deno_error::bad_resource;
 use crate::ops::json_op;
 use crate::repl;
 use crate::repl::Repl;
@@ -69,11 +68,8 @@ fn op_repl_readline(
   debug!("op_repl_readline {} {}", rid, prompt);
 
   blocking_json(false, move || {
-    let repl = resources::with_resource(&rid, move |repr| {
-      let repl = repr
-        .downcast_ref::<ResourceRepl>()
-        .ok_or_else(bad_resource)?;
-      Ok(repl.0.clone())
+    let repl = resources::with_resource(&rid, |resource: &ResourceRepl| {
+      Ok(resource.0.clone())
     })?;
     let line = repl.lock().unwrap().readline(&prompt)?;
     Ok(json!(line))
