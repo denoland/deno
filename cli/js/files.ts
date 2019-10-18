@@ -41,19 +41,31 @@ export function openSync(
 /** Open a file and return an instance of the `File` object.
  *
  *       (async () => {
- *         const file = await Deno.open("/foo/bar.txt");
+ *         const file = await Deno.open("/foo/bar.txt", "r");
  *       })();
  */
+export async function open(filename: string, capability?: OpenCapability);
+/** Open a file and return an instance of the `File` object.
+ *
+ *       (async () => {
+ *         const file = await Deno.open("/foo/bar.txt, { read: true }");
+ *       })();
+ */
+export async function open(filename: string, mode?: OpenMode);
+/**@internal*/
 export async function open(
   filename: string,
-  mode: OpenCapability | OpenMode = { read: true }
+  openCapOrMode: OpenCapability | OpenMode = { read: true }
 ): Promise<File> {
-  if (typeof mode === "string") {
-    mode = convertOpenMode(mode);
+  if (typeof openCapOrMode === "string") {
+    openCapOrMode = convertOpenMode(openCapOrMode);
   }
-  const [modeIsValid, errMsg] = checkOpenCapability(mode);
+  const [modeIsValid, errMsg] = checkOpenCapability(openCapOrMode);
   if (modeIsValid) {
-    const rid = await sendAsyncJson(dispatch.OP_OPEN, { filename, mode });
+    const rid = await sendAsyncJson(dispatch.OP_OPEN, {
+      filename,
+      mode: openCapOrMode
+    });
     return new File(rid);
   } else {
     throw new Error(errMsg);
@@ -292,12 +304,14 @@ export function create(filename: string): Promise<File> {
  *  @returns Tuple representing if openMode is valid and error message if it's not
  *  @internal
  */
-function checkOpenCapability(mode: OpenCapability): [boolean, string] {
+function checkOpenCapability(capability: OpenCapability): [boolean, string] {
   const allOptionsAreFalse =
-    Object.values(mode).filter(val => val == true).length === 0;
-  const truncateOptionWithoutWriteAccess = mode.truncate && !mode.write;
+    Object.values(capability).filter(val => val == true).length === 0;
+  const truncateOptionWithoutWriteAccess =
+    capability.truncate && !capability.write;
   const createOrCreateNewWithoutWriteOrAppend =
-    (mode.create || mode.createNew) && !(mode.write || mode.append);
+    (capability.create || capability.createNew) &&
+    !(capability.write || capability.append);
   if (allOptionsAreFalse)
     return [false, "OpenMode require at least one option to be true"];
   if (truncateOptionWithoutWriteAccess)
@@ -307,7 +321,7 @@ function checkOpenCapability(mode: OpenCapability): [boolean, string] {
   return [true, ""];
 }
 
-const openModMap = {
+const openModeMap = {
   r: {
     read: true
   },
@@ -346,9 +360,9 @@ const openModMap = {
   }
 };
 
-/** Converts OpenModePosix to OpenMode
+/** Converts OpenMode to OpenCapability
  *  @internal
  */
 function convertOpenMode(mode: OpenMode): OpenCapability {
-  return openModMap[mode];
+  return openModeMap[mode];
 }

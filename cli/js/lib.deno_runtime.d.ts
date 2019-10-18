@@ -182,13 +182,17 @@ declare namespace Deno {
   /** Open a file and return an instance of the `File` object.
    *
    *       (async () => {
-   *         const file = await Deno.open("/foo/bar.txt");
+   *         const file = await Deno.open("/foo/bar.txt", "r");
    *       })();
    */
-  export function open(
-    filename: string,
-    mode?: OpenCapability | OpenMode
-  ): Promise<File>;
+  export function open(filename: string, capability?: OpenCapability);
+  /** Open a file and return an instance of the `File` object.
+   *
+   *       (async () => {
+   *         const file = await Deno.open("/foo/bar.txt", { read: true });
+   *       })();
+   */
+  export function open(filename: string, mode?: OpenMode);
   /** Read synchronously from a file ID into an array buffer.
    *
    * Return `number | EOF` for the operation.
