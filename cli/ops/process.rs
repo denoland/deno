@@ -184,19 +184,16 @@ impl Future for ChildStatus {
   type Error = ErrBox;
 
   fn poll(&mut self) -> Poll<ExitStatus, ErrBox> {
-    resources::with_mut_resource(
-      &self.rid,
-      move |resource: &mut ResourceChild| {
-        resource.0.poll().map_err(ErrBox::from)
-      },
-    )
+    let mut resource_table = resources::get_table();
+    let resource = resource_table.get_mut::<ResourceChild>(&self.rid)?;
+    resource.0.poll().map_err(ErrBox::from)
   }
 }
 
 pub fn child_status(rid: ResourceId) -> Result<ChildStatus, ErrBox> {
-  resources::with_resource(&rid, |_resource: &ResourceChild| {
-    Ok(ChildStatus { rid })
-  })
+  let resource_table = resources::get_table();
+  let _resource = resource_table.get::<ResourceChild>(&rid)?;
+  Ok(ChildStatus { rid })
 }
 
 #[derive(Deserialize)]

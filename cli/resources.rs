@@ -22,18 +22,11 @@ use std;
 use std::any::Any;
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
 use std::sync::Mutex;
+use std::sync::MutexGuard;
 use tokio;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::mpsc;
-
-pub type ResourceId = u32; // Sometimes referred to RID.
-
-// These store Deno's file descriptors. These are not necessarily the operating
-// system ones.
-type ResourceMap = BTreeMap<ResourceId, Box<dyn DenoResource>>;
 
 #[cfg(not(windows))]
 use std::os::unix::io::FromRawFd;
@@ -45,14 +38,12 @@ use std::os::windows::io::FromRawHandle;
 extern crate winapi;
 
 lazy_static! {
-  // Starts at 3 because stdio is [0-2].
-  static ref NEXT_RID: AtomicUsize = AtomicUsize::new(3);
-  pub static ref RESOURCE_TABLE: Mutex<ResourceMap> = Mutex::new({
-    let mut m: BTreeMap<ResourceId, Box<dyn DenoResource>> = BTreeMap::new();
+  static ref RESOURCE_TABLE: Mutex<ResourceTable> = Mutex::new({
+    let mut table = ResourceTable::default();
     // TODO Load these lazily during lookup?
-    m.insert(0, Box::new(ResourceStdin(tokio::io::stdin())));
+    table.add(Box::new(ResourceStdin(tokio::io::stdin())));
 
-    m.insert(1, Box::new(ResourceStdout({
+    table.add(Box::new(ResourceStdout({
       #[cfg(not(windows))]
       let stdout = unsafe { std::fs::File::from_raw_fd(1) };
       #[cfg(windows)]
@@ -63,43 +54,67 @@ lazy_static! {
       tokio::fs::File::from_std(stdout)
     })));
 
-    m.insert(2, Box::new(ResourceStderr(tokio::io::stderr())));
-    m
+    table.add(Box::new(ResourceStderr(tokio::io::stderr())));
+    table
   });
 }
 
-pub fn with_resource<T, F, R>(rid: &ResourceId, f: F) -> Result<R, ErrBox>
-where
-  T: DenoResource,
-  F: FnOnce(&T) -> Result<R, ErrBox>,
-{
-  let table = RESOURCE_TABLE.lock().unwrap();
-  let resource = table.get(&rid).ok_or_else(bad_resource)?;
-  let resource = &resource.downcast_ref::<T>().ok_or_else(bad_resource)?;
-  let rv = f(resource)?;
-  Ok(rv)
+pub type ResourceId = u32; // Sometimes referred to RID.
+
+// These store Deno's file descriptors. These are not necessarily the operating
+// system ones.
+type ResourceMap = BTreeMap<ResourceId, Box<dyn DenoResource>>;
+
+#[derive(Default)]
+pub struct ResourceTable {
+  // TODO: remove pub
+  pub map: ResourceMap,
+  pub next_id: u32,
 }
 
-pub fn with_mut_resource<T, F, R>(rid: &ResourceId, f: F) -> Result<R, ErrBox>
-where
-  T: DenoResource,
-  F: FnOnce(&mut T) -> Result<R, ErrBox>,
-{
-  let mut table = RESOURCE_TABLE.lock().unwrap();
-  let resource = table.get_mut(&rid).ok_or_else(bad_resource)?;
-  let resource = resource.downcast_mut::<T>().ok_or_else(bad_resource)?;
-  let rv = f(resource)?;
-  Ok(rv)
+impl ResourceTable {
+  pub fn get<T: DenoResource>(&self, rid: &ResourceId) -> Result<&T, ErrBox> {
+    let resource = self.map.get(&rid).ok_or_else(bad_resource)?;
+    let resource = &resource.downcast_ref::<T>().ok_or_else(bad_resource)?;
+    Ok(resource)
+  }
+
+  pub fn get_mut<T: DenoResource>(
+    &mut self,
+    rid: &ResourceId,
+  ) -> Result<&mut T, ErrBox> {
+    let resource = self.map.get_mut(&rid).ok_or_else(bad_resource)?;
+    let resource = resource.downcast_mut::<T>().ok_or_else(bad_resource)?;
+    Ok(resource)
+  }
+
+  fn next_rid(&mut self) -> ResourceId {
+    let next_rid = self.next_id;
+    self.next_id += 1;
+    next_rid as ResourceId
+  }
+
+  // TODO: change return type to ResourceId
+  pub fn add(&mut self, resource: Box<dyn DenoResource>) -> Resource {
+    let rid = self.next_rid();
+    let r = self.map.insert(rid, resource);
+    assert!(r.is_none());
+    Resource { rid }
+  }
+
+  // close(2) is done by dropping the value. Therefore we just need to remove
+  // the resource from the RESOURCE_TABLE.
+  pub fn close(&mut self, rid: &ResourceId) -> Result<(), ErrBox> {
+    let repr = self.map.remove(rid).ok_or_else(bad_resource)?;
+    // Give resource a chance to cleanup (notify tasks, etc.)
+    repr.close();
+    Ok(())
+  }
 }
 
-// close(2) is done by dropping the value. Therefore we just need to remove
-// the resource from the RESOURCE_TABLE.
-pub fn close(rid: &ResourceId) -> Result<(), ErrBox> {
-  let mut table = RESOURCE_TABLE.lock().unwrap();
-  let repr = table.remove(rid).ok_or_else(bad_resource)?;
-  // Give resource a chance to cleanup (notify tasks, etc.)
-  repr.close();
-  Ok(())
+pub fn get_table<'a>() -> MutexGuard<'a, ResourceTable> {
+  let guard = RESOURCE_TABLE.lock().unwrap();
+  guard
 }
 
 // TODO: rename
@@ -138,13 +153,14 @@ impl DenoResource for ResourceWorker {}
 /// If the rid is closed or was never open, it returns None.
 pub fn get_type(rid: ResourceId) -> Option<String> {
   let table = RESOURCE_TABLE.lock().unwrap();
-  table.get(&rid).map(inspect_repr)
+  table.map.get(&rid).map(inspect_repr)
 }
 
 pub fn table_entries() -> Vec<(u32, String)> {
   let table = RESOURCE_TABLE.lock().unwrap();
 
   table
+    .map
     .iter()
     .map(|(key, value)| (*key, inspect_repr(&value)))
     .collect()
@@ -174,7 +190,8 @@ pub struct Resource {
 impl Resource {
   // TODO: used only by worker
   pub fn close(&self) {
-    close(&self.rid).unwrap();
+    let mut table = get_table();
+    table.close(&self.rid).unwrap();
   }
 }
 
@@ -193,48 +210,9 @@ pub trait DenoAsyncRead {
 impl DenoAsyncRead for Resource {
   fn poll_read(&mut self, buf: &mut [u8]) -> Poll<usize, ErrBox> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
-    let repr = table.get_mut(&self.rid).ok_or_else(bad_resource)?;
-    let r = None
-      .or_else(|| {
-        repr
-          .downcast_mut::<ResourceFsFile>()
-          .map(|f| f.0.poll_read(buf))
-      })
-      .or_else(|| {
-        repr
-          .downcast_mut::<ResourceStdin>()
-          .map(|f| f.0.poll_read(buf))
-      });
-    //      .or_else(|| {
-    //        repr
-    //          .downcast_mut::<ResourceTcpStream>()
-    //          .map(|f| f.0.poll_read(buf))
-    //      })
-    //      .or_else(|| {
-    //        repr
-    //          .downcast_mut::<ResourceTlsStream>()
-    //          .map(|f| f.0.poll_read(buf))
-    //      });
-    //      .or_else(|| {
-    //        repr
-    //          .downcast_mut::<ResourceHttpBody>()
-    //          .map(|f| f.0.poll_read(buf))
-    //      });
-    //      .or_else(|| {
-    //        repr
-    //          .downcast_mut::<ResourceChildStdout>()
-    //          .map(|f| f.0.poll_read(buf))
-    //      })
-    //      .or_else(|| {
-    //        repr
-    //          .downcast_mut::<ResourceChildStderr>()
-    //          .map(|f| f.0.poll_read(buf))
-    //      });
-
-    match r {
-      Some(r) => r.map_err(ErrBox::from),
-      _ => Err(bad_resource()),
-    }
+    let resource = table.get_mut::<ResourceFsFile>(&self.rid)?;
+    let r = resource.0.poll_read(buf);
+    r.map_err(ErrBox::from)
   }
 }
 
@@ -259,43 +237,9 @@ pub trait DenoAsyncWrite {
 impl DenoAsyncWrite for Resource {
   fn poll_write(&mut self, buf: &[u8]) -> Poll<usize, ErrBox> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
-    let repr = table.get_mut(&self.rid).ok_or_else(bad_resource)?;
-    let r = None
-      .or_else(|| {
-        repr
-          .downcast_mut::<ResourceFsFile>()
-          .map(|f| f.0.poll_write(buf))
-      })
-      .or_else(|| {
-        repr
-          .downcast_mut::<ResourceStdout>()
-          .map(|f| f.0.poll_write(buf))
-      })
-      .or_else(|| {
-        repr
-          .downcast_mut::<ResourceStderr>()
-          .map(|f| f.0.poll_write(buf))
-      });
-    //      .or_else(|| {
-    //        repr
-    //          .downcast_mut::<ResourceTcpStream>()
-    //          .map(|f| f.0.poll_write(buf))
-    //      })
-    //      .or_else(|| {
-    //        repr
-    //          .downcast_mut::<ResourceTlsStream>()
-    //          .map(|f| f.0.poll_write(buf))
-    //      });
-    //      .or_else(|| {
-    //        repr
-    //          .downcast_mut::<ResourceChildStdin>()
-    //          .map(|f| f.0.poll_write(buf))
-    //      });
-
-    match r {
-      Some(r) => r.map_err(ErrBox::from),
-      _ => Err(bad_resource()),
-    }
+    let resource = table.get_mut::<ResourceFsFile>(&self.rid)?;
+    let r = resource.0.poll_write(buf);
+    r.map_err(ErrBox::from)
   }
 
   fn shutdown(&mut self) -> futures::Poll<(), ErrBox> {
@@ -303,17 +247,9 @@ impl DenoAsyncWrite for Resource {
   }
 }
 
-fn new_rid() -> ResourceId {
-  let next_rid = NEXT_RID.fetch_add(1, Ordering::SeqCst);
-  next_rid as ResourceId
-}
-
 pub fn add_resource(resource: Box<dyn DenoResource>) -> Resource {
-  let rid = new_rid();
   let mut tg = RESOURCE_TABLE.lock().unwrap();
-  let r = tg.insert(rid, resource);
-  assert!(r.is_none());
-  Resource { rid }
+  tg.add(resource)
 }
 
 pub fn add_fs_file(fs_file: tokio::fs::File) -> Resource {
@@ -330,14 +266,10 @@ pub fn post_message_to_worker(
   buf: Buf,
 ) -> futures::sink::Send<mpsc::Sender<Buf>> {
   let mut table = RESOURCE_TABLE.lock().unwrap();
-  let repr = match table.get_mut(&rid) {
-    Some(repr) => repr,
+  let worker = match table.get_mut::<ResourceWorker>(&rid) {
+    Ok(repr) => repr,
     // TODO: replace this panic with `bad_resource`
     _ => panic!("bad resource"),
-  };
-  let worker = &mut match repr.downcast_mut::<ResourceWorker>() {
-    Some(w) => w,
-    None => panic!("bad resource"),
   };
   let wc = &mut worker.0;
   // unwrap here is incorrect, but doing it anyway
@@ -355,10 +287,7 @@ impl Future for WorkerReceiver {
 
   fn poll(&mut self) -> Poll<Option<Buf>, ErrBox> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
-    let repr = table.get_mut(&self.rid).ok_or_else(bad_resource)?;
-    let worker = &mut repr
-      .downcast_mut::<ResourceWorker>()
-      .ok_or_else(bad_resource)?;
+    let worker = table.get_mut::<ResourceWorker>(&self.rid)?;
     let wc = &mut worker.0;
     wc.1.poll().map_err(ErrBox::from)
   }
@@ -379,10 +308,7 @@ impl Stream for WorkerReceiverStream {
 
   fn poll(&mut self) -> Poll<Option<Buf>, ErrBox> {
     let mut table = RESOURCE_TABLE.lock().unwrap();
-    let repr = table.get_mut(&self.rid).ok_or_else(bad_resource)?;
-    let worker = &mut repr
-      .downcast_mut::<ResourceWorker>()
-      .ok_or_else(bad_resource)?;
+    let worker = table.get_mut::<ResourceWorker>(&self.rid)?;
     let wc = &mut worker.0;
     wc.1.poll().map_err(ErrBox::from)
   }
@@ -398,7 +324,7 @@ pub fn get_file(rid: ResourceId) -> Result<std::fs::File, ErrBox> {
   let mut table = RESOURCE_TABLE.lock().unwrap();
   // We take ownership of File here.
   // It is put back below while still holding the lock.
-  let repr = table.remove(&rid).ok_or_else(bad_resource)?;
+  let repr = table.map.remove(&rid).ok_or_else(bad_resource)?;
   let fs_file = repr
     .downcast::<ResourceFsFile>()
     .or_else(|_| Err(bad_resource()))?;
@@ -413,7 +339,7 @@ pub fn get_file(rid: ResourceId) -> Result<std::fs::File, ErrBox> {
   // to write back.
   let maybe_std_file_copy = std_file.try_clone();
   // Insert the entry back with the same rid.
-  table.insert(
+  table.map.insert(
     rid,
     Box::new(ResourceFsFile(tokio_fs::File::from_std(std_file))),
   );
@@ -425,6 +351,7 @@ pub fn lookup(rid: ResourceId) -> Result<Resource, ErrBox> {
   debug!("resource lookup {}", rid);
   let table = RESOURCE_TABLE.lock().unwrap();
   table
+    .map
     .get(&rid)
     .ok_or_else(bad_resource)
     .map(|_| Resource { rid })

@@ -79,55 +79,45 @@ impl Accept {
   pub fn poll_accept(
     rid: &ResourceId,
   ) -> Poll<(TcpStream, SocketAddr), ErrBox> {
-    resources::with_mut_resource(
-      rid,
-      move |resource: &mut ResourceTcpListener| {
-        let stream = &mut resource.0;
-        stream.poll_accept().map_err(ErrBox::from)
-      },
-    )
+    let mut resource_table = resources::get_table();
+    let resource = resource_table.get_mut::<ResourceTcpListener>(rid)?;
+    let stream = &mut resource.0;
+    stream.poll_accept().map_err(ErrBox::from)
   }
 
   /// Track the current task (for TcpListener resource).
   /// Throws an error if another task is already tracked.
   pub fn track_task(&self) -> Result<(), ErrBox> {
-    resources::with_mut_resource(
-      &self.rid,
-      move |resource: &mut ResourceTcpListener| {
-        let task = &mut resource.1;
-        // Currently, we only allow tracking a single accept task for a listener.
-        // This might be changed in the future with multiple workers.
-        // Caveat: TcpListener by itself also only tracks an accept task at a time.
-        // See https://github.com/tokio-rs/tokio/issues/846#issuecomment-454208883
-        if task.is_some() {
-          let e = std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "Another accept task is ongoing",
-          );
-          return Err(ErrBox::from(e));
-        }
-        task.replace(futures::task::current());
-        Ok(())
-      },
-    )
+    let mut resource_table = resources::get_table();
+    let resource = resource_table.get_mut::<ResourceTcpListener>(&self.rid)?;
+    let task = &mut resource.1;
+    // Currently, we only allow tracking a single accept task for a listener.
+    // This might be changed in the future with multiple workers.
+    // Caveat: TcpListener by itself also only tracks an accept task at a time.
+    // See https://github.com/tokio-rs/tokio/issues/846#issuecomment-454208883
+    if task.is_some() {
+      let e = std::io::Error::new(
+        std::io::ErrorKind::Other,
+        "Another accept task is ongoing",
+      );
+      return Err(ErrBox::from(e));
+    }
+    task.replace(futures::task::current());
+    Ok(())
   }
 
   /// Stop tracking a task (for TcpListener resource).
   /// Happens when the task is done and thus no further tracking is needed.
   pub fn untrack_task(&self) {
-    let res = resources::with_mut_resource(
-      &self.rid,
-      move |resource: &mut ResourceTcpListener| {
-        // If TcpListener, we must kill all pending accepts!
-        let task = &mut resource.1;
-        if task.is_some() {
-          task.take();
-        }
-        Ok(())
-      },
-    );
-    // TODO: why don't we return result?
-    res.unwrap();
+    let mut resource_table = resources::get_table();
+    let resource = resource_table
+      .get_mut::<ResourceTcpListener>(&self.rid)
+      .unwrap();
+    // If TcpListener, we must kill all pending accepts!
+    let task = &mut resource.1;
+    if task.is_some() {
+      task.take();
+    }
   }
 }
 
@@ -281,10 +271,9 @@ fn op_shutdown(
     _ => unimplemented!(),
   };
 
-  resources::with_resource(&rid, |resource: &ResourceTcpStream| {
-    TcpStream::shutdown(&resource.0, mode).map_err(ErrBox::from)
-  })?;
-
+  let resource_table = resources::get_table();
+  let resource = resource_table.get::<ResourceTcpStream>(&rid)?;
+  TcpStream::shutdown(&resource.0, mode).map_err(ErrBox::from)?;
   Ok(JsonOp::Sync(json!({})))
 }
 

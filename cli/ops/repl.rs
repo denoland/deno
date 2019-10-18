@@ -68,9 +68,9 @@ fn op_repl_readline(
   debug!("op_repl_readline {} {}", rid, prompt);
 
   blocking_json(false, move || {
-    let repl = resources::with_resource(&rid, |resource: &ResourceRepl| {
-      Ok(resource.0.clone())
-    })?;
+    let resource_table = resources::get_table();
+    let resource = resource_table.get::<ResourceRepl>(&rid)?;
+    let repl = resource.0.clone();
     let line = repl.lock().unwrap().readline(&prompt)?;
     Ok(json!(line))
   })
