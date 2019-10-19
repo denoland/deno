@@ -2,15 +2,10 @@
 
 [toc]
 
-# Deno Manual
-
-[toc]
-
 ## Project Status / Disclaimer
 
 **A word of caution: Deno is very much under development.**
 
-We encourage brave early adopters, but expect bugs large and small. The API is subject to change without
 notice. [Bug reports](https://github.com/denoland/deno/issues) do help!
 
 We are [actively working towards 1.0](https://github.com/denoland/deno/issues/2473), but there is no date guarantee.
