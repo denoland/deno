@@ -2,89 +2,88 @@
 
 [toc]
 
-## Disclaimer
+# Deno Manual
 
-A word of caution: Deno is very much under development. We encourage brave early
-adopters, but expect bugs large and small. The API is subject to change without
+[toc]
+
+## Project Status / Disclaimer
+
+**A word of caution: Deno is very much under development.**
+
+We encourage brave early adopters, but expect bugs large and small. The API is subject to change without
 notice. [Bug reports](https://github.com/denoland/deno/issues) do help!
+
+We are [actively working towards 1.0](https://github.com/denoland/deno/issues/2473), but there is no date guarantee.
 
 ## Introduction
 
-A secure JavaScript/TypeScript runtime built with V8, Rust, and Tokio
+Deno is a JavaScript/TypeScript runtime with secure defaults and a great developer experience.
+
+It's built on V8, Rust, and Tokio.
+
+### Feature Highlights
+
+* Secure by default. No file, network, or environment access (unless explicitly enabled).
+* Supports TypeScript out of the box.
+* Ships a single executable (`deno`).
+* Has built in utilities like a dependency inspector (`deno info`) and a code formatter (`deno fmt`).
+* Has [a set of reviewed (audited) standard modules](https://github.com/denoland/deno/tree/master/std) that are guaranteed to work with Deno.
+* Scripts can be bundled into a single javascript file.
+
+##### On the Roadmap
+
+* Native modules in Rust.
+* Scripts can be bundled into a binary with the deno runtime.
+  * This makes distribution simple and script startup very fast.
 
 ### Philosophy
 
-Deno aims to be a productive and secure scripting environment for the modern
-programmer.
+Deno aims to be a productive and secure scripting environment for the modern programmer.
 
-Deno will always be distributed as a single executable. Given a URL to a Deno
-program, it is runnable with nothing more than
-[the 10 megabyte zipped executable](https://github.com/denoland/deno/releases).
-Deno explicitly takes on the role of both runtime and package manager. It uses a
-standard browser-compatible protocol for loading modules: URLs.
+Deno will always be distributed as a single executable. Given a URL to a Deno program, it is runnable with nothing more than [the 10 megabyte zipped executable](https://github.com/denoland/deno/releases). Deno explicitly takes on the role of both runtime and package manager. It uses a standard browser-compatible protocol for loading modules: URLs.
 
-Deno provides security guarantees about how programs can access your system with
-the default being the most restrictive secure sandbox.
-
-Deno provides <a href="https://github.com/denoland/deno/tree/master/std">a set
-of reviewed (audited) standard modules</a> that are guaranteed to work with
-Deno.
+Among other things, Deno is a great replacement for utility scripts that may have been historically written with bash or python.
 
 ### Goals
 
-- Support TypeScript out of the box.
+1. Only ship a single executable (`deno`).
+2. Provide Secure Defaults
+   * Unless specifically allowed, scripts can't access files, the environment, or the network.
+3. Browser compatible: The subset of Deno programs which are written completely in JavaScript and do not use the global `Deno` namespace (or feature test for it), ought to also be able to be run in a modern web browser without change.
+4. Be able to serve HTTP efficiently
+5. Provide a great developer experience include built-in tooling.
+6. Does not leak browser or V8 concepts into user land.
 
-- Uses "ES Modules" and does not support `require()`. Like the browser, allows
-  imports from URLs:
+### Comparison to Node.js
 
-  ```ts
-  import * as log from "https://deno.land/std/log/mod.ts";
-  ```
+* Deno does not use `npm`
+  * It uses modules referenced as URLs or file paths
+* Deno does not use a `package.json`
+  * This is a non-goal. There are effective patterns [citation needed] for managing dependencies.
+* Deno provides different APIs than node.
+* Deno requires explicit permissions for file, network, and environment access.
+  * Node is less secure out of the box.
+* Deno always dies on uncaught errors.
+* Uses "ES Modules" and does not support `require()`. Like the browser, allows imports from URLs:
 
-- Remote code is fetched and cached on first execution, and never updated until
-  the code is run with the `--reload` flag. (So, this will still work on an
-  airplane. See `~/.deno/src` for details on the cache.)
+```ts
+import * as log from "https://deno.land/std/log/mod.ts";
+```
 
-- File system and network access can be controlled in order to run sandboxed
-  code. Access between V8 (unprivileged) and Rust (privileged) is only done via
-  serialized messages. This makes it easy to audit. For example, to enable write
-  access use the flag `--allow-write` or for network access `--allow-net`.
+### Other key behaviors
 
-- Only ship a single executable.
+* Remote code is fetched and cached on first execution, and never updated until the code is run with the `--reload` flag. (So, this will still work on an airplane. See `~/.deno/src` for details on the cache.)
+* Modules/files loaded from remote URLs are intended to be immutable and cacheable.
 
-- Always dies on uncaught errors.
+## Built-in Deno Utilities / Commands
 
-- Browser compatible: The subset of Deno programs which are written completely
-  in JavaScript and do not use the global `Deno` namespace (or feature test for
-  it), ought to also be able to be run in a modern web browser without change.
-
-- [Aims to support top-level `await`.](https://github.com/denoland/deno/issues/471)
-
-- Be able to serve HTTP efficiently.
-  ([Currently it is relatively slow.](https://deno.land/benchmarks.html#req-per-sec))
-
-<!-- prettier-ignore-start -->
-<!-- see https://github.com/prettier/prettier/issues/3679 -->
-
-- Provide useful tooling out of the box:
-    - dependency inspector (`deno info`)
-    - code formatter (`deno fmt`),
-    - bundling (`deno bundle`)
-    - runtime type info (`deno types`)
-    - test runner (`deno test`)
-    - command-line debugger (`--debug`)
-      [not yet](https://github.com/denoland/deno/issues/1120)
-    - linter (`deno lint`) [not yet](https://github.com/denoland/deno/issues/1880)
-
-<!-- prettier-ignore-end -->
-
-### Non-goals
-
-- No `package.json`.
-
-- No npm.
-
-- Not explicitly compatible with Node.
+ * dependency inspector (`deno info`)
+  * code formatter (`deno fmt`),
+  * bundling (`deno bundle`)
+  * runtime type info (`deno types`)
+  * test runner (`deno test`)
+  * command-line debugger (`--debug`) [coming soon](https://github.com/denoland/deno/issues/1120)
+    * linter (`deno lint`) [coming soon](https://github.com/denoland/deno/issues/1880)
 
 ## Setup
 
