@@ -58,8 +58,8 @@ enum Kind {
 
 #[derive(Debug, Eq, PartialEq)]
 enum State {
-  ResolveMain(String),           // specifier
-  ResolveImport(String, String), // specifier, referrer
+  ResolveMain(String, Option<String>), // specifier, maybe code
+  ResolveImport(String, String),       // specifier, referrer
   LoadingRoot,
   LoadingImports(deno_mod),
   Instantiated(deno_mod),
@@ -81,11 +81,12 @@ impl<L: Loader> RecursiveLoad<L> {
   /// Starts a new parallel load of the given URL of the main module.
   pub fn main(
     specifier: &str,
+    code: Option<String>,
     loader: L,
     modules: Arc<Mutex<Modules>>,
   ) -> Self {
     let kind = Kind::Main;
-    let state = State::ResolveMain(specifier.to_owned());
+    let state = State::ResolveMain(specifier.to_owned(), code);
     Self::new(kind, state, loader, modules)
   }
 
@@ -126,7 +127,7 @@ impl<L: Loader> RecursiveLoad<L> {
 
   fn add_root(&mut self) -> Result<(), ErrBox> {
     let module_specifier = match self.state {
-      State::ResolveMain(ref specifier) => self.loader.resolve(
+      State::ResolveMain(ref specifier, _) => self.loader.resolve(
         specifier,
         ".",
         true,
@@ -313,6 +314,21 @@ impl<L: Loader> Stream for RecursiveLoad<L> {
 
   fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
     Ok(match self.state {
+      State::ResolveMain(ref specifier, Some(ref code)) => {
+        let module_specifier = self.loader.resolve(
+          specifier,
+          ".",
+          true,
+          self.dyn_import_id().is_some(),
+        )?;
+        let info = SourceCodeInfo {
+          code: code.to_owned(),
+          module_url_specified: module_specifier.to_string(),
+          module_url_found: module_specifier.to_string(),
+        };
+        self.state = State::LoadingRoot;
+        Ready(Some(Event::Fetch(info)))
+      }
       State::ResolveMain(..) | State::ResolveImport(..) => {
         self.add_root()?;
         self.poll()?
@@ -630,6 +646,8 @@ mod tests {
       }
       "/main.js" => Some((MAIN_SRC, "file:///main.js")),
       "/bad_import.js" => Some((BAD_IMPORT_SRC, "file:///bad_import.js")),
+      // deliberately empty code.
+      "/main_with_code.js" => Some(("", "file:///main_with_code.js")),
       _ => None,
     }
   }
@@ -769,7 +787,8 @@ mod tests {
       let isolate = loader.isolate.clone();
       let isolate_ = isolate.clone();
       let loads = loader.loads.clone();
-      let mut recursive_load = RecursiveLoad::main("/a.js", loader, modules);
+      let mut recursive_load =
+        RecursiveLoad::main("/a.js", None, loader, modules);
 
       let a_id = loop {
         match recursive_load.poll() {
@@ -848,7 +867,7 @@ mod tests {
       let modules_ = modules.clone();
       let loads = loader.loads.clone();
       let recursive_load =
-        RecursiveLoad::main("/circular1.js", loader, modules);
+        RecursiveLoad::main("/circular1.js", None, loader, modules);
       let result = recursive_load.get_future(isolate.clone()).poll();
       assert!(result.is_ok());
       if let Async::Ready(circular1_id) = result.ok().unwrap() {
@@ -919,7 +938,7 @@ mod tests {
       let modules_ = modules.clone();
       let loads = loader.loads.clone();
       let recursive_load =
-        RecursiveLoad::main("/redirect1.js", loader, modules);
+        RecursiveLoad::main("/redirect1.js", None, loader, modules);
       let result = recursive_load.get_future(isolate.clone()).poll();
       println!(">> result {:?}", result);
       assert!(result.is_ok());
@@ -982,7 +1001,8 @@ mod tests {
       let modules = loader.modules.clone();
       let loads = loader.loads.clone();
       let mut recursive_load =
-        RecursiveLoad::main("/main.js", loader, modules).get_future(isolate);
+        RecursiveLoad::main("/main.js", None, loader, modules)
+          .get_future(isolate);
 
       let result = recursive_load.poll();
       assert!(result.is_ok());
@@ -1030,7 +1050,7 @@ mod tests {
       let isolate = loader.isolate.clone();
       let modules = loader.modules.clone();
       let recursive_load =
-        RecursiveLoad::main("/bad_import.js", loader, modules);
+        RecursiveLoad::main("/bad_import.js", None, loader, modules);
       let result = recursive_load.get_future(isolate).poll();
       assert!(result.is_err());
       let err = result.err().unwrap();
@@ -1038,6 +1058,80 @@ mod tests {
         err.downcast_ref::<MockError>().unwrap(),
         &MockError::ResolveErr
       );
+    })
+  }
+
+  const MAIN_WITH_CODE_SRC: &str = r#"
+    import { b } from "/b.js";
+    import { c } from "/c.js";
+    if (b() != 'b') throw Error();
+    if (c() != 'c') throw Error();
+    if (!import.meta.main) throw Error();
+    if (import.meta.url != 'file:///main_with_code.js') throw Error();
+  "#;
+
+  #[test]
+  fn recursive_load_main_with_code() {
+    run_in_task(|| {
+      let loader = MockLoader::new();
+      let modules = loader.modules.clone();
+      let modules_ = modules.clone();
+      let isolate = loader.isolate.clone();
+      let isolate_ = isolate.clone();
+      let loads = loader.loads.clone();
+      // In default resolution code should be empty.
+      // Instead we explicitly pass in our own code.
+      // The behavior should be very similar to /a.js.
+      let mut recursive_load = RecursiveLoad::main(
+        "/main_with_code.js",
+        Some(MAIN_WITH_CODE_SRC.to_owned()),
+        loader,
+        modules,
+      );
+
+      let main_id = loop {
+        match recursive_load.poll() {
+          Ok(Ready(Some(Event::Fetch(info)))) => {
+            let mut isolate = isolate.lock().unwrap();
+            recursive_load.register(info, &mut isolate).unwrap();
+          }
+          Ok(Ready(Some(Event::Instantiate(id)))) => break id,
+          _ => panic!("unexpected result"),
+        };
+      };
+
+      let mut isolate = isolate_.lock().unwrap();
+      js_check(isolate.mod_evaluate(main_id));
+
+      let l = loads.lock().unwrap();
+      assert_eq!(
+        l.to_vec(),
+        vec!["file:///b.js", "file:///c.js", "file:///d.js"]
+      );
+
+      let modules = modules_.lock().unwrap();
+
+      assert_eq!(modules.get_id("file:///main_with_code.js"), Some(main_id));
+      let b_id = modules.get_id("file:///b.js").unwrap();
+      let c_id = modules.get_id("file:///c.js").unwrap();
+      let d_id = modules.get_id("file:///d.js").unwrap();
+
+      assert_eq!(
+        modules.get_children(main_id),
+        Some(&vec![
+          "file:///b.js".to_string(),
+          "file:///c.js".to_string()
+        ])
+      );
+      assert_eq!(
+        modules.get_children(b_id),
+        Some(&vec!["file:///c.js".to_string()])
+      );
+      assert_eq!(
+        modules.get_children(c_id),
+        Some(&vec!["file:///d.js".to_string()])
+      );
+      assert_eq!(modules.get_children(d_id), Some(&vec![]));
     })
   }
 

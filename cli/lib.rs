@@ -241,7 +241,7 @@ fn info_command(flags: DenoFlags, argv: Vec<String>) {
     debug!("main_module {}", main_module);
 
     worker
-      .execute_mod_async(&main_module, true)
+      .execute_mod_async(&main_module, None, true)
       .map_err(print_err_and_exit)
       .and_then(move |()| print_file_info(worker, &main_module))
       .and_then(|worker| {
@@ -263,36 +263,41 @@ fn fetch_command(flags: DenoFlags, argv: Vec<String>) {
     js_check(worker.execute("denoMain()"));
     debug!("main_module {}", main_module);
 
-    worker.execute_mod_async(&main_module, true).then(|result| {
-      js_check(result);
-      Ok(())
-    })
+    worker
+      .execute_mod_async(&main_module, None, true)
+      .then(|result| {
+        js_check(result);
+        Ok(())
+      })
   });
   tokio_util::run(main_future);
 }
 
 fn eval_command(flags: DenoFlags, argv: Vec<String>) {
   let (mut worker, state) = create_worker_and_state(flags, argv);
-  // Wrap provided script in async function so asynchronous methods
-  // work. This is required until top-level await is not supported.
-  let js_source = format!(
-    "async function _topLevelWrapper(){{
-        {}
-      }}
-      _topLevelWrapper();
-      ",
-    &state.argv[1]
-  );
+  let ts_source = state.argv[1].clone();
+  // Force TypeScript compile.
+  let main_module =
+    ModuleSpecifier::resolve_url_or_path("./__$deno$eval.ts").unwrap();
 
   let main_future = lazy(move || {
     js_check(worker.execute("denoMain()"));
-    // ATM imports in `deno eval` are not allowed
-    // TODO Support ES modules once Worker supports evaluating anonymous modules.
-    js_check(worker.execute(&js_source));
-    worker.then(|result| {
-      js_check(result);
-      Ok(())
-    })
+    debug!("main_module {}", &main_module);
+
+    let mut worker_ = worker.clone();
+    worker
+      .execute_mod_async(&main_module, Some(ts_source), false)
+      .and_then(move |()| {
+        js_check(worker.execute("window.dispatchEvent(new Event('load'))"));
+        worker.then(move |result| {
+          js_check(result);
+          js_check(
+            worker_.execute("window.dispatchEvent(new Event('unload'))"),
+          );
+          Ok(())
+        })
+      })
+      .map_err(print_err_and_exit)
   });
   tokio_util::run(main_future);
 }
@@ -356,7 +361,7 @@ fn run_script(flags: DenoFlags, argv: Vec<String>) {
     let mut worker_ = worker.clone();
 
     worker
-      .execute_mod_async(&main_module, false)
+      .execute_mod_async(&main_module, None, false)
       .and_then(move |()| {
         js_check(worker.execute("window.dispatchEvent(new Event('load'))"));
         worker.then(move |result| {

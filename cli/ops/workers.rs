@@ -172,7 +172,7 @@ fn op_create_worker(
   }
 
   let op = worker
-    .execute_mod_async(&module_specifier, false)
+    .execute_mod_async(&module_specifier, None, false)
     .and_then(move |()| Ok(exec_cb(worker)));
 
   let result = op.wait()?;
