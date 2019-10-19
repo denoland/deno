@@ -9,6 +9,7 @@ import { close } from "./files.ts";
 interface DialTLSOptions {
   port: number;
   hostname?: string;
+  certFile?: string;
 }
 const dialTLSDefaults = { hostname: "127.0.0.1", transport: "tcp" };
 
@@ -60,8 +61,8 @@ export interface ListenTLSOptions {
   port: number;
   hostname?: string;
   transport?: Transport;
-  cert_file: string;
-  key_file: string;
+  certFile: string;
+  keyFile: string;
 }
 
 export function listenTLS(options: ListenTLSOptions): Listener {
@@ -71,8 +72,8 @@ export function listenTLS(options: ListenTLSOptions): Listener {
     hostname,
     port: options.port,
     transport,
-    cert_file: options.cert_file,
-    key_file: options.key_file
+    certFile: options.certFile,
+    keyFile: options.keyFile
   });
   return new TLSListenerImpl(res.rid, transport, res.localAddr);
 }

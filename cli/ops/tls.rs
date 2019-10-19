@@ -27,11 +27,6 @@ use webpki;
 use webpki::DNSNameRef;
 use webpki_roots;
 
-#[derive(Deserialize)]
-struct DialTLSArgs {
-  hostname: String,
-  port: u16,
-}
 pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op("dial_tls", s.core_op(json_op(s.stateful_op(op_dial_tls))));
   i.register_op(
@@ -42,6 +37,14 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
     "accept_tls",
     s.core_op(json_op(s.stateful_op(op_accept_tls))),
   );
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DialTLSArgs {
+  hostname: String,
+  port: u16,
+  cert_file: Option<String>,
 }
 
 pub fn op_dial_tls(
@@ -57,6 +60,7 @@ pub fn op_dial_tls(
 
   state.check_net(&address)?;
 
+  let cert_file = args.cert_file;
   let mut domain = args.hostname;
   if domain.is_empty() {
     domain.push_str("localhost");
@@ -71,6 +75,12 @@ pub fn op_dial_tls(
         config
           .root_store
           .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
+
+        if let Some(path) = cert_file {
+          let key_file = File::open(path)?;
+          let reader = &mut BufReader::new(key_file);
+          config.root_store.add_pem_file(reader).unwrap();
+        }
 
         let tls_connector = TlsConnector::from(Arc::new(config));
         Ok((tls_connector, tcp_stream, local_addr, remote_addr))
@@ -107,10 +117,12 @@ fn load_certs(path: &str) -> Result<Vec<Certificate>, ErrBox> {
 fn load_keys(path: &str) -> Result<Vec<PrivateKey>, ErrBox> {
   let key_file = File::open(path)?;
   let reader = &mut BufReader::new(key_file);
-  Ok(rsa_private_keys(reader).unwrap())
+  let keys = rsa_private_keys(reader).unwrap();
+  Ok(keys)
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ListenTlsArgs {
   transport: String,
   hostname: String,

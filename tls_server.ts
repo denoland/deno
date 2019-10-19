@@ -2,13 +2,13 @@
 // TODO Replace this with a real HTTP server once
 // https://github.com/denoland/deno/issues/726 is completed.
 // Note: this is a keep-alive server.
-const addr = Deno.args[1] || "127.0.0.1:4500";
+const addr = Deno.args[1] || "localhost:4500";
 const [hostname, port] = addr.split(":");
 const listener = Deno.listenTLS({
   hostname,
   port: Number(port),
-  cert_file: "./server.pem",
-  key_file: "./private_key.pem"
+  certFile: "./localhost.crt",
+  keyFile: "./localhost.key"
 });
 const response = new TextEncoder().encode(
   "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n"

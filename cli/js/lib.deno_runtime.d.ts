@@ -994,8 +994,8 @@ declare namespace Deno {
     port: number;
     hostname?: string;
     transport?: Transport;
-    cert_file: string;
-    key_file: string;
+    certFile: string;
+    keyFile: string;
   }
 
   export function listenTLS(options: ListenTLSOptions): Listener;
@@ -1028,6 +1028,7 @@ declare namespace Deno {
   export interface DialTLSOptions {
     port: number;
     hostname?: string;
+    certFile?: string;
   }
 
   /**
