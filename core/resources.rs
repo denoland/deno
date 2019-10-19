@@ -8,13 +8,12 @@
 // descriptors". This module implements a global resource table. Ops (AKA
 // handlers) look up resources by their integer id here.
 
-use crate::ErrBox;
 use downcast_rs::Downcast;
 use std;
 use std::any::Any;
 use std::collections::BTreeMap;
-use std::error::Error;
-use std::fmt;
+use std::io::Error;
+use std::io::ErrorKind;
 
 /// Also referred to as rid.
 pub type ResourceId = u32;
@@ -30,7 +29,7 @@ pub struct ResourceTable {
 }
 
 impl ResourceTable {
-  pub fn get<T: Resource>(&self, rid: &ResourceId) -> Result<&T, ErrBox> {
+  pub fn get<T: Resource>(&self, rid: &ResourceId) -> Result<&T, Error> {
     let resource = self.map.get(&rid).ok_or_else(bad_resource)?;
     let resource = &resource.downcast_ref::<T>().ok_or_else(bad_resource)?;
     Ok(resource)
@@ -39,7 +38,7 @@ impl ResourceTable {
   pub fn get_mut<T: Resource>(
     &mut self,
     rid: &ResourceId,
-  ) -> Result<&mut T, ErrBox> {
+  ) -> Result<&mut T, Error> {
     let resource = self.map.get_mut(&rid).ok_or_else(bad_resource)?;
     let resource = resource.downcast_mut::<T>().ok_or_else(bad_resource)?;
     Ok(resource)
@@ -51,7 +50,6 @@ impl ResourceTable {
     next_rid as ResourceId
   }
 
-  // TODO: change return type to ResourceId
   pub fn add(&mut self, resource: Box<dyn Resource>) -> ResourceId {
     let rid = self.next_rid();
     let r = self.map.insert(rid, resource);
@@ -61,7 +59,7 @@ impl ResourceTable {
 
   // close(2) is done by dropping the value. Therefore we just need to remove
   // the resource from the RESOURCE_TABLE.
-  pub fn close(&mut self, rid: &ResourceId) -> Result<(), ErrBox> {
+  pub fn close(&mut self, rid: &ResourceId) -> Result<(), Error> {
     let repr = self.map.remove(rid).ok_or_else(bad_resource)?;
     // Give resource a chance to cleanup (notify tasks, etc.)
     repr.close();
@@ -80,17 +78,7 @@ pub trait Resource: Downcast + Any + Send {
 }
 impl_downcast!(Resource);
 
-#[derive(Debug)]
-struct StaticError(&'static str);
-
-impl Error for StaticError {}
-
-impl fmt::Display for StaticError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    f.pad(self.0)
-  }
-}
-
-pub fn bad_resource() -> ErrBox {
-  StaticError("bad resource id").into()
+// TODO: probably bad error kind
+pub fn bad_resource() -> Error {
+  Error::new(ErrorKind::NotFound, "bad resource id")
 }
