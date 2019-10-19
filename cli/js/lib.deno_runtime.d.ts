@@ -990,6 +990,16 @@ declare namespace Deno {
    */
   export function listen(options: ListenOptions): Listener;
 
+  export interface ListenTLSOptions {
+    port: number;
+    hostname?: string;
+    transport?: Transport;
+    cert_file: string;
+    key_file: string;
+  }
+
+  export function listenTLS(options: ListenTLSOptions): Listener;
+
   export interface DialOptions {
     port: number;
     hostname?: string;

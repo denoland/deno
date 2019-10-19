@@ -4,14 +4,25 @@ use crate::ops::json_op;
 use crate::resolve_addr::resolve_addr;
 use crate::resources;
 use crate::state::ThreadSafeState;
+use crate::tokio_util;
 use deno::*;
 use futures::Future;
 use std;
 use std::convert::From;
+use std::fs::File;
+use std::io::BufReader;
 use std::sync::Arc;
 use tokio;
+use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio_rustls::{rustls::ClientConfig, TlsConnector};
+use tokio_rustls::{
+  rustls::{
+    internal::pemfile::{certs, rsa_private_keys},
+    Certificate, NoClientAuth, PrivateKey, ServerConfig,
+  },
+  TlsAcceptor,
+};
 use webpki;
 use webpki::DNSNameRef;
 use webpki_roots;
@@ -23,6 +34,14 @@ struct DialTLSArgs {
 }
 pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op("dial_tls", s.core_op(json_op(s.stateful_op(op_dial_tls))));
+  i.register_op(
+    "listen_tls",
+    s.core_op(json_op(s.stateful_op(op_listen_tls))),
+  );
+  i.register_op(
+    "accept_tls",
+    s.core_op(json_op(s.stateful_op(op_accept_tls))),
+  );
 }
 
 pub fn op_dial_tls(
@@ -75,6 +94,102 @@ pub fn op_dial_tls(
         },
       )
   });
+
+  Ok(JsonOp::Async(Box::new(op)))
+}
+
+fn load_certs(path: &str) -> Result<Vec<Certificate>, ErrBox> {
+  let cert_file = File::open(path)?;
+  let reader = &mut BufReader::new(cert_file);
+  Ok(certs(reader).unwrap())
+}
+
+fn load_keys(path: &str) -> Result<Vec<PrivateKey>, ErrBox> {
+  let key_file = File::open(path)?;
+  let reader = &mut BufReader::new(key_file);
+  Ok(rsa_private_keys(reader).unwrap())
+}
+
+#[derive(Deserialize)]
+struct ListenTlsArgs {
+  transport: String,
+  hostname: String,
+  port: u16,
+  cert_file: String,
+  key_file: String,
+}
+
+fn op_listen_tls(
+  state: &ThreadSafeState,
+  args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: ListenTlsArgs = serde_json::from_value(args)?;
+  assert_eq!(args.transport, "tcp");
+
+  // TODO(ry) Using format! is suboptimal here. Better would be if
+  // state.check_net and resolve_addr() took hostname and port directly.
+  let address = format!("{}:{}", args.hostname, args.port);
+
+  state.check_net(&address)?;
+
+  let mut config = ServerConfig::new(NoClientAuth::new());
+  config
+    .set_single_cert(
+      load_certs(&args.cert_file)?,
+      load_keys(&args.key_file)?.remove(0),
+    )
+    .expect("invalid key or certificate");
+  let acceptor = TlsAcceptor::from(Arc::new(config));
+  let addr = resolve_addr(&address).wait()?;
+  let listener = TcpListener::bind(&addr)?;
+  let local_addr = listener.local_addr()?;
+  let resource = resources::add_tls_listener(listener, acceptor);
+
+  Ok(JsonOp::Sync(json!({
+    "rid": resource.rid,
+    "localAddr": local_addr.to_string()
+  })))
+}
+
+#[derive(Deserialize)]
+struct AcceptTlsArgs {
+  rid: i32,
+}
+
+fn op_accept_tls(
+  _state: &ThreadSafeState,
+  args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: AcceptTlsArgs = serde_json::from_value(args)?;
+  let server_rid = args.rid as u32;
+
+  let server_resource = resources::lookup(server_rid)?;
+  let op = tokio_util::accept(server_resource)
+    .and_then(move |(tcp_stream, _socket_addr)| {
+      let local_addr = tcp_stream.local_addr()?;
+      let remote_addr = tcp_stream.peer_addr()?;
+      Ok((tcp_stream, local_addr, remote_addr))
+    })
+    .and_then(move |(tcp_stream, local_addr, remote_addr)| {
+      let mut server_resource = resources::lookup(server_rid).unwrap();
+      server_resource
+        .poll_accept_tls(tcp_stream)
+        .and_then(move |tls_stream| {
+          let tls_stream_resource =
+            resources::add_server_tls_stream(tls_stream);
+          Ok((tls_stream_resource, local_addr, remote_addr))
+        })
+    })
+    .map_err(ErrBox::from)
+    .and_then(move |(tls_stream_resource, local_addr, remote_addr)| {
+      futures::future::ok(json!({
+        "rid": tls_stream_resource.rid,
+        "localAddr": local_addr.to_string(),
+        "remoteAddr": remote_addr.to_string(),
+      }))
+    });
 
   Ok(JsonOp::Async(Box::new(op)))
 }

@@ -13,8 +13,10 @@ extern crate indexmap;
 #[cfg(unix)]
 extern crate nix;
 extern crate rand;
+extern crate reqwest;
 extern crate serde;
 extern crate serde_derive;
+extern crate tokio_rustls;
 extern crate url;
 
 pub mod colors;
