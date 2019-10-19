@@ -29,7 +29,7 @@ pub struct ResourceTable {
 }
 
 impl ResourceTable {
-  pub fn get<T: Resource>(&self, rid: &ResourceId) -> Result<&T, Error> {
+  pub fn get<T: Resource>(&self, rid: ResourceId) -> Result<&T, Error> {
     let resource = self.map.get(&rid).ok_or_else(bad_resource)?;
     let resource = &resource.downcast_ref::<T>().ok_or_else(bad_resource)?;
     Ok(resource)
@@ -37,7 +37,7 @@ impl ResourceTable {
 
   pub fn get_mut<T: Resource>(
     &mut self,
-    rid: &ResourceId,
+    rid: ResourceId,
   ) -> Result<&mut T, Error> {
     let resource = self.map.get_mut(&rid).ok_or_else(bad_resource)?;
     let resource = resource.downcast_mut::<T>().ok_or_else(bad_resource)?;
@@ -59,8 +59,8 @@ impl ResourceTable {
 
   // close(2) is done by dropping the value. Therefore we just need to remove
   // the resource from the RESOURCE_TABLE.
-  pub fn close(&mut self, rid: &ResourceId) -> Result<(), Error> {
-    let repr = self.map.remove(rid).ok_or_else(bad_resource)?;
+  pub fn close(&mut self, rid: ResourceId) -> Result<(), Error> {
+    let repr = self.map.remove(&rid).ok_or_else(bad_resource)?;
     // Give resource a chance to cleanup (notify tasks, etc.)
     repr.close();
     Ok(())

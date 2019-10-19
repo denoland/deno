@@ -202,19 +202,18 @@ fn lock_table<'a>() -> MutexGuard<'a, ResourceTable> {
 fn op_accept(record: Record, _zero_copy_buf: Option<PinnedBuf>) -> Box<HttpOp> {
   let rid = record.arg as u32;
   debug!("accept {}", rid);
-  Box::new(
-    futures::future::poll_fn(move || {
-      let mut table = lock_table();
-      let listener = table.get_mut::<TcpListener>(&rid)?;
-      listener.0.poll_accept()
-    })
-    .and_then(move |(stream, addr)| {
-      debug!("accept success {}", addr);
-      let mut table = lock_table();
-      let rid = table.add(Box::new(TcpStream(stream)));
-      Ok(rid as i32)
-    }),
-  )
+  let fut = futures::future::poll_fn(move || {
+    let mut table = lock_table();
+    let listener = table.get_mut::<TcpListener>(rid)?;
+    listener.0.poll_accept()
+  })
+  .and_then(move |(stream, addr)| {
+    debug!("accept success {}", addr);
+    let mut table = lock_table();
+    let rid = table.add(Box::new(TcpStream(stream)));
+    Ok(rid as i32)
+  });
+  Box::new(fut)
 }
 
 fn op_listen(
@@ -222,20 +221,18 @@ fn op_listen(
   _zero_copy_buf: Option<PinnedBuf>,
 ) -> Box<HttpOp> {
   debug!("listen");
-  Box::new(lazy(move || {
-    let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
-    let listener = tokio::net::TcpListener::bind(&addr).unwrap();
-    let mut table = lock_table();
-    let rid = table.add(Box::new(TcpListener(listener)));
-    futures::future::ok(rid as i32)
-  }))
+  let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
+  let listener = tokio::net::TcpListener::bind(&addr).unwrap();
+  let mut table = lock_table();
+  let rid = table.add(Box::new(TcpListener(listener)));
+  Box::new(futures::future::ok(rid as i32))
 }
 
 fn op_close(record: Record, _zero_copy_buf: Option<PinnedBuf>) -> Box<HttpOp> {
   debug!("close");
   let rid = record.arg as u32;
   let mut table = lock_table();
-  let fut = match table.close(&rid) {
+  let fut = match table.close(rid) {
     Ok(_) => futures::future::ok(0),
     Err(e) => futures::future::err(e),
   };
@@ -246,34 +243,32 @@ fn op_read(record: Record, zero_copy_buf: Option<PinnedBuf>) -> Box<HttpOp> {
   let rid = record.arg as u32;
   debug!("read rid={}", rid);
   let mut zero_copy_buf = zero_copy_buf.unwrap();
-  Box::new(
-    futures::future::poll_fn(move || {
-      let mut table = lock_table();
-      let stream = table.get_mut::<TcpStream>(&rid)?;
-      stream.0.poll_read(&mut zero_copy_buf)
-    })
-    .and_then(move |nread| {
-      debug!("read success {}", nread);
-      Ok(nread as i32)
-    }),
-  )
+  let fut = futures::future::poll_fn(move || {
+    let mut table = lock_table();
+    let stream = table.get_mut::<TcpStream>(rid)?;
+    stream.0.poll_read(&mut zero_copy_buf)
+  })
+  .and_then(move |nread| {
+    debug!("read success {}", nread);
+    Ok(nread as i32)
+  });
+  Box::new(fut)
 }
 
 fn op_write(record: Record, zero_copy_buf: Option<PinnedBuf>) -> Box<HttpOp> {
   let rid = record.arg as u32;
   debug!("write rid={}", rid);
   let zero_copy_buf = zero_copy_buf.unwrap();
-  Box::new(
-    futures::future::poll_fn(move || {
-      let mut table = lock_table();
-      let stream = table.get_mut::<TcpStream>(&rid)?;
-      stream.0.poll_write(&zero_copy_buf)
-    })
-    .and_then(move |nwritten| {
-      debug!("write success {}", nwritten);
-      Ok(nwritten as i32)
-    }),
-  )
+  let fut = futures::future::poll_fn(move || {
+    let mut table = lock_table();
+    let stream = table.get_mut::<TcpStream>(rid)?;
+    stream.0.poll_write(&zero_copy_buf)
+  })
+  .and_then(move |nwritten| {
+    debug!("write success {}", nwritten);
+    Ok(nwritten as i32)
+  });
+  Box::new(fut)
 }
 
 fn js_check(r: Result<(), ErrBox>) {
