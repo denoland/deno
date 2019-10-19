@@ -91,15 +91,20 @@ impl Worker {
   pub fn execute_mod_async(
     &mut self,
     module_specifier: &ModuleSpecifier,
+    maybe_code: Option<String>,
     is_prefetch: bool,
   ) -> impl Future<Item = (), Error = ErrBox> {
     let worker = self.clone();
     let loader = self.state.clone();
     let isolate = self.isolate.clone();
     let modules = self.state.modules.clone();
-    let recursive_load =
-      RecursiveLoad::main(&module_specifier.to_string(), loader, modules)
-        .get_future(isolate);
+    let recursive_load = RecursiveLoad::main(
+      &module_specifier.to_string(),
+      maybe_code,
+      loader,
+      modules,
+    )
+    .get_future(isolate);
     recursive_load.and_then(move |id| -> Result<(), ErrBox> {
       worker.state.progress.done();
       if is_prefetch {
@@ -156,7 +161,7 @@ mod tests {
       let mut worker =
         Worker::new("TEST".to_string(), StartupData::None, state);
       worker
-        .execute_mod_async(&module_specifier, false)
+        .execute_mod_async(&module_specifier, None, false)
         .then(|result| {
           if let Err(err) = result {
             eprintln!("execute_mod err {:?}", err);
@@ -193,7 +198,7 @@ mod tests {
       let mut worker =
         Worker::new("TEST".to_string(), StartupData::None, state);
       worker
-        .execute_mod_async(&module_specifier, false)
+        .execute_mod_async(&module_specifier, None, false)
         .then(|result| {
           if let Err(err) = result {
             eprintln!("execute_mod err {:?}", err);
@@ -233,7 +238,7 @@ mod tests {
       );
       worker.execute("denoMain()").unwrap();
       worker
-        .execute_mod_async(&module_specifier, false)
+        .execute_mod_async(&module_specifier, None, false)
         .then(|result| {
           if let Err(err) = result {
             eprintln!("execute_mod err {:?}", err);
@@ -354,7 +359,9 @@ mod tests {
       let mut worker = create_test_worker();
       let module_specifier =
         ModuleSpecifier::resolve_url_or_path("does-not-exist").unwrap();
-      let result = worker.execute_mod_async(&module_specifier, false).wait();
+      let result = worker
+        .execute_mod_async(&module_specifier, None, false)
+        .wait();
       assert!(result.is_err());
     })
   }
@@ -372,7 +379,9 @@ mod tests {
         .to_owned();
       let module_specifier =
         ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
-      let result = worker.execute_mod_async(&module_specifier, false).wait();
+      let result = worker
+        .execute_mod_async(&module_specifier, None, false)
+        .wait();
       assert!(result.is_ok());
     })
   }
