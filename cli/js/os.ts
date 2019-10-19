@@ -83,7 +83,6 @@ interface Start {
   v8Version: string;
   tsVersion: string;
   noColor: boolean;
-  xevalDelim: string;
   os: OperatingSystem;
   arch: Arch;
 }
