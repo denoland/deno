@@ -6,6 +6,24 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.21.0 / 2019.10.19
+
+- feat: --reload flag to take arg for partial reload (#3109)
+- feat: Allow "deno eval" to run code as module (#3148)
+- feat: support --allow-net=:4500 (#3115)
+- fix: Ensure DENO_DIR when saving the REPL history (#3106)
+- fix: Update echo_server to new listen API (denoland/deno_std#625)
+- fix: [prettier] deno fmt should format jsx/tsx files (#3118)
+- fix: [tls] op_dial_tls is not registerd and broken (#3121)
+- fix: clearTimer bug (#3143)
+- fix: remote jsx/tsx files were compiled as js/ts (#3125)
+- perf: eager poll async ops in Isolate (#3046, #3128)
+- chore: Move std/fs/path to std/path (#3100)
+- upgrade: V8 to 7.9.304 (#3127)
+- upgrade: prettier type definition (#3101)
+- chore: Add debug build to github actions (#3127)
+- chore: merge deno_std into deno repo (#3091, #3096)
+
 ### v0.20.0 / 2019.10.06
 
 In deno:
