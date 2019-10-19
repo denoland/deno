@@ -1,8 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { sendAsync, sendSync } from "./dispatch_json.ts";
 import * as dispatch from "./dispatch.ts";
-import { Addr, Listener, Transport, Conn, ConnImpl } from "./net.ts";
-import { close } from "./files.ts";
+import { Listener, Transport, Conn, ConnImpl, ListenerImpl } from "./net.ts";
 
 // TODO(ry) There are many configuration options to add...
 // https://docs.rs/rustls/0.16.0/rustls/struct.ClientConfig.html
@@ -22,38 +21,10 @@ export async function dialTLS(options: DialTLSOptions): Promise<Conn> {
   return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);
 }
 
-class TLSListenerImpl implements Listener {
-  constructor(
-    readonly rid: number,
-    private transport: Transport,
-    private localAddr: string
-  ) {}
-
+class TLSListenerImpl extends ListenerImpl {
   async accept(): Promise<Conn> {
     const res = await sendAsync(dispatch.OP_ACCEPT_TLS, { rid: this.rid });
     return new ConnImpl(res.rid, res.remoteAddr, res.localAddr);
-  }
-
-  close(): void {
-    close(this.rid);
-  }
-
-  addr(): Addr {
-    return {
-      transport: this.transport,
-      address: this.localAddr
-    };
-  }
-
-  async next(): Promise<IteratorResult<Conn>> {
-    return {
-      done: false,
-      value: await this.accept()
-    };
-  }
-
-  [Symbol.asyncIterator](): AsyncIterator<Conn> {
-    return this;
   }
 }
 
@@ -65,6 +36,19 @@ export interface ListenTLSOptions {
   keyFile: string;
 }
 
+/** Listen announces on the local transport address over TLS (transport layer security).
+ *
+ * @param options
+ * @param options.port The port to connect to. (Required.)
+ * @param options.hostname A literal IP address or host name that can be
+ *   resolved to an IP address. If not specified, defaults to 0.0.0.0
+ * @param options.certFile Server certificate file
+ * @param options.keyFile Server public key file
+ *
+ * Examples:
+ *
+ *     listen({ port: 443, certFile: "./my_server.crt", keyFile: "./my_server.key" })
+ */
 export function listenTLS(options: ListenTLSOptions): Listener {
   const hostname = options.hostname || "0.0.0.0";
   const transport = options.transport || "tcp";
