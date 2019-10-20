@@ -36,7 +36,7 @@ testPerm({ net: true }, async function dialAndListenTLS(): Promise<void> {
   listener.accept().then(
     async (conn): Promise<void> => {
       assert(conn.remoteAddr != null);
-      assertEquals(conn.localAddr, "127.0.0.1:4500");
+      assert(conn.localAddr != null);
       await conn.write(response);
       conn.close();
     }
