@@ -96,7 +96,7 @@ import * as log from "https://deno.land/std/log/mod.ts";
 ## Built-in Deno Utilities / Commands
 
 - dependency inspector (`deno info`)
-- code formatter (`deno fmt`),
+- code formatter (`deno fmt`)
 - bundling (`deno bundle`)
 - runtime type info (`deno types`)
 - test runner (`deno test`)
