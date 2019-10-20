@@ -89,7 +89,7 @@ import * as log from "https://deno.land/std/log/mod.ts";
 
 - Remote code is fetched and cached on first execution, and never updated until
   the code is run with the `--reload` flag. (So, this will still work on an
-   airplane.)
+  airplane.)
 - Modules/files loaded from remote URLs are intended to be immutable and
   cacheable.
 
