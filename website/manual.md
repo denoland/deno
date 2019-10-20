@@ -102,7 +102,7 @@ import * as log from "https://deno.land/std/log/mod.ts";
 - test runner (`deno test`)
 - command-line debugger (`--debug`)
   [coming soon](https://github.com/denoland/deno/issues/1120)
-  - linter (`deno lint`)
+- linter (`deno lint`)
     [coming soon](https://github.com/denoland/deno/issues/1880)
 
 ## Setup
