@@ -225,16 +225,32 @@ test(async function testPrettierPrintToStdout(): Promise<void> {
 
   const { stdout } = await run([...cmd, file0]);
   // The source file will not change without `--write` flags.
-  assertEquals(await getSourceCode(file0), "console.log (0)\n");
+  assertEquals(
+    await getSourceCode(file0),
+    `console.log (0)
+`
+  );
   // The output should be formatted code.
-  assertEquals(stdout, "console.log(0);" + EOL);
+  assertEquals(
+    stdout,
+    `console.log(0);
+`
+  );
 
   const { stdout: formattedCode } = await run([...cmd, file1]);
   // The source file will not change without `--write` flags.
-  assertEquals(await getSourceCode(file1), "console.log(0);" + EOL);
+  assertEquals(
+    await getSourceCode(file1),
+    `console.log(0);
+`
+  );
   // The output will be formatted code even it is the same as the source file's
   // content.
-  assertEquals(formattedCode, "console.log(0);" + EOL);
+  assertEquals(
+    formattedCode,
+    `console.log(0);
+`
+  );
 
   emptyDir(tempDir);
 });
