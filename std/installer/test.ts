@@ -276,9 +276,6 @@ installerTest(async function installLocalModuleAndRun(): Promise<void> {
   const localModule = path.join(Deno.cwd(), "installer", "testdata", "echo.ts");
   await install("echo_test", localModule, ["hello"], tempDir);
 
-  /** symlink deno into the local dir */
-  Deno.symlink("../target/release/deno", path.resolve(tempDir, "deno"));
-
   const filePath = path.resolve(tempDir, "echo_test");
   const fileInfo = await stat(filePath);
   assert(fileInfo.isFile());
@@ -321,9 +318,6 @@ installerTest(async function installAndMakesureItCanRun(): Promise<void> {
     tempDir
   );
 
-  /** symlink deno into the local dir */
-  Deno.symlink("../target/release/deno", path.resolve(tempDir, "deno"));
-
   const filePath = path.resolve(tempDir, "echo_test");
   const fileInfo = await stat(filePath);
   assert(fileInfo.isFile());
@@ -365,9 +359,6 @@ installerTest(async function installAndMakesureArgsRight(): Promise<void> {
     ["arg1", "--flag1"],
     tempDir
   );
-
-  /** symlink deno into the local dir */
-  Deno.symlink("../target/release/deno", path.resolve(tempDir, "deno"));
 
   const filePath = path.resolve(tempDir, "args_test");
   const fileInfo = await stat(filePath);
