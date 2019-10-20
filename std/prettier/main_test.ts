@@ -225,7 +225,7 @@ test(async function testPrettierPrintToStdout(): Promise<void> {
 
   const { stdout } = await run([...cmd, file0]);
   // The source file will not change without `--write` flags.
-  assertEquals(await getSourceCode(file0), "console.log (0)" + EOL);
+  assertEquals(await getSourceCode(file0), "console.log (0)\n");
   // The output should be formatted code.
   assertEquals(stdout, "console.log(0);" + EOL);
 
