@@ -311,15 +311,17 @@ impl Isolate {
   ) {
     let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
 
-    let call_result = isolate.op_registry.call(
+    let maybe_op = isolate.op_registry.call(
       op_id,
       control_buf.as_ref(),
       PinnedBuf::new(zero_copy_buf),
     );
 
-    let op = match call_result {
-      Ok(op) => op,
-      Err(err_str) => return isolate.throw_exception(&err_str),
+    let op = match maybe_op {
+      Some(op) => op,
+      None => {
+        return isolate.throw_exception(&format!("Unknown op id: {}", op_id))
+      }
     };
 
     // To avoid latency problems we eagerly poll 50 futures and then
