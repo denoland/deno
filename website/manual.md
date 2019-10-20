@@ -95,15 +95,17 @@ import * as log from "https://deno.land/std/log/mod.ts";
 
 ## Built-in Deno Utilities / Commands
 
+<!-- prettier-ignore-start -->
+<!-- prettier incorrectly moves the coming soon links to new lines -->
+
 - dependency inspector (`deno info`)
 - code formatter (`deno fmt`)
 - bundling (`deno bundle`)
 - runtime type info (`deno types`)
 - test runner (`deno test`)
-<!-- prettier-ignore-start -->
-<!-- Prettier incorrectly pushes the coming soon link to a new line -->
 - command-line debugger (`--debug`) [coming soon](https://github.com/denoland/deno/issues/1120)
 - linter (`deno lint`) [coming soon](https://github.com/denoland/deno/issues/1880)
+
 <!-- prettier-ignore-end -->
 
 ## Setup
