@@ -51,7 +51,9 @@ function installerTest(t: TestFunction, useOriginHomeDir = false): void {
     } finally {
       killFileServer();
       await remove(tempDir, { recursive: true });
-      envVars["HOME"] = originalHomeDir;
+      if (originalHomeDir) {
+        envVars["HOME"] = originalHomeDir;
+      }
     }
   };
 
