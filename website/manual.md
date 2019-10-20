@@ -100,10 +100,11 @@ import * as log from "https://deno.land/std/log/mod.ts";
 - bundling (`deno bundle`)
 - runtime type info (`deno types`)
 - test runner (`deno test`)
-- command-line debugger (`--debug`)
-  [coming soon](https://github.com/denoland/deno/issues/1120)
-- linter (`deno lint`)
-    [coming soon](https://github.com/denoland/deno/issues/1880)
+<!-- prettier-ignore-start -->
+<!-- Prettier incorrectly pushes the coming soon link to a new line -->
+- command-line debugger (`--debug`) [coming soon](https://github.com/denoland/deno/issues/1120)
+- linter (`deno lint`) [coming soon](https://github.com/denoland/deno/issues/1880)
+<!-- prettier-ignore-end -->
 
 ## Setup
 
