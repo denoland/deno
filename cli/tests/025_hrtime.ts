@@ -1,3 +1,3 @@
 console.log(performance.now() % 2 !== 0);
-Deno.revokePermission("hrtime");
+Deno.permissions.revoke({ name: "hrtime" });
 console.log(performance.now() % 2 === 0);

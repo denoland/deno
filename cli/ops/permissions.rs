@@ -31,10 +31,10 @@ fn get_current_permission(
   state: &ThreadSafeState,
   args: &PermissionArgs,
 ) -> Result<permissions::PermissionAccessorState, ErrBox> {
-  Ok(
-    state
-      .permissions
-      .get_permission_state(&args.name, &args.path, &args.url)?,
+  state.permissions.get_permission_state(
+    &args.name,
+    &args.path.as_ref().map(String::as_str),
+    &args.url.as_ref().map(String::as_str),
   )
 }
 
@@ -72,9 +72,9 @@ pub fn op_request_permission(
 
   match name {
     "run" => state.permissions.request_run(),
-    "read" => state.permissions.request_read(path.unwrap().as_ref()),
-    "write" => state.permissions.request_write(path.unwrap().as_ref()),
-    "net" => state.permissions.request_net(url.unwrap().as_ref()),
+    "read" => state.permissions.request_read(&path.map(String::as_str)),
+    "write" => state.permissions.request_write(&path.map(String::as_str)),
+    "net" => state.permissions.request_net(&url.map(String::as_str)),
     "env" => state.permissions.request_env(),
     "hrtime" => state.permissions.request_hrtime(),
     _ => Ok(()),

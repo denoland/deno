@@ -29,11 +29,40 @@ interface TestPermissions {
   hrtime?: boolean;
 }
 
-const processPerms = Deno.permissions();
+export interface Permissions {
+  read: boolean;
+  write: boolean;
+  net: boolean;
+  env: boolean;
+  run: boolean;
+  hrtime: boolean;
+}
+
+async function getProcessPermissions(): Promise<Permissions> {
+  const [run, read, write, net, env, hrtime] = await Promise.all([
+    Deno.permissions.query({ name: "run" }),
+    Deno.permissions.query({ name: "read" }),
+    Deno.permissions.query({ name: "write" }),
+    Deno.permissions.query({ name: "net" }),
+    Deno.permissions.query({ name: "env" }),
+    Deno.permissions.query({ name: "hrtime" })
+  ]);
+
+  return {
+    run: run.state === "granted",
+    read: read.state === "granted",
+    write: write.state === "granted",
+    net: net.state === "granted",
+    env: env.state === "granted",
+    hrtime: hrtime.state === "granted"
+  };
+}
+
+const processPerms = await getProcessPermissions();
 
 function permissionsMatch(
-  processPerms: Deno.Permissions,
-  requiredPerms: Deno.Permissions
+  processPerms: Permissions,
+  requiredPerms: Permissions
 ): boolean {
   for (const permName in processPerms) {
     if (processPerms[permName] !== requiredPerms[permName]) {
@@ -44,9 +73,9 @@ function permissionsMatch(
   return true;
 }
 
-export const permissionCombinations: Map<string, Deno.Permissions> = new Map();
+export const permissionCombinations: Map<string, Permissions> = new Map();
 
-function permToString(perms: Deno.Permissions): string {
+function permToString(perms: Permissions): string {
   const r = perms.read ? 1 : 0;
   const w = perms.write ? 1 : 0;
   const n = perms.net ? 1 : 0;
@@ -56,14 +85,14 @@ function permToString(perms: Deno.Permissions): string {
   return `permR${r}W${w}N${n}E${e}U${u}H${h}`;
 }
 
-function registerPermCombination(perms: Deno.Permissions): void {
+function registerPermCombination(perms: Permissions): void {
   const key = permToString(perms);
   if (!permissionCombinations.has(key)) {
     permissionCombinations.set(key, perms);
   }
 }
 
-function normalizeTestPermissions(perms: TestPermissions): Deno.Permissions {
+function normalizeTestPermissions(perms: TestPermissions): Permissions {
   return {
     read: !!perms.read,
     write: !!perms.write,

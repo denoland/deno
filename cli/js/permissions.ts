@@ -26,29 +26,26 @@ interface PermissionDescriptor {
 
 export class Permissions {
   /**
+   * Queries the permission.
    */
   async query(desc: PermissionDescriptor): Promise<PermissionStatus> {
-    const { state } = sendSync(dispatch.OP_QUERY_PERMISSION, {
-      ...desc
-    });
+    const { state } = sendSync(dispatch.OP_QUERY_PERMISSION, desc);
     return new PermissionStatus(state);
   }
 
   /**
+   * Revokes the permission.
    */
   async revoke(desc: PermissionDescriptor): Promise<PermissionStatus> {
-    const { state } = sendSync(dispatch.OP_REVOKE_PERMISSION, {
-      ...desc
-    });
+    const { state } = sendSync(dispatch.OP_REVOKE_PERMISSION, desc);
     return new PermissionStatus(state);
   }
 
   /**
+   * Requests the permission.
    */
   async request(desc: PermissionDescriptor): Promise<PermissionStatus> {
-    const { state } = sendSync(dispatch.OP_REQUEST_PERMISSION, {
-      ...desc
-    });
+    const { state } = sendSync(dispatch.OP_REQUEST_PERMISSION, desc);
     return new PermissionStatus(state);
   }
 }

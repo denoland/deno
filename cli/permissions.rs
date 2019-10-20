@@ -22,16 +22,6 @@ pub enum PermissionAccessorState {
   Deny = 2,
 }
 
-impl PermissionAccessorState {
-  fn to_string(&self) -> String {
-    match self {
-      PermissionAccessorState::Allow => "granted".to_string(),
-      PermissionAccessorState::Ask => "prompt".to_string(),
-      PermissionAccessorState::Deny => "denied".to_string(),
-    }
-  }
-}
-
 impl From<usize> for PermissionAccessorState {
   fn from(val: usize) -> Self {
     match val {
@@ -100,10 +90,6 @@ impl PermissionAccessor {
 
   pub fn deny(&self) {
     self.set_state(PermissionAccessorState::Deny)
-  }
-
-  pub fn to_string(&self) -> String {
-    self.get_state().to_string()
   }
 
   /// Update this accessors state based on a PromptResult value
@@ -184,8 +170,11 @@ impl DenoPermissions {
     }
   }
 
-  pub fn request_read(&self, filename: &str) -> Result<(), ErrBox> {
-    let msg = &format!("read access to \"{}\"", filename);
+  pub fn request_read(&self, filename: &Option<&str>) -> Result<(), ErrBox> {
+    let msg = &match filename {
+      None => "read access".to_string(),
+      Some(filename) => format!("read access to \"{}\"", filename),
+    };
     match self.allow_read.get_state() {
       PermissionAccessorState::Ask => match self.try_permissions_prompt(msg) {
         Err(e) => Err(e),
@@ -199,8 +188,11 @@ impl DenoPermissions {
     }
   }
 
-  pub fn request_write(&self, filename: &str) -> Result<(), ErrBox> {
-    let msg = &format!("write access to \"{}\"", filename);
+  pub fn request_write(&self, filename: &Option<&str>) -> Result<(), ErrBox> {
+    let msg = &match filename {
+      None => "write access".to_string(),
+      Some(filename) => format!("write access to \"{}\"", filename),
+    };
     match self.allow_write.get_state() {
       PermissionAccessorState::Ask => match self.try_permissions_prompt(msg) {
         Err(e) => Err(e),
@@ -214,8 +206,14 @@ impl DenoPermissions {
     }
   }
 
-  pub fn request_net(&self, host_and_port: &str) -> Result<(), ErrBox> {
-    let msg = &format!("network access to \"{}\"", host_and_port);
+  pub fn request_net(
+    &self,
+    host_and_port: &Option<&str>,
+  ) -> Result<(), ErrBox> {
+    let msg = &match host_and_port {
+      None => "network access".to_string(),
+      Some(host_and_port) => format!("network access to \"{}\"", host_and_port),
+    };
     match self.allow_net.get_state() {
       PermissionAccessorState::Ask => self.request_net_inner(msg),
       _ => Ok(()),
@@ -341,7 +339,7 @@ impl DenoPermissions {
     }
   }
 
-  fn read_state(&self, filename: &str) -> PermissionAccessorState {
+  fn read_state(&self, filename: &Option<&str>) -> PermissionAccessorState {
     let state = self.allow_read.get_state();
     if state == PermissionAccessorState::Ask
       && check_path_white_list(filename, &self.read_whitelist)
@@ -351,7 +349,7 @@ impl DenoPermissions {
     state
   }
 
-  fn write_state(&self, filename: &str) -> PermissionAccessorState {
+  fn write_state(&self, filename: &Option<&str>) -> PermissionAccessorState {
     let state = self.allow_write.get_state();
     if state == PermissionAccessorState::Ask
       && check_path_white_list(filename, &self.write_whitelist)
@@ -361,7 +359,7 @@ impl DenoPermissions {
     state
   }
 
-  fn net_state(&self, host_and_port: &str) -> PermissionAccessorState {
+  fn net_state(&self, host_and_port: &Option<&str>) -> PermissionAccessorState {
     let state = self.allow_net.get_state();
     if state == PermissionAccessorState::Ask
       && check_host_and_port_whitelist(host_and_port, &self.net_whitelist)
@@ -386,15 +384,15 @@ impl DenoPermissions {
   }
 
   pub fn allows_read(&self, filename: &str) -> bool {
-    self.read_state(filename) == PermissionAccessorState::Allow
+    self.read_state(&Some(filename)) == PermissionAccessorState::Allow
   }
 
   pub fn allows_write(&self, filename: &str) -> bool {
-    self.write_state(filename) == PermissionAccessorState::Allow
+    self.write_state(&Some(filename)) == PermissionAccessorState::Allow
   }
 
   pub fn allows_net(&self, host_and_port: &str) -> bool {
-    self.net_state(host_and_port) == PermissionAccessorState::Allow
+    self.net_state(&Some(host_and_port)) == PermissionAccessorState::Allow
   }
 
   pub fn allows_net_url(&self, url: &url::Url) -> bool {
@@ -434,15 +432,15 @@ impl DenoPermissions {
 
   pub fn get_permission_state(
     &self,
-    name: &String,
-    url: &Option<String>,
-    path: &Option<String>,
+    name: &str,
+    url: &Option<&str>,
+    path: &Option<&str>,
   ) -> Result<PermissionAccessorState, ErrBox> {
-    match name.as_ref() {
+    match name {
       "run" => Ok(self.allow_run.get_state()),
-      "read" => Ok(self.read_state(path.as_ref().unwrap().as_ref())),
-      "write" => Ok(self.write_state(path.as_ref().unwrap().as_ref())),
-      "net" => Ok(self.net_state(url.as_ref().unwrap().as_ref())),
+      "read" => Ok(self.read_state(path)),
+      "write" => Ok(self.write_state(path)),
+      "net" => Ok(self.net_state(url)),
       "env" => Ok(self.allow_env.get_state()),
       "hrtime" => Ok(self.allow_hrtime.get_state()),
       _ => Err(permission_denied()), // TODO: should be TypeError
@@ -483,10 +481,8 @@ fn permission_prompt(message: &str) -> Result<PromptResult, ErrBox> {
       'd' => return Ok(PromptResult::Deny),
       _ => {
         // If we don't get a recognized option try again.
-        let msg_again = format!(
-          "Unrecognized option '{}' [a/y/n/d (a = allow, d = deny)] ",
-          ch
-        );
+        let msg_again =
+          format!("Unrecognized option '{}' [a/d (a = allow, d = deny)] ", ch);
         eprint!("{}", Style::new().bold().paint(msg_again));
       }
     };
@@ -494,10 +490,13 @@ fn permission_prompt(message: &str) -> Result<PromptResult, ErrBox> {
 }
 
 fn check_path_white_list(
-  filename: &str,
+  filename: &Option<&str>,
   white_list: &Arc<HashSet<String>>,
 ) -> bool {
-  let mut path_buf = PathBuf::from(filename);
+  if filename.is_none() {
+    return false;
+  }
+  let mut path_buf = PathBuf::from(filename.unwrap());
 
   loop {
     if white_list.contains(path_buf.to_str().unwrap()) {
@@ -511,9 +510,13 @@ fn check_path_white_list(
 }
 
 fn check_host_and_port_whitelist(
-  host_and_port: &str,
+  host_and_port: &Option<&str>,
   whitelist: &Arc<HashSet<String>>,
 ) -> bool {
+  if host_and_port.is_none() {
+    return false;
+  }
+  let host_and_port = host_and_port.unwrap();
   let parts = host_and_port.split(':').collect::<Vec<&str>>();
   match parts.len() {
     2 => {
