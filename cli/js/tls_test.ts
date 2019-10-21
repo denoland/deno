@@ -44,18 +44,27 @@ testPerm(
       keyFile: "cli/tests/tls/localhost.key"
     };
 
-    for (const field of ["certFile", "keyFile"]) {
-      try {
-        Deno.listenTLS({
-          ...options,
-          [field]: "./non/existent/file"
-        });
-      } catch (e) {
-        err = e;
-      }
-      assertEquals(err.kind, Deno.ErrorKind.NotFound);
-      assertEquals(err.name, "NotFound");
+    try {
+      Deno.listenTLS({
+        ...options,
+        certFile: "./non/existent/file"
+      });
+    } catch (e) {
+      err = e;
     }
+    assertEquals(err.kind, Deno.ErrorKind.NotFound);
+    assertEquals(err.name, "NotFound");
+
+    try {
+      Deno.listenTLS({
+        ...options,
+        keyFile: "./non/existent/file"
+      });
+    } catch (e) {
+      err = e;
+    }
+    assertEquals(err.kind, Deno.ErrorKind.NotFound);
+    assertEquals(err.name, "NotFound");
   }
 );
 

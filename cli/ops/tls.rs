@@ -121,7 +121,7 @@ fn load_certs(path: &str) -> Result<Vec<Certificate>, ErrBox> {
     DenoError::new(ErrorKind::Other, "Unable to decode certificate".to_string())
   })?;
 
-  if certs.len() < 1 {
+  if certs.is_empty() {
     let e = DenoError::new(
       ErrorKind::Other,
       "No certificates found in cert file".to_string(),
@@ -132,14 +132,19 @@ fn load_certs(path: &str) -> Result<Vec<Certificate>, ErrBox> {
   Ok(certs)
 }
 
+fn key_decode_err() -> DenoError {
+  DenoError::new(ErrorKind::Other, "Unable to decode key".to_string())
+}
+
+fn key_not_found_err() -> DenoError {
+  DenoError::new(ErrorKind::Other, "No keys found in key file".to_string())
+}
+
 /// Starts with -----BEGIN RSA PRIVATE KEY-----
 fn load_rsa_keys(path: &str) -> Result<Vec<PrivateKey>, ErrBox> {
   let key_file = File::open(path)?;
   let reader = &mut BufReader::new(key_file);
-  let keys = rsa_private_keys(reader).map_err(|_| {
-    DenoError::new(ErrorKind::Other, "Unable to decode key".to_string())
-  })?;
-
+  let keys = rsa_private_keys(reader).map_err(|_| key_decode_err())?;
   Ok(keys)
 }
 
@@ -147,24 +152,20 @@ fn load_rsa_keys(path: &str) -> Result<Vec<PrivateKey>, ErrBox> {
 fn load_pkcs8_keys(path: &str) -> Result<Vec<PrivateKey>, ErrBox> {
   let key_file = File::open(path)?;
   let reader = &mut BufReader::new(key_file);
-  let keys = pkcs8_private_keys(reader).map_err(|_| {
-    DenoError::new(ErrorKind::Other, "Unable to decode key".to_string())
-  })?;
-
+  let keys = pkcs8_private_keys(reader).map_err(|_| key_decode_err())?;
   Ok(keys)
 }
 
 fn load_keys(path: &str) -> Result<Vec<PrivateKey>, ErrBox> {
-  let mut keys = load_rsa_keys(path.clone())?;
+  let path = path.to_string();
+  let mut keys = load_rsa_keys(&path)?;
 
   if keys.is_empty() {
-    keys = load_pkcs8_keys(path)?;
+    keys = load_pkcs8_keys(&path)?;
   }
 
   if keys.is_empty() {
-    let e =
-      DenoError::new(ErrorKind::Other, "No keys found in key file".to_string());
-    return Err(ErrBox::from(e));
+    return Err(ErrBox::from(key_not_found_err()));
   }
 
   Ok(keys)
