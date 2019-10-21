@@ -37,6 +37,12 @@ catj file1.json file2.json
 echo example.json | catj -
 ```
 
+### curl - print the contents of a url to standard output
+
+```shell
+deno --allow-net=deno.land https://deno.land/std/examples/curl.ts https://deno.land/
+```
+
 ### gist - easily create and upload Gists
 
 ```
