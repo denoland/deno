@@ -15,7 +15,7 @@ use url::Url;
 
 macro_rules! std_url {
   ($x:expr) => {
-    concat!("https://deno.land/std@8c90bd9/", $x)
+    concat!("https://deno.land/std@v0.21.0/", $x)
   };
 }
 
