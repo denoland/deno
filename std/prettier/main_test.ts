@@ -213,7 +213,6 @@ console.log([function foo() {}, function baz() {}, (a) => {}]);
   emptyDir(tempDir);
 });
 
-/* TODO(ry) Re-enable test
 test(async function testPrettierPrintToStdout(): Promise<void> {
   const tempDir = await Deno.makeTempDir();
   await copy(testdata, tempDir, { overwrite: true });
@@ -226,20 +225,35 @@ test(async function testPrettierPrintToStdout(): Promise<void> {
 
   const { stdout } = await run([...cmd, file0]);
   // The source file will not change without `--write` flags.
-  assertEquals(await getSourceCode(file0), "console.log (0)" + EOL);
+  assertEquals(
+    await getSourceCode(file0),
+    `console.log (0)
+`
+  );
   // The output should be formatted code.
-  assertEquals(stdout, "console.log(0);" + EOL);
+  assertEquals(
+    stdout,
+    `console.log(0);
+`
+  );
 
   const { stdout: formattedCode } = await run([...cmd, file1]);
   // The source file will not change without `--write` flags.
-  assertEquals(await getSourceCode(file1), "console.log(0);" + EOL);
+  assertEquals(
+    await getSourceCode(file1),
+    `console.log(0);
+`
+  );
   // The output will be formatted code even it is the same as the source file's
   // content.
-  assertEquals(formattedCode, "console.log(0);" + EOL);
+  assertEquals(
+    formattedCode,
+    `console.log(0);
+`
+  );
 
   emptyDir(tempDir);
 });
-*/
 
 test(async function testPrettierReadFromStdin(): Promise<void> {
   interface TestCase {
