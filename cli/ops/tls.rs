@@ -59,10 +59,13 @@ pub fn op_dial_tls(
   // TODO(ry) Using format! is suboptimal here. Better would be if
   // state.check_net and resolve_addr() took hostname and port directly.
   let address = format!("{}:{}", args.hostname, args.port);
+  let cert_file = args.cert_file;
 
   state.check_net(&address)?;
+  if let Some(path) = cert_file.clone() {
+    state.check_read(&path)?;
+  }
 
-  let cert_file = args.cert_file;
   let mut domain = args.hostname;
   if domain.is_empty() {
     domain.push_str("localhost");
