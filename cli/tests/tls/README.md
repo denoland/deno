@@ -1,4 +1,4 @@
-This certificates will expire on Sept, 27th, 2118
+The certificates in this dir expire on Sept, 27th, 2118
 
 Certificates generated using original instructions from this gist:
 https://gist.github.com/cecilemuller/9492b848eb8fe46d462abeb26656c4f8
