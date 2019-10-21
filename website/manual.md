@@ -34,12 +34,6 @@ It's built on V8, Rust, and Tokio.
   that are guaranteed to work with Deno.
 - Scripts can be bundled into a single javascript file.
 
-##### On the Roadmap
-
-- Native modules in Rust.
-- Scripts can be bundled into a binary with the deno runtime.
-  - This makes distribution simple and script startup very fast.
-
 ### Philosophy
 
 Deno aims to be a productive and secure scripting environment for the modern
