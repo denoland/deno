@@ -421,11 +421,11 @@ $ deno --allow-read=/etc https://deno.land/std/examples/cat.ts /etc/passwd
 This is an example to restrict host.
 
 ```ts
-const result = await fetch("https://deno.land/std/examples/echo_server.ts");
+const result = await fetch("https://deno.land/");
 ```
 
 ```shell
-$ deno --allow-net=deno.land allow-net-whitelist-example.ts
+$ deno --allow-net=deno.land https://deno.land/std/examples/curl.ts https://deno.land/
 ```
 
 ### Run subprocess
