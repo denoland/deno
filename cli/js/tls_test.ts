@@ -21,7 +21,11 @@ test(async function dialTLSNoPerm(): Promise<void> {
 test(async function dialTLSCertFileNoReadPerm(): Promise<void> {
   let err;
   try {
-    await Deno.dialTLS({ hostname: "github.com", port: 443, certFile: "cli/tests/tls/RootCA.crt" });
+    await Deno.dialTLS({
+      hostname: "github.com",
+      port: 443,
+      certFile: "cli/tests/tls/RootCA.crt"
+    });
   } catch (e) {
     err = e;
   }
@@ -55,24 +59,21 @@ testPerm(
   }
 );
 
-testPerm(
-  { net: true },
-  async function listenTLSNoReadPerm(): Promise<void> {
-    let err;
-    try {
-      Deno.listenTLS({
-        hostname: "localhost",
-        port: 4500,
-        certFile: "cli/tests/tls/localhost.crt",
-        keyFile: "cli/tests/tls/localhost.key"
-      });
-    } catch (e) {
-      err = e;
-    }
-    assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
-    assertEquals(err.name, "PermissionDenied");
+testPerm({ net: true }, async function listenTLSNoReadPerm(): Promise<void> {
+  let err;
+  try {
+    Deno.listenTLS({
+      hostname: "localhost",
+      port: 4500,
+      certFile: "cli/tests/tls/localhost.crt",
+      keyFile: "cli/tests/tls/localhost.key"
+    });
+  } catch (e) {
+    err = e;
   }
-);
+  assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
+  assertEquals(err.name, "PermissionDenied");
+});
 
 testPerm(
   { read: true, write: true, net: true },
