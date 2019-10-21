@@ -50,7 +50,7 @@ jobs:
       - name: Install python
         uses: actions/setup-python@v1
         with:
-          python-version: "2.7.16"
+          python-version: "2.x"
           architecture: x64
 
       - name: Environment (common)
@@ -78,8 +78,12 @@ jobs:
       - name: Environment (windows)
         if: startsWith(matrix.os, 'windows')
         run: |
+          set
           echo ::add-path::%cd%\prebuilt\win
           echo ::add-path::%cd%\target\release
+          echo ::set-env name=PYTHONLOCATION::
+          echo ::set-env name=PYTHONNOUSERSITE::
+          echo ::set-env name=PYTHON_HOME::
 
       - name: Log versions
         run: |
