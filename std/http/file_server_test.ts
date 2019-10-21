@@ -30,17 +30,19 @@ function killFileServer(): void {
   fileServer.stdout!.close();
 }
 
-/* TODO(ry) re-enable tests
 test(async function serveFile(): Promise<void> {
   await startFileServer();
   try {
-    const res = await fetch("http://localhost:4500/azure-pipelines.yml");
+    const res = await fetch("http://localhost:4500/tsconfig.json");
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
-    assertEquals(res.headers.get("content-type"), "text/yaml; charset=utf-8");
+    assertEquals(
+      res.headers.get("content-type"),
+      "application/json; charset=utf-8"
+    );
     const downloadedFile = await res.text();
     const localFile = new TextDecoder().decode(
-      await Deno.readFile("./azure-pipelines.yml")
+      await Deno.readFile("./tsconfig.json")
     );
     assertEquals(downloadedFile, localFile);
   } finally {
@@ -55,7 +57,7 @@ test(async function serveDirectory(): Promise<void> {
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
     const page = await res.text();
-    assert(page.includes("azure-pipelines.yml"));
+    assert(page.includes("tsconfig.json"));
 
     // `Deno.FileInfo` is not completely compatible with Windows yet
     // TODO: `mode` should work correctly in the future.
@@ -65,15 +67,12 @@ test(async function serveDirectory(): Promise<void> {
     Deno.build.os === "win" &&
       assert(/<td class="mode">\(unknown mode\)<\/td>/.test(page));
     assert(
-      page.includes(
-        `<td><a href="/azure-pipelines.yml">azure-pipelines.yml</a></td>`
-      )
+      page.includes(`<td><a href="/tsconfig.json">tsconfig.json</a></td>`)
     );
   } finally {
     killFileServer();
   }
 });
-*/
 
 test(async function serveFallback(): Promise<void> {
   await startFileServer();

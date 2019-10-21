@@ -1,7 +1,19 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
+use crate::ops::json_op;
 use crate::state::ThreadSafeState;
 use deno::*;
+
+pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+  i.register_op(
+    "permissions",
+    s.core_op(json_op(s.stateful_op(op_permissions))),
+  );
+  i.register_op(
+    "revoke_permission",
+    s.core_op(json_op(s.stateful_op(op_revoke_permission))),
+  );
+}
 
 pub fn op_permissions(
   state: &ThreadSafeState,

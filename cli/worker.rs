@@ -1,8 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::fmt_errors::JSError;
-use crate::ops::json_op;
-use crate::ops::minimal_op;
-use crate::ops::*;
+use crate::ops;
 use crate::state::ThreadSafeState;
 use deno;
 use deno::ErrBox;
@@ -33,255 +31,23 @@ impl Worker {
     let isolate = Arc::new(Mutex::new(deno::Isolate::new(startup_data, false)));
     {
       let mut i = isolate.lock().unwrap();
-      let state_ = state.clone();
 
-      i.register_op("read", state_.cli_op(minimal_op(io::op_read)));
-      i.register_op("write", state_.cli_op(minimal_op(io::op_write)));
-
-      i.register_op(
-        "exit",
-        state_.cli_op(json_op(state_.stateful_op(os::op_exit))),
-      );
-      i.register_op(
-        "is_tty",
-        state_.cli_op(json_op(state_.stateful_op(os::op_is_tty))),
-      );
-      i.register_op(
-        "env",
-        state_.cli_op(json_op(state_.stateful_op(os::op_env))),
-      );
-      i.register_op(
-        "exec_path",
-        state_.cli_op(json_op(state_.stateful_op(os::op_exec_path))),
-      );
-      i.register_op(
-        "utime",
-        state_.cli_op(json_op(state_.stateful_op(fs::op_utime))),
-      );
-      i.register_op(
-        "set_env",
-        state_.cli_op(json_op(state_.stateful_op(os::op_set_env))),
-      );
-      i.register_op(
-        "get_env",
-        state_.cli_op(json_op(state_.stateful_op(os::op_get_env))),
-      );
-      i.register_op(
-        "home_dir",
-        state_.cli_op(json_op(state_.stateful_op(os::op_home_dir))),
-      );
-      i.register_op(
-        "start",
-        state_.cli_op(json_op(state_.stateful_op(os::op_start))),
-      );
-      i.register_op(
-        "apply_source_map",
-        state_.cli_op(json_op(state_.stateful_op(errors::op_apply_source_map))),
-      );
-      i.register_op(
-        "format_error",
-        state_.cli_op(json_op(state_.stateful_op(errors::op_format_error))),
-      );
-      i.register_op(
-        "cache",
-        state_.cli_op(json_op(state_.stateful_op(compiler::op_cache))),
-      );
-      i.register_op(
-        "fetch_source_files",
-        state_
-          .cli_op(json_op(state_.stateful_op(compiler::op_fetch_source_files))),
-      );
-      i.register_op(
-        "open",
-        state_.cli_op(json_op(state_.stateful_op(files::op_open))),
-      );
-      i.register_op(
-        "close",
-        state_.cli_op(json_op(state_.stateful_op(files::op_close))),
-      );
-      i.register_op(
-        "seek",
-        state_.cli_op(json_op(state_.stateful_op(files::op_seek))),
-      );
-      i.register_op(
-        "fetch",
-        state_.cli_op(json_op(state_.stateful_op(fetch::op_fetch))),
-      );
-      i.register_op(
-        "metrics",
-        state_.cli_op(json_op(state_.stateful_op(metrics::op_metrics))),
-      );
-      i.register_op(
-        "repl_start",
-        state_.cli_op(json_op(state_.stateful_op(repl::op_repl_start))),
-      );
-      i.register_op(
-        "repl_readline",
-        state_.cli_op(json_op(state_.stateful_op(repl::op_repl_readline))),
-      );
-      i.register_op(
-        "accept",
-        state_.cli_op(json_op(state_.stateful_op(net::op_accept))),
-      );
-      i.register_op(
-        "dial",
-        state_.cli_op(json_op(state_.stateful_op(net::op_dial))),
-      );
-      i.register_op(
-        "dial_tls",
-        state_.cli_op(json_op(state_.stateful_op(net::op_dial))),
-      );
-      i.register_op(
-        "shutdown",
-        state_.cli_op(json_op(state_.stateful_op(net::op_shutdown))),
-      );
-      i.register_op(
-        "listen",
-        state_.cli_op(json_op(state_.stateful_op(net::op_listen))),
-      );
-      i.register_op(
-        "resources",
-        state_.cli_op(json_op(state_.stateful_op(resources::op_resources))),
-      );
-      i.register_op(
-        "get_random_values",
-        state_
-          .cli_op(json_op(state_.stateful_op(random::op_get_random_values))),
-      );
-      i.register_op(
-        "global_timer_stop",
-        state_
-          .cli_op(json_op(state_.stateful_op(timers::op_global_timer_stop))),
-      );
-      i.register_op(
-        "global_timer",
-        state_.cli_op(json_op(state_.stateful_op(timers::op_global_timer))),
-      );
-      i.register_op(
-        "now",
-        state_.cli_op(json_op(state_.stateful_op(performance::op_now))),
-      );
-      i.register_op(
-        "permissions",
-        state_.cli_op(json_op(state_.stateful_op(permissions::op_permissions))),
-      );
-      i.register_op(
-        "revoke_permission",
-        state_.cli_op(json_op(
-          state_.stateful_op(permissions::op_revoke_permission),
-        )),
-      );
-      i.register_op(
-        "create_worker",
-        state_.cli_op(json_op(state_.stateful_op(workers::op_create_worker))),
-      );
-      i.register_op(
-        "host_get_worker_closed",
-        state_.cli_op(json_op(
-          state_.stateful_op(workers::op_host_get_worker_closed),
-        )),
-      );
-      i.register_op(
-        "host_post_message",
-        state_
-          .cli_op(json_op(state_.stateful_op(workers::op_host_post_message))),
-      );
-      i.register_op(
-        "host_get_message",
-        state_
-          .cli_op(json_op(state_.stateful_op(workers::op_host_get_message))),
-      );
-      // TODO: make sure these two ops are only accessible to appropriate Worker
-      i.register_op(
-        "worker_post_message",
-        state_
-          .cli_op(json_op(state_.stateful_op(workers::op_worker_post_message))),
-      );
-      i.register_op(
-        "worker_get_message",
-        state_
-          .cli_op(json_op(state_.stateful_op(workers::op_worker_get_message))),
-      );
-      i.register_op(
-        "run",
-        state_.cli_op(json_op(state_.stateful_op(process::op_run))),
-      );
-      i.register_op(
-        "run_status",
-        state_.cli_op(json_op(state_.stateful_op(process::op_run_status))),
-      );
-      i.register_op(
-        "kill",
-        state_.cli_op(json_op(state_.stateful_op(process::op_kill))),
-      );
-      i.register_op(
-        "chdir",
-        state_.cli_op(json_op(state_.stateful_op(fs::op_chdir))),
-      );
-      i.register_op(
-        "mkdir",
-        state_.cli_op(json_op(state_.stateful_op(fs::op_mkdir))),
-      );
-      i.register_op(
-        "chmod",
-        state_.cli_op(json_op(state_.stateful_op(fs::op_chmod))),
-      );
-      i.register_op(
-        "chown",
-        state_.cli_op(json_op(state_.stateful_op(fs::op_chown))),
-      );
-      i.register_op(
-        "remove",
-        state_.cli_op(json_op(state_.stateful_op(fs::op_remove))),
-      );
-      i.register_op(
-        "copy_file",
-        state_.cli_op(json_op(state_.stateful_op(fs::op_copy_file))),
-      );
-      i.register_op(
-        "stat",
-        state_.cli_op(json_op(state_.stateful_op(fs::op_stat))),
-      );
-      i.register_op(
-        "read_dir",
-        state_.cli_op(json_op(state_.stateful_op(fs::op_read_dir))),
-      );
-      i.register_op(
-        "rename",
-        state_.cli_op(json_op(state_.stateful_op(fs::op_rename))),
-      );
-      i.register_op(
-        "link",
-        state_.cli_op(json_op(state_.stateful_op(fs::op_link))),
-      );
-      i.register_op(
-        "symlink",
-        state_.cli_op(json_op(state_.stateful_op(fs::op_symlink))),
-      );
-      i.register_op(
-        "read_link",
-        state_.cli_op(json_op(state_.stateful_op(fs::op_read_link))),
-      );
-      i.register_op(
-        "truncate",
-        state_.cli_op(json_op(state_.stateful_op(fs::op_truncate))),
-      );
-      i.register_op(
-        "make_temp_dir",
-        state_.cli_op(json_op(state_.stateful_op(fs::op_make_temp_dir))),
-      );
-      i.register_op(
-        "cwd",
-        state_.cli_op(json_op(state_.stateful_op(fs::op_cwd))),
-      );
-      i.register_op(
-        "fetch_asset",
-        state_.cli_op(json_op(state_.stateful_op(compiler::op_fetch_asset))),
-      );
-      i.register_op(
-        "hostname",
-        state_.cli_op(json_op(state_.stateful_op(os::op_hostname))),
-      );
+      ops::compiler::init(&mut i, &state);
+      ops::errors::init(&mut i, &state);
+      ops::fetch::init(&mut i, &state);
+      ops::files::init(&mut i, &state);
+      ops::fs::init(&mut i, &state);
+      ops::io::init(&mut i, &state);
+      ops::net::init(&mut i, &state);
+      ops::tls::init(&mut i, &state);
+      ops::os::init(&mut i, &state);
+      ops::permissions::init(&mut i, &state);
+      ops::process::init(&mut i, &state);
+      ops::random::init(&mut i, &state);
+      ops::repl::init(&mut i, &state);
+      ops::resources::init(&mut i, &state);
+      ops::timers::init(&mut i, &state);
+      ops::workers::init(&mut i, &state);
 
       let state_ = state.clone();
       i.set_dyn_import(move |id, specifier, referrer| {
@@ -325,15 +91,20 @@ impl Worker {
   pub fn execute_mod_async(
     &mut self,
     module_specifier: &ModuleSpecifier,
+    maybe_code: Option<String>,
     is_prefetch: bool,
   ) -> impl Future<Item = (), Error = ErrBox> {
     let worker = self.clone();
     let loader = self.state.clone();
     let isolate = self.isolate.clone();
     let modules = self.state.modules.clone();
-    let recursive_load =
-      RecursiveLoad::main(&module_specifier.to_string(), loader, modules)
-        .get_future(isolate);
+    let recursive_load = RecursiveLoad::main(
+      &module_specifier.to_string(),
+      maybe_code,
+      loader,
+      modules,
+    )
+    .get_future(isolate);
     recursive_load.and_then(move |id| -> Result<(), ErrBox> {
       worker.state.progress.done();
       if is_prefetch {
@@ -390,7 +161,7 @@ mod tests {
       let mut worker =
         Worker::new("TEST".to_string(), StartupData::None, state);
       worker
-        .execute_mod_async(&module_specifier, false)
+        .execute_mod_async(&module_specifier, None, false)
         .then(|result| {
           if let Err(err) = result {
             eprintln!("execute_mod err {:?}", err);
@@ -427,7 +198,7 @@ mod tests {
       let mut worker =
         Worker::new("TEST".to_string(), StartupData::None, state);
       worker
-        .execute_mod_async(&module_specifier, false)
+        .execute_mod_async(&module_specifier, None, false)
         .then(|result| {
           if let Err(err) = result {
             eprintln!("execute_mod err {:?}", err);
@@ -467,7 +238,7 @@ mod tests {
       );
       worker.execute("denoMain()").unwrap();
       worker
-        .execute_mod_async(&module_specifier, false)
+        .execute_mod_async(&module_specifier, None, false)
         .then(|result| {
           if let Err(err) = result {
             eprintln!("execute_mod err {:?}", err);
@@ -497,7 +268,7 @@ mod tests {
 
   #[test]
   fn test_worker_messages() {
-    tokio_util::init(|| {
+    tokio_util::run_in_task(|| {
       let mut worker = create_test_worker();
       let source = r#"
         onmessage = function(e) {
@@ -548,7 +319,7 @@ mod tests {
 
   #[test]
   fn removed_from_resource_table_on_close() {
-    tokio_util::init(|| {
+    tokio_util::run_in_task(|| {
       let mut worker = create_test_worker();
       worker
         .execute("onmessage = () => { delete window.onmessage; }")
@@ -583,19 +354,21 @@ mod tests {
 
   #[test]
   fn execute_mod_resolve_error() {
-    tokio_util::init(|| {
+    tokio_util::run_in_task(|| {
       // "foo" is not a valid module specifier so this should return an error.
       let mut worker = create_test_worker();
       let module_specifier =
         ModuleSpecifier::resolve_url_or_path("does-not-exist").unwrap();
-      let result = worker.execute_mod_async(&module_specifier, false).wait();
+      let result = worker
+        .execute_mod_async(&module_specifier, None, false)
+        .wait();
       assert!(result.is_err());
     })
   }
 
   #[test]
   fn execute_mod_002_hello() {
-    tokio_util::init(|| {
+    tokio_util::run_in_task(|| {
       // This assumes cwd is project root (an assumption made throughout the
       // tests).
       let mut worker = create_test_worker();
@@ -606,7 +379,9 @@ mod tests {
         .to_owned();
       let module_specifier =
         ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
-      let result = worker.execute_mod_async(&module_specifier, false).wait();
+      let result = worker
+        .execute_mod_async(&module_specifier, None, false)
+        .wait();
       assert!(result.is_ok());
     })
   }

@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
+use crate::ops::json_op;
 use crate::resources;
 use crate::signal::kill;
 use crate::state::ThreadSafeState;
@@ -13,6 +14,15 @@ use tokio_process::CommandExt;
 
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
+
+pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+  i.register_op("run", s.core_op(json_op(s.stateful_op(op_run))));
+  i.register_op(
+    "run_status",
+    s.core_op(json_op(s.stateful_op(op_run_status))),
+  );
+  i.register_op("kill", s.core_op(json_op(s.stateful_op(op_kill))));
+}
 
 fn subprocess_stdio_map(s: &str) -> std::process::Stdio {
   match s {
@@ -37,7 +47,7 @@ struct RunArgs {
   stderr_rid: u32,
 }
 
-pub fn op_run(
+fn op_run(
   state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
@@ -103,7 +113,7 @@ struct RunStatusArgs {
   rid: i32,
 }
 
-pub fn op_run_status(
+fn op_run_status(
   state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
@@ -144,7 +154,7 @@ struct KillArgs {
   signo: i32,
 }
 
-pub fn op_kill(
+fn op_kill(
   state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,

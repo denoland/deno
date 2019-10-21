@@ -70,6 +70,7 @@ pub struct SourceFileFetcher {
   deps_cache: DiskCache,
   progress: Progress,
   source_file_cache: SourceFileCache,
+  cache_blacklist: Vec<String>,
   use_disk_cache: bool,
   no_remote_fetch: bool,
 }
@@ -79,12 +80,14 @@ impl SourceFileFetcher {
     deps_cache: DiskCache,
     progress: Progress,
     use_disk_cache: bool,
+    cache_blacklist: Vec<String>,
     no_remote_fetch: bool,
   ) -> std::io::Result<Self> {
     let file_fetcher = Self {
       deps_cache,
       progress,
       source_file_cache: SourceFileCache::default(),
+      cache_blacklist,
       use_disk_cache,
       no_remote_fetch,
     };
@@ -308,8 +311,10 @@ impl SourceFileFetcher {
       return Box::new(futures::future::err(too_many_redirects()));
     }
 
+    let is_blacklisted =
+      check_cache_blacklist(module_url, self.cache_blacklist.as_ref());
     // First try local cache
-    if use_disk_cache {
+    if use_disk_cache && !is_blacklisted {
       match self.fetch_cached_remote_source(&module_url) {
         Ok(Some(source_file)) => {
           return Box::new(futures::future::ok(source_file));
@@ -505,12 +510,16 @@ fn map_content_type(path: &Path, content_type: Option<&str>) -> msg::MediaType {
         | "text/typescript"
         | "video/vnd.dlna.mpeg-tts"
         | "video/mp2t"
-        | "application/x-typescript" => msg::MediaType::TypeScript,
+        | "application/x-typescript" => {
+          map_js_like_extension(path, msg::MediaType::TypeScript)
+        }
         "application/javascript"
         | "text/javascript"
         | "application/ecmascript"
         | "text/ecmascript"
-        | "application/x-javascript" => msg::MediaType::JavaScript,
+        | "application/x-javascript" => {
+          map_js_like_extension(path, msg::MediaType::JavaScript)
+        }
         "application/json" | "text/json" => msg::MediaType::Json,
         "text/plain" => map_file_extension(path),
         _ => {
@@ -523,6 +532,21 @@ fn map_content_type(path: &Path, content_type: Option<&str>) -> msg::MediaType {
   }
 }
 
+fn map_js_like_extension(
+  path: &Path,
+  default: msg::MediaType,
+) -> msg::MediaType {
+  match path.extension() {
+    None => default,
+    Some(os_str) => match os_str.to_str() {
+      None => default,
+      Some("jsx") => msg::MediaType::JSX,
+      Some("tsx") => msg::MediaType::TSX,
+      Some(_) => default,
+    },
+  }
+}
+
 fn filter_shebang(bytes: Vec<u8>) -> Vec<u8> {
   let string = str::from_utf8(&bytes).unwrap();
   if let Some(i) = string.find('\n') {
@@ -531,6 +555,26 @@ fn filter_shebang(bytes: Vec<u8>) -> Vec<u8> {
   } else {
     Vec::new()
   }
+}
+
+fn check_cache_blacklist(url: &Url, black_list: &[String]) -> bool {
+  let mut url_without_fragmets = url.clone();
+  url_without_fragmets.set_fragment(None);
+  if black_list.contains(&String::from(url_without_fragmets.as_str())) {
+    return true;
+  }
+  let mut url_without_query_strings = url_without_fragmets;
+  url_without_query_strings.set_query(None);
+  let mut path_buf = PathBuf::from(url_without_query_strings.as_str());
+  loop {
+    if black_list.contains(&String::from(path_buf.to_str().unwrap())) {
+      return true;
+    }
+    if !path_buf.pop() {
+      break;
+    }
+  }
+  false
 }
 
 #[derive(Debug, Default)]
@@ -617,6 +661,7 @@ mod tests {
       DiskCache::new(&dir_path.to_path_buf().join("deps")),
       Progress::new(),
       true,
+      vec![],
       false,
     )
     .expect("setup fail")
@@ -636,6 +681,65 @@ mod tests {
         concat!("file://", $path)
       }
     };
+  }
+
+  #[test]
+  fn test_cache_blacklist() {
+    let args = crate::flags::resolve_urls(vec![
+      String::from("http://deno.land/std"),
+      String::from("http://github.com/example/mod.ts"),
+      String::from("http://fragment.com/mod.ts#fragment"),
+      String::from("http://query.com/mod.ts?foo=bar"),
+      String::from("http://queryandfragment.com/mod.ts?foo=bar#fragment"),
+    ]);
+
+    let u: Url = "http://deno.land/std/fs/mod.ts".parse().unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), true);
+
+    let u: Url = "http://github.com/example/file.ts".parse().unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), false);
+
+    let u: Url = "http://github.com/example/mod.ts".parse().unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), true);
+
+    let u: Url = "http://github.com/example/mod.ts?foo=bar".parse().unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), true);
+
+    let u: Url = "http://github.com/example/mod.ts#fragment".parse().unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), true);
+
+    let u: Url = "http://fragment.com/mod.ts".parse().unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), true);
+
+    let u: Url = "http://query.com/mod.ts".parse().unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), false);
+
+    let u: Url = "http://fragment.com/mod.ts#fragment".parse().unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), true);
+
+    let u: Url = "http://query.com/mod.ts?foo=bar".parse().unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), true);
+
+    let u: Url = "http://queryandfragment.com/mod.ts".parse().unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), false);
+
+    let u: Url = "http://queryandfragment.com/mod.ts?foo=bar"
+      .parse()
+      .unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), true);
+
+    let u: Url = "http://queryandfragment.com/mod.ts#fragment"
+      .parse()
+      .unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), false);
+
+    let u: Url = "http://query.com/mod.ts?foo=bar#fragment".parse().unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), true);
+
+    let u: Url = "http://fragment.com/mod.ts?foo=bar#fragment"
+      .parse()
+      .unwrap();
+    assert_eq!(check_cache_blacklist(&u, &args), true);
   }
 
   #[test]
@@ -1410,7 +1514,7 @@ mod tests {
   }
 
   #[test]
-  fn test_map_content_type() {
+  fn test_map_content_type_extension_only() {
     // Extension only
     assert_eq!(
       map_content_type(Path::new("foo/bar.ts"), None),
@@ -1429,6 +1533,10 @@ mod tests {
       msg::MediaType::JavaScript
     );
     assert_eq!(
+      map_content_type(Path::new("foo/bar.txt"), None),
+      msg::MediaType::Unknown
+    );
+    assert_eq!(
       map_content_type(Path::new("foo/bar.jsx"), None),
       msg::MediaType::JSX
     );
@@ -1437,14 +1545,13 @@ mod tests {
       msg::MediaType::Json
     );
     assert_eq!(
-      map_content_type(Path::new("foo/bar.txt"), None),
-      msg::MediaType::Unknown
-    );
-    assert_eq!(
       map_content_type(Path::new("foo/bar"), None),
       msg::MediaType::Unknown
     );
+  }
 
+  #[test]
+  fn test_map_content_type_media_type_with_no_extension() {
     // Media Type
     assert_eq!(
       map_content_type(Path::new("foo/bar"), Some("application/typescript")),
@@ -1494,6 +1601,10 @@ mod tests {
       map_content_type(Path::new("foo/bar"), Some("text/json")),
       msg::MediaType::Json
     );
+  }
+
+  #[test]
+  fn test_map_file_extension_media_type_with_extension() {
     assert_eq!(
       map_content_type(Path::new("foo/bar.ts"), Some("text/plain")),
       msg::MediaType::TypeScript
@@ -1501,6 +1612,70 @@ mod tests {
     assert_eq!(
       map_content_type(Path::new("foo/bar.ts"), Some("foo/bar")),
       msg::MediaType::Unknown
+    );
+    assert_eq!(
+      map_content_type(
+        Path::new("foo/bar.tsx"),
+        Some("application/typescript")
+      ),
+      msg::MediaType::TSX
+    );
+    assert_eq!(
+      map_content_type(
+        Path::new("foo/bar.tsx"),
+        Some("application/javascript")
+      ),
+      msg::MediaType::TSX
+    );
+    assert_eq!(
+      map_content_type(
+        Path::new("foo/bar.tsx"),
+        Some("application/x-typescript")
+      ),
+      msg::MediaType::TSX
+    );
+    assert_eq!(
+      map_content_type(
+        Path::new("foo/bar.tsx"),
+        Some("video/vnd.dlna.mpeg-tts")
+      ),
+      msg::MediaType::TSX
+    );
+    assert_eq!(
+      map_content_type(Path::new("foo/bar.tsx"), Some("video/mp2t")),
+      msg::MediaType::TSX
+    );
+    assert_eq!(
+      map_content_type(
+        Path::new("foo/bar.jsx"),
+        Some("application/javascript")
+      ),
+      msg::MediaType::JSX
+    );
+    assert_eq!(
+      map_content_type(
+        Path::new("foo/bar.jsx"),
+        Some("application/x-typescript")
+      ),
+      msg::MediaType::JSX
+    );
+    assert_eq!(
+      map_content_type(
+        Path::new("foo/bar.jsx"),
+        Some("application/ecmascript")
+      ),
+      msg::MediaType::JSX
+    );
+    assert_eq!(
+      map_content_type(Path::new("foo/bar.jsx"), Some("text/ecmascript")),
+      msg::MediaType::JSX
+    );
+    assert_eq!(
+      map_content_type(
+        Path::new("foo/bar.jsx"),
+        Some("application/x-javascript")
+      ),
+      msg::MediaType::JSX
     );
   }
 

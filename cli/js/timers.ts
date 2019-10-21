@@ -44,16 +44,19 @@ function clearGlobalTimeout(): void {
   sendSync(dispatch.OP_GLOBAL_TIMER_STOP);
 }
 
+let pendingEvents = 0;
+
 async function setGlobalTimeout(due: number, now: number): Promise<void> {
   // Since JS and Rust don't use the same clock, pass the time to rust as a
   // relative time value. On the Rust side we'll turn that into an absolute
   // value again.
   const timeout = due - now;
   assert(timeout >= 0);
-
   // Send message to the backend.
   globalTimeoutDue = due;
+  pendingEvents++;
   await sendAsync(dispatch.OP_GLOBAL_TIMER, { timeout });
+  pendingEvents--;
   // eslint-disable-next-line @typescript-eslint/no-use-before-define
   fireTimers();
 }
@@ -139,7 +142,7 @@ function fire(timer: Timer): void {
 function fireTimers(): void {
   const now = getTime();
   // Bail out if we're not expecting the global timer to fire.
-  if (globalTimeoutDue === null) {
+  if (globalTimeoutDue === null || pendingEvents > 0) {
     return;
   }
   // After firing the timers that are due now, this will hold the due time of

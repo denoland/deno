@@ -1,10 +1,9 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { join } from "../fs/path.ts";
-import { EOL } from "../fs/path/constants.ts";
 import { assertEquals } from "../testing/asserts.ts";
 import { test, runIfMain } from "../testing/mod.ts";
-import { xrun } from "./util.ts";
 import { copy, emptyDir } from "../fs/mod.ts";
+import { EOL, join } from "../path/mod.ts";
+import { xrun } from "./util.ts";
 const { readAll, execPath } = Deno;
 
 const decoder = new TextDecoder();
@@ -26,8 +25,9 @@ const cmd = [
   "--allow-run",
   "--allow-write",
   "--allow-read",
-  "prettier/main.ts"
+  "./prettier/main.ts"
 ];
+
 const testdata = join("prettier", "testdata");
 
 function normalizeOutput(output: string): string {
@@ -51,7 +51,9 @@ test(async function testPrettierCheckAndFormatFiles(): Promise<void> {
   const files = [
     join(tempDir, "0.ts"),
     join(tempDir, "1.js"),
-    join(tempDir, "2.ts")
+    join(tempDir, "2.ts"),
+    join(tempDir, "3.jsx"),
+    join(tempDir, "4.tsx")
   ];
 
   let p = await run([...cmd, "--check", ...files]);
@@ -63,7 +65,10 @@ test(async function testPrettierCheckAndFormatFiles(): Promise<void> {
   assertEquals(
     normalizeOutput(p.stdout),
     normalizeOutput(`Formatting ${tempDir}/0.ts
-Formatting ${tempDir}/1.js`)
+Formatting ${tempDir}/1.js
+Formatting ${tempDir}/3.jsx
+Formatting ${tempDir}/4.tsx
+`)
   );
 
   p = await run([...cmd, "--check", ...files]);

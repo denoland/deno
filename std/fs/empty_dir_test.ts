@@ -5,8 +5,8 @@ import {
   assertThrows,
   assertThrowsAsync
 } from "../testing/asserts.ts";
+import * as path from "../path/mod.ts";
 import { emptyDir, emptyDirSync } from "./empty_dir.ts";
-import * as path from "./path/mod.ts";
 
 const testdataDir = path.resolve("fs", "testdata");
 

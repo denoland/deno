@@ -104,9 +104,8 @@ impl Deref for ThreadSafeState {
 }
 
 impl ThreadSafeState {
-  // TODO: better name welcome
   /// Wrap core `OpDispatcher` to collect metrics.
-  pub fn cli_op<D>(
+  pub fn core_op<D>(
     &self,
     dispatcher: D,
   ) -> impl Fn(&[u8], Option<PinnedBuf>) -> CoreOp
@@ -226,6 +225,7 @@ impl ThreadSafeState {
       dir.deps_cache.clone(),
       progress.clone(),
       !flags.reload,
+      flags.cache_blacklist.clone(),
       flags.no_fetch,
     )?;
 

@@ -1,7 +1,7 @@
 import { test } from "../testing/mod.ts";
 import { assert } from "../testing/asserts.ts";
+import * as path from "../path/mod.ts";
 import { readFileStrSync, readFileStr } from "./read_file_str.ts";
-import * as path from "./path/mod.ts";
 
 const testdataDir = path.resolve("fs", "testdata");
 

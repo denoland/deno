@@ -289,3 +289,15 @@ test(function testFunctionParamsLength(): void {
 test(function clearTimeoutAndClearIntervalNotBeEquals(): void {
   assertNotEquals(clearTimeout, clearInterval);
 });
+
+test(async function timerMaxCpuBug(): Promise<void> {
+  // There was a bug where clearing a timeout would cause Deno to use 100% CPU.
+  clearTimeout(setTimeout(() => {}, 1000));
+  // We can check this by counting how many ops have triggered in the interim.
+  // Certainly less than 10 ops should have been dispatched in next 100 ms.
+  const { opsDispatched } = Deno.metrics();
+  await waitForMs(100);
+  const opsDispatched_ = Deno.metrics().opsDispatched;
+  console.log("opsDispatched", opsDispatched, "opsDispatched_", opsDispatched_);
+  assert(opsDispatched_ - opsDispatched < 10);
+});

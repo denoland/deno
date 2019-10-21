@@ -11,8 +11,8 @@
 import { test, runIfMain } from "../testing/mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
 
+import { resolve } from "../path/mod.ts";
 import { Tar, Untar } from "./tar.ts";
-import { resolve } from "../fs/path/mod.ts";
 
 const filePath = resolve("archive", "testdata", "example.txt");
 

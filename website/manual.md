@@ -26,8 +26,9 @@ standard browser-compatible protocol for loading modules: URLs.
 Deno provides security guarantees about how programs can access your system with
 the default being the most restrictive secure sandbox.
 
-Deno provides <a href="https://github.com/denoland/deno_std">a set of reviewed
-(audited) standard modules</a> that are guaranteed to work with Deno.
+Deno provides <a href="https://github.com/denoland/deno/tree/master/std">a set
+of reviewed (audited) standard modules</a> that are guaranteed to work with
+Deno.
 
 ### Goals
 
@@ -71,7 +72,6 @@ Deno provides <a href="https://github.com/denoland/deno_std">a set of reviewed
     - bundling (`deno bundle`)
     - runtime type info (`deno types`)
     - test runner (`deno test`)
-      [not yet](https://github.com/denoland/deno_std/issues/193)
     - command-line debugger (`--debug`)
       [not yet](https://github.com/denoland/deno/issues/1120)
     - linter (`deno lint`) [not yet](https://github.com/denoland/deno/issues/1880)
@@ -381,6 +381,24 @@ And if you ever want to upgrade to the latest published version:
 $ file_server --reload
 ```
 
+### Reload specific modules
+
+Sometimes we want to upgrade only some modules. You can control it by passing an
+argument to a `--reload` flag.
+
+To reload everything
+
+`--reload`
+
+To reload all standard modules
+
+`--reload=https://deno.land/std`
+
+To reload specific modules (in this example - colors and file system utils) use
+a comma to separate URLs
+
+`--reload=https://deno.land/std/fs/utils.ts,https://deno.land/std/fmt/colors.ts`
+
 ### Permissions whitelist
 
 Deno also provides permissions whitelist.
@@ -633,7 +651,7 @@ deno
 A secure runtime for JavaScript and TypeScript built with V8, Rust, and Tokio.
 
 Docs: https://deno.land/manual.html
-Modules: https://github.com/denoland/deno_std
+Modules: https://deno.land/x/
 Bugs: https://github.com/denoland/deno/issues
 
 To run the REPL:
@@ -670,7 +688,7 @@ OPTIONS:
     -L, --log-level <log-level>        Set log level [possible values: debug, info]
         --no-fetch                     Do not download remote modules
         --no-prompt                    Do not use prompts
-    -r, --reload                       Reload source code cache (recompile TypeScript)
+    -r, --reload=<CACHE_BLACKLIST>     Reload source code cache (recompile TypeScript)
         --seed <NUMBER>                Seed Math.random()
         --v8-flags=<v8-flags>          Set V8 command line options
         --v8-options                   Print V8 command line options
@@ -991,7 +1009,7 @@ defined in `imported.ts`.
 |                        Syscalls | Ops                              |
 |           File descriptors (fd) | [Resource ids (rid)](#resources) |
 |                       Scheduler | Tokio                            |
-| Userland: libc++ / glib / boost | deno_std                         |
+| Userland: libc++ / glib / boost | https://deno.land/std/           |
 |                 /proc/\$\$/stat | [Deno.metrics()](#metrics)       |
 |                       man pages | deno types                       |
 
