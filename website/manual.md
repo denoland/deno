@@ -50,16 +50,17 @@ have been historically written with bash or python.
 
 ### Goals
 
-1. Only ship a single executable (`deno`).
-2. Provide Secure Defaults
-   - Unless specifically allowed, scripts can't access files, the environment,
-     or the network.
-3. Browser compatible: The subset of Deno programs which are written completely
-   in JavaScript and do not use the global `Deno` namespace (or feature test for
-   it), ought to also be able to be run in a modern web browser without change.
-4. Be able to serve HTTP efficiently
-5. Provide a great developer experience include built-in tooling.
-6. Does not leak browser or V8 concepts into user land.
+- Only ship a single executable (`deno`).
+- Provide Secure Defaults
+  - Unless specifically allowed, scripts can't access files, the environment, or
+    the network.
+- Browser compatible: The subset of Deno programs which are written completely
+  in JavaScript and do not use the global `Deno` namespace (or feature test for
+  it), ought to also be able to be run in a modern web browser without change.
+- Provide built-in tooling like unit testing, code formatting, and linting to
+  improve developer experience.
+- Does not leak V8 concepts into user land.
+- Be able to serve HTTP efficiently
 
 ### Comparison to Node.js
 
