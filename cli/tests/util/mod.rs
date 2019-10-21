@@ -19,6 +19,7 @@ pub fn deno_cmd() -> Command {
   c
 }
 
+#[allow(dead_code)] // tty_tests use this but are disabled.
 pub fn run_python_script(script: &str) {
   let output = Command::new("python")
     .env("DENO_DIR", DENO_DIR.path())
