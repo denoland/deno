@@ -66,17 +66,15 @@ have been historically written with bash or python.
 
 - Deno does not use `npm`
   - It uses modules referenced as URLs or file paths
-- Deno does not use a `package.json`
-  - This is a non-goal. There are effective patterns [citation needed] for
-    managing dependencies.
-- Deno provides different APIs than node.
+- Deno does not use `package.json` in its module resolution algorithm.
+- All async actions in Deno return a promise. Thus Deno provides different APIs
+  than Node.
 - Deno requires explicit permissions for file, network, and environment access.
-  - Node is less secure out of the box.
 - Deno always dies on uncaught errors.
-- Uses "ES Modules" and does not support `require()`. Like the browser, allows
-  imports from URLs:
+- Uses "ES Modules" and does not support `require()`. Third party modules are
+  imported via URLs:
 
-```ts
+```javascript
 import * as log from "https://deno.land/std/log/mod.ts";
 ```
 
