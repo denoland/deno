@@ -18,7 +18,95 @@ test(async function dialTLSNoPerm(): Promise<void> {
   assertEquals(err.name, "PermissionDenied");
 });
 
-testPerm({ net: true }, async function dialAndListenTLS(): Promise<void> {
+testPerm(
+  { read: true, net: true },
+  async function listenTLSNonExistentCertKeyFiles(): Promise<void> {
+    let err;
+    const options = {
+      hostname: "localhost",
+      port: 4500,
+      certFile: "cli/tests/tls/localhost.crt",
+      keyFile: "cli/tests/tls/localhost.key"
+    };
+
+    for (const field of ["certFile", "keyFile"]) {
+      try {
+        Deno.listenTLS({
+          ...options,
+          [field]: "./non/existent/file"
+        });
+      } catch (e) {
+        err = e;
+      }
+      assertEquals(err.kind, Deno.ErrorKind.NotFound);
+      assertEquals(err.name, "NotFound");
+    }
+  }
+);
+
+testPerm(
+  { read: true, write: true, net: true },
+  async function listenTLSEmptyKeyFile(): Promise<void> {
+    let err;
+    const options = {
+      hostname: "localhost",
+      port: 4500,
+      certFile: "cli/tests/tls/localhost.crt",
+      keyFile: "cli/tests/tls/localhost.key"
+    };
+
+    const testDir = Deno.makeTempDirSync();
+    const keyFilename = testDir + "/key.pem";
+    Deno.writeFileSync(keyFilename, new Uint8Array([]), {
+      perm: 0o666
+    });
+
+    try {
+      Deno.listenTLS({
+        ...options,
+        keyFile: keyFilename
+      });
+    } catch (e) {
+      err = e;
+    }
+    assertEquals(err.kind, Deno.ErrorKind.Other);
+    assertEquals(err.name, "Other");
+  }
+);
+
+testPerm(
+  { read: true, write: true, net: true },
+  async function listenTLSEmptyCertFile(): Promise<void> {
+    let err;
+    const options = {
+      hostname: "localhost",
+      port: 4500,
+      certFile: "cli/tests/tls/localhost.crt",
+      keyFile: "cli/tests/tls/localhost.key"
+    };
+
+    const testDir = Deno.makeTempDirSync();
+    const certFilename = testDir + "/cert.crt";
+    Deno.writeFileSync(certFilename, new Uint8Array([]), {
+      perm: 0o666
+    });
+
+    try {
+      Deno.listenTLS({
+        ...options,
+        certFile: certFilename
+      });
+    } catch (e) {
+      err = e;
+    }
+    assertEquals(err.kind, Deno.ErrorKind.Other);
+    assertEquals(err.name, "Other");
+  }
+);
+
+testPerm({ read: true, net: true }, async function dialAndListenTLS(): Promise<
+  void
+> {
   const hostname = "localhost";
   const port = 4500;
 
