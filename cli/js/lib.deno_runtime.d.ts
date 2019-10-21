@@ -1009,7 +1009,7 @@ declare namespace Deno {
    *
    * Examples:
    *
-   *     listen({ port: 443, certFile: "./my_server.crt", keyFile: "./my_server.key" })
+   *     Deno.listenTLS({ port: 443, certFile: "./my_server.crt", keyFile: "./my_server.key" })
    */
   export function listenTLS(options: ListenTLSOptions): Listener;
 

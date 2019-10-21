@@ -47,7 +47,7 @@ export interface ListenTLSOptions {
  *
  * Examples:
  *
- *     listen({ port: 443, certFile: "./my_server.crt", keyFile: "./my_server.key" })
+ *     Deno.listenTLS({ port: 443, certFile: "./my_server.crt", keyFile: "./my_server.key" })
  */
 export function listenTLS(options: ListenTLSOptions): Listener {
   const hostname = options.hostname || "0.0.0.0";
