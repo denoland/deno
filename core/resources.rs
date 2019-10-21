@@ -1,26 +1,25 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
-// Think of Resources as File Descriptors. They are integers that are allocated
-// by the privileged side of Deno to refer to various resources.  The simplest
-// example are standard file system files and stdio - but there will be other
-// resources added in the future that might not correspond to operating system
-// level File Descriptors. To avoid confusion we call them "resources" not "file
-// descriptors". This module implements a global resource table. Ops (AKA
-// handlers) look up resources by their integer id here.
+// Think of Resources as File Descriptors. They are integers that are allocated by
+// the privileged side of Deno to refer to various rust objects that need to be
+// referenced between multiple ops. For example, network sockets are resources.
+// Resources may or may not correspond to a real operating system file
+// descriptor (hence the different name).
 
 use downcast_rs::Downcast;
 use std;
 use std::any::Any;
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::io::Error;
 use std::io::ErrorKind;
 
-/// Also referred to as rid.
+/// ResourceId is Deno's version of a file descriptor. ResourceId is also referred
+/// to as rid in the code base.
 pub type ResourceId = u32;
 
 /// These store Deno's file descriptors. These are not necessarily the operating
 /// system ones.
-type ResourceMap = BTreeMap<ResourceId, Box<dyn Resource>>;
+type ResourceMap = HashMap<ResourceId, Box<dyn Resource>>;
 
 #[derive(Default)]
 pub struct ResourceTable {
@@ -44,6 +43,7 @@ impl ResourceTable {
     Ok(resource)
   }
 
+  // TODO: resource id allocation should probably be randomized for security.
   fn next_rid(&mut self) -> ResourceId {
     let next_rid = self.next_id;
     self.next_id += 1;
