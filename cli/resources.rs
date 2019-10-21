@@ -36,7 +36,9 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio_process;
-use tokio_rustls::client::TlsStream;
+use tokio_rustls::client::TlsStream as ClientTlsStream;
+use tokio_rustls::server::TlsStream as ServerTlsStream;
+use tokio_rustls::TlsAcceptor;
 
 pub type ResourceId = u32; // Sometimes referred to RID.
 
@@ -47,6 +49,7 @@ type ResourceTable = BTreeMap<ResourceId, Repr>;
 #[cfg(not(windows))]
 use std::os::unix::io::FromRawFd;
 
+use futures::future::Either;
 #[cfg(windows)]
 use std::os::windows::io::FromRawHandle;
 
@@ -89,8 +92,14 @@ enum Repr {
   // Currently TcpListener itself does not take care of this issue.
   // See: https://github.com/tokio-rs/tokio/issues/846
   TcpListener(tokio::net::TcpListener, Option<futures::task::Task>),
+  TlsListener(
+    tokio::net::TcpListener,
+    TlsAcceptor,
+    Option<futures::task::Task>,
+  ),
   TcpStream(tokio::net::TcpStream),
-  TlsStream(Box<TlsStream<TcpStream>>),
+  ServerTlsStream(Box<ServerTlsStream<TcpStream>>),
+  ClientTlsStream(Box<ClientTlsStream<TcpStream>>),
   HttpBody(HttpBody),
   Repl(Arc<Mutex<Repl>>),
   // Enum size is bounded by the largest variant.
@@ -135,8 +144,10 @@ fn inspect_repr(repr: &Repr) -> String {
     Repr::Stderr(_) => "stderr",
     Repr::FsFile(_) => "fsFile",
     Repr::TcpListener(_, _) => "tcpListener",
+    Repr::TlsListener(_, _, _) => "tlsListener",
     Repr::TcpStream(_) => "tcpStream",
-    Repr::TlsStream(_) => "tlsStream",
+    Repr::ClientTlsStream(_) => "clientTlsStream",
+    Repr::ServerTlsStream(_) => "serverTlsStream",
     Repr::HttpBody(_) => "httpBody",
     Repr::Repl(_) => "repl",
     Repr::Child(_) => "child",
@@ -168,6 +179,27 @@ impl Resource {
       )),
       Some(repr) => match repr {
         Repr::TcpListener(ref mut s, _) => s.poll_accept(),
+        Repr::TlsListener(ref mut s, _, _) => s.poll_accept(),
+        _ => panic!("Cannot accept"),
+      },
+    }
+  }
+
+  pub fn poll_accept_tls(
+    &mut self,
+    tcp_stream: TcpStream,
+  ) -> impl Future<Item = ServerTlsStream<TcpStream>, Error = Error> {
+    let mut table = RESOURCE_TABLE.lock().unwrap();
+    let maybe_repr = table.get_mut(&self.rid);
+    match maybe_repr {
+      None => Either::A(futures::future::err(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        "Listener has been closed",
+      ))),
+      Some(repr) => match repr {
+        Repr::TlsListener(_, ref mut acceptor, _) => {
+          Either::B(acceptor.accept(tcp_stream))
+        }
         _ => panic!("Cannot accept"),
       },
     }
@@ -252,7 +284,8 @@ impl DenoAsyncRead for Resource {
       Repr::FsFile(ref mut f) => f.poll_read(buf),
       Repr::Stdin(ref mut f) => f.poll_read(buf),
       Repr::TcpStream(ref mut f) => f.poll_read(buf),
-      Repr::TlsStream(ref mut f) => f.poll_read(buf),
+      Repr::ClientTlsStream(ref mut f) => f.poll_read(buf),
+      Repr::ServerTlsStream(ref mut f) => f.poll_read(buf),
       Repr::HttpBody(ref mut f) => f.poll_read(buf),
       Repr::ChildStdout(ref mut f) => f.poll_read(buf),
       Repr::ChildStderr(ref mut f) => f.poll_read(buf),
@@ -293,7 +326,8 @@ impl DenoAsyncWrite for Resource {
       Repr::Stdout(ref mut f) => f.poll_write(buf),
       Repr::Stderr(ref mut f) => f.poll_write(buf),
       Repr::TcpStream(ref mut f) => f.poll_write(buf),
-      Repr::TlsStream(ref mut f) => f.poll_write(buf),
+      Repr::ClientTlsStream(ref mut f) => f.poll_write(buf),
+      Repr::ServerTlsStream(ref mut f) => f.poll_write(buf),
       Repr::ChildStdin(ref mut f) => f.poll_write(buf),
       _ => {
         return Err(bad_resource());
@@ -329,6 +363,17 @@ pub fn add_tcp_listener(listener: tokio::net::TcpListener) -> Resource {
   Resource { rid }
 }
 
+pub fn add_tls_listener(
+  listener: tokio::net::TcpListener,
+  acceptor: TlsAcceptor,
+) -> Resource {
+  let rid = new_rid();
+  let mut tg = RESOURCE_TABLE.lock().unwrap();
+  let r = tg.insert(rid, Repr::TlsListener(listener, acceptor, None));
+  assert!(r.is_none());
+  Resource { rid }
+}
+
 pub fn add_tcp_stream(stream: tokio::net::TcpStream) -> Resource {
   let rid = new_rid();
   let mut tg = RESOURCE_TABLE.lock().unwrap();
@@ -337,10 +382,18 @@ pub fn add_tcp_stream(stream: tokio::net::TcpStream) -> Resource {
   Resource { rid }
 }
 
-pub fn add_tls_stream(stream: TlsStream<TcpStream>) -> Resource {
+pub fn add_tls_stream(stream: ClientTlsStream<TcpStream>) -> Resource {
   let rid = new_rid();
   let mut tg = RESOURCE_TABLE.lock().unwrap();
-  let r = tg.insert(rid, Repr::TlsStream(Box::new(stream)));
+  let r = tg.insert(rid, Repr::ClientTlsStream(Box::new(stream)));
+  assert!(r.is_none());
+  Resource { rid }
+}
+
+pub fn add_server_tls_stream(stream: ServerTlsStream<TcpStream>) -> Resource {
+  let rid = new_rid();
+  let mut tg = RESOURCE_TABLE.lock().unwrap();
+  let r = tg.insert(rid, Repr::ServerTlsStream(Box::new(stream)));
   assert!(r.is_none());
   Resource { rid }
 }

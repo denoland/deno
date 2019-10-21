@@ -26,9 +26,11 @@ export let OP_METRICS: number;
 export let OP_REPL_START: number;
 export let OP_REPL_READLINE: number;
 export let OP_ACCEPT: number;
+export let OP_ACCEPT_TLS: number;
 export let OP_DIAL: number;
 export let OP_SHUTDOWN: number;
 export let OP_LISTEN: number;
+export let OP_LISTEN_TLS: number;
 export let OP_RESOURCES: number;
 export let OP_GET_RANDOM_VALUES: number;
 export let OP_GLOBAL_TIMER_STOP: number;
@@ -81,6 +83,7 @@ export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
     case OP_REPL_START:
     case OP_REPL_READLINE:
     case OP_ACCEPT:
+    case OP_ACCEPT_TLS:
     case OP_DIAL:
     case OP_GLOBAL_TIMER:
     case OP_HOST_GET_WORKER_CLOSED:

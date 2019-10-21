@@ -990,6 +990,29 @@ declare namespace Deno {
    */
   export function listen(options: ListenOptions): Listener;
 
+  export interface ListenTLSOptions {
+    port: number;
+    hostname?: string;
+    transport?: Transport;
+    certFile: string;
+    keyFile: string;
+  }
+
+  /** Listen announces on the local transport address over TLS (transport layer security).
+   *
+   * @param options
+   * @param options.port The port to connect to. (Required.)
+   * @param options.hostname A literal IP address or host name that can be
+   *   resolved to an IP address. If not specified, defaults to 0.0.0.0
+   * @param options.certFile Server certificate file
+   * @param options.keyFile Server public key file
+   *
+   * Examples:
+   *
+   *     Deno.listenTLS({ port: 443, certFile: "./my_server.crt", keyFile: "./my_server.key" })
+   */
+  export function listenTLS(options: ListenTLSOptions): Listener;
+
   export interface DialOptions {
     port: number;
     hostname?: string;
@@ -1018,6 +1041,7 @@ declare namespace Deno {
   export interface DialTLSOptions {
     port: number;
     hostname?: string;
+    certFile?: string;
   }
 
   /**

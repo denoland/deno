@@ -78,7 +78,7 @@ export class ConnImpl implements Conn {
   }
 }
 
-class ListenerImpl implements Listener {
+export class ListenerImpl implements Listener {
   constructor(
     readonly rid: number,
     private transport: Transport,

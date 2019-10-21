@@ -99,6 +99,7 @@ pub fn accept(r: Resource) -> Accept {
 pub struct Accept {
   state: AcceptState,
 }
+
 impl Future for Accept {
   type Item = (TcpStream, SocketAddr);
   type Error = io::Error;
