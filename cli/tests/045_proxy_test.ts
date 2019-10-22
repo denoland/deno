@@ -38,7 +38,12 @@ async function testFetch(): Promise<void> {
 
 async function testModuleDownload(): Promise<void> {
   const http = Deno.run({
-    args: [Deno.execPath(), "--reload", "fetch", "http://deno.land/welcome.ts"],
+    args: [
+      Deno.execPath(),
+      "--reload",
+      "fetch",
+      "http://localhost:4545/std/examples/colors.ts"
+    ],
     stdout: "piped",
     env: {
       HTTP_PROXY: `http://${addr}`
