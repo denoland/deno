@@ -1,28 +1,38 @@
-function r32() {
-  return Math.floor(Math.random() * 0xffffffff);
-}
+const mixed = new TextEncoder().encode("@Ā๐😀");
 
-function generateRandomUTF8(size) {
-  const utf8 = new Uint8Array(size);
-  for (let i = 0; i < size; i++) {
-    const r = r32();
-    const len = 1 + (r & 0x3);
-    switch (len) {
+function generateRandom(bytes) {
+  const result = new Uint8Array(bytes);
+  let i = 0;
+  while (i < bytes) {
+    const toAdd = Math.floor(Math.random() * Math.min(4, bytes - i));
+    switch (toAdd) {
       case 0:
-        utf8[i] = r % 128;
+        result[i] = mixed[0];
+        i++;
         break;
       case 1:
-        utf8[i] = 128 + (r % (2048 - 128));
+        result[i] = mixed[1];
+        result[i + 1] = mixed[2];
+        i += 2;
         break;
       case 2:
-        utf8[i] = 2048 + (r % (65536 - 2048));
+        result[i] = mixed[3];
+        result[i + 1] = mixed[4];
+        result[i + 2] = mixed[5];
+        i += 3;
         break;
       case 3:
-        utf8[i] = 65536 + (r % (131072 - 65536));
+        result[i] = mixed[6];
+        result[i + 1] = mixed[7];
+        result[i + 2] = mixed[8];
+        result[i + 3] = mixed[9];
+        i += 4;
         break;
     }
   }
-  return utf8;
+  return result;
 }
 
-new TextDecoder().decode(generateRandomUTF8(20 * 1024 * 1024));
+const randomData = generateRandom(1024);
+const decoder = new TextDecoder();
+for (var i = 0; i < 10_000; i++) decoder.decode(randomData);
