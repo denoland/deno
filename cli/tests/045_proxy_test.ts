@@ -49,7 +49,7 @@ async function testModuleDownload(): Promise<void> {
       "--no-prompt",
       "--reload",
       "fetch",
-      "http://deno.land/welcome.ts"
+      "http://localhost:4545/std/examples/colors.ts"
     ],
     stdout: "piped",
     env: {
