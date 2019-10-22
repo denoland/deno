@@ -236,10 +236,11 @@ listenAndServe(
   addr,
   async (req): Promise<void> => {
     const normalizedUrl = posix.normalize(req.url);
-    const fsPath = posix.join(target, normalizedUrl);
+    const decodedUrl = decodeURIComponent(normalizedUrl);
+
+    const fsPath = posix.join(target, decodedUrl);
 
     let response: Response;
-
     try {
       const info = await stat(fsPath);
       if (info.isDirectory()) {

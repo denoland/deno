@@ -83,3 +83,17 @@ test(async function serveFallback(): Promise<void> {
     killFileServer();
   }
 });
+
+test(async function serveFallback(): Promise<void> {
+  await startFileServer();
+  try {
+    const res = await fetch(
+      "http://localhost:4500/std/http/testdata/test%20file.txt"
+    );
+    assert(res.headers.has("access-control-allow-origin"));
+    assert(res.headers.has("access-control-allow-headers"));
+    assertEquals(res.status, 200);
+  } finally {
+    killFileServer();
+  }
+});
