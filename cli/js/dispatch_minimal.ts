@@ -27,21 +27,32 @@ export interface RecordMinimal {
   };
 }
 
+export function readInt32LittleEndian(
+  buffer: Uint8Array,
+  offset: number
+): number {
+  return (
+    (buffer[offset + 3] << 24) |
+    (buffer[offset + 2] << 16) |
+    (buffer[offset + 1] << 8) |
+    buffer[offset]
+  );
+}
+
 export function recordFromBufMinimal(
   opId: number,
   ui8: Uint8Array
 ): RecordMinimal {
-  const buf32 = new Int32Array(ui8.buffer, ui8.byteOffset, ui8.byteLength / 4);
-  const promiseId = buf32[0];
-  const arg = buf32[1];
-  const result = buf32[2];
+  const promiseId = readInt32LittleEndian(ui8, 0);
+  const arg = readInt32LittleEndian(ui8, 4);
+  const result = readInt32LittleEndian(ui8, 8);
   let err;
 
   if (arg < 0) {
-    const kind = buf32[2] as ErrorKind;
+    const kind = result as ErrorKind;
     const message = decoder.decode(ui8.slice(12));
     err = { kind, message };
-  } else if (buf32.length != 3) {
+  } else if (ui8.length != 12) {
     err = { kind: ErrorKind.InvalidData, message: "Bad message" };
   }
 
