@@ -63,21 +63,26 @@ impl OpRegistry {
     op_map_json.as_bytes().to_owned().into_boxed_slice()
   }
 
+  /// This function returns None only if op with given id doesn't exist in registry.
   pub fn call(
     &self,
     op_id: OpId,
     control: &[u8],
     zero_copy_buf: Option<PinnedBuf>,
-  ) -> CoreOp {
+  ) -> Option<CoreOp> {
     // Op with id 0 has special meaning - it's a special op that is always
     // provided to retrieve op id map. The map consists of name to `OpId`
     // mappings.
     if op_id == 0 {
-      return Op::Sync(self.json_map());
+      return Some(Op::Sync(self.json_map()));
     }
 
-    let d = &*self.dispatchers.get(op_id as usize).expect("Op not found!");
-    d(control, zero_copy_buf)
+    let d = match self.dispatchers.get(op_id as usize) {
+      Some(handler) => &*handler,
+      None => return None,
+    };
+
+    Some(d(control, zero_copy_buf))
   }
 }
 
@@ -101,11 +106,14 @@ fn test_op_registry() {
   expected.insert("test".to_string(), 1);
   assert_eq!(op_registry.name_to_id, expected);
 
-  let res = op_registry.call(test_id, &[], None);
+  let res = op_registry.call(test_id, &[], None).unwrap();
   if let Op::Sync(buf) = res {
     assert_eq!(buf.len(), 0);
   } else {
     unreachable!();
   }
   assert_eq!(c.load(atomic::Ordering::SeqCst), 1);
+
+  let res = op_registry.call(100, &[], None);
+  assert!(res.is_none());
 }
