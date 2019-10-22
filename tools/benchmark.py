@@ -27,6 +27,7 @@ exec_time_benchmarks = [
     ("cold_relative_import", ["--reload", "tests/003_relative_import.ts"]),
     ("workers_startup", ["tests/workers_startup_bench.ts"]),
     ("workers_round_robin", ["tests/workers_round_robin_bench.ts"]),
+    ("text_decoder", ["cli/tests/text_decoder_perf.js"]),
 ]
 
 
