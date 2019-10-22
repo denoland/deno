@@ -32,7 +32,9 @@ export function recordFromBufMinimal(
   ui8: Uint8Array
 ): RecordMinimal {
   const buf32 = new Int32Array(ui8.buffer, ui8.byteOffset, ui8.byteLength / 4);
+  const promiseId = buf32[0];
   const arg = buf32[1];
+  const result = buf32[2];
   let err;
 
   if (arg < 0) {
@@ -44,10 +46,10 @@ export function recordFromBufMinimal(
   }
 
   return {
-    promiseId: buf32[0],
+    promiseId,
     opId,
-    arg: buf32[1],
-    result: buf32[2],
+    arg,
+    result,
     err
   };
 }

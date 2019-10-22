@@ -41,13 +41,16 @@ pub struct ErrorRecord {
 }
 
 impl Into<Buf> for ErrorRecord {
-  fn into(mut self) -> Buf {
+  fn into(self) -> Buf {
     let v32: Vec<i32> = vec![self.promise_id, self.arg, self.error_code];
     let mut v8: Vec<u8> = Vec::new();
     for n in v32 {
       v8.write_i32::<LittleEndian>(n).unwrap();
     }
-    v8.append(&mut self.error_message);
+    let mut message = self.error_message;
+    // Align to 32bit word, padding with the space character.
+    message.resize((message.len() + 3usize) & !3usize, b' ');
+    v8.append(&mut message);
     v8.into_boxed_slice()
   }
 }
