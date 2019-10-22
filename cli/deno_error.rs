@@ -67,6 +67,10 @@ pub fn permission_denied() -> ErrBox {
   StaticError(ErrorKind::PermissionDenied, "permission denied").into()
 }
 
+pub fn permission_denied_msg(msg: String) -> ErrBox {
+  DenoError::new(ErrorKind::PermissionDenied, msg).into()
+}
+
 pub fn op_not_implemented() -> ErrBox {
   StaticError(ErrorKind::OpNotAvailable, "op not implemented").into()
 }
@@ -481,6 +485,14 @@ mod tests {
     let err = permission_denied();
     assert_eq!(err.kind(), ErrorKind::PermissionDenied);
     assert_eq!(err.to_string(), "permission denied");
+  }
+
+  #[test]
+  fn test_permission_denied_msg() {
+    let err =
+      permission_denied_msg("run again with the --allow-net flag".to_string());
+    assert_eq!(err.kind(), ErrorKind::PermissionDenied);
+    assert_eq!(err.to_string(), "run again with the --allow-net flag");
   }
 
   #[test]
