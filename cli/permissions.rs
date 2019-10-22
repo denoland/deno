@@ -1,15 +1,13 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::deno_error::permission_denied;
+use crate::deno_error::permission_denied_msg;
 use crate::flags::DenoFlags;
 use ansi_term::Style;
-use atty;
 use deno::ErrBox;
 use log;
 use std::collections::HashSet;
 use std::fmt;
-use std::io;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 const PERMISSION_EMOJI: &str = "⚠️";
@@ -87,21 +85,6 @@ impl PermissionAccessor {
     self.set_state(PermissionAccessorState::Ask)
   }
 
-  pub fn deny(&self) {
-    self.set_state(PermissionAccessorState::Deny)
-  }
-
-  /// Update this accessors state based on a PromptResult value
-  /// This will only update the state if the PromptResult value
-  /// is one of the "Always" values
-  pub fn update_with_prompt_result(&self, prompt_result: &PromptResult) {
-    match prompt_result {
-      PromptResult::AllowAlways => self.allow(),
-      PromptResult::DenyAlways => self.deny(),
-      _ => {}
-    }
-  }
-
   #[inline]
   pub fn get_state(&self) -> PermissionAccessorState {
     self.state.load(Ordering::SeqCst).into()
@@ -137,7 +120,6 @@ pub struct DenoPermissions {
   pub allow_env: PermissionAccessor,
   pub allow_run: PermissionAccessor,
   pub allow_hrtime: PermissionAccessor,
-  pub no_prompts: AtomicBool,
 }
 
 impl DenoPermissions {
@@ -154,7 +136,6 @@ impl DenoPermissions {
       allow_env: PermissionAccessor::from(flags.allow_env),
       allow_run: PermissionAccessor::from(flags.allow_run),
       allow_hrtime: PermissionAccessor::from(flags.allow_hrtime),
-      no_prompts: AtomicBool::new(flags.no_prompts),
     }
   }
 
@@ -166,16 +147,12 @@ impl DenoPermissions {
         self.log_perm_access(msg);
         Ok(())
       }
-      PermissionAccessorState::Ask => match self.try_permissions_prompt(msg) {
-        Err(e) => Err(e),
-        Ok(v) => {
-          self.allow_run.update_with_prompt_result(&v);
-          v.check()?;
-          self.log_perm_access(msg);
-          Ok(())
-        }
-      },
-      PermissionAccessorState::Deny => Err(permission_denied()),
+      PermissionAccessorState::Ask => Err(permission_denied_msg(
+        "run again with the --allow-run flag".to_string(),
+      )),
+      PermissionAccessorState::Deny => Err(permission_denied_msg(
+        "run again with the --allow-run flag".to_string(),
+      )),
     }
   }
 
@@ -192,18 +169,12 @@ impl DenoPermissions {
           Ok(())
         } else {
           match state {
-            PermissionAccessorState::Ask => {
-              match self.try_permissions_prompt(msg) {
-                Err(e) => Err(e),
-                Ok(v) => {
-                  self.allow_read.update_with_prompt_result(&v);
-                  v.check()?;
-                  self.log_perm_access(msg);
-                  Ok(())
-                }
-              }
-            }
-            PermissionAccessorState::Deny => Err(permission_denied()),
+            PermissionAccessorState::Ask => Err(permission_denied_msg(
+              "run again with the --allow-read flag".to_string(),
+            )),
+            PermissionAccessorState::Deny => Err(permission_denied_msg(
+              "run again with the --allow-read flag".to_string(),
+            )),
             _ => unreachable!(),
           }
         }
@@ -224,18 +195,12 @@ impl DenoPermissions {
           Ok(())
         } else {
           match state {
-            PermissionAccessorState::Ask => {
-              match self.try_permissions_prompt(msg) {
-                Err(e) => Err(e),
-                Ok(v) => {
-                  self.allow_write.update_with_prompt_result(&v);
-                  v.check()?;
-                  self.log_perm_access(msg);
-                  Ok(())
-                }
-              }
-            }
-            PermissionAccessorState::Deny => Err(permission_denied()),
+            PermissionAccessorState::Ask => Err(permission_denied_msg(
+              "run again with the --allow-write flag".to_string(),
+            )),
+            PermissionAccessorState::Deny => Err(permission_denied_msg(
+              "run again with the --allow-write flag".to_string(),
+            )),
             _ => unreachable!(),
           }
         }
@@ -250,7 +215,7 @@ impl DenoPermissions {
         self.log_perm_access(msg);
         Ok(())
       }
-      state => {
+      _state => {
         let parts = host_and_port.split(':').collect::<Vec<&str>>();
         if match parts.len() {
           2 => {
@@ -268,7 +233,9 @@ impl DenoPermissions {
           self.log_perm_access(msg);
           Ok(())
         } else {
-          self.check_net_inner(state, msg)
+          Err(permission_denied_msg(
+            "run again with the --allow-net flag".to_string(),
+          ))
         }
       }
     }
@@ -281,7 +248,7 @@ impl DenoPermissions {
         self.log_perm_access(msg);
         Ok(())
       }
-      state => {
+      _state => {
         let host = url.host().unwrap();
         let whitelist_result = {
           if self.net_whitelist.contains(&format!("{}", host)) {
@@ -299,31 +266,11 @@ impl DenoPermissions {
           self.log_perm_access(msg);
           Ok(())
         } else {
-          self.check_net_inner(state, msg)
+          Err(permission_denied_msg(
+            "run again with the --allow-net flag".to_string(),
+          ))
         }
       }
-    }
-  }
-
-  fn check_net_inner(
-    &self,
-    state: PermissionAccessorState,
-    prompt_str: &str,
-  ) -> Result<(), ErrBox> {
-    match state {
-      PermissionAccessorState::Ask => {
-        match self.try_permissions_prompt(prompt_str) {
-          Err(e) => Err(e),
-          Ok(v) => {
-            self.allow_net.update_with_prompt_result(&v);
-            v.check()?;
-            self.log_perm_access(prompt_str);
-            Ok(())
-          }
-        }
-      }
-      PermissionAccessorState::Deny => Err(permission_denied()),
-      _ => unreachable!(),
     }
   }
 
@@ -334,32 +281,13 @@ impl DenoPermissions {
         self.log_perm_access(msg);
         Ok(())
       }
-      PermissionAccessorState::Ask => match self.try_permissions_prompt(msg) {
-        Err(e) => Err(e),
-        Ok(v) => {
-          self.allow_env.update_with_prompt_result(&v);
-          v.check()?;
-          self.log_perm_access(msg);
-          Ok(())
-        }
-      },
-      PermissionAccessorState::Deny => Err(permission_denied()),
+      PermissionAccessorState::Ask => Err(permission_denied_msg(
+        "run again with the --allow-env flag".to_string(),
+      )),
+      PermissionAccessorState::Deny => Err(permission_denied_msg(
+        "run again with the --allow-env flag".to_string(),
+      )),
     }
-  }
-
-  /// Try to present the user with a permission prompt
-  /// will error with permission_denied if no_prompts is enabled
-  fn try_permissions_prompt(
-    &self,
-    message: &str,
-  ) -> Result<PromptResult, ErrBox> {
-    if self.no_prompts.load(Ordering::SeqCst) {
-      return Err(permission_denied());
-    }
-    if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) {
-      return Err(permission_denied());
-    };
-    permission_prompt(message)
   }
 
   fn log_perm_access(&self, message: &str) {
@@ -427,60 +355,6 @@ impl DenoPermissions {
   }
 }
 
-/// Quad-state value for representing user input on permission prompt
-#[derive(Debug, Clone)]
-pub enum PromptResult {
-  AllowAlways = 0,
-  AllowOnce = 1,
-  DenyOnce = 2,
-  DenyAlways = 3,
-}
-
-impl PromptResult {
-  /// If value is any form of deny this will error with permission_denied
-  pub fn check(&self) -> Result<(), ErrBox> {
-    match self {
-      PromptResult::DenyOnce => Err(permission_denied()),
-      PromptResult::DenyAlways => Err(permission_denied()),
-      _ => Ok(()),
-    }
-  }
-}
-
-impl fmt::Display for PromptResult {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    match self {
-      PromptResult::AllowAlways => f.pad("AllowAlways"),
-      PromptResult::AllowOnce => f.pad("AllowOnce"),
-      PromptResult::DenyOnce => f.pad("DenyOnce"),
-      PromptResult::DenyAlways => f.pad("DenyAlways"),
-    }
-  }
-}
-
-fn permission_prompt(message: &str) -> Result<PromptResult, ErrBox> {
-  let msg = format!("️{}  Deno requests {}. Grant? [a/y/n/d (a = allow always, y = allow once, n = deny once, d = deny always)] ", PERMISSION_EMOJI, message);
-  // print to stderr so that if deno is > to a file this is still displayed.
-  eprint!("{}", Style::new().bold().paint(msg));
-  loop {
-    let mut input = String::new();
-    let stdin = io::stdin();
-    let _nread = stdin.read_line(&mut input)?;
-    let ch = input.chars().next().unwrap();
-    match ch.to_ascii_lowercase() {
-      'a' => return Ok(PromptResult::AllowAlways),
-      'y' => return Ok(PromptResult::AllowOnce),
-      'n' => return Ok(PromptResult::DenyOnce),
-      'd' => return Ok(PromptResult::DenyAlways),
-      _ => {
-        // If we don't get a recognized option try again.
-        let msg_again = format!("Unrecognized option '{}' [a/y/n/d (a = allow always, y = allow once, n = deny once, d = deny always)] ", ch);
-        eprint!("{}", Style::new().bold().paint(msg_again));
-      }
-    };
-  }
-}
-
 fn check_path_white_list(
   filename: &str,
   white_list: &Arc<HashSet<String>>,
@@ -514,7 +388,6 @@ mod tests {
     let perms = DenoPermissions::from_flags(&DenoFlags {
       read_whitelist: whitelist.clone(),
       write_whitelist: whitelist.clone(),
-      no_prompts: true,
       ..Default::default()
     });
 
@@ -561,7 +434,6 @@ mod tests {
         "127.0.0.1",
         "172.16.0.2:8000"
       ],
-      no_prompts: true,
       ..Default::default()
     });
 
