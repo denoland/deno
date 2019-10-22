@@ -266,6 +266,7 @@ extern "C" {
   pub fn deno_check_promise_errors(i: *const isolate);
   pub fn deno_lock(i: *const isolate);
   pub fn deno_unlock(i: *const isolate);
+  pub fn deno_throw_exception(i: *const isolate, text: *const c_char);
   pub fn deno_respond(
     i: *const isolate,
     user_data: *const c_void,

@@ -160,6 +160,12 @@ void deno_pinned_buf_delete(deno_pinned_buf* buf) {
   auto _ = deno::PinnedBuf(buf);
 }
 
+void deno_throw_exception(Deno* d_, const char* text) {
+  auto* d = unwrap(d_);
+  auto* isolate = d->isolate_;
+  isolate->ThrowException(deno::v8_str(text));
+}
+
 void deno_respond(Deno* d_, void* user_data, deno_op_id op_id, deno_buf buf) {
   auto* d = unwrap(d_);
   if (d->current_args_ != nullptr) {

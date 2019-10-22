@@ -311,11 +311,18 @@ impl Isolate {
   ) {
     let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
 
-    let op = isolate.op_registry.call(
+    let maybe_op = isolate.op_registry.call(
       op_id,
       control_buf.as_ref(),
       PinnedBuf::new(zero_copy_buf),
     );
+
+    let op = match maybe_op {
+      Some(op) => op,
+      None => {
+        return isolate.throw_exception(&format!("Unknown op id: {}", op_id))
+      }
+    };
 
     // To avoid latency problems we eagerly poll 50 futures and then
     // allow to poll ops from `pending_ops`
@@ -411,6 +418,13 @@ impl Isolate {
   fn check_promise_errors(&self) {
     unsafe {
       libdeno::deno_check_promise_errors(self.libdeno_isolate);
+    }
+  }
+
+  fn throw_exception(&mut self, exception_text: &str) {
+    let text = CString::new(exception_text).unwrap();
+    unsafe {
+      libdeno::deno_throw_exception(self.libdeno_isolate, text.as_ptr())
     }
   }
 
@@ -1415,6 +1429,26 @@ pub mod tests {
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
       poll_until_ready(&mut isolate, 3).unwrap();
       js_check(isolate.execute("check.js", "assert(asyncRecv == 2);"));
+    });
+  }
+
+  #[test]
+  fn test_pre_dispatch() {
+    run_in_task(|| {
+      let (mut isolate, _dispatch_count) = setup(Mode::OverflowResAsync);
+      js_check(isolate.execute(
+        "bad_op_id.js",
+        r#"
+          let thrown;
+          try {
+            Deno.core.dispatch(100, []);
+          } catch (e) {
+            thrown = e;
+          }
+          assert(thrown == "Unknown op id: 100");
+         "#,
+      ));
+      assert_eq!(Async::Ready(()), isolate.poll().unwrap());
     });
   }
 
