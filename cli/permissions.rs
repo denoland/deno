@@ -445,7 +445,8 @@ mod tests {
       ("172.16.0.2", 8000, true),
       ("172.16.0.2", 0, false),
       ("172.16.0.2", 6000, false),
-      ("172.16.0.1", 8000, false), // Just some random hosts that should err
+      ("172.16.0.1", 8000, false),
+      // Just some random hosts that should err
       ("somedomain", 0, false),
       ("192.168.0.1", 0, false),
     ];

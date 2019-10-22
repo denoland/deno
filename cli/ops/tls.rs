@@ -57,11 +57,10 @@ pub fn op_dial_tls(
   let args: DialTLSArgs = serde_json::from_value(args)?;
   let cert_file = args.cert_file;
 
+  state.check_net(&args.hostname, args.port)?;
   if let Some(path) = cert_file.clone() {
     state.check_read(&path)?;
   }
-
-  state.check_net(&args.hostname, args.port)?;
 
   let mut domain = args.hostname.clone();
   if domain.is_empty() {

@@ -6,13 +6,7 @@ use futures::Poll;
 use std::net::SocketAddr;
 use std::net::ToSocketAddrs;
 
-/// Go-style network address parsing. Returns a future.
-/// Examples:
-/// ("192.0.2.1",25)
-/// ("",80)
-/// ("[2001:db8::1]",80)
-/// ("198.51.100.1",80)
-/// ("deno.land",443)
+/// Resolve network address. Returns a future.
 pub fn resolve_addr(hostname: &str, port: u16) -> ResolveAddrFuture {
   ResolveAddrFuture {
     hostname: hostname.to_string(),
