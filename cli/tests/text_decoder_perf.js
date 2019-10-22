@@ -4,7 +4,7 @@ function r32() {
 
 function generateRandomUTF8(size) {
   const utf8 = new Uint8Array(size);
-  for (var i = 0; i < size; i++) {
+  for (let i = 0; i < size; i++) {
     const r = r32();
     const len = 1 + (r & 0x3);
     switch (len) {
