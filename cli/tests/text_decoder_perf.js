@@ -35,4 +35,4 @@ function generateRandom(bytes) {
 
 const randomData = generateRandom(1024);
 const decoder = new TextDecoder();
-for (var i = 0; i < 10_000; i++) decoder.decode(randomData);
+for (let i = 0; i < 10_000; i++) decoder.decode(randomData);
