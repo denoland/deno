@@ -318,16 +318,18 @@ while (true) {
 }
 ```
 
-When this program is started, the user is prompted for permission to listen on
-the network:
+When this program is started, it throws PermissionDenied error.
 
 ```shell
 $ deno https://deno.land/std/examples/echo_server.ts
-⚠️  Deno requests network access to "listen". Grant? [a/y/n/d (a = allow always, y = allow once, n = deny once, d = deny always)]
+error: Uncaught PermissionDenied: run again with the --allow-net flag
+► $deno$/dispatch_json.ts:40:11
+    at DenoError ($deno$/errors.ts:20:5)
+    ...
 ```
 
 For security reasons, Deno does not allow programs to access the network without
-explicit permission. To avoid the console prompt, use a command-line flag:
+explicit permission. To allow accessing the network, use a command-line flag:
 
 ```shell
 $ deno --allow-net https://deno.land/std/examples/echo_server.ts
@@ -348,8 +350,7 @@ without further complexity.
 ### Inspecting and revoking permissions
 
 Sometimes a program may want to revoke previously granted permissions. When a
-program, at a later stage, needs those permissions, a new prompt will be
-presented to the user.
+program, at a later stage, needs those permissions, it will fail.
 
 ```ts
 const { permissions, revokePermission, open, remove } = Deno;
@@ -369,7 +370,7 @@ revokePermission("write");
 const encoder = new TextEncoder();
 await log.write(encoder.encode("hello\n"));
 
-// this will prompt for the write permission or fail.
+// this will fail.
 await remove("request.log");
 ```
 
@@ -422,7 +423,10 @@ This is an example to restrict File system access by whitelist.
 
 ```shell
 $ deno --allow-read=/usr https://deno.land/std/examples/cat.ts /etc/passwd
-⚠️  Deno requests read access to "/etc/passwd". Grant? [a/y/n/d (a = allow always, y = allow once, n = deny once, d = deny always)]
+error: Uncaught PermissionDenied: run again with the --allow-read flag
+► $deno$/dispatch_json.ts:40:11
+    at DenoError ($deno$/errors.ts:20:5)
+    ...
 ```
 
 You can grant read permission under `/etc` dir
@@ -702,7 +706,6 @@ OPTIONS:
         --importmap <FILE>             Load import map file
     -L, --log-level <log-level>        Set log level [possible values: debug, info]
         --no-fetch                     Do not download remote modules
-        --no-prompt                    Do not use prompts
     -r, --reload=<CACHE_BLACKLIST>     Reload source code cache (recompile TypeScript)
         --seed <NUMBER>                Seed Math.random()
         --v8-flags=<v8-flags>          Set V8 command line options

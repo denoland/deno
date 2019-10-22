@@ -52,13 +52,7 @@ async function main(): Promise<void> {
     console.log(`Running tests for: ${permsFmt}`);
     const cliPerms = permsToCliFlags(perms);
     // run subsequent tests using same deno executable
-    const args = [
-      Deno.execPath(),
-      "run",
-      "--no-prompt",
-      ...cliPerms,
-      "cli/js/unit_tests.ts"
-    ];
+    const args = [Deno.execPath(), "run", ...cliPerms, "cli/js/unit_tests.ts"];
 
     const p = Deno.run({
       args,
