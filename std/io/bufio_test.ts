@@ -168,6 +168,12 @@ test(async function bufioReadString(): Promise<void> {
   assertEquals(line, "And now,");
   assertEquals(line.length, 8);
 
+  const line2 = assertNotEOF(await buf.readString(","));
+  const line3 = assertNotEOF(await buf.readString(","));
+  assertEquals(line3, " world!");
+
+  assertEquals(await buf.readString(","), Deno.EOF);
+
   try {
     await buf.readString("deno");
 
