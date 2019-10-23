@@ -26,8 +26,8 @@ import * as url from "./url.ts";
 import * as urlSearchParams from "./url_search_params.ts";
 import * as workers from "./workers.ts";
 import * as performanceUtil from "./performance.ts";
-
 import * as request from "./request.ts";
+import * as streams from "./streams/mod.ts";
 
 // These imports are not exposed and therefore are fine to just import the
 // symbols required.
@@ -137,6 +137,11 @@ export type Request = domTypes.Request;
 
 window.Response = fetchTypes.Response;
 export type Response = domTypes.Response;
+
+window.ReadableStream = streams.ReadableStream;
+export type ReadableStream = domTypes.ReadableStream;
+window.WritableStream = streams.WritableStream;
+export type WritableStream = domTypes.WritableStream;
 
 window.performance = new performanceUtil.Performance();
 

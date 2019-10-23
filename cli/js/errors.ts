@@ -75,5 +75,9 @@ export enum ErrorKind {
   UnsupportedFetchScheme = 47,
   TooManyRedirects = 48,
   Diagnostic = 49,
-  JSError = 50
+  JSError = 50,
+
+  /** TODO These are DomError Types, and should be moved there when it exists */
+  DataCloneError = 51,
+  AbortError = 52
 }

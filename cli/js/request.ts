@@ -2,8 +2,10 @@
 import * as headers from "./headers.ts";
 import * as body from "./body.ts";
 import * as domTypes from "./dom_types.ts";
+import * as streams from "./streams/mod.ts";
 
 const { Headers } = headers;
+const { ReadableStream } = streams;
 
 function byteUpperCase(s: string): string {
   return String(s).replace(/[a-z]/g, function byteUpperCaseReplace(c): string {
@@ -138,7 +140,13 @@ export class Request extends body.Body implements domTypes.Request {
       headersList.push(header);
     }
 
-    const body2 = this._bodySource;
+    let body2 = this._bodySource;
+
+    if (this._bodySource instanceof ReadableStream) {
+      const tees = (this._bodySource as domTypes.ReadableStream).tee();
+      this._stream = this._bodySource = tees[0];
+      body2 = tees[1];
+    }
 
     const cloned = new Request(this.url, {
       body: body2,
