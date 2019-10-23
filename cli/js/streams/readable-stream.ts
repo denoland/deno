@@ -8,6 +8,11 @@
  * https://github.com/stardazed/sd-streams
  */
 
+/* eslint prefer-const: "warn" */
+// TODO remove this, surpressed because of
+//   284:7   error    'branch1' is never reassigned. Use 'const' instead  prefer-const
+//   285:7   error    'branch2' is never reassigned. Use 'const' instead  prefer-const
+
 import * as rs from "./readable-internals.ts";
 import * as ws from "./writable-internals.ts";
 import * as shared from "./shared-internals.ts";
