@@ -3,7 +3,7 @@ import * as blob from "./blob.ts";
 import * as encoding from "./text_encoding.ts";
 import * as headers from "./headers.ts";
 import * as domTypes from "./dom_types.ts";
-import { window } from "./window.ts";
+import { ReadableStream } from "./streams/mod.ts";
 
 const { Headers } = headers;
 
@@ -45,7 +45,7 @@ function validateBodyType(owner: Body, bodySource: BodySource): boolean {
     return true;
   } else if (typeof bodySource === "string") {
     return true;
-  } else if (bodySource instanceof window.ReadableStream) {
+  } else if (bodySource instanceof ReadableStream) {
     return true;
   } else if (bodySource instanceof FormData) {
     return true;
@@ -144,12 +144,12 @@ export class Body implements domTypes.Body {
       return this._stream;
     }
 
-    if (this._bodySource instanceof window.ReadableStream) {
+    if (this._bodySource instanceof ReadableStream) {
       // @ts-ignore
       this._stream = this._bodySource;
     }
     if (typeof this._bodySource === "string") {
-      this._stream = new window.ReadableStream({
+      this._stream = new ReadableStream({
         start(controller: ReadableStreamController): void {
           controller.enqueue(this._bodySource);
           controller.close();
@@ -331,7 +331,7 @@ export class Body implements domTypes.Body {
     } else if (typeof this._bodySource === "string") {
       const enc = new TextEncoder();
       return enc.encode(this._bodySource).buffer as ArrayBuffer;
-    } else if (this._bodySource instanceof window.ReadableStream) {
+    } else if (this._bodySource instanceof ReadableStream) {
       // @ts-ignore
       return bufferFromStream(this._bodySource.getReader());
     } else if (this._bodySource instanceof FormData) {

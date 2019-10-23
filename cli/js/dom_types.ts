@@ -332,9 +332,9 @@ export interface Body {
 
 export interface ReadableStream {
   readonly locked: boolean;
-  cancel(): Promise<void>;
+  cancel(reason?: any): Promise<void>;
   getReader(): ReadableStreamReader;
-  tee(): [ReadableStream, ReadableStream];
+  tee(): ReadableStream[];
 }
 
 export interface WritableStream<W = any> {
@@ -374,7 +374,7 @@ export interface UnderlyingSink<W = any> {
 }
 
 export interface ReadableStreamReader {
-  cancel(): Promise<void>;
+  cancel(reason?: any): Promise<void>;
   read(): Promise<any>;
   releaseLock(): void;
 }
