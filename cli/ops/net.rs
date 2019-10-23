@@ -70,13 +70,9 @@ fn op_dial(
   let args: DialArgs = serde_json::from_value(args)?;
   assert_eq!(args.transport, "tcp"); // TODO Support others.
 
-  // TODO(ry) Using format! is suboptimal here. Better would be if
-  // state.check_net and resolve_addr() took hostname and port directly.
-  let address = format!("{}:{}", args.hostname, args.port);
+  state.check_net(&args.hostname, args.port)?;
 
-  state.check_net(&address)?;
-
-  let op = resolve_addr(&address).and_then(move |addr| {
+  let op = resolve_addr(&args.hostname, args.port).and_then(move |addr| {
     TcpStream::connect(&addr)
       .map_err(ErrBox::from)
       .and_then(move |tcp_stream| {
@@ -141,13 +137,9 @@ fn op_listen(
   let args: ListenArgs = serde_json::from_value(args)?;
   assert_eq!(args.transport, "tcp");
 
-  // TODO(ry) Using format! is suboptimal here. Better would be if
-  // state.check_net and resolve_addr() took hostname and port directly.
-  let address = format!("{}:{}", args.hostname, args.port);
+  state.check_net(&args.hostname, args.port)?;
 
-  state.check_net(&address)?;
-
-  let addr = resolve_addr(&address).wait()?;
+  let addr = resolve_addr(&args.hostname, args.port).wait()?;
   let listener = TcpListener::bind(&addr)?;
   let local_addr = listener.local_addr()?;
   let resource = resources::add_tcp_listener(listener);

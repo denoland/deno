@@ -55,23 +55,19 @@ pub fn op_dial_tls(
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: DialTLSArgs = serde_json::from_value(args)?;
-
-  // TODO(ry) Using format! is suboptimal here. Better would be if
-  // state.check_net and resolve_addr() took hostname and port directly.
-  let address = format!("{}:{}", args.hostname, args.port);
   let cert_file = args.cert_file;
 
-  state.check_net(&address)?;
+  state.check_net(&args.hostname, args.port)?;
   if let Some(path) = cert_file.clone() {
     state.check_read(&path)?;
   }
 
-  let mut domain = args.hostname;
+  let mut domain = args.hostname.clone();
   if domain.is_empty() {
     domain.push_str("localhost");
   }
 
-  let op = resolve_addr(&address).and_then(move |addr| {
+  let op = resolve_addr(&args.hostname, args.port).and_then(move |addr| {
     TcpStream::connect(&addr)
       .and_then(move |tcp_stream| {
         let local_addr = tcp_stream.local_addr()?;
@@ -189,13 +185,10 @@ fn op_listen_tls(
   let args: ListenTlsArgs = serde_json::from_value(args)?;
   assert_eq!(args.transport, "tcp");
 
-  // TODO(ry) Using format! is suboptimal here. Better would be if
-  // state.check_net and resolve_addr() took hostname and port directly.
-  let address = format!("{}:{}", args.hostname, args.port);
   let cert_file = args.cert_file;
   let key_file = args.key_file;
 
-  state.check_net(&address)?;
+  state.check_net(&args.hostname, args.port)?;
   state.check_read(&cert_file)?;
   state.check_read(&key_file)?;
 
@@ -204,7 +197,7 @@ fn op_listen_tls(
     .set_single_cert(load_certs(&cert_file)?, load_keys(&key_file)?.remove(0))
     .expect("invalid key or certificate");
   let acceptor = TlsAcceptor::from(Arc::new(config));
-  let addr = resolve_addr(&address).wait()?;
+  let addr = resolve_addr(&args.hostname, args.port).wait()?;
   let listener = TcpListener::bind(&addr)?;
   let local_addr = listener.local_addr()?;
   let resource = resources::add_tls_listener(listener, acceptor);
