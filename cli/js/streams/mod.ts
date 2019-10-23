@@ -17,9 +17,3 @@ export {
   CountQueuingStrategy
 } from "./strategies.ts";
 
-// only for linked web standard implementations
-export {
-  createReadableStream as internal_createReadableStream,
-  createReadableByteStream as internal_createReadableByteStream,
-  readableStreamTee as internal_readableStreamTee
-} from "./readable-stream.ts";
