@@ -1021,7 +1021,7 @@ mod tests {
         let result = recursive_load.poll();
         assert!(result.is_ok());
         assert!(result.ok().unwrap().is_not_ready());
-        let l = loads.lock().unwrap();;
+        let l = loads.lock().unwrap();
         assert_eq!(
           l.to_vec(),
           vec![
