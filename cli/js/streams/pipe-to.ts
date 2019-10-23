@@ -47,7 +47,7 @@ export function pipeTo<ChunkType>(
       // TODO this should be a DOMException,
       // https://github.com/stardazed/sd-streams/blob/master/packages/streams/src/pipe-to.ts#L38
       const error = new DenoError(ErrorKind.AbortError, "Aborted");
-      const actions: (() => Promise<void>)[] = [];
+      const actions: Array<() => Promise<void>> = [];
       if (preventAbort === false) {
         actions.push(() => {
           if (dest[shared.state_] === "writable") {

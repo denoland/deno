@@ -140,7 +140,7 @@ export declare class WritableStream<InputType> {
     | WritableStreamDefaultController<InputType>
     | undefined;
   [writer_]: WritableStreamDefaultWriter<InputType> | undefined;
-  [writeRequests_]: shared.ControlledPromise<void>[];
+  [writeRequests_]: Array<shared.ControlledPromise<void>>;
 }
 
 // ---- Stream

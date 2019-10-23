@@ -15,7 +15,7 @@ export class SDReadableStreamBYOBReader
   implements rs.SDReadableStreamBYOBReader {
   [rs.closedPromise_]: shared.ControlledPromise<void>;
   [rs.ownerReadableStream_]: rs.SDReadableStream<ArrayBufferView> | undefined;
-  [rs.readIntoRequests_]: rs.ReadRequest<IteratorResult<ArrayBufferView>>[];
+  [rs.readIntoRequests_]: Array<rs.ReadRequest<IteratorResult<ArrayBufferView>>>;
 
   constructor(stream: rs.SDReadableStream<ArrayBufferView>) {
     if (!rs.isReadableStream(stream)) {

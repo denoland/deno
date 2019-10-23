@@ -15,7 +15,7 @@ export class ReadableStreamDefaultReader<OutputType>
   implements rs.SDReadableStreamReader<OutputType> {
   [rs.closedPromise_]: shared.ControlledPromise<void>;
   [rs.ownerReadableStream_]: rs.SDReadableStream<OutputType> | undefined;
-  [rs.readRequests_]: rs.ReadRequest<IteratorResult<OutputType>>[];
+  [rs.readRequests_]: Array<rs.ReadRequest<IteratorResult<OutputType>>>;
 
   constructor(stream: rs.SDReadableStream<OutputType>) {
     if (!rs.isReadableStream(stream)) {

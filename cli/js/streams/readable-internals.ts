@@ -172,7 +172,7 @@ export declare class SDReadableStreamDefaultReader<OutputType>
 
   [ownerReadableStream_]: SDReadableStream<OutputType> | undefined;
   [closedPromise_]: shared.ControlledPromise<void>;
-  [readRequests_]: ReadRequest<IteratorResult<OutputType>>[];
+  [readRequests_]: Array<ReadRequest<IteratorResult<OutputType>>>;
 }
 
 export declare class SDReadableStreamBYOBReader
@@ -186,7 +186,7 @@ export declare class SDReadableStreamBYOBReader
 
   [ownerReadableStream_]: SDReadableStream<ArrayBufferView> | undefined;
   [closedPromise_]: shared.ControlledPromise<void>;
-  [readIntoRequests_]: ReadRequest<IteratorResult<ArrayBufferView>>[];
+  [readIntoRequests_]: Array<ReadRequest<IteratorResult<ArrayBufferView>>>;
 }
 
 // ----
@@ -212,7 +212,7 @@ export declare class SDReadableStream<OutputType> {
   cancel(reason?: shared.ErrorResult): Promise<void>;
   getReader(): SDReadableStreamReader<OutputType>;
   getReader(options: { mode: "byob" }): SDReadableStreamBYOBReader;
-  tee(): SDReadableStream<OutputType>[];
+  tee(): Array<SDReadableStream<OutputType>>;
 
   pipeThrough<ResultType>(
     transform: GenericTransformStream<OutputType, ResultType>,

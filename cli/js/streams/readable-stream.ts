@@ -129,7 +129,7 @@ export class SDReadableStream<OutputType>
     return rs.readableStreamCancel(this, reason);
   }
 
-  tee(): SDReadableStream<OutputType>[] {
+  tee(): Array<SDReadableStream<OutputType>> {
     return readableStreamTee(this, false);
   }
 

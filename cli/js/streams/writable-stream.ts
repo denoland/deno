@@ -29,7 +29,7 @@ export class WritableStream<InputType> {
     | ws.WritableStreamDefaultController<InputType>
     | undefined;
   [ws.writer_]: ws.WritableStreamDefaultWriter<InputType> | undefined;
-  [ws.writeRequests_]: shared.ControlledPromise<void>[];
+  [ws.writeRequests_]: Array<shared.ControlledPromise<void>>;
 
   constructor(
     sink: ws.WritableStreamSink<InputType> = {},
