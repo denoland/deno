@@ -11,12 +11,13 @@ import { Diagnostic, fromTypeScriptDiagnostic } from "./diagnostics.ts";
 import { cwd } from "./dir.ts";
 import * as dispatch from "./dispatch.ts";
 import { sendAsync, sendSync } from "./dispatch_json.ts";
+import { generateDoc } from "./doc.ts";
 import * as os from "./os.ts";
 import { TextEncoder } from "./text_encoding.ts";
 import { getMappedModuleName, parseTypeDirectives } from "./type_directives.ts";
 import { assert, notImplemented } from "./util.ts";
 import * as util from "./util.ts";
-import { window } from "./window.ts";
+import { window as self } from "./window.ts";
 import { postMessage, workerClose, workerMain } from "./workers.ts";
 import { writeFileSync } from "./write_file.ts";
 
@@ -31,28 +32,47 @@ enum MediaType {
   Unknown = 5
 }
 
+// Warning! The values in this enum are duplicated in cli/msg.rs
+// Update carefully!
+enum CompilerReqType {
+  Compile = 1,
+  Bundle = 2,
+  Doc = 3,
+  AST = 4
+}
+
 // Startup boilerplate. This is necessary because the compiler has its own
 // snapshot. (It would be great if we could remove these things or centralize
 // them somewhere else.)
 const console = new Console(core.print);
-window.console = console;
-window.workerMain = workerMain;
+self.console = console;
+self.workerMain = workerMain;
 function denoMain(): void {
   os.start(true, "TS");
 }
-window["denoMain"] = denoMain;
+self["denoMain"] = denoMain;
 
 const ASSETS = "$asset$";
 const OUT_DIR = "$deno$";
 
 /** The format of the work message payload coming from the privileged side */
-interface CompilerReq {
+type CompilerReq = {
   rootNames: string[];
-  bundle?: string;
   // TODO(ry) add compiler config to this interface.
   // options: ts.CompilerOptions;
   configPath?: string;
   config?: string;
+} & (
+  | {
+      type: CompilerReqType.Bundle;
+      outfile: string;
+    }
+  | {
+      type: CompilerReqType.Compile | CompilerReqType.Doc | CompilerReqType.AST;
+    });
+
+interface OnMessage {
+  data: CompilerReq;
 }
 
 interface ConfigureResponse {
@@ -380,11 +400,11 @@ class Host implements ts.CompilerHost {
 
   /** Provides the `ts.HostCompiler` interface for Deno.
    *
-   * @param _bundle Set to a string value to configure the host to write out a
+   * @param _outfile Set to a string value to configure the host to write out a
    *   bundle instead of caching individual files.
    */
-  constructor(private _bundle?: string) {
-    if (this._bundle) {
+  constructor(private _outfile?: string) {
+    if (this._outfile) {
       // options we need to change when we are generating a bundle
       const bundlerOptions: ts.CompilerOptions = {
         module: ts.ModuleKind.AMD,
@@ -531,8 +551,8 @@ class Host implements ts.CompilerHost {
   ): void {
     util.log("compiler::host.writeFile", fileName);
     try {
-      if (this._bundle) {
-        emitBundle(this._bundle, data);
+      if (this._outfile) {
+        emitBundle(this._outfile, data);
       } else {
         assert(sourceFiles != null && sourceFiles.length == 1);
         const url = sourceFiles![0].fileName;
@@ -577,20 +597,26 @@ class Host implements ts.CompilerHost {
 
 // provide the "main" function that will be called by the privileged side when
 // lazy instantiating the compiler web worker
-window.compilerMain = function compilerMain(): void {
+self.compilerMain = function compilerMain(): void {
   // workerMain should have already been called since a compiler is a worker.
-  window.onmessage = async ({ data }: { data: CompilerReq }): Promise<void> => {
-    const { rootNames, configPath, config, bundle } = data;
-    util.log(">>> compile start", { rootNames, bundle });
+  self.onmessage = async ({ data }: OnMessage): Promise<void> => {
+    const { rootNames, configPath, config } = data;
+    const outfile =
+      data.type === CompilerReqType.Bundle ? data.outfile : undefined;
+    util.log(">>> compile start", {
+      rootNames,
+      type: CompilerReqType[data.type],
+      outfile
+    });
 
     // This will recursively analyse all the code for other imports, requesting
     // those from the privileged side, populating the in memory cache which
     // will be used by the host, before resolving.
     await processImports(rootNames.map(rootName => [rootName, rootName]));
 
-    const host = new Host(bundle);
+    const host = new Host(outfile);
     let emitSkipped = true;
-    let diagnostics: ts.Diagnostic[] | undefined;
+    let diagnostics: readonly ts.Diagnostic[] | undefined;
 
     // if there is a configuration supplied, we need to parse that
     if (config && config.length && configPath) {
@@ -639,14 +665,23 @@ window.compilerMain = function compilerMain(): void {
 
       // We will only proceed with the emit if there are no diagnostics.
       if (diagnostics && diagnostics.length === 0) {
-        if (bundle) {
-          console.log(`Bundling "${bundle}"`);
+        if (
+          data.type === CompilerReqType.Bundle ||
+          data.type === CompilerReqType.Compile
+        ) {
+          const emitResult = program.emit();
+          emitSkipped = emitResult.emitSkipped;
+          diagnostics = emitResult.diagnostics;
+        } else if (data.type === CompilerReqType.Doc) {
+          const docs = generateDoc(program, rootNames[0]);
+          // only supporting logging to console for now
+          console.log(JSON.stringify(docs, undefined, 2));
+          emitSkipped = false;
+        } else {
+          throw new TypeError(
+            `Unsupported compiler request type: "${data.type}"`
+          );
         }
-        const emitResult = program.emit();
-        emitSkipped = emitResult.emitSkipped;
-        // emitResult.diagnostics is `readonly` in TS3.5+ and can't be assigned
-        // without casting.
-        diagnostics = emitResult.diagnostics as ts.Diagnostic[];
       }
     }
 
@@ -659,7 +694,7 @@ window.compilerMain = function compilerMain(): void {
 
     postMessage(result);
 
-    util.log("<<< compile end", { rootNames, bundle });
+    util.log("<<< compile end");
 
     // The compiler isolate exits after a single message.
     workerClose();

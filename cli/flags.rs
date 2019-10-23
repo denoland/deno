@@ -257,6 +257,18 @@ Example:
           .arg(Arg::with_name("source_file").takes_value(true).required(true))
           .arg(Arg::with_name("out_file").takes_value(true).required(false)),
     ).subcommand(
+      SubCommand::with_name("doc")
+        .about("Generate documentation")
+        .long_about(
+          "Generate documentation, in a JSON structure, for the provided module.
+
+Generates a JSON structure the represents the documentation information for the
+provided module, without running the code.
+
+  # Generates documentation
+  deno doc https://deno.land/std/http/file_server.ts",
+        ).arg(Arg::with_name("file").takes_value(true).required(true)),
+    ).subcommand(
       SubCommand::with_name("fetch")
         .about("Fetch the dependencies")
         .long_about(
@@ -766,6 +778,7 @@ fn parse_script_args(
 pub enum DenoSubcommand {
   Bundle,
   Completions,
+  Doc,
   Eval,
   Fetch,
   Info,
@@ -834,6 +847,11 @@ pub fn flags_from_vec(
       );
       print!("{}", std::str::from_utf8(&buf).unwrap());
       DenoSubcommand::Completions
+    }
+    ("doc", Some(doc_match)) => {
+      let file: &str = doc_match.value_of("file").unwrap();
+      argv.extend(vec![file.to_string()]);
+      DenoSubcommand::Doc
     }
     ("eval", Some(eval_match)) => {
       flags.allow_net = true;
@@ -1890,4 +1908,18 @@ mod tests {
     assert_eq!(subcommand, DenoSubcommand::Run);
     assert_eq!(argv, svec!["deno", "script.ts"])
   }
+}
+
+#[test]
+fn test_flags_from_vec_38() {
+  let (flags, subcommand, argv) =
+    flags_from_vec(svec!["deno", "doc", "source.ts"]);
+  assert_eq!(
+    flags,
+    DenoFlags {
+      ..DenoFlags::default()
+    }
+  );
+  assert_eq!(subcommand, DenoSubcommand::Doc);
+  assert_eq!(argv, svec!["deno", "source.ts"])
 }

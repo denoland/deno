@@ -302,6 +302,32 @@ fn eval_command(flags: DenoFlags, argv: Vec<String>) {
   tokio_util::run(main_future);
 }
 
+fn doc_command(flags: DenoFlags, argv: Vec<String>) {
+  let (worker, state) = create_worker_and_state(flags, argv);
+
+  let main_module = state.main_module().unwrap();
+  assert!(state.argv.len() >= 2);
+  debug!(">>>>> doc_async START");
+  let doc_future = lazy(move || {
+    worker.then(move |result| {
+      js_check(result);
+      state
+        .ts_compiler
+        .doc_async(state.clone(), main_module.to_string())
+        .map_err(|err| {
+          debug!("diagnostics returned, exiting!");
+          eprintln!("");
+          print_err_and_exit(err)
+        })
+        .and_then(move |_| {
+          debug!("<<<<< doc END");
+          Ok(())
+        })
+    })
+  });
+  tokio_util::run(doc_future);
+}
+
 fn bundle_command(flags: DenoFlags, argv: Vec<String>) {
   let (worker, state) = create_worker_and_state(flags, argv);
 
@@ -409,6 +435,7 @@ pub fn main() {
   match subcommand {
     DenoSubcommand::Bundle => bundle_command(flags, argv),
     DenoSubcommand::Completions => {}
+    DenoSubcommand::Doc => doc_command(flags, argv),
     DenoSubcommand::Eval => eval_command(flags, argv),
     DenoSubcommand::Fetch => fetch_command(flags, argv),
     DenoSubcommand::Info => info_command(flags, argv),

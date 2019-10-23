@@ -63,6 +63,8 @@ declare global {
   interface Object {
     [consoleTypes.customInspect]?(): string;
   }
+
+  const console: consoleTypes.Console;
 }
 
 // A self reference to the global object.

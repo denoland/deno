@@ -362,6 +362,11 @@ itest!(config {
   output: "config.ts.out",
 });
 
+itest!(deno_doc {
+  args: "doc deno_doc.ts",
+  output: "deno_doc.ts.out",
+});
+
 itest!(error_001 {
   args: "run --reload error_001.ts",
   check_stderr: true,

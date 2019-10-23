@@ -1,0 +1,64 @@
+[
+  {
+    "name": "subdir/print_hello.ts",
+    "nodeType": "module",
+    "exports": [],
+    "pos": 0,
+    "end": 63
+  },
+  {
+    "name": "subdir/mod2.ts",
+    "nodeType": "module",
+    "exports": [
+      {
+        "nodeType": "export",
+        "pos": 0,
+        "end": 46,
+        "moduleSpecifier": "./print_hello.ts",
+        "namedExports": [
+          {
+            "nodeType": "namedexport",
+            "name": "printHello",
+            "pos": 8,
+            "end": 19
+          }
+        ]
+      }
+    ],
+    "pos": 0,
+    "end": 47
+  },
+  {
+    "name": "deno_doc.ts",
+    "nodeType": "module",
+    "exports": [
+      {
+        "name": "Foo",
+        "type": "typeof Foo",
+        "nodeType": "class",
+        "pos": 46,
+        "end": 257,
+        "constructors": [
+          {
+            "parameters": [
+              {
+                "name": "bar",
+                "type": "string",
+                "nodeType": "parameter",
+                "pos": 167,
+                "end": 185
+              }
+            ],
+            "returnType": "Foo",
+            "documentation": "Create a Foo, with some markdown\n\n     new Foo(\"bar\");",
+            "nodeType": "signature",
+            "pos": 66,
+            "end": 210
+          }
+        ]
+      }
+    ],
+    "pos": 0,
+    "end": 258
+  }
+]

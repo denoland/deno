@@ -158,20 +158,23 @@ impl CompiledFileMetadata {
 }
 /// Creates the JSON message send to compiler.ts's onmessage.
 fn req(
+  request_type: msg::CompilerReqType,
   root_names: Vec<String>,
   compiler_config: CompilerConfig,
   bundle: Option<String>,
 ) -> Buf {
   let j = match (compiler_config.path, compiler_config.content) {
     (Some(config_path), Some(config_data)) => json!({
+      "type": request_type as i32,
       "rootNames": root_names,
-      "bundle": bundle,
+      "outfile": bundle,
       "configPath": config_path,
       "config": str::from_utf8(&config_data).unwrap(),
     }),
     _ => json!({
+      "type": request_type as i32,
       "rootNames": root_names,
-      "bundle": bundle,
+      "outfile": bundle,
     }),
   };
 
@@ -255,6 +258,61 @@ impl TsCompiler {
     worker
   }
 
+  // TODO(kitson) DRY this with bundle_async/compile_async
+  pub fn doc_async(
+    self: &Self,
+    state: ThreadSafeState,
+    module_name: String,
+  ) -> impl Future<Item = (), Error = ErrBox> {
+    debug!(
+      "Invoking the compiler to document. module_name: {}",
+      module_name
+    );
+
+    let root_names = vec![module_name.clone()];
+    let req_msg = req(
+      msg::CompilerReqType::Doc,
+      root_names,
+      self.config.clone(),
+      None,
+    );
+
+    let worker = TsCompiler::setup_worker(state.clone());
+    let resource = worker.state.resource.clone();
+    let compiler_rid = resource.rid;
+    let first_msg_fut =
+      resources::post_message_to_worker(compiler_rid, req_msg)
+        .then(move |_| worker)
+        .then(move |result| {
+          if let Err(err) = result {
+            // TODO(ry) Need to forward the error instead of exiting.
+            eprintln!("{}", err.to_string());
+            std::process::exit(1);
+          }
+          debug!("Sent message to worker");
+          let stream_future =
+            resources::get_message_stream_from_worker(compiler_rid)
+              .into_future();
+          stream_future.map(|(f, _rest)| f).map_err(|(f, _rest)| f)
+        });
+
+    first_msg_fut.map_err(|_| panic!("not handled")).and_then(
+      move |maybe_msg: Option<Buf>| {
+        debug!("Received message from worker");
+
+        if let Some(msg) = maybe_msg {
+          let json_str = std::str::from_utf8(&msg).unwrap();
+          debug!("Message: {}", json_str);
+          if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
+            return Err(ErrBox::from(diagnostics));
+          }
+        }
+
+        Ok(())
+      },
+    )
+  }
+
   pub fn bundle_async(
     self: &Self,
     state: ThreadSafeState,
@@ -267,7 +325,12 @@ impl TsCompiler {
     );
 
     let root_names = vec![module_name.clone()];
-    let req_msg = req(root_names, self.config.clone(), Some(out_file));
+    let req_msg = req(
+      msg::CompilerReqType::Bundle,
+      root_names,
+      self.config.clone(),
+      Some(out_file),
+    );
 
     let worker = TsCompiler::setup_worker(state.clone());
     let resource = worker.state.resource.clone();
@@ -372,7 +435,12 @@ impl TsCompiler {
     );
 
     let root_names = vec![module_url.to_string()];
-    let req_msg = req(root_names, self.config.clone(), None);
+    let req_msg = req(
+      msg::CompilerReqType::Compile,
+      root_names,
+      self.config.clone(),
+      None,
+    );
 
     let worker = TsCompiler::setup_worker(state.clone());
     let compiling_job = state.progress.add("Compile", &module_url.to_string());
@@ -693,6 +761,34 @@ mod tests {
             .code
             .as_bytes()
             .starts_with("console.log(\"Hello World\");".as_bytes()));
+          Ok(())
+        })
+    }))
+  }
+
+  #[test]
+  fn test_doc_async() {
+    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+      .parent()
+      .unwrap()
+      .join("tests/002_hello.ts")
+      .to_owned();
+    use deno::ModuleSpecifier;
+    let module_name = ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap())
+      .unwrap()
+      .to_string();
+
+    let state = ThreadSafeState::mock(vec![
+      String::from("deno"),
+      p.to_string_lossy().into(),
+    ]);
+
+    tokio_util::run(lazy(move || {
+      state
+        .ts_compiler
+        .doc_async(state.clone(), module_name)
+        .then(|result| {
+          assert!(result.is_ok());
           Ok(())
         })
     }))

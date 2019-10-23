@@ -59,7 +59,7 @@ pub enum ErrorKind {
   JSError = 50,
 }
 
-// Warning! The values in this enum are duplicated in js/compiler.ts
+// Warning! The values in this enum are duplicated in cli/js/compiler.ts
 // Update carefully!
 #[allow(non_camel_case_types)]
 #[repr(i8)]
@@ -71,6 +71,18 @@ pub enum MediaType {
   TSX = 3,
   Json = 4,
   Unknown = 5,
+}
+
+// Warning! The values in this enum are duplicated in cli/js/compiler.ts
+// Update carefully!
+#[allow(non_camel_case_types)]
+#[repr(i8)]
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum CompilerReqType {
+  Compile = 1,
+  Bundle = 2,
+  Doc = 3,
+  AST = 4,
 }
 
 pub fn enum_name_media_type(mt: MediaType) -> &'static str {
