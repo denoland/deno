@@ -4,7 +4,7 @@
     "nodeType": "module",
     "exports": [],
     "pos": 0,
-    "end": 63
+    "end": [WILDCARD]
   },
   {
     "name": "subdir/mod2.ts",
@@ -13,20 +13,20 @@
       {
         "nodeType": "export",
         "pos": 0,
-        "end": 46,
+        "end": [WILDCARD],
         "moduleSpecifier": "./print_hello.ts",
         "namedExports": [
           {
             "nodeType": "namedexport",
             "name": "printHello",
-            "pos": 8,
-            "end": 19
+            "pos": [WILDCARD],
+            "end": [WILDCARD]
           }
         ]
       }
     ],
     "pos": 0,
-    "end": 47
+    "end": [WILDCARD]
   },
   {
     "name": "deno_doc.ts",
@@ -36,8 +36,8 @@
         "name": "Foo",
         "type": "typeof Foo",
         "nodeType": "class",
-        "pos": 46,
-        "end": 257,
+        "pos": [WILDCARD],
+        "end": [WILDCARD],
         "constructors": [
           {
             "parameters": [
@@ -45,20 +45,20 @@
                 "name": "bar",
                 "type": "string",
                 "nodeType": "parameter",
-                "pos": 167,
-                "end": 185
+                "pos": [WILDCARD],
+                "end": [WILDCARD]
               }
             ],
             "returnType": "Foo",
             "documentation": "Create a Foo, with some markdown\n\n     new Foo(\"bar\");",
             "nodeType": "signature",
-            "pos": 66,
-            "end": 210
+            "pos": [WILDCARD],
+            "end": [WILDCARD]
           }
         ]
       }
     ],
     "pos": 0,
-    "end": 258
+    "end": [WILDCARD]
   }
 ]
