@@ -8,10 +8,9 @@
  * https://github.com/stardazed/sd-streams
  */
 
-/* eslint prefer-const: "warn" */
+/* eslint prefer-const: "off" */
 // TODO remove this, surpressed because of
 //   284:7   error    'branch1' is never reassigned. Use 'const' instead  prefer-const
-//   285:7   error    'branch2' is never reassigned. Use 'const' instead  prefer-const
 
 import * as rs from "./readable-internals.ts";
 import * as ws from "./writable-internals.ts";
@@ -202,12 +201,12 @@ export function createReadableStream<OutputType>(
   cancelAlgorithm: rs.CancelAlgorithm,
   highWaterMark?: number,
   sizeAlgorithm?: QueuingStrategySizeCallback<OutputType>
-) {
+): SDReadableStream<OutputType> {
   if (highWaterMark === undefined) {
     highWaterMark = 1;
   }
   if (sizeAlgorithm === undefined) {
-    sizeAlgorithm = () => 1;
+    sizeAlgorithm = (): number => 1;
   }
   // Assert: ! IsNonNegativeNumber(highWaterMark) is true.
 
@@ -236,7 +235,7 @@ export function createReadableByteStream<OutputType>(
   cancelAlgorithm: rs.CancelAlgorithm,
   highWaterMark?: number,
   autoAllocateChunkSize?: number
-) {
+): SDReadableStream<OutputType> {
   if (highWaterMark === undefined) {
     highWaterMark = 0;
   }
@@ -274,7 +273,7 @@ export function createReadableByteStream<OutputType>(
 export function readableStreamTee<OutputType>(
   stream: SDReadableStream<OutputType>,
   cloneForBranch2: boolean
-) {
+): [SDReadableStream<OutputType>, SDReadableStream<OutputType>] {
   if (!rs.isReadableStream(stream)) {
     throw new TypeError();
   }
@@ -291,7 +290,7 @@ export function readableStreamTee<OutputType>(
   let cancelResolve: (reason: shared.ErrorResult) => void;
   const cancelPromise = new Promise<void>(resolve => (cancelResolve = resolve));
 
-  const pullAlgorithm = () => {
+  const pullAlgorithm = (): Promise<void> => {
     return rs
       .readableStreamDefaultReaderRead(reader)
       .then(({ value, done }) => {
@@ -335,7 +334,7 @@ export function readableStreamTee<OutputType>(
       });
   };
 
-  const cancel1Algorithm = (reason: shared.ErrorResult) => {
+  const cancel1Algorithm = (reason: shared.ErrorResult): Promise<void> => {
     canceled1 = true;
     reason1 = reason;
     if (canceled2) {
@@ -345,7 +344,7 @@ export function readableStreamTee<OutputType>(
     return cancelPromise;
   };
 
-  const cancel2Algorithm = (reason: shared.ErrorResult) => {
+  const cancel2Algorithm = (reason: shared.ErrorResult): Promise<void> => {
     canceled2 = true;
     reason2 = reason;
     if (canceled1) {
@@ -355,7 +354,7 @@ export function readableStreamTee<OutputType>(
     return cancelPromise;
   };
 
-  const startAlgorithm = () => undefined;
+  const startAlgorithm = (): undefined => undefined;
   branch1 = createReadableStream(
     startAlgorithm,
     pullAlgorithm,

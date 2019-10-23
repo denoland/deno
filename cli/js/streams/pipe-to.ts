@@ -8,6 +8,9 @@
  * https://github.com/stardazed/sd-streams
  */
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// TODO reenable this lint here
+
 import * as rs from "./readable-internals.ts";
 import * as ws from "./writable-internals.ts";
 import * as shared from "./shared-internals.ts";
@@ -26,7 +29,7 @@ export function pipeTo<ChunkType>(
   source: rs.SDReadableStream<ChunkType>,
   dest: ws.WritableStream<ChunkType>,
   options: PipeOptions
-) {
+): Promise<void> {
   const preventClose = !!options.preventClose;
   const preventAbort = !!options.preventAbort;
   const preventCancel = !!options.preventCancel;
@@ -43,7 +46,7 @@ export function pipeTo<ChunkType>(
 
   let abortAlgorithm: () => any;
   if (signal !== undefined) {
-    abortAlgorithm = () => {
+    abortAlgorithm = (): void => {
       // TODO this should be a DOMException,
       // https://github.com/stardazed/sd-streams/blob/master/packages/streams/src/pipe-to.ts#L38
       const error = new DenoError(ErrorKind.AbortError, "Aborted");
@@ -83,7 +86,7 @@ export function pipeTo<ChunkType>(
     stream: rs.SDReadableStream<ChunkType> | ws.WritableStream<ChunkType>,
     promise: Promise<void>,
     action: (error: shared.ErrorResult) => void
-  ) {
+  ): void {
     if (stream[shared.state_] === "errored") {
       action(stream[shared.storedError_]);
     } else {
@@ -95,7 +98,7 @@ export function pipeTo<ChunkType>(
     stream: rs.SDReadableStream<ChunkType> | ws.WritableStream<ChunkType>,
     promise: Promise<void>,
     action: () => void
-  ) {
+  ): void {
     if (stream[shared.state_] === "closed") {
       action();
     } else {
@@ -155,7 +158,7 @@ export function pipeTo<ChunkType>(
     );
   }
 
-  function flushRemainder() {
+  function flushRemainder(): Promise<void> | undefined {
     if (
       dest[shared.state_] === "writable" &&
       !ws.writableStreamCloseQueuedOrInFlight(dest)
@@ -166,17 +169,17 @@ export function pipeTo<ChunkType>(
     }
   }
 
-  function shutDown(action?: () => Promise<void>, error?: ErrorWrapper) {
+  function shutDown(action?: () => Promise<void>, error?: ErrorWrapper): void {
     if (shuttingDown) {
       return;
     }
     shuttingDown = true;
 
     if (action === undefined) {
-      action = () => Promise.resolve();
+      action = (): Promise<void> => Promise.resolve();
     }
 
-    function finishShutDown() {
+    function finishShutDown(): void {
       action!().then(
         _ => finalize(error),
         newError => finalize({ actualError: newError })
@@ -191,7 +194,7 @@ export function pipeTo<ChunkType>(
     }
   }
 
-  function finalize(error?: ErrorWrapper) {
+  function finalize(error?: ErrorWrapper): void {
     ws.writableStreamDefaultWriterRelease(writer);
     rs.readableStreamReaderGenericRelease(reader);
     if (signal && abortAlgorithm) {
@@ -204,7 +207,7 @@ export function pipeTo<ChunkType>(
     }
   }
 
-  function next() {
+  function next(): Promise<void> | undefined {
     if (shuttingDown) {
       return;
     }

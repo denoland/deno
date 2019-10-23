@@ -8,6 +8,9 @@
  * https://github.com/stardazed/sd-streams
  */
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// TODO reenable this lint here
+
 import * as rs from "./readable-internals.ts";
 import * as ws from "./writable-internals.ts";
 import * as ts from "./transform-internals.ts";
@@ -99,7 +102,7 @@ function setUpTransformStreamDefaultControllerFromTransformer<
 >(
   stream: TransformStream<InputType, OutputType>,
   transformer: ts.Transformer<InputType, OutputType>
-) {
+): void {
   const controller = Object.create(
     TransformStreamDefaultController.prototype
   ) as TransformStreamDefaultController<InputType, OutputType>;
@@ -112,11 +115,11 @@ function setUpTransformStreamDefaultControllerFromTransformer<
         "`transform` field of the transformer must be a function"
       );
     }
-    transformAlgorithm = (chunk: InputType) =>
+    transformAlgorithm = (chunk: InputType): Promise<any> =>
       shared.promiseCall(transformMethod, transformer, [chunk, controller]);
   } else {
     // use identity transform
-    transformAlgorithm = function(chunk: InputType) {
+    transformAlgorithm = function(chunk: InputType): Promise<void> {
       try {
         // OutputType and InputType are the same here
         ts.transformStreamDefaultControllerEnqueue(

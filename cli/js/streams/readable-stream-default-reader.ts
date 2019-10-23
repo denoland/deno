@@ -60,7 +60,7 @@ export class ReadableStreamDefaultReader<OutputType>
     return rs.readableStreamDefaultReaderRead(this, true);
   }
 
-  releaseLock() {
+  releaseLock(): void {
     if (!rs.isReadableStreamDefaultReader(this)) {
       throw new TypeError();
     }

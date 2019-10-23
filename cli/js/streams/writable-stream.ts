@@ -87,12 +87,12 @@ export function createWritableStream<InputType>(
   abortAlgorithm: ws.AbortAlgorithm,
   highWaterMark?: number,
   sizeAlgorithm?: QueuingStrategySizeCallback<InputType>
-) {
+): WritableStream<InputType> {
   if (highWaterMark === undefined) {
     highWaterMark = 1;
   }
   if (sizeAlgorithm === undefined) {
-    sizeAlgorithm = () => 1;
+    sizeAlgorithm = (): number => 1;
   }
   // Assert: ! IsNonNegativeNumber(highWaterMark) is true.
 

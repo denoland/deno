@@ -8,6 +8,9 @@
  * https://github.com/stardazed/sd-streams
  */
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// TODO reenable this lint here
+
 import { Queue, QueueImpl } from "./queue.ts";
 import { isFiniteNonNegativeNumber } from "./shared-internals.ts";
 
@@ -33,7 +36,7 @@ export interface ByteQueueContainer {
   [queueTotalSize_]: number;
 }
 
-export function dequeueValue<V>(container: QueueContainer<V>) {
+export function dequeueValue<V>(container: QueueContainer<V>): V {
   // Assert: container has[[queue]] and[[queueTotalSize]] internal slots.
   // Assert: container.[[queue]] is not empty.
   const pair = container[queue_].shift()!;
@@ -46,7 +49,7 @@ export function enqueueValueWithSize<V>(
   container: QueueContainer<V>,
   value: V,
   size: number
-) {
+): void {
   // Assert: container has[[queue]] and[[queueTotalSize]] internal slots.
   if (!isFiniteNonNegativeNumber(size)) {
     throw new RangeError("Chunk size must be a non-negative, finite numbers");
@@ -55,7 +58,7 @@ export function enqueueValueWithSize<V>(
   container[queueTotalSize_] += size;
 }
 
-export function peekQueueValue<V>(container: QueueContainer<V>) {
+export function peekQueueValue<V>(container: QueueContainer<V>): V {
   // Assert: container has[[queue]] and[[queueTotalSize]] internal slots.
   // Assert: container.[[queue]] is not empty.
   return container[queue_].front()!.value;
@@ -63,7 +66,7 @@ export function peekQueueValue<V>(container: QueueContainer<V>) {
 
 export function resetQueue<V>(
   container: ByteQueueContainer | QueueContainer<V>
-) {
+): void {
   // Chrome (as of v67) has a steep performance cliff with large arrays
   // and shift(), around about 50k elements. While this is an unusual case
   // we use a simple wrapper around shift and push that is chunked to

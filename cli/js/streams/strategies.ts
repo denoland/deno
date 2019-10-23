@@ -8,6 +8,9 @@
  * https://github.com/stardazed/sd-streams
  */
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// TODO reenable this lint here
+
 import { QueuingStrategy } from "../dom_types.ts";
 
 export class ByteLengthQueuingStrategy
@@ -18,7 +21,7 @@ export class ByteLengthQueuingStrategy
     this.highWaterMark = options.highWaterMark;
   }
 
-  size(chunk: ArrayBufferView) {
+  size(chunk: ArrayBufferView): number {
     return chunk.byteLength;
   }
 }
@@ -30,7 +33,7 @@ export class CountQueuingStrategy implements QueuingStrategy<any> {
     this.highWaterMark = options.highWaterMark;
   }
 
-  size() {
+  size(): number {
     return 1;
   }
 }

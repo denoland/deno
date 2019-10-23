@@ -8,6 +8,9 @@
  * https://github.com/stardazed/sd-streams
  */
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// TODO don't disable this warning
+
 import { AbortSignal, QueuingStrategySizeCallback } from "../dom_types.ts";
 import { DenoError, ErrorKind } from "../errors.ts";
 
@@ -23,7 +26,7 @@ export type ErrorResult = any;
 
 // ---------
 
-export function isInteger(value: number) {
+export function isInteger(value: number): boolean {
   if (!isFinite(value)) {
     // covers NaN, +Infinity and -Infinity
     return false;
@@ -32,7 +35,7 @@ export function isInteger(value: number) {
   return Math.floor(absValue) === absValue;
 }
 
-export function isFiniteNonNegativeNumber(value: unknown) {
+export function isFiniteNonNegativeNumber(value: unknown): boolean {
   if (!(typeof value === "number" && isFinite(value))) {
     // covers NaN, +Infinity and -Infinity
     return false;
@@ -59,7 +62,7 @@ export function invokeOrNoop<O extends object, P extends keyof O>(
   o: O,
   p: P,
   args: any[]
-) {
+): any {
   // Assert: O is not undefined.
   // Assert: IsPropertyKey(P) is true.
   // Assert: args is a List.
@@ -83,7 +86,7 @@ export function cloneArrayBuffer(
   ) as InstanceType<typeof cloneConstructor>;
 }
 
-export function transferArrayBuffer(buffer: ArrayBufferLike) {
+export function transferArrayBuffer(buffer: ArrayBufferLike): ArrayBuffer {
   // This would in a JS engine context detach the buffer's backing store and return
   // a new ArrayBuffer with the same backing store, invalidating `buffer`,
   // i.e. a move operation in C++ parlance.
@@ -97,7 +100,7 @@ export function copyDataBlockBytes(
   fromBlock: ArrayBufferLike,
   fromIndex: number,
   count: number
-) {
+): void {
   new Uint8Array(toBlock, toIndex, count).set(
     new Uint8Array(fromBlock, fromIndex, count)
   );
@@ -216,7 +219,7 @@ export function promiseCall<F extends Function>(
   f: F,
   v: object | undefined,
   args: any[]
-) {
+): Promise<any> {
   // tslint:disable-line:ban-types
   try {
     const result = Function.prototype.apply.call(f, v, args);
@@ -229,15 +232,15 @@ export function promiseCall<F extends Function>(
 export function createAlgorithmFromUnderlyingMethod<
   O extends object,
   K extends keyof O
->(obj: O, methodName: K, extraArgs: any[]) {
+>(obj: O, methodName: K, extraArgs: any[]): any {
   const method = obj[methodName];
   if (method === undefined) {
-    return () => Promise.resolve(undefined);
+    return (): any => Promise.resolve(undefined);
   }
   if (typeof method !== "function") {
     throw new TypeError(`Field "${methodName}" is not a function.`);
   }
-  return function(...fnArgs: any[]) {
+  return function(...fnArgs: any[]): any {
     return promiseCall(method, obj, fnArgs.concat(extraArgs));
   };
 }
@@ -250,7 +253,7 @@ function createIterResultObject<T>(value: T, done: boolean): IteratorResult<T> {
 }
 */
 
-export function validateAndNormalizeHighWaterMark(hwm: unknown) {
+export function validateAndNormalizeHighWaterMark(hwm: unknown): number {
   const highWaterMark = Number(hwm);
   if (isNaN(highWaterMark) || highWaterMark < 0) {
     throw new RangeError(
@@ -266,7 +269,7 @@ export function makeSizeAlgorithmFromSizeFunction<T>(
   if (typeof sizeFn !== "function" && typeof sizeFn !== "undefined") {
     throw new TypeError("size function must be undefined or a function");
   }
-  return function(chunk: T) {
+  return function(chunk: T): number {
     if (typeof sizeFn === "function") {
       return sizeFn(chunk);
     }
@@ -294,11 +297,11 @@ export function createControlledPromise<V>(): ControlledPromise<V> {
     state: ControlledPromiseState.Pending
   } as ControlledPromise<V>;
   conProm.promise = new Promise<V>(function(resolve, reject) {
-    conProm.resolve = function(v?: V) {
+    conProm.resolve = function(v?: V): void {
       conProm.state = ControlledPromiseState.Resolved;
       resolve(v);
     };
-    conProm.reject = function(e?: ErrorResult) {
+    conProm.reject = function(e?: ErrorResult): void {
       conProm.state = ControlledPromiseState.Rejected;
       reject(e);
     };

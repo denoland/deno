@@ -8,6 +8,9 @@
  * https://github.com/stardazed/sd-streams
  */
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// TODO reenable this lint here
+
 import * as ws from "./writable-internals.ts";
 import * as shared from "./shared-internals.ts";
 import * as q from "./queue-mixin.ts";
@@ -31,7 +34,7 @@ export class WritableStreamDefaultController<InputType>
     throw new TypeError();
   }
 
-  error(e?: shared.ErrorResult) {
+  error(e?: shared.ErrorResult): void {
     if (!ws.isWritableStreamDefaultController(this)) {
       throw new TypeError();
     }
@@ -42,13 +45,13 @@ export class WritableStreamDefaultController<InputType>
     ws.writableStreamDefaultControllerError(this, e);
   }
 
-  [ws.abortSteps_](reason: shared.ErrorResult) {
+  [ws.abortSteps_](reason: shared.ErrorResult): Promise<void> {
     const result = this[ws.abortAlgorithm_](reason);
     ws.writableStreamDefaultControllerClearAlgorithms(this);
     return result;
   }
 
-  [ws.errorSteps_]() {
+  [ws.errorSteps_](): void {
     q.resetQueue(this);
   }
 }
@@ -60,13 +63,13 @@ export function setUpWritableStreamDefaultControllerFromUnderlyingSink<
   underlyingSink: ws.WritableStreamSink<InputType>,
   highWaterMark: number,
   sizeAlgorithm: QueuingStrategySizeCallback<InputType>
-) {
+): void {
   // Assert: underlyingSink is not undefined.
   const controller = Object.create(
     WritableStreamDefaultController.prototype
   ) as WritableStreamDefaultController<InputType>;
 
-  const startAlgorithm = function() {
+  const startAlgorithm = function(): any {
     return shared.invokeOrNoop(underlyingSink, "start", [controller]);
   };
   const writeAlgorithm = shared.createAlgorithmFromUnderlyingMethod(

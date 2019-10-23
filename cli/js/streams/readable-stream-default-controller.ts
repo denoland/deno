@@ -8,6 +8,9 @@
  * https://github.com/stardazed/sd-streams
  */
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// TODO reenable this lint here
+
 import * as rs from "./readable-internals.ts";
 import * as shared from "./shared-internals.ts";
 import * as q from "./queue-mixin.ts";
@@ -37,7 +40,7 @@ export class ReadableStreamDefaultController<OutputType>
     return rs.readableStreamDefaultControllerGetDesiredSize(this);
   }
 
-  close() {
+  close(): void {
     if (!rs.isReadableStreamDefaultController(this)) {
       throw new TypeError();
     }
@@ -49,7 +52,7 @@ export class ReadableStreamDefaultController<OutputType>
     rs.readableStreamDefaultControllerClose(this);
   }
 
-  enqueue(chunk?: OutputType) {
+  enqueue(chunk?: OutputType): void {
     if (!rs.isReadableStreamDefaultController(this)) {
       throw new TypeError();
     }
@@ -61,21 +64,23 @@ export class ReadableStreamDefaultController<OutputType>
     rs.readableStreamDefaultControllerEnqueue(this, chunk!);
   }
 
-  error(e?: shared.ErrorResult) {
+  error(e?: shared.ErrorResult): void {
     if (!rs.isReadableStreamDefaultController(this)) {
       throw new TypeError();
     }
     rs.readableStreamDefaultControllerError(this, e);
   }
 
-  [rs.cancelSteps_](reason: shared.ErrorResult) {
+  [rs.cancelSteps_](reason: shared.ErrorResult): Promise<void> {
     q.resetQueue(this);
     const result = this[rs.cancelAlgorithm_](reason);
     rs.readableStreamDefaultControllerClearAlgorithms(this);
     return result;
   }
 
-  [rs.pullSteps_](forAuthorCode: boolean) {
+  [rs.pullSteps_](
+    forAuthorCode: boolean
+  ): Promise<IteratorResult<OutputType, any>> {
     const stream = this[rs.controlledReadableStream_];
     if (this[q.queue_].length > 0) {
       const chunk = q.dequeueValue(this);
@@ -106,10 +111,10 @@ export function setUpReadableStreamDefaultControllerFromUnderlyingSource<
   underlyingSource: UnderlyingSource<OutputType>,
   highWaterMark: number,
   sizeAlgorithm: QueuingStrategySizeCallback<OutputType>
-) {
+): void {
   // Assert: underlyingSource is not undefined.
   const controller = Object.create(ReadableStreamDefaultController.prototype);
-  const startAlgorithm = () => {
+  const startAlgorithm = (): any => {
     return shared.invokeOrNoop(underlyingSource, "start", [controller]);
   };
   const pullAlgorithm = shared.createAlgorithmFromUnderlyingMethod(

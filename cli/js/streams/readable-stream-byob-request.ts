@@ -27,7 +27,7 @@ export class ReadableStreamBYOBRequest {
     return this[rs.view_]!;
   }
 
-  respond(bytesWritten: number) {
+  respond(bytesWritten: number): void {
     if (!rs.isReadableStreamBYOBRequest(this)) {
       throw new TypeError();
     }
@@ -41,7 +41,7 @@ export class ReadableStreamBYOBRequest {
     );
   }
 
-  respondWithNewView(view: ArrayBufferView) {
+  respondWithNewView(view: ArrayBufferView): void {
     if (!rs.isReadableStreamBYOBRequest(this)) {
       throw new TypeError();
     }

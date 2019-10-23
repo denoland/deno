@@ -8,6 +8,9 @@
  * https://github.com/stardazed/sd-streams
  */
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// TODO reenable this lint here
+
 import * as rs from "./readable-internals.ts";
 import * as q from "./queue-mixin.ts";
 import * as shared from "./shared-internals.ts";
@@ -70,7 +73,7 @@ export class ReadableByteStreamController
     return rs.readableByteStreamControllerGetDesiredSize(this);
   }
 
-  close() {
+  close(): void {
     if (!rs.isReadableByteStreamController(this)) {
       throw new TypeError();
     }
@@ -83,7 +86,7 @@ export class ReadableByteStreamController
     rs.readableByteStreamControllerClose(this);
   }
 
-  enqueue(chunk: ArrayBufferView) {
+  enqueue(chunk: ArrayBufferView): void {
     if (!rs.isReadableByteStreamController(this)) {
       throw new TypeError();
     }
@@ -100,14 +103,14 @@ export class ReadableByteStreamController
     return rs.readableByteStreamControllerEnqueue(this, chunk);
   }
 
-  error(error?: shared.ErrorResult) {
+  error(error?: shared.ErrorResult): void {
     if (!rs.isReadableByteStreamController(this)) {
       throw new TypeError();
     }
     rs.readableByteStreamControllerError(this, error);
   }
 
-  [rs.cancelSteps_](reason: shared.ErrorResult) {
+  [rs.cancelSteps_](reason: shared.ErrorResult): Promise<void> {
     if (this[rs.pendingPullIntos_].length > 0) {
       const firstDescriptor = this[rs.pendingPullIntos_][0];
       firstDescriptor.bytesFilled = 0;
@@ -118,7 +121,9 @@ export class ReadableByteStreamController
     return result;
   }
 
-  [rs.pullSteps_](forAuthorCode: boolean) {
+  [rs.pullSteps_](
+    forAuthorCode: boolean
+  ): Promise<IteratorResult<ArrayBufferView, any>> {
     const stream = this[rs.controlledReadableByteStream_];
     // Assert: ! ReadableStreamHasDefaultReader(stream) is true.
     if (this[q.queueTotalSize_] > 0) {
@@ -165,13 +170,13 @@ export function setUpReadableByteStreamControllerFromUnderlyingSource(
   stream: rs.SDReadableStream<ArrayBufferView>,
   underlyingByteSource: UnderlyingByteSource,
   highWaterMark: number
-) {
+): void {
   // Assert: underlyingByteSource is not undefined.
   const controller = Object.create(
     ReadableByteStreamController.prototype
   ) as ReadableByteStreamController;
 
-  const startAlgorithm = () => {
+  const startAlgorithm = (): any => {
     return shared.invokeOrNoop(underlyingByteSource, "start", [controller]);
   };
   const pullAlgorithm = shared.createAlgorithmFromUnderlyingMethod(

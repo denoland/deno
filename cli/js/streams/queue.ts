@@ -59,7 +59,7 @@ export class QueueImpl<T> implements Queue<T> {
     return t;
   }
 
-  get length() {
+  get length(): number {
     return this.length_;
   }
 }
