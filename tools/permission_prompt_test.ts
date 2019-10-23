@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-const { args, env, exit, makeTempDirSync, readFileSync, run } = Deno;
+const { args, env, exit, listen, makeTempDirSync, readFileSync, run } = Deno;
 
 const firstCheckFailedMessage = "First check failed";
 
@@ -31,11 +31,11 @@ const test = {
   },
   needsNet(): void {
     try {
-      Deno.listen({ hostname: "127.0.0.1", port: 4540 });
+      listen({ hostname: "127.0.0.1", port: 4540 });
     } catch (e) {
       console.log(firstCheckFailedMessage);
     }
-    Deno.listen({ hostname: "127.0.0.1", port: 4541 });
+    listen({ hostname: "127.0.0.1", port: 4541 });
   },
   needsRun(): void {
     try {
