@@ -145,7 +145,6 @@ jobs:
         run: |
           git clone --depth 1 -b gh-pages https://${DENOBOT_PAT}@github.com/denoland/deno.git gh-pages
           python ./tools/build_benchmark_jsons.py
-          cp -r website/* gh-pages/
           cd gh-pages
           git config user.email "propelml@gmail.com"
           git config user.name "denobot"
