@@ -31,7 +31,12 @@ export function recordFromBufMinimal(
   opId: number,
   ui8: Uint8Array
 ): RecordMinimal {
-  const buf32 = new Int32Array(ui8.slice(0, 12), 0, 3);
+  const header = ui8.slice(0, 12);
+  const buf32 = new Int32Array(
+    header.buffer,
+    header.byteOffset,
+    header.byteLength / 4
+  );
   const promiseId = buf32[0];
   const arg = buf32[1];
   const result = buf32[2];
