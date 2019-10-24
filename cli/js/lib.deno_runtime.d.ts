@@ -883,34 +883,29 @@ declare namespace Deno {
   }
 
   // @url js/permissions.d.ts
-
-  /** Permissions as granted by the caller */
-  export interface Permissions {
-    read: boolean;
-    write: boolean;
-    net: boolean;
-    env: boolean;
-    run: boolean;
-    hrtime: boolean;
+  export type PermissionName =
+    | "run"
+    | "read"
+    | "write"
+    | "net"
+    | "env"
+    | "hrtime";
+  export type PermissionState = "granted" | "denied" | "prompt";
+  interface PermissionDescriptor {
+    name: PermissionName;
+    url?: string;
+    path?: string;
   }
-  export type Permission = keyof Permissions;
-  /** Inspect granted permissions for the current program.
-   *
-   *       if (Deno.permissions().read) {
-   *         const file = await Deno.readFile("example.test");
-   *         // ...
-   *       }
-   */
-  export function permissions(): Permissions;
-  /** Revoke a permission. When the permission was already revoked nothing changes
-   *
-   *       if (Deno.permissions().read) {
-   *         const file = await Deno.readFile("example.test");
-   *         Deno.revokePermission('read');
-   *       }
-   *       Deno.readFile("example.test"); // -> error or permission prompt
-   */
-  export function revokePermission(permission: Permission): void;
+  export class Permissions {
+    query(d: PermissionDescriptor): Promise<PermissionStatus>;
+    revoke(d: PermissionDescriptor): Promise<PermissionStatus>;
+  }
+  export const permissions: Permissions;
+
+  export class PermissionStatus {
+    state: PermissionState;
+    constructor(state: PermissionState);
+  }
 
   // @url js/truncate.d.ts
 

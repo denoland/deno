@@ -75,5 +75,6 @@ export enum ErrorKind {
   UnsupportedFetchScheme = 47,
   TooManyRedirects = 48,
   Diagnostic = 49,
-  JSError = 50
+  JSError = 50,
+  TypeError = 51
 }
