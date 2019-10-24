@@ -78,8 +78,8 @@ jobs:
       - name: Environment (windows)
         if: startsWith(matrix.os, 'windows')
         run: |
-          echo ::add-path::%cd%\prebuilt\win
-          echo ::add-path::%cd%\target\release
+          echo ::add-path::$(pwd)\prebuilt\win
+          echo ::add-path::$(pwd)\target\release
 
       - name: Log versions
         run: |
@@ -122,7 +122,7 @@ jobs:
         if: matrix.kind == 'test_std'
         run: |
           cd std
-          "../target/release/deno" test -A
+          ../target/release/deno test -A
 
       - name: Test
         if: matrix.kind == 'test'
@@ -169,7 +169,7 @@ jobs:
 
       - name: Pre-release (windows)
         if: startsWith(matrix.os, 'windows') && matrix.kind == 'test'
-        run: PowerShell -Command "& {Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno_win_x64.zip}"
+        run: Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno_win_x64.zip
 
       - name: Release
         uses: softprops/action-gh-release@v1
