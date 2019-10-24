@@ -55,6 +55,22 @@ impl Into<Buf> for ErrorRecord {
   }
 }
 
+#[test]
+fn test_error_record() {
+  let expected = vec![
+    1, 0, 0, 0, 255, 255, 255, 255, 10, 0, 0, 0, 69, 114, 114, 111, 114, 32,
+    32, 32,
+  ];
+  let err_record = ErrorRecord {
+    promise_id: 1,
+    arg: -1,
+    error_code: 10,
+    error_message: "Error".to_string().as_bytes().to_owned(),
+  };
+  let buf: Buf = err_record.into();
+  assert_eq!(buf, expected.into_boxed_slice());
+}
+
 pub fn parse_min_record(bytes: &[u8]) -> Option<Record> {
   if bytes.len() % std::mem::size_of::<i32>() != 0 {
     return None;
