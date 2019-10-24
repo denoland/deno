@@ -6,11 +6,6 @@ from util import run, root_path
 
 target_path = os.path.join(root_path, "target/")
 
-os.chdir(root_path)
-
-# Builds into target/doc
-run(["cargo", "doc", "--all", "--no-deps", "-vv"])
-
 # 'deno types' is stored in js/lib.deno_runtime.d.ts
 # We want to run typedoc on that declaration file only.
 os.chdir(os.path.join(root_path, "cli/js"))
