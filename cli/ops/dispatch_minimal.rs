@@ -4,6 +4,8 @@
 //! alternative to flatbuffers using a very simple list of int32s to lay out
 //! messages. The first i32 is used to determine if a message a flatbuffer
 //! message or a "minimal" message.
+use crate::deno_error::GetErrorKind;
+use byteorder::{LittleEndian, WriteBytesExt};
 use deno::Buf;
 use deno::CoreOp;
 use deno::ErrBox;
@@ -29,6 +31,44 @@ impl Into<Buf> for Record {
     let ptr = Box::into_raw(buf32) as *mut [u8; 3 * 4];
     unsafe { Box::from_raw(ptr) }
   }
+}
+
+pub struct ErrorRecord {
+  pub promise_id: i32,
+  pub arg: i32,
+  pub error_code: i32,
+  pub error_message: Vec<u8>,
+}
+
+impl Into<Buf> for ErrorRecord {
+  fn into(self) -> Buf {
+    let v32: Vec<i32> = vec![self.promise_id, self.arg, self.error_code];
+    let mut v8: Vec<u8> = Vec::new();
+    for n in v32 {
+      v8.write_i32::<LittleEndian>(n).unwrap();
+    }
+    let mut message = self.error_message;
+    // Align to 32bit word, padding with the space character.
+    message.resize((message.len() + 3usize) & !3usize, b' ');
+    v8.append(&mut message);
+    v8.into_boxed_slice()
+  }
+}
+
+#[test]
+fn test_error_record() {
+  let expected = vec![
+    1, 0, 0, 0, 255, 255, 255, 255, 10, 0, 0, 0, 69, 114, 114, 111, 114, 32,
+    32, 32,
+  ];
+  let err_record = ErrorRecord {
+    promise_id: 1,
+    arg: -1,
+    error_code: 10,
+    error_message: "Error".to_string().as_bytes().to_owned(),
+  };
+  let buf: Buf = err_record.into();
+  assert_eq!(buf, expected.into_boxed_slice());
 }
 
 pub fn parse_min_record(bytes: &[u8]) -> Option<Record> {
@@ -85,15 +125,18 @@ pub fn minimal_op(
       match result {
         Ok(r) => {
           record.result = r;
+          Ok(record.into())
         }
         Err(err) => {
-          // TODO(ry) The dispatch_minimal doesn't properly pipe errors back to
-          // the caller.
-          debug!("swallowed err {}", err);
-          record.result = -1;
+          let error_record = ErrorRecord {
+            promise_id: record.promise_id,
+            arg: -1,
+            error_code: err.kind() as i32,
+            error_message: err.to_string().as_bytes().to_owned(),
+          };
+          Ok(error_record.into())
         }
       }
-      Ok(record.into())
     }));
 
     if is_sync {

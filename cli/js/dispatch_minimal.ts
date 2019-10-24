@@ -1,12 +1,16 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as util from "./util.ts";
 import { core } from "./core.ts";
+import { TextDecoder } from "./text_encoding.ts";
+import { ErrorKind, DenoError } from "./errors.ts";
 
-const promiseTableMin = new Map<number, util.Resolvable<number>>();
+const promiseTableMin = new Map<number, util.Resolvable<RecordMinimal>>();
 // Note it's important that promiseId starts at 1 instead of 0, because sync
 // messages are indicated with promiseId 0. If we ever add wrap around logic for
 // overflows, this should be taken into account.
 let _nextPromiseId = 1;
+
+const decoder = new TextDecoder();
 
 function nextPromiseId(): number {
   return _nextPromiseId++;
@@ -17,21 +21,49 @@ export interface RecordMinimal {
   opId: number; // Maybe better called dispatchId
   arg: number;
   result: number;
+  err?: {
+    kind: ErrorKind;
+    message: string;
+  };
 }
 
 export function recordFromBufMinimal(
   opId: number,
-  buf32: Int32Array
+  ui8: Uint8Array
 ): RecordMinimal {
-  if (buf32.length != 3) {
-    throw Error("Bad message");
+  const header = ui8.slice(0, 12);
+  const buf32 = new Int32Array(
+    header.buffer,
+    header.byteOffset,
+    header.byteLength / 4
+  );
+  const promiseId = buf32[0];
+  const arg = buf32[1];
+  const result = buf32[2];
+  let err;
+
+  if (arg < 0) {
+    const kind = result as ErrorKind;
+    const message = decoder.decode(ui8.slice(12));
+    err = { kind, message };
+  } else if (ui8.length != 12) {
+    err = { kind: ErrorKind.InvalidData, message: "Bad message" };
   }
+
   return {
-    promiseId: buf32[0],
+    promiseId,
     opId,
-    arg: buf32[1],
-    result: buf32[2]
+    arg,
+    result,
+    err
   };
+}
+
+function unwrapResponse(res: RecordMinimal): number {
+  if (res.err != null) {
+    throw new DenoError(res.err!.kind, res.err!.message);
+  }
+  return res.result;
 }
 
 const scratch32 = new Int32Array(3);
@@ -43,15 +75,14 @@ const scratchBytes = new Uint8Array(
 util.assert(scratchBytes.byteLength === scratch32.length * 4);
 
 export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
-  const buf32 = new Int32Array(ui8.buffer, ui8.byteOffset, ui8.byteLength / 4);
-  const record = recordFromBufMinimal(opId, buf32);
-  const { promiseId, result } = record;
+  const record = recordFromBufMinimal(opId, ui8);
+  const { promiseId } = record;
   const promise = promiseTableMin.get(promiseId);
   promiseTableMin.delete(promiseId);
-  promise!.resolve(result);
+  promise!.resolve(record);
 }
 
-export function sendAsyncMinimal(
+export async function sendAsyncMinimal(
   opId: number,
   arg: number,
   zeroCopy: Uint8Array
@@ -60,22 +91,19 @@ export function sendAsyncMinimal(
   scratch32[0] = promiseId;
   scratch32[1] = arg;
   scratch32[2] = 0; // result
-  const promise = util.createResolvable<number>();
+  const promise = util.createResolvable<RecordMinimal>();
   const buf = core.dispatch(opId, scratchBytes, zeroCopy);
   if (buf) {
-    const buf32 = new Int32Array(
-      buf.buffer,
-      buf.byteOffset,
-      buf.byteLength / 4
-    );
-    const record = recordFromBufMinimal(opId, buf32);
+    const record = recordFromBufMinimal(opId, buf);
     // Sync result.
-    promise.resolve(record.result);
+    promise.resolve(record);
   } else {
     // Async result.
     promiseTableMin.set(promiseId, promise);
   }
-  return promise;
+
+  const res = await promise;
+  return unwrapResponse(res);
 }
 
 export function sendSyncMinimal(
@@ -86,7 +114,6 @@ export function sendSyncMinimal(
   scratch32[0] = 0; // promiseId 0 indicates sync
   scratch32[1] = arg;
   const res = core.dispatch(opId, scratchBytes, zeroCopy)!;
-  const res32 = new Int32Array(res.buffer, res.byteOffset, 3);
-  const resRecord = recordFromBufMinimal(opId, res32);
-  return resRecord.result;
+  const resRecord = recordFromBufMinimal(opId, res);
+  return unwrapResponse(resRecord);
 }
