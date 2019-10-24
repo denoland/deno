@@ -1,6 +1,6 @@
 # Deno Style Guide
 
-[toc]
+## Table of Contents
 
 ## Use TypeScript
 

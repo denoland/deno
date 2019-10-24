@@ -208,28 +208,19 @@ impl DenoPermissions {
     }
   }
 
-  pub fn check_net(&self, host_and_port: &str) -> Result<(), ErrBox> {
-    let msg = &format!("network access to \"{}\"", host_and_port);
+  pub fn check_net(&self, hostname: &str, port: u16) -> Result<(), ErrBox> {
+    let msg = &format!("network access to \"{}:{}\"", hostname, port);
     match self.allow_net.get_state() {
       PermissionAccessorState::Allow => {
         self.log_perm_access(msg);
         Ok(())
       }
       _state => {
-        let parts = host_and_port.split(':').collect::<Vec<&str>>();
-        if match parts.len() {
-          2 => {
-            if self.net_whitelist.contains(parts[0]) {
-              true
-            } else {
-              self
-                .net_whitelist
-                .contains(&format!("{}:{}", parts[0], parts[1]))
-            }
-          }
-          1 => self.net_whitelist.contains(parts[0]),
-          _ => panic!("Failed to parse origin string: {}", host_and_port),
-        } {
+        if self.net_whitelist.contains(hostname)
+          || self
+            .net_whitelist
+            .contains(&format!("{}:{}", hostname, port))
+        {
           self.log_perm_access(msg);
           Ok(())
         } else {
@@ -438,26 +429,26 @@ mod tests {
     });
 
     let domain_tests = vec![
-      ("localhost:1234", true),
-      ("deno.land", true),
-      ("deno.land:3000", true),
-      ("deno.lands", false),
-      ("deno.lands:3000", false),
-      ("github.com:3000", true),
-      ("github.com", false),
-      ("github.com:2000", false),
-      ("github.net:3000", false),
-      ("127.0.0.1", true),
-      ("127.0.0.1:3000", true),
-      ("127.0.0.2", false),
-      ("127.0.0.2:3000", false),
-      ("172.16.0.2:8000", true),
-      ("172.16.0.2", false),
-      ("172.16.0.2:6000", false),
-      ("172.16.0.1:8000", false),
+      ("localhost", 1234, true),
+      ("deno.land", 0, true),
+      ("deno.land", 3000, true),
+      ("deno.lands", 0, false),
+      ("deno.lands", 3000, false),
+      ("github.com", 3000, true),
+      ("github.com", 0, false),
+      ("github.com", 2000, false),
+      ("github.net", 3000, false),
+      ("127.0.0.1", 0, true),
+      ("127.0.0.1", 3000, true),
+      ("127.0.0.2", 0, false),
+      ("127.0.0.2", 3000, false),
+      ("172.16.0.2", 8000, true),
+      ("172.16.0.2", 0, false),
+      ("172.16.0.2", 6000, false),
+      ("172.16.0.1", 8000, false),
       // Just some random hosts that should err
-      ("somedomain", false),
-      ("192.168.0.1", false),
+      ("somedomain", 0, false),
+      ("192.168.0.1", 0, false),
     ];
 
     let url_tests = vec![
@@ -502,8 +493,8 @@ mod tests {
       assert_eq!(*is_ok, perms.check_net_url(&u).is_ok());
     }
 
-    for (domain, is_ok) in domain_tests.iter() {
-      assert_eq!(*is_ok, perms.check_net(domain).is_ok());
+    for (host, port, is_ok) in domain_tests.iter() {
+      assert_eq!(*is_ok, perms.check_net(host, *port).is_ok());
     }
   }
 }
