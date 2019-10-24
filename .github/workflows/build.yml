@@ -122,7 +122,7 @@ jobs:
         if: matrix.kind == 'test_std'
         run: |
           cd std
-          "../target/release/deno" test -A
+          ../target/release/deno test -A
 
       - name: Test
         if: matrix.kind == 'test'
