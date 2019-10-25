@@ -427,16 +427,15 @@ pub fn add_worker(wc: WorkerChannels) -> Resource {
 pub fn post_message_to_worker(
   rid: ResourceId,
   buf: Buf,
-) -> futures::sink::Send<mpsc::Sender<Buf>> {
+) -> Result<futures::sink::Send<mpsc::Sender<Buf>>, ErrBox> {
   let mut table = RESOURCE_TABLE.lock().unwrap();
   let maybe_repr = table.get_mut(&rid);
   match maybe_repr {
     Some(Repr::Worker(ref mut wc)) => {
-      // unwrap here is incorrect, but doing it anyway
-      wc.0.clone().send(buf)
+      let sender = wc.0.clone();
+      Ok(sender.send(buf))
     }
-    // TODO: replace this panic with `bad_resource`
-    _ => panic!("bad resource"), // futures::future::err(bad_resource()).into(),
+    _ => Err(bad_resource()),
   }
 }
 

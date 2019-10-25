@@ -274,6 +274,7 @@ impl TsCompiler {
     let compiler_rid = resource.rid;
     let first_msg_fut =
       resources::post_message_to_worker(compiler_rid, req_msg)
+        .expect("Bad compiler rid")
         .then(move |_| worker)
         .then(move |result| {
           if let Err(err) = result {
@@ -382,6 +383,7 @@ impl TsCompiler {
     let compiler_rid = resource.rid;
     let first_msg_fut =
       resources::post_message_to_worker(compiler_rid, req_msg)
+        .expect("Bad compiler rid")
         .then(move |_| worker)
         .then(move |result| {
           if let Err(err) = result {
