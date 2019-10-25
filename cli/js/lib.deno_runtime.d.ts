@@ -83,8 +83,8 @@ declare namespace Deno {
 
   // @url js/io.d.ts
 
-  export const EOF: null;
-  export type EOF = null;
+  export const EOF: unique symbol;
+  export type EOF = typeof EOF;
   export enum SeekMode {
     SEEK_START = 0,
     SEEK_CURRENT = 1,
@@ -2283,8 +2283,6 @@ declare namespace eventTarget {
 declare namespace io {
   // @url js/io.d.ts
 
-  export const EOF: null;
-  export type EOF = null;
   export enum SeekMode {
     SEEK_START = 0,
     SEEK_CURRENT = 1,
@@ -2308,10 +2306,10 @@ declare namespace io {
      *
      * Implementations must not retain `p`.
      */
-    read(p: Uint8Array): Promise<number | EOF>;
+    read(p: Uint8Array): Promise<number | Deno.EOF>;
   }
   export interface SyncReader {
-    readSync(p: Uint8Array): number | EOF;
+    readSync(p: Uint8Array): number | Deno.EOF;
   }
   export interface Writer {
     /** Writes `p.byteLength` bytes from `p` to the underlying data
@@ -2387,7 +2385,7 @@ declare namespace fetchTypes {
     formData(): Promise<domTypes.FormData>;
     json(): Promise<any>;
     text(): Promise<string>;
-    read(p: Uint8Array): Promise<number | io.EOF>;
+    read(p: Uint8Array): Promise<number | Deno.EOF>;
     close(): void;
     cancel(): Promise<void>;
     getReader(): domTypes.ReadableStreamReader;
