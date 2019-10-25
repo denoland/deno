@@ -80,6 +80,61 @@ lazy_static! {
   });
 }
 
+enum Stream {
+  Read,
+  Write,
+  ReadWrite,
+}
+
+enum CliResource {
+  // read only
+  Stdin(tokio::io::Stdin),
+  // write only
+  Stdout(tokio::fs::File),
+  // write only
+  Stderr(tokio::io::Stderr),
+  // read, write, seek
+  FsFile(tokio::fs::File),
+
+  // Since TcpListener might be closed while there is a pending accept task,
+  // we need to track the task so that when the listener is closed,
+  // this pending task could be notified and die.
+  // Currently TcpListener itself does not take care of this issue.
+  // See: https://github.com/tokio-rs/tokio/issues/846
+  // accept
+  TcpListener(tokio::net::TcpListener, Option<futures::task::Task>),
+  // accept
+  TlsListener(
+    tokio::net::TcpListener,
+    TlsAcceptor,
+    Option<futures::task::Task>,
+  ),
+  // read, write, shutdown
+  TcpStream(tokio::net::TcpStream),
+  // read, write
+  ServerTlsStream(Box<ServerTlsStream<TcpStream>>),
+  // read, write
+  ClientTlsStream(Box<ClientTlsStream<TcpStream>>),
+  // read, write
+  HttpBody(HttpBody),
+  // none -
+  Repl(Arc<Mutex<Repl>>),
+  // Enum size is bounded by the largest variant.
+  // Use `Box` around large `Child` struct.
+  // https://rust-lang.github.io/rust-clippy/master/index.html#large_enum_variant
+
+  Child(Box<tokio_process::Child>),
+  // write
+  ChildStdin(tokio_process::ChildStdin),
+  // read
+  ChildStdout(tokio_process::ChildStdout),
+  // read
+  ChildStderr(tokio_process::ChildStderr),
+  // none -
+  Worker(WorkerChannels),
+}
+
+
 // Internal representation of Resource.
 enum Repr {
   Stdin(tokio::io::Stdin),
