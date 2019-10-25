@@ -48,7 +48,13 @@ where
   D: Fn(Value, Option<PinnedBuf>) -> Result<JsonOp, ErrBox>,
 {
   move |control: &[u8], zero_copy: Option<PinnedBuf>| {
-    let async_args: AsyncArgs = serde_json::from_slice(control).unwrap();
+    let async_args: AsyncArgs = match serde_json::from_slice(control) {
+      Ok(args) => args,
+      Err(e) => {
+        let buf = serialize_result(None, Err(ErrBox::from(e)));
+        return CoreOp::Sync(buf);
+      }
+    };
     let promise_id = async_args.promise_id;
     let is_sync = promise_id.is_none();
 

@@ -5,6 +5,7 @@
 //! messages. The first i32 is used to determine if a message a flatbuffer
 //! message or a "minimal" message.
 use crate::deno_error::GetErrorKind;
+use crate::msg::ErrorKind;
 use byteorder::{LittleEndian, WriteBytesExt};
 use deno::Buf;
 use deno::CoreOp;
@@ -115,7 +116,21 @@ pub fn minimal_op(
   d: Dispatcher,
 ) -> impl Fn(&[u8], Option<PinnedBuf>) -> CoreOp {
   move |control: &[u8], zero_copy: Option<PinnedBuf>| {
-    let mut record = parse_min_record(control).unwrap();
+    let mut record = match parse_min_record(control) {
+      Some(r) => r,
+      None => {
+        let error_record = ErrorRecord {
+          promise_id: 0,
+          arg: -1,
+          error_code: ErrorKind::InvalidInput as i32,
+          error_message: "Unparsable control buffer"
+            .to_string()
+            .as_bytes()
+            .to_owned(),
+        };
+        return Op::Sync(error_record.into());
+      }
+    };
     let is_sync = record.promise_id == 0;
     let rid = record.arg;
     let min_op = d(rid, zero_copy);
