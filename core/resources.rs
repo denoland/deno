@@ -23,7 +23,9 @@ type ResourceMap = HashMap<ResourceId, Box<dyn Resource>>;
 
 #[derive(Default)]
 pub struct ResourceTable {
-  map: ResourceMap,
+  // TODO(bartlomieju): remove pub modifier, it is used by
+  // `get_file` method in CLI
+  pub map: ResourceMap,
   next_id: u32,
 }
 
@@ -55,6 +57,14 @@ impl ResourceTable {
     let r = self.map.insert(rid, resource);
     assert!(r.is_none());
     rid
+  }
+
+  pub fn entries(&self) -> Vec<(ResourceId, String)> {
+    self
+      .map
+      .iter()
+      .map(|(key, value)| (*key, value.inspect_repr().to_string()))
+      .collect()
   }
 
   // close(2) is done by dropping the value. Therefore we just need to remove
