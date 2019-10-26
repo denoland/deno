@@ -82,9 +82,7 @@ pub trait Resource: Downcast + Any + Send {
   /// Method that allows to cleanup resource.
   fn close(&self) {}
 
-  fn inspect_repr(&self) -> &str {
-    unimplemented!();
-  }
+  fn inspect_repr(&self) -> &str;
 }
 impl_downcast!(Resource);
 

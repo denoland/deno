@@ -11,12 +11,11 @@
 use crate::deno_error;
 use crate::deno_error::bad_resource;
 use crate::http_body::HttpBody;
-use crate::repl::Repl;
 use crate::state::WorkerChannels;
 
 use deno::Buf;
 use deno::ErrBox;
-use deno::Resource as CoreResource;
+pub use deno::Resource as CoreResource;
 pub use deno::ResourceId;
 use deno::ResourceTable;
 
@@ -30,8 +29,8 @@ use std;
 use std::io::{Error, Read, Seek, SeekFrom, Write};
 use std::net::{Shutdown, SocketAddr};
 use std::process::ExitStatus;
+use std::sync::Mutex;
 use std::sync::MutexGuard;
-use std::sync::{Arc, Mutex};
 use tokio;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
@@ -75,12 +74,12 @@ lazy_static! {
 }
 
 // TODO: potential abstraction for AsyncRead/AsyncWrite
-#[allow(dead_code)]
-enum StreamResource {
-  Read,
-  Write,
-  ReadWrite,
-}
+//#[allow(dead_code)]
+//enum StreamResource {
+//  Read(Box<dyn DenoAsyncRead>),
+//  Write(Box<dyn DenoAsyncRead>),
+//  ReadWrite(Box<dyn DenoAsyncReadWrite>),
+//}
 
 enum CliResource {
   // read only
@@ -113,8 +112,6 @@ enum CliResource {
   ClientTlsStream(Box<ClientTlsStream<TcpStream>>),
   // read, write
   HttpBody(HttpBody),
-  // none -
-  Repl(Arc<Mutex<Repl>>),
   // Enum size is bounded by the largest variant.
   // Use `Box` around large `Child` struct.
   // https://rust-lang.github.io/rust-clippy/master/index.html#large_enum_variant
@@ -154,7 +151,6 @@ impl CoreResource for CliResource {
       CliResource::ClientTlsStream(_) => "clientTlsStream",
       CliResource::ServerTlsStream(_) => "serverTlsStream",
       CliResource::HttpBody(_) => "httpBody",
-      CliResource::Repl(_) => "repl",
       CliResource::Child(_) => "child",
       CliResource::ChildStdin(_) => "childStdin",
       CliResource::ChildStdout(_) => "childStdout",
@@ -398,12 +394,6 @@ pub fn add_reqwest_body(body: ReqwestDecoder) -> Resource {
   Resource { rid }
 }
 
-pub fn add_repl(repl: Repl) -> Resource {
-  let mut table = lock_resource_table();
-  let rid = table.add(Box::new(CliResource::Repl(Arc::new(Mutex::new(repl)))));
-  Resource { rid }
-}
-
 pub fn add_worker(wc: WorkerChannels) -> Resource {
   let mut table = lock_resource_table();
   let rid = table.add(Box::new(CliResource::Worker(wc)));
@@ -535,15 +525,6 @@ pub fn child_status(rid: ResourceId) -> Result<ChildStatus, ErrBox> {
   let maybe_repr = table.get_mut::<CliResource>(rid)?;
   match maybe_repr {
     CliResource::Child(ref mut _child) => Ok(ChildStatus { rid }),
-    _ => Err(bad_resource()),
-  }
-}
-
-pub fn get_repl(rid: ResourceId) -> Result<Arc<Mutex<Repl>>, ErrBox> {
-  let mut table = lock_resource_table();
-  let maybe_repr = table.get_mut::<CliResource>(rid)?;
-  match maybe_repr {
-    CliResource::Repl(ref mut r) => Ok(r.clone()),
     _ => Err(bad_resource()),
   }
 }
