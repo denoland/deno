@@ -3,6 +3,7 @@ import { assert } from "./util.ts";
 import { window } from "./window.ts";
 import * as dispatch from "./dispatch.ts";
 import { sendSync, sendAsync } from "./dispatch_json.ts";
+import { RBTree } from "./rbtree.ts";
 
 const { console } = window;
 
@@ -15,14 +16,6 @@ interface Timer {
   scheduled: boolean;
 }
 
-// We'll subtract EPOCH every time we retrieve the time with Date.now(). This
-// ensures that absolute time values stay below UINT32_MAX - 2, which is the
-// maximum object key that EcmaScript considers "numerical". After running for
-// about a month, this is no longer true, and Deno explodes.
-// TODO(piscisaureus): fix that ^.
-const EPOCH = Date.now();
-const APOCALYPSE = 2 ** 32 - 2;
-
 // Timeout values > TIMEOUT_MAX are set to 1.
 const TIMEOUT_MAX = 2 ** 31 - 1;
 
@@ -30,14 +23,8 @@ let globalTimeoutDue: number | null = null;
 
 let nextTimerId = 1;
 const idMap = new Map<number, Timer>();
-const dueMap: { [due: number]: Timer[] } = Object.create(null);
-
-function getTime(): number {
-  // TODO: use a monotonic clock.
-  const now = Date.now() - EPOCH;
-  assert(now >= 0 && now < APOCALYPSE);
-  return now;
-}
+type DueNode = { due: number; timers: Timer[] };
+const dueTree = new RBTree<DueNode>((a, b) => a.due - b.due);
 
 function clearGlobalTimeout(): void {
   globalTimeoutDue = null;
@@ -73,12 +60,14 @@ function schedule(timer: Timer, now: number): void {
   assert(!timer.scheduled);
   assert(now <= timer.due);
   // Find or create the list of timers that will fire at point-in-time `due`.
-  let list = dueMap[timer.due];
-  if (list === undefined) {
-    list = dueMap[timer.due] = [];
+  const maybeNewDueNode = { due: timer.due, timers: [] };
+  let dueNode = dueTree.find(maybeNewDueNode);
+  if (dueNode === null) {
+    dueTree.insert(maybeNewDueNode);
+    dueNode = maybeNewDueNode;
   }
   // Append the newly scheduled timer to the list and mark it as scheduled.
-  list.push(timer);
+  dueNode!.timers.push(timer);
   timer.scheduled = true;
   // If the new timer is scheduled to fire before any timer that existed before,
   // update the global timeout to reflect this.
@@ -91,21 +80,18 @@ function unschedule(timer: Timer): void {
   if (!timer.scheduled) {
     return;
   }
+  const searchKey = { due: timer.due, timers: [] };
   // Find the list of timers that will fire at point-in-time `due`.
-  const list = dueMap[timer.due];
+  const list = dueTree.find(searchKey)!.timers;
   if (list.length === 1) {
     // Time timer is the only one in the list. Remove the entire list.
     assert(list[0] === timer);
-    delete dueMap[timer.due];
+    dueTree.remove(searchKey);
     // If the unscheduled timer was 'next up', find when the next timer that
     // still exists is due, and update the global alarm accordingly.
     if (timer.due === globalTimeoutDue) {
-      let nextTimerDue: number | null = null;
-      for (const key in dueMap) {
-        nextTimerDue = Number(key);
-        break;
-      }
-      setOrClearGlobalTimeout(nextTimerDue, getTime());
+      const nextDueNode: DueNode | null = dueTree.min();
+      setOrClearGlobalTimeout(nextDueNode && nextDueNode.due, Date.now());
     }
   } else {
     // Multiple timers that are due at the same point in time.
@@ -129,7 +115,7 @@ function fire(timer: Timer): void {
   } else {
     // Interval timer: compute when timer was supposed to fire next.
     // However make sure to never schedule the next interval in the past.
-    const now = getTime();
+    const now = Date.now();
     timer.due = Math.max(now, timer.due + timer.delay);
     schedule(timer, now);
   }
@@ -140,40 +126,27 @@ function fire(timer: Timer): void {
 }
 
 function fireTimers(): void {
-  const now = getTime();
+  const now = Date.now();
   // Bail out if we're not expecting the global timer to fire.
   if (globalTimeoutDue === null || pendingEvents > 0) {
     return;
   }
-  // After firing the timers that are due now, this will hold the due time of
-  // the first timer that hasn't fired yet.
-  let nextTimerDue: number | null = null;
-  // Walk over the keys of the 'due' map. Since dueMap is actually a regular
-  // object and its keys are numerical and smaller than UINT32_MAX - 2,
-  // keys are iterated in ascending order.
-  for (const key in dueMap) {
-    // Convert the object key (a string) to a number.
-    const due = Number(key);
-    // Break out of the loop if the next timer isn't due to fire yet.
-    if (Number(due) > now) {
-      nextTimerDue = due;
-      break;
-    }
-    // Get the list of timers that have this due time, then drop it.
-    const list = dueMap[key];
-    delete dueMap[key];
+  // After firing the timers that are due now, this will hold the first timer
+  // list that hasn't fired yet.
+  let nextDueNode: DueNode | null;
+  while ((nextDueNode = dueTree.min()) !== null && nextDueNode.due <= now) {
+    dueTree.remove(nextDueNode);
     // Fire all the timers in the list.
-    for (const timer of list) {
+    for (const timer of nextDueNode.timers) {
       // With the list dropped, the timer is no longer scheduled.
       timer.scheduled = false;
       // Place the callback on the microtask queue.
       Promise.resolve(timer).then(fire);
     }
   }
-
   // Update the global alarm to go off when the first-up timer that hasn't fired
   // yet is due.
-  setOrClearGlobalTimeout(nextTimerDue, now);
+  setOrClearGlobalTimeout(nextDueNode && nextDueNode.due, now);
 }
 
 export type Args = unknown[];
@@ -201,7 +174,7 @@ function setTimer(
   // In the browser, the delay value must be coercible to an integer between 0
   // and INT32_MAX. Any other value will cause the timer to fire immediately.
   // We emulate this behavior.
-  const now = getTime();
+  const now = Date.now();
   if (delay > TIMEOUT_MAX) {
     console.warn(
       `${delay} does not fit into` +
