@@ -24,6 +24,7 @@
 // OTHER DEALINGS IN THE SOFTWARE.
 
 import * as base64 from "./base64.ts";
+import { decodeUtf8 } from "./decode_utf8.ts";
 import * as domTypes from "./dom_types.ts";
 import { DenoError, ErrorKind } from "./errors.ts";
 
@@ -52,111 +53,6 @@ function stringToCodePoints(input: string): number[] {
     u.push(c.codePointAt(0)!);
   }
   return u;
-}
-
-class UTF8Decoder implements Decoder {
-  private _codePoint = 0;
-  private _bytesSeen = 0;
-  private _bytesNeeded = 0;
-  private _fatal: boolean;
-  private _ignoreBOM: boolean;
-  private _lowerBoundary = 0x80;
-  private _upperBoundary = 0xbf;
-
-  constructor(options: DecoderOptions) {
-    this._fatal = options.fatal || false;
-    this._ignoreBOM = options.ignoreBOM || false;
-  }
-
-  handler(stream: Stream, byte: number): number | null {
-    if (byte === END_OF_STREAM && this._bytesNeeded !== 0) {
-      this._bytesNeeded = 0;
-      return decoderError(this._fatal);
-    }
-
-    if (byte === END_OF_STREAM) {
-      return FINISHED;
-    }
-
-    if (this._ignoreBOM) {
-      if (
-        (this._bytesSeen === 0 && byte !== 0xef) ||
-        (this._bytesSeen === 1 && byte !== 0xbb)
-      ) {
-        this._ignoreBOM = false;
-      }
-
-      if (this._bytesSeen === 2) {
-        this._ignoreBOM = false;
-        if (byte === 0xbf) {
-          //Ignore BOM
-          this._codePoint = 0;
-          this._bytesNeeded = 0;
-          this._bytesSeen = 0;
-          return CONTINUE;
-        }
-      }
-    }
-
-    if (this._bytesNeeded === 0) {
-      if (isASCIIByte(byte)) {
-        // Single byte code point
-        return byte;
-      } else if (inRange(byte, 0xc2, 0xdf)) {
-        // Two byte code point
-        this._bytesNeeded = 1;
-        this._codePoint = byte & 0x1f;
-      } else if (inRange(byte, 0xe0, 0xef)) {
-        // Three byte code point
-        if (byte === 0xe0) {
-          this._lowerBoundary = 0xa0;
-        } else if (byte === 0xed) {
-          this._upperBoundary = 0x9f;
-        }
-        this._bytesNeeded = 2;
-        this._codePoint = byte & 0xf;
-      } else if (inRange(byte, 0xf0, 0xf4)) {
-        if (byte === 0xf0) {
-          this._lowerBoundary = 0x90;
-        } else if (byte === 0xf4) {
-          this._upperBoundary = 0x8f;
-        }
-        this._bytesNeeded = 3;
-        this._codePoint = byte & 0x7;
-      } else {
-        return decoderError(this._fatal);
-      }
-      return CONTINUE;
-    }
-
-    if (!inRange(byte, this._lowerBoundary, this._upperBoundary)) {
-      // Byte out of range, so encoding error
-      this._codePoint = 0;
-      this._bytesNeeded = 0;
-      this._bytesSeen = 0;
-      stream.prepend(byte);
-      return decoderError(this._fatal);
-    }
-
-    this._lowerBoundary = 0x80;
-    this._upperBoundary = 0xbf;
-
-    this._codePoint = (this._codePoint << 6) | (byte & 0x3f);
-
-    this._bytesSeen++;
-
-    if (this._bytesSeen !== this._bytesNeeded) {
-      return CONTINUE;
-    }
-
-    const codePoint = this._codePoint;
-
-    this._codePoint = 0;
-    this._bytesNeeded = 0;
-    this._bytesSeen = 0;
-
-    return codePoint;
-  }
 }
 
 class UTF8Encoder implements Encoder {
@@ -323,17 +219,19 @@ for (const key of Object.keys(encodingMap)) {
 // A map of functions that return new instances of a decoder indexed by the
 // encoding type.
 const decoders = new Map<string, (options: DecoderOptions) => Decoder>();
-decoders.set(
-  "utf-8",
-  (options: DecoderOptions): UTF8Decoder => {
-    return new UTF8Decoder(options);
-  }
-);
 
 // Single byte decoders are an array of code point lookups
 const encodingIndexes = new Map<string, number[]>();
 // prettier-ignore
-encodingIndexes.set("windows-1252", [8364,129,8218,402,8222,8230,8224,8225,710,8240,352,8249,338,141,381,143,144,8216,8217,8220,8221,8226,8211,8212,732,8482,353,8250,339,157,382,376,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255]);
+encodingIndexes.set("windows-1252", [
+  8364,129,8218,402,8222,8230,8224,8225,710,8240,352,8249,338,141,381,143,144,
+  8216,8217,8220,8221,8226,8211,8212,732,8482,353,8250,339,157,382,376,160,161,
+  162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,
+  181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,
+  200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,
+  219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,
+  238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255
+]);
 for (const [key, index] of encodingIndexes) {
   decoders.set(
     key,
@@ -431,7 +329,7 @@ export class TextDecoder {
         `The encoding label provided ('${label}') is invalid.`
       );
     }
-    if (!decoders.has(encoding)) {
+    if (!decoders.has(encoding) && encoding !== "utf-8") {
       throw new TypeError(`Internal decoder ('${encoding}') not found.`);
     }
     this._encoding = encoding;
@@ -461,6 +359,12 @@ export class TextDecoder {
       bytes = new Uint8Array(0);
     }
 
+    // For performance reasons we utilise a highly optimised decoder instead of
+    // the general decoder.
+    if (this._encoding === "utf-8") {
+      return decodeUtf8(bytes, this.fatal, this.ignoreBOM);
+    }
+
     const decoder = decoders.get(this._encoding)!({
       fatal: this.fatal,
       ignoreBOM: this.ignoreBOM
@@ -485,6 +389,7 @@ export class TextDecoder {
 
     return codePointsToString(output);
   }
+
   get [Symbol.toStringTag](): string {
     return "TextDecoder";
   }
