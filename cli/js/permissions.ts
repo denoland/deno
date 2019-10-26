@@ -18,11 +18,24 @@ export type PermissionName =
 export type PermissionState = "granted" | "denied" | "prompt";
 
 /** See: https://w3c.github.io/permissions/#permission-descriptor */
-interface PermissionDescriptor {
-  name: PermissionName;
+interface SimplePermissionDescriptor {
+  name: "env" | "run" | "hrtime";
+}
+
+interface NetPermissionDescriptor {
+  name: "net";
   url?: string;
+}
+
+interface PathPermissionDescriptor {
+  name: "read" | "write";
   path?: string;
 }
+
+type PermissionDescriptor =
+  | SimplePermissionDescriptor
+  | PathPermissionDescriptor
+  | NetPermissionDescriptor;
 
 /** https://w3c.github.io/permissions/#permissionstatus */
 export class PermissionStatus {
