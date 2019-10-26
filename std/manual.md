@@ -419,7 +419,7 @@ a comma to separate URLs
 
 Deno also provides permissions whitelist.
 
-This is an example to restrict File system access by whitelist.
+This is an example to restrict file system access by whitelist.
 
 ```shell
 $ deno --allow-read=/usr https://deno.land/std/examples/cat.ts /etc/passwd
