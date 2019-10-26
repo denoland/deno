@@ -150,7 +150,7 @@ executable bit on Mac and Linux.
 Once it's installed and in your `$PATH`, try it:
 
 ```shell
-deno https://deno.land/welcome.ts
+deno https://deno.land/std/examples/welcome.ts
 ```
 
 ### Build from source
@@ -679,7 +679,7 @@ To run the REPL:
 
 To execute a sandboxed script:
 
-  deno https://deno.land/welcome.ts
+  deno https://deno.land/std/examples/welcome.ts
 
 To evaluate code from the command line:
 
