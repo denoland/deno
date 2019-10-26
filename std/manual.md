@@ -150,7 +150,7 @@ executable bit on Mac and Linux.
 Once it's installed and in your `$PATH`, try it:
 
 ```shell
-deno https://deno.land/welcome.ts
+deno https://deno.land/std/examples/welcome.ts
 ```
 
 ### Build from source
@@ -419,7 +419,7 @@ a comma to separate URLs
 
 Deno also provides permissions whitelist.
 
-This is an example to restrict File system access by whitelist.
+This is an example to restrict file system access by whitelist.
 
 ```shell
 $ deno --allow-read=/usr https://deno.land/std/examples/cat.ts /etc/passwd
@@ -589,18 +589,20 @@ everywhere in a large project?** The solution is to import and re-export your
 external libraries in a central `deps.ts` file (which serves the same purpose as
 Node's `package.json` file). For example, let's say you were using the above
 testing library across a large project. Rather than importing
-`"https://deno.land/std/testing/mod.ts"` everywhere, you could create a
+`"https://deno.land/std/testing/mod.ts"` and
+`"https://deno.land/std/testing/asserts.ts"` everywhere, you could create a
 `deps.ts` file that exports the third-party code:
 
 ```ts
-export { test, assertEquals } from "https://deno.land/std/testing/mod.ts";
+export { runTests, test } from "https://deno.land/std/testing/mod.ts";
+export { assertEquals } from "https://deno.land/std/testing/asserts.ts";
 ```
 
 And throughout the same project, you can import from the `deps.ts` and avoid
 having many references to the same URL:
 
 ```ts
-import { test, assertEquals } from "./deps.ts";
+import { assertEquals, runTests, test } from "./deps.ts";
 ```
 
 This design circumvents a plethora of complexity spawned by package management
@@ -679,7 +681,7 @@ To run the REPL:
 
 To execute a sandboxed script:
 
-  deno https://deno.land/welcome.ts
+  deno https://deno.land/std/examples/welcome.ts
 
 To evaluate code from the command line:
 
