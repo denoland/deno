@@ -17,25 +17,30 @@ export type PermissionName =
 /** https://w3c.github.io/permissions/#status-of-a-permission */
 export type PermissionState = "granted" | "denied" | "prompt";
 
-/** See: https://w3c.github.io/permissions/#permission-descriptor */
-interface SimplePermissionDescriptor {
-  name: "env" | "run" | "hrtime";
+interface RunPermissionDescriptor {
+  name: "run";
 }
-
+interface ReadWritePermissionDescriptor {
+  name: "read" | "write";
+  path?: string;
+}
 interface NetPermissionDescriptor {
   name: "net";
   url?: string;
 }
-
-interface PathPermissionDescriptor {
-  name: "read" | "write";
-  path?: string;
+interface EnvPermissionDescriptor {
+  name: "env";
 }
-
+interface HrtimePermissionDescriptor {
+  name: "hrtime";
+}
+/** See: https://w3c.github.io/permissions/#permission-descriptor */
 type PermissionDescriptor =
-  | SimplePermissionDescriptor
-  | PathPermissionDescriptor
-  | NetPermissionDescriptor;
+  | RunPermissionDescriptor
+  | ReadWritePermissionDescriptor
+  | NetPermissionDescriptor
+  | EnvPermissionDescriptor
+  | HrtimePermissionDescriptor;
 
 /** https://w3c.github.io/permissions/#permissionstatus */
 export class PermissionStatus {

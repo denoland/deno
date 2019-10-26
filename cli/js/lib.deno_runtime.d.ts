@@ -891,10 +891,10 @@ declare namespace Deno {
     | "env"
     | "hrtime";
   export type PermissionState = "granted" | "denied" | "prompt";
-  interface SimplePermissionDescriptor {
-    name: "run" | "env" | "hrtime";
+  interface RunPermissionDescriptor {
+    name: "run";
   }
-  interface PathPermissionDescriptor {
+  interface ReadWritePermissionDescriptor {
     name: "read" | "write";
     path?: string;
   }
@@ -902,10 +902,20 @@ declare namespace Deno {
     name: "net";
     url?: string;
   }
+  interface EnvPermissionDescriptor {
+    name: "env";
+  }
+  interface HrtimePermissionDescriptor {
+    name: "hrtime";
+  }
+  /** See: https://w3c.github.io/permissions/#permission-descriptor */
   type PermissionDescriptor =
-    | SimplePermissionDescriptor
-    | PathPermissionDescriptor
-    | NetPermissionDescriptor;
+    | RunPermissionDescriptor
+    | ReadWritePermissionDescriptor
+    | NetPermissionDescriptor
+    | EnvPermissionDescriptor
+    | HrtimePermissionDescriptor;
+
   export class Permissions {
     query(d: PermissionDescriptor): Promise<PermissionStatus>;
     revoke(d: PermissionDescriptor): Promise<PermissionStatus>;
