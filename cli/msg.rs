@@ -58,6 +58,10 @@ pub enum ErrorKind {
   Diagnostic = 49,
   JSError = 50,
   TypeError = 51,
+
+  /** TODO These are DomException Types, and should be moved there when it exists */
+  DataCloneError = 52,
+  AbortError = 53,
 }
 
 // Warning! The values in this enum are duplicated in js/compiler.ts
