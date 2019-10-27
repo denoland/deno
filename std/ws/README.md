@@ -13,7 +13,7 @@ import {
   isWebSocketCloseEvent,
   isWebSocketPingEvent,
   WebSocket
-} from "./mod.ts";
+} from "https://deno.land/std/ws/mod.ts";
 
 /** websocket echo server */
 const port = Deno.args[1] || "8080";
