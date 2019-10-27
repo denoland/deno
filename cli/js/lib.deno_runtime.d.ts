@@ -921,9 +921,17 @@ declare namespace Deno {
     | HrtimePermissionDescriptor;
 
   export class Permissions {
-    /** Queries the permission. */
+    /** Queries the permission.
+     *       const status = await Deno.permissions.query({ name: "read", path: "/etc" });
+     *       if (status.state === "granted") {
+     *         data = await Deno.readFile("/etc/passwd");
+     *       }
+     */
     query(d: PermissionDescriptor): Promise<PermissionStatus>;
-    /** Revokes the permission. */
+    /** Revokes the permission.
+     *       const status = await Deno.permissions.revoke({ name: "run" });
+     *       assert(status.state !== "granted")
+     */
     revoke(d: PermissionDescriptor): Promise<PermissionStatus>;
   }
   export const permissions: Permissions;

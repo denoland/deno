@@ -49,13 +49,21 @@ export class PermissionStatus {
 }
 
 export class Permissions {
-  /** Queries the permission. */
+  /** Queries the permission.
+   *       const status = await Deno.permissions.query({ name: "read", path: "/etc" });
+   *       if (status.state === "granted") {
+   *         file = await Deno.readFile("/etc/passwd");
+   *       }
+   */
   async query(desc: PermissionDescriptor): Promise<PermissionStatus> {
     const { state } = sendSync(dispatch.OP_QUERY_PERMISSION, desc);
     return new PermissionStatus(state);
   }
 
-  /** Revokes the permission. */
+  /** Revokes the permission.
+   *       const status = await Deno.permissions.revoke({ name: "run" });
+   *       assert(status.state !== "granted")
+   */
   async revoke(desc: PermissionDescriptor): Promise<PermissionStatus> {
     const { state } = sendSync(dispatch.OP_REVOKE_PERMISSION, desc);
     return new PermissionStatus(state);
