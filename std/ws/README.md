@@ -15,61 +15,56 @@ import {
   WebSocket
 } from "https://deno.land/std/ws/mod.ts";
 
+/** websocket echo server */
 const port = Deno.args[1] || "8080";
-async function main(): Promise<void> {
-  console.log(`websocket server is running on :${port}`);
-  for await (const req of serve(`:${port}`)) {
-    const { headers, conn } = req;
-    acceptWebSocket({
-      conn,
-      headers,
-      bufReader: req.r,
-      bufWriter: req.w
-    })
-      .then(
-        async (sock: WebSocket): Promise<void> => {
-          console.log("socket connected!");
-          const it = sock.receive();
-          while (true) {
-            try {
-              const { done, value } = await it.next();
-              if (done) {
-                break;
-              }
-              const ev = value;
-              if (typeof ev === "string") {
-                // text message
-                console.log("ws:Text", ev);
-                await sock.send(ev);
-              } else if (ev instanceof Uint8Array) {
-                // binary message
-                console.log("ws:Binary", ev);
-              } else if (isWebSocketPingEvent(ev)) {
-                const [, body] = ev;
-                // ping
-                console.log("ws:Ping", body);
-              } else if (isWebSocketCloseEvent(ev)) {
-                // close
-                const { code, reason } = ev;
-                console.log("ws:Close", code, reason);
-              }
-            } catch (e) {
-              console.error(`failed to receive frame: ${e}`);
-              await sock.close(1000).catch(console.error);
+console.log(`websocket server is running on :${port}`);
+for await (const req of serve(`:${port}`)) {
+  const { headers, conn } = req;
+  acceptWebSocket({
+    conn,
+    headers,
+    bufReader: req.r,
+    bufWriter: req.w
+  })
+    .then(
+      async (sock: WebSocket): Promise<void> => {
+        console.log("socket connected!");
+        const it = sock.receive();
+        while (true) {
+          try {
+            const { done, value } = await it.next();
+            if (done) {
+              break;
             }
+            const ev = value;
+            if (typeof ev === "string") {
+              // text message
+              console.log("ws:Text", ev);
+              await sock.send(ev);
+            } else if (ev instanceof Uint8Array) {
+              // binary message
+              console.log("ws:Binary", ev);
+            } else if (isWebSocketPingEvent(ev)) {
+              const [, body] = ev;
+              // ping
+              console.log("ws:Ping", body);
+            } else if (isWebSocketCloseEvent(ev)) {
+              // close
+              const { code, reason } = ev;
+              console.log("ws:Close", code, reason);
+            }
+          } catch (e) {
+            console.error(`failed to receive frame: ${e}`);
+            await sock.close(1000).catch(console.error);
           }
         }
-      )
-      .catch(
-        (err: Error): void => {
-          console.error(`failed to accept websocket: ${err}`);
-        }
-      );
-  }
-}
-
-if (import.meta.main) {
-  main();
+      }
+    )
+    .catch(
+      (err: Error): void => {
+        console.error(`failed to accept websocket: ${err}`);
+      }
+    );
 }
 ```
 
@@ -88,46 +83,49 @@ import { TextProtoReader } from "https://deno.land/std/textproto/mod.ts";
 import { blue, green, red, yellow } from "https://deno.land/std/fmt/colors.ts";
 
 const endpoint = Deno.args[1] || "ws://127.0.0.1:8080";
-async function main(): Promise<void> {
-  const sock = await connectWebSocket(endpoint);
-  console.log(green("ws connected! (type 'close' to quit)"));
-  (async function(): Promise<void> {
-    for await (const msg of sock.receive()) {
-      if (typeof msg === "string") {
-        console.log(yellow("< " + msg));
-      } else if (isWebSocketPingEvent(msg)) {
-        console.log(blue("< ping"));
-      } else if (isWebSocketPongEvent(msg)) {
-        console.log(blue("< pong"));
-      } else if (isWebSocketCloseEvent(msg)) {
-        console.log(red(`closed: code=${msg.code}, reason=${msg.reason}`));
-      }
+/** simple websocket cli */
+const sock = await connectWebSocket(endpoint);
+console.log(green("ws connected! (type 'close' to quit)"));
+(async function(): Promise<void> {
+  for await (const msg of sock.receive()) {
+    if (typeof msg === "string") {
+      console.log(yellow("< " + msg));
+    } else if (isWebSocketPingEvent(msg)) {
+      console.log(blue("< ping"));
+    } else if (isWebSocketPongEvent(msg)) {
+      console.log(blue("< pong"));
+    } else if (isWebSocketCloseEvent(msg)) {
+      console.log(red(`closed: code=${msg.code}, reason=${msg.reason}`));
     }
-  })();
-  const tpr = new TextProtoReader(new BufReader(Deno.stdin));
-  while (true) {
-    await Deno.stdout.write(encode("> "));
-    const [line, err] = await tpr.readLine();
-    if (err) {
-      console.error(red(`failed to read line from stdin: ${err}`));
-      break;
-    }
-    if (line === "close") {
-      break;
-    } else if (line === "ping") {
-      await sock.ping();
-    } else {
-      await sock.send(line);
-    }
-    await new Promise((resolve): number => setTimeout(resolve, 0));
   }
-  await sock.close(1000);
-  Deno.exit(0);
-}
+})();
 
-if (import.meta.main) {
-  main();
+const tpr = new TextProtoReader(new BufReader(Deno.stdin));
+while (true) {
+  await Deno.stdout.write(encode("> "));
+  const [line, err] = await tpr.readLine();
+  if (err) {
+    console.error(red(`failed to read line from stdin: ${err}`));
+    break;
+  }
+  if (line === "close") {
+    break;
+  } else if (line === "ping") {
+    await sock.ping();
+  } else {
+    await sock.send(line);
+  }
+  // FIXME: Without this,
+  // sock.receive() won't resolved though it is readable...
+  await new Promise(
+    (resolve): void => {
+      setTimeout(resolve, 0);
+    }
+  );
 }
+await sock.close(1000);
+// FIXME: conn.close() won't shutdown process...
+Deno.exit(0);
 ```
 
 ## API

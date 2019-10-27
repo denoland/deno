@@ -616,6 +616,9 @@ window.compilerMain = function compilerMain(): void {
 
       diagnostics = ts.getPreEmitDiagnostics(program).filter(
         ({ code }): boolean => {
+          // TS1103: 'for-await-of' statement is only allowed within an async
+          // function or async generator.
+          if (code === 1103) return false;
           // TS1308: 'await' expression is only allowed within an async
           // function.
           if (code === 1308) return false;

@@ -336,8 +336,8 @@ impl ThreadSafeState {
   }
 
   #[inline]
-  pub fn check_net(&self, host_and_port: &str) -> Result<(), ErrBox> {
-    self.permissions.check_net(host_and_port)
+  pub fn check_net(&self, hostname: &str, port: u16) -> Result<(), ErrBox> {
+    self.permissions.check_net(hostname, port)
   }
 
   #[inline]
