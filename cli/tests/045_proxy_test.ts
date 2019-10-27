@@ -55,11 +55,7 @@ async function testModuleDownload(): Promise<void> {
   http.close();
 }
 
-async function main(): Promise<void> {
-  proxyServer();
-  await testFetch();
-  await testModuleDownload();
-  Deno.exit(0);
-}
-
-main();
+proxyServer();
+await testFetch();
+await testModuleDownload();
+Deno.exit(0);
