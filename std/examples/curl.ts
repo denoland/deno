@@ -5,4 +5,3 @@ async function curl(url: string): Promise<void> {
 }
 
 await curl(Deno.args[1]);
-Deno.exit(0);

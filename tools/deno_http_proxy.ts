@@ -5,13 +5,6 @@ const addr = Deno.args[1] || "127.0.0.1:4500";
 const originAddr = Deno.args[2] || "127.0.0.1:4501";
 const server = serve(addr);
 
-async function main(): Promise<void> {
-  console.log(`Proxy listening on http://${addr}/`);
-  for await (const req of server) {
-    proxyRequest(req);
-  }
-}
-
 async function proxyRequest(req: ServerRequest): Promise<void> {
   const url = `http://${originAddr}${req.url}`;
   const resp = await fetch(url, {
@@ -21,4 +14,7 @@ async function proxyRequest(req: ServerRequest): Promise<void> {
   req.respond(resp);
 }
 
-main();
+console.log(`Proxy listening on http://${addr}/`);
+for await (const req of server) {
+  proxyRequest(req);
+}

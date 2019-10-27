@@ -937,12 +937,10 @@ Example:
 
 import { serve } from "http/server.ts";
 
-window.onload = async function() {
-  const body = new TextEncoder().encode("Hello World\n");
-  for await (const req of serve(":8000")) {
-    req.respond({ body });
-  }
-};
+const body = new TextEncoder().encode("Hello World\n");
+for await (const req of serve(":8000")) {
+  req.respond({ body });
+}
 ```
 
 ```shell
