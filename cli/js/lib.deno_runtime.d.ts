@@ -883,34 +883,64 @@ declare namespace Deno {
   }
 
   // @url js/permissions.d.ts
-
-  /** Permissions as granted by the caller */
-  export interface Permissions {
-    read: boolean;
-    write: boolean;
-    net: boolean;
-    env: boolean;
-    run: boolean;
-    hrtime: boolean;
+  /** Permissions as granted by the caller
+   * See: https://w3c.github.io/permissions/#permission-registry
+   */
+  export type PermissionName =
+    | "run"
+    | "read"
+    | "write"
+    | "net"
+    | "env"
+    | "hrtime";
+  /** https://w3c.github.io/permissions/#status-of-a-permission */
+  export type PermissionState = "granted" | "denied" | "prompt";
+  interface RunPermissionDescriptor {
+    name: "run";
   }
-  export type Permission = keyof Permissions;
-  /** Inspect granted permissions for the current program.
-   *
-   *       if (Deno.permissions().read) {
-   *         const file = await Deno.readFile("example.test");
-   *         // ...
-   *       }
-   */
-  export function permissions(): Permissions;
-  /** Revoke a permission. When the permission was already revoked nothing changes
-   *
-   *       if (Deno.permissions().read) {
-   *         const file = await Deno.readFile("example.test");
-   *         Deno.revokePermission('read');
-   *       }
-   *       Deno.readFile("example.test"); // -> error or permission prompt
-   */
-  export function revokePermission(permission: Permission): void;
+  interface ReadWritePermissionDescriptor {
+    name: "read" | "write";
+    path?: string;
+  }
+  interface NetPermissionDescriptor {
+    name: "net";
+    url?: string;
+  }
+  interface EnvPermissionDescriptor {
+    name: "env";
+  }
+  interface HrtimePermissionDescriptor {
+    name: "hrtime";
+  }
+  /** See: https://w3c.github.io/permissions/#permission-descriptor */
+  type PermissionDescriptor =
+    | RunPermissionDescriptor
+    | ReadWritePermissionDescriptor
+    | NetPermissionDescriptor
+    | EnvPermissionDescriptor
+    | HrtimePermissionDescriptor;
+
+  export class Permissions {
+    /** Queries the permission.
+     *       const status = await Deno.permissions.query({ name: "read", path: "/etc" });
+     *       if (status.state === "granted") {
+     *         data = await Deno.readFile("/etc/passwd");
+     *       }
+     */
+    query(d: PermissionDescriptor): Promise<PermissionStatus>;
+    /** Revokes the permission.
+     *       const status = await Deno.permissions.revoke({ name: "run" });
+     *       assert(status.state !== "granted")
+     */
+    revoke(d: PermissionDescriptor): Promise<PermissionStatus>;
+  }
+  export const permissions: Permissions;
+
+  /** https://w3c.github.io/permissions/#permissionstatus */
+  export class PermissionStatus {
+    state: PermissionState;
+    constructor(state: PermissionState);
+  }
 
   // @url js/truncate.d.ts
 

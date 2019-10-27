@@ -36,7 +36,7 @@ export let OP_GET_RANDOM_VALUES: number;
 export let OP_GLOBAL_TIMER_STOP: number;
 export let OP_GLOBAL_TIMER: number;
 export let OP_NOW: number;
-export let OP_PERMISSIONS: number;
+export let OP_QUERY_PERMISSION: number;
 export let OP_REVOKE_PERMISSION: number;
 export let OP_CREATE_WORKER: number;
 export let OP_HOST_GET_WORKER_CLOSED: number;

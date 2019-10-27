@@ -1,7 +1,11 @@
 #!/usr/bin/env -S deno run --reload --allow-run
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import "./unit_tests.ts";
-import { permissionCombinations, parseUnitTestOutput } from "./test_util.ts";
+import {
+  permissionCombinations,
+  parseUnitTestOutput,
+  Permissions
+} from "./test_util.ts";
 
 interface TestResult {
   perms: string;
@@ -9,7 +13,7 @@ interface TestResult {
   result: number;
 }
 
-function permsToCliFlags(perms: Deno.Permissions): string[] {
+function permsToCliFlags(perms: Permissions): string[] {
   return Object.keys(perms)
     .map(
       (key): string => {
@@ -25,7 +29,7 @@ function permsToCliFlags(perms: Deno.Permissions): string[] {
     .filter((e): boolean => e.length > 0);
 }
 
-function fmtPerms(perms: Deno.Permissions): string {
+function fmtPerms(perms: Permissions): string {
   let fmt = permsToCliFlags(perms).join(" ");
 
   if (!fmt) {
