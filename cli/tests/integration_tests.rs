@@ -597,3 +597,13 @@ itest!(top_level_await_ts {
   args: "--allow-read top_level_await.ts",
   output: "top_level_await.out",
 });
+
+itest!(top_level_for_await {
+  args: "top_level_for_await.js",
+  output: "top_level_for_await.out",
+});
+
+itest!(top_level_for_await_ts {
+  args: "top_level_for_await.ts",
+  output: "top_level_for_await.out",
+});
