@@ -343,6 +343,11 @@ itest!(_049_info_flag_script_jsx {
   http_server: true,
 });
 
+itest!(_050_more_jsons {
+  args: "run --reload 050_more_jsons.ts",
+  output: "050_more_jsons.ts.out",
+});
+
 itest!(async_error {
   exit_code: 1,
   args: "run --reload async_error.ts",
