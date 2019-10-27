@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::deno_error::permission_denied_msg;
+use crate::deno_error::{permission_denied_msg, type_error};
 use crate::flags::DenoFlags;
 use ansi_term::Style;
 use deno::ErrBox;
@@ -9,10 +9,12 @@ use std::fmt;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use url::Url;
 
 const PERMISSION_EMOJI: &str = "⚠️";
 
 /// Tri-state value for storing permission state
+#[derive(PartialEq)]
 pub enum PermissionAccessorState {
   Allow = 0,
   Ask = 1,
@@ -43,9 +45,9 @@ impl From<bool> for PermissionAccessorState {
 impl fmt::Display for PermissionAccessorState {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
-      PermissionAccessorState::Allow => f.pad("Allow"),
-      PermissionAccessorState::Ask => f.pad("Ask"),
-      PermissionAccessorState::Deny => f.pad("Deny"),
+      PermissionAccessorState::Allow => f.pad("granted"),
+      PermissionAccessorState::Ask => f.pad("prompt"),
+      PermissionAccessorState::Deny => f.pad("denied"),
     }
   }
 }
@@ -110,7 +112,7 @@ impl Default for PermissionAccessor {
 
 #[derive(Debug, Default)]
 pub struct DenoPermissions {
-  // Keep in sync with src/permissions.ts
+  // Keep in sync with cli/js/permissions.ts
   pub allow_read: PermissionAccessor,
   pub read_whitelist: Arc<HashSet<String>>,
   pub allow_write: PermissionAccessor,
@@ -139,146 +141,94 @@ impl DenoPermissions {
     }
   }
 
-  pub fn check_run(&self) -> Result<(), ErrBox> {
-    let msg = "access to run a subprocess";
-
-    match self.allow_run.get_state() {
-      PermissionAccessorState::Allow => {
-        self.log_perm_access(msg);
-        Ok(())
-      }
-      PermissionAccessorState::Ask => Err(permission_denied_msg(
-        "run again with the --allow-run flag".to_string(),
-      )),
-      PermissionAccessorState::Deny => Err(permission_denied_msg(
-        "run again with the --allow-run flag".to_string(),
-      )),
+  /** Checks the permission state and returns the result. */
+  fn check_permission_state(
+    &self,
+    state: PermissionAccessorState,
+    msg: &str,
+    err_msg: &str,
+  ) -> Result<(), ErrBox> {
+    if state == PermissionAccessorState::Allow {
+      self.log_perm_access(msg);
+      return Ok(());
     }
+    Err(permission_denied_msg(err_msg.to_string()))
+  }
+
+  pub fn check_run(&self) -> Result<(), ErrBox> {
+    self.check_permission_state(
+      self.allow_run.get_state(),
+      "access to run a subprocess",
+      "run again with the --allow-run flag",
+    )
+  }
+
+  fn get_state_read(&self, filename: &Option<&str>) -> PermissionAccessorState {
+    if check_path_white_list(filename, &self.read_whitelist) {
+      return PermissionAccessorState::Allow;
+    }
+    self.allow_read.get_state()
   }
 
   pub fn check_read(&self, filename: &str) -> Result<(), ErrBox> {
-    let msg = &format!("read access to \"{}\"", filename);
-    match self.allow_read.get_state() {
-      PermissionAccessorState::Allow => {
-        self.log_perm_access(msg);
-        Ok(())
-      }
-      state => {
-        if check_path_white_list(filename, &self.read_whitelist) {
-          self.log_perm_access(msg);
-          Ok(())
-        } else {
-          match state {
-            PermissionAccessorState::Ask => Err(permission_denied_msg(
-              "run again with the --allow-read flag".to_string(),
-            )),
-            PermissionAccessorState::Deny => Err(permission_denied_msg(
-              "run again with the --allow-read flag".to_string(),
-            )),
-            _ => unreachable!(),
-          }
-        }
-      }
+    self.check_permission_state(
+      self.get_state_read(&Some(filename)),
+      &format!("read access to \"{}\"", filename),
+      "run again with the --allow-read flag",
+    )
+  }
+
+  fn get_state_write(
+    &self,
+    filename: &Option<&str>,
+  ) -> PermissionAccessorState {
+    if check_path_white_list(filename, &self.write_whitelist) {
+      return PermissionAccessorState::Allow;
     }
+    self.allow_write.get_state()
   }
 
   pub fn check_write(&self, filename: &str) -> Result<(), ErrBox> {
-    let msg = &format!("write access to \"{}\"", filename);
-    match self.allow_write.get_state() {
-      PermissionAccessorState::Allow => {
-        self.log_perm_access(msg);
-        Ok(())
-      }
-      state => {
-        if check_path_white_list(filename, &self.write_whitelist) {
-          self.log_perm_access(msg);
-          Ok(())
-        } else {
-          match state {
-            PermissionAccessorState::Ask => Err(permission_denied_msg(
-              "run again with the --allow-write flag".to_string(),
-            )),
-            PermissionAccessorState::Deny => Err(permission_denied_msg(
-              "run again with the --allow-write flag".to_string(),
-            )),
-            _ => unreachable!(),
-          }
-        }
-      }
+    self.check_permission_state(
+      self.get_state_write(&Some(filename)),
+      &format!("write access to \"{}\"", filename),
+      "run again with the --allow-write flag",
+    )
+  }
+
+  fn get_state_net(
+    &self,
+    host: &str,
+    port: Option<u16>,
+  ) -> PermissionAccessorState {
+    if check_host_and_port_whitelist(host, port, &self.net_whitelist) {
+      return PermissionAccessorState::Allow;
     }
+    self.allow_net.get_state()
   }
 
   pub fn check_net(&self, hostname: &str, port: u16) -> Result<(), ErrBox> {
-    let msg = &format!("network access to \"{}:{}\"", hostname, port);
-    match self.allow_net.get_state() {
-      PermissionAccessorState::Allow => {
-        self.log_perm_access(msg);
-        Ok(())
-      }
-      _state => {
-        if self.net_whitelist.contains(hostname)
-          || self
-            .net_whitelist
-            .contains(&format!("{}:{}", hostname, port))
-        {
-          self.log_perm_access(msg);
-          Ok(())
-        } else {
-          Err(permission_denied_msg(
-            "run again with the --allow-net flag".to_string(),
-          ))
-        }
-      }
-    }
+    self.check_permission_state(
+      self.get_state_net(hostname, Some(port)),
+      &format!("network access to \"{}:{}\"", hostname, port),
+      "run again with the --allow-net flag",
+    )
   }
 
   pub fn check_net_url(&self, url: &url::Url) -> Result<(), ErrBox> {
-    let msg = &format!("network access to \"{}\"", url);
-    match self.allow_net.get_state() {
-      PermissionAccessorState::Allow => {
-        self.log_perm_access(msg);
-        Ok(())
-      }
-      _state => {
-        let host = url.host().unwrap();
-        let whitelist_result = {
-          if self.net_whitelist.contains(&format!("{}", host)) {
-            true
-          } else {
-            match url.port() {
-              Some(port) => {
-                self.net_whitelist.contains(&format!("{}:{}", host, port))
-              }
-              None => false,
-            }
-          }
-        };
-        if whitelist_result {
-          self.log_perm_access(msg);
-          Ok(())
-        } else {
-          Err(permission_denied_msg(
-            "run again with the --allow-net flag".to_string(),
-          ))
-        }
-      }
-    }
+    self.check_permission_state(
+      self.get_state_net(&format!("{}", url.host().unwrap()), url.port()),
+      &format!("network access to \"{}\"", url),
+      "run again with the --allow-net flag",
+    )
   }
 
   pub fn check_env(&self) -> Result<(), ErrBox> {
-    let msg = "access to environment variables";
-    match self.allow_env.get_state() {
-      PermissionAccessorState::Allow => {
-        self.log_perm_access(msg);
-        Ok(())
-      }
-      PermissionAccessorState::Ask => Err(permission_denied_msg(
-        "run again with the --allow-env flag".to_string(),
-      )),
-      PermissionAccessorState::Deny => Err(permission_denied_msg(
-        "run again with the --allow-env flag".to_string(),
-      )),
-    }
+    self.check_permission_state(
+      self.allow_env.get_state(),
+      "access to environment variables",
+      "run again with the --allow-env flag",
+    )
   }
 
   fn log_perm_access(&self, message: &str) {
@@ -292,66 +242,44 @@ impl DenoPermissions {
     }
   }
 
-  pub fn allows_run(&self) -> bool {
-    self.allow_run.is_allow()
-  }
-
-  pub fn allows_read(&self) -> bool {
-    self.allow_read.is_allow()
-  }
-
-  pub fn allows_write(&self) -> bool {
-    self.allow_write.is_allow()
-  }
-
-  pub fn allows_net(&self) -> bool {
-    self.allow_net.is_allow()
-  }
-
-  pub fn allows_env(&self) -> bool {
-    self.allow_env.is_allow()
-  }
-
-  pub fn allows_hrtime(&self) -> bool {
-    self.allow_hrtime.is_allow()
-  }
-
-  pub fn revoke_run(&self) -> Result<(), ErrBox> {
-    self.allow_run.revoke();
-    Ok(())
-  }
-
-  pub fn revoke_read(&self) -> Result<(), ErrBox> {
-    self.allow_read.revoke();
-    Ok(())
-  }
-
-  pub fn revoke_write(&self) -> Result<(), ErrBox> {
-    self.allow_write.revoke();
-    Ok(())
-  }
-
-  pub fn revoke_net(&self) -> Result<(), ErrBox> {
-    self.allow_net.revoke();
-    Ok(())
-  }
-
-  pub fn revoke_env(&self) -> Result<(), ErrBox> {
-    self.allow_env.revoke();
-    Ok(())
-  }
-  pub fn revoke_hrtime(&self) -> Result<(), ErrBox> {
-    self.allow_hrtime.revoke();
-    Ok(())
+  pub fn get_permission_state(
+    &self,
+    name: &str,
+    url: &Option<&str>,
+    path: &Option<&str>,
+  ) -> Result<PermissionAccessorState, ErrBox> {
+    match name {
+      "run" => Ok(self.allow_run.get_state()),
+      "read" => Ok(self.get_state_read(path)),
+      "write" => Ok(self.get_state_write(path)),
+      "net" => {
+        // If url is not given, then just check the entire net permission
+        if url.is_none() {
+          return Ok(self.allow_net.get_state());
+        }
+        let url: &str = url.unwrap();
+        // If url is invalid, then throw a TypeError.
+        let parsed = Url::parse(url)
+          .map_err(|_| type_error(format!("Invalid url: {}", url)))?;
+        let state = self
+          .get_state_net(&format!("{}", parsed.host().unwrap()), parsed.port());
+        Ok(state)
+      }
+      "env" => Ok(self.allow_env.get_state()),
+      "hrtime" => Ok(self.allow_hrtime.get_state()),
+      n => Err(type_error(format!("No such permission name: {}", n))),
+    }
   }
 }
 
 fn check_path_white_list(
-  filename: &str,
+  filename: &Option<&str>,
   white_list: &Arc<HashSet<String>>,
 ) -> bool {
-  let mut path_buf = PathBuf::from(filename);
-
+  if filename.is_none() {
+    return false;
+  }
+  let mut path_buf = PathBuf::from(filename.unwrap());
   loop {
     if white_list.contains(path_buf.to_str().unwrap()) {
       return true;
@@ -361,6 +289,16 @@ fn check_path_white_list(
     }
   }
   false
+}
+
+fn check_host_and_port_whitelist(
+  host: &str,
+  port: Option<u16>,
+  whitelist: &Arc<HashSet<String>>,
+) -> bool {
+  whitelist.contains(host)
+    || (port.is_some()
+      && whitelist.contains(&format!("{}:{}", host, port.unwrap())))
 }
 
 #[cfg(test)]

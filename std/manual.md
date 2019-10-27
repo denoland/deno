@@ -353,18 +353,19 @@ Sometimes a program may want to revoke previously granted permissions. When a
 program, at a later stage, needs those permissions, it will fail.
 
 ```ts
-const { permissions, revokePermission, open, remove } = Deno;
+const { permissions, open, remove } = Deno;
 
 // lookup a permission
-if (!permissions().write) {
+const status = await permissions.query({ name: "write" });
+if (status.state !== "granted") {
   throw new Error("need write permission");
 }
 
 const log = await open("request.log", "a+");
 
 // revoke some permissions
-revokePermission("read");
-revokePermission("write");
+await permissions.revoke({ name: "read" });
+await permissions.revoke({ name: "write" });
 
 // use the log file
 const encoder = new TextEncoder();

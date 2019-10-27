@@ -68,8 +68,9 @@ export { applySourceMap } from "./error_stack.ts";
 export { ErrorKind, DenoError } from "./errors.ts";
 export {
   permissions,
-  revokePermission,
-  Permission,
+  PermissionName,
+  PermissionState,
+  PermissionStatus,
   Permissions
 } from "./permissions.ts";
 export { truncateSync, truncate } from "./truncate.ts";

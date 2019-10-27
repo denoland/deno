@@ -96,6 +96,10 @@ pub fn too_many_redirects() -> ErrBox {
   StaticError(ErrorKind::TooManyRedirects, "too many redirects").into()
 }
 
+pub fn type_error(msg: String) -> ErrBox {
+  DenoError::new(ErrorKind::TypeError, msg).into()
+}
+
 pub trait GetErrorKind {
   fn kind(&self) -> ErrorKind;
 }
