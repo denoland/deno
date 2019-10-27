@@ -883,6 +883,9 @@ declare namespace Deno {
   }
 
   // @url js/permissions.d.ts
+  /** Permissions as granted by the caller
+   * See: https://w3c.github.io/permissions/#permission-registry
+   */
   export type PermissionName =
     | "run"
     | "read"
@@ -890,6 +893,7 @@ declare namespace Deno {
     | "net"
     | "env"
     | "hrtime";
+  /** https://w3c.github.io/permissions/#status-of-a-permission */
   export type PermissionState = "granted" | "denied" | "prompt";
   interface RunPermissionDescriptor {
     name: "run";
@@ -917,11 +921,14 @@ declare namespace Deno {
     | HrtimePermissionDescriptor;
 
   export class Permissions {
+    /** Queries the permission. */
     query(d: PermissionDescriptor): Promise<PermissionStatus>;
+    /** Revokes the permission. */
     revoke(d: PermissionDescriptor): Promise<PermissionStatus>;
   }
   export const permissions: Permissions;
 
+  /** https://w3c.github.io/permissions/#permissionstatus */
   export class PermissionStatus {
     state: PermissionState;
     constructor(state: PermissionState);
