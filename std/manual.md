@@ -1068,7 +1068,7 @@ Metrics is Deno's internal counters for various statics.
 
 ### Schematic diagram
 
-<img src="images/schematic_v0.2.png">
+<img src="https://deno.land/images/schematic_v0.2.png">
 
 ### Profiling
 
