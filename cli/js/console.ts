@@ -327,8 +327,11 @@ function createObjectString(
   ...args: [ConsoleContext, number, number]
 ): string {
   if (customInspect in value && typeof value[customInspect] === "function") {
-    return String(value[customInspect]!());
-  } else if (value instanceof Error) {
+    try {
+      return String(value[customInspect]!());
+    } catch {}
+  }
+  if (value instanceof Error) {
     return String(value.stack);
   } else if (Array.isArray(value)) {
     return createArrayString(value, ...args);
