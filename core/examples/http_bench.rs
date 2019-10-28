@@ -184,11 +184,19 @@ fn main() {
 
 struct TcpListener(tokio::net::TcpListener);
 
-impl Resource for TcpListener {}
+impl Resource for TcpListener {
+  fn inspect_repr(&self) -> &str {
+    "tcpListener"
+  }
+}
 
 struct TcpStream(tokio::net::TcpStream);
 
-impl Resource for TcpStream {}
+impl Resource for TcpStream {
+  fn inspect_repr(&self) -> &str {
+    "tcpStream"
+  }
+}
 
 lazy_static! {
   static ref RESOURCE_TABLE: Mutex<ResourceTable> =

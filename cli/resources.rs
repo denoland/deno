@@ -73,56 +73,34 @@ lazy_static! {
   });
 }
 
-// TODO: potential abstraction for AsyncRead/AsyncWrite
-//#[allow(dead_code)]
-//enum StreamResource {
-//  Read(Box<dyn DenoAsyncRead>),
-//  Write(Box<dyn DenoAsyncRead>),
-//  ReadWrite(Box<dyn DenoAsyncReadWrite>),
-//}
-
+// TODO: move listeners out of this enum and rename to `StreamResource`
 enum CliResource {
-  // read only
   Stdin(tokio::io::Stdin),
-  // write only
   Stdout(tokio::fs::File),
-  // write only
   Stderr(tokio::io::Stderr),
-  // read, write, seek
   FsFile(tokio::fs::File),
-
   // Since TcpListener might be closed while there is a pending accept task,
   // we need to track the task so that when the listener is closed,
   // this pending task could be notified and die.
   // Currently TcpListener itself does not take care of this issue.
   // See: https://github.com/tokio-rs/tokio/issues/846
-  // accept
   TcpListener(tokio::net::TcpListener, Option<futures::task::Task>),
-  // accept
   TlsListener(
     tokio::net::TcpListener,
     TlsAcceptor,
     Option<futures::task::Task>,
   ),
-  // read, write, shutdown
   TcpStream(tokio::net::TcpStream),
-  // read, write
   ServerTlsStream(Box<ServerTlsStream<TcpStream>>),
-  // read, write
   ClientTlsStream(Box<ClientTlsStream<TcpStream>>),
-  // read, write
   HttpBody(HttpBody),
   // Enum size is bounded by the largest variant.
   // Use `Box` around large `Child` struct.
   // https://rust-lang.github.io/rust-clippy/master/index.html#large_enum_variant
   Child(Box<tokio_process::Child>),
-  // write
   ChildStdin(tokio_process::ChildStdin),
-  // read
   ChildStdout(tokio_process::ChildStdout),
-  // read
   ChildStderr(tokio_process::ChildStderr),
-  // none -
   Worker(WorkerChannels),
 }
 
@@ -176,12 +154,10 @@ impl Resource {
   pub fn poll_accept(&mut self) -> Poll<(TcpStream, SocketAddr), Error> {
     let mut table = lock_resource_table();
     match table.get_mut::<CliResource>(self.rid) {
-      Err(_) => {
-        return Err(std::io::Error::new(
-          std::io::ErrorKind::Other,
-          "Listener has been closed",
-        ));
-      }
+      Err(_) => Err(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        "Listener has been closed",
+      )),
       Ok(repr) => match repr {
         CliResource::TcpListener(ref mut s, _) => s.poll_accept(),
         CliResource::TlsListener(ref mut s, _, _) => s.poll_accept(),
@@ -196,12 +172,10 @@ impl Resource {
   ) -> impl Future<Item = ServerTlsStream<TcpStream>, Error = Error> {
     let mut table = lock_resource_table();
     match table.get_mut::<CliResource>(self.rid) {
-      Err(_) => {
-        return Either::A(futures::future::err(std::io::Error::new(
-          std::io::ErrorKind::Other,
-          "Listener has been closed",
-        )));
-      }
+      Err(_) => Either::A(futures::future::err(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        "Listener has been closed",
+      ))),
       Ok(repr) => match repr {
         CliResource::TlsListener(_, ref mut acceptor, _) => {
           Either::B(acceptor.accept(tcp_stream))
@@ -257,7 +231,9 @@ impl Resource {
 
   pub fn shutdown(&mut self, how: Shutdown) -> Result<(), ErrBox> {
     let mut table = lock_resource_table();
-    let repr = table.get_mut::<CliResource>(self.rid)?;
+    let repr = table
+      .get_mut::<CliResource>(self.rid)
+      .map_err(|_| bad_resource())?;
 
     match repr {
       CliResource::TcpStream(ref mut f) => {
@@ -283,7 +259,7 @@ pub trait DenoAsyncRead {
 impl DenoAsyncRead for Resource {
   fn poll_read(&mut self, buf: &mut [u8]) -> Poll<usize, ErrBox> {
     let mut table = lock_resource_table();
-    let repr = table.get_mut(self.rid)?;
+    let repr = table.get_mut(self.rid).map_err(|_| bad_resource())?;
 
     let r = match repr {
       CliResource::FsFile(ref mut f) => f.poll_read(buf),
@@ -324,7 +300,9 @@ pub trait DenoAsyncWrite {
 impl DenoAsyncWrite for Resource {
   fn poll_write(&mut self, buf: &[u8]) -> Poll<usize, ErrBox> {
     let mut table = lock_resource_table();
-    let repr = table.get_mut::<CliResource>(self.rid)?;
+    let repr = table
+      .get_mut::<CliResource>(self.rid)
+      .map_err(|_| bad_resource())?;
 
     let r = match repr {
       CliResource::FsFile(ref mut f) => f.poll_write(buf),
@@ -406,7 +384,9 @@ pub fn post_message_to_worker(
   buf: Buf,
 ) -> Result<futures::sink::Send<mpsc::Sender<Buf>>, ErrBox> {
   let mut table = lock_resource_table();
-  let repr = table.get_mut::<CliResource>(rid)?;
+  let repr = table
+    .get_mut::<CliResource>(rid)
+    .map_err(|_| bad_resource())?;
   match repr {
     CliResource::Worker(ref mut wc) => {
       let sender = wc.0.clone();
@@ -427,7 +407,9 @@ impl Future for WorkerReceiver {
 
   fn poll(&mut self) -> Poll<Option<Buf>, ErrBox> {
     let mut table = lock_resource_table();
-    let repr = table.get_mut::<CliResource>(self.rid)?;
+    let repr = table
+      .get_mut::<CliResource>(self.rid)
+      .map_err(|_| bad_resource())?;
     match repr {
       CliResource::Worker(ref mut wc) => wc.1.poll().map_err(ErrBox::from),
       _ => Err(bad_resource()),
@@ -450,7 +432,9 @@ impl Stream for WorkerReceiverStream {
 
   fn poll(&mut self) -> Poll<Option<Buf>, ErrBox> {
     let mut table = lock_resource_table();
-    let repr = table.get_mut::<CliResource>(self.rid)?;
+    let repr = table
+      .get_mut::<CliResource>(self.rid)
+      .map_err(|_| bad_resource())?;
     match repr {
       CliResource::Worker(ref mut wc) => wc.1.poll().map_err(ErrBox::from),
       _ => Err(bad_resource()),
@@ -512,7 +496,9 @@ impl Future for ChildStatus {
 
   fn poll(&mut self) -> Poll<ExitStatus, ErrBox> {
     let mut table = lock_resource_table();
-    let repr = table.get_mut::<CliResource>(self.rid)?;
+    let repr = table
+      .get_mut::<CliResource>(self.rid)
+      .map_err(|_| bad_resource())?;
     match repr {
       CliResource::Child(ref mut child) => child.poll().map_err(ErrBox::from),
       _ => Err(bad_resource()),
@@ -522,7 +508,9 @@ impl Future for ChildStatus {
 
 pub fn child_status(rid: ResourceId) -> Result<ChildStatus, ErrBox> {
   let mut table = lock_resource_table();
-  let maybe_repr = table.get_mut::<CliResource>(rid)?;
+  let maybe_repr = table
+    .get_mut::<CliResource>(rid)
+    .map_err(|_| bad_resource())?;
   match maybe_repr {
     CliResource::Child(ref mut _child) => Ok(ChildStatus { rid }),
     _ => Err(bad_resource()),
@@ -567,7 +555,7 @@ pub fn get_file(rid: ResourceId) -> Result<std::fs::File, ErrBox> {
 pub fn lookup(rid: ResourceId) -> Result<Resource, ErrBox> {
   debug!("resource lookup {}", rid);
   let table = lock_resource_table();
-  let _ = table.get::<CliResource>(rid)?;
+  let _ = table.get::<CliResource>(rid).map_err(|_| bad_resource())?;
   Ok(Resource { rid })
 }
 
