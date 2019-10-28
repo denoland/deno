@@ -266,7 +266,7 @@ command line:
 $ deno types
 ```
 
-[This is what the output looks like.](https://gist.github.com/ry/46da4724168cdefa763e13207d27ede5)
+[This is what the output looks like.](https://github.com/denoland/deno/blob/master/cli/js/lib.deno_runtime.d.ts)
 
 ### Reference websites
 
