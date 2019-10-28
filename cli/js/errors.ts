@@ -78,7 +78,6 @@ export enum ErrorKind {
   JSError = 50,
   TypeError = 51,
 
-  /** TODO These are DomException Types, and should be moved there when it exists */
-  DataCloneError = 52,
-  AbortError = 53
+  /** TODO this is a DomException type, and should be moved out of here when possible */
+  DataCloneError = 52
 }

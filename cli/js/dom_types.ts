@@ -337,19 +337,6 @@ export interface ReadableStream {
   tee(): ReadableStream[];
 }
 
-export interface WritableStream<W = any> {
-  readonly locked: boolean;
-  abort(reason?: any): Promise<void>;
-  getWriter(): WritableStreamDefaultWriter<W>;
-}
-
-export interface PipeOptions {
-  preventAbort?: boolean;
-  preventCancel?: boolean;
-  preventClose?: boolean;
-  signal?: AbortSignal;
-}
-
 export interface UnderlyingSource<R = any> {
   cancel?: ReadableStreamErrorCallback;
   pull?: ReadableStreamDefaultControllerCallback<R>;
@@ -363,14 +350,6 @@ export interface UnderlyingByteSource {
   pull?: ReadableByteStreamControllerCallback;
   start?: ReadableByteStreamControllerCallback;
   type: "bytes";
-}
-
-export interface UnderlyingSink<W = any> {
-  abort?: WritableStreamErrorCallback;
-  close?: WritableStreamDefaultControllerCloseCallback;
-  start?: WritableStreamDefaultControllerStartCallback;
-  type?: undefined;
-  write?: WritableStreamDefaultControllerWriteCallback<W>;
 }
 
 export interface ReadableStreamReader {
@@ -411,6 +390,29 @@ export interface ReadableStreamBYOBRequest {
   respond(bytesWritten: number): void;
   respondWithNewView(view: ArrayBufferView): void;
 }
+/* TODO reenable these interfaces.  These are needed to enable WritableStreams in js/streams/
+export interface WritableStream<W = any> {
+  readonly locked: boolean;
+  abort(reason?: any): Promise<void>;
+  getWriter(): WritableStreamDefaultWriter<W>;
+}
+
+TODO reenable these interfaces.  These are needed to enable WritableStreams in js/streams/
+export interface UnderlyingSink<W = any> {
+  abort?: WritableStreamErrorCallback;
+  close?: WritableStreamDefaultControllerCloseCallback;
+  start?: WritableStreamDefaultControllerStartCallback;
+  type?: undefined;
+  write?: WritableStreamDefaultControllerWriteCallback<W>;
+}
+
+export interface PipeOptions {
+  preventAbort?: boolean;
+  preventCancel?: boolean;
+  preventClose?: boolean;
+  signal?: AbortSignal;
+}
+
 
 export interface WritableStreamDefaultWriter<W = any> {
   readonly closed: Promise<void>;
@@ -443,7 +445,7 @@ export interface WritableStreamDefaultControllerWriteCallback<W> {
 export interface WritableStreamDefaultController {
   error(error?: any): void;
 }
-
+*/
 export interface QueuingStrategy<T = any> {
   highWaterMark?: number;
   size?: QueuingStrategySizeCallback<T>;

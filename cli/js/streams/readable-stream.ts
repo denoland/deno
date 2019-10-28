@@ -13,11 +13,8 @@
 //   284:7   error    'branch1' is never reassigned. Use 'const' instead  prefer-const
 
 import * as rs from "./readable-internals.ts";
-import * as ws from "./writable-internals.ts";
 import * as shared from "./shared-internals.ts";
-import { pipeTo } from "./pipe-to.ts";
 import {
-  PipeOptions,
   QueuingStrategy,
   QueuingStrategySizeCallback,
   UnderlyingSource,
@@ -137,6 +134,7 @@ export class SDReadableStream<OutputType>
     return readableStreamTee(this, false);
   }
 
+  /* TODO reenable these methods when we bring in writableStreams and transport types
   pipeThrough<ResultType>(
     transform: rs.GenericTransformStream<OutputType, ResultType>,
     options: PipeOptions = {}
@@ -193,6 +191,7 @@ export class SDReadableStream<OutputType>
 
     return pipeTo(this, dest, options);
   }
+  */
 }
 
 export function createReadableStream<OutputType>(

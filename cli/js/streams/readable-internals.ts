@@ -11,11 +11,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // TODO reenable this lint here
 
-import * as ws from "./writable-internals.ts";
 import * as shared from "./shared-internals.ts";
 import * as q from "./queue-mixin.ts";
 import {
-  PipeOptions,
   QueuingStrategy,
   QueuingStrategySizeCallback,
   UnderlyingSource,
@@ -192,12 +190,12 @@ export declare class SDReadableStreamBYOBReader
   [readIntoRequests_]: Array<ReadRequest<IteratorResult<ArrayBufferView>>>;
 }
 
-// ----
-
+/* TODO reenable this when we add WritableStreams and Transforms
 export interface GenericTransformStream<InputType, OutputType> {
   readable: SDReadableStream<OutputType>;
   writable: ws.WritableStream<InputType>;
 }
+*/
 
 export type ReadableStreamState = "readable" | "closed" | "errored";
 
@@ -217,6 +215,7 @@ export declare class SDReadableStream<OutputType> {
   getReader(options: { mode: "byob" }): SDReadableStreamBYOBReader;
   tee(): Array<SDReadableStream<OutputType>>;
 
+  /* TODO reenable these methods when we bring in writableStreams and transport types
   pipeThrough<ResultType>(
     transform: GenericTransformStream<OutputType, ResultType>,
     options?: PipeOptions
@@ -225,7 +224,7 @@ export declare class SDReadableStream<OutputType> {
     dest: ws.WritableStream<OutputType>,
     options?: PipeOptions
   ): Promise<void>;
-
+  */
   [shared.state_]: ReadableStreamState;
   [shared.storedError_]: shared.ErrorResult;
   [reader_]: SDReadableStreamReader<OutputType> | undefined;
