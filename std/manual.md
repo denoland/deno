@@ -312,8 +312,7 @@ and returns to the client anything it sends.
 ```ts
 const listener = Deno.listen({ port: 8080 });
 console.log("listening on 0.0.0.0:8080");
-while (true) {
-  const conn = await listener.accept();
+for await (const conn of listener) {
   Deno.copy(conn, conn);
 }
 ```
@@ -353,26 +352,24 @@ Sometimes a program may want to revoke previously granted permissions. When a
 program, at a later stage, needs those permissions, it will fail.
 
 ```ts
-const { permissions, open, remove } = Deno;
-
 // lookup a permission
-const status = await permissions.query({ name: "write" });
+const status = await Deno.permissions.query({ name: "write" });
 if (status.state !== "granted") {
   throw new Error("need write permission");
 }
 
-const log = await open("request.log", "a+");
+const log = await Deno.open("request.log", "a+");
 
 // revoke some permissions
-await permissions.revoke({ name: "read" });
-await permissions.revoke({ name: "write" });
+await Deno.permissions.revoke({ name: "read" });
+await Deno.permissions.revoke({ name: "write" });
 
 // use the log file
 const encoder = new TextEncoder();
 await log.write(encoder.encode("hello\n"));
 
 // this will fail.
-await remove("request.log");
+await Deno.remove("request.log");
 ```
 
 ### File server
