@@ -84,7 +84,7 @@ jobs:
       - name: Environment (windows)
         if: startsWith(matrix.os, 'windows')
         run: |
-          echo ::add-path::$(pwd)\prebuilt\third_party\win
+          echo ::add-path::$(pwd)\third_party\prebuilt\win
           echo ::add-path::$(pwd)\target\release
 
       - name: Log versions
