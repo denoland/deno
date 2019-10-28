@@ -248,7 +248,7 @@ export interface AddEventListenerOptions extends EventListenerOptions {
   passive: boolean;
 }
 
-interface AbortSignal extends EventTarget {
+export interface AbortSignal extends EventTarget {
   readonly aborted: boolean;
   onabort: ((this: AbortSignal, ev: ProgressEvent) => any) | null;
   addEventListener<K extends keyof AbortSignalEventMap>(
@@ -271,19 +271,6 @@ interface AbortSignal extends EventTarget {
     listener: EventListener,
     options?: boolean | EventListenerOptions
   ): void;
-}
-
-export interface ReadableStream {
-  readonly locked: boolean;
-  cancel(): Promise<void>;
-  getReader(): ReadableStreamReader;
-  tee(): [ReadableStream, ReadableStream];
-}
-
-export interface ReadableStreamReader {
-  cancel(): Promise<void>;
-  read(): Promise<any>;
-  releaseLock(): void;
 }
 
 export interface FormData extends DomIterable<string, FormDataEntryValue> {
@@ -341,6 +328,131 @@ export interface Body {
    * that resolves with a `USVString` (text).
    */
   text(): Promise<string>;
+}
+
+export interface ReadableStream {
+  readonly locked: boolean;
+  cancel(reason?: any): Promise<void>;
+  getReader(): ReadableStreamReader;
+  tee(): ReadableStream[];
+}
+
+export interface UnderlyingSource<R = any> {
+  cancel?: ReadableStreamErrorCallback;
+  pull?: ReadableStreamDefaultControllerCallback<R>;
+  start?: ReadableStreamDefaultControllerCallback<R>;
+  type?: undefined;
+}
+
+export interface UnderlyingByteSource {
+  autoAllocateChunkSize?: number;
+  cancel?: ReadableStreamErrorCallback;
+  pull?: ReadableByteStreamControllerCallback;
+  start?: ReadableByteStreamControllerCallback;
+  type: "bytes";
+}
+
+export interface ReadableStreamReader {
+  cancel(reason?: any): Promise<void>;
+  read(): Promise<any>;
+  releaseLock(): void;
+}
+
+export interface ReadableStreamErrorCallback {
+  (reason: any): void | PromiseLike<void>;
+}
+
+export interface ReadableByteStreamControllerCallback {
+  (controller: ReadableByteStreamController): void | PromiseLike<void>;
+}
+
+export interface ReadableStreamDefaultControllerCallback<R> {
+  (controller: ReadableStreamDefaultController<R>): void | PromiseLike<void>;
+}
+
+export interface ReadableStreamDefaultController<R = any> {
+  readonly desiredSize: number | null;
+  close(): void;
+  enqueue(chunk: R): void;
+  error(error?: any): void;
+}
+
+export interface ReadableByteStreamController {
+  readonly byobRequest: ReadableStreamBYOBRequest | undefined;
+  readonly desiredSize: number | null;
+  close(): void;
+  enqueue(chunk: ArrayBufferView): void;
+  error(error?: any): void;
+}
+
+export interface ReadableStreamBYOBRequest {
+  readonly view: ArrayBufferView;
+  respond(bytesWritten: number): void;
+  respondWithNewView(view: ArrayBufferView): void;
+}
+/* TODO reenable these interfaces.  These are needed to enable WritableStreams in js/streams/
+export interface WritableStream<W = any> {
+  readonly locked: boolean;
+  abort(reason?: any): Promise<void>;
+  getWriter(): WritableStreamDefaultWriter<W>;
+}
+
+TODO reenable these interfaces.  These are needed to enable WritableStreams in js/streams/
+export interface UnderlyingSink<W = any> {
+  abort?: WritableStreamErrorCallback;
+  close?: WritableStreamDefaultControllerCloseCallback;
+  start?: WritableStreamDefaultControllerStartCallback;
+  type?: undefined;
+  write?: WritableStreamDefaultControllerWriteCallback<W>;
+}
+
+export interface PipeOptions {
+  preventAbort?: boolean;
+  preventCancel?: boolean;
+  preventClose?: boolean;
+  signal?: AbortSignal;
+}
+
+
+export interface WritableStreamDefaultWriter<W = any> {
+  readonly closed: Promise<void>;
+  readonly desiredSize: number | null;
+  readonly ready: Promise<void>;
+  abort(reason?: any): Promise<void>;
+  close(): Promise<void>;
+  releaseLock(): void;
+  write(chunk: W): Promise<void>;
+}
+
+export interface WritableStreamErrorCallback {
+  (reason: any): void | PromiseLike<void>;
+}
+
+export interface WritableStreamDefaultControllerCloseCallback {
+  (): void | PromiseLike<void>;
+}
+
+export interface WritableStreamDefaultControllerStartCallback {
+  (controller: WritableStreamDefaultController): void | PromiseLike<void>;
+}
+
+export interface WritableStreamDefaultControllerWriteCallback<W> {
+  (chunk: W, controller: WritableStreamDefaultController): void | PromiseLike<
+    void
+  >;
+}
+
+export interface WritableStreamDefaultController {
+  error(error?: any): void;
+}
+*/
+export interface QueuingStrategy<T = any> {
+  highWaterMark?: number;
+  size?: QueuingStrategySizeCallback<T>;
+}
+
+export interface QueuingStrategySizeCallback<T = any> {
+  (chunk: T): number;
 }
 
 export interface Headers extends DomIterable<string, string> {
