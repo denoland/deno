@@ -1222,7 +1222,7 @@ These Deno logos, like the Deno software, are distributed under the MIT license
 
 ## Contributing
 
-[Style Guide](style_guide.html)
+[Style Guide](style_guide.md)
 
 Progress towards future releases is tracked
 [here](https://github.com/denoland/deno/milestones).
