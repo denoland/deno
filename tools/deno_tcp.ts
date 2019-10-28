@@ -24,12 +24,7 @@ async function handle(conn: Deno.Conn): Promise<void> {
   }
 }
 
-async function main(): Promise<void> {
-  console.log("Listening on", addr);
-  while (true) {
-    const conn = await listener.accept();
-    handle(conn);
-  }
+console.log("Listening on", addr);
+for await (const conn of listener) {
+  handle(conn);
 }
-
-main();
