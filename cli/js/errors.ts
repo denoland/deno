@@ -76,5 +76,8 @@ export enum ErrorKind {
   TooManyRedirects = 48,
   Diagnostic = 49,
   JSError = 50,
-  TypeError = 51
+  TypeError = 51,
+
+  /** TODO this is a DomException type, and should be moved out of here when possible */
+  DataCloneError = 52
 }
