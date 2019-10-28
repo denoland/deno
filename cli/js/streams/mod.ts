@@ -9,6 +9,7 @@
  */
 
 export { SDReadableStream as ReadableStream } from "./readable-stream.ts";
+/* TODO The following are currently unused so not exported for clarity.
 export { WritableStream } from "./writable-stream.ts";
 
 export { TransformStream } from "./transform-stream.ts";
@@ -16,3 +17,4 @@ export {
   ByteLengthQueuingStrategy,
   CountQueuingStrategy
 } from "./strategies.ts";
+*/
