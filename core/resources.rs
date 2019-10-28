@@ -10,8 +10,6 @@ use downcast_rs::Downcast;
 use std;
 use std::any::Any;
 use std::collections::HashMap;
-use std::io::Error;
-use std::io::ErrorKind;
 
 /// ResourceId is Deno's version of a file descriptor. ResourceId is also referred
 /// to as rid in the code base.
@@ -30,19 +28,20 @@ pub struct ResourceTable {
 }
 
 impl ResourceTable {
-  pub fn get<T: Resource>(&self, rid: ResourceId) -> Result<&T, Error> {
-    let resource = self.map.get(&rid).ok_or_else(bad_resource)?;
-    let resource = &resource.downcast_ref::<T>().ok_or_else(bad_resource)?;
-    Ok(resource)
+  pub fn get<T: Resource>(&self, rid: ResourceId) -> Option<&T> {
+    if let Some(resource) = self.map.get(&rid) {
+      return resource.downcast_ref::<T>();
+    }
+
+    None
   }
 
-  pub fn get_mut<T: Resource>(
-    &mut self,
-    rid: ResourceId,
-  ) -> Result<&mut T, Error> {
-    let resource = self.map.get_mut(&rid).ok_or_else(bad_resource)?;
-    let resource = resource.downcast_mut::<T>().ok_or_else(bad_resource)?;
-    Ok(resource)
+  pub fn get_mut<T: Resource>(&mut self, rid: ResourceId) -> Option<&mut T> {
+    if let Some(resource) = self.map.get_mut(&rid) {
+      return resource.downcast_mut::<T>();
+    }
+
+    None
   }
 
   // TODO: resource id allocation should probably be randomized for security.
@@ -69,11 +68,13 @@ impl ResourceTable {
 
   // close(2) is done by dropping the value. Therefore we just need to remove
   // the resource from the RESOURCE_TABLE.
-  pub fn close(&mut self, rid: ResourceId) -> Result<(), Error> {
-    let repr = self.map.remove(&rid).ok_or_else(bad_resource)?;
-    // Give resource a chance to cleanup (notify tasks, etc.)
-    repr.close();
-    Ok(())
+  pub fn close(&mut self, rid: ResourceId) -> Option<()> {
+    if let Some(resource) = self.map.remove(&rid) {
+      resource.close();
+      return Some(());
+    }
+
+    None
   }
 }
 
@@ -85,8 +86,3 @@ pub trait Resource: Downcast + Any + Send {
   fn inspect_repr(&self) -> &str;
 }
 impl_downcast!(Resource);
-
-// TODO: probably bad error kind
-pub fn bad_resource() -> Error {
-  Error::new(ErrorKind::NotFound, "bad resource id")
-}

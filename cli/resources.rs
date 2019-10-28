@@ -154,11 +154,11 @@ impl Resource {
   pub fn poll_accept(&mut self) -> Poll<(TcpStream, SocketAddr), Error> {
     let mut table = lock_resource_table();
     match table.get_mut::<CliResource>(self.rid) {
-      Err(_) => Err(std::io::Error::new(
+      None => Err(std::io::Error::new(
         std::io::ErrorKind::Other,
         "Listener has been closed",
       )),
-      Ok(repr) => match repr {
+      Some(repr) => match repr {
         CliResource::TcpListener(ref mut s, _) => s.poll_accept(),
         CliResource::TlsListener(ref mut s, _, _) => s.poll_accept(),
         _ => panic!("Cannot accept"),
@@ -172,11 +172,11 @@ impl Resource {
   ) -> impl Future<Item = ServerTlsStream<TcpStream>, Error = Error> {
     let mut table = lock_resource_table();
     match table.get_mut::<CliResource>(self.rid) {
-      Err(_) => Either::A(futures::future::err(std::io::Error::new(
+      None => Either::A(futures::future::err(std::io::Error::new(
         std::io::ErrorKind::Other,
         "Listener has been closed",
       ))),
-      Ok(repr) => match repr {
+      Some(repr) => match repr {
         CliResource::TlsListener(_, ref mut acceptor, _) => {
           Either::B(acceptor.accept(tcp_stream))
         }
@@ -190,7 +190,7 @@ impl Resource {
   pub fn track_task(&mut self) -> Result<(), std::io::Error> {
     let mut table = lock_resource_table();
     // Only track if is TcpListener.
-    if let Ok(CliResource::TcpListener(_, t)) =
+    if let Some(CliResource::TcpListener(_, t)) =
       table.get_mut::<CliResource>(self.rid)
     {
       // Currently, we only allow tracking a single accept task for a listener.
@@ -213,7 +213,7 @@ impl Resource {
   pub fn untrack_task(&mut self) {
     let mut table = lock_resource_table();
     // Only untrack if is TcpListener.
-    if let Ok(CliResource::TcpListener(_, t)) =
+    if let Some(CliResource::TcpListener(_, t)) =
       table.get_mut::<CliResource>(self.rid)
     {
       if t.is_some() {
@@ -233,7 +233,7 @@ impl Resource {
     let mut table = lock_resource_table();
     let repr = table
       .get_mut::<CliResource>(self.rid)
-      .map_err(|_| bad_resource())?;
+      .ok_or_else(bad_resource)?;
 
     match repr {
       CliResource::TcpStream(ref mut f) => {
@@ -259,7 +259,7 @@ pub trait DenoAsyncRead {
 impl DenoAsyncRead for Resource {
   fn poll_read(&mut self, buf: &mut [u8]) -> Poll<usize, ErrBox> {
     let mut table = lock_resource_table();
-    let repr = table.get_mut(self.rid).map_err(|_| bad_resource())?;
+    let repr = table.get_mut(self.rid).ok_or_else(bad_resource)?;
 
     let r = match repr {
       CliResource::FsFile(ref mut f) => f.poll_read(buf),
@@ -302,7 +302,7 @@ impl DenoAsyncWrite for Resource {
     let mut table = lock_resource_table();
     let repr = table
       .get_mut::<CliResource>(self.rid)
-      .map_err(|_| bad_resource())?;
+      .ok_or_else(bad_resource)?;
 
     let r = match repr {
       CliResource::FsFile(ref mut f) => f.poll_write(buf),
@@ -384,9 +384,7 @@ pub fn post_message_to_worker(
   buf: Buf,
 ) -> Result<futures::sink::Send<mpsc::Sender<Buf>>, ErrBox> {
   let mut table = lock_resource_table();
-  let repr = table
-    .get_mut::<CliResource>(rid)
-    .map_err(|_| bad_resource())?;
+  let repr = table.get_mut::<CliResource>(rid).ok_or_else(bad_resource)?;
   match repr {
     CliResource::Worker(ref mut wc) => {
       let sender = wc.0.clone();
@@ -409,7 +407,7 @@ impl Future for WorkerReceiver {
     let mut table = lock_resource_table();
     let repr = table
       .get_mut::<CliResource>(self.rid)
-      .map_err(|_| bad_resource())?;
+      .ok_or_else(bad_resource)?;
     match repr {
       CliResource::Worker(ref mut wc) => wc.1.poll().map_err(ErrBox::from),
       _ => Err(bad_resource()),
@@ -434,7 +432,7 @@ impl Stream for WorkerReceiverStream {
     let mut table = lock_resource_table();
     let repr = table
       .get_mut::<CliResource>(self.rid)
-      .map_err(|_| bad_resource())?;
+      .ok_or_else(bad_resource)?;
     match repr {
       CliResource::Worker(ref mut wc) => wc.1.poll().map_err(ErrBox::from),
       _ => Err(bad_resource()),
@@ -498,7 +496,7 @@ impl Future for ChildStatus {
     let mut table = lock_resource_table();
     let repr = table
       .get_mut::<CliResource>(self.rid)
-      .map_err(|_| bad_resource())?;
+      .ok_or_else(bad_resource)?;
     match repr {
       CliResource::Child(ref mut child) => child.poll().map_err(ErrBox::from),
       _ => Err(bad_resource()),
@@ -508,9 +506,8 @@ impl Future for ChildStatus {
 
 pub fn child_status(rid: ResourceId) -> Result<ChildStatus, ErrBox> {
   let mut table = lock_resource_table();
-  let maybe_repr = table
-    .get_mut::<CliResource>(rid)
-    .map_err(|_| bad_resource())?;
+  let maybe_repr =
+    table.get_mut::<CliResource>(rid).ok_or_else(bad_resource)?;
   match maybe_repr {
     CliResource::Child(ref mut _child) => Ok(ChildStatus { rid }),
     _ => Err(bad_resource()),
@@ -555,7 +552,7 @@ pub fn get_file(rid: ResourceId) -> Result<std::fs::File, ErrBox> {
 pub fn lookup(rid: ResourceId) -> Result<Resource, ErrBox> {
   debug!("resource lookup {}", rid);
   let table = lock_resource_table();
-  let _ = table.get::<CliResource>(rid).map_err(|_| bad_resource())?;
+  let _ = table.get::<CliResource>(rid).ok_or_else(bad_resource)?;
   Ok(Resource { rid })
 }
 
