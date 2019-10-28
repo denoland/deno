@@ -1209,13 +1209,13 @@ interface BenchmarkData {
 These Deno logos, like the Deno software, are distributed under the MIT license
 (public domain and free for use)
 
-- [A hand drawn one by @ry](https://github.com/denoland/deno/blob/master/website/images/deno_logo.png)
+- [A hand drawn one by @ry](https://deno.land/images/deno_logo.png)
 
 - [An animated one by @hashrock](https://github.com/denolib/animated-deno-logo/)
 
 - [A high resolution SVG one by @kevinkassimo](https://github.com/denolib/high-res-deno-logo)
 
-- [A pixelated animation one by @tanakaworld](https://github.com/denoland/deno/blob/master/website/images/deno_logo_4.gif)
+- [A pixelated animation one by @tanakaworld](https://deno.land/images/deno_logo_4.gif)
 
 ## Contributing
 
