@@ -161,12 +161,17 @@ test(async function bufioBufferFull(): Promise<void> {
 });
 
 test(async function bufioReadString(): Promise<void> {
-  const string = "And now, hello, world!";
+  const string = "And now, hello world!";
   const buf = new BufReader(stringsReader(string), MIN_READ_BUFFER_SIZE);
 
   const line = assertNotEOF(await buf.readString(","));
   assertEquals(line, "And now,");
   assertEquals(line.length, 8);
+
+  const line2 = assertNotEOF(await buf.readString(","));
+  assertEquals(line2, " hello world!");
+
+  assertEquals(await buf.readString(","), Deno.EOF);
 
   try {
     await buf.readString("deno");
