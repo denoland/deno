@@ -178,7 +178,7 @@ def spawn():
     while any(not s.thread.is_alive() for s in servers):
         sleep(0.01)
     try:
-        print("ready")
+        print "ready"
         yield servers
     finally:
         for s in servers:
