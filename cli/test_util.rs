@@ -79,7 +79,7 @@ pub fn http_server<'a>() -> HttpServerGuard<'a> {
       let r = out.read_exact(&mut buf);
       if r.is_ok() {
         println!("tools/http_server.py ready");
-        break
+        break;
       }
     }
     std::thread::sleep(std::time::Duration::from_millis(100));
