@@ -327,14 +327,12 @@ impl ThreadSafeState {
           let mut g = lockfile.lock().unwrap();
           if state2.flags.lock_write {
             g.insert(&compiled_module);
-          } else {
-            if !g.check(&compiled_module)? {
-              eprintln!(
-                "lock file check failed {} {}",
-                g.filename, compiled_module.name
-              );
-              std::process::exit(10);
-            }
+          } else if !g.check(&compiled_module)? {
+            eprintln!(
+              "lock file check failed {} {}",
+              g.filename, compiled_module.name
+            );
+            std::process::exit(10);
           }
         }
         Ok(compiled_module)
