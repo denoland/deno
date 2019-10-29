@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
+use crate::deno_error::bad_resource;
 use crate::fs as deno_fs;
 use crate::ops::json_op;
 use crate::resources;
@@ -110,8 +111,8 @@ fn op_close(
 ) -> Result<JsonOp, ErrBox> {
   let args: CloseArgs = serde_json::from_value(args)?;
 
-  let resource = resources::lookup(args.rid as u32)?;
-  resource.close();
+  let mut table = resources::lock_resource_table();
+  table.close(args.rid as u32).ok_or_else(bad_resource)?;
   Ok(JsonOp::Sync(json!({})))
 }
 

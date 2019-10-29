@@ -10,8 +10,6 @@ use downcast_rs::Downcast;
 use std;
 use std::any::Any;
 use std::collections::HashMap;
-use std::io::Error;
-use std::io::ErrorKind;
 
 /// ResourceId is Deno's version of a file descriptor. ResourceId is also referred
 /// to as rid in the code base.
@@ -23,24 +21,27 @@ type ResourceMap = HashMap<ResourceId, Box<dyn Resource>>;
 
 #[derive(Default)]
 pub struct ResourceTable {
-  map: ResourceMap,
+  // TODO(bartlomieju): remove pub modifier, it is used by
+  // `get_file` method in CLI
+  pub map: ResourceMap,
   next_id: u32,
 }
 
 impl ResourceTable {
-  pub fn get<T: Resource>(&self, rid: ResourceId) -> Result<&T, Error> {
-    let resource = self.map.get(&rid).ok_or_else(bad_resource)?;
-    let resource = &resource.downcast_ref::<T>().ok_or_else(bad_resource)?;
-    Ok(resource)
+  pub fn get<T: Resource>(&self, rid: ResourceId) -> Option<&T> {
+    if let Some(resource) = self.map.get(&rid) {
+      return resource.downcast_ref::<T>();
+    }
+
+    None
   }
 
-  pub fn get_mut<T: Resource>(
-    &mut self,
-    rid: ResourceId,
-  ) -> Result<&mut T, Error> {
-    let resource = self.map.get_mut(&rid).ok_or_else(bad_resource)?;
-    let resource = resource.downcast_mut::<T>().ok_or_else(bad_resource)?;
-    Ok(resource)
+  pub fn get_mut<T: Resource>(&mut self, rid: ResourceId) -> Option<&mut T> {
+    if let Some(resource) = self.map.get_mut(&rid) {
+      return resource.downcast_mut::<T>();
+    }
+
+    None
   }
 
   // TODO: resource id allocation should probably be randomized for security.
@@ -57,13 +58,23 @@ impl ResourceTable {
     rid
   }
 
+  pub fn entries(&self) -> Vec<(ResourceId, String)> {
+    self
+      .map
+      .iter()
+      .map(|(key, value)| (*key, value.inspect_repr().to_string()))
+      .collect()
+  }
+
   // close(2) is done by dropping the value. Therefore we just need to remove
   // the resource from the RESOURCE_TABLE.
-  pub fn close(&mut self, rid: ResourceId) -> Result<(), Error> {
-    let repr = self.map.remove(&rid).ok_or_else(bad_resource)?;
-    // Give resource a chance to cleanup (notify tasks, etc.)
-    repr.close();
-    Ok(())
+  pub fn close(&mut self, rid: ResourceId) -> Option<()> {
+    if let Some(resource) = self.map.remove(&rid) {
+      resource.close();
+      return Some(());
+    }
+
+    None
   }
 }
 
@@ -72,13 +83,6 @@ pub trait Resource: Downcast + Any + Send {
   /// Method that allows to cleanup resource.
   fn close(&self) {}
 
-  fn inspect_repr(&self) -> &str {
-    unimplemented!();
-  }
+  fn inspect_repr(&self) -> &str;
 }
 impl_downcast!(Resource);
-
-// TODO: probably bad error kind
-pub fn bad_resource() -> Error {
-  Error::new(ErrorKind::NotFound, "bad resource id")
-}

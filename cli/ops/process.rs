@@ -99,7 +99,7 @@ fn op_run(
   let resources = resources::add_child(child);
 
   Ok(JsonOp::Sync(json!({
-    "rid": resources.child_rid,
+    "rid": resources.child_rid.unwrap(),
     "pid": pid,
     "stdinRid": resources.stdin_rid,
     "stdoutRid": resources.stdout_rid,

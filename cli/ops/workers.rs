@@ -250,7 +250,7 @@ fn op_host_post_message(
 
   let d = Vec::from(data.unwrap().as_ref()).into_boxed_slice();
 
-  resources::post_message_to_worker(rid, d)
+  resources::post_message_to_worker(rid, d)?
     .wait()
     .map_err(|e| DenoError::new(ErrorKind::Other, e.to_string()))?;
 
