@@ -670,7 +670,7 @@ if (import.meta.main) {
 Use `deno help` to see the help text.
 
 ```
-deno 
+deno
 A secure JavaScript and TypeScript runtime
 
 Docs: https://deno.land/manual.html
