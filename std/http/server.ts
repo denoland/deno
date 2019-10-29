@@ -381,6 +381,11 @@ export class Server implements AsyncIterable<ServerRequest> {
     mux.add(this.acceptConnAndIterateHttpRequests(mux));
     return mux.iterate();
   }
+
+  // Returns the addres which this server is listening on.
+  get url(): string {
+    return `http://localhost:${this.listener.addr().address.split(':').pop()}/`
+  }
 }
 
 interface ServerConfig {
