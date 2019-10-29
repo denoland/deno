@@ -17,6 +17,7 @@ extern crate serde;
 extern crate serde_derive;
 extern crate url;
 
+mod checksum;
 pub mod colors;
 pub mod compilers;
 pub mod deno_dir;
@@ -32,6 +33,7 @@ mod http_body;
 mod http_util;
 mod import_map;
 mod js;
+mod lockfile;
 pub mod msg;
 pub mod ops;
 pub mod permissions;
@@ -362,6 +364,13 @@ fn run_script(flags: DenoFlags, argv: Vec<String>) {
 
     worker
       .execute_mod_async(&main_module, None, false)
+      .and_then(move |()| {
+        if let Some(ref lockfile) = state.lock_write {
+          let g = lockfile.lock().unwrap();
+          g.write()?;
+        }
+        Ok(())
+      })
       .and_then(move |()| {
         js_check(worker.execute("window.dispatchEvent(new Event('load'))"));
         worker.then(move |result| {

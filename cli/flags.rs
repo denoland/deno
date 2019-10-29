@@ -60,6 +60,9 @@ pub struct DenoFlags {
   pub v8_flags: Option<Vec<String>>,
   // Use tokio::runtime::current_thread
   pub current_thread: bool,
+
+  pub lock_check: Option<String>,
+  pub lock_write: Option<String>,
 }
 
 static ENV_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
@@ -222,6 +225,20 @@ Examples: https://github.com/WICG/import-maps#the-import-map",
             Err(_) => Err("Seed should be a number".to_string())
           }
         })
+        .global(true),
+    ).arg(
+      Arg::with_name("lock-check")
+        .long("lock-check")
+        .value_name("FILE")
+        .help("Check the specified lockfile")
+        .takes_value(true)
+        .global(true),
+    ).arg(
+      Arg::with_name("lock-write")
+        .long("lock-write")
+        .value_name("FILE")
+        .help("Write a lock file to specified filename")
+        .takes_value(true)
         .global(true),
     ).arg(
       Arg::with_name("v8-options")
@@ -633,6 +650,14 @@ pub fn parse_flags(
         flags.v8_flags = Some(svec!["deno", v8_seed_flag]);
       }
     }
+  }
+  if matches.is_present("lock-check") {
+    let lockfile = matches.value_of("lock-check").unwrap();
+    flags.lock_check = Some(lockfile.to_string());
+  }
+  if matches.is_present("lock-write") {
+    let lockfile = matches.value_of("lock-write").unwrap();
+    flags.lock_write = Some(lockfile.to_string());
   }
 
   flags = parse_run_args(flags, matches);
@@ -1884,6 +1909,26 @@ mod tests {
           "127.0.0.1:4545",
           "localhost:4545"
         ],
+        ..DenoFlags::default()
+      }
+    );
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "script.ts"])
+  }
+
+  #[test]
+  fn test_flags_from_vec_38() {
+    let (flags, subcommand, argv) = flags_from_vec(svec![
+      "deno",
+      "--lock-write=deno_lock.json",
+      "--lock-check=deno_lock2.json",
+      "script.ts"
+    ]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        lock_write: Some("deno_lock.json".to_string()),
+        lock_check: Some("deno_lock2.json".to_string()),
         ..DenoFlags::default()
       }
     );

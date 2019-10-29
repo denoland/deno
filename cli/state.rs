@@ -9,6 +9,7 @@ use crate::file_fetcher::SourceFileFetcher;
 use crate::flags;
 use crate::global_timer::GlobalTimer;
 use crate::import_map::ImportMap;
+use crate::lockfile::Lockfile;
 use crate::msg;
 use crate::ops::JsonOp;
 use crate::permissions::DenoPermissions;
@@ -88,6 +89,9 @@ pub struct State {
   pub ts_compiler: TsCompiler,
 
   pub include_deno_namespace: bool,
+
+  pub lock_check: Option<Mutex<Lockfile>>,
+  pub lock_write: Option<Mutex<Lockfile>>,
 }
 
 impl Clone for ThreadSafeState {
@@ -255,6 +259,13 @@ impl ThreadSafeState {
 
     let modules = Arc::new(Mutex::new(deno::Modules::new()));
 
+    let lock_write = Lockfile::from_flag(&flags.lock_write)
+      .map(|lockfile| Mutex::new(lockfile));
+
+    // Note: reads lazily from disk on first call to lock_check.check()
+    let lock_check = Lockfile::from_flag(&flags.lock_check)
+      .map(|lockfile| Mutex::new(lockfile));
+
     let state = State {
       main_module,
       modules,
@@ -276,6 +287,8 @@ impl ThreadSafeState {
       js_compiler: JsCompiler {},
       json_compiler: JsonCompiler {},
       include_deno_namespace,
+      lock_check,
+      lock_write,
     };
 
     Ok(ThreadSafeState(Arc::new(state)))
@@ -285,30 +298,48 @@ impl ThreadSafeState {
     self: &Self,
     module_specifier: &ModuleSpecifier,
   ) -> impl Future<Item = CompiledModule, Error = ErrBox> {
-    let state_ = self.clone();
+    let state1 = self.clone();
+    let state2 = self.clone();
 
     self
       .file_fetcher
       .fetch_source_file_async(&module_specifier)
       .and_then(move |out| match out.media_type {
         msg::MediaType::Unknown => {
-          state_.js_compiler.compile_async(state_.clone(), &out)
+          state1.js_compiler.compile_async(state1.clone(), &out)
         }
         msg::MediaType::Json => {
-          state_.json_compiler.compile_async(state_.clone(), &out)
+          state1.json_compiler.compile_async(state1.clone(), &out)
         }
         msg::MediaType::TypeScript
         | msg::MediaType::TSX
         | msg::MediaType::JSX => {
-          state_.ts_compiler.compile_async(state_.clone(), &out)
+          state1.ts_compiler.compile_async(state1.clone(), &out)
         }
         msg::MediaType::JavaScript => {
-          if state_.ts_compiler.compile_js {
-            state_.ts_compiler.compile_async(state_.clone(), &out)
+          if state1.ts_compiler.compile_js {
+            state1.ts_compiler.compile_async(state1.clone(), &out)
           } else {
-            state_.js_compiler.compile_async(state_.clone(), &out)
+            state1.js_compiler.compile_async(state1.clone(), &out)
           }
         }
+      })
+      .and_then(move |compiled_module| {
+        if let Some(ref lockfile) = state2.lock_check {
+          let mut g = lockfile.lock().unwrap();
+          if !g.check(&compiled_module)? {
+            eprintln!(
+              "lock file check failed {} {}",
+              g.filename, compiled_module.name
+            );
+            std::process::exit(10);
+          }
+        }
+        if let Some(ref lockfile) = state2.lock_write {
+          let mut g = lockfile.lock().unwrap();
+          g.insert(&compiled_module);
+        }
+        Ok(compiled_module)
       })
   }
 
