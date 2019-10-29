@@ -44,6 +44,9 @@ impl Lockfile {
   /// Lazily reads the filename, checks the given module is included.
   /// Returns Ok(true) if check passed
   pub fn check(&mut self, m: &CompiledModule) -> Result<bool> {
+    if m.name.starts_with("file:") {
+      return Ok(true);
+    }
     if self.need_read {
       self.read()?;
     }
@@ -56,7 +59,11 @@ impl Lockfile {
     })
   }
 
+  // Returns true if module was not already inserted.
   pub fn insert(&mut self, m: &CompiledModule) -> bool {
+    if m.name.starts_with("file:") {
+      return false;
+    }
     let checksum = crate::checksum::gen2(&m.code);
     self.map.insert(m.name.clone(), checksum).is_none()
   }
