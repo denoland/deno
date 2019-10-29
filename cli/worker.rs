@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::fmt_errors::JSError;
+use crate::global_state::ThreadSafeGlobalState;
 use crate::ops;
 use crate::state::ThreadSafeState;
 use deno;
@@ -19,6 +20,16 @@ use url::Url;
 #[derive(Clone)]
 pub struct Worker {
   isolate: Arc<Mutex<deno::Isolate>>,
+  pub state: ThreadSafeState,
+}
+
+/// Wraps deno::Isolate to provide source maps, ops for the CLI, and
+/// high-level module loading
+#[derive(Clone)]
+pub struct NewWorker {
+  pub name: String,
+  isolate: Arc<Mutex<deno::Isolate>>,
+  pub global_state: ThreadSafeGlobalState,
   pub state: ThreadSafeState,
 }
 
@@ -118,6 +129,117 @@ impl Worker {
 }
 
 impl Future for Worker {
+  type Item = ();
+  type Error = ErrBox;
+
+  fn poll(&mut self) -> Result<Async<()>, ErrBox> {
+    let mut isolate = self.isolate.lock().unwrap();
+    isolate.poll()
+  }
+}
+
+impl NewWorker {
+  pub fn new(
+    name: String,
+    startup_data: StartupData,
+    global_state: ThreadSafeGlobalState,
+    state: ThreadSafeState,
+  ) -> Self {
+    let isolate = Arc::new(Mutex::new(deno::Isolate::new(startup_data, false)));
+    {
+      let mut i = isolate.lock().unwrap();
+
+      ops::compiler::init(&mut i, &state);
+      ops::errors::init(&mut i, &state);
+      ops::fetch::init(&mut i, &state);
+      ops::files::init(&mut i, &state);
+      ops::fs::init(&mut i, &state);
+      ops::io::init(&mut i, &state);
+      ops::net::init(&mut i, &state);
+      ops::tls::init(&mut i, &state);
+      ops::os::init(&mut i, &state);
+      ops::permissions::init(&mut i, &state);
+      ops::process::init(&mut i, &state);
+      ops::random::init(&mut i, &state);
+      ops::repl::init(&mut i, &state);
+      ops::resources::init(&mut i, &state);
+      ops::timers::init(&mut i, &state);
+      ops::workers::init(&mut i, &state);
+
+      let global_state_ = global_state.clone();
+      i.set_dyn_import(move |id, specifier, referrer| {
+        let load_stream = RecursiveLoad::dynamic_import(
+          id,
+          specifier,
+          referrer,
+          global_state_.clone(),
+          global_state_.modules.clone(),
+        );
+        Box::new(load_stream)
+      });
+
+      let state_ = state.clone();
+      i.set_js_error_create(move |v8_exception| {
+        JSError::from_v8_exception(v8_exception, &state_.ts_compiler)
+      })
+    }
+    Self {
+      name,
+      isolate,
+      global_state,
+      state,
+    }
+  }
+
+  /// Same as execute2() but the filename defaults to "$CWD/__anonymous__".
+  pub fn execute(&mut self, js_source: &str) -> Result<(), ErrBox> {
+    let path = env::current_dir().unwrap().join("__anonymous__");
+    let url = Url::from_file_path(path).unwrap();
+    self.execute2(url.as_str(), js_source)
+  }
+
+  /// Executes the provided JavaScript source code. The js_filename argument is
+  /// provided only for debugging purposes.
+  pub fn execute2(
+    &mut self,
+    js_filename: &str,
+    js_source: &str,
+  ) -> Result<(), ErrBox> {
+    let mut isolate = self.isolate.lock().unwrap();
+    isolate.execute(js_filename, js_source)
+  }
+
+  /// Executes the provided JavaScript module.
+  pub fn execute_mod_async(
+    &mut self,
+    module_specifier: &ModuleSpecifier,
+    maybe_code: Option<String>,
+    is_prefetch: bool,
+  ) -> impl Future<Item = (), Error = ErrBox> {
+    let worker = self.clone();
+    let loader = self.global_state.clone();
+    let isolate = self.isolate.clone();
+    let modules = self.global_state.modules.clone();
+    let recursive_load = RecursiveLoad::main(
+      &module_specifier.to_string(),
+      maybe_code,
+      loader,
+      modules,
+    )
+    .get_future(isolate);
+    recursive_load.and_then(move |id| -> Result<(), ErrBox> {
+      worker.global_state.progress.done();
+      if is_prefetch {
+        Ok(())
+      } else {
+        let mut isolate = worker.isolate.lock().unwrap();
+        isolate.mod_evaluate(id)
+      }
+    })
+  }
+}
+
+impl Future for NewWorker {
   type Item = ();
   type Error = ErrBox;
 

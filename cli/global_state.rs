@@ -7,32 +7,16 @@ use crate::deno_dir;
 use crate::deno_error::permission_denied;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags;
-use crate::flags::DenoFlags;
-use crate::global_state::ThreadSafeGlobalState;
 use crate::global_timer::GlobalTimer;
-use crate::import_map::ImportMap;
 use crate::metrics::Metrics;
 use crate::msg;
-use crate::ops::JsonOp;
 use crate::permissions::DenoPermissions;
 use crate::progress::Progress;
-use crate::resources;
-use crate::resources::ResourceId;
-use crate::worker::Worker;
-use deno::Buf;
-use deno::CoreOp;
 use deno::ErrBox;
 use deno::Loader;
 use deno::ModuleSpecifier;
-use deno::Op;
-use deno::PinnedBuf;
-use futures::future::Shared;
 use futures::Future;
-use rand::rngs::StdRng;
-use rand::SeedableRng;
-use serde_json::Value;
 use std;
-use std::collections::HashMap;
 use std::env;
 use std::ops::Deref;
 use std::str;
@@ -40,133 +24,52 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Instant;
-use tokio::sync::mpsc as async_mpsc;
 
-pub type WorkerSender = async_mpsc::Sender<Buf>;
-pub type WorkerReceiver = async_mpsc::Receiver<Buf>;
-pub type WorkerChannels = (WorkerSender, WorkerReceiver);
-pub type UserWorkerTable = HashMap<ResourceId, Shared<Worker>>;
-
-/// Isolate cannot be passed between threads but ThreadSafeState can.
-/// ThreadSafeState satisfies Send and Sync. So any state that needs to be
-/// accessed outside the main V8 thread should be inside ThreadSafeState.
-pub struct ThreadSafeState(Arc<State>);
+/// Isolate cannot be passed between threads but ThreadSafeGlobalState can.
+/// ThreadSafeGlobalState satisfies Send and Sync. So any state that needs to be
+/// accessed outside the main V8 thread should be inside ThreadSafeGlobalState.
+pub struct ThreadSafeGlobalState(Arc<GlobalState>);
 
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
-pub struct State {
+pub struct GlobalState {
   pub modules: Arc<Mutex<deno::Modules>>,
   pub main_module: Option<ModuleSpecifier>,
   pub dir: deno_dir::DenoDir,
   pub argv: Vec<String>,
-  pub permissions: DenoPermissions,
   pub flags: flags::DenoFlags,
-  /// When flags contains a `.import_map_path` option, the content of the
-  /// import map file will be resolved and set.
-  pub import_map: Option<ImportMap>,
+  pub permissions: DenoPermissions,
   pub metrics: Metrics,
-  pub worker_channels: Mutex<WorkerChannels>,
   pub global_timer: Mutex<GlobalTimer>,
-  pub workers: Mutex<UserWorkerTable>,
   pub start_time: Instant,
-  /// A reference to this worker's resource.
-  pub resource: resources::Resource,
-  /// Reference to global progress bar.
   pub progress: Progress,
-  pub seeded_rng: Option<Mutex<StdRng>>,
-
   pub file_fetcher: SourceFileFetcher,
   pub js_compiler: JsCompiler,
   pub json_compiler: JsonCompiler,
   pub ts_compiler: TsCompiler,
-
-  pub include_deno_namespace: bool,
 }
 
-impl Clone for ThreadSafeState {
+impl Clone for ThreadSafeGlobalState {
   fn clone(&self) -> Self {
-    ThreadSafeState(self.0.clone())
+    ThreadSafeGlobalState(self.0.clone())
   }
 }
 
-impl Deref for ThreadSafeState {
-  type Target = Arc<State>;
+impl Deref for ThreadSafeGlobalState {
+  type Target = Arc<GlobalState>;
   fn deref(&self) -> &Self::Target {
     &self.0
   }
 }
 
-impl ThreadSafeState {
-  /// Wrap core `OpDispatcher` to collect metrics.
-  pub fn core_op<D>(
-    &self,
-    dispatcher: D,
-  ) -> impl Fn(&[u8], Option<PinnedBuf>) -> CoreOp
-  where
-    D: Fn(&[u8], Option<PinnedBuf>) -> CoreOp,
-  {
-    let state = self.clone();
-
-    move |control: &[u8], zero_copy: Option<PinnedBuf>| -> CoreOp {
-      let bytes_sent_control = control.len();
-      let bytes_sent_zero_copy =
-        zero_copy.as_ref().map(|b| b.len()).unwrap_or(0);
-
-      let op = dispatcher(control, zero_copy);
-      state.metrics_op_dispatched(bytes_sent_control, bytes_sent_zero_copy);
-
-      match op {
-        Op::Sync(buf) => {
-          state.metrics_op_completed(buf.len());
-          Op::Sync(buf)
-        }
-        Op::Async(fut) => {
-          let state = state.clone();
-          let result_fut = Box::new(fut.map(move |buf: Buf| {
-            state.clone().metrics_op_completed(buf.len());
-            buf
-          }));
-          Op::Async(result_fut)
-        }
-      }
-    }
-  }
-
-  /// This is a special function that provides `state` argument to dispatcher.
-  ///
-  /// NOTE: This only works with JSON dispatcher.
-  /// This is a band-aid for transition to `Isolate.register_op` API as most of our
-  /// ops require `state` argument.
-  pub fn stateful_op<D>(
-    &self,
-    dispatcher: D,
-  ) -> impl Fn(Value, Option<PinnedBuf>) -> Result<JsonOp, ErrBox>
-  where
-    D: Fn(&ThreadSafeState, Value, Option<PinnedBuf>) -> Result<JsonOp, ErrBox>,
-  {
-    let state = self.clone();
-
-    move |args: Value, zero_copy: Option<PinnedBuf>| -> Result<JsonOp, ErrBox> {
-      dispatcher(&state, args, zero_copy)
-    }
-  }
-}
-
-impl Loader for ThreadSafeState {
+impl Loader for ThreadSafeGlobalState {
+  // TODO: implement Resolver trait and it should be implemented per worker
   fn resolve(
     &self,
     specifier: &str,
     referrer: &str,
-    is_main: bool,
+    _is_main: bool,
     is_dyn_import: bool,
   ) -> Result<ModuleSpecifier, ErrBox> {
-    if !is_main {
-      if let Some(import_map) = &self.import_map {
-        let result = import_map.resolve(specifier, referrer)?;
-        if let Some(r) = result {
-          return Ok(r);
-        }
-      }
-    }
     let module_specifier =
       ModuleSpecifier::resolve_import(specifier, referrer)?;
 
@@ -196,21 +99,14 @@ impl Loader for ThreadSafeState {
   }
 }
 
-impl ThreadSafeState {
+impl ThreadSafeGlobalState {
   pub fn new(
     flags: flags::DenoFlags,
     argv_rest: Vec<String>,
     progress: Progress,
-    include_deno_namespace: bool,
+    _include_deno_namespace: bool,
   ) -> Result<Self, ErrBox> {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
-
-    let (worker_in_tx, worker_in_rx) = async_mpsc::channel::<Buf>(1);
-    let (worker_out_tx, worker_out_rx) = async_mpsc::channel::<Buf>(1);
-    let internal_channels = (worker_out_tx, worker_in_rx);
-    let external_channels = (worker_in_tx, worker_out_rx);
-    let resource = resources::add_worker(external_channels);
-
     let dir = deno_dir::DenoDir::new(custom_root)?;
 
     let file_fetcher = SourceFileFetcher::new(
@@ -235,42 +131,26 @@ impl ThreadSafeState {
       Some(ModuleSpecifier::resolve_url_or_path(&root_specifier)?)
     };
 
-    let import_map: Option<ImportMap> = match &flags.import_map_path {
-      None => None,
-      Some(file_path) => Some(ImportMap::load(file_path)?),
-    };
-
-    let mut seeded_rng = None;
-    if let Some(seed) = flags.seed {
-      seeded_rng = Some(Mutex::new(StdRng::seed_from_u64(seed)));
-    };
-
     let modules = Arc::new(Mutex::new(deno::Modules::new()));
 
-    let state = State {
+    let state = GlobalState {
       main_module,
       modules,
       dir,
       argv: argv_rest,
       permissions: DenoPermissions::from_flags(&flags),
       flags,
-      import_map,
       metrics: Metrics::default(),
-      worker_channels: Mutex::new(internal_channels),
       global_timer: Mutex::new(GlobalTimer::new()),
-      workers: Mutex::new(UserWorkerTable::new()),
       start_time: Instant::now(),
-      resource,
       progress,
-      seeded_rng,
       file_fetcher,
       ts_compiler,
       js_compiler: JsCompiler {},
       json_compiler: JsonCompiler {},
-      include_deno_namespace,
     };
 
-    Ok(ThreadSafeState(Arc::new(state)))
+    Ok(ThreadSafeGlobalState(Arc::new(state)))
   }
 
   pub fn fetch_compiled_module(
@@ -288,27 +168,11 @@ impl ThreadSafeState {
         msg::MediaType::TypeScript
         | msg::MediaType::TSX
         | msg::MediaType::JSX => {
-          // TODO: to remove
-          let global_state = ThreadSafeGlobalState::new(
-            DenoFlags::default(),
-            vec![],
-            Progress::new(),
-            true,
-          )
-          .expect("");
-          state_.ts_compiler.compile_async(global_state, &out)
+          state_.ts_compiler.compile_async(state_.clone(), &out)
         }
         msg::MediaType::JavaScript => {
           if state_.ts_compiler.compile_js {
-            // TODO: to remove
-            let global_state = ThreadSafeGlobalState::new(
-              DenoFlags::default(),
-              vec![],
-              Progress::new(),
-              true,
-            )
-            .expect("");
-            state_.ts_compiler.compile_async(global_state, &out)
+            state_.ts_compiler.compile_async(state_.clone(), &out)
           } else {
             state_.js_compiler.compile_async(&out)
           }
@@ -379,8 +243,8 @@ impl ThreadSafeState {
   }
 
   #[cfg(test)]
-  pub fn mock(argv: Vec<String>) -> ThreadSafeState {
-    ThreadSafeState::new(
+  pub fn mock(argv: Vec<String>) -> ThreadSafeGlobalState {
+    ThreadSafeGlobalState::new(
       flags::DenoFlags::default(),
       argv,
       Progress::new(),
@@ -417,7 +281,7 @@ impl ThreadSafeState {
 #[test]
 fn thread_safe() {
   fn f<S: Send + Sync>(_: S) {}
-  f(ThreadSafeState::mock(vec![
+  f(ThreadSafeGlobalState::mock(vec![
     String::from("./deno"),
     String::from("hello.js"),
   ]));
@@ -425,7 +289,7 @@ fn thread_safe() {
 
 #[test]
 fn import_map_given_for_repl() {
-  let _result = ThreadSafeState::new(
+  let _result = ThreadSafeGlobalState::new(
     flags::DenoFlags {
       import_map_path: Some("import_map.json".to_string()),
       ..flags::DenoFlags::default()

@@ -27,11 +27,13 @@ mod file_fetcher;
 pub mod flags;
 pub mod fmt_errors;
 mod fs;
+mod global_state;
 mod global_timer;
 mod http_body;
 mod http_util;
 mod import_map;
 mod js;
+mod metrics;
 pub mod msg;
 pub mod ops;
 pub mod permissions;
@@ -53,8 +55,10 @@ pub mod worker;
 
 use crate::deno_error::js_check;
 use crate::deno_error::print_err_and_exit;
+use crate::global_state::ThreadSafeGlobalState;
 use crate::progress::Progress;
 use crate::state::ThreadSafeState;
+use crate::worker::NewWorker;
 use crate::worker::Worker;
 use deno::v8_set_flags;
 use deno::ErrBox;
@@ -90,6 +94,44 @@ impl log::Log for Logger {
     }
   }
   fn flush(&self) {}
+}
+
+#[allow(dead_code)]
+fn create_worker_and_global_state(
+  flags: DenoFlags,
+  argv: Vec<String>,
+) -> (NewWorker, ThreadSafeGlobalState) {
+  use crate::shell::Shell;
+  use std::sync::Arc;
+  use std::sync::Mutex;
+
+  let shell = Arc::new(Mutex::new(Shell::new()));
+
+  let progress = Progress::new();
+  progress.set_callback(move |_done, _completed, _total, status, msg| {
+    if !status.is_empty() {
+      let mut s = shell.lock().unwrap();
+      s.status(status, msg).expect("shell problem");
+    }
+  });
+
+  let global_state = ThreadSafeGlobalState::new(flags, argv, progress, true)
+    .map_err(deno_error::print_err_and_exit)
+    .unwrap();
+
+  let state =
+    ThreadSafeState::new(DenoFlags::default(), vec![], Progress::new(), true)
+      .map_err(deno_error::print_err_and_exit)
+      .unwrap();
+
+  let worker = NewWorker::new(
+    "main".to_string(),
+    startup_data::deno_isolate_init(),
+    global_state.clone(),
+    state,
+  );
+
+  (worker, global_state)
 }
 
 fn create_worker_and_state(
@@ -303,7 +345,7 @@ fn eval_command(flags: DenoFlags, argv: Vec<String>) {
 }
 
 fn bundle_command(flags: DenoFlags, argv: Vec<String>) {
-  let (worker, state) = create_worker_and_state(flags, argv);
+  let (worker, state) = create_worker_and_global_state(flags, argv);
 
   let main_module = state.main_module().unwrap();
   assert!(state.argv.len() >= 3);
