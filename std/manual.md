@@ -771,7 +771,7 @@ source /usr/local/etc/bash_completion.d/deno.bash
 
 V8 has many many internal command-line flags, that you can see with
 `--v8-options`.
-[It looks like this.](https://gist.github.com/josephsintum/f7877cd6697a0d3158985fc382c98707)
+[It looks like this.](https://gist.github.com/ry/a610ce48cba2f0225f9c81a5a833fc87)
 
 Particularly useful ones:
 
