@@ -72,19 +72,19 @@ jobs:
         # https://github.com/denoland/deno/blob/27cd2c97f18c0392bc04c66b786717b2bc677315/std/installer/mod.ts#L185-L193
         # TODO(ry) This path modification should rather be done in "cargo test".
         run: |
-          echo ::add-path::`pwd`/prebuilt/linux64
+          echo ::add-path::`pwd`/third_party/prebuilt/linux64
           echo ::add-path::`pwd`/target/release
 
       - name: Environment (mac)
         if: startsWith(matrix.os, 'macOS')
         run: |
-          echo ::add-path::`pwd`/prebuilt/mac
+          echo ::add-path::`pwd`/third_party/prebuilt/mac
           echo ::add-path::`pwd`/target/release
 
       - name: Environment (windows)
         if: startsWith(matrix.os, 'windows')
         run: |
-          echo ::add-path::$(pwd)\prebuilt\win
+          echo ::add-path::$(pwd)\third_party\prebuilt\win
           echo ::add-path::$(pwd)\target\release
 
       - name: Log versions

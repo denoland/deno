@@ -1160,15 +1160,6 @@ The core binding layer for Deno. It is released as a
 with a binding API called "libdeno". See the crate documentation for more
 details.
 
-### Updating prebuilt binaries
-
-```shell
-$ ./third_party/depot_tools/upload_to_google_storage.py -b denoland  \
-  -e ~/.config/gcloud/legacy_credentials/ry@tinyclouds.org/.boto `which sccache`
-$ mv `which sccache`.sha1 prebuilt/linux64/
-$ gsutil acl ch -u AllUsers:R gs://denoland/608be47bf01004aa11d4ed06955414e93934516e
-```
-
 ### Continuous Benchmarks
 
 See our benchmarks [over here](https://deno.land/benchmarks.html)
