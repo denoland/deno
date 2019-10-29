@@ -5,9 +5,11 @@
 // is enabled...
 // #![cfg(test)]
 
+use std::io::Read;
 use std::path::PathBuf;
 use std::process::Child;
 use std::process::Command;
+use std::process::Stdio;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 
@@ -62,16 +64,29 @@ pub fn http_server<'a>() -> HttpServerGuard<'a> {
   let g = GUARD.lock().unwrap();
 
   println!("tools/http_server.py starting...");
-  let child = Command::new("python")
+  let mut child = Command::new("python")
     .current_dir(root_path())
-    .arg("tools/http_server.py")
+    .args(&["-u", "tools/http_server.py"])
+    .stdout(Stdio::piped())
     .spawn()
     .expect("failed to execute child");
 
-  // Wait 1 second for the server to come up. TODO(ry) this is Racy.
-  std::thread::sleep(std::time::Duration::from_secs(2));
-
-  println!("tools/http_server.py ready");
+  let mut buf = [0; 1];
+  for i in 0..100 {
+    let maybe_out = child.stdout.as_mut();
+    if let Some(out) = maybe_out {
+      // http_server.py prints "ready" to stdout.
+      let r = out.read_exact(&mut buf);
+      if r.is_ok() {
+        println!("tools/http_server.py ready");
+        break
+      }
+    }
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    if i == 99 {
+      panic!("tools/http_server.py failed to start");
+    }
+  }
 
   HttpServerGuard { child, g }
 }
