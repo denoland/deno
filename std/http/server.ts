@@ -384,13 +384,7 @@ export class Server implements AsyncIterable<ServerRequest> {
 
   // Returns the addres which this server is listening on.
   get url(): string {
-    const parts = this.listener.addr().address.split(':')
-    const port = parts.pop();
-    let hostname = parts.join(':');
-    if (hostname === '0.0.0.0' || hostname === '127.0.0.1' || hostname === '[::]' || hostname === '[::1]')
-      hostname = 'localhost'
-
-    return `http://${hostname}:${port}/`
+    return `http://${this.listener.addr().address}/`
   }
 }
 
