@@ -298,7 +298,9 @@ mod tests {
 
       let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
 
-      let r = resources::post_message_to_worker(resource.rid, msg).wait();
+      let r = resources::post_message_to_worker(resource.rid, msg)
+        .expect("Bad resource")
+        .wait();
       assert!(r.is_ok());
 
       let maybe_msg = resources::get_message_from_worker(resource.rid)
@@ -312,7 +314,9 @@ mod tests {
         .to_string()
         .into_boxed_str()
         .into_boxed_bytes();
-      let r = resources::post_message_to_worker(resource.rid, msg).wait();
+      let r = resources::post_message_to_worker(resource.rid, msg)
+        .expect("Bad resource")
+        .wait();
       assert!(r.is_ok());
     })
   }
@@ -340,15 +344,14 @@ mod tests {
       let worker_future_ = worker_future.clone();
       tokio::spawn(lazy(move || worker_future_.then(|_| Ok(()))));
 
-      assert_eq!(resources::get_type(rid), Some("worker".to_string()));
-
       let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
-      let r = resources::post_message_to_worker(rid, msg).wait();
+      let r = resources::post_message_to_worker(rid, msg)
+        .expect("Bad resource")
+        .wait();
       assert!(r.is_ok());
       debug!("rid {:?}", rid);
 
       worker_future.wait().unwrap();
-      assert_eq!(resources::get_type(rid), None);
     })
   }
 

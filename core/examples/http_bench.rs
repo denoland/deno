@@ -15,6 +15,8 @@ extern crate lazy_static;
 use deno::*;
 use futures::future::lazy;
 use std::env;
+use std::io::Error;
+use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
@@ -182,13 +184,25 @@ fn main() {
   }
 }
 
+pub fn bad_resource() -> Error {
+  Error::new(ErrorKind::NotFound, "bad resource id")
+}
+
 struct TcpListener(tokio::net::TcpListener);
 
-impl Resource for TcpListener {}
+impl Resource for TcpListener {
+  fn inspect_repr(&self) -> &str {
+    "tcpListener"
+  }
+}
 
 struct TcpStream(tokio::net::TcpStream);
 
-impl Resource for TcpStream {}
+impl Resource for TcpStream {
+  fn inspect_repr(&self) -> &str {
+    "tcpStream"
+  }
+}
 
 lazy_static! {
   static ref RESOURCE_TABLE: Mutex<ResourceTable> =
@@ -204,7 +218,8 @@ fn op_accept(record: Record, _zero_copy_buf: Option<PinnedBuf>) -> Box<HttpOp> {
   debug!("accept {}", rid);
   let fut = futures::future::poll_fn(move || {
     let mut table = lock_resource_table();
-    let listener = table.get_mut::<TcpListener>(rid)?;
+    let listener =
+      table.get_mut::<TcpListener>(rid).ok_or_else(bad_resource)?;
     listener.0.poll_accept()
   })
   .and_then(move |(stream, addr)| {
@@ -233,8 +248,8 @@ fn op_close(record: Record, _zero_copy_buf: Option<PinnedBuf>) -> Box<HttpOp> {
   let rid = record.arg as u32;
   let mut table = lock_resource_table();
   let fut = match table.close(rid) {
-    Ok(_) => futures::future::ok(0),
-    Err(e) => futures::future::err(e),
+    Some(_) => futures::future::ok(0),
+    None => futures::future::err(bad_resource()),
   };
   Box::new(fut)
 }
@@ -245,7 +260,7 @@ fn op_read(record: Record, zero_copy_buf: Option<PinnedBuf>) -> Box<HttpOp> {
   let mut zero_copy_buf = zero_copy_buf.unwrap();
   let fut = futures::future::poll_fn(move || {
     let mut table = lock_resource_table();
-    let stream = table.get_mut::<TcpStream>(rid)?;
+    let stream = table.get_mut::<TcpStream>(rid).ok_or_else(bad_resource)?;
     stream.0.poll_read(&mut zero_copy_buf)
   })
   .and_then(move |nread| {
@@ -261,7 +276,7 @@ fn op_write(record: Record, zero_copy_buf: Option<PinnedBuf>) -> Box<HttpOp> {
   let zero_copy_buf = zero_copy_buf.unwrap();
   let fut = futures::future::poll_fn(move || {
     let mut table = lock_resource_table();
-    let stream = table.get_mut::<TcpStream>(rid)?;
+    let stream = table.get_mut::<TcpStream>(rid).ok_or_else(bad_resource)?;
     stream.0.poll_write(&zero_copy_buf)
   })
   .and_then(move |nwritten| {
