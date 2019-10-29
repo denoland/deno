@@ -37,6 +37,7 @@ impl Lockfile {
     let mut f = std::fs::OpenOptions::new()
       .write(true)
       .create(true)
+      .truncate(true)
       .open(&self.filename)?;
     use std::io::Write;
     f.write_all(s.as_bytes())?;

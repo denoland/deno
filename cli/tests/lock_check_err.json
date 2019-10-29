@@ -1,0 +1,5 @@
+{
+  "file:///Users/rld/src/deno/cli/tests/subdir/print_hello.ts": "bad",
+  "file:///Users/rld/src/deno/cli/tests/003_relative_import.ts": "alsobad",
+  "file:///Users/rld/src/deno/cli/tests/subdir/print_hello.ts": "somemissing"
+}

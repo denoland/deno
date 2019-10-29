@@ -348,6 +348,18 @@ itest!(_050_more_jsons {
   output: "050_more_jsons.ts.out",
 });
 
+itest!(lock_check_ok {
+  args: "run --lock-check=lock_check_ok.json 003_relative_import.ts",
+  output: "003_relative_import.ts.out",
+});
+
+itest!(lock_check_err {
+  args: "run --lock-check=lock_check_err.json 003_relative_import.ts",
+  output: "lock_check_err.out",
+  check_stderr: true,
+  exit_code: 10,
+});
+
 itest!(async_error {
   exit_code: 1,
   args: "run --reload async_error.ts",
