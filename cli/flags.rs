@@ -134,7 +134,7 @@ pub fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
     .global_settings(&[AppSettings::ColorNever, AppSettings::UnifiedHelpMessage, AppSettings::DisableVersion])
     .settings(&[AppSettings::AllowExternalSubcommands])
     .after_help(ENV_VARIABLES_HELP)
-    .long_about("A secure runtime for JavaScript and TypeScript built with V8, Rust, and Tokio.
+    .long_about("A secure JavaScript and TypeScript runtime
 
 Docs: https://deno.land/manual.html
 Modules: https://deno.land/x/
@@ -146,7 +146,7 @@ To run the REPL:
 
 To execute a sandboxed script:
 
-  deno https://deno.land/welcome.ts
+  deno https://deno.land/std/examples/welcome.ts
 
 To evaluate code from the command line:
 
@@ -236,7 +236,7 @@ Examples: https://github.com/WICG/import-maps#the-import-map",
     ).arg(
       Arg::with_name("lock-write")
         .long("lock-write")
-        .help("Write lock file. Use with --lock to specify file.")
+        .help("Write lock file. Use with --lock.")
         .global(true),
     ).arg(
       Arg::with_name("v8-options")
