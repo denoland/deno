@@ -365,9 +365,14 @@ fn run_script(flags: DenoFlags, argv: Vec<String>) {
     worker
       .execute_mod_async(&main_module, None, false)
       .and_then(move |()| {
-        if let Some(ref lockfile) = state.lock_write {
-          let g = lockfile.lock().unwrap();
-          g.write()?;
+        if state.flags.lock_write {
+          if let Some(ref lockfile) = state.lockfile {
+            let g = lockfile.lock().unwrap();
+            g.write()?;
+          } else {
+            eprintln!("--lock flag must be specified when using --lock-write");
+            std::process::exit(11);
+          }
         }
         Ok(())
       })

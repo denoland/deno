@@ -90,8 +90,7 @@ pub struct State {
 
   pub include_deno_namespace: bool,
 
-  pub lock_check: Option<Mutex<Lockfile>>,
-  pub lock_write: Option<Mutex<Lockfile>>,
+  pub lockfile: Option<Mutex<Lockfile>>,
 }
 
 impl Clone for ThreadSafeState {
@@ -259,10 +258,8 @@ impl ThreadSafeState {
 
     let modules = Arc::new(Mutex::new(deno::Modules::new()));
 
-    let lock_write = Lockfile::from_flag(&flags.lock_write).map(Mutex::new);
-
-    // Note: reads lazily from disk on first call to lock_check.check()
-    let lock_check = Lockfile::from_flag(&flags.lock_check).map(Mutex::new);
+    // Note: reads lazily from disk on first call to lockfile.check()
+    let lockfile = Lockfile::from_flag(&flags.lock).map(Mutex::new);
 
     let state = State {
       main_module,
@@ -285,8 +282,7 @@ impl ThreadSafeState {
       js_compiler: JsCompiler {},
       json_compiler: JsonCompiler {},
       include_deno_namespace,
-      lock_check,
-      lock_write,
+      lockfile,
     };
 
     Ok(ThreadSafeState(Arc::new(state)))
@@ -323,19 +319,19 @@ impl ThreadSafeState {
         }
       })
       .and_then(move |compiled_module| {
-        if let Some(ref lockfile) = state2.lock_check {
+        if let Some(ref lockfile) = state2.lockfile {
           let mut g = lockfile.lock().unwrap();
-          if !g.check(&compiled_module)? {
-            eprintln!(
-              "lock file check failed {} {}",
-              g.filename, compiled_module.name
-            );
-            std::process::exit(10);
+          if state2.flags.lock_write {
+            g.insert(&compiled_module);
+          } else {
+            if !g.check(&compiled_module)? {
+              eprintln!(
+                "lock file check failed {} {}",
+                g.filename, compiled_module.name
+              );
+              std::process::exit(10);
+            }
           }
-        }
-        if let Some(ref lockfile) = state2.lock_write {
-          let mut g = lockfile.lock().unwrap();
-          g.insert(&compiled_module);
         }
         Ok(compiled_module)
       })
