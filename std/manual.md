@@ -266,7 +266,7 @@ command line:
 $ deno types
 ```
 
-[This is what the output looks like.](https://gist.github.com/ry/46da4724168cdefa763e13207d27ede5)
+[This is what the output looks like.](https://github.com/denoland/deno/blob/master/cli/js/lib.deno_runtime.d.ts)
 
 ### Reference websites
 
@@ -771,7 +771,7 @@ source /usr/local/etc/bash_completion.d/deno.bash
 
 V8 has many many internal command-line flags, that you can see with
 `--v8-options`.
-[It looks like this.](https://gist.github.com/ry/1c5b080dcbdc6367e5612392049c9ee7)
+[It looks like this.](https://gist.github.com/ry/a610ce48cba2f0225f9c81a5a833fc87)
 
 Particularly useful ones:
 
@@ -870,7 +870,7 @@ tabs.
 
 It is a good practice to use `import.meta.main` idiom for an entry point for
 executable file. See
-[Testing if current file is the main program](#testingifcurrentfileisthemainprogram)
+[Testing if current file is the main program](#testing-if-current-file-is-the-main-program)
 section.
 
 Example:
@@ -1200,17 +1200,17 @@ interface BenchmarkData {
 These Deno logos, like the Deno software, are distributed under the MIT license
 (public domain and free for use)
 
-- [A hand drawn one by @ry](https://github.com/denoland/deno/blob/master/website/images/deno_logo.png)
+- [A hand drawn one by @ry](https://deno.land/images/deno_logo.png)
 
 - [An animated one by @hashrock](https://github.com/denolib/animated-deno-logo/)
 
 - [A high resolution SVG one by @kevinkassimo](https://github.com/denolib/high-res-deno-logo)
 
-- [A pixelated animation one by @tanakaworld](https://github.com/denoland/deno/blob/master/website/images/deno_logo_4.gif)
+- [A pixelated animation one by @tanakaworld](https://deno.land/images/deno_logo_4.gif)
 
 ## Contributing
 
-[Style Guide](style_guide.html)
+[Style Guide](style_guide.md)
 
 Progress towards future releases is tracked
 [here](https://github.com/denoland/deno/milestones).
