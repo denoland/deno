@@ -259,12 +259,10 @@ impl ThreadSafeState {
 
     let modules = Arc::new(Mutex::new(deno::Modules::new()));
 
-    let lock_write = Lockfile::from_flag(&flags.lock_write)
-      .map(|lockfile| Mutex::new(lockfile));
+    let lock_write = Lockfile::from_flag(&flags.lock_write).map(Mutex::new);
 
     // Note: reads lazily from disk on first call to lock_check.check()
-    let lock_check = Lockfile::from_flag(&flags.lock_check)
-      .map(|lockfile| Mutex::new(lockfile));
+    let lock_check = Lockfile::from_flag(&flags.lock_check).map(Mutex::new);
 
     let state = State {
       main_module,
