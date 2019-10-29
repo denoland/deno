@@ -15,7 +15,6 @@ lazy_static! {
   static ref DENO_DIR: TempDir = { TempDir::new().expect("tempdir fail") };
 }
 
-#[allow(dead_code)]
 pub fn deno_cmd() -> Command {
   let mut c = Command::new(deno_exe_path());
   c.env("DENO_DIR", DENO_DIR.path());
@@ -52,7 +51,6 @@ pub struct CheckOutputIntegrationTest {
 }
 
 impl CheckOutputIntegrationTest {
-  #[allow(dead_code)]
   pub fn run(&self) {
     let args = self.args.split_whitespace();
     let root = root_path();
