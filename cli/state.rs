@@ -329,7 +329,7 @@ impl ThreadSafeState {
             g.insert(&compiled_module);
           } else if !g.check(&compiled_module)? {
             eprintln!(
-              "lock file check failed {} {}",
+              "Subresource integrety check failed --lock={}\n{}",
               g.filename, compiled_module.name
             );
             std::process::exit(10);
