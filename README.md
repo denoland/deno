@@ -2,7 +2,7 @@
 
 A secure runtime for JavaScript and TypeScript built with V8, Rust, and Tokio.
 
-[![Build Status](https://github.com/denoland/deno/workflows/build/badge.svg)](https://github.com/denoland/deno/actions)
+[![Build Status](https://github.com/denoland/deno/workflows/ci/badge.svg?branch=master&event=push)](https://github.com/denoland/deno/actions)
 
 Deno aims to provide a productive and secure scripting environment for the
 modern programmer. It is built on top of V8, Rust, and TypeScript.
