@@ -5,7 +5,6 @@
 // is enabled...
 // #![cfg(test)]
 
-use std::io::Read;
 use std::path::PathBuf;
 use std::process::Child;
 use std::process::Command;
@@ -71,22 +70,11 @@ pub fn http_server<'a>() -> HttpServerGuard<'a> {
     .spawn()
     .expect("failed to execute child");
 
-  let mut buf = [0; 1];
-  for i in 0..100 {
-    let maybe_out = child.stdout.as_mut();
-    if let Some(out) = maybe_out {
-      // http_server.py prints "ready" to stdout.
-      let r = out.read_exact(&mut buf);
-      if r.is_ok() {
-        println!("tools/http_server.py ready");
-        break;
-      }
-    }
-    std::thread::sleep(std::time::Duration::from_millis(100));
-    if i == 99 {
-      panic!("tools/http_server.py failed to start");
-    }
-  }
+  let stdout = child.stdout.as_mut().unwrap();
+  use std::io::{BufRead, BufReader};
+  let mut lines = BufReader::new(stdout).lines();
+  let line = lines.next().unwrap().unwrap();
+  assert!(line.starts_with("ready"));
 
   HttpServerGuard { child, g }
 }
