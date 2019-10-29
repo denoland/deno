@@ -19,26 +19,6 @@ pub fn deno_cmd() -> Command {
   c
 }
 
-#[allow(dead_code)] // tty_tests use this but are disabled.
-pub fn run_python_script(script: &str) {
-  let output = Command::new("python")
-    .env("DENO_DIR", DENO_DIR.path())
-    .current_dir(root_path())
-    .arg(script)
-    .arg(format!("--executable={}", deno_exe_path().display()))
-    .env("DENO_BUILD_PATH", target_dir())
-    .output()
-    .expect("failed to spawn script");
-  if !output.status.success() {
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    let stderr = String::from_utf8(output.stderr).unwrap();
-    panic!(
-      "{} executed with failing error code\n{}{}",
-      script, stdout, stderr
-    );
-  }
-}
-
 #[derive(Debug, Default)]
 pub struct CheckOutputIntegrationTest {
   pub args: &'static str,
