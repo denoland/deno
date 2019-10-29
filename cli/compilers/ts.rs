@@ -5,16 +5,16 @@ use crate::diagnostics::Diagnostic;
 use crate::disk_cache::DiskCache;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
-use crate::flags::DenoFlags;
 use crate::global_state::ThreadSafeGlobalState;
 use crate::msg;
+use crate::permissions::DenoPermissions;
 use crate::progress::Progress;
 use crate::resources;
 use crate::source_maps::SourceMapGetter;
 use crate::startup_data;
 use crate::state::*;
 use crate::version;
-use crate::worker::NewWorker;
+use crate::worker::Worker;
 use deno::Buf;
 use deno::ErrBox;
 use deno::ModuleSpecifier;
@@ -241,18 +241,22 @@ impl TsCompiler {
   }
 
   /// Create a new V8 worker with snapshot of TS compiler and setup compiler's runtime.
-  fn setup_worker(global_state: ThreadSafeGlobalState) -> NewWorker {
+  fn setup_worker(global_state: ThreadSafeGlobalState) -> Worker {
     // Count how many times we start the compiler worker.
     global_state
       .metrics
       .compiler_starts
       .fetch_add(1, Ordering::SeqCst);
 
-    let worker_state =
-      ThreadSafeState::new(DenoFlags::default(), vec![], Progress::new(), true)
-        .expect("Unable to create worker state");
+    let worker_state = ThreadSafeState::new(
+      DenoPermissions::default(),
+      vec![],
+      Progress::new(),
+      true,
+    )
+    .expect("Unable to create worker state");
 
-    let mut worker = NewWorker::new(
+    let mut worker = Worker::new(
       "TS".to_string(),
       startup_data::compiler_isolate_init(),
       global_state,
@@ -690,7 +694,7 @@ mod tests {
       source_code: include_bytes!("../tests/002_hello.ts").to_vec(),
     };
 
-    let mock_state = ThreadSafeState::mock(vec![
+    let mock_state = ThreadSafeGlobalState::mock(vec![
       String::from("deno"),
       String::from("hello.js"),
     ]);
@@ -723,7 +727,7 @@ mod tests {
       .unwrap()
       .to_string();
 
-    let state = ThreadSafeState::mock(vec![
+    let state = ThreadSafeGlobalState::mock(vec![
       String::from("deno"),
       p.to_string_lossy().into(),
       String::from("$deno$/bundle.js"),

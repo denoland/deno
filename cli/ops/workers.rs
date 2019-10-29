@@ -3,7 +3,10 @@ use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::deno_error::js_check;
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
+use crate::flags::DenoFlags;
+use crate::global_state::ThreadSafeGlobalState;
 use crate::ops::json_op;
+use crate::permissions::DenoPermissions;
 use crate::resources;
 use crate::startup_data;
 use crate::state::ThreadSafeState;
@@ -144,8 +147,15 @@ fn op_create_worker(
     }
   }
 
+  // TODO:
+  let global_state = ThreadSafeGlobalState::new(
+    DenoFlags::default(),
+    child_argv.clone(),
+    parent_state.progress.clone(),
+    include_deno_namespace,
+  )?;
   let child_state = ThreadSafeState::new(
-    parent_state.flags.clone(),
+    DenoPermissions::default(),
     child_argv,
     parent_state.progress.clone(),
     include_deno_namespace,
@@ -154,8 +164,12 @@ fn op_create_worker(
   let name = format!("USER-WORKER-{}", specifier);
   let deno_main_call = format!("denoMain({})", include_deno_namespace);
 
-  let mut worker =
-    Worker::new(name, startup_data::deno_isolate_init(), child_state);
+  let mut worker = Worker::new(
+    name,
+    startup_data::deno_isolate_init(),
+    global_state,
+    child_state,
+  );
   js_check(worker.execute(&deno_main_call));
   js_check(worker.execute("workerMain()"));
 

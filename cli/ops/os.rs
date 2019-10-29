@@ -7,7 +7,6 @@ use crate::state::ThreadSafeState;
 use crate::version;
 use atty;
 use deno::*;
-use log;
 use std::collections::HashMap;
 use std::env;
 use sys_info;
@@ -45,11 +44,10 @@ fn op_start(
     "pid": std::process::id(),
     "argv": state.argv,
     "mainModule": state.main_module().map(|x| x.as_str().to_string()),
-    "debugFlag": state
-      .flags
-      .log_level
-      .map_or(false, |l| l == log::Level::Debug),
-    "versionFlag": state.flags.version,
+    // TODO:
+    "debugFlag": false,
+    // TODO:
+    "versionFlag": false,
     "v8Version": version::v8(),
     "denoVersion": version::DENO,
     "tsVersion": version::TYPESCRIPT,

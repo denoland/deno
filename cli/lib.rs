@@ -58,7 +58,6 @@ use crate::deno_error::print_err_and_exit;
 use crate::global_state::ThreadSafeGlobalState;
 use crate::progress::Progress;
 use crate::state::ThreadSafeState;
-use crate::worker::NewWorker;
 use crate::worker::Worker;
 use deno::v8_set_flags;
 use deno::ErrBox;
@@ -70,6 +69,7 @@ use futures::Future;
 use log::Level;
 use log::Metadata;
 use log::Record;
+use permissions::DenoPermissions;
 use std::env;
 
 static LOGGER: Logger = Logger;
@@ -96,11 +96,10 @@ impl log::Log for Logger {
   fn flush(&self) {}
 }
 
-#[allow(dead_code)]
 fn create_worker_and_global_state(
   flags: DenoFlags,
   argv: Vec<String>,
-) -> (NewWorker, ThreadSafeGlobalState) {
+) -> (Worker, ThreadSafeGlobalState) {
   use crate::shell::Shell;
   use std::sync::Arc;
   use std::sync::Mutex;
@@ -115,16 +114,16 @@ fn create_worker_and_global_state(
     }
   });
 
+  let perms = DenoPermissions::from_flags(&flags);
   let global_state = ThreadSafeGlobalState::new(flags, argv, progress, true)
     .map_err(deno_error::print_err_and_exit)
     .unwrap();
 
-  let state =
-    ThreadSafeState::new(DenoFlags::default(), vec![], Progress::new(), true)
-      .map_err(deno_error::print_err_and_exit)
-      .unwrap();
+  let state = ThreadSafeState::new(perms, vec![], Progress::new(), true)
+    .map_err(deno_error::print_err_and_exit)
+    .unwrap();
 
-  let worker = NewWorker::new(
+  let worker = Worker::new(
     "main".to_string(),
     startup_data::deno_isolate_init(),
     global_state.clone(),
@@ -132,34 +131,6 @@ fn create_worker_and_global_state(
   );
 
   (worker, global_state)
-}
-
-fn create_worker_and_state(
-  flags: DenoFlags,
-  argv: Vec<String>,
-) -> (Worker, ThreadSafeState) {
-  use crate::shell::Shell;
-  use std::sync::Arc;
-  use std::sync::Mutex;
-  let shell = Arc::new(Mutex::new(Shell::new()));
-  let progress = Progress::new();
-  progress.set_callback(move |_done, _completed, _total, status, msg| {
-    if !status.is_empty() {
-      let mut s = shell.lock().unwrap();
-      s.status(status, msg).expect("shell problem");
-    }
-  });
-  // TODO(kevinkassimo): maybe make include_deno_namespace also configurable?
-  let state = ThreadSafeState::new(flags, argv, progress, true)
-    .map_err(deno_error::print_err_and_exit)
-    .unwrap();
-  let worker = Worker::new(
-    "main".to_string(),
-    startup_data::deno_isolate_init(),
-    state.clone(),
-  );
-
-  (worker, state)
 }
 
 fn types_command() {
@@ -269,7 +240,7 @@ pub fn print_file_info(
 }
 
 fn info_command(flags: DenoFlags, argv: Vec<String>) {
-  let (mut worker, state) = create_worker_and_state(flags, argv.clone());
+  let (mut worker, state) = create_worker_and_global_state(flags, argv.clone());
 
   // If it was just "deno info" print location of caches and exit
   if argv.len() == 1 {
@@ -297,7 +268,7 @@ fn info_command(flags: DenoFlags, argv: Vec<String>) {
 }
 
 fn fetch_command(flags: DenoFlags, argv: Vec<String>) {
-  let (mut worker, state) = create_worker_and_state(flags, argv.clone());
+  let (mut worker, state) = create_worker_and_global_state(flags, argv.clone());
 
   let main_module = state.main_module().unwrap();
   let main_future = lazy(move || {
@@ -316,7 +287,7 @@ fn fetch_command(flags: DenoFlags, argv: Vec<String>) {
 }
 
 fn eval_command(flags: DenoFlags, argv: Vec<String>) {
-  let (mut worker, state) = create_worker_and_state(flags, argv);
+  let (mut worker, state) = create_worker_and_global_state(flags, argv);
   let ts_source = state.argv[1].clone();
   // Force TypeScript compile.
   let main_module =
@@ -373,7 +344,7 @@ fn bundle_command(flags: DenoFlags, argv: Vec<String>) {
 }
 
 fn run_repl(flags: DenoFlags, argv: Vec<String>) {
-  let (mut worker, _state) = create_worker_and_state(flags, argv);
+  let (mut worker, _state) = create_worker_and_global_state(flags, argv);
 
   // REPL situation.
   let main_future = lazy(move || {
@@ -391,7 +362,7 @@ fn run_repl(flags: DenoFlags, argv: Vec<String>) {
 
 fn run_script(flags: DenoFlags, argv: Vec<String>) {
   let use_current_thread = flags.current_thread;
-  let (mut worker, state) = create_worker_and_state(flags, argv);
+  let (mut worker, state) = create_worker_and_global_state(flags, argv);
 
   let main_module = state.main_module().unwrap();
   // Normal situation of executing a module.

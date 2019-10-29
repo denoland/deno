@@ -19,14 +19,6 @@ use url::Url;
 /// high-level module loading
 #[derive(Clone)]
 pub struct Worker {
-  isolate: Arc<Mutex<deno::Isolate>>,
-  pub state: ThreadSafeState,
-}
-
-/// Wraps deno::Isolate to provide source maps, ops for the CLI, and
-/// high-level module loading
-#[derive(Clone)]
-pub struct NewWorker {
   pub name: String,
   isolate: Arc<Mutex<deno::Isolate>>,
   pub global_state: ThreadSafeGlobalState,
@@ -34,111 +26,6 @@ pub struct NewWorker {
 }
 
 impl Worker {
-  pub fn new(
-    _name: String,
-    startup_data: StartupData,
-    state: ThreadSafeState,
-  ) -> Worker {
-    let isolate = Arc::new(Mutex::new(deno::Isolate::new(startup_data, false)));
-    {
-      let mut i = isolate.lock().unwrap();
-
-      ops::compiler::init(&mut i, &state);
-      ops::errors::init(&mut i, &state);
-      ops::fetch::init(&mut i, &state);
-      ops::files::init(&mut i, &state);
-      ops::fs::init(&mut i, &state);
-      ops::io::init(&mut i, &state);
-      ops::net::init(&mut i, &state);
-      ops::tls::init(&mut i, &state);
-      ops::os::init(&mut i, &state);
-      ops::permissions::init(&mut i, &state);
-      ops::process::init(&mut i, &state);
-      ops::random::init(&mut i, &state);
-      ops::repl::init(&mut i, &state);
-      ops::resources::init(&mut i, &state);
-      ops::timers::init(&mut i, &state);
-      ops::workers::init(&mut i, &state);
-
-      let state_ = state.clone();
-      i.set_dyn_import(move |id, specifier, referrer| {
-        let load_stream = RecursiveLoad::dynamic_import(
-          id,
-          specifier,
-          referrer,
-          state_.clone(),
-          state_.modules.clone(),
-        );
-        Box::new(load_stream)
-      });
-
-      let state_ = state.clone();
-      i.set_js_error_create(move |v8_exception| {
-        JSError::from_v8_exception(v8_exception, &state_.ts_compiler)
-      })
-    }
-    Self { isolate, state }
-  }
-
-  /// Same as execute2() but the filename defaults to "$CWD/__anonymous__".
-  pub fn execute(&mut self, js_source: &str) -> Result<(), ErrBox> {
-    let path = env::current_dir().unwrap().join("__anonymous__");
-    let url = Url::from_file_path(path).unwrap();
-    self.execute2(url.as_str(), js_source)
-  }
-
-  /// Executes the provided JavaScript source code. The js_filename argument is
-  /// provided only for debugging purposes.
-  pub fn execute2(
-    &mut self,
-    js_filename: &str,
-    js_source: &str,
-  ) -> Result<(), ErrBox> {
-    let mut isolate = self.isolate.lock().unwrap();
-    isolate.execute(js_filename, js_source)
-  }
-
-  /// Executes the provided JavaScript module.
-  pub fn execute_mod_async(
-    &mut self,
-    module_specifier: &ModuleSpecifier,
-    maybe_code: Option<String>,
-    is_prefetch: bool,
-  ) -> impl Future<Item = (), Error = ErrBox> {
-    let worker = self.clone();
-    let loader = self.state.clone();
-    let isolate = self.isolate.clone();
-    let modules = self.state.modules.clone();
-    let recursive_load = RecursiveLoad::main(
-      &module_specifier.to_string(),
-      maybe_code,
-      loader,
-      modules,
-    )
-    .get_future(isolate);
-    recursive_load.and_then(move |id| -> Result<(), ErrBox> {
-      worker.state.progress.done();
-      if is_prefetch {
-        Ok(())
-      } else {
-        let mut isolate = worker.isolate.lock().unwrap();
-        isolate.mod_evaluate(id)
-      }
-    })
-  }
-}
-
-impl Future for Worker {
-  type Item = ();
-  type Error = ErrBox;
-
-  fn poll(&mut self) -> Result<Async<()>, ErrBox> {
-    let mut isolate = self.isolate.lock().unwrap();
-    isolate.poll()
-  }
-}
-
-impl NewWorker {
   pub fn new(
     name: String,
     startup_data: StartupData,
@@ -239,7 +126,7 @@ impl NewWorker {
   }
 }
 
-impl Future for NewWorker {
+impl Future for Worker {
   type Item = ();
   type Error = ErrBox;
 
@@ -253,6 +140,8 @@ impl Future for NewWorker {
 mod tests {
   use super::*;
   use crate::flags;
+  use crate::flags::DenoFlags;
+  use crate::permissions::DenoPermissions;
   use crate::progress::Progress;
   use crate::resources;
   use crate::startup_data;
@@ -271,9 +160,17 @@ mod tests {
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let argv = vec![String::from("./deno"), module_specifier.to_string()];
-    let state = ThreadSafeState::new(
+    let argv_ = vec![String::from("./deno"), module_specifier.to_string()];
+    let global_state = ThreadSafeGlobalState::new(
       flags::DenoFlags::default(),
       argv,
+      Progress::new(),
+      true,
+    )
+    .unwrap();
+    let state = ThreadSafeState::new(
+      DenoPermissions::default(),
+      argv_,
       Progress::new(),
       true,
     )
@@ -281,7 +178,7 @@ mod tests {
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
       let mut worker =
-        Worker::new("TEST".to_string(), StartupData::None, state);
+        Worker::new("TEST".to_string(), StartupData::None, global_state, state);
       worker
         .execute_mod_async(&module_specifier, None, false)
         .then(|result| {
@@ -308,8 +205,16 @@ mod tests {
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let argv = vec![String::from("deno"), module_specifier.to_string()];
+    let argv_ = vec![String::from("deno"), module_specifier.to_string()];
+    let global_state = ThreadSafeGlobalState::new(
+      DenoFlags::default(),
+      argv_,
+      Progress::new(),
+      true,
+    )
+    .unwrap();
     let state = ThreadSafeState::new(
-      flags::DenoFlags::default(),
+      DenoPermissions::default(),
       argv,
       Progress::new(),
       true,
@@ -318,7 +223,7 @@ mod tests {
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
       let mut worker =
-        Worker::new("TEST".to_string(), StartupData::None, state);
+        Worker::new("TEST".to_string(), StartupData::None, global_state, state);
       worker
         .execute_mod_async(&module_specifier, None, false)
         .then(|result| {
@@ -347,15 +252,20 @@ mod tests {
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let argv = vec![String::from("deno"), module_specifier.to_string()];
+    let argv_ = vec![String::from("deno"), module_specifier.to_string()];
     let mut flags = flags::DenoFlags::default();
     flags.reload = true;
+    let perms = DenoPermissions::from_flags(&flags);
+    let global_state =
+      ThreadSafeGlobalState::new(flags, argv_, Progress::new(), true).unwrap();
     let state =
-      ThreadSafeState::new(flags, argv, Progress::new(), true).unwrap();
+      ThreadSafeState::new(perms, argv, Progress::new(), true).unwrap();
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
       let mut worker = Worker::new(
         "TEST".to_string(),
         startup_data::deno_isolate_init(),
+        global_state,
         state,
       );
       worker.execute("denoMain()").unwrap();
@@ -377,12 +287,20 @@ mod tests {
   }
 
   fn create_test_worker() -> Worker {
+    let global_state = ThreadSafeGlobalState::mock(vec![
+      String::from("./deno"),
+      String::from("hello.js"),
+    ]);
     let state = ThreadSafeState::mock(vec![
       String::from("./deno"),
       String::from("hello.js"),
     ]);
-    let mut worker =
-      Worker::new("TEST".to_string(), startup_data::deno_isolate_init(), state);
+    let mut worker = Worker::new(
+      "TEST".to_string(),
+      startup_data::deno_isolate_init(),
+      global_state,
+      state,
+    );
     worker.execute("denoMain()").unwrap();
     worker.execute("workerMain()").unwrap();
     worker

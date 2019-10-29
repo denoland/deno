@@ -6,7 +6,6 @@ use crate::compilers::TsCompiler;
 use crate::deno_dir;
 use crate::deno_error::permission_denied;
 use crate::file_fetcher::SourceFileFetcher;
-use crate::flags;
 use crate::flags::DenoFlags;
 use crate::global_state::ThreadSafeGlobalState;
 use crate::global_timer::GlobalTimer;
@@ -29,7 +28,6 @@ use deno::PinnedBuf;
 use futures::future::Shared;
 use futures::Future;
 use rand::rngs::StdRng;
-use rand::SeedableRng;
 use serde_json::Value;
 use std;
 use std::collections::HashMap;
@@ -59,7 +57,6 @@ pub struct State {
   pub dir: deno_dir::DenoDir,
   pub argv: Vec<String>,
   pub permissions: DenoPermissions,
-  pub flags: flags::DenoFlags,
   /// When flags contains a `.import_map_path` option, the content of the
   /// import map file will be resolved and set.
   pub import_map: Option<ImportMap>,
@@ -198,7 +195,7 @@ impl Loader for ThreadSafeState {
 
 impl ThreadSafeState {
   pub fn new(
-    flags: flags::DenoFlags,
+    permissions: DenoPermissions,
     argv_rest: Vec<String>,
     progress: Progress,
     include_deno_namespace: bool,
@@ -216,17 +213,13 @@ impl ThreadSafeState {
     let file_fetcher = SourceFileFetcher::new(
       dir.deps_cache.clone(),
       progress.clone(),
-      !flags.reload,
-      flags.cache_blacklist.clone(),
-      flags.no_fetch,
+      true,
+      vec![],
+      false,
     )?;
 
-    let ts_compiler = TsCompiler::new(
-      file_fetcher.clone(),
-      dir.gen_cache.clone(),
-      !flags.reload,
-      flags.config_path.clone(),
-    )?;
+    let ts_compiler =
+      TsCompiler::new(file_fetcher.clone(), dir.gen_cache.clone(), true, None)?;
 
     let main_module: Option<ModuleSpecifier> = if argv_rest.len() <= 1 {
       None
@@ -235,15 +228,8 @@ impl ThreadSafeState {
       Some(ModuleSpecifier::resolve_url_or_path(&root_specifier)?)
     };
 
-    let import_map: Option<ImportMap> = match &flags.import_map_path {
-      None => None,
-      Some(file_path) => Some(ImportMap::load(file_path)?),
-    };
-
-    let mut seeded_rng = None;
-    if let Some(seed) = flags.seed {
-      seeded_rng = Some(Mutex::new(StdRng::seed_from_u64(seed)));
-    };
+    let import_map = None;
+    let seeded_rng = None;
 
     let modules = Arc::new(Mutex::new(deno::Modules::new()));
 
@@ -252,8 +238,7 @@ impl ThreadSafeState {
       modules,
       dir,
       argv: argv_rest,
-      permissions: DenoPermissions::from_flags(&flags),
-      flags,
+      permissions,
       import_map,
       metrics: Metrics::default(),
       worker_channels: Mutex::new(internal_channels),
@@ -381,7 +366,7 @@ impl ThreadSafeState {
   #[cfg(test)]
   pub fn mock(argv: Vec<String>) -> ThreadSafeState {
     ThreadSafeState::new(
-      flags::DenoFlags::default(),
+      DenoPermissions::default(),
       argv,
       Progress::new(),
       true,
@@ -426,10 +411,7 @@ fn thread_safe() {
 #[test]
 fn import_map_given_for_repl() {
   let _result = ThreadSafeState::new(
-    flags::DenoFlags {
-      import_map_path: Some("import_map.json".to_string()),
-      ..flags::DenoFlags::default()
-    },
+    DenoPermissions::default(),
     vec![String::from("./deno")],
     Progress::new(),
     true,
