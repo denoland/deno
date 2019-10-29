@@ -119,7 +119,7 @@ fn create_worker_and_global_state(
     .map_err(deno_error::print_err_and_exit)
     .unwrap();
 
-  let state = ThreadSafeState::new(perms, vec![], Progress::new(), true)
+  let state = ThreadSafeState::new(perms, true)
     .map_err(deno_error::print_err_and_exit)
     .unwrap();
 
@@ -139,7 +139,7 @@ fn types_command() {
 }
 
 fn print_cache_info(worker: Worker) {
-  let state = worker.state;
+  let state = worker.global_state;
 
   println!(
     "{} {:?}",
@@ -162,7 +162,7 @@ pub fn print_file_info(
   worker: Worker,
   module_specifier: &ModuleSpecifier,
 ) -> impl Future<Item = Worker, Error = ()> {
-  let state_ = worker.state.clone();
+  let state_ = worker.global_state.clone();
   let module_specifier_ = module_specifier.clone();
 
   state_
@@ -219,8 +219,12 @@ pub fn print_file_info(
             );
           }
 
-          if let Some(deps) =
-            worker.state.modules.lock().unwrap().deps(&compiled.name)
+          if let Some(deps) = worker
+            .global_state
+            .modules
+            .lock()
+            .unwrap()
+            .deps(&compiled.name)
           {
             println!("{}{}", colors::bold("deps:\n".to_string()), deps.name);
             if let Some(ref depsdeps) = deps.deps {

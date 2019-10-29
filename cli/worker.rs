@@ -36,8 +36,8 @@ impl Worker {
     {
       let mut i = isolate.lock().unwrap();
 
-      ops::compiler::init(&mut i, &state);
-      ops::errors::init(&mut i, &state);
+      ops::compiler::init(&mut i, &global_state, &state);
+      ops::errors::init(&mut i, &global_state, &state);
       ops::fetch::init(&mut i, &state);
       ops::files::init(&mut i, &state);
       ops::fs::init(&mut i, &state);
@@ -48,26 +48,28 @@ impl Worker {
       ops::permissions::init(&mut i, &state);
       ops::process::init(&mut i, &state);
       ops::random::init(&mut i, &state);
-      ops::repl::init(&mut i, &state);
+      ops::repl::init(&mut i, &global_state, &state);
       ops::resources::init(&mut i, &state);
       ops::timers::init(&mut i, &state);
       ops::workers::init(&mut i, &state);
 
       let global_state_ = global_state.clone();
+      let state_ = state.clone();
       i.set_dyn_import(move |id, specifier, referrer| {
         let load_stream = RecursiveLoad::dynamic_import(
           id,
           specifier,
           referrer,
+          state_.clone(),
           global_state_.clone(),
           global_state_.modules.clone(),
         );
         Box::new(load_stream)
       });
 
-      let state_ = state.clone();
+      let global_state_ = global_state.clone();
       i.set_js_error_create(move |v8_exception| {
-        JSError::from_v8_exception(v8_exception, &state_.ts_compiler)
+        JSError::from_v8_exception(v8_exception, &global_state_.ts_compiler)
       })
     }
     Self {
@@ -104,12 +106,14 @@ impl Worker {
     is_prefetch: bool,
   ) -> impl Future<Item = (), Error = ErrBox> {
     let worker = self.clone();
+    let resolver = self.state.clone();
     let loader = self.global_state.clone();
     let isolate = self.isolate.clone();
     let modules = self.global_state.modules.clone();
     let recursive_load = RecursiveLoad::main(
       &module_specifier.to_string(),
       maybe_code,
+      resolver,
       loader,
       modules,
     )
@@ -160,7 +164,6 @@ mod tests {
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let argv = vec![String::from("./deno"), module_specifier.to_string()];
-    let argv_ = vec![String::from("./deno"), module_specifier.to_string()];
     let global_state = ThreadSafeGlobalState::new(
       flags::DenoFlags::default(),
       argv,
@@ -168,13 +171,7 @@ mod tests {
       true,
     )
     .unwrap();
-    let state = ThreadSafeState::new(
-      DenoPermissions::default(),
-      argv_,
-      Progress::new(),
-      true,
-    )
-    .unwrap();
+    let state = ThreadSafeState::new(DenoPermissions::default(), true).unwrap();
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
       let mut worker =
@@ -205,21 +202,14 @@ mod tests {
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let argv = vec![String::from("deno"), module_specifier.to_string()];
-    let argv_ = vec![String::from("deno"), module_specifier.to_string()];
     let global_state = ThreadSafeGlobalState::new(
       DenoFlags::default(),
-      argv_,
-      Progress::new(),
-      true,
-    )
-    .unwrap();
-    let state = ThreadSafeState::new(
-      DenoPermissions::default(),
       argv,
       Progress::new(),
       true,
     )
     .unwrap();
+    let state = ThreadSafeState::new(DenoPermissions::default(), true).unwrap();
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
       let mut worker =
@@ -252,14 +242,12 @@ mod tests {
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let argv = vec![String::from("deno"), module_specifier.to_string()];
-    let argv_ = vec![String::from("deno"), module_specifier.to_string()];
     let mut flags = flags::DenoFlags::default();
     flags.reload = true;
     let perms = DenoPermissions::from_flags(&flags);
     let global_state =
-      ThreadSafeGlobalState::new(flags, argv_, Progress::new(), true).unwrap();
-    let state =
-      ThreadSafeState::new(perms, argv, Progress::new(), true).unwrap();
+      ThreadSafeGlobalState::new(flags, argv, Progress::new(), true).unwrap();
+    let state = ThreadSafeState::new(perms, true).unwrap();
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
       let mut worker = Worker::new(

@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
 use crate::deno_error::bad_resource;
+use crate::global_state::ThreadSafeGlobalState;
 use crate::ops::json_op;
 use crate::repl;
 use crate::repl::Repl;
@@ -11,15 +12,12 @@ use deno::*;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+pub fn init(i: &mut Isolate, gs: &ThreadSafeGlobalState, s: &ThreadSafeState) {
   i.register_op(
     "repl_start",
-    s.core_op(json_op(s.stateful_op(op_repl_start))),
+    s.core_op(json_op(gs.stateful_op(op_repl_start))),
   );
-  i.register_op(
-    "repl_readline",
-    s.core_op(json_op(s.stateful_op(op_repl_readline))),
-  );
+  i.register_op("repl_readline", s.core_op(json_op(op_repl_readline)));
 }
 
 struct ReplResource(Arc<Mutex<Repl>>);
@@ -37,14 +35,14 @@ struct ReplStartArgs {
 }
 
 fn op_repl_start(
-  state: &ThreadSafeState,
+  global_state: &ThreadSafeGlobalState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: ReplStartArgs = serde_json::from_value(args)?;
 
   debug!("op_repl_start {}", args.history_file);
-  let history_path = repl::history_path(&state.dir, &args.history_file);
+  let history_path = repl::history_path(&global_state.dir, &args.history_file);
   let repl = repl::Repl::new(history_path);
   let resource = ReplResource(Arc::new(Mutex::new(repl)));
   let mut table = resources::lock_resource_table();
@@ -59,7 +57,6 @@ struct ReplReadlineArgs {
 }
 
 fn op_repl_readline(
-  _state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {

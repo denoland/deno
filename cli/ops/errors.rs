@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::fmt_errors::JSError;
+use crate::global_state::ThreadSafeGlobalState;
 use crate::ops::json_op;
 use crate::source_maps::get_orig_position;
 use crate::source_maps::CachedMaps;
@@ -8,14 +9,14 @@ use crate::state::ThreadSafeState;
 use deno::*;
 use std::collections::HashMap;
 
-pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+pub fn init(i: &mut Isolate, gs: &ThreadSafeGlobalState, s: &ThreadSafeState) {
   i.register_op(
     "apply_source_map",
-    s.core_op(json_op(s.stateful_op(op_apply_source_map))),
+    s.core_op(json_op(gs.stateful_op(op_apply_source_map))),
   );
   i.register_op(
     "format_error",
-    s.core_op(json_op(s.stateful_op(op_format_error))),
+    s.core_op(json_op(gs.stateful_op(op_format_error))),
   );
 }
 
@@ -25,7 +26,7 @@ struct FormatErrorArgs {
 }
 
 fn op_format_error(
-  state: &ThreadSafeState,
+  state: &ThreadSafeGlobalState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -45,7 +46,7 @@ struct ApplySourceMap {
 }
 
 fn op_apply_source_map(
-  state: &ThreadSafeState,
+  state: &ThreadSafeGlobalState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {

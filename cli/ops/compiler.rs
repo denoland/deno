@@ -2,20 +2,25 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::futures::future::join_all;
 use crate::futures::Future;
+use crate::global_state::ThreadSafeGlobalState;
 use crate::ops::json_op;
 use crate::state::ThreadSafeState;
+use deno::Resolver;
 use deno::*;
 
-pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
-  i.register_op("cache", s.core_op(json_op(s.stateful_op(op_cache))));
+pub fn init(i: &mut Isolate, gs: &ThreadSafeGlobalState, s: &ThreadSafeState) {
+  let state = s.clone();
+
+  i.register_op("cache", s.core_op(json_op(gs.stateful_op(op_cache))));
   i.register_op(
     "fetch_source_files",
-    s.core_op(json_op(s.stateful_op(op_fetch_source_files))),
+    s.core_op(json_op(gs.stateful_op(
+      move |global_state, args, zero_copy_buf| {
+        op_fetch_source_files(global_state, &state, args, zero_copy_buf)
+      },
+    ))),
   );
-  i.register_op(
-    "fetch_asset",
-    s.core_op(json_op(s.stateful_op(op_fetch_asset))),
-  );
+  i.register_op("fetch_asset", s.core_op(json_op(op_fetch_asset)));
 }
 
 #[derive(Deserialize)]
@@ -27,7 +32,7 @@ struct CacheArgs {
 }
 
 fn op_cache(
-  state: &ThreadSafeState,
+  global_state: &ThreadSafeGlobalState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -36,7 +41,7 @@ fn op_cache(
   let module_specifier = ModuleSpecifier::resolve_url(&args.module_id)
     .expect("Should be valid module specifier");
 
-  state.ts_compiler.cache_compiler_output(
+  global_state.ts_compiler.cache_compiler_output(
     &module_specifier,
     &args.extension,
     &args.contents,
@@ -52,6 +57,7 @@ struct FetchSourceFilesArgs {
 }
 
 fn op_fetch_source_files(
+  global_state: &ThreadSafeGlobalState,
   state: &ThreadSafeState,
   args: Value,
   _data: Option<PinnedBuf>,
@@ -66,7 +72,7 @@ fn op_fetch_source_files(
   for specifier in &args.specifiers {
     let resolved_specifier =
       state.resolve(specifier, &args.referrer, false, is_dyn_import)?;
-    let fut = state
+    let fut = global_state
       .file_fetcher
       .fetch_source_file_async(&resolved_specifier);
     futures.push(fut);
@@ -99,7 +105,6 @@ struct FetchAssetArgs {
 }
 
 fn op_fetch_asset(
-  _state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {

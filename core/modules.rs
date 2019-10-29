@@ -30,7 +30,7 @@ use std::sync::Mutex;
 pub type SourceCodeInfoFuture =
   dyn Future<Item = SourceCodeInfo, Error = ErrBox> + Send;
 
-pub trait Loader: Send + Sync {
+pub trait Resolver: Send + Sync {
   /// Returns an absolute URL.
   /// When implementing an spec-complaint VM, this should be exactly the
   /// algorithm described here:
@@ -42,7 +42,9 @@ pub trait Loader: Send + Sync {
     is_main: bool,
     is_dyn_import: bool,
   ) -> Result<ModuleSpecifier, ErrBox>;
+}
 
+pub trait Loader: Send + Sync {
   /// Given ModuleSpecifier, load its source code.
   fn load(
     &self,
@@ -68,38 +70,41 @@ enum State {
 /// This future is used to implement parallel async module loading without
 /// complicating the Isolate API.
 /// TODO: RecursiveLoad desperately needs to be merged with Modules.
-pub struct RecursiveLoad<L: Loader> {
+pub struct RecursiveLoad<L: Loader, R: Resolver> {
   kind: Kind,
   state: State,
   loader: L,
+  resolver: R,
   modules: Arc<Mutex<Modules>>,
   pending: FuturesUnordered<Box<SourceCodeInfoFuture>>,
   is_pending: HashSet<ModuleSpecifier>,
 }
 
-impl<L: Loader> RecursiveLoad<L> {
+impl<L: Loader, R: Resolver> RecursiveLoad<L, R> {
   /// Starts a new parallel load of the given URL of the main module.
   pub fn main(
     specifier: &str,
     code: Option<String>,
+    resolver: R,
     loader: L,
     modules: Arc<Mutex<Modules>>,
   ) -> Self {
     let kind = Kind::Main;
     let state = State::ResolveMain(specifier.to_owned(), code);
-    Self::new(kind, state, loader, modules)
+    Self::new(kind, state, resolver, loader, modules)
   }
 
   pub fn dynamic_import(
     id: deno_dyn_import_id,
     specifier: &str,
     referrer: &str,
+    resolver: R,
     loader: L,
     modules: Arc<Mutex<Modules>>,
   ) -> Self {
     let kind = Kind::DynamicImport(id);
     let state = State::ResolveImport(specifier.to_owned(), referrer.to_owned());
-    Self::new(kind, state, loader, modules)
+    Self::new(kind, state, resolver, loader, modules)
   }
 
   pub fn dyn_import_id(&self) -> Option<deno_dyn_import_id> {
@@ -112,12 +117,14 @@ impl<L: Loader> RecursiveLoad<L> {
   fn new(
     kind: Kind,
     state: State,
+    resolver: R,
     loader: L,
     modules: Arc<Mutex<Modules>>,
   ) -> Self {
     Self {
       kind,
       state,
+      resolver,
       loader,
       modules,
       pending: FuturesUnordered::new(),
@@ -127,14 +134,14 @@ impl<L: Loader> RecursiveLoad<L> {
 
   fn add_root(&mut self) -> Result<(), ErrBox> {
     let module_specifier = match self.state {
-      State::ResolveMain(ref specifier, _) => self.loader.resolve(
+      State::ResolveMain(ref specifier, _) => self.resolver.resolve(
         specifier,
         ".",
         true,
         self.dyn_import_id().is_some(),
       )?,
       State::ResolveImport(ref specifier, ref referrer) => self
-        .loader
+        .resolver
         .resolve(specifier, referrer, false, self.dyn_import_id().is_some())?,
       _ => unreachable!(),
     };
@@ -165,7 +172,7 @@ impl<L: Loader> RecursiveLoad<L> {
     referrer: &str,
     parent_id: deno_mod,
   ) -> Result<(), ErrBox> {
-    let module_specifier = self.loader.resolve(
+    let module_specifier = self.resolver.resolve(
       specifier,
       referrer,
       false,
@@ -213,7 +220,7 @@ impl<L: Loader> RecursiveLoad<L> {
   }
 }
 
-impl<L: Loader> ImportStream for RecursiveLoad<L> {
+impl<L: Loader, R: Resolver> ImportStream for RecursiveLoad<L, R> {
   // TODO: this should not be part of RecursiveLoad.
   fn register(
     &mut self,
@@ -287,7 +294,7 @@ impl<L: Loader> ImportStream for RecursiveLoad<L> {
         |specifier: &str, referrer_id: deno_mod| -> deno_mod {
           let modules = self.modules.lock().unwrap();
           let referrer = modules.get_name(referrer_id).unwrap();
-          match self.loader.resolve(
+          match self.resolver.resolve(
             specifier,
             &referrer,
             is_main,
@@ -308,14 +315,14 @@ impl<L: Loader> ImportStream for RecursiveLoad<L> {
   }
 }
 
-impl<L: Loader> Stream for RecursiveLoad<L> {
+impl<L: Loader, R: Resolver> Stream for RecursiveLoad<L, R> {
   type Item = Event;
   type Error = ErrBox;
 
   fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
     Ok(match self.state {
       State::ResolveMain(ref specifier, Some(ref code)) => {
-        let module_specifier = self.loader.resolve(
+        let module_specifier = self.resolver.resolve(
           specifier,
           ".",
           true,
@@ -607,6 +614,7 @@ mod tests {
   use std::error::Error;
   use std::fmt;
 
+  #[derive(Clone)]
   struct MockLoader {
     pub loads: Arc<Mutex<Vec<String>>>,
     pub isolate: Arc<Mutex<Isolate>>,
@@ -701,7 +709,7 @@ mod tests {
     }
   }
 
-  impl Loader for MockLoader {
+  impl Resolver for MockLoader {
     fn resolve(
       &self,
       specifier: &str,
@@ -729,7 +737,9 @@ mod tests {
         Err(MockError::ResolveErr.into())
       }
     }
+  }
 
+  impl Loader for MockLoader {
     fn load(
       &self,
       module_specifier: &ModuleSpecifier,
@@ -788,7 +798,7 @@ mod tests {
       let isolate_ = isolate.clone();
       let loads = loader.loads.clone();
       let mut recursive_load =
-        RecursiveLoad::main("/a.js", None, loader, modules);
+        RecursiveLoad::main("/a.js", None, loader.clone(), loader, modules);
 
       let a_id = loop {
         match recursive_load.poll() {
@@ -866,8 +876,13 @@ mod tests {
       let modules = loader.modules.clone();
       let modules_ = modules.clone();
       let loads = loader.loads.clone();
-      let recursive_load =
-        RecursiveLoad::main("/circular1.js", None, loader, modules);
+      let recursive_load = RecursiveLoad::main(
+        "/circular1.js",
+        None,
+        loader.clone(),
+        loader,
+        modules,
+      );
       let result = recursive_load.get_future(isolate.clone()).poll();
       assert!(result.is_ok());
       if let Async::Ready(circular1_id) = result.ok().unwrap() {
@@ -937,8 +952,13 @@ mod tests {
       let modules = loader.modules.clone();
       let modules_ = modules.clone();
       let loads = loader.loads.clone();
-      let recursive_load =
-        RecursiveLoad::main("/redirect1.js", None, loader, modules);
+      let recursive_load = RecursiveLoad::main(
+        "/redirect1.js",
+        None,
+        loader.clone(),
+        loader,
+        modules,
+      );
       let result = recursive_load.get_future(isolate.clone()).poll();
       println!(">> result {:?}", result);
       assert!(result.is_ok());
@@ -1001,7 +1021,7 @@ mod tests {
       let modules = loader.modules.clone();
       let loads = loader.loads.clone();
       let mut recursive_load =
-        RecursiveLoad::main("/main.js", None, loader, modules)
+        RecursiveLoad::main("/main.js", None, loader.clone(), loader, modules)
           .get_future(isolate);
 
       let result = recursive_load.poll();
@@ -1049,8 +1069,13 @@ mod tests {
       let loader = MockLoader::new();
       let isolate = loader.isolate.clone();
       let modules = loader.modules.clone();
-      let recursive_load =
-        RecursiveLoad::main("/bad_import.js", None, loader, modules);
+      let recursive_load = RecursiveLoad::main(
+        "/bad_import.js",
+        None,
+        loader.clone(),
+        loader,
+        modules,
+      );
       let result = recursive_load.get_future(isolate).poll();
       assert!(result.is_err());
       let err = result.err().unwrap();
@@ -1085,6 +1110,7 @@ mod tests {
       let mut recursive_load = RecursiveLoad::main(
         "/main_with_code.js",
         Some(MAIN_WITH_CODE_SRC.to_owned()),
+        loader.clone(),
         loader,
         modules,
       );

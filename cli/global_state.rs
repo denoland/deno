@@ -10,12 +10,15 @@ use crate::flags;
 use crate::global_timer::GlobalTimer;
 use crate::metrics::Metrics;
 use crate::msg;
+use crate::ops::JsonOp;
 use crate::permissions::DenoPermissions;
 use crate::progress::Progress;
 use deno::ErrBox;
 use deno::Loader;
 use deno::ModuleSpecifier;
+use deno::PinnedBuf;
 use futures::Future;
+use serde_json::Value;
 use std;
 use std::env;
 use std::ops::Deref;
@@ -62,24 +65,6 @@ impl Deref for ThreadSafeGlobalState {
 }
 
 impl Loader for ThreadSafeGlobalState {
-  // TODO: implement Resolver trait and it should be implemented per worker
-  fn resolve(
-    &self,
-    specifier: &str,
-    referrer: &str,
-    _is_main: bool,
-    is_dyn_import: bool,
-  ) -> Result<ModuleSpecifier, ErrBox> {
-    let module_specifier =
-      ModuleSpecifier::resolve_import(specifier, referrer)?;
-
-    if is_dyn_import {
-      self.check_dyn_import(&module_specifier)?;
-    }
-
-    Ok(module_specifier)
-  }
-
   /// Given an absolute url, load its source code.
   fn load(
     &self,
@@ -251,6 +236,29 @@ impl ThreadSafeGlobalState {
       true,
     )
     .unwrap()
+  }
+
+  /// This is a special function that provides `state` argument to dispatcher.
+  ///
+  /// NOTE: This only works with JSON dispatcher.
+  /// This is a band-aid for transition to `Isolate.register_op` API as most of our
+  /// ops require `state` argument.
+  pub fn stateful_op<D>(
+    &self,
+    dispatcher: D,
+  ) -> impl Fn(Value, Option<PinnedBuf>) -> Result<JsonOp, ErrBox>
+  where
+    D: Fn(
+      &ThreadSafeGlobalState,
+      Value,
+      Option<PinnedBuf>,
+    ) -> Result<JsonOp, ErrBox>,
+  {
+    let state = self.clone();
+
+    move |args: Value, zero_copy: Option<PinnedBuf>| -> Result<JsonOp, ErrBox> {
+      dispatcher(&state, args, zero_copy)
+    }
   }
 
   pub fn metrics_op_dispatched(

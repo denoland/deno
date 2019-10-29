@@ -7,6 +7,7 @@ use crate::flags::DenoFlags;
 use crate::global_state::ThreadSafeGlobalState;
 use crate::ops::json_op;
 use crate::permissions::DenoPermissions;
+use crate::progress::Progress;
 use crate::resources;
 use crate::startup_data;
 use crate::state::ThreadSafeState;
@@ -135,31 +136,25 @@ fn op_create_worker(
 
   let parent_state = state.clone();
 
-  let mut module_specifier = ModuleSpecifier::resolve_url_or_path(specifier)?;
+  let module_specifier = ModuleSpecifier::resolve_url_or_path(specifier)?;
 
-  let mut child_argv = parent_state.argv.clone();
-
-  if !has_source_code {
-    if let Some(module) = state.main_module() {
-      module_specifier =
-        ModuleSpecifier::resolve_import(specifier, &module.to_string())?;
-      child_argv[1] = module_specifier.to_string();
-    }
-  }
+  //  if !has_source_code {
+  //    if let Some(module) = state.main_module() {
+  //      module_specifier =
+  //        ModuleSpecifier::resolve_import(specifier, &module.to_string())?;
+  //      child_argv[1] = module_specifier.to_string();
+  //    }
+  //  }
 
   // TODO:
   let global_state = ThreadSafeGlobalState::new(
     DenoFlags::default(),
-    child_argv.clone(),
-    parent_state.progress.clone(),
+    vec![],
+    Progress::new(),
     include_deno_namespace,
   )?;
-  let child_state = ThreadSafeState::new(
-    DenoPermissions::default(),
-    child_argv,
-    parent_state.progress.clone(),
-    include_deno_namespace,
-  )?;
+  let child_state =
+    ThreadSafeState::new(DenoPermissions::default(), include_deno_namespace)?;
   let rid = child_state.resource.rid;
   let name = format!("USER-WORKER-{}", specifier);
   let deno_main_call = format!("denoMain({})", include_deno_namespace);

@@ -1,37 +1,26 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::compilers::CompiledModule;
-use crate::compilers::JsCompiler;
-use crate::compilers::JsonCompiler;
-use crate::compilers::TsCompiler;
-use crate::deno_dir;
 use crate::deno_error::permission_denied;
-use crate::file_fetcher::SourceFileFetcher;
-use crate::flags::DenoFlags;
-use crate::global_state::ThreadSafeGlobalState;
 use crate::global_timer::GlobalTimer;
 use crate::import_map::ImportMap;
 use crate::metrics::Metrics;
-use crate::msg;
 use crate::ops::JsonOp;
 use crate::permissions::DenoPermissions;
-use crate::progress::Progress;
 use crate::resources;
 use crate::resources::ResourceId;
 use crate::worker::Worker;
 use deno::Buf;
 use deno::CoreOp;
 use deno::ErrBox;
-use deno::Loader;
 use deno::ModuleSpecifier;
 use deno::Op;
 use deno::PinnedBuf;
+use deno::Resolver;
 use futures::future::Shared;
 use futures::Future;
 use rand::rngs::StdRng;
 use serde_json::Value;
 use std;
 use std::collections::HashMap;
-use std::env;
 use std::ops::Deref;
 use std::str;
 use std::sync::atomic::Ordering;
@@ -52,10 +41,6 @@ pub struct ThreadSafeState(Arc<State>);
 
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct State {
-  pub modules: Arc<Mutex<deno::Modules>>,
-  pub main_module: Option<ModuleSpecifier>,
-  pub dir: deno_dir::DenoDir,
-  pub argv: Vec<String>,
   pub permissions: DenoPermissions,
   /// When flags contains a `.import_map_path` option, the content of the
   /// import map file will be resolved and set.
@@ -67,15 +52,7 @@ pub struct State {
   pub start_time: Instant,
   /// A reference to this worker's resource.
   pub resource: resources::Resource,
-  /// Reference to global progress bar.
-  pub progress: Progress,
   pub seeded_rng: Option<Mutex<StdRng>>,
-
-  pub file_fetcher: SourceFileFetcher,
-  pub js_compiler: JsCompiler,
-  pub json_compiler: JsonCompiler,
-  pub ts_compiler: TsCompiler,
-
   pub include_deno_namespace: bool,
 }
 
@@ -148,7 +125,7 @@ impl ThreadSafeState {
   }
 }
 
-impl Loader for ThreadSafeState {
+impl Resolver for ThreadSafeState {
   fn resolve(
     &self,
     specifier: &str,
@@ -173,71 +150,23 @@ impl Loader for ThreadSafeState {
 
     Ok(module_specifier)
   }
-
-  /// Given an absolute url, load its source code.
-  fn load(
-    &self,
-    module_specifier: &ModuleSpecifier,
-  ) -> Box<deno::SourceCodeInfoFuture> {
-    self.metrics.resolve_count.fetch_add(1, Ordering::SeqCst);
-    let module_url_specified = module_specifier.to_string();
-    Box::new(self.fetch_compiled_module(module_specifier).map(
-      |compiled_module| deno::SourceCodeInfo {
-        // Real module name, might be different from initial specifier
-        // due to redirections.
-        code: compiled_module.code,
-        module_url_specified,
-        module_url_found: compiled_module.name,
-      },
-    ))
-  }
 }
 
 impl ThreadSafeState {
   pub fn new(
     permissions: DenoPermissions,
-    argv_rest: Vec<String>,
-    progress: Progress,
     include_deno_namespace: bool,
   ) -> Result<Self, ErrBox> {
-    let custom_root = env::var("DENO_DIR").map(String::into).ok();
-
     let (worker_in_tx, worker_in_rx) = async_mpsc::channel::<Buf>(1);
     let (worker_out_tx, worker_out_rx) = async_mpsc::channel::<Buf>(1);
     let internal_channels = (worker_out_tx, worker_in_rx);
     let external_channels = (worker_in_tx, worker_out_rx);
     let resource = resources::add_worker(external_channels);
 
-    let dir = deno_dir::DenoDir::new(custom_root)?;
-
-    let file_fetcher = SourceFileFetcher::new(
-      dir.deps_cache.clone(),
-      progress.clone(),
-      true,
-      vec![],
-      false,
-    )?;
-
-    let ts_compiler =
-      TsCompiler::new(file_fetcher.clone(), dir.gen_cache.clone(), true, None)?;
-
-    let main_module: Option<ModuleSpecifier> = if argv_rest.len() <= 1 {
-      None
-    } else {
-      let root_specifier = argv_rest[1].clone();
-      Some(ModuleSpecifier::resolve_url_or_path(&root_specifier)?)
-    };
-
     let import_map = None;
     let seeded_rng = None;
 
-    let modules = Arc::new(Mutex::new(deno::Modules::new()));
-
     let state = State {
-      main_module,
-      modules,
-      dir,
-      argv: argv_rest,
       permissions,
       import_map,
       metrics: Metrics::default(),
@@ -246,67 +175,11 @@ impl ThreadSafeState {
       workers: Mutex::new(UserWorkerTable::new()),
       start_time: Instant::now(),
       resource,
-      progress,
       seeded_rng,
-      file_fetcher,
-      ts_compiler,
-      js_compiler: JsCompiler {},
-      json_compiler: JsonCompiler {},
       include_deno_namespace,
     };
 
     Ok(ThreadSafeState(Arc::new(state)))
-  }
-
-  pub fn fetch_compiled_module(
-    self: &Self,
-    module_specifier: &ModuleSpecifier,
-  ) -> impl Future<Item = CompiledModule, Error = ErrBox> {
-    let state_ = self.clone();
-
-    self
-      .file_fetcher
-      .fetch_source_file_async(&module_specifier)
-      .and_then(move |out| match out.media_type {
-        msg::MediaType::Unknown => state_.js_compiler.compile_async(&out),
-        msg::MediaType::Json => state_.json_compiler.compile_async(&out),
-        msg::MediaType::TypeScript
-        | msg::MediaType::TSX
-        | msg::MediaType::JSX => {
-          // TODO: to remove
-          let global_state = ThreadSafeGlobalState::new(
-            DenoFlags::default(),
-            vec![],
-            Progress::new(),
-            true,
-          )
-          .expect("");
-          state_.ts_compiler.compile_async(global_state, &out)
-        }
-        msg::MediaType::JavaScript => {
-          if state_.ts_compiler.compile_js {
-            // TODO: to remove
-            let global_state = ThreadSafeGlobalState::new(
-              DenoFlags::default(),
-              vec![],
-              Progress::new(),
-              true,
-            )
-            .expect("");
-            state_.ts_compiler.compile_async(global_state, &out)
-          } else {
-            state_.js_compiler.compile_async(&out)
-          }
-        }
-      })
-  }
-
-  /// Read main module from argv
-  pub fn main_module(&self) -> Option<ModuleSpecifier> {
-    match &self.main_module {
-      Some(module_specifier) => Some(module_specifier.clone()),
-      None => None,
-    }
   }
 
   #[inline]
@@ -364,14 +237,8 @@ impl ThreadSafeState {
   }
 
   #[cfg(test)]
-  pub fn mock(argv: Vec<String>) -> ThreadSafeState {
-    ThreadSafeState::new(
-      DenoPermissions::default(),
-      argv,
-      Progress::new(),
-      true,
-    )
-    .unwrap()
+  pub fn mock(_argv: Vec<String>) -> ThreadSafeState {
+    ThreadSafeState::new(DenoPermissions::default(), true).unwrap()
   }
 
   pub fn metrics_op_dispatched(
@@ -410,10 +277,5 @@ fn thread_safe() {
 
 #[test]
 fn import_map_given_for_repl() {
-  let _result = ThreadSafeState::new(
-    DenoPermissions::default(),
-    vec![String::from("./deno")],
-    Progress::new(),
-    true,
-  );
+  let _result = ThreadSafeState::new(DenoPermissions::default(), true);
 }

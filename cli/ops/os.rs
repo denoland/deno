@@ -35,15 +35,19 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
 }
 
 fn op_start(
-  state: &ThreadSafeState,
+  _state: &ThreadSafeState,
   _args: Value,
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
+  let argv: Vec<String> = vec![];
+
   Ok(JsonOp::Sync(json!({
     "cwd": deno_fs::normalize_path(&env::current_dir().unwrap()),
     "pid": std::process::id(),
-    "argv": state.argv,
-    "mainModule": state.main_module().map(|x| x.as_str().to_string()),
+    "argv": argv,
+    // TODO:
+    "mainModule": "".to_string(),
+    // "mainModule": state.main_module().map(|x| x.as_str().to_string()),
     // TODO:
     "debugFlag": false,
     // TODO:
