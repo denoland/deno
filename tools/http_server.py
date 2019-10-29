@@ -189,7 +189,7 @@ def main():
     with spawn() as servers:
         try:
             while all(s.thread.is_alive() for s in servers):
-                sleep(10)
+                sleep(1)
         except KeyboardInterrupt:
             pass
     sys.exit(1)
