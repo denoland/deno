@@ -11,14 +11,6 @@ pub struct Lockfile {
 }
 
 impl Lockfile {
-  pub fn from_flag(flag: &Option<String>) -> Option<Lockfile> {
-    if let Some(filename) = flag {
-      Some(Self::new(filename.to_string()))
-    } else {
-      None
-    }
-  }
-
   pub fn new(filename: String) -> Lockfile {
     Lockfile {
       map: HashMap::new(),
