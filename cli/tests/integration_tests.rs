@@ -349,15 +349,17 @@ itest!(_050_more_jsons {
 });
 
 itest!(lock_check_ok {
-  args: "run --lock-check=lock_check_ok.json 003_relative_import.ts",
+  args: "run --lock-check=lock_check_ok.json http://127.0.0.1:4545/cli/tests/003_relative_import.ts",
   output: "003_relative_import.ts.out",
+  http_server: true,
 });
 
 itest!(lock_check_err {
-  args: "run --lock-check=lock_check_err.json 003_relative_import.ts",
+  args: "run --lock-check=lock_check_err.json http://127.0.0.1:4545/cli/tests/003_relative_import.ts",
   output: "lock_check_err.out",
   check_stderr: true,
   exit_code: 10,
+  http_server: true,
 });
 
 itest!(async_error {
