@@ -383,10 +383,18 @@ export class Server implements AsyncIterable<ServerRequest> {
   }
 }
 
-export function serve(addr: string): Server {
-  // TODO(ry) Update serve to also take { hostname, port }.
-  const [hostname, port] = addr.split(":");
-  const listener = listen({ hostname, port: Number(port) });
+interface ServerConfig {
+  port: number;
+  hostname?: string;
+}
+
+export function serve(addr: string | ServerConfig): Server {
+  if (typeof addr === 'string') {
+    const [hostname, port] = addr.split(":");
+    addr = {hostname, port: Number(port)};
+  }
+  
+  const listener = listen(addr);
   return new Server(listener);
 }
 
