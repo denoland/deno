@@ -11,7 +11,7 @@ from util import add_env_path, executable_suffix, libdeno_path, make_env, rmtree
 from util import root_path, run, third_party_path
 
 depot_tools_path = os.path.join(third_party_path, "depot_tools")
-prebuilt_path = os.path.join(root_path, "prebuilt")
+prebuilt_path = os.path.join(third_party_path, "prebuilt")
 python_packages_path = os.path.join(third_party_path, "python_packages")
 
 python_site_env = None
@@ -186,22 +186,25 @@ def get_buildtools_tool_path(tool):
                         tool + executable_suffix)
 
 
-# Download the given item from Google storage.
-def download_from_google_storage(item, bucket, base_dir):
+def download_from_google_storage2(sha1_file, bucket):
     download_script = os.path.join(depot_tools_path,
                                    "download_from_google_storage.py")
-    sha1_file = os.path.join(base_dir, get_platform_dir_name(),
-                             item + executable_suffix + ".sha1")
     run([
         sys.executable,
         download_script,
-        "--platform=" + sys.platform,
         "--no_auth",
         "--bucket=%s" % bucket,
         "--sha1_file",
         sha1_file,
     ],
         env=google_env())
+
+
+# Download the given item from Google storage.
+def download_from_google_storage(item, bucket, base_dir):
+    sha1_file = os.path.join(base_dir, get_platform_dir_name(),
+                             item + executable_suffix + ".sha1")
+    download_from_google_storage2(sha1_file, bucket)
 
 
 # Download the given item from Chrome Infrastructure Package Deployment.
@@ -246,14 +249,6 @@ def download_gn():
 def download_clang_format():
     download_from_google_storage("clang-format", "chromium-clang-format",
                                  os.path.join(libdeno_path, "buildtools"))
-
-
-def download_sccache():
-    download_from_google_storage("sccache", "denoland", prebuilt_path)
-
-
-def download_hyperfine():
-    download_from_google_storage("hyperfine", "denoland", prebuilt_path)
 
 
 # Download clang by calling the clang update script.
