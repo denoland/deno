@@ -1,16 +1,12 @@
 use crate::compilers::CompiledModule;
-pub use serde_derive::Deserialize;
 use serde_json::json;
 pub use serde_json::Value;
 use std::collections::HashMap;
 use std::io::Result;
 
-#[derive(Deserialize)]
-struct Map(pub HashMap<String, String>);
-
 pub struct Lockfile {
-  read: bool,
-  map: Map,
+  need_read: bool,
+  map: HashMap<String, String>,
   pub filename: String,
 }
 
@@ -25,14 +21,14 @@ impl Lockfile {
 
   pub fn new(filename: String) -> Lockfile {
     Lockfile {
-      map: Map(HashMap::new()),
+      map: HashMap::new(),
       filename,
-      read: false,
+      need_read: true,
     }
   }
 
   pub fn write(&self) -> Result<()> {
-    let j = json!(self.map.0);
+    let j = json!(self.map);
     let s = serde_json::to_string_pretty(&j).unwrap();
     let mut f = std::fs::OpenOptions::new()
       .write(true)
@@ -48,19 +44,19 @@ impl Lockfile {
   pub fn read(&mut self) -> Result<()> {
     debug!("lockfile read {}", self.filename);
     let s = std::fs::read_to_string(&self.filename)?;
-    self.map.0 = serde_json::from_str(&s)?;
-    self.read = true;
+    self.map = serde_json::from_str(&s)?;
+    self.need_read = false;
     Ok(())
   }
 
   /// Lazily reads the filename, checks the given module is included.
   /// Returns Ok(true) if check passed
   pub fn check(&mut self, m: &CompiledModule) -> Result<bool> {
-    if !self.read {
+    if self.need_read {
       self.read()?;
     }
-
-    Ok(if let Some(lockfile_checksum) = self.map.0.get(&m.name) {
+    assert!(!self.need_read);
+    Ok(if let Some(lockfile_checksum) = self.map.get(&m.name) {
       let compiled_checksum = crate::checksum::gen2(&m.code);
       lockfile_checksum == &compiled_checksum
     } else {
@@ -70,6 +66,6 @@ impl Lockfile {
 
   pub fn insert(&mut self, m: &CompiledModule) -> bool {
     let checksum = crate::checksum::gen2(&m.code);
-    self.map.0.insert(m.name.clone(), checksum).is_none()
+    self.map.insert(m.name.clone(), checksum).is_none()
   }
 }
