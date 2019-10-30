@@ -81,6 +81,19 @@ export function equal(c: unknown, d: unknown): boolean {
       }
       return true;
     }
+    if (a && b && a instanceof Map && b instanceof Map) {
+      if (a.size !== b.size) {
+        return false;
+      }
+
+      for (const [key, value] of a) {
+        if (!compare(value, b.get(key))) {
+          return false;
+        }
+      }
+
+      return true;
+    }
     // Have to render RegExp & Date for string comparison
     // unless it's mistreated as object
     if (
