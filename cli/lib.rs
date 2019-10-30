@@ -117,9 +117,14 @@ fn create_worker_and_state(
     .map_err(deno_error::print_err_and_exit)
     .unwrap();
 
-  let state = ThreadSafeState::new(global_state.permissions.clone(), true)
-    .map_err(deno_error::print_err_and_exit)
-    .unwrap();
+  let state = ThreadSafeState::new(
+    global_state.permissions.clone(),
+    true,
+    global_state.flags.import_map_path.as_ref(),
+    global_state.flags.seed,
+  )
+  .map_err(deno_error::print_err_and_exit)
+  .unwrap();
 
   let worker = Worker::new(
     "main".to_string(),

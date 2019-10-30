@@ -152,6 +152,8 @@ fn op_create_worker(
   let child_state = ThreadSafeState::new(
     global_state.permissions.clone(),
     include_deno_namespace,
+    global_state.flags.import_map_path.as_ref(),
+    global_state.flags.seed,
   )?;
   let rid = child_state.resource.rid;
   let name = format!("USER-WORKER-{}", specifier);

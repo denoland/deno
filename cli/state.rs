@@ -18,6 +18,7 @@ use deno::Resolver;
 use futures::future::Shared;
 use futures::Future;
 use rand::rngs::StdRng;
+use rand::SeedableRng;
 use serde_json::Value;
 use std;
 use std::collections::HashMap;
@@ -156,6 +157,8 @@ impl ThreadSafeState {
   pub fn new(
     permissions: DenoPermissions,
     include_deno_namespace: bool,
+    import_map_path: Option<&String>,
+    rng_seed: Option<u64>,
   ) -> Result<Self, ErrBox> {
     let (worker_in_tx, worker_in_rx) = async_mpsc::channel::<Buf>(1);
     let (worker_out_tx, worker_out_rx) = async_mpsc::channel::<Buf>(1);
@@ -163,8 +166,15 @@ impl ThreadSafeState {
     let external_channels = (worker_in_tx, worker_out_rx);
     let resource = resources::add_worker(external_channels);
 
-    let import_map = None;
-    let seeded_rng = None;
+    let import_map: Option<ImportMap> = match import_map_path {
+      None => None,
+      Some(file_path) => Some(ImportMap::load(file_path)?),
+    };
+
+    let seeded_rng = match rng_seed {
+      Some(seed) => Some(Mutex::new(StdRng::seed_from_u64(seed))),
+      None => None,
+    };
 
     let state = State {
       permissions,
@@ -238,7 +248,7 @@ impl ThreadSafeState {
 
   #[cfg(test)]
   pub fn mock(_argv: Vec<String>) -> ThreadSafeState {
-    ThreadSafeState::new(DenoPermissions::default(), true).unwrap()
+    ThreadSafeState::new(DenoPermissions::default(), true, None, None).unwrap()
   }
 
   pub fn metrics_op_dispatched(
@@ -277,5 +287,6 @@ fn thread_safe() {
 
 #[test]
 fn import_map_given_for_repl() {
-  let _result = ThreadSafeState::new(DenoPermissions::default(), true);
+  let _result =
+    ThreadSafeState::new(DenoPermissions::default(), true, None, None);
 }

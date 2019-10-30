@@ -145,7 +145,6 @@ mod tests {
   use super::*;
   use crate::flags;
   use crate::flags::DenoFlags;
-  use crate::permissions::DenoPermissions;
   use crate::progress::Progress;
   use crate::resources;
   use crate::startup_data;
@@ -171,7 +170,13 @@ mod tests {
       true,
     )
     .unwrap();
-    let state = ThreadSafeState::new(DenoPermissions::default(), true).unwrap();
+    let state = ThreadSafeState::new(
+      global_state.permissions.clone(),
+      true,
+      global_state.flags.import_map_path.as_ref(),
+      global_state.flags.seed,
+    )
+    .unwrap();
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
       let mut worker =
@@ -209,7 +214,13 @@ mod tests {
       true,
     )
     .unwrap();
-    let state = ThreadSafeState::new(DenoPermissions::default(), true).unwrap();
+    let state = ThreadSafeState::new(
+      global_state.permissions.clone(),
+      true,
+      global_state.flags.import_map_path.as_ref(),
+      global_state.flags.seed,
+    )
+    .unwrap();
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
       let mut worker =
@@ -244,10 +255,15 @@ mod tests {
     let argv = vec![String::from("deno"), module_specifier.to_string()];
     let mut flags = flags::DenoFlags::default();
     flags.reload = true;
-    let perms = DenoPermissions::from_flags(&flags);
     let global_state =
       ThreadSafeGlobalState::new(flags, argv, Progress::new(), true).unwrap();
-    let state = ThreadSafeState::new(perms, true).unwrap();
+    let state = ThreadSafeState::new(
+      global_state.permissions.clone(),
+      true,
+      global_state.flags.import_map_path.as_ref(),
+      global_state.flags.seed,
+    )
+    .unwrap();
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
       let mut worker = Worker::new(
