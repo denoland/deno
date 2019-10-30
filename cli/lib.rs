@@ -118,6 +118,7 @@ fn create_worker_and_state(
     .unwrap();
 
   let state = ThreadSafeState::new(
+    global_state.main_module.clone(),
     global_state.permissions.clone(),
     true,
     global_state.flags.import_map_path.as_ref(),
@@ -165,10 +166,11 @@ pub fn print_file_info(
   worker: Worker,
   module_specifier: &ModuleSpecifier,
 ) -> impl Future<Item = Worker, Error = ()> {
-  let state_ = worker.global_state.clone();
+  let global_state_ = worker.global_state.clone();
+  let state_ = worker.state.clone();
   let module_specifier_ = module_specifier.clone();
 
-  state_
+  global_state_
     .file_fetcher
     .fetch_source_file_async(&module_specifier)
     .map_err(|err| println!("{}", err))
@@ -185,7 +187,7 @@ pub fn print_file_info(
         msg::enum_name_media_type(out.media_type)
       );
 
-      state_
+      global_state_
         .clone()
         .fetch_compiled_module(&module_specifier_)
         .map_err(|e| {
@@ -196,9 +198,9 @@ pub fn print_file_info(
         .and_then(move |compiled| {
           if out.media_type == msg::MediaType::TypeScript
             || (out.media_type == msg::MediaType::JavaScript
-              && state_.ts_compiler.compile_js)
+              && global_state_.ts_compiler.compile_js)
           {
-            let compiled_source_file = state_
+            let compiled_source_file = global_state_
               .ts_compiler
               .get_compiled_source_file(&out.url)
               .unwrap();
@@ -210,7 +212,7 @@ pub fn print_file_info(
             );
           }
 
-          if let Ok(source_map) = state_
+          if let Ok(source_map) = global_state_
             .clone()
             .ts_compiler
             .get_source_map_file(&module_specifier_)
@@ -250,7 +252,7 @@ fn info_command(flags: DenoFlags, argv: Vec<String>) {
     return print_cache_info(worker);
   }
 
-  let main_module = state.main_module().unwrap();
+  let main_module = state.main_module.as_ref().unwrap().clone();
   let main_future = lazy(move || {
     // Setup runtime.
     js_check(worker.execute("denoMain()"));
@@ -273,7 +275,7 @@ fn info_command(flags: DenoFlags, argv: Vec<String>) {
 fn fetch_command(flags: DenoFlags, argv: Vec<String>) {
   let (mut worker, state) = create_worker_and_state(flags, argv.clone());
 
-  let main_module = state.main_module().unwrap();
+  let main_module = state.main_module.as_ref().unwrap().clone();
   let main_future = lazy(move || {
     // Setup runtime.
     js_check(worker.execute("denoMain()"));
@@ -321,7 +323,7 @@ fn eval_command(flags: DenoFlags, argv: Vec<String>) {
 fn bundle_command(flags: DenoFlags, argv: Vec<String>) {
   let (worker, state) = create_worker_and_state(flags, argv);
 
-  let main_module = state.main_module().unwrap();
+  let main_module = state.main_module.as_ref().unwrap().clone();
   assert!(state.argv.len() >= 3);
   let out_file = state.argv[2].clone();
   debug!(">>>>> bundle_async START");
@@ -367,7 +369,7 @@ fn run_script(flags: DenoFlags, argv: Vec<String>) {
   let use_current_thread = flags.current_thread;
   let (mut worker, state) = create_worker_and_state(flags, argv);
 
-  let main_module = state.main_module().unwrap();
+  let main_module = state.main_module.as_ref().unwrap().clone();
   // Normal situation of executing a module.
   let main_future = lazy(move || {
     // Setup runtime.

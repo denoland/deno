@@ -42,7 +42,9 @@ pub struct ThreadSafeState(Arc<State>);
 
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct State {
+  pub modules: Arc<Mutex<deno::Modules>>,
   pub permissions: DenoPermissions,
+  pub main_module: Option<ModuleSpecifier>,
   /// When flags contains a `.import_map_path` option, the content of the
   /// import map file will be resolved and set.
   pub import_map: Option<ImportMap>,
@@ -155,6 +157,7 @@ impl Resolver for ThreadSafeState {
 
 impl ThreadSafeState {
   pub fn new(
+    main_module: Option<ModuleSpecifier>,
     permissions: DenoPermissions,
     include_deno_namespace: bool,
     import_map_path: Option<&String>,
@@ -176,7 +179,11 @@ impl ThreadSafeState {
       None => None,
     };
 
+    let modules = Arc::new(Mutex::new(deno::Modules::new()));
+
     let state = State {
+      modules,
+      main_module,
       permissions,
       import_map,
       metrics: Metrics::default(),
@@ -247,8 +254,23 @@ impl ThreadSafeState {
   }
 
   #[cfg(test)]
-  pub fn mock(_argv: Vec<String>) -> ThreadSafeState {
-    ThreadSafeState::new(DenoPermissions::default(), true, None, None).unwrap()
+  pub fn mock(argv: Vec<String>) -> ThreadSafeState {
+    let module_specifier = if argv.is_empty() {
+      None
+    } else {
+      let module_specifier = ModuleSpecifier::resolve_url_or_path(&argv[0])
+        .expect("Invalid entry module");
+      Some(module_specifier)
+    };
+
+    ThreadSafeState::new(
+      module_specifier,
+      DenoPermissions::default(),
+      true,
+      None,
+      None,
+    )
+    .unwrap()
   }
 
   pub fn metrics_op_dispatched(
@@ -283,10 +305,4 @@ fn thread_safe() {
     String::from("./deno"),
     String::from("hello.js"),
   ]));
-}
-
-#[test]
-fn import_map_given_for_repl() {
-  let _result =
-    ThreadSafeState::new(DenoPermissions::default(), true, None, None);
 }

@@ -62,7 +62,7 @@ impl Worker {
           referrer,
           state_.clone(),
           global_state_.clone(),
-          global_state_.modules.clone(),
+          state_.modules.clone(),
         );
         Box::new(load_stream)
       });
@@ -109,7 +109,7 @@ impl Worker {
     let resolver = self.state.clone();
     let loader = self.global_state.clone();
     let isolate = self.isolate.clone();
-    let modules = self.global_state.modules.clone();
+    let modules = self.state.modules.clone();
     let recursive_load = RecursiveLoad::main(
       &module_specifier.to_string(),
       maybe_code,
@@ -171,6 +171,7 @@ mod tests {
     )
     .unwrap();
     let state = ThreadSafeState::new(
+      Some(module_specifier.clone()),
       global_state.permissions.clone(),
       true,
       global_state.flags.import_map_path.as_ref(),
@@ -215,6 +216,7 @@ mod tests {
     )
     .unwrap();
     let state = ThreadSafeState::new(
+      Some(module_specifier.clone()),
       global_state.permissions.clone(),
       true,
       global_state.flags.import_map_path.as_ref(),
@@ -258,6 +260,7 @@ mod tests {
     let global_state =
       ThreadSafeGlobalState::new(flags, argv, Progress::new(), true).unwrap();
     let state = ThreadSafeState::new(
+      Some(module_specifier.clone()),
       global_state.permissions.clone(),
       true,
       global_state.flags.import_map_path.as_ref(),

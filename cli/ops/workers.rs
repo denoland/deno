@@ -143,13 +143,14 @@ fn op_create_worker(
   // TODO(bartlomieju): Isn't this wrong?
   let mut module_specifier = ModuleSpecifier::resolve_url_or_path(specifier)?;
   if !has_source_code {
-    if let Some(module) = global_state.main_module() {
-      module_specifier =
-        ModuleSpecifier::resolve_import(specifier, &module.to_string())?;
+    if let Some(referrer) = parent_state.main_module.as_ref() {
+      let referrer = referrer.clone().to_string();
+      module_specifier = ModuleSpecifier::resolve_import(specifier, &referrer)?;
     }
   }
 
   let child_state = ThreadSafeState::new(
+    Some(module_specifier.clone()),
     global_state.permissions.clone(),
     include_deno_namespace,
     global_state.flags.import_map_path.as_ref(),
@@ -158,7 +159,6 @@ fn op_create_worker(
   let rid = child_state.resource.rid;
   let name = format!("USER-WORKER-{}", specifier);
   let deno_main_call = format!("denoMain({})", include_deno_namespace);
-
   let mut worker = Worker::new(
     name,
     startup_data::deno_isolate_init(),

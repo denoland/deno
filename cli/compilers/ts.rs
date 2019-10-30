@@ -247,6 +247,7 @@ impl TsCompiler {
       .fetch_add(1, Ordering::SeqCst);
 
     let worker_state = ThreadSafeState::new(
+      None,
       global_state.permissions.clone(),
       true,
       global_state.flags.import_map_path.as_ref(),

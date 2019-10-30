@@ -28,14 +28,11 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Instant;
 
-/// Isolate cannot be passed between threads but ThreadSafeGlobalState can.
-/// ThreadSafeGlobalState satisfies Send and Sync. So any state that needs to be
-/// accessed outside the main V8 thread should be inside ThreadSafeGlobalState.
+/// Holds state of the program and can be accessed by V8 isolate.
 pub struct ThreadSafeGlobalState(Arc<GlobalState>);
 
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct GlobalState {
-  pub modules: Arc<Mutex<deno::Modules>>,
   pub main_module: Option<ModuleSpecifier>,
   pub dir: deno_dir::DenoDir,
   pub argv: Vec<String>,
@@ -116,11 +113,8 @@ impl ThreadSafeGlobalState {
       Some(ModuleSpecifier::resolve_url_or_path(&root_specifier)?)
     };
 
-    let modules = Arc::new(Mutex::new(deno::Modules::new()));
-
     let state = GlobalState {
       main_module,
-      modules,
       dir,
       argv: argv_rest,
       permissions: DenoPermissions::from_flags(&flags),
@@ -163,14 +157,6 @@ impl ThreadSafeGlobalState {
           }
         }
       })
-  }
-
-  /// Read main module from argv
-  pub fn main_module(&self) -> Option<ModuleSpecifier> {
-    match &self.main_module {
-      Some(module_specifier) => Some(module_specifier.clone()),
-      None => None,
-    }
   }
 
   #[inline]
