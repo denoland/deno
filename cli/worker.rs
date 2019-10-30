@@ -177,7 +177,7 @@ mod tests {
       global_state.flags.seed,
     )
     .unwrap();
-    let state_ = state.clone();
+    let global_state_ = global_state.clone();
     tokio_util::run(lazy(move || {
       let mut worker =
         Worker::new("TEST".to_string(), StartupData::None, global_state, state);
@@ -191,7 +191,7 @@ mod tests {
         })
     }));
 
-    let metrics = &state_.metrics;
+    let metrics = &global_state_.metrics;
     assert_eq!(metrics.resolve_count.load(Ordering::SeqCst), 2);
     // Check that we didn't start the compiler.
     assert_eq!(metrics.compiler_starts.load(Ordering::SeqCst), 0);
@@ -264,7 +264,7 @@ mod tests {
       global_state.flags.seed,
     )
     .unwrap();
-    let state_ = state.clone();
+    let global_state_ = global_state.clone();
     tokio_util::run(lazy(move || {
       let mut worker = Worker::new(
         "TEST".to_string(),
@@ -283,7 +283,7 @@ mod tests {
         })
     }));
 
-    let metrics = &state_.metrics;
+    let metrics = &global_state_.metrics;
     assert_eq!(metrics.resolve_count.load(Ordering::SeqCst), 3);
     // Check that we've only invoked the compiler once.
     assert_eq!(metrics.compiler_starts.load(Ordering::SeqCst), 1);
