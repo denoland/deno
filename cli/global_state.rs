@@ -7,7 +7,6 @@ use crate::deno_dir;
 use crate::deno_error::permission_denied;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags;
-use crate::global_timer::GlobalTimer;
 use crate::metrics::Metrics;
 use crate::msg;
 use crate::ops::JsonOp;
@@ -25,8 +24,6 @@ use std::ops::Deref;
 use std::str;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::sync::Mutex;
-use std::time::Instant;
 
 /// Holds state of the program and can be accessed by V8 isolate.
 pub struct ThreadSafeGlobalState(Arc<GlobalState>);
@@ -39,8 +36,6 @@ pub struct GlobalState {
   pub flags: flags::DenoFlags,
   pub permissions: DenoPermissions,
   pub metrics: Metrics,
-  pub global_timer: Mutex<GlobalTimer>,
-  pub start_time: Instant,
   pub progress: Progress,
   pub file_fetcher: SourceFileFetcher,
   pub js_compiler: JsCompiler,
@@ -120,8 +115,6 @@ impl ThreadSafeGlobalState {
       permissions: DenoPermissions::from_flags(&flags),
       flags,
       metrics: Metrics::default(),
-      global_timer: Mutex::new(GlobalTimer::new()),
-      start_time: Instant::now(),
       progress,
       file_fetcher,
       ts_compiler,
@@ -224,11 +217,6 @@ impl ThreadSafeGlobalState {
     .unwrap()
   }
 
-  /// This is a special function that provides `state` argument to dispatcher.
-  ///
-  /// NOTE: This only works with JSON dispatcher.
-  /// This is a band-aid for transition to `Isolate.register_op` API as most of our
-  /// ops require `state` argument.
   pub fn stateful_op<D>(
     &self,
     dispatcher: D,
@@ -245,30 +233,6 @@ impl ThreadSafeGlobalState {
     move |args: Value, zero_copy: Option<PinnedBuf>| -> Result<JsonOp, ErrBox> {
       dispatcher(&state, args, zero_copy)
     }
-  }
-
-  pub fn metrics_op_dispatched(
-    &self,
-    bytes_sent_control: usize,
-    bytes_sent_data: usize,
-  ) {
-    self.metrics.ops_dispatched.fetch_add(1, Ordering::SeqCst);
-    self
-      .metrics
-      .bytes_sent_control
-      .fetch_add(bytes_sent_control, Ordering::SeqCst);
-    self
-      .metrics
-      .bytes_sent_data
-      .fetch_add(bytes_sent_data, Ordering::SeqCst);
-  }
-
-  pub fn metrics_op_completed(&self, bytes_received: usize) {
-    self.metrics.ops_completed.fetch_add(1, Ordering::SeqCst);
-    self
-      .metrics
-      .bytes_received
-      .fetch_add(bytes_received, Ordering::SeqCst);
   }
 }
 
