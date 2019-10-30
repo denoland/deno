@@ -2,6 +2,7 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::colors;
 use crate::fs as deno_fs;
+use crate::global_state::ThreadSafeGlobalState;
 use crate::ops::json_op;
 use crate::state::ThreadSafeState;
 use crate::version;
@@ -22,7 +23,7 @@ static BUILD_OS: &str = "win";
 #[cfg(target_arch = "x86_64")]
 static BUILD_ARCH: &str = "x64";
 
-pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+pub fn init(i: &mut Isolate, gs: &ThreadSafeGlobalState, s: &ThreadSafeState) {
   i.register_op("exit", s.core_op(json_op(s.stateful_op(op_exit))));
   i.register_op("is_tty", s.core_op(json_op(s.stateful_op(op_is_tty))));
   i.register_op("env", s.core_op(json_op(s.stateful_op(op_env))));
@@ -31,27 +32,21 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op("get_env", s.core_op(json_op(s.stateful_op(op_get_env))));
   i.register_op("home_dir", s.core_op(json_op(s.stateful_op(op_home_dir))));
   i.register_op("hostname", s.core_op(json_op(s.stateful_op(op_hostname))));
-  i.register_op("start", s.core_op(json_op(s.stateful_op(op_start))));
+  i.register_op("start", s.core_op(json_op(gs.stateful_op(op_start))));
 }
 
 fn op_start(
-  _state: &ThreadSafeState,
+  state: &ThreadSafeGlobalState,
   _args: Value,
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
-  let argv: Vec<String> = vec![];
-
   Ok(JsonOp::Sync(json!({
     "cwd": deno_fs::normalize_path(&env::current_dir().unwrap()),
     "pid": std::process::id(),
-    "argv": argv,
-    // TODO:
-    "mainModule": "".to_string(),
-    // "mainModule": state.main_module().map(|x| x.as_str().to_string()),
-    // TODO:
-    "debugFlag": false,
-    // TODO:
-    "versionFlag": false,
+    "argv": state.argv,
+    "mainModule": state.main_module().map(|x| x.as_str().to_string()),
+    "debugFlag": state.flags.log_level.map_or(false, |l| l == log::Level::Debug),
+    "versionFlag": state.flags.version,
     "v8Version": version::v8(),
     "denoVersion": version::DENO,
     "tsVersion": version::TYPESCRIPT,

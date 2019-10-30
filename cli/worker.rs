@@ -44,14 +44,14 @@ impl Worker {
       ops::io::init(&mut i, &state);
       ops::net::init(&mut i, &state);
       ops::tls::init(&mut i, &state);
-      ops::os::init(&mut i, &state);
+      ops::os::init(&mut i, &global_state, &state);
       ops::permissions::init(&mut i, &state);
       ops::process::init(&mut i, &state);
       ops::random::init(&mut i, &state);
       ops::repl::init(&mut i, &global_state, &state);
       ops::resources::init(&mut i, &state);
       ops::timers::init(&mut i, &state);
-      ops::workers::init(&mut i, &state);
+      ops::workers::init(&mut i, &global_state, &state);
 
       let global_state_ = global_state.clone();
       let state_ = state.clone();

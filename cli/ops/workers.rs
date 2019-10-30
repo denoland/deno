@@ -3,11 +3,8 @@ use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::deno_error::js_check;
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
-use crate::flags::DenoFlags;
 use crate::global_state::ThreadSafeGlobalState;
 use crate::ops::json_op;
-use crate::permissions::DenoPermissions;
-use crate::progress::Progress;
 use crate::resources;
 use crate::startup_data;
 use crate::state::ThreadSafeState;
@@ -22,10 +19,16 @@ use std;
 use std::convert::From;
 use std::sync::atomic::Ordering;
 
-pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
+pub fn init(i: &mut Isolate, gs: &ThreadSafeGlobalState, s: &ThreadSafeState) {
+  let state = s.clone();
+
   i.register_op(
     "create_worker",
-    s.core_op(json_op(s.stateful_op(op_create_worker))),
+    s.core_op(json_op(gs.stateful_op(
+      move |global_state, args, zero_copy_buf| {
+        op_create_worker(global_state, &state, args, zero_copy_buf)
+      },
+    ))),
   );
   i.register_op(
     "host_get_worker_closed",
@@ -120,6 +123,7 @@ struct CreateWorkerArgs {
 
 /// Create worker as the host
 fn op_create_worker(
+  global_state: &ThreadSafeGlobalState,
   state: &ThreadSafeState,
   args: Value,
   _data: Option<PinnedBuf>,
@@ -136,25 +140,19 @@ fn op_create_worker(
 
   let parent_state = state.clone();
 
-  let module_specifier = ModuleSpecifier::resolve_url_or_path(specifier)?;
+  // TODO(bartlomieju): Isn't this wrong?
+  let mut module_specifier = ModuleSpecifier::resolve_url_or_path(specifier)?;
+  if !has_source_code {
+    if let Some(module) = global_state.main_module() {
+      module_specifier =
+        ModuleSpecifier::resolve_import(specifier, &module.to_string())?;
+    }
+  }
 
-  //  if !has_source_code {
-  //    if let Some(module) = state.main_module() {
-  //      module_specifier =
-  //        ModuleSpecifier::resolve_import(specifier, &module.to_string())?;
-  //      child_argv[1] = module_specifier.to_string();
-  //    }
-  //  }
-
-  // TODO:
-  let global_state = ThreadSafeGlobalState::new(
-    DenoFlags::default(),
-    vec![],
-    Progress::new(),
+  let child_state = ThreadSafeState::new(
+    global_state.permissions.clone(),
     include_deno_namespace,
   )?;
-  let child_state =
-    ThreadSafeState::new(DenoPermissions::default(), include_deno_namespace)?;
   let rid = child_state.resource.rid;
   let name = format!("USER-WORKER-{}", specifier);
   let deno_main_call = format!("denoMain({})", include_deno_namespace);
@@ -162,7 +160,7 @@ fn op_create_worker(
   let mut worker = Worker::new(
     name,
     startup_data::deno_isolate_init(),
-    global_state,
+    global_state.clone(),
     child_state,
   );
   js_check(worker.execute(&deno_main_call));

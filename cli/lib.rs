@@ -69,7 +69,6 @@ use futures::Future;
 use log::Level;
 use log::Metadata;
 use log::Record;
-use permissions::DenoPermissions;
 use std::env;
 
 static LOGGER: Logger = Logger;
@@ -96,7 +95,7 @@ impl log::Log for Logger {
   fn flush(&self) {}
 }
 
-fn create_worker_and_global_state(
+fn create_worker_and_state(
   flags: DenoFlags,
   argv: Vec<String>,
 ) -> (Worker, ThreadSafeGlobalState) {
@@ -114,12 +113,11 @@ fn create_worker_and_global_state(
     }
   });
 
-  let perms = DenoPermissions::from_flags(&flags);
   let global_state = ThreadSafeGlobalState::new(flags, argv, progress, true)
     .map_err(deno_error::print_err_and_exit)
     .unwrap();
 
-  let state = ThreadSafeState::new(perms, true)
+  let state = ThreadSafeState::new(global_state.permissions.clone(), true)
     .map_err(deno_error::print_err_and_exit)
     .unwrap();
 
@@ -219,12 +217,8 @@ pub fn print_file_info(
             );
           }
 
-          if let Some(deps) = worker
-            .global_state
-            .modules
-            .lock()
-            .unwrap()
-            .deps(&compiled.name)
+          if let Some(deps) =
+            state_.modules.lock().unwrap().deps(&compiled.name)
           {
             println!("{}{}", colors::bold("deps:\n".to_string()), deps.name);
             if let Some(ref depsdeps) = deps.deps {
@@ -244,7 +238,7 @@ pub fn print_file_info(
 }
 
 fn info_command(flags: DenoFlags, argv: Vec<String>) {
-  let (mut worker, state) = create_worker_and_global_state(flags, argv.clone());
+  let (mut worker, state) = create_worker_and_state(flags, argv.clone());
 
   // If it was just "deno info" print location of caches and exit
   if argv.len() == 1 {
@@ -272,7 +266,7 @@ fn info_command(flags: DenoFlags, argv: Vec<String>) {
 }
 
 fn fetch_command(flags: DenoFlags, argv: Vec<String>) {
-  let (mut worker, state) = create_worker_and_global_state(flags, argv.clone());
+  let (mut worker, state) = create_worker_and_state(flags, argv.clone());
 
   let main_module = state.main_module().unwrap();
   let main_future = lazy(move || {
@@ -291,7 +285,7 @@ fn fetch_command(flags: DenoFlags, argv: Vec<String>) {
 }
 
 fn eval_command(flags: DenoFlags, argv: Vec<String>) {
-  let (mut worker, state) = create_worker_and_global_state(flags, argv);
+  let (mut worker, state) = create_worker_and_state(flags, argv);
   let ts_source = state.argv[1].clone();
   // Force TypeScript compile.
   let main_module =
@@ -320,7 +314,7 @@ fn eval_command(flags: DenoFlags, argv: Vec<String>) {
 }
 
 fn bundle_command(flags: DenoFlags, argv: Vec<String>) {
-  let (worker, state) = create_worker_and_global_state(flags, argv);
+  let (worker, state) = create_worker_and_state(flags, argv);
 
   let main_module = state.main_module().unwrap();
   assert!(state.argv.len() >= 3);
@@ -348,7 +342,7 @@ fn bundle_command(flags: DenoFlags, argv: Vec<String>) {
 }
 
 fn run_repl(flags: DenoFlags, argv: Vec<String>) {
-  let (mut worker, _state) = create_worker_and_global_state(flags, argv);
+  let (mut worker, _state) = create_worker_and_state(flags, argv);
 
   // REPL situation.
   let main_future = lazy(move || {
@@ -366,7 +360,7 @@ fn run_repl(flags: DenoFlags, argv: Vec<String>) {
 
 fn run_script(flags: DenoFlags, argv: Vec<String>) {
   let use_current_thread = flags.current_thread;
-  let (mut worker, state) = create_worker_and_global_state(flags, argv);
+  let (mut worker, state) = create_worker_and_state(flags, argv);
 
   let main_module = state.main_module().unwrap();
   // Normal situation of executing a module.

@@ -7,7 +7,6 @@ use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::global_state::ThreadSafeGlobalState;
 use crate::msg;
-use crate::permissions::DenoPermissions;
 use crate::resources;
 use crate::source_maps::SourceMapGetter;
 use crate::startup_data;
@@ -247,8 +246,9 @@ impl TsCompiler {
       .compiler_starts
       .fetch_add(1, Ordering::SeqCst);
 
-    let worker_state = ThreadSafeState::new(DenoPermissions::default(), true)
-      .expect("Unable to create worker state");
+    let worker_state =
+      ThreadSafeState::new(global_state.permissions.clone(), true)
+        .expect("Unable to create worker state");
 
     let mut worker = Worker::new(
       "TS".to_string(),
