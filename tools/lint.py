@@ -55,7 +55,7 @@ def pylint():
     print "pylint"
     script = os.path.join(third_party_path, "python_packages", "pylint")
     rcfile = os.path.join(third_party_path, "depot_tools", "pylintrc")
-    source_files = git_ls_files(root_path, ["*.py", ":!:gclient_config.py"])
+    source_files = git_ls_files(root_path, ["*.py"])
     run([sys.executable, script, "--rcfile=" + rcfile, "--"] + source_files,
         env=python_env(),
         shell=False,
