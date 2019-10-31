@@ -5,6 +5,7 @@ import * as domTypes from "./dom_types.ts";
 import { TextEncoder } from "./text_encoding.ts";
 import { DenoBlob, bytesSymbol as blobBytesSymbol } from "./blob.ts";
 import { Headers } from "./headers.ts";
+import { EOF } from "./io.ts";
 import { read, close } from "./files.ts";
 import { URLSearchParams } from "./url_search_params.ts";
 import * as dispatch from "./dispatch.ts";
@@ -93,11 +94,11 @@ export class Response implements domTypes.Response {
           function pump(): Promise<void> {
             const bytes: Uint8Array = new Uint8Array(2048);
             return read(rid, bytes).then(value => {
-              if (value == null) {
+              if (value == null || value == EOF) {
                 controller.close();
                 return;
               }
-              controller.enqueue(bytes.slice(0, value));
+              controller.enqueue(bytes.slice(0, value as number));
               return pump();
             });
           }
