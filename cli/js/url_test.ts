@@ -1,11 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test, assert, assertEquals } from "./test_util.ts";
-// Some of these APIs aren't exposed in the types and so we have to cast to any
-// in order to "trick" TypeScript.	// in order to "trick" TypeScript.
-const {
-  customInspect
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-} = Deno as any;
 
 test(function urlParsing(): void {
   const url = new URL(
@@ -189,7 +183,7 @@ test(function sortingNonExistentParamRemovesQuestionMarkFromURL(): void {
 test(function customInspectFunction(): void {
   const url = new URL("http://example.com/?");
   assertEquals(
-    url[customInspect](),
+    Deno.inspect(url),
     'URL { href: "http://example.com/?", origin: "http://example.com", protocol: "http:", username: "", password: "", host: "example.com", hostname: "example.com", port: "", pathname: "/", hash: "", search: "?" }'
   );
 });
