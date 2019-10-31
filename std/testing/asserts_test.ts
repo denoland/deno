@@ -83,6 +83,11 @@ test(function testingEqual(): void {
       new Map([["foo", new Map([["bar", "qux"]])]])
     )
   );
+
+  assert(equal([1, 2, 3], [1, 2, 3]));
+  assert(equal([1, [2, 3]], [1, [2, 3]]));
+  assert(!equal([1, 2, 3, 4], [1, 2, 3]));
+  assert(!equal([1, 2, 3, 4], [1, 2, 3]));
 });
 
 test(function testingNotEquals(): void {
