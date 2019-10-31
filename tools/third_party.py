@@ -119,7 +119,7 @@ def run_pip():
     rmtree(temp_python_home)
 
 
-# Run gclient to install other dependencies.
+# Run gclient to install V8.
 def run_gclient_sync():
     # Depot_tools will normally try to self-update, which will fail because
     # it's not checked out from it's own git repository; gclient will then try
@@ -151,7 +151,7 @@ def run_gclient_sync():
     ]
     envs = {
         "DEPOT_TOOLS_UPDATE": "0",
-        "GCLIENT_FILE": os.path.join(root_path, "gclient_config.py")
+        "GCLIENT_FILE": os.path.join(root_path, "tools", "gclient_config.py")
     }
     env = google_env(depot_tools_path_=depot_tools_temp_path, merge_env=envs)
     run(args, cwd=third_party_path, env=env)
