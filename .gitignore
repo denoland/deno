@@ -7,6 +7,8 @@
 /gclient_config.py_entries
 /gh-pages/
 /target/
-/website/*.bundle.js
-/website/data.json
-/website/recent.json
+
+# We use something stronger than lockfiles, we have all NPM modules stored in a
+# git. We do not download from NPM during build.
+# https://github.com/denoland/deno_third_party
+yarn.lock

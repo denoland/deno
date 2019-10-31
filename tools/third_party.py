@@ -78,7 +78,7 @@ def google_env(env=None, merge_env=None, depot_tools_path_=depot_tools_path):
 
 # Run Yarn to install JavaScript dependencies.
 def run_yarn():
-    run(["yarn", "install"], cwd=third_party_path)
+    run(["yarn", "install", "--no-lockfile"], cwd=third_party_path)
 
 
 # Install python packages with pip.
