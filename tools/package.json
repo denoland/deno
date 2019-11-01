@@ -1,5 +1,6 @@
 {
   "name": "deno",
+  "private": true,
   "devDependencies": {
     "@types/prettier": "1.16.1",
     "@typescript-eslint/eslint-plugin": "2.5.0",

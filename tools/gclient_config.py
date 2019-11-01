@@ -1,4 +1,5 @@
 # Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+# pylint: disable=line-too-long
 solutions = [
     {
         'url': 'https://chromium.googlesource.com/v8/v8.git@7.9.317.12',

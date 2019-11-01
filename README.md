@@ -1,6 +1,6 @@
 # Deno
 
-A secure runtime for JavaScript and TypeScript built with V8, Rust, and Tokio.
+A secure runtime for JavaScript and TypeScript.
 
 [![Build Status](https://github.com/denoland/deno/workflows/ci/badge.svg?branch=master&event=push)](https://github.com/denoland/deno/actions)
 

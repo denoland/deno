@@ -21,7 +21,7 @@ testPerm({ net: true }, async function fetchConnectionError(): Promise<void> {
 });
 
 testPerm({ net: true }, async function fetchJsonSuccess(): Promise<void> {
-  const response = await fetch("http://localhost:4545/package.json");
+  const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
   const json = await response.json();
   assertEquals(json.name, "deno");
 });
@@ -29,7 +29,7 @@ testPerm({ net: true }, async function fetchJsonSuccess(): Promise<void> {
 test(async function fetchPerm(): Promise<void> {
   let err;
   try {
-    await fetch("http://localhost:4545/package.json");
+    await fetch("http://localhost:4545/cli/tests/fixture.json");
   } catch (err_) {
     err = err_;
   }
@@ -38,19 +38,19 @@ test(async function fetchPerm(): Promise<void> {
 });
 
 testPerm({ net: true }, async function fetchUrl(): Promise<void> {
-  const response = await fetch("http://localhost:4545/package.json");
-  assertEquals(response.url, "http://localhost:4545/package.json");
+  const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
+  assertEquals(response.url, "http://localhost:4545/cli/tests/fixture.json");
 });
 
 testPerm({ net: true }, async function fetchHeaders(): Promise<void> {
-  const response = await fetch("http://localhost:4545/package.json");
+  const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
   const headers = response.headers;
   assertEquals(headers.get("Content-Type"), "application/json");
   assert(headers.get("Server").startsWith("SimpleHTTP"));
 });
 
 testPerm({ net: true }, async function fetchBlob(): Promise<void> {
-  const response = await fetch("http://localhost:4545/package.json");
+  const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
   const headers = response.headers;
   const blob = await response.blob();
   assertEquals(blob.type, headers.get("Content-Type"));
@@ -58,7 +58,7 @@ testPerm({ net: true }, async function fetchBlob(): Promise<void> {
 });
 
 testPerm({ net: true }, async function fetchBodyUsed(): Promise<void> {
-  const response = await fetch("http://localhost:4545/package.json");
+  const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
   assertEquals(response.bodyUsed, false);
   assertThrows(
     (): void => {
@@ -71,7 +71,7 @@ testPerm({ net: true }, async function fetchBodyUsed(): Promise<void> {
 });
 
 testPerm({ net: true }, async function fetchAsyncIterator(): Promise<void> {
-  const response = await fetch("http://localhost:4545/package.json");
+  const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
   const headers = response.headers;
   let total = 0;
   for await (const chunk of response.body) {
@@ -82,7 +82,7 @@ testPerm({ net: true }, async function fetchAsyncIterator(): Promise<void> {
 });
 
 testPerm({ net: true }, async function responseClone(): Promise<void> {
-  const response = await fetch("http://localhost:4545/package.json");
+  const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
   const response1 = response.clone();
   assert(response !== response1);
   assertEquals(response.status, response1.status);
