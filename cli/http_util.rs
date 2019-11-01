@@ -143,7 +143,8 @@ mod tests {
   fn test_fetch_sync_string() {
     let http_server_guard = crate::test_util::http_server();
     // Relies on external http server. See tools/http_server.py
-    let url = Url::parse("http://127.0.0.1:4545/package.json").unwrap();
+    let url =
+      Url::parse("http://127.0.0.1:4545/cli/tests/fixture.json").unwrap();
 
     let fut = fetch_string_once(&url).then(|result| match result {
       Ok(FetchOnceResult::Code(code, maybe_content_type)) => {
@@ -162,9 +163,11 @@ mod tests {
   fn test_fetch_string_once_with_redirect() {
     let http_server_guard = crate::test_util::http_server();
     // Relies on external http server. See tools/http_server.py
-    let url = Url::parse("http://127.0.0.1:4546/package.json").unwrap();
+    let url =
+      Url::parse("http://127.0.0.1:4546/cli/tests/fixture.json").unwrap();
     // Dns resolver substitutes `127.0.0.1` with `localhost`
-    let target_url = Url::parse("http://localhost:4545/package.json").unwrap();
+    let target_url =
+      Url::parse("http://localhost:4545/cli/tests/fixture.json").unwrap();
     let fut = fetch_string_once(&url).then(move |result| match result {
       Ok(FetchOnceResult::Redirect(url)) => {
         assert_eq!(url, target_url);
