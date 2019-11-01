@@ -67,7 +67,9 @@ function buildMessage(diffResult: ReadonlyArray<DiffResult<string>>): string[] {
   return messages;
 }
 
-function isKeyedCollection(x: unknown): x is Map<unknown, unknown> | Set<unknown> {
+function isKeyedCollection(
+  x: unknown
+): x is Map<unknown, unknown> | Set<unknown> {
   return x instanceof Map || x instanceof Set;
 }
 
@@ -100,7 +102,7 @@ export function equal(c: unknown, d: unknown): boolean {
         }
 
         for (const [key, value] of a.entries()) {
-          if (!b.has(key) || !compare(value, 'get' in b ? b.get(key) : key)) {
+          if (!b.has(key) || !compare(value, "get" in b ? b.get(key) : key)) {
             return false;
           }
         }
