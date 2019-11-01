@@ -88,6 +88,10 @@ test(function testingEqual(): void {
   assert(equal([1, [2, 3]], [1, [2, 3]]));
   assert(!equal([1, 2, 3, 4], [1, 2, 3]));
   assert(!equal([1, 2, 3, 4], [1, 2, 3]));
+  assert(!equal([1, 2, 3, 4], [1, 4, 2, 3]));
+
+  assert(equal(new Uint8Array([1, 2, 3, 4]), new Uint8Array([1, 2, 3, 4])));
+  assert(!equal(new Uint8Array([1, 2, 3, 4]), new Uint8Array([2, 1, 4, 3])));
 });
 
 test(function testingNotEquals(): void {
