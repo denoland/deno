@@ -67,10 +67,8 @@ function buildMessage(diffResult: ReadonlyArray<DiffResult<string>>): string[] {
   return messages;
 }
 
-type KeyedCollection = Map<unknown, unknown> | Set<unknown>;
-
-function isKeyedCollection(x: unknown): x is KeyedCollection {
-  return [Symbol.iterator, 'has', 'size'].every(key => key in (x as KeyedCollection));
+function isKeyedCollection(x: unknown): x is Map<unknown, unknown> | Set<unknown> {
+  return x instanceof Map || x instanceof Set;
 }
 
 export function equal(c: unknown, d: unknown): boolean {
