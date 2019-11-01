@@ -9,22 +9,22 @@ jobs:
     timeout-minutes: 60
     strategy:
       matrix:
-        os: [macOS-10.14, windows-2019, ubuntu-16.04]
+        os: [macOS-latest, windows-2019, ubuntu-16.04]
         kind: ['test', 'test_debug', 'test_std', 'bench', 'lint']
         exclude:
           - os: windows-2019
             kind: 'bench'
-          - os: macOS-10.14
+          - os: macOS-latest
             kind: 'bench'
 
           - os: windows-2019
             kind: 'lint'
-          - os: macOS-10.14
+          - os: macOS-latest
             kind: 'lint'
 
           - os: windows-2019
             kind: 'test_debug'
-          - os: macOS-10.14
+          - os: macOS-latest
             kind: 'test_debug'
     steps:
       - name: Configure git
