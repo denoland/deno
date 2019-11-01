@@ -27,8 +27,8 @@ class UnderlyingRIDSource implements domTypes.UnderlyingSource {
     const pump = (): Promise<void> => {
       return read(this.rid, buff).then(value => {
         if (value == EOF) {
-          controller.close();
-          return;
+          close(this.rid);
+          return controller.close();
         }
         controller.enqueue(buff.slice(0, value));
         return pump();
@@ -38,8 +38,8 @@ class UnderlyingRIDSource implements domTypes.UnderlyingSource {
   }
 
   cancel(controller: ReadableStreamController): void {
-    controller.close();
-    return close(this.rid);
+    close(this.rid);
+    return controller.close();
   }
 }
 
