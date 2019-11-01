@@ -17,6 +17,32 @@ interface ReadableStreamController {
   close(): void;
 }
 
+class UnderlyingRIDSource implements domTypes.UnderlyingSource {
+  constructor(private rid: number) {
+    this.rid = rid;
+  }
+
+  start(controller: ReadableStreamController): Promise<void> {
+    const buff: Uint8Array = new Uint8Array(32 * 1024);
+    const pump = (): Promise<void> => {
+      return read(this.rid, buff).then(value => {
+        if (value == EOF) {
+          controller.close();
+          return;
+        }
+        controller.enqueue(buff.slice(0, value));
+        return pump();
+      });
+    };
+    return pump();
+  }
+
+  cancel(controller: ReadableStreamController): void {
+    controller.close();
+    return close(this.rid);
+  }
+}
+
 class Body extends body.Body implements domTypes.ReadableStream {
   async cancel(): Promise<void> {
     if (this._stream) {
@@ -88,25 +114,8 @@ export class Response implements domTypes.Response {
     const contentType = this.headers.get("content-type") || "";
 
     if (readableStream_ == null) {
-      const rs = new ReadableStream({
-        start(controller: ReadableStreamController): Promise<void> {
-          return pump();
-          function pump(): Promise<void> {
-            const bytes: Uint8Array = new Uint8Array(2048);
-            return read(rid, bytes).then(value => {
-              if (value == null || value == EOF) {
-                controller.close();
-                return;
-              }
-              controller.enqueue(bytes.slice(0, value as number));
-              return pump();
-            });
-          }
-        },
-        cancel(_controller: ReadableStreamController): void {
-          return close(rid);
-        }
-      });
+      const underlyingSource = new UnderlyingRIDSource(rid);
+      const rs = new ReadableStream(underlyingSource);
       this._body = new Body(rs, contentType);
     } else {
       this._body = new Body(readableStream_, contentType);
