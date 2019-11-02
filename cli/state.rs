@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::deno_error::permission_denied;
+use crate::global_state::ThreadSafeGlobalState;
 use crate::global_timer::GlobalTimer;
 use crate::import_map::ImportMap;
 use crate::metrics::Metrics;
@@ -42,6 +43,7 @@ pub struct ThreadSafeState(Arc<State>);
 
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct State {
+  pub global_state: ThreadSafeGlobalState,
   pub modules: Arc<Mutex<deno::Modules>>,
   pub permissions: DenoPermissions,
   pub main_module: Option<ModuleSpecifier>,
@@ -157,11 +159,9 @@ impl Resolver for ThreadSafeState {
 
 impl ThreadSafeState {
   pub fn new(
+    global_state: ThreadSafeGlobalState,
     main_module: Option<ModuleSpecifier>,
-    permissions: DenoPermissions,
     include_deno_namespace: bool,
-    import_map_path: Option<&String>,
-    rng_seed: Option<u64>,
   ) -> Result<Self, ErrBox> {
     let (worker_in_tx, worker_in_rx) = async_mpsc::channel::<Buf>(1);
     let (worker_out_tx, worker_out_rx) = async_mpsc::channel::<Buf>(1);
@@ -169,19 +169,22 @@ impl ThreadSafeState {
     let external_channels = (worker_in_tx, worker_out_rx);
     let resource = resources::add_worker(external_channels);
 
-    let import_map: Option<ImportMap> = match import_map_path {
-      None => None,
-      Some(file_path) => Some(ImportMap::load(file_path)?),
-    };
+    let import_map: Option<ImportMap> =
+      match global_state.flags.import_map_path.as_ref() {
+        None => None,
+        Some(file_path) => Some(ImportMap::load(file_path)?),
+      };
 
-    let seeded_rng = match rng_seed {
+    let seeded_rng = match global_state.flags.seed {
       Some(seed) => Some(Mutex::new(StdRng::seed_from_u64(seed))),
       None => None,
     };
 
     let modules = Arc::new(Mutex::new(deno::Modules::new()));
+    let permissions = global_state.permissions.clone();
 
     let state = State {
+      global_state,
       modules,
       main_module,
       permissions,
@@ -264,11 +267,9 @@ impl ThreadSafeState {
     };
 
     ThreadSafeState::new(
+      ThreadSafeGlobalState::mock(argv),
       module_specifier,
-      DenoPermissions::default(),
       true,
-      None,
-      None,
     )
     .unwrap()
   }

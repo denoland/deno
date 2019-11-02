@@ -1,6 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::fmt_errors::JSError;
-use crate::global_state::ThreadSafeGlobalState;
 use crate::ops;
 use crate::state::ThreadSafeState;
 use deno;
@@ -21,7 +20,6 @@ use url::Url;
 pub struct Worker {
   pub name: String,
   isolate: Arc<Mutex<deno::Isolate>>,
-  pub global_state: ThreadSafeGlobalState,
   pub state: ThreadSafeState,
 }
 
@@ -29,31 +27,30 @@ impl Worker {
   pub fn new(
     name: String,
     startup_data: StartupData,
-    global_state: ThreadSafeGlobalState,
     state: ThreadSafeState,
   ) -> Self {
     let isolate = Arc::new(Mutex::new(deno::Isolate::new(startup_data, false)));
     {
       let mut i = isolate.lock().unwrap();
 
-      ops::compiler::init(&mut i, &global_state, &state);
-      ops::errors::init(&mut i, &global_state, &state);
+      ops::compiler::init(&mut i, &state);
+      ops::errors::init(&mut i, &state);
       ops::fetch::init(&mut i, &state);
       ops::files::init(&mut i, &state);
       ops::fs::init(&mut i, &state);
       ops::io::init(&mut i, &state);
       ops::net::init(&mut i, &state);
       ops::tls::init(&mut i, &state);
-      ops::os::init(&mut i, &global_state, &state);
+      ops::os::init(&mut i, &state);
       ops::permissions::init(&mut i, &state);
       ops::process::init(&mut i, &state);
       ops::random::init(&mut i, &state);
-      ops::repl::init(&mut i, &global_state, &state);
+      ops::repl::init(&mut i, &state);
       ops::resources::init(&mut i, &state);
       ops::timers::init(&mut i, &state);
-      ops::workers::init(&mut i, &global_state, &state);
+      ops::workers::init(&mut i, &state);
 
-      let global_state_ = global_state.clone();
+      let global_state_ = state.global_state.clone();
       let state_ = state.clone();
       i.set_dyn_import(move |id, specifier, referrer| {
         let load_stream = RecursiveLoad::dynamic_import(
@@ -67,7 +64,7 @@ impl Worker {
         Box::new(load_stream)
       });
 
-      let global_state_ = global_state.clone();
+      let global_state_ = state.global_state.clone();
       i.set_js_error_create(move |v8_exception| {
         JSError::from_v8_exception(v8_exception, &global_state_.ts_compiler)
       })
@@ -75,7 +72,6 @@ impl Worker {
     Self {
       name,
       isolate,
-      global_state,
       state,
     }
   }
@@ -107,7 +103,7 @@ impl Worker {
   ) -> impl Future<Item = (), Error = ErrBox> {
     let worker = self.clone();
     let resolver = self.state.clone();
-    let loader = self.global_state.clone();
+    let loader = self.state.global_state.clone();
     let isolate = self.isolate.clone();
     let modules = self.state.modules.clone();
     let recursive_load = RecursiveLoad::main(
@@ -119,7 +115,7 @@ impl Worker {
     )
     .get_future(isolate);
     recursive_load.and_then(move |id| -> Result<(), ErrBox> {
-      worker.global_state.progress.done();
+      worker.state.global_state.progress.done();
       if is_prefetch {
         Ok(())
       } else {
@@ -145,6 +141,7 @@ mod tests {
   use super::*;
   use crate::flags;
   use crate::flags::DenoFlags;
+  use crate::global_state::ThreadSafeGlobalState;
   use crate::progress::Progress;
   use crate::resources;
   use crate::startup_data;
@@ -170,18 +167,13 @@ mod tests {
       true,
     )
     .unwrap();
-    let state = ThreadSafeState::new(
-      Some(module_specifier.clone()),
-      global_state.permissions.clone(),
-      true,
-      global_state.flags.import_map_path.as_ref(),
-      global_state.flags.seed,
-    )
-    .unwrap();
     let global_state_ = global_state.clone();
+    let state =
+      ThreadSafeState::new(global_state, Some(module_specifier.clone()), true)
+        .unwrap();
     tokio_util::run(lazy(move || {
       let mut worker =
-        Worker::new("TEST".to_string(), StartupData::None, global_state, state);
+        Worker::new("TEST".to_string(), StartupData::None, state);
       worker
         .execute_mod_async(&module_specifier, None, false)
         .then(|result| {
@@ -215,18 +207,13 @@ mod tests {
       true,
     )
     .unwrap();
-    let state = ThreadSafeState::new(
-      Some(module_specifier.clone()),
-      global_state.permissions.clone(),
-      true,
-      global_state.flags.import_map_path.as_ref(),
-      global_state.flags.seed,
-    )
-    .unwrap();
+    let state =
+      ThreadSafeState::new(global_state, Some(module_specifier.clone()), true)
+        .unwrap();
     let state_ = state.clone();
     tokio_util::run(lazy(move || {
       let mut worker =
-        Worker::new("TEST".to_string(), StartupData::None, global_state, state);
+        Worker::new("TEST".to_string(), StartupData::None, state);
       worker
         .execute_mod_async(&module_specifier, None, false)
         .then(|result| {
@@ -260,11 +247,9 @@ mod tests {
     let global_state =
       ThreadSafeGlobalState::new(flags, argv, Progress::new(), true).unwrap();
     let state = ThreadSafeState::new(
+      global_state.clone(),
       Some(module_specifier.clone()),
-      global_state.permissions.clone(),
       true,
-      global_state.flags.import_map_path.as_ref(),
-      global_state.flags.seed,
     )
     .unwrap();
     let global_state_ = global_state.clone();
@@ -272,7 +257,6 @@ mod tests {
       let mut worker = Worker::new(
         "TEST".to_string(),
         startup_data::deno_isolate_init(),
-        global_state,
         state,
       );
       worker.execute("denoMain()").unwrap();
@@ -294,20 +278,12 @@ mod tests {
   }
 
   fn create_test_worker() -> Worker {
-    let global_state = ThreadSafeGlobalState::mock(vec![
-      String::from("./deno"),
-      String::from("hello.js"),
-    ]);
     let state = ThreadSafeState::mock(vec![
       String::from("./deno"),
       String::from("hello.js"),
     ]);
-    let mut worker = Worker::new(
-      "TEST".to_string(),
-      startup_data::deno_isolate_init(),
-      global_state,
-      state,
-    );
+    let mut worker =
+      Worker::new("TEST".to_string(), startup_data::deno_isolate_init(), state);
     worker.execute("denoMain()").unwrap();
     worker.execute("workerMain()").unwrap();
     worker

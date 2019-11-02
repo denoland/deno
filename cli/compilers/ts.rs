@@ -246,19 +246,12 @@ impl TsCompiler {
       .compiler_starts
       .fetch_add(1, Ordering::SeqCst);
 
-    let worker_state = ThreadSafeState::new(
-      None,
-      global_state.permissions.clone(),
-      true,
-      global_state.flags.import_map_path.as_ref(),
-      global_state.flags.seed,
-    )
-    .expect("Unable to create worker state");
+    let worker_state = ThreadSafeState::new(global_state.clone(), None, true)
+      .expect("Unable to create worker state");
 
     let mut worker = Worker::new(
       "TS".to_string(),
       startup_data::compiler_isolate_init(),
-      global_state,
       worker_state,
     );
     worker.execute("denoMain()").unwrap();

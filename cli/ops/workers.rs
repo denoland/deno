@@ -3,7 +3,6 @@ use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::deno_error::js_check;
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
-use crate::global_state::ThreadSafeGlobalState;
 use crate::ops::json_op;
 use crate::resources;
 use crate::startup_data;
@@ -19,16 +18,10 @@ use std;
 use std::convert::From;
 use std::sync::atomic::Ordering;
 
-pub fn init(i: &mut Isolate, gs: &ThreadSafeGlobalState, s: &ThreadSafeState) {
-  let state = s.clone();
-
+pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op(
     "create_worker",
-    s.core_op(json_op(gs.stateful_op(
-      move |global_state, args, zero_copy_buf| {
-        op_create_worker(global_state, &state, args, zero_copy_buf)
-      },
-    ))),
+    s.core_op(json_op(s.stateful_op(op_create_worker))),
   );
   i.register_op(
     "host_get_worker_closed",
@@ -123,7 +116,6 @@ struct CreateWorkerArgs {
 
 /// Create worker as the host
 fn op_create_worker(
-  global_state: &ThreadSafeGlobalState,
   state: &ThreadSafeState,
   args: Value,
   _data: Option<PinnedBuf>,
@@ -150,21 +142,15 @@ fn op_create_worker(
   }
 
   let child_state = ThreadSafeState::new(
+    state.global_state.clone(),
     Some(module_specifier.clone()),
-    global_state.permissions.clone(),
     include_deno_namespace,
-    global_state.flags.import_map_path.as_ref(),
-    global_state.flags.seed,
   )?;
   let rid = child_state.resource.rid;
   let name = format!("USER-WORKER-{}", specifier);
   let deno_main_call = format!("denoMain({})", include_deno_namespace);
-  let mut worker = Worker::new(
-    name,
-    startup_data::deno_isolate_init(),
-    global_state.clone(),
-    child_state,
-  );
+  let mut worker =
+    Worker::new(name, startup_data::deno_isolate_init(), child_state);
   js_check(worker.execute(&deno_main_call));
   js_check(worker.execute("workerMain()"));
 

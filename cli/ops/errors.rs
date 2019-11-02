@@ -1,7 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::fmt_errors::JSError;
-use crate::global_state::ThreadSafeGlobalState;
 use crate::ops::json_op;
 use crate::source_maps::get_orig_position;
 use crate::source_maps::CachedMaps;
@@ -9,14 +8,14 @@ use crate::state::ThreadSafeState;
 use deno::*;
 use std::collections::HashMap;
 
-pub fn init(i: &mut Isolate, gs: &ThreadSafeGlobalState, s: &ThreadSafeState) {
+pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op(
     "apply_source_map",
-    s.core_op(json_op(gs.stateful_op(op_apply_source_map))),
+    s.core_op(json_op(s.stateful_op(op_apply_source_map))),
   );
   i.register_op(
     "format_error",
-    s.core_op(json_op(gs.stateful_op(op_format_error))),
+    s.core_op(json_op(s.stateful_op(op_format_error))),
   );
 }
 
@@ -26,12 +25,12 @@ struct FormatErrorArgs {
 }
 
 fn op_format_error(
-  state: &ThreadSafeGlobalState,
+  state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: FormatErrorArgs = serde_json::from_value(args)?;
-  let error = JSError::from_json(&args.error, &state.ts_compiler);
+  let error = JSError::from_json(&args.error, &state.global_state.ts_compiler);
 
   Ok(JsonOp::Sync(json!({
     "error": error.to_string(),
@@ -46,7 +45,7 @@ struct ApplySourceMap {
 }
 
 fn op_apply_source_map(
-  state: &ThreadSafeGlobalState,
+  state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -58,7 +57,7 @@ fn op_apply_source_map(
     args.line.into(),
     args.column.into(),
     &mut mappings_map,
-    &state.ts_compiler,
+    &state.global_state.ts_compiler,
   );
 
   Ok(JsonOp::Sync(json!({

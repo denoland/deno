@@ -118,21 +118,15 @@ fn create_worker_and_state(
     .unwrap();
 
   let state = ThreadSafeState::new(
+    global_state.clone(),
     global_state.main_module.clone(),
-    global_state.permissions.clone(),
     true,
-    global_state.flags.import_map_path.as_ref(),
-    global_state.flags.seed,
   )
   .map_err(deno_error::print_err_and_exit)
   .unwrap();
 
-  let worker = Worker::new(
-    "main".to_string(),
-    startup_data::deno_isolate_init(),
-    global_state.clone(),
-    state,
-  );
+  let worker =
+    Worker::new("main".to_string(), startup_data::deno_isolate_init(), state);
 
   (worker, global_state)
 }
@@ -143,7 +137,7 @@ fn types_command() {
 }
 
 fn print_cache_info(worker: Worker) {
-  let state = worker.global_state;
+  let state = &worker.state.global_state;
 
   println!(
     "{} {:?}",
@@ -166,7 +160,7 @@ pub fn print_file_info(
   worker: Worker,
   module_specifier: &ModuleSpecifier,
 ) -> impl Future<Item = Worker, Error = ()> {
-  let global_state_ = worker.global_state.clone();
+  let global_state_ = worker.state.global_state.clone();
   let state_ = worker.state.clone();
   let module_specifier_ = module_specifier.clone();
 
