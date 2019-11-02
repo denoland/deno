@@ -56,18 +56,15 @@ struct GetMessageFuture {
 
 impl Future for GetMessageFuture {
   type Item = Option<Buf>;
-  type Error = ();
+  type Error = ErrBox;
 
   fn poll(&mut self) -> Result<Async<Self::Item>, Self::Error> {
     let mut table = resources::lock_resource_table();
-    // TODO: rework this function into `op_worker_get_message`
     let worker = table
       .get_mut::<WorkerResource>(self.rid)
-      .expect("Worker not found");
+      .ok_or_else(bad_resource)?;
     let receiver = &mut worker.internal.receiver;
-    receiver
-      .poll()
-      .map_err(|err| panic!("worker_channel recv err {:?}", err))
+    receiver.poll().map_err(ErrBox::from)
   }
 }
 
@@ -227,7 +224,6 @@ fn op_host_get_message(
   let args: HostGetMessageArgs = serde_json::from_value(args)?;
 
   let rid = args.rid as u32;
-  // TODO: rename to get_message_from_child(rid)
   let op = Worker::get_message_from_resource(rid)
     .map_err(move |_| -> ErrBox { unimplemented!() })
     .and_then(move |maybe_buf| {

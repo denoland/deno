@@ -9,32 +9,34 @@ use crate::file_fetcher::SourceFileFetcher;
 use crate::flags;
 use crate::metrics::Metrics;
 use crate::msg;
-use crate::ops::JsonOp;
 use crate::permissions::DenoPermissions;
 use crate::progress::Progress;
 use deno::ErrBox;
-use deno::Loader;
 use deno::ModuleSpecifier;
-use deno::PinnedBuf;
 use futures::Future;
-use serde_json::Value;
 use std;
 use std::env;
 use std::ops::Deref;
 use std::str;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 /// Holds state of the program and can be accessed by V8 isolate.
 pub struct ThreadSafeGlobalState(Arc<GlobalState>);
 
+/// This structure represents state of single "deno" program.
+///
+/// It is shared by all created workers (thus V8 isolates).
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct GlobalState {
-  pub main_module: Option<ModuleSpecifier>,
-  pub dir: deno_dir::DenoDir,
+  /// Vector of CLI arguments - these are user script arguments, all Deno specific flags are removed.
   pub argv: Vec<String>,
+  /// Flags parsed from `argv` contents.
   pub flags: flags::DenoFlags,
+  /// Entry script parsed from CLI arguments.
+  pub main_module: Option<ModuleSpecifier>,
+  /// Permissions parsed from `flags`.
   pub permissions: DenoPermissions,
+  pub dir: deno_dir::DenoDir,
   pub metrics: Metrics,
   pub progress: Progress,
   pub file_fetcher: SourceFileFetcher,
@@ -56,32 +58,11 @@ impl Deref for ThreadSafeGlobalState {
   }
 }
 
-impl Loader for ThreadSafeGlobalState {
-  /// Given an absolute url, load its source code.
-  fn load(
-    &self,
-    module_specifier: &ModuleSpecifier,
-  ) -> Box<deno::SourceCodeInfoFuture> {
-    self.metrics.resolve_count.fetch_add(1, Ordering::SeqCst);
-    let module_url_specified = module_specifier.to_string();
-    Box::new(self.fetch_compiled_module(module_specifier).map(
-      |compiled_module| deno::SourceCodeInfo {
-        // Real module name, might be different from initial specifier
-        // due to redirections.
-        code: compiled_module.code,
-        module_url_specified,
-        module_url_found: compiled_module.name,
-      },
-    ))
-  }
-}
-
 impl ThreadSafeGlobalState {
   pub fn new(
     flags: flags::DenoFlags,
     argv_rest: Vec<String>,
     progress: Progress,
-    _include_deno_namespace: bool,
   ) -> Result<Self, ErrBox> {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
     let dir = deno_dir::DenoDir::new(custom_root)?;
@@ -212,27 +193,8 @@ impl ThreadSafeGlobalState {
       flags::DenoFlags::default(),
       argv,
       Progress::new(),
-      true,
     )
     .unwrap()
-  }
-
-  pub fn stateful_op<D>(
-    &self,
-    dispatcher: D,
-  ) -> impl Fn(Value, Option<PinnedBuf>) -> Result<JsonOp, ErrBox>
-  where
-    D: Fn(
-      &ThreadSafeGlobalState,
-      Value,
-      Option<PinnedBuf>,
-    ) -> Result<JsonOp, ErrBox>,
-  {
-    let state = self.clone();
-
-    move |args: Value, zero_copy: Option<PinnedBuf>| -> Result<JsonOp, ErrBox> {
-      dispatcher(&state, args, zero_copy)
-    }
   }
 }
 
@@ -254,6 +216,5 @@ fn import_map_given_for_repl() {
     },
     vec![String::from("./deno")],
     Progress::new(),
-    true,
   );
 }

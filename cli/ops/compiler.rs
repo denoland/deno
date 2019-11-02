@@ -4,7 +4,7 @@ use crate::futures::future::join_all;
 use crate::futures::Future;
 use crate::ops::json_op;
 use crate::state::ThreadSafeState;
-use deno::Resolver;
+use deno::Loader;
 use deno::*;
 
 pub fn init(i: &mut Isolate, s: &ThreadSafeState) {

@@ -14,10 +14,10 @@ use crate::worker::WorkerResource;
 use deno::Buf;
 use deno::CoreOp;
 use deno::ErrBox;
+use deno::Loader;
 use deno::ModuleSpecifier;
 use deno::Op;
 use deno::PinnedBuf;
-use deno::Resolver;
 use futures::future::Shared;
 use futures::Future;
 use rand::rngs::StdRng;
@@ -128,7 +128,7 @@ impl ThreadSafeState {
   }
 }
 
-impl Resolver for ThreadSafeState {
+impl Loader for ThreadSafeState {
   fn resolve(
     &self,
     specifier: &str,
@@ -152,6 +152,27 @@ impl Resolver for ThreadSafeState {
     }
 
     Ok(module_specifier)
+  }
+
+  /// Given an absolute url, load its source code.
+  fn load(
+    &self,
+    module_specifier: &ModuleSpecifier,
+  ) -> Box<deno::SourceCodeInfoFuture> {
+    self.metrics.resolve_count.fetch_add(1, Ordering::SeqCst);
+    let module_url_specified = module_specifier.to_string();
+    let fut = self
+      .global_state
+      .fetch_compiled_module(module_specifier)
+      .map(|compiled_module| deno::SourceCodeInfo {
+        // Real module name, might be different from initial specifier
+        // due to redirections.
+        code: compiled_module.code,
+        module_url_specified,
+        module_url_found: compiled_module.name,
+      });
+
+    Box::new(fut)
   }
 }
 

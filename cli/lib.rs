@@ -114,7 +114,7 @@ fn create_worker_and_state(
     }
   });
 
-  let global_state = ThreadSafeGlobalState::new(flags, argv, progress, true)
+  let global_state = ThreadSafeGlobalState::new(flags, argv, progress)
     .map_err(deno_error::print_err_and_exit)
     .unwrap();
 

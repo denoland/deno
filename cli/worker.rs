@@ -78,7 +78,6 @@ impl Worker {
       ops::timers::init(&mut i, &state);
       ops::workers::init(&mut i, &state);
 
-      let global_state_ = state.global_state.clone();
       let state_ = state.clone();
       i.set_dyn_import(move |id, specifier, referrer| {
         let load_stream = RecursiveLoad::dynamic_import(
@@ -86,7 +85,6 @@ impl Worker {
           specifier,
           referrer,
           state_.clone(),
-          global_state_.clone(),
           state_.modules.clone(),
         );
         Box::new(load_stream)
@@ -130,14 +128,12 @@ impl Worker {
     is_prefetch: bool,
   ) -> impl Future<Item = (), Error = ErrBox> {
     let worker = self.clone();
-    let resolver = self.state.clone();
-    let loader = self.state.global_state.clone();
+    let loader = self.state.clone();
     let isolate = self.isolate.clone();
     let modules = self.state.modules.clone();
     let recursive_load = RecursiveLoad::main(
       &module_specifier.to_string(),
       maybe_code,
-      resolver,
       loader,
       modules,
     )
@@ -162,6 +158,7 @@ impl Worker {
     rid: resources::ResourceId,
     buf: Buf,
   ) -> Result<Async<()>, ErrBox> {
+    debug!("post message to resource {}", rid);
     let mut table = resources::lock_resource_table();
     let worker = table
       .get_mut::<WorkerResource>(rid)
@@ -179,6 +176,7 @@ impl Worker {
   }
 
   pub fn get_message_from_resource(rid: ResourceId) -> WorkerReceiver {
+    debug!("get message from resource {}", rid);
     WorkerReceiver { rid }
   }
 }
@@ -239,13 +237,12 @@ mod tests {
       flags::DenoFlags::default(),
       argv,
       Progress::new(),
-      true,
     )
     .unwrap();
-    let global_state_ = global_state.clone();
     let state =
       ThreadSafeState::new(global_state, Some(module_specifier.clone()), true)
         .unwrap();
+    let state_ = state.clone();
     tokio_util::run(lazy(move || {
       let mut worker =
         Worker::new("TEST".to_string(), StartupData::None, state);
@@ -259,7 +256,7 @@ mod tests {
         })
     }));
 
-    let metrics = &global_state_.metrics;
+    let metrics = &state_.metrics;
     assert_eq!(metrics.resolve_count.load(Ordering::SeqCst), 2);
     // Check that we didn't start the compiler.
     assert_eq!(metrics.compiler_starts.load(Ordering::SeqCst), 0);
@@ -275,13 +272,9 @@ mod tests {
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let argv = vec![String::from("deno"), module_specifier.to_string()];
-    let global_state = ThreadSafeGlobalState::new(
-      DenoFlags::default(),
-      argv,
-      Progress::new(),
-      true,
-    )
-    .unwrap();
+    let global_state =
+      ThreadSafeGlobalState::new(DenoFlags::default(), argv, Progress::new())
+        .unwrap();
     let state =
       ThreadSafeState::new(global_state, Some(module_specifier.clone()), true)
         .unwrap();
@@ -320,7 +313,7 @@ mod tests {
     let mut flags = flags::DenoFlags::default();
     flags.reload = true;
     let global_state =
-      ThreadSafeGlobalState::new(flags, argv, Progress::new(), true).unwrap();
+      ThreadSafeGlobalState::new(flags, argv, Progress::new()).unwrap();
     let state = ThreadSafeState::new(
       global_state.clone(),
       Some(module_specifier.clone()),
@@ -328,6 +321,7 @@ mod tests {
     )
     .unwrap();
     let global_state_ = global_state.clone();
+    let state_ = state.clone();
     tokio_util::run(lazy(move || {
       let mut worker = Worker::new(
         "TEST".to_string(),
@@ -345,10 +339,12 @@ mod tests {
         })
     }));
 
-    let metrics = &global_state_.metrics;
-    assert_eq!(metrics.resolve_count.load(Ordering::SeqCst), 3);
+    assert_eq!(state_.metrics.resolve_count.load(Ordering::SeqCst), 3);
     // Check that we've only invoked the compiler once.
-    assert_eq!(metrics.compiler_starts.load(Ordering::SeqCst), 1);
+    assert_eq!(
+      global_state_.metrics.compiler_starts.load(Ordering::SeqCst),
+      1
+    );
     drop(http_server_guard);
   }
 

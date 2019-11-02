@@ -239,14 +239,14 @@ impl TsCompiler {
 
   /// Create a new V8 worker with snapshot of TS compiler and setup compiler's runtime.
   fn setup_worker(global_state: ThreadSafeGlobalState) -> Worker {
+    let worker_state = ThreadSafeState::new(global_state.clone(), None, true)
+      .expect("Unable to create worker state");
+
     // Count how many times we start the compiler worker.
     global_state
       .metrics
       .compiler_starts
       .fetch_add(1, Ordering::SeqCst);
-
-    let worker_state = ThreadSafeState::new(global_state.clone(), None, true)
-      .expect("Unable to create worker state");
 
     let mut worker = Worker::new(
       "TS".to_string(),

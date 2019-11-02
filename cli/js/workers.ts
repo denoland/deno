@@ -58,6 +58,7 @@ async function hostGetMessage(rid: number): Promise<any> {
 export const onmessage: (e: { data: any }) => void = (): void => {};
 
 export function postMessage(data: any): void {
+  log("postMessage", data);
   const dataIntArray = encodeMessage(data);
   sendSync(dispatch.OP_WORKER_POST_MESSAGE, {}, dataIntArray);
 }
@@ -65,7 +66,7 @@ export function postMessage(data: any): void {
 export async function getMessage(): Promise<any> {
   log("getMessage");
   const res = await sendAsync(dispatch.OP_WORKER_GET_MESSAGE);
-
+  log("gotMessage");
   if (res.data != null) {
     return decodeMessage(new Uint8Array(res.data));
   } else {
