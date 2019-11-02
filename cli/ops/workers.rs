@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
+use crate::deno_error::bad_resource;
 use crate::deno_error::js_check;
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
@@ -8,6 +9,7 @@ use crate::resources;
 use crate::startup_data;
 use crate::state::ThreadSafeState;
 use crate::worker::Worker;
+use crate::worker::WorkerResource;
 use deno::*;
 use futures;
 use futures::Async;
@@ -48,7 +50,7 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
 }
 
 struct GetMessageFuture {
-  pub state: ThreadSafeState,
+  rid: ResourceId,
 }
 
 impl Future for GetMessageFuture {
@@ -56,8 +58,13 @@ impl Future for GetMessageFuture {
   type Error = ();
 
   fn poll(&mut self) -> Result<Async<Self::Item>, Self::Error> {
-    let mut wc = self.state.worker_channels.lock().unwrap();
-    wc.1
+    let mut table = resources::lock_resource_table();
+    // TODO: rework this function into `op_worker_get_message`
+    let worker = table
+      .get_mut::<WorkerResource>(self.rid)
+      .expect("Worker not found");
+    let receiver = &mut worker.internal.receive;
+    receiver
       .poll()
       .map_err(|err| panic!("worker_channel recv err {:?}", err))
   }
@@ -70,7 +77,7 @@ fn op_worker_get_message(
   _data: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let op = GetMessageFuture {
-    state: state.clone(),
+    rid: state.resource.rid,
   };
 
   let op = op
@@ -94,11 +101,13 @@ fn op_worker_post_message(
 ) -> Result<JsonOp, ErrBox> {
   let d = Vec::from(data.unwrap().as_ref()).into_boxed_slice();
 
-  let tx = {
-    let wc = state.worker_channels.lock().unwrap();
-    wc.0.clone()
-  };
-  tx.send(d)
+  let mut table = resources::lock_resource_table();
+  let worker = table
+    .get_mut::<WorkerResource>(state.resource.rid)
+    .ok_or_else(bad_resource)?;
+  let sender = &mut worker.internal.send;
+  sender
+    .send(d)
     .wait()
     .map_err(|e| DenoError::new(ErrorKind::Other, e.to_string()))?;
 
@@ -217,7 +226,8 @@ fn op_host_get_message(
   let args: HostGetMessageArgs = serde_json::from_value(args)?;
 
   let rid = args.rid as u32;
-  let op = resources::get_message_from_worker(rid)
+  // TODO: rename to get_message_from_child(rid)
+  let op = Worker::get_message_from_resource(rid)
     .map_err(move |_| -> ErrBox { unimplemented!() })
     .and_then(move |maybe_buf| {
       futures::future::ok(json!({
@@ -245,7 +255,8 @@ fn op_host_post_message(
 
   let d = Vec::from(data.unwrap().as_ref()).into_boxed_slice();
 
-  resources::post_message_to_worker(rid, d)?
+  // TODO: rename to post_message_to_child(rid, d)
+  Worker::post_message_to_resource(rid, d)?
     .wait()
     .map_err(|e| DenoError::new(ErrorKind::Other, e.to_string()))?;
 

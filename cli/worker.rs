@@ -1,21 +1,49 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+use crate::deno_error::bad_resource;
 use crate::fmt_errors::JSError;
 use crate::ops;
+use crate::resources;
+use crate::resources::CoreResource;
+use crate::resources::ResourceId;
 use crate::state::ThreadSafeState;
 use deno;
+use deno::Buf;
 use deno::ErrBox;
 use deno::ModuleSpecifier;
 use deno::RecursiveLoad;
 use deno::StartupData;
 use futures::Async;
 use futures::Future;
+use futures::Poll;
+use futures::Sink;
+use futures::Stream;
 use std::env;
 use std::sync::Arc;
 use std::sync::Mutex;
+use tokio::sync::mpsc;
 use url::Url;
 
+pub struct WorkerChannels {
+  pub send: mpsc::Sender<Buf>,
+  pub receive: mpsc::Receiver<Buf>,
+}
+
+/// Wraps mpsc channels into a generic resource so they can be referenced
+/// from ops and used to facilitate parent-child communication
+/// for workers.
+pub struct WorkerResource {
+  pub internal: WorkerChannels,
+  pub external: WorkerChannels,
+}
+
+impl CoreResource for WorkerResource {
+  fn inspect_repr(&self) -> &str {
+    "worker"
+  }
+}
+
 /// Wraps deno::Isolate to provide source maps, ops for the CLI, and
-/// high-level module loading
+/// high-level module loading.
 #[derive(Clone)]
 pub struct Worker {
   pub name: String,
@@ -124,6 +152,40 @@ impl Worker {
       }
     })
   }
+
+  /// Post message to worker as a host or privileged overlord
+  pub fn post_message(
+    self: &Self,
+    buf: Buf,
+  ) -> Result<futures::sink::Send<mpsc::Sender<Buf>>, ErrBox> {
+    Worker::post_message_to_resource(self.state.resource.rid, buf)
+  }
+
+  pub fn post_message_to_resource(
+    rid: resources::ResourceId,
+    buf: Buf,
+  ) -> Result<futures::sink::Send<mpsc::Sender<Buf>>, ErrBox> {
+    let mut table = resources::lock_resource_table();
+    let worker = table
+      .get_mut::<WorkerResource>(rid)
+      .ok_or_else(bad_resource)?;
+    let sender = worker.external.send.clone();
+    Ok(sender.send(buf))
+  }
+
+  pub fn get_message(self: &Self) -> WorkerReceiver {
+    Worker::get_message_from_resource(self.state.resource.rid)
+  }
+
+  pub fn get_message_from_resource(rid: ResourceId) -> WorkerReceiver {
+    WorkerReceiver { rid }
+  }
+
+  pub fn get_message_stream_from_resource(
+    rid: ResourceId,
+  ) -> WorkerReceiverStream {
+    WorkerReceiverStream { rid }
+  }
 }
 
 impl Future for Worker {
@@ -136,6 +198,47 @@ impl Future for Worker {
   }
 }
 
+// TODO(bartlomieju): remove this
+pub struct WorkerReceiver {
+  rid: ResourceId,
+}
+
+// TODO(bartlomieju): remove this...
+impl Future for WorkerReceiver {
+  type Item = Option<Buf>;
+  type Error = ErrBox;
+
+  fn poll(&mut self) -> Poll<Option<Buf>, ErrBox> {
+    let mut table = resources::lock_resource_table();
+    let worker = table
+      .get_mut::<WorkerResource>(self.rid)
+      .ok_or_else(bad_resource)?;
+    let receiver = &mut worker.external.receive;
+    receiver.poll().map_err(ErrBox::from)
+  }
+}
+
+// TODO(bartlomieju): remove this...
+pub struct WorkerReceiverStream {
+  rid: ResourceId,
+}
+
+// TODO(bartlomieju): remove this...
+impl Stream for WorkerReceiverStream {
+  type Item = Buf;
+  type Error = ErrBox;
+
+  fn poll(&mut self) -> Poll<Option<Buf>, ErrBox> {
+    let mut table = resources::lock_resource_table();
+    let worker = table
+      .get_mut::<WorkerResource>(self.rid)
+      .ok_or_else(bad_resource)?;
+
+    let receiver = &mut worker.external.receive;
+    receiver.poll().map_err(ErrBox::from)
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -143,7 +246,6 @@ mod tests {
   use crate::flags::DenoFlags;
   use crate::global_state::ThreadSafeGlobalState;
   use crate::progress::Progress;
-  use crate::resources;
   use crate::startup_data;
   use crate::state::ThreadSafeState;
   use crate::tokio_util;
@@ -308,6 +410,7 @@ mod tests {
         "#;
       worker.execute(source).unwrap();
 
+      let worker_ = worker.clone();
       let resource = worker.state.resource.clone();
       let resource_ = resource.clone();
 
@@ -321,14 +424,10 @@ mod tests {
 
       let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
 
-      let r = resources::post_message_to_worker(resource.rid, msg)
-        .expect("Bad resource")
-        .wait();
+      let r = worker_.post_message(msg).expect("Bad resource").wait();
       assert!(r.is_ok());
 
-      let maybe_msg = resources::get_message_from_worker(resource.rid)
-        .wait()
-        .unwrap();
+      let maybe_msg = worker_.get_message().wait().unwrap();
       assert!(maybe_msg.is_some());
       // Check if message received is [1, 2, 3] in json
       assert_eq!(*maybe_msg.unwrap(), *b"[1,2,3]");
@@ -337,9 +436,7 @@ mod tests {
         .to_string()
         .into_boxed_str()
         .into_boxed_bytes();
-      let r = resources::post_message_to_worker(resource.rid, msg)
-        .expect("Bad resource")
-        .wait();
+      let r = worker_.post_message(msg).expect("Bad resource").wait();
       assert!(r.is_ok());
     })
   }
@@ -354,6 +451,7 @@ mod tests {
 
       let resource = worker.state.resource.clone();
       let rid = resource.rid;
+      let worker_ = worker.clone();
 
       let worker_future = worker
         .then(move |r| -> Result<(), ()> {
@@ -368,9 +466,7 @@ mod tests {
       tokio::spawn(lazy(move || worker_future_.then(|_| Ok(()))));
 
       let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
-      let r = resources::post_message_to_worker(rid, msg)
-        .expect("Bad resource")
-        .wait();
+      let r = worker_.post_message(msg).expect("Bad resource").wait();
       assert!(r.is_ok());
       debug!("rid {:?}", rid);
 

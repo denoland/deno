@@ -9,6 +9,8 @@ use crate::permissions::DenoPermissions;
 use crate::resources;
 use crate::resources::ResourceId;
 use crate::worker::Worker;
+use crate::worker::WorkerChannels;
+use crate::worker::WorkerResource;
 use deno::Buf;
 use deno::CoreOp;
 use deno::ErrBox;
@@ -31,9 +33,6 @@ use std::sync::Mutex;
 use std::time::Instant;
 use tokio::sync::mpsc as async_mpsc;
 
-pub type WorkerSender = async_mpsc::Sender<Buf>;
-pub type WorkerReceiver = async_mpsc::Receiver<Buf>;
-pub type WorkerChannels = (WorkerSender, WorkerReceiver);
 pub type UserWorkerTable = HashMap<ResourceId, Shared<Worker>>;
 
 /// Isolate cannot be passed between threads but ThreadSafeState can.
@@ -51,7 +50,6 @@ pub struct State {
   /// import map file will be resolved and set.
   pub import_map: Option<ImportMap>,
   pub metrics: Metrics,
-  pub worker_channels: Mutex<WorkerChannels>,
   pub global_timer: Mutex<GlobalTimer>,
   pub workers: Mutex<UserWorkerTable>,
   pub start_time: Instant,
@@ -165,9 +163,20 @@ impl ThreadSafeState {
   ) -> Result<Self, ErrBox> {
     let (worker_in_tx, worker_in_rx) = async_mpsc::channel::<Buf>(1);
     let (worker_out_tx, worker_out_rx) = async_mpsc::channel::<Buf>(1);
-    let internal_channels = (worker_out_tx, worker_in_rx);
-    let external_channels = (worker_in_tx, worker_out_rx);
-    let resource = resources::add_worker(external_channels);
+    let worker_resource = WorkerResource {
+      internal: WorkerChannels {
+        send: worker_out_tx,
+        receive: worker_in_rx,
+      },
+      external: WorkerChannels {
+        send: worker_in_tx,
+        receive: worker_out_rx,
+      },
+    };
+
+    let mut table = resources::lock_resource_table();
+    let rid = table.add(Box::new(worker_resource));
+    let resource = resources::Resource { rid };
 
     let import_map: Option<ImportMap> =
       match global_state.flags.import_map_path.as_ref() {
@@ -190,7 +199,6 @@ impl ThreadSafeState {
       permissions,
       import_map,
       metrics: Metrics::default(),
-      worker_channels: Mutex::new(internal_channels),
       global_timer: Mutex::new(GlobalTimer::new()),
       workers: Mutex::new(UserWorkerTable::new()),
       start_time: Instant::now(),

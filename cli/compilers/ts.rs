@@ -7,7 +7,6 @@ use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::global_state::ThreadSafeGlobalState;
 use crate::msg;
-use crate::resources;
 use crate::source_maps::SourceMapGetter;
 use crate::startup_data;
 use crate::state::*;
@@ -277,22 +276,21 @@ impl TsCompiler {
     let worker = TsCompiler::setup_worker(global_state.clone());
     let resource = worker.state.resource.clone();
     let compiler_rid = resource.rid;
-    let first_msg_fut =
-      resources::post_message_to_worker(compiler_rid, req_msg)
-        .expect("Bad compiler rid")
-        .then(move |_| worker)
-        .then(move |result| {
-          if let Err(err) = result {
-            // TODO(ry) Need to forward the error instead of exiting.
-            eprintln!("{}", err.to_string());
-            std::process::exit(1);
-          }
-          debug!("Sent message to worker");
-          let stream_future =
-            resources::get_message_stream_from_worker(compiler_rid)
-              .into_future();
-          stream_future.map(|(f, _rest)| f).map_err(|(f, _rest)| f)
-        });
+    let first_msg_fut = worker
+      .post_message(req_msg)
+      .expect("Bad compiler rid")
+      .then(move |_| worker)
+      .then(move |result| {
+        if let Err(err) = result {
+          // TODO(ry) Need to forward the error instead of exiting.
+          eprintln!("{}", err.to_string());
+          std::process::exit(1);
+        }
+        debug!("Sent message to worker");
+        let stream_future =
+          Worker::get_message_stream_from_resource(compiler_rid).into_future();
+        stream_future.map(|(f, _rest)| f).map_err(|(f, _rest)| f)
+      });
 
     first_msg_fut.map_err(|_| panic!("not handled")).and_then(
       move |maybe_msg: Option<Buf>| {
@@ -388,22 +386,21 @@ impl TsCompiler {
 
     let resource = worker.state.resource.clone();
     let compiler_rid = resource.rid;
-    let first_msg_fut =
-      resources::post_message_to_worker(compiler_rid, req_msg)
-        .expect("Bad compiler rid")
-        .then(move |_| worker)
-        .then(move |result| {
-          if let Err(err) = result {
-            // TODO(ry) Need to forward the error instead of exiting.
-            eprintln!("{}", err.to_string());
-            std::process::exit(1);
-          }
-          debug!("Sent message to worker");
-          let stream_future =
-            resources::get_message_stream_from_worker(compiler_rid)
-              .into_future();
-          stream_future.map(|(f, _rest)| f).map_err(|(f, _rest)| f)
-        });
+    let first_msg_fut = worker
+      .post_message(req_msg)
+      .expect("Bad compiler rid")
+      .then(move |_| worker)
+      .then(move |result| {
+        if let Err(err) = result {
+          // TODO(ry) Need to forward the error instead of exiting.
+          eprintln!("{}", err.to_string());
+          std::process::exit(1);
+        }
+        debug!("Sent message to worker");
+        let stream_future =
+          Worker::get_message_stream_from_resource(compiler_rid).into_future();
+        stream_future.map(|(f, _rest)| f).map_err(|(f, _rest)| f)
+      });
 
     let fut = first_msg_fut
       .map_err(|_| panic!("not handled"))
