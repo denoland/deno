@@ -24,8 +24,8 @@ use tokio::sync::mpsc;
 use url::Url;
 
 pub struct WorkerChannels {
-  pub send: mpsc::Sender<Buf>,
-  pub receive: mpsc::Receiver<Buf>,
+  pub sender: mpsc::Sender<Buf>,
+  pub receiver: mpsc::Receiver<Buf>,
 }
 
 /// Wraps mpsc channels into a generic resource so they can be referenced
@@ -154,23 +154,24 @@ impl Worker {
   }
 
   /// Post message to worker as a host or privileged overlord
-  pub fn post_message(
-    self: &Self,
-    buf: Buf,
-  ) -> Result<futures::sink::Send<mpsc::Sender<Buf>>, ErrBox> {
+  pub fn post_message(self: &Self, buf: Buf) -> Result<Async<()>, ErrBox> {
     Worker::post_message_to_resource(self.state.resource.rid, buf)
   }
 
   pub fn post_message_to_resource(
     rid: resources::ResourceId,
     buf: Buf,
-  ) -> Result<futures::sink::Send<mpsc::Sender<Buf>>, ErrBox> {
+  ) -> Result<Async<()>, ErrBox> {
     let mut table = resources::lock_resource_table();
     let worker = table
       .get_mut::<WorkerResource>(rid)
       .ok_or_else(bad_resource)?;
-    let sender = worker.external.send.clone();
-    Ok(sender.send(buf))
+    let sender = &mut worker.external.sender;
+    sender
+      .send(buf)
+      .poll()
+      .map(|_| Async::Ready(()))
+      .map_err(ErrBox::from)
   }
 
   pub fn get_message(self: &Self) -> WorkerReceiver {
@@ -179,12 +180,6 @@ impl Worker {
 
   pub fn get_message_from_resource(rid: ResourceId) -> WorkerReceiver {
     WorkerReceiver { rid }
-  }
-
-  pub fn get_message_stream_from_resource(
-    rid: ResourceId,
-  ) -> WorkerReceiverStream {
-    WorkerReceiverStream { rid }
   }
 }
 
@@ -198,12 +193,10 @@ impl Future for Worker {
   }
 }
 
-// TODO(bartlomieju): remove this
 pub struct WorkerReceiver {
   rid: ResourceId,
 }
 
-// TODO(bartlomieju): remove this...
 impl Future for WorkerReceiver {
   type Item = Option<Buf>;
   type Error = ErrBox;
@@ -213,28 +206,7 @@ impl Future for WorkerReceiver {
     let worker = table
       .get_mut::<WorkerResource>(self.rid)
       .ok_or_else(bad_resource)?;
-    let receiver = &mut worker.external.receive;
-    receiver.poll().map_err(ErrBox::from)
-  }
-}
-
-// TODO(bartlomieju): remove this...
-pub struct WorkerReceiverStream {
-  rid: ResourceId,
-}
-
-// TODO(bartlomieju): remove this...
-impl Stream for WorkerReceiverStream {
-  type Item = Buf;
-  type Error = ErrBox;
-
-  fn poll(&mut self) -> Poll<Option<Buf>, ErrBox> {
-    let mut table = resources::lock_resource_table();
-    let worker = table
-      .get_mut::<WorkerResource>(self.rid)
-      .ok_or_else(bad_resource)?;
-
-    let receiver = &mut worker.external.receive;
+    let receiver = &mut worker.external.receiver;
     receiver.poll().map_err(ErrBox::from)
   }
 }
@@ -250,6 +222,7 @@ mod tests {
   use crate::state::ThreadSafeState;
   use crate::tokio_util;
   use futures::future::lazy;
+  use futures::IntoFuture;
   use std::sync::atomic::Ordering;
 
   #[test]
@@ -424,7 +397,7 @@ mod tests {
 
       let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
 
-      let r = worker_.post_message(msg).expect("Bad resource").wait();
+      let r = worker_.post_message(msg).into_future().wait();
       assert!(r.is_ok());
 
       let maybe_msg = worker_.get_message().wait().unwrap();
@@ -436,7 +409,7 @@ mod tests {
         .to_string()
         .into_boxed_str()
         .into_boxed_bytes();
-      let r = worker_.post_message(msg).expect("Bad resource").wait();
+      let r = worker_.post_message(msg).into_future().wait();
       assert!(r.is_ok());
     })
   }
@@ -466,7 +439,7 @@ mod tests {
       tokio::spawn(lazy(move || worker_future_.then(|_| Ok(()))));
 
       let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
-      let r = worker_.post_message(msg).expect("Bad resource").wait();
+      let r = worker_.post_message(msg).into_future().wait();
       assert!(r.is_ok());
       debug!("rid {:?}", rid);
 

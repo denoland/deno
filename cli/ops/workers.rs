@@ -14,6 +14,7 @@ use deno::*;
 use futures;
 use futures::Async;
 use futures::Future;
+use futures::IntoFuture;
 use futures::Sink;
 use futures::Stream;
 use std;
@@ -63,7 +64,7 @@ impl Future for GetMessageFuture {
     let worker = table
       .get_mut::<WorkerResource>(self.rid)
       .expect("Worker not found");
-    let receiver = &mut worker.internal.receive;
+    let receiver = &mut worker.internal.receiver;
     receiver
       .poll()
       .map_err(|err| panic!("worker_channel recv err {:?}", err))
@@ -105,7 +106,7 @@ fn op_worker_post_message(
   let worker = table
     .get_mut::<WorkerResource>(state.resource.rid)
     .ok_or_else(bad_resource)?;
-  let sender = &mut worker.internal.send;
+  let sender = &mut worker.internal.sender;
   sender
     .send(d)
     .wait()
@@ -256,7 +257,8 @@ fn op_host_post_message(
   let d = Vec::from(data.unwrap().as_ref()).into_boxed_slice();
 
   // TODO: rename to post_message_to_child(rid, d)
-  Worker::post_message_to_resource(rid, d)?
+  Worker::post_message_to_resource(rid, d)
+    .into_future()
     .wait()
     .map_err(|e| DenoError::new(ErrorKind::Other, e.to_string()))?;
 

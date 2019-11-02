@@ -165,12 +165,12 @@ impl ThreadSafeState {
     let (worker_out_tx, worker_out_rx) = async_mpsc::channel::<Buf>(1);
     let worker_resource = WorkerResource {
       internal: WorkerChannels {
-        send: worker_out_tx,
-        receive: worker_in_rx,
+        sender: worker_out_tx,
+        receiver: worker_in_rx,
       },
       external: WorkerChannels {
-        send: worker_in_tx,
-        receive: worker_out_rx,
+        sender: worker_in_tx,
+        receiver: worker_out_rx,
       },
     };
 

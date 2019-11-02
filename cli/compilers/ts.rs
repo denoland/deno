@@ -16,7 +16,7 @@ use deno::Buf;
 use deno::ErrBox;
 use deno::ModuleSpecifier;
 use futures::Future;
-use futures::Stream;
+use futures::IntoFuture;
 use regex::Regex;
 use ring;
 use std::collections::HashSet;
@@ -274,11 +274,10 @@ impl TsCompiler {
     let req_msg = req(root_names, self.config.clone(), Some(out_file));
 
     let worker = TsCompiler::setup_worker(global_state.clone());
-    let resource = worker.state.resource.clone();
-    let compiler_rid = resource.rid;
+    let worker_ = worker.clone();
     let first_msg_fut = worker
       .post_message(req_msg)
-      .expect("Bad compiler rid")
+      .into_future()
       .then(move |_| worker)
       .then(move |result| {
         if let Err(err) = result {
@@ -287,9 +286,7 @@ impl TsCompiler {
           std::process::exit(1);
         }
         debug!("Sent message to worker");
-        let stream_future =
-          Worker::get_message_stream_from_resource(compiler_rid).into_future();
-        stream_future.map(|(f, _rest)| f).map_err(|(f, _rest)| f)
+        worker_.get_message()
       });
 
     first_msg_fut.map_err(|_| panic!("not handled")).and_then(
@@ -379,16 +376,15 @@ impl TsCompiler {
     let req_msg = req(root_names, self.config.clone(), None);
 
     let worker = TsCompiler::setup_worker(global_state.clone());
+    let worker_ = worker.clone();
     let compiling_job = global_state
       .progress
       .add("Compile", &module_url.to_string());
     let global_state_ = global_state.clone();
 
-    let resource = worker.state.resource.clone();
-    let compiler_rid = resource.rid;
     let first_msg_fut = worker
       .post_message(req_msg)
-      .expect("Bad compiler rid")
+      .into_future()
       .then(move |_| worker)
       .then(move |result| {
         if let Err(err) = result {
@@ -397,9 +393,7 @@ impl TsCompiler {
           std::process::exit(1);
         }
         debug!("Sent message to worker");
-        let stream_future =
-          Worker::get_message_stream_from_resource(compiler_rid).into_future();
-        stream_future.map(|(f, _rest)| f).map_err(|(f, _rest)| f)
+        worker_.get_message()
       });
 
     let fut = first_msg_fut
