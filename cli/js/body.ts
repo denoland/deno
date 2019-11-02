@@ -83,11 +83,14 @@ function bufferFromStream(stream: ReadableStreamReader): Promise<ArrayBuffer> {
           .then(
             ({ done, value }): void => {
               if (done) {
+                stream.releaseLock();
                 return resolve(concatenate(...parts));
               }
 
               if (typeof value === "string") {
                 parts.push(encoder.encode(value));
+              } else if (value instanceof Uint8Array) {
+                parts.push(value);
               } else if (value instanceof ArrayBuffer) {
                 parts.push(new Uint8Array(value));
               } else if (!value) {
@@ -131,6 +134,7 @@ export const BodyUsedError =
 
 export class Body implements domTypes.Body {
   protected _stream: domTypes.ReadableStream | null;
+  protected _bodyUsed = false;
 
   constructor(protected _bodySource: BodySource, readonly contentType: string) {
     validateBodyType(this, _bodySource);
@@ -160,14 +164,14 @@ export class Body implements domTypes.Body {
   }
 
   get bodyUsed(): boolean {
-    if (this.body && this.body.locked) {
+    if (this.body && this._bodyUsed) {
       return true;
     }
     return false;
   }
 
   public async blob(): Promise<domTypes.Blob> {
-    return new Blob([await this.arrayBuffer()]);
+    return new Blob([await this.arrayBuffer()], { type: this.contentType });
   }
 
   // ref: https://fetch.spec.whatwg.org/#body-mixin
@@ -314,6 +318,7 @@ export class Body implements domTypes.Body {
   }
 
   public async arrayBuffer(): Promise<ArrayBuffer> {
+    this._bodyUsed = true;
     if (
       this._bodySource instanceof Int8Array ||
       this._bodySource instanceof Int16Array ||
@@ -332,7 +337,6 @@ export class Body implements domTypes.Body {
       const enc = new TextEncoder();
       return enc.encode(this._bodySource).buffer as ArrayBuffer;
     } else if (this._bodySource instanceof ReadableStream) {
-      // @ts-ignore
       return bufferFromStream(this._bodySource.getReader());
     } else if (this._bodySource instanceof FormData) {
       const enc = new TextEncoder();
