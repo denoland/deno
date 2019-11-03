@@ -29,9 +29,7 @@ export function openSync(filename: string, mode: OpenMode = "r"): File {
 
 /** Open a file and return an instance of the `File` object.
  *
- *       (async () => {
- *         const file = await Deno.open("/foo/bar.txt");
- *       })();
+ *       const file = await Deno.open("/foo/bar.txt");
  */
 export async function open(
   filename: string,
@@ -66,12 +64,10 @@ export function readSync(rid: number, p: Uint8Array): number | EOF {
  *
  * Resolves with the `number | EOF` for the operation.
  *
- *       (async () => {
- *         const file = await Deno.open("/foo/bar.txt");
- *         const buf = new Uint8Array(100);
- *         const nread = await Deno.read(file.rid, buf);
- *         const text = new TextDecoder().decode(buf);
- *       })();
+ *       const file = await Deno.open("/foo/bar.txt");
+ *       const buf = new Uint8Array(100);
+ *       const nread = await Deno.read(file.rid, buf);
+ *       const text = new TextDecoder().decode(buf);
  */
 export async function read(rid: number, p: Uint8Array): Promise<number | EOF> {
   const nread = await sendAsyncMinimal(dispatch.OP_READ, rid, p);
@@ -106,12 +102,10 @@ export function writeSync(rid: number, p: Uint8Array): number {
  *
  * Resolves with the number of bytes written.
  *
- *      (async () => {
- *        const encoder = new TextEncoder();
- *        const data = encoder.encode("Hello world\n");
- *        const file = await Deno.open("/foo/bar.txt");
- *        await Deno.write(file.rid, data);
- *      })();
+ *      const encoder = new TextEncoder();
+ *      const data = encoder.encode("Hello world\n");
+ *      const file = await Deno.open("/foo/bar.txt");
+ *      await Deno.write(file.rid, data);
  *
  */
 export async function write(rid: number, p: Uint8Array): Promise<number> {
@@ -134,10 +128,8 @@ export function seekSync(rid: number, offset: number, whence: SeekMode): void {
 
 /** Seek a file ID to the given offset under mode given by `whence`.
  *
- *      (async () => {
- *        const file = await Deno.open("/foo/bar.txt");
- *        await Deno.seek(file.rid, 0, 0);
- *      })();
+ *      const file = await Deno.open("/foo/bar.txt");
+ *      await Deno.seek(file.rid, 0, 0);
  */
 export async function seek(
   rid: number,

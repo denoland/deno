@@ -178,20 +178,20 @@ def spawn():
     while any(not s.thread.is_alive() for s in servers):
         sleep(0.01)
     try:
-        yield
+        print "ready"
+        yield servers
     finally:
         for s in servers:
             s.server.shutdown()
 
 
 def main():
-    servers = (server(), redirect_server(), another_redirect_server(),
-               double_redirects_server(), inf_redirects_server())
-    try:
-        while all(s.thread.is_alive() for s in servers):
-            sleep(10)
-    except KeyboardInterrupt:
-        pass
+    with spawn() as servers:
+        try:
+            while all(s.thread.is_alive() for s in servers):
+                sleep(1)
+        except KeyboardInterrupt:
+            pass
     sys.exit(1)
 
 

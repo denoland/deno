@@ -47,6 +47,42 @@ test(function testingEqual(): void {
   assert(!equal(new Set([1, 2]), new Set([3, 2, 1])));
   assert(!equal(new Set([1, 2, 3]), new Set([4, 5, 6])));
   assert(equal(new Set("denosaurus"), new Set("denosaurussss")));
+  assert(equal(new Map(), new Map()));
+  assert(
+    equal(
+      new Map([["foo", "bar"], ["baz", "baz"]]),
+      new Map([["foo", "bar"], ["baz", "baz"]])
+    )
+  );
+  assert(
+    equal(
+      new Map([["foo", new Map([["bar", "baz"]])]]),
+      new Map([["foo", new Map([["bar", "baz"]])]])
+    )
+  );
+  assert(
+    equal(
+      new Map([["foo", { bar: "baz" }]]),
+      new Map([["foo", { bar: "baz" }]])
+    )
+  );
+  assert(
+    equal(
+      new Map([["foo", "bar"], ["baz", "qux"]]),
+      new Map([["baz", "qux"], ["foo", "bar"]])
+    )
+  );
+  assert(equal(new Map([["foo", ["bar"]]]), new Map([["foo", ["bar"]]])));
+  assert(!equal(new Map([["foo", "bar"]]), new Map([["bar", "baz"]])));
+  assert(
+    !equal(new Map([["foo", "bar"]]), new Map([["foo", "bar"], ["bar", "baz"]]))
+  );
+  assert(
+    !equal(
+      new Map([["foo", new Map([["bar", "baz"]])]]),
+      new Map([["foo", new Map([["bar", "qux"]])]])
+    )
+  );
 });
 
 test(function testingNotEquals(): void {

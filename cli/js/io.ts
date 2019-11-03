@@ -3,11 +3,8 @@
 // Documentation liberally lifted from them too.
 // Thank you! We love Go!
 
-// TODO(kt3k): EOF should be `unique symbol` type.
-// That might require some changes of ts_library_builder.
-// See #2591 for more details.
-export const EOF = null;
-export type EOF = null;
+export const EOF: unique symbol = Symbol("EOF");
+export type EOF = typeof EOF;
 
 // Seek whence values.
 // https://golang.org/pkg/io/#pkg-constants
