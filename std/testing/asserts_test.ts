@@ -89,7 +89,7 @@ test(function testingEqual(): void {
 
   assert(!equal(new Map([[{ x: 1 }, true]]), new Map([[{ x: 1 }, false]])));
 
-  assert(!equal(new Map([[{ x: 1 }, true]]), new Map([[{ x: 2 }, false]])));
+  assert(!equal(new Map([[{ x: 1 }, true]]), new Map([[{ x: 2 }, true]])));
 
   assert(equal([1, 2, 3], [1, 2, 3]));
   assert(equal([1, [2, 3]], [1, [2, 3]]));
