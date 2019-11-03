@@ -18,9 +18,7 @@ use deno::ModuleSpecifier;
 use futures::Future;
 use futures::Stream;
 use regex::Regex;
-use ring;
 use std::collections::HashSet;
-use std::fmt::Write;
 use std::fs;
 use std::io;
 use std::path::PathBuf;
@@ -178,20 +176,6 @@ fn req(
   j.to_string().into_boxed_str().into_boxed_bytes()
 }
 
-fn gen_hash(v: Vec<&[u8]>) -> String {
-  let mut ctx = ring::digest::Context::new(&ring::digest::SHA256);
-  for src in v.iter() {
-    ctx.update(src);
-  }
-  let digest = ctx.finish();
-  let mut out = String::new();
-  // TODO There must be a better way to do this...
-  for byte in digest.as_ref() {
-    write!(&mut out, "{:02x}", byte).unwrap();
-  }
-  out
-}
-
 /// Emit a SHA256 hash based on source code, deno version and TS config.
 /// Used to check if a recompilation for source code is needed.
 pub fn source_code_version_hash(
@@ -199,7 +183,7 @@ pub fn source_code_version_hash(
   version: &str,
   config_hash: &[u8],
 ) -> String {
-  gen_hash(vec![source_code, version.as_bytes(), config_hash])
+  crate::checksum::gen(vec![source_code, version.as_bytes(), config_hash])
 }
 
 pub struct TsCompiler {
