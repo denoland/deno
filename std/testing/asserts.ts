@@ -67,10 +67,8 @@ function buildMessage(diffResult: ReadonlyArray<DiffResult<string>>): string[] {
   return messages;
 }
 
-function isKeyedCollection(
-  x: unknown
-): x is Set<unknown> {
-  return [Symbol.iterator, 'size'].every(k => k in (x as Set<unknown>));
+function isKeyedCollection(x: unknown): x is Set<unknown> {
+  return [Symbol.iterator, "size"].every(k => k in (x as Set<unknown>));
 }
 
 export function equal(c: unknown, d: unknown): boolean {
