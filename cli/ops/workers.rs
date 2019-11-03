@@ -74,9 +74,7 @@ fn op_worker_get_message(
   _args: Value,
   _data: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
-  let op = GetMessageFuture {
-    rid: state.resource.rid,
-  };
+  let op = GetMessageFuture { rid: state.rid };
 
   let op = op
     .map_err(move |_| -> ErrBox { unimplemented!() })
@@ -101,7 +99,7 @@ fn op_worker_post_message(
 
   let mut table = resources::lock_resource_table();
   let worker = table
-    .get_mut::<WorkerResource>(state.resource.rid)
+    .get_mut::<WorkerResource>(state.rid)
     .ok_or_else(bad_resource)?;
   let sender = &mut worker.internal.sender;
   sender
@@ -153,7 +151,7 @@ fn op_create_worker(
     Some(module_specifier.clone()),
     include_deno_namespace,
   )?;
-  let rid = child_state.resource.rid;
+  let rid = child_state.rid;
   let name = format!("USER-WORKER-{}", specifier);
   let deno_main_call = format!("denoMain({})", include_deno_namespace);
   let mut worker =

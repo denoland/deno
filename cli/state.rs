@@ -33,6 +33,8 @@ use std::sync::Mutex;
 use std::time::Instant;
 use tokio::sync::mpsc as async_mpsc;
 
+// TODO: hold references to concrete Workers instead of shared futures of
+// those workers?
 pub type UserWorkerTable = HashMap<ResourceId, Shared<Worker>>;
 
 /// Isolate cannot be passed between threads but ThreadSafeState can.
@@ -54,7 +56,7 @@ pub struct State {
   pub workers: Mutex<UserWorkerTable>,
   pub start_time: Instant,
   /// A reference to this worker's resource.
-  pub resource: resources::Resource,
+  pub rid: ResourceId,
   pub seeded_rng: Option<Mutex<StdRng>>,
   pub include_deno_namespace: bool,
 }
@@ -197,7 +199,6 @@ impl ThreadSafeState {
 
     let mut table = resources::lock_resource_table();
     let rid = table.add(Box::new(worker_resource));
-    let resource = resources::Resource { rid };
 
     let import_map: Option<ImportMap> =
       match global_state.flags.import_map_path.as_ref() {
@@ -223,7 +224,7 @@ impl ThreadSafeState {
       global_timer: Mutex::new(GlobalTimer::new()),
       workers: Mutex::new(UserWorkerTable::new()),
       start_time: Instant::now(),
-      resource,
+      rid,
       seeded_rng,
       include_deno_namespace,
     };

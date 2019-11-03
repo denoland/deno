@@ -151,7 +151,7 @@ impl Worker {
 
   /// Post message to worker as a host or privileged overlord
   pub fn post_message(self: &Self, buf: Buf) -> Result<Async<()>, ErrBox> {
-    Worker::post_message_to_resource(self.state.resource.rid, buf)
+    Worker::post_message_to_resource(self.state.rid, buf)
   }
 
   pub fn post_message_to_resource(
@@ -172,7 +172,7 @@ impl Worker {
   }
 
   pub fn get_message(self: &Self) -> WorkerReceiver {
-    Worker::get_message_from_resource(self.state.resource.rid)
+    Worker::get_message_from_resource(self.state.rid)
   }
 
   pub fn get_message_from_resource(rid: ResourceId) -> WorkerReceiver {
@@ -380,8 +380,8 @@ mod tests {
       worker.execute(source).unwrap();
 
       let worker_ = worker.clone();
-      let resource = worker.state.resource.clone();
-      let resource_ = resource.clone();
+      let rid = worker.state.rid;
+      let resource_ = resources::Resource { rid };
 
       tokio::spawn(lazy(move || {
         worker.then(move |r| -> Result<(), ()> {
@@ -418,8 +418,8 @@ mod tests {
         .execute("onmessage = () => { delete window.onmessage; }")
         .unwrap();
 
-      let resource = worker.state.resource.clone();
-      let rid = resource.rid;
+      let rid = worker.state.rid;
+      let resource = resources::Resource { rid };
       let worker_ = worker.clone();
 
       let worker_future = worker
