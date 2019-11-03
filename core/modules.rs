@@ -607,7 +607,6 @@ mod tests {
   use std::error::Error;
   use std::fmt;
 
-  #[derive(Clone)]
   struct MockLoader {
     pub loads: Arc<Mutex<Vec<String>>>,
     pub isolate: Arc<Mutex<Isolate>>,
