@@ -44,6 +44,7 @@ test(function testingEqual(): void {
   assert(equal(new Set([1]), new Set([1])));
   assert(!equal(new Set([1]), new Set([2])));
   assert(equal(new Set([1, 2, 3]), new Set([3, 2, 1])));
+  assert(equal(new Set([1, new Set([2, 3])]), new Set([new Set([3, 2]), 1])));
   assert(!equal(new Set([1, 2]), new Set([3, 2, 1])));
   assert(!equal(new Set([1, 2, 3]), new Set([4, 5, 6])));
   assert(equal(new Set("denosaurus"), new Set("denosaurussss")));
@@ -81,6 +82,27 @@ test(function testingEqual(): void {
     !equal(
       new Map([["foo", new Map([["bar", "baz"]])]]),
       new Map([["foo", new Map([["bar", "qux"]])]])
+    )
+  );
+
+  assert(
+    equal(
+      new Map([[{x: 1}, true]]),
+      new Map([[{x: 1}, true]])
+    )
+  );
+
+  assert(
+    !equal(
+      new Map([[{x: 1}, true]]),
+      new Map([[{x: 1}, false]])
+    )
+  );
+
+  assert(
+    !equal(
+      new Map([[{x: 1}, true]]),
+      new Map([[{x: 2}, false]])
     )
   );
 

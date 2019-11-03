@@ -69,8 +69,8 @@ function buildMessage(diffResult: ReadonlyArray<DiffResult<string>>): string[] {
 
 function isKeyedCollection(
   x: unknown
-): x is Map<unknown, unknown> | Set<unknown> {
-  return x instanceof Map || x instanceof Set;
+): x is Set<unknown> {
+  return [Symbol.iterator, 'size'].every(k => k in (x as Set<unknown>));
 }
 
 export function equal(c: unknown, d: unknown): boolean {
@@ -101,13 +101,19 @@ export function equal(c: unknown, d: unknown): boolean {
           return false;
         }
 
-        for (const [key, value] of a.entries()) {
-          if (!b.has(key) || !compare(value, "get" in b ? b.get(key) : key)) {
-            return false;
+        let matchedEntries = 0;
+
+        for (const [aKey, aValue] of a.entries()) {
+          for (const [bKey, bValue] of b.entries()) {
+            /* Given that keys can be references, we need
+             * to ensure that they are also deeply equal */
+            if (compare(aKey, bKey) && compare(aValue, bValue)) {
+              matchedEntries++;
+            }
           }
         }
 
-        return true;
+        return matchedEntries === a.size;
       }
       const merged = { ...a, ...b };
       for (const key in merged) {
