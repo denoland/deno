@@ -32,7 +32,7 @@ pub struct WorkerChannels {
 /// from ops and used to facilitate parent-child communication
 /// for workers.
 pub struct WorkerResource {
-  pub internal: WorkerChannels,
+  pub internal: Option<WorkerChannels>,
   pub external: WorkerChannels,
 }
 
