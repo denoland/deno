@@ -101,19 +101,19 @@ export function equal(c: unknown, d: unknown): boolean {
           return false;
         }
 
-        let matchedEntries = 0;
+        let unmatchedEntries = a.size;
 
         for (const [aKey, aValue] of a.entries()) {
           for (const [bKey, bValue] of b.entries()) {
             /* Given that keys can be references, we need
              * to ensure that they are also deeply equal */
             if (compare(aKey, bKey) && compare(aValue, bValue)) {
-              matchedEntries++;
+              unmatchedEntries--;
             }
           }
         }
 
-        return matchedEntries === a.size;
+        return unmatchedEntries === 0;
       }
       const merged = { ...a, ...b };
       for (const key in merged) {
