@@ -23,20 +23,15 @@ use std::sync::Mutex;
 use tokio::sync::mpsc;
 use url::Url;
 
+/// Wraps mpsc channels into a generic resource so they can be referenced
+/// from ops and used to facilitate parent-child communication
+/// for workers.
 pub struct WorkerChannels {
   pub sender: mpsc::Sender<Buf>,
   pub receiver: mpsc::Receiver<Buf>,
 }
 
-/// Wraps mpsc channels into a generic resource so they can be referenced
-/// from ops and used to facilitate parent-child communication
-/// for workers.
-pub struct WorkerResource {
-  pub internal: Option<WorkerChannels>,
-  pub external: WorkerChannels,
-}
-
-impl CoreResource for WorkerResource {
+impl CoreResource for WorkerChannels {
   fn inspect_repr(&self) -> &str {
     "worker"
   }
@@ -161,9 +156,9 @@ impl Worker {
     debug!("post message to resource {}", rid);
     let mut table = resources::lock_resource_table();
     let worker = table
-      .get_mut::<WorkerResource>(rid)
+      .get_mut::<WorkerChannels>(rid)
       .ok_or_else(bad_resource)?;
-    let sender = &mut worker.external.sender;
+    let sender = &mut worker.sender;
     sender
       .send(buf)
       .poll()
@@ -202,9 +197,9 @@ impl Future for WorkerReceiver {
   fn poll(&mut self) -> Poll<Option<Buf>, ErrBox> {
     let mut table = resources::lock_resource_table();
     let worker = table
-      .get_mut::<WorkerResource>(self.rid)
+      .get_mut::<WorkerChannels>(self.rid)
       .ok_or_else(bad_resource)?;
-    let receiver = &mut worker.external.receiver;
+    let receiver = &mut worker.receiver;
     receiver.poll().map_err(ErrBox::from)
   }
 }

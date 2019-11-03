@@ -10,7 +10,6 @@ use crate::resources;
 use crate::resources::ResourceId;
 use crate::worker::Worker;
 use crate::worker::WorkerChannels;
-use crate::worker::WorkerResource;
 use deno::Buf;
 use deno::CoreOp;
 use deno::ErrBox;
@@ -48,6 +47,7 @@ pub struct State {
   pub modules: Arc<Mutex<deno::Modules>>,
   pub permissions: DenoPermissions,
   pub main_module: Option<ModuleSpecifier>,
+  pub worker_channels: Mutex<WorkerChannels>,
   /// When flags contains a `.import_map_path` option, the content of the
   /// import map file will be resolved and set.
   pub import_map: Option<ImportMap>,
@@ -186,19 +186,17 @@ impl ThreadSafeState {
   ) -> Result<Self, ErrBox> {
     let (worker_in_tx, worker_in_rx) = async_mpsc::channel::<Buf>(1);
     let (worker_out_tx, worker_out_rx) = async_mpsc::channel::<Buf>(1);
-    let worker_resource = WorkerResource {
-      internal: Some(WorkerChannels {
-        sender: worker_out_tx,
-        receiver: worker_in_rx,
-      }),
-      external: WorkerChannels {
-        sender: worker_in_tx,
-        receiver: worker_out_rx,
-      },
+    let internal_channels = WorkerChannels {
+      sender: worker_out_tx,
+      receiver: worker_in_rx,
+    };
+    let external_channels = WorkerChannels {
+      sender: worker_in_tx,
+      receiver: worker_out_rx,
     };
 
     let mut table = resources::lock_resource_table();
-    let rid = table.add(Box::new(worker_resource));
+    let rid = table.add(Box::new(external_channels));
 
     let import_map: Option<ImportMap> =
       match global_state.flags.import_map_path.as_ref() {
@@ -220,6 +218,7 @@ impl ThreadSafeState {
       main_module,
       permissions,
       import_map,
+      worker_channels: Mutex::new(internal_channels),
       metrics: Metrics::default(),
       global_timer: Mutex::new(GlobalTimer::new()),
       workers: Mutex::new(UserWorkerTable::new()),

@@ -1,15 +1,12 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use crate::deno_error::bad_resource;
 use crate::deno_error::js_check;
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
 use crate::ops::json_op;
-use crate::resources;
 use crate::startup_data;
 use crate::state::ThreadSafeState;
 use crate::worker::Worker;
-use crate::worker::WorkerResource;
 use deno::*;
 use futures;
 use futures::Async;
@@ -51,7 +48,7 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
 }
 
 struct GetMessageFuture {
-  rid: ResourceId,
+  state: ThreadSafeState,
 }
 
 impl Future for GetMessageFuture {
@@ -59,11 +56,8 @@ impl Future for GetMessageFuture {
   type Error = ErrBox;
 
   fn poll(&mut self) -> Result<Async<Self::Item>, Self::Error> {
-    let mut table = resources::lock_resource_table();
-    let worker = table
-      .get_mut::<WorkerResource>(self.rid)
-      .ok_or_else(bad_resource)?;
-    let receiver = &mut worker.internal.as_mut().unwrap().receiver;
+    let mut channels = self.state.worker_channels.lock().unwrap();
+    let receiver = &mut channels.receiver;
     receiver.poll().map_err(ErrBox::from)
   }
 }
@@ -74,7 +68,9 @@ fn op_worker_get_message(
   _args: Value,
   _data: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
-  let op = GetMessageFuture { rid: state.rid };
+  let op = GetMessageFuture {
+    state: state.clone(),
+  };
 
   let op = op
     .map_err(move |_| -> ErrBox { unimplemented!() })
@@ -96,12 +92,8 @@ fn op_worker_post_message(
   data: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let d = Vec::from(data.unwrap().as_ref()).into_boxed_slice();
-
-  let mut table = resources::lock_resource_table();
-  let worker = table
-    .get_mut::<WorkerResource>(state.rid)
-    .ok_or_else(bad_resource)?;
-  let sender = &mut worker.internal.as_mut().unwrap().sender;
+  let mut channels = state.worker_channels.lock().unwrap();
+  let sender = &mut channels.sender;
   sender
     .send(d)
     .wait()
@@ -201,19 +193,8 @@ fn op_host_get_worker_closed(
     worker.clone()
   };
 
-  let op = Box::new(shared_worker_future.then(move |_result| {
-    // TODO: this is bad, need to figure out a better way for that
-    // drop internal channels of worker
-    let mut workers_tl = state.workers.lock().unwrap();
-    let worker = workers_tl.remove(&rid);
-    let mut table = resources::lock_resource_table();
-    let worker_resource = table
-      .get_mut::<WorkerResource>(rid)
-      .expect("unable to find worker");
-    // drop internal channels so receiver on external channels are notified when it's done
-    worker_resource.internal = None;
-    futures::future::ok(json!({}))
-  }));
+  let op =
+    shared_worker_future.then(move |_result| futures::future::ok(json!({})));
 
   Ok(JsonOp::Async(Box::new(op)))
 }
@@ -235,7 +216,6 @@ fn op_host_get_message(
   let op = Worker::get_message_from_resource(rid)
     .map_err(move |_| -> ErrBox { unimplemented!() })
     .and_then(move |maybe_buf| {
-      //      eprintln!("host get message {} {}", rid, maybe_buf.is_some());
       futures::future::ok(json!({
         "data": maybe_buf.map(|buf| buf.to_owned())
       }))
