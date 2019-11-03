@@ -18,6 +18,7 @@ extern crate serde_derive;
 extern crate tokio;
 extern crate url;
 
+mod checksum;
 pub mod colors;
 pub mod compilers;
 pub mod deno_dir;
@@ -34,6 +35,7 @@ mod http_body;
 mod http_util;
 mod import_map;
 mod js;
+mod lockfile;
 mod metrics;
 pub mod msg;
 pub mod ops;
@@ -375,6 +377,18 @@ fn run_script(flags: DenoFlags, argv: Vec<String>) {
 
     worker
       .execute_mod_async(&main_module, None, false)
+      .and_then(move |()| {
+        if state.flags.lock_write {
+          if let Some(ref lockfile) = state.lockfile {
+            let g = lockfile.lock().unwrap();
+            g.write()?;
+          } else {
+            eprintln!("--lock flag must be specified when using --lock-write");
+            std::process::exit(11);
+          }
+        }
+        Ok(())
+      })
       .and_then(move |()| {
         js_check(worker.execute("window.dispatchEvent(new Event('load'))"));
         worker.then(move |result| {

@@ -7,6 +7,7 @@ use crate::deno_dir;
 use crate::deno_error::permission_denied;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags;
+use crate::lockfile::Lockfile;
 use crate::metrics::Metrics;
 use crate::msg;
 use crate::permissions::DenoPermissions;
@@ -19,6 +20,7 @@ use std::env;
 use std::ops::Deref;
 use std::str;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 /// Holds state of the program and can be accessed by V8 isolate.
 pub struct ThreadSafeGlobalState(Arc<GlobalState>);
@@ -43,6 +45,7 @@ pub struct GlobalState {
   pub js_compiler: JsCompiler,
   pub json_compiler: JsonCompiler,
   pub ts_compiler: TsCompiler,
+  pub lockfile: Option<Mutex<Lockfile>>,
 }
 
 impl Clone for ThreadSafeGlobalState {
@@ -89,6 +92,13 @@ impl ThreadSafeGlobalState {
       Some(ModuleSpecifier::resolve_url_or_path(&root_specifier)?)
     };
 
+    // Note: reads lazily from disk on first call to lockfile.check()
+    let lockfile = if let Some(filename) = &flags.lock {
+      Some(Mutex::new(Lockfile::new(filename.to_string())))
+    } else {
+      None
+    };
+
     let state = GlobalState {
       main_module,
       dir,
@@ -101,6 +111,7 @@ impl ThreadSafeGlobalState {
       ts_compiler,
       js_compiler: JsCompiler {},
       json_compiler: JsonCompiler {},
+      lockfile,
     };
 
     Ok(ThreadSafeGlobalState(Arc::new(state)))
@@ -110,26 +121,42 @@ impl ThreadSafeGlobalState {
     self: &Self,
     module_specifier: &ModuleSpecifier,
   ) -> impl Future<Item = CompiledModule, Error = ErrBox> {
-    let state_ = self.clone();
+    let state1 = self.clone();
+    let state2 = self.clone();
 
     self
       .file_fetcher
       .fetch_source_file_async(&module_specifier)
       .and_then(move |out| match out.media_type {
-        msg::MediaType::Unknown => state_.js_compiler.compile_async(&out),
-        msg::MediaType::Json => state_.json_compiler.compile_async(&out),
+        msg::MediaType::Unknown => state1.js_compiler.compile_async(&out),
+        msg::MediaType::Json => state1.json_compiler.compile_async(&out),
         msg::MediaType::TypeScript
         | msg::MediaType::TSX
         | msg::MediaType::JSX => {
-          state_.ts_compiler.compile_async(state_.clone(), &out)
+          state1.ts_compiler.compile_async(state1.clone(), &out)
         }
         msg::MediaType::JavaScript => {
-          if state_.ts_compiler.compile_js {
-            state_.ts_compiler.compile_async(state_.clone(), &out)
+          if state1.ts_compiler.compile_js {
+            state1.ts_compiler.compile_async(state1.clone(), &out)
           } else {
-            state_.js_compiler.compile_async(&out)
+            state1.js_compiler.compile_async(&out)
           }
         }
+      })
+      .and_then(move |compiled_module| {
+        if let Some(ref lockfile) = state2.lockfile {
+          let mut g = lockfile.lock().unwrap();
+          if state2.flags.lock_write {
+            g.insert(&compiled_module);
+          } else if !g.check(&compiled_module)? {
+            eprintln!(
+              "Subresource integrety check failed --lock={}\n{}",
+              g.filename, compiled_module.name
+            );
+            std::process::exit(10);
+          }
+        }
+        Ok(compiled_module)
       })
   }
 

@@ -111,7 +111,6 @@ test(function osPid(): void {
   assert(Deno.pid > 0);
 });
 
-// See complete tests in tools/is_tty_test.py
 test(function osIsTTYSmoke(): void {
   console.log(Deno.isTTY());
 });
