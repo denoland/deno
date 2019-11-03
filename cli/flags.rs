@@ -60,6 +60,9 @@ pub struct DenoFlags {
   pub v8_flags: Option<Vec<String>>,
   // Use tokio::runtime::current_thread
   pub current_thread: bool,
+
+  pub lock: Option<String>,
+  pub lock_write: bool,
 }
 
 static ENV_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
@@ -131,7 +134,7 @@ pub fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
     .global_settings(&[AppSettings::ColorNever, AppSettings::UnifiedHelpMessage, AppSettings::DisableVersion])
     .settings(&[AppSettings::AllowExternalSubcommands])
     .after_help(ENV_VARIABLES_HELP)
-    .long_about("A secure runtime for JavaScript and TypeScript built with V8, Rust, and Tokio.
+    .long_about("A secure JavaScript and TypeScript runtime
 
 Docs: https://deno.land/manual.html
 Modules: https://deno.land/x/
@@ -143,7 +146,7 @@ To run the REPL:
 
 To execute a sandboxed script:
 
-  deno https://deno.land/welcome.ts
+  deno https://deno.land/std/examples/welcome.ts
 
 To evaluate code from the command line:
 
@@ -222,6 +225,18 @@ Examples: https://github.com/WICG/import-maps#the-import-map",
             Err(_) => Err("Seed should be a number".to_string())
           }
         })
+        .global(true),
+    ).arg(
+      Arg::with_name("lock")
+        .long("lock")
+        .value_name("FILE")
+        .help("Check the specified lock file")
+        .takes_value(true)
+        .global(true),
+    ).arg(
+      Arg::with_name("lock-write")
+        .long("lock-write")
+        .help("Write lock file. Use with --lock.")
         .global(true),
     ).arg(
       Arg::with_name("v8-options")
@@ -633,6 +648,13 @@ pub fn parse_flags(
         flags.v8_flags = Some(svec!["deno", v8_seed_flag]);
       }
     }
+  }
+  if matches.is_present("lock") {
+    let lockfile = matches.value_of("lock").unwrap();
+    flags.lock = Some(lockfile.to_string());
+  }
+  if matches.is_present("lock-write") {
+    flags.lock_write = true;
   }
 
   flags = parse_run_args(flags, matches);
@@ -1884,6 +1906,26 @@ mod tests {
           "127.0.0.1:4545",
           "localhost:4545"
         ],
+        ..DenoFlags::default()
+      }
+    );
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "script.ts"])
+  }
+
+  #[test]
+  fn test_flags_from_vec_38() {
+    let (flags, subcommand, argv) = flags_from_vec(svec![
+      "deno",
+      "--lock-write",
+      "--lock=lock.json",
+      "script.ts"
+    ]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        lock_write: true,
+        lock: Some("lock.json".to_string()),
         ..DenoFlags::default()
       }
     );
