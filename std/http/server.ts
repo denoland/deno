@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-const { listen, copy, toAsyncIterator } = Deno;
+const { listen, listenTLS, copy, toAsyncIterator } = Deno;
 type Listener = Deno.Listener;
 type Conn = Deno.Conn;
 type Reader = Deno.Reader;
@@ -395,6 +395,22 @@ export async function listenAndServe(
   handler: (req: ServerRequest) => void
 ): Promise<void> {
   const server = serve(addr);
+
+  for await (const request of server) {
+    handler(request);
+  }
+}
+
+export function serveTLS(options: Deno.ListenTLSOptions): Server {
+  const listener = listenTLS(options);
+  return new Server(listener);
+}
+
+export async function listenAndServeTLS(
+  options: Deno.ListenTLSOptions,
+  handler: (req: ServerRequest) => void
+): Promise<void> {
+  const server = serveTLS(options);
 
   for await (const request of server) {
     handler(request);
