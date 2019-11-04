@@ -52,7 +52,7 @@ impl fmt::Display for PermissionAccessorState {
   }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct PermissionAccessor {
   state: Arc<AtomicUsize>,
 }
@@ -110,7 +110,7 @@ impl Default for PermissionAccessor {
   }
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct DenoPermissions {
   // Keep in sync with cli/js/permissions.ts
   pub allow_read: PermissionAccessor,

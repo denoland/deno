@@ -2,7 +2,6 @@
 use crate::compilers::CompiledModule;
 use crate::compilers::CompiledModuleFuture;
 use crate::file_fetcher::SourceFile;
-use crate::state::ThreadSafeState;
 use std::str;
 
 pub struct JsCompiler {}
@@ -10,7 +9,6 @@ pub struct JsCompiler {}
 impl JsCompiler {
   pub fn compile_async(
     self: &Self,
-    _state: ThreadSafeState,
     source_file: &SourceFile,
   ) -> Box<CompiledModuleFuture> {
     let module = CompiledModule {

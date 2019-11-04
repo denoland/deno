@@ -2,7 +2,6 @@
 use crate::compilers::CompiledModule;
 use crate::compilers::CompiledModuleFuture;
 use crate::file_fetcher::SourceFile;
-use crate::state::ThreadSafeState;
 use deno::ErrBox;
 use regex::Regex;
 use std::str;
@@ -15,7 +14,6 @@ pub struct JsonCompiler {}
 impl JsonCompiler {
   pub fn compile_async(
     self: &Self,
-    _state: ThreadSafeState,
     source_file: &SourceFile,
   ) -> Box<CompiledModuleFuture> {
     let maybe_json_value: serde_json::Result<serde_json::Value> =

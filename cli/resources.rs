@@ -11,9 +11,6 @@
 use crate::deno_error;
 use crate::deno_error::bad_resource;
 use crate::http_body::HttpBody;
-use crate::state::WorkerChannels;
-
-use deno::Buf;
 use deno::ErrBox;
 pub use deno::Resource as CoreResource;
 pub use deno::ResourceId;
@@ -22,8 +19,6 @@ use deno::ResourceTable;
 use futures;
 use futures::Future;
 use futures::Poll;
-use futures::Sink;
-use futures::Stream;
 use reqwest::r#async::Decoder as ReqwestDecoder;
 use std;
 use std::io::{Error, Read, Seek, SeekFrom, Write};
@@ -34,7 +29,6 @@ use std::sync::MutexGuard;
 use tokio;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
-use tokio::sync::mpsc;
 use tokio_process;
 use tokio_rustls::client::TlsStream as ClientTlsStream;
 use tokio_rustls::server::TlsStream as ServerTlsStream;
@@ -101,7 +95,6 @@ enum CliResource {
   ChildStdin(tokio_process::ChildStdin),
   ChildStdout(tokio_process::ChildStdout),
   ChildStderr(tokio_process::ChildStderr),
-  Worker(WorkerChannels),
 }
 
 impl CoreResource for CliResource {
@@ -133,7 +126,6 @@ impl CoreResource for CliResource {
       CliResource::ChildStdin(_) => "childStdin",
       CliResource::ChildStdout(_) => "childStdout",
       CliResource::ChildStderr(_) => "childStderr",
-      CliResource::Worker(_) => "worker",
     }
   }
 }
@@ -370,78 +362,6 @@ pub fn add_reqwest_body(body: ReqwestDecoder) -> Resource {
   let mut table = lock_resource_table();
   let rid = table.add(Box::new(CliResource::HttpBody(body)));
   Resource { rid }
-}
-
-pub fn add_worker(wc: WorkerChannels) -> Resource {
-  let mut table = lock_resource_table();
-  let rid = table.add(Box::new(CliResource::Worker(wc)));
-  Resource { rid }
-}
-
-/// Post message to worker as a host or privilged overlord
-pub fn post_message_to_worker(
-  rid: ResourceId,
-  buf: Buf,
-) -> Result<futures::sink::Send<mpsc::Sender<Buf>>, ErrBox> {
-  let mut table = lock_resource_table();
-  let repr = table.get_mut::<CliResource>(rid).ok_or_else(bad_resource)?;
-  match repr {
-    CliResource::Worker(ref mut wc) => {
-      let sender = wc.0.clone();
-      Ok(sender.send(buf))
-    }
-    _ => Err(bad_resource()),
-  }
-}
-
-pub struct WorkerReceiver {
-  rid: ResourceId,
-}
-
-// Invert the dumbness that tokio_process causes by making Child itself a future.
-impl Future for WorkerReceiver {
-  type Item = Option<Buf>;
-  type Error = ErrBox;
-
-  fn poll(&mut self) -> Poll<Option<Buf>, ErrBox> {
-    let mut table = lock_resource_table();
-    let repr = table
-      .get_mut::<CliResource>(self.rid)
-      .ok_or_else(bad_resource)?;
-    match repr {
-      CliResource::Worker(ref mut wc) => wc.1.poll().map_err(ErrBox::from),
-      _ => Err(bad_resource()),
-    }
-  }
-}
-
-pub fn get_message_from_worker(rid: ResourceId) -> WorkerReceiver {
-  WorkerReceiver { rid }
-}
-
-pub struct WorkerReceiverStream {
-  rid: ResourceId,
-}
-
-// Invert the dumbness that tokio_process causes by making Child itself a future.
-impl Stream for WorkerReceiverStream {
-  type Item = Buf;
-  type Error = ErrBox;
-
-  fn poll(&mut self) -> Poll<Option<Buf>, ErrBox> {
-    let mut table = lock_resource_table();
-    let repr = table
-      .get_mut::<CliResource>(self.rid)
-      .ok_or_else(bad_resource)?;
-    match repr {
-      CliResource::Worker(ref mut wc) => wc.1.poll().map_err(ErrBox::from),
-      _ => Err(bad_resource()),
-    }
-  }
-}
-
-pub fn get_message_stream_from_worker(rid: ResourceId) -> WorkerReceiverStream {
-  WorkerReceiverStream { rid }
 }
 
 pub struct ChildResources {

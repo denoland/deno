@@ -15,6 +15,7 @@ extern crate nix;
 extern crate rand;
 extern crate serde;
 extern crate serde_derive;
+extern crate tokio;
 extern crate url;
 
 mod checksum;
@@ -28,12 +29,14 @@ mod file_fetcher;
 pub mod flags;
 pub mod fmt_errors;
 mod fs;
+mod global_state;
 mod global_timer;
 mod http_body;
 mod http_util;
 mod import_map;
 mod js;
 mod lockfile;
+mod metrics;
 pub mod msg;
 pub mod ops;
 pub mod permissions;
@@ -55,6 +58,7 @@ pub mod worker;
 
 use crate::deno_error::js_check;
 use crate::deno_error::print_err_and_exit;
+use crate::global_state::ThreadSafeGlobalState;
 use crate::progress::Progress;
 use crate::state::ThreadSafeState;
 use crate::worker::Worker;
@@ -97,11 +101,13 @@ impl log::Log for Logger {
 fn create_worker_and_state(
   flags: DenoFlags,
   argv: Vec<String>,
-) -> (Worker, ThreadSafeState) {
+) -> (Worker, ThreadSafeGlobalState) {
   use crate::shell::Shell;
   use std::sync::Arc;
   use std::sync::Mutex;
+
   let shell = Arc::new(Mutex::new(Shell::new()));
+
   let progress = Progress::new();
   progress.set_callback(move |_done, _completed, _total, status, msg| {
     if !status.is_empty() {
@@ -109,17 +115,23 @@ fn create_worker_and_state(
       s.status(status, msg).expect("shell problem");
     }
   });
-  // TODO(kevinkassimo): maybe make include_deno_namespace also configurable?
-  let state = ThreadSafeState::new(flags, argv, progress, true)
+
+  let global_state = ThreadSafeGlobalState::new(flags, argv, progress)
     .map_err(deno_error::print_err_and_exit)
     .unwrap();
-  let worker = Worker::new(
-    "main".to_string(),
-    startup_data::deno_isolate_init(),
-    state.clone(),
-  );
 
-  (worker, state)
+  let state = ThreadSafeState::new(
+    global_state.clone(),
+    global_state.main_module.clone(),
+    true,
+  )
+  .map_err(deno_error::print_err_and_exit)
+  .unwrap();
+
+  let worker =
+    Worker::new("main".to_string(), startup_data::deno_isolate_init(), state);
+
+  (worker, global_state)
 }
 
 fn types_command() {
@@ -128,7 +140,7 @@ fn types_command() {
 }
 
 fn print_cache_info(worker: Worker) {
-  let state = worker.state;
+  let state = &worker.state.global_state;
 
   println!(
     "{} {:?}",
@@ -151,10 +163,11 @@ pub fn print_file_info(
   worker: Worker,
   module_specifier: &ModuleSpecifier,
 ) -> impl Future<Item = Worker, Error = ()> {
+  let global_state_ = worker.state.global_state.clone();
   let state_ = worker.state.clone();
   let module_specifier_ = module_specifier.clone();
 
-  state_
+  global_state_
     .file_fetcher
     .fetch_source_file_async(&module_specifier)
     .map_err(|err| println!("{}", err))
@@ -171,7 +184,7 @@ pub fn print_file_info(
         msg::enum_name_media_type(out.media_type)
       );
 
-      state_
+      global_state_
         .clone()
         .fetch_compiled_module(&module_specifier_)
         .map_err(|e| {
@@ -182,9 +195,9 @@ pub fn print_file_info(
         .and_then(move |compiled| {
           if out.media_type == msg::MediaType::TypeScript
             || (out.media_type == msg::MediaType::JavaScript
-              && state_.ts_compiler.compile_js)
+              && global_state_.ts_compiler.compile_js)
           {
-            let compiled_source_file = state_
+            let compiled_source_file = global_state_
               .ts_compiler
               .get_compiled_source_file(&out.url)
               .unwrap();
@@ -196,7 +209,7 @@ pub fn print_file_info(
             );
           }
 
-          if let Ok(source_map) = state_
+          if let Ok(source_map) = global_state_
             .clone()
             .ts_compiler
             .get_source_map_file(&module_specifier_)
@@ -209,7 +222,7 @@ pub fn print_file_info(
           }
 
           if let Some(deps) =
-            worker.state.modules.lock().unwrap().deps(&compiled.name)
+            state_.modules.lock().unwrap().deps(&compiled.name)
           {
             println!("{}{}", colors::bold("deps:\n".to_string()), deps.name);
             if let Some(ref depsdeps) = deps.deps {
@@ -236,7 +249,7 @@ fn info_command(flags: DenoFlags, argv: Vec<String>) {
     return print_cache_info(worker);
   }
 
-  let main_module = state.main_module().unwrap();
+  let main_module = state.main_module.as_ref().unwrap().clone();
   let main_future = lazy(move || {
     // Setup runtime.
     js_check(worker.execute("denoMain()"));
@@ -259,7 +272,7 @@ fn info_command(flags: DenoFlags, argv: Vec<String>) {
 fn fetch_command(flags: DenoFlags, argv: Vec<String>) {
   let (mut worker, state) = create_worker_and_state(flags, argv.clone());
 
-  let main_module = state.main_module().unwrap();
+  let main_module = state.main_module.as_ref().unwrap().clone();
   let main_future = lazy(move || {
     // Setup runtime.
     js_check(worker.execute("denoMain()"));
@@ -307,7 +320,7 @@ fn eval_command(flags: DenoFlags, argv: Vec<String>) {
 fn bundle_command(flags: DenoFlags, argv: Vec<String>) {
   let (worker, state) = create_worker_and_state(flags, argv);
 
-  let main_module = state.main_module().unwrap();
+  let main_module = state.main_module.as_ref().unwrap().clone();
   assert!(state.argv.len() >= 3);
   let out_file = state.argv[2].clone();
   debug!(">>>>> bundle_async START");
@@ -353,7 +366,7 @@ fn run_script(flags: DenoFlags, argv: Vec<String>) {
   let use_current_thread = flags.current_thread;
   let (mut worker, state) = create_worker_and_state(flags, argv);
 
-  let main_module = state.main_module().unwrap();
+  let main_module = state.main_module.as_ref().unwrap().clone();
   // Normal situation of executing a module.
   let main_future = lazy(move || {
     // Setup runtime.
