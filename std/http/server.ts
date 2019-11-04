@@ -401,8 +401,25 @@ export async function listenAndServe(
   }
 }
 
+/** Options for creating an HTTPS server. */
 export type HTTPSOptions = Omit<Deno.ListenTLSOptions, "transport">;
 
+/**
+ * Create an HTTPS server with given options
+ * @param options Server configuration
+ * @return Async iterable server instance for incoming requests
+ *
+ *       const body = new TextEncoder().encode("Hello HTTPS");
+ *       const options = {
+ *         hostname: "localhost",
+ *         port: 443,
+ *         certFile: "./path/to/localhost.crt",
+ *         keyFile: "./path/to/localhost.key",
+ *       };
+ *       for await (const req of serveTLS(options)) {
+ *         req.respond({ body });
+ *       }
+ */
 export function serveTLS(options: HTTPSOptions): Server {
   const tlsOptions: Deno.ListenTLSOptions = {
     ...options,
@@ -412,6 +429,22 @@ export function serveTLS(options: HTTPSOptions): Server {
   return new Server(listener);
 }
 
+/**
+ * Create an HTTPS server with given options and request handler
+ * @param options Server configuration
+ * @param handler Request handler
+ *
+ *       const body = new TextEncoder().encode("Hello HTTPS");
+ *       const options = {
+ *         hostname: "localhost",
+ *         port: 443,
+ *         certFile: "./path/to/localhost.crt",
+ *         keyFile: "./path/to/localhost.key",
+ *       };
+ *       listenAndServeTLS(options, (req) => {
+ *         req.respond({ body });
+ *       });
+ */
 export async function listenAndServeTLS(
   options: HTTPSOptions,
   handler: (req: ServerRequest) => void
