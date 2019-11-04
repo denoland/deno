@@ -66,9 +66,7 @@ test(async function serveDirectory(): Promise<void> {
       assert(/<td class="mode">\([a-zA-Z-]{10}\)<\/td>/.test(page));
     Deno.build.os === "win" &&
       assert(/<td class="mode">\(unknown mode\)<\/td>/.test(page));
-    assert(
-      page.includes(`<td><a href="/README.md">README.md</a></td>`)
-    );
+    assert(page.includes(`<td><a href="/README.md">README.md</a></td>`));
   } finally {
     killFileServer();
   }
