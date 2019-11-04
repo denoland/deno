@@ -67,33 +67,13 @@ function buildMessage(diffResult: ReadonlyArray<DiffResult<string>>): string[] {
   return messages;
 }
 
+function isKeyedCollection(x: unknown): x is Set<unknown> {
+  return [Symbol.iterator, "size"].every(k => k in (x as Set<unknown>));
+}
+
 export function equal(c: unknown, d: unknown): boolean {
   const seen = new Map();
   return (function compare(a: unknown, b: unknown): boolean {
-    if (a && a instanceof Set && b && b instanceof Set) {
-      if (a.size !== b.size) {
-        return false;
-      }
-      for (const item of b) {
-        if (!a.has(item)) {
-          return false;
-        }
-      }
-      return true;
-    }
-    if (a && b && a instanceof Map && b instanceof Map) {
-      if (a.size !== b.size) {
-        return false;
-      }
-
-      for (const [key, value] of a) {
-        if (!compare(value, b.get(key))) {
-          return false;
-        }
-      }
-
-      return true;
-    }
     // Have to render RegExp & Date for string comparison
     // unless it's mistreated as object
     if (
@@ -113,6 +93,28 @@ export function equal(c: unknown, d: unknown): boolean {
       }
       if (Object.keys(a || {}).length !== Object.keys(b || {}).length) {
         return false;
+      }
+      if (isKeyedCollection(a) && isKeyedCollection(b)) {
+        if (a.size !== b.size) {
+          return false;
+        }
+
+        let unmatchedEntries = a.size;
+
+        for (const [aKey, aValue] of a.entries()) {
+          for (const [bKey, bValue] of b.entries()) {
+            /* Given that Map keys can be references, we need
+             * to ensure that they are also deeply equal */
+            if (
+              (aKey === aValue && bKey === bValue && compare(aKey, bKey)) ||
+              (compare(aKey, bKey) && compare(aValue, bValue))
+            ) {
+              unmatchedEntries--;
+            }
+          }
+        }
+
+        return unmatchedEntries === 0;
       }
       const merged = { ...a, ...b };
       for (const key in merged) {
