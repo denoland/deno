@@ -4,6 +4,7 @@ use crate::futures::future::join_all;
 use crate::futures::Future;
 use crate::ops::json_op;
 use crate::state::ThreadSafeState;
+use deno::Loader;
 use deno::*;
 
 pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
@@ -36,7 +37,7 @@ fn op_cache(
   let module_specifier = ModuleSpecifier::resolve_url(&args.module_id)
     .expect("Should be valid module specifier");
 
-  state.ts_compiler.cache_compiler_output(
+  state.global_state.ts_compiler.cache_compiler_output(
     &module_specifier,
     &args.extension,
     &args.contents,
@@ -67,6 +68,7 @@ fn op_fetch_source_files(
     let resolved_specifier =
       state.resolve(specifier, &args.referrer, false, is_dyn_import)?;
     let fut = state
+      .global_state
       .file_fetcher
       .fetch_source_file_async(&resolved_specifier);
     futures.push(fut);
