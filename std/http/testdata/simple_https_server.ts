@@ -8,8 +8,9 @@ const tlsOptions = {
   certFile: "./http/testdata/tls/localhost.crt",
   keyFile: "./http/testdata/tls/localhost.key",
 };
+const s = serveTLS(tlsOptions);
 console.log(`Simple HTTPS server listening on ${tlsOptions.hostname}:${tlsOptions.port}`);
 const body = new TextEncoder().encode("Hello HTTPS");
-for await (const req of serveTLS(tlsOptions)) {
+for await (const req of s) {
   req.respond({ body });
 }

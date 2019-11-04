@@ -557,8 +557,6 @@ test({
         )
         .catch((_): void => {}); // Ignores the error when closing the process.
 
-      await delay(100);
-
       // Requests to the server and immediately closes the connection
       const conn = await Deno.dialTLS({
         hostname: "localhost",
