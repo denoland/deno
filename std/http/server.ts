@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-const { listen, copy, toAsyncIterator } = Deno;
+const { listen, listenTLS, copy, toAsyncIterator } = Deno;
 type Listener = Deno.Listener;
 type Conn = Deno.Conn;
 type Reader = Deno.Reader;
@@ -395,6 +395,61 @@ export async function listenAndServe(
   handler: (req: ServerRequest) => void
 ): Promise<void> {
   const server = serve(addr);
+
+  for await (const request of server) {
+    handler(request);
+  }
+}
+
+/** Options for creating an HTTPS server. */
+export type HTTPSOptions = Omit<Deno.ListenTLSOptions, "transport">;
+
+/**
+ * Create an HTTPS server with given options
+ * @param options Server configuration
+ * @return Async iterable server instance for incoming requests
+ *
+ *       const body = new TextEncoder().encode("Hello HTTPS");
+ *       const options = {
+ *         hostname: "localhost",
+ *         port: 443,
+ *         certFile: "./path/to/localhost.crt",
+ *         keyFile: "./path/to/localhost.key",
+ *       };
+ *       for await (const req of serveTLS(options)) {
+ *         req.respond({ body });
+ *       }
+ */
+export function serveTLS(options: HTTPSOptions): Server {
+  const tlsOptions: Deno.ListenTLSOptions = {
+    ...options,
+    transport: "tcp"
+  };
+  const listener = listenTLS(tlsOptions);
+  return new Server(listener);
+}
+
+/**
+ * Create an HTTPS server with given options and request handler
+ * @param options Server configuration
+ * @param handler Request handler
+ *
+ *       const body = new TextEncoder().encode("Hello HTTPS");
+ *       const options = {
+ *         hostname: "localhost",
+ *         port: 443,
+ *         certFile: "./path/to/localhost.crt",
+ *         keyFile: "./path/to/localhost.key",
+ *       };
+ *       listenAndServeTLS(options, (req) => {
+ *         req.respond({ body });
+ *       });
+ */
+export async function listenAndServeTLS(
+  options: HTTPSOptions,
+  handler: (req: ServerRequest) => void
+): Promise<void> {
+  const server = serveTLS(options);
 
   for await (const request of server) {
     handler(request);
