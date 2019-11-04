@@ -383,16 +383,19 @@ export class Server implements AsyncIterable<ServerRequest> {
   }
 }
 
-export function serve(addr: string, tlsOptions?: Deno.ListenTLSOptions): Server {
+export function serve(
+  addr: string,
+  tlsOptions?: Deno.ListenTLSOptions
+): Server {
   // TODO(ry) Update serve to also take { hostname, port }.
   const [hostname, port] = addr.split(":");
-  let listener: Listener | null = null
+  let listener: Listener | null = null;
   if (tlsOptions && tlsOptions.certFile && tlsOptions.keyFile) {
     listener = listenTLS({
       hostname,
       port: Number(port),
       ...tlsOptions
-    })
+    });
   } else {
     listener = listen({ hostname, port: Number(port) });
   }
