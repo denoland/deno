@@ -401,13 +401,19 @@ export async function listenAndServe(
   }
 }
 
-export function serveTLS(options: Deno.ListenTLSOptions): Server {
-  const listener = listenTLS(options);
+export type HTTPSOptions = Omit<Deno.ListenTLSOptions, "transport">;
+
+export function serveTLS(options: HTTPSOptions): Server {
+  const tlsOptions: Deno.ListenTLSOptions = {
+    ...options,
+    transport: "tcp"
+  };
+  const listener = listenTLS(tlsOptions);
   return new Server(listener);
 }
 
 export async function listenAndServeTLS(
-  options: Deno.ListenTLSOptions,
+  options: HTTPSOptions,
   handler: (req: ServerRequest) => void
 ): Promise<void> {
   const server = serveTLS(options);
