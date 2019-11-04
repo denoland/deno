@@ -38,7 +38,7 @@ test(async function serveFile(): Promise<void> {
     assert(res.headers.has("access-control-allow-headers"));
     assertEquals(
       res.headers.get("content-type"),
-      "application/json; charset=utf-8"
+      "text/markdown; charset=utf-8"
     );
     const downloadedFile = await res.text();
     const localFile = new TextDecoder().decode(
