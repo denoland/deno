@@ -186,6 +186,9 @@ impl Future for Worker {
   }
 }
 
+/// This structure wraps worker's resource id to implement future
+/// that will return message received from worker or None
+/// if worker's channel has been closed.
 pub struct WorkerReceiver {
   rid: ResourceId,
 }
