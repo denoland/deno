@@ -6,6 +6,15 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.23.0 / 2019.11.04
+
+- feat: Add serveTLS and listenAndServeTLS (#3257)
+- feat: Lockfile support (#3231)
+- feat: Adds custom inspect method for URL (#3241)
+- fix: Support for deep `Map` equality with `asserts#equal` (#3236, #3258)
+- fix: Make EOF unique symbol (#3244)
+- fix: Prevent customInspect error from crashing console (#3226)
+
 ### v0.22.0 / 2019.10.28
 
 - feat: Deno.listenTLS (#3152)
