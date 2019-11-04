@@ -33,7 +33,7 @@ function killFileServer(): void {
 test(async function serveFile(): Promise<void> {
   await startFileServer();
   try {
-    const res = await fetch("http://localhost:4500/tsconfig.json");
+    const res = await fetch("http://localhost:4500/README.md");
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
     assertEquals(
@@ -42,7 +42,7 @@ test(async function serveFile(): Promise<void> {
     );
     const downloadedFile = await res.text();
     const localFile = new TextDecoder().decode(
-      await Deno.readFile("./tsconfig.json")
+      await Deno.readFile("README.md")
     );
     assertEquals(downloadedFile, localFile);
   } finally {
@@ -57,7 +57,7 @@ test(async function serveDirectory(): Promise<void> {
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
     const page = await res.text();
-    assert(page.includes("tsconfig.json"));
+    assert(page.includes("README.md"));
 
     // `Deno.FileInfo` is not completely compatible with Windows yet
     // TODO: `mode` should work correctly in the future.
@@ -67,7 +67,7 @@ test(async function serveDirectory(): Promise<void> {
     Deno.build.os === "win" &&
       assert(/<td class="mode">\(unknown mode\)<\/td>/.test(page));
     assert(
-      page.includes(`<td><a href="/tsconfig.json">tsconfig.json</a></td>`)
+      page.includes(`<td><a href="/README.md">README.md</a></td>`)
     );
   } finally {
     killFileServer();
