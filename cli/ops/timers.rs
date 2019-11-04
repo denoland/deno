@@ -7,6 +7,15 @@ use futures::Future;
 use std;
 use std::time::Duration;
 use std::time::Instant;
+use tokio::timer::Interval;
+use crate::resources;
+use crate::resources::CoreResource;
+use crate::deno_error::bad_resource;
+use crate::futures::Stream;
+use futures::future::Shared;
+use futures::stream::StreamFuture;
+use futures::future::poll_fn;
+use futures::Poll;
 
 pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op(
@@ -18,7 +27,99 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
     s.core_op(json_op(s.stateful_op(op_global_timer))),
   );
   i.register_op("now", s.core_op(json_op(s.stateful_op(op_now))));
+  i.register_op("set_interval", s.core_op(json_op(s.stateful_op(op_set_interval))));
+  i.register_op("await_interval", s.core_op(json_op(s.stateful_op(op_await_interval))));
+  i.register_op("clear_interval", s.core_op(json_op(s.stateful_op(op_clear_interval))));
 }
+
+struct IntervalResource {
+  interval: Interval
+}
+
+impl CoreResource for IntervalResource {
+  fn inspect_repr(&self) -> &str { "interval" }
+}
+
+
+#[derive(Deserialize)]
+struct SetIntervalArgs {
+  duration: u64,
+}
+
+fn op_set_interval(
+  _state: &ThreadSafeState,
+  args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: SetIntervalArgs = serde_json::from_value(args)?;
+  eprintln!("duration {}", args.duration);
+  let duration = Duration::from_millis(args.duration);
+  let at = Instant::now() + duration.clone();
+  let interval = Interval::new(at, duration);
+  let interval_resource = IntervalResource { interval };
+  let mut table = resources::lock_resource_table();
+  let rid = table.add(Box::new(interval_resource));
+
+  Ok(JsonOp::Sync(json!(rid)))
+}
+
+#[derive(Deserialize)]
+struct AwaitIntervalArgs {
+  rid: u32,
+}
+
+struct AwaitFut {
+  rid: u32,
+}
+
+impl Future for AwaitFut {
+  type Item = Option<Instant>;
+  type Error = ErrBox;
+
+  fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+    let mut table = resources::lock_resource_table();
+    let interval_resource = table.get_mut::<IntervalResource>(self.rid)
+      .ok_or_else(bad_resource)?;
+    interval_resource.interval.poll().map_err(ErrBox::from)
+  }
+}
+fn op_await_interval(
+  _state: &ThreadSafeState,
+  args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: AwaitIntervalArgs = serde_json::from_value(args)?;
+
+  let fut = AwaitFut { rid: args.rid };
+
+  eprintln!("awaiting interval");
+
+  let fut = fut
+    .map_err(move |e| {
+      eprintln!("awaiting interval err {}", e);
+      e
+    })
+    .and_then(move |maybe_now| {
+      eprintln!("awaiting interval {:?}", maybe_now);
+
+      Ok(json!(maybe_now.is_none()))
+    });
+
+  Ok(JsonOp::Async(Box::new(fut)))
+}
+
+fn op_clear_interval(
+  _state: &ThreadSafeState,
+  args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: AwaitIntervalArgs = serde_json::from_value(args)?;
+  let mut table = resources::lock_resource_table();
+  let interval_resource = table.close(args.rid).ok_or_else(bad_resource)?;
+  drop(interval_resource);
+  Ok(JsonOp::Sync(json!({})))
+}
+
 
 fn op_global_timer_stop(
   state: &ThreadSafeState,

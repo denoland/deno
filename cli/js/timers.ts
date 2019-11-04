@@ -215,7 +215,7 @@ export function setTimeout(
 }
 
 /** Repeatedly calls a function , with a fixed time delay between each call. */
-export function setInterval(
+export function oldSetInterval(
   cb: (...args: Args) => void,
   delay = 0,
   ...args: Args
@@ -224,6 +224,120 @@ export function setInterval(
   // @ts-ignore
   checkThis(this);
   return setTimer(cb, delay, args, true);
+}
+
+
+interface Interval {
+  id: number;
+  callback: () => void;
+  delay: number;
+  rid: number,
+}
+
+export function intervalAsyncIterator(rid: number): AsyncIterableIterator<boolean> {
+  return {
+    [Symbol.asyncIterator](): AsyncIterableIterator<boolean> {
+      return this;
+    },
+
+    async next(): Promise<IteratorResult<boolean>> {
+      Deno.core.print("js await\n");
+      const cancelled = await sendAsync(dispatch.OP_AWAIT_INTERVAL, { rid });
+      Deno.core.print(`js awaited ${cancelled}\n`);
+      return { value: cancelled, done: cancelled };
+    }
+  };
+}
+
+
+const intervalMap: Map<number, Interval> = new Map();
+
+async function pollInterval(intervalId: number): Promise<void> {
+  Deno.core.print(`poll ${intervalId}\n`);
+  const interval = intervalMap.get(intervalId);
+  if (!interval) {
+    return;
+  }
+
+  for await (const cancelled of intervalAsyncIterator(interval.rid)) {
+    Deno.core.print(`iterator ${cancelled}\n`);
+    if (cancelled) {
+      return;
+    }
+    // Call the user callback. Intermediate assignment is to avoid leaking `this`
+    // to it, while also keeping the stack trace neat when it shows up in there.
+    const callback = interval.callback;
+    callback();
+    Deno.core.print("callback called\n");
+  }
+}
+
+function createInterval(
+  cb: (...args: Args) => void,
+  delay: number,
+  args: Args,
+): number {
+  Deno.core.print("create interval\n");
+  // Bind `args` to the callback and bind `this` to window(global).
+  const callback: () => void = cb.bind(window, ...args);
+  // In the browser, the delay value must be coercible to an integer between 0
+  // and INT32_MAX. Any other value will cause the timer to fire immediately.
+  // We emulate this behavior.
+  if (delay > TIMEOUT_MAX) {
+    console.warn(
+      `${delay} does not fit into` +
+        " a 32-bit signed integer." +
+        "\nTimeout duration was set to 1."
+    );
+    delay = 1;
+  }
+  delay = Math.max(0, delay | 0);
+
+  const rid = sendSync(dispatch.OP_SET_INTERVAL, { duration: delay });
+
+
+  // Create a new, unscheduled timer object.
+  const interval = {
+    id: nextTimerId++,
+    callback,
+    args,
+    delay,
+    rid,
+  };
+  // Register the timer's existence in the id-to-timer map.
+  intervalMap.set(interval.id, interval);
+  // Schedule the timer in the due table.
+  Deno.core.print("before poll\n");
+  pollInterval(interval.id);
+  Deno.core.print("after poll");
+  return interval.id;
+}
+
+
+export function setInterval(
+  cb: (...args: Args) => void,
+  delay = 0,
+  ...args: Args
+): number {
+  checkBigInt(delay);
+  // @ts-ignore
+  checkThis(this);
+  return createInterval(cb, delay, args);
+}
+
+export function clearInterval(id = 0): void {
+  checkBigInt(id);
+  if (id === 0) {
+    return;
+  }
+
+  const interval = intervalMap.get(id);
+  if (!interval) {
+    throw new Error(`Unknown interval: ${id}`);
+  }
+
+  sendSync(dispatch.OP_CLEAR_INTERVAL, { rid: interval.rid });
+  intervalMap.delete(id);
 }
 
 /** Clears a previously set timer by id. AKA clearTimeout and clearInterval. */
@@ -247,7 +361,7 @@ export function clearTimeout(id = 0): void {
   clearTimer(id);
 }
 
-export function clearInterval(id = 0): void {
+export function oldClearInterval(id = 0): void {
   checkBigInt(id);
   if (id === 0) {
     return;

@@ -65,6 +65,9 @@ export let OP_CWD: number;
 export let OP_FETCH_ASSET: number;
 export let OP_DIAL_TLS: number;
 export let OP_HOSTNAME: number;
+export let OP_SET_INTERVAL: number;
+export let OP_AWAIT_INTERVAL: number;
+export let OP_CLEAR_INTERVAL: number;
 
 export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
   switch (opId) {
@@ -105,6 +108,8 @@ export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
     case OP_MAKE_TEMP_DIR:
     case OP_DIAL_TLS:
     case OP_FETCH_SOURCE_FILES:
+    case OP_SET_INTERVAL:
+    case OP_AWAIT_INTERVAL:
       json.asyncMsgFromRust(opId, ui8);
       break;
     default:
