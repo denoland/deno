@@ -105,7 +105,10 @@ export function equal(c: unknown, d: unknown): boolean {
           for (const [bKey, bValue] of b.entries()) {
             /* Given that keys can be references, we need
              * to ensure that they are also deeply equal */
-            if (compare(aKey, bKey) && compare(aValue, bValue)) {
+            if (
+              (aKey === aValue && bKey === bValue && compare(aKey, bKey)) ||
+              (compare(aKey, bKey) && compare(aValue, bValue))
+            ) {
               unmatchedEntries--;
             }
           }
