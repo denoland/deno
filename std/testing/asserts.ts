@@ -103,7 +103,7 @@ export function equal(c: unknown, d: unknown): boolean {
 
         for (const [aKey, aValue] of a.entries()) {
           for (const [bKey, bValue] of b.entries()) {
-            /* Given that keys can be references, we need
+            /* Given that Map keys can be references, we need
              * to ensure that they are also deeply equal */
             if (
               (aKey === aValue && bKey === bValue && compare(aKey, bKey)) ||
