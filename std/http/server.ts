@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-const { listen, copy, toAsyncIterator } = Deno;
+const { listen, copy, toAsyncIterator, listenTLS } = Deno;
 type Listener = Deno.Listener;
 type Conn = Deno.Conn;
 type Reader = Deno.Reader;
@@ -383,18 +383,28 @@ export class Server implements AsyncIterable<ServerRequest> {
   }
 }
 
-export function serve(addr: string): Server {
+export function serve(addr: string, tlsOptions?: Deno.ListenTLSOptions): Server {
   // TODO(ry) Update serve to also take { hostname, port }.
   const [hostname, port] = addr.split(":");
-  const listener = listen({ hostname, port: Number(port) });
+  let listener: Listener | null = null
+  if (tlsOptions && tlsOptions.certFile && tlsOptions.keyFile) {
+    listener = listenTLS({
+      hostname,
+      port: Number(port),
+      ...tlsOptions
+    })
+  } else {
+    listener = listen({ hostname, port: Number(port) });
+  }
   return new Server(listener);
 }
 
 export async function listenAndServe(
   addr: string,
-  handler: (req: ServerRequest) => void
+  handler: (req: ServerRequest) => void,
+  tlsOptions?: Deno.ListenTLSOptions
 ): Promise<void> {
-  const server = serve(addr);
+  const server = serve(addr, tlsOptions);
 
   for await (const request of server) {
     handler(request);
