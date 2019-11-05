@@ -66,6 +66,8 @@ impl ResourceTable {
       .collect()
   }
 
+  // TODO(bartlomiej): this method should take type parameter to allow
+  //  verification if proper resource type is closed
   // close(2) is done by dropping the value. Therefore we just need to remove
   // the resource from the RESOURCE_TABLE.
   pub fn close(&mut self, rid: ResourceId) -> Option<()> {

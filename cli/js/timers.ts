@@ -1,153 +1,13 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { assert } from "./util.ts";
 import { window } from "./window.ts";
 import * as dispatch from "./dispatch.ts";
 import { sendSync, sendAsync } from "./dispatch_json.ts";
-import { RBTree } from "./rbtree.ts";
 
 const { console } = window;
 
-interface Timer {
-  id: number;
-  callback: () => void;
-  delay: number;
-  due: number;
-  repeat: boolean;
-  scheduled: boolean;
-}
-
 // Timeout values > TIMEOUT_MAX are set to 1.
 const TIMEOUT_MAX = 2 ** 31 - 1;
-
-let globalTimeoutDue: number | null = null;
-
 let nextTimerId = 1;
-const idMap = new Map<number, Timer>();
-type DueNode = { due: number; timers: Timer[] };
-const dueTree = new RBTree<DueNode>((a, b) => a.due - b.due);
-
-function clearGlobalTimeout(): void {
-  globalTimeoutDue = null;
-  sendSync(dispatch.OP_GLOBAL_TIMER_STOP);
-}
-
-let pendingEvents = 0;
-
-async function setGlobalTimeout(due: number, now: number): Promise<void> {
-  // Since JS and Rust don't use the same clock, pass the time to rust as a
-  // relative time value. On the Rust side we'll turn that into an absolute
-  // value again.
-  const timeout = due - now;
-  assert(timeout >= 0);
-  // Send message to the backend.
-  globalTimeoutDue = due;
-  pendingEvents++;
-  await sendAsync(dispatch.OP_GLOBAL_TIMER, { timeout });
-  pendingEvents--;
-  // eslint-disable-next-line @typescript-eslint/no-use-before-define
-  fireTimers();
-}
-
-function setOrClearGlobalTimeout(due: number | null, now: number): void {
-  if (due == null) {
-    clearGlobalTimeout();
-  } else {
-    setGlobalTimeout(due, now);
-  }
-}
-
-function schedule(timer: Timer, now: number): void {
-  assert(!timer.scheduled);
-  assert(now <= timer.due);
-  // Find or create the list of timers that will fire at point-in-time `due`.
-  const maybeNewDueNode = { due: timer.due, timers: [] };
-  let dueNode = dueTree.find(maybeNewDueNode);
-  if (dueNode === null) {
-    dueTree.insert(maybeNewDueNode);
-    dueNode = maybeNewDueNode;
-  }
-  // Append the newly scheduled timer to the list and mark it as scheduled.
-  dueNode!.timers.push(timer);
-  timer.scheduled = true;
-  // If the new timer is scheduled to fire before any timer that existed before,
-  // update the global timeout to reflect this.
-  if (globalTimeoutDue === null || globalTimeoutDue > timer.due) {
-    setOrClearGlobalTimeout(timer.due, now);
-  }
-}
-
-function unschedule(timer: Timer): void {
-  if (!timer.scheduled) {
-    return;
-  }
-  const searchKey = { due: timer.due, timers: [] };
-  // Find the list of timers that will fire at point-in-time `due`.
-  const list = dueTree.find(searchKey)!.timers;
-  if (list.length === 1) {
-    // Time timer is the only one in the list. Remove the entire list.
-    assert(list[0] === timer);
-    dueTree.remove(searchKey);
-    // If the unscheduled timer was 'next up', find when the next timer that
-    // still exists is due, and update the global alarm accordingly.
-    if (timer.due === globalTimeoutDue) {
-      const nextDueNode: DueNode | null = dueTree.min();
-      setOrClearGlobalTimeout(nextDueNode && nextDueNode.due, Date.now());
-    }
-  } else {
-    // Multiple timers that are due at the same point in time.
-    // Remove this timer from the list.
-    const index = list.indexOf(timer);
-    assert(index > -1);
-    list.splice(index, 1);
-  }
-}
-
-function fire(timer: Timer): void {
-  // If the timer isn't found in the ID map, that means it has been cancelled
-  // between the timer firing and the promise callback (this function).
-  if (!idMap.has(timer.id)) {
-    return;
-  }
-  // Reschedule the timer if it is a repeating one, otherwise drop it.
-  if (!timer.repeat) {
-    // One-shot timer: remove the timer from this id-to-timer map.
-    idMap.delete(timer.id);
-  } else {
-    // Interval timer: compute when timer was supposed to fire next.
-    // However make sure to never schedule the next interval in the past.
-    const now = Date.now();
-    timer.due = Math.max(now, timer.due + timer.delay);
-    schedule(timer, now);
-  }
-  // Call the user callback. Intermediate assignment is to avoid leaking `this`
-  // to it, while also keeping the stack trace neat when it shows up in there.
-  const callback = timer.callback;
-  callback();
-}
-
-function fireTimers(): void {
-  const now = Date.now();
-  // Bail out if we're not expecting the global timer to fire.
-  if (globalTimeoutDue === null || pendingEvents > 0) {
-    return;
-  }
-  // After firing the timers that are due now, this will hold the first timer
-  // list that hasn't fired yet.
-  let nextDueNode: DueNode | null;
-  while ((nextDueNode = dueTree.min()) !== null && nextDueNode.due <= now) {
-    dueTree.remove(nextDueNode);
-    // Fire all the timers in the list.
-    for (const timer of nextDueNode.timers) {
-      // With the list dropped, the timer is no longer scheduled.
-      timer.scheduled = false;
-      // Place the callback on the microtask queue.
-      Promise.resolve(timer).then(fire);
-    }
-  }
-  // Update the global alarm to go off when the first-up timer that hasn't fired
-  // yet is due.
-  setOrClearGlobalTimeout(nextDueNode && nextDueNode.due, now);
-}
 
 export type Args = unknown[];
 
@@ -163,64 +23,17 @@ function checkBigInt(n: unknown): void {
   }
 }
 
-function setTimer(
-  cb: (...args: Args) => void,
-  delay: number,
-  args: Args,
-  repeat: boolean
-): number {
-  // Bind `args` to the callback and bind `this` to window(global).
-  const callback: () => void = cb.bind(window, ...args);
-  // In the browser, the delay value must be coercible to an integer between 0
-  // and INT32_MAX. Any other value will cause the timer to fire immediately.
-  // We emulate this behavior.
-  const now = Date.now();
-  if (delay > TIMEOUT_MAX) {
-    console.warn(
-      `${delay} does not fit into` +
-        " a 32-bit signed integer." +
-        "\nTimeout duration was set to 1."
-    );
-    delay = 1;
-  }
-  delay = Math.max(0, delay | 0);
-
-  // Create a new, unscheduled timer object.
-  const timer = {
-    id: nextTimerId++,
-    callback,
-    args,
-    delay,
-    due: now + delay,
-    repeat,
-    scheduled: false
-  };
-  // Register the timer's existence in the id-to-timer map.
-  idMap.set(timer.id, timer);
-  // Schedule the timer in the due table.
-  schedule(timer, now);
-  return timer.id;
-}
-
-/** Clears a previously set timer by id. AKA clearTimeout and clearInterval. */
-function clearTimer(id: number): void {
-  id = Number(id);
-  const timer = idMap.get(id);
-  if (timer === undefined) {
-    // Timer doesn't exist any more or never existed. This is not an error.
-    return;
-  }
-  // Unschedule the timer if it is currently scheduled, and forget about it.
-  unschedule(timer);
-  idMap.delete(timer.id);
-}
-
 export function clearTimeout(id = 0): void {
   checkBigInt(id);
   if (id === 0) {
     return;
   }
-  clearTimer(id);
+  const timeout = timeoutMap.get(id);
+  if (!timeout) {
+    return;
+  }
+  timeout.cancel();
+  timeoutMap.delete(id);
 }
 
 /** Sets a timer which executes a function once after the timer expires. */
@@ -232,8 +45,65 @@ export function setTimeout(
   checkBigInt(delay);
   // @ts-ignore
   checkThis(this);
-  return setTimer(cb, delay, args, false);
+  const timeout = new Timeout(delay, cb, args);
+  timeoutMap.set(timeout.id, timeout);
+  // ignore promise so it's run in the background
+  timeout.poll();
+  return timeout.id;
 }
+
+class Timeout {
+  public id: number;
+  callback: () => void;
+  duration: number;
+  cancelled: boolean;
+  rid: number;
+
+  constructor(duration: number, cb: () => void, args: Args) {
+    // Bind `args` to the callback and bind `this` to window(global).
+    const callback: () => void = cb.bind(window, ...args);
+    // In the browser, the delay value must be coercible to an integer between 0
+    // and INT32_MAX. Any other value will cause the timer to fire immediately.
+    // We emulate this behavior.
+    if (duration > TIMEOUT_MAX) {
+      console.warn(
+        `${duration} does not fit into` +
+          " a 32-bit signed integer." +
+          "\nTimeout duration was set to 1."
+      );
+      duration = 1;
+    }
+    duration = Math.max(0, duration | 0);
+
+    this.id = nextTimerId++;
+    this.callback = callback;
+    this.duration = duration;
+    this.cancelled = false;
+    this.rid = sendSync(dispatch.OP_SET_TIMEOUT, { duration });
+  }
+
+  async poll(): Promise<void> {
+    await sendAsync(dispatch.OP_POLL_TIMEOUT, {
+      rid: this.rid
+    });
+
+    if (this.cancelled) {
+      return;
+    }
+
+    // Call the user callback. Intermediate assignment is to avoid leaking `this`
+    // to it, while also keeping the stack trace neat when it shows up in there.
+    const callback = this.callback;
+    callback();
+  }
+
+  cancel(): void {
+    this.cancelled = true;
+    sendSync(dispatch.OP_CLEAR_TIMEOUT, { rid: this.rid });
+  }
+}
+
+const timeoutMap: Map<number, Timeout> = new Map();
 
 class Interval {
   public id: number;
@@ -242,8 +112,7 @@ class Interval {
   cancelled: boolean;
   rid: number;
 
-  // @ts-ignore
-  constructor(duration: number, cb: () => void, args: any[]) {
+  constructor(duration: number, cb: () => void, args: Args) {
     // Bind `args` to the callback and bind `this` to window(global).
     const callback: () => void = cb.bind(window, ...args);
     // In the browser, the delay value must be coercible to an integer between 0
@@ -326,7 +195,7 @@ export function clearInterval(id = 0): void {
 
   const interval = intervalMap.get(id);
   if (!interval) {
-    throw new Error(`Unknown interval: ${id}`);
+    return;
   }
 
   interval.cancel();

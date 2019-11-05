@@ -12,17 +12,10 @@ use futures::Poll;
 use std;
 use std::time::Duration;
 use std::time::Instant;
+use tokio::timer::Delay;
 use tokio::timer::Interval;
 
 pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
-  i.register_op(
-    "global_timer_stop",
-    s.core_op(json_op(s.stateful_op(op_global_timer_stop))),
-  );
-  i.register_op(
-    "global_timer",
-    s.core_op(json_op(s.stateful_op(op_global_timer))),
-  );
   i.register_op("now", s.core_op(json_op(s.stateful_op(op_now))));
   i.register_op(
     "set_interval",
@@ -35,6 +28,18 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op(
     "clear_interval",
     s.core_op(json_op(s.stateful_op(op_clear_interval))),
+  );
+  i.register_op(
+    "set_timeout",
+    s.core_op(json_op(s.stateful_op(op_set_timeout))),
+  );
+  i.register_op(
+    "poll_timeout",
+    s.core_op(json_op(s.stateful_op(op_poll_timeout))),
+  );
+  i.register_op(
+    "clear_timeout",
+    s.core_op(json_op(s.stateful_op(op_clear_timeout))),
   );
 }
 
@@ -60,17 +65,12 @@ fn op_set_interval(
 ) -> Result<JsonOp, ErrBox> {
   let args: SetIntervalArgs = serde_json::from_value(args)?;
   let duration = Duration::from_millis(args.duration);
-  let at = Instant::now() + duration.clone();
+  let at = Instant::now() + duration;
   let interval = Interval::new(at, duration);
   let interval_resource = IntervalResource { interval };
   let mut table = resources::lock_resource_table();
   let rid = table.add(Box::new(interval_resource));
   Ok(JsonOp::Sync(json!(rid)))
-}
-
-#[derive(Deserialize)]
-struct PollIntervalArgs {
-  rid: u32,
 }
 
 struct PollInterval {
@@ -89,12 +89,18 @@ impl Future for PollInterval {
     interval_resource.interval.poll().map_err(ErrBox::from)
   }
 }
+
+#[derive(Deserialize)]
+struct IntervalArgs {
+  rid: u32,
+}
+
 fn op_poll_interval(
   _state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
-  let args: PollIntervalArgs = serde_json::from_value(args)?;
+  let args: IntervalArgs = serde_json::from_value(args)?;
   let fut = PollInterval { rid: args.rid };
   let fut = fut.and_then(move |maybe_now| Ok(json!(maybe_now.is_none())));
 
@@ -106,45 +112,90 @@ fn op_clear_interval(
   args: Value,
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
-  let args: PollIntervalArgs = serde_json::from_value(args)?;
+  let args: IntervalArgs = serde_json::from_value(args)?;
   let mut table = resources::lock_resource_table();
-  let interval_resource = table.close(args.rid).ok_or_else(bad_resource)?;
-  drop(interval_resource);
+  table.close(args.rid).ok_or_else(bad_resource)?;
   Ok(JsonOp::Sync(json!({})))
 }
 
-fn op_global_timer_stop(
-  state: &ThreadSafeState,
-  _args: Value,
-  _zero_copy: Option<PinnedBuf>,
-) -> Result<JsonOp, ErrBox> {
-  let state = state;
-  let mut t = state.global_timer.lock().unwrap();
-  t.cancel();
-  Ok(JsonOp::Sync(json!({})))
+struct TimeoutResource {
+  delay: Delay,
+}
+
+impl CoreResource for TimeoutResource {
+  fn inspect_repr(&self) -> &str {
+    "timeout"
+  }
 }
 
 #[derive(Deserialize)]
-struct GlobalTimerArgs {
-  timeout: u64,
+struct SetTimeoutArgs {
+  duration: u64,
 }
 
-fn op_global_timer(
-  state: &ThreadSafeState,
+fn op_set_timeout(
+  _state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
-  let args: GlobalTimerArgs = serde_json::from_value(args)?;
-  let val = args.timeout;
+  let args: SetTimeoutArgs = serde_json::from_value(args)?;
+  let deadline = Instant::now() + Duration::from_millis(args.duration);
+  let delay = Delay::new(deadline);
+  let timeout_resource = TimeoutResource { delay };
+  let mut table = resources::lock_resource_table();
+  let rid = table.add(Box::new(timeout_resource));
+  Ok(JsonOp::Sync(json!(rid)))
+}
 
-  let state = state;
-  let mut t = state.global_timer.lock().unwrap();
-  let deadline = Instant::now() + Duration::from_millis(val);
-  let f = t
-    .new_timeout(deadline)
-    .then(move |_| futures::future::ok(json!({})));
+struct PollTimeout {
+  rid: u32,
+}
 
-  Ok(JsonOp::Async(Box::new(f)))
+impl Future for PollTimeout {
+  type Item = ();
+  type Error = ErrBox;
+
+  fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+    let mut table = resources::lock_resource_table();
+    let interval_resource = table
+      .get_mut::<TimeoutResource>(self.rid)
+      .ok_or_else(bad_resource)?;
+    interval_resource.delay.poll().map_err(ErrBox::from)
+  }
+}
+
+#[derive(Deserialize)]
+struct TimeoutArgs {
+  rid: u32,
+}
+
+fn op_poll_timeout(
+  _state: &ThreadSafeState,
+  args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: TimeoutArgs = serde_json::from_value(args)?;
+  let fut = PollTimeout { rid: args.rid };
+  let fut = fut.and_then(move |_| {
+    let mut table = resources::lock_resource_table();
+    table.close(args.rid).expect("Unable to close resource");
+    Ok(json!({}))
+  });
+  Ok(JsonOp::Async(Box::new(fut)))
+}
+
+fn op_clear_timeout(
+  _state: &ThreadSafeState,
+  args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: TimeoutArgs = serde_json::from_value(args)?;
+  let mut table = resources::lock_resource_table();
+  let timeout_resource = table
+    .get_mut::<TimeoutResource>(args.rid)
+    .ok_or_else(bad_resource)?;
+  timeout_resource.delay.reset(Instant::now());
+  Ok(JsonOp::Sync(json!({})))
 }
 
 // Returns a milliseconds and nanoseconds subsec
