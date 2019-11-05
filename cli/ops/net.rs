@@ -35,12 +35,6 @@ enum AcceptState {
 
 /// Simply accepts a connection.
 pub fn accept(rid: ResourceId) -> Accept {
-  //  let state = if task::is_in_task() {
-  //    AcceptState::Pending
-  //  } else {
-  //    AcceptState::Eager
-  //  };
-
   Accept {
     state: AcceptState::Eager,
     rid,
