@@ -1,7 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use crate::deno_error::permission_denied;
 use crate::global_state::ThreadSafeGlobalState;
-use crate::global_timer::GlobalTimer;
 use crate::import_map::ImportMap;
 use crate::metrics::Metrics;
 use crate::ops::JsonOp;
@@ -52,7 +51,6 @@ pub struct State {
   /// import map file will be resolved and set.
   pub import_map: Option<ImportMap>,
   pub metrics: Metrics,
-  pub global_timer: Mutex<GlobalTimer>,
   pub workers: Mutex<UserWorkerTable>,
   pub start_time: Instant,
   /// A reference to this worker's resource.
@@ -220,7 +218,6 @@ impl ThreadSafeState {
       import_map,
       worker_channels: Mutex::new(internal_channels),
       metrics: Metrics::default(),
-      global_timer: Mutex::new(GlobalTimer::new()),
       workers: Mutex::new(UserWorkerTable::new()),
       start_time: Instant::now(),
       rid,
