@@ -28,12 +28,7 @@ export function clearTimeout(id = 0): void {
   if (id === 0) {
     return;
   }
-  const timeout = timeoutMap.get(id);
-  if (!timeout) {
-    return;
-  }
-  timeout.cancel();
-  timeoutMap.delete(id);
+  Timeout.cancel(id);
 }
 
 /** Sets a timer which executes a function once after the timer expires. */
@@ -46,9 +41,6 @@ export function setTimeout(
   // @ts-ignore
   checkThis(this);
   const timeout = new Timeout(delay, cb, args);
-  timeoutMap.set(timeout.id, timeout);
-  // ignore promise so it's run in the background
-  timeout.poll();
   return timeout.id;
 }
 
@@ -80,9 +72,16 @@ class Timeout {
     this.duration = duration;
     this.cancelled = false;
     this.rid = sendSync(dispatch.OP_SET_TIMEOUT, { duration });
+    timeoutMap.set(this.id, this);
+    // ignore promise so it's run in the background
+    this.poll();
   }
 
   async poll(): Promise<void> {
+    if (this.cancelled) {
+      return;
+    }
+
     await sendAsync(dispatch.OP_POLL_TIMEOUT, {
       rid: this.rid
     });
@@ -91,13 +90,27 @@ class Timeout {
       return;
     }
 
+    this.cancelled = true;
+    timeoutMap.delete(this.id);
     // Call the user callback. Intermediate assignment is to avoid leaking `this`
     // to it, while also keeping the stack trace neat when it shows up in there.
     const callback = this.callback;
     callback();
   }
 
+  static cancel(id: number): void {
+    const timeout = timeoutMap.get(id);
+    if (!timeout) {
+      return;
+    }
+    timeoutMap.delete(id);
+    timeout.cancel();
+  }
+
   cancel(): void {
+    if (this.cancelled) {
+      return;
+    }
     this.cancelled = true;
     sendSync(dispatch.OP_CLEAR_TIMEOUT, { rid: this.rid });
   }
@@ -133,11 +146,15 @@ class Interval {
     this.duration = duration;
     this.cancelled = false;
     this.rid = sendSync(dispatch.OP_SET_INTERVAL, { duration });
+    intervalMap.set(this.id, this);
+    // ignore promise so it's run in the background
+    this.poll();
   }
 
   async poll(): Promise<void> {
     for await (const cancelled of this) {
       if (cancelled) {
+        intervalMap.delete(this.id);
         return;
       }
       // Call the user callback. Intermediate assignment is to avoid leaking `this`
@@ -163,7 +180,20 @@ class Interval {
     return { value: this.cancelled, done: this.cancelled };
   }
 
+  static cancel(id: number): void {
+    const interval = intervalMap.get(id);
+    if (!interval) {
+      return;
+    }
+
+    intervalMap.delete(id);
+    interval.cancel();
+  }
+
   cancel(): void {
+    if (this.cancelled) {
+      return;
+    }
     this.cancelled = true;
     sendSync(dispatch.OP_CLEAR_INTERVAL, { rid: this.rid });
   }
@@ -181,9 +211,6 @@ export function setInterval(
   // @ts-ignore
   checkThis(this);
   const interval = new Interval(delay, cb, args);
-  intervalMap.set(interval.id, interval);
-  // ignore promise so it's run in the background
-  interval.poll();
   return interval.id;
 }
 
@@ -192,12 +219,5 @@ export function clearInterval(id = 0): void {
   if (id === 0) {
     return;
   }
-
-  const interval = intervalMap.get(id);
-  if (!interval) {
-    return;
-  }
-
-  interval.cancel();
-  intervalMap.delete(id);
+  Interval.cancel(id);
 }
