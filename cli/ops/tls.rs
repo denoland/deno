@@ -234,7 +234,7 @@ fn op_listen_tls(
     local_addr,
   };
 
-  let rid = table.add(Box::new(tls_listener_resource));
+  let rid = table.add("tlsListener", Box::new(tls_listener_resource));
 
   Ok(JsonOp::Sync(json!({
     "rid": rid,

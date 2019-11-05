@@ -297,7 +297,7 @@ fn op_listen(
     local_addr,
   };
   let mut table = resources::lock_resource_table();
-  let rid = table.add(Box::new(listener_resource));
+  let rid = table.add("tcpListener", Box::new(listener_resource));
 
   Ok(JsonOp::Sync(json!({
     "rid": rid,
