@@ -25,10 +25,26 @@ function checkBigInt(n: unknown): void {
 
 export function clearTimeout(id = 0): void {
   checkBigInt(id);
+  id = Number(id);
   if (id === 0) {
     return;
   }
-  Timeout.cancel(id);
+
+  const timeout = timeoutMap.get(id);
+  // Timeout already fired or just bad id
+  if (!timeout) {
+    return;
+  }
+
+  // Mark as cancelled to prevent firing timeout if promise is resolved
+  timeout.cancelled = true;
+  timeoutMap.delete(id);
+
+  try {
+    sendSync(dispatch.OP_CLEAR_TIMEOUT, { rid: timeout.rid });
+  } catch {
+    // Might return bad resource id error if timeout already fired
+  }
 }
 
 /** Sets a timer which executes a function once after the timer expires. */
@@ -40,79 +56,63 @@ export function setTimeout(
   checkBigInt(delay);
   // @ts-ignore
   checkThis(this);
-  const timeout = new Timeout(delay, cb, args);
+  // Bind `args` to the callback and bind `this` to window(global).
+  const callback: () => void = cb.bind(window, ...args);
+  // In the browser, the delay value must be coercible to an integer between 0
+  // and INT32_MAX. Any other value will cause the timer to fire immediately.
+  // We emulate this behavior.
+  if (delay > TIMEOUT_MAX) {
+    console.warn(
+      `${delay} does not fit into` +
+        " a 32-bit signed integer." +
+        "\nTimeout delay was set to 1."
+    );
+    delay = 1;
+  }
+  delay = Math.max(0, delay | 0);
+
+  const timeout = new Timeout(delay, callback);
+  timeoutMap.set(timeout.id, timeout);
+  // Run promise in the background
+  timeout.poll();
   return timeout.id;
 }
 
 class Timeout {
   public id: number;
   callback: () => void;
-  duration: number;
-  cancelled: boolean;
   rid: number;
+  cancelled: boolean;
 
-  constructor(duration: number, cb: () => void, args: Args) {
-    // Bind `args` to the callback and bind `this` to window(global).
-    const callback: () => void = cb.bind(window, ...args);
-    // In the browser, the delay value must be coercible to an integer between 0
-    // and INT32_MAX. Any other value will cause the timer to fire immediately.
-    // We emulate this behavior.
-    if (duration > TIMEOUT_MAX) {
-      console.warn(
-        `${duration} does not fit into` +
-          " a 32-bit signed integer." +
-          "\nTimeout duration was set to 1."
-      );
-      duration = 1;
-    }
-    duration = Math.max(0, duration | 0);
-
+  constructor(duration: number, cb: () => void) {
     this.id = nextTimerId++;
-    this.callback = callback;
-    this.duration = duration;
     this.cancelled = false;
+    this.callback = cb;
     this.rid = sendSync(dispatch.OP_SET_TIMEOUT, { duration });
-    timeoutMap.set(this.id, this);
-    // ignore promise so it's run in the background
-    this.poll();
   }
 
   async poll(): Promise<void> {
+    try {
+      await sendAsync(dispatch.OP_POLL_TIMEOUT, {
+        rid: this.rid
+      });
+    } catch {
+      // Might return bad resource id error if timeout was cleared
+    }
+
+    // If timeout was cleared before op resolved don't fire
     if (this.cancelled) {
       return;
     }
 
-    await sendAsync(dispatch.OP_POLL_TIMEOUT, {
-      rid: this.rid
-    });
-
-    if (this.cancelled) {
-      return;
-    }
-
+    // If we're this far mark this timeout as cancelled and remove from map
+    // so it cannot be cleared anymore.
     this.cancelled = true;
     timeoutMap.delete(this.id);
     // Call the user callback. Intermediate assignment is to avoid leaking `this`
     // to it, while also keeping the stack trace neat when it shows up in there.
     const callback = this.callback;
     callback();
-  }
-
-  static cancel(id: number): void {
-    const timeout = timeoutMap.get(id);
-    if (!timeout) {
-      return;
-    }
-    timeoutMap.delete(id);
-    timeout.cancel();
-  }
-
-  cancel(): void {
-    if (this.cancelled) {
-      return;
-    }
-    this.cancelled = true;
-    sendSync(dispatch.OP_CLEAR_TIMEOUT, { rid: this.rid });
   }
 }
 
@@ -125,36 +125,18 @@ class Interval {
   cancelled: boolean;
   rid: number;
 
-  constructor(duration: number, cb: () => void, args: Args) {
-    // Bind `args` to the callback and bind `this` to window(global).
-    const callback: () => void = cb.bind(window, ...args);
-    // In the browser, the delay value must be coercible to an integer between 0
-    // and INT32_MAX. Any other value will cause the timer to fire immediately.
-    // We emulate this behavior.
-    if (duration > TIMEOUT_MAX) {
-      console.warn(
-        `${duration} does not fit into` +
-          " a 32-bit signed integer." +
-          "\nTimeout duration was set to 1."
-      );
-      duration = 1;
-    }
-    duration = Math.max(0, duration | 0);
-
+  constructor(duration: number, cb: () => void) {
     this.id = nextTimerId++;
-    this.callback = callback;
+    this.callback = cb;
     this.duration = duration;
     this.cancelled = false;
     this.rid = sendSync(dispatch.OP_SET_INTERVAL, { duration });
-    intervalMap.set(this.id, this);
-    // ignore promise so it's run in the background
-    this.poll();
   }
 
   async poll(): Promise<void> {
+    // Run async iterator. If
     for await (const cancelled of this) {
       if (cancelled) {
-        intervalMap.delete(this.id);
         return;
       }
       // Call the user callback. Intermediate assignment is to avoid leaking `this`
@@ -169,33 +151,23 @@ class Interval {
   }
 
   async next(): Promise<IteratorResult<boolean>> {
+    // If interval was cleared don't start another promise
     if (this.cancelled) {
       return { value: true, done: true };
     }
 
-    this.cancelled = await sendAsync(dispatch.OP_POLL_INTERVAL, {
-      rid: this.rid
-    });
-
-    return { value: this.cancelled, done: this.cancelled };
-  }
-
-  static cancel(id: number): void {
-    const interval = intervalMap.get(id);
-    if (!interval) {
-      return;
+    let cancelled;
+    try {
+      cancelled = await sendAsync(dispatch.OP_POLL_INTERVAL, {
+        rid: this.rid
+      });
+    } catch {
+      // Might throw bad resource id if interval was cleared
+      cancelled = true;
     }
 
-    intervalMap.delete(id);
-    interval.cancel();
-  }
-
-  cancel(): void {
-    if (this.cancelled) {
-      return;
-    }
-    this.cancelled = true;
-    sendSync(dispatch.OP_CLEAR_INTERVAL, { rid: this.rid });
+    this.cancelled = cancelled;
+    return { value: cancelled, done: cancelled };
   }
 }
 
@@ -210,14 +182,46 @@ export function setInterval(
   checkBigInt(delay);
   // @ts-ignore
   checkThis(this);
-  const interval = new Interval(delay, cb, args);
+  // Bind `args` to the callback and bind `this` to window(global).
+  const callback: () => void = cb.bind(window, ...args);
+  // In the browser, the delay value must be coercible to an integer between 0
+  // and INT32_MAX. Any other value will cause the timer to fire immediately.
+  // We emulate this behavior.
+  if (delay > TIMEOUT_MAX) {
+    console.warn(
+      `${delay} does not fit into` +
+        " a 32-bit signed integer." +
+        "\nInterval delay was set to 1."
+    );
+    delay = 1;
+  }
+  delay = Math.max(0, delay | 0);
+
+  const interval = new Interval(delay, callback);
+  intervalMap.set(interval.id, interval);
+  // Run async iterator promise in the background
+  interval.poll();
   return interval.id;
 }
 
 export function clearInterval(id = 0): void {
   checkBigInt(id);
+  id = Number(id);
   if (id === 0) {
     return;
   }
-  Interval.cancel(id);
+
+  const interval = intervalMap.get(id);
+  if (!interval) {
+    return;
+  }
+
+  // Mark interval as cancelled to prevent firing on when current promise
+  // resolves
+  interval.cancelled = true;
+  intervalMap.delete(id);
+
+  try {
+    sendSync(dispatch.OP_CLEAR_INTERVAL, { rid: interval.rid });
+  } catch {}
 }

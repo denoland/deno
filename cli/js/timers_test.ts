@@ -135,7 +135,7 @@ test(async function intervalCancelSuccess(): Promise<void> {
   assertEquals(count, 0);
 });
 
-test(async function intervalOrdering(): Promise<void> {
+test(async function timeoutOrdering(): Promise<void> {
   const timers = [];
   let timeouts = 0;
   function onTimeout(): void {

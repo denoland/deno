@@ -65,9 +65,9 @@ fn op_set_interval(
 ) -> Result<JsonOp, ErrBox> {
   let args: SetIntervalArgs = serde_json::from_value(args)?;
   let duration = Duration::from_millis(args.duration);
-  let at = Instant::now() + duration;
-  let interval = Interval::new(at, duration);
-  let interval_resource = IntervalResource { interval };
+  let interval_resource = IntervalResource {
+    interval: Interval::new_interval(duration),
+  };
   let mut table = resources::lock_resource_table();
   let rid = table.add(Box::new(interval_resource));
   Ok(JsonOp::Sync(json!(rid)))
@@ -178,7 +178,7 @@ fn op_poll_timeout(
   let fut = PollTimeout { rid: args.rid };
   let fut = fut.and_then(move |_| {
     let mut table = resources::lock_resource_table();
-    table.close(args.rid).expect("Unable to close resource");
+    table.close(args.rid);
     Ok(json!({}))
   });
   Ok(JsonOp::Async(Box::new(fut)))
@@ -191,10 +191,7 @@ fn op_clear_timeout(
 ) -> Result<JsonOp, ErrBox> {
   let args: TimeoutArgs = serde_json::from_value(args)?;
   let mut table = resources::lock_resource_table();
-  let timeout_resource = table
-    .get_mut::<TimeoutResource>(args.rid)
-    .ok_or_else(bad_resource)?;
-  timeout_resource.delay.reset(Instant::now());
+  table.close(args.rid);
   Ok(JsonOp::Sync(json!({})))
 }
 
@@ -207,8 +204,9 @@ fn op_now(
   _args: Value,
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
-  let seconds = state.start_time.elapsed().as_secs();
-  let mut subsec_nanos = state.start_time.elapsed().subsec_nanos();
+  let elapsed = state.start_time.elapsed();
+  let seconds = elapsed.as_secs();
+  let mut subsec_nanos = elapsed.subsec_nanos();
   let reduced_time_precision = 2_000_000; // 2ms in nanoseconds
 
   // If the permission is not enabled
