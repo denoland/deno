@@ -7,7 +7,6 @@ use crate::resources;
 use crate::resources::CoreResource;
 use crate::resources::Resource;
 use crate::state::ThreadSafeState;
-use crate::tokio_util;
 use deno::*;
 use futures::Async;
 use futures::Future;
@@ -19,7 +18,6 @@ use std::net::SocketAddr;
 use tokio;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
-use tokio::prelude::task;
 
 pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op("accept", s.core_op(json_op(s.stateful_op(op_accept))));
@@ -106,17 +104,16 @@ impl Future for Accept {
       Ok(Async::Ready((stream, addr))) => {
         listener_resource.untrack_task();
         self.state = AcceptState::Done;
-        return Ok((stream, addr).into());
+        Ok((stream, addr).into())
       }
       Ok(Async::NotReady) => {
         listener_resource.track_task()?;
-        eprintln!("tracked task");
-        return Ok(Async::NotReady);
+        Ok(Async::NotReady)
       }
       Err(e) => {
         listener_resource.untrack_task();
         self.state = AcceptState::Done;
-        return Err(e);
+        Err(e)
       }
     }
   }
@@ -233,10 +230,11 @@ struct ListenArgs {
   port: u16,
 }
 
-struct TcpListenerResource {
-  listener: tokio::net::TcpListener,
-  task: Option<futures::task::Task>,
-  local_addr: SocketAddr,
+#[allow(dead_code)]
+pub struct TcpListenerResource {
+  pub listener: tokio::net::TcpListener,
+  pub task: Option<futures::task::Task>,
+  pub local_addr: SocketAddr,
 }
 
 impl CoreResource for TcpListenerResource {

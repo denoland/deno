@@ -1,18 +1,22 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
+use super::net::accept;
+use super::net::TcpListenerResource;
+use crate::deno_error::bad_resource;
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
 use crate::ops::json_op;
 use crate::resolve_addr::resolve_addr;
 use crate::resources;
+use crate::resources::CoreResource;
 use crate::state::ThreadSafeState;
-use crate::tokio_util;
 use deno::*;
 use futures::Future;
 use std;
 use std::convert::From;
 use std::fs::File;
 use std::io::BufReader;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio;
 use tokio::net::TcpListener;
@@ -167,6 +171,21 @@ fn load_keys(path: &str) -> Result<Vec<PrivateKey>, ErrBox> {
   Ok(keys)
 }
 
+#[allow(dead_code)]
+pub struct TlsListenerResource {
+  tcp_listener_rid: ResourceId,
+  acceptor: TlsAcceptor,
+  local_addr: SocketAddr,
+}
+
+impl CoreResource for TlsListenerResource {
+  fn close(&mut self) {}
+
+  fn inspect_repr(&self) -> &str {
+    "tlsListener"
+  }
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ListenTlsArgs {
@@ -200,11 +219,26 @@ fn op_listen_tls(
   let addr = resolve_addr(&args.hostname, args.port).wait()?;
   let listener = TcpListener::bind(&addr)?;
   let local_addr = listener.local_addr()?;
-  let resource = resources::add_tls_listener(listener, acceptor);
+  let local_addr_str = local_addr.to_string();
+  let listener_resource = TcpListenerResource {
+    listener,
+    task: None,
+    local_addr,
+  };
+  let mut table = resources::lock_resource_table();
+  let tcp_listener_rid = table.add(Box::new(listener_resource));
+
+  let tls_listener_resource = TlsListenerResource {
+    tcp_listener_rid,
+    acceptor,
+    local_addr,
+  };
+
+  let rid = table.add(Box::new(tls_listener_resource));
 
   Ok(JsonOp::Sync(json!({
-    "rid": resource.rid,
-    "localAddr": local_addr.to_string()
+    "rid": rid,
+    "localAddr": local_addr_str
   })))
 }
 
@@ -219,26 +253,36 @@ fn op_accept_tls(
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: AcceptTlsArgs = serde_json::from_value(args)?;
-  let server_rid = args.rid as u32;
+  let rid = args.rid as u32;
 
-  let server_resource = resources::lookup(server_rid)?;
-  let op = tokio_util::accept(server_resource)
+  let table = resources::lock_resource_table();
+  let resource = table
+    .get::<TlsListenerResource>(rid)
+    .ok_or_else(bad_resource)?;
+
+  let op = accept(resource.tcp_listener_rid)
     .and_then(move |(tcp_stream, _socket_addr)| {
       let local_addr = tcp_stream.local_addr()?;
       let remote_addr = tcp_stream.peer_addr()?;
       Ok((tcp_stream, local_addr, remote_addr))
     })
     .and_then(move |(tcp_stream, local_addr, remote_addr)| {
-      let mut server_resource = resources::lookup(server_rid).unwrap();
-      server_resource
-        .poll_accept_tls(tcp_stream)
+      let table = resources::lock_resource_table();
+      let resource = table
+        .get::<TlsListenerResource>(rid)
+        .ok_or_else(bad_resource)
+        .expect("Can't find tls listener");
+
+      resource
+        .acceptor
+        .accept(tcp_stream)
+        .map_err(ErrBox::from)
         .and_then(move |tls_stream| {
           let tls_stream_resource =
             resources::add_server_tls_stream(tls_stream);
           Ok((tls_stream_resource, local_addr, remote_addr))
         })
     })
-    .map_err(ErrBox::from)
     .and_then(move |(tls_stream_resource, local_addr, remote_addr)| {
       futures::future::ok(json!({
         "rid": tls_stream_resource.rid,
