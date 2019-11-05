@@ -40,7 +40,7 @@ jobs:
         if: startsWith(matrix.os, 'ubuntu') && matrix.kind == 'test' && startsWith(github.ref, 'refs/tags/') && github.repository == 'denoland/deno'
         run: |
           mkdir -p target/release
-          tar --exclude=".git*" --exclude=target --exclude=deno_typescript/typescript/tests --exclude=third_party/cpplint --exclude="third_party/node_modules/*" --exclude=third_party/python_packages --exclude=third_party/wrk -czvf target/release/deno_src.tar.gz -C .. deno
+          tar --exclude=".git*" --exclude=target --exclude=deno_typescript/typescript/tests --exclude=third_party/cpplint --exclude=third_party/node_modules --exclude=third_party/python_packages --exclude=third_party/prebuilt -czvf target/release/deno_src.tar.gz -C .. deno
 
       - name: Install rust
         uses: hecrj/setup-rust-action@v1
