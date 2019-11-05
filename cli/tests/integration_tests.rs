@@ -156,11 +156,13 @@ itest!(_018_async_catch {
   output: "018_async_catch.ts.out",
 });
 
+/* TODO(ry) Re-enable this test. It is flaky and only fails occasionally.
 itest!(_019_media_types {
   args: "run --reload 019_media_types.ts",
   output: "019_media_types.ts.out",
   http_server: true,
 });
+*/
 
 itest!(_020_json_modules {
   args: "run --reload 020_json_modules.ts",
@@ -335,11 +337,13 @@ itest!(_047_jsx {
   output: "047_jsx_test.jsx.out",
 });
 
+/* TODO(ry) Re-enable this test. It is flaky and only fails occasionally.
 itest!(_048_media_types_jsx {
   args: "run  --reload 048_media_types_jsx.ts",
   output: "048_media_types_jsx.ts.out",
   http_server: true,
 });
+*/
 
 itest!(_049_info_flag_script_jsx {
   args: "info http://127.0.0.1:4545/cli/tests/048_media_types_jsx.ts",
