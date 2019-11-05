@@ -179,7 +179,9 @@ pub struct TlsListenerResource {
 }
 
 impl CoreResource for TlsListenerResource {
-  fn close(&mut self) {}
+  fn close(&mut self) -> Option<Vec<ResourceId>> {
+    Some(vec![self.tcp_listener_rid])
+  }
 
   fn inspect_repr(&self) -> &str {
     "tlsListener"

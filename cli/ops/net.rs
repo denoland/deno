@@ -238,10 +238,12 @@ pub struct TcpListenerResource {
 }
 
 impl CoreResource for TcpListenerResource {
-  fn close(&mut self) {
+  fn close(&mut self) -> Option<Vec<ResourceId>> {
     if let Some(task) = self.task.take() {
       task.notify();
     }
+
+    None
   }
 
   fn inspect_repr(&self) -> &str {
