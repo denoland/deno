@@ -388,6 +388,16 @@ interface ServerConfig {
   hostname?: string;
 }
 
+/**
+ * Start a HTTP server
+ *
+ *     import { serve } from "https://deno.land/std/http/server.ts";
+ *     const body = new TextEncoder().encode("Hello World\n");
+ *     const s = serve({ port: 8000 });
+ *     for await (const req of s) {
+ *       req.respond({ body });
+ *     }
+ */
 export function serve(addr: string | ServerConfig): Server {
   if (typeof addr === "string") {
     const [hostname, port] = addr.split(":");
@@ -414,19 +424,20 @@ export type HTTPSOptions = Omit<Deno.ListenTLSOptions, "transport">;
 
 /**
  * Create an HTTPS server with given options
+ *
+ *     const body = new TextEncoder().encode("Hello HTTPS");
+ *     const options = {
+ *       hostname: "localhost",
+ *       port: 443,
+ *       certFile: "./path/to/localhost.crt",
+ *       keyFile: "./path/to/localhost.key",
+ *     };
+ *     for await (const req of serveTLS(options)) {
+ *       req.respond({ body });
+ *     }
+ *
  * @param options Server configuration
  * @return Async iterable server instance for incoming requests
- *
- *       const body = new TextEncoder().encode("Hello HTTPS");
- *       const options = {
- *         hostname: "localhost",
- *         port: 443,
- *         certFile: "./path/to/localhost.crt",
- *         keyFile: "./path/to/localhost.key",
- *       };
- *       for await (const req of serveTLS(options)) {
- *         req.respond({ body });
- *       }
  */
 export function serveTLS(options: HTTPSOptions): Server {
   const tlsOptions: Deno.ListenTLSOptions = {
