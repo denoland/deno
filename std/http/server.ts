@@ -381,11 +381,6 @@ export class Server implements AsyncIterable<ServerRequest> {
     mux.add(this.acceptConnAndIterateHttpRequests(mux));
     return mux.iterate();
   }
-
-  // Returns the addres which this server is listening on.
-  get url(): string {
-    return `http://${this.listener.addr().address}/`
-  }
 }
 
 interface ServerConfig {
@@ -394,11 +389,11 @@ interface ServerConfig {
 }
 
 export function serve(addr: string | ServerConfig): Server {
-  if (typeof addr === 'string') {
+  if (typeof addr === "string") {
     const [hostname, port] = addr.split(":");
-    addr = {hostname, port: Number(port)};
+    addr = { hostname, port: Number(port) };
   }
-  
+
   const listener = listen(addr);
   return new Server(listener);
 }
