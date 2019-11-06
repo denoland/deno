@@ -303,8 +303,11 @@ export async function readRequest(
 
 export class Server implements AsyncIterable<ServerRequest> {
   private closing = false;
+  url: string;
 
-  constructor(public listener: Listener) {}
+  constructor(public listener: Listener, options: Deno.ListenOptions) {
+    this.url = `http://${options.hostname || 'localhost'}:${options.port}/`;
+  }
 
   close(): void {
     this.closing = true;
@@ -393,16 +396,17 @@ function serveOptions(options: ServeOptions): Deno.ListenOptions {
   return options;
 }
 
-export function serve(options: ServeOptions): Server {
-  const listener = listen(serveOptions(options));
-  return new Server(listener);
+export function serve(addr: ServeOptions): Server {
+  const options = serveOptions(addr);
+  const listener = listen(options);
+  return new Server(listener, options);
 }
 
 export async function listenAndServe(
-  options: ServeOptions,
+  addr: ServeOptions,
   handler: (req: ServerRequest) => void
 ): Promise<void> {
-  const server = serve(options);
+  const server = serve(addr);
 
   for await (const request of server) {
     handler(request);
@@ -434,7 +438,7 @@ export function serveTLS(options: HTTPSOptions): Server {
     transport: "tcp"
   };
   const listener = listenTLS(tlsOptions);
-  return new Server(listener);
+  return new Server(listener, tlsOptions);
 }
 
 /**
