@@ -303,11 +303,13 @@ export async function readRequest(
 
 export class Server implements AsyncIterable<ServerRequest> {
   private closing = false;
-  url: string;
+  url: URL;
 
   constructor(public listener: Listener, options: ServerOptions = { port: 0 }) {
-    this.url = `${options.protocol || "http"}://${options.hostname ||
-      "localhost"}:${options.port}/`;
+    this.url = new URL(
+      `${options.protocol || "http"}://${options.hostname ||
+        "localhost"}:${options.port || 0}/`
+    );
   }
 
   close(): void {
