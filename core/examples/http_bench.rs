@@ -190,19 +190,11 @@ pub fn bad_resource() -> Error {
 
 struct TcpListener(tokio::net::TcpListener);
 
-impl Resource for TcpListener {
-  fn inspect_repr(&self) -> &str {
-    "tcpListener"
-  }
-}
+impl Resource for TcpListener {}
 
 struct TcpStream(tokio::net::TcpStream);
 
-impl Resource for TcpStream {
-  fn inspect_repr(&self) -> &str {
-    "tcpStream"
-  }
-}
+impl Resource for TcpStream {}
 
 lazy_static! {
   static ref RESOURCE_TABLE: Mutex<ResourceTable> =
@@ -225,7 +217,7 @@ fn op_accept(record: Record, _zero_copy_buf: Option<PinnedBuf>) -> Box<HttpOp> {
   .and_then(move |(stream, addr)| {
     debug!("accept success {}", addr);
     let mut table = lock_resource_table();
-    let rid = table.add(Box::new(TcpStream(stream)));
+    let rid = table.add("tcpStream", Box::new(TcpStream(stream)));
     Ok(rid as i32)
   });
   Box::new(fut)
@@ -239,7 +231,7 @@ fn op_listen(
   let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
   let listener = tokio::net::TcpListener::bind(&addr).unwrap();
   let mut table = lock_resource_table();
-  let rid = table.add(Box::new(TcpListener(listener)));
+  let rid = table.add("tcpListener", Box::new(TcpListener(listener)));
   Box::new(futures::future::ok(rid as i32))
 }
 

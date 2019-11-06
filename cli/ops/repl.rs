@@ -24,11 +24,7 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
 
 struct ReplResource(Arc<Mutex<Repl>>);
 
-impl CoreResource for ReplResource {
-  fn inspect_repr(&self) -> &str {
-    "repl"
-  }
-}
+impl CoreResource for ReplResource {}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -49,7 +45,7 @@ fn op_repl_start(
   let repl = repl::Repl::new(history_path);
   let resource = ReplResource(Arc::new(Mutex::new(repl)));
   let mut table = resources::lock_resource_table();
-  let rid = table.add(Box::new(resource));
+  let rid = table.add("repl", Box::new(resource));
   Ok(JsonOp::Sync(json!(rid)))
 }
 

@@ -17,7 +17,7 @@ pub type ResourceId = u32;
 
 /// These store Deno's file descriptors. These are not necessarily the operating
 /// system ones.
-type ResourceMap = HashMap<ResourceId, Box<dyn Resource>>;
+type ResourceMap = HashMap<ResourceId, (String, Box<dyn Resource>)>;
 
 #[derive(Default)]
 pub struct ResourceTable {
@@ -29,7 +29,7 @@ pub struct ResourceTable {
 
 impl ResourceTable {
   pub fn get<T: Resource>(&self, rid: ResourceId) -> Option<&T> {
-    if let Some(resource) = self.map.get(&rid) {
+    if let Some((_name, resource)) = self.map.get(&rid) {
       return resource.downcast_ref::<T>();
     }
 
@@ -37,7 +37,7 @@ impl ResourceTable {
   }
 
   pub fn get_mut<T: Resource>(&mut self, rid: ResourceId) -> Option<&mut T> {
-    if let Some(resource) = self.map.get_mut(&rid) {
+    if let Some((_name, resource)) = self.map.get_mut(&rid) {
       return resource.downcast_mut::<T>();
     }
 
@@ -51,9 +51,9 @@ impl ResourceTable {
     next_rid as ResourceId
   }
 
-  pub fn add(&mut self, resource: Box<dyn Resource>) -> ResourceId {
+  pub fn add(&mut self, name: &str, resource: Box<dyn Resource>) -> ResourceId {
     let rid = self.next_rid();
-    let r = self.map.insert(rid, resource);
+    let r = self.map.insert(rid, (name.to_string(), resource));
     assert!(r.is_none());
     rid
   }
@@ -62,18 +62,17 @@ impl ResourceTable {
     self
       .map
       .iter()
-      .map(|(key, value)| (*key, value.inspect_repr().to_string()))
+      .map(|(key, (name, _resource))| (*key, name.clone()))
       .collect()
   }
 
   // close(2) is done by dropping the value. Therefore we just need to remove
   // the resource from the RESOURCE_TABLE.
   pub fn close(&mut self, rid: ResourceId) -> Option<()> {
-    if let Some(resource) = self.map.remove(&rid) {
+    if let Some((_name, resource)) = self.map.remove(&rid) {
       resource.close();
       return Some(());
     }
-
     None
   }
 }
@@ -81,8 +80,7 @@ impl ResourceTable {
 /// Abstract type representing resource in Deno.
 pub trait Resource: Downcast + Any + Send {
   /// Method that allows to cleanup resource.
+  // TODO(ry) remove this method. Resources should rely on drop trait instead.
   fn close(&self) {}
-
-  fn inspect_repr(&self) -> &str;
 }
 impl_downcast!(Resource);
