@@ -317,11 +317,9 @@ testCopySync(
   (tempDir: string): void => {
     const srcFile = path.join(testdataDir, "copy_file_not_exists_sync.txt");
     const destFile = path.join(tempDir, "copy_file_not_exists_1_sync.txt");
-    assertThrows(
-      (): void => {
-        copySync(srcFile, destFile);
-      }
-    );
+    assertThrows((): void => {
+      copySync(srcFile, destFile);
+    });
   }
 );
 
@@ -367,50 +365,47 @@ testCopySync(
   }
 );
 
-testCopySync(
-  "[fs] copy file synchronously",
-  (tempDir: string): void => {
-    const srcFile = path.join(testdataDir, "copy_file.txt");
-    const destFile = path.join(tempDir, "copy_file_copy_sync.txt");
+testCopySync("[fs] copy file synchronously", (tempDir: string): void => {
+  const srcFile = path.join(testdataDir, "copy_file.txt");
+  const destFile = path.join(tempDir, "copy_file_copy_sync.txt");
 
-    const srcContent = new TextDecoder().decode(Deno.readFileSync(srcFile));
+  const srcContent = new TextDecoder().decode(Deno.readFileSync(srcFile));
 
-    assertEquals(existsSync(srcFile), true);
-    assertEquals(existsSync(destFile), false);
+  assertEquals(existsSync(srcFile), true);
+  assertEquals(existsSync(destFile), false);
 
-    copySync(srcFile, destFile);
+  copySync(srcFile, destFile);
 
-    assertEquals(existsSync(srcFile), true);
-    assertEquals(existsSync(destFile), true);
+  assertEquals(existsSync(srcFile), true);
+  assertEquals(existsSync(destFile), true);
 
-    const destContent = new TextDecoder().decode(Deno.readFileSync(destFile));
+  const destContent = new TextDecoder().decode(Deno.readFileSync(destFile));
 
-    assertEquals(srcContent, destContent);
+  assertEquals(srcContent, destContent);
 
-    // Copy again without overwrite option and it should throw an error.
-    assertThrows(
-      (): void => {
-        copySync(srcFile, destFile);
-      },
-      Error,
-      `'${destFile}' already exists.`
-    );
+  // Copy again without overwrite option and it should throw an error.
+  assertThrows(
+    (): void => {
+      copySync(srcFile, destFile);
+    },
+    Error,
+    `'${destFile}' already exists.`
+  );
 
-    // Modify destination file.
-    Deno.writeFileSync(destFile, new TextEncoder().encode("txt copy"));
+  // Modify destination file.
+  Deno.writeFileSync(destFile, new TextEncoder().encode("txt copy"));
 
-    assertEquals(
-      new TextDecoder().decode(Deno.readFileSync(destFile)),
-      "txt copy"
-    );
+  assertEquals(
+    new TextDecoder().decode(Deno.readFileSync(destFile)),
+    "txt copy"
+  );
 
-    // Copy again with overwrite option.
-    copySync(srcFile, destFile, { overwrite: true });
+  // Copy again with overwrite option.
+  copySync(srcFile, destFile, { overwrite: true });
 
-    // Make sure the file has been overwritten.
-    assertEquals(new TextDecoder().decode(Deno.readFileSync(destFile)), "txt");
-  }
-);
+  // Make sure the file has been overwritten.
+  assertEquals(new TextDecoder().decode(Deno.readFileSync(destFile)), "txt");
+});
 
 testCopySync(
   "[fs] copy directory synchronously to its subdirectory",
@@ -450,57 +445,54 @@ testCopySync(
   }
 );
 
-testCopySync(
-  "[fs] copy directory synchronously",
-  (tempDir: string): void => {
-    const srcDir = path.join(testdataDir, "copy_dir");
-    const destDir = path.join(tempDir, "copy_dir_copy_sync");
-    const srcFile = path.join(srcDir, "0.txt");
-    const destFile = path.join(destDir, "0.txt");
-    const srcNestFile = path.join(srcDir, "nest", "0.txt");
-    const destNestFile = path.join(destDir, "nest", "0.txt");
+testCopySync("[fs] copy directory synchronously", (tempDir: string): void => {
+  const srcDir = path.join(testdataDir, "copy_dir");
+  const destDir = path.join(tempDir, "copy_dir_copy_sync");
+  const srcFile = path.join(srcDir, "0.txt");
+  const destFile = path.join(destDir, "0.txt");
+  const srcNestFile = path.join(srcDir, "nest", "0.txt");
+  const destNestFile = path.join(destDir, "nest", "0.txt");
 
-    copySync(srcDir, destDir);
+  copySync(srcDir, destDir);
 
-    assertEquals(existsSync(destFile), true);
-    assertEquals(existsSync(destNestFile), true);
+  assertEquals(existsSync(destFile), true);
+  assertEquals(existsSync(destNestFile), true);
 
-    // After copy. The source and destination should have the same content.
-    assertEquals(
-      new TextDecoder().decode(Deno.readFileSync(srcFile)),
-      new TextDecoder().decode(Deno.readFileSync(destFile))
-    );
-    assertEquals(
-      new TextDecoder().decode(Deno.readFileSync(srcNestFile)),
-      new TextDecoder().decode(Deno.readFileSync(destNestFile))
-    );
+  // After copy. The source and destination should have the same content.
+  assertEquals(
+    new TextDecoder().decode(Deno.readFileSync(srcFile)),
+    new TextDecoder().decode(Deno.readFileSync(destFile))
+  );
+  assertEquals(
+    new TextDecoder().decode(Deno.readFileSync(srcNestFile)),
+    new TextDecoder().decode(Deno.readFileSync(destNestFile))
+  );
 
-    // Copy again without overwrite option and it should throw an error.
-    assertThrows(
-      (): void => {
-        copySync(srcDir, destDir);
-      },
-      Error,
-      `'${destDir}' already exists.`
-    );
+  // Copy again without overwrite option and it should throw an error.
+  assertThrows(
+    (): void => {
+      copySync(srcDir, destDir);
+    },
+    Error,
+    `'${destDir}' already exists.`
+  );
 
-    // Modify the file in the destination directory.
-    Deno.writeFileSync(destNestFile, new TextEncoder().encode("nest copy"));
-    assertEquals(
-      new TextDecoder().decode(Deno.readFileSync(destNestFile)),
-      "nest copy"
-    );
+  // Modify the file in the destination directory.
+  Deno.writeFileSync(destNestFile, new TextEncoder().encode("nest copy"));
+  assertEquals(
+    new TextDecoder().decode(Deno.readFileSync(destNestFile)),
+    "nest copy"
+  );
 
-    // Copy again with overwrite option.
-    copySync(srcDir, destDir, { overwrite: true });
+  // Copy again with overwrite option.
+  copySync(srcDir, destDir, { overwrite: true });
 
-    // Make sure the file has been overwritten.
-    assertEquals(
-      new TextDecoder().decode(Deno.readFileSync(destNestFile)),
-      "nest"
-    );
-  }
-);
+  // Make sure the file has been overwritten.
+  assertEquals(
+    new TextDecoder().decode(Deno.readFileSync(destNestFile)),
+    "nest"
+  );
+});
 
 testCopySync(
   "[fs] copy symlink file synchronously",

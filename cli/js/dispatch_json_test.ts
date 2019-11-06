@@ -18,11 +18,9 @@ const openErrorStackPattern = new RegExp(
 testPerm({ read: true }, async function sendAsyncStackTrace(): Promise<void> {
   await Deno.open("nonexistent.txt")
     .then(unreachable)
-    .catch(
-      (error): void => {
-        assertMatch(error.stack, openErrorStackPattern);
-      }
-    );
+    .catch((error): void => {
+      assertMatch(error.stack, openErrorStackPattern);
+    });
 });
 
 test(async function malformedJsonControlBuffer(): Promise<void> {

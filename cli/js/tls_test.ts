@@ -185,9 +185,6 @@ testPerm({ read: true, net: true }, async function dialAndListenTLS(): Promise<
   const tpr = new TextProtoReader(r);
   const statusLine = await tpr.readLine();
   assert(statusLine !== Deno.EOF, `line must be read: ${String(statusLine)}`);
-  if (statusLine === Deno.EOF) {
-    return;
-  }
   const m = statusLine.match(/^(.+?) (.+?) (.+?)$/);
   assert(m !== null, "must be matched");
   const [_, proto, status, ok] = m;
@@ -196,9 +193,6 @@ testPerm({ read: true, net: true }, async function dialAndListenTLS(): Promise<
   assertEquals(ok, "OK");
   const headers = await tpr.readMIMEHeader();
   assert(headers !== Deno.EOF);
-  if (headers === Deno.EOF) {
-    return;
-  }
   const contentLength = parseInt(headers.get("content-length"));
   const bodyBuf = new Uint8Array(contentLength);
   await r.readFull(bodyBuf);
