@@ -129,13 +129,19 @@ Using [Scoop](https://scoop.sh/) (windows):
 scoop install deno
 ```
 
-Using [Homebrew](https://brew.sh/) (mac):
+Using [Chocolatey](https://chocolatey.org/packages/deno) (windows):
+
+```shell
+choco install deno
+```
+
+Using [Homebrew](https://formulae.brew.sh/formula/deno) (mac):
 
 ```shell
 brew install deno
 ```
 
-To install from source:
+Using [Cargo](https://crates.io/crates/deno_cli):
 
 ```shell
 cargo install deno_cli
