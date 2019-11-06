@@ -305,7 +305,7 @@ export class Server implements AsyncIterable<ServerRequest> {
   private closing = false;
   url: string;
 
-  constructor(public listener: Listener, options: ServerOptions) {
+  constructor(public listener: Listener, options: ServerOptions = { port: 0 }) {
     this.url = `${options.protocol || "http"}://${options.hostname ||
       "localhost"}:${options.port}/`;
   }
