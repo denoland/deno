@@ -196,7 +196,7 @@ impl ThreadSafeState {
     };
 
     let mut table = resources::lock_resource_table();
-    let rid = table.add(Box::new(external_channels));
+    let rid = table.add("worker", Box::new(external_channels));
 
     let import_map: Option<ImportMap> =
       match global_state.flags.import_map_path.as_ref() {

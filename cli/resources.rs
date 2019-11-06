@@ -49,9 +49,9 @@ lazy_static! {
     let mut table = ResourceTable::default();
 
     // TODO Load these lazily during lookup?
-    table.add(Box::new(CliResource::Stdin(tokio::io::stdin())));
+    table.add("stdin", Box::new(CliResource::Stdin(tokio::io::stdin())));
 
-    table.add(Box::new(CliResource::Stdout({
+    table.add("stdout", Box::new(CliResource::Stdout({
       #[cfg(not(windows))]
       let stdout = unsafe { std::fs::File::from_raw_fd(1) };
       #[cfg(windows)]
@@ -62,7 +62,7 @@ lazy_static! {
       tokio::fs::File::from_std(stdout)
     })));
 
-    table.add(Box::new(CliResource::Stderr(tokio::io::stderr())));
+    table.add("stderr", Box::new(CliResource::Stderr(tokio::io::stderr())));
     table
   });
 }
@@ -98,6 +98,9 @@ enum CliResource {
 }
 
 impl CoreResource for CliResource {
+  // TODO(ry) These task notifications are hacks to workaround various behaviors
+  // in Tokio. They should not influence the overall design of Deno. The
+  // CoreResource::close should be removed in favor of the drop trait.
   fn close(&self) {
     match self {
       CliResource::TcpListener(_, Some(t)) => {
@@ -107,25 +110,6 @@ impl CoreResource for CliResource {
         t.notify();
       }
       _ => {}
-    }
-  }
-
-  fn inspect_repr(&self) -> &str {
-    match self {
-      CliResource::Stdin(_) => "stdin",
-      CliResource::Stdout(_) => "stdout",
-      CliResource::Stderr(_) => "stderr",
-      CliResource::FsFile(_) => "fsFile",
-      CliResource::TcpListener(_, _) => "tcpListener",
-      CliResource::TlsListener(_, _, _) => "tlsListener",
-      CliResource::TcpStream(_) => "tcpStream",
-      CliResource::ClientTlsStream(_) => "clientTlsStream",
-      CliResource::ServerTlsStream(_) => "serverTlsStream",
-      CliResource::HttpBody(_) => "httpBody",
-      CliResource::Child(_) => "child",
-      CliResource::ChildStdin(_) => "childStdin",
-      CliResource::ChildStdout(_) => "childStdout",
-      CliResource::ChildStderr(_) => "childStderr",
     }
   }
 }
@@ -319,13 +303,16 @@ impl DenoAsyncWrite for Resource {
 
 pub fn add_fs_file(fs_file: tokio::fs::File) -> Resource {
   let mut table = lock_resource_table();
-  let rid = table.add(Box::new(CliResource::FsFile(fs_file)));
+  let rid = table.add("fsFile", Box::new(CliResource::FsFile(fs_file)));
   Resource { rid }
 }
 
 pub fn add_tcp_listener(listener: tokio::net::TcpListener) -> Resource {
   let mut table = lock_resource_table();
-  let rid = table.add(Box::new(CliResource::TcpListener(listener, None)));
+  let rid = table.add(
+    "tcpListener",
+    Box::new(CliResource::TcpListener(listener, None)),
+  );
   Resource { rid }
 }
 
@@ -334,33 +321,41 @@ pub fn add_tls_listener(
   acceptor: TlsAcceptor,
 ) -> Resource {
   let mut table = lock_resource_table();
-  let rid =
-    table.add(Box::new(CliResource::TlsListener(listener, acceptor, None)));
+  let rid = table.add(
+    "tlsListener",
+    Box::new(CliResource::TlsListener(listener, acceptor, None)),
+  );
   Resource { rid }
 }
 
 pub fn add_tcp_stream(stream: tokio::net::TcpStream) -> Resource {
   let mut table = lock_resource_table();
-  let rid = table.add(Box::new(CliResource::TcpStream(stream)));
+  let rid = table.add("tcpStream", Box::new(CliResource::TcpStream(stream)));
   Resource { rid }
 }
 
 pub fn add_tls_stream(stream: ClientTlsStream<TcpStream>) -> Resource {
   let mut table = lock_resource_table();
-  let rid = table.add(Box::new(CliResource::ClientTlsStream(Box::new(stream))));
+  let rid = table.add(
+    "clientTlsStream",
+    Box::new(CliResource::ClientTlsStream(Box::new(stream))),
+  );
   Resource { rid }
 }
 
 pub fn add_server_tls_stream(stream: ServerTlsStream<TcpStream>) -> Resource {
   let mut table = lock_resource_table();
-  let rid = table.add(Box::new(CliResource::ServerTlsStream(Box::new(stream))));
+  let rid = table.add(
+    "serverTlsStream",
+    Box::new(CliResource::ServerTlsStream(Box::new(stream))),
+  );
   Resource { rid }
 }
 
 pub fn add_reqwest_body(body: ReqwestDecoder) -> Resource {
   let body = HttpBody::from(body);
   let mut table = lock_resource_table();
-  let rid = table.add(Box::new(CliResource::HttpBody(body)));
+  let rid = table.add("httpBody", Box::new(CliResource::HttpBody(body)));
   Resource { rid }
 }
 
@@ -383,21 +378,23 @@ pub fn add_child(mut child: tokio_process::Child) -> ChildResources {
 
   if child.stdin().is_some() {
     let stdin = child.stdin().take().unwrap();
-    let rid = table.add(Box::new(CliResource::ChildStdin(stdin)));
+    let rid = table.add("childStdin", Box::new(CliResource::ChildStdin(stdin)));
     resources.stdin_rid = Some(rid);
   }
   if child.stdout().is_some() {
     let stdout = child.stdout().take().unwrap();
-    let rid = table.add(Box::new(CliResource::ChildStdout(stdout)));
+    let rid =
+      table.add("childStdout", Box::new(CliResource::ChildStdout(stdout)));
     resources.stdout_rid = Some(rid);
   }
   if child.stderr().is_some() {
     let stderr = child.stderr().take().unwrap();
-    let rid = table.add(Box::new(CliResource::ChildStderr(stderr)));
+    let rid =
+      table.add("childStderr", Box::new(CliResource::ChildStderr(stderr)));
     resources.stderr_rid = Some(rid);
   }
 
-  let rid = table.add(Box::new(CliResource::Child(Box::new(child))));
+  let rid = table.add("child", Box::new(CliResource::Child(Box::new(child))));
   resources.child_rid = Some(rid);
 
   resources
@@ -440,7 +437,7 @@ pub fn get_file(rid: ResourceId) -> Result<std::fs::File, ErrBox> {
   let mut table = lock_resource_table();
   // We take ownership of File here.
   // It is put back below while still holding the lock.
-  let repr = table.map.remove(&rid).ok_or_else(bad_resource)?;
+  let (_name, repr) = table.map.remove(&rid).ok_or_else(bad_resource)?;
   let repr = repr
     .downcast::<CliResource>()
     .or_else(|_| Err(bad_resource()))?;
@@ -460,7 +457,10 @@ pub fn get_file(rid: ResourceId) -> Result<std::fs::File, ErrBox> {
       // Insert the entry back with the same rid.
       table.map.insert(
         rid,
-        Box::new(CliResource::FsFile(tokio_fs::File::from_std(std_file))),
+        (
+          "fsFile".to_string(),
+          Box::new(CliResource::FsFile(tokio_fs::File::from_std(std_file))),
+        ),
       );
 
       maybe_std_file_copy.map_err(ErrBox::from)
