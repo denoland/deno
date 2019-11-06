@@ -4,7 +4,6 @@ use crate::deno_error::js_check;
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
 use crate::ops::json_op;
-use crate::resources;
 use crate::startup_data;
 use crate::state::ThreadSafeState;
 use crate::worker::Worker;
@@ -12,6 +11,7 @@ use deno::*;
 use futures;
 use futures::Async;
 use futures::Future;
+use futures::IntoFuture;
 use futures::Sink;
 use futures::Stream;
 use std;
@@ -48,18 +48,17 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
 }
 
 struct GetMessageFuture {
-  pub state: ThreadSafeState,
+  state: ThreadSafeState,
 }
 
 impl Future for GetMessageFuture {
   type Item = Option<Buf>;
-  type Error = ();
+  type Error = ErrBox;
 
   fn poll(&mut self) -> Result<Async<Self::Item>, Self::Error> {
-    let mut wc = self.state.worker_channels.lock().unwrap();
-    wc.1
-      .poll()
-      .map_err(|err| panic!("worker_channel recv err {:?}", err))
+    let mut channels = self.state.worker_channels.lock().unwrap();
+    let receiver = &mut channels.receiver;
+    receiver.poll().map_err(ErrBox::from)
   }
 }
 
@@ -93,12 +92,10 @@ fn op_worker_post_message(
   data: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let d = Vec::from(data.unwrap().as_ref()).into_boxed_slice();
-
-  let tx = {
-    let wc = state.worker_channels.lock().unwrap();
-    wc.0.clone()
-  };
-  tx.send(d)
+  let mut channels = state.worker_channels.lock().unwrap();
+  let sender = &mut channels.sender;
+  sender
+    .send(d)
     .wait()
     .map_err(|e| DenoError::new(ErrorKind::Other, e.to_string()))?;
 
@@ -132,28 +129,23 @@ fn op_create_worker(
 
   let parent_state = state.clone();
 
+  // TODO(bartlomieju): Isn't this wrong?
   let mut module_specifier = ModuleSpecifier::resolve_url_or_path(specifier)?;
-
-  let mut child_argv = parent_state.argv.clone();
-
   if !has_source_code {
-    if let Some(module) = state.main_module() {
-      module_specifier =
-        ModuleSpecifier::resolve_import(specifier, &module.to_string())?;
-      child_argv[1] = module_specifier.to_string();
+    if let Some(referrer) = parent_state.main_module.as_ref() {
+      let referrer = referrer.clone().to_string();
+      module_specifier = ModuleSpecifier::resolve_import(specifier, &referrer)?;
     }
   }
 
   let child_state = ThreadSafeState::new(
-    parent_state.flags.clone(),
-    child_argv,
-    parent_state.progress.clone(),
+    state.global_state.clone(),
+    Some(module_specifier.clone()),
     include_deno_namespace,
   )?;
-  let rid = child_state.resource.rid;
+  let rid = child_state.rid;
   let name = format!("USER-WORKER-{}", specifier);
   let deno_main_call = format!("denoMain({})", include_deno_namespace);
-
   let mut worker =
     Worker::new(name, startup_data::deno_isolate_init(), child_state);
   js_check(worker.execute(&deno_main_call));
@@ -201,9 +193,8 @@ fn op_host_get_worker_closed(
     worker.clone()
   };
 
-  let op = Box::new(
-    shared_worker_future.then(move |_result| futures::future::ok(json!({}))),
-  );
+  let op =
+    shared_worker_future.then(move |_result| futures::future::ok(json!({})));
 
   Ok(JsonOp::Async(Box::new(op)))
 }
@@ -222,7 +213,7 @@ fn op_host_get_message(
   let args: HostGetMessageArgs = serde_json::from_value(args)?;
 
   let rid = args.rid as u32;
-  let op = resources::get_message_from_worker(rid)
+  let op = Worker::get_message_from_resource(rid)
     .map_err(move |_| -> ErrBox { unimplemented!() })
     .and_then(move |maybe_buf| {
       futures::future::ok(json!({
@@ -250,7 +241,9 @@ fn op_host_post_message(
 
   let d = Vec::from(data.unwrap().as_ref()).into_boxed_slice();
 
-  resources::post_message_to_worker(rid, d)?
+  // TODO: rename to post_message_to_child(rid, d)
+  Worker::post_message_to_resource(rid, d)
+    .into_future()
     .wait()
     .map_err(|e| DenoError::new(ErrorKind::Other, e.to_string()))?;
 

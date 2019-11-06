@@ -7,7 +7,6 @@ use crate::state::ThreadSafeState;
 use crate::version;
 use atty;
 use deno::*;
-use log;
 use std::collections::HashMap;
 use std::env;
 use sys_info;
@@ -40,16 +39,15 @@ fn op_start(
   _args: Value,
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
+  let gs = &state.global_state;
+
   Ok(JsonOp::Sync(json!({
     "cwd": deno_fs::normalize_path(&env::current_dir().unwrap()),
     "pid": std::process::id(),
-    "argv": state.argv,
-    "mainModule": state.main_module().map(|x| x.as_str().to_string()),
-    "debugFlag": state
-      .flags
-      .log_level
-      .map_or(false, |l| l == log::Level::Debug),
-    "versionFlag": state.flags.version,
+    "argv": gs.argv,
+    "mainModule": gs.main_module.as_ref().map(|x| x.to_string()),
+    "debugFlag": gs.flags.log_level.map_or(false, |l| l == log::Level::Debug),
+    "versionFlag": gs.flags.version,
     "v8Version": version::v8(),
     "denoVersion": version::DENO,
     "tsVersion": version::TYPESCRIPT,

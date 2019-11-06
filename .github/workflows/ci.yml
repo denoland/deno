@@ -1,4 +1,4 @@
-name: build
+name: ci
 
 on: [push, pull_request]
 
@@ -9,22 +9,22 @@ jobs:
     timeout-minutes: 60
     strategy:
       matrix:
-        os: [macOS-10.14, windows-2019, ubuntu-16.04]
+        os: [macOS-latest, windows-2019, ubuntu-16.04]
         kind: ['test', 'test_debug', 'test_std', 'bench', 'lint']
         exclude:
           - os: windows-2019
             kind: 'bench'
-          - os: macOS-10.14
+          - os: macOS-latest
             kind: 'bench'
 
           - os: windows-2019
             kind: 'lint'
-          - os: macOS-10.14
+          - os: macOS-latest
             kind: 'lint'
 
           - os: windows-2019
             kind: 'test_debug'
-          - os: macOS-10.14
+          - os: macOS-latest
             kind: 'test_debug'
     steps:
       - name: Configure git
@@ -40,7 +40,7 @@ jobs:
         if: startsWith(matrix.os, 'ubuntu') && matrix.kind == 'test' && startsWith(github.ref, 'refs/tags/') && github.repository == 'denoland/deno'
         run: |
           mkdir -p target/release
-          tar --exclude=".git*" --exclude=target --exclude=deno_typescript/typescript/tests --exclude=third_party/cpplint --exclude="third_party/node_modules/*" --exclude=third_party/python_packages --exclude=third_party/wrk -czvf target/release/deno_src.tar.gz -C .. deno
+          tar --exclude=".git*" --exclude=target --exclude=deno_typescript/typescript/tests --exclude=third_party/cpplint --exclude=third_party/node_modules --exclude=third_party/python_packages --exclude=third_party/prebuilt -czvf target/release/deno_src.tar.gz -C .. deno
 
       - name: Install rust
         uses: hecrj/setup-rust-action@v1

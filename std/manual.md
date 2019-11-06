@@ -574,6 +574,10 @@ always bundle its dependencies. In Deno this is done by checking the `$DENO_DIR`
 into your source control system, and specifying that path as the `$DENO_DIR`
 environmental variable at runtime.
 
+**How can I trust a URL that may change** By using a lock file (using the
+`--lock` command line flag) you can ensure you're running the code you expect to
+be.
+
 **How do you import to a specific version?** Simply specify the version in the
 URL. For example, this URL fully specifies the code being run:
 `https://unpkg.com/liltest@0.0.5/dist/liltest.js`. Combined with the
@@ -667,7 +671,7 @@ Use `deno help` to see the help text.
 
 ```
 deno
-A secure runtime for JavaScript and TypeScript built with V8, Rust, and Tokio.
+A secure JavaScript and TypeScript runtime
 
 Docs: https://deno.land/manual.html
 Modules: https://deno.land/x/
@@ -704,6 +708,8 @@ OPTIONS:
         --current-thread               Use tokio::runtime::current_thread
     -h, --help                         Prints help information
         --importmap <FILE>             Load import map file
+        --lock <FILE>                  Check the specified lock file
+        --lock-write                   Write lock file. Use with --lock.
     -L, --log-level <log-level>        Set log level [possible values: debug, info]
         --no-fetch                     Do not download remote modules
     -r, --reload=<CACHE_BLACKLIST>     Reload source code cache (recompile TypeScript)
@@ -904,6 +910,12 @@ Proxy configuration is read from environmental variables: `HTTP_PROXY` and
 
 In case of Windows if environmental variables are not found Deno falls back to
 reading proxies from registry.
+
+## Lock file
+
+Deno can store and check module subresource integrity for modules using a small
+JSON file. Use the `--lock=lock.json` to enable and specify lock file checking.
+To update or create a lock use `--lock=lock.json --lock-write`.
 
 ## Import maps
 
