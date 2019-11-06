@@ -31,11 +31,7 @@ pub struct WorkerChannels {
   pub receiver: mpsc::Receiver<Buf>,
 }
 
-impl CoreResource for WorkerChannels {
-  fn inspect_repr(&self) -> &str {
-    "worker"
-  }
-}
+impl CoreResource for WorkerChannels {}
 
 /// Wraps deno::Isolate to provide source maps, ops for the CLI, and
 /// high-level module loading.
