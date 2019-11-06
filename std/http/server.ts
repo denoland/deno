@@ -383,18 +383,26 @@ export class Server implements AsyncIterable<ServerRequest> {
   }
 }
 
-export function serve(addr: string): Server {
-  // TODO(ry) Update serve to also take { hostname, port }.
-  const [hostname, port] = addr.split(":");
-  const listener = listen({ hostname, port: Number(port) });
+export type ServeOptions = string | Deno.ListenOptions;
+
+function serveOptions(options: ServeOptions): Deno.ListenOptions {
+  if (typeof options === "string") {
+    const [hostname, port] = options.split(":");
+    return { hostname, port: Number(port) };
+  }
+  return options;
+}
+
+export function serve(options: ServeOptions): Server {
+  const listener = listen(serveOptions(options));
   return new Server(listener);
 }
 
 export async function listenAndServe(
-  addr: string,
+  options: ServeOptions,
   handler: (req: ServerRequest) => void
 ): Promise<void> {
-  const server = serve(addr);
+  const server = serve(options);
 
   for await (const request of server) {
     handler(request);
