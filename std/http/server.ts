@@ -305,8 +305,9 @@ export class Server implements AsyncIterable<ServerRequest> {
   private closing = false;
   url: string;
 
-  constructor(public listener: Listener, options: Deno.ListenOptions) {
-    this.url = `http://${options.hostname || 'localhost'}:${options.port}/`;
+  constructor(public listener: Listener, options: ServerOptions) {
+    this.url = `${options.protocol || "http"}://${options.hostname ||
+      "localhost"}:${options.port}/`;
   }
 
   close(): void {
@@ -386,24 +387,30 @@ export class Server implements AsyncIterable<ServerRequest> {
   }
 }
 
-export type ServeOptions = string | Deno.ListenOptions;
+export type ServerOptions = {
+  port: number;
+  hostname?: string;
+  protocol?: "http" | "https";
+};
 
-function serveOptions(options: ServeOptions): Deno.ListenOptions {
-  if (typeof options === "string") {
-    const [hostname, port] = options.split(":");
+export type ServerAddr = string | ServerOptions;
+
+function serverOptions(addr: ServerAddr): ServerOptions {
+  if (typeof addr === "string") {
+    const [hostname, port] = addr.split(":");
     return { hostname, port: Number(port) };
   }
-  return options;
+  return addr;
 }
 
-export function serve(addr: ServeOptions): Server {
-  const options = serveOptions(addr);
+export function serve(addr: ServerAddr): Server {
+  const options = serverOptions(addr);
   const listener = listen(options);
-  return new Server(listener, options);
+  return new Server(listener, { ...options, protocol: "http" });
 }
 
 export async function listenAndServe(
-  addr: ServeOptions,
+  addr: ServerAddr,
   handler: (req: ServerRequest) => void
 ): Promise<void> {
   const server = serve(addr);
@@ -438,7 +445,7 @@ export function serveTLS(options: HTTPSOptions): Server {
     transport: "tcp"
   };
   const listener = listenTLS(tlsOptions);
-  return new Server(listener, tlsOptions);
+  return new Server(listener, { ...tlsOptions, protocol: "https" });
 }
 
 /**
