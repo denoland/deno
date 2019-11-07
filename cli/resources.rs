@@ -21,8 +21,8 @@ use futures::Future;
 use futures::Poll;
 use reqwest::r#async::Decoder as ReqwestDecoder;
 use std;
-use std::io::{Error, Read, Seek, SeekFrom, Write};
-use std::net::{Shutdown, SocketAddr};
+use std::io::{Read, Seek, SeekFrom, Write};
+use std::net::Shutdown;
 use std::process::ExitStatus;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
@@ -32,12 +32,10 @@ use tokio::net::TcpStream;
 use tokio_process;
 use tokio_rustls::client::TlsStream as ClientTlsStream;
 use tokio_rustls::server::TlsStream as ServerTlsStream;
-use tokio_rustls::TlsAcceptor;
 
 #[cfg(not(windows))]
 use std::os::unix::io::FromRawFd;
 
-use futures::future::Either;
 #[cfg(windows)]
 use std::os::windows::io::FromRawHandle;
 
@@ -73,17 +71,6 @@ enum CliResource {
   Stdout(tokio::fs::File),
   Stderr(tokio::io::Stderr),
   FsFile(tokio::fs::File),
-  // Since TcpListener might be closed while there is a pending accept task,
-  // we need to track the task so that when the listener is closed,
-  // this pending task could be notified and die.
-  // Currently TcpListener itself does not take care of this issue.
-  // See: https://github.com/tokio-rs/tokio/issues/846
-  TcpListener(tokio::net::TcpListener, Option<futures::task::Task>),
-  TlsListener(
-    tokio::net::TcpListener,
-    TlsAcceptor,
-    Option<futures::task::Task>,
-  ),
   TcpStream(tokio::net::TcpStream),
   ServerTlsStream(Box<ServerTlsStream<TcpStream>>),
   ClientTlsStream(Box<ClientTlsStream<TcpStream>>),
@@ -97,22 +84,7 @@ enum CliResource {
   ChildStderr(tokio_process::ChildStderr),
 }
 
-impl CoreResource for CliResource {
-  // TODO(ry) These task notifications are hacks to workaround various behaviors
-  // in Tokio. They should not influence the overall design of Deno. The
-  // CoreResource::close should be removed in favor of the drop trait.
-  fn close(&self) {
-    match self {
-      CliResource::TcpListener(_, Some(t)) => {
-        t.notify();
-      }
-      CliResource::TlsListener(_, _, Some(t)) => {
-        t.notify();
-      }
-      _ => {}
-    }
-  }
-}
+impl CoreResource for CliResource {}
 
 pub fn lock_resource_table<'a>() -> MutexGuard<'a, ResourceTable> {
   RESOURCE_TABLE.lock().unwrap()
@@ -126,78 +98,6 @@ pub struct Resource {
 }
 
 impl Resource {
-  // TODO Should it return a Resource instead of net::TcpStream?
-  pub fn poll_accept(&mut self) -> Poll<(TcpStream, SocketAddr), Error> {
-    let mut table = lock_resource_table();
-    match table.get_mut::<CliResource>(self.rid) {
-      None => Err(std::io::Error::new(
-        std::io::ErrorKind::Other,
-        "Listener has been closed",
-      )),
-      Some(repr) => match repr {
-        CliResource::TcpListener(ref mut s, _) => s.poll_accept(),
-        CliResource::TlsListener(ref mut s, _, _) => s.poll_accept(),
-        _ => panic!("Cannot accept"),
-      },
-    }
-  }
-
-  pub fn poll_accept_tls(
-    &mut self,
-    tcp_stream: TcpStream,
-  ) -> impl Future<Item = ServerTlsStream<TcpStream>, Error = Error> {
-    let mut table = lock_resource_table();
-    match table.get_mut::<CliResource>(self.rid) {
-      None => Either::A(futures::future::err(std::io::Error::new(
-        std::io::ErrorKind::Other,
-        "Listener has been closed",
-      ))),
-      Some(repr) => match repr {
-        CliResource::TlsListener(_, ref mut acceptor, _) => {
-          Either::B(acceptor.accept(tcp_stream))
-        }
-        _ => panic!("Cannot accept"),
-      },
-    }
-  }
-
-  /// Track the current task (for TcpListener resource).
-  /// Throws an error if another task is already tracked.
-  pub fn track_task(&mut self) -> Result<(), std::io::Error> {
-    let mut table = lock_resource_table();
-    // Only track if is TcpListener.
-    if let Some(CliResource::TcpListener(_, t)) =
-      table.get_mut::<CliResource>(self.rid)
-    {
-      // Currently, we only allow tracking a single accept task for a listener.
-      // This might be changed in the future with multiple workers.
-      // Caveat: TcpListener by itself also only tracks an accept task at a time.
-      // See https://github.com/tokio-rs/tokio/issues/846#issuecomment-454208883
-      if t.is_some() {
-        return Err(std::io::Error::new(
-          std::io::ErrorKind::Other,
-          "Another accept task is ongoing",
-        ));
-      }
-      t.replace(futures::task::current());
-    }
-    Ok(())
-  }
-
-  /// Stop tracking a task (for TcpListener resource).
-  /// Happens when the task is done and thus no further tracking is needed.
-  pub fn untrack_task(&mut self) {
-    let mut table = lock_resource_table();
-    // Only untrack if is TcpListener.
-    if let Some(CliResource::TcpListener(_, t)) =
-      table.get_mut::<CliResource>(self.rid)
-    {
-      if t.is_some() {
-        t.take();
-      }
-    }
-  }
-
   // close(2) is done by dropping the value. Therefore we just need to remove
   // the resource from the RESOURCE_TABLE.
   pub fn close(&self) {
@@ -304,27 +204,6 @@ impl DenoAsyncWrite for Resource {
 pub fn add_fs_file(fs_file: tokio::fs::File) -> Resource {
   let mut table = lock_resource_table();
   let rid = table.add("fsFile", Box::new(CliResource::FsFile(fs_file)));
-  Resource { rid }
-}
-
-pub fn add_tcp_listener(listener: tokio::net::TcpListener) -> Resource {
-  let mut table = lock_resource_table();
-  let rid = table.add(
-    "tcpListener",
-    Box::new(CliResource::TcpListener(listener, None)),
-  );
-  Resource { rid }
-}
-
-pub fn add_tls_listener(
-  listener: tokio::net::TcpListener,
-  acceptor: TlsAcceptor,
-) -> Resource {
-  let mut table = lock_resource_table();
-  let rid = table.add(
-    "tlsListener",
-    Box::new(CliResource::TlsListener(listener, acceptor, None)),
-  );
   Resource { rid }
 }
 

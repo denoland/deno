@@ -1,15 +1,10 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::resources::Resource;
 use deno::ErrBox;
 use futures;
 use futures::Future;
 use futures::Poll;
-use std::io;
-use std::mem;
-use std::net::SocketAddr;
 use std::ops::FnOnce;
 use tokio;
-use tokio::net::TcpStream;
 use tokio::runtime;
 
 pub fn create_threadpool_runtime(
@@ -75,74 +70,6 @@ where
   let mut executor = rt.executor();
   let mut enter = tokio_executor::enter().expect("Multiple executors at once");
   tokio_executor::with_default(&mut executor, &mut enter, move |_enter| f());
-}
-
-#[derive(Debug)]
-enum AcceptState {
-  Eager(Resource),
-  Pending(Resource),
-  Empty,
-}
-
-/// Simply accepts a connection.
-pub fn accept(r: Resource) -> Accept {
-  Accept {
-    state: AcceptState::Eager(r),
-  }
-}
-
-/// A future which can be used to easily read available number of bytes to fill
-/// a buffer.
-///
-/// Created by the [`read`] function.
-#[derive(Debug)]
-pub struct Accept {
-  state: AcceptState,
-}
-
-impl Future for Accept {
-  type Item = (TcpStream, SocketAddr);
-  type Error = io::Error;
-
-  fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-    let (stream, addr) = match self.state {
-      // Similar to try_ready!, but also track/untrack accept task
-      // in TcpListener resource.
-      // In this way, when the listener is closed, the task can be
-      // notified to error out (instead of stuck forever).
-      AcceptState::Eager(ref mut r) => match r.poll_accept() {
-        Ok(futures::prelude::Async::Ready(t)) => t,
-        Ok(futures::prelude::Async::NotReady) => {
-          self.state = AcceptState::Pending(r.to_owned());
-          return Ok(futures::prelude::Async::NotReady);
-        }
-        Err(e) => {
-          return Err(e);
-        }
-      },
-      AcceptState::Pending(ref mut r) => match r.poll_accept() {
-        Ok(futures::prelude::Async::Ready(t)) => {
-          r.untrack_task();
-          t
-        }
-        Ok(futures::prelude::Async::NotReady) => {
-          // Would error out if another accept task is being tracked.
-          r.track_task()?;
-          return Ok(futures::prelude::Async::NotReady);
-        }
-        Err(e) => {
-          r.untrack_task();
-          return Err(e);
-        }
-      },
-      AcceptState::Empty => panic!("poll Accept after it's done"),
-    };
-
-    match mem::replace(&mut self.state, AcceptState::Empty) {
-      AcceptState::Empty => panic!("invalid internal state"),
-      _ => Ok((stream, addr).into()),
-    }
-  }
 }
 
 /// `futures::future::poll_fn` only support `F: FnMut()->Poll<T, E>`

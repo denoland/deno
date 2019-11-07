@@ -69,18 +69,14 @@ impl ResourceTable {
   // close(2) is done by dropping the value. Therefore we just need to remove
   // the resource from the RESOURCE_TABLE.
   pub fn close(&mut self, rid: ResourceId) -> Option<()> {
-    if let Some((_name, resource)) = self.map.remove(&rid) {
-      resource.close();
-      return Some(());
-    }
-    None
+    self.map.remove(&rid).map(|(_name, _resource)| ())
   }
 }
 
 /// Abstract type representing resource in Deno.
-pub trait Resource: Downcast + Any + Send {
-  /// Method that allows to cleanup resource.
-  // TODO(ry) remove this method. Resources should rely on drop trait instead.
-  fn close(&self) {}
-}
+///
+/// The only thing it does is implementing `Downcast` trait
+/// that allows to cast resource to concrete type in `TableResource::get`
+/// and `TableResource::get_mut` methods.
+pub trait Resource: Downcast + Any + Send {}
 impl_downcast!(Resource);
