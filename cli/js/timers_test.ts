@@ -126,7 +126,6 @@ test(async function intervalSuccess(): Promise<void> {
 
 test(async function intervalCancelSuccess(): Promise<void> {
   let count = 0;
-  return;
   const id = setInterval((): void => {
     count++;
   }, 1);
