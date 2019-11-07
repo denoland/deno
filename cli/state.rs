@@ -30,8 +30,6 @@ use std::sync::Mutex;
 use std::time::Instant;
 use tokio::sync::mpsc;
 
-pub type UserWorkerTable = HashMap<usize, Worker>;
-
 /// Isolate cannot be passed between threads but ThreadSafeState can.
 /// ThreadSafeState satisfies Send and Sync. So any state that needs to be
 /// accessed outside the main V8 thread should be inside ThreadSafeState.
@@ -49,7 +47,7 @@ pub struct State {
   pub import_map: Option<ImportMap>,
   pub metrics: Metrics,
   pub global_timer: Mutex<GlobalTimer>,
-  pub workers: Mutex<UserWorkerTable>,
+  pub workers: Mutex<HashMap<u32, Worker>>,
   pub next_worker_id: AtomicUsize,
   pub start_time: Instant,
   pub seeded_rng: Option<Mutex<StdRng>>,
@@ -217,7 +215,7 @@ impl ThreadSafeState {
       worker_channels: Mutex::new(internal_channels),
       metrics: Metrics::default(),
       global_timer: Mutex::new(GlobalTimer::new()),
-      workers: Mutex::new(UserWorkerTable::new()),
+      workers: Mutex::new(HashMap::new()),
       next_worker_id: AtomicUsize::new(0),
       start_time: Instant::now(),
       seeded_rng,
@@ -227,8 +225,8 @@ impl ThreadSafeState {
     Ok(ThreadSafeState(Arc::new(state)))
   }
 
-  pub fn add_child_worker(&self, worker: Worker) -> usize {
-    let worker_id = self.next_worker_id.fetch_add(1, Ordering::Relaxed);
+  pub fn add_child_worker(&self, worker: Worker) -> u32 {
+    let worker_id = self.next_worker_id.fetch_add(1, Ordering::Relaxed) as u32;
     let mut workers_tl = self.workers.lock().unwrap();
     workers_tl.insert(worker_id, worker);
     worker_id
@@ -335,11 +333,12 @@ impl ThreadSafeState {
   }
 }
 
-//#[test]
-//fn thread_safe() {
-//  fn f<S: Send + Sync>(_: S) {}
-//  f(ThreadSafeState::mock(vec![
-//    String::from("./deno"),
-//    String::from("hello.js"),
-//  ]));
-//}
+#[test]
+fn thread_safe() {
+  fn f<S: Send + Sync>(_: S) {}
+  let (int, _) = ThreadSafeState::create_channels();
+  f(ThreadSafeState::mock(
+    vec![String::from("./deno"), String::from("hello.js")],
+    int,
+  ));
+}

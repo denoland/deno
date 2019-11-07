@@ -173,7 +173,7 @@ fn op_create_worker(
 
 #[derive(Deserialize)]
 struct HostGetWorkerClosedArgs {
-  rid: i32,
+  id: i32,
 }
 
 /// Return when the worker closes
@@ -183,19 +183,16 @@ fn op_host_get_worker_closed(
   _data: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: HostGetWorkerClosedArgs = serde_json::from_value(args)?;
-
-  let rid = args.rid as u32;
-  let state = state.clone();
-
-  let shared_worker_future = {
-    let workers_tl = state.workers.lock().unwrap();
-    let worker = workers_tl.get(&(rid as usize)).unwrap();
-    worker.clone().shared()
-  };
+  let id = args.id as u32;
+  let state_ = state.clone();
+  let workers_table = state.workers.lock().unwrap();
+  // TODO: handle bad worker id gracefully
+  let worker = workers_table.get(&id).unwrap();
+  let shared_worker_future = worker.clone().shared();
 
   let op = shared_worker_future.then(move |_result| {
-    let mut workers_tl = state.workers.lock().unwrap();
-    workers_tl.remove(&(rid as usize));
+    let mut workers_table = state_.workers.lock().unwrap();
+    workers_table.remove(&id);
     futures::future::ok(json!({}))
   });
 
@@ -204,7 +201,7 @@ fn op_host_get_worker_closed(
 
 #[derive(Deserialize)]
 struct HostGetMessageArgs {
-  rid: i32,
+  id: i32,
 }
 
 /// Get message from guest worker as host
@@ -215,9 +212,10 @@ fn op_host_get_message(
 ) -> Result<JsonOp, ErrBox> {
   let args: HostGetMessageArgs = serde_json::from_value(args)?;
 
-  let rid = args.rid as u32;
+  let id = args.id as u32;
   let mut table = state.workers.lock().unwrap();
-  let worker = table.get_mut(&(rid as usize)).ok_or_else(bad_resource)?;
+  // TODO: don't return bad resource anymore
+  let worker = table.get_mut(&id).ok_or_else(bad_resource)?;
   let op = worker
     .get_message()
     .map_err(move |_| -> ErrBox { unimplemented!() })
@@ -232,7 +230,7 @@ fn op_host_get_message(
 
 #[derive(Deserialize)]
 struct HostPostMessageArgs {
-  rid: i32,
+  id: i32,
 }
 
 /// Post message to guest worker as host
@@ -242,13 +240,13 @@ fn op_host_post_message(
   data: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: HostPostMessageArgs = serde_json::from_value(args)?;
-  let rid = args.rid as u32;
+  let id = args.id as u32;
   let msg = Vec::from(data.unwrap().as_ref()).into_boxed_slice();
 
-  debug!("post message to resource {}", rid);
+  debug!("post message to worker {}", id);
   let mut table = state.workers.lock().unwrap();
   // TODO: don't return bad resource anymore
-  let worker = table.get_mut(&(rid as usize)).ok_or_else(bad_resource)?;
+  let worker = table.get_mut(&id).ok_or_else(bad_resource)?;
   worker
     .post_message(msg)
     .map_err(|e| DenoError::new(ErrorKind::Other, e.to_string()))?;

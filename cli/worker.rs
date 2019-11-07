@@ -138,7 +138,7 @@ impl Worker {
     })
   }
 
-  /// Post message to worker as a host or privileged overlord.
+  /// Post message to worker as a host.
   ///
   /// This method blocks current thread.
   pub fn post_message(self: &Self, buf: Buf) -> Result<(), ErrBox> {
@@ -147,6 +147,7 @@ impl Worker {
     sender.send(buf).wait().map(|_| ()).map_err(ErrBox::from)
   }
 
+  /// Get message from worker as a host.
   pub fn get_message(self: &Self) -> WorkerReceiver {
     WorkerReceiver {
       channels: self.external_channels.clone(),
