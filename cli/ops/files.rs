@@ -91,8 +91,8 @@ fn op_open(
   let is_sync = args.promise_id.is_none();
   let op = open_options.open(filename).map_err(ErrBox::from).and_then(
     move |fs_file| {
-      let resource = resources::add_fs_file(fs_file);
-      futures::future::ok(json!(resource.rid))
+      let rid = resources::add_fs_file(fs_file);
+      futures::future::ok(json!(rid))
     },
   );
 

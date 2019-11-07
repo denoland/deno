@@ -3,7 +3,7 @@ use crate::deno_error::bad_resource;
 use crate::fmt_errors::JSError;
 use crate::ops;
 use crate::resources;
-use crate::resources::CoreResource;
+use crate::resources::Resource;
 use crate::resources::ResourceId;
 use crate::state::ThreadSafeState;
 use deno;
@@ -31,7 +31,7 @@ pub struct WorkerChannels {
   pub receiver: mpsc::Receiver<Buf>,
 }
 
-impl CoreResource for WorkerChannels {}
+impl Resource for WorkerChannels {}
 
 /// Wraps deno::Isolate to provide source maps, ops for the CLI, and
 /// high-level module loading.

@@ -62,10 +62,10 @@ pub fn op_fetch(
     }
 
     let body = res.into_body();
-    let body_resource = resources::add_reqwest_body(body);
+    let rid = resources::add_reqwest_body(body);
 
     let json_res = json!({
-      "bodyRid": body_resource.rid,
+      "bodyRid": rid,
       "status": status.as_u16(),
       "statusText": status.canonical_reason().unwrap_or(""),
       "headers": res_headers

@@ -6,7 +6,7 @@ use crate::deno_error::ErrorKind;
 use crate::ops::json_op;
 use crate::resolve_addr::resolve_addr;
 use crate::resources;
-use crate::resources::CoreResource;
+use crate::resources::Resource;
 use crate::state::ThreadSafeState;
 use deno::*;
 use futures::Async;
@@ -99,9 +99,9 @@ pub fn op_dial_tls(
             .connect(dnsname, tcp_stream)
             .map_err(ErrBox::from)
             .and_then(move |tls_stream| {
-              let tls_stream_resource = resources::add_tls_stream(tls_stream);
+              let rid = resources::add_tls_stream(tls_stream);
               futures::future::ok(json!({
-                "rid": tls_stream_resource.rid,
+                "rid": rid,
                 "localAddr": local_addr.to_string(),
                 "remoteAddr": remote_addr.to_string(),
               }))
@@ -179,7 +179,7 @@ pub struct TlsListenerResource {
   local_addr: SocketAddr,
 }
 
-impl CoreResource for TlsListenerResource {}
+impl Resource for TlsListenerResource {}
 
 impl Drop for TlsListenerResource {
   fn drop(&mut self) {
@@ -389,14 +389,13 @@ fn op_accept_tls(
         .accept(tcp_stream)
         .map_err(ErrBox::from)
         .and_then(move |tls_stream| {
-          let tls_stream_resource =
-            resources::add_server_tls_stream(tls_stream);
-          Ok((tls_stream_resource, local_addr, remote_addr))
+          let rid = resources::add_server_tls_stream(tls_stream);
+          Ok((rid, local_addr, remote_addr))
         })
     })
-    .and_then(move |(tls_stream_resource, local_addr, remote_addr)| {
+    .and_then(move |(rid, local_addr, remote_addr)| {
       futures::future::ok(json!({
-        "rid": tls_stream_resource.rid,
+        "rid": rid,
         "localAddr": local_addr.to_string(),
         "remoteAddr": remote_addr.to_string(),
       }))

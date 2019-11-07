@@ -11,7 +11,7 @@
 use crate::deno_error::bad_resource;
 use crate::http_body::HttpBody;
 use deno::ErrBox;
-pub use deno::Resource as CoreResource;
+pub use deno::Resource;
 pub use deno::ResourceId;
 use deno::ResourceTable;
 
@@ -20,7 +20,6 @@ use futures::Future;
 use futures::Poll;
 use reqwest::r#async::Decoder as ReqwestDecoder;
 use std;
-use std::io::{Read, Write};
 use std::process::ExitStatus;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
@@ -82,23 +81,10 @@ pub enum CliResource {
   ChildStderr(tokio_process::ChildStderr),
 }
 
-impl CoreResource for CliResource {}
+impl Resource for CliResource {}
 
 pub fn lock_resource_table<'a>() -> MutexGuard<'a, ResourceTable> {
   RESOURCE_TABLE.lock().unwrap()
-}
-
-// Abstract async file interface.
-// Ideally in unix, if Resource represents an OS rid, it will be the same.
-#[derive(Clone, Debug)]
-pub struct Resource {
-  pub rid: ResourceId,
-}
-
-impl Read for Resource {
-  fn read(&mut self, _buf: &mut [u8]) -> std::io::Result<usize> {
-    unimplemented!();
-  }
 }
 
 /// `DenoAsyncRead` is the same as the `tokio_io::AsyncRead` trait
@@ -124,16 +110,6 @@ impl DenoAsyncRead for CliResource {
     };
 
     r.map_err(ErrBox::from)
-  }
-}
-
-impl Write for Resource {
-  fn write(&mut self, _buf: &[u8]) -> std::io::Result<usize> {
-    unimplemented!()
-  }
-
-  fn flush(&mut self) -> std::io::Result<()> {
-    unimplemented!()
   }
 }
 
@@ -168,41 +144,36 @@ impl DenoAsyncWrite for CliResource {
   }
 }
 
-pub fn add_fs_file(fs_file: tokio::fs::File) -> Resource {
+pub fn add_fs_file(fs_file: tokio::fs::File) -> ResourceId {
   let mut table = lock_resource_table();
-  let rid = table.add("fsFile", Box::new(CliResource::FsFile(fs_file)));
-  Resource { rid }
+  table.add("fsFile", Box::new(CliResource::FsFile(fs_file)))
 }
 
-pub fn add_tcp_stream(stream: tokio::net::TcpStream) -> Resource {
+pub fn add_tcp_stream(stream: tokio::net::TcpStream) -> ResourceId {
   let mut table = lock_resource_table();
-  let rid = table.add("tcpStream", Box::new(CliResource::TcpStream(stream)));
-  Resource { rid }
+  table.add("tcpStream", Box::new(CliResource::TcpStream(stream)))
 }
 
-pub fn add_tls_stream(stream: ClientTlsStream<TcpStream>) -> Resource {
+pub fn add_tls_stream(stream: ClientTlsStream<TcpStream>) -> ResourceId {
   let mut table = lock_resource_table();
-  let rid = table.add(
+  table.add(
     "clientTlsStream",
     Box::new(CliResource::ClientTlsStream(Box::new(stream))),
-  );
-  Resource { rid }
+  )
 }
 
-pub fn add_server_tls_stream(stream: ServerTlsStream<TcpStream>) -> Resource {
+pub fn add_server_tls_stream(stream: ServerTlsStream<TcpStream>) -> ResourceId {
   let mut table = lock_resource_table();
-  let rid = table.add(
+  table.add(
     "serverTlsStream",
     Box::new(CliResource::ServerTlsStream(Box::new(stream))),
-  );
-  Resource { rid }
+  )
 }
 
-pub fn add_reqwest_body(body: ReqwestDecoder) -> Resource {
+pub fn add_reqwest_body(body: ReqwestDecoder) -> ResourceId {
   let body = HttpBody::from(body);
   let mut table = lock_resource_table();
-  let rid = table.add("httpBody", Box::new(CliResource::HttpBody(body)));
-  Resource { rid }
+  table.add("httpBody", Box::new(CliResource::HttpBody(body)))
 }
 
 pub struct ChildResources {
