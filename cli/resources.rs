@@ -8,11 +8,10 @@
 // descriptors". This module implements a global resource table. Ops (AKA
 // handlers) look up resources by their integer id here.
 
-use crate::deno_error;
 use crate::deno_error::bad_resource;
 use crate::http_body::HttpBody;
 use deno::ErrBox;
-pub use deno::Resource as CoreResource;
+pub use deno::Resource;
 pub use deno::ResourceId;
 use deno::ResourceTable;
 
@@ -21,8 +20,6 @@ use futures::Future;
 use futures::Poll;
 use reqwest::r#async::Decoder as ReqwestDecoder;
 use std;
-use std::io::{Read, Seek, SeekFrom, Write};
-use std::net::Shutdown;
 use std::process::ExitStatus;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
@@ -66,7 +63,7 @@ lazy_static! {
 }
 
 // TODO: move listeners out of this enum and rename to `StreamResource`
-enum CliResource {
+pub enum CliResource {
   Stdin(tokio::io::Stdin),
   Stdout(tokio::fs::File),
   Stderr(tokio::io::Stderr),
@@ -84,46 +81,10 @@ enum CliResource {
   ChildStderr(tokio_process::ChildStderr),
 }
 
-impl CoreResource for CliResource {}
+impl Resource for CliResource {}
 
 pub fn lock_resource_table<'a>() -> MutexGuard<'a, ResourceTable> {
   RESOURCE_TABLE.lock().unwrap()
-}
-
-// Abstract async file interface.
-// Ideally in unix, if Resource represents an OS rid, it will be the same.
-#[derive(Clone, Debug)]
-pub struct Resource {
-  pub rid: ResourceId,
-}
-
-impl Resource {
-  // close(2) is done by dropping the value. Therefore we just need to remove
-  // the resource from the RESOURCE_TABLE.
-  pub fn close(&self) {
-    let mut table = lock_resource_table();
-    table.close(self.rid).unwrap();
-  }
-
-  pub fn shutdown(&mut self, how: Shutdown) -> Result<(), ErrBox> {
-    let mut table = lock_resource_table();
-    let repr = table
-      .get_mut::<CliResource>(self.rid)
-      .ok_or_else(bad_resource)?;
-
-    match repr {
-      CliResource::TcpStream(ref mut f) => {
-        TcpStream::shutdown(f, how).map_err(ErrBox::from)
-      }
-      _ => Err(bad_resource()),
-    }
-  }
-}
-
-impl Read for Resource {
-  fn read(&mut self, _buf: &mut [u8]) -> std::io::Result<usize> {
-    unimplemented!();
-  }
 }
 
 /// `DenoAsyncRead` is the same as the `tokio_io::AsyncRead` trait
@@ -132,12 +93,9 @@ pub trait DenoAsyncRead {
   fn poll_read(&mut self, buf: &mut [u8]) -> Poll<usize, ErrBox>;
 }
 
-impl DenoAsyncRead for Resource {
+impl DenoAsyncRead for CliResource {
   fn poll_read(&mut self, buf: &mut [u8]) -> Poll<usize, ErrBox> {
-    let mut table = lock_resource_table();
-    let repr = table.get_mut(self.rid).ok_or_else(bad_resource)?;
-
-    let r = match repr {
+    let r = match self {
       CliResource::FsFile(ref mut f) => f.poll_read(buf),
       CliResource::Stdin(ref mut f) => f.poll_read(buf),
       CliResource::TcpStream(ref mut f) => f.poll_read(buf),
@@ -155,16 +113,6 @@ impl DenoAsyncRead for Resource {
   }
 }
 
-impl Write for Resource {
-  fn write(&mut self, _buf: &[u8]) -> std::io::Result<usize> {
-    unimplemented!()
-  }
-
-  fn flush(&mut self) -> std::io::Result<()> {
-    unimplemented!()
-  }
-}
-
 /// `DenoAsyncWrite` is the same as the `tokio_io::AsyncWrite` trait
 /// but uses an `ErrBox` error instead of `std::io:Error`
 pub trait DenoAsyncWrite {
@@ -173,14 +121,9 @@ pub trait DenoAsyncWrite {
   fn shutdown(&mut self) -> Poll<(), ErrBox>;
 }
 
-impl DenoAsyncWrite for Resource {
+impl DenoAsyncWrite for CliResource {
   fn poll_write(&mut self, buf: &[u8]) -> Poll<usize, ErrBox> {
-    let mut table = lock_resource_table();
-    let repr = table
-      .get_mut::<CliResource>(self.rid)
-      .ok_or_else(bad_resource)?;
-
-    let r = match repr {
+    let r = match self {
       CliResource::FsFile(ref mut f) => f.poll_write(buf),
       CliResource::Stdout(ref mut f) => f.poll_write(buf),
       CliResource::Stderr(ref mut f) => f.poll_write(buf),
@@ -201,41 +144,36 @@ impl DenoAsyncWrite for Resource {
   }
 }
 
-pub fn add_fs_file(fs_file: tokio::fs::File) -> Resource {
+pub fn add_fs_file(fs_file: tokio::fs::File) -> ResourceId {
   let mut table = lock_resource_table();
-  let rid = table.add("fsFile", Box::new(CliResource::FsFile(fs_file)));
-  Resource { rid }
+  table.add("fsFile", Box::new(CliResource::FsFile(fs_file)))
 }
 
-pub fn add_tcp_stream(stream: tokio::net::TcpStream) -> Resource {
+pub fn add_tcp_stream(stream: tokio::net::TcpStream) -> ResourceId {
   let mut table = lock_resource_table();
-  let rid = table.add("tcpStream", Box::new(CliResource::TcpStream(stream)));
-  Resource { rid }
+  table.add("tcpStream", Box::new(CliResource::TcpStream(stream)))
 }
 
-pub fn add_tls_stream(stream: ClientTlsStream<TcpStream>) -> Resource {
+pub fn add_tls_stream(stream: ClientTlsStream<TcpStream>) -> ResourceId {
   let mut table = lock_resource_table();
-  let rid = table.add(
+  table.add(
     "clientTlsStream",
     Box::new(CliResource::ClientTlsStream(Box::new(stream))),
-  );
-  Resource { rid }
+  )
 }
 
-pub fn add_server_tls_stream(stream: ServerTlsStream<TcpStream>) -> Resource {
+pub fn add_server_tls_stream(stream: ServerTlsStream<TcpStream>) -> ResourceId {
   let mut table = lock_resource_table();
-  let rid = table.add(
+  table.add(
     "serverTlsStream",
     Box::new(CliResource::ServerTlsStream(Box::new(stream))),
-  );
-  Resource { rid }
+  )
 }
 
-pub fn add_reqwest_body(body: ReqwestDecoder) -> Resource {
+pub fn add_reqwest_body(body: ReqwestDecoder) -> ResourceId {
   let body = HttpBody::from(body);
   let mut table = lock_resource_table();
-  let rid = table.add("httpBody", Box::new(CliResource::HttpBody(body)));
-  Resource { rid }
+  table.add("httpBody", Box::new(CliResource::HttpBody(body)))
 }
 
 pub struct ChildResources {
@@ -345,42 +283,5 @@ pub fn get_file(rid: ResourceId) -> Result<std::fs::File, ErrBox> {
       maybe_std_file_copy.map_err(ErrBox::from)
     }
     _ => Err(bad_resource()),
-  }
-}
-
-pub fn lookup(rid: ResourceId) -> Result<Resource, ErrBox> {
-  debug!("resource lookup {}", rid);
-  let table = lock_resource_table();
-  let _ = table.get::<CliResource>(rid).ok_or_else(bad_resource)?;
-  Ok(Resource { rid })
-}
-
-pub fn seek(
-  resource: Resource,
-  offset: i32,
-  whence: u32,
-) -> Box<dyn Future<Item = (), Error = ErrBox> + Send> {
-  // Translate seek mode to Rust repr.
-  let seek_from = match whence {
-    0 => SeekFrom::Start(offset as u64),
-    1 => SeekFrom::Current(i64::from(offset)),
-    2 => SeekFrom::End(i64::from(offset)),
-    _ => {
-      return Box::new(futures::future::err(
-        deno_error::DenoError::new(
-          deno_error::ErrorKind::InvalidSeekMode,
-          format!("Invalid seek mode: {}", whence),
-        )
-        .into(),
-      ));
-    }
-  };
-
-  match get_file(resource.rid) {
-    Ok(mut file) => Box::new(futures::future::lazy(move || {
-      let result = file.seek(seek_from).map(|_| {}).map_err(ErrBox::from);
-      futures::future::result(result)
-    })),
-    Err(err) => Box::new(futures::future::err(err)),
   }
 }
