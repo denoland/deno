@@ -580,7 +580,7 @@ impl SourceMapGetter for TsCompiler {
   fn get_source_map(&self, script_name: &str) -> Option<Vec<u8>> {
     self
       .try_to_resolve_and_get_source_map(script_name)
-      .and_then(|out| Some(out.source_code))
+      .map(|out| out.source_code)
   }
 
   fn get_source_line(&self, script_name: &str, line: usize) -> Option<String> {
