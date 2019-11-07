@@ -3,7 +3,7 @@ use crate::deno_error::bad_resource;
 use crate::fmt_errors::JSError;
 use crate::ops;
 use crate::resources;
-use crate::resources::CoreResource;
+use crate::resources::Resource;
 use crate::resources::ResourceId;
 use crate::state::ThreadSafeState;
 use deno;
@@ -31,7 +31,7 @@ pub struct WorkerChannels {
   pub receiver: mpsc::Receiver<Buf>,
 }
 
-impl CoreResource for WorkerChannels {}
+impl Resource for WorkerChannels {}
 
 /// Wraps deno::Isolate to provide source maps, ops for the CLI, and
 /// high-level module loading.
@@ -374,12 +374,9 @@ mod tests {
       worker.execute(source).unwrap();
 
       let worker_ = worker.clone();
-      let rid = worker.state.rid;
-      let resource_ = resources::Resource { rid };
 
       tokio::spawn(lazy(move || {
         worker.then(move |r| -> Result<(), ()> {
-          resource_.close();
           r.unwrap();
           Ok(())
         })
@@ -413,12 +410,10 @@ mod tests {
         .unwrap();
 
       let rid = worker.state.rid;
-      let resource = resources::Resource { rid };
       let worker_ = worker.clone();
 
       let worker_future = worker
         .then(move |r| -> Result<(), ()> {
-          resource.close();
           println!("workers.rs after resource close");
           r.unwrap();
           Ok(())

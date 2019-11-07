@@ -4,7 +4,7 @@ use crate::deno_error::bad_resource;
 use crate::ops::json_op;
 use crate::resolve_addr::resolve_addr;
 use crate::resources;
-use crate::resources::CoreResource;
+use crate::resources::CliResource;
 use crate::resources::Resource;
 use crate::state::ThreadSafeState;
 use deno::*;
@@ -132,13 +132,13 @@ fn op_accept(
     .and_then(move |(tcp_stream, _socket_addr)| {
       let local_addr = tcp_stream.local_addr()?;
       let remote_addr = tcp_stream.peer_addr()?;
-      let tcp_stream_resource = resources::add_tcp_stream(tcp_stream);
-      Ok((tcp_stream_resource, local_addr, remote_addr))
+      let rid = resources::add_tcp_stream(tcp_stream);
+      Ok((rid, local_addr, remote_addr))
     })
     .map_err(ErrBox::from)
-    .and_then(move |(tcp_stream_resource, local_addr, remote_addr)| {
+    .and_then(move |(rid, local_addr, remote_addr)| {
       futures::future::ok(json!({
-        "rid": tcp_stream_resource.rid,
+        "rid": rid,
         "localAddr": local_addr.to_string(),
         "remoteAddr": remote_addr.to_string(),
       }))
@@ -170,13 +170,13 @@ fn op_dial(
       .and_then(move |tcp_stream| {
         let local_addr = tcp_stream.local_addr()?;
         let remote_addr = tcp_stream.peer_addr()?;
-        let tcp_stream_resource = resources::add_tcp_stream(tcp_stream);
-        Ok((tcp_stream_resource, local_addr, remote_addr))
+        let rid = resources::add_tcp_stream(tcp_stream);
+        Ok((rid, local_addr, remote_addr))
       })
       .map_err(ErrBox::from)
-      .and_then(move |(tcp_stream_resource, local_addr, remote_addr)| {
+      .and_then(move |(rid, local_addr, remote_addr)| {
         futures::future::ok(json!({
-          "rid": tcp_stream_resource.rid,
+          "rid": rid,
           "localAddr": local_addr.to_string(),
           "remoteAddr": remote_addr.to_string(),
         }))
@@ -201,7 +201,6 @@ fn op_shutdown(
 
   let rid = args.rid as u32;
   let how = args.how;
-  let mut resource = resources::lookup(rid)?;
 
   let shutdown_mode = match how {
     0 => Shutdown::Read,
@@ -209,8 +208,15 @@ fn op_shutdown(
     _ => unimplemented!(),
   };
 
-  // Use UFCS for disambiguation
-  Resource::shutdown(&mut resource, shutdown_mode)?;
+  let mut table = resources::lock_resource_table();
+  let resource = table.get_mut::<CliResource>(rid).ok_or_else(bad_resource)?;
+  match resource {
+    CliResource::TcpStream(ref mut stream) => {
+      TcpStream::shutdown(stream, shutdown_mode).map_err(ErrBox::from)?;
+    }
+    _ => return Err(bad_resource()),
+  }
+
   Ok(JsonOp::Sync(json!({})))
 }
 
@@ -228,7 +234,7 @@ struct TcpListenerResource {
   local_addr: SocketAddr,
 }
 
-impl CoreResource for TcpListenerResource {}
+impl Resource for TcpListenerResource {}
 
 impl Drop for TcpListenerResource {
   fn drop(&mut self) {
