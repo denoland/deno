@@ -38,11 +38,7 @@ pub struct DenoFlags {
   pub log_level: Option<Level>,
   pub version: bool,
   pub reload: bool,
-  /// When the `--config`/`-c` flag is used to pass the name, this will be set
-  /// the path passed on the command line, otherwise `None`.
   pub config_path: Option<String>,
-  /// When the `--importmap` flag is used to pass the name, this will be set
-  /// the path passed on the command line, otherwise `None`.
   pub import_map_path: Option<String>,
   pub allow_read: bool,
   pub read_whitelist: Vec<String>,
@@ -192,7 +188,7 @@ To get help on the another subcommands (run in this case):
         .short("c")
         .long("config")
         .value_name("FILE")
-        .help("Load compiler configuration file")
+        .help("Load tsconfig.json configuration file")
         .takes_value(true)
         .global(true),
     )
