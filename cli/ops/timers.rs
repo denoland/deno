@@ -4,7 +4,7 @@ use crate::deno_error::bad_resource;
 use crate::futures::Stream;
 use crate::ops::json_op;
 use crate::resources;
-use crate::resources::CoreResource;
+use crate::resources::Resource;
 use crate::state::ThreadSafeState;
 use deno::*;
 use futures::Future;
@@ -47,11 +47,7 @@ struct IntervalResource {
   interval: Interval,
 }
 
-impl CoreResource for IntervalResource {
-  fn inspect_repr(&self) -> &str {
-    "interval"
-  }
-}
+impl Resource for IntervalResource {}
 
 #[derive(Deserialize)]
 struct SetIntervalArgs {
@@ -69,7 +65,7 @@ fn op_set_interval(
     interval: Interval::new_interval(duration),
   };
   let mut table = resources::lock_resource_table();
-  let rid = table.add(Box::new(interval_resource));
+  let rid = table.add("interval", Box::new(interval_resource));
   Ok(JsonOp::Sync(json!(rid)))
 }
 
@@ -122,11 +118,7 @@ struct TimeoutResource {
   delay: Delay,
 }
 
-impl CoreResource for TimeoutResource {
-  fn inspect_repr(&self) -> &str {
-    "timeout"
-  }
-}
+impl Resource for TimeoutResource {}
 
 #[derive(Deserialize)]
 struct SetTimeoutArgs {
@@ -143,7 +135,7 @@ fn op_set_timeout(
   let delay = Delay::new(deadline);
   let timeout_resource = TimeoutResource { delay };
   let mut table = resources::lock_resource_table();
-  let rid = table.add(Box::new(timeout_resource));
+  let rid = table.add("timeout", Box::new(timeout_resource));
   Ok(JsonOp::Sync(json!(rid)))
 }
 
