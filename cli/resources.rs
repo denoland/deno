@@ -108,12 +108,9 @@ pub trait DenoAsyncRead {
   fn poll_read(&mut self, buf: &mut [u8]) -> Poll<usize, ErrBox>;
 }
 
-impl DenoAsyncRead for Resource {
+impl DenoAsyncRead for CliResource {
   fn poll_read(&mut self, buf: &mut [u8]) -> Poll<usize, ErrBox> {
-    let mut table = lock_resource_table();
-    let repr = table.get_mut(self.rid).ok_or_else(bad_resource)?;
-
-    let r = match repr {
+    let r = match self {
       CliResource::FsFile(ref mut f) => f.poll_read(buf),
       CliResource::Stdin(ref mut f) => f.poll_read(buf),
       CliResource::TcpStream(ref mut f) => f.poll_read(buf),
@@ -149,14 +146,9 @@ pub trait DenoAsyncWrite {
   fn shutdown(&mut self) -> Poll<(), ErrBox>;
 }
 
-impl DenoAsyncWrite for Resource {
+impl DenoAsyncWrite for CliResource {
   fn poll_write(&mut self, buf: &[u8]) -> Poll<usize, ErrBox> {
-    let mut table = lock_resource_table();
-    let repr = table
-      .get_mut::<CliResource>(self.rid)
-      .ok_or_else(bad_resource)?;
-
-    let r = match repr {
+    let r = match self {
       CliResource::FsFile(ref mut f) => f.poll_write(buf),
       CliResource::Stdout(ref mut f) => f.poll_write(buf),
       CliResource::Stderr(ref mut f) => f.poll_write(buf),
