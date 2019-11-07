@@ -2,7 +2,7 @@
 # pylint: disable=line-too-long
 solutions = [
     {
-        'url': 'https://chromium.googlesource.com/v8/v8.git@7.9.317.12',
+        'url': 'https://chromium.googlesource.com/v8/v8.git@8.0.192',
         'name': 'v8',
         'deps_file': 'DEPS',
         'custom_deps': {

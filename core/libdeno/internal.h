@@ -148,6 +148,12 @@ static inline v8::Local<v8::String> v8_str(const char* x) {
       .ToLocalChecked();
 }
 
+static inline DenoIsolate* unwrap(Deno* d_) {
+  return reinterpret_cast<deno::DenoIsolate*>(d_);
+}
+
+const char* ToCString(const v8::String::Utf8Value& value);
+
 void Print(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Recv(const v8::FunctionCallbackInfo<v8::Value>& args);
 void Send(const v8::FunctionCallbackInfo<v8::Value>& args);
