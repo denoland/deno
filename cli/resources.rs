@@ -22,7 +22,6 @@ use futures::Poll;
 use reqwest::r#async::Decoder as ReqwestDecoder;
 use std;
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::net::Shutdown;
 use std::process::ExitStatus;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
@@ -66,7 +65,7 @@ lazy_static! {
 }
 
 // TODO: move listeners out of this enum and rename to `StreamResource`
-enum CliResource {
+pub enum CliResource {
   Stdin(tokio::io::Stdin),
   Stdout(tokio::fs::File),
   Stderr(tokio::io::Stderr),
@@ -95,29 +94,6 @@ pub fn lock_resource_table<'a>() -> MutexGuard<'a, ResourceTable> {
 #[derive(Clone, Debug)]
 pub struct Resource {
   pub rid: ResourceId,
-}
-
-impl Resource {
-  // close(2) is done by dropping the value. Therefore we just need to remove
-  // the resource from the RESOURCE_TABLE.
-  pub fn close(&self) {
-    let mut table = lock_resource_table();
-    table.close(self.rid).unwrap();
-  }
-
-  pub fn shutdown(&mut self, how: Shutdown) -> Result<(), ErrBox> {
-    let mut table = lock_resource_table();
-    let repr = table
-      .get_mut::<CliResource>(self.rid)
-      .ok_or_else(bad_resource)?;
-
-    match repr {
-      CliResource::TcpStream(ref mut f) => {
-        TcpStream::shutdown(f, how).map_err(ErrBox::from)
-      }
-      _ => Err(bad_resource()),
-    }
-  }
 }
 
 impl Read for Resource {

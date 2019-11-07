@@ -4,8 +4,8 @@ use crate::deno_error::bad_resource;
 use crate::ops::json_op;
 use crate::resolve_addr::resolve_addr;
 use crate::resources;
+use crate::resources::CliResource;
 use crate::resources::CoreResource;
-use crate::resources::Resource;
 use crate::state::ThreadSafeState;
 use deno::*;
 use futures::Async;
@@ -201,7 +201,6 @@ fn op_shutdown(
 
   let rid = args.rid as u32;
   let how = args.how;
-  let mut resource = resources::lookup(rid)?;
 
   let shutdown_mode = match how {
     0 => Shutdown::Read,
@@ -209,8 +208,15 @@ fn op_shutdown(
     _ => unimplemented!(),
   };
 
-  // Use UFCS for disambiguation
-  Resource::shutdown(&mut resource, shutdown_mode)?;
+  let mut table = resources::lock_resource_table();
+  let resource = table.get_mut::<CliResource>(rid).ok_or_else(bad_resource)?;
+  match resource {
+    CliResource::TcpStream(ref mut stream) => {
+      TcpStream::shutdown(stream, shutdown_mode).map_err(ErrBox::from)?;
+    }
+    _ => return Err(bad_resource()),
+  }
+
   Ok(JsonOp::Sync(json!({})))
 }
 
