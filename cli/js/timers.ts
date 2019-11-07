@@ -100,19 +100,21 @@ class Timeout {
       // Might return bad resource id error if timeout was cleared
     }
 
-    // If timeout was cleared before op resolved don't fire
-    if (this.cancelled) {
-      return;
-    }
+    Promise.resolve().then(() => {
+      // If timeout was cleared before op resolved don't fire
+      if (this.cancelled) {
+        return;
+      }
 
-    // If we're this far mark this timeout as cancelled and remove from map
-    // so it cannot be cleared anymore.
-    this.cancelled = true;
-    timeoutMap.delete(this.id);
-    // Call the user callback. Intermediate assignment is to avoid leaking `this`
-    // to it, while also keeping the stack trace neat when it shows up in there.
-    const callback = this.callback;
-    callback();
+      // If we're this far mark this timeout as cancelled and remove from map
+      // so it cannot be cleared anymore.
+      this.cancelled = true;
+      timeoutMap.delete(this.id);
+      // Call the user callback. Intermediate assignment is to avoid leaking `this`
+      // to it, while also keeping the stack trace neat when it shows up in there.
+      const callback = this.callback;
+      callback();
+    });
   }
 }
 
@@ -135,14 +137,16 @@ class Interval {
 
   async poll(): Promise<void> {
     // Run async iterator. If
-    for await (const cancelled of this) {
-      if (cancelled) {
-        return;
-      }
-      // Call the user callback. Intermediate assignment is to avoid leaking `this`
-      // to it, while also keeping the stack trace neat when it shows up in there.
-      const callback = this.callback;
-      callback();
+    for await (const _cancelled of this) {
+      Promise.resolve().then(() => {
+        if (this.cancelled) {
+          return;
+        }
+        // Call the user callback. Intermediate assignment is to avoid leaking `this`
+        // to it, while also keeping the stack trace neat when it shows up in there.
+        const callback = this.callback;
+        callback();
+      });
     }
   }
 
