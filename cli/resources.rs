@@ -8,7 +8,6 @@
 // descriptors". This module implements a global resource table. Ops (AKA
 // handlers) look up resources by their integer id here.
 
-use crate::deno_error;
 use crate::deno_error::bad_resource;
 use crate::http_body::HttpBody;
 use deno::ErrBox;
@@ -21,7 +20,7 @@ use futures::Future;
 use futures::Poll;
 use reqwest::r#async::Decoder as ReqwestDecoder;
 use std;
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::{Read, Write};
 use std::process::ExitStatus;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
@@ -313,35 +312,5 @@ pub fn get_file(rid: ResourceId) -> Result<std::fs::File, ErrBox> {
       maybe_std_file_copy.map_err(ErrBox::from)
     }
     _ => Err(bad_resource()),
-  }
-}
-
-pub fn seek(
-  rid: ResourceId,
-  offset: i32,
-  whence: u32,
-) -> Box<dyn Future<Item = (), Error = ErrBox> + Send> {
-  // Translate seek mode to Rust repr.
-  let seek_from = match whence {
-    0 => SeekFrom::Start(offset as u64),
-    1 => SeekFrom::Current(i64::from(offset)),
-    2 => SeekFrom::End(i64::from(offset)),
-    _ => {
-      return Box::new(futures::future::err(
-        deno_error::DenoError::new(
-          deno_error::ErrorKind::InvalidSeekMode,
-          format!("Invalid seek mode: {}", whence),
-        )
-        .into(),
-      ));
-    }
-  };
-
-  match get_file(rid) {
-    Ok(mut file) => Box::new(futures::future::lazy(move || {
-      let result = file.seek(seek_from).map(|_| {}).map_err(ErrBox::from);
-      futures::future::result(result)
-    })),
-    Err(err) => Box::new(futures::future::err(err)),
   }
 }
