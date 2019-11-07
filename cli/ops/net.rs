@@ -41,10 +41,7 @@ pub fn accept(rid: ResourceId) -> Accept {
   }
 }
 
-/// A future which can be used to easily read available number of bytes to fill
-/// a buffer.
-///
-/// Created by the [`read`] function.
+/// A future representing state of accepting a TCP connection.
 #[derive(Debug)]
 pub struct Accept {
   state: AcceptState,
@@ -225,28 +222,24 @@ struct ListenArgs {
 }
 
 #[allow(dead_code)]
-pub struct TcpListenerResource {
-  pub listener: tokio::net::TcpListener,
-  pub task: Option<futures::task::Task>,
-  pub local_addr: SocketAddr,
+struct TcpListenerResource {
+  listener: tokio::net::TcpListener,
+  task: Option<futures::task::Task>,
+  local_addr: SocketAddr,
 }
 
-impl CoreResource for TcpListenerResource {
-  fn close(&mut self) -> Option<Vec<ResourceId>> {
-    if let Some(task) = self.task.take() {
-      task.notify();
-    }
+impl CoreResource for TcpListenerResource {}
 
-    None
-  }
-
-  fn inspect_repr(&self) -> &str {
-    "tcpListener"
+impl Drop for TcpListenerResource {
+  fn drop(&mut self) {
+    self.notify_task();
   }
 }
 
 impl TcpListenerResource {
-  /// Track the current task (for TcpListener resource).
+  /// Track the current task so future awaiting for connection
+  /// can be notified when listener is closed.
+  ///
   /// Throws an error if another task is already tracked.
   pub fn track_task(&mut self) -> Result<(), ErrBox> {
     // Currently, we only allow tracking a single accept task for a listener.
@@ -265,7 +258,14 @@ impl TcpListenerResource {
     Ok(())
   }
 
-  /// Stop tracking a task (for TcpListener resource).
+  /// Notifies a task when listener is closed so accept future can resolve.
+  pub fn notify_task(&mut self) {
+    if let Some(task) = self.task.take() {
+      task.notify();
+    }
+  }
+
+  /// Stop tracking a task.
   /// Happens when the task is done and thus no further tracking is needed.
   pub fn untrack_task(&mut self) {
     if self.task.is_some() {
@@ -273,6 +273,7 @@ impl TcpListenerResource {
     }
   }
 }
+
 fn op_listen(
   state: &ThreadSafeState,
   args: Value,

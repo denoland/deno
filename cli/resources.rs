@@ -84,22 +84,7 @@ enum CliResource {
   ChildStderr(tokio_process::ChildStderr),
 }
 
-impl CoreResource for CliResource {
-  // TODO(ry) These task notifications are hacks to workaround various behaviors
-  // in Tokio. They should not influence the overall design of Deno. The
-  // CoreResource::close should be removed in favor of the drop trait.
-  fn close(&self) {
-    match self {
-      CliResource::TcpListener(_, Some(t)) => {
-        t.notify();
-      }
-      CliResource::TlsListener(_, _, Some(t)) => {
-        t.notify();
-      }
-      _ => {}
-    }
-  }
-}
+impl CoreResource for CliResource {}
 
 pub fn lock_resource_table<'a>() -> MutexGuard<'a, ResourceTable> {
   RESOURCE_TABLE.lock().unwrap()

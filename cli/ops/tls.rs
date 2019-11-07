@@ -1,7 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use super::net::accept;
-use super::net::TcpListenerResource;
 use crate::deno_error::bad_resource;
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
@@ -11,7 +9,9 @@ use crate::resources;
 use crate::resources::CoreResource;
 use crate::state::ThreadSafeState;
 use deno::*;
+use futures::Async;
 use futures::Future;
+use futures::Poll;
 use std;
 use std::convert::From;
 use std::fs::File;
@@ -173,18 +173,55 @@ fn load_keys(path: &str) -> Result<Vec<PrivateKey>, ErrBox> {
 
 #[allow(dead_code)]
 pub struct TlsListenerResource {
-  tcp_listener_rid: ResourceId,
-  acceptor: TlsAcceptor,
+  listener: tokio::net::TcpListener,
+  tls_acceptor: TlsAcceptor,
+  task: Option<futures::task::Task>,
   local_addr: SocketAddr,
 }
 
-impl CoreResource for TlsListenerResource {
-  fn close(&mut self) -> Option<Vec<ResourceId>> {
-    Some(vec![self.tcp_listener_rid])
+impl CoreResource for TlsListenerResource {}
+
+impl Drop for TlsListenerResource {
+  fn drop(&mut self) {
+    self.notify_task();
+  }
+}
+
+impl TlsListenerResource {
+  /// Track the current task so future awaiting for connection
+  /// can be notified when listener is closed.
+  ///
+  /// Throws an error if another task is already tracked.
+  pub fn track_task(&mut self) -> Result<(), ErrBox> {
+    // Currently, we only allow tracking a single accept task for a listener.
+    // This might be changed in the future with multiple workers.
+    // Caveat: TcpListener by itself also only tracks an accept task at a time.
+    // See https://github.com/tokio-rs/tokio/issues/846#issuecomment-454208883
+    if self.task.is_some() {
+      let e = std::io::Error::new(
+        std::io::ErrorKind::Other,
+        "Another accept task is ongoing",
+      );
+      return Err(ErrBox::from(e));
+    }
+
+    self.task.replace(futures::task::current());
+    Ok(())
   }
 
-  fn inspect_repr(&self) -> &str {
-    "tlsListener"
+  /// Notifies a task when listener is closed so accept future can resolve.
+  pub fn notify_task(&mut self) {
+    if let Some(task) = self.task.take() {
+      task.notify();
+    }
+  }
+
+  /// Stop tracking a task.
+  /// Happens when the task is done and thus no further tracking is needed.
+  pub fn untrack_task(&mut self) {
+    if self.task.is_some() {
+      self.task.take();
+    }
   }
 }
 
@@ -217,31 +254,108 @@ fn op_listen_tls(
   config
     .set_single_cert(load_certs(&cert_file)?, load_keys(&key_file)?.remove(0))
     .expect("invalid key or certificate");
-  let acceptor = TlsAcceptor::from(Arc::new(config));
+  let tls_acceptor = TlsAcceptor::from(Arc::new(config));
   let addr = resolve_addr(&args.hostname, args.port).wait()?;
   let listener = TcpListener::bind(&addr)?;
   let local_addr = listener.local_addr()?;
   let local_addr_str = local_addr.to_string();
-  let listener_resource = TcpListenerResource {
+  let tls_listener_resource = TlsListenerResource {
     listener,
+    tls_acceptor,
     task: None,
     local_addr,
   };
   let mut table = resources::lock_resource_table();
-  let tcp_listener_rid = table.add(Box::new(listener_resource));
-
-  let tls_listener_resource = TlsListenerResource {
-    tcp_listener_rid,
-    acceptor,
-    local_addr,
-  };
-
   let rid = table.add("tlsListener", Box::new(tls_listener_resource));
 
   Ok(JsonOp::Sync(json!({
     "rid": rid,
     "localAddr": local_addr_str
   })))
+}
+
+#[derive(Debug, PartialEq)]
+enum AcceptTlsState {
+  Eager,
+  Pending,
+  Done,
+}
+
+/// Simply accepts a TLS connection.
+pub fn accept_tls(rid: ResourceId) -> AcceptTls {
+  AcceptTls {
+    state: AcceptTlsState::Eager,
+    rid,
+  }
+}
+
+/// A future representing state of accepting a TLS connection.
+#[derive(Debug)]
+pub struct AcceptTls {
+  state: AcceptTlsState,
+  rid: ResourceId,
+}
+
+impl Future for AcceptTls {
+  type Item = (TcpStream, SocketAddr);
+  type Error = ErrBox;
+
+  fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+    if self.state == AcceptTlsState::Done {
+      panic!("poll AcceptTls after it's done");
+    }
+
+    let mut table = resources::lock_resource_table();
+    let listener_resource = table
+      .get_mut::<TlsListenerResource>(self.rid)
+      .ok_or_else(|| {
+        let e = std::io::Error::new(
+          std::io::ErrorKind::Other,
+          "Listener has been closed",
+        );
+        ErrBox::from(e)
+      })?;
+
+    let listener = &mut listener_resource.listener;
+
+    if self.state == AcceptTlsState::Eager {
+      // Similar to try_ready!, but also track/untrack accept task
+      // in TcpListener resource.
+      // In this way, when the listener is closed, the task can be
+      // notified to error out (instead of stuck forever).
+      match listener.poll_accept().map_err(ErrBox::from) {
+        Ok(Async::Ready((stream, addr))) => {
+          self.state = AcceptTlsState::Done;
+          return Ok((stream, addr).into());
+        }
+        Ok(Async::NotReady) => {
+          self.state = AcceptTlsState::Pending;
+          return Ok(Async::NotReady);
+        }
+        Err(e) => {
+          self.state = AcceptTlsState::Done;
+          return Err(e);
+        }
+      }
+    }
+
+    match listener.poll_accept().map_err(ErrBox::from) {
+      Ok(Async::Ready((stream, addr))) => {
+        listener_resource.untrack_task();
+        self.state = AcceptTlsState::Done;
+        Ok((stream, addr).into())
+      }
+      Ok(Async::NotReady) => {
+        listener_resource.track_task()?;
+        Ok(Async::NotReady)
+      }
+      Err(e) => {
+        listener_resource.untrack_task();
+        self.state = AcceptTlsState::Done;
+        Err(e)
+      }
+    }
+  }
 }
 
 #[derive(Deserialize)]
@@ -257,12 +371,7 @@ fn op_accept_tls(
   let args: AcceptTlsArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
 
-  let table = resources::lock_resource_table();
-  let resource = table
-    .get::<TlsListenerResource>(rid)
-    .ok_or_else(bad_resource)?;
-
-  let op = accept(resource.tcp_listener_rid)
+  let op = accept_tls(rid)
     .and_then(move |(tcp_stream, _socket_addr)| {
       let local_addr = tcp_stream.local_addr()?;
       let remote_addr = tcp_stream.peer_addr()?;
@@ -276,7 +385,7 @@ fn op_accept_tls(
         .expect("Can't find tls listener");
 
       resource
-        .acceptor
+        .tls_acceptor
         .accept(tcp_stream)
         .map_err(ErrBox::from)
         .and_then(move |tls_stream| {
