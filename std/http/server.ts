@@ -228,9 +228,11 @@ function fixLength(req: ServerRequest): void {
   }
 }
 
-// ParseHTTPVersion parses a HTTP version string.
-// "HTTP/1.0" returns (1, 0, true).
-// Ported from https://github.com/golang/go/blob/f5c43b9/src/net/http/request.go#L766-L792
+/**
+ * ParseHTTPVersion parses a HTTP version string.
+ * "HTTP/1.0" returns (1, 0, true).
+ * Ported from https://github.com/golang/go/blob/f5c43b9/src/net/http/request.go#L766-L792
+ */
 export function parseHTTPVersion(vers: string): [number, number] {
   switch (vers) {
     case "HTTP/1.1":
@@ -450,19 +452,20 @@ export function serveTLS(options: HTTPSOptions): Server {
 
 /**
  * Create an HTTPS server with given options and request handler
+ *
+ *     const body = new TextEncoder().encode("Hello HTTPS");
+ *     const options = {
+ *       hostname: "localhost",
+ *       port: 443,
+ *       certFile: "./path/to/localhost.crt",
+ *       keyFile: "./path/to/localhost.key",
+ *     };
+ *     listenAndServeTLS(options, (req) => {
+ *       req.respond({ body });
+ *     });
+ *
  * @param options Server configuration
  * @param handler Request handler
- *
- *       const body = new TextEncoder().encode("Hello HTTPS");
- *       const options = {
- *         hostname: "localhost",
- *         port: 443,
- *         certFile: "./path/to/localhost.crt",
- *         keyFile: "./path/to/localhost.key",
- *       };
- *       listenAndServeTLS(options, (req) => {
- *         req.respond({ body });
- *       });
  */
 export async function listenAndServeTLS(
   options: HTTPSOptions,
