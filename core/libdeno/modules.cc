@@ -67,24 +67,24 @@ extern "C" {
 
 deno_mod deno_mod_new(Deno* d_, bool main, const char* name_cstr,
                       const char* source_cstr) {
-  auto* d = unwrap(d_);
+  auto* d = deno::unwrap(d_);
   return d->RegisterModule(main, name_cstr, source_cstr);
 }
 
 const char* deno_mod_name(Deno* d_, deno_mod id) {
-  auto* d = unwrap(d_);
+  auto* d = deno::unwrap(d_);
   auto* info = d->GetModuleInfo(id);
   return info->name.c_str();
 }
 
 size_t deno_mod_imports_len(Deno* d_, deno_mod id) {
-  auto* d = unwrap(d_);
+  auto* d = deno::unwrap(d_);
   auto* info = d->GetModuleInfo(id);
   return info->import_specifiers.size();
 }
 
 const char* deno_mod_imports_get(Deno* d_, deno_mod id, size_t index) {
-  auto* d = unwrap(d_);
+  auto* d = deno::unwrap(d_);
   auto* info = d->GetModuleInfo(id);
   if (info == nullptr || index >= info->import_specifiers.size()) {
     return nullptr;
@@ -95,7 +95,7 @@ const char* deno_mod_imports_get(Deno* d_, deno_mod id, size_t index) {
 
 void deno_mod_instantiate(Deno* d_, void* user_data, deno_mod id,
                           deno_resolve_cb cb) {
-  auto* d = unwrap(d_);
+  auto* d = deno::unwrap(d_);
   deno::UserDataScope user_data_scope(d, user_data);
 
   auto* isolate = d->isolate_;
@@ -130,7 +130,7 @@ void deno_mod_instantiate(Deno* d_, void* user_data, deno_mod id,
 }
 
 void deno_mod_evaluate(Deno* d_, void* user_data, deno_mod id) {
-  auto* d = unwrap(d_);
+  auto* d = deno::unwrap(d_);
   deno::UserDataScope user_data_scope(d, user_data);
 
   auto* isolate = d->isolate_;
@@ -170,7 +170,7 @@ void deno_mod_evaluate(Deno* d_, void* user_data, deno_mod id) {
 void deno_dyn_import_done(Deno* d_, void* user_data,
                           deno_dyn_import_id import_id, deno_mod mod_id,
                           const char* error_str) {
-  auto* d = unwrap(d_);
+  auto* d = deno::unwrap(d_);
   CHECK((mod_id == 0 && error_str != nullptr) ||
         (mod_id != 0 && error_str == nullptr) ||
         (mod_id == 0 && !d->last_exception_handle_.IsEmpty()));
