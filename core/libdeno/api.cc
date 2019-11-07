@@ -75,25 +75,21 @@ Deno* deno_new(deno_config config) {
   return reinterpret_cast<Deno*>(d);
 }
 
-deno::DenoIsolate* unwrap(Deno* d_) {
-  return reinterpret_cast<deno::DenoIsolate*>(d_);
-}
-
 void deno_lock(Deno* d_) {
-  auto* d = unwrap(d_);
+  auto* d = deno::unwrap(d_);
   CHECK_NULL(d->locker_);
   d->locker_ = new v8::Locker(d->isolate_);
 }
 
 void deno_unlock(Deno* d_) {
-  auto* d = unwrap(d_);
+  auto* d = deno::unwrap(d_);
   CHECK_NOT_NULL(d->locker_);
   delete d->locker_;
   d->locker_ = nullptr;
 }
 
 deno_snapshot deno_snapshot_new(Deno* d_) {
-  auto* d = unwrap(d_);
+  auto* d = deno::unwrap(d_);
   CHECK_NOT_NULL(d->snapshot_creator_);
   d->ClearModules();
   d->context_.Reset();
@@ -134,7 +130,7 @@ void deno_set_v8_flags(int* argc, char** argv) {
 }
 
 const char* deno_last_exception(Deno* d_) {
-  auto* d = unwrap(d_);
+  auto* d = deno::unwrap(d_);
   if (d->last_exception_.length() > 0) {
     return d->last_exception_.c_str();
   } else {
@@ -144,7 +140,7 @@ const char* deno_last_exception(Deno* d_) {
 
 void deno_execute(Deno* d_, void* user_data, const char* js_filename,
                   const char* js_source) {
-  auto* d = unwrap(d_);
+  auto* d = deno::unwrap(d_);
   deno::UserDataScope user_data_scope(d, user_data);
   auto* isolate = d->isolate_;
   v8::Locker locker(isolate);
@@ -161,13 +157,13 @@ void deno_pinned_buf_delete(deno_pinned_buf* buf) {
 }
 
 void deno_throw_exception(Deno* d_, const char* text) {
-  auto* d = unwrap(d_);
+  auto* d = deno::unwrap(d_);
   auto* isolate = d->isolate_;
   isolate->ThrowException(deno::v8_str(text));
 }
 
 void deno_respond(Deno* d_, void* user_data, deno_op_id op_id, deno_buf buf) {
-  auto* d = unwrap(d_);
+  auto* d = deno::unwrap(d_);
   if (d->current_args_ != nullptr) {
     // Synchronous response.
     // Note op_id is not passed back in the case of synchronous response.
@@ -213,7 +209,7 @@ void deno_respond(Deno* d_, void* user_data, deno_op_id op_id, deno_buf buf) {
 }
 
 void deno_check_promise_errors(Deno* d_) {
-  auto* d = unwrap(d_);
+  auto* d = deno::unwrap(d_);
   if (d->pending_promise_map_.size() > 0) {
     auto* isolate = d->isolate_;
     v8::Locker locker(isolate);
