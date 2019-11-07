@@ -21,9 +21,7 @@ type ResourceMap = HashMap<ResourceId, (String, Box<dyn Resource>)>;
 
 #[derive(Default)]
 pub struct ResourceTable {
-  // TODO(bartlomieju): remove pub modifier, it is used by
-  // `get_file` method in CLI
-  pub map: ResourceMap,
+  map: ResourceMap,
   next_id: u32,
 }
 
