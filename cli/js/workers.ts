@@ -123,6 +123,7 @@ export interface DenoWorkerOptions extends WorkerOptions {
 }
 
 export class WorkerImpl implements Worker {
+  // TODO: this is not a rid actually but 'workerId'
   private readonly rid: number;
   private isClosing = false;
   private readonly isClosedPromise: Promise<void>;
