@@ -190,11 +190,14 @@ fn op_host_get_worker_closed(
   let shared_worker_future = {
     let workers_tl = state.workers.lock().unwrap();
     let worker = workers_tl.get(&(rid as usize)).unwrap();
-    worker.clone()
+    worker.clone().shared()
   };
 
-  let op =
-    shared_worker_future.then(move |_result| futures::future::ok(json!({})));
+  let op = shared_worker_future.then(move |_result| {
+    let mut workers_tl = state.workers.lock().unwrap();
+    workers_tl.remove(&(rid as usize));
+    futures::future::ok(json!({}))
+  });
 
   Ok(JsonOp::Async(Box::new(op)))
 }
