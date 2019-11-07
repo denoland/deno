@@ -14,12 +14,12 @@ repository = "https://github.com/denoland/deno"
 path = "lib.rs"
 
 [dependencies]
-downcast-rs = "1.1.0"
+downcast-rs = "1.1.1"
 futures = "0.1.29"
 lazy_static = "1.4.0"
-libc = "0.2.62"
+libc = "0.2.65"
 log = "0.4.8"
-serde_json = "1.0.40"
+serde_json = "1.0.41"
 url = "1.7.2"
 
 [[example]]
