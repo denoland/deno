@@ -345,11 +345,13 @@ itest!(_048_media_types_jsx {
 });
 */
 
+/* TODO(ry) Re-enable this test. It is flaky and only fails occasionally.
 itest!(_049_info_flag_script_jsx {
   args: "info http://127.0.0.1:4545/cli/tests/048_media_types_jsx.ts",
   output: "049_info_flag_script_jsx.out",
   http_server: true,
 });
+*/
 
 itest!(_050_more_jsons {
   args: "run --reload 050_more_jsons.ts",
