@@ -1,7 +1,7 @@
 use super::dispatch_minimal::MinimalOp;
 use crate::deno_error;
 use crate::ops::minimal_op;
-use crate::resources;
+use crate::resources::Resource;
 use crate::state::ThreadSafeState;
 use crate::tokio_read;
 use crate::tokio_write;
@@ -22,14 +22,12 @@ pub fn op_read(rid: i32, zero_copy: Option<PinnedBuf>) -> Box<MinimalOp> {
     Some(buf) => buf,
   };
 
-  match resources::lookup(rid as u32) {
-    Err(e) => Box::new(futures::future::err(e)),
-    Ok(resource) => Box::new(
-      tokio_read::read(resource, zero_copy)
-        .map_err(ErrBox::from)
-        .and_then(move |(_resource, _buf, nread)| Ok(nread as i32)),
-    ),
-  }
+  let resource = Resource { rid: rid as u32 };
+  let fut = tokio_read::read(resource, zero_copy)
+    .map_err(ErrBox::from)
+    .and_then(move |(_resource, _buf, nread)| Ok(nread as i32));
+
+  Box::new(fut)
 }
 
 pub fn op_write(rid: i32, zero_copy: Option<PinnedBuf>) -> Box<MinimalOp> {
@@ -41,12 +39,10 @@ pub fn op_write(rid: i32, zero_copy: Option<PinnedBuf>) -> Box<MinimalOp> {
     Some(buf) => buf,
   };
 
-  match resources::lookup(rid as u32) {
-    Err(e) => Box::new(futures::future::err(e)),
-    Ok(resource) => Box::new(
-      tokio_write::write(resource, zero_copy)
-        .map_err(ErrBox::from)
-        .and_then(move |(_resource, _buf, nwritten)| Ok(nwritten as i32)),
-    ),
-  }
+  let resource = Resource { rid: rid as u32 };
+  let fut = tokio_write::write(resource, zero_copy)
+    .map_err(ErrBox::from)
+    .and_then(move |(_resource, _buf, nwritten)| Ok(nwritten as i32));
+
+  Box::new(fut)
 }

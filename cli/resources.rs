@@ -324,15 +324,8 @@ pub fn get_file(rid: ResourceId) -> Result<std::fs::File, ErrBox> {
   }
 }
 
-pub fn lookup(rid: ResourceId) -> Result<Resource, ErrBox> {
-  debug!("resource lookup {}", rid);
-  let table = lock_resource_table();
-  let _ = table.get::<CliResource>(rid).ok_or_else(bad_resource)?;
-  Ok(Resource { rid })
-}
-
 pub fn seek(
-  resource: Resource,
+  rid: ResourceId,
   offset: i32,
   whence: u32,
 ) -> Box<dyn Future<Item = (), Error = ErrBox> + Send> {
@@ -352,7 +345,7 @@ pub fn seek(
     }
   };
 
-  match get_file(resource.rid) {
+  match get_file(rid) {
     Ok(mut file) => Box::new(futures::future::lazy(move || {
       let result = file.seek(seek_from).map(|_| {}).map_err(ErrBox::from);
       futures::future::result(result)

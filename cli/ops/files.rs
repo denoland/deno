@@ -131,9 +131,8 @@ fn op_seek(
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: SeekArgs = serde_json::from_value(args)?;
-
-  let resource = resources::lookup(args.rid as u32)?;
-  let op = resources::seek(resource, args.offset, args.whence as u32)
+  let rid = args.rid as u32;
+  let op = resources::seek(rid, args.offset, args.whence as u32)
     .and_then(move |_| futures::future::ok(json!({})));
   if args.promise_id.is_none() {
     let buf = op.wait()?;
