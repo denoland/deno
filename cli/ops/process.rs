@@ -1,15 +1,19 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
+use crate::deno_error::bad_resource;
 use crate::ops::json_op;
 use crate::resources;
+use crate::resources::CloneFileFuture;
 use crate::signal::kill;
 use crate::state::ThreadSafeState;
 use deno::*;
 use futures;
 use futures::Future;
+use futures::Poll;
 use std;
 use std::convert::From;
 use std::process::Command;
+use std::process::ExitStatus;
 use tokio_process::CommandExt;
 
 #[cfg(unix)]
@@ -47,6 +51,12 @@ struct RunArgs {
   stderr_rid: u32,
 }
 
+struct ChildResource {
+  child: tokio_process::Child,
+}
+
+impl Resource for ChildResource {}
+
 fn op_run(
   state: &ThreadSafeState,
   args: Value,
@@ -73,38 +83,82 @@ fn op_run(
   // TODO: make this work with other resources, eg. sockets
   let stdin_rid = run_args.stdin_rid;
   if stdin_rid > 0 {
-    c.stdin(resources::get_file(stdin_rid)?);
+    let file = (CloneFileFuture { rid: stdin_rid }).wait()?.into_std();
+    c.stdin(file);
   } else {
     c.stdin(subprocess_stdio_map(run_args.stdin.as_ref()));
   }
 
   let stdout_rid = run_args.stdout_rid;
   if stdout_rid > 0 {
-    c.stdout(resources::get_file(stdout_rid)?);
+    let file = (CloneFileFuture { rid: stdout_rid }).wait()?.into_std();
+    c.stdout(file);
   } else {
     c.stdout(subprocess_stdio_map(run_args.stdout.as_ref()));
   }
 
   let stderr_rid = run_args.stderr_rid;
   if stderr_rid > 0 {
-    c.stderr(resources::get_file(stderr_rid)?);
+    let file = (CloneFileFuture { rid: stderr_rid }).wait()?.into_std();
+    c.stderr(file);
   } else {
     c.stderr(subprocess_stdio_map(run_args.stderr.as_ref()));
   }
 
   // Spawn the command.
-  let child = c.spawn_async().map_err(ErrBox::from)?;
-
+  let mut child = c.spawn_async().map_err(ErrBox::from)?;
   let pid = child.id();
-  let resources = resources::add_child(child);
+
+  let stdin_rid = if child.stdin().is_some() {
+    let rid = resources::add_child_stdin(child.stdin().take().unwrap());
+    Some(rid)
+  } else {
+    None
+  };
+
+  let stdout_rid = if child.stdout().is_some() {
+    let rid = resources::add_child_stdout(child.stdout().take().unwrap());
+    Some(rid)
+  } else {
+    None
+  };
+
+  let stderr_rid = if child.stderr().is_some() {
+    let rid = resources::add_child_stderr(child.stderr().take().unwrap());
+    Some(rid)
+  } else {
+    None
+  };
+
+  let child_resource = ChildResource { child };
+  let mut table = resources::lock_resource_table();
+  let child_rid = table.add("child", Box::new(child_resource));
 
   Ok(JsonOp::Sync(json!({
-    "rid": resources.child_rid.unwrap(),
+    "rid": child_rid,
     "pid": pid,
-    "stdinRid": resources.stdin_rid,
-    "stdoutRid": resources.stdout_rid,
-    "stderrRid": resources.stderr_rid,
+    "stdinRid": stdin_rid,
+    "stdoutRid": stdout_rid,
+    "stderrRid": stderr_rid,
   })))
+}
+
+pub struct ChildStatus {
+  rid: ResourceId,
+}
+
+impl Future for ChildStatus {
+  type Item = ExitStatus;
+  type Error = ErrBox;
+
+  fn poll(&mut self) -> Poll<ExitStatus, ErrBox> {
+    let mut table = resources::lock_resource_table();
+    let child_resource = table
+      .get_mut::<ChildResource>(self.rid)
+      .ok_or_else(bad_resource)?;
+    let child = &mut child_resource.child;
+    child.poll().map_err(ErrBox::from)
+  }
 }
 
 #[derive(Deserialize)]
@@ -123,7 +177,7 @@ fn op_run_status(
 
   state.check_run()?;
 
-  let future = resources::child_status(rid)?;
+  let future = ChildStatus { rid };
 
   let future = future.and_then(move |run_status| {
     let code = run_status.code();
@@ -139,7 +193,7 @@ fn op_run_status(
     let got_signal = signal.is_some();
 
     futures::future::ok(json!({
-      "gotSignal": got_signal,
+       "gotSignal": got_signal,
        "exitCode": code.unwrap_or(-1),
        "exitSignal": signal.unwrap_or(-1),
     }))

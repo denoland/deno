@@ -20,7 +20,6 @@ use futures::Future;
 use futures::Poll;
 use reqwest::r#async::Decoder as ReqwestDecoder;
 use std;
-use std::process::ExitStatus;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 use tokio;
@@ -62,7 +61,7 @@ lazy_static! {
   });
 }
 
-// TODO: move listeners out of this enum and rename to `StreamResource`
+// TODO: rename to `StreamResource`
 pub enum CliResource {
   Stdin(tokio::io::Stdin),
   Stdout(tokio::fs::File),
@@ -72,10 +71,6 @@ pub enum CliResource {
   ServerTlsStream(Box<ServerTlsStream<TcpStream>>),
   ClientTlsStream(Box<ClientTlsStream<TcpStream>>),
   HttpBody(HttpBody),
-  // Enum size is bounded by the largest variant.
-  // Use `Box` around large `Child` struct.
-  // https://rust-lang.github.io/rust-clippy/master/index.html#large_enum_variant
-  Child(Box<tokio_process::Child>),
   ChildStdin(tokio_process::ChildStdin),
   ChildStdout(tokio_process::ChildStdout),
   ChildStderr(tokio_process::ChildStderr),
@@ -176,112 +171,39 @@ pub fn add_reqwest_body(body: ReqwestDecoder) -> ResourceId {
   table.add("httpBody", Box::new(CliResource::HttpBody(body)))
 }
 
-pub struct ChildResources {
-  pub child_rid: Option<ResourceId>,
-  pub stdin_rid: Option<ResourceId>,
-  pub stdout_rid: Option<ResourceId>,
-  pub stderr_rid: Option<ResourceId>,
-}
-
-pub fn add_child(mut child: tokio_process::Child) -> ChildResources {
+pub fn add_child_stdin(stdin: tokio_process::ChildStdin) -> ResourceId {
   let mut table = lock_resource_table();
-
-  let mut resources = ChildResources {
-    child_rid: None,
-    stdin_rid: None,
-    stdout_rid: None,
-    stderr_rid: None,
-  };
-
-  if child.stdin().is_some() {
-    let stdin = child.stdin().take().unwrap();
-    let rid = table.add("childStdin", Box::new(CliResource::ChildStdin(stdin)));
-    resources.stdin_rid = Some(rid);
-  }
-  if child.stdout().is_some() {
-    let stdout = child.stdout().take().unwrap();
-    let rid =
-      table.add("childStdout", Box::new(CliResource::ChildStdout(stdout)));
-    resources.stdout_rid = Some(rid);
-  }
-  if child.stderr().is_some() {
-    let stderr = child.stderr().take().unwrap();
-    let rid =
-      table.add("childStderr", Box::new(CliResource::ChildStderr(stderr)));
-    resources.stderr_rid = Some(rid);
-  }
-
-  let rid = table.add("child", Box::new(CliResource::Child(Box::new(child))));
-  resources.child_rid = Some(rid);
-
-  resources
+  table.add("childStdin", Box::new(CliResource::ChildStdin(stdin)))
 }
 
-pub struct ChildStatus {
-  rid: ResourceId,
+pub fn add_child_stdout(stdout: tokio_process::ChildStdout) -> ResourceId {
+  let mut table = lock_resource_table();
+  table.add("childStdout", Box::new(CliResource::ChildStdout(stdout)))
 }
 
-// Invert the dumbness that tokio_process causes by making Child itself a future.
-impl Future for ChildStatus {
-  type Item = ExitStatus;
+pub fn add_child_stderr(stderr: tokio_process::ChildStderr) -> ResourceId {
+  let mut table = lock_resource_table();
+  table.add("childStderr", Box::new(CliResource::ChildStderr(stderr)))
+}
+
+pub struct CloneFileFuture {
+  pub rid: ResourceId,
+}
+
+impl Future for CloneFileFuture {
+  type Item = tokio::fs::File;
   type Error = ErrBox;
 
-  fn poll(&mut self) -> Poll<ExitStatus, ErrBox> {
+  fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
     let mut table = lock_resource_table();
     let repr = table
       .get_mut::<CliResource>(self.rid)
       .ok_or_else(bad_resource)?;
     match repr {
-      CliResource::Child(ref mut child) => child.poll().map_err(ErrBox::from),
+      CliResource::FsFile(ref mut file) => {
+        file.poll_try_clone().map_err(ErrBox::from)
+      }
       _ => Err(bad_resource()),
     }
-  }
-}
-
-pub fn child_status(rid: ResourceId) -> Result<ChildStatus, ErrBox> {
-  let mut table = lock_resource_table();
-  let maybe_repr =
-    table.get_mut::<CliResource>(rid).ok_or_else(bad_resource)?;
-  match maybe_repr {
-    CliResource::Child(ref mut _child) => Ok(ChildStatus { rid }),
-    _ => Err(bad_resource()),
-  }
-}
-
-// TODO: revamp this after the following lands:
-// https://github.com/tokio-rs/tokio/pull/785
-pub fn get_file(rid: ResourceId) -> Result<std::fs::File, ErrBox> {
-  let mut table = lock_resource_table();
-  // We take ownership of File here.
-  // It is put back below while still holding the lock.
-  let (_name, repr) = table.map.remove(&rid).ok_or_else(bad_resource)?;
-  let repr = repr
-    .downcast::<CliResource>()
-    .or_else(|_| Err(bad_resource()))?;
-
-  match *repr {
-    CliResource::FsFile(r) => {
-      // Trait Clone not implemented on tokio::fs::File,
-      // so convert to std File first.
-      let std_file = r.into_std();
-      // Create a copy and immediately put back.
-      // We don't want to block other resource ops.
-      // try_clone() would yield a copy containing the same
-      // underlying fd, so operations on the copy would also
-      // affect the one in resource table, and we don't need
-      // to write back.
-      let maybe_std_file_copy = std_file.try_clone();
-      // Insert the entry back with the same rid.
-      table.map.insert(
-        rid,
-        (
-          "fsFile".to_string(),
-          Box::new(CliResource::FsFile(tokio_fs::File::from_std(std_file))),
-        ),
-      );
-
-      maybe_std_file_copy.map_err(ErrBox::from)
-    }
-    _ => Err(bad_resource()),
   }
 }
