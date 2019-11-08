@@ -174,11 +174,13 @@ itest!(_021_mjs_modules {
   output: "021_mjs_modules.ts.out",
 });
 
+/* TODO(ry) Re-enable this test. It is flaky and only fails occasionally.
 itest!(_022_info_flag_script {
   args: "info http://127.0.0.1:4545/cli/tests/019_media_types.ts",
   output: "022_info_flag_script.out",
   http_server: true,
 });
+*/
 
 itest!(_023_no_ext_with_headers {
   args: "run --reload 023_no_ext_with_headers",
