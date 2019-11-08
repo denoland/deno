@@ -99,8 +99,8 @@ test(async function responseWrite(): Promise<void> {
 test(async function benching(): Promise<void> {
   bench(function parseHTTPVersionBench(b): void {
     b.start();
-    const httpVersions = new Array(40000).fill("HTTP/1.2")
-    httpVersions.map(v => parseHTTPVersion(v))
+    const httpVersions = new Array(40000).fill("HTTP/1.2");
+    httpVersions.map(v => parseHTTPVersion(v));
     b.stop();
   });
 
@@ -516,11 +516,9 @@ test({
 
       let serverIsRunning = true;
       p.status()
-        .then(
-          (): void => {
-            serverIsRunning = false;
-          }
-        )
+        .then((): void => {
+          serverIsRunning = false;
+        })
         .catch((_): void => {}); // Ignores the error when closing the process.
 
       await delay(100);
@@ -562,11 +560,9 @@ test({
 
       let serverIsRunning = true;
       p.status()
-        .then(
-          (): void => {
-            serverIsRunning = false;
-          }
-        )
+        .then((): void => {
+          serverIsRunning = false;
+        })
         .catch((_): void => {}); // Ignores the error when closing the process.
 
       // Requests to the server and immediately closes the connection
