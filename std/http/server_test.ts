@@ -9,6 +9,7 @@ const { Buffer } = Deno;
 import { TextProtoReader } from "../textproto/mod.ts";
 import { test, runIfMain } from "../testing/mod.ts";
 import { assert, assertEquals, assertNotEquals } from "../testing/asserts.ts";
+import { bench, runBenchmarks } from "../testing/bench";
 import {
   Response,
   ServerRequest,
@@ -93,6 +94,17 @@ test(async function responseWrite(): Promise<void> {
     assertEquals(buf.toString(), testCase.raw);
     await request.done;
   }
+});
+
+test(async function benching(): Promise<void> {
+  bench(function parseHTTPVersionBench(b): void {
+    b.start();
+    const httpVersions = new Array(40000).fill("HTTP/1.2")
+    httpVersions.map(v => parseHTTPVersion(v))
+    b.stop();
+  });
+
+  await runBenchmarks({ skip: /throw/ });
 });
 
 test(async function requestBodyWithContentLength(): Promise<void> {
