@@ -291,22 +291,20 @@ function createRawObjectString(
   if (className && className !== "Object" && className !== "anonymous") {
     shouldShowClassName = true;
   }
-  const keys = [ ...Object.keys(value), ...Object.getOwnPropertySymbols(value) ];
-  const entries: string[] = keys.map(
-    (key): string => {
-      const stringKey = String(key)
-      if (keys.length > OBJ_ABBREVIATE_SIZE) {
-        return stringKey;
-      } else {
-        return `${stringKey}: ${stringifyWithQuotes(
-          value[key],
-          ctx,
-          level + 1,
-          maxLevel
-        )}`;
-      }
+  const keys = [...Object.keys(value), ...Object.getOwnPropertySymbols(value)];
+  const entries: string[] = keys.map((key): string => {
+    const stringKey = String(key);
+    if (keys.length > OBJ_ABBREVIATE_SIZE) {
+      return stringKey;
+    } else {
+      return `${stringKey}: ${stringifyWithQuotes(
+        value[key],
+        ctx,
+        level + 1,
+        maxLevel
+      )}`;
     }
-  );
+  });
 
   ctx.delete(value);
 
@@ -641,43 +639,39 @@ export class Console {
       let idx = 0;
       resultData = {};
 
-      data.forEach(
-        (v: unknown, k: unknown): void => {
-          resultData[idx] = { Key: k, Values: v };
-          idx++;
-        }
-      );
+      data.forEach((v: unknown, k: unknown): void => {
+        resultData[idx] = { Key: k, Values: v };
+        idx++;
+      });
     } else {
       resultData = data!;
     }
 
-    Object.keys(resultData).forEach(
-      (k, idx): void => {
-        const value: unknown = resultData[k]!;
+    Object.keys(resultData).forEach((k, idx): void => {
+      const value: unknown = resultData[k]!;
 
-        if (value !== null && typeof value === "object") {
-          Object.entries(value as { [key: string]: unknown }).forEach(
-            ([k, v]): void => {
-              if (properties && !properties.includes(k)) {
-                return;
-              }
-
-              if (objectValues[k]) {
-                objectValues[k].push(stringifyValue(v));
-              } else {
-                objectValues[k] = createColumn(v, idx);
-              }
+      if (value !== null && typeof value === "object") {
+        Object.entries(value as { [key: string]: unknown }).forEach(
+          ([k, v]): void => {
+            if (properties && !properties.includes(k)) {
+              return;
             }
-          );
 
-          values.push("");
-        } else {
-          values.push(stringifyValue(value));
-        }
+            if (objectValues[k]) {
+              objectValues[k].push(stringifyValue(v));
+            } else {
+              objectValues[k] = createColumn(v, idx);
+            }
+          }
+        );
 
-        indexKeys.push(k);
+        values.push("");
+      } else {
+        values.push(stringifyValue(value));
       }
-    );
+
+      indexKeys.push(k);
+    });
 
     const headerKeys = Object.keys(objectValues);
     const bodyValues = Object.values(objectValues);
