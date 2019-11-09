@@ -33,8 +33,6 @@ export let OP_LISTEN: number;
 export let OP_LISTEN_TLS: number;
 export let OP_RESOURCES: number;
 export let OP_GET_RANDOM_VALUES: number;
-export let OP_GLOBAL_TIMER_STOP: number;
-export let OP_GLOBAL_TIMER: number;
 export let OP_NOW: number;
 export let OP_QUERY_PERMISSION: number;
 export let OP_REVOKE_PERMISSION: number;
@@ -65,6 +63,9 @@ export let OP_CWD: number;
 export let OP_FETCH_ASSET: number;
 export let OP_DIAL_TLS: number;
 export let OP_HOSTNAME: number;
+export let OP_SET_TIMEOUT: number;
+export let OP_POLL_TIMEOUT: number;
+export let OP_CLEAR_TIMEOUT: number;
 
 export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
   switch (opId) {
@@ -85,7 +86,6 @@ export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
     case OP_ACCEPT:
     case OP_ACCEPT_TLS:
     case OP_DIAL:
-    case OP_GLOBAL_TIMER:
     case OP_HOST_GET_WORKER_CLOSED:
     case OP_HOST_GET_MESSAGE:
     case OP_WORKER_GET_MESSAGE:
@@ -105,6 +105,7 @@ export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
     case OP_MAKE_TEMP_DIR:
     case OP_DIAL_TLS:
     case OP_FETCH_SOURCE_FILES:
+    case OP_POLL_TIMEOUT:
       json.asyncMsgFromRust(opId, ui8);
       break;
     default:

@@ -18,49 +18,30 @@ interface Timer {
 
 // Timeout values > TIMEOUT_MAX are set to 1.
 const TIMEOUT_MAX = 2 ** 31 - 1;
-
-let globalTimeoutDue: number | null = null;
-
 let nextTimerId = 1;
 const idMap = new Map<number, Timer>();
-type DueNode = { due: number; timers: Timer[] };
+type DueNode = { due: number; timers: Timer[]; rid: number };
 const dueTree = new RBTree<DueNode>((a, b) => a.due - b.due);
 
-function clearGlobalTimeout(): void {
-  globalTimeoutDue = null;
-  sendSync(dispatch.OP_GLOBAL_TIMER_STOP);
-}
-
-let pendingEvents = 0;
-
-async function setGlobalTimeout(due: number, now: number): Promise<void> {
-  // Since JS and Rust don't use the same clock, pass the time to rust as a
-  // relative time value. On the Rust side we'll turn that into an absolute
-  // value again.
-  const timeout = due - now;
-  assert(timeout >= 0);
-  // Send message to the backend.
-  globalTimeoutDue = due;
-  pendingEvents++;
-  await sendAsync(dispatch.OP_GLOBAL_TIMER, { timeout });
-  pendingEvents--;
-  // eslint-disable-next-line @typescript-eslint/no-use-before-define
-  fireTimers();
-}
-
-function setOrClearGlobalTimeout(due: number | null, now: number): void {
-  if (due == null) {
-    clearGlobalTimeout();
-  } else {
-    setGlobalTimeout(due, now);
+async function pollTimeout(rid: number, due: number): Promise<void> {
+  try {
+    await sendAsync(dispatch.OP_POLL_TIMEOUT, { rid });
+  } catch (e) {
+    // Above op will throw if timeout was removed from resource
+    // table before op was sent.
   }
+  fireTimers(due);
 }
 
 function schedule(timer: Timer, now: number): void {
   assert(!timer.scheduled);
   assert(now <= timer.due);
+  // Since JS and Rust don't use the same clock, pass the time to rust as a
+  // relative time value. On the Rust side we'll turn that into an absolute
+  // value again.
+  const timeout = timer.due - now;
   // Find or create the list of timers that will fire at point-in-time `due`.
-  const maybeNewDueNode = { due: timer.due, timers: [] };
+  const maybeNewDueNode = { due: timer.due, rid: null, timers: [] };
   let dueNode = dueTree.find(maybeNewDueNode);
   if (dueNode === null) {
     dueTree.insert(maybeNewDueNode);
@@ -69,10 +50,11 @@ function schedule(timer: Timer, now: number): void {
   // Append the newly scheduled timer to the list and mark it as scheduled.
   dueNode!.timers.push(timer);
   timer.scheduled = true;
-  // If the new timer is scheduled to fire before any timer that existed before,
-  // update the global timeout to reflect this.
-  if (globalTimeoutDue === null || globalTimeoutDue > timer.due) {
-    setOrClearGlobalTimeout(timer.due, now);
+
+  // If tree node has no rid that means that timeout wasn't yet scheduled in Rust - do it now
+  if (!dueNode.rid) {
+    dueNode.rid = sendSync(dispatch.OP_SET_TIMEOUT, { timeout });
+    pollTimeout(dueNode.rid, dueNode.due);
   }
 }
 
@@ -80,25 +62,25 @@ function unschedule(timer: Timer): void {
   if (!timer.scheduled) {
     return;
   }
-  const searchKey = { due: timer.due, timers: [] };
+  const searchKey = { due: timer.due, rid: 0, timers: [] };
   // Find the list of timers that will fire at point-in-time `due`.
-  const list = dueTree.find(searchKey)!.timers;
-  if (list.length === 1) {
-    // Time timer is the only one in the list. Remove the entire list.
-    assert(list[0] === timer);
+  const dueNode = dueTree.find(searchKey)!;
+  const timers = dueNode.timers;
+  if (timers.length === 1) {
+    // Time timer is the only one in the list. Remove the entire list and send op to cancel timeout.
+    assert(timers[0] === timer);
     dueTree.remove(searchKey);
-    // If the unscheduled timer was 'next up', find when the next timer that
-    // still exists is due, and update the global alarm accordingly.
-    if (timer.due === globalTimeoutDue) {
-      const nextDueNode: DueNode | null = dueTree.min();
-      setOrClearGlobalTimeout(nextDueNode && nextDueNode.due, Date.now());
+    try {
+      sendSync(dispatch.OP_CLEAR_TIMEOUT, { rid: dueNode.rid });
+    } catch (e) {
+      // Above op will throw if timeout fired before op was sent.
     }
   } else {
     // Multiple timers that are due at the same point in time.
     // Remove this timer from the list.
-    const index = list.indexOf(timer);
+    const index = timers.indexOf(timer);
     assert(index > -1);
-    list.splice(index, 1);
+    timers.splice(index, 1);
   }
 }
 
@@ -125,28 +107,21 @@ function fire(timer: Timer): void {
   callback();
 }
 
-function fireTimers(): void {
-  const now = Date.now();
-  // Bail out if we're not expecting the global timer to fire.
-  if (globalTimeoutDue === null || pendingEvents > 0) {
+function fireTimers(due: number): void {
+  const dueNode = dueTree.find({ due, rid: 0, timers: [] });
+  // All timeouts removed before this function fired
+  if (!dueNode) {
     return;
   }
-  // After firing the timers that are due now, this will hold the first timer
-  // list that hasn't fired yet.
-  let nextDueNode: DueNode | null;
-  while ((nextDueNode = dueTree.min()) !== null && nextDueNode.due <= now) {
-    dueTree.remove(nextDueNode);
-    // Fire all the timers in the list.
-    for (const timer of nextDueNode.timers) {
-      // With the list dropped, the timer is no longer scheduled.
-      timer.scheduled = false;
-      // Place the callback on the microtask queue.
-      Promise.resolve(timer).then(fire);
-    }
+
+  dueTree.remove(dueNode);
+  // Fire all the timers in the list.
+  for (const timer of dueNode.timers) {
+    // With the list dropped, the timer is no longer scheduled.
+    timer.scheduled = false;
+    // Place the callback on the microtask queue.
+    Promise.resolve(timer).then(fire);
   }
-  // Update the global alarm to go off when the first-up timer that hasn't fired
-  // yet is due.
-  setOrClearGlobalTimeout(nextDueNode && nextDueNode.due, now);
 }
 
 export type Args = unknown[];

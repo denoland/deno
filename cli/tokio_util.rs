@@ -99,6 +99,7 @@ where
   }
 }
 
+#[cfg(test)]
 pub fn panic_on_error<I, E, F>(f: F) -> impl Future<Item = I, Error = ()>
 where
   F: Future<Item = I, Error = E>,
