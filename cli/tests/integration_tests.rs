@@ -174,11 +174,13 @@ itest!(_021_mjs_modules {
   output: "021_mjs_modules.ts.out",
 });
 
+/* TODO(ry) Re-enable this test. It is flaky and only fails occasionally.
 itest!(_022_info_flag_script {
   args: "info http://127.0.0.1:4545/cli/tests/019_media_types.ts",
   output: "022_info_flag_script.out",
   http_server: true,
 });
+*/
 
 itest!(_023_no_ext_with_headers {
   args: "run --reload 023_no_ext_with_headers",
@@ -317,15 +319,11 @@ itest!(_044_bad_resource {
   exit_code: 1,
 });
 
-// TODO(kt3k): Temporarily skip this test because welcome.ts doesn't seem
-// working.
-/*
 itest!(_045_proxy {
   args: "run --allow-net --allow-env --allow-run --reload 045_proxy_test.ts",
   output: "045_proxy_test.ts.out",
   http_server: true,
 });
-*/
 
 itest!(_046_tsx {
   args: "run --reload 046_jsx_test.tsx",
@@ -345,11 +343,13 @@ itest!(_048_media_types_jsx {
 });
 */
 
+/* TODO(ry) Re-enable this test. It is flaky and only fails occasionally.
 itest!(_049_info_flag_script_jsx {
   args: "info http://127.0.0.1:4545/cli/tests/048_media_types_jsx.ts",
   output: "049_info_flag_script_jsx.out",
   http_server: true,
 });
+*/
 
 itest!(_050_more_jsons {
   args: "run --reload 050_more_jsons.ts",
