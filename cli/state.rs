@@ -4,7 +4,6 @@ use crate::global_state::ThreadSafeGlobalState;
 use crate::global_timer::GlobalTimer;
 use crate::import_map::ImportMap;
 use crate::metrics::Metrics;
-use crate::ops::io::get_stdio;
 use crate::ops::JsonOp;
 use crate::ops::MinimalOp;
 use crate::permissions::DenoPermissions;
@@ -229,12 +228,6 @@ impl ThreadSafeState {
 
     let modules = Arc::new(Mutex::new(deno::Modules::new()));
     let permissions = global_state.permissions.clone();
-    let mut resource_table = ResourceTable::default();
-    // TODO(bartlomieju): this bit should be removed in future, it should be done only for "main" worker state
-    let (stdin, stdout, stderr) = get_stdio();
-    resource_table.add("stdin", Box::new(stdin));
-    resource_table.add("stdout", Box::new(stdout));
-    resource_table.add("stderr", Box::new(stderr));
 
     let state = State {
       global_state,
@@ -250,7 +243,7 @@ impl ThreadSafeState {
       start_time: Instant::now(),
       seeded_rng,
       include_deno_namespace,
-      resource_table: Mutex::new(resource_table),
+      resource_table: Mutex::new(ResourceTable::default()),
     };
 
     Ok(ThreadSafeState(Arc::new(state)))

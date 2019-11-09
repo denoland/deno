@@ -4,6 +4,7 @@ use crate::deno_error::bad_resource;
 use crate::deno_error::js_check;
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
+use crate::ops::io::get_stdio;
 use crate::ops::json_op;
 use crate::startup_data;
 use crate::state::ThreadSafeState;
@@ -145,6 +146,17 @@ fn op_create_worker(
     include_deno_namespace,
     int,
   )?;
+  // TODO(bartlomieju): This bit should be removed in future,
+  // stdio should be probably available only for "main" worker state.
+  // It's done only for compatibility with old global resource table
+  let child_state_ = child_state.clone();
+  {
+    let mut resource_table = child_state_.lock_resource_table();
+    let (stdin, stdout, stderr) = get_stdio();
+    resource_table.add("stdin", Box::new(stdin));
+    resource_table.add("stdout", Box::new(stdout));
+    resource_table.add("stderr", Box::new(stderr));
+  }
   let name = format!("USER-WORKER-{}", specifier);
   let deno_main_call = format!("denoMain({})", include_deno_namespace);
   let mut worker =
