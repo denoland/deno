@@ -2647,7 +2647,7 @@ declare namespace workers {
     noDenoNamespace?: boolean;
   }
   export class WorkerImpl implements Worker {
-    private readonly rid;
+    private readonly id;
     private isClosing;
     private readonly isClosedPromise;
     onerror?: () => void;
