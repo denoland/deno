@@ -132,7 +132,8 @@ fn op_accept(
     .and_then(move |(tcp_stream, _socket_addr)| {
       let local_addr = tcp_stream.local_addr()?;
       let remote_addr = tcp_stream.peer_addr()?;
-      let rid = resources::add_tcp_stream(tcp_stream);
+      let mut table = resources::lock_resource_table();
+      let rid  = table.add("tcpStream", Box::new(CliResource::TcpStream(tcp_stream)));
       Ok((rid, local_addr, remote_addr))
     })
     .map_err(ErrBox::from)
@@ -170,7 +171,8 @@ fn op_dial(
       .and_then(move |tcp_stream| {
         let local_addr = tcp_stream.local_addr()?;
         let remote_addr = tcp_stream.peer_addr()?;
-        let rid = resources::add_tcp_stream(tcp_stream);
+        let mut table = resources::lock_resource_table();
+        let rid = table.add("tcpStream", Box::new(CliResource::TcpStream(tcp_stream)));
         Ok((rid, local_addr, remote_addr))
       })
       .map_err(ErrBox::from)

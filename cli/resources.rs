@@ -18,7 +18,6 @@ use deno::ResourceTable;
 use futures;
 use futures::Future;
 use futures::Poll;
-use reqwest::r#async::Decoder as ReqwestDecoder;
 use std;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
@@ -59,6 +58,24 @@ lazy_static! {
     table.add("stderr", Box::new(CliResource::Stderr(tokio::io::stderr())));
     table
   });
+}
+
+#[allow(dead_code)]
+fn get_stdio() -> (CliResource, CliResource, CliResource) {
+  let stdin = CliResource::Stdin(tokio::io::stdin());
+  let stdout = CliResource::Stdout({
+    #[cfg(not(windows))]
+    let stdout = unsafe { std::fs::File::from_raw_fd(1) };
+    #[cfg(windows)]
+    let stdout = unsafe {
+      std::fs::File::from_raw_handle(winapi::um::processenv::GetStdHandle(
+          winapi::um::winbase::STD_OUTPUT_HANDLE))
+    };
+    tokio::fs::File::from_std(stdout)
+  });
+  let stderr = CliResource::Stderr(tokio::io::stderr());
+
+  (stdin, stdout, stderr)
 }
 
 // TODO: rename to `StreamResource`
@@ -137,53 +154,6 @@ impl DenoAsyncWrite for CliResource {
   fn shutdown(&mut self) -> futures::Poll<(), ErrBox> {
     unimplemented!()
   }
-}
-
-pub fn add_fs_file(fs_file: tokio::fs::File) -> ResourceId {
-  let mut table = lock_resource_table();
-  table.add("fsFile", Box::new(CliResource::FsFile(fs_file)))
-}
-
-pub fn add_tcp_stream(stream: tokio::net::TcpStream) -> ResourceId {
-  let mut table = lock_resource_table();
-  table.add("tcpStream", Box::new(CliResource::TcpStream(stream)))
-}
-
-pub fn add_tls_stream(stream: ClientTlsStream<TcpStream>) -> ResourceId {
-  let mut table = lock_resource_table();
-  table.add(
-    "clientTlsStream",
-    Box::new(CliResource::ClientTlsStream(Box::new(stream))),
-  )
-}
-
-pub fn add_server_tls_stream(stream: ServerTlsStream<TcpStream>) -> ResourceId {
-  let mut table = lock_resource_table();
-  table.add(
-    "serverTlsStream",
-    Box::new(CliResource::ServerTlsStream(Box::new(stream))),
-  )
-}
-
-pub fn add_reqwest_body(body: ReqwestDecoder) -> ResourceId {
-  let body = HttpBody::from(body);
-  let mut table = lock_resource_table();
-  table.add("httpBody", Box::new(CliResource::HttpBody(body)))
-}
-
-pub fn add_child_stdin(stdin: tokio_process::ChildStdin) -> ResourceId {
-  let mut table = lock_resource_table();
-  table.add("childStdin", Box::new(CliResource::ChildStdin(stdin)))
-}
-
-pub fn add_child_stdout(stdout: tokio_process::ChildStdout) -> ResourceId {
-  let mut table = lock_resource_table();
-  table.add("childStdout", Box::new(CliResource::ChildStdout(stdout)))
-}
-
-pub fn add_child_stderr(stderr: tokio_process::ChildStderr) -> ResourceId {
-  let mut table = lock_resource_table();
-  table.add("childStderr", Box::new(CliResource::ChildStderr(stderr)))
 }
 
 pub struct CloneFileFuture {

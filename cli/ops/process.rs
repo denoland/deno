@@ -15,6 +15,7 @@ use std::convert::From;
 use std::process::Command;
 use std::process::ExitStatus;
 use tokio_process::CommandExt;
+use crate::resources::CliResource;
 
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
@@ -109,29 +110,33 @@ fn op_run(
   let mut child = c.spawn_async().map_err(ErrBox::from)?;
   let pid = child.id();
 
-  let stdin_rid = if child.stdin().is_some() {
-    let rid = resources::add_child_stdin(child.stdin().take().unwrap());
-    Some(rid)
-  } else {
-    None
+  let mut table = resources::lock_resource_table();
+
+  let stdin_rid = match child.stdin().take() {
+    Some(child_stdin) => {
+      let rid = table.add("childStdin", Box::new(CliResource::ChildStdin(child_stdin)));
+      Some(rid)
+    },
+    None => None,
   };
 
-  let stdout_rid = if child.stdout().is_some() {
-    let rid = resources::add_child_stdout(child.stdout().take().unwrap());
-    Some(rid)
-  } else {
-    None
+  let stdout_rid = match child.stdout().take() {
+    Some(child_stdout) => {
+      let rid = table.add("childStdout", Box::new(CliResource::ChildStdout(child_stdout)));
+      Some(rid)
+    },
+    None => None,
   };
 
-  let stderr_rid = if child.stderr().is_some() {
-    let rid = resources::add_child_stderr(child.stderr().take().unwrap());
-    Some(rid)
-  } else {
-    None
+  let stderr_rid = match child.stderr().take() {
+    Some(child_stderr) => {
+      let rid = table.add("childStderr", Box::new(CliResource::ChildStderr(child_stderr)));
+      Some(rid)
+    },
+    None => None,
   };
 
   let child_resource = ChildResource { child };
-  let mut table = resources::lock_resource_table();
   let child_rid = table.add("child", Box::new(child_resource));
 
   Ok(JsonOp::Sync(json!({

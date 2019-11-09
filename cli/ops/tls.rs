@@ -32,6 +32,7 @@ use tokio_rustls::{
 use webpki;
 use webpki::DNSNameRef;
 use webpki_roots;
+use crate::resources::CliResource;
 
 pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op("dial_tls", s.core_op(json_op(s.stateful_op(op_dial_tls))));
@@ -99,7 +100,11 @@ pub fn op_dial_tls(
             .connect(dnsname, tcp_stream)
             .map_err(ErrBox::from)
             .and_then(move |tls_stream| {
-              let rid = resources::add_tls_stream(tls_stream);
+              let mut table = resources::lock_resource_table();
+              let rid = table.add(
+                "clientTlsStream",
+                Box::new(CliResource::ClientTlsStream(Box::new(tls_stream))),
+              );
               futures::future::ok(json!({
                 "rid": rid,
                 "localAddr": local_addr.to_string(),
@@ -389,7 +394,11 @@ fn op_accept_tls(
         .accept(tcp_stream)
         .map_err(ErrBox::from)
         .and_then(move |tls_stream| {
-          let rid = resources::add_server_tls_stream(tls_stream);
+          let mut table = resources::lock_resource_table();
+          let rid = table.add(
+            "serverTlsStream",
+            Box::new(CliResource::ServerTlsStream(Box::new(tls_stream))),
+          );
           Ok((rid, local_addr, remote_addr))
         })
     })

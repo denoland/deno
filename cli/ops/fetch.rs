@@ -12,6 +12,8 @@ use hyper;
 use hyper::rt::Future;
 use std;
 use std::convert::From;
+use crate::http_body::HttpBody;
+use crate::resources::CliResource;
 
 pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op("fetch", s.core_op(json_op(s.stateful_op(op_fetch))));
@@ -61,8 +63,9 @@ pub fn op_fetch(
       res_headers.push((key.to_string(), val.to_str().unwrap().to_owned()));
     }
 
-    let body = res.into_body();
-    let rid = resources::add_reqwest_body(body);
+    let body = HttpBody::from(res.into_body());
+    let mut table = resources::lock_resource_table();
+    let rid = table.add("httpBody", Box::new(CliResource::HttpBody(body)));
 
     let json_res = json!({
       "bodyRid": rid,
