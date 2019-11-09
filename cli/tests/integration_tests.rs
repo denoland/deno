@@ -319,15 +319,11 @@ itest!(_044_bad_resource {
   exit_code: 1,
 });
 
-// TODO(kt3k): Temporarily skip this test because welcome.ts doesn't seem
-// working.
-/*
 itest!(_045_proxy {
   args: "run --allow-net --allow-env --allow-run --reload 045_proxy_test.ts",
   output: "045_proxy_test.ts.out",
   http_server: true,
 });
-*/
 
 itest!(_046_tsx {
   args: "run --reload 046_jsx_test.tsx",
