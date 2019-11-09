@@ -4,10 +4,10 @@ use crate::global_state::ThreadSafeGlobalState;
 use crate::global_timer::GlobalTimer;
 use crate::import_map::ImportMap;
 use crate::metrics::Metrics;
+use crate::ops::io::get_stdio;
 use crate::ops::JsonOp;
 use crate::ops::MinimalOp;
 use crate::permissions::DenoPermissions;
-use crate::resources;
 use crate::worker::Worker;
 use crate::worker::WorkerChannels;
 use deno::Buf;
@@ -231,7 +231,7 @@ impl ThreadSafeState {
     let permissions = global_state.permissions.clone();
     let mut resource_table = ResourceTable::default();
     // TODO(bartlomieju): this bit should be removed in future, it should be done only for "main" worker state
-    let (stdin, stdout, stderr) = resources::get_stdio();
+    let (stdin, stdout, stderr) = get_stdio();
     resource_table.add("stdin", Box::new(stdin));
     resource_table.add("stdout", Box::new(stdout));
     resource_table.add("stderr", Box::new(stderr));

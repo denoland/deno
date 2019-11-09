@@ -1,11 +1,11 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
+use super::io::StreamResource;
 use crate::deno_error::bad_resource;
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
 use crate::fs as deno_fs;
 use crate::ops::json_op;
-use crate::resources::CliResource;
 use crate::state::ThreadSafeState;
 use deno::*;
 use futures::Future;
@@ -91,7 +91,7 @@ fn op_open(
   let op = open_options.open(filename).map_err(ErrBox::from).and_then(
     move |fs_file| {
       let mut table = state_.lock_resource_table();
-      let rid = table.add("fsFile", Box::new(CliResource::FsFile(fs_file)));
+      let rid = table.add("fsFile", Box::new(StreamResource::FsFile(fs_file)));
       futures::future::ok(json!(rid))
     },
   );
@@ -134,11 +134,11 @@ impl Future for SeekFuture {
   fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
     let mut table = self.state.lock_resource_table();
     let resource = table
-      .get_mut::<CliResource>(self.rid)
+      .get_mut::<StreamResource>(self.rid)
       .ok_or_else(bad_resource)?;
 
     let tokio_file = match resource {
-      CliResource::FsFile(ref mut file) => file,
+      StreamResource::FsFile(ref mut file) => file,
       _ => return Err(bad_resource()),
     };
 

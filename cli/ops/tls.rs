@@ -1,11 +1,11 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
+use super::io::StreamResource;
 use crate::deno_error::bad_resource;
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
 use crate::ops::json_op;
 use crate::resolve_addr::resolve_addr;
-use crate::resources::CliResource;
 use crate::state::ThreadSafeState;
 use deno::Resource;
 use deno::*;
@@ -102,7 +102,7 @@ pub fn op_dial_tls(
               let mut table = state_.lock_resource_table();
               let rid = table.add(
                 "clientTlsStream",
-                Box::new(CliResource::ClientTlsStream(Box::new(tls_stream))),
+                Box::new(StreamResource::ClientTlsStream(Box::new(tls_stream))),
               );
               futures::future::ok(json!({
                 "rid": rid,
@@ -398,7 +398,7 @@ fn op_accept_tls(
           let mut table = state2.lock_resource_table();
           let rid = table.add(
             "serverTlsStream",
-            Box::new(CliResource::ServerTlsStream(Box::new(tls_stream))),
+            Box::new(StreamResource::ServerTlsStream(Box::new(tls_stream))),
           );
           Ok((rid, local_addr, remote_addr))
         })

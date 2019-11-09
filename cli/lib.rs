@@ -43,7 +43,6 @@ pub mod permissions;
 mod progress;
 mod repl;
 pub mod resolve_addr;
-pub mod resources;
 mod shell;
 mod signal;
 pub mod source_maps;

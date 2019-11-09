@@ -1,8 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
+use super::io::StreamResource;
 use crate::deno_error::bad_resource;
 use crate::ops::json_op;
-use crate::resources::CliResource;
 use crate::signal::kill;
 use crate::state::ThreadSafeState;
 use deno::*;
@@ -39,10 +39,10 @@ impl Future for CloneFileFuture {
   fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
     let mut table = self.state.lock_resource_table();
     let repr = table
-      .get_mut::<CliResource>(self.rid)
+      .get_mut::<StreamResource>(self.rid)
       .ok_or_else(bad_resource)?;
     match repr {
-      CliResource::FsFile(ref mut file) => {
+      StreamResource::FsFile(ref mut file) => {
         file.poll_try_clone().map_err(ErrBox::from)
       }
       _ => Err(bad_resource()),
@@ -148,8 +148,10 @@ fn op_run(
 
   let stdin_rid = match child.stdin().take() {
     Some(child_stdin) => {
-      let rid =
-        table.add("childStdin", Box::new(CliResource::ChildStdin(child_stdin)));
+      let rid = table.add(
+        "childStdin",
+        Box::new(StreamResource::ChildStdin(child_stdin)),
+      );
       Some(rid)
     }
     None => None,
@@ -159,7 +161,7 @@ fn op_run(
     Some(child_stdout) => {
       let rid = table.add(
         "childStdout",
-        Box::new(CliResource::ChildStdout(child_stdout)),
+        Box::new(StreamResource::ChildStdout(child_stdout)),
       );
       Some(rid)
     }
@@ -170,7 +172,7 @@ fn op_run(
     Some(child_stderr) => {
       let rid = table.add(
         "childStderr",
-        Box::new(CliResource::ChildStderr(child_stderr)),
+        Box::new(StreamResource::ChildStderr(child_stderr)),
       );
       Some(rid)
     }

@@ -1,9 +1,9 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
+use super::io::StreamResource;
 use crate::deno_error::bad_resource;
 use crate::ops::json_op;
 use crate::resolve_addr::resolve_addr;
-use crate::resources::CliResource;
 use crate::state::ThreadSafeState;
 use deno::Resource;
 use deno::*;
@@ -134,7 +134,7 @@ fn op_accept(
       let remote_addr = tcp_stream.peer_addr()?;
       let mut table = state_.lock_resource_table();
       let rid =
-        table.add("tcpStream", Box::new(CliResource::TcpStream(tcp_stream)));
+        table.add("tcpStream", Box::new(StreamResource::TcpStream(tcp_stream)));
       Ok((rid, local_addr, remote_addr))
     })
     .map_err(ErrBox::from)
@@ -173,8 +173,8 @@ fn op_dial(
         let local_addr = tcp_stream.local_addr()?;
         let remote_addr = tcp_stream.peer_addr()?;
         let mut table = state_.lock_resource_table();
-        let rid =
-          table.add("tcpStream", Box::new(CliResource::TcpStream(tcp_stream)));
+        let rid = table
+          .add("tcpStream", Box::new(StreamResource::TcpStream(tcp_stream)));
         Ok((rid, local_addr, remote_addr))
       })
       .map_err(ErrBox::from)
@@ -213,9 +213,11 @@ fn op_shutdown(
   };
 
   let mut table = state.lock_resource_table();
-  let resource = table.get_mut::<CliResource>(rid).ok_or_else(bad_resource)?;
+  let resource = table
+    .get_mut::<StreamResource>(rid)
+    .ok_or_else(bad_resource)?;
   match resource {
-    CliResource::TcpStream(ref mut stream) => {
+    StreamResource::TcpStream(ref mut stream) => {
       TcpStream::shutdown(stream, shutdown_mode).map_err(ErrBox::from)?;
     }
     _ => return Err(bad_resource()),
