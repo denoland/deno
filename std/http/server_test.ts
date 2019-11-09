@@ -14,6 +14,7 @@ import {
   ServerRequest,
   writeResponse,
   readRequest,
+  serve,
   parseHTTPVersion
 } from "./server.ts";
 import { delay } from "../util/async.ts";
@@ -577,6 +578,19 @@ test({
       // Stops the sever.
       p.close();
     }
+  }
+});
+
+test({
+  name: "[http] close server while iterating",
+  async fn(): Promise<void> {
+    const server = serve(":8123");
+    const nextWhileClosing = server[Symbol.asyncIterator]().next();
+    server.close();
+    assertEquals(await nextWhileClosing, { value: undefined, done: true });
+
+    const nextAfterClosing = server[Symbol.asyncIterator]().next();
+    assertEquals(await nextAfterClosing, { value: undefined, done: true });
   }
 });
 
