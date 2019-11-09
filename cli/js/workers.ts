@@ -35,17 +35,17 @@ function createWorker(
   });
 }
 
-async function hostGetWorkerClosed(rid: number): Promise<void> {
-  await sendAsync(dispatch.OP_HOST_GET_WORKER_CLOSED, { rid });
+async function hostGetWorkerClosed(id: number): Promise<void> {
+  await sendAsync(dispatch.OP_HOST_GET_WORKER_CLOSED, { id });
 }
 
-function hostPostMessage(rid: number, data: any): void {
+function hostPostMessage(id: number, data: any): void {
   const dataIntArray = encodeMessage(data);
-  sendSync(dispatch.OP_HOST_POST_MESSAGE, { rid }, dataIntArray);
+  sendSync(dispatch.OP_HOST_POST_MESSAGE, { id }, dataIntArray);
 }
 
-async function hostGetMessage(rid: number): Promise<any> {
-  const res = await sendAsync(dispatch.OP_HOST_GET_MESSAGE, { rid });
+async function hostGetMessage(id: number): Promise<any> {
+  const res = await sendAsync(dispatch.OP_HOST_GET_MESSAGE, { id });
 
   if (res.data != null) {
     return decodeMessage(new Uint8Array(res.data));
@@ -123,7 +123,7 @@ export interface DenoWorkerOptions extends WorkerOptions {
 }
 
 export class WorkerImpl implements Worker {
-  private readonly rid: number;
+  private readonly id: number;
   private isClosing = false;
   private readonly isClosedPromise: Promise<void>;
   public onerror?: () => void;
@@ -152,14 +152,14 @@ export class WorkerImpl implements Worker {
       sourceCode = blobBytes!;
     }
 
-    this.rid = createWorker(
+    this.id = createWorker(
       specifier,
       includeDenoNamespace,
       hasSourceCode,
       sourceCode
     );
     this.run();
-    this.isClosedPromise = hostGetWorkerClosed(this.rid);
+    this.isClosedPromise = hostGetWorkerClosed(this.id);
     this.isClosedPromise.then(
       (): void => {
         this.isClosing = true;
@@ -172,12 +172,12 @@ export class WorkerImpl implements Worker {
   }
 
   postMessage(data: any): void {
-    hostPostMessage(this.rid, data);
+    hostPostMessage(this.id, data);
   }
 
   private async run(): Promise<void> {
     while (!this.isClosing) {
-      const data = await hostGetMessage(this.rid);
+      const data = await hostGetMessage(this.id);
       if (data == null) {
         log("worker got null message. quitting.");
         break;

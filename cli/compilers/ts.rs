@@ -223,8 +223,10 @@ impl TsCompiler {
 
   /// Create a new V8 worker with snapshot of TS compiler and setup compiler's runtime.
   fn setup_worker(global_state: ThreadSafeGlobalState) -> Worker {
-    let worker_state = ThreadSafeState::new(global_state.clone(), None, true)
-      .expect("Unable to create worker state");
+    let (int, ext) = ThreadSafeState::create_channels();
+    let worker_state =
+      ThreadSafeState::new(global_state.clone(), None, true, int)
+        .expect("Unable to create worker state");
 
     // Count how many times we start the compiler worker.
     global_state
@@ -236,6 +238,7 @@ impl TsCompiler {
       "TS".to_string(),
       startup_data::compiler_isolate_init(),
       worker_state,
+      ext,
     );
     worker.execute("denoMain()").unwrap();
     worker.execute("workerMain()").unwrap();
