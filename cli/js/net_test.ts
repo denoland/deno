@@ -77,6 +77,18 @@ testPerm({ net: true }, async function netDialListen(): Promise<void> {
   conn.close();
 });
 
+testPerm({ net: true }, async function netListenCloseWhileIterating(): Promise<
+  void
+> {
+  const listener = Deno.listen({ port: 8000 });
+  const nextWhileClosing = listener[Symbol.asyncIterator]().next();
+  listener.close();
+  assertEquals(await nextWhileClosing, { value: undefined, done: true });
+
+  const nextAfterClosing = listener[Symbol.asyncIterator]().next();
+  assertEquals(await nextAfterClosing, { value: undefined, done: true });
+});
+
 /* TODO(ry) Re-enable this test.
 testPerm({ net: true }, async function netListenAsyncIterator(): Promise<void> {
   const listener = Deno.listen(":4500");
