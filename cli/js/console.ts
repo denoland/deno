@@ -274,7 +274,7 @@ function createNumberWrapperString(value: Number): string {
 // TODO: Proxy
 
 function createRawObjectString(
-  value: { [key: string]: unknown },
+  value: object,
   ctx: ConsoleContext,
   level: number,
   maxLevel: number
@@ -291,13 +291,14 @@ function createRawObjectString(
   if (className && className !== "Object" && className !== "anonymous") {
     shouldShowClassName = true;
   }
-  const keys = Object.keys(value);
+  const keys = [ ...Object.keys(value), ...Object.getOwnPropertySymbols(value) ];
   const entries: string[] = keys.map(
     (key): string => {
+      const stringKey = String(key)
       if (keys.length > OBJ_ABBREVIATE_SIZE) {
-        return key;
+        return stringKey;
       } else {
-        return `${key}: ${stringifyWithQuotes(
+        return `${stringKey}: ${stringifyWithQuotes(
           value[key],
           ctx,
           level + 1,
