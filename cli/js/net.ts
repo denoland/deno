@@ -82,7 +82,8 @@ export class ListenerImpl implements Listener {
   constructor(
     readonly rid: number,
     private transport: Transport,
-    private localAddr: string
+    private localAddr: string,
+    private closing: boolean = false
   ) {}
 
   async accept(): Promise<Conn> {
@@ -91,6 +92,7 @@ export class ListenerImpl implements Listener {
   }
 
   close(): void {
+    this.closing = true;
     close(this.rid);
   }
 
@@ -102,10 +104,20 @@ export class ListenerImpl implements Listener {
   }
 
   async next(): Promise<IteratorResult<Conn>> {
-    return {
-      done: false,
-      value: await this.accept()
-    };
+    if (this.closing) {
+      return { value: undefined, done: true };
+    }
+    return await this.accept()
+      .then(value => ({ value, done: false }))
+      .catch(e => {
+        // It wouldn't be correct to simply check this.closing here.
+        // TODO: Get a proper error kind for this case, don't check the message.
+        // The current error kind is Other.
+        if (e.message == "Listener has been closed") {
+          return { value: undefined, done: true };
+        }
+        throw e;
+      });
   }
 
   [Symbol.asyncIterator](): AsyncIterator<Conn> {
