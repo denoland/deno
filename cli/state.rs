@@ -5,17 +5,19 @@ use crate::global_timer::GlobalTimer;
 use crate::import_map::ImportMap;
 use crate::metrics::Metrics;
 use crate::ops::JsonOp;
+use crate::ops::MinimalOp;
 use crate::permissions::DenoPermissions;
+use crate::resources;
 use crate::worker::Worker;
 use crate::worker::WorkerChannels;
 use deno::Buf;
 use deno::CoreOp;
-use deno::ResourceTable;
 use deno::ErrBox;
 use deno::Loader;
 use deno::ModuleSpecifier;
 use deno::Op;
 use deno::PinnedBuf;
+use deno::ResourceTable;
 use futures::Future;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
@@ -28,10 +30,9 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::MutexGuard;
 use std::time::Instant;
 use tokio::sync::mpsc;
-use std::sync::MutexGuard;
-use crate::resources;
 
 /// Isolate cannot be passed between threads but ThreadSafeState can.
 /// ThreadSafeState satisfies Send and Sync. So any state that needs to be
@@ -72,7 +73,7 @@ impl Deref for ThreadSafeState {
 }
 
 impl ThreadSafeState {
-  pub fn lock_resource_table<'a>(&'a self) -> MutexGuard<'a, ResourceTable> {
+  pub fn lock_resource_table(&self) -> MutexGuard<ResourceTable> {
     self.resource_table.lock().unwrap()
   }
 
@@ -108,6 +109,21 @@ impl ThreadSafeState {
           Op::Async(result_fut)
         }
       }
+    }
+  }
+
+  /// This is a special function that provides `state` argument to dispatcher.
+  pub fn stateful_minimal_op<D>(
+    &self,
+    dispatcher: D,
+  ) -> impl Fn(i32, Option<PinnedBuf>) -> Box<MinimalOp>
+  where
+    D: Fn(&ThreadSafeState, i32, Option<PinnedBuf>) -> Box<MinimalOp>,
+  {
+    let state = self.clone();
+
+    move |rid: i32, zero_copy: Option<PinnedBuf>| -> Box<MinimalOp> {
+      dispatcher(&state, rid, zero_copy)
     }
   }
 

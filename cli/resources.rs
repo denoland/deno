@@ -11,16 +11,10 @@
 use crate::deno_error::bad_resource;
 use crate::http_body::HttpBody;
 use deno::ErrBox;
-pub use deno::Resource;
-pub use deno::ResourceId;
-use deno::ResourceTable;
-
+use deno::Resource;
 use futures;
-use futures::Future;
 use futures::Poll;
 use std;
-use std::sync::Mutex;
-use std::sync::MutexGuard;
 use tokio;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
@@ -37,29 +31,6 @@ use std::os::windows::io::FromRawHandle;
 #[cfg(windows)]
 extern crate winapi;
 
-lazy_static! {
-  static ref RESOURCE_TABLE: Mutex<ResourceTable> = Mutex::new({
-    let mut table = ResourceTable::default();
-
-    // TODO Load these lazily during lookup?
-    table.add("stdin", Box::new(CliResource::Stdin(tokio::io::stdin())));
-
-    table.add("stdout", Box::new(CliResource::Stdout({
-      #[cfg(not(windows))]
-      let stdout = unsafe { std::fs::File::from_raw_fd(1) };
-      #[cfg(windows)]
-      let stdout = unsafe {
-        std::fs::File::from_raw_handle(winapi::um::processenv::GetStdHandle(
-            winapi::um::winbase::STD_OUTPUT_HANDLE))
-      };
-      tokio::fs::File::from_std(stdout)
-    })));
-
-    table.add("stderr", Box::new(CliResource::Stderr(tokio::io::stderr())));
-    table
-  });
-}
-
 pub fn get_stdio() -> (CliResource, CliResource, CliResource) {
   let stdin = CliResource::Stdin(tokio::io::stdin());
   let stdout = CliResource::Stdout({
@@ -68,7 +39,8 @@ pub fn get_stdio() -> (CliResource, CliResource, CliResource) {
     #[cfg(windows)]
     let stdout = unsafe {
       std::fs::File::from_raw_handle(winapi::um::processenv::GetStdHandle(
-          winapi::um::winbase::STD_OUTPUT_HANDLE))
+        winapi::um::winbase::STD_OUTPUT_HANDLE,
+      ))
     };
     tokio::fs::File::from_std(stdout)
   });
@@ -93,10 +65,6 @@ pub enum CliResource {
 }
 
 impl Resource for CliResource {}
-
-pub fn lock_resource_table<'a>() -> MutexGuard<'a, ResourceTable> {
-  RESOURCE_TABLE.lock().unwrap()
-}
 
 /// `DenoAsyncRead` is the same as the `tokio_io::AsyncRead` trait
 /// but uses an `ErrBox` error instead of `std::io:Error`
@@ -152,27 +120,5 @@ impl DenoAsyncWrite for CliResource {
 
   fn shutdown(&mut self) -> futures::Poll<(), ErrBox> {
     unimplemented!()
-  }
-}
-
-pub struct CloneFileFuture {
-  pub rid: ResourceId,
-}
-
-impl Future for CloneFileFuture {
-  type Item = tokio::fs::File;
-  type Error = ErrBox;
-
-  fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-    let mut table = lock_resource_table();
-    let repr = table
-      .get_mut::<CliResource>(self.rid)
-      .ok_or_else(bad_resource)?;
-    match repr {
-      CliResource::FsFile(ref mut file) => {
-        file.poll_try_clone().map_err(ErrBox::from)
-      }
-      _ => Err(bad_resource()),
-    }
   }
 }

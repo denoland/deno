@@ -177,7 +177,11 @@ fn op_seek(
     }
   };
 
-  let fut = SeekFuture { state: state.clone(), seek_from, rid };
+  let fut = SeekFuture {
+    state: state.clone(),
+    seek_from,
+    rid,
+  };
 
   let op = fut.and_then(move |_| futures::future::ok(json!({})));
   if args.promise_id.is_none() {
