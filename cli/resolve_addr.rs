@@ -1,5 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::deno_error;
 use deno::ErrBox;
 use futures::Async;
 use futures::Future;
@@ -7,21 +6,17 @@ use futures::Poll;
 use std::net::SocketAddr;
 use std::net::ToSocketAddrs;
 
-/// Go-style network address parsing. Returns a future.
-/// Examples:
-/// "192.0.2.1:25"
-/// ":80"
-/// "[2001:db8::1]:80"
-/// "198.51.100.1:80"
-/// "deno.land:443"
-pub fn resolve_addr(address: &str) -> ResolveAddrFuture {
+/// Resolve network address. Returns a future.
+pub fn resolve_addr(hostname: &str, port: u16) -> ResolveAddrFuture {
   ResolveAddrFuture {
-    address: address.to_string(),
+    hostname: hostname.to_string(),
+    port,
   }
 }
 
 pub struct ResolveAddrFuture {
-  address: String,
+  hostname: String,
+  port: u16,
 }
 
 impl Future for ResolveAddrFuture {
@@ -32,26 +27,14 @@ impl Future for ResolveAddrFuture {
     // The implementation of this is not actually async at the moment,
     // however we intend to use async DNS resolution in the future and
     // so we expose this as a future instead of Result.
-    match split(&self.address) {
-      None => Err(deno_error::invalid_address_syntax()),
-      Some(addr_port_pair) => {
-        // I absolutely despise the .to_socket_addrs() API.
-        let r = addr_port_pair.to_socket_addrs().map_err(ErrBox::from);
 
-        r.and_then(|mut iter| match iter.next() {
-          Some(a) => Ok(Async::Ready(a)),
-          None => panic!("There should be at least one result"),
-        })
-      }
-    }
-  }
-}
-
-fn split(address: &str) -> Option<(&str, u16)> {
-  address.rfind(':').and_then(|i| {
-    let (a, p) = address.split_at(i);
     // Default to localhost if given just the port. Example: ":80"
-    let addr = if !a.is_empty() { a } else { "0.0.0.0" };
+    let addr: &str = if !self.hostname.is_empty() {
+      &self.hostname
+    } else {
+      "0.0.0.0"
+    };
+
     // If this looks like an ipv6 IP address. Example: "[2001:db8::1]"
     // Then we remove the brackets.
     let addr = if addr.starts_with('[') && addr.ends_with(']') {
@@ -60,13 +43,14 @@ fn split(address: &str) -> Option<(&str, u16)> {
     } else {
       addr
     };
+    let addr_port_pair = (addr, self.port);
+    let r = addr_port_pair.to_socket_addrs().map_err(ErrBox::from);
 
-    let p = p.trim_start_matches(':');
-    match p.parse::<u16>() {
-      Err(_) => None,
-      Ok(port) => Some((addr, port)),
-    }
-  })
+    r.and_then(|mut iter| match iter.next() {
+      Some(a) => Ok(Async::Ready(a)),
+      None => panic!("There should be at least one result"),
+    })
+  }
 }
 
 #[cfg(test)]
@@ -78,35 +62,18 @@ mod tests {
   use std::net::SocketAddrV6;
 
   #[test]
-  fn split1() {
-    assert_eq!(split("127.0.0.1:80"), Some(("127.0.0.1", 80)));
-  }
-
-  #[test]
-  fn split2() {
-    assert_eq!(split(":80"), Some(("0.0.0.0", 80)));
-  }
-
-  #[test]
-  fn split3() {
-    assert_eq!(split("no colon"), None);
-  }
-
-  #[test]
-  fn split4() {
-    assert_eq!(split("deno.land:443"), Some(("deno.land", 443)));
-  }
-
-  #[test]
-  fn split5() {
-    assert_eq!(split("[2001:db8::1]:8080"), Some(("2001:db8::1", 8080)));
-  }
-
-  #[test]
   fn resolve_addr1() {
     let expected =
       SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 80));
-    let actual = resolve_addr("127.0.0.1:80").wait().unwrap();
+    let actual = resolve_addr("127.0.0.1", 80).wait().unwrap();
+    assert_eq!(actual, expected);
+  }
+
+  #[test]
+  fn resolve_addr2() {
+    let expected =
+      SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 80));
+    let actual = resolve_addr("", 80).wait().unwrap();
     assert_eq!(actual, expected);
   }
 
@@ -114,7 +81,7 @@ mod tests {
   fn resolve_addr3() {
     let expected =
       SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(192, 0, 2, 1), 25));
-    let actual = resolve_addr("192.0.2.1:25").wait().unwrap();
+    let actual = resolve_addr("192.0.2.1", 25).wait().unwrap();
     assert_eq!(actual, expected);
   }
 
@@ -126,7 +93,7 @@ mod tests {
       0,
       0,
     ));
-    let actual = resolve_addr("[2001:db8::1]:8080").wait().unwrap();
+    let actual = resolve_addr("[2001:db8::1]", 8080).wait().unwrap();
     assert_eq!(actual, expected);
   }
 }

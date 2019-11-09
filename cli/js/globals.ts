@@ -26,7 +26,6 @@ import * as url from "./url.ts";
 import * as urlSearchParams from "./url_search_params.ts";
 import * as workers from "./workers.ts";
 import * as performanceUtil from "./performance.ts";
-
 import * as request from "./request.ts";
 
 // These imports are not exposed and therefore are fine to just import the

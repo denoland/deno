@@ -5,8 +5,8 @@ use crate::diagnostics::Diagnostic;
 use crate::disk_cache::DiskCache;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
+use crate::global_state::ThreadSafeGlobalState;
 use crate::msg;
-use crate::resources;
 use crate::source_maps::SourceMapGetter;
 use crate::startup_data;
 use crate::state::*;
@@ -16,11 +16,9 @@ use deno::Buf;
 use deno::ErrBox;
 use deno::ModuleSpecifier;
 use futures::Future;
-use futures::Stream;
+use futures::IntoFuture;
 use regex::Regex;
-use ring;
 use std::collections::HashSet;
-use std::fmt::Write;
 use std::fs;
 use std::io;
 use std::path::PathBuf;
@@ -178,20 +176,6 @@ fn req(
   j.to_string().into_boxed_str().into_boxed_bytes()
 }
 
-fn gen_hash(v: Vec<&[u8]>) -> String {
-  let mut ctx = ring::digest::Context::new(&ring::digest::SHA256);
-  for src in v.iter() {
-    ctx.update(src);
-  }
-  let digest = ctx.finish();
-  let mut out = String::new();
-  // TODO There must be a better way to do this...
-  for byte in digest.as_ref() {
-    write!(&mut out, "{:02x}", byte).unwrap();
-  }
-  out
-}
-
 /// Emit a SHA256 hash based on source code, deno version and TS config.
 /// Used to check if a recompilation for source code is needed.
 pub fn source_code_version_hash(
@@ -199,7 +183,7 @@ pub fn source_code_version_hash(
   version: &str,
   config_hash: &[u8],
 ) -> String {
-  gen_hash(vec![source_code, version.as_bytes(), config_hash])
+  crate::checksum::gen(vec![source_code, version.as_bytes(), config_hash])
 }
 
 pub struct TsCompiler {
@@ -238,16 +222,20 @@ impl TsCompiler {
   }
 
   /// Create a new V8 worker with snapshot of TS compiler and setup compiler's runtime.
-  fn setup_worker(state: ThreadSafeState) -> Worker {
+  fn setup_worker(global_state: ThreadSafeGlobalState) -> Worker {
+    let worker_state = ThreadSafeState::new(global_state.clone(), None, true)
+      .expect("Unable to create worker state");
+
     // Count how many times we start the compiler worker.
-    state.metrics.compiler_starts.fetch_add(1, Ordering::SeqCst);
+    global_state
+      .metrics
+      .compiler_starts
+      .fetch_add(1, Ordering::SeqCst);
 
     let mut worker = Worker::new(
       "TS".to_string(),
       startup_data::compiler_isolate_init(),
-      // TODO(ry) Maybe we should use a separate state for the compiler.
-      // as was done previously.
-      state.clone(),
+      worker_state,
     );
     worker.execute("denoMain()").unwrap();
     worker.execute("workerMain()").unwrap();
@@ -257,7 +245,7 @@ impl TsCompiler {
 
   pub fn bundle_async(
     self: &Self,
-    state: ThreadSafeState,
+    global_state: ThreadSafeGlobalState,
     module_name: String,
     out_file: String,
   ) -> impl Future<Item = (), Error = ErrBox> {
@@ -269,24 +257,21 @@ impl TsCompiler {
     let root_names = vec![module_name.clone()];
     let req_msg = req(root_names, self.config.clone(), Some(out_file));
 
-    let worker = TsCompiler::setup_worker(state.clone());
-    let resource = worker.state.resource.clone();
-    let compiler_rid = resource.rid;
-    let first_msg_fut =
-      resources::post_message_to_worker(compiler_rid, req_msg)
-        .then(move |_| worker)
-        .then(move |result| {
-          if let Err(err) = result {
-            // TODO(ry) Need to forward the error instead of exiting.
-            eprintln!("{}", err.to_string());
-            std::process::exit(1);
-          }
-          debug!("Sent message to worker");
-          let stream_future =
-            resources::get_message_stream_from_worker(compiler_rid)
-              .into_future();
-          stream_future.map(|(f, _rest)| f).map_err(|(f, _rest)| f)
-        });
+    let worker = TsCompiler::setup_worker(global_state.clone());
+    let worker_ = worker.clone();
+    let first_msg_fut = worker
+      .post_message(req_msg)
+      .into_future()
+      .then(move |_| worker)
+      .then(move |result| {
+        if let Err(err) = result {
+          // TODO(ry) Need to forward the error instead of exiting.
+          eprintln!("{}", err.to_string());
+          std::process::exit(1);
+        }
+        debug!("Sent message to worker");
+        worker_.get_message()
+      });
 
     first_msg_fut.map_err(|_| panic!("not handled")).and_then(
       move |maybe_msg: Option<Buf>| {
@@ -327,7 +312,7 @@ impl TsCompiler {
   /// If compilation is required then new V8 worker is spawned with fresh TS compiler.
   pub fn compile_async(
     self: &Self,
-    state: ThreadSafeState,
+    global_state: ThreadSafeGlobalState,
     source_file: &SourceFile,
   ) -> Box<CompiledModuleFuture> {
     if self.has_compiled(&source_file.url) {
@@ -374,27 +359,26 @@ impl TsCompiler {
     let root_names = vec![module_url.to_string()];
     let req_msg = req(root_names, self.config.clone(), None);
 
-    let worker = TsCompiler::setup_worker(state.clone());
-    let compiling_job = state.progress.add("Compile", &module_url.to_string());
-    let state_ = state.clone();
+    let worker = TsCompiler::setup_worker(global_state.clone());
+    let worker_ = worker.clone();
+    let compiling_job = global_state
+      .progress
+      .add("Compile", &module_url.to_string());
+    let global_state_ = global_state.clone();
 
-    let resource = worker.state.resource.clone();
-    let compiler_rid = resource.rid;
-    let first_msg_fut =
-      resources::post_message_to_worker(compiler_rid, req_msg)
-        .then(move |_| worker)
-        .then(move |result| {
-          if let Err(err) = result {
-            // TODO(ry) Need to forward the error instead of exiting.
-            eprintln!("{}", err.to_string());
-            std::process::exit(1);
-          }
-          debug!("Sent message to worker");
-          let stream_future =
-            resources::get_message_stream_from_worker(compiler_rid)
-              .into_future();
-          stream_future.map(|(f, _rest)| f).map_err(|(f, _rest)| f)
-        });
+    let first_msg_fut = worker
+      .post_message(req_msg)
+      .into_future()
+      .then(move |_| worker)
+      .then(move |result| {
+        if let Err(err) = result {
+          // TODO(ry) Need to forward the error instead of exiting.
+          eprintln!("{}", err.to_string());
+          std::process::exit(1);
+        }
+        debug!("Sent message to worker");
+        worker_.get_message()
+      });
 
     let fut = first_msg_fut
       .map_err(|_| panic!("not handled"))
@@ -414,7 +398,7 @@ impl TsCompiler {
       .and_then(move |_| {
         // if we are this far it means compilation was successful and we can
         // load compiled filed from disk
-        state_
+        global_state_
           .ts_compiler
           .get_compiled_module(&source_file_.url)
           .map_err(|e| {
@@ -596,7 +580,7 @@ impl SourceMapGetter for TsCompiler {
   fn get_source_map(&self, script_name: &str) -> Option<Vec<u8>> {
     self
       .try_to_resolve_and_get_source_map(script_name)
-      .and_then(|out| Some(out.source_code))
+      .map(|out| out.source_code)
   }
 
   fn get_source_line(&self, script_name: &str, line: usize) -> Option<String> {
@@ -677,7 +661,7 @@ mod tests {
       source_code: include_bytes!("../tests/002_hello.ts").to_vec(),
     };
 
-    let mock_state = ThreadSafeState::mock(vec![
+    let mock_state = ThreadSafeGlobalState::mock(vec![
       String::from("deno"),
       String::from("hello.js"),
     ]);
@@ -710,7 +694,7 @@ mod tests {
       .unwrap()
       .to_string();
 
-    let state = ThreadSafeState::mock(vec![
+    let state = ThreadSafeGlobalState::mock(vec![
       String::from("deno"),
       p.to_string_lossy().into(),
       String::from("$deno$/bundle.js"),

@@ -190,6 +190,27 @@ test(function consoleTestWithCustomInspector(): void {
   assertEquals(stringify(new A()), "b");
 });
 
+test(function consoleTestWithCustomInspectorError(): void {
+  class A {
+    [customInspect](): string {
+      throw new Error("BOOM");
+      return "b";
+    }
+  }
+
+  assertEquals(stringify(new A()), "A {}");
+
+  class B {
+    constructor(public field: { a: string }) {}
+    [customInspect](): string {
+      return this.field.a;
+    }
+  }
+
+  assertEquals(stringify(new B({ a: "a" })), "a");
+  assertEquals(stringify(B.prototype), "{}");
+});
+
 test(function consoleTestWithIntegerFormatSpecifier(): void {
   assertEquals(stringify("%i"), "%i");
   assertEquals(stringify("%i", 42.0), "42");

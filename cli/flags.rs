@@ -15,7 +15,7 @@ use url::Url;
 
 macro_rules! std_url {
   ($x:expr) => {
-    concat!("https://deno.land/std@8c90bd9/", $x)
+    concat!("https://deno.land/std@v0.21.0/", $x)
   };
 }
 
@@ -38,11 +38,7 @@ pub struct DenoFlags {
   pub log_level: Option<Level>,
   pub version: bool,
   pub reload: bool,
-  /// When the `--config`/`-c` flag is used to pass the name, this will be set
-  /// the path passed on the command line, otherwise `None`.
   pub config_path: Option<String>,
-  /// When the `--importmap` flag is used to pass the name, this will be set
-  /// the path passed on the command line, otherwise `None`.
   pub import_map_path: Option<String>,
   pub allow_read: bool,
   pub read_whitelist: Vec<String>,
@@ -60,6 +56,9 @@ pub struct DenoFlags {
   pub v8_flags: Option<Vec<String>>,
   // Use tokio::runtime::current_thread
   pub current_thread: bool,
+
+  pub lock: Option<String>,
+  pub lock_write: bool,
 }
 
 static ENV_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
@@ -119,11 +118,6 @@ fn add_run_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .help("Allow all permissions"),
     )
     .arg(
-      Arg::with_name("no-prompt")
-        .long("no-prompt")
-        .help("Do not use prompts"),
-    )
-    .arg(
       Arg::with_name("no-fetch")
         .long("no-fetch")
         .help("Do not download remote modules"),
@@ -136,7 +130,7 @@ pub fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
     .global_settings(&[AppSettings::ColorNever, AppSettings::UnifiedHelpMessage, AppSettings::DisableVersion])
     .settings(&[AppSettings::AllowExternalSubcommands])
     .after_help(ENV_VARIABLES_HELP)
-    .long_about("A secure runtime for JavaScript and TypeScript built with V8, Rust, and Tokio.
+    .long_about("A secure JavaScript and TypeScript runtime
 
 Docs: https://deno.land/manual.html
 Modules: https://deno.land/x/
@@ -148,7 +142,7 @@ To run the REPL:
 
 To execute a sandboxed script:
 
-  deno https://deno.land/welcome.ts
+  deno https://deno.land/std/examples/welcome.ts
 
 To evaluate code from the command line:
 
@@ -194,7 +188,7 @@ To get help on the another subcommands (run in this case):
         .short("c")
         .long("config")
         .value_name("FILE")
-        .help("Load compiler configuration file")
+        .help("Load tsconfig.json configuration file")
         .takes_value(true)
         .global(true),
     )
@@ -227,6 +221,18 @@ Examples: https://github.com/WICG/import-maps#the-import-map",
             Err(_) => Err("Seed should be a number".to_string())
           }
         })
+        .global(true),
+    ).arg(
+      Arg::with_name("lock")
+        .long("lock")
+        .value_name("FILE")
+        .help("Check the specified lock file")
+        .takes_value(true)
+        .global(true),
+    ).arg(
+      Arg::with_name("lock-write")
+        .long("lock-write")
+        .help("Write lock file. Use with --lock.")
         .global(true),
     ).arg(
       Arg::with_name("v8-options")
@@ -639,6 +645,13 @@ pub fn parse_flags(
       }
     }
   }
+  if matches.is_present("lock") {
+    let lockfile = matches.value_of("lock").unwrap();
+    flags.lock = Some(lockfile.to_string());
+  }
+  if matches.is_present("lock-write") {
+    flags.lock_write = true;
+  }
 
   flags = parse_run_args(flags, matches);
   // flags specific to "run" subcommand
@@ -706,9 +719,6 @@ fn parse_run_args(mut flags: DenoFlags, matches: &ArgMatches) -> DenoFlags {
     flags.allow_read = true;
     flags.allow_write = true;
     flags.allow_hrtime = true;
-  }
-  if matches.is_present("no-prompt") {
-    flags.no_prompts = true;
   }
   if matches.is_present("no-fetch") {
     flags.no_fetch = true;
@@ -1892,6 +1902,26 @@ mod tests {
           "127.0.0.1:4545",
           "localhost:4545"
         ],
+        ..DenoFlags::default()
+      }
+    );
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(argv, svec!["deno", "script.ts"])
+  }
+
+  #[test]
+  fn test_flags_from_vec_38() {
+    let (flags, subcommand, argv) = flags_from_vec(svec![
+      "deno",
+      "--lock-write",
+      "--lock=lock.json",
+      "script.ts"
+    ]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        lock_write: true,
+        lock: Some("lock.json".to_string()),
         ..DenoFlags::default()
       }
     );

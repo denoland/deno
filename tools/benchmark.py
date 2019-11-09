@@ -27,6 +27,7 @@ exec_time_benchmarks = [
     ("cold_relative_import", ["--reload", "tests/003_relative_import.ts"]),
     ("workers_startup", ["tests/workers_startup_bench.ts"]),
     ("workers_round_robin", ["tests/workers_round_robin_bench.ts"]),
+    ("text_decoder", ["cli/tests/text_decoder_perf.js"]),
 ]
 
 
@@ -160,7 +161,6 @@ def run_max_mem_benchmark(deno_exe):
 
 
 def run_exec_time(deno_exe, build_dir):
-    third_party.download_hyperfine()
     hyperfine_exe = third_party.get_prebuilt_tool_path("hyperfine")
     benchmark_file = os.path.join(build_dir, "hyperfine_results.json")
     run([

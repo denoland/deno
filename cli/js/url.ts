@@ -3,6 +3,7 @@ import * as urlSearchParams from "./url_search_params.ts";
 import * as domTypes from "./dom_types.ts";
 import { getRandomValues } from "./get_random_values.ts";
 import { window } from "./window.ts";
+import { customInspect } from "./console.ts";
 
 interface URLParts {
   protocol: string;
@@ -143,6 +144,26 @@ function resolvePathFromBase(path: string, basePath: string): string {
 export class URL {
   private _parts: URLParts;
   private _searchParams!: urlSearchParams.URLSearchParams;
+
+  [customInspect](): string {
+    const keys = [
+      "href",
+      "origin",
+      "protocol",
+      "username",
+      "password",
+      "host",
+      "hostname",
+      "port",
+      "pathname",
+      "hash",
+      "search"
+    ];
+    const objectString = keys
+      .map((key: string) => `${key}: "${this[key] || ""}"`)
+      .join(", ");
+    return `URL { ${objectString} }`;
+  }
 
   private _updateSearchParams(): void {
     const searchParams = new urlSearchParams.URLSearchParams(this.search);

@@ -6,8 +6,8 @@ use deno::*;
 
 pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op(
-    "permissions",
-    s.core_op(json_op(s.stateful_op(op_permissions))),
+    "query_permission",
+    s.core_op(json_op(s.stateful_op(op_query_permission))),
   );
   i.register_op(
     "revoke_permission",
@@ -15,24 +15,25 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   );
 }
 
-pub fn op_permissions(
-  state: &ThreadSafeState,
-  _args: Value,
-  _zero_copy: Option<PinnedBuf>,
-) -> Result<JsonOp, ErrBox> {
-  Ok(JsonOp::Sync(json!({
-    "run": state.permissions.allows_run(),
-    "read": state.permissions.allows_read(),
-    "write": state.permissions.allows_write(),
-    "net": state.permissions.allows_net(),
-    "env": state.permissions.allows_env(),
-    "hrtime": state.permissions.allows_hrtime(),
-  })))
+#[derive(Deserialize)]
+struct PermissionArgs {
+  name: String,
+  url: Option<String>,
+  path: Option<String>,
 }
 
-#[derive(Deserialize)]
-struct RevokePermissionArgs {
-  permission: String,
+pub fn op_query_permission(
+  state: &ThreadSafeState,
+  args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: PermissionArgs = serde_json::from_value(args)?;
+  let perm = state.permissions.get_permission_state(
+    &args.name,
+    &args.url.as_ref().map(String::as_str),
+    &args.path.as_ref().map(String::as_str),
+  )?;
+  Ok(JsonOp::Sync(json!({ "state": perm.to_string() })))
 }
 
 pub fn op_revoke_permission(
@@ -40,17 +41,20 @@ pub fn op_revoke_permission(
   args: Value,
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
-  let args: RevokePermissionArgs = serde_json::from_value(args)?;
-  let permission = args.permission.as_ref();
-  match permission {
-    "run" => state.permissions.revoke_run(),
-    "read" => state.permissions.revoke_read(),
-    "write" => state.permissions.revoke_write(),
-    "net" => state.permissions.revoke_net(),
-    "env" => state.permissions.revoke_env(),
-    "hrtime" => state.permissions.revoke_hrtime(),
-    _ => Ok(()),
-  }?;
-
-  Ok(JsonOp::Sync(json!({})))
+  let args: PermissionArgs = serde_json::from_value(args)?;
+  match args.name.as_ref() {
+    "run" => state.permissions.allow_run.revoke(),
+    "read" => state.permissions.allow_read.revoke(),
+    "write" => state.permissions.allow_write.revoke(),
+    "net" => state.permissions.allow_net.revoke(),
+    "env" => state.permissions.allow_env.revoke(),
+    "hrtime" => state.permissions.allow_hrtime.revoke(),
+    _ => {}
+  };
+  let perm = state.permissions.get_permission_state(
+    &args.name,
+    &args.url.as_ref().map(String::as_str),
+    &args.path.as_ref().map(String::as_str),
+  )?;
+  Ok(JsonOp::Sync(json!({ "state": perm.to_string() })))
 }

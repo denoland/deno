@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-const { listen, copy, toAsyncIterator } = Deno;
+const { listen, listenTLS, copy, toAsyncIterator } = Deno;
 type Listener = Deno.Listener;
 type Conn = Deno.Conn;
 type Reader = Deno.Reader;
@@ -228,9 +228,11 @@ function fixLength(req: ServerRequest): void {
   }
 }
 
-// ParseHTTPVersion parses a HTTP version string.
-// "HTTP/1.0" returns (1, 0, true).
-// Ported from https://github.com/golang/go/blob/f5c43b9/src/net/http/request.go#L766-L792
+/**
+ * ParseHTTPVersion parses a HTTP version string.
+ * "HTTP/1.0" returns (1, 0, true).
+ * Ported from https://github.com/golang/go/blob/f5c43b9/src/net/http/request.go#L766-L792
+ */
 export function parseHTTPVersion(vers: string): [number, number] {
   switch (vers) {
     case "HTTP/1.1":
@@ -383,10 +385,28 @@ export class Server implements AsyncIterable<ServerRequest> {
   }
 }
 
-export function serve(addr: string): Server {
-  // TODO(ry) Update serve to also take { hostname, port }.
-  const [hostname, port] = addr.split(":");
-  const listener = listen({ hostname, port: Number(port) });
+interface ServerConfig {
+  port: number;
+  hostname?: string;
+}
+
+/**
+ * Start a HTTP server
+ *
+ *     import { serve } from "https://deno.land/std/http/server.ts";
+ *     const body = new TextEncoder().encode("Hello World\n");
+ *     const s = serve({ port: 8000 });
+ *     for await (const req of s) {
+ *       req.respond({ body });
+ *     }
+ */
+export function serve(addr: string | ServerConfig): Server {
+  if (typeof addr === "string") {
+    const [hostname, port] = addr.split(":");
+    addr = { hostname, port: Number(port) };
+  }
+
+  const listener = listen(addr);
   return new Server(listener);
 }
 
@@ -395,6 +415,63 @@ export async function listenAndServe(
   handler: (req: ServerRequest) => void
 ): Promise<void> {
   const server = serve(addr);
+
+  for await (const request of server) {
+    handler(request);
+  }
+}
+
+/** Options for creating an HTTPS server. */
+export type HTTPSOptions = Omit<Deno.ListenTLSOptions, "transport">;
+
+/**
+ * Create an HTTPS server with given options
+ *
+ *     const body = new TextEncoder().encode("Hello HTTPS");
+ *     const options = {
+ *       hostname: "localhost",
+ *       port: 443,
+ *       certFile: "./path/to/localhost.crt",
+ *       keyFile: "./path/to/localhost.key",
+ *     };
+ *     for await (const req of serveTLS(options)) {
+ *       req.respond({ body });
+ *     }
+ *
+ * @param options Server configuration
+ * @return Async iterable server instance for incoming requests
+ */
+export function serveTLS(options: HTTPSOptions): Server {
+  const tlsOptions: Deno.ListenTLSOptions = {
+    ...options,
+    transport: "tcp"
+  };
+  const listener = listenTLS(tlsOptions);
+  return new Server(listener);
+}
+
+/**
+ * Create an HTTPS server with given options and request handler
+ *
+ *     const body = new TextEncoder().encode("Hello HTTPS");
+ *     const options = {
+ *       hostname: "localhost",
+ *       port: 443,
+ *       certFile: "./path/to/localhost.crt",
+ *       keyFile: "./path/to/localhost.key",
+ *     };
+ *     listenAndServeTLS(options, (req) => {
+ *       req.respond({ body });
+ *     });
+ *
+ * @param options Server configuration
+ * @param handler Request handler
+ */
+export async function listenAndServeTLS(
+  options: HTTPSOptions,
+  handler: (req: ServerRequest) => void
+): Promise<void> {
+  const server = serveTLS(options);
 
   for await (const request of server) {
     handler(request);

@@ -24,13 +24,7 @@ async function proxyRequest(req: ServerRequest): Promise<void> {
 
 async function testFetch(): Promise<void> {
   const c = Deno.run({
-    args: [
-      Deno.execPath(),
-      "--no-prompt",
-      "--reload",
-      "--allow-net",
-      "045_proxy_client.ts"
-    ],
+    args: [Deno.execPath(), "--reload", "--allow-net", "045_proxy_client.ts"],
     stdout: "piped",
     env: {
       HTTP_PROXY: `http://${addr}`
@@ -46,10 +40,9 @@ async function testModuleDownload(): Promise<void> {
   const http = Deno.run({
     args: [
       Deno.execPath(),
-      "--no-prompt",
       "--reload",
       "fetch",
-      "http://deno.land/welcome.ts"
+      "http://localhost:4545/std/examples/colors.ts"
     ],
     stdout: "piped",
     env: {
@@ -62,11 +55,7 @@ async function testModuleDownload(): Promise<void> {
   http.close();
 }
 
-async function main(): Promise<void> {
-  proxyServer();
-  await testFetch();
-  await testModuleDownload();
-  Deno.exit(0);
-}
-
-main();
+proxyServer();
+await testFetch();
+await testModuleDownload();
+Deno.exit(0);

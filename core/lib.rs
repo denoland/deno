@@ -3,6 +3,8 @@
 extern crate log;
 extern crate futures;
 extern crate libc;
+#[macro_use]
+extern crate downcast_rs;
 
 mod any_error;
 mod flags;
@@ -12,6 +14,7 @@ mod libdeno;
 mod module_specifier;
 mod modules;
 mod ops;
+mod resources;
 mod shared_queue;
 
 pub use crate::any_error::*;
@@ -24,6 +27,7 @@ pub use crate::libdeno::PinnedBuf;
 pub use crate::module_specifier::*;
 pub use crate::modules::*;
 pub use crate::ops::*;
+pub use crate::resources::*;
 
 pub fn v8_version() -> &'static str {
   use std::ffi::CStr;

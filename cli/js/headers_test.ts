@@ -1,5 +1,9 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { test, assert, assertEquals } from "./test_util.ts";
+const {
+  stringifyArgs
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+} = Deno as any;
 
 // Logic heavily copied from web-platform-tests, make
 // sure pass mostly header basic test
@@ -328,4 +332,26 @@ test(function headerParamsArgumentsCheck(): void {
 test(function toStringShouldBeWebCompatibility(): void {
   const headers = new Headers();
   assertEquals(headers.toString(), "[object Headers]");
+});
+
+function stringify(...args: unknown[]): string {
+  return stringifyArgs(args).replace(/\n$/, "");
+}
+
+test(function customInspectReturnsCorrectHeadersFormat(): void {
+  const blankHeaders = new Headers();
+  assertEquals(stringify(blankHeaders), "Headers {}");
+  const singleHeader = new Headers([["Content-Type", "application/json"]]);
+  assertEquals(
+    stringify(singleHeader),
+    "Headers { content-type: application/json }"
+  );
+  const multiParamHeader = new Headers([
+    ["Content-Type", "application/json"],
+    ["Content-Length", "1337"]
+  ]);
+  assertEquals(
+    stringify(multiParamHeader),
+    "Headers { content-type: application/json, content-length: 1337 }"
+  );
 });

@@ -83,8 +83,8 @@ declare namespace Deno {
 
   // @url js/io.d.ts
 
-  export const EOF: null;
-  export type EOF = null;
+  export const EOF: unique symbol;
+  export type EOF = typeof EOF;
   export enum SeekMode {
     SEEK_START = 0,
     SEEK_CURRENT = 1,
@@ -883,34 +883,64 @@ declare namespace Deno {
   }
 
   // @url js/permissions.d.ts
-
-  /** Permissions as granted by the caller */
-  export interface Permissions {
-    read: boolean;
-    write: boolean;
-    net: boolean;
-    env: boolean;
-    run: boolean;
-    hrtime: boolean;
+  /** Permissions as granted by the caller
+   * See: https://w3c.github.io/permissions/#permission-registry
+   */
+  export type PermissionName =
+    | "run"
+    | "read"
+    | "write"
+    | "net"
+    | "env"
+    | "hrtime";
+  /** https://w3c.github.io/permissions/#status-of-a-permission */
+  export type PermissionState = "granted" | "denied" | "prompt";
+  interface RunPermissionDescriptor {
+    name: "run";
   }
-  export type Permission = keyof Permissions;
-  /** Inspect granted permissions for the current program.
-   *
-   *       if (Deno.permissions().read) {
-   *         const file = await Deno.readFile("example.test");
-   *         // ...
-   *       }
-   */
-  export function permissions(): Permissions;
-  /** Revoke a permission. When the permission was already revoked nothing changes
-   *
-   *       if (Deno.permissions().read) {
-   *         const file = await Deno.readFile("example.test");
-   *         Deno.revokePermission('read');
-   *       }
-   *       Deno.readFile("example.test"); // -> error or permission prompt
-   */
-  export function revokePermission(permission: Permission): void;
+  interface ReadWritePermissionDescriptor {
+    name: "read" | "write";
+    path?: string;
+  }
+  interface NetPermissionDescriptor {
+    name: "net";
+    url?: string;
+  }
+  interface EnvPermissionDescriptor {
+    name: "env";
+  }
+  interface HrtimePermissionDescriptor {
+    name: "hrtime";
+  }
+  /** See: https://w3c.github.io/permissions/#permission-descriptor */
+  type PermissionDescriptor =
+    | RunPermissionDescriptor
+    | ReadWritePermissionDescriptor
+    | NetPermissionDescriptor
+    | EnvPermissionDescriptor
+    | HrtimePermissionDescriptor;
+
+  export class Permissions {
+    /** Queries the permission.
+     *       const status = await Deno.permissions.query({ name: "read", path: "/etc" });
+     *       if (status.state === "granted") {
+     *         data = await Deno.readFile("/etc/passwd");
+     *       }
+     */
+    query(d: PermissionDescriptor): Promise<PermissionStatus>;
+    /** Revokes the permission.
+     *       const status = await Deno.permissions.revoke({ name: "run" });
+     *       assert(status.state !== "granted")
+     */
+    revoke(d: PermissionDescriptor): Promise<PermissionStatus>;
+  }
+  export const permissions: Permissions;
+
+  /** https://w3c.github.io/permissions/#permissionstatus */
+  export class PermissionStatus {
+    state: PermissionState;
+    constructor(state: PermissionState);
+  }
 
   // @url js/truncate.d.ts
 
@@ -990,6 +1020,29 @@ declare namespace Deno {
    */
   export function listen(options: ListenOptions): Listener;
 
+  export interface ListenTLSOptions {
+    port: number;
+    hostname?: string;
+    transport?: Transport;
+    certFile: string;
+    keyFile: string;
+  }
+
+  /** Listen announces on the local transport address over TLS (transport layer security).
+   *
+   * @param options
+   * @param options.port The port to connect to. (Required.)
+   * @param options.hostname A literal IP address or host name that can be
+   *   resolved to an IP address. If not specified, defaults to 0.0.0.0
+   * @param options.certFile Server certificate file
+   * @param options.keyFile Server public key file
+   *
+   * Examples:
+   *
+   *     Deno.listenTLS({ port: 443, certFile: "./my_server.crt", keyFile: "./my_server.key" })
+   */
+  export function listenTLS(options: ListenTLSOptions): Listener;
+
   export interface DialOptions {
     port: number;
     hostname?: string;
@@ -1018,6 +1071,7 @@ declare namespace Deno {
   export interface DialTLSOptions {
     port: number;
     hostname?: string;
+    certFile?: string;
   }
 
   /**
@@ -2229,8 +2283,6 @@ declare namespace eventTarget {
 declare namespace io {
   // @url js/io.d.ts
 
-  export const EOF: null;
-  export type EOF = null;
   export enum SeekMode {
     SEEK_START = 0,
     SEEK_CURRENT = 1,
@@ -2254,10 +2306,10 @@ declare namespace io {
      *
      * Implementations must not retain `p`.
      */
-    read(p: Uint8Array): Promise<number | EOF>;
+    read(p: Uint8Array): Promise<number | Deno.EOF>;
   }
   export interface SyncReader {
-    readSync(p: Uint8Array): number | EOF;
+    readSync(p: Uint8Array): number | Deno.EOF;
   }
   export interface Writer {
     /** Writes `p.byteLength` bytes from `p` to the underlying data
@@ -2333,7 +2385,7 @@ declare namespace fetchTypes {
     formData(): Promise<domTypes.FormData>;
     json(): Promise<any>;
     text(): Promise<string>;
-    read(p: Uint8Array): Promise<number | io.EOF>;
+    read(p: Uint8Array): Promise<number | Deno.EOF>;
     close(): void;
     cancel(): Promise<void>;
     getReader(): domTypes.ReadableStreamReader;

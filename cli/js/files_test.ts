@@ -8,7 +8,7 @@ test(function filesStdioFileDescriptors(): void {
 });
 
 testPerm({ read: true }, async function filesCopyToStdout(): Promise<void> {
-  const filename = "package.json";
+  const filename = "cli/tests/fixture.json";
   const file = await Deno.open(filename);
   assert(file.rid > 2);
   const bytesWritten = await Deno.copy(Deno.stdout, file);
@@ -81,7 +81,7 @@ testPerm({ write: false }, async function writePermFailure(): Promise<void> {
 testPerm({ read: false }, async function readPermFailure(): Promise<void> {
   let caughtError = false;
   try {
-    await Deno.open("package.json", "r");
+    await Deno.open("cli/tests/fixture.json", "r");
   } catch (e) {
     caughtError = true;
     assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);

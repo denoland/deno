@@ -1,5 +1,6 @@
 cli/tests/error_syntax.js
 cli/tests/badly_formatted.js
+cli/tests/top_level_for_await.js
 std/**/testdata
 std/**/vendor
 std/node_modules

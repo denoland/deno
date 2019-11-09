@@ -65,7 +65,6 @@ export function postMessage(data: any): void {
 export async function getMessage(): Promise<any> {
   log("getMessage");
   const res = await sendAsync(dispatch.OP_WORKER_GET_MESSAGE);
-
   if (res.data != null) {
     return decodeMessage(new Uint8Array(res.data));
   } else {
