@@ -2,7 +2,6 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::http_util::get_client;
 use crate::ops::json_op;
-use crate::resources;
 use crate::state::ThreadSafeState;
 use deno::*;
 use http::header::HeaderName;
@@ -56,6 +55,7 @@ pub fn op_fetch(
     request = request.header(name, v);
   }
   debug!("Before fetch {}", url);
+  let state_ = state.clone();
   let future = request.send().map_err(ErrBox::from).and_then(move |res| {
     let status = res.status();
     let mut res_headers = Vec::new();
@@ -64,7 +64,7 @@ pub fn op_fetch(
     }
 
     let body = HttpBody::from(res.into_body());
-    let mut table = resources::lock_resource_table();
+    let mut table = state_.lock_resource_table();
     let rid = table.add("httpBody", Box::new(CliResource::HttpBody(body)));
 
     let json_res = json!({

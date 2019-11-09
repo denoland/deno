@@ -60,8 +60,7 @@ lazy_static! {
   });
 }
 
-#[allow(dead_code)]
-fn get_stdio() -> (CliResource, CliResource, CliResource) {
+pub fn get_stdio() -> (CliResource, CliResource, CliResource) {
   let stdin = CliResource::Stdin(tokio::io::stdin());
   let stdout = CliResource::Stdout({
     #[cfg(not(windows))]

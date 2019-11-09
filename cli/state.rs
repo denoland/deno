@@ -10,6 +10,7 @@ use crate::worker::Worker;
 use crate::worker::WorkerChannels;
 use deno::Buf;
 use deno::CoreOp;
+use deno::ResourceTable;
 use deno::ErrBox;
 use deno::Loader;
 use deno::ModuleSpecifier;
@@ -29,6 +30,8 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Instant;
 use tokio::sync::mpsc;
+use std::sync::MutexGuard;
+use crate::resources;
 
 /// Isolate cannot be passed between threads but ThreadSafeState can.
 /// ThreadSafeState satisfies Send and Sync. So any state that needs to be
@@ -52,6 +55,7 @@ pub struct State {
   pub start_time: Instant,
   pub seeded_rng: Option<Mutex<StdRng>>,
   pub include_deno_namespace: bool,
+  pub resource_table: Mutex<ResourceTable>,
 }
 
 impl Clone for ThreadSafeState {
@@ -68,6 +72,10 @@ impl Deref for ThreadSafeState {
 }
 
 impl ThreadSafeState {
+  pub fn lock_resource_table<'a>(&'a self) -> MutexGuard<'a, ResourceTable> {
+    self.resource_table.lock().unwrap()
+  }
+
   /// Wrap core `OpDispatcher` to collect metrics.
   pub fn core_op<D>(
     &self,
@@ -205,6 +213,12 @@ impl ThreadSafeState {
 
     let modules = Arc::new(Mutex::new(deno::Modules::new()));
     let permissions = global_state.permissions.clone();
+    let mut resource_table = ResourceTable::default();
+    // TODO(bartlomieju): this bit should be removed in future, it should be done only for "main" worker state
+    let (stdin, stdout, stderr) = resources::get_stdio();
+    resource_table.add("stdin", Box::new(stdin));
+    resource_table.add("stdout", Box::new(stdout));
+    resource_table.add("stderr", Box::new(stderr));
 
     let state = State {
       global_state,
@@ -220,6 +234,7 @@ impl ThreadSafeState {
       start_time: Instant::now(),
       seeded_rng,
       include_deno_namespace,
+      resource_table: Mutex::new(resource_table),
     };
 
     Ok(ThreadSafeState(Arc::new(state)))
