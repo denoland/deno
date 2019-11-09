@@ -1,4 +1,4 @@
-// This file is copied from prettier@1.19.0
+// This file is copied from prettier@1.19.1
 /**
  * Copyright © James Long and contributors
  * 
@@ -15,7 +15,7 @@
 }(globalThis, (function () { 'use strict';
 
   var name = "prettier";
-  var version = "1.19.0";
+  var version = "1.19.1";
   var description = "Prettier is an opinionated code formatter";
   var bin = {
   	prettier: "./bin/prettier.js"
@@ -51,7 +51,7 @@
   	"find-parent-dir": "0.3.0",
   	"find-project-root": "1.1.1",
   	"flow-parser": "0.111.3",
-  	"get-stream": "5.1.0",
+  	"get-stream": "4.1.0",
   	globby: "6.1.0",
   	graphql: "14.5.8",
   	"html-element-attributes": "2.2.0",
@@ -111,7 +111,7 @@
   	"jest-snapshot-serializer-raw": "1.1.0",
   	"jest-watch-typeahead": "0.4.0",
   	mkdirp: "0.5.1",
-  	prettier: "1.18.2",
+  	prettier: "1.19.0",
   	prettylint: "1.0.0",
   	rimraf: "3.0.0",
   	rollup: "1.26.3",
@@ -145,7 +145,7 @@
   	build: "node --max-old-space-size=3072 ./scripts/build/build.js",
   	"build-docs": "node ./scripts/build-docs.js",
   	"check-deps": "node ./scripts/check-deps.js",
-  	spellcheck: "npx -p cspell@4.0.31 cspell {bin,scripts,src}/**/*.js {docs,website/blog}/**/*.md CHANGELOG.unreleased.md"
+  	spellcheck: "npx -p cspell@4.0.31 cspell {bin,scripts,src}/**/*.js {docs,website/blog,changelog_unreleased}/**/*.md"
   };
   var _package = {
   	name: name,
@@ -21715,7 +21715,7 @@
       }]
     },
     vueIndentScriptAndStyle: {
-      since: "1.19.0-beta.1",
+      since: "1.19.0",
       category: CATEGORY_HTML,
       type: "boolean",
       default: false,
@@ -27966,7 +27966,8 @@
     var grandparent = path.getNode(2);
     var greatGreatGrandParent = path.getNode(4);
     var isParameterInTestCall = grandparent != null && isTestCall$1(grandparent);
-    var shouldInline = isParameterInTestCall || n[paramsKey].length === 0 || n[paramsKey].length === 1 && (shouldHugType(n[paramsKey][0]) || n[paramsKey][0].type === "GenericTypeAnnotation" && shouldHugType(n[paramsKey][0].id) || n[paramsKey][0].type === "TSTypeReference" && shouldHugType(n[paramsKey][0].typeName) || n[paramsKey][0].type === "NullableTypeAnnotation" || greatGreatGrandParent && greatGreatGrandParent.type === "VariableDeclarator" && grandparent && grandparent.type === "TSTypeAnnotation" && n[paramsKey][0].type !== "TSConditionalType" && n[paramsKey][0].type !== "TSMappedType");
+    var shouldInline = isParameterInTestCall || n[paramsKey].length === 0 || n[paramsKey].length === 1 && (shouldHugType(n[paramsKey][0]) || n[paramsKey][0].type === "GenericTypeAnnotation" && shouldHugType(n[paramsKey][0].id) || n[paramsKey][0].type === "TSTypeReference" && shouldHugType(n[paramsKey][0].typeName) || n[paramsKey][0].type === "NullableTypeAnnotation" || // See https://github.com/prettier/prettier/pull/6467 for the context.
+    greatGreatGrandParent && greatGreatGrandParent.type === "VariableDeclarator" && grandparent && grandparent.type === "TSTypeAnnotation" && n[paramsKey][0].type !== "TSUnionType" && n[paramsKey][0].type !== "UnionTypeAnnotation" && n[paramsKey][0].type !== "TSConditionalType" && n[paramsKey][0].type !== "TSMappedType");
 
     if (shouldInline) {
       return concat$d(["<", join$9(", ", path.map(print, paramsKey)), ">"]);

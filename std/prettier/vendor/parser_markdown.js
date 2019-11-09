@@ -1,4 +1,4 @@
-// This file is copied from prettier@1.19.0
+// This file is copied from prettier@1.19.1
 /**
  * Copyright © James Long and contributors
  *
