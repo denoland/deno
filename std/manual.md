@@ -174,7 +174,7 @@ in the repository. First
 `core.symlinks=true` before the checkout is started.
 
 ```bash
-git config --global core.symlinks=true
+git config --global core.symlinks true
 git clone --recurse-submodules https://github.com/denoland/deno.git
 ```
 
