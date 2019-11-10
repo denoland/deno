@@ -61,5 +61,5 @@ It will delete the downloaded script resource after the process exits.
 
 ```shell
 deno install denox https://deno.land/std/examples/denox.ts --allow-env --allow-write --allow-run
-denox https://deno.land/std/examples/cat.ts --allow-read README.md
+denox https://deno.land/std/examples/cat.ts README.md -- --allow-read
 ```
