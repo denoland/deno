@@ -5,9 +5,6 @@ const {
   env,
   cwd,
   args,
-  stdin,
-  stdout,
-  stderr,
   exit,
   makeTempDirSync,
   removeSync
