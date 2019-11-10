@@ -45,9 +45,21 @@ deno --allow-net=deno.land https://deno.land/std/examples/curl.ts https://deno.l
 
 ### gist - easily create and upload Gists
 
-```
+```shell
 export GIST_TOKEN=ABC # Generate at https://github.com/settings/tokens
 deno install gist https://deno.land/std/examples/gist.ts --allow-net --allow-env
 gist --title "Example gist 1" script.ts
 gist --t "Example gist 2" script2.ts
+```
+
+### denox - Execute the deno script and clean up the downloaded resources after process exiting
+
+Similar to [npx](https://github.com/npm/npx), if you want to keep your disk
+clean after running the deno script, this script is for you.
+
+It will delete the downloaded script resource after the process exits.
+
+```shell
+deno install denox https://deno.land/std/examples/denox.ts --allow-env --allow-write --allow-run
+denox https://deno.land/std/examples/cat.ts --allow-read README.md
 ```
