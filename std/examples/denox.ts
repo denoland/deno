@@ -10,8 +10,7 @@ const {
   stderr,
   exit,
   makeTempDirSync,
-  removeSync,
-  Signal
+  removeSync
 } = Deno;
 
 // TODO: handle signal
