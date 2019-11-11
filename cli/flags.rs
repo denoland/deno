@@ -335,12 +335,79 @@ This command has implicit access to all permissions (equivalent to deno run --al
 Automatically downloads Prettier dependencies on first run.
 
   deno fmt myfile1.ts myfile2.ts",
-        ).arg(
+        )
+        .arg(
           Arg::with_name("stdout")
             .long("stdout")
             .help("Output formated code to stdout")
             .takes_value(false),
-        ).arg(
+        )
+        .arg(
+          Arg::with_name("print-width")
+            .long("print-width")
+            .help("Specify the line length that the printer will wrap on.")
+            .takes_value(true)
+            .require_equals(true)
+        )
+        .arg(
+          Arg::with_name("tab-width")
+            .long("tab-width")
+            .help("Specify the number of spaces per indentation-level.")
+            .takes_value(true)
+            .require_equals(true)
+        )
+        .arg(
+          Arg::with_name("use-tabs")
+            .long("use-tabs")
+            .help("Indent lines with tabs instead of spaces.")
+            .takes_value(false)
+        )
+        .arg(
+          Arg::with_name("no-semi")
+            .long("no-semi")
+            .help("Print semicolons at the ends of statements.")
+            .takes_value(false)
+        )
+        .arg(
+          Arg::with_name("single-quote")
+            .long("single-quote")
+            .help("Use single quotes instead of double quotes.")
+            .takes_value(false)
+        )
+        .arg(
+          Arg::with_name("trailing-comma")
+            .long("trailing-comma")
+            .help("Print trailing commas wherever possible when multi-line.")
+            .takes_value(false)
+        )
+        .arg(
+          Arg::with_name("no-bracket-spacing")
+            .long("no-bracket-spacing")
+            .help("Print spaces between brackets in object literals.")
+            .takes_value(false)
+        )
+        .arg(
+          Arg::with_name("arrow-parens")
+            .long("arrow-parens")
+            .help("Include parentheses around a sole arrow function parameter.")
+            .takes_value(true)
+            .possible_values(&["avoid", "always"])
+        )
+        .arg(
+          Arg::with_name("prose-wrap")
+            .long("prose-wrap")
+            .help("How to wrap prose.")
+            .takes_value(true)
+            .possible_values(&["always", "never", "preserve"])
+        )
+        .arg(
+          Arg::with_name("end-of-line")
+            .long("end-of-line")
+            .help("Which end of line characters to apply.")
+            .takes_value(true)
+            .possible_values(&["auto", "lf", "crlf", "cr"])
+        )
+        .arg(
           Arg::with_name("files")
             .takes_value(true)
             .multiple(true)
@@ -884,6 +951,60 @@ pub fn flags_from_vec(
       if !fmt_match.is_present("stdout") {
         // `deno fmt` writes to the files by default
         argv.push("--write".to_string());
+      }
+
+      if fmt_match.is_present("print-width") {
+        let prettier_print_width = fmt_match.value_of("print-width").unwrap();
+        argv.push("--print-width".to_string());
+        argv.push(prettier_print_width.to_string());
+      }
+
+      if fmt_match.is_present("tab-width") {
+        let prettier_tab_width = fmt_match.value_of("tab-width").unwrap();
+        argv.push("--tab-width".to_string());
+        argv.push(prettier_tab_width.to_string());
+      }
+
+      if fmt_match.is_present("use-tabs") {
+        argv.push("--use-tabs".to_string());
+      }
+
+      if fmt_match.is_present("no-semi") {
+        argv.push("--no-semi".to_string());
+      }
+
+      if fmt_match.is_present("single-quote") {
+        argv.push("--single-quote".to_string());
+      }
+
+      if fmt_match.is_present("trailing-comma") {
+        argv.push("--trailing-comma".to_string());
+      }
+
+      if fmt_match.is_present("no-bracket-spacing") {
+        argv.push("--no-bracket-spacing".to_string());
+      }
+
+      if fmt_match.is_present("no-bracket-spacing") {
+        argv.push("--no-bracket-spacing".to_string());
+      }
+
+      if fmt_match.is_present("arrow-parens") {
+        let prettier_arrow_parens = fmt_match.value_of("arrow-parens").unwrap();
+        argv.push("--arrow-parens".to_string());
+        argv.push(prettier_arrow_parens.to_string());
+      }
+
+      if fmt_match.is_present("prose-wrap") {
+        let prettier_prose_wrap = fmt_match.value_of("prose-wrap").unwrap();
+        argv.push("--prose-wrap".to_string());
+        argv.push(prettier_prose_wrap.to_string());
+      }
+
+      if fmt_match.is_present("end-of-line") {
+        let prettier_end_of_line = fmt_match.value_of("end-of-line").unwrap();
+        argv.push("--end-of-line".to_string());
+        argv.push(prettier_end_of_line.to_string());
       }
 
       DenoSubcommand::Run
@@ -1927,5 +2048,45 @@ mod tests {
     );
     assert_eq!(subcommand, DenoSubcommand::Run);
     assert_eq!(argv, svec!["deno", "script.ts"])
+  }
+
+  #[test]
+  fn test_flags_from_vec_39() {
+    let (flags, subcommand, argv) = flags_from_vec(svec![
+      "deno",
+      "fmt",
+      "--print-width=100",
+      "--tab-width=4",
+      "--use-tabs",
+      "--no-semi",
+      "--arrow-parens=always",
+      "script.ts"
+    ]);
+    assert_eq!(
+      flags,
+      DenoFlags {
+        allow_write: true,
+        allow_read: true,
+        ..DenoFlags::default()
+      }
+    );
+    assert_eq!(subcommand, DenoSubcommand::Run);
+    assert_eq!(
+      argv,
+      svec![
+        "deno",
+        PRETTIER_URL,
+        "script.ts",
+        "--write",
+        "--print-width",
+        "100",
+        "--tab-width",
+        "4",
+        "--use-tabs",
+        "--no-semi",
+        "--arrow-parens",
+        "always"
+      ]
+    );
   }
 }
