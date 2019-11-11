@@ -17,7 +17,7 @@ interface URLParts {
 }
 
 const patterns = {
-  protocol: "(?:([^:/?#]+):)",
+  protocol: "(?:([a-z]+):)",
   authority: "(?://([^/?#]*))",
   path: "([^?#]*)",
   query: "(\\?[^#]*)",
@@ -228,10 +228,13 @@ export class URL {
       this.username || this.password
         ? `${this.username}${this.password ? ":" + this.password : ""}@`
         : "";
-
-    return `${this.protocol}//${authentication}${this.host}${this.pathname}${
-      this.search
-    }${this.hash}`;
+    let slash = "";
+    if (this.host || this.protocol === "file:") {
+      slash = "//";
+    }
+    return `${this.protocol}${slash}${authentication}${this.host}${
+      this.pathname
+    }${this.search}${this.hash}`;
   }
 
   set href(value: string) {
@@ -244,7 +247,10 @@ export class URL {
   }
 
   get origin(): string {
-    return `${this.protocol}//${this.host}`;
+    if (this.host) {
+      return `${this.protocol}//${this.host}`;
+    }
+    return "null";
   }
 
   get password(): string {
