@@ -345,6 +345,480 @@ impl<L: Loader> Stream for RecursiveLoad<L> {
   }
 }
 
+#[derive(Debug, Eq, PartialEq)]
+enum MainImportState {
+  ResolveMain(String, Option<String>), // specifier, maybe code
+  LoadingRoot,
+  LoadingImports,
+  Instantiated,
+}
+
+/// This future is used to implement parallel async module loading without
+/// complicating the Isolate API.
+/// TODO: RecursiveLoad desperately needs to be merged with Modules.
+pub struct MainImportRecursiveLoad<L: Loader> {
+  root_module_id: Option<deno_mod>,
+  state: MainImportState,
+  loader: L,
+  modules: Arc<Mutex<Modules>>,
+  pending: FuturesUnordered<Box<SourceCodeInfoFuture>>,
+  is_pending: HashSet<ModuleSpecifier>,
+}
+
+impl<L: Loader> MainImportRecursiveLoad<L> {
+  /// Starts a new parallel load of the given URL of the main module.
+  pub fn new(
+    specifier: &str,
+    code: Option<String>,
+    loader: L,
+    modules: Arc<Mutex<Modules>>,
+  ) -> Self {
+    Self {
+      root_module_id: None,
+      state: MainImportState::ResolveMain(specifier.to_owned(), code),
+      loader,
+      modules,
+      pending: FuturesUnordered::new(),
+      is_pending: HashSet::new(),
+    }
+  }
+
+  fn add_root(&mut self) -> Result<(), ErrBox> {
+    let module_specifier = match self.state {
+      MainImportState::ResolveMain(ref specifier, _) => {
+        self.loader.resolve(specifier, ".", true, false)?
+      }
+      _ => unreachable!(),
+    };
+
+    // We deliberately do not check if this module is already present in the
+    // module map. That's because the module map doesn't track whether a
+    // a module's dependencies have been loaded and whether it's been
+    // instantiated, so if we did find this module in the module map and used
+    // its id, this could lead to a crash.
+    //
+    // For the time being code and metadata for a module specifier is fetched
+    // multiple times, register() uses only the first result, and assigns the
+    // same module id to all instances.
+    //
+    // TODO: this is very ugly. The module map and recursive loader should be
+    // integrated into one thing.
+    self
+      .pending
+      .push(Box::new(self.loader.load(&module_specifier)));
+    self.state = MainImportState::LoadingRoot;
+
+    Ok(())
+  }
+
+  fn add_import(
+    &mut self,
+    specifier: &str,
+    referrer: &str,
+    parent_id: deno_mod,
+  ) -> Result<(), ErrBox> {
+    let module_specifier =
+      self.loader.resolve(specifier, referrer, false, false)?;
+    let module_name = module_specifier.as_str();
+
+    let mut modules = self.modules.lock().unwrap();
+
+    modules.add_child(parent_id, module_name);
+
+    if !modules.is_registered(module_name)
+      && !self.is_pending.contains(&module_specifier)
+    {
+      self
+        .pending
+        .push(Box::new(self.loader.load(&module_specifier)));
+      self.is_pending.insert(module_specifier);
+    }
+
+    Ok(())
+  }
+
+  /// Returns a future that resolves to the final module id of the root module.
+  /// This future needs to take ownership of the isolate.
+  pub fn get_future(
+    self,
+    isolate: Arc<Mutex<Isolate>>,
+  ) -> impl Future<Item = deno_mod, Error = ErrBox> {
+    loop_fn(self, move |load| {
+      let isolate = isolate.clone();
+      load.into_future().map_err(|(e, _)| e).and_then(
+        move |(event, mut load)| {
+          Ok(match event.unwrap() {
+            Event::Fetch(info) => {
+              let mut isolate = isolate.lock().unwrap();
+              load.register(info, &mut isolate)?;
+              Loop::Continue(load)
+            }
+            Event::Instantiate(id) => Loop::Break(id),
+          })
+        },
+      )
+    })
+  }
+}
+
+impl<L: Loader> ImportStream for MainImportRecursiveLoad<L> {
+  // TODO: this should not be part of RecursiveLoad.
+  fn register(
+    &mut self,
+    source_code_info: SourceCodeInfo,
+    isolate: &mut Isolate,
+  ) -> Result<(), ErrBox> {
+    // #A There are 3 cases to handle at this moment:
+    // 1. Source code resolved result have the same module name as requested
+    //    and is not yet registered
+    //     -> register
+    // 2. Source code resolved result have a different name as requested:
+    //   2a. The module with resolved module name has been registered
+    //     -> alias
+    //   2b. The module with resolved module name has not yet been registerd
+    //     -> register & alias
+    let SourceCodeInfo {
+      code,
+      module_url_specified,
+      module_url_found,
+    } = source_code_info;
+
+    let is_main = self.state == MainImportState::LoadingRoot;
+
+    let module_id = {
+      let mut modules = self.modules.lock().unwrap();
+
+      // If necessary, register an alias.
+      if module_url_specified != module_url_found {
+        modules.alias(&module_url_specified, &module_url_found);
+      }
+
+      match modules.get_id(&module_url_found) {
+        // Module has already been registered.
+        Some(id) => {
+          debug!(
+            "Already-registered module fetched again: {}",
+            module_url_found
+          );
+          id
+        }
+        // Module not registered yet, do it now.
+        None => {
+          let id = isolate.mod_new(is_main, &module_url_found, &code)?;
+          modules.register(id, &module_url_found);
+          id
+        }
+      }
+    };
+
+    // Now we must iterate over all imports of the module and load them.
+    let imports = isolate.mod_get_imports(module_id);
+    for import in imports {
+      self.add_import(&import, &module_url_found, module_id)?;
+    }
+
+    // If we just finished loading the root module, store the root module id.
+    if self.state == MainImportState::LoadingRoot {
+      self.root_module_id = Some(module_id);
+      self.state = MainImportState::LoadingImports;
+    }
+
+    // If some imports are still not loaded, then finish
+    if !self.pending.is_empty() {
+      return Ok(());
+    }
+
+    // All imports have loaded - instantiate the root module.
+    let root_id = self.root_module_id.expect("Root module empty!");
+    let mut resolve_cb = |specifier: &str, referrer_id: deno_mod| -> deno_mod {
+      let modules = self.modules.lock().unwrap();
+      let referrer = modules.get_name(referrer_id).unwrap();
+      // We should have already resolved and Ready this module, so
+      // resolve() will not fail this time.
+      let specifier = self
+        .loader
+        .resolve(specifier, &referrer, is_main, false)
+        .expect("Module should already be resolved");
+      modules.get_id(specifier.as_str()).unwrap_or(0)
+    };
+    isolate.mod_instantiate(root_id, &mut resolve_cb)?;
+
+    self.state = MainImportState::Instantiated;
+    Ok(())
+  }
+}
+
+impl<L: Loader> Stream for MainImportRecursiveLoad<L> {
+  type Item = Event;
+  type Error = ErrBox;
+
+  fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
+    Ok(match self.state {
+      MainImportState::ResolveMain(ref specifier, Some(ref code)) => {
+        let module_specifier =
+          self.loader.resolve(specifier, ".", true, false)?;
+        let info = SourceCodeInfo {
+          code: code.to_owned(),
+          module_url_specified: module_specifier.to_string(),
+          module_url_found: module_specifier.to_string(),
+        };
+        self.state = MainImportState::LoadingRoot;
+        Ready(Some(Event::Fetch(info)))
+      }
+      MainImportState::ResolveMain(..) => {
+        self.add_root()?;
+        self.poll()?
+      }
+      MainImportState::LoadingRoot | MainImportState::LoadingImports => {
+        match self.pending.poll()? {
+          Ready(None) => unreachable!(),
+          Ready(Some(info)) => Ready(Some(Event::Fetch(info))),
+          NotReady => NotReady,
+        }
+      }
+      MainImportState::Instantiated => {
+        let root_id = self.root_module_id.expect("Root module id empty!");
+        Ready(Some(Event::Instantiate(root_id)))
+      }
+    })
+  }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum DynImportState {
+  ResolveImport(String, String), // specifier, referrer
+  LoadingRoot,
+  LoadingImports,
+  Instantiated,
+}
+
+/// This future is used to implement parallel async module loading without
+/// complicating the Isolate API.
+/// TODO: RecursiveLoad desperately needs to be merged with Modules.
+#[allow(dead_code)]
+pub struct DynImportRecursiveLoad<L: Loader> {
+  id: deno_dyn_import_id,
+  root_module_id: Option<deno_mod>,
+  state: DynImportState,
+  loader: L,
+  modules: Arc<Mutex<Modules>>,
+  pending: FuturesUnordered<Box<SourceCodeInfoFuture>>,
+  is_pending: HashSet<ModuleSpecifier>,
+}
+
+#[allow(dead_code)]
+impl<L: Loader> DynImportRecursiveLoad<L> {
+  pub fn new(
+    id: deno_dyn_import_id,
+    specifier: &str,
+    referrer: &str,
+    loader: L,
+    modules: Arc<Mutex<Modules>>,
+  ) -> Self {
+    Self {
+      id,
+      root_module_id: None,
+      state: DynImportState::ResolveImport(
+        specifier.to_owned(),
+        referrer.to_owned(),
+      ),
+      loader,
+      modules,
+      pending: FuturesUnordered::new(),
+      is_pending: HashSet::new(),
+    }
+  }
+
+  fn add_root(&mut self) -> Result<(), ErrBox> {
+    let module_specifier = match self.state {
+      DynImportState::ResolveImport(ref specifier, ref referrer) => {
+        self.loader.resolve(specifier, referrer, false, true)?
+      }
+      _ => unreachable!(),
+    };
+
+    // We deliberately do not check if this module is already present in the
+    // module map. That's because the module map doesn't track whether a
+    // a module's dependencies have been loaded and whether it's been
+    // instantiated, so if we did find this module in the module map and used
+    // its id, this could lead to a crash.
+    //
+    // For the time being code and metadata for a module specifier is fetched
+    // multiple times, register() uses only the first result, and assigns the
+    // same module id to all instances.
+    //
+    // TODO: this is very ugly. The module map and recursive loader should be
+    // integrated into one thing.
+    self
+      .pending
+      .push(Box::new(self.loader.load(&module_specifier)));
+    self.state = DynImportState::LoadingRoot;
+
+    Ok(())
+  }
+
+  fn add_import(
+    &mut self,
+    specifier: &str,
+    referrer: &str,
+    parent_id: deno_mod,
+  ) -> Result<(), ErrBox> {
+    let module_specifier =
+      self.loader.resolve(specifier, referrer, false, true)?;
+    let module_name = module_specifier.as_str();
+
+    let mut modules = self.modules.lock().unwrap();
+
+    modules.add_child(parent_id, module_name);
+
+    if !modules.is_registered(module_name)
+      && !self.is_pending.contains(&module_specifier)
+    {
+      self
+        .pending
+        .push(Box::new(self.loader.load(&module_specifier)));
+      self.is_pending.insert(module_specifier);
+    }
+
+    Ok(())
+  }
+
+  /// Returns a future that resolves to the final module id of the root module.
+  /// This future needs to take ownership of the isolate.
+  pub fn get_future(
+    self,
+    isolate: Arc<Mutex<Isolate>>,
+  ) -> impl Future<Item = deno_mod, Error = ErrBox> {
+    loop_fn(self, move |load| {
+      let isolate = isolate.clone();
+      load.into_future().map_err(|(e, _)| e).and_then(
+        move |(event, mut load)| {
+          Ok(match event.unwrap() {
+            Event::Fetch(info) => {
+              let mut isolate = isolate.lock().unwrap();
+              load.register(info, &mut isolate)?;
+              Loop::Continue(load)
+            }
+            Event::Instantiate(id) => Loop::Break(id),
+          })
+        },
+      )
+    })
+  }
+}
+
+impl<L: Loader> ImportStream for DynImportRecursiveLoad<L> {
+  // TODO: this should not be part of RecursiveLoad.
+  fn register(
+    &mut self,
+    source_code_info: SourceCodeInfo,
+    isolate: &mut Isolate,
+  ) -> Result<(), ErrBox> {
+    // #A There are 3 cases to handle at this moment:
+    // 1. Source code resolved result have the same module name as requested
+    //    and is not yet registered
+    //     -> register
+    // 2. Source code resolved result have a different name as requested:
+    //   2a. The module with resolved module name has been registered
+    //     -> alias
+    //   2b. The module with resolved module name has not yet been registerd
+    //     -> register & alias
+    let SourceCodeInfo {
+      code,
+      module_url_specified,
+      module_url_found,
+    } = source_code_info;
+
+    let module_id = {
+      let mut modules = self.modules.lock().unwrap();
+
+      // If necessary, register an alias.
+      if module_url_specified != module_url_found {
+        modules.alias(&module_url_specified, &module_url_found);
+      }
+
+      match modules.get_id(&module_url_found) {
+        // Module has already been registered.
+        Some(id) => {
+          debug!(
+            "Already-registered module fetched again: {}",
+            module_url_found
+          );
+          id
+        }
+        // Module not registered yet, do it now.
+        None => {
+          let id = isolate.mod_new(false, &module_url_found, &code)?;
+          modules.register(id, &module_url_found);
+          id
+        }
+      }
+    };
+
+    // Now we must iterate over all imports of the module and load them.
+    let imports = isolate.mod_get_imports(module_id);
+    for import in imports {
+      self.add_import(&import, &module_url_found, module_id)?;
+    }
+
+    // If we just finished loading the root module, store the root module id.
+    if self.state == DynImportState::LoadingRoot {
+      self.root_module_id = Some(module_id);
+      self.state = DynImportState::LoadingImports;
+    }
+
+    // If some imports are still not loaded finish
+    if !self.pending.is_empty() {
+      return Ok(());
+    }
+
+    // All imports have loaded - instantiate the root module.
+    let root_id = self.root_module_id.expect("Root module empty!");
+
+    let mut resolve_cb = |specifier: &str, referrer_id: deno_mod| -> deno_mod {
+      let modules = self.modules.lock().unwrap();
+      let referrer = modules.get_name(referrer_id).unwrap();
+      // We should have already resolved and Ready this module, so
+      // resolve() will not fail this time.
+      let specifier = self
+        .loader
+        .resolve(specifier, &referrer, false, true)
+        .expect("Module should already be resolved");
+      modules.get_id(specifier.as_str()).unwrap_or(0)
+    };
+    isolate.mod_instantiate(root_id, &mut resolve_cb)?;
+
+    self.state = DynImportState::Instantiated;
+
+    Ok(())
+  }
+}
+
+impl<L: Loader> Stream for DynImportRecursiveLoad<L> {
+  type Item = Event;
+  type Error = ErrBox;
+
+  fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
+    Ok(match self.state {
+      DynImportState::ResolveImport(..) => {
+        self.add_root()?;
+        self.poll()?
+      }
+      DynImportState::LoadingRoot | DynImportState::LoadingImports => {
+        match self.pending.poll()? {
+          Ready(None) => unreachable!(),
+          Ready(Some(info)) => Ready(Some(Event::Fetch(info))),
+          NotReady => NotReady,
+        }
+      }
+      DynImportState::Instantiated => {
+        let root_id = self.root_module_id.expect("Root module id empty!");
+        Ready(Some(Event::Instantiate(root_id)))
+      }
+    })
+  }
+}
+
 struct ModuleInfo {
   name: String,
   children: Vec<String>,
