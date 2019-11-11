@@ -392,6 +392,7 @@ Automatically downloads Prettier dependencies on first run.
             .help("Include parentheses around a sole arrow function parameter.")
             .takes_value(true)
             .possible_values(&["avoid", "always"])
+            .require_equals(true)
         )
         .arg(
           Arg::with_name("prose-wrap")
@@ -399,6 +400,7 @@ Automatically downloads Prettier dependencies on first run.
             .help("How to wrap prose.")
             .takes_value(true)
             .possible_values(&["always", "never", "preserve"])
+            .require_equals(true)
         )
         .arg(
           Arg::with_name("end-of-line")
@@ -406,6 +408,7 @@ Automatically downloads Prettier dependencies on first run.
             .help("Which end of line characters to apply.")
             .takes_value(true)
             .possible_values(&["auto", "lf", "crlf", "cr"])
+            .require_equals(true)
         )
         .arg(
           Arg::with_name("files")
