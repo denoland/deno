@@ -73,7 +73,7 @@ test({
 test({
   name: "[util] isObject",
   fn() {
-    let dio = { stand: "Za Warudo" };
+    const dio = { stand: "Za Warudo" };
     assert(util.isObject(dio));
     assert(util.isObject(new RegExp(/Toki Wo Tomare/)));
     assert(!util.isObject("Jotaro"));
@@ -95,7 +95,7 @@ test({
 test({
   name: "[util] isFunction",
   fn() {
-    let f = function() {};
+    const f = function(): void {};
     assert(util.isFunction(f));
     assert(!util.isFunction({}));
     assert(!util.isFunction(new RegExp(/f/)));
@@ -116,7 +116,6 @@ test({
   name: "[util] isArray",
   fn() {
     assert(util.isArray([]));
-    assert(util.isArray(new Array()));
     assert(!util.isArray({ yaNo: "array" }));
     assert(!util.isArray(null));
   }
