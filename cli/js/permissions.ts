@@ -68,6 +68,19 @@ export class Permissions {
     const { state } = sendSync(dispatch.OP_REVOKE_PERMISSION, desc);
     return new PermissionStatus(state);
   }
+
+  /** Requests the permission.
+   *       const status = await Deno.permissions.request({ name: "env" });
+   *       if (status.state === "granted") {
+   *         console.log(Deno.homeDir());
+   *       } else {
+   *         console.log("'env' permission is denied.");
+   *       }
+   */
+  async request(desc: PermissionDescriptor): Promise<PermissionStatus> {
+    const { state } = sendSync(dispatch.OP_REQUEST_PERMISSION, desc);
+    return new PermissionStatus(state);
+  }
 }
 
 export const permissions = new Permissions();
