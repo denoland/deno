@@ -934,6 +934,7 @@ declare namespace Deno {
      */
     revoke(d: PermissionDescriptor): Promise<PermissionStatus>;
     /** Requests the permission.
+     *       let home;
      *       const status = await Deno.permissions.request({ name: "env" });
      *       if (status.state === "granted") {
      *         home = Deno.homeDir();

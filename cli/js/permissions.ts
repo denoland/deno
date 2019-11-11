@@ -70,6 +70,7 @@ export class Permissions {
   }
 
   /** Requests the permission.
+   *       let home;
    *       const status = await Deno.permissions.request({ name: "env" });
    *       if (status.state === "granted") {
    *         home = Deno.homeDir();
