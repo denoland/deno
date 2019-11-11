@@ -1,4 +1,9 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+/**
+ * Usage:
+ *        deno install dnx https://deno.land/std/examples/dnx.ts --allow-env --allow-write --allow-run
+ *        dnx https://deno.land/std/examples/cat.ts README.md -- --allow-read
+ */
 const {
   run,
   execPath,
@@ -23,7 +28,7 @@ function filterArgs(args: string[]): string[] {
 }
 
 const tempDir = makeTempDirSync({
-  prefix: "denox_"
+  prefix: "dnx_"
 });
 
 const ps = run({

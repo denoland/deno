@@ -52,7 +52,7 @@ gist --title "Example gist 1" script.ts
 gist --t "Example gist 2" script2.ts
 ```
 
-### denox - Execute the deno script and clean up the downloaded resources after process exiting
+### dnx - Execute the deno script and clean up the downloaded resources after process exiting
 
 Similar to [npx](https://github.com/npm/npx), if you want to keep your disk
 clean after running the deno script, this script is for you.
@@ -60,6 +60,6 @@ clean after running the deno script, this script is for you.
 It will delete the downloaded script resource after the process exits.
 
 ```shell
-deno install denox https://deno.land/std/examples/denox.ts --allow-env --allow-write --allow-run
-denox https://deno.land/std/examples/cat.ts README.md -- --allow-read
+deno install dnx https://deno.land/std/examples/dnx.ts --allow-env --allow-write --allow-run
+dnx https://deno.land/std/examples/cat.ts README.md -- --allow-read
 ```
