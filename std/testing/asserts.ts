@@ -308,8 +308,9 @@ export function assertThrows(
   ErrorClass?: Constructor,
   msgIncludes = "",
   msg?: string
-): void {
+): Error {
   let doesThrow = false;
+  let error = null;
   try {
     fn();
   } catch (e) {
@@ -326,11 +327,13 @@ export function assertThrows(
       throw new AssertionError(msg);
     }
     doesThrow = true;
+    error = e;
   }
   if (!doesThrow) {
     msg = `Expected function to throw${msg ? `: ${msg}` : "."}`;
     throw new AssertionError(msg);
   }
+  return error;
 }
 
 export async function assertThrowsAsync(
@@ -338,8 +341,9 @@ export async function assertThrowsAsync(
   ErrorClass?: Constructor,
   msgIncludes = "",
   msg?: string
-): Promise<void> {
+): Promise<Error> {
   let doesThrow = false;
+  let error = null;
   try {
     await fn();
   } catch (e) {
@@ -356,11 +360,13 @@ export async function assertThrowsAsync(
       throw new AssertionError(msg);
     }
     doesThrow = true;
+    error = e;
   }
   if (!doesThrow) {
     msg = `Expected function to throw${msg ? `: ${msg}` : "."}`;
     throw new AssertionError(msg);
   }
+  return error;
 }
 
 /** Use this to stub out methods that will throw when invoked. */
