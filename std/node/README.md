@@ -1,7 +1,7 @@
 # Deno Node compatibility
 
 This module is meant to have a compatibility layer for the
- [nodeJS standard library](https://nodejs.org/docs/latest-v11.x/api/).
+[nodeJS standard library](https://nodejs.org/docs/latest-v11.x/api/).
 
-__Warning__ : Any function of this module do not have to be refered anywhere in the deno
- standard library as it's a compatiblity module.
+**Warning** : Any function of this module do not have to be refered anywhere in
+the deno standard library as it's a compatiblity module.
