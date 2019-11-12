@@ -1,9 +1,9 @@
-import { readFile, readFileSync } from "./read_file.ts";
-import { test } from "../../testing/mod.ts";
-import * as path from "../../path/mod.ts";
-import { assertEquals, assert } from "../../testing/asserts.ts";
+import { readFile, readFileSync } from "./fs.ts";
+import { test } from "../testing/mod.ts";
+import * as path from "../path/mod.ts";
+import { assertEquals, assert } from "../testing/asserts.ts";
 
-const testData = path.resolve(path.join("node", "fs", "testdata", "hello.txt"));
+const testData = path.resolve(path.join("node", "testdata", "hello.txt"));
 
 // Need to convert to promises, otherwise test() won't report error correctly.
 test(async function readFileSuccess() {
