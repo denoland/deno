@@ -343,68 +343,68 @@ Automatically downloads Prettier dependencies on first run.
             .takes_value(false),
         )
         .arg(
-          Arg::with_name("fmt-print-width")
-            .long("fmt-print-width")
+          Arg::with_name("print-width")
+            .long("print-width")
             .help("Specify the line length that the printer will wrap on.")
             .takes_value(true)
             .require_equals(true)
         )
         .arg(
-          Arg::with_name("fmt-tab-width")
-            .long("fmt-tab-width")
+          Arg::with_name("tab-width")
+            .long("tab-width")
             .help("Specify the number of spaces per indentation-level.")
             .takes_value(true)
             .require_equals(true)
         )
         .arg(
-          Arg::with_name("fmt-use-tabs")
-            .long("fmt-use-tabs")
+          Arg::with_name("use-tabs")
+            .long("use-tabs")
             .help("Indent lines with tabs instead of spaces.")
             .takes_value(false)
         )
         .arg(
-          Arg::with_name("fmt-no-semi")
-            .long("fmt-no-semi")
+          Arg::with_name("no-semi")
+            .long("no-semi")
             .help("Print semicolons at the ends of statements.")
             .takes_value(false)
         )
         .arg(
-          Arg::with_name("fmt-single-quote")
-            .long("fmt-single-quote")
+          Arg::with_name("single-quote")
+            .long("single-quote")
             .help("Use single quotes instead of double quotes.")
             .takes_value(false)
         )
         .arg(
-          Arg::with_name("fmt-trailing-comma")
-            .long("fmt-trailing-comma")
+          Arg::with_name("trailing-comma")
+            .long("trailing-comma")
             .help("Print trailing commas wherever possible when multi-line.")
             .takes_value(false)
         )
         .arg(
-          Arg::with_name("fmt-no-bracket-spacing")
-            .long("fmt-no-bracket-spacing")
+          Arg::with_name("no-bracket-spacing")
+            .long("no-bracket-spacing")
             .help("Print spaces between brackets in object literals.")
             .takes_value(false)
         )
         .arg(
-          Arg::with_name("fmt-arrow-parens")
-            .long("fmt-arrow-parens")
+          Arg::with_name("arrow-parens")
+            .long("arrow-parens")
             .help("Include parentheses around a sole arrow function parameter.")
             .takes_value(true)
             .possible_values(&["avoid", "always"])
             .require_equals(true)
         )
         .arg(
-          Arg::with_name("fmt-prose-wrap")
-            .long("fmt-prose-wrap")
+          Arg::with_name("prose-wrap")
+            .long("prose-wrap")
             .help("How to wrap prose.")
             .takes_value(true)
             .possible_values(&["always", "never", "preserve"])
             .require_equals(true)
         )
         .arg(
-          Arg::with_name("fmt-end-of-line")
-            .long("fmt-end-of-line")
+          Arg::with_name("end-of-line")
+            .long("end-of-line")
             .help("Which end of line characters to apply.")
             .takes_value(true)
             .possible_values(&["auto", "lf", "crlf", "cr"])
@@ -972,14 +972,13 @@ pub fn flags_from_vec(
       for opt in &prettier_flags {
         let t = opt[0];
         let keyword = opt[1];
-        let flg = format!("fmt-{}", keyword);
 
-        if fmt_match.is_present(&flg) {
+        if fmt_match.is_present(&keyword) {
           if t == "0" {
             argv.push(format!("--{}", keyword));
           } else {
             argv.push(format!("--{}", keyword));
-            argv.push(fmt_match.value_of(&flg).unwrap().to_string());
+            argv.push(fmt_match.value_of(keyword).unwrap().to_string());
           }
         }
       }
@@ -2032,13 +2031,13 @@ mod tests {
     let (flags, subcommand, argv) = flags_from_vec(svec![
       "deno",
       "fmt",
-      "--fmt-print-width=100",
-      "--fmt-tab-width=4",
-      "--fmt-use-tabs",
-      "--fmt-no-semi",
-      "--fmt-arrow-parens=always",
-      "--fmt-prose-wrap=preserve",
-      "--fmt-end-of-line=crlf",
+      "--print-width=100",
+      "--tab-width=4",
+      "--use-tabs",
+      "--no-semi",
+      "--arrow-parens=always",
+      "--prose-wrap=preserve",
+      "--end-of-line=crlf",
       "script.ts"
     ]);
     assert_eq!(
