@@ -11,7 +11,6 @@ use crate::isolate::ImportStream;
 use crate::isolate::Isolate;
 use crate::isolate::RecursiveLoadEvent as Event;
 use crate::isolate::SourceCodeInfo;
-use crate::libdeno::deno_dyn_import_id;
 use crate::libdeno::deno_mod;
 use crate::module_specifier::ModuleSpecifier;
 use futures::future::loop_fn;
@@ -302,9 +301,7 @@ enum DynImportState {
 
 /// This future is used to implement parallel async module loading without
 /// complicating the Isolate API.
-#[allow(dead_code)]
 pub struct DynImportRecursiveLoad<L: Loader> {
-  id: deno_dyn_import_id,
   root_module_id: Option<deno_mod>,
   state: DynImportState,
   loader: L,
@@ -315,14 +312,12 @@ pub struct DynImportRecursiveLoad<L: Loader> {
 
 impl<L: Loader> DynImportRecursiveLoad<L> {
   pub fn new(
-    id: deno_dyn_import_id,
     specifier: &str,
     referrer: &str,
     loader: L,
     modules: Arc<Mutex<Modules>>,
   ) -> Self {
     Self {
-      id,
       root_module_id: None,
       state: DynImportState::ResolveImport(
         specifier.to_owned(),

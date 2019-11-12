@@ -67,9 +67,8 @@ impl Worker {
       ops::workers::init(&mut i, &state);
 
       let state_ = state.clone();
-      i.set_dyn_import(move |id, specifier, referrer| {
+      i.set_dyn_import(move |_id, specifier, referrer| {
         let load_stream = DynImportRecursiveLoad::new(
-          id,
           specifier,
           referrer,
           state_.clone(),
