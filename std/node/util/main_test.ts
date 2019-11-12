@@ -1,6 +1,6 @@
-import { test } from "../testing/mod.ts";
-import { assert } from "../testing/asserts.ts";
-import * as util from "./util.ts";
+import { test } from "../../testing/mod.ts";
+import { assert } from "../../testing/asserts.ts";
+import * as util from "./main.ts";
 
 test({
   name: "[util] isBoolean",
