@@ -294,6 +294,8 @@ function createRawObjectString(
   const keys = [...Object.keys(value), ...Object.getOwnPropertySymbols(value)];
   const entries: string[] = keys.map(
     (key): string => {
+      if (key === customInspect) return;
+
       const stringKey = String(key);
       if (keys.length > OBJ_ABBREVIATE_SIZE) {
         return stringKey;
