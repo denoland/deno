@@ -156,13 +156,11 @@ itest!(_018_async_catch {
   output: "018_async_catch.ts.out",
 });
 
-/* TODO(ry) Re-enable this test. It is flaky and only fails occasionally.
 itest!(_019_media_types {
   args: "run --reload 019_media_types.ts",
   output: "019_media_types.ts.out",
   http_server: true,
 });
-*/
 
 itest!(_020_json_modules {
   args: "run --reload 020_json_modules.ts",
@@ -174,13 +172,11 @@ itest!(_021_mjs_modules {
   output: "021_mjs_modules.ts.out",
 });
 
-/* TODO(ry) Re-enable this test. It is flaky and only fails occasionally.
 itest!(_022_info_flag_script {
   args: "info http://127.0.0.1:4545/cli/tests/019_media_types.ts",
   output: "022_info_flag_script.out",
   http_server: true,
 });
-*/
 
 itest!(_023_no_ext_with_headers {
   args: "run --reload 023_no_ext_with_headers",
@@ -335,21 +331,17 @@ itest!(_047_jsx {
   output: "047_jsx_test.jsx.out",
 });
 
-/* TODO(ry) Re-enable this test. It is flaky and only fails occasionally.
 itest!(_048_media_types_jsx {
   args: "run  --reload 048_media_types_jsx.ts",
   output: "048_media_types_jsx.ts.out",
   http_server: true,
 });
-*/
 
-/* TODO(ry) Re-enable this test. It is flaky and only fails occasionally.
 itest!(_049_info_flag_script_jsx {
   args: "info http://127.0.0.1:4545/cli/tests/048_media_types_jsx.ts",
   output: "049_info_flag_script_jsx.out",
   http_server: true,
 });
-*/
 
 itest!(_050_more_jsons {
   args: "run --reload 050_more_jsons.ts",
@@ -362,13 +354,11 @@ itest!(lock_check_ok {
   http_server: true,
 });
 
-/* TODO(ry) Re-enable this test. It is flaky and only fails occasionally.
 itest!(lock_check_ok2 {
   args: "run 019_media_types.ts --lock=lock_check_ok2.json",
   output: "019_media_types.ts.out",
   http_server: true,
 });
-*/
 
 itest!(lock_check_err {
   args: "run --lock=lock_check_err.json http://127.0.0.1:4545/cli/tests/003_relative_import.ts",
@@ -378,7 +368,6 @@ itest!(lock_check_err {
   http_server: true,
 });
 
-/* TODO(ry) Re-enable this test. It is flaky and only fails occasionally.
 itest!(lock_check_err2 {
   args: "run 019_media_types.ts --lock=lock_check_err2.json",
   output: "lock_check_err2.out",
@@ -386,7 +375,6 @@ itest!(lock_check_err2 {
   exit_code: 10,
   http_server: true,
 });
-*/
 
 itest!(async_error {
   exit_code: 1,
