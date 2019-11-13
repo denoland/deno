@@ -18,11 +18,13 @@ export enum SeekMode {
 // https://golang.org/pkg/io/#Reader
 export interface Reader {
   /** Reads up to p.byteLength bytes into `p`. It resolves to the number
-   * of bytes read (`0` < `n` <= `p.byteLength`) and rejects if any error encountered.
+   * of bytes read (`0` <= `n` <= `p.byteLength`) and rejects if any error encountered.
    * Even if `read()` returns `n` < `p.byteLength`, it may use all of `p` as
    * scratch space during the call. If some data is available but not
    * `p.byteLength` bytes, `read()` conventionally returns what is available
    * instead of waiting for more.
+   *
+   * When `p.byteLength` == `0`, `read()` returns `0` and has no other effects.
    *
    * When `read()` encounters end-of-file condition, it returns EOF symbol.
    *
