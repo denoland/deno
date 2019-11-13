@@ -1,13 +1,6 @@
 [WILDCARD]error TS2322: Type '{ a: { b: { c(): { d: number; }; }; }; }' is not assignable to type '{ a: { b: { c(): { d: string; }; }; }; }'.
-  Types of property 'a' are incompatible.
-    Type '{ b: { c(): { d: number; }; }; }' is not assignable to type '{ b: { c(): { d: string; }; }; }'.
-      Types of property 'b' are incompatible.
-        Type '{ c(): { d: number; }; }' is not assignable to type '{ c(): { d: string; }; }'.
-          Types of property 'c' are incompatible.
-            Type '() => { d: number; }' is not assignable to type '() => { d: string; }'.
-              Type '{ d: number; }' is not assignable to type '{ d: string; }'.
-                Types of property 'd' are incompatible.
-                  Type 'number' is not assignable to type 'string'.
+  The types of 'a.b.c().d' are incompatible between these types.
+    Type 'number' is not assignable to type 'string'.
 
 [WILDCARD]/tests/error_003_typescript.ts:20:1
 

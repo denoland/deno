@@ -56,12 +56,10 @@ function buildMessage(diffResult: ReadonlyArray<DiffResult<string>>): string[] {
   );
   messages.push("");
   messages.push("");
-  diffResult.forEach(
-    (result: DiffResult<string>): void => {
-      const c = createColor(result.type);
-      messages.push(c(`${createSign(result.type)}${result.value}`));
-    }
-  );
+  diffResult.forEach((result: DiffResult<string>): void => {
+    const c = createColor(result.type);
+    messages.push(c(`${createSign(result.type)}${result.value}`));
+  });
   messages.push("");
 
   return messages;
@@ -131,7 +129,7 @@ export function equal(c: unknown, d: unknown): boolean {
 }
 
 /** Make an assertion, if not `true`, then throw. */
-export function assert(expr: boolean, msg = ""): void {
+export function assert(expr: unknown, msg = ""): asserts expr {
   if (!expr) {
     throw new AssertionError(msg);
   }

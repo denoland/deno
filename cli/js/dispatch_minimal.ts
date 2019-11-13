@@ -79,7 +79,8 @@ export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
   const { promiseId } = record;
   const promise = promiseTableMin.get(promiseId);
   promiseTableMin.delete(promiseId);
-  promise!.resolve(record);
+  util.assert(promise);
+  promise.resolve(record);
 }
 
 export async function sendAsyncMinimal(

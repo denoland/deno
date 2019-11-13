@@ -188,20 +188,18 @@ class PartReader implements Reader, Closer {
     comps
       .slice(1)
       .map((v: string): string => v.trim())
-      .map(
-        (kv: string): void => {
-          const [k, v] = kv.split("=");
-          if (v) {
-            const s = v.charAt(0);
-            const e = v.charAt(v.length - 1);
-            if ((s === e && s === '"') || s === "'") {
-              params[k] = v.substr(1, v.length - 2);
-            } else {
-              params[k] = v;
-            }
+      .map((kv: string): void => {
+        const [k, v] = kv.split("=");
+        if (v) {
+          const s = v.charAt(0);
+          const e = v.charAt(v.length - 1);
+          if ((s === e && s === '"') || s === "'") {
+            params[k] = v.substr(1, v.length - 2);
+          } else {
+            params[k] = v;
           }
         }
-      );
+      });
     return (this.contentDispositionParams = params);
   }
 

@@ -160,11 +160,9 @@ export class WorkerImpl implements Worker {
     );
     this.run();
     this.isClosedPromise = hostGetWorkerClosed(this.id);
-    this.isClosedPromise.then(
-      (): void => {
-        this.isClosing = true;
-      }
-    );
+    this.isClosedPromise.then((): void => {
+      this.isClosing = true;
+    });
   }
 
   get closed(): Promise<void> {
