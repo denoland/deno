@@ -119,7 +119,7 @@ testPerm(
     const file = await Deno.open(filename, "w+");
 
     // reading into an empty buffer should return 0 immediately
-    let bytesRead = await file.read(new Uint8Array(0));
+    const bytesRead = await file.read(new Uint8Array(0));
     assert(bytesRead === 0);
 
     // reading file into null buffer should throw an error
