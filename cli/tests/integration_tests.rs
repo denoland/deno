@@ -378,6 +378,7 @@ itest!(lock_check_err {
   http_server: true,
 });
 
+/* TODO(ry) Re-enable this test. It is flaky and only fails occasionally.
 itest!(lock_check_err2 {
   args: "run 019_media_types.ts --lock=lock_check_err2.json",
   output: "lock_check_err2.out",
@@ -385,6 +386,7 @@ itest!(lock_check_err2 {
   exit_code: 10,
   http_server: true,
 });
+*/
 
 itest!(async_error {
   exit_code: 1,
