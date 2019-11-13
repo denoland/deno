@@ -377,6 +377,33 @@ Automatically downloads Prettier dependencies on first run.
             .takes_value(false)
         )
         .arg(
+          Arg::with_name("quote-props")
+            .long("quote-props")
+            .value_name("as-needed|consistent|preserve")
+            .help("Change when properties in objects are quoted.")
+            .takes_value(true)
+            .possible_values(&["as-needed", "consistent", "preserve"])
+            .require_equals(true)
+        )
+        .arg(
+          Arg::with_name("jsx-single-quote")
+            .long("jsx-single-quote")
+            .help("Use single quotes instead of double quotes in JSX.")
+            .takes_value(false)
+        )
+        .arg(
+          Arg::with_name("jsx-bracket-same-line")
+            .long("jsx-bracket-same-line")
+            .help(
+              "Put the > of a multi-line JSX element at
+            the end of the last line instead of
+            being alone on the next line (does not
+            apply to self closing elements).
+            "
+            )
+            .takes_value(false)
+        )
+        .arg(
           Arg::with_name("trailing-comma")
             .long("trailing-comma")
             .help("Print trailing commas wherever possible when multi-line.")
@@ -967,6 +994,9 @@ pub fn flags_from_vec(
         ["0", "use-tabs"],
         ["0", "no-semi"],
         ["0", "single-quote"],
+        ["1", "quote-props"],
+        ["0", "jsx-single-quote"],
+        ["0", "jsx-bracket-same-line"],
         ["0", "trailing-comma"],
         ["0", "no-bracket-spacing"],
         ["1", "arrow-parens"],
@@ -2040,9 +2070,13 @@ mod tests {
       "--tab-width=4",
       "--use-tabs",
       "--no-semi",
+      "--single-quote",
       "--arrow-parens=always",
       "--prose-wrap=preserve",
       "--end-of-line=crlf",
+      "--quote-props=preserve",
+      "--jsx-single-quote",
+      "--jsx-bracket-same-line",
       "script.ts"
     ]);
     assert_eq!(
@@ -2067,6 +2101,11 @@ mod tests {
         "4",
         "--use-tabs",
         "--no-semi",
+        "--single-quote",
+        "--quote-props",
+        "preserve",
+        "--jsx-single-quote",
+        "--jsx-bracket-same-line",
         "--arrow-parens",
         "always",
         "--prose-wrap",

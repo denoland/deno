@@ -61,6 +61,15 @@ JS/TS Styling Options:
                                         beginning of lines which may need them.
   --single-quote                        Use single quotes instead of double
                                         quotes. Defaults to false.
+  --quote-props <as-needed|consistent|preserve>
+                                        Change when properties in objects are
+                                        quoted. Defaults to as-needed.
+  --jsx-single-quote                    Use single quotes instead of double
+                                        quotes in JSX.
+  --jsx-bracket-same-line               Put the > of a multi-line JSX element at
+                                        the end of the last line instead of
+                                        being alone on the next line (does not
+                                        apply to self closing elements).
   --trailing-comma <none|es5|all>       Print trailing commas wherever possible
                                         when multi-line. Defaults to none.
   --no-bracket-spacing                  Do not print spaces between brackets.
@@ -103,6 +112,9 @@ interface PrettierOptions {
   useTabs: boolean;
   semi: boolean;
   singleQuote: boolean;
+  quoteProps: string;
+  jsxSingleQuote: boolean;
+  jsxBracketSameLine: boolean;
   trailingComma: string;
   bracketSpacing: boolean;
   arrowParens: string;
@@ -340,6 +352,9 @@ async function main(opts): Promise<void> {
     useTabs: Boolean(opts["use-tabs"]),
     semi: Boolean(opts["semi"]),
     singleQuote: Boolean(opts["single-quote"]),
+    quoteProps: opts["quote-props"],
+    jsxSingleQuote: Boolean(opts["jsx-single-quote"]),
+    jsxBracketSameLine: Boolean(opts["jsx-bracket-same-line	"]),
     trailingComma: opts["trailing-comma"],
     bracketSpacing: Boolean(opts["bracket-spacing"]),
     arrowParens: opts["arrow-parens"],
@@ -387,7 +402,8 @@ main(
       "arrow-parens",
       "prose-wrap",
       "end-of-line",
-      "stdin-parser"
+      "stdin-parser",
+      "quote-props"
     ],
     boolean: [
       "check",
@@ -397,7 +413,9 @@ main(
       "single-quote",
       "bracket-spacing",
       "write",
-      "stdin"
+      "stdin",
+      "jsx-single-quote",
+      "jsx-bracket-same-line"
     ],
     default: {
       ignore: [],
@@ -413,7 +431,10 @@ main(
       "end-of-line": "auto",
       write: false,
       stdin: false,
-      "stdin-parser": "typescript"
+      "stdin-parser": "typescript",
+      "quote-props": "as-needed",
+      "jsx-single-quote": false,
+      "jsx-bracket-same-line": false
     },
     alias: {
       H: "help"
