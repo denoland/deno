@@ -39,10 +39,8 @@ testPerm({ read: true }, async function resourcesFile(): Promise<void> {
     Object.keys(resourcesAfter).length,
     Object.keys(resourcesBefore).length + 1
   );
-  const newRid = Object.keys(resourcesAfter).find(
-    (rid): boolean => {
-      return !resourcesBefore.hasOwnProperty(rid);
-    }
-  );
+  const newRid = Object.keys(resourcesAfter).find((rid): boolean => {
+    return !resourcesBefore.hasOwnProperty(rid);
+  });
   assertEquals(resourcesAfter[newRid], "fsFile");
 });

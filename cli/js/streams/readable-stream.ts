@@ -295,14 +295,18 @@ export function readableStreamTee<OutputType>(
       .then(({ value, done }) => {
         if (done && !closedOrErrored) {
           if (!canceled1) {
-            rs.readableStreamDefaultControllerClose(branch1![
-              rs.readableStreamController_
-            ] as ReadableStreamDefaultController<OutputType>);
+            rs.readableStreamDefaultControllerClose(
+              branch1![
+                rs.readableStreamController_
+              ] as ReadableStreamDefaultController<OutputType>
+            );
           }
           if (!canceled2) {
-            rs.readableStreamDefaultControllerClose(branch2![
-              rs.readableStreamController_
-            ] as ReadableStreamDefaultController<OutputType>);
+            rs.readableStreamDefaultControllerClose(
+              branch2![
+                rs.readableStreamController_
+              ] as ReadableStreamDefaultController<OutputType>
+            );
           }
           closedOrErrored = true;
         }

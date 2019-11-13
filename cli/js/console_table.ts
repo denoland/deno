@@ -72,8 +72,8 @@ export function cliTable(head: string[], columns: string[][]): string {
     }
   }
 
-  const divider = columnWidths.map(
-    (i: number): string => tableChars.middleMiddle.repeat(i + 2)
+  const divider = columnWidths.map((i: number): string =>
+    tableChars.middleMiddle.repeat(i + 2)
   );
 
   let result =

@@ -793,9 +793,8 @@ Particularly useful ones:
 
 ### Bundling
 
-`deno bundle [URL]` will output a single JavaScript file, using
-[AMD](https://en.wikipedia.org/wiki/Asynchronous_module_definition), which
-includes all dependencies of the specified input.
+`deno bundle [URL]` will output a single JavaScript file, which includes all
+dependencies of the specified input. For example:
 
 ```
 > deno bundle https://deno.land/std/examples/colors.ts
@@ -804,32 +803,21 @@ Emitting bundle to "colors.bundle.js"
 9.2 kB emitted.
 ```
 
-To run then bundle in Deno use
+The bundle can just be run as any other module in Deno would:
 
 ```
-deno https://deno.land/std/bundle/run.ts colors.bundle.js
+deno colors.bundle.js
 ```
 
-Bundles can also be loaded in the web browser with the assistance of
-[RequireJS](https://requirejs.org/). Suppose we have a bundle called
-`website.bundle.js`, then the following HTML should be able to load it:
+Bundles can also be loaded in the web browser. For example:
 
 ```html
-<script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js"></script>
 <script src="website.bundle.js"></script>
-<script>
-  requirejs(["website"], website => website.main());
-</script>
 ```
 
-Here we assume there's an exported function `main()` from `website.ts`.
-
-```js
-// website.ts
-export main() {
-  console.log("hello from the web browser");
-}
-```
+Bundles, whether loaded in the web browser, or in Deno, would run the root
+module which is specified on the command line when creating the bundle, so put
+any initiation logic in that module.
 
 ### Installing executable scripts
 

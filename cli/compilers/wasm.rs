@@ -10,7 +10,7 @@ use crate::file_fetcher::SourceFile;
 
 // Ref: https://webassembly.github.io/esm-integration/js-api/index.html#esm-integration
 
-// Only default exports is support atm.
+// Only default exports is support ATM.
 // Node.js supports named import since its dynamic module creation allows
 // running some code before transformation:
 // https://github.com/nodejs/node/blob/35ec01097b2a397ad0a22aac536fe07514876e21/lib/internal/modules/esm/translators.js#L190-L210
