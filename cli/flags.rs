@@ -345,6 +345,7 @@ Automatically downloads Prettier dependencies on first run.
         .arg(
           Arg::with_name("print-width")
             .long("print-width")
+            .value_name("int")
             .help("Specify the line length that the printer will wrap on.")
             .takes_value(true)
             .require_equals(true)
@@ -352,6 +353,7 @@ Automatically downloads Prettier dependencies on first run.
         .arg(
           Arg::with_name("tab-width")
             .long("tab-width")
+            .value_name("int")
             .help("Specify the number of spaces per indentation-level.")
             .takes_value(true)
             .require_equals(true)
@@ -389,6 +391,7 @@ Automatically downloads Prettier dependencies on first run.
         .arg(
           Arg::with_name("arrow-parens")
             .long("arrow-parens")
+            .value_name("avoid|always")
             .help("Include parentheses around a sole arrow function parameter.")
             .takes_value(true)
             .possible_values(&["avoid", "always"])
@@ -397,6 +400,7 @@ Automatically downloads Prettier dependencies on first run.
         .arg(
           Arg::with_name("prose-wrap")
             .long("prose-wrap")
+            .value_name("always|never|preserve")
             .help("How to wrap prose.")
             .takes_value(true)
             .possible_values(&["always", "never", "preserve"])
@@ -405,6 +409,7 @@ Automatically downloads Prettier dependencies on first run.
         .arg(
           Arg::with_name("end-of-line")
             .long("end-of-line")
+            .value_name("auto|lf|crlf|cr")
             .help("Which end of line characters to apply.")
             .takes_value(true)
             .possible_values(&["auto", "lf", "crlf", "cr"])
