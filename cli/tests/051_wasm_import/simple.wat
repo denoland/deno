@@ -5,7 +5,7 @@
 (module
   (import "./wasm-dep.js" "jsFn" (func $jsFn (result i32)))
   (import "./wasm-dep.js" "jsInitFn" (func $jsInitFn))
-  (import "http://localhost:4545/cli/tests/051_wasm_import/remote.ts" "jsRemoteFn" (func $jsRemoteFn (result i32)))
+  (import "http://127.0.0.1:4545/cli/tests/051_wasm_import/remote.ts" "jsRemoteFn" (func $jsRemoteFn (result i32)))
   (export "add" (func $add))
   (export "addImported" (func $addImported))
   (export "addRemote" (func $addRemote))

@@ -359,6 +359,7 @@ itest!(_050_more_jsons {
 itest!(_051_wasm_import {
   args: "run --reload --allow-net --allow-read 051_wasm_import.ts",
   output: "051_wasm_import.ts.out",
+  http_server: true,
 });
 
 itest!(lock_check_ok {
