@@ -188,19 +188,17 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
         body
           .trim()
           .split("&")
-          .forEach(
-            (bytes): void => {
-              if (bytes) {
-                const split = bytes.split("=");
-                const name = split.shift()!.replace(/\+/g, " ");
-                const value = split.join("=").replace(/\+/g, " ");
-                formData.append(
-                  decodeURIComponent(name),
-                  decodeURIComponent(value)
-                );
-              }
+          .forEach((bytes): void => {
+            if (bytes) {
+              const split = bytes.split("=");
+              const name = split.shift()!.replace(/\+/g, " ");
+              const value = split.join("=").replace(/\+/g, " ");
+              formData.append(
+                decodeURIComponent(name),
+                decodeURIComponent(value)
+              );
             }
-          );
+          });
       } catch (e) {
         throw new TypeError("Invalid form urlencoded format");
       }

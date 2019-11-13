@@ -29,9 +29,7 @@ const patterns = {
 };
 
 const urlRegExp = new RegExp(
-  `^${patterns.protocol}?${patterns.authority}?${patterns.path}${
-    patterns.query
-  }?${patterns.hash}?`
+  `^${patterns.protocol}?${patterns.authority}?${patterns.path}${patterns.query}?${patterns.hash}?`
 );
 
 const authorityRegExp = new RegExp(
@@ -70,11 +68,9 @@ function parse(url: string): URLParts | undefined {
 // Based on https://github.com/kelektiv/node-uuid
 // TODO(kevinkassimo): Use deno_std version once possible.
 function generateUUID(): string {
-  return "00000000-0000-4000-8000-000000000000".replace(
-    /[0]/g,
-    (): string =>
-      // random integer from 0 to 15 as a hex digit.
-      (getRandomValues(new Uint8Array(1))[0] % 16).toString(16)
+  return "00000000-0000-4000-8000-000000000000".replace(/[0]/g, (): string =>
+    // random integer from 0 to 15 as a hex digit.
+    (getRandomValues(new Uint8Array(1))[0] % 16).toString(16)
   );
 }
 
@@ -232,9 +228,7 @@ export class URL {
     if (this.host || this.protocol === "file:") {
       slash = "//";
     }
-    return `${this.protocol}${slash}${authentication}${this.host}${
-      this.pathname
-    }${this.search}${this.hash}`;
+    return `${this.protocol}${slash}${authentication}${this.host}${this.pathname}${this.search}${this.hash}`;
   }
 
   set href(value: string) {

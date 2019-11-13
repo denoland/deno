@@ -133,7 +133,7 @@ export default function diff<T>(A: T[], B: T[]): Array<DiffResult<T>> {
     k: number,
     M: number
   ): FarthestPoint {
-    if (slide && slide.y === -1 && (down && down.y === -1))
+    if (slide && slide.y === -1 && down && down.y === -1)
       return { y: 0, id: 0 };
     if (
       (down && down.y === -1) ||

@@ -87,9 +87,7 @@ function fromDiagnosticCategory(
       return DiagnosticCategory.Warning;
     default:
       throw new Error(
-        `Unexpected DiagnosticCategory: "${category}"/"${
-          ts.DiagnosticCategory[category]
-        }"`
+        `Unexpected DiagnosticCategory: "${category}"/"${ts.DiagnosticCategory[category]}"`
       );
   }
 }

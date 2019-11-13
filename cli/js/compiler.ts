@@ -67,7 +67,8 @@ type CompilerRequest = {
   | {
       type: CompilerRequestType.Bundle;
       outFile?: string;
-    });
+    }
+);
 
 interface ConfigureResponse {
   ignoredOptions?: string[];
@@ -186,11 +187,7 @@ class SourceFile {
       throw new Error("SourceFile has already been processed.");
     }
     assert(this.sourceCode != null);
-    const preProcessedFileInfo = ts.preProcessFile(
-      this.sourceCode!,
-      true,
-      true
-    );
+    const preProcessedFileInfo = ts.preProcessFile(this.sourceCode, true, true);
     this.processed = true;
     const files = (this.importedFiles = [] as Array<[string, string]>);
 
@@ -511,10 +508,10 @@ class Host implements ts.CompilerHost {
         ? this._getAsset(fileName)
         : SourceFile.get(fileName);
       assert(sourceFile != null);
-      if (!sourceFile!.tsSourceFile) {
-        sourceFile!.tsSourceFile = ts.createSourceFile(
+      if (!sourceFile.tsSourceFile) {
+        sourceFile.tsSourceFile = ts.createSourceFile(
           fileName,
-          sourceFile!.sourceCode,
+          sourceFile.sourceCode,
           languageVersion
         );
       }
@@ -577,7 +574,7 @@ class Host implements ts.CompilerHost {
         emitBundle(this._rootNames, this._outFile, data, sourceFiles!);
       } else {
         assert(sourceFiles.length == 1);
-        const url = sourceFiles![0].fileName;
+        const url = sourceFiles[0].fileName;
         const sourceFile = SourceFile.get(url);
 
         if (sourceFile) {
@@ -635,9 +632,9 @@ window.compilerMain = function compilerMain(): void {
     // This will recursively analyse all the code for other imports, requesting
     // those from the privileged side, populating the in memory cache which
     // will be used by the host, before resolving.
-    const resolvedRootModules = (await processImports(
-      rootNames.map(rootName => [rootName, rootName])
-    )).map(info => info.url);
+    const resolvedRootModules = (
+      await processImports(rootNames.map(rootName => [rootName, rootName]))
+    ).map(info => info.url);
 
     const host = new Host(
       request.type,
@@ -669,8 +666,9 @@ window.compilerMain = function compilerMain(): void {
       const options = host.getCompilationSettings();
       const program = ts.createProgram(rootNames, options, host);
 
-      diagnostics = ts.getPreEmitDiagnostics(program).filter(
-        ({ code }): boolean => {
+      diagnostics = ts
+        .getPreEmitDiagnostics(program)
+        .filter(({ code }): boolean => {
           // TS1103: 'for-await-of' statement is only allowed within an async
           // function or async generator.
           if (code === 1103) return false;
@@ -692,8 +690,7 @@ window.compilerMain = function compilerMain(): void {
           // so we will ignore complaints about this compiler setting.
           if (code === 5070) return false;
           return true;
-        }
-      );
+        });
 
       // We will only proceed with the emit if there are no diagnostics.
       if (diagnostics && diagnostics.length === 0) {

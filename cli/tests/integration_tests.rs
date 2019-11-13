@@ -362,13 +362,11 @@ itest!(lock_check_ok {
   http_server: true,
 });
 
-/* TODO(ry) Re-enable this test. It is flaky and only fails occasionally.
 itest!(lock_check_ok2 {
   args: "run 019_media_types.ts --lock=lock_check_ok2.json",
   output: "019_media_types.ts.out",
   http_server: true,
 });
-*/
 
 itest!(lock_check_err {
   args: "run --lock=lock_check_err.json http://127.0.0.1:4545/cli/tests/003_relative_import.ts",

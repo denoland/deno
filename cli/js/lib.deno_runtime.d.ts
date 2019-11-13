@@ -2268,7 +2268,7 @@ declare namespace eventTarget {
   export class EventTarget implements domTypes.EventTarget {
     [domTypes.eventTargetHost]: domTypes.EventTarget | null;
     [domTypes.eventTargetListeners]: {
-      [type in string]: domTypes.EventListener[]
+      [type in string]: domTypes.EventListener[];
     };
     [domTypes.eventTargetMode]: string;
     [domTypes.eventTargetNodeType]: domTypes.NodeType;

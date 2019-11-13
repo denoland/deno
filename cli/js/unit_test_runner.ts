@@ -15,17 +15,15 @@ interface TestResult {
 
 function permsToCliFlags(perms: Permissions): string[] {
   return Object.keys(perms)
-    .map(
-      (key): string => {
-        if (!perms[key]) return "";
+    .map((key): string => {
+      if (!perms[key]) return "";
 
-        const cliFlag = key.replace(
-          /\.?([A-Z])/g,
-          (x, y): string => `-${y.toLowerCase()}`
-        );
-        return `--allow-${cliFlag}`;
-      }
-    )
+      const cliFlag = key.replace(
+        /\.?([A-Z])/g,
+        (x, y): string => `-${y.toLowerCase()}`
+      );
+      return `--allow-${cliFlag}`;
+    })
     .filter((e): boolean => e.length > 0);
 }
 
