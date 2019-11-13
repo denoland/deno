@@ -95,7 +95,8 @@ export function start(preserveDenoNamespace = true, source?: string): Start {
   for (const [name, opId] of Object.entries(ops)) {
     const opName = `OP_${name.toUpperCase()}`;
     // Assign op ids to actual variables
-    dispatch[opName] = opId;
+    // TODO(ry) This type casting is gross and should be fixed.
+    ((dispatch as unknown) as { [key: string]: number })[opName] = opId;
   }
   // First we send an empty `Start` message to let the privileged side know we
   // are ready. The response should be a `StartRes` message containing the CLI

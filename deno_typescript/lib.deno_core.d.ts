@@ -21,7 +21,7 @@ interface EvalErrorInfo {
 }
 
 declare interface DenoCore {
-  print(s: string, isErr?: boolean);
+  print(s: string, isErr?: boolean): void;
   dispatch(
     opId: number,
     control: Uint8Array,

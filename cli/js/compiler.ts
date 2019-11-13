@@ -284,7 +284,7 @@ async function processImports(
   referrer = ""
 ): Promise<SourceFileJson[]> {
   if (!specifiers.length) {
-    return;
+    return [];
   }
   const sources = specifiers.map(([, moduleSpecifier]) => moduleSpecifier);
   const sourceFiles = await fetchSourceFiles(sources, referrer);
@@ -381,6 +381,8 @@ class Host implements ts.CompilerHost {
   private readonly _options: ts.CompilerOptions = {
     allowJs: true,
     allowNonTsExtensions: true,
+    // TODO(#3324) Enable strict mode for user code.
+    // strict: true,
     checkJs: false,
     esModuleInterop: true,
     module: ts.ModuleKind.ESNext,
