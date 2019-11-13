@@ -391,6 +391,11 @@ itest!(async_error {
   output: "async_error.ts.out",
 });
 
+itest!(bundle {
+  args: "bundle subdir/mod1.ts",
+  output: "bundle.test.out",
+});
+
 itest!(circular1 {
   args: "run --reload circular1.js",
   output: "circular1.js.out",
