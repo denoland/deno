@@ -22,7 +22,7 @@ use std::sync::Mutex;
 
 static TYPESCRIPT_CODE: &str = include_str!("typescript/lib/typescript.js");
 static COMPILER_CODE: &str = include_str!("compiler_main.js");
-static AMD_RUNTIME_CODE: &str = include_str!("amd_runtime.js");
+static BUNDLE_LOADER: &str = include_str!("bundle_loader.js");
 
 pub fn ts_version() -> String {
   let data = include_str!("typescript/package.json");
@@ -181,11 +181,13 @@ pub fn mksnapshot_bundle(
   let source_code_vec = std::fs::read(bundle)?;
   let source_code = std::str::from_utf8(&source_code_vec)?;
 
-  js_check(runtime_isolate.execute("amd_runtime.js", AMD_RUNTIME_CODE));
+  js_check(runtime_isolate.execute("bundle_loader.js", BUNDLE_LOADER));
   js_check(runtime_isolate.execute(&bundle.to_string_lossy(), &source_code));
 
   let main = state.lock().unwrap().main_module_name();
-  js_check(runtime_isolate.execute("anon", &format!("require('{}')", main)));
+  js_check(
+    runtime_isolate.execute("anon", &format!("instantiate('{}')", main)),
+  );
 
   write_snapshot(runtime_isolate, bundle)?;
 
@@ -202,12 +204,14 @@ pub fn mksnapshot_bundle_ts(
   let source_code_vec = std::fs::read(bundle)?;
   let source_code = std::str::from_utf8(&source_code_vec)?;
 
-  js_check(runtime_isolate.execute("amd_runtime.js", AMD_RUNTIME_CODE));
+  js_check(runtime_isolate.execute("bundle_loader.js", BUNDLE_LOADER));
   js_check(runtime_isolate.execute("typescript.js", TYPESCRIPT_CODE));
   js_check(runtime_isolate.execute(&bundle.to_string_lossy(), &source_code));
 
   let main = state.lock().unwrap().main_module_name();
-  js_check(runtime_isolate.execute("anon", &format!("require('{}')", main)));
+  js_check(
+    runtime_isolate.execute("anon", &format!("instantiate('{}')", main)),
+  );
 
   write_snapshot(runtime_isolate, bundle)?;
 
@@ -249,6 +253,7 @@ pub fn get_asset(name: &str) -> Option<&'static str> {
     };
   }
   match name {
+    "bundle_loader.js" => Some(include_str!("bundle_loader.js")),
     "lib.deno_core.d.ts" => Some(include_str!("lib.deno_core.d.ts")),
     "typescript.d.ts" => inc!("typescript.d.ts"),
     "lib.esnext.d.ts" => inc!("lib.esnext.d.ts"),
