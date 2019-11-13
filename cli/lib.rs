@@ -325,8 +325,11 @@ fn bundle_command(flags: DenoFlags, argv: Vec<String>) {
   let (worker, state) = create_worker_and_state(flags, argv);
 
   let main_module = state.main_module.as_ref().unwrap().clone();
-  assert!(state.argv.len() >= 3);
-  let out_file = state.argv[2].clone();
+  assert!(state.argv.len() >= 2);
+  let out_file = match state.argv.len() {
+    3 => Some(state.argv[2].clone()),
+    _ => None,
+  };
   debug!(">>>>> bundle_async START");
   // NOTE: we need to poll `worker` otherwise TS compiler worker won't run properly
   let main_future = lazy(move || {

@@ -87,3 +87,13 @@ pub fn enum_name_media_type(mt: MediaType) -> &'static str {
     MediaType::Unknown => "Unknown",
   }
 }
+
+// Warning! The values in this enum are duplicated in js/compiler.ts
+// Update carefully!
+#[allow(non_camel_case_types)]
+#[repr(i8)]
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum CompilerRequestType {
+  Compile = 0,
+  Bundle = 1,
+}

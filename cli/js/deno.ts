@@ -112,9 +112,3 @@ export let pid: number;
 
 /** Reflects the NO_COLOR environment variable: https://no-color.org/ */
 export let noColor: boolean;
-
-// TODO(ry) This should not be exposed to Deno.
-export function _setGlobals(pid_: number, noColor_: boolean): void {
-  pid = pid_;
-  noColor = noColor_;
-}

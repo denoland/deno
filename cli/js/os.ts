@@ -7,9 +7,6 @@ import * as util from "./util.ts";
 import { window } from "./window.ts";
 import { OperatingSystem, Arch } from "./build.ts";
 
-// builtin modules
-import { _setGlobals } from "./deno.ts";
-
 /** Check if running in terminal.
  *
  *       console.log(Deno.isTTY().stdout);
@@ -103,14 +100,15 @@ export function start(preserveDenoNamespace = true, source?: string): Start {
   // First we send an empty `Start` message to let the privileged side know we
   // are ready. The response should be a `StartRes` message containing the CLI
   // args and other info.
-  const s = sendSync(dispatch.OP_START);
+  const startResponse = sendSync(dispatch.OP_START);
+  const { pid, noColor, debugFlag } = startResponse;
 
-  util.setLogDebug(s.debugFlag, source);
+  util.setLogDebug(debugFlag, source);
 
   // pid and noColor need to be set in the Deno module before it's set to be
   // frozen.
-  _setGlobals(s.pid, s.noColor);
-  delete window.Deno._setGlobals;
+  util.immutableDefine(window.Deno, "pid", pid);
+  util.immutableDefine(window.Deno, "noColor", noColor);
   Object.freeze(window.Deno);
 
   if (preserveDenoNamespace) {
@@ -126,7 +124,7 @@ export function start(preserveDenoNamespace = true, source?: string): Start {
     assert(window.Deno === undefined);
   }
 
-  return s;
+  return startResponse;
 }
 
 /**

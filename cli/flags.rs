@@ -6,7 +6,6 @@ use clap::Arg;
 use clap::ArgMatches;
 use clap::Shell;
 use clap::SubCommand;
-use deno::ModuleSpecifier;
 use log::Level;
 use std;
 use std::str;
@@ -259,11 +258,16 @@ compiler.",
       SubCommand::with_name("bundle")
         .about("Bundle module and dependencies into single file")
         .long_about(
-          "Output a single JavaScript file with all dependencies
+          "Output a single JavaScript file with all dependencies.
+
+If a out_file argument is omitted, the output of the bundle will be sent to
+standard out.
 
 Example:
 
-  deno bundle https://deno.land/std/examples/colors.ts"
+  deno bundle https://deno.land/std/examples/colors.ts
+  
+  deno bundle https://deno.land/std/examples/colors.ts colors.bundle.js"
         )
           .arg(Arg::with_name("source_file").takes_value(true).required(true))
           .arg(Arg::with_name("out_file").takes_value(true).required(false)),
@@ -793,32 +797,6 @@ pub enum DenoSubcommand {
   Version,
 }
 
-fn get_default_bundle_filename(source_file: &str) -> String {
-  let specifier = ModuleSpecifier::resolve_url_or_path(source_file).unwrap();
-  let path_segments = specifier.as_url().path_segments().unwrap();
-  let file_name = path_segments.filter(|s| !s.is_empty()).last().unwrap();
-  let file_stem = file_name.trim_end_matches(".ts").trim_end_matches(".js");
-  format!("{}.bundle.js", file_stem)
-}
-
-#[test]
-fn test_get_default_bundle_filename() {
-  assert_eq!(get_default_bundle_filename("blah.ts"), "blah.bundle.js");
-  assert_eq!(
-    get_default_bundle_filename("http://example.com/blah.ts"),
-    "blah.bundle.js"
-  );
-  assert_eq!(get_default_bundle_filename("blah.js"), "blah.bundle.js");
-  assert_eq!(
-    get_default_bundle_filename("http://example.com/blah.js"),
-    "blah.bundle.js"
-  );
-  assert_eq!(
-    get_default_bundle_filename("http://zombo.com/stuff/"),
-    "stuff.bundle.js"
-  );
-}
-
 pub fn flags_from_vec(
   args: Vec<String>,
 ) -> (DenoFlags, DenoSubcommand, Vec<String>) {
@@ -835,11 +813,13 @@ pub fn flags_from_vec(
     ("bundle", Some(bundle_match)) => {
       flags.allow_write = true;
       let source_file: &str = bundle_match.value_of("source_file").unwrap();
-      let out_file = bundle_match
-        .value_of("out_file")
-        .map(String::from)
-        .unwrap_or_else(|| get_default_bundle_filename(source_file));
-      argv.extend(vec![source_file.to_string(), out_file.to_string()]);
+      let out_file = bundle_match.value_of("out_file").map(String::from);
+      match out_file {
+        Some(out_file) => {
+          argv.extend(vec![source_file.to_string(), out_file.to_string()])
+        }
+        _ => argv.extend(vec![source_file.to_string()]),
+      }
       DenoSubcommand::Bundle
     }
     ("completions", Some(completions_match)) => {
