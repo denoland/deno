@@ -395,11 +395,8 @@ Automatically downloads Prettier dependencies on first run.
           Arg::with_name("jsx-bracket-same-line")
             .long("jsx-bracket-same-line")
             .help(
-              "Put the > of a multi-line JSX element at
-            the end of the last line instead of
-            being alone on the next line (does not
-            apply to self closing elements).
-            "
+              "Put the > of a multi-line JSX element at the end of the last line
+instead of being alone on the next line (does not apply to self closing elements)."
             )
             .takes_value(false)
         )
