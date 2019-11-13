@@ -28,8 +28,13 @@ enum MediaType {
   TypeScript = 2,
   TSX = 3,
   Json = 4,
-  Unknown = 5
+  Wasm = 5,
+  Unknown = 6
 }
+
+// ts.Extension does not contain Wasm type.
+// Forcefully create a marker of such type instead.
+const WASM_MARKER = (-1 as unknown) as ts.Extension;
 
 // Startup boilerplate. This is necessary because the compiler has its own
 // snapshot. (It would be great if we could remove these things or centralize
@@ -145,6 +150,7 @@ class SourceFile {
   sourceCode!: string;
   tsSourceFile?: ts.SourceFile;
   url!: string;
+  isWasm = false;
 
   constructor(json: SourceFileJson) {
     if (SourceFile._moduleCache.has(json.url)) {
@@ -152,6 +158,9 @@ class SourceFile {
     }
     Object.assign(this, json);
     this.extension = getExtension(this.url, this.mediaType);
+    if (this.extension === WASM_MARKER) {
+      this.isWasm = true;
+    }
     SourceFile._moduleCache.set(this.url, this);
   }
 
@@ -280,6 +289,19 @@ async function processImports(
   assert(sourceFiles.length === specifiers.length);
   for (let i = 0; i < sourceFiles.length; i++) {
     const sourceFileJson = sourceFiles[i];
+    if (sourceFileJson.mediaType === MediaType.Wasm) {
+      util.log(
+        "compiler::processImports: WASM import",
+        sourceFileJson.filename
+      );
+      // Create declaration file on the fly.
+      const _ = new SourceFile({
+        filename: `${sourceFileJson.filename}.d.ts`,
+        url: `${sourceFileJson.url}.d.ts`,
+        mediaType: MediaType.TypeScript,
+        sourceCode: "export default any;"
+      });
+    }
     const sourceFile =
       SourceFile.get(sourceFileJson.url) || new SourceFile(sourceFileJson);
     sourceFile.cache(specifiers[i][0], referrer);
@@ -339,6 +361,9 @@ function getExtension(fileName: string, mediaType: MediaType): ts.Extension {
       return ts.Extension.Tsx;
     case MediaType.Json:
       return ts.Extension.Json;
+    case MediaType.Wasm:
+      // Custom marker for Wasm type.
+      return WASM_MARKER;
     case MediaType.Unknown:
     default:
       throw TypeError("Cannot resolve extension.");
@@ -509,6 +534,14 @@ class Host implements ts.CompilerHost {
         : undefined;
       if (!sourceFile) {
         return undefined;
+      }
+      if (sourceFile.isWasm) {
+        // WASM import, use custom .d.ts declaration instead.
+        return {
+          resolvedFileName: `${sourceFile.url}.d.ts`,
+          isExternalLibraryImport: false,
+          extension: ts.Extension.Dts
+        };
       }
       return {
         resolvedFileName: sourceFile.url,
