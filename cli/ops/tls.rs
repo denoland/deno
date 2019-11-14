@@ -1,13 +1,13 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use super::io::StreamResource;
 use crate::deno_error::bad_resource;
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
 use crate::ops::json_op;
 use crate::resolve_addr::resolve_addr;
+use crate::resources;
+use crate::resources::Resource;
 use crate::state::ThreadSafeState;
-use deno::Resource;
 use deno::*;
 use futures::Async;
 use futures::Future;
@@ -60,7 +60,7 @@ pub fn op_dial_tls(
 ) -> Result<JsonOp, ErrBox> {
   let args: DialTLSArgs = serde_json::from_value(args)?;
   let cert_file = args.cert_file;
-  let state_ = state.clone();
+
   state.check_net(&args.hostname, args.port)?;
   if let Some(path) = cert_file.clone() {
     state.check_read(&path)?;
@@ -99,11 +99,7 @@ pub fn op_dial_tls(
             .connect(dnsname, tcp_stream)
             .map_err(ErrBox::from)
             .and_then(move |tls_stream| {
-              let mut table = state_.lock_resource_table();
-              let rid = table.add(
-                "clientTlsStream",
-                Box::new(StreamResource::ClientTlsStream(Box::new(tls_stream))),
-              );
+              let rid = resources::add_tls_stream(tls_stream);
               futures::future::ok(json!({
                 "rid": rid,
                 "localAddr": local_addr.to_string(),
@@ -269,7 +265,7 @@ fn op_listen_tls(
     task: None,
     local_addr,
   };
-  let mut table = state.lock_resource_table();
+  let mut table = resources::lock_resource_table();
   let rid = table.add("tlsListener", Box::new(tls_listener_resource));
 
   Ok(JsonOp::Sync(json!({
@@ -286,19 +282,18 @@ enum AcceptTlsState {
 }
 
 /// Simply accepts a TLS connection.
-pub fn accept_tls(state: &ThreadSafeState, rid: ResourceId) -> AcceptTls {
+pub fn accept_tls(rid: ResourceId) -> AcceptTls {
   AcceptTls {
-    accept_state: AcceptTlsState::Eager,
+    state: AcceptTlsState::Eager,
     rid,
-    state: state.clone(),
   }
 }
 
 /// A future representing state of accepting a TLS connection.
+#[derive(Debug)]
 pub struct AcceptTls {
-  accept_state: AcceptTlsState,
+  state: AcceptTlsState,
   rid: ResourceId,
-  state: ThreadSafeState,
 }
 
 impl Future for AcceptTls {
@@ -306,11 +301,11 @@ impl Future for AcceptTls {
   type Error = ErrBox;
 
   fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-    if self.accept_state == AcceptTlsState::Done {
+    if self.state == AcceptTlsState::Done {
       panic!("poll AcceptTls after it's done");
     }
 
-    let mut table = self.state.lock_resource_table();
+    let mut table = resources::lock_resource_table();
     let listener_resource = table
       .get_mut::<TlsListenerResource>(self.rid)
       .ok_or_else(|| {
@@ -323,22 +318,22 @@ impl Future for AcceptTls {
 
     let listener = &mut listener_resource.listener;
 
-    if self.accept_state == AcceptTlsState::Eager {
+    if self.state == AcceptTlsState::Eager {
       // Similar to try_ready!, but also track/untrack accept task
       // in TcpListener resource.
       // In this way, when the listener is closed, the task can be
       // notified to error out (instead of stuck forever).
       match listener.poll_accept().map_err(ErrBox::from) {
         Ok(Async::Ready((stream, addr))) => {
-          self.accept_state = AcceptTlsState::Done;
+          self.state = AcceptTlsState::Done;
           return Ok((stream, addr).into());
         }
         Ok(Async::NotReady) => {
-          self.accept_state = AcceptTlsState::Pending;
+          self.state = AcceptTlsState::Pending;
           return Ok(Async::NotReady);
         }
         Err(e) => {
-          self.accept_state = AcceptTlsState::Done;
+          self.state = AcceptTlsState::Done;
           return Err(e);
         }
       }
@@ -347,7 +342,7 @@ impl Future for AcceptTls {
     match listener.poll_accept().map_err(ErrBox::from) {
       Ok(Async::Ready((stream, addr))) => {
         listener_resource.untrack_task();
-        self.accept_state = AcceptTlsState::Done;
+        self.state = AcceptTlsState::Done;
         Ok((stream, addr).into())
       }
       Ok(Async::NotReady) => {
@@ -356,7 +351,7 @@ impl Future for AcceptTls {
       }
       Err(e) => {
         listener_resource.untrack_task();
-        self.accept_state = AcceptTlsState::Done;
+        self.state = AcceptTlsState::Done;
         Err(e)
       }
     }
@@ -369,22 +364,21 @@ struct AcceptTlsArgs {
 }
 
 fn op_accept_tls(
-  state: &ThreadSafeState,
+  _state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: AcceptTlsArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
-  let state1 = state.clone();
-  let state2 = state.clone();
-  let op = accept_tls(state, rid)
+
+  let op = accept_tls(rid)
     .and_then(move |(tcp_stream, _socket_addr)| {
       let local_addr = tcp_stream.local_addr()?;
       let remote_addr = tcp_stream.peer_addr()?;
       Ok((tcp_stream, local_addr, remote_addr))
     })
     .and_then(move |(tcp_stream, local_addr, remote_addr)| {
-      let table = state1.lock_resource_table();
+      let table = resources::lock_resource_table();
       let resource = table
         .get::<TlsListenerResource>(rid)
         .ok_or_else(bad_resource)
@@ -395,11 +389,7 @@ fn op_accept_tls(
         .accept(tcp_stream)
         .map_err(ErrBox::from)
         .and_then(move |tls_stream| {
-          let mut table = state2.lock_resource_table();
-          let rid = table.add(
-            "serverTlsStream",
-            Box::new(StreamResource::ServerTlsStream(Box::new(tls_stream))),
-          );
+          let rid = resources::add_server_tls_stream(tls_stream);
           Ok((rid, local_addr, remote_addr))
         })
     })

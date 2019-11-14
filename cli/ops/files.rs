@@ -1,11 +1,12 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use super::io::StreamResource;
 use crate::deno_error::bad_resource;
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
 use crate::fs as deno_fs;
 use crate::ops::json_op;
+use crate::resources;
+use crate::resources::CliResource;
 use crate::state::ThreadSafeState;
 use deno::*;
 use futures::Future;
@@ -37,7 +38,7 @@ fn op_open(
   let args: OpenArgs = serde_json::from_value(args)?;
   let (filename, filename_) = deno_fs::resolve_from_cwd(&args.filename)?;
   let mode = args.mode.as_ref();
-  let state_ = state.clone();
+
   let mut open_options = tokio::fs::OpenOptions::new();
 
   match mode {
@@ -90,8 +91,7 @@ fn op_open(
   let is_sync = args.promise_id.is_none();
   let op = open_options.open(filename).map_err(ErrBox::from).and_then(
     move |fs_file| {
-      let mut table = state_.lock_resource_table();
-      let rid = table.add("fsFile", Box::new(StreamResource::FsFile(fs_file)));
+      let rid = resources::add_fs_file(fs_file);
       futures::future::ok(json!(rid))
     },
   );
@@ -110,21 +110,21 @@ struct CloseArgs {
 }
 
 fn op_close(
-  state: &ThreadSafeState,
+  _state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: CloseArgs = serde_json::from_value(args)?;
 
-  let mut table = state.lock_resource_table();
+  let mut table = resources::lock_resource_table();
   table.close(args.rid as u32).ok_or_else(bad_resource)?;
   Ok(JsonOp::Sync(json!({})))
 }
 
+#[derive(Debug)]
 pub struct SeekFuture {
   seek_from: SeekFrom,
   rid: ResourceId,
-  state: ThreadSafeState,
 }
 
 impl Future for SeekFuture {
@@ -132,13 +132,13 @@ impl Future for SeekFuture {
   type Error = ErrBox;
 
   fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-    let mut table = self.state.lock_resource_table();
+    let mut table = resources::lock_resource_table();
     let resource = table
-      .get_mut::<StreamResource>(self.rid)
+      .get_mut::<CliResource>(self.rid)
       .ok_or_else(bad_resource)?;
 
     let tokio_file = match resource {
-      StreamResource::FsFile(ref mut file) => file,
+      CliResource::FsFile(ref mut file) => file,
       _ => return Err(bad_resource()),
     };
 
@@ -156,7 +156,7 @@ struct SeekArgs {
 }
 
 fn op_seek(
-  state: &ThreadSafeState,
+  _state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -177,11 +177,7 @@ fn op_seek(
     }
   };
 
-  let fut = SeekFuture {
-    state: state.clone(),
-    seek_from,
-    rid,
-  };
+  let fut = SeekFuture { seek_from, rid };
 
   let op = fut.and_then(move |_| futures::future::ok(json!({})));
   if args.promise_id.is_none() {
