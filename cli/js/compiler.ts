@@ -28,7 +28,8 @@ enum MediaType {
   TypeScript = 2,
   TSX = 3,
   Json = 4,
-  Unknown = 5
+  Wasm = 5,
+  Unknown = 6
 }
 
 // Warning! The values in this enum are duplicated in cli/msg.rs
@@ -44,8 +45,8 @@ enum CompilerRequestType {
 const console = new Console(core.print);
 window.console = console;
 window.workerMain = workerMain;
-function denoMain(): void {
-  os.start(true, "TS");
+function denoMain(compilerType?: string): void {
+  os.start(true, compilerType || "TS");
 }
 window["denoMain"] = denoMain;
 
@@ -371,6 +372,9 @@ function getExtension(fileName: string, mediaType: MediaType): ts.Extension {
       return ts.Extension.Tsx;
     case MediaType.Json:
       return ts.Extension.Json;
+    case MediaType.Wasm:
+      // Custom marker for Wasm type.
+      return ts.Extension.Js;
     case MediaType.Unknown:
     default:
       throw TypeError("Cannot resolve extension.");
@@ -719,6 +723,50 @@ window.compilerMain = function compilerMain(): void {
       rootNames,
       type: CompilerRequestType[request.type]
     });
+
+    // The compiler isolate exits after a single message.
+    workerClose();
+  };
+};
+
+function base64ToUint8Array(data: string): Uint8Array {
+  const binString = window.atob(data);
+  const size = binString.length;
+  const bytes = new Uint8Array(size);
+  for (let i = 0; i < size; i++) {
+    bytes[i] = binString.charCodeAt(i);
+  }
+  return bytes;
+}
+
+window.wasmCompilerMain = function wasmCompilerMain(): void {
+  // workerMain should have already been called since a compiler is a worker.
+  window.onmessage = async ({
+    data: binary
+  }: {
+    data: string;
+  }): Promise<void> => {
+    const buffer = base64ToUint8Array(binary);
+    // @ts-ignore
+    const compiled = await WebAssembly.compile(buffer);
+
+    util.log(">>> WASM compile start");
+
+    const importList = Array.from(
+      // @ts-ignore
+      new Set(WebAssembly.Module.imports(compiled).map(({ module }) => module))
+    );
+    const exportList = Array.from(
+      // @ts-ignore
+      new Set(WebAssembly.Module.exports(compiled).map(({ name }) => name))
+    );
+
+    postMessage({
+      importList,
+      exportList
+    });
+
+    util.log("<<< WASM compile end");
 
     // The compiler isolate exits after a single message.
     workerClose();

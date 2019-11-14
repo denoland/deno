@@ -356,6 +356,12 @@ itest!(_050_more_jsons {
   output: "050_more_jsons.ts.out",
 });
 
+itest!(_051_wasm_import {
+  args: "run --reload --allow-net --allow-read 051_wasm_import.ts",
+  output: "051_wasm_import.ts.out",
+  http_server: true,
+});
+
 itest!(lock_check_ok {
   args: "run --lock=lock_check_ok.json http://127.0.0.1:4545/cli/tests/003_relative_import.ts",
   output: "003_relative_import.ts.out",
