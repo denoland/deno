@@ -1398,7 +1398,9 @@ mod tests {
         PRETTIER_URL,
         "script_1.ts",
         "script_2.ts",
-        "--write"
+        "--write",
+        "--config",
+        "auto"
       ]
     );
   }
@@ -1616,7 +1618,7 @@ mod tests {
     assert_eq!(subcommand, DenoSubcommand::Run);
     assert_eq!(
       argv,
-      svec!["deno", PRETTIER_URL, "script_1.ts", "script_2.ts"]
+      svec!["deno", PRETTIER_URL, "script_1.ts", "script_2.ts", "--config", "auto"]
     );
   }
 
