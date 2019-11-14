@@ -43,7 +43,6 @@ pub mod permissions;
 mod progress;
 mod repl;
 pub mod resolve_addr;
-pub mod resources;
 mod shell;
 mod signal;
 pub mod source_maps;
@@ -57,6 +56,7 @@ pub mod worker;
 use crate::deno_error::js_check;
 use crate::deno_error::print_err_and_exit;
 use crate::global_state::ThreadSafeGlobalState;
+use crate::ops::io::get_stdio;
 use crate::progress::Progress;
 use crate::state::ThreadSafeState;
 use crate::worker::Worker;
@@ -127,6 +127,15 @@ fn create_worker_and_state(
   )
   .map_err(deno_error::print_err_and_exit)
   .unwrap();
+
+  let state_ = state.clone();
+  {
+    let mut resource_table = state_.lock_resource_table();
+    let (stdin, stdout, stderr) = get_stdio();
+    resource_table.add("stdin", Box::new(stdin));
+    resource_table.add("stdout", Box::new(stdout));
+    resource_table.add("stderr", Box::new(stderr));
+  }
 
   let worker = Worker::new(
     "main".to_string(),
