@@ -192,7 +192,8 @@ export async function runTestModules({
   }
 
   const testFile = renderTestFile(testModules);
-  const testFilePath = join(Deno.env("DENO_DIR"), ".deno.test.ts");
+  const root = Deno.env("DENO_DIR") || Deno.cwd();
+  const testFilePath = join(root, ".deno.test.ts");
   await Deno.writeFile(testFilePath, new TextEncoder().encode(testFile));
 
   try {
