@@ -13,20 +13,25 @@ const { console } = window;
  * Both of them are internally defined as `Timer` interface
  * seen below. Timers are stored in red-black tree, grouped
  * by `due` field (representing time instant in which they should fire).
- * Intervals are represented as timeouts that are scheduled after
- * previous timeout if fired.
- * 
+ * Intervals are represented as series of timeouts - after firing timeout,
+ * the next timeout is scheduled immediately after.
+ *
  * For each node of RB tree there's a single "timeout resource" created
  * in Rust - meaning that multiple timeouts scheduled for same instant
  * are represented by single resource in Rust.
- * 
+ *
+ * NOTE: Actual implementation of timeout requires to dispatch two
+ * distinct ops:
+ *  a) op that creates and schedules `Delay` resource,
+ *  b) op that polls `Delay` resource and returns when `Delay` fires
+ *
  * Whole situation with RBTree is not optimal and we'd like
  * to move to solution where we have single Rust resource corresponding
  * to single JS timeout/interval. However, this is not yet possible
  * because Tokio doesn't support ordering of delays (meaning if you schedule
  * a few timeouts for single instant they will fire in random order).
- * 
- * This modules should be revamped once Tokio preserves ordering of delays.
+ *
+ * This module should be revamped once Tokio preserves ordering of delays.
  */
 
 interface Timer {
