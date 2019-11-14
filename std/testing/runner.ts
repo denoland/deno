@@ -116,12 +116,23 @@ export interface RunTestModulesOptions extends RunTestsOptions {
   allowNone?: boolean;
 }
 
+/**
+ * Renders test file that will be run.
+ *
+ * It's done to optimize compilation of test files, because
+ * dynamically importing them one by one takes very long time.
+ * @TODO(bartlomieju): try to optimize compilation by reusing same compiler host
+ * multiple times
+ * @param testModules
+ */
 function renderTestFile(testModules: string[]): string {
   let testFile = "";
 
   for (const testModule of testModules) {
-    const line = 'import "' + testModule + '"\n';
-    testFile += line;
+    // NOTE: this is intentional that template string is not used
+    // because of TS compiler quirkness of trying to import it
+    // rather than treating it like a variable
+    testFile += 'import "' + testModule + '"\n';
   }
 
   return testFile;
@@ -181,7 +192,7 @@ export async function runTestModules({
   }
 
   const testFile = renderTestFile(testModules);
-  const testFilePath = join(Deno.cwd(), ".deno.test.ts");
+  const testFilePath = join(Deno.env("DENO_DIR"), ".deno.test.ts");
   await Deno.writeFile(testFilePath, new TextEncoder().encode(testFile));
 
   try {
