@@ -74,7 +74,8 @@ pub enum MediaType {
   TypeScript = 2,
   TSX = 3,
   Json = 4,
-  Unknown = 5,
+  Wasm = 5,
+  Unknown = 6,
 }
 
 pub fn enum_name_media_type(mt: MediaType) -> &'static str {
@@ -84,6 +85,17 @@ pub fn enum_name_media_type(mt: MediaType) -> &'static str {
     MediaType::TypeScript => "TypeScript",
     MediaType::TSX => "TSX",
     MediaType::Json => "Json",
+    MediaType::Wasm => "Wasm",
     MediaType::Unknown => "Unknown",
   }
+}
+
+// Warning! The values in this enum are duplicated in js/compiler.ts
+// Update carefully!
+#[allow(non_camel_case_types)]
+#[repr(i8)]
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum CompilerRequestType {
+  Compile = 0,
+  Bundle = 1,
 }

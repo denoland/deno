@@ -204,8 +204,8 @@ async function main(): Promise<void> {
 
   const include =
     parsedArgs._.length > 0
-      ? (parsedArgs._ as string[]).flatMap(
-          (fileGlob: string): string[] => fileGlob.split(",")
+      ? (parsedArgs._ as string[]).flatMap((fileGlob: string): string[] =>
+          fileGlob.split(",")
         )
       : ["."];
   const exclude =

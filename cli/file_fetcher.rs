@@ -491,6 +491,7 @@ fn map_file_extension(path: &Path) -> msg::MediaType {
       Some("jsx") => msg::MediaType::JSX,
       Some("mjs") => msg::MediaType::JavaScript,
       Some("json") => msg::MediaType::Json,
+      Some("wasm") => msg::MediaType::Wasm,
       _ => msg::MediaType::Unknown,
     },
   }
@@ -1504,6 +1505,10 @@ mod tests {
       msg::MediaType::Json
     );
     assert_eq!(
+      map_file_extension(Path::new("foo/bar.wasm")),
+      msg::MediaType::Wasm
+    );
+    assert_eq!(
       map_file_extension(Path::new("foo/bar.txt")),
       msg::MediaType::Unknown
     );
@@ -1543,6 +1548,10 @@ mod tests {
     assert_eq!(
       map_content_type(Path::new("foo/bar.json"), None),
       msg::MediaType::Json
+    );
+    assert_eq!(
+      map_content_type(Path::new("foo/bar.wasm"), None),
+      msg::MediaType::Wasm
     );
     assert_eq!(
       map_content_type(Path::new("foo/bar"), None),

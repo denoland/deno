@@ -26,7 +26,7 @@ export function log(...args: unknown[]): void {
 }
 
 // @internal
-export function assert(cond: boolean, msg = "assert"): void {
+export function assert(cond: unknown, msg = "assert"): asserts cond {
   if (!cond) {
     throw Error(msg);
   }
@@ -74,11 +74,9 @@ export type Resolvable<T> = Promise<T> & ResolvableMethods<T>;
 // @internal
 export function createResolvable<T>(): Resolvable<T> {
   let methods: ResolvableMethods<T>;
-  const promise = new Promise<T>(
-    (resolve, reject): void => {
-      methods = { resolve, reject };
-    }
-  );
+  const promise = new Promise<T>((resolve, reject): void => {
+    methods = { resolve, reject };
+  });
   // TypeScript doesn't know that the Promise callback occurs synchronously
   // therefore use of not null assertion (`!`)
   return Object.assign(promise, methods!) as Resolvable<T>;
@@ -97,12 +95,9 @@ export function unreachable(): never {
 // @internal
 export function hexdump(u8: Uint8Array): string {
   return Array.prototype.map
-    .call(
-      u8,
-      (x: number): string => {
-        return ("00" + x.toString(16)).slice(-2);
-      }
-    )
+    .call(u8, (x: number): string => {
+      return ("00" + x.toString(16)).slice(-2);
+    })
     .join(" ");
 }
 
@@ -222,4 +217,34 @@ export function splitNumberToParts(n: number): number[] {
   // This is also faster than Math.floor(n / 0x100000000) in V8.
   const higher = (n - lower) / 0x100000000;
   return [lower, higher];
+}
+
+/** Return the common path shared by the `paths`.
+ *
+ * @param paths The set of paths to compare.
+ * @param sep An optional separator to use. Defaults to `/`.
+ * @internal
+ */
+export function commonPath(paths: string[], sep = "/"): string {
+  const [first = "", ...remaining] = paths;
+  if (first === "" || remaining.length === 0) {
+    return "";
+  }
+  const parts = first.split(sep);
+
+  let endOfPrefix = parts.length;
+  for (const path of remaining) {
+    const compare = path.split(sep);
+    for (let i = 0; i < endOfPrefix; i++) {
+      if (compare[i] !== parts[i]) {
+        endOfPrefix = i;
+      }
+    }
+
+    if (endOfPrefix === 0) {
+      return "";
+    }
+  }
+  const prefix = parts.slice(0, endOfPrefix).join(sep);
+  return prefix.endsWith(sep) ? prefix : `${prefix}${sep}`;
 }
