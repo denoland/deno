@@ -17,7 +17,7 @@ fn std_tests() {
         return;
       }
     }
-    None => {
+    Err(_) => {
       return;
     }
   }
