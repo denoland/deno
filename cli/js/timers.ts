@@ -9,7 +9,7 @@ const { console } = window;
 
 /**
  * This module implements timeouts and intervals.
- * 
+ *
  * Both of them are internally defined as `Timer` interface
  * seen below. Timers are stored in red-black tree, grouped
  * by `due` field (representing time instant in which they should fire).
