@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { test, assert, assertEquals } from "./test_util.ts";
+import { test, assert, assertEquals, assertThrows } from "./test_util.ts";
 
 test(function urlParsing(): void {
   const url = new URL(
@@ -186,4 +186,17 @@ test(function customInspectFunction(): void {
     Deno.inspect(url),
     'URL { href: "http://example.com/?", origin: "http://example.com", protocol: "http:", username: "", password: "", host: "example.com", hostname: "example.com", port: "", pathname: "/", hash: "", search: "?" }'
   );
+});
+
+test(function protocolNotHttpOrFile() {
+  const url = new URL("about:blank");
+  assertEquals(url.href, "about:blank");
+  assertEquals(url.protocol, "about:");
+  assertEquals(url.origin, "null");
+});
+
+test(function createBadUrl(): void {
+  assertThrows(() => {
+    new URL("0.0.0.0:8080");
+  });
 });

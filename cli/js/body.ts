@@ -72,41 +72,35 @@ function concatenate(...arrays: Uint8Array[]): ArrayBuffer {
 }
 
 function bufferFromStream(stream: ReadableStreamReader): Promise<ArrayBuffer> {
-  return new Promise(
-    (resolve, reject): void => {
-      const parts: Uint8Array[] = [];
-      const encoder = new TextEncoder();
-      // recurse
-      (function pump(): void {
-        stream
-          .read()
-          .then(
-            ({ done, value }): void => {
-              if (done) {
-                return resolve(concatenate(...parts));
-              }
+  return new Promise((resolve, reject): void => {
+    const parts: Uint8Array[] = [];
+    const encoder = new TextEncoder();
+    // recurse
+    (function pump(): void {
+      stream
+        .read()
+        .then(({ done, value }): void => {
+          if (done) {
+            return resolve(concatenate(...parts));
+          }
 
-              if (typeof value === "string") {
-                parts.push(encoder.encode(value));
-              } else if (value instanceof ArrayBuffer) {
-                parts.push(new Uint8Array(value));
-              } else if (!value) {
-                // noop for undefined
-              } else {
-                reject("unhandled type on stream read");
-              }
+          if (typeof value === "string") {
+            parts.push(encoder.encode(value));
+          } else if (value instanceof ArrayBuffer) {
+            parts.push(new Uint8Array(value));
+          } else if (!value) {
+            // noop for undefined
+          } else {
+            reject("unhandled type on stream read");
+          }
 
-              return pump();
-            }
-          )
-          .catch(
-            (err): void => {
-              reject(err);
-            }
-          );
-      })();
-    }
-  );
+          return pump();
+        })
+        .catch((err): void => {
+          reject(err);
+        });
+    })();
+  });
 }
 
 function getHeaderValueParams(value: string): Map<string, string> {
@@ -275,19 +269,17 @@ export class Body implements domTypes.Body {
         body
           .trim()
           .split("&")
-          .forEach(
-            (bytes): void => {
-              if (bytes) {
-                const split = bytes.split("=");
-                const name = split.shift()!.replace(/\+/g, " ");
-                const value = split.join("=").replace(/\+/g, " ");
-                formData.append(
-                  decodeURIComponent(name),
-                  decodeURIComponent(value)
-                );
-              }
+          .forEach((bytes): void => {
+            if (bytes) {
+              const split = bytes.split("=");
+              const name = split.shift()!.replace(/\+/g, " ");
+              const value = split.join("=").replace(/\+/g, " ");
+              formData.append(
+                decodeURIComponent(name),
+                decodeURIComponent(value)
+              );
             }
-          );
+          });
       } catch (e) {
         throw new TypeError("Invalid form urlencoded format");
       }

@@ -67,6 +67,7 @@ function unreachable() {
 
 /**
  * @param {unknown} cond
+ * @returns {asserts cond}
  */
 function assert(cond) {
   if (!cond) {

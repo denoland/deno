@@ -360,13 +360,11 @@ const getKeysOfEnumerableProperties = (object: {}): Array<string | symbol> => {
   const keys: Array<string | symbol> = Object.keys(object).sort();
 
   if (Object.getOwnPropertySymbols) {
-    Object.getOwnPropertySymbols(object).forEach(
-      (symbol): void => {
-        if (Object.getOwnPropertyDescriptor(object, symbol)!.enumerable) {
-          keys.push(symbol);
-        }
+    Object.getOwnPropertySymbols(object).forEach((symbol): void => {
+      if (Object.getOwnPropertyDescriptor(object, symbol)!.enumerable) {
+        keys.push(symbol);
       }
-    );
+    });
   }
 
   return keys;

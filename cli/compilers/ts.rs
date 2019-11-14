@@ -156,20 +156,23 @@ impl CompiledFileMetadata {
 }
 /// Creates the JSON message send to compiler.ts's onmessage.
 fn req(
+  request_type: msg::CompilerRequestType,
   root_names: Vec<String>,
   compiler_config: CompilerConfig,
-  bundle: Option<String>,
+  out_file: Option<String>,
 ) -> Buf {
   let j = match (compiler_config.path, compiler_config.content) {
     (Some(config_path), Some(config_data)) => json!({
+      "type": request_type as i32,
       "rootNames": root_names,
-      "bundle": bundle,
+      "outFile": out_file,
       "configPath": config_path,
       "config": str::from_utf8(&config_data).unwrap(),
     }),
     _ => json!({
+      "type": request_type as i32,
       "rootNames": root_names,
-      "bundle": bundle,
+      "outFile": out_file,
     }),
   };
 
@@ -250,7 +253,7 @@ impl TsCompiler {
     self: &Self,
     global_state: ThreadSafeGlobalState,
     module_name: String,
-    out_file: String,
+    out_file: Option<String>,
   ) -> impl Future<Item = (), Error = ErrBox> {
     debug!(
       "Invoking the compiler to bundle. module_name: {}",
@@ -258,7 +261,12 @@ impl TsCompiler {
     );
 
     let root_names = vec![module_name.clone()];
-    let req_msg = req(root_names, self.config.clone(), Some(out_file));
+    let req_msg = req(
+      msg::CompilerRequestType::Bundle,
+      root_names,
+      self.config.clone(),
+      out_file,
+    );
 
     let worker = TsCompiler::setup_worker(global_state.clone());
     let worker_ = worker.clone();
@@ -360,7 +368,12 @@ impl TsCompiler {
     );
 
     let root_names = vec![module_url.to_string()];
-    let req_msg = req(root_names, self.config.clone(), None);
+    let req_msg = req(
+      msg::CompilerRequestType::Compile,
+      root_names,
+      self.config.clone(),
+      None,
+    );
 
     let worker = TsCompiler::setup_worker(global_state.clone());
     let worker_ = worker.clone();
@@ -709,7 +722,7 @@ mod tests {
         .bundle_async(
           state.clone(),
           module_name,
-          String::from("$deno$/bundle.js"),
+          Some(String::from("$deno$/bundle.js")),
         )
         .then(|result| {
           assert!(result.is_ok());

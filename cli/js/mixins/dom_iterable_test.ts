@@ -28,7 +28,10 @@ function setup() {
 test(function testDomIterable(): void {
   const { DomIterable, Base } = setup();
 
-  const fixture: Array<[string, number]> = [["foo", 1], ["bar", 2]];
+  const fixture: Array<[string, number]> = [
+    ["foo", 1],
+    ["bar", 2]
+  ];
 
   const domIterable = new DomIterable(fixture);
 

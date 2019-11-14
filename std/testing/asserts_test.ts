@@ -51,8 +51,14 @@ test(function testingEqual(): void {
   assert(equal(new Map(), new Map()));
   assert(
     equal(
-      new Map([["foo", "bar"], ["baz", "baz"]]),
-      new Map([["foo", "bar"], ["baz", "baz"]])
+      new Map([
+        ["foo", "bar"],
+        ["baz", "baz"]
+      ]),
+      new Map([
+        ["foo", "bar"],
+        ["baz", "baz"]
+      ])
     )
   );
   assert(
@@ -69,14 +75,26 @@ test(function testingEqual(): void {
   );
   assert(
     equal(
-      new Map([["foo", "bar"], ["baz", "qux"]]),
-      new Map([["baz", "qux"], ["foo", "bar"]])
+      new Map([
+        ["foo", "bar"],
+        ["baz", "qux"]
+      ]),
+      new Map([
+        ["baz", "qux"],
+        ["foo", "bar"]
+      ])
     )
   );
   assert(equal(new Map([["foo", ["bar"]]]), new Map([["foo", ["bar"]]])));
   assert(!equal(new Map([["foo", "bar"]]), new Map([["bar", "baz"]])));
   assert(
-    !equal(new Map([["foo", "bar"]]), new Map([["foo", "bar"], ["bar", "baz"]]))
+    !equal(
+      new Map([["foo", "bar"]]),
+      new Map([
+        ["foo", "bar"],
+        ["bar", "baz"]
+      ])
+    )
   );
   assert(
     !equal(

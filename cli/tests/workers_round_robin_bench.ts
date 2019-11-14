@@ -15,11 +15,9 @@ export type Resolvable<T> = Promise<T> & ResolvableMethods<T>;
 
 export function createResolvable<T>(): Resolvable<T> {
   let methods: ResolvableMethods<T>;
-  const promise = new Promise<T>(
-    (resolve, reject): void => {
-      methods = { resolve, reject };
-    }
-  );
+  const promise = new Promise<T>((resolve, reject): void => {
+    methods = { resolve, reject };
+  });
   // TypeScript doesn't know that the Promise callback occurs synchronously
   // therefore use of not null assertion (`!`)
   return Object.assign(promise, methods!) as Resolvable<T>;
@@ -40,13 +38,11 @@ async function main(): Promise<void> {
   const workers: Array<[Map<number, Resolvable<string>>, Worker]> = [];
   for (let i = 1; i <= workerCount; ++i) {
     const worker = new Worker("./subdir/bench_worker.ts");
-    const promise = new Promise(
-      (resolve): void => {
-        worker.onmessage = (e): void => {
-          if (e.data.cmdId === 0) resolve();
-        };
-      }
-    );
+    const promise = new Promise((resolve): void => {
+      worker.onmessage = (e): void => {
+        if (e.data.cmdId === 0) resolve();
+      };
+    });
     worker.postMessage({ cmdId: 0, action: 2 });
     await promise;
     workers.push([new Map(), worker]);
