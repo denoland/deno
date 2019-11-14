@@ -340,6 +340,10 @@ fn bundle_command(flags: DenoFlags, argv: Vec<String>) {
     _ => None,
   };
   debug!(">>>>> bundle_async START");
+  // TODO(bartlomieju): remove this hack
+  // keep reference to worker, otherwise it's dropped before bundling and effectively
+  // closes stdout
+  let worker_ = worker.clone();
   // NOTE: we need to poll `worker` otherwise TS compiler worker won't run properly
   let main_future = lazy(move || {
     worker.then(move |result| {
@@ -354,6 +358,7 @@ fn bundle_command(flags: DenoFlags, argv: Vec<String>) {
         })
         .and_then(move |_| {
           debug!(">>>>> bundle_async END");
+          drop(worker_);
           Ok(())
         })
     })
