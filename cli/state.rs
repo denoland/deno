@@ -5,7 +5,6 @@ use crate::global_timer::GlobalTimer;
 use crate::import_map::ImportMap;
 use crate::metrics::Metrics;
 use crate::ops::JsonOp;
-use crate::ops::MinimalOp;
 use crate::permissions::DenoPermissions;
 use crate::worker::Worker;
 use crate::worker::WorkerChannels;
@@ -16,7 +15,6 @@ use deno::Loader;
 use deno::ModuleSpecifier;
 use deno::Op;
 use deno::PinnedBuf;
-use deno::ResourceTable;
 use futures::Future;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
@@ -29,7 +27,6 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::MutexGuard;
 use std::time::Instant;
 use tokio::sync::mpsc;
 
@@ -55,7 +52,6 @@ pub struct State {
   pub start_time: Instant,
   pub seeded_rng: Option<Mutex<StdRng>>,
   pub include_deno_namespace: bool,
-  pub resource_table: Mutex<ResourceTable>,
 }
 
 impl Clone for ThreadSafeState {
@@ -72,10 +68,6 @@ impl Deref for ThreadSafeState {
 }
 
 impl ThreadSafeState {
-  pub fn lock_resource_table(&self) -> MutexGuard<ResourceTable> {
-    self.resource_table.lock().unwrap()
-  }
-
   /// Wrap core `OpDispatcher` to collect metrics.
   pub fn core_op<D>(
     &self,
@@ -108,21 +100,6 @@ impl ThreadSafeState {
           Op::Async(result_fut)
         }
       }
-    }
-  }
-
-  /// This is a special function that provides `state` argument to dispatcher.
-  pub fn stateful_minimal_op<D>(
-    &self,
-    dispatcher: D,
-  ) -> impl Fn(i32, Option<PinnedBuf>) -> Box<MinimalOp>
-  where
-    D: Fn(&ThreadSafeState, i32, Option<PinnedBuf>) -> Box<MinimalOp>,
-  {
-    let state = self.clone();
-
-    move |rid: i32, zero_copy: Option<PinnedBuf>| -> Box<MinimalOp> {
-      dispatcher(&state, rid, zero_copy)
     }
   }
 
@@ -243,7 +220,6 @@ impl ThreadSafeState {
       start_time: Instant::now(),
       seeded_rng,
       include_deno_namespace,
-      resource_table: Mutex::new(ResourceTable::default()),
     };
 
     Ok(ThreadSafeState(Arc::new(state)))

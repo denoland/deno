@@ -65,7 +65,7 @@ impl ResourceTable {
   }
 
   // close(2) is done by dropping the value. Therefore we just need to remove
-  // the resource from the resource table.
+  // the resource from the RESOURCE_TABLE.
   pub fn close(&mut self, rid: ResourceId) -> Option<()> {
     self.map.remove(&rid).map(|(_name, _resource)| ())
   }
