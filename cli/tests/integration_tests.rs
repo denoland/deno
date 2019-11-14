@@ -356,17 +356,25 @@ itest!(_050_more_jsons {
   output: "050_more_jsons.ts.out",
 });
 
+itest!(_051_wasm_import {
+  args: "run --reload --allow-net --allow-read 051_wasm_import.ts",
+  output: "051_wasm_import.ts.out",
+  http_server: true,
+});
+
 itest!(lock_check_ok {
   args: "run --lock=lock_check_ok.json http://127.0.0.1:4545/cli/tests/003_relative_import.ts",
   output: "003_relative_import.ts.out",
   http_server: true,
 });
 
+/* TODO(ry) Re-enable this test. It is flaky and only fails occasionally.
 itest!(lock_check_ok2 {
   args: "run 019_media_types.ts --lock=lock_check_ok2.json",
   output: "019_media_types.ts.out",
   http_server: true,
 });
+*/
 
 itest!(lock_check_err {
   args: "run --lock=lock_check_err.json http://127.0.0.1:4545/cli/tests/003_relative_import.ts",
@@ -376,6 +384,7 @@ itest!(lock_check_err {
   http_server: true,
 });
 
+/* TODO(ry) Re-enable this test. It is flaky and only fails occasionally.
 itest!(lock_check_err2 {
   args: "run 019_media_types.ts --lock=lock_check_err2.json",
   output: "lock_check_err2.out",
@@ -383,12 +392,18 @@ itest!(lock_check_err2 {
   exit_code: 10,
   http_server: true,
 });
+*/
 
 itest!(async_error {
   exit_code: 1,
   args: "run --reload async_error.ts",
   check_stderr: true,
   output: "async_error.ts.out",
+});
+
+itest!(bundle {
+  args: "bundle subdir/mod1.ts",
+  output: "bundle.test.out",
 });
 
 itest!(circular1 {

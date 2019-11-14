@@ -60,11 +60,9 @@ for await (const req of serve(`:${port}`)) {
         }
       }
     )
-    .catch(
-      (err: Error): void => {
-        console.error(`failed to accept websocket: ${err}`);
-      }
-    );
+    .catch((err: Error): void => {
+      console.error(`failed to accept websocket: ${err}`);
+    });
 }
 ```
 
@@ -117,11 +115,9 @@ while (true) {
   }
   // FIXME: Without this,
   // sock.receive() won't resolved though it is readable...
-  await new Promise(
-    (resolve): void => {
-      setTimeout(resolve, 0);
-    }
-  );
+  await new Promise((resolve): void => {
+    setTimeout(resolve, 0);
+  });
 }
 await sock.close(1000);
 // FIXME: conn.close() won't shutdown process...

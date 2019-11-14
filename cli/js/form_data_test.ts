@@ -82,20 +82,21 @@ test(function formDataSetEmptyBlobSuccess(): void {
 });
 
 test(function formDataParamsForEachSuccess(): void {
-  const init = [["a", "54"], ["b", "true"]];
+  const init = [
+    ["a", "54"],
+    ["b", "true"]
+  ];
   const formData = new FormData();
   for (const [name, value] of init) {
     formData.append(name, value);
   }
   let callNum = 0;
-  formData.forEach(
-    (value, key, parent): void => {
-      assertEquals(formData, parent);
-      assertEquals(value, init[callNum][1]);
-      assertEquals(key, init[callNum][0]);
-      callNum++;
-    }
-  );
+  formData.forEach((value, key, parent): void => {
+    assertEquals(formData, parent);
+    assertEquals(value, init[callNum][1]);
+    assertEquals(key, init[callNum][0]);
+    callNum++;
+  });
   assertEquals(callNum, init.length);
 });
 
@@ -104,73 +105,69 @@ test(function formDataParamsArgumentsCheck(): void {
 
   const methodRequireTwoParams = ["append", "set"];
 
-  methodRequireOneParam.forEach(
-    (method): void => {
-      const formData = new FormData();
-      let hasThrown = 0;
-      let errMsg = "";
-      try {
-        formData[method]();
-        hasThrown = 1;
-      } catch (err) {
-        errMsg = err.message;
-        if (err instanceof TypeError) {
-          hasThrown = 2;
-        } else {
-          hasThrown = 3;
-        }
+  methodRequireOneParam.forEach((method): void => {
+    const formData = new FormData();
+    let hasThrown = 0;
+    let errMsg = "";
+    try {
+      formData[method]();
+      hasThrown = 1;
+    } catch (err) {
+      errMsg = err.message;
+      if (err instanceof TypeError) {
+        hasThrown = 2;
+      } else {
+        hasThrown = 3;
       }
-      assertEquals(hasThrown, 2);
-      assertEquals(
-        errMsg,
-        `FormData.${method} requires at least 1 argument, but only 0 present`
-      );
     }
-  );
+    assertEquals(hasThrown, 2);
+    assertEquals(
+      errMsg,
+      `FormData.${method} requires at least 1 argument, but only 0 present`
+    );
+  });
 
-  methodRequireTwoParams.forEach(
-    (method: string): void => {
-      const formData = new FormData();
-      let hasThrown = 0;
-      let errMsg = "";
+  methodRequireTwoParams.forEach((method: string): void => {
+    const formData = new FormData();
+    let hasThrown = 0;
+    let errMsg = "";
 
-      try {
-        formData[method]();
-        hasThrown = 1;
-      } catch (err) {
-        errMsg = err.message;
-        if (err instanceof TypeError) {
-          hasThrown = 2;
-        } else {
-          hasThrown = 3;
-        }
+    try {
+      formData[method]();
+      hasThrown = 1;
+    } catch (err) {
+      errMsg = err.message;
+      if (err instanceof TypeError) {
+        hasThrown = 2;
+      } else {
+        hasThrown = 3;
       }
-      assertEquals(hasThrown, 2);
-      assertEquals(
-        errMsg,
-        `FormData.${method} requires at least 2 arguments, but only 0 present`
-      );
-
-      hasThrown = 0;
-      errMsg = "";
-      try {
-        formData[method]("foo");
-        hasThrown = 1;
-      } catch (err) {
-        errMsg = err.message;
-        if (err instanceof TypeError) {
-          hasThrown = 2;
-        } else {
-          hasThrown = 3;
-        }
-      }
-      assertEquals(hasThrown, 2);
-      assertEquals(
-        errMsg,
-        `FormData.${method} requires at least 2 arguments, but only 1 present`
-      );
     }
-  );
+    assertEquals(hasThrown, 2);
+    assertEquals(
+      errMsg,
+      `FormData.${method} requires at least 2 arguments, but only 0 present`
+    );
+
+    hasThrown = 0;
+    errMsg = "";
+    try {
+      formData[method]("foo");
+      hasThrown = 1;
+    } catch (err) {
+      errMsg = err.message;
+      if (err instanceof TypeError) {
+        hasThrown = 2;
+      } else {
+        hasThrown = 3;
+      }
+    }
+    assertEquals(hasThrown, 2);
+    assertEquals(
+      errMsg,
+      `FormData.${method} requires at least 2 arguments, but only 1 present`
+    );
+  });
 });
 
 test(function toStringShouldBeWebCompatibility(): void {

@@ -933,6 +933,15 @@ declare namespace Deno {
      *       assert(status.state !== "granted")
      */
     revoke(d: PermissionDescriptor): Promise<PermissionStatus>;
+    /** Requests the permission.
+     *       const status = await Deno.permissions.request({ name: "env" });
+     *       if (status.state === "granted") {
+     *         console.log(Deno.homeDir());
+     *       } else {
+     *         console.log("'env' permission is denied.");
+     *       }
+     */
+    request(desc: PermissionDescriptor): Promise<PermissionStatus>;
   }
   export const permissions: Permissions;
 
@@ -2259,7 +2268,7 @@ declare namespace eventTarget {
   export class EventTarget implements domTypes.EventTarget {
     [domTypes.eventTargetHost]: domTypes.EventTarget | null;
     [domTypes.eventTargetListeners]: {
-      [type in string]: domTypes.EventListener[]
+      [type in string]: domTypes.EventListener[];
     };
     [domTypes.eventTargetMode]: string;
     [domTypes.eventTargetNodeType]: domTypes.NodeType;

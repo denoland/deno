@@ -136,8 +136,8 @@ export async function* expandGlob(
     );
   }
   if (hasTrailingSep) {
-    currentMatches = currentMatches.filter(
-      ({ info }): boolean => info.isDirectory()
+    currentMatches = currentMatches.filter(({ info }): boolean =>
+      info.isDirectory()
     );
   }
   if (!includeDirs) {
@@ -238,8 +238,8 @@ export function* expandGlobSync(
     );
   }
   if (hasTrailingSep) {
-    currentMatches = currentMatches.filter(
-      ({ info }): boolean => info.isDirectory()
+    currentMatches = currentMatches.filter(({ info }): boolean =>
+      info.isDirectory()
     );
   }
   if (!includeDirs) {

@@ -110,18 +110,14 @@ test(function emptyDirSyncIfItExist(): void {
     assertEquals(stat.isDirectory(), true);
 
     // nest directory have been remove
-    assertThrows(
-      (): void => {
-        Deno.statSync(testNestDir);
-      }
-    );
+    assertThrows((): void => {
+      Deno.statSync(testNestDir);
+    });
 
     // test file have been remove
-    assertThrows(
-      (): void => {
-        Deno.statSync(testDirFile);
-      }
-    );
+    assertThrows((): void => {
+      Deno.statSync(testDirFile);
+    });
   } finally {
     // remote test dir
     Deno.removeSync(testDir, { recursive: true });

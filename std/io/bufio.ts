@@ -23,6 +23,7 @@ export class BufferFullError extends Error {
 
 export class UnexpectedEOFError extends Error {
   name = "UnexpectedEOFError";
+  partial?: Uint8Array;
   constructor() {
     super("Unexpected EOF");
   }

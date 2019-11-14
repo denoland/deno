@@ -162,25 +162,19 @@ window.removeEventListener =
   eventTarget.EventTarget.prototype.removeEventListener;
 
 // Registers the handler for window.onload function.
-window.addEventListener(
-  "load",
-  (e: domTypes.Event): void => {
-    const onload = window.onload;
-    if (typeof onload === "function") {
-      onload(e);
-    }
+window.addEventListener("load", (e: domTypes.Event): void => {
+  const onload = window.onload;
+  if (typeof onload === "function") {
+    onload(e);
   }
-);
+});
 // Registers the handler for window.onunload function.
-window.addEventListener(
-  "unload",
-  (e: domTypes.Event): void => {
-    const onunload = window.onunload;
-    if (typeof onunload === "function") {
-      onunload(e);
-    }
+window.addEventListener("unload", (e: domTypes.Event): void => {
+  const onunload = window.onunload;
+  if (typeof onunload === "function") {
+    onunload(e);
   }
-);
+});
 
 // below are interfaces that are available in TypeScript but
 // have different signatures

@@ -2,6 +2,7 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::futures::future::join_all;
 use crate::futures::Future;
+use crate::msg;
 use crate::ops::json_op;
 use crate::state::ThreadSafeState;
 use deno::Loader;
@@ -74,17 +75,44 @@ fn op_fetch_source_files(
     futures.push(fut);
   }
 
+  let global_state = state.global_state.clone();
+
   let future = join_all(futures)
     .map_err(ErrBox::from)
     .and_then(move |files| {
-      let res = files
+      // We want to get an array of futures that resolves to
+      let v: Vec<_> = files
         .into_iter()
         .map(|file| {
+          // Special handling of Wasm files:
+          // compile them into JS first!
+          // This allows TS to do correct export types.
+          if file.media_type == msg::MediaType::Wasm {
+            return futures::future::Either::A(
+              global_state
+                .wasm_compiler
+                .compile_async(global_state.clone(), &file)
+                .and_then(|compiled_mod| Ok((file, Some(compiled_mod.code)))),
+            );
+          }
+          futures::future::Either::B(futures::future::ok((file, None)))
+        })
+        .collect();
+      join_all(v)
+    })
+    .and_then(move |files_with_code| {
+      let res = files_with_code
+        .into_iter()
+        .map(|(file, maybe_code)| {
           json!({
             "url": file.url.to_string(),
             "filename": file.filename.to_str().unwrap(),
             "mediaType": file.media_type as i32,
-            "sourceCode": String::from_utf8(file.source_code).unwrap(),
+            "sourceCode": if let Some(code) = maybe_code {
+              code
+            } else {
+              String::from_utf8(file.source_code).unwrap()
+            },
           })
         })
         .collect();

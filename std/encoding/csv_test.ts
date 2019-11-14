@@ -20,7 +20,10 @@ const testCases = [
   {
     Name: "CRLF",
     Input: "a,b\r\nc,d\r\n",
-    Output: [["a", "b"], ["c", "d"]]
+    Output: [
+      ["a", "b"],
+      ["c", "d"]
+    ]
   },
   {
     Name: "BareCR",
@@ -64,12 +67,18 @@ const testCases = [
   {
     Name: "BlankLine",
     Input: "a,b,c\n\nd,e,f\n\n",
-    Output: [["a", "b", "c"], ["d", "e", "f"]]
+    Output: [
+      ["a", "b", "c"],
+      ["d", "e", "f"]
+    ]
   },
   {
     Name: "BlankLineFieldCount",
     Input: "a,b,c\n\nd,e,f\n\n",
-    Output: [["a", "b", "c"], ["d", "e", "f"]],
+    Output: [
+      ["a", "b", "c"],
+      ["d", "e", "f"]
+    ],
     UseFieldsPerRecord: true,
     FieldsPerRecord: 0
   },
@@ -93,7 +102,10 @@ const testCases = [
   {
     Name: "NoComment",
     Input: "#1,2,3\na,b,c",
-    Output: [["#1", "2", "3"], ["a", "b", "c"]]
+    Output: [
+      ["#1", "2", "3"],
+      ["a", "b", "c"]
+    ]
   },
   {
     Name: "LazyQuotes",
@@ -159,7 +171,10 @@ const testCases = [
   {
     Name: "FieldCount",
     Input: "a,b,c\nd,e",
-    Output: [["a", "b", "c"], ["d", "e"]]
+    Output: [
+      ["a", "b", "c"],
+      ["d", "e"]
+    ]
   },
   {
     Name: "TrailingCommaEOF",
@@ -186,7 +201,11 @@ const testCases = [
   {
     Name: "TrailingCommaLine3",
     Input: "a,b,c\nd,e,f\ng,hi,",
-    Output: [["a", "b", "c"], ["d", "e", "f"], ["g", "hi", ""]],
+    Output: [
+      ["a", "b", "c"],
+      ["d", "e", "f"],
+      ["g", "hi", ""]
+    ],
     TrimLeadingSpace: true
   },
   {
@@ -223,13 +242,19 @@ x,,,
   {
     Name: "TrailingCommaIneffective1",
     Input: "a,b,\nc,d,e",
-    Output: [["a", "b", ""], ["c", "d", "e"]],
+    Output: [
+      ["a", "b", ""],
+      ["c", "d", "e"]
+    ],
     TrimLeadingSpace: true
   },
   {
     Name: "ReadAllReuseRecord",
     Input: "a,b\nc,d",
-    Output: [["a", "b"], ["c", "d"]],
+    Output: [
+      ["a", "b"],
+      ["c", "d"]
+    ],
     ReuseRecord: true
   },
   // {
@@ -496,7 +521,10 @@ const parseTestCases = [
     name: "multiline",
     in: "a,b,c\ne,f,g\n",
     header: false,
-    result: [["a", "b", "c"], ["e", "f", "g"]]
+    result: [
+      ["a", "b", "c"],
+      ["e", "f", "g"]
+    ]
   },
   {
     name: "header mapping boolean",
