@@ -1,7 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use crate::futures::future::join_all;
-use crate::futures::Future;
+use crate::futures::future::try_join_all;
+use crate::futures::future::FutureExt;
+use crate::futures::future::TryFutureExt;
 use crate::msg;
 use crate::ops::json_op;
 use crate::state::ThreadSafeState;
@@ -77,7 +78,7 @@ fn op_fetch_source_files(
 
   let global_state = state.global_state.clone();
 
-  let future = join_all(futures)
+  let future = try_join_all(futures)
     .map_err(ErrBox::from)
     .and_then(move |files| {
       // We want to get an array of futures that resolves to
@@ -88,17 +89,19 @@ fn op_fetch_source_files(
           // compile them into JS first!
           // This allows TS to do correct export types.
           if file.media_type == msg::MediaType::Wasm {
-            return futures::future::Either::A(
+            return futures::future::Either::Left(
               global_state
                 .wasm_compiler
                 .compile_async(global_state.clone(), &file)
-                .and_then(|compiled_mod| Ok((file, Some(compiled_mod.code)))),
+                .and_then(|compiled_mod| {
+                  futures::future::ok((file, Some(compiled_mod.code)))
+                }),
             );
           }
-          futures::future::Either::B(futures::future::ok((file, None)))
+          futures::future::Either::Right(futures::future::ok((file, None)))
         })
         .collect();
-      join_all(v)
+      try_join_all(v)
     })
     .and_then(move |files_with_code| {
       let res = files_with_code
@@ -120,7 +123,7 @@ fn op_fetch_source_files(
       futures::future::ok(res)
     });
 
-  Ok(JsonOp::Async(Box::new(future)))
+  Ok(JsonOp::Async(future.boxed()))
 }
 
 #[derive(Deserialize)]

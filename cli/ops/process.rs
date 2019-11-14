@@ -7,12 +7,18 @@ use crate::signal::kill;
 use crate::state::ThreadSafeState;
 use deno::*;
 use futures;
-use futures::Future;
-use futures::Poll;
+use futures::future::FutureExt;
+use futures::future::TryFutureExt;
+use futures::task::SpawnExt;
 use std;
 use std::convert::From;
+use std::future::Future;
+use std::pin::Pin;
 use std::process::Command;
 use std::process::ExitStatus;
+use std::task::Context;
+use std::task::Poll;
+use tokio::prelude::Async;
 use tokio_process::CommandExt;
 
 #[cfg(unix)]
@@ -33,19 +39,23 @@ struct CloneFileFuture {
 }
 
 impl Future for CloneFileFuture {
-  type Item = tokio::fs::File;
-  type Error = ErrBox;
+  type Output = Result<tokio::fs::File, ErrBox>;
 
-  fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-    let mut table = self.state.lock_resource_table();
+  fn poll(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Self::Output> {
+    let inner = self.get_mut();
+    let mut table = inner.state.lock_resource_table();
     let repr = table
-      .get_mut::<StreamResource>(self.rid)
+      .get_mut::<StreamResource>(inner.rid)
       .ok_or_else(bad_resource)?;
     match repr {
       StreamResource::FsFile(ref mut file) => {
-        file.poll_try_clone().map_err(ErrBox::from)
+        match file.poll_try_clone().map_err(ErrBox::from) {
+          Err(err) => Poll::Ready(Err(err)),
+          Ok(Async::Ready(v)) => Poll::Ready(Ok(v)),
+          Ok(Async::NotReady) => Poll::Pending,
+        }
       }
-      _ => Err(bad_resource()),
+      _ => Poll::Ready(Err(bad_resource())),
     }
   }
 }
@@ -54,11 +64,10 @@ fn clone_file(
   rid: u32,
   state: &ThreadSafeState,
 ) -> Result<std::fs::File, ErrBox> {
-  (CloneFileFuture {
+  futures::executor::block_on(CloneFileFuture {
     rid,
     state: state.clone(),
   })
-  .wait()
   .map(|f| f.into_std())
 }
 
@@ -86,7 +95,7 @@ struct RunArgs {
 }
 
 struct ChildResource {
-  child: tokio_process::Child,
+  child: futures::compat::Compat01As03<tokio_process::Child>,
 }
 
 impl Resource for ChildResource {}
@@ -179,7 +188,9 @@ fn op_run(
     None => None,
   };
 
-  let child_resource = ChildResource { child };
+  let child_resource = ChildResource {
+    child: futures::compat::Compat01As03::new(child),
+  };
   let child_rid = table.add("child", Box::new(child_resource));
 
   Ok(JsonOp::Sync(json!({
@@ -197,16 +208,16 @@ pub struct ChildStatus {
 }
 
 impl Future for ChildStatus {
-  type Item = ExitStatus;
-  type Error = ErrBox;
+  type Output = Result<ExitStatus, ErrBox>;
 
-  fn poll(&mut self) -> Poll<ExitStatus, ErrBox> {
-    let mut table = self.state.lock_resource_table();
+  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+    let inner = self.get_mut();
+    let mut table = inner.state.lock_resource_table();
     let child_resource = table
-      .get_mut::<ChildResource>(self.rid)
+      .get_mut::<ChildResource>(inner.rid)
       .ok_or_else(bad_resource)?;
     let child = &mut child_resource.child;
-    child.poll().map_err(ErrBox::from)
+    child.map_err(ErrBox::from).poll_unpin(cx)
   }
 }
 
@@ -251,7 +262,10 @@ fn op_run_status(
     }))
   });
 
-  Ok(JsonOp::Async(Box::new(future)))
+  let pool = futures::executor::ThreadPool::new().unwrap();
+  let handle = pool.spawn_with_handle(future).unwrap();
+
+  Ok(JsonOp::Async(handle.boxed()))
 }
 
 #[derive(Deserialize)]
