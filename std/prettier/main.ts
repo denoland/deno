@@ -24,6 +24,8 @@
 // This script formats the given source files. If the files are omitted, it
 // formats the all files in the repository.
 import { parse } from "../flags/mod.ts";
+import * as path from "../path/mod.ts";
+import * as toml from "../encoding/toml.ts";
 import { ExpandGlobOptions, WalkInfo, expandGlob } from "../fs/mod.ts";
 import { prettier, prettierPlugins } from "./prettier.ts";
 const { args, cwd, exit, readAll, readFile, stdin, stdout, writeFile } = Deno;
@@ -49,6 +51,10 @@ Options:
                                         parser for stdin. available parser:
                                         typescript/babel/markdown/json. Defaults
                                         to typescript.
+  --config <auto|path>                  Specify the configuration file of the
+                                        prettier.
+                                        Support extname:.json/.yaml/.yml/.js.
+                                        Defaults to null.
 
 JS/TS Styling Options:
   --print-width <int>                   The line length where Prettier will try
@@ -106,7 +112,7 @@ Example:
 // Available parsers
 type ParserLabel = "typescript" | "babel" | "markdown" | "json";
 
-interface PrettierOptions {
+interface PrettierBuildInOptions {
   printWidth: number;
   tabWidth: number;
   useTabs: boolean;
@@ -120,6 +126,9 @@ interface PrettierOptions {
   arrowParens: string;
   proseWrap: string;
   endOfLine: string;
+}
+
+interface PrettierOptions extends PrettierBuildInOptions {
   write: boolean;
 }
 
@@ -343,10 +352,86 @@ async function* getTargetFiles(
   }
 }
 
+async function autoResolveConfig(): Promise<PrettierBuildInOptions> {
+  const configFileNamesMap = {
+    ".prettierrc.json": 1,
+    ".prettierrc.yaml": 1,
+    ".prettierrc.yml": 1,
+    ".prettierrc.js": 1,
+    "prettier.config.js": 1,
+    ".prettierrc.toml": 1
+  };
+
+  const files = await Deno.readDir(".");
+
+  for (const f of files) {
+    if (f.isFile() && configFileNamesMap[f.name]) {
+      const c = await resolveConfig(f.name);
+      if (c) {
+        return c;
+      }
+    }
+  }
+
+  return;
+}
+
+async function resolveConfig(
+  filepath: string
+): Promise<PrettierBuildInOptions> {
+  let config: PrettierOptions = undefined;
+
+  function generateError(msg: string) {
+    return new Error(`Invalid prettier configuration file: ${msg}.`);
+  }
+
+  const raw = new TextDecoder().decode(
+    await Deno.readFile(path.join(filepath))
+  );
+
+  switch (path.extname(filepath)) {
+    case ".json":
+      try {
+        config = JSON.parse(raw) as PrettierOptions;
+      } catch (err) {
+        throw generateError(err.message);
+      }
+      break;
+    case ".yml":
+    case ".yaml":
+      // TODO: Unimplemented loading yaml / yml configuration file yet.
+      break;
+    case ".toml":
+      try {
+        config = toml.parse(raw) as PrettierOptions;
+      } catch (err) {
+        throw generateError(err.message);
+      }
+      break;
+    case ".js":
+      const output = await import(
+        path.isAbsolute(filepath) ? filepath : path.join(cwd(), filepath)
+      );
+
+      if (output && output.default) {
+        config = output.default;
+      } else {
+        throw generateError(
+          "Prettier of JS version should have default exports."
+        );
+      }
+      break;
+    default:
+      break;
+  }
+
+  return config;
+}
+
 async function main(opts): Promise<void> {
   const { help, ignore, check, _: args } = opts;
 
-  const prettierOpts: PrettierOptions = {
+  let prettierOpts: PrettierOptions = {
     printWidth: Number(opts["print-width"]),
     tabWidth: Number(opts["tab-width"]),
     useTabs: Boolean(opts["use-tabs"]),
@@ -366,6 +451,19 @@ async function main(opts): Promise<void> {
   if (help) {
     console.log(HELP_MESSAGE);
     exit(0);
+  }
+
+  const configFilepath = opts["config"];
+
+  if (configFilepath) {
+    const config =
+      configFilepath === "auto"
+        ? await autoResolveConfig()
+        : await resolveConfig(configFilepath);
+
+    if (config) {
+      prettierOpts = { ...prettierOpts, ...config };
+    }
   }
 
   const files = getTargetFiles(

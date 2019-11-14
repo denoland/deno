@@ -341,6 +341,15 @@ Automatically downloads Prettier dependencies on first run.
   deno fmt myfile1.ts myfile2.ts",
         )
         .arg(
+          Arg::with_name("prettierrc")
+            .long("prettierrc")
+            .value_name("<auto|FILE>")
+            .help("Specify the configuration file of the prettier.")
+            .takes_value(true)
+            .require_equals(true)
+            .default_value("auto")
+        )
+        .arg(
           Arg::with_name("stdout")
             .long("stdout")
             .help("Output formated code to stdout")
@@ -966,6 +975,7 @@ pub fn flags_from_vec(
       }
 
       let prettier_flags = [
+        ["1", "prettierrc"],
         ["1", "print-width"],
         ["1", "tab-width"],
         ["0", "use-tabs"],
@@ -989,7 +999,11 @@ pub fn flags_from_vec(
           if t == "0" {
             argv.push(format!("--{}", keyword));
           } else {
-            argv.push(format!("--{}", keyword));
+            if keyword == "prettierrc" {
+              argv.push("--config".to_string());
+            } else {
+              argv.push(format!("--{}", keyword));
+            }
             argv.push(fmt_match.value_of(keyword).unwrap().to_string());
           }
         }
@@ -2043,6 +2057,7 @@ mod tests {
     let (flags, subcommand, argv) = flags_from_vec(svec![
       "deno",
       "fmt",
+      "--prettierrc=auto",
       "--print-width=100",
       "--tab-width=4",
       "--use-tabs",
@@ -2072,6 +2087,8 @@ mod tests {
         PRETTIER_URL,
         "script.ts",
         "--write",
+        "--config",
+        "auto",
         "--print-width",
         "100",
         "--tab-width",

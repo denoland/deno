@@ -44,6 +44,9 @@ function normalizeSourceCode(source: string): string {
   return source.replace(/\r/g, "");
 }
 
+const getSourceCode = async (f: string): Promise<string> =>
+  decoder.decode(await Deno.readFile(f));
+
 test(async function testPrettierCheckAndFormatFiles(): Promise<void> {
   const tempDir = await Deno.makeTempDir();
   await copy(testdata, tempDir, { overwrite: true });
@@ -113,9 +116,6 @@ test(async function testPrettierOptions(): Promise<void> {
   const file1 = join(tempDir, "opts", "1.ts");
   const file2 = join(tempDir, "opts", "2.ts");
   const file3 = join(tempDir, "opts", "3.md");
-
-  const getSourceCode = async (f: string): Promise<string> =>
-    decoder.decode(await Deno.readFile(f));
 
   await run([...cmd, "--no-semi", "--write", file0]);
   assertEquals(
@@ -374,6 +374,79 @@ test(async function testPrettierReadFromStdin(): Promise<void> {
       t.code,
       t.success,
       t.parser
+    );
+  }
+});
+
+test(async function testPrettierWithAutoConfig(): Promise<void> {
+  const configs = ["config_file_json", "config_file_toml", "config_file_js"];
+
+  for (const configName of configs) {
+    const cwd = join(testdata, configName);
+    const prettierFile = join(Deno.cwd(), "prettier", "main.ts");
+    const { stdout } = Deno.run({
+      args: [
+        execPath(),
+        "run",
+        "--allow-read",
+        "--allow-env",
+        prettierFile,
+        "../5.ts",
+        "--config",
+        "auto"
+      ],
+      stdout: "piped",
+      cwd
+    });
+
+    assertEquals(
+      decoder.decode(await Deno.readAll(stdout)),
+      `console.log('0');\n`
+    );
+  }
+});
+
+test(async function testPrettierWithSpecifiedConfig(): Promise<void> {
+  interface Config {
+    dir: string;
+    name: string;
+  }
+  const configs: Config[] = [
+    {
+      dir: "config_file_json",
+      name: ".prettierrc.json"
+    },
+    {
+      dir: "config_file_toml",
+      name: ".prettierrc.toml"
+    },
+    {
+      dir: "config_file_js",
+      name: ".prettierrc.js"
+    }
+  ];
+
+  for (const config of configs) {
+    const cwd = join(testdata, config.dir);
+    const prettierFile = join(Deno.cwd(), "prettier", "main.ts");
+    const { stdout } = Deno.run({
+      args: [
+        execPath(),
+        "run",
+        "--allow-read",
+        "--allow-env",
+        prettierFile,
+        "../5.ts",
+        "--config",
+        config.name
+      ],
+      stdout: "piped",
+      cwd
+    });
+
+    assertEquals(
+      decoder.decode(await Deno.readAll(stdout)),
+      `console.log('0');\n`
     );
   }
 });
