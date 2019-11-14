@@ -27,6 +27,27 @@ use std::os::windows::io::FromRawHandle;
 #[cfg(windows)]
 extern crate winapi;
 
+lazy_static! {
+  /// Due to portability issues on Windows handle to stdout is created from raw file descriptor.
+  /// The caveat of that approach is fact that when this handle is dropped underlying
+  /// file descriptor is closed - that is highly not desirable in case of stdout.
+  /// That's why we store this global handle that is then cloned when obtaining stdio
+  /// for process. In turn when resource table is dropped storing reference to that handle,
+  /// the handle itself won't be closed (so Deno.core.print) will still work.
+  static ref STDOUT_HANDLE: std::fs::File = {
+    #[cfg(not(windows))]
+    let stdout = unsafe { std::fs::File::from_raw_fd(1) };
+    #[cfg(windows)]
+    let stdout = unsafe {
+      std::fs::File::from_raw_handle(winapi::um::processenv::GetStdHandle(
+        winapi::um::winbase::STD_OUTPUT_HANDLE,
+      ))
+    };
+
+    stdout
+  };
+}
+
 pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op(
     "read",
@@ -41,14 +62,9 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
 pub fn get_stdio() -> (StreamResource, StreamResource, StreamResource) {
   let stdin = StreamResource::Stdin(tokio::io::stdin());
   let stdout = StreamResource::Stdout({
-    #[cfg(not(windows))]
-    let stdout = unsafe { std::fs::File::from_raw_fd(1) };
-    #[cfg(windows)]
-    let stdout = unsafe {
-      std::fs::File::from_raw_handle(winapi::um::processenv::GetStdHandle(
-        winapi::um::winbase::STD_OUTPUT_HANDLE,
-      ))
-    };
+    let stdout = STDOUT_HANDLE
+      .try_clone()
+      .expect("Unable to clone stdout handle");
     tokio::fs::File::from_std(stdout)
   });
   let stderr = StreamResource::Stderr(tokio::io::stderr());
@@ -162,7 +178,7 @@ pub fn op_read(
   debug!("read rid={}", rid);
   let zero_copy = match zero_copy {
     None => {
-      return Box::new(futures::future::err(deno_error::no_buffer_specified()))
+      return Box::new(futures::future::err(deno_error::no_buffer_specified()));
     }
     Some(buf) => buf,
   };
@@ -262,7 +278,7 @@ pub fn op_write(
   debug!("write rid={}", rid);
   let zero_copy = match zero_copy {
     None => {
-      return Box::new(futures::future::err(deno_error::no_buffer_specified()))
+      return Box::new(futures::future::err(deno_error::no_buffer_specified()));
     }
     Some(buf) => buf,
   };
