@@ -127,6 +127,7 @@ pub fn compile_bundle(
 
   let config_json = serde_json::json!({
     "compilerOptions": {
+      "strict": true,
       "declaration": true,
       "lib": ["esnext"],
       "module": "amd",

@@ -1,7 +1,14 @@
-import { notImplemented, intoCallbackAPIWithIntercept } from "./_utils.ts";
+import {
+  notImplemented,
+  intoCallbackAPIWithIntercept,
+  MaybeEmpty
+} from "./_utils.ts";
 const { readFile: denoReadFile, readFileSync: denoReadFileSync } = Deno;
 
-type ReadFileCallback = (err: Error | null, data: string | Uint8Array) => void;
+type ReadFileCallback = (
+  err: MaybeEmpty<Error>,
+  data: MaybeEmpty<string | Uint8Array>
+) => void;
 
 interface ReadFileOptions {
   encoding?: string | null;
