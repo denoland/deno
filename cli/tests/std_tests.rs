@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
+// TODO: fix tests in debug mode
 // Runs only on release build
 #[cfg(not(debug_assertions))]
 mod tests {
@@ -19,7 +20,7 @@ mod tests {
     let mut cwd = root_path();
     cwd.push("std");
     let mut deno = deno_cmd
-      .current_dir(cwd) // TODO: std tests expect to run from "std" dir
+      .current_dir(cwd) // note: std tests expect to run from "std" dir
       .arg("-A")
       .arg("./testing/runner.ts")
       .arg("--exclude=testing/testdata")
