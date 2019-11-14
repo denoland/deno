@@ -1,7 +1,5 @@
-import wasmExports from "./051_wasm_import/simple.wasm";
+import { add, addImported, addRemote } from "./051_wasm_import/simple.wasm";
 import { state } from "./051_wasm_import/wasm-dep.js";
-
-const { add, addImported, addRemote } = wasmExports;
 
 function assertEquals(actual: unknown, expected: unknown, msg?: string): void {
   if (actual !== expected) {

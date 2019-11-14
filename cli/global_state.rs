@@ -113,7 +113,7 @@ impl ThreadSafeGlobalState {
       ts_compiler,
       js_compiler: JsCompiler {},
       json_compiler: JsonCompiler {},
-      wasm_compiler: WasmCompiler {},
+      wasm_compiler: WasmCompiler::new(),
       lockfile,
     };
 
@@ -133,7 +133,9 @@ impl ThreadSafeGlobalState {
       .and_then(move |out| match out.media_type {
         msg::MediaType::Unknown => state1.js_compiler.compile_async(&out),
         msg::MediaType::Json => state1.json_compiler.compile_async(&out),
-        msg::MediaType::Wasm => state1.wasm_compiler.compile_async(&out),
+        msg::MediaType::Wasm => {
+          state1.wasm_compiler.compile_async(state1.clone(), &out)
+        }
         msg::MediaType::TypeScript
         | msg::MediaType::TSX
         | msg::MediaType::JSX => {
