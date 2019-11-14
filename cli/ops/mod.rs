@@ -5,7 +5,6 @@ mod dispatch_minimal;
 pub use dispatch_json::json_op;
 pub use dispatch_json::JsonOp;
 pub use dispatch_minimal::minimal_op;
-pub use dispatch_minimal::MinimalOp;
 
 pub mod compiler;
 pub mod errors;
