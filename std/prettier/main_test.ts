@@ -44,9 +44,6 @@ function normalizeSourceCode(source: string): string {
   return source.replace(/\r/g, "");
 }
 
-const getSourceCode = async (f: string): Promise<string> =>
-  decoder.decode(await Deno.readFile(f));
-
 test(async function testPrettierCheckAndFormatFiles(): Promise<void> {
   const tempDir = await Deno.makeTempDir();
   await copy(testdata, tempDir, { overwrite: true });
@@ -116,6 +113,9 @@ test(async function testPrettierOptions(): Promise<void> {
   const file1 = join(tempDir, "opts", "1.ts");
   const file2 = join(tempDir, "opts", "2.ts");
   const file3 = join(tempDir, "opts", "3.md");
+
+  const getSourceCode = async (f: string): Promise<string> =>
+  decoder.decode(await Deno.readFile(f));
 
   await run([...cmd, "--no-semi", "--write", file0]);
   assertEquals(

@@ -381,7 +381,7 @@ async function resolveConfig(
 ): Promise<PrettierBuildInOptions> {
   let config: PrettierOptions = undefined;
 
-  function generateError(msg: string) {
+  function generateError(msg: string): Error {
     return new Error(`Invalid prettier configuration file: ${msg}.`);
   }
 
