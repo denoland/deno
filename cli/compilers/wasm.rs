@@ -36,17 +36,12 @@ struct WasmModuleInfo {
   export_list: Vec<String>,
 }
 
+#[derive(Default)]
 pub struct WasmCompiler {
   cache: Arc<Mutex<HashMap<Url, CompiledModule>>>,
 }
 
 impl WasmCompiler {
-  pub fn new() -> WasmCompiler {
-    Self {
-      cache: Arc::new(Mutex::new(HashMap::new())),
-    }
-  }
-
   /// Create a new V8 worker with snapshot of WASM compiler and setup compiler's runtime.
   fn setup_worker(global_state: ThreadSafeGlobalState) -> Worker {
     let (int, ext) = ThreadSafeState::create_channels();
@@ -78,13 +73,7 @@ impl WasmCompiler {
     source_file: &SourceFile,
   ) -> Box<CompiledModuleFuture> {
     let cache = self.cache.clone();
-    let maybe_cached = {
-      cache
-        .lock()
-        .unwrap()
-        .get(&source_file.url)
-        .map(|c| c.clone())
-    };
+    let maybe_cached = { cache.lock().unwrap().get(&source_file.url).cloned() };
     if let Some(m) = maybe_cached {
       return Box::new(futures::future::ok(m.clone()));
     }
@@ -151,7 +140,7 @@ importObject[{}] = m{};
   )
 }
 
-fn build_imports(imports: &Vec<String>) -> String {
+fn build_imports(imports: &[String]) -> String {
   let mut code = String::from("");
   for (index, origin) in imports.iter().enumerate() {
     code.push_str(&build_single_import(index, origin));
@@ -163,7 +152,7 @@ fn build_single_export(name: &str) -> String {
   format!("export const {} = instance.exports.{};\n", name, name)
 }
 
-fn build_exports(exports: &Vec<String>) -> String {
+fn build_exports(exports: &[String]) -> String {
   let mut code = String::from("");
   for e in exports {
     code.push_str(&build_single_export(e));
@@ -173,8 +162,8 @@ fn build_exports(exports: &Vec<String>) -> String {
 
 fn wrap_wasm_code(
   base64_data: &str,
-  imports: &Vec<String>,
-  exports: &Vec<String>,
+  imports: &[String],
+  exports: &[String],
 ) -> String {
   let imports_code = build_imports(imports);
   let exports_code = build_exports(exports);

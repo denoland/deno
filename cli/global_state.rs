@@ -113,7 +113,7 @@ impl ThreadSafeGlobalState {
       ts_compiler,
       js_compiler: JsCompiler {},
       json_compiler: JsonCompiler {},
-      wasm_compiler: WasmCompiler::new(),
+      wasm_compiler: WasmCompiler::default(),
       lockfile,
     };
 
