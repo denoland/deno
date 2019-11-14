@@ -116,6 +116,17 @@ export interface RunTestModulesOptions extends RunTestsOptions {
   allowNone?: boolean;
 }
 
+function renderTestFile(testModules: string[]): string {
+  let testFile = "";
+
+  for (const testModule of testModules) {
+    const line = 'import "' + testModule + '"\n';
+    testFile += line;
+  }
+
+  return testFile;
+}
+
 /**
  * Import the specified test modules and run their tests as a suite.
  *
@@ -153,8 +164,9 @@ export async function runTestModules({
   disableLog = false
 }: RunTestModulesOptions = {}): Promise<void> {
   let moduleCount = 0;
+  const testModules = [];
   for await (const testModule of findTestModules(include, exclude)) {
-    await import(testModule);
+    testModules.push(testModule);
     moduleCount++;
   }
 
@@ -166,6 +178,18 @@ export async function runTestModules({
       console.log(noneFoundMessage);
     }
     return;
+  }
+
+  const testFile = renderTestFile(testModules);
+  const testFilePath = join(Deno.cwd(), ".deno.test.ts");
+  await Deno.writeFile(testFilePath, new TextEncoder().encode(testFile));
+
+  try {
+    await import(testFilePath);
+  } catch (e) {
+    throw e;
+  } finally {
+    await Deno.remove(testFilePath);
   }
 
   if (!disableLog) {
