@@ -27,7 +27,6 @@ mod tests {
       .spawn()
       .expect("failed to spawn script");
     let status = deno.wait().expect("failed to wait for the child process");
-    assert_eq!(Some(0), status.code());
     assert!(status.success());
   }
 }
