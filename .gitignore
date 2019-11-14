@@ -8,6 +8,11 @@ gclient_config.py_entries
 /gh-pages/
 /target/
 
+# Files that help ensure VSCode can work but we don't want checked into the
+# repo
+/node_modules
+/tsconfig.json
+
 # We use something stronger than lockfiles, we have all NPM modules stored in a
 # git. We do not download from NPM during build.
 # https://github.com/denoland/deno_third_party
