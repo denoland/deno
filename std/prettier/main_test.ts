@@ -115,7 +115,7 @@ test(async function testPrettierOptions(): Promise<void> {
   const file3 = join(tempDir, "opts", "3.md");
 
   const getSourceCode = async (f: string): Promise<string> =>
-  decoder.decode(await Deno.readFile(f));
+    decoder.decode(await Deno.readFile(f));
 
   await run([...cmd, "--no-semi", "--write", file0]);
   assertEquals(
