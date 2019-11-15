@@ -203,8 +203,8 @@ export async function runTestModules({
   const root = Deno.env("DENO_DIR") || Deno.cwd();
   const testFilePath = join(root, ".deno.test.ts");
   await Deno.writeFile(testFilePath, new TextEncoder().encode(testFile), {
-    perm: 0o666, 
-    write: true, 
+    perm: 0o666,
+    write: true,
     append: false
   });
 
