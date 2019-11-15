@@ -156,7 +156,7 @@ export class URL {
       "search"
     ];
     const objectString = keys
-      .map((key: string) => `${key}: "${this[key] || ""}"`)
+      .map((key: string) => `${key}: "${this[key as keyof this] || ""}"`)
       .join(", ");
     return `URL { ${objectString} }`;
   }

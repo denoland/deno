@@ -1,7 +1,10 @@
-const { cwd, chdir, makeTempDir, mkdir, open, remove } = Deno;
+const { DenoError, ErrorKind, cwd, chdir, makeTempDir, mkdir, open } = Deno;
+const { remove } = Deno;
+type ErrorKind = Deno.ErrorKind;
+type DenoError = Deno.DenoError<ErrorKind>;
 import { walk, walkSync, WalkOptions, WalkInfo } from "./walk.ts";
 import { test, TestFunction, runIfMain } from "../testing/mod.ts";
-import { assertEquals } from "../testing/asserts.ts";
+import { assertEquals, assertThrowsAsync } from "../testing/asserts.ts";
 
 export async function testWalk(
   setup: (arg0: string) => void | Promise<void>,
@@ -232,14 +235,11 @@ testWalk(
 
 testWalk(
   async (_d: string): Promise<void> => {},
-  async function onError(): Promise<void> {
-    assertReady(1);
-    const ignored = await walkArray("missing");
-    assertEquals(ignored, ["missing"]);
-    let errors = 0;
-    await walkArray("missing", { onError: (_e): number => (errors += 1) });
-    // It's 2 since walkArray iterates over both sync and async.
-    assertEquals(errors, 2);
+  async function nonexistentRoot(): Promise<void> {
+    const error = (await assertThrowsAsync(async () => {
+      await walkArray("nonexistent");
+    }, DenoError)) as DenoError;
+    assertEquals(error.kind, ErrorKind.NotFound);
   }
 );
 
