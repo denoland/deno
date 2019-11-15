@@ -220,7 +220,7 @@ export async function runTestModules({
   //   5. If imported file is outdated, Deno will recompile this single file.
   let err;
   try {
-    await import(testFilePath);
+    await import(`file://${testFilePath}`);
   } catch (e) {
     err = e;
   } finally {
