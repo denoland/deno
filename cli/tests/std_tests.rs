@@ -7,7 +7,6 @@ mod tests {
   extern crate lazy_static;
   extern crate tempfile;
   use deno_cli::test_util::*;
-  use std::env;
   use std::process::Command;
   use tempfile::TempDir;
 
@@ -22,7 +21,7 @@ mod tests {
     let mut deno = deno_cmd
       .current_dir(cwd) // note: std tests expect to run from "std" dir
       .arg("-A")
-      .arg("-Ldebug")
+      // .arg("-Ldebug")
       .arg("./testing/runner.ts")
       .arg("--exclude=testing/testdata")
       .spawn()
