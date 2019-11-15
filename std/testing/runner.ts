@@ -203,9 +203,7 @@ export async function runTestModules({
   const root = Deno.env("DENO_DIR") || Deno.cwd();
   const testFilePath = join(root, ".deno.test.ts");
   const data = new TextEncoder().encode(testFile);
-  await Deno.writeFile(testFilePath, data, {
-    perm: 0o666
-  });
+  await Deno.writeFile(testFilePath, data);
 
   // Import temporary test file and delete it immediately after importing so it's not cluttering disk.
   //
@@ -215,7 +213,7 @@ export async function runTestModules({
   //   1. On first run of $DENO_DIR/.deno.test.ts Deno will compile and cache temporary test file and all of its imports
   //   2. Temporary test file is removed by test runner
   //   3. On next test run file is created again. If no new modules were added then temporary file contents are identical.
-  //      Deno will not temporary test file again, but load it directly into V8.
+  //      Deno will not compile temporary test file again, but load it directly into V8.
   //   4. Deno starts loading imports one by one.
   //   5. If imported file is outdated, Deno will recompile this single file.
   let err;

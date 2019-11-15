@@ -216,10 +216,7 @@ impl ThreadSafeGlobalState {
         self.check_read(&filename)?;
         Ok(())
       }
-      _ => {
-        debug!("global permissions denied for dyn import {:?}", u);
-        Err(permission_denied())
-      }
+      _ => Err(permission_denied()),
     }
   }
 

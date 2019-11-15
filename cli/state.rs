@@ -266,7 +266,6 @@ impl ThreadSafeState {
     self: &Self,
     module_specifier: &ModuleSpecifier,
   ) -> Result<(), ErrBox> {
-    let ms_ = module_specifier.clone();
     let u = module_specifier.as_url();
     match u.scheme() {
       "http" | "https" => {
@@ -283,10 +282,7 @@ impl ThreadSafeState {
         self.check_read(&filename)?;
         Ok(())
       }
-      _ => {
-        debug!("state permissions denied for dyn import {:?} {:?}", ms_, u);
-        Err(permission_denied())
-      }
+      _ => Err(permission_denied()),
     }
   }
 
