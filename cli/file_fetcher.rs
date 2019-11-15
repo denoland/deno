@@ -522,7 +522,8 @@ fn map_content_type(path: &Path, content_type: Option<&str>) -> msg::MediaType {
           map_js_like_extension(path, msg::MediaType::JavaScript)
         }
         "application/json" | "text/json" => msg::MediaType::Json,
-        "text/plain" => map_file_extension(path),
+        // Handle plain and possibly webassembly
+        "text/plain" | "application/octet-stream" => map_file_extension(path),
         _ => {
           debug!("unknown content type: {}", content_type);
           msg::MediaType::Unknown
