@@ -119,3 +119,50 @@ let instantiate;
     return result;
   };
 })();
+
+define("print_hello", ["require", "exports"], function (require, exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    function printHello() {
+        console.log("Hello");
+    }
+    exports.printHello = printHello;
+});
+define("subdir2/mod2", ["require", "exports", "print_hello"], function (require, exports, print_hello_ts_1) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    function returnsFoo() {
+        return "Foo";
+    }
+    exports.returnsFoo = returnsFoo;
+    function printHello2() {
+        print_hello_ts_1.printHello();
+    }
+    exports.printHello2 = printHello2;
+});
+define("mod1", ["require", "exports", "subdir2/mod2"], function (require, exports, mod2_ts_1) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    function returnsHi() {
+        return "Hi";
+    }
+    exports.returnsHi = returnsHi;
+    function returnsFoo2() {
+        return mod2_ts_1.returnsFoo();
+    }
+    exports.returnsFoo2 = returnsFoo2;
+    function printHello3() {
+        mod2_ts_1.printHello2();
+    }
+    exports.printHello3 = printHello3;
+    function throwsError() {
+        throw Error("exception from mod1");
+    }
+    exports.throwsError = throwsError;
+});
+
+const __rootExports = instantiate("mod1");
+export const returnsHi = __rootExports["returnsHi"];
+export const returnsFoo2 = __rootExports["returnsFoo2"];
+export const printHello3 = __rootExports["printHello3"];
+export const throwsError = __rootExports["throwsError"];

@@ -408,6 +408,11 @@ itest!(bundle {
   output: "bundle.test.out",
 });
 
+itest!(bundle_exports {
+  args: "run --reload bundle_exports.ts",
+  output: "bundle_exports.ts.out",
+});
+
 itest!(circular1 {
   args: "run --reload circular1.js",
   output: "circular1.js.out",
