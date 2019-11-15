@@ -951,6 +951,51 @@ for await (const req of serve(":8000")) {
 $ deno run --importmap=import_map.json hello_server.ts
 ```
 
+## WASM support
+
+Deno can import a [wasm](https://webassembly.org/) binary.
+
+A wasm binary can be created in many ways, for example you can compile from
+rust, C/C++ or assemblyscript.
+
+In this simple example we use [assemblyscript](https://docs.assemblyscript.org/)
+which is a subset of typescript. Other platforms which target wasm should be
+similar.
+
+```ts
+// fib.as.ts
+
+export function fib(n: i32): i32 {
+  let a = 0,
+    b = 1;
+  for (let i = 0; i < n; i++) {
+    const t = a + b;
+    a = b;
+    b = t;
+  }
+  return b;
+}
+```
+
+Compile this to wasm with [asc](https://www.npmjs.com/package/assemblyscript):
+
+```
+$ asc --use "abort="  fib.as.ts -b fib.wasm -O3
+```
+
+Now you can use the exported function in deno:
+
+```ts
+import { fib } from "./fib.wasm";
+
+console.log(fib(20));
+```
+
+```shell
+$ deno run fib.ts
+10946
+```
+
 ## Program lifecycle
 
 Deno supports browser compatible lifecycle events: `load` and `unload`. You can
