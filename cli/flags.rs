@@ -343,7 +343,7 @@ Automatically downloads Prettier dependencies on first run.
         .arg(
           Arg::with_name("prettierrc")
             .long("prettierrc")
-            .value_name("<auto|FILE>")
+            .value_name("auto|FILE")
             .help("Specify the configuration file of the prettier.")
             .takes_value(true)
             .require_equals(true)
