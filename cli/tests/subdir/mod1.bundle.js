@@ -1,5 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
+/* eslint-disable */
+
 // A script preamble that provides the ability to load a single outfile
 // TypeScript "bundle" where a main module is loaded which recursively
 // instantiates all the other modules in the bundle.  This code is used to load
@@ -120,45 +122,53 @@ let instantiate;
   };
 })();
 
-define("print_hello", ["require", "exports"], function (require, exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    function printHello() {
-        console.log("Hello");
-    }
-    exports.printHello = printHello;
+define("print_hello", ["require", "exports"], function(require, exports) {
+  "use strict";
+  Object.defineProperty(exports, "__esModule", { value: true });
+  function printHello() {
+    console.log("Hello");
+  }
+  exports.printHello = printHello;
 });
-define("subdir2/mod2", ["require", "exports", "print_hello"], function (require, exports, print_hello_ts_1) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    function returnsFoo() {
-        return "Foo";
-    }
-    exports.returnsFoo = returnsFoo;
-    function printHello2() {
-        print_hello_ts_1.printHello();
-    }
-    exports.printHello2 = printHello2;
+define("subdir2/mod2", ["require", "exports", "print_hello"], function(
+  require,
+  exports,
+  print_hello_ts_1
+) {
+  "use strict";
+  Object.defineProperty(exports, "__esModule", { value: true });
+  function returnsFoo() {
+    return "Foo";
+  }
+  exports.returnsFoo = returnsFoo;
+  function printHello2() {
+    print_hello_ts_1.printHello();
+  }
+  exports.printHello2 = printHello2;
 });
-define("mod1", ["require", "exports", "subdir2/mod2"], function (require, exports, mod2_ts_1) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    function returnsHi() {
-        return "Hi";
-    }
-    exports.returnsHi = returnsHi;
-    function returnsFoo2() {
-        return mod2_ts_1.returnsFoo();
-    }
-    exports.returnsFoo2 = returnsFoo2;
-    function printHello3() {
-        mod2_ts_1.printHello2();
-    }
-    exports.printHello3 = printHello3;
-    function throwsError() {
-        throw Error("exception from mod1");
-    }
-    exports.throwsError = throwsError;
+define("mod1", ["require", "exports", "subdir2/mod2"], function(
+  require,
+  exports,
+  mod2_ts_1
+) {
+  "use strict";
+  Object.defineProperty(exports, "__esModule", { value: true });
+  function returnsHi() {
+    return "Hi";
+  }
+  exports.returnsHi = returnsHi;
+  function returnsFoo2() {
+    return mod2_ts_1.returnsFoo();
+  }
+  exports.returnsFoo2 = returnsFoo2;
+  function printHello3() {
+    mod2_ts_1.printHello2();
+  }
+  exports.printHello3 = printHello3;
+  function throwsError() {
+    throw Error("exception from mod1");
+  }
+  exports.throwsError = throwsError;
 });
 
 const __rootExports = instantiate("mod1");
