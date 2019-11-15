@@ -200,14 +200,13 @@ export async function runTestModules({
   // Fallback is current directory which again seems like a sane default,
   // user is probably working on project in this directory or even
   // cd'ed into current directory to quickly run test from this directory.
-  // const root = Deno.env("DENO_DIR") || Deno.cwd();
-  const root = Deno.cwd();
+  const root = Deno.env("DENO_DIR") || Deno.cwd();
   const testFilePath = join(root, ".deno.test.ts");
-  await Deno.writeFile(
-    testFilePath, 
-    new TextEncoder().encode(testFile),
-    { perm: 0o666, write: true, append: false }
-  );
+  await Deno.writeFile(testFilePath, new TextEncoder().encode(testFile), {
+    perm: 0o666, 
+    write: true, 
+    append: false
+  });
 
   // Import temporary test file and delete it immediately after importing so it's not cluttering disk.
   //
