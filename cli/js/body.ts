@@ -143,9 +143,10 @@ export class Body implements domTypes.Body {
       this._stream = this._bodySource;
     }
     if (typeof this._bodySource === "string") {
+      const bodySource = this._bodySource;
       this._stream = new ReadableStream({
         start(controller: ReadableStreamController): void {
-          controller.enqueue(this._bodySource);
+          controller.enqueue(bodySource);
           controller.close();
         }
       });
