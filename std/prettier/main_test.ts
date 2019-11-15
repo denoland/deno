@@ -384,7 +384,7 @@ test(async function testPrettierWithAutoConfig(): Promise<void> {
   for (const configName of configs) {
     const cwd = join(testdata, configName);
     const prettierFile = join(Deno.cwd(), "prettier", "main.ts");
-    const { stdout } = Deno.run({
+    const { stdout, stderr } = Deno.run({
       args: [
         execPath(),
         "run",
@@ -396,13 +396,18 @@ test(async function testPrettierWithAutoConfig(): Promise<void> {
         "auto"
       ],
       stdout: "piped",
+      stderr: "piped",
       cwd
     });
+
+    assertEquals(decoder.decode(await Deno.readAll(stderr)), "");
 
     assertEquals(
       decoder.decode(await Deno.readAll(stdout)),
       `console.log('0');\n`
     );
+
+    console.log(`auto load test ${configName} success!`);
   }
 });
 
@@ -429,7 +434,7 @@ test(async function testPrettierWithSpecifiedConfig(): Promise<void> {
   for (const config of configs) {
     const cwd = join(testdata, config.dir);
     const prettierFile = join(Deno.cwd(), "prettier", "main.ts");
-    const { stdout } = Deno.run({
+    const { stdout, stderr } = Deno.run({
       args: [
         execPath(),
         "run",
@@ -441,13 +446,18 @@ test(async function testPrettierWithSpecifiedConfig(): Promise<void> {
         config.name
       ],
       stdout: "piped",
+      stderr: "piped",
       cwd
     });
+
+    assertEquals(decoder.decode(await Deno.readAll(stderr)), "");
 
     assertEquals(
       decoder.decode(await Deno.readAll(stdout)),
       `console.log('0');\n`
     );
+
+    console.log(`load config test ${config.dir} success!`);
   }
 });
 

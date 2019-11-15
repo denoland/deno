@@ -385,9 +385,7 @@ async function resolveConfig(
     return new Error(`Invalid prettier configuration file: ${msg}.`);
   }
 
-  const raw = new TextDecoder().decode(
-    await Deno.readFile(path.join(filepath))
-  );
+  const raw = new TextDecoder().decode(await Deno.readFile(filepath));
 
   switch (path.extname(filepath)) {
     case ".json":
@@ -409,17 +407,26 @@ async function resolveConfig(
       }
       break;
     case ".js":
-      const output = await import(
-        path.isAbsolute(filepath) ? filepath : path.join(cwd(), filepath)
-      );
+      const absPath = path.isAbsolute(filepath)
+        ? filepath
+        : path.join(cwd(), filepath);
 
-      if (output && output.default) {
-        config = output.default;
-      } else {
-        throw generateError(
-          "Prettier of JS version should have default exports."
+      try {
+        const output = await import(
+          Deno.build.os === "win" ? "file://" + absPath : absPath
         );
+
+        if (output && output.default) {
+          config = output.default;
+        } else {
+          throw new Error(
+            "Prettier of JS version should have default exports."
+          );
+        }
+      } catch (err) {
+        throw generateError(err.message);
       }
+
       break;
     default:
       break;
