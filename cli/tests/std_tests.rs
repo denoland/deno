@@ -22,6 +22,7 @@ mod tests {
     let mut deno = deno_cmd
       .current_dir(cwd) // note: std tests expect to run from "std" dir
       .arg("-A")
+      .arg("-Ldebug")
       .arg("./testing/runner.ts")
       .arg("--exclude=testing/testdata")
       .spawn()
