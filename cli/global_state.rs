@@ -3,6 +3,7 @@ use crate::compilers::CompiledModule;
 use crate::compilers::JsCompiler;
 use crate::compilers::JsonCompiler;
 use crate::compilers::TsCompiler;
+use crate::compilers::WasmCompiler;
 use crate::deno_dir;
 use crate::deno_error::permission_denied;
 use crate::file_fetcher::SourceFileFetcher;
@@ -45,6 +46,7 @@ pub struct GlobalState {
   pub js_compiler: JsCompiler,
   pub json_compiler: JsonCompiler,
   pub ts_compiler: TsCompiler,
+  pub wasm_compiler: WasmCompiler,
   pub lockfile: Option<Mutex<Lockfile>>,
 }
 
@@ -111,6 +113,7 @@ impl ThreadSafeGlobalState {
       ts_compiler,
       js_compiler: JsCompiler {},
       json_compiler: JsonCompiler {},
+      wasm_compiler: WasmCompiler::default(),
       lockfile,
     };
 
@@ -130,6 +133,9 @@ impl ThreadSafeGlobalState {
       .and_then(move |out| match out.media_type {
         msg::MediaType::Unknown => state1.js_compiler.compile_async(&out),
         msg::MediaType::Json => state1.json_compiler.compile_async(&out),
+        msg::MediaType::Wasm => {
+          state1.wasm_compiler.compile_async(state1.clone(), &out)
+        }
         msg::MediaType::TypeScript
         | msg::MediaType::TSX
         | msg::MediaType::JSX => {

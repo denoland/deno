@@ -2858,4 +2858,10 @@ declare namespace WebAssembly {
   }
 }
 
-/* eslint-enable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any */
+// Catch-all for JSX elements.
+// See https://www.typescriptlang.org/docs/handbook/jsx.html#intrinsic-elements
+declare namespace JSX {
+  interface IntrinsicElements {
+    [elemName: string]: any;
+  }
+}
