@@ -282,7 +282,10 @@ impl ThreadSafeState {
         self.check_read(&filename)?;
         Ok(())
       }
-      _ => Err(permission_denied()),
+      _ => {
+        debug!("state permissions denied for dyn import {:?}", u);
+        Err(permission_denied())
+      }
     }
   }
 
