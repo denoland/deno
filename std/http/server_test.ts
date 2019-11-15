@@ -45,7 +45,7 @@ const responseTests: ResponseTest[] = [
   // Default response
   {
     response: {},
-    raw: "HTTP/1.1 OK\r\n" + "content-length: 0" + "\r\n\r\n"
+    raw: "HTTP/1.1 200 OK\r\n" + "content-length: 0" + "\r\n\r\n"
   },
   // Empty body with status
   {
