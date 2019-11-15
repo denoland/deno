@@ -269,7 +269,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "0.23.0"
+version = "0.24.0"
 dependencies = [
  "downcast-rs 1.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.29 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -283,15 +283,15 @@ dependencies = [
 
 [[package]]
 name = "deno_cli"
-version = "0.23.0"
+version = "0.24.0"
 dependencies = [
  "ansi_term 0.12.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "atty 0.2.13 (registry+https://github.com/rust-lang/crates.io-index)",
  "base64 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "byteorder 1.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "deno 0.23.0",
- "deno_typescript 0.23.0",
+ "deno 0.24.0",
+ "deno_typescript 0.24.0",
  "dirs 2.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.29 (registry+https://github.com/rust-lang/crates.io-index)",
  "fwdansi 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -333,9 +333,9 @@ dependencies = [
 
 [[package]]
 name = "deno_typescript"
-version = "0.23.0"
+version = "0.24.0"
 dependencies = [
- "deno 0.23.0",
+ "deno 0.24.0",
  "serde 1.0.102 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json 1.0.41 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
