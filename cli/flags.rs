@@ -341,6 +341,32 @@ Automatically downloads Prettier dependencies on first run.
   deno fmt myfile1.ts myfile2.ts",
         )
         .arg(
+          Arg::with_name("prettierrc")
+            .long("prettierrc")
+            .value_name("auto|disable|FILE")
+            .help("Specify the configuration file of the prettier.
+  auto: Auto detect prettier configuration file in current working dir.
+  disable: Disable load configuration file.
+  FILE: Load specified prettier configuration file. support .json/.toml/.js/.ts file
+ ")
+            .takes_value(true)
+            .require_equals(true)
+            .default_value("auto")
+        )
+        .arg(
+          Arg::with_name("ignore-path")
+            .long("ignore-path")
+            .value_name("auto|disable|FILE")
+            .help("Path to a file containing patterns that describe files to ignore.
+  auto: Auto detect .pretierignore file in current working dir.
+  disable: Disable load .prettierignore file.
+  FILE: Load specified prettier ignore file.
+ ")
+            .takes_value(true)
+            .require_equals(true)
+            .default_value("auto")
+        )
+        .arg(
           Arg::with_name("stdout")
             .long("stdout")
             .help("Output formated code to stdout")
@@ -966,6 +992,8 @@ pub fn flags_from_vec(
       }
 
       let prettier_flags = [
+        ["1", "prettierrc"],
+        ["1", "ignore-path"],
         ["1", "print-width"],
         ["1", "tab-width"],
         ["0", "use-tabs"],
@@ -989,7 +1017,11 @@ pub fn flags_from_vec(
           if t == "0" {
             argv.push(format!("--{}", keyword));
           } else {
-            argv.push(format!("--{}", keyword));
+            if keyword == "prettierrc" {
+              argv.push("--config".to_string());
+            } else {
+              argv.push(format!("--{}", keyword));
+            }
             argv.push(fmt_match.value_of(keyword).unwrap().to_string());
           }
         }
@@ -1384,7 +1416,11 @@ mod tests {
         PRETTIER_URL,
         "script_1.ts",
         "script_2.ts",
-        "--write"
+        "--write",
+        "--config",
+        "auto",
+        "--ignore-path",
+        "auto"
       ]
     );
   }
@@ -1602,7 +1638,16 @@ mod tests {
     assert_eq!(subcommand, DenoSubcommand::Run);
     assert_eq!(
       argv,
-      svec!["deno", PRETTIER_URL, "script_1.ts", "script_2.ts"]
+      svec![
+        "deno",
+        PRETTIER_URL,
+        "script_1.ts",
+        "script_2.ts",
+        "--config",
+        "auto",
+        "--ignore-path",
+        "auto"
+      ]
     );
   }
 
@@ -2043,6 +2088,7 @@ mod tests {
     let (flags, subcommand, argv) = flags_from_vec(svec![
       "deno",
       "fmt",
+      "--prettierrc=auto",
       "--print-width=100",
       "--tab-width=4",
       "--use-tabs",
@@ -2054,6 +2100,7 @@ mod tests {
       "--quote-props=preserve",
       "--jsx-single-quote",
       "--jsx-bracket-same-line",
+      "--ignore-path=.prettier-ignore",
       "script.ts"
     ]);
     assert_eq!(
@@ -2072,6 +2119,10 @@ mod tests {
         PRETTIER_URL,
         "script.ts",
         "--write",
+        "--config",
+        "auto",
+        "--ignore-path",
+        ".prettier-ignore",
         "--print-width",
         "100",
         "--tab-width",
