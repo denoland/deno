@@ -514,7 +514,7 @@ async function main(opts): Promise<void> {
         : await resolveConfig(configFilepath);
 
     if (config) {
-      prettierOpts = { ...config, ...prettierOpts };
+      prettierOpts = { ...prettierOpts, ...config };
     }
   }
 
