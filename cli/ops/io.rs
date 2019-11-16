@@ -85,7 +85,7 @@ pub enum StreamResource {
   TcpStream(tokio::net::TcpStream),
   ServerTlsStream(Box<ServerTlsStream<TcpStream>>),
   ClientTlsStream(Box<ClientTlsStream<TcpStream>>),
-  HttpBody(HttpBody),
+  HttpBody(Box<HttpBody>),
   ChildStdin(tokio_process::ChildStdin),
   ChildStdout(tokio_process::ChildStdout),
   ChildStderr(tokio_process::ChildStderr),

@@ -69,7 +69,10 @@ pub fn op_fetch(
 
       let body = HttpBody::from(res.into_body());
       let mut table = state_.lock_resource_table();
-      let rid = table.add("httpBody", Box::new(StreamResource::HttpBody(body)));
+      let rid = table.add(
+        "httpBody",
+        Box::new(StreamResource::HttpBody(Box::new(body))),
+      );
 
       let json_res = json!({
         "bodyRid": rid,
