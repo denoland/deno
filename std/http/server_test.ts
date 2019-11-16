@@ -527,8 +527,6 @@ test({
   }
 });
 
-// TODO: reenable this test
-/*
 test({
   name: "[http] serveTLS",
   async fn(): Promise<void> {
@@ -590,6 +588,5 @@ test({
     assertEquals(await nextAfterClosing, { value: undefined, done: true });
   }
 });
-*/
 
 runIfMain(import.meta);

@@ -11,6 +11,8 @@ use deno::Resource;
 use deno::*;
 use futures::future::FutureExt;
 use futures::future::TryFutureExt;
+use futures::stream::StreamExt;
+use futures::stream::TryStreamExt;
 use std;
 use std::convert::From;
 use std::fs::File;
@@ -22,9 +24,9 @@ use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 use tokio;
+use tokio::net::tcp::Incoming;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
-use tokio::prelude::Async;
 use tokio_rustls::{rustls::ClientConfig, TlsConnector};
 use tokio_rustls::{
   rustls::{
@@ -99,7 +101,6 @@ pub fn op_dial_tls(
           let reader = &mut BufReader::new(key_file);
           config.root_store.add_pem_file(reader).unwrap();
         }
-
         let tls_connector = TlsConnector::from(Arc::new(config));
         futures::future::ok((
           tls_connector,
@@ -196,7 +197,7 @@ fn load_keys(path: &str) -> Result<Vec<PrivateKey>, ErrBox> {
 
 #[allow(dead_code)]
 pub struct TlsListenerResource {
-  listener: tokio::net::TcpListener,
+  listener: Incoming,
   tls_acceptor: TlsAcceptor,
   waker: Option<futures::task::AtomicWaker>,
   local_addr: SocketAddr,
@@ -286,7 +287,7 @@ fn op_listen_tls(
   let local_addr = listener.local_addr()?;
   let local_addr_str = local_addr.to_string();
   let tls_listener_resource = TlsListenerResource {
-    listener,
+    listener: listener.incoming(),
     tls_acceptor,
     waker: None,
     local_addr,
@@ -343,44 +344,50 @@ impl Future for AcceptTls {
         ErrBox::from(e)
       })?;
 
-    let listener = &mut listener_resource.listener;
+    let mut listener =
+      futures::compat::Compat01As03::new(&mut listener_resource.listener)
+        .map_err(ErrBox::from);
 
     if inner.accept_state == AcceptTlsState::Eager {
       // Similar to try_ready!, but also track/untrack accept task
       // in TcpListener resource.
       // In this way, when the listener is closed, the task can be
       // notified to error out (instead of stuck forever).
-      match listener.poll_accept().map_err(ErrBox::from) {
-        Ok(Async::Ready((stream, addr))) => {
+      match listener.poll_next_unpin(cx) {
+        Poll::Ready(Some(Ok(stream))) => {
           inner.accept_state = AcceptTlsState::Done;
+          let addr = stream.peer_addr().unwrap();
           return Poll::Ready(Ok((stream, addr)));
         }
-        Ok(Async::NotReady) => {
+        Poll::Pending => {
           inner.accept_state = AcceptTlsState::Pending;
           return Poll::Pending;
         }
-        Err(e) => {
+        Poll::Ready(Some(Err(e))) => {
           inner.accept_state = AcceptTlsState::Done;
           return Poll::Ready(Err(e));
         }
+        _ => unreachable!(),
       }
     }
 
-    match listener.poll_accept().map_err(ErrBox::from) {
-      Ok(Async::Ready((stream, addr))) => {
+    match listener.poll_next_unpin(cx) {
+      Poll::Ready(Some(Ok(stream))) => {
         listener_resource.untrack_task();
         inner.accept_state = AcceptTlsState::Done;
+        let addr = stream.peer_addr().unwrap();
         Poll::Ready(Ok((stream, addr)))
       }
-      Ok(Async::NotReady) => {
+      Poll::Pending => {
         listener_resource.track_task(cx)?;
         Poll::Pending
       }
-      Err(e) => {
+      Poll::Ready(Some(Err(e))) => {
         listener_resource.untrack_task();
         inner.accept_state = AcceptTlsState::Done;
         Poll::Ready(Err(e))
       }
+      _ => unreachable!(),
     }
   }
 }
