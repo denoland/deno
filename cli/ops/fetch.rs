@@ -8,7 +8,6 @@ use crate::state::ThreadSafeState;
 use deno::*;
 use futures::future::FutureExt;
 use futures::future::TryFutureExt;
-use futures::task::SpawnExt;
 use http::header::HeaderName;
 use http::header::HeaderValue;
 use http::Method;
@@ -84,8 +83,5 @@ pub fn op_fetch(
       futures::future::ok(json_res)
     });
 
-  let pool = futures::executor::ThreadPool::new().unwrap();
-  let handle = pool.spawn_with_handle(future).unwrap();
-
-  Ok(JsonOp::Async(handle.boxed()))
+  Ok(JsonOp::Async(future.boxed()))
 }
