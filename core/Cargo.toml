@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "0.23.0"
+version = "0.24.0"
 edition = "2018"
 description = "A secure JavaScript/TypeScript runtime built with V8, Rust, and Tokio"
 authors = ["the Deno authors"]

@@ -259,7 +259,7 @@ export function isReadableStreamLocked<OutputType>(
 
 export function readableStreamGetNumReadIntoRequests<OutputType>(
   stream: SDReadableStream<OutputType>
-): number | undefined {
+): number {
   // TODO remove the "as unknown" cast
   // This is in to workaround a compiler error
   // error TS2352: Conversion of type 'SDReadableStreamReader<OutputType>' to type 'SDReadableStreamBYOBReader' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.

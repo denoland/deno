@@ -6,6 +6,25 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.24.0 / 2019.11.14
+
+- feat: Add Node compat module std/node (#3319)
+- feat: Add permissions.request (#3296)
+- feat: Add prettier flags to deno fmt (#3314)
+- feat: Allow http server to take { hostname, port } argument (#3233)
+- feat: Make bundles fully standalone (#3325)
+- feat: Support .wasm via imports (#3328)
+- fix: Check for closing status when iterating Listener (#3309)
+- fix: Error handling in std/fs/walk() (#3318)
+- fix: Exclude prebuilt from deno_src release (#3272)
+- fix: Turn on TS strict mode for deno_typescript (#3330)
+- fix: URL parse bug (#3316)
+- refactor: resources and workers (#3285, #3271, #3274, #3342, #3290)
+- upgrade: Prettier 1.19 (#3275, #3305)
+- upgrade: Rust deps (#3292)
+- upgrade: TypeScript 3.7 (#3275)
+- upgrade: V8 8.0.192
+
 ### v0.23.0 / 2019.11.04
 
 - feat: Add serveTLS and listenAndServeTLS (#3257)
