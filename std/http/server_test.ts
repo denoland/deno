@@ -12,6 +12,7 @@ import { assert, assertEquals, assertNotEquals } from "../testing/asserts.ts";
 import {
   Response,
   ServerRequest,
+  serve,
   writeResponse,
   readRequest,
   parseHTTPVersion
