@@ -6,7 +6,7 @@ jobs:
   build:
     name: ${{ matrix.kind }} ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 60
     strategy:
       matrix:
         os: [macOS-latest, windows-2019, ubuntu-16.04]
