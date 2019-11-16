@@ -42,6 +42,10 @@ Options:
                                         it will output to stdout, Defaults to
                                         false.
   --ignore <path>                       Ignore the given path(s).
+  --ignore-path <auto|disable|path>     Path to a file containing patterns that
+                                        describe files to ignore. Optional
+                                        value: auto/disable/filepath. Defaults
+                                        to null.
   --stdin                               Specifies to read the code from stdin.
                                         If run the command in a pipe, you do not
                                         need to specify this flag.
@@ -51,9 +55,9 @@ Options:
                                         parser for stdin. available parser:
                                         typescript/babel/markdown/json. Defaults
                                         to typescript.
-  --config <auto|path>                  Specify the configuration file of the
+  --config <auto|disable|path>          Specify the configuration file of the
                                         prettier.
-                                        Support extname:.json/.yaml/.yml/.js.
+                                        Optional value: auto/disable/filepath.
                                         Defaults to null.
 
 JS/TS Styling Options:
@@ -352,13 +356,18 @@ async function* getTargetFiles(
   }
 }
 
+/**
+ * auto detect prettier configuration file and return config if file exist.
+ */
 async function autoResolveConfig(): Promise<PrettierBuildInOptions> {
   const configFileNamesMap = {
     ".prettierrc.json": 1,
     ".prettierrc.yaml": 1,
     ".prettierrc.yml": 1,
     ".prettierrc.js": 1,
+    ".prettierrc.ts": 1,
     "prettier.config.js": 1,
+    "prettier.config.ts": 1,
     ".prettierrc.toml": 1
   };
 
@@ -376,6 +385,11 @@ async function autoResolveConfig(): Promise<PrettierBuildInOptions> {
   return;
 }
 
+/**
+ * parse prettier configuration file.
+ * @param filepath the configuration file path.
+ *                 support extension name with .json/.toml/.js
+ */
 async function resolveConfig(
   filepath: string
 ): Promise<PrettierBuildInOptions> {
@@ -407,12 +421,15 @@ async function resolveConfig(
       }
       break;
     case ".js":
+    case ".ts":
       const absPath = path.isAbsolute(filepath)
         ? filepath
         : path.join(cwd(), filepath);
 
       try {
         const output = await import(
+          // TODO: Remove platform condition
+          // after https://github.com/denoland/deno/issues/3355 fixed
           Deno.build.os === "win" ? "file://" + absPath : absPath
         );
 
@@ -435,8 +452,36 @@ async function resolveConfig(
   return config;
 }
 
+/**
+ * auto detect .prettierignore and return pattern if file exist.
+ */
+async function autoResolveIgnoreFile(): Promise<string[]> {
+  const files = await Deno.readDir(".");
+
+  for (const f of files) {
+    if (f.isFile() && f.name === ".prettierignore") {
+      return await resolveIgnoreFile(f.name);
+    }
+  }
+
+  return [];
+}
+
+/**
+ * parse prettier ignore file.
+ * @param filepath the ignore file path.
+ */
+async function resolveIgnoreFile(filepath: string): Promise<string[]> {
+  const raw = new TextDecoder().decode(await Deno.readFile(filepath));
+
+  return raw
+    .split("\n")
+    .filter((v: string) => !!v.trim() && v.trim().indexOf("#") !== 0)
+    .map(v => v);
+}
+
 async function main(opts): Promise<void> {
-  const { help, ignore, check, _: args } = opts;
+  const { help, check, _: args } = opts;
 
   let prettierOpts: PrettierOptions = {
     printWidth: Number(opts["print-width"]),
@@ -462,7 +507,7 @@ async function main(opts): Promise<void> {
 
   const configFilepath = opts["config"];
 
-  if (configFilepath) {
+  if (configFilepath && configFilepath !== "disable") {
     const config =
       configFilepath === "auto"
         ? await autoResolveConfig()
@@ -473,10 +518,24 @@ async function main(opts): Promise<void> {
     }
   }
 
-  const files = getTargetFiles(
-    args.length ? args : ["."],
-    Array.isArray(ignore) ? ignore : [ignore]
-  );
+  let ignore = opts.ignore as string[];
+
+  if (!Array.isArray(ignore)) {
+    ignore = [ignore];
+  }
+
+  const ignoreFilepath = opts["ignore-path"];
+
+  if (ignoreFilepath && ignoreFilepath !== "disable") {
+    const ignorePatterns: string[] =
+      ignoreFilepath === "auto"
+        ? await autoResolveIgnoreFile()
+        : await resolveIgnoreFile(ignoreFilepath);
+
+    ignore = ignore.concat(ignorePatterns);
+  }
+
+  const files = getTargetFiles(args.length ? args : ["."], ignore);
 
   const tty = Deno.isTTY();
 
@@ -501,6 +560,7 @@ main(
   parse(args.slice(1), {
     string: [
       "ignore",
+      "ignore-path",
       "printWidth",
       "tab-width",
       "trailing-comma",
