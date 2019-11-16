@@ -405,17 +405,18 @@ test(async function testPrettierWithAutoConfig(): Promise<void> {
       cwd
     });
 
-    assertEquals(decoder.decode(await Deno.readAll(stderr)), "");
-
     const output = decoder.decode(await Deno.readAll(stdout));
+    const errMsg = decoder.decode(await Deno.readAll(stderr));
 
     assertEquals(
-      output
+      errMsg
         .split(EOL)
         .filter((line: string) => line.indexOf("Compile") !== 0)
         .join(EOL),
-      `console.log('0');\n`
+      ""
     );
+
+    assertEquals(output, `console.log('0');\n`);
   }
 });
 
@@ -462,17 +463,18 @@ test(async function testPrettierWithSpecifiedConfig(): Promise<void> {
       cwd
     });
 
-    assertEquals(decoder.decode(await Deno.readAll(stderr)), "");
-
     const output = decoder.decode(await Deno.readAll(stdout));
+    const errMsg = decoder.decode(await Deno.readAll(stderr));
 
     assertEquals(
-      output
+      errMsg
         .split(EOL)
         .filter((line: string) => line.indexOf("Compile") !== 0)
         .join(EOL),
-      `console.log('0');\n`
+      ""
     );
+
+    assertEquals(output, `console.log('0');\n`);
   }
 });
 
