@@ -117,6 +117,28 @@ export interface RunTestModulesOptions extends RunTestsOptions {
 }
 
 /**
+ * Renders test file that will be run.
+ *
+ * It's done to optimize compilation of test files, because
+ * dynamically importing them one by one takes very long time.
+ * @TODO(bartlomieju): try to optimize compilation by reusing same compiler host
+ * multiple times
+ * @param testModules
+ */
+function renderTestFile(testModules: string[]): string {
+  let testFile = "";
+
+  for (const testModule of testModules) {
+    // NOTE: this is intentional that template string is not used
+    // because of TS compiler quirkness of trying to import it
+    // rather than treating it like a variable
+    testFile += 'import "' + testModule + '"\n';
+  }
+
+  return testFile;
+}
+
+/**
  * Import the specified test modules and run their tests as a suite.
  *
  * Test modules are specified as an array of strings and can include local files
@@ -153,8 +175,9 @@ export async function runTestModules({
   disableLog = false
 }: RunTestModulesOptions = {}): Promise<void> {
   let moduleCount = 0;
+  const testModules = [];
   for await (const testModule of findTestModules(include, exclude)) {
-    await import(testModule);
+    testModules.push(testModule);
     moduleCount++;
   }
 
@@ -166,6 +189,44 @@ export async function runTestModules({
       console.log(noneFoundMessage);
     }
     return;
+  }
+
+  // Create temporary test file which contains
+  // all matched modules as import statements.
+  const testFile = renderTestFile(testModules);
+  // Select where temporary test file will be stored.
+  // If `DENO_DIR` is set it means that user intentionally wants to store
+  // modules there - so it's a sane default to store there.
+  // Fallback is current directory which again seems like a sane default,
+  // user is probably working on project in this directory or even
+  // cd'ed into current directory to quickly run test from this directory.
+  const root = Deno.env("DENO_DIR") || Deno.cwd();
+  const testFilePath = join(root, ".deno.test.ts");
+  const data = new TextEncoder().encode(testFile);
+  await Deno.writeFile(testFilePath, data);
+
+  // Import temporary test file and delete it immediately after importing so it's not cluttering disk.
+  //
+  // You may think that this will cause recompilation on each run, but this actually
+  // tricks Deno to not recompile files if there's no need.
+  // Eg.
+  //   1. On first run of $DENO_DIR/.deno.test.ts Deno will compile and cache temporary test file and all of its imports
+  //   2. Temporary test file is removed by test runner
+  //   3. On next test run file is created again. If no new modules were added then temporary file contents are identical.
+  //      Deno will not compile temporary test file again, but load it directly into V8.
+  //   4. Deno starts loading imports one by one.
+  //   5. If imported file is outdated, Deno will recompile this single file.
+  let err;
+  try {
+    await import(`file://${testFilePath}`);
+  } catch (e) {
+    err = e;
+  } finally {
+    await Deno.remove(testFilePath);
+  }
+
+  if (err) {
+    throw err;
   }
 
   if (!disableLog) {

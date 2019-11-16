@@ -10,7 +10,7 @@ jobs:
     strategy:
       matrix:
         os: [macOS-latest, windows-2019, ubuntu-16.04]
-        kind: ['test', 'test_debug', 'test_std', 'bench', 'lint']
+        kind: ['test', 'test_debug', 'bench', 'lint']
         exclude:
           - os: windows-2019
             kind: 'bench'
@@ -119,17 +119,8 @@ jobs:
         run: cargo clippy --all-targets --release --locked -- -D clippy::all
 
       - name: Build
-        if: matrix.kind == 'test' || matrix.kind == 'bench' || matrix.kind == 'test_std'
+        if: matrix.kind == 'test' || matrix.kind == 'bench'
         run: cargo build --release --locked --all-targets
-
-      # TODO(ry) Remove this step, and move the following test to
-      # cli/tests/std_tests.rs
-      # TODO(ry) Remove the "cd std".
-      - name: std test
-        if: matrix.kind == 'test_std'
-        run: |
-          cd std
-          ../target/release/deno test -A
 
       - name: Test
         if: matrix.kind == 'test'

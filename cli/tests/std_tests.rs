@@ -1,25 +1,32 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-// TODO(ry) Current std tests are run in .github/workflows/build.yml but ideally
-// they would be called as part of "cargo test". "deno test" is too slow to do
-// this desierable thing: https://github.com/denoland/deno/issues/3088
-/*
-#[macro_use]
-extern crate lazy_static;
-extern crate tempfile;
-mod util;
-use util::*;
 
-#[test]
-fn std_tests() {
-  let mut deno = deno_cmd()
-    .current_dir(root_path())
-    .arg("test")
-    .arg("-A")
-    .arg("std")
-    .spawn()
-    .expect("failed to spawn script");
-  let status = deno.wait().expect("failed to wait for the child process");
-  assert_eq!(Some(0), status.code());
-  assert!(status.success());
+// TODO: fix tests in debug mode
+// Runs only on release build
+#[cfg(not(debug_assertions))]
+mod tests {
+  extern crate lazy_static;
+  extern crate tempfile;
+  use deno_cli::test_util::*;
+  use std::process::Command;
+  use tempfile::TempDir;
+
+  #[test]
+  fn std_tests() {
+    let dir = TempDir::new().expect("tempdir fail");
+    let mut deno_cmd = Command::new(deno_exe_path());
+    deno_cmd.env("DENO_DIR", dir.path());
+
+    let mut cwd = root_path();
+    cwd.push("std");
+    let mut deno = deno_cmd
+      .current_dir(cwd) // note: std tests expect to run from "std" dir
+      .arg("-A")
+      // .arg("-Ldebug")
+      .arg("./testing/runner.ts")
+      .arg("--exclude=testing/testdata")
+      .spawn()
+      .expect("failed to spawn script");
+    let status = deno.wait().expect("failed to wait for the child process");
+    assert!(status.success());
+  }
 }
-*/
