@@ -14,7 +14,6 @@ import {
   ServerRequest,
   writeResponse,
   readRequest,
-  serve,
   parseHTTPVersion
 } from "./server.ts";
 import { delay } from "../util/async.ts";
