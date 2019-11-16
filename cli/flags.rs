@@ -345,10 +345,10 @@ Automatically downloads Prettier dependencies on first run.
             .long("prettierrc")
             .value_name("auto|disable|FILE")
             .help("Specify the configuration file of the prettier.
-auto: Auto detect prettier configuration file in current working dir.
-disable: Disable load configuration file.
-FILE: Load specified prettier configuration file. support .json/.toml/.js/.ts file
-")
+  auto: Auto detect prettier configuration file in current working dir.
+  disable: Disable load configuration file.
+  FILE: Load specified prettier configuration file. support .json/.toml/.js/.ts file
+ ")
             .takes_value(true)
             .require_equals(true)
             .default_value("auto")
@@ -358,10 +358,10 @@ FILE: Load specified prettier configuration file. support .json/.toml/.js/.ts fi
             .long("ignore-path")
             .value_name("auto|disable|FILE")
             .help("Path to a file containing patterns that describe files to ignore.
-auto: Auto detect .pretierignore file in current working dir.
-disable: Disable load .prettierignore file.
-FILE: Load specified prettier ignore file.
-")
+  auto: Auto detect .pretierignore file in current working dir.
+  disable: Disable load .prettierignore file.
+  FILE: Load specified prettier ignore file.
+ ")
             .takes_value(true)
             .require_equals(true)
             .default_value("auto")
