@@ -287,8 +287,8 @@ function chooseScalarStyle(
     hasFoldableLine =
       hasFoldableLine ||
       (shouldTrackWidth &&
-        (i - previousLineBreak - 1 > lineWidth &&
-          string[previousLineBreak + 1] !== " "));
+        i - previousLineBreak - 1 > lineWidth &&
+        string[previousLineBreak + 1] !== " ");
   }
   // Although every style can represent \n without escaping, prefer block styles
   // for multiline, since they're more readable and they don't add empty lines.

@@ -150,7 +150,8 @@ function constructYamlInteger(data: string): number {
 function isInteger(object: Any): boolean {
   return (
     Object.prototype.toString.call(object) === "[object Number]" &&
-    (object % 1 === 0 && !isNegativeZero(object))
+    object % 1 === 0 &&
+    !isNegativeZero(object)
   );
 }
 
