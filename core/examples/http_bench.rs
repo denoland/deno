@@ -13,8 +13,11 @@ extern crate log;
 extern crate lazy_static;
 
 use deno::*;
+use futures::compat::AsyncRead01CompatExt;
+use futures::compat::AsyncWrite01CompatExt;
 use futures::future::FutureExt;
 use futures::future::TryFutureExt;
+use futures::io::{AsyncRead, AsyncWrite};
 use futures::stream::StreamExt;
 use std::env;
 use std::future::Future;
@@ -26,9 +29,6 @@ use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::task::Poll;
 use tokio::net::tcp::Incoming;
-use tokio::prelude::Async;
-use tokio::prelude::AsyncRead;
-use tokio::prelude::AsyncWrite;
 
 static LOGGER: Logger = Logger;
 struct Logger;
@@ -273,14 +273,12 @@ fn op_read(
   let rid = record.arg as u32;
   debug!("read rid={}", rid);
   let mut zero_copy_buf = zero_copy_buf.unwrap();
-  let fut = futures::future::poll_fn(move |_cx| {
+  let fut = futures::future::poll_fn(move |cx| {
     let mut table = lock_resource_table();
     let stream = table.get_mut::<TcpStream>(rid).ok_or_else(bad_resource)?;
-    match stream.0.poll_read(&mut zero_copy_buf) {
-      Err(e) => Poll::Ready(Err(e)),
-      Ok(Async::Ready(v)) => Poll::Ready(Ok(v)),
-      Ok(Async::NotReady) => Poll::Pending,
-    }
+    let mut f: Box<dyn AsyncRead + Unpin> =
+      Box::new(AsyncRead01CompatExt::compat(&stream.0));
+    AsyncRead::poll_read(Pin::new(&mut f), cx, &mut zero_copy_buf)
   })
   .and_then(move |nread| {
     debug!("read success {}", nread);
@@ -296,14 +294,12 @@ fn op_write(
   let rid = record.arg as u32;
   debug!("write rid={}", rid);
   let zero_copy_buf = zero_copy_buf.unwrap();
-  let fut = futures::future::poll_fn(move |_cx| {
+  let fut = futures::future::poll_fn(move |cx| {
     let mut table = lock_resource_table();
     let stream = table.get_mut::<TcpStream>(rid).ok_or_else(bad_resource)?;
-    match stream.0.poll_write(&zero_copy_buf) {
-      Err(e) => Poll::Ready(Err(e)),
-      Ok(Async::Ready(v)) => Poll::Ready(Ok(v)),
-      Ok(Async::NotReady) => Poll::Pending,
-    }
+    let mut f: Box<dyn AsyncWrite + Unpin> =
+      Box::new(AsyncWrite01CompatExt::compat(&stream.0));
+    AsyncWrite::poll_write(Pin::new(&mut f), cx, &zero_copy_buf)
   })
   .and_then(move |nwritten| {
     debug!("write success {}", nwritten);
