@@ -100,7 +100,7 @@ export class DumperState extends State {
   public implicitTypes: Type[];
   public explicitTypes: Type[];
   public tag: string | null = null;
-  public result: string = "";
+  public result = "";
   public duplicates: Any[] = [];
   public usedDuplicates: Any[] = []; // changed from null to []
   public styleMap: ArrayObject<StyleVariant>;

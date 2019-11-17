@@ -200,22 +200,19 @@ const directiveHandlers: DirectiveHandlers = {
       return throwError(state, "YAML directive accepts exactly one argument");
     }
 
-    let match = /^([0-9]+)\.([0-9]+)$/.exec(args[0]);
-
+    const match = /^([0-9]+)\.([0-9]+)$/.exec(args[0]);
     if (match === null) {
       return throwError(state, "ill-formed argument of the YAML directive");
     }
 
-    let major = parseInt(match[1], 10);
-    let minor = parseInt(match[2], 10);
-
+    const major = parseInt(match[1], 10);
+    const minor = parseInt(match[2], 10);
     if (major !== 1) {
       return throwError(state, "unacceptable YAML version of the document");
     }
 
     state.version = args[0];
     state.checkLineBreaks = minor < 2;
-
     if (minor !== 1 && minor !== 2) {
       return throwWarning(state, "unsupported YAML version of the document");
     }
@@ -262,7 +259,7 @@ function captureSegment(
   start: number,
   end: number,
   checkJson: boolean
-) {
+): void {
   let result: string;
   if (start < end) {
     result = state.input.slice(start, end);
@@ -293,7 +290,7 @@ function mergeMappings(
   destination: ArrayObject,
   source: ArrayObject,
   overridableKeys: ArrayObject<boolean>
-) {
+): void {
   if (!common.isObject(source)) {
     return throwError(
       state,
@@ -384,9 +381,7 @@ function storeMappingPair(
 }
 
 function readLineBreak(state: LoaderState): void {
-  let ch;
-
-  ch = state.input.charCodeAt(state.position);
+  const ch = state.input.charCodeAt(state.position);
 
   if (ch === 0x0a /* LF */) {
     state.position++;
@@ -1376,19 +1371,15 @@ function readTagProperty(state: LoaderState): boolean {
 }
 
 function readAnchorProperty(state: LoaderState): boolean {
-  let position: number, ch: number;
-
-  ch = state.input.charCodeAt(state.position);
-
+  let ch = state.input.charCodeAt(state.position);
   if (ch !== 0x26 /* & */) return false;
 
   if (state.anchor !== null) {
     return throwError(state, "duplication of an anchor property");
   }
-
   ch = state.input.charCodeAt(++state.position);
-  position = state.position;
 
+  const position = state.position;
   while (ch !== 0 && !isWsOrEol(ch) && !isFlowIndicator(ch)) {
     ch = state.input.charCodeAt(++state.position);
   }
@@ -1405,14 +1396,12 @@ function readAnchorProperty(state: LoaderState): boolean {
 }
 
 function readAlias(state: LoaderState): boolean {
-  let _position, alias, ch;
-
-  ch = state.input.charCodeAt(state.position);
+  let ch = state.input.charCodeAt(state.position);
 
   if (ch !== 0x2a /* * */) return false;
 
   ch = state.input.charCodeAt(++state.position);
-  _position = state.position;
+  const _position = state.position;
 
   while (ch !== 0 && !isWsOrEol(ch) && !isFlowIndicator(ch)) {
     ch = state.input.charCodeAt(++state.position);
@@ -1425,8 +1414,7 @@ function readAlias(state: LoaderState): boolean {
     );
   }
 
-  alias = state.input.slice(_position, state.position);
-
+  const alias = state.input.slice(_position, state.position);
   if (
     typeof state.anchorMap !== "undefined" &&
     !state.anchorMap.hasOwnProperty(alias)
@@ -1448,8 +1436,7 @@ function composeNode(
   allowToSeek: boolean,
   allowCompact: boolean
 ): boolean {
-  let allowBlockStyles: boolean,
-    allowBlockScalars: boolean,
+  let allowBlockScalars: boolean,
     allowBlockCollections: boolean,
     indentStatus = 1, // 1: this>parent, 0: this=parent, -1: this<parent
     atNewLine = false,
@@ -1467,8 +1454,8 @@ function composeNode(
   state.kind = null;
   state.result = null;
 
-  allowBlockStyles = allowBlockScalars = allowBlockCollections =
-    CONTEXT_BLOCK_OUT === nodeContext || CONTEXT_BLOCK_IN === nodeContext;
+  const allowBlockStyles = (allowBlockScalars = allowBlockCollections =
+    CONTEXT_BLOCK_OUT === nodeContext || CONTEXT_BLOCK_IN === nodeContext);
 
   if (allowToSeek) {
     if (skipSeparationSpace(state, true, -1)) {

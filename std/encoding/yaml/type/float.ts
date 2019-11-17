@@ -68,8 +68,6 @@ function constructYamlFloat(data: string): number {
 const SCIENTIFIC_WITHOUT_DOT = /^[-+]?[0-9]+e/;
 
 function representYamlFloat(object: Any, style?: StyleVariant): Any {
-  let res;
-
   if (isNaN(object)) {
     switch (style) {
       case "lowercase":
@@ -101,7 +99,7 @@ function representYamlFloat(object: Any, style?: StyleVariant): Any {
     return "-0.0";
   }
 
-  res = object.toString(10);
+  const res = object.toString(10);
 
   // JS stringifier can build scientific format without dots: 5e-100,
   // while YAML requres dot: 5.e-100. Fix it with simple hack
