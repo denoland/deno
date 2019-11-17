@@ -12,9 +12,11 @@ use deno::CoreOp;
 use deno::ErrBox;
 use deno::Op;
 use deno::PinnedBuf;
-use futures::Future;
+use futures::future::FutureExt;
+use std::future::Future;
+use std::pin::Pin;
 
-pub type MinimalOp = dyn Future<Item = i32, Error = ErrBox> + Send;
+pub type MinimalOp = dyn Future<Output = Result<i32, ErrBox>> + Send;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 // This corresponds to RecordMinimal on the TS side.
@@ -113,7 +115,7 @@ fn test_parse_min_record() {
 
 pub fn minimal_op<D>(d: D) -> impl Fn(&[u8], Option<PinnedBuf>) -> CoreOp
 where
-  D: Fn(i32, Option<PinnedBuf>) -> Box<MinimalOp>,
+  D: Fn(i32, Option<PinnedBuf>) -> Pin<Box<MinimalOp>>,
 {
   move |control: &[u8], zero_copy: Option<PinnedBuf>| {
     let mut record = match parse_min_record(control) {
@@ -136,21 +138,19 @@ where
     let min_op = d(rid, zero_copy);
 
     // Convert to CoreOp
-    let fut = Box::new(min_op.then(move |result| -> Result<Buf, ()> {
-      match result {
-        Ok(r) => {
-          record.result = r;
-          Ok(record.into())
-        }
-        Err(err) => {
-          let error_record = ErrorRecord {
-            promise_id: record.promise_id,
-            arg: -1,
-            error_code: err.kind() as i32,
-            error_message: err.to_string().as_bytes().to_owned(),
-          };
-          Ok(error_record.into())
-        }
+    let fut = Box::new(min_op.then(move |result| match result {
+      Ok(r) => {
+        record.result = r;
+        futures::future::ok(record.into())
+      }
+      Err(err) => {
+        let error_record = ErrorRecord {
+          promise_id: record.promise_id,
+          arg: -1,
+          error_code: err.kind() as i32,
+          error_message: err.to_string().as_bytes().to_owned(),
+        };
+        futures::future::ok(error_record.into())
       }
     }));
 
@@ -160,9 +160,9 @@ where
       // tokio_util::block_on.
       // This block is only exercised for readSync and writeSync, which I think
       // works since they're simple polling futures.
-      Op::Sync(fut.wait().unwrap())
+      Op::Sync(futures::executor::block_on(fut).unwrap())
     } else {
-      Op::Async(fut)
+      Op::Async(fut.boxed())
     }
   }
 }

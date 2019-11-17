@@ -15,7 +15,7 @@ path = "lib.rs"
 
 [dependencies]
 downcast-rs = "1.1.1"
-futures = "0.1.29"
+futures = { version = "0.3", features = [ "thread-pool", "compat" ] }
 lazy_static = "1.4.0"
 libc = "0.2.65"
 log = "0.4.8"

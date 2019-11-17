@@ -12,9 +12,9 @@ import { assert, assertEquals, assertNotEquals } from "../testing/asserts.ts";
 import {
   Response,
   ServerRequest,
+  serve,
   writeResponse,
   readRequest,
-  serve,
   parseHTTPVersion
 } from "./server.ts";
 import { delay } from "../util/async.ts";
