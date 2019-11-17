@@ -64,13 +64,10 @@ use deno::ErrBox;
 use deno::ModuleSpecifier;
 use flags::DenoFlags;
 use flags::DenoSubcommand;
-use futures::future::FutureExt;
-use futures::future::TryFutureExt;
 use log::Level;
 use log::Metadata;
 use log::Record;
 use std::env;
-use std::future::Future;
 
 static LOGGER: Logger = Logger;
 
@@ -172,86 +169,82 @@ fn print_cache_info(worker: Worker) {
   );
 }
 
-pub fn print_file_info(
-  worker: Worker,
-  module_specifier: &ModuleSpecifier,
-) -> impl Future<Output = Result<Worker, ()>> {
-  let global_state_ = worker.state.global_state.clone();
-  let state_ = worker.state.clone();
-  let module_specifier_ = module_specifier.clone();
+async fn print_file_info(worker: Worker, module_specifier: ModuleSpecifier) {
+  let global_state_ = &worker.state.global_state;
+  let state_ = &worker.state;
 
-  global_state_
+  let maybe_source_file = global_state_
     .file_fetcher
     .fetch_source_file_async(&module_specifier)
-    .map_err(|err| println!("{}", err))
-    .and_then(|out| {
-      println!(
-        "{} {}",
-        colors::bold("local:".to_string()),
-        out.filename.to_str().unwrap()
-      );
+    .await;
+  if let Err(err) = maybe_source_file {
+    println!("{}", err);
+    return;
+  }
+  let out = maybe_source_file.unwrap();
+  println!(
+    "{} {}",
+    colors::bold("local:".to_string()),
+    out.filename.to_str().unwrap()
+  );
 
-      println!(
-        "{} {}",
-        colors::bold("type:".to_string()),
-        msg::enum_name_media_type(out.media_type)
-      );
+  println!(
+    "{} {}",
+    colors::bold("type:".to_string()),
+    msg::enum_name_media_type(out.media_type)
+  );
 
-      global_state_
-        .clone()
-        .fetch_compiled_module(&module_specifier_)
-        .map_err(|e| {
-          debug!("compiler error exiting!");
-          eprintln!("\n{}", e.to_string());
-          std::process::exit(1);
-        })
-        .and_then(move |compiled| {
-          if out.media_type == msg::MediaType::TypeScript
-            || (out.media_type == msg::MediaType::JavaScript
-              && global_state_.ts_compiler.compile_js)
-          {
-            let compiled_source_file = global_state_
-              .ts_compiler
-              .get_compiled_source_file(&out.url)
-              .unwrap();
+  let maybe_compiled = global_state_
+    .clone()
+    .fetch_compiled_module(&module_specifier)
+    .await;
+  if let Err(e) = maybe_compiled {
+    debug!("compiler error exiting!");
+    eprintln!("\n{}", e.to_string());
+    std::process::exit(1);
+  }
+  let compiled = maybe_compiled.unwrap();
+  if out.media_type == msg::MediaType::TypeScript
+    || (out.media_type == msg::MediaType::JavaScript
+      && global_state_.ts_compiler.compile_js)
+  {
+    let compiled_source_file = global_state_
+      .ts_compiler
+      .get_compiled_source_file(&out.url)
+      .unwrap();
 
-            println!(
-              "{} {}",
-              colors::bold("compiled:".to_string()),
-              compiled_source_file.filename.to_str().unwrap(),
-            );
-          }
+    println!(
+      "{} {}",
+      colors::bold("compiled:".to_string()),
+      compiled_source_file.filename.to_str().unwrap(),
+    );
+  }
 
-          if let Ok(source_map) = global_state_
-            .clone()
-            .ts_compiler
-            .get_source_map_file(&module_specifier_)
-          {
-            println!(
-              "{} {}",
-              colors::bold("map:".to_string()),
-              source_map.filename.to_str().unwrap()
-            );
-          }
+  if let Ok(source_map) = global_state_
+    .clone()
+    .ts_compiler
+    .get_source_map_file(&module_specifier)
+  {
+    println!(
+      "{} {}",
+      colors::bold("map:".to_string()),
+      source_map.filename.to_str().unwrap()
+    );
+  }
 
-          if let Some(deps) =
-            state_.modules.lock().unwrap().deps(&compiled.name)
-          {
-            println!("{}{}", colors::bold("deps:\n".to_string()), deps.name);
-            if let Some(ref depsdeps) = deps.deps {
-              for d in depsdeps {
-                println!("{}", d);
-              }
-            }
-          } else {
-            println!(
-              "{} cannot retrieve full dependency graph",
-              colors::bold("deps:".to_string()),
-            );
-          }
-          futures::future::ok(worker)
-        })
-    })
+  if let Some(deps) = state_.modules.lock().unwrap().deps(&compiled.name) {
+    println!("{}{}", colors::bold("deps:\n".to_string()), deps.name);
+    if let Some(ref depsdeps) = deps.deps {
+      for d in depsdeps {
+        println!("{}", d);
+      }
+    }
+  } else {
+    println!(
+      "{} cannot retrieve full dependency graph",
+      colors::bold("deps:".to_string()),
+    );
+  }
 }
 
 fn info_command(flags: DenoFlags, argv: Vec<String>) {
@@ -268,16 +261,16 @@ fn info_command(flags: DenoFlags, argv: Vec<String>) {
   js_check(worker.execute("denoMain()"));
   debug!("main_module {}", main_module);
 
-  let main_future = worker
-    .execute_mod_async(&main_module, None, true)
-    .map_err(print_err_and_exit)
-    .and_then(move |()| print_file_info(worker, &main_module))
-    .and_then(|worker| {
-      worker.then(|result| {
-        js_check(result);
-        futures::future::ok(())
-      })
-    });
+  let main_future = async move {
+    let main_result = worker.execute_mod_async(&main_module, None, true).await;
+    if let Err(e) = main_result {
+      print_err_and_exit(e);
+    }
+    print_file_info(worker.clone(), main_module.clone()).await;
+    let result = worker.await;
+    js_check(result);
+    Ok(())
+  };
 
   tokio_util::run(main_future);
 }
@@ -291,13 +284,11 @@ fn fetch_command(flags: DenoFlags, argv: Vec<String>) {
   js_check(worker.execute("denoMain()"));
   debug!("main_module {}", main_module);
 
-  let main_future =
-    worker
-      .execute_mod_async(&main_module, None, true)
-      .then(|result| {
-        js_check(result);
-        futures::future::ok(())
-      });
+  let main_future = async move {
+    let result = worker.execute_mod_async(&main_module, None, true).await;
+    js_check(result);
+    Ok(())
+  };
 
   tokio_util::run(main_future);
 }
@@ -312,19 +303,20 @@ fn eval_command(flags: DenoFlags, argv: Vec<String>) {
   js_check(worker.execute("denoMain()"));
   debug!("main_module {}", &main_module);
 
-  let mut worker_ = worker.clone();
-
-  let main_future = worker
-    .execute_mod_async(&main_module, Some(ts_source), false)
-    .and_then(move |()| {
-      js_check(worker.execute("window.dispatchEvent(new Event('load'))"));
-      worker.then(move |result| {
-        js_check(result);
-        js_check(worker_.execute("window.dispatchEvent(new Event('unload'))"));
-        futures::future::ok(())
-      })
-    })
-    .map_err(print_err_and_exit);
+  let main_future = async move {
+    let exec_result = worker
+      .execute_mod_async(&main_module, Some(ts_source), false)
+      .await;
+    if let Err(e) = exec_result {
+      print_err_and_exit(e);
+    }
+    js_check(worker.execute("window.dispatchEvent(new Event('load'))"));
+    let mut worker_ = worker.clone();
+    let result = worker.await;
+    js_check(result);
+    js_check(worker_.execute("window.dispatchEvent(new Event('unload'))"));
+    Ok(())
+  };
 
   tokio_util::run(main_future);
 }
@@ -340,37 +332,33 @@ fn bundle_command(flags: DenoFlags, argv: Vec<String>) {
   };
   debug!(">>>>> bundle_async START");
   // NOTE: we need to poll `worker` otherwise TS compiler worker won't run properly
-  let main_future = worker.then(move |result| {
+  let main_future = async move {
+    let result = worker.await;
     js_check(result);
-    state
+    let bundle_result = state
       .ts_compiler
       .bundle_async(state.clone(), main_module.to_string(), out_file)
-      .map_err(|err| {
-        debug!("diagnostics returned, exiting!");
-        eprintln!("");
-        print_err_and_exit(err);
-      })
-      .and_then(move |_| {
-        debug!(">>>>> bundle_async END");
-        futures::future::ok(())
-      })
-  });
+      .await;
+    if let Err(err) = bundle_result {
+      debug!("diagnostics returned, exiting!");
+      eprintln!("");
+      print_err_and_exit(err);
+    }
+    debug!(">>>>> bundle_async END");
+    Ok(())
+  };
   tokio_util::run(main_future);
 }
 
 fn run_repl(flags: DenoFlags, argv: Vec<String>) {
   let (mut worker, _state) = create_worker_and_state(flags, argv);
-
-  // REPL situation.
-
   // Setup runtime.
   js_check(worker.execute("denoMain()"));
-  let main_future = worker
-    .then(|result| {
-      js_check(result);
-      futures::future::ok(())
-    })
-    .map_err(|(err, _worker): (ErrBox, Worker)| print_err_and_exit(err));
+  let main_future = async move {
+    let result = worker.await;
+    js_check(result);
+    Ok(())
+  };
   tokio_util::run(main_future);
 }
 
@@ -387,31 +375,28 @@ fn run_script(flags: DenoFlags, argv: Vec<String>) {
 
   let mut worker_ = worker.clone();
 
-  let main_future = worker
-    .execute_mod_async(&main_module, None, false)
-    .and_then(move |()| {
-      if state.flags.lock_write {
-        if let Some(ref lockfile) = state.lockfile {
-          let g = lockfile.lock().unwrap();
-          if let Err(e) = g.write() {
-            return futures::future::err(ErrBox::from(e));
-          }
-        } else {
-          eprintln!("--lock flag must be specified when using --lock-write");
-          std::process::exit(11);
+  let main_future = async move {
+    let mod_result = worker.execute_mod_async(&main_module, None, false).await;
+    if let Err(err) = mod_result {
+      print_err_and_exit(err);
+    }
+    if state.flags.lock_write {
+      if let Some(ref lockfile) = state.lockfile {
+        let g = lockfile.lock().unwrap();
+        if let Err(e) = g.write() {
+          print_err_and_exit(ErrBox::from(e));
         }
+      } else {
+        eprintln!("--lock flag must be specified when using --lock-write");
+        std::process::exit(11);
       }
-      futures::future::ok(())
-    })
-    .and_then(move |()| {
-      js_check(worker.execute("window.dispatchEvent(new Event('load'))"));
-      worker.then(move |result| {
-        js_check(result);
-        js_check(worker_.execute("window.dispatchEvent(new Event('unload'))"));
-        futures::future::ok(())
-      })
-    })
-    .map_err(print_err_and_exit);
+    }
+    js_check(worker.execute("window.dispatchEvent(new Event('load'))"));
+    let result = worker.await;
+    js_check(result);
+    js_check(worker_.execute("window.dispatchEvent(new Event('unload'))"));
+    Ok(())
+  };
 
   if use_current_thread {
     tokio_util::run_on_current_thread(main_future);
