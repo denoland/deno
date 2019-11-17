@@ -144,17 +144,12 @@ impl Worker {
   /// Post message to worker as a host.
   ///
   /// This method blocks current thread.
-  pub fn post_message(
-    self: &Self,
-    buf: Buf,
-  ) -> impl Future<Output = Result<(), ErrBox>> {
+  pub fn post_message(self: &Self, buf: Buf) -> Result<(), ErrBox> {
     let channels = self.external_channels.lock().unwrap();
     let mut sender = channels.sender.clone();
-    async move {
-      let result = sender.send(buf).map_err(ErrBox::from).await;
-      drop(sender);
-      result
-    }
+    futures::executor::block_on(sender.send(buf))
+      .map(|_| ())
+      .map_err(ErrBox::from)
   }
 
   /// Get message from worker as a host.
@@ -396,7 +391,7 @@ mod tests {
 
       let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
 
-      let r = futures::executor::block_on(worker_.post_message(msg).boxed());
+      let r = worker_.post_message(msg);
       assert!(r.is_ok());
 
       let maybe_msg =
@@ -409,7 +404,7 @@ mod tests {
         .to_string()
         .into_boxed_str()
         .into_boxed_bytes();
-      let r = futures::executor::block_on(worker_.post_message(msg).boxed());
+      let r = worker_.post_message(msg);
       assert!(r.is_ok());
     })
   }
@@ -439,7 +434,7 @@ mod tests {
       );
 
       let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
-      let r = futures::executor::block_on(worker_.post_message(msg));
+      let r = worker_.post_message(msg);
       assert!(r.is_ok());
 
       futures::executor::block_on(worker_future).unwrap();
