@@ -12,13 +12,16 @@ use crate::tokio_util;
 use deno::ErrBox;
 use deno::ModuleSpecifier;
 use futures::future::Either;
-use futures::Future;
+use futures::future::FutureExt;
+use futures::future::TryFutureExt;
 use serde_json;
 use std;
 use std::collections::HashMap;
 use std::fs;
+use std::future::Future;
 use std::path::Path;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::result::Result;
 use std::str;
 use std::sync::Arc;
@@ -39,7 +42,7 @@ pub struct SourceFile {
 }
 
 pub type SourceFileFuture =
-  dyn Future<Item = SourceFile, Error = ErrBox> + Send;
+  dyn Future<Output = Result<SourceFile, ErrBox>> + Send;
 
 /// Simple struct implementing in-process caching to prevent multiple
 /// fs reads/net fetches for same file.
@@ -119,14 +122,14 @@ impl SourceFileFetcher {
   pub fn fetch_source_file_async(
     self: &Self,
     specifier: &ModuleSpecifier,
-  ) -> Box<SourceFileFuture> {
+  ) -> Pin<Box<SourceFileFuture>> {
     let module_url = specifier.as_url().to_owned();
     debug!("fetch_source_file. specifier {} ", &module_url);
 
     // Check if this file was already fetched and can be retrieved from in-process cache.
     if let Some(source_file) = self.source_file_cache.get(specifier.to_string())
     {
-      return Box::new(futures::future::ok(source_file));
+      return futures::future::ok(source_file).boxed();
     }
 
     let source_file_cache = self.source_file_cache.clone();
@@ -139,7 +142,7 @@ impl SourceFileFetcher {
         self.no_remote_fetch,
       )
       .then(move |result| {
-        let mut out = result.map_err(|err| {
+        let mut out = match result.map_err(|err| {
           if err.kind() == ErrorKind::NotFound {
             // For NotFound, change the message to something better.
             DenoError::new(
@@ -150,7 +153,10 @@ impl SourceFileFetcher {
           } else {
             err
           }
-        })?;
+        }) {
+          Ok(v) => v,
+          Err(e) => return futures::future::err(e),
+        };
 
         // TODO: move somewhere?
         if out.source_code.starts_with(b"#!") {
@@ -160,10 +166,10 @@ impl SourceFileFetcher {
         // Cache in-process for subsequent access.
         source_file_cache.set(specifier_.to_string(), out.clone());
 
-        Ok(out)
+        futures::future::ok(out)
       });
 
-    Box::new(fut)
+    fut.boxed()
   }
 
   /// This is main method that is responsible for fetching local or remote files.
@@ -180,29 +186,29 @@ impl SourceFileFetcher {
     module_url: &Url,
     use_disk_cache: bool,
     no_remote_fetch: bool,
-  ) -> impl Future<Item = SourceFile, Error = ErrBox> {
+  ) -> impl Future<Output = Result<SourceFile, ErrBox>> {
     let url_scheme = module_url.scheme();
     let is_local_file = url_scheme == "file";
 
     if let Err(err) = SourceFileFetcher::check_if_supported_scheme(&module_url)
     {
-      return Either::A(futures::future::err(err));
+      return Either::Left(futures::future::err(err));
     }
 
     // Local files are always fetched from disk bypassing cache entirely.
     if is_local_file {
       match self.fetch_local_file(&module_url) {
         Ok(source_file) => {
-          return Either::A(futures::future::ok(source_file));
+          return Either::Left(futures::future::ok(source_file));
         }
         Err(err) => {
-          return Either::A(futures::future::err(err));
+          return Either::Left(futures::future::err(err));
         }
       }
     }
 
     // Fetch remote file and cache on-disk for subsequent access
-    Either::B(self.fetch_remote_source_async(
+    Either::Right(self.fetch_remote_source_async(
       &module_url,
       use_disk_cache,
       no_remote_fetch,
@@ -306,9 +312,9 @@ impl SourceFileFetcher {
     use_disk_cache: bool,
     no_remote_fetch: bool,
     redirect_limit: i64,
-  ) -> Box<SourceFileFuture> {
+  ) -> Pin<Box<SourceFileFuture>> {
     if redirect_limit < 0 {
-      return Box::new(futures::future::err(too_many_redirects()));
+      return futures::future::err(too_many_redirects()).boxed();
     }
 
     let is_blacklisted =
@@ -317,13 +323,13 @@ impl SourceFileFetcher {
     if use_disk_cache && !is_blacklisted {
       match self.fetch_cached_remote_source(&module_url) {
         Ok(Some(source_file)) => {
-          return Box::new(futures::future::ok(source_file));
+          return futures::future::ok(source_file).boxed();
         }
         Ok(None) => {
           // there's no cached version
         }
         Err(err) => {
-          return Box::new(futures::future::err(err));
+          return futures::future::err(err).boxed();
         }
       }
     }
@@ -331,7 +337,7 @@ impl SourceFileFetcher {
     // If file wasn't found in cache check if we can fetch it
     if no_remote_fetch {
       // We can't fetch remote file - bail out
-      return Box::new(futures::future::err(
+      return futures::future::err(
         std::io::Error::new(
           std::io::ErrorKind::NotFound,
           format!(
@@ -340,7 +346,8 @@ impl SourceFileFetcher {
           ),
         )
         .into(),
-      ));
+      )
+      .boxed();
     }
 
     let download_job = self.progress.add("Download", &module_url.to_string());
@@ -364,7 +371,7 @@ impl SourceFileFetcher {
           drop(download_job);
 
           // Recurse
-          Either::A(dir.fetch_remote_source_async(
+          Either::Left(dir.fetch_remote_source_async(
             &new_module_url,
             use_disk_cache,
             no_remote_fetch,
@@ -403,12 +410,12 @@ impl SourceFileFetcher {
           // Explicit drop to keep reference alive until future completes.
           drop(download_job);
 
-          Either::B(futures::future::ok(source_file))
+          Either::Right(futures::future::ok(source_file))
         }
       }
     });
 
-    Box::new(f)
+    f.boxed()
   }
 
   /// Get header metadata associated with a remote file.
@@ -891,7 +898,7 @@ mod tests {
         // Now the old .headers.json file should have gone! Resolved back to TypeScript
         assert_eq!(&(r4.media_type), &msg::MediaType::TypeScript);
         assert!(fs::read_to_string(&headers_file_name_3).is_err());
-        Ok(())
+        futures::future::ok(())
       });
 
     // http_util::fetch_sync_string requires tokio
@@ -969,7 +976,7 @@ mod tests {
             .unwrap(),
           "text/javascript"
         );
-        Ok(())
+        futures::future::ok(())
       });
 
     tokio_util::run(fut);
@@ -1072,7 +1079,7 @@ mod tests {
 
         // Examine the meta result.
         assert_eq!(mod_meta.url.clone(), target_module_url);
-        Ok(())
+        futures::future::ok(())
       });
 
     tokio_util::run(fut);
@@ -1139,7 +1146,7 @@ mod tests {
 
         // Examine the meta result.
         assert_eq!(mod_meta.url.clone(), target_url);
-        Ok(())
+        futures::future::ok(())
       });
 
     tokio_util::run(fut);
@@ -1184,9 +1191,8 @@ mod tests {
           .get_source_file_async(&redirect_url, true, false)
           .map(move |r| (r, file_modified))
       })
-      .then(move |result| {
+      .then(move |(result, file_modified)| {
         assert!(result.is_ok());
-        let (_, file_modified) = result.unwrap();
         let result = fs::File::open(&target_path_);
         assert!(result.is_ok());
         let file_2 = result.unwrap();
@@ -1195,7 +1201,7 @@ mod tests {
         let file_modified_2 = file_metadata_2.modified().unwrap();
 
         assert_eq!(file_modified, file_modified_2);
-        Ok(())
+        futures::future::ok(())
       });
 
     tokio_util::run(fut);
@@ -1221,7 +1227,7 @@ mod tests {
         assert!(result.is_err());
         let err = result.err().unwrap();
         assert_eq!(err.kind(), ErrorKind::TooManyRedirects);
-        Ok(())
+        futures::future::ok(())
       });
 
     tokio_util::run(fut);
@@ -1256,7 +1262,7 @@ mod tests {
       })
       .then(move |result| {
         assert!(result.is_ok());
-        Ok(())
+        futures::future::ok(())
       });
 
     tokio_util::run(fut);
@@ -1297,7 +1303,7 @@ mod tests {
         assert_eq!(r2.source_code, b"export const loaded = true;\n");
         // Not MediaType::TypeScript due to .headers.json modification
         assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
-        Ok(())
+        futures::future::ok(())
       });
 
     tokio_util::run(fut);
@@ -1340,7 +1346,7 @@ mod tests {
         assert_eq!(r2.source_code, "export const loaded = true;\n".as_bytes());
         // Not MediaType::TypeScript due to .headers.json modification
         assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
-        Ok(())
+        futures::future::ok(())
       });
 
     tokio_util::run(fut);

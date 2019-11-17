@@ -15,9 +15,10 @@ use crate::permissions::DenoPermissions;
 use crate::progress::Progress;
 use deno::ErrBox;
 use deno::ModuleSpecifier;
-use futures::Future;
+use futures::future::TryFutureExt;
 use std;
 use std::env;
+use std::future::Future;
 use std::ops::Deref;
 use std::str;
 use std::sync::Arc;
@@ -123,7 +124,7 @@ impl ThreadSafeGlobalState {
   pub fn fetch_compiled_module(
     self: &Self,
     module_specifier: &ModuleSpecifier,
-  ) -> impl Future<Item = CompiledModule, Error = ErrBox> {
+  ) -> impl Future<Output = Result<CompiledModule, ErrBox>> {
     let state1 = self.clone();
     let state2 = self.clone();
 
@@ -154,15 +155,21 @@ impl ThreadSafeGlobalState {
           let mut g = lockfile.lock().unwrap();
           if state2.flags.lock_write {
             g.insert(&compiled_module);
-          } else if !g.check(&compiled_module)? {
-            eprintln!(
-              "Subresource integrety check failed --lock={}\n{}",
-              g.filename, compiled_module.name
-            );
-            std::process::exit(10);
+          } else {
+            let check = match g.check(&compiled_module) {
+              Err(e) => return futures::future::err(ErrBox::from(e)),
+              Ok(v) => v,
+            };
+            if !check {
+              eprintln!(
+                "Subresource integrety check failed --lock={}\n{}",
+                g.filename, compiled_module.name
+              );
+              std::process::exit(10);
+            }
           }
         }
-        Ok(compiled_module)
+        futures::future::ok(compiled_module)
       })
   }
 

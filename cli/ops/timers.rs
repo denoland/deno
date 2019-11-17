@@ -3,7 +3,7 @@ use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::ops::json_op;
 use crate::state::ThreadSafeState;
 use deno::*;
-use futures::Future;
+use futures::future::FutureExt;
 use std;
 use std::time::Duration;
 use std::time::Instant;
@@ -51,7 +51,7 @@ fn op_global_timer(
     .new_timeout(deadline)
     .then(move |_| futures::future::ok(json!({})));
 
-  Ok(JsonOp::Async(Box::new(f)))
+  Ok(JsonOp::Async(f.boxed()))
 }
 
 // Returns a milliseconds and nanoseconds subsec
