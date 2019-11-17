@@ -15,6 +15,7 @@ extern crate lazy_static;
 use deno::*;
 use futures::future::FutureExt;
 use futures::future::TryFutureExt;
+use futures::stream::StreamExt;
 use std::env;
 use std::future::Future;
 use std::io::Error;
@@ -24,6 +25,7 @@ use std::pin::Pin;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::task::Poll;
+use tokio::net::tcp::Incoming;
 use tokio::prelude::Async;
 use tokio::prelude::AsyncRead;
 use tokio::prelude::AsyncWrite;
@@ -190,7 +192,7 @@ pub fn bad_resource() -> Error {
   Error::new(ErrorKind::NotFound, "bad resource id")
 }
 
-struct TcpListener(tokio::net::TcpListener);
+struct TcpListener(Incoming);
 
 impl Resource for TcpListener {}
 
@@ -213,14 +215,19 @@ fn op_accept(
 ) -> Pin<Box<HttpOp>> {
   let rid = record.arg as u32;
   debug!("accept {}", rid);
-  let fut = futures::future::poll_fn(move |_cx| {
+  let fut = futures::future::poll_fn(move |cx| {
     let mut table = lock_resource_table();
     let listener =
       table.get_mut::<TcpListener>(rid).ok_or_else(bad_resource)?;
-    match listener.0.poll_accept() {
-      Err(e) => Poll::Ready(Err(e)),
-      Ok(Async::Ready(v)) => Poll::Ready(Ok(v)),
-      Ok(Async::NotReady) => Poll::Pending,
+    let mut listener = futures::compat::Compat01As03::new(&mut listener.0);
+    match listener.poll_next_unpin(cx) {
+      Poll::Ready(Some(Err(e))) => Poll::Ready(Err(e)),
+      Poll::Ready(Some(Ok(stream))) => {
+        let addr = stream.peer_addr().unwrap();
+        Poll::Ready(Ok((stream, addr)))
+      }
+      Poll::Pending => Poll::Pending,
+      _ => unreachable!(),
     }
   })
   .and_then(move |(stream, addr)| {
@@ -240,7 +247,8 @@ fn op_listen(
   let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
   let listener = tokio::net::TcpListener::bind(&addr).unwrap();
   let mut table = lock_resource_table();
-  let rid = table.add("tcpListener", Box::new(TcpListener(listener)));
+  let rid =
+    table.add("tcpListener", Box::new(TcpListener(listener.incoming())));
   futures::future::ok(rid as i32).boxed()
 }
 
