@@ -32,7 +32,7 @@ const PATTERN_TAG_HANDLE = /^(?:!|!!|![a-z\-]+!)$/i;
 /* eslint-disable-next-line max-len */
 const PATTERN_TAG_URI = /^(?:!|[^,\[\]\{\}])(?:%[0-9a-f]{2}|[0-9a-z\-#;\/\?:@&=\+\$,_\.!~\*'\(\)\[\]])*$/i;
 
-function _class(obj: Any): string {
+function _class(obj: unknown): string {
   return Object.prototype.toString.call(obj);
 }
 
@@ -186,12 +186,12 @@ interface DirectiveHandlers {
   [directive: string]: (
     state: LoaderState,
     name: string,
-    ...args: Any[]
+    ...args: unknown[]
   ) => void;
 }
 
 const directiveHandlers: DirectiveHandlers = {
-  YAML(state, name, ...args): void {
+  YAML(state, _name, ...args: string[]) {
     if (state.version !== null) {
       return throwError(state, "duplication of %YAML directive");
     }
@@ -221,15 +221,13 @@ const directiveHandlers: DirectiveHandlers = {
     }
   },
 
-  TAG(state, name, ...args): void {
-    let handle, prefix;
-
+  TAG(state, _name, ...args: string[]): void {
     if (args.length !== 2) {
       return throwError(state, "TAG directive accepts exactly two arguments");
     }
 
-    handle = args[0];
-    prefix = args[1];
+    const handle = args[0];
+    const prefix = args[1];
 
     if (!PATTERN_TAG_HANDLE.test(handle)) {
       return throwError(
@@ -264,7 +262,7 @@ function captureSegment(
   start: number,
   end: number,
   checkJson: boolean
-): void {
+) {
   let result: string;
   if (start < end) {
     result = state.input.slice(start, end);
@@ -295,7 +293,7 @@ function mergeMappings(
   destination: ArrayObject,
   source: ArrayObject,
   overridableKeys: ArrayObject<boolean>
-): void {
+) {
   if (!common.isObject(source)) {
     return throwError(
       state,
@@ -319,7 +317,7 @@ function storeMappingPair(
   overridableKeys: ArrayObject<boolean>,
   keyTag: string | null,
   keyNode: Any,
-  valueNode: Any,
+  valueNode: unknown,
   startLine?: number,
   startPos?: number
 ): ArrayObject {
@@ -1012,7 +1010,7 @@ function readBlockSequence(state: LoaderState, nodeIndent: number): boolean {
     ch: number;
   const tag = state.tag,
     anchor = state.anchor,
-    result: Any[] = [];
+    result: unknown[] = [];
 
   if (
     state.anchor !== null &&
@@ -1624,7 +1622,7 @@ function readDocument(state: LoaderState): void {
   const documentStart = state.position;
   let position: number,
     directiveName: string,
-    directiveArgs: Any[],
+    directiveArgs: unknown[],
     hasDirectives = false,
     ch: number;
 
@@ -1738,7 +1736,7 @@ function readDocument(state: LoaderState): void {
   }
 }
 
-function loadDocuments(input: string, options?: LoaderStateOptions): Any[] {
+function loadDocuments(input: string, options?: LoaderStateOptions): unknown[] {
   input = String(input);
   options = options || {};
 
@@ -1774,8 +1772,8 @@ function loadDocuments(input: string, options?: LoaderStateOptions): Any[] {
   return state.documents;
 }
 
-export type CbFunction = (doc: Any) => void;
-function isCbFunction(fn: Any): fn is CbFunction {
+export type CbFunction = (doc: unknown) => void;
+function isCbFunction(fn: unknown): fn is CbFunction {
   return typeof fn === "function";
 }
 
@@ -1783,7 +1781,7 @@ export function loadAll<T extends CbFunction | LoaderStateOptions>(
   input: string,
   iteratorOrOption?: T,
   options?: LoaderStateOptions
-): T extends CbFunction ? void : Any[] {
+): T extends CbFunction ? void : unknown[] {
   if (!isCbFunction(iteratorOrOption)) {
     return loadDocuments(input, iteratorOrOption as LoaderStateOptions) as Any;
   }
@@ -1797,7 +1795,7 @@ export function loadAll<T extends CbFunction | LoaderStateOptions>(
   return void 0 as Any;
 }
 
-export function load(input: string, options?: LoaderStateOptions): Any {
+export function load(input: string, options?: LoaderStateOptions): unknown {
   const documents = loadDocuments(input, options);
 
   if (documents.length === 0) {
