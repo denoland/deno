@@ -1059,7 +1059,6 @@ pub fn flags_from_vec(
       flags.allow_net = true;
       flags.allow_env = true;
       flags.allow_run = true;
-      flags.allow_native = true;
       argv.push(INSTALLER_URL.to_string());
 
       if install_match.is_present("dir") {
@@ -1354,6 +1353,7 @@ mod tests {
         allow_run: true,
         allow_read: true,
         allow_write: true,
+        allow_native: true,
         allow_hrtime: true,
         ..DenoFlags::default()
       }
@@ -1504,6 +1504,7 @@ mod tests {
         allow_run: true,
         allow_read: true,
         allow_write: true,
+        allow_native: true,
         allow_hrtime: true,
         ..DenoFlags::default()
       }
@@ -1523,6 +1524,7 @@ mod tests {
         allow_run: true,
         allow_read: true,
         allow_write: true,
+        allow_native: true,
         allow_hrtime: true,
         ..DenoFlags::default()
       }
@@ -1550,6 +1552,7 @@ mod tests {
         allow_run: true,
         allow_read: true,
         allow_write: true,
+        allow_native: true,
         allow_hrtime: true,
         ..DenoFlags::default()
       }
