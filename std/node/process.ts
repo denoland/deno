@@ -2,7 +2,7 @@ export const version = `v${Deno.version.deno}`;
 
 export const versions = {
   node: Deno.version.deno,
-  ...Deno.version,
+  ...Deno.version
 };
 
 const osToPlatform = (os: Deno.OperatingSystem): string =>
@@ -12,7 +12,7 @@ export const platform = osToPlatform(Deno.build.os);
 
 export const { arch } = Deno.build;
 
-export const argv = [ Deno.execPath(), ...Deno.args ];
+export const argv = [Deno.execPath(), ...Deno.args];
 
 // TODO(rsp): currently setting env seems to be working by modifying the object
 // that is returnd by Deno.env(). Need to make sure that this is the final API
