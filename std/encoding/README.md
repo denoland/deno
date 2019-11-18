@@ -219,3 +219,24 @@ const obj = {
 };
 const tomlString = stringify(obj);
 ```
+
+## YAML
+
+YAML parser / dumper for Deno
+
+Heavily inspired from [js-yaml]
+
+### Example
+
+See [`./yaml/example`](./yaml/example) folder and [js-yaml] repository.
+
+### :warning: Limitations
+
+- `binary` type is currently not stable
+- `function`, `regexp`, and `undefined` type are currently not supported
+
+# Basic usage
+
+TBD
+
+[js-yaml]: https://github.com/nodeca/js-yaml
