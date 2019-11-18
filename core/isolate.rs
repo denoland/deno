@@ -178,7 +178,7 @@ pub struct Isolate {
   pending_dyn_imports: FuturesUnordered<StreamFuture<IntoStream<DynImport>>>,
   have_unpolled_ops: bool,
   startup_script: Option<OwnedScript>,
-  op_registry: Arc<OpRegistry>,
+  pub op_registry: Arc<OpRegistry>,
   eager_poll_count: u32,
   waker: AtomicWaker,
 }
@@ -261,11 +261,6 @@ impl Isolate {
     F: Fn(&[u8], Option<PinnedBuf>) -> CoreOp + Send + Sync + 'static,
   {
     self.op_registry.register(name, op)
-  }
-
-  /// Returns a thread safe instance of the op registry for this isolate.
-  pub fn thread_safe_op_registry<F>(&self) -> Arc<OpRegistry> {
-    self.op_registry.clone()
   }
 
   pub fn set_dyn_import<F>(&mut self, f: F)
