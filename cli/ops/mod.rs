@@ -13,6 +13,7 @@ pub mod fetch;
 pub mod files;
 pub mod fs;
 pub mod io;
+pub mod native_plugins;
 pub mod net;
 pub mod os;
 pub mod permissions;

@@ -288,6 +288,11 @@ impl ThreadSafeState {
     self.permissions.check_run()
   }
 
+  #[inline]
+  pub fn check_native(&self, filename: &str) -> Result<(), ErrBox> {
+    self.permissions.check_native(filename)
+  }
+
   pub fn check_dyn_import(
     self: &Self,
     module_specifier: &ModuleSpecifier,

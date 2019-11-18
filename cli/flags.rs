@@ -48,6 +48,7 @@ pub struct DenoFlags {
   pub net_whitelist: Vec<String>,
   pub allow_env: bool,
   pub allow_run: bool,
+  pub allow_native: bool,
   pub allow_hrtime: bool,
   pub no_prompts: bool,
   pub no_fetch: bool,
@@ -104,6 +105,11 @@ fn add_run_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
       Arg::with_name("allow-run")
         .long("allow-run")
         .help("Allow running subprocesses"),
+    )
+    .arg(
+      Arg::with_name("allow-native")
+        .long("allow-native")
+        .help("Allow opening native plugins"),
     )
     .arg(
       Arg::with_name("allow-hrtime")
@@ -843,6 +849,9 @@ fn parse_run_args(mut flags: DenoFlags, matches: &ArgMatches) -> DenoFlags {
   if matches.is_present("allow-run") {
     flags.allow_run = true;
   }
+  if matches.is_present("allow-native") {
+    flags.allow_native = true;
+  }
   if matches.is_present("allow-hrtime") {
     flags.allow_hrtime = true;
   }
@@ -853,6 +862,7 @@ fn parse_run_args(mut flags: DenoFlags, matches: &ArgMatches) -> DenoFlags {
     flags.allow_run = true;
     flags.allow_read = true;
     flags.allow_write = true;
+    flags.allow_native = true;
     flags.allow_hrtime = true;
   }
   if matches.is_present("no-fetch") {
@@ -970,6 +980,7 @@ pub fn flags_from_vec(
       flags.allow_run = true;
       flags.allow_read = true;
       flags.allow_write = true;
+      flags.allow_native = true;
       flags.allow_hrtime = true;
       let code: &str = eval_match.value_of("code").unwrap();
       argv.extend(vec![code.to_string()]);
@@ -1048,6 +1059,7 @@ pub fn flags_from_vec(
       flags.allow_net = true;
       flags.allow_env = true;
       flags.allow_run = true;
+      flags.allow_native = true;
       argv.push(INSTALLER_URL.to_string());
 
       if install_match.is_present("dir") {
@@ -1138,6 +1150,7 @@ pub fn flags_from_vec(
       flags.allow_run = true;
       flags.allow_read = true;
       flags.allow_write = true;
+      flags.allow_native = true;
       flags.allow_hrtime = true;
       argv.push(XEVAL_URL.to_string());
 
@@ -1181,6 +1194,7 @@ pub fn flags_from_vec(
       flags.allow_run = true;
       flags.allow_read = true;
       flags.allow_write = true;
+      flags.allow_native = true;
       flags.allow_hrtime = true;
       DenoSubcommand::Repl
     }

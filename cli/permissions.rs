@@ -141,6 +141,7 @@ pub struct DenoPermissions {
   pub net_whitelist: Arc<HashSet<String>>,
   pub allow_env: PermissionAccessor,
   pub allow_run: PermissionAccessor,
+  pub allow_native: PermissionAccessor,
   pub allow_hrtime: PermissionAccessor,
 }
 
@@ -157,6 +158,7 @@ impl DenoPermissions {
       net_whitelist: Arc::new(flags.net_whitelist.iter().cloned().collect()),
       allow_env: PermissionAccessor::from(flags.allow_env),
       allow_run: PermissionAccessor::from(flags.allow_run),
+      allow_native: PermissionAccessor::from(flags.allow_native),
       allow_hrtime: PermissionAccessor::from(flags.allow_hrtime),
     }
   }
@@ -298,6 +300,13 @@ impl DenoPermissions {
     self
       .allow_hrtime
       .request("Deno requests to access to high precision time.")
+  }
+
+  pub fn check_native(&self, filename: &str) -> Result<(), ErrBox> {
+    self.allow_native.get_state().check(
+      &format!("access to open a native plugin: {}", filename),
+      "run again with the --allow-run flag",
+    )
   }
 
   pub fn get_permission_state(
