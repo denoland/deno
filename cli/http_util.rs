@@ -3,7 +3,9 @@ use crate::deno_error;
 use crate::deno_error::DenoError;
 use crate::version;
 use deno::ErrBox;
-use futures::{future, Future};
+use futures::future;
+use futures::future::FutureExt;
+use futures::future::TryFutureExt;
 use reqwest;
 use reqwest::header::HeaderMap;
 use reqwest::header::CONTENT_TYPE;
@@ -11,6 +13,8 @@ use reqwest::header::LOCATION;
 use reqwest::header::USER_AGENT;
 use reqwest::r#async::Client;
 use reqwest::RedirectPolicy;
+use std::future::Future;
+use std::pin::Pin;
 use url::Url;
 
 /// Create new instance of async reqwest::Client. This client supports
@@ -70,22 +74,21 @@ pub enum FetchOnceResult {
 /// yields Redirect(url).
 pub fn fetch_string_once(
   url: &Url,
-) -> impl Future<Item = FetchOnceResult, Error = ErrBox> {
+) -> impl Future<Output = Result<FetchOnceResult, ErrBox>> {
   type FetchAttempt = (Option<String>, Option<String>, Option<FetchOnceResult>);
 
   let url = url.clone();
   let client = get_client();
 
-  client
-    .get(url.clone())
-    .send()
+  futures::compat::Compat01As03::new(client.get(url.clone()).send())
     .map_err(ErrBox::from)
     .and_then(
-      move |mut response| -> Box<
-        dyn Future<Item = FetchAttempt, Error = ErrBox> + Send,
+      move |mut response| -> Pin<
+        Box<dyn Future<Output = Result<FetchAttempt, ErrBox>> + Send>,
       > {
         if response.status().is_redirection() {
-          let location_string = response.headers()
+          let location_string = response
+            .headers()
             .get(LOCATION)
             .expect("url redirection should provide 'location' header")
             .to_str()
@@ -94,17 +97,25 @@ pub fn fetch_string_once(
           debug!("Redirecting to {:?}...", &location_string);
           let new_url = resolve_url_from_location(&url, location_string);
           // Boxed trait object turns out to be the savior for 2+ types yielding same results.
-          return Box::new(future::ok(None).join3(
+          return futures::future::try_join3(
+            future::ok(None),
             future::ok(None),
             future::ok(Some(FetchOnceResult::Redirect(new_url))),
-          ));
+          )
+          .boxed();
         }
 
-        if response.status().is_client_error() || response.status().is_server_error() {
-          return Box::new(future::err(DenoError::new(
-            deno_error::ErrorKind::Other,
-            format!("Import '{}' failed: {}", &url, response.status()),
-          ).into()));
+        if response.status().is_client_error()
+          || response.status().is_server_error()
+        {
+          return future::err(
+            DenoError::new(
+              deno_error::ErrorKind::Other,
+              format!("Import '{}' failed: {}", &url, response.status()),
+            )
+            .into(),
+          )
+          .boxed();
         }
 
         let content_type = response
@@ -112,14 +123,17 @@ pub fn fetch_string_once(
           .get(CONTENT_TYPE)
           .map(|content_type| content_type.to_str().unwrap().to_owned());
 
-        let body = response
-          .text()
+        let body = futures::compat::Compat01As03::new(response.text())
+          .map_ok(Some)
           .map_err(ErrBox::from);
 
-        Box::new(
-          Some(body).join3(future::ok(content_type), future::ok(None))
+        futures::future::try_join3(
+          body,
+          future::ok(content_type),
+          future::ok(None),
         )
-      }
+        .boxed()
+      },
     )
     .and_then(move |(maybe_code, maybe_content_type, maybe_redirect)| {
       if let Some(redirect) = maybe_redirect {
@@ -150,7 +164,7 @@ mod tests {
       Ok(FetchOnceResult::Code(code, maybe_content_type)) => {
         assert!(!code.is_empty());
         assert_eq!(maybe_content_type, Some("application/json".to_string()));
-        Ok(())
+        futures::future::ok(())
       }
       _ => panic!(),
     });
@@ -171,7 +185,7 @@ mod tests {
     let fut = fetch_string_once(&url).then(move |result| match result {
       Ok(FetchOnceResult::Redirect(url)) => {
         assert_eq!(url, target_url);
-        Ok(())
+        futures::future::ok(())
       }
       _ => panic!(),
     });

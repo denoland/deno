@@ -1,19 +1,22 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
+use super::io::StreamResource;
 use crate::deno_error::bad_resource;
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
 use crate::fs as deno_fs;
 use crate::ops::json_op;
-use crate::resources;
-use crate::resources::CliResource;
 use crate::state::ThreadSafeState;
 use deno::*;
-use futures::Future;
-use futures::Poll;
+use futures::future::FutureExt;
+use futures::future::TryFutureExt;
 use std;
 use std::convert::From;
+use std::future::Future;
 use std::io::SeekFrom;
+use std::pin::Pin;
+use std::task::Context;
+use std::task::Poll;
 use tokio;
 
 pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
@@ -38,7 +41,7 @@ fn op_open(
   let args: OpenArgs = serde_json::from_value(args)?;
   let (filename, filename_) = deno_fs::resolve_from_cwd(&args.filename)?;
   let mode = args.mode.as_ref();
-
+  let state_ = state.clone();
   let mut open_options = tokio::fs::OpenOptions::new();
 
   match mode {
@@ -89,18 +92,21 @@ fn op_open(
   }
 
   let is_sync = args.promise_id.is_none();
-  let op = open_options.open(filename).map_err(ErrBox::from).and_then(
-    move |fs_file| {
-      let rid = resources::add_fs_file(fs_file);
-      futures::future::ok(json!(rid))
-    },
-  );
+  let op = futures::compat::Compat01As03::new(tokio::prelude::Future::map_err(
+    open_options.open(filename),
+    ErrBox::from,
+  ))
+  .and_then(move |fs_file| {
+    let mut table = state_.lock_resource_table();
+    let rid = table.add("fsFile", Box::new(StreamResource::FsFile(fs_file)));
+    futures::future::ok(json!(rid))
+  });
 
   if is_sync {
-    let buf = op.wait()?;
+    let buf = futures::executor::block_on(op)?;
     Ok(JsonOp::Sync(buf))
   } else {
-    Ok(JsonOp::Async(Box::new(op)))
+    Ok(JsonOp::Async(op.boxed()))
   }
 }
 
@@ -110,39 +116,45 @@ struct CloseArgs {
 }
 
 fn op_close(
-  _state: &ThreadSafeState,
+  state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: CloseArgs = serde_json::from_value(args)?;
 
-  let mut table = resources::lock_resource_table();
+  let mut table = state.lock_resource_table();
   table.close(args.rid as u32).ok_or_else(bad_resource)?;
   Ok(JsonOp::Sync(json!({})))
 }
 
-#[derive(Debug)]
 pub struct SeekFuture {
   seek_from: SeekFrom,
   rid: ResourceId,
+  state: ThreadSafeState,
 }
 
 impl Future for SeekFuture {
-  type Item = u64;
-  type Error = ErrBox;
+  type Output = Result<u64, ErrBox>;
 
-  fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-    let mut table = resources::lock_resource_table();
+  fn poll(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Self::Output> {
+    let inner = self.get_mut();
+    let mut table = inner.state.lock_resource_table();
     let resource = table
-      .get_mut::<CliResource>(self.rid)
+      .get_mut::<StreamResource>(inner.rid)
       .ok_or_else(bad_resource)?;
 
     let tokio_file = match resource {
-      CliResource::FsFile(ref mut file) => file,
-      _ => return Err(bad_resource()),
+      StreamResource::FsFile(ref mut file) => file,
+      _ => return Poll::Ready(Err(bad_resource())),
     };
 
-    tokio_file.poll_seek(self.seek_from).map_err(ErrBox::from)
+    use tokio::prelude::Async::*;
+
+    match tokio_file.poll_seek(inner.seek_from).map_err(ErrBox::from) {
+      Ok(Ready(v)) => Poll::Ready(Ok(v)),
+      Err(err) => Poll::Ready(Err(err)),
+      Ok(NotReady) => Poll::Pending,
+    }
   }
 }
 
@@ -156,7 +168,7 @@ struct SeekArgs {
 }
 
 fn op_seek(
-  _state: &ThreadSafeState,
+  state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
@@ -177,13 +189,17 @@ fn op_seek(
     }
   };
 
-  let fut = SeekFuture { seek_from, rid };
+  let fut = SeekFuture {
+    state: state.clone(),
+    seek_from,
+    rid,
+  };
 
   let op = fut.and_then(move |_| futures::future::ok(json!({})));
   if args.promise_id.is_none() {
-    let buf = op.wait()?;
+    let buf = futures::executor::block_on(op)?;
     Ok(JsonOp::Sync(buf))
   } else {
-    Ok(JsonOp::Async(Box::new(op)))
+    Ok(JsonOp::Async(op.boxed()))
   }
 }

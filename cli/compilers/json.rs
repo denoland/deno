@@ -2,8 +2,10 @@
 use crate::compilers::CompiledModule;
 use crate::compilers::CompiledModuleFuture;
 use crate::file_fetcher::SourceFile;
+use crate::futures::future::FutureExt;
 use deno::ErrBox;
 use regex::Regex;
+use std::pin::Pin;
 use std::str;
 
 // From https://github.com/mathiasbynens/mothereff.in/blob/master/js-variables/eff.js
@@ -15,11 +17,11 @@ impl JsonCompiler {
   pub fn compile_async(
     self: &Self,
     source_file: &SourceFile,
-  ) -> Box<CompiledModuleFuture> {
+  ) -> Pin<Box<CompiledModuleFuture>> {
     let maybe_json_value: serde_json::Result<serde_json::Value> =
       serde_json::from_str(&str::from_utf8(&source_file.source_code).unwrap());
     if let Err(err) = maybe_json_value {
-      return Box::new(futures::future::err(ErrBox::from(err)));
+      return futures::future::err(ErrBox::from(err)).boxed();
     }
 
     let mut code = format!(
@@ -50,6 +52,6 @@ impl JsonCompiler {
       name: source_file.url.to_string(),
     };
 
-    Box::new(futures::future::ok(module))
+    futures::future::ok(module).boxed()
   }
 }

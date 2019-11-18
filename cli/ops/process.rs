@@ -1,19 +1,24 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
+use super::io::StreamResource;
 use crate::deno_error::bad_resource;
 use crate::ops::json_op;
-use crate::resources;
-use crate::resources::CloneFileFuture;
 use crate::signal::kill;
 use crate::state::ThreadSafeState;
 use deno::*;
 use futures;
-use futures::Future;
-use futures::Poll;
+use futures::future::FutureExt;
+use futures::future::TryFutureExt;
+use futures::task::SpawnExt;
 use std;
 use std::convert::From;
+use std::future::Future;
+use std::pin::Pin;
 use std::process::Command;
 use std::process::ExitStatus;
+use std::task::Context;
+use std::task::Poll;
+use tokio::prelude::Async;
 use tokio_process::CommandExt;
 
 #[cfg(unix)]
@@ -26,6 +31,44 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
     s.core_op(json_op(s.stateful_op(op_run_status))),
   );
   i.register_op("kill", s.core_op(json_op(s.stateful_op(op_kill))));
+}
+
+struct CloneFileFuture {
+  rid: ResourceId,
+  state: ThreadSafeState,
+}
+
+impl Future for CloneFileFuture {
+  type Output = Result<tokio::fs::File, ErrBox>;
+
+  fn poll(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Self::Output> {
+    let inner = self.get_mut();
+    let mut table = inner.state.lock_resource_table();
+    let repr = table
+      .get_mut::<StreamResource>(inner.rid)
+      .ok_or_else(bad_resource)?;
+    match repr {
+      StreamResource::FsFile(ref mut file) => {
+        match file.poll_try_clone().map_err(ErrBox::from) {
+          Err(err) => Poll::Ready(Err(err)),
+          Ok(Async::Ready(v)) => Poll::Ready(Ok(v)),
+          Ok(Async::NotReady) => Poll::Pending,
+        }
+      }
+      _ => Poll::Ready(Err(bad_resource())),
+    }
+  }
+}
+
+fn clone_file(
+  rid: u32,
+  state: &ThreadSafeState,
+) -> Result<std::fs::File, ErrBox> {
+  futures::executor::block_on(CloneFileFuture {
+    rid,
+    state: state.clone(),
+  })
+  .map(|f| f.into_std())
 }
 
 fn subprocess_stdio_map(s: &str) -> std::process::Stdio {
@@ -52,7 +95,7 @@ struct RunArgs {
 }
 
 struct ChildResource {
-  child: tokio_process::Child,
+  child: futures::compat::Compat01As03<tokio_process::Child>,
 }
 
 impl Resource for ChildResource {}
@@ -65,6 +108,7 @@ fn op_run(
   let run_args: RunArgs = serde_json::from_value(args)?;
 
   state.check_run()?;
+  let state_ = state.clone();
 
   let args = run_args.args;
   let env = run_args.env;
@@ -83,7 +127,7 @@ fn op_run(
   // TODO: make this work with other resources, eg. sockets
   let stdin_rid = run_args.stdin_rid;
   if stdin_rid > 0 {
-    let file = (CloneFileFuture { rid: stdin_rid }).wait()?.into_std();
+    let file = clone_file(stdin_rid, &state_)?;
     c.stdin(file);
   } else {
     c.stdin(subprocess_stdio_map(run_args.stdin.as_ref()));
@@ -91,7 +135,7 @@ fn op_run(
 
   let stdout_rid = run_args.stdout_rid;
   if stdout_rid > 0 {
-    let file = (CloneFileFuture { rid: stdout_rid }).wait()?.into_std();
+    let file = clone_file(stdout_rid, &state_)?;
     c.stdout(file);
   } else {
     c.stdout(subprocess_stdio_map(run_args.stdout.as_ref()));
@@ -99,7 +143,7 @@ fn op_run(
 
   let stderr_rid = run_args.stderr_rid;
   if stderr_rid > 0 {
-    let file = (CloneFileFuture { rid: stderr_rid }).wait()?.into_std();
+    let file = clone_file(stderr_rid, &state_)?;
     c.stderr(file);
   } else {
     c.stderr(subprocess_stdio_map(run_args.stderr.as_ref()));
@@ -109,29 +153,44 @@ fn op_run(
   let mut child = c.spawn_async().map_err(ErrBox::from)?;
   let pid = child.id();
 
-  let stdin_rid = if child.stdin().is_some() {
-    let rid = resources::add_child_stdin(child.stdin().take().unwrap());
-    Some(rid)
-  } else {
-    None
+  let mut table = state_.lock_resource_table();
+
+  let stdin_rid = match child.stdin().take() {
+    Some(child_stdin) => {
+      let rid = table.add(
+        "childStdin",
+        Box::new(StreamResource::ChildStdin(child_stdin)),
+      );
+      Some(rid)
+    }
+    None => None,
   };
 
-  let stdout_rid = if child.stdout().is_some() {
-    let rid = resources::add_child_stdout(child.stdout().take().unwrap());
-    Some(rid)
-  } else {
-    None
+  let stdout_rid = match child.stdout().take() {
+    Some(child_stdout) => {
+      let rid = table.add(
+        "childStdout",
+        Box::new(StreamResource::ChildStdout(child_stdout)),
+      );
+      Some(rid)
+    }
+    None => None,
   };
 
-  let stderr_rid = if child.stderr().is_some() {
-    let rid = resources::add_child_stderr(child.stderr().take().unwrap());
-    Some(rid)
-  } else {
-    None
+  let stderr_rid = match child.stderr().take() {
+    Some(child_stderr) => {
+      let rid = table.add(
+        "childStderr",
+        Box::new(StreamResource::ChildStderr(child_stderr)),
+      );
+      Some(rid)
+    }
+    None => None,
   };
 
-  let child_resource = ChildResource { child };
-  let mut table = resources::lock_resource_table();
+  let child_resource = ChildResource {
+    child: futures::compat::Compat01As03::new(child),
+  };
   let child_rid = table.add("child", Box::new(child_resource));
 
   Ok(JsonOp::Sync(json!({
@@ -145,19 +204,20 @@ fn op_run(
 
 pub struct ChildStatus {
   rid: ResourceId,
+  state: ThreadSafeState,
 }
 
 impl Future for ChildStatus {
-  type Item = ExitStatus;
-  type Error = ErrBox;
+  type Output = Result<ExitStatus, ErrBox>;
 
-  fn poll(&mut self) -> Poll<ExitStatus, ErrBox> {
-    let mut table = resources::lock_resource_table();
+  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+    let inner = self.get_mut();
+    let mut table = inner.state.lock_resource_table();
     let child_resource = table
-      .get_mut::<ChildResource>(self.rid)
+      .get_mut::<ChildResource>(inner.rid)
       .ok_or_else(bad_resource)?;
     let child = &mut child_resource.child;
-    child.poll().map_err(ErrBox::from)
+    child.map_err(ErrBox::from).poll_unpin(cx)
   }
 }
 
@@ -177,7 +237,10 @@ fn op_run_status(
 
   state.check_run()?;
 
-  let future = ChildStatus { rid };
+  let future = ChildStatus {
+    rid,
+    state: state.clone(),
+  };
 
   let future = future.and_then(move |run_status| {
     let code = run_status.code();
@@ -199,7 +262,10 @@ fn op_run_status(
     }))
   });
 
-  Ok(JsonOp::Async(Box::new(future)))
+  let pool = futures::executor::ThreadPool::new().unwrap();
+  let handle = pool.spawn_with_handle(future).unwrap();
+
+  Ok(JsonOp::Async(handle.boxed()))
 }
 
 #[derive(Deserialize)]
