@@ -7,6 +7,7 @@ from contextlib import contextmanager
 import os
 import SimpleHTTPServer
 import SocketServer
+import socket
 import sys
 from time import sleep
 from threading import Thread
@@ -116,6 +117,7 @@ def server():
         ".json": "application/json",
     })
     SocketServer.TCPServer.allow_reuse_address = True
+    SocketServer.TCPServer.address_family = socket.AF_INET6
     s = SocketServer.TCPServer(("", PORT), Handler)
     if not QUIET:
         print "Deno test server http://localhost:%d/" % PORT
@@ -135,6 +137,7 @@ def base_redirect_server(host_port, target_port, extra_path_segment=""):
 
     Handler = RedirectHandler
     SocketServer.TCPServer.allow_reuse_address = True
+    SocketServer.TCPServer.address_family = socket.AF_INET6
     s = SocketServer.TCPServer(("", host_port), Handler)
     if not QUIET:
         print "redirect server http://localhost:%d/ -> http://localhost:%d/" % (
