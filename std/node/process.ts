@@ -1,6 +1,6 @@
-export const version = `v${Deno.version.deno}`;
+const version = `v${Deno.version.deno}`;
 
-export const versions = {
+const versions = {
   node: Deno.version.deno,
   ...Deno.version
 };
@@ -8,20 +8,33 @@ export const versions = {
 const osToPlatform = (os: Deno.OperatingSystem): string =>
   os === "win" ? "win32" : os === "mac" ? "darwin" : os;
 
-export const platform = osToPlatform(Deno.build.os);
+const platform = osToPlatform(Deno.build.os);
 
-export const { arch } = Deno.build;
+const { arch } = Deno.build;
 
-export const argv = [Deno.execPath(), ...Deno.args];
+const { pid, cwd, chdir, exit } = Deno;
 
-// TODO(rsp): currently setting env seems to be working by modifying the object
-// that is returnd by Deno.env(). Need to make sure that this is the final API
-// or Deno.env('key', 'value') is to be used in the future.
-export const env = Deno.env();
-
-export const { pid, cwd, chdir, exit } = Deno;
-
-export function on(_event: string, _callback: Function): void {
+function on(_event: string, _callback: Function): void {
   // TODO(rsp): to be implemented
   throw Error("unimplemented");
 }
+
+export const process = {
+  version,
+  versions,
+  platform,
+  arch,
+  pid,
+  cwd,
+  chdir,
+  exit,
+  on,
+  get env(): { [index: string]: string } {
+    // using getter to avoid --allow-env unless it's used
+    return Deno.env();
+  },
+  get argv(): string[] {
+    // Deno.execPath() also requires --allow-env
+    return [Deno.execPath(), ...Deno.args];
+  }
+};

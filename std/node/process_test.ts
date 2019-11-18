@@ -1,9 +1,9 @@
 import { test } from "../testing/mod.ts";
 import { assert, assertThrows, assertEquals } from "../testing/asserts.ts";
-import * as process from "./process.ts";
+import { process } from "./process.ts";
 
-// NOTE: Deno.cwd() and Deno.chdir() currently require --allow-env
-// (Also Deno.env() requires --allow-env but it's more obvious)
+// NOTE: Deno.execPath() (and thus process.argv) currently requires --allow-env
+// (Also Deno.env() (and process.env) requires --allow-env but it's more obvious)
 
 test({
   name: "process.cwd and process.chdir success",
