@@ -41,7 +41,7 @@ pub struct HttpServerGuard {}
 
 impl Drop for HttpServerGuard {
   fn drop(&mut self) {
-    let count = SERVER_COUNT.fetch_sub(1, Ordering::Relaxed);
+    let count = SERVER_COUNT.fetch_sub(1, Ordering::SeqCst);
     // If no more tests hold guard we can kill the server
     if count == 1 {
       kill_http_server();
@@ -64,7 +64,7 @@ fn kill_http_server() {
 }
 
 pub fn http_server() -> HttpServerGuard {
-  SERVER_COUNT.fetch_add(1, Ordering::Relaxed);
+  SERVER_COUNT.fetch_add(1, Ordering::SeqCst);
   {
     let mut server_guard = SERVER.lock().unwrap();
     if server_guard.is_none() {
