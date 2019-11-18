@@ -78,7 +78,7 @@ test({
         process.on("uncaughtException", (_err: Error) => {});
       },
       Error,
-      "unimplemented"
+      "implemented"
     );
   }
 });

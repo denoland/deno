@@ -1,3 +1,5 @@
+import { notImplemented } from "./_utils.ts";
+
 const version = `v${Deno.version.deno}`;
 
 const versions = {
@@ -16,7 +18,7 @@ const { pid, cwd, chdir, exit } = Deno;
 
 function on(_event: string, _callback: Function): void {
   // TODO(rsp): to be implemented
-  throw Error("unimplemented");
+  notImplemented();
 }
 
 export const process = {
