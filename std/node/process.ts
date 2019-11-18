@@ -5,7 +5,7 @@ export const versions = {
   ...Deno.version,
 };
 
-const osToPlatform = (os: Deno.OperatingSystem) =>
+const osToPlatform = (os: Deno.OperatingSystem): string =>
   os === "win" ? "win32" : os === "mac" ? "darwin" : os;
 
 export const platform = osToPlatform(Deno.build.os);
@@ -21,7 +21,7 @@ export const env = Deno.env();
 
 export const { pid, cwd, chdir, exit } = Deno;
 
-export function on(event: string, callback: Function) {
+export function on(_event: string, _callback: Function): void {
   // TODO(rsp): to be implemented
   // This is needed and empty func is actually sufficient for code that do things like:
   // process.on("uncaughtException", (err) => {
