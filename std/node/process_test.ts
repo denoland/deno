@@ -68,7 +68,13 @@ test({
   name: "process.on",
   fn() {
     assertEquals(typeof process.on, "function");
-    process.on("uncaughtException", (_err: Error) => {});
+    assertThrows(
+      () => {
+        process.on("uncaughtException", (_err: Error) => {});
+      },
+      Error,
+      "unimplemented"
+    );
   }
 });
 

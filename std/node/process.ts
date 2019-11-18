@@ -23,10 +23,5 @@ export const { pid, cwd, chdir, exit } = Deno;
 
 export function on(_event: string, _callback: Function): void {
   // TODO(rsp): to be implemented
-  // This is needed and empty func is actually sufficient for code that do things like:
-  // process.on("uncaughtException", (err) => {
-  //   if (!(err instanceof ExitStatus)) throw err;
-  // });
-  // Deno dies on uncaught exceptions anyway, but without it it will also die on
-  // registering the callback itself.
+  throw Error("unimplemented");
 }
