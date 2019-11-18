@@ -83,11 +83,10 @@ test({
   fn() {
     assert(Array.isArray(process.argv));
     assert(
-      process.argv.filter(x => x.match(/process_test[.]ts$/)).length > 0,
-      `file name process_test.ts in process.argv = ${JSON.stringify(
-        process.argv
-      )}`
+      process.argv[0].match(/[^/\\]*deno[^/\\]*$/),
+      "deno included in the file name of argv[0]"
     );
+    // we cannot test for anything else (we see test runner arguments here)
   }
 });
 
