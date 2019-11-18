@@ -341,6 +341,12 @@ Automatically downloads Prettier dependencies on first run.
   deno fmt myfile1.ts myfile2.ts",
         )
         .arg(
+          Arg::with_name("check")
+            .long("check")
+            .help("Check if the source files are formatted.")
+            .takes_value(false),
+        )
+        .arg(
           Arg::with_name("prettierrc")
             .long("prettierrc")
             .value_name("auto|disable|FILE")
@@ -992,6 +998,7 @@ pub fn flags_from_vec(
       }
 
       let prettier_flags = [
+        ["0", "check"],
         ["1", "prettierrc"],
         ["1", "ignore-path"],
         ["1", "print-width"],
@@ -2088,6 +2095,7 @@ mod tests {
     let (flags, subcommand, argv) = flags_from_vec(svec![
       "deno",
       "fmt",
+      "--check",
       "--prettierrc=auto",
       "--print-width=100",
       "--tab-width=4",
@@ -2119,6 +2127,7 @@ mod tests {
         PRETTIER_URL,
         "script.ts",
         "--write",
+        "--check",
         "--config",
         "auto",
         "--ignore-path",
