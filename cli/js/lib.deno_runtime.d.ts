@@ -967,6 +967,28 @@ declare namespace Deno {
    */
   export function truncate(name: string, len?: number): Promise<void>;
 
+  // @url js/native_plugins.d.ts
+
+  export interface AsyncHandler {
+    (opId: number, msg: Uint8Array): void;
+  }
+
+  export interface NativePluginOp {
+    dispatch(
+      control: Uint8Array,
+      zeroCopy?: ArrayBufferView | null
+    ): Uint8Array | null;
+    setAsyncHandler(handler: MessageCallback): void;
+  }
+
+  export interface NativePlugin {
+    ops: {
+      [name: string]: NativePluginOp;
+    };
+  }
+
+  export function openPlugin(filename: string): NativePlugin;
+
   // @url js/net.d.ts
 
   type Transport = "tcp";
