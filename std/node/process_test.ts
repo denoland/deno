@@ -82,7 +82,12 @@ test({
   name: "process.argv",
   fn() {
     assert(Array.isArray(process.argv));
-    assert(process.argv.filter(x => x.match(/process_test[.]ts$/)).length > 0);
+    assert(
+      process.argv.filter(x => x.match(/process_test[.]ts$/)).length > 0,
+      `file name process_test.ts in process.argv = ${JSON.stringify(
+        process.argv
+      )}`
+    );
   }
 });
 
