@@ -76,8 +76,8 @@ test({
   name: "process.argv",
   fn() {
     assert(Array.isArray(process.argv));
-    assert(process.argv[0].match(/[^/\\]*deno[^/\\]*$/));
-    assert(process.argv.slice(-1)[0].match(/process_test[.]ts$/));
+    assert(process.argv.filter(x => x.match(/[^/\\]*deno[^/\\]*$/)).length > 0);
+    assert(process.argv.filter(x => x.match(/process_test[.]ts$/)).length > 0);
   }
 });
 
