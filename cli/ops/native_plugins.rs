@@ -7,18 +7,13 @@ use dlopen::symbor::Library;
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::sync::Arc;
-use std::sync::Mutex;
 
-pub fn init(
-  i: &mut Isolate,
-  s: &ThreadSafeState,
-  isolate_arc: Arc<Mutex<deno::Isolate>>,
-) {
-  let isolate_arc_ = isolate_arc.clone();
+pub fn init(i: &mut Isolate, s: &ThreadSafeState, r: Arc<deno::OpRegistry>) {
+  let r_ = r.clone();
   i.register_op(
     "open_native_plugin",
     s.core_op(json_op(s.stateful_op(move |state, args, zero_copy| {
-      op_open_native_plugin(&isolate_arc_, state, args, zero_copy)
+      op_open_native_plugin(&r_, state, args, zero_copy)
     }))),
   );
 }
@@ -37,7 +32,7 @@ struct NativePluginResource {
 impl Resource for NativePluginResource {}
 
 struct InitContext {
-  isolate: Arc<Mutex<deno::Isolate>>,
+  registry: Arc<deno::OpRegistry>,
   plugin_rid: ResourceId,
   ops: Vec<(String, OpId)>,
 }
@@ -48,8 +43,9 @@ impl PluginInitContext for InitContext {
     name: &str,
     op: Box<dyn Fn(&[u8], Option<PinnedBuf>) -> CoreOp + Send + Sync + 'static>,
   ) -> OpId {
-    let mut i = self.isolate.lock().unwrap();
-    let opid = i.register_op(&format!("{}_{}", self.plugin_rid, name), op);
+    let opid = self
+      .registry
+      .register(&format!("{}_{}", self.plugin_rid, name), op);
     self.ops.push((name.to_string(), opid));
     opid
   }
@@ -62,7 +58,7 @@ struct OpenNativePluginArgs {
 }
 
 pub fn op_open_native_plugin(
-  isolate: &Arc<Mutex<Isolate>>,
+  registry: &Arc<deno::OpRegistry>,
   state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
@@ -87,7 +83,7 @@ pub fn op_open_native_plugin(
       .symbol::<PluginInitFn>("native_plugin_init")
   }?;
   let mut init_context = InitContext {
-    isolate: isolate.clone(),
+    registry: registry.clone(),
     plugin_rid: rid,
     ops: Vec::new(),
   };
