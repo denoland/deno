@@ -57,6 +57,7 @@ impl Worker {
       ops::files::init(&mut i, &state);
       ops::fs::init(&mut i, &state);
       ops::io::init(&mut i, &state);
+      ops::native_plugins::init(&mut i, &state, isolate.clone());
       ops::net::init(&mut i, &state);
       ops::tls::init(&mut i, &state);
       ops::os::init(&mut i, &state);
