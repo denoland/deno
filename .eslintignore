@@ -3,3 +3,4 @@ cli/tests/error_syntax.js
 std/deno.d.ts
 std/prettier/vendor
 std/**/testdata/
+std/**/node_modules/

@@ -383,7 +383,9 @@ test(async function testPrettierWithAutoConfig(): Promise<void> {
     "config_file_json",
     "config_file_toml",
     "config_file_js",
-    "config_file_ts"
+    "config_file_ts",
+    "config_file_yaml",
+    "config_file_yml"
   ];
 
   for (const configName of configs) {
@@ -441,6 +443,14 @@ test(async function testPrettierWithSpecifiedConfig(): Promise<void> {
     {
       dir: "config_file_ts",
       name: ".prettierrc.ts"
+    },
+    {
+      dir: "config_file_yaml",
+      name: ".prettierrc.yaml"
+    },
+    {
+      dir: "config_file_yml",
+      name: ".prettierrc.yml"
     }
   ];
 
