@@ -84,12 +84,30 @@ export function setRootExports(
   assert(mainSourceFile);
   // retrieve the internal TypeScript symbol for this AST node
   const mainSymbol = checker.getSymbolAtLocation(mainSourceFile);
-  if (!mainSymbol || !mainSymbol.exports) {
+  if (!mainSymbol) {
     return;
   }
-  // the Symbol.exports contains name symbols for all the exports of the
-  // source file, we just need to iterate over them and gather them
-  const exportNames: string[] = [];
-  mainSymbol.exports.forEach(sym => exportNames.push(sym.getName()));
-  rootExports = exportNames;
+  rootExports = checker
+    .getExportsOfModule(mainSymbol)
+    // .getExportsOfModule includes type only symbols which are exported from
+    // the module, so we need to try to filter those out.  While not critical
+    // someone looking at the bundle would think there is runtime code behind
+    // that when there isn't.  There appears to be no clean way of figuring that
+    // out, so inspecting SymbolFlags that might be present that are type only
+    .filter(
+      sym =>
+        !(
+          sym.flags & ts.SymbolFlags.Interface ||
+          sym.flags & ts.SymbolFlags.TypeLiteral ||
+          sym.flags & ts.SymbolFlags.Signature ||
+          sym.flags & ts.SymbolFlags.TypeParameter ||
+          sym.flags & ts.SymbolFlags.TypeAlias ||
+          sym.flags & ts.SymbolFlags.Type ||
+          sym.flags & ts.SymbolFlags.Namespace ||
+          sym.flags & ts.SymbolFlags.InterfaceExcludes ||
+          sym.flags & ts.SymbolFlags.TypeParameterExcludes ||
+          sym.flags & ts.SymbolFlags.TypeAliasExcludes
+        )
+    )
+    .map(sym => sym.getName());
 }
