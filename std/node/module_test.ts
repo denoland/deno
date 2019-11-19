@@ -1,6 +1,6 @@
 import { test } from "../testing/mod.ts";
 import { assertEquals, assert } from "../testing/asserts.ts";
-import { createRequire } from "./require.ts";
+import { createRequire } from "./module.ts";
 
 // TS compiler would try to resolve if function named "require"
 // Thus suffixing it with require_ to fix this...

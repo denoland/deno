@@ -12,7 +12,7 @@ deno standard library as it's a compatiblity module.
 modules.
 
 ```ts
-import { createRequire } from "https://deno.land/std/node/require.ts";
+import { createRequire } from "https://deno.land/std/node/module.ts";
 
 const require_ = createRequire(import.meta.url);
 // Loads native module polyfill.

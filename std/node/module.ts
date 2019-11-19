@@ -486,6 +486,20 @@ class Module {
     }
   }
 
+  /**
+   * Create a `require` function that can be used to import CJS modules.
+   * Follows CommonJS resolution similar to that of Node.js,
+   * with `node_modules` lookup and `index.js` lookup support.
+   * Also injects available Node.js builtin module polyfills.
+   *
+   *     const require_ = createRequire(import.meta.url);
+   *     const fs = require_("fs");
+   *     const leftPad = require_("left-pad");
+   *     const cjsModule = require_("./cjs_mod");
+   *
+   * @param filename path or URL to current module
+   * @return Require function to import CJS modules
+   */
   static createRequire(filename: string | URL): RequireFunction {
     let filepath: string;
     if (
@@ -1208,22 +1222,6 @@ function pathToFileURL(filepath: string): URL {
   return outURL;
 }
 
-/**
- * Create a `require` function that can be used to import CJS modules.
- * Follows CommonJS resolution similar to that of Node.js,
- * with `node_modules` lookup and `index.js` lookup support.
- * Also injects available Node.js builtin module polyfills.
- *
- *     const require_ = createRequire(import.meta.url);
- *     const fs = require_("fs");
- *     const leftPad = require_("left-pad");
- *     const cjsModule = require_("./cjs_mod");
- *
- * @param filename path or URL to current module
- * @return Require function to import CJS modules
- */
-function createRequire(filename: string | URL): RequireFunction {
-  return Module.createRequire(filename);
-}
-
-export { createRequire };
+export const builtinModules = Module.builtinModules;
+export const createRequire = Module.createRequire;
+export default Module;
