@@ -978,7 +978,7 @@ declare namespace Deno {
       control: Uint8Array,
       zeroCopy?: ArrayBufferView | null
     ): Uint8Array | null;
-    setAsyncHandler(handler: MessageCallback): void;
+    setAsyncHandler(handler: AsyncHandler): void;
   }
 
   export interface NativePlugin {

@@ -356,6 +356,20 @@ itest!(_051_wasm_import {
   http_server: true,
 });
 
+#[cfg(not(debug_assertions))]
+itest!(_052_native_plugins_release {
+  args: "run --reload --allow-native 052_native_plugins.ts release",
+  output: "052_native_plugins.ts.out",
+  http_server: false,
+});
+
+#[cfg(debug_assertions)]
+itest!(_052_native_plugins_debug {
+  args: "run --reload --allow-native 052_native_plugins.ts debug",
+  output: "052_native_plugins.ts.out",
+  http_server: false,
+});
+
 itest!(lock_check_ok {
   args: "run --lock=lock_check_ok.json http://127.0.0.1:4545/cli/tests/003_relative_import.ts",
   output: "003_relative_import.ts.out",
