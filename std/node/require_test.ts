@@ -25,3 +25,17 @@ test(function requireCycle() {
   assert(resultA);
   assert(resultB);
 });
+
+test(function requireBuiltin() {
+  const fs = require_("fs");
+  assert("readFileSync" in fs);
+  const { readFileSync, isNull, extname } = require_(
+    "./node/tests/cjs/cjs_builtin"
+  );
+  assertEquals(
+    readFileSync("./node/testdata/hello.txt", { encoding: "utf8" }),
+    "hello world"
+  );
+  assert(isNull(null));
+  assertEquals(extname("index.html"), ".html");
+});
