@@ -1209,18 +1209,21 @@ function pathToFileURL(filepath: string): URL {
 }
 
 /**
- * Create a `require` function that can be used to import CJS modules
- * @param path path of this module
+ * Create a `require` function that can be used to import CJS modules.
+ * Follows CommonJS resolution similar to that of Node.js,
+ * with `node_modules` lookup and `index.js` lookup support.
+ * Also injects available Node.js builtin module polyfills.
+ *
+ *     const require_ = createRequire(import.meta.url);
+ *     const fs = require_("fs");
+ *     const leftPad = require_("left-pad");
+ *     const cjsModule = require_("./cjs_mod");
+ *
+ * @param filename path or URL to current module
+ * @return Require function to import CJS modules
  */
-function makeRequire(filePath: string): RequireFunction {
-  let mod: Module;
-  const fullPath = path.resolve(filePath);
-  if (fullPath in Module._cache) {
-    mod = Module._cache[fullPath];
-  } else {
-    mod = new Module(fullPath);
-  }
-  return makeRequireFunction(mod);
+function createRequire(filename: string | URL): RequireFunction {
+  return Module.createRequire(filename);
 }
 
-export { makeRequire };
+export { createRequire };
