@@ -106,7 +106,7 @@ class ContentTypeHandler(QuietSimpleHTTPRequestHandler):
 RunningServer = namedtuple("RunningServer", ["server", "thread"])
 
 
-def get_socket(port):
+def get_socket(port, handler):
     SocketServer.TCPServer.allow_reuse_address = True
     if os.name != "nt":
         # We use AF_INET6 to avoid flaky test issue, particularly with
@@ -114,7 +114,7 @@ def get_socket(port):
         # flaky tests, but it does appear to...
         # See https://github.com/denoland/deno/issues/3332
         SocketServer.TCPServer.address_family = socket.AF_INET6
-    return SocketServer.TCPServer(("", port), Handler)
+    return SocketServer.TCPServer(("", port), handler)
 
 
 def server():
@@ -127,7 +127,7 @@ def server():
         ".jsx": "application/javascript",
         ".json": "application/json",
     })
-    s = get_socket(PORT)
+    s = get_socket(PORT, Handler)
     if not QUIET:
         print "Deno test server http://localhost:%d/" % PORT
     return RunningServer(s, start(s))
@@ -144,8 +144,7 @@ def base_redirect_server(host_port, target_port, extra_path_segment=""):
                              target_host + extra_path_segment + self.path)
             self.end_headers()
 
-    Handler = RedirectHandler
-    s = get_socket(host_port)
+    s = get_socket(host_port, RedirectHandler)
     if not QUIET:
         print "redirect server http://localhost:%d/ -> http://localhost:%d/" % (
             host_port, target_port)
