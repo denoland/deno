@@ -7,6 +7,7 @@ from contextlib import contextmanager
 import os
 import SimpleHTTPServer
 import SocketServer
+import socket
 import sys
 from time import sleep
 from threading import Thread
@@ -105,6 +106,17 @@ class ContentTypeHandler(QuietSimpleHTTPRequestHandler):
 RunningServer = namedtuple("RunningServer", ["server", "thread"])
 
 
+def get_socket(port, handler):
+    SocketServer.TCPServer.allow_reuse_address = True
+    if os.name != "nt":
+        # We use AF_INET6 to avoid flaky test issue, particularly with
+        # the test 019_media_types. It's not well understood why this fixes the
+        # flaky tests, but it does appear to...
+        # See https://github.com/denoland/deno/issues/3332
+        SocketServer.TCPServer.address_family = socket.AF_INET6
+    return SocketServer.TCPServer(("", port), handler)
+
+
 def server():
     os.chdir(root_path)  # Hopefully the main thread doesn't also chdir.
     Handler = ContentTypeHandler
@@ -115,8 +127,7 @@ def server():
         ".jsx": "application/javascript",
         ".json": "application/json",
     })
-    SocketServer.TCPServer.allow_reuse_address = True
-    s = SocketServer.TCPServer(("", PORT), Handler)
+    s = get_socket(PORT, Handler)
     if not QUIET:
         print "Deno test server http://localhost:%d/" % PORT
     return RunningServer(s, start(s))
@@ -133,9 +144,7 @@ def base_redirect_server(host_port, target_port, extra_path_segment=""):
                              target_host + extra_path_segment + self.path)
             self.end_headers()
 
-    Handler = RedirectHandler
-    SocketServer.TCPServer.allow_reuse_address = True
-    s = SocketServer.TCPServer(("", host_port), Handler)
+    s = get_socket(host_port, RedirectHandler)
     if not QUIET:
         print "redirect server http://localhost:%d/ -> http://localhost:%d/" % (
             host_port, target_port)
