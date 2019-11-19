@@ -13,7 +13,6 @@ from time import sleep
 from threading import Thread
 from util import root_path
 
-HOST = "localhost"
 PORT = 4545
 REDIRECT_PORT = 4546
 ANOTHER_REDIRECT_PORT = 4547
@@ -118,8 +117,9 @@ def server():
         ".json": "application/json",
     })
     SocketServer.TCPServer.allow_reuse_address = True
-    SocketServer.TCPServer.address_family = socket.AF_INET6
-    s = SocketServer.TCPServer((HOST, PORT), Handler)
+    if os.name != "nt":
+        SocketServer.TCPServer.address_family = socket.AF_INET6
+    s = SocketServer.TCPServer(("", PORT), Handler)
     if not QUIET:
         print "Deno test server http://localhost:%d/" % PORT
     return RunningServer(s, start(s))
@@ -138,8 +138,9 @@ def base_redirect_server(host_port, target_port, extra_path_segment=""):
 
     Handler = RedirectHandler
     SocketServer.TCPServer.allow_reuse_address = True
-    SocketServer.TCPServer.address_family = socket.AF_INET6
-    s = SocketServer.TCPServer((HOST, host_port), Handler)
+    if os.name != "nt":
+        SocketServer.TCPServer.address_family = socket.AF_INET6
+    s = SocketServer.TCPServer(("", host_port), Handler)
     if not QUIET:
         print "redirect server http://localhost:%d/ -> http://localhost:%d/" % (
             host_port, target_port)
