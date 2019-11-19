@@ -41,7 +41,7 @@ def eslint():
     # Find all *directories* in the main repo that contain .ts/.js files.
     source_files = git_ls_files(root_path, [
         "*.js", "*.ts", ":!:std/prettier/vendor/*", ":!:std/**/testdata/*",
-        ":!:cli/compilers/*"
+        ":!:std/**/node_modules/*", ":!:cli/compilers/*"
     ])
     source_dirs = set([os.path.dirname(f) for f in source_files])
     # Within the source dirs, eslint does its own globbing, taking into account

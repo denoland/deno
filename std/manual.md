@@ -1072,10 +1072,10 @@ are.
 ```ts
 const { resources, close } = Deno;
 console.log(resources());
-// output like: { 0: "stdin", 1: "stdout", 2: "stderr", 3: "repl" }
-
-// close resource by rid
-close(3);
+// { 0: "stdin", 1: "stdout", 2: "stderr" }
+close(0);
+console.log(resources());
+// { "stdout", 2: "stderr" }
 ```
 
 #### Metrics

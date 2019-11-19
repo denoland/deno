@@ -178,7 +178,7 @@ pub struct Isolate {
   pending_dyn_imports: FuturesUnordered<StreamFuture<IntoStream<DynImport>>>,
   have_unpolled_ops: bool,
   startup_script: Option<OwnedScript>,
-  op_registry: OpRegistry,
+  pub op_registry: Arc<OpRegistry>,
   eager_poll_count: u32,
   waker: AtomicWaker,
 }
@@ -245,7 +245,7 @@ impl Isolate {
       have_unpolled_ops: false,
       pending_dyn_imports: FuturesUnordered::new(),
       startup_script,
-      op_registry: OpRegistry::new(),
+      op_registry: Arc::new(OpRegistry::new()),
       eager_poll_count: 0,
       waker: AtomicWaker::new(),
     }
@@ -256,7 +256,7 @@ impl Isolate {
   /// corresponds to the second argument of Deno.core.dispatch().
   ///
   /// Requires runtime to explicitly ask for op ids before using any of the ops.
-  pub fn register_op<F>(&mut self, name: &str, op: F) -> OpId
+  pub fn register_op<F>(&self, name: &str, op: F) -> OpId
   where
     F: Fn(&[u8], Option<PinnedBuf>) -> CoreOp + Send + Sync + 'static,
   {
