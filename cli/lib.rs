@@ -18,6 +18,7 @@ extern crate tokio;
 extern crate url;
 
 mod checksum;
+mod cli;
 pub mod colors;
 pub mod compilers;
 pub mod deno_dir;
@@ -59,11 +60,11 @@ use crate::ops::io::get_stdio;
 use crate::progress::Progress;
 use crate::state::ThreadSafeState;
 use crate::worker::Worker;
+use cli::DenoSubcommand;
 use deno::v8_set_flags;
 use deno::ErrBox;
 use deno::ModuleSpecifier;
 use flags::DenoFlags;
-use flags::DenoSubcommand;
 use log::Level;
 use log::Metadata;
 use log::Record;
@@ -417,7 +418,7 @@ pub fn main() {
 
   log::set_logger(&LOGGER).unwrap();
   let args: Vec<String> = env::args().collect();
-  let (flags, subcommand, argv) = flags::flags_from_vec(args);
+  let (flags, subcommand, argv) = cli::flags_from_vec(args);
 
   if let Some(ref v8_flags) = flags.v8_flags {
     v8_set_flags(v8_flags.clone());

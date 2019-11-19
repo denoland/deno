@@ -694,7 +694,7 @@ mod tests {
 
   #[test]
   fn test_cache_blacklist() {
-    let args = crate::flags::resolve_urls(vec![
+    let args = crate::cli::util::resolve_urls(vec![
       String::from("http://deno.land/std"),
       String::from("http://github.com/example/mod.ts"),
       String::from("http://fragment.com/mod.ts#fragment"),
