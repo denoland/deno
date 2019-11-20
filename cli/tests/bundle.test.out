@@ -14,5 +14,9 @@ define("mod1", ["require", "exports", "subdir2/mod2"], function (require, export
 [WILDCARD]
 });
 
-instantiate(["mod1"]);
+const __rootExports = instantiate("mod1");
+export const returnsHi = __rootExports["returnsHi"];
+export const returnsFoo2 = __rootExports["returnsFoo2"];
+export const printHello3 = __rootExports["printHello3"];
+export const throwsError = __rootExports["throwsError"];
 

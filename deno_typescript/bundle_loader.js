@@ -6,14 +6,16 @@
 // bundles when creating snapshots, but is also used when emitting bundles from
 // Deno cli.
 
+// @ts-nocheck
+
 /**
- * @type {(name: string, deps: ReadonlyArray<string>, factory: (...deps: any[]) => void) => void}
+ * @type {(name: string, deps: ReadonlyArray<string>, factory: (...deps: any[]) => void) => void=}
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 let define;
 
 /**
- * @type {(mod: string | string[]) => void}
+ * @type {(mod: string) => any=}
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 let instantiate;
@@ -111,14 +113,9 @@ let instantiate;
 
   instantiate = dep => {
     define = undefined;
-    if (Array.isArray(dep)) {
-      for (const d of dep) {
-        getExports(d);
-      }
-    } else {
-      getExports(dep);
-    }
+    const result = getExports(dep);
     // clean up, or otherwise these end up in the runtime environment
     instantiate = undefined;
+    return result;
   };
 })();
