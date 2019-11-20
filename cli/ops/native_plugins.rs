@@ -26,28 +26,22 @@ fn open_plugin<P: AsRef<OsStr>>(lib_path: P) -> Result<Library, ErrBox> {
 
 struct NativePluginResource {
   lib: Library,
-  ops: Vec<(String, OpId)>,
+  ops: HashMap<String, OpId>,
 }
 
 impl Resource for NativePluginResource {}
 
 struct InitContext {
-  registry: Arc<deno::OpRegistry>,
-  plugin_rid: ResourceId,
-  ops: Vec<(String, OpId)>,
+  ops: HashMap<String, Box<OpDispatcher>>,
 }
 
 impl PluginInitContext for InitContext {
-  fn register_op(
-    &mut self,
-    name: &str,
-    op: Box<dyn Fn(&[u8], Option<PinnedBuf>) -> CoreOp + Send + Sync + 'static>,
-  ) -> OpId {
-    let opid = self
-      .registry
-      .register(&format!("{}_{}", self.plugin_rid, name), op);
-    self.ops.push((name.to_string(), opid));
-    opid
+  fn register_op(&mut self, name: &str, op: Box<OpDispatcher>) {
+    let existing = self.ops.insert(name.to_string(), op);
+    assert!(
+      existing.is_none(),
+      format!("Op already registered: {}", name)
+    );
   }
 }
 
@@ -71,7 +65,7 @@ pub fn op_open_native_plugin(
   let lib = open_plugin(filename)?;
   let plugin_resource = NativePluginResource {
     lib,
-    ops: Vec::new(),
+    ops: HashMap::new(),
   };
   let mut table = state.lock_resource_table();
   let rid = table.add("native_plugin", Box::new(plugin_resource));
@@ -83,17 +77,15 @@ pub fn op_open_native_plugin(
       .symbol::<PluginInitFn>("native_plugin_init")
   }?;
   let mut init_context = InitContext {
-    registry: registry.clone(),
-    plugin_rid: rid,
-    ops: Vec::new(),
+    ops: HashMap::new(),
   };
   init_fn(&mut init_context);
-  plugin_resource.ops.append(&mut init_context.ops);
-  let ops: HashMap<String, OpId> = plugin_resource
-    .ops
-    .iter()
-    .map(|record| (record.0.clone(), record.1))
-    .collect();
+  for op in init_context.ops {
+    let op_id = registry.register(&op.0, op.1);
+    plugin_resource.ops.insert(op.0, op_id);
+  }
 
-  Ok(JsonOp::Sync(json!({ "rid": rid, "ops": ops })))
+  Ok(JsonOp::Sync(
+    json!({ "rid": rid, "ops": plugin_resource.ops }),
+  ))
 }

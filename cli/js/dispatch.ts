@@ -1,7 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as minimal from "./dispatch_minimal.ts";
 import * as json from "./dispatch_json.ts";
-import { AsyncHandler } from "./native_plugins.ts";
 
 // These consts are shared with Rust. Update with care.
 export let OP_READ: number;
@@ -69,11 +68,11 @@ export let OP_DIAL_TLS: number;
 export let OP_HOSTNAME: number;
 export let OP_OPEN_NATIVE_PLUGIN: number;
 
-const NATIVE_PLUGIN_ASYNC_HANDLER_MAP: Map<number, AsyncHandler> = new Map();
+const NATIVE_PLUGIN_ASYNC_HANDLER_MAP: Map<number, MessageCallback> = new Map();
 
 export function setPluginAsyncHandler(
   opId: number,
-  handler: AsyncHandler
+  handler: MessageCallback
 ): void {
   NATIVE_PLUGIN_ASYNC_HANDLER_MAP.set(opId, handler);
 }

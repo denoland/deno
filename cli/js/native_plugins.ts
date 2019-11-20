@@ -2,16 +2,12 @@ import { sendSync } from "./dispatch_json.ts";
 import { OP_OPEN_NATIVE_PLUGIN, setPluginAsyncHandler } from "./dispatch.ts";
 import { core } from "./core.ts";
 
-export interface AsyncHandler {
-  (opId: number, msg: Uint8Array): void;
-}
-
 interface NativePluginOp {
   dispatch(
     control: Uint8Array,
     zeroCopy?: ArrayBufferView | null
   ): Uint8Array | null;
-  setAsyncHandler(handler: AsyncHandler): void;
+  setAsyncHandler(handler: MessageCallback): void;
 }
 
 class NativePluginOpImpl implements NativePluginOp {
@@ -24,7 +20,7 @@ class NativePluginOpImpl implements NativePluginOp {
     return core.dispatch(this.opId, control, zeroCopy);
   }
 
-  setAsyncHandler(handler: AsyncHandler): void {
+  setAsyncHandler(handler: MessageCallback): void {
     setPluginAsyncHandler(this.opId, handler);
   }
 }

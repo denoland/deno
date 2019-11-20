@@ -1,4 +1,4 @@
-use crate::libdeno::{OpId, PinnedBuf};
+use crate::libdeno::PinnedBuf;
 use crate::ops::CoreOp;
 
 pub type PluginInitFn = fn(context: &mut dyn PluginInitContext);
@@ -8,7 +8,7 @@ pub trait PluginInitContext {
     &mut self,
     name: &str,
     op: Box<dyn Fn(&[u8], Option<PinnedBuf>) -> CoreOp + Send + Sync + 'static>,
-  ) -> OpId;
+  );
 }
 
 #[macro_export]
