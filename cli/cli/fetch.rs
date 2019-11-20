@@ -28,6 +28,7 @@ would be made unless --reload is specified.
   subcmd
     .arg(args::log_level())
     .arg(args::reload())
+    .arg(args::no_fetch())
     .args(&args::configuration())
     .arg(args::lock())
     .arg(args::lock_write())
@@ -40,6 +41,7 @@ pub fn parse(
 ) -> DenoSubcommand {
   args::parse_log_level(flags, matches);
   args::parse_reload(flags, matches);
+  args::parse_no_fetch(flags, matches);
   args::parse_configuration(flags, matches);
   args::parse_lock_args(flags, matches);
   let file: &str = matches.value_of("file").unwrap();

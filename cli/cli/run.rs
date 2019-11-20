@@ -34,6 +34,7 @@ ability to spawn subprocesses.
     )
     .arg(args::log_level())
     .arg(args::reload())
+    .arg(args::no_fetch())
     .args(&args::permissions())
     .args(&args::runtime())
     .args(&args::configuration())
@@ -95,6 +96,7 @@ fn parse_script_args(
     if let Ok(m) = matches {
       args::parse_log_level(flags, &m);
       args::parse_reload(flags, &m);
+      args::parse_no_fetch(flags, &m);
       args::parse_permissions(flags, &m);
       args::parse_runtime(flags, &m);
       args::parse_configuration(flags, &m);
@@ -112,6 +114,7 @@ pub fn parse(
 ) -> DenoSubcommand {
   args::parse_log_level(flags, matches);
   args::parse_reload(flags, matches);
+  args::parse_no_fetch(flags, &m);
   args::parse_permissions(flags, matches);
   args::parse_runtime(flags, matches);
   args::parse_configuration(flags, matches);

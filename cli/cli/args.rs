@@ -34,6 +34,18 @@ pub fn parse_lock_args(flags: &mut DenoFlags, matches: &ArgMatches) {
   }
 }
 
+pub fn no_fetch<'a, 'b>() -> Arg<'a, 'b> {
+  Arg::with_name("no-fetch")
+    .long("no-fetch")
+    .help("Do not download remote modules")
+}
+
+pub fn parse_no_fetch(flags: &mut DenoFlags, matches: &ArgMatches) {
+  if matches.is_present("no-fetch") {
+    flags.no_fetch = true;
+  }
+}
+
 pub fn log_level<'a, 'b>() -> Arg<'a, 'b> {
   Arg::with_name("log-level")
     .short("L")
@@ -208,9 +220,6 @@ pub fn parse_configuration(flags: &mut DenoFlags, matches: &ArgMatches) {
 
 pub fn runtime<'a, 'b>() -> Vec<Arg<'a, 'b>> {
   vec![
-    Arg::with_name("no-fetch")
-      .long("no-fetch")
-      .help("Do not download remote modules"),
     Arg::with_name("current-thread")
       .long("current-thread")
       .help("Use tokio::runtime::current_thread"),
@@ -236,9 +245,6 @@ pub fn runtime<'a, 'b>() -> Vec<Arg<'a, 'b>> {
 }
 
 pub fn parse_runtime(flags: &mut DenoFlags, matches: &ArgMatches) {
-  if matches.is_present("no-fetch") {
-    flags.no_fetch = true;
-  }
   if matches.is_present("current-thread") {
     flags.current_thread = true;
   }
