@@ -135,3 +135,23 @@ pub fn parse(
     _ => unreachable!(),
   }
 }
+
+pub fn parse_repl(
+  flags: &mut DenoFlags,
+  _argv: &mut Vec<String>,
+  matches: &ArgMatches,
+) -> DenoSubcommand {
+  args::parse_log_level(flags, matches);
+  args::parse_reload(flags, matches);
+  args::parse_permissions(flags, matches);
+  args::parse_runtime(flags, matches);
+  args::parse_configuration(flags, matches);
+  args::parse_lock_args(flags, matches);
+  flags.allow_net = true;
+  flags.allow_env = true;
+  flags.allow_run = true;
+  flags.allow_read = true;
+  flags.allow_write = true;
+  flags.allow_hrtime = true;
+  DenoSubcommand::Repl
+}

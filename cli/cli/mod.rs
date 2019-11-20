@@ -171,15 +171,7 @@ pub fn flags_from_vec(
     (_script, Some(_script_match)) => {
       run::parse(&mut flags, &mut argv, &matches.clone())
     }
-    _ => {
-      flags.allow_net = true;
-      flags.allow_env = true;
-      flags.allow_run = true;
-      flags.allow_read = true;
-      flags.allow_write = true;
-      flags.allow_hrtime = true;
-      DenoSubcommand::Repl
-    }
+    _ => run::parse_repl(&mut flags, &mut argv, &matches.clone()),
   };
 
   (flags, subcommand, argv)
