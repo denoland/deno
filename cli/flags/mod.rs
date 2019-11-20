@@ -1,9 +1,9 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::flags::DenoFlags;
 use clap::App;
 use clap::AppSettings;
 use clap::Arg;
 use clap::Shell;
+use log::Level;
 use std;
 use std::str::FromStr;
 
@@ -65,7 +65,7 @@ To get help on the another subcommands (run in this case):
   deno help run";
 
 #[allow(dead_code)]
-pub fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
+pub fn clap_init<'a, 'b>() -> App<'a, 'b> {
   let app = App::new("deno")
     .bin_name("deno")
     .global_settings(&[
@@ -119,10 +119,11 @@ pub enum DenoSubcommand {
   Version,
 }
 
+/// Main entry point to command-line flag parsing.
 pub fn flags_from_vec(
   args: Vec<String>,
 ) -> (DenoFlags, DenoSubcommand, Vec<String>) {
-  let cli_app = create_cli_app();
+  let cli_app = clap_init();
   let matches = cli_app.get_matches_from(args);
   let mut argv: Vec<String> = vec!["deno".to_string()];
   let mut flags = DenoFlags::default();
@@ -139,7 +140,7 @@ pub fn flags_from_vec(
     ("completions", Some(completions_match)) => {
       let shell: &str = completions_match.value_of("shell").unwrap();
       let mut buf: Vec<u8> = vec![];
-      create_cli_app().gen_completions_to(
+      clap_init().gen_completions_to(
         "deno",
         Shell::from_str(shell).unwrap(),
         &mut buf,
@@ -1147,4 +1148,32 @@ mod tests {
       ]
     );
   }
+}
+
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct DenoFlags {
+  pub log_level: Option<Level>,
+  pub version: bool,
+  pub reload: bool,
+  pub config_path: Option<String>,
+  pub import_map_path: Option<String>,
+  pub allow_read: bool,
+  pub read_whitelist: Vec<String>,
+  pub cache_blacklist: Vec<String>,
+  pub allow_write: bool,
+  pub write_whitelist: Vec<String>,
+  pub allow_net: bool,
+  pub net_whitelist: Vec<String>,
+  pub allow_env: bool,
+  pub allow_run: bool,
+  pub allow_hrtime: bool,
+  pub no_prompts: bool,
+  pub no_fetch: bool,
+  pub seed: Option<u64>,
+  pub v8_flags: Option<Vec<String>>,
+  // Use tokio::runtime::current_thread
+  pub current_thread: bool,
+
+  pub lock: Option<String>,
+  pub lock_write: bool,
 }

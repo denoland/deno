@@ -1,8 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::args;
+use super::clap_init;
+use super::DenoFlags;
 use super::DenoSubcommand;
-use crate::cli::create_cli_app;
-use crate::flags::DenoFlags;
 use clap::App;
 use clap::AppSettings;
 use clap::ArgMatches;
@@ -88,7 +88,7 @@ fn parse_script_args(
       continue;
     }
 
-    let cli_app = create_cli_app();
+    let cli_app = clap_init();
     // `get_matches_from_safe` returns error for `-h/-v` flags
     let matches =
       cli_app.get_matches_from_safe(vec!["deno".to_string(), arg.to_string()]);
