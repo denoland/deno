@@ -521,7 +521,8 @@ impl TsCompiler {
 
         let source_file = self
           .file_fetcher
-          .fetch_cached_source_file(&module_specifier);
+          .fetch_cached_source_file(&module_specifier)
+          .expect("Source file not found");
 
         let version_hash = source_code_version_hash(
           &source_file.source_code,
@@ -628,11 +629,9 @@ impl TsCompiler {
     script_name: &str,
   ) -> Option<SourceFile> {
     if let Some(module_specifier) = self.try_to_resolve(script_name) {
-      return Some(
-        self
-          .file_fetcher
-          .fetch_cached_source_file(&module_specifier),
-      );
+      return self
+        .file_fetcher
+        .fetch_cached_source_file(&module_specifier);
     }
 
     None

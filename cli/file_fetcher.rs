@@ -114,11 +114,21 @@ impl SourceFileFetcher {
   pub fn fetch_cached_source_file(
     self: &Self,
     specifier: &ModuleSpecifier,
-  ) -> SourceFile {
-    self
-      .source_file_cache
-      .get(specifier.to_string())
-      .expect("Cached source file not found")
+  ) -> Option<SourceFile> {
+    let maybe_source_file = self.source_file_cache.get(specifier.to_string());
+
+    if maybe_source_file.is_some() {
+      return maybe_source_file;
+    }
+
+    // If file is not in memory cache check if it can be found
+    // in local cache - which effectively means trying to fetch
+    // using "--no-fetch" flag. We can safely block on this
+    // future, because it doesn't do any asynchronous action
+    // it that path.
+    let fut = self.get_source_file_async(specifier.as_url(), true, true);
+
+    futures::executor::block_on(fut).ok()
   }
 
   pub fn fetch_source_file_async(
