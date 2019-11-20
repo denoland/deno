@@ -934,7 +934,7 @@ mod tests {
   #[test]
   fn test_flags_from_vec_33() {
     let (flags, subcommand, argv) =
-      flags_from_vec(svec!["deno", "--allow-read", "--allow-net", "script.ts"]);
+      flags_from_vec(svec!["deno", "script.ts", "--allow-read", "--allow-net"]);
     assert_eq!(
       flags,
       DenoFlags {
@@ -950,9 +950,9 @@ mod tests {
       "deno",
       "run",
       "--allow-read",
+      "script.ts",
       "--allow-net",
       "-r",
-      "script.ts",
       "--help",
       "--foo",
       "bar"

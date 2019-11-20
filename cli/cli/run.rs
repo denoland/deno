@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::args;
 use super::DenoSubcommand;
+use crate::cli::create_cli_app;
 use crate::flags::DenoFlags;
 use clap::App;
 use clap::AppSettings;
@@ -51,6 +52,59 @@ pub fn run_subcommand<'a, 'b>() -> App<'a, 'b> {
   bootstrap_run(subcmd)
 }
 
+/// Parse vector or arguments as DenoFlags.
+///
+/// This is very specialized utility that parses arguments passed after script URL.
+///
+/// Only dash (eg. `-r`) and double dash (eg. `--reload`) arguments are supported.
+/// Arguments recognized as DenoFlags will be eaten.
+/// Parsing stops after double dash `--` argument.
+///
+/// NOTE: this method ignores `-h/--help` and `-v/--version` flags.
+fn parse_script_args(
+  flags: &mut DenoFlags,
+  argv: &mut Vec<String>,
+  args: Vec<String>,
+) {
+  let mut seen_double_dash = false;
+
+  // we have to iterate and parse argument one by one because clap returns error on any
+  // unrecognized argument
+  for arg in args.iter() {
+    if seen_double_dash {
+      argv.push(arg.to_string());
+      continue;
+    }
+
+    if arg == "--" {
+      seen_double_dash = true;
+      argv.push(arg.to_string());
+      continue;
+    }
+
+    if !arg.starts_with('-') || arg == "-" {
+      argv.push(arg.to_string());
+      continue;
+    }
+
+    let cli_app = create_cli_app();
+    // `get_matches_from_safe` returns error for `-h/-v` flags
+    let matches =
+      cli_app.get_matches_from_safe(vec!["deno".to_string(), arg.to_string()]);
+
+    if let Ok(m) = matches {
+      args::parse_log_level(flags, &m);
+      args::parse_reload(flags, &m);
+      args::parse_permissions(flags, &m);
+      args::parse_runtime(flags, &m);
+      args::parse_configuration(flags, &m);
+      args::parse_lock_args(flags, &m);
+    } else {
+      argv.push(arg.to_string());
+    }
+  }
+}
+
 pub fn parse(
   flags: &mut DenoFlags,
   argv: &mut Vec<String>,
@@ -74,7 +128,7 @@ pub fn parse(
           .map(String::from)
           .collect();
 
-        argv.extend(script_args);
+        parse_script_args(flags, argv, script_args);
       }
       DenoSubcommand::Run
     }
