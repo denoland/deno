@@ -4,6 +4,7 @@
 import "./globals.ts";
 import "./ts_global.d.ts";
 
+import { emitBundle, setRootExports } from "./bundler.ts";
 import { bold, cyan, yellow } from "./colors.ts";
 import { Console } from "./console.ts";
 import { core } from "./core.ts";
@@ -12,13 +13,11 @@ import { cwd } from "./dir.ts";
 import * as dispatch from "./dispatch.ts";
 import { sendAsync, sendSync } from "./dispatch_json.ts";
 import * as os from "./os.ts";
-import { TextEncoder } from "./text_encoding.ts";
 import { getMappedModuleName, parseTypeDirectives } from "./type_directives.ts";
 import { assert, notImplemented } from "./util.ts";
 import * as util from "./util.ts";
 import { window } from "./window.ts";
 import { postMessage, workerClose, workerMain } from "./workers.ts";
-import { writeFileSync } from "./write_file.ts";
 
 // Warning! The values in this enum are duplicated in cli/msg.rs
 // Update carefully!
@@ -52,7 +51,6 @@ window["denoMain"] = denoMain;
 
 const ASSETS = "$asset$";
 const OUT_DIR = "$deno$";
-const BUNDLE_LOADER = "bundle_loader.js";
 
 /** The format of the work message payload coming from the privileged side */
 type CompilerRequest = {
@@ -188,6 +186,12 @@ class SourceFile {
       throw new Error("SourceFile has already been processed.");
     }
     assert(this.sourceCode != null);
+    // we shouldn't process imports for files which contain the nocheck pragma
+    // (like bundles)
+    if (this.sourceCode.match(/\/{2}\s+@ts-nocheck/)) {
+      util.log(`Skipping imports for "${this.filename}"`);
+      return [];
+    }
     const preProcessedFileInfo = ts.preProcessFile(this.sourceCode, true, true);
     this.processed = true;
     const files = (this.importedFiles = [] as Array<[string, string]>);
@@ -302,61 +306,10 @@ async function processImports(
   return sourceFiles;
 }
 
-/** Utility function to turn the number of bytes into a human readable
- * unit */
-function humanFileSize(bytes: number): string {
-  const thresh = 1000;
-  if (Math.abs(bytes) < thresh) {
-    return bytes + " B";
-  }
-  const units = ["kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
-  let u = -1;
-  do {
-    bytes /= thresh;
-    ++u;
-  } while (Math.abs(bytes) >= thresh && u < units.length - 1);
-  return `${bytes.toFixed(1)} ${units[u]}`;
-}
-
 /** Ops to rest for caching source map and compiled js */
 function cache(extension: string, moduleId: string, contents: string): void {
   util.log("compiler::cache", { extension, moduleId });
   sendSync(dispatch.OP_CACHE, { extension, moduleId, contents });
-}
-
-const encoder = new TextEncoder();
-
-/** Given a fileName and the data, emit the file to the file system. */
-function emitBundle(
-  rootNames: string[],
-  fileName: string | undefined,
-  data: string,
-  sourceFiles: readonly ts.SourceFile[]
-): void {
-  // For internal purposes, when trying to emit to `$deno$` just no-op
-  if (fileName && fileName.startsWith("$deno$")) {
-    console.warn("skipping emitBundle", fileName);
-    return;
-  }
-  const loader = fetchAsset(BUNDLE_LOADER);
-  // when outputting to AMD and a single outfile, TypeScript makes up the module
-  // specifiers which are used to define the modules, and doesn't expose them
-  // publicly, so we have to try to replicate
-  const sources = sourceFiles.map(sf => sf.fileName);
-  const sharedPath = util.commonPath(sources);
-  rootNames = rootNames.map(id =>
-    id.replace(sharedPath, "").replace(/\.\w+$/i, "")
-  );
-  const instantiate = `instantiate(${JSON.stringify(rootNames)});\n`;
-  const bundle = `${loader}\n${data}\n${instantiate}`;
-  if (fileName) {
-    const encodedData = encoder.encode(bundle);
-    console.warn(`Emitting bundle to "${fileName}"`);
-    writeFileSync(fileName, encodedData);
-    console.warn(`${humanFileSize(encodedData.length)} emitted.`);
-  } else {
-    console.log(bundle);
-  }
 }
 
 /** Returns the TypeScript Extension enum for a given media type. */
@@ -577,7 +530,7 @@ class Host implements ts.CompilerHost {
     try {
       assert(sourceFiles != null);
       if (this._requestType === CompilerRequestType.Bundle) {
-        emitBundle(this._rootNames, this._outFile, data, sourceFiles!);
+        emitBundle(this._rootNames, this._outFile, data, sourceFiles);
       } else {
         assert(sourceFiles.length == 1);
         const url = sourceFiles[0].fileName;
@@ -703,6 +656,9 @@ window.compilerMain = function compilerMain(): void {
         if (request.type === CompilerRequestType.Bundle) {
           // warning so it goes to stderr instead of stdout
           console.warn(`Bundling "${resolvedRootModules.join(`", "`)}"`);
+        }
+        if (request.type === CompilerRequestType.Bundle) {
+          setRootExports(program, resolvedRootModules);
         }
         const emitResult = program.emit();
         emitSkipped = emitResult.emitSkipped;
