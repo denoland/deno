@@ -92,7 +92,7 @@ fn bundle_exports() {
     .output()
     .expect("failed to spawn script");
   // check the output of the test.ts program.
-  assert_eq!(output.stdout, b"Hello\n");
+  assert_eq!(std::str::from_utf8(&output.stdout).unwrap().trim(), "Hello");
   assert_eq!(output.stderr, b"");
 }
 
