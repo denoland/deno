@@ -114,7 +114,7 @@ pub fn parse(
 ) -> DenoSubcommand {
   args::parse_log_level(flags, matches);
   args::parse_reload(flags, matches);
-  args::parse_no_fetch(flags, &m);
+  args::parse_no_fetch(flags, matches);
   args::parse_permissions(flags, matches);
   args::parse_runtime(flags, matches);
   args::parse_configuration(flags, matches);
