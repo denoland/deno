@@ -86,13 +86,14 @@ impl WasmCompiler {
     let worker_ = worker.clone();
     let url = source_file.url.clone();
 
-    let _res = worker.post_message(
-      serde_json::to_string(&base64_data)
-        .unwrap()
-        .into_boxed_str()
-        .into_boxed_bytes(),
-    );
     let fut = worker
+      .post_message(
+        serde_json::to_string(&base64_data)
+          .unwrap()
+          .into_boxed_str()
+          .into_boxed_bytes(),
+      )
+      .then(|_| worker)
       .then(move |result| {
         if let Err(err) = result {
           // TODO(ry) Need to forward the error instead of exiting.
