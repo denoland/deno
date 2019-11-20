@@ -26,6 +26,7 @@
 import { parse } from "../flags/mod.ts";
 import * as path from "../path/mod.ts";
 import * as toml from "../encoding/toml.ts";
+import * as yaml from "../encoding/yaml.ts";
 import { ExpandGlobOptions, WalkInfo, expandGlob } from "../fs/mod.ts";
 import { prettier, prettierPlugins } from "./prettier.ts";
 const { args, cwd, exit, readAll, readFile, stdin, stdout, writeFile } = Deno;
@@ -393,7 +394,7 @@ async function autoResolveConfig(): Promise<PrettierBuildInOptions> {
 async function resolveConfig(
   filepath: string
 ): Promise<PrettierBuildInOptions> {
-  let config: PrettierOptions = undefined;
+  let config: PrettierBuildInOptions = undefined;
 
   function generateError(msg: string): Error {
     return new Error(`Invalid prettier configuration file: ${msg}.`);
@@ -404,18 +405,22 @@ async function resolveConfig(
   switch (path.extname(filepath)) {
     case ".json":
       try {
-        config = JSON.parse(raw) as PrettierOptions;
+        config = JSON.parse(raw) as PrettierBuildInOptions;
       } catch (err) {
         throw generateError(err.message);
       }
       break;
     case ".yml":
     case ".yaml":
-      // TODO: Unimplemented loading yaml / yml configuration file yet.
+      try {
+        config = yaml.parse(raw) as PrettierBuildInOptions;
+      } catch (err) {
+        throw generateError(err.message);
+      }
       break;
     case ".toml":
       try {
-        config = toml.parse(raw) as PrettierOptions;
+        config = toml.parse(raw) as PrettierBuildInOptions;
       } catch (err) {
         throw generateError(err.message);
       }
@@ -434,7 +439,7 @@ async function resolveConfig(
         );
 
         if (output && output.default) {
-          config = output.default;
+          config = output.default as PrettierBuildInOptions;
         } else {
           throw new Error(
             "Prettier of JS version should have default exports."
