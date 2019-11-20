@@ -8,7 +8,6 @@ use crate::http_util;
 use crate::http_util::FetchOnceResult;
 use crate::msg;
 use crate::progress::Progress;
-use crate::tokio_util;
 use deno::ErrBox;
 use deno::ModuleSpecifier;
 use futures::future::Either;
@@ -111,12 +110,15 @@ impl SourceFileFetcher {
     Ok(())
   }
 
-  /// Required for TS compiler.
-  pub fn fetch_source_file(
+  /// Required for TS compiler and source maps.
+  pub fn fetch_cached_source_file(
     self: &Self,
     specifier: &ModuleSpecifier,
-  ) -> Result<SourceFile, ErrBox> {
-    tokio_util::block_on(self.fetch_source_file_async(specifier))
+  ) -> SourceFile {
+    self
+      .source_file_cache
+      .get(specifier.to_string())
+      .expect("Cached source file not found")
   }
 
   pub fn fetch_source_file_async(
@@ -663,6 +665,8 @@ impl SourceCodeHeaders {
 mod tests {
   use super::*;
   use crate::fs as deno_fs;
+  use crate::tokio_util;
+  use futures::executor::block_on;
   use tempfile::TempDir;
 
   fn setup_file_fetcher(dir_path: &Path) -> SourceFileFetcher {
@@ -1001,7 +1005,7 @@ mod tests {
       );
 
       // first download
-      let result = fetcher.fetch_source_file(&specifier);
+      let result = block_on(fetcher.fetch_source_file_async(&specifier));
       assert!(result.is_ok());
 
       let result = fs::File::open(&headers_file_name);
@@ -1014,7 +1018,7 @@ mod tests {
       // download file again, it should use already fetched file even though `use_disk_cache` is set to
       // false, this can be verified using source header file creation timestamp (should be
       // the same as after first download)
-      let result = fetcher.fetch_source_file(&specifier);
+      let result = block_on(fetcher.fetch_source_file_async(&specifier));
       assert!(result.is_ok());
 
       let result = fs::File::open(&headers_file_name);
@@ -1431,7 +1435,7 @@ mod tests {
       // Test failure case.
       let specifier =
         ModuleSpecifier::resolve_url(file_url!("/baddir/hello.ts")).unwrap();
-      let r = fetcher.fetch_source_file(&specifier);
+      let r = block_on(fetcher.fetch_source_file_async(&specifier));
       assert!(r.is_err());
 
       let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -1439,7 +1443,7 @@ mod tests {
         .to_owned();
       let specifier =
         ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
-      let r = fetcher.fetch_source_file(&specifier);
+      let r = block_on(fetcher.fetch_source_file_async(&specifier));
       assert!(r.is_ok());
     })
   }
@@ -1453,7 +1457,7 @@ mod tests {
       // Test failure case.
       let specifier =
         ModuleSpecifier::resolve_url(file_url!("/baddir/hello.ts")).unwrap();
-      let r = fetcher.fetch_source_file(&specifier);
+      let r = block_on(fetcher.fetch_source_file_async(&specifier));
       assert!(r.is_err());
 
       let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -1461,7 +1465,7 @@ mod tests {
         .to_owned();
       let specifier =
         ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
-      let r = fetcher.fetch_source_file(&specifier);
+      let r = block_on(fetcher.fetch_source_file_async(&specifier));
       assert!(r.is_ok());
     })
   }
