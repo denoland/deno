@@ -28,24 +28,3 @@ where
 {
   tokio::runtime::current_thread::run(future.boxed().compat());
 }
-
-pub fn panic_on_error<I, E, F>(f: F) -> impl Future<Output = Result<I, ()>>
-where
-  F: Future<Output = Result<I, E>>,
-  E: std::fmt::Debug,
-{
-  f.map_err(|err| panic!("Future got unexpected error: {:?}", err))
-}
-
-#[cfg(test)]
-pub fn run_in_task<F>(f: F)
-where
-  F: FnOnce() + Send + 'static,
-{
-  let fut = futures::future::lazy(move |_cx| {
-    f();
-    Ok(())
-  });
-
-  run(fut)
-}

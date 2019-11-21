@@ -207,6 +207,26 @@ mod tests {
   use futures::executor::block_on;
   use std::sync::atomic::Ordering;
 
+  pub fn run_in_task<F>(f: F)
+  where
+    F: FnOnce() + Send + 'static,
+  {
+    let fut = futures::future::lazy(move |_cx| {
+      f();
+      Ok(())
+    });
+
+    tokio_util::run(fut)
+  }
+
+  pub fn panic_on_error<I, E, F>(f: F) -> impl Future<Output = Result<I, ()>>
+  where
+    F: Future<Output = Result<I, E>>,
+    E: std::fmt::Debug,
+  {
+    f.map_err(|err| panic!("Future got unexpected error: {:?}", err))
+  }
+
   #[test]
   fn execute_mod_esm_imports_a() {
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -241,7 +261,7 @@ mod tests {
           if let Err(err) = result {
             eprintln!("execute_mod err {:?}", err);
           }
-          tokio_util::panic_on_error(worker)
+          panic_on_error(worker)
         })
         .await
     });
@@ -283,7 +303,7 @@ mod tests {
           if let Err(err) = result {
             eprintln!("execute_mod err {:?}", err);
           }
-          tokio_util::panic_on_error(worker)
+          panic_on_error(worker)
         })
         .await
     });
@@ -334,7 +354,7 @@ mod tests {
           if let Err(err) = result {
             eprintln!("execute_mod err {:?}", err);
           }
-          tokio_util::panic_on_error(worker)
+          panic_on_error(worker)
         })
         .await
     });
@@ -367,7 +387,7 @@ mod tests {
 
   #[test]
   fn test_worker_messages() {
-    tokio_util::run_in_task(|| {
+    run_in_task(|| {
       let mut worker = create_test_worker();
       let source = r#"
         onmessage = function(e) {
@@ -416,7 +436,7 @@ mod tests {
 
   #[test]
   fn removed_from_resource_table_on_close() {
-    tokio_util::run_in_task(|| {
+    run_in_task(|| {
       let mut worker = create_test_worker();
       worker
         .execute("onmessage = () => { delete window.onmessage; }")
@@ -448,7 +468,7 @@ mod tests {
 
   #[test]
   fn execute_mod_resolve_error() {
-    tokio_util::run_in_task(|| {
+    run_in_task(|| {
       // "foo" is not a valid module specifier so this should return an error.
       let mut worker = create_test_worker();
       let module_specifier =
@@ -461,7 +481,7 @@ mod tests {
 
   #[test]
   fn execute_mod_002_hello() {
-    tokio_util::run_in_task(|| {
+    run_in_task(|| {
       // This assumes cwd is project root (an assumption made throughout the
       // tests).
       let mut worker = create_test_worker();

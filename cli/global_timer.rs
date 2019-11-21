@@ -8,7 +8,7 @@
 //! only need to be able to start and cancel a single timer (or Delay, as Tokio
 //! calls it) for an entire Isolate. This is what is implemented here.
 
-use crate::tokio_util::panic_on_error;
+use crate::futures::TryFutureExt;
 use futures::channel::oneshot;
 use futures::future::FutureExt;
 use std::future::Future;
@@ -43,9 +43,10 @@ impl GlobalTimer {
     let (tx, rx) = oneshot::channel();
     self.tx = Some(tx);
 
-    let delay =
-      panic_on_error(futures::compat::Compat01As03::new(Delay::new(deadline)));
-    let rx = panic_on_error(rx);
+    let delay = futures::compat::Compat01As03::new(Delay::new(deadline))
+      .map_err(|err| panic!("Unexpected error in timeout {:?}", err));
+    let rx = rx
+      .map_err(|err| panic!("Unexpected error in receiving channel {:?}", err));
 
     futures::future::select(delay, rx).then(|_| futures::future::ok(()))
   }
