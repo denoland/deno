@@ -128,17 +128,19 @@ impl Worker {
       maybe_code,
       loader,
       modules,
-    )
-    .get_future(isolate);
-    recursive_load.and_then(move |id| {
+    );
+
+    async move {
+      let id = recursive_load.get_future(isolate).await?;
       worker.state.global_state.progress.done();
-      if is_prefetch {
-        futures::future::ok(())
-      } else {
+
+      if !is_prefetch {
         let mut isolate = worker.isolate.lock().unwrap();
-        futures::future::ready(isolate.mod_evaluate(id))
+        return isolate.mod_evaluate(id);
       }
-    })
+
+      Ok(())
+    }
   }
 
   /// Post message to worker as a host.
@@ -255,15 +257,13 @@ mod tests {
     tokio_util::run(async move {
       let mut worker =
         Worker::new("TEST".to_string(), StartupData::None, state, ext);
-      worker
+      let result = worker
         .execute_mod_async(&module_specifier, None, false)
-        .then(|result| {
-          if let Err(err) = result {
-            eprintln!("execute_mod err {:?}", err);
-          }
-          panic_on_error(worker)
-        })
-        .await
+        .await;
+      if let Err(err) = result {
+        eprintln!("execute_mod err {:?}", err);
+      }
+      panic_on_error(worker).await
     });
 
     let metrics = &state_.metrics;
@@ -297,15 +297,13 @@ mod tests {
     tokio_util::run(async move {
       let mut worker =
         Worker::new("TEST".to_string(), StartupData::None, state, ext);
-      worker
+      let result = worker
         .execute_mod_async(&module_specifier, None, false)
-        .then(|result| {
-          if let Err(err) = result {
-            eprintln!("execute_mod err {:?}", err);
-          }
-          panic_on_error(worker)
-        })
-        .await
+        .await;
+      if let Err(err) = result {
+        eprintln!("execute_mod err {:?}", err);
+      }
+      panic_on_error(worker).await
     });
 
     let metrics = &state_.metrics;
@@ -348,15 +346,14 @@ mod tests {
         ext,
       );
       worker.execute("denoMain()").unwrap();
-      worker
+      let result = worker
         .execute_mod_async(&module_specifier, None, false)
-        .then(|result| {
-          if let Err(err) = result {
-            eprintln!("execute_mod err {:?}", err);
-          }
-          panic_on_error(worker)
-        })
-        .await
+        .await;
+
+      if let Err(err) = result {
+        eprintln!("execute_mod err {:?}", err);
+      }
+      panic_on_error(worker).await
     });
 
     assert_eq!(state_.metrics.resolve_count.load(Ordering::SeqCst), 3);
@@ -406,14 +403,13 @@ mod tests {
 
       let worker_ = worker.clone();
 
-      tokio::spawn(
-        worker
-          .then(move |r| {
-            r.unwrap();
-            futures::future::ok(())
-          })
-          .compat(),
-      );
+      let fut = async move {
+        let r = worker.await;
+        r.unwrap();
+        Ok(())
+      };
+
+      tokio::spawn(fut.boxed().compat());
 
       let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
 
