@@ -19,6 +19,12 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+import "./global.ts";
+
+import * as nodeFS from "./fs.ts";
+import * as nodeUtil from "./util.ts";
+import * as nodePath from "./path.ts";
+
 import * as path from "../path/mod.ts";
 import { assert } from "../testing/asserts.ts";
 
@@ -80,8 +86,7 @@ class Module {
     this.paths = [];
     this.path = path.dirname(id);
   }
-  // TODO: populate this with polyfills!
-  static builtinModules: Module[] = [];
+  static builtinModules: string[] = [];
   static _extensions: {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     [key: string]: (module: Module, filename: string) => any;
@@ -191,7 +196,11 @@ class Module {
     isMain: boolean,
     options?: { paths: string[] }
   ): string {
-    // Native module code removed
+    // Polyfills.
+    if (nativeModuleCanBeRequiredByUsers(request)) {
+      return request;
+    }
+
     let paths: string[];
 
     if (typeof options === "object" && options !== null) {
@@ -355,7 +364,9 @@ class Module {
       return cachedModule.exports;
     }
 
-    // Native module NOT supported.
+    // Native module polyfills
+    const mod = loadNativeModule(filename, request);
+    if (mod) return mod.exports;
 
     // Don't call updateChildren(), Module constructor already does.
     const module = new Module(filename, parent);
@@ -475,6 +486,20 @@ class Module {
     }
   }
 
+  /**
+   * Create a `require` function that can be used to import CJS modules.
+   * Follows CommonJS resolution similar to that of Node.js,
+   * with `node_modules` lookup and `index.js` lookup support.
+   * Also injects available Node.js builtin module polyfills.
+   *
+   *     const require_ = createRequire(import.meta.url);
+   *     const fs = require_("fs");
+   *     const leftPad = require_("left-pad");
+   *     const cjsModule = require_("./cjs_mod");
+   *
+   * @param filename path or URL to current module
+   * @return Require function to import CJS modules
+   */
   static createRequire(filename: string | URL): RequireFunction {
     let filepath: string;
     if (
@@ -538,6 +563,32 @@ class Module {
       parent.require(requests[n]);
     }
   }
+}
+
+// Polyfills.
+const nativeModulePolyfill = new Map<string, Module>();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function createNativeModule(id: string, exports: any): Module {
+  const mod = new Module(id);
+  mod.exports = exports;
+  mod.loaded = true;
+  return mod;
+}
+nativeModulePolyfill.set("fs", createNativeModule("fs", nodeFS));
+nativeModulePolyfill.set("util", createNativeModule("util", nodeUtil));
+nativeModulePolyfill.set("path", createNativeModule("path", nodePath));
+function loadNativeModule(
+  _filename: string,
+  request: string
+): Module | undefined {
+  return nativeModulePolyfill.get(request);
+}
+function nativeModuleCanBeRequiredByUsers(request: string): boolean {
+  return nativeModulePolyfill.has(request);
+}
+// Populate with polyfill names
+for (const id of nativeModulePolyfill.keys()) {
+  Module.builtinModules.push(id);
 }
 
 let modulePaths = [];
@@ -1171,19 +1222,6 @@ function pathToFileURL(filepath: string): URL {
   return outURL;
 }
 
-/**
- * Create a `require` function that can be used to import CJS modules
- * @param path path of this module
- */
-function makeRequire(filePath: string): RequireFunction {
-  let mod: Module;
-  const fullPath = path.resolve(filePath);
-  if (fullPath in Module._cache) {
-    mod = Module._cache[fullPath];
-  } else {
-    mod = new Module(fullPath);
-  }
-  return makeRequireFunction(mod);
-}
-
-export { makeRequire };
+export const builtinModules = Module.builtinModules;
+export const createRequire = Module.createRequire;
+export default Module;
