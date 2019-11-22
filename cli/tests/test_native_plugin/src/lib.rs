@@ -46,3 +46,8 @@ pub fn op_test_io_async(data: &[u8], zero_copy: Option<PinnedBuf>) -> CoreOp {
 
   Op::Async(fut.boxed())
 }
+
+#[test]
+fn placeholder() {
+  // This test is just here to make sure the plugin gets built
+}

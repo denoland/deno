@@ -32,10 +32,12 @@ const textDecoder = new TextDecoder();
   console.log(`Native Binding Sync Response: ${textDecoder.decode(response)}`);
 }
 
+// eslint-disable-next-line @typescript-eslint/camelcase
 test_io_async.setAsyncHandler(response => {
   console.log(`Native Binding Async Response: ${textDecoder.decode(response)}`);
 });
 
+// eslint-disable-next-line @typescript-eslint/camelcase
 const response = test_io_async.dispatch(
   new Uint8Array([116, 101, 115, 116]),
   new Uint8Array([116, 101, 115, 116])
