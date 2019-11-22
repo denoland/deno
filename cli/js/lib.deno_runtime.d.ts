@@ -970,7 +970,7 @@ declare namespace Deno {
   // @url js/native_plugins.d.ts
 
   export interface AsyncHandler {
-    (opId: number, msg: Uint8Array): void;
+    (msg: Uint8Array): void;
   }
 
   export interface NativePluginOp {
