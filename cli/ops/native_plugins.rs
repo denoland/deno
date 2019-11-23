@@ -60,7 +60,7 @@ pub fn op_open_native_plugin(
   let args: OpenNativePluginArgs = serde_json::from_value(args)?;
   let (filename, filename_) = deno_fs::resolve_from_cwd(&args.filename)?;
 
-  state.check_native(&filename_)?;
+  state.check_plugin(&filename_)?;
 
   let lib = open_plugin(filename)?;
   let plugin_resource = NativePluginResource {
@@ -81,7 +81,13 @@ pub fn op_open_native_plugin(
   };
   init_fn(&mut init_context);
   for op in init_context.ops {
-    let op_id = registry.register(&op.0, op.1);
+    // Register each plugin op in the `OpRegistry` with the name
+    // formated like this `native_plugin_{plugin_rid}_{name}`.
+    // The inclusion of prefix and rid is designed to avoid any
+    // op name collision beyond the bound of a single loaded
+    // native plugin instance.
+    let op_id =
+      registry.register(&format!("native_plugin_{}_{}", rid, op.0), op.1);
     plugin_resource.ops.insert(op.0, op_id);
   }
 

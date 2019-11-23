@@ -892,6 +892,7 @@ declare namespace Deno {
     | "write"
     | "net"
     | "env"
+    | "plugin"
     | "hrtime";
   /** https://w3c.github.io/permissions/#status-of-a-permission */
   export type PermissionState = "granted" | "denied" | "prompt";
@@ -909,6 +910,9 @@ declare namespace Deno {
   interface EnvPermissionDescriptor {
     name: "env";
   }
+  interface PluginPermissionDescriptor {
+    name: "plugin";
+  }
   interface HrtimePermissionDescriptor {
     name: "hrtime";
   }
@@ -918,6 +922,7 @@ declare namespace Deno {
     | ReadWritePermissionDescriptor
     | NetPermissionDescriptor
     | EnvPermissionDescriptor
+    | PluginPermissionDescriptor
     | HrtimePermissionDescriptor;
 
   export class Permissions {
@@ -987,6 +992,14 @@ declare namespace Deno {
     };
   }
 
+  /** Open and initalize a native plugin.
+   * Requires the `--allow-plugin` flag.
+   *
+   *        const plugin = Deno.openPlugin("./path/to/some/plugin.so");
+   *        const some_op = plugin.ops.some_op;
+   *        const response = some_op.dispatch(new Uint8Array([1,2,3,4]));
+   *        console.log(`Response from native plugin ${response}`);
+   */
   export function openPlugin(filename: string): NativePlugin;
 
   // @url js/net.d.ts

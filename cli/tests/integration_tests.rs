@@ -358,14 +358,14 @@ itest!(_051_wasm_import {
 
 #[cfg(not(debug_assertions))]
 itest!(_052_native_plugins_release {
-  args: "run --reload --allow-native 052_native_plugins.ts release",
+  args: "run --reload --allow-plugin 052_native_plugins.ts release",
   output: "052_native_plugins.ts.out",
   http_server: false,
 });
 
 #[cfg(debug_assertions)]
 itest!(_052_native_plugins_debug {
-  args: "run --reload --allow-native 052_native_plugins.ts debug",
+  args: "run --reload --allow-plugin 052_native_plugins.ts debug",
   output: "052_native_plugins.ts.out",
   http_server: false,
 });

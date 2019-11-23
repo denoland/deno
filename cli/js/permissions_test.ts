@@ -7,11 +7,12 @@ const knownPermissions: Deno.PermissionName[] = [
   "write",
   "net",
   "env",
+  "plugin",
   "hrtime"
 ];
 
-for (const grant of knownPermissions) {
-  testPerm({ [grant]: true }, async function envGranted(): Promise<void> {
+function genFunc(grant: Deno.PermissionName): () => Promise<void> {
+  const gen: () => Promise<void> = async function Granted(): Promise<void> {
     const status0 = await Deno.permissions.query({ name: grant });
     assert(status0 != null);
     assertEquals(status0.state, "granted");
@@ -19,7 +20,14 @@ for (const grant of knownPermissions) {
     const status1 = await Deno.permissions.revoke({ name: grant });
     assert(status1 != null);
     assertEquals(status1.state, "prompt");
-  });
+  };
+  // Properly name these generated functions.
+  Object.defineProperty(gen, "name", { value: grant + "Granted" });
+  return gen;
+}
+
+for (const grant of knownPermissions) {
+  testPerm({ [grant]: true }, genFunc(grant));
 }
 
 test(async function permissionInvalidName(): Promise<void> {

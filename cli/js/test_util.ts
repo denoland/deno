@@ -26,6 +26,7 @@ interface TestPermissions {
   net?: boolean;
   env?: boolean;
   run?: boolean;
+  plugin?: boolean;
   hrtime?: boolean;
 }
 
@@ -35,6 +36,7 @@ export interface Permissions {
   net: boolean;
   env: boolean;
   run: boolean;
+  plugin: boolean;
   hrtime: boolean;
 }
 
@@ -48,6 +50,7 @@ async function getProcessPermissions(): Promise<Permissions> {
     write: await isGranted("write"),
     net: await isGranted("net"),
     env: await isGranted("env"),
+    plugin: await isGranted("plugin"),
     hrtime: await isGranted("hrtime")
   };
 }
@@ -75,8 +78,9 @@ function permToString(perms: Permissions): string {
   const n = perms.net ? 1 : 0;
   const e = perms.env ? 1 : 0;
   const u = perms.run ? 1 : 0;
+  const p = perms.plugin ? 1 : 0;
   const h = perms.hrtime ? 1 : 0;
-  return `permR${r}W${w}N${n}E${e}U${u}H${h}`;
+  return `permR${r}W${w}N${n}E${e}U${u}P${p}H${h}`;
 }
 
 function registerPermCombination(perms: Permissions): void {
@@ -93,6 +97,7 @@ function normalizeTestPermissions(perms: TestPermissions): Permissions {
     net: !!perms.net,
     run: !!perms.run,
     env: !!perms.env,
+    plugin: !!perms.plugin,
     hrtime: !!perms.hrtime
   };
 }
@@ -120,6 +125,7 @@ export function test(fn: testing.TestFunction): void {
       net: false,
       env: false,
       run: false,
+      plugin: false,
       hrtime: false
     },
     fn
@@ -176,6 +182,7 @@ test(function permissionsMatches(): void {
         net: false,
         env: false,
         run: false,
+        plugin: false,
         hrtime: false
       },
       normalizeTestPermissions({ read: true })
@@ -190,6 +197,7 @@ test(function permissionsMatches(): void {
         net: false,
         env: false,
         run: false,
+        plugin: false,
         hrtime: false
       },
       normalizeTestPermissions({})
@@ -204,6 +212,7 @@ test(function permissionsMatches(): void {
         net: true,
         env: true,
         run: true,
+        plugin: true,
         hrtime: true
       },
       normalizeTestPermissions({ read: true })
@@ -219,6 +228,7 @@ test(function permissionsMatches(): void {
         net: true,
         env: false,
         run: false,
+        plugin: false,
         hrtime: false
       },
       normalizeTestPermissions({ read: true })
@@ -234,6 +244,7 @@ test(function permissionsMatches(): void {
         net: true,
         env: true,
         run: true,
+        plugin: true,
         hrtime: true
       },
       {
@@ -242,6 +253,7 @@ test(function permissionsMatches(): void {
         net: true,
         env: true,
         run: true,
+        plugin: true,
         hrtime: true
       }
     )

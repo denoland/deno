@@ -43,4 +43,6 @@ const response = test_io_async.dispatch(
   new Uint8Array([116, 101, 115, 116])
 );
 
-console.log(`Native Binding Async Response: ${textDecoder.decode(response)}`);
+if (response != null || response != undefined) {
+  throw new Error("Expected null response!");
+}

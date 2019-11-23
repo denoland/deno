@@ -53,6 +53,7 @@ pub fn op_revoke_permission(
     "write" => state.permissions.allow_write.revoke(),
     "net" => state.permissions.allow_net.revoke(),
     "env" => state.permissions.allow_env.revoke(),
+    "plugin" => state.permissions.allow_plugin.revoke(),
     "hrtime" => state.permissions.allow_hrtime.revoke(),
     _ => {}
   };
@@ -86,6 +87,7 @@ pub fn op_request_permission(
       .permissions
       .request_net(&args.url.as_ref().map(String::as_str)),
     "env" => Ok(state.permissions.request_env()),
+    "plugin" => Ok(state.permissions.request_plugin()),
     "hrtime" => Ok(state.permissions.request_hrtime()),
     n => Err(type_error(format!("No such permission name: {}", n))),
   }?;

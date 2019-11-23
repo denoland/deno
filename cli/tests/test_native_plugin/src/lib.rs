@@ -38,7 +38,12 @@ pub fn op_test_io_async(data: &[u8], zero_copy: Option<PinnedBuf>) -> CoreOp {
         data_str, buf_str
       );
     }
-    // TODO(afinch7): add a delayed async of some type in here.
+    let (tx, rx) = futures::channel::oneshot::channel::<Result<(), ()>>();
+    std::thread::spawn(move || {
+      std::thread::sleep(std::time::Duration::from_secs(1));
+      tx.send(Ok(())).unwrap();
+    });
+    assert!(rx.await.is_ok());
     let result = b"test";
     let result_box: Buf = Box::new(*result);
     Ok(result_box)

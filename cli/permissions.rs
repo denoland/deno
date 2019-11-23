@@ -141,7 +141,7 @@ pub struct DenoPermissions {
   pub net_whitelist: Arc<HashSet<String>>,
   pub allow_env: PermissionAccessor,
   pub allow_run: PermissionAccessor,
-  pub allow_native: PermissionAccessor,
+  pub allow_plugin: PermissionAccessor,
   pub allow_hrtime: PermissionAccessor,
 }
 
@@ -158,7 +158,7 @@ impl DenoPermissions {
       net_whitelist: Arc::new(flags.net_whitelist.iter().cloned().collect()),
       allow_env: PermissionAccessor::from(flags.allow_env),
       allow_run: PermissionAccessor::from(flags.allow_run),
-      allow_native: PermissionAccessor::from(flags.allow_native),
+      allow_plugin: PermissionAccessor::from(flags.allow_plugin),
       allow_hrtime: PermissionAccessor::from(flags.allow_hrtime),
     }
   }
@@ -251,6 +251,13 @@ impl DenoPermissions {
     )
   }
 
+  pub fn check_plugin(&self, filename: &str) -> Result<(), ErrBox> {
+    self.allow_plugin.get_state().check(
+      &format!("access to open a native plugin: {}", filename),
+      "run again with the --allow-plugin flag",
+    )
+  }
+
   pub fn request_run(&self) -> PermissionAccessorState {
     self
       .allow_run
@@ -302,11 +309,10 @@ impl DenoPermissions {
       .request("Deno requests to access to high precision time.")
   }
 
-  pub fn check_native(&self, filename: &str) -> Result<(), ErrBox> {
-    self.allow_native.get_state().check(
-      &format!("access to open a native plugin: {}", filename),
-      "run again with the --allow-run flag",
-    )
+  pub fn request_plugin(&self) -> PermissionAccessorState {
+    self
+      .allow_plugin
+      .request("Deno requests to open native plugins.")
   }
 
   pub fn get_permission_state(
@@ -321,6 +327,7 @@ impl DenoPermissions {
       "write" => Ok(self.get_state_write(path)),
       "net" => self.get_state_net_url(url),
       "env" => Ok(self.allow_env.get_state()),
+      "plugin" => Ok(self.allow_plugin.get_state()),
       "hrtime" => Ok(self.allow_hrtime.get_state()),
       n => Err(type_error(format!("No such permission name: {}", n))),
     }
@@ -701,6 +708,21 @@ mod tests {
     });
     set_prompt_result(false);
     assert_eq!(perms1.request_env(), PermissionAccessorState::Deny);
+  }
+
+  #[test]
+  fn test_permissions_request_plugin() {
+    let perms0 = DenoPermissions::from_flags(&DenoFlags {
+      ..Default::default()
+    });
+    set_prompt_result(true);
+    assert_eq!(perms0.request_plugin(), PermissionAccessorState::Allow);
+
+    let perms1 = DenoPermissions::from_flags(&DenoFlags {
+      ..Default::default()
+    });
+    set_prompt_result(false);
+    assert_eq!(perms1.request_plugin(), PermissionAccessorState::Deny);
   }
 
   #[test]

@@ -48,7 +48,7 @@ pub struct DenoFlags {
   pub net_whitelist: Vec<String>,
   pub allow_env: bool,
   pub allow_run: bool,
-  pub allow_native: bool,
+  pub allow_plugin: bool,
   pub allow_hrtime: bool,
   pub no_prompts: bool,
   pub no_fetch: bool,
@@ -107,8 +107,8 @@ fn add_run_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .help("Allow running subprocesses"),
     )
     .arg(
-      Arg::with_name("allow-native")
-        .long("allow-native")
+      Arg::with_name("allow-plugin")
+        .long("allow-plugin")
         .help("Allow opening native plugins"),
     )
     .arg(
@@ -849,8 +849,8 @@ fn parse_run_args(mut flags: DenoFlags, matches: &ArgMatches) -> DenoFlags {
   if matches.is_present("allow-run") {
     flags.allow_run = true;
   }
-  if matches.is_present("allow-native") {
-    flags.allow_native = true;
+  if matches.is_present("allow-plugin") {
+    flags.allow_plugin = true;
   }
   if matches.is_present("allow-hrtime") {
     flags.allow_hrtime = true;
@@ -862,7 +862,7 @@ fn parse_run_args(mut flags: DenoFlags, matches: &ArgMatches) -> DenoFlags {
     flags.allow_run = true;
     flags.allow_read = true;
     flags.allow_write = true;
-    flags.allow_native = true;
+    flags.allow_plugin = true;
     flags.allow_hrtime = true;
   }
   if matches.is_present("no-fetch") {
@@ -980,7 +980,7 @@ pub fn flags_from_vec(
       flags.allow_run = true;
       flags.allow_read = true;
       flags.allow_write = true;
-      flags.allow_native = true;
+      flags.allow_plugin = true;
       flags.allow_hrtime = true;
       let code: &str = eval_match.value_of("code").unwrap();
       argv.extend(vec![code.to_string()]);
@@ -1149,7 +1149,7 @@ pub fn flags_from_vec(
       flags.allow_run = true;
       flags.allow_read = true;
       flags.allow_write = true;
-      flags.allow_native = true;
+      flags.allow_plugin = true;
       flags.allow_hrtime = true;
       argv.push(XEVAL_URL.to_string());
 
@@ -1193,7 +1193,7 @@ pub fn flags_from_vec(
       flags.allow_run = true;
       flags.allow_read = true;
       flags.allow_write = true;
-      flags.allow_native = true;
+      flags.allow_plugin = true;
       flags.allow_hrtime = true;
       DenoSubcommand::Repl
     }
@@ -1353,7 +1353,7 @@ mod tests {
         allow_run: true,
         allow_read: true,
         allow_write: true,
-        allow_native: true,
+        allow_plugin: true,
         allow_hrtime: true,
         ..DenoFlags::default()
       }
@@ -1504,7 +1504,7 @@ mod tests {
         allow_run: true,
         allow_read: true,
         allow_write: true,
-        allow_native: true,
+        allow_plugin: true,
         allow_hrtime: true,
         ..DenoFlags::default()
       }
@@ -1524,7 +1524,7 @@ mod tests {
         allow_run: true,
         allow_read: true,
         allow_write: true,
-        allow_native: true,
+        allow_plugin: true,
         allow_hrtime: true,
         ..DenoFlags::default()
       }
@@ -1552,7 +1552,7 @@ mod tests {
         allow_run: true,
         allow_read: true,
         allow_write: true,
-        allow_native: true,
+        allow_plugin: true,
         allow_hrtime: true,
         ..DenoFlags::default()
       }
