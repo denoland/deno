@@ -380,16 +380,30 @@ fn info_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
 fn fetch_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   flags.subcommand = DenoSubcommand::Fetch;
   reload_arg_parse(flags, matches);
+  lock_args_parse(flags, matches);
   importmap_arg_parse(flags, matches);
+  config_arg_parse(flags, matches);
   if let Some(file) = matches.value_of("file") {
     flags.argv.push(file.into());
+  }
+}
+
+fn lock_args_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
+  if matches.is_present("lock") {
+    let lockfile = matches.value_of("lock").unwrap();
+    flags.lock = Some(lockfile.to_string());
+  }
+  if matches.is_present("lock-write") {
+    flags.lock_write = true;
   }
 }
 
 // Shared between the run and test subcommands. They both take similar options.
 fn run_test_args_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   reload_arg_parse(flags, matches);
+  lock_args_parse(flags, matches);
   importmap_arg_parse(flags, matches);
+  config_arg_parse(flags, matches);
 
   if matches.is_present("allow-read") {
     if matches.value_of("allow-read").is_some() {
@@ -450,8 +464,6 @@ fn run_test_args_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
     flags.current_thread = true;
   }
 
-  flags.config_path = matches.value_of("config").map(ToOwned::to_owned);
-
   if let Some(v8_flags) = matches.values_of("v8-flags") {
     let s: Vec<String> = v8_flags.map(String::from).collect();
     flags.v8_flags = Some(s);
@@ -472,15 +484,6 @@ fn run_test_args_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
         flags.v8_flags = Some(svec![v8_seed_flag]);
       }
     }
-  }
-
-  if matches.is_present("lock") {
-    let lockfile = matches.value_of("lock").unwrap();
-    flags.lock = Some(lockfile.to_string());
-  }
-
-  if matches.is_present("lock-write") {
-    flags.lock_write = true;
   }
 }
 
@@ -852,7 +855,10 @@ TypeScript compiler cache: directory containing TS compiler output",
 fn fetch_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("fetch")
     .arg(reload_arg())
+    .arg(lock_arg())
+    .arg(lock_write_arg())
     .arg(importmap_arg())
+    .arg(config_arg())
     .arg(Arg::with_name("file").takes_value(true).required(true))
     .about("Fetch the dependencies")
     .long_about(
@@ -876,6 +882,7 @@ fn run_test_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
   app
     .arg(importmap_arg())
     .arg(reload_arg())
+    .arg(config_arg())
     .arg(
       Arg::with_name("allow-read")
         .long("allow-read")
@@ -930,14 +937,6 @@ fn run_test_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .help("Do not download remote modules"),
     )
     .arg(
-      Arg::with_name("config")
-        .short("c")
-        .long("config")
-        .value_name("FILE")
-        .help("Load tsconfig.json configuration file")
-        .takes_value(true),
-    )
-    .arg(
       Arg::with_name("current-thread")
         .long("current-thread")
         .help("Use tokio::runtime::current_thread"),
@@ -954,18 +953,6 @@ fn run_test_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         }),
     )
     .arg(
-      Arg::with_name("lock")
-        .long("lock")
-        .value_name("FILE")
-        .help("Check the specified lock file")
-        .takes_value(true),
-    )
-    .arg(
-      Arg::with_name("lock-write")
-        .long("lock-write")
-        .help("Write lock file. Use with --lock."),
-    )
-    .arg(
       Arg::with_name("v8-flags")
         .long("v8-flags")
         .takes_value(true)
@@ -978,6 +965,8 @@ fn run_test_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
 fn run_subcommand<'a, 'b>() -> App<'a, 'b> {
   run_test_args(SubCommand::with_name("run"))
     .setting(AppSettings::TrailingVarArg)
+    .arg(lock_arg())
+    .arg(lock_write_arg())
     .arg(script_arg())
     .about("Run a program given a filename or url to the source code")
     .long_about(
@@ -1004,14 +993,7 @@ With only permission to read whitelist files from disk
 
 fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
   run_test_args(SubCommand::with_name("test"))
-    .about("Run tests")
-    .long_about(
-      "Run tests using test runner
-
-Automatically downloads test runner on first run.
-
-  deno test **/*_test.ts **/test.ts",
-    )
+    .arg(lock_arg()) // Note: purposely not including lock_write for deno test.
     .arg(
       Arg::with_name("failfast")
         .short("f")
@@ -1039,6 +1021,15 @@ Automatically downloads test runner on first run.
         .takes_value(true)
         .multiple(true),
     )
+    .about("Run tests")
+    .long_about(
+      "Run tests using test runner
+
+Searches the specified directories for all files that end in _test.ts or
+_test.js and executes them.
+
+  deno test src/",
+    )
 }
 
 fn script_arg<'a, 'b>() -> Arg<'a, 'b> {
@@ -1054,6 +1045,33 @@ fn script_arg_parse(flags: &mut DenoFlags, matches: &ArgMatches) {
       flags.argv.push(String::from(v));
     }
   }
+}
+
+fn lock_arg<'a, 'b>() -> Arg<'a, 'b> {
+  Arg::with_name("lock")
+    .long("lock")
+    .value_name("FILE")
+    .help("Check the specified lock file")
+    .takes_value(true)
+}
+
+fn lock_write_arg<'a, 'b>() -> Arg<'a, 'b> {
+  Arg::with_name("lock-write")
+    .long("lock-write")
+    .help("Write lock file. Use with --lock.")
+}
+
+fn config_arg<'a, 'b>() -> Arg<'a, 'b> {
+  Arg::with_name("config")
+    .short("c")
+    .long("config")
+    .value_name("FILE")
+    .help("Load tsconfig.json configuration file")
+    .takes_value(true)
+}
+
+fn config_arg_parse(flags: &mut DenoFlags, matches: &ArgMatches) {
+  flags.config_path = matches.value_of("config").map(ToOwned::to_owned);
 }
 
 fn reload_arg<'a, 'b>() -> Arg<'a, 'b> {
