@@ -721,9 +721,8 @@ fn install_subcommand<'a, 'b>() -> App<'a, 'b> {
         )
         .about("Install script as executable")
         .long_about(
-"Automatically downloads deno_installer dependencies on first run.
-
-Default installation directory is $HOME/.deno/bin and it must be added to the path manually.
+"Installs a script as executable. The default installation directory is
+$HOME/.deno/bin and it must be added to the path manually.
 
   deno install file_server https://deno.land/std/http/file_server.ts --allow-net --allow-read
 
