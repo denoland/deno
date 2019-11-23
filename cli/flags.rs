@@ -965,8 +965,6 @@ fn run_test_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
 fn run_subcommand<'a, 'b>() -> App<'a, 'b> {
   run_test_args(SubCommand::with_name("run"))
     .setting(AppSettings::TrailingVarArg)
-    .arg(lock_arg())
-    .arg(lock_write_arg())
     .arg(script_arg())
     .about("Run a program given a filename or url to the source code")
     .long_about(
@@ -993,7 +991,8 @@ With only permission to read whitelist files from disk
 
 fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
   run_test_args(SubCommand::with_name("test"))
-    .arg(lock_arg()) // Note: purposely not including lock_write for deno test.
+    .arg(lock_arg())
+    .arg(lock_write_arg())
     .arg(
       Arg::with_name("failfast")
         .short("f")
