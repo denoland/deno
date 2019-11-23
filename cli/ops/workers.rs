@@ -19,7 +19,6 @@ use std::convert::From;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::Ordering;
-use std::sync::mpsc;
 use std::task::Context;
 use std::task::Poll;
 
@@ -151,32 +150,40 @@ fn op_create_worker(
   let mut worker =
     Worker::new(name, startup_data::deno_isolate_init(), child_state, ext);
   js_check(worker.execute(&deno_main_call));
-  js_check(worker.execute("workerMain()"));
 
-  let worker_id = parent_state.add_child_worker(worker.clone());
+  let worker_id = { parent_state.add_child_worker(worker.clone()) };
   let response = json!(worker_id);
 
   // Has provided source code, execute immediately.
   if has_source_code {
     js_check(worker.execute(&source_code));
+    js_check(worker.execute("workerMain()"));
     return Ok(JsonOp::Sync(response));
   }
 
-  // TODO(bartlomieju): this should spawn mod execution on separate tokio task
-  // and block on receving message on a channel or even use sync channel /shrug
-  let (sender, receiver) = mpsc::sync_channel::<Result<(), ErrBox>>(1);
+  let mut worker_ = worker.clone();
+  {
+    let mut table = parent_state.workers.lock().unwrap();
+    table.get_mut(&worker_id).expect("Worker not found").ready_ = false;
+  }
   let fut = worker
     .execute_mod_async(&module_specifier, None, false)
     .then(move |result| {
-      sender.send(result).expect("Failed to send message");
+      // TODO: this should be handled gracefully
+      js_check(result);
+      js_check(worker_.execute("workerMain()"));
+      {
+        let mut table = parent_state.workers.lock().unwrap();
+        let mut worker = table.get_mut(&worker_id).expect("Worker not found");
+        worker.ready_ = true;
+        worker.waker.lock().unwrap().wake();
+      }
       futures::future::ok(())
     })
     .boxed()
     .compat();
   tokio::spawn(fut);
 
-  let result = receiver.recv().expect("Failed to receive message");
-  result?;
   Ok(JsonOp::Sync(response))
 }
 
@@ -195,7 +202,8 @@ impl Future for GetWorkerClosedFuture {
     if maybe_worker.is_none() {
       return Poll::Ready(Ok(()));
     }
-    match maybe_worker.unwrap().poll_unpin(cx) {
+    let worker = maybe_worker.unwrap();
+    match worker.poll_unpin(cx) {
       Poll::Ready(Err(e)) => Poll::Ready(Err(e)),
       Poll::Ready(Ok(_)) => Poll::Ready(Ok(())),
       Poll::Pending => Poll::Pending,
@@ -224,7 +232,12 @@ fn op_host_get_worker_closed(
   };
   let op = future.then(move |_result| {
     let mut workers_table = state_.workers.lock().unwrap();
-    workers_table.remove(&id);
+    let mut maybe_worker = workers_table.remove(&id);
+    if let Some(worker) = maybe_worker.take() {
+      let mut channels = worker.state.worker_channels.lock().unwrap();
+      channels.sender.close_channel();
+      channels.receiver.close();
+    }
     futures::future::ok(json!({}))
   });
 

@@ -13,6 +13,7 @@ use futures::future::FutureExt;
 use futures::future::TryFutureExt;
 use futures::sink::SinkExt;
 use futures::stream::StreamExt;
+use futures::task::AtomicWaker;
 use std::env;
 use std::future::Future;
 use std::pin::Pin;
@@ -38,6 +39,8 @@ pub struct Worker {
   isolate: Arc<Mutex<deno::Isolate>>,
   pub state: ThreadSafeState,
   external_channels: Arc<Mutex<WorkerChannels>>,
+  pub ready_: bool,
+  pub waker: Arc<Mutex<AtomicWaker>>,
 }
 
 impl Worker {
@@ -91,6 +94,8 @@ impl Worker {
       isolate,
       state,
       external_channels: Arc::new(Mutex::new(external_channels)),
+      ready_: true,
+      waker: Arc::new(Mutex::new(AtomicWaker::new())),
     }
   }
 
@@ -172,6 +177,12 @@ impl Future for Worker {
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
+    inner.waker.lock().unwrap().register(cx.waker());
+
+    if !inner.ready_ {
+      return Poll::Pending;
+    }
+
     let mut isolate = inner.isolate.lock().unwrap();
     isolate.poll_unpin(cx)
   }
