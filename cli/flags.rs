@@ -883,6 +883,8 @@ fn run_test_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
     .arg(importmap_arg())
     .arg(reload_arg())
     .arg(config_arg())
+    .arg(lock_arg())
+    .arg(lock_write_arg())
     .arg(
       Arg::with_name("allow-read")
         .long("allow-read")
@@ -991,8 +993,6 @@ With only permission to read whitelist files from disk
 
 fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
   run_test_args(SubCommand::with_name("test"))
-    .arg(lock_arg())
-    .arg(lock_write_arg())
     .arg(
       Arg::with_name("failfast")
         .short("f")
