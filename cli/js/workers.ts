@@ -159,6 +159,11 @@ export class WorkerImpl implements Worker {
       sourceCode
     );
     this.run();
+    // TODO: this is private method and should be rewritten
+    // like so:
+    // - in run poll for worker being ready
+    // - `isClosing` should be set to true when we receive null message - signalizing channel was closed
+    // - `isClosedPromise` could be then removed :))
     this.isClosedPromise = hostGetWorkerClosed(this.id);
     this.isClosedPromise.then((): void => {
       this.isClosing = true;
