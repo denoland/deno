@@ -142,10 +142,13 @@ fn op_create_worker(
   let (int, ext) = ThreadSafeState::create_channels();
   let child_state = ThreadSafeState::new(
     state.global_state.clone(),
+    Some(parent_state.permissions.clone()), // by default share with parent
     Some(module_specifier.clone()),
     include_deno_namespace,
     int,
   )?;
+  // TODO: add a new option to make child worker not sharing permissions
+  // with parent (aka .clone(), requests from child won't reflect in parent)
   let name = format!("USER-WORKER-{}", specifier);
   let deno_main_call = format!("denoMain({})", include_deno_namespace);
   let mut worker =

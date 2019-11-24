@@ -44,7 +44,7 @@ pub struct ThreadSafeState(Arc<State>);
 pub struct State {
   pub global_state: ThreadSafeGlobalState,
   pub modules: Arc<Mutex<deno::Modules>>,
-  pub permissions: DenoPermissions,
+  pub permissions: Arc<Mutex<DenoPermissions>>,
   pub main_module: Option<ModuleSpecifier>,
   pub worker_channels: Mutex<WorkerChannels>,
   /// When flags contains a `.import_map_path` option, the content of the
@@ -213,6 +213,8 @@ impl ThreadSafeState {
 
   pub fn new(
     global_state: ThreadSafeGlobalState,
+    // If Some(perm), use perm. Else copy from global_state.
+    shared_permissions: Option<Arc<Mutex<DenoPermissions>>>,
     main_module: Option<ModuleSpecifier>,
     include_deno_namespace: bool,
     internal_channels: WorkerChannels,
@@ -229,7 +231,11 @@ impl ThreadSafeState {
     };
 
     let modules = Arc::new(Mutex::new(deno::Modules::new()));
-    let permissions = global_state.permissions.clone();
+    let permissions = if let Some(perm) = shared_permissions {
+      perm
+    } else {
+      Arc::new(Mutex::new(global_state.permissions.clone()))
+    };
 
     let state = State {
       global_state,
@@ -260,32 +266,32 @@ impl ThreadSafeState {
 
   #[inline]
   pub fn check_read(&self, filename: &str) -> Result<(), ErrBox> {
-    self.permissions.check_read(filename)
+    self.permissions.lock().unwrap().check_read(filename)
   }
 
   #[inline]
   pub fn check_write(&self, filename: &str) -> Result<(), ErrBox> {
-    self.permissions.check_write(filename)
+    self.permissions.lock().unwrap().check_write(filename)
   }
 
   #[inline]
   pub fn check_env(&self) -> Result<(), ErrBox> {
-    self.permissions.check_env()
+    self.permissions.lock().unwrap().check_env()
   }
 
   #[inline]
   pub fn check_net(&self, hostname: &str, port: u16) -> Result<(), ErrBox> {
-    self.permissions.check_net(hostname, port)
+    self.permissions.lock().unwrap().check_net(hostname, port)
   }
 
   #[inline]
   pub fn check_net_url(&self, url: &url::Url) -> Result<(), ErrBox> {
-    self.permissions.check_net_url(url)
+    self.permissions.lock().unwrap().check_net_url(url)
   }
 
   #[inline]
   pub fn check_run(&self) -> Result<(), ErrBox> {
-    self.permissions.check_run()
+    self.permissions.lock().unwrap().check_run()
   }
 
   pub fn check_dyn_import(
@@ -327,6 +333,7 @@ impl ThreadSafeState {
 
     ThreadSafeState::new(
       ThreadSafeGlobalState::mock(argv),
+      None,
       module_specifier,
       true,
       internal_channels,

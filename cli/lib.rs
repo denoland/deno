@@ -118,6 +118,7 @@ fn create_worker_and_state(
   let (int, ext) = ThreadSafeState::create_channels();
   let state = ThreadSafeState::new(
     global_state.clone(),
+    None,
     global_state.main_module.clone(),
     true,
     int,
