@@ -129,7 +129,6 @@ jobs:
       - name: Test debug
         if: matrix.kind == 'test_debug'
         run: |
-          cargo build --locked -p test_native_plugin
           echo ::set-env name=DENO_BUILD_MODE::debug
           cargo test --locked --all-targets
 

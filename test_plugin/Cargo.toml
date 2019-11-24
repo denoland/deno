@@ -10,5 +10,5 @@ edition = "2018"
 crate-type = ["cdylib"]
 
 [dependencies]
-deno = { path = "../../../core" }
+deno = { path = "../core" }
 futures = "0.3"
