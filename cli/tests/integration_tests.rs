@@ -246,12 +246,11 @@ itest!(_026_redirect_javascript {
   http_server: true,
 });
 
-/* TODO(bartlomieju): reenable
 itest!(_026_workers {
   args: "run --reload 026_workers.ts",
   output: "026_workers.ts.out",
+  check_stderr: true,
 });
-*/
 
 itest!(_027_redirect_typescript {
   args: "run --reload 027_redirect_typescript.ts",
