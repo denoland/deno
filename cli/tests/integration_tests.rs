@@ -55,6 +55,47 @@ fn js_unit_tests() {
   drop(g);
 }
 
+#[test]
+fn bundle_exports() {
+  use tempfile::TempDir;
+
+  // First we have to generate a bundle of some module that has exports.
+  let mod1 = util::root_path().join("cli/tests/subdir/mod1.ts");
+  assert!(mod1.is_file());
+  let t = TempDir::new().expect("tempdir fail");
+  let bundle = t.path().join("mod1.bundle.js");
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("bundle")
+    .arg(mod1)
+    .arg(&bundle)
+    .spawn()
+    .expect("failed to spawn script");
+  let status = deno.wait().expect("failed to wait for the child process");
+  assert!(status.success());
+  assert!(bundle.is_file());
+
+  // Now we try to use that bundle from another module.
+  let test = t.path().join("test.js");
+  std::fs::write(
+    &test,
+    "
+      import { printHello3 } from \"./mod1.bundle.js\";
+      printHello3(); ",
+  )
+  .expect("error writing file");
+
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg(&test)
+    .output()
+    .expect("failed to spawn script");
+  // check the output of the test.ts program.
+  assert_eq!(std::str::from_utf8(&output.stdout).unwrap().trim(), "Hello");
+  assert_eq!(output.stderr, b"");
+}
+
 // TODO(#2933): Rewrite this test in rust.
 #[test]
 fn repl_test() {

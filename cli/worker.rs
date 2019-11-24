@@ -130,28 +130,35 @@ impl Worker {
       maybe_code,
       loader,
       modules,
-    )
-    .get_future(isolate);
-    recursive_load.and_then(move |id| {
+    );
+
+    async move {
+      let id = recursive_load.get_future(isolate).await?;
       worker.state.global_state.progress.done();
-      if is_prefetch {
-        futures::future::ok(())
-      } else {
+
+      if !is_prefetch {
         let mut isolate = worker.isolate.lock().unwrap();
-        futures::future::ready(isolate.mod_evaluate(id))
+        return isolate.mod_evaluate(id);
       }
-    })
+
+      Ok(())
+    }
   }
 
   /// Post message to worker as a host.
   ///
   /// This method blocks current thread.
-  pub fn post_message(self: &Self, buf: Buf) -> Result<(), ErrBox> {
+  pub fn post_message(
+    self: &Self,
+    buf: Buf,
+  ) -> impl Future<Output = Result<(), ErrBox>> {
     let channels = self.external_channels.lock().unwrap();
     let mut sender = channels.sender.clone();
-    futures::executor::block_on(sender.send(buf))
-      .map(|_| ())
-      .map_err(ErrBox::from)
+    async move {
+      let result = sender.send(buf).map_err(ErrBox::from).await;
+      drop(sender);
+      result
+    }
   }
 
   /// Get message from worker as a host.
@@ -201,7 +208,28 @@ mod tests {
   use crate::startup_data;
   use crate::state::ThreadSafeState;
   use crate::tokio_util;
+  use futures::executor::block_on;
   use std::sync::atomic::Ordering;
+
+  pub fn run_in_task<F>(f: F)
+  where
+    F: FnOnce() + Send + 'static,
+  {
+    let fut = futures::future::lazy(move |_cx| {
+      f();
+      Ok(())
+    });
+
+    tokio_util::run(fut)
+  }
+
+  pub fn panic_on_error<I, E, F>(f: F) -> impl Future<Output = Result<I, ()>>
+  where
+    F: Future<Output = Result<I, E>>,
+    E: std::fmt::Debug,
+  {
+    f.map_err(|err| panic!("Future got unexpected error: {:?}", err))
+  }
 
   #[test]
   fn execute_mod_esm_imports_a() {
@@ -222,6 +250,7 @@ mod tests {
     let (int, ext) = ThreadSafeState::create_channels();
     let state = ThreadSafeState::new(
       global_state,
+      None,
       Some(module_specifier.clone()),
       true,
       int,
@@ -231,15 +260,13 @@ mod tests {
     tokio_util::run(async move {
       let mut worker =
         Worker::new("TEST".to_string(), StartupData::None, state, ext);
-      worker
+      let result = worker
         .execute_mod_async(&module_specifier, None, false)
-        .then(|result| {
-          if let Err(err) = result {
-            eprintln!("execute_mod err {:?}", err);
-          }
-          tokio_util::panic_on_error(worker)
-        })
-        .await
+        .await;
+      if let Err(err) = result {
+        eprintln!("execute_mod err {:?}", err);
+      }
+      panic_on_error(worker).await
     });
 
     let metrics = &state_.metrics;
@@ -264,6 +291,7 @@ mod tests {
     let (int, ext) = ThreadSafeState::create_channels();
     let state = ThreadSafeState::new(
       global_state,
+      None,
       Some(module_specifier.clone()),
       true,
       int,
@@ -273,15 +301,13 @@ mod tests {
     tokio_util::run(async move {
       let mut worker =
         Worker::new("TEST".to_string(), StartupData::None, state, ext);
-      worker
+      let result = worker
         .execute_mod_async(&module_specifier, None, false)
-        .then(|result| {
-          if let Err(err) = result {
-            eprintln!("execute_mod err {:?}", err);
-          }
-          tokio_util::panic_on_error(worker)
-        })
-        .await
+        .await;
+      if let Err(err) = result {
+        eprintln!("execute_mod err {:?}", err);
+      }
+      panic_on_error(worker).await
     });
 
     let metrics = &state_.metrics;
@@ -309,6 +335,7 @@ mod tests {
     let (int, ext) = ThreadSafeState::create_channels();
     let state = ThreadSafeState::new(
       global_state.clone(),
+      None,
       Some(module_specifier.clone()),
       true,
       int,
@@ -324,15 +351,14 @@ mod tests {
         ext,
       );
       worker.execute("denoMain()").unwrap();
-      worker
+      let result = worker
         .execute_mod_async(&module_specifier, None, false)
-        .then(|result| {
-          if let Err(err) = result {
-            eprintln!("execute_mod err {:?}", err);
-          }
-          tokio_util::panic_on_error(worker)
-        })
-        .await
+        .await;
+
+      if let Err(err) = result {
+        eprintln!("execute_mod err {:?}", err);
+      }
+      panic_on_error(worker).await
     });
 
     assert_eq!(state_.metrics.resolve_count.load(Ordering::SeqCst), 3);
@@ -363,7 +389,7 @@ mod tests {
 
   #[test]
   fn test_worker_messages() {
-    tokio_util::run_in_task(|| {
+    run_in_task(|| {
       let mut worker = create_test_worker();
       let source = r#"
         onmessage = function(e) {
@@ -382,22 +408,20 @@ mod tests {
 
       let worker_ = worker.clone();
 
-      tokio::spawn(
-        worker
-          .then(move |r| {
-            r.unwrap();
-            futures::future::ok(())
-          })
-          .compat(),
-      );
+      let fut = async move {
+        let r = worker.await;
+        r.unwrap();
+        Ok(())
+      };
+
+      tokio::spawn(fut.boxed().compat());
 
       let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
 
-      let r = worker_.post_message(msg);
+      let r = block_on(worker_.post_message(msg));
       assert!(r.is_ok());
 
-      let maybe_msg =
-        futures::executor::block_on(worker_.get_message()).unwrap();
+      let maybe_msg = block_on(worker_.get_message()).unwrap();
       assert!(maybe_msg.is_some());
       // Check if message received is [1, 2, 3] in json
       assert_eq!(*maybe_msg.unwrap(), *b"[1,2,3]");
@@ -406,14 +430,14 @@ mod tests {
         .to_string()
         .into_boxed_str()
         .into_boxed_bytes();
-      let r = worker_.post_message(msg);
+      let r = block_on(worker_.post_message(msg));
       assert!(r.is_ok());
     })
   }
 
   #[test]
   fn removed_from_resource_table_on_close() {
-    tokio_util::run_in_task(|| {
+    run_in_task(|| {
       let mut worker = create_test_worker();
       worker
         .execute("onmessage = () => { delete window.onmessage; }")
@@ -436,32 +460,29 @@ mod tests {
       );
 
       let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
-      let r = worker_.post_message(msg);
+      let r = block_on(worker_.post_message(msg));
       assert!(r.is_ok());
 
-      futures::executor::block_on(worker_future).unwrap();
+      block_on(worker_future).unwrap();
     })
   }
 
   #[test]
   fn execute_mod_resolve_error() {
-    tokio_util::run_in_task(|| {
+    run_in_task(|| {
       // "foo" is not a valid module specifier so this should return an error.
       let mut worker = create_test_worker();
       let module_specifier =
         ModuleSpecifier::resolve_url_or_path("does-not-exist").unwrap();
-      let result = futures::executor::block_on(worker.execute_mod_async(
-        &module_specifier,
-        None,
-        false,
-      ));
+      let result =
+        block_on(worker.execute_mod_async(&module_specifier, None, false));
       assert!(result.is_err());
     })
   }
 
   #[test]
   fn execute_mod_002_hello() {
-    tokio_util::run_in_task(|| {
+    run_in_task(|| {
       // This assumes cwd is project root (an assumption made throughout the
       // tests).
       let mut worker = create_test_worker();
@@ -472,11 +493,8 @@ mod tests {
         .to_owned();
       let module_specifier =
         ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
-      let result = futures::executor::block_on(worker.execute_mod_async(
-        &module_specifier,
-        None,
-        false,
-      ));
+      let result =
+        block_on(worker.execute_mod_async(&module_specifier, None, false));
       assert!(result.is_ok());
     })
   }

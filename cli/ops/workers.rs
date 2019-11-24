@@ -7,7 +7,6 @@ use crate::deno_error::ErrorKind;
 use crate::ops::json_op;
 use crate::startup_data;
 use crate::state::ThreadSafeState;
-use crate::tokio_util;
 use crate::worker::Worker;
 use deno::*;
 use futures;
@@ -20,6 +19,7 @@ use std::convert::From;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::Ordering;
+use std::sync::mpsc;
 use std::task::Context;
 use std::task::Poll;
 
@@ -142,10 +142,13 @@ fn op_create_worker(
   let (int, ext) = ThreadSafeState::create_channels();
   let child_state = ThreadSafeState::new(
     state.global_state.clone(),
+    Some(parent_state.permissions.clone()), // by default share with parent
     Some(module_specifier.clone()),
     include_deno_namespace,
     int,
   )?;
+  // TODO: add a new option to make child worker not sharing permissions
+  // with parent (aka .clone(), requests from child won't reflect in parent)
   let name = format!("USER-WORKER-{}", specifier);
   let deno_main_call = format!("denoMain({})", include_deno_namespace);
   let mut worker =
@@ -153,23 +156,31 @@ fn op_create_worker(
   js_check(worker.execute(&deno_main_call));
   js_check(worker.execute("workerMain()"));
 
-  let exec_cb = move |worker: Worker| {
-    let worker_id = parent_state.add_child_worker(worker);
-    json!(worker_id)
-  };
+  let worker_id = parent_state.add_child_worker(worker.clone());
+  let response = json!(worker_id);
 
   // Has provided source code, execute immediately.
   if has_source_code {
     js_check(worker.execute(&source_code));
-    return Ok(JsonOp::Sync(exec_cb(worker)));
+    return Ok(JsonOp::Sync(response));
   }
 
-  let op = worker
+  // TODO(bartlomieju): this should spawn mod execution on separate tokio task
+  // and block on receving message on a channel or even use sync channel /shrug
+  let (sender, receiver) = mpsc::sync_channel::<Result<(), ErrBox>>(1);
+  let fut = worker
     .execute_mod_async(&module_specifier, None, false)
-    .and_then(move |()| futures::future::ok(exec_cb(worker)));
+    .then(move |result| {
+      sender.send(result).expect("Failed to send message");
+      futures::future::ok(())
+    })
+    .boxed()
+    .compat();
+  tokio::spawn(fut);
 
-  let result = tokio_util::block_on(op.boxed())?;
-  Ok(JsonOp::Sync(result))
+  let result = receiver.recv().expect("Failed to receive message");
+  result?;
+  Ok(JsonOp::Sync(response))
 }
 
 struct GetWorkerClosedFuture {
@@ -276,9 +287,10 @@ fn op_host_post_message(
   let mut table = state.workers.lock().unwrap();
   // TODO: don't return bad resource anymore
   let worker = table.get_mut(&id).ok_or_else(bad_resource)?;
-  worker
+  let fut = worker
     .post_message(msg)
-    .map_err(|e| DenoError::new(ErrorKind::Other, e.to_string()))?;
+    .map_err(|e| DenoError::new(ErrorKind::Other, e.to_string()));
+  futures::executor::block_on(fut)?;
   Ok(JsonOp::Sync(json!({})))
 }
 

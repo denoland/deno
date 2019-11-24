@@ -16,7 +16,6 @@ use deno::Buf;
 use deno::ErrBox;
 use deno::ModuleSpecifier;
 use futures::future::FutureExt;
-use futures::future::TryFutureExt;
 use futures::Future;
 use regex::Regex;
 use std::collections::HashSet;
@@ -230,7 +229,7 @@ impl TsCompiler {
   fn setup_worker(global_state: ThreadSafeGlobalState) -> Worker {
     let (int, ext) = ThreadSafeState::create_channels();
     let worker_state =
-      ThreadSafeState::new(global_state.clone(), None, true, int)
+      ThreadSafeState::new(global_state.clone(), None, None, true, int)
         .expect("Unable to create worker state");
 
     // Count how many times we start the compiler worker.
@@ -272,33 +271,22 @@ impl TsCompiler {
 
     let worker = TsCompiler::setup_worker(global_state.clone());
     let worker_ = worker.clone();
-    worker.post_message(req_msg).unwrap();
-    let first_msg_fut = async move {
-      let result = worker.await;
-      if let Err(err) = result {
-        // TODO(ry) Need to forward the error instead of exiting.
-        eprintln!("{}", err.to_string());
-        std::process::exit(1);
-      }
+
+    async move {
+      worker.post_message(req_msg).await?;
+      worker.await?;
       debug!("Sent message to worker");
-      worker_.get_message().await
-    };
-
-    first_msg_fut.map_err(|_| panic!("not handled")).and_then(
-      move |maybe_msg: Option<Buf>| {
-        debug!("Received message from worker");
-
-        if let Some(msg) = maybe_msg {
-          let json_str = std::str::from_utf8(&msg).unwrap();
-          debug!("Message: {}", json_str);
-          if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
-            return futures::future::err(ErrBox::from(diagnostics));
-          }
+      let maybe_msg = worker_.get_message().await?;
+      debug!("Received message from worker");
+      if let Some(msg) = maybe_msg {
+        let json_str = std::str::from_utf8(&msg).unwrap();
+        debug!("Message: {}", json_str);
+        if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
+          return Err(ErrBox::from(diagnostics));
         }
-
-        futures::future::ok(())
-      },
-    )
+      }
+      Ok(())
+    }
   }
 
   /// Mark given module URL as compiled to avoid multiple compilations of same module
@@ -382,63 +370,27 @@ impl TsCompiler {
       .add("Compile", &module_url.to_string());
     let global_state_ = global_state.clone();
 
-    worker.post_message(req_msg).unwrap();
-    let first_msg_fut = async move {
-      let result = worker.await;
-      if let Err(err) = result {
-        // TODO(ry) Need to forward the error instead of exiting.
-        eprintln!("{}", err.to_string());
-        std::process::exit(1);
-      }
+    async move {
+      worker.post_message(req_msg).await?;
+      worker.await?;
       debug!("Sent message to worker");
-      worker_.get_message().await
-    };
-
-    let fut = first_msg_fut
-      .map_err(|_| panic!("not handled"))
-      .and_then(move |maybe_msg: Option<Buf>| {
-        debug!("Received message from worker");
-
-        if let Some(msg) = maybe_msg {
-          let json_str = std::str::from_utf8(&msg).unwrap();
-          debug!("Message: {}", json_str);
-          if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
-            return futures::future::err(ErrBox::from(diagnostics));
-          }
+      let maybe_msg = worker_.get_message().await?;
+      if let Some(msg) = maybe_msg {
+        let json_str = std::str::from_utf8(&msg).unwrap();
+        debug!("Message: {}", json_str);
+        if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
+          return Err(ErrBox::from(diagnostics));
         }
-
-        futures::future::ok(())
-      })
-      .and_then(move |_| {
-        // if we are this far it means compilation was successful and we can
-        // load compiled filed from disk
-        futures::future::ready(
-          global_state_
-            .ts_compiler
-            .get_compiled_module(&source_file_.url)
-            .map_err(|e| {
-              // TODO: this situation shouldn't happen
-              panic!(
-                "Expected to find compiled file: {} {}",
-                e, source_file_.url
-              )
-            }),
-        )
-      })
-      .and_then(move |compiled_module| {
-        // Explicit drop to keep reference alive until future completes.
-        drop(compiling_job);
-
-        futures::future::ok(compiled_module)
-      })
-      .then(move |r| {
-        debug!(">>>>> compile_sync END");
-        // TODO(ry) do this in worker's destructor.
-        // resource.close();
-        futures::future::ready(r)
-      });
-
-    fut.boxed()
+      }
+      let compiled_module = global_state_
+        .ts_compiler
+        .get_compiled_module(&source_file_.url)
+        .expect("Expected to find compiled file");
+      drop(compiling_job);
+      debug!(">>>>> compile_sync END");
+      Ok(compiled_module)
+    }
+      .boxed()
   }
 
   /// Get associated `CompiledFileMetadata` for given module if it exists.
@@ -521,7 +473,7 @@ impl TsCompiler {
 
         let source_file = self
           .file_fetcher
-          .fetch_source_file(&module_specifier)
+          .fetch_cached_source_file(&module_specifier)
           .expect("Source file not found");
 
         let version_hash = source_code_version_hash(
@@ -629,10 +581,9 @@ impl TsCompiler {
     script_name: &str,
   ) -> Option<SourceFile> {
     if let Some(module_specifier) = self.try_to_resolve(script_name) {
-      return match self.file_fetcher.fetch_source_file(&module_specifier) {
-        Ok(out) => Some(out),
-        Err(_) => None,
-      };
+      return self
+        .file_fetcher
+        .fetch_cached_source_file(&module_specifier);
     }
 
     None
@@ -684,20 +635,22 @@ mod tests {
       String::from("hello.js"),
     ]);
 
-    tokio_util::run(
-      mock_state
+    let fut = async move {
+      let result = mock_state
         .ts_compiler
         .compile_async(mock_state.clone(), &out)
-        .then(|result| {
-          assert!(result.is_ok());
-          assert!(result
-            .unwrap()
-            .code
-            .as_bytes()
-            .starts_with("console.log(\"Hello World\");".as_bytes()));
-          futures::future::ok(())
-        }),
-    )
+        .await;
+
+      assert!(result.is_ok());
+      assert!(result
+        .unwrap()
+        .code
+        .as_bytes()
+        .starts_with("console.log(\"Hello World\");".as_bytes()));
+      Ok(())
+    };
+
+    tokio_util::run(fut.boxed())
   }
 
   #[test]
@@ -718,19 +671,20 @@ mod tests {
       String::from("$deno$/bundle.js"),
     ]);
 
-    tokio_util::run(
-      state
+    let fut = async move {
+      let result = state
         .ts_compiler
         .bundle_async(
           state.clone(),
           module_name,
           Some(String::from("$deno$/bundle.js")),
         )
-        .then(|result| {
-          assert!(result.is_ok());
-          futures::future::ok(())
-        }),
-    )
+        .await;
+
+      assert!(result.is_ok());
+      Ok(())
+    };
+    tokio_util::run(fut.boxed())
   }
 
   #[test]

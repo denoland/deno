@@ -8,7 +8,6 @@ use crate::http_util;
 use crate::http_util::FetchOnceResult;
 use crate::msg;
 use crate::progress::Progress;
-use crate::tokio_util;
 use deno::ErrBox;
 use deno::ModuleSpecifier;
 use futures::future::Either;
@@ -111,12 +110,25 @@ impl SourceFileFetcher {
     Ok(())
   }
 
-  /// Required for TS compiler.
-  pub fn fetch_source_file(
+  /// Required for TS compiler and source maps.
+  pub fn fetch_cached_source_file(
     self: &Self,
     specifier: &ModuleSpecifier,
-  ) -> Result<SourceFile, ErrBox> {
-    tokio_util::block_on(self.fetch_source_file_async(specifier))
+  ) -> Option<SourceFile> {
+    let maybe_source_file = self.source_file_cache.get(specifier.to_string());
+
+    if maybe_source_file.is_some() {
+      return maybe_source_file;
+    }
+
+    // If file is not in memory cache check if it can be found
+    // in local cache - which effectively means trying to fetch
+    // using "--no-fetch" flag. We can safely block on this
+    // future, because it doesn't do any asynchronous action
+    // it that path.
+    let fut = self.get_source_file_async(specifier.as_url(), true, true);
+
+    futures::executor::block_on(fut).ok()
   }
 
   pub fn fetch_source_file_async(
@@ -663,6 +675,7 @@ impl SourceCodeHeaders {
 mod tests {
   use super::*;
   use crate::fs as deno_fs;
+  use crate::tokio_util;
   use tempfile::TempDir;
 
   fn setup_file_fetcher(dir_path: &Path) -> SourceFileFetcher {
@@ -987,45 +1000,45 @@ mod tests {
   fn test_get_source_code_multiple_downloads_of_same_file() {
     let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
-    // http_util::fetch_sync_string requires tokio
-    tokio_util::init(|| {
-      let specifier = ModuleSpecifier::resolve_url(
-        "http://localhost:4545/tests/subdir/mismatch_ext.ts",
-      )
-      .unwrap();
-      let headers_file_name = fetcher.deps_cache.location.join(
-        fetcher.deps_cache.get_cache_filename_with_extension(
-          specifier.as_url(),
-          "headers.json",
-        ),
-      );
+    let specifier = ModuleSpecifier::resolve_url(
+      "http://localhost:4545/tests/subdir/mismatch_ext.ts",
+    )
+    .unwrap();
+    let headers_file_name = fetcher.deps_cache.location.join(
+      fetcher
+        .deps_cache
+        .get_cache_filename_with_extension(specifier.as_url(), "headers.json"),
+    );
 
-      // first download
-      let result = fetcher.fetch_source_file(&specifier);
-      assert!(result.is_ok());
+    // first download
+    tokio_util::run(fetcher.fetch_source_file_async(&specifier).then(|r| {
+      assert!(r.is_ok());
+      futures::future::ok(())
+    }));
 
-      let result = fs::File::open(&headers_file_name);
-      assert!(result.is_ok());
-      let headers_file = result.unwrap();
-      // save modified timestamp for headers file
-      let headers_file_metadata = headers_file.metadata().unwrap();
-      let headers_file_modified = headers_file_metadata.modified().unwrap();
+    let result = fs::File::open(&headers_file_name);
+    assert!(result.is_ok());
+    let headers_file = result.unwrap();
+    // save modified timestamp for headers file
+    let headers_file_metadata = headers_file.metadata().unwrap();
+    let headers_file_modified = headers_file_metadata.modified().unwrap();
 
-      // download file again, it should use already fetched file even though `use_disk_cache` is set to
-      // false, this can be verified using source header file creation timestamp (should be
-      // the same as after first download)
-      let result = fetcher.fetch_source_file(&specifier);
-      assert!(result.is_ok());
+    // download file again, it should use already fetched file even though `use_disk_cache` is set to
+    // false, this can be verified using source header file creation timestamp (should be
+    // the same as after first download)
+    tokio_util::run(fetcher.fetch_source_file_async(&specifier).then(|r| {
+      assert!(r.is_ok());
+      futures::future::ok(())
+    }));
 
-      let result = fs::File::open(&headers_file_name);
-      assert!(result.is_ok());
-      let headers_file_2 = result.unwrap();
-      // save modified timestamp for headers file
-      let headers_file_metadata_2 = headers_file_2.metadata().unwrap();
-      let headers_file_modified_2 = headers_file_metadata_2.modified().unwrap();
+    let result = fs::File::open(&headers_file_name);
+    assert!(result.is_ok());
+    let headers_file_2 = result.unwrap();
+    // save modified timestamp for headers file
+    let headers_file_metadata_2 = headers_file_2.metadata().unwrap();
+    let headers_file_modified_2 = headers_file_metadata_2.modified().unwrap();
 
-      assert_eq!(headers_file_modified, headers_file_modified_2);
-    });
+    assert_eq!(headers_file_modified, headers_file_modified_2);
     drop(http_server_guard);
   }
 
@@ -1427,21 +1440,23 @@ mod tests {
   fn test_fetch_source_file() {
     let (_temp_dir, fetcher) = test_setup();
 
-    tokio_util::init(|| {
-      // Test failure case.
-      let specifier =
-        ModuleSpecifier::resolve_url(file_url!("/baddir/hello.ts")).unwrap();
-      let r = fetcher.fetch_source_file(&specifier);
+    // Test failure case.
+    let specifier =
+      ModuleSpecifier::resolve_url(file_url!("/baddir/hello.ts")).unwrap();
+    tokio_util::run(fetcher.fetch_source_file_async(&specifier).then(|r| {
       assert!(r.is_err());
+      futures::future::ok(())
+    }));
 
-      let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("js/main.ts")
-        .to_owned();
-      let specifier =
-        ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
-      let r = fetcher.fetch_source_file(&specifier);
+    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+      .join("js/main.ts")
+      .to_owned();
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
+    tokio_util::run(fetcher.fetch_source_file_async(&specifier).then(|r| {
       assert!(r.is_ok());
-    })
+      futures::future::ok(())
+    }));
   }
 
   #[test]
@@ -1449,21 +1464,23 @@ mod tests {
     /*recompile ts file*/
     let (_temp_dir, fetcher) = test_setup();
 
-    tokio_util::init(|| {
-      // Test failure case.
-      let specifier =
-        ModuleSpecifier::resolve_url(file_url!("/baddir/hello.ts")).unwrap();
-      let r = fetcher.fetch_source_file(&specifier);
+    // Test failure case.
+    let specifier =
+      ModuleSpecifier::resolve_url(file_url!("/baddir/hello.ts")).unwrap();
+    tokio_util::run(fetcher.fetch_source_file_async(&specifier).then(|r| {
       assert!(r.is_err());
+      futures::future::ok(())
+    }));
 
-      let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("js/main.ts")
-        .to_owned();
-      let specifier =
-        ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
-      let r = fetcher.fetch_source_file(&specifier);
+    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+      .join("js/main.ts")
+      .to_owned();
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
+    tokio_util::run(fetcher.fetch_source_file_async(&specifier).then(|r| {
       assert!(r.is_ok());
-    })
+      futures::future::ok(())
+    }));
   }
 
   #[test]
