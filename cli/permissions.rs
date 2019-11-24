@@ -267,7 +267,7 @@ impl DenoPermissions {
       .request("Deno requests to access to high precision time.")
   }
 
-  pub fn request_plugin(&self) -> PermissionAccessorState {
+  pub fn request_plugin(&mut self) -> PermissionState {
     self
       .allow_plugin
       .request("Deno requests to open native plugins.")
@@ -670,17 +670,17 @@ mod tests {
 
   #[test]
   fn test_permissions_request_plugin() {
-    let perms0 = DenoPermissions::from_flags(&DenoFlags {
+    let mut perms0 = DenoPermissions::from_flags(&DenoFlags {
       ..Default::default()
     });
     set_prompt_result(true);
-    assert_eq!(perms0.request_plugin(), PermissionAccessorState::Allow);
+    assert_eq!(perms0.request_plugin(), PermissionState::Allow);
 
-    let perms1 = DenoPermissions::from_flags(&DenoFlags {
+    let mut perms1 = DenoPermissions::from_flags(&DenoFlags {
       ..Default::default()
     });
     set_prompt_result(false);
-    assert_eq!(perms1.request_plugin(), PermissionAccessorState::Deny);
+    assert_eq!(perms1.request_plugin(), PermissionState::Deny);
   }
 
   #[test]
