@@ -134,6 +134,7 @@ impl SourceFileFetcher {
   pub fn fetch_source_file_async(
     self: &Self,
     specifier: &ModuleSpecifier,
+    maybe_referrer: Option<ModuleSpecifier>,
   ) -> Pin<Box<SourceFileFuture>> {
     let module_url = specifier.as_url().to_owned();
     debug!("fetch_source_file. specifier {} ", &module_url);
@@ -156,12 +157,16 @@ impl SourceFileFetcher {
       .then(move |result| {
         let mut out = match result.map_err(|err| {
           if err.kind() == ErrorKind::NotFound {
-            // For NotFound, change the message to something better.
-            DenoError::new(
-              ErrorKind::NotFound,
-              format!("Cannot resolve module \"{}\"", module_url.to_string()),
-            )
-            .into()
+            let msg = if let Some(referrer) = maybe_referrer {
+              format!(
+                "Cannot resolve module \"{}\" from \"{}\"",
+                module_url.to_string(),
+                referrer
+              )
+            } else {
+              format!("Cannot resolve module \"{}\"", module_url.to_string())
+            };
+            DenoError::new(ErrorKind::NotFound, msg).into()
           } else {
             err
           }
@@ -1011,10 +1016,12 @@ mod tests {
     );
 
     // first download
-    tokio_util::run(fetcher.fetch_source_file_async(&specifier).then(|r| {
-      assert!(r.is_ok());
-      futures::future::ok(())
-    }));
+    tokio_util::run(fetcher.fetch_source_file_async(&specifier, None).then(
+      |r| {
+        assert!(r.is_ok());
+        futures::future::ok(())
+      },
+    ));
 
     let result = fs::File::open(&headers_file_name);
     assert!(result.is_ok());
@@ -1026,10 +1033,12 @@ mod tests {
     // download file again, it should use already fetched file even though `use_disk_cache` is set to
     // false, this can be verified using source header file creation timestamp (should be
     // the same as after first download)
-    tokio_util::run(fetcher.fetch_source_file_async(&specifier).then(|r| {
-      assert!(r.is_ok());
-      futures::future::ok(())
-    }));
+    tokio_util::run(fetcher.fetch_source_file_async(&specifier, None).then(
+      |r| {
+        assert!(r.is_ok());
+        futures::future::ok(())
+      },
+    ));
 
     let result = fs::File::open(&headers_file_name);
     assert!(result.is_ok());
@@ -1443,20 +1452,24 @@ mod tests {
     // Test failure case.
     let specifier =
       ModuleSpecifier::resolve_url(file_url!("/baddir/hello.ts")).unwrap();
-    tokio_util::run(fetcher.fetch_source_file_async(&specifier).then(|r| {
-      assert!(r.is_err());
-      futures::future::ok(())
-    }));
+    tokio_util::run(fetcher.fetch_source_file_async(&specifier, None).then(
+      |r| {
+        assert!(r.is_err());
+        futures::future::ok(())
+      },
+    ));
 
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
       .join("js/main.ts")
       .to_owned();
     let specifier =
       ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
-    tokio_util::run(fetcher.fetch_source_file_async(&specifier).then(|r| {
-      assert!(r.is_ok());
-      futures::future::ok(())
-    }));
+    tokio_util::run(fetcher.fetch_source_file_async(&specifier, None).then(
+      |r| {
+        assert!(r.is_ok());
+        futures::future::ok(())
+      },
+    ));
   }
 
   #[test]
@@ -1467,20 +1480,24 @@ mod tests {
     // Test failure case.
     let specifier =
       ModuleSpecifier::resolve_url(file_url!("/baddir/hello.ts")).unwrap();
-    tokio_util::run(fetcher.fetch_source_file_async(&specifier).then(|r| {
-      assert!(r.is_err());
-      futures::future::ok(())
-    }));
+    tokio_util::run(fetcher.fetch_source_file_async(&specifier, None).then(
+      |r| {
+        assert!(r.is_err());
+        futures::future::ok(())
+      },
+    ));
 
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
       .join("js/main.ts")
       .to_owned();
     let specifier =
       ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
-    tokio_util::run(fetcher.fetch_source_file_async(&specifier).then(|r| {
-      assert!(r.is_ok());
-      futures::future::ok(())
-    }));
+    tokio_util::run(fetcher.fetch_source_file_async(&specifier, None).then(
+      |r| {
+        assert!(r.is_ok());
+        futures::future::ok(())
+      },
+    ));
   }
 
   #[test]
