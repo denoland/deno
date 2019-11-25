@@ -51,7 +51,7 @@ fn op_cache(
 #[derive(Deserialize)]
 struct FetchSourceFilesArgs {
   specifiers: Vec<String>,
-  referrer: String,
+  referrer: Option<String>,
 }
 
 fn op_fetch_source_files(
@@ -65,14 +65,23 @@ fn op_fetch_source_files(
   // to this. Need a test to demonstrate the hole.
   let is_dyn_import = false;
 
+  let (referrer, ref_specifier) = if let Some(referrer) = args.referrer {
+    let specifier = ModuleSpecifier::resolve_url(&referrer)
+      .expect("Referrer is not a valid specifier");
+    (referrer, Some(specifier))
+  } else {
+    // main script import
+    (".".to_string(), None)
+  };
+
   let mut futures = vec![];
   for specifier in &args.specifiers {
     let resolved_specifier =
-      state.resolve(specifier, &args.referrer, false, is_dyn_import)?;
+      state.resolve(specifier, &referrer, false, is_dyn_import)?;
     let fut = state
       .global_state
       .file_fetcher
-      .fetch_source_file_async(&resolved_specifier);
+      .fetch_source_file_async(&resolved_specifier, ref_specifier.clone());
     futures.push(fut);
   }
 

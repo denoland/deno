@@ -176,7 +176,7 @@ async fn print_file_info(worker: Worker, module_specifier: ModuleSpecifier) {
 
   let maybe_source_file = global_state_
     .file_fetcher
-    .fetch_source_file_async(&module_specifier)
+    .fetch_source_file_async(&module_specifier, None)
     .await;
   if let Err(err) = maybe_source_file {
     println!("{}", err);
@@ -197,7 +197,7 @@ async fn print_file_info(worker: Worker, module_specifier: ModuleSpecifier) {
 
   let maybe_compiled = global_state_
     .clone()
-    .fetch_compiled_module(&module_specifier)
+    .fetch_compiled_module(&module_specifier, None)
     .await;
   if let Err(e) = maybe_compiled {
     debug!("compiler error exiting!");
