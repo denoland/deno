@@ -27,6 +27,7 @@ import { parse } from "../flags/mod.ts";
 import * as path from "../path/mod.ts";
 import * as toml from "../encoding/toml.ts";
 import * as yaml from "../encoding/yaml.ts";
+import * as ignore from "./ignore.ts";
 import { ExpandGlobOptions, WalkInfo, expandGlob } from "../fs/mod.ts";
 import { prettier, prettierPlugins } from "./prettier.ts";
 const { args, cwd, exit, readAll, readFile, stdin, stdout, writeFile } = Deno;
@@ -460,7 +461,7 @@ async function resolveConfig(
 /**
  * auto detect .prettierignore and return pattern if file exist.
  */
-async function autoResolveIgnoreFile(): Promise<string[]> {
+async function autoResolveIgnoreFile(): Promise<Set<string>> {
   const files = await Deno.readDir(".");
 
   for (const f of files) {
@@ -469,20 +470,16 @@ async function autoResolveIgnoreFile(): Promise<string[]> {
     }
   }
 
-  return [];
+  return new Set([]);
 }
 
 /**
  * parse prettier ignore file.
  * @param filepath the ignore file path.
  */
-async function resolveIgnoreFile(filepath: string): Promise<string[]> {
+async function resolveIgnoreFile(filepath: string): Promise<Set<string>> {
   const raw = new TextDecoder().decode(await Deno.readFile(filepath));
-
-  return raw
-    .split("\n")
-    .filter((v: string) => !!v.trim() && v.trim().indexOf("#") !== 0)
-    .map(v => v);
+  return ignore.parse(raw);
 }
 
 async function main(opts): Promise<void> {
@@ -532,12 +529,12 @@ async function main(opts): Promise<void> {
   const ignoreFilepath = opts["ignore-path"];
 
   if (ignoreFilepath && ignoreFilepath !== "disable") {
-    const ignorePatterns: string[] =
+    const ignorePatterns =
       ignoreFilepath === "auto"
         ? await autoResolveIgnoreFile()
         : await resolveIgnoreFile(ignoreFilepath);
 
-    ignore = ignore.concat(ignorePatterns);
+    ignore = ignore.concat(Array.from(ignorePatterns));
   }
 
   const files = getTargetFiles(args.length ? args : ["."], ignore);
