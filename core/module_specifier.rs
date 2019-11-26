@@ -11,7 +11,7 @@ pub enum ModuleResolutionError {
   InvalidUrl(ParseError),
   InvalidBaseUrl(ParseError),
   InvalidPath(PathBuf),
-  ImportPrefixMissing(String),
+  ImportPrefixMissing(String, Option<String>),
 }
 use ModuleResolutionError::*;
 
@@ -32,11 +32,19 @@ impl fmt::Display for ModuleResolutionError {
         write!(f, "invalid base URL for relative import: {}", err)
       }
       InvalidPath(ref path) => write!(f, "invalid module path: {:?}", path),
-      ImportPrefixMissing(ref specifier) => write!(
-        f,
-        "relative import path \"{}\" not prefixed with / or ./ or ../",
-        specifier
-      ),
+      ImportPrefixMissing(ref specifier, ref maybe_referrer) => {
+        let msg = format!(
+          "relative import path \"{}\" not prefixed with / or ./ or ../",
+          specifier
+        );
+        let msg = if let Some(referrer) = maybe_referrer {
+          format!("{} Imported from \"{}\"", msg, referrer)
+        } else {
+          msg
+        };
+
+        write!(f, "{}", msg)
+      }
     }
   }
 }
@@ -78,7 +86,12 @@ impl ModuleSpecifier {
           || specifier.starts_with("./")
           || specifier.starts_with("../")) =>
       {
-        return Err(ImportPrefixMissing(specifier.to_string()))
+        let maybe_referrer = if base.is_empty() {
+          None
+        } else {
+          Some(base.to_string())
+        };
+        return Err(ImportPrefixMissing(specifier.to_string(), maybe_referrer));
       }
 
       // 3. Return the result of applying the URL parser to specifier with base
@@ -282,27 +295,42 @@ mod tests {
       (
         "005_more_imports.ts",
         "http://deno.land/core/tests/006_url_imports.ts",
-        ImportPrefixMissing("005_more_imports.ts".to_string()),
+        ImportPrefixMissing(
+          "005_more_imports.ts".to_string(),
+          Some("http://deno.land/core/tests/006_url_imports.ts".to_string()),
+        ),
       ),
       (
         ".tomato",
         "http://deno.land/core/tests/006_url_imports.ts",
-        ImportPrefixMissing(".tomato".to_string()),
+        ImportPrefixMissing(
+          ".tomato".to_string(),
+          Some("http://deno.land/core/tests/006_url_imports.ts".to_string()),
+        ),
       ),
       (
         "..zucchini.mjs",
         "http://deno.land/core/tests/006_url_imports.ts",
-        ImportPrefixMissing("..zucchini.mjs".to_string()),
+        ImportPrefixMissing(
+          "..zucchini.mjs".to_string(),
+          Some("http://deno.land/core/tests/006_url_imports.ts".to_string()),
+        ),
       ),
       (
         r".\yam.es",
         "http://deno.land/core/tests/006_url_imports.ts",
-        ImportPrefixMissing(r".\yam.es".to_string()),
+        ImportPrefixMissing(
+          r".\yam.es".to_string(),
+          Some("http://deno.land/core/tests/006_url_imports.ts".to_string()),
+        ),
       ),
       (
         r"..\yam.es",
         "http://deno.land/core/tests/006_url_imports.ts",
-        ImportPrefixMissing(r"..\yam.es".to_string()),
+        ImportPrefixMissing(
+          r"..\yam.es".to_string(),
+          Some("http://deno.land/core/tests/006_url_imports.ts".to_string()),
+        ),
       ),
       (
         "https://eggplant:b/c",
