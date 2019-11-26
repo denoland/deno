@@ -55,6 +55,7 @@ export let OP_CHOWN: number;
 export let OP_REMOVE: number;
 export let OP_COPY_FILE: number;
 export let OP_STAT: number;
+export let OP_REALPATH: number;
 export let OP_READ_DIR: number;
 export let OP_RENAME: number;
 export let OP_LINK: number;
@@ -97,6 +98,7 @@ export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
     case OP_REMOVE:
     case OP_COPY_FILE:
     case OP_STAT:
+    case OP_REALPATH:
     case OP_READ_DIR:
     case OP_RENAME:
     case OP_LINK:
