@@ -95,7 +95,6 @@ impl log::Log for Logger {
 
 fn create_worker_and_state(
   flags: DenoFlags,
-  argv: Vec<String>,
 ) -> (Worker, ThreadSafeGlobalState) {
   use crate::shell::Shell;
   use std::sync::Arc;
@@ -111,6 +110,8 @@ fn create_worker_and_state(
     }
   });
 
+  // TODO(ry) Remove argv param from ThreadSafeGlobalState::new.
+  let argv = flags.argv.clone();
   let global_state = ThreadSafeGlobalState::new(flags, argv, progress)
     .map_err(deno_error::print_err_and_exit)
     .unwrap();
@@ -248,11 +249,12 @@ async fn print_file_info(worker: Worker, module_specifier: ModuleSpecifier) {
   }
 }
 
-fn info_command(flags: DenoFlags, argv: Vec<String>) {
-  let (mut worker, state) = create_worker_and_state(flags, argv.clone());
+fn info_command(flags: DenoFlags) {
+  let argv_len = flags.argv.len();
+  let (mut worker, state) = create_worker_and_state(flags);
 
   // If it was just "deno info" print location of caches and exit
-  if argv.len() == 1 {
+  if argv_len == 1 {
     return print_cache_info(worker);
   }
 
@@ -276,8 +278,8 @@ fn info_command(flags: DenoFlags, argv: Vec<String>) {
   tokio_util::run(main_future);
 }
 
-fn fetch_command(flags: DenoFlags, argv: Vec<String>) {
-  let (mut worker, state) = create_worker_and_state(flags, argv.clone());
+fn fetch_command(flags: DenoFlags) {
+  let (mut worker, state) = create_worker_and_state(flags);
 
   let main_module = state.main_module.as_ref().unwrap().clone();
 
@@ -294,8 +296,8 @@ fn fetch_command(flags: DenoFlags, argv: Vec<String>) {
   tokio_util::run(main_future);
 }
 
-fn eval_command(flags: DenoFlags, argv: Vec<String>) {
-  let (mut worker, state) = create_worker_and_state(flags, argv);
+fn eval_command(flags: DenoFlags) {
+  let (mut worker, state) = create_worker_and_state(flags);
   let ts_source = state.argv[1].clone();
   // Force TypeScript compile.
   let main_module =
@@ -322,15 +324,11 @@ fn eval_command(flags: DenoFlags, argv: Vec<String>) {
   tokio_util::run(main_future);
 }
 
-fn bundle_command(flags: DenoFlags, argv: Vec<String>) {
-  let (worker, state) = create_worker_and_state(flags, argv);
-
+fn bundle_command(flags: DenoFlags) {
+  let out_file = flags.bundle_output.clone();
+  let (worker, state) = create_worker_and_state(flags);
   let main_module = state.main_module.as_ref().unwrap().clone();
-  assert!(state.argv.len() >= 2);
-  let out_file = match state.argv.len() {
-    3 => Some(state.argv[2].clone()),
-    _ => None,
-  };
+
   debug!(">>>>> bundle_async START");
   // NOTE: we need to poll `worker` otherwise TS compiler worker won't run properly
   let main_future = async move {
@@ -351,8 +349,8 @@ fn bundle_command(flags: DenoFlags, argv: Vec<String>) {
   tokio_util::run(main_future);
 }
 
-fn run_repl(flags: DenoFlags, argv: Vec<String>) {
-  let (mut worker, _state) = create_worker_and_state(flags, argv);
+fn run_repl(flags: DenoFlags) {
+  let (mut worker, _state) = create_worker_and_state(flags);
   // Setup runtime.
   js_check(worker.execute("denoMain()"));
   let main_future = async move {
@@ -363,9 +361,9 @@ fn run_repl(flags: DenoFlags, argv: Vec<String>) {
   tokio_util::run(main_future);
 }
 
-fn run_script(flags: DenoFlags, argv: Vec<String>) {
+fn run_script(flags: DenoFlags) {
   let use_current_thread = flags.current_thread;
-  let (mut worker, state) = create_worker_and_state(flags, argv);
+  let (mut worker, state) = create_worker_and_state(flags);
 
   let main_module = state.main_module.as_ref().unwrap().clone();
   // Normal situation of executing a module.
@@ -406,22 +404,18 @@ fn run_script(flags: DenoFlags, argv: Vec<String>) {
   }
 }
 
-fn version_command() {
-  println!("deno: {}", version::DENO);
-  println!("v8: {}", version::v8());
-  println!("typescript: {}", version::TYPESCRIPT);
-}
-
 pub fn main() {
   #[cfg(windows)]
   ansi_term::enable_ansi_support().ok(); // For Windows 10
 
   log::set_logger(&LOGGER).unwrap();
   let args: Vec<String> = env::args().collect();
-  let (flags, subcommand, argv) = flags::flags_from_vec(args);
+  let flags = flags::flags_from_vec(args);
 
   if let Some(ref v8_flags) = flags.v8_flags {
-    v8_set_flags(v8_flags.clone());
+    let mut v8_flags_ = v8_flags.clone();
+    v8_flags_.insert(0, "UNUSED_BUT_NECESSARY_ARG0".to_string());
+    v8_set_flags(v8_flags_);
   }
 
   let log_level = match flags.log_level {
@@ -430,15 +424,15 @@ pub fn main() {
   };
   log::set_max_level(log_level.to_level_filter());
 
-  match subcommand {
-    DenoSubcommand::Bundle => bundle_command(flags, argv),
+  match flags.subcommand {
+    DenoSubcommand::Bundle => bundle_command(flags),
     DenoSubcommand::Completions => {}
-    DenoSubcommand::Eval => eval_command(flags, argv),
-    DenoSubcommand::Fetch => fetch_command(flags, argv),
-    DenoSubcommand::Info => info_command(flags, argv),
-    DenoSubcommand::Repl => run_repl(flags, argv),
-    DenoSubcommand::Run => run_script(flags, argv),
+    DenoSubcommand::Eval => eval_command(flags),
+    DenoSubcommand::Fetch => fetch_command(flags),
+    DenoSubcommand::Info => info_command(flags),
+    DenoSubcommand::Repl => run_repl(flags),
+    DenoSubcommand::Run => run_script(flags),
     DenoSubcommand::Types => types_command(),
-    DenoSubcommand::Version => version_command(),
+    _ => panic!("bad subcommand"),
   }
 }

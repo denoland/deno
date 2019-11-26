@@ -168,17 +168,17 @@ itest!(_012_async {
 });
 
 itest!(_013_dynamic_import {
-  args: "013_dynamic_import.ts --reload --allow-read",
+  args: "run --reload --allow-read 013_dynamic_import.ts",
   output: "013_dynamic_import.ts.out",
 });
 
 itest!(_014_duplicate_import {
-  args: "014_duplicate_import.ts --reload --allow-read",
+  args: "run --reload --allow-read 014_duplicate_import.ts ",
   output: "014_duplicate_import.ts.out",
 });
 
 itest!(_015_duplicate_parallel_import {
-  args: "015_duplicate_parallel_import.js --reload --allow-read",
+  args: "run --reload --allow-read 015_duplicate_parallel_import.js",
   output: "015_duplicate_parallel_import.js.out",
 });
 
@@ -418,7 +418,7 @@ itest!(lock_check_err {
 });
 
 itest!(lock_check_err2 {
-  args: "run 019_media_types.ts --lock=lock_check_err2.json",
+  args: "run --lock=lock_check_err2.json 019_media_types.ts",
   output: "lock_check_err2.out",
   check_stderr: true,
   exit_code: 10,
@@ -538,7 +538,7 @@ itest!(error_013_missing_script {
 });
 
 itest!(error_014_catch_dynamic_import_error {
-  args: "error_014_catch_dynamic_import_error.js --reload --allow-read",
+  args: "run  --reload --allow-read error_014_catch_dynamic_import_error.js",
   output: "error_014_catch_dynamic_import_error.js.out",
   exit_code: 1,
 });
@@ -641,23 +641,8 @@ itest!(v8_flags {
 });
 
 itest!(v8_help {
-  args: "--v8-options",
+  args: "run --v8-flags=--help",
   output: "v8_help.out",
-});
-
-itest!(version {
-  args: "version",
-  output: "version.out",
-});
-
-itest!(version_long_flag {
-  args: "--version",
-  output: "version.out",
-});
-
-itest!(version_short_flag {
-  args: "-v",
-  output: "version.out",
 });
 
 itest!(wasm {
