@@ -1126,8 +1126,8 @@ fn importmap_arg_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   flags.import_map_path = matches.value_of("importmap").map(ToOwned::to_owned);
 }
 
-// TODO move this to utility module...
-// TODO what does this function even do?
+// TODO(ry) move this to utility module and add test.
+/// Strips fragment part of URL. Panics on bad URL.
 pub fn resolve_urls(urls: Vec<String>) -> Vec<String> {
   use url::Url;
   let mut out: Vec<String> = vec![];
