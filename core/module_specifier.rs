@@ -34,11 +34,11 @@ impl fmt::Display for ModuleResolutionError {
       InvalidPath(ref path) => write!(f, "invalid module path: {:?}", path),
       ImportPrefixMissing(ref specifier, ref maybe_referrer) => {
         let msg = format!(
-          "relative import path \"{}\" not prefixed with / or ./ or ../.",
+          "relative import path \"{}\" not prefixed with / or ./ or ../",
           specifier
         );
         let msg = if let Some(referrer) = maybe_referrer {
-          format!("{} Imported from {}", msg, referrer)
+          format!("{} Imported from \"{}\"", msg, referrer)
         } else {
           msg
         };
