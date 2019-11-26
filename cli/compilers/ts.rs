@@ -229,7 +229,7 @@ impl TsCompiler {
   fn setup_worker(global_state: ThreadSafeGlobalState) -> Worker {
     let (int, ext) = ThreadSafeState::create_channels();
     let worker_state =
-      ThreadSafeState::new(global_state.clone(), None, true, int)
+      ThreadSafeState::new(global_state.clone(), None, None, true, int)
         .expect("Unable to create worker state");
 
     // Count how many times we start the compiler worker.
@@ -473,7 +473,7 @@ impl TsCompiler {
 
         let source_file = self
           .file_fetcher
-          .fetch_source_file(&module_specifier)
+          .fetch_cached_source_file(&module_specifier)
           .expect("Source file not found");
 
         let version_hash = source_code_version_hash(
@@ -581,10 +581,9 @@ impl TsCompiler {
     script_name: &str,
   ) -> Option<SourceFile> {
     if let Some(module_specifier) = self.try_to_resolve(script_name) {
-      return match self.file_fetcher.fetch_source_file(&module_specifier) {
-        Ok(out) => Some(out),
-        Err(_) => None,
-      };
+      return self
+        .file_fetcher
+        .fetch_cached_source_file(&module_specifier);
     }
 
     None

@@ -24,6 +24,7 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op("remove", s.core_op(json_op(s.stateful_op(op_remove))));
   i.register_op("copy_file", s.core_op(json_op(s.stateful_op(op_copy_file))));
   i.register_op("stat", s.core_op(json_op(s.stateful_op(op_stat))));
+  i.register_op("realpath", s.core_op(json_op(s.stateful_op(op_realpath))));
   i.register_op("read_dir", s.core_op(json_op(s.stateful_op(op_read_dir))));
   i.register_op("rename", s.core_op(json_op(s.stateful_op(op_rename))));
   i.register_op("link", s.core_op(json_op(s.stateful_op(op_link))));
@@ -274,6 +275,33 @@ fn op_stat(
       "mode": get_mode(&metadata.permissions()),
       "hasMode": cfg!(target_family = "unix"), // false on windows,
     }))
+  })
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RealpathArgs {
+  promise_id: Option<u64>,
+  path: String,
+}
+
+fn op_realpath(
+  state: &ThreadSafeState,
+  args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: RealpathArgs = serde_json::from_value(args)?;
+  let (_, path_) = deno_fs::resolve_from_cwd(args.path.as_ref())?;
+  state.check_read(&path_)?;
+  let path = args.path.clone();
+  let is_sync = args.promise_id.is_none();
+  blocking_json(is_sync, move || {
+    debug!("op_realpath {}", &path);
+    // corresponds to the realpath on Unix and
+    // CreateFile and GetFinalPathNameByHandle on Windows
+    let realpath = fs::canonicalize(&path)?;
+    let realpath_str = realpath.to_str().unwrap().to_owned().replace("\\", "/");
+    Ok(json!(realpath_str))
   })
 }
 

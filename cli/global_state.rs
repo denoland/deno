@@ -124,13 +124,14 @@ impl ThreadSafeGlobalState {
   pub fn fetch_compiled_module(
     self: &Self,
     module_specifier: &ModuleSpecifier,
+    maybe_referrer: Option<ModuleSpecifier>,
   ) -> impl Future<Output = Result<CompiledModule, ErrBox>> {
     let state1 = self.clone();
     let state2 = self.clone();
 
     self
       .file_fetcher
-      .fetch_source_file_async(&module_specifier)
+      .fetch_source_file_async(&module_specifier, maybe_referrer)
       .and_then(move |out| match out.media_type {
         msg::MediaType::Unknown => state1.js_compiler.compile_async(&out),
         msg::MediaType::Json => state1.json_compiler.compile_async(&out),
