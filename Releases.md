@@ -6,6 +6,30 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.25.0 / 2019.11.26
+
+- feat: Support named exports on bundles (#3352)
+- feat: Add --check for deno fmt (#3369)
+- feat: Add Deno.realpath (#3404)
+- feat: Add ignore parser for std/prettier (#3399)
+- feat: Add std/encoding/yaml module (#3361)
+- feat: Add std/node polyfill for require() (#3382, #3380)
+- feat: Add std/node/process (#3368)
+- feat: Allow op registration during calls in core (#3375)
+- feat: Better error message for missing module (#3402)
+- feat: Support load yaml/yml prettier config (#3370)
+- fix: Make private namespaces in lib.deno_runtime.d.ts more private (#3400)
+- fix: Remote .wasm import content type issue (#3351)
+- fix: Run std tests with cargo test (#3344)
+- fix: deno fmt should respect prettierrc and prettierignore (#3346)
+- fix: std/datetime toIMF bug (#3357)
+- fix: better error for 'relative import path not prefixed with...' (#3405)
+- refactor: Elevate DenoPermissions lock to top level (#3398)
+- refactor: Reorganize flags, removes ability to specify run arguments like
+  `--allow-net` after the script (#3389)
+- refactor: Use futures 0.3 API (#3358, #3359, #3363, #3388, #3381)
+- chore: Remove unneeded tokio deps (#3376)
+
 ### v0.24.0 / 2019.11.14
 
 - feat: Add Node compat module std/node (#3319)
