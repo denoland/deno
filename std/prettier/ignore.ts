@@ -1,10 +1,10 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
 /**
- * Parse the contents of the ignore file and return partterns.
+ * Parse the contents of the ignore file and return patterns.
  * It can parse files like .gitignore/.npmignore/.prettierignore
  * @param ignoreString
- * @returns partterns
+ * @returns patterns
  */
 export function parse(ignoreString: string): Set<string> {
   const partterns = ignoreString
