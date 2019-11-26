@@ -676,56 +676,39 @@ if (import.meta.main) {
 Use `deno help` to see the help text.
 
 ```
-deno
 A secure JavaScript and TypeScript runtime
 
-Docs: https://deno.land/manual.html
+Docs: https://deno.land/std/manual.md
 Modules: https://deno.land/x/
 Bugs: https://github.com/denoland/deno/issues
 
-To run the REPL:
+To run the REPL supply no arguments:
 
   deno
-
-To execute a sandboxed script:
-
-  deno https://deno.land/std/examples/welcome.ts
 
 To evaluate code from the command line:
 
   deno eval "console.log(30933 + 404)"
 
-To get help on the another subcommands (run in this case):
+To execute a script:
 
-  deno help run
+  deno https://deno.land/std/examples/welcome.ts
+
+The default subcommand is 'run'. The above is equivalent to
+
+  deno run https://deno.land/std/examples/welcome.ts
+
+See 'deno help run' for run specific flags.
 
 USAGE:
-    deno [OPTIONS] [SUBCOMMAND]
+    deno [SUBCOMMAND]
 
 OPTIONS:
-    -A, --allow-all                    Allow all permissions
-        --allow-env                    Allow environment access
-        --allow-hrtime                 Allow high resolution time measurement
-        --allow-net=<allow-net>        Allow network access
-        --allow-read=<allow-read>      Allow file system read access
-        --allow-run                    Allow running subprocesses
-        --allow-write=<allow-write>    Allow file system write access
-    -c, --config <FILE>                Load compiler configuration file
-        --current-thread               Use tokio::runtime::current_thread
-    -h, --help                         Prints help information
-        --importmap <FILE>             Load import map file
-        --lock <FILE>                  Check the specified lock file
-        --lock-write                   Write lock file. Use with --lock.
-    -L, --log-level <log-level>        Set log level [possible values: debug, info]
-        --no-fetch                     Do not download remote modules
-    -r, --reload=<CACHE_BLACKLIST>     Reload source code cache (recompile TypeScript)
-        --seed <NUMBER>                Seed Math.random()
-        --v8-flags=<v8-flags>          Set V8 command line options
-        --v8-options                   Print V8 command line options
-    -v, --version                      Print the version
+    -h, --help                     Prints help information
+    -L, --log-level <log-level>    Set log level [possible values: debug, info]
+    -V, --version                  Prints version information
 
 SUBCOMMANDS:
-    [SCRIPT]       Script to run
     bundle         Bundle module and dependencies into single file
     completions    Generate shell completions
     eval           Eval script
@@ -734,17 +717,17 @@ SUBCOMMANDS:
     help           Prints this message or the help of the given subcommand(s)
     info           Show info about cache or info related to source file
     install        Install script as executable
+    repl           Read Eval Print Loop
     run            Run a program given a filename or url to the source code
     test           Run tests
     types          Print runtime TypeScript declarations
-    version        Print the version
     xeval          Eval a script on text segments from stdin
 
 ENVIRONMENT VARIABLES:
-    DENO_DIR        Set deno's base directory
-    NO_COLOR        Set to disable color
-    HTTP_PROXY      Set proxy address for HTTP requests (module downloads, fetch)
-    HTTPS_PROXY     Set proxy address for HTTPS requests (module downloads, fetch)
+    DENO_DIR       Set deno's base directory
+    NO_COLOR       Set to disable color
+    HTTP_PROXY     Proxy address for HTTP requests (module downloads, fetch)
+    HTTPS_PROXY    Same but for HTTPS
 ```
 
 ### Environmental variables
