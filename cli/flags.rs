@@ -13,7 +13,12 @@ macro_rules! svec {
 
 macro_rules! std_url {
   ($x:expr) => {
-    concat!("https://deno.land/std@v0.23.0/", $x)
+    concat!(
+      "https://deno.land/std@v",
+      env!("CARGO_PKG_VERSION"),
+      "/",
+      $x
+    )
   };
 }
 
