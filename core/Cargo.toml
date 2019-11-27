@@ -28,4 +28,4 @@ path = "examples/http_bench.rs"
 
 # tokio is only used for deno_core_http_bench
 [dev_dependencies]
-tokio = { version = "0.2.0", features = ["full"] }
+tokio = "0.1.18"
