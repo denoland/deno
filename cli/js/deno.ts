@@ -56,6 +56,7 @@ export { chownSync, chown } from "./chown.ts";
 export { utimeSync, utime } from "./utime.ts";
 export { removeSync, remove, RemoveOption } from "./remove.ts";
 export { renameSync, rename } from "./rename.ts";
+export { realpathSync, realpath } from "./realpath.ts";
 export { readFileSync, readFile } from "./read_file.ts";
 export { readDirSync, readDir } from "./read_dir.ts";
 export { copyFileSync, copyFile } from "./copy_file.ts";

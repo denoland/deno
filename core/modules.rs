@@ -48,6 +48,7 @@ pub trait Loader: Send + Sync {
   fn load(
     &self,
     module_specifier: &ModuleSpecifier,
+    maybe_referrer: Option<ModuleSpecifier>,
   ) -> Pin<Box<SourceCodeInfoFuture>>;
 }
 
@@ -154,7 +155,7 @@ impl<L: Loader + Unpin> RecursiveLoad<L> {
     // integrated into one thing.
     self
       .pending
-      .push(self.loader.load(&module_specifier).boxed());
+      .push(self.loader.load(&module_specifier, None).boxed());
     self.state = State::LoadingRoot;
 
     Ok(())
@@ -166,6 +167,8 @@ impl<L: Loader + Unpin> RecursiveLoad<L> {
     referrer: &str,
     parent_id: deno_mod,
   ) -> Result<(), ErrBox> {
+    let referrer_specifier = ModuleSpecifier::resolve_url(referrer)
+      .expect("Referrer should be a valid specifier");
     let module_specifier = self.loader.resolve(
       specifier,
       referrer,
@@ -181,9 +184,10 @@ impl<L: Loader + Unpin> RecursiveLoad<L> {
     if !modules.is_registered(module_name)
       && !self.is_pending.contains(&module_specifier)
     {
-      self
-        .pending
-        .push(self.loader.load(&module_specifier).boxed());
+      let fut = self
+        .loader
+        .load(&module_specifier, Some(referrer_specifier.clone()));
+      self.pending.push(fut.boxed());
       self.is_pending.insert(module_specifier);
     }
 
@@ -739,6 +743,7 @@ mod tests {
     fn load(
       &self,
       module_specifier: &ModuleSpecifier,
+      _maybe_referrer: Option<ModuleSpecifier>,
     ) -> Pin<Box<SourceCodeInfoFuture>> {
       let mut loads = self.loads.lock().unwrap();
       loads.push(module_specifier.to_string());

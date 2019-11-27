@@ -171,7 +171,8 @@ class SourceFile {
 
   /** Cache the source file to be able to be retrieved by `moduleSpecifier` and
    * `containingFile`. */
-  cache(moduleSpecifier: string, containingFile: string): void {
+  cache(moduleSpecifier: string, containingFile?: string): void {
+    containingFile = containingFile || "";
     let innerCache = SourceFile._specifierCache.get(containingFile);
     if (!innerCache) {
       innerCache = new Map();
@@ -269,7 +270,7 @@ function fetchAsset(name: string): string {
 /** Ops to Rust to resolve and fetch modules meta data. */
 function fetchSourceFiles(
   specifiers: string[],
-  referrer: string
+  referrer?: string
 ): Promise<SourceFileJson[]> {
   util.log("compiler::fetchSourceFiles", { specifiers, referrer });
   return sendAsync(dispatch.OP_FETCH_SOURCE_FILES, {
@@ -286,7 +287,7 @@ function fetchSourceFiles(
  * that should be actually resolved. */
 async function processImports(
   specifiers: Array<[string, string]>,
-  referrer = ""
+  referrer?: string
 ): Promise<SourceFileJson[]> {
   if (!specifiers.length) {
     return [];

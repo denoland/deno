@@ -178,12 +178,13 @@ impl Loader for ThreadSafeState {
   fn load(
     &self,
     module_specifier: &ModuleSpecifier,
+    maybe_referrer: Option<ModuleSpecifier>,
   ) -> Pin<Box<deno::SourceCodeInfoFuture>> {
     self.metrics.resolve_count.fetch_add(1, Ordering::SeqCst);
     let module_url_specified = module_specifier.to_string();
     let fut = self
       .global_state
-      .fetch_compiled_module(module_specifier)
+      .fetch_compiled_module(module_specifier, maybe_referrer)
       .map_ok(|compiled_module| deno::SourceCodeInfo {
         // Real module name, might be different from initial specifier
         // due to redirections.

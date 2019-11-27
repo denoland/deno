@@ -605,6 +605,21 @@ declare namespace Deno {
     isSymlink(): boolean;
   }
 
+  // @url js/realpath.d.ts
+
+  /** Returns absolute normalized path with symbolic links resolved
+   * synchronously.
+   *
+   *       const realPath = Deno.realpathSync("./some/path");
+   */
+  export function realpathSync(path: string): string;
+
+  /** Returns absolute normalized path with symbolic links resolved.
+   *
+   *       const realPath = await Deno.realpath("./some/path");
+   */
+  export function realpath(path: string): Promise<string>;
+
   // @url js/read_dir.d.ts
 
   /** Reads the directory given by path and returns a list of file info
