@@ -1243,7 +1243,7 @@ fn arg_hacks(mut args: Vec<String>) -> Vec<String> {
   // Instead `-L=debug` must be used
   let mut has_main_module = false;
   for arg in args.iter().skip(1) {
-    if !arg.starts_with("-") {
+    if !arg.starts_with('-') {
       has_main_module = true;
       break;
     }
