@@ -1,5 +1,9 @@
+use deno::*;
+
 #[test]
-fn plugin1() {
-  // Here we should be able to load .so
-  assert!(false); // Placeholder to check that it gets run.
+fn basic() {
+  let src = include_str!("test.js");
+
+  let mut isolate = Isolate::new(StartupData::None, false);
+  js_check(isolate.execute("test.js", src));
 }
