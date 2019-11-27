@@ -23,6 +23,11 @@ pub struct DenoError {
   msg: String,
 }
 
+pub fn print_msg_and_exit(msg: &str) {
+  eprintln!("{}", msg);
+  std::process::exit(1);
+}
+
 pub fn print_err_and_exit(err: ErrBox) {
   eprintln!("{}", err.to_string());
   std::process::exit(1);
