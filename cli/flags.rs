@@ -5,10 +5,19 @@ use clap::Arg;
 use clap::ArgMatches;
 use clap::SubCommand;
 use log::Level;
+use std::collections::HashSet;
 
 /// Creates vector of strings, Vec<String>
 macro_rules! svec {
     ($($x:expr),*) => (vec![$($x.to_string()),*]);
+}
+/// Creates HashSet<String> from string literals
+macro_rules! sset {
+  ($($x:expr),*) => {{
+    let _v = svec![$($x.to_string()),*];
+    let hash_set: HashSet<String> = _v.iter().cloned().collect();
+    hash_set
+  }}
 }
 
 macro_rules! std_url {
@@ -348,7 +357,8 @@ fn xeval_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   flags.argv.push(code.to_string());
 }
 
-fn repl_parse(flags: &mut DenoFlags, _matches: &clap::ArgMatches) {
+fn repl_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
+  v8_flags_arg_parse(flags, matches);
   flags.subcommand = DenoSubcommand::Repl;
   flags.allow_net = true;
   flags.allow_env = true;
@@ -404,6 +414,7 @@ fn run_test_args_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   lock_args_parse(flags, matches);
   importmap_arg_parse(flags, matches);
   config_arg_parse(flags, matches);
+  v8_flags_arg_parse(flags, matches);
 
   if matches.is_present("allow-read") {
     if matches.value_of("allow-read").is_some() {
@@ -462,11 +473,6 @@ fn run_test_args_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
 
   if matches.is_present("current-thread") {
     flags.current_thread = true;
-  }
-
-  if let Some(v8_flags) = matches.values_of("v8-flags") {
-    let s: Vec<String> = v8_flags.map(String::from).collect();
-    flags.v8_flags = Some(s);
   }
 
   if matches.is_present("seed") {
@@ -696,7 +702,9 @@ instead of being alone on the next line (does not apply to self closing elements
 }
 
 fn repl_subcommand<'a, 'b>() -> App<'a, 'b> {
-  SubCommand::with_name("repl").about("Read Eval Print Loop")
+  SubCommand::with_name("repl")
+    .about("Read Eval Print Loop")
+    .arg(v8_flags_arg())
 }
 
 fn install_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -884,6 +892,7 @@ fn run_test_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
     .arg(config_arg())
     .arg(lock_arg())
     .arg(lock_write_arg())
+    .arg(v8_flags_arg())
     .arg(
       Arg::with_name("allow-read")
         .long("allow-read")
@@ -952,14 +961,6 @@ fn run_test_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
           Ok(_) => Ok(()),
           Err(_) => Err("Seed should be a number".to_string()),
         }),
-    )
-    .arg(
-      Arg::with_name("v8-flags")
-        .long("v8-flags")
-        .takes_value(true)
-        .use_delimiter(true)
-        .require_equals(true)
-        .help("Set V8 command line options. For help: --v8-flags=--help"),
     )
 }
 
@@ -1126,6 +1127,22 @@ fn importmap_arg_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   flags.import_map_path = matches.value_of("importmap").map(ToOwned::to_owned);
 }
 
+fn v8_flags_arg<'a, 'b>() -> Arg<'a, 'b> {
+  Arg::with_name("v8-flags")
+    .long("v8-flags")
+    .takes_value(true)
+    .use_delimiter(true)
+    .require_equals(true)
+    .help("Set V8 command line options. For help: --v8-flags=--help")
+}
+
+fn v8_flags_arg_parse(flags: &mut DenoFlags, matches: &ArgMatches) {
+  if let Some(v8_flags) = matches.values_of("v8-flags") {
+    let s: Vec<String> = v8_flags.map(String::from).collect();
+    flags.v8_flags = Some(s);
+  }
+}
+
 // TODO(ry) move this to utility module and add test.
 /// Strips fragment part of URL. Panics on bad URL.
 pub fn resolve_urls(urls: Vec<String>) -> Vec<String> {
@@ -1189,40 +1206,70 @@ fn arg_hacks(mut args: Vec<String>) -> Vec<String> {
   // to do "deno script.js" instead of "deno run script.js".
   // This function insert the "run" into the second position of the args.
   assert!(!args.is_empty());
+  // Rational:
+  // deno -> deno repl
   if args.len() == 1 {
-    // Default to Repl subcommand.
     args.insert(1, "repl".to_string());
-  } else {
-    // TODO don't have another list of subcommands here to maintain....
-    if args[1] != "bundle"
-      && args[1] != "completions"
-      && args[1] != "eval"
-      && args[1] != "fetch"
-      && args[1] != "fmt"
-      && args[1] != "test"
-      && args[1] != "info"
-      && args[1] != "repl"
-      && args[1] != "run"
-      && args[1] != "types"
-      && args[1] != "install"
-      && args[1] != "help"
-      && args[1] != "version"
-      && args[1] != "xeval"
-      && args[1] != "-h"
-      && args[1] != "--help"
-      && args[1] != "-V"
-      && args[1] != "--version"
-    {
-      args.insert(1, "run".to_string());
+    return args;
+  }
+  let subcommands = sset![
+    "bundle",
+    "completions",
+    "eval",
+    "fetch",
+    "fmt",
+    "test",
+    "info",
+    "repl",
+    "run",
+    "types",
+    "install",
+    "help",
+    "version",
+    "xeval"
+  ];
+  let modifier_flags = sset!["-h", "--help", "-V", "--version"];
+  // deno [subcommand|behavior modifier flags] -> do nothing
+  if subcommands.contains(&args[1]) || modifier_flags.contains(&args[1]) {
+    return args;
+  }
+  // This is not perfect either, since originally we should also
+  // support e.g. `-L debug` which `debug` would be treated as main module.
+  // Instead `-L=debug` must be used
+  let mut has_main_module = false;
+  for arg in args.iter().skip(1) {
+    if !arg.starts_with('-') {
+      has_main_module = true;
+      break;
     }
   }
-
+  if has_main_module {
+    // deno ...-[flags] NAME ... -> deno run ...-[flags] NAME ...
+    args.insert(1, "run".to_string());
+  } else {
+    // deno ...-[flags] -> deno repl ...-[flags]
+    args.insert(1, "repl".to_string());
+  }
   args
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn arg_hacks_test() {
+    let args0 = arg_hacks(svec!["deno", "--version"]);
+    assert_eq!(args0, ["deno", "--version"]);
+    let args1 = arg_hacks(svec!["deno"]);
+    assert_eq!(args1, ["deno", "repl"]);
+    let args2 = arg_hacks(svec!["deno", "-L=debug", "-h"]);
+    assert_eq!(args2, ["deno", "repl", "-L=debug", "-h"]);
+    let args3 = arg_hacks(svec!["deno", "script.js"]);
+    assert_eq!(args3, ["deno", "run", "script.js"]);
+    let args4 = arg_hacks(svec!["deno", "-A", "script.js", "-L=info"]);
+    assert_eq!(args4, ["deno", "run", "-A", "script.js", "-L=info"]);
+  }
 
   #[test]
   fn version() {
