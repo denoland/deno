@@ -13,18 +13,18 @@ extern crate log;
 extern crate lazy_static;
 
 use deno::*;
+use futures::future::poll_fn;
 use futures::future::Future;
 use futures::future::FutureExt;
-use futures::future::TryFutureExt;
 use std::env;
 use std::io::Error;
 use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::pin::Pin;
-use std::sync::Mutex;
-use std::sync::MutexGuard;
-use tokio::io::AsyncRead;
+use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWrite;
+use tokio::sync::Mutex;
+use tokio::sync::MutexGuard;
 
 static LOGGER: Logger = Logger;
 
@@ -114,27 +114,20 @@ fn http_op(
 ) -> impl Fn(&[u8], Option<PinnedBuf>) -> CoreOp {
   move |control: &[u8], zero_copy_buf: Option<PinnedBuf>| -> CoreOp {
     let record = Record::from(control);
+    let mut record_a = record.clone();
     let is_sync = record.promise_id == 0;
     let op = handler(record.clone(), zero_copy_buf);
 
-    let mut record_a = record.clone();
-    let mut record_b = record.clone();
-
-    let fut = Box::new(
-      op.and_then(move |result| {
-        record_a.result = result;
-        futures::future::ok(record_a)
-      })
-      .or_else(|err| {
-        eprintln!("unexpected err {}", err);
-        record_b.result = -1;
-        futures::future::ok(record_b)
-      })
-      .then(|result: Result<Record, ()>| {
-        let record = result.unwrap();
-        futures::future::ok(record.into())
-      }),
-    );
+    let fut = async move {
+      match op.await {
+        Ok(result) => record_a.result = result,
+        Err(err) => {
+          eprintln!("unexpected err {}", err);
+          record_a.result = -1;
+        }
+      };
+      Ok(record_a.into())
+    };
 
     if is_sync {
       Op::Sync(futures::executor::block_on(fut).unwrap())
@@ -206,8 +199,8 @@ lazy_static! {
     Mutex::new(ResourceTable::default());
 }
 
-fn lock_resource_table<'a>() -> MutexGuard<'a, ResourceTable> {
-  RESOURCE_TABLE.lock().unwrap()
+async fn lock_resource_table<'a>() -> MutexGuard<'a, ResourceTable> {
+  RESOURCE_TABLE.lock().await
 }
 
 fn op_accept(
@@ -217,18 +210,14 @@ fn op_accept(
   let rid = record.arg as u32;
   debug!("accept {}", rid);
 
-  let accept_fut = futures::future::poll_fn(move |cx| {
-    let mut table = lock_resource_table();
+  let fut = async move {
+    let mut table = lock_resource_table().await;
     let listener =
       table.get_mut::<TcpListener>(rid).ok_or_else(bad_resource)?;
     let listener = &mut listener.0;
-    listener.poll_accept(cx)
-  });
-
-  let fut = async move {
-    let (stream, addr) = accept_fut.await?;
+    let (stream, addr) = listener.accept().await?;
     debug!("accept success {}", addr);
-    let mut table = lock_resource_table();
+    let mut table = lock_resource_table().await;
     let rid = table.add("tcpStream", Box::new(TcpStream(stream)));
     Ok(rid as i32)
   };
@@ -244,7 +233,7 @@ fn op_listen(
   let fut = async {
     let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    let mut table = lock_resource_table();
+    let mut table = lock_resource_table().await;
     let rid = table.add("tcpListener", Box::new(TcpListener(listener)));
     Ok(rid as i32)
   };
@@ -257,9 +246,10 @@ fn op_close(
   _zero_copy_buf: Option<PinnedBuf>,
 ) -> Pin<Box<HttpOp>> {
   debug!("close");
+  let rid = record.arg as u32;
+
   let fut = async move {
-    let rid = record.arg as u32;
-    let mut table = lock_resource_table();
+    let mut table = lock_resource_table().await;
     match table.close(rid) {
       Some(_) => Ok(0),
       None => Err(bad_resource()),
@@ -276,15 +266,12 @@ fn op_read(
   debug!("read rid={}", rid);
   let mut zero_copy_buf = zero_copy_buf.unwrap();
 
-  let read_fut = futures::future::poll_fn(move |cx| {
-    let mut table = lock_resource_table();
-    let stream = table.get_mut::<TcpStream>(rid).ok_or_else(bad_resource)?;
-    let pinned_stream = Pin::new(&mut stream.0);
-    pinned_stream.poll_read(cx, &mut zero_copy_buf)
-  });
-
   let fut = async move {
-    let nread = read_fut.await?;
+    let mut table = lock_resource_table().await;
+    let stream_resource =
+      table.get_mut::<TcpStream>(rid).ok_or_else(bad_resource)?;
+    let stream = &mut stream_resource.0;
+    let nread = stream.read(&mut zero_copy_buf).await?;
     debug!("read success {}", nread);
     Ok(nread as i32)
   };
@@ -300,14 +287,17 @@ fn op_write(
   debug!("write rid={}", rid);
   let zero_copy_buf = zero_copy_buf.unwrap();
 
-  let write_fut = futures::future::poll_fn(move |cx| {
-    let mut table = lock_resource_table();
-    let stream = table.get_mut::<TcpStream>(rid).ok_or_else(bad_resource)?;
-    let pinned_stream = Pin::new(&mut stream.0);
-    pinned_stream.poll_write(cx, &zero_copy_buf)
-  });
-
   let fut = async move {
+    let mut table = lock_resource_table().await;
+    let stream = table.get_mut::<TcpStream>(rid).ok_or_else(bad_resource)?;
+    // I'd prefer to do stream.0.write(&zero_copy_buf).await? but it seems
+    // `PinnedBuf` does not implement Sync for its fields.
+    // (error: `std::ptr::NonNull<u8>` cannot be shared between threads safely)
+    // It's strange because `stream.read().await` works fine /shrug
+    let write_fut = poll_fn(move |cx| {
+      let pinned_stream = Pin::new(&mut stream.0);
+      pinned_stream.poll_write(cx, &zero_copy_buf)
+    });
     let nwritten = write_fut.await?;
     debug!("write success {}", nwritten);
     Ok(nwritten as i32)
