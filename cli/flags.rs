@@ -358,6 +358,7 @@ fn xeval_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
 }
 
 fn repl_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
+  v8_flags_arg_parse(flags, matches);
   flags.subcommand = DenoSubcommand::Repl;
   flags.allow_net = true;
   flags.allow_env = true;
@@ -365,10 +366,6 @@ fn repl_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   flags.allow_read = true;
   flags.allow_write = true;
   flags.allow_hrtime = true;
-  if let Some(v8_flags) = matches.values_of("v8-flags") {
-    let s: Vec<String> = v8_flags.map(String::from).collect();
-    flags.v8_flags = Some(s);
-  }
 }
 
 fn eval_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
@@ -417,6 +414,7 @@ fn run_test_args_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   lock_args_parse(flags, matches);
   importmap_arg_parse(flags, matches);
   config_arg_parse(flags, matches);
+  v8_flags_arg_parse(flags, matches);
 
   if matches.is_present("allow-read") {
     if matches.value_of("allow-read").is_some() {
@@ -475,11 +473,6 @@ fn run_test_args_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
 
   if matches.is_present("current-thread") {
     flags.current_thread = true;
-  }
-
-  if let Some(v8_flags) = matches.values_of("v8-flags") {
-    let s: Vec<String> = v8_flags.map(String::from).collect();
-    flags.v8_flags = Some(s);
   }
 
   if matches.is_present("seed") {
@@ -711,14 +704,7 @@ instead of being alone on the next line (does not apply to self closing elements
 fn repl_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("repl")
     .about("Read Eval Print Loop")
-    .arg(
-      Arg::with_name("v8-flags")
-        .long("v8-flags")
-        .takes_value(true)
-        .use_delimiter(true)
-        .require_equals(true)
-        .help("Set V8 command line options. For help: --v8-flags=--help"),
-    )
+    .arg(v8_flags_arg())
 }
 
 fn install_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -906,6 +892,7 @@ fn run_test_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
     .arg(config_arg())
     .arg(lock_arg())
     .arg(lock_write_arg())
+    .arg(v8_flags_arg())
     .arg(
       Arg::with_name("allow-read")
         .long("allow-read")
@@ -974,14 +961,6 @@ fn run_test_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
           Ok(_) => Ok(()),
           Err(_) => Err("Seed should be a number".to_string()),
         }),
-    )
-    .arg(
-      Arg::with_name("v8-flags")
-        .long("v8-flags")
-        .takes_value(true)
-        .use_delimiter(true)
-        .require_equals(true)
-        .help("Set V8 command line options. For help: --v8-flags=--help"),
     )
 }
 
@@ -1146,6 +1125,22 @@ Examples: https://github.com/WICG/import-maps#the-import-map",
 
 fn importmap_arg_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   flags.import_map_path = matches.value_of("importmap").map(ToOwned::to_owned);
+}
+
+fn v8_flags_arg<'a, 'b>() -> Arg<'a, 'b> {
+  Arg::with_name("v8-flags")
+    .long("v8-flags")
+    .takes_value(true)
+    .use_delimiter(true)
+    .require_equals(true)
+    .help("Set V8 command line options. For help: --v8-flags=--help")
+}
+
+fn v8_flags_arg_parse(flags: &mut DenoFlags, matches: &ArgMatches) {
+  if let Some(v8_flags) = matches.values_of("v8-flags") {
+    let s: Vec<String> = v8_flags.map(String::from).collect();
+    flags.v8_flags = Some(s);
+  }
 }
 
 // TODO(ry) move this to utility module and add test.
