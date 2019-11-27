@@ -53,7 +53,7 @@ pub mod version;
 pub mod worker;
 
 use crate::deno_error::js_check;
-use crate::deno_error::print_err_and_exit;
+use crate::deno_error::{print_err_and_exit, print_msg_and_exit};
 use crate::global_state::ThreadSafeGlobalState;
 use crate::ops::io::get_stdio;
 use crate::progress::Progress;
@@ -365,7 +365,11 @@ fn run_script(flags: DenoFlags) {
   let use_current_thread = flags.current_thread;
   let (mut worker, state) = create_worker_and_state(flags);
 
-  let main_module = state.main_module.as_ref().unwrap().clone();
+  let maybe_main_module = state.main_module.as_ref();
+  if maybe_main_module.is_none() {
+    print_msg_and_exit("Please provide a name to the main script to run.");
+  }
+  let main_module = maybe_main_module.unwrap().clone();
   // Normal situation of executing a module.
 
   // Setup runtime.
