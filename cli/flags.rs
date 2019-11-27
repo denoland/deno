@@ -472,6 +472,7 @@ fn run_test_args_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
     flags.allow_run = true;
     flags.allow_read = true;
     flags.allow_write = true;
+    flags.allow_plugin = true;
     flags.allow_hrtime = true;
   }
   if matches.is_present("no-fetch") {
