@@ -9,12 +9,12 @@ use deno::{Buf, PinnedBuf};
 use futures::future::FutureExt;
 
 fn init(context: &mut dyn PluginInitContext) {
-  context.register_op("test_io_sync", Box::new(op_test_io_sync));
-  context.register_op("test_io_async", Box::new(op_test_io_async));
+  context.register_op("testSync", Box::new(op_test_sync));
+  context.register_op("testAsync", Box::new(op_test_async));
 }
 init_fn!(init);
 
-pub fn op_test_io_sync(data: &[u8], zero_copy: Option<PinnedBuf>) -> CoreOp {
+pub fn op_test_sync(data: &[u8], zero_copy: Option<PinnedBuf>) -> CoreOp {
   if let Some(buf) = zero_copy {
     let data_str = std::str::from_utf8(&data[..]).unwrap();
     let buf_str = std::str::from_utf8(&buf[..]).unwrap();
@@ -28,7 +28,7 @@ pub fn op_test_io_sync(data: &[u8], zero_copy: Option<PinnedBuf>) -> CoreOp {
   Op::Sync(result_box)
 }
 
-pub fn op_test_io_async(data: &[u8], zero_copy: Option<PinnedBuf>) -> CoreOp {
+pub fn op_test_async(data: &[u8], zero_copy: Option<PinnedBuf>) -> CoreOp {
   let data_str = std::str::from_utf8(&data[..]).unwrap().to_string();
   let fut = async move {
     if let Some(buf) = zero_copy {

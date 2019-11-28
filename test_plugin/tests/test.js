@@ -15,30 +15,20 @@ const filename = `../target/${Deno.args[1]}/${filenamePrefix}${filenameBase}${fi
 
 const plugin = Deno.openPlugin(filename);
 
-// eslint-disable-next-line @typescript-eslint/camelcase
-const test_io_sync = plugin.ops.test_io_sync;
-// eslint-disable-next-line @typescript-eslint/camelcase
-const test_io_async = plugin.ops.test_io_async;
+const { testSync, testAsync } = plugin.ops;
 
 const textDecoder = new TextDecoder();
 
-{
-  // eslint-disable-next-line @typescript-eslint/camelcase
-  const response = test_io_sync.dispatch(
-    new Uint8Array([116, 101, 115, 116]),
-    new Uint8Array([116, 101, 115, 116])
-  );
+const response = testSync.dispatch(
+  new Uint8Array([116, 101, 115, 116]),
+  new Uint8Array([116, 101, 115, 116])
+);
+console.log(`Native Binding Sync Response: ${textDecoder.decode(response)}`);
 
-  console.log(`Native Binding Sync Response: ${textDecoder.decode(response)}`);
-}
-
-// eslint-disable-next-line @typescript-eslint/camelcase
-test_io_async.setAsyncHandler(response => {
+testAsync.setAsyncHandler(response => {
   console.log(`Native Binding Async Response: ${textDecoder.decode(response)}`);
 });
-
-// eslint-disable-next-line @typescript-eslint/camelcase
-const response = test_io_async.dispatch(
+const response = testAsync.dispatch(
   new Uint8Array([116, 101, 115, 116]),
   new Uint8Array([116, 101, 115, 116])
 );
