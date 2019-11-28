@@ -296,10 +296,10 @@ itest!(_034_onload {
   output: "034_onload.out",
 });
 
-itest!(_035_no_fetch_flag {
+itest!(_035_no_remote_flag {
   args:
-    "--reload --no-fetch http://127.0.0.1:4545/cli/tests/019_media_types.ts",
-  output: "035_no_fetch_flag.out",
+    "--reload --no-remote http://127.0.0.1:4545/cli/tests/019_media_types.ts",
+  output: "035_no_remote_flag.out",
   exit_code: 1,
   check_stderr: true,
   http_server: true,

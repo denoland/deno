@@ -77,7 +77,7 @@ pub struct DenoFlags {
   pub allow_run: bool,
   pub allow_hrtime: bool,
   pub no_prompts: bool,
-  pub no_fetch: bool,
+  pub no_remote: bool,
   pub seed: Option<u64>,
   pub v8_flags: Option<Vec<String>>,
   // Use tokio::runtime::current_thread
@@ -467,8 +467,8 @@ fn run_test_args_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
     flags.allow_write = true;
     flags.allow_hrtime = true;
   }
-  if matches.is_present("no-fetch") {
-    flags.no_fetch = true;
+  if matches.is_present("no-remote") {
+    flags.no_remote = true;
   }
 
   if matches.is_present("current-thread") {
@@ -942,9 +942,9 @@ fn run_test_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .help("Allow all permissions"),
     )
     .arg(
-      Arg::with_name("no-fetch")
-        .long("no-fetch")
-        .help("Do not download remote modules"),
+      Arg::with_name("no-remote")
+        .long("no-remote")
+        .help("Do not resolve remote modules"),
     )
     .arg(
       Arg::with_name("current-thread")
@@ -2056,14 +2056,14 @@ mod tests {
   */
 
   #[test]
-  fn no_fetch() {
-    let r = flags_from_vec_safe(svec!["deno", "--no-fetch", "script.ts"]);
+  fn no_remote() {
+    let r = flags_from_vec_safe(svec!["deno", "--no-remote", "script.ts"]);
     assert_eq!(
       r.unwrap(),
       DenoFlags {
         subcommand: DenoSubcommand::Run,
         argv: svec!["deno", "script.ts"],
-        no_fetch: true,
+        no_remote: true,
         ..DenoFlags::default()
       }
     );
