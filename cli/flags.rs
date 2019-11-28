@@ -393,6 +393,7 @@ fn fetch_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   lock_args_parse(flags, matches);
   importmap_arg_parse(flags, matches);
   config_arg_parse(flags, matches);
+  no_remote_arg_parse(flags, matches);
   if let Some(file) = matches.value_of("file") {
     flags.argv.push(file.into());
   }
@@ -415,6 +416,7 @@ fn run_test_args_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   importmap_arg_parse(flags, matches);
   config_arg_parse(flags, matches);
   v8_flags_arg_parse(flags, matches);
+  no_remote_arg_parse(flags, matches);
 
   if matches.is_present("allow-read") {
     if matches.value_of("allow-read").is_some() {
@@ -466,9 +468,6 @@ fn run_test_args_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
     flags.allow_read = true;
     flags.allow_write = true;
     flags.allow_hrtime = true;
-  }
-  if matches.is_present("no-remote") {
-    flags.no_remote = true;
   }
 
   if matches.is_present("current-thread") {
@@ -866,6 +865,7 @@ fn fetch_subcommand<'a, 'b>() -> App<'a, 'b> {
     .arg(lock_write_arg())
     .arg(importmap_arg())
     .arg(config_arg())
+    .arg(no_remote_arg())
     .arg(Arg::with_name("file").takes_value(true).required(true))
     .about("Fetch the dependencies")
     .long_about(
@@ -892,6 +892,7 @@ fn run_test_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
     .arg(config_arg())
     .arg(lock_arg())
     .arg(lock_write_arg())
+    .arg(no_remote_arg())
     .arg(v8_flags_arg())
     .arg(
       Arg::with_name("allow-read")
@@ -940,11 +941,6 @@ fn run_test_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .short("A")
         .long("allow-all")
         .help("Allow all permissions"),
-    )
-    .arg(
-      Arg::with_name("no-remote")
-        .long("no-remote")
-        .help("Do not resolve remote modules"),
     )
     .arg(
       Arg::with_name("current-thread")
@@ -1140,6 +1136,18 @@ fn v8_flags_arg_parse(flags: &mut DenoFlags, matches: &ArgMatches) {
   if let Some(v8_flags) = matches.values_of("v8-flags") {
     let s: Vec<String> = v8_flags.map(String::from).collect();
     flags.v8_flags = Some(s);
+  }
+}
+
+fn no_remote_arg<'a, 'b>() -> Arg<'a, 'b> {
+  Arg::with_name("no-remote")
+    .long("no-remote")
+    .help("Do not resolve remote modules")
+}
+
+fn no_remote_arg_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
+  if matches.is_present("no-remote") {
+    flags.no_remote = true;
   }
 }
 
