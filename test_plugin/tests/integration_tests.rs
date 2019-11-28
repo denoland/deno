@@ -2,6 +2,7 @@ use deno_cli::test_util::*;
 use std::process::Command;
 
 fn deno_cmd() -> Command {
+  assert!(deno_exe_path().exists());
   Command::new(deno_exe_path())
 }
 
@@ -21,9 +22,8 @@ fn basic() {
     .unwrap();
   let stdout = std::str::from_utf8(&output.stdout).unwrap();
   let stderr = std::str::from_utf8(&output.stderr).unwrap();
-  //println!("stdout {:?}", stdout);
-  //println!("stderr {:?}", stderr);
   if !output.status.success() {
+    println!("stdout {}", stdout);
     println!("stderr {}", stderr);
   }
   assert!(output.status.success());
