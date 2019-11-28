@@ -9,5 +9,8 @@ publish = false
 crate-type = ["cdylib"]
 
 [dependencies]
-deno = { path = "../core" }
 futures = "0.3"
+deno = { path = "../core" }
+
+[dev-dependencies]
+deno_cli = { path = "../cli" }

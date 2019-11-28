@@ -1,12 +1,12 @@
 import { sendSync } from "./dispatch_json.ts";
-import { OP_OPEN_NATIVE_PLUGIN, setPluginAsyncHandler } from "./dispatch.ts";
+import { OP_OPEN_PLUGIN, setPluginAsyncHandler } from "./dispatch.ts";
 import { core } from "./core.ts";
 
 export interface AsyncHandler {
   (msg: Uint8Array): void;
 }
 
-interface NativePluginOp {
+interface PluginOp {
   dispatch(
     control: Uint8Array,
     zeroCopy?: ArrayBufferView | null
@@ -14,7 +14,7 @@ interface NativePluginOp {
   setAsyncHandler(handler: AsyncHandler): void;
 }
 
-class NativePluginOpImpl implements NativePluginOp {
+class PluginOpImpl implements PluginOp {
   constructor(private readonly opId: number) {}
 
   dispatch(
@@ -31,22 +31,22 @@ class NativePluginOpImpl implements NativePluginOp {
 
 // TODO(afinch7): add close method.
 
-interface NativePlugin {
+interface Plugin {
   ops: {
-    [name: string]: NativePluginOp;
+    [name: string]: PluginOp;
   };
 }
 
-class NativePluginImpl implements NativePlugin {
-  private _ops: { [name: string]: NativePluginOp } = {};
+class PluginImpl implements Plugin {
+  private _ops: { [name: string]: PluginOp } = {};
 
   constructor(private readonly rid: number, ops: { [name: string]: number }) {
     for (const op in ops) {
-      this._ops[op] = new NativePluginOpImpl(ops[op]);
+      this._ops[op] = new PluginOpImpl(ops[op]);
     }
   }
 
-  get ops(): { [name: string]: NativePluginOp } {
+  get ops(): { [name: string]: PluginOp } {
     return Object.assign({}, this._ops);
   }
 }
@@ -58,9 +58,9 @@ interface OpenPluginResponse {
   };
 }
 
-export function openPlugin(filename: string): NativePlugin {
-  const response: OpenPluginResponse = sendSync(OP_OPEN_NATIVE_PLUGIN, {
+export function openPlugin(filename: string): Plugin {
+  const response: OpenPluginResponse = sendSync(OP_OPEN_PLUGIN, {
     filename
   });
-  return new NativePluginImpl(response.rid, response.ops);
+  return new PluginImpl(response.rid, response.ops);
 }

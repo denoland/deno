@@ -1,4 +1,4 @@
-const filenameBase = "test_native_plugin";
+const filenameBase = "test_plugin";
 
 let filenameSuffix = ".so";
 let filenamePrefix = "lib";
@@ -11,9 +11,9 @@ if (Deno.build.os === "mac") {
   filenameSuffix = ".dylib";
 }
 
-const filename = `${filenamePrefix}${filenameBase}${filenameSuffix}`;
+const filename = `../target/${Deno.args[1]}/${filenamePrefix}${filenameBase}${filenameSuffix}`;
 
-const plugin = Deno.openPlugin(`./../../target/${Deno.args[1]}/${filename}`);
+const plugin = Deno.openPlugin(filename);
 
 // eslint-disable-next-line @typescript-eslint/camelcase
 const test_io_sync = plugin.ops.test_io_sync;

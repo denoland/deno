@@ -68,15 +68,15 @@ export let OP_CWD: number;
 export let OP_FETCH_ASSET: number;
 export let OP_DIAL_TLS: number;
 export let OP_HOSTNAME: number;
-export let OP_OPEN_NATIVE_PLUGIN: number;
+export let OP_OPEN_PLUGIN: number;
 
-const NATIVE_PLUGIN_ASYNC_HANDLER_MAP: Map<number, AsyncHandler> = new Map();
+const PLUGIN_ASYNC_HANDLER_MAP: Map<number, AsyncHandler> = new Map();
 
 export function setPluginAsyncHandler(
   opId: number,
   handler: AsyncHandler
 ): void {
-  NATIVE_PLUGIN_ASYNC_HANDLER_MAP.set(opId, handler);
+  PLUGIN_ASYNC_HANDLER_MAP.set(opId, handler);
 }
 
 export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
@@ -122,7 +122,7 @@ export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
       json.asyncMsgFromRust(opId, ui8);
       break;
     default:
-      const handler = NATIVE_PLUGIN_ASYNC_HANDLER_MAP.get(opId);
+      const handler = PLUGIN_ASYNC_HANDLER_MAP.get(opId);
       if (handler) {
         handler(ui8);
       } else {

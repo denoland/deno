@@ -993,7 +993,7 @@ declare namespace Deno {
     (msg: Uint8Array): void;
   }
 
-  export interface NativePluginOp {
+  export interface PluginOp {
     dispatch(
       control: Uint8Array,
       zeroCopy?: ArrayBufferView | null
@@ -1001,9 +1001,9 @@ declare namespace Deno {
     setAsyncHandler(handler: AsyncHandler): void;
   }
 
-  export interface NativePlugin {
+  export interface Plugin {
     ops: {
-      [name: string]: NativePluginOp;
+      [name: string]: PluginOp;
     };
   }
 
@@ -1015,7 +1015,7 @@ declare namespace Deno {
    *        const response = some_op.dispatch(new Uint8Array([1,2,3,4]));
    *        console.log(`Response from native plugin ${response}`);
    */
-  export function openPlugin(filename: string): NativePlugin;
+  export function openPlugin(filename: string): Plugin;
 
   // @url js/net.d.ts
 
