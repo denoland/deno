@@ -8,18 +8,15 @@ use deno::ErrBox;
 use deno::Resource;
 use deno::*;
 use futures;
-use futures::compat::AsyncRead01CompatExt;
-use futures::compat::AsyncWrite01CompatExt;
 use futures::future::FutureExt;
-use futures::io::{AsyncRead, AsyncWrite};
 use std;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
 use tokio;
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
-use tokio_process;
 use tokio_rustls::client::TlsStream as ClientTlsStream;
 use tokio_rustls::server::TlsStream as ServerTlsStream;
 
@@ -86,9 +83,9 @@ pub enum StreamResource {
   ServerTlsStream(Box<ServerTlsStream<TcpStream>>),
   ClientTlsStream(Box<ClientTlsStream<TcpStream>>),
   HttpBody(Box<HttpBody>),
-  ChildStdin(tokio_process::ChildStdin),
-  ChildStdout(tokio_process::ChildStdout),
-  ChildStderr(tokio_process::ChildStderr),
+  ChildStdin(tokio::process::ChildStdin),
+  ChildStdout(tokio::process::ChildStdout),
+  ChildStderr(tokio::process::ChildStderr),
 }
 
 impl Resource for StreamResource {}
@@ -111,22 +108,15 @@ impl DenoAsyncRead for StreamResource {
   ) -> Poll<Result<usize, ErrBox>> {
     let inner = self.get_mut();
     let mut f: Box<dyn AsyncRead + Unpin> = match inner {
-      StreamResource::FsFile(f) => Box::new(AsyncRead01CompatExt::compat(f)),
-      StreamResource::Stdin(f) => Box::new(AsyncRead01CompatExt::compat(f)),
-      StreamResource::TcpStream(f) => Box::new(AsyncRead01CompatExt::compat(f)),
-      StreamResource::ClientTlsStream(f) => {
-        Box::new(AsyncRead01CompatExt::compat(f))
-      }
-      StreamResource::ServerTlsStream(f) => {
-        Box::new(AsyncRead01CompatExt::compat(f))
-      }
-      StreamResource::HttpBody(f) => Box::new(f),
-      StreamResource::ChildStdout(f) => {
-        Box::new(AsyncRead01CompatExt::compat(f))
-      }
-      StreamResource::ChildStderr(f) => {
-        Box::new(AsyncRead01CompatExt::compat(f))
-      }
+      StreamResource::FsFile(f) => Box::new(f),
+      StreamResource::Stdin(f) => Box::new(f),
+      StreamResource::TcpStream(f) => Box::new(f),
+      StreamResource::ClientTlsStream(f) => Box::new(f),
+      StreamResource::ServerTlsStream(f) => Box::new(f),
+      StreamResource::ChildStdout(f) => Box::new(f),
+      StreamResource::ChildStderr(f) => Box::new(f),
+      // TODO: temporarily disabled, pending release of Reqwest
+      // StreamResource::HttpBody(f) => Box::new(f),
       _ => {
         return Poll::Ready(Err(bad_resource()));
       }
@@ -247,21 +237,13 @@ impl DenoAsyncWrite for StreamResource {
   ) -> Poll<Result<usize, ErrBox>> {
     let inner = self.get_mut();
     let mut f: Box<dyn AsyncWrite + Unpin> = match inner {
-      StreamResource::FsFile(f) => Box::new(AsyncWrite01CompatExt::compat(f)),
-      StreamResource::Stdout(f) => Box::new(AsyncWrite01CompatExt::compat(f)),
-      StreamResource::Stderr(f) => Box::new(AsyncWrite01CompatExt::compat(f)),
-      StreamResource::TcpStream(f) => {
-        Box::new(AsyncWrite01CompatExt::compat(f))
-      }
-      StreamResource::ClientTlsStream(f) => {
-        Box::new(AsyncWrite01CompatExt::compat(f))
-      }
-      StreamResource::ServerTlsStream(f) => {
-        Box::new(AsyncWrite01CompatExt::compat(f))
-      }
-      StreamResource::ChildStdin(f) => {
-        Box::new(AsyncWrite01CompatExt::compat(f))
-      }
+      StreamResource::FsFile(f) => Box::new(f),
+      StreamResource::Stdout(f) => Box::new(f),
+      StreamResource::Stderr(f) => Box::new(f),
+      StreamResource::TcpStream(f) => Box::new(f),
+      StreamResource::ClientTlsStream(f) => Box::new(f),
+      StreamResource::ServerTlsStream(f) => Box::new(f),
+      StreamResource::ChildStdin(f) => Box::new(f),
       _ => {
         return Poll::Ready(Err(bad_resource()));
       }
