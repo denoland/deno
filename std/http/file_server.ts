@@ -6,7 +6,7 @@
 // TODO Add tests like these:
 // https://github.com/indexzero/http-server/blob/master/test/http-server-test.js
 
-const { ErrorKind, cwd, args, stat, readDir, open } = Deno;
+const { ErrorKind, cwd, args, stat, readDir, readFile, open } = Deno;
 import { contentType } from "../media_types/mod.ts";
 import { extname, posix } from "../path/mod.ts";
 import {
@@ -15,8 +15,9 @@ import {
   setContentLength,
   Response
 } from "./server.ts";
+import { parse } from "../flags/mod.ts";
 
-const dirViewerTemplate = `
+let dirViewerTemplate = `
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -43,22 +44,26 @@ const dirViewerTemplate = `
 </html>
 `;
 
-const serverArgs = args.slice();
-let CORSEnabled = false;
-// TODO: switch to flags if we later want to add more options
-for (let i = 0; i < serverArgs.length; i++) {
-  if (serverArgs[i] === "--cors") {
-    CORSEnabled = true;
-    serverArgs.splice(i, 1);
-    break;
-  }
+const serverArgs = parse(args);
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+
+// TODO: `-h, --help`: Print help information and exit.
+const CORSEnabled = serverArgs["cors"] || false;
+const portArg = serverArgs["port"] || serverArgs["p"] || 4500;
+const targetArg = serverArgs["_"][1] || "";
+let templatePath = serverArgs["template"];
+if (templatePath) {
+  templatePath = posix.isAbsolute(templatePath)
+    ? posix.normalize(templatePath)
+    : posix.join(cwd(), templatePath);
+  dirViewerTemplate = decoder.decode(await readFile(templatePath));
 }
-const targetArg = serverArgs[1] || "";
+
 const target = posix.isAbsolute(targetArg)
   ? posix.normalize(targetArg)
   : posix.join(cwd(), targetArg);
-const addr = `0.0.0.0:${serverArgs[2] || 4500}`;
-const encoder = new TextEncoder();
+const addr = `0.0.0.0:${portArg}`;
 
 function modeToString(isDir: boolean, maybeMode: number | null): string {
   const modeMap = ["---", "--x", "-w-", "-wx", "r--", "r-x", "rw-", "rwx"];

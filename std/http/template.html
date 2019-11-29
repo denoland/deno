@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+    <title>Deno File Server</title>
+    <style>
+      td {
+        padding: 0 1rem;
+      }
+      td.mode {
+        font-family: Courier;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Index of <%DIRNAME%></h1>
+    <table>
+      <tr>
+        <th>Mode</th>
+        <th>Size</th>
+        <th>Name</th>
+      </tr>
+      <%CONTENTS%>
+    </table>
+  </body>
+</html>
