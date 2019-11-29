@@ -17,7 +17,7 @@ async function startFileServer(): Promise<void> {
       ".",
       "--cors",
       "--template",
-      "http/template.html"
+      "testdata/template.html"
     ],
     stdout: "piped"
   });
