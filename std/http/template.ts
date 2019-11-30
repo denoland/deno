@@ -5,7 +5,10 @@ export interface EntryInfo {
   name: string;
 }
 
-export function dirViewerTemplate(dirname: string, entries: EntryInfo[]) {
+export function dirViewerTemplate(
+  dirname: string,
+  entries: EntryInfo[]
+): string {
   return html`
     <!DOCTYPE html>
     <html lang="en">
@@ -96,10 +99,7 @@ export function dirViewerTemplate(dirname: string, entries: EntryInfo[]) {
   `;
 }
 
-function html(
-  strings: TemplateStringsArray,
-  ...values: unknown[]
-) {
+function html(strings: TemplateStringsArray, ...values: unknown[]): string {
   const l = strings.length - 1;
   let html = "";
 
