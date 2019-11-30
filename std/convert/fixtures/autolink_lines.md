@@ -1,2 +1,1 @@
-hello world
-<http://example.com>
+hello world <http://example.com>

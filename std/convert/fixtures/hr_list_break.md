@@ -1,6 +1,6 @@
-* hello
-world
-* how
-are
-* * *
+- hello world
+- how are
+
+---
+
 you today?

@@ -37,7 +37,7 @@
 ### Example 10
 
 <!-- multi
-line	
+line
 comment
 -->
 

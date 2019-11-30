@@ -2,5 +2,5 @@
 breaks: true
 gfm: true
 ---
-A
-B
+
+A B

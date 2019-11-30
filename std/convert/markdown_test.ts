@@ -9,7 +9,9 @@ const FIXTURE_DIR = "./std/convert/fixtures";
 const inputs = Deno.readDirSync(FIXTURE_DIR);
 const decoder = new TextDecoder();
 
-function parseOptions(str: string): [string, Partial<MarkdownOptions> | undefined] {
+function parseOptions(
+  str: string
+): [string, Partial<MarkdownOptions> | undefined] {
   const directiveBlock = /^-{3}\s*\n(.*)-{3}\s*\n/gms.exec(str);
   if (!directiveBlock) {
     return [str, undefined];
@@ -34,7 +36,7 @@ function parseOptions(str: string): [string, Partial<MarkdownOptions> | undefine
       if (intValue || intValue === 0) {
         value = intValue;
       } else {
-        if (valueString.charAt(0) === "\"") {
+        if (valueString.charAt(0) === '"') {
           value = valueString.substring(1, valueString.length - 2);
         }
       }

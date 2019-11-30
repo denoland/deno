@@ -1,5 +1,5 @@
-  * item1
+- item1
 
-    * item2
+  - item2
 
-  text
+text

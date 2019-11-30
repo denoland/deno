@@ -3,6 +3,7 @@
 ### Heading with some _italic text_
 
 ### Or some **strong**
+
 (which doesn't really make any difference, here)
 
 ### Or even `code`

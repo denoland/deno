@@ -1,8 +1,8 @@
-````` hi ther `` ok ``` `````
+` hi ther `` ok ``` `
 
 `` ` ``
 
-``There is a literal backtick (`) here.``
+`` There is a literal backtick (`) here. ``
 
 A backtick-delimited string in a code span: `` `foo` ``
 

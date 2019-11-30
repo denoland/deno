@@ -1,40 +1,40 @@
 - italic
-  - [*named link*][some-url]
-  - *[named link][some-url]*
+  - [_named link_][some-url]
+  - _[named link][some-url]_
   - [_named link_][some-url]
   - _[named link][some-url]_
 - bold
   - [**named link**][some-url]
   - **[named link][some-url]**
-  - [__named link__][some-url]
-  - __[named link][some-url]__
+  - [**named link**][some-url]
+  - **[named link][some-url]**
 - bold italic
-  - [***named link***][some-url]
-  - ***[named link][some-url]***
-  - [___named link___][some-url]
-  - ___[named link][some-url]___
-  - [*__named link__*][some-url]
-  - [__*named link*__][some-url]
-  - __*[named link][some-url]*__
+  - [**_named link_**][some-url]
+  - **_[named link][some-url]_**
+  - [**_named link_**][some-url]
+  - **_[named link][some-url]_**
+  - [_**named link**_][some-url]
+  - [**_named link_**][some-url]
+  - **_[named link][some-url]_**
 - code
   - [`named link`][some-url]
 - code italic
-  - *[`named link`][some-url]*
-  - [*`named link`*][some-url]
+  - _[`named link`][some-url]_
+  - [_`named link`_][some-url]
   - _[`named link`][some-url]_
   - [_`named link`_][some-url]
 - code bold
   - **[`named link`][some-url]**
   - [**`named link`**][some-url]
-  - __[`named link`][some-url]__
-  - [__`named link`__][some-url]
+  - **[`named link`][some-url]**
+  - [**`named link`**][some-url]
 - code bold italic
-  - [***`named link`***][some-url]
-  - ***[`named link`][some-url]***
-  - [___`named link`___][some-url]
-  - ___[`named link`][some-url]___
-  - [*__`named link`__*][some-url]
-  - [__*`named link`*__][some-url]
-  - __*[`named link`][some-url]*__
+  - [**_`named link`_**][some-url]
+  - **_[`named link`][some-url]_**
+  - [**_`named link`_**][some-url]
+  - **_[`named link`][some-url]_**
+  - [_**`named link`**_][some-url]
+  - [**_`named link`_**][some-url]
+  - **_[`named link`][some-url]_**
 
 [some-url]: https://www.google.com

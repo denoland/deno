@@ -1,3 +1,3 @@
 [hi]
 
-[HI]: /url
+[hi]: /url
