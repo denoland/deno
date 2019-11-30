@@ -31,11 +31,10 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op("kill", s.core_op(json_op(s.stateful_op(op_kill))));
 }
 
-#[allow(dead_code)]
 fn clone_file(
   rid: u32,
   state: &ThreadSafeState,
-) -> Result<tokio::fs::File, ErrBox> {
+) -> Result<std::fs::File, ErrBox> {
   let mut table = state.lock_resource_table();
   let repr = table
     .get_mut::<StreamResource>(rid)
@@ -44,7 +43,10 @@ fn clone_file(
     StreamResource::FsFile(ref mut file) => file,
     _ => return Err(bad_resource()),
   };
-  futures::executor::block_on(file.try_clone()).map_err(ErrBox::from)
+  let tokio_file =
+    futures::executor::block_on(file.try_clone()).map_err(ErrBox::from)?;
+  let std_file = futures::executor::block_on(tokio_file.into_std());
+  Ok(std_file)
 }
 
 fn subprocess_stdio_map(s: &str) -> std::process::Stdio {
@@ -103,27 +105,24 @@ fn op_run(
   // TODO: make this work with other resources, eg. sockets
   let stdin_rid = run_args.stdin_rid;
   if stdin_rid > 0 {
-    // TODO:
-    // let file = clone_file(stdin_rid, &state_)?;
-    // c.stdin(file);
+    let file = clone_file(stdin_rid, &state_)?;
+    c.stdin(file);
   } else {
     c.stdin(subprocess_stdio_map(run_args.stdin.as_ref()));
   }
 
   let stdout_rid = run_args.stdout_rid;
   if stdout_rid > 0 {
-    // TODO:
-    // let file = clone_file(stdout_rid, &state_)?;
-    // c.stdout(file);
+    let file = clone_file(stdout_rid, &state_)?;
+    c.stdout(file);
   } else {
     c.stdout(subprocess_stdio_map(run_args.stdout.as_ref()));
   }
 
   let stderr_rid = run_args.stderr_rid;
   if stderr_rid > 0 {
-    // TODO:
-    // let file = clone_file(stderr_rid, &state_)?;
-    // c.stderr(file);
+    let file = clone_file(stderr_rid, &state_)?;
+    c.stderr(file);
   } else {
     c.stderr(subprocess_stdio_map(run_args.stderr.as_ref()));
   }
