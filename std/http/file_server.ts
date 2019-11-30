@@ -126,7 +126,7 @@ async function serveFile(
   const fileInfo = await stat(filePath);
   const headers = new Headers();
   headers.set("content-length", fileInfo.len.toString());
-  headers.set("content-type", contentType(extname(filePath)) || "text/plain");
+  headers.set("content-type", "text/plain");
 
   const res = {
     status: 200,
