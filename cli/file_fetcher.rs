@@ -123,7 +123,7 @@ impl SourceFileFetcher {
 
     // If file is not in memory cache check if it can be found
     // in local cache - which effectively means trying to fetch
-    // with `no_fetch`. We can safely block on this
+    // with `no_remote_fetch`. We can safely block on this
     // future, because it doesn't do any asynchronous action
     // in that path.
     let fut = self.get_source_file_async(specifier.as_url(), true, false, true);
@@ -199,7 +199,7 @@ impl SourceFileFetcher {
   ///
   /// If `no_remote` is true then this method will fail for remote files.
   ///
-  /// If `no_fetch` is true then if remote file is not found in disk
+  /// If `no_remote_fetch` is true then if remote file is not found it disk
   /// cache this method will fail.
 
   fn get_source_file_async(
@@ -207,7 +207,7 @@ impl SourceFileFetcher {
     module_url: &Url,
     use_disk_cache: bool,
     no_remote: bool,
-    no_fetch: bool,
+    no_remote_fetch: bool,
   ) -> impl Future<Output = Result<SourceFile, ErrBox>> {
     let url_scheme = module_url.scheme();
     let is_local_file = url_scheme == "file";
@@ -247,7 +247,7 @@ impl SourceFileFetcher {
     Either::Right(self.fetch_remote_source_async(
       &module_url,
       use_disk_cache,
-      no_fetch,
+      no_remote_fetch,
       10,
     ))
   }
@@ -346,7 +346,7 @@ impl SourceFileFetcher {
     self: &Self,
     module_url: &Url,
     use_disk_cache: bool,
-    no_fetch: bool,
+    no_remote_fetch: bool,
     redirect_limit: i64,
   ) -> Pin<Box<SourceFileFuture>> {
     if redirect_limit < 0 {
@@ -371,7 +371,7 @@ impl SourceFileFetcher {
     }
 
     // If file wasn't found in cache check if we can fetch it
-    if no_fetch {
+    if no_remote_fetch {
       // We can't fetch remote file - bail out
       return futures::future::err(
         std::io::Error::new(
@@ -410,7 +410,7 @@ impl SourceFileFetcher {
           Either::Left(dir.fetch_remote_source_async(
             &new_module_url,
             use_disk_cache,
-            no_fetch,
+            no_remote_fetch,
             redirect_limit - 1,
           ))
         }
@@ -1296,7 +1296,7 @@ mod tests {
   }
 
   #[test]
-  fn test_get_source_no_fetch() {
+  fn test_get_source_no_remote_fetch() {
     let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let fetcher_1 = fetcher.clone();
@@ -1318,7 +1318,7 @@ mod tests {
       })
       .then(move |result| {
         assert!(result.is_ok());
-        // module is already cached, should be ok even with `no_fetch`
+        // module is already cached, should be ok even with `no_remote_fetch`
         fetcher_2.get_source_file_async(&module_url_2, true, false, true)
       })
       .then(move |result| {
