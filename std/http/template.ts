@@ -98,7 +98,7 @@ export function dirViewerTemplate(dirname: string, entries: EntryInfo[]) {
 
 function html(
   strings: TemplateStringsArray,
-  ...values: ReadonlyArray<unknown>
+  ...values: unknown[]
 ) {
   const l = strings.length - 1;
   let html = "";
