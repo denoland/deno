@@ -7,7 +7,7 @@ testPerm({ read: true }, function realpathSyncSuccess(): void {
   if (Deno.build.os !== "win") {
     assert(realPath.startsWith("/"));
   } else {
-    assert(/^A-Z/.test(realPath));
+    assert(/^[A-Z]/.test(realPath));
   }
   assert(realPath.endsWith(incompletePath));
 });
@@ -54,7 +54,7 @@ testPerm({ read: true }, async function realpathSuccess(): Promise<void> {
   if (Deno.build.os !== "win") {
     assert(realPath.startsWith("/"));
   } else {
-    assert(/^A-Z/.test(realPath));
+    assert(/^[A-Z]/.test(realPath));
   }
   assert(realPath.endsWith(incompletePath));
 });
@@ -69,11 +69,7 @@ if (Deno.build.os !== "win") {
       Deno.mkdirSync(target);
       Deno.symlinkSync(target, symlink);
       const targetPath = await Deno.realpath(symlink);
-      if (Deno.build.os !== "win") {
-        assert(targetPath.startsWith("/"));
-      } else {
-        assert(/^A-Z/.test(targetPath));
-      }
+      assert(targetPath.startsWith("/"));
       assert(targetPath.endsWith("/target"));
     }
   );
