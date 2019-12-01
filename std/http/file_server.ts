@@ -14,7 +14,14 @@ import {
   setContentLength,
   Response
 } from "./server.ts";
-import { dirViewerTemplate, EntryInfo } from "./template.ts";
+import { dirViewerTemplate } from "./template.ts";
+
+export interface EntryInfo {
+  mode: string;
+  size: string;
+  url: string;
+  name: string;
+}
 
 const encoder = new TextEncoder();
 const serverArgs = args.slice();

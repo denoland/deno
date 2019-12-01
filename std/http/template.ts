@@ -1,9 +1,4 @@
-export interface EntryInfo {
-  mode: string;
-  size: string;
-  url: string;
-  name: string;
-}
+import { EntryInfo } from "./file_server.ts";
 
 export function dirViewerTemplate(
   dirname: string,
