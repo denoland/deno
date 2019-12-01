@@ -339,17 +339,16 @@ class Host implements ts.CompilerHost {
   private readonly _options: ts.CompilerOptions = {
     allowJs: true,
     allowNonTsExtensions: true,
-    // TODO(#3324) Enable strict mode for user code.
-    // strict: true,
+    strict: true,
     checkJs: false,
     esModuleInterop: true,
+    jsx: ts.JsxEmit.React,
     module: ts.ModuleKind.ESNext,
     outDir: OUT_DIR,
     resolveJsonModule: true,
     sourceMap: true,
     stripComments: true,
-    target: ts.ScriptTarget.ESNext,
-    jsx: ts.JsxEmit.React
+    target: ts.ScriptTarget.ESNext
   };
 
   private _getAsset(filename: string): SourceFile {
