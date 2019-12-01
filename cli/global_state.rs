@@ -79,6 +79,7 @@ impl ThreadSafeGlobalState {
       !flags.reload,
       flags.cache_blacklist.clone(),
       flags.no_remote,
+      flags.no_fetch,
     )?;
 
     let ts_compiler = TsCompiler::new(

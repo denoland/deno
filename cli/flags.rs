@@ -78,6 +78,7 @@ pub struct DenoFlags {
   pub allow_hrtime: bool,
   pub no_prompts: bool,
   pub no_remote: bool,
+  pub no_fetch: bool,
   pub seed: Option<u64>,
   pub v8_flags: Option<Vec<String>>,
   // Use tokio::runtime::current_thread
@@ -468,6 +469,9 @@ fn run_test_args_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
     flags.allow_read = true;
     flags.allow_write = true;
     flags.allow_hrtime = true;
+  }
+  if matches.is_present("no-fetch") {
+    flags.no_fetch = true;
   }
 
   if matches.is_present("current-thread") {
@@ -941,6 +945,11 @@ fn run_test_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .short("A")
         .long("allow-all")
         .help("Allow all permissions"),
+    )
+    .arg(
+      Arg::with_name("no-fetch")
+        .long("no-fetch")
+        .help("Do not download remote modules"),
     )
     .arg(
       Arg::with_name("current-thread")
@@ -2072,6 +2081,20 @@ mod tests {
         subcommand: DenoSubcommand::Run,
         argv: svec!["deno", "script.ts"],
         no_remote: true,
+        ..DenoFlags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn no_fetch() {
+    let r = flags_from_vec_safe(svec!["deno", "--no-fetch", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      DenoFlags {
+        subcommand: DenoSubcommand::Run,
+        argv: svec!["deno", "script.ts"],
+        no_fetch: true,
         ..DenoFlags::default()
       }
     );

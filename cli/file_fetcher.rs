@@ -75,6 +75,7 @@ pub struct SourceFileFetcher {
   cache_blacklist: Vec<String>,
   use_disk_cache: bool,
   no_remote: bool,
+  no_remote_fetch: bool,
 }
 
 impl SourceFileFetcher {
@@ -84,6 +85,7 @@ impl SourceFileFetcher {
     use_disk_cache: bool,
     cache_blacklist: Vec<String>,
     no_remote: bool,
+    no_remote_fetch: bool,
   ) -> std::io::Result<Self> {
     let file_fetcher = Self {
       deps_cache,
@@ -92,6 +94,7 @@ impl SourceFileFetcher {
       cache_blacklist,
       use_disk_cache,
       no_remote,
+      no_remote_fetch,
     };
 
     Ok(file_fetcher)
@@ -123,9 +126,9 @@ impl SourceFileFetcher {
 
     // If file is not in memory cache check if it can be found
     // in local cache - which effectively means trying to fetch
-    // with `no_remote_fetch`. We can safely block on this
+    // using "--no-fetch" flag. We can safely block on this
     // future, because it doesn't do any asynchronous action
-    // in that path.
+    // it that path.
     let fut = self.get_source_file_async(specifier.as_url(), true, false, true);
 
     futures::executor::block_on(fut).ok()
@@ -153,7 +156,7 @@ impl SourceFileFetcher {
         &module_url,
         self.use_disk_cache,
         self.no_remote,
-        false,
+        self.no_remote_fetch,
       )
       .then(move |result| {
         let mut out = match result.map_err(|err| {
@@ -201,7 +204,6 @@ impl SourceFileFetcher {
   ///
   /// If `no_remote_fetch` is true then if remote file is not found it disk
   /// cache this method will fail.
-
   fn get_source_file_async(
     self: &Self,
     module_url: &Url,
@@ -708,6 +710,7 @@ mod tests {
       Progress::new(),
       true,
       vec![],
+      false,
       false,
     )
     .expect("setup fail")
