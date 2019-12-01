@@ -300,7 +300,11 @@ fn op_realpath(
     // corresponds to the realpath on Unix and
     // CreateFile and GetFinalPathNameByHandle on Windows
     let realpath = fs::canonicalize(&path)?;
-    let realpath_str = realpath.to_str().unwrap().to_owned().replace("\\", "/");
+    let mut realpath_str =
+      realpath.to_str().unwrap().to_owned().replace("\\", "/");
+    if cfg!(windows) {
+      realpath_str = realpath_str.trim_start_matches("//?/").to_string();
+    }
     Ok(json!(realpath_str))
   })
 }
