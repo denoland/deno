@@ -642,11 +642,9 @@ mod tests {
         .await;
 
       assert!(result.is_ok());
-      assert!(result
-        .unwrap()
-        .code
-        .as_bytes()
-        .starts_with("console.log(\"Hello World\");".as_bytes()));
+      assert!(result.unwrap().code.as_bytes().starts_with(
+        "\"use strict\";\nconsole.log(\"Hello World\");".as_bytes()
+      ));
       Ok(())
     };
 
