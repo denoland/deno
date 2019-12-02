@@ -16,15 +16,18 @@ use deno::*;
 use futures::future::Future;
 use futures::future::FutureExt;
 use futures::future::TryFutureExt;
+use futures::lock::Mutex;
+use futures::lock::MutexGuard;
+use futures::task::{Context, Poll};
 use std::env;
 use std::io::Error;
 use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::pin::Pin;
-use std::sync::Mutex;
-use std::sync::MutexGuard;
 use tokio::io::AsyncRead;
+use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWrite;
+use tokio::io::AsyncWriteExt;
 
 static LOGGER: Logger = Logger;
 
@@ -206,8 +209,31 @@ lazy_static! {
     Mutex::new(ResourceTable::default());
 }
 
-fn lock_resource_table<'a>() -> MutexGuard<'a, ResourceTable> {
-  RESOURCE_TABLE.lock().unwrap()
+struct Accept {
+  rid: ResourceId,
+}
+
+impl Future for Accept {
+  type Output = Result<(tokio::net::TcpStream, SocketAddr), std::io::Error>;
+
+  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+    let inner = self.get_mut();
+
+    match RESOURCE_TABLE.try_lock() {
+      None => return Poll::Pending,
+      Some(mut table) => match table.get_mut::<TcpListener>(inner.rid) {
+        None => return Poll::Ready(Err(bad_resource())),
+        Some(listener) => {
+          let listener = &mut listener.0;
+          listener.poll_accept(cx)
+        }
+      },
+    }
+  }
+}
+
+async fn lock_resource_table<'a>() -> MutexGuard<'a, ResourceTable> {
+  RESOURCE_TABLE.lock().await
 }
 
 fn op_accept(
@@ -217,19 +243,15 @@ fn op_accept(
   let rid = record.arg as u32;
   debug!("accept {}", rid);
 
-  let accept_fut = futures::future::poll_fn(move |cx| {
-    let mut table = lock_resource_table();
-    let listener =
-      table.get_mut::<TcpListener>(rid).ok_or_else(bad_resource)?;
-    let listener = &mut listener.0;
-    listener.poll_accept(cx)
-  });
-
   let fut = async move {
-    let (stream, addr) = accept_fut.await?;
+    let (stream, addr) = (Accept { rid }).await?;
     debug!("accept success {}", addr);
-    let mut table = lock_resource_table();
-    let rid = table.add("tcpStream", Box::new(TcpStream(stream)));
+    let rid = {
+      debug!("pre lock accept 2");
+      let mut table = lock_resource_table().await;
+      debug!("post lock accept 2");
+      table.add("tcpStream", Box::new(TcpStream(stream)))
+    };
     Ok(rid as i32)
   };
 
@@ -244,8 +266,12 @@ fn op_listen(
   let fut = async {
     let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    let mut table = lock_resource_table();
-    let rid = table.add("tcpListener", Box::new(TcpListener(listener)));
+    let rid = {
+      debug!("pre lock listen");
+      let mut table = lock_resource_table().await;
+      debug!("post lock listen");
+      table.add("tcpListener", Box::new(TcpListener(listener)))
+    };
     Ok(rid as i32)
   };
 
@@ -259,8 +285,13 @@ fn op_close(
   debug!("close");
   let fut = async move {
     let rid = record.arg as u32;
-    let mut table = lock_resource_table();
-    match table.close(rid) {
+    let maybe_resource = {
+      debug!("pre lock close");
+      let mut table = lock_resource_table().await;
+      debug!("post lock read");
+      table.close(rid)
+    };
+    match maybe_resource {
       Some(_) => Ok(0),
       None => Err(bad_resource()),
     }
@@ -276,15 +307,15 @@ fn op_read(
   debug!("read rid={}", rid);
   let mut zero_copy_buf = zero_copy_buf.unwrap();
 
-  let read_fut = futures::future::poll_fn(move |cx| {
-    let mut table = lock_resource_table();
-    let stream = table.get_mut::<TcpStream>(rid).ok_or_else(bad_resource)?;
-    let pinned_stream = Pin::new(&mut stream.0);
-    pinned_stream.poll_read(cx, &mut zero_copy_buf)
-  });
-
   let fut = async move {
-    let nread = read_fut.await?;
+    let nread = {
+      debug!("pre lock read");
+      let mut table = lock_resource_table().await;
+      debug!("post lock read");
+      let stream = table.get_mut::<TcpStream>(rid).ok_or_else(bad_resource)?;
+      let stream = &mut stream.0;
+      stream.read(&mut zero_copy_buf).await?
+    };
     debug!("read success {}", nread);
     Ok(nread as i32)
   };
@@ -300,15 +331,15 @@ fn op_write(
   debug!("write rid={}", rid);
   let zero_copy_buf = zero_copy_buf.unwrap();
 
-  let write_fut = futures::future::poll_fn(move |cx| {
-    let mut table = lock_resource_table();
-    let stream = table.get_mut::<TcpStream>(rid).ok_or_else(bad_resource)?;
-    let pinned_stream = Pin::new(&mut stream.0);
-    pinned_stream.poll_write(cx, &zero_copy_buf)
-  });
-
   let fut = async move {
-    let nwritten = write_fut.await?;
+    let nwritten = {
+      debug!("pre lock write");
+      let mut table = lock_resource_table().await;
+      debug!("post lock write");
+      let stream = table.get_mut::<TcpStream>(rid).ok_or_else(bad_resource)?;
+      let stream = &mut stream.0;
+      stream.write(&zero_copy_buf).await?
+    };
     debug!("write success {}", nwritten);
     Ok(nwritten as i32)
   };

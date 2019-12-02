@@ -97,6 +97,8 @@ pub struct PinnedBufRaw {
 
 unsafe impl Send for PinnedBuf {}
 unsafe impl Send for PinnedBufRaw {}
+unsafe impl Sync for PinnedBuf {}
+unsafe impl Sync for PinnedBufRaw {}
 
 impl PinnedBuf {
   pub fn new(raw: PinnedBufRaw) -> Option<Self> {
