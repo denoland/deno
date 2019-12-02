@@ -78,7 +78,7 @@ pub struct DenoFlags {
   pub allow_hrtime: bool,
   pub no_prompts: bool,
   pub no_remote: bool,
-  pub no_fetch: bool,
+  pub cached_only: bool,
   pub seed: Option<u64>,
   pub v8_flags: Option<Vec<String>>,
   // Use tokio::runtime::current_thread
@@ -470,8 +470,8 @@ fn run_test_args_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
     flags.allow_write = true;
     flags.allow_hrtime = true;
   }
-  if matches.is_present("no-fetch") {
-    flags.no_fetch = true;
+  if matches.is_present("cached-only") {
+    flags.cached_only = true;
   }
 
   if matches.is_present("current-thread") {
@@ -947,9 +947,9 @@ fn run_test_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .help("Allow all permissions"),
     )
     .arg(
-      Arg::with_name("no-fetch")
-        .long("no-fetch")
-        .help("Do not download remote modules"),
+      Arg::with_name("cached-only")
+        .long("cached-only")
+        .help("Require that remote dependencies are already cached"),
     )
     .arg(
       Arg::with_name("current-thread")
@@ -2087,14 +2087,14 @@ mod tests {
   }
 
   #[test]
-  fn no_fetch() {
-    let r = flags_from_vec_safe(svec!["deno", "--no-fetch", "script.ts"]);
+  fn cached_only() {
+    let r = flags_from_vec_safe(svec!["deno", "--cached-only", "script.ts"]);
     assert_eq!(
       r.unwrap(),
       DenoFlags {
         subcommand: DenoSubcommand::Run,
         argv: svec!["deno", "script.ts"],
-        no_fetch: true,
+        cached_only: true,
         ..DenoFlags::default()
       }
     );
