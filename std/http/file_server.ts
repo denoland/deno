@@ -14,7 +14,6 @@ import {
   setContentLength,
   Response
 } from "./server.ts";
-import { dirViewerTemplate } from "./template.ts";
 
 interface EntryInfo {
   mode: string;
