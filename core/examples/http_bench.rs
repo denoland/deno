@@ -24,9 +24,7 @@ use std::io::Error;
 use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::pin::Pin;
-use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
-use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 
 static LOGGER: Logger = Logger;
@@ -220,9 +218,9 @@ impl Future for Accept {
     let inner = self.get_mut();
 
     match RESOURCE_TABLE.try_lock() {
-      None => return Poll::Pending,
+      None => Poll::Pending,
       Some(mut table) => match table.get_mut::<TcpListener>(inner.rid) {
-        None => return Poll::Ready(Err(bad_resource())),
+        None => Poll::Ready(Err(bad_resource())),
         Some(listener) => {
           let listener = &mut listener.0;
           listener.poll_accept(cx)
