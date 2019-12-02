@@ -179,7 +179,6 @@ pub struct Isolate {
   have_unpolled_ops: bool,
   startup_script: Option<OwnedScript>,
   pub op_registry: Arc<OpRegistry>,
-  eager_poll_count: u32,
   waker: AtomicWaker,
 }
 
@@ -246,7 +245,6 @@ impl Isolate {
       pending_dyn_imports: FuturesUnordered::new(),
       startup_script,
       op_registry: Arc::new(OpRegistry::new()),
-      eager_poll_count: 0,
       waker: AtomicWaker::new(),
     }
   }
@@ -347,29 +345,6 @@ impl Isolate {
       None => {
         return isolate.throw_exception(&format!("Unknown op id: {}", op_id))
       }
-    };
-
-    // To avoid latency problems we eagerly poll 50 futures and then
-    // allow to poll ops from `pending_ops`
-    let op = if isolate.eager_poll_count != 50 {
-      isolate.eager_poll_count += 1;
-      match op {
-        Op::Async(mut fut) => {
-          // Tries to eagerly poll async ops once. Often they are immediately ready, in
-          // which case they can be turned into a sync op before we return to V8. This
-          // can save a boundary crossing.
-          #[allow(clippy::match_wild_err_arm)]
-          let mut cx = Context::from_waker(futures::task::noop_waker_ref());
-          match fut.poll_unpin(&mut cx) {
-            Poll::Ready(Err(_)) => panic!("unexpected op error"),
-            Poll::Ready(Ok(buf)) => Op::Sync(buf),
-            Poll::Pending => Op::Async(fut),
-          }
-        }
-        Op::Sync(buf) => Op::Sync(buf),
-      }
-    } else {
-      op
     };
 
     debug_assert_eq!(isolate.shared.size(), 0);
@@ -703,7 +678,6 @@ impl Future for Isolate {
 
       // Now handle actual ops.
       inner.have_unpolled_ops = false;
-      inner.eager_poll_count = 0;
       #[allow(clippy::match_wild_err_arm)]
       match inner.pending_ops.poll_next_unpin(cx) {
         Poll::Ready(Some(Err(_))) => panic!("unexpected op error"),
