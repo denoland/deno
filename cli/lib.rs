@@ -110,9 +110,7 @@ fn create_worker_and_state(
     }
   });
 
-  // TODO(ry) Remove argv param from ThreadSafeGlobalState::new.
-  let argv = flags.argv.clone();
-  let global_state = ThreadSafeGlobalState::new(flags, argv, progress)
+  let global_state = ThreadSafeGlobalState::new(flags, progress)
     .map_err(deno_error::print_err_and_exit)
     .unwrap();
 
@@ -297,8 +295,8 @@ fn fetch_command(flags: DenoFlags) {
 }
 
 fn eval_command(flags: DenoFlags) {
-  let (mut worker, state) = create_worker_and_state(flags);
-  let ts_source = state.argv[1].clone();
+  let ts_source = flags.argv[1].clone();
+  let (mut worker, _state) = create_worker_and_state(flags);
   // Force TypeScript compile.
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./__$deno$eval.ts").unwrap();
