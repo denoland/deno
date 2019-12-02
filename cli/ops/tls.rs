@@ -303,7 +303,6 @@ fn op_listen_tls(
 
 #[derive(Debug, PartialEq)]
 enum AcceptTlsState {
-  Eager,
   Pending,
   Done,
 }
@@ -311,7 +310,7 @@ enum AcceptTlsState {
 /// Simply accepts a TLS connection.
 pub fn accept_tls(state: &ThreadSafeState, rid: ResourceId) -> AcceptTls {
   AcceptTls {
-    accept_state: AcceptTlsState::Eager,
+    accept_state: AcceptTlsState::Pending,
     rid,
     state: state.clone(),
   }
@@ -347,29 +346,6 @@ impl Future for AcceptTls {
     let mut listener =
       futures::compat::Compat01As03::new(&mut listener_resource.listener)
         .map_err(ErrBox::from);
-
-    if inner.accept_state == AcceptTlsState::Eager {
-      // Similar to try_ready!, but also track/untrack accept task
-      // in TcpListener resource.
-      // In this way, when the listener is closed, the task can be
-      // notified to error out (instead of stuck forever).
-      match listener.poll_next_unpin(cx) {
-        Poll::Ready(Some(Ok(stream))) => {
-          inner.accept_state = AcceptTlsState::Done;
-          let addr = stream.peer_addr().unwrap();
-          return Poll::Ready(Ok((stream, addr)));
-        }
-        Poll::Pending => {
-          inner.accept_state = AcceptTlsState::Pending;
-          return Poll::Pending;
-        }
-        Poll::Ready(Some(Err(e))) => {
-          inner.accept_state = AcceptTlsState::Done;
-          return Poll::Ready(Err(e));
-        }
-        _ => unreachable!(),
-      }
-    }
 
     match listener.poll_next_unpin(cx) {
       Poll::Ready(Some(Ok(stream))) => {

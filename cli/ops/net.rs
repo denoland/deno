@@ -33,7 +33,6 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
 
 #[derive(Debug, PartialEq)]
 enum AcceptState {
-  Eager,
   Pending,
   Done,
 }
@@ -41,7 +40,7 @@ enum AcceptState {
 /// Simply accepts a connection.
 pub fn accept(state: &ThreadSafeState, rid: ResourceId) -> Accept {
   Accept {
-    accept_state: AcceptState::Eager,
+    accept_state: AcceptState::Pending,
     rid,
     state: state.clone(),
   }
@@ -77,29 +76,6 @@ impl Future for Accept {
     let mut listener =
       futures::compat::Compat01As03::new(&mut listener_resource.listener)
         .map_err(ErrBox::from);
-
-    if inner.accept_state == AcceptState::Eager {
-      // Similar to try_ready!, but also track/untrack accept task
-      // in TcpListener resource.
-      // In this way, when the listener is closed, the task can be
-      // notified to error out (instead of stuck forever).
-      match listener.poll_next_unpin(cx) {
-        Poll::Ready(Some(Ok(stream))) => {
-          inner.accept_state = AcceptState::Done;
-          let addr = stream.peer_addr().unwrap();
-          return Poll::Ready(Ok((stream, addr)));
-        }
-        Poll::Pending => {
-          inner.accept_state = AcceptState::Pending;
-          return Poll::Pending;
-        }
-        Poll::Ready(Some(Err(e))) => {
-          inner.accept_state = AcceptState::Done;
-          return Poll::Ready(Err(e));
-        }
-        _ => unreachable!(),
-      }
-    }
 
     match listener.poll_next_unpin(cx) {
       Poll::Ready(Some(Ok(stream))) => {
