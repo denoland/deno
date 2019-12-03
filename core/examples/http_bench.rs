@@ -5,6 +5,7 @@
 extern crate deno;
 extern crate futures;
 extern crate libc;
+extern crate num_cpus;
 extern crate tokio;
 
 #[macro_use]
@@ -165,6 +166,11 @@ fn main() {
 
   let multi_thread = args.iter().any(|a| a == "--multi-thread");
 
+  println!(
+    "num cpus; logical: {}; physical: {}",
+    num_cpus::get(),
+    num_cpus::get_physical()
+  );
   let mut builder = tokio::runtime::Builder::new();
   let builder = if multi_thread {
     println!("multi-thread");
