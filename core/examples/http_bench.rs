@@ -15,7 +15,6 @@ extern crate lazy_static;
 use deno::*;
 use futures::future::Future;
 use futures::future::FutureExt;
-use futures::future::TryFutureExt;
 use futures::lock::Mutex;
 use futures::lock::MutexGuard;
 use futures::task::{Context, Poll};
@@ -117,25 +116,18 @@ fn http_op(
     let record = Record::from(control);
     let is_sync = record.promise_id == 0;
     let op = handler(record.clone(), zero_copy_buf);
-
     let mut record_a = record.clone();
-    let mut record_b = record.clone();
 
-    let fut = Box::new(
-      op.and_then(move |result| {
-        record_a.result = result;
-        futures::future::ok(record_a)
-      })
-      .or_else(|err| {
-        eprintln!("unexpected err {}", err);
-        record_b.result = -1;
-        futures::future::ok(record_b)
-      })
-      .then(|result: Result<Record, ()>| {
-        let record = result.unwrap();
-        futures::future::ok(record.into())
-      }),
-    );
+    let fut = async move {
+      match op.await {
+        Ok(result) => record_a.result = result,
+        Err(err) => {
+          eprintln!("unexpected err {}", err);
+          record_a.result = -1;
+        }
+      };
+      Ok(record_a.into())
+    };
 
     if is_sync {
       Op::Sync(futures::executor::block_on(fut).unwrap())
