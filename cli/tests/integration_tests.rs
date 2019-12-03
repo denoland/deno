@@ -296,10 +296,10 @@ itest!(_034_onload {
   output: "034_onload.out",
 });
 
-itest!(_035_no_fetch_flag {
+itest!(_035_cached_only_flag {
   args:
-    "--reload --no-fetch http://127.0.0.1:4545/cli/tests/019_media_types.ts",
-  output: "035_no_fetch_flag.out",
+    "--reload --cached-only http://127.0.0.1:4545/cli/tests/019_media_types.ts",
+  output: "035_cached_only_flag.out",
   exit_code: 1,
   check_stderr: true,
   http_server: true,
@@ -394,6 +394,15 @@ itest!(_050_more_jsons {
 itest!(_051_wasm_import {
   args: "run --reload --allow-net --allow-read 051_wasm_import.ts",
   output: "051_wasm_import.ts.out",
+  http_server: true,
+});
+
+itest!(_052_no_remote_flag {
+  args:
+    "--reload --no-remote http://127.0.0.1:4545/cli/tests/019_media_types.ts",
+  output: "052_no_remote_flag.out",
+  exit_code: 1,
+  check_stderr: true,
   http_server: true,
 });
 
