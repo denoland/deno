@@ -19,7 +19,7 @@ pub fn op_test_sync(data: &[u8], zero_copy: Option<PinnedBuf>) -> CoreOp {
     let data_str = std::str::from_utf8(&data[..]).unwrap();
     let buf_str = std::str::from_utf8(&buf[..]).unwrap();
     println!(
-      "Hello from native bindings. data: {} | zero_copy: {}",
+      "Hello from plugin. data: {} | zero_copy: {}",
       data_str, buf_str
     );
   }
@@ -34,7 +34,7 @@ pub fn op_test_async(data: &[u8], zero_copy: Option<PinnedBuf>) -> CoreOp {
     if let Some(buf) = zero_copy {
       let buf_str = std::str::from_utf8(&buf[..]).unwrap();
       println!(
-        "Hello from native bindings. data: {} | zero_copy: {}",
+        "Hello from plugin. data: {} | zero_copy: {}",
         data_str, buf_str
       );
     }

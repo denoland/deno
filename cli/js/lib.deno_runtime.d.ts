@@ -987,7 +987,7 @@ declare namespace Deno {
    */
   export function truncate(name: string, len?: number): Promise<void>;
 
-  // @url js/native_plugins.d.ts
+  // @url js/plugins.d.ts
 
   export interface AsyncHandler {
     (msg: Uint8Array): void;
@@ -1007,13 +1007,13 @@ declare namespace Deno {
     };
   }
 
-  /** Open and initalize a native plugin.
+  /** Open and initalize a plugin.
    * Requires the `--allow-plugin` flag.
    *
    *        const plugin = Deno.openPlugin("./path/to/some/plugin.so");
    *        const some_op = plugin.ops.some_op;
    *        const response = some_op.dispatch(new Uint8Array([1,2,3,4]));
-   *        console.log(`Response from native plugin ${response}`);
+   *        console.log(`Response from plugin ${response}`);
    */
   export function openPlugin(filename: string): Plugin;
 

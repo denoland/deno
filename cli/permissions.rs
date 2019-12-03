@@ -211,7 +211,7 @@ impl DenoPermissions {
 
   pub fn check_plugin(&self, filename: &str) -> Result<(), ErrBox> {
     self.allow_plugin.check(
-      &format!("access to open a native plugin: {}", filename),
+      &format!("access to open a plugin: {}", filename),
       "run again with the --allow-plugin flag",
     )
   }
@@ -226,7 +226,7 @@ impl DenoPermissions {
     if check_path_white_list(path, &self.read_whitelist) {
       return PermissionState::Allow;
     };
-    self.allow_write.request(&match path {
+    self.allow_read.request(&match path {
       None => "Deno requests read access.".to_string(),
       Some(path) => format!("Deno requests read access to \"{}\".", path),
     })
@@ -247,7 +247,7 @@ impl DenoPermissions {
     url: &Option<&str>,
   ) -> Result<PermissionState, ErrBox> {
     if self.get_state_net_url(url)? == PermissionState::Ask {
-      return Ok(self.allow_run.request(&match url {
+      return Ok(self.allow_net.request(&match url {
         None => "Deno requests network access.".to_string(),
         Some(url) => format!("Deno requests network access to \"{}\".", url),
       }));
@@ -268,9 +268,7 @@ impl DenoPermissions {
   }
 
   pub fn request_plugin(&mut self) -> PermissionState {
-    self
-      .allow_plugin
-      .request("Deno requests to open native plugins.")
+    self.allow_plugin.request("Deno requests to open plugins.")
   }
 
   pub fn get_permission_state(

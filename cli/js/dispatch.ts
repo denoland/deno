@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as minimal from "./dispatch_minimal.ts";
 import * as json from "./dispatch_json.ts";
-import { AsyncHandler } from "./native_plugins.ts";
+import { AsyncHandler } from "./plugins.ts";
 
 // These consts are shared with Rust. Update with care.
 export let OP_READ: number;

@@ -25,11 +25,11 @@ function runTestSync() {
     new Uint8Array([116, 101, 115, 116])
   );
 
-  console.log(`Native Binding Sync Response: ${textDecoder.decode(response)}`);
+  console.log(`Plugin Sync Response: ${textDecoder.decode(response)}`);
 }
 
 testAsync.setAsyncHandler(response => {
-  console.log(`Native Binding Async Response: ${textDecoder.decode(response)}`);
+  console.log(`Plugin Async Response: ${textDecoder.decode(response)}`);
 });
 
 function runTestAsync() {

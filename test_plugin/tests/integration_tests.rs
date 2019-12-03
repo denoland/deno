@@ -27,7 +27,7 @@ fn basic() {
     println!("stderr {}", stderr);
   }
   assert!(output.status.success());
-  let expected = "Hello from native bindings. data: test | zero_copy: test\nNative Binding Sync Response: test\nHello from native bindings. data: test | zero_copy: test\nNative Binding Async Response: test\n";
+  let expected = "Hello from plugin. data: test | zero_copy: test\nPlugin Sync Response: test\nHello from plugin. data: test | zero_copy: test\nPlugin Async Response: test\n";
   assert_eq!(stdout, expected);
   assert_eq!(stderr, "");
 }

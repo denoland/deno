@@ -15,7 +15,7 @@ pub trait PluginInitContext {
 macro_rules! init_fn {
   ($fn:path) => {
     #[no_mangle]
-    pub fn native_plugin_init(context: &mut dyn PluginInitContext) {
+    pub fn deno_plugin_init(context: &mut dyn PluginInitContext) {
       $fn(context)
     }
   };
