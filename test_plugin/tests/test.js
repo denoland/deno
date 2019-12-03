@@ -19,7 +19,7 @@ const { testSync, testAsync } = plugin.ops;
 
 const textDecoder = new TextDecoder();
 
-function testSync() {
+function runTestSync() {
   const response = testSync.dispatch(
     new Uint8Array([116, 101, 115, 116]),
     new Uint8Array([116, 101, 115, 116])
@@ -32,7 +32,7 @@ testAsync.setAsyncHandler(response => {
   console.log(`Native Binding Async Response: ${textDecoder.decode(response)}`);
 });
 
-function testAsync() {
+function runTestAsync() {
   const response = testAsync.dispatch(
     new Uint8Array([116, 101, 115, 116]),
     new Uint8Array([116, 101, 115, 116])
@@ -43,5 +43,5 @@ function testAsync() {
   }
 }
 
-testSync();
-testAsync();
+runTestSync();
+runTestAsync();
