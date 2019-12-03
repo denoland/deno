@@ -24,8 +24,8 @@ use std::io::Error;
 use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::pin::Pin;
-use tokio::io::AsyncReadExt;
-use tokio::io::AsyncWriteExt;
+use tokio::io::AsyncRead;
+use tokio::io::AsyncWrite;
 
 static LOGGER: Logger = Logger;
 
@@ -242,14 +242,10 @@ fn op_accept(
   debug!("accept {}", rid);
 
   let fut = async move {
-    let (stream, addr) = (Accept { rid }).await?;
+    let (stream, addr) = Accept { rid }.await?;
     debug!("accept success {}", addr);
-    let rid = {
-      debug!("pre lock accept 2");
-      let mut table = lock_resource_table().await;
-      debug!("post lock accept 2");
-      table.add("tcpStream", Box::new(TcpStream(stream)))
-    };
+    let mut table = lock_resource_table().await;
+    let rid = table.add("tcpStream", Box::new(TcpStream(stream)));
     Ok(rid as i32)
   };
 
@@ -264,12 +260,8 @@ fn op_listen(
   let fut = async {
     let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    let rid = {
-      debug!("pre lock listen");
-      let mut table = lock_resource_table().await;
-      debug!("post lock listen");
-      table.add("tcpListener", Box::new(TcpListener(listener)))
-    };
+    let mut table = lock_resource_table().await;
+    let rid = table.add("tcpListener", Box::new(TcpListener(listener)));
     Ok(rid as i32)
   };
 
@@ -283,18 +275,37 @@ fn op_close(
   debug!("close");
   let fut = async move {
     let rid = record.arg as u32;
-    let maybe_resource = {
-      debug!("pre lock close");
-      let mut table = lock_resource_table().await;
-      debug!("post lock read");
-      table.close(rid)
-    };
-    match maybe_resource {
+    let mut table = lock_resource_table().await;
+    match table.close(rid) {
       Some(_) => Ok(0),
       None => Err(bad_resource()),
     }
   };
   fut.boxed()
+}
+
+struct Read {
+  rid: ResourceId,
+  buf: PinnedBuf,
+}
+
+impl Future for Read {
+  type Output = Result<usize, std::io::Error>;
+
+  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+    let inner = self.get_mut();
+
+    match RESOURCE_TABLE.try_lock() {
+      None => Poll::Pending,
+      Some(mut table) => match table.get_mut::<TcpStream>(inner.rid) {
+        None => Poll::Ready(Err(bad_resource())),
+        Some(stream) => {
+          let pinned_stream = Pin::new(&mut stream.0);
+          pinned_stream.poll_read(cx, &mut inner.buf)
+        }
+      },
+    }
+  }
 }
 
 fn op_read(
@@ -303,22 +314,43 @@ fn op_read(
 ) -> Pin<Box<HttpOp>> {
   let rid = record.arg as u32;
   debug!("read rid={}", rid);
-  let mut zero_copy_buf = zero_copy_buf.unwrap();
+  let zero_copy_buf = zero_copy_buf.unwrap();
 
   let fut = async move {
-    let nread = {
-      debug!("pre lock read");
-      let mut table = lock_resource_table().await;
-      debug!("post lock read");
-      let stream = table.get_mut::<TcpStream>(rid).ok_or_else(bad_resource)?;
-      let stream = &mut stream.0;
-      stream.read(&mut zero_copy_buf).await?
-    };
+    let nread = Read {
+      rid,
+      buf: zero_copy_buf,
+    }
+    .await?;
     debug!("read success {}", nread);
     Ok(nread as i32)
   };
 
   fut.boxed()
+}
+
+struct Write {
+  rid: ResourceId,
+  buf: PinnedBuf,
+}
+
+impl Future for Write {
+  type Output = Result<usize, std::io::Error>;
+
+  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+    let inner = self.get_mut();
+
+    match RESOURCE_TABLE.try_lock() {
+      None => Poll::Pending,
+      Some(mut table) => match table.get_mut::<TcpStream>(inner.rid) {
+        None => Poll::Ready(Err(bad_resource())),
+        Some(stream) => {
+          let pinned_stream = Pin::new(&mut stream.0);
+          pinned_stream.poll_write(cx, &inner.buf)
+        }
+      },
+    }
+  }
 }
 
 fn op_write(
@@ -330,14 +362,11 @@ fn op_write(
   let zero_copy_buf = zero_copy_buf.unwrap();
 
   let fut = async move {
-    let nwritten = {
-      debug!("pre lock write");
-      let mut table = lock_resource_table().await;
-      debug!("post lock write");
-      let stream = table.get_mut::<TcpStream>(rid).ok_or_else(bad_resource)?;
-      let stream = &mut stream.0;
-      stream.write(&zero_copy_buf).await?
-    };
+    let nwritten = Write {
+      rid,
+      buf: zero_copy_buf,
+    }
+    .await?;
     debug!("write success {}", nwritten);
     Ok(nwritten as i32)
   };
