@@ -63,6 +63,8 @@ impl Default for DenoSubcommand {
 
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct DenoFlags {
+  /// Vector of CLI arguments - these are user script arguments, all Deno
+  /// specific flags are removed.
   pub argv: Vec<String>,
   pub subcommand: DenoSubcommand,
 

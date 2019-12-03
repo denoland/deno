@@ -200,7 +200,6 @@ impl Future for WorkerReceiver {
 mod tests {
   use super::*;
   use crate::flags;
-  use crate::flags::DenoFlags;
   use crate::global_state::ThreadSafeGlobalState;
   use crate::progress::Progress;
   use crate::startup_data;
@@ -238,10 +237,11 @@ mod tests {
       .to_owned();
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
-    let argv = vec![String::from("./deno"), module_specifier.to_string()];
     let global_state = ThreadSafeGlobalState::new(
-      flags::DenoFlags::default(),
-      argv,
+      flags::DenoFlags {
+        argv: vec![String::from("./deno"), module_specifier.to_string()],
+        ..flags::DenoFlags::default()
+      },
       Progress::new(),
     )
     .unwrap();
@@ -282,10 +282,14 @@ mod tests {
       .to_owned();
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
-    let argv = vec![String::from("deno"), module_specifier.to_string()];
-    let global_state =
-      ThreadSafeGlobalState::new(DenoFlags::default(), argv, Progress::new())
-        .unwrap();
+    let global_state = ThreadSafeGlobalState::new(
+      flags::DenoFlags {
+        argv: vec![String::from("deno"), module_specifier.to_string()],
+        ..flags::DenoFlags::default()
+      },
+      Progress::new(),
+    )
+    .unwrap();
     let (int, ext) = ThreadSafeState::create_channels();
     let state = ThreadSafeState::new(
       global_state,
@@ -325,11 +329,11 @@ mod tests {
       .to_owned();
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
-    let argv = vec![String::from("deno"), module_specifier.to_string()];
     let mut flags = flags::DenoFlags::default();
+    flags.argv = vec![String::from("deno"), module_specifier.to_string()];
     flags.reload = true;
     let global_state =
-      ThreadSafeGlobalState::new(flags, argv, Progress::new()).unwrap();
+      ThreadSafeGlobalState::new(flags, Progress::new()).unwrap();
     let (int, ext) = ThreadSafeState::create_channels();
     let state = ThreadSafeState::new(
       global_state.clone(),
