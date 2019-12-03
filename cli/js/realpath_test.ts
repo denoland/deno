@@ -4,7 +4,11 @@ import { testPerm, assert, assertEquals } from "./test_util.ts";
 testPerm({ read: true }, function realpathSyncSuccess(): void {
   const incompletePath = "cli/tests/fixture.json";
   const realPath = Deno.realpathSync(incompletePath);
-  assert(realPath.startsWith("/"));
+  if (Deno.build.os !== "win") {
+    assert(realPath.startsWith("/"));
+  } else {
+    assert(/^[A-Z]/.test(realPath));
+  }
   assert(realPath.endsWith(incompletePath));
 });
 
@@ -47,7 +51,11 @@ testPerm({ read: true }, function realpathSyncNotFound(): void {
 testPerm({ read: true }, async function realpathSuccess(): Promise<void> {
   const incompletePath = "cli/tests/fixture.json";
   const realPath = await Deno.realpath(incompletePath);
-  assert(realPath.startsWith("/"));
+  if (Deno.build.os !== "win") {
+    assert(realPath.startsWith("/"));
+  } else {
+    assert(/^[A-Z]/.test(realPath));
+  }
   assert(realPath.endsWith(incompletePath));
 });
 
