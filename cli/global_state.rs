@@ -32,8 +32,6 @@ pub struct ThreadSafeGlobalState(Arc<GlobalState>);
 /// It is shared by all created workers (thus V8 isolates).
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct GlobalState {
-  /// Vector of CLI arguments - these are user script arguments, all Deno specific flags are removed.
-  pub argv: Vec<String>,
   /// Flags parsed from `argv` contents.
   pub flags: flags::DenoFlags,
   /// Entry script parsed from CLI arguments.
@@ -67,7 +65,6 @@ impl Deref for ThreadSafeGlobalState {
 impl ThreadSafeGlobalState {
   pub fn new(
     flags: flags::DenoFlags,
-    argv_rest: Vec<String>,
     progress: Progress,
   ) -> Result<Self, ErrBox> {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
@@ -88,10 +85,10 @@ impl ThreadSafeGlobalState {
       flags.config_path.clone(),
     )?;
 
-    let main_module: Option<ModuleSpecifier> = if argv_rest.len() <= 1 {
+    let main_module: Option<ModuleSpecifier> = if flags.argv.len() <= 1 {
       None
     } else {
-      let root_specifier = argv_rest[1].clone();
+      let root_specifier = flags.argv[1].clone();
       Some(ModuleSpecifier::resolve_url_or_path(&root_specifier)?)
     };
 
@@ -105,7 +102,6 @@ impl ThreadSafeGlobalState {
     let state = GlobalState {
       main_module,
       dir,
-      argv: argv_rest,
       permissions: DenoPermissions::from_flags(&flags),
       flags,
       metrics: Metrics::default(),
@@ -231,8 +227,10 @@ impl ThreadSafeGlobalState {
   #[cfg(test)]
   pub fn mock(argv: Vec<String>) -> ThreadSafeGlobalState {
     ThreadSafeGlobalState::new(
-      flags::DenoFlags::default(),
-      argv,
+      flags::DenoFlags {
+        argv,
+        ..flags::DenoFlags::default()
+      },
       Progress::new(),
     )
     .unwrap()
@@ -252,10 +250,10 @@ fn thread_safe() {
 fn import_map_given_for_repl() {
   let _result = ThreadSafeGlobalState::new(
     flags::DenoFlags {
+      argv: vec![String::from("./deno")],
       import_map_path: Some("import_map.json".to_string()),
       ..flags::DenoFlags::default()
     },
-    vec![String::from("./deno")],
     Progress::new(),
   );
 }
