@@ -130,7 +130,6 @@ jobs:
         if: matrix.kind == 'test_debug'
         run: |
           echo ::set-env name=DENO_BUILD_MODE::debug
-          cargo build --locked -p test_plugin
           cargo test --locked --all-targets
 
       - name: Run Benchmarks

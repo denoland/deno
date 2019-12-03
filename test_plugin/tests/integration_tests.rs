@@ -14,6 +14,13 @@ const BUILD_VARIANT: &str = "release";
 
 #[test]
 fn basic() {
+  let mut build_plugin_base = Command::new("cargo");
+  let mut build_plugin =
+    build_plugin_base.arg("build").arg("-p").arg("test_plugin");
+  if BUILD_VARIANT == "release" {
+    build_plugin = build_plugin.arg("--release");
+  }
+  let _build_plugin_output = build_plugin.output().unwrap();
   let output = deno_cmd()
     .arg("--allow-plugin")
     .arg("tests/test.js")
