@@ -217,7 +217,7 @@ impl DenoPermissions {
     if check_path_white_list(path, &self.read_whitelist) {
       return PermissionState::Allow;
     };
-    self.allow_write.request(&match path {
+    self.allow_read.request(&match path {
       None => "Deno requests read access.".to_string(),
       Some(path) => format!("Deno requests read access to \"{}\".", path),
     })
@@ -238,7 +238,7 @@ impl DenoPermissions {
     url: &Option<&str>,
   ) -> Result<PermissionState, ErrBox> {
     if self.get_state_net_url(url)? == PermissionState::Ask {
-      return Ok(self.allow_run.request(&match url {
+      return Ok(self.allow_net.request(&match url {
         None => "Deno requests network access.".to_string(),
         Some(url) => format!("Deno requests network access to \"{}\".", url),
       }));
