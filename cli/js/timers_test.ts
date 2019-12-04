@@ -299,3 +299,55 @@ test(async function timerMaxCpuBug(): Promise<void> {
   console.log("opsDispatched", opsDispatched, "opsDispatched_", opsDispatched_);
   assert(opsDispatched_ - opsDispatched < 10);
 });
+
+test(async function timerBasicMicrotaskOrdering(): Promise<void> {
+  let s = "";
+  let count = 0;
+  const { promise, resolve } = deferred();
+  setTimeout(() => {
+    Promise.resolve().then(() => {
+      count++;
+      s += "de";
+      if (count === 2) {
+        resolve();
+      }
+    });
+  });
+  setTimeout(() => {
+    count++;
+    s += "no";
+    if (count === 2) {
+      resolve();
+    }
+  });
+  await promise;
+  assertEquals(s, "deno");
+});
+
+test(async function timerNestedMicrotaskOrdering(): Promise<void> {
+  let s = "";
+  const { promise, resolve } = deferred();
+  s += "0";
+  setTimeout(() => {
+    s += "4";
+    setTimeout(() => (s += "8"));
+    Promise.resolve().then(() => {
+      setTimeout(() => {
+        s += "9";
+        resolve();
+      });
+    });
+  });
+  setTimeout(() => (s += "5"));
+  Promise.resolve().then(() => (s += "2"));
+  Promise.resolve().then(() =>
+    setTimeout(() => {
+      s += "6";
+      Promise.resolve().then(() => (s += "7"));
+    })
+  );
+  Promise.resolve().then(() => Promise.resolve().then(() => (s += "3")));
+  s += "1";
+  await promise;
+  assertEquals(s, "0123456789");
+});
