@@ -50,6 +50,7 @@ impl Worker {
     let isolate = Arc::new(Mutex::new(deno::Isolate::new(startup_data, false)));
     {
       let mut i = isolate.lock().unwrap();
+      let op_registry = i.op_registry.clone();
 
       ops::compiler::init(&mut i, &state);
       ops::errors::init(&mut i, &state);
@@ -57,6 +58,7 @@ impl Worker {
       ops::files::init(&mut i, &state);
       ops::fs::init(&mut i, &state);
       ops::io::init(&mut i, &state);
+      ops::plugins::init(&mut i, &state, op_registry);
       ops::net::init(&mut i, &state);
       ops::tls::init(&mut i, &state);
       ops::os::init(&mut i, &state);

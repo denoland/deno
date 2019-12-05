@@ -27,7 +27,7 @@ pub type CoreError = ();
 pub type CoreOp = Op<CoreError>;
 
 /// Main type describing op
-type OpDispatcher =
+pub type OpDispatcher =
   dyn Fn(&[u8], Option<PinnedBuf>) -> CoreOp + Send + Sync + 'static;
 
 #[derive(Default)]

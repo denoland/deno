@@ -227,7 +227,12 @@ fn op_host_get_worker_closed(
   };
   let op = future.then(move |_result| {
     let mut workers_table = state_.workers.lock().unwrap();
-    workers_table.remove(&id);
+    let maybe_worker = workers_table.remove(&id);
+    if let Some(worker) = maybe_worker {
+      let mut channels = worker.state.worker_channels.lock().unwrap();
+      channels.sender.close_channel();
+      channels.receiver.close();
+    };
     futures::future::ok(json!({}))
   });
 

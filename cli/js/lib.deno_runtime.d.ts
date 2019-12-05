@@ -907,6 +907,7 @@ declare namespace Deno {
     | "write"
     | "net"
     | "env"
+    | "plugin"
     | "hrtime";
   /** https://w3c.github.io/permissions/#status-of-a-permission */
   export type PermissionState = "granted" | "denied" | "prompt";
@@ -924,6 +925,9 @@ declare namespace Deno {
   interface EnvPermissionDescriptor {
     name: "env";
   }
+  interface PluginPermissionDescriptor {
+    name: "plugin";
+  }
   interface HrtimePermissionDescriptor {
     name: "hrtime";
   }
@@ -933,6 +937,7 @@ declare namespace Deno {
     | ReadWritePermissionDescriptor
     | NetPermissionDescriptor
     | EnvPermissionDescriptor
+    | PluginPermissionDescriptor
     | HrtimePermissionDescriptor;
 
   export class Permissions {
@@ -981,6 +986,36 @@ declare namespace Deno {
    *       await Deno.truncate("hello.txt", 10);
    */
   export function truncate(name: string, len?: number): Promise<void>;
+
+  // @url js/plugins.d.ts
+
+  export interface AsyncHandler {
+    (msg: Uint8Array): void;
+  }
+
+  export interface PluginOp {
+    dispatch(
+      control: Uint8Array,
+      zeroCopy?: ArrayBufferView | null
+    ): Uint8Array | null;
+    setAsyncHandler(handler: AsyncHandler): void;
+  }
+
+  export interface Plugin {
+    ops: {
+      [name: string]: PluginOp;
+    };
+  }
+
+  /** Open and initalize a plugin.
+   * Requires the `--allow-plugin` flag.
+   *
+   *        const plugin = Deno.openPlugin("./path/to/some/plugin.so");
+   *        const some_op = plugin.ops.some_op;
+   *        const response = some_op.dispatch(new Uint8Array([1,2,3,4]));
+   *        console.log(`Response from plugin ${response}`);
+   */
+  export function openPlugin(filename: string): Plugin;
 
   // @url js/net.d.ts
 

@@ -6,6 +6,7 @@ pub use crate::msg::ErrorKind;
 use deno::AnyError;
 use deno::ErrBox;
 use deno::ModuleResolutionError;
+use dlopen::Error as DlopenError;
 use http::uri;
 use hyper;
 use reqwest;
@@ -292,6 +293,19 @@ mod unix {
   }
 }
 
+impl GetErrorKind for DlopenError {
+  fn kind(&self) -> ErrorKind {
+    use dlopen::Error::*;
+    match self {
+      NullCharacter(_) => ErrorKind::Other,
+      OpeningLibraryError(e) => GetErrorKind::kind(e),
+      SymbolGettingError(e) => GetErrorKind::kind(e),
+      NullSymbol => ErrorKind::Other,
+      AddrNotMatchingDll(e) => GetErrorKind::kind(e),
+    }
+  }
+}
+
 impl GetErrorKind for dyn AnyError {
   fn kind(&self) -> ErrorKind {
     use self::GetErrorKind as Get;
@@ -325,6 +339,7 @@ impl GetErrorKind for dyn AnyError {
           .downcast_ref::<serde_json::error::Error>()
           .map(Get::kind)
       })
+      .or_else(|| self.downcast_ref::<DlopenError>().map(Get::kind))
       .or_else(|| unix_error_kind(self))
       .unwrap_or_else(|| {
         panic!("Can't get ErrorKind for {:?}", self);
