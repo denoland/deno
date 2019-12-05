@@ -108,6 +108,7 @@ pub struct DenoPermissions {
   pub net_whitelist: HashSet<String>,
   pub allow_env: PermissionState,
   pub allow_run: PermissionState,
+  pub allow_plugin: PermissionState,
   pub allow_hrtime: PermissionState,
 }
 
@@ -122,6 +123,7 @@ impl DenoPermissions {
       net_whitelist: flags.net_whitelist.iter().cloned().collect(),
       allow_env: PermissionState::from(flags.allow_env),
       allow_run: PermissionState::from(flags.allow_run),
+      allow_plugin: PermissionState::from(flags.allow_plugin),
       allow_hrtime: PermissionState::from(flags.allow_hrtime),
     }
   }
@@ -207,6 +209,13 @@ impl DenoPermissions {
     )
   }
 
+  pub fn check_plugin(&self, filename: &str) -> Result<(), ErrBox> {
+    self.allow_plugin.check(
+      &format!("access to open a plugin: {}", filename),
+      "run again with the --allow-plugin flag",
+    )
+  }
+
   pub fn request_run(&mut self) -> PermissionState {
     self
       .allow_run
@@ -258,6 +267,10 @@ impl DenoPermissions {
       .request("Deno requests to access to high precision time.")
   }
 
+  pub fn request_plugin(&mut self) -> PermissionState {
+    self.allow_plugin.request("Deno requests to open plugins.")
+  }
+
   pub fn get_permission_state(
     &self,
     name: &str,
@@ -270,6 +283,7 @@ impl DenoPermissions {
       "write" => Ok(self.get_state_write(path)),
       "net" => self.get_state_net_url(url),
       "env" => Ok(self.allow_env),
+      "plugin" => Ok(self.allow_plugin),
       "hrtime" => Ok(self.allow_hrtime),
       n => Err(type_error(format!("No such permission name: {}", n))),
     }
@@ -650,6 +664,21 @@ mod tests {
     });
     set_prompt_result(false);
     assert_eq!(perms1.request_env(), PermissionState::Deny);
+  }
+
+  #[test]
+  fn test_permissions_request_plugin() {
+    let mut perms0 = DenoPermissions::from_flags(&DenoFlags {
+      ..Default::default()
+    });
+    set_prompt_result(true);
+    assert_eq!(perms0.request_plugin(), PermissionState::Allow);
+
+    let mut perms1 = DenoPermissions::from_flags(&DenoFlags {
+      ..Default::default()
+    });
+    set_prompt_result(false);
+    assert_eq!(perms1.request_plugin(), PermissionState::Deny);
   }
 
   #[test]

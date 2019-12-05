@@ -82,6 +82,7 @@ pub struct DenoFlags {
   pub net_whitelist: Vec<String>,
   pub allow_env: bool,
   pub allow_run: bool,
+  pub allow_plugin: bool,
   pub allow_hrtime: bool,
   pub no_prompts: bool,
   pub no_remote: bool,
@@ -346,6 +347,7 @@ fn xeval_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   flags.allow_run = true;
   flags.allow_read = true;
   flags.allow_write = true;
+  flags.allow_plugin = true;
   flags.allow_hrtime = true;
   flags.argv.push(XEVAL_URL.to_string());
 
@@ -373,6 +375,7 @@ fn repl_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   flags.allow_run = true;
   flags.allow_read = true;
   flags.allow_write = true;
+  flags.allow_plugin = true;
   flags.allow_hrtime = true;
 }
 
@@ -383,6 +386,7 @@ fn eval_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   flags.allow_run = true;
   flags.allow_read = true;
   flags.allow_write = true;
+  flags.allow_plugin = true;
   flags.allow_hrtime = true;
   let code: &str = matches.value_of("code").unwrap();
   flags.argv.extend(vec![code.to_string()]);
@@ -465,6 +469,9 @@ fn run_test_args_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   if matches.is_present("allow-run") {
     flags.allow_run = true;
   }
+  if matches.is_present("allow-plugin") {
+    flags.allow_plugin = true;
+  }
   if matches.is_present("allow-hrtime") {
     flags.allow_hrtime = true;
   }
@@ -475,6 +482,7 @@ fn run_test_args_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
     flags.allow_run = true;
     flags.allow_read = true;
     flags.allow_write = true;
+    flags.allow_plugin = true;
     flags.allow_hrtime = true;
   }
   if matches.is_present("cached-only") {
@@ -943,6 +951,11 @@ fn run_test_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .help("Allow running subprocesses"),
     )
     .arg(
+      Arg::with_name("allow-plugin")
+        .long("allow-plugin")
+        .help("Allow loading plugins"),
+    )
+    .arg(
       Arg::with_name("allow-hrtime")
         .long("allow-hrtime")
         .help("Allow high resolution time measurement"),
@@ -1408,6 +1421,7 @@ mod tests {
         allow_run: true,
         allow_read: true,
         allow_write: true,
+        allow_plugin: true,
         allow_hrtime: true,
         ..DenoFlags::default()
       }
@@ -1581,6 +1595,7 @@ mod tests {
         allow_run: true,
         allow_read: true,
         allow_write: true,
+        allow_plugin: true,
         allow_hrtime: true,
         ..DenoFlags::default()
       }
@@ -1600,6 +1615,7 @@ mod tests {
         allow_run: true,
         allow_read: true,
         allow_write: true,
+        allow_plugin: true,
         allow_hrtime: true,
         ..DenoFlags::default()
       }
@@ -1635,6 +1651,7 @@ mod tests {
         allow_run: true,
         allow_read: true,
         allow_write: true,
+        allow_plugin: true,
         allow_hrtime: true,
         ..DenoFlags::default()
       }

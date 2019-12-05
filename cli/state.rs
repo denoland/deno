@@ -295,6 +295,11 @@ impl ThreadSafeState {
     self.permissions.lock().unwrap().check_run()
   }
 
+  #[inline]
+  pub fn check_plugin(&self, filename: &str) -> Result<(), ErrBox> {
+    self.permissions.lock().unwrap().check_plugin(filename)
+  }
+
   pub fn check_dyn_import(
     self: &Self,
     module_specifier: &ModuleSpecifier,
