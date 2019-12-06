@@ -69,6 +69,8 @@ export let OP_FETCH_ASSET: number;
 export let OP_DIAL_TLS: number;
 export let OP_HOSTNAME: number;
 export let OP_OPEN_PLUGIN: number;
+export let OP_WATCH: number;
+export let OP_POLL_WATCH: number;
 
 const PLUGIN_ASYNC_HANDLER_MAP: Map<number, AsyncHandler> = new Map();
 
@@ -119,6 +121,7 @@ export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
     case OP_MAKE_TEMP_DIR:
     case OP_DIAL_TLS:
     case OP_FETCH_SOURCE_FILES:
+    case OP_POLL_WATCH:
       json.asyncMsgFromRust(opId, ui8);
       break;
     default:

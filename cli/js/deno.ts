@@ -81,6 +81,7 @@ export { connect, dial, listen, Listener, Conn } from "./net.ts";
 export { dialTLS, listenTLS } from "./tls.ts";
 export { metrics, Metrics } from "./metrics.ts";
 export { resources } from "./resources.ts";
+export { FsWatcher, FsWatcherEvent, WatchOptions, watch } from "./watch_fs.ts";
 export {
   kill,
   run,

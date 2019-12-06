@@ -1,16 +1,20 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 // Some deserializer fields are only used on Unix and Windows build fails without it
 use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
-use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
+use crate::deno_error::{bad_resource, DenoError};
 use crate::fs as deno_fs;
 use crate::ops::json_op;
 use crate::state::ThreadSafeState;
+use crossbeam_channel;
 use deno::*;
+use notify;
+use notify::{watcher, RecommendedWatcher, RecursiveMode, Watcher};
 use remove_dir_all::remove_dir_all;
 use std::convert::From;
 use std::fs;
 use std::path::PathBuf;
+use std::time::Duration;
 use std::time::UNIX_EPOCH;
 
 #[cfg(unix)]
@@ -31,6 +35,11 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op("symlink", s.core_op(json_op(s.stateful_op(op_symlink))));
   i.register_op("read_link", s.core_op(json_op(s.stateful_op(op_read_link))));
   i.register_op("truncate", s.core_op(json_op(s.stateful_op(op_truncate))));
+  i.register_op("watch", s.core_op(json_op(s.stateful_op(op_watch))));
+  i.register_op(
+    "poll_watch",
+    s.core_op(json_op(s.stateful_op(op_fs_poll_watcher))),
+  );
   i.register_op(
     "make_temp_dir",
     s.core_op(json_op(s.stateful_op(op_make_temp_dir))),
@@ -576,4 +585,74 @@ fn op_cwd(
   let path = std::env::current_dir()?;
   let path_str = path.into_os_string().into_string().unwrap();
   Ok(JsonOp::Sync(json!(path_str)))
+}
+
+#[allow(dead_code)]
+struct FsWatcher {
+  watcher: RecommendedWatcher,
+  receiver:
+    crossbeam_channel::Receiver<Result<notify::event::Event, notify::Error>>,
+}
+
+impl Resource for FsWatcher {}
+
+#[derive(Deserialize)]
+struct OpenWatcherArgs {
+  recursive: bool,
+  paths: Vec<String>,
+  debounce: u64,
+}
+
+pub fn op_watch(
+  state: &ThreadSafeState,
+  args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: OpenWatcherArgs = serde_json::from_value(args)?;
+  let (tx, rx) = crossbeam_channel::unbounded();
+  let mut watcher = watcher(tx, Duration::from_millis(args.debounce))?;
+
+  let recursive_mode: RecursiveMode = if args.recursive {
+    RecursiveMode::Recursive
+  } else {
+    RecursiveMode::NonRecursive
+  };
+  for path in &args.paths {
+    state.check_read(path)?;
+    watcher.watch(path, recursive_mode)?;
+  }
+
+  let watcher_resource = FsWatcher {
+    watcher,
+    receiver: rx,
+  };
+  let mut table = state.lock_resource_table();
+  let rid = table.add("fsWatcher", Box::new(watcher_resource));
+  Ok(JsonOp::Sync(json!(rid)))
+}
+
+#[derive(Deserialize)]
+struct PollWatcherArgs {
+  rid: i32,
+}
+
+pub fn op_fs_poll_watcher(
+  state: &ThreadSafeState,
+  args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: PollWatcherArgs = serde_json::from_value(args)?;
+  let state = state.clone();
+
+  blocking_json(false, move || {
+    let mut table = state.lock_resource_table();
+    let resource = table
+      .get_mut::<FsWatcher>(args.rid as u32)
+      .ok_or_else(bad_resource)?;
+    // blocks
+    let result = resource.receiver.recv().map_err(ErrBox::from)?;
+    let event = result.map_err(ErrBox::from)?;
+    let serialized = serde_json::to_string(&event).expect("Foobar");
+    Ok(json!(serialized))
+  })
 }
