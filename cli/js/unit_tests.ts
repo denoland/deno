@@ -20,6 +20,7 @@ import "./event_target_test.ts";
 import "./fetch_test.ts";
 import "./file_test.ts";
 import "./files_test.ts";
+import "./fs_watch_test.ts";
 import "./form_data_test.ts";
 import "./get_random_values_test.ts";
 import "./globals_test.ts";

@@ -1171,7 +1171,7 @@ declare namespace Deno {
    */
   export function resources(): ResourceMap;
 
-  // @url js/watch_fs.d.ts
+  // @url js/fs_watch.d.ts
 
   export type FsWatcher = AsyncIterableIterator<unknown> & Closer;
 

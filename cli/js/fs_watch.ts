@@ -2,6 +2,7 @@
 import { sendSync, sendAsync } from "./dispatch_json.ts";
 import * as dispatch from "./dispatch.ts";
 import { Closer } from "./io.ts";
+import { ErrorKind, DenoError } from "./errors.ts";
 
 export interface FsWatcherEvent {
   event: string;
@@ -18,7 +19,7 @@ export interface WatchOptions {
 
 class FsWatcherImpl implements FsWatcher {
   readonly rid: number;
-  private closed: boolean = false;
+  private closed = false;
 
   constructor(paths: string[], options: WatchOptions) {
     const { recursive = false, debounce = 500 } = options;
@@ -29,10 +30,19 @@ class FsWatcherImpl implements FsWatcher {
     if (this.closed) {
       return { value: undefined, done: true };
     }
-    const res: FsWatcherEvent = await sendAsync(dispatch.OP_POLL_WATCH, {
-      rid: this.rid
-    });
-    return { value: res, done: res.event === "watcherClosed" };
+
+    try {
+      const value = (await sendAsync(dispatch.OP_POLL_WATCH, {
+        rid: this.rid
+      })) as FsWatcherEvent;
+      return { value, done: false };
+    } catch (e) {
+      if (e instanceof DenoError && e.kind == ErrorKind.BadResource) {
+        return { value: undefined, done: true };
+      } else {
+        throw e;
+      }
+    }
   }
 
   close(): void {
