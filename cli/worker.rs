@@ -200,6 +200,7 @@ impl MainWorker {
       ops::random::init(&mut isolate, &state);
       ops::repl::init(&mut isolate, &state);
       ops::resources::init(&mut isolate, &state);
+      ops::signal::init(&mut isolate, &state);
       ops::timers::init(&mut isolate, &state);
       ops::worker_host::init(&mut isolate, &state);
       ops::web_worker::init(&mut isolate, &state);

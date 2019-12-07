@@ -44,7 +44,7 @@ mod progress;
 mod repl;
 pub mod resolve_addr;
 mod shell;
-mod signal;
+pub mod signal;
 pub mod source_maps;
 mod startup_data;
 pub mod state;
