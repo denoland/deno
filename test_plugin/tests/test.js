@@ -62,4 +62,5 @@ function runTestOpCount() {
 
 runTestSync();
 runTestAsync();
+
 runTestOpCount();
