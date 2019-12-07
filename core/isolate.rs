@@ -759,7 +759,6 @@ pub fn js_check<T>(r: Result<T, ErrBox>) -> T {
 #[cfg(test)]
 pub mod tests {
   use super::*;
-  use futures::executor::ThreadPool;
   use futures::future::lazy;
   use std::io;
   use std::ops::FnOnce;
@@ -769,8 +768,7 @@ pub mod tests {
   where
     F: FnOnce(&mut Context) + Send + 'static,
   {
-    let poll = ThreadPool::new().unwrap();
-    poll.spawn_ok(lazy(move |cx| f(cx)));
+    futures::executor::block_on(lazy(move |cx| f(cx)));
   }
 
   fn poll_until_ready<F>(future: &mut F, max_poll_count: usize) -> F::Output
@@ -790,34 +788,8 @@ pub mod tests {
     )
   }
 
-  struct DelayedFuture {
-    counter: u32,
-    buf: Box<[u8]>,
-  }
-
-  impl DelayedFuture {
-    pub fn new(buf: Box<[u8]>) -> Self {
-      DelayedFuture { counter: 0, buf }
-    }
-  }
-
-  impl Future for DelayedFuture {
-    type Output = Result<Box<[u8]>, ()>;
-
-    fn poll(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Self::Output> {
-      let inner = self.get_mut();
-      if inner.counter > 0 {
-        return Poll::Ready(Ok(inner.buf.clone()));
-      }
-
-      inner.counter += 1;
-      Poll::Pending
-    }
-  }
-
   pub enum Mode {
-    AsyncImmediate,
-    AsyncDelayed,
+    Async,
     OverflowReqSync,
     OverflowResSync,
     OverflowReqAsync,
@@ -834,17 +806,11 @@ pub mod tests {
       move |control: &[u8], _zero_copy: Option<PinnedBuf>| -> CoreOp {
         dispatch_count_.fetch_add(1, Ordering::Relaxed);
         match mode {
-          Mode::AsyncImmediate => {
+          Mode::Async => {
             assert_eq!(control.len(), 1);
             assert_eq!(control[0], 42);
             let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
             Op::Async(futures::future::ok(buf).boxed())
-          }
-          Mode::AsyncDelayed => {
-            assert_eq!(control.len(), 1);
-            assert_eq!(control[0], 42);
-            let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
-            Op::Async(DelayedFuture::new(buf).boxed())
           }
           Mode::OverflowReqSync => {
             assert_eq!(control.len(), 100 * 1024 * 1024);
@@ -863,7 +829,7 @@ pub mod tests {
           Mode::OverflowReqAsync => {
             assert_eq!(control.len(), 100 * 1024 * 1024);
             let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
-            Op::Async(DelayedFuture::new(buf).boxed())
+            Op::Async(futures::future::ok(buf).boxed())
           }
           Mode::OverflowResAsync => {
             assert_eq!(control.len(), 1);
@@ -872,7 +838,7 @@ pub mod tests {
             vec.resize(100 * 1024 * 1024, 0);
             vec[0] = 4;
             let buf = vec.into_boxed_slice();
-            Op::Async(DelayedFuture::new(buf).boxed())
+            Op::Async(futures::future::ok(buf).boxed())
           }
         }
       };
@@ -895,7 +861,7 @@ pub mod tests {
 
   #[test]
   fn test_dispatch() {
-    let (mut isolate, dispatch_count) = setup(Mode::AsyncImmediate);
+    let (mut isolate, dispatch_count) = setup(Mode::Async);
     js_check(isolate.execute(
       "filename.js",
       r#"
@@ -912,7 +878,7 @@ pub mod tests {
 
   #[test]
   fn test_mods() {
-    let (mut isolate, dispatch_count) = setup(Mode::AsyncImmediate);
+    let (mut isolate, dispatch_count) = setup(Mode::Async);
     let mod_a = isolate
       .mod_new(
         true,
@@ -959,59 +925,9 @@ pub mod tests {
   }
 
   #[test]
-  fn test_poll_async_immediate_ops() {
-    run_in_task(|cx| {
-      let (mut isolate, dispatch_count) = setup(Mode::AsyncImmediate);
-
-      js_check(isolate.execute(
-        "setup2.js",
-        r#"
-         let nrecv = 0;
-         Deno.core.setAsyncHandler((opId, buf) => {
-           nrecv++;
-         });
-         "#,
-      ));
-      assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
-      js_check(isolate.execute(
-        "check1.js",
-        r#"
-         assert(nrecv == 0);
-         let control = new Uint8Array([42]);
-         const res1 = Deno.core.send(1, control);
-         assert(res1);
-         assert(nrecv == 0);
-         "#,
-      ));
-      assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
-      assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
-      js_check(isolate.execute(
-        "check2.js",
-        r#"
-         assert(nrecv == 0);
-         Deno.core.send(1, control);
-         assert(nrecv == 0);
-         "#,
-      ));
-      assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
-      assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
-      assert!(match isolate.poll_unpin(cx) {
-        Poll::Ready(Ok(_)) => true,
-        _ => false,
-      });
-      js_check(isolate.execute("check3.js", "assert(nrecv == 0)"));
-      // We are idle, so the next poll should be the last.
-      assert!(match isolate.poll_unpin(cx) {
-        Poll::Ready(Ok(_)) => true,
-        _ => false,
-      });
-    });
-  }
-
-  #[test]
   fn test_poll_async_delayed_ops() {
     run_in_task(|cx| {
-      let (mut isolate, dispatch_count) = setup(Mode::AsyncDelayed);
+      let (mut isolate, dispatch_count) = setup(Mode::Async);
 
       js_check(isolate.execute(
         "setup2.js",
@@ -1275,7 +1191,7 @@ pub mod tests {
     let (tx, rx) = std::sync::mpsc::channel::<bool>();
     let tx_clone = tx.clone();
 
-    let (mut isolate, _dispatch_count) = setup(Mode::AsyncImmediate);
+    let (mut isolate, _dispatch_count) = setup(Mode::Async);
     let shared = isolate.shared_isolate_handle();
 
     let t1 = std::thread::spawn(move || {
@@ -1332,7 +1248,7 @@ pub mod tests {
   fn dangling_shared_isolate() {
     let shared = {
       // isolate is dropped at the end of this block
-      let (mut isolate, _dispatch_count) = setup(Mode::AsyncImmediate);
+      let (mut isolate, _dispatch_count) = setup(Mode::Async);
       isolate.shared_isolate_handle()
     };
 
@@ -1499,7 +1415,7 @@ pub mod tests {
   #[test]
   fn test_js() {
     run_in_task(|mut cx| {
-      let (mut isolate, _dispatch_count) = setup(Mode::AsyncImmediate);
+      let (mut isolate, _dispatch_count) = setup(Mode::Async);
       js_check(
         isolate.execute(
           "shared_queue_test.js",
