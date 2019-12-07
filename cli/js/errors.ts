@@ -79,5 +79,7 @@ export enum ErrorKind {
   TypeError = 51,
 
   /** TODO this is a DomException type, and should be moved out of here when possible */
-  DataCloneError = 52
+  DataCloneError = 52,
+
+  StreamDisposed = 53
 }

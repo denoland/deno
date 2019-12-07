@@ -296,7 +296,7 @@ enum MacOSSignal {
 
 /** Signals numbers. This is platform dependent.
  */
-export const Signal = {};
+export const Signal: { [key: string]: number } = {};
 
 export function setSignals(): void {
   if (build.os === "mac") {

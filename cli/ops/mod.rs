@@ -21,6 +21,7 @@ pub mod process;
 pub mod random;
 pub mod repl;
 pub mod resources;
+pub mod signal;
 pub mod timers;
 pub mod tls;
 pub mod workers;

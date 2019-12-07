@@ -42,6 +42,7 @@ import "./read_link_test.ts";
 import "./rename_test.ts";
 import "./request_test.ts";
 import "./resources_test.ts";
+import "./signal_test.ts";
 import "./stat_test.ts";
 import "./symbols_test.ts";
 import "./symlink_test.ts";

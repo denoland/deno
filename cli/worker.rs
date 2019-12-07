@@ -72,6 +72,7 @@ impl Worker {
       ops::random::init(&mut i, &state);
       ops::repl::init(&mut i, &state);
       ops::resources::init(&mut i, &state);
+      ops::signal::init(&mut i, &state);
       ops::timers::init(&mut i, &state);
       ops::workers::init(&mut i, &state);
 
