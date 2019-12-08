@@ -42,16 +42,10 @@ function installerTest(t: TestFunction, useOriginHomeDir = false): void {
     const tempDir = await makeTempDir();
     const envVars = env();
     const originalHomeDir = envVars["HOME"];
-    const originalHomePath = envVars["HOMEPATH"];
-    const originalHomeDrive = envVars["HOMEDRIVE"];
+    const originalUserProfile = envVars["USERPROFILE"];
     if (!useOriginHomeDir) {
       envVars["HOME"] = tempDir;
-      if (path.isWindows) {
-        envVars["HOMEPATH"] = tempDir.slice(2);
-        envVars["HOMEDRIVE"] = tempDir.slice(0, 2);
-      } else {
-        envVars["HOMEPATH"] = tempDir;
-      }
+      envVars["USERPROFILE"] = tempDir;
     }
 
     try {
@@ -62,11 +56,8 @@ function installerTest(t: TestFunction, useOriginHomeDir = false): void {
       if (originalHomeDir) {
         envVars["HOME"] = originalHomeDir;
       }
-      if (originalHomePath) {
-        envVars["HOMEPATH"] = originalHomePath;
-      }
-      if (originalHomeDrive) {
-        envVars["HOMEDRIVE"] = originalHomeDrive;
+      if (originalUserProfile) {
+        envVars["USERPROFILE"] = originalUserProfile;
       }
     }
   };
