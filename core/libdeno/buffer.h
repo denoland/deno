@@ -103,7 +103,7 @@ class PinnedBuf {
   PinnedBuf() : data_ptr_(nullptr), data_len_(0), pin_() {}
 
   explicit PinnedBuf(v8::Local<v8::ArrayBufferView> view) {
-    auto buf = view->Buffer()->GetContents().Data();
+    auto buf = view->Buffer()->GetBackingStore()->Data();
     ArrayBufferAllocator::global().Ref(buf);
 
     data_ptr_ = reinterpret_cast<uint8_t*>(buf) + view->ByteOffset();

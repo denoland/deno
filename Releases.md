@@ -6,6 +6,17 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.26.0 / 2019.12.05
+
+- feat: Add --no-remote, rename --no-fetch to --cached-only (#3417)
+- feat: Native plugins AKA dlopen (#3372)
+- fix: Improve html for file_server (#3423)
+- fix: MacOS Catalina build failures (#3441)
+- fix: Realpath behavior in windows (#3425)
+- fix: Timer/microtask ordering (#3439)
+- fix: Tweaks to arg_hacks and add v8-flags to repl (#3409)
+- refactor: Disable eager polling for ops (#3434)
+
 ### v0.25.0 / 2019.11.26
 
 - feat: Support named exports on bundles (#3352)

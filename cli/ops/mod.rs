@@ -16,6 +16,7 @@ pub mod io;
 pub mod net;
 pub mod os;
 pub mod permissions;
+pub mod plugins;
 pub mod process;
 pub mod random;
 pub mod repl;

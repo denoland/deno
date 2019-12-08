@@ -11,6 +11,7 @@ export type PermissionName =
   | "net"
   | "env"
   | "run"
+  | "plugin"
   | "hrtime";
 // NOTE: Keep in sync with cli/permissions.rs
 
@@ -31,6 +32,9 @@ interface NetPermissionDescriptor {
 interface EnvPermissionDescriptor {
   name: "env";
 }
+interface PluginPermissionDescriptor {
+  name: "plugin";
+}
 interface HrtimePermissionDescriptor {
   name: "hrtime";
 }
@@ -40,6 +44,7 @@ type PermissionDescriptor =
   | ReadWritePermissionDescriptor
   | NetPermissionDescriptor
   | EnvPermissionDescriptor
+  | PluginPermissionDescriptor
   | HrtimePermissionDescriptor;
 
 /** https://w3c.github.io/permissions/#permissionstatus */

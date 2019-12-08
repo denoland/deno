@@ -36,10 +36,6 @@ test(async function serveFile(): Promise<void> {
     const res = await fetch("http://localhost:4500/README.md");
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
-    assertEquals(
-      res.headers.get("content-type"),
-      "text/markdown; charset=utf-8"
-    );
     const downloadedFile = await res.text();
     const localFile = new TextDecoder().decode(
       await Deno.readFile("README.md")
@@ -63,10 +59,10 @@ test(async function serveDirectory(): Promise<void> {
     // TODO: `mode` should work correctly in the future.
     // Correct this test case accordingly.
     Deno.build.os !== "win" &&
-      assert(/<td class="mode">\([a-zA-Z-]{10}\)<\/td>/.test(page));
+      assert(/<td class="mode">(\s)*\([a-zA-Z-]{10}\)(\s)*<\/td>/.test(page));
     Deno.build.os === "win" &&
-      assert(/<td class="mode">\(unknown mode\)<\/td>/.test(page));
-    assert(page.includes(`<td><a href="/README.md">README.md</a></td>`));
+      assert(/<td class="mode">(\s)*\(unknown mode\)(\s)*<\/td>/.test(page));
+    assert(page.includes(`<a href="/README.md">README.md</a>`));
   } finally {
     killFileServer();
   }

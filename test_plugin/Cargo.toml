@@ -1,0 +1,14 @@
+[package]
+name = "test_plugin"
+version = "0.0.1"
+authors = ["the deno authors"]
+edition = "2018"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+futures = "0.3"
+deno = { path = "../core" }
+deno_cli = { path = "../cli" }

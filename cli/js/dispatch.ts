@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as minimal from "./dispatch_minimal.ts";
 import * as json from "./dispatch_json.ts";
+import { AsyncHandler } from "./plugins.ts";
 
 // These consts are shared with Rust. Update with care.
 export let OP_READ: number;
@@ -67,6 +68,16 @@ export let OP_CWD: number;
 export let OP_FETCH_ASSET: number;
 export let OP_DIAL_TLS: number;
 export let OP_HOSTNAME: number;
+export let OP_OPEN_PLUGIN: number;
+
+const PLUGIN_ASYNC_HANDLER_MAP: Map<number, AsyncHandler> = new Map();
+
+export function setPluginAsyncHandler(
+  opId: number,
+  handler: AsyncHandler
+): void {
+  PLUGIN_ASYNC_HANDLER_MAP.set(opId, handler);
+}
 
 export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
   switch (opId) {
@@ -111,6 +122,11 @@ export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
       json.asyncMsgFromRust(opId, ui8);
       break;
     default:
-      throw Error("bad async opId");
+      const handler = PLUGIN_ASYNC_HANDLER_MAP.get(opId);
+      if (handler) {
+        handler(ui8);
+      } else {
+        throw Error("bad async opId");
+      }
   }
 }

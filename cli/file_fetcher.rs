@@ -74,7 +74,8 @@ pub struct SourceFileFetcher {
   source_file_cache: SourceFileCache,
   cache_blacklist: Vec<String>,
   use_disk_cache: bool,
-  no_remote_fetch: bool,
+  no_remote: bool,
+  cached_only: bool,
 }
 
 impl SourceFileFetcher {
@@ -83,7 +84,8 @@ impl SourceFileFetcher {
     progress: Progress,
     use_disk_cache: bool,
     cache_blacklist: Vec<String>,
-    no_remote_fetch: bool,
+    no_remote: bool,
+    cached_only: bool,
   ) -> std::io::Result<Self> {
     let file_fetcher = Self {
       deps_cache,
@@ -91,7 +93,8 @@ impl SourceFileFetcher {
       source_file_cache: SourceFileCache::default(),
       cache_blacklist,
       use_disk_cache,
-      no_remote_fetch,
+      no_remote,
+      cached_only,
     };
 
     Ok(file_fetcher)
@@ -123,10 +126,10 @@ impl SourceFileFetcher {
 
     // If file is not in memory cache check if it can be found
     // in local cache - which effectively means trying to fetch
-    // using "--no-fetch" flag. We can safely block on this
+    // using "--cached-only" flag. We can safely block on this
     // future, because it doesn't do any asynchronous action
     // it that path.
-    let fut = self.get_source_file_async(specifier.as_url(), true, true);
+    let fut = self.get_source_file_async(specifier.as_url(), true, false, true);
 
     futures::executor::block_on(fut).ok()
   }
@@ -152,21 +155,31 @@ impl SourceFileFetcher {
       .get_source_file_async(
         &module_url,
         self.use_disk_cache,
-        self.no_remote_fetch,
+        self.no_remote,
+        self.cached_only,
       )
       .then(move |result| {
         let mut out = match result.map_err(|err| {
-          if err.kind() == ErrorKind::NotFound {
-            let msg = if let Some(referrer) = maybe_referrer {
-              format!(
-                "Cannot resolve module \"{}\" from \"{}\"",
-                module_url.to_string(),
-                referrer
-              )
-            } else {
-              format!("Cannot resolve module \"{}\"", module_url.to_string())
-            };
+          let err_kind = err.kind();
+          let referrer_suffix = if let Some(referrer) = maybe_referrer {
+            format!(" from \"{}\"", referrer)
+          } else {
+            "".to_owned()
+          };
+          if err_kind == ErrorKind::NotFound {
+            let msg = format!(
+              "Cannot resolve module \"{}\"{}",
+              module_url.to_string(),
+              referrer_suffix
+            );
             DenoError::new(ErrorKind::NotFound, msg).into()
+          } else if err_kind == ErrorKind::PermissionDenied {
+            let msg = format!(
+              "Cannot find module \"{}\"{} in cache, --cached-only is specified",
+              module_url.to_string(),
+              referrer_suffix
+            );
+            DenoError::new(ErrorKind::PermissionDenied, msg).into()
           } else {
             err
           }
@@ -196,13 +209,16 @@ impl SourceFileFetcher {
   ///
   /// If `use_disk_cache` is true then remote files are fetched from disk cache.
   ///
-  /// If `no_remote_fetch` is true then if remote file is not found it disk
-  /// cache this method will fail.
+  /// If `no_remote` is true then this method will fail for remote files.
+  ///
+  /// If `cached_only` is true then this method will fail for remote files
+  /// not already cached.
   fn get_source_file_async(
     self: &Self,
     module_url: &Url,
     use_disk_cache: bool,
-    no_remote_fetch: bool,
+    no_remote: bool,
+    cached_only: bool,
   ) -> impl Future<Output = Result<SourceFile, ErrBox>> {
     let url_scheme = module_url.scheme();
     let is_local_file = url_scheme == "file";
@@ -224,11 +240,25 @@ impl SourceFileFetcher {
       }
     }
 
+    // The file is remote, fail if `no_remote` is true.
+    if no_remote {
+      return Either::Left(futures::future::err(
+        std::io::Error::new(
+          std::io::ErrorKind::NotFound,
+          format!(
+            "Not allowed to get remote file '{}'",
+            module_url.to_string()
+          ),
+        )
+        .into(),
+      ));
+    }
+
     // Fetch remote file and cache on-disk for subsequent access
     Either::Right(self.fetch_remote_source_async(
       &module_url,
       use_disk_cache,
-      no_remote_fetch,
+      cached_only,
       10,
     ))
   }
@@ -327,7 +357,7 @@ impl SourceFileFetcher {
     self: &Self,
     module_url: &Url,
     use_disk_cache: bool,
-    no_remote_fetch: bool,
+    cached_only: bool,
     redirect_limit: i64,
   ) -> Pin<Box<SourceFileFuture>> {
     if redirect_limit < 0 {
@@ -352,11 +382,11 @@ impl SourceFileFetcher {
     }
 
     // If file wasn't found in cache check if we can fetch it
-    if no_remote_fetch {
+    if cached_only {
       // We can't fetch remote file - bail out
       return futures::future::err(
         std::io::Error::new(
-          std::io::ErrorKind::NotFound,
+          std::io::ErrorKind::PermissionDenied,
           format!(
             "cannot find remote file '{}' in cache",
             module_url.to_string()
@@ -391,7 +421,7 @@ impl SourceFileFetcher {
           Either::Left(dir.fetch_remote_source_async(
             &new_module_url,
             use_disk_cache,
-            no_remote_fetch,
+            cached_only,
             redirect_limit - 1,
           ))
         }
@@ -690,6 +720,7 @@ mod tests {
       true,
       vec![],
       false,
+      false,
     )
     .expect("setup fail")
   }
@@ -843,7 +874,7 @@ mod tests {
     let headers_file_name_3 = headers_file_name.clone();
 
     let fut = fetcher
-      .get_source_file_async(&module_url, true, false)
+      .get_source_file_async(&module_url, true, false, false)
       .then(move |result| {
         assert!(result.is_ok());
         let r = result.unwrap();
@@ -860,7 +891,7 @@ mod tests {
           &headers_file_name_1,
           "{ \"mime_type\": \"text/javascript\" }",
         );
-        fetcher_1.get_source_file_async(&module_url, true, false)
+        fetcher_1.get_source_file_async(&module_url, true, false, false)
       })
       .then(move |result2| {
         assert!(result2.is_ok());
@@ -886,7 +917,7 @@ mod tests {
           Some("application/json".to_owned()),
           None,
         );
-        fetcher_2.get_source_file_async(&module_url_1, true, false)
+        fetcher_2.get_source_file_async(&module_url_1, true, false, false)
       })
       .then(move |result3| {
         assert!(result3.is_ok());
@@ -905,7 +936,7 @@ mod tests {
         // let's create fresh instance of DenoDir (simulating another freshh Deno process)
         // and don't use cache
         let fetcher = setup_file_fetcher(temp_dir.path());
-        fetcher.get_source_file_async(&module_url_2, false, false)
+        fetcher.get_source_file_async(&module_url_2, false, false, false)
       })
       .then(move |result4| {
         assert!(result4.is_ok());
@@ -940,7 +971,7 @@ mod tests {
     );
 
     let fut = fetcher
-      .get_source_file_async(&module_url, true, false)
+      .get_source_file_async(&module_url, true, false, false)
       .then(move |result| {
         assert!(result.is_ok());
         let r = result.unwrap();
@@ -962,7 +993,7 @@ mod tests {
           Some("text/typescript".to_owned()),
           None,
         );
-        fetcher.get_source_file_async(&module_url, true, false)
+        fetcher.get_source_file_async(&module_url, true, false, false)
       })
       .then(move |result2| {
         assert!(result2.is_ok());
@@ -977,7 +1008,7 @@ mod tests {
         // let's create fresh instance of DenoDir (simulating another freshh Deno process)
         // and don't use cache
         let fetcher = setup_file_fetcher(temp_dir.path());
-        fetcher.get_source_file_async(&module_url_1, false, false)
+        fetcher.get_source_file_async(&module_url_1, false, false, false)
       })
       .then(move |result3| {
         assert!(result3.is_ok());
@@ -1077,7 +1108,7 @@ mod tests {
 
     // Test basic follow and headers recording
     let fut = fetcher
-      .get_source_file_async(&redirect_module_url, true, false)
+      .get_source_file_async(&redirect_module_url, true, false, false)
       .then(move |result| {
         assert!(result.is_ok());
         let mod_meta = result.unwrap();
@@ -1138,7 +1169,7 @@ mod tests {
 
     // Test double redirects and headers recording
     let fut = fetcher
-      .get_source_file_async(&double_redirect_url, true, false)
+      .get_source_file_async(&double_redirect_url, true, false, false)
       .then(move |result| {
         assert!(result.is_ok());
         let mod_meta = result.unwrap();
@@ -1196,7 +1227,7 @@ mod tests {
 
     // Test that redirect target is not downloaded twice for different redirect source.
     let fut = fetcher
-      .get_source_file_async(&double_redirect_url, true, false)
+      .get_source_file_async(&double_redirect_url, true, false, false)
       .then(move |result| {
         assert!(result.is_ok());
         let result = fs::File::open(&target_path);
@@ -1210,7 +1241,7 @@ mod tests {
         // shouldn't be downloaded again. It can be verified using source header file creation
         // timestamp (should be the same as after first `get_source_file`)
         fetcher
-          .get_source_file_async(&redirect_url, true, false)
+          .get_source_file_async(&redirect_url, true, false, false)
           .map(move |r| (r, file_modified))
       })
       .then(move |(result, file_modified)| {
@@ -1257,7 +1288,27 @@ mod tests {
   }
 
   #[test]
-  fn test_get_source_code_no_fetch() {
+  fn test_get_source_no_remote() {
+    let http_server_guard = crate::test_util::http_server();
+    let (_temp_dir, fetcher) = test_setup();
+    let module_url =
+      Url::parse("http://localhost:4545/tests/002_hello.ts").unwrap();
+    // Remote modules are not allowed
+    let fut = fetcher
+      .get_source_file_async(&module_url, true, true, false)
+      .then(move |result| {
+        assert!(result.is_err());
+        let err = result.err().unwrap();
+        assert_eq!(err.kind(), ErrorKind::NotFound);
+        futures::future::ok(())
+      });
+
+    tokio_util::run(fut);
+    drop(http_server_guard);
+  }
+
+  #[test]
+  fn test_get_source_cached_only() {
     let http_server_guard = crate::test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let fetcher_1 = fetcher.clone();
@@ -1266,21 +1317,21 @@ mod tests {
       Url::parse("http://localhost:4545/tests/002_hello.ts").unwrap();
     let module_url_1 = module_url.clone();
     let module_url_2 = module_url.clone();
-    // file hasn't been cached before and remote downloads are not allowed
+    // file hasn't been cached before
     let fut = fetcher
-      .get_source_file_async(&module_url, true, true)
+      .get_source_file_async(&module_url, true, false, true)
       .then(move |result| {
         assert!(result.is_err());
         let err = result.err().unwrap();
-        assert_eq!(err.kind(), ErrorKind::NotFound);
+        assert_eq!(err.kind(), ErrorKind::PermissionDenied);
 
         // download and cache file
-        fetcher_1.get_source_file_async(&module_url_1, true, false)
+        fetcher_1.get_source_file_async(&module_url_1, true, false, false)
       })
       .then(move |result| {
         assert!(result.is_ok());
-        // module is already cached, should be ok even with `no_remote_fetch`
-        fetcher_2.get_source_file_async(&module_url_2, true, true)
+        // module is already cached, should be ok even with `cached_only`
+        fetcher_2.get_source_file_async(&module_url_2, true, false, true)
       })
       .then(move |result| {
         assert!(result.is_ok());
