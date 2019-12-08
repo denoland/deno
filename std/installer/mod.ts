@@ -79,7 +79,7 @@ function getFlagFromPermission(perm: Permission): string {
 function getInstallerDir(): string {
   // In Windows's Powershell $HOME environmental variable maybe null
   // if so use $HOMEPATH instead.
-  const { HOME, HOMEPATH } = env();
+  const { HOME, HOMEPATH, HOMEDRIVE } = env();
 
   const HOME_PATH = HOME || HOMEPATH;
 
@@ -87,7 +87,7 @@ function getInstallerDir(): string {
     throw new Error("$HOME is not defined.");
   }
 
-  return path.join(HOME_PATH, ".deno", "bin");
+  return path.resolve(HOMEDRIVE || "", HOME_PATH, ".deno", "bin");
 }
 
 async function readCharacter(): Promise<string> {
