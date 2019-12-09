@@ -6,7 +6,7 @@
 // TODO Add tests like these:
 // https://github.com/indexzero/http-server/blob/master/test/http-server-test.js
 
-const { ErrorKind, DenoError, cwd, args, stat, readDir, open } = Deno;
+const { ErrorKind, cwd, args, stat, readDir, open } = Deno;
 import { posix } from "../path/mod.ts";
 import {
   listenAndServe,
@@ -142,26 +142,20 @@ async function serveDir(
 }
 
 async function serveFallback(req: ServerRequest, e: Error): Promise<Response> {
-  if (e instanceof DenoError) {
-    if (e.kind === ErrorKind.PermissionDenied) {
-      return {
-        status: 500,
-        body: encoder.encode(e.message)
-      };
-    }
-
-    if (e.kind === ErrorKind.NotFound) {
-      return {
-        status: 404,
-        body: encoder.encode("Not found")
-      };
-    }
+  if (
+    e instanceof Deno.DenoError &&
+    (e as Deno.DenoError<Deno.ErrorKind.NotFound>).kind === ErrorKind.NotFound
+  ) {
+    return {
+      status: 404,
+      body: encoder.encode("Not found")
+    };
+  } else {
+    return {
+      status: 500,
+      body: encoder.encode("Internal server error")
+    };
   }
-
-  return {
-    status: 500,
-    body: encoder.encode("Internal server error")
-  };
 }
 
 function serverLog(req: ServerRequest, res: Response): void {
