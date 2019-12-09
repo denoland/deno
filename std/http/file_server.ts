@@ -142,8 +142,6 @@ async function serveDir(
 }
 
 async function serveFallback(req: ServerRequest, e: Error): Promise<Response> {
-  console.error(e.message);
-
   if (
     e instanceof Deno.DenoError &&
     (e as Deno.DenoError<Deno.ErrorKind.NotFound>).kind === ErrorKind.NotFound
@@ -299,6 +297,7 @@ listenAndServe(
         response = await serveFile(req, fsPath);
       }
     } catch (e) {
+      console.error(e.message);
       response = await serveFallback(req, e);
     } finally {
       if (CORSEnabled) {
