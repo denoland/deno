@@ -88,7 +88,7 @@ test(async function serveFallback(): Promise<void> {
   await startFileServer();
   try {
     const res = await fetch(
-      "http://localhost:4500/std/http/testdata/test%20file.txt"
+      "http://localhost:4500/http/testdata/test%20file.txt"
     );
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
