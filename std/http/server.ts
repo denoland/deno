@@ -107,7 +107,7 @@ export class ServerRequest {
   conn!: Conn;
   r!: BufReader;
   w!: BufWriter;
-  done: Deferred<void> = deferred();
+  done: Deferred<Error | undefined> = deferred();
 
   public async *bodyStream(): AsyncIterableIterator<Uint8Array> {
     if (this.headers.has("content-length")) {
@@ -193,11 +193,24 @@ export class ServerRequest {
   }
 
   async respond(r: Response): Promise<void> {
-    // Write our response!
-    await writeResponse(this.w, r);
+    let err: Error | undefined;
+    try {
+      // Write our response!
+      await writeResponse(this.w, r);
+    } catch (e) {
+      try {
+        // Eagerly close on error.
+        this.conn.close();
+      } catch {}
+      err = e;
+    }
     // Signal that this request has been processed and the next pipelined
     // request on the same connection can be accepted.
-    this.done.resolve();
+    this.done.resolve(err);
+    if (err) {
+      // Error during responding, rethrow.
+      throw err;
+    }
   }
 }
 
@@ -338,7 +351,13 @@ export class Server implements AsyncIterable<ServerRequest> {
 
       // Wait for the request to be processed before we accept a new request on
       // this connection.
-      await req!.done;
+      const procError = await req!.done;
+      if (procError) {
+        // Something bad happened during response.
+        // (likely other side closed during pipelined req)
+        // req.done implies this connection already closed, so we can just return.
+        return;
+      }
     }
 
     if (req! === Deno.EOF) {
