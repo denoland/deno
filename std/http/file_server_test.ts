@@ -96,12 +96,7 @@ test(async function serveFallback(): Promise<void> {
 
 test(async function servePermissionDenied(): Promise<void> {
   const deniedServer = Deno.run({
-    args: [
-      Deno.execPath(),
-      "run",
-      "--allow-net",
-      "http/file_server.ts"
-    ],
+    args: [Deno.execPath(), "run", "--allow-net", "http/file_server.ts"],
     stdout: "piped"
   });
   // Once fileServer is ready it will write to its stdout.
