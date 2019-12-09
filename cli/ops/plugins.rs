@@ -86,7 +86,8 @@ pub fn op_open_plugin(
     // The inclusion of prefix and rid is designed to avoid any
     // op name collision beyond the bound of a single loaded
     // plugin instance.
-    let op_id = registry.register(&format!("plugin_{}_{}", rid, op.0), op.1);
+    let op_id = registry
+      .register(&format!("plugin_{}_{}", rid, op.0), state.core_op(op.1));
     plugin_resource.ops.insert(op.0, op_id);
   }
 
