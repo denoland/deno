@@ -101,15 +101,11 @@ test(async function servePermissionDenied(): Promise<void> {
     stderr: "piped"
   });
 
-  const curl = Deno.run({
-    args: ["curl", "http://localhost:4500/"],
-    stdout: "null"
-  });
+  await fetch("http://localhost:4500/");
 
   const r = new TextProtoReader(new BufReader(deniedServer.stderr!));
   assertEquals(await r.readLine(), "run again with the --allow-read flag");
 
   deniedServer.close();
   deniedServer.stderr!.close();
-  curl.close();
 });
