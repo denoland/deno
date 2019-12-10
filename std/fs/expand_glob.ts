@@ -98,7 +98,7 @@ export async function* expandGlob(
       const parentPath = joinGlobs([walkInfo.filename, ".."], globOptions);
       try {
         if (shouldInclude(parentPath)) {
-          return yield { filename: parentPath, info: await stat(parentPath) }
+          return yield { filename: parentPath, info: await stat(parentPath) };
         }
       } catch (error) {
         if (error.kind != ErrorKind.NotFound) {
@@ -206,7 +206,7 @@ export function* expandGlobSync(
       const parentPath = joinGlobs([walkInfo.filename, ".."], globOptions);
       try {
         if (shouldInclude(parentPath)) {
-          return yield { filename: parentPath, info: statSync(parentPath) }
+          return yield { filename: parentPath, info: statSync(parentPath) };
         }
       } catch (error) {
         if (error.kind != ErrorKind.NotFound) {
