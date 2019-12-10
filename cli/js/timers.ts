@@ -192,7 +192,7 @@ function firePendingTimers(): void {
     pendingScheduleTimers = [];
     // Reschedule for next round of timeout.
     const nextDueNode = dueTree.min();
-    const due = nextDueNode && Math.min(nextDueNode.due, now);
+    const due = nextDueNode && Math.max(nextDueNode.due, now);
     setOrClearGlobalTimeout(due, now);
   } else {
     // Fire a single timer and allow its children microtasks scheduled first.
