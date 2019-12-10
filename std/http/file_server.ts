@@ -237,7 +237,6 @@ listenAndServe(
   async (req): Promise<void> => {
     const normalizedUrl = posix.normalize(req.url);
     const decodedUrl = decodeURIComponent(normalizedUrl);
-
     const fsPath = posix.join(target, decodedUrl);
 
     let response: Response;
