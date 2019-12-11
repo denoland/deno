@@ -12,6 +12,8 @@ const BUILD_VARIANT: &str = "debug";
 #[cfg(not(debug_assertions))]
 const BUILD_VARIANT: &str = "release";
 
+// TODO(ry) Re-enable this test on windows. It is flaky for an unknown reason.
+#[cfg(not(windows))]
 #[test]
 fn basic() {
   let mut build_plugin_base = Command::new("cargo");
