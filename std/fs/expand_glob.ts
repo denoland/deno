@@ -10,7 +10,8 @@ import {
 } from "../path/mod.ts";
 import { WalkInfo, walk, walkSync } from "./walk.ts";
 const { ErrorKind, cwd, stat, statSync } = Deno;
-type DenoError = Deno.DenoError;
+type ErrorKind = Deno.ErrorKind;
+type DenoError = Deno.DenoError<ErrorKind>;
 type FileInfo = Deno.FileInfo;
 
 export interface ExpandGlobOptions extends GlobOptions {
