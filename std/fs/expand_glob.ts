@@ -10,6 +10,7 @@ import {
 } from "../path/mod.ts";
 import { WalkInfo, walk, walkSync } from "./walk.ts";
 const { ErrorKind, cwd, stat, statSync } = Deno;
+type DenoError = Deno.DenoError;
 type FileInfo = Deno.FileInfo;
 
 export interface ExpandGlobOptions extends GlobOptions {
@@ -39,6 +40,12 @@ function split(path: string): SplitPath {
     hasTrailingSep: !!path.match(new RegExp(`${s}$`)),
     winRoot: isWindows && isAbsolute_ ? segments.shift() : undefined
   };
+}
+
+function throwUnlessNotFound(error: Error): void {
+  if ((error as DenoError).kind != ErrorKind.NotFound) {
+    throw error;
+  }
 }
 
 /**
@@ -82,10 +89,7 @@ export async function* expandGlob(
   try {
     fixedRootInfo = { filename: fixedRoot, info: await stat(fixedRoot) };
   } catch (error) {
-    if (error.kind != ErrorKind.NotFound) {
-      throw error;
-    }
-    return;
+    return throwUnlessNotFound(error);
   }
 
   async function* advanceMatch(
@@ -101,9 +105,7 @@ export async function* expandGlob(
           return yield { filename: parentPath, info: await stat(parentPath) };
         }
       } catch (error) {
-        if (error.kind != ErrorKind.NotFound) {
-          throw error;
-        }
+        throwUnlessNotFound(error);
       }
       return;
     } else if (globSegment == "**") {
@@ -190,10 +192,7 @@ export function* expandGlobSync(
   try {
     fixedRootInfo = { filename: fixedRoot, info: statSync(fixedRoot) };
   } catch (error) {
-    if (error.kind != ErrorKind.NotFound) {
-      throw error;
-    }
-    return;
+    return throwUnlessNotFound(error);
   }
 
   function* advanceMatch(
@@ -209,9 +208,7 @@ export function* expandGlobSync(
           return yield { filename: parentPath, info: statSync(parentPath) };
         }
       } catch (error) {
-        if (error.kind != ErrorKind.NotFound) {
-          throw error;
-        }
+        throwUnlessNotFound(error);
       }
       return;
     } else if (globSegment == "**") {
