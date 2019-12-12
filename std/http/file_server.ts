@@ -6,7 +6,7 @@
 // TODO Add tests like these:
 // https://github.com/indexzero/http-server/blob/master/test/http-server-test.js
 
-const { ErrorKind, cwd, args, stat, readDir, open } = Deno;
+const { ErrorKind, DenoError, cwd, args, stat, readDir, open } = Deno;
 import { posix } from "../path/mod.ts";
 import {
   listenAndServe,
@@ -142,10 +142,7 @@ async function serveDir(
 }
 
 async function serveFallback(req: ServerRequest, e: Error): Promise<Response> {
-  if (
-    e instanceof Deno.DenoError &&
-    (e as Deno.DenoError<Deno.ErrorKind.NotFound>).kind === ErrorKind.NotFound
-  ) {
+  if (e instanceof DenoError && e.kind === ErrorKind.NotFound) {
     return {
       status: 404,
       body: encoder.encode("Not found")
@@ -297,6 +294,7 @@ listenAndServe(
         response = await serveFile(req, fsPath);
       }
     } catch (e) {
+      console.error(e.message);
       response = await serveFallback(req, e);
     } finally {
       if (CORSEnabled) {
