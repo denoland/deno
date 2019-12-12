@@ -1,6 +1,7 @@
-const { cwd } = Deno;
+const { cwd, execPath, run } = Deno;
+import { decode } from "../strings/mod.ts";
 import { test, runIfMain } from "../testing/mod.ts";
-import { assert, assertEquals } from "../testing/asserts.ts";
+import { assert, assertEquals, assertStrContains } from "../testing/asserts.ts";
 import {
   isWindows,
   join,
@@ -115,6 +116,22 @@ test(async function expandGlobGlobstarParent(): Promise<void> {
 test(async function expandGlobIncludeDirs(): Promise<void> {
   const options = { ...EG_OPTIONS, includeDirs: false };
   assertEquals(await expandGlobArray("subdir", options), []);
+});
+
+test(async function expandGlobPermError(): Promise<void> {
+  const exampleUrl = new URL("testdata/expand_wildcard.js", import.meta.url);
+  const p = run({
+    args: [execPath(), exampleUrl.toString()],
+    stdin: "null",
+    stdout: "piped",
+    stderr: "piped"
+  });
+  assertEquals(await p.status(), { code: 1, success: false });
+  assertEquals(decode(await p.output()), "");
+  assertStrContains(
+    decode(await p.stderrOutput()),
+    "Uncaught PermissionDenied"
+  );
 });
 
 runIfMain(import.meta);
