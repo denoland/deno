@@ -82,8 +82,7 @@ async function serveFile(
   req: ServerRequest,
   filePath: string
 ): Promise<Response> {
-  const file = await open(filePath);
-  const fileInfo = await stat(filePath);
+  const [file, fileInfo] = await Promise.all([open(filePath), stat(filePath)]);
   const headers = new Headers();
   headers.set("content-length", fileInfo.len.toString());
   headers.set("content-type", "text/plain");
