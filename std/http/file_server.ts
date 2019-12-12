@@ -6,7 +6,7 @@
 // TODO Add tests like these:
 // https://github.com/indexzero/http-server/blob/master/test/http-server-test.js
 
-const { ErrorKind, DenoError, cwd, args, stat, readDir, open, exit } = Deno;
+const { ErrorKind, DenoError, args, stat, readDir, open, exit } = Deno;
 import { posix } from "../path/mod.ts";
 import {
   listenAndServe,
