@@ -1,9 +1,11 @@
 import * as qs from "./querystring.ts";
 import { test } from "../testing/mod.ts";
-import { assertEquals, assertThrows, assert } from "../testing/asserts.ts";
+import { assertEquals, assertThrows } from "../testing/asserts.ts";
 
 test(function qsBase() {
-  function createWithNoPrototype(properties) {
+  function createWithNoPrototype(
+    properties: Array<{ key: string; value: string }>
+  ): Record<string, unknown> {
     const noProto = Object.create(null);
     properties.forEach(property => {
       noProto[property.key] = property.value;
@@ -111,14 +113,14 @@ test(function qsBase() {
   ];
 
   // [wonkyObj, qs, canonicalObj]
-  function extendedFunction() {}
+  function extendedFunction(): void {}
   extendedFunction.prototype = { a: "b" };
   const qsWeirdObjects = [
     // eslint-disable-next-line node-core/no-unescaped-regexp-dot
     [{ regexp: /./g }, "regexp=", { regexp: "" }],
     // eslint-disable-next-line node-core/no-unescaped-regexp-dot
     [{ regexp: new RegExp(".", "g") }, "regexp=", { regexp: "" }],
-    [{ fn: () => {} }, "fn=", { fn: "" }],
+    [{ fn: (): void => {} }, "fn=", { fn: "" }],
     [{ fn: new Function("") }, "fn=", { fn: "" }],
     [{ math: Math }, "math=", { math: "" }],
     [{ e: extendedFunction }, "e=", { e: "" }],
@@ -175,7 +177,7 @@ test(function qsBase() {
   );
 
   // TODO: wait for `util.inspect`
-  function check(actual: unknown, expected: unknown, input?: unknown) {
+  function check(actual: unknown, expected: unknown, _?: unknown): void {
     assertEquals(actual, expected);
   }
 
@@ -186,12 +188,12 @@ test(function qsBase() {
 
   // Test that the colon test cases can do the same
   qsColonTestCases.forEach(testCase => {
-    check(qs.parse(testCase[0] as any, ";", ":"), testCase[2], testCase[0]);
+    check(qs.parse(testCase[0] as string, ";", ":"), testCase[2], testCase[0]);
   });
 
   // Test the weird objects, that they get parsed properly
   qsWeirdObjects.forEach(testCase => {
-    check(qs.parse(testCase[1] as any), testCase[2], testCase[1]);
+    check(qs.parse(testCase[1] as string), testCase[2], testCase[1]);
   });
 
   qsNoMungeTestCases.forEach(testCase => {
@@ -209,7 +211,8 @@ test(function qsBase() {
       ])
     );
 
-    f.q = qs.parse(f.q as any) as any;
+    // @ts-ignore
+    f.q = qs.parse(f.q);
     const expectedInternal = createWithNoPrototype([
       { key: "x", value: "y" },
       { key: "y", value: "z" }
@@ -227,7 +230,9 @@ test(function qsBase() {
         { key: "q", value: "x:y;y:z" }
       ])
     );
-    f.q = qs.parse(f.q as any, ";", ":") as any;
+
+    // @ts-ignore
+    f.q = qs.parse(f.q, ";", ":");
     const expectedInternal = createWithNoPrototype([
       { key: "x", value: "y" },
       { key: "y", value: "z" }
@@ -243,11 +248,17 @@ test(function qsBase() {
   });
 
   qsColonTestCases.forEach(testCase => {
-    assertEquals(qs.stringify(testCase[2] as any, ";", ":"), testCase[1]);
+    assertEquals(
+      qs.stringify(testCase[2] as Record<string, unknown>, ";", ":"),
+      testCase[1]
+    );
   });
 
   qsWeirdObjects.forEach(testCase => {
-    assertEquals(qs.stringify(testCase[0] as any), testCase[1]);
+    assertEquals(
+      qs.stringify(testCase[0] as Record<string, unknown>),
+      testCase[1]
+    );
   });
 
   // Invalid surrogate pair throws URIError
@@ -302,18 +313,24 @@ test(function qsBase() {
 
   // empty string
   assertEquals(qs.stringify(), "");
-  assertEquals(qs.stringify(0 as any), "");
-  assertEquals(qs.stringify([] as any), "");
+
+  // @ts-ignore
+  assertEquals(qs.stringify(0), "");
+  // @ts-ignore
+  assertEquals(qs.stringify([]), "");
   assertEquals(qs.stringify(null), "");
-  assertEquals(qs.stringify(true as any), "");
+  // @ts-ignore
+  assertEquals(qs.stringify(true), "");
 
   check(qs.parse(undefined), {});
 
+  // @ts-ignore
   // empty sep
-  check(qs.parse("a", [] as any), { a: "" });
+  check(qs.parse("a", []), { a: "" });
 
+  // @ts-ignore
   // empty eq
-  check(qs.parse("a", null, [] as any), { "": "a" });
+  check(qs.parse("a", null, []), { "": "a" });
 
   // Test limiting
   assertEquals(
@@ -329,7 +346,7 @@ test(function qsBase() {
 
   // Test removing limit
   {
-    function testUnlimitedKeys() {
+    function testUnlimitedKeys(): void {
       const query = {};
 
       for (let i = 0; i < 2000; i++) query[i] = i;
@@ -385,7 +402,7 @@ test(function qsBase() {
 
   // Test custom decode
   {
-    function demoDecode(str) {
+    function demoDecode(str: string): string {
       return str + str;
     }
 
@@ -401,21 +418,18 @@ test(function qsBase() {
 
   // Test QueryString.unescape
   {
-    function errDecode(str) {
+    function errDecode(_: string): never {
       throw new Error("To jump to the catch scope");
     }
 
-    check(
-      qs.parse("a=a", null, null, { decodeURIComponent: errDecode as any }),
-      {
-        a: "a"
-      }
-    );
+    check(qs.parse("a=a", null, null, { decodeURIComponent: errDecode }), {
+      a: "a"
+    });
   }
 
   // Test custom encode
   {
-    function demoEncode(str) {
+    function demoEncode(str: string): string {
       return str[0];
     }
 
@@ -459,10 +473,13 @@ test(function qsMulticharSeparator() {
 });
 
 test(function qsEscape() {
-  assertEquals(qs.escape(5 as any), "5");
+  // @ts-ignore
+  assertEquals(qs.escape(5), "5");
   assertEquals(qs.escape("test"), "test");
-  assertEquals(qs.escape({} as any), "%5Bobject%20Object%5D");
-  assertEquals(qs.escape([5, 10] as any), "5%2C10");
+  // @ts-ignore
+  assertEquals(qs.escape({}), "%5Bobject%20Object%5D");
+  // @ts-ignore
+  assertEquals(qs.escape([5, 10]), "5%2C10");
   assertEquals(qs.escape("Ŋōđĕ"), "%C5%8A%C5%8D%C4%91%C4%95");
   assertEquals(qs.escape("testŊōđĕ"), "test%C5%8A%C5%8D%C4%91%C4%95");
   assertEquals(
@@ -476,21 +493,25 @@ test(function qsEscape() {
     "URI malformed",
     "URI malformed"
   );
-  assertThrows(() => qs.escape({ toString: 5 } as any), TypeError);
-  assertThrows(() => qs.escape(Symbol("test") as any), TypeError);
+  // @ts-ignore
+  assertThrows(() => qs.escape({ toString: 5 }), TypeError);
+  // @ts-ignore
+  assertThrows(() => qs.escape(Symbol("test")), TypeError);
 
   assertEquals(
-    qs.escape({ test: 5, toString: () => "test", valueOf: () => 10 } as any),
+    // @ts-ignore
+    qs.escape({ test: 5, toString: () => "test", valueOf: () => 10 }),
     "test"
   );
   assertEquals(
-    qs.escape({ toString: 5, valueOf: () => "test" } as any),
+    // @ts-ignore
+    qs.escape({ toString: 5, valueOf: () => "test" }),
     "test"
   );
 });
 
 test(function qsMaxKeysNonFinite() {
-  function createManyParams(count) {
+  function createManyParams(count: number): string {
     let str = "";
 
     if (count === 0) {
@@ -524,10 +545,12 @@ test(function qsMaxKeysNonFinite() {
     maxKeys: NaN
   });
   const resultInfinityString = qs.parse(params, undefined, undefined, {
-    maxKeys: "Infinity" as any
+    // @ts-ignore
+    maxKeys: "Infinity"
   });
   const resultNaNString = qs.parse(params, undefined, undefined, {
-    maxKeys: "NaN" as any
+    // @ts-ignore
+    maxKeys: "NaN"
   });
 
   // Non Finite maxKeys should return the length of input

@@ -102,7 +102,7 @@ export function unescapeBuffer(s: string, decodeSpaces?: boolean): Uint8Array {
   if (hasHex) {
     out = out.slice(0, outIndex);
   }
-  out.toString = () => textDecoder.decode(out);
+  out.toString = (): string => textDecoder.decode(out);
   return out;
 }
 
