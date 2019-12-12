@@ -93,3 +93,29 @@ test(async function serveFallback(): Promise<void> {
     killFileServer();
   }
 });
+
+test(async function servePermissionDenied(): Promise<void> {
+  const deniedServer = Deno.run({
+    args: [Deno.execPath(), "run", "--allow-net", "http/file_server.ts"],
+    stdout: "piped",
+    stderr: "piped"
+  });
+  const reader = new TextProtoReader(new BufReader(deniedServer.stdout!));
+  const errReader = new TextProtoReader(new BufReader(deniedServer.stderr!));
+  const s = await reader.readLine();
+  assert(s !== Deno.EOF && s.includes("server listening"));
+
+  try {
+    await fetch("http://localhost:4500/");
+    assertEquals(
+      await errReader.readLine(),
+      "run again with the --allow-read flag"
+    );
+  } catch (e) {
+    throw e;
+  } finally {
+    deniedServer.close();
+    deniedServer.stdout!.close();
+    deniedServer.stderr!.close();
+  }
+});
