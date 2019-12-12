@@ -521,6 +521,8 @@ test({
       await delay(100);
 
       assert(serverIsRunning);
+    } catch (e) {
+      throw e;
     } finally {
       // Stops the sever.
       p.close();
@@ -570,6 +572,8 @@ test({
       const resStr = new TextDecoder().decode(res.subarray(0, nread));
       assert(resStr.includes("Hello HTTPS"));
       assert(serverIsRunning);
+    } catch (e) {
+      throw e;
     } finally {
       // Stops the sever.
       p.close();

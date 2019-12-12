@@ -41,6 +41,8 @@ test(async function serveFile(): Promise<void> {
       await Deno.readFile("README.md")
     );
     assertEquals(downloadedFile, localFile);
+  } catch (e) {
+    throw e;
   } finally {
     killFileServer();
   }
@@ -63,6 +65,8 @@ test(async function serveDirectory(): Promise<void> {
     Deno.build.os === "win" &&
       assert(/<td class="mode">(\s)*\(unknown mode\)(\s)*<\/td>/.test(page));
     assert(page.includes(`<a href="/README.md">README.md</a>`));
+  } catch (e) {
+    throw e;
   } finally {
     killFileServer();
   }
@@ -75,6 +79,8 @@ test(async function serveFallback(): Promise<void> {
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
     assertEquals(res.status, 404);
+  } catch (e) {
+    throw e;
   } finally {
     killFileServer();
   }
@@ -89,6 +95,8 @@ test(async function serveFallback(): Promise<void> {
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
     assertEquals(res.status, 200);
+  } catch (e) {
+    throw e;
   } finally {
     killFileServer();
   }

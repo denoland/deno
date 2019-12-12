@@ -20,6 +20,8 @@ test(async function emptyDirIfItNotExist(): Promise<void> {
     // check the dir
     const stat = await Deno.stat(testNestDir);
     assertEquals(stat.isDirectory(), true);
+  } catch (e) {
+    throw e;
   } finally {
     // remove the test dir
     Deno.remove(testDir, { recursive: true });
@@ -36,6 +38,8 @@ test(function emptyDirSyncIfItNotExist(): void {
     // check the dir
     const stat = Deno.statSync(testNestDir);
     assertEquals(stat.isDirectory(), true);
+  } catch (e) {
+    throw e;
   } finally {
     // remove the test dir
     Deno.remove(testDir, { recursive: true });
@@ -79,6 +83,8 @@ test(async function emptyDirIfItExist(): Promise<void> {
         await Deno.stat(testDirFile);
       }
     );
+  } catch (e) {
+    throw e;
   } finally {
     // remote test dir
     await Deno.remove(testDir, { recursive: true });
@@ -118,6 +124,8 @@ test(function emptyDirSyncIfItExist(): void {
     assertThrows((): void => {
       Deno.statSync(testDirFile);
     });
+  } catch (e) {
+    throw e;
   } finally {
     // remote test dir
     Deno.removeSync(testDir, { recursive: true });

@@ -204,6 +204,8 @@ test(async function multipartMultipartReader2(): Promise<void> {
     const json = JSON.parse(w.toString());
     assertEquals(json["compilerOptions"]["target"], "es2018");
     f.close();
+  } catch (e) {
+    throw e;
   } finally {
     const file = form["file"] as FormFile;
     await remove(file.tempfile!);
