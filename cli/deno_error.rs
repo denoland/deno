@@ -35,9 +35,7 @@ pub fn print_err_and_exit(err: ErrBox) {
 }
 
 pub fn js_check(r: Result<(), ErrBox>) {
-  if let Err(err) = r {
-    print_err_and_exit(err);
-  }
+  print_err_and_exit(err);
 }
 
 impl DenoError {
