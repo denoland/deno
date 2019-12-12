@@ -29,10 +29,10 @@ interface FileServerArgs {
   p: number;
   port: number;
   // --cors
-  cors: string;
+  cors: boolean;
   // -h --help
-  h: string;
-  help: string;
+  h: boolean;
+  help: boolean;
 }
 
 const encoder = new TextEncoder();
