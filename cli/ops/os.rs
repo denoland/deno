@@ -29,7 +29,7 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op("exec_path", s.core_op(json_op(s.stateful_op(op_exec_path))));
   i.register_op("set_env", s.core_op(json_op(s.stateful_op(op_set_env))));
   i.register_op("get_env", s.core_op(json_op(s.stateful_op(op_get_env))));
-  i.register_op("home_dir", s.core_op(json_op(s.stateful_op(op_home_dir))));
+  i.register_op("get_dir", s.core_op(json_op(s.stateful_op(op_get_dir))));
   i.register_op("hostname", s.core_op(json_op(s.stateful_op(op_hostname))));
   i.register_op("start", s.core_op(json_op(s.stateful_op(op_start))));
 }
@@ -57,17 +57,93 @@ fn op_start(
   })))
 }
 
-fn op_home_dir(
+#[derive(Deserialize)]
+struct GetDirArgs {
+  name: std::string::String,
+}
+
+fn op_get_dir(
   state: &ThreadSafeState,
-  _args: Value,
+  args: Value,
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   state.check_env()?;
-  let path = dirs::home_dir()
-    .unwrap_or_default()
-    .into_os_string()
-    .into_string()
-    .unwrap_or_default();
+  let args: GetDirArgs = serde_json::from_value(args)?;
+
+  let path = match args.name.as_str() {
+    "home" => dirs::home_dir()
+      .unwrap_or_default()
+      .into_os_string()
+      .into_string()
+      .unwrap_or_default(),
+    "config" => dirs::config_dir()
+      .unwrap_or_default()
+      .into_os_string()
+      .into_string()
+      .unwrap_or_default(),
+    "cache" => dirs::cache_dir()
+      .unwrap_or_default()
+      .into_os_string()
+      .into_string()
+      .unwrap_or_default(),
+    "data" => dirs::data_dir()
+      .unwrap_or_default()
+      .into_os_string()
+      .into_string()
+      .unwrap_or_default(),
+    "data_local" => dirs::data_local_dir()
+      .unwrap_or_default()
+      .into_os_string()
+      .into_string()
+      .unwrap_or_default(),
+    "audio" => dirs::audio_dir()
+      .unwrap_or_default()
+      .into_os_string()
+      .into_string()
+      .unwrap_or_default(),
+    "desktop" => dirs::desktop_dir()
+      .unwrap_or_default()
+      .into_os_string()
+      .into_string()
+      .unwrap_or_default(),
+    "document" => dirs::document_dir()
+      .unwrap_or_default()
+      .into_os_string()
+      .into_string()
+      .unwrap_or_default(),
+    "download" => dirs::download_dir()
+      .unwrap_or_default()
+      .into_os_string()
+      .into_string()
+      .unwrap_or_default(),
+    "font" => dirs::font_dir()
+      .unwrap_or_default()
+      .into_os_string()
+      .into_string()
+      .unwrap_or_default(),
+    "picture" => dirs::picture_dir()
+      .unwrap_or_default()
+      .into_os_string()
+      .into_string()
+      .unwrap_or_default(),
+    "public" => dirs::public_dir()
+      .unwrap_or_default()
+      .into_os_string()
+      .into_string()
+      .unwrap_or_default(),
+    "template" => dirs::template_dir()
+      .unwrap_or_default()
+      .into_os_string()
+      .into_string()
+      .unwrap_or_default(),
+    "video" => dirs::video_dir()
+      .unwrap_or_default()
+      .into_os_string()
+      .into_string()
+      .unwrap_or_default(),
+    _ => std::string::String::new(),
+  };
+
   Ok(JsonOp::Sync(json!(path)))
 }
 
