@@ -429,7 +429,7 @@ test(function qsBase() {
   // Test QueryString.unescapeBuffer
   qsUnescapeTestCases.forEach(testCase => {
     assertEquals(qs.unescape(testCase[0]), testCase[1]);
-    // assertEquals(qs.unescapeBuffer(testCase[0]).toString(), testCase[1]);// TODO
+    assertEquals(qs.unescapeBuffer(testCase[0]).toString(), testCase[1]);
   });
 
   // Test separator and "equals" parsing order
