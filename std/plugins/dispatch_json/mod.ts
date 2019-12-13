@@ -85,3 +85,7 @@ export class DispatchJsonPluginOp {
     return unwrapResponse(res);
   }
 }
+
+export function jsonOp(op: Deno.PluginOp): DispatchJsonPluginOp {
+  return new DispatchJsonPluginOp(op);
+}
