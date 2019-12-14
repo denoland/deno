@@ -36,6 +36,8 @@ test(async function serveFile(): Promise<void> {
     const res = await fetch("http://localhost:4500/README.md");
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
+    assert(res.headers.has("content-type"));
+    assert(res.headers.get("content-type").includes("charset=utf-8"));
     const downloadedFile = await res.text();
     const localFile = new TextDecoder().decode(
       await Deno.readFile("README.md")
@@ -111,8 +113,6 @@ test(async function servePermissionDenied(): Promise<void> {
       await errReader.readLine(),
       "run again with the --allow-read flag"
     );
-  } catch (e) {
-    throw e;
   } finally {
     deniedServer.close();
     deniedServer.stdout!.close();
