@@ -15,7 +15,6 @@ use crate::permissions::DenoPermissions;
 use crate::progress::Progress;
 use deno::ErrBox;
 use deno::ModuleSpecifier;
-use futures::future::TryFutureExt;
 use std;
 use std::env;
 use std::future::Future;
@@ -119,17 +118,20 @@ impl ThreadSafeGlobalState {
   }
 
   pub fn fetch_compiled_module(
-    self: &Self,
+    &self,
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
   ) -> impl Future<Output = Result<CompiledModule, ErrBox>> {
     let state1 = self.clone();
     let state2 = self.clone();
 
-    self
+    let source_file = self
       .file_fetcher
-      .fetch_source_file_async(&module_specifier, maybe_referrer)
-      .and_then(move |out| match out.media_type {
+      .fetch_source_file_async(&module_specifier, maybe_referrer);
+
+    async move {
+      let out = source_file.await?;
+      let compiled_module = match out.media_type {
         msg::MediaType::Unknown => state1.js_compiler.compile_async(&out),
         msg::MediaType::Json => state1.json_compiler.compile_async(&out),
         msg::MediaType::Wasm => {
@@ -147,28 +149,29 @@ impl ThreadSafeGlobalState {
             state1.js_compiler.compile_async(&out)
           }
         }
-      })
-      .and_then(move |compiled_module| {
-        if let Some(ref lockfile) = state2.lockfile {
-          let mut g = lockfile.lock().unwrap();
-          if state2.flags.lock_write {
-            g.insert(&compiled_module);
-          } else {
-            let check = match g.check(&compiled_module) {
-              Err(e) => return futures::future::err(ErrBox::from(e)),
-              Ok(v) => v,
-            };
-            if !check {
-              eprintln!(
-                "Subresource integrety check failed --lock={}\n{}",
-                g.filename, compiled_module.name
-              );
-              std::process::exit(10);
-            }
+      }
+      .await?;
+
+      if let Some(ref lockfile) = state2.lockfile {
+        let mut g = lockfile.lock().unwrap();
+        if state2.flags.lock_write {
+          g.insert(&compiled_module);
+        } else {
+          let check = match g.check(&compiled_module) {
+            Err(e) => return Err(ErrBox::from(e)),
+            Ok(v) => v,
+          };
+          if !check {
+            eprintln!(
+              "Subresource integrity check failed --lock={}\n{}",
+              g.filename, compiled_module.name
+            );
+            std::process::exit(10);
           }
         }
-        futures::future::ok(compiled_module)
-      })
+      }
+      Ok(compiled_module)
+    }
   }
 
   #[inline]
