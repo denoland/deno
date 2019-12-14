@@ -85,7 +85,7 @@ fn op_get_dir(
     "public" => dirs::public_dir(),
     "template" => dirs::template_dir(),
     "video" => dirs::video_dir(),
-    _ => None,
+    _ => panic!(format!("Invalid dir type `{}`", args.name.as_str())),
   };
 
   Ok(JsonOp::Sync(json!(path
