@@ -9,6 +9,7 @@ use atty;
 use deno::*;
 use std::collections::HashMap;
 use std::env;
+use std::path::PathBuf;
 use sys_info;
 use url::Url;
 
@@ -71,80 +72,28 @@ fn op_get_dir(
   let args: GetDirArgs = serde_json::from_value(args)?;
 
   let path = match args.name.as_str() {
-    "home" => dirs::home_dir()
-      .unwrap_or_default()
-      .into_os_string()
-      .into_string()
-      .unwrap_or_default(),
-    "config" => dirs::config_dir()
-      .unwrap_or_default()
-      .into_os_string()
-      .into_string()
-      .unwrap_or_default(),
-    "cache" => dirs::cache_dir()
-      .unwrap_or_default()
-      .into_os_string()
-      .into_string()
-      .unwrap_or_default(),
-    "data" => dirs::data_dir()
-      .unwrap_or_default()
-      .into_os_string()
-      .into_string()
-      .unwrap_or_default(),
-    "data_local" => dirs::data_local_dir()
-      .unwrap_or_default()
-      .into_os_string()
-      .into_string()
-      .unwrap_or_default(),
-    "audio" => dirs::audio_dir()
-      .unwrap_or_default()
-      .into_os_string()
-      .into_string()
-      .unwrap_or_default(),
-    "desktop" => dirs::desktop_dir()
-      .unwrap_or_default()
-      .into_os_string()
-      .into_string()
-      .unwrap_or_default(),
-    "document" => dirs::document_dir()
-      .unwrap_or_default()
-      .into_os_string()
-      .into_string()
-      .unwrap_or_default(),
-    "download" => dirs::download_dir()
-      .unwrap_or_default()
-      .into_os_string()
-      .into_string()
-      .unwrap_or_default(),
-    "font" => dirs::font_dir()
-      .unwrap_or_default()
-      .into_os_string()
-      .into_string()
-      .unwrap_or_default(),
-    "picture" => dirs::picture_dir()
-      .unwrap_or_default()
-      .into_os_string()
-      .into_string()
-      .unwrap_or_default(),
-    "public" => dirs::public_dir()
-      .unwrap_or_default()
-      .into_os_string()
-      .into_string()
-      .unwrap_or_default(),
-    "template" => dirs::template_dir()
-      .unwrap_or_default()
-      .into_os_string()
-      .into_string()
-      .unwrap_or_default(),
-    "video" => dirs::video_dir()
-      .unwrap_or_default()
-      .into_os_string()
-      .into_string()
-      .unwrap_or_default(),
-    _ => std::string::String::new(),
+    "home" => dirs::home_dir(),
+    "config" => dirs::config_dir(),
+    "cache" => dirs::cache_dir(),
+    "data" => dirs::data_dir(),
+    "data_local" => dirs::data_local_dir(),
+    "audio" => dirs::audio_dir(),
+    "desktop" => dirs::desktop_dir(),
+    "document" => dirs::document_dir(),
+    "download" => dirs::download_dir(),
+    "font" => dirs::font_dir(),
+    "picture" => dirs::picture_dir(),
+    "public" => dirs::public_dir(),
+    "template" => dirs::template_dir(),
+    "video" => dirs::video_dir(),
+    _ => None,
   };
 
-  Ok(JsonOp::Sync(json!(path)))
+  Ok(JsonOp::Sync(json!(path
+    .unwrap_or_default()
+    .into_os_string()
+    .into_string()
+    .unwrap_or_default())))
 }
 
 fn op_exec_path(
