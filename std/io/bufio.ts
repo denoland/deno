@@ -596,5 +596,7 @@ export async function* chunks(
 
 /** Read from reader until EOF and emit lines */
 export async function* lines(reader: Reader): AsyncIterableIterator<string> {
-  return chunks(reader, "\n");
+  for await (const line of chunks(reader, "\n")) {
+    yield line;
+  }
 }

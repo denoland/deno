@@ -406,7 +406,7 @@ test(async function chunksAndLines(): Promise<void> {
     lines_.push(l);
   }
 
-  assertEquals(lines_.length, 3);
+  assertEquals(lines_.length, 10);
   assertEquals(lines_, ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]);
 });
 
