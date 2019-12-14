@@ -287,64 +287,20 @@ testPerm({ env: true }, function getUserDir(): void {
 });
 
 testPerm({}, function getUserDirWithoutPermission(): void {
-  interface Scenes {
-    name: string;
-    fn: string;
-  }
-
-  const scenes: Scenes[] = [
-    {
-      name: "config",
-      fn: "configDir"
-    },
-    {
-      name: "cache",
-      fn: "cacheDir"
-    },
-    {
-      name: "data",
-      fn: "dataDir"
-    },
-    {
-      name: "data local",
-      fn: "dataLocalDir"
-    },
-    {
-      name: "audio",
-      fn: "audioDir"
-    },
-    {
-      name: "desktop",
-      fn: "desktopDir"
-    },
-    {
-      name: "document",
-      fn: "documentDir"
-    },
-    {
-      name: "download",
-      fn: "downloadDir"
-    },
-    {
-      name: "font",
-      fn: "fontDir"
-    },
-    {
-      name: "picture",
-      fn: "pictureDir"
-    },
-    {
-      name: "public",
-      fn: "publicDir"
-    },
-    {
-      name: "template",
-      fn: "templateDir"
-    },
-    {
-      name: "video",
-      fn: "videoDir"
-    }
+  const scenes: string[] = [
+    "configDir",
+    "cacheDir",
+    "dataDir",
+    "dataLocalDir",
+    "audioDir",
+    "desktopDir",
+    "documentDir",
+    "downloadDir",
+    "fontDir",
+    "pictureDir",
+    "publicDir",
+    "templateDir",
+    "videoDir"
   ];
 
   for (const s of scenes) {
