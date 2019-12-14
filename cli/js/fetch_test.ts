@@ -42,6 +42,13 @@ testPerm({ net: true }, async function fetchUrl(): Promise<void> {
   assertEquals(response.url, "http://localhost:4545/cli/tests/fixture.json");
 });
 
+testPerm({ net: true }, async function fetchURL(): Promise<void> {
+  const response = await fetch(
+    new URL("http://localhost:4545/cli/tests/fixture.json")
+  );
+  assertEquals(response.url, "http://localhost:4545/cli/tests/fixture.json");
+});
+
 testPerm({ net: true }, async function fetchHeaders(): Promise<void> {
   const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
   const headers = response.headers;

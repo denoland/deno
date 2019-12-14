@@ -13,6 +13,7 @@ import * as io from "./io.ts";
 import { read, close } from "./files.ts";
 import { Buffer } from "./buffer.ts";
 import { FormData } from "./form_data.ts";
+import { URL } from "./url.ts";
 import { URLSearchParams } from "./url_search_params.ts";
 import * as dispatch from "./dispatch.ts";
 import { sendAsync } from "./dispatch_json.ts";
@@ -367,7 +368,7 @@ async function sendFetchReq(
 
 /** Fetch a resource from the network. */
 export async function fetch(
-  input: domTypes.Request | string,
+  input: domTypes.Request | URL | string,
   init?: domTypes.RequestInit
 ): Promise<Response> {
   let url: string;
@@ -377,8 +378,8 @@ export async function fetch(
   let redirected = false;
   let remRedirectCount = 20; // TODO: use a better way to handle
 
-  if (typeof input === "string") {
-    url = input;
+  if (typeof input === "string" || input instanceof URL) {
+    url = typeof input === "string" ? (input as string) : (input as URL).href;
     if (init != null) {
       method = init.method || null;
       if (init.headers) {
