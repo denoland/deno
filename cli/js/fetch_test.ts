@@ -7,7 +7,6 @@ import {
   assertStrContains,
   assertThrows
 } from "./test_util.ts";
-import { URL } from "./url.ts";
 
 testPerm({ net: true }, async function fetchConnectionError(): Promise<void> {
   let err;
