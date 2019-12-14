@@ -287,8 +287,6 @@ testPerm({ env: true }, function getUserDir(): void {
 });
 
 testPerm({}, function getUserDirWithoutPermission(): void {
-  type supportOS = "mac" | "win" | "linux";
-
   interface Scenes {
     name: string;
     fn: string;
