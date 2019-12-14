@@ -15,6 +15,8 @@ import {
 import {
   BufReader,
   BufWriter,
+  chunks,
+  lines,
   BufferFullError,
   UnexpectedEOFError
 } from "./bufio.ts";
@@ -381,6 +383,31 @@ test(async function bufReaderReadFull(): Promise<void> {
       assertEquals(dec.decode(buf.subarray(0, 5)), "World");
     }
   }
+});
+
+test(async function chunksAndLines(): Promise<void> {
+  const enc = new TextEncoder();
+  const data = new Buffer(
+    enc.encode("Hello World\tHello World 2\tHello World 3")
+  );
+  const chunks_ = [];
+
+  for await (const c of chunks(data, "\t")) {
+    chunks_.push(c);
+  }
+
+  assertEquals(chunks_.length, 3);
+  assertEquals(chunks_, ["World World", "Hello World 2", "Hello World 3"]);
+
+  const linesData = new Buffer(enc.encode("0\n1\n2\n3\n4\n5\n6\n7\n8\n9"));
+  const lines_ = [];
+
+  for await (const l of lines(linesData)) {
+    lines_.push(l);
+  }
+
+  assertEquals(lines_.length, 3);
+  assertEquals(lines_, ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]);
 });
 
 runIfMain(import.meta);

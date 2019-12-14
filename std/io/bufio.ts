@@ -508,3 +508,93 @@ export class BufWriter implements Writer {
     return nn;
   }
 }
+
+/** Generate longest proper prefix which is also suffix array. */
+function createLPS(pat: Uint8Array): Uint8Array {
+  const lps = new Uint8Array(pat.length);
+  lps[0] = 0;
+  let prefixEnd = 0;
+  let i = 1;
+  while (i < lps.length) {
+    if (pat[i] == pat[prefixEnd]) {
+      prefixEnd++;
+      lps[i] = prefixEnd;
+      i++;
+    } else if (prefixEnd === 0) {
+      lps[i] = 0;
+      i++;
+    } else {
+      prefixEnd = pat[prefixEnd - 1];
+    }
+  }
+  return lps;
+}
+
+/** Read from reader until EOF and emit string chunks separated */
+export async function* chunks(
+  reader: Reader,
+  delim: string
+): AsyncIterableIterator<string> {
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  // Avoid unicode problems
+  const delimArr = encoder.encode(delim);
+  const delimLen = delimArr.length;
+  const delimLPS = createLPS(delimArr);
+
+  let inputBuffer = new Deno.Buffer();
+  const inspectArr = new Uint8Array(Math.max(1024, delimLen + 1));
+
+  // Modified KMP
+  let inspectIndex = 0;
+  let matchIndex = 0;
+  while (true) {
+    const result = await reader.read(inspectArr);
+    if (result === Deno.EOF) {
+      // Yield last chunk.
+      const lastChunk = inputBuffer.toString();
+      yield lastChunk;
+      return;
+    }
+    if ((result as number) < 0) {
+      // Discard all remaining and silently fail.
+      return;
+    }
+    const sliceRead = inspectArr.subarray(0, result as number);
+    await Deno.writeAll(inputBuffer, sliceRead);
+
+    let sliceToProcess = inputBuffer.bytes();
+    while (inspectIndex < sliceToProcess.length) {
+      if (sliceToProcess[inspectIndex] === delimArr[matchIndex]) {
+        inspectIndex++;
+        matchIndex++;
+        if (matchIndex === delimLen) {
+          // Full match
+          const matchEnd = inspectIndex - delimLen;
+          const readyBytes = sliceToProcess.subarray(0, matchEnd);
+          // Copy
+          const pendingBytes = sliceToProcess.slice(inspectIndex);
+          const readyChunk = decoder.decode(readyBytes);
+          yield readyChunk;
+          // Reset match, different from KMP.
+          sliceToProcess = pendingBytes;
+          inspectIndex = 0;
+          matchIndex = 0;
+        }
+      } else {
+        if (matchIndex === 0) {
+          inspectIndex++;
+        } else {
+          matchIndex = delimLPS[matchIndex - 1];
+        }
+      }
+    }
+    // Keep inspectIndex and matchIndex.
+    inputBuffer = new Deno.Buffer(sliceToProcess);
+  }
+}
+
+/** Read from reader until EOF and emit lines */
+export async function* lines(reader: Reader): AsyncIterableIterator<string> {
+  return chunks(reader, "\n");
+}
