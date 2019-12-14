@@ -119,3 +119,15 @@ test(async function servePermissionDenied(): Promise<void> {
     deniedServer.stderr!.close();
   }
 });
+
+test(async function printHelp(): Promise<void> {
+  const helpProcess = Deno.run({
+    args: [Deno.execPath(), "run", "http/file_server.ts", "--help"],
+    stdout: "piped"
+  });
+  const r = new TextProtoReader(new BufReader(helpProcess.stdout!));
+  const s = await r.readLine();
+  assert(s !== Deno.EOF && s.includes("Deno File Server"));
+  helpProcess.close();
+  helpProcess.stdout!.close();
+});
