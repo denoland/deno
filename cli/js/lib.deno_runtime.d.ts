@@ -2675,35 +2675,12 @@ declare namespace __url {
     toJSON(): string;
   }
 
-  export var URL: {
+  export const URL: {
     prototype: URL;
     new (url: string, base?: string | URL): URL;
     createObjectURL(object: __domTypes.Blob): string;
     revokeObjectURL(url: string): void;
   };
-
-  // export class URL {
-  //   private _parts;
-  //   private _searchParams;
-  //   private _updateSearchParams;
-  //   hash: string;
-  //   host: string;
-  //   hostname: string;
-  //   href: string;
-  //   readonly origin: string;
-  //   password: string;
-  //   pathname: string;
-  //   port: string;
-  //   protocol: string;
-  //   search: string;
-  //   username: string;
-  //   readonly searchParams: __urlSearchParams.URLSearchParams;
-  //   constructor(url: string, base?: string | URL);
-  //   toString(): string;
-  //   toJSON(): string;
-  //   static createObjectURL(b: __domTypes.Blob): string;
-  //   static revokeObjectURL(url: string): void;
-  // }
 }
 
 declare namespace __workers {
