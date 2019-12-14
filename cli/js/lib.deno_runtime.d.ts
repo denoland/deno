@@ -2481,7 +2481,7 @@ declare namespace __fetch {
   }
   /** Fetch a resource from the network. */
   export function fetch(
-    input: __domTypes.Request | string,
+    input: __domTypes.Request | __url.URL | string,
     init?: __domTypes.RequestInit
   ): Promise<Response>;
 }

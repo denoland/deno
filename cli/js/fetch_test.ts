@@ -7,6 +7,7 @@ import {
   assertStrContains,
   assertThrows
 } from "./test_util.ts";
+import { URL } from "./url";
 
 testPerm({ net: true }, async function fetchConnectionError(): Promise<void> {
   let err;
@@ -39,6 +40,13 @@ test(async function fetchPerm(): Promise<void> {
 
 testPerm({ net: true }, async function fetchUrl(): Promise<void> {
   const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
+  assertEquals(response.url, "http://localhost:4545/cli/tests/fixture.json");
+});
+
+testPerm({ net: true }, async function fetchURL(): Promise<void> {
+  const response = await fetch(
+    new URL("http://localhost:4545/cli/tests/fixture.json")
+  );
   assertEquals(response.url, "http://localhost:4545/cli/tests/fixture.json");
 });
 
