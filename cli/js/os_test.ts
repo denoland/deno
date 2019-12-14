@@ -132,7 +132,7 @@ testPerm({ env: false }, function homeDirPerm(): void {
   assert(caughtError);
 });
 
-testPerm({ env: true }, function systemDir(): void {
+testPerm({ env: true }, function getUserDir(): void {
   type supportOS = "mac" | "win" | "linux";
 
   interface Runtime {
@@ -283,6 +283,81 @@ testPerm({ env: true }, function systemDir(): void {
         );
       }
     }
+  }
+});
+
+testPerm({}, function getUserDirWithoutPermission(): void {
+  type supportOS = "mac" | "win" | "linux";
+
+  interface Scenes {
+    name: string;
+    fn: string;
+  }
+
+  const scenes: Scenes[] = [
+    {
+      name: "config",
+      fn: "configDir"
+    },
+    {
+      name: "cache",
+      fn: "cacheDir"
+    },
+    {
+      name: "data",
+      fn: "dataDir"
+    },
+    {
+      name: "data local",
+      fn: "dataLocalDir"
+    },
+    {
+      name: "audio",
+      fn: "audioDir"
+    },
+    {
+      name: "desktop",
+      fn: "desktopDir"
+    },
+    {
+      name: "document",
+      fn: "documentDir"
+    },
+    {
+      name: "download",
+      fn: "downloadDir"
+    },
+    {
+      name: "font",
+      fn: "fontDir"
+    },
+    {
+      name: "picture",
+      fn: "pictureDir"
+    },
+    {
+      name: "public",
+      fn: "publicDir"
+    },
+    {
+      name: "template",
+      fn: "templateDir"
+    },
+    {
+      name: "video",
+      fn: "videoDir"
+    }
+  ];
+
+  for (const s of scenes) {
+    console.log(`test Deno.${s.fn}()`);
+    const fn = Deno[s.fn];
+
+    assertThrows(
+      () => fn(),
+      Deno.DenoError,
+      `run again with the --allow-env flag`
+    );
   }
 });
 
