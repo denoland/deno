@@ -397,7 +397,7 @@ test(async function chunksAndLines(): Promise<void> {
   }
 
   assertEquals(chunks_.length, 3);
-  assertEquals(chunks_, ["World World", "Hello World 2", "Hello World 3"]);
+  assertEquals(chunks_, ["Hello World", "Hello World 2", "Hello World 3"]);
 
   const linesData = new Buffer(enc.encode("0\n1\n2\n3\n4\n5\n6\n7\n8\n9"));
   const lines_ = [];
