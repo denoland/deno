@@ -9,7 +9,6 @@ use atty;
 use deno::*;
 use std::collections::HashMap;
 use std::env;
-use std::path::PathBuf;
 use sys_info;
 use url::Url;
 
