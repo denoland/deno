@@ -133,11 +133,7 @@ export function start(preserveDenoNamespace = true, source?: string): Start {
  * Requires the `--allow-env` flag.
  */
 export function homeDir(): string {
-  const path = sendSync(dispatch.OP_GET_DIR, { name: "home" });
-  if (!path) {
-    throw new Error("Could not get home directory.");
-  }
-  return path;
+  return sendSync(dispatch.OP_GET_DIR, { name: "home" });
 }
 
 /**
@@ -151,11 +147,7 @@ export function homeDir(): string {
  * | Windows | `{FOLDERID_LocalAppData}`           | C:\Users\Alice\AppData\Local |
  */
 export function cacheDir(): string {
-  const path = sendSync(dispatch.OP_GET_DIR, { name: "cache" });
-  if (!path) {
-    throw new Error("Could not get user cache directory.");
-  }
-  return path;
+  return sendSync(dispatch.OP_GET_DIR, { name: "cache" });
 }
 
 /**
@@ -169,11 +161,7 @@ export function cacheDir(): string {
  * | Windows | `{FOLDERID_RoamingAppData}`           | C:\Users\Alice\AppData\Roaming   |
  */
 export function configDir(): string {
-  const path = sendSync(dispatch.OP_GET_DIR, { name: "config" });
-  if (!path) {
-    throw new Error("Could not get user config directory.");
-  }
-  return path;
+  return sendSync(dispatch.OP_GET_DIR, { name: "config" });
 }
 
 /**
@@ -187,11 +175,7 @@ export function configDir(): string {
  * | Windows | `{FOLDERID_RoamingAppData}`              | C:\Users\Alice\AppData\Roaming           |
  */
 export function dataDir(): string {
-  const path = sendSync(dispatch.OP_GET_DIR, { name: "data" });
-  if (!path) {
-    throw new Error("Could not get user data directory.");
-  }
-  return path;
+  return sendSync(dispatch.OP_GET_DIR, { name: "data" });
 }
 
 /**
@@ -205,11 +189,7 @@ export function dataDir(): string {
  * | Windows | `{FOLDERID_LocalAppData}`                | C:\Users\Alice\AppData\Local             |
  */
 export function dataLocalDir(): string {
-  const path = sendSync(dispatch.OP_GET_DIR, { name: "data_local" });
-  if (!path) {
-    throw new Error("Could not get user data local directory.");
-  }
-  return path;
+  return sendSync(dispatch.OP_GET_DIR, { name: "data_local" });
 }
 
 /**
@@ -223,11 +203,7 @@ export function dataLocalDir(): string {
  * | Windows | `{FOLDERID_Music}` | C:\Users\Alice\Music |
  */
 export function audioDir(): string {
-  const path = sendSync(dispatch.OP_GET_DIR, { name: "audio" });
-  if (!path) {
-    throw new Error("Could not get user audio directory.");
-  }
-  return path;
+  return sendSync(dispatch.OP_GET_DIR, { name: "audio" });
 }
 
 /**
@@ -241,11 +217,7 @@ export function audioDir(): string {
  * | Windows | `{FOLDERID_Desktop}` | C:\Users\Alice\Desktop |
  */
 export function desktopDir(): string {
-  const path = sendSync(dispatch.OP_GET_DIR, { name: "desktop" });
-  if (!path) {
-    throw new Error("Could not get user desktop directory.");
-  }
-  return path;
+  return sendSync(dispatch.OP_GET_DIR, { name: "desktop" });
 }
 
 /**
@@ -259,11 +231,7 @@ export function desktopDir(): string {
  * | Windows | `{FOLDERID_Documents}` | C:\Users\Alice\Documents |
  */
 export function documentDir(): string {
-  const path = sendSync(dispatch.OP_GET_DIR, { name: "document" });
-  if (!path) {
-    throw new Error("Could not get user document directory.");
-  }
-  return path;
+  return sendSync(dispatch.OP_GET_DIR, { name: "document" });
 }
 
 /**
@@ -277,11 +245,7 @@ export function documentDir(): string {
  * | Windows | `{FOLDERID_Downloads}` | C:\Users\Alice\Downloads |
  */
 export function downloadDir(): string {
-  const path = sendSync(dispatch.OP_GET_DIR, { name: "download" });
-  if (!path) {
-    throw new Error("Could not get user download directory.");
-  }
-  return path;
+  return sendSync(dispatch.OP_GET_DIR, { name: "download" });
 }
 
 /**
@@ -295,11 +259,7 @@ export function downloadDir(): string {
  * | Windows | –                                                    | –                              |
  */
 export function fontDir(): string {
-  const path = sendSync(dispatch.OP_GET_DIR, { name: "font" });
-  if (!path) {
-    throw new Error("Could not get user font directory.");
-  }
-  return path;
+  return sendSync(dispatch.OP_GET_DIR, { name: "font" });
 }
 
 /**
@@ -313,11 +273,7 @@ export function fontDir(): string {
  * | Windows | `{FOLDERID_Pictures}` | C:\Users\Alice\Pictures |
  */
 export function pictureDir(): string {
-  const path = sendSync(dispatch.OP_GET_DIR, { name: "picture" });
-  if (!path) {
-    throw new Error("Could not get user picture directory.");
-  }
-  return path;
+  return sendSync(dispatch.OP_GET_DIR, { name: "picture" });
 }
 
 /**
@@ -331,11 +287,7 @@ export function pictureDir(): string {
  * | Windows | `{FOLDERID_Public}`   | C:\Users\Public     |
  */
 export function publicDir(): string {
-  const path = sendSync(dispatch.OP_GET_DIR, { name: "public" });
-  if (!path) {
-    throw new Error("Could not get user public directory.");
-  }
-  return path;
+  return sendSync(dispatch.OP_GET_DIR, { name: "public" });
 }
 
 /**
@@ -349,11 +301,7 @@ export function publicDir(): string {
  * | Windows | `{FOLDERID_Templates}` | C:\Users\Alice\AppData\Roaming\Microsoft\Windows\Templates |
  */
 export function templateDir(): string {
-  const path = sendSync(dispatch.OP_GET_DIR, { name: "template" });
-  if (!path) {
-    throw new Error("Could not get user template directory.");
-  }
-  return path;
+  return sendSync(dispatch.OP_GET_DIR, { name: "template" });
 }
 
 /**
@@ -367,11 +315,7 @@ export function templateDir(): string {
  * | Windows | `{FOLDERID_Videos}` | C:\Users\Alice\Videos |
  */
 export function videoDir(): string {
-  const path = sendSync(dispatch.OP_GET_DIR, { name: "video" });
-  if (!path) {
-    throw new Error("Could not get user video directory.");
-  }
-  return path;
+  return sendSync(dispatch.OP_GET_DIR, { name: "video" });
 }
 
 /**

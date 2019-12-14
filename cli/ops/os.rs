@@ -9,6 +9,7 @@ use atty;
 use deno::*;
 use std::collections::HashMap;
 use std::env;
+use std::io::{Error, ErrorKind};
 use sys_info;
 use url::Url;
 
@@ -85,14 +86,26 @@ fn op_get_dir(
     "public" => dirs::public_dir(),
     "template" => dirs::template_dir(),
     "video" => dirs::video_dir(),
-    _ => panic!(format!("Invalid dir type `{}`", args.name.as_str())),
+    _ => {
+      return Err(ErrBox::from(Error::new(
+        ErrorKind::InvalidInput,
+        format!("Invalid dir type `{}`", args.name.as_str()),
+      )))
+    }
   };
 
-  Ok(JsonOp::Sync(json!(path
-    .unwrap_or_default()
-    .into_os_string()
-    .into_string()
-    .unwrap_or_default())))
+  if path == None {
+    return Err(ErrBox::from(Error::new(
+      ErrorKind::NotFound,
+      format!("Could not get user {} directory.", args.name.as_str()),
+    )));
+  } else {
+    return Ok(JsonOp::Sync(json!(path
+      .unwrap_or_default()
+      .into_os_string()
+      .into_string()
+      .unwrap_or_default())));
+  }
 }
 
 fn op_exec_path(
