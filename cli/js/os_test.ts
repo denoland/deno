@@ -287,7 +287,7 @@ testPerm({ env: true }, function getUserDir(): void {
 });
 
 testPerm({}, function getUserDirWithoutPermission(): void {
-  const scenes: string[] = [
+  const funcs: string[] = [
     "configDir",
     "cacheDir",
     "dataDir",
@@ -303,9 +303,9 @@ testPerm({}, function getUserDirWithoutPermission(): void {
     "videoDir"
   ];
 
-  for (const s of scenes) {
-    console.log(`test Deno.${s.fn}()`);
-    const fn = Deno[s.fn];
+  for (const fnName of funcs) {
+    console.log(`test Deno.${fnName}()`);
+    const fn = Deno[fnName];
 
     assertThrows(
       () => fn(),
