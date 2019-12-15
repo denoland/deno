@@ -123,6 +123,15 @@ The default subcommand is 'run'. The above is equivalent to
 
 See 'deno help run' for run specific flags.";
 
+lazy_static! {
+  static ref LONG_VERSION: String = format!(
+    "{}\nv8 {}\ntypescript {}",
+    crate::version::DENO,
+    crate::version::v8(),
+    crate::version::TYPESCRIPT
+  );
+}
+
 /// Main entry point for parsing deno's command line flags.
 /// Exits the process on error.
 pub fn flags_from_vec(args: Vec<String>) -> DenoFlags {
@@ -193,8 +202,8 @@ fn clap_root<'a, 'b>() -> App<'a, 'b> {
     // Disable clap's auto-detection of terminal width
     .set_term_width(0)
     // Disable each subcommand having its own version.
-    // TODO(ry) use long_version here instead to display TS/V8 versions too.
     .version(crate::version::DENO)
+    .long_version(LONG_VERSION.as_str())
     .arg(
       Arg::with_name("log-level")
         .short("L")
