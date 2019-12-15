@@ -278,7 +278,7 @@ testPerm({ env: true }, function getUserDir(): void {
         // if not support your platform. it should throw an error
         assertThrows(
           () => fn(),
-          Error,
+          Deno.DenoError,
           `Could not get user ${s.name} directory.`
         );
       }
