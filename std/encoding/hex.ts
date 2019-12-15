@@ -48,7 +48,7 @@ export function encodedLen(n: number): number {
  * @param dst
  * @param src
  */
-export function encode(dst: Uint8Array, src: Uint8Array): number {
+export function encodeToHex(dst: Uint8Array, src: Uint8Array): number {
   const srcLength = encodedLen(src.length);
   if (dst.length !== srcLength) {
     throw new Error("Out of index.");
@@ -65,9 +65,9 @@ export function encode(dst: Uint8Array, src: Uint8Array): number {
  * EncodeToString returns the hexadecimal encoding of `src`.
  * @param src
  */
-export function encodeToString(src: Uint8Array): string {
+export function encodeToHexString(src: Uint8Array): string {
   const dest = new Uint8Array(encodedLen(src.length));
-  encode(dest, src);
+  encodeToHex(dest, src);
   return new TextDecoder().decode(dest);
 }
 
@@ -81,7 +81,7 @@ export function encodeToString(src: Uint8Array): string {
  * @param dst
  * @param src
  */
-export function decode(
+export function decodeHex(
   dst: Uint8Array,
   src: Uint8Array
 ): [number, Error | void] {
@@ -128,12 +128,12 @@ export function decodedLen(x: number): number {
  * If the input is malformed, DecodeString will throws an error.
  * @param s the `string` need to decode to `Uint8Array`
  */
-export function decodeString(s: string): Uint8Array {
+export function decodeHexString(s: string): Uint8Array {
   const src = new TextEncoder().encode(s);
   // We can use the source slice itself as the destination
   // because the decode loop increments by one and then the 'seen' byte is not
   // used anymore.
-  const [n, err] = decode(src, src);
+  const [n, err] = decodeHex(src, src);
 
   if (err) {
     throw err;
