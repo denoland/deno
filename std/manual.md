@@ -533,8 +533,11 @@ browser JavaScript, Deno can import libraries directly from URLs. This example
 uses a URL to import a test runner library:
 
 ```ts
-import { test, runIfMain } from "https://deno.land/std/testing/mod.ts";
-import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+import {
+  assertEquals,
+  runIfMain,
+  test
+} from "https://deno.land/std/testing/mod.ts";
 
 test(function t1() {
   assertEquals("hello", "hello");
@@ -597,13 +600,15 @@ everywhere in a large project?** The solution is to import and re-export your
 external libraries in a central `deps.ts` file (which serves the same purpose as
 Node's `package.json` file). For example, let's say you were using the above
 testing library across a large project. Rather than importing
-`"https://deno.land/std/testing/mod.ts"` and
-`"https://deno.land/std/testing/asserts.ts"` everywhere, you could create a
+`"https://deno.land/std/testing/mod.ts"` everywhere, you could create a
 `deps.ts` file that exports the third-party code:
 
 ```ts
-export { runTests, test } from "https://deno.land/std/testing/mod.ts";
-export { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+export {
+  assertEquals,
+  runTests,
+  test
+} from "https://deno.land/std/testing/mod.ts";
 ```
 
 And throughout the same project, you can import from the `deps.ts` and avoid
