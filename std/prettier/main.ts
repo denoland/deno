@@ -25,7 +25,7 @@
 // formats the all files in the repository.
 import { parse } from "../flags/mod.ts";
 import * as path from "../path/mod.ts";
-import * as toml from "../encoding/toml.ts";
+import { parseToml } from "../encoding/toml.ts";
 import * as yaml from "../encoding/yaml.ts";
 import * as ignore from "./ignore.ts";
 import { ExpandGlobOptions, WalkInfo, expandGlob } from "../fs/mod.ts";
@@ -421,7 +421,7 @@ async function resolveConfig(
       break;
     case ".toml":
       try {
-        config = toml.parse(raw) as PrettierBuildInOptions;
+        config = parseToml(raw) as PrettierBuildInOptions;
       } catch (err) {
         throw generateError(err.message);
       }

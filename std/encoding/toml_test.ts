@@ -4,7 +4,7 @@ import { assertEquals } from "../testing/asserts.ts";
 import { existsSync } from "../fs/exists.ts";
 import { readFileStrSync } from "../fs/read_file_str.ts";
 import * as path from "../path/mod.ts";
-import { parse, stringify } from "./toml.ts";
+import { parseToml, tomlStringify } from "./toml.ts";
 
 const testFilesDir = path.resolve("encoding", "testdata");
 
@@ -13,7 +13,7 @@ function parseFile(filePath: string): object {
     throw new Error(`File not found: ${filePath}`);
   }
   const strFile = readFileStrSync(filePath);
-  return parse(strFile);
+  return parseToml(strFile);
 }
 
 test({
@@ -408,7 +408,7 @@ stuff   = "in"
 [[arrayObjects]]
 the     = "array"
 `;
-    const actual = stringify(src);
+    const actual = tomlStringify(src);
     assertEquals(actual, expected);
   }
 });
