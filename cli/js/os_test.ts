@@ -4,7 +4,8 @@ import {
   testPerm,
   assert,
   assertEquals,
-  assertNotEquals
+  assertNotEquals,
+  assertThrows
 } from "./test_util.ts";
 
 testPerm({ env: true }, function envSuccess(): void {
@@ -129,6 +130,189 @@ testPerm({ env: false }, function homeDirPerm(): void {
     assertEquals(err.name, "PermissionDenied");
   }
   assert(caughtError);
+});
+
+testPerm({ env: true }, function getUserDir(): void {
+  type supportOS = "mac" | "win" | "linux";
+
+  interface Runtime {
+    os: supportOS;
+    shouldHaveValue: boolean;
+  }
+
+  interface Scenes {
+    name: string;
+    fn: string;
+    runtime: Runtime[];
+  }
+
+  const scenes: Scenes[] = [
+    {
+      name: "config",
+      fn: "configDir",
+      runtime: [
+        { os: "mac", shouldHaveValue: true },
+        { os: "win", shouldHaveValue: true },
+        { os: "linux", shouldHaveValue: true }
+      ]
+    },
+    {
+      name: "cache",
+      fn: "cacheDir",
+      runtime: [
+        { os: "mac", shouldHaveValue: true },
+        { os: "win", shouldHaveValue: true },
+        { os: "linux", shouldHaveValue: true }
+      ]
+    },
+    {
+      name: "data",
+      fn: "dataDir",
+      runtime: [
+        { os: "mac", shouldHaveValue: true },
+        { os: "win", shouldHaveValue: true },
+        { os: "linux", shouldHaveValue: true }
+      ]
+    },
+    {
+      name: "data local",
+      fn: "dataLocalDir",
+      runtime: [
+        { os: "mac", shouldHaveValue: true },
+        { os: "win", shouldHaveValue: true },
+        { os: "linux", shouldHaveValue: true }
+      ]
+    },
+    {
+      name: "audio",
+      fn: "audioDir",
+      runtime: [
+        { os: "mac", shouldHaveValue: true },
+        { os: "win", shouldHaveValue: true },
+        { os: "linux", shouldHaveValue: false }
+      ]
+    },
+    {
+      name: "desktop",
+      fn: "desktopDir",
+      runtime: [
+        { os: "mac", shouldHaveValue: true },
+        { os: "win", shouldHaveValue: true },
+        { os: "linux", shouldHaveValue: false }
+      ]
+    },
+    {
+      name: "document",
+      fn: "documentDir",
+      runtime: [
+        { os: "mac", shouldHaveValue: true },
+        { os: "win", shouldHaveValue: true },
+        { os: "linux", shouldHaveValue: false }
+      ]
+    },
+    {
+      name: "download",
+      fn: "downloadDir",
+      runtime: [
+        { os: "mac", shouldHaveValue: true },
+        { os: "win", shouldHaveValue: true },
+        { os: "linux", shouldHaveValue: false }
+      ]
+    },
+    {
+      name: "font",
+      fn: "fontDir",
+      runtime: [
+        { os: "mac", shouldHaveValue: true },
+        { os: "win", shouldHaveValue: false },
+        { os: "linux", shouldHaveValue: true }
+      ]
+    },
+    {
+      name: "picture",
+      fn: "pictureDir",
+      runtime: [
+        { os: "mac", shouldHaveValue: true },
+        { os: "win", shouldHaveValue: true },
+        { os: "linux", shouldHaveValue: false }
+      ]
+    },
+    {
+      name: "public",
+      fn: "publicDir",
+      runtime: [
+        { os: "mac", shouldHaveValue: true },
+        { os: "win", shouldHaveValue: true },
+        { os: "linux", shouldHaveValue: false }
+      ]
+    },
+    {
+      name: "template",
+      fn: "templateDir",
+      runtime: [
+        { os: "mac", shouldHaveValue: false },
+        { os: "win", shouldHaveValue: true },
+        { os: "linux", shouldHaveValue: false }
+      ]
+    },
+    {
+      name: "video",
+      fn: "videoDir",
+      runtime: [
+        { os: "mac", shouldHaveValue: true },
+        { os: "win", shouldHaveValue: true },
+        { os: "linux", shouldHaveValue: false }
+      ]
+    }
+  ];
+
+  for (const s of scenes) {
+    console.log(`test Deno.${s.fn}()`);
+    const fn = Deno[s.fn];
+
+    for (const r of s.runtime) {
+      if (Deno.build.os !== r.os) continue;
+      if (r.shouldHaveValue) {
+        assertNotEquals(fn(), "");
+      } else {
+        // if not support your platform. it should throw an error
+        assertThrows(
+          () => fn(),
+          Deno.DenoError,
+          `Could not get user ${s.name} directory.`
+        );
+      }
+    }
+  }
+});
+
+testPerm({}, function getUserDirWithoutPermission(): void {
+  const funcs: string[] = [
+    "configDir",
+    "cacheDir",
+    "dataDir",
+    "dataLocalDir",
+    "audioDir",
+    "desktopDir",
+    "documentDir",
+    "downloadDir",
+    "fontDir",
+    "pictureDir",
+    "publicDir",
+    "templateDir",
+    "videoDir"
+  ];
+
+  for (const fnName of funcs) {
+    console.log(`test Deno.${fnName}()`);
+    const fn = Deno[fnName];
+
+    assertThrows(
+      () => fn(),
+      Deno.DenoError,
+      `run again with the --allow-env flag`
+    );
+  }
 });
 
 testPerm({ env: true }, function execPath(): void {

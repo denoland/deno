@@ -135,7 +135,7 @@ impl SourceFileFetcher {
   }
 
   pub fn fetch_source_file_async(
-    self: &Self,
+    &self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
   ) -> Pin<Box<SourceFileFuture>> {
@@ -145,61 +145,58 @@ impl SourceFileFetcher {
     // Check if this file was already fetched and can be retrieved from in-process cache.
     if let Some(source_file) = self.source_file_cache.get(specifier.to_string())
     {
-      return futures::future::ok(source_file).boxed();
+      return Box::pin(async { Ok(source_file) });
     }
 
     let source_file_cache = self.source_file_cache.clone();
     let specifier_ = specifier.clone();
 
-    let fut = self
-      .get_source_file_async(
-        &module_url,
-        self.use_disk_cache,
-        self.no_remote,
-        self.cached_only,
-      )
-      .then(move |result| {
-        let mut out = match result.map_err(|err| {
+    let source_file = self.get_source_file_async(
+      &module_url,
+      self.use_disk_cache,
+      self.no_remote,
+      self.cached_only,
+    );
+
+    Box::pin(async move {
+      match source_file.await {
+        Ok(mut file) => {
+          // TODO: move somewhere?
+          if file.source_code.starts_with(b"#!") {
+            file.source_code = filter_shebang(file.source_code);
+          }
+
+          // Cache in-process for subsequent access.
+          source_file_cache.set(specifier_.to_string(), file.clone());
+
+          Ok(file)
+        }
+        Err(err) => {
           let err_kind = err.kind();
           let referrer_suffix = if let Some(referrer) = maybe_referrer {
-            format!(" from \"{}\"", referrer)
+            format!(r#" from "{}""#, referrer)
           } else {
             "".to_owned()
           };
-          if err_kind == ErrorKind::NotFound {
+          let err = if err_kind == ErrorKind::NotFound {
             let msg = format!(
-              "Cannot resolve module \"{}\"{}",
-              module_url.to_string(),
-              referrer_suffix
+              r#"Cannot resolve module "{}"{}"#,
+              module_url, referrer_suffix
             );
             DenoError::new(ErrorKind::NotFound, msg).into()
           } else if err_kind == ErrorKind::PermissionDenied {
             let msg = format!(
-              "Cannot find module \"{}\"{} in cache, --cached-only is specified",
-              module_url.to_string(),
-              referrer_suffix
+              r#"Cannot find module "{}"{} in cache, --cached-only is specified"#,
+              module_url, referrer_suffix
             );
             DenoError::new(ErrorKind::PermissionDenied, msg).into()
           } else {
             err
-          }
-        }) {
-          Ok(v) => v,
-          Err(e) => return futures::future::err(e),
-        };
-
-        // TODO: move somewhere?
-        if out.source_code.starts_with(b"#!") {
-          out.source_code = filter_shebang(out.source_code);
+          };
+          Err(err)
         }
-
-        // Cache in-process for subsequent access.
-        source_file_cache.set(specifier_.to_string(), out.clone());
-
-        futures::future::ok(out)
-      });
-
-    fut.boxed()
+      }
+    })
   }
 
   /// This is main method that is responsible for fetching local or remote files.

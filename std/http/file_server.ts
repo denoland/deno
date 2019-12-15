@@ -6,7 +6,7 @@
 // TODO Add tests like these:
 // https://github.com/indexzero/http-server/blob/master/test/http-server-test.js
 
-const { ErrorKind, cwd, args, stat, readDir, open } = Deno;
+const { ErrorKind, DenoError, args, stat, readDir, open, exit } = Deno;
 import { posix } from "../path/mod.ts";
 import {
   listenAndServe,
@@ -14,6 +14,7 @@ import {
   setContentLength,
   Response
 } from "./server.ts";
+import { parse } from "../flags/mod.ts";
 
 interface EntryInfo {
   mode: string;
@@ -22,22 +23,42 @@ interface EntryInfo {
   name: string;
 }
 
-const encoder = new TextEncoder();
-const serverArgs = args.slice();
-let CORSEnabled = false;
-// TODO: switch to flags if we later want to add more options
-for (let i = 0; i < serverArgs.length; i++) {
-  if (serverArgs[i] === "--cors") {
-    CORSEnabled = true;
-    serverArgs.splice(i, 1);
-    break;
-  }
+interface FileServerArgs {
+  _: string[];
+  // -p --port
+  p: number;
+  port: number;
+  // --cors
+  cors: boolean;
+  // -h --help
+  h: boolean;
+  help: boolean;
 }
-const targetArg = serverArgs[1] || "";
-const target = posix.isAbsolute(targetArg)
-  ? posix.normalize(targetArg)
-  : posix.join(cwd(), targetArg);
-const addr = `0.0.0.0:${serverArgs[2] || 4500}`;
+
+const encoder = new TextEncoder();
+
+const serverArgs = parse(args) as FileServerArgs;
+
+const CORSEnabled = serverArgs.cors ? true : false;
+const target = posix.resolve(serverArgs._[1] || "");
+const addr = `0.0.0.0:${serverArgs.port || serverArgs.p || 4500}`;
+
+if (serverArgs.h || serverArgs.help) {
+  console.log(`Deno File Server
+  Serves a local directory in HTTP.
+
+INSTALL:
+  deno install file_server https://deno.land/std/http/file_server.ts --allow-net --allow-read
+
+USAGE:
+  file_server [path] [options]
+
+OPTIONS:
+  -h, --help          Prints help information
+  -p, --port <PORT>   Set port
+  --cors              Enable CORS via the "Access-Control-Allow-Origin" header`);
+  exit();
+}
 
 function modeToString(isDir: boolean, maybeMode: number | null): string {
   const modeMap = ["---", "--x", "-w-", "-wx", "r--", "r-x", "rw-", "rwx"];
@@ -82,11 +103,10 @@ async function serveFile(
   req: ServerRequest,
   filePath: string
 ): Promise<Response> {
-  const file = await open(filePath);
-  const fileInfo = await stat(filePath);
+  const [file, fileInfo] = await Promise.all([open(filePath), stat(filePath)]);
   const headers = new Headers();
   headers.set("content-length", fileInfo.len.toString());
-  headers.set("content-type", "text/plain");
+  headers.set("content-type", "text/plain; charset=utf-8");
 
   const res = {
     status: 200,
@@ -142,10 +162,7 @@ async function serveDir(
 }
 
 async function serveFallback(req: ServerRequest, e: Error): Promise<Response> {
-  if (
-    e instanceof Deno.DenoError &&
-    (e as Deno.DenoError<Deno.ErrorKind.NotFound>).kind === ErrorKind.NotFound
-  ) {
+  if (e instanceof DenoError && e.kind === ErrorKind.NotFound) {
     return {
       status: 404,
       body: encoder.encode("Not found")
@@ -285,10 +302,10 @@ listenAndServe(
   addr,
   async (req): Promise<void> => {
     const normalizedUrl = posix.normalize(req.url);
-    const fsPath = posix.join(target, normalizedUrl);
+    const decodedUrl = decodeURIComponent(normalizedUrl);
+    const fsPath = posix.join(target, decodedUrl);
 
     let response: Response;
-
     try {
       const info = await stat(fsPath);
       if (info.isDirectory()) {
@@ -297,6 +314,7 @@ listenAndServe(
         response = await serveFile(req, fsPath);
       }
     } catch (e) {
+      console.error(e.message);
       response = await serveFallback(req, e);
     } finally {
       if (CORSEnabled) {
