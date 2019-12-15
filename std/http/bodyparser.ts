@@ -141,7 +141,7 @@ export async function parseMultipartForm(contentType: string, body: Uint8Array):
 function parseMultipartContentType(contentType: string): {[key: string]: string} {
   const dataList: string[] = contentType.split("; ");
   const enctype = dataList[0];
-  let boundary: string = '';
+  let boundary = '';
   if (typeof dataList[1] === "string") {
     const strList = dataList[1].split("=");
     if (strList[0] === "boundary") {
@@ -255,11 +255,11 @@ async function parseMultipartStreamToFields(boundary: string, stream: Uint8Array
 
   const bodyBuf = new Deno.Buffer(stream);
   const bufReader = new BufReader(bodyBuf);
-  let isFinish: boolean = false;
+  let isFinish = false;
 
   const fieldChunkList: Uint8Array[] = [];
   const fieldOffsetList: FieldChunkOffset[] = [];
-  let index: number = 0;
+  let index = 0;
 
   while(!isFinish) {
     const lineResult: Deno.EOF|ReadLineResult = await bufReader.readLine();

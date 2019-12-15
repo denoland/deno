@@ -5,7 +5,7 @@ import { serve, Response } from "./../http/server.ts";
 import { FormFieldData, BodyParser } from "./bodyparser.ts";
 
 
-(async () => {
+(async (): Promise<void> => {
   const server = serve("127.0.0.1:3001");
   const headers = new Headers();
   for await (const req of server) {

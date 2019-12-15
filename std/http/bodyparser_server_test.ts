@@ -32,7 +32,7 @@ function killFileServer(): void {
   fileServer.stdout!.close();
 }
 
-test(async function test_parseFormUrlencoded(): Promise<void> {
+test(async function parseFormUrlencoded(): Promise<void> {
   await startFileServer();
   try {
     const res = await fetch("http://localhost:4500/parseFormUrlencoded", {
@@ -52,7 +52,7 @@ test(async function test_parseFormUrlencoded(): Promise<void> {
   }
 });
 
-test(async function test_BodyParser_getFormData_urlencoded(): Promise<void> {
+test(async function bodyParserGetFormDataUrlencoded(): Promise<void> {
   await startFileServer();
   try {
     const res = await fetch("http://localhost:4500/BodyParser/getFormData/urlencoded", {
@@ -66,15 +66,14 @@ test(async function test_BodyParser_getFormData_urlencoded(): Promise<void> {
     });
     const expectData = [{"name":"a","value":"001","type":"text"},{"name":"b","value":"002","type":"text"},{"name":"c","value":"003","type":"text"}]
     const bodyData = await res.json();
-    // assertEquals(bodyData, expectData);
-    assertEquals(1, 1);
+    assertEquals(bodyData, expectData);
   } finally {
     killFileServer();
   }
 });
 
 
-test(async function test_BodyParser_getFormData_multipart(): Promise<void> {
+test(async function bodyParserGetFormDataMultipart(): Promise<void> {
   await startFileServer();
   const multipartBody = `------WebKitFormBoundaryF2FPVKMYJmaBhBnJ\r\nContent-Disposition: form-data; name="a"\r\n\r\n001\r\n------WebKitFormBoundaryF2FPVKMYJmaBhBnJ\r\nContent-Disposition: form-data; name="b"; filename="file.txt"\r\nContent-Type: text/plain\r\n\r\nhello world!\r\nhello deno!\r\n------WebKitFormBoundaryF2FPVKMYJmaBhBnJ--\r\n`;
 
