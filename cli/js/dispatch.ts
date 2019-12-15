@@ -70,6 +70,12 @@ export let OP_DIAL_TLS: number;
 export let OP_HOSTNAME: number;
 export let OP_OPEN_PLUGIN: number;
 
+type Action = (opId: number, ui8: Uint8Array) => void;
+
+interface OPActionMap {
+  [opID: number]: Action;
+}
+
 const PLUGIN_ASYNC_HANDLER_MAP: Map<number, AsyncHandler> = new Map();
 
 export function setPluginAsyncHandler(
@@ -79,55 +85,61 @@ export function setPluginAsyncHandler(
   PLUGIN_ASYNC_HANDLER_MAP.set(opId, handler);
 }
 
+function getAction(opId: number): Action | void {
+  const OP_ACTION_MAP: OPActionMap = {
+    [OP_WRITE]: minimal.asyncMsgFromRust,
+    [OP_READ]: minimal.asyncMsgFromRust,
+
+    [OP_GET_DIR]: json.asyncMsgFromRust,
+    [OP_EXIT]: json.asyncMsgFromRust,
+    [OP_IS_TTY]: json.asyncMsgFromRust,
+    [OP_ENV]: json.asyncMsgFromRust,
+    [OP_EXEC_PATH]: json.asyncMsgFromRust,
+    [OP_UTIME]: json.asyncMsgFromRust,
+    [OP_OPEN]: json.asyncMsgFromRust,
+    [OP_SEEK]: json.asyncMsgFromRust,
+    [OP_FETCH]: json.asyncMsgFromRust,
+    [OP_REPL_START]: json.asyncMsgFromRust,
+    [OP_REPL_READLINE]: json.asyncMsgFromRust,
+    [OP_ACCEPT]: json.asyncMsgFromRust,
+    [OP_ACCEPT_TLS]: json.asyncMsgFromRust,
+    [OP_DIAL]: json.asyncMsgFromRust,
+    [OP_GLOBAL_TIMER]: json.asyncMsgFromRust,
+    [OP_HOST_GET_WORKER_CLOSED]: json.asyncMsgFromRust,
+    [OP_HOST_GET_MESSAGE]: json.asyncMsgFromRust,
+    [OP_WORKER_GET_MESSAGE]: json.asyncMsgFromRust,
+    [OP_RUN_STATUS]: json.asyncMsgFromRust,
+    [OP_MKDIR]: json.asyncMsgFromRust,
+    [OP_CHMOD]: json.asyncMsgFromRust,
+    [OP_REMOVE]: json.asyncMsgFromRust,
+    [OP_COPY_FILE]: json.asyncMsgFromRust,
+    [OP_STAT]: json.asyncMsgFromRust,
+    [OP_REALPATH]: json.asyncMsgFromRust,
+    [OP_READ_DIR]: json.asyncMsgFromRust,
+    [OP_RENAME]: json.asyncMsgFromRust,
+    [OP_LINK]: json.asyncMsgFromRust,
+    [OP_SYMLINK]: json.asyncMsgFromRust,
+    [OP_READ_LINK]: json.asyncMsgFromRust,
+    [OP_TRUNCATE]: json.asyncMsgFromRust,
+    [OP_MAKE_TEMP_DIR]: json.asyncMsgFromRust,
+    [OP_DIAL_TLS]: json.asyncMsgFromRust,
+    [OP_FETCH_SOURCE_FILES]: json.asyncMsgFromRust
+  };
+
+  return OP_ACTION_MAP[opId];
+}
+
 export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
-  switch (opId) {
-    case OP_WRITE:
-    case OP_READ:
-      minimal.asyncMsgFromRust(opId, ui8);
-      break;
-    case OP_GET_DIR:
-    case OP_EXIT:
-    case OP_IS_TTY:
-    case OP_ENV:
-    case OP_EXEC_PATH:
-    case OP_UTIME:
-    case OP_OPEN:
-    case OP_SEEK:
-    case OP_FETCH:
-    case OP_REPL_START:
-    case OP_REPL_READLINE:
-    case OP_ACCEPT:
-    case OP_ACCEPT_TLS:
-    case OP_DIAL:
-    case OP_GLOBAL_TIMER:
-    case OP_HOST_GET_WORKER_CLOSED:
-    case OP_HOST_GET_MESSAGE:
-    case OP_WORKER_GET_MESSAGE:
-    case OP_RUN_STATUS:
-    case OP_MKDIR:
-    case OP_CHMOD:
-    case OP_CHOWN:
-    case OP_REMOVE:
-    case OP_COPY_FILE:
-    case OP_STAT:
-    case OP_REALPATH:
-    case OP_READ_DIR:
-    case OP_RENAME:
-    case OP_LINK:
-    case OP_SYMLINK:
-    case OP_READ_LINK:
-    case OP_TRUNCATE:
-    case OP_MAKE_TEMP_DIR:
-    case OP_DIAL_TLS:
-    case OP_FETCH_SOURCE_FILES:
-      json.asyncMsgFromRust(opId, ui8);
-      break;
-    default:
-      const handler = PLUGIN_ASYNC_HANDLER_MAP.get(opId);
-      if (handler) {
-        handler(ui8);
-      } else {
-        throw Error("bad async opId");
-      }
+  const action = getAction(opId);
+
+  if (action) {
+    action(opId, ui8);
+  } else {
+    const handler = PLUGIN_ASYNC_HANDLER_MAP.get(opId);
+    if (handler) {
+      handler(ui8);
+    } else {
+      throw Error("bad async opId");
+    }
   }
 }
