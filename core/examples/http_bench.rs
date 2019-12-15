@@ -16,14 +16,14 @@ extern crate lazy_static;
 use deno::*;
 use futures::future::Future;
 use futures::future::FutureExt;
-use futures::lock::Mutex;
-use futures::lock::MutexGuard;
 use futures::task::{Context, Poll};
 use std::env;
 use std::io::Error;
 use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::pin::Pin;
+use std::sync::Mutex;
+use std::sync::MutexGuard;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 
@@ -205,6 +205,10 @@ lazy_static! {
     Mutex::new(ResourceTable::default());
 }
 
+fn lock_resource_table<'a>() -> MutexGuard<'a, ResourceTable> {
+  RESOURCE_TABLE.lock().unwrap()
+}
+
 struct Accept {
   rid: ResourceId,
 }
@@ -215,21 +219,15 @@ impl Future for Accept {
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
 
-    match RESOURCE_TABLE.try_lock() {
-      None => Poll::Pending,
-      Some(mut table) => match table.get_mut::<TcpListener>(inner.rid) {
-        None => Poll::Ready(Err(bad_resource())),
-        Some(listener) => {
-          let listener = &mut listener.0;
-          listener.poll_accept(cx)
-        }
-      },
+    let mut table = lock_resource_table();
+    match table.get_mut::<TcpListener>(inner.rid) {
+      None => Poll::Ready(Err(bad_resource())),
+      Some(listener) => {
+        let listener = &mut listener.0;
+        listener.poll_accept(cx)
+      }
     }
   }
-}
-
-async fn lock_resource_table<'a>() -> MutexGuard<'a, ResourceTable> {
-  RESOURCE_TABLE.lock().await
 }
 
 fn op_accept(
@@ -242,7 +240,7 @@ fn op_accept(
   let fut = async move {
     let (stream, addr) = Accept { rid }.await?;
     debug!("accept success {}", addr);
-    let mut table = lock_resource_table().await;
+    let mut table = lock_resource_table();
     let rid = table.add("tcpStream", Box::new(TcpStream(stream)));
     Ok(rid as i32)
   };
@@ -258,7 +256,7 @@ fn op_listen(
   let fut = async {
     let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    let mut table = lock_resource_table().await;
+    let mut table = lock_resource_table();
     let rid = table.add("tcpListener", Box::new(TcpListener(listener)));
     Ok(rid as i32)
   };
@@ -273,7 +271,7 @@ fn op_close(
   debug!("close");
   let fut = async move {
     let rid = record.arg as u32;
-    let mut table = lock_resource_table().await;
+    let mut table = lock_resource_table();
     match table.close(rid) {
       Some(_) => Ok(0),
       None => Err(bad_resource()),
@@ -292,16 +290,14 @@ impl Future for Read {
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
+    let mut table = lock_resource_table();
 
-    match RESOURCE_TABLE.try_lock() {
-      None => Poll::Pending,
-      Some(mut table) => match table.get_mut::<TcpStream>(inner.rid) {
-        None => Poll::Ready(Err(bad_resource())),
-        Some(stream) => {
-          let pinned_stream = Pin::new(&mut stream.0);
-          pinned_stream.poll_read(cx, &mut inner.buf)
-        }
-      },
+    match table.get_mut::<TcpStream>(inner.rid) {
+      None => Poll::Ready(Err(bad_resource())),
+      Some(stream) => {
+        let pinned_stream = Pin::new(&mut stream.0);
+        pinned_stream.poll_read(cx, &mut inner.buf)
+      }
     }
   }
 }
@@ -337,16 +333,14 @@ impl Future for Write {
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
+    let mut table = lock_resource_table();
 
-    match RESOURCE_TABLE.try_lock() {
-      None => Poll::Pending,
-      Some(mut table) => match table.get_mut::<TcpStream>(inner.rid) {
-        None => Poll::Ready(Err(bad_resource())),
-        Some(stream) => {
-          let pinned_stream = Pin::new(&mut stream.0);
-          pinned_stream.poll_write(cx, &inner.buf)
-        }
-      },
+    match table.get_mut::<TcpStream>(inner.rid) {
+      None => Poll::Ready(Err(bad_resource())),
+      Some(stream) => {
+        let pinned_stream = Pin::new(&mut stream.0);
+        pinned_stream.poll_write(cx, &inner.buf)
+      }
     }
   }
 }
