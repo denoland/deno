@@ -2,7 +2,7 @@
 
 
 import { serve, Response } from "./../http/server.ts";
-import { parseFormUrlencoded, FormFieldData, BodyParser } from "./bodyparser.ts";
+import { FormFieldData, BodyParser } from "./bodyparser.ts";
 
 
 (async () => {
