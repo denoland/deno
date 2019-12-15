@@ -104,8 +104,7 @@ fn op_get_dir(
       .unwrap_or_default()
       .into_os_string()
       .into_string()
-      .unwrap_or_default())
-    ))
+      .unwrap_or_default())))
   }
 }
 
