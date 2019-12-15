@@ -9,6 +9,7 @@ use atty;
 use deno::*;
 use std::collections::HashMap;
 use std::env;
+use std::io::{Error, ErrorKind};
 use sys_info;
 use url::Url;
 
@@ -29,7 +30,7 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op("exec_path", s.core_op(json_op(s.stateful_op(op_exec_path))));
   i.register_op("set_env", s.core_op(json_op(s.stateful_op(op_set_env))));
   i.register_op("get_env", s.core_op(json_op(s.stateful_op(op_get_env))));
-  i.register_op("home_dir", s.core_op(json_op(s.stateful_op(op_home_dir))));
+  i.register_op("get_dir", s.core_op(json_op(s.stateful_op(op_get_dir))));
   i.register_op("hostname", s.core_op(json_op(s.stateful_op(op_hostname))));
   i.register_op("start", s.core_op(json_op(s.stateful_op(op_start))));
 }
@@ -57,18 +58,54 @@ fn op_start(
   })))
 }
 
-fn op_home_dir(
+#[derive(Deserialize)]
+struct GetDirArgs {
+  name: std::string::String,
+}
+
+fn op_get_dir(
   state: &ThreadSafeState,
-  _args: Value,
+  args: Value,
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   state.check_env()?;
-  let path = dirs::home_dir()
-    .unwrap_or_default()
-    .into_os_string()
-    .into_string()
-    .unwrap_or_default();
-  Ok(JsonOp::Sync(json!(path)))
+  let args: GetDirArgs = serde_json::from_value(args)?;
+
+  let path = match args.name.as_str() {
+    "home" => dirs::home_dir(),
+    "config" => dirs::config_dir(),
+    "cache" => dirs::cache_dir(),
+    "data" => dirs::data_dir(),
+    "data_local" => dirs::data_local_dir(),
+    "audio" => dirs::audio_dir(),
+    "desktop" => dirs::desktop_dir(),
+    "document" => dirs::document_dir(),
+    "download" => dirs::download_dir(),
+    "font" => dirs::font_dir(),
+    "picture" => dirs::picture_dir(),
+    "public" => dirs::public_dir(),
+    "template" => dirs::template_dir(),
+    "video" => dirs::video_dir(),
+    _ => {
+      return Err(ErrBox::from(Error::new(
+        ErrorKind::InvalidInput,
+        format!("Invalid dir type `{}`", args.name.as_str()),
+      )))
+    }
+  };
+
+  if path == None {
+    Err(ErrBox::from(Error::new(
+      ErrorKind::NotFound,
+      format!("Could not get user {} directory.", args.name.as_str()),
+    )))
+  } else {
+    Ok(JsonOp::Sync(json!(path
+      .unwrap_or_default()
+      .into_os_string()
+      .into_string()
+      .unwrap_or_default())))
+  }
 }
 
 fn op_exec_path(

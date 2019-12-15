@@ -13,7 +13,7 @@ export let OP_EXEC_PATH: number;
 export let OP_UTIME: number;
 export let OP_SET_ENV: number;
 export let OP_GET_ENV: number;
-export let OP_HOME_DIR: number;
+export let OP_GET_DIR: number;
 export let OP_START: number;
 export let OP_APPLY_SOURCE_MAP: number;
 export let OP_FORMAT_ERROR: number;
@@ -85,6 +85,7 @@ export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
     case OP_READ:
       minimal.asyncMsgFromRust(opId, ui8);
       break;
+    case OP_GET_DIR:
     case OP_EXIT:
     case OP_IS_TTY:
     case OP_ENV:
