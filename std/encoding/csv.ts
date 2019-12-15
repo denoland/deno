@@ -8,7 +8,7 @@ import { StringReader } from "../io/readers.ts";
 
 const INVALID_RUNE = ["\r", "\n", '"'];
 
-export class ParseError extends Error {
+export class CsvParseError extends Error {
   StartLine: number;
   Line: number;
   constructor(start: number, line: number, message: string) {
@@ -28,7 +28,7 @@ export class ParseError extends Error {
  * @property fieldsPerRecord - Enabling the check of fields for each row.
  *           If == 0, first row is used as referal for the number of fields.
  */
-export interface ParseOptions {
+export interface ReadCsvOptions {
   comma?: string;
   comment?: string;
   trimLeadingSpace?: boolean;
@@ -36,7 +36,7 @@ export interface ParseOptions {
   fieldsPerRecord?: number;
 }
 
-function chkOptions(opt: ParseOptions): void {
+function chkOptions(opt: ReadCsvOptions): void {
   if (!opt.comma) opt.comma = ",";
   if (!opt.trimLeadingSpace) opt.trimLeadingSpace = false;
   if (
@@ -51,7 +51,7 @@ function chkOptions(opt: ParseOptions): void {
 async function read(
   Startline: number,
   reader: BufReader,
-  opt: ParseOptions = { comma: ",", trimLeadingSpace: false }
+  opt: ReadCsvOptions = { comma: ",", trimLeadingSpace: false }
 ): Promise<string[] | Deno.EOF> {
   const tp = new TextProtoReader(reader);
   let line: string;
@@ -102,14 +102,14 @@ async function read(
     return r;
   });
   if (quoteError) {
-    throw new ParseError(Startline, lineIndex, 'bare " in non-quoted-field');
+    throw new CsvParseError(Startline, lineIndex, 'bare " in non-quoted-field');
   }
   return result;
 }
 
-export async function readAll(
+export async function readCsvMatrix(
   reader: BufReader,
-  opt: ParseOptions = {
+  opt: ReadCsvOptions = {
     comma: ",",
     trimLeadingSpace: false,
     lazyQuotes: false
@@ -142,7 +142,7 @@ export async function readAll(
 
     if (lineResult.length > 0) {
       if (_nbFields! && _nbFields! !== lineResult.length) {
-        throw new ParseError(lineIndex, lineIndex, "wrong number of fields");
+        throw new CsvParseError(lineIndex, lineIndex, "wrong number of fields");
       }
       result.push(lineResult);
     }
@@ -151,17 +151,17 @@ export async function readAll(
 }
 
 /**
- * HeaderOption provides the column definition
+ * CsvHeaderOptions provides the column definition
  * and the parse function for each entry of the
  * column.
  */
-export interface HeaderOption {
+export interface CsvHeaderOptions {
   name: string;
   parse?: (input: string) => unknown;
 }
 
-export interface ExtendedParseOptions extends ParseOptions {
-  header: boolean | string[] | HeaderOption[];
+export interface ParseCsvOptions extends ReadCsvOptions {
+  header: boolean | string[] | CsvHeaderOptions[];
   parse?: (input: unknown) => unknown;
 }
 
@@ -186,28 +186,28 @@ export interface ExtendedParseOptions extends ParseOptions {
  *   { super: "e", street: "f", fighter: "g" }
  * ]
  */
-export async function parse(
+export async function parseCsv(
   input: string | BufReader,
-  opt: ExtendedParseOptions = {
+  opt: ParseCsvOptions = {
     header: false
   }
 ): Promise<unknown[]> {
   let r: string[][];
   if (input instanceof BufReader) {
-    r = await readAll(input, opt);
+    r = await readCsvMatrix(input, opt);
   } else {
-    r = await readAll(new BufReader(new StringReader(input)), opt);
+    r = await readCsvMatrix(new BufReader(new StringReader(input)), opt);
   }
   if (opt.header) {
-    let headers: HeaderOption[] = [];
+    let headers: CsvHeaderOptions[] = [];
     let i = 0;
     if (Array.isArray(opt.header)) {
       if (typeof opt.header[0] !== "string") {
-        headers = opt.header as HeaderOption[];
+        headers = opt.header as CsvHeaderOptions[];
       } else {
         const h = opt.header as string[];
         headers = h.map(
-          (e): HeaderOption => {
+          (e): CsvHeaderOptions => {
             return {
               name: e
             };
@@ -216,7 +216,7 @@ export async function parse(
       }
     } else {
       headers = r.shift()!.map(
-        (e): HeaderOption => {
+        (e): CsvHeaderOptions => {
           return {
             name: e
           };
