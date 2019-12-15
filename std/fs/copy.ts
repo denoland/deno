@@ -23,19 +23,23 @@ async function ensureValidCopy(
   options: CopyOptions,
   isCopyFolder = false
 ): Promise<Deno.FileInfo> {
-  const destStat: Deno.FileInfo | null = await Deno.lstat(dest).catch(
-    (): Promise<null> => Promise.resolve(null)
-  );
+  let destStat: Deno.FileInfo | null;
 
-  if (destStat) {
-    if (isCopyFolder && !destStat.isDirectory()) {
-      throw new Error(
-        `Cannot overwrite non-directory '${dest}' with directory '${src}'.`
-      );
+  try {
+    destStat = await Deno.lstat(dest);
+  } catch (err) {
+    if (err instanceof Deno.DenoError && err.kind == Deno.ErrorKind.NotFound) {
+      return;
     }
-    if (!options.overwrite) {
-      throw new Error(`'${dest}' already exists.`);
-    }
+  }
+
+  if (isCopyFolder && !destStat.isDirectory()) {
+    throw new Error(
+      `Cannot overwrite non-directory '${dest}' with directory '${src}'.`
+    );
+  }
+  if (!options.overwrite) {
+    throw new Error(`'${dest}' already exists.`);
   }
 
   return destStat!;
@@ -51,19 +55,19 @@ function ensureValidCopySync(
 
   try {
     destStat = Deno.lstatSync(dest);
-  } catch {
-    // ignore error
+  } catch (err) {
+    if (err instanceof Deno.DenoError && err.kind == Deno.ErrorKind.NotFound) {
+      return;
+    }
   }
 
-  if (destStat!) {
-    if (isCopyFolder && !destStat!.isDirectory()) {
-      throw new Error(
-        `Cannot overwrite non-directory '${dest}' with directory '${src}'.`
-      );
-    }
-    if (!options.overwrite) {
-      throw new Error(`'${dest}' already exists.`);
-    }
+  if (isCopyFolder && !destStat!.isDirectory()) {
+    throw new Error(
+      `Cannot overwrite non-directory '${dest}' with directory '${src}'.`
+    );
+  }
+  if (!options.overwrite) {
+    throw new Error(`'${dest}' already exists.`);
   }
 
   return destStat!;

@@ -2,6 +2,7 @@
 import * as path from "../path/mod.ts";
 import { ensureDir, ensureDirSync } from "./ensure_dir.ts";
 import { getFileInfoType } from "./utils.ts";
+const { lstat, lstatSync, writeFile, writeFileSync, ErrorKind } = Deno;
 
 /**
  * Ensures that the file exists.
@@ -9,27 +10,28 @@ import { getFileInfoType } from "./utils.ts";
  * exist.
  * these directories are created. If the file already exists,
  * it is NOTMODIFIED.
+ * Requires the `--allow-read` and `--alow-write` flag.
  */
 export async function ensureFile(filePath: string): Promise<void> {
-  let pathExists = false;
   try {
     // if file exists
-    const stat = await Deno.lstat(filePath);
-    pathExists = true;
+    const stat = await lstat(filePath);
     if (!stat.isFile()) {
       throw new Error(
         `Ensure path exists, expected 'file', got '${getFileInfoType(stat)}'`
       );
     }
   } catch (err) {
-    if (pathExists) {
-      throw err;
-    }
     // if file not exists
-    // ensure dir exists
-    await ensureDir(path.dirname(filePath));
-    // create file
-    await Deno.writeFile(filePath, new Uint8Array());
+    if (err instanceof Deno.DenoError && err.kind === ErrorKind.NotFound) {
+      // ensure dir exists
+      await ensureDir(path.dirname(filePath));
+      // create file
+      await writeFile(filePath, new Uint8Array());
+      return;
+    }
+
+    throw err;
   }
 }
 
@@ -39,26 +41,26 @@ export async function ensureFile(filePath: string): Promise<void> {
  * exist,
  * these directories are created. If the file already exists,
  * it is NOT MODIFIED.
+ * Requires the `--allow-read` and `--alow-write` flag.
  */
 export function ensureFileSync(filePath: string): void {
-  let pathExists = false;
   try {
     // if file exists
-    const stat = Deno.statSync(filePath);
-    pathExists = true;
+    const stat = lstatSync(filePath);
     if (!stat.isFile()) {
       throw new Error(
         `Ensure path exists, expected 'file', got '${getFileInfoType(stat)}'`
       );
     }
   } catch (err) {
-    if (pathExists) {
-      throw err;
-    }
     // if file not exists
-    // ensure dir exists
-    ensureDirSync(path.dirname(filePath));
-    // create file
-    Deno.writeFileSync(filePath, new Uint8Array());
+    if (err instanceof Deno.DenoError && err.kind === ErrorKind.NotFound) {
+      // ensure dir exists
+      ensureDirSync(path.dirname(filePath));
+      // create file
+      writeFileSync(filePath, new Uint8Array());
+      return;
+    }
+    throw err;
   }
 }
