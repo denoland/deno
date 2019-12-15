@@ -9,6 +9,7 @@ use deno::ModuleResolutionError;
 use dlopen::Error as DlopenError;
 use http::uri;
 use hyper;
+use libc;
 use reqwest;
 use rustyline::error::ReadlineError;
 use std;
@@ -17,6 +18,19 @@ use std::error::Error;
 use std::fmt;
 use std::io;
 use url;
+
+// Forcefully exit program without running any atexit handlers.
+// Flushes stdout and stderr before calling _exit.
+// Destructor of v8 DefaultPlatform from our static platform is
+// calling pthread_join that is waiting for threads that never
+// exiting.
+// See https://github.com/denoland/deno/issues/3498
+fn force_exit(status: i32) {
+  use std::io::Write;
+  let _ = std::io::stdout().flush();
+  let _ = std::io::stderr().flush();
+  unsafe { libc::_exit(status) };
+}
 
 #[derive(Debug)]
 pub struct DenoError {
@@ -31,7 +45,7 @@ pub fn print_msg_and_exit(msg: &str) {
 
 pub fn print_err_and_exit(err: ErrBox) {
   eprintln!("{}", err.to_string());
-  std::process::exit(1);
+  force_exit(1);
 }
 
 pub fn js_check(r: Result<(), ErrBox>) {
