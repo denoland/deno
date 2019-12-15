@@ -28,7 +28,7 @@ export async function emptyDir(dir: string): Promise<void> {
       }
     }
   } catch (err) {
-    if ((err as Deno.DenoError).kind !== ErrorKind.NotFound) {
+    if ((err as Deno.DenoError<Deno.ErrorKind>).kind !== ErrorKind.NotFound) {
       throw err;
     }
 
@@ -57,7 +57,7 @@ export function emptyDirSync(dir: string): void {
       }
     }
   } catch (err) {
-    if ((err as Deno.DenoError).kind !== ErrorKind.NotFound) {
+    if ((err as Deno.DenoError<Deno.ErrorKind>).kind !== ErrorKind.NotFound) {
       throw err;
     }
     // if not exist. then create it
