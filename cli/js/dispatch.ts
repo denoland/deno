@@ -104,6 +104,7 @@ function getAction(opId: number): Action | void {
     [OP_ACCEPT]: json.asyncMsgFromRust,
     [OP_ACCEPT_TLS]: json.asyncMsgFromRust,
     [OP_DIAL]: json.asyncMsgFromRust,
+    [OP_DIAL_TLS]: json.asyncMsgFromRust,
     [OP_GLOBAL_TIMER]: json.asyncMsgFromRust,
     [OP_HOST_GET_WORKER_CLOSED]: json.asyncMsgFromRust,
     [OP_HOST_GET_MESSAGE]: json.asyncMsgFromRust,
@@ -111,6 +112,7 @@ function getAction(opId: number): Action | void {
     [OP_RUN_STATUS]: json.asyncMsgFromRust,
     [OP_MKDIR]: json.asyncMsgFromRust,
     [OP_CHMOD]: json.asyncMsgFromRust,
+    [OP_CHOWN]: json.asyncMsgFromRust,
     [OP_REMOVE]: json.asyncMsgFromRust,
     [OP_COPY_FILE]: json.asyncMsgFromRust,
     [OP_STAT]: json.asyncMsgFromRust,
@@ -122,7 +124,6 @@ function getAction(opId: number): Action | void {
     [OP_READ_LINK]: json.asyncMsgFromRust,
     [OP_TRUNCATE]: json.asyncMsgFromRust,
     [OP_MAKE_TEMP_DIR]: json.asyncMsgFromRust,
-    [OP_DIAL_TLS]: json.asyncMsgFromRust,
     [OP_FETCH_SOURCE_FILES]: json.asyncMsgFromRust
   };
 
