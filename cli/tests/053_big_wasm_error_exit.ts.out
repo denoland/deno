@@ -1,0 +1,8 @@
+[WILDCARD]{ memory: Memory {}, add: [Function: 10000] }
+error: Uncaught Error: e
+[WILDCARD]053_big_wasm_error_exit.ts:6:7
+
+6 throw new Error("e");
+        ^
+
+    at [WILDCARD]053_big_wasm_error_exit.ts:6:7

@@ -406,6 +406,13 @@ itest!(_052_no_remote_flag {
   http_server: true,
 });
 
+itest!(_053_big_wasm_error_exit {
+  args: "--reload --allow-read 053_big_wasm_error_exit.ts",
+  output: "053_big_wasm_error_exit.ts.out",
+  exit_code: 1,
+  check_stderr: true,
+});
+
 itest!(lock_check_ok {
   args: "run --lock=lock_check_ok.json http://127.0.0.1:4545/cli/tests/003_relative_import.ts",
   output: "003_relative_import.ts.out",
