@@ -13,11 +13,10 @@ export enum FormFieldType {
   file = "file"
 }
 
-
 export enum FormEnctype {
   urlencoded = "application/x-www-form-urlencoded",
   multipart = "multipart/form-data",
-  unknown = "unknown",
+  unknown = "unknown"
 
   // TODO
   // html = "text/xml",
@@ -26,7 +25,6 @@ export enum FormEnctype {
   // json = "application/json",
 }
 
-
 /** FormFieldData object */
 export interface FormFieldData {
   /** input-type */
@@ -34,14 +32,16 @@ export interface FormFieldData {
   /** input-name */
   name: string;
   /** input-value, the value of input, the value is Uint8Array if input-type="file" */
-  value: Uint8Array|string;
+  value: Uint8Array | string;
 
   /** input-filename, input-filetype, if there is input-file in the form  */
   filename?: string;
   filetype?: string;
 }
 
-export async function parseFormUrlencoded(body: Uint8Array): Promise<FormFieldData[]> {
+export async function parseFormUrlencoded(
+  body: Uint8Array
+): Promise<FormFieldData[]> {
   const decoder = new TextDecoder();
   // const encoder = new TextEncoder();
   // const bodyStr: string = decoder.decode(body);
@@ -57,15 +57,14 @@ export async function parseFormUrlencoded(body: Uint8Array): Promise<FormFieldDa
       const data: FormFieldData = {
         name,
         value,
-        type: FormFieldType.text,
-      }
+        type: FormFieldType.text
+      };
       dataList.push(data);
     }
   }
 
   return dataList;
 }
-
 
 function parseEnctype(contentType: string): FormEnctype {
   let enctype: FormEnctype = FormEnctype.unknown;
@@ -84,9 +83,7 @@ function parseEnctype(contentType: string): FormEnctype {
   return enctype;
 }
 
-
 export class BodyParser {
-
   private _contentType: string;
   private _enctype: FormEnctype;
   private _body: Uint8Array;
@@ -108,9 +105,6 @@ export class BodyParser {
   }
 }
 
-
-
-
 /**
  * parse data from multipart/form-data
  * @param {string} contentType
@@ -118,8 +112,10 @@ export class BodyParser {
  * @return {FormFieldData[]}
  *  example [{ name: "myName", value: "helloworld" }, { name: "myFile", value: [0,1,...], type: "file", filetype: "image/jpeg", filename: "xxx.jpg" }]
  */
-export async function parseMultipartForm(contentType: string, body: Uint8Array): Promise<FormFieldData[]> {
-
+export async function parseMultipartForm(
+  contentType: string,
+  body: Uint8Array
+): Promise<FormFieldData[]> {
   const typeData = parseMultipartContentType(contentType);
   const boundary: string = typeData.boundary;
   const fields = await parseMultipartStreamToFields(boundary, body);
@@ -130,7 +126,6 @@ export async function parseMultipartForm(contentType: string, body: Uint8Array):
   return dataList;
 }
 
-
 /**
  * example: "multipart/form-data; boundary=----WebKitFormBoundaryk7fXm5rwGcU1OJIq"
  * return { enctype: "multipart/form-data", boundary: "----WebKitFormBoundaryk7fXm5rwGcU1OJIq" }
@@ -138,10 +133,12 @@ export async function parseMultipartForm(contentType: string, body: Uint8Array):
  * @param {string} contentType
  * @return {[key: string]: string}
  */
-function parseMultipartContentType(contentType: string): {[key: string]: string} {
+function parseMultipartContentType(
+  contentType: string
+): { [key: string]: string } {
   const dataList: string[] = contentType.split("; ");
   const enctype = dataList[0];
-  let boundary = '';
+  let boundary = "";
   if (typeof dataList[1] === "string") {
     const strList = dataList[1].split("=");
     if (strList[0] === "boundary") {
@@ -150,11 +147,9 @@ function parseMultipartContentType(contentType: string): {[key: string]: string}
   }
   return {
     enctype,
-    boundary,
-  }
+    boundary
+  };
 }
-
-
 
 /**
  * parse multipart/form-data single data of form
@@ -165,7 +160,9 @@ function parseMultipartContentType(contentType: string): {[key: string]: string}
  *  example input: { name: "myName", value: "helloworld" }
  *  example output: { name: "myFile", value: [0,1,...], type: "file", filetype: "image/jpeg", filename: "xxx.jpg" }
  */
-async function* parseMultipartFormField(fields: Uint8Array[]): AsyncGenerator<FormFieldData> {
+async function* parseMultipartFormField(
+  fields: Uint8Array[]
+): AsyncGenerator<FormFieldData> {
   for (let i = 0; i < fields.length; i++) {
     const field = fields[i];
     const reader = new BufReader(new Deno.Buffer(field));
@@ -183,50 +180,64 @@ async function* parseMultipartFormField(fields: Uint8Array[]): AsyncGenerator<Fo
         if (nullLine === Deno.EOF || value === Deno.EOF) {
           break;
         }
-        if (nullLine && nullLine.line instanceof Uint8Array && value && value.line instanceof Uint8Array) {
+        if (
+          nullLine &&
+          nullLine.line instanceof Uint8Array &&
+          value &&
+          value.line instanceof Uint8Array
+        ) {
           const nullLineStr = decoder.decode(nullLine.line);
-          const valueStr =  decoder.decode(value.line);
-          if (nullLineStr === '') {
+          const valueStr = decoder.decode(value.line);
+          if (nullLineStr === "") {
             const fieldData: FormFieldData = {
               name: execRs[1],
               value: valueStr,
               type: FormFieldType.text
-            }
-            yield fieldData
+            };
+            yield fieldData;
           }
         }
       } else if (fileFieldReg.test(contentDesc)) {
         const execRs = fileFieldReg.exec(contentDesc);
 
-        const contentTypeLine: Deno.EOF | ReadLineResult = await reader.readLine();
+        const contentTypeLine:
+          | Deno.EOF
+          | ReadLineResult = await reader.readLine();
         const nullLine: Deno.EOF | ReadLineResult = await reader.readLine();
         if (contentTypeLine === Deno.EOF || nullLine === Deno.EOF) {
           break;
         }
-        if (contentTypeLine && contentTypeLine.line instanceof Uint8Array && nullLine && nullLine.line instanceof Uint8Array) {
+        if (
+          contentTypeLine &&
+          contentTypeLine.line instanceof Uint8Array &&
+          nullLine &&
+          nullLine.line instanceof Uint8Array
+        ) {
           const contentTypeChunk = contentTypeLine.line;
           const contentType = decoder.decode(contentTypeChunk);
           const typeRs = fileTypeReg.exec(contentType);
 
           const nullLineStr = decoder.decode(nullLine.line);
-          if (nullLineStr === '') {
-            const valueStart = (contentDescChunk.length + CRLF_LEN) + (contentTypeChunk.length + CRLF_LEN) + CRLF_LEN;
+          if (nullLineStr === "") {
+            const valueStart =
+              contentDescChunk.length +
+              CRLF_LEN +
+              (contentTypeChunk.length + CRLF_LEN) +
+              CRLF_LEN;
             const valueEnd = field.length - CRLF_LEN;
             const fieldData = {
               name: execRs[1],
               type: FormFieldType.file,
               filetype: typeRs[1],
               filename: execRs[2],
-              value: field.subarray(valueStart, valueEnd),
-            }
+              value: field.subarray(valueStart, valueEnd)
+            };
             yield fieldData;
           }
         }
-
       }
     }
   }
-
 }
 
 // Form binary data stream single field-data offset
@@ -235,7 +246,6 @@ interface FieldChunkOffset {
   end?: number;
 }
 
-
 /**
  *  Cut multipart/form-data by field
  *
@@ -243,7 +253,10 @@ interface FieldChunkOffset {
  * @param {Uint8Array} stream
  * @return {Uint8Array[]}
  */
-async function parseMultipartStreamToFields(boundary: string, stream: Uint8Array): Promise<Uint8Array[]> {
+async function parseMultipartStreamToFields(
+  boundary: string,
+  stream: Uint8Array
+): Promise<Uint8Array[]> {
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
 
@@ -261,8 +274,8 @@ async function parseMultipartStreamToFields(boundary: string, stream: Uint8Array
   const fieldOffsetList: FieldChunkOffset[] = [];
   let index = 0;
 
-  while(!isFinish) {
-    const lineResult: Deno.EOF|ReadLineResult = await bufReader.readLine();
+  while (!isFinish) {
+    const lineResult: Deno.EOF | ReadLineResult = await bufReader.readLine();
     if (lineResult === Deno.EOF) {
       isFinish = true;
       break;
@@ -278,7 +291,8 @@ async function parseMultipartStreamToFields(boundary: string, stream: Uint8Array
       if (line === end) {
         isFinish = true;
         if (fieldOffsetList[fieldOffsetList.length - 1]) {
-          fieldOffsetList[fieldOffsetList.length - 1].end = endIndex - lineChunkLen;
+          fieldOffsetList[fieldOffsetList.length - 1].end =
+            endIndex - lineChunkLen;
         }
         break;
       }
@@ -291,14 +305,14 @@ async function parseMultipartStreamToFields(boundary: string, stream: Uint8Array
           fieldOffsetList[fieldOffsetList.length - 1].end = startIndex;
         }
         fieldOffsetList.push({
-          start: startIndex + lineChunkLen,
+          start: startIndex + lineChunkLen
         });
       }
     }
     index = endIndex;
   }
   fieldOffsetList.forEach((offset: FieldChunkOffset) => {
-    if(offset && offset.start >= 0 && offset.end >= 0) {
+    if (offset && offset.start >= 0 && offset.end >= 0) {
       const fieldChunk: Uint8Array = stream.subarray(offset.start, offset.end);
       fieldChunkList.push(fieldChunk);
     }

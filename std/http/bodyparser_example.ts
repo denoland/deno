@@ -1,16 +1,14 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
-
 import { serve, Response } from "./../http/server.ts";
 import { FormFieldData, BodyParser } from "./bodyparser.ts";
-
 
 (async (): Promise<void> => {
   const server = serve("127.0.0.1:3001");
   const headers = new Headers();
   for await (const req of server) {
     let body: string;
-    const contentType = req.headers.get('Content-Type');
+    const contentType = req.headers.get("Content-Type");
     if (req.method === "POST") {
       const httpBody: Uint8Array = await req.body();
       const bodyParser = new BodyParser(contentType, httpBody);
@@ -33,7 +31,7 @@ import { FormFieldData, BodyParser } from "./bodyparser.ts";
             <button type="submit">submit</button>
           </form>
           `;
-      if (req.url === '/multipart') {
+      if (req.url === "/multipart") {
         body = `
           <form action="/" method="POST" enctype="multipart/form-data" >
             <input name="a" value="001"/>
@@ -50,8 +48,8 @@ import { FormFieldData, BodyParser } from "./bodyparser.ts";
     const res: Response = {
       status: 200,
       headers,
-      body: stream,
-    }
+      body: stream
+    };
     await req.respond(res);
   }
-})()
+})();
