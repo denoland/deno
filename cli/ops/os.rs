@@ -95,16 +95,17 @@ fn op_get_dir(
   };
 
   if path == None {
-    return Err(ErrBox::from(Error::new(
+    Err(ErrBox::from(Error::new(
       ErrorKind::NotFound,
       format!("Could not get user {} directory.", args.name.as_str()),
-    )));
+    )))
   } else {
-    return Ok(JsonOp::Sync(json!(path
+    Ok(JsonOp::Sync(json!(path
       .unwrap_or_default()
       .into_os_string()
       .into_string()
-      .unwrap_or_default())));
+      .unwrap_or_default())
+    ))
   }
 }
 
