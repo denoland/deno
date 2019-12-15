@@ -21,7 +21,7 @@ export async function emptyDir(dir: string): Promise<void> {
   try {
     items = await readDir(dir);
   } catch (err) {
-    if ((err as Deno.DenoError<ErrorKind>).kind !== ErrorKind.NotFound) {
+    if ((err as Deno.DenoError<Deno.ErrorKind>).kind !== ErrorKind.NotFound) {
       throw err;
     }
 
@@ -52,7 +52,7 @@ export function emptyDirSync(dir: string): void {
   try {
     items = readDirSync(dir);
   } catch (err) {
-    if ((err as Deno.DenoError<ErrorKind>).kind !== ErrorKind.NotFound) {
+    if ((err as Deno.DenoError<Deno.ErrorKind>).kind !== ErrorKind.NotFound) {
       throw err;
     }
     // if not exist. then create it
