@@ -35,7 +35,7 @@ const ustar = "ustar\u000000";
 /**
  * Simple file reader
  */
-export class FileReader implements Deno.Reader {
+class FileReader implements Deno.Reader {
   private file?: Deno.File;
 
   constructor(private filePath: string, private mode: Deno.OpenMode = "r") {}
@@ -50,28 +50,6 @@ export class FileReader implements Deno.Reader {
       this.file = undefined;
     }
     return res;
-  }
-}
-
-/**
- * Simple file writer (call FileWriter.dispose() after use)
- */
-export class FileWriter implements Deno.Writer {
-  private file?: Deno.File;
-
-  constructor(private filePath: string, private mode: Deno.OpenMode = "w") {}
-
-  public async write(p: Uint8Array): Promise<number> {
-    if (!this.file) {
-      this.file = await Deno.open(this.filePath, this.mode);
-    }
-    return Deno.write(this.file.rid, p);
-  }
-
-  public dispose(): void {
-    if (!this.file) return;
-    Deno.close(this.file.rid);
-    this.file = undefined;
   }
 }
 
