@@ -17,26 +17,23 @@ const {
  * Requires the `--allow-read` and `--alow-write` flag.
  */
 export async function emptyDir(dir: string): Promise<void> {
-  let items: Deno.FileInfo[] = [];
   try {
-    items = await readDir(dir);
+    const items = await readDir(dir);
+
+    while (items.length) {
+      const item = items.shift();
+      if (item && item.name) {
+        const filepath = join(dir, item.name);
+        await remove(filepath, { recursive: true });
+      }
+    }
   } catch (err) {
-    if ((err as Deno.DenoError<Deno.ErrorKind>).kind !== ErrorKind.NotFound) {
+    if ((err as Deno.DenoError).kind !== ErrorKind.NotFound) {
       throw err;
     }
 
     // if not exist. then create it
     await mkdir(dir, true);
-    return;
-  }
-
-  // if directory already exist. then remove it's child item.
-  while (items.length) {
-    const item = items.shift();
-    if (item && item.name) {
-      const fn = join(dir, item.name);
-      await remove(fn, { recursive: true });
-    }
   }
 }
 
@@ -48,24 +45,23 @@ export async function emptyDir(dir: string): Promise<void> {
  * Requires the `--allow-read` and `--alow-write` flag.
  */
 export function emptyDirSync(dir: string): void {
-  let items: Deno.FileInfo[] = [];
   try {
-    items = readDirSync(dir);
+    const items = readDirSync(dir);
+
+    // if directory already exist. then remove it's child item.
+    while (items.length) {
+      const item = items.shift();
+      if (item && item.name) {
+        const filepath = join(dir, item.name);
+        removeSync(filepath, { recursive: true });
+      }
+    }
   } catch (err) {
-    if ((err as Deno.DenoError<Deno.ErrorKind>).kind !== ErrorKind.NotFound) {
+    if ((err as Deno.DenoError).kind !== ErrorKind.NotFound) {
       throw err;
     }
     // if not exist. then create it
     mkdirSync(dir, true);
     return;
-  }
-
-  // if directory already exist. then remove it's child item.
-  while (items.length) {
-    const item = items.shift();
-    if (item && item.name) {
-      const fn = join(dir, item.name);
-      removeSync(fn, { recursive: true });
-    }
   }
 }
