@@ -20,7 +20,7 @@ lazy_static = "1.4.0"
 libc = "0.2.65"
 log = "0.4.8"
 serde_json = "1.0.41"
-url = "1.7.2"
+url = "2.1"
 
 [[example]]
 name = "deno_core_http_bench"

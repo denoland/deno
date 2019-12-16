@@ -2,8 +2,8 @@
 
 use futures::io::AsyncRead;
 use futures::stream::StreamExt;
-use reqwest::r#async::Chunk;
-use reqwest::r#async::Decoder;
+use reqwest::Chunk;
+use reqwest::Decoder;
 use std::cmp::min;
 use std::io;
 use std::io::Read;

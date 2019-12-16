@@ -229,21 +229,20 @@ impl GetErrorKind for hyper::Error {
 
 impl GetErrorKind for reqwest::Error {
   fn kind(&self) -> ErrorKind {
-    use self::GetErrorKind as Get;
-
-    match self.get_ref() {
-      Some(err_ref) => None
-        .or_else(|| err_ref.downcast_ref::<hyper::Error>().map(Get::kind))
-        .or_else(|| err_ref.downcast_ref::<url::ParseError>().map(Get::kind))
-        .or_else(|| err_ref.downcast_ref::<io::Error>().map(Get::kind))
-        .or_else(|| {
-          err_ref
-            .downcast_ref::<serde_json::error::Error>()
-            .map(Get::kind)
-        })
-        .unwrap_or_else(|| ErrorKind::HttpOther),
-      _ => ErrorKind::HttpOther,
-    }
+    ErrorKind::HttpOther
+    // TODO(bartlomieju):
+    // use self::GetErrorKind as Get;
+    // match self.get_ref() {
+    //   Some(err_ref) => None
+    //     .or_else(|| err_ref.downcast_ref::<hyper::Error>().map(Get::kind))
+    //     .or_else(|| err_ref.downcast_ref::<url::ParseError>().map(Get::kind))
+    //     .or_else(|| err_ref.downcast_ref::<io::Error>().map(Get::kind))
+    //     .or_else(|| {
+    //       err_ref
+    //         .downcast_ref::<serde_json::error::Error>()
+    //         .map(Get::kind)
+    //     })
+    //   .unwrap_or_else(|| ErrorKind::HttpOther)
   }
 }
 
