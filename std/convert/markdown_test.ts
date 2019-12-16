@@ -12,9 +12,13 @@ const FIXTURE_DIR = join(
   "fixtures"
 );
 
-const inputs = Deno.readDirSync(FIXTURE_DIR).filter(
-  info => extname(info.name || "") === ".md"
-);
+let inputs = [];
+if (Deno.build.os !== "win") {
+  inputs = Deno.readDirSync(FIXTURE_DIR).filter(
+    info => extname(info.name || "") === ".md"
+  );
+}
+
 const decoder = new TextDecoder();
 
 function parseOptions(
