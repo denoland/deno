@@ -9,7 +9,9 @@ import {
   normalize
 } from "../path/mod.ts";
 import { WalkInfo, walk, walkSync } from "./walk.ts";
-const { cwd, stat, statSync } = Deno;
+const { ErrorKind, cwd, stat, statSync } = Deno;
+type ErrorKind = Deno.ErrorKind;
+type DenoError = Deno.DenoError<ErrorKind>;
 type FileInfo = Deno.FileInfo;
 
 export interface ExpandGlobOptions extends GlobOptions {
@@ -41,13 +43,16 @@ function split(path: string): SplitPath {
   };
 }
 
+function throwUnlessNotFound(error: Error): void {
+  if ((error as DenoError).kind != ErrorKind.NotFound) {
+    throw error;
+  }
+}
+
 /**
  * Expand the glob string from the specified `root` directory and yield each
  * result as a `WalkInfo` object.
  */
-// TODO: Use a proper glob expansion algorithm.
-// This is a very incomplete solution. The whole directory tree from `root` is
-// walked and parent paths are not supported.
 export async function* expandGlob(
   glob: string,
   {
@@ -69,7 +74,7 @@ export async function* expandGlob(
   const excludePatterns = exclude
     .map(resolveFromRoot)
     .map((s: string): RegExp => globToRegExp(s, globOptions));
-  const shouldInclude = ({ filename }: WalkInfo): boolean =>
+  const shouldInclude = (filename: string): boolean =>
     !excludePatterns.some((p: RegExp): boolean => !!filename.match(p));
   const { segments, hasTrailingSep, winRoot } = split(resolveFromRoot(glob));
 
@@ -81,8 +86,8 @@ export async function* expandGlob(
   let fixedRootInfo: WalkInfo;
   try {
     fixedRootInfo = { filename: fixedRoot, info: await stat(fixedRoot) };
-  } catch {
-    return;
+  } catch (error) {
+    return throwUnlessNotFound(error);
   }
 
   async function* advanceMatch(
@@ -94,12 +99,13 @@ export async function* expandGlob(
     } else if (globSegment == "..") {
       const parentPath = joinGlobs([walkInfo.filename, ".."], globOptions);
       try {
-        return yield* [
-          { filename: parentPath, info: await stat(parentPath) }
-        ].filter(shouldInclude);
-      } catch {
-        return;
+        if (shouldInclude(parentPath)) {
+          return yield { filename: parentPath, info: await stat(parentPath) };
+        }
+      } catch (error) {
+        throwUnlessNotFound(error);
       }
+      return;
     } else if (globSegment == "**") {
       return yield* walk(walkInfo.filename, {
         includeFiles: false,
@@ -149,7 +155,6 @@ export async function* expandGlob(
 }
 
 /** Synchronous version of `expandGlob()`. */
-// TODO: As `expandGlob()`.
 export function* expandGlobSync(
   glob: string,
   {
@@ -171,7 +176,7 @@ export function* expandGlobSync(
   const excludePatterns = exclude
     .map(resolveFromRoot)
     .map((s: string): RegExp => globToRegExp(s, globOptions));
-  const shouldInclude = ({ filename }: WalkInfo): boolean =>
+  const shouldInclude = (filename: string): boolean =>
     !excludePatterns.some((p: RegExp): boolean => !!filename.match(p));
   const { segments, hasTrailingSep, winRoot } = split(resolveFromRoot(glob));
 
@@ -183,8 +188,8 @@ export function* expandGlobSync(
   let fixedRootInfo: WalkInfo;
   try {
     fixedRootInfo = { filename: fixedRoot, info: statSync(fixedRoot) };
-  } catch {
-    return;
+  } catch (error) {
+    return throwUnlessNotFound(error);
   }
 
   function* advanceMatch(
@@ -196,12 +201,13 @@ export function* expandGlobSync(
     } else if (globSegment == "..") {
       const parentPath = joinGlobs([walkInfo.filename, ".."], globOptions);
       try {
-        return yield* [
-          { filename: parentPath, info: statSync(parentPath) }
-        ].filter(shouldInclude);
-      } catch {
-        return;
+        if (shouldInclude(parentPath)) {
+          return yield { filename: parentPath, info: statSync(parentPath) };
+        }
+      } catch (error) {
+        throwUnlessNotFound(error);
       }
+      return;
     } else if (globSegment == "**") {
       return yield* walkSync(walkInfo.filename, {
         includeFiles: false,
