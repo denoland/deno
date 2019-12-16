@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use super::io::StreamResource;
-use crate::http_body::HttpBody;
+// use super::io::StreamResource;
+// use crate::http_body::HttpBody;
 use crate::http_util::get_client;
 use crate::ops::json_op;
 use crate::state::ThreadSafeState;
@@ -55,7 +55,7 @@ pub fn op_fetch(
     request = request.header(name, v);
   }
   debug!("Before fetch {}", url);
-  let state_ = state.clone();
+  // let state_ = state.clone();
 
   let future = async move {
     let res = request.send().map_err(ErrBox::from).await?;
@@ -66,15 +66,16 @@ pub fn op_fetch(
       res_headers.push((key.to_string(), val.to_str().unwrap().to_owned()));
     }
 
-    let body = HttpBody::from(res.into_body());
-    let mut table = state_.lock_resource_table();
-    let rid = table.add(
-      "httpBody",
-      Box::new(StreamResource::HttpBody(Box::new(body))),
-    );
+    // TODO:
+    // let body = HttpBody::from(res.into_body());
+    // let mut table = state_.lock_resource_table();
+    // let rid = table.add(
+    // "httpBody",
+    // Box::new(StreamResource::HttpBody(Box::new(body))),
+    // );
 
     let json_res = json!({
-      "bodyRid": rid,
+      "bodyRid": 0,
       "status": status.as_u16(),
       "statusText": status.canonical_reason().unwrap_or(""),
       "headers": res_headers

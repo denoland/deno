@@ -211,6 +211,7 @@ impl GetErrorKind for url::ParseError {
       }
       RelativeUrlWithoutBase => ErrorKind::RelativeUrlWithoutBase,
       SetHostOnCannotBeABaseUrl => ErrorKind::SetHostOnCannotBeABaseUrl,
+      _ => ErrorKind::Other,
     }
   }
 }

@@ -3,7 +3,6 @@ use crate::deno_error;
 use crate::deno_error::DenoError;
 use crate::version;
 use deno::ErrBox;
-use futures::future;
 use futures::future::FutureExt;
 use futures::future::TryFutureExt;
 use reqwest;
@@ -14,7 +13,6 @@ use reqwest::header::USER_AGENT;
 use reqwest::Client;
 use reqwest::RedirectPolicy;
 use std::future::Future;
-use std::pin::Pin;
 use url::Url;
 
 /// Create new instance of async reqwest::Client. This client supports
@@ -74,14 +72,11 @@ pub enum FetchOnceResult {
 pub fn fetch_string_once(
   url: &Url,
 ) -> impl Future<Output = Result<FetchOnceResult, ErrBox>> {
-  type FetchAttempt = (Option<String>, Option<String>, Option<FetchOnceResult>);
-
   let url = url.clone();
   let client = get_client();
 
   let fut = async move {
-    let mut response =
-      client.get(url.clone()).send().map_err(ErrBox::from).await?;
+    let response = client.get(url.clone()).send().map_err(ErrBox::from).await?;
 
     if response.status().is_redirection() {
       let location_string = response
