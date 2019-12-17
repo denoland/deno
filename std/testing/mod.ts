@@ -10,6 +10,7 @@ import {
   yellow,
   italic
 } from "../fmt/colors.ts";
+import { assert } from "./asserts.ts"
 export type TestFunction = () => void | Promise<void>;
 
 export interface TestDefinition {
@@ -140,6 +141,8 @@ export function test(
       throw new Error("The name of test case can't be empty");
     }
   }
+  assert(!!name, "The name of test case shouldn't be empty");
+  assert(!!fn, "Test function shouldn't be empty");
 
   if (filter(name)) {
     candidates.push({ fn, name });
