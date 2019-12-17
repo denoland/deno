@@ -121,14 +121,26 @@ export function test(
       throw new Error("Missing test function");
     }
     name = t;
-  } else {
-    fn = typeof t === "function" ? t : t.fn;
+    if (!name) {
+      throw new Error("The name of test case can't be empty");
+    }
+  } else if (typeof t === "function") {
+    fn = t;
     name = t.name;
+    if (!name) {
+      throw new Error("Test function can't be anonymous");
+    }
+  } else {
+    fn = t.fn;
+    if (!fn) {
+      throw new Error("Missing test function");
+    }
+    name = t.name;
+    if (!name) {
+      throw new Error("The name of test case can't be empty");
+    }
   }
 
-  if (!name) {
-    throw new Error("Test function may not be anonymous");
-  }
   if (filter(name)) {
     candidates.push({ fn, name });
   } else {
