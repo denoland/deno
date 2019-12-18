@@ -22,7 +22,7 @@
 import "./global.ts";
 
 import * as nodeFS from "./fs.ts";
-import * as nodeUtil from "./util.ts";
+import * as nodeUtil from "../util/types.ts";
 import * as nodePath from "./path.ts";
 
 import * as path from "../path/mod.ts";
