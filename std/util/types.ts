@@ -2,9 +2,7 @@
 // Copyright 2011-2015 by Vitaly Puzrin. All rights reserved. MIT license.
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
-export function isArray(value: unknown): value is any[] {
-  return Array.isArray(value);
-}
+export const isArray = Array.isArray
 
 export function isBoolean(value: unknown): value is boolean {
   return typeof value === "boolean" || value instanceof Boolean;
