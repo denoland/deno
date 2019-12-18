@@ -407,10 +407,9 @@ itest!(_052_no_remote_flag {
 });
 
 itest!(_053_big_wasm_error_exit {
-  args: "--reload --allow-read 053_big_wasm_error_exit.ts",
+  args: "--reload --allow-run --allow-env 053_big_wasm_error_exit.ts",
   output: "053_big_wasm_error_exit.ts.out",
-  exit_code: 1,
-  check_stderr: true,
+  exit_code: 0,
 });
 
 itest!(lock_check_ok {
