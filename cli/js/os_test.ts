@@ -125,7 +125,7 @@ testPerm({ env: true }, function getDir(): void {
   }
 
   interface Scenes {
-    kind: string;
+    kind: Deno.DirKind;
     runtime: Runtime[];
   }
 
