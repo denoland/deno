@@ -116,23 +116,7 @@ test(function osIsTTYSmoke(): void {
   console.log(Deno.isTTY());
 });
 
-testPerm({ env: true }, function homeDir(): void {
-  assertNotEquals(Deno.homeDir(), "");
-});
-
-testPerm({ env: false }, function homeDirPerm(): void {
-  let caughtError = false;
-  try {
-    Deno.homeDir();
-  } catch (err) {
-    caughtError = true;
-    assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
-    assertEquals(err.name, "PermissionDenied");
-  }
-  assert(caughtError);
-});
-
-testPerm({ env: true }, function getUserDir(): void {
+testPerm({ env: true }, function getDir(): void {
   type supportOS = "mac" | "win" | "linux";
 
   interface Runtime {
@@ -142,14 +126,12 @@ testPerm({ env: true }, function getUserDir(): void {
 
   interface Scenes {
     name: string;
-    fn: string;
     runtime: Runtime[];
   }
 
   const scenes: Scenes[] = [
     {
       name: "config",
-      fn: "configDir",
       runtime: [
         { os: "mac", shouldHaveValue: true },
         { os: "win", shouldHaveValue: true },
@@ -158,7 +140,6 @@ testPerm({ env: true }, function getUserDir(): void {
     },
     {
       name: "cache",
-      fn: "cacheDir",
       runtime: [
         { os: "mac", shouldHaveValue: true },
         { os: "win", shouldHaveValue: true },
@@ -167,7 +148,6 @@ testPerm({ env: true }, function getUserDir(): void {
     },
     {
       name: "data",
-      fn: "dataDir",
       runtime: [
         { os: "mac", shouldHaveValue: true },
         { os: "win", shouldHaveValue: true },
@@ -175,8 +155,7 @@ testPerm({ env: true }, function getUserDir(): void {
       ]
     },
     {
-      name: "data local",
-      fn: "dataLocalDir",
+      name: "data_local",
       runtime: [
         { os: "mac", shouldHaveValue: true },
         { os: "win", shouldHaveValue: true },
@@ -185,7 +164,6 @@ testPerm({ env: true }, function getUserDir(): void {
     },
     {
       name: "audio",
-      fn: "audioDir",
       runtime: [
         { os: "mac", shouldHaveValue: true },
         { os: "win", shouldHaveValue: true },
@@ -194,7 +172,6 @@ testPerm({ env: true }, function getUserDir(): void {
     },
     {
       name: "desktop",
-      fn: "desktopDir",
       runtime: [
         { os: "mac", shouldHaveValue: true },
         { os: "win", shouldHaveValue: true },
@@ -203,7 +180,6 @@ testPerm({ env: true }, function getUserDir(): void {
     },
     {
       name: "document",
-      fn: "documentDir",
       runtime: [
         { os: "mac", shouldHaveValue: true },
         { os: "win", shouldHaveValue: true },
@@ -212,7 +188,6 @@ testPerm({ env: true }, function getUserDir(): void {
     },
     {
       name: "download",
-      fn: "downloadDir",
       runtime: [
         { os: "mac", shouldHaveValue: true },
         { os: "win", shouldHaveValue: true },
@@ -221,7 +196,6 @@ testPerm({ env: true }, function getUserDir(): void {
     },
     {
       name: "font",
-      fn: "fontDir",
       runtime: [
         { os: "mac", shouldHaveValue: true },
         { os: "win", shouldHaveValue: false },
@@ -230,7 +204,6 @@ testPerm({ env: true }, function getUserDir(): void {
     },
     {
       name: "picture",
-      fn: "pictureDir",
       runtime: [
         { os: "mac", shouldHaveValue: true },
         { os: "win", shouldHaveValue: true },
@@ -239,7 +212,6 @@ testPerm({ env: true }, function getUserDir(): void {
     },
     {
       name: "public",
-      fn: "publicDir",
       runtime: [
         { os: "mac", shouldHaveValue: true },
         { os: "win", shouldHaveValue: true },
@@ -248,7 +220,6 @@ testPerm({ env: true }, function getUserDir(): void {
     },
     {
       name: "template",
-      fn: "templateDir",
       runtime: [
         { os: "mac", shouldHaveValue: false },
         { os: "win", shouldHaveValue: true },
@@ -257,7 +228,6 @@ testPerm({ env: true }, function getUserDir(): void {
     },
     {
       name: "video",
-      fn: "videoDir",
       runtime: [
         { os: "mac", shouldHaveValue: true },
         { os: "win", shouldHaveValue: true },
@@ -267,17 +237,14 @@ testPerm({ env: true }, function getUserDir(): void {
   ];
 
   for (const s of scenes) {
-    console.log(`test Deno.${s.fn}()`);
-    const fn = Deno[s.fn];
-
     for (const r of s.runtime) {
       if (Deno.build.os !== r.os) continue;
       if (r.shouldHaveValue) {
-        assertNotEquals(fn(), "");
+        assertNotEquals(Deno.dir(s.name), "");
       } else {
         // if not support your platform. it should throw an error
         assertThrows(
-          () => fn(),
+          () => Deno.dir(s.name),
           Deno.DenoError,
           `Could not get user ${s.name} directory.`
         );
@@ -286,33 +253,12 @@ testPerm({ env: true }, function getUserDir(): void {
   }
 });
 
-testPerm({}, function getUserDirWithoutPermission(): void {
-  const funcs: string[] = [
-    "configDir",
-    "cacheDir",
-    "dataDir",
-    "dataLocalDir",
-    "audioDir",
-    "desktopDir",
-    "documentDir",
-    "downloadDir",
-    "fontDir",
-    "pictureDir",
-    "publicDir",
-    "templateDir",
-    "videoDir"
-  ];
-
-  for (const fnName of funcs) {
-    console.log(`test Deno.${fnName}()`);
-    const fn = Deno[fnName];
-
-    assertThrows(
-      () => fn(),
-      Deno.DenoError,
-      `run again with the --allow-env flag`
-    );
-  }
+testPerm({}, function getDirWithoutPermission(): void {
+  assertThrows(
+    () => Deno.dir("home"),
+    Deno.DenoError,
+    `run again with the --allow-env flag`
+  );
 });
 
 testPerm({ env: true }, function execPath(): void {

@@ -1,27 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
 // Public deno module.
-export {
-  env,
-  exit,
-  isTTY,
-  execPath,
-  homeDir,
-  cacheDir,
-  configDir,
-  dataDir,
-  dataLocalDir,
-  audioDir,
-  desktopDir,
-  documentDir,
-  downloadDir,
-  fontDir,
-  pictureDir,
-  publicDir,
-  templateDir,
-  videoDir,
-  hostname
-} from "./os.ts";
+export { dir, env, exit, isTTY, execPath, hostname } from "./os.ts";
 export { chdir, cwd } from "./dir.ts";
 export {
   File,
