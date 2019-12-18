@@ -1087,7 +1087,7 @@ console.log(resources());
 // { 0: "stdin", 1: "stdout", 2: "stderr" }
 close(0);
 console.log(resources());
-// { "stdout", 2: "stderr" }
+// { 1: "stdout", 2: "stderr" }
 ```
 
 #### Metrics
