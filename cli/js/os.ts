@@ -128,6 +128,22 @@ export function start(preserveDenoNamespace = true, source?: string): Start {
   return startResponse;
 }
 
+type DirKind =
+  | "home"
+  | "cache"
+  | "config"
+  | "data"
+  | "data_local"
+  | "audio"
+  | "desktop"
+  | "document"
+  | "download"
+  | "font"
+  | "picture"
+  | "public"
+  | "template"
+  | "video";
+
 /**
  * Returns the user and platform specific directories.
  * Requires the `--allow-env` flag.
@@ -227,8 +243,8 @@ export function start(preserveDenoNamespace = true, source?: string): Start {
  * | macOS   | `$HOME`/Movies      | /Users/Alice/Movies   |
  * | Windows | `{FOLDERID_Videos}` | C:\Users\Alice\Videos |
  */
-export function dir(name: string): string {
-  return sendSync(dispatch.OP_GET_DIR, { name });
+export function dir(kind: DirKind): string {
+  return sendSync(dispatch.OP_GET_DIR, { kind });
 }
 
 /**

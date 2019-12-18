@@ -125,13 +125,13 @@ testPerm({ env: true }, function getDir(): void {
   }
 
   interface Scenes {
-    name: string;
+    kind: string;
     runtime: Runtime[];
   }
 
   const scenes: Scenes[] = [
     {
-      name: "config",
+      kind: "config",
       runtime: [
         { os: "mac", shouldHaveValue: true },
         { os: "win", shouldHaveValue: true },
@@ -139,7 +139,7 @@ testPerm({ env: true }, function getDir(): void {
       ]
     },
     {
-      name: "cache",
+      kind: "cache",
       runtime: [
         { os: "mac", shouldHaveValue: true },
         { os: "win", shouldHaveValue: true },
@@ -147,7 +147,7 @@ testPerm({ env: true }, function getDir(): void {
       ]
     },
     {
-      name: "data",
+      kind: "data",
       runtime: [
         { os: "mac", shouldHaveValue: true },
         { os: "win", shouldHaveValue: true },
@@ -155,7 +155,7 @@ testPerm({ env: true }, function getDir(): void {
       ]
     },
     {
-      name: "data_local",
+      kind: "data_local",
       runtime: [
         { os: "mac", shouldHaveValue: true },
         { os: "win", shouldHaveValue: true },
@@ -163,7 +163,7 @@ testPerm({ env: true }, function getDir(): void {
       ]
     },
     {
-      name: "audio",
+      kind: "audio",
       runtime: [
         { os: "mac", shouldHaveValue: true },
         { os: "win", shouldHaveValue: true },
@@ -171,7 +171,7 @@ testPerm({ env: true }, function getDir(): void {
       ]
     },
     {
-      name: "desktop",
+      kind: "desktop",
       runtime: [
         { os: "mac", shouldHaveValue: true },
         { os: "win", shouldHaveValue: true },
@@ -179,7 +179,7 @@ testPerm({ env: true }, function getDir(): void {
       ]
     },
     {
-      name: "document",
+      kind: "document",
       runtime: [
         { os: "mac", shouldHaveValue: true },
         { os: "win", shouldHaveValue: true },
@@ -187,7 +187,7 @@ testPerm({ env: true }, function getDir(): void {
       ]
     },
     {
-      name: "download",
+      kind: "download",
       runtime: [
         { os: "mac", shouldHaveValue: true },
         { os: "win", shouldHaveValue: true },
@@ -195,7 +195,7 @@ testPerm({ env: true }, function getDir(): void {
       ]
     },
     {
-      name: "font",
+      kind: "font",
       runtime: [
         { os: "mac", shouldHaveValue: true },
         { os: "win", shouldHaveValue: false },
@@ -203,7 +203,7 @@ testPerm({ env: true }, function getDir(): void {
       ]
     },
     {
-      name: "picture",
+      kind: "picture",
       runtime: [
         { os: "mac", shouldHaveValue: true },
         { os: "win", shouldHaveValue: true },
@@ -211,7 +211,7 @@ testPerm({ env: true }, function getDir(): void {
       ]
     },
     {
-      name: "public",
+      kind: "public",
       runtime: [
         { os: "mac", shouldHaveValue: true },
         { os: "win", shouldHaveValue: true },
@@ -219,7 +219,7 @@ testPerm({ env: true }, function getDir(): void {
       ]
     },
     {
-      name: "template",
+      kind: "template",
       runtime: [
         { os: "mac", shouldHaveValue: false },
         { os: "win", shouldHaveValue: true },
@@ -227,7 +227,7 @@ testPerm({ env: true }, function getDir(): void {
       ]
     },
     {
-      name: "video",
+      kind: "video",
       runtime: [
         { os: "mac", shouldHaveValue: true },
         { os: "win", shouldHaveValue: true },
@@ -240,13 +240,13 @@ testPerm({ env: true }, function getDir(): void {
     for (const r of s.runtime) {
       if (Deno.build.os !== r.os) continue;
       if (r.shouldHaveValue) {
-        assertNotEquals(Deno.dir(s.name), "");
+        assertNotEquals(Deno.dir(s.kind), "");
       } else {
         // if not support your platform. it should throw an error
         assertThrows(
-          () => Deno.dir(s.name),
+          () => Deno.dir(s.kind),
           Deno.DenoError,
-          `Could not get user ${s.name} directory.`
+          `Could not get user ${s.kind} directory.`
         );
       }
     }

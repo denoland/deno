@@ -60,7 +60,7 @@ fn op_start(
 
 #[derive(Deserialize)]
 struct GetDirArgs {
-  name: std::string::String,
+  kind: std::string::String,
 }
 
 fn op_get_dir(
@@ -71,7 +71,7 @@ fn op_get_dir(
   state.check_env()?;
   let args: GetDirArgs = serde_json::from_value(args)?;
 
-  let path = match args.name.as_str() {
+  let path = match args.kind.as_str() {
     "home" => dirs::home_dir(),
     "config" => dirs::config_dir(),
     "cache" => dirs::cache_dir(),
@@ -89,7 +89,7 @@ fn op_get_dir(
     _ => {
       return Err(ErrBox::from(Error::new(
         ErrorKind::InvalidInput,
-        format!("Invalid dir type `{}`", args.name.as_str()),
+        format!("Invalid dir type `{}`", args.kind.as_str()),
       )))
     }
   };
@@ -97,7 +97,7 @@ fn op_get_dir(
   if path == None {
     Err(ErrBox::from(Error::new(
       ErrorKind::NotFound,
-      format!("Could not get user {} directory.", args.name.as_str()),
+      format!("Could not get user {} directory.", args.kind.as_str()),
     )))
   } else {
     Ok(JsonOp::Sync(json!(path
