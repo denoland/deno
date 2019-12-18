@@ -4,7 +4,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
 import { Type } from "../type.ts";
-
+import { isNull } from "../../../util/types.ts"
 function resolveYamlNull(data: string): boolean {
   const max = data.length;
 
@@ -16,10 +16,6 @@ function resolveYamlNull(data: string): boolean {
 
 function constructYamlNull(): null {
   return null;
-}
-
-function isNull(object: unknown): object is null {
-  return object === null;
 }
 
 export const nil = new Type("tag:yaml.org,2002:null", {

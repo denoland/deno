@@ -114,12 +114,6 @@ export function isTypedArray(x: unknown): x is TypedArray {
   return x instanceof TypedArrayConstructor;
 }
 
-// Returns whether o is an object, not null, and not a function.
-// @internal
-export function isObject(o: unknown): o is object {
-  return o != null && typeof o === "object";
-}
-
 // Returns whether o is iterable.
 export function isIterable<T, P extends keyof T, K extends T[P]>(
   o: T

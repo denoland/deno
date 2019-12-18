@@ -1,4 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+import { isNumber } from "../util/types.ts"
 export interface ArgParsingOptions {
   unknown?: (i: unknown) => unknown;
   boolean?: boolean | string | string[];
@@ -34,12 +35,6 @@ function get<T>(obj: { [s: string]: T }, key: string): T | undefined {
   if (Object.prototype.hasOwnProperty.call(obj, key)) {
     return obj[key];
   }
-}
-
-function isNumber(x: unknown): boolean {
-  if (typeof x === "number") return true;
-  if (/^0x[0-9a-f]+$/i.test(String(x))) return true;
-  return /^[-+]?(?:\d+(?:\.\d*)?|\.\d+)(e[-+]?\d+)?$/.test(String(x));
 }
 
 function hasKey(obj: NestedMapping, keys: string[]): boolean {

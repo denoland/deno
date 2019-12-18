@@ -10,6 +10,7 @@ import { YAMLError } from "../error.ts";
 import { Mark } from "../mark.ts";
 import { Type } from "../type.ts";
 import * as common from "../utils.ts";
+import { isNullOrUndefined, isObject } from '../../../util/types.ts'
 import { LoaderState, LoaderStateOptions, ResultType } from "./loader_state.ts";
 
 type Any = common.Any;
@@ -292,7 +293,7 @@ function mergeMappings(
   source: ArrayObject,
   overridableKeys: ArrayObject<boolean>
 ): void {
-  if (!common.isObject(source)) {
+  if (!isObject(source)) {
     return throwError(
       state,
       "cannot merge mappings; the provided source object is unacceptable"
@@ -577,7 +578,7 @@ function readPlainScalar(
 
   captureSegment(state, captureStart, captureEnd, false);
 
-  if (!common.isNullOrUndefined(state.result)) {
+  if (!isNullOrUndefined(state.result)) {
     return true;
   }
 
