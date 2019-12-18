@@ -10,7 +10,7 @@ import {
   yellow,
   italic
 } from "../fmt/colors.ts";
-import { assert } from "./asserts.ts"
+import { assert } from "./asserts.ts";
 export type TestFunction = () => void | Promise<void>;
 
 export interface TestDefinition {
