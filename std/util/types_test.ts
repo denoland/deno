@@ -2,7 +2,20 @@
 
 import { test } from "../testing/mod.ts";
 import { assert } from "../testing/asserts.ts";
-import{isBoolean,isNull,isNullOrUndefined,isNumber,isString,isUndefined,isError,isObject,isFunction,isRegExp,isArray,isSymbol } from "./types.ts";
+import {
+  isBoolean,
+  isNull,
+  isNullOrUndefined,
+  isNumber,
+  isString,
+  isUndefined,
+  isError,
+  isObject,
+  isFunction,
+  isRegExp,
+  isArray,
+  isSymbol
+} from "./types.ts";
 
 test({
   name: "[types] isBoolean",
@@ -61,10 +74,10 @@ test({
 test({
   name: "[types] isSymbol",
   fn() {
-		assert(isSymbol(Symbol()))
-		assert(isSymbol(Symbol("foo")))
-		assert(!isSymbol("Symbol"))
-	}
+    assert(isSymbol(Symbol()));
+    assert(isSymbol(Symbol("foo")));
+    assert(!isSymbol("Symbol"));
+  }
 });
 
 test({

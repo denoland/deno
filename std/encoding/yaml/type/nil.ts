@@ -4,7 +4,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
 import { Type } from "../type.ts";
-import { isNull } from "../../../util/types.ts"
+import { isNull } from "../../../util/types.ts";
 function resolveYamlNull(data: string): boolean {
   const max = data.length;
 

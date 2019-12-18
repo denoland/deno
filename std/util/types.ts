@@ -2,7 +2,7 @@
 // Copyright 2011-2015 by Vitaly Puzrin. All rights reserved. MIT license.
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
-export const isArray = Array.isArray
+export const isArray = Array.isArray;
 
 export function isBoolean(value: unknown): value is boolean {
   return typeof value === "boolean" || value instanceof Boolean;
@@ -35,7 +35,7 @@ export function isUndefined(value: unknown): value is undefined {
 export function isObject(value: unknown): value is object {
   return value !== null && typeof value === "object";
 }
-  
+
 export function isError(e: unknown): boolean {
   return e instanceof Error;
 }

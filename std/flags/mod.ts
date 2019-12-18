@@ -1,5 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { isNumber } from "../util/types.ts"
+import { isNumber } from "../util/types.ts";
 export interface ArgParsingOptions {
   unknown?: (i: unknown) => unknown;
   boolean?: boolean | string | string[];

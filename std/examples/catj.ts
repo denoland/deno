@@ -9,7 +9,7 @@
 /* eslint-disable @typescript-eslint/no-use-before-define */
 import { parse } from "../flags/mod.ts";
 import * as colors from "../fmt/colors.ts";
-import { isObject } from "../util/types.ts"
+import { isObject } from "../util/types.ts";
 
 const decoder = new TextDecoder();
 
