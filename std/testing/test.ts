@@ -260,4 +260,34 @@ test("test fn overloading", (): void => {
   assert(true);
 });
 
+test("The name of test case can't be empty", () => {
+  assertThrows(
+    () => {
+      test("", () => {});
+    },
+    Error,
+    "The name of test case can't be empty"
+  );
+  assertThrows(
+    () => {
+      test({
+        name: "",
+        fn: () => {}
+      });
+    },
+    Error,
+    "The name of test case can't be empty"
+  );
+});
+
+test("test function can't be anonymous", () => {
+  assertThrows(
+    () => {
+      test(function() {});
+    },
+    Error,
+    "Test function can't be anonymous"
+  );
+});
+
 runIfMain(import.meta);
