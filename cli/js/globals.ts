@@ -27,6 +27,7 @@ import * as urlSearchParams from "./url_search_params.ts";
 import * as workers from "./workers.ts";
 import * as performanceUtil from "./performance.ts";
 import * as request from "./request.ts";
+import { Storage, LocalStorage, SessionStorage } from "./storage.ts";
 
 // These imports are not exposed and therefore are fine to just import the
 // symbols required.
@@ -117,6 +118,11 @@ window.URL = url.URL;
 export type URL = url.URL;
 window.URLSearchParams = urlSearchParams.URLSearchParams;
 export type URLSearchParams = domTypes.URLSearchParams;
+
+window.Storage = Storage;
+export type Storage = Storage;
+window.sessionStorage = new SessionStorage();
+window.localStorage = new LocalStorage();
 
 // Using the `as` keyword to use standard compliant interfaces as the Deno
 // implementations contain some implementation details we wouldn't want to

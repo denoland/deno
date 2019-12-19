@@ -14,6 +14,10 @@ pub struct DenoDir {
   pub deps_cache: DiskCache,
   /// Used by TsCompiler to cache compiler output.
   pub gen_cache: DiskCache,
+  /// Used by localStorage and indexDB in the future.
+  pub storage: PathBuf,
+  /// Used by localStorage.
+  pub localstorage: PathBuf,
 }
 
 impl DenoDir {
@@ -31,11 +35,15 @@ impl DenoDir {
     let root: PathBuf = custom_root.unwrap_or(default);
     let deps_path = root.join("deps");
     let gen_path = root.join("gen");
+    let storage_path = root.join("storage");
+    let localstorage_path = storage_path.join("localstorage");
 
     let deno_dir = Self {
       root,
       deps_cache: DiskCache::new(&deps_path),
       gen_cache: DiskCache::new(&gen_path),
+      storage: storage_path,
+      localstorage: localstorage_path,
     };
 
     Ok(deno_dir)

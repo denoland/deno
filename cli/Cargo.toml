@@ -61,6 +61,7 @@ url = "1.7.2"
 utime = "0.2.1"
 webpki = "0.21.0"
 webpki-roots = "0.17.0"
+rusty-leveldb = "0.3.0"
 
 [target.'cfg(windows)'.dependencies]
 winapi = "0.3.8"

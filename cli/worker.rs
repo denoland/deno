@@ -69,6 +69,7 @@ impl Worker {
       ops::resources::init(&mut i, &state);
       ops::timers::init(&mut i, &state);
       ops::workers::init(&mut i, &state);
+      ops::storage::init(&mut i, &state);
 
       let state_ = state.clone();
       i.set_dyn_import(move |id, specifier, referrer| {

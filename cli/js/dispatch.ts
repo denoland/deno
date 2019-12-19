@@ -69,6 +69,12 @@ export let OP_FETCH_ASSET: number;
 export let OP_DIAL_TLS: number;
 export let OP_HOSTNAME: number;
 export let OP_OPEN_PLUGIN: number;
+export let OP_LOCALSTORAGE_GET_ITEM: number;
+export let OP_LOCALSTORAGE_SET_ITEM: number;
+export let OP_LOCALSTORAGE_REMOVE_ITEM: number;
+export let OP_LOCALSTORAGE_GET_LEN: number;
+export let OP_LOCALSTORAGE_CLEAN: number;
+export let OP_LOCALSTORAGE_KEY: number;
 
 const PLUGIN_ASYNC_HANDLER_MAP: Map<number, AsyncHandler> = new Map();
 
@@ -120,6 +126,12 @@ export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
     case OP_MAKE_TEMP_DIR:
     case OP_DIAL_TLS:
     case OP_FETCH_SOURCE_FILES:
+    case OP_LOCALSTORAGE_GET_ITEM:
+    case OP_LOCALSTORAGE_SET_ITEM:
+    case OP_LOCALSTORAGE_REMOVE_ITEM:
+    case OP_LOCALSTORAGE_GET_LEN:
+    case OP_LOCALSTORAGE_CLEAN:
+    case OP_LOCALSTORAGE_KEY:
       json.asyncMsgFromRust(opId, ui8);
       break;
     default:

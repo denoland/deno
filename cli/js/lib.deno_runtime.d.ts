@@ -1536,6 +1536,9 @@ declare interface Window {
   workerClose: typeof __workers.workerClose;
   postMessage: typeof __workers.postMessage;
   Worker: typeof __workers.WorkerImpl;
+  Storage: __storage.Storage;
+  localStorage: typeof __storage.localStorage;
+  sessionStorage: typeof __storage.sessionStorage;
   addEventListener: (
     type: string,
     callback: (event: __domTypes.Event) => void | null,
@@ -1586,6 +1589,10 @@ declare const workerMain: typeof __workers.workerMain;
 declare const workerClose: typeof __workers.workerClose;
 declare const postMessage: typeof __workers.postMessage;
 declare const Worker: typeof __workers.WorkerImpl;
+declare const Storage: typeof __storage.Storage;
+declare const localStorage: typeof __storage.localStorage;
+declare const sessionStorage: typeof __storage.sessionStorage;
+
 declare const addEventListener: (
   type: string,
   callback: (event: __domTypes.Event) => void | null,
@@ -3062,4 +3069,23 @@ declare namespace JSX {
   interface IntrinsicElements {
     [elemName: string]: any;
   }
+}
+
+declare namespace __storage {
+  export interface Storage {
+    readonly length: number;
+    key(index: number): string | null;
+    getItem(key: string): string | null;
+    setItem(key: string, value: string): void;
+    removeItem(key: string): void;
+    clear(): void;
+  }
+
+  export const Storage: {
+    prototype: Storage;
+    new (): Storage;
+  };
+
+  export const localStorage: Storage;
+  export const sessionStorage: Storage;
 }
