@@ -27,7 +27,12 @@ import * as urlSearchParams from "./url_search_params.ts";
 import * as workers from "./workers.ts";
 import * as performanceUtil from "./performance.ts";
 import * as request from "./request.ts";
-import { Storage, LocalStorage, SessionStorage } from "./storage.ts";
+import {
+  Storage as StorageClass,
+  StorageImpl,
+  LocalStorage,
+  SessionStorage
+} from "./storage.ts";
 
 // These imports are not exposed and therefore are fine to just import the
 // symbols required.
@@ -119,8 +124,8 @@ export type URL = url.URL;
 window.URLSearchParams = urlSearchParams.URLSearchParams;
 export type URLSearchParams = domTypes.URLSearchParams;
 
-window.Storage = Storage;
-export type Storage = Storage;
+window.Storage = StorageClass;
+export type Storage = StorageImpl;
 window.sessionStorage = new SessionStorage();
 window.localStorage = new LocalStorage();
 

@@ -3,7 +3,7 @@ import { customInspect } from "./deno.ts";
 import * as dispatch from "./dispatch.ts";
 import { sendSync } from "./dispatch_json.ts";
 
-interface StorageImpl {
+export interface StorageImpl {
   readonly length: number;
   key(index: number): string | null;
   getItem(key: string): string | null;

@@ -3,10 +3,10 @@ import { testPerm, assertEquals } from "./test_util.ts";
 
 testPerm({}, async function storage(): Promise<void> {
   assertEquals(sessionStorage instanceof Storage, true);
-  assertEquals(sessionStorage.__proto__ === Storage, true);
+  assertEquals(sessionStorage.__proto__ === Storage.prototype, true);
 
   assertEquals(localStorage instanceof Storage, true);
-  assertEquals(localStorage.__proto__ === Storage, true);
+  assertEquals(localStorage.__proto__ === Storage.prototype, true);
 });
 
 testPerm({}, async function sessionStorageBasic(): Promise<void> {
