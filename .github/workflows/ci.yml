@@ -31,7 +31,7 @@ jobs:
         run: git config --global core.symlinks true
 
       - name: Clone repository
-        uses: actions/checkout@v1
+        uses: actions/checkout@v2
         with:
           fetch-depth: 1
           submodules: true
