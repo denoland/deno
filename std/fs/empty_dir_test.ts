@@ -123,3 +123,116 @@ test(function emptyDirSyncIfItExist(): void {
     Deno.removeSync(testDir, { recursive: true });
   }
 });
+
+test(async function emptyDirPermission(): Promise<void> {
+  interface Scenes {
+    read: boolean; // --allow-read
+    write: boolean; // --allow-write
+    async: boolean;
+    output: string;
+  }
+
+  const testfolder = path.join(testdataDir, "testfolder");
+
+  await Deno.mkdir(testfolder);
+
+  await Deno.writeFile(
+    path.join(testfolder, "child.txt"),
+    new TextEncoder().encode("hello world")
+  );
+
+  const scenes: Scenes[] = [
+    // 1
+    {
+      read: false,
+      write: false,
+      async: true,
+      output: "run again with the --allow-read flag"
+    },
+    {
+      read: false,
+      write: false,
+      async: false,
+      output: "run again with the --allow-read flag"
+    },
+    // 2
+    {
+      read: true,
+      write: false,
+      async: true,
+      output: "run again with the --allow-write flag"
+    },
+    {
+      read: true,
+      write: false,
+      async: false,
+      output: "run again with the --allow-write flag"
+    },
+    // 3
+    {
+      read: false,
+      write: true,
+      async: true,
+      output: "run again with the --allow-read flag"
+    },
+    {
+      read: false,
+      write: true,
+      async: false,
+      output: "run again with the --allow-read flag"
+    },
+    // 4
+    {
+      read: true,
+      write: true,
+      async: true,
+      output: "success"
+    },
+    {
+      read: true,
+      write: true,
+      async: false,
+      output: "success"
+    }
+  ];
+
+  try {
+    for (const s of scenes) {
+      console.log(
+        `test ${s.async ? "emptyDir" : "emptyDirSync"}("testdata/testfolder") ${
+          s.read ? "with" : "without"
+        } --allow-read & ${s.write ? "with" : "without"} --allow-write`
+      );
+
+      const args = [Deno.execPath(), "run"];
+
+      if (s.read) {
+        args.push("--allow-read");
+      }
+
+      if (s.write) {
+        args.push("--allow-write");
+      }
+
+      args.push(
+        path.join(testdataDir, s.async ? "empty_dir.ts" : "empty_dir_sync.ts")
+      );
+      args.push("testfolder");
+
+      const { stdout } = Deno.run({
+        stdout: "piped",
+        cwd: testdataDir,
+        args: args
+      });
+
+      const output = await Deno.readAll(stdout);
+
+      assertEquals(new TextDecoder().decode(output), s.output);
+    }
+  } catch (err) {
+    await Deno.remove(testfolder, { recursive: true });
+    throw err;
+  }
+
+  // done
+});

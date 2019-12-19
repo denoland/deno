@@ -54,155 +54,124 @@ declare namespace Deno {
    *       console.log(myEnv.TEST_VAR == newEnv.TEST_VAR);
    */
   export function env(key: string): string | undefined;
+
+  export type DirKind =
+    | "home"
+    | "cache"
+    | "config"
+    | "data"
+    | "data_local"
+    | "audio"
+    | "desktop"
+    | "document"
+    | "download"
+    | "font"
+    | "picture"
+    | "public"
+    | "template"
+    | "video";
+
   /**
-   * Returns the current user's home directory.
-   * If the directory does not exist, an exception is thrown
+   * Returns the user and platform specific directories.
    * Requires the `--allow-env` flag.
-   */
-  export function homeDir(): string;
-  /**
-   * Returns the current user's cache directory.
-   * If the directory does not exist, an exception is thrown
-   * Requires the `--allow-env` flag.
+   *
+   * Argument values: "home", "cache", "config", "data", "data_local", "audio",
+   * "desktop", "document", "download", "font", "picture", "public", "template",
+   * "video"
+   *
+   * "cache"
    * |Platform | Value                               | Example                      |
    * | ------- | ----------------------------------- | ---------------------------- |
    * | Linux   | `$XDG_CACHE_HOME` or `$HOME`/.cache | /home/alice/.cache           |
    * | macOS   | `$HOME`/Library/Caches              | /Users/Alice/Library/Caches  |
    * | Windows | `{FOLDERID_LocalAppData}`           | C:\Users\Alice\AppData\Local |
-   */
-  export function cacheDir(): string;
-  /**
-   * Returns the current user's config directory.
-   * If the directory does not exist, an exception is thrown
-   * Requires the `--allow-env` flag.
+   *
+   * "config"
    * |Platform | Value                                 | Example                          |
    * | ------- | ------------------------------------- | -------------------------------- |
    * | Linux   | `$XDG_CONFIG_HOME` or `$HOME`/.config | /home/alice/.config              |
    * | macOS   | `$HOME`/Library/Preferences           | /Users/Alice/Library/Preferences |
    * | Windows | `{FOLDERID_RoamingAppData}`           | C:\Users\Alice\AppData\Roaming   |
-   */
-  export function configDir(): string;
-  /**
-   * Returns the current user's data directory.
-   * If the directory does not exist, an exception is thrown
-   * Requires the `--allow-env` flag.
+   *
+   * "data"
    * |Platform | Value                                    | Example                                  |
    * | ------- | ---------------------------------------- | ---------------------------------------- |
    * | Linux   | `$XDG_DATA_HOME` or `$HOME`/.local/share | /home/alice/.local/share                 |
    * | macOS   | `$HOME`/Library/Application Support      | /Users/Alice/Library/Application Support |
    * | Windows | `{FOLDERID_RoamingAppData}`              | C:\Users\Alice\AppData\Roaming           |
-   */
-  export function dataDir(): string;
-  /**
-   * Returns the current user's local data directory.
-   * If the directory does not exist, an exception is thrown
-   * Requires the `--allow-env` flag.
+   *
+   * "data_local"
    * |Platform | Value                                    | Example                                  |
    * | ------- | ---------------------------------------- | ---------------------------------------- |
    * | Linux   | `$XDG_DATA_HOME` or `$HOME`/.local/share | /home/alice/.local/share                 |
    * | macOS   | `$HOME`/Library/Application Support      | /Users/Alice/Library/Application Support |
    * | Windows | `{FOLDERID_LocalAppData}`                | C:\Users\Alice\AppData\Local             |
-   */
-  export function dataLocalDir(): string;
-  /**
-   * Returns the current user's audio directory.
-   * If the directory does not exist, an exception is thrown
-   * Requires the `--allow-env` flag.
+   *
+   * "audio"
    * |Platform | Value              | Example              |
    * | ------- | ------------------ | -------------------- |
    * | Linux   | `XDG_MUSIC_DIR`    | /home/alice/Music    |
    * | macOS   | `$HOME`/Music      | /Users/Alice/Music   |
    * | Windows | `{FOLDERID_Music}` | C:\Users\Alice\Music |
-   */
-  export function audioDir(): string;
-  /**
-   * Returns the current user's desktop directory.
-   * If the directory does not exist, an exception is thrown
-   * Requires the `--allow-env` flag.
+   *
+   * "desktop"
    * |Platform | Value                | Example                |
    * | ------- | -------------------- | ---------------------- |
    * | Linux   | `XDG_DESKTOP_DIR`    | /home/alice/Desktop    |
    * | macOS   | `$HOME`/Desktop      | /Users/Alice/Desktop   |
    * | Windows | `{FOLDERID_Desktop}` | C:\Users\Alice\Desktop |
-   */
-  export function desktopDir(): string;
-  /**
-   * Returns the current user's document directory.
-   * If the directory does not exist, an exception is thrown
-   * Requires the `--allow-env` flag.
+   *
+   * "document"
    * |Platform | Value                  | Example                  |
    * | ------- | ---------------------- | ------------------------ |
    * | Linux   | `XDG_DOCUMENTS_DIR`    | /home/alice/Documents    |
    * | macOS   | `$HOME`/Documents      | /Users/Alice/Documents   |
    * | Windows | `{FOLDERID_Documents}` | C:\Users\Alice\Documents |
-   */
-  export function documentDir(): string;
-  /**
-   * Returns the current user's download directory.
-   * If the directory does not exist, an exception is thrown
-   * Requires the `--allow-env` flag.
+   *
+   * "download"
    * |Platform | Value                  | Example                  |
    * | ------- | ---------------------- | ------------------------ |
    * | Linux   | `XDG_DOWNLOAD_DIR`     | /home/alice/Downloads    |
    * | macOS   | `$HOME`/Downloads      | /Users/Alice/Downloads   |
    * | Windows | `{FOLDERID_Downloads}` | C:\Users\Alice\Downloads |
-   */
-  export function downloadDir(): string;
-  /**
-   * Returns the current user's font directory.
-   * If the directory does not exist, an exception is thrown
-   * Requires the `--allow-env` flag.
+   *
+   * "font"
    * |Platform | Value                                                | Example                        |
    * | ------- | ---------------------------------------------------- | ------------------------------ |
    * | Linux   | `$XDG_DATA_HOME`/fonts or `$HOME`/.local/share/fonts | /home/alice/.local/share/fonts |
    * | macOS   | `$HOME/Library/Fonts`                                | /Users/Alice/Library/Fonts     |
    * | Windows | –                                                    | –                              |
-   */
-  export function fontDir(): string;
-  /**
-   * Returns the current user's picture directory.
-   * If the directory does not exist, an exception is thrown
-   * Requires the `--allow-env` flag.
+   *
+   * "picture"
    * |Platform | Value                 | Example                 |
    * | ------- | --------------------- | ----------------------- |
    * | Linux   | `XDG_PICTURES_DIR`    | /home/alice/Pictures    |
    * | macOS   | `$HOME`/Pictures      | /Users/Alice/Pictures   |
    * | Windows | `{FOLDERID_Pictures}` | C:\Users\Alice\Pictures |
-   */
-  export function pictureDir(): string;
-  /**
-   * Returns the current user's public directory.
-   * If the directory does not exist, an exception is thrown
-   * Requires the `--allow-env` flag.
+   *
+   * "public"
    * |Platform | Value                 | Example             |
    * | ------- | --------------------- | ------------------- |
    * | Linux   | `XDG_PUBLICSHARE_DIR` | /home/alice/Public  |
    * | macOS   | `$HOME`/Public        | /Users/Alice/Public |
    * | Windows | `{FOLDERID_Public}`   | C:\Users\Public     |
-   */
-  export function publicDir(): string;
-  /**
-   * Returns the current user's template directory.
-   * If the directory does not exist, an exception is thrown
-   * Requires the `--allow-env` flag.
+   *
+   * "template"
    * |Platform | Value                  | Example                                                    |
    * | ------- | ---------------------- | ---------------------------------------------------------- |
    * | Linux   | `XDG_TEMPLATES_DIR`    | /home/alice/Templates                                      |
    * | macOS   | –                      | –                                                          |
    * | Windows | `{FOLDERID_Templates}` | C:\Users\Alice\AppData\Roaming\Microsoft\Windows\Templates |
-   */
-  export function templateDir(): string;
-  /**
-   * Returns the current user's video directory.
-   * If the directory does not exist, an exception is thrown
-   * Requires the `--allow-env` flag.
+   *
+   * "video"
    * |Platform | Value               | Example               |
    * | ------- | ------------------- | --------------------- |
    * | Linux   | `XDG_VIDEOS_DIR`    | /home/alice/Videos    |
    * | macOS   | `$HOME`/Movies      | /Users/Alice/Movies   |
    * | Windows | `{FOLDERID_Videos}` | C:\Users\Alice\Videos |
    */
-  export function videoDir(): string;
+  export function dir(kind: DirKind): string;
+
   /**
    * Returns the path to the current deno executable.
    * Requires the `--allow-env` flag.
