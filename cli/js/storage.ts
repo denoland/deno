@@ -99,8 +99,8 @@ export class SessionStorage extends Storage {
 
 export class LocalStorage extends Storage {
   // TODO: dispatch data with origin.
-  private [localStorageOriginSymbol]: string = "";
-  constructor(origin: string = "") {
+  private [localStorageOriginSymbol] = "";
+  constructor(origin = "") {
     super();
     this[localStorageOriginSymbol] = origin;
   }

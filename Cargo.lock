@@ -354,8 +354,8 @@ name = "deno_typescript"
 version = "0.27.0"
 dependencies = [
  "deno 0.27.0",
- "serde 1.0.102 (registry+https://github.com/rust-lang/crates.io-index)",
- "serde_json 1.0.41 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde 1.0.104 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde_json 1.0.44 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
