@@ -34,7 +34,13 @@ jobs:
         uses: actions/checkout@v2
         with:
           fetch-depth: 1
-          submodules: true
+
+      - name: Checkout submodules
+        shell: bash
+        run: |
+          auth_header="$(git config --local --get http.https://github.com/.extraheader)"
+          git submodule sync --recursive
+          git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive --depth=1
 
       - name: Create source tarballs (release, linux)
         if: startsWith(matrix.os, 'ubuntu') && matrix.kind == 'test' && startsWith(github.ref, 'refs/tags/') && github.repository == 'denoland/deno'
