@@ -32,8 +32,6 @@ jobs:
 
       - name: Clone repository
         uses: actions/checkout@v2
-        with:
-          fetch-depth: 1
 
       - name: Checkout submodules
         shell: bash
