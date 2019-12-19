@@ -6,6 +6,30 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.27.0 / 2019.12.18
+
+- feat: Support utf8 in file_server (#3495)
+- feat: add help & switch to flags to file_server (#3489)
+- feat: fetch should support URL instance as input (#3496)
+- feat: replace Deno.homeDir with Deno.dir (#3491, #3518)
+- feat: show detailed version with --version (#3507)
+- fix(installer): installs to the wrong directory on Windows (#3462)
+- fix(std/http): close connection on .respond() error (#3475)
+- fix(std/node): better error message for read perm in require() (#3502)
+- fix(timer): due/now Math.max instead of min (#3477)
+- fix: Improve empty test case error messages (#3514)
+- fix: Only swallow NotFound errors in std/fs/expandGlob() (#3479)
+- fix: decoding uri in file_server (#3187)
+- fix: file_server should get file and fileInfo concurrently (#3486)
+- fix: file_server swallowing permission errors (#3467)
+- fix: isolate tests silently failing (#3459)
+- fix: permission errors are swallowed in fs.exists, fs.emptyDir, fs.copy
+  (#3493, #3501, #3504)
+- fix: plugin ops should change op count metrics (#3455)
+- fix: release assets not being executable (#3480)
+- upgrade: tokio 0.2 in deno_core_http_bench, take2 (#3435)
+- upgrade: upgrade subcommand links to v0.26.0 (#3492)
+
 ### v0.26.0 / 2019.12.05
 
 - feat: Add --no-remote, rename --no-fetch to --cached-only (#3417)
