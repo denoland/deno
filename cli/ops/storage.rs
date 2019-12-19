@@ -59,7 +59,7 @@ fn op_get_len(
   let (mut key, mut value) = (vec![], vec![]);
   while it.advance() {
     if it.current(&mut key, &mut value) {
-      length = length + 1;
+      length += 1;
     }
   }
 
@@ -251,7 +251,7 @@ fn op_key(
         json!({ "value": String::from_utf8(key).unwrap() }),
       ));
     }
-    index = index + 1;
+    index += 1;
   }
 
   Ok(JsonOp::Sync(json!({ "value": Value::Null })))
