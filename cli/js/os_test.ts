@@ -147,6 +147,14 @@ testPerm({ env: true }, function getDir(): void {
       ]
     },
     {
+      kind: "executable",
+      runtime: [
+        { os: "mac", shouldHaveValue: false },
+        { os: "win", shouldHaveValue: false },
+        { os: "linux", shouldHaveValue: true }
+      ]
+    },
+    {
       kind: "data",
       runtime: [
         { os: "mac", shouldHaveValue: true },
@@ -242,6 +250,7 @@ testPerm({ env: true }, function getDir(): void {
       if (r.shouldHaveValue) {
         assertNotEquals(Deno.dir(s.kind), "");
       } else {
+        console.log(Deno.build.os, r.os, s.kind);
         // if not support your platform. it should throw an error
         assertThrows(
           () => Deno.dir(s.kind),
