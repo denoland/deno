@@ -138,6 +138,12 @@ const char* deno_last_exception(Deno* d_) {
   }
 }
 
+void deno_clear_last_exception(Deno* d_) {
+  auto* d = deno::unwrap(d_);
+  d->last_exception_.clear();
+  d->last_exception_handle_.Reset();
+}
+
 void deno_execute(Deno* d_, void* user_data, const char* js_filename,
                   const char* js_source) {
   auto* d = deno::unwrap(d_);
