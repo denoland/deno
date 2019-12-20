@@ -242,12 +242,7 @@ testPerm({ env: true }, function getDir(): void {
       if (r.shouldHaveValue) {
         assertNotEquals(Deno.dir(s.kind), "");
       } else {
-        // if not support your platform. it should throw an error
-        assertThrows(
-          () => Deno.dir(s.kind),
-          Deno.DenoError,
-          `Could not get user ${s.kind} directory.`
-        );
+        assertEquals(Deno.dir(s.kind), null);
       }
     }
   }

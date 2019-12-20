@@ -147,6 +147,8 @@ type DirKind =
 /**
  * Returns the user and platform specific directories.
  * Requires the `--allow-env` flag.
+ * Returns null if there is no applicable directory or if any other error
+ * occurs.
  *
  * Argument values: "home", "cache", "config", "data", "data_local", "audio",
  * "desktop", "document", "download", "font", "picture", "public", "template",
@@ -243,8 +245,12 @@ type DirKind =
  * | macOS   | `$HOME`/Movies      | /Users/Alice/Movies   |
  * | Windows | `{FOLDERID_Videos}` | C:\Users\Alice\Videos |
  */
-export function dir(kind: DirKind): string {
-  return sendSync(dispatch.OP_GET_DIR, { kind });
+export function dir(kind: DirKind): string | null {
+  try {
+    return sendSync(dispatch.OP_GET_DIR, { kind });
+  } catch {
+    return null;
+  }
 }
 
 /**

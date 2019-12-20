@@ -74,6 +74,8 @@ declare namespace Deno {
   /**
    * Returns the user and platform specific directories.
    * Requires the `--allow-env` flag.
+   * Returns null if there is no applicable directory or if any other error
+   * occurs.
    *
    * Argument values: "home", "cache", "config", "data", "data_local", "audio",
    * "desktop", "document", "download", "font", "picture", "public", "template",
@@ -170,7 +172,7 @@ declare namespace Deno {
    * | macOS   | `$HOME`/Movies      | /Users/Alice/Movies   |
    * | Windows | `{FOLDERID_Videos}` | C:\Users\Alice\Videos |
    */
-  export function dir(kind: DirKind): string;
+  export function dir(kind: DirKind): string | null;
 
   /**
    * Returns the path to the current deno executable.
