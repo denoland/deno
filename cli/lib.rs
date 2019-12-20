@@ -349,6 +349,11 @@ fn bundle_command(flags: DenoFlags) {
 
 fn run_repl(flags: DenoFlags) {
   let (mut worker, _state) = create_worker_and_state(flags);
+  // Make repl continue to function under uncaught async errors.
+  worker.set_error_handler(Box::new(|err| {
+    eprintln!("{}", err.to_string());
+    Ok(())
+  }));
   // Setup runtime.
   js_check(worker.execute("denoMain()"));
   let main_future = async move {
