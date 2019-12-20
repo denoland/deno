@@ -2,6 +2,7 @@
 import { core } from "./core.ts";
 import * as dispatch from "./dispatch.ts";
 import { sendSync } from "./dispatch_json.ts";
+import { ErrorKind } from "./errors.ts";
 import { assert } from "./util.ts";
 import * as util from "./util.ts";
 import { window } from "./window.ts";
@@ -249,7 +250,7 @@ export function dir(kind: DirKind): string | null {
   try {
     return sendSync(dispatch.OP_GET_DIR, { kind });
   } catch (error) {
-    if (error.kind == Deno.ErrorKind.PermissionDenied) {
+    if (error.kind == ErrorKind.PermissionDenied) {
       throw error;
     }
     return null;
