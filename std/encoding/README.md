@@ -226,17 +226,76 @@ YAML parser / dumper for Deno
 
 Heavily inspired from [js-yaml]
 
-### Example
+### Basic usage
 
-See [`./yaml/example`](./yaml/example) folder and [js-yaml] repository.
+`parse` parses the yaml string, and `stringify` dumps the given object to YAML
+string.
+
+```ts
+import { parse, stringify } from "https://deno.land/std/encoding/yaml.ts";
+
+const data = parse(`
+foo: bar
+baz:
+  - qux
+  - quux
+`);
+console.log(data);
+// => { foo: "bar", baz: [ "qux", "quux" ] }
+
+const yaml = stringify({ foo: "bar", baz: ["qux", "quux"] });
+console.log(yaml);
+// =>
+// foo: bar
+// baz:
+//   - qux
+//   - quux
+```
+
+If your YAML contains multiple documents in it, you can use `parseAll` for
+handling it.
+
+```ts
+import { parseAll } from "https://deno.land/std/encoding/yaml.ts";
+
+const data = parseAll(`
+---
+id: 1
+name: Alice
+---
+id: 2
+name: Bob
+---
+id: 3
+name: Eve
+`);
+console.log(data);
+// => [ { id: 1, name: "Alice" }, { id: 2, name: "Bob" }, { id: 3, name: "Eve" } ]
+// TODO(kt3k): This doesn't work now
+```
+
+### API
+
+#### `parse(str: string, opts?: ParserOption): unknown`
+
+Parses the YAML string with a single document.
+
+#### `parseAll(str: string, iterator?: Function, opts?: ParserOption): unknown`
+
+Parses the YAML string with multiple documents. If the iterator is given, it's
+applied to every document instead of returning the array of parsed objects.
+
+#### `stringify(obj: object, opts?: DumpOption): string`
+
+Serializes `object` as a YAML document.
 
 ### :warning: Limitations
 
 - `binary` type is currently not stable
 - `function`, `regexp`, and `undefined` type are currently not supported
 
-# Basic usage
+### More example
 
-TBD
+See [`./yaml/example`](./yaml/example) folder and [js-yaml] repository.
 
 [js-yaml]: https://github.com/nodeca/js-yaml
