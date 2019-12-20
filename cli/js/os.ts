@@ -248,7 +248,10 @@ type DirKind =
 export function dir(kind: DirKind): string | null {
   try {
     return sendSync(dispatch.OP_GET_DIR, { kind });
-  } catch {
+  } catch (error) {
+    if (error.kind == Deno.ErrorKind.PermissionDenied) {
+      throw error;
+    }
     return null;
   }
 }
