@@ -9,11 +9,11 @@ import { assertEquals, assertThrows } from "../testing/asserts.ts";
 
 import {
   encodedLen,
-  encodeToHex,
-  encodeToHexString,
+  encode,
+  encodeToString,
   decodedLen,
-  decodeHex,
-  decodeHexString,
+  decode,
+  decodeString,
   errLength,
   errInvalidByte
 } from "./hex.ts";
@@ -64,7 +64,7 @@ test({
       const srcStr = "abc";
       const src = new TextEncoder().encode(srcStr);
       const dest = new Uint8Array(encodedLen(src.length));
-      const int = encodeToHex(dest, src);
+      const int = encode(dest, src);
       assertEquals(src, new Uint8Array([97, 98, 99]));
       assertEquals(int, 6);
     }
@@ -75,7 +75,7 @@ test({
       const dest = new Uint8Array(2); // out of index
       assertThrows(
         (): void => {
-          encodeToHex(dest, src);
+          encode(dest, src);
         },
         Error,
         "Out of index."
@@ -85,7 +85,7 @@ test({
     for (const [enc, dec] of testCases) {
       const dest = new Uint8Array(encodedLen(dec.length));
       const src = new Uint8Array(dec as number[]);
-      const n = encodeToHex(dest, src);
+      const n = encode(dest, src);
       assertEquals(dest.length, n);
       assertEquals(new TextDecoder().decode(dest), enc);
     }
@@ -93,10 +93,10 @@ test({
 });
 
 test({
-  name: "[encoding.hex] encodeToHexString",
+  name: "[encoding.hex] encodeToString",
   fn(): void {
     for (const [enc, dec] of testCases) {
-      assertEquals(encodeToHexString(new Uint8Array(dec as number[])), enc);
+      assertEquals(encodeToString(new Uint8Array(dec as number[])), enc);
     }
   }
 });
@@ -126,7 +126,7 @@ test({
     for (const [enc, dec] of cases) {
       const dest = new Uint8Array(decodedLen(enc.length));
       const src = new TextEncoder().encode(enc as string);
-      const [, err] = decodeHex(dest, src);
+      const [, err] = decode(dest, src);
       assertEquals(err, undefined);
       assertEquals(Array.from(dest), Array.from(dec as number[]));
     }
@@ -134,10 +134,10 @@ test({
 });
 
 test({
-  name: "[encoding.hex] decodeHexString",
+  name: "[encoding.hex] decodeString",
   fn(): void {
     for (const [enc, dec] of testCases) {
-      const dst = decodeHexString(enc as string);
+      const dst = decodeString(enc as string);
 
       assertEquals(dec, Array.from(dst));
     }
@@ -149,10 +149,7 @@ test({
   fn(): void {
     for (const [input, output, expectedErr] of errCases) {
       const out = new Uint8Array((input as string).length + 10);
-      const [n, err] = decodeHex(
-        out,
-        new TextEncoder().encode(input as string)
-      );
+      const [n, err] = decode(out, new TextEncoder().encode(input as string));
       assertEquals(
         new TextDecoder("ascii").decode(out.slice(0, n)),
         output as string
@@ -163,19 +160,19 @@ test({
 });
 
 test({
-  name: "[encoding.hex] decodeHexString error",
+  name: "[encoding.hex] decodeString error",
   fn(): void {
     for (const [input, output, expectedErr] of errCases) {
       if (expectedErr) {
         assertThrows(
           (): void => {
-            decodeHexString(input as string);
+            decodeString(input as string);
           },
           Error,
           (expectedErr as Error).message
         );
       } else {
-        const out = decodeHexString(input as string);
+        const out = decodeString(input as string);
         assertEquals(new TextDecoder("ascii").decode(out), output as string);
       }
     }

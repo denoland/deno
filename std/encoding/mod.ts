@@ -1,14 +1,14 @@
 export {
-  CsvHeaderOptions,
-  CsvParseError,
-  ParseCsvOptions,
-  parseCsv
+  HeaderOptions as CsvHeaderOptions,
+  ParseError as CsvParseError,
+  ParseOptions as ParseCsvOptions,
+  parse as parseCsv
 } from "./csv.ts";
 export {
-  decodeHex,
-  decodeHexString,
-  encodeToHex,
-  encodeToHexString
+  decode as decodeHex,
+  decodeString as decodeHexString,
+  encode as encodeToHex,
+  encodeToString as encodeToHexString
 } from "./hex.ts";
-export * from "./toml.ts";
-export * from "./yaml.ts";
+export { parse as parseToml, stringify as tomlStringify } from "./toml.ts";
+export { parse as parseYaml, stringify as yamlStringify } from "./yaml.ts";

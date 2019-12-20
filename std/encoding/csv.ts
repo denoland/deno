@@ -8,7 +8,7 @@ import { StringReader } from "../io/readers.ts";
 
 const INVALID_RUNE = ["\r", "\n", '"'];
 
-export class CsvParseError extends Error {
+export class ParseError extends Error {
   StartLine: number;
   Line: number;
   constructor(start: number, line: number, message: string) {
@@ -28,7 +28,7 @@ export class CsvParseError extends Error {
  * @property fieldsPerRecord - Enabling the check of fields for each row.
  *           If == 0, first row is used as referal for the number of fields.
  */
-export interface ReadCsvOptions {
+export interface ReadOptions {
   comma?: string;
   comment?: string;
   trimLeadingSpace?: boolean;
@@ -36,7 +36,7 @@ export interface ReadCsvOptions {
   fieldsPerRecord?: number;
 }
 
-function chkOptions(opt: ReadCsvOptions): void {
+function chkOptions(opt: ReadOptions): void {
   if (!opt.comma) opt.comma = ",";
   if (!opt.trimLeadingSpace) opt.trimLeadingSpace = false;
   if (
@@ -51,7 +51,7 @@ function chkOptions(opt: ReadCsvOptions): void {
 async function read(
   Startline: number,
   reader: BufReader,
-  opt: ReadCsvOptions = { comma: ",", trimLeadingSpace: false }
+  opt: ReadOptions = { comma: ",", trimLeadingSpace: false }
 ): Promise<string[] | Deno.EOF> {
   const tp = new TextProtoReader(reader);
   let line: string;
@@ -102,14 +102,14 @@ async function read(
     return r;
   });
   if (quoteError) {
-    throw new CsvParseError(Startline, lineIndex, 'bare " in non-quoted-field');
+    throw new ParseError(Startline, lineIndex, 'bare " in non-quoted-field');
   }
   return result;
 }
 
-export async function readCsvMatrix(
+export async function readMatrix(
   reader: BufReader,
-  opt: ReadCsvOptions = {
+  opt: ReadOptions = {
     comma: ",",
     trimLeadingSpace: false,
     lazyQuotes: false
@@ -142,7 +142,7 @@ export async function readCsvMatrix(
 
     if (lineResult.length > 0) {
       if (_nbFields! && _nbFields! !== lineResult.length) {
-        throw new CsvParseError(lineIndex, lineIndex, "wrong number of fields");
+        throw new ParseError(lineIndex, lineIndex, "wrong number of fields");
       }
       result.push(lineResult);
     }
@@ -151,17 +151,17 @@ export async function readCsvMatrix(
 }
 
 /**
- * CsvHeaderOptions provides the column definition
+ * HeaderOptions provides the column definition
  * and the parse function for each entry of the
  * column.
  */
-export interface CsvHeaderOptions {
+export interface HeaderOptions {
   name: string;
   parse?: (input: string) => unknown;
 }
 
-export interface ParseCsvOptions extends ReadCsvOptions {
-  header: boolean | string[] | CsvHeaderOptions[];
+export interface ParseOptions extends ReadOptions {
+  header: boolean | string[] | HeaderOptions[];
   parse?: (input: unknown) => unknown;
 }
 
@@ -186,28 +186,28 @@ export interface ParseCsvOptions extends ReadCsvOptions {
  *   { super: "e", street: "f", fighter: "g" }
  * ]
  */
-export async function parseCsv(
+export async function parse(
   input: string | BufReader,
-  opt: ParseCsvOptions = {
+  opt: ParseOptions = {
     header: false
   }
 ): Promise<unknown[]> {
   let r: string[][];
   if (input instanceof BufReader) {
-    r = await readCsvMatrix(input, opt);
+    r = await readMatrix(input, opt);
   } else {
-    r = await readCsvMatrix(new BufReader(new StringReader(input)), opt);
+    r = await readMatrix(new BufReader(new StringReader(input)), opt);
   }
   if (opt.header) {
-    let headers: CsvHeaderOptions[] = [];
+    let headers: HeaderOptions[] = [];
     let i = 0;
     if (Array.isArray(opt.header)) {
       if (typeof opt.header[0] !== "string") {
-        headers = opt.header as CsvHeaderOptions[];
+        headers = opt.header as HeaderOptions[];
       } else {
         const h = opt.header as string[];
         headers = h.map(
-          (e): CsvHeaderOptions => {
+          (e): HeaderOptions => {
             return {
               name: e
             };
@@ -216,7 +216,7 @@ export async function parseCsv(
       }
     } else {
       headers = r.shift()!.map(
-        (e): CsvHeaderOptions => {
+        (e): HeaderOptions => {
           return {
             name: e
           };

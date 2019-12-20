@@ -554,11 +554,11 @@ class Dumper {
   }
 }
 
-export function tomlStringify(srcObj: object): string {
+export function stringify(srcObj: object): string {
   return new Dumper(srcObj).dump().join("\n");
 }
 
-export function parseToml(tomlString: string): object {
+export function parse(tomlString: string): object {
   // File is potentially using EOL CRLF
   tomlString = tomlString.replace(/\r\n/g, "\n").replace(/\\\n/g, "\n");
   return new Parser(tomlString).parse();

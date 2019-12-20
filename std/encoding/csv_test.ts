@@ -2,7 +2,7 @@
 // https://github.com/golang/go/blob/2cc15b1/src/encoding/csv/reader_test.go
 import { test, runIfMain } from "../testing/mod.ts";
 import { assertEquals, assert } from "../testing/asserts.ts";
-import { readCsvMatrix, parseCsv } from "./csv.ts";
+import { readMatrix, parse } from "./csv.ts";
 import { StringReader } from "../io/readers.ts";
 import { BufReader } from "../io/bufio.ts";
 
@@ -477,32 +477,26 @@ for (const t of testCases) {
       if (t.Error) {
         let err;
         try {
-          actual = await readCsvMatrix(
-            new BufReader(new StringReader(t.Input!)),
-            {
-              comma: comma,
-              comment: comment,
-              trimLeadingSpace: trim,
-              fieldsPerRecord: fieldsPerRec,
-              lazyQuotes: lazyquote
-            }
-          );
+          actual = await readMatrix(new BufReader(new StringReader(t.Input!)), {
+            comma: comma,
+            comment: comment,
+            trimLeadingSpace: trim,
+            fieldsPerRecord: fieldsPerRec,
+            lazyQuotes: lazyquote
+          });
         } catch (e) {
           err = e;
         }
         assert(err);
         assertEquals(err.message, t.Error);
       } else {
-        actual = await readCsvMatrix(
-          new BufReader(new StringReader(t.Input!)),
-          {
-            comma: comma,
-            comment: comment,
-            trimLeadingSpace: trim,
-            fieldsPerRecord: fieldsPerRec,
-            lazyQuotes: lazyquote
-          }
-        );
+        actual = await readMatrix(new BufReader(new StringReader(t.Input!)), {
+          comma: comma,
+          comment: comment,
+          trimLeadingSpace: trim,
+          fieldsPerRecord: fieldsPerRec,
+          lazyQuotes: lazyquote
+        });
         const expected = t.Output;
         assertEquals(actual, expected);
       }
@@ -614,7 +608,7 @@ for (const testCase of parseTestCases) {
   test({
     name: `[CSV] Parse ${testCase.name}`,
     async fn(): Promise<void> {
-      const r = await parseCsv(testCase.in, {
+      const r = await parse(testCase.in, {
         header: testCase.header,
         parse: testCase.parse as (input: unknown) => unknown
       });
