@@ -427,12 +427,12 @@ impl Isolate {
         let v8_exception = V8Exception::from_json(&json_string).unwrap();
         let js_error = js_error_create(v8_exception);
         let handler = self.error_handler.as_mut().unwrap();
-        return handler(js_error);
+        handler(js_error)
       } else {
         let json_str = cstr.to_str().unwrap();
         let v8_exception = V8Exception::from_json(json_str).unwrap();
         let js_error = js_error_create(v8_exception);
-        return Err(js_error);
+        Err(js_error)
       }
     }
   }
