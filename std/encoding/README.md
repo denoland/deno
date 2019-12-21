@@ -192,7 +192,6 @@ name: Eve
 `);
 console.log(data);
 // => [ { id: 1, name: "Alice" }, { id: 2, name: "Bob" }, { id: 3, name: "Eve" } ]
-// TODO(kt3k): This doesn't work now
 ```
 
 ### API
