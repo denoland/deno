@@ -147,6 +147,14 @@ testPerm({ env: true }, function getDir(): void {
       ]
     },
     {
+      kind: "executable",
+      runtime: [
+        { os: "mac", shouldHaveValue: false },
+        { os: "win", shouldHaveValue: false },
+        { os: "linux", shouldHaveValue: true }
+      ]
+    },
+    {
       kind: "data",
       runtime: [
         { os: "mac", shouldHaveValue: true },
