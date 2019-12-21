@@ -7,14 +7,7 @@ use crate::state::ThreadSafeState;
 use deno::ErrBox;
 use deno::Resource;
 use deno::*;
-use futures;
-use futures::future::FutureExt;
-use std;
-use std::future::Future;
 use std::pin::Pin;
-use std::task::Context;
-use std::task::Poll;
-use tokio;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
@@ -92,16 +85,6 @@ pub enum StreamResource {
 
 impl Resource for StreamResource {}
 
-/// `DenoAsyncRead` is the same as the `tokio_io::AsyncRead` trait
-/// but uses an `ErrBox` error instead of `std::io:Error`
-pub trait DenoAsyncRead {
-  fn poll_read(
-    self: Pin<&mut Self>,
-    cx: &mut Context,
-    buf: &mut [u8],
-  ) -> Poll<Result<usize, ErrBox>>;
-}
-
 impl StreamResource {
   pub async fn read(&mut self, buf: &mut [u8]) -> Result<usize, ErrBox> {
     let n = match self {
@@ -140,23 +123,20 @@ impl StreamResource {
 ///
 /// The returned future will resolve to both the I/O stream and the buffer
 /// as well as the number of bytes read once the read operation is completed.
-pub fn read<T>(
-  state: &ThreadSafeState,
+pub async fn read<T>(
+  state: ThreadSafeState,
   rid: ResourceId,
   mut buf: T,
-) -> impl Future<Output = Result<i32, ErrBox>>
+) -> Result<i32, ErrBox>
 where
   T: AsMut<[u8]>,
 {
-  let state = state.clone();
-  async move {
-    let mut table = state.lock_resource_table_async().await;
-    let resource = table
-      .get_mut::<StreamResource>(rid)
-      .ok_or_else(bad_resource)?;
-    let nread = resource.read(&mut buf.as_mut()[..]).await?;
-    Ok(nread as i32)
-  }
+  let mut table = state.lock_resource_table();
+  let resource = table
+    .get_mut::<StreamResource>(rid)
+    .ok_or_else(bad_resource)?;
+  let nread = resource.read(&mut buf.as_mut()[..]).await?;
+  Ok(nread as i32)
 }
 
 pub fn op_read(
@@ -165,16 +145,10 @@ pub fn op_read(
   zero_copy: Option<PinnedBuf>,
 ) -> Pin<Box<MinimalOp>> {
   debug!("read rid={}", rid);
-  let zero_copy = match zero_copy {
-    None => {
-      return futures::future::err(deno_error::no_buffer_specified()).boxed()
-    }
-    Some(buf) => buf,
-  };
-
-  let fut = read(state, rid as u32, zero_copy);
-
-  fut.boxed()
+  match zero_copy {
+    Some(buf) => Box::pin(read(state.clone(), rid as u32, buf)),
+    None => Box::pin(async { Err(deno_error::no_buffer_specified()) }),
+  }
 }
 
 /// Creates a future that will write some of the buffer `buf` to
@@ -182,24 +156,21 @@ pub fn op_read(
 ///
 /// Any error which happens during writing will cause both the stream and the
 /// buffer to get destroyed.
-pub fn write<T>(
-  state: &ThreadSafeState,
+pub async fn write<T>(
+  state: ThreadSafeState,
   rid: ResourceId,
   buf: T,
-) -> impl Future<Output = Result<i32, ErrBox>>
+) -> Result<i32, ErrBox>
 where
   T: AsRef<[u8]>,
 {
-  let state = state.clone();
-  async move {
-    let mut table = state.lock_resource_table_async().await;
-    let resource = table
-      .get_mut::<StreamResource>(rid)
-      .ok_or_else(bad_resource);
-    let buf = buf.as_ref();
-    let nwritten = resource?.write(buf).await?;
-    Ok(nwritten as i32)
-  }
+  let mut table = state.lock_resource_table();
+  let resource = table
+    .get_mut::<StreamResource>(rid)
+    .ok_or_else(bad_resource)?;
+  let buf = buf.as_ref();
+  let nwritten = resource.write(buf).await?;
+  Ok(nwritten as i32)
 }
 
 pub fn op_write(
@@ -208,14 +179,8 @@ pub fn op_write(
   zero_copy: Option<PinnedBuf>,
 ) -> Pin<Box<MinimalOp>> {
   debug!("write rid={}", rid);
-  let zero_copy = match zero_copy {
-    None => {
-      return futures::future::err(deno_error::no_buffer_specified()).boxed()
-    }
-    Some(buf) => buf,
-  };
-
-  let fut = write(state, rid as u32, zero_copy);
-
-  fut.boxed()
+  match zero_copy {
+    Some(buf) => Box::pin(write(state.clone(), rid as u32, buf)),
+    None => Box::pin(async { Err(deno_error::no_buffer_specified()) }),
+  }
 }

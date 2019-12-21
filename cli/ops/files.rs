@@ -8,11 +8,8 @@ use crate::fs as deno_fs;
 use crate::ops::json_op;
 use crate::state::ThreadSafeState;
 use deno::*;
-use futures::future::FutureExt;
-use std;
 use std::convert::From;
 use std::io::SeekFrom;
-use tokio;
 
 pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op("open", s.core_op(json_op(s.stateful_op(op_open))));
@@ -88,8 +85,8 @@ fn op_open(
 
   let is_sync = args.promise_id.is_none();
   let op = async move {
-    let fs_file = open_options.open(filename).await.map_err(ErrBox::from)?;
-    let mut table = state_.lock_resource_table_async().await;
+    let fs_file = open_options.open(filename).await?;
+    let mut table = state_.lock_resource_table();
     let rid = table.add("fsFile", Box::new(StreamResource::FsFile(fs_file)));
     Ok(json!(rid))
   };
@@ -98,7 +95,7 @@ fn op_open(
     let buf = futures::executor::block_on(op)?;
     Ok(JsonOp::Sync(buf))
   } else {
-    Ok(JsonOp::Async(op.boxed()))
+    Ok(JsonOp::Async(Box::pin(op)))
   }
 }
 
@@ -150,18 +147,19 @@ fn op_seek(
     }
   };
 
-  let state = state.clone();
+  let mut table = state.lock_resource_table();
+  let resource = table
+    .get_mut::<StreamResource>(rid)
+    .ok_or_else(bad_resource)?;
+
+  let tokio_file = match resource {
+    StreamResource::FsFile(ref mut file) => file,
+    _ => return Err(bad_resource()),
+  };
+
+  let mut tokio_file = futures::executor::block_on(tokio_file.try_clone())?;
+
   let op = async move {
-    let mut table = state.lock_resource_table_async().await;
-    let resource = table
-      .get_mut::<StreamResource>(rid)
-      .ok_or_else(bad_resource)?;
-
-    let tokio_file = match resource {
-      StreamResource::FsFile(ref mut file) => file,
-      _ => return Err(bad_resource()),
-    };
-
     tokio_file.seek(seek_from).await?;
     Ok(json!({}))
   };
@@ -170,6 +168,6 @@ fn op_seek(
     let buf = futures::executor::block_on(op)?;
     Ok(JsonOp::Sync(buf))
   } else {
-    Ok(JsonOp::Async(op.boxed()))
+    Ok(JsonOp::Async(Box::pin(op)))
   }
 }

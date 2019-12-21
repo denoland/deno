@@ -46,13 +46,8 @@ impl HttpBody {
       assert_eq!(self.pos, 0);
     }
 
-    match self
-      .response
-      .chunk()
-      .await
-      .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?
-    {
-      Some(chunk) => {
+    match self.response.chunk().await {
+      Ok(Some(chunk)) => {
         debug!(
           "HttpBody Real Read buf {} chunk {} pos {}",
           buf.len(),
@@ -67,7 +62,8 @@ impl HttpBody {
         }
         Ok(n)
       }
-      None => Ok(0),
+      Ok(None) => Ok(0),
+      Err(e) => Err(io::Error::new(io::ErrorKind::Other, e)),
     }
   }
 }

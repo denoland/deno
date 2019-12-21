@@ -7,11 +7,7 @@ use crate::signal::kill;
 use crate::state::ThreadSafeState;
 use deno::*;
 use futures;
-use futures::future::FutureExt;
-use futures::future::TryFutureExt;
 use futures::task::SpawnExt;
-use std;
-use std::convert::From;
 use std::future::Future;
 use std::pin::Pin;
 use std::process::ExitStatus;
@@ -36,7 +32,7 @@ fn clone_file(
   state: &ThreadSafeState,
 ) -> Result<std::fs::File, ErrBox> {
   let f = futures::executor::block_on(async {
-    let mut table = state.lock_resource_table_async().await;
+    let mut table = state.lock_resource_table();
     let repr = table
       .get_mut::<StreamResource>(rid)
       .ok_or_else(bad_resource)?;
@@ -127,7 +123,7 @@ fn op_run(
   }
 
   // Spawn the command.
-  let mut child = c.spawn().map_err(ErrBox::from)?;
+  let mut child = c.spawn()?;
   let pid = child.id();
 
   let mut table = state_.lock_resource_table();
@@ -177,6 +173,18 @@ fn op_run(
   })))
 }
 
+async fn child_status(
+  rid: ResourceId,
+  state: ThreadSafeState,
+) -> Result<ExitStatus, ErrBox> {
+  let mut table = state.lock_resource_table();
+  let child_resource = table
+    .get_mut::<ChildResource>(rid)
+    .ok_or_else(bad_resource)?;
+  let child = &mut child_resource.child;
+  Ok(child.await?)
+}
+
 pub struct ChildStatus {
   rid: ResourceId,
   state: ThreadSafeState,
@@ -212,12 +220,9 @@ fn op_run_status(
 
   state.check_run()?;
 
-  let future = ChildStatus {
-    rid,
-    state: state.clone(),
-  };
-
-  let future = future.and_then(move |run_status| {
+  let state = state.clone();
+  let future = async move {
+    let run_status = ChildStatus { rid, state }.await?;
     let code = run_status.code();
 
     #[cfg(unix)]
@@ -230,17 +235,17 @@ fn op_run_status(
       .expect("Should have either an exit code or a signal.");
     let got_signal = signal.is_some();
 
-    futures::future::ok(json!({
+    Ok(json!({
        "gotSignal": got_signal,
        "exitCode": code.unwrap_or(-1),
        "exitSignal": signal.unwrap_or(-1),
     }))
-  });
+  };
 
   let pool = futures::executor::ThreadPool::new().unwrap();
   let handle = pool.spawn_with_handle(future).unwrap();
 
-  Ok(JsonOp::Async(handle.boxed()))
+  Ok(JsonOp::Async(Box::pin(handle)))
 }
 
 #[derive(Deserialize)]

@@ -11,8 +11,6 @@ use crate::progress::Progress;
 use deno::ErrBox;
 use deno::ModuleSpecifier;
 use futures::future::Either;
-use futures::future::FutureExt;
-use futures::future::TryFutureExt;
 use serde_json;
 use std;
 use std::collections::HashMap;
@@ -272,10 +270,7 @@ impl SourceFileFetcher {
       ))
     })?;
 
-    let source_code = match fs::read(filepath.clone()) {
-      Ok(c) => c,
-      Err(e) => return Err(e.into()),
-    };
+    let source_code = fs::read(filepath.clone())?;
 
     let media_type = map_content_type(&filepath, None);
     Ok(SourceFile {
@@ -358,7 +353,7 @@ impl SourceFileFetcher {
     redirect_limit: i64,
   ) -> Pin<Box<SourceFileFuture>> {
     if redirect_limit < 0 {
-      return futures::future::err(too_many_redirects()).boxed();
+      return Box::pin(async { Err(too_many_redirects()) });
     }
 
     let is_blacklisted =
@@ -367,31 +362,28 @@ impl SourceFileFetcher {
     if use_disk_cache && !is_blacklisted {
       match self.fetch_cached_remote_source(&module_url) {
         Ok(Some(source_file)) => {
-          return futures::future::ok(source_file).boxed();
+          return Box::pin(async { Ok(source_file) });
         }
         Ok(None) => {
           // there's no cached version
         }
         Err(err) => {
-          return futures::future::err(err).boxed();
+          return Box::pin(async { Err(err) });
         }
       }
     }
 
     // If file wasn't found in cache check if we can fetch it
     if cached_only {
+      let err_msg =
+        format!("cannot find remote file '{}' in cache", module_url);
       // We can't fetch remote file - bail out
-      return futures::future::err(
-        std::io::Error::new(
-          std::io::ErrorKind::PermissionDenied,
-          format!(
-            "cannot find remote file '{}' in cache",
-            module_url.to_string()
-          ),
+      return Box::pin(async move {
+        Err(
+          std::io::Error::new(std::io::ErrorKind::PermissionDenied, err_msg)
+            .into(),
         )
-        .into(),
-      )
-      .boxed();
+      });
     }
 
     let download_job = self.progress.add("Download", &module_url.to_string());
@@ -399,7 +391,8 @@ impl SourceFileFetcher {
     let module_url = module_url.clone();
 
     // Single pass fetch, either yields code or yields redirect.
-    let f = http_util::fetch_string_once(&module_url).and_then(move |r| {
+    Box::pin(async move {
+      let r = http_util::fetch_string_once(module_url.clone()).await?;
       match r {
         FetchOnceResult::Redirect(new_module_url) => {
           // If redirects, update module_name and filename for next looped call.
@@ -415,12 +408,14 @@ impl SourceFileFetcher {
           drop(download_job);
 
           // Recurse
-          Either::Left(dir.fetch_remote_source_async(
-            &new_module_url,
-            use_disk_cache,
-            cached_only,
-            redirect_limit - 1,
-          ))
+          dir
+            .fetch_remote_source_async(
+              &new_module_url,
+              use_disk_cache,
+              cached_only,
+              redirect_limit - 1,
+            )
+            .await
         }
         FetchOnceResult::Code(source, maybe_content_type) => {
           // We land on the code.
@@ -454,12 +449,10 @@ impl SourceFileFetcher {
           // Explicit drop to keep reference alive until future completes.
           drop(download_job);
 
-          Either::Right(futures::future::ok(source_file))
+          Ok(source_file)
         }
       }
-    });
-
-    f.boxed()
+    })
   }
 
   /// Get header metadata associated with a remote file.
@@ -708,6 +701,7 @@ mod tests {
   use super::*;
   use crate::fs as deno_fs;
   use crate::tokio_util;
+  use futures::FutureExt;
   use tempfile::TempDir;
 
   fn setup_file_fetcher(dir_path: &Path) -> SourceFileFetcher {

@@ -10,7 +10,6 @@ use reqwest::header::LOCATION;
 use reqwest::header::USER_AGENT;
 use reqwest::redirect::Policy;
 use reqwest::Client;
-use std::future::Future;
 use url::Url;
 
 /// Create new instance of async reqwest::Client. This client supports
@@ -67,49 +66,40 @@ pub enum FetchOnceResult {
 /// yields Code(code, maybe_content_type).
 /// If redirect occurs, does not follow and
 /// yields Redirect(url).
-pub fn fetch_string_once(
-  url: &Url,
-) -> impl Future<Output = Result<FetchOnceResult, ErrBox>> {
-  let url = url.clone();
+pub async fn fetch_string_once(url: Url) -> Result<FetchOnceResult, ErrBox> {
   let client = get_client();
-
-  async move {
-    let response = client.get(url.clone()).send().await?;
-    if response.status().is_redirection() {
-      let location_string = response
-        .headers()
-        .get(LOCATION)
-        .expect("url redirection should provide 'location' header")
-        .to_str()
-        .unwrap();
-
-      debug!("Redirecting to {:?}...", &location_string);
-      let new_url = resolve_url_from_location(&url, location_string);
-      // Boxed trait object turns out to be the savior for 2+ types yielding same results.
-      return Ok(FetchOnceResult::Redirect(new_url));
-    }
-
-    if response.status().is_client_error()
-      || response.status().is_server_error()
-    {
-      return Err(
-        DenoError::new(
-          deno_error::ErrorKind::Other,
-          format!("Import '{}' failed: {}", &url, response.status()),
-        )
-        .into(),
-      );
-    }
-
-    let content_type = response
+  let response = client.get(url.clone()).send().await?;
+  if response.status().is_redirection() {
+    let location_string = response
       .headers()
-      .get(CONTENT_TYPE)
-      .map(|content_type| content_type.to_str().unwrap().to_owned());
+      .get(LOCATION)
+      .expect("url redirection should provide 'location' header")
+      .to_str()
+      .unwrap();
 
-    let code = response.text().await?;
-    // maybe_code should always contain code here!
-    Ok(FetchOnceResult::Code(code, content_type))
+    debug!("Redirecting to {:?}...", &location_string);
+    let new_url = resolve_url_from_location(&url, location_string);
+    return Ok(FetchOnceResult::Redirect(new_url));
   }
+
+  if response.status().is_client_error() || response.status().is_server_error()
+  {
+    return Err(
+      DenoError::new(
+        deno_error::ErrorKind::Other,
+        format!("Import '{}' failed: {}", &url, response.status()),
+      )
+      .into(),
+    );
+  }
+
+  let content_type = response
+    .headers()
+    .get(CONTENT_TYPE)
+    .map(|content_type| content_type.to_str().unwrap().to_owned());
+
+  let code = response.text().await?;
+  Ok(FetchOnceResult::Code(code, content_type))
 }
 
 #[cfg(test)]
@@ -125,7 +115,7 @@ mod tests {
     let url =
       Url::parse("http://127.0.0.1:4545/cli/tests/fixture.json").unwrap();
 
-    let fut = fetch_string_once(&url).then(|result| match result {
+    let fut = fetch_string_once(url).then(|result| match result {
       Ok(FetchOnceResult::Code(code, maybe_content_type)) => {
         assert!(!code.is_empty());
         assert_eq!(maybe_content_type, Some("application/json".to_string()));
@@ -147,7 +137,7 @@ mod tests {
     // Dns resolver substitutes `127.0.0.1` with `localhost`
     let target_url =
       Url::parse("http://localhost:4545/cli/tests/fixture.json").unwrap();
-    let fut = fetch_string_once(&url).then(move |result| match result {
+    let fut = fetch_string_once(url).then(move |result| match result {
       Ok(FetchOnceResult::Redirect(url)) => {
         assert_eq!(url, target_url);
         futures::future::ok(())

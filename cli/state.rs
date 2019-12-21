@@ -32,9 +32,8 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::MutexGuard;
 use std::time::Instant;
-use tokio::sync::Mutex as TokioMutex;
-use tokio::sync::MutexGuard as TokioMutexGuard;
 
 /// Isolate cannot be passed between threads but ThreadSafeState can.
 /// ThreadSafeState satisfies Send and Sync. So any state that needs to be
@@ -58,7 +57,7 @@ pub struct State {
   pub start_time: Instant,
   pub seeded_rng: Option<Mutex<StdRng>>,
   pub include_deno_namespace: bool,
-  pub resource_table: TokioMutex<ResourceTable>,
+  pub resource_table: Mutex<ResourceTable>,
 }
 
 impl Clone for ThreadSafeState {
@@ -75,18 +74,8 @@ impl Deref for ThreadSafeState {
 }
 
 impl ThreadSafeState {
-  pub fn lock_resource_table(&self) -> TokioMutexGuard<ResourceTable> {
-    loop {
-      if let Ok(guard) = self.resource_table.try_lock() {
-        break guard;
-      }
-    }
-  }
-
-  pub async fn lock_resource_table_async<'a>(
-    &'a self,
-  ) -> TokioMutexGuard<'a, ResourceTable> {
-    self.resource_table.lock().await
+  pub fn lock_resource_table(&self) -> MutexGuard<ResourceTable> {
+    self.resource_table.lock().unwrap()
   }
 
   /// Wrap core `OpDispatcher` to collect metrics.
@@ -263,7 +252,7 @@ impl ThreadSafeState {
       start_time: Instant::now(),
       seeded_rng,
       include_deno_namespace,
-      resource_table: TokioMutex::new(ResourceTable::default()),
+      resource_table: Mutex::new(ResourceTable::default()),
     };
 
     Ok(ThreadSafeState(Arc::new(state)))

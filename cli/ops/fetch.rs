@@ -6,11 +6,9 @@ use crate::http_util::get_client;
 use crate::ops::json_op;
 use crate::state::ThreadSafeState;
 use deno::*;
-use futures::future::FutureExt;
 use http::header::HeaderName;
 use http::header::HeaderValue;
 use http::Method;
-use std;
 use std::convert::From;
 
 pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
@@ -39,7 +37,7 @@ pub fn op_fetch(
     None => Method::GET,
   };
 
-  let url_ = url::Url::parse(&url).map_err(ErrBox::from)?;
+  let url_ = url::Url::parse(&url)?;
   state.check_net_url(&url_)?;
 
   let mut request = client.request(method, url_);
@@ -56,7 +54,7 @@ pub fn op_fetch(
   debug!("Before fetch {}", url);
   let state_ = state.clone();
   let future = async move {
-    let res = request.send().await.map_err(ErrBox::from)?;
+    let res = request.send().await?;
     debug!("Fetch response {}", url);
     let status = res.status();
     let mut res_headers = Vec::new();
@@ -65,7 +63,7 @@ pub fn op_fetch(
     }
 
     let body = HttpBody::from(res);
-    let mut table = state_.lock_resource_table_async().await;
+    let mut table = state_.lock_resource_table();
     let rid = table.add(
       "httpBody",
       Box::new(StreamResource::HttpBody(Box::new(body))),
@@ -81,5 +79,5 @@ pub fn op_fetch(
     Ok(json_res)
   };
 
-  Ok(JsonOp::Async(future.boxed()))
+  Ok(JsonOp::Async(Box::pin(future)))
 }

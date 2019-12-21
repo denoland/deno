@@ -1,56 +1,38 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use deno::ErrBox;
-use std::future::Future;
 use std::net::SocketAddr;
 use std::net::ToSocketAddrs;
-use std::pin::Pin;
-use std::task::Context;
-use std::task::Poll;
 
 /// Resolve network address. Returns a future.
-pub fn resolve_addr(hostname: &str, port: u16) -> ResolveAddrFuture {
-  ResolveAddrFuture {
-    hostname: hostname.to_string(),
-    port,
-  }
-}
-
-pub struct ResolveAddrFuture {
-  hostname: String,
+pub async fn resolve_addr(
+  hostname: &str,
   port: u16,
-}
+) -> Result<SocketAddr, ErrBox> {
+  // The implementation of this is not actually async at the moment,
+  // however we intend to use async DNS resolution in the future and
+  // so we expose this as a future instead of Result.
 
-impl Future for ResolveAddrFuture {
-  type Output = Result<SocketAddr, ErrBox>;
+  // Default to localhost if given just the port. Example: ":80"
+  let addr: &str = if !hostname.is_empty() {
+    hostname
+  } else {
+    "0.0.0.0"
+  };
 
-  fn poll(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Self::Output> {
-    let inner = self.get_mut();
-    // The implementation of this is not actually async at the moment,
-    // however we intend to use async DNS resolution in the future and
-    // so we expose this as a future instead of Result.
+  // If this looks like an ipv6 IP address. Example: "[2001:db8::1]"
+  // Then we remove the brackets.
+  let addr = if addr.starts_with('[') && addr.ends_with(']') {
+    &addr[1..addr.len() - 1]
+  } else {
+    addr
+  };
+  let addr_port_pair = (addr, port);
+  // TODO(95th): Use async `tokio::net::lookup_host` once it's available in newer version
+  let mut iter = addr_port_pair.to_socket_addrs()?;
 
-    // Default to localhost if given just the port. Example: ":80"
-    let addr: &str = if !inner.hostname.is_empty() {
-      &inner.hostname
-    } else {
-      "0.0.0.0"
-    };
-
-    // If this looks like an ipv6 IP address. Example: "[2001:db8::1]"
-    // Then we remove the brackets.
-    let addr = if addr.starts_with('[') && addr.ends_with(']') {
-      let l = addr.len() - 1;
-      addr.get(1..l).unwrap()
-    } else {
-      addr
-    };
-    let addr_port_pair = (addr, inner.port);
-    let r = addr_port_pair.to_socket_addrs().map_err(ErrBox::from);
-
-    Poll::Ready(r.and_then(|mut iter| match iter.next() {
-      Some(a) => Ok(a),
-      None => panic!("There should be at least one result"),
-    }))
+  match iter.next() {
+    Some(a) => Ok(a),
+    None => panic!("There should be at least one result"),
   }
 }
 
