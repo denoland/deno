@@ -14,12 +14,10 @@ use std;
 use std::convert::From;
 use std::future::Future;
 use std::pin::Pin;
-use std::process::Command;
 use std::process::ExitStatus;
 use std::task::Context;
 use std::task::Poll;
-use tokio::prelude::Async;
-use tokio_process::CommandExt;
+use tokio::process::Command;
 
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
@@ -33,42 +31,21 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op("kill", s.core_op(json_op(s.stateful_op(op_kill))));
 }
 
-struct CloneFileFuture {
-  rid: ResourceId,
-  state: ThreadSafeState,
-}
-
-impl Future for CloneFileFuture {
-  type Output = Result<tokio::fs::File, ErrBox>;
-
-  fn poll(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Self::Output> {
-    let inner = self.get_mut();
-    let mut table = inner.state.lock_resource_table();
-    let repr = table
-      .get_mut::<StreamResource>(inner.rid)
-      .ok_or_else(bad_resource)?;
-    match repr {
-      StreamResource::FsFile(ref mut file) => {
-        match file.poll_try_clone().map_err(ErrBox::from) {
-          Err(err) => Poll::Ready(Err(err)),
-          Ok(Async::Ready(v)) => Poll::Ready(Ok(v)),
-          Ok(Async::NotReady) => Poll::Pending,
-        }
-      }
-      _ => Poll::Ready(Err(bad_resource())),
-    }
-  }
-}
-
 fn clone_file(
   rid: u32,
   state: &ThreadSafeState,
 ) -> Result<std::fs::File, ErrBox> {
-  futures::executor::block_on(CloneFileFuture {
-    rid,
-    state: state.clone(),
-  })
-  .map(|f| f.into_std())
+  let f = futures::executor::block_on(async {
+    let mut table = state.lock_resource_table_async().await;
+    let repr = table
+      .get_mut::<StreamResource>(rid)
+      .ok_or_else(bad_resource)?;
+    match repr {
+      StreamResource::FsFile(ref mut file) => Ok(file.try_clone().await?),
+      _ => Err(bad_resource()),
+    }
+  })?;
+  Ok(f.try_into_std().unwrap())
 }
 
 fn subprocess_stdio_map(s: &str) -> std::process::Stdio {
@@ -95,7 +72,7 @@ struct RunArgs {
 }
 
 struct ChildResource {
-  child: futures::compat::Compat01As03<tokio_process::Child>,
+  child: tokio::process::Child,
 }
 
 impl Resource for ChildResource {}
@@ -150,7 +127,7 @@ fn op_run(
   }
 
   // Spawn the command.
-  let mut child = c.spawn_async().map_err(ErrBox::from)?;
+  let mut child = c.spawn().map_err(ErrBox::from)?;
   let pid = child.id();
 
   let mut table = state_.lock_resource_table();
@@ -188,9 +165,7 @@ fn op_run(
     None => None,
   };
 
-  let child_resource = ChildResource {
-    child: futures::compat::Compat01As03::new(child),
-  };
+  let child_resource = ChildResource { child };
   let child_rid = table.add("child", Box::new(child_resource));
 
   Ok(JsonOp::Sync(json!({

@@ -7,7 +7,6 @@ use crate::ops::json_op;
 use crate::state::ThreadSafeState;
 use deno::*;
 use futures::future::FutureExt;
-use futures::future::TryFutureExt;
 use http::header::HeaderName;
 use http::header::HeaderValue;
 use http::Method;
@@ -56,32 +55,31 @@ pub fn op_fetch(
   }
   debug!("Before fetch {}", url);
   let state_ = state.clone();
-  let future = futures::compat::Compat01As03::new(request.send())
-    .map_err(ErrBox::from)
-    .and_then(move |res| {
-      debug!("Fetch response {}", url);
-      let status = res.status();
-      let mut res_headers = Vec::new();
-      for (key, val) in res.headers().iter() {
-        res_headers.push((key.to_string(), val.to_str().unwrap().to_owned()));
-      }
+  let future = async move {
+    let res = request.send().await.map_err(ErrBox::from)?;
+    debug!("Fetch response {}", url);
+    let status = res.status();
+    let mut res_headers = Vec::new();
+    for (key, val) in res.headers().iter() {
+      res_headers.push((key.to_string(), val.to_str().unwrap().to_owned()));
+    }
 
-      let body = HttpBody::from(res.into_body());
-      let mut table = state_.lock_resource_table();
-      let rid = table.add(
-        "httpBody",
-        Box::new(StreamResource::HttpBody(Box::new(body))),
-      );
+    let body = HttpBody::from(res);
+    let mut table = state_.lock_resource_table_async().await;
+    let rid = table.add(
+      "httpBody",
+      Box::new(StreamResource::HttpBody(Box::new(body))),
+    );
 
-      let json_res = json!({
-        "bodyRid": rid,
-        "status": status.as_u16(),
-        "statusText": status.canonical_reason().unwrap_or(""),
-        "headers": res_headers
-      });
-
-      futures::future::ok(json_res)
+    let json_res = json!({
+      "bodyRid": rid,
+      "status": status.as_u16(),
+      "statusText": status.canonical_reason().unwrap_or(""),
+      "headers": res_headers
     });
+
+    Ok(json_res)
+  };
 
   Ok(JsonOp::Async(future.boxed()))
 }

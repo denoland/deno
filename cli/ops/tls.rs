@@ -10,9 +10,7 @@ use crate::state::ThreadSafeState;
 use deno::Resource;
 use deno::*;
 use futures::future::FutureExt;
-use futures::future::TryFutureExt;
 use futures::stream::StreamExt;
-use futures::stream::TryStreamExt;
 use std;
 use std::convert::From;
 use std::fs::File;
@@ -24,7 +22,6 @@ use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 use tokio;
-use tokio::net::tcp::Incoming;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio_rustls::{rustls::ClientConfig, TlsConnector};
@@ -65,11 +62,11 @@ pub fn op_dial_tls(
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: DialTLSArgs = serde_json::from_value(args)?;
-  let cert_file = args.cert_file;
+  let cert_file = args.cert_file.clone();
   let state_ = state.clone();
   state.check_net(&args.hostname, args.port)?;
-  if let Some(path) = cert_file.clone() {
-    state.check_read(&path)?;
+  if let Some(path) = &cert_file {
+    state.check_read(path)?;
   }
 
   let mut domain = args.hostname.clone();
@@ -77,64 +74,49 @@ pub fn op_dial_tls(
     domain.push_str("localhost");
   }
 
-  let op = resolve_addr(&args.hostname, args.port).and_then(move |addr| {
-    futures::compat::Compat01As03::new(TcpStream::connect(&addr))
-      .and_then(move |tcp_stream| {
-        let local_addr = match tcp_stream.local_addr() {
-          Ok(v) => v,
-          Err(e) => return futures::future::err(e),
-        };
-        let remote_addr = match tcp_stream.peer_addr() {
-          Ok(v) => v,
-          Err(e) => return futures::future::err(e),
-        };
-        let mut config = ClientConfig::new();
-        config
-          .root_store
-          .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
+  let op = Box::pin(async move {
+    let addr = resolve_addr(&args.hostname, args.port).await?;
+    let tcp_stream = TcpStream::connect(&addr).await?;
 
-        if let Some(path) = cert_file {
-          let key_file = match File::open(path) {
-            Ok(v) => v,
-            Err(e) => return futures::future::err(e),
-          };
-          let reader = &mut BufReader::new(key_file);
-          config.root_store.add_pem_file(reader).unwrap();
-        }
-        let tls_connector = TlsConnector::from(Arc::new(config));
-        futures::future::ok((
-          tls_connector,
-          tcp_stream,
-          local_addr,
-          remote_addr,
-        ))
-      })
-      .map_err(ErrBox::from)
-      .and_then(
-        move |(tls_connector, tcp_stream, local_addr, remote_addr)| {
-          let dnsname = DNSNameRef::try_from_ascii_str(&domain)
-            .expect("Invalid DNS lookup");
-          futures::compat::Compat01As03::new(
-            tls_connector.connect(dnsname, tcp_stream),
-          )
-          .map_err(ErrBox::from)
-          .and_then(move |tls_stream| {
-            let mut table = state_.lock_resource_table();
-            let rid = table.add(
-              "clientTlsStream",
-              Box::new(StreamResource::ClientTlsStream(Box::new(tls_stream))),
-            );
-            futures::future::ok(json!({
-              "rid": rid,
-              "localAddr": local_addr.to_string(),
-              "remoteAddr": remote_addr.to_string(),
-            }))
-          })
-        },
-      )
+    let local_addr = match tcp_stream.local_addr() {
+      Ok(v) => v,
+      Err(e) => return Err(e.into()),
+    };
+    let remote_addr = match tcp_stream.peer_addr() {
+      Ok(v) => v,
+      Err(e) => return Err(e.into()),
+    };
+    let mut config = ClientConfig::new();
+    config
+      .root_store
+      .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
+
+    if let Some(path) = cert_file {
+      let key_file = match File::open(path) {
+        Ok(v) => v,
+        Err(e) => return Err(e.into()),
+      };
+      let reader = &mut BufReader::new(key_file);
+      config.root_store.add_pem_file(reader).unwrap();
+    }
+    let tls_connector = TlsConnector::from(Arc::new(config));
+    // Ok((tls_connector, tcp_stream, local_addr, remote_addr))
+    let dnsname =
+      DNSNameRef::try_from_ascii_str(&domain).expect("Invalid DNS lookup");
+    let tls_stream = tls_connector.connect(dnsname, tcp_stream).await?;
+    let mut table = state_.lock_resource_table_async().await;
+    let rid = table.add(
+      "clientTlsStream",
+      Box::new(StreamResource::ClientTlsStream(Box::new(tls_stream))),
+    );
+    Ok(json!({
+      "rid": rid,
+      "localAddr": local_addr.to_string(),
+      "remoteAddr": remote_addr.to_string(),
+    }))
   });
 
-  Ok(JsonOp::Async(op.boxed()))
+  Ok(JsonOp::Async(op))
 }
 
 fn load_certs(path: &str) -> Result<Vec<Certificate>, ErrBox> {
@@ -197,7 +179,7 @@ fn load_keys(path: &str) -> Result<Vec<PrivateKey>, ErrBox> {
 
 #[allow(dead_code)]
 pub struct TlsListenerResource {
-  listener: Incoming,
+  listener: TcpListener,
   tls_acceptor: TlsAcceptor,
   waker: Option<futures::task::AtomicWaker>,
   local_addr: SocketAddr,
@@ -269,32 +251,34 @@ fn op_listen_tls(
   let args: ListenTlsArgs = serde_json::from_value(args)?;
   assert_eq!(args.transport, "tcp");
 
-  let cert_file = args.cert_file;
-  let key_file = args.key_file;
+  let cert_file = &args.cert_file;
+  let key_file = &args.key_file;
 
   state.check_net(&args.hostname, args.port)?;
-  state.check_read(&cert_file)?;
-  state.check_read(&key_file)?;
+  state.check_read(cert_file)?;
+  state.check_read(key_file)?;
 
   let mut config = ServerConfig::new(NoClientAuth::new());
   config
     .set_single_cert(load_certs(&cert_file)?, load_keys(&key_file)?.remove(0))
     .expect("invalid key or certificate");
   let tls_acceptor = TlsAcceptor::from(Arc::new(config));
-  let addr =
-    futures::executor::block_on(resolve_addr(&args.hostname, args.port))?;
-  let listener = TcpListener::bind(&addr)?;
-  let local_addr = listener.local_addr()?;
-  let local_addr_str = local_addr.to_string();
-  let tls_listener_resource = TlsListenerResource {
-    listener: listener.incoming(),
-    tls_acceptor,
-    waker: None,
-    local_addr,
-  };
-  let mut table = state.lock_resource_table();
-  let rid = table.add("tlsListener", Box::new(tls_listener_resource));
+  let (rid, local_addr_str) = futures::executor::block_on(async {
+    let addr = resolve_addr(&args.hostname, args.port).await?;
+    let listener = TcpListener::bind(&addr).await?;
+    let local_addr = listener.local_addr()?;
+    let local_addr_str = local_addr.to_string();
+    let tls_listener_resource = TlsListenerResource {
+      listener,
+      tls_acceptor,
+      waker: None,
+      local_addr,
+    };
 
+    let mut table = state.lock_resource_table_async().await;
+    let rid = table.add("tlsListener", Box::new(tls_listener_resource));
+    Ok::<_, ErrBox>((rid, local_addr_str))
+  })?;
   Ok(JsonOp::Sync(json!({
     "rid": rid,
     "localAddr": local_addr_str
@@ -343,11 +327,7 @@ impl Future for AcceptTls {
         ErrBox::from(e)
       })?;
 
-    let mut listener =
-      futures::compat::Compat01As03::new(&mut listener_resource.listener)
-        .map_err(ErrBox::from);
-
-    match listener.poll_next_unpin(cx) {
+    match listener_resource.listener.incoming().poll_next_unpin(cx) {
       Poll::Ready(Some(Ok(stream))) => {
         listener_resource.untrack_task();
         inner.accept_state = AcceptTlsState::Done;
@@ -361,7 +341,7 @@ impl Future for AcceptTls {
       Poll::Ready(Some(Err(e))) => {
         listener_resource.untrack_task();
         inner.accept_state = AcceptTlsState::Done;
-        Poll::Ready(Err(e))
+        Poll::Ready(Err(e.into()))
       }
       _ => unreachable!(),
     }
@@ -382,45 +362,37 @@ fn op_accept_tls(
   let rid = args.rid as u32;
   let state1 = state.clone();
   let state2 = state.clone();
-  let op = accept_tls(state, rid)
-    .and_then(move |(tcp_stream, _socket_addr)| {
-      let local_addr = match tcp_stream.local_addr() {
-        Ok(v) => v,
-        Err(e) => return futures::future::err(ErrBox::from(e)),
-      };
-      let remote_addr = match tcp_stream.peer_addr() {
-        Ok(v) => v,
-        Err(e) => return futures::future::err(ErrBox::from(e)),
-      };
-      futures::future::ok((tcp_stream, local_addr, remote_addr))
-    })
-    .and_then(move |(tcp_stream, local_addr, remote_addr)| {
+
+  let op = async move {
+    let (tcp_stream, _socket_addr) = accept_tls(&state1, rid).await?;
+    let local_addr = match tcp_stream.local_addr() {
+      Ok(v) => v,
+      Err(e) => return Err(ErrBox::from(e)),
+    };
+    let remote_addr = match tcp_stream.peer_addr() {
+      Ok(v) => v,
+      Err(e) => return Err(ErrBox::from(e)),
+    };
+    let tls_stream = {
       let table = state1.lock_resource_table();
       let resource = table
         .get::<TlsListenerResource>(rid)
         .ok_or_else(bad_resource)
         .expect("Can't find tls listener");
-
-      futures::compat::Compat01As03::new(
-        resource.tls_acceptor.accept(tcp_stream),
-      )
-      .map_err(ErrBox::from)
-      .and_then(move |tls_stream| {
-        let mut table = state2.lock_resource_table();
-        let rid = table.add(
-          "serverTlsStream",
-          Box::new(StreamResource::ServerTlsStream(Box::new(tls_stream))),
-        );
-        futures::future::ok((rid, local_addr, remote_addr))
-      })
-    })
-    .and_then(move |(rid, local_addr, remote_addr)| {
-      futures::future::ok(json!({
-        "rid": rid,
-        "localAddr": local_addr.to_string(),
-        "remoteAddr": remote_addr.to_string(),
-      }))
-    });
+      resource.tls_acceptor.accept(tcp_stream)
+    };
+    let tls_stream = tls_stream.await?;
+    let mut table = state2.lock_resource_table();
+    let rid = table.add(
+      "serverTlsStream",
+      Box::new(StreamResource::ServerTlsStream(Box::new(tls_stream))),
+    );
+    Ok(json!({
+      "rid": rid,
+      "localAddr": local_addr.to_string(),
+      "remoteAddr": remote_addr.to_string(),
+    }))
+  };
 
   Ok(JsonOp::Async(op.boxed()))
 }

@@ -418,12 +418,10 @@ mod tests {
       let worker_ = worker.clone();
 
       let fut = async move {
-        let r = worker.await;
-        r.unwrap();
-        Ok(())
+        worker.await.unwrap();
       };
 
-      tokio::spawn(fut.boxed().compat());
+      tokio::spawn(fut);
 
       let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
 
@@ -464,8 +462,7 @@ mod tests {
       let worker_future_ = worker_future.clone();
       tokio::spawn(
         worker_future_
-          .then(|_: Result<(), ()>| futures::future::ok(()))
-          .compat(),
+          .then(|_: Result<(), ()>| futures::future::ok::<_, ()>(())),
       );
 
       let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();

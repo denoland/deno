@@ -8,19 +8,12 @@ use crate::state::ThreadSafeState;
 use deno::Resource;
 use deno::*;
 use futures::future::FutureExt;
-use futures::future::TryFutureExt;
 use futures::stream::StreamExt;
-use futures::stream::TryStreamExt;
 use std;
 use std::convert::From;
-use std::future::Future;
 use std::net::Shutdown;
 use std::net::SocketAddr;
-use std::pin::Pin;
-use std::task::Context;
-use std::task::Poll;
 use tokio;
-use tokio::net::tcp::Incoming;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 
@@ -31,70 +24,29 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op("listen", s.core_op(json_op(s.stateful_op(op_listen))));
 }
 
-#[derive(Debug, PartialEq)]
-enum AcceptState {
-  Pending,
-  Done,
-}
-
 /// Simply accepts a connection.
-pub fn accept(state: &ThreadSafeState, rid: ResourceId) -> Accept {
-  Accept {
-    accept_state: AcceptState::Pending,
-    rid,
-    state: state.clone(),
-  }
-}
-
-/// A future representing state of accepting a TCP connection.
-pub struct Accept {
-  accept_state: AcceptState,
+pub async fn accept(
+  state: &ThreadSafeState,
   rid: ResourceId,
-  state: ThreadSafeState,
-}
+) -> Result<(TcpStream, SocketAddr), ErrBox> {
+  let mut table = state.lock_resource_table_async().await;
+  let listener_resource =
+    table.get_mut::<TcpListenerResource>(rid).ok_or_else(|| {
+      let e = std::io::Error::new(
+        std::io::ErrorKind::Other,
+        "Listener has been closed",
+      );
+      ErrBox::from(e)
+    })?;
 
-impl Future for Accept {
-  type Output = Result<(TcpStream, SocketAddr), ErrBox>;
-
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    let inner = self.get_mut();
-    if inner.accept_state == AcceptState::Done {
-      panic!("poll Accept after it's done");
+  let mut incoming = listener_resource.listener.incoming();
+  match incoming.next().await {
+    Some(Ok(stream)) => {
+      let addr = stream.peer_addr().unwrap();
+      Ok((stream, addr))
     }
-
-    let mut table = inner.state.lock_resource_table();
-    let listener_resource = table
-      .get_mut::<TcpListenerResource>(inner.rid)
-      .ok_or_else(|| {
-        let e = std::io::Error::new(
-          std::io::ErrorKind::Other,
-          "Listener has been closed",
-        );
-        ErrBox::from(e)
-      })?;
-
-    let mut listener =
-      futures::compat::Compat01As03::new(&mut listener_resource.listener)
-        .map_err(ErrBox::from);
-
-    match listener.poll_next_unpin(cx) {
-      Poll::Ready(Some(Ok(stream))) => {
-        listener_resource.untrack_task();
-        inner.accept_state = AcceptState::Done;
-        let addr = stream.peer_addr().unwrap();
-        Poll::Ready(Ok((stream, addr)))
-      }
-      Poll::Pending => {
-        listener_resource.track_task(cx)?;
-        Poll::Pending
-      }
-      Poll::Ready(Some(Err(e))) => {
-        listener_resource.untrack_task();
-        inner.accept_state = AcceptState::Done;
-        Poll::Ready(Err(e))
-      }
-      _ => unreachable!(),
-    }
+    Some(Err(e)) => Err(e.into()),
+    _ => unreachable!(),
   }
 }
 
@@ -111,34 +63,30 @@ fn op_accept(
   let args: AcceptArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let state_ = state.clone();
-  let table = state.lock_resource_table();
-  table
-    .get::<TcpListenerResource>(rid)
-    .ok_or_else(bad_resource)?;
 
-  let op = accept(state, rid)
-    .and_then(move |(tcp_stream, _socket_addr)| {
-      let local_addr = match tcp_stream.local_addr() {
-        Ok(v) => v,
-        Err(e) => return futures::future::err(ErrBox::from(e)),
-      };
-      let remote_addr = match tcp_stream.peer_addr() {
-        Ok(v) => v,
-        Err(e) => return futures::future::err(ErrBox::from(e)),
-      };
-      let mut table = state_.lock_resource_table();
-      let rid =
-        table.add("tcpStream", Box::new(StreamResource::TcpStream(tcp_stream)));
-      futures::future::ok((rid, local_addr, remote_addr))
-    })
-    .map_err(ErrBox::from)
-    .and_then(move |(rid, local_addr, remote_addr)| {
-      futures::future::ok(json!({
-        "rid": rid,
-        "localAddr": local_addr.to_string(),
-        "remoteAddr": remote_addr.to_string(),
-      }))
-    });
+  let op = async move {
+    let table = state_.lock_resource_table_async().await;
+    table
+      .get::<TcpListenerResource>(rid)
+      .ok_or_else(bad_resource)?;
+    let (tcp_stream, _socket_addr) = accept(&state_, rid).await?;
+    let local_addr = match tcp_stream.local_addr() {
+      Ok(v) => v,
+      Err(e) => return Err(ErrBox::from(e)),
+    };
+    let remote_addr = match tcp_stream.peer_addr() {
+      Ok(v) => v,
+      Err(e) => return Err(ErrBox::from(e)),
+    };
+    let mut table = state_.lock_resource_table_async().await;
+    let rid =
+      table.add("tcpStream", Box::new(StreamResource::TcpStream(tcp_stream)));
+    Ok(json!({
+      "rid": rid,
+      "localAddr": local_addr.to_string(),
+      "remoteAddr": remote_addr.to_string(),
+    }))
+  };
 
   Ok(JsonOp::Async(op.boxed()))
 }
@@ -160,34 +108,28 @@ fn op_dial(
   let state_ = state.clone();
   state.check_net(&args.hostname, args.port)?;
 
-  let op = resolve_addr(&args.hostname, args.port).and_then(move |addr| {
-    futures::compat::Compat01As03::new(TcpStream::connect(&addr))
-      .map_err(ErrBox::from)
-      .and_then(move |tcp_stream| {
-        let local_addr = match tcp_stream.local_addr() {
-          Ok(v) => v,
-          Err(e) => return futures::future::err(ErrBox::from(e)),
-        };
-        let remote_addr = match tcp_stream.peer_addr() {
-          Ok(v) => v,
-          Err(e) => return futures::future::err(ErrBox::from(e)),
-        };
-        let mut table = state_.lock_resource_table();
-        let rid = table
-          .add("tcpStream", Box::new(StreamResource::TcpStream(tcp_stream)));
-        futures::future::ok((rid, local_addr, remote_addr))
-      })
-      .map_err(ErrBox::from)
-      .and_then(move |(rid, local_addr, remote_addr)| {
-        futures::future::ok(json!({
-          "rid": rid,
-          "localAddr": local_addr.to_string(),
-          "remoteAddr": remote_addr.to_string(),
-        }))
-      })
+  let op = Box::pin(async move {
+    let addr = resolve_addr(&args.hostname, args.port).await?;
+    let tcp_stream = TcpStream::connect(&addr).await?;
+    let local_addr = match tcp_stream.local_addr() {
+      Ok(v) => v,
+      Err(e) => return Err(ErrBox::from(e)),
+    };
+    let remote_addr = match tcp_stream.peer_addr() {
+      Ok(v) => v,
+      Err(e) => return Err(ErrBox::from(e)),
+    };
+    let mut table = state_.lock_resource_table_async().await;
+    let rid =
+      table.add("tcpStream", Box::new(StreamResource::TcpStream(tcp_stream)));
+    Ok(json!({
+      "rid": rid,
+      "localAddr": local_addr.to_string(),
+      "remoteAddr": remote_addr.to_string(),
+    }))
   });
 
-  Ok(JsonOp::Async(op.boxed()))
+  Ok(JsonOp::Async(op))
 }
 
 #[derive(Deserialize)]
@@ -235,58 +177,11 @@ struct ListenArgs {
 
 #[allow(dead_code)]
 struct TcpListenerResource {
-  listener: Incoming,
-  waker: Option<futures::task::AtomicWaker>,
+  listener: TcpListener,
   local_addr: SocketAddr,
 }
 
 impl Resource for TcpListenerResource {}
-
-impl Drop for TcpListenerResource {
-  fn drop(&mut self) {
-    self.wake_task();
-  }
-}
-
-impl TcpListenerResource {
-  /// Track the current task so future awaiting for connection
-  /// can be notified when listener is closed.
-  ///
-  /// Throws an error if another task is already tracked.
-  pub fn track_task(&mut self, cx: &Context) -> Result<(), ErrBox> {
-    // Currently, we only allow tracking a single accept task for a listener.
-    // This might be changed in the future with multiple workers.
-    // Caveat: TcpListener by itself also only tracks an accept task at a time.
-    // See https://github.com/tokio-rs/tokio/issues/846#issuecomment-454208883
-    if self.waker.is_some() {
-      let e = std::io::Error::new(
-        std::io::ErrorKind::Other,
-        "Another accept task is ongoing",
-      );
-      return Err(ErrBox::from(e));
-    }
-
-    let waker = futures::task::AtomicWaker::new();
-    waker.register(cx.waker());
-    self.waker.replace(waker);
-    Ok(())
-  }
-
-  /// Notifies a task when listener is closed so accept future can resolve.
-  pub fn wake_task(&mut self) {
-    if let Some(waker) = self.waker.as_ref() {
-      waker.wake();
-    }
-  }
-
-  /// Stop tracking a task.
-  /// Happens when the task is done and thus no further tracking is needed.
-  pub fn untrack_task(&mut self) {
-    if self.waker.is_some() {
-      self.waker.take();
-    }
-  }
-}
 
 fn op_listen(
   state: &ThreadSafeState,
@@ -297,19 +192,19 @@ fn op_listen(
   assert_eq!(args.transport, "tcp");
 
   state.check_net(&args.hostname, args.port)?;
-
-  let addr =
-    futures::executor::block_on(resolve_addr(&args.hostname, args.port))?;
-  let listener = TcpListener::bind(&addr)?;
-  let local_addr = listener.local_addr()?;
-  let local_addr_str = local_addr.to_string();
-  let listener_resource = TcpListenerResource {
-    listener: listener.incoming(),
-    waker: None,
-    local_addr,
-  };
-  let mut table = state.lock_resource_table();
-  let rid = table.add("tcpListener", Box::new(listener_resource));
+  let (rid, local_addr_str) = futures::executor::block_on(async {
+    let addr = resolve_addr(&args.hostname, args.port).await?;
+    let listener = TcpListener::bind(&addr).await?;
+    let local_addr = listener.local_addr()?;
+    let local_addr_str = local_addr.to_string();
+    let listener_resource = TcpListenerResource {
+      listener,
+      local_addr,
+    };
+    let mut table = state.lock_resource_table_async().await;
+    let rid = table.add("tcpListener", Box::new(listener_resource));
+    Ok::<_, ErrBox>((rid, local_addr_str))
+  })?;
   debug!("New listener {} {}", rid, local_addr_str);
 
   Ok(JsonOp::Sync(json!({

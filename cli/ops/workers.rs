@@ -172,10 +172,8 @@ fn op_create_worker(
     .execute_mod_async(&module_specifier, None, false)
     .then(move |result| {
       sender.send(result).expect("Failed to send message");
-      futures::future::ok(())
-    })
-    .boxed()
-    .compat();
+      futures::future::ok::<_, ()>(())
+    });
   tokio::spawn(fut);
 
   let result = receiver.recv().expect("Failed to receive message");
