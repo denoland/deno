@@ -40,12 +40,12 @@ export class CSI {
 
 function cursorTo(stream: File, _x: number, _y?: number): void {
   const uint8 = new TextEncoder().encode(CSI.kClear);
-  stream.write(uint8);
+  stream.writeSync(uint8);
 }
 
 function clearScreenDown(stream: File): void {
   const uint8 = new TextEncoder().encode(CSI.kClearScreenDown);
-  stream.write(uint8);
+  stream.writeSync(uint8);
 }
 
 function getClassInstanceName(instance: unknown): string {
