@@ -220,7 +220,7 @@ pub fn mksnapshot_bundle_ts(
 }
 
 fn write_snapshot(
-  runtime_isolate: Isolate,
+  mut runtime_isolate: Isolate,
   bundle: &Path,
 ) -> Result<(), ErrBox> {
   println!("creating snapshot...");

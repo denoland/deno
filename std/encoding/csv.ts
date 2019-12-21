@@ -28,7 +28,7 @@ export class ParseError extends Error {
  * @property fieldsPerRecord - Enabling the check of fields for each row.
  *           If == 0, first row is used as referal for the number of fields.
  */
-export interface ParseOptions {
+export interface ReadOptions {
   comma?: string;
   comment?: string;
   trimLeadingSpace?: boolean;
@@ -36,7 +36,7 @@ export interface ParseOptions {
   fieldsPerRecord?: number;
 }
 
-function chkOptions(opt: ParseOptions): void {
+function chkOptions(opt: ReadOptions): void {
   if (!opt.comma) opt.comma = ",";
   if (!opt.trimLeadingSpace) opt.trimLeadingSpace = false;
   if (
@@ -51,7 +51,7 @@ function chkOptions(opt: ParseOptions): void {
 async function read(
   Startline: number,
   reader: BufReader,
-  opt: ParseOptions = { comma: ",", trimLeadingSpace: false }
+  opt: ReadOptions = { comma: ",", trimLeadingSpace: false }
 ): Promise<string[] | Deno.EOF> {
   const tp = new TextProtoReader(reader);
   let line: string;
@@ -107,9 +107,9 @@ async function read(
   return result;
 }
 
-export async function readAll(
+export async function readMatrix(
   reader: BufReader,
-  opt: ParseOptions = {
+  opt: ReadOptions = {
     comma: ",",
     trimLeadingSpace: false,
     lazyQuotes: false
@@ -151,17 +151,17 @@ export async function readAll(
 }
 
 /**
- * HeaderOption provides the column definition
+ * HeaderOptions provides the column definition
  * and the parse function for each entry of the
  * column.
  */
-export interface HeaderOption {
+export interface HeaderOptions {
   name: string;
   parse?: (input: string) => unknown;
 }
 
-export interface ExtendedParseOptions extends ParseOptions {
-  header: boolean | string[] | HeaderOption[];
+export interface ParseOptions extends ReadOptions {
+  header: boolean | string[] | HeaderOptions[];
   parse?: (input: unknown) => unknown;
 }
 
@@ -188,26 +188,26 @@ export interface ExtendedParseOptions extends ParseOptions {
  */
 export async function parse(
   input: string | BufReader,
-  opt: ExtendedParseOptions = {
+  opt: ParseOptions = {
     header: false
   }
 ): Promise<unknown[]> {
   let r: string[][];
   if (input instanceof BufReader) {
-    r = await readAll(input, opt);
+    r = await readMatrix(input, opt);
   } else {
-    r = await readAll(new BufReader(new StringReader(input)), opt);
+    r = await readMatrix(new BufReader(new StringReader(input)), opt);
   }
   if (opt.header) {
-    let headers: HeaderOption[] = [];
+    let headers: HeaderOptions[] = [];
     let i = 0;
     if (Array.isArray(opt.header)) {
       if (typeof opt.header[0] !== "string") {
-        headers = opt.header as HeaderOption[];
+        headers = opt.header as HeaderOptions[];
       } else {
         const h = opt.header as string[];
         headers = h.map(
-          (e): HeaderOption => {
+          (e): HeaderOptions => {
             return {
               name: e
             };
@@ -216,7 +216,7 @@ export async function parse(
       }
     } else {
       headers = r.shift()!.map(
-        (e): HeaderOption => {
+        (e): HeaderOptions => {
           return {
             name: e
           };

@@ -96,6 +96,14 @@ impl Worker {
     }
   }
 
+  pub fn set_error_handler(
+    &mut self,
+    handler: Box<dyn FnMut(ErrBox) -> Result<(), ErrBox>>,
+  ) {
+    let mut i = self.isolate.lock().unwrap();
+    i.set_error_handler(handler);
+  }
+
   /// Same as execute2() but the filename defaults to "$CWD/__anonymous__".
   pub fn execute(&mut self, js_source: &str) -> Result<(), ErrBox> {
     let path = env::current_dir().unwrap().join("__anonymous__");
