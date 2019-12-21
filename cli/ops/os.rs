@@ -75,6 +75,7 @@ fn op_get_dir(
     "home" => dirs::home_dir(),
     "config" => dirs::config_dir(),
     "cache" => dirs::cache_dir(),
+    "executable" => dirs::executable_dir(),
     "data" => dirs::data_dir(),
     "data_local" => dirs::data_local_dir(),
     "audio" => dirs::audio_dir(),

@@ -59,6 +59,7 @@ declare namespace Deno {
     | "home"
     | "cache"
     | "config"
+    | "executable"
     | "data"
     | "data_local"
     | "audio"
@@ -77,9 +78,9 @@ declare namespace Deno {
    * Returns null if there is no applicable directory or if any other error
    * occurs.
    *
-   * Argument values: "home", "cache", "config", "data", "data_local", "audio",
-   * "desktop", "document", "download", "font", "picture", "public", "template",
-   * "video"
+   * Argument values: "home", "cache", "config", "executable", "data",
+   * "data_local", "audio", "desktop", "document", "download", "font", "picture",
+   * "public", "template", "video"
    *
    * "cache"
    * |Platform | Value                               | Example                      |
@@ -94,6 +95,13 @@ declare namespace Deno {
    * | Linux   | `$XDG_CONFIG_HOME` or `$HOME`/.config | /home/alice/.config              |
    * | macOS   | `$HOME`/Library/Preferences           | /Users/Alice/Library/Preferences |
    * | Windows | `{FOLDERID_RoamingAppData}`           | C:\Users\Alice\AppData\Roaming   |
+   *
+   * "executable"
+   * |Platform | Value                                                           | Example                |
+   * | ------- | --------------------------------------------------------------- | -----------------------|
+   * | Linux   | `XDG_BIN_HOME` or `$XDG_DATA_HOME`/../bin or `$HOME`/.local/bin | /home/alice/.local/bin |
+   * | macOS   | -                                                               | -                      |
+   * | Windows | -                                                               | -                      |
    *
    * "data"
    * |Platform | Value                                    | Example                                  |
