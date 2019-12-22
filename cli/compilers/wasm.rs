@@ -76,13 +76,13 @@ impl WasmCompiler {
     let cache = self.cache.clone();
     let maybe_cached = { cache.lock().unwrap().get(&source_file.url).cloned() };
     if let Some(m) = maybe_cached {
-      return futures::future::ok(m.clone()).boxed();
+      return futures::future::ok(m).boxed();
     }
     let cache_ = self.cache.clone();
 
     debug!(">>>>> wasm_compile_async START");
     let base64_data = base64::encode(&source_file.source_code);
-    let worker = WasmCompiler::setup_worker(global_state.clone());
+    let worker = WasmCompiler::setup_worker(global_state);
     let worker_ = worker.clone();
     let url = source_file.url.clone();
 

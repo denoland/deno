@@ -394,7 +394,7 @@ mod tests {
 
     let perms = DenoPermissions::from_flags(&DenoFlags {
       read_whitelist: whitelist.clone(),
-      write_whitelist: whitelist.clone(),
+      write_whitelist: whitelist,
       ..Default::default()
     });
 
@@ -555,7 +555,7 @@ mod tests {
     );
 
     let mut perms2 = DenoPermissions::from_flags(&DenoFlags {
-      read_whitelist: whitelist.clone(),
+      read_whitelist: whitelist,
       ..Default::default()
     });
     set_prompt_result(false);
@@ -591,7 +591,7 @@ mod tests {
     );
 
     let mut perms2 = DenoPermissions::from_flags(&DenoFlags {
-      write_whitelist: whitelist.clone(),
+      write_whitelist: whitelist,
       ..Default::default()
     });
     set_prompt_result(false);
@@ -644,7 +644,7 @@ mod tests {
     );
 
     let mut perms3 = DenoPermissions::from_flags(&DenoFlags {
-      net_whitelist: whitelist.clone(),
+      net_whitelist: whitelist,
       ..Default::default()
     });
     set_prompt_result(true);

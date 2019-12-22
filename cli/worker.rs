@@ -243,8 +243,7 @@ mod tests {
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
       .parent()
       .unwrap()
-      .join("tests/esm_imports_a.js")
-      .to_owned();
+      .join("tests/esm_imports_a.js");
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state = ThreadSafeGlobalState::new(
@@ -288,8 +287,7 @@ mod tests {
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
       .parent()
       .unwrap()
-      .join("tests/circular1.ts")
-      .to_owned();
+      .join("tests/circular1.ts");
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state = ThreadSafeGlobalState::new(
@@ -335,8 +333,7 @@ mod tests {
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
       .parent()
       .unwrap()
-      .join("cli/tests/006_url_imports.ts")
-      .to_owned();
+      .join("cli/tests/006_url_imports.ts");
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let mut flags = flags::DenoFlags::default();
@@ -353,7 +350,7 @@ mod tests {
       int,
     )
     .unwrap();
-    let global_state_ = global_state.clone();
+    let global_state_ = global_state;
     let state_ = state.clone();
     tokio_util::run(async move {
       let mut worker = Worker::new(
@@ -501,8 +498,7 @@ mod tests {
       let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()
-        .join("tests/002_hello.ts")
-        .to_owned();
+        .join("tests/002_hello.ts");
       let module_specifier =
         ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
       let result =
