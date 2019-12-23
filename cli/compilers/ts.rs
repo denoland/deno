@@ -97,7 +97,7 @@ impl CompilerConfig {
     };
 
     let ts_config = Self {
-      path: config_path.unwrap().ok(),
+      path: config_path.unwrap_or_else(|| Ok(PathBuf::new())).ok(),
       content: config,
       hash: config_hash,
       compile_js,
