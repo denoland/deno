@@ -26,6 +26,7 @@ pub fn get_client() -> Client {
   Client::builder()
     .redirect(Policy::none())
     .default_headers(headers)
+    .use_rustls_tls()
     .build()
     .unwrap()
 }
