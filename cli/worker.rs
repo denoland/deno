@@ -457,7 +457,7 @@ mod tests {
         println!("workers.rs after resource close");
         result.unwrap();
       }
-        .shared();
+      .shared();
 
       let worker_future_ = worker_future.clone();
       tokio::spawn(worker_future_);

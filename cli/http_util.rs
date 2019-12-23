@@ -10,8 +10,8 @@ use reqwest::header::HeaderMap;
 use reqwest::header::CONTENT_TYPE;
 use reqwest::header::LOCATION;
 use reqwest::header::USER_AGENT;
-use reqwest::Client;
 use reqwest::redirect::Policy;
+use reqwest::Client;
 use std::future::Future;
 use url::Url;
 

@@ -174,7 +174,7 @@ fn op_create_worker(
       .await;
     sender.send(result).expect("Failed to send message");
   }
-    .boxed();
+  .boxed();
   tokio::spawn(fut);
 
   let result = receiver.recv().expect("Failed to receive message");

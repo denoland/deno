@@ -3,18 +3,18 @@ import {
   test,
   testPerm,
   assert,
-  assertEquals,
-  assertStrContains
+  assertEquals
+  // assertStrContains
 } from "./test_util.ts";
 const {
-  kill,
-  run,
-  DenoError,
-  ErrorKind,
-  readFile,
-  open,
-  makeTempDir,
-  writeFile
+  // kill,
+  run
+  // DenoError,
+  // ErrorKind,
+  // readFile,
+  // open,
+  // makeTempDir,
+  // writeFile
 } = Deno;
 
 test(function runPermissions(): void {

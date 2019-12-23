@@ -1,11 +1,11 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { test, testPerm, assert, assertEquals } from "./test_util.ts";
-import { BufWriter, BufReader } from "../../std/io/bufio.ts";
-import { TextProtoReader } from "../../std/textproto/mod.ts";
+import { test, testPerm, assertEquals } from "./test_util.ts";
+// import { BufWriter, BufReader } from "../../std/io/bufio.ts";
+// import { TextProtoReader } from "../../std/textproto/mod.ts";
 import { runIfMain } from "../../std/testing/mod.ts";
 
-const encoder = new TextEncoder();
-const decoder = new TextDecoder();
+// const encoder = new TextEncoder();
+// const decoder = new TextDecoder();
 
 test(async function dialTLSNoPerm(): Promise<void> {
   let err;
