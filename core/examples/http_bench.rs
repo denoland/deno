@@ -117,7 +117,7 @@ fn http_op(
     let record = Record::from(control);
     let is_sync = record.promise_id == 0;
     let op = handler(record.clone(), zero_copy_buf);
-    let mut record_a = record.clone();
+    let mut record_a = record;
 
     let fut = async move {
       match op.await {

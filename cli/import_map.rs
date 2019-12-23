@@ -255,14 +255,10 @@ impl ImportMap {
     }
 
     // Sort in longest and alphabetical order.
-    normalized_map.sort_by(|k1, _v1, k2, _v2| {
-      if k1.len() > k2.len() {
-        return Ordering::Less;
-      } else if k2.len() > k1.len() {
-        return Ordering::Greater;
-      }
-
-      k2.cmp(k1)
+    normalized_map.sort_by(|k1, _v1, k2, _v2| match k1.cmp(&k2) {
+      Ordering::Greater => Ordering::Less,
+      Ordering::Less => Ordering::Greater,
+      Ordering::Equal => k2.cmp(k1),
     });
 
     normalized_map
@@ -313,14 +309,10 @@ impl ImportMap {
     }
 
     // Sort in longest and alphabetical order.
-    normalized_map.sort_by(|k1, _v1, k2, _v2| {
-      if k1.len() > k2.len() {
-        return Ordering::Less;
-      } else if k2.len() > k1.len() {
-        return Ordering::Greater;
-      }
-
-      k2.cmp(k1)
+    normalized_map.sort_by(|k1, _v1, k2, _v2| match k1.cmp(&k2) {
+      Ordering::Greater => Ordering::Less,
+      Ordering::Less => Ordering::Greater,
+      Ordering::Equal => k2.cmp(k1),
     });
 
     Ok(normalized_map)

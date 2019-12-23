@@ -9,7 +9,7 @@ use std::ffi::OsStr;
 use std::sync::Arc;
 
 pub fn init(i: &mut Isolate, s: &ThreadSafeState, r: Arc<deno::OpRegistry>) {
-  let r_ = r.clone();
+  let r_ = r;
   i.register_op(
     "open_plugin",
     s.core_op(json_op(s.stateful_op(move |state, args, zero_copy| {
