@@ -26,5 +26,3 @@ export const v4 = _v4;
 
 // TODO Implement
 export const v5 = NOT_IMPLEMENTED;
-
-export * from "./v4.ts";
