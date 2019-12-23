@@ -127,6 +127,9 @@ fn op_run(
     c.stderr(subprocess_stdio_map(run_args.stderr.as_ref()));
   }
 
+  // We want to kill child when it's closed
+  c.kill_on_drop(true);
+
   // Spawn the command.
   let mut child = c.spawn().map_err(ErrBox::from)?;
   let pid = child.id();
