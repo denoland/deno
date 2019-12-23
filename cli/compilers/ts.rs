@@ -60,20 +60,15 @@ impl CompilerConfig {
     // Convert the PathBuf to a canonicalized string.  This is needed by the
     // compiler to properly deal with the configuration.
     let config_path = match &config_file {
-      Some(config_file) => Some(
-        config_file
-          .canonicalize()
-          .map_err(|_| {
-            io::Error::new(
-              io::ErrorKind::InvalidInput,
-              format!(
-                "Could not find the config file: {}",
-                config_file.to_string_lossy()
-              ),
-            )
-          })?
-          .to_owned(),
-      ),
+      Some(config_file) => Some(config_file.canonicalize().map_err(|_| {
+        io::Error::new(
+          io::ErrorKind::InvalidInput,
+          format!(
+            "Could not find the config file: {}",
+            config_file.to_string_lossy()
+          ),
+        )
+      })),
       _ => None,
     };
 
@@ -102,7 +97,7 @@ impl CompilerConfig {
     };
 
     let ts_config = Self {
-      path: config_path,
+      path: config_path.unwrap_or_else(|| Ok(PathBuf::new())).ok(),
       content: config,
       hash: config_hash,
       compile_js,
@@ -261,7 +256,7 @@ impl TsCompiler {
       module_name
     );
 
-    let root_names = vec![module_name.clone()];
+    let root_names = vec![module_name];
     let req_msg = req(
       msg::CompilerRequestType::Bundle,
       root_names,
@@ -269,7 +264,7 @@ impl TsCompiler {
       out_file,
     );
 
-    let worker = TsCompiler::setup_worker(global_state.clone());
+    let worker = TsCompiler::setup_worker(global_state);
     let worker_ = worker.clone();
 
     async move {
@@ -368,7 +363,7 @@ impl TsCompiler {
     let compiling_job = global_state
       .progress
       .add("Compile", &module_url.to_string());
-    let global_state_ = global_state.clone();
+    let global_state_ = global_state;
 
     async move {
       worker.post_message(req_msg).await?;
@@ -390,7 +385,7 @@ impl TsCompiler {
       debug!(">>>>> compile_sync END");
       Ok(compiled_module)
     }
-      .boxed()
+    .boxed()
   }
 
   /// Get associated `CompiledFileMetadata` for given module if it exists.
@@ -483,7 +478,7 @@ impl TsCompiler {
         );
 
         let compiled_file_metadata = CompiledFileMetadata {
-          source_path: source_file.filename.to_owned(),
+          source_path: source_file.filename,
           version_hash,
         };
         let meta_key = self
@@ -618,8 +613,7 @@ mod tests {
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
       .parent()
       .unwrap()
-      .join("tests/002_hello.ts")
-      .to_owned();
+      .join("tests/002_hello.ts");
     let specifier =
       ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
 
@@ -658,8 +652,7 @@ mod tests {
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
       .parent()
       .unwrap()
-      .join("tests/002_hello.ts")
-      .to_owned();
+      .join("tests/002_hello.ts");
     use deno::ModuleSpecifier;
     let module_name = ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap())
       .unwrap()
@@ -717,25 +710,16 @@ mod tests {
 
     let test_cases = vec![
       // valid JSON
-      (
-        r#"{ "compilerOptions": { "checkJs": true } } "#,
-        true,
-      ),
+      (r#"{ "compilerOptions": { "checkJs": true } } "#, true),
       // JSON with comment
       (
         r#"{ "compilerOptions": { // force .js file compilation by Deno "checkJs": true } } "#,
         true,
       ),
       // invalid JSON
-      (
-        r#"{ "compilerOptions": { "checkJs": true },{ } "#,
-        true,
-      ),
+      (r#"{ "compilerOptions": { "checkJs": true },{ } "#, true),
       // without content
-      (
-        "",
-        false,
-      ),
+      ("", false),
     ];
 
     let path = temp_dir_path.join("tsconfig.json");
@@ -754,7 +738,7 @@ mod tests {
     let temp_dir_path = temp_dir.path();
     let path = temp_dir_path.join("doesnotexist.json");
     let path_str = path.to_str().unwrap().to_string();
-    let res = CompilerConfig::load(Some(path_str.clone()));
+    let res = CompilerConfig::load(Some(path_str));
     assert!(res.is_err());
   }
 }

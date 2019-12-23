@@ -81,7 +81,7 @@ fn op_worker_get_message(
     debug!("op_worker_get_message");
 
     futures::future::ok(json!({
-      "data": maybe_buf.map(|buf| buf.to_owned())
+      "data": maybe_buf.map(|buf| buf)
     }))
   });
 
@@ -261,7 +261,7 @@ fn op_host_get_message(
     .map_err(move |_| -> ErrBox { unimplemented!() })
     .and_then(move |maybe_buf| {
       futures::future::ok(json!({
-        "data": maybe_buf.map(|buf| buf.to_owned())
+        "data": maybe_buf.map(|buf| buf)
       }))
     });
 

@@ -115,7 +115,7 @@ impl TSIsolate {
     let source =
       &format!("main({:?}, {})", config_json.to_string(), root_names_json);
     self.isolate.execute("<anon>", source)?;
-    Ok(self.state.clone())
+    Ok(self.state)
   }
 }
 
