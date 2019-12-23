@@ -144,60 +144,60 @@ testPerm(
   }
 );
 
-testPerm({ read: true, net: true }, async function dialAndListenTLS(): Promise<
-  void
-> {
-  const hostname = "localhost";
-  const port = 4500;
+// testPerm({ read: true, net: true }, async function dialAndListenTLS(): Promise<
+//   void
+// > {
+//   const hostname = "localhost";
+//   const port = 4500;
 
-  const listener = Deno.listenTLS({
-    hostname,
-    port,
-    certFile: "cli/tests/tls/localhost.crt",
-    keyFile: "cli/tests/tls/localhost.key"
-  });
+//   const listener = Deno.listenTLS({
+//     hostname,
+//     port,
+//     certFile: "cli/tests/tls/localhost.crt",
+//     keyFile: "cli/tests/tls/localhost.key"
+//   });
 
-  const response = encoder.encode(
-    "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n"
-  );
+//   const response = encoder.encode(
+//     "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n"
+//   );
 
-  listener.accept().then(
-    async (conn): Promise<void> => {
-      assert(conn.remoteAddr != null);
-      assert(conn.localAddr != null);
-      await conn.write(response);
-      conn.close();
-    }
-  );
+//   listener.accept().then(
+//     async (conn): Promise<void> => {
+//       assert(conn.remoteAddr != null);
+//       assert(conn.localAddr != null);
+//       await conn.write(response);
+//       conn.close();
+//     }
+//   );
 
-  const conn = await Deno.dialTLS({
-    hostname,
-    port,
-    certFile: "cli/tests/tls/RootCA.pem"
-  });
-  assert(conn.rid > 0);
-  const w = new BufWriter(conn);
-  const r = new BufReader(conn);
-  const body = `GET / HTTP/1.1\r\nHost: ${hostname}:${port}\r\n\r\n`;
-  const writeResult = await w.write(encoder.encode(body));
-  assertEquals(body.length, writeResult);
-  await w.flush();
-  const tpr = new TextProtoReader(r);
-  const statusLine = await tpr.readLine();
-  assert(statusLine !== Deno.EOF, `line must be read: ${String(statusLine)}`);
-  const m = statusLine.match(/^(.+?) (.+?) (.+?)$/);
-  assert(m !== null, "must be matched");
-  const [_, proto, status, ok] = m;
-  assertEquals(proto, "HTTP/1.1");
-  assertEquals(status, "200");
-  assertEquals(ok, "OK");
-  const headers = await tpr.readMIMEHeader();
-  assert(headers !== Deno.EOF);
-  const contentLength = parseInt(headers.get("content-length"));
-  const bodyBuf = new Uint8Array(contentLength);
-  await r.readFull(bodyBuf);
-  assertEquals(decoder.decode(bodyBuf), "Hello World\n");
-  conn.close();
-});
+//   const conn = await Deno.dialTLS({
+//     hostname,
+//     port,
+//     certFile: "cli/tests/tls/RootCA.pem"
+//   });
+//   assert(conn.rid > 0);
+//   const w = new BufWriter(conn);
+//   const r = new BufReader(conn);
+//   const body = `GET / HTTP/1.1\r\nHost: ${hostname}:${port}\r\n\r\n`;
+//   const writeResult = await w.write(encoder.encode(body));
+//   assertEquals(body.length, writeResult);
+//   await w.flush();
+//   const tpr = new TextProtoReader(r);
+//   const statusLine = await tpr.readLine();
+//   assert(statusLine !== Deno.EOF, `line must be read: ${String(statusLine)}`);
+//   const m = statusLine.match(/^(.+?) (.+?) (.+?)$/);
+//   assert(m !== null, "must be matched");
+//   const [_, proto, status, ok] = m;
+//   assertEquals(proto, "HTTP/1.1");
+//   assertEquals(status, "200");
+//   assertEquals(ok, "OK");
+//   const headers = await tpr.readMIMEHeader();
+//   assert(headers !== Deno.EOF);
+//   const contentLength = parseInt(headers.get("content-length"));
+//   const bodyBuf = new Uint8Array(contentLength);
+//   await r.readFull(bodyBuf);
+//   assertEquals(decoder.decode(bodyBuf), "Hello World\n");
+//   conn.close();
+// });
 
 runIfMain(import.meta);
