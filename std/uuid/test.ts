@@ -4,7 +4,6 @@ import { runIfMain } from "../testing/mod.ts";
 
 // Generic Tests
 import "./tests/isNil.ts";
-import "./tests/generate.ts";
 
 // V4 Tests
 import "./tests/v4/validate.ts";

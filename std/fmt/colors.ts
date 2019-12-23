@@ -21,7 +21,7 @@ interface Code {
 
 let enabled = !noColor;
 
-export function setEnabled(value: boolean): void {
+export function setColorEnabled(value: boolean): void {
   if (noColor) {
     return;
   }
@@ -29,7 +29,7 @@ export function setEnabled(value: boolean): void {
   enabled = value;
 }
 
-export function getEnabled(): boolean {
+export function getColorEnabled(): boolean {
   return enabled;
 }
 

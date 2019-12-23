@@ -31,6 +31,7 @@ use futures::stream::TryStreamExt;
 use futures::task::AtomicWaker;
 use libc::c_char;
 use libc::c_void;
+use libc::strdup;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::fmt;
@@ -158,6 +159,7 @@ pub enum StartupData<'a> {
 }
 
 type JSErrorCreateFn = dyn Fn(V8Exception) -> ErrBox;
+type IsolateErrorHandleFn = dyn FnMut(ErrBox) -> Result<(), ErrBox>;
 
 /// A single execution context of JavaScript. Corresponds roughly to the "Web
 /// Worker" concept in the DOM. An Isolate is a Future that can be used with
@@ -180,6 +182,7 @@ pub struct Isolate {
   startup_script: Option<OwnedScript>,
   pub op_registry: Arc<OpRegistry>,
   waker: AtomicWaker,
+  error_handler: Option<Box<IsolateErrorHandleFn>>,
 }
 
 unsafe impl Send for Isolate {}
@@ -246,7 +249,12 @@ impl Isolate {
       startup_script,
       op_registry: Arc::new(OpRegistry::new()),
       waker: AtomicWaker::new(),
+      error_handler: None,
     }
+  }
+
+  pub fn set_error_handler(&mut self, handler: Box<IsolateErrorHandleFn>) {
+    self.error_handler = Some(handler);
   }
 
   /// Defines the how Deno.core.dispatch() acts.
@@ -402,17 +410,30 @@ impl Isolate {
     self.check_last_exception()
   }
 
-  fn check_last_exception(&self) -> Result<(), ErrBox> {
+  fn check_last_exception(&mut self) -> Result<(), ErrBox> {
     let ptr = unsafe { libdeno::deno_last_exception(self.libdeno_isolate) };
     if ptr.is_null() {
       Ok(())
     } else {
       let js_error_create = &*self.js_error_create;
       let cstr = unsafe { CStr::from_ptr(ptr) };
-      let json_str = cstr.to_str().unwrap();
-      let v8_exception = V8Exception::from_json(json_str).unwrap();
-      let js_error = js_error_create(v8_exception);
-      Err(js_error)
+      if self.error_handler.is_some() {
+        // We duplicate the string and assert ownership.
+        // This is due to we want the user to safely clone the error.
+        let cstring = unsafe { CString::from_raw(strdup(ptr)) };
+        // We need to clear last exception to avoid double handling.
+        unsafe { libdeno::deno_clear_last_exception(self.libdeno_isolate) };
+        let json_string = cstring.into_string().unwrap();
+        let v8_exception = V8Exception::from_json(&json_string).unwrap();
+        let js_error = js_error_create(v8_exception);
+        let handler = self.error_handler.as_mut().unwrap();
+        handler(js_error)
+      } else {
+        let json_str = cstr.to_str().unwrap();
+        let v8_exception = V8Exception::from_json(json_str).unwrap();
+        let js_error = js_error_create(v8_exception);
+        Err(js_error)
+      }
     }
   }
 
@@ -445,7 +466,7 @@ impl Isolate {
 
   /// Low-level module creation.
   pub fn mod_new(
-    &self,
+    &mut self,
     main: bool,
     name: &str,
     source: &str,
@@ -484,7 +505,7 @@ impl Isolate {
   /// ErrBox can be downcast to a type that exposes additional information about
   /// the V8 exception. By default this type is CoreJSError, however it may be a
   /// different type if Isolate::set_js_error_create() has been used.
-  pub fn snapshot(&self) -> Result<Snapshot1<'static>, ErrBox> {
+  pub fn snapshot(&mut self) -> Result<Snapshot1<'static>, ErrBox> {
     let snapshot = unsafe { libdeno::deno_snapshot_new(self.libdeno_isolate) };
     match self.check_last_exception() {
       Ok(..) => Ok(snapshot),
@@ -497,7 +518,7 @@ impl Isolate {
   }
 
   fn dyn_import_done(
-    &self,
+    &mut self,
     id: libdeno::deno_dyn_import_id,
     result: Result<deno_mod, Option<String>>,
   ) -> Result<(), ErrBox> {

@@ -819,10 +819,7 @@ mod tests {
     let headers = fetcher.get_source_code_headers(&url);
 
     assert_eq!(headers.mime_type.clone().unwrap(), "text/javascript");
-    assert_eq!(
-      headers.redirect_to.clone().unwrap(),
-      "http://example.com/a.js"
-    );
+    assert_eq!(headers.redirect_to.unwrap(), "http://example.com/a.js");
 
     let _ = fetcher.save_source_code_headers(
       &url,
@@ -831,10 +828,7 @@ mod tests {
     );
     let headers2 = fetcher.get_source_code_headers(&url);
     assert_eq!(headers2.mime_type.clone().unwrap(), "text/typescript");
-    assert_eq!(
-      headers2.redirect_to.clone().unwrap(),
-      "http://deno.land/a.js"
-    );
+    assert_eq!(headers2.redirect_to.unwrap(), "http://deno.land/a.js");
   }
 
   #[test]
@@ -868,7 +862,7 @@ mod tests {
     );
     let headers_file_name_1 = headers_file_name.clone();
     let headers_file_name_2 = headers_file_name.clone();
-    let headers_file_name_3 = headers_file_name.clone();
+    let headers_file_name_3 = headers_file_name;
 
     let fut = fetcher
       .get_source_file_async(&module_url, true, false, false)
@@ -1128,7 +1122,7 @@ mod tests {
         assert!(redirect_target_headers.redirect_to.is_none());
 
         // Examine the meta result.
-        assert_eq!(mod_meta.url.clone(), target_module_url);
+        assert_eq!(mod_meta.url, target_module_url);
         futures::future::ok(())
       });
 
@@ -1195,7 +1189,7 @@ mod tests {
         assert!(redirect_target_headers.redirect_to.is_none());
 
         // Examine the meta result.
-        assert_eq!(mod_meta.url.clone(), target_url);
+        assert_eq!(mod_meta.url, target_url);
         futures::future::ok(())
       });
 
@@ -1507,9 +1501,8 @@ mod tests {
       },
     ));
 
-    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-      .join("js/main.ts")
-      .to_owned();
+    let p =
+      std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("js/main.ts");
     let specifier =
       ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
     tokio_util::run(fetcher.fetch_source_file_async(&specifier, None).then(
@@ -1535,9 +1528,8 @@ mod tests {
       },
     ));
 
-    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-      .join("js/main.ts")
-      .to_owned();
+    let p =
+      std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("js/main.ts");
     let specifier =
       ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
     tokio_util::run(fetcher.fetch_source_file_async(&specifier, None).then(

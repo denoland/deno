@@ -402,7 +402,7 @@ mod tests {
       );
       tests.extend(vec![
         (r"/deno/tests/006_url_imports.ts", expected_url.to_string()),
-        (r"\deno\tests\006_url_imports.ts", expected_url.to_string()),
+        (r"\deno\tests\006_url_imports.ts", expected_url),
       ]);
 
       // Relative local path.
@@ -413,8 +413,8 @@ mod tests {
       tests.extend(vec![
         (r"tests/006_url_imports.ts", expected_url.to_string()),
         (r"tests\006_url_imports.ts", expected_url.to_string()),
-        (r"./tests/006_url_imports.ts", expected_url.to_string()),
-        (r".\tests\006_url_imports.ts", expected_url.to_string()),
+        (r"./tests/006_url_imports.ts", (*expected_url).to_string()),
+        (r".\tests\006_url_imports.ts", (*expected_url).to_string()),
       ]);
 
       // UNC network path.
@@ -437,7 +437,7 @@ mod tests {
       let expected_url = format!("file://{}/tests/006_url_imports.ts", cwd_str);
       tests.extend(vec![
         ("tests/006_url_imports.ts", expected_url.to_string()),
-        ("./tests/006_url_imports.ts", expected_url.to_string()),
+        ("./tests/006_url_imports.ts", expected_url),
       ]);
     }
 

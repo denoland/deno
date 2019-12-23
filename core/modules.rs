@@ -186,7 +186,7 @@ impl<L: Loader + Unpin> RecursiveLoad<L> {
     {
       let fut = self
         .loader
-        .load(&module_specifier, Some(referrer_specifier.clone()));
+        .load(&module_specifier, Some(referrer_specifier));
       self.pending.push(fut.boxed());
       self.is_pending.insert(module_specifier);
     }
@@ -879,7 +879,7 @@ mod tests {
       let loads = loader.loads.clone();
       let recursive_load =
         RecursiveLoad::main("/circular1.js", None, loader, modules);
-      let mut load_fut = recursive_load.get_future(isolate.clone()).boxed();
+      let mut load_fut = recursive_load.get_future(isolate).boxed();
       let result = Pin::new(&mut load_fut).poll(&mut cx);
       assert!(result.is_ready());
       if let Poll::Ready(Ok(circular1_id)) = result {
@@ -951,7 +951,7 @@ mod tests {
       let loads = loader.loads.clone();
       let recursive_load =
         RecursiveLoad::main("/redirect1.js", None, loader, modules);
-      let mut load_fut = recursive_load.get_future(isolate.clone()).boxed();
+      let mut load_fut = recursive_load.get_future(isolate).boxed();
       let result = Pin::new(&mut load_fut).poll(&mut cx);
       println!(">> result {:?}", result);
       assert!(result.is_ready());

@@ -2,100 +2,21 @@
 
 ## CSV
 
-- **`readAll(reader: BufReader, opt: ParseOptions = { comma: ",", trimLeadingSpace: false, lazyQuotes: false } ): Promise<[string[][], BufState]>`**:
-  Read the whole buffer and output the structured CSV datas
-- **`parse(csvString: string, opt: ParseOption): Promise<unknown[]>`**: See
-  [parse](###Parse)
+- **`parseCsv(input: string | BufReader, opt: ParseCsvOptions): Promise<unknown[]>`**:
+  Read the string/buffer into an
 
-### Parse
-
-Parse the CSV string with the options provided.
-
-#### Options
-
-##### ParseOption
-
-- **`header: boolean | string[] | HeaderOption[];`**: If a boolean is provided,
-  the first line will be used as Header definitions. If `string[]` or
-  `HeaderOption[]` those names will be used for header definition.
-- **`parse?: (input: unknown) => unknown;`**: Parse function for the row, which
-  will be executed after parsing of all columns. Therefore if you don't provide
-  header and parse function with headers, input will be `string[]`.
-
-##### HeaderOption
-
-- **`name: string;`**: Name of the header to be used as property.
-- **`parse?: (input: string) => unknown;`**: Parse function for the column. This
-  is executed on each entry of the header. This can be combined with the Parse
-  function of the rows.
-
-#### Usage
+### Usage
 
 ```ts
-// input:
-// a,b,c
-// e,f,g
+const string = "a,b,c\nd,e,f";
 
-const r = await parseFile(filepath, {
-  header: false
-});
+console.log(
+  await parseCsv(string, {
+    header: false
+  })
+);
 // output:
-// [["a", "b", "c"], ["e", "f", "g"]]
-
-const r = await parseFile(filepath, {
-  header: true
-});
-// output:
-// [{ a: "e", b: "f", c: "g" }]
-
-const r = await parseFile(filepath, {
-  header: ["this", "is", "sparta"]
-});
-// output:
-// [
-//   { this: "a", is: "b", sparta: "c" },
-//   { this: "e", is: "f", sparta: "g" }
-// ]
-
-const r = await parseFile(filepath, {
-  header: [
-    {
-      name: "this",
-      parse: (e: string): string => {
-        return `b${e}$$`;
-      }
-    },
-    {
-      name: "is",
-      parse: (e: string): number => {
-        return e.length;
-      }
-    },
-    {
-      name: "sparta",
-      parse: (e: string): unknown => {
-        return { bim: `boom-${e}` };
-      }
-    }
-  ]
-});
-// output:
-// [
-//    { this: "ba$$", is: 1, sparta: { bim: `boom-c` } },
-//    { this: "be$$", is: 1, sparta: { bim: `boom-g` } }
-// ]
-
-const r = await parseFile(filepath, {
-  header: ["this", "is", "sparta"],
-  parse: (e: Record<string, unknown>) => {
-    return { super: e.this, street: e.is, fighter: e.sparta };
-  }
-});
-// output:
-// [
-//   { super: "a", street: "b", fighter: "c" },
-//   { super: "e", street: "f", fighter: "g" }
-// ]
+// [["a", "b", "c"], ["d", "e", "f"]]
 ```
 
 ## TOML
@@ -226,17 +147,75 @@ YAML parser / dumper for Deno
 
 Heavily inspired from [js-yaml]
 
-### Example
+### Basic usage
 
-See [`./yaml/example`](./yaml/example) folder and [js-yaml] repository.
+`parse` parses the yaml string, and `stringify` dumps the given object to YAML
+string.
+
+```ts
+import { parse, stringify } from "https://deno.land/std/encoding/yaml.ts";
+
+const data = parse(`
+foo: bar
+baz:
+  - qux
+  - quux
+`);
+console.log(data);
+// => { foo: "bar", baz: [ "qux", "quux" ] }
+
+const yaml = stringify({ foo: "bar", baz: ["qux", "quux"] });
+console.log(yaml);
+// =>
+// foo: bar
+// baz:
+//   - qux
+//   - quux
+```
+
+If your YAML contains multiple documents in it, you can use `parseAll` for
+handling it.
+
+```ts
+import { parseAll } from "https://deno.land/std/encoding/yaml.ts";
+
+const data = parseAll(`
+---
+id: 1
+name: Alice
+---
+id: 2
+name: Bob
+---
+id: 3
+name: Eve
+`);
+console.log(data);
+// => [ { id: 1, name: "Alice" }, { id: 2, name: "Bob" }, { id: 3, name: "Eve" } ]
+```
+
+### API
+
+#### `parse(str: string, opts?: ParserOption): unknown`
+
+Parses the YAML string with a single document.
+
+#### `parseAll(str: string, iterator?: Function, opts?: ParserOption): unknown`
+
+Parses the YAML string with multiple documents. If the iterator is given, it's
+applied to every document instead of returning the array of parsed objects.
+
+#### `stringify(obj: object, opts?: DumpOption): string`
+
+Serializes `object` as a YAML document.
 
 ### :warning: Limitations
 
 - `binary` type is currently not stable
 - `function`, `regexp`, and `undefined` type are currently not supported
 
-# Basic usage
+### More example
 
-TBD
+See [`./yaml/example`](./yaml/example) folder and [js-yaml] repository.
 
 [js-yaml]: https://github.com/nodeca/js-yaml

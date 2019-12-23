@@ -66,7 +66,7 @@ pub fn format_maybe_source_line(
   assert!(end_column.is_some());
   let line = (1 + line_number.unwrap()).to_string();
   let line_color = colors::black_on_white(line.to_string());
-  let line_len = line.clone().len();
+  let line_len = line.len();
   let line_padding =
     colors::black_on_white(format!("{:indent$}", "", indent = line_len))
       .to_string();

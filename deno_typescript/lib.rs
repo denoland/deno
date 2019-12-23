@@ -115,7 +115,7 @@ impl TSIsolate {
     let source =
       &format!("main({:?}, {})", config_json.to_string(), root_names_json);
     self.isolate.execute("<anon>", source)?;
-    Ok(self.state.clone())
+    Ok(self.state)
   }
 }
 
@@ -220,7 +220,7 @@ pub fn mksnapshot_bundle_ts(
 }
 
 fn write_snapshot(
-  runtime_isolate: Isolate,
+  mut runtime_isolate: Isolate,
   bundle: &Path,
 ) -> Result<(), ErrBox> {
   println!("creating snapshot...");

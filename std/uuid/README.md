@@ -5,11 +5,11 @@ Support for version 1, 3, 4, and 5 UUIDs.
 ## Usage
 
 ```ts
-import uuid, { validate } from "https://deno.land/std/uuid/mod.ts";
+import { v4 } from "https://deno.land/std/uuid/mod.ts";
 
 // Generate a v4 uuid
-const myUUID = uuid();
+const myUUID = v4.generate();
 
 // Validate a v4 uuid
-const isValid = validate(aString);
+const isValid = v4.validate(aString);
 ```

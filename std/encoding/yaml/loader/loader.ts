@@ -577,7 +577,7 @@ function readPlainScalar(
 
   captureSegment(state, captureStart, captureEnd, false);
 
-  if (!common.isNullOrUndefined(state.result)) {
+  if (state.result) {
     return true;
   }
 
