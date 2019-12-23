@@ -10,6 +10,9 @@ export function isNil(val: string): boolean {
 const NOT_IMPLEMENTED = {
   generate(): never {
     throw new Error("Not implemented");
+  },
+  validate(): never {
+    throw new Error("Not implemented");
   }
 };
 
