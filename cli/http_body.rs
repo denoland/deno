@@ -1,22 +1,34 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-#![allow(dead_code)]
-use futures::io::AsyncRead;
-// use std::cmp::min;
+use tokio::io::AsyncRead;
+use futures::Stream;
+use futures::StreamExt;
+use std::cmp::min;
+use bytes::Bytes;
+use reqwest;
 use std::io;
 use std::io::Read;
 use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
 
-/// Wraps `reqwest::Decoder` so that it can be exposed as an `AsyncRead` and integrated
+// TODO(bartlomieju): most of this stuff can be moved to `cli/ops/fetch.rs`
+type ReqwestStream = Pin<Box<dyn Stream<Item = reqwest::Result<Bytes>> + Send>>;
+
+/// Wraps `ReqwestStream` so that it can be exposed as an `AsyncRead` and integrated
 /// into resources more easily.
 pub struct HttpBody {
+  stream: ReqwestStream,	
+  chunk: Option<Bytes>,
   pos: usize,
 }
 
 impl HttpBody {
-  pub fn from() -> Self {
-    Self { pos: 0 }
+  pub fn from(body: ReqwestStream) -> Self {
+    Self {
+      stream: body,
+      chunk: None,	
+      pos: 0,	
+    }
   }
 }
 
@@ -29,58 +41,56 @@ impl Read for HttpBody {
 impl AsyncRead for HttpBody {
   fn poll_read(
     self: Pin<&mut Self>,
-    _cx: &mut Context,
-    _buf: &mut [u8],
+    cx: &mut Context,
+    buf: &mut [u8],
   ) -> Poll<Result<usize, io::Error>> {
-    unimplemented!();
+    let mut inner = self.get_mut();
+    if let Some(chunk) = inner.chunk.take() {
+      debug!(
+        "HttpBody Fake Read buf {} chunk {} pos {}",
+        buf.len(),
+        chunk.len(),
+        inner.pos
+      );
+      let n = min(buf.len(), chunk.len() - inner.pos);
+      {
+        let rest = &chunk[inner.pos..];
+        buf[..n].clone_from_slice(&rest[..n]);
+      }
+      inner.pos += n;
+      if inner.pos == chunk.len() {
+        inner.pos = 0;
+      } else {
+        inner.chunk = Some(chunk);
+      }
+      return Poll::Ready(Ok(n));
+    } else {
+      assert_eq!(inner.pos, 0);
+    }
 
-    // let mut inner = self.get_mut();
-    // if let Some(chunk) = inner.chunk.take() {
-    //   debug!(
-    //     "HttpBody Fake Read buf {} chunk {} pos {}",
-    //     buf.len(),
-    //     chunk.len(),
-    //     inner.pos
-    //   );
-    //   let n = min(buf.len(), chunk.len() - inner.pos);
-    //   {
-    //     let rest = &chunk[inner.pos..];
-    //     buf[..n].clone_from_slice(&rest[..n]);
-    //   }
-    //   inner.pos += n;
-    //   if inner.pos == chunk.len() {
-    //     inner.pos = 0;
-    //   } else {
-    //     inner.chunk = Some(chunk);
-    //   }
-    //   return Poll::Ready(Ok(n));
-    // } else {
-    //   assert_eq!(inner.pos, 0);
-    // }
-
-    // let p = inner.decoder.poll_next_unpin(cx);
-    // match p {
-    //   Poll::Ready(Some(Err(e))) => Poll::Ready(Err(
-    //     // TODO Need to map hyper::Error into std::io::Error.
-    //     io::Error::new(io::ErrorKind::Other, e),
-    //   )),
-    //   Poll::Ready(Some(Ok(chunk))) => {
-    //     debug!(
-    //       "HttpBody Real Read buf {} chunk {} pos {}",
-    //       buf.len(),
-    //       chunk.len(),
-    //       inner.pos
-    //     );
-    //     let n = min(buf.len(), chunk.len());
-    //     buf[..n].clone_from_slice(&chunk[..n]);
-    //     if buf.len() < chunk.len() {
-    //       inner.pos = n;
-    //       inner.chunk = Some(chunk);
-    //     }
-    //     Poll::Ready(Ok(n))
-    //   }
-    //   Poll::Ready(None) => Poll::Ready(Ok(0)),
-    //   Poll::Pending => Poll::Pending,
-    // }
+    let p = inner.stream.poll_next_unpin(cx);
+    match p {
+      Poll::Ready(Some(Err(e))) => Poll::Ready(Err(
+        // TODO(bartlomieju): rewrite it to use ErrBox
+        io::Error::new(io::ErrorKind::Other, e),
+      )),
+      Poll::Ready(Some(Ok(chunk))) => {
+        debug!(
+          "HttpBody Real Read buf {} chunk {} pos {}",
+          buf.len(),
+          chunk.len(),
+          inner.pos
+        );
+        let n = min(buf.len(), chunk.len());
+        buf[..n].clone_from_slice(&chunk[..n]);
+        if buf.len() < chunk.len() {
+          inner.pos = n;
+          inner.chunk = Some(chunk);
+        }
+        Poll::Ready(Ok(n))
+      }
+      Poll::Ready(None) => Poll::Ready(Ok(0)),
+      Poll::Pending => Poll::Pending,
+    }
   }
 }

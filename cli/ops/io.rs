@@ -115,8 +115,7 @@ impl DenoAsyncRead for StreamResource {
       StreamResource::ServerTlsStream(f) => Box::new(f),
       StreamResource::ChildStdout(f) => Box::new(f),
       StreamResource::ChildStderr(f) => Box::new(f),
-      // TODO: temporarily disabled, pending release of Reqwest
-      // StreamResource::HttpBody(f) => Box::new(f),
+      StreamResource::HttpBody(f) => Box::new(f),
       _ => {
         return Poll::Ready(Err(bad_resource()));
       }

@@ -11,7 +11,7 @@ use reqwest::header::CONTENT_TYPE;
 use reqwest::header::LOCATION;
 use reqwest::header::USER_AGENT;
 use reqwest::Client;
-use reqwest::RedirectPolicy;
+use reqwest::redirect::Policy;
 use std::future::Future;
 use url::Url;
 
@@ -24,7 +24,7 @@ pub fn get_client() -> Client {
     format!("Deno/{}", version::DENO).parse().unwrap(),
   );
   Client::builder()
-    .redirect(RedirectPolicy::none())
+    .redirect(Policy::none())
     .default_headers(headers)
     .build()
     .unwrap()
