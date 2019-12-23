@@ -9,7 +9,7 @@ export function validate(id: string): boolean {
   return UUID_RE.test(id);
 }
 
-export default function generate(): string {
+export function generate(): string {
   const rnds = crypto.getRandomValues(new Uint8Array(16));
 
   rnds[6] = (rnds[6] & 0x0f) | 0x40; // Version 4
