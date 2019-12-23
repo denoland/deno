@@ -11,6 +11,7 @@ use crate::progress::Progress;
 use deno::ErrBox;
 use deno::ModuleSpecifier;
 use futures::future::Either;
+use futures::future::FutureExt;
 use serde_json;
 use std;
 use std::collections::HashMap;
@@ -353,7 +354,7 @@ impl SourceFileFetcher {
     redirect_limit: i64,
   ) -> Pin<Box<SourceFileFuture>> {
     if redirect_limit < 0 {
-      return Box::pin(async { Err(too_many_redirects()) });
+      return futures::future::err(too_many_redirects()).boxed();
     }
 
     let is_blacklisted =
@@ -362,28 +363,31 @@ impl SourceFileFetcher {
     if use_disk_cache && !is_blacklisted {
       match self.fetch_cached_remote_source(&module_url) {
         Ok(Some(source_file)) => {
-          return Box::pin(async { Ok(source_file) });
+          return futures::future::ok(source_file).boxed();
         }
         Ok(None) => {
           // there's no cached version
         }
         Err(err) => {
-          return Box::pin(async { Err(err) });
+          return futures::future::err(err).boxed();
         }
       }
     }
 
     // If file wasn't found in cache check if we can fetch it
     if cached_only {
-      let err_msg =
-        format!("cannot find remote file '{}' in cache", module_url);
       // We can't fetch remote file - bail out
-      return Box::pin(async move {
-        Err(
-          std::io::Error::new(std::io::ErrorKind::PermissionDenied, err_msg)
-            .into(),
+      return futures::future::err(
+        std::io::Error::new(
+          std::io::ErrorKind::PermissionDenied,
+          format!(
+            "cannot find remote file '{}' in cache",
+            module_url.to_string()
+          ),
         )
-      });
+        .into(),
+      )
+      .boxed();
     }
 
     let download_job = self.progress.add("Download", &module_url.to_string());
@@ -701,7 +705,6 @@ mod tests {
   use super::*;
   use crate::fs as deno_fs;
   use crate::tokio_util;
-  use futures::FutureExt;
   use tempfile::TempDir;
 
   fn setup_file_fetcher(dir_path: &Path) -> SourceFileFetcher {

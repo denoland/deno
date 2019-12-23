@@ -1,9 +1,9 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
 use bytes::Bytes;
-use futures::FutureExt;
 use reqwest::Response;
 use std::cmp::min;
+use std::future::Future;
 use std::io;
 use std::pin::Pin;
 use std::task::Context;
@@ -58,8 +58,10 @@ impl AsyncRead for HttpBody {
       assert_eq!(inner.pos, 0);
     }
 
-    let mut chunk_future = Box::pin(inner.response.chunk());
-    match chunk_future.poll_unpin(cx) {
+    let chunk_future = &mut inner.response.chunk();
+    // Safety: `chunk_future` lives only for duration of this poll. So, it doesn't move.
+    let chunk_future = unsafe { Pin::new_unchecked(chunk_future) };
+    match chunk_future.poll(cx) {
       Poll::Ready(Err(e)) => Poll::Ready(Err(
         // TODO Need to map hyper::Error into std::io::Error.
         io::Error::new(io::ErrorKind::Other, e),

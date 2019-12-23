@@ -8,12 +8,9 @@ use crate::signal::kill;
 use crate::state::ThreadSafeState;
 use deno::*;
 use futures;
+use futures::future::poll_fn;
 use futures::task::SpawnExt;
-use std::future::Future;
-use std::pin::Pin;
 use std::process::ExitStatus;
-use std::task::Context;
-use std::task::Poll;
 use tokio::process::Command;
 
 #[cfg(unix)]
@@ -174,23 +171,19 @@ fn op_run(
   })))
 }
 
-pub struct ChildStatus {
+pub async fn child_status(
   rid: ResourceId,
   state: ThreadSafeState,
-}
-
-impl Future for ChildStatus {
-  type Output = Result<ExitStatus, ErrBox>;
-
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    let inner = self.get_mut();
-    let mut table = inner.state.lock_resource_table();
+) -> Result<ExitStatus, ErrBox> {
+  poll_fn(move |cx| {
+    let mut table = state.lock_resource_table();
     let child_resource = table
-      .get_mut::<ChildResource>(inner.rid)
+      .get_mut::<ChildResource>(rid)
       .ok_or_else(bad_resource)?;
     let child = &mut child_resource.child;
     child.poll_unpin(cx).map_err(ErrBox::from)
-  }
+  })
+  .await
 }
 
 #[derive(Deserialize)]
@@ -211,7 +204,7 @@ fn op_run_status(
 
   let state = state.clone();
   let future = async move {
-    let run_status = ChildStatus { rid, state }.await?;
+    let run_status = child_status(rid, state).await?;
     let code = run_status.code();
 
     #[cfg(unix)]

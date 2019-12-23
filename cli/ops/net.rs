@@ -7,11 +7,10 @@ use crate::resolve_addr::resolve_addr;
 use crate::state::ThreadSafeState;
 use deno::Resource;
 use deno::*;
+use futures::future::poll_fn;
 use std::convert::From;
-use std::future::Future;
 use std::net::Shutdown;
 use std::net::SocketAddr;
-use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
 use tokio::net::TcpListener;
@@ -24,41 +23,15 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op("listen", s.core_op(json_op(s.stateful_op(op_listen))));
 }
 
-#[derive(Debug, PartialEq)]
-enum AcceptState {
-  Pending,
-  Done,
-}
-
 /// Simply accepts a connection.
-pub fn accept(state: &ThreadSafeState, rid: ResourceId) -> Accept {
-  Accept {
-    accept_state: AcceptState::Pending,
-    rid,
-    state: state.clone(),
-  }
-}
-
-/// A future representing state of accepting a TCP connection.
-pub struct Accept {
-  accept_state: AcceptState,
+pub async fn accept(
+  state: &ThreadSafeState,
   rid: ResourceId,
-  state: ThreadSafeState,
-}
-
-impl Future for Accept {
-  type Output = Result<(TcpStream, SocketAddr), ErrBox>;
-
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    let inner = self.get_mut();
-    if inner.accept_state == AcceptState::Done {
-      panic!("poll Accept after it's done");
-    }
-
-    let mut table = inner.state.lock_resource_table();
-    let listener_resource = table
-      .get_mut::<TcpListenerResource>(inner.rid)
-      .ok_or_else(|| {
+) -> Result<(TcpStream, SocketAddr), ErrBox> {
+  poll_fn(move |cx| {
+    let mut table = state.lock_resource_table();
+    let listener_resource =
+      table.get_mut::<TcpListenerResource>(rid).ok_or_else(|| {
         let e = std::io::Error::new(
           std::io::ErrorKind::Other,
           "Listener has been closed",
@@ -67,10 +40,9 @@ impl Future for Accept {
       })?;
 
     match listener_resource.listener.poll_accept(cx) {
-      Poll::Ready(Ok((stream, addr))) => {
+      Poll::Ready(Ok(v)) => {
         listener_resource.untrack_task();
-        inner.accept_state = AcceptState::Done;
-        Poll::Ready(Ok((stream, addr)))
+        Poll::Ready(Ok(v))
       }
       Poll::Pending => {
         listener_resource.track_task(cx)?;
@@ -78,11 +50,11 @@ impl Future for Accept {
       }
       Poll::Ready(Err(e)) => {
         listener_resource.untrack_task();
-        inner.accept_state = AcceptState::Done;
         Poll::Ready(Err(e))?
       }
     }
-  }
+  })
+  .await
 }
 
 #[derive(Deserialize)]
@@ -98,6 +70,10 @@ fn op_accept(
   let args: AcceptArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let state_ = state.clone();
+  let table = state.lock_resource_table();
+  table
+    .get::<TcpListenerResource>(rid)
+    .ok_or_else(bad_resource)?;
 
   let op = async move {
     let (tcp_stream, _socket_addr) = accept(&state_, rid).await?;
@@ -254,24 +230,23 @@ fn op_listen(
   args: Value,
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
+  use futures::executor::block_on;
+
   let args: ListenArgs = serde_json::from_value(args)?;
   assert_eq!(args.transport, "tcp");
 
   state.check_net(&args.hostname, args.port)?;
-  let (rid, local_addr_str) = futures::executor::block_on(async {
-    let addr = resolve_addr(&args.hostname, args.port).await?;
-    let listener = TcpListener::bind(&addr).await?;
-    let local_addr = listener.local_addr()?;
-    let local_addr_str = local_addr.to_string();
-    let listener_resource = TcpListenerResource {
-      listener,
-      waker: None,
-      local_addr,
-    };
-    let mut table = state.lock_resource_table();
-    let rid = table.add("tcpListener", Box::new(listener_resource));
-    Ok::<_, ErrBox>((rid, local_addr_str))
-  })?;
+  let addr = block_on(resolve_addr(&args.hostname, args.port))?;
+  let listener = block_on(TcpListener::bind(&addr))?;
+  let local_addr = listener.local_addr()?;
+  let local_addr_str = local_addr.to_string();
+  let listener_resource = TcpListenerResource {
+    listener,
+    waker: None,
+    local_addr,
+  };
+  let mut table = state.lock_resource_table();
+  let rid = table.add("tcpListener", Box::new(listener_resource));
   debug!("New listener {} {}", rid, local_addr_str);
 
   Ok(JsonOp::Sync(json!({
