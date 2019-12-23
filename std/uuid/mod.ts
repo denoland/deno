@@ -21,8 +21,8 @@ export const v1 = NOT_IMPLEMENTED;
 // TODO Implement
 export const v3 = NOT_IMPLEMENTED;
 
-import * as _v4 from "./v4.ts";
-export const v4 = _v4;
+import * as v4 from "./v4.ts";
+export { v4 };
 
 // TODO Implement
 export const v5 = NOT_IMPLEMENTED;
