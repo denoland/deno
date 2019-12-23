@@ -168,10 +168,57 @@ fn load_keys(path: &str) -> Result<Vec<PrivateKey>, ErrBox> {
 pub struct TlsListenerResource {
   listener: TcpListener,
   tls_acceptor: TlsAcceptor,
+  waker: Option<futures::task::AtomicWaker>,
   local_addr: SocketAddr,
 }
 
 impl Resource for TlsListenerResource {}
+
+impl Drop for TlsListenerResource {
+  fn drop(&mut self) {
+    self.wake_task();
+  }
+}
+
+impl TlsListenerResource {
+  /// Track the current task so future awaiting for connection
+  /// can be notified when listener is closed.
+  ///
+  /// Throws an error if another task is already tracked.
+  pub fn track_task(&mut self, cx: &Context) -> Result<(), ErrBox> {
+    // Currently, we only allow tracking a single accept task for a listener.
+    // This might be changed in the future with multiple workers.
+    // Caveat: TcpListener by itself also only tracks an accept task at a time.
+    // See https://github.com/tokio-rs/tokio/issues/846#issuecomment-454208883
+    if self.waker.is_some() {
+      let e = std::io::Error::new(
+        std::io::ErrorKind::Other,
+        "Another accept task is ongoing",
+      );
+      return Err(ErrBox::from(e));
+    }
+
+    let waker = futures::task::AtomicWaker::new();
+    waker.register(cx.waker());
+    self.waker.replace(waker);
+    Ok(())
+  }
+
+  /// Notifies a task when listener is closed so accept future can resolve.
+  pub fn wake_task(&mut self) {
+    if let Some(waker) = self.waker.as_ref() {
+      waker.wake();
+    }
+  }
+
+  /// Stop tracking a task.
+  /// Happens when the task is done and thus no further tracking is needed.
+  pub fn untrack_task(&mut self) {
+    if self.waker.is_some() {
+      self.waker.take();
+    }
+  }
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -211,6 +258,7 @@ fn op_listen_tls(
     let tls_listener_resource = TlsListenerResource {
       listener,
       tls_acceptor,
+      waker: None,
       local_addr,
     };
 
@@ -266,27 +314,21 @@ impl Future for AcceptTls {
         ErrBox::from(e)
       })?;
 
-    let mut listener =
-      futures::compat::Compat01As03::new(&mut listener_resource.listener)
-        .map_err(ErrBox::from);
-
-    match listener.poll_next_unpin(cx) {
-      Poll::Ready(Some(Ok(stream))) => {
+    match listener_resource.listener.poll_accept(cx) {
+      Poll::Ready(Ok((stream, addr))) => {
         listener_resource.untrack_task();
         inner.accept_state = AcceptTlsState::Done;
-        let addr = stream.peer_addr().unwrap();
         Poll::Ready(Ok((stream, addr)))
       }
       Poll::Pending => {
         listener_resource.track_task(cx)?;
         Poll::Pending
       }
-      Poll::Ready(Some(Err(e))) => {
+      Poll::Ready(Err(e)) => {
         listener_resource.untrack_task();
         inner.accept_state = AcceptTlsState::Done;
-        Poll::Ready(Err(e))
+        Poll::Ready(Err(e))?
       }
-      _ => unreachable!(),
     }
   }
 }

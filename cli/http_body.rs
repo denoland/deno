@@ -1,9 +1,14 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
 use bytes::Bytes;
+use futures::FutureExt;
 use reqwest::Response;
 use std::cmp::min;
 use std::io;
+use std::pin::Pin;
+use std::task::Context;
+use std::task::Poll;
+use tokio::io::AsyncRead;
 
 /// Wraps `reqwest::Decoder` so that it can be exposed as an `AsyncRead` and integrated
 /// into resources more easily.
@@ -21,49 +26,61 @@ impl HttpBody {
       pos: 0,
     }
   }
+}
 
-  pub async fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-    if let Some(chunk) = self.chunk.take() {
+impl AsyncRead for HttpBody {
+  fn poll_read(
+    self: Pin<&mut Self>,
+    cx: &mut Context,
+    buf: &mut [u8],
+  ) -> Poll<Result<usize, io::Error>> {
+    let mut inner = self.get_mut();
+    if let Some(chunk) = inner.chunk.take() {
       debug!(
         "HttpBody Fake Read buf {} chunk {} pos {}",
         buf.len(),
         chunk.len(),
-        self.pos
+        inner.pos
       );
-      let n = min(buf.len(), chunk.len() - self.pos);
+      let n = min(buf.len(), chunk.len() - inner.pos);
       {
-        let rest = &chunk[self.pos..];
+        let rest = &chunk[inner.pos..];
         buf[..n].clone_from_slice(&rest[..n]);
       }
-      self.pos += n;
-      if self.pos == chunk.len() {
-        self.pos = 0;
+      inner.pos += n;
+      if inner.pos == chunk.len() {
+        inner.pos = 0;
       } else {
-        self.chunk = Some(chunk);
+        inner.chunk = Some(chunk);
       }
-      return Ok(n);
+      return Poll::Ready(Ok(n));
     } else {
-      assert_eq!(self.pos, 0);
+      assert_eq!(inner.pos, 0);
     }
 
-    match self.response.chunk().await {
-      Ok(Some(chunk)) => {
+    let mut chunk_future = Box::pin(inner.response.chunk());
+    match chunk_future.poll_unpin(cx) {
+      Poll::Ready(Err(e)) => Poll::Ready(Err(
+        // TODO Need to map hyper::Error into std::io::Error.
+        io::Error::new(io::ErrorKind::Other, e),
+      )),
+      Poll::Ready(Ok(Some(chunk))) => {
         debug!(
           "HttpBody Real Read buf {} chunk {} pos {}",
           buf.len(),
           chunk.len(),
-          self.pos
+          inner.pos
         );
         let n = min(buf.len(), chunk.len());
-        buf[..n].copy_from_slice(&chunk[..n]);
+        buf[..n].clone_from_slice(&chunk[..n]);
         if buf.len() < chunk.len() {
-          self.pos = n;
-          self.chunk = Some(chunk);
+          inner.pos = n;
+          inner.chunk = Some(chunk);
         }
-        Ok(n)
+        Poll::Ready(Ok(n))
       }
-      Ok(None) => Ok(0),
-      Err(e) => Err(io::Error::new(io::ErrorKind::Other, e)),
+      Poll::Ready(Ok(None)) => Poll::Ready(Ok(0)),
+      Poll::Pending => Poll::Pending,
     }
   }
 }

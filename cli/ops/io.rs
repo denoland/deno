@@ -7,11 +7,15 @@ use crate::state::ThreadSafeState;
 use deno::ErrBox;
 use deno::Resource;
 use deno::*;
+use futures;
+use futures::future::poll_fn;
+use futures::future::FutureExt;
+use futures::ready;
 use std::pin::Pin;
-use tokio::io::AsyncReadExt;
-use tokio::io::AsyncWriteExt;
+use std::task::Context;
+use std::task::Poll;
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
-use tokio::process;
 use tokio_rustls::client::TlsStream as ClientTlsStream;
 use tokio_rustls::server::TlsStream as ServerTlsStream;
 
@@ -78,43 +82,57 @@ pub enum StreamResource {
   ServerTlsStream(Box<ServerTlsStream<TcpStream>>),
   ClientTlsStream(Box<ClientTlsStream<TcpStream>>),
   HttpBody(Box<HttpBody>),
-  ChildStdin(process::ChildStdin),
-  ChildStdout(process::ChildStdout),
-  ChildStderr(process::ChildStderr),
+  ChildStdin(tokio::process::ChildStdin),
+  ChildStdout(tokio::process::ChildStdout),
+  ChildStderr(tokio::process::ChildStderr),
 }
 
 impl Resource for StreamResource {}
 
 impl StreamResource {
-  pub async fn read(&mut self, buf: &mut [u8]) -> Result<usize, ErrBox> {
-    let n = match self {
-      StreamResource::FsFile(f) => f.read(buf).await?,
-      StreamResource::Stdin(f) => f.read(buf).await?,
-      StreamResource::TcpStream(f) => f.read(buf).await?,
-      StreamResource::ClientTlsStream(f) => f.read(buf).await?,
-      StreamResource::ServerTlsStream(f) => f.read(buf).await?,
-      StreamResource::HttpBody(f) => f.read(buf).await?,
-      StreamResource::ChildStdout(f) => f.read(buf).await?,
-      StreamResource::ChildStderr(f) => f.read(buf).await?,
-      _ => return Err(bad_resource()),
+  fn poll_read(
+    &mut self,
+    cx: &mut Context,
+    buf: &mut [u8],
+  ) -> Poll<Result<usize, ErrBox>> {
+    let mut f: Box<dyn AsyncRead + Unpin> = match self {
+      StreamResource::FsFile(f) => Box::new(f),
+      StreamResource::Stdin(f) => Box::new(f),
+      StreamResource::TcpStream(f) => Box::new(f),
+      StreamResource::ClientTlsStream(f) => Box::new(f),
+      StreamResource::ServerTlsStream(f) => Box::new(f),
+      StreamResource::HttpBody(f) => Box::new(f),
+      StreamResource::ChildStdout(f) => Box::new(f),
+      StreamResource::ChildStderr(f) => Box::new(f),
+      _ => {
+        return Err(bad_resource()).into();
+      }
     };
 
-    Ok(n)
+    let n = ready!(Pin::new(&mut f).poll_read(cx, buf))?;
+    Ok(n).into()
   }
 
-  pub async fn write(&mut self, buf: &[u8]) -> Result<usize, ErrBox> {
-    let n = match self {
-      StreamResource::FsFile(f) => f.write(buf).await?,
-      StreamResource::Stdout(f) => f.write(buf).await?,
-      StreamResource::Stderr(f) => f.write(buf).await?,
-      StreamResource::TcpStream(f) => f.write(buf).await?,
-      StreamResource::ClientTlsStream(f) => f.write(buf).await?,
-      StreamResource::ServerTlsStream(f) => f.write(buf).await?,
-      StreamResource::ChildStdin(f) => f.write(buf).await?,
-      _ => return Err(bad_resource()),
+  fn poll_write(
+    &mut self,
+    cx: &mut Context,
+    buf: &[u8],
+  ) -> Poll<Result<usize, ErrBox>> {
+    let mut f: Box<dyn AsyncWrite + Unpin> = match self {
+      StreamResource::FsFile(f) => Box::new(f),
+      StreamResource::Stdout(f) => Box::new(f),
+      StreamResource::Stderr(f) => Box::new(f),
+      StreamResource::TcpStream(f) => Box::new(f),
+      StreamResource::ClientTlsStream(f) => Box::new(f),
+      StreamResource::ServerTlsStream(f) => Box::new(f),
+      StreamResource::ChildStdin(f) => Box::new(f),
+      _ => {
+        return Err(bad_resource()).into();
+      }
     };
 
-    Ok(n)
+    let n = ready!(Pin::new(&mut f).poll_write(cx, buf))?;
+    Ok(n).into()
   }
 }
 
@@ -131,12 +149,15 @@ pub async fn read<T>(
 where
   T: AsMut<[u8]>,
 {
-  let mut table = state.lock_resource_table();
-  let resource = table
-    .get_mut::<StreamResource>(rid)
-    .ok_or_else(bad_resource)?;
-  let nread = resource.read(&mut buf.as_mut()[..]).await?;
-  Ok(nread as i32)
+  poll_fn(move |cx| {
+    let mut table = state.lock_resource_table();
+    let resource = table
+      .get_mut::<StreamResource>(rid)
+      .ok_or_else(bad_resource)?;
+    let nread = ready!(resource.poll_read(cx, &mut buf.as_mut()[..]))?;
+    Ok(nread as i32).into()
+  })
+  .await
 }
 
 pub fn op_read(
@@ -145,10 +166,15 @@ pub fn op_read(
   zero_copy: Option<PinnedBuf>,
 ) -> Pin<Box<MinimalOp>> {
   debug!("read rid={}", rid);
-  match zero_copy {
-    Some(buf) => Box::pin(read(state.clone(), rid as u32, buf)),
-    None => Box::pin(async { Err(deno_error::no_buffer_specified()) }),
-  }
+  let zero_copy = match zero_copy {
+    None => {
+      return futures::future::err(deno_error::no_buffer_specified()).boxed()
+    }
+    Some(buf) => buf,
+  };
+
+  let fut = read(state.clone(), rid as u32, zero_copy);
+  fut.boxed()
 }
 
 /// Creates a future that will write some of the buffer `buf` to
@@ -164,13 +190,15 @@ pub async fn write<T>(
 where
   T: AsRef<[u8]>,
 {
-  let mut table = state.lock_resource_table();
-  let resource = table
-    .get_mut::<StreamResource>(rid)
-    .ok_or_else(bad_resource)?;
-  let buf = buf.as_ref();
-  let nwritten = resource.write(buf).await?;
-  Ok(nwritten as i32)
+  poll_fn(move |cx| {
+    let mut table = state.lock_resource_table();
+    let resource = table
+      .get_mut::<StreamResource>(rid)
+      .ok_or_else(bad_resource)?;
+    let nwritten = ready!(resource.poll_write(cx, buf.as_ref()))?;
+    Ok(nwritten as i32).into()
+  })
+  .await
 }
 
 pub fn op_write(
@@ -179,8 +207,13 @@ pub fn op_write(
   zero_copy: Option<PinnedBuf>,
 ) -> Pin<Box<MinimalOp>> {
   debug!("write rid={}", rid);
-  match zero_copy {
-    Some(buf) => Box::pin(write(state.clone(), rid as u32, buf)),
-    None => Box::pin(async { Err(deno_error::no_buffer_specified()) }),
-  }
+  let zero_copy = match zero_copy {
+    None => {
+      return futures::future::err(deno_error::no_buffer_specified()).boxed()
+    }
+    Some(buf) => buf,
+  };
+
+  let fut = write(state.clone(), rid as u32, zero_copy);
+  fut.boxed()
 }

@@ -7,7 +7,6 @@ use crate::resolve_addr::resolve_addr;
 use crate::state::ThreadSafeState;
 use deno::Resource;
 use deno::*;
-use futures::stream::StreamExt;
 use std::convert::From;
 use std::future::Future;
 use std::net::Shutdown;
@@ -68,22 +67,20 @@ impl Future for Accept {
       })?;
 
     match listener_resource.listener.poll_accept(cx) {
-      Poll::Ready(Some(Ok(stream))) => {
+      Poll::Ready(Ok((stream, addr))) => {
         listener_resource.untrack_task();
         inner.accept_state = AcceptState::Done;
-        let addr = stream.peer_addr().unwrap();
         Poll::Ready(Ok((stream, addr)))
       }
       Poll::Pending => {
         listener_resource.track_task(cx)?;
         Poll::Pending
       }
-      Poll::Ready(Some(Err(e))) => {
+      Poll::Ready(Err(e)) => {
         listener_resource.untrack_task();
         inner.accept_state = AcceptState::Done;
         Poll::Ready(Err(e))?
       }
-      _ => unreachable!(),
     }
   }
 }
