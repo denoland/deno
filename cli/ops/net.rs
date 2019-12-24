@@ -149,16 +149,12 @@ fn op_shutdown(
     _ => unimplemented!(),
   };
 
-  let mut table = state.lock_resource_table();
-  let resource = table
-    .get_mut::<StreamResource>(rid)
-    .ok_or_else(bad_resource)?;
-  match resource {
-    StreamResource::TcpStream(ref mut stream) => {
-      TcpStream::shutdown(stream, shutdown_mode)?
+  state.with_resource_mut(rid, |r| match r {
+    StreamResource::TcpStream(stream) => {
+      Ok(TcpStream::shutdown(stream, shutdown_mode)?)
     }
-    _ => return Err(bad_resource()),
-  }
+    _ => Err(bad_resource()),
+  })?;
 
   Ok(JsonOp::Sync(json!({})))
 }

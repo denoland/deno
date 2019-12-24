@@ -29,19 +29,17 @@ fn clone_file(
   rid: u32,
   state: &ThreadSafeState,
 ) -> Result<std::fs::File, ErrBox> {
-  let mut table = state.lock_resource_table();
-  let repr = table
-    .get_mut::<StreamResource>(rid)
-    .ok_or_else(bad_resource)?;
-  let file = match repr {
-    StreamResource::FsFile(ref mut file) => file,
-    _ => return Err(bad_resource()),
-  };
-  let f = async {
-    let file = file.try_clone().await?;
-    Ok(file.into_std().await)
-  };
-  futures::executor::block_on(f)
+  state.with_resource_mut(rid, |r| {
+    let file = match r {
+      StreamResource::FsFile(file) => file,
+      _ => return Err(bad_resource()),
+    };
+    let f = async {
+      let file = file.try_clone().await?;
+      Ok(file.into_std().await)
+    };
+    futures::executor::block_on(f)
+  })
 }
 
 fn subprocess_stdio_map(s: &str) -> std::process::Stdio {
@@ -179,12 +177,9 @@ pub async fn child_status(
   state: ThreadSafeState,
 ) -> Result<ExitStatus, ErrBox> {
   poll_fn(move |cx| {
-    let mut table = state.lock_resource_table();
-    let child_resource = table
-      .get_mut::<ChildResource>(rid)
-      .ok_or_else(bad_resource)?;
-    let child = &mut child_resource.child;
-    child.poll_unpin(cx).map_err(ErrBox::from)
+    state.poll_resource_with(rid, |r: &mut ChildResource| {
+      (&mut r.child).poll_unpin(cx).map_err(ErrBox::from)
+    })
   })
   .await
 }

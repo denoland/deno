@@ -1,4 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+use crate::deno_error::bad_resource;
 use crate::deno_error::permission_denied;
 use crate::global_state::ThreadSafeGlobalState;
 use crate::global_timer::GlobalTimer;
@@ -16,6 +17,8 @@ use deno::Loader;
 use deno::ModuleSpecifier;
 use deno::Op;
 use deno::PinnedBuf;
+use deno::Resource;
+use deno::ResourceId;
 use deno::ResourceTable;
 use futures::channel::mpsc;
 use futures::future::FutureExt;
@@ -33,6 +36,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
+use std::task::Poll;
 use std::time::Instant;
 
 /// Isolate cannot be passed between threads but ThreadSafeState can.
@@ -76,6 +80,45 @@ impl Deref for ThreadSafeState {
 impl ThreadSafeState {
   pub fn lock_resource_table(&self) -> MutexGuard<ResourceTable> {
     self.resource_table.lock().unwrap()
+  }
+
+  pub fn poll_resource_with<F, T: Resource, R>(
+    &self,
+    rid: ResourceId,
+    f: F,
+  ) -> Poll<Result<R, ErrBox>>
+  where
+    F: FnOnce(&mut T) -> Poll<Result<R, ErrBox>>,
+  {
+    let mut table = self.resource_table.lock().unwrap();
+    let resource = table.get_mut::<T>(rid).ok_or_else(bad_resource)?;
+    f(resource)
+  }
+
+  pub fn with_resource<F, T: Resource, R>(
+    &self,
+    rid: ResourceId,
+    f: F,
+  ) -> Result<R, ErrBox>
+  where
+    F: FnOnce(&T) -> Result<R, ErrBox>,
+  {
+    let table = self.resource_table.lock().unwrap();
+    let resource = table.get::<T>(rid).ok_or_else(bad_resource)?;
+    f(resource)
+  }
+
+  pub fn with_resource_mut<F, T: Resource, R>(
+    &self,
+    rid: ResourceId,
+    f: F,
+  ) -> Result<R, ErrBox>
+  where
+    F: FnOnce(&mut T) -> Result<R, ErrBox>,
+  {
+    let mut table = self.resource_table.lock().unwrap();
+    let resource = table.get_mut::<T>(rid).ok_or_else(bad_resource)?;
+    f(resource)
   }
 
   /// Wrap core `OpDispatcher` to collect metrics.

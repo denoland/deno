@@ -147,17 +147,15 @@ fn op_seek(
     }
   };
 
-  let mut table = state.lock_resource_table();
-  let resource = table
-    .get_mut::<StreamResource>(rid)
-    .ok_or_else(bad_resource)?;
+  let mut tokio_file = state.with_resource(rid, |r| {
+    let tokio_file = match r {
+      StreamResource::FsFile(file) => file,
+      _ => return Err(bad_resource()),
+    };
 
-  let tokio_file = match resource {
-    StreamResource::FsFile(ref mut file) => file,
-    _ => return Err(bad_resource()),
-  };
-
-  let mut tokio_file = futures::executor::block_on(tokio_file.try_clone())?;
+    let tokio_file = futures::executor::block_on(tokio_file.try_clone())?;
+    Ok(tokio_file)
+  })?;
 
   let op = async move {
     tokio_file.seek(seek_from).await?;

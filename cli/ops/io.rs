@@ -150,12 +150,10 @@ where
   T: AsMut<[u8]>,
 {
   poll_fn(move |cx| {
-    let mut table = state.lock_resource_table();
-    let resource = table
-      .get_mut::<StreamResource>(rid)
-      .ok_or_else(bad_resource)?;
-    let nread = ready!(resource.poll_read(cx, buf.as_mut()))?;
-    Ok(nread as i32).into()
+    state.poll_resource_with(rid, |r: &mut StreamResource| {
+      let nread = ready!(r.poll_read(cx, buf.as_mut()))?;
+      Ok(nread as i32).into()
+    })
   })
   .await
 }
@@ -191,12 +189,10 @@ where
   T: AsRef<[u8]>,
 {
   poll_fn(move |cx| {
-    let mut table = state.lock_resource_table();
-    let resource = table
-      .get_mut::<StreamResource>(rid)
-      .ok_or_else(bad_resource)?;
-    let nwritten = ready!(resource.poll_write(cx, buf.as_ref()))?;
-    Ok(nwritten as i32).into()
+    state.poll_resource_with(rid, |r: &mut StreamResource| {
+      let nwritten = ready!(r.poll_write(cx, buf.as_ref()))?;
+      Ok(nwritten as i32).into()
+    })
   })
   .await
 }
