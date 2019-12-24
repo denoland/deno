@@ -154,7 +154,7 @@ where
     let resource = table
       .get_mut::<StreamResource>(rid)
       .ok_or_else(bad_resource)?;
-    let nread = ready!(resource.poll_read(cx, &mut buf.as_mut()[..]))?;
+    let nread = ready!(resource.poll_read(cx, buf.as_mut()))?;
     Ok(nread as i32).into()
   })
   .await

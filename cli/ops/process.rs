@@ -29,17 +29,19 @@ fn clone_file(
   rid: u32,
   state: &ThreadSafeState,
 ) -> Result<std::fs::File, ErrBox> {
-  let f = futures::executor::block_on(async {
-    let mut table = state.lock_resource_table();
-    let repr = table
-      .get_mut::<StreamResource>(rid)
-      .ok_or_else(bad_resource)?;
-    match repr {
-      StreamResource::FsFile(ref mut file) => Ok(file.try_clone().await?),
-      _ => Err(bad_resource()),
-    }
-  })?;
-  Ok(f.try_into_std().unwrap())
+  let mut table = state.lock_resource_table();
+  let repr = table
+    .get_mut::<StreamResource>(rid)
+    .ok_or_else(bad_resource)?;
+  let file = match repr {
+    StreamResource::FsFile(ref mut file) => file,
+    _ => return Err(bad_resource()),
+  };
+  let f = async {
+    let file = file.try_clone().await?;
+    Ok(file.into_std().await)
+  };
+  futures::executor::block_on(f)
 }
 
 fn subprocess_stdio_map(s: &str) -> std::process::Stdio {
@@ -86,6 +88,7 @@ fn op_run(
   let cwd = run_args.cwd;
 
   let mut c = Command::new(args.get(0).unwrap());
+  c.kill_on_drop(true);
   (1..args.len()).for_each(|i| {
     let arg = args.get(i).unwrap();
     c.arg(arg);
