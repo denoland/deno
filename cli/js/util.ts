@@ -62,10 +62,13 @@ export function arrayToStr(ui8: Uint8Array): string {
  * @internal
  */
 
+export type ResolveFunction<T> = (value?: T | PromiseLike<T>) => void;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type RejectFunction = (reason?: any) => void;
+
 export interface ResolvableMethods<T> {
-  resolve: (value?: T | PromiseLike<T>) => void;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  reject: (reason?: any) => void;
+  resolve: ResolveFunction<T>;
+  reject: RejectFunction;
 }
 
 // @internal
@@ -73,13 +76,15 @@ export type Resolvable<T> = Promise<T> & ResolvableMethods<T>;
 
 // @internal
 export function createResolvable<T>(): Resolvable<T> {
-  let methods: ResolvableMethods<T>;
-  const promise = new Promise<T>((resolve, reject): void => {
-    methods = { resolve, reject };
-  });
-  // TypeScript doesn't know that the Promise callback occurs synchronously
-  // therefore use of not null assertion (`!`)
-  return Object.assign(promise, methods!) as Resolvable<T>;
+  let resolve: ResolveFunction<T>;
+  let reject: RejectFunction;
+  const promise = new Promise<T>((res, rej): void => {
+    resolve = res;
+    reject = rej;
+  }) as Resolvable<T>;
+  promise.resolve = resolve!;
+  promise.reject = reject!;
+  return promise;
 }
 
 // @internal
