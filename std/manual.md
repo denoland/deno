@@ -103,10 +103,10 @@ import * as log from "https://deno.land/std/log/mod.ts";
 
 ## Setup
 
-### Binary Install
-
 Deno works on OSX, Linux, and Windows. Deno is a single binary executable. It
 has no external dependencies.
+
+### Download and Install
 
 [deno_install](https://github.com/denoland/deno_install) provides convenience
 scripts to download and install the binary.
@@ -159,111 +159,13 @@ Once it's installed and in your `$PATH`, try it:
 deno https://deno.land/std/examples/welcome.ts
 ```
 
-### Build from source
+### Build from Source
 
-Clone on Linux or Mac:
-
-```bash
-git clone --recurse-submodules https://github.com/denoland/deno.git
-```
-
-On Windows, a couple extra steps are required to clone because we use symlinks
-in the repository. First
-[enable "Developer Mode"](https://www.google.com/search?q=windows+enable+developer+mode)
-(otherwise symlinks would require administrator privileges). Then you must set
-`core.symlinks=true` before the checkout is started.
-
-```bash
-git config --global core.symlinks true
-git clone --recurse-submodules https://github.com/denoland/deno.git
-```
-
-Now we can start the build:
-
-```bash
-# Build.
-cargo build -vv
-
-# Run.
-./target/debug/deno tests/002_hello.ts
-
-# Test.
-cargo test
-
-# Format code.
-./tools/format.py
-```
-
-#### Prerequisites
-
-To ensure reproducible builds, Deno has most of its dependencies in a git
-submodule. However, you need to install separately:
-
-1. [Rust](https://www.rust-lang.org/en-US/install.html) >= 1.36.0
-2. Python 2.
-   [Not 3](https://github.com/denoland/deno/issues/464#issuecomment-411795578).
-
-Extra steps for Mac users: install [XCode](https://developer.apple.com/xcode/)
-:(
-
-Extra steps for Windows users:
-
-<!-- prettier-ignore-start -->
-<!-- see https://github.com/prettier/prettier/issues/3679 -->
-
-1. Add `python.exe` to `PATH` (e.g. `set PATH=%PATH%;C:\Python27\python.exe`)
-2. Get [VS Community 2017](https://www.visualstudio.com/downloads/) with
-   "Desktop development with C++" toolkit and make sure to select the following
-   required tools listed below along with all C++ tools.
-    - Windows 10 SDK >= 10.0.17134
-    - Visual C++ ATL for x86 and x64
-    - Visual C++ MFC for x86 and x64
-    - C++ profiling tools
-3. Enable "Debugging Tools for Windows". Go to "Control Panel" → "Programs" →
-   "Programs and Features" → Select "Windows Software Development Kit - Windows
-   10" → "Change" → "Change" → Check "Debugging Tools For Windows" → "Change" ->
-   "Finish".
-4. Make sure you are using git version 2.19.2.windows.1 or newer.
-
-<!-- prettier-ignore-end -->
-
-#### Other useful commands
-
-```bash
-# Call ninja manually.
-ninja -C target/debug
-
-# Build a release binary.
-cargo build --release
-
-# List executable targets.
-gn --root=core/libdeno ls target/debug "//:*" --as=output --type=executable
-
-# List build configuration.
-gn --root=core/libdeno args target/debug/ --list
-
-# Edit build configuration.
-gn --root=core/libdeno args target/debug/
-
-# Describe a target.
-gn --root=core/libdeno desc target/debug/ :deno
-gn help
-
-# Update third_party modules
-git submodule update
-
-# Skip downloading binary build tools and point the build
-# to the system provided ones (for packagers of deno ...).
-export DENO_BUILD_ARGS="clang_base_path=/usr clang_use_chrome_plugins=false"
-DENO_NO_BINARY_DOWNLOAD=1 DENO_GN_PATH=/usr/bin/gn cargo build
-```
-
-Environment variables: `DENO_BUILD_MODE`, `DENO_BUILD_PATH`, `DENO_BUILD_ARGS`,
-`DENO_DIR`, `DENO_GN_PATH`, `DENO_NO_BINARY_DOWNLOAD`.
+Follow the [build instruction for contributors](#development).
 
 ## API reference
 
-### deno types
+### `deno types`
 
 To get an exact reference of deno's runtime API, run the following in the
 command line:
@@ -1260,19 +1162,150 @@ These Deno logos, like the Deno software, are distributed under the MIT license
 
 ## Contributing
 
-[Style Guide](style_guide.md)
+- Read the [style guide](style_guide.md).
+- Progress towards future releases is tracked
+  [here](https://github.com/denoland/deno/milestones).
+- Please don't make [the benchmarks](https://deno.land/benchmarks.html) worse.
+- Ask for help in the [community chat room](https://gitter.im/denolife/Lobby).
+- If you are going to work on an issue, mention so in the issue comments
+  _before_ you start working on the issue.
 
-Progress towards future releases is tracked
-[here](https://github.com/denoland/deno/milestones).
+### Development
 
-Please don't make [the benchmarks](https://deno.land/benchmarks.html) worse.
+#### Cloning the Repository
 
-Ask for help in the [community chat room](https://gitter.im/denolife/Lobby).
+Clone on Linux or Mac:
 
-If you are going to work on an issue, mention so in the issue comments _before_
-you start working on the issue.
+```bash
+git clone --recurse-submodules https://github.com/denoland/deno.git
+```
 
-### Submitting a pull request
+Extra steps for Windows users:
+
+1. [Enable "Developer Mode"](https://www.google.com/search?q=windows+enable+developer+mode)
+   (otherwise symlinks would require administrator privileges).
+2. Make sure you are using git version 2.19.2.windows.1 or newer.
+3. Set `core.symlinks=true` before the checkout:
+   ```bash
+   git config --global core.symlinks true
+   git clone --recurse-submodules https://github.com/denoland/deno.git
+   ```
+
+#### Prerequisites
+
+Deno has most of its dependencies in a git submodule to ensure reproducible
+builds. The following must be installed separately:
+
+<!-- prettier-ignore-start -->
+<!-- see https://github.com/prettier/prettier/issues/3679 -->
+
+1. [Rust](https://www.rust-lang.org/en-US/install.html)
+    - Ensure that your version is compatible with the one used in [CI](
+      https://github.com/denoland/deno/blob/master/.github/workflows/ci.yml).
+      This is updated frequently.
+2. [Python 2](https://www.python.org/downloads)
+    - Ensure that a suffix-less `python`/`python.exe` exists in your `PATH` and
+      it refers to Python 2, [not 3](
+      https://github.com/denoland/deno/issues/464#issuecomment-411795578).
+
+Extra steps for Mac users:
+
+- Install [XCode](https://developer.apple.com/xcode/) :(
+
+Extra steps for Windows users:
+
+1. Get [VS Community 2017](https://www.visualstudio.com/downloads/) with
+   "Desktop development with C++" toolkit and make sure to select the following
+   required tools listed below along with all C++ tools.
+    - Windows 10 SDK >= 10.0.17134
+    - Visual C++ ATL for x86 and x64
+    - Visual C++ MFC for x86 and x64
+    - C++ profiling tools
+2. Enable "Debugging Tools for Windows". Go to "Control Panel" → "Programs" →
+   "Programs and Features" → Select "Windows Software Development Kit - Windows
+   10" → "Change" → "Change" → Check "Debugging Tools For Windows" → "Change" ->
+   "Finish".
+
+<!-- prettier-ignore-end -->
+
+#### Building
+
+Build with Cargo:
+
+```bash
+# Build:
+cargo build -vv
+
+# Run:
+./target/debug/deno tests/002_hello.ts
+```
+
+#### Testing and Tools
+
+Test `deno`:
+
+```bash
+# Run the whole suite:
+cargo test
+
+# Only test cli/js/:
+cargo test js_unit_tests
+```
+
+Test `std/`:
+
+```bash
+cd std
+cargo run -- -A testing/runner.ts --exclude "**/testdata"
+```
+
+Lint the code:
+
+```bash
+./tools/lint.py
+```
+
+Format the code:
+
+```bash
+./tools/format.py
+```
+
+#### Other Useful Commands
+
+```bash
+# Call ninja manually.
+ninja -C target/debug
+
+# Build a release binary.
+cargo build --release
+
+# List executable targets.
+gn --root=core/libdeno ls target/debug "//:*" --as=output --type=executable
+
+# List build configuration.
+gn --root=core/libdeno args target/debug/ --list
+
+# Edit build configuration.
+gn --root=core/libdeno args target/debug/
+
+# Describe a target.
+gn --root=core/libdeno desc target/debug/ :deno
+gn help
+
+# Update third_party modules
+git submodule update
+
+# Skip downloading binary build tools and point the build
+# to the system provided ones (for packagers of deno ...).
+export DENO_BUILD_ARGS="clang_base_path=/usr clang_use_chrome_plugins=false"
+DENO_NO_BINARY_DOWNLOAD=1 DENO_GN_PATH=/usr/bin/gn cargo build
+```
+
+Environment variables: `DENO_BUILD_MODE`, `DENO_BUILD_PATH`, `DENO_BUILD_ARGS`,
+`DENO_DIR`, `DENO_GN_PATH`, `DENO_NO_BINARY_DOWNLOAD`.
+
+### Submitting a Pull Request
 
 Before submitting, please make sure the following is done:
 
