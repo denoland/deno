@@ -1163,16 +1163,12 @@ These Deno logos, like the Deno software, are distributed under the MIT license
 ## Contributing
 
 - Read the [style guide](style_guide.md).
-
 - Progress towards future releases is tracked
-[here](https://github.com/denoland/deno/milestones).
-
+  [here](https://github.com/denoland/deno/milestones).
 - Please don't make [the benchmarks](https://deno.land/benchmarks.html) worse.
-
 - Ask for help in the [community chat room](https://gitter.im/denolife/Lobby).
-
 - If you are going to work on an issue, mention so in the issue comments
-_before_ you start working on the issue.
+  _before_ you start working on the issue.
 
 ### Development
 
