@@ -250,6 +250,15 @@ impl DenoAsyncWrite for StreamResource {
 
     let r = AsyncWrite::poll_write(Pin::new(&mut f), cx, buf);
 
+    let flush_res =
+      futures::executor::block_on(futures::future::poll_fn(|cx| {
+        AsyncWrite::poll_flush(Pin::new(&mut f), cx)
+      }));
+
+    if flush_res.is_err() {
+      return Poll::Ready(Err(ErrBox::from(flush_res.unwrap_err())));
+    }
+
     match r {
       Poll::Ready(Err(e)) => Poll::Ready(Err(ErrBox::from(e))),
       Poll::Ready(Ok(v)) => Poll::Ready(Ok(v)),
