@@ -255,8 +255,8 @@ impl DenoAsyncWrite for StreamResource {
         AsyncWrite::poll_flush(Pin::new(&mut f), cx)
       }));
 
-    if flush_res.is_err() {
-      return Poll::Ready(Err(ErrBox::from(flush_res.unwrap_err())));
+    if let Err(e) = flush_res {
+      return Poll::Ready(Err(ErrBox::from(e)));
     }
 
     match r {
