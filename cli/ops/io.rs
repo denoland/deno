@@ -48,6 +48,14 @@ lazy_static! {
 
     stdout
   };
+
+  static ref STDIN_HANDLE: std::fs::File = {
+    unsafe { std::fs::File::from_raw_fd(0) }
+  };
+  static ref STDERR_HANDLE: std::fs::File = {
+    unsafe { std::fs::File::from_raw_fd(2) }
+  };
+
 }
 
 pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
@@ -62,22 +70,32 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
 }
 
 pub fn get_stdio() -> (StreamResource, StreamResource, StreamResource) {
-  let stdin = StreamResource::Stdin(tokio::io::stdin());
+  let stdin = StreamResource::Stdin({
+    let stdin = STDIN_HANDLE
+      .try_clone()
+      .expect("Unable to clone stdin handle");
+    tokio::fs::File::from_std(stdin)
+  });
   let stdout = StreamResource::Stdout({
     let stdout = STDOUT_HANDLE
       .try_clone()
       .expect("Unable to clone stdout handle");
     tokio::fs::File::from_std(stdout)
   });
-  let stderr = StreamResource::Stderr(tokio::io::stderr());
+  let stderr = StreamResource::Stderr({
+    let stderr = STDERR_HANDLE
+      .try_clone()
+      .expect("Unable to clone stderr handle");
+    tokio::fs::File::from_std(stderr)
+  });
 
   (stdin, stdout, stderr)
 }
 
 pub enum StreamResource {
-  Stdin(tokio::io::Stdin),
+  Stdin(tokio::fs::File),
   Stdout(tokio::fs::File),
-  Stderr(tokio::io::Stderr),
+  Stderr(tokio::fs::File),
   FsFile(tokio::fs::File),
   TcpStream(tokio::net::TcpStream),
   ServerTlsStream(Box<ServerTlsStream<TcpStream>>),
@@ -249,15 +267,6 @@ impl DenoAsyncWrite for StreamResource {
     };
 
     let r = AsyncWrite::poll_write(Pin::new(&mut f), cx, buf);
-
-    let flush_res =
-      futures::executor::block_on(futures::future::poll_fn(|cx| {
-        AsyncWrite::poll_flush(Pin::new(&mut f), cx)
-      }));
-
-    if let Err(e) = flush_res {
-      return Poll::Ready(Err(ErrBox::from(e)));
-    }
 
     match r {
       Poll::Ready(Err(e)) => Poll::Ready(Err(ErrBox::from(e))),
