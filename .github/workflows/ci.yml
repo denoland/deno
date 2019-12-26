@@ -132,13 +132,13 @@ jobs:
 
       - name: Test
         if: matrix.kind == 'test'
-        run: cargo test unbuffered --release --locked --all-targets
+        run: cargo test --release --locked --all-targets
 
       - name: Test debug
         if: matrix.kind == 'test_debug'
         run: |
           echo ::set-env name=DENO_BUILD_MODE::debug
-          cargo test unbuffered --locked --all-targets
+          cargo test --locked --all-targets
 
       - name: Run Benchmarks
         if: matrix.kind == 'bench'
