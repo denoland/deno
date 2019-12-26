@@ -634,13 +634,13 @@ itest!(types {
 });
 
 itest!(unbuffered_stderr {
-  args: "run --reload unbuffered_stderr.ts",
+  args: "run -Ldebug --reload unbuffered_stderr.ts",
   check_stderr: true,
   output: "unbuffered_stderr.ts.out",
 });
 
 itest!(unbuffered_stdout {
-  args: "run --reload unbuffered_stdout.ts",
+  args: "run -Ldebug --reload unbuffered_stdout.ts",
   output: "unbuffered_stdout.ts.out",
 });
 
