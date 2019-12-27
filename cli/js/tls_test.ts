@@ -166,10 +166,7 @@ testPerm({ read: true, net: true }, async function dialAndListenTLS(): Promise<
       assert(conn.remoteAddr != null);
       assert(conn.localAddr != null);
       await conn.write(response);
-      // TODO(bartlomieju): fix this hack, this might be a bug
-      setTimeout(() => {
-        conn.close();
-      }, 0);
+      conn.close();
     }
   );
 
