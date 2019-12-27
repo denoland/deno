@@ -82,6 +82,34 @@ export class MuxAsyncIterator<T> implements AsyncIterable<T> {
   }
 }
 
+/**
+ * Consume given async iterable, and maybe return all yielded results as
+ * an array.
+ * @param it Iterable to consume.
+ * @param saveResults If set to true, returns the collected array of results.
+ */
+export async function consumeAsyncIterable<T>(
+  it: AsyncIterable<T>
+): Promise<void>;
+export async function consumeAsyncIterable<T>(
+  it: AsyncIterable<T>,
+  saveResults: boolean
+): Promise<T[]>;
+export async function consumeAsyncIterable<T>(
+  it: AsyncIterable<T>,
+  saveResults?: boolean
+): Promise<T[] | void> {
+  const output = [];
+  for await (const v of it) {
+    if (saveResults) {
+      output.push(v);
+    }
+  }
+  if (saveResults) {
+    return output;
+  }
+}
+
 /** Collects all Uint8Arrays from an AsyncIterable and retuns a single
  * Uint8Array with the concatenated contents of all the collected arrays.
  */

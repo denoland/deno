@@ -10,6 +10,7 @@ import { STATUS_TEXT } from "./http_status.ts";
 import { assert } from "../testing/asserts.ts";
 import {
   collectUint8Arrays,
+  consumeAsyncIterable,
   deferred,
   Deferred,
   MuxAsyncIterator
@@ -97,7 +98,7 @@ export async function writeResponse(w: Writer, r: Response): Promise<void> {
   await writer.flush();
 }
 
-export class ServerRequest {
+export class ServerRequest implements Deno.Reader {
   url!: string;
   method!: string;
   proto!: string;
@@ -109,24 +110,54 @@ export class ServerRequest {
   w!: BufWriter;
   done: Deferred<Error | undefined> = deferred();
 
-  public async *bodyStream(): AsyncIterableIterator<Uint8Array> {
-    if (this.headers.has("content-length")) {
-      const len = +this.headers.get("content-length")!;
-      if (Number.isNaN(len)) {
-        return new Uint8Array(0);
+  static DEFAULT_BUF_SIZE = 1024;
+
+  private _streamIterator: AsyncIterableIterator<number>;
+  private _readBuffer = new Uint8Array(0);
+
+  private _contentLength: number | undefined | null = undefined;
+  /**
+   * Value of Content-Length header.
+   * If null, then content length is invalid or not given (e.g. chunked encoding).
+   */
+  get contentLength(): number | null {
+    // undefined means not cached.
+    // null means invalid or not provided.
+    if (this._contentLength === undefined) {
+      if (this.headers.has("content-length")) {
+        this._contentLength = +this.headers.get("content-length")!;
+        // Convert NaN to null (as NaN harder to test)
+        if (Number.isNaN(this._contentLength)) {
+          this._contentLength = null;
+        }
+      } else {
+        this._contentLength = null;
       }
-      let buf = new Uint8Array(1024);
-      let rr = await this.r.read(buf);
+    }
+    return this._contentLength;
+  }
+
+  /**
+   * Internal: actually reading body. Each step, fills this._readBuffer
+   * from start. Yields size read into the buffer each step.
+   * Returns on no more data to read or error.
+   */
+  private async *_bodyStream(): AsyncIterableIterator<number> {
+    if (this.headers.has("content-length")) {
+      const len = this.contentLength;
+      if (len === null) {
+        return;
+      }
+      let rr = await this.r.read(this._readBuffer);
       let nread = rr === Deno.EOF ? 0 : rr;
       let nreadTotal = nread;
       while (rr !== Deno.EOF && nreadTotal < len) {
-        yield buf.subarray(0, nread);
-        buf = new Uint8Array(1024);
-        rr = await this.r.read(buf);
+        yield nread;
+        rr = await this.r.read(this._readBuffer);
         nread = rr === Deno.EOF ? 0 : rr;
         nreadTotal += nread;
       }
-      yield buf.subarray(0, nread);
+      yield nread;
     } else {
       if (this.headers.has("transfer-encoding")) {
         const transferEncodings = this.headers
@@ -145,11 +176,17 @@ export class ServerRequest {
             throw new Error("Invalid chunk size");
           }
           while (chunkSize > 0) {
-            const data = new Uint8Array(chunkSize);
-            if ((await this.r.readFull(data)) === Deno.EOF) {
-              throw new UnexpectedEOFError();
+            let currChunkOffset = 0;
+            // Since given readBuffer might be smaller, loop.
+            while (currChunkOffset < chunkSize) {
+              // Try to be as large as chunkSize. Might be smaller though.
+              const bufferToFill = this._readBuffer.subarray(0, chunkSize);
+              if ((await this.r.readFull(bufferToFill)) === Deno.EOF) {
+                throw new UnexpectedEOFError();
+              }
+              currChunkOffset += bufferToFill.length;
+              yield bufferToFill.length;
             }
-            yield data;
             await this.r.readLine(); // Consume \r\n
             line = await tp.readLine();
             if (line === Deno.EOF) throw new UnexpectedEOFError();
@@ -182,14 +219,107 @@ export class ServerRequest {
         }
         // TODO: handle other transfer-encoding types
       }
-      // Otherwise...
-      yield new Uint8Array(0);
+      // Otherwise... Do nothing
     }
   }
 
-  // Read the body of the request into a single Uint8Array
+  /**
+   * Read the request body as a stream.
+   * Currently, it can only handle basic body with content length,
+   * or `Transfer-Encoding: chunked`.
+   * @param bufferToReuse If provided, buffer to reuse for new data.
+   *   (actually returned buffer is a subarray of given buffer).
+   *   Returned buffer will be overwritten on next().
+   * @param bufferToFill If provided, buffer to fully filled.
+   *   Requires Content-Length header valid and buffer larger than it.
+   */
+  public async *bodyStream(
+    bufferToReuse?: Uint8Array,
+    bufferToFill?: Uint8Array
+  ): AsyncIterableIterator<Uint8Array> {
+    if (this._streamIterator) {
+      throw new Error("Stream has already been read");
+    }
+    const len = this.contentLength;
+    const hasLen = len !== null;
+    if (bufferToReuse) {
+      assert(bufferToReuse.length > 0, "Reused buffer size cannot be 0");
+      this._readBuffer = bufferToReuse;
+      this._streamIterator = this._bodyStream();
+      for await (const size of this._streamIterator) {
+        yield this._readBuffer.subarray(0, size);
+        // _readBuffer would be reused from start when continue.
+      }
+    } else if (bufferToFill) {
+      assert(hasLen, "Cannot fill buffer under unknown content length");
+      assert(bufferToFill.length >= len!, "Buffer to fill is too small");
+      this._readBuffer = bufferToFill;
+      this._streamIterator = this._bodyStream();
+      for await (const size of this._streamIterator) {
+        yield this._readBuffer.subarray(0, size);
+        // _readBuffer is shrinked for remaining.
+        this._readBuffer = this._readBuffer.subarray(size);
+      }
+    } else {
+      // No reuse, allocate new buffer every single time.
+      let offset = 0;
+      this._readBuffer = new Uint8Array(
+        hasLen
+          ? Math.min(ServerRequest.DEFAULT_BUF_SIZE, len)
+          : ServerRequest.DEFAULT_BUF_SIZE
+      );
+      this._streamIterator = this._bodyStream();
+      for await (const size of this._streamIterator) {
+        yield this._readBuffer.subarray(0, size);
+        offset += size;
+        this._readBuffer = new Uint8Array(
+          hasLen
+            ? Math.min(ServerRequest.DEFAULT_BUF_SIZE, len - offset)
+            : ServerRequest.DEFAULT_BUF_SIZE
+        );
+      }
+    }
+  }
+
+  /**
+   * Read a chunk of the request body into given buffer.
+   * You should NOT call `.read()` if `.bodyStream()` or `.body()` is called.
+   * @param p Buffer to write into.
+   * @returns Read result.
+   */
+  public async read(p: Uint8Array): Promise<number | Deno.EOF> {
+    if (!this._streamIterator) {
+      this._streamIterator = this._bodyStream();
+    }
+    // Set internal buffer to the one user provided.
+    this._readBuffer = p;
+    const { value, done } = await this._streamIterator.next();
+    if (done) {
+      return Deno.EOF;
+    }
+    return value;
+  }
+
+  /**
+   * Read the body of the request into a single Uint8Array.
+   * Internally iterates through `.bodyStream()`.
+   * @returns Buffer containing body data.
+   */
   public async body(): Promise<Uint8Array> {
-    return collectUint8Arrays(this.bodyStream());
+    if (this._streamIterator) {
+      throw new Error("Stream has already been read");
+    }
+    if (this.contentLength !== null) {
+      // Content-Length is given.
+      // Pre-allocate buffer (we need to return anyways) to avoid copy.
+      const outputBuffer = new Uint8Array(this.contentLength);
+      // Discard results, since outputBuffer will be filled.
+      await consumeAsyncIterable(this.bodyStream(undefined, outputBuffer));
+      return outputBuffer;
+    } else {
+      // Without predetermined length. Fallback to copy implementation.
+      return collectUint8Arrays(this.bodyStream());
+    }
   }
 
   async respond(r: Response): Promise<void> {

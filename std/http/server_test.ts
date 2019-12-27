@@ -17,7 +17,7 @@ import {
   readRequest,
   parseHTTPVersion
 } from "./server.ts";
-import { delay, deferred } from "../util/async.ts";
+import { delay, deferred, consumeAsyncIterable } from "../util/async.ts";
 import {
   BufReader,
   BufWriter,
@@ -261,6 +261,125 @@ test(async function requestBodyStreamWithTransferEncoding(): Promise<void> {
       offset += s.length;
     }
   }
+});
+
+test(async function requestBodyStreamReuseBuffer(): Promise<void> {
+  {
+    const shortText = "Hello";
+    const req = new ServerRequest();
+    req.headers = new Headers();
+    req.headers.set("content-length", "" + shortText.length);
+    const buf = new Buffer(enc.encode(shortText));
+    req.r = new BufReader(buf);
+    const reusedBuffer = new Uint8Array(1);
+    const it = req.bodyStream(reusedBuffer);
+    let offset = 0;
+    for await (const chunk of it) {
+      // Ensure expected content
+      assertEquals(dec.decode(reusedBuffer), dec.decode(chunk));
+      assertEquals(dec.decode(reusedBuffer), shortText[offset]);
+      // Modifying chunk reflects to reused buffer
+      chunk[0] = 0;
+      assertEquals(reusedBuffer[0], 0);
+      offset++;
+    }
+    assertEquals(offset, 5);
+  }
+
+  // Test zero buffer error
+  {
+    const shortText = "Hello";
+    const req = new ServerRequest();
+    req.headers = new Headers();
+    req.headers.set("content-length", "" + shortText.length);
+    const buf = new Buffer(enc.encode(shortText));
+    req.r = new BufReader(buf);
+    const reusedBuffer = new Uint8Array(0);
+    const it = req.bodyStream(reusedBuffer);
+    let err: Error;
+    try {
+      for await (const _chunk of it) {
+      }
+    } catch (e) {
+      err = e;
+    }
+    assert(!!err);
+    assert(err.message.includes("Reused buffer size cannot be 0"));
+  }
+});
+
+test(async function requestBodyStreamFillBuffer(): Promise<void> {
+  {
+    const shortText = "Hello";
+    const req = new ServerRequest();
+    req.headers = new Headers();
+    req.headers.set("content-length", "" + shortText.length);
+    const buf = new Buffer(enc.encode(shortText));
+    req.r = new BufReader(buf);
+    const bufferToFill = new Uint8Array(6);
+    const it = req.bodyStream(undefined, bufferToFill);
+    await consumeAsyncIterable(it);
+    assertEquals(dec.decode(bufferToFill.subarray(0, 5)), shortText);
+  }
+
+  // Test buffer too small
+  {
+    const shortText = "Hello";
+    const req = new ServerRequest();
+    req.headers = new Headers();
+    req.headers.set("content-length", "" + shortText.length);
+    const buf = new Buffer(enc.encode(shortText));
+    req.r = new BufReader(buf);
+    const bufferToFill = new Uint8Array(2);
+    const it = req.bodyStream(undefined, bufferToFill);
+    let err: Error;
+    try {
+      await consumeAsyncIterable(it);
+    } catch (e) {
+      err = e;
+    }
+    assert(!!err);
+    assert(err.message.includes("Buffer to fill is too small"));
+  }
+
+  // Test fail on no content length.
+  {
+    const shortText = "Hello";
+    const req = new ServerRequest();
+    req.headers = new Headers();
+    // content length not set
+    const buf = new Buffer(enc.encode(shortText));
+    req.r = new BufReader(buf);
+    const bufferToFill = new Uint8Array(6);
+    const it = req.bodyStream(undefined, bufferToFill);
+    let err: Error;
+    try {
+      await consumeAsyncIterable(it);
+    } catch (e) {
+      err = e;
+    }
+    assert(!!err);
+    assert(
+      err.message.includes("Cannot fill buffer under unknown content length")
+    );
+  }
+});
+
+test(async function requestUseReader(): Promise<void> {
+  const shortText = "Hello";
+  const req = new ServerRequest();
+  req.headers = new Headers();
+  req.headers.set("content-length", "" + shortText.length);
+  const buf = new Buffer(enc.encode(shortText));
+  req.r = new BufReader(buf);
+  for (let i = 0; i < shortText.length; i++) {
+    const readBuf = new Uint8Array(1);
+    const nread = await req.read(readBuf);
+    assertEquals(nread, 1);
+    assertEquals(dec.decode(readBuf), shortText[i]);
+  }
+  const readBuf = new Uint8Array(1);
+  assertEquals(await req.read(readBuf), Deno.EOF);
 });
 
 test(async function writeUint8ArrayResponse(): Promise<void> {
