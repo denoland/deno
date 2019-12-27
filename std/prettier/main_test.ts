@@ -488,33 +488,33 @@ test(async function testPrettierWithSpecifiedConfig(): Promise<void> {
   }
 });
 
-// test(async function testPrettierWithAutoIgnore(): Promise<void> {
-//   // only format typescript file
-//   const cwd = join(testdata, "ignore_file");
-//   const prettierFile = join(Deno.cwd(), "prettier", "main.ts");
-//   const { stdout, stderr } = Deno.run({
-//     args: [
-//       execPath(),
-//       "run",
-//       "--allow-read",
-//       "--allow-env",
-//       prettierFile,
-//       "**/*",
-//       "--ignore-path",
-//       "auto"
-//     ],
-//     stdout: "piped",
-//     stderr: "piped",
-//     cwd
-//   });
+test(async function testPrettierWithAutoIgnore(): Promise<void> {
+  // only format typescript file
+  const cwd = join(testdata, "ignore_file");
+  const prettierFile = join(Deno.cwd(), "prettier", "main.ts");
+  const { stdout, stderr } = Deno.run({
+    args: [
+      execPath(),
+      "run",
+      "--allow-read",
+      "--allow-env",
+      prettierFile,
+      "**/*",
+      "--ignore-path",
+      "auto"
+    ],
+    stdout: "piped",
+    stderr: "piped",
+    cwd
+  });
 
-//   assertEquals(decoder.decode(await Deno.readAll(stderr)), "");
+  assertEquals(decoder.decode(await Deno.readAll(stderr)), "");
 
-//   assertEquals(
-//     decoder.decode(await Deno.readAll(stdout)),
-//     `console.log("typescript");\nconsole.log("typescript1");\n`
-//   );
-// });
+  assertEquals(
+    decoder.decode(await Deno.readAll(stdout)),
+    `console.log("typescript");\nconsole.log("typescript1");\n`
+  );
+});
 
 test(async function testPrettierWithSpecifiedIgnore(): Promise<void> {
   // only format javascript file
