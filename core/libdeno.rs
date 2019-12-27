@@ -17,11 +17,81 @@ use std::slice;
 
 pub type OpId = u32;
 
-// TODO(F001): change this definition to `extern { pub type isolate; }`
-// After RFC 1861 is stablized. See https://github.com/rust-lang/rust/issues/43467.
-#[repr(C)]
-pub struct isolate {
-  _unused: [u8; 0],
+#[allow(non_camel_case_types)]
+pub type isolate = DenoIsolate;
+
+pub struct DenoIsolate {
+  isolate_: Option<v8::Isolate>,
+  /*
+  v8::Isolate* isolate_;
+  v8::Locker* locker_;
+  deno_buf shared_;
+  const v8::FunctionCallbackInfo<v8::Value>* current_args_;
+  v8::SnapshotCreator* snapshot_creator_;
+  void* global_import_buf_ptr_;
+  deno_recv_cb recv_cb_;
+  void* user_data_;
+
+  std::map<deno_mod, ModuleInfo> mods_;
+  std::map<std::string, deno_mod> mods_by_name_;
+  deno_resolve_cb resolve_cb_;
+
+  deno_dyn_import_id next_dyn_import_id_;
+  deno_dyn_import_cb dyn_import_cb_;
+  std::map<deno_dyn_import_id, v8::Persistent<v8::Promise::Resolver>>
+      dyn_import_map_;
+
+  v8::Persistent<v8::Context> context_;
+  std::map<int, v8::Persistent<v8::Value>> pending_promise_map_;
+  std::string last_exception_;
+  v8::Persistent<v8::Value> last_exception_handle_;
+  v8::Persistent<v8::Function> recv_;
+  v8::StartupData snapshot_;
+  v8::Persistent<v8::ArrayBuffer> global_import_buf_;
+  v8::Persistent<v8::SharedArrayBuffer> shared_ab_;
+  bool has_snapshotted_;
+  */
+}
+
+impl DenoIsolate {
+  pub fn new(config: deno_config) -> Self {
+    Self { isolate_: None }
+    /*
+      : isolate_(nullptr),
+        locker_(nullptr),
+        shared_(config.shared),
+        current_args_(nullptr),
+        snapshot_creator_(nullptr),
+        global_import_buf_ptr_(nullptr),
+        recv_cb_(config.recv_cb),
+        user_data_(nullptr),
+        resolve_cb_(nullptr),
+        next_dyn_import_id_(0),
+        dyn_import_cb_(config.dyn_import_cb),
+        has_snapshotted_(false) {
+    if !config.load_snapshot.data_ptr.is_null() {
+      snapshot_.data =
+          reinterpret_cast<const char*>(config.load_snapshot.data_ptr);
+      snapshot_.raw_size = static_cast<int>(config.load_snapshot.data_len);
+    }
+    */
+  }
+
+  pub fn add_isolate(&mut self, isolate: v8::Isolate) {
+    self.isolate_ = Some(isolate);
+    todo!()
+    /*
+    isolate_->SetCaptureStackTraceForUncaughtExceptions(
+        true, 10, v8::StackTrace::kDetailed);
+    isolate_->SetPromiseRejectCallback(deno::PromiseRejectCallback);
+    isolate_->SetData(0, this);
+    isolate_->AddMessageListener(MessageCallback);
+    isolate->SetHostInitializeImportMetaObjectCallback(
+        HostInitializeImportMetaObjectCallback);
+    isolate->SetHostImportModuleDynamicallyCallback(
+        HostImportModuleDynamicallyCallback);
+    */
+  }
 }
 
 /// This type represents a borrowed slice.
@@ -231,7 +301,7 @@ pub struct deno_config<'a> {
   pub dyn_import_cb: deno_dyn_import_cb,
 }
 
-pub fn deno_init() {
+pub unsafe fn deno_init() {
   let platform = v8::platform::new_default_platform();
   v8::V8::initialize_platform(platform);
   v8::V8::initialize();
@@ -256,7 +326,7 @@ lazy_static! {
     v8::ExternalReferences::new(&[]);
 }
 
-fn deno_new_snapshotter(config: deno_config) -> *const isolate {
+pub unsafe fn deno_new_snapshotter(config: deno_config) -> *const isolate {
   assert_eq!(config.will_snapshot, 0);
   // TODO(ry) Support loading snapshots before snapshotting.
   assert!(config.load_snapshot.data_ptr.is_null());
@@ -294,15 +364,26 @@ fn deno_new_snapshotter(config: deno_config) -> *const isolate {
   todo!()
 }
 
-pub fn deno_new(config: deno_config) -> *const isolate {
+pub unsafe fn deno_new(config: deno_config) -> *const isolate {
   if config.will_snapshot != 0 {
     return deno_new_snapshotter(config);
   }
+
+  let d = DenoIsolate::new(config);
+  let mut params = v8::Isolate::create_params();
+  params.set_array_buffer_allocator(v8::new_default_allocator());
+  params.set_external_references(&EXTERNAL_REFERENCES);
   /*
-  deno::DenoIsolate* d = new deno::DenoIsolate(config);
-  v8::Isolate::CreateParams params;
-  params.array_buffer_allocator = &deno::ArrayBufferAllocator::global();
-  params.external_references = deno::external_references;
+  if !config.load_snapshot.data_ptr.is_null() {
+    params.set_snapshot_blob(d->snapshot_);
+  }
+  */
+
+  /*
+   -- deno::DenoIsolate* d = new deno::DenoIsolate(config);
+   -- v8::Isolate::CreateParams params;
+  -- params.array_buffer_allocator = &deno::ArrayBufferAllocator::global();
+  -- params.external_references = deno::external_references;
 
   if (config.load_snapshot.data_ptr) {
     params.snapshot_blob = &d->snapshot_;

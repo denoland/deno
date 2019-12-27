@@ -203,7 +203,7 @@ impl Isolate {
   /// the isolate.
   pub fn new(startup_data: StartupData, will_snapshot: bool) -> Self {
     DENO_INIT.call_once(|| {
-      libdeno::deno_init();
+      unsafe { libdeno::deno_init() };
     });
 
     let shared = SharedQueue::new(RECOMMENDED_SIZE);
@@ -234,7 +234,7 @@ impl Isolate {
       StartupData::None => {}
     };
 
-    let libdeno_isolate = libdeno::deno_new(libdeno_config);
+    let libdeno_isolate = unsafe { libdeno::deno_new(libdeno_config) };
 
     Self {
       libdeno_isolate,
