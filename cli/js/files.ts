@@ -94,7 +94,6 @@ export function writeSync(rid: number, p: Uint8Array): number {
   if (result < 0) {
     throw new Error("write error");
   } else {
-    flushSync(rid);
     return result;
   }
 }
@@ -114,17 +113,8 @@ export async function write(rid: number, p: Uint8Array): Promise<number> {
   if (result < 0) {
     throw new Error("write error");
   } else {
-    await flush(rid);
     return result;
   }
-}
-
-export function flushSync(rid: number): void {
-  sendSyncMinimal(dispatch.OP_FLUSH, rid, new Uint8Array());
-}
-
-export async function flush(rid: number): Promise<void> {
-  await sendAsyncMinimal(dispatch.OP_FLUSH, rid, new Uint8Array());
 }
 
 /** Seek a file ID synchronously to the given offset under mode given by `whence`.

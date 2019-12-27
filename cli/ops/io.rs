@@ -59,10 +59,6 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
     "write",
     s.core_op(minimal_op(s.stateful_minimal_op(op_write))),
   );
-  i.register_op(
-    "flush",
-    s.core_op(minimal_op(s.stateful_minimal_op(op_flush))),
-  );
 }
 
 pub fn get_stdio() -> (StreamResource, StreamResource, StreamResource) {
@@ -138,6 +134,7 @@ impl DenoAsyncRead for StreamResource {
 #[derive(Debug, PartialEq)]
 enum IoState {
   Pending,
+  Flush,
   Done,
 }
 
@@ -307,6 +304,7 @@ pub struct Write<T> {
   buf: T,
   io_state: IoState,
   state: ThreadSafeState,
+  nwritten: i32,
 }
 
 /// Creates a future that will write some of the buffer `buf` to
@@ -323,6 +321,7 @@ where
     buf,
     io_state: IoState::Pending,
     state: state.clone(),
+    nwritten: 0,
   }
 }
 
@@ -340,21 +339,41 @@ where
       panic!("poll a Read after it's done");
     }
 
-    let mut table = inner.state.lock_resource_table();
-    let resource = table
-      .get_mut::<StreamResource>(inner.rid)
-      .ok_or_else(bad_resource)?;
-    let nwritten = match DenoAsyncWrite::poll_write(
-      Pin::new(resource),
-      cx,
-      inner.buf.as_ref(),
-    ) {
-      Poll::Ready(Ok(v)) => v,
-      Poll::Ready(Err(err)) => return Poll::Ready(Err(err)),
-      Poll::Pending => return Poll::Pending,
-    };
-    inner.io_state = IoState::Done;
-    Poll::Ready(Ok(nwritten as i32))
+    if inner.io_state == IoState::Pending {
+      let mut table = inner.state.lock_resource_table();
+      let resource = table
+        .get_mut::<StreamResource>(inner.rid)
+        .ok_or_else(bad_resource)?;
+
+      let nwritten = match DenoAsyncWrite::poll_write(
+        Pin::new(resource),
+        cx,
+        inner.buf.as_ref(),
+      ) {
+        Poll::Ready(Ok(v)) => v,
+        Poll::Ready(Err(err)) => return Poll::Ready(Err(err)),
+        Poll::Pending => return Poll::Pending,
+      };
+      inner.io_state = IoState::Flush;
+      inner.nwritten = nwritten as i32;
+    }
+
+    // TODO(bartlomieju): this is a hack
+    if inner.io_state == IoState::Flush {
+      let mut table = inner.state.lock_resource_table();
+      let resource = table
+        .get_mut::<StreamResource>(inner.rid)
+        .ok_or_else(bad_resource)?;
+      match DenoAsyncWrite::poll_flush(Pin::new(resource), cx) {
+        Poll::Ready(Ok(_)) => {
+          inner.io_state = IoState::Done;
+        }
+        Poll::Ready(Err(err)) => return Poll::Ready(Err(err)),
+        Poll::Pending => return Poll::Pending,
+      };
+    }
+
+    Poll::Ready(Ok(inner.nwritten))
   }
 }
 
@@ -373,60 +392,5 @@ pub fn op_write(
 
   let fut = write(state, rid as u32, zero_copy);
 
-  fut.boxed()
-}
-
-/// A future used to write some data to a stream.
-pub struct Flush {
-  rid: ResourceId,
-  io_state: IoState,
-  state: ThreadSafeState,
-}
-
-/// Creates a future that will write some of the buffer `buf` to
-/// the stream resource with `rid`.
-///
-/// Any error which happens during writing will cause both the stream and the
-/// buffer to get destroyed.
-pub fn flush(state: &ThreadSafeState, rid: ResourceId) -> Flush {
-  Flush {
-    rid,
-    io_state: IoState::Pending,
-    state: state.clone(),
-  }
-}
-
-/// This is almost the same implementation as in tokio, difference is
-/// that error type is `ErrBox` instead of `std::io::Error`.
-impl Future for Flush {
-  type Output = Result<i32, ErrBox>;
-
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    let inner = self.get_mut();
-    if inner.io_state == IoState::Done {
-      panic!("poll a Flush after it's done");
-    }
-
-    let mut table = inner.state.lock_resource_table();
-    let resource = table
-      .get_mut::<StreamResource>(inner.rid)
-      .ok_or_else(bad_resource)?;
-    match DenoAsyncWrite::poll_flush(Pin::new(resource), cx) {
-      Poll::Ready(Ok(v)) => v,
-      Poll::Ready(Err(err)) => return Poll::Ready(Err(err)),
-      Poll::Pending => return Poll::Pending,
-    };
-    inner.io_state = IoState::Done;
-    Poll::Ready(Ok(0 as i32))
-  }
-}
-
-pub fn op_flush(
-  state: &ThreadSafeState,
-  rid: i32,
-  _zero_copy: Option<PinnedBuf>,
-) -> Pin<Box<MinimalOp>> {
-  debug!("flush rid={}", rid);
-  let fut = flush(state, rid as u32);
   fut.boxed()
 }
