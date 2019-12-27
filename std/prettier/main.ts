@@ -271,12 +271,16 @@ async function formatSourceFiles(
 
   for await (const { filename } of files) {
     const parser = selectParser(filename);
-    if (parser) {
+    if (prettierOpts.write) {
       formats.push(formatFile(filename, parser, prettierOpts));
+    } else {
+      await formatFile(filename, parser, prettierOpts);
     }
   }
 
-  await Promise.all(formats);
+  if (prettierOpts.write) {
+    await Promise.all(formats);
+  }
   exit(0);
 }
 
