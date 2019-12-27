@@ -1,4 +1,5 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+#![allow(unused)]
 
 use libc::c_char;
 use libc::c_int;
@@ -228,40 +229,40 @@ pub struct deno_config<'a> {
   pub dyn_import_cb: deno_dyn_import_cb,
 }
 
-pub fn deno_init() {
+pub unsafe fn deno_init() {
   todo!()
 }
-pub fn deno_v8_version() -> *const c_char {
+pub unsafe fn deno_v8_version() -> *const c_char {
   todo!()
 }
-pub fn deno_set_v8_flags(argc: *mut c_int, argv: *mut *mut c_char) {
+pub unsafe fn deno_set_v8_flags(argc: *mut c_int, argv: *mut *mut c_char) {
   todo!()
 }
-pub fn deno_new(config: deno_config) -> *const isolate {
+pub unsafe fn deno_new(config: deno_config) -> *const isolate {
   todo!()
 }
-pub fn deno_delete(i: *const isolate) {
+pub unsafe fn deno_delete(i: *const isolate) {
   todo!()
 }
-pub fn deno_last_exception(i: *const isolate) -> *const c_char {
+pub unsafe fn deno_last_exception(i: *const isolate) -> *const c_char {
   todo!()
 }
-pub fn deno_clear_last_exception(i: *const isolate) {
+pub unsafe fn deno_clear_last_exception(i: *const isolate) {
   todo!()
 }
-pub fn deno_check_promise_errors(i: *const isolate) {
+pub unsafe fn deno_check_promise_errors(i: *const isolate) {
   todo!()
 }
-pub fn deno_lock(i: *const isolate) {
+pub unsafe fn deno_lock(i: *const isolate) {
   todo!()
 }
-pub fn deno_unlock(i: *const isolate) {
+pub unsafe fn deno_unlock(i: *const isolate) {
   todo!()
 }
-pub fn deno_throw_exception(i: *const isolate, text: *const c_char) {
+pub unsafe fn deno_throw_exception(i: *const isolate, text: *const c_char) {
   todo!()
 }
-pub fn deno_respond(
+pub unsafe fn deno_respond(
   i: *const isolate,
   user_data: *const c_void,
   op_id: OpId,
@@ -269,10 +270,10 @@ pub fn deno_respond(
 ) {
   todo!()
 }
-pub fn deno_pinned_buf_delete(buf: &mut deno_pinned_buf) {
+pub unsafe fn deno_pinned_buf_delete(buf: &mut deno_pinned_buf) {
   todo!()
 }
-pub fn deno_execute(
+pub unsafe fn deno_execute(
   i: *const isolate,
   user_data: *const c_void,
   js_filename: *const c_char,
@@ -281,18 +282,18 @@ pub fn deno_execute(
   todo!()
 }
 
-pub fn deno_terminate_execution(i: *const isolate) {
+pub unsafe fn deno_terminate_execution(i: *const isolate) {
   todo!()
 }
 
 #[allow(dead_code)]
-pub fn deno_run_microtasks(i: *const isolate, user_data: *const c_void) {
+pub unsafe fn deno_run_microtasks(i: *const isolate, user_data: *const c_void) {
   todo!()
 }
 
 // Modules
 
-pub fn deno_mod_new(
+pub unsafe fn deno_mod_new(
   i: *const isolate,
   main: bool,
   name: *const c_char,
@@ -301,11 +302,11 @@ pub fn deno_mod_new(
   todo!()
 }
 
-pub fn deno_mod_imports_len(i: *const isolate, id: deno_mod) -> size_t {
+pub unsafe fn deno_mod_imports_len(i: *const isolate, id: deno_mod) -> size_t {
   todo!()
 }
 
-pub fn deno_mod_imports_get(
+pub unsafe fn deno_mod_imports_get(
   i: *const isolate,
   id: deno_mod,
   index: size_t,
@@ -313,7 +314,7 @@ pub fn deno_mod_imports_get(
   todo!()
 }
 
-pub fn deno_mod_instantiate(
+pub unsafe fn deno_mod_instantiate(
   i: *const isolate,
   user_data: *const c_void,
   id: deno_mod,
@@ -322,7 +323,7 @@ pub fn deno_mod_instantiate(
   todo!()
 }
 
-pub fn deno_mod_evaluate(
+pub unsafe fn deno_mod_evaluate(
   i: *const isolate,
   user_data: *const c_void,
   id: deno_mod,
@@ -331,7 +332,7 @@ pub fn deno_mod_evaluate(
 }
 
 /// Call exactly once for every deno_dyn_import_cb.
-pub fn deno_dyn_import_done(
+pub unsafe fn deno_dyn_import_done(
   i: *const isolate,
   user_data: *const c_void,
   id: deno_dyn_import_id,
@@ -341,11 +342,11 @@ pub fn deno_dyn_import_done(
   todo!()
 }
 
-pub fn deno_snapshot_new(i: *const isolate) -> Snapshot1<'static> {
+pub unsafe fn deno_snapshot_new(i: *const isolate) -> Snapshot1<'static> {
   todo!()
 }
 
 #[allow(dead_code)]
-pub fn deno_snapshot_delete(s: &mut deno_snapshot) {
+pub unsafe fn deno_snapshot_delete(s: &mut deno_snapshot) {
   todo!()
 }
