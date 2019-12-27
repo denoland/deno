@@ -250,7 +250,86 @@ pub fn deno_init() {
 pub unsafe fn deno_set_v8_flags(argc: *mut c_int, argv: *mut *mut c_char) {
   todo!()
 }
-pub unsafe fn deno_new(config: deno_config) -> *const isolate {
+
+lazy_static! {
+  static ref EXTERNAL_REFERENCES: v8::ExternalReferences =
+    v8::ExternalReferences::new(&[]);
+}
+
+fn deno_new_snapshotter(config: deno_config) -> *const isolate {
+  assert_eq!(config.will_snapshot, 0);
+  // TODO(ry) Support loading snapshots before snapshotting.
+  assert!(config.load_snapshot.data_ptr.is_null());
+  let mut snapshot_creator =
+    v8::SnapshotCreator::new(Some(&EXTERNAL_REFERENCES));
+  let isolate = snapshot_creator.get_isolate();
+  let mut locker = v8::Locker::new(&isolate);
+  {
+    let mut hs = v8::HandleScope::new(&mut locker);
+    let scope = hs.enter();
+    let mut context = v8::Context::new(scope);
+    context.enter();
+  }
+
+  /*
+    auto* creator = new v8::SnapshotCreator(deno::external_references);
+    auto* isolate = creator->GetIsolate();
+    auto* d = new deno::DenoIsolate(config);
+    d->snapshot_creator_ = creator;
+    d->AddIsolate(isolate);
+    {
+      v8::Locker locker(isolate);
+      v8::Isolate::Scope isolate_scope(isolate);
+      v8::HandleScope handle_scope(isolate);
+      auto context = v8::Context::New(isolate);
+      d->context_.Reset(isolate, context);
+
+      creator->SetDefaultContext(context,
+                                 v8::SerializeInternalFieldsCallback(
+                                     deno::SerializeInternalFields, nullptr));
+      deno::InitializeContext(isolate, context);
+    }
+    return reinterpret_cast<Deno*>(d);
+  */
+  todo!()
+}
+
+pub fn deno_new(config: deno_config) -> *const isolate {
+  if config.will_snapshot != 0 {
+    return deno_new_snapshotter(config);
+  }
+  /*
+  deno::DenoIsolate* d = new deno::DenoIsolate(config);
+  v8::Isolate::CreateParams params;
+  params.array_buffer_allocator = &deno::ArrayBufferAllocator::global();
+  params.external_references = deno::external_references;
+
+  if (config.load_snapshot.data_ptr) {
+    params.snapshot_blob = &d->snapshot_;
+  }
+
+  v8::Isolate* isolate = v8::Isolate::New(params);
+  d->AddIsolate(isolate);
+
+  v8::Locker locker(isolate);
+  v8::Isolate::Scope isolate_scope(isolate);
+  {
+    v8::HandleScope handle_scope(isolate);
+    auto context =
+        v8::Context::New(isolate, nullptr, v8::MaybeLocal<v8::ObjectTemplate>(),
+                         v8::MaybeLocal<v8::Value>(),
+                         v8::DeserializeInternalFieldsCallback(
+                             deno::DeserializeInternalFields, nullptr));
+    if (!config.load_snapshot.data_ptr) {
+      // If no snapshot is provided, we initialize the context with empty
+      // main source code and source maps.
+      deno::InitializeContext(isolate, context);
+    }
+    d->context_.Reset(isolate, context);
+  }
+
+  return reinterpret_cast<Deno*>(d);
+     */
   todo!()
 }
 pub unsafe fn deno_delete(i: *const isolate) {

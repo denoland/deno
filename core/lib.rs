@@ -6,6 +6,8 @@ extern crate libc;
 #[macro_use]
 extern crate downcast_rs;
 extern crate rusty_v8;
+#[macro_use]
+extern crate lazy_static;
 
 mod any_error;
 mod flags;

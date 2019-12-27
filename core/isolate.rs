@@ -234,7 +234,7 @@ impl Isolate {
       StartupData::None => {}
     };
 
-    let libdeno_isolate = unsafe { libdeno::deno_new(libdeno_config) };
+    let libdeno_isolate = libdeno::deno_new(libdeno_config);
 
     Self {
       libdeno_isolate,
