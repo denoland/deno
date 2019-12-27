@@ -94,6 +94,7 @@ export function writeSync(rid: number, p: Uint8Array): number {
   if (result < 0) {
     throw new Error("write error");
   } else {
+    flushSync(rid);
     return result;
   }
 }
@@ -113,6 +114,7 @@ export async function write(rid: number, p: Uint8Array): Promise<number> {
   if (result < 0) {
     throw new Error("write error");
   } else {
+    await flush(rid);
     return result;
   }
 }
@@ -190,14 +192,6 @@ export class File
 
   close(): void {
     close(this.rid);
-  }
-
-  flush(): Promise<void> {
-    return flush(this.rid);
-  }
-
-  flushSync(): void {
-    flushSync(this.rid);
   }
 }
 
