@@ -1,3 +1,3 @@
 const { stdout } = Deno;
 
-stdout.write(new TextEncoder().encode("a"));
+stdout.writeSync(new TextEncoder().encode("a"));

@@ -1,3 +1,3 @@
 const { stderr } = Deno;
 
-stderr.write(new TextEncoder().encode("x"));
+stderr.writeSync(new TextEncoder().encode("x"));
