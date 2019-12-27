@@ -48,14 +48,6 @@ lazy_static! {
 
     stdout
   };
-
-  static ref STDIN_HANDLE: std::fs::File = {
-    unsafe { std::fs::File::from_raw_fd(0) }
-  };
-  static ref STDERR_HANDLE: std::fs::File = {
-    unsafe { std::fs::File::from_raw_fd(2) }
-  };
-
 }
 
 pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
@@ -74,32 +66,22 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
 }
 
 pub fn get_stdio() -> (StreamResource, StreamResource, StreamResource) {
-  let stdin = StreamResource::Stdin({
-    let stdin = STDIN_HANDLE
-      .try_clone()
-      .expect("Unable to clone stdin handle");
-    tokio::fs::File::from_std(stdin)
-  });
+  let stdin = StreamResource::Stdin(tokio::io::stdin());
   let stdout = StreamResource::Stdout({
     let stdout = STDOUT_HANDLE
       .try_clone()
       .expect("Unable to clone stdout handle");
     tokio::fs::File::from_std(stdout)
   });
-  let stderr = StreamResource::Stderr({
-    let stderr = STDERR_HANDLE
-      .try_clone()
-      .expect("Unable to clone stderr handle");
-    tokio::fs::File::from_std(stderr)
-  });
+  let stderr = StreamResource::Stderr(tokio::io::stderr());
 
   (stdin, stdout, stderr)
 }
 
 pub enum StreamResource {
-  Stdin(tokio::fs::File),
+  Stdin(tokio::io::Stdin),
   Stdout(tokio::fs::File),
-  Stderr(tokio::fs::File),
+  Stderr(tokio::io::Stderr),
   FsFile(tokio::fs::File),
   TcpStream(tokio::net::TcpStream),
   ServerTlsStream(Box<ServerTlsStream<TcpStream>>),
