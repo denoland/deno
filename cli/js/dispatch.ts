@@ -6,6 +6,7 @@ import { AsyncHandler } from "./plugins.ts";
 // These consts are shared with Rust. Update with care.
 export let OP_READ: number;
 export let OP_WRITE: number;
+export let OP_FLUSH: number;
 export let OP_EXIT: number;
 export let OP_IS_TTY: number;
 export let OP_ENV: number;
@@ -83,6 +84,7 @@ export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
   switch (opId) {
     case OP_WRITE:
     case OP_READ:
+    case OP_FLUSH:
       minimal.asyncMsgFromRust(opId, ui8);
       break;
     case OP_GET_DIR:

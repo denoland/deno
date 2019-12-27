@@ -391,6 +391,8 @@ declare namespace Deno {
     seek(offset: number, whence: SeekMode): Promise<void>;
     seekSync(offset: number, whence: SeekMode): void;
     close(): void;
+    flush(): Promise<void>;
+    flushSync(): void;
   }
   /** An instance of `File` for stdin. */
   export const stdin: File;

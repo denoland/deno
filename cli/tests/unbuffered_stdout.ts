@@ -1,3 +1,4 @@
 const { stdout } = Deno;
 
-stdout.writeSync(new TextEncoder().encode("a"));
+await stdout.write(new TextEncoder().encode("a"));
+await stdout.flush();

@@ -117,6 +117,14 @@ export async function write(rid: number, p: Uint8Array): Promise<number> {
   }
 }
 
+export function flushSync(rid: number): void {
+  sendSyncMinimal(dispatch.OP_FLUSH, rid, new Uint8Array());
+}
+
+export async function flush(rid: number): Promise<void> {
+  await sendAsyncMinimal(dispatch.OP_FLUSH, rid, new Uint8Array());
+}
+
 /** Seek a file ID synchronously to the given offset under mode given by `whence`.
  *
  *       const file = Deno.openSync("/foo/bar.txt");
@@ -182,6 +190,14 @@ export class File
 
   close(): void {
     close(this.rid);
+  }
+
+  flush(): Promise<void> {
+    return flush(this.rid);
+  }
+
+  flushSync(): void {
+    flushSync(this.rid);
   }
 }
 

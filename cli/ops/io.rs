@@ -67,6 +67,10 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
     "write",
     s.core_op(minimal_op(s.stateful_minimal_op(op_write))),
   );
+  i.register_op(
+    "flush",
+    s.core_op(minimal_op(s.stateful_minimal_op(op_flush))),
+  );
 }
 
 pub fn get_stdio() -> (StreamResource, StreamResource, StreamResource) {
@@ -244,6 +248,11 @@ pub trait DenoAsyncWrite {
     self: Pin<&mut Self>,
     cx: &mut Context,
   ) -> Poll<Result<(), ErrBox>>;
+
+  fn poll_flush(
+    self: Pin<&mut Self>,
+    cx: &mut Context,
+  ) -> Poll<Result<(), ErrBox>>;
 }
 
 impl DenoAsyncWrite for StreamResource {
@@ -271,6 +280,33 @@ impl DenoAsyncWrite for StreamResource {
     match r {
       Poll::Ready(Err(e)) => Poll::Ready(Err(ErrBox::from(e))),
       Poll::Ready(Ok(v)) => Poll::Ready(Ok(v)),
+      Poll::Pending => Poll::Pending,
+    }
+  }
+
+  fn poll_flush(
+    self: Pin<&mut Self>,
+    cx: &mut Context,
+  ) -> Poll<Result<(), ErrBox>> {
+    let inner = self.get_mut();
+    let mut f: Box<dyn AsyncWrite + Unpin> = match inner {
+      StreamResource::FsFile(f) => Box::new(f),
+      StreamResource::Stdout(f) => Box::new(f),
+      StreamResource::Stderr(f) => Box::new(f),
+      StreamResource::TcpStream(f) => Box::new(f),
+      StreamResource::ClientTlsStream(f) => Box::new(f),
+      StreamResource::ServerTlsStream(f) => Box::new(f),
+      StreamResource::ChildStdin(f) => Box::new(f),
+      _ => {
+        return Poll::Ready(Err(bad_resource()));
+      }
+    };
+
+    let r = AsyncWrite::poll_flush(Pin::new(&mut f), cx);
+
+    match r {
+      Poll::Ready(Err(e)) => Poll::Ready(Err(ErrBox::from(e))),
+      Poll::Ready(Ok(_)) => Poll::Ready(Ok(())),
       Poll::Pending => Poll::Pending,
     }
   }
@@ -355,5 +391,60 @@ pub fn op_write(
 
   let fut = write(state, rid as u32, zero_copy);
 
+  fut.boxed()
+}
+
+/// A future used to write some data to a stream.
+pub struct Flush {
+  rid: ResourceId,
+  io_state: IoState,
+  state: ThreadSafeState,
+}
+
+/// Creates a future that will write some of the buffer `buf` to
+/// the stream resource with `rid`.
+///
+/// Any error which happens during writing will cause both the stream and the
+/// buffer to get destroyed.
+pub fn flush(state: &ThreadSafeState, rid: ResourceId) -> Flush {
+  Flush {
+    rid,
+    io_state: IoState::Pending,
+    state: state.clone(),
+  }
+}
+
+/// This is almost the same implementation as in tokio, difference is
+/// that error type is `ErrBox` instead of `std::io::Error`.
+impl Future for Flush {
+  type Output = Result<i32, ErrBox>;
+
+  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+    let inner = self.get_mut();
+    if inner.io_state == IoState::Done {
+      panic!("poll a Flush after it's done");
+    }
+
+    let mut table = inner.state.lock_resource_table();
+    let resource = table
+      .get_mut::<StreamResource>(inner.rid)
+      .ok_or_else(bad_resource)?;
+    match DenoAsyncWrite::poll_flush(Pin::new(resource), cx) {
+      Poll::Ready(Ok(v)) => v,
+      Poll::Ready(Err(err)) => return Poll::Ready(Err(err)),
+      Poll::Pending => return Poll::Pending,
+    };
+    inner.io_state = IoState::Done;
+    Poll::Ready(Ok(0 as i32))
+  }
+}
+
+pub fn op_flush(
+  state: &ThreadSafeState,
+  rid: i32,
+  _zero_copy: Option<PinnedBuf>,
+) -> Pin<Box<MinimalOp>> {
+  debug!("flush rid={}", rid);
+  let fut = flush(state, rid as u32);
   fut.boxed()
 }
