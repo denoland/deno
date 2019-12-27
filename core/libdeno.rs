@@ -1,6 +1,8 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 #![allow(unused)]
 
+use rusty_v8 as v8;
+
 use libc::c_char;
 use libc::c_int;
 use libc::c_void;
@@ -229,12 +231,22 @@ pub struct deno_config<'a> {
   pub dyn_import_cb: deno_dyn_import_cb,
 }
 
-pub unsafe fn deno_init() {
-  todo!()
+pub fn deno_init() {
+  let platform = v8::platform::new_default_platform();
+  v8::V8::initialize_platform(platform);
+  v8::V8::initialize();
+  // TODO(ry) This makes WASM compile synchronously. Eventually we should
+  // remove this to make it work asynchronously too. But that requires getting
+  // PumpMessageLoop and RunMicrotasks setup correctly.
+  // See https://github.com/denoland/deno/issues/2544
+  let argv = vec![
+    "".to_string(),
+    "--no-wasm-async-compilation".to_string(),
+    "--harmony-top-level-await".to_string(),
+  ];
+  v8::V8::set_flags_from_command_line(argv);
 }
-pub unsafe fn deno_v8_version() -> *const c_char {
-  todo!()
-}
+
 pub unsafe fn deno_set_v8_flags(argc: *mut c_int, argv: *mut *mut c_char) {
   todo!()
 }
