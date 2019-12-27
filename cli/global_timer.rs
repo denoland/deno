@@ -43,8 +43,7 @@ impl GlobalTimer {
     let (tx, rx) = oneshot::channel();
     self.tx = Some(tx);
 
-    let tokio_deadline = tokio::time::Instant::from_std(deadline);
-    let delay = tokio::time::delay_until(tokio_deadline);
+    let delay = tokio::time::delay_until(deadline.into());
     let rx = rx
       .map_err(|err| panic!("Unexpected error in receiving channel {:?}", err));
 

@@ -1,6 +1,4 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use futures;
-use futures::future::FutureExt;
 use std::future::Future;
 use tokio;
 use tokio::runtime;
@@ -15,7 +13,7 @@ where
     .thread_name("deno")
     .build()
     .expect("Unable to create Tokio runtime");
-  rt.block_on(future.boxed()).unwrap();
+  rt.block_on(future).unwrap();
 }
 
 pub fn run_on_current_thread<F>(future: F)
@@ -28,5 +26,5 @@ where
     .thread_name("deno")
     .build()
     .expect("Unable to create Tokio runtime");
-  rt.block_on(future.boxed()).unwrap();
+  rt.block_on(future).unwrap();
 }

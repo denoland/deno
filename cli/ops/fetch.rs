@@ -7,7 +7,6 @@ use crate::ops::json_op;
 use crate::state::ThreadSafeState;
 use deno::*;
 use futures::future::FutureExt;
-use futures::future::TryFutureExt;
 use futures::StreamExt;
 use http::header::HeaderName;
 use http::header::HeaderValue;
@@ -59,7 +58,7 @@ pub fn op_fetch(
   let state_ = state.clone();
 
   let future = async move {
-    let res = request.send().map_err(ErrBox::from).await?;
+    let res = request.send().await?;
     debug!("Fetch response {}", url);
     let status = res.status();
     let mut res_headers = Vec::new();

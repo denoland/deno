@@ -43,8 +43,7 @@ fn clone_file(
     StreamResource::FsFile(ref mut file) => file,
     _ => return Err(bad_resource()),
   };
-  let tokio_file =
-    futures::executor::block_on(file.try_clone()).map_err(ErrBox::from)?;
+  let tokio_file = futures::executor::block_on(file.try_clone())?;
   let std_file = futures::executor::block_on(tokio_file.into_std());
   Ok(std_file)
 }
@@ -131,7 +130,7 @@ fn op_run(
   c.kill_on_drop(true);
 
   // Spawn the command.
-  let mut child = c.spawn().map_err(ErrBox::from)?;
+  let mut child = c.spawn()?;
   let pid = child.id();
 
   let mut table = state_.lock_resource_table();

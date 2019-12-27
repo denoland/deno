@@ -4,7 +4,6 @@ use crate::deno_error::DenoError;
 use crate::version;
 use deno::ErrBox;
 use futures::future::FutureExt;
-use futures::future::TryFutureExt;
 use reqwest;
 use reqwest::header::HeaderMap;
 use reqwest::header::CONTENT_TYPE;
@@ -77,7 +76,7 @@ pub fn fetch_string_once(
   let client = get_client();
 
   let fut = async move {
-    let response = client.get(url.clone()).send().map_err(ErrBox::from).await?;
+    let response = client.get(url.clone()).send().await?;
 
     if response.status().is_redirection() {
       let location_string = response
@@ -107,7 +106,7 @@ pub fn fetch_string_once(
       .get(CONTENT_TYPE)
       .map(|content_type| content_type.to_str().unwrap().to_owned());
 
-    let body = response.text().map_err(ErrBox::from).await?;
+    let body = response.text().await?;
     return Ok(FetchOnceResult::Code(body, content_type));
   };
 

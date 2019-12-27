@@ -9,7 +9,6 @@ use crate::ops::json_op;
 use crate::state::ThreadSafeState;
 use deno::*;
 use futures::future::FutureExt;
-use futures::future::TryFutureExt;
 use std;
 use std::convert::From;
 use std::io::SeekFrom;
@@ -90,7 +89,7 @@ fn op_open(
   let is_sync = args.promise_id.is_none();
 
   let fut = async move {
-    let fs_file = open_options.open(filename).map_err(ErrBox::from).await?;
+    let fs_file = open_options.open(filename).await?;
     let mut table = state_.lock_resource_table();
     let rid = table.add("fsFile", Box::new(StreamResource::FsFile(fs_file)));
     Ok(json!(rid))

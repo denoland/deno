@@ -422,7 +422,7 @@ mod tests {
         r.unwrap();
       };
 
-      tokio::spawn(fut.boxed());
+      tokio::spawn(fut);
 
       let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
 
