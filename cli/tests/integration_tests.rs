@@ -637,13 +637,11 @@ itest!(unbuffered_stderr {
   args: "run --reload unbuffered_stderr.ts",
   check_stderr: true,
   output: "unbuffered_stderr.ts.out",
-  strace: true,
 });
 
 itest!(unbuffered_stdout {
   args: "run --reload unbuffered_stdout.ts",
   output: "unbuffered_stdout.ts.out",
-  strace: true,
 });
 
 itest!(v8_flags {
@@ -706,13 +704,6 @@ mod util {
     c
   }
 
-  pub fn deno_cmd_strace() -> Command {
-    let mut c = Command::new("strace");
-    c.env("DENO_DIR", DENO_DIR.path());
-    c.arg(deno_exe_path());
-    c
-  }
-
   pub fn run_python_script(script: &str) {
     let output = Command::new("python")
       .env("DENO_DIR", DENO_DIR.path())
@@ -740,7 +731,6 @@ mod util {
     pub exit_code: i32,
     pub check_stderr: bool,
     pub http_server: bool,
-    pub strace: bool,
   }
 
   impl CheckOutputIntegrationTest {
@@ -759,11 +749,7 @@ mod util {
 
       let (mut reader, writer) = pipe().unwrap();
       let tests_dir = root.join("cli").join("tests");
-      let mut command = if cfg!(target_os = "linux") && self.strace {
-        deno_cmd_strace()
-      } else {
-        deno_cmd()
-      };
+      let mut command = deno_cmd();
       command.args(args);
       command.current_dir(&tests_dir);
       command.stdin(Stdio::piped());
