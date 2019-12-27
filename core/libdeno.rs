@@ -228,62 +228,68 @@ pub struct deno_config<'a> {
   pub dyn_import_cb: deno_dyn_import_cb,
 }
 
-#[cfg(not(windows))]
-#[link(name = "deno")]
-extern "C" {}
-
-#[cfg(any(target_os = "macos", target_os = "freebsd"))]
-#[link(name = "c++")]
-extern "C" {}
-
-#[cfg(windows)]
-#[link(name = "libdeno")]
-extern "C" {}
-
-#[cfg(windows)]
-#[link(name = "shlwapi")]
-extern "C" {}
-
-#[cfg(windows)]
-#[link(name = "winmm")]
-extern "C" {}
-
-#[cfg(windows)]
-#[link(name = "ws2_32")]
-extern "C" {}
-
-#[cfg(windows)]
-#[link(name = "dbghelp")]
-extern "C" {}
-
 extern "C" {
-  pub fn deno_init();
-  pub fn deno_v8_version() -> *const c_char;
-  pub fn deno_set_v8_flags(argc: *mut c_int, argv: *mut *mut c_char);
-  pub fn deno_new(config: deno_config) -> *const isolate;
-  pub fn deno_delete(i: *const isolate);
-  pub fn deno_last_exception(i: *const isolate) -> *const c_char;
-  pub fn deno_clear_last_exception(i: *const isolate);
-  pub fn deno_check_promise_errors(i: *const isolate);
-  pub fn deno_lock(i: *const isolate);
-  pub fn deno_unlock(i: *const isolate);
-  pub fn deno_throw_exception(i: *const isolate, text: *const c_char);
+  pub fn deno_init() {
+    todo!()
+  }
+  pub fn deno_v8_version() -> *const c_char {
+    todo!()
+  }
+  pub fn deno_set_v8_flags(argc: *mut c_int, argv: *mut *mut c_char) {
+    todo!()
+  }
+  pub fn deno_new(config: deno_config) -> *const isolate {
+    todo!()
+  }
+  pub fn deno_delete(i: *const isolate) {
+    todo!()
+  }
+  pub fn deno_last_exception(i: *const isolate) -> *const c_char {
+    todo!()
+  }
+  pub fn deno_clear_last_exception(i: *const isolate) {
+    todo!()
+  }
+  pub fn deno_check_promise_errors(i: *const isolate) {
+    todo!()
+  }
+  pub fn deno_lock(i: *const isolate) {
+    todo!()
+  }
+  pub fn deno_unlock(i: *const isolate) {
+    todo!()
+  }
+  pub fn deno_throw_exception(i: *const isolate, text: *const c_char) {
+    todo!()
+  }
   pub fn deno_respond(
     i: *const isolate,
     user_data: *const c_void,
     op_id: OpId,
     buf: deno_buf,
-  );
-  pub fn deno_pinned_buf_delete(buf: &mut deno_pinned_buf);
+  ) {
+    todo!()
+  }
+  pub fn deno_pinned_buf_delete(buf: &mut deno_pinned_buf) {
+    todo!()
+  }
   pub fn deno_execute(
     i: *const isolate,
     user_data: *const c_void,
     js_filename: *const c_char,
     js_source: *const c_char,
-  );
-  pub fn deno_terminate_execution(i: *const isolate);
+  ) {
+    todo!()
+  }
+
+  pub fn deno_terminate_execution(i: *const isolate) {
+    todo!()
+  }
+
   #[allow(dead_code)]
-  pub fn deno_run_microtasks(i: *const isolate, user_data: *const c_void);
+  pub fn deno_run_microtasks(i: *const isolate, user_data: *const c_void) {
+    todo!()
+  }
 
   // Modules
 
@@ -292,28 +298,38 @@ extern "C" {
     main: bool,
     name: *const c_char,
     source: *const c_char,
-  ) -> deno_mod;
+  ) -> deno_mod {
+    todo!()
+  }
 
-  pub fn deno_mod_imports_len(i: *const isolate, id: deno_mod) -> size_t;
+  pub fn deno_mod_imports_len(i: *const isolate, id: deno_mod) -> size_t {
+    todo!()
+  }
 
   pub fn deno_mod_imports_get(
     i: *const isolate,
     id: deno_mod,
     index: size_t,
-  ) -> *const c_char;
+  ) -> *const c_char {
+    todo!()
+  }
 
   pub fn deno_mod_instantiate(
     i: *const isolate,
     user_data: *const c_void,
     id: deno_mod,
     resolve_cb: deno_resolve_cb,
-  );
+  ) {
+    todo!()
+  }
 
   pub fn deno_mod_evaluate(
     i: *const isolate,
     user_data: *const c_void,
     id: deno_mod,
-  );
+  ) {
+    todo!()
+  }
 
   /// Call exactly once for every deno_dyn_import_cb.
   pub fn deno_dyn_import_done(
@@ -322,10 +338,16 @@ extern "C" {
     id: deno_dyn_import_id,
     mod_id: deno_mod,
     error_str: *const c_char,
-  );
+  ) {
+    todo!()
+  }
 
-  pub fn deno_snapshot_new(i: *const isolate) -> Snapshot1<'static>;
+  pub fn deno_snapshot_new(i: *const isolate) -> Snapshot1<'static> {
+    todo!()
+  }
 
   #[allow(dead_code)]
-  pub fn deno_snapshot_delete(s: &mut deno_snapshot);
+  pub fn deno_snapshot_delete(s: &mut deno_snapshot) {
+    todo!()
+  }
 }
