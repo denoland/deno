@@ -50,6 +50,9 @@ export async function open(
  *
  */
 export function readSync(rid: number, p: Uint8Array): number | EOF {
+  if (p.length == 0) {
+    return 0;
+  }
   const nread = sendSyncMinimal(dispatch.OP_READ, rid, p);
   if (nread < 0) {
     throw new Error("read error");
@@ -70,6 +73,9 @@ export function readSync(rid: number, p: Uint8Array): number | EOF {
  *       const text = new TextDecoder().decode(buf);
  */
 export async function read(rid: number, p: Uint8Array): Promise<number | EOF> {
+  if (p.length == 0) {
+    return 0;
+  }
   const nread = await sendAsyncMinimal(dispatch.OP_READ, rid, p);
   if (nread < 0) {
     throw new Error("read error");
