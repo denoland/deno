@@ -61,7 +61,7 @@ fn op_apply_source_map(
   );
 
   Ok(JsonOp::Sync(json!({
-    "filename": orig_filename.to_string(),
+    "filename": orig_filename,
     "line": orig_line as u32,
     "column": orig_column as u32,
   })))

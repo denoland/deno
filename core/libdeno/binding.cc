@@ -175,7 +175,7 @@ v8::Local<v8::Uint8Array> ImportBuf(DenoIsolate* d, deno_buf buf) {
   if (buf.data_len > GLOBAL_IMPORT_BUF_SIZE) {
     // Simple case. We allocate a new ArrayBuffer for this.
     ab = v8::ArrayBuffer::New(d->isolate_, buf.data_len);
-    data = ab->GetContents().Data();
+    data = ab->GetBackingStore()->Data();
   } else {
     // Fast case. We reuse the global ArrayBuffer.
     if (d->global_import_buf_.IsEmpty()) {
@@ -183,7 +183,7 @@ v8::Local<v8::Uint8Array> ImportBuf(DenoIsolate* d, deno_buf buf) {
       DCHECK_NULL(d->global_import_buf_ptr_);
       ab = v8::ArrayBuffer::New(d->isolate_, GLOBAL_IMPORT_BUF_SIZE);
       d->global_import_buf_.Reset(d->isolate_, ab);
-      d->global_import_buf_ptr_ = ab->GetContents().Data();
+      d->global_import_buf_ptr_ = ab->GetBackingStore()->Data();
     } else {
       DCHECK(d->global_import_buf_ptr_);
       ab = d->global_import_buf_.Get(d->isolate_);
@@ -233,7 +233,7 @@ void Send(const v8::FunctionCallbackInfo<v8::Value>& args) {
   if (args[1]->IsArrayBufferView()) {
     auto view = v8::Local<v8::ArrayBufferView>::Cast(args[1]);
     auto data =
-        reinterpret_cast<uint8_t*>(view->Buffer()->GetContents().Data());
+        reinterpret_cast<uint8_t*>(view->Buffer()->GetBackingStore()->Data());
     control = {data + view->ByteOffset(), view->ByteLength()};
   }
 

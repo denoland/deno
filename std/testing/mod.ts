@@ -1,5 +1,12 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
+export * from "./asserts.ts";
+export * from "./bench.ts";
+import diff from "./diff.ts";
+export { diff };
+export * from "./format.ts";
+export * from "./runner.ts";
+
 import {
   bgRed,
   white,
@@ -10,6 +17,7 @@ import {
   yellow,
   italic
 } from "../fmt/colors.ts";
+import { assert } from "./asserts.ts";
 export type TestFunction = () => void | Promise<void>;
 
 export interface TestDefinition {
@@ -121,14 +129,28 @@ export function test(
       throw new Error("Missing test function");
     }
     name = t;
-  } else {
-    fn = typeof t === "function" ? t : t.fn;
+    if (!name) {
+      throw new Error("The name of test case can't be empty");
+    }
+  } else if (typeof t === "function") {
+    fn = t;
     name = t.name;
+    if (!name) {
+      throw new Error("Test function can't be anonymous");
+    }
+  } else {
+    fn = t.fn;
+    if (!fn) {
+      throw new Error("Missing test function");
+    }
+    name = t.name;
+    if (!name) {
+      throw new Error("The name of test case can't be empty");
+    }
   }
+  assert(!!name, "The name of test case shouldn't be empty");
+  assert(!!fn, "Test function shouldn't be empty");
 
-  if (!name) {
-    throw new Error("Test function may not be anonymous");
-  }
   if (filter(name)) {
     candidates.push({ fn, name });
   } else {
@@ -203,14 +225,12 @@ function report(result: TestResult): void {
 }
 
 function printFailedSummary(results: TestResults): void {
-  results.cases.forEach(
-    (v): void => {
-      if (!v.ok) {
-        console.error(`${RED_BG_FAIL} ${red(v.name)}`);
-        console.error(v.error);
-      }
+  results.cases.forEach((v): void => {
+    if (!v.ok) {
+      console.error(`${RED_BG_FAIL} ${red(v.name)}`);
+      console.error(v.error);
     }
-  );
+  });
 }
 
 function printResults(
@@ -321,14 +341,12 @@ async function runTestsSerial(
       print(
         GREEN_OK + "     " + name + " " + promptTestTime(end - start, true)
       );
-      results.cases.forEach(
-        (v): void => {
-          if (v.name === name) {
-            v.ok = true;
-            v.printed = true;
-          }
+      results.cases.forEach((v): void => {
+        if (v.name === name) {
+          v.ok = true;
+          v.printed = true;
         }
-      );
+      });
     } catch (err) {
       if (disableLog) {
         print(CLEAR_LINE, false);
@@ -336,15 +354,13 @@ async function runTestsSerial(
       print(`${RED_FAILED} ${name}`);
       print(err.stack);
       stats.failed++;
-      results.cases.forEach(
-        (v): void => {
-          if (v.name === name) {
-            v.error = err;
-            v.ok = false;
-            v.printed = true;
-          }
+      results.cases.forEach((v): void => {
+        if (v.name === name) {
+          v.error = err;
+          v.ok = false;
+          v.printed = true;
         }
-      );
+      });
       if (exitOnFail) {
         break;
       }

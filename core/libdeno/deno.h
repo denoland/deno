@@ -117,7 +117,13 @@ void deno_pinned_buf_delete(deno_pinned_buf* buf);
 
 void deno_check_promise_errors(Deno* d);
 
+// Returns a cstring pointer to the exception.
+// Rust side must NOT assert ownership.
 const char* deno_last_exception(Deno* d);
+
+// Clears last exception.
+// Rust side must NOT hold pointer to exception string when called.
+void deno_clear_last_exception(Deno* d_);
 
 void deno_terminate_execution(Deno* d);
 

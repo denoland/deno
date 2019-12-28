@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import * as minimal from "./dispatch_minimal.ts";
 import * as json from "./dispatch_json.ts";
+import { AsyncHandler } from "./plugins.ts";
 
 // These consts are shared with Rust. Update with care.
 export let OP_READ: number;
@@ -12,7 +13,7 @@ export let OP_EXEC_PATH: number;
 export let OP_UTIME: number;
 export let OP_SET_ENV: number;
 export let OP_GET_ENV: number;
-export let OP_HOME_DIR: number;
+export let OP_GET_DIR: number;
 export let OP_START: number;
 export let OP_APPLY_SOURCE_MAP: number;
 export let OP_FORMAT_ERROR: number;
@@ -38,6 +39,7 @@ export let OP_GLOBAL_TIMER: number;
 export let OP_NOW: number;
 export let OP_QUERY_PERMISSION: number;
 export let OP_REVOKE_PERMISSION: number;
+export let OP_REQUEST_PERMISSION: number;
 export let OP_CREATE_WORKER: number;
 export let OP_HOST_GET_WORKER_CLOSED: number;
 export let OP_HOST_POST_MESSAGE: number;
@@ -54,6 +56,7 @@ export let OP_CHOWN: number;
 export let OP_REMOVE: number;
 export let OP_COPY_FILE: number;
 export let OP_STAT: number;
+export let OP_REALPATH: number;
 export let OP_READ_DIR: number;
 export let OP_RENAME: number;
 export let OP_LINK: number;
@@ -65,6 +68,16 @@ export let OP_CWD: number;
 export let OP_FETCH_ASSET: number;
 export let OP_DIAL_TLS: number;
 export let OP_HOSTNAME: number;
+export let OP_OPEN_PLUGIN: number;
+
+const PLUGIN_ASYNC_HANDLER_MAP: Map<number, AsyncHandler> = new Map();
+
+export function setPluginAsyncHandler(
+  opId: number,
+  handler: AsyncHandler
+): void {
+  PLUGIN_ASYNC_HANDLER_MAP.set(opId, handler);
+}
 
 export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
   switch (opId) {
@@ -72,6 +85,7 @@ export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
     case OP_READ:
       minimal.asyncMsgFromRust(opId, ui8);
       break;
+    case OP_GET_DIR:
     case OP_EXIT:
     case OP_IS_TTY:
     case OP_ENV:
@@ -96,6 +110,7 @@ export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
     case OP_REMOVE:
     case OP_COPY_FILE:
     case OP_STAT:
+    case OP_REALPATH:
     case OP_READ_DIR:
     case OP_RENAME:
     case OP_LINK:
@@ -108,6 +123,11 @@ export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
       json.asyncMsgFromRust(opId, ui8);
       break;
     default:
-      throw Error("bad async opId");
+      const handler = PLUGIN_ASYNC_HANDLER_MAP.get(opId);
+      if (handler) {
+        handler(ui8);
+      } else {
+        throw Error("bad async opId");
+      }
   }
 }

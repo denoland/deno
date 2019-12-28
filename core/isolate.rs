@@ -19,20 +19,28 @@ use crate::libdeno::Snapshot2;
 use crate::ops::*;
 use crate::shared_queue::SharedQueue;
 use crate::shared_queue::RECOMMENDED_SIZE;
+use futures::future::FutureExt;
+use futures::future::TryFutureExt;
 use futures::stream::FuturesUnordered;
+use futures::stream::IntoStream;
 use futures::stream::Stream;
+use futures::stream::StreamExt;
 use futures::stream::StreamFuture;
-use futures::task;
-use futures::Async::*;
-use futures::Future;
-use futures::Poll;
+use futures::stream::TryStream;
+use futures::stream::TryStreamExt;
+use futures::task::AtomicWaker;
 use libc::c_char;
 use libc::c_void;
+use libc::strdup;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::fmt;
+use std::future::Future;
+use std::pin::Pin;
 use std::ptr::null;
 use std::sync::{Arc, Mutex, Once};
+use std::task::Context;
+use std::task::Poll;
 
 /// Stores a script used to initalize a Isolate
 pub struct Script<'a> {
@@ -59,7 +67,7 @@ pub enum RecursiveLoadEvent {
   Instantiate(deno_mod),
 }
 
-pub trait ImportStream: Stream {
+pub trait ImportStream: TryStream {
   fn register(
     &mut self,
     source_code_info: SourceCodeInfo,
@@ -67,8 +75,14 @@ pub trait ImportStream: Stream {
   ) -> Result<(), ErrBox>;
 }
 
-type DynImportStream =
-  Box<dyn ImportStream<Item = RecursiveLoadEvent, Error = ErrBox> + Send>;
+type DynImportStream = Box<
+  dyn ImportStream<
+      Ok = RecursiveLoadEvent,
+      Error = ErrBox,
+      Item = Result<RecursiveLoadEvent, ErrBox>,
+    > + Send
+    + Unpin,
+>;
 
 type DynImportFn = dyn Fn(deno_dyn_import_id, &str, &str) -> DynImportStream;
 
@@ -87,15 +101,23 @@ impl fmt::Debug for DynImportStream {
 }
 
 impl Stream for DynImport {
-  type Item = (deno_dyn_import_id, RecursiveLoadEvent);
-  type Error = (deno_dyn_import_id, ErrBox);
+  type Item = Result<
+    (deno_dyn_import_id, RecursiveLoadEvent),
+    (deno_dyn_import_id, ErrBox),
+  >;
 
-  fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
-    match self.inner.poll() {
-      Ok(Ready(Some(event))) => Ok(Ready(Some((self.id, event)))),
-      Ok(Ready(None)) => unreachable!(),
-      Err(e) => Err((self.id, e)),
-      Ok(NotReady) => Ok(NotReady),
+  fn poll_next(
+    self: Pin<&mut Self>,
+    cx: &mut Context,
+  ) -> Poll<Option<Self::Item>> {
+    let self_inner = self.get_mut();
+    match self_inner.inner.try_poll_next_unpin(cx) {
+      Poll::Ready(Some(Ok(event))) => {
+        Poll::Ready(Some(Ok((self_inner.id, event))))
+      }
+      Poll::Ready(None) => unreachable!(),
+      Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err((self_inner.id, e)))),
+      Poll::Pending => Poll::Pending,
     }
   }
 }
@@ -137,6 +159,7 @@ pub enum StartupData<'a> {
 }
 
 type JSErrorCreateFn = dyn Fn(V8Exception) -> ErrBox;
+type IsolateErrorHandleFn = dyn FnMut(ErrBox) -> Result<(), ErrBox>;
 
 /// A single execution context of JavaScript. Corresponds roughly to the "Web
 /// Worker" concept in the DOM. An Isolate is a Future that can be used with
@@ -154,11 +177,12 @@ pub struct Isolate {
   needs_init: bool,
   shared: SharedQueue,
   pending_ops: FuturesUnordered<PendingOpFuture>,
-  pending_dyn_imports: FuturesUnordered<StreamFuture<DynImport>>,
+  pending_dyn_imports: FuturesUnordered<StreamFuture<IntoStream<DynImport>>>,
   have_unpolled_ops: bool,
   startup_script: Option<OwnedScript>,
-  op_registry: OpRegistry,
-  eager_poll_count: u32,
+  pub op_registry: Arc<OpRegistry>,
+  waker: AtomicWaker,
+  error_handler: Option<Box<IsolateErrorHandleFn>>,
 }
 
 unsafe impl Send for Isolate {}
@@ -223,9 +247,14 @@ impl Isolate {
       have_unpolled_ops: false,
       pending_dyn_imports: FuturesUnordered::new(),
       startup_script,
-      op_registry: OpRegistry::new(),
-      eager_poll_count: 0,
+      op_registry: Arc::new(OpRegistry::new()),
+      waker: AtomicWaker::new(),
+      error_handler: None,
     }
+  }
+
+  pub fn set_error_handler(&mut self, handler: Box<IsolateErrorHandleFn>) {
+    self.error_handler = Some(handler);
   }
 
   /// Defines the how Deno.core.dispatch() acts.
@@ -233,7 +262,7 @@ impl Isolate {
   /// corresponds to the second argument of Deno.core.dispatch().
   ///
   /// Requires runtime to explicitly ask for op ids before using any of the ops.
-  pub fn register_op<F>(&mut self, name: &str, op: F) -> OpId
+  pub fn register_op<F>(&self, name: &str, op: F) -> OpId
   where
     F: Fn(&[u8], Option<PinnedBuf>) -> CoreOp + Send + Sync + 'static,
   {
@@ -296,8 +325,10 @@ impl Isolate {
     if let Some(ref f) = isolate.dyn_import {
       let inner = f(id, specifier, referrer);
       let stream = DynImport { inner, id };
-      task::current().notify();
-      isolate.pending_dyn_imports.push(stream.into_future());
+      isolate.waker.wake();
+      isolate
+        .pending_dyn_imports
+        .push(stream.into_stream().into_future());
     } else {
       panic!("dyn_import callback not set")
     }
@@ -324,28 +355,6 @@ impl Isolate {
       }
     };
 
-    // To avoid latency problems we eagerly poll 50 futures and then
-    // allow to poll ops from `pending_ops`
-    let op = if isolate.eager_poll_count != 50 {
-      isolate.eager_poll_count += 1;
-      match op {
-        Op::Async(mut fut) => {
-          // Tries to eagerly poll async ops once. Often they are immediately ready, in
-          // which case they can be turned into a sync op before we return to V8. This
-          // can save a boundary crossing.
-          #[allow(clippy::match_wild_err_arm)]
-          match fut.poll() {
-            Err(_) => panic!("unexpected op error"),
-            Ok(Ready(buf)) => Op::Sync(buf),
-            Ok(NotReady) => Op::Async(fut),
-          }
-        }
-        Op::Sync(buf) => Op::Sync(buf),
-      }
-    } else {
-      op
-    };
-
     debug_assert_eq!(isolate.shared.size(), 0);
     match op {
       Op::Sync(buf) => {
@@ -359,8 +368,8 @@ impl Isolate {
           .expect("unexpected error");
       }
       Op::Async(fut) => {
-        let fut2 = fut.map(move |buf| (op_id, buf));
-        isolate.pending_ops.push(Box::new(fut2));
+        let fut2 = fut.map_ok(move |buf| (op_id, buf));
+        isolate.pending_ops.push(fut2.boxed());
         isolate.have_unpolled_ops = true;
       }
     }
@@ -401,17 +410,30 @@ impl Isolate {
     self.check_last_exception()
   }
 
-  fn check_last_exception(&self) -> Result<(), ErrBox> {
+  fn check_last_exception(&mut self) -> Result<(), ErrBox> {
     let ptr = unsafe { libdeno::deno_last_exception(self.libdeno_isolate) };
     if ptr.is_null() {
       Ok(())
     } else {
       let js_error_create = &*self.js_error_create;
       let cstr = unsafe { CStr::from_ptr(ptr) };
-      let json_str = cstr.to_str().unwrap();
-      let v8_exception = V8Exception::from_json(json_str).unwrap();
-      let js_error = js_error_create(v8_exception);
-      Err(js_error)
+      if self.error_handler.is_some() {
+        // We duplicate the string and assert ownership.
+        // This is due to we want the user to safely clone the error.
+        let cstring = unsafe { CString::from_raw(strdup(ptr)) };
+        // We need to clear last exception to avoid double handling.
+        unsafe { libdeno::deno_clear_last_exception(self.libdeno_isolate) };
+        let json_string = cstring.into_string().unwrap();
+        let v8_exception = V8Exception::from_json(&json_string).unwrap();
+        let js_error = js_error_create(v8_exception);
+        let handler = self.error_handler.as_mut().unwrap();
+        handler(js_error)
+      } else {
+        let json_str = cstr.to_str().unwrap();
+        let v8_exception = V8Exception::from_json(json_str).unwrap();
+        let js_error = js_error_create(v8_exception);
+        Err(js_error)
+      }
     }
   }
 
@@ -444,7 +466,7 @@ impl Isolate {
 
   /// Low-level module creation.
   pub fn mod_new(
-    &self,
+    &mut self,
     main: bool,
     name: &str,
     source: &str,
@@ -483,7 +505,7 @@ impl Isolate {
   /// ErrBox can be downcast to a type that exposes additional information about
   /// the V8 exception. By default this type is CoreJSError, however it may be a
   /// different type if Isolate::set_js_error_create() has been used.
-  pub fn snapshot(&self) -> Result<Snapshot1<'static>, ErrBox> {
+  pub fn snapshot(&mut self) -> Result<Snapshot1<'static>, ErrBox> {
     let snapshot = unsafe { libdeno::deno_snapshot_new(self.libdeno_isolate) };
     match self.check_last_exception() {
       Ok(..) => Ok(snapshot),
@@ -496,7 +518,7 @@ impl Isolate {
   }
 
   fn dyn_import_done(
-    &self,
+    &mut self,
     id: libdeno::deno_dyn_import_id,
     result: Result<deno_mod, Option<String>>,
   ) -> Result<(), ErrBox> {
@@ -522,42 +544,45 @@ impl Isolate {
     self.check_last_exception()
   }
 
-  fn poll_dyn_imports(&mut self) -> Poll<(), ErrBox> {
+  fn poll_dyn_imports(&mut self, cx: &mut Context) -> Poll<Result<(), ErrBox>> {
     use RecursiveLoadEvent::*;
     loop {
-      match self.pending_dyn_imports.poll() {
-        Ok(NotReady) | Ok(Ready(None)) => {
+      match self.pending_dyn_imports.poll_next_unpin(cx) {
+        Poll::Pending | Poll::Ready(None) => {
           // There are no active dynamic import loaders, or none are ready.
-          return Ok(futures::Async::Ready(()));
+          return Poll::Ready(Ok(()));
         }
-        Ok(Ready(Some((
-          Some((dyn_import_id, Fetch(source_code_info))),
+        Poll::Ready(Some((
+          Some(Ok((dyn_import_id, Fetch(source_code_info)))),
           mut stream,
-        )))) => {
+        ))) => {
           // A module (not necessarily the one dynamically imported) has been
           // fetched. Create and register it, and if successful, poll for the
           // next recursive-load event related to this dynamic import.
-          match stream.register(source_code_info, self) {
+          match stream.get_mut().register(source_code_info, self) {
             Ok(()) => self.pending_dyn_imports.push(stream.into_future()),
             Err(err) => {
               self.dyn_import_done(dyn_import_id, Err(Some(err.to_string())))?
             }
           }
         }
-        Ok(Ready(Some((Some((dyn_import_id, Instantiate(module_id))), _)))) => {
+        Poll::Ready(Some((
+          Some(Ok((dyn_import_id, Instantiate(module_id)))),
+          _,
+        ))) => {
           // The top-level module from a dynamic import has been instantiated.
           match self.mod_evaluate(module_id) {
             Ok(()) => self.dyn_import_done(dyn_import_id, Ok(module_id))?,
             Err(..) => self.dyn_import_done(dyn_import_id, Err(None))?,
           }
         }
-        Err(((dyn_import_id, err), _)) => {
+        Poll::Ready(Some((Some(Err((dyn_import_id, err))), _))) => {
           // A non-javascript error occurred; this could be due to a an invalid
           // module specifier, or a problem with the source map, or a failure
           // to fetch the module source code.
           self.dyn_import_done(dyn_import_id, Err(Some(err.to_string())))?
         }
-        Ok(Ready(Some((None, _)))) => unreachable!(),
+        Poll::Ready(Some((None, _))) => unreachable!(),
       }
     }
   }
@@ -654,30 +679,33 @@ impl Drop for LockerScope {
 }
 
 impl Future for Isolate {
-  type Item = ();
-  type Error = ErrBox;
+  type Output = Result<(), ErrBox>;
 
-  fn poll(&mut self) -> Poll<(), ErrBox> {
-    self.shared_init();
+  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+    let inner = self.get_mut();
+
+    inner.waker.register(cx.waker());
+
+    inner.shared_init();
 
     let mut overflow_response: Option<(OpId, Buf)> = None;
 
     loop {
       // If there are any pending dyn_import futures, do those first.
-      if !self.pending_dyn_imports.is_empty() {
-        self.poll_dyn_imports()?;
+      if !inner.pending_dyn_imports.is_empty() {
+        let poll_imports = inner.poll_dyn_imports(cx)?;
+        assert!(poll_imports.is_ready());
       }
 
       // Now handle actual ops.
-      self.have_unpolled_ops = false;
-      self.eager_poll_count = 0;
+      inner.have_unpolled_ops = false;
       #[allow(clippy::match_wild_err_arm)]
-      match self.pending_ops.poll() {
-        Err(_) => panic!("unexpected op error"),
-        Ok(Ready(None)) => break,
-        Ok(NotReady) => break,
-        Ok(Ready(Some((op_id, buf)))) => {
-          let successful_push = self.shared.push(op_id, &buf);
+      match inner.pending_ops.poll_next_unpin(cx) {
+        Poll::Ready(Some(Err(_))) => panic!("unexpected op error"),
+        Poll::Ready(None) => break,
+        Poll::Pending => break,
+        Poll::Ready(Some(Ok((op_id, buf)))) => {
+          let successful_push = inner.shared.push(op_id, &buf);
           if !successful_push {
             // If we couldn't push the response to the shared queue, because
             // there wasn't enough size, we will return the buffer via the
@@ -689,34 +717,34 @@ impl Future for Isolate {
       }
     }
 
-    if self.shared.size() > 0 {
+    if inner.shared.size() > 0 {
       // Lock the current thread for V8.
-      let locker = LockerScope::new(self.libdeno_isolate);
-      self.respond(None)?;
+      let locker = LockerScope::new(inner.libdeno_isolate);
+      inner.respond(None)?;
       // The other side should have shifted off all the messages.
-      assert_eq!(self.shared.size(), 0);
+      assert_eq!(inner.shared.size(), 0);
       drop(locker);
     }
 
     if overflow_response.is_some() {
       // Lock the current thread for V8.
-      let locker = LockerScope::new(self.libdeno_isolate);
+      let locker = LockerScope::new(inner.libdeno_isolate);
       let (op_id, buf) = overflow_response.take().unwrap();
-      self.respond(Some((op_id, &buf)))?;
+      inner.respond(Some((op_id, &buf)))?;
       drop(locker);
     }
 
-    self.check_promise_errors();
-    self.check_last_exception()?;
+    inner.check_promise_errors();
+    inner.check_last_exception()?;
 
     // We're idle if pending_ops is empty.
-    if self.pending_ops.is_empty() && self.pending_dyn_imports.is_empty() {
-      Ok(futures::Async::Ready(()))
+    if inner.pending_ops.is_empty() && inner.pending_dyn_imports.is_empty() {
+      Poll::Ready(Ok(()))
     } else {
-      if self.have_unpolled_ops {
-        task::current().notify();
+      if inner.have_unpolled_ops {
+        inner.waker.wake();
       }
-      Ok(futures::Async::NotReady)
+      Poll::Pending
     }
   }
 }
@@ -752,33 +780,27 @@ pub fn js_check<T>(r: Result<T, ErrBox>) -> T {
 #[cfg(test)]
 pub mod tests {
   use super::*;
-  use futures::executor::spawn;
   use futures::future::lazy;
-  use futures::future::ok;
-  use futures::Async;
   use std::io;
   use std::ops::FnOnce;
   use std::sync::atomic::{AtomicUsize, Ordering};
 
-  pub fn run_in_task<F, R>(f: F) -> R
+  pub fn run_in_task<F>(f: F)
   where
-    F: FnOnce() -> R,
+    F: FnOnce(&mut Context) + Send + 'static,
   {
-    spawn(lazy(move || ok::<R, ()>(f()))).wait_future().unwrap()
+    futures::executor::block_on(lazy(move |cx| f(cx)));
   }
 
-  fn poll_until_ready<F>(
-    future: &mut F,
-    max_poll_count: usize,
-  ) -> Result<F::Item, F::Error>
+  fn poll_until_ready<F>(future: &mut F, max_poll_count: usize) -> F::Output
   where
-    F: Future,
+    F: Future + Unpin,
   {
+    let mut cx = Context::from_waker(futures::task::noop_waker_ref());
     for _ in 0..max_poll_count {
-      match future.poll() {
-        Ok(NotReady) => continue,
-        Ok(Ready(val)) => return Ok(val),
-        Err(err) => return Err(err),
+      match future.poll_unpin(&mut cx) {
+        Poll::Pending => continue,
+        Poll::Ready(val) => return val,
       }
     }
     panic!(
@@ -787,34 +809,8 @@ pub mod tests {
     )
   }
 
-  struct DelayedFuture {
-    counter: u32,
-    buf: Box<[u8]>,
-  }
-
-  impl DelayedFuture {
-    pub fn new(buf: Box<[u8]>) -> Self {
-      DelayedFuture { counter: 0, buf }
-    }
-  }
-
-  impl Future for DelayedFuture {
-    type Item = Box<[u8]>;
-    type Error = ();
-
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-      if self.counter > 0 {
-        return Ok(Async::Ready(self.buf.clone()));
-      }
-
-      self.counter += 1;
-      Ok(Async::NotReady)
-    }
-  }
-
   pub enum Mode {
-    AsyncImmediate,
-    AsyncDelayed,
+    Async,
     OverflowReqSync,
     OverflowResSync,
     OverflowReqAsync,
@@ -831,17 +827,11 @@ pub mod tests {
       move |control: &[u8], _zero_copy: Option<PinnedBuf>| -> CoreOp {
         dispatch_count_.fetch_add(1, Ordering::Relaxed);
         match mode {
-          Mode::AsyncImmediate => {
+          Mode::Async => {
             assert_eq!(control.len(), 1);
             assert_eq!(control[0], 42);
             let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
-            Op::Async(Box::new(futures::future::ok(buf)))
-          }
-          Mode::AsyncDelayed => {
-            assert_eq!(control.len(), 1);
-            assert_eq!(control[0], 42);
-            let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
-            Op::Async(Box::new(DelayedFuture::new(buf)))
+            Op::Async(futures::future::ok(buf).boxed())
           }
           Mode::OverflowReqSync => {
             assert_eq!(control.len(), 100 * 1024 * 1024);
@@ -860,7 +850,7 @@ pub mod tests {
           Mode::OverflowReqAsync => {
             assert_eq!(control.len(), 100 * 1024 * 1024);
             let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
-            Op::Async(Box::new(DelayedFuture::new(buf)))
+            Op::Async(futures::future::ok(buf).boxed())
           }
           Mode::OverflowResAsync => {
             assert_eq!(control.len(), 1);
@@ -869,7 +859,7 @@ pub mod tests {
             vec.resize(100 * 1024 * 1024, 0);
             vec[0] = 4;
             let buf = vec.into_boxed_slice();
-            Op::Async(Box::new(DelayedFuture::new(buf)))
+            Op::Async(futures::future::ok(buf).boxed())
           }
         }
       };
@@ -892,7 +882,7 @@ pub mod tests {
 
   #[test]
   fn test_dispatch() {
-    let (mut isolate, dispatch_count) = setup(Mode::AsyncImmediate);
+    let (mut isolate, dispatch_count) = setup(Mode::Async);
     js_check(isolate.execute(
       "filename.js",
       r#"
@@ -909,7 +899,7 @@ pub mod tests {
 
   #[test]
   fn test_mods() {
-    let (mut isolate, dispatch_count) = setup(Mode::AsyncImmediate);
+    let (mut isolate, dispatch_count) = setup(Mode::Async);
     let mod_a = isolate
       .mod_new(
         true,
@@ -956,53 +946,9 @@ pub mod tests {
   }
 
   #[test]
-  fn test_poll_async_immediate_ops() {
-    run_in_task(|| {
-      let (mut isolate, dispatch_count) = setup(Mode::AsyncImmediate);
-
-      js_check(isolate.execute(
-        "setup2.js",
-        r#"
-         let nrecv = 0;
-         Deno.core.setAsyncHandler((opId, buf) => {
-           nrecv++;
-         });
-         "#,
-      ));
-      assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
-      js_check(isolate.execute(
-        "check1.js",
-        r#"
-         assert(nrecv == 0);
-         let control = new Uint8Array([42]);
-         const res1 = Deno.core.send(1, control);
-         assert(res1);
-         assert(nrecv == 0);
-         "#,
-      ));
-      assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
-      assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
-      js_check(isolate.execute(
-        "check2.js",
-        r#"
-         assert(nrecv == 0);
-         Deno.core.send(1, control);
-         assert(nrecv == 0);
-         "#,
-      ));
-      assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
-      assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
-      assert_eq!(Async::Ready(()), isolate.poll().unwrap());
-      js_check(isolate.execute("check3.js", "assert(nrecv == 0)"));
-      // We are idle, so the next poll should be the last.
-      assert_eq!(Async::Ready(()), isolate.poll().unwrap());
-    });
-  }
-
-  #[test]
   fn test_poll_async_delayed_ops() {
-    run_in_task(|| {
-      let (mut isolate, dispatch_count) = setup(Mode::AsyncDelayed);
+    run_in_task(|cx| {
+      let (mut isolate, dispatch_count) = setup(Mode::Async);
 
       js_check(isolate.execute(
         "setup2.js",
@@ -1024,7 +970,10 @@ pub mod tests {
          "#,
       ));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
-      assert_eq!(Async::Ready(()), isolate.poll().unwrap());
+      assert!(match isolate.poll_unpin(cx) {
+        Poll::Ready(Ok(_)) => true,
+        _ => false,
+      });
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
       js_check(isolate.execute(
         "check2.js",
@@ -1035,26 +984,36 @@ pub mod tests {
          "#,
       ));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
-      assert_eq!(Async::Ready(()), isolate.poll().unwrap());
+      assert!(match isolate.poll_unpin(cx) {
+        Poll::Ready(Ok(_)) => true,
+        _ => false,
+      });
       js_check(isolate.execute("check3.js", "assert(nrecv == 2)"));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
       // We are idle, so the next poll should be the last.
-      assert_eq!(Async::Ready(()), isolate.poll().unwrap());
+      assert!(match isolate.poll_unpin(cx) {
+        Poll::Ready(Ok(_)) => true,
+        _ => false,
+      });
     });
   }
 
   struct MockImportStream(Vec<Result<RecursiveLoadEvent, ErrBox>>);
 
   impl Stream for MockImportStream {
-    type Item = RecursiveLoadEvent;
-    type Error = ErrBox;
-    fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
-      let event = if self.0.is_empty() {
+    type Item = Result<RecursiveLoadEvent, ErrBox>;
+
+    fn poll_next(
+      self: Pin<&mut Self>,
+      _cx: &mut Context,
+    ) -> Poll<Option<Self::Item>> {
+      let inner = self.get_mut();
+      let event = if inner.0.is_empty() {
         None
       } else {
-        Some(self.0.remove(0)?)
+        Some(inner.0.remove(0))
       };
-      Ok(Ready(event))
+      Poll::Ready(event)
     }
   }
 
@@ -1080,7 +1039,7 @@ pub mod tests {
   #[test]
   fn dyn_import_err() {
     // Test an erroneous dynamic import where the specified module isn't found.
-    run_in_task(|| {
+    run_in_task(|cx| {
       let count = Arc::new(AtomicUsize::new(0));
       let count_ = count.clone();
       let mut isolate = Isolate::new(StartupData::None, false);
@@ -1103,8 +1062,10 @@ pub mod tests {
       assert_eq!(count.load(Ordering::Relaxed), 1);
 
       // We should get an error here.
-      let result = isolate.poll();
-      assert!(result.is_err());
+      let result = isolate.poll_unpin(cx);
+      if let Poll::Ready(Ok(_)) = result {
+        unreachable!();
+      }
     })
   }
 
@@ -1113,7 +1074,7 @@ pub mod tests {
     use std::convert::TryInto;
     // Import multiple modules to demonstrate that after failed dynamic import
     // another dynamic import can still be run
-    run_in_task(|| {
+    run_in_task(|cx| {
       let count = Arc::new(AtomicUsize::new(0));
       let count_ = count.clone();
       let mut isolate = Isolate::new(StartupData::None, false);
@@ -1156,15 +1117,24 @@ pub mod tests {
 
       assert_eq!(count.load(Ordering::Relaxed), 3);
       // Now each poll should return error
-      assert!(isolate.poll().is_err());
-      assert!(isolate.poll().is_err());
-      assert!(isolate.poll().is_err());
+      assert!(match isolate.poll_unpin(cx) {
+        Poll::Ready(Err(_)) => true,
+        _ => false,
+      });
+      assert!(match isolate.poll_unpin(cx) {
+        Poll::Ready(Err(_)) => true,
+        _ => false,
+      });
+      assert!(match isolate.poll_unpin(cx) {
+        Poll::Ready(Err(_)) => true,
+        _ => false,
+      });
     })
   }
 
   #[test]
   fn dyn_import_ok() {
-    run_in_task(|| {
+    run_in_task(|cx| {
       let count = Arc::new(AtomicUsize::new(0));
       let count_ = count.clone();
 
@@ -1224,9 +1194,15 @@ pub mod tests {
       ));
 
       assert_eq!(count.load(Ordering::Relaxed), 1);
-      assert_eq!(Ready(()), isolate.poll().unwrap());
+      assert!(match isolate.poll_unpin(cx) {
+        Poll::Ready(Ok(_)) => true,
+        _ => false,
+      });
       assert_eq!(count.load(Ordering::Relaxed), 2);
-      assert_eq!(Ready(()), isolate.poll().unwrap());
+      assert!(match isolate.poll_unpin(cx) {
+        Poll::Ready(Ok(_)) => true,
+        _ => false,
+      });
       assert_eq!(count.load(Ordering::Relaxed), 2);
     })
   }
@@ -1236,7 +1212,7 @@ pub mod tests {
     let (tx, rx) = std::sync::mpsc::channel::<bool>();
     let tx_clone = tx.clone();
 
-    let (mut isolate, _dispatch_count) = setup(Mode::AsyncImmediate);
+    let (mut isolate, _dispatch_count) = setup(Mode::Async);
     let shared = isolate.shared_isolate_handle();
 
     let t1 = std::thread::spawn(move || {
@@ -1247,7 +1223,7 @@ pub mod tests {
       shared.terminate_execution();
 
       // allow shutdown
-      std::thread::sleep(std::time::Duration::from_millis(100));
+      std::thread::sleep(std::time::Duration::from_millis(200));
 
       // unless reported otherwise the test should fail after this point
       tx_clone.send(false).ok();
@@ -1293,7 +1269,7 @@ pub mod tests {
   fn dangling_shared_isolate() {
     let shared = {
       // isolate is dropped at the end of this block
-      let (mut isolate, _dispatch_count) = setup(Mode::AsyncImmediate);
+      let (mut isolate, _dispatch_count) = setup(Mode::Async);
       isolate.shared_isolate_handle()
     };
 
@@ -1345,7 +1321,7 @@ pub mod tests {
 
   #[test]
   fn overflow_req_async() {
-    run_in_task(|| {
+    run_in_task(|cx| {
       let (mut isolate, dispatch_count) = setup(Mode::OverflowReqAsync);
       js_check(isolate.execute(
         "overflow_req_async.js",
@@ -1366,14 +1342,17 @@ pub mod tests {
          "#,
       ));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
-      assert_eq!(Async::Ready(()), js_check(isolate.poll()));
+      assert!(match isolate.poll_unpin(cx) {
+        Poll::Ready(Ok(_)) => true,
+        _ => false,
+      });
       js_check(isolate.execute("check.js", "assert(asyncRecv == 1);"));
     });
   }
 
   #[test]
   fn overflow_res_async() {
-    run_in_task(|| {
+    run_in_task(|_cx| {
       // TODO(ry) This test is quite slow due to memcpy-ing 100MB into JS. We
       // should optimize this.
       let (mut isolate, dispatch_count) = setup(Mode::OverflowResAsync);
@@ -1404,7 +1383,7 @@ pub mod tests {
   fn overflow_res_multiple_dispatch_async() {
     // TODO(ry) This test is quite slow due to memcpy-ing 100MB into JS. We
     // should optimize this.
-    run_in_task(|| {
+    run_in_task(|_cx| {
       let (mut isolate, dispatch_count) = setup(Mode::OverflowResAsync);
       js_check(isolate.execute(
         "overflow_res_multiple_dispatch_async.js",
@@ -1434,7 +1413,7 @@ pub mod tests {
 
   #[test]
   fn test_pre_dispatch() {
-    run_in_task(|| {
+    run_in_task(|mut cx| {
       let (mut isolate, _dispatch_count) = setup(Mode::OverflowResAsync);
       js_check(isolate.execute(
         "bad_op_id.js",
@@ -1448,21 +1427,25 @@ pub mod tests {
           assert(thrown == "Unknown op id: 100");
          "#,
       ));
-      assert_eq!(Async::Ready(()), isolate.poll().unwrap());
+      if let Poll::Ready(Err(_)) = isolate.poll_unpin(&mut cx) {
+        unreachable!();
+      }
     });
   }
 
   #[test]
   fn test_js() {
-    run_in_task(|| {
-      let (mut isolate, _dispatch_count) = setup(Mode::AsyncImmediate);
+    run_in_task(|mut cx| {
+      let (mut isolate, _dispatch_count) = setup(Mode::Async);
       js_check(
         isolate.execute(
           "shared_queue_test.js",
           include_str!("shared_queue_test.js"),
         ),
       );
-      assert_eq!(Async::Ready(()), isolate.poll().unwrap());
+      if let Poll::Ready(Err(_)) = isolate.poll_unpin(&mut cx) {
+        unreachable!();
+      }
     });
   }
 

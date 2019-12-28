@@ -263,6 +263,7 @@ extern "C" {
   pub fn deno_new(config: deno_config) -> *const isolate;
   pub fn deno_delete(i: *const isolate);
   pub fn deno_last_exception(i: *const isolate) -> *const c_char;
+  pub fn deno_clear_last_exception(i: *const isolate);
   pub fn deno_check_promise_errors(i: *const isolate);
   pub fn deno_lock(i: *const isolate);
   pub fn deno_unlock(i: *const isolate);

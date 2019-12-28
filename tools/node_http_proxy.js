@@ -14,15 +14,9 @@ http
 
     const proxy = http.request(options, proxyRes => {
       res.writeHead(proxyRes.statusCode, proxyRes.headers);
-      proxyRes.pipe(
-        res,
-        { end: true }
-      );
+      proxyRes.pipe(res, { end: true });
     });
 
-    req.pipe(
-      proxy,
-      { end: true }
-    );
+    req.pipe(proxy, { end: true });
   })
   .listen(port);

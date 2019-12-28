@@ -11,7 +11,10 @@ test(function urlSearchParamsInitString(): void {
 });
 
 test(function urlSearchParamsInitIterable(): void {
-  const init = [["a", "54"], ["b", "true"]];
+  const init = [
+    ["a", "54"],
+    ["b", "true"]
+  ];
   const searchParams = new URLSearchParams(init);
   assertEquals(searchParams.toString(), "a=54&b=true");
 });
@@ -89,17 +92,18 @@ test(function urlSearchParamsSortSuccess(): void {
 });
 
 test(function urlSearchParamsForEachSuccess(): void {
-  const init = [["a", "54"], ["b", "true"]];
+  const init = [
+    ["a", "54"],
+    ["b", "true"]
+  ];
   const searchParams = new URLSearchParams(init);
   let callNum = 0;
-  searchParams.forEach(
-    (value, key, parent): void => {
-      assertEquals(searchParams, parent);
-      assertEquals(value, init[callNum][1]);
-      assertEquals(key, init[callNum][0]);
-      callNum++;
-    }
-  );
+  searchParams.forEach((value, key, parent): void => {
+    assertEquals(searchParams, parent);
+    assertEquals(value, init[callNum][1]);
+    assertEquals(key, init[callNum][0]);
+    callNum++;
+  });
   assertEquals(callNum, init.length);
 });
 
@@ -167,8 +171,9 @@ test(function urlSearchParamsAppendArgumentsCheck(): void {
 
   const methodRequireTwoParams = ["append", "set"];
 
-  methodRequireOneParam.concat(methodRequireTwoParams).forEach(
-    (method: string): void => {
+  methodRequireOneParam
+    .concat(methodRequireTwoParams)
+    .forEach((method: string): void => {
       const searchParams = new URLSearchParams();
       let hasThrown = 0;
       try {
@@ -182,26 +187,23 @@ test(function urlSearchParamsAppendArgumentsCheck(): void {
         }
       }
       assertEquals(hasThrown, 2);
-    }
-  );
+    });
 
-  methodRequireTwoParams.forEach(
-    (method: string): void => {
-      const searchParams = new URLSearchParams();
-      let hasThrown = 0;
-      try {
-        searchParams[method]("foo");
-        hasThrown = 1;
-      } catch (err) {
-        if (err instanceof TypeError) {
-          hasThrown = 2;
-        } else {
-          hasThrown = 3;
-        }
+  methodRequireTwoParams.forEach((method: string): void => {
+    const searchParams = new URLSearchParams();
+    let hasThrown = 0;
+    try {
+      searchParams[method]("foo");
+      hasThrown = 1;
+    } catch (err) {
+      if (err instanceof TypeError) {
+        hasThrown = 2;
+      } else {
+        hasThrown = 3;
       }
-      assertEquals(hasThrown, 2);
     }
-  );
+    assertEquals(hasThrown, 2);
+  });
 });
 
 // ref: https://github.com/web-platform-tests/wpt/blob/master/url/urlsearchparams-delete.any.js

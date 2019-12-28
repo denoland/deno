@@ -55,6 +55,47 @@ fn js_unit_tests() {
   drop(g);
 }
 
+#[test]
+fn bundle_exports() {
+  use tempfile::TempDir;
+
+  // First we have to generate a bundle of some module that has exports.
+  let mod1 = util::root_path().join("cli/tests/subdir/mod1.ts");
+  assert!(mod1.is_file());
+  let t = TempDir::new().expect("tempdir fail");
+  let bundle = t.path().join("mod1.bundle.js");
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("bundle")
+    .arg(mod1)
+    .arg(&bundle)
+    .spawn()
+    .expect("failed to spawn script");
+  let status = deno.wait().expect("failed to wait for the child process");
+  assert!(status.success());
+  assert!(bundle.is_file());
+
+  // Now we try to use that bundle from another module.
+  let test = t.path().join("test.js");
+  std::fs::write(
+    &test,
+    "
+      import { printHello3 } from \"./mod1.bundle.js\";
+      printHello3(); ",
+  )
+  .expect("error writing file");
+
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg(&test)
+    .output()
+    .expect("failed to spawn script");
+  // check the output of the test.ts program.
+  assert_eq!(std::str::from_utf8(&output.stdout).unwrap().trim(), "Hello");
+  assert_eq!(output.stderr, b"");
+}
+
 // TODO(#2933): Rewrite this test in rust.
 #[test]
 fn repl_test() {
@@ -127,17 +168,17 @@ itest!(_012_async {
 });
 
 itest!(_013_dynamic_import {
-  args: "013_dynamic_import.ts --reload --allow-read",
+  args: "run --reload --allow-read 013_dynamic_import.ts",
   output: "013_dynamic_import.ts.out",
 });
 
 itest!(_014_duplicate_import {
-  args: "014_duplicate_import.ts --reload --allow-read",
+  args: "run --reload --allow-read 014_duplicate_import.ts ",
   output: "014_duplicate_import.ts.out",
 });
 
 itest!(_015_duplicate_parallel_import {
-  args: "015_duplicate_parallel_import.js --reload --allow-read",
+  args: "run --reload --allow-read 015_duplicate_parallel_import.js",
   output: "015_duplicate_parallel_import.js.out",
 });
 
@@ -156,13 +197,11 @@ itest!(_018_async_catch {
   output: "018_async_catch.ts.out",
 });
 
-/* TODO(ry) Re-enable this test. It is flaky and only fails occasionally.
 itest!(_019_media_types {
   args: "run --reload 019_media_types.ts",
   output: "019_media_types.ts.out",
   http_server: true,
 });
-*/
 
 itest!(_020_json_modules {
   args: "run --reload 020_json_modules.ts",
@@ -257,10 +296,10 @@ itest!(_034_onload {
   output: "034_onload.out",
 });
 
-itest!(_035_no_fetch_flag {
+itest!(_035_cached_only_flag {
   args:
-    "--reload --no-fetch http://127.0.0.1:4545/cli/tests/019_media_types.ts",
-  output: "035_no_fetch_flag.out",
+    "--reload --cached-only http://127.0.0.1:4545/cli/tests/019_media_types.ts",
+  output: "035_cached_only_flag.out",
   exit_code: 1,
   check_stderr: true,
   http_server: true,
@@ -317,8 +356,6 @@ itest!(_044_bad_resource {
   exit_code: 1,
 });
 
-// TODO(kt3k): Temporarily skip this test because welcome.ts doesn't seem
-// working.
 /*
 itest!(_045_proxy {
   args: "run --allow-net --allow-env --allow-run --reload 045_proxy_test.ts",
@@ -337,13 +374,11 @@ itest!(_047_jsx {
   output: "047_jsx_test.jsx.out",
 });
 
-/* TODO(ry) Re-enable this test. It is flaky and only fails occasionally.
 itest!(_048_media_types_jsx {
   args: "run  --reload 048_media_types_jsx.ts",
   output: "048_media_types_jsx.ts.out",
   http_server: true,
 });
-*/
 
 itest!(_049_info_flag_script_jsx {
   args: "info http://127.0.0.1:4545/cli/tests/048_media_types_jsx.ts",
@@ -354,6 +389,21 @@ itest!(_049_info_flag_script_jsx {
 itest!(_050_more_jsons {
   args: "run --reload 050_more_jsons.ts",
   output: "050_more_jsons.ts.out",
+});
+
+itest!(_051_wasm_import {
+  args: "run --reload --allow-net --allow-read 051_wasm_import.ts",
+  output: "051_wasm_import.ts.out",
+  http_server: true,
+});
+
+itest!(_052_no_remote_flag {
+  args:
+    "--reload --no-remote http://127.0.0.1:4545/cli/tests/019_media_types.ts",
+  output: "052_no_remote_flag.out",
+  exit_code: 1,
+  check_stderr: true,
+  http_server: true,
 });
 
 itest!(lock_check_ok {
@@ -377,7 +427,7 @@ itest!(lock_check_err {
 });
 
 itest!(lock_check_err2 {
-  args: "run 019_media_types.ts --lock=lock_check_err2.json",
+  args: "run --lock=lock_check_err2.json 019_media_types.ts",
   output: "lock_check_err2.out",
   check_stderr: true,
   exit_code: 10,
@@ -389,6 +439,11 @@ itest!(async_error {
   args: "run --reload async_error.ts",
   check_stderr: true,
   output: "async_error.ts.out",
+});
+
+itest!(bundle {
+  args: "bundle subdir/mod1.ts",
+  output: "bundle.test.out",
 });
 
 itest!(circular1 {
@@ -492,7 +547,7 @@ itest!(error_013_missing_script {
 });
 
 itest!(error_014_catch_dynamic_import_error {
-  args: "error_014_catch_dynamic_import_error.js --reload --allow-read",
+  args: "run  --reload --allow-read error_014_catch_dynamic_import_error.js",
   output: "error_014_catch_dynamic_import_error.js.out",
   exit_code: 1,
 });
@@ -595,23 +650,8 @@ itest!(v8_flags {
 });
 
 itest!(v8_help {
-  args: "--v8-options",
+  args: "run --v8-flags=--help",
   output: "v8_help.out",
-});
-
-itest!(version {
-  args: "version",
-  output: "version.out",
-});
-
-itest!(version_long_flag {
-  args: "--version",
-  output: "version.out",
-});
-
-itest!(version_short_flag {
-  args: "-v",
-  output: "version.out",
 });
 
 itest!(wasm {

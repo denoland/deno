@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "0.23.0"
+version = "0.27.0"
 edition = "2018"
 description = "A secure JavaScript/TypeScript runtime built with V8, Rust, and Tokio"
 authors = ["the Deno authors"]
@@ -14,12 +14,12 @@ repository = "https://github.com/denoland/deno"
 path = "lib.rs"
 
 [dependencies]
-downcast-rs = "1.1.0"
-futures = "0.1.29"
+downcast-rs = "1.1.1"
+futures = { version = "0.3", features = [ "thread-pool", "compat" ] }
 lazy_static = "1.4.0"
-libc = "0.2.62"
+libc = "0.2.65"
 log = "0.4.8"
-serde_json = "1.0.40"
+serde_json = "1.0.41"
 url = "1.7.2"
 
 [[example]]
@@ -28,4 +28,5 @@ path = "examples/http_bench.rs"
 
 # tokio is only used for deno_core_http_bench
 [dev_dependencies]
-tokio = "0.1.18"
+tokio = { version = "0.2", features = ["full"] }
+num_cpus = "1.11.1"

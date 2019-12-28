@@ -1,7 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 
 // Public deno module.
-export { env, exit, isTTY, execPath, homeDir, hostname } from "./os.ts";
+export { dir, env, exit, isTTY, execPath, hostname } from "./os.ts";
 export { chdir, cwd } from "./dir.ts";
 export {
   File,
@@ -56,6 +56,7 @@ export { chownSync, chown } from "./chown.ts";
 export { utimeSync, utime } from "./utime.ts";
 export { removeSync, remove, RemoveOption } from "./remove.ts";
 export { renameSync, rename } from "./rename.ts";
+export { realpathSync, realpath } from "./realpath.ts";
 export { readFileSync, readFile } from "./read_file.ts";
 export { readDirSync, readDir } from "./read_dir.ts";
 export { copyFileSync, copyFile } from "./copy_file.ts";
@@ -75,6 +76,7 @@ export {
 } from "./permissions.ts";
 export { truncateSync, truncate } from "./truncate.ts";
 export { FileInfo } from "./file_info.ts";
+export { openPlugin } from "./plugins.ts";
 export { connect, dial, listen, Listener, Conn } from "./net.ts";
 export { dialTLS, listenTLS } from "./tls.ts";
 export { metrics, Metrics } from "./metrics.ts";
@@ -112,9 +114,3 @@ export let pid: number;
 
 /** Reflects the NO_COLOR environment variable: https://no-color.org/ */
 export let noColor: boolean;
-
-// TODO(ry) This should not be exposed to Deno.
-export function _setGlobals(pid_: number, noColor_: boolean): void {
-  pid = pid_;
-  noColor = noColor_;
-}

@@ -51,12 +51,10 @@ test(function testingAssertNotStrictEqual(): void {
 
 test(function testingDoesThrow(): void {
   let count = 0;
-  assertThrows(
-    (): void => {
-      count++;
-      throw new Error();
-    }
-  );
+  assertThrows((): void => {
+    count++;
+    throw new Error();
+  });
   assert(count === 1);
 });
 
@@ -64,12 +62,10 @@ test(function testingDoesNotThrow(): void {
   let count = 0;
   let didThrow = false;
   try {
-    assertThrows(
-      (): void => {
-        count++;
-        console.log("Hello world");
-      }
-    );
+    assertThrows((): void => {
+      count++;
+      console.log("Hello world");
+    });
   } catch (e) {
     assert(e.message === "Expected function to throw.");
     didThrow = true;
@@ -262,6 +258,36 @@ test(async function testingThrowsAsyncMsgNotIncludes(): Promise<void> {
 test("test fn overloading", (): void => {
   // just verifying that you can use this test definition syntax
   assert(true);
+});
+
+test("The name of test case can't be empty", () => {
+  assertThrows(
+    () => {
+      test("", () => {});
+    },
+    Error,
+    "The name of test case can't be empty"
+  );
+  assertThrows(
+    () => {
+      test({
+        name: "",
+        fn: () => {}
+      });
+    },
+    Error,
+    "The name of test case can't be empty"
+  );
+});
+
+test("test function can't be anonymous", () => {
+  assertThrows(
+    () => {
+      test(function() {});
+    },
+    Error,
+    "Test function can't be anonymous"
+  );
 });
 
 runIfMain(import.meta);

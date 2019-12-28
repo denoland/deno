@@ -52,9 +52,7 @@ for await (const req of serve(`:${port}`)) {
         }
       }
     )
-    .catch(
-      (err: Error): void => {
-        console.error(`failed to accept websocket: ${err}`);
-      }
-    );
+    .catch((err: Error): void => {
+      console.error(`failed to accept websocket: ${err}`);
+    });
 }

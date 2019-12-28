@@ -126,11 +126,12 @@ export function toIMF(date: Date): string {
   const min = dtPad(date.getUTCMinutes().toString());
   const s = dtPad(date.getUTCSeconds().toString());
   const y = date.getUTCFullYear();
-  const days = ["Sun", "Mon", "Tue", "Wed", "Thus", "Fri", "Sat"];
+  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const months = [
     "Jan",
     "Feb",
     "Mar",
+    "Apr",
     "May",
     "Jun",
     "Jul",

@@ -54,11 +54,134 @@ declare namespace Deno {
    *       console.log(myEnv.TEST_VAR == newEnv.TEST_VAR);
    */
   export function env(key: string): string | undefined;
+
+  export type DirKind =
+    | "home"
+    | "cache"
+    | "config"
+    | "executable"
+    | "data"
+    | "data_local"
+    | "audio"
+    | "desktop"
+    | "document"
+    | "download"
+    | "font"
+    | "picture"
+    | "public"
+    | "template"
+    | "video";
+
   /**
-   * Returns the current user's home directory.
+   * Returns the user and platform specific directories.
    * Requires the `--allow-env` flag.
+   * Returns null if there is no applicable directory or if any other error
+   * occurs.
+   *
+   * Argument values: "home", "cache", "config", "executable", "data",
+   * "data_local", "audio", "desktop", "document", "download", "font", "picture",
+   * "public", "template", "video"
+   *
+   * "cache"
+   * |Platform | Value                               | Example                      |
+   * | ------- | ----------------------------------- | ---------------------------- |
+   * | Linux   | `$XDG_CACHE_HOME` or `$HOME`/.cache | /home/alice/.cache           |
+   * | macOS   | `$HOME`/Library/Caches              | /Users/Alice/Library/Caches  |
+   * | Windows | `{FOLDERID_LocalAppData}`           | C:\Users\Alice\AppData\Local |
+   *
+   * "config"
+   * |Platform | Value                                 | Example                          |
+   * | ------- | ------------------------------------- | -------------------------------- |
+   * | Linux   | `$XDG_CONFIG_HOME` or `$HOME`/.config | /home/alice/.config              |
+   * | macOS   | `$HOME`/Library/Preferences           | /Users/Alice/Library/Preferences |
+   * | Windows | `{FOLDERID_RoamingAppData}`           | C:\Users\Alice\AppData\Roaming   |
+   *
+   * "executable"
+   * |Platform | Value                                                           | Example                |
+   * | ------- | --------------------------------------------------------------- | -----------------------|
+   * | Linux   | `XDG_BIN_HOME` or `$XDG_DATA_HOME`/../bin or `$HOME`/.local/bin | /home/alice/.local/bin |
+   * | macOS   | -                                                               | -                      |
+   * | Windows | -                                                               | -                      |
+   *
+   * "data"
+   * |Platform | Value                                    | Example                                  |
+   * | ------- | ---------------------------------------- | ---------------------------------------- |
+   * | Linux   | `$XDG_DATA_HOME` or `$HOME`/.local/share | /home/alice/.local/share                 |
+   * | macOS   | `$HOME`/Library/Application Support      | /Users/Alice/Library/Application Support |
+   * | Windows | `{FOLDERID_RoamingAppData}`              | C:\Users\Alice\AppData\Roaming           |
+   *
+   * "data_local"
+   * |Platform | Value                                    | Example                                  |
+   * | ------- | ---------------------------------------- | ---------------------------------------- |
+   * | Linux   | `$XDG_DATA_HOME` or `$HOME`/.local/share | /home/alice/.local/share                 |
+   * | macOS   | `$HOME`/Library/Application Support      | /Users/Alice/Library/Application Support |
+   * | Windows | `{FOLDERID_LocalAppData}`                | C:\Users\Alice\AppData\Local             |
+   *
+   * "audio"
+   * |Platform | Value              | Example              |
+   * | ------- | ------------------ | -------------------- |
+   * | Linux   | `XDG_MUSIC_DIR`    | /home/alice/Music    |
+   * | macOS   | `$HOME`/Music      | /Users/Alice/Music   |
+   * | Windows | `{FOLDERID_Music}` | C:\Users\Alice\Music |
+   *
+   * "desktop"
+   * |Platform | Value                | Example                |
+   * | ------- | -------------------- | ---------------------- |
+   * | Linux   | `XDG_DESKTOP_DIR`    | /home/alice/Desktop    |
+   * | macOS   | `$HOME`/Desktop      | /Users/Alice/Desktop   |
+   * | Windows | `{FOLDERID_Desktop}` | C:\Users\Alice\Desktop |
+   *
+   * "document"
+   * |Platform | Value                  | Example                  |
+   * | ------- | ---------------------- | ------------------------ |
+   * | Linux   | `XDG_DOCUMENTS_DIR`    | /home/alice/Documents    |
+   * | macOS   | `$HOME`/Documents      | /Users/Alice/Documents   |
+   * | Windows | `{FOLDERID_Documents}` | C:\Users\Alice\Documents |
+   *
+   * "download"
+   * |Platform | Value                  | Example                  |
+   * | ------- | ---------------------- | ------------------------ |
+   * | Linux   | `XDG_DOWNLOAD_DIR`     | /home/alice/Downloads    |
+   * | macOS   | `$HOME`/Downloads      | /Users/Alice/Downloads   |
+   * | Windows | `{FOLDERID_Downloads}` | C:\Users\Alice\Downloads |
+   *
+   * "font"
+   * |Platform | Value                                                | Example                        |
+   * | ------- | ---------------------------------------------------- | ------------------------------ |
+   * | Linux   | `$XDG_DATA_HOME`/fonts or `$HOME`/.local/share/fonts | /home/alice/.local/share/fonts |
+   * | macOS   | `$HOME/Library/Fonts`                                | /Users/Alice/Library/Fonts     |
+   * | Windows | –                                                    | –                              |
+   *
+   * "picture"
+   * |Platform | Value                 | Example                 |
+   * | ------- | --------------------- | ----------------------- |
+   * | Linux   | `XDG_PICTURES_DIR`    | /home/alice/Pictures    |
+   * | macOS   | `$HOME`/Pictures      | /Users/Alice/Pictures   |
+   * | Windows | `{FOLDERID_Pictures}` | C:\Users\Alice\Pictures |
+   *
+   * "public"
+   * |Platform | Value                 | Example             |
+   * | ------- | --------------------- | ------------------- |
+   * | Linux   | `XDG_PUBLICSHARE_DIR` | /home/alice/Public  |
+   * | macOS   | `$HOME`/Public        | /Users/Alice/Public |
+   * | Windows | `{FOLDERID_Public}`   | C:\Users\Public     |
+   *
+   * "template"
+   * |Platform | Value                  | Example                                                    |
+   * | ------- | ---------------------- | ---------------------------------------------------------- |
+   * | Linux   | `XDG_TEMPLATES_DIR`    | /home/alice/Templates                                      |
+   * | macOS   | –                      | –                                                          |
+   * | Windows | `{FOLDERID_Templates}` | C:\Users\Alice\AppData\Roaming\Microsoft\Windows\Templates |
+   *
+   * "video"
+   * |Platform | Value               | Example               |
+   * | ------- | ------------------- | --------------------- |
+   * | Linux   | `XDG_VIDEOS_DIR`    | /home/alice/Videos    |
+   * | macOS   | `$HOME`/Movies      | /Users/Alice/Movies   |
+   * | Windows | `{FOLDERID_Videos}` | C:\Users\Alice\Videos |
    */
-  export function homeDir(): string;
+  export function dir(kind: DirKind): string | null;
+
   /**
    * Returns the path to the current deno executable.
    * Requires the `--allow-env` flag.
@@ -605,6 +728,21 @@ declare namespace Deno {
     isSymlink(): boolean;
   }
 
+  // @url js/realpath.d.ts
+
+  /** Returns absolute normalized path with symbolic links resolved
+   * synchronously.
+   *
+   *       const realPath = Deno.realpathSync("./some/path");
+   */
+  export function realpathSync(path: string): string;
+
+  /** Returns absolute normalized path with symbolic links resolved.
+   *
+   *       const realPath = await Deno.realpath("./some/path");
+   */
+  export function realpath(path: string): Promise<string>;
+
   // @url js/read_dir.d.ts
 
   /** Reads the directory given by path and returns a list of file info
@@ -892,6 +1030,7 @@ declare namespace Deno {
     | "write"
     | "net"
     | "env"
+    | "plugin"
     | "hrtime";
   /** https://w3c.github.io/permissions/#status-of-a-permission */
   export type PermissionState = "granted" | "denied" | "prompt";
@@ -909,6 +1048,9 @@ declare namespace Deno {
   interface EnvPermissionDescriptor {
     name: "env";
   }
+  interface PluginPermissionDescriptor {
+    name: "plugin";
+  }
   interface HrtimePermissionDescriptor {
     name: "hrtime";
   }
@@ -918,6 +1060,7 @@ declare namespace Deno {
     | ReadWritePermissionDescriptor
     | NetPermissionDescriptor
     | EnvPermissionDescriptor
+    | PluginPermissionDescriptor
     | HrtimePermissionDescriptor;
 
   export class Permissions {
@@ -933,6 +1076,15 @@ declare namespace Deno {
      *       assert(status.state !== "granted")
      */
     revoke(d: PermissionDescriptor): Promise<PermissionStatus>;
+    /** Requests the permission.
+     *       const status = await Deno.permissions.request({ name: "env" });
+     *       if (status.state === "granted") {
+     *         console.log(Deno.homeDir());
+     *       } else {
+     *         console.log("'env' permission is denied.");
+     *       }
+     */
+    request(desc: PermissionDescriptor): Promise<PermissionStatus>;
   }
   export const permissions: Permissions;
 
@@ -957,6 +1109,36 @@ declare namespace Deno {
    *       await Deno.truncate("hello.txt", 10);
    */
   export function truncate(name: string, len?: number): Promise<void>;
+
+  // @url js/plugins.d.ts
+
+  export interface AsyncHandler {
+    (msg: Uint8Array): void;
+  }
+
+  export interface PluginOp {
+    dispatch(
+      control: Uint8Array,
+      zeroCopy?: ArrayBufferView | null
+    ): Uint8Array | null;
+    setAsyncHandler(handler: AsyncHandler): void;
+  }
+
+  export interface Plugin {
+    ops: {
+      [name: string]: PluginOp;
+    };
+  }
+
+  /** Open and initalize a plugin.
+   * Requires the `--allow-plugin` flag.
+   *
+   *        const plugin = Deno.openPlugin("./path/to/some/plugin.so");
+   *        const some_op = plugin.ops.some_op;
+   *        const response = some_op.dispatch(new Uint8Array([1,2,3,4]));
+   *        console.log(`Response from plugin ${response}`);
+   */
+  export function openPlugin(filename: string): Plugin;
 
   // @url js/net.d.ts
 
@@ -1302,117 +1484,117 @@ declare namespace Deno {
 
 declare interface Window {
   window: Window & typeof globalThis;
-  atob: typeof textEncoding.atob;
-  btoa: typeof textEncoding.btoa;
-  fetch: typeof fetchTypes.fetch;
-  clearTimeout: typeof timers.clearTimeout;
-  clearInterval: typeof timers.clearInterval;
-  console: consoleTypes.Console;
-  setTimeout: typeof timers.setTimeout;
-  setInterval: typeof timers.setInterval;
-  location: domTypes.Location;
+  atob: typeof __textEncoding.atob;
+  btoa: typeof __textEncoding.btoa;
+  fetch: typeof __fetch.fetch;
+  clearTimeout: typeof __timers.clearTimeout;
+  clearInterval: typeof __timers.clearInterval;
+  console: __console.Console;
+  setTimeout: typeof __timers.setTimeout;
+  setInterval: typeof __timers.setInterval;
+  location: __domTypes.Location;
   onload: Function | undefined;
   onunload: Function | undefined;
   crypto: Crypto;
-  Blob: typeof blob.DenoBlob;
-  File: domTypes.DomFileConstructor;
-  CustomEvent: typeof customEvent.CustomEvent;
-  Event: typeof event.Event;
-  EventTarget: typeof eventTarget.EventTarget;
-  URL: typeof url.URL;
-  URLSearchParams: typeof urlSearchParams.URLSearchParams;
-  Headers: domTypes.HeadersConstructor;
-  FormData: domTypes.FormDataConstructor;
-  TextEncoder: typeof textEncoding.TextEncoder;
-  TextDecoder: typeof textEncoding.TextDecoder;
-  Request: domTypes.RequestConstructor;
-  Response: typeof fetchTypes.Response;
-  performance: performanceUtil.Performance;
+  Blob: typeof __blob.DenoBlob;
+  File: __domTypes.DomFileConstructor;
+  CustomEvent: typeof __customEvent.CustomEvent;
+  Event: typeof __event.Event;
+  EventTarget: typeof __eventTarget.EventTarget;
+  URL: typeof __url.URL;
+  URLSearchParams: typeof __urlSearchParams.URLSearchParams;
+  Headers: __domTypes.HeadersConstructor;
+  FormData: __domTypes.FormDataConstructor;
+  TextEncoder: typeof __textEncoding.TextEncoder;
+  TextDecoder: typeof __textEncoding.TextDecoder;
+  Request: __domTypes.RequestConstructor;
+  Response: typeof __fetch.Response;
+  performance: __performanceUtil.Performance;
   onmessage: (e: { data: any }) => void;
-  workerMain: typeof workers.workerMain;
-  workerClose: typeof workers.workerClose;
-  postMessage: typeof workers.postMessage;
-  Worker: typeof workers.WorkerImpl;
+  workerMain: typeof __workers.workerMain;
+  workerClose: typeof __workers.workerClose;
+  postMessage: typeof __workers.postMessage;
+  Worker: typeof __workers.WorkerImpl;
   addEventListener: (
     type: string,
-    callback: (event: domTypes.Event) => void | null,
-    options?: boolean | domTypes.AddEventListenerOptions | undefined
+    callback: (event: __domTypes.Event) => void | null,
+    options?: boolean | __domTypes.AddEventListenerOptions | undefined
   ) => void;
-  dispatchEvent: (event: domTypes.Event) => boolean;
+  dispatchEvent: (event: __domTypes.Event) => boolean;
   removeEventListener: (
     type: string,
-    callback: (event: domTypes.Event) => void | null,
-    options?: boolean | domTypes.EventListenerOptions | undefined
+    callback: (event: __domTypes.Event) => void | null,
+    options?: boolean | __domTypes.EventListenerOptions | undefined
   ) => void;
   queueMicrotask: (task: () => void) => void;
   Deno: typeof Deno;
 }
 
 declare const window: Window & typeof globalThis;
-declare const atob: typeof textEncoding.atob;
-declare const btoa: typeof textEncoding.btoa;
-declare const fetch: typeof fetchTypes.fetch;
-declare const clearTimeout: typeof timers.clearTimeout;
-declare const clearInterval: typeof timers.clearInterval;
-declare const console: consoleTypes.Console;
-declare const setTimeout: typeof timers.setTimeout;
-declare const setInterval: typeof timers.setInterval;
-declare const location: domTypes.Location;
+declare const atob: typeof __textEncoding.atob;
+declare const btoa: typeof __textEncoding.btoa;
+declare const fetch: typeof __fetch.fetch;
+declare const clearTimeout: typeof __timers.clearTimeout;
+declare const clearInterval: typeof __timers.clearInterval;
+declare const console: __console.Console;
+declare const setTimeout: typeof __timers.setTimeout;
+declare const setInterval: typeof __timers.setInterval;
+declare const location: __domTypes.Location;
 declare const onload: Function | undefined;
 declare const onunload: Function | undefined;
 declare const crypto: Crypto;
-declare const Blob: typeof blob.DenoBlob;
-declare const File: domTypes.DomFileConstructor;
-declare const CustomEventInit: typeof customEvent.CustomEventInit;
-declare const CustomEvent: typeof customEvent.CustomEvent;
-declare const EventInit: typeof event.EventInit;
-declare const Event: typeof event.Event;
-declare const EventListener: typeof eventTarget.EventListener;
-declare const EventTarget: typeof eventTarget.EventTarget;
-declare const URL: typeof url.URL;
-declare const URLSearchParams: typeof urlSearchParams.URLSearchParams;
-declare const Headers: domTypes.HeadersConstructor;
-declare const FormData: domTypes.FormDataConstructor;
-declare const TextEncoder: typeof textEncoding.TextEncoder;
-declare const TextDecoder: typeof textEncoding.TextDecoder;
-declare const Request: domTypes.RequestConstructor;
-declare const Response: typeof fetchTypes.Response;
-declare const performance: performanceUtil.Performance;
+declare const Blob: typeof __blob.DenoBlob;
+declare const File: __domTypes.DomFileConstructor;
+declare const CustomEventInit: typeof __customEvent.CustomEventInit;
+declare const CustomEvent: typeof __customEvent.CustomEvent;
+declare const EventInit: typeof __event.EventInit;
+declare const Event: typeof __event.Event;
+declare const EventListener: typeof __eventTarget.EventListener;
+declare const EventTarget: typeof __eventTarget.EventTarget;
+declare const URL: typeof __url.URL;
+declare const URLSearchParams: typeof __urlSearchParams.URLSearchParams;
+declare const Headers: __domTypes.HeadersConstructor;
+declare const FormData: __domTypes.FormDataConstructor;
+declare const TextEncoder: typeof __textEncoding.TextEncoder;
+declare const TextDecoder: typeof __textEncoding.TextDecoder;
+declare const Request: __domTypes.RequestConstructor;
+declare const Response: typeof __fetch.Response;
+declare const performance: __performanceUtil.Performance;
 declare let onmessage: (e: { data: any }) => void;
-declare const workerMain: typeof workers.workerMain;
-declare const workerClose: typeof workers.workerClose;
-declare const postMessage: typeof workers.postMessage;
-declare const Worker: typeof workers.WorkerImpl;
+declare const workerMain: typeof __workers.workerMain;
+declare const workerClose: typeof __workers.workerClose;
+declare const postMessage: typeof __workers.postMessage;
+declare const Worker: typeof __workers.WorkerImpl;
 declare const addEventListener: (
   type: string,
-  callback: (event: domTypes.Event) => void | null,
-  options?: boolean | domTypes.AddEventListenerOptions | undefined
+  callback: (event: __domTypes.Event) => void | null,
+  options?: boolean | __domTypes.AddEventListenerOptions | undefined
 ) => void;
-declare const dispatchEvent: (event: domTypes.Event) => boolean;
+declare const dispatchEvent: (event: __domTypes.Event) => boolean;
 declare const removeEventListener: (
   type: string,
-  callback: (event: domTypes.Event) => void | null,
-  options?: boolean | domTypes.EventListenerOptions | undefined
+  callback: (event: __domTypes.Event) => void | null,
+  options?: boolean | __domTypes.EventListenerOptions | undefined
 ) => void;
 
-declare type Blob = domTypes.Blob;
-declare type Body = domTypes.Body;
-declare type File = domTypes.DomFile;
-declare type CustomEventInit = domTypes.CustomEventInit;
-declare type CustomEvent = domTypes.CustomEvent;
-declare type EventInit = domTypes.EventInit;
-declare type Event = domTypes.Event;
-declare type EventListener = domTypes.EventListener;
-declare type EventTarget = domTypes.EventTarget;
-declare type URL = url.URL;
-declare type URLSearchParams = domTypes.URLSearchParams;
-declare type Headers = domTypes.Headers;
-declare type FormData = domTypes.FormData;
-declare type TextEncoder = textEncoding.TextEncoder;
-declare type TextDecoder = textEncoding.TextDecoder;
-declare type Request = domTypes.Request;
-declare type Response = domTypes.Response;
-declare type Worker = workers.Worker;
+declare type Blob = __domTypes.Blob;
+declare type Body = __domTypes.Body;
+declare type File = __domTypes.DomFile;
+declare type CustomEventInit = __domTypes.CustomEventInit;
+declare type CustomEvent = __domTypes.CustomEvent;
+declare type EventInit = __domTypes.EventInit;
+declare type Event = __domTypes.Event;
+declare type EventListener = __domTypes.EventListener;
+declare type EventTarget = __domTypes.EventTarget;
+declare type URL = __url.URL;
+declare type URLSearchParams = __domTypes.URLSearchParams;
+declare type Headers = __domTypes.Headers;
+declare type FormData = __domTypes.FormData;
+declare type TextEncoder = __textEncoding.TextEncoder;
+declare type TextDecoder = __textEncoding.TextDecoder;
+declare type Request = __domTypes.Request;
+declare type Response = __domTypes.Response;
+declare type Worker = __workers.Worker;
 
 declare interface ImportMeta {
   url: string;
@@ -1435,7 +1617,7 @@ declare interface Crypto {
   ) => T;
 }
 
-declare namespace domTypes {
+declare namespace __domTypes {
   // @url js/dom_types.d.ts
 
   export type BufferSource = ArrayBufferView | ArrayBuffer;
@@ -2008,25 +2190,25 @@ declare namespace domTypes {
   }
 }
 
-declare namespace blob {
+declare namespace __blob {
   // @url js/blob.d.ts
 
   export const bytesSymbol: unique symbol;
-  export const blobBytesWeakMap: WeakMap<domTypes.Blob, Uint8Array>;
-  export class DenoBlob implements domTypes.Blob {
+  export const blobBytesWeakMap: WeakMap<__domTypes.Blob, Uint8Array>;
+  export class DenoBlob implements __domTypes.Blob {
     private readonly [bytesSymbol];
     readonly size: number;
     readonly type: string;
     /** A blob object represents a file-like object of immutable, raw data. */
     constructor(
-      blobParts?: domTypes.BlobPart[],
-      options?: domTypes.BlobPropertyBag
+      blobParts?: __domTypes.BlobPart[],
+      options?: __domTypes.BlobPropertyBag
     );
     slice(start?: number, end?: number, contentType?: string): DenoBlob;
   }
 }
 
-declare namespace consoleTypes {
+declare namespace __console {
   // @url js/console.d.ts
 
   type ConsoleOptions = Partial<{
@@ -2115,11 +2297,11 @@ declare namespace consoleTypes {
   export function inspect(value: unknown, options?: ConsoleOptions): string;
 }
 
-declare namespace event {
+declare namespace __event {
   // @url js/event.d.ts
 
   export const eventAttributes: WeakMap<object, any>;
-  export class EventInit implements domTypes.EventInit {
+  export class EventInit implements __domTypes.EventInit {
     bubbles: boolean;
     cancelable: boolean;
     composed: boolean;
@@ -2133,7 +2315,7 @@ declare namespace event {
       composed?: boolean | undefined;
     });
   }
-  export class Event implements domTypes.Event {
+  export class Event implements __domTypes.Event {
     isTrusted: boolean;
     private _canceledFlag;
     private _dispatchedFlag;
@@ -2142,21 +2324,21 @@ declare namespace event {
     private _stopImmediatePropagationFlag;
     private _stopPropagationFlag;
     private _path;
-    constructor(type: string, eventInitDict?: domTypes.EventInit);
+    constructor(type: string, eventInitDict?: __domTypes.EventInit);
     readonly bubbles: boolean;
     cancelBubble: boolean;
     cancelBubbleImmediately: boolean;
     readonly cancelable: boolean;
     readonly composed: boolean;
-    currentTarget: domTypes.EventTarget;
+    currentTarget: __domTypes.EventTarget;
     readonly defaultPrevented: boolean;
     dispatched: boolean;
     eventPhase: number;
     readonly initialized: boolean;
     inPassiveListener: boolean;
-    path: domTypes.EventPath[];
-    relatedTarget: domTypes.EventTarget;
-    target: domTypes.EventTarget;
+    path: __domTypes.EventPath[];
+    relatedTarget: __domTypes.EventTarget;
+    target: __domTypes.EventTarget;
     readonly timeStamp: Date;
     readonly type: string;
     /** Returns the event’s path (objects on which listeners will be
@@ -2165,7 +2347,7 @@ declare namespace event {
      *
      *      event.composedPath();
      */
-    composedPath(): domTypes.EventPath[];
+    composedPath(): __domTypes.EventPath[];
     /** Cancels the event (if it is cancelable).
      * See https://dom.spec.whatwg.org/#set-the-canceled-flag
      *
@@ -2188,22 +2370,23 @@ declare namespace event {
   }
 }
 
-declare namespace customEvent {
+declare namespace __customEvent {
   // @url js/custom_event.d.ts
 
   export const customEventAttributes: WeakMap<object, any>;
-  export class CustomEventInit extends event.EventInit
-    implements domTypes.CustomEventInit {
+  export class CustomEventInit extends __event.EventInit
+    implements __domTypes.CustomEventInit {
     detail: any;
     constructor({
       bubbles,
       cancelable,
       composed,
       detail
-    }: domTypes.CustomEventInit);
+    }: __domTypes.CustomEventInit);
   }
-  export class CustomEvent extends event.Event implements domTypes.CustomEvent {
-    constructor(type: string, customEventInitDict?: domTypes.CustomEventInit);
+  export class CustomEvent extends __event.Event
+    implements __domTypes.CustomEvent {
+    constructor(type: string, customEventInitDict?: __domTypes.CustomEventInit);
     readonly detail: any;
     initCustomEvent(
       type: string,
@@ -2215,16 +2398,16 @@ declare namespace customEvent {
   }
 }
 
-declare namespace eventTarget {
+declare namespace __eventTarget {
   // @url js/event_target.d.ts
 
-  export class EventListenerOptions implements domTypes.EventListenerOptions {
+  export class EventListenerOptions implements __domTypes.EventListenerOptions {
     _capture: boolean;
     constructor({ capture }?: { capture?: boolean | undefined });
     readonly capture: boolean;
   }
   export class AddEventListenerOptions extends EventListenerOptions
-    implements domTypes.AddEventListenerOptions {
+    implements __domTypes.AddEventListenerOptions {
     _passive: boolean;
     _once: boolean;
     constructor({
@@ -2239,48 +2422,48 @@ declare namespace eventTarget {
     readonly passive: boolean;
     readonly once: boolean;
   }
-  export class EventListener implements domTypes.EventListener {
-    allEvents: domTypes.Event[];
-    atEvents: domTypes.Event[];
-    bubbledEvents: domTypes.Event[];
-    capturedEvents: domTypes.Event[];
+  export class EventListener implements __domTypes.EventListener {
+    allEvents: __domTypes.Event[];
+    atEvents: __domTypes.Event[];
+    bubbledEvents: __domTypes.Event[];
+    capturedEvents: __domTypes.Event[];
     private _callback;
     private _options;
     constructor(
-      callback: (event: domTypes.Event) => void | null,
-      options: boolean | domTypes.AddEventListenerOptions
+      callback: (event: __domTypes.Event) => void | null,
+      options: boolean | __domTypes.AddEventListenerOptions
     );
-    handleEvent(event: domTypes.Event): void;
-    readonly callback: (event: domTypes.Event) => void | null;
-    readonly options: domTypes.AddEventListenerOptions | boolean;
+    handleEvent(event: __domTypes.Event): void;
+    readonly callback: (event: __domTypes.Event) => void | null;
+    readonly options: __domTypes.AddEventListenerOptions | boolean;
   }
   export const eventTargetAssignedSlot: unique symbol;
   export const eventTargetHasActivationBehavior: unique symbol;
-  export class EventTarget implements domTypes.EventTarget {
-    [domTypes.eventTargetHost]: domTypes.EventTarget | null;
-    [domTypes.eventTargetListeners]: {
-      [type in string]: domTypes.EventListener[]
+  export class EventTarget implements __domTypes.EventTarget {
+    [__domTypes.eventTargetHost]: __domTypes.EventTarget | null;
+    [__domTypes.eventTargetListeners]: {
+      [type in string]: __domTypes.EventListener[];
     };
-    [domTypes.eventTargetMode]: string;
-    [domTypes.eventTargetNodeType]: domTypes.NodeType;
+    [__domTypes.eventTargetMode]: string;
+    [__domTypes.eventTargetNodeType]: __domTypes.NodeType;
     private [eventTargetAssignedSlot];
     private [eventTargetHasActivationBehavior];
     addEventListener(
       type: string,
-      callback: (event: domTypes.Event) => void | null,
-      options?: domTypes.AddEventListenerOptions | boolean
+      callback: (event: __domTypes.Event) => void | null,
+      options?: __domTypes.AddEventListenerOptions | boolean
     ): void;
     removeEventListener(
       type: string,
-      callback: (event: domTypes.Event) => void | null,
-      options?: domTypes.EventListenerOptions | boolean
+      callback: (event: __domTypes.Event) => void | null,
+      options?: __domTypes.EventListenerOptions | boolean
     ): void;
-    dispatchEvent(event: domTypes.Event): boolean;
+    dispatchEvent(event: __domTypes.Event): boolean;
     readonly [Symbol.toStringTag]: string;
   }
 }
 
-declare namespace io {
+declare namespace __io {
   // @url js/io.d.ts
 
   export enum SeekMode {
@@ -2367,10 +2550,11 @@ declare namespace io {
   export function toAsyncIterator(r: Reader): AsyncIterableIterator<Uint8Array>;
 }
 
-declare namespace fetchTypes {
+declare namespace __fetch {
   // @url js/fetch.d.ts
 
-  class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
+  class Body
+    implements __domTypes.Body, __domTypes.ReadableStream, __io.ReadCloser {
     private rid;
     readonly contentType: string;
     bodyUsed: boolean;
@@ -2381,25 +2565,25 @@ declare namespace fetchTypes {
     constructor(rid: number, contentType: string);
     private _bodyBuffer;
     arrayBuffer(): Promise<ArrayBuffer>;
-    blob(): Promise<domTypes.Blob>;
-    formData(): Promise<domTypes.FormData>;
+    blob(): Promise<__domTypes.Blob>;
+    formData(): Promise<__domTypes.FormData>;
     json(): Promise<any>;
     text(): Promise<string>;
     read(p: Uint8Array): Promise<number | Deno.EOF>;
     close(): void;
     cancel(): Promise<void>;
-    getReader(): domTypes.ReadableStreamReader;
-    tee(): [domTypes.ReadableStream, domTypes.ReadableStream];
+    getReader(): __domTypes.ReadableStreamReader;
+    tee(): [__domTypes.ReadableStream, __domTypes.ReadableStream];
     [Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array>;
   }
-  export class Response implements domTypes.Response {
+  export class Response implements __domTypes.Response {
     readonly url: string;
     readonly status: number;
     statusText: string;
     readonly type = "basic";
     readonly redirected: boolean;
-    headers: domTypes.Headers;
-    readonly trailer: Promise<domTypes.Headers>;
+    headers: __domTypes.Headers;
+    readonly trailer: Promise<__domTypes.Headers>;
     bodyUsed: boolean;
     readonly body: Body;
     constructor(
@@ -2411,21 +2595,21 @@ declare namespace fetchTypes {
       body_?: null | Body
     );
     arrayBuffer(): Promise<ArrayBuffer>;
-    blob(): Promise<domTypes.Blob>;
-    formData(): Promise<domTypes.FormData>;
+    blob(): Promise<__domTypes.Blob>;
+    formData(): Promise<__domTypes.FormData>;
     json(): Promise<any>;
     text(): Promise<string>;
     readonly ok: boolean;
-    clone(): domTypes.Response;
+    clone(): __domTypes.Response;
   }
   /** Fetch a resource from the network. */
   export function fetch(
-    input: domTypes.Request | string,
-    init?: domTypes.RequestInit
+    input: __domTypes.Request | __url.URL | string,
+    init?: __domTypes.RequestInit
   ): Promise<Response>;
 }
 
-declare namespace textEncoding {
+declare namespace __textEncoding {
   // @url js/text_encoding.d.ts
 
   export function atob(s: string): string;
@@ -2448,7 +2632,10 @@ declare namespace textEncoding {
     readonly ignoreBOM = false;
     constructor(label?: string, options?: TextDecoderOptions);
     /** Returns the result of running encoding's decoder. */
-    decode(input?: domTypes.BufferSource, options?: TextDecodeOptions): string;
+    decode(
+      input?: __domTypes.BufferSource,
+      options?: TextDecodeOptions
+    ): string;
     readonly [Symbol.toStringTag]: string;
   }
   interface TextEncoderEncodeIntoResult {
@@ -2465,7 +2652,7 @@ declare namespace textEncoding {
   }
 }
 
-declare namespace timers {
+declare namespace __timers {
   // @url js/timers.d.ts
 
   export type Args = unknown[];
@@ -2485,7 +2672,7 @@ declare namespace timers {
   export function clearInterval(id?: number): void;
 }
 
-declare namespace urlSearchParams {
+declare namespace __urlSearchParams {
   // @url js/url_search_params.d.ts
 
   export class URLSearchParams {
@@ -2592,14 +2779,9 @@ declare namespace urlSearchParams {
   }
 }
 
-declare namespace url {
+declare namespace __url {
   // @url js/url.d.ts
-
-  export const blobURLMap: Map<string, domTypes.Blob>;
-  export class URL {
-    private _parts;
-    private _searchParams;
-    private _updateSearchParams;
+  export interface URL {
     hash: string;
     host: string;
     hostname: string;
@@ -2610,17 +2792,21 @@ declare namespace url {
     port: string;
     protocol: string;
     search: string;
+    readonly searchParams: __urlSearchParams.URLSearchParams;
     username: string;
-    readonly searchParams: urlSearchParams.URLSearchParams;
-    constructor(url: string, base?: string | URL);
     toString(): string;
     toJSON(): string;
-    static createObjectURL(b: domTypes.Blob): string;
-    static revokeObjectURL(url: string): void;
   }
+
+  export const URL: {
+    prototype: URL;
+    new (url: string, base?: string | URL): URL;
+    createObjectURL(object: __domTypes.Blob): string;
+    revokeObjectURL(url: string): void;
+  };
 }
 
-declare namespace workers {
+declare namespace __workers {
   // @url js/workers.d.ts
 
   export function encodeMessage(data: any): Uint8Array;
@@ -2647,7 +2833,7 @@ declare namespace workers {
     noDenoNamespace?: boolean;
   }
   export class WorkerImpl implements Worker {
-    private readonly rid;
+    private readonly id;
     private isClosing;
     private readonly isClosedPromise;
     onerror?: () => void;
@@ -2660,7 +2846,7 @@ declare namespace workers {
   }
 }
 
-declare namespace performanceUtil {
+declare namespace __performanceUtil {
   // @url js/performance.d.ts
 
   export class Performance {
@@ -2692,14 +2878,14 @@ declare namespace WebAssembly {
    * function is useful if it is necessary to a compile a module before it can
    * be instantiated (otherwise, the `WebAssembly.instantiate()` function
    * should be used). */
-  function compile(bufferSource: domTypes.BufferSource): Promise<Module>;
+  function compile(bufferSource: __domTypes.BufferSource): Promise<Module>;
 
   /** Compiles a `WebAssembly.Module` directly from a streamed underlying
    * source. This function is useful if it is necessary to a compile a module
    * before it can be instantiated (otherwise, the
    * `WebAssembly.instantiateStreaming()` function should be used). */
   function compileStreaming(
-    source: Promise<domTypes.Response>
+    source: Promise<__domTypes.Response>
   ): Promise<Module>;
 
   /** Takes the WebAssembly binary code, in the form of a typed array or
@@ -2707,7 +2893,7 @@ declare namespace WebAssembly {
    * The returned `Promise` resolves to both a compiled `WebAssembly.Module` and
    * its first `WebAssembly.Instance`. */
   function instantiate(
-    bufferSource: domTypes.BufferSource,
+    bufferSource: __domTypes.BufferSource,
     importObject?: object
   ): Promise<WebAssemblyInstantiatedSource>;
 
@@ -2723,13 +2909,13 @@ declare namespace WebAssembly {
    * underlying source. This is the most efficient, optimized way to load wasm
    * code. */
   function instantiateStreaming(
-    source: Promise<domTypes.Response>,
+    source: Promise<__domTypes.Response>,
     importObject?: object
   ): Promise<WebAssemblyInstantiatedSource>;
 
   /** Validates a given typed array of WebAssembly binary code, returning
    * whether the bytes form a valid wasm module (`true`) or not (`false`). */
-  function validate(bufferSource: domTypes.BufferSource): boolean;
+  function validate(bufferSource: __domTypes.BufferSource): boolean;
 
   type ImportExportKind = "function" | "table" | "memory" | "global";
 
@@ -2744,7 +2930,7 @@ declare namespace WebAssembly {
   }
 
   class Module {
-    constructor(bufferSource: domTypes.BufferSource);
+    constructor(bufferSource: __domTypes.BufferSource);
 
     /** Given a `Module` and string, returns a copy of the contents of all
      * custom sections in the module with the given string name. */
@@ -2849,4 +3035,10 @@ declare namespace WebAssembly {
   }
 }
 
-/* eslint-enable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any */
+// Catch-all for JSX elements.
+// See https://www.typescriptlang.org/docs/handbook/jsx.html#intrinsic-elements
+declare namespace JSX {
+  interface IntrinsicElements {
+    [elemName: string]: any;
+  }
+}

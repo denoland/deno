@@ -107,7 +107,7 @@ export class ServerRequest {
   conn!: Conn;
   r!: BufReader;
   w!: BufWriter;
-  done: Deferred<void> = deferred();
+  done: Deferred<Error | undefined> = deferred();
 
   public async *bodyStream(): AsyncIterableIterator<Uint8Array> {
     if (this.headers.has("content-length")) {
@@ -193,11 +193,24 @@ export class ServerRequest {
   }
 
   async respond(r: Response): Promise<void> {
-    // Write our response!
-    await writeResponse(this.w, r);
+    let err: Error | undefined;
+    try {
+      // Write our response!
+      await writeResponse(this.w, r);
+    } catch (e) {
+      try {
+        // Eagerly close on error.
+        this.conn.close();
+      } catch {}
+      err = e;
+    }
     // Signal that this request has been processed and the next pipelined
     // request on the same connection can be accepted.
-    this.done.resolve();
+    this.done.resolve(err);
+    if (err) {
+      // Error during responding, rethrow.
+      throw err;
+    }
   }
 }
 
@@ -228,9 +241,11 @@ function fixLength(req: ServerRequest): void {
   }
 }
 
-// ParseHTTPVersion parses a HTTP version string.
-// "HTTP/1.0" returns (1, 0, true).
-// Ported from https://github.com/golang/go/blob/f5c43b9/src/net/http/request.go#L766-L792
+/**
+ * ParseHTTPVersion parses a HTTP version string.
+ * "HTTP/1.0" returns (1, 0, true).
+ * Ported from https://github.com/golang/go/blob/f5c43b9/src/net/http/request.go#L766-L792
+ */
 export function parseHTTPVersion(vers: string): [number, number] {
   switch (vers) {
     case "HTTP/1.1":
@@ -336,7 +351,13 @@ export class Server implements AsyncIterable<ServerRequest> {
 
       // Wait for the request to be processed before we accept a new request on
       // this connection.
-      await req!.done;
+      const procError = await req!.done;
+      if (procError) {
+        // Something bad happened during response.
+        // (likely other side closed during pipelined req)
+        // req.done implies this connection already closed, so we can just return.
+        return;
+      }
     }
 
     if (req! === Deno.EOF) {
@@ -369,7 +390,9 @@ export class Server implements AsyncIterable<ServerRequest> {
   ): AsyncIterableIterator<ServerRequest> {
     if (this.closing) return;
     // Wait for a new connection.
-    const conn = await this.listener.accept();
+    const { value, done } = await this.listener.next();
+    if (done) return;
+    const conn = value as Conn;
     // Try to accept another connection and add it to the multiplexer.
     mux.add(this.acceptConnAndIterateHttpRequests(mux));
     // Yield the requests that arrive on the just-accepted connection.
@@ -450,19 +473,20 @@ export function serveTLS(options: HTTPSOptions): Server {
 
 /**
  * Create an HTTPS server with given options and request handler
+ *
+ *     const body = new TextEncoder().encode("Hello HTTPS");
+ *     const options = {
+ *       hostname: "localhost",
+ *       port: 443,
+ *       certFile: "./path/to/localhost.crt",
+ *       keyFile: "./path/to/localhost.key",
+ *     };
+ *     listenAndServeTLS(options, (req) => {
+ *       req.respond({ body });
+ *     });
+ *
  * @param options Server configuration
  * @param handler Request handler
- *
- *       const body = new TextEncoder().encode("Hello HTTPS");
- *       const options = {
- *         hostname: "localhost",
- *         port: 443,
- *         certFile: "./path/to/localhost.crt",
- *         keyFile: "./path/to/localhost.key",
- *       };
- *       listenAndServeTLS(options, (req) => {
- *         req.respond({ body });
- *       });
  */
 export async function listenAndServeTLS(
   options: HTTPSOptions,

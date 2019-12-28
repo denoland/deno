@@ -1,7 +1,9 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use crate::futures::future::join_all;
-use crate::futures::Future;
+use crate::futures::future::try_join_all;
+use crate::futures::future::FutureExt;
+use crate::futures::future::TryFutureExt;
+use crate::msg;
 use crate::ops::json_op;
 use crate::state::ThreadSafeState;
 use deno::Loader;
@@ -49,7 +51,7 @@ fn op_cache(
 #[derive(Deserialize)]
 struct FetchSourceFilesArgs {
   specifiers: Vec<String>,
-  referrer: String,
+  referrer: Option<String>,
 }
 
 fn op_fetch_source_files(
@@ -63,28 +65,66 @@ fn op_fetch_source_files(
   // to this. Need a test to demonstrate the hole.
   let is_dyn_import = false;
 
+  let (referrer, ref_specifier) = if let Some(referrer) = args.referrer {
+    let specifier = ModuleSpecifier::resolve_url(&referrer)
+      .expect("Referrer is not a valid specifier");
+    (referrer, Some(specifier))
+  } else {
+    // main script import
+    (".".to_string(), None)
+  };
+
   let mut futures = vec![];
   for specifier in &args.specifiers {
     let resolved_specifier =
-      state.resolve(specifier, &args.referrer, false, is_dyn_import)?;
+      state.resolve(specifier, &referrer, false, is_dyn_import)?;
     let fut = state
       .global_state
       .file_fetcher
-      .fetch_source_file_async(&resolved_specifier);
+      .fetch_source_file_async(&resolved_specifier, ref_specifier.clone());
     futures.push(fut);
   }
 
-  let future = join_all(futures)
+  let global_state = state.global_state.clone();
+
+  let future = try_join_all(futures)
     .map_err(ErrBox::from)
     .and_then(move |files| {
-      let res = files
+      // We want to get an array of futures that resolves to
+      let v: Vec<_> = files
         .into_iter()
         .map(|file| {
+          // Special handling of Wasm files:
+          // compile them into JS first!
+          // This allows TS to do correct export types.
+          if file.media_type == msg::MediaType::Wasm {
+            return futures::future::Either::Left(
+              global_state
+                .wasm_compiler
+                .compile_async(global_state.clone(), &file)
+                .and_then(|compiled_mod| {
+                  futures::future::ok((file, Some(compiled_mod.code)))
+                }),
+            );
+          }
+          futures::future::Either::Right(futures::future::ok((file, None)))
+        })
+        .collect();
+      try_join_all(v)
+    })
+    .and_then(move |files_with_code| {
+      let res = files_with_code
+        .into_iter()
+        .map(|(file, maybe_code)| {
           json!({
             "url": file.url.to_string(),
             "filename": file.filename.to_str().unwrap(),
             "mediaType": file.media_type as i32,
-            "sourceCode": String::from_utf8(file.source_code).unwrap(),
+            "sourceCode": if let Some(code) = maybe_code {
+              code
+            } else {
+              String::from_utf8(file.source_code).unwrap()
+            },
           })
         })
         .collect();
@@ -92,7 +132,7 @@ fn op_fetch_source_files(
       futures::future::ok(res)
     });
 
-  Ok(JsonOp::Async(Box::new(future)))
+  Ok(JsonOp::Async(future.boxed()))
 }
 
 #[derive(Deserialize)]

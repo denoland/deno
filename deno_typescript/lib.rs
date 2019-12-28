@@ -22,7 +22,7 @@ use std::sync::Mutex;
 
 static TYPESCRIPT_CODE: &str = include_str!("typescript/lib/typescript.js");
 static COMPILER_CODE: &str = include_str!("compiler_main.js");
-static AMD_RUNTIME_CODE: &str = include_str!("amd_runtime.js");
+static BUNDLE_LOADER: &str = include_str!("bundle_loader.js");
 
 pub fn ts_version() -> String {
   let data = include_str!("typescript/package.json");
@@ -115,7 +115,7 @@ impl TSIsolate {
     let source =
       &format!("main({:?}, {})", config_json.to_string(), root_names_json);
     self.isolate.execute("<anon>", source)?;
-    Ok(self.state.clone())
+    Ok(self.state)
   }
 }
 
@@ -127,6 +127,7 @@ pub fn compile_bundle(
 
   let config_json = serde_json::json!({
     "compilerOptions": {
+      "strict": true,
       "declaration": true,
       "lib": ["esnext"],
       "module": "amd",
@@ -181,11 +182,13 @@ pub fn mksnapshot_bundle(
   let source_code_vec = std::fs::read(bundle)?;
   let source_code = std::str::from_utf8(&source_code_vec)?;
 
-  js_check(runtime_isolate.execute("amd_runtime.js", AMD_RUNTIME_CODE));
+  js_check(runtime_isolate.execute("bundle_loader.js", BUNDLE_LOADER));
   js_check(runtime_isolate.execute(&bundle.to_string_lossy(), &source_code));
 
   let main = state.lock().unwrap().main_module_name();
-  js_check(runtime_isolate.execute("anon", &format!("require('{}')", main)));
+  js_check(
+    runtime_isolate.execute("anon", &format!("instantiate('{}')", main)),
+  );
 
   write_snapshot(runtime_isolate, bundle)?;
 
@@ -202,12 +205,14 @@ pub fn mksnapshot_bundle_ts(
   let source_code_vec = std::fs::read(bundle)?;
   let source_code = std::str::from_utf8(&source_code_vec)?;
 
-  js_check(runtime_isolate.execute("amd_runtime.js", AMD_RUNTIME_CODE));
+  js_check(runtime_isolate.execute("bundle_loader.js", BUNDLE_LOADER));
   js_check(runtime_isolate.execute("typescript.js", TYPESCRIPT_CODE));
   js_check(runtime_isolate.execute(&bundle.to_string_lossy(), &source_code));
 
   let main = state.lock().unwrap().main_module_name();
-  js_check(runtime_isolate.execute("anon", &format!("require('{}')", main)));
+  js_check(
+    runtime_isolate.execute("anon", &format!("instantiate('{}')", main)),
+  );
 
   write_snapshot(runtime_isolate, bundle)?;
 
@@ -215,7 +220,7 @@ pub fn mksnapshot_bundle_ts(
 }
 
 fn write_snapshot(
-  runtime_isolate: Isolate,
+  mut runtime_isolate: Isolate,
   bundle: &Path,
 ) -> Result<(), ErrBox> {
   println!("creating snapshot...");
@@ -249,9 +254,11 @@ pub fn get_asset(name: &str) -> Option<&'static str> {
     };
   }
   match name {
+    "bundle_loader.js" => Some(include_str!("bundle_loader.js")),
     "lib.deno_core.d.ts" => Some(include_str!("lib.deno_core.d.ts")),
     "typescript.d.ts" => inc!("typescript.d.ts"),
     "lib.esnext.d.ts" => inc!("lib.esnext.d.ts"),
+    "lib.es2020.d.ts" => inc!("lib.es2020.d.ts"),
     "lib.es2019.d.ts" => inc!("lib.es2019.d.ts"),
     "lib.es2018.d.ts" => inc!("lib.es2018.d.ts"),
     "lib.es2017.d.ts" => inc!("lib.es2017.d.ts"),
@@ -284,8 +291,15 @@ pub fn get_asset(name: &str) -> Option<&'static str> {
     "lib.es2019.object.d.ts" => inc!("lib.es2019.object.d.ts"),
     "lib.es2019.string.d.ts" => inc!("lib.es2019.string.d.ts"),
     "lib.es2019.symbol.d.ts" => inc!("lib.es2019.symbol.d.ts"),
+    "lib.es2020.string.d.ts" => inc!("lib.es2020.string.d.ts"),
+    "lib.es2020.symbol.wellknown.d.ts" => {
+      inc!("lib.es2020.symbol.wellknown.d.ts")
+    }
+    "lib.esnext.array.d.ts" => inc!("lib.esnext.array.d.ts"),
+    "lib.esnext.asynciterable.d.ts" => inc!("lib.esnext.asynciterable.d.ts"),
     "lib.esnext.bigint.d.ts" => inc!("lib.esnext.bigint.d.ts"),
     "lib.esnext.intl.d.ts" => inc!("lib.esnext.intl.d.ts"),
+    "lib.esnext.symbol.d.ts" => inc!("lib.esnext.symbol.d.ts"),
     _ => None,
   }
 }

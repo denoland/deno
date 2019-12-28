@@ -103,10 +103,10 @@ import * as log from "https://deno.land/std/log/mod.ts";
 
 ## Setup
 
-### Binary Install
-
 Deno works on OSX, Linux, and Windows. Deno is a single binary executable. It
 has no external dependencies.
+
+### Download and Install
 
 [deno_install](https://github.com/denoland/deno_install) provides convenience
 scripts to download and install the binary.
@@ -159,111 +159,13 @@ Once it's installed and in your `$PATH`, try it:
 deno https://deno.land/std/examples/welcome.ts
 ```
 
-### Build from source
+### Build from Source
 
-Clone on Linux or Mac:
-
-```bash
-git clone --recurse-submodules https://github.com/denoland/deno.git
-```
-
-On Windows, a couple extra steps are required to clone because we use symlinks
-in the repository. First
-[enable "Developer Mode"](https://www.google.com/search?q=windows+enable+developer+mode)
-(otherwise symlinks would require administrator privileges). Then you must set
-`core.symlinks=true` before the checkout is started.
-
-```bash
-git config --global core.symlinks=true
-git clone --recurse-submodules https://github.com/denoland/deno.git
-```
-
-Now we can start the build:
-
-```bash
-# Build.
-cargo build -vv
-
-# Run.
-./target/debug/deno tests/002_hello.ts
-
-# Test.
-cargo test
-
-# Format code.
-./tools/format.py
-```
-
-#### Prerequisites
-
-To ensure reproducible builds, Deno has most of its dependencies in a git
-submodule. However, you need to install separately:
-
-1. [Rust](https://www.rust-lang.org/en-US/install.html) >= 1.36.0
-2. Python 2.
-   [Not 3](https://github.com/denoland/deno/issues/464#issuecomment-411795578).
-
-Extra steps for Mac users: install [XCode](https://developer.apple.com/xcode/)
-:(
-
-Extra steps for Windows users:
-
-<!-- prettier-ignore-start -->
-<!-- see https://github.com/prettier/prettier/issues/3679 -->
-
-1. Add `python.exe` to `PATH` (e.g. `set PATH=%PATH%;C:\Python27\python.exe`)
-2. Get [VS Community 2017](https://www.visualstudio.com/downloads/) with
-   "Desktop development with C++" toolkit and make sure to select the following
-   required tools listed below along with all C++ tools.
-    - Windows 10 SDK >= 10.0.17134
-    - Visual C++ ATL for x86 and x64
-    - Visual C++ MFC for x86 and x64
-    - C++ profiling tools
-3. Enable "Debugging Tools for Windows". Go to "Control Panel" → "Programs" →
-   "Programs and Features" → Select "Windows Software Development Kit - Windows
-   10" → "Change" → "Change" → Check "Debugging Tools For Windows" → "Change" ->
-   "Finish".
-4. Make sure you are using git version 2.19.2.windows.1 or newer.
-
-<!-- prettier-ignore-end -->
-
-#### Other useful commands
-
-```bash
-# Call ninja manually.
-ninja -C target/debug
-
-# Build a release binary.
-cargo build --release
-
-# List executable targets.
-gn --root=core/libdeno ls target/debug "//:*" --as=output --type=executable
-
-# List build configuration.
-gn --root=core/libdeno args target/debug/ --list
-
-# Edit build configuration.
-gn --root=core/libdeno args target/debug/
-
-# Describe a target.
-gn --root=core/libdeno desc target/debug/ :deno
-gn help
-
-# Update third_party modules
-git submodule update
-
-# Skip downloading binary build tools and point the build
-# to the system provided ones (for packagers of deno ...).
-export DENO_BUILD_ARGS="clang_base_path=/usr clang_use_chrome_plugins=false"
-DENO_NO_BINARY_DOWNLOAD=1 DENO_GN_PATH=/usr/bin/gn cargo build
-```
-
-Environment variables: `DENO_BUILD_MODE`, `DENO_BUILD_PATH`, `DENO_BUILD_ARGS`,
-`DENO_DIR`, `DENO_GN_PATH`, `DENO_NO_BINARY_DOWNLOAD`.
+Follow the [build instruction for contributors](#development).
 
 ## API reference
 
-### deno types
+### `deno types`
 
 To get an exact reference of deno's runtime API, run the following in the
 command line:
@@ -533,8 +435,11 @@ browser JavaScript, Deno can import libraries directly from URLs. This example
 uses a URL to import a test runner library:
 
 ```ts
-import { test, runIfMain } from "https://deno.land/std/testing/mod.ts";
-import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+import {
+  assertEquals,
+  runIfMain,
+  test
+} from "https://deno.land/std/testing/mod.ts";
 
 test(function t1() {
   assertEquals("hello", "hello");
@@ -597,13 +502,15 @@ everywhere in a large project?** The solution is to import and re-export your
 external libraries in a central `deps.ts` file (which serves the same purpose as
 Node's `package.json` file). For example, let's say you were using the above
 testing library across a large project. Rather than importing
-`"https://deno.land/std/testing/mod.ts"` and
-`"https://deno.land/std/testing/asserts.ts"` everywhere, you could create a
+`"https://deno.land/std/testing/mod.ts"` everywhere, you could create a
 `deps.ts` file that exports the third-party code:
 
 ```ts
-export { runTests, test } from "https://deno.land/std/testing/mod.ts";
-export { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+export {
+  assertEquals,
+  runTests,
+  test
+} from "https://deno.land/std/testing/mod.ts";
 ```
 
 And throughout the same project, you can import from the `deps.ts` and avoid
@@ -676,56 +583,39 @@ if (import.meta.main) {
 Use `deno help` to see the help text.
 
 ```
-deno
 A secure JavaScript and TypeScript runtime
 
-Docs: https://deno.land/manual.html
+Docs: https://deno.land/std/manual.md
 Modules: https://deno.land/x/
 Bugs: https://github.com/denoland/deno/issues
 
-To run the REPL:
+To run the REPL supply no arguments:
 
   deno
-
-To execute a sandboxed script:
-
-  deno https://deno.land/std/examples/welcome.ts
 
 To evaluate code from the command line:
 
   deno eval "console.log(30933 + 404)"
 
-To get help on the another subcommands (run in this case):
+To execute a script:
 
-  deno help run
+  deno https://deno.land/std/examples/welcome.ts
+
+The default subcommand is 'run'. The above is equivalent to
+
+  deno run https://deno.land/std/examples/welcome.ts
+
+See 'deno help run' for run specific flags.
 
 USAGE:
-    deno [OPTIONS] [SUBCOMMAND]
+    deno [SUBCOMMAND]
 
 OPTIONS:
-    -A, --allow-all                    Allow all permissions
-        --allow-env                    Allow environment access
-        --allow-hrtime                 Allow high resolution time measurement
-        --allow-net=<allow-net>        Allow network access
-        --allow-read=<allow-read>      Allow file system read access
-        --allow-run                    Allow running subprocesses
-        --allow-write=<allow-write>    Allow file system write access
-    -c, --config <FILE>                Load compiler configuration file
-        --current-thread               Use tokio::runtime::current_thread
-    -h, --help                         Prints help information
-        --importmap <FILE>             Load import map file
-        --lock <FILE>                  Check the specified lock file
-        --lock-write                   Write lock file. Use with --lock.
-    -L, --log-level <log-level>        Set log level [possible values: debug, info]
-        --no-fetch                     Do not download remote modules
-    -r, --reload=<CACHE_BLACKLIST>     Reload source code cache (recompile TypeScript)
-        --seed <NUMBER>                Seed Math.random()
-        --v8-flags=<v8-flags>          Set V8 command line options
-        --v8-options                   Print V8 command line options
-    -v, --version                      Print the version
+    -h, --help                     Prints help information
+    -L, --log-level <log-level>    Set log level [possible values: debug, info]
+    -V, --version                  Prints version information
 
 SUBCOMMANDS:
-    [SCRIPT]       Script to run
     bundle         Bundle module and dependencies into single file
     completions    Generate shell completions
     eval           Eval script
@@ -734,17 +624,17 @@ SUBCOMMANDS:
     help           Prints this message or the help of the given subcommand(s)
     info           Show info about cache or info related to source file
     install        Install script as executable
+    repl           Read Eval Print Loop
     run            Run a program given a filename or url to the source code
     test           Run tests
     types          Print runtime TypeScript declarations
-    version        Print the version
     xeval          Eval a script on text segments from stdin
 
 ENVIRONMENT VARIABLES:
-    DENO_DIR        Set deno's base directory
-    NO_COLOR        Set to disable color
-    HTTP_PROXY      Set proxy address for HTTP requests (module downloads, fetch)
-    HTTPS_PROXY     Set proxy address for HTTPS requests (module downloads, fetch)
+    DENO_DIR       Set deno's base directory
+    NO_COLOR       Set to disable color
+    HTTP_PROXY     Proxy address for HTTP requests (module downloads, fetch)
+    HTTPS_PROXY    Same but for HTTPS
 ```
 
 ### Environmental variables
@@ -781,9 +671,15 @@ source /usr/local/etc/bash_completion.d/deno.bash
 
 ### V8 flags
 
-V8 has many many internal command-line flags, that you can see with
-`--v8-options`.
-[It looks like this.](https://gist.github.com/ry/a610ce48cba2f0225f9c81a5a833fc87)
+V8 has many many internal command-line flags.
+
+```shell
+# list available v8 flags
+$ deno --v8-flags=--help
+
+#  example for applying multiple flags
+$ deno --v8-flags=--expose-gc,--use-strict
+```
 
 Particularly useful ones:
 
@@ -793,42 +689,53 @@ Particularly useful ones:
 
 ### Bundling
 
-`deno bundle [URL]` will output a single JavaScript file, using
-[AMD](https://en.wikipedia.org/wiki/Asynchronous_module_definition), which
-includes all dependencies of the specified input.
+`deno bundle [URL]` will output a single JavaScript file, which includes all
+dependencies of the specified input. For example:
 
 ```
-> deno bundle https://deno.land/std/examples/colors.ts
+> deno bundle https://deno.land/std/examples/colors.ts colors.bundle.js
 Bundling "colors.bundle.js"
 Emitting bundle to "colors.bundle.js"
 9.2 kB emitted.
 ```
 
-To run then bundle in Deno use
+If you omit the out file, the bundle will be sent to `stdout`.
+
+The bundle can just be run as any other module in Deno would:
 
 ```
-deno https://deno.land/std/bundle/run.ts colors.bundle.js
+deno colors.bundle.js
 ```
 
-Bundles can also be loaded in the web browser with the assistance of
-[RequireJS](https://requirejs.org/). Suppose we have a bundle called
-`website.bundle.js`, then the following HTML should be able to load it:
+The output is a self contained ES Module, which any exports from the main module
+supplied on the command line will be available. For example if the main module
+looked something like this:
+
+```ts
+export { foo } from "./foo.js";
+
+export const bar = "bar";
+```
+
+It could be imported like this:
+
+```ts
+import { foo, bar } from "./lib.bundle.js";
+```
+
+Bundles can also be loaded in the web browser. The bundle is a self-contained ES
+module, and so the attribute of `type` must be set to `"module"`. For example:
 
 ```html
-<script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js"></script>
-<script src="website.bundle.js"></script>
-<script>
-  requirejs(["website"], website => website.main());
-</script>
+<script type="module" src="website.bundle.js"></script>
 ```
 
-Here we assume there's an exported function `main()` from `website.ts`.
+Or you could import it into another ES module to consume:
 
-```js
-// website.ts
-export main() {
-  console.log("hello from the web browser");
-}
+```html
+<script type="module">
+  import * as website from "website.bundle.js";
+</script>
 ```
 
 ### Installing executable scripts
@@ -963,6 +870,33 @@ for await (const req of serve(":8000")) {
 $ deno run --importmap=import_map.json hello_server.ts
 ```
 
+## WASM support
+
+Deno can execute [wasm](https://webassembly.org/) binaries.
+
+<!-- prettier-ignore-start -->
+```js
+const wasmCode = new Uint8Array([
+  0, 97, 115, 109, 1, 0, 0, 0, 1, 133, 128, 128, 128, 0, 1, 96, 0, 1, 127,
+  3, 130, 128, 128, 128, 0, 1, 0, 4, 132, 128, 128, 128, 0, 1, 112, 0, 0,
+  5, 131, 128, 128, 128, 0, 1, 0, 1, 6, 129, 128, 128, 128, 0, 0, 7, 145,
+  128, 128, 128, 0, 2, 6, 109, 101, 109, 111, 114, 121, 2, 0, 4, 109, 97,
+  105, 110, 0, 0, 10, 138, 128, 128, 128, 0, 1, 132, 128, 128, 128, 0, 0,
+  65, 42, 11
+]);
+const wasmModule = new WebAssembly.Module(wasmCode);
+const wasmInstance = new WebAssembly.Instance(wasmModule);
+console.log(wasmInstance.exports.main().toString());
+```
+<!-- prettier-ignore-end -->
+
+WASM files can also be loaded using imports:
+
+```ts
+import { fib } from "./fib.wasm";
+console.log(fib(20));
+```
+
 ## Program lifecycle
 
 Deno supports browser compatible lifecycle events: `load` and `unload`. You can
@@ -1057,10 +991,10 @@ are.
 ```ts
 const { resources, close } = Deno;
 console.log(resources());
-// output like: { 0: "stdin", 1: "stdout", 2: "stderr", 3: "repl" }
-
-// close resource by rid
-close(3);
+// { 0: "stdin", 1: "stdout", 2: "stderr" }
+close(0);
+console.log(resources());
+// { 1: "stdout", 2: "stderr" }
 ```
 
 #### Metrics
@@ -1228,19 +1162,150 @@ These Deno logos, like the Deno software, are distributed under the MIT license
 
 ## Contributing
 
-[Style Guide](style_guide.md)
+- Read the [style guide](style_guide.md).
+- Progress towards future releases is tracked
+  [here](https://github.com/denoland/deno/milestones).
+- Please don't make [the benchmarks](https://deno.land/benchmarks.html) worse.
+- Ask for help in the [community chat room](https://gitter.im/denolife/Lobby).
+- If you are going to work on an issue, mention so in the issue comments
+  _before_ you start working on the issue.
 
-Progress towards future releases is tracked
-[here](https://github.com/denoland/deno/milestones).
+### Development
 
-Please don't make [the benchmarks](https://deno.land/benchmarks.html) worse.
+#### Cloning the Repository
 
-Ask for help in the [community chat room](https://gitter.im/denolife/Lobby).
+Clone on Linux or Mac:
 
-If you are going to work on an issue, mention so in the issue comments _before_
-you start working on the issue.
+```bash
+git clone --recurse-submodules https://github.com/denoland/deno.git
+```
 
-### Submitting a pull request
+Extra steps for Windows users:
+
+1. [Enable "Developer Mode"](https://www.google.com/search?q=windows+enable+developer+mode)
+   (otherwise symlinks would require administrator privileges).
+2. Make sure you are using git version 2.19.2.windows.1 or newer.
+3. Set `core.symlinks=true` before the checkout:
+   ```bash
+   git config --global core.symlinks true
+   git clone --recurse-submodules https://github.com/denoland/deno.git
+   ```
+
+#### Prerequisites
+
+Deno has most of its dependencies in a git submodule to ensure reproducible
+builds. The following must be installed separately:
+
+<!-- prettier-ignore-start -->
+<!-- see https://github.com/prettier/prettier/issues/3679 -->
+
+1. [Rust](https://www.rust-lang.org/en-US/install.html)
+    - Ensure that your version is compatible with the one used in [CI](
+      https://github.com/denoland/deno/blob/master/.github/workflows/ci.yml).
+      This is updated frequently.
+2. [Python 2](https://www.python.org/downloads)
+    - Ensure that a suffix-less `python`/`python.exe` exists in your `PATH` and
+      it refers to Python 2, [not 3](
+      https://github.com/denoland/deno/issues/464#issuecomment-411795578).
+
+Extra steps for Mac users:
+
+- Install [XCode](https://developer.apple.com/xcode/) :(
+
+Extra steps for Windows users:
+
+1. Get [VS Community 2017](https://www.visualstudio.com/downloads/) with
+   "Desktop development with C++" toolkit and make sure to select the following
+   required tools listed below along with all C++ tools.
+    - Windows 10 SDK >= 10.0.17134
+    - Visual C++ ATL for x86 and x64
+    - Visual C++ MFC for x86 and x64
+    - C++ profiling tools
+2. Enable "Debugging Tools for Windows". Go to "Control Panel" → "Programs" →
+   "Programs and Features" → Select "Windows Software Development Kit - Windows
+   10" → "Change" → "Change" → Check "Debugging Tools For Windows" → "Change" ->
+   "Finish".
+
+<!-- prettier-ignore-end -->
+
+#### Building
+
+Build with Cargo:
+
+```bash
+# Build:
+cargo build -vv
+
+# Run:
+./target/debug/deno tests/002_hello.ts
+```
+
+#### Testing and Tools
+
+Test `deno`:
+
+```bash
+# Run the whole suite:
+cargo test
+
+# Only test cli/js/:
+cargo test js_unit_tests
+```
+
+Test `std/`:
+
+```bash
+cd std
+cargo run -- -A testing/runner.ts --exclude "**/testdata"
+```
+
+Lint the code:
+
+```bash
+./tools/lint.py
+```
+
+Format the code:
+
+```bash
+./tools/format.py
+```
+
+#### Other Useful Commands
+
+```bash
+# Call ninja manually.
+ninja -C target/debug
+
+# Build a release binary.
+cargo build --release
+
+# List executable targets.
+gn --root=core/libdeno ls target/debug "//:*" --as=output --type=executable
+
+# List build configuration.
+gn --root=core/libdeno args target/debug/ --list
+
+# Edit build configuration.
+gn --root=core/libdeno args target/debug/
+
+# Describe a target.
+gn --root=core/libdeno desc target/debug/ :deno
+gn help
+
+# Update third_party modules
+git submodule update
+
+# Skip downloading binary build tools and point the build
+# to the system provided ones (for packagers of deno ...).
+export DENO_BUILD_ARGS="clang_base_path=/usr clang_use_chrome_plugins=false"
+DENO_NO_BINARY_DOWNLOAD=1 DENO_GN_PATH=/usr/bin/gn cargo build
+```
+
+Environment variables: `DENO_BUILD_MODE`, `DENO_BUILD_PATH`, `DENO_BUILD_ARGS`,
+`DENO_DIR`, `DENO_GN_PATH`, `DENO_NO_BINARY_DOWNLOAD`.
+
+### Submitting a Pull Request
 
 Before submitting, please make sure the following is done:
 

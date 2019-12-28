@@ -33,6 +33,7 @@ import "./mkdir_test.ts";
 import "./net_test.ts";
 import "./os_test.ts";
 import "./process_test.ts";
+import "./realpath_test.ts";
 import "./read_dir_test.ts";
 import "./read_file_test.ts";
 import "./read_link_test.ts";

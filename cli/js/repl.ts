@@ -8,8 +8,6 @@ import { stringifyArgs } from "./console.ts";
 import * as dispatch from "./dispatch.ts";
 import { sendSync, sendAsync } from "./dispatch_json.ts";
 
-const { console } = window;
-
 /**
  * REPL logging.
  * In favor of console.log to avoid unwanted indentation
@@ -106,6 +104,7 @@ function evaluate(code: string): boolean {
 
 // @internal
 export async function replLoop(): Promise<void> {
+  const { console } = window;
   Object.defineProperties(window, replCommands);
 
   const historyFile = "deno_history.txt";

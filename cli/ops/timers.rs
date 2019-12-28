@@ -3,7 +3,7 @@ use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::ops::json_op;
 use crate::state::ThreadSafeState;
 use deno::*;
-use futures::Future;
+use futures::future::FutureExt;
 use std;
 use std::time::Duration;
 use std::time::Instant;
@@ -51,7 +51,7 @@ fn op_global_timer(
     .new_timeout(deadline)
     .then(move |_| futures::future::ok(json!({})));
 
-  Ok(JsonOp::Async(Box::new(f)))
+  Ok(JsonOp::Async(f.boxed()))
 }
 
 // Returns a milliseconds and nanoseconds subsec
@@ -66,11 +66,12 @@ fn op_now(
   let seconds = state.start_time.elapsed().as_secs();
   let mut subsec_nanos = state.start_time.elapsed().subsec_nanos();
   let reduced_time_precision = 2_000_000; // 2ms in nanoseconds
+  let permissions = state.permissions.lock().unwrap();
 
   // If the permission is not enabled
   // Round the nano result on 2 milliseconds
   // see: https://developer.mozilla.org/en-US/docs/Web/API/DOMHighResTimeStamp#Reduced_time_precision
-  if !state.permissions.allow_hrtime.is_allow() {
+  if !permissions.allow_hrtime.is_allow() {
     subsec_nanos -= subsec_nanos % reduced_time_precision
   }
 

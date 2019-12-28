@@ -15,13 +15,14 @@ use crate::worker::Worker;
 use deno::Buf;
 use deno::ErrBox;
 use deno::ModuleSpecifier;
+use futures::future::FutureExt;
 use futures::Future;
-use futures::IntoFuture;
 use regex::Regex;
 use std::collections::HashSet;
 use std::fs;
 use std::io;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::str;
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;
@@ -59,20 +60,15 @@ impl CompilerConfig {
     // Convert the PathBuf to a canonicalized string.  This is needed by the
     // compiler to properly deal with the configuration.
     let config_path = match &config_file {
-      Some(config_file) => Some(
-        config_file
-          .canonicalize()
-          .map_err(|_| {
-            io::Error::new(
-              io::ErrorKind::InvalidInput,
-              format!(
-                "Could not find the config file: {}",
-                config_file.to_string_lossy()
-              ),
-            )
-          })?
-          .to_owned(),
-      ),
+      Some(config_file) => Some(config_file.canonicalize().map_err(|_| {
+        io::Error::new(
+          io::ErrorKind::InvalidInput,
+          format!(
+            "Could not find the config file: {}",
+            config_file.to_string_lossy()
+          ),
+        )
+      })),
       _ => None,
     };
 
@@ -101,7 +97,7 @@ impl CompilerConfig {
     };
 
     let ts_config = Self {
-      path: config_path,
+      path: config_path.unwrap_or_else(|| Ok(PathBuf::new())).ok(),
       content: config,
       hash: config_hash,
       compile_js,
@@ -156,20 +152,23 @@ impl CompiledFileMetadata {
 }
 /// Creates the JSON message send to compiler.ts's onmessage.
 fn req(
+  request_type: msg::CompilerRequestType,
   root_names: Vec<String>,
   compiler_config: CompilerConfig,
-  bundle: Option<String>,
+  out_file: Option<String>,
 ) -> Buf {
   let j = match (compiler_config.path, compiler_config.content) {
     (Some(config_path), Some(config_data)) => json!({
+      "type": request_type as i32,
       "rootNames": root_names,
-      "bundle": bundle,
+      "outFile": out_file,
       "configPath": config_path,
       "config": str::from_utf8(&config_data).unwrap(),
     }),
     _ => json!({
+      "type": request_type as i32,
       "rootNames": root_names,
-      "bundle": bundle,
+      "outFile": out_file,
     }),
   };
 
@@ -223,8 +222,10 @@ impl TsCompiler {
 
   /// Create a new V8 worker with snapshot of TS compiler and setup compiler's runtime.
   fn setup_worker(global_state: ThreadSafeGlobalState) -> Worker {
-    let worker_state = ThreadSafeState::new(global_state.clone(), None, true)
-      .expect("Unable to create worker state");
+    let (int, ext) = ThreadSafeState::create_channels();
+    let worker_state =
+      ThreadSafeState::new(global_state.clone(), None, None, true, int)
+        .expect("Unable to create worker state");
 
     // Count how many times we start the compiler worker.
     global_state
@@ -236,6 +237,7 @@ impl TsCompiler {
       "TS".to_string(),
       startup_data::compiler_isolate_init(),
       worker_state,
+      ext,
     );
     worker.execute("denoMain()").unwrap();
     worker.execute("workerMain()").unwrap();
@@ -247,47 +249,39 @@ impl TsCompiler {
     self: &Self,
     global_state: ThreadSafeGlobalState,
     module_name: String,
-    out_file: String,
-  ) -> impl Future<Item = (), Error = ErrBox> {
+    out_file: Option<String>,
+  ) -> impl Future<Output = Result<(), ErrBox>> {
     debug!(
       "Invoking the compiler to bundle. module_name: {}",
       module_name
     );
 
-    let root_names = vec![module_name.clone()];
-    let req_msg = req(root_names, self.config.clone(), Some(out_file));
+    let root_names = vec![module_name];
+    let req_msg = req(
+      msg::CompilerRequestType::Bundle,
+      root_names,
+      self.config.clone(),
+      out_file,
+    );
 
-    let worker = TsCompiler::setup_worker(global_state.clone());
+    let worker = TsCompiler::setup_worker(global_state);
     let worker_ = worker.clone();
-    let first_msg_fut = worker
-      .post_message(req_msg)
-      .into_future()
-      .then(move |_| worker)
-      .then(move |result| {
-        if let Err(err) = result {
-          // TODO(ry) Need to forward the error instead of exiting.
-          eprintln!("{}", err.to_string());
-          std::process::exit(1);
+
+    async move {
+      worker.post_message(req_msg).await?;
+      worker.await?;
+      debug!("Sent message to worker");
+      let maybe_msg = worker_.get_message().await?;
+      debug!("Received message from worker");
+      if let Some(msg) = maybe_msg {
+        let json_str = std::str::from_utf8(&msg).unwrap();
+        debug!("Message: {}", json_str);
+        if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
+          return Err(ErrBox::from(diagnostics));
         }
-        debug!("Sent message to worker");
-        worker_.get_message()
-      });
-
-    first_msg_fut.map_err(|_| panic!("not handled")).and_then(
-      move |maybe_msg: Option<Buf>| {
-        debug!("Received message from worker");
-
-        if let Some(msg) = maybe_msg {
-          let json_str = std::str::from_utf8(&msg).unwrap();
-          debug!("Message: {}", json_str);
-          if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
-            return Err(ErrBox::from(diagnostics));
-          }
-        }
-
-        Ok(())
-      },
-    )
+      }
+      Ok(())
+    }
   }
 
   /// Mark given module URL as compiled to avoid multiple compilations of same module
@@ -314,11 +308,11 @@ impl TsCompiler {
     self: &Self,
     global_state: ThreadSafeGlobalState,
     source_file: &SourceFile,
-  ) -> Box<CompiledModuleFuture> {
+  ) -> Pin<Box<CompiledModuleFuture>> {
     if self.has_compiled(&source_file.url) {
       return match self.get_compiled_module(&source_file.url) {
-        Ok(compiled) => Box::new(futures::future::ok(compiled)),
-        Err(err) => Box::new(futures::future::err(err)),
+        Ok(compiled) => futures::future::ok(compiled).boxed(),
+        Err(err) => futures::future::err(err).boxed(),
       };
     }
 
@@ -340,7 +334,7 @@ impl TsCompiler {
             self.get_compiled_module(&source_file.url)
           {
             self.mark_compiled(&source_file.url);
-            return Box::new(futures::future::ok(compiled_module));
+            return futures::future::ok(compiled_module).boxed();
           }
         }
       }
@@ -357,69 +351,41 @@ impl TsCompiler {
     );
 
     let root_names = vec![module_url.to_string()];
-    let req_msg = req(root_names, self.config.clone(), None);
+    let req_msg = req(
+      msg::CompilerRequestType::Compile,
+      root_names,
+      self.config.clone(),
+      None,
+    );
 
     let worker = TsCompiler::setup_worker(global_state.clone());
     let worker_ = worker.clone();
     let compiling_job = global_state
       .progress
       .add("Compile", &module_url.to_string());
-    let global_state_ = global_state.clone();
+    let global_state_ = global_state;
 
-    let first_msg_fut = worker
-      .post_message(req_msg)
-      .into_future()
-      .then(move |_| worker)
-      .then(move |result| {
-        if let Err(err) = result {
-          // TODO(ry) Need to forward the error instead of exiting.
-          eprintln!("{}", err.to_string());
-          std::process::exit(1);
+    async move {
+      worker.post_message(req_msg).await?;
+      worker.await?;
+      debug!("Sent message to worker");
+      let maybe_msg = worker_.get_message().await?;
+      if let Some(msg) = maybe_msg {
+        let json_str = std::str::from_utf8(&msg).unwrap();
+        debug!("Message: {}", json_str);
+        if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
+          return Err(ErrBox::from(diagnostics));
         }
-        debug!("Sent message to worker");
-        worker_.get_message()
-      });
-
-    let fut = first_msg_fut
-      .map_err(|_| panic!("not handled"))
-      .and_then(move |maybe_msg: Option<Buf>| {
-        debug!("Received message from worker");
-
-        if let Some(msg) = maybe_msg {
-          let json_str = std::str::from_utf8(&msg).unwrap();
-          debug!("Message: {}", json_str);
-          if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
-            return Err(ErrBox::from(diagnostics));
-          }
-        }
-
-        Ok(())
-      })
-      .and_then(move |_| {
-        // if we are this far it means compilation was successful and we can
-        // load compiled filed from disk
-        global_state_
-          .ts_compiler
-          .get_compiled_module(&source_file_.url)
-          .map_err(|e| {
-            // TODO: this situation shouldn't happen
-            panic!("Expected to find compiled file: {} {}", e, source_file_.url)
-          })
-      })
-      .and_then(move |compiled_module| {
-        // Explicit drop to keep reference alive until future completes.
-        drop(compiling_job);
-
-        Ok(compiled_module)
-      })
-      .then(move |r| {
-        debug!(">>>>> compile_sync END");
-        // TODO(ry) do this in worker's destructor.
-        // resource.close();
-        r
-      });
-
-    Box::new(fut)
+      }
+      let compiled_module = global_state_
+        .ts_compiler
+        .get_compiled_module(&source_file_.url)
+        .expect("Expected to find compiled file");
+      drop(compiling_job);
+      debug!(">>>>> compile_sync END");
+      Ok(compiled_module)
+    }
+    .boxed()
   }
 
   /// Get associated `CompiledFileMetadata` for given module if it exists.
@@ -502,7 +468,7 @@ impl TsCompiler {
 
         let source_file = self
           .file_fetcher
-          .fetch_source_file(&module_specifier)
+          .fetch_cached_source_file(&module_specifier)
           .expect("Source file not found");
 
         let version_hash = source_code_version_hash(
@@ -512,7 +478,7 @@ impl TsCompiler {
         );
 
         let compiled_file_metadata = CompiledFileMetadata {
-          source_path: source_file.filename.to_owned(),
+          source_path: source_file.filename,
           version_hash,
         };
         let meta_key = self
@@ -580,7 +546,7 @@ impl SourceMapGetter for TsCompiler {
   fn get_source_map(&self, script_name: &str) -> Option<Vec<u8>> {
     self
       .try_to_resolve_and_get_source_map(script_name)
-      .and_then(|out| Some(out.source_code))
+      .map(|out| out.source_code)
   }
 
   fn get_source_line(&self, script_name: &str, line: usize) -> Option<String> {
@@ -610,10 +576,9 @@ impl TsCompiler {
     script_name: &str,
   ) -> Option<SourceFile> {
     if let Some(module_specifier) = self.try_to_resolve(script_name) {
-      return match self.file_fetcher.fetch_source_file(&module_specifier) {
-        Ok(out) => Some(out),
-        Err(_) => None,
-      };
+      return self
+        .file_fetcher
+        .fetch_cached_source_file(&module_specifier);
     }
 
     None
@@ -640,7 +605,6 @@ mod tests {
   use crate::fs as deno_fs;
   use crate::tokio_util;
   use deno::ModuleSpecifier;
-  use futures::future::lazy;
   use std::path::PathBuf;
   use tempfile::TempDir;
 
@@ -649,8 +613,7 @@ mod tests {
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
       .parent()
       .unwrap()
-      .join("tests/002_hello.ts")
-      .to_owned();
+      .join("tests/002_hello.ts");
     let specifier =
       ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
 
@@ -666,20 +629,22 @@ mod tests {
       String::from("hello.js"),
     ]);
 
-    tokio_util::run(lazy(move || {
-      mock_state
+    let fut = async move {
+      let result = mock_state
         .ts_compiler
         .compile_async(mock_state.clone(), &out)
-        .then(|result| {
-          assert!(result.is_ok());
-          assert!(result
-            .unwrap()
-            .code
-            .as_bytes()
-            .starts_with("console.log(\"Hello World\");".as_bytes()));
-          Ok(())
-        })
-    }))
+        .await;
+
+      assert!(result.is_ok());
+      assert!(result
+        .unwrap()
+        .code
+        .as_bytes()
+        .starts_with("console.log(\"Hello World\");".as_bytes()));
+      Ok(())
+    };
+
+    tokio_util::run(fut.boxed())
   }
 
   #[test]
@@ -687,8 +652,7 @@ mod tests {
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
       .parent()
       .unwrap()
-      .join("tests/002_hello.ts")
-      .to_owned();
+      .join("tests/002_hello.ts");
     use deno::ModuleSpecifier;
     let module_name = ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap())
       .unwrap()
@@ -700,19 +664,20 @@ mod tests {
       String::from("$deno$/bundle.js"),
     ]);
 
-    tokio_util::run(lazy(move || {
-      state
+    let fut = async move {
+      let result = state
         .ts_compiler
         .bundle_async(
           state.clone(),
           module_name,
-          String::from("$deno$/bundle.js"),
+          Some(String::from("$deno$/bundle.js")),
         )
-        .then(|result| {
-          assert!(result.is_ok());
-          Ok(())
-        })
-    }))
+        .await;
+
+      assert!(result.is_ok());
+      Ok(())
+    };
+    tokio_util::run(fut.boxed())
   }
 
   #[test]
@@ -745,25 +710,16 @@ mod tests {
 
     let test_cases = vec![
       // valid JSON
-      (
-        r#"{ "compilerOptions": { "checkJs": true } } "#,
-        true,
-      ),
+      (r#"{ "compilerOptions": { "checkJs": true } } "#, true),
       // JSON with comment
       (
         r#"{ "compilerOptions": { // force .js file compilation by Deno "checkJs": true } } "#,
         true,
       ),
       // invalid JSON
-      (
-        r#"{ "compilerOptions": { "checkJs": true },{ } "#,
-        true,
-      ),
+      (r#"{ "compilerOptions": { "checkJs": true },{ } "#, true),
       // without content
-      (
-        "",
-        false,
-      ),
+      ("", false),
     ];
 
     let path = temp_dir_path.join("tsconfig.json");
@@ -782,7 +738,7 @@ mod tests {
     let temp_dir_path = temp_dir.path();
     let path = temp_dir_path.join("doesnotexist.json");
     let path_str = path.to_str().unwrap().to_string();
-    let res = CompilerConfig::load(Some(path_str.clone()));
+    let res = CompilerConfig::load(Some(path_str));
     assert!(res.is_err());
   }
 }

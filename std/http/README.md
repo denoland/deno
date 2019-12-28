@@ -1,6 +1,23 @@
 # http
 
-A framework for creating HTTP/HTTPS server.
+```typescript
+import { serve } from "https://deno.land/std/http/server.ts";
+const body = new TextEncoder().encode("Hello World\n");
+const s = serve({ port: 8000 });
+console.log("http://localhost:8000/");
+for await (const req of s) {
+  req.respond({ body });
+}
+```
+
+### File Server
+
+A small program for serving local files over HTTP
+
+```sh
+deno --allow-net --allow-read https://deno.land/std/http/file_server.ts
+> HTTP server listening on http://0.0.0.0:4500/
+```
 
 ## Cookie
 
@@ -50,25 +67,3 @@ console.log("Set-Cookie:", cookieHeader);
 ```
 
 **Note**: At the moment multiple `Set-Cookie` in a `Response` is not handled.
-
-## Example
-
-```typescript
-import { serve } from "https://deno.land/std/http/server.ts";
-const s = serve("0.0.0.0:8000");
-const body = new TextEncoder().encode("Hello World\n");
-
-for await (const req of s) {
-  req.respond({ body });
-}
-```
-
-### File Server
-
-A small program for serving local files over HTTP.
-
-Install it by using `deno install`
-
-```sh
-deno install file_server https://deno.land/std/http/file_server.ts --allow-net --allow-read
-```

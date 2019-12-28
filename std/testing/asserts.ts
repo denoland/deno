@@ -56,12 +56,10 @@ function buildMessage(diffResult: ReadonlyArray<DiffResult<string>>): string[] {
   );
   messages.push("");
   messages.push("");
-  diffResult.forEach(
-    (result: DiffResult<string>): void => {
-      const c = createColor(result.type);
-      messages.push(c(`${createSign(result.type)}${result.value}`));
-    }
-  );
+  diffResult.forEach((result: DiffResult<string>): void => {
+    const c = createColor(result.type);
+    messages.push(c(`${createSign(result.type)}${result.value}`));
+  });
   messages.push("");
 
   return messages;
@@ -131,7 +129,7 @@ export function equal(c: unknown, d: unknown): boolean {
 }
 
 /** Make an assertion, if not `true`, then throw. */
-export function assert(expr: boolean, msg = ""): void {
+export function assert(expr: unknown, msg = ""): asserts expr {
   if (!expr) {
     throw new AssertionError(msg);
   }
@@ -310,8 +308,9 @@ export function assertThrows(
   ErrorClass?: Constructor,
   msgIncludes = "",
   msg?: string
-): void {
+): Error {
   let doesThrow = false;
+  let error = null;
   try {
     fn();
   } catch (e) {
@@ -328,11 +327,13 @@ export function assertThrows(
       throw new AssertionError(msg);
     }
     doesThrow = true;
+    error = e;
   }
   if (!doesThrow) {
     msg = `Expected function to throw${msg ? `: ${msg}` : "."}`;
     throw new AssertionError(msg);
   }
+  return error;
 }
 
 export async function assertThrowsAsync(
@@ -340,8 +341,9 @@ export async function assertThrowsAsync(
   ErrorClass?: Constructor,
   msgIncludes = "",
   msg?: string
-): Promise<void> {
+): Promise<Error> {
   let doesThrow = false;
+  let error = null;
   try {
     await fn();
   } catch (e) {
@@ -358,11 +360,13 @@ export async function assertThrowsAsync(
       throw new AssertionError(msg);
     }
     doesThrow = true;
+    error = e;
   }
   if (!doesThrow) {
     msg = `Expected function to throw${msg ? `: ${msg}` : "."}`;
     throw new AssertionError(msg);
   }
+  return error;
 }
 
 /** Use this to stub out methods that will throw when invoked. */
