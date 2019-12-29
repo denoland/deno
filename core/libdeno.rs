@@ -53,6 +53,12 @@ pub struct DenoIsolate {
   */
 }
 
+impl Drop for DenoIsolate {
+  fn drop(&mut self) {
+    println!("DenoIsolate drop");
+  }
+}
+
 impl DenoIsolate {
   pub fn new(config: deno_config) -> Self {
     Self { isolate_: None }
@@ -504,9 +510,6 @@ pub unsafe fn deno_new(config: deno_config) -> *const isolate {
   d.add_isolate(isolate);
   /*
 
-  v8::Isolate* isolate = v8::Isolate::New(params);
-  d->AddIsolate(isolate);
-
   v8::Locker locker(isolate);
   v8::Isolate::Scope isolate_scope(isolate);
   {
@@ -526,8 +529,12 @@ pub unsafe fn deno_new(config: deno_config) -> *const isolate {
 
   return reinterpret_cast<Deno*>(d);
      */
-  todo!()
+  let ptr: *const DenoIsolate = &d;
+  println!("DenoIsolate ptr {:?}", ptr);
+  std::mem::forget(d);
+  return ptr;
 }
+
 pub unsafe fn deno_delete(i: *const isolate) {
   todo!()
 }
@@ -566,7 +573,61 @@ pub unsafe fn deno_execute(
   js_filename: *const c_char,
   js_source: *const c_char,
 ) {
+  println!("deno_execute -> DenoIsolate ptr {:?}", i);
+  let isolate = (*i).isolate_.as_ref().unwrap();
+  let mut locker = v8::Locker::new(isolate);
+  // todo!()
+  /*
+  auto* d = deno::unwrap(d_);
+  deno::UserDataScope user_data_scope(d, user_data);
+  auto* isolate = d->isolate_;
+  v8::Locker locker(isolate);
+  v8::Isolate::Scope isolate_scope(isolate);
+  v8::HandleScope handle_scope(isolate);
+  auto context = d->context_.Get(d->isolate_);
+  CHECK(!context.IsEmpty());
+  deno::Execute(context, js_filename, js_source);
+  */
+}
+
+// deno::Execute
+fn execute(
+  context: v8::Local<v8::Context>,
+  js_filename: &str,
+  js_source: &str,
+) {
   todo!()
+  /*
+  auto* isolate = context->GetIsolate();
+  v8::Isolate::Scope isolate_scope(isolate);
+  v8::HandleScope handle_scope(isolate);
+  v8::Context::Scope context_scope(context);
+
+  auto source = v8_str(js_source);
+  auto name = v8_str(js_filename);
+
+  v8::TryCatch try_catch(isolate);
+
+  v8::ScriptOrigin origin(name);
+
+  auto script = v8::Script::Compile(context, source, &origin);
+
+  if (script.IsEmpty()) {
+    DCHECK(try_catch.HasCaught());
+    HandleException(context, try_catch.Exception());
+    return false;
+  }
+
+  auto result = script.ToLocalChecked()->Run(context);
+
+  if (result.IsEmpty()) {
+    DCHECK(try_catch.HasCaught());
+    HandleException(context, try_catch.Exception());
+    return false;
+  }
+
+  return true;
+  */
 }
 
 pub unsafe fn deno_terminate_execution(i: *const isolate) {
