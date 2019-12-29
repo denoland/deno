@@ -21,7 +21,7 @@ pub type OpId = u32;
 pub type isolate = DenoIsolate;
 
 pub struct DenoIsolate {
-  isolate_: Option<v8::Isolate>,
+  isolate_: Option<v8::OwnedIsolate>,
   /*
   v8::Isolate* isolate_;
   v8::Locker* locker_;
@@ -77,21 +77,142 @@ impl DenoIsolate {
     */
   }
 
-  pub fn add_isolate(&mut self, isolate: v8::Isolate) {
+  pub fn add_isolate(&mut self, mut isolate: v8::OwnedIsolate) {
+    isolate.set_capture_stack_trace_for_uncaught_exceptions(true, 10);
+    isolate.set_promise_reject_callback(promise_reject_callback);
+    isolate.add_message_listener(message_callback);
+    isolate.set_host_initialize_import_meta_object_callback(
+      host_initialize_import_meta_object_callback,
+    );
+    isolate.set_host_import_module_dynamically_callback(
+      host_import_module_dynamically_callback,
+    );
+    // TODO isolate_->SetData(0, this);
     self.isolate_ = Some(isolate);
-    todo!()
-    /*
-    isolate_->SetCaptureStackTraceForUncaughtExceptions(
-        true, 10, v8::StackTrace::kDetailed);
-    isolate_->SetPromiseRejectCallback(deno::PromiseRejectCallback);
-    isolate_->SetData(0, this);
-    isolate_->AddMessageListener(MessageCallback);
-    isolate->SetHostInitializeImportMetaObjectCallback(
-        HostInitializeImportMetaObjectCallback);
-    isolate->SetHostImportModuleDynamicallyCallback(
-        HostImportModuleDynamicallyCallback);
-    */
   }
+}
+
+extern "C" fn host_import_module_dynamically_callback(
+  _context: v8::Local<v8::Context>,
+  _referrer: v8::Local<v8::ScriptOrModule>,
+  _specifier: v8::Local<v8::String>,
+) -> *mut v8::Promise {
+  todo!()
+  /*
+  auto* isolate = context->GetIsolate();
+  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
+  v8::Isolate::Scope isolate_scope(isolate);
+  v8::Context::Scope context_scope(context);
+  v8::EscapableHandleScope handle_scope(isolate);
+
+  v8::String::Utf8Value specifier_str(isolate, specifier);
+
+  auto referrer_name = referrer->GetResourceName();
+  v8::String::Utf8Value referrer_name_str(isolate, referrer_name);
+
+  // TODO(ry) I'm not sure what HostDefinedOptions is for or if we're ever going
+  // to use it. For now we check that it is not used. This check may need to be
+  // changed in the future.
+  auto host_defined_options = referrer->GetHostDefinedOptions();
+  CHECK_EQ(host_defined_options->Length(), 0);
+
+  v8::Local<v8::Promise::Resolver> resolver =
+      v8::Promise::Resolver::New(context).ToLocalChecked();
+
+  deno_dyn_import_id import_id = d->next_dyn_import_id_++;
+
+  d->dyn_import_map_.emplace(std::piecewise_construct,
+                             std::make_tuple(import_id),
+                             std::make_tuple(d->isolate_, resolver));
+
+  d->dyn_import_cb_(d->user_data_, *specifier_str, *referrer_name_str,
+                    import_id);
+
+  auto promise = resolver->GetPromise();
+  return handle_scope.Escape(promise);
+  */
+}
+
+extern "C" fn host_initialize_import_meta_object_callback(
+  _context: v8::Local<v8::Context>,
+  _module: v8::Local<v8::Module>,
+  _meta: v8::Local<v8::Object>,
+) {
+  todo!()
+  /*
+  auto* isolate = context->GetIsolate();
+  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
+  v8::Isolate::Scope isolate_scope(isolate);
+
+  CHECK(!module.IsEmpty());
+
+  deno_mod id = module->GetIdentityHash();
+  CHECK_NE(id, 0);
+
+  auto* info = d->GetModuleInfo(id);
+
+  const char* url = info->name.c_str();
+  const bool main = info->main;
+
+  meta->CreateDataProperty(context, v8_str("url"), v8_str(url)).ToChecked();
+  meta->CreateDataProperty(context, v8_str("main"), v8_bool(main)).ToChecked();
+  */
+}
+
+extern "C" fn message_callback(
+  _message: v8::Local<v8::Message>,
+  _exception: v8::Local<v8::Value>,
+) {
+  todo!()
+  /*
+  auto* isolate = message->GetIsolate();
+  DenoIsolate* d = static_cast<DenoIsolate*>(isolate->GetData(0));
+  v8::HandleScope handle_scope(isolate);
+  auto context = d->context_.Get(isolate);
+  HandleExceptionMessage(context, message);
+  */
+}
+
+extern "C" fn promise_reject_callback(
+  _promise_reject_message: v8::PromiseRejectMessage,
+) {
+  todo!()
+  /*
+  auto* isolate = v8::Isolate::GetCurrent();
+  DenoIsolate* d = static_cast<DenoIsolate*>(isolate->GetData(0));
+  DCHECK_EQ(d->isolate_, isolate);
+  v8::HandleScope handle_scope(d->isolate_);
+  auto error = promise_reject_message.GetValue();
+  auto context = d->context_.Get(d->isolate_);
+  auto promise = promise_reject_message.GetPromise();
+
+  v8::Context::Scope context_scope(context);
+
+  int promise_id = promise->GetIdentityHash();
+  switch (promise_reject_message.GetEvent()) {
+    case v8::kPromiseRejectWithNoHandler:
+      // Insert the error into the pending_promise_map_ using the promise's id
+      // as the key.
+      d->pending_promise_map_.emplace(std::piecewise_construct,
+                                      std::make_tuple(promise_id),
+                                      std::make_tuple(d->isolate_, error));
+      break;
+
+    case v8::kPromiseHandlerAddedAfterReject:
+      d->pending_promise_map_.erase(promise_id);
+      break;
+
+    case v8::kPromiseRejectAfterResolved:
+      break;
+
+    case v8::kPromiseResolveAfterResolved:
+      // Should not warn. See #1272
+      break;
+
+    default:
+      CHECK(false && "unreachable");
+  }
+  */
 }
 
 /// This type represents a borrowed slice.
@@ -369,7 +490,7 @@ pub unsafe fn deno_new(config: deno_config) -> *const isolate {
     return deno_new_snapshotter(config);
   }
 
-  let d = DenoIsolate::new(config);
+  let mut d = DenoIsolate::new(config);
   let mut params = v8::Isolate::create_params();
   params.set_array_buffer_allocator(v8::new_default_allocator());
   params.set_external_references(&EXTERNAL_REFERENCES);
@@ -379,15 +500,9 @@ pub unsafe fn deno_new(config: deno_config) -> *const isolate {
   }
   */
 
+  let isolate = v8::Isolate::new(params);
+  d.add_isolate(isolate);
   /*
-   -- deno::DenoIsolate* d = new deno::DenoIsolate(config);
-   -- v8::Isolate::CreateParams params;
-  -- params.array_buffer_allocator = &deno::ArrayBufferAllocator::global();
-  -- params.external_references = deno::external_references;
-
-  if (config.load_snapshot.data_ptr) {
-    params.snapshot_blob = &d->snapshot_;
-  }
 
   v8::Isolate* isolate = v8::Isolate::New(params);
   d->AddIsolate(isolate);
