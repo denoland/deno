@@ -636,7 +636,7 @@ pub fn runtime_compile_async<S: BuildHasher>(
     let json_str = std::str::from_utf8(&msg).unwrap();
     Ok(json!(json_str))
   }
-    .boxed()
+  .boxed()
 }
 
 pub fn runtime_transpile_async<S: BuildHasher>(
@@ -664,7 +664,7 @@ pub fn runtime_transpile_async<S: BuildHasher>(
     let json_str = std::str::from_utf8(&msg).unwrap();
     Ok(json!(json_str))
   }
-    .boxed()
+  .boxed()
 }
 
 #[cfg(test)]
