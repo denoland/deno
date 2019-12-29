@@ -32,7 +32,7 @@ export interface Listener extends AsyncIterator<Conn> {
   [Symbol.asyncIterator](): AsyncIterator<Conn>;
 }
 
-enum ShutdownMode {
+export enum ShutdownMode {
   // See http://man7.org/linux/man-pages/man2/shutdown.2.html
   // Corresponding to SHUT_RD, SHUT_WR, SHUT_RDWR
   Read = 0,
@@ -40,7 +40,15 @@ enum ShutdownMode {
   ReadWrite // unused
 }
 
-function shutdown(rid: number, how: ShutdownMode): void {
+/** Shut down socket send and receive operations.
+ *
+ * Matches behavior of POSIX shutdown(3).
+ *
+ *       const listener = Deno.listen({ port: 80 });
+ *       const conn = await listener.accept();
+ *       Deno.shutdown(conn.rid, Deno.ShutdownMode.Write);
+ */
+export function shutdown(rid: number, how: ShutdownMode): void {
   sendSync(dispatch.OP_SHUTDOWN, { rid, how });
 }
 
