@@ -471,14 +471,8 @@ impl Isolate {
     name: &str,
     source: &str,
   ) -> Result<deno_mod, ErrBox> {
-    let name_ = CString::new(name.to_string()).unwrap();
-    let name_ptr = name_.as_ptr() as *const libc::c_char;
-
-    let source_ = CString::new(source.to_string()).unwrap();
-    let source_ptr = source_.as_ptr() as *const libc::c_char;
-
     let id = unsafe {
-      libdeno::deno_mod_new(self.libdeno_isolate, main, name_ptr, source_ptr)
+      libdeno::deno_mod_new(self.libdeno_isolate, main, name, source)
     };
 
     self.check_last_exception().map(|_| id)

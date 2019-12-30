@@ -24,6 +24,7 @@ pub type isolate = DenoIsolate;
 pub struct DenoIsolate {
   isolate_: Option<v8::OwnedIsolate>,
   last_exception_: Option<CString>,
+  context_: v8::Global<v8::Context>,
   /*
   v8::Isolate* isolate_;
   v8::Locker* locker_;
@@ -43,7 +44,6 @@ pub struct DenoIsolate {
   std::map<deno_dyn_import_id, v8::Persistent<v8::Promise::Resolver>>
       dyn_import_map_;
 
-  v8::Persistent<v8::Context> context_;
   std::map<int, v8::Persistent<v8::Value>> pending_promise_map_;
   v8::Persistent<v8::Value> last_exception_handle_;
   v8::Persistent<v8::Function> recv_;
@@ -56,7 +56,7 @@ pub struct DenoIsolate {
 
 impl Drop for DenoIsolate {
   fn drop(&mut self) {
-    println!("DenoIsolate drop");
+    // println!("DenoIsolate drop");
   }
 }
 
@@ -65,6 +65,7 @@ impl DenoIsolate {
     Self {
       isolate_: None,
       last_exception_: None,
+      context_: v8::Global::<v8::Context>::new(),
     }
     /*
       : isolate_(nullptr),
@@ -99,6 +100,57 @@ impl DenoIsolate {
     );
     // TODO isolate_->SetData(0, this);
     self.isolate_ = Some(isolate);
+  }
+
+  pub fn register_module(
+    &self,
+    main: bool,
+    name: &str,
+    source: &str,
+  ) -> deno_mod {
+    todo!()
+    /*
+    v8::Isolate::Scope isolate_scope(isolate_);
+    v8::Locker locker(isolate_);
+    v8::HandleScope handle_scope(isolate_);
+    auto context = context_.Get(isolate_);
+    v8::Context::Scope context_scope(context);
+
+    v8::Local<v8::String> name_str = v8_str(name);
+    v8::Local<v8::String> source_str = v8_str(source);
+
+    auto origin = ModuleOrigin(isolate_, name_str);
+    v8::ScriptCompiler::Source source_(source_str, origin);
+
+    v8::TryCatch try_catch(isolate_);
+
+    auto maybe_module = v8::ScriptCompiler::CompileModule(isolate_, &source_);
+
+    if (try_catch.HasCaught()) {
+      CHECK(maybe_module.IsEmpty());
+      HandleException(context, try_catch.Exception());
+      return 0;
+    }
+
+    auto module = maybe_module.ToLocalChecked();
+
+    int id = module->GetIdentityHash();
+
+    std::vector<std::string> import_specifiers;
+
+    for (int i = 0; i < module->GetModuleRequestsLength(); ++i) {
+      v8::Local<v8::String> specifier = module->GetModuleRequest(i);
+      v8::String::Utf8Value specifier_utf8(isolate_, specifier);
+      import_specifiers.push_back(*specifier_utf8);
+    }
+
+    mods_.emplace(
+        std::piecewise_construct, std::make_tuple(id),
+        std::make_tuple(isolate_, module, main, name, import_specifiers));
+    mods_by_name_[name] = id;
+
+    return id;
+    */
   }
 }
 
@@ -495,10 +547,101 @@ pub unsafe fn deno_new_snapshotter(config: deno_config) -> *const isolate {
   todo!()
 }
 
+extern "C" fn print(info: &v8::FunctionCallbackInfo) {
+  todo!()
+}
+
+fn initialize_context<'a>(
+  scope: &mut impl v8::ToLocal<'a>,
+  mut context: v8::Local<v8::Context>,
+) {
+  context.enter();
+
+  let global = context.global(scope);
+
+  // This is awful.
+  let names = vec![];
+  let values = vec![];
+  let null: v8::Local<v8::Value> = v8::new_null(scope).into();
+  let deno_val = v8::Object::new(scope, null, names, values, 0);
+
+  global.set(
+    context,
+    v8::String::new(scope, "Deno").unwrap().into(),
+    deno_val.into(),
+  );
+
+  // This is awful.
+  let names = vec![];
+  let values = vec![];
+  let null: v8::Local<v8::Value> = v8::new_null(scope).into();
+  let core_val = v8::Object::new(scope, null, names, values, 0);
+
+  global.set(
+    context,
+    v8::String::new(scope, "core").unwrap().into(),
+    core_val.into(),
+  );
+
+  let mut print_tmpl = v8::FunctionTemplate::new(scope, print);
+  let mut print_val = print_tmpl.get_function(scope, context).unwrap();
+  /*
+  core_val.set(
+    context,
+    v8::String::new(scope, "print").unwrap().into(),
+    print_val.into(),
+  );
+  */
+
+  // todo!()
+  /*
+
+
+  auto print_tmpl = v8::FunctionTemplate::New(isolate, Print);
+  auto print_val = print_tmpl->GetFunction(context).ToLocalChecked();
+  CHECK(core_val->Set(context, deno::v8_str("print"), print_val).FromJust());
+
+  auto recv_tmpl = v8::FunctionTemplate::New(isolate, Recv);
+  auto recv_val = recv_tmpl->GetFunction(context).ToLocalChecked();
+  CHECK(core_val->Set(context, deno::v8_str("recv"), recv_val).FromJust());
+
+  auto send_tmpl = v8::FunctionTemplate::New(isolate, Send);
+  auto send_val = send_tmpl->GetFunction(context).ToLocalChecked();
+  CHECK(core_val->Set(context, deno::v8_str("send"), send_val).FromJust());
+
+  auto eval_context_tmpl = v8::FunctionTemplate::New(isolate, EvalContext);
+  auto eval_context_val =
+      eval_context_tmpl->GetFunction(context).ToLocalChecked();
+  CHECK(core_val->Set(context, deno::v8_str("evalContext"), eval_context_val)
+            .FromJust());
+
+  auto error_to_json_tmpl = v8::FunctionTemplate::New(isolate, ErrorToJSON);
+  auto error_to_json_val =
+      error_to_json_tmpl->GetFunction(context).ToLocalChecked();
+  CHECK(core_val->Set(context, deno::v8_str("errorToJSON"), error_to_json_val)
+            .FromJust());
+
+  CHECK(core_val->SetAccessor(context, deno::v8_str("shared"), Shared)
+            .FromJust());
+
+  // Direct bindings on `window`.
+  auto queue_microtask_tmpl =
+      v8::FunctionTemplate::New(isolate, QueueMicrotask);
+  auto queue_microtask_val =
+      queue_microtask_tmpl->GetFunction(context).ToLocalChecked();
+  CHECK(
+      global->Set(context, deno::v8_str("queueMicrotask"), queue_microtask_val)
+          .FromJust());
+  */
+  context.exit();
+}
+
 pub unsafe fn deno_new(config: deno_config) -> *const isolate {
   if config.will_snapshot != 0 {
     return deno_new_snapshotter(config);
   }
+
+  let load_snapshot_is_null = config.load_snapshot.data_ptr.is_null();
 
   let mut d = Box::new(DenoIsolate::new(config));
   let mut params = v8::Isolate::create_params();
@@ -512,6 +655,20 @@ pub unsafe fn deno_new(config: deno_config) -> *const isolate {
 
   let isolate = v8::Isolate::new(params);
   d.add_isolate(isolate);
+
+  let mut locker = v8::Locker::new(d.isolate_.as_ref().unwrap());
+  {
+    let mut hs = v8::HandleScope::new(&mut locker);
+    let scope = hs.enter();
+    let mut context = v8::Context::new(scope);
+
+    if load_snapshot_is_null {
+      // If no snapshot is provided, we initialize the context with empty
+      // main source code and source maps.
+      initialize_context(scope, context);
+    }
+    d.context_.set(scope, context);
+  }
   /*
 
   v8::Locker locker(isolate);
@@ -524,9 +681,6 @@ pub unsafe fn deno_new(config: deno_config) -> *const isolate {
                          v8::DeserializeInternalFieldsCallback(
                              deno::DeserializeInternalFields, nullptr));
     if (!config.load_snapshot.data_ptr) {
-      // If no snapshot is provided, we initialize the context with empty
-      // main source code and source maps.
-      deno::InitializeContext(isolate, context);
     }
     d->context_.Reset(isolate, context);
   }
@@ -652,12 +806,12 @@ pub unsafe fn deno_run_microtasks(i: *const isolate, user_data: *const c_void) {
 // Modules
 
 pub unsafe fn deno_mod_new(
-  i: *const isolate,
+  i: *const DenoIsolate,
   main: bool,
-  name: *const c_char,
-  source: *const c_char,
+  name: &str,
+  source: &str,
 ) -> deno_mod {
-  todo!()
+  (*i).register_module(main, name, source)
 }
 
 pub unsafe fn deno_mod_imports_len(i: *const isolate, id: deno_mod) -> size_t {
