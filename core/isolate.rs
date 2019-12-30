@@ -397,14 +397,12 @@ impl Isolate {
     js_source: &str,
   ) -> Result<(), ErrBox> {
     self.shared_init();
-    let filename = CString::new(js_filename).unwrap();
-    let source = CString::new(js_source).unwrap();
     unsafe {
       libdeno::deno_execute(
         self.libdeno_isolate,
         self.as_raw_ptr(),
-        filename.as_ptr(),
-        source.as_ptr(),
+        js_filename,
+        js_source,
       )
     };
     self.check_last_exception()

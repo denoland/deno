@@ -31,7 +31,7 @@ struct ModuleInfo {
 
 pub struct DenoIsolate {
   isolate_: Option<v8::OwnedIsolate>,
-  last_exception_: Option<CString>,
+  last_exception_: Option<String>,
   context_: v8::Global<v8::Context>,
   mods_: HashMap<deno_mod, ModuleInfo>,
   mods_by_name_: HashMap<String, deno_mod>,
@@ -187,6 +187,125 @@ impl DenoIsolate {
     }
     self.mods_.get(&id)
   }
+
+  // deno::Execute
+  fn execute<'a>(
+    &mut self,
+    s: &mut impl v8::ToLocal<'a>,
+    mut context: v8::Local<v8::Context>,
+    js_filename: &str,
+    js_source: &str,
+  ) -> bool {
+    let source = v8::String::new(s, js_source).unwrap();
+    let name = v8::String::new(s, js_filename).unwrap();
+    /*
+    auto* isolate = context->GetIsolate();
+    v8::Isolate::Scope isolate_scope(isolate);
+    v8::HandleScope handle_scope(isolate);
+    v8::Context::Scope context_scope(context);
+
+    auto source = v8_str(js_source);
+    auto name = v8_str(js_filename);
+
+    v8::TryCatch try_catch(isolate);
+    */
+    let mut try_catch = v8::TryCatch::new(s);
+    let tc = try_catch.enter();
+
+    let origin = script_origin(s, name);
+    let mut script =
+      v8::Script::compile(s, context, source, Some(&origin)).unwrap();
+    let result = script.run(s, context);
+    /*
+
+    v8::ScriptOrigin origin(name);
+
+    auto script = v8::Script::Compile(context, source, &origin);
+
+    if (script.IsEmpty()) {
+      DCHECK(try_catch.HasCaught());
+      HandleException(context, try_catch.Exception());
+      return false;
+    }
+
+    auto result = script.ToLocalChecked()->Run(context);
+    */
+
+    if result.is_none() {
+      assert!(tc.has_caught());
+      self.handle_exception(context, tc.exception().unwrap());
+      return false;
+    }
+
+    /*
+    if (result.IsEmpty()) {
+      DCHECK(try_catch.HasCaught());
+      HandleException(context, try_catch.Exception());
+      return false;
+    }
+    */
+    true
+  }
+
+  fn handle_exception(
+    &mut self,
+    mut context: v8::Local<v8::Context>,
+    exception: v8::Local<v8::Value>,
+  ) {
+    let isolate = context.get_isolate();
+    /*
+    v8::Isolate* isolate = context->GetIsolate();
+
+    // TerminateExecution was called
+    if (isolate->IsExecutionTerminating()) {
+      // cancel exception termination so that the exception can be created
+      isolate->CancelTerminateExecution();
+
+      // maybe make a new exception object
+      if (exception->IsNullOrUndefined()) {
+        exception = v8::Exception::Error(v8_str("execution terminated"));
+      }
+
+      // handle the exception as if it is a regular exception
+      HandleException(context, exception);
+
+      // re-enable exception termination
+      isolate->TerminateExecution();
+      return;
+    }
+
+    DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
+    std::string json_str = EncodeExceptionAsJSON(context, exception);
+    CHECK_NOT_NULL(d);
+    d->last_exception_handle_.Reset(isolate, exception);
+    */
+    self.last_exception_ = Some("hello".to_string());
+  }
+}
+
+fn script_origin<'a>(
+  s: &mut impl v8::ToLocal<'a>,
+  resource_name: v8::Local<'a, v8::String>,
+) -> v8::ScriptOrigin<'a> {
+  let resource_line_offset = v8::Integer::new(s, 0);
+  let resource_column_offset = v8::Integer::new(s, 0);
+  let resource_is_shared_cross_origin = v8::new_false(s);
+  let script_id = v8::Integer::new(s, 123);
+  let source_map_url = v8::String::new(s, "source_map_url").unwrap();
+  let resource_is_opaque = v8::new_true(s);
+  let is_wasm = v8::new_false(s);
+  let is_module = v8::new_false(s);
+  v8::ScriptOrigin::new(
+    resource_name.into(),
+    resource_line_offset,
+    resource_column_offset,
+    resource_is_shared_cross_origin,
+    script_id,
+    source_map_url.into(),
+    resource_is_opaque,
+    is_wasm,
+    is_module,
+  )
 }
 
 fn module_origin<'a>(
@@ -611,6 +730,10 @@ extern "C" fn print(info: &v8::FunctionCallbackInfo) {
   todo!()
 }
 
+extern "C" fn recv(info: &v8::FunctionCallbackInfo) {
+  todo!()
+}
+
 fn initialize_context<'a>(
   scope: &mut impl v8::ToLocal<'a>,
   mut context: v8::Local<v8::Context>,
@@ -637,13 +760,19 @@ fn initialize_context<'a>(
 
   let mut print_tmpl = v8::FunctionTemplate::new(scope, print);
   let mut print_val = print_tmpl.get_function(scope, context).unwrap();
-  /*
   core_val.set(
     context,
     v8::String::new(scope, "print").unwrap().into(),
     print_val.into(),
   );
-  */
+
+  let mut recv_tmpl = v8::FunctionTemplate::new(scope, recv);
+  let mut recv_val = recv_tmpl.get_function(scope, context).unwrap();
+  core_val.set(
+    context,
+    v8::String::new(scope, "recv").unwrap().into(),
+    recv_val.into(),
+  );
 
   // todo!()
   /*
@@ -753,7 +882,7 @@ pub unsafe fn deno_delete(i: *const DenoIsolate) {
 pub unsafe fn deno_last_exception(i: *const DenoIsolate) -> *const c_char {
   match (*i).last_exception_.as_ref() {
     None => std::ptr::null(),
-    Some(e) => e.as_ptr(),
+    Some(e) => e.as_ptr() as *const c_char,
   }
 }
 
@@ -804,13 +933,22 @@ pub unsafe fn deno_pinned_buf_delete(buf: &mut deno_pinned_buf) {
 pub unsafe fn deno_execute(
   i: *const DenoIsolate,
   user_data: *const c_void,
-  js_filename: *const c_char,
-  js_source: *const c_char,
+  js_filename: &str,
+  js_source: &str,
 ) {
-  let isolate = (*i).isolate_.as_ref().unwrap();
+  let i_mut: &mut DenoIsolate = unsafe { std::mem::transmute(i) };
+  let isolate = i_mut.isolate_.as_ref().unwrap();
   // println!("deno_execute -> Isolate ptr {:?}", isolate);
   let mut locker = v8::Locker::new(isolate);
-  // todo!()
+  assert!(!i_mut.context_.is_empty());
+  let mut hs = v8::HandleScope::new(&mut locker);
+  let scope = hs.enter();
+  let mut context = i_mut.context_.get(scope).unwrap();
+  context.enter();
+
+  i_mut.execute(scope, context, js_filename, js_source);
+
+  context.exit();
   /*
   auto* d = deno::unwrap(d_);
   deno::UserDataScope user_data_scope(d, user_data);
@@ -820,47 +958,7 @@ pub unsafe fn deno_execute(
   v8::HandleScope handle_scope(isolate);
   auto context = d->context_.Get(d->isolate_);
   CHECK(!context.IsEmpty());
-  deno::Execute(context, js_filename, js_source);
-  */
-}
-
-// deno::Execute
-fn execute(
-  context: v8::Local<v8::Context>,
-  js_filename: &str,
-  js_source: &str,
-) {
-  todo!()
-  /*
-  auto* isolate = context->GetIsolate();
-  v8::Isolate::Scope isolate_scope(isolate);
-  v8::HandleScope handle_scope(isolate);
-  v8::Context::Scope context_scope(context);
-
-  auto source = v8_str(js_source);
-  auto name = v8_str(js_filename);
-
-  v8::TryCatch try_catch(isolate);
-
-  v8::ScriptOrigin origin(name);
-
-  auto script = v8::Script::Compile(context, source, &origin);
-
-  if (script.IsEmpty()) {
-    DCHECK(try_catch.HasCaught());
-    HandleException(context, try_catch.Exception());
-    return false;
-  }
-
-  auto result = script.ToLocalChecked()->Run(context);
-
-  if (result.IsEmpty()) {
-    DCHECK(try_catch.HasCaught());
-    HandleException(context, try_catch.Exception());
-    return false;
-  }
-
-  return true;
+  execute(context, js_filename, js_source);
   */
 }
 
