@@ -420,10 +420,9 @@ mod tests {
       let fut = async move {
         let r = worker.await;
         r.unwrap();
-        Ok(())
       };
 
-      tokio::spawn(fut.boxed().compat());
+      tokio::spawn(fut);
 
       let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
 
@@ -453,26 +452,21 @@ mod tests {
         .unwrap();
 
       let worker_ = worker.clone();
-      let worker_future = worker
-        .then(move |r| {
-          println!("workers.rs after resource close");
-          r.unwrap();
-          futures::future::ok(())
-        })
-        .shared();
+      let worker_future = async move {
+        let result = worker.await;
+        println!("workers.rs after resource close");
+        result.unwrap();
+      }
+      .shared();
 
       let worker_future_ = worker_future.clone();
-      tokio::spawn(
-        worker_future_
-          .then(|_: Result<(), ()>| futures::future::ok(()))
-          .compat(),
-      );
+      tokio::spawn(worker_future_);
 
       let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
       let r = block_on(worker_.post_message(msg));
       assert!(r.is_ok());
 
-      block_on(worker_future).unwrap();
+      block_on(worker_future);
     })
   }
 

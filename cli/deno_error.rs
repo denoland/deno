@@ -211,6 +211,7 @@ impl GetErrorKind for url::ParseError {
       }
       RelativeUrlWithoutBase => ErrorKind::RelativeUrlWithoutBase,
       SetHostOnCannotBeABaseUrl => ErrorKind::SetHostOnCannotBeABaseUrl,
+      _ => ErrorKind::Other,
     }
   }
 }
@@ -231,7 +232,7 @@ impl GetErrorKind for reqwest::Error {
   fn kind(&self) -> ErrorKind {
     use self::GetErrorKind as Get;
 
-    match self.get_ref() {
+    match self.source() {
       Some(err_ref) => None
         .or_else(|| err_ref.downcast_ref::<hyper::Error>().map(Get::kind))
         .or_else(|| err_ref.downcast_ref::<url::ParseError>().map(Get::kind))
@@ -242,7 +243,7 @@ impl GetErrorKind for reqwest::Error {
             .map(Get::kind)
         })
         .unwrap_or_else(|| ErrorKind::HttpOther),
-      _ => ErrorKind::HttpOther,
+      None => ErrorKind::HttpOther,
     }
   }
 }
