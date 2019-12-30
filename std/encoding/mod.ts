@@ -10,5 +10,6 @@ export {
   encode as encodeToHex,
   encodeToString as encodeToHexString
 } from "./hex.ts";
+export { parse as parseMarkdown, MarkdownOptions } from "./markdown.ts";
 export { parse as parseToml, stringify as tomlStringify } from "./toml.ts";
 export { parse as parseYaml, stringify as yamlStringify } from "./yaml.ts";

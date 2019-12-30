@@ -9,7 +9,8 @@ import { MarkdownOptions, parse } from "./markdown.ts";
 
 const FIXTURE_DIR = join(
   dirname(import.meta.url.replace("file://", "")),
-  "fixtures"
+  "testdata",
+  "markdown"
 );
 
 let inputs = [];
@@ -46,7 +47,7 @@ for (const { name: fileName } of inputs) {
   );
   assert(expected);
   test({
-    name: `convert - markdown - ${fileName.replace(/\.md$/, "")}`,
+    name: `[markdown] ${fileName.replace(/\.md$/, "")}`,
     fn() {
       const actual = parse(input, options);
       assert(actual);
