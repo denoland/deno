@@ -64,7 +64,14 @@ pub struct DenoIsolate {
 
 impl Drop for DenoIsolate {
   fn drop(&mut self) {
-    // println!("DenoIsolate drop");
+    // TODO Too much boiler plate.
+    // <Boilerplate>
+    let isolate = self.isolate_.as_ref().unwrap();
+    let mut locker = v8::Locker::new(&isolate);
+    let mut hs = v8::HandleScope::new(&mut locker);
+    let scope = hs.enter();
+    // </Boilerplate>
+    self.context_.reset(scope);
   }
 }
 
@@ -753,9 +760,27 @@ pub unsafe fn deno_last_exception(i: *const DenoIsolate) -> *const c_char {
 pub unsafe fn deno_clear_last_exception(i: *const isolate) {
   todo!()
 }
-pub unsafe fn deno_check_promise_errors(i: *const isolate) {
-  todo!()
+
+pub unsafe fn deno_check_promise_errors(d: *const DenoIsolate) {
+  /*
+  if (d->pending_promise_map_.size() > 0) {
+    auto* isolate = d->isolate_;
+    v8::Locker locker(isolate);
+    v8::Isolate::Scope isolate_scope(isolate);
+    v8::HandleScope handle_scope(isolate);
+    auto context = d->context_.Get(d->isolate_);
+    v8::Context::Scope context_scope(context);
+
+    auto it = d->pending_promise_map_.begin();
+    while (it != d->pending_promise_map_.end()) {
+      auto error = it->second.Get(isolate);
+      deno::HandleException(context, error);
+      it = d->pending_promise_map_.erase(it);
+    }
+  }
+  */
 }
+
 pub unsafe fn deno_lock(i: *const isolate) {
   todo!()
 }
