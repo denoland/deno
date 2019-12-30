@@ -361,6 +361,7 @@ where
     // TODO(bartlomieju): this step was added during upgrade to Tokio 0.2
     // and the reasons for the need to explicitly flush are not fully known.
     // Figure out why it's needed and preferably remove it.
+    // https://github.com/denoland/deno/issues/3565
     if inner.io_state == IoState::Flush {
       let mut table = inner.state.lock_resource_table();
       let resource = table
