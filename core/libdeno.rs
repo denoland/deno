@@ -108,6 +108,39 @@ impl DenoIsolate {
     name: &str,
     source: &str,
   ) -> deno_mod {
+    let isolate = self.isolate_.as_ref().unwrap();
+    let mut locker = v8::Locker::new(&isolate);
+
+    {
+      let mut hs = v8::HandleScope::new(&mut locker);
+      let scope = hs.enter();
+      let mut context = v8::Context::new(scope);
+      context.enter();
+
+      let name_str = v8::String::new(scope, name).unwrap();
+      let source_str = v8::String::new(scope, source).unwrap();
+
+      let origin = module_origin(scope, name_str);
+      let source = v8::script_compiler::Source::new(source_str, &origin);
+
+      let mut try_catch = v8::TryCatch::new(scope);
+      let tc = try_catch.enter();
+
+      let mut maybe_module =
+        v8::script_compiler::compile_module(&isolate, source);
+
+      if tc.has_caught() {
+        assert!(maybe_module.is_none());
+        // TODO HandleException(context, try_catch.Exception());
+        return 0;
+      }
+      let module = maybe_module.unwrap();
+      let id = module.get_identity_hash();
+
+      // assert_eq!(v8::ModuleStatus::Uninstantiated, module.get_status());
+      context.exit();
+    }
+
     todo!()
     /*
     v8::Isolate::Scope isolate_scope(isolate_);
@@ -152,6 +185,31 @@ impl DenoIsolate {
     return id;
     */
   }
+}
+
+fn module_origin<'a>(
+  s: &mut impl v8::ToLocal<'a>,
+  resource_name: v8::Local<'a, v8::String>,
+) -> v8::ScriptOrigin<'a> {
+  let resource_line_offset = v8::Integer::new(s, 0);
+  let resource_column_offset = v8::Integer::new(s, 0);
+  let resource_is_shared_cross_origin = v8::new_false(s);
+  let script_id = v8::Integer::new(s, 123);
+  let source_map_url = v8::String::new(s, "source_map_url").unwrap();
+  let resource_is_opaque = v8::new_true(s);
+  let is_wasm = v8::new_false(s);
+  let is_module = v8::new_true(s);
+  v8::ScriptOrigin::new(
+    resource_name.into(),
+    resource_line_offset,
+    resource_column_offset,
+    resource_is_shared_cross_origin,
+    script_id,
+    source_map_url.into(),
+    resource_is_opaque,
+    is_wasm,
+    is_module,
+  )
 }
 
 extern "C" fn host_import_module_dynamically_callback(
@@ -559,11 +617,7 @@ fn initialize_context<'a>(
 
   let global = context.global(scope);
 
-  // This is awful.
-  let names = vec![];
-  let values = vec![];
-  let null: v8::Local<v8::Value> = v8::new_null(scope).into();
-  let deno_val = v8::Object::new(scope, null, names, values, 0);
+  let deno_val = v8::Object::new(scope);
 
   global.set(
     context,
@@ -571,11 +625,7 @@ fn initialize_context<'a>(
     deno_val.into(),
   );
 
-  // This is awful.
-  let names = vec![];
-  let values = vec![];
-  let null: v8::Local<v8::Value> = v8::new_null(scope).into();
-  let core_val = v8::Object::new(scope, null, names, values, 0);
+  let core_val = v8::Object::new(scope);
 
   global.set(
     context,
