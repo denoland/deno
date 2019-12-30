@@ -358,7 +358,9 @@ where
       inner.nwritten = nwritten as i32;
     }
 
-    // TODO(bartlomieju): this is a hack
+    // TODO(bartlomieju): this step was added during upgrade to Tokio 0.2
+    // and the reasons for the need to explicitly flush are not fully known.
+    // Figure out why it's needed and preferably remove it.
     if inner.io_state == IoState::Flush {
       let mut table = inner.state.lock_resource_table();
       let resource = table
