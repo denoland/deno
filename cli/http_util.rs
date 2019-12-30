@@ -14,20 +14,26 @@ use reqwest::Client;
 use std::future::Future;
 use url::Url;
 
-/// Create new instance of async reqwest::Client. This client supports
+lazy_static! {
+  static ref HTTP_CLIENT: Client = {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+      USER_AGENT,
+      format!("Deno/{}", version::DENO).parse().unwrap(),
+    );
+    Client::builder()
+      .redirect(Policy::none())
+      .default_headers(headers)
+      .use_rustls_tls()
+      .build()
+      .unwrap()
+  };
+}
+
+/// Get instance of async reqwest::Client. This client supports
 /// proxies and doesn't follow redirects.
-pub fn get_client() -> Client {
-  let mut headers = HeaderMap::new();
-  headers.insert(
-    USER_AGENT,
-    format!("Deno/{}", version::DENO).parse().unwrap(),
-  );
-  Client::builder()
-    .redirect(Policy::none())
-    .default_headers(headers)
-    .use_rustls_tls()
-    .build()
-    .unwrap()
+pub fn get_client() -> &'static Client {
+  &HTTP_CLIENT
 }
 
 /// Construct the next uri based on base uri and location header fragment
