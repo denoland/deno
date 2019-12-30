@@ -1148,6 +1148,24 @@ declare namespace Deno {
     address: string;
   }
 
+  export enum ShutdownMode {
+    // See http://man7.org/linux/man-pages/man2/shutdown.2.html
+    // Corresponding to SHUT_RD, SHUT_WR, SHUT_RDWR
+    Read = 0,
+    Write,
+    ReadWrite // unused
+  }
+
+  /** Shut down socket send and receive operations.
+   *
+   * Matches behavior of POSIX shutdown(3).
+   *
+   *       const listener = Deno.listen({ port: 80 });
+   *       const conn = await listener.accept();
+   *       Deno.shutdown(conn.rid, Deno.ShutdownMode.Write);
+   */
+  export function shutdown(rid: number, how: ShutdownMode): void;
+
   /** A Listener is a generic network listener for stream-oriented protocols. */
   export interface Listener extends AsyncIterator<Conn> {
     /** Waits for and resolves to the next connection to the `Listener`. */
