@@ -7,6 +7,7 @@ use libc::c_char;
 use libc::c_int;
 use libc::c_void;
 use libc::size_t;
+use std::collections::HashMap;
 use std::convert::From;
 use std::ffi::CString;
 use std::marker::PhantomData;
@@ -21,10 +22,18 @@ pub type OpId = u32;
 #[allow(non_camel_case_types)]
 pub type isolate = DenoIsolate;
 
+struct ModuleInfo {
+  main: bool,
+  name: String,
+  handle: v8::Global<v8::Module>,
+  import_specifiers: Vec<String>,
+}
+
 pub struct DenoIsolate {
   isolate_: Option<v8::OwnedIsolate>,
   last_exception_: Option<CString>,
   context_: v8::Global<v8::Context>,
+  mods_: HashMap<deno_mod, ModuleInfo>,
   /*
   v8::Isolate* isolate_;
   v8::Locker* locker_;
@@ -35,7 +44,6 @@ pub struct DenoIsolate {
   deno_recv_cb recv_cb_;
   void* user_data_;
 
-  std::map<deno_mod, ModuleInfo> mods_;
   std::map<std::string, deno_mod> mods_by_name_;
   deno_resolve_cb resolve_cb_;
 
@@ -66,6 +74,7 @@ impl DenoIsolate {
       isolate_: None,
       last_exception_: None,
       context_: v8::Global::<v8::Context>::new(),
+      mods_: HashMap::new(),
     }
     /*
       : isolate_(nullptr),
@@ -111,79 +120,54 @@ impl DenoIsolate {
     let isolate = self.isolate_.as_ref().unwrap();
     let mut locker = v8::Locker::new(&isolate);
 
-    {
-      let mut hs = v8::HandleScope::new(&mut locker);
-      let scope = hs.enter();
-      let mut context = v8::Context::new(scope);
-      context.enter();
+    let mut hs = v8::HandleScope::new(&mut locker);
+    let scope = hs.enter();
+    let mut context = v8::Context::new(scope);
+    context.enter();
 
-      let name_str = v8::String::new(scope, name).unwrap();
-      let source_str = v8::String::new(scope, source).unwrap();
+    let name_str = v8::String::new(scope, name).unwrap();
+    let source_str = v8::String::new(scope, source).unwrap();
 
-      let origin = module_origin(scope, name_str);
-      let source = v8::script_compiler::Source::new(source_str, &origin);
+    let origin = module_origin(scope, name_str);
+    let source = v8::script_compiler::Source::new(source_str, &origin);
 
-      let mut try_catch = v8::TryCatch::new(scope);
-      let tc = try_catch.enter();
+    let mut try_catch = v8::TryCatch::new(scope);
+    let tc = try_catch.enter();
 
-      let mut maybe_module =
-        v8::script_compiler::compile_module(&isolate, source);
+    let mut maybe_module =
+      v8::script_compiler::compile_module(&isolate, source);
 
-      if tc.has_caught() {
-        assert!(maybe_module.is_none());
-        // TODO HandleException(context, try_catch.Exception());
-        return 0;
-      }
-      let module = maybe_module.unwrap();
-      let id = module.get_identity_hash();
-
-      // assert_eq!(v8::ModuleStatus::Uninstantiated, module.get_status());
-      context.exit();
-    }
-
-    todo!()
-    /*
-    v8::Isolate::Scope isolate_scope(isolate_);
-    v8::Locker locker(isolate_);
-    v8::HandleScope handle_scope(isolate_);
-    auto context = context_.Get(isolate_);
-    v8::Context::Scope context_scope(context);
-
-    v8::Local<v8::String> name_str = v8_str(name);
-    v8::Local<v8::String> source_str = v8_str(source);
-
-    auto origin = ModuleOrigin(isolate_, name_str);
-    v8::ScriptCompiler::Source source_(source_str, origin);
-
-    v8::TryCatch try_catch(isolate_);
-
-    auto maybe_module = v8::ScriptCompiler::CompileModule(isolate_, &source_);
-
-    if (try_catch.HasCaught()) {
-      CHECK(maybe_module.IsEmpty());
-      HandleException(context, try_catch.Exception());
+    if tc.has_caught() {
+      assert!(maybe_module.is_none());
+      todo!(); // HandleException(context, try_catch.Exception());
       return 0;
     }
+    let module = maybe_module.unwrap();
+    let id = module.get_identity_hash();
 
-    auto module = maybe_module.ToLocalChecked();
-
-    int id = module->GetIdentityHash();
-
-    std::vector<std::string> import_specifiers;
-
-    for (int i = 0; i < module->GetModuleRequestsLength(); ++i) {
-      v8::Local<v8::String> specifier = module->GetModuleRequest(i);
-      v8::String::Utf8Value specifier_utf8(isolate_, specifier);
-      import_specifiers.push_back(*specifier_utf8);
+    let mut import_specifiers: Vec<String> = vec![];
+    for i in 0..module.get_module_requests_length() {
+      let specifier = module.get_module_request(i);
+      import_specifiers.push(specifier.to_rust_string_lossy(scope));
     }
 
+    /*
     mods_.emplace(
         std::piecewise_construct, std::make_tuple(id),
         std::make_tuple(isolate_, module, main, name, import_specifiers));
     mods_by_name_[name] = id;
-
-    return id;
     */
+
+    context.exit();
+
+    id
+  }
+
+  fn get_module_info(&self, id: deno_mod) -> Option<&ModuleInfo> {
+    if id == 0 {
+      return None;
+    }
+    self.mods_.get(&id)
   }
 }
 
@@ -864,8 +848,12 @@ pub unsafe fn deno_mod_new(
   (*i).register_module(main, name, source)
 }
 
-pub unsafe fn deno_mod_imports_len(i: *const isolate, id: deno_mod) -> size_t {
-  todo!()
+pub unsafe fn deno_mod_imports_len(
+  i: *const DenoIsolate,
+  id: deno_mod,
+) -> usize {
+  let info = (*i).get_module_info(id).unwrap();
+  info.import_specifiers.len()
 }
 
 pub unsafe fn deno_mod_imports_get(
