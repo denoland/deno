@@ -44,7 +44,7 @@ log = "0.4.8"
 rand = "0.7.2"
 regex = "1.3.1"
 remove_dir_all = "0.5.2"
-reqwest = { git = "https://github.com/seanmonstar/reqwest.git", rev = "0ab5df3", features = ["rustls-tls", "stream"] }
+reqwest = { version = "0.10.0", features = ["rustls-tls", "stream"] }
 ring = "0.16.9"
 rustyline = "5.0.4"
 serde = { version = "1.0.102", features = ["derive"] }
