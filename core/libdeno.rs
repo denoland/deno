@@ -8,6 +8,7 @@ use libc::c_int;
 use libc::c_void;
 use libc::size_t;
 use std::convert::From;
+use std::ffi::CString;
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 use std::option::Option;
@@ -22,6 +23,7 @@ pub type isolate = DenoIsolate;
 
 pub struct DenoIsolate {
   isolate_: Option<v8::OwnedIsolate>,
+  last_exception_: Option<CString>,
   /*
   v8::Isolate* isolate_;
   v8::Locker* locker_;
@@ -43,7 +45,6 @@ pub struct DenoIsolate {
 
   v8::Persistent<v8::Context> context_;
   std::map<int, v8::Persistent<v8::Value>> pending_promise_map_;
-  std::string last_exception_;
   v8::Persistent<v8::Value> last_exception_handle_;
   v8::Persistent<v8::Function> recv_;
   v8::StartupData snapshot_;
@@ -61,7 +62,10 @@ impl Drop for DenoIsolate {
 
 impl DenoIsolate {
   pub fn new(config: deno_config) -> Self {
-    Self { isolate_: None }
+    Self {
+      isolate_: None,
+      last_exception_: None,
+    }
     /*
       : isolate_(nullptr),
         locker_(nullptr),
@@ -496,7 +500,7 @@ pub unsafe fn deno_new(config: deno_config) -> *const isolate {
     return deno_new_snapshotter(config);
   }
 
-  let mut d = DenoIsolate::new(config);
+  let mut d = Box::new(DenoIsolate::new(config));
   let mut params = v8::Isolate::create_params();
   params.set_array_buffer_allocator(v8::new_default_allocator());
   params.set_external_references(&EXTERNAL_REFERENCES);
@@ -529,18 +533,24 @@ pub unsafe fn deno_new(config: deno_config) -> *const isolate {
 
   return reinterpret_cast<Deno*>(d);
      */
-  let ptr: *const DenoIsolate = &d;
-  println!("DenoIsolate ptr {:?}", ptr);
-  std::mem::forget(d);
-  return ptr;
+  //let ptr: *const DenoIsolate = &d;
+  //println!("deno_new -> DenoIsolate ptr {:?}", ptr);
+  //std::mem::forget(d);
+  return Box::into_raw(d);
 }
 
-pub unsafe fn deno_delete(i: *const isolate) {
-  todo!()
+pub unsafe fn deno_delete(i: *const DenoIsolate) {
+  let deno_isolate = unsafe { Box::from_raw(i as *mut DenoIsolate) };
+  drop(deno_isolate);
 }
-pub unsafe fn deno_last_exception(i: *const isolate) -> *const c_char {
-  todo!()
+
+pub unsafe fn deno_last_exception(i: *const DenoIsolate) -> *const c_char {
+  match (*i).last_exception_.as_ref() {
+    None => std::ptr::null(),
+    Some(e) => e.as_ptr(),
+  }
 }
+
 pub unsafe fn deno_clear_last_exception(i: *const isolate) {
   todo!()
 }
@@ -568,13 +578,13 @@ pub unsafe fn deno_pinned_buf_delete(buf: &mut deno_pinned_buf) {
   todo!()
 }
 pub unsafe fn deno_execute(
-  i: *const isolate,
+  i: *const DenoIsolate,
   user_data: *const c_void,
   js_filename: *const c_char,
   js_source: *const c_char,
 ) {
-  println!("deno_execute -> DenoIsolate ptr {:?}", i);
   let isolate = (*i).isolate_.as_ref().unwrap();
+  // println!("deno_execute -> Isolate ptr {:?}", isolate);
   let mut locker = v8::Locker::new(isolate);
   // todo!()
   /*
