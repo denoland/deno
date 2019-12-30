@@ -2843,12 +2843,17 @@ declare namespace __workers {
     closed: Promise<void>;
   }
   export interface WorkerOptions {}
-  /** Extended Deno Worker initialization options.
-   * `noDenoNamespace` hides global `window.Deno` namespace for
-   * spawned worker and nested workers spawned by it (default: false).
-   */
+  /** Extended Deno Worker initialization options. */
   export interface DenoWorkerOptions extends WorkerOptions {
+    /** `noDenoNamespace` hides global `window.Deno` namespace for
+     * spawned worker and nested workers spawned by it (default: false).
+     */
     noDenoNamespace?: boolean;
+    /** `shareResources` makes parent and child worker sharing the
+     * same underlying resource table, making it possible for child
+     * to access open resources using the same resource ID.
+     */
+    shareResources?: boolean;
   }
   export class WorkerImpl implements Worker {
     private readonly id;

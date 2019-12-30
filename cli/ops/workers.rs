@@ -108,6 +108,7 @@ fn op_worker_post_message(
 struct CreateWorkerArgs {
   specifier: String,
   include_deno_namespace: bool,
+  share_resources: bool,
   has_source_code: bool,
   source_code: String,
 }
@@ -127,6 +128,7 @@ fn op_create_worker(
     args.include_deno_namespace && state.include_deno_namespace;
   let has_source_code = args.has_source_code;
   let source_code = args.source_code;
+  let share_resources = args.share_resources;
 
   let parent_state = state.clone();
 
@@ -139,10 +141,17 @@ fn op_create_worker(
     }
   }
 
+  let resource_table = if share_resources {
+    Some(parent_state.resource_table.clone())
+  } else {
+    None
+  };
+
   let (int, ext) = ThreadSafeState::create_channels();
   let child_state = ThreadSafeState::new(
     state.global_state.clone(),
     Some(parent_state.permissions.clone()), // by default share with parent
+    resource_table,
     Some(module_specifier.clone()),
     include_deno_namespace,
     int,

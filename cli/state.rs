@@ -57,7 +57,7 @@ pub struct State {
   pub start_time: Instant,
   pub seeded_rng: Option<Mutex<StdRng>>,
   pub include_deno_namespace: bool,
-  pub resource_table: Mutex<ResourceTable>,
+  pub resource_table: Arc<Mutex<ResourceTable>>,
 }
 
 impl Clone for ThreadSafeState {
@@ -216,6 +216,8 @@ impl ThreadSafeState {
     global_state: ThreadSafeGlobalState,
     // If Some(perm), use perm. Else copy from global_state.
     shared_permissions: Option<Arc<Mutex<DenoPermissions>>>,
+    // If Some(table), use table. Else create a new table.
+    resource_table: Option<Arc<Mutex<ResourceTable>>>,
     main_module: Option<ModuleSpecifier>,
     include_deno_namespace: bool,
     internal_channels: WorkerChannels,
@@ -238,6 +240,9 @@ impl ThreadSafeState {
       Arc::new(Mutex::new(global_state.permissions.clone()))
     };
 
+    let resource_table = resource_table
+      .unwrap_or_else(|| Arc::new(Mutex::new(ResourceTable::default())));
+
     let state = State {
       global_state,
       modules,
@@ -252,7 +257,7 @@ impl ThreadSafeState {
       start_time: Instant::now(),
       seeded_rng,
       include_deno_namespace,
-      resource_table: Mutex::new(ResourceTable::default()),
+      resource_table,
     };
 
     Ok(ThreadSafeState(Arc::new(state)))
@@ -339,6 +344,7 @@ impl ThreadSafeState {
 
     ThreadSafeState::new(
       ThreadSafeGlobalState::mock(argv),
+      None,
       None,
       module_specifier,
       true,

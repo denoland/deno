@@ -257,6 +257,7 @@ mod tests {
     let state = ThreadSafeState::new(
       global_state,
       None,
+      None,
       Some(module_specifier.clone()),
       true,
       int,
@@ -301,6 +302,7 @@ mod tests {
     let state = ThreadSafeState::new(
       global_state,
       None,
+      None,
       Some(module_specifier.clone()),
       true,
       int,
@@ -343,6 +345,7 @@ mod tests {
     let (int, ext) = ThreadSafeState::create_channels();
     let state = ThreadSafeState::new(
       global_state.clone(),
+      None,
       None,
       Some(module_specifier.clone()),
       true,

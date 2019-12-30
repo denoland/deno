@@ -24,12 +24,14 @@ export function decodeMessage(dataIntArray: Uint8Array): any {
 function createWorker(
   specifier: string,
   includeDenoNamespace: boolean,
+  shareResources: boolean,
   hasSourceCode: boolean,
   sourceCode: Uint8Array
 ): number {
   return sendSync(dispatch.OP_CREATE_WORKER, {
     specifier,
     includeDenoNamespace,
+    shareResources,
     hasSourceCode,
     sourceCode: new TextDecoder().decode(sourceCode)
   });
@@ -114,12 +116,17 @@ export interface Worker {
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 export interface WorkerOptions {}
 
-/** Extended Deno Worker initialization options.
- * `noDenoNamespace` hides global `window.Deno` namespace for
- * spawned worker and nested workers spawned by it (default: false).
- */
+/** Extended Deno Worker initialization options. */
 export interface DenoWorkerOptions extends WorkerOptions {
+  /** `noDenoNamespace` hides global `window.Deno` namespace for
+   * spawned worker and nested workers spawned by it (default: false).
+   */
   noDenoNamespace?: boolean;
+  /** `shareResources` makes parent and child worker sharing the
+   * same underlying resource table, making it possible for child
+   * to access open resources using the same resource ID.
+   */
+  shareResources?: boolean;
 }
 
 export class WorkerImpl implements Worker {
@@ -138,6 +145,10 @@ export class WorkerImpl implements Worker {
     if (options && options.noDenoNamespace) {
       includeDenoNamespace = false;
     }
+    let shareResources = false;
+    if (options && options.shareResources === true) {
+      shareResources = true;
+    }
     // Handle blob URL.
     if (specifier.startsWith("blob:")) {
       hasSourceCode = true;
@@ -155,6 +166,7 @@ export class WorkerImpl implements Worker {
     this.id = createWorker(
       specifier,
       includeDenoNamespace,
+      shareResources,
       hasSourceCode,
       sourceCode
     );
