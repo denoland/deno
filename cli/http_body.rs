@@ -1,28 +1,31 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-
-use futures::io::AsyncRead;
-use futures::stream::StreamExt;
-use reqwest::r#async::Chunk;
-use reqwest::r#async::Decoder;
+use bytes::Bytes;
+use futures::Stream;
+use futures::StreamExt;
+use reqwest;
 use std::cmp::min;
 use std::io;
 use std::io::Read;
 use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
+use tokio::io::AsyncRead;
 
-/// Wraps `reqwest::Decoder` so that it can be exposed as an `AsyncRead` and integrated
+// TODO(bartlomieju): most of this stuff can be moved to `cli/ops/fetch.rs`
+type ReqwestStream = Pin<Box<dyn Stream<Item = reqwest::Result<Bytes>> + Send>>;
+
+/// Wraps `ReqwestStream` so that it can be exposed as an `AsyncRead` and integrated
 /// into resources more easily.
 pub struct HttpBody {
-  decoder: futures::compat::Compat01As03<Decoder>,
-  chunk: Option<Chunk>,
+  stream: ReqwestStream,
+  chunk: Option<Bytes>,
   pos: usize,
 }
 
 impl HttpBody {
-  pub fn from(body: Decoder) -> Self {
+  pub fn from(body: ReqwestStream) -> Self {
     Self {
-      decoder: futures::compat::Compat01As03::new(body),
+      stream: body,
       chunk: None,
       pos: 0,
     }
@@ -65,10 +68,10 @@ impl AsyncRead for HttpBody {
       assert_eq!(inner.pos, 0);
     }
 
-    let p = inner.decoder.poll_next_unpin(cx);
+    let p = inner.stream.poll_next_unpin(cx);
     match p {
       Poll::Ready(Some(Err(e))) => Poll::Ready(Err(
-        // TODO Need to map hyper::Error into std::io::Error.
+        // TODO(bartlomieju): rewrite it to use ErrBox
         io::Error::new(io::ErrorKind::Other, e),
       )),
       Poll::Ready(Some(Ok(chunk))) => {

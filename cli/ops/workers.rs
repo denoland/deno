@@ -168,14 +168,13 @@ fn op_create_worker(
   // TODO(bartlomieju): this should spawn mod execution on separate tokio task
   // and block on receving message on a channel or even use sync channel /shrug
   let (sender, receiver) = mpsc::sync_channel::<Result<(), ErrBox>>(1);
-  let fut = worker
-    .execute_mod_async(&module_specifier, None, false)
-    .then(move |result| {
-      sender.send(result).expect("Failed to send message");
-      futures::future::ok(())
-    })
-    .boxed()
-    .compat();
+  let fut = async move {
+    let result = worker
+      .execute_mod_async(&module_specifier, None, false)
+      .await;
+    sender.send(result).expect("Failed to send message");
+  }
+  .boxed();
   tokio::spawn(fut);
 
   let result = receiver.recv().expect("Failed to receive message");

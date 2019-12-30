@@ -13,7 +13,7 @@ use futures::channel::oneshot;
 use futures::future::FutureExt;
 use std::future::Future;
 use std::time::Instant;
-use tokio::timer::Delay;
+use tokio;
 
 #[derive(Default)]
 pub struct GlobalTimer {
@@ -43,8 +43,7 @@ impl GlobalTimer {
     let (tx, rx) = oneshot::channel();
     self.tx = Some(tx);
 
-    let delay = futures::compat::Compat01As03::new(Delay::new(deadline))
-      .map_err(|err| panic!("Unexpected error in timeout {:?}", err));
+    let delay = tokio::time::delay_until(deadline.into());
     let rx = rx
       .map_err(|err| panic!("Unexpected error in receiving channel {:?}", err));
 

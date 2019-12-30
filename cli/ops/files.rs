@@ -9,14 +9,9 @@ use crate::ops::json_op;
 use crate::state::ThreadSafeState;
 use deno::*;
 use futures::future::FutureExt;
-use futures::future::TryFutureExt;
 use std;
 use std::convert::From;
-use std::future::Future;
 use std::io::SeekFrom;
-use std::pin::Pin;
-use std::task::Context;
-use std::task::Poll;
 use tokio;
 
 pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
@@ -92,21 +87,19 @@ fn op_open(
   }
 
   let is_sync = args.promise_id.is_none();
-  let op = futures::compat::Compat01As03::new(tokio::prelude::Future::map_err(
-    open_options.open(filename),
-    ErrBox::from,
-  ))
-  .and_then(move |fs_file| {
+
+  let fut = async move {
+    let fs_file = open_options.open(filename).await?;
     let mut table = state_.lock_resource_table();
     let rid = table.add("fsFile", Box::new(StreamResource::FsFile(fs_file)));
-    futures::future::ok(json!(rid))
-  });
+    Ok(json!(rid))
+  };
 
   if is_sync {
-    let buf = futures::executor::block_on(op)?;
+    let buf = futures::executor::block_on(fut)?;
     Ok(JsonOp::Sync(buf))
   } else {
-    Ok(JsonOp::Async(op.boxed()))
+    Ok(JsonOp::Async(fut.boxed()))
   }
 }
 
@@ -125,37 +118,6 @@ fn op_close(
   let mut table = state.lock_resource_table();
   table.close(args.rid as u32).ok_or_else(bad_resource)?;
   Ok(JsonOp::Sync(json!({})))
-}
-
-pub struct SeekFuture {
-  seek_from: SeekFrom,
-  rid: ResourceId,
-  state: ThreadSafeState,
-}
-
-impl Future for SeekFuture {
-  type Output = Result<u64, ErrBox>;
-
-  fn poll(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Self::Output> {
-    let inner = self.get_mut();
-    let mut table = inner.state.lock_resource_table();
-    let resource = table
-      .get_mut::<StreamResource>(inner.rid)
-      .ok_or_else(bad_resource)?;
-
-    let tokio_file = match resource {
-      StreamResource::FsFile(ref mut file) => file,
-      _ => return Poll::Ready(Err(bad_resource())),
-    };
-
-    use tokio::prelude::Async::*;
-
-    match tokio_file.poll_seek(inner.seek_from).map_err(ErrBox::from) {
-      Ok(Ready(v)) => Poll::Ready(Ok(v)),
-      Err(err) => Poll::Ready(Err(err)),
-      Ok(NotReady) => Poll::Pending,
-    }
-  }
 }
 
 #[derive(Deserialize)]
@@ -189,17 +151,26 @@ fn op_seek(
     }
   };
 
-  let fut = SeekFuture {
-    state: state.clone(),
-    seek_from,
-    rid,
+  let mut table = state.lock_resource_table();
+  let resource = table
+    .get_mut::<StreamResource>(rid)
+    .ok_or_else(bad_resource)?;
+
+  let tokio_file = match resource {
+    StreamResource::FsFile(ref mut file) => file,
+    _ => return Err(bad_resource()),
+  };
+  let mut file = futures::executor::block_on(tokio_file.try_clone())?;
+
+  let fut = async move {
+    file.seek(seek_from).await?;
+    Ok(json!({}))
   };
 
-  let op = fut.and_then(move |_| futures::future::ok(json!({})));
   if args.promise_id.is_none() {
-    let buf = futures::executor::block_on(op)?;
+    let buf = futures::executor::block_on(fut)?;
     Ok(JsonOp::Sync(buf))
   } else {
-    Ok(JsonOp::Async(op.boxed()))
+    Ok(JsonOp::Async(fut.boxed()))
   }
 }
