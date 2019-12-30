@@ -625,7 +625,7 @@ pub fn runtime_compile_async<S: BuildHasher>(
   .into_boxed_str()
   .into_boxed_bytes();
 
-  let worker = TsCompiler::setup_worker(global_state.clone());
+  let worker = TsCompiler::setup_worker(global_state);
   let worker_ = worker.clone();
 
   async move {
@@ -653,7 +653,7 @@ pub fn runtime_transpile_async<S: BuildHasher>(
   .into_boxed_str()
   .into_boxed_bytes();
 
-  let worker = TsCompiler::setup_worker(global_state.clone());
+  let worker = TsCompiler::setup_worker(global_state);
   let worker_ = worker.clone();
 
   async move {
