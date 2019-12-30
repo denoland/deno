@@ -287,7 +287,7 @@ dependencies = [
  "libc 0.2.66 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "num_cpus 1.11.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "rusty_v8 0.0.17",
+ "rusty_v8 0.0.18",
  "serde_json 1.0.41 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio 0.2.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "url 1.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1332,7 +1332,7 @@ dependencies = [
 
 [[package]]
 name = "rusty_v8"
-version = "0.0.17"
+version = "0.0.18"
 dependencies = [
  "bitflags 1.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "cargo_gn 0.0.13 (registry+https://github.com/rust-lang/crates.io-index)",

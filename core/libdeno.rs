@@ -34,6 +34,7 @@ pub struct DenoIsolate {
   last_exception_: Option<CString>,
   context_: v8::Global<v8::Context>,
   mods_: HashMap<deno_mod, ModuleInfo>,
+  mods_by_name_: HashMap<String, deno_mod>,
   /*
   v8::Isolate* isolate_;
   v8::Locker* locker_;
@@ -44,7 +45,6 @@ pub struct DenoIsolate {
   deno_recv_cb recv_cb_;
   void* user_data_;
 
-  std::map<std::string, deno_mod> mods_by_name_;
   deno_resolve_cb resolve_cb_;
 
   deno_dyn_import_id next_dyn_import_id_;
@@ -75,6 +75,7 @@ impl DenoIsolate {
       last_exception_: None,
       context_: v8::Global::<v8::Context>::new(),
       mods_: HashMap::new(),
+      mods_by_name_: HashMap::new(),
     }
     /*
       : isolate_(nullptr),
@@ -112,7 +113,7 @@ impl DenoIsolate {
   }
 
   pub fn register_module(
-    &self,
+    &mut self,
     main: bool,
     name: &str,
     source: &str,
@@ -151,6 +152,16 @@ impl DenoIsolate {
       import_specifiers.push(specifier.to_rust_string_lossy(scope));
     }
 
+    self.mods_.insert(
+      id,
+      ModuleInfo {
+        main,
+        name: name.to_string(),
+        import_specifiers,
+        handle: v8::Global::new(),
+      },
+    );
+    self.mods_by_name_.insert(name.to_string(), id);
     /*
     mods_.emplace(
         std::piecewise_construct, std::make_tuple(id),
@@ -845,7 +856,8 @@ pub unsafe fn deno_mod_new(
   name: &str,
   source: &str,
 ) -> deno_mod {
-  (*i).register_module(main, name, source)
+  let i_mut: &mut DenoIsolate = unsafe { std::mem::transmute(i) };
+  i_mut.register_module(main, name, source)
 }
 
 pub unsafe fn deno_mod_imports_len(
