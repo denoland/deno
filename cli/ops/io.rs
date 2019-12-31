@@ -1,7 +1,7 @@
 use super::dispatch_minimal::MinimalOp;
 use crate::deno_error;
 use crate::deno_error::bad_resource;
-use crate::http_body::HttpBody;
+use crate::http_util::HttpBody;
 use crate::ops::minimal_op;
 use crate::state::ThreadSafeState;
 use deno::ErrBox;

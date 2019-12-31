@@ -1,13 +1,11 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::StreamResource;
-use crate::http_body::HttpBody;
-use crate::http_util::get_client;
+use crate::http_util::{get_client, HttpBody};
 use crate::ops::json_op;
 use crate::state::ThreadSafeState;
 use deno::*;
 use futures::future::FutureExt;
-use futures::StreamExt;
 use http::header::HeaderName;
 use http::header::HeaderValue;
 use http::Method;
@@ -66,7 +64,7 @@ pub fn op_fetch(
       res_headers.push((key.to_string(), val.to_str().unwrap().to_owned()));
     }
 
-    let body = HttpBody::from(res.bytes_stream().boxed());
+    let body = HttpBody::from(res);
     let mut table = state_.lock_resource_table();
     let rid = table.add(
       "httpBody",
