@@ -338,7 +338,7 @@ impl DenoIsolate {
     );
 
     // message.get_source_line(context);
-    let script_resource_name = message.get_script_resource_name(context);
+    let script_resource_name = message.get_script_resource_name(s);
 
     json_obj
 
@@ -1065,11 +1065,8 @@ pub unsafe fn deno_delete(i: *const DenoIsolate) {
   drop(deno_isolate);
 }
 
-pub unsafe fn deno_last_exception(i: *const DenoIsolate) -> *const c_char {
-  match (*i).last_exception_.as_ref() {
-    None => std::ptr::null(),
-    Some(e) => e.as_ptr() as *const c_char,
-  }
+pub unsafe fn deno_last_exception(i: *const DenoIsolate) -> Option<String> {
+  (*i).last_exception_.clone()
 }
 
 pub unsafe fn deno_clear_last_exception(i: *const isolate) {

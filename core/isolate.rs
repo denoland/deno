@@ -31,7 +31,6 @@ use futures::stream::TryStreamExt;
 use futures::task::AtomicWaker;
 use libc::c_char;
 use libc::c_void;
-use libc::strdup;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::fmt;
@@ -409,28 +408,24 @@ impl Isolate {
   }
 
   fn check_last_exception(&mut self) -> Result<(), ErrBox> {
-    let ptr = unsafe { libdeno::deno_last_exception(self.libdeno_isolate) };
-    if ptr.is_null() {
-      Ok(())
-    } else {
-      let js_error_create = &*self.js_error_create;
-      let cstr = unsafe { CStr::from_ptr(ptr) };
-      if self.error_handler.is_some() {
-        // We duplicate the string and assert ownership.
-        // This is due to we want the user to safely clone the error.
-        let cstring = unsafe { CString::from_raw(strdup(ptr)) };
-        // We need to clear last exception to avoid double handling.
-        unsafe { libdeno::deno_clear_last_exception(self.libdeno_isolate) };
-        let json_string = cstring.into_string().unwrap();
-        let v8_exception = V8Exception::from_json(&json_string).unwrap();
-        let js_error = js_error_create(v8_exception);
-        let handler = self.error_handler.as_mut().unwrap();
-        handler(js_error)
-      } else {
-        let json_str = cstr.to_str().unwrap();
-        let v8_exception = V8Exception::from_json(json_str).unwrap();
-        let js_error = js_error_create(v8_exception);
-        Err(js_error)
+    let maybe_err =
+      unsafe { libdeno::deno_last_exception(self.libdeno_isolate) };
+    match maybe_err {
+      None => Ok(()),
+      Some(json_str) => {
+        let js_error_create = &*self.js_error_create;
+        if self.error_handler.is_some() {
+          // We need to clear last exception to avoid double handling.
+          unsafe { libdeno::deno_clear_last_exception(self.libdeno_isolate) };
+          let v8_exception = V8Exception::from_json(&json_str).unwrap();
+          let js_error = js_error_create(v8_exception);
+          let handler = self.error_handler.as_mut().unwrap();
+          handler(js_error)
+        } else {
+          let v8_exception = V8Exception::from_json(&json_str).unwrap();
+          let js_error = js_error_create(v8_exception);
+          Err(js_error)
+        }
       }
     }
   }
