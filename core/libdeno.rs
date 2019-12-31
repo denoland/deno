@@ -192,10 +192,13 @@ impl DenoIsolate {
   fn execute<'a>(
     &mut self,
     s: &mut impl v8::ToLocal<'a>,
-    mut context: v8::Local<v8::Context>,
+    mut context: v8::Local<'a, v8::Context>,
     js_filename: &str,
     js_source: &str,
   ) -> bool {
+    let mut hs = v8::HandleScope::new(s);
+    let s = hs.enter();
+
     let source = v8::String::new(s, js_source).unwrap();
     let name = v8::String::new(s, js_filename).unwrap();
     /*
@@ -233,29 +236,23 @@ impl DenoIsolate {
 
     if result.is_none() {
       assert!(tc.has_caught());
-      self.handle_exception(context, tc.exception().unwrap());
-      return false;
+      let exception = tc.exception().unwrap();
+      self.handle_exception(s, context, exception);
+      false
+    } else {
+      true
     }
-
-    /*
-    if (result.IsEmpty()) {
-      DCHECK(try_catch.HasCaught());
-      HandleException(context, try_catch.Exception());
-      return false;
-    }
-    */
-    true
   }
 
-  fn handle_exception(
+  fn handle_exception<'a>(
     &mut self,
-    mut context: v8::Local<v8::Context>,
-    exception: v8::Local<v8::Value>,
+    s: &mut impl v8::ToLocal<'a>,
+    mut context: v8::Local<'a, v8::Context>,
+    exception: v8::Local<'a, v8::Value>,
   ) {
     let isolate = context.get_isolate();
     /*
     v8::Isolate* isolate = context->GetIsolate();
-
     // TerminateExecution was called
     if (isolate->IsExecutionTerminating()) {
       // cancel exception termination so that the exception can be created
@@ -273,13 +270,201 @@ impl DenoIsolate {
       isolate->TerminateExecution();
       return;
     }
-
     DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
     std::string json_str = EncodeExceptionAsJSON(context, exception);
     CHECK_NOT_NULL(d);
     d->last_exception_handle_.Reset(isolate, exception);
     */
-    self.last_exception_ = Some("hello".to_string());
+    let json_str = self.encode_exception_as_json(s, context, exception);
+    eprintln!("handle_exception {:?}", json_str);
+    self.last_exception_ = Some(json_str);
+  }
+
+  fn encode_exception_as_json<'a>(
+    &mut self,
+    s: &mut impl v8::ToLocal<'a>,
+    mut context: v8::Local<'a, v8::Context>,
+    exception: v8::Local<'a, v8::Value>,
+  ) -> String {
+    let message = v8::create_message(s, exception);
+    self.encode_message_as_json(s, context, message.into())
+    /*
+    auto* isolate = context->GetIsolate();
+    v8::HandleScope handle_scope(isolate);
+    v8::Context::Scope context_scope(context);
+
+    auto message = v8::Exception::CreateMessage(isolate, exception);
+    return EncodeMessageAsJSON(context, message);
+    */
+  }
+
+  fn encode_message_as_json<'a>(
+    &mut self,
+    s: &mut impl v8::ToLocal<'a>,
+    mut context: v8::Local<v8::Context>,
+    message: v8::Local<v8::Message>,
+  ) -> String {
+    let json_obj = self.encode_message_as_object(s, context, message);
+    let json_string = v8::json::stringify(context, json_obj.into()).unwrap();
+    json_string.to_rust_string_lossy(s)
+    /*
+    auto json_obj = EncodeMessageAsObject(context, message);
+    auto json_string = v8::JSON::Stringify(context, json_obj).ToLocalChecked();
+    v8::String::Utf8Value json_string_(isolate, json_string);
+    return std::string(ToCString(json_string_));
+    */
+  }
+
+  fn encode_message_as_object<'a>(
+    &mut self,
+    s: &mut impl v8::ToLocal<'a>,
+    mut context: v8::Local<v8::Context>,
+    message: v8::Local<v8::Message>,
+  ) -> v8::Local<'a, v8::Object> {
+    /*
+    auto* isolate = context->GetIsolate();
+    v8::EscapableHandleScope handle_scope(isolate);
+    v8::Context::Scope context_scope(context);
+    */
+    let json_obj = v8::Object::new(s);
+
+    // let stack_trace = message.get_stack_trace();
+
+    let exception_str = message.get(s);
+    json_obj.set(
+      context,
+      v8::String::new(s, "message").unwrap().into(),
+      exception_str.into(),
+    );
+
+    // message.get_source_line(context);
+
+    json_obj
+
+    /*
+    auto maybe_source_line = message->GetSourceLine(context);
+    if (!maybe_source_line.IsEmpty()) {
+      CHECK(json_obj
+                ->Set(context, v8_str("sourceLine"),
+                      maybe_source_line.ToLocalChecked())
+                .FromJust());
+    }
+
+    CHECK(json_obj
+              ->Set(context, v8_str("scriptResourceName"),
+                    message->GetScriptResourceName())
+              .FromJust());
+
+    auto maybe_line_number = message->GetLineNumber(context);
+    if (maybe_line_number.IsJust()) {
+      CHECK(json_obj
+                ->Set(context, v8_str("lineNumber"),
+                      v8::Integer::New(isolate, maybe_line_number.FromJust()))
+                .FromJust());
+    }
+
+    CHECK(json_obj
+              ->Set(context, v8_str("startPosition"),
+                    v8::Integer::New(isolate, message->GetStartPosition()))
+              .FromJust());
+
+    CHECK(json_obj
+              ->Set(context, v8_str("endPosition"),
+                    v8::Integer::New(isolate, message->GetEndPosition()))
+              .FromJust());
+
+    CHECK(json_obj
+              ->Set(context, v8_str("errorLevel"),
+                    v8::Integer::New(isolate, message->ErrorLevel()))
+              .FromJust());
+
+    auto maybe_start_column = message->GetStartColumn(context);
+    if (maybe_start_column.IsJust()) {
+      auto start_column =
+          v8::Integer::New(isolate, maybe_start_column.FromJust());
+      CHECK(
+          json_obj->Set(context, v8_str("startColumn"), start_column).FromJust());
+    }
+
+    auto maybe_end_column = message->GetEndColumn(context);
+    if (maybe_end_column.IsJust()) {
+      auto end_column = v8::Integer::New(isolate, maybe_end_column.FromJust());
+      CHECK(json_obj->Set(context, v8_str("endColumn"), end_column).FromJust());
+    }
+
+    CHECK(json_obj
+              ->Set(context, v8_str("isSharedCrossOrigin"),
+                    v8::Boolean::New(isolate, message->IsSharedCrossOrigin()))
+              .FromJust());
+
+    CHECK(json_obj
+              ->Set(context, v8_str("isOpaque"),
+                    v8::Boolean::New(isolate, message->IsOpaque()))
+              .FromJust());
+
+    v8::Local<v8::Array> frames;
+    if (!stack_trace.IsEmpty()) {
+      uint32_t count = static_cast<uint32_t>(stack_trace->GetFrameCount());
+      frames = v8::Array::New(isolate, count);
+
+      for (uint32_t i = 0; i < count; ++i) {
+        auto frame = stack_trace->GetFrame(isolate, i);
+        auto frame_obj = v8::Object::New(isolate);
+        CHECK(frames->Set(context, i, frame_obj).FromJust());
+        auto line = v8::Integer::New(isolate, frame->GetLineNumber());
+        auto column = v8::Integer::New(isolate, frame->GetColumn());
+        CHECK(frame_obj->Set(context, v8_str("line"), line).FromJust());
+        CHECK(frame_obj->Set(context, v8_str("column"), column).FromJust());
+
+        auto function_name = frame->GetFunctionName();
+        if (!function_name.IsEmpty()) {
+          CHECK(frame_obj->Set(context, v8_str("functionName"), function_name)
+                    .FromJust());
+        }
+        // scriptName can be empty in special conditions e.g. eval
+        auto scriptName = frame->GetScriptNameOrSourceURL();
+        if (scriptName.IsEmpty()) {
+          scriptName = v8_str("<unknown>");
+        }
+        CHECK(
+            frame_obj->Set(context, v8_str("scriptName"), scriptName).FromJust());
+        CHECK(frame_obj
+                  ->Set(context, v8_str("isEval"),
+                        v8::Boolean::New(isolate, frame->IsEval()))
+                  .FromJust());
+        CHECK(frame_obj
+                  ->Set(context, v8_str("isConstructor"),
+                        v8::Boolean::New(isolate, frame->IsConstructor()))
+                  .FromJust());
+        CHECK(frame_obj
+                  ->Set(context, v8_str("isWasm"),
+                        v8::Boolean::New(isolate, frame->IsWasm()))
+                  .FromJust());
+      }
+    } else {
+      // No stack trace. We only have one stack frame of info..
+      frames = v8::Array::New(isolate, 1);
+
+      auto frame_obj = v8::Object::New(isolate);
+      CHECK(frames->Set(context, 0, frame_obj).FromJust());
+
+      auto line =
+          v8::Integer::New(isolate, message->GetLineNumber(context).FromJust());
+      auto column =
+          v8::Integer::New(isolate, message->GetStartColumn(context).FromJust());
+
+      CHECK(frame_obj->Set(context, v8_str("line"), line).FromJust());
+      CHECK(frame_obj->Set(context, v8_str("column"), column).FromJust());
+      CHECK(frame_obj
+                ->Set(context, v8_str("scriptName"),
+                      message->GetScriptResourceName())
+                .FromJust());
+    }
+
+    CHECK(json_obj->Set(context, v8_str("frames"), frames).FromJust());
+    json_obj = handle_scope.Escape(json_obj);
+    return json_obj;
+    */
   }
 }
 
