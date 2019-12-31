@@ -2,35 +2,46 @@
 use crate::deno_error;
 use crate::deno_error::DenoError;
 use crate::version;
+use bytes::Bytes;
 use deno::ErrBox;
-use futures::future;
 use futures::future::FutureExt;
-use futures::future::TryFutureExt;
 use reqwest;
 use reqwest::header::HeaderMap;
 use reqwest::header::CONTENT_TYPE;
 use reqwest::header::LOCATION;
 use reqwest::header::USER_AGENT;
-use reqwest::r#async::Client;
-use reqwest::RedirectPolicy;
+use reqwest::redirect::Policy;
+use reqwest::Client;
+use reqwest::Response;
+use std::cmp::min;
 use std::future::Future;
+use std::io;
 use std::pin::Pin;
+use std::task::Context;
+use std::task::Poll;
+use tokio::io::AsyncRead;
 use url::Url;
 
-/// Create new instance of async reqwest::Client. This client supports
+lazy_static! {
+  static ref HTTP_CLIENT: Client = {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+      USER_AGENT,
+      format!("Deno/{}", version::DENO).parse().unwrap(),
+    );
+    Client::builder()
+      .redirect(Policy::none())
+      .default_headers(headers)
+      .use_rustls_tls()
+      .build()
+      .unwrap()
+  };
+}
+
+/// Get instance of async reqwest::Client. This client supports
 /// proxies and doesn't follow redirects.
-pub fn get_client() -> Client {
-  let mut headers = HeaderMap::new();
-  headers.insert(
-    USER_AGENT,
-    format!("Deno/{}", version::DENO).parse().unwrap(),
-  );
-  Client::builder()
-    .redirect(RedirectPolicy::none())
-    .default_headers(headers)
-    .use_sys_proxy()
-    .build()
-    .unwrap()
+pub fn get_client() -> &'static Client {
+  &HTTP_CLIENT
 }
 
 /// Construct the next uri based on base uri and location header fragment
@@ -75,77 +86,121 @@ pub enum FetchOnceResult {
 pub fn fetch_string_once(
   url: &Url,
 ) -> impl Future<Output = Result<FetchOnceResult, ErrBox>> {
-  type FetchAttempt = (Option<String>, Option<String>, Option<FetchOnceResult>);
-
   let url = url.clone();
   let client = get_client();
 
-  futures::compat::Compat01As03::new(client.get(url.clone()).send())
-    .map_err(ErrBox::from)
-    .and_then(
-      move |mut response| -> Pin<
-        Box<dyn Future<Output = Result<FetchAttempt, ErrBox>> + Send>,
-      > {
-        if response.status().is_redirection() {
-          let location_string = response
-            .headers()
-            .get(LOCATION)
-            .expect("url redirection should provide 'location' header")
-            .to_str()
-            .unwrap();
+  let fut = async move {
+    let response = client.get(url.clone()).send().await?;
 
-          debug!("Redirecting to {:?}...", &location_string);
-          let new_url = resolve_url_from_location(&url, location_string);
-          // Boxed trait object turns out to be the savior for 2+ types yielding same results.
-          return futures::future::try_join3(
-            future::ok(None),
-            future::ok(None),
-            future::ok(Some(FetchOnceResult::Redirect(new_url))),
-          )
-          .boxed();
-        }
+    if response.status().is_redirection() {
+      let location_string = response
+        .headers()
+        .get(LOCATION)
+        .expect("url redirection should provide 'location' header")
+        .to_str()
+        .unwrap();
 
-        if response.status().is_client_error()
-          || response.status().is_server_error()
-        {
-          return future::err(
-            DenoError::new(
-              deno_error::ErrorKind::Other,
-              format!("Import '{}' failed: {}", &url, response.status()),
-            )
-            .into(),
-          )
-          .boxed();
-        }
+      debug!("Redirecting to {:?}...", &location_string);
+      let new_url = resolve_url_from_location(&url, location_string);
+      return Ok(FetchOnceResult::Redirect(new_url));
+    }
 
-        let content_type = response
-          .headers()
-          .get(CONTENT_TYPE)
-          .map(|content_type| content_type.to_str().unwrap().to_owned());
+    if response.status().is_client_error()
+      || response.status().is_server_error()
+    {
+      let err = DenoError::new(
+        deno_error::ErrorKind::Other,
+        format!("Import '{}' failed: {}", &url, response.status()),
+      );
+      return Err(err.into());
+    }
 
-        let body = futures::compat::Compat01As03::new(response.text())
-          .map_ok(Some)
-          .map_err(ErrBox::from);
+    let content_type = response
+      .headers()
+      .get(CONTENT_TYPE)
+      .map(|content_type| content_type.to_str().unwrap().to_owned());
 
-        futures::future::try_join3(
-          body,
-          future::ok(content_type),
-          future::ok(None),
-        )
-        .boxed()
-      },
-    )
-    .and_then(move |(maybe_code, maybe_content_type, maybe_redirect)| {
-      if let Some(redirect) = maybe_redirect {
-        future::ok(redirect)
-      } else {
-        // maybe_code should always contain code here!
-        future::ok(FetchOnceResult::Code(
-          maybe_code.unwrap(),
-          maybe_content_type,
-        ))
+    let body = response.text().await?;
+    return Ok(FetchOnceResult::Code(body, content_type));
+  };
+
+  fut.boxed()
+}
+
+/// Wraps reqwest `Response` so that it can be exposed as an `AsyncRead` and integrated
+/// into resources more easily.
+pub struct HttpBody {
+  response: Response,
+  chunk: Option<Bytes>,
+  pos: usize,
+}
+
+impl HttpBody {
+  pub fn from(body: Response) -> Self {
+    Self {
+      response: body,
+      chunk: None,
+      pos: 0,
+    }
+  }
+}
+
+impl AsyncRead for HttpBody {
+  fn poll_read(
+    self: Pin<&mut Self>,
+    cx: &mut Context,
+    buf: &mut [u8],
+  ) -> Poll<Result<usize, io::Error>> {
+    let mut inner = self.get_mut();
+    if let Some(chunk) = inner.chunk.take() {
+      debug!(
+        "HttpBody Fake Read buf {} chunk {} pos {}",
+        buf.len(),
+        chunk.len(),
+        inner.pos
+      );
+      let n = min(buf.len(), chunk.len() - inner.pos);
+      {
+        let rest = &chunk[inner.pos..];
+        buf[..n].clone_from_slice(&rest[..n]);
       }
-    })
+      inner.pos += n;
+      if inner.pos == chunk.len() {
+        inner.pos = 0;
+      } else {
+        inner.chunk = Some(chunk);
+      }
+      return Poll::Ready(Ok(n));
+    } else {
+      assert_eq!(inner.pos, 0);
+    }
+
+    let chunk_future = &mut inner.response.chunk();
+    // Safety: `chunk_future` lives only for duration of this poll. So, it doesn't move.
+    let chunk_future = unsafe { Pin::new_unchecked(chunk_future) };
+    match chunk_future.poll(cx) {
+      Poll::Ready(Err(e)) => {
+        Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e)))
+      }
+      Poll::Ready(Ok(Some(chunk))) => {
+        debug!(
+          "HttpBody Real Read buf {} chunk {} pos {}",
+          buf.len(),
+          chunk.len(),
+          inner.pos
+        );
+        let n = min(buf.len(), chunk.len());
+        buf[..n].clone_from_slice(&chunk[..n]);
+        if buf.len() < chunk.len() {
+          inner.pos = n;
+          inner.chunk = Some(chunk);
+        }
+        Poll::Ready(Ok(n))
+      }
+      Poll::Ready(Ok(None)) => Poll::Ready(Ok(0)),
+      Poll::Pending => Poll::Pending,
+    }
+  }
 }
 
 #[cfg(test)]

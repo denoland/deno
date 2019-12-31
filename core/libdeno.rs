@@ -338,6 +338,7 @@ impl DenoIsolate {
     );
 
     // message.get_source_line(context);
+    let script_resource_name = message.get_script_resource_name(context);
 
     json_obj
 

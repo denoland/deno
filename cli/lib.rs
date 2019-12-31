@@ -30,7 +30,6 @@ pub mod fmt_errors;
 mod fs;
 mod global_state;
 mod global_timer;
-mod http_body;
 mod http_util;
 mod import_map;
 mod js;
