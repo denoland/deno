@@ -222,20 +222,19 @@ mod tests {
   where
     F: FnOnce() + Send + 'static,
   {
-    let fut = futures::future::lazy(move |_cx| {
-      f();
-      Ok(())
-    });
-
+    let fut = futures::future::lazy(move |_cx| f());
     tokio_util::run(fut)
   }
 
-  pub fn panic_on_error<I, E, F>(f: F) -> impl Future<Output = Result<I, ()>>
+  pub async fn panic_on_error<I, E, F>(f: F) -> I
   where
     F: Future<Output = Result<I, E>>,
     E: std::fmt::Debug,
   {
-    f.map_err(|err| panic!("Future got unexpected error: {:?}", err))
+    match f.await {
+      Ok(v) => v,
+      Err(e) => panic!("Future got unexpected error: {:?}", e),
+    }
   }
 
   #[test]

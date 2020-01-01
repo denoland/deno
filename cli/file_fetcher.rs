@@ -929,7 +929,7 @@ mod tests {
         let fetcher = setup_file_fetcher(temp_dir.path());
         fetcher.get_source_file_async(&module_url_2, false, false, false)
       })
-      .then(move |result4| {
+      .map(move |result4| {
         assert!(result4.is_ok());
         let r4 = result4.unwrap();
         let expected4 =
@@ -938,7 +938,6 @@ mod tests {
         // Now the old .headers.json file should have gone! Resolved back to TypeScript
         assert_eq!(&(r4.media_type), &msg::MediaType::TypeScript);
         assert!(fs::read_to_string(&headers_file_name_3).is_err());
-        futures::future::ok(())
       });
 
     // http_util::fetch_sync_string requires tokio
@@ -1001,7 +1000,7 @@ mod tests {
         let fetcher = setup_file_fetcher(temp_dir.path());
         fetcher.get_source_file_async(&module_url_1, false, false, false)
       })
-      .then(move |result3| {
+      .map(move |result3| {
         assert!(result3.is_ok());
         let r3 = result3.unwrap();
         let expected3 = "export const loaded = true;\n".as_bytes();
@@ -1016,7 +1015,6 @@ mod tests {
             .unwrap(),
           "text/javascript"
         );
-        futures::future::ok(())
       });
 
     tokio_util::run(fut);
@@ -1038,10 +1036,9 @@ mod tests {
     );
 
     // first download
-    tokio_util::run(fetcher.fetch_source_file_async(&specifier, None).then(
+    tokio_util::run(fetcher.fetch_source_file_async(&specifier, None).map(
       |r| {
         assert!(r.is_ok());
-        futures::future::ok(())
       },
     ));
 
@@ -1055,10 +1052,9 @@ mod tests {
     // download file again, it should use already fetched file even though `use_disk_cache` is set to
     // false, this can be verified using source header file creation timestamp (should be
     // the same as after first download)
-    tokio_util::run(fetcher.fetch_source_file_async(&specifier, None).then(
+    tokio_util::run(fetcher.fetch_source_file_async(&specifier, None).map(
       |r| {
         assert!(r.is_ok());
-        futures::future::ok(())
       },
     ));
 
@@ -1100,7 +1096,7 @@ mod tests {
     // Test basic follow and headers recording
     let fut = fetcher
       .get_source_file_async(&redirect_module_url, true, false, false)
-      .then(move |result| {
+      .map(move |result| {
         assert!(result.is_ok());
         let mod_meta = result.unwrap();
         // File that requires redirection is not downloaded.
@@ -1123,7 +1119,6 @@ mod tests {
 
         // Examine the meta result.
         assert_eq!(mod_meta.url, target_module_url);
-        futures::future::ok(())
       });
 
     tokio_util::run(fut);
@@ -1161,7 +1156,7 @@ mod tests {
     // Test double redirects and headers recording
     let fut = fetcher
       .get_source_file_async(&double_redirect_url, true, false, false)
-      .then(move |result| {
+      .map(move |result| {
         assert!(result.is_ok());
         let mod_meta = result.unwrap();
         assert!(fs::read_to_string(&double_redirect_path).is_err());
@@ -1190,7 +1185,6 @@ mod tests {
 
         // Examine the meta result.
         assert_eq!(mod_meta.url, target_url);
-        futures::future::ok(())
       });
 
     tokio_util::run(fut);
@@ -1235,7 +1229,7 @@ mod tests {
           .get_source_file_async(&redirect_url, true, false, false)
           .map(move |r| (r, file_modified))
       })
-      .then(move |(result, file_modified)| {
+      .map(move |(result, file_modified)| {
         assert!(result.is_ok());
         let result = fs::File::open(&target_path_);
         assert!(result.is_ok());
@@ -1245,7 +1239,6 @@ mod tests {
         let file_modified_2 = file_metadata_2.modified().unwrap();
 
         assert_eq!(file_modified, file_modified_2);
-        futures::future::ok(())
       });
 
     tokio_util::run(fut);
@@ -1267,11 +1260,10 @@ mod tests {
         assert!(result.is_ok());
         fetcher.fetch_remote_source_async(&double_redirect_url, false, false, 1)
       })
-      .then(move |result| {
+      .map(move |result| {
         assert!(result.is_err());
         let err = result.err().unwrap();
         assert_eq!(err.kind(), ErrorKind::TooManyRedirects);
-        futures::future::ok(())
       });
 
     tokio_util::run(fut);
@@ -1287,11 +1279,10 @@ mod tests {
     // Remote modules are not allowed
     let fut = fetcher
       .get_source_file_async(&module_url, true, true, false)
-      .then(move |result| {
+      .map(move |result| {
         assert!(result.is_err());
         let err = result.err().unwrap();
         assert_eq!(err.kind(), ErrorKind::NotFound);
-        futures::future::ok(())
       });
 
     tokio_util::run(fut);
@@ -1324,9 +1315,8 @@ mod tests {
         // module is already cached, should be ok even with `cached_only`
         fetcher_2.get_source_file_async(&module_url_2, true, false, true)
       })
-      .then(move |result| {
+      .map(move |result| {
         assert!(result.is_ok());
-        futures::future::ok(())
       });
 
     tokio_util::run(fut);
@@ -1348,7 +1338,7 @@ mod tests {
 
     let fut = fetcher
       .fetch_remote_source_async(&module_url, false, false, 10)
-      .then(move |result| {
+      .map(move |result| {
         assert!(result.is_ok());
         let r = result.unwrap();
         assert_eq!(r.source_code, b"export const loaded = true;\n");
@@ -1367,7 +1357,6 @@ mod tests {
         assert_eq!(r2.source_code, b"export const loaded = true;\n");
         // Not MediaType::TypeScript due to .headers.json modification
         assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
-        futures::future::ok(())
       });
 
     tokio_util::run(fut);
@@ -1390,7 +1379,7 @@ mod tests {
 
     let fut = fetcher
       .fetch_remote_source_async(&module_url, false, false, 10)
-      .then(move |result| {
+      .map(move |result| {
         assert!(result.is_ok());
         let r = result.unwrap();
         assert_eq!(r.source_code, "export const loaded = true;\n".as_bytes());
@@ -1410,7 +1399,6 @@ mod tests {
         assert_eq!(r2.source_code, "export const loaded = true;\n".as_bytes());
         // Not MediaType::TypeScript due to .headers.json modification
         assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
-        futures::future::ok(())
       });
 
     tokio_util::run(fut);
@@ -1467,7 +1455,7 @@ mod tests {
         // test unknown extension
         fetcher_2.fetch_remote_source_async(&module_url_3, false, false, 10)
       })
-      .then(move |result| {
+      .map(move |result| {
         assert!(result.is_ok());
         let r3 = result.unwrap();
         assert_eq!(r3.source_code, "export const loaded = true;\n".as_bytes());
@@ -1480,7 +1468,6 @@ mod tests {
             .unwrap(),
           "text/typescript"
         );
-        futures::future::ok(())
       });
 
     tokio_util::run(fut);
@@ -1494,10 +1481,9 @@ mod tests {
     // Test failure case.
     let specifier =
       ModuleSpecifier::resolve_url(file_url!("/baddir/hello.ts")).unwrap();
-    tokio_util::run(fetcher.fetch_source_file_async(&specifier, None).then(
+    tokio_util::run(fetcher.fetch_source_file_async(&specifier, None).map(
       |r| {
         assert!(r.is_err());
-        futures::future::ok(())
       },
     ));
 
@@ -1505,10 +1491,9 @@ mod tests {
       std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("js/main.ts");
     let specifier =
       ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
-    tokio_util::run(fetcher.fetch_source_file_async(&specifier, None).then(
+    tokio_util::run(fetcher.fetch_source_file_async(&specifier, None).map(
       |r| {
         assert!(r.is_ok());
-        futures::future::ok(())
       },
     ));
   }
@@ -1521,10 +1506,9 @@ mod tests {
     // Test failure case.
     let specifier =
       ModuleSpecifier::resolve_url(file_url!("/baddir/hello.ts")).unwrap();
-    tokio_util::run(fetcher.fetch_source_file_async(&specifier, None).then(
+    tokio_util::run(fetcher.fetch_source_file_async(&specifier, None).map(
       |r| {
         assert!(r.is_err());
-        futures::future::ok(())
       },
     ));
 
@@ -1532,10 +1516,9 @@ mod tests {
       std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("js/main.ts");
     let specifier =
       ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
-    tokio_util::run(fetcher.fetch_source_file_async(&specifier, None).then(
+    tokio_util::run(fetcher.fetch_source_file_async(&specifier, None).map(
       |r| {
         assert!(r.is_ok());
-        futures::future::ok(())
       },
     ));
   }
