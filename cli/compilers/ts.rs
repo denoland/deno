@@ -641,7 +641,6 @@ mod tests {
         .code
         .as_bytes()
         .starts_with("console.log(\"Hello World\");".as_bytes()));
-      Ok(())
     };
 
     tokio_util::run(fut.boxed())
@@ -675,7 +674,6 @@ mod tests {
         .await;
 
       assert!(result.is_ok());
-      Ok(())
     };
     tokio_util::run(fut.boxed())
   }
