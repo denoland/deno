@@ -5,7 +5,7 @@ use tokio::runtime;
 
 pub fn run<F>(future: F)
 where
-  F: Future<Output = Result<(), ()>> + Send + 'static,
+  F: Future<Output = ()> + Send + 'static,
 {
   let mut rt = runtime::Builder::new()
     .threaded_scheduler()
@@ -13,12 +13,12 @@ where
     .thread_name("deno")
     .build()
     .expect("Unable to create Tokio runtime");
-  rt.block_on(future).unwrap();
+  rt.block_on(future);
 }
 
 pub fn run_on_current_thread<F>(future: F)
 where
-  F: Future<Output = Result<(), ()>> + Send + 'static,
+  F: Future<Output = ()> + Send + 'static,
 {
   let mut rt = runtime::Builder::new()
     .basic_scheduler()
@@ -26,5 +26,5 @@ where
     .thread_name("deno")
     .build()
     .expect("Unable to create Tokio runtime");
-  rt.block_on(future).unwrap();
+  rt.block_on(future);
 }

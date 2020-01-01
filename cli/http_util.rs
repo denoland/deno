@@ -215,11 +215,10 @@ mod tests {
     let url =
       Url::parse("http://127.0.0.1:4545/cli/tests/fixture.json").unwrap();
 
-    let fut = fetch_string_once(&url).then(|result| match result {
+    let fut = fetch_string_once(&url).map(|result| match result {
       Ok(FetchOnceResult::Code(code, maybe_content_type)) => {
         assert!(!code.is_empty());
         assert_eq!(maybe_content_type, Some("application/json".to_string()));
-        futures::future::ok(())
       }
       _ => panic!(),
     });
@@ -237,10 +236,9 @@ mod tests {
     // Dns resolver substitutes `127.0.0.1` with `localhost`
     let target_url =
       Url::parse("http://localhost:4545/cli/tests/fixture.json").unwrap();
-    let fut = fetch_string_once(&url).then(move |result| match result {
+    let fut = fetch_string_once(&url).map(move |result| match result {
       Ok(FetchOnceResult::Redirect(url)) => {
         assert_eq!(url, target_url);
-        futures::future::ok(())
       }
       _ => panic!(),
     });
