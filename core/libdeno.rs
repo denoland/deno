@@ -35,9 +35,9 @@ pub struct DenoIsolate {
   context_: v8::Global<v8::Context>,
   mods_: HashMap<deno_mod, ModuleInfo>,
   mods_by_name_: HashMap<String, deno_mod>,
+  locker_: Option<v8::Locker>,
   /*
   v8::Isolate* isolate_;
-  v8::Locker* locker_;
   deno_buf shared_;
   const v8::FunctionCallbackInfo<v8::Value>* current_args_;
   v8::SnapshotCreator* snapshot_creator_;
@@ -83,6 +83,7 @@ impl DenoIsolate {
       context_: v8::Global::<v8::Context>::new(),
       mods_: HashMap::new(),
       mods_by_name_: HashMap::new(),
+      locker_: None,
     }
     /*
       : isolate_(nullptr),
@@ -1093,12 +1094,18 @@ pub unsafe fn deno_check_promise_errors(d: *const DenoIsolate) {
   */
 }
 
-pub unsafe fn deno_lock(i: *const isolate) {
-  todo!()
+pub unsafe fn deno_lock(i: *const DenoIsolate) {
+  let i_mut: &mut DenoIsolate = unsafe { std::mem::transmute(i) };
+  assert!(i_mut.locker_.is_none());
+  let mut locker = v8::Locker::new(i_mut.isolate_.as_ref().unwrap());
+  i_mut.locker_ = Some(locker);
 }
-pub unsafe fn deno_unlock(i: *const isolate) {
-  todo!()
+
+pub unsafe fn deno_unlock(i: *const DenoIsolate) {
+  let i_mut: &mut DenoIsolate = unsafe { std::mem::transmute(i) };
+  i_mut.locker_.take().unwrap();
 }
+
 pub unsafe fn deno_throw_exception(i: *const isolate, text: *const c_char) {
   todo!()
 }
