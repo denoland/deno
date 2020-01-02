@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import { findIndex, findLastIndex, equal, hasPrefix, repeat } from "./mod.ts";
 import { test } from "../testing/mod.ts";

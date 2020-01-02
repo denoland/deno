@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { ServerRequest, Response } from "./server.ts";
 import { getCookies, delCookie, setCookie } from "./cookie.ts";
 import { assert, assertEquals } from "../testing/asserts.ts";

@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 //
 // We want to test many ops in deno which have different behavior depending on
 // the permissions set. These tests can specify which permissions they expect,

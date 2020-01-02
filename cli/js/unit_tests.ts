@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 // This test is executed as part of tools/test.py
 // But it can also be run manually: ./target/debug/deno cli/js/unit_tests.ts

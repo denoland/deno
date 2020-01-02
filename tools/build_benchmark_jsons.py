@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 from util import build_path
 from benchmark import read_json, write_json
 import os

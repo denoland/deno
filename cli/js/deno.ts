@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 // Public deno module.
 export { dir, env, exit, isTTY, execPath, hostname } from "./os.ts";

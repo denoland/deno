@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::deno_error::too_many_redirects;
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;

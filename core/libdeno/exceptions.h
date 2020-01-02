@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 #ifndef EXCEPTIONS_H_
 #define EXCEPTIONS_H_
 

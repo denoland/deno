@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { BufReader, UnexpectedEOFError } from "./bufio.ts";
 type Reader = Deno.Reader;
 type Writer = Deno.Writer;

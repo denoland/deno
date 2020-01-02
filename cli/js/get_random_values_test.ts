@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { test, assertNotEquals, assertStrictEq } from "./test_util.ts";
 
 test(function getRandomValuesInt8Array(): void {

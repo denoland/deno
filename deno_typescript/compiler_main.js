@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 // Because we're bootstrapping the TypeScript compiler without dependencies on
 // Node, this is written in JavaScript, but leverages JSDoc that can be

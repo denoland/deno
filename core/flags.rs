@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 //! This module wraps libdeno::deno_set_v8_flags
 use crate::libdeno::deno_set_v8_flags;
 use libc::c_char;

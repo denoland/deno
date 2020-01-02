@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // (0, eval) is indirect eval.
 // See the links below for details:
 // - https://stackoverflow.com/a/14120023

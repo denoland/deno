@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 /** A Deno specific error.  The `kind` property is set to a specific error code
  * which can be used to in application logic.

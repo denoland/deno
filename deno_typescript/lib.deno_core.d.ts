@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 // This file contains APIs that are introduced into the global namespace by
 // Deno core.  These are not intended to be used directly by runtime users of
