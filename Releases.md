@@ -6,6 +6,24 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.28.0 / 2020.01.02
+
+- feat: Add Deno.dir("executable") (#3526)
+- feat: Add missing mod.ts files in std (#3509)
+- feat: Return null on error in Deno.dir() (#3531)
+- fix(repl): do not crash on async op reject (#3527)
+- fix(std/encoding/yaml): support document separator in parseAll (#3535)
+- fix: Drop unnecessary Object.assign from createResolvable() (#3548)
+- fix: Use sync ops when clearing the console (#3533)
+- fix: allow reading into a 0-length array (#3329)
+- fix: expose shutdown() and ShutdownMode TS def (#3558, #3560)
+- fix: remove wildcard export in uuid module (#3540)
+- fix: use shared HTTP client (#3563)
+- refactor: move HttpBody to cli/http_util.rs (#3569)
+- update: reqwest to 0.10.0 (#3567)
+- upgrade: Tokio 0.2 (#3418, #3571)
+- upgrade: rust to 1.40.0 (#3542)
+
 ### v0.27.0 / 2019.12.18
 
 - feat: Support utf8 in file_server (#3495)
