@@ -1070,8 +1070,9 @@ pub unsafe fn deno_last_exception(i: *const DenoIsolate) -> Option<String> {
   (*i).last_exception_.clone()
 }
 
-pub unsafe fn deno_clear_last_exception(i: *const isolate) {
-  todo!()
+pub unsafe fn deno_clear_last_exception(i: *const DenoIsolate) {
+  let i_mut: &mut DenoIsolate = unsafe { std::mem::transmute(i) };
+  i_mut.last_exception_ = None;
 }
 
 pub unsafe fn deno_check_promise_errors(d: *const DenoIsolate) {
