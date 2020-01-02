@@ -1106,9 +1106,16 @@ pub unsafe fn deno_unlock(i: *const DenoIsolate) {
   i_mut.locker_.take().unwrap();
 }
 
-pub unsafe fn deno_throw_exception(i: *const isolate, text: *const c_char) {
-  todo!()
+pub unsafe fn deno_throw_exception(i: *const DenoIsolate, text: &str) {
+  let i_mut: &mut DenoIsolate = unsafe { std::mem::transmute(i) };
+  let isolate = i_mut.isolate_.as_ref().unwrap();
+  let mut locker = v8::Locker::new(isolate);
+  let mut hs = v8::HandleScope::new(&mut locker);
+  let scope = hs.enter();
+  let msg = v8::String::new(scope, text).unwrap();
+  isolate.throw_exception(msg.into());
 }
+
 pub unsafe fn deno_respond(
   i: *const isolate,
   user_data: *const c_void,

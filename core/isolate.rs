@@ -437,9 +437,8 @@ impl Isolate {
   }
 
   fn throw_exception(&mut self, exception_text: &str) {
-    let text = CString::new(exception_text).unwrap();
     unsafe {
-      libdeno::deno_throw_exception(self.libdeno_isolate, text.as_ptr())
+      libdeno::deno_throw_exception(self.libdeno_isolate, exception_text)
     }
   }
 
