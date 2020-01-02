@@ -252,30 +252,29 @@ impl DenoIsolate {
     exception: v8::Local<'a, v8::Value>,
   ) {
     let isolate = context.get_isolate();
-    /*
-    v8::Isolate* isolate = context->GetIsolate();
+
     // TerminateExecution was called
-    if (isolate->IsExecutionTerminating()) {
+    if isolate.is_execution_terminating() {
       // cancel exception termination so that the exception can be created
-      isolate->CancelTerminateExecution();
+      isolate.cancel_terminate_execution();
 
       // maybe make a new exception object
-      if (exception->IsNullOrUndefined()) {
-        exception = v8::Exception::Error(v8_str("execution terminated"));
-      }
+      let exception = if (exception.is_null_or_undefined()) {
+        let exception_str =
+          v8::String::new(s, "execution terminated").unwrap().into();
+        v8::error(s, exception_str)
+      } else {
+        exception
+      };
 
       // handle the exception as if it is a regular exception
-      HandleException(context, exception);
+      self.handle_exception(s, context, exception);
 
       // re-enable exception termination
-      isolate->TerminateExecution();
+      context.get_isolate().terminate_execution();
       return;
     }
-    DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
-    std::string json_str = EncodeExceptionAsJSON(context, exception);
-    CHECK_NOT_NULL(d);
-    d->last_exception_handle_.Reset(isolate, exception);
-    */
+
     let json_str = self.encode_exception_as_json(s, context, exception);
     self.last_exception_ = Some(json_str);
   }
