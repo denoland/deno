@@ -269,7 +269,6 @@ fn info_command(flags: DenoFlags) {
     print_file_info(worker.clone(), main_module.clone()).await;
     let result = worker.await;
     js_check(result);
-    Ok(())
   };
 
   tokio_util::run(main_future);
@@ -287,7 +286,6 @@ fn fetch_command(flags: DenoFlags) {
   let main_future = async move {
     let result = worker.execute_mod_async(&main_module, None, true).await;
     js_check(result);
-    Ok(())
   };
 
   tokio_util::run(main_future);
@@ -315,7 +313,6 @@ fn eval_command(flags: DenoFlags) {
     let result = worker.await;
     js_check(result);
     js_check(worker_.execute("window.dispatchEvent(new Event('unload'))"));
-    Ok(())
   };
 
   tokio_util::run(main_future);
@@ -341,7 +338,6 @@ fn bundle_command(flags: DenoFlags) {
       print_err_and_exit(err);
     }
     debug!(">>>>> bundle_async END");
-    Ok(())
   };
   tokio_util::run(main_future);
 }
@@ -358,7 +354,6 @@ fn run_repl(flags: DenoFlags) {
   let main_future = async move {
     let result = worker.await;
     js_check(result);
-    Ok(())
   };
   tokio_util::run(main_future);
 }
@@ -400,7 +395,6 @@ fn run_script(flags: DenoFlags) {
     let result = worker.await;
     js_check(result);
     js_check(worker_.execute("window.dispatchEvent(new Event('unload'))"));
-    Ok(())
   };
 
   if use_current_thread {

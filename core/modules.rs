@@ -509,7 +509,7 @@ impl Modules {
 
 /// This is a tree structure representing the dependencies of a given module.
 /// Use Modules::deps to construct it. The 'deps' member is None if this module
-/// was already seen elsewher in the tree.
+/// was already seen elsewhere in the tree.
 #[derive(Debug, PartialEq)]
 pub struct Deps {
   pub name: String,

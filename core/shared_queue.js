@@ -59,7 +59,7 @@ SharedQueue Binary Layout
   }
 
   function ops() {
-    // op id 0 is a special value to retreive the map of registered ops.
+    // op id 0 is a special value to retrieve the map of registered ops.
     const opsMapBytes = Deno.core.send(0, new Uint8Array([]), null);
     const opsMapJson = String.fromCharCode.apply(null, opsMapBytes);
     return JSON.parse(opsMapJson);

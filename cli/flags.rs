@@ -1558,7 +1558,7 @@ mod tests {
       r.unwrap(),
       DenoFlags {
         subcommand: DenoSubcommand::Info,
-        argv: svec!["deno"], // TODO(ry) Ditto argv unnessary?
+        argv: svec!["deno"], // TODO(ry) Ditto argv unnecessary?
         ..DenoFlags::default()
       }
     );

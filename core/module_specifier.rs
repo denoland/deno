@@ -122,7 +122,7 @@ impl ModuleSpecifier {
     Ok(ModuleSpecifier(url))
   }
 
-  /// Converts a string representing an absulute URL into a ModuleSpecifier.
+  /// Converts a string representing an absolute URL into a ModuleSpecifier.
   pub fn resolve_url(
     url_str: &str,
   ) -> Result<ModuleSpecifier, ModuleResolutionError> {
