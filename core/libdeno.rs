@@ -37,6 +37,7 @@ pub struct DenoIsolate {
   mods_by_name_: HashMap<String, deno_mod>,
   locker_: Option<v8::Locker>,
   shared_: deno_buf,
+  resolve_cb_: Option<deno_resolve_cb>,
   /*
   v8::Isolate* isolate_;
   deno_buf shared_;
@@ -86,6 +87,7 @@ impl DenoIsolate {
       mods_by_name_: HashMap::new(),
       locker_: None,
       shared_: config.shared,
+      resolve_cb_: None,
     }
     /*
       : isolate_(nullptr),
@@ -118,8 +120,13 @@ impl DenoIsolate {
     isolate.set_host_import_module_dynamically_callback(
       host_import_module_dynamically_callback,
     );
-    // TODO isolate_->SetData(0, this);
-    self.isolate_ = Some(isolate);
+    let self_box = unsafe {
+      self.isolate_ = Some(isolate);	      let self_box = Box::new(self);
+      let self_ptr = Box::into_raw(self_box);
+      isolate.set_data(0, self_ptr as *mut c_void);
+      Box::from_raw(self_ptr)
+    };
+    self_box.isolate_ = Some(isolate);
   }
 
   pub fn register_module(
@@ -891,9 +898,8 @@ pub type deno_mod = i32;
 pub type deno_dyn_import_id = i32;
 
 #[allow(non_camel_case_types)]
-type deno_resolve_cb = unsafe extern "C" fn(
-  user_data: *mut c_void,
-  specifier: *const c_char,
+type deno_resolve_cb = fn(
+  specifier: String,
   referrer: deno_mod,
 ) -> deno_mod;
 
@@ -1292,28 +1298,266 @@ pub unsafe fn deno_mod_imports_len(
 }
 
 pub unsafe fn deno_mod_imports_get(
-  i: *const isolate,
+  i: *const DenoIsolate,
   id: deno_mod,
   index: size_t,
-) -> *const c_char {
-  todo!()
+) -> Option<String> {
+  match (*i).get_module_info(id) {
+    Some(info) => match info.import_specifiers.get(index) {
+      Some(ref specifier) => Some(specifier.to_string()),
+      None => None,
+    },
+    None => None,
+  }
+}
+
+fn resolve_callback(
+  context: v8::Local<v8::Context>, 
+  specifier: v8::Local<v8::String>, 
+  referrer: v8::Local<v8::Module>
+) -> *mut v8::Module {
+  /*
+  auto* isolate = context->GetIsolate();
+  v8::Isolate::Scope isolate_scope(isolate);
+  v8::Locker locker(isolate);
+
+  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
+
+  v8::EscapableHandleScope handle_scope(isolate);
+  */
+
+  let mut cbs = v8::CallbackScope::new(context);
+  cbs.enter();
+  let isolate = context.get_isolate();
+  let deno_isolate: &mut DenoIsolate =
+    unsafe { &mut *(isolate.get_data(0) as *mut DenoIsolate) };
+    
+  let mut locker = v8::Locker::new(isolate);
+  let mut hs = v8::EscapableHandleScope::new(&mut locker);
+  let scope = hs.enter();
+
+  /*
+  deno_mod referrer_id = referrer->GetIdentityHash();
+  auto* referrer_info = d->GetModuleInfo(referrer_id);
+  CHECK_NOT_NULL(referrer_info);
+
+  for (int i = 0; i < referrer->GetModuleRequestsLength(); i++) {
+    Local<String> req = referrer->GetModuleRequest(i);
+
+    if (req->Equals(context, specifier).ToChecked()) {
+      v8::String::Utf8Value req_utf8(isolate, req);
+      std::string req_str(*req_utf8);
+
+      deno_mod id = d->resolve_cb_(d->user_data_, req_str.c_str(), referrer_id);
+
+      // Note: id might be zero, in which case GetModuleInfo will return
+      // nullptr.
+      auto* info = d->GetModuleInfo(id);
+      if (info == nullptr) {
+        char buf[64 * 1024];
+        snprintf(buf, sizeof(buf), "Cannot resolve module \"%s\" from \"%s\"",
+                 req_str.c_str(), referrer_info->name.c_str());
+        isolate->ThrowException(deno::v8_str(buf));
+        break;
+      } else {
+        Local<Module> child_mod = info->handle.Get(isolate);
+        return handle_scope.Escape(child_mod);
+      }
+    }
+  }
+
+  return v8::MaybeLocal<v8::Module>();  // Error
+  */
+
+  let referrer_id = referrer.get_identity_hash();
+  let referrer_info = deno_isolate.get_module_info(referrer_id).expect("ModuleInfo not found");
+  let len_ = referrer.get_module_requests_length();
+
+  let specifier_str = specifier.to_rust_string_lossy(scope);
+
+  for i in 0..len_ {
+    let req = referrer.get_module_request(i);
+    let req_str = req.to_rust_string_lossy(scope);
+    
+    if req_str == specifier_str {
+      let resolve_cb = deno_isolate.resolve_cb_.unwrap();
+      let id = resolve_cb(req_str, referrer_id);
+      let maybe_info = deno_isolate.get_module_info(id);
+
+      if maybe_info.is_none() {
+        let msg = format!("Cannot resolve module \"{}\" from \"{}\"", req_str, referrer_info.name);
+        let msg = v8::String::new(scope, &msg).unwrap();
+        isolate.throw_exception(msg.into());
+        break;
+      }
+
+      let child_mod = maybe_info.unwrap().handle.get(scope).expect("Empty handle");
+      return &mut *scope.escape(child_mod);
+    }
+  }
+
+  std::ptr::null_mut()
 }
 
 pub unsafe fn deno_mod_instantiate(
-  i: *const isolate,
+  i: *const DenoIsolate,
   user_data: *const c_void,
   id: deno_mod,
   resolve_cb: deno_resolve_cb,
 ) {
-  todo!()
+  /*
+  auto* d = deno::unwrap(d_);
+  deno::UserDataScope user_data_scope(d, user_data);
+
+  auto* isolate = d->isolate_;
+  v8::Isolate::Scope isolate_scope(isolate);
+  v8::Locker locker(isolate);
+  v8::HandleScope handle_scope(isolate);
+  auto context = d->context_.Get(d->isolate_);
+  v8::Context::Scope context_scope(context);
+  */
+  let i_mut: &mut DenoIsolate = unsafe { std::mem::transmute(i) };
+  let isolate = i_mut.isolate_.as_ref().unwrap();
+  let mut locker = v8::Locker::new(isolate);
+  let mut hs = v8::HandleScope::new(&mut locker);
+  let scope = hs.enter();
+  assert!(!i_mut.context_.is_empty());
+  let mut context = i_mut.context_.get(scope).unwrap();
+  context.enter();
+
+  /*
+  v8::TryCatch try_catch(isolate);
+  {
+    CHECK_NULL(d->resolve_cb_);
+    d->resolve_cb_ = cb;
+    {
+      auto* info = d->GetModuleInfo(id);
+      if (info == nullptr) {
+        return;
+      }
+      Local<Module> module = info->handle.Get(isolate);
+      if (module->GetStatus() == Module::kErrored) {
+        return;
+      }
+      auto maybe_ok = module->InstantiateModule(context, ResolveCallback);
+      CHECK(maybe_ok.IsJust() || try_catch.HasCaught());
+    }
+    d->resolve_cb_ = nullptr;
+  }
+
+  if (try_catch.HasCaught()) {
+    HandleException(context, try_catch.Exception());
+  }
+  */
+  let mut try_catch = v8::TryCatch::new(scope);
+  let tc = try_catch.enter();
+
+  assert!(i_mut.resolve_cb_.is_none());
+  i_mut.resolve_cb_ = Some(resolve_cb);
+
+  let maybe_info = i_mut.get_module_info(id);
+
+  if maybe_info.is_none() {
+    return;
+  }
+
+  let module_handle = &maybe_info.unwrap().handle;
+  let mut module = module_handle.get(scope).unwrap();
+  
+  if module.get_status() == v8::ModuleStatus::Errored {
+    return;
+  }
+
+  let maybe_ok = module.instantiate_module(context, resolve_callback);
+  assert!(maybe_ok.is_some() || tc.has_caught());
+  i_mut.resolve_cb_.take();
+
+  if tc.has_caught() {
+    i_mut.handle_exception(scope, context, tc.exception().unwrap());
+  }
+
+  context.exit();
 }
 
 pub unsafe fn deno_mod_evaluate(
-  i: *const isolate,
+  i: *const DenoIsolate,
   user_data: *const c_void,
   id: deno_mod,
 ) {
-  todo!()
+  /*
+  auto* d = deno::unwrap(d_);
+  deno::UserDataScope user_data_scope(d, user_data);
+
+  auto* isolate = d->isolate_;
+  v8::Isolate::Scope isolate_scope(isolate);
+  v8::Locker locker(isolate);
+  v8::HandleScope handle_scope(isolate);
+  auto context = d->context_.Get(d->isolate_);
+  v8::Context::Scope context_scope(context);
+
+  */
+  let deno_isolate: &mut DenoIsolate = unsafe { std::mem::transmute(i) };
+  let isolate = deno_isolate.isolate_.as_ref().unwrap();
+  let mut locker = v8::Locker::new(isolate);
+  let mut hs = v8::HandleScope::new(&mut locker);
+  let scope = hs.enter();
+  assert!(!deno_isolate.context_.is_empty());
+  let mut context = deno_isolate.context_.get(scope).unwrap();
+  context.enter();
+
+  /*
+  auto* info = d->GetModuleInfo(id);
+  auto module = info->handle.Get(isolate);
+  auto status = module->GetStatus();
+
+  if (status == Module::kInstantiated) {
+    bool ok = !module->Evaluate(context).IsEmpty();
+    status = module->GetStatus();  // Update status after evaluating.
+    if (ok) {
+      // Note status can still be kErrored even if we get ok.
+      CHECK(status == Module::kEvaluated || status == Module::kErrored);
+    } else {
+      CHECK_EQ(status, Module::kErrored);
+    }
+  }
+
+  switch (status) {
+    case Module::kEvaluated:
+      ClearException(context);
+      break;
+    case Module::kErrored:
+      HandleException(context, module->GetException());
+      break;
+    default:
+      FATAL("Unexpected module status: %d", static_cast<int>(status));
+  }
+  */
+
+  let info = deno_isolate.get_module_info(id).expect("ModuleInfo not found");
+  let module = info.handle.get(scope).expect("Empty module handle");
+  let mut status = module.get_status();
+
+  if status == v8::ModuleStatus::Instantiated {
+    let ok = module.evaluate(scope, context).is_some();
+    // Update status after evaluating.
+    status = module.get_status();
+    if ok {
+      assert!(status == v8::ModuleStatus::Evaluated || status == v8::ModuleStatus::Errored);
+    } else {
+      assert!(status == v8::ModuleStatus::Errored);
+    }
+  }
+
+  match status {
+    v8::ModuleStatus::Evaluated => {
+      // ClearException(context)
+      deno_isolate.last_exception_ = None;
+    },
+    v8::ModuleStatus::Errored => {
+      deno_isolate.handle_exception(scope, context, module.get_exception());
+    }
+    other => panic!("Unexpected module status {:?}", other)
+  }
 }
 
 /// Call exactly once for every deno_dyn_import_cb.
