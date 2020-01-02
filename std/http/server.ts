@@ -8,12 +8,7 @@ import { BufReader, BufWriter, UnexpectedEOFError } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { STATUS_TEXT } from "./http_status.ts";
 import { assert } from "../testing/asserts.ts";
-import {
-  collectUint8Arrays,
-  deferred,
-  Deferred,
-  MuxAsyncIterator
-} from "../util/async.ts";
+import { deferred, Deferred, MuxAsyncIterator } from "../util/async.ts";
 
 function bufWriter(w: Writer): BufWriter {
   if (w instanceof BufWriter) {
@@ -97,6 +92,17 @@ export async function writeResponse(w: Writer, r: Response): Promise<void> {
   await writer.flush();
 }
 
+export class ServerRequestBody implements Reader {
+  constructor(private it: AsyncIterator<number, undefined, Uint8Array>) {}
+  async read(p: Uint8Array): Promise<number | Deno.EOF> {
+    const res = await this.it.next(p);
+    if (res.done) {
+      return Deno.EOF;
+    }
+    return res.value;
+  }
+}
+
 export class ServerRequest {
   url!: string;
   method!: string;
@@ -109,24 +115,75 @@ export class ServerRequest {
   w!: BufWriter;
   done: Deferred<Error | undefined> = deferred();
 
-  public async *bodyStream(): AsyncIterableIterator<Uint8Array> {
-    if (this.headers.has("content-length")) {
-      const len = +this.headers.get("content-length")!;
-      if (Number.isNaN(len)) {
-        return new Uint8Array(0);
+  private _contentLength: number | undefined | null = undefined;
+  /**
+   * Value of Content-Length header.
+   * If null, then content length is invalid or not given (e.g. chunked encoding).
+   */
+  get contentLength(): number | null {
+    // undefined means not cached.
+    // null means invalid or not provided.
+    if (this._contentLength === undefined) {
+      if (this.headers.has("content-length")) {
+        this._contentLength = +this.headers.get("content-length")!;
+        // Convert NaN to null (as NaN harder to test)
+        if (Number.isNaN(this._contentLength)) {
+          this._contentLength = null;
+        }
+      } else {
+        this._contentLength = null;
       }
-      let buf = new Uint8Array(1024);
+    }
+    return this._contentLength;
+  }
+
+  private _body: ServerRequestBody | null = null;
+
+  /**
+   * Body of the request.
+   *
+   *     const buf = new Uint8Array(req.contentLength);
+   *     let bufSlice = buf;
+   *     let totRead = 0;
+   *     while (true) {
+   *       const nread = await req.body.read(bufSlice);
+   *       if (nread === Deno.EOF) break;
+   *       totRead += nread;
+   *       if (totRead >= req.contentLength) break;
+   *       bufSlice = bufSlice.subarray(nread);
+   *     }
+   */
+  get body(): ServerRequestBody {
+    if (!this._body) {
+      const stream = this._bodyStream();
+      stream.next(); // drop dummy such that first read is not empty.
+      this._body = new ServerRequestBody(stream);
+    }
+    return this._body;
+  }
+
+  /**
+   * Internal: actually reading body. Each step, buf to use is passed
+   * in through yield result.
+   * Returns on no more data to read or error.
+   */
+  private async *_bodyStream(): AsyncIterator<number, undefined, Uint8Array> {
+    let buf = yield 0; // dummy yield to retrieve user provided buf.
+    if (this.headers.has("content-length")) {
+      const len = this.contentLength;
+      if (len === null) {
+        return;
+      }
       let rr = await this.r.read(buf);
       let nread = rr === Deno.EOF ? 0 : rr;
       let nreadTotal = nread;
       while (rr !== Deno.EOF && nreadTotal < len) {
-        yield buf.subarray(0, nread);
-        buf = new Uint8Array(1024);
+        buf = yield nread;
         rr = await this.r.read(buf);
         nread = rr === Deno.EOF ? 0 : rr;
         nreadTotal += nread;
       }
-      yield buf.subarray(0, nread);
+      yield nread;
     } else {
       if (this.headers.has("transfer-encoding")) {
         const transferEncodings = this.headers
@@ -145,11 +202,17 @@ export class ServerRequest {
             throw new Error("Invalid chunk size");
           }
           while (chunkSize > 0) {
-            const data = new Uint8Array(chunkSize);
-            if ((await this.r.readFull(data)) === Deno.EOF) {
-              throw new UnexpectedEOFError();
+            let currChunkOffset = 0;
+            // Since given readBuffer might be smaller, loop.
+            while (currChunkOffset < chunkSize) {
+              // Try to be as large as chunkSize. Might be smaller though.
+              const bufferToFill = buf.subarray(0, chunkSize);
+              if ((await this.r.readFull(bufferToFill)) === Deno.EOF) {
+                throw new UnexpectedEOFError();
+              }
+              currChunkOffset += bufferToFill.length;
+              buf = yield bufferToFill.length;
             }
-            yield data;
             await this.r.readLine(); // Consume \r\n
             line = await tp.readLine();
             if (line === Deno.EOF) throw new UnexpectedEOFError();
@@ -182,14 +245,8 @@ export class ServerRequest {
         }
         // TODO: handle other transfer-encoding types
       }
-      // Otherwise...
-      yield new Uint8Array(0);
+      // Otherwise... Do nothing
     }
-  }
-
-  // Read the body of the request into a single Uint8Array
-  public async body(): Promise<Uint8Array> {
-    return collectUint8Arrays(this.bodyStream());
   }
 
   async respond(r: Response): Promise<void> {
