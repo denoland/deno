@@ -36,6 +36,7 @@ pub struct DenoIsolate {
   mods_: HashMap<deno_mod, ModuleInfo>,
   mods_by_name_: HashMap<String, deno_mod>,
   locker_: Option<v8::Locker>,
+  shared_: deno_buf,
   /*
   v8::Isolate* isolate_;
   deno_buf shared_;
@@ -84,6 +85,7 @@ impl DenoIsolate {
       mods_: HashMap::new(),
       mods_by_name_: HashMap::new(),
       locker_: None,
+      shared_: config.shared,
     }
     /*
       : isolate_(nullptr),
@@ -991,6 +993,33 @@ extern "C" fn queue_microtask(info: &v8::FunctionCallbackInfo) {
   todo!()
 }
 
+extern "C" fn shared_getter(
+  name: v8::Local<v8::Name>,
+  info: &v8::PropertyCallbackInfo,
+) {
+  let isolate = info.isolate();
+  /*
+  v8::Isolate* isolate = info.GetIsolate();
+  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
+  DCHECK_EQ(d->isolate_, isolate);
+  v8::Locker locker(d->isolate_);
+  v8::EscapableHandleScope handle_scope(isolate);
+  if (d->shared_.data_ptr == nullptr) {
+    return;
+  }
+  v8::Local<v8::SharedArrayBuffer> ab;
+  if (d->shared_ab_.IsEmpty()) {
+    // Lazily initialize the persistent external ArrayBuffer.
+    ab = v8::SharedArrayBuffer::New(isolate, d->shared_.data_ptr,
+                                    d->shared_.data_len,
+                                    v8::ArrayBufferCreationMode::kExternalized);
+    d->shared_ab_.Reset(isolate, ab);
+  }
+  auto shared_ab = d->shared_ab_.Get(isolate);
+  info.GetReturnValue().Set(shared_ab);
+  */
+}
+
 fn initialize_context<'a>(
   scope: &mut impl v8::ToLocal<'a>,
   mut context: v8::Local<v8::Context>,
@@ -1007,7 +1036,7 @@ fn initialize_context<'a>(
     deno_val.into(),
   );
 
-  let core_val = v8::Object::new(scope);
+  let mut core_val = v8::Object::new(scope);
 
   deno_val.set(
     context,
@@ -1057,10 +1086,11 @@ fn initialize_context<'a>(
     error_to_json_val.into(),
   );
 
-  /*
-  CHECK(core_val->SetAccessor(context, deno::v8_str("shared"), Shared)
-            .FromJust());
-  */
+  core_val.set_accessor(
+    context,
+    v8::String::new(scope, "shared").unwrap().into(),
+    shared_getter,
+  );
 
   // Direct bindings on `window`.
   let mut queue_microtask_tmpl =
