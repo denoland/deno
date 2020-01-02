@@ -78,7 +78,7 @@ pub enum FetchOnceResult {
   Redirect(Url),
 }
 
-/// Asynchronously fetchs the given HTTP URL one pass only.
+/// Asynchronously fetches the given HTTP URL one pass only.
 /// If no redirect is present and no error occurs,
 /// yields Code(code, maybe_content_type).
 /// If redirect occurs, does not follow and
