@@ -8,12 +8,7 @@ import { BufReader, BufWriter, UnexpectedEOFError } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { STATUS_TEXT } from "./http_status.ts";
 import { assert } from "../testing/asserts.ts";
-import {
-  collectUint8Arrays,
-  deferred,
-  Deferred,
-  MuxAsyncIterator
-} from "../util/async.ts";
+import { deferred, Deferred, MuxAsyncIterator } from "../util/async.ts";
 
 function bufWriter(w: Writer): BufWriter {
   if (w instanceof BufWriter) {
