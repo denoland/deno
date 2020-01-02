@@ -61,7 +61,7 @@ pub struct DenoIsolate {
 
   v8::StartupData snapshot_;
   v8::Persistent<v8::ArrayBuffer> global_import_buf_;
-  
+
   bool has_snapshotted_;
   */
 }
@@ -94,7 +94,11 @@ impl DenoIsolate {
       recv_: v8::Global::<v8::Function>::new(),
     };
 
-    eprintln!("init shared {:?} {}", s.shared_.data_ptr, s.shared_.data_ptr.is_null());
+    eprintln!(
+      "init shared {:?} {}",
+      s.shared_.data_ptr,
+      s.shared_.data_ptr.is_null()
+    );
     eprintln!("init {}", s.shared_ab_.is_empty());
     s
     /*
@@ -118,7 +122,10 @@ impl DenoIsolate {
     */
   }
 
-  pub fn add_isolate(&mut self, mut isolate: v8::OwnedIsolate) {
+  pub fn add_isolate(
+    boxed_self: Box<Self>,
+    mut isolate: v8::OwnedIsolate,
+  ) -> Box<Self> {
     isolate.set_capture_stack_trace_for_uncaught_exceptions(true, 10);
     isolate.set_promise_reject_callback(promise_reject_callback);
     isolate.add_message_listener(message_callback);
@@ -128,13 +135,13 @@ impl DenoIsolate {
     isolate.set_host_import_module_dynamically_callback(
       host_import_module_dynamically_callback,
     );
-    let self_box = unsafe {
-      let self_box = Box::new(self);
-      let self_ptr = Box::into_raw(self_box);
+    let mut boxed_self = unsafe {
+      let self_ptr = Box::into_raw(boxed_self);
       isolate.set_data(0, self_ptr as *mut c_void);
       Box::from_raw(self_ptr)
     };
-    self_box.isolate_ = Some(isolate);
+    boxed_self.isolate_ = Some(isolate);
+    boxed_self
   }
 
   pub fn register_module(
@@ -1075,55 +1082,57 @@ extern "C" fn shared_getter(
   use v8::InIsolate;
   eprintln!("before123!!!!");
 
-  #[allow(mutable_transmutes)]
-  #[allow(clippy::transmute_ptr_to_ptr)]
-  let info: &mut v8::PropertyCallbackInfo = unsafe { std::mem::transmute(info) };
-  
-  // <Boilerplate>
-  let mut isolate = info.get_isolate();
-  let deno_isolate: &mut DenoIsolate =
-    unsafe { &mut *(isolate.get_data(0) as *mut DenoIsolate) };
-  let mut locker = v8::Locker::new(&isolate);
-  let mut hs = v8::HandleScope::new(&mut locker);
-  let scope = hs.enter();
-  // </Boilerplate>
-
-  eprintln!("shared data ptr {:?}", deno_isolate.shared_.data_ptr);
-  if deno_isolate.shared_.data_ptr.is_null() {
-    eprintln!("ptr is null!!!!");
-    return;
-  }
-  // let a = deno_isolate.shared_ab_.get(scope);
-  eprintln!("before2!!!! {:?}", deno_isolate.shared_ab_.is_empty());
-  // return;
-
-  // TODO(bartlomieju): this should happen in initializer
-  // Lazily initialize the persistent external ArrayBuffer.
-  if deno_isolate.shared_ab_.is_empty() {
-    eprintln!("inside!!!!");
+  let shared_ab = {
     #[allow(mutable_transmutes)]
     #[allow(clippy::transmute_ptr_to_ptr)]
-    let data_ptr: *mut u8 =
-      unsafe { std::mem::transmute(deno_isolate.shared_.data_ptr) };
-    eprintln!("before!!!!");
-    let ab = v8::SharedArrayBuffer::new_DEPRECATED(
-      scope, 
-      data_ptr as *mut c_void,
-      deno_isolate.shared_.data_len
-    );
-    eprintln!("after!!!!");
-    deno_isolate.shared_ab_.set(scope, ab);
-  }
+    let info: &mut v8::PropertyCallbackInfo =
+      unsafe { std::mem::transmute(info) };
 
-  let shared_ab = deno_isolate.shared_ab_.get(scope).unwrap();
-  
+    let mut hs = v8::EscapableHandleScope::new(info);
+    let scope = hs.enter();
+    // </Boilerplate>
+    let mut isolate = scope.isolate();
+    let deno_isolate: &mut DenoIsolate =
+      unsafe { &mut *(isolate.get_data(0) as *mut DenoIsolate) };
+
+    eprintln!("shared data ptr {:?}", deno_isolate.shared_.data_ptr);
+    if deno_isolate.shared_.data_ptr.is_null() {
+      eprintln!("ptr is null!!!!");
+      return;
+    }
+    // let a = deno_isolate.shared_ab_.get(scope);
+    eprintln!("before2!!!! {:?}", deno_isolate.shared_ab_.is_empty());
+    // return;
+
+    // TODO(bartlomieju): this should happen in initializer
+    // Lazily initialize the persistent external ArrayBuffer.
+    if deno_isolate.shared_ab_.is_empty() {
+      eprintln!("inside!!!!");
+      #[allow(mutable_transmutes)]
+      #[allow(clippy::transmute_ptr_to_ptr)]
+      let data_ptr: *mut u8 =
+        unsafe { std::mem::transmute(deno_isolate.shared_.data_ptr) };
+      eprintln!("before!!!!");
+      let ab = v8::SharedArrayBuffer::new_DEPRECATED(
+        scope,
+        data_ptr as *mut c_void,
+        deno_isolate.shared_.data_len,
+      );
+      eprintln!("after!!!!");
+      deno_isolate.shared_ab_.set(scope, ab);
+    }
+
+    let shared_ab = deno_isolate.shared_ab_.get(scope).unwrap();
+    scope.escape(shared_ab)
+  };
+
   // let shared_ab = {
   //   let mut hs = v8::EscapableHandleScope::new(info);
   //   let scope = hs.enter();
   //   let isolate = scope.isolate();
   //   let deno_isolate: &mut DenoIsolate =
   //     unsafe { &mut *(isolate.get_data(0) as *mut DenoIsolate) };
-    
+
   //   scope.escape(shared_ab)
   // };
   let rv = &mut info.get_return_value();
@@ -1234,7 +1243,7 @@ pub unsafe fn deno_new(config: deno_config) -> *const isolate {
   */
 
   let isolate = v8::Isolate::new(params);
-  d.add_isolate(isolate);
+  let mut d = DenoIsolate::add_isolate(d, isolate);
 
   let mut locker = v8::Locker::new(d.isolate_.as_ref().unwrap());
   {
