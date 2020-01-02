@@ -1,4 +1,4 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 // Implementation note: one could imagine combining this module with Isolate to
 // provide a more intuitive high-level API. However, due to the complexity
