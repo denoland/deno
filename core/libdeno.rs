@@ -1009,7 +1009,7 @@ fn initialize_context<'a>(
 
   let core_val = v8::Object::new(scope);
 
-  global.set(
+  deno_val.set(
     context,
     v8::String::new(scope, "core").unwrap().into(),
     core_val.into(),
