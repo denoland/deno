@@ -1,12 +1,11 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 #![allow(unused)]
 
-use rusty_v8 as v8;
-
 use libc::c_char;
 use libc::c_int;
 use libc::c_void;
 use libc::size_t;
+use rusty_v8 as v8;
 use std::collections::HashMap;
 use std::convert::From;
 use std::ffi::CString;
@@ -16,6 +15,7 @@ use std::option::Option;
 use std::ptr::null;
 use std::ptr::NonNull;
 use std::slice;
+use v8::GetIsolate;
 
 pub type OpId = u32;
 
@@ -36,6 +36,7 @@ pub struct DenoIsolate {
   mods_: HashMap<deno_mod, ModuleInfo>,
   mods_by_name_: HashMap<String, deno_mod>,
   locker_: Option<v8::Locker>,
+  pending_promise_map_: HashMap<i32, v8::Global<v8::Value>>,
   /*
   v8::Isolate* isolate_;
   deno_buf shared_;
@@ -52,7 +53,6 @@ pub struct DenoIsolate {
   std::map<deno_dyn_import_id, v8::Persistent<v8::Promise::Resolver>>
       dyn_import_map_;
 
-  std::map<int, v8::Persistent<v8::Value>> pending_promise_map_;
   v8::Persistent<v8::Value> last_exception_handle_;
   v8::Persistent<v8::Function> recv_;
   v8::StartupData snapshot_;
@@ -83,6 +83,7 @@ impl DenoIsolate {
       context_: v8::Global::<v8::Context>::new(),
       mods_: HashMap::new(),
       mods_by_name_: HashMap::new(),
+      pending_promise_map_: HashMap::new(),
       locker_: None,
     }
     /*
@@ -116,8 +117,13 @@ impl DenoIsolate {
     isolate.set_host_import_module_dynamically_callback(
       host_import_module_dynamically_callback,
     );
-    // TODO isolate_->SetData(0, this);
-    self.isolate_ = Some(isolate);
+    let self_box = unsafe {
+      let self_box = Box::new(self);
+      let self_ptr = Box::into_raw(self_box);
+      isolate.set_data(0, self_ptr as *mut c_void);
+      Box::from_raw(self_ptr)
+    };
+    self_box.isolate_ = Some(isolate);
   }
 
   pub fn register_module(
@@ -655,10 +661,42 @@ extern "C" fn message_callback(
   */
 }
 
-extern "C" fn promise_reject_callback(
-  _promise_reject_message: v8::PromiseRejectMessage,
-) {
-  todo!()
+extern "C" fn promise_reject_callback(msg: v8::PromiseRejectMessage) {
+  #[allow(mutable_transmutes)]
+  let mut msg: v8::PromiseRejectMessage = unsafe { std::mem::transmute(msg) };
+  let mut isolate = msg.get_isolate();
+  let deno_isolate: &mut DenoIsolate =
+    unsafe { &mut *(isolate.get_data(0) as *mut DenoIsolate) };
+  let mut locker = v8::Locker::new(isolate);
+  assert!(!deno_isolate.context_.is_empty());
+  let mut hs = v8::HandleScope::new(&mut locker);
+  let scope = hs.enter();
+  let mut context = deno_isolate.context_.get(scope).unwrap();
+  context.enter();
+
+  let error = msg.get_value();
+  let promise = msg.get_promise();
+  let promise_id = promise.get_identity_hash();
+
+  match msg.get_event() {
+    v8::PromiseRejectEvent::PromiseRejectWithNoHandler => {
+      let mut error_global = v8::Global::<v8::Value>::new();
+      error_global.set(scope, error);
+      deno_isolate
+        .pending_promise_map_
+        .insert(promise_id, error_global);
+    }
+    v8::PromiseRejectEvent::PromiseHandlerAddedAfterReject => {
+      // don't unwrap, might be None
+      deno_isolate.pending_promise_map_.remove(&promise_id);
+    }
+    v8::PromiseRejectEvent::PromiseRejectAfterResolved => {}
+    v8::PromiseRejectEvent::PromiseResolveAfterResolved => {
+      // Should not warn. See #1272
+    }
+  };
+
+  context.exit();
   /*
   auto* isolate = v8::Isolate::GetCurrent();
   DenoIsolate* d = static_cast<DenoIsolate*>(isolate->GetData(0));
@@ -1147,7 +1185,33 @@ pub unsafe fn deno_clear_last_exception(i: *const DenoIsolate) {
   i_mut.last_exception_ = None;
 }
 
-pub unsafe fn deno_check_promise_errors(d: *const DenoIsolate) {
+pub unsafe fn deno_check_promise_errors(i: *const DenoIsolate) {
+  let i_mut: &mut DenoIsolate = unsafe { std::mem::transmute(i) };
+  let isolate = i_mut.isolate_.as_ref().unwrap();
+
+  if i_mut.pending_promise_map_.is_empty() {
+    return;
+  }
+
+  let mut locker = v8::Locker::new(isolate);
+  assert!(!i_mut.context_.is_empty());
+  let mut hs = v8::HandleScope::new(&mut locker);
+  let scope = hs.enter();
+  let mut context = i_mut.context_.get(scope).unwrap();
+  context.enter();
+
+  // TODO(bartlomieju): this looks baaaad, but passes
+  // borrow checker
+  let mut errors = vec![];
+  for (promise_id, error_global) in i_mut.pending_promise_map_.drain() {
+    let error = error_global.get(scope).expect("Empty error handle");
+    errors.push(error);
+  }
+  for error in errors {
+    i_mut.handle_exception(scope, context, error);
+  }
+
+  context.exit();
   /*
   if (d->pending_promise_map_.size() > 0) {
     auto* isolate = d->isolate_;
