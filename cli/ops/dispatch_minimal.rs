@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // Do not add flatbuffer dependencies to this module.
 //! Connects to js/dispatch_minimal.ts sendAsyncMinimal This acts as a faster
 //! alternative to flatbuffers using a very simple list of int32s to lay out

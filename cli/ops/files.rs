@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::StreamResource;
 use crate::deno_error::bad_resource;

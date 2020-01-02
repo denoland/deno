@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { isTypedArray } from "./util.ts";
 import { TypedArray } from "./types.ts";
 import { TextEncoder } from "./text_encoding.ts";

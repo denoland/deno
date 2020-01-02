@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 const { run, stat, makeTempDir, remove, env, readAll } = Deno;
 
 import { test, runIfMain, TestFunction } from "../testing/mod.ts";

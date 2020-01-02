@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 # Many tests expect there to be an http server on port 4545 servering the deno
 # root directory.
 from collections import namedtuple

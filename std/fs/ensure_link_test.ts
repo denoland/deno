@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // TODO(axetroy): Add test for Windows once symlink is implemented for Windows.
 import { test } from "../testing/mod.ts";
 import {

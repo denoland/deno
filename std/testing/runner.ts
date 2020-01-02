@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno -A
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { parse } from "../flags/mod.ts";
 import { ExpandGlobOptions, expandGlob } from "../fs/mod.ts";
 import { isWindows, join } from "../path/mod.ts";

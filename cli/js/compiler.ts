@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // TODO(ry) Combine this implementation with //deno_typescript/compiler_main.js
 
 import "./globals.ts";

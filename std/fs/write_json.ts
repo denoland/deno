@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Replacer = (key: string, value: any) => any;
 

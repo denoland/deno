@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 const { listen, listenTLS, copy, toAsyncIterator } = Deno;
 type Listener = Deno.Listener;
 type Conn = Deno.Conn;

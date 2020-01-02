@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import * as minimal from "./dispatch_minimal.ts";
 import * as json from "./dispatch_json.ts";
 import { AsyncHandler } from "./plugins.ts";

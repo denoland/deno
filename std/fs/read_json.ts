@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 /** Reads a JSON file and then parses it into an object */
 export async function readJson(filePath: string): Promise<unknown> {
