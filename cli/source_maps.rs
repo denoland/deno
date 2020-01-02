@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 //! This mod provides functions to remap a deno::V8Exception based on a source map
 use deno::StackFrame;
 use deno::V8Exception;

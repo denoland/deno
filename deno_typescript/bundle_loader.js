@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 // A script preamble that provides the ability to load a single outfile
 // TypeScript "bundle" where a main module is loaded which recursively

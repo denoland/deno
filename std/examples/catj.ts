@@ -1,7 +1,7 @@
 #!/usr/bin/env -S deno --allow-read
 // Ported from: https://github.com/soheilpro/catj
 // Copyright (c) 2014 Soheil Rashidi
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 // Install using `deno install`
 // $ deno install catj https://deno.land/std/examples/catj.ts --allow-read

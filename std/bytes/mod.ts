@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { copyBytes } from "../io/util.ts";
 
 /** Find first index of binary pattern from a. If not found, then return -1 **/

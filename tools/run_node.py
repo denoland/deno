@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 """
 gn can only run python scripts. This launches a subprocess Node process.
 The working dir of this program is out/Debug/ (AKA root_build_dir)

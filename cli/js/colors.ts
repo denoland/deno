@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 // TODO(kitsonk) Replace with `deno_std/colors/mod.ts` when we can load modules
 // which end in `.ts`.
