@@ -38,6 +38,7 @@ pub struct DenoIsolate {
   locker_: Option<v8::Locker>,
   shared_: deno_buf,
   resolve_cb_: Option<deno_resolve_cb>,
+  recv_: v8::Global<v8::Function>,
   /*
   v8::Isolate* isolate_;
   deno_buf shared_;
@@ -56,7 +57,7 @@ pub struct DenoIsolate {
 
   std::map<int, v8::Persistent<v8::Value>> pending_promise_map_;
   v8::Persistent<v8::Value> last_exception_handle_;
-  v8::Persistent<v8::Function> recv_;
+
   v8::StartupData snapshot_;
   v8::Persistent<v8::ArrayBuffer> global_import_buf_;
   v8::Persistent<v8::SharedArrayBuffer> shared_ab_;
@@ -88,6 +89,7 @@ impl DenoIsolate {
       locker_: None,
       shared_: config.shared,
       resolve_cb_: None,
+      recv_: v8::Global::<v8::Function>::new(),
     }
     /*
       : isolate_(nullptr),
@@ -981,7 +983,27 @@ extern "C" fn print(info: &v8::FunctionCallbackInfo) {
 }
 
 extern "C" fn recv(info: &v8::FunctionCallbackInfo) {
-  todo!()
+  #[allow(mutable_transmutes)]
+  #[allow(clippy::transmute_ptr_to_ptr)]
+  let info: &mut v8::FunctionCallbackInfo =
+    unsafe { std::mem::transmute(info) };
+  assert_eq!(info.length(), 1);
+  let mut isolate = info.get_isolate();
+  let deno_isolate: &mut DenoIsolate =
+    unsafe { &mut *(isolate.get_data(0) as *mut DenoIsolate) };
+  let mut locker = v8::Locker::new(&isolate);
+  let mut hs = v8::HandleScope::new(&mut locker);
+  let scope = hs.enter();
+
+  if !deno_isolate.recv_.is_empty() {
+    let msg = v8::String::new(scope, "Deno.core.recv already called.").unwrap();
+    isolate.throw_exception(msg.into());
+    return;
+  }
+
+  let recv_val = info.get_argument(0);
+  let recv_fn = unsafe { v8::Local::<v8::Function>::cast(recv_val) };
+  deno_isolate.recv_.set(scope, recv_fn);
 }
 
 extern "C" fn send(info: &v8::FunctionCallbackInfo) {
@@ -993,7 +1015,27 @@ extern "C" fn eval_context(info: &v8::FunctionCallbackInfo) {
 }
 
 extern "C" fn error_to_json(info: &v8::FunctionCallbackInfo) {
-  todo!()
+  #[allow(mutable_transmutes)]
+  #[allow(clippy::transmute_ptr_to_ptr)]
+  let info: &mut v8::FunctionCallbackInfo =
+    unsafe { std::mem::transmute(info) };
+  assert_eq!(info.length(), 1);
+  // <Boilerplate>
+  let mut isolate = info.get_isolate();
+  let deno_isolate: &mut DenoIsolate =
+    unsafe { &mut *(isolate.get_data(0) as *mut DenoIsolate) };
+  let mut locker = v8::Locker::new(&isolate);
+  assert!(!deno_isolate.context_.is_empty());
+  let mut hs = v8::HandleScope::new(&mut locker);
+  let scope = hs.enter();
+  let mut context = deno_isolate.context_.get(scope).unwrap();
+  // </Boilerplate>
+  let exception = info.get_argument(0);
+  let json_string =
+    deno_isolate.encode_exception_as_json(scope, context, exception);
+  let s = v8::String::new(scope, &json_string).unwrap();
+  let mut rv = info.get_return_value();
+  rv.set(s.into());
 }
 
 extern "C" fn queue_microtask(info: &v8::FunctionCallbackInfo) {
