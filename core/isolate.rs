@@ -27,7 +27,6 @@ use futures::stream::StreamFuture;
 use futures::stream::TryStream;
 use futures::stream::TryStreamExt;
 use futures::task::AtomicWaker;
-use libc::c_char;
 use libc::c_void;
 use std::ffi::CStr;
 use std::fmt;

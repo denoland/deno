@@ -82,10 +82,9 @@ pub struct DenoIsolate {
   next_dyn_import_id_: deno_dyn_import_id,
   dyn_import_cb_: deno_dyn_import_cb,
   dyn_import_map_: HashMap<deno_dyn_import_id, v8::Global<v8::PromiseResolver>>,
+  pending_promise_map_: HashMap<i32, v8::Global<v8::Value>>,
   /*
   void* global_import_buf_ptr_;
-
-  std::map<int, v8::Persistent<v8::Value>> pending_promise_map_;
 
   v8::Persistent<v8::ArrayBuffer> global_import_buf_;
   */
@@ -140,6 +139,7 @@ impl DenoIsolate {
       context_: v8::Global::<v8::Context>::new(),
       mods_: HashMap::new(),
       mods_by_name_: HashMap::new(),
+      pending_promise_map_: HashMap::new(),
       locker_: None,
       shared_: config.shared,
       shared_ab_: v8::Global::<v8::SharedArrayBuffer>::new(),
@@ -782,10 +782,7 @@ extern "C" fn message_callback(
   */
 }
 
-extern "C" fn promise_reject_callback(
-  _promise_reject_message: v8::PromiseRejectMessage,
-) {
-  todo!()
+extern "C" fn promise_reject_callback(msg: v8::PromiseRejectMessage) {
   /*
   auto* isolate = v8::Isolate::GetCurrent();
   DenoIsolate* d = static_cast<DenoIsolate*>(isolate->GetData(0));
@@ -822,6 +819,41 @@ extern "C" fn promise_reject_callback(
       CHECK(false && "unreachable");
   }
   */
+  #[allow(mutable_transmutes)]
+  let mut msg: v8::PromiseRejectMessage = unsafe { std::mem::transmute(msg) };
+  let mut isolate = msg.isolate();
+  let deno_isolate: &mut DenoIsolate =
+    unsafe { &mut *(isolate.get_data(0) as *mut DenoIsolate) };
+  let mut locker = v8::Locker::new(isolate);
+  assert!(!deno_isolate.context_.is_empty());
+  let mut hs = v8::HandleScope::new(&mut locker);
+  let scope = hs.enter();
+  let mut context = deno_isolate.context_.get(scope).unwrap();
+  context.enter();
+
+  let error = msg.get_value();
+  let promise = msg.get_promise();
+  let promise_id = promise.get_identity_hash();
+
+  match msg.get_event() {
+    v8::PromiseRejectEvent::PromiseRejectWithNoHandler => {
+      let mut error_global = v8::Global::<v8::Value>::new();
+      error_global.set(scope, error);
+      deno_isolate
+        .pending_promise_map_
+        .insert(promise_id, error_global);
+    }
+    v8::PromiseRejectEvent::PromiseHandlerAddedAfterReject => {
+      // don't unwrap, might be None
+      deno_isolate.pending_promise_map_.remove(&promise_id);
+    }
+    v8::PromiseRejectEvent::PromiseRejectAfterResolved => {}
+    v8::PromiseRejectEvent::PromiseResolveAfterResolved => {
+      // Should not warn. See #1272
+    }
+  };
+
+  context.exit();
 }
 
 /// This type represents a borrowed slice.
@@ -1473,7 +1505,7 @@ pub unsafe fn deno_clear_last_exception(i: *mut DenoIsolate) {
   i_mut.last_exception_ = None;
 }
 
-pub unsafe fn deno_check_promise_errors(d: *mut DenoIsolate) {
+pub unsafe fn deno_check_promise_errors(i: *mut DenoIsolate) {
   /*
   if (d->pending_promise_map_.size() > 0) {
     auto* isolate = d->isolate_;
@@ -1491,6 +1523,32 @@ pub unsafe fn deno_check_promise_errors(d: *mut DenoIsolate) {
     }
   }
   */
+  let i_mut: &mut DenoIsolate = unsafe { std::mem::transmute(i) };
+  let isolate = i_mut.isolate_.as_ref().unwrap();
+
+  if i_mut.pending_promise_map_.is_empty() {
+    return;
+  }
+
+  let mut locker = v8::Locker::new(isolate);
+  assert!(!i_mut.context_.is_empty());
+  let mut hs = v8::HandleScope::new(&mut locker);
+  let scope = hs.enter();
+  let mut context = i_mut.context_.get(scope).unwrap();
+  context.enter();
+
+  // TODO(bartlomieju): this looks baaaad, but passes
+  // borrow checker
+  let mut errors = vec![];
+  for (promise_id, error_global) in i_mut.pending_promise_map_.drain() {
+    let error = error_global.get(scope).expect("Empty error handle");
+    errors.push(error);
+  }
+  for error in errors {
+    i_mut.handle_exception(scope, context, error);
+  }
+
+  context.exit();
 }
 
 pub unsafe fn deno_lock(i: *mut DenoIsolate) {
