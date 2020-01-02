@@ -37,11 +37,12 @@ pub struct DenoIsolate {
   mods_by_name_: HashMap<String, deno_mod>,
   locker_: Option<v8::Locker>,
   shared_: deno_buf,
+  shared_ab_: v8::Global<v8::SharedArrayBuffer>,
   resolve_cb_: Option<deno_resolve_cb>,
   recv_: v8::Global<v8::Function>,
   /*
   v8::Isolate* isolate_;
-  deno_buf shared_;
+
   const v8::FunctionCallbackInfo<v8::Value>* current_args_;
   v8::SnapshotCreator* snapshot_creator_;
   void* global_import_buf_ptr_;
@@ -60,7 +61,7 @@ pub struct DenoIsolate {
 
   v8::StartupData snapshot_;
   v8::Persistent<v8::ArrayBuffer> global_import_buf_;
-  v8::Persistent<v8::SharedArrayBuffer> shared_ab_;
+  
   bool has_snapshotted_;
   */
 }
@@ -80,7 +81,7 @@ impl Drop for DenoIsolate {
 
 impl DenoIsolate {
   pub fn new(config: deno_config) -> Self {
-    Self {
+    let s = Self {
       isolate_: None,
       last_exception_: None,
       context_: v8::Global::<v8::Context>::new(),
@@ -88,9 +89,14 @@ impl DenoIsolate {
       mods_by_name_: HashMap::new(),
       locker_: None,
       shared_: config.shared,
+      shared_ab_: v8::Global::<v8::SharedArrayBuffer>::new(),
       resolve_cb_: None,
       recv_: v8::Global::<v8::Function>::new(),
-    }
+    };
+
+    eprintln!("init shared {:?} {}", s.shared_.data_ptr, s.shared_.data_ptr.is_null());
+    eprintln!("init {}", s.shared_ab_.is_empty());
+    s
     /*
       : isolate_(nullptr),
         locker_(nullptr),
@@ -1046,7 +1052,6 @@ extern "C" fn shared_getter(
   name: v8::Local<v8::Name>,
   info: &v8::PropertyCallbackInfo,
 ) {
-  // let isolate = info.isolate();
   /*
   v8::Isolate* isolate = info.GetIsolate();
   DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
@@ -1067,6 +1072,62 @@ extern "C" fn shared_getter(
   auto shared_ab = d->shared_ab_.Get(isolate);
   info.GetReturnValue().Set(shared_ab);
   */
+  use v8::InIsolate;
+  eprintln!("before123!!!!");
+
+  #[allow(mutable_transmutes)]
+  #[allow(clippy::transmute_ptr_to_ptr)]
+  let info: &mut v8::PropertyCallbackInfo = unsafe { std::mem::transmute(info) };
+  
+  // <Boilerplate>
+  let mut isolate = info.get_isolate();
+  let deno_isolate: &mut DenoIsolate =
+    unsafe { &mut *(isolate.get_data(0) as *mut DenoIsolate) };
+  let mut locker = v8::Locker::new(&isolate);
+  let mut hs = v8::HandleScope::new(&mut locker);
+  let scope = hs.enter();
+  // </Boilerplate>
+
+  eprintln!("shared data ptr {:?}", deno_isolate.shared_.data_ptr);
+  if deno_isolate.shared_.data_ptr.is_null() {
+    eprintln!("ptr is null!!!!");
+    return;
+  }
+  // let a = deno_isolate.shared_ab_.get(scope);
+  eprintln!("before2!!!! {:?}", deno_isolate.shared_ab_.is_empty());
+  // return;
+
+  // TODO(bartlomieju): this should happen in initializer
+  // Lazily initialize the persistent external ArrayBuffer.
+  if deno_isolate.shared_ab_.is_empty() {
+    eprintln!("inside!!!!");
+    #[allow(mutable_transmutes)]
+    #[allow(clippy::transmute_ptr_to_ptr)]
+    let data_ptr: *mut u8 =
+      unsafe { std::mem::transmute(deno_isolate.shared_.data_ptr) };
+    eprintln!("before!!!!");
+    let ab = v8::SharedArrayBuffer::new_DEPRECATED(
+      scope, 
+      data_ptr as *mut c_void,
+      deno_isolate.shared_.data_len
+    );
+    eprintln!("after!!!!");
+    deno_isolate.shared_ab_.set(scope, ab);
+  }
+
+  let shared_ab = deno_isolate.shared_ab_.get(scope).unwrap();
+  
+  // let shared_ab = {
+  //   let mut hs = v8::EscapableHandleScope::new(info);
+  //   let scope = hs.enter();
+  //   let isolate = scope.isolate();
+  //   let deno_isolate: &mut DenoIsolate =
+  //     unsafe { &mut *(isolate.get_data(0) as *mut DenoIsolate) };
+    
+  //   scope.escape(shared_ab)
+  // };
+  let rv = &mut info.get_return_value();
+  rv.set(shared_ab.into());
 }
 
 fn initialize_context<'a>(
