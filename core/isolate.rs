@@ -475,7 +475,9 @@ impl Isolate {
       unsafe { libdeno::deno_mod_imports_len(self.libdeno_isolate, id) };
     let mut out = Vec::new();
     for i in 0..len {
-      let specifier = unsafe { libdeno::deno_mod_imports_get(self.libdeno_isolate, id, i) }.unwrap();
+      let specifier =
+        unsafe { libdeno::deno_mod_imports_get(self.libdeno_isolate, id, i) }
+          .unwrap();
       out.push(specifier);
     }
     out
