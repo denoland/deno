@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 # Performs benchmark and append data to //website/data.json.
 # If //website/data.json doesn't exist, this script tries to import it from
 # gh-pages branch.

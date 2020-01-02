@@ -1,6 +1,6 @@
 // Ported from Go:
 // https://github.com/golang/go/blob/go1.12.5/src/encoding/csv/
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";

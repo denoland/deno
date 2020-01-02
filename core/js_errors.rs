@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 // Note that source_map_mappings requires 0-indexed line and column numbers but
 // V8 Exceptions are 1-indexed.

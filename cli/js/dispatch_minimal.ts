@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import * as util from "./util.ts";
 import { core } from "./core.ts";
 import { TextDecoder } from "./text_encoding.ts";

@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { open, openSync } from "./files.ts";
 import { readAll, readAllSync } from "./buffer.ts";
 
