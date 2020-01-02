@@ -921,6 +921,22 @@ extern "C" fn recv(info: &v8::FunctionCallbackInfo) {
   todo!()
 }
 
+extern "C" fn send(info: &v8::FunctionCallbackInfo) {
+  todo!()
+}
+
+extern "C" fn eval_context(info: &v8::FunctionCallbackInfo) {
+  todo!()
+}
+
+extern "C" fn error_to_json(info: &v8::FunctionCallbackInfo) {
+  todo!()
+}
+
+extern "C" fn queue_microtask(info: &v8::FunctionCallbackInfo) {
+  todo!()
+}
+
 fn initialize_context<'a>(
   scope: &mut impl v8::ToLocal<'a>,
   mut context: v8::Local<v8::Context>,
@@ -961,46 +977,48 @@ fn initialize_context<'a>(
     recv_val.into(),
   );
 
-  // todo!()
+  let mut send_tmpl = v8::FunctionTemplate::new(scope, send);
+  let mut send_val = send_tmpl.get_function(scope, context).unwrap();
+  core_val.set(
+    context,
+    v8::String::new(scope, "send").unwrap().into(),
+    send_val.into(),
+  );
+
+  let mut eval_context_tmpl = v8::FunctionTemplate::new(scope, eval_context);
+  let mut eval_context_val =
+    eval_context_tmpl.get_function(scope, context).unwrap();
+  core_val.set(
+    context,
+    v8::String::new(scope, "evalContext").unwrap().into(),
+    eval_context_val.into(),
+  );
+
+  let mut error_to_json_tmpl = v8::FunctionTemplate::new(scope, error_to_json);
+  let mut error_to_json_val =
+    error_to_json_tmpl.get_function(scope, context).unwrap();
+  core_val.set(
+    context,
+    v8::String::new(scope, "errorToJSON").unwrap().into(),
+    error_to_json_val.into(),
+  );
+
   /*
-
-
-  auto print_tmpl = v8::FunctionTemplate::New(isolate, Print);
-  auto print_val = print_tmpl->GetFunction(context).ToLocalChecked();
-  CHECK(core_val->Set(context, deno::v8_str("print"), print_val).FromJust());
-
-  auto recv_tmpl = v8::FunctionTemplate::New(isolate, Recv);
-  auto recv_val = recv_tmpl->GetFunction(context).ToLocalChecked();
-  CHECK(core_val->Set(context, deno::v8_str("recv"), recv_val).FromJust());
-
-  auto send_tmpl = v8::FunctionTemplate::New(isolate, Send);
-  auto send_val = send_tmpl->GetFunction(context).ToLocalChecked();
-  CHECK(core_val->Set(context, deno::v8_str("send"), send_val).FromJust());
-
-  auto eval_context_tmpl = v8::FunctionTemplate::New(isolate, EvalContext);
-  auto eval_context_val =
-      eval_context_tmpl->GetFunction(context).ToLocalChecked();
-  CHECK(core_val->Set(context, deno::v8_str("evalContext"), eval_context_val)
-            .FromJust());
-
-  auto error_to_json_tmpl = v8::FunctionTemplate::New(isolate, ErrorToJSON);
-  auto error_to_json_val =
-      error_to_json_tmpl->GetFunction(context).ToLocalChecked();
-  CHECK(core_val->Set(context, deno::v8_str("errorToJSON"), error_to_json_val)
-            .FromJust());
-
   CHECK(core_val->SetAccessor(context, deno::v8_str("shared"), Shared)
             .FromJust());
+  */
 
   // Direct bindings on `window`.
-  auto queue_microtask_tmpl =
-      v8::FunctionTemplate::New(isolate, QueueMicrotask);
-  auto queue_microtask_val =
-      queue_microtask_tmpl->GetFunction(context).ToLocalChecked();
-  CHECK(
-      global->Set(context, deno::v8_str("queueMicrotask"), queue_microtask_val)
-          .FromJust());
-  */
+  let mut queue_microtask_tmpl =
+    v8::FunctionTemplate::new(scope, queue_microtask);
+  let mut queue_microtask_val =
+    queue_microtask_tmpl.get_function(scope, context).unwrap();
+  global.set(
+    context,
+    v8::String::new(scope, "queueMicrotask").unwrap().into(),
+    queue_microtask_val.into(),
+  );
+
   context.exit();
 }
 
