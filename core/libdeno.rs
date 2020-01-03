@@ -2,6 +2,7 @@
 #![allow(unused)]
 
 use rusty_v8 as v8;
+use v8::InIsolate;
 
 use libc::c_char;
 use libc::c_int;
@@ -9,6 +10,8 @@ use libc::c_void;
 use libc::size_t;
 use std::collections::HashMap;
 use std::convert::From;
+use std::convert::TryFrom;
+use std::convert::TryInto;
 use std::ffi::CString;
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
@@ -70,7 +73,7 @@ pub struct DenoIsolate {
   resolve_cb_: Option<deno_resolve_cb>,
   recv_: v8::Global<v8::Function>,
   user_data_: *mut c_void,
-  current_args_: *mut c_void,
+  current_args_: *const v8::FunctionCallbackInfo,
   recv_cb_: deno_recv_cb,
   /*
   v8::Isolate* isolate_;
@@ -119,7 +122,7 @@ impl DenoIsolate {
       resolve_cb_: None,
       recv_: v8::Global::<v8::Function>::new(),
       user_data_: std::ptr::null_mut(),
-      current_args_: std::ptr::null_mut(),
+      current_args_: std::ptr::null(),
       recv_cb_: config.recv_cb,
     }
     /*
@@ -802,38 +805,24 @@ impl AsRef<[u8]> for deno_buf {
 /// but the existence of a PinnedBuf inhibits this until it is dropped. It
 /// behaves much like an Arc<[u8]>, although a PinnedBuf currently can't be
 /// cloned.
-#[repr(C)]
 pub struct PinnedBuf {
   data_ptr: NonNull<u8>,
   data_len: usize,
-  pin: NonNull<c_void>,
-}
-
-#[repr(C)]
-pub struct PinnedBufRaw {
-  data_ptr: *mut u8,
-  data_len: usize,
-  pin: *mut c_void,
+  backing_store: v8::SharedRef<v8::BackingStore>,
 }
 
 unsafe impl Send for PinnedBuf {}
-unsafe impl Send for PinnedBufRaw {}
 
 impl PinnedBuf {
-  pub fn new(raw: PinnedBufRaw) -> Option<Self> {
-    NonNull::new(raw.data_ptr).map(|data_ptr| PinnedBuf {
-      data_ptr,
-      data_len: raw.data_len,
-      pin: NonNull::new(raw.pin).unwrap(),
-    })
-  }
-}
-
-impl Drop for PinnedBuf {
-  fn drop(&mut self) {
-    unsafe {
-      let raw = &mut *(self as *mut PinnedBuf as *mut PinnedBufRaw);
-      deno_pinned_buf_delete(raw);
+  pub fn new(view: v8::Local<v8::ArrayBufferView>) -> Self {
+    let mut backing_store = view.buffer().unwrap().get_backing_store();
+    let backing_store_ptr = backing_store.data() as *mut _ as *mut u8;
+    let view_ptr = unsafe { backing_store_ptr.add(view.byte_offset()) };
+    let view_len = view.byte_length();
+    Self {
+      data_ptr: NonNull::new(view_ptr).unwrap(),
+      data_len: view_len,
+      backing_store,
     }
   }
 }
@@ -862,8 +851,6 @@ impl AsMut<[u8]> for PinnedBuf {
     &mut *self
   }
 }
-
-pub use PinnedBufRaw as deno_pinned_buf;
 
 #[repr(C)]
 pub struct deno_snapshot<'a> {
@@ -909,11 +896,11 @@ impl Snapshot2<'_> {
 }
 
 #[allow(non_camel_case_types)]
-type deno_recv_cb = unsafe extern "C" fn(
+type deno_recv_cb = unsafe fn(
   user_data: *mut c_void,
   op_id: OpId,
   control_buf: deno_buf,
-  zero_copy_buf: deno_pinned_buf,
+  zero_copy_buf: Option<PinnedBuf>,
 );
 
 /// Called when dynamic import is called in JS: import('foo')
@@ -1041,14 +1028,6 @@ extern "C" fn recv(info: &v8::FunctionCallbackInfo) {
 }
 
 extern "C" fn send(info: &v8::FunctionCallbackInfo) {
-  /*
-  v8::Isolate* isolate = args.GetIsolate();
-  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
-  DCHECK_EQ(d->isolate_, isolate);
-
-  v8::HandleScope handle_scope(isolate);
-  */
-  use v8::InIsolate;
   #[allow(mutable_transmutes)]
   #[allow(clippy::transmute_ptr_to_ptr)]
   let info: &mut v8::FunctionCallbackInfo =
@@ -1061,79 +1040,42 @@ extern "C" fn send(info: &v8::FunctionCallbackInfo) {
     unsafe { &mut *(isolate.get_data(0) as *mut DenoIsolate) };
   assert!(!deno_isolate.context_.is_empty());
 
-  /*
-  deno_buf control = {nullptr, 0};
+  let op_id = v8::Local::<v8::Uint32>::try_from(info.get_argument(0))
+    .unwrap()
+    .value() as u32;
 
-  int32_t op_id = 0;
-  if (args[0]->IsInt32()) {
-    auto context = d->context_.Get(isolate);
-    op_id = args[0]->Int32Value(context).FromJust();
+  let control: deno_buf =
+    v8::Local::<v8::ArrayBufferView>::try_from(info.get_argument(1))
+      .map(|view| {
+        let mut backing_store = view.buffer().unwrap().get_backing_store();
+        let backing_store_ptr = backing_store.data() as *mut _ as *mut u8;
+        let view_ptr = unsafe { backing_store_ptr.add(view.byte_offset()) };
+        let view_len = view.byte_length();
+        unsafe { deno_buf::from_raw_parts(view_ptr, view_len) }
+      })
+      .unwrap();
+
+  let zero_copy: Option<PinnedBuf> =
+    v8::Local::<v8::ArrayBufferView>::try_from(info.get_argument(2))
+      .map(PinnedBuf::new)
+      .ok();
+
+  // TODO: what's the point of this again?
+  // DCHECK_NULL(d->current_args_);
+  // d->current_args_ = &args;
+  assert!(deno_isolate.current_args_.is_null());
+  deno_isolate.current_args_ = info;
+
+  unsafe {
+    (deno_isolate.recv_cb_)(deno_isolate.user_data_, op_id, control, zero_copy);
   }
 
-  if (args[1]->IsArrayBufferView()) {
-    auto view = v8::Local<v8::ArrayBufferView>::Cast(args[1]);
-    auto data =
-        reinterpret_cast<uint8_t*>(view->Buffer()->GetBackingStore()->Data());
-    control = {data + view->ByteOffset(), view->ByteLength()};
-  }
-
-  PinnedBuf zero_copy =
-      args[2]->IsArrayBufferView()
-          ? PinnedBuf(v8::Local<v8::ArrayBufferView>::Cast(args[2]))
-          : PinnedBuf();
-  */
-  let mut control = deno_buf::empty();
-  let mut op_id = 0;
-  let arg0 = info.get_argument(0);
-  let arg1 = info.get_argument(1);
-  let arg2 = info.get_argument(1);
-
-  if arg0.is_int32() {
-    let arg0_int = unsafe { v8::Local::<v8::Integer>::cast(arg1) };
-    op_id = arg0_int.value();
-  }
-
-  /*
-  if arg1.is_array_buffer_view() {
-    let view = unsafe { v8::Local::<v8::ArrayBufferView>::cast(arg1) };
-    let backing_store = view.buffer().expect("Failed to get buffer").get_backing_store();
-    control = backing_store.data_bytes().into();
-  }
-  */
-
-  // let zero_copy = if arg2.is_array_buffer_view() {
-  //   let view = unsafe { v8::Local::<v8::ArrayBufferView>::cast(arg1) };
-  //   PinnedBuf::from(view);
-  // } else {
-  //   PinnedBuf::new
-  // };
-
-  /*
-  DCHECK_NULL(d->current_args_);
-  d->current_args_ = &args;
-
-  d->recv_cb_(d->user_data_, op_id, control, zero_copy.IntoRaw());
-
-  if (d->current_args_ == nullptr) {
+  if deno_isolate.current_args_.is_null() {
     // This indicates that deno_repond() was called already.
   } else {
     // Asynchronous.
-    d->current_args_ = nullptr;
+    deno_isolate.current_args_ = null();
   }
-  */
-
-  // let boxed_info = Box::new(info);
-  // assert!(deno_isolate.current_args_.is_null());
-  // deno_isolate.current_args_ = Box::into_raw(boxed_info) as *mut c_void;
-  // let recv_cb = deno_isolate.recv_cb_;
-  // recv_cb(deno_isolate.user_data_, op_id as u32, control, zero_copy);
-
-  // if deno_isolate.current_args_.is_null() {
-  //   // This indicates that deno_repond() was called already.
-  // } else {
-  //   // Asynchronous
-  //   deno_isolate.current_args_ = std::ptr::null_mut();
-  // }
 }
 
 extern "C" fn eval_context(info: &v8::FunctionCallbackInfo) {
@@ -1441,9 +1383,6 @@ pub unsafe fn deno_respond(
 ) {
   todo!()
 }
-pub unsafe fn deno_pinned_buf_delete(buf: &mut deno_pinned_buf) {
-  todo!()
-}
 pub unsafe fn deno_execute(
   i: *const DenoIsolate,
   user_data: *const c_void,
@@ -1594,7 +1533,8 @@ fn resolve_callback(
       let resolve_cb = deno_isolate.resolve_cb_.unwrap();
       let c_str = CString::new(req_str.to_string()).unwrap();
       let c_req_str: *const c_char = c_str.as_ptr() as *const c_char;
-      let id = unsafe { resolve_cb(deno_isolate.user_data_, c_req_str, referrer_id) };
+      let id =
+        unsafe { resolve_cb(deno_isolate.user_data_, c_req_str, referrer_id) };
       let maybe_info = deno_isolate.get_module_info(id);
 
       if maybe_info.is_none() {

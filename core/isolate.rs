@@ -12,7 +12,6 @@ use crate::libdeno;
 use crate::libdeno::deno_buf;
 use crate::libdeno::deno_dyn_import_id;
 use crate::libdeno::deno_mod;
-use crate::libdeno::deno_pinned_buf;
 use crate::libdeno::PinnedBuf;
 use crate::libdeno::Snapshot1;
 use crate::libdeno::Snapshot2;
@@ -333,19 +332,18 @@ impl Isolate {
     }
   }
 
-  extern "C" fn pre_dispatch(
+  fn pre_dispatch(
     user_data: *mut c_void,
     op_id: OpId,
     control_buf: deno_buf,
-    zero_copy_buf: deno_pinned_buf,
+    zero_copy_buf: Option<PinnedBuf>,
   ) {
     let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
 
-    let maybe_op = isolate.op_registry.call(
-      op_id,
-      control_buf.as_ref(),
-      PinnedBuf::new(zero_copy_buf),
-    );
+    let maybe_op =
+      isolate
+        .op_registry
+        .call(op_id, control_buf.as_ref(), zero_copy_buf);
 
     let op = match maybe_op {
       Some(op) => op,
