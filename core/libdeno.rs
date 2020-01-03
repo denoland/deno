@@ -77,8 +77,6 @@ pub struct DenoIsolate {
   v8::SnapshotCreator* snapshot_creator_;
   void* global_import_buf_ptr_;
 
-  deno_resolve_cb resolve_cb_;
-
   deno_dyn_import_id next_dyn_import_id_;
   deno_dyn_import_cb dyn_import_cb_;
   std::map<deno_dyn_import_id, v8::Persistent<v8::Promise::Resolver>>
@@ -1594,9 +1592,9 @@ fn resolve_callback(
 
     if req_str == specifier_str {
       let resolve_cb = deno_isolate.resolve_cb_.unwrap();
-      // TODO: call actual callback
-      // let id = resolve_cb(req_str, referrer_id);
-      let id = 0;
+      let c_str = CString::new(req_str.to_string()).unwrap();
+      let c_req_str: *const c_char = c_str.as_ptr() as *const c_char;
+      let id = unsafe { resolve_cb(deno_isolate.user_data_, c_req_str, referrer_id) };
       let maybe_info = deno_isolate.get_module_info(id);
 
       if maybe_info.is_none() {
@@ -1620,7 +1618,7 @@ fn resolve_callback(
 
 pub unsafe fn deno_mod_instantiate(
   i: *const DenoIsolate,
-  user_data: *const c_void,
+  user_data: *mut c_void,
   id: deno_mod,
   resolve_cb: deno_resolve_cb,
 ) {
@@ -1636,6 +1634,7 @@ pub unsafe fn deno_mod_instantiate(
   v8::Context::Scope context_scope(context);
   */
   let i_mut: &mut DenoIsolate = unsafe { std::mem::transmute(i) };
+  let user_scope = UserDataScope::new(i_mut, user_data);
   let isolate = i_mut.isolate_.as_ref().unwrap();
   let mut locker = v8::Locker::new(isolate);
   let mut hs = v8::HandleScope::new(&mut locker);
