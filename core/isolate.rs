@@ -30,7 +30,6 @@ use futures::task::AtomicWaker;
 use libc::c_char;
 use libc::c_void;
 use std::ffi::CStr;
-use std::ffi::CString;
 use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
@@ -307,16 +306,14 @@ impl Isolate {
     }
   }
 
-  extern "C" fn dyn_import(
+  fn dyn_import(
     user_data: *mut c_void,
-    specifier: *const c_char,
-    referrer: *const c_char,
+    specifier: &str,
+    referrer: &str,
     id: deno_dyn_import_id,
   ) {
     assert_ne!(user_data, std::ptr::null_mut());
     let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
-    let specifier = unsafe { CStr::from_ptr(specifier).to_str().unwrap() };
-    let referrer = unsafe { CStr::from_ptr(referrer).to_str().unwrap() };
     debug!("dyn_import specifier {} referrer {} ", specifier, referrer);
 
     if let Some(ref f) = isolate.dyn_import {
@@ -503,11 +500,7 @@ impl Isolate {
     let (mod_id, maybe_err_str) = match result {
       Ok(mod_id) => (mod_id, None),
       Err(None) => (0, None),
-      Err(Some(err_str)) => (0, Some(CString::new(err_str).unwrap())),
-    };
-    let err_str_ptr = match maybe_err_str {
-      Some(ref err_str) => err_str.as_ptr(),
-      None => std::ptr::null(),
+      Err(Some(err_str)) => (0, Some(err_str)),
     };
     unsafe {
       libdeno::deno_dyn_import_done(
@@ -515,7 +508,7 @@ impl Isolate {
         self.as_raw_ptr(),
         id,
         mod_id,
-        err_str_ptr,
+        maybe_err_str,
       )
     };
     self.check_last_exception()

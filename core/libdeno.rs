@@ -64,6 +64,7 @@ impl Drop for UserDataScope {
 pub struct DenoIsolate {
   isolate_: Option<v8::OwnedIsolate>,
   last_exception_: Option<String>,
+  last_exception_handle_: v8::Global<v8::Value>,
   context_: v8::Global<v8::Context>,
   mods_: HashMap<deno_mod, ModuleInfo>,
   mods_by_name_: HashMap<String, deno_mod>,
@@ -78,16 +79,13 @@ pub struct DenoIsolate {
   snapshot_creator_: Option<v8::SnapshotCreator>,
   has_snapshotted_: bool,
   snapshot_: Option<v8::OwnedStartupData>,
+  next_dyn_import_id_: deno_dyn_import_id,
+  dyn_import_cb_: deno_dyn_import_cb,
+  dyn_import_map_: HashMap<deno_dyn_import_id, v8::Global<v8::PromiseResolver>>,
   /*
   void* global_import_buf_ptr_;
 
-  deno_dyn_import_id next_dyn_import_id_;
-  deno_dyn_import_cb dyn_import_cb_;
-  std::map<deno_dyn_import_id, v8::Persistent<v8::Promise::Resolver>>
-      dyn_import_map_;
-
   std::map<int, v8::Persistent<v8::Value>> pending_promise_map_;
-  v8::Persistent<v8::Value> last_exception_handle_;
 
   v8::Persistent<v8::ArrayBuffer> global_import_buf_;
   */
@@ -105,9 +103,13 @@ impl Drop for DenoIsolate {
       // </Boilerplate>
       self.context_.reset(scope);
       self.shared_ab_.reset(scope);
+      self.last_exception_handle_.reset(scope);
       self.recv_.reset(scope);
       for (key, module) in self.mods_.iter_mut() {
         module.handle.reset(scope);
+      }
+      for (key, handle) in self.dyn_import_map_.iter_mut() {
+        handle.reset(scope);
       }
     }
     if let Some(locker_) = self.locker_.take() {
@@ -134,6 +136,7 @@ impl DenoIsolate {
     Self {
       isolate_: None,
       last_exception_: None,
+      last_exception_handle_: v8::Global::<v8::Value>::new(),
       context_: v8::Global::<v8::Context>::new(),
       mods_: HashMap::new(),
       mods_by_name_: HashMap::new(),
@@ -148,6 +151,9 @@ impl DenoIsolate {
       snapshot_creator_: None,
       snapshot_: config.load_snapshot,
       has_snapshotted_: false,
+      next_dyn_import_id_: 0,
+      dyn_import_cb_: config.dyn_import_cb,
+      dyn_import_map_: HashMap::new(),
     }
   }
 
@@ -625,11 +631,10 @@ fn module_origin<'a>(
 }
 
 extern "C" fn host_import_module_dynamically_callback(
-  _context: v8::Local<v8::Context>,
-  _referrer: v8::Local<v8::ScriptOrModule>,
-  _specifier: v8::Local<v8::String>,
+  context: v8::Local<v8::Context>,
+  referrer: v8::Local<v8::ScriptOrModule>,
+  specifier: v8::Local<v8::String>,
 ) -> *mut v8::Promise {
-  todo!()
   /*
   auto* isolate = context->GetIsolate();
   DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
@@ -663,6 +668,51 @@ extern "C" fn host_import_module_dynamically_callback(
   auto promise = resolver->GetPromise();
   return handle_scope.Escape(promise);
   */
+  let mut cbs = v8::CallbackScope::new(context);
+  let mut hs = v8::EscapableHandleScope::new(cbs.enter());
+  let scope = hs.enter();
+  let mut isolate = scope.isolate();
+  let deno_isolate: &mut DenoIsolate =
+    unsafe { &mut *(isolate.get_data(0) as *mut DenoIsolate) };
+
+  // NOTE(bartlomieju): will crash for non-UTF-8 specifier
+  let specifier_str = specifier
+    .to_string(scope)
+    .unwrap()
+    .to_rust_string_lossy(scope);
+  let referrer_name = referrer.get_resource_name();
+  let referrer_name_str = referrer_name
+    .to_string(scope)
+    .unwrap()
+    .to_rust_string_lossy(scope);
+
+  // TODO(ry) I'm not sure what HostDefinedOptions is for or if we're ever going
+  // to use it. For now we check that it is not used. This check may need to be
+  // changed in the future.
+  let host_defined_options = referrer.get_host_defined_options();
+  assert_eq!(host_defined_options.length(), 0);
+
+  let mut resolver = v8::PromiseResolver::new(scope, context).unwrap();
+  let promise = resolver.get_promise(scope);
+
+  let mut resolver_handle = v8::Global::new();
+  resolver_handle.set(scope, resolver);
+
+  let import_id = deno_isolate.next_dyn_import_id_;
+  deno_isolate.next_dyn_import_id_ += 1;
+  deno_isolate
+    .dyn_import_map_
+    .insert(import_id, resolver_handle);
+
+  let cb = deno_isolate.dyn_import_cb_;
+  cb(
+    deno_isolate.user_data_,
+    &specifier_str,
+    &referrer_name_str,
+    import_id,
+  );
+
+  &mut *scope.escape(promise)
 }
 
 extern "C" fn host_initialize_import_meta_object_callback(
@@ -923,10 +973,10 @@ type deno_recv_cb = unsafe fn(
 /// Embedder must call deno_dyn_import_done() with the specified id and
 /// the module.
 #[allow(non_camel_case_types)]
-type deno_dyn_import_cb = unsafe extern "C" fn(
+type deno_dyn_import_cb = fn(
   user_data: *mut c_void,
-  specifier: *const c_char,
-  referrer: *const c_char,
+  specifier: &str,
+  referrer: &str,
   id: deno_dyn_import_id,
 );
 
@@ -1990,8 +2040,8 @@ pub unsafe fn deno_mod_evaluate(
 
   match status {
     v8::ModuleStatus::Evaluated => {
-      // ClearException(context)
-      deno_isolate.last_exception_ = None;
+      deno_isolate.last_exception_handle_.reset(scope);
+      deno_isolate.last_exception_.take();
     }
     v8::ModuleStatus::Errored => {
       deno_isolate.handle_exception(scope, context, module.get_exception());
@@ -2004,13 +2054,123 @@ pub unsafe fn deno_mod_evaluate(
 
 /// Call exactly once for every deno_dyn_import_cb.
 pub unsafe fn deno_dyn_import_done(
-  i: *mut isolate,
+  i: *mut DenoIsolate,
   user_data: *const c_void,
   id: deno_dyn_import_id,
   mod_id: deno_mod,
-  error_str: *const c_char,
+  error_str: Option<String>,
 ) {
-  todo!()
+  /*
+    auto* d = deno::unwrap(d_);
+  CHECK((mod_id == 0 && error_str != nullptr) ||
+        (mod_id != 0 && error_str == nullptr) ||
+        (mod_id == 0 && !d->last_exception_handle_.IsEmpty()));
+  deno::UserDataScope user_data_scope(d, user_data);
+
+  auto* isolate = d->isolate_;
+  v8::Isolate::Scope isolate_scope(isolate);
+  v8::Locker locker(isolate);
+  v8::HandleScope handle_scope(isolate);
+  auto context = d->context_.Get(d->isolate_);
+  v8::Context::Scope context_scope(context);
+
+  */
+
+  let deno_isolate: &mut DenoIsolate = unsafe { std::mem::transmute(i) };
+  assert!(
+    (mod_id == 0 && error_str.is_some())
+      || (mod_id != 0 && error_str.is_none())
+      || (mod_id == 0 && !deno_isolate.last_exception_handle_.is_empty())
+  );
+
+  let user_data: *mut c_void = unsafe { std::mem::transmute(user_data) };
+  let user_scope = UserDataScope::new(deno_isolate, user_data);
+
+  let isolate = deno_isolate.isolate_.as_ref().unwrap();
+  let mut locker = v8::Locker::new(isolate);
+  let mut hs = v8::HandleScope::new(&mut locker);
+  let scope = hs.enter();
+  assert!(!deno_isolate.context_.is_empty());
+  let mut context = deno_isolate.context_.get(scope).unwrap();
+  context.enter();
+
+  /*
+  auto it = d->dyn_import_map_.find(import_id);
+  if (it == d->dyn_import_map_.end()) {
+    CHECK(false);  // TODO(ry) error on bad import_id.
+    return;
+  }
+
+  /// Resolve.
+  auto persistent_promise = &it->second;
+  auto promise = persistent_promise->Get(isolate);
+
+  auto* info = d->GetModuleInfo(mod_id);
+
+  // Do the following callback into JS?? Is user_data_scope needed?
+  persistent_promise->Reset();
+  d->dyn_import_map_.erase(it);
+
+  if (info == nullptr) {
+    // Resolution error.
+    if (error_str != nullptr) {
+      auto msg = deno::v8_str(error_str);
+      auto exception = v8::Exception::TypeError(msg);
+      promise->Reject(context, exception).ToChecked();
+    } else {
+      auto e = d->last_exception_handle_.Get(isolate);
+      ClearException(context);
+      promise->Reject(context, e).ToChecked();
+    }
+  } else {
+    // Resolution success
+    Local<Module> module = info->handle.Get(isolate);
+    CHECK_EQ(module->GetStatus(), v8::Module::kEvaluated);
+    Local<Value> module_namespace = module->GetModuleNamespace();
+    promise->Resolve(context, module_namespace).ToChecked();
+  }
+  d->isolate_->RunMicrotasks();
+  */
+
+  let mut resolver_handle = match deno_isolate.dyn_import_map_.remove(&id) {
+    Some(handle) => handle,
+    None => {
+      // TODO(ry) error on bad import_id.
+      panic!()
+    }
+  };
+
+  /// Resolve.
+  let mut resolver = resolver_handle.get(scope).unwrap();
+  resolver_handle.reset(scope);
+
+  let maybe_info = deno_isolate.get_module_info(mod_id);
+
+  if maybe_info.is_none() {
+    // Resolution error.
+    if error_str.is_some() {
+      let msg = v8::String::new(scope, &error_str.unwrap()).unwrap();
+      // FIXME: need to enter isolate here
+      let e = v8::type_error(scope, msg);
+      resolver.reject(context, e).unwrap();
+    } else {
+      let e = deno_isolate.last_exception_handle_.get(scope).unwrap();
+      deno_isolate.last_exception_handle_.reset(scope);
+      deno_isolate.last_exception_.take();
+      resolver.reject(context, e).unwrap();
+    }
+  } else {
+    // Resolution success
+    let info = maybe_info.unwrap();
+    let mut module = info.handle.get(scope).unwrap();
+    assert_eq!(module.get_status(), v8::ModuleStatus::Evaluated);
+    let module_namespace = module.get_module_namespace();
+    resolver.resolve(context, module_namespace.into()).unwrap();
+  }
+
+  isolate.run_microtasks();
+
+  context.exit();
 }
 
 pub fn deno_snapshot_new(i: *mut DenoIsolate) -> v8::OwnedStartupData {
