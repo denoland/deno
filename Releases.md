@@ -6,6 +6,11 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.28.1 / 2020.01.03
+
+- feat(http): make req.body a Reader (#3575)
+- fix: dynamically linking to OpenSSL (#3586)
+
 ### v0.28.0 / 2020.01.02
 
 - feat: Add Deno.dir("executable") (#3526)
