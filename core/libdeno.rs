@@ -1005,7 +1005,87 @@ extern "C" fn recv(info: &v8::FunctionCallbackInfo) {
 }
 
 extern "C" fn send(info: &v8::FunctionCallbackInfo) {
-  todo!()
+  /*
+  v8::Isolate* isolate = args.GetIsolate();
+  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
+  DCHECK_EQ(d->isolate_, isolate);
+
+  v8::HandleScope handle_scope(isolate);
+  */
+  use v8::InIsolate;
+  #[allow(mutable_transmutes)]
+  #[allow(clippy::transmute_ptr_to_ptr)]
+  let info: &mut v8::FunctionCallbackInfo =
+    unsafe { std::mem::transmute(info) };
+
+  let mut hs = v8::HandleScope::new(info);
+  let scope = hs.enter();
+  let mut isolate = scope.isolate();
+  let deno_isolate: &mut DenoIsolate =
+    unsafe { &mut *(isolate.get_data(0) as *mut DenoIsolate) };
+    assert!(!deno_isolate.context_.is_empty());
+
+  /*
+  deno_buf control = {nullptr, 0};
+
+  int32_t op_id = 0;
+  if (args[0]->IsInt32()) {
+    auto context = d->context_.Get(isolate);
+    op_id = args[0]->Int32Value(context).FromJust();
+  }
+
+  if (args[1]->IsArrayBufferView()) {
+    auto view = v8::Local<v8::ArrayBufferView>::Cast(args[1]);
+    auto data =
+        reinterpret_cast<uint8_t*>(view->Buffer()->GetBackingStore()->Data());
+    control = {data + view->ByteOffset(), view->ByteLength()};
+  }
+
+  PinnedBuf zero_copy =
+      args[2]->IsArrayBufferView()
+          ? PinnedBuf(v8::Local<v8::ArrayBufferView>::Cast(args[2]))
+          : PinnedBuf();
+  */
+  let mut control = deno_buf::empty();
+  let mut op_id = 0;
+  let arg0 = info.get_argument(0);
+  let arg1 = info.get_argument(1);
+  let arg2 = info.get_argument(1);
+
+  if arg0.is_int32() {
+    let arg0_int = unsafe { v8::Local::<v8::Integer>::cast(arg1) };
+    op_id = arg0_int.value();
+  }
+
+  if arg1.is_array_buffer_view() {
+    let view = unsafe { v8::Local::<v8::ArrayBufferView>::cast(arg1) };
+    let backing_store = view.buffer().expect("Failed to get buffer").get_backing_store();
+    control = backing_store.data_bytes().into();
+  }
+
+  // let zero_copy = if arg2.is_array_buffer_view() {
+  //   let view = unsafe { v8::Local::<v8::ArrayBufferView>::cast(arg1) };
+  //   PinnedBuf::new()
+  // } else {
+  //   PinnedBuf
+  // }
+
+
+  /*
+  
+
+  DCHECK_NULL(d->current_args_);
+  d->current_args_ = &args;
+
+  d->recv_cb_(d->user_data_, op_id, control, zero_copy.IntoRaw());
+
+  if (d->current_args_ == nullptr) {
+    // This indicates that deno_repond() was called already.
+  } else {
+    // Asynchronous.
+    d->current_args_ = nullptr;
+  }
+  */
 }
 
 extern "C" fn eval_context(info: &v8::FunctionCallbackInfo) {
