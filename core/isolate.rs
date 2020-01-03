@@ -214,13 +214,12 @@ impl Isolate {
       dyn_import_cb: Self::dyn_import,
     };
 
-    let startup_script: Option<OwnedScript> = None;
+    let mut startup_script: Option<OwnedScript> = None;
 
     // Separate into Option values for each startup type
     match startup_data {
-      StartupData::Script(_d) => {
-        todo!()
-        // startup_script = Some(d);
+      StartupData::Script(d) => {
+        startup_script = Some(d.into());
       }
       StartupData::Snapshot(_d) => {
         todo!()
