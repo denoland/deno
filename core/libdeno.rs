@@ -77,9 +77,8 @@ pub struct DenoIsolate {
   recv_cb_: deno_recv_cb,
   snapshot_creator_: Option<v8::SnapshotCreator>,
   has_snapshotted_: bool,
+  snapshot_: Option<v8::OwnedStartupData>,
   /*
-  v8::Isolate* isolate_;
-  v8::SnapshotCreator* snapshot_creator_;
   void* global_import_buf_ptr_;
 
   deno_dyn_import_id next_dyn_import_id_;
@@ -90,10 +89,7 @@ pub struct DenoIsolate {
   std::map<int, v8::Persistent<v8::Value>> pending_promise_map_;
   v8::Persistent<v8::Value> last_exception_handle_;
 
-  v8::StartupData snapshot_;
   v8::Persistent<v8::ArrayBuffer> global_import_buf_;
-
-  bool has_snapshotted_;
   */
 }
 
@@ -150,24 +146,9 @@ impl DenoIsolate {
       current_args_: std::ptr::null(),
       recv_cb_: config.recv_cb,
       snapshot_creator_: None,
+      snapshot_: config.load_snapshot,
       has_snapshotted_: false,
     }
-    /*
-      : isolate_(nullptr),
-        locker_(nullptr),
-        shared_(config.shared),
-        snapshot_creator_(nullptr),
-        global_import_buf_ptr_(nullptr),
-        resolve_cb_(nullptr),
-        next_dyn_import_id_(0),
-        dyn_import_cb_(config.dyn_import_cb),
-        has_snapshotted_(false) {
-    if !config.load_snapshot.data_ptr.is_null() {
-      snapshot_.data =
-          reinterpret_cast<const char*>(config.load_snapshot.data_ptr);
-      snapshot_.raw_size = static_cast<int>(config.load_snapshot.data_len);
-    }
-    */
   }
 
   pub fn add_isolate(&mut self, mut isolate: v8::OwnedIsolate) {
@@ -1029,15 +1010,11 @@ pub unsafe fn deno_new_snapshotter(config: deno_config) -> *mut isolate {
     let mut hs = v8::HandleScope::new(&mut locker);
     let scope = hs.enter();
     let mut context = v8::Context::new(scope);
-    context.enter();
-
+    // context.enter();
     d.context_.set(scope, context);
-
     creator.set_default_context(context);
-
     initialize_context(scope, context);
-
-    context.exit();
+    // context.exit();
   }
   d.add_isolate(isolate);
 
@@ -1413,11 +1390,9 @@ pub unsafe fn deno_new(config: deno_config) -> *mut isolate {
   let mut params = v8::Isolate::create_params();
   params.set_array_buffer_allocator(v8::new_default_allocator());
   params.set_external_references(&EXTERNAL_REFERENCES);
-  /*
-  if !config.load_snapshot.data_ptr.is_null() {
-    params.set_snapshot_blob(d->snapshot_);
+  if let Some(ref mut snapshot) = d.snapshot_ {
+    params.set_snapshot_blob(snapshot);
   }
-  */
 
   let isolate = v8::Isolate::new(params);
   d.add_isolate(isolate);
@@ -1435,27 +1410,6 @@ pub unsafe fn deno_new(config: deno_config) -> *mut isolate {
     }
     d.context_.set(scope, context);
   }
-  /*
-
-  v8::Locker locker(isolate);
-  v8::Isolate::Scope isolate_scope(isolate);
-  {
-    v8::HandleScope handle_scope(isolate);
-    auto context =
-        v8::Context::New(isolate, nullptr, v8::MaybeLocal<v8::ObjectTemplate>(),
-                         v8::MaybeLocal<v8::Value>(),
-                         v8::DeserializeInternalFieldsCallback(
-                             deno::DeserializeInternalFields, nullptr));
-    if (!config.load_snapshot.data_ptr) {
-    }
-    d->context_.Reset(isolate, context);
-  }
-
-  return reinterpret_cast<Deno*>(d);
-     */
-  //let ptr: *mut DenoIsolate = &d;
-  //println!("deno_new -> DenoIsolate ptr {:?}", ptr);
-  //std::mem::forget(d);
   return Box::into_raw(d);
 }
 
