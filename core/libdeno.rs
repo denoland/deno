@@ -109,6 +109,9 @@ impl Drop for DenoIsolate {
       self.context_.reset(scope);
       self.shared_ab_.reset(scope);
       self.recv_.reset(scope);
+      for (key, module) in self.mods_.iter_mut() {
+        module.handle.reset(scope);
+      }
     }
     let locker_ = self.locker_.take();
     drop(isolate);
@@ -194,7 +197,7 @@ impl DenoIsolate {
 
     if tc.has_caught() {
       assert!(maybe_module.is_none());
-      todo!(); // HandleException(context, try_catch.Exception());
+      self.handle_exception(scope, context, tc.exception().unwrap());
       return 0;
     }
     let module = maybe_module.unwrap();
@@ -206,13 +209,15 @@ impl DenoIsolate {
       import_specifiers.push(specifier.to_rust_string_lossy(scope));
     }
 
+    let mut handle = v8::Global::<v8::Module>::new();
+    handle.set(scope, module);
     self.mods_.insert(
       id,
       ModuleInfo {
         main,
         name: name.to_string(),
         import_specifiers,
-        handle: v8::Global::new(),
+        handle,
       },
     );
     self.mods_by_name_.insert(name.to_string(), id);
@@ -298,7 +303,6 @@ impl DenoIsolate {
     exception: v8::Local<'a, v8::Value>,
   ) {
     let isolate = context.get_isolate();
-
     // TerminateExecution was called
     if isolate.is_execution_terminating() {
       // cancel exception termination so that the exception can be created
@@ -308,7 +312,10 @@ impl DenoIsolate {
       let exception = if (exception.is_null_or_undefined()) {
         let exception_str =
           v8::String::new(s, "execution terminated").unwrap().into();
-        v8::error(s, exception_str)
+        isolate.enter();
+        let e = v8::error(s, exception_str);
+        isolate.exit();
+        e
       } else {
         exception
       };
@@ -1549,6 +1556,7 @@ pub unsafe fn deno_respond(
     assert!(maybe_value.is_none());
     deno_isolate.handle_exception(scope, context, tc.exception().unwrap());
   }
+  context.exit();
 }
 
 pub unsafe fn deno_execute(
@@ -1584,13 +1592,32 @@ pub unsafe fn deno_execute(
   */
 }
 
-pub unsafe fn deno_terminate_execution(i: *mut isolate) {
-  todo!()
+pub unsafe fn deno_terminate_execution(i: *mut DenoIsolate) {
+  /*
+  deno::DenoIsolate* d = reinterpret_cast<deno::DenoIsolate*>(d_);
+  d->isolate_->TerminateExecution();
+  */
+  let i_mut: &mut DenoIsolate = unsafe { std::mem::transmute(i) };
+  let isolate = i_mut.isolate_.as_ref().unwrap();
+  isolate.terminate_execution();
 }
 
 #[allow(dead_code)]
-pub unsafe fn deno_run_microtasks(i: *mut isolate, user_data: *const c_void) {
-  todo!()
+pub unsafe fn deno_run_microtasks(i: *const isolate, user_data: *mut c_void) {
+  /*
+  deno::DenoIsolate* d = reinterpret_cast<deno::DenoIsolate*>(d_);
+  deno::UserDataScope user_data_scope(d, user_data);
+  v8::Locker locker(d->isolate_);
+  v8::Isolate::Scope isolate_scope(d->isolate_);
+  d->isolate_->RunMicrotasks();
+  */
+  let deno_isolate: &mut DenoIsolate = unsafe { std::mem::transmute(i) };
+  let user_scope = UserDataScope::new(deno_isolate, user_data);
+  let isolate = deno_isolate.isolate_.as_mut().unwrap();
+  let mut locker = v8::Locker::new(isolate);
+  isolate.enter();
+  isolate.run_microtasks();
+  isolate.exit();
 }
 
 // Modules
@@ -1821,6 +1848,8 @@ pub unsafe fn deno_mod_evaluate(
 
   */
   let deno_isolate: &mut DenoIsolate = unsafe { std::mem::transmute(i) };
+  let user_data: *mut c_void = unsafe { std::mem::transmute(user_data) };
+  let user_scope = UserDataScope::new(deno_isolate, user_data);
   let isolate = deno_isolate.isolate_.as_ref().unwrap();
   let mut locker = v8::Locker::new(isolate);
   let mut hs = v8::HandleScope::new(&mut locker);
@@ -1886,7 +1915,9 @@ pub unsafe fn deno_mod_evaluate(
       deno_isolate.handle_exception(scope, context, module.get_exception());
     }
     other => panic!("Unexpected module status {:?}", other),
-  }
+  };
+
+  context.exit();
 }
 
 /// Call exactly once for every deno_dyn_import_cb.
