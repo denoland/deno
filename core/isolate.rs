@@ -14,7 +14,6 @@ use crate::libdeno::deno_dyn_import_id;
 use crate::libdeno::deno_mod;
 use crate::libdeno::PinnedBuf;
 use crate::libdeno::Snapshot1;
-use crate::libdeno::Snapshot2;
 use crate::ops::*;
 use crate::shared_queue::SharedQueue;
 use crate::shared_queue::RECOMMENDED_SIZE;
@@ -35,7 +34,6 @@ use std::ffi::CString;
 use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
-use std::ptr::null;
 use std::sync::{Arc, Mutex, Once};
 use std::task::Context;
 use std::task::Poll;
@@ -151,8 +149,8 @@ impl From<Script<'_>> for OwnedScript {
 /// in the form of the StartupScript struct.
 pub enum StartupData<'a> {
   Script(Script<'a>),
-  Snapshot(&'a [u8]),
-  LibdenoSnapshot(Snapshot1<'a>),
+  Snapshot(&'static [u8]),
+  LibdenoSnapshot(Snapshot1),
   None,
 }
 
@@ -210,24 +208,26 @@ impl Isolate {
 
     let mut libdeno_config = libdeno::deno_config {
       will_snapshot: will_snapshot.into(),
-      load_snapshot: Snapshot2::empty(),
+      load_snapshot: None,
       shared: shared.as_deno_buf(),
       recv_cb: Self::pre_dispatch,
       dyn_import_cb: Self::dyn_import,
     };
 
-    let mut startup_script: Option<OwnedScript> = None;
+    let startup_script: Option<OwnedScript> = None;
 
     // Separate into Option values for each startup type
     match startup_data {
-      StartupData::Script(d) => {
-        startup_script = Some(d.into());
+      StartupData::Script(_d) => {
+        todo!()
+        // startup_script = Some(d);
       }
-      StartupData::Snapshot(d) => {
-        libdeno_config.load_snapshot = d.into();
+      StartupData::Snapshot(_d) => {
+        todo!()
+        // libdeno_config.load_snapshot = Some(d.into());
       }
       StartupData::LibdenoSnapshot(d) => {
-        libdeno_config.load_snapshot = d;
+        libdeno_config.load_snapshot = Some(d);
       }
       StartupData::None => {}
     };
@@ -487,15 +487,11 @@ impl Isolate {
   /// ErrBox can be downcast to a type that exposes additional information about
   /// the V8 exception. By default this type is CoreJSError, however it may be a
   /// different type if Isolate::set_js_error_create() has been used.
-  pub fn snapshot(&mut self) -> Result<Snapshot1<'static>, ErrBox> {
-    let snapshot = unsafe { libdeno::deno_snapshot_new(self.libdeno_isolate) };
+  pub fn snapshot(&mut self) -> Result<Snapshot1, ErrBox> {
+    let snapshot = libdeno::deno_snapshot_new(self.libdeno_isolate);
     match self.check_last_exception() {
       Ok(..) => Ok(snapshot),
-      Err(err) => {
-        assert_eq!(snapshot.data_ptr, null());
-        assert_eq!(snapshot.data_len, 0);
-        Err(err)
-      }
+      Err(err) => Err(err),
     }
   }
 

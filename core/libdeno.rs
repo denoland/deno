@@ -76,6 +76,7 @@ pub struct DenoIsolate {
   current_args_: *const v8::FunctionCallbackInfo,
   recv_cb_: deno_recv_cb,
   snapshot_creator_: Option<v8::SnapshotCreator>,
+  has_snapshotted_: bool,
   /*
   v8::Isolate* isolate_;
   v8::SnapshotCreator* snapshot_creator_;
@@ -113,8 +114,22 @@ impl Drop for DenoIsolate {
         module.handle.reset(scope);
       }
     }
-    let locker_ = self.locker_.take();
-    drop(isolate);
+    if let Some(locker_) = self.locker_.take() {
+      drop(locker_);
+    }
+    if let Some(creator) = self.snapshot_creator_.take() {
+      // TODO(ry) V8 has a strange assert which prevents a SnapshotCreator from
+      // being deallocated if it hasn't created a snapshot yet.
+      // https://github.com/v8/v8/blob/73212783fbd534fac76cc4b66aac899c13f71fc8/src/api.cc#L603
+      // If that assert is removed, this if guard could be removed.
+      // WARNING: There may be false positive LSAN errors here.
+      std::mem::forget(isolate);
+      if self.has_snapshotted_ {
+        drop(creator);
+      }
+    } else {
+      drop(isolate);
+    }
   }
 }
 
@@ -135,6 +150,7 @@ impl DenoIsolate {
       current_args_: std::ptr::null(),
       recv_cb_: config.recv_cb,
       snapshot_creator_: None,
+      has_snapshotted_: false,
     }
     /*
       : isolate_(nullptr),
@@ -909,33 +925,10 @@ unsafe impl Send for deno_snapshot<'_> {}
 // reconsidered. The entire snapshotting interface is still under construction.
 
 /// The type returned from deno_snapshot_new. Needs to be dropped.
-pub type Snapshot1<'a> = deno_snapshot<'a>;
+pub type Snapshot1 = v8::OwnedStartupData;
 
 /// The type created from slice. Used for loading.
-pub type Snapshot2<'a> = deno_snapshot<'a>;
-
-/// Converts Rust &Buf to libdeno `deno_buf`.
-impl<'a> From<&'a [u8]> for Snapshot2<'a> {
-  #[inline]
-  fn from(x: &'a [u8]) -> Self {
-    Self {
-      data_ptr: x.as_ref().as_ptr(),
-      data_len: x.len(),
-      _marker: PhantomData,
-    }
-  }
-}
-
-impl Snapshot2<'_> {
-  #[inline]
-  pub fn empty() -> Self {
-    Self {
-      data_ptr: null(),
-      data_len: 0,
-      _marker: PhantomData,
-    }
-  }
-}
+pub type Snapshot2<'a> = v8::StartupData<'a>;
 
 #[allow(non_camel_case_types)]
 type deno_recv_cb = unsafe fn(
@@ -970,9 +963,9 @@ type deno_resolve_cb = unsafe extern "C" fn(
 ) -> deno_mod;
 
 #[repr(C)]
-pub struct deno_config<'a> {
+pub struct deno_config {
   pub will_snapshot: c_int,
-  pub load_snapshot: Snapshot2<'a>,
+  pub load_snapshot: Option<v8::OwnedStartupData>,
   pub shared: deno_buf,
   pub recv_cb: deno_recv_cb,
   pub dyn_import_cb: deno_dyn_import_cb,
@@ -1000,18 +993,36 @@ pub unsafe fn deno_set_v8_flags(argc: *mut c_int, argv: *mut *mut c_char) {
 
 lazy_static! {
   static ref EXTERNAL_REFERENCES: v8::ExternalReferences =
-    v8::ExternalReferences::new(&[]);
+    v8::ExternalReferences::new(&[
+      v8::ExternalReference { function: print },
+      v8::ExternalReference { function: recv },
+      v8::ExternalReference { function: send },
+      v8::ExternalReference {
+        function: eval_context
+      },
+      v8::ExternalReference {
+        function: error_to_json
+      },
+      v8::ExternalReference {
+        getter: shared_getter
+      },
+      v8::ExternalReference {
+        message: message_callback
+      },
+      v8::ExternalReference {
+        function: queue_microtask
+      },
+    ]);
 }
 
 pub unsafe fn deno_new_snapshotter(config: deno_config) -> *mut isolate {
   assert_ne!(config.will_snapshot, 0);
   // TODO(ry) Support loading snapshots before snapshotting.
-  assert!(config.load_snapshot.data_ptr.is_null());
+  assert!(config.load_snapshot.is_none());
   let mut creator = v8::SnapshotCreator::new(Some(&EXTERNAL_REFERENCES));
 
   let mut d = Box::new(DenoIsolate::new(config));
-  let isolate = creator.get_isolate();
-  // d.add_isolate(isolate);
+  let isolate = creator.get_owned_isolate();
 
   let mut locker = v8::Locker::new(&isolate);
   {
@@ -1028,6 +1039,7 @@ pub unsafe fn deno_new_snapshotter(config: deno_config) -> *mut isolate {
 
     context.exit();
   }
+  d.add_isolate(isolate);
 
   d.snapshot_creator_ = Some(creator);
 
@@ -1395,7 +1407,7 @@ pub unsafe fn deno_new(config: deno_config) -> *mut isolate {
     return deno_new_snapshotter(config);
   }
 
-  let load_snapshot_is_null = config.load_snapshot.data_ptr.is_null();
+  let load_snapshot_is_null = config.load_snapshot.is_none();
 
   let mut d = Box::new(DenoIsolate::new(config));
   let mut params = v8::Isolate::create_params();
@@ -2051,9 +2063,24 @@ pub unsafe fn deno_dyn_import_done(
   todo!()
 }
 
-pub unsafe fn deno_snapshot_new(i: *mut DenoIsolate) -> Snapshot1<'static> {
+pub fn deno_snapshot_new(i: *mut DenoIsolate) -> v8::OwnedStartupData {
   let deno_isolate: &mut DenoIsolate = unsafe { std::mem::transmute(i) };
-  todo!()
+  assert!(deno_isolate.snapshot_creator_.is_some());
+
+  let isolate = deno_isolate.isolate_.as_ref().unwrap();
+  let mut locker = v8::Locker::new(isolate);
+  let mut hs = v8::HandleScope::new(&mut locker);
+  let scope = hs.enter();
+
+  // d.clear_modules();
+  deno_isolate.context_.reset(scope);
+
+  let snapshot_creator = deno_isolate.snapshot_creator_.as_mut().unwrap();
+  let startup_data = snapshot_creator
+    .create_blob(v8::FunctionCodeHandling::Keep)
+    .unwrap();
+  deno_isolate.has_snapshotted_ = true;
+  startup_data
 }
 
 #[allow(dead_code)]
