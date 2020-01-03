@@ -29,6 +29,35 @@ struct ModuleInfo {
   import_specifiers: Vec<String>,
 }
 
+#[repr(C)]
+struct UserDataScope {
+  deno_: *mut DenoIsolate,
+  prev_data_: *mut c_void,
+  data_: *mut c_void,
+}
+
+impl UserDataScope {
+  pub fn new(deno_ptr: *mut DenoIsolate, data: *mut c_void) -> Self {
+    let mut deno = unsafe { &mut (*deno_ptr) };
+    assert!(deno.user_data_.is_null() || deno.user_data_ == data);
+    let s = Self {
+      deno_: deno_ptr,
+      data_: data,
+      prev_data_: deno.user_data_,
+    };
+    deno.user_data_ = data;
+    s
+  }
+}
+
+impl Drop for UserDataScope {
+  fn drop(&mut self) {
+    let mut deno = unsafe { &mut (*self.deno_) };
+    assert!(deno.user_data_ == self.data_);
+    deno.user_data_ = self.prev_data_;
+  }
+}
+
 pub struct DenoIsolate {
   isolate_: Option<v8::OwnedIsolate>,
   last_exception_: Option<String>,
@@ -40,14 +69,13 @@ pub struct DenoIsolate {
   shared_ab_: v8::Global<v8::SharedArrayBuffer>,
   resolve_cb_: Option<deno_resolve_cb>,
   recv_: v8::Global<v8::Function>,
+  user_data_: *mut c_void,
+  current_args_: *mut c_void,
+  recv_cb_: deno_recv_cb,
   /*
   v8::Isolate* isolate_;
-
-  const v8::FunctionCallbackInfo<v8::Value>* current_args_;
   v8::SnapshotCreator* snapshot_creator_;
   void* global_import_buf_ptr_;
-  deno_recv_cb recv_cb_;
-  void* user_data_;
 
   deno_resolve_cb resolve_cb_;
 
@@ -92,16 +120,16 @@ impl DenoIsolate {
       shared_ab_: v8::Global::<v8::SharedArrayBuffer>::new(),
       resolve_cb_: None,
       recv_: v8::Global::<v8::Function>::new(),
+      user_data_: std::ptr::null_mut(),
+      current_args_: std::ptr::null_mut(),
+      recv_cb_: config.recv_cb,
     }
     /*
       : isolate_(nullptr),
         locker_(nullptr),
         shared_(config.shared),
-        current_args_(nullptr),
         snapshot_creator_(nullptr),
         global_import_buf_ptr_(nullptr),
-        recv_cb_(config.recv_cb),
-        user_data_(nullptr),
         resolve_cb_(nullptr),
         next_dyn_import_id_(0),
         dyn_import_cb_(config.dyn_import_cb),
@@ -746,6 +774,16 @@ impl<'a> From<&'a [u8]> for deno_buf {
   }
 }
 
+impl<'a> From<&'a mut [u8]> for deno_buf {
+  #[inline]
+  fn from(x: &'a mut [u8]) -> Self {
+    Self {
+      data_ptr: x.as_ref().as_ptr(),
+      data_len: x.len(),
+    }
+  }
+}
+
 impl Deref for deno_buf {
   type Target = [u8];
   #[inline]
@@ -1067,14 +1105,12 @@ extern "C" fn send(info: &v8::FunctionCallbackInfo) {
 
   // let zero_copy = if arg2.is_array_buffer_view() {
   //   let view = unsafe { v8::Local::<v8::ArrayBufferView>::cast(arg1) };
-  //   PinnedBuf::new()
+  //   PinnedBuf::from(view);
   // } else {
-  //   PinnedBuf
-  // }
+  //   PinnedBuf::new
+  // };
 
   /*
-
-
   DCHECK_NULL(d->current_args_);
   d->current_args_ = &args;
 
@@ -1087,6 +1123,19 @@ extern "C" fn send(info: &v8::FunctionCallbackInfo) {
     d->current_args_ = nullptr;
   }
   */
+
+  // let boxed_info = Box::new(info);
+  // assert!(deno_isolate.current_args_.is_null());
+  // deno_isolate.current_args_ = Box::into_raw(boxed_info) as *mut c_void;
+  // let recv_cb = deno_isolate.recv_cb_;
+  // recv_cb(deno_isolate.user_data_, op_id as u32, control, zero_copy);
+
+  // if deno_isolate.current_args_.is_null() {
+  //   // This indicates that deno_repond() was called already.
+  // } else {
+  //   // Asynchronous
+  //   deno_isolate.current_args_ = std::ptr::null_mut();
+  // }
 }
 
 extern "C" fn eval_context(info: &v8::FunctionCallbackInfo) {
