@@ -1375,14 +1375,181 @@ pub unsafe fn deno_throw_exception(i: *mut DenoIsolate, text: &str) {
   isolate.throw_exception(msg.into());
 }
 
+pub unsafe fn deno_import_buf<'sc>(
+  scope: &mut impl v8::ToLocal<'sc>,
+  buf: deno_buf,
+) -> v8::Local<'sc, v8::Uint8Array> {
+  /*
+  if (buf.data_ptr == nullptr) {
+    return v8::Local<v8::Uint8Array>();
+  }
+  */
+
+  if buf.data_ptr.is_null() {
+    let mut ab = v8::ArrayBuffer::new(scope, 0);
+    return v8::Uint8Array::new(ab, 0, 0).expect("Failed to create UintArray8");
+  }
+
+  /*
+  // To avoid excessively allocating new ArrayBuffers, we try to reuse a single
+  // global ArrayBuffer. The caveat is that users must extract data from it
+  // before the next tick. We only do this for ArrayBuffers less than 1024
+  // bytes.
+  v8::Local<v8::ArrayBuffer> ab;
+  void* data;
+  if (buf.data_len > GLOBAL_IMPORT_BUF_SIZE) {
+    // Simple case. We allocate a new ArrayBuffer for this.
+    ab = v8::ArrayBuffer::New(d->isolate_, buf.data_len);
+    data = ab->GetBackingStore()->Data();
+  } else {
+    // Fast case. We reuse the global ArrayBuffer.
+    if (d->global_import_buf_.IsEmpty()) {
+      // Lazily initialize it.
+      DCHECK_NULL(d->global_import_buf_ptr_);
+      ab = v8::ArrayBuffer::New(d->isolate_, GLOBAL_IMPORT_BUF_SIZE);
+      d->global_import_buf_.Reset(d->isolate_, ab);
+      d->global_import_buf_ptr_ = ab->GetBackingStore()->Data();
+    } else {
+      DCHECK(d->global_import_buf_ptr_);
+      ab = d->global_import_buf_.Get(d->isolate_);
+    }
+    data = d->global_import_buf_ptr_;
+  }
+  memcpy(data, buf.data_ptr, buf.data_len);
+  auto view = v8::Uint8Array::New(ab, 0, buf.data_len);
+  return view;
+  */
+
+  // TODO(bartlomieju): for now skipping part with `global_import_buf_`
+  // and always creating new buffer
+  let mut ab = v8::ArrayBuffer::new(scope, buf.data_len);
+  let mut backing_store = ab.get_backing_store();
+  let data = backing_store.data();
+  let data: *mut u8 = unsafe { std::mem::transmute(data) };
+  std::ptr::copy_nonoverlapping(buf.data_ptr, data, buf.data_len);
+  return v8::Uint8Array::new(ab, 0, buf.data_len)
+    .expect("Failed to create UintArray8");
+}
+
 pub unsafe fn deno_respond(
   i: *mut isolate,
   user_data: *const c_void,
   op_id: OpId,
   buf: deno_buf,
 ) {
-  todo!()
+  /*
+  auto* d = deno::unwrap(d_);
+  if (d->current_args_ != nullptr) {
+    // Synchronous response.
+    // Note op_id is not passed back in the case of synchronous response.
+    if (buf.data_ptr != nullptr && buf.data_len > 0) {
+      auto ab = deno::ImportBuf(d, buf);
+      d->current_args_->GetReturnValue().Set(ab);
+    }
+    d->current_args_ = nullptr;
+    return;
+  }
+  */
+  let deno_isolate: &mut DenoIsolate = unsafe { std::mem::transmute(i) };
+
+  if !deno_isolate.current_args_.is_null() {
+    // Synchronous response.
+    // Note op_id is not passed back in the case of synchronous response.
+    if !buf.data_ptr.is_null() && buf.data_len > 0 {
+      let isolate = deno_isolate.isolate_.as_ref().unwrap();
+      let mut locker = v8::Locker::new(isolate);
+      assert!(!deno_isolate.context_.is_empty());
+      let mut hs = v8::HandleScope::new(&mut locker);
+      let scope = hs.enter();
+      let ab = deno_import_buf(scope, buf);
+      let info: &mut v8::FunctionCallbackInfo =
+        unsafe { std::mem::transmute(deno_isolate.current_args_) };
+      let rv = &mut info.get_return_value();
+      rv.set(ab.into())
+    }
+    deno_isolate.current_args_ = std::ptr::null();
+    return;
+  }
+
+  /*
+  // Asynchronous response.
+  deno::UserDataScope user_data_scope(d, user_data);
+  v8::Isolate::Scope isolate_scope(d->isolate_);
+  v8::HandleScope handle_scope(d->isolate_);
+
+  auto context = d->context_.Get(d->isolate_);
+  v8::Context::Scope context_scope(context);
+
+  v8::TryCatch try_catch(d->isolate_);
+
+  auto recv_ = d->recv_.Get(d->isolate_);
+  if (recv_.IsEmpty()) {
+    d->last_exception_ = "Deno.core.recv has not been called.";
+    return;
+  }
+
+  v8::Local<v8::Value> args[2];
+  int argc = 0;
+
+  if (buf.data_ptr != nullptr) {
+    args[0] = v8::Integer::New(d->isolate_, op_id);
+    args[1] = deno::ImportBuf(d, buf);
+    argc = 2;
+  }
+
+  auto v = recv_->Call(context, context->Global(), argc, args);
+
+  if (try_catch.HasCaught()) {
+    CHECK(v.IsEmpty());
+    deno::HandleException(context, try_catch.Exception());
+  }
+  */
+
+  let user_data: *mut c_void = unsafe { std::mem::transmute(user_data) };
+  let user_scope = UserDataScope::new(deno_isolate, user_data);
+  let isolate = deno_isolate.isolate_.as_ref().unwrap();
+  // println!("deno_execute -> Isolate ptr {:?}", isolate);
+  let mut locker = v8::Locker::new(isolate);
+  assert!(!deno_isolate.context_.is_empty());
+  let mut hs = v8::HandleScope::new(&mut locker);
+  let scope = hs.enter();
+  let mut context = deno_isolate.context_.get(scope).unwrap();
+  context.enter();
+
+  let mut try_catch = v8::TryCatch::new(scope);
+  let tc = try_catch.enter();
+
+  let recv_ = deno_isolate.recv_.get(scope);
+
+  if recv_.is_none() {
+    let msg = "Deno.core.recv has not been called.".to_string();
+    deno_isolate.last_exception_ = Some(msg);
+    return;
+  }
+
+  let mut argc = 0;
+  let mut args: Vec<v8::Local<v8::Value>> = vec![];
+
+  if !buf.data_ptr.is_null() {
+    argc = 2;
+    let op_id = v8::Integer::new(scope, op_id as i32);
+    args.push(op_id.into());
+    let buf = deno_import_buf(scope, buf);
+    args.push(buf.into());
+  }
+
+  let global = context.global(scope);
+  let maybe_value =
+    recv_
+      .unwrap()
+      .call(scope, context, global.into(), argc, args);
+
+  if tc.has_caught() {
+    assert!(maybe_value.is_none());
+    deno_isolate.handle_exception(scope, context, tc.exception().unwrap());
+  }
 }
+
 pub unsafe fn deno_execute(
   i: *mut DenoIsolate,
   user_data: *mut c_void,
