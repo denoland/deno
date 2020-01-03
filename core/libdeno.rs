@@ -1023,7 +1023,7 @@ extern "C" fn send(info: &v8::FunctionCallbackInfo) {
   let mut isolate = scope.isolate();
   let deno_isolate: &mut DenoIsolate =
     unsafe { &mut *(isolate.get_data(0) as *mut DenoIsolate) };
-    assert!(!deno_isolate.context_.is_empty());
+  assert!(!deno_isolate.context_.is_empty());
 
   /*
   deno_buf control = {nullptr, 0};
@@ -1057,11 +1057,13 @@ extern "C" fn send(info: &v8::FunctionCallbackInfo) {
     op_id = arg0_int.value();
   }
 
+  /*
   if arg1.is_array_buffer_view() {
     let view = unsafe { v8::Local::<v8::ArrayBufferView>::cast(arg1) };
     let backing_store = view.buffer().expect("Failed to get buffer").get_backing_store();
     control = backing_store.data_bytes().into();
   }
+  */
 
   // let zero_copy = if arg2.is_array_buffer_view() {
   //   let view = unsafe { v8::Local::<v8::ArrayBufferView>::cast(arg1) };
@@ -1070,9 +1072,8 @@ extern "C" fn send(info: &v8::FunctionCallbackInfo) {
   //   PinnedBuf
   // }
 
-
   /*
-  
+
 
   DCHECK_NULL(d->current_args_);
   d->current_args_ = &args;
