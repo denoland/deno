@@ -961,7 +961,7 @@ lazy_static! {
     v8::ExternalReferences::new(&[]);
 }
 
-pub unsafe fn deno_new_snapshotter(config: deno_config) -> *const isolate {
+pub unsafe fn deno_new_snapshotter(config: deno_config) -> *mut isolate {
   assert_eq!(config.will_snapshot, 0);
   // TODO(ry) Support loading snapshots before snapshotting.
   assert!(config.load_snapshot.data_ptr.is_null());
@@ -1262,7 +1262,7 @@ fn initialize_context<'a>(
   context.exit();
 }
 
-pub unsafe fn deno_new(config: deno_config) -> *const isolate {
+pub unsafe fn deno_new(config: deno_config) -> *mut isolate {
   if config.will_snapshot != 0 {
     return deno_new_snapshotter(config);
   }
@@ -1313,27 +1313,27 @@ pub unsafe fn deno_new(config: deno_config) -> *const isolate {
 
   return reinterpret_cast<Deno*>(d);
      */
-  //let ptr: *const DenoIsolate = &d;
+  //let ptr: *mut DenoIsolate = &d;
   //println!("deno_new -> DenoIsolate ptr {:?}", ptr);
   //std::mem::forget(d);
   return Box::into_raw(d);
 }
 
-pub unsafe fn deno_delete(i: *const DenoIsolate) {
+pub unsafe fn deno_delete(i: *mut DenoIsolate) {
   let deno_isolate = unsafe { Box::from_raw(i as *mut DenoIsolate) };
   drop(deno_isolate);
 }
 
-pub unsafe fn deno_last_exception(i: *const DenoIsolate) -> Option<String> {
+pub unsafe fn deno_last_exception(i: *mut DenoIsolate) -> Option<String> {
   (*i).last_exception_.clone()
 }
 
-pub unsafe fn deno_clear_last_exception(i: *const DenoIsolate) {
+pub unsafe fn deno_clear_last_exception(i: *mut DenoIsolate) {
   let i_mut: &mut DenoIsolate = unsafe { std::mem::transmute(i) };
   i_mut.last_exception_ = None;
 }
 
-pub unsafe fn deno_check_promise_errors(d: *const DenoIsolate) {
+pub unsafe fn deno_check_promise_errors(d: *mut DenoIsolate) {
   /*
   if (d->pending_promise_map_.size() > 0) {
     auto* isolate = d->isolate_;
@@ -1353,19 +1353,19 @@ pub unsafe fn deno_check_promise_errors(d: *const DenoIsolate) {
   */
 }
 
-pub unsafe fn deno_lock(i: *const DenoIsolate) {
+pub unsafe fn deno_lock(i: *mut DenoIsolate) {
   let i_mut: &mut DenoIsolate = unsafe { std::mem::transmute(i) };
   assert!(i_mut.locker_.is_none());
   let mut locker = v8::Locker::new(i_mut.isolate_.as_ref().unwrap());
   i_mut.locker_ = Some(locker);
 }
 
-pub unsafe fn deno_unlock(i: *const DenoIsolate) {
+pub unsafe fn deno_unlock(i: *mut DenoIsolate) {
   let i_mut: &mut DenoIsolate = unsafe { std::mem::transmute(i) };
   i_mut.locker_.take().unwrap();
 }
 
-pub unsafe fn deno_throw_exception(i: *const DenoIsolate, text: &str) {
+pub unsafe fn deno_throw_exception(i: *mut DenoIsolate, text: &str) {
   let i_mut: &mut DenoIsolate = unsafe { std::mem::transmute(i) };
   let isolate = i_mut.isolate_.as_ref().unwrap();
   let mut locker = v8::Locker::new(isolate);
@@ -1376,7 +1376,7 @@ pub unsafe fn deno_throw_exception(i: *const DenoIsolate, text: &str) {
 }
 
 pub unsafe fn deno_respond(
-  i: *const isolate,
+  i: *mut isolate,
   user_data: *const c_void,
   op_id: OpId,
   buf: deno_buf,
@@ -1384,12 +1384,13 @@ pub unsafe fn deno_respond(
   todo!()
 }
 pub unsafe fn deno_execute(
-  i: *const DenoIsolate,
-  user_data: *const c_void,
+  i: *mut DenoIsolate,
+  user_data: *mut c_void,
   js_filename: &str,
   js_source: &str,
 ) {
   let i_mut: &mut DenoIsolate = unsafe { std::mem::transmute(i) };
+  let _user_data_scope = UserDataScope::new(i, user_data);
   let isolate = i_mut.isolate_.as_ref().unwrap();
   // println!("deno_execute -> Isolate ptr {:?}", isolate);
   let mut locker = v8::Locker::new(isolate);
@@ -1415,19 +1416,19 @@ pub unsafe fn deno_execute(
   */
 }
 
-pub unsafe fn deno_terminate_execution(i: *const isolate) {
+pub unsafe fn deno_terminate_execution(i: *mut isolate) {
   todo!()
 }
 
 #[allow(dead_code)]
-pub unsafe fn deno_run_microtasks(i: *const isolate, user_data: *const c_void) {
+pub unsafe fn deno_run_microtasks(i: *mut isolate, user_data: *const c_void) {
   todo!()
 }
 
 // Modules
 
 pub unsafe fn deno_mod_new(
-  i: *const DenoIsolate,
+  i: *mut DenoIsolate,
   main: bool,
   name: &str,
   source: &str,
@@ -1436,16 +1437,13 @@ pub unsafe fn deno_mod_new(
   i_mut.register_module(main, name, source)
 }
 
-pub unsafe fn deno_mod_imports_len(
-  i: *const DenoIsolate,
-  id: deno_mod,
-) -> usize {
+pub unsafe fn deno_mod_imports_len(i: *mut DenoIsolate, id: deno_mod) -> usize {
   let info = (*i).get_module_info(id).unwrap();
   info.import_specifiers.len()
 }
 
 pub unsafe fn deno_mod_imports_get(
-  i: *const DenoIsolate,
+  i: *mut DenoIsolate,
   id: deno_mod,
   index: size_t,
 ) -> Option<String> {
@@ -1557,7 +1555,7 @@ fn resolve_callback(
 }
 
 pub unsafe fn deno_mod_instantiate(
-  i: *const DenoIsolate,
+  i: *mut DenoIsolate,
   user_data: *mut c_void,
   id: deno_mod,
   resolve_cb: deno_resolve_cb,
@@ -1638,7 +1636,7 @@ pub unsafe fn deno_mod_instantiate(
 }
 
 pub unsafe fn deno_mod_evaluate(
-  i: *const DenoIsolate,
+  i: *mut DenoIsolate,
   user_data: *const c_void,
   id: deno_mod,
 ) {
@@ -1725,7 +1723,7 @@ pub unsafe fn deno_mod_evaluate(
 
 /// Call exactly once for every deno_dyn_import_cb.
 pub unsafe fn deno_dyn_import_done(
-  i: *const isolate,
+  i: *mut isolate,
   user_data: *const c_void,
   id: deno_dyn_import_id,
   mod_id: deno_mod,
@@ -1734,7 +1732,7 @@ pub unsafe fn deno_dyn_import_done(
   todo!()
 }
 
-pub unsafe fn deno_snapshot_new(i: *const isolate) -> Snapshot1<'static> {
+pub unsafe fn deno_snapshot_new(i: *mut isolate) -> Snapshot1<'static> {
   todo!()
 }
 

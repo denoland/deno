@@ -168,8 +168,8 @@ type IsolateErrorHandleFn = dyn FnMut(ErrBox) -> Result<(), ErrBox>;
 /// by implementing dispatcher function that takes control buffer and optional zero copy buffer
 /// as arguments. An async Op corresponds exactly to a Promise in JavaScript.
 pub struct Isolate {
-  libdeno_isolate: *const libdeno::isolate,
-  shared_libdeno_isolate: Arc<Mutex<Option<*const libdeno::isolate>>>,
+  libdeno_isolate: *mut libdeno::isolate,
+  shared_libdeno_isolate: Arc<Mutex<Option<*mut libdeno::isolate>>>,
   dyn_import: Option<Arc<DynImportFn>>,
   js_error_create: Arc<JSErrorCreateFn>,
   needs_init: bool,
@@ -397,7 +397,7 @@ impl Isolate {
     unsafe {
       libdeno::deno_execute(
         self.libdeno_isolate,
-        self.as_raw_ptr(),
+        self as *mut _ as *mut c_void,
         js_filename,
         js_source,
       )
@@ -644,11 +644,11 @@ impl Isolate {
 }
 
 struct LockerScope {
-  libdeno_isolate: *const libdeno::isolate,
+  libdeno_isolate: *mut libdeno::isolate,
 }
 
 impl LockerScope {
-  fn new(libdeno_isolate: *const libdeno::isolate) -> LockerScope {
+  fn new(libdeno_isolate: *mut libdeno::isolate) -> LockerScope {
     unsafe { libdeno::deno_lock(libdeno_isolate) }
     LockerScope { libdeno_isolate }
   }
@@ -734,7 +734,7 @@ impl Future for Isolate {
 /// IsolateHandle is a thread safe handle on an Isolate. It exposed thread safe V8 functions.
 #[derive(Clone)]
 pub struct IsolateHandle {
-  shared_libdeno_isolate: Arc<Mutex<Option<*const libdeno::isolate>>>,
+  shared_libdeno_isolate: Arc<Mutex<Option<*mut libdeno::isolate>>>,
 }
 
 unsafe impl Send for IsolateHandle {}
