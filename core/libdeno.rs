@@ -1052,16 +1052,17 @@ extern "C" fn send(info: &v8::FunctionCallbackInfo) {
     .unwrap()
     .value() as u32;
 
-  let control: deno_buf =
-    v8::Local::<v8::ArrayBufferView>::try_from(info.get_argument(1))
-      .map(|view| {
-        let mut backing_store = view.buffer().unwrap().get_backing_store();
-        let backing_store_ptr = backing_store.data() as *mut _ as *mut u8;
-        let view_ptr = unsafe { backing_store_ptr.add(view.byte_offset()) };
-        let view_len = view.byte_length();
-        unsafe { deno_buf::from_raw_parts(view_ptr, view_len) }
-      })
-      .unwrap();
+  let mut control: deno_buf = deno_buf::empty();
+  let control_arg = info.get_argument(1);
+
+  if control_arg.is_array_buffer_view() {
+    let view = v8::Local::<v8::ArrayBufferView>::try_from(control_arg).unwrap();
+    let mut backing_store = view.buffer().unwrap().get_backing_store();
+    let backing_store_ptr = backing_store.data() as *mut _ as *mut u8;
+    let view_ptr = unsafe { backing_store_ptr.add(view.byte_offset()) };
+    let view_len = view.byte_length();
+    control = unsafe { deno_buf::from_raw_parts(view_ptr, view_len) };
+  }
 
   let zero_copy: Option<PinnedBuf> =
     v8::Local::<v8::ArrayBufferView>::try_from(info.get_argument(2))
