@@ -968,10 +968,6 @@ pub unsafe fn deno_init() {
   v8::V8::set_flags_from_command_line(argv);
 }
 
-pub unsafe fn deno_set_v8_flags(argc: *mut c_int, argv: *mut *mut c_char) {
-  todo!()
-}
-
 lazy_static! {
   static ref EXTERNAL_REFERENCES: v8::ExternalReferences =
     v8::ExternalReferences::new(&[
