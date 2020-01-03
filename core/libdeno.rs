@@ -1168,11 +1168,13 @@ extern "C" fn shared_getter(
       #[allow(clippy::transmute_ptr_to_ptr)]
       let data_ptr: *mut u8 =
         unsafe { std::mem::transmute(deno_isolate.shared_.data_ptr) };
-      let ab = v8::SharedArrayBuffer::new_DEPRECATED(
-        scope,
-        data_ptr as *mut c_void,
-        deno_isolate.shared_.data_len,
-      );
+      let ab = unsafe {
+        v8::SharedArrayBuffer::new_DEPRECATED(
+          scope,
+          data_ptr as *mut c_void,
+          deno_isolate.shared_.data_len,
+        )
+      };
       deno_isolate.shared_ab_.set(scope, ab);
     }
 
