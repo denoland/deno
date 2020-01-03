@@ -669,11 +669,10 @@ extern "C" fn host_import_module_dynamically_callback(
 }
 
 extern "C" fn host_initialize_import_meta_object_callback(
-  _context: v8::Local<v8::Context>,
-  _module: v8::Local<v8::Module>,
-  _meta: v8::Local<v8::Object>,
+  context: v8::Local<v8::Context>,
+  module: v8::Local<v8::Module>,
+  meta: v8::Local<v8::Object>,
 ) {
-  todo!()
   /*
   auto* isolate = context->GetIsolate();
   DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
@@ -692,6 +691,34 @@ extern "C" fn host_initialize_import_meta_object_callback(
   meta->CreateDataProperty(context, v8_str("url"), v8_str(url)).ToChecked();
   meta->CreateDataProperty(context, v8_str("main"), v8_bool(main)).ToChecked();
   */
+  let mut cbs = v8::CallbackScope::new(context);
+  let mut hs = v8::HandleScope::new(cbs.enter());
+  let scope = hs.enter();
+  let mut isolate = scope.isolate();
+  let deno_isolate: &mut DenoIsolate =
+    unsafe { &mut *(isolate.get_data(0) as *mut DenoIsolate) };
+
+  let id = module.get_identity_hash();
+  assert_ne!(id, 0);
+
+  let info = deno_isolate.get_module_info(id).expect("Module not found");
+
+  let main = if info.main {
+    v8::new_true(scope)
+  } else {
+    v8::new_false(scope)
+  };
+
+  meta.create_data_property(
+    context,
+    v8::String::new(scope, "url").unwrap().into(),
+    v8::String::new(scope, &info.name).unwrap().into(),
+  );
+  meta.create_data_property(
+    context,
+    v8::String::new(scope, "main").unwrap().into(),
+    main.into(),
+  );
 }
 
 extern "C" fn message_callback(
