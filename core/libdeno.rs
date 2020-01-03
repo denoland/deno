@@ -1274,7 +1274,153 @@ extern "C" fn send(info: &v8::FunctionCallbackInfo) {
 }
 
 extern "C" fn eval_context(info: &v8::FunctionCallbackInfo) {
-  todo!()
+  use v8::InIsolate;
+
+  let rv = &mut info.get_return_value();
+
+  #[allow(mutable_transmutes)]
+  #[allow(clippy::transmute_ptr_to_ptr)]
+  let info: &mut v8::FunctionCallbackInfo =
+    unsafe { std::mem::transmute(info) };
+
+  assert_eq!(info.length(), 1);
+  let arg0 = info.get_argument(0);
+
+  let mut hs = v8::HandleScope::new(info);
+  let scope = hs.enter();
+  let mut isolate = scope.isolate();
+  let deno_isolate: &mut DenoIsolate =
+    unsafe { &mut *(isolate.get_data(0) as *mut DenoIsolate) };
+  assert!(!deno_isolate.context_.is_empty());
+  let mut context = deno_isolate.context_.get(scope).unwrap();
+  
+  if !arg0.is_string() {
+    let msg = v8::String::new(scope, "Invalid argument").unwrap();
+    // FIXME: ¯\_(ツ)_/¯
+    deno_isolate.isolate_.as_ref().unwrap().throw_exception(msg.into());
+    return;
+  }
+
+  let source = unsafe { v8::Local::<v8::String>::cast(arg0) };
+  let output = v8::Array::new(scope, 2);
+  /**
+   * output[0] = result
+   * output[1] = ErrorInfo | null
+   *   ErrorInfo = {
+   *     thrown: Error | any,
+   *     isNativeError: boolean,
+   *     isCompileError: boolean,
+   *   }
+   */
+  let mut try_catch = v8::TryCatch::new(scope);
+  let tc = try_catch.enter();
+  let name = v8::String::new(scope, "<unknown>").unwrap();
+  let origin = script_origin(scope, name);
+  let maybe_script = v8::Script::compile(scope, context, source, Some(&origin));
+
+  if maybe_script.is_none() {
+    assert!(tc.has_caught());
+    let exception = tc.exception().unwrap();
+
+    output.set(
+      context,
+      v8::Integer::new(scope, 0).into(),
+      v8::new_null(scope).into(),
+    );
+
+    let errinfo_obj = v8::Object::new(scope);
+    errinfo_obj.set(
+      context,
+      v8::String::new(scope, "isCompileError").unwrap().into(),
+      v8::new_true(scope).into(),
+    );
+
+    let is_native_error = if exception.is_native_error() {
+      v8::new_true(scope)
+    } else {
+      v8::new_false(scope)
+    };
+
+    errinfo_obj.set(
+      context,
+      v8::String::new(scope, "isNativeError").unwrap().into(),
+      is_native_error.into(),
+    );
+
+    errinfo_obj.set(
+      context,
+      v8::String::new(scope, "thrown").unwrap().into(),
+      exception.into(),
+    );
+
+    output.set(
+      context,
+      v8::Integer::new(scope, 1).into(),
+      errinfo_obj.into(),
+    );
+
+    rv.set(output.into());
+    return;
+  }
+
+  let result = maybe_script.unwrap().run(scope, context);
+
+  if result.is_none() {
+    assert!(tc.has_caught());
+    let exception = tc.exception().unwrap();
+
+    output.set(
+      context,
+      v8::Integer::new(scope, 0).into(),
+      v8::new_null(scope).into(),
+    );
+
+    let errinfo_obj = v8::Object::new(scope);
+    errinfo_obj.set(
+      context,
+      v8::String::new(scope, "isCompileError").unwrap().into(),
+      v8::new_false(scope).into(),
+    );
+
+    let is_native_error = if exception.is_native_error() {
+      v8::new_true(scope)
+    } else {
+      v8::new_false(scope)
+    };
+
+    errinfo_obj.set(
+      context,
+      v8::String::new(scope, "isNativeError").unwrap().into(),
+      is_native_error.into(),
+    );
+
+    errinfo_obj.set(
+      context,
+      v8::String::new(scope, "thrown").unwrap().into(),
+      exception.into(),
+    );
+
+    output.set(
+      context,
+      v8::Integer::new(scope, 1).into(),
+      errinfo_obj.into(),
+    );
+
+    rv.set(output.into());
+    return;
+  }
+
+  output.set(
+    context,
+    v8::Integer::new(scope, 0).into(),
+    result.unwrap().into(),
+  );
+  output.set(
+    context,
+    v8::Integer::new(scope, 1).into(),
+    v8::new_null(scope).into(),
+  );
+  rv.set(output.into());
 }
 
 extern "C" fn error_to_json(info: &v8::FunctionCallbackInfo) {
