@@ -99,16 +99,18 @@ impl Drop for DenoIsolate {
   fn drop(&mut self) {
     // TODO Too much boiler plate.
     // <Boilerplate>
-    let isolate = self.isolate_.as_mut().unwrap();
-    let mut locker = v8::Locker::new(&isolate);
-    let mut hs = v8::HandleScope::new(&mut locker);
-    let scope = hs.enter();
-    // </Boilerplate>
-    self.context_.reset(scope);
-    self.shared_ab_.reset(scope);
-    unsafe {
-      isolate.dispose();
+    let mut isolate = self.isolate_.take().unwrap();
+    {
+      let mut locker = v8::Locker::new(&isolate);
+      let mut hs = v8::HandleScope::new(&mut locker);
+      let scope = hs.enter();
+      // </Boilerplate>
+      self.context_.reset(scope);
+      self.shared_ab_.reset(scope);
+      self.recv_.reset(scope);
     }
+    let locker_ = self.locker_.take();
+    drop(isolate);
   }
 }
 
