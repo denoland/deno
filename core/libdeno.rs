@@ -75,6 +75,7 @@ pub struct DenoIsolate {
   user_data_: *mut c_void,
   current_args_: *const v8::FunctionCallbackInfo,
   recv_cb_: deno_recv_cb,
+  snapshot_creator_: Option<v8::SnapshotCreator>,
   /*
   v8::Isolate* isolate_;
   v8::SnapshotCreator* snapshot_creator_;
@@ -130,6 +131,7 @@ impl DenoIsolate {
       user_data_: std::ptr::null_mut(),
       current_args_: std::ptr::null(),
       recv_cb_: config.recv_cb,
+      snapshot_creator_: None,
     }
     /*
       : isolate_(nullptr),
@@ -968,41 +970,34 @@ lazy_static! {
 }
 
 pub unsafe fn deno_new_snapshotter(config: deno_config) -> *mut isolate {
-  assert_eq!(config.will_snapshot, 0);
+  assert_ne!(config.will_snapshot, 0);
   // TODO(ry) Support loading snapshots before snapshotting.
   assert!(config.load_snapshot.data_ptr.is_null());
-  let mut snapshot_creator =
-    v8::SnapshotCreator::new(Some(&EXTERNAL_REFERENCES));
-  let isolate = snapshot_creator.get_isolate();
+  let mut creator = v8::SnapshotCreator::new(Some(&EXTERNAL_REFERENCES));
+
+  let mut d = Box::new(DenoIsolate::new(config));
+  let isolate = creator.get_isolate();
+  // d.add_isolate(isolate);
+
   let mut locker = v8::Locker::new(&isolate);
   {
     let mut hs = v8::HandleScope::new(&mut locker);
     let scope = hs.enter();
     let mut context = v8::Context::new(scope);
     context.enter();
+
+    d.context_.set(scope, context);
+
+    creator.set_default_context(context);
+
+    initialize_context(scope, context);
+
+    context.exit();
   }
 
-  /*
-    auto* creator = new v8::SnapshotCreator(deno::external_references);
-    auto* isolate = creator->GetIsolate();
-    auto* d = new deno::DenoIsolate(config);
-    d->snapshot_creator_ = creator;
-    d->AddIsolate(isolate);
-    {
-      v8::Locker locker(isolate);
-      v8::Isolate::Scope isolate_scope(isolate);
-      v8::HandleScope handle_scope(isolate);
-      auto context = v8::Context::New(isolate);
-      d->context_.Reset(isolate, context);
+  d.snapshot_creator_ = Some(creator);
 
-      creator->SetDefaultContext(context,
-                                 v8::SerializeInternalFieldsCallback(
-                                     deno::SerializeInternalFields, nullptr));
-      deno::InitializeContext(isolate, context);
-    }
-    return reinterpret_cast<Deno*>(d);
-  */
-  todo!()
+  return Box::into_raw(d);
 }
 
 extern "C" fn print(info: &v8::FunctionCallbackInfo) {
@@ -1905,7 +1900,8 @@ pub unsafe fn deno_dyn_import_done(
   todo!()
 }
 
-pub unsafe fn deno_snapshot_new(i: *mut isolate) -> Snapshot1<'static> {
+pub unsafe fn deno_snapshot_new(i: *mut DenoIsolate) -> Snapshot1<'static> {
+  let deno_isolate: &mut DenoIsolate = unsafe { std::mem::transmute(i) };
   todo!()
 }
 
