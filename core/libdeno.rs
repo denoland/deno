@@ -112,6 +112,9 @@ impl Drop for DenoIsolate {
       for (key, handle) in self.dyn_import_map_.iter_mut() {
         handle.reset(scope);
       }
+      for (key, handle) in self.pending_promise_map_.iter_mut() {
+        handle.reset(scope);
+      }
     }
     if let Some(locker_) = self.locker_.take() {
       drop(locker_);
@@ -203,6 +206,7 @@ impl DenoIsolate {
     if tc.has_caught() {
       assert!(maybe_module.is_none());
       self.handle_exception(scope, context, tc.exception().unwrap());
+      context.exit();
       return 0;
     }
     let module = maybe_module.unwrap();
@@ -1755,15 +1759,12 @@ pub unsafe fn deno_check_promise_errors(i: *mut DenoIsolate) {
   let mut context = i_mut.context_.get(scope).unwrap();
   context.enter();
 
-  // TODO(bartlomieju): this looks baaaad, but passes
-  // borrow checker
-  let mut errors = vec![];
-  for (promise_id, error_global) in i_mut.pending_promise_map_.drain() {
-    let error = error_global.get(scope).expect("Empty error handle");
-    errors.push(error);
-  }
-  for error in errors {
+  let pending_promises: Vec<(i32, v8::Global<v8::Value>)> =
+    i_mut.pending_promise_map_.drain().collect();
+  for (promise_id, mut handle) in pending_promises {
+    let error = handle.get(scope).expect("Empty error handle");
     i_mut.handle_exception(scope, context, error);
+    handle.reset(scope);
   }
 
   context.exit();
@@ -2407,17 +2408,10 @@ pub unsafe fn deno_dyn_import_done(
   d->isolate_->RunMicrotasks();
   */
 
-  let mut resolver_handle = match deno_isolate.dyn_import_map_.remove(&id) {
-    Some(handle) => handle,
-    None => {
-      // TODO(ry) error on bad import_id.
-      panic!()
-    }
-  };
-
+  // TODO(ry) error on bad import_id.
+  let mut resolver_handle = deno_isolate.dyn_import_map_.remove(&id).unwrap();
   /// Resolve.
   let mut resolver = resolver_handle.get(scope).unwrap();
-  resolver_handle.reset(scope);
 
   let maybe_info = deno_isolate.get_module_info(mod_id);
 
@@ -2432,7 +2426,10 @@ pub unsafe fn deno_dyn_import_done(
     if let Some(error_str) = error_str {
       let msg = v8::String::new(scope, &error_str).unwrap();
       // FIXME: need to enter isolate here
+      let isolate = context.get_isolate();
+      isolate.enter();
       let e = v8::type_error(scope, msg);
+      isolate.exit();
       resolver.reject(context, e).unwrap();
     } else {
       let e = deno_isolate.last_exception_handle_.get(scope).unwrap();
@@ -2442,6 +2439,7 @@ pub unsafe fn deno_dyn_import_done(
     }
   }
 
+  resolver_handle.reset(scope);
   isolate.run_microtasks();
 
   context.exit();
