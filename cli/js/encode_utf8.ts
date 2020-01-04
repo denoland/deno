@@ -22,7 +22,6 @@ export function encodeUtf8(
 ): Uint8Array {
   let pos = 0;
   const len = input.length;
-  const out = [];
 
   let at = 0;  // output position
   let tlen = Math.max(32, len + (len >> 1) + 7);  // 1.5x size
