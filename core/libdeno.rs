@@ -80,7 +80,7 @@ pub struct DenoIsolate {
   recv_cb_: deno_recv_cb,
   snapshot_creator_: Option<v8::SnapshotCreator>,
   has_snapshotted_: bool,
-  snapshot_: Option<v8::OwnedStartupData>,
+  snapshot_: Option<SnapshotConfig>,
   next_dyn_import_id_: deno_dyn_import_id,
   dyn_import_cb_: deno_dyn_import_cb,
   dyn_import_map_: HashMap<deno_dyn_import_id, v8::Global<v8::PromiseResolver>>,
@@ -1026,10 +1026,37 @@ type deno_resolve_cb = unsafe extern "C" fn(
   referrer: deno_mod,
 ) -> deno_mod;
 
+pub enum SnapshotConfig {
+  Borrowed(v8::StartupData<'static>),
+  Owned(v8::OwnedStartupData),
+}
+
+impl From<&'static [u8]> for SnapshotConfig {
+  fn from(sd: &'static [u8]) -> Self {
+    Self::Borrowed(v8::StartupData::new(sd))
+  }
+}
+
+impl From<v8::OwnedStartupData> for SnapshotConfig {
+  fn from(sd: v8::OwnedStartupData) -> Self {
+    Self::Owned(sd)
+  }
+}
+
+impl Deref for SnapshotConfig {
+  type Target = v8::StartupData<'static>;
+  fn deref(&self) -> &Self::Target {
+    match self {
+      Self::Borrowed(sd) => sd,
+      Self::Owned(sd) => &*sd,
+    }
+  }
+}
+
 #[repr(C)]
 pub struct deno_config {
   pub will_snapshot: c_int,
-  pub load_snapshot: Option<v8::OwnedStartupData>,
+  pub load_snapshot: Option<SnapshotConfig>,
   pub shared: deno_buf,
   pub recv_cb: deno_recv_cb,
   pub dyn_import_cb: deno_dyn_import_cb,

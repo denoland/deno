@@ -219,12 +219,11 @@ impl Isolate {
       StartupData::Script(d) => {
         startup_script = Some(d.into());
       }
-      StartupData::Snapshot(_d) => {
-        todo!()
-        // libdeno_config.load_snapshot = Some(d.into());
+      StartupData::Snapshot(d) => {
+        libdeno_config.load_snapshot = Some(d.into());
       }
       StartupData::LibdenoSnapshot(d) => {
-        libdeno_config.load_snapshot = Some(d);
+        libdeno_config.load_snapshot = Some(d.into());
       }
       StartupData::None => {}
     };
