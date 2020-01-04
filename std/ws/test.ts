@@ -1,11 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { BufReader } from "../io/bufio.ts";
+import { BufReader, BufWriter } from "../io/bufio.ts";
 import { assert, assertEquals, assertThrowsAsync } from "../testing/asserts.ts";
 import { runIfMain, test } from "../testing/mod.ts";
+import { TextProtoReader } from "../textproto/mod.ts";
 import {
   acceptable,
   connectWebSocket,
   createSecAccept,
+  handshake,
   OpCode,
   readFrame,
   unmask,
@@ -222,6 +224,52 @@ test(async function wsWriteReadMaskedFrame(): Promise<void> {
   assertEquals(frame.mask, mask);
   unmask(frame.payload, frame.mask);
   assertEquals(frame.payload, encode(msg));
+});
+
+test("handshake should not send search when it's empty", async function wsHandshakeWithEmptySearch(): Promise<
+  void
+> {
+  const writer = new Buffer();
+  const reader = new Buffer(encode("HTTP/1.1 400\r\n"));
+
+  await assertThrowsAsync(
+    async (): Promise<void> => {
+      await handshake(
+        new URL("ws://example.com"),
+        new Headers(),
+        new BufReader(reader),
+        new BufWriter(writer)
+      );
+    }
+  );
+
+  const tpReader = new TextProtoReader(new BufReader(writer));
+  const statusLine = await tpReader.readLine();
+
+  assertEquals(statusLine, "GET / HTTP/1.1");
+});
+
+test("handshake should send search correctly", async function wsHandshakeWithSearch(): Promise<
+  void
+> {
+  const writer = new Buffer();
+  const reader = new Buffer(encode("HTTP/1.1 400\r\n"));
+
+  await assertThrowsAsync(
+    async (): Promise<void> => {
+      await handshake(
+        new URL("ws://example.com?a=1"),
+        new Headers(),
+        new BufReader(reader),
+        new BufWriter(writer)
+      );
+    }
+  );
+
+  const tpReader = new TextProtoReader(new BufReader(writer));
+  const statusLine = await tpReader.readLine();
+
+  assertEquals(statusLine, "GET /?a=1 HTTP/1.1");
 });
 
 runIfMain(import.meta);
