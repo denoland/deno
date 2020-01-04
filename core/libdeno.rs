@@ -1272,8 +1272,8 @@ extern "C" fn recv(info: &v8::FunctionCallbackInfo) {
     return;
   }
 
-  let recv_val = info.get_argument(0);
-  let recv_fn = unsafe { v8::Local::<v8::Function>::cast(recv_val) };
+  let recv_fn =
+    v8::Local::<v8::Function>::try_from(info.get_argument(0)).unwrap();
   deno_isolate.recv_.set(scope, recv_fn);
 }
 
@@ -1294,17 +1294,16 @@ extern "C" fn send(info: &v8::FunctionCallbackInfo) {
     .unwrap()
     .value() as u32;
 
-  let mut control: deno_buf = deno_buf::empty();
-  let control_arg = info.get_argument(1);
-
-  if control_arg.is_array_buffer_view() {
-    let view = v8::Local::<v8::ArrayBufferView>::try_from(control_arg).unwrap();
-    let mut backing_store = view.buffer().unwrap().get_backing_store();
-    let backing_store_ptr = backing_store.data() as *mut _ as *mut u8;
-    let view_ptr = unsafe { backing_store_ptr.add(view.byte_offset()) };
-    let view_len = view.byte_length();
-    control = unsafe { deno_buf::from_raw_parts(view_ptr, view_len) };
-  }
+  let control =
+    v8::Local::<v8::ArrayBufferView>::try_from(info.get_argument(1))
+      .map(|view| {
+        let mut backing_store = view.buffer().unwrap().get_backing_store();
+        let backing_store_ptr = backing_store.data() as *mut _ as *mut u8;
+        let view_ptr = unsafe { backing_store_ptr.add(view.byte_offset()) };
+        let view_len = view.byte_length();
+        unsafe { deno_buf::from_raw_parts(view_ptr, view_len) }
+      })
+      .unwrap_or_else(|_| deno_buf::empty());
 
   let zero_copy: Option<PinnedBuf> =
     v8::Local::<v8::ArrayBufferView>::try_from(info.get_argument(2))
@@ -1338,8 +1337,6 @@ extern "C" fn eval_context(info: &v8::FunctionCallbackInfo) {
   #[allow(clippy::transmute_ptr_to_ptr)]
   let info: &mut v8::FunctionCallbackInfo =
     unsafe { std::mem::transmute(info) };
-
-  assert_eq!(info.length(), 1);
   let arg0 = info.get_argument(0);
 
   let mut hs = v8::HandleScope::new(info);
@@ -1350,18 +1347,16 @@ extern "C" fn eval_context(info: &v8::FunctionCallbackInfo) {
   assert!(!deno_isolate.context_.is_empty());
   let mut context = deno_isolate.context_.get(scope).unwrap();
 
-  if !arg0.is_string() {
-    let msg = v8::String::new(scope, "Invalid argument").unwrap();
-    // FIXME: ¯\_(ツ)_/¯
-    deno_isolate
-      .isolate_
-      .as_ref()
-      .unwrap()
-      .throw_exception(msg.into());
-    return;
-  }
+  let source = match v8::Local::<v8::String>::try_from(arg0) {
+    Ok(s) => s,
+    Err(_) => {
+      let msg = v8::String::new(scope, "Invalid argument").unwrap();
+      let exception = v8::type_error(scope, msg);
+      scope.isolate().throw_exception(exception.into());
+      return;
+    }
+  };
 
-  let source = unsafe { v8::Local::<v8::String>::cast(arg0) };
   let output = v8::Array::new(scope, 2);
   /**
    * output[0] = result
@@ -1518,14 +1513,14 @@ extern "C" fn queue_microtask(info: &v8::FunctionCallbackInfo) {
   let mut hs = v8::HandleScope::new(&mut locker);
   let scope = hs.enter();
 
-  if !arg0.is_function() {
-    let msg = v8::String::new(scope, "Invalid argument").unwrap();
-    isolate.throw_exception(msg.into());
-    return;
-  }
-
-  let mut arg0 = unsafe { v8::Local::<v8::Function>::cast(arg0) };
-  isolate.enqueue_microtask(arg0);
+  match v8::Local::<v8::Function>::try_from(arg0) {
+    Ok(f) => isolate.enqueue_microtask(f),
+    Err(_) => {
+      let msg = v8::String::new(scope, "Invalid argument").unwrap();
+      let exception = v8::type_error(scope, msg);
+      isolate.throw_exception(exception.into());
+    }
+  };
 }
 
 extern "C" fn shared_getter(
