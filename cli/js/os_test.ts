@@ -248,9 +248,8 @@ testPerm({ env: true }, function getDir(): void {
     for (const r of s.runtime) {
       if (Deno.build.os !== r.os) continue;
       if (r.shouldHaveValue) {
-        assertNotEquals(Deno.dir(s.kind), "");
-      } else {
-        assertEquals(Deno.dir(s.kind), null);
+        const d = Deno.dir(s.kind);
+        assert(d.length > 0);
       }
     }
   }
