@@ -1,3 +1,3 @@
 <!--
-Before submitting a PR read https://deno.land/manual.html#contributing
+Before submitting a PR, please read https://deno.land/std/manual.md#contributing
 -->

@@ -1,4 +1,4 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 // Do not add any dependency to modules.rs!
 // modules.rs is complex and should remain decoupled from isolate.rs to keep the
