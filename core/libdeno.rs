@@ -87,7 +87,6 @@ pub struct DenoIsolate {
   pending_promise_map_: HashMap<i32, v8::Global<v8::Value>>,
   /*
   void* global_import_buf_ptr_;
-
   v8::Persistent<v8::ArrayBuffer> global_import_buf_;
   */
 }
@@ -230,15 +229,7 @@ impl DenoIsolate {
       },
     );
     self.mods_by_name_.insert(name.to_string(), id);
-    /*
-    mods_.emplace(
-        std::piecewise_construct, std::make_tuple(id),
-        std::make_tuple(isolate_, module, main, name, import_specifiers));
-    mods_by_name_[name] = id;
-    */
-
     context.exit();
-
     id
   }
 
@@ -249,7 +240,6 @@ impl DenoIsolate {
     self.mods_.get(&id)
   }
 
-  // deno::Execute
   fn execute<'a>(
     &mut self,
     s: &mut impl v8::ToLocal<'a>,
@@ -259,42 +249,14 @@ impl DenoIsolate {
   ) -> bool {
     let mut hs = v8::HandleScope::new(s);
     let s = hs.enter();
-
     let source = v8::String::new(s, js_source).unwrap();
     let name = v8::String::new(s, js_filename).unwrap();
-    /*
-    auto* isolate = context->GetIsolate();
-    v8::Isolate::Scope isolate_scope(isolate);
-    v8::HandleScope handle_scope(isolate);
-    v8::Context::Scope context_scope(context);
-
-    auto source = v8_str(js_source);
-    auto name = v8_str(js_filename);
-
-    v8::TryCatch try_catch(isolate);
-    */
     let mut try_catch = v8::TryCatch::new(s);
     let tc = try_catch.enter();
-
     let origin = script_origin(s, name);
     let mut script =
       v8::Script::compile(s, context, source, Some(&origin)).unwrap();
     let result = script.run(s, context);
-    /*
-
-    v8::ScriptOrigin origin(name);
-
-    auto script = v8::Script::Compile(context, source, &origin);
-
-    if (script.IsEmpty()) {
-      DCHECK(try_catch.HasCaught());
-      HandleException(context, try_catch.Exception());
-      return false;
-    }
-
-    auto result = script.ToLocalChecked()->Run(context);
-    */
-
     if result.is_none() {
       assert!(tc.has_caught());
       let exception = tc.exception().unwrap();
@@ -349,14 +311,6 @@ impl DenoIsolate {
   ) -> String {
     let message = v8::create_message(s, exception);
     self.encode_message_as_json(s, context, message)
-    /*
-    auto* isolate = context->GetIsolate();
-    v8::HandleScope handle_scope(isolate);
-    v8::Context::Scope context_scope(context);
-
-    auto message = v8::Exception::CreateMessage(isolate, exception);
-    return EncodeMessageAsJSON(context, message);
-    */
   }
 
   fn encode_message_as_json<'a>(
@@ -368,12 +322,6 @@ impl DenoIsolate {
     let json_obj = self.encode_message_as_object(s, context, message);
     let json_string = v8::json::stringify(context, json_obj.into()).unwrap();
     json_string.to_rust_string_lossy(s)
-    /*
-    auto json_obj = EncodeMessageAsObject(context, message);
-    auto json_string = v8::JSON::Stringify(context, json_obj).ToLocalChecked();
-    v8::String::Utf8Value json_string_(isolate, json_string);
-    return std::string(ToCString(json_string_));
-    */
   }
 
   fn encode_message_as_object<'a>(
@@ -382,11 +330,6 @@ impl DenoIsolate {
     mut context: v8::Local<v8::Context>,
     message: v8::Local<v8::Message>,
   ) -> v8::Local<'a, v8::Object> {
-    /*
-    auto* isolate = context->GetIsolate();
-    v8::EscapableHandleScope handle_scope(isolate);
-    v8::Context::Scope context_scope(context);
-    */
     let json_obj = v8::Object::new(s);
 
     let exception_str = message.get(s);
@@ -641,39 +584,6 @@ extern "C" fn host_import_module_dynamically_callback(
   referrer: v8::Local<v8::ScriptOrModule>,
   specifier: v8::Local<v8::String>,
 ) -> *mut v8::Promise {
-  /*
-  auto* isolate = context->GetIsolate();
-  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
-  v8::Isolate::Scope isolate_scope(isolate);
-  v8::Context::Scope context_scope(context);
-  v8::EscapableHandleScope handle_scope(isolate);
-
-  v8::String::Utf8Value specifier_str(isolate, specifier);
-
-  auto referrer_name = referrer->GetResourceName();
-  v8::String::Utf8Value referrer_name_str(isolate, referrer_name);
-
-  // TODO(ry) I'm not sure what HostDefinedOptions is for or if we're ever going
-  // to use it. For now we check that it is not used. This check may need to be
-  // changed in the future.
-  auto host_defined_options = referrer->GetHostDefinedOptions();
-  CHECK_EQ(host_defined_options->Length(), 0);
-
-  v8::Local<v8::Promise::Resolver> resolver =
-      v8::Promise::Resolver::New(context).ToLocalChecked();
-
-  deno_dyn_import_id import_id = d->next_dyn_import_id_++;
-
-  d->dyn_import_map_.emplace(std::piecewise_construct,
-                             std::make_tuple(import_id),
-                             std::make_tuple(d->isolate_, resolver));
-
-  d->dyn_import_cb_(d->user_data_, *specifier_str, *referrer_name_str,
-                    import_id);
-
-  auto promise = resolver->GetPromise();
-  return handle_scope.Escape(promise);
-  */
   let mut cbs = v8::CallbackScope::new(context);
   let mut hs = v8::EscapableHandleScope::new(cbs.enter());
   let scope = hs.enter();
@@ -726,24 +636,6 @@ extern "C" fn host_initialize_import_meta_object_callback(
   module: v8::Local<v8::Module>,
   meta: v8::Local<v8::Object>,
 ) {
-  /*
-  auto* isolate = context->GetIsolate();
-  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
-  v8::Isolate::Scope isolate_scope(isolate);
-
-  CHECK(!module.IsEmpty());
-
-  deno_mod id = module->GetIdentityHash();
-  CHECK_NE(id, 0);
-
-  auto* info = d->GetModuleInfo(id);
-
-  const char* url = info->name.c_str();
-  const bool main = info->main;
-
-  meta->CreateDataProperty(context, v8_str("url"), v8_str(url)).ToChecked();
-  meta->CreateDataProperty(context, v8_str("main"), v8_bool(main)).ToChecked();
-  */
   let mut cbs = v8::CallbackScope::new(context);
   let mut hs = v8::HandleScope::new(cbs.enter());
   let scope = hs.enter();
@@ -778,23 +670,6 @@ extern "C" fn message_callback(
   message: v8::Local<v8::Message>,
   exception: v8::Local<v8::Value>,
 ) {
-  /*
-  auto* isolate = message->GetIsolate();
-  DenoIsolate* d = static_cast<DenoIsolate*>(isolate->GetData(0));
-  v8::HandleScope handle_scope(isolate);
-  auto context = d->context_.Get(isolate);
-
-  // TerminateExecution was called
-  if (isolate->IsExecutionTerminating()) {
-    HandleException(context, v8::Undefined(isolate));
-    return;
-  }
-
-  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
-  std::string json_str = EncodeMessageAsJSON(context, message);
-  CHECK_NOT_NULL(d);
-  d->last_exception_ = json_str;
-  */
   let mut message: v8::Local<v8::Message> =
     unsafe { std::mem::transmute(message) };
   let isolate = message.get_isolate();
@@ -818,42 +693,6 @@ extern "C" fn message_callback(
 }
 
 extern "C" fn promise_reject_callback(msg: v8::PromiseRejectMessage) {
-  /*
-  auto* isolate = v8::Isolate::GetCurrent();
-  DenoIsolate* d = static_cast<DenoIsolate*>(isolate->GetData(0));
-  DCHECK_EQ(d->isolate_, isolate);
-  v8::HandleScope handle_scope(d->isolate_);
-  auto error = promise_reject_message.GetValue();
-  auto context = d->context_.Get(d->isolate_);
-  auto promise = promise_reject_message.GetPromise();
-
-  v8::Context::Scope context_scope(context);
-
-  int promise_id = promise->GetIdentityHash();
-  switch (promise_reject_message.GetEvent()) {
-    case v8::kPromiseRejectWithNoHandler:
-      // Insert the error into the pending_promise_map_ using the promise's id
-      // as the key.
-      d->pending_promise_map_.emplace(std::piecewise_construct,
-                                      std::make_tuple(promise_id),
-                                      std::make_tuple(d->isolate_, error));
-      break;
-
-    case v8::kPromiseHandlerAddedAfterReject:
-      d->pending_promise_map_.erase(promise_id);
-      break;
-
-    case v8::kPromiseRejectAfterResolved:
-      break;
-
-    case v8::kPromiseResolveAfterResolved:
-      // Should not warn. See #1272
-      break;
-
-    default:
-      CHECK(false && "unreachable");
-  }
-  */
   #[allow(mutable_transmutes)]
   let mut msg: v8::PromiseRejectMessage = unsafe { std::mem::transmute(msg) };
   let mut isolate = msg.isolate();
@@ -1167,17 +1006,6 @@ pub unsafe fn deno_new_snapshotter(config: deno_config) -> *mut isolate {
 }
 
 extern "C" fn print(info: &v8::FunctionCallbackInfo) {
-  /*
-  auto* isolate = args.GetIsolate();
-  int argsLen = args.Length();
-  if (argsLen < 1 || argsLen > 2) {
-    ThrowInvalidArgument(isolate);
-  }
-  v8::HandleScope handle_scope(isolate);
-  bool is_err = args.Length() >= 2 ? args[1]->BooleanValue(isolate) : false;
-  FILE* file = is_err ? stderr : stdout;
-  */
-
   let info: &mut v8::FunctionCallbackInfo =
     unsafe { std::mem::transmute(info) };
 
@@ -1191,61 +1019,12 @@ extern "C" fn print(info: &v8::FunctionCallbackInfo) {
   let scope = hs.enter();
 
   let mut is_err = false;
-
   if arg_len == 2 {
     let int_val = is_err_arg
       .integer_value(scope)
       .expect("Unable to convert to integer");
     is_err = int_val != 0;
   };
-
-  /*
-  #ifdef _WIN32
-    int fd = _fileno(file);
-    if (fd < 0) return;
-
-    HANDLE h = reinterpret_cast<HANDLE>(_get_osfhandle(fd));
-    if (h == INVALID_HANDLE_VALUE) return;
-
-    DWORD mode;
-    if (GetConsoleMode(h, &mode)) {
-      // Print to Windows console. Since the Windows API generally doesn't support
-      // UTF-8 encoded text, we have to use `WriteConsoleW()` which uses UTF-16.
-      v8::String::Value str(isolate, args[0]);
-      auto str_len = static_cast<size_t>(str.length());
-      auto str_wchars = reinterpret_cast<WCHAR*>(*str);
-
-      // WriteConsoleW has some limit to how many characters can be written at
-      // once, which is unspecified but low enough to be encountered in practice.
-      // Therefore we break up the write into chunks of 8kb if necessary.
-      size_t chunk_start = 0;
-      while (chunk_start < str_len) {
-        size_t chunk_end = std::min(chunk_start + 8192, str_len);
-
-        // Do not break in the middle of a surrogate pair. Note that `chunk_end`
-        // points to the start of the next chunk, so we check whether it contains
-        // the second half of a surrogate pair (a.k.a. "low surrogate").
-        if (chunk_end < str_len && str_wchars[chunk_end] >= 0xdc00 &&
-            str_wchars[chunk_end] <= 0xdfff) {
-          --chunk_end;
-        }
-
-        // Write to the console.
-        DWORD chunk_len = static_cast<DWORD>(chunk_end - chunk_start);
-        DWORD _;
-        WriteConsoleW(h, &str_wchars[chunk_start], chunk_len, &_, nullptr);
-
-        chunk_start = chunk_end;
-      }
-      return;
-    }
-  #endif  // _WIN32
-
-    v8::String::Utf8Value str(isolate, args[0]);
-    fwrite(*str, sizeof(**str), str.length(), file);
-    fflush(file);
-    */
-
   let mut isolate = scope.isolate();
   let mut try_catch = v8::TryCatch::new(scope);
   let tc = try_catch.enter();
@@ -1253,7 +1032,6 @@ extern "C" fn print(info: &v8::FunctionCallbackInfo) {
     Some(s) => s,
     None => v8::String::new(scope, "").unwrap(),
   };
-
   if is_err {
     eprint!("{}", str_.to_rust_string_lossy(scope));
   } else {
@@ -1337,8 +1115,6 @@ extern "C" fn send(info: &v8::FunctionCallbackInfo) {
 }
 
 extern "C" fn eval_context(info: &v8::FunctionCallbackInfo) {
-  use v8::InIsolate;
-
   let rv = &mut info.get_return_value();
 
   #[allow(mutable_transmutes)]
@@ -1507,7 +1283,6 @@ extern "C" fn error_to_json(info: &v8::FunctionCallbackInfo) {
 }
 
 extern "C" fn queue_microtask(info: &v8::FunctionCallbackInfo) {
-  use v8::InIsolate;
   #[allow(mutable_transmutes)]
   #[allow(clippy::transmute_ptr_to_ptr)]
   let info: &mut v8::FunctionCallbackInfo =
@@ -1535,28 +1310,6 @@ extern "C" fn shared_getter(
   name: v8::Local<v8::Name>,
   info: &v8::PropertyCallbackInfo,
 ) {
-  /*
-  v8::Isolate* isolate = info.GetIsolate();
-  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
-  DCHECK_EQ(d->isolate_, isolate);
-  v8::Locker locker(d->isolate_);
-  v8::EscapableHandleScope handle_scope(isolate);
-  if (d->shared_.data_ptr == nullptr) {
-    return;
-  }
-  v8::Local<v8::SharedArrayBuffer> ab;
-  if (d->shared_ab_.IsEmpty()) {
-    // Lazily initialize the persistent external ArrayBuffer.
-    ab = v8::SharedArrayBuffer::New(isolate, d->shared_.data_ptr,
-                                    d->shared_.data_len,
-                                    v8::ArrayBufferCreationMode::kExternalized);
-    d->shared_ab_.Reset(isolate, ab);
-  }
-  auto shared_ab = d->shared_ab_.Get(isolate);
-  info.GetReturnValue().Set(shared_ab);
-  */
-  use v8::InIsolate;
-
   let shared_ab = {
     #[allow(mutable_transmutes)]
     #[allow(clippy::transmute_ptr_to_ptr)]
@@ -2068,17 +1821,6 @@ fn resolve_callback(
   specifier: v8::Local<v8::String>,
   referrer: v8::Local<v8::Module>,
 ) -> *mut v8::Module {
-  use v8::InIsolate;
-  /*
-  auto* isolate = context->GetIsolate();
-  v8::Isolate::Scope isolate_scope(isolate);
-  v8::Locker locker(isolate);
-
-  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
-
-  v8::EscapableHandleScope handle_scope(isolate);
-  */
-
   let mut cbs = v8::CallbackScope::new(context);
   let cb_scope = cbs.enter();
   let isolate = cb_scope.isolate();
@@ -2088,39 +1830,6 @@ fn resolve_callback(
   let mut locker = v8::Locker::new(isolate);
   let mut hs = v8::EscapableHandleScope::new(&mut locker);
   let scope = hs.enter();
-
-  /*
-  deno_mod referrer_id = referrer->GetIdentityHash();
-  auto* referrer_info = d->GetModuleInfo(referrer_id);
-  CHECK_NOT_NULL(referrer_info);
-
-  for (int i = 0; i < referrer->GetModuleRequestsLength(); i++) {
-    Local<String> req = referrer->GetModuleRequest(i);
-
-    if (req->Equals(context, specifier).ToChecked()) {
-      v8::String::Utf8Value req_utf8(isolate, req);
-      std::string req_str(*req_utf8);
-
-      deno_mod id = d->resolve_cb_(d->user_data_, req_str.c_str(), referrer_id);
-
-      // Note: id might be zero, in which case GetModuleInfo will return
-      // nullptr.
-      auto* info = d->GetModuleInfo(id);
-      if (info == nullptr) {
-        char buf[64 * 1024];
-        snprintf(buf, sizeof(buf), "Cannot resolve module \"%s\" from \"%s\"",
-                 req_str.c_str(), referrer_info->name.c_str());
-        isolate->ThrowException(deno::v8_str(buf));
-        break;
-      } else {
-        Local<Module> child_mod = info->handle.Get(isolate);
-        return handle_scope.Escape(child_mod);
-      }
-    }
-  }
-
-  return v8::MaybeLocal<v8::Module>();  // Error
-  */
 
   let referrer_id = referrer.get_identity_hash();
   let referrer_info = deno_isolate
@@ -2167,17 +1876,6 @@ pub unsafe fn deno_mod_instantiate(
   id: deno_mod,
   resolve_cb: deno_resolve_cb,
 ) {
-  /*
-  auto* d = deno::unwrap(d_);
-  deno::UserDataScope user_data_scope(d, user_data);
-
-  auto* isolate = d->isolate_;
-  v8::Isolate::Scope isolate_scope(isolate);
-  v8::Locker locker(isolate);
-  v8::HandleScope handle_scope(isolate);
-  auto context = d->context_.Get(d->isolate_);
-  v8::Context::Scope context_scope(context);
-  */
   let i_mut: &mut DenoIsolate = unsafe { &mut *i };
   let user_scope = UserDataScope::new(i_mut, user_data);
   let isolate = i_mut.isolate_.as_ref().unwrap();
@@ -2187,31 +1885,6 @@ pub unsafe fn deno_mod_instantiate(
   assert!(!i_mut.context_.is_empty());
   let mut context = i_mut.context_.get(scope).unwrap();
   context.enter();
-
-  /*
-  v8::TryCatch try_catch(isolate);
-  {
-    CHECK_NULL(d->resolve_cb_);
-    d->resolve_cb_ = cb;
-    {
-      auto* info = d->GetModuleInfo(id);
-      if (info == nullptr) {
-        return;
-      }
-      Local<Module> module = info->handle.Get(isolate);
-      if (module->GetStatus() == Module::kErrored) {
-        return;
-      }
-      auto maybe_ok = module->InstantiateModule(context, ResolveCallback);
-      CHECK(maybe_ok.IsJust() || try_catch.HasCaught());
-    }
-    d->resolve_cb_ = nullptr;
-  }
-
-  if (try_catch.HasCaught()) {
-    HandleException(context, try_catch.Exception());
-  }
-  */
   let mut try_catch = v8::TryCatch::new(scope);
   let tc = try_catch.enter();
 
@@ -2247,18 +1920,6 @@ pub unsafe fn deno_mod_evaluate(
   user_data: *const c_void,
   id: deno_mod,
 ) {
-  /*
-  auto* d = deno::unwrap(d_);
-  deno::UserDataScope user_data_scope(d, user_data);
-
-  auto* isolate = d->isolate_;
-  v8::Isolate::Scope isolate_scope(isolate);
-  v8::Locker locker(isolate);
-  v8::HandleScope handle_scope(isolate);
-  auto context = d->context_.Get(d->isolate_);
-  v8::Context::Scope context_scope(context);
-
-  */
   let deno_isolate: &mut DenoIsolate = unsafe { &mut *i };
   let user_data: *mut c_void = unsafe { std::mem::transmute(user_data) };
   let user_scope = UserDataScope::new(deno_isolate, user_data);
@@ -2269,34 +1930,6 @@ pub unsafe fn deno_mod_evaluate(
   assert!(!deno_isolate.context_.is_empty());
   let mut context = deno_isolate.context_.get(scope).unwrap();
   context.enter();
-
-  /*
-  auto* info = d->GetModuleInfo(id);
-  auto module = info->handle.Get(isolate);
-  auto status = module->GetStatus();
-
-  if (status == Module::kInstantiated) {
-    bool ok = !module->Evaluate(context).IsEmpty();
-    status = module->GetStatus();  // Update status after evaluating.
-    if (ok) {
-      // Note status can still be kErrored even if we get ok.
-      CHECK(status == Module::kEvaluated || status == Module::kErrored);
-    } else {
-      CHECK_EQ(status, Module::kErrored);
-    }
-  }
-
-  switch (status) {
-    case Module::kEvaluated:
-      ClearException(context);
-      break;
-    case Module::kErrored:
-      HandleException(context, module->GetException());
-      break;
-    default:
-      FATAL("Unexpected module status: %d", static_cast<int>(status));
-  }
-  */
 
   let info = deno_isolate
     .get_module_info(id)
@@ -2340,22 +1973,6 @@ pub unsafe fn deno_dyn_import_done(
   mod_id: deno_mod,
   error_str: Option<String>,
 ) {
-  /*
-    auto* d = deno::unwrap(d_);
-  CHECK((mod_id == 0 && error_str != nullptr) ||
-        (mod_id != 0 && error_str == nullptr) ||
-        (mod_id == 0 && !d->last_exception_handle_.IsEmpty()));
-  deno::UserDataScope user_data_scope(d, user_data);
-
-  auto* isolate = d->isolate_;
-  v8::Isolate::Scope isolate_scope(isolate);
-  v8::Locker locker(isolate);
-  v8::HandleScope handle_scope(isolate);
-  auto context = d->context_.Get(d->isolate_);
-  v8::Context::Scope context_scope(context);
-
-  */
-
   let deno_isolate: &mut DenoIsolate = unsafe { &mut *i };
   assert!(
     (mod_id == 0 && error_str.is_some())
@@ -2373,44 +1990,6 @@ pub unsafe fn deno_dyn_import_done(
   assert!(!deno_isolate.context_.is_empty());
   let mut context = deno_isolate.context_.get(scope).unwrap();
   context.enter();
-
-  /*
-  auto it = d->dyn_import_map_.find(import_id);
-  if (it == d->dyn_import_map_.end()) {
-    CHECK(false);  // TODO(ry) error on bad import_id.
-    return;
-  }
-
-  /// Resolve.
-  auto persistent_promise = &it->second;
-  auto promise = persistent_promise->Get(isolate);
-
-  auto* info = d->GetModuleInfo(mod_id);
-
-  // Do the following callback into JS?? Is user_data_scope needed?
-  persistent_promise->Reset();
-  d->dyn_import_map_.erase(it);
-
-  if (info == nullptr) {
-    // Resolution error.
-    if (error_str != nullptr) {
-      auto msg = deno::v8_str(error_str);
-      auto exception = v8::Exception::TypeError(msg);
-      promise->Reject(context, exception).ToChecked();
-    } else {
-      auto e = d->last_exception_handle_.Get(isolate);
-      ClearException(context);
-      promise->Reject(context, e).ToChecked();
-    }
-  } else {
-    // Resolution success
-    Local<Module> module = info->handle.Get(isolate);
-    CHECK_EQ(module->GetStatus(), v8::Module::kEvaluated);
-    Local<Value> module_namespace = module->GetModuleNamespace();
-    promise->Resolve(context, module_namespace).ToChecked();
-  }
-  d->isolate_->RunMicrotasks();
-  */
 
   // TODO(ry) error on bad import_id.
   let mut resolver_handle = deno_isolate.dyn_import_map_.remove(&id).unwrap();
