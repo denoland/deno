@@ -770,17 +770,46 @@ extern "C" fn host_initialize_import_meta_object_callback(
 }
 
 extern "C" fn message_callback(
-  _message: v8::Local<v8::Message>,
-  _exception: v8::Local<v8::Value>,
+  message: v8::Local<v8::Message>,
+  exception: v8::Local<v8::Value>,
 ) {
-  todo!()
   /*
   auto* isolate = message->GetIsolate();
   DenoIsolate* d = static_cast<DenoIsolate*>(isolate->GetData(0));
   v8::HandleScope handle_scope(isolate);
   auto context = d->context_.Get(isolate);
-  HandleExceptionMessage(context, message);
+
+  // TerminateExecution was called
+  if (isolate->IsExecutionTerminating()) {
+    HandleException(context, v8::Undefined(isolate));
+    return;
+  }
+
+  DenoIsolate* d = DenoIsolate::FromIsolate(isolate);
+  std::string json_str = EncodeMessageAsJSON(context, message);
+  CHECK_NOT_NULL(d);
+  d->last_exception_ = json_str;
   */
+  let mut message: v8::Local<v8::Message> =
+    unsafe { std::mem::transmute(message) };
+  let isolate = message.get_isolate();
+  let deno_isolate: &mut DenoIsolate =
+    unsafe { &mut *(isolate.get_data(0) as *mut DenoIsolate) };
+  let mut locker = v8::Locker::new(isolate);
+  let mut hs = v8::HandleScope::new(&mut locker);
+  let scope = hs.enter();
+  assert!(!deno_isolate.context_.is_empty());
+  let mut context = deno_isolate.context_.get(scope).unwrap();
+
+  // TerminateExecution was called
+  if isolate.is_execution_terminating() {
+    let u = v8::new_undefined(scope);
+    deno_isolate.handle_exception(scope, context, u.into());
+    return;
+  }
+
+  let json_str = deno_isolate.encode_message_as_json(scope, context, message);
+  deno_isolate.last_exception_ = Some(json_str);
 }
 
 extern "C" fn promise_reject_callback(msg: v8::PromiseRejectMessage) {
