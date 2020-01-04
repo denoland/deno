@@ -866,12 +866,12 @@ extern "C" fn promise_reject_callback(msg: v8::PromiseRejectMessage) {
   let mut context = deno_isolate.context_.get(scope).unwrap();
   context.enter();
 
-  let error = msg.get_value();
   let promise = msg.get_promise();
   let promise_id = promise.get_identity_hash();
 
   match msg.get_event() {
     v8::PromiseRejectEvent::PromiseRejectWithNoHandler => {
+      let error = msg.get_value();
       let mut error_global = v8::Global::<v8::Value>::new();
       error_global.set(scope, error);
       deno_isolate
@@ -879,8 +879,11 @@ extern "C" fn promise_reject_callback(msg: v8::PromiseRejectMessage) {
         .insert(promise_id, error_global);
     }
     v8::PromiseRejectEvent::PromiseHandlerAddedAfterReject => {
-      // don't unwrap, might be None
-      deno_isolate.pending_promise_map_.remove(&promise_id);
+      if let Some(mut handle) =
+        deno_isolate.pending_promise_map_.remove(&promise_id)
+      {
+        handle.reset(scope);
+      }
     }
     v8::PromiseRejectEvent::PromiseRejectAfterResolved => {}
     v8::PromiseRejectEvent::PromiseResolveAfterResolved => {
@@ -1357,7 +1360,7 @@ extern "C" fn eval_context(info: &v8::FunctionCallbackInfo) {
     Err(_) => {
       let msg = v8::String::new(scope, "Invalid argument").unwrap();
       let exception = v8::type_error(scope, msg);
-      scope.isolate().throw_exception(exception.into());
+      scope.isolate().throw_exception(exception);
       return;
     }
   };
@@ -1523,7 +1526,7 @@ extern "C" fn queue_microtask(info: &v8::FunctionCallbackInfo) {
     Err(_) => {
       let msg = v8::String::new(scope, "Invalid argument").unwrap();
       let exception = v8::type_error(scope, msg);
-      isolate.throw_exception(exception.into());
+      isolate.throw_exception(exception);
     }
   };
 }
