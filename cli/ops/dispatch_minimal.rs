@@ -138,21 +138,23 @@ where
     let min_op = d(rid, zero_copy);
 
     // Convert to CoreOp
-    let fut = Box::new(min_op.then(move |result| match result {
-      Ok(r) => {
-        record.result = r;
-        futures::future::ok(record.into())
+    let fut = async move {
+      match min_op.await {
+        Ok(r) => {
+          record.result = r;
+          Ok(record.into())
+        }
+        Err(err) => {
+          let error_record = ErrorRecord {
+            promise_id: record.promise_id,
+            arg: -1,
+            error_code: err.kind() as i32,
+            error_message: err.to_string().as_bytes().to_owned(),
+          };
+          Ok(error_record.into())
+        }
       }
-      Err(err) => {
-        let error_record = ErrorRecord {
-          promise_id: record.promise_id,
-          arg: -1,
-          error_code: err.kind() as i32,
-          error_message: err.to_string().as_bytes().to_owned(),
-        };
-        futures::future::ok(error_record.into())
-      }
-    }));
+    };
 
     if is_sync {
       // Warning! Possible deadlocks can occur if we try to wait for a future

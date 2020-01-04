@@ -220,7 +220,8 @@ fn op_run_status(
     state: state.clone(),
   };
 
-  let future = future.and_then(move |run_status| {
+  let future = async move {
+    let run_status = future.await?;
     let code = run_status.code();
 
     #[cfg(unix)]
@@ -233,12 +234,12 @@ fn op_run_status(
       .expect("Should have either an exit code or a signal.");
     let got_signal = signal.is_some();
 
-    futures::future::ok(json!({
+    Ok(json!({
        "gotSignal": got_signal,
        "exitCode": code.unwrap_or(-1),
        "exitSignal": signal.unwrap_or(-1),
     }))
-  });
+  };
 
   let pool = futures::executor::ThreadPool::new().unwrap();
   let handle = pool.spawn_with_handle(future).unwrap();

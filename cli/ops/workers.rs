@@ -77,13 +77,11 @@ fn op_worker_get_message(
     state: state.clone(),
   };
 
-  let op = op.then(move |maybe_buf| {
+  let op = async move {
+    let maybe_buf = op.await;
     debug!("op_worker_get_message");
-
-    futures::future::ok(json!({
-      "data": maybe_buf.map(|buf| buf)
-    }))
-  });
+    Ok(json!({ "data": maybe_buf }))
+  };
 
   Ok(JsonOp::Async(op.boxed()))
 }
@@ -255,14 +253,12 @@ fn op_host_get_message(
   let mut table = state.workers.lock().unwrap();
   // TODO: don't return bad resource anymore
   let worker = table.get_mut(&id).ok_or_else(bad_resource)?;
-  let op = worker
-    .get_message()
-    .map_err(move |_| -> ErrBox { unimplemented!() })
-    .and_then(move |maybe_buf| {
-      futures::future::ok(json!({
-        "data": maybe_buf.map(|buf| buf)
-      }))
-    });
+  let fut = worker.get_message();
+
+  let op = async move {
+    let maybe_buf = fut.await.unwrap();
+    Ok(json!({ "data": maybe_buf }))
+  };
 
   Ok(JsonOp::Async(op.boxed()))
 }

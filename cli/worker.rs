@@ -157,7 +157,7 @@ impl Worker {
   ///
   /// This method blocks current thread.
   pub fn post_message(
-    self: &Self,
+    &self,
     buf: Buf,
   ) -> impl Future<Output = Result<(), ErrBox>> {
     let channels = self.external_channels.lock().unwrap();
@@ -170,7 +170,7 @@ impl Worker {
   }
 
   /// Get message from worker as a host.
-  pub fn get_message(self: &Self) -> WorkerReceiver {
+  pub fn get_message(&self) -> WorkerReceiver {
     WorkerReceiver {
       channels: self.external_channels.clone(),
     }

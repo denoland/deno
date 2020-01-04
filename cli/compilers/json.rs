@@ -15,7 +15,7 @@ pub struct JsonCompiler {}
 
 impl JsonCompiler {
   pub fn compile_async(
-    self: &Self,
+    &self,
     source_file: &SourceFile,
   ) -> Pin<Box<CompiledModuleFuture>> {
     let maybe_json_value: serde_json::Result<serde_json::Value> =

@@ -10,7 +10,7 @@ pub struct JsCompiler {}
 
 impl JsCompiler {
   pub fn compile_async(
-    self: &Self,
+    &self,
     source_file: &SourceFile,
   ) -> Pin<Box<CompiledModuleFuture>> {
     let module = CompiledModule {
