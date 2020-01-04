@@ -28,6 +28,7 @@ exec_time_benchmarks = [
     ("workers_startup", ["tests/workers_startup_bench.ts"]),
     ("workers_round_robin", ["tests/workers_round_robin_bench.ts"]),
     ("text_decoder", ["cli/tests/text_decoder_perf.js"]),
+    ("text_encoder", ["cli/tests/text_encoder_perf.js"]),
 ]
 
 
