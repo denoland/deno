@@ -1,8 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::futures::future::try_join_all;
-use crate::futures::future::FutureExt;
-use crate::futures::future::TryFutureExt;
 use crate::msg;
 use crate::ops::json_op;
 use crate::state::ThreadSafeState;
@@ -87,52 +85,39 @@ fn op_fetch_source_files(
 
   let global_state = state.global_state.clone();
 
-  let future = try_join_all(futures)
-    .map_err(ErrBox::from)
-    .and_then(move |files| {
-      // We want to get an array of futures that resolves to
-      let v: Vec<_> = files
-        .into_iter()
-        .map(|file| {
-          // Special handling of Wasm files:
-          // compile them into JS first!
-          // This allows TS to do correct export types.
-          if file.media_type == msg::MediaType::Wasm {
-            return futures::future::Either::Left(
-              global_state
-                .wasm_compiler
-                .compile_async(global_state.clone(), &file)
-                .and_then(|compiled_mod| {
-                  futures::future::ok((file, Some(compiled_mod.code)))
-                }),
-            );
-          }
-          futures::future::Either::Right(futures::future::ok((file, None)))
-        })
-        .collect();
-      try_join_all(v)
-    })
-    .and_then(move |files_with_code| {
-      let res = files_with_code
-        .into_iter()
-        .map(|(file, maybe_code)| {
-          json!({
-            "url": file.url.to_string(),
-            "filename": file.filename.to_str().unwrap(),
-            "mediaType": file.media_type as i32,
-            "sourceCode": if let Some(code) = maybe_code {
-              code
-            } else {
-              String::from_utf8(file.source_code).unwrap()
-            },
-          })
-        })
-        .collect();
+  let future = Box::pin(async move {
+    let files = try_join_all(futures).await?;
 
-      futures::future::ok(res)
+    // We want to get an array of futures that resolves to
+    let v = files.into_iter().map(|file| {
+      async {
+        // Special handling of Wasm files:
+        // compile them into JS first!
+        // This allows TS to do correct export types.
+        let source_code = match file.media_type {
+          msg::MediaType::Wasm => {
+            global_state
+              .wasm_compiler
+              .compile_async(global_state.clone(), &file)
+              .await?
+              .code
+          }
+          _ => String::from_utf8(file.source_code).unwrap(),
+        };
+        Ok::<_, ErrBox>(json!({
+          "url": file.url.to_string(),
+          "filename": file.filename.to_str().unwrap(),
+          "mediaType": file.media_type as i32,
+          "sourceCode": source_code,
+        }))
+      }
     });
 
-  Ok(JsonOp::Async(future.boxed()))
+    let v = try_join_all(v).await?;
+    Ok(v.into())
+  });
+
+  Ok(JsonOp::Async(future))
 }
 
 #[derive(Deserialize)]

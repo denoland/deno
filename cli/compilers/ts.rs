@@ -142,7 +142,7 @@ impl CompiledFileMetadata {
     None
   }
 
-  pub fn to_json_string(self: &Self) -> Result<String, serde_json::Error> {
+  pub fn to_json_string(&self) -> Result<String, serde_json::Error> {
     let mut value_map = serde_json::map::Map::new();
 
     value_map.insert(SOURCE_PATH.to_owned(), json!(&self.source_path));
@@ -246,7 +246,7 @@ impl TsCompiler {
   }
 
   pub fn bundle_async(
-    self: &Self,
+    &self,
     global_state: ThreadSafeGlobalState,
     module_name: String,
     out_file: Option<String>,
@@ -305,7 +305,7 @@ impl TsCompiler {
   ///
   /// If compilation is required then new V8 worker is spawned with fresh TS compiler.
   pub fn compile_async(
-    self: &Self,
+    &self,
     global_state: ThreadSafeGlobalState,
     source_file: &SourceFile,
   ) -> Pin<Box<CompiledModuleFuture>> {
@@ -389,7 +389,7 @@ impl TsCompiler {
   }
 
   /// Get associated `CompiledFileMetadata` for given module if it exists.
-  pub fn get_metadata(self: &Self, url: &Url) -> Option<CompiledFileMetadata> {
+  pub fn get_metadata(&self, url: &Url) -> Option<CompiledFileMetadata> {
     // Try to load cached version:
     // 1. check if there's 'meta' file
     let cache_key = self
@@ -409,7 +409,7 @@ impl TsCompiler {
   }
 
   pub fn get_compiled_module(
-    self: &Self,
+    &self,
     module_url: &Url,
   ) -> Result<CompiledModule, ErrBox> {
     let compiled_source_file = self.get_compiled_source_file(module_url)?;
@@ -428,7 +428,7 @@ impl TsCompiler {
   // TODO: ideally we shouldn't construct SourceFile by hand, but it should be delegated to
   // SourceFileFetcher
   pub fn get_compiled_source_file(
-    self: &Self,
+    &self,
     module_url: &Url,
   ) -> Result<SourceFile, ErrBox> {
     let cache_key = self
@@ -453,7 +453,7 @@ impl TsCompiler {
   /// Along compiled file a special metadata file is saved as well containing
   /// hash that can be validated to avoid unnecessary recompilation.
   fn cache_compiled_file(
-    self: &Self,
+    &self,
     module_specifier: &ModuleSpecifier,
     contents: &str,
   ) -> std::io::Result<()> {
@@ -495,7 +495,7 @@ impl TsCompiler {
   // TODO: ideally we shouldn't construct SourceFile by hand, but it should be delegated to
   // SourceFileFetcher
   pub fn get_source_map_file(
-    self: &Self,
+    &self,
     module_specifier: &ModuleSpecifier,
   ) -> Result<SourceFile, ErrBox> {
     let cache_key = self
@@ -517,7 +517,7 @@ impl TsCompiler {
 
   /// Save source map file for given TS module to on-disk cache.
   fn cache_source_map(
-    self: &Self,
+    &self,
     module_specifier: &ModuleSpecifier,
     contents: &str,
   ) -> std::io::Result<()> {
@@ -529,7 +529,7 @@ impl TsCompiler {
 
   /// This method is called by TS compiler via an "op".
   pub fn cache_compiler_output(
-    self: &Self,
+    &self,
     module_specifier: &ModuleSpecifier,
     extension: &str,
     contents: &str,
@@ -564,7 +564,7 @@ impl SourceMapGetter for TsCompiler {
 
 // `SourceMapGetter` related methods
 impl TsCompiler {
-  fn try_to_resolve(self: &Self, script_name: &str) -> Option<ModuleSpecifier> {
+  fn try_to_resolve(&self, script_name: &str) -> Option<ModuleSpecifier> {
     // if `script_name` can't be resolved to ModuleSpecifier it's probably internal
     // script (like `gen/cli/bundle/compiler.js`) so we won't be
     // able to get source for it anyway
