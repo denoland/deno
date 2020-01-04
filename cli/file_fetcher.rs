@@ -12,7 +12,6 @@ use deno::ErrBox;
 use deno::ModuleSpecifier;
 use futures::future::Either;
 use futures::future::FutureExt;
-use futures::future::TryFutureExt;
 use serde_json;
 use std;
 use std::collections::HashMap;
@@ -115,7 +114,7 @@ impl SourceFileFetcher {
 
   /// Required for TS compiler and source maps.
   pub fn fetch_cached_source_file(
-    self: &Self,
+    &self,
     specifier: &ModuleSpecifier,
   ) -> Option<SourceFile> {
     let maybe_source_file = self.source_file_cache.get(specifier.to_string());
@@ -211,7 +210,7 @@ impl SourceFileFetcher {
   /// If `cached_only` is true then this method will fail for remote files
   /// not already cached.
   fn get_source_file_async(
-    self: &Self,
+    &self,
     module_url: &Url,
     use_disk_cache: bool,
     no_remote: bool,
@@ -261,10 +260,7 @@ impl SourceFileFetcher {
   }
 
   /// Fetch local source file.
-  fn fetch_local_file(
-    self: &Self,
-    module_url: &Url,
-  ) -> Result<SourceFile, ErrBox> {
+  fn fetch_local_file(&self, module_url: &Url) -> Result<SourceFile, ErrBox> {
     let filepath = module_url.to_file_path().map_err(|()| {
       ErrBox::from(DenoError::new(
         ErrorKind::InvalidPath,
@@ -299,7 +295,7 @@ impl SourceFileFetcher {
   /// that user provides, and the final module_name is the resolved path
   /// after following all redirections.
   fn fetch_cached_remote_source(
-    self: &Self,
+    &self,
     module_url: &Url,
   ) -> Result<Option<SourceFile>, ErrBox> {
     let source_code_headers = self.get_source_code_headers(&module_url);
@@ -351,7 +347,7 @@ impl SourceFileFetcher {
 
   /// Asynchronously fetch remote source file specified by the URL following redirects.
   fn fetch_remote_source_async(
-    self: &Self,
+    &self,
     module_url: &Url,
     use_disk_cache: bool,
     cached_only: bool,
@@ -399,8 +395,8 @@ impl SourceFileFetcher {
     let module_url = module_url.clone();
 
     // Single pass fetch, either yields code or yields redirect.
-    let f = http_util::fetch_string_once(&module_url).and_then(move |r| {
-      match r {
+    let f = async move {
+      match http_util::fetch_string_once(&module_url).await? {
         FetchOnceResult::Redirect(new_module_url) => {
           // If redirects, update module_name and filename for next looped call.
           dir
@@ -415,12 +411,14 @@ impl SourceFileFetcher {
           drop(download_job);
 
           // Recurse
-          Either::Left(dir.fetch_remote_source_async(
-            &new_module_url,
-            use_disk_cache,
-            cached_only,
-            redirect_limit - 1,
-          ))
+          dir
+            .fetch_remote_source_async(
+              &new_module_url,
+              use_disk_cache,
+              cached_only,
+              redirect_limit - 1,
+            )
+            .await
         }
         FetchOnceResult::Code(source, maybe_content_type) => {
           // We land on the code.
@@ -454,10 +452,10 @@ impl SourceFileFetcher {
           // Explicit drop to keep reference alive until future completes.
           drop(download_job);
 
-          Either::Right(futures::future::ok(source_file))
+          Ok(source_file)
         }
       }
-    });
+    };
 
     f.boxed()
   }
@@ -467,7 +465,7 @@ impl SourceFileFetcher {
   /// NOTE: chances are that the source file was downloaded due to redirects.
   /// In this case, the headers file provides info about where we should go and get
   /// the file that redirect eventually points to.
-  fn get_source_code_headers(self: &Self, url: &Url) -> SourceCodeHeaders {
+  fn get_source_code_headers(&self, url: &Url) -> SourceCodeHeaders {
     let cache_key = self
       .deps_cache
       .get_cache_filename_with_extension(url, "headers.json");
@@ -482,11 +480,7 @@ impl SourceFileFetcher {
   }
 
   /// Save contents of downloaded remote file in on-disk cache for subsequent access.
-  fn save_source_code(
-    self: &Self,
-    url: &Url,
-    source: &str,
-  ) -> std::io::Result<()> {
+  fn save_source_code(&self, url: &Url, source: &str) -> std::io::Result<()> {
     let cache_key = self.deps_cache.get_cache_filename(url);
 
     // May not exist. DON'T unwrap.
@@ -503,7 +497,7 @@ impl SourceFileFetcher {
   ///
   /// If nothing needs to be saved, the headers file is not created.
   fn save_source_code_headers(
-    self: &Self,
+    &self,
     url: &Url,
     mime_type: Option<String>,
     redirect_to: Option<String>,
@@ -667,7 +661,7 @@ impl SourceCodeHeaders {
   // TODO: remove this nonsense `cache_filename` param, this should be
   //  done when instantiating SourceCodeHeaders
   pub fn to_json_string(
-    self: &Self,
+    &self,
     cache_filename: &Path,
   ) -> Result<Option<String>, serde_json::Error> {
     // TODO(kevinkassimo): consider introduce serde::Deserialize to make things simpler.

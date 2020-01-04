@@ -301,7 +301,7 @@ impl ThreadSafeState {
   }
 
   pub fn check_dyn_import(
-    self: &Self,
+    &self,
     module_specifier: &ModuleSpecifier,
   ) -> Result<(), ErrBox> {
     let u = module_specifier.as_url();
