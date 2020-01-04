@@ -103,9 +103,6 @@ jobs:
           rustc --version
           cargo --version
 
-      - name: Run setup.py
-        run: python ./tools/setup.py
-
       - name: Start sccache
         env:
           AWS_ACCESS_KEY_ID: AKIAIVRN52PLDBP55LBQ

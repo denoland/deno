@@ -4,7 +4,7 @@
 
 import os
 import sys
-from util import enable_ansi_colors, git_ls_files, libdeno_path, root_path, run
+from util import enable_ansi_colors, git_ls_files, root_path, run
 from util import third_party_path
 from third_party import python_env
 
@@ -12,26 +12,8 @@ from third_party import python_env
 def main():
     enable_ansi_colors()
     os.chdir(root_path)
-    cpplint()
     eslint()
     pylint()
-
-
-def cpplint():
-    print "cpplint"
-    script = os.path.join(third_party_path, "cpplint", "cpplint.py")
-    source_files = git_ls_files(libdeno_path, ["*.cc", "*.h"])
-    run([
-        sys.executable,
-        script,
-        "--quiet",
-        "--filter=-build/include_subdir",
-        "--repository=" + libdeno_path,
-        "--",
-    ] + source_files,
-        env=python_env(),
-        shell=False,
-        quiet=True)
 
 
 def eslint():
