@@ -3,7 +3,7 @@
 // Copyright 2011-2015 by Vitaly Puzrin. All rights reserved. MIT license.
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-export { ParseOptions, parse } from "./yaml/parse.ts";
+export { ParseOptions, parse, parseAll } from "./yaml/parse.ts";
 export {
   DumpOptions as StringifyOptions,
   stringify
