@@ -338,6 +338,7 @@ impl DenoIsolate {
 
     let json_str = self.encode_exception_as_json(s, context, exception);
     self.last_exception_ = Some(json_str);
+    self.last_exception_handle_.set(s, exception);
   }
 
   fn encode_exception_as_json<'a>(
@@ -2425,17 +2426,24 @@ pub unsafe fn deno_dyn_import_done(
     // Resolution error.
     if let Some(error_str) = error_str {
       let msg = v8::String::new(scope, &error_str).unwrap();
-      // FIXME: need to enter isolate here
       let isolate = context.get_isolate();
       isolate.enter();
       let e = v8::type_error(scope, msg);
       isolate.exit();
       resolver.reject(context, e).unwrap();
     } else {
-      let e = deno_isolate.last_exception_handle_.get(scope).unwrap();
-      deno_isolate.last_exception_handle_.reset(scope);
+      // FIXME: ugly hack, because you can get Local<> from Global<>,
+      // reset the global and then use to value, I'm swapping
+      // last_exception_handle_ stored on DenoIsolate and destroying it manually
+      let mut last_exception_handle = v8::Global::new();
+      std::mem::swap(
+        &mut last_exception_handle,
+        &mut deno_isolate.last_exception_handle_,
+      );
       deno_isolate.last_exception_.take();
+      let e = last_exception_handle.get(scope).unwrap();
       resolver.reject(context, e).unwrap();
+      last_exception_handle.reset(scope);
     }
   }
 
