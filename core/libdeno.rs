@@ -2432,7 +2432,7 @@ pub unsafe fn deno_dyn_import_done(
       isolate.exit();
       resolver.reject(context, e).unwrap();
     } else {
-      // FIXME: ugly hack, because you can get Local<> from Global<>,
+      // FIXME: ugly hack, because you can't get Local<> from Global<>,
       // reset the global and then use to value, I'm swapping
       // last_exception_handle_ stored on DenoIsolate and destroying it manually
       let mut last_exception_handle = v8::Global::new();
