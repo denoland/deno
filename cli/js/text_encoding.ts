@@ -26,6 +26,7 @@
 import * as base64 from "./base64.ts";
 import { decodeUtf8 } from "./decode_utf8.ts";
 import * as domTypes from "./dom_types.ts";
+import { encodeUtf8 } from "./encode_utf8.ts";
 import { DenoError, ErrorKind } from "./errors.ts";
 
 const CONTINUE = null;
@@ -405,6 +406,12 @@ export class TextEncoder {
   readonly encoding = "utf-8";
   /** Returns the result of running UTF-8's encoder. */
   encode(input = ""): Uint8Array {
+    // For performance reasons we utilise a highly optimised decoder instead of
+    // the general decoder.
+    if (this.encoding === "utf-8") {
+      return encodeUtf8(input);
+    }
+
     const encoder = new UTF8Encoder();
     const inputStream = new Stream(stringToCodePoints(input));
     const output: number[] = [];
