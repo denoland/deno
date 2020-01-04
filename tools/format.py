@@ -3,7 +3,7 @@
 import os
 import sys
 import argparse
-from third_party import get_buildtools_tool_path, google_env, python_env
+from third_party import python_env
 from util import git_ls_files, third_party_path, root_path, run
 
 

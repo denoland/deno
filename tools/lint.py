@@ -37,7 +37,7 @@ def eslint():
 def pylint():
     print "pylint"
     script = os.path.join(third_party_path, "python_packages", "pylint")
-    rcfile = os.path.join(third_party_path, "depot_tools", "pylintrc")
+    rcfile = os.path.join(root_path, "tools", "pylintrc")
     source_files = git_ls_files(root_path, ["*.py"])
     run([sys.executable, script, "--rcfile=" + rcfile, "--"] + source_files,
         env=python_env(),
