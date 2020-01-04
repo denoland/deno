@@ -411,7 +411,7 @@ export class TextEncoder {
     if (this.encoding === "utf-8") {
       return encodeUtf8(input);
     }
-  
+
     const encoder = new UTF8Encoder();
     const inputStream = new Stream(stringToCodePoints(input));
     const output: number[] = [];
