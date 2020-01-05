@@ -12,10 +12,8 @@ use crate::libdeno;
 use crate::libdeno::deno_buf;
 use crate::libdeno::deno_dyn_import_id;
 use crate::libdeno::deno_mod;
-use crate::libdeno::deno_pinned_buf;
 use crate::libdeno::PinnedBuf;
 use crate::libdeno::Snapshot1;
-use crate::libdeno::Snapshot2;
 use crate::ops::*;
 use crate::shared_queue::SharedQueue;
 use crate::shared_queue::RECOMMENDED_SIZE;
@@ -29,15 +27,11 @@ use futures::stream::StreamFuture;
 use futures::stream::TryStream;
 use futures::stream::TryStreamExt;
 use futures::task::AtomicWaker;
-use libc::c_char;
 use libc::c_void;
-use libc::strdup;
 use std::ffi::CStr;
-use std::ffi::CString;
 use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
-use std::ptr::null;
 use std::sync::{Arc, Mutex, Once};
 use std::task::Context;
 use std::task::Poll;
@@ -153,8 +147,8 @@ impl From<Script<'_>> for OwnedScript {
 /// in the form of the StartupScript struct.
 pub enum StartupData<'a> {
   Script(Script<'a>),
-  Snapshot(&'a [u8]),
-  LibdenoSnapshot(Snapshot1<'a>),
+  Snapshot(&'static [u8]),
+  LibdenoSnapshot(Snapshot1),
   None,
 }
 
@@ -170,8 +164,8 @@ type IsolateErrorHandleFn = dyn FnMut(ErrBox) -> Result<(), ErrBox>;
 /// by implementing dispatcher function that takes control buffer and optional zero copy buffer
 /// as arguments. An async Op corresponds exactly to a Promise in JavaScript.
 pub struct Isolate {
-  libdeno_isolate: *const libdeno::isolate,
-  shared_libdeno_isolate: Arc<Mutex<Option<*const libdeno::isolate>>>,
+  libdeno_isolate: *mut libdeno::isolate,
+  shared_libdeno_isolate: Arc<Mutex<Option<*mut libdeno::isolate>>>,
   dyn_import: Option<Arc<DynImportFn>>,
   js_error_create: Arc<JSErrorCreateFn>,
   needs_init: bool,
@@ -212,7 +206,7 @@ impl Isolate {
 
     let mut libdeno_config = libdeno::deno_config {
       will_snapshot: will_snapshot.into(),
-      load_snapshot: Snapshot2::empty(),
+      load_snapshot: None,
       shared: shared.as_deno_buf(),
       recv_cb: Self::pre_dispatch,
       dyn_import_cb: Self::dyn_import,
@@ -226,10 +220,10 @@ impl Isolate {
         startup_script = Some(d.into());
       }
       StartupData::Snapshot(d) => {
-        libdeno_config.load_snapshot = d.into();
+        libdeno_config.load_snapshot = Some(d.into());
       }
       StartupData::LibdenoSnapshot(d) => {
-        libdeno_config.load_snapshot = d;
+        libdeno_config.load_snapshot = Some(d.into());
       }
       StartupData::None => {}
     };
@@ -310,16 +304,14 @@ impl Isolate {
     }
   }
 
-  extern "C" fn dyn_import(
+  fn dyn_import(
     user_data: *mut c_void,
-    specifier: *const c_char,
-    referrer: *const c_char,
+    specifier: &str,
+    referrer: &str,
     id: deno_dyn_import_id,
   ) {
     assert_ne!(user_data, std::ptr::null_mut());
     let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
-    let specifier = unsafe { CStr::from_ptr(specifier).to_str().unwrap() };
-    let referrer = unsafe { CStr::from_ptr(referrer).to_str().unwrap() };
     debug!("dyn_import specifier {} referrer {} ", specifier, referrer);
 
     if let Some(ref f) = isolate.dyn_import {
@@ -334,19 +326,18 @@ impl Isolate {
     }
   }
 
-  extern "C" fn pre_dispatch(
+  fn pre_dispatch(
     user_data: *mut c_void,
     op_id: OpId,
     control_buf: deno_buf,
-    zero_copy_buf: deno_pinned_buf,
+    zero_copy_buf: Option<PinnedBuf>,
   ) {
     let isolate = unsafe { Isolate::from_raw_ptr(user_data) };
 
-    let maybe_op = isolate.op_registry.call(
-      op_id,
-      control_buf.as_ref(),
-      PinnedBuf::new(zero_copy_buf),
-    );
+    let maybe_op =
+      isolate
+        .op_registry
+        .call(op_id, control_buf.as_ref(), zero_copy_buf);
 
     let op = match maybe_op {
       Some(op) => op,
@@ -397,42 +388,36 @@ impl Isolate {
     js_source: &str,
   ) -> Result<(), ErrBox> {
     self.shared_init();
-    let filename = CString::new(js_filename).unwrap();
-    let source = CString::new(js_source).unwrap();
     unsafe {
       libdeno::deno_execute(
         self.libdeno_isolate,
-        self.as_raw_ptr(),
-        filename.as_ptr(),
-        source.as_ptr(),
+        self as *mut _ as *mut c_void,
+        js_filename,
+        js_source,
       )
     };
     self.check_last_exception()
   }
 
   fn check_last_exception(&mut self) -> Result<(), ErrBox> {
-    let ptr = unsafe { libdeno::deno_last_exception(self.libdeno_isolate) };
-    if ptr.is_null() {
-      Ok(())
-    } else {
-      let js_error_create = &*self.js_error_create;
-      let cstr = unsafe { CStr::from_ptr(ptr) };
-      if self.error_handler.is_some() {
-        // We duplicate the string and assert ownership.
-        // This is due to we want the user to safely clone the error.
-        let cstring = unsafe { CString::from_raw(strdup(ptr)) };
-        // We need to clear last exception to avoid double handling.
-        unsafe { libdeno::deno_clear_last_exception(self.libdeno_isolate) };
-        let json_string = cstring.into_string().unwrap();
-        let v8_exception = V8Exception::from_json(&json_string).unwrap();
-        let js_error = js_error_create(v8_exception);
-        let handler = self.error_handler.as_mut().unwrap();
-        handler(js_error)
-      } else {
-        let json_str = cstr.to_str().unwrap();
-        let v8_exception = V8Exception::from_json(json_str).unwrap();
-        let js_error = js_error_create(v8_exception);
-        Err(js_error)
+    let maybe_err =
+      unsafe { libdeno::deno_last_exception(self.libdeno_isolate) };
+    match maybe_err {
+      None => Ok(()),
+      Some(json_str) => {
+        let js_error_create = &*self.js_error_create;
+        if self.error_handler.is_some() {
+          // We need to clear last exception to avoid double handling.
+          unsafe { libdeno::deno_clear_last_exception(self.libdeno_isolate) };
+          let v8_exception = V8Exception::from_json(&json_str).unwrap();
+          let js_error = js_error_create(v8_exception);
+          let handler = self.error_handler.as_mut().unwrap();
+          handler(js_error)
+        } else {
+          let v8_exception = V8Exception::from_json(&json_str).unwrap();
+          let js_error = js_error_create(v8_exception);
+          Err(js_error)
+        }
       }
     }
   }
@@ -444,9 +429,8 @@ impl Isolate {
   }
 
   fn throw_exception(&mut self, exception_text: &str) {
-    let text = CString::new(exception_text).unwrap();
     unsafe {
-      libdeno::deno_throw_exception(self.libdeno_isolate, text.as_ptr())
+      libdeno::deno_throw_exception(self.libdeno_isolate, exception_text)
     }
   }
 
@@ -471,14 +455,8 @@ impl Isolate {
     name: &str,
     source: &str,
   ) -> Result<deno_mod, ErrBox> {
-    let name_ = CString::new(name.to_string()).unwrap();
-    let name_ptr = name_.as_ptr() as *const libc::c_char;
-
-    let source_ = CString::new(source.to_string()).unwrap();
-    let source_ptr = source_.as_ptr() as *const libc::c_char;
-
     let id = unsafe {
-      libdeno::deno_mod_new(self.libdeno_isolate, main, name_ptr, source_ptr)
+      libdeno::deno_mod_new(self.libdeno_isolate, main, name, source)
     };
 
     self.check_last_exception().map(|_| id)
@@ -489,12 +467,10 @@ impl Isolate {
       unsafe { libdeno::deno_mod_imports_len(self.libdeno_isolate, id) };
     let mut out = Vec::new();
     for i in 0..len {
-      let specifier_ptr =
-        unsafe { libdeno::deno_mod_imports_get(self.libdeno_isolate, id, i) };
-      let specifier_c: &CStr = unsafe { CStr::from_ptr(specifier_ptr) };
-      let specifier: &str = specifier_c.to_str().unwrap();
-
-      out.push(specifier.to_string());
+      let specifier =
+        unsafe { libdeno::deno_mod_imports_get(self.libdeno_isolate, id, i) }
+          .unwrap();
+      out.push(specifier);
     }
     out
   }
@@ -505,15 +481,11 @@ impl Isolate {
   /// ErrBox can be downcast to a type that exposes additional information about
   /// the V8 exception. By default this type is CoreJSError, however it may be a
   /// different type if Isolate::set_js_error_create() has been used.
-  pub fn snapshot(&mut self) -> Result<Snapshot1<'static>, ErrBox> {
-    let snapshot = unsafe { libdeno::deno_snapshot_new(self.libdeno_isolate) };
+  pub fn snapshot(&mut self) -> Result<Snapshot1, ErrBox> {
+    let snapshot = libdeno::deno_snapshot_new(self.libdeno_isolate);
     match self.check_last_exception() {
       Ok(..) => Ok(snapshot),
-      Err(err) => {
-        assert_eq!(snapshot.data_ptr, null());
-        assert_eq!(snapshot.data_len, 0);
-        Err(err)
-      }
+      Err(err) => Err(err),
     }
   }
 
@@ -526,11 +498,7 @@ impl Isolate {
     let (mod_id, maybe_err_str) = match result {
       Ok(mod_id) => (mod_id, None),
       Err(None) => (0, None),
-      Err(Some(err_str)) => (0, Some(CString::new(err_str).unwrap())),
-    };
-    let err_str_ptr = match maybe_err_str {
-      Some(ref err_str) => err_str.as_ptr(),
-      None => std::ptr::null(),
+      Err(Some(err_str)) => (0, Some(err_str)),
     };
     unsafe {
       libdeno::deno_dyn_import_done(
@@ -538,7 +506,7 @@ impl Isolate {
         self.as_raw_ptr(),
         id,
         mod_id,
-        err_str_ptr,
+        maybe_err_str,
       )
     };
     self.check_last_exception()
@@ -662,11 +630,11 @@ impl Isolate {
 }
 
 struct LockerScope {
-  libdeno_isolate: *const libdeno::isolate,
+  libdeno_isolate: *mut libdeno::isolate,
 }
 
 impl LockerScope {
-  fn new(libdeno_isolate: *const libdeno::isolate) -> LockerScope {
+  fn new(libdeno_isolate: *mut libdeno::isolate) -> LockerScope {
     unsafe { libdeno::deno_lock(libdeno_isolate) }
     LockerScope { libdeno_isolate }
   }
@@ -752,7 +720,7 @@ impl Future for Isolate {
 /// IsolateHandle is a thread safe handle on an Isolate. It exposed thread safe V8 functions.
 #[derive(Clone)]
 pub struct IsolateHandle {
-  shared_libdeno_isolate: Arc<Mutex<Option<*const libdeno::isolate>>>,
+  shared_libdeno_isolate: Arc<Mutex<Option<*mut libdeno::isolate>>>,
 }
 
 unsafe impl Send for IsolateHandle {}
