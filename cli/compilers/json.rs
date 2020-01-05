@@ -3,7 +3,7 @@ use crate::compilers::CompiledModule;
 use crate::compilers::CompiledModuleFuture;
 use crate::file_fetcher::SourceFile;
 use crate::futures::future::FutureExt;
-use deno::ErrBox;
+use deno_core::ErrBox;
 use regex::Regex;
 use std::pin::Pin;
 use std::str;

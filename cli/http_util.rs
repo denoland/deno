@@ -3,7 +3,7 @@ use crate::deno_error;
 use crate::deno_error::DenoError;
 use crate::version;
 use bytes::Bytes;
-use deno::ErrBox;
+use deno_core::ErrBox;
 use futures::future::FutureExt;
 use reqwest;
 use reqwest::header::HeaderMap;

@@ -1,11 +1,11 @@
 #[macro_use]
-extern crate deno;
+extern crate deno_core;
 extern crate futures;
 
-use deno::CoreOp;
-use deno::Op;
-use deno::PluginInitContext;
-use deno::{Buf, PinnedBuf};
+use deno_core::CoreOp;
+use deno_core::Op;
+use deno_core::PluginInitContext;
+use deno_core::{Buf, PinnedBuf};
 use futures::future::FutureExt;
 
 fn init(context: &mut dyn PluginInitContext) {

@@ -5,8 +5,8 @@ use crate::ops::json_op;
 use crate::repl;
 use crate::repl::Repl;
 use crate::state::ThreadSafeState;
-use deno::Resource;
-use deno::*;
+use deno_core::Resource;
+use deno_core::*;
 use std::sync::Arc;
 use std::sync::Mutex;
 

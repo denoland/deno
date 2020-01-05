@@ -1,7 +1,7 @@
 # Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 [package]
-name = "deno_cli"
+name = "deno"
 version = "0.28.1"
 license = "MIT"
 authors = ["the Deno authors"]
@@ -11,7 +11,7 @@ repository = "https://github.com/denoland/deno"
 default-run = "deno"
 
 [lib]
-name = "deno_cli"
+name = "deno"
 path = "lib.rs"
 
 [[bin]]
@@ -22,7 +22,7 @@ path = "main.rs"
 deno_typescript = { path = "../deno_typescript", version = "0.28.1" }
 
 [dependencies]
-deno = { path = "../core", version = "0.28.1" }
+deno_core = { path = "../core", version = "0.28.1" }
 deno_typescript = { path = "../deno_typescript", version = "0.28.1" }
 
 ansi_term = "0.12.1"

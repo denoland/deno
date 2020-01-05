@@ -4,7 +4,7 @@ use crate::flags::DenoFlags;
 use ansi_term::Style;
 #[cfg(not(test))]
 use atty;
-use deno::ErrBox;
+use deno_core::ErrBox;
 use log;
 use std::collections::HashSet;
 use std::fmt;

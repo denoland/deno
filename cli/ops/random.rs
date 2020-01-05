@@ -2,7 +2,7 @@
 use super::dispatch_json::{JsonOp, Value};
 use crate::ops::json_op;
 use crate::state::ThreadSafeState;
-use deno::*;
+use deno_core::*;
 use rand::thread_rng;
 use rand::Rng;
 

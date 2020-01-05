@@ -6,7 +6,7 @@ use crate::ops::json_op;
 use crate::state::ThreadSafeState;
 use crate::version;
 use atty;
-use deno::*;
+use deno_core::*;
 use std::collections::HashMap;
 use std::env;
 use std::io::{Error, ErrorKind};

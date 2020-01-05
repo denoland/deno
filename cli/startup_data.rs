@@ -1,10 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 #[cfg(feature = "no-snapshot-init")]
-use deno::Script;
+use deno_core::Script;
 
 use crate::js::CLI_SNAPSHOT;
 use crate::js::COMPILER_SNAPSHOT;
-use deno::StartupData;
+use deno_core::StartupData;
 
 #[cfg(feature = "no-snapshot-init")]
 pub fn deno_isolate_init() -> StartupData<'static> {

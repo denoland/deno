@@ -8,7 +8,7 @@ use crate::ops::json_op;
 use crate::startup_data;
 use crate::state::ThreadSafeState;
 use crate::worker::Worker;
-use deno::*;
+use deno_core::*;
 use futures;
 use futures::future::FutureExt;
 use futures::future::TryFutureExt;

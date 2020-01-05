@@ -7,11 +7,11 @@
 use crate::deno_error::GetErrorKind;
 use crate::msg::ErrorKind;
 use byteorder::{LittleEndian, WriteBytesExt};
-use deno::Buf;
-use deno::CoreOp;
-use deno::ErrBox;
-use deno::Op;
-use deno::PinnedBuf;
+use deno_core::Buf;
+use deno_core::CoreOp;
+use deno_core::ErrBox;
+use deno_core::Op;
+use deno_core::PinnedBuf;
 use futures::future::FutureExt;
 use std::future::Future;
 use std::pin::Pin;

@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use deno::*;
+use deno_core::*;
 use futures::future::FutureExt;
 use futures::task::SpawnExt;
 pub use serde_derive::Deserialize;
