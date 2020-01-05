@@ -198,7 +198,7 @@ impl<L: Loader + Unpin> RecursiveLoad<L> {
   /// This future needs to take ownership of the isolate.
   pub fn get_future(
     self,
-    isolate: Arc<Mutex<Box<Isolate>>>,
+    isolate: Arc<Mutex<Isolate>>,
   ) -> impl Future<Output = Result<deno_mod, ErrBox>> {
     async move {
       let mut load = self;
@@ -619,7 +619,7 @@ mod tests {
 
   struct MockLoader {
     pub loads: Arc<Mutex<Vec<String>>>,
-    pub isolate: Arc<Mutex<Box<Isolate>>>,
+    pub isolate: Arc<Mutex<Isolate>>,
     pub modules: Arc<Mutex<Modules>>,
   }
 
