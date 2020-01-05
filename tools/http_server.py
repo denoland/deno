@@ -31,6 +31,26 @@ class QuietSimpleHTTPRequestHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
 
 class ContentTypeHandler(QuietSimpleHTTPRequestHandler):
     def do_GET(self):
+
+        # Check if there is a custom header configuration ending
+        # with ".header" before sending the file
+        maybe_header_file_path = "./" + self.path + ".header";
+        if os.path.exists(maybe_header_file_path):
+            self.protocol_version = 'HTTP/1.1'
+            self.send_response(200, 'OK')
+
+            file = open(maybe_header_file_path)
+            for line in file:
+                kv = line.split(": ")
+                self.send_header(kv[0].strip(), kv[1].strip())
+            file.close()
+            self.end_headers()
+
+            body = open("./" + self.path)
+            self.wfile.write(body.read())
+            body.close()
+            return
+
         if "multipart_form_data.txt" in self.path:
             self.protocol_version = 'HTTP/1.1'
             self.send_response(200, 'OK')
