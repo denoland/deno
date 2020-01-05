@@ -7,7 +7,7 @@ extern crate futures;
 #[macro_use]
 extern crate serde_json;
 extern crate clap;
-extern crate deno;
+extern crate deno_core;
 extern crate indexmap;
 #[cfg(unix)]
 extern crate nix;
