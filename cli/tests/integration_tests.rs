@@ -679,9 +679,9 @@ itest!(top_level_for_await_ts {
   output: "top_level_for_await.out",
 });
 
-itest!(_053_import_gzip {
-  args: "run --reload 053_import_gzip/main.ts",
-  output: "053_import_gzip.out",
+itest!(_053_import_compression {
+  args: "run --reload 053_import_compression/main.ts",
+  output: "053_import_compression.out",
   http_server: true,
 });
 
