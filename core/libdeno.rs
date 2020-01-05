@@ -397,9 +397,9 @@ impl DenoIsolate {
     );
 
     let is_shared_cross_origin = if message.is_shared_cross_origin() {
-      v8::new_true(s)
+      v8::Boolean::new(s, true)
     } else {
-      v8::new_false(s)
+      v8::Boolean::new(s, false)
     };
 
     json_obj.set(
@@ -409,9 +409,9 @@ impl DenoIsolate {
     );
 
     let is_opaque = if message.is_opaque() {
-      v8::new_true(s)
+      v8::Boolean::new(s, true)
     } else {
-      v8::new_false(s)
+      v8::Boolean::new(s, false)
     };
 
     json_obj.set(
@@ -460,9 +460,9 @@ impl DenoIsolate {
         );
 
         let is_eval = if frame.is_eval() {
-          v8::new_true(s)
+          v8::Boolean::new(s, true)
         } else {
-          v8::new_false(s)
+          v8::Boolean::new(s, false)
         };
         frame_obj.set(
           context,
@@ -471,9 +471,9 @@ impl DenoIsolate {
         );
 
         let is_constructor = if frame.is_constructor() {
-          v8::new_true(s)
+          v8::Boolean::new(s, true)
         } else {
-          v8::new_false(s)
+          v8::Boolean::new(s, false)
         };
         frame_obj.set(
           context,
@@ -482,9 +482,9 @@ impl DenoIsolate {
         );
 
         let is_wasm = if frame.is_wasm() {
-          v8::new_true(s)
+          v8::Boolean::new(s, true)
         } else {
-          v8::new_false(s)
+          v8::Boolean::new(s, false)
         };
         frame_obj.set(
           context,
@@ -535,12 +535,12 @@ fn script_origin<'a>(
 ) -> v8::ScriptOrigin<'a> {
   let resource_line_offset = v8::Integer::new(s, 0);
   let resource_column_offset = v8::Integer::new(s, 0);
-  let resource_is_shared_cross_origin = v8::new_false(s);
+  let resource_is_shared_cross_origin = v8::Boolean::new(s, false);
   let script_id = v8::Integer::new(s, 123);
   let source_map_url = v8::String::new(s, "source_map_url").unwrap();
-  let resource_is_opaque = v8::new_true(s);
-  let is_wasm = v8::new_false(s);
-  let is_module = v8::new_false(s);
+  let resource_is_opaque = v8::Boolean::new(s, true);
+  let is_wasm = v8::Boolean::new(s, false);
+  let is_module = v8::Boolean::new(s, false);
   v8::ScriptOrigin::new(
     resource_name.into(),
     resource_line_offset,
@@ -560,12 +560,12 @@ fn module_origin<'a>(
 ) -> v8::ScriptOrigin<'a> {
   let resource_line_offset = v8::Integer::new(s, 0);
   let resource_column_offset = v8::Integer::new(s, 0);
-  let resource_is_shared_cross_origin = v8::new_false(s);
+  let resource_is_shared_cross_origin = v8::Boolean::new(s, false);
   let script_id = v8::Integer::new(s, 123);
   let source_map_url = v8::String::new(s, "source_map_url").unwrap();
-  let resource_is_opaque = v8::new_true(s);
-  let is_wasm = v8::new_false(s);
-  let is_module = v8::new_true(s);
+  let resource_is_opaque = v8::Boolean::new(s, true);
+  let is_wasm = v8::Boolean::new(s, false);
+  let is_module = v8::Boolean::new(s, true);
   v8::ScriptOrigin::new(
     resource_name.into(),
     resource_line_offset,
@@ -649,9 +649,9 @@ extern "C" fn host_initialize_import_meta_object_callback(
   let info = deno_isolate.get_module_info(id).expect("Module not found");
 
   let main = if info.main {
-    v8::new_true(scope)
+    v8::Boolean::new(scope, true)
   } else {
-    v8::new_false(scope)
+    v8::Boolean::new(scope, false)
   };
 
   meta.create_data_property(
@@ -1171,13 +1171,13 @@ extern "C" fn eval_context(info: &v8::FunctionCallbackInfo) {
     errinfo_obj.set(
       context,
       v8::String::new(scope, "isCompileError").unwrap().into(),
-      v8::new_true(scope).into(),
+      v8::Boolean::new(scope, true).into(),
     );
 
     let is_native_error = if exception.is_native_error() {
-      v8::new_true(scope)
+      v8::Boolean::new(scope, true)
     } else {
-      v8::new_false(scope)
+      v8::Boolean::new(scope, false)
     };
 
     errinfo_obj.set(
@@ -1218,13 +1218,13 @@ extern "C" fn eval_context(info: &v8::FunctionCallbackInfo) {
     errinfo_obj.set(
       context,
       v8::String::new(scope, "isCompileError").unwrap().into(),
-      v8::new_false(scope).into(),
+      v8::Boolean::new(scope, false).into(),
     );
 
     let is_native_error = if exception.is_native_error() {
-      v8::new_true(scope)
+      v8::Boolean::new(scope, true)
     } else {
-      v8::new_false(scope)
+      v8::Boolean::new(scope, false)
     };
 
     errinfo_obj.set(
