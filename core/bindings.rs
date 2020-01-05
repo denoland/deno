@@ -3,8 +3,8 @@
 #![allow(mutable_transmutes)]
 #![allow(clippy::transmute_ptr_to_ptr)]
 
+use crate::isolate::Isolate;
 use crate::libdeno::deno_buf;
-use crate::libdeno::DenoIsolate;
 use crate::libdeno::PinnedBuf;
 
 use rusty_v8 as v8;
@@ -85,8 +85,8 @@ pub extern "C" fn host_import_module_dynamically_callback(
   let mut hs = v8::EscapableHandleScope::new(cbs.enter());
   let scope = hs.enter();
   let mut isolate = scope.isolate();
-  let deno_isolate: &mut DenoIsolate =
-    unsafe { &mut *(isolate.get_data(0) as *mut DenoIsolate) };
+  let deno_isolate: &mut Isolate =
+    unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
 
   // NOTE(bartlomieju): will crash for non-UTF-8 specifier
   let specifier_str = specifier
@@ -117,13 +117,7 @@ pub extern "C" fn host_import_module_dynamically_callback(
     .dyn_import_map_
     .insert(import_id, resolver_handle);
 
-  let cb = deno_isolate.dyn_import_cb_;
-  cb(
-    deno_isolate.core_isolate_,
-    &specifier_str,
-    &referrer_name_str,
-    import_id,
-  );
+  deno_isolate.dyn_import_cb(&specifier_str, &referrer_name_str, import_id);
 
   &mut *scope.escape(promise)
 }
@@ -137,8 +131,8 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
   let mut hs = v8::HandleScope::new(cbs.enter());
   let scope = hs.enter();
   let mut isolate = scope.isolate();
-  let deno_isolate: &mut DenoIsolate =
-    unsafe { &mut *(isolate.get_data(0) as *mut DenoIsolate) };
+  let deno_isolate: &mut Isolate =
+    unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
 
   let id = module.get_identity_hash();
   assert_ne!(id, 0);
@@ -164,8 +158,8 @@ pub extern "C" fn message_callback(
   let mut message: v8::Local<v8::Message> =
     unsafe { std::mem::transmute(message) };
   let isolate = message.get_isolate();
-  let deno_isolate: &mut DenoIsolate =
-    unsafe { &mut *(isolate.get_data(0) as *mut DenoIsolate) };
+  let deno_isolate: &mut Isolate =
+    unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
   let mut locker = v8::Locker::new(isolate);
   let mut hs = v8::HandleScope::new(&mut locker);
   let scope = hs.enter();
@@ -187,8 +181,8 @@ pub extern "C" fn promise_reject_callback(msg: v8::PromiseRejectMessage) {
   #[allow(mutable_transmutes)]
   let mut msg: v8::PromiseRejectMessage = unsafe { std::mem::transmute(msg) };
   let mut isolate = msg.isolate();
-  let deno_isolate: &mut DenoIsolate =
-    unsafe { &mut *(isolate.get_data(0) as *mut DenoIsolate) };
+  let deno_isolate: &mut Isolate =
+    unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
   let mut locker = v8::Locker::new(isolate);
   assert!(!deno_isolate.context_.is_empty());
   let mut hs = v8::HandleScope::new(&mut locker);
@@ -265,8 +259,8 @@ pub extern "C" fn recv(info: &v8::FunctionCallbackInfo) {
     unsafe { std::mem::transmute(info) };
   assert_eq!(info.length(), 1);
   let mut isolate = info.get_isolate();
-  let deno_isolate: &mut DenoIsolate =
-    unsafe { &mut *(isolate.get_data(0) as *mut DenoIsolate) };
+  let deno_isolate: &mut Isolate =
+    unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
   let mut locker = v8::Locker::new(&isolate);
   let mut hs = v8::HandleScope::new(&mut locker);
   let scope = hs.enter();
@@ -291,8 +285,8 @@ pub extern "C" fn send(info: &v8::FunctionCallbackInfo) {
   let mut hs = v8::HandleScope::new(info);
   let scope = hs.enter();
   let mut isolate = scope.isolate();
-  let deno_isolate: &mut DenoIsolate =
-    unsafe { &mut *(isolate.get_data(0) as *mut DenoIsolate) };
+  let deno_isolate: &mut Isolate =
+    unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
   assert!(!deno_isolate.context_.is_empty());
 
   let op_id = v8::Local::<v8::Uint32>::try_from(info.get_argument(0))
@@ -321,20 +315,13 @@ pub extern "C" fn send(info: &v8::FunctionCallbackInfo) {
   assert!(deno_isolate.current_args_.is_null());
   deno_isolate.current_args_ = info;
 
-  unsafe {
-    (deno_isolate.recv_cb_)(
-      deno_isolate.core_isolate_,
-      op_id,
-      control,
-      zero_copy,
-    );
-  }
+  deno_isolate.pre_dispatch(op_id, control, zero_copy);
 
   if deno_isolate.current_args_.is_null() {
     // This indicates that deno_repond() was called already.
   } else {
     // Asynchronous.
-    deno_isolate.current_args_ = null();
+    deno_isolate.current_args_ = std::ptr::null();
   }
 }
 
@@ -350,8 +337,8 @@ pub extern "C" fn eval_context(info: &v8::FunctionCallbackInfo) {
   let mut hs = v8::HandleScope::new(info);
   let scope = hs.enter();
   let mut isolate = scope.isolate();
-  let deno_isolate: &mut DenoIsolate =
-    unsafe { &mut *(isolate.get_data(0) as *mut DenoIsolate) };
+  let deno_isolate: &mut Isolate =
+    unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
   assert!(!deno_isolate.context_.is_empty());
   let mut context = deno_isolate.context_.get(scope).unwrap();
 
@@ -484,8 +471,8 @@ pub extern "C" fn error_to_json(info: &v8::FunctionCallbackInfo) {
   assert_eq!(info.length(), 1);
   // <Boilerplate>
   let mut isolate = info.get_isolate();
-  let deno_isolate: &mut DenoIsolate =
-    unsafe { &mut *(isolate.get_data(0) as *mut DenoIsolate) };
+  let deno_isolate: &mut Isolate =
+    unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
   let mut locker = v8::Locker::new(&isolate);
   assert!(!deno_isolate.context_.is_empty());
   let mut hs = v8::HandleScope::new(&mut locker);
@@ -508,8 +495,8 @@ pub extern "C" fn queue_microtask(info: &v8::FunctionCallbackInfo) {
   assert_eq!(info.length(), 1);
   let arg0 = info.get_argument(0);
   let mut isolate = info.get_isolate();
-  let deno_isolate: &mut DenoIsolate =
-    unsafe { &mut *(isolate.get_data(0) as *mut DenoIsolate) };
+  let deno_isolate: &mut Isolate =
+    unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
   let mut locker = v8::Locker::new(&isolate);
   let mut hs = v8::HandleScope::new(&mut locker);
   let scope = hs.enter();
@@ -537,8 +524,8 @@ pub extern "C" fn shared_getter(
     let mut hs = v8::EscapableHandleScope::new(info);
     let scope = hs.enter();
     let mut isolate = scope.isolate();
-    let deno_isolate: &mut DenoIsolate =
-      unsafe { &mut *(isolate.get_data(0) as *mut DenoIsolate) };
+    let deno_isolate: &mut Isolate =
+      unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
 
     if deno_isolate.shared_.data_ptr.is_null() {
       return;
@@ -566,4 +553,59 @@ pub extern "C" fn shared_getter(
 
   let rv = &mut info.get_return_value();
   rv.set(shared_ab.into());
+}
+
+pub fn module_resolve_callback(
+  context: v8::Local<v8::Context>,
+  specifier: v8::Local<v8::String>,
+  referrer: v8::Local<v8::Module>,
+) -> *mut v8::Module {
+  let mut cbs = v8::CallbackScope::new(context);
+  let cb_scope = cbs.enter();
+  let isolate = cb_scope.isolate();
+  let deno_isolate: &mut Isolate =
+    unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
+
+  let mut locker = v8::Locker::new(isolate);
+  let mut hs = v8::EscapableHandleScope::new(&mut locker);
+  let scope = hs.enter();
+
+  let referrer_id = referrer.get_identity_hash();
+  let referrer_info = deno_isolate
+    .get_module_info(referrer_id)
+    .expect("ModuleInfo not found");
+  let len_ = referrer.get_module_requests_length();
+
+  let specifier_str = specifier.to_rust_string_lossy(scope);
+
+  for i in 0..len_ {
+    let req = referrer.get_module_request(i);
+    let req_str = req.to_rust_string_lossy(scope);
+
+    if req_str == specifier_str {
+      let resolve_cb = deno_isolate.resolve_cb_.unwrap();
+      let c_str = CString::new(req_str.to_string()).unwrap();
+      let c_req_str: *const c_char = c_str.as_ptr() as *const c_char;
+      let id = unsafe {
+        resolve_cb(deno_isolate.resolve_context_, c_req_str, referrer_id)
+      };
+      let maybe_info = deno_isolate.get_module_info(id);
+
+      if maybe_info.is_none() {
+        let msg = format!(
+          "Cannot resolve module \"{}\" from \"{}\"",
+          req_str, referrer_info.name
+        );
+        let msg = v8::String::new(scope, &msg).unwrap();
+        isolate.throw_exception(msg.into());
+        break;
+      }
+
+      let child_mod =
+        maybe_info.unwrap().handle.get(scope).expect("Empty handle");
+      return &mut *scope.escape(child_mod);
+    }
+  }
+
+  std::ptr::null_mut()
 }
