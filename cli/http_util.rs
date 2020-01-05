@@ -7,11 +7,12 @@ use bytes::Bytes;
 use deno_core::ErrBox;
 use futures::future::FutureExt;
 use reqwest;
-use reqwest::header::HeaderMap;
+use reqwest::header::ACCEPT_ENCODING;
 use reqwest::header::CONTENT_ENCODING;
 use reqwest::header::CONTENT_TYPE;
 use reqwest::header::LOCATION;
 use reqwest::header::USER_AGENT;
+use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::redirect::Policy;
 use reqwest::Client;
 use reqwest::Response;
@@ -32,6 +33,7 @@ lazy_static! {
       USER_AGENT,
       format!("Deno/{}", version::DENO).parse().unwrap(),
     );
+    headers.insert(ACCEPT_ENCODING, HeaderValue::from_static("gzip, br"));
     Client::builder()
       .redirect(Policy::none())
       .default_headers(headers)
@@ -281,7 +283,8 @@ mod tests {
     let http_server_guard = crate::test_util::http_server();
     // Relies on external http server. See tools/http_server.py
     let url = Url::parse(
-      "http://127.0.0.1:4545/cli/tests/053_import_compression/brotli",
+      "http://127.0.0.1:3000",
+      //      "http://127.0.0.1:4545/cli/tests/053_import_compression/brotli",
     )
     .unwrap();
 
