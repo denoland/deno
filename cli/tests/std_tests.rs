@@ -6,7 +6,7 @@
 mod tests {
   extern crate lazy_static;
   extern crate tempfile;
-  use deno_cli::test_util::*;
+  use deno::test_util::*;
   use std::process::Command;
   use tempfile::TempDir;
 
