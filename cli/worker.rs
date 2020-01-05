@@ -2,7 +2,7 @@
 use crate::fmt_errors::JSError;
 use crate::ops;
 use crate::state::ThreadSafeState;
-use deno;
+use deno_core;
 use deno_core::Buf;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
