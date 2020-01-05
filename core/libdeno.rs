@@ -1416,18 +1416,6 @@ pub unsafe fn deno_new(config: deno_config) -> *mut DenoIsolate {
   Box::into_raw(d)
 }
 
-pub unsafe fn deno_delete(i: Box<DenoIsolate>) {
-  drop(i);
-}
-
-pub unsafe fn deno_last_exception(i: *mut DenoIsolate) -> Option<String> {
-  (*i).last_exception_.clone()
-}
-
-pub unsafe fn deno_clear_last_exception(i: &mut DenoIsolate) {
-  i.last_exception_ = None;
-}
-
 pub unsafe fn deno_check_promise_errors(i_mut: &mut DenoIsolate) {
   /*
   if (d->pending_promise_map_.size() > 0) {
@@ -1468,16 +1456,6 @@ pub unsafe fn deno_check_promise_errors(i_mut: &mut DenoIsolate) {
   }
 
   context.exit();
-}
-
-pub unsafe fn deno_lock(i_mut: &mut DenoIsolate) {
-  assert!(i_mut.locker_.is_none());
-  let mut locker = v8::Locker::new(i_mut.isolate_.as_ref().unwrap());
-  i_mut.locker_ = Some(locker);
-}
-
-pub unsafe fn deno_unlock(i_mut: &mut DenoIsolate) {
-  i_mut.locker_.take().unwrap();
 }
 
 pub unsafe fn deno_throw_exception(i_mut: &mut DenoIsolate, text: &str) {

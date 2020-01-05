@@ -402,9 +402,7 @@ impl Isolate {
         let js_error_create = &*self.js_error_create;
         if self.error_handler.is_some() {
           // We need to clear last exception to avoid double handling.
-          unsafe {
-            libdeno::deno_clear_last_exception(&mut self.libdeno_isolate)
-          };
+          self.libdeno_isolate.last_exception_ = None;
           let v8_exception = V8Exception::from_json(&json_str).unwrap();
           let js_error = js_error_create(v8_exception);
           let handler = self.error_handler.as_mut().unwrap();
