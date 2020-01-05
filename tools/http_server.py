@@ -34,7 +34,7 @@ class ContentTypeHandler(QuietSimpleHTTPRequestHandler):
 
         # Check if there is a custom header configuration ending
         # with ".header" before sending the file
-        maybe_header_file_path = "./" + self.path + ".header";
+        maybe_header_file_path = "./" + self.path + ".header"
         if os.path.exists(maybe_header_file_path):
             self.protocol_version = 'HTTP/1.1'
             self.send_response(200, 'OK')

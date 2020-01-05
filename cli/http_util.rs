@@ -33,6 +33,7 @@ lazy_static! {
       .redirect(Policy::none())
       .default_headers(headers)
       .use_rustls_tls()
+      .gzip(true)
       .build()
       .unwrap()
   };
@@ -219,6 +220,30 @@ mod tests {
       Ok(FetchOnceResult::Code(code, maybe_content_type)) => {
         assert!(!code.is_empty());
         assert_eq!(maybe_content_type, Some("application/json".to_string()));
+      }
+      _ => panic!(),
+    });
+
+    tokio_util::run(fut);
+    drop(http_server_guard);
+  }
+
+  #[test]
+  fn test_fetch_gzip() {
+    let http_server_guard = crate::test_util::http_server();
+    // Relies on external http server. See tools/http_server.py
+    let url =
+      Url::parse("http://127.0.0.1:4545/cli/tests/053_import_gzip/gziped")
+        .unwrap();
+
+    let fut = fetch_string_once(&url).map(|result| match result {
+      Ok(FetchOnceResult::Code(code, maybe_content_type)) => {
+        assert!(!code.is_empty());
+        assert_eq!(code, "console.log('gzip')");
+        assert_eq!(
+          maybe_content_type,
+          Some("application/javascript".to_string())
+        );
       }
       _ => panic!(),
     });
