@@ -10,6 +10,7 @@ extern crate rusty_v8;
 extern crate lazy_static;
 
 mod any_error;
+mod bindings;
 mod flags;
 mod isolate;
 mod js_errors;
