@@ -396,11 +396,8 @@ impl DenoIsolate {
       v8::Integer::new(s, message.get_end_column() as i32).into(),
     );
 
-    let is_shared_cross_origin = if message.is_shared_cross_origin() {
-      v8::Boolean::new(s, true)
-    } else {
-      v8::Boolean::new(s, false)
-    };
+    let is_shared_cross_origin =
+      v8::Boolean::new(s, message.is_shared_cross_origin());
 
     json_obj.set(
       context,
@@ -408,11 +405,7 @@ impl DenoIsolate {
       is_shared_cross_origin.into(),
     );
 
-    let is_opaque = if message.is_opaque() {
-      v8::Boolean::new(s, true)
-    } else {
-      v8::Boolean::new(s, false)
-    };
+    let is_opaque = v8::Boolean::new(s, message.is_opaque());
 
     json_obj.set(
       context,
@@ -459,37 +452,22 @@ impl DenoIsolate {
           script_name.into(),
         );
 
-        let is_eval = if frame.is_eval() {
-          v8::Boolean::new(s, true)
-        } else {
-          v8::Boolean::new(s, false)
-        };
         frame_obj.set(
           context,
           v8::String::new(s, "isEval").unwrap().into(),
-          is_eval.into(),
+          v8::Boolean::new(s, frame.is_eval()).into(),
         );
 
-        let is_constructor = if frame.is_constructor() {
-          v8::Boolean::new(s, true)
-        } else {
-          v8::Boolean::new(s, false)
-        };
         frame_obj.set(
           context,
           v8::String::new(s, "isConstructor").unwrap().into(),
-          is_constructor.into(),
+          v8::Boolean::new(s, frame.is_constructor()).into(),
         );
 
-        let is_wasm = if frame.is_wasm() {
-          v8::Boolean::new(s, true)
-        } else {
-          v8::Boolean::new(s, false)
-        };
         frame_obj.set(
           context,
           v8::String::new(s, "isWasm").unwrap().into(),
-          is_wasm.into(),
+          v8::Boolean::new(s, frame.is_wasm()).into(),
         );
       }
 
@@ -648,12 +626,6 @@ extern "C" fn host_initialize_import_meta_object_callback(
 
   let info = deno_isolate.get_module_info(id).expect("Module not found");
 
-  let main = if info.main {
-    v8::Boolean::new(scope, true)
-  } else {
-    v8::Boolean::new(scope, false)
-  };
-
   meta.create_data_property(
     context,
     v8::String::new(scope, "url").unwrap().into(),
@@ -662,7 +634,7 @@ extern "C" fn host_initialize_import_meta_object_callback(
   meta.create_data_property(
     context,
     v8::String::new(scope, "main").unwrap().into(),
-    main.into(),
+    v8::Boolean::new(scope, info.main).into(),
   );
 }
 
@@ -1174,16 +1146,10 @@ extern "C" fn eval_context(info: &v8::FunctionCallbackInfo) {
       v8::Boolean::new(scope, true).into(),
     );
 
-    let is_native_error = if exception.is_native_error() {
-      v8::Boolean::new(scope, true)
-    } else {
-      v8::Boolean::new(scope, false)
-    };
-
     errinfo_obj.set(
       context,
       v8::String::new(scope, "isNativeError").unwrap().into(),
-      is_native_error.into(),
+      v8::Boolean::new(scope, exception.is_native_error()).into(),
     );
 
     errinfo_obj.set(
