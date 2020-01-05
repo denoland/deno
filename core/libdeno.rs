@@ -1995,6 +1995,7 @@ pub unsafe fn deno_dyn_import_done(
   let mut resolver_handle = deno_isolate.dyn_import_map_.remove(&id).unwrap();
   /// Resolve.
   let mut resolver = resolver_handle.get(scope).unwrap();
+  resolver_handle.reset(scope);
 
   let maybe_info = deno_isolate.get_module_info(mod_id);
 
@@ -2014,22 +2015,13 @@ pub unsafe fn deno_dyn_import_done(
       isolate.exit();
       resolver.reject(context, e).unwrap();
     } else {
-      // FIXME: ugly hack, because you can't get Local<> from Global<>,
-      // reset the global and then use to value, I'm swapping
-      // last_exception_handle_ stored on DenoIsolate and destroying it manually
-      let mut last_exception_handle = v8::Global::new();
-      std::mem::swap(
-        &mut last_exception_handle,
-        &mut deno_isolate.last_exception_handle_,
-      );
+      let e = deno_isolate.last_exception_handle_.get(scope).unwrap();
+      deno_isolate.last_exception_handle_.reset(scope);
       deno_isolate.last_exception_.take();
-      let e = last_exception_handle.get(scope).unwrap();
       resolver.reject(context, e).unwrap();
-      last_exception_handle.reset(scope);
     }
   }
 
-  resolver_handle.reset(scope);
   isolate.run_microtasks();
 
   context.exit();
