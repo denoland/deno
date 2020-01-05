@@ -39,11 +39,11 @@ class ContentTypeHandler(QuietSimpleHTTPRequestHandler):
             self.protocol_version = 'HTTP/1.1'
             self.send_response(200, 'OK')
 
-            file = open(maybe_header_file_path)
-            for line in file:
+            f = open(maybe_header_file_path)
+            for line in f:
                 kv = line.split(": ")
                 self.send_header(kv[0].strip(), kv[1].strip())
-            file.close()
+            f.close()
             self.end_headers()
 
             body = open("./" + self.path)
