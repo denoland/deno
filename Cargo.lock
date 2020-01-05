@@ -141,7 +141,7 @@ dependencies = [
 
 [[package]]
 name = "cargo_gn"
-version = "0.0.13"
+version = "0.0.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
@@ -262,7 +262,7 @@ dependencies = [
  "libc 0.2.66 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "num_cpus 1.11.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "rusty_v8 0.0.20 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rusty_v8 0.0.22 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json 1.0.44 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio 0.2.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "url 2.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1292,11 +1292,11 @@ dependencies = [
 
 [[package]]
 name = "rusty_v8"
-version = "0.0.20"
+version = "0.0.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "bitflags 1.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "cargo_gn 0.0.13 (registry+https://github.com/rust-lang/crates.io-index)",
+ "cargo_gn 0.0.14 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.2.66 (registry+https://github.com/rust-lang/crates.io-index)",
  "which 3.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2117,7 +2117,7 @@ dependencies = [
 "checksum bytes 0.4.12 (registry+https://github.com/rust-lang/crates.io-index)" = "206fdffcfa2df7cbe15601ef46c813fce0965eb3286db6b56c583b814b51c81c"
 "checksum bytes 0.5.3 (registry+https://github.com/rust-lang/crates.io-index)" = "10004c15deb332055f7a4a208190aed362cf9a7c2f6ab70a305fba50e1105f38"
 "checksum c2-chacha 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)" = "214238caa1bf3a496ec3392968969cab8549f96ff30652c9e56885329315f6bb"
-"checksum cargo_gn 0.0.13 (registry+https://github.com/rust-lang/crates.io-index)" = "0a679c108cad6ee19a25f4dbaf1b4e1fadf303e707fa1e2d060b4c169faeb836"
+"checksum cargo_gn 0.0.14 (registry+https://github.com/rust-lang/crates.io-index)" = "0975a2f4793a949f1096e0ce92a37de6cb80f1e430f404e25c535e80c9066616"
 "checksum cc 1.0.48 (registry+https://github.com/rust-lang/crates.io-index)" = "f52a465a666ca3d838ebbf08b241383421412fe7ebb463527bba275526d89f76"
 "checksum cfg-if 0.1.10 (registry+https://github.com/rust-lang/crates.io-index)" = "4785bdd1c96b2a846b2bd7cc02e86b6b3dbf14e7e53446c4f54c92a361040822"
 "checksum clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)" = "5067f5bb2d80ef5d68b4c87db81601f0b75bca627bc2ef76b141d7b846a3c6d9"
@@ -2233,7 +2233,7 @@ dependencies = [
 "checksum rustc_version 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)" = "138e3e0acb6c9fb258b19b67cb8abd63c00679d2851805ea151465464fe9030a"
 "checksum rustls 0.16.0 (registry+https://github.com/rust-lang/crates.io-index)" = "b25a18b1bf7387f0145e7f8324e700805aade3842dd3db2e74e4cdeb4677c09e"
 "checksum rustls-native-certs 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "51ffebdbb48c14f84eba0b715197d673aff1dd22cc1007ca647e28483bbcc307"
-"checksum rusty_v8 0.0.20 (registry+https://github.com/rust-lang/crates.io-index)" = "a5672f7bba3c39d9571c37c7003afec532fc00eaacdbb7cc038924ac7654e4cd"
+"checksum rusty_v8 0.0.22 (registry+https://github.com/rust-lang/crates.io-index)" = "d9b53b6efcb82c192e78a9214fffa21f05eec88c90351d7df0fb8c607d2e0deb"
 "checksum rustyline 5.0.5 (registry+https://github.com/rust-lang/crates.io-index)" = "3ae156e2a68be20a3ae95574089b65c188d86291cd5421cc647222b8d1864ffb"
 "checksum ryu 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)" = "bfa8506c1de11c9c4e4c38863ccbe02a305c8188e85a05a784c9e11e1c3910c8"
 "checksum schannel 0.1.16 (registry+https://github.com/rust-lang/crates.io-index)" = "87f550b06b6cba9c8b8be3ee73f391990116bf527450d2556e9b9ce263b9a021"
