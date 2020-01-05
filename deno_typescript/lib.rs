@@ -62,7 +62,7 @@ where
 }
 
 pub struct TSIsolate {
-  isolate: Isolate,
+  isolate: Box<Isolate>,
   state: Arc<Mutex<TSState>>,
 }
 
@@ -220,7 +220,7 @@ pub fn mksnapshot_bundle_ts(
 }
 
 fn write_snapshot(
-  mut runtime_isolate: Isolate,
+  mut runtime_isolate: Box<Isolate>,
   bundle: &Path,
 ) -> Result<(), ErrBox> {
   println!("creating snapshot...");

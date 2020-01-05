@@ -276,7 +276,7 @@ static DENO_INIT: Once = Once::new();
 impl Isolate {
   /// startup_data defines the snapshot or script used at startup to initialize
   /// the isolate.
-  pub fn new(startup_data: StartupData, will_snapshot: bool) -> Self {
+  pub fn new(startup_data: StartupData, will_snapshot: bool) -> Box<Self> {
     DENO_INIT.call_once(|| {
       unsafe { libdeno::deno_init() };
     });
@@ -1441,7 +1441,7 @@ pub mod tests {
     OverflowResAsync,
   }
 
-  pub fn setup(mode: Mode) -> (Isolate, Arc<AtomicUsize>) {
+  pub fn setup(mode: Mode) -> (Box<Isolate>, Arc<AtomicUsize>) {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let dispatch_count_ = dispatch_count.clone();
 
