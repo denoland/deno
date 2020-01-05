@@ -283,8 +283,7 @@ mod tests {
     let http_server_guard = crate::test_util::http_server();
     // Relies on external http server. See tools/http_server.py
     let url = Url::parse(
-      "http://127.0.0.1:3000",
-      //      "http://127.0.0.1:4545/cli/tests/053_import_compression/brotli",
+      "http://127.0.0.1:4545/cli/tests/053_import_compression/brotli",
     )
     .unwrap();
 
