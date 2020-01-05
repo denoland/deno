@@ -221,6 +221,7 @@ pub struct Isolate {
   // TODO: These two fields were not yet ported from libdeno
   // void* global_import_buf_ptr_;
   // v8::Persistent<v8::ArrayBuffer> global_import_buf_;
+
   dyn_import: Option<Arc<DynImportFn>>,
   js_error_create: Arc<JSErrorCreateFn>,
   needs_init: bool,
@@ -1058,7 +1059,7 @@ impl Isolate {
     self.check_last_exception().map(|_| id)
   }
 
-  pub fn mod_get_imports(&self, id: deno_mod) -> Vec<String> {
+  pub fn mod_get_imports(&self, id: deno_mod) -> Vec<String> {D
     let info = self.get_module_info(id).unwrap();
     let len = info.import_specifiers.len();
     let mut out = Vec::new();

@@ -498,7 +498,6 @@ pub unsafe fn deno_run_microtasks(i: *mut isolate, core_isolate: *mut c_void) {
   deno_isolate.core_isolate_ = std::ptr::null_mut();
 }
 
-
 pub fn deno_snapshot_new(
   deno_isolate: &mut DenoIsolate,
 ) -> v8::OwnedStartupData {
