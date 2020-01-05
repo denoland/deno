@@ -4,7 +4,7 @@ use super::io::StreamResource;
 use crate::http_util::{get_client, HttpBody};
 use crate::ops::json_op;
 use crate::state::ThreadSafeState;
-use deno::*;
+use deno_core::*;
 use futures::future::FutureExt;
 use http::header::HeaderName;
 use http::header::HeaderValue;

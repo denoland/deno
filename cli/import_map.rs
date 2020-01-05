@@ -1,5 +1,5 @@
-use deno::ErrBox;
-use deno::ModuleSpecifier;
+use deno_core::ErrBox;
+use deno_core::ModuleSpecifier;
 use indexmap::IndexMap;
 use serde_json::Map;
 use serde_json::Value;

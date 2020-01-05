@@ -680,8 +680,8 @@ itest!(top_level_for_await_ts {
 });
 
 mod util {
-  use deno_cli::colors::strip_ansi_codes;
-  pub use deno_cli::test_util::*;
+  use deno::colors::strip_ansi_codes;
+  pub use deno::test_util::*;
   use os_pipe::pipe;
   use std::io::Read;
   use std::io::Write;

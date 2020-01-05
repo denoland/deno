@@ -3,9 +3,9 @@ use crate::diagnostics::Diagnostic;
 use crate::fmt_errors::JSError;
 use crate::import_map::ImportMapError;
 pub use crate::msg::ErrorKind;
-use deno::AnyError;
-use deno::ErrBox;
-use deno::ModuleResolutionError;
+use deno_core::AnyError;
+use deno_core::ErrBox;
+use deno_core::ModuleResolutionError;
 use dlopen::Error as DlopenError;
 use http::uri;
 use hyper;
@@ -355,9 +355,9 @@ mod tests {
   use crate::diagnostics::Diagnostic;
   use crate::diagnostics::DiagnosticCategory;
   use crate::diagnostics::DiagnosticItem;
-  use deno::ErrBox;
-  use deno::StackFrame;
-  use deno::V8Exception;
+  use deno_core::ErrBox;
+  use deno_core::StackFrame;
+  use deno_core::V8Exception;
 
   fn js_error() -> JSError {
     JSError::new(V8Exception {

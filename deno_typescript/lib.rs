@@ -1,17 +1,17 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-extern crate deno;
+extern crate deno_core;
 extern crate serde;
 extern crate serde_json;
 
 mod ops;
-use deno::js_check;
-pub use deno::v8_set_flags;
-use deno::CoreOp;
-use deno::ErrBox;
-use deno::Isolate;
-use deno::ModuleSpecifier;
-use deno::PinnedBuf;
-use deno::StartupData;
+use deno_core::js_check;
+pub use deno_core::v8_set_flags;
+use deno_core::CoreOp;
+use deno_core::ErrBox;
+use deno_core::Isolate;
+use deno_core::ModuleSpecifier;
+use deno_core::PinnedBuf;
+use deno_core::StartupData;
 pub use ops::EmitResult;
 use ops::WrittenFile;
 use std::fs;
@@ -306,7 +306,9 @@ pub fn get_asset(name: &str) -> Option<&'static str> {
 /// Sets the --trace-serializer V8 flag for debugging snapshots.
 pub fn trace_serializer() {
   let dummy = "foo".to_string();
-  let r =
-    deno::v8_set_flags(vec![dummy.clone(), "--trace-serializer".to_string()]);
+  let r = deno_core::v8_set_flags(vec![
+    dummy.clone(),
+    "--trace-serializer".to_string(),
+  ]);
   assert_eq!(r, vec![dummy]);
 }

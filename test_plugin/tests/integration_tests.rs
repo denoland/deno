@@ -1,4 +1,4 @@
-use deno_cli::test_util::*;
+use deno::test_util::*;
 use std::process::Command;
 
 fn deno_cmd() -> Command {

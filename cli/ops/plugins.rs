@@ -2,13 +2,17 @@ use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::fs as deno_fs;
 use crate::ops::json_op;
 use crate::state::ThreadSafeState;
-use deno::*;
+use deno_core::*;
 use dlopen::symbor::Library;
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::sync::Arc;
 
-pub fn init(i: &mut Isolate, s: &ThreadSafeState, r: Arc<deno::OpRegistry>) {
+pub fn init(
+  i: &mut Isolate,
+  s: &ThreadSafeState,
+  r: Arc<deno_core::OpRegistry>,
+) {
   let r_ = r;
   i.register_op(
     "open_plugin",
@@ -52,7 +56,7 @@ struct OpenPluginArgs {
 }
 
 pub fn op_open_plugin(
-  registry: &Arc<deno::OpRegistry>,
+  registry: &Arc<deno_core::OpRegistry>,
   state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,

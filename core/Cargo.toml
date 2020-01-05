@@ -1,7 +1,7 @@
 # Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 [package]
-name = "deno"
+name = "deno_core"
 version = "0.28.1"
 edition = "2018"
 description = "A secure JavaScript/TypeScript runtime built with V8, Rust, and Tokio"
@@ -21,9 +21,7 @@ libc = "0.2.65"
 log = "0.4.8"
 serde_json = "1.0.41"
 url = "2.1"
-
 rusty_v8 = "0.0.23"
-# rusty_v8 = { path = "../../rusty_v8" }
 
 [[example]]
 name = "deno_core_http_bench"

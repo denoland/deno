@@ -4,8 +4,8 @@ use crate::futures::future::try_join_all;
 use crate::msg;
 use crate::ops::json_op;
 use crate::state::ThreadSafeState;
-use deno::Loader;
-use deno::*;
+use deno_core::Loader;
+use deno_core::*;
 
 pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op("cache", s.core_op(json_op(s.stateful_op(op_cache))));
