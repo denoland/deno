@@ -103,11 +103,6 @@ fn repl_test() {
 }
 
 #[test]
-fn setup_test() {
-  util::run_python_script("tools/setup_test.py")
-}
-
-#[test]
 fn target_test() {
   util::run_python_script("tools/target_test.py")
 }

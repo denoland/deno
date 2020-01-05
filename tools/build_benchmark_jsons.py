@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import os
 from util import build_path
 from benchmark import read_json, write_json
-import os
 
 current_data_file = os.path.join(build_path(), "bench.json")
 all_data_file = "gh-pages/data.json"  # Includes all benchmark data.

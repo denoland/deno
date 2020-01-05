@@ -225,8 +225,7 @@ fn write_snapshot(
 ) -> Result<(), ErrBox> {
   println!("creating snapshot...");
   let snapshot = runtime_isolate.snapshot()?;
-  let snapshot_slice =
-    unsafe { std::slice::from_raw_parts(snapshot.data_ptr, snapshot.data_len) };
+  let snapshot_slice: &[u8] = &*snapshot;
   println!("snapshot bytes {}", snapshot_slice.len());
 
   let snapshot_path = bundle.with_extension("bin");

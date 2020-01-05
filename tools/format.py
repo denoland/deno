@@ -3,7 +3,7 @@
 import os
 import sys
 import argparse
-from third_party import get_buildtools_tool_path, google_env, python_env
+from third_party import python_env
 from util import git_ls_files, third_party_path, root_path, run
 
 
@@ -11,20 +11,12 @@ def main():
     os.chdir(root_path)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--cc", help="run clang-format", action="store_true")
-    parser.add_argument("--gn", help="run gn format", action="store_true")
     parser.add_argument("--js", help="run prettier", action="store_true")
     parser.add_argument("--py", help="run yapf", action="store_true")
     parser.add_argument("--rs", help="run rustfmt", action="store_true")
     args = parser.parse_args()
 
     did_fmt = False
-    if args.cc:
-        clang_format()
-        did_fmt = True
-    if args.gn:
-        gn_format()
-        did_fmt = True
     if args.js:
         prettier()
         did_fmt = True
@@ -36,27 +28,9 @@ def main():
         did_fmt = True
 
     if not did_fmt:
-        clang_format()
-        gn_format()
         prettier()
         yapf()
         rustfmt()
-
-
-def clang_format():
-    print "clang-format"
-    exe = get_buildtools_tool_path("clang-format")
-    source_files = git_ls_files(root_path, ["*.cc", "*.h"])
-    run([exe, "-i", "-style", "Google", "--"] + source_files,
-        env=google_env(),
-        quiet=True)
-
-
-def gn_format():
-    print "gn format"
-    exe = get_buildtools_tool_path("gn")
-    source_files = git_ls_files(root_path, ["*.gn", "*.gni"])
-    run([exe, "format", "--"] + source_files, env=google_env(), quiet=True)
 
 
 def prettier():
