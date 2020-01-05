@@ -221,7 +221,7 @@ pub struct Isolate {
   // TODO: These two fields were not yet ported from libdeno
   // void* global_import_buf_ptr_;
   // v8::Persistent<v8::ArrayBuffer> global_import_buf_;
-
+  shared_isolate_handle: Arc<Mutex<Option<*mut v8::Isolate>>>,
   dyn_import: Option<Arc<DynImportFn>>,
   js_error_create: Arc<JSErrorCreateFn>,
   needs_init: bool,
@@ -239,6 +239,9 @@ unsafe impl Send for Isolate {}
 
 impl Drop for Isolate {
   fn drop(&mut self) {
+    // remove shared_libdeno_isolate reference
+    *self.shared_isolate_handle.lock().unwrap() = None;
+
     // TODO Too much boiler plate.
     // <Boilerplate>
     let mut isolate = self.isolate_.take().unwrap();
@@ -391,7 +394,7 @@ impl Isolate {
       dyn_import_map_: HashMap::new(),
       resolve_context_: std::ptr::null_mut(),
       core_isolate_: std::ptr::null_mut(),
-
+      shared_isolate_handle: Arc::new(Mutex::new(None)),
       dyn_import: None,
       js_error_create: Arc::new(CoreJSError::from_v8_exception),
       shared,
@@ -412,6 +415,9 @@ impl Isolate {
       let core_isolate_ptr: *mut Self = unsafe { Box::into_raw(boxed_iso) };
       unsafe { isolate.set_data(0, core_isolate_ptr as *mut c_void) };
       boxed_iso = unsafe { Box::from_raw(core_isolate_ptr) };
+      let shared_handle_ptr = unsafe { &mut *isolate };
+      *boxed_iso.shared_isolate_handle.lock().unwrap() =
+        Some(shared_handle_ptr);
       boxed_iso.isolate_ = Some(isolate);
     }
 
@@ -776,10 +782,9 @@ impl Isolate {
 
   /// Get a thread safe handle on the isolate.
   pub fn shared_isolate_handle(&mut self) -> IsolateHandle {
-    todo!()
-    // IsolateHandle {
-    //   shared_isolate: Arc::new(Mutex::new(Some(self))),
-    // }
+    IsolateHandle {
+      shared_isolate: self.shared_isolate_handle.clone(),
+    }
   }
 
   /// Executes a bit of built-in JavaScript to provide Deno.sharedQueue.
@@ -1059,7 +1064,7 @@ impl Isolate {
     self.check_last_exception().map(|_| id)
   }
 
-  pub fn mod_get_imports(&self, id: deno_mod) -> Vec<String> {D
+  pub fn mod_get_imports(&self, id: deno_mod) -> Vec<String> {
     let info = self.get_module_info(id).unwrap();
     let len = info.import_specifiers.len();
     let mut out = Vec::new();
@@ -1415,7 +1420,7 @@ impl Future for Isolate {
 /// IsolateHandle is a thread safe handle on an Isolate. It exposed thread safe V8 functions.
 #[derive(Clone)]
 pub struct IsolateHandle {
-  shared_isolate: Arc<Mutex<Option<Isolate>>>,
+  shared_isolate: Arc<Mutex<Option<*mut v8::Isolate>>>,
 }
 
 unsafe impl Send for IsolateHandle {}
@@ -1425,11 +1430,10 @@ impl IsolateHandle {
   /// After terminating execution it is probably not wise to continue using
   /// the isolate.
   pub fn terminate_execution(&self) {
-    todo!();
-    // if let Some(isolate) = *self.shared_isolate.lock().unwrap() {
-    // let v8_isolate = isolate.isolate_.as_ref().unwrap();
-    // v8_isolate.terminate_execution();
-    // }
+    if let Some(isolate) = *self.shared_isolate.lock().unwrap() {
+      let isolate = unsafe { &mut *isolate };
+      isolate.terminate_execution();
+    }
   }
 }
 
@@ -1869,7 +1873,6 @@ pub mod tests {
     })
   }
 
-  #[ignore]
   #[test]
   fn terminate_execution() {
     let (tx, rx) = std::sync::mpsc::channel::<bool>();
@@ -1928,7 +1931,6 @@ pub mod tests {
     t2.join().unwrap();
   }
 
-  #[ignore]
   #[test]
   fn dangling_shared_isolate() {
     let shared = {
