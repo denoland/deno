@@ -15,12 +15,12 @@ path = "lib.rs"
 
 [dependencies]
 downcast-rs = "1.1.1"
-futures = { version = "0.3", features = [ "thread-pool", "compat" ] }
+futures = { version = "0.3.1", features = [ "thread-pool", "compat" ] }
 lazy_static = "1.4.0"
-libc = "0.2.65"
+libc = "0.2.66"
 log = "0.4.8"
-serde_json = "1.0.41"
-url = "2.1"
+serde_json = "1.0.44"
+url = "2.1.0"
 rusty_v8 = "0.0.23"
 
 [[example]]
