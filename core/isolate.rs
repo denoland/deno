@@ -6,6 +6,8 @@
 // asynchronous module loading.
 
 #![allow(unused)]
+#![allow(mutable_transmutes)]
+#![allow(clippy::transmute_ptr_to_ptr)]
 
 use crate::bindings;
 
@@ -198,6 +200,7 @@ pub struct Isolate {
   pub context_: v8::Global<v8::Context>,
   mods_: HashMap<deno_mod, ModuleInfo>,
   mods_by_name_: HashMap<String, deno_mod>,
+  locker_: Option<v8::Locker>,
   pub shared_: deno_buf,
   pub shared_ab_: v8::Global<v8::SharedArrayBuffer>,
   pub resolve_cb_: Option<deno_resolve_cb>,
@@ -212,10 +215,13 @@ pub struct Isolate {
   pub pending_promise_map_: HashMap<i32, v8::Global<v8::Value>>,
   // Used in deno_mod_instantiate
   pub resolve_context_: *mut c_void,
+  // Used in deno_mod_evaluate
+  pub core_isolate_: *mut c_void,
 
   // TODO: These two fields were not yet ported from libdeno
   // void* global_import_buf_ptr_;
   // v8::Persistent<v8::ArrayBuffer> global_import_buf_;
+
   dyn_import: Option<Arc<DynImportFn>>,
   js_error_create: Arc<JSErrorCreateFn>,
   needs_init: bool,
@@ -254,6 +260,9 @@ impl Drop for Isolate {
       for (key, handle) in self.pending_promise_map_.iter_mut() {
         handle.reset(scope);
       }
+    }
+    if let Some(locker_) = self.locker_.take() {
+      drop(locker_);
     }
     if let Some(creator) = self.snapshot_creator_.take() {
       // TODO(ry) V8 has a strange assert which prevents a SnapshotCreator from
@@ -369,6 +378,7 @@ impl Isolate {
       mods_: HashMap::new(),
       mods_by_name_: HashMap::new(),
       pending_promise_map_: HashMap::new(),
+      locker_: None,
       shared_: shared.as_deno_buf(),
       shared_ab_: v8::Global::<v8::SharedArrayBuffer>::new(),
       resolve_cb_: Some(Isolate::resolve_cb),
@@ -380,6 +390,8 @@ impl Isolate {
       next_dyn_import_id_: 0,
       dyn_import_map_: HashMap::new(),
       resolve_context_: std::ptr::null_mut(),
+      core_isolate_: std::ptr::null_mut(),
+
       dyn_import: None,
       js_error_create: Arc::new(CoreJSError::from_v8_exception),
       shared,
@@ -393,6 +405,8 @@ impl Isolate {
       error_handler: None,
     };
 
+    // TODO: do it later
+    // unsafe { isolate.set_data(0, self_ptr as *mut c_void) };
     let mut boxed_iso = Box::new(core_isolate);
     {
       let core_isolate_ptr: *mut Self = unsafe { Box::into_raw(boxed_iso) };
@@ -518,10 +532,6 @@ impl Isolate {
     let json_str = self.encode_exception_as_json(s, context, exception);
     self.last_exception_ = Some(json_str);
     self.last_exception_handle_.set(s, exception);
-  }
-
-  pub fn terminate_execution(&mut self) {
-    self.isolate_.as_mut().unwrap().terminate_execution();
   }
 
   pub fn encode_exception_as_json<'a>(
@@ -762,6 +772,14 @@ impl Isolate {
     F: Fn(V8Exception) -> ErrBox + 'static,
   {
     self.js_error_create = Arc::new(f);
+  }
+
+  /// Get a thread safe handle on the isolate.
+  pub fn shared_isolate_handle(&mut self) -> IsolateHandle {
+    todo!()
+    // IsolateHandle {
+    //   shared_isolate: Arc::new(Mutex::new(Some(self))),
+    // }
   }
 
   /// Executes a bit of built-in JavaScript to provide Deno.sharedQueue.
@@ -1041,7 +1059,7 @@ impl Isolate {
     self.check_last_exception().map(|_| id)
   }
 
-  pub fn mod_get_imports(&self, id: deno_mod) -> Vec<String> {
+  pub fn mod_get_imports(&self, id: deno_mod) -> Vec<String> {D
     let info = self.get_module_info(id).unwrap();
     let len = info.import_specifiers.len();
     let mut out = Vec::new();
@@ -1391,6 +1409,27 @@ impl Future for Isolate {
       }
       Poll::Pending
     }
+  }
+}
+
+/// IsolateHandle is a thread safe handle on an Isolate. It exposed thread safe V8 functions.
+#[derive(Clone)]
+pub struct IsolateHandle {
+  shared_isolate: Arc<Mutex<Option<Isolate>>>,
+}
+
+unsafe impl Send for IsolateHandle {}
+
+impl IsolateHandle {
+  /// Terminate the execution of any currently running javascript.
+  /// After terminating execution it is probably not wise to continue using
+  /// the isolate.
+  pub fn terminate_execution(&self) {
+    todo!();
+    // if let Some(isolate) = *self.shared_isolate.lock().unwrap() {
+    // let v8_isolate = isolate.isolate_.as_ref().unwrap();
+    // v8_isolate.terminate_execution();
+    // }
   }
 }
 
@@ -1830,24 +1869,21 @@ pub mod tests {
     })
   }
 
+  #[ignore]
   #[test]
   fn terminate_execution() {
     let (tx, rx) = std::sync::mpsc::channel::<bool>();
     let tx_clone = tx.clone();
 
     let (mut isolate, _dispatch_count) = setup(Mode::Async);
-    let shared_isolate = Arc::new(Mutex::new(isolate));
-    let shared_1 = shared_isolate.clone();
+    let shared = isolate.shared_isolate_handle();
 
     let t1 = std::thread::spawn(move || {
       // allow deno to boot and run
       std::thread::sleep(std::time::Duration::from_millis(100));
 
       // terminate execution
-      {
-        let mut isolate = shared_1.lock().unwrap();
-        isolate.terminate_execution();
-      }
+      shared.terminate_execution();
 
       // allow shutdown
       std::thread::sleep(std::time::Duration::from_millis(200));
@@ -1858,16 +1894,13 @@ pub mod tests {
 
     let t2 = std::thread::spawn(move || {
       // run an infinite loop
-      let res = {
-        let mut isolate = shared_isolate.lock().unwrap();
-        isolate.execute(
-          "infinite_loop.js",
-          r#"
-            let i = 0;
-            while (true) { i++; }
-          "#,
-        )
-      };
+      let res = isolate.execute(
+        "infinite_loop.js",
+        r#"
+          let i = 0;
+          while (true) { i++; }
+        "#,
+      );
 
       // execute() terminated, which means terminate_execution() was successful.
       tx.send(true).ok();
@@ -1879,10 +1912,7 @@ pub mod tests {
       }
 
       // make sure the isolate is still unusable
-      let res = {
-        let mut isolate = shared_isolate.lock().unwrap();
-        isolate.execute("simple.js", "1+1;")
-      };
+      let res = isolate.execute("simple.js", "1+1;");
       if let Err(e) = res {
         assert_eq!(e.to_string(), "Uncaught Error: execution terminated");
       } else {
@@ -1896,6 +1926,19 @@ pub mod tests {
 
     t1.join().unwrap();
     t2.join().unwrap();
+  }
+
+  #[ignore]
+  #[test]
+  fn dangling_shared_isolate() {
+    let shared = {
+      // isolate is dropped at the end of this block
+      let (mut isolate, _dispatch_count) = setup(Mode::Async);
+      isolate.shared_isolate_handle()
+    };
+
+    // this should not SEGFAULT
+    shared.terminate_execution();
   }
 
   #[test]
