@@ -1,5 +1,5 @@
-extern crate deno_cli;
+extern crate deno;
 
 fn main() {
-  deno_cli::main();
+  deno::main();
 }
