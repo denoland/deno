@@ -34,35 +34,6 @@ struct ModuleInfo {
   import_specifiers: Vec<String>,
 }
 
-#[repr(C)]
-struct UserDataScope {
-  deno_: *mut DenoIsolate,
-  prev_data_: *mut c_void,
-  data_: *mut c_void,
-}
-
-impl UserDataScope {
-  pub fn new(deno_ptr: *mut DenoIsolate, data: *mut c_void) -> Self {
-    let mut deno = unsafe { &mut (*deno_ptr) };
-    assert!(deno.user_data_.is_null() || deno.user_data_ == data);
-    let s = Self {
-      deno_: deno_ptr,
-      data_: data,
-      prev_data_: deno.user_data_,
-    };
-    deno.user_data_ = data;
-    s
-  }
-}
-
-impl Drop for UserDataScope {
-  fn drop(&mut self) {
-    let mut deno = unsafe { &mut (*self.deno_) };
-    assert!(deno.user_data_ == self.data_);
-    deno.user_data_ = self.prev_data_;
-  }
-}
-
 pub struct DenoIsolate {
   isolate_: Option<v8::OwnedIsolate>,
   last_exception_: Option<String>,
@@ -75,7 +46,6 @@ pub struct DenoIsolate {
   shared_ab_: v8::Global<v8::SharedArrayBuffer>,
   resolve_cb_: Option<deno_resolve_cb>,
   recv_: v8::Global<v8::Function>,
-  user_data_: *mut c_void,
   current_args_: *const v8::FunctionCallbackInfo,
   recv_cb_: deno_recv_cb,
   snapshot_creator_: Option<v8::SnapshotCreator>,
@@ -85,6 +55,10 @@ pub struct DenoIsolate {
   dyn_import_cb_: deno_dyn_import_cb,
   dyn_import_map_: HashMap<deno_dyn_import_id, v8::Global<v8::PromiseResolver>>,
   pending_promise_map_: HashMap<i32, v8::Global<v8::Value>>,
+  // Used in deno_mod_instantiate
+  resolve_context_: *mut c_void,
+  // Used in deno_mod_evaluate
+  core_isolate_: *mut c_void,
   /*
   void* global_import_buf_ptr_;
   v8::Persistent<v8::ArrayBuffer> global_import_buf_;
@@ -149,7 +123,6 @@ impl DenoIsolate {
       shared_ab_: v8::Global::<v8::SharedArrayBuffer>::new(),
       resolve_cb_: None,
       recv_: v8::Global::<v8::Function>::new(),
-      user_data_: std::ptr::null_mut(),
       current_args_: std::ptr::null(),
       recv_cb_: config.recv_cb,
       snapshot_creator_: None,
@@ -158,6 +131,8 @@ impl DenoIsolate {
       next_dyn_import_id_: 0,
       dyn_import_cb_: config.dyn_import_cb,
       dyn_import_map_: HashMap::new(),
+      resolve_context_: std::ptr::null_mut(),
+      core_isolate_: std::ptr::null_mut(),
     }
   }
 
@@ -600,7 +575,7 @@ extern "C" fn host_import_module_dynamically_callback(
 
   let cb = deno_isolate.dyn_import_cb_;
   cb(
-    deno_isolate.user_data_,
+    deno_isolate.core_isolate_,
     &specifier_str,
     &referrer_name_str,
     import_id,
@@ -869,7 +844,7 @@ pub type deno_dyn_import_id = i32;
 
 #[allow(non_camel_case_types)]
 type deno_resolve_cb = unsafe extern "C" fn(
-  user_data: *mut c_void,
+  resolve_context: *mut c_void,
   specifier: *const c_char,
   referrer: deno_mod,
 ) -> deno_mod;
@@ -1075,7 +1050,12 @@ extern "C" fn send(info: &v8::FunctionCallbackInfo) {
   deno_isolate.current_args_ = info;
 
   unsafe {
-    (deno_isolate.recv_cb_)(deno_isolate.user_data_, op_id, control, zero_copy);
+    (deno_isolate.recv_cb_)(
+      deno_isolate.core_isolate_,
+      op_id,
+      control,
+      zero_copy,
+    );
   }
 
   if deno_isolate.current_args_.is_null() {
@@ -1572,7 +1552,7 @@ pub unsafe fn deno_import_buf<'sc>(
 
 pub unsafe fn deno_respond(
   i: *mut isolate,
-  user_data: *const c_void,
+  core_isolate: *const c_void,
   op_id: OpId,
   buf: deno_buf,
 ) {
@@ -1644,8 +1624,9 @@ pub unsafe fn deno_respond(
   }
   */
 
-  let user_data: *mut c_void = unsafe { std::mem::transmute(user_data) };
-  let user_scope = UserDataScope::new(deno_isolate, user_data);
+  let core_isolate: *mut c_void = unsafe { std::mem::transmute(core_isolate) };
+  deno_isolate.core_isolate_ = core_isolate;
+
   let isolate = deno_isolate.isolate_.as_ref().unwrap();
   // println!("deno_execute -> Isolate ptr {:?}", isolate);
   let mut locker = v8::Locker::new(isolate);
@@ -1688,16 +1669,17 @@ pub unsafe fn deno_respond(
     deno_isolate.handle_exception(scope, context, tc.exception().unwrap());
   }
   context.exit();
+  deno_isolate.core_isolate_ = std::ptr::null_mut();
 }
 
 pub unsafe fn deno_execute(
   i: *mut DenoIsolate,
-  user_data: *mut c_void,
+  core_isolate: *mut c_void,
   js_filename: &str,
   js_source: &str,
 ) {
   let i_mut: &mut DenoIsolate = unsafe { &mut *i };
-  let _user_data_scope = UserDataScope::new(i, user_data);
+  i_mut.core_isolate_ = core_isolate;
   let isolate = i_mut.isolate_.as_ref().unwrap();
   // println!("deno_execute -> Isolate ptr {:?}", isolate);
   let mut locker = v8::Locker::new(isolate);
@@ -1710,6 +1692,7 @@ pub unsafe fn deno_execute(
   i_mut.execute(scope, context, js_filename, js_source);
 
   context.exit();
+  i_mut.core_isolate_ = std::ptr::null_mut();
   /*
   auto* d = deno::unwrap(d_);
   deno::UserDataScope user_data_scope(d, user_data);
@@ -1734,7 +1717,7 @@ pub unsafe fn deno_terminate_execution(i: *mut DenoIsolate) {
 }
 
 #[allow(dead_code)]
-pub unsafe fn deno_run_microtasks(i: *mut isolate, user_data: *mut c_void) {
+pub unsafe fn deno_run_microtasks(i: *mut isolate, core_isolate: *mut c_void) {
   /*
   deno::DenoIsolate* d = reinterpret_cast<deno::DenoIsolate*>(d_);
   deno::UserDataScope user_data_scope(d, user_data);
@@ -1743,12 +1726,13 @@ pub unsafe fn deno_run_microtasks(i: *mut isolate, user_data: *mut c_void) {
   d->isolate_->RunMicrotasks();
   */
   let deno_isolate: &mut DenoIsolate = unsafe { &mut *i };
-  let user_scope = UserDataScope::new(deno_isolate, user_data);
+  deno_isolate.core_isolate_ = core_isolate;
   let isolate = deno_isolate.isolate_.as_mut().unwrap();
   let mut locker = v8::Locker::new(isolate);
   isolate.enter();
   isolate.run_microtasks();
   isolate.exit();
+  deno_isolate.core_isolate_ = std::ptr::null_mut();
 }
 
 // Modules
@@ -1813,8 +1797,9 @@ fn resolve_callback(
       let resolve_cb = deno_isolate.resolve_cb_.unwrap();
       let c_str = CString::new(req_str.to_string()).unwrap();
       let c_req_str: *const c_char = c_str.as_ptr() as *const c_char;
-      let id =
-        unsafe { resolve_cb(deno_isolate.user_data_, c_req_str, referrer_id) };
+      let id = unsafe {
+        resolve_cb(deno_isolate.resolve_context_, c_req_str, referrer_id)
+      };
       let maybe_info = deno_isolate.get_module_info(id);
 
       if maybe_info.is_none() {
@@ -1838,12 +1823,12 @@ fn resolve_callback(
 
 pub unsafe fn deno_mod_instantiate(
   i: *mut DenoIsolate,
-  user_data: *mut c_void,
+  resolve_context: *mut c_void,
   id: deno_mod,
   resolve_cb: deno_resolve_cb,
 ) {
   let i_mut: &mut DenoIsolate = unsafe { &mut *i };
-  let user_scope = UserDataScope::new(i_mut, user_data);
+  i_mut.resolve_context_ = resolve_context;
   let isolate = i_mut.isolate_.as_ref().unwrap();
   let mut locker = v8::Locker::new(isolate);
   let mut hs = v8::HandleScope::new(&mut locker);
@@ -1879,16 +1864,17 @@ pub unsafe fn deno_mod_instantiate(
   }
 
   context.exit();
+  i_mut.resolve_context_ = std::ptr::null_mut();
 }
 
 pub unsafe fn deno_mod_evaluate(
   i: *mut DenoIsolate,
-  user_data: *const c_void,
+  core_isolate: *const c_void,
   id: deno_mod,
 ) {
   let deno_isolate: &mut DenoIsolate = unsafe { &mut *i };
-  let user_data: *mut c_void = unsafe { std::mem::transmute(user_data) };
-  let user_scope = UserDataScope::new(deno_isolate, user_data);
+  let core_isolate: *mut c_void = unsafe { std::mem::transmute(core_isolate) };
+  deno_isolate.core_isolate_ = core_isolate;
   let isolate = deno_isolate.isolate_.as_ref().unwrap();
   let mut locker = v8::Locker::new(isolate);
   let mut hs = v8::HandleScope::new(&mut locker);
@@ -1929,12 +1915,13 @@ pub unsafe fn deno_mod_evaluate(
   };
 
   context.exit();
+  deno_isolate.core_isolate_ = std::ptr::null_mut();
 }
 
 /// Call exactly once for every deno_dyn_import_cb.
 pub unsafe fn deno_dyn_import_done(
   i: *mut DenoIsolate,
-  user_data: *const c_void,
+  core_isolate: *const c_void,
   id: deno_dyn_import_id,
   mod_id: deno_mod,
   error_str: Option<String>,
@@ -1946,8 +1933,8 @@ pub unsafe fn deno_dyn_import_done(
       || (mod_id == 0 && !deno_isolate.last_exception_handle_.is_empty())
   );
 
-  let user_data: *mut c_void = unsafe { std::mem::transmute(user_data) };
-  let user_scope = UserDataScope::new(deno_isolate, user_data);
+  let core_isolate: *mut c_void = unsafe { std::mem::transmute(core_isolate) };
+  deno_isolate.core_isolate_ = core_isolate;
 
   let isolate = deno_isolate.isolate_.as_ref().unwrap();
   let mut locker = v8::Locker::new(isolate);
@@ -1991,6 +1978,7 @@ pub unsafe fn deno_dyn_import_done(
   isolate.run_microtasks();
 
   context.exit();
+  deno_isolate.core_isolate_ = std::ptr::null_mut();
 }
 
 pub fn deno_snapshot_new(i: *mut DenoIsolate) -> v8::OwnedStartupData {
