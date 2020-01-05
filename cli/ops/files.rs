@@ -7,7 +7,7 @@ use crate::deno_error::ErrorKind;
 use crate::fs as deno_fs;
 use crate::ops::json_op;
 use crate::state::ThreadSafeState;
-use deno::*;
+use deno_core::*;
 use futures::future::FutureExt;
 use std;
 use std::convert::From;

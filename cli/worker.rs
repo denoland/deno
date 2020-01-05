@@ -2,12 +2,12 @@
 use crate::fmt_errors::JSError;
 use crate::ops;
 use crate::state::ThreadSafeState;
-use deno;
-use deno::Buf;
-use deno::ErrBox;
-use deno::ModuleSpecifier;
-use deno::RecursiveLoad;
-use deno::StartupData;
+use deno_core;
+use deno_core::Buf;
+use deno_core::ErrBox;
+use deno_core::ModuleSpecifier;
+use deno_core::RecursiveLoad;
+use deno_core::StartupData;
 use futures::channel::mpsc;
 use futures::future::FutureExt;
 use futures::future::TryFutureExt;
@@ -30,12 +30,12 @@ pub struct WorkerChannels {
   pub receiver: mpsc::Receiver<Buf>,
 }
 
-/// Wraps deno::Isolate to provide source maps, ops for the CLI, and
+/// Wraps deno_core::Isolate to provide source maps, ops for the CLI, and
 /// high-level module loading.
 #[derive(Clone)]
 pub struct Worker {
   pub name: String,
-  isolate: Arc<Mutex<deno::Isolate>>,
+  isolate: Arc<Mutex<deno_core::Isolate>>,
   pub state: ThreadSafeState,
   external_channels: Arc<Mutex<WorkerChannels>>,
 }
@@ -47,7 +47,8 @@ impl Worker {
     state: ThreadSafeState,
     external_channels: WorkerChannels,
   ) -> Self {
-    let isolate = Arc::new(Mutex::new(deno::Isolate::new(startup_data, false)));
+    let isolate =
+      Arc::new(Mutex::new(deno_core::Isolate::new(startup_data, false)));
     {
       let mut i = isolate.lock().unwrap();
       let op_registry = i.op_registry.clone();

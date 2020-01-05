@@ -3,7 +3,7 @@ use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::deno_error::type_error;
 use crate::ops::json_op;
 use crate::state::ThreadSafeState;
-use deno::*;
+use deno_core::*;
 
 pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op(

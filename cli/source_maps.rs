@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-//! This mod provides functions to remap a deno::V8Exception based on a source map
-use deno::StackFrame;
-use deno::V8Exception;
+//! This mod provides functions to remap a deno_core::V8Exception based on a source map
+use deno_core::StackFrame;
+use deno_core::V8Exception;
 use serde_json;
 use source_map_mappings::parse_mappings;
 use source_map_mappings::Bias;

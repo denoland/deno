@@ -28,9 +28,11 @@ pub fn get_asset(name: &str) -> Option<&'static str> {
 
 #[test]
 fn cli_snapshot() {
-  let mut isolate =
-    deno::Isolate::new(deno::StartupData::Snapshot(CLI_SNAPSHOT), false);
-  deno::js_check(isolate.execute(
+  let mut isolate = deno_core::Isolate::new(
+    deno_core::StartupData::Snapshot(CLI_SNAPSHOT),
+    false,
+  );
+  deno_core::js_check(isolate.execute(
     "<anon>",
     r#"
       if (!window) {
@@ -43,9 +45,11 @@ fn cli_snapshot() {
 
 #[test]
 fn compiler_snapshot() {
-  let mut isolate =
-    deno::Isolate::new(deno::StartupData::Snapshot(COMPILER_SNAPSHOT), false);
-  deno::js_check(isolate.execute(
+  let mut isolate = deno_core::Isolate::new(
+    deno_core::StartupData::Snapshot(COMPILER_SNAPSHOT),
+    false,
+  );
+  deno_core::js_check(isolate.execute(
     "<anon>",
     r#"
       if (!compilerMain) {
