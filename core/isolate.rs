@@ -164,8 +164,8 @@ type IsolateErrorHandleFn = dyn FnMut(ErrBox) -> Result<(), ErrBox>;
 /// by implementing dispatcher function that takes control buffer and optional zero copy buffer
 /// as arguments. An async Op corresponds exactly to a Promise in JavaScript.
 pub struct Isolate {
-  libdeno_isolate: *mut libdeno::isolate,
-  shared_libdeno_isolate: Arc<Mutex<Option<*mut libdeno::isolate>>>,
+  libdeno_isolate: Box<libdeno::DenoIsolate>,
+  shared_libdeno_isolate: Arc<Mutex<Option<*mut libdeno::DenoIsolate>>>,
   dyn_import: Option<Arc<DynImportFn>>,
   js_error_create: Arc<JSErrorCreateFn>,
   needs_init: bool,
@@ -185,8 +185,6 @@ impl Drop for Isolate {
   fn drop(&mut self) {
     // remove shared_libdeno_isolate reference
     *self.shared_libdeno_isolate.lock().unwrap() = None;
-
-    unsafe { libdeno::deno_delete(self.libdeno_isolate) }
   }
 }
 
@@ -229,10 +227,12 @@ impl Isolate {
     };
 
     let libdeno_isolate = unsafe { libdeno::deno_new(libdeno_config) };
+    let shared_libdeno_isolate = Arc::new(Mutex::new(Some(libdeno_isolate)));
+    let libdeno_isolate = unsafe { Box::from_raw(libdeno_isolate) };
 
     Self {
       libdeno_isolate,
-      shared_libdeno_isolate: Arc::new(Mutex::new(Some(libdeno_isolate))),
+      shared_libdeno_isolate,
       dyn_import: None,
       js_error_create: Arc::new(CoreJSError::from_v8_exception),
       shared,
@@ -388,27 +388,21 @@ impl Isolate {
     js_source: &str,
   ) -> Result<(), ErrBox> {
     self.shared_init();
-    unsafe {
-      libdeno::deno_execute(
-        self.libdeno_isolate,
-        self as *mut _ as *mut c_void,
-        js_filename,
-        js_source,
-      )
-    };
+    let core_i = self as *mut _ as *mut c_void;
+    let libdeno_i = &mut self.libdeno_isolate;
+    unsafe { libdeno::deno_execute(libdeno_i, core_i, js_filename, js_source) };
     self.check_last_exception()
   }
 
   fn check_last_exception(&mut self) -> Result<(), ErrBox> {
-    let maybe_err =
-      unsafe { libdeno::deno_last_exception(self.libdeno_isolate) };
+    let maybe_err = self.libdeno_isolate.last_exception_.clone();
     match maybe_err {
       None => Ok(()),
       Some(json_str) => {
         let js_error_create = &*self.js_error_create;
         if self.error_handler.is_some() {
           // We need to clear last exception to avoid double handling.
-          unsafe { libdeno::deno_clear_last_exception(self.libdeno_isolate) };
+          self.libdeno_isolate.last_exception_ = None;
           let v8_exception = V8Exception::from_json(&json_str).unwrap();
           let js_error = js_error_create(v8_exception);
           let handler = self.error_handler.as_mut().unwrap();
@@ -422,15 +416,15 @@ impl Isolate {
     }
   }
 
-  fn check_promise_errors(&self) {
+  fn check_promise_errors(&mut self) {
     unsafe {
-      libdeno::deno_check_promise_errors(self.libdeno_isolate);
+      libdeno::deno_check_promise_errors(&mut self.libdeno_isolate);
     }
   }
 
   fn throw_exception(&mut self, exception_text: &str) {
     unsafe {
-      libdeno::deno_throw_exception(self.libdeno_isolate, exception_text)
+      libdeno::deno_throw_exception(&mut self.libdeno_isolate, exception_text)
     }
   }
 
@@ -442,9 +436,9 @@ impl Isolate {
       None => (0, deno_buf::empty()),
       Some((op_id, r)) => (op_id, deno_buf::from(r)),
     };
-    unsafe {
-      libdeno::deno_respond(self.libdeno_isolate, self.as_raw_ptr(), op_id, buf)
-    }
+    let core_i = self.as_raw_ptr();
+    let libdeno_i = &mut self.libdeno_isolate;
+    unsafe { libdeno::deno_respond(libdeno_i, core_i, op_id, buf) }
     self.check_last_exception()
   }
 
@@ -455,21 +449,17 @@ impl Isolate {
     name: &str,
     source: &str,
   ) -> Result<deno_mod, ErrBox> {
-    let id = unsafe {
-      libdeno::deno_mod_new(self.libdeno_isolate, main, name, source)
-    };
-
+    let id = self.libdeno_isolate.register_module(main, name, source);
     self.check_last_exception().map(|_| id)
   }
 
   pub fn mod_get_imports(&self, id: deno_mod) -> Vec<String> {
-    let len =
-      unsafe { libdeno::deno_mod_imports_len(self.libdeno_isolate, id) };
+    let info = self.libdeno_isolate.get_module_info(id).unwrap();
+    let len = info.import_specifiers.len();
     let mut out = Vec::new();
     for i in 0..len {
-      let specifier =
-        unsafe { libdeno::deno_mod_imports_get(self.libdeno_isolate, id, i) }
-          .unwrap();
+      let info = self.libdeno_isolate.get_module_info(id).unwrap();
+      let specifier = info.import_specifiers.get(i).unwrap().to_string();
       out.push(specifier);
     }
     out
@@ -482,7 +472,7 @@ impl Isolate {
   /// the V8 exception. By default this type is CoreJSError, however it may be a
   /// different type if Isolate::set_js_error_create() has been used.
   pub fn snapshot(&mut self) -> Result<Snapshot1, ErrBox> {
-    let snapshot = libdeno::deno_snapshot_new(self.libdeno_isolate);
+    let snapshot = libdeno::deno_snapshot_new(&mut self.libdeno_isolate);
     match self.check_last_exception() {
       Ok(..) => Ok(snapshot),
       Err(err) => Err(err),
@@ -500,10 +490,13 @@ impl Isolate {
       Err(None) => (0, None),
       Err(Some(err_str)) => (0, Some(err_str)),
     };
+    let core_i = self.as_raw_ptr();
+    let libdeno_i = &mut self.libdeno_isolate;
+
     unsafe {
       libdeno::deno_dyn_import_done(
-        self.libdeno_isolate,
-        self.as_raw_ptr(),
+        libdeno_i,
+        core_i,
         id,
         mod_id,
         maybe_err_str,
@@ -588,11 +581,10 @@ impl Isolate {
     id: deno_mod,
     resolve_fn: &mut ResolveFn,
   ) -> Result<(), ErrBox> {
-    let libdeno_isolate = self.libdeno_isolate;
     let mut ctx = ResolveContext { resolve_fn };
     unsafe {
       libdeno::deno_mod_instantiate(
-        libdeno_isolate,
+        &mut self.libdeno_isolate,
         ctx.as_raw_ptr(),
         id,
         Self::resolve_cb,
@@ -622,27 +614,10 @@ impl Isolate {
   /// different type if Isolate::set_js_error_create() has been used.
   pub fn mod_evaluate(&mut self, id: deno_mod) -> Result<(), ErrBox> {
     self.shared_init();
-    unsafe {
-      libdeno::deno_mod_evaluate(self.libdeno_isolate, self.as_raw_ptr(), id)
-    };
+    let core_i = self.as_raw_ptr();
+    let libdeno_i = &mut self.libdeno_isolate;
+    unsafe { libdeno::deno_mod_evaluate(libdeno_i, core_i, id) };
     self.check_last_exception()
-  }
-}
-
-struct LockerScope {
-  libdeno_isolate: *mut libdeno::isolate,
-}
-
-impl LockerScope {
-  fn new(libdeno_isolate: *mut libdeno::isolate) -> LockerScope {
-    unsafe { libdeno::deno_lock(libdeno_isolate) }
-    LockerScope { libdeno_isolate }
-  }
-}
-
-impl Drop for LockerScope {
-  fn drop(&mut self) {
-    unsafe { libdeno::deno_unlock(self.libdeno_isolate) }
   }
 }
 
@@ -686,20 +661,14 @@ impl Future for Isolate {
     }
 
     if inner.shared.size() > 0 {
-      // Lock the current thread for V8.
-      let locker = LockerScope::new(inner.libdeno_isolate);
       inner.respond(None)?;
       // The other side should have shifted off all the messages.
       assert_eq!(inner.shared.size(), 0);
-      drop(locker);
     }
 
     if overflow_response.is_some() {
-      // Lock the current thread for V8.
-      let locker = LockerScope::new(inner.libdeno_isolate);
       let (op_id, buf) = overflow_response.take().unwrap();
       inner.respond(Some((op_id, &buf)))?;
-      drop(locker);
     }
 
     inner.check_promise_errors();
@@ -720,7 +689,7 @@ impl Future for Isolate {
 /// IsolateHandle is a thread safe handle on an Isolate. It exposed thread safe V8 functions.
 #[derive(Clone)]
 pub struct IsolateHandle {
-  shared_libdeno_isolate: Arc<Mutex<Option<*mut libdeno::isolate>>>,
+  shared_libdeno_isolate: Arc<Mutex<Option<*mut libdeno::DenoIsolate>>>,
 }
 
 unsafe impl Send for IsolateHandle {}
@@ -730,10 +699,8 @@ impl IsolateHandle {
   /// After terminating execution it is probably not wise to continue using
   /// the isolate.
   pub fn terminate_execution(&self) {
-    unsafe {
-      if let Some(isolate) = *self.shared_libdeno_isolate.lock().unwrap() {
-        libdeno::deno_terminate_execution(isolate)
-      }
+    if let Some(isolate) = *self.shared_libdeno_isolate.lock().unwrap() {
+      unsafe { libdeno::deno_terminate_execution(isolate) }
     }
   }
 }
