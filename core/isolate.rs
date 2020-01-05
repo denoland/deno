@@ -455,21 +455,17 @@ impl Isolate {
     name: &str,
     source: &str,
   ) -> Result<deno_mod, ErrBox> {
-    let id = unsafe {
-      libdeno::deno_mod_new(self.libdeno_isolate, main, name, source)
-    };
-
+    let id = (*self.libdeno_isolate).register_module(main, name, source);
     self.check_last_exception().map(|_| id)
   }
 
   pub fn mod_get_imports(&self, id: deno_mod) -> Vec<String> {
-    let len =
-      unsafe { libdeno::deno_mod_imports_len(self.libdeno_isolate, id) };
+    let info = (*self.libdeno_isolate).get_module_info(id).unwrap();
+    let len = info.import_specifiers.len();
     let mut out = Vec::new();
     for i in 0..len {
-      let specifier =
-        unsafe { libdeno::deno_mod_imports_get(self.libdeno_isolate, id, i) }
-          .unwrap();
+      let info = (*self.libdeno_isolate).get_module_info(id).unwrap();
+      let specifier = info.import_specifiers.get(i).unwrap().to_string();
       out.push(specifier);
     }
     out
@@ -730,10 +726,8 @@ impl IsolateHandle {
   /// After terminating execution it is probably not wise to continue using
   /// the isolate.
   pub fn terminate_execution(&self) {
-    unsafe {
-      if let Some(isolate) = *self.shared_libdeno_isolate.lock().unwrap() {
-        libdeno::deno_terminate_execution(isolate)
-      }
+    if let Some(isolate) = *self.shared_libdeno_isolate.lock().unwrap() {
+      libdeno::deno_terminate_execution(isolate)
     }
   }
 }

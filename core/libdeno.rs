@@ -27,11 +27,11 @@ pub type OpId = u32;
 #[allow(non_camel_case_types)]
 pub type isolate = DenoIsolate;
 
-struct ModuleInfo {
-  main: bool,
-  name: String,
-  handle: v8::Global<v8::Module>,
-  import_specifiers: Vec<String>,
+pub struct ModuleInfo {
+  pub main: bool,
+  pub name: String,
+  pub handle: v8::Global<v8::Module>,
+  pub import_specifiers: Vec<String>,
 }
 
 pub struct DenoIsolate {
@@ -208,7 +208,7 @@ impl DenoIsolate {
     id
   }
 
-  fn get_module_info(&self, id: deno_mod) -> Option<&ModuleInfo> {
+  pub fn get_module_info(&self, id: deno_mod) -> Option<&ModuleInfo> {
     if id == 0 {
       return None;
     }
@@ -1736,35 +1736,6 @@ pub unsafe fn deno_run_microtasks(i: *mut isolate, core_isolate: *mut c_void) {
 }
 
 // Modules
-
-pub unsafe fn deno_mod_new(
-  i: *mut DenoIsolate,
-  main: bool,
-  name: &str,
-  source: &str,
-) -> deno_mod {
-  let i_mut: &mut DenoIsolate = unsafe { &mut *i };
-  i_mut.register_module(main, name, source)
-}
-
-pub unsafe fn deno_mod_imports_len(i: *mut DenoIsolate, id: deno_mod) -> usize {
-  let info = (*i).get_module_info(id).unwrap();
-  info.import_specifiers.len()
-}
-
-pub unsafe fn deno_mod_imports_get(
-  i: *mut DenoIsolate,
-  id: deno_mod,
-  index: size_t,
-) -> Option<String> {
-  match (*i).get_module_info(id) {
-    Some(info) => match info.import_specifiers.get(index) {
-      Some(specifier) => Some(specifier.to_string()),
-      None => None,
-    },
-    None => None,
-  }
-}
 
 fn resolve_callback(
   context: v8::Local<v8::Context>,
