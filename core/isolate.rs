@@ -548,7 +548,6 @@ impl Isolate {
     boxed_isolate
   }
 
-  // Methods ported from libdeno, to be refactored
   pub fn setup_isolate(mut isolate: v8::OwnedIsolate) -> v8::OwnedIsolate {
     isolate.set_capture_stack_trace_for_uncaught_exceptions(true, 10);
     isolate.set_promise_reject_callback(bindings::promise_reject_callback);
@@ -621,191 +620,9 @@ impl Isolate {
     context: v8::Local<v8::Context>,
     message: v8::Local<v8::Message>,
   ) -> String {
-    let json_obj = self.encode_message_as_object(s, context, message);
+    let json_obj = bindings::encode_message_as_object(s, context, message);
     let json_string = v8::json::stringify(context, json_obj.into()).unwrap();
     json_string.to_rust_string_lossy(s)
-  }
-
-  fn encode_message_as_object<'a>(
-    &mut self,
-    s: &mut impl v8::ToLocal<'a>,
-    context: v8::Local<v8::Context>,
-    message: v8::Local<v8::Message>,
-  ) -> v8::Local<'a, v8::Object> {
-    let json_obj = v8::Object::new(s);
-
-    let exception_str = message.get(s);
-    json_obj.set(
-      context,
-      v8::String::new(s, "message").unwrap().into(),
-      exception_str.into(),
-    );
-
-    let script_resource_name = message
-      .get_script_resource_name(s)
-      .expect("Missing ScriptResourceName");
-    json_obj.set(
-      context,
-      v8::String::new(s, "scriptResourceName").unwrap().into(),
-      script_resource_name,
-    );
-
-    let source_line = message
-      .get_source_line(s, context)
-      .expect("Missing SourceLine");
-    json_obj.set(
-      context,
-      v8::String::new(s, "sourceLine").unwrap().into(),
-      source_line.into(),
-    );
-
-    let line_number = message
-      .get_line_number(context)
-      .expect("Missing LineNumber");
-    json_obj.set(
-      context,
-      v8::String::new(s, "lineNumber").unwrap().into(),
-      v8::Integer::new(s, line_number as i32).into(),
-    );
-
-    json_obj.set(
-      context,
-      v8::String::new(s, "startPosition").unwrap().into(),
-      v8::Integer::new(s, message.get_start_position() as i32).into(),
-    );
-
-    json_obj.set(
-      context,
-      v8::String::new(s, "endPosition").unwrap().into(),
-      v8::Integer::new(s, message.get_end_position() as i32).into(),
-    );
-
-    json_obj.set(
-      context,
-      v8::String::new(s, "errorLevel").unwrap().into(),
-      v8::Integer::new(s, message.error_level() as i32).into(),
-    );
-
-    json_obj.set(
-      context,
-      v8::String::new(s, "startColumn").unwrap().into(),
-      v8::Integer::new(s, message.get_start_column() as i32).into(),
-    );
-
-    json_obj.set(
-      context,
-      v8::String::new(s, "endColumn").unwrap().into(),
-      v8::Integer::new(s, message.get_end_column() as i32).into(),
-    );
-
-    let is_shared_cross_origin =
-      v8::Boolean::new(s, message.is_shared_cross_origin());
-
-    json_obj.set(
-      context,
-      v8::String::new(s, "isSharedCrossOrigin").unwrap().into(),
-      is_shared_cross_origin.into(),
-    );
-
-    let is_opaque = v8::Boolean::new(s, message.is_opaque());
-
-    json_obj.set(
-      context,
-      v8::String::new(s, "isOpaque").unwrap().into(),
-      is_opaque.into(),
-    );
-
-    let frames = if let Some(stack_trace) = message.get_stack_trace(s) {
-      let count = stack_trace.get_frame_count() as i32;
-      let frames = v8::Array::new(s, count);
-
-      for i in 0..count {
-        let frame = stack_trace
-          .get_frame(s, i as usize)
-          .expect("No frame found");
-        let frame_obj = v8::Object::new(s);
-        frames.set(context, v8::Integer::new(s, i).into(), frame_obj.into());
-        frame_obj.set(
-          context,
-          v8::String::new(s, "line").unwrap().into(),
-          v8::Integer::new(s, frame.get_line_number() as i32).into(),
-        );
-        frame_obj.set(
-          context,
-          v8::String::new(s, "column").unwrap().into(),
-          v8::Integer::new(s, frame.get_column() as i32).into(),
-        );
-
-        if let Some(function_name) = frame.get_function_name(s) {
-          frame_obj.set(
-            context,
-            v8::String::new(s, "functionName").unwrap().into(),
-            function_name.into(),
-          );
-        }
-
-        let script_name = match frame.get_script_name_or_source_url(s) {
-          Some(name) => name,
-          None => v8::String::new(s, "<unknown>").unwrap(),
-        };
-        frame_obj.set(
-          context,
-          v8::String::new(s, "scriptName").unwrap().into(),
-          script_name.into(),
-        );
-
-        frame_obj.set(
-          context,
-          v8::String::new(s, "isEval").unwrap().into(),
-          v8::Boolean::new(s, frame.is_eval()).into(),
-        );
-
-        frame_obj.set(
-          context,
-          v8::String::new(s, "isConstructor").unwrap().into(),
-          v8::Boolean::new(s, frame.is_constructor()).into(),
-        );
-
-        frame_obj.set(
-          context,
-          v8::String::new(s, "isWasm").unwrap().into(),
-          v8::Boolean::new(s, frame.is_wasm()).into(),
-        );
-      }
-
-      frames
-    } else {
-      // No stack trace. We only have one stack frame of info..
-      let frames = v8::Array::new(s, 1);
-      let frame_obj = v8::Object::new(s);
-      frames.set(context, v8::Integer::new(s, 0).into(), frame_obj.into());
-
-      frame_obj.set(
-        context,
-        v8::String::new(s, "scriptResourceName").unwrap().into(),
-        script_resource_name,
-      );
-      frame_obj.set(
-        context,
-        v8::String::new(s, "line").unwrap().into(),
-        v8::Integer::new(s, line_number as i32).into(),
-      );
-      frame_obj.set(
-        context,
-        v8::String::new(s, "column").unwrap().into(),
-        v8::Integer::new(s, message.get_start_column() as i32).into(),
-      );
-
-      frames
-    };
-
-    json_obj.set(
-      context,
-      v8::String::new(s, "frames").unwrap().into(),
-      frames.into(),
-    );
-
-    json_obj
   }
 
   #[allow(dead_code)]
@@ -816,7 +633,6 @@ impl Isolate {
     isolate.run_microtasks();
     isolate.exit();
   }
-  // End of methods from libdeno
 
   pub fn set_error_handler(&mut self, handler: Box<IsolateErrorHandleFn>) {
     self.error_handler = Some(handler);
@@ -872,26 +688,6 @@ impl Isolate {
     }
   }
 
-  pub fn dyn_import_cb(
-    &mut self,
-    specifier: &str,
-    referrer: &str,
-    id: DynImportId,
-  ) {
-    debug!("dyn_import specifier {} referrer {} ", specifier, referrer);
-
-    if let Some(ref f) = self.dyn_import {
-      let inner = f(id, specifier, referrer);
-      let stream = DynImport { inner, id };
-      self.waker.wake();
-      self
-        .pending_dyn_imports
-        .push(stream.into_stream().into_future());
-    } else {
-      panic!("dyn_import callback not set")
-    }
-  }
-
   pub fn pre_dispatch(
     &mut self,
     op_id: OpId,
@@ -930,33 +726,6 @@ impl Isolate {
     }
   }
 
-  fn libdeno_execute<'a>(
-    &mut self,
-    s: &mut impl v8::ToLocal<'a>,
-    context: v8::Local<'a, v8::Context>,
-    js_filename: &str,
-    js_source: &str,
-  ) -> bool {
-    let mut hs = v8::HandleScope::new(s);
-    let s = hs.enter();
-    let source = v8::String::new(s, js_source).unwrap();
-    let name = v8::String::new(s, js_filename).unwrap();
-    let mut try_catch = v8::TryCatch::new(s);
-    let tc = try_catch.enter();
-    let origin = bindings::script_origin(s, name);
-    let mut script =
-      v8::Script::compile(s, context, source, Some(&origin)).unwrap();
-    let result = script.run(s, context);
-    if result.is_none() {
-      assert!(tc.has_caught());
-      let exception = tc.exception().unwrap();
-      self.handle_exception(s, context, exception);
-      false
-    } else {
-      true
-    }
-  }
-
   /// Executes traditional JavaScript code (traditional = not ES modules)
   ///
   /// ErrBox can be downcast to a type that exposes additional information about
@@ -972,33 +741,44 @@ impl Isolate {
     let mut locker = v8::Locker::new(isolate);
     assert!(!self.global_context.is_empty());
     let mut hs = v8::HandleScope::new(&mut locker);
-    let scope = hs.enter();
-    let mut context = self.global_context.get(scope).unwrap();
+    let s = hs.enter();
+    let mut context = self.global_context.get(s).unwrap();
     context.enter();
-    self.libdeno_execute(scope, context, js_filename, js_source);
+    let source = v8::String::new(s, js_source).unwrap();
+    let name = v8::String::new(s, js_filename).unwrap();
+    let mut try_catch = v8::TryCatch::new(s);
+    let tc = try_catch.enter();
+    let origin = bindings::script_origin(s, name);
+    let mut script =
+      v8::Script::compile(s, context, source, Some(&origin)).unwrap();
+    let result = script.run(s, context);
+    if result.is_none() {
+      assert!(tc.has_caught());
+      let exception = tc.exception().unwrap();
+      self.handle_exception(s, context, exception);
+    }
     context.exit();
     self.check_last_exception()
   }
 
   fn check_last_exception(&mut self) -> Result<(), ErrBox> {
-    let maybe_err = self.last_exception.clone();
-    match maybe_err {
-      None => Ok(()),
-      Some(json_str) => {
-        let js_error_create = &*self.js_error_create;
-        if self.error_handler.is_some() {
-          // We need to clear last exception to avoid double handling.
-          self.last_exception = None;
-          let v8_exception = V8Exception::from_json(&json_str).unwrap();
-          let js_error = js_error_create(v8_exception);
-          let handler = self.error_handler.as_mut().unwrap();
-          handler(js_error)
-        } else {
-          let v8_exception = V8Exception::from_json(&json_str).unwrap();
-          let js_error = js_error_create(v8_exception);
-          Err(js_error)
-        }
-      }
+    if self.last_exception.is_none() {
+      return Ok(());
+    }
+
+    let json_str = self.last_exception.clone().unwrap();
+    let js_error_create = &*self.js_error_create;
+    if self.error_handler.is_some() {
+      // We need to clear last exception to avoid double handling.
+      self.last_exception = None;
+      let v8_exception = V8Exception::from_json(&json_str).unwrap();
+      let js_error = js_error_create(v8_exception);
+      let handler = self.error_handler.as_mut().unwrap();
+      handler(js_error)
+    } else {
+      let v8_exception = V8Exception::from_json(&json_str).unwrap();
+      let js_error = js_error_create(v8_exception);
+      Err(js_error)
     }
   }
 
@@ -1036,7 +816,7 @@ impl Isolate {
     isolate.throw_exception(msg.into());
   }
 
-  fn libdeno_respond(&mut self, op_id: OpId, buf: DenoBuf) {
+  fn respond2(&mut self, op_id: OpId, buf: DenoBuf) {
     if !self.current_send_cb_info.is_null() {
       // Synchronous response.
       // Note op_id is not passed back in the case of synchronous response.
@@ -1110,7 +890,7 @@ impl Isolate {
       None => (0, DenoBuf::empty()),
       Some((op_id, r)) => (op_id, DenoBuf::from(r)),
     };
-    self.libdeno_respond(op_id, buf);
+    self.respond2(op_id, buf);
     self.check_last_exception()
   }
 
@@ -1218,6 +998,156 @@ impl Isolate {
       Err(err) => Err(err),
     }
   }
+}
+
+/// Called during mod_instantiate() to resolve imports.
+type ResolveFn<'a> = dyn FnMut(&str, ModuleId) -> ModuleId + 'a;
+
+/// Used internally by Isolate::mod_instantiate to wrap ResolveFn and
+/// encapsulate pointer casts.
+pub struct ResolveContext<'a> {
+  pub resolve_fn: &'a mut ResolveFn<'a>,
+}
+
+impl<'a> ResolveContext<'a> {
+  #[inline]
+  fn as_raw_ptr(&mut self) -> *mut c_void {
+    self as *mut _ as *mut c_void
+  }
+
+  #[allow(clippy::missing_safety_doc)]
+  #[inline]
+  pub(crate) unsafe fn from_raw_ptr(ptr: *mut c_void) -> &'a mut Self {
+    &mut *(ptr as *mut _)
+  }
+}
+
+// TODO: Following methods are related to modules and should
+// be factored out to `core/modules.rs`
+impl Isolate {
+  fn mod_instantiate2(
+    &mut self,
+    mut ctx: ResolveContext<'_>,
+    id: ModuleId,
+  ) {
+    self.resolve_context = ctx.as_raw_ptr();
+    let isolate = self.v8_isolate.as_ref().unwrap();
+    let mut locker = v8::Locker::new(isolate);
+    let mut hs = v8::HandleScope::new(&mut locker);
+    let scope = hs.enter();
+    assert!(!self.global_context.is_empty());
+    let mut context = self.global_context.get(scope).unwrap();
+    context.enter();
+    let mut try_catch = v8::TryCatch::new(scope);
+    let tc = try_catch.enter();
+
+    let maybe_info = self.get_module_info(id);
+
+    if maybe_info.is_none() {
+      return;
+    }
+
+    let module_handle = &maybe_info.unwrap().handle;
+    let mut module = module_handle.get(scope).unwrap();
+
+    if module.get_status() == v8::ModuleStatus::Errored {
+      return;
+    }
+
+    let maybe_ok =
+      module.instantiate_module(context, bindings::module_resolve_callback);
+    assert!(maybe_ok.is_some() || tc.has_caught());
+
+    if tc.has_caught() {
+      self.handle_exception(scope, context, tc.exception().unwrap());
+    }
+
+    context.exit();
+    self.resolve_context = std::ptr::null_mut();
+  }
+  /// Instanciates a ES module
+  ///
+  /// ErrBox can be downcast to a type that exposes additional information about
+  /// the V8 exception. By default this type is CoreJSError, however it may be a
+  /// different type if Isolate::set_js_error_create() has been used.
+  pub fn mod_instantiate(
+    &mut self,
+    id: ModuleId,
+    resolve_fn: &mut ResolveFn,
+  ) -> Result<(), ErrBox> {
+    let ctx = ResolveContext { resolve_fn };
+    self.mod_instantiate2(ctx, id);
+    self.check_last_exception()
+  }
+
+  /// Evaluates an already instantiated ES module.
+  ///
+  /// ErrBox can be downcast to a type that exposes additional information about
+  /// the V8 exception. By default this type is CoreJSError, however it may be a
+  /// different type if Isolate::set_js_error_create() has been used.
+  pub fn mod_evaluate(&mut self, id: ModuleId) -> Result<(), ErrBox> {
+    self.shared_init();
+    let isolate = self.v8_isolate.as_ref().unwrap();
+    let mut locker = v8::Locker::new(isolate);
+    let mut hs = v8::HandleScope::new(&mut locker);
+    let scope = hs.enter();
+    assert!(!self.global_context.is_empty());
+    let mut context = self.global_context.get(scope).unwrap();
+    context.enter();
+
+    let info = self.get_module_info(id).expect("ModuleInfo not found");
+    let mut module = info.handle.get(scope).expect("Empty module handle");
+    let mut status = module.get_status();
+
+    if status == v8::ModuleStatus::Instantiated {
+      let ok = module.evaluate(scope, context).is_some();
+      // Update status after evaluating.
+      status = module.get_status();
+      if ok {
+        assert!(
+          status == v8::ModuleStatus::Evaluated
+            || status == v8::ModuleStatus::Errored
+        );
+      } else {
+        assert!(status == v8::ModuleStatus::Errored);
+      }
+    }
+
+    match status {
+      v8::ModuleStatus::Evaluated => {
+        self.last_exception_handle.reset(scope);
+        self.last_exception.take();
+      }
+      v8::ModuleStatus::Errored => {
+        self.handle_exception(scope, context, module.get_exception());
+      }
+      other => panic!("Unexpected module status {:?}", other),
+    };
+
+    context.exit();
+
+    self.check_last_exception()
+  }
+
+  pub fn dyn_import_cb(
+    &mut self,
+    specifier: &str,
+    referrer: &str,
+    id: DynImportId,
+  ) {
+    debug!("dyn_import specifier {} referrer {} ", specifier, referrer);
+
+    if let Some(ref f) = self.dyn_import {
+      let inner = f(id, specifier, referrer);
+      let stream = DynImport { inner, id };
+      self.waker.wake();
+      self
+        .pending_dyn_imports
+        .push(stream.into_stream().into_future());
+    } else {
+      panic!("dyn_import callback not set")
+    }
+  }
 
   fn dyn_import_done(
     &mut self,
@@ -1323,134 +1253,6 @@ impl Isolate {
         Poll::Ready(Some((None, _))) => unreachable!(),
       }
     }
-  }
-}
-
-/// Called during mod_instantiate() to resolve imports.
-type ResolveFn<'a> = dyn FnMut(&str, ModuleId) -> ModuleId + 'a;
-
-/// Used internally by Isolate::mod_instantiate to wrap ResolveFn and
-/// encapsulate pointer casts.
-pub struct ResolveContext<'a> {
-  pub resolve_fn: &'a mut ResolveFn<'a>,
-}
-
-impl<'a> ResolveContext<'a> {
-  #[inline]
-  fn as_raw_ptr(&mut self) -> *mut c_void {
-    self as *mut _ as *mut c_void
-  }
-
-  #[allow(clippy::missing_safety_doc)]
-  #[inline]
-  pub(crate) unsafe fn from_raw_ptr(ptr: *mut c_void) -> &'a mut Self {
-    &mut *(ptr as *mut _)
-  }
-}
-
-impl Isolate {
-  fn libdeno_mod_instantiate(
-    &mut self,
-    mut ctx: ResolveContext<'_>,
-    id: ModuleId,
-  ) {
-    self.resolve_context = ctx.as_raw_ptr();
-    let isolate = self.v8_isolate.as_ref().unwrap();
-    let mut locker = v8::Locker::new(isolate);
-    let mut hs = v8::HandleScope::new(&mut locker);
-    let scope = hs.enter();
-    assert!(!self.global_context.is_empty());
-    let mut context = self.global_context.get(scope).unwrap();
-    context.enter();
-    let mut try_catch = v8::TryCatch::new(scope);
-    let tc = try_catch.enter();
-
-    let maybe_info = self.get_module_info(id);
-
-    if maybe_info.is_none() {
-      return;
-    }
-
-    let module_handle = &maybe_info.unwrap().handle;
-    let mut module = module_handle.get(scope).unwrap();
-
-    if module.get_status() == v8::ModuleStatus::Errored {
-      return;
-    }
-
-    let maybe_ok =
-      module.instantiate_module(context, bindings::module_resolve_callback);
-    assert!(maybe_ok.is_some() || tc.has_caught());
-
-    if tc.has_caught() {
-      self.handle_exception(scope, context, tc.exception().unwrap());
-    }
-
-    context.exit();
-    self.resolve_context = std::ptr::null_mut();
-  }
-  /// Instanciates a ES module
-  ///
-  /// ErrBox can be downcast to a type that exposes additional information about
-  /// the V8 exception. By default this type is CoreJSError, however it may be a
-  /// different type if Isolate::set_js_error_create() has been used.
-  pub fn mod_instantiate(
-    &mut self,
-    id: ModuleId,
-    resolve_fn: &mut ResolveFn,
-  ) -> Result<(), ErrBox> {
-    let ctx = ResolveContext { resolve_fn };
-    self.libdeno_mod_instantiate(ctx, id);
-    self.check_last_exception()
-  }
-
-  /// Evaluates an already instantiated ES module.
-  ///
-  /// ErrBox can be downcast to a type that exposes additional information about
-  /// the V8 exception. By default this type is CoreJSError, however it may be a
-  /// different type if Isolate::set_js_error_create() has been used.
-  pub fn mod_evaluate(&mut self, id: ModuleId) -> Result<(), ErrBox> {
-    self.shared_init();
-    let isolate = self.v8_isolate.as_ref().unwrap();
-    let mut locker = v8::Locker::new(isolate);
-    let mut hs = v8::HandleScope::new(&mut locker);
-    let scope = hs.enter();
-    assert!(!self.global_context.is_empty());
-    let mut context = self.global_context.get(scope).unwrap();
-    context.enter();
-
-    let info = self.get_module_info(id).expect("ModuleInfo not found");
-    let mut module = info.handle.get(scope).expect("Empty module handle");
-    let mut status = module.get_status();
-
-    if status == v8::ModuleStatus::Instantiated {
-      let ok = module.evaluate(scope, context).is_some();
-      // Update status after evaluating.
-      status = module.get_status();
-      if ok {
-        assert!(
-          status == v8::ModuleStatus::Evaluated
-            || status == v8::ModuleStatus::Errored
-        );
-      } else {
-        assert!(status == v8::ModuleStatus::Errored);
-      }
-    }
-
-    match status {
-      v8::ModuleStatus::Evaluated => {
-        self.last_exception_handle.reset(scope);
-        self.last_exception.take();
-      }
-      v8::ModuleStatus::Errored => {
-        self.handle_exception(scope, context, module.get_exception());
-      }
-      other => panic!("Unexpected module status {:?}", other),
-    };
-
-    context.exit();
-
-    self.check_last_exception()
   }
 }
 
