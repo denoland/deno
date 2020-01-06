@@ -7,12 +7,12 @@
 // synchronously. The isolate.rs module should never depend on this module.
 
 use crate::any_error::ErrBox;
+use crate::isolate::deno_dyn_import_id;
+use crate::isolate::deno_mod;
 use crate::isolate::ImportStream;
 use crate::isolate::Isolate;
 use crate::isolate::RecursiveLoadEvent as Event;
 use crate::isolate::SourceCodeInfo;
-use crate::libdeno::deno_dyn_import_id;
-use crate::libdeno::deno_mod;
 use crate::module_specifier::ModuleSpecifier;
 use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;

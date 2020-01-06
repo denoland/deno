@@ -3,10 +3,9 @@
 #![allow(mutable_transmutes)]
 #![allow(clippy::transmute_ptr_to_ptr)]
 
+use crate::isolate::deno_buf;
 use crate::isolate::Isolate;
-use crate::libdeno::deno_buf;
-use crate::libdeno::script_origin;
-use crate::libdeno::PinnedBuf;
+use crate::isolate::PinnedBuf;
 
 use rusty_v8 as v8;
 use v8::InIsolate;
@@ -16,6 +15,215 @@ use libc::c_void;
 use std::convert::TryFrom;
 use std::ffi::CString;
 use std::option::Option;
+
+lazy_static! {
+  pub static ref EXTERNAL_REFERENCES: v8::ExternalReferences =
+    v8::ExternalReferences::new(&[
+      v8::ExternalReference { function: print },
+      v8::ExternalReference { function: recv },
+      v8::ExternalReference { function: send },
+      v8::ExternalReference {
+        function: eval_context
+      },
+      v8::ExternalReference {
+        function: error_to_json
+      },
+      v8::ExternalReference {
+        getter: shared_getter
+      },
+      v8::ExternalReference {
+        message: message_callback
+      },
+      v8::ExternalReference {
+        function: queue_microtask
+      },
+    ]);
+}
+
+pub fn script_origin<'a>(
+  s: &mut impl v8::ToLocal<'a>,
+  resource_name: v8::Local<'a, v8::String>,
+) -> v8::ScriptOrigin<'a> {
+  let resource_line_offset = v8::Integer::new(s, 0);
+  let resource_column_offset = v8::Integer::new(s, 0);
+  let resource_is_shared_cross_origin = v8::Boolean::new(s, false);
+  let script_id = v8::Integer::new(s, 123);
+  let source_map_url = v8::String::new(s, "source_map_url").unwrap();
+  let resource_is_opaque = v8::Boolean::new(s, true);
+  let is_wasm = v8::Boolean::new(s, false);
+  let is_module = v8::Boolean::new(s, false);
+  v8::ScriptOrigin::new(
+    resource_name.into(),
+    resource_line_offset,
+    resource_column_offset,
+    resource_is_shared_cross_origin,
+    script_id,
+    source_map_url.into(),
+    resource_is_opaque,
+    is_wasm,
+    is_module,
+  )
+}
+
+pub fn module_origin<'a>(
+  s: &mut impl v8::ToLocal<'a>,
+  resource_name: v8::Local<'a, v8::String>,
+) -> v8::ScriptOrigin<'a> {
+  let resource_line_offset = v8::Integer::new(s, 0);
+  let resource_column_offset = v8::Integer::new(s, 0);
+  let resource_is_shared_cross_origin = v8::Boolean::new(s, false);
+  let script_id = v8::Integer::new(s, 123);
+  let source_map_url = v8::String::new(s, "source_map_url").unwrap();
+  let resource_is_opaque = v8::Boolean::new(s, true);
+  let is_wasm = v8::Boolean::new(s, false);
+  let is_module = v8::Boolean::new(s, true);
+  v8::ScriptOrigin::new(
+    resource_name.into(),
+    resource_line_offset,
+    resource_column_offset,
+    resource_is_shared_cross_origin,
+    script_id,
+    source_map_url.into(),
+    resource_is_opaque,
+    is_wasm,
+    is_module,
+  )
+}
+
+pub fn initialize_context<'a>(
+  scope: &mut impl v8::ToLocal<'a>,
+  mut context: v8::Local<v8::Context>,
+) {
+  context.enter();
+
+  let global = context.global(scope);
+
+  let deno_val = v8::Object::new(scope);
+
+  global.set(
+    context,
+    v8::String::new(scope, "Deno").unwrap().into(),
+    deno_val.into(),
+  );
+
+  let mut core_val = v8::Object::new(scope);
+
+  deno_val.set(
+    context,
+    v8::String::new(scope, "core").unwrap().into(),
+    core_val.into(),
+  );
+
+  let mut print_tmpl = v8::FunctionTemplate::new(scope, print);
+  let print_val = print_tmpl.get_function(scope, context).unwrap();
+  core_val.set(
+    context,
+    v8::String::new(scope, "print").unwrap().into(),
+    print_val.into(),
+  );
+
+  let mut recv_tmpl = v8::FunctionTemplate::new(scope, recv);
+  let recv_val = recv_tmpl.get_function(scope, context).unwrap();
+  core_val.set(
+    context,
+    v8::String::new(scope, "recv").unwrap().into(),
+    recv_val.into(),
+  );
+
+  let mut send_tmpl = v8::FunctionTemplate::new(scope, send);
+  let send_val = send_tmpl.get_function(scope, context).unwrap();
+  core_val.set(
+    context,
+    v8::String::new(scope, "send").unwrap().into(),
+    send_val.into(),
+  );
+
+  let mut eval_context_tmpl = v8::FunctionTemplate::new(scope, eval_context);
+  let eval_context_val =
+    eval_context_tmpl.get_function(scope, context).unwrap();
+  core_val.set(
+    context,
+    v8::String::new(scope, "evalContext").unwrap().into(),
+    eval_context_val.into(),
+  );
+
+  let mut error_to_json_tmpl = v8::FunctionTemplate::new(scope, error_to_json);
+  let error_to_json_val =
+    error_to_json_tmpl.get_function(scope, context).unwrap();
+  core_val.set(
+    context,
+    v8::String::new(scope, "errorToJSON").unwrap().into(),
+    error_to_json_val.into(),
+  );
+
+  core_val.set_accessor(
+    context,
+    v8::String::new(scope, "shared").unwrap().into(),
+    shared_getter,
+  );
+
+  // Direct bindings on `window`.
+  let mut queue_microtask_tmpl =
+    v8::FunctionTemplate::new(scope, queue_microtask);
+  let queue_microtask_val =
+    queue_microtask_tmpl.get_function(scope, context).unwrap();
+  global.set(
+    context,
+    v8::String::new(scope, "queueMicrotask").unwrap().into(),
+    queue_microtask_val.into(),
+  );
+
+  context.exit();
+}
+
+pub unsafe fn buf_to_uint8array<'sc>(
+  scope: &mut impl v8::ToLocal<'sc>,
+  buf: deno_buf,
+) -> v8::Local<'sc, v8::Uint8Array> {
+  if buf.data_ptr.is_null() {
+    let ab = v8::ArrayBuffer::new(scope, 0);
+    return v8::Uint8Array::new(ab, 0, 0).expect("Failed to create UintArray8");
+  }
+
+  /*
+  // To avoid excessively allocating new ArrayBuffers, we try to reuse a single
+  // global ArrayBuffer. The caveat is that users must extract data from it
+  // before the next tick. We only do this for ArrayBuffers less than 1024
+  // bytes.
+  v8::Local<v8::ArrayBuffer> ab;
+  void* data;
+  if (buf.data_len > GLOBAL_IMPORT_BUF_SIZE) {
+    // Simple case. We allocate a new ArrayBuffer for this.
+    ab = v8::ArrayBuffer::New(d->isolate_, buf.data_len);
+    data = ab->GetBackingStore()->Data();
+  } else {
+    // Fast case. We reuse the global ArrayBuffer.
+    if (d->global_import_buf_.IsEmpty()) {
+      // Lazily initialize it.
+      DCHECK_NULL(d->global_import_buf_ptr_);
+      ab = v8::ArrayBuffer::New(d->isolate_, GLOBAL_IMPORT_BUF_SIZE);
+      d->global_import_buf_.Reset(d->isolate_, ab);
+      d->global_import_buf_ptr_ = ab->GetBackingStore()->Data();
+    } else {
+      DCHECK(d->global_import_buf_ptr_);
+      ab = d->global_import_buf_.Get(d->isolate_);
+    }
+    data = d->global_import_buf_ptr_;
+  }
+  memcpy(data, buf.data_ptr, buf.data_len);
+  auto view = v8::Uint8Array::New(ab, 0, buf.data_len);
+  return view;
+  */
+
+  // TODO(bartlomieju): for now skipping part with `global_import_buf_`
+  // and always creating new buffer
+  let ab = v8::ArrayBuffer::new(scope, buf.data_len);
+  let mut backing_store = ab.get_backing_store();
+  let data = backing_store.data();
+  let data: *mut u8 = data as *mut libc::c_void as *mut u8;
+  std::ptr::copy_nonoverlapping(buf.data_ptr, data, buf.data_len);
+  v8::Uint8Array::new(ab, 0, buf.data_len).expect("Failed to create UintArray8")
+}
 
 pub extern "C" fn host_import_module_dynamically_callback(
   context: v8::Local<v8::Context>,

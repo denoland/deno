@@ -19,15 +19,6 @@ use std::option::Option;
 use crate::any_error::ErrBox;
 use crate::js_errors::CoreJSError;
 use crate::js_errors::V8Exception;
-use crate::libdeno;
-use crate::libdeno::deno_buf;
-use crate::libdeno::deno_dyn_import_id;
-use crate::libdeno::deno_mod;
-use crate::libdeno::deno_resolve_cb;
-use crate::libdeno::ModuleInfo;
-use crate::libdeno::PinnedBuf;
-use crate::libdeno::Snapshot1;
-use crate::libdeno::SnapshotConfig;
 use crate::ops::*;
 use crate::shared_queue::SharedQueue;
 use crate::shared_queue::RECOMMENDED_SIZE;
@@ -49,6 +40,177 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex, Once};
 use std::task::Context;
 use std::task::Poll;
+
+use libc::c_char;
+use std::ops::{Deref, DerefMut};
+use std::ptr::null;
+use std::ptr::NonNull;
+use std::slice;
+
+/// This type represents a borrowed slice.
+#[repr(C)]
+pub struct deno_buf {
+  pub data_ptr: *const u8,
+  pub data_len: usize,
+}
+
+/// `deno_buf` can not clone, and there is no interior mutability.
+/// This type satisfies Send bound.
+unsafe impl Send for deno_buf {}
+
+impl deno_buf {
+  #[inline]
+  pub fn empty() -> Self {
+    Self {
+      data_ptr: null(),
+      data_len: 0,
+    }
+  }
+
+  #[allow(clippy::missing_safety_doc)]
+  #[inline]
+  pub unsafe fn from_raw_parts(ptr: *const u8, len: usize) -> Self {
+    Self {
+      data_ptr: ptr,
+      data_len: len,
+    }
+  }
+}
+
+/// Converts Rust &Buf to libdeno `deno_buf`.
+impl<'a> From<&'a [u8]> for deno_buf {
+  #[inline]
+  fn from(x: &'a [u8]) -> Self {
+    Self {
+      data_ptr: x.as_ref().as_ptr(),
+      data_len: x.len(),
+    }
+  }
+}
+
+impl<'a> From<&'a mut [u8]> for deno_buf {
+  #[inline]
+  fn from(x: &'a mut [u8]) -> Self {
+    Self {
+      data_ptr: x.as_ref().as_ptr(),
+      data_len: x.len(),
+    }
+  }
+}
+
+impl Deref for deno_buf {
+  type Target = [u8];
+  #[inline]
+  fn deref(&self) -> &[u8] {
+    unsafe { std::slice::from_raw_parts(self.data_ptr, self.data_len) }
+  }
+}
+
+impl AsRef<[u8]> for deno_buf {
+  #[inline]
+  fn as_ref(&self) -> &[u8] {
+    &*self
+  }
+}
+
+/// A PinnedBuf encapsulates a slice that's been borrowed from a JavaScript
+/// ArrayBuffer object. JavaScript objects can normally be garbage collected,
+/// but the existence of a PinnedBuf inhibits this until it is dropped. It
+/// behaves much like an Arc<[u8]>, although a PinnedBuf currently can't be
+/// cloned.
+pub struct PinnedBuf {
+  data_ptr: NonNull<u8>,
+  data_len: usize,
+  #[allow(unused)]
+  backing_store: v8::SharedRef<v8::BackingStore>,
+}
+
+unsafe impl Send for PinnedBuf {}
+
+impl PinnedBuf {
+  pub fn new(view: v8::Local<v8::ArrayBufferView>) -> Self {
+    let mut backing_store = view.buffer().unwrap().get_backing_store();
+    let backing_store_ptr = backing_store.data() as *mut _ as *mut u8;
+    let view_ptr = unsafe { backing_store_ptr.add(view.byte_offset()) };
+    let view_len = view.byte_length();
+    Self {
+      data_ptr: NonNull::new(view_ptr).unwrap(),
+      data_len: view_len,
+      backing_store,
+    }
+  }
+}
+
+impl Deref for PinnedBuf {
+  type Target = [u8];
+  fn deref(&self) -> &[u8] {
+    unsafe { slice::from_raw_parts(self.data_ptr.as_ptr(), self.data_len) }
+  }
+}
+
+impl DerefMut for PinnedBuf {
+  fn deref_mut(&mut self) -> &mut [u8] {
+    unsafe { slice::from_raw_parts_mut(self.data_ptr.as_ptr(), self.data_len) }
+  }
+}
+
+impl AsRef<[u8]> for PinnedBuf {
+  fn as_ref(&self) -> &[u8] {
+    &*self
+  }
+}
+
+impl AsMut<[u8]> for PinnedBuf {
+  fn as_mut(&mut self) -> &mut [u8] {
+    &mut *self
+  }
+}
+
+// TODO(ry) Snapshot1 and Snapshot2 are not very good names and need to be
+// reconsidered. The entire snapshotting interface is still under construction.
+
+/// The type returned from deno_snapshot_new. Needs to be dropped.
+pub type Snapshot1 = v8::OwnedStartupData;
+
+#[allow(non_camel_case_types)]
+pub type deno_mod = i32;
+
+#[allow(non_camel_case_types)]
+pub type deno_dyn_import_id = i32;
+
+#[allow(non_camel_case_types)]
+pub type deno_resolve_cb = unsafe extern "C" fn(
+  resolve_context: *mut c_void,
+  specifier: *const c_char,
+  referrer: deno_mod,
+) -> deno_mod;
+
+pub enum SnapshotConfig {
+  Borrowed(v8::StartupData<'static>),
+  Owned(v8::OwnedStartupData),
+}
+
+impl From<&'static [u8]> for SnapshotConfig {
+  fn from(sd: &'static [u8]) -> Self {
+    Self::Borrowed(v8::StartupData::new(sd))
+  }
+}
+
+impl From<v8::OwnedStartupData> for SnapshotConfig {
+  fn from(sd: v8::OwnedStartupData) -> Self {
+    Self::Owned(sd)
+  }
+}
+
+impl Deref for SnapshotConfig {
+  type Target = v8::StartupData<'static>;
+  fn deref(&self) -> &Self::Target {
+    match self {
+      Self::Borrowed(sd) => sd,
+      Self::Owned(sd) => &*sd,
+    }
+  }
+}
 
 /// Stores a script used to initalize a Isolate
 pub struct Script<'a> {
@@ -169,6 +331,13 @@ pub enum StartupData<'a> {
 type JSErrorCreateFn = dyn Fn(V8Exception) -> ErrBox;
 type IsolateErrorHandleFn = dyn FnMut(ErrBox) -> Result<(), ErrBox>;
 
+pub struct ModuleInfo {
+  pub main: bool,
+  pub name: String,
+  pub handle: v8::Global<v8::Module>,
+  pub import_specifiers: Vec<String>,
+}
+
 /// A single execution context of JavaScript. Corresponds roughly to the "Web
 /// Worker" concept in the DOM. An Isolate is a Future that can be used with
 /// Tokio.  The Isolate future complete when there is an error or when all
@@ -269,12 +438,29 @@ impl Drop for Isolate {
 
 static DENO_INIT: Once = Once::new();
 
+#[allow(clippy::missing_safety_doc)]
+pub unsafe fn v8_init() {
+  let platform = v8::platform::new_default_platform();
+  v8::V8::initialize_platform(platform);
+  v8::V8::initialize();
+  // TODO(ry) This makes WASM compile synchronously. Eventually we should
+  // remove this to make it work asynchronously too. But that requires getting
+  // PumpMessageLoop and RunMicrotasks setup correctly.
+  // See https://github.com/denoland/deno/issues/2544
+  let argv = vec![
+    "".to_string(),
+    "--no-wasm-async-compilation".to_string(),
+    "--harmony-top-level-await".to_string(),
+  ];
+  v8::V8::set_flags_from_command_line(argv);
+}
+
 impl Isolate {
   /// startup_data defines the snapshot or script used at startup to initialize
   /// the isolate.
   pub fn new(startup_data: StartupData, will_snapshot: bool) -> Box<Self> {
     DENO_INIT.call_once(|| {
-      unsafe { libdeno::deno_init() };
+      unsafe { v8_init() };
     });
 
     let mut load_snapshot: Option<SnapshotConfig> = None;
@@ -299,7 +485,7 @@ impl Isolate {
       // TODO(ry) Support loading snapshots before snapshotting.
       assert!(load_snapshot.is_none());
       let mut creator =
-        v8::SnapshotCreator::new(Some(&libdeno::EXTERNAL_REFERENCES));
+        v8::SnapshotCreator::new(Some(&bindings::EXTERNAL_REFERENCES));
       let isolate = unsafe { creator.get_owned_isolate() };
       let isolate = Isolate::setup_isolate(isolate);
 
@@ -311,7 +497,7 @@ impl Isolate {
         // context.enter();
         context_.set(scope, context);
         creator.set_default_context(context);
-        libdeno::initialize_context(scope, context);
+        bindings::initialize_context(scope, context);
         // context.exit();
       }
 
@@ -319,7 +505,7 @@ impl Isolate {
     } else {
       let mut params = v8::Isolate::create_params();
       params.set_array_buffer_allocator(v8::new_default_allocator());
-      params.set_external_references(&libdeno::EXTERNAL_REFERENCES);
+      params.set_external_references(&bindings::EXTERNAL_REFERENCES);
       if let Some(ref mut snapshot) = load_snapshot {
         params.set_snapshot_blob(snapshot);
       }
@@ -337,7 +523,7 @@ impl Isolate {
         if load_snapshot_is_null {
           // If no snapshot is provided, we initialize the context with empty
           // main source code and source maps.
-          libdeno::initialize_context(scope, context);
+          bindings::initialize_context(scope, context);
         }
         context_.set(scope, context);
       }
@@ -427,7 +613,7 @@ impl Isolate {
     let name_str = v8::String::new(scope, name).unwrap();
     let source_str = v8::String::new(scope, source).unwrap();
 
-    let origin = libdeno::module_origin(scope, name_str);
+    let origin = bindings::module_origin(scope, name_str);
     let source = v8::script_compiler::Source::new(source_str, &origin);
 
     let mut try_catch = v8::TryCatch::new(scope);
@@ -715,7 +901,7 @@ impl Isolate {
   #[allow(dead_code)]
   pub fn run_microtasks(&mut self) {
     let isolate = self.isolate_.as_mut().unwrap();
-    let mut locker = v8::Locker::new(isolate);
+    let _locker = v8::Locker::new(isolate);
     isolate.enter();
     isolate.run_microtasks();
     isolate.exit();
@@ -850,7 +1036,7 @@ impl Isolate {
     let name = v8::String::new(s, js_filename).unwrap();
     let mut try_catch = v8::TryCatch::new(s);
     let tc = try_catch.enter();
-    let origin = libdeno::script_origin(s, name);
+    let origin = bindings::script_origin(s, name);
     let mut script =
       v8::Script::compile(s, context, source, Some(&origin)).unwrap();
     let result = script.run(s, context);
@@ -954,7 +1140,7 @@ impl Isolate {
       let scope = hs.enter();
 
       if !buf.data_ptr.is_null() && buf.data_len > 0 {
-        let ab = unsafe { libdeno::deno_import_buf(scope, buf) };
+        let ab = unsafe { bindings::buf_to_uint8array(scope, buf) };
         let info: &v8::FunctionCallbackInfo = unsafe { &*self.current_args_ };
         let rv = &mut info.get_return_value();
         rv.set(ab.into())
@@ -991,7 +1177,7 @@ impl Isolate {
       argc = 2;
       let op_id = v8::Integer::new(scope, op_id as i32);
       args.push(op_id.into());
-      let buf = unsafe { libdeno::deno_import_buf(scope, buf) };
+      let buf = unsafe { bindings::buf_to_uint8array(scope, buf) };
       args.push(buf.into());
     }
 
@@ -1077,7 +1263,7 @@ impl Isolate {
 
   fn dyn_import_done(
     &mut self,
-    id: libdeno::deno_dyn_import_id,
+    id: deno_dyn_import_id,
     result: Result<deno_mod, Option<String>>,
   ) -> Result<(), ErrBox> {
     debug!("dyn_import_done {} {:?}", id, result);

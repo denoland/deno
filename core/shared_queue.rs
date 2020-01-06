@@ -16,8 +16,8 @@ SharedQueue Binary Layout
 +---------------------------------------------------------------+
  */
 
-use crate::libdeno::deno_buf;
-use crate::libdeno::OpId;
+use crate::isolate::deno_buf;
+use crate::ops::OpId;
 
 const MAX_RECORDS: usize = 100;
 /// Total number of records added.

@@ -1,11 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-pub use crate::libdeno::OpId;
 use crate::PinnedBuf;
 use futures::Future;
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::RwLock;
+
+pub type OpId = u32;
 
 pub type Buf = Box<[u8]>;
 
