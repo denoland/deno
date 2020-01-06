@@ -5,8 +5,6 @@
 // Isolate struct from becoming too bloating for users who do not need
 // asynchronous module loading.
 
-#![allow(unused)]
-
 use rusty_v8 as v8;
 
 use crate::any_error::ErrBox;
@@ -32,9 +30,7 @@ use std::task::Context;
 use std::task::Poll;
 
 use crate::isolate::Isolate;
-use crate::isolate::PinnedBuf;
 use crate::isolate::StartupData;
-use crate::ops::*;
 
 pub type ModuleId = i32;
 pub type DynImportId = i32;
@@ -134,7 +130,6 @@ pub struct ModuleInfo {
 /// Ops are created in JavaScript by calling Deno.core.dispatch(), and in Rust
 /// by implementing dispatcher function that takes control buffer and optional zero copy buffer
 /// as arguments. An async Op corresponds exactly to a Promise in JavaScript.
-#[allow(unused)]
 pub struct EsIsolate {
   core_isolate: Box<Isolate>,
 
@@ -601,21 +596,13 @@ pub mod tests {
   use super::*;
   use crate::isolate::js_check;
   use crate::isolate::tests::run_in_task;
-  use futures::future::lazy;
+  use crate::isolate::PinnedBuf;
+  use crate::ops::*;
   use std::io;
-  use std::ops::FnOnce;
   use std::sync::atomic::{AtomicUsize, Ordering};
   use std::sync::Mutex;
 
-  pub enum Mode {
-    Async,
-    OverflowReqSync,
-    OverflowResSync,
-    OverflowReqAsync,
-    OverflowResAsync,
-  }
-
-  pub fn setup(mode: Mode) -> (Box<EsIsolate>, Arc<AtomicUsize>) {
+  pub fn setup() -> (Box<EsIsolate>, Arc<AtomicUsize>) {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let dispatch_count_ = dispatch_count.clone();
 
@@ -648,7 +635,7 @@ pub mod tests {
 
   #[test]
   fn test_mods() {
-    let (mut isolate, dispatch_count) = setup(Mode::Async);
+    let (mut isolate, dispatch_count) = setup();
     let mod_a = isolate
       .mod_new(
         true,

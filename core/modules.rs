@@ -626,7 +626,7 @@ mod tests {
   impl MockLoader {
     fn new() -> Self {
       let modules = Modules::new();
-      let (isolate, _dispatch_count) = setup(Mode::Async);
+      let (isolate, _dispatch_count) = setup();
       Self {
         loads: Arc::new(Mutex::new(Vec::new())),
         isolate: Arc::new(Mutex::new(isolate)),
