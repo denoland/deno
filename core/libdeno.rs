@@ -1,25 +1,17 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-#![allow(unused)]
+
 #![allow(mutable_transmutes)]
 #![allow(clippy::transmute_ptr_to_ptr)]
 
 use crate::bindings;
 
 use rusty_v8 as v8;
-use v8::InIsolate;
 
 use libc::c_char;
-use libc::c_int;
 use libc::c_void;
-use libc::size_t;
-use std::collections::HashMap;
 use std::convert::From;
-use std::convert::TryFrom;
-use std::convert::TryInto;
-use std::ffi::CString;
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
-use std::option::Option;
 use std::ptr::null;
 use std::ptr::NonNull;
 use std::slice;
@@ -153,6 +145,7 @@ impl AsRef<[u8]> for deno_buf {
 /// but the existence of a PinnedBuf inhibits this until it is dropped. It
 /// behaves much like an Arc<[u8]>, although a PinnedBuf currently can't be
 /// cloned.
+#[allow(unused)]
 pub struct PinnedBuf {
   data_ptr: NonNull<u8>,
   data_len: usize,
@@ -201,6 +194,7 @@ impl AsMut<[u8]> for PinnedBuf {
 }
 
 #[repr(C)]
+#[allow(unused)]
 pub struct deno_snapshot<'a> {
   pub data_ptr: *const u8,
   pub data_len: usize,
@@ -216,28 +210,6 @@ unsafe impl Send for deno_snapshot<'_> {}
 
 /// The type returned from deno_snapshot_new. Needs to be dropped.
 pub type Snapshot1 = v8::OwnedStartupData;
-
-/// The type created from slice. Used for loading.
-pub type Snapshot2<'a> = v8::StartupData<'a>;
-
-#[allow(non_camel_case_types)]
-pub type deno_recv_cb = unsafe fn(
-  user_data: *mut c_void,
-  op_id: OpId,
-  control_buf: deno_buf,
-  zero_copy_buf: Option<PinnedBuf>,
-);
-
-/// Called when dynamic import is called in JS: import('foo')
-/// Embedder must call deno_dyn_import_done() with the specified id and
-/// the module.
-#[allow(non_camel_case_types)]
-pub type deno_dyn_import_cb = fn(
-  user_data: *mut c_void,
-  specifier: &str,
-  referrer: &str,
-  id: deno_dyn_import_id,
-);
 
 #[allow(non_camel_case_types)]
 pub type deno_mod = i32;
@@ -350,7 +322,7 @@ pub fn initialize_context<'a>(
   );
 
   let mut print_tmpl = v8::FunctionTemplate::new(scope, bindings::print);
-  let mut print_val = print_tmpl.get_function(scope, context).unwrap();
+  let print_val = print_tmpl.get_function(scope, context).unwrap();
   core_val.set(
     context,
     v8::String::new(scope, "print").unwrap().into(),
@@ -358,7 +330,7 @@ pub fn initialize_context<'a>(
   );
 
   let mut recv_tmpl = v8::FunctionTemplate::new(scope, bindings::recv);
-  let mut recv_val = recv_tmpl.get_function(scope, context).unwrap();
+  let recv_val = recv_tmpl.get_function(scope, context).unwrap();
   core_val.set(
     context,
     v8::String::new(scope, "recv").unwrap().into(),
@@ -366,7 +338,7 @@ pub fn initialize_context<'a>(
   );
 
   let mut send_tmpl = v8::FunctionTemplate::new(scope, bindings::send);
-  let mut send_val = send_tmpl.get_function(scope, context).unwrap();
+  let send_val = send_tmpl.get_function(scope, context).unwrap();
   core_val.set(
     context,
     v8::String::new(scope, "send").unwrap().into(),
@@ -375,7 +347,7 @@ pub fn initialize_context<'a>(
 
   let mut eval_context_tmpl =
     v8::FunctionTemplate::new(scope, bindings::eval_context);
-  let mut eval_context_val =
+  let eval_context_val =
     eval_context_tmpl.get_function(scope, context).unwrap();
   core_val.set(
     context,
@@ -385,7 +357,7 @@ pub fn initialize_context<'a>(
 
   let mut error_to_json_tmpl =
     v8::FunctionTemplate::new(scope, bindings::error_to_json);
-  let mut error_to_json_val =
+  let error_to_json_val =
     error_to_json_tmpl.get_function(scope, context).unwrap();
   core_val.set(
     context,
@@ -402,7 +374,7 @@ pub fn initialize_context<'a>(
   // Direct bindings on `window`.
   let mut queue_microtask_tmpl =
     v8::FunctionTemplate::new(scope, bindings::queue_microtask);
-  let mut queue_microtask_val =
+  let queue_microtask_val =
     queue_microtask_tmpl.get_function(scope, context).unwrap();
   global.set(
     context,
@@ -424,7 +396,7 @@ pub unsafe fn deno_import_buf<'sc>(
   */
 
   if buf.data_ptr.is_null() {
-    let mut ab = v8::ArrayBuffer::new(scope, 0);
+    let ab = v8::ArrayBuffer::new(scope, 0);
     return v8::Uint8Array::new(ab, 0, 0).expect("Failed to create UintArray8");
   }
 
@@ -460,10 +432,10 @@ pub unsafe fn deno_import_buf<'sc>(
 
   // TODO(bartlomieju): for now skipping part with `global_import_buf_`
   // and always creating new buffer
-  let mut ab = v8::ArrayBuffer::new(scope, buf.data_len);
+  let ab = v8::ArrayBuffer::new(scope, buf.data_len);
   let mut backing_store = ab.get_backing_store();
   let data = backing_store.data();
-  let data: *mut u8 = unsafe { data as *mut libc::c_void as *mut u8 };
+  let data: *mut u8 = data as *mut libc::c_void as *mut u8;
   std::ptr::copy_nonoverlapping(buf.data_ptr, data, buf.data_len);
   v8::Uint8Array::new(ab, 0, buf.data_len).expect("Failed to create UintArray8")
 }

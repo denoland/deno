@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-#![allow(unused)]
+
 #![allow(mutable_transmutes)]
 #![allow(clippy::transmute_ptr_to_ptr)]
 
@@ -12,20 +12,10 @@ use rusty_v8 as v8;
 use v8::InIsolate;
 
 use libc::c_char;
-use libc::c_int;
 use libc::c_void;
-use libc::size_t;
-use std::collections::HashMap;
-use std::convert::From;
 use std::convert::TryFrom;
-use std::convert::TryInto;
 use std::ffi::CString;
-use std::marker::PhantomData;
-use std::ops::{Deref, DerefMut};
 use std::option::Option;
-use std::ptr::null;
-use std::ptr::NonNull;
-use std::slice;
 
 pub extern "C" fn host_import_module_dynamically_callback(
   context: v8::Local<v8::Context>,
@@ -35,7 +25,7 @@ pub extern "C" fn host_import_module_dynamically_callback(
   let mut cbs = v8::CallbackScope::new(context);
   let mut hs = v8::EscapableHandleScope::new(cbs.enter());
   let scope = hs.enter();
-  let mut isolate = scope.isolate();
+  let isolate = scope.isolate();
   let deno_isolate: &mut Isolate =
     unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
 
@@ -81,7 +71,7 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
   let mut cbs = v8::CallbackScope::new(context);
   let mut hs = v8::HandleScope::new(cbs.enter());
   let scope = hs.enter();
-  let mut isolate = scope.isolate();
+  let isolate = scope.isolate();
   let deno_isolate: &mut Isolate =
     unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
 
@@ -104,7 +94,7 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
 
 pub extern "C" fn message_callback(
   message: v8::Local<v8::Message>,
-  exception: v8::Local<v8::Value>,
+  _exception: v8::Local<v8::Value>,
 ) {
   let mut message: v8::Local<v8::Message> =
     unsafe { std::mem::transmute(message) };
@@ -115,7 +105,7 @@ pub extern "C" fn message_callback(
   let mut hs = v8::HandleScope::new(&mut locker);
   let scope = hs.enter();
   assert!(!deno_isolate.context_.is_empty());
-  let mut context = deno_isolate.context_.get(scope).unwrap();
+  let context = deno_isolate.context_.get(scope).unwrap();
 
   // TerminateExecution was called
   if isolate.is_execution_terminating() {
@@ -131,7 +121,7 @@ pub extern "C" fn message_callback(
 pub extern "C" fn promise_reject_callback(msg: v8::PromiseRejectMessage) {
   #[allow(mutable_transmutes)]
   let mut msg: v8::PromiseRejectMessage = unsafe { std::mem::transmute(msg) };
-  let mut isolate = msg.isolate();
+  let isolate = msg.isolate();
   let deno_isolate: &mut Isolate =
     unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
   let mut locker = v8::Locker::new(isolate);
@@ -189,9 +179,8 @@ pub extern "C" fn print(info: &v8::FunctionCallbackInfo) {
       .expect("Unable to convert to integer");
     is_err = int_val != 0;
   };
-  let mut isolate = scope.isolate();
   let mut try_catch = v8::TryCatch::new(scope);
-  let tc = try_catch.enter();
+  let _tc = try_catch.enter();
   let str_ = match obj.to_string(scope) {
     Some(s) => s,
     None => v8::String::new(scope, "").unwrap(),
@@ -209,7 +198,7 @@ pub extern "C" fn recv(info: &v8::FunctionCallbackInfo) {
   let info: &mut v8::FunctionCallbackInfo =
     unsafe { std::mem::transmute(info) };
   assert_eq!(info.length(), 1);
-  let mut isolate = info.get_isolate();
+  let isolate = info.get_isolate();
   let deno_isolate: &mut Isolate =
     unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
   let mut locker = v8::Locker::new(&isolate);
@@ -235,7 +224,7 @@ pub extern "C" fn send(info: &v8::FunctionCallbackInfo) {
 
   let mut hs = v8::HandleScope::new(info);
   let scope = hs.enter();
-  let mut isolate = scope.isolate();
+  let isolate = scope.isolate();
   let deno_isolate: &mut Isolate =
     unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
   assert!(!deno_isolate.context_.is_empty());
@@ -287,11 +276,11 @@ pub extern "C" fn eval_context(info: &v8::FunctionCallbackInfo) {
 
   let mut hs = v8::HandleScope::new(info);
   let scope = hs.enter();
-  let mut isolate = scope.isolate();
+  let isolate = scope.isolate();
   let deno_isolate: &mut Isolate =
     unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
   assert!(!deno_isolate.context_.is_empty());
-  let mut context = deno_isolate.context_.get(scope).unwrap();
+  let context = deno_isolate.context_.get(scope).unwrap();
 
   let source = match v8::Local::<v8::String>::try_from(arg0) {
     Ok(s) => s,
@@ -304,15 +293,15 @@ pub extern "C" fn eval_context(info: &v8::FunctionCallbackInfo) {
   };
 
   let output = v8::Array::new(scope, 2);
-  /**
-   * output[0] = result
-   * output[1] = ErrorInfo | null
-   *   ErrorInfo = {
-   *     thrown: Error | any,
-   *     isNativeError: boolean,
-   *     isCompileError: boolean,
-   *   }
-   */
+  /*
+   output[0] = result
+   output[1] = ErrorInfo | null
+     ErrorInfo = {
+       thrown: Error | any,
+       isNativeError: boolean,
+       isCompileError: boolean,
+     }
+  */
   let mut try_catch = v8::TryCatch::new(scope);
   let tc = try_catch.enter();
   let name = v8::String::new(scope, "<unknown>").unwrap();
@@ -421,14 +410,14 @@ pub extern "C" fn error_to_json(info: &v8::FunctionCallbackInfo) {
     unsafe { std::mem::transmute(info) };
   assert_eq!(info.length(), 1);
   // <Boilerplate>
-  let mut isolate = info.get_isolate();
+  let isolate = info.get_isolate();
   let deno_isolate: &mut Isolate =
     unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
   let mut locker = v8::Locker::new(&isolate);
   assert!(!deno_isolate.context_.is_empty());
   let mut hs = v8::HandleScope::new(&mut locker);
   let scope = hs.enter();
-  let mut context = deno_isolate.context_.get(scope).unwrap();
+  let context = deno_isolate.context_.get(scope).unwrap();
   // </Boilerplate>
   let exception = info.get_argument(0);
   let json_string =
@@ -445,9 +434,7 @@ pub extern "C" fn queue_microtask(info: &v8::FunctionCallbackInfo) {
     unsafe { std::mem::transmute(info) };
   assert_eq!(info.length(), 1);
   let arg0 = info.get_argument(0);
-  let mut isolate = info.get_isolate();
-  let deno_isolate: &mut Isolate =
-    unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
+  let isolate = info.get_isolate();
   let mut locker = v8::Locker::new(&isolate);
   let mut hs = v8::HandleScope::new(&mut locker);
   let scope = hs.enter();
@@ -463,7 +450,7 @@ pub extern "C" fn queue_microtask(info: &v8::FunctionCallbackInfo) {
 }
 
 pub extern "C" fn shared_getter(
-  name: v8::Local<v8::Name>,
+  _name: v8::Local<v8::Name>,
   info: &v8::PropertyCallbackInfo,
 ) {
   let shared_ab = {
@@ -474,7 +461,7 @@ pub extern "C" fn shared_getter(
 
     let mut hs = v8::EscapableHandleScope::new(info);
     let scope = hs.enter();
-    let mut isolate = scope.isolate();
+    let isolate = scope.isolate();
     let deno_isolate: &mut Isolate =
       unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
 
