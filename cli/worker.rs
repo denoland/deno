@@ -35,7 +35,7 @@ pub struct WorkerChannels {
 #[derive(Clone)]
 pub struct Worker {
   pub name: String,
-  isolate: Arc<Mutex<deno_core::Isolate>>,
+  isolate: Arc<Mutex<Box<deno_core::Isolate>>>,
   pub state: ThreadSafeState,
   external_channels: Arc<Mutex<WorkerChannels>>,
 }
