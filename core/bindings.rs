@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::isolate::deno_buf;
+use crate::isolate::DenoBuf;
 use crate::isolate::Isolate;
 use crate::isolate::PinnedBuf;
 
@@ -173,7 +173,7 @@ pub fn initialize_context<'a>(
 
 pub unsafe fn buf_to_uint8array<'sc>(
   scope: &mut impl v8::ToLocal<'sc>,
-  buf: deno_buf,
+  buf: DenoBuf,
 ) -> v8::Local<'sc, v8::Uint8Array> {
   if buf.data_ptr.is_null() {
     let ab = v8::ArrayBuffer::new(scope, 0);
@@ -445,25 +445,22 @@ pub extern "C" fn send(info: &v8::FunctionCallbackInfo) {
         let backing_store_ptr = backing_store.data() as *mut _ as *mut u8;
         let view_ptr = unsafe { backing_store_ptr.add(view.byte_offset()) };
         let view_len = view.byte_length();
-        unsafe { deno_buf::from_raw_parts(view_ptr, view_len) }
+        unsafe { DenoBuf::from_raw_parts(view_ptr, view_len) }
       })
-      .unwrap_or_else(|_| deno_buf::empty());
+      .unwrap_or_else(|_| DenoBuf::empty());
 
   let zero_copy: Option<PinnedBuf> =
     v8::Local::<v8::ArrayBufferView>::try_from(info.get_argument(2))
       .map(PinnedBuf::new)
       .ok();
 
-  // TODO: what's the point of this again?
-  // DCHECK_NULL(d->current_send_cb_info);
-  // d->current_send_cb_info = &args;
   assert!(deno_isolate.current_send_cb_info.is_null());
   deno_isolate.current_send_cb_info = info;
 
   deno_isolate.pre_dispatch(op_id, control, zero_copy);
 
   if deno_isolate.current_send_cb_info.is_null() {
-    // This indicates that deno_repond() was called already.
+    // This indicates that respond() was called already.
   } else {
     // Asynchronous.
     deno_isolate.current_send_cb_info = std::ptr::null();

@@ -39,18 +39,19 @@ use std::sync::{Arc, Mutex, Once};
 use std::task::Context;
 use std::task::Poll;
 
+// TODO(bartlomieju): get rid of DenoBuf
 /// This type represents a borrowed slice.
 #[repr(C)]
-pub struct deno_buf {
+pub struct DenoBuf {
   pub data_ptr: *const u8,
   pub data_len: usize,
 }
 
-/// `deno_buf` can not clone, and there is no interior mutability.
+/// `DenoBuf` can not clone, and there is no interior mutability.
 /// This type satisfies Send bound.
-unsafe impl Send for deno_buf {}
+unsafe impl Send for DenoBuf {}
 
-impl deno_buf {
+impl DenoBuf {
   #[inline]
   pub fn empty() -> Self {
     Self {
@@ -69,8 +70,8 @@ impl deno_buf {
   }
 }
 
-/// Converts Rust &Buf to libdeno `deno_buf`.
-impl<'a> From<&'a [u8]> for deno_buf {
+/// Converts Rust &Buf to libdeno `DenoBuf`.
+impl<'a> From<&'a [u8]> for DenoBuf {
   #[inline]
   fn from(x: &'a [u8]) -> Self {
     Self {
@@ -80,7 +81,7 @@ impl<'a> From<&'a [u8]> for deno_buf {
   }
 }
 
-impl<'a> From<&'a mut [u8]> for deno_buf {
+impl<'a> From<&'a mut [u8]> for DenoBuf {
   #[inline]
   fn from(x: &'a mut [u8]) -> Self {
     Self {
@@ -90,7 +91,7 @@ impl<'a> From<&'a mut [u8]> for deno_buf {
   }
 }
 
-impl Deref for deno_buf {
+impl Deref for DenoBuf {
   type Target = [u8];
   #[inline]
   fn deref(&self) -> &[u8] {
@@ -98,7 +99,7 @@ impl Deref for deno_buf {
   }
 }
 
-impl AsRef<[u8]> for deno_buf {
+impl AsRef<[u8]> for DenoBuf {
   #[inline]
   fn as_ref(&self) -> &[u8] {
     &*self
@@ -158,17 +159,9 @@ impl AsMut<[u8]> for PinnedBuf {
   }
 }
 
-// TODO(ry) Snapshot1 and Snapshot2 are not very good names and need to be
-// reconsidered. The entire snapshotting interface is still under construction.
-
-/// The type returned from deno_snapshot_new. Needs to be dropped.
-pub type Snapshot1 = v8::OwnedStartupData;
-
-#[allow(non_camel_case_types)]
-pub type deno_mod = i32;
-
-#[allow(non_camel_case_types)]
-pub type deno_dyn_import_id = i32;
+// TODO(bartlomieju): move to core/modules.rs
+pub type ModuleId = i32;
+pub type DynImportId = i32;
 
 pub enum SnapshotConfig {
   Borrowed(v8::StartupData<'static>),
@@ -219,7 +212,7 @@ pub struct SourceCodeInfo {
 #[derive(Debug, Eq, PartialEq)]
 pub enum RecursiveLoadEvent {
   Fetch(SourceCodeInfo),
-  Instantiate(deno_mod),
+  Instantiate(ModuleId),
 }
 
 pub trait ImportStream: TryStream {
@@ -239,13 +232,13 @@ type DynImportStream = Box<
     + Unpin,
 >;
 
-type DynImportFn = dyn Fn(deno_dyn_import_id, &str, &str) -> DynImportStream;
+type DynImportFn = dyn Fn(DynImportId, &str, &str) -> DynImportStream;
 
-/// Wraps DynImportStream to include the deno_dyn_import_id, so that it doesn't
+/// Wraps DynImportStream to include the DynImportId, so that it doesn't
 /// need to be exposed.
 #[derive(Debug)]
 struct DynImport {
-  pub id: deno_dyn_import_id,
+  pub id: DynImportId,
   pub inner: DynImportStream,
 }
 
@@ -256,10 +249,7 @@ impl fmt::Debug for DynImportStream {
 }
 
 impl Stream for DynImport {
-  type Item = Result<
-    (deno_dyn_import_id, RecursiveLoadEvent),
-    (deno_dyn_import_id, ErrBox),
-  >;
+  type Item = Result<(DynImportId, RecursiveLoadEvent), (DynImportId, ErrBox)>;
 
   fn poll_next(
     self: Pin<&mut Self>,
@@ -309,7 +299,7 @@ impl From<Script<'_>> for OwnedScript {
 pub enum StartupData<'a> {
   Script(Script<'a>),
   Snapshot(&'static [u8]),
-  LibdenoSnapshot(Snapshot1),
+  OwnedSnapshot(v8::OwnedStartupData),
   None,
 }
 
@@ -338,18 +328,17 @@ pub struct Isolate {
   pub last_exception_handle: v8::Global<v8::Value>,
   pub global_context: v8::Global<v8::Context>,
   // TODO(bartlomieju): move into `core/modules.rs`
-  mods_: HashMap<deno_mod, ModuleInfo>,
-  mods_by_name_: HashMap<String, deno_mod>,
-  pub shared_buf: deno_buf,
+  mods_: HashMap<ModuleId, ModuleInfo>,
+  mods_by_name_: HashMap<String, ModuleId>,
+  pub shared_buf: DenoBuf,
   pub shared_ab: v8::Global<v8::SharedArrayBuffer>,
   pub js_recv_cb: v8::Global<v8::Function>,
   pub current_send_cb_info: *const v8::FunctionCallbackInfo,
   snapshot_creator: Option<v8::SnapshotCreator>,
   has_snapshotted: bool,
   snapshot: Option<SnapshotConfig>,
-  pub next_dyn_import_id: deno_dyn_import_id,
-  pub dyn_import_map:
-    HashMap<deno_dyn_import_id, v8::Global<v8::PromiseResolver>>,
+  pub next_dyn_import_id: DynImportId,
+  pub dyn_import_map: HashMap<DynImportId, v8::Global<v8::PromiseResolver>>,
   pub pending_promise_map: HashMap<i32, v8::Global<v8::Value>>,
   // Used in deno_mod_instantiate
   pub resolve_context: *mut c_void,
@@ -454,7 +443,7 @@ impl Isolate {
       StartupData::Snapshot(d) => {
         load_snapshot = Some(d.into());
       }
-      StartupData::LibdenoSnapshot(d) => {
+      StartupData::OwnedSnapshot(d) => {
         load_snapshot = Some(d.into());
       }
       StartupData::None => {}
@@ -578,7 +567,7 @@ impl Isolate {
     main: bool,
     name: &str,
     source: &str,
-  ) -> deno_mod {
+  ) -> ModuleId {
     let isolate = self.v8_isolate.as_ref().unwrap();
     let mut locker = v8::Locker::new(&isolate);
 
@@ -630,7 +619,7 @@ impl Isolate {
     id
   }
 
-  pub fn get_module_info(&self, id: deno_mod) -> Option<&ModuleInfo> {
+  pub fn get_module_info(&self, id: ModuleId) -> Option<&ModuleInfo> {
     if id == 0 {
       return None;
     }
@@ -904,10 +893,7 @@ impl Isolate {
 
   pub fn set_dyn_import<F>(&mut self, f: F)
   where
-    F: Fn(deno_dyn_import_id, &str, &str) -> DynImportStream
-      + Send
-      + Sync
-      + 'static,
+    F: Fn(DynImportId, &str, &str) -> DynImportStream + Send + Sync + 'static,
   {
     self.dyn_import = Some(Arc::new(f));
   }
@@ -947,7 +933,7 @@ impl Isolate {
     &mut self,
     specifier: &str,
     referrer: &str,
-    id: deno_dyn_import_id,
+    id: DynImportId,
   ) {
     debug!("dyn_import specifier {} referrer {} ", specifier, referrer);
 
@@ -966,7 +952,7 @@ impl Isolate {
   pub fn pre_dispatch(
     &mut self,
     op_id: OpId,
-    control_buf: deno_buf,
+    control_buf: DenoBuf,
     zero_copy_buf: Option<PinnedBuf>,
   ) {
     let maybe_op =
@@ -1107,7 +1093,7 @@ impl Isolate {
     isolate.throw_exception(msg.into());
   }
 
-  fn libdeno_respond(&mut self, op_id: OpId, buf: deno_buf) {
+  fn libdeno_respond(&mut self, op_id: OpId, buf: DenoBuf) {
     if !self.current_send_cb_info.is_null() {
       // Synchronous response.
       // Note op_id is not passed back in the case of synchronous response.
@@ -1178,8 +1164,8 @@ impl Isolate {
     maybe_buf: Option<(OpId, &[u8])>,
   ) -> Result<(), ErrBox> {
     let (op_id, buf) = match maybe_buf {
-      None => (0, deno_buf::empty()),
-      Some((op_id, r)) => (op_id, deno_buf::from(r)),
+      None => (0, DenoBuf::empty()),
+      Some((op_id, r)) => (op_id, DenoBuf::from(r)),
     };
     self.libdeno_respond(op_id, buf);
     self.check_last_exception()
@@ -1191,12 +1177,12 @@ impl Isolate {
     main: bool,
     name: &str,
     source: &str,
-  ) -> Result<deno_mod, ErrBox> {
+  ) -> Result<ModuleId, ErrBox> {
     let id = self.register_module(main, name, source);
     self.check_last_exception().map(|_| id)
   }
 
-  pub fn mod_get_imports(&self, id: deno_mod) -> Vec<String> {
+  pub fn mod_get_imports(&self, id: ModuleId) -> Vec<String> {
     let info = self.get_module_info(id).unwrap();
     let len = info.import_specifiers.len();
     let mut out = Vec::new();
@@ -1214,7 +1200,7 @@ impl Isolate {
   /// ErrBox can be downcast to a type that exposes additional information about
   /// the V8 exception. By default this type is CoreJSError, however it may be a
   /// different type if Isolate::set_js_error_create() has been used.
-  pub fn snapshot(&mut self) -> Result<Snapshot1, ErrBox> {
+  pub fn snapshot(&mut self) -> Result<v8::OwnedStartupData, ErrBox> {
     assert!(self.snapshot_creator.is_some());
 
     let isolate = self.v8_isolate.as_ref().unwrap();
@@ -1242,8 +1228,8 @@ impl Isolate {
 
   fn dyn_import_done(
     &mut self,
-    id: deno_dyn_import_id,
-    result: Result<deno_mod, Option<String>>,
+    id: DynImportId,
+    result: Result<ModuleId, Option<String>>,
   ) -> Result<(), ErrBox> {
     debug!("dyn_import_done {} {:?}", id, result);
     let (mod_id, maybe_err_str) = match result {
@@ -1348,7 +1334,7 @@ impl Isolate {
 }
 
 /// Called during mod_instantiate() to resolve imports.
-type ResolveFn<'a> = dyn FnMut(&str, deno_mod) -> deno_mod + 'a;
+type ResolveFn<'a> = dyn FnMut(&str, ModuleId) -> ModuleId + 'a;
 
 /// Used internally by Isolate::mod_instantiate to wrap ResolveFn and
 /// encapsulate pointer casts.
@@ -1372,7 +1358,7 @@ impl Isolate {
   fn libdeno_mod_instantiate(
     &mut self,
     mut ctx: ResolveContext<'_>,
-    id: deno_mod,
+    id: ModuleId,
   ) {
     self.resolve_context = ctx.as_raw_ptr();
     let isolate = self.v8_isolate.as_ref().unwrap();
@@ -1416,7 +1402,7 @@ impl Isolate {
   /// different type if Isolate::set_js_error_create() has been used.
   pub fn mod_instantiate(
     &mut self,
-    id: deno_mod,
+    id: ModuleId,
     resolve_fn: &mut ResolveFn,
   ) -> Result<(), ErrBox> {
     let ctx = ResolveContext { resolve_fn };
@@ -1429,8 +1415,8 @@ impl Isolate {
   pub unsafe fn module_resolve_cb(
     user_data: *mut libc::c_void,
     specifier: &str,
-    referrer: deno_mod,
-  ) -> deno_mod {
+    referrer: ModuleId,
+  ) -> ModuleId {
     let ResolveContext { resolve_fn } = ResolveContext::from_raw_ptr(user_data);
 
     resolve_fn(specifier, referrer)
@@ -1441,7 +1427,7 @@ impl Isolate {
   /// ErrBox can be downcast to a type that exposes additional information about
   /// the V8 exception. By default this type is CoreJSError, however it may be a
   /// different type if Isolate::set_js_error_create() has been used.
-  pub fn mod_evaluate(&mut self, id: deno_mod) -> Result<(), ErrBox> {
+  pub fn mod_evaluate(&mut self, id: ModuleId) -> Result<(), ErrBox> {
     self.shared_init();
     let isolate = self.v8_isolate.as_ref().unwrap();
     let mut locker = v8::Locker::new(isolate);
@@ -1726,7 +1712,7 @@ pub mod tests {
     let resolve_count = Arc::new(AtomicUsize::new(0));
     let resolve_count_ = resolve_count.clone();
 
-    let mut resolve = move |specifier: &str, _referrer: deno_mod| -> deno_mod {
+    let mut resolve = move |specifier: &str, _referrer: ModuleId| -> ModuleId {
       resolve_count_.fetch_add(1, Ordering::SeqCst);
       assert_eq!(specifier, "b.js");
       mod_b
@@ -1971,8 +1957,8 @@ pub mod tests {
           .mod_new(false, "b.js", "export function b() { return 'b' }")
           .unwrap();
         let mut resolve = move |_specifier: &str,
-                                _referrer: deno_mod|
-              -> deno_mod { unreachable!() };
+                                _referrer: ModuleId|
+              -> ModuleId { unreachable!() };
         js_check(isolate.mod_instantiate(*mod_id, &mut resolve));
       }
       // Dynamically import mod_b
@@ -2259,7 +2245,7 @@ pub mod tests {
       s
     };
 
-    let startup_data = StartupData::LibdenoSnapshot(snapshot);
+    let startup_data = StartupData::OwnedSnapshot(snapshot);
     let mut isolate2 = Isolate::new(startup_data, false);
     js_check(isolate2.execute("check.js", "if (a != 3) throw Error('x')"));
   }
