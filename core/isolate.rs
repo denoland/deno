@@ -324,24 +324,25 @@ pub struct ModuleInfo {
 #[allow(unused)]
 pub struct Isolate {
   v8_isolate: Option<v8::OwnedIsolate>,
-  pub last_exception: Option<String>,
-  pub last_exception_handle: v8::Global<v8::Value>,
-  pub global_context: v8::Global<v8::Context>,
-  // TODO(bartlomieju): move into `core/modules.rs`
-  mods_: HashMap<ModuleId, ModuleInfo>,
-  mods_by_name_: HashMap<String, ModuleId>,
-  pub shared_buf: DenoBuf,
-  pub shared_ab: v8::Global<v8::SharedArrayBuffer>,
-  pub js_recv_cb: v8::Global<v8::Function>,
-  pub current_send_cb_info: *const v8::FunctionCallbackInfo,
   snapshot_creator: Option<v8::SnapshotCreator>,
   has_snapshotted: bool,
   snapshot: Option<SnapshotConfig>,
-  pub next_dyn_import_id: DynImportId,
-  pub dyn_import_map: HashMap<DynImportId, v8::Global<v8::PromiseResolver>>,
-  pub pending_promise_map: HashMap<i32, v8::Global<v8::Value>>,
-  // Used in deno_mod_instantiate
-  pub resolve_context: *mut c_void,
+  pub(crate) last_exception: Option<String>,
+  pub(crate) last_exception_handle: v8::Global<v8::Value>,
+  pub(crate) global_context: v8::Global<v8::Context>,
+  pub(crate) shared_buf: DenoBuf,
+  pub(crate) shared_ab: v8::Global<v8::SharedArrayBuffer>,
+  pub(crate) js_recv_cb: v8::Global<v8::Function>,
+  pub(crate) current_send_cb_info: *const v8::FunctionCallbackInfo,
+  pub(crate) pending_promise_map: HashMap<i32, v8::Global<v8::Value>>,
+
+  // TODO(bartlomieju): move into `core/modules.rs`
+  mods_: HashMap<ModuleId, ModuleInfo>,
+  pub(crate) next_dyn_import_id: DynImportId,
+  pub(crate) dyn_import_map:
+    HashMap<DynImportId, v8::Global<v8::PromiseResolver>>,
+  pub(crate) resolve_context: *mut c_void,
+  // TODO: end
 
   // TODO: These two fields were not yet ported from libdeno
   // void* global_import_buf_ptr_;
@@ -508,7 +509,6 @@ impl Isolate {
       last_exception_handle: v8::Global::<v8::Value>::new(),
       global_context,
       mods_: HashMap::new(),
-      mods_by_name_: HashMap::new(),
       pending_promise_map: HashMap::new(),
       shared_buf: shared.as_deno_buf(),
       shared_ab: v8::Global::<v8::SharedArrayBuffer>::new(),
@@ -560,63 +560,6 @@ impl Isolate {
       bindings::host_import_module_dynamically_callback,
     );
     isolate
-  }
-
-  pub fn register_module(
-    &mut self,
-    main: bool,
-    name: &str,
-    source: &str,
-  ) -> ModuleId {
-    let isolate = self.v8_isolate.as_ref().unwrap();
-    let mut locker = v8::Locker::new(&isolate);
-
-    let mut hs = v8::HandleScope::new(&mut locker);
-    let scope = hs.enter();
-    assert!(!self.global_context.is_empty());
-    let mut context = self.global_context.get(scope).unwrap();
-    context.enter();
-
-    let name_str = v8::String::new(scope, name).unwrap();
-    let source_str = v8::String::new(scope, source).unwrap();
-
-    let origin = bindings::module_origin(scope, name_str);
-    let source = v8::script_compiler::Source::new(source_str, &origin);
-
-    let mut try_catch = v8::TryCatch::new(scope);
-    let tc = try_catch.enter();
-
-    let maybe_module = v8::script_compiler::compile_module(&isolate, source);
-
-    if tc.has_caught() {
-      assert!(maybe_module.is_none());
-      self.handle_exception(scope, context, tc.exception().unwrap());
-      context.exit();
-      return 0;
-    }
-    let module = maybe_module.unwrap();
-    let id = module.get_identity_hash();
-
-    let mut import_specifiers: Vec<String> = vec![];
-    for i in 0..module.get_module_requests_length() {
-      let specifier = module.get_module_request(i);
-      import_specifiers.push(specifier.to_rust_string_lossy(scope));
-    }
-
-    let mut handle = v8::Global::<v8::Module>::new();
-    handle.set(scope, module);
-    self.mods_.insert(
-      id,
-      ModuleInfo {
-        main,
-        name: name.to_string(),
-        import_specifiers,
-        handle,
-      },
-    );
-    self.mods_by_name_.insert(name.to_string(), id);
-    context.exit();
-    id
   }
 
   pub fn get_module_info(&self, id: ModuleId) -> Option<&ModuleInfo> {
@@ -1171,6 +1114,57 @@ impl Isolate {
     self.check_last_exception()
   }
 
+  fn mod_new2(&mut self, main: bool, name: &str, source: &str) -> ModuleId {
+    let isolate = self.v8_isolate.as_ref().unwrap();
+    let mut locker = v8::Locker::new(&isolate);
+
+    let mut hs = v8::HandleScope::new(&mut locker);
+    let scope = hs.enter();
+    assert!(!self.global_context.is_empty());
+    let mut context = self.global_context.get(scope).unwrap();
+    context.enter();
+
+    let name_str = v8::String::new(scope, name).unwrap();
+    let source_str = v8::String::new(scope, source).unwrap();
+
+    let origin = bindings::module_origin(scope, name_str);
+    let source = v8::script_compiler::Source::new(source_str, &origin);
+
+    let mut try_catch = v8::TryCatch::new(scope);
+    let tc = try_catch.enter();
+
+    let maybe_module = v8::script_compiler::compile_module(&isolate, source);
+
+    if tc.has_caught() {
+      assert!(maybe_module.is_none());
+      self.handle_exception(scope, context, tc.exception().unwrap());
+      context.exit();
+      return 0;
+    }
+    let module = maybe_module.unwrap();
+    let id = module.get_identity_hash();
+
+    let mut import_specifiers: Vec<String> = vec![];
+    for i in 0..module.get_module_requests_length() {
+      let specifier = module.get_module_request(i);
+      import_specifiers.push(specifier.to_rust_string_lossy(scope));
+    }
+
+    let mut handle = v8::Global::<v8::Module>::new();
+    handle.set(scope, module);
+    self.mods_.insert(
+      id,
+      ModuleInfo {
+        main,
+        name: name.to_string(),
+        import_specifiers,
+        handle,
+      },
+    );
+    context.exit();
+    id
+  }
+
   /// Low-level module creation.
   pub fn mod_new(
     &mut self,
@@ -1178,7 +1172,7 @@ impl Isolate {
     name: &str,
     source: &str,
   ) -> Result<ModuleId, ErrBox> {
-    let id = self.register_module(main, name, source);
+    let id = self.mod_new2(main, name, source);
     self.check_last_exception().map(|_| id)
   }
 
@@ -1212,7 +1206,6 @@ impl Isolate {
       module.handle.reset(scope);
     }
     self.mods_.clear();
-    self.mods_by_name_.clear();
     self.global_context.reset(scope);
 
     let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
@@ -1338,8 +1331,8 @@ type ResolveFn<'a> = dyn FnMut(&str, ModuleId) -> ModuleId + 'a;
 
 /// Used internally by Isolate::mod_instantiate to wrap ResolveFn and
 /// encapsulate pointer casts.
-struct ResolveContext<'a> {
-  resolve_fn: &'a mut ResolveFn<'a>,
+pub struct ResolveContext<'a> {
+  pub resolve_fn: &'a mut ResolveFn<'a>,
 }
 
 impl<'a> ResolveContext<'a> {
@@ -1348,8 +1341,9 @@ impl<'a> ResolveContext<'a> {
     self as *mut _ as *mut c_void
   }
 
+  #[allow(clippy::missing_safety_doc)]
   #[inline]
-  unsafe fn from_raw_ptr(ptr: *mut c_void) -> &'a mut Self {
+  pub(crate) unsafe fn from_raw_ptr(ptr: *mut c_void) -> &'a mut Self {
     &mut *(ptr as *mut _)
   }
 }
@@ -1408,18 +1402,6 @@ impl Isolate {
     let ctx = ResolveContext { resolve_fn };
     self.libdeno_mod_instantiate(ctx, id);
     self.check_last_exception()
-  }
-
-  /// Called during mod_instantiate() only.
-  #[allow(clippy::missing_safety_doc)]
-  pub unsafe fn module_resolve_cb(
-    user_data: *mut libc::c_void,
-    specifier: &str,
-    referrer: ModuleId,
-  ) -> ModuleId {
-    let ResolveContext { resolve_fn } = ResolveContext::from_raw_ptr(user_data);
-
-    resolve_fn(specifier, referrer)
   }
 
   /// Evaluates an already instantiated ES module.

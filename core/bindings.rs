@@ -3,6 +3,7 @@
 use crate::isolate::DenoBuf;
 use crate::isolate::Isolate;
 use crate::isolate::PinnedBuf;
+use crate::isolate::ResolveContext;
 
 use rusty_v8 as v8;
 use v8::InIsolate;
@@ -723,13 +724,9 @@ pub fn module_resolve_callback(
     let req_str = req.to_rust_string_lossy(scope);
 
     if req_str == specifier_str {
-      let id = unsafe {
-        Isolate::module_resolve_cb(
-          deno_isolate.resolve_context,
-          &req_str,
-          referrer_id,
-        )
-      };
+      let ResolveContext { resolve_fn } =
+        unsafe { ResolveContext::from_raw_ptr(deno_isolate.resolve_context) };
+      let id = resolve_fn(&req_str, referrer_id);
       let maybe_info = deno_isolate.get_module_info(id);
 
       if maybe_info.is_none() {
