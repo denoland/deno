@@ -5,6 +5,7 @@
 
 use crate::isolate::Isolate;
 use crate::libdeno::deno_buf;
+use crate::libdeno::script_origin;
 use crate::libdeno::PinnedBuf;
 
 use rusty_v8 as v8;
@@ -25,56 +26,6 @@ use std::option::Option;
 use std::ptr::null;
 use std::ptr::NonNull;
 use std::slice;
-
-fn script_origin<'a>(
-  s: &mut impl v8::ToLocal<'a>,
-  resource_name: v8::Local<'a, v8::String>,
-) -> v8::ScriptOrigin<'a> {
-  let resource_line_offset = v8::Integer::new(s, 0);
-  let resource_column_offset = v8::Integer::new(s, 0);
-  let resource_is_shared_cross_origin = v8::Boolean::new(s, false);
-  let script_id = v8::Integer::new(s, 123);
-  let source_map_url = v8::String::new(s, "source_map_url").unwrap();
-  let resource_is_opaque = v8::Boolean::new(s, true);
-  let is_wasm = v8::Boolean::new(s, false);
-  let is_module = v8::Boolean::new(s, false);
-  v8::ScriptOrigin::new(
-    resource_name.into(),
-    resource_line_offset,
-    resource_column_offset,
-    resource_is_shared_cross_origin,
-    script_id,
-    source_map_url.into(),
-    resource_is_opaque,
-    is_wasm,
-    is_module,
-  )
-}
-
-fn module_origin<'a>(
-  s: &mut impl v8::ToLocal<'a>,
-  resource_name: v8::Local<'a, v8::String>,
-) -> v8::ScriptOrigin<'a> {
-  let resource_line_offset = v8::Integer::new(s, 0);
-  let resource_column_offset = v8::Integer::new(s, 0);
-  let resource_is_shared_cross_origin = v8::Boolean::new(s, false);
-  let script_id = v8::Integer::new(s, 123);
-  let source_map_url = v8::String::new(s, "source_map_url").unwrap();
-  let resource_is_opaque = v8::Boolean::new(s, true);
-  let is_wasm = v8::Boolean::new(s, false);
-  let is_module = v8::Boolean::new(s, true);
-  v8::ScriptOrigin::new(
-    resource_name.into(),
-    resource_line_offset,
-    resource_column_offset,
-    resource_is_shared_cross_origin,
-    script_id,
-    source_map_url.into(),
-    resource_is_opaque,
-    is_wasm,
-    is_module,
-  )
-}
 
 pub extern "C" fn host_import_module_dynamically_callback(
   context: v8::Local<v8::Context>,

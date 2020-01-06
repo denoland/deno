@@ -469,15 +469,6 @@ pub unsafe fn deno_import_buf<'sc>(
 }
 
 /*
-pub unsafe fn deno_terminate_execution(i: *mut DenoIsolate) {
-  /*
-  deno::DenoIsolate* d = reinterpret_cast<deno::DenoIsolate*>(d_);
-  d->isolate_->TerminateExecution();
-  */
-  let i_mut: &mut DenoIsolate = unsafe { &mut *i };
-  let isolate = i_mut.isolate_.as_ref().unwrap();
-  isolate.terminate_execution();
-}
 
 #[allow(dead_code)]
 pub unsafe fn deno_run_microtasks(i: *mut isolate, core_isolate: *mut c_void) {
@@ -498,26 +489,6 @@ pub unsafe fn deno_run_microtasks(i: *mut isolate, core_isolate: *mut c_void) {
   deno_isolate.core_isolate_ = std::ptr::null_mut();
 }
 
-pub fn deno_snapshot_new(
-  deno_isolate: &mut DenoIsolate,
-) -> v8::OwnedStartupData {
-  assert!(deno_isolate.snapshot_creator_.is_some());
-
-  let isolate = deno_isolate.isolate_.as_ref().unwrap();
-  let mut locker = v8::Locker::new(isolate);
-  let mut hs = v8::HandleScope::new(&mut locker);
-  let scope = hs.enter();
-
-  // d.clear_modules();
-  deno_isolate.context_.reset(scope);
-
-  let snapshot_creator = deno_isolate.snapshot_creator_.as_mut().unwrap();
-  let startup_data = snapshot_creator
-    .create_blob(v8::FunctionCodeHandling::Keep)
-    .unwrap();
-  deno_isolate.has_snapshotted_ = true;
-  startup_data
-}
 
 #[allow(dead_code)]
 pub unsafe fn deno_snapshot_delete(s: &mut deno_snapshot) {
