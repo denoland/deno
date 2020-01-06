@@ -168,6 +168,7 @@ unsafe impl Send for EsIsolate {}
 impl Drop for EsIsolate {
   fn drop(&mut self) {
     let isolate = self.core_isolate.v8_isolate.as_ref().unwrap();
+    // Clear persistent handles we own.
     {
       let mut locker = v8::Locker::new(&isolate);
       let mut hs = v8::HandleScope::new(&mut locker);
@@ -598,42 +599,13 @@ impl Future for EsIsolate {
 #[cfg(test)]
 pub mod tests {
   use super::*;
+  use crate::isolate::js_check;
+  use crate::isolate::tests::run_in_task;
   use futures::future::lazy;
   use std::io;
   use std::ops::FnOnce;
   use std::sync::atomic::{AtomicUsize, Ordering};
   use std::sync::Mutex;
-
-  fn js_check<T>(r: Result<T, ErrBox>) -> T {
-    if let Err(e) = r {
-      panic!(e.to_string());
-    }
-    r.unwrap()
-  }
-
-  pub fn run_in_task<F>(f: F)
-  where
-    F: FnOnce(&mut Context) + Send + 'static,
-  {
-    futures::executor::block_on(lazy(move |cx| f(cx)));
-  }
-
-  fn poll_until_ready<F>(future: &mut F, max_poll_count: usize) -> F::Output
-  where
-    F: Future + Unpin,
-  {
-    let mut cx = Context::from_waker(futures::task::noop_waker_ref());
-    for _ in 0..max_poll_count {
-      match future.poll_unpin(&mut cx) {
-        Poll::Pending => continue,
-        Poll::Ready(val) => return val,
-      }
-    }
-    panic!(
-      "Isolate still not ready after polling {} times.",
-      max_poll_count
-    )
-  }
 
   pub enum Mode {
     Async,
@@ -652,42 +624,10 @@ pub mod tests {
     let dispatcher =
       move |control: &[u8], _zero_copy: Option<PinnedBuf>| -> CoreOp {
         dispatch_count_.fetch_add(1, Ordering::Relaxed);
-        match mode {
-          Mode::Async => {
-            assert_eq!(control.len(), 1);
-            assert_eq!(control[0], 42);
-            let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
-            Op::Async(futures::future::ok(buf).boxed())
-          }
-          Mode::OverflowReqSync => {
-            assert_eq!(control.len(), 100 * 1024 * 1024);
-            let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
-            Op::Sync(buf)
-          }
-          Mode::OverflowResSync => {
-            assert_eq!(control.len(), 1);
-            assert_eq!(control[0], 42);
-            let mut vec = Vec::<u8>::new();
-            vec.resize(100 * 1024 * 1024, 0);
-            vec[0] = 99;
-            let buf = vec.into_boxed_slice();
-            Op::Sync(buf)
-          }
-          Mode::OverflowReqAsync => {
-            assert_eq!(control.len(), 100 * 1024 * 1024);
-            let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
-            Op::Async(futures::future::ok(buf).boxed())
-          }
-          Mode::OverflowResAsync => {
-            assert_eq!(control.len(), 1);
-            assert_eq!(control[0], 42);
-            let mut vec = Vec::<u8>::new();
-            vec.resize(100 * 1024 * 1024, 0);
-            vec[0] = 4;
-            let buf = vec.into_boxed_slice();
-            Op::Async(futures::future::ok(buf).boxed())
-          }
-        }
+        assert_eq!(control.len(), 1);
+        assert_eq!(control[0], 42);
+        let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
+        Op::Async(futures::future::ok(buf).boxed())
       };
 
     isolate.register_op("test", dispatcher);

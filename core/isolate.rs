@@ -263,6 +263,7 @@ impl Drop for Isolate {
     // TODO Too much boiler plate.
     // <Boilerplate>
     let isolate = self.v8_isolate.take().unwrap();
+    // Clear persistent handles we own.
     {
       let mut locker = v8::Locker::new(&isolate);
       let mut hs = v8::HandleScope::new(&mut locker);
@@ -432,12 +433,6 @@ impl Isolate {
     isolate.set_capture_stack_trace_for_uncaught_exceptions(true, 10);
     isolate.set_promise_reject_callback(bindings::promise_reject_callback);
     isolate.add_message_listener(bindings::message_callback);
-    // isolate.set_host_initialize_import_meta_object_callback(
-    //   bindings::host_initialize_import_meta_object_callback,
-    // );
-    // isolate.set_host_import_module_dynamically_callback(
-    //   bindings::host_import_module_dynamically_callback,
-    // );
     isolate
   }
 
@@ -773,12 +768,6 @@ impl Isolate {
     let mut locker = v8::Locker::new(isolate);
     let mut hs = v8::HandleScope::new(&mut locker);
     let scope = hs.enter();
-
-    // TODO:
-    // for (_key, module) in self.mods_.iter_mut() {
-    //   module.handle.reset(scope);
-    // }
-    // self.mods_.clear();
     self.global_context.reset(scope);
 
     let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
@@ -806,12 +795,6 @@ impl Future for Isolate {
     let mut overflow_response: Option<(OpId, Buf)> = None;
 
     loop {
-      // If there are any pending dyn_import futures, do those first.
-      // if !inner.pending_dyn_imports.is_empty() {
-      //   let poll_imports = inner.poll_dyn_imports(cx)?;
-      //   assert!(poll_imports.is_ready());
-      // }
-
       // Now handle actual ops.
       inner.have_unpolled_ops = false;
       #[allow(clippy::match_wild_err_arm)]

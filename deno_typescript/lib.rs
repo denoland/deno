@@ -180,7 +180,7 @@ pub fn mksnapshot_bundle(
   bundle: &Path,
   state: Arc<Mutex<TSState>>,
 ) -> Result<(), ErrBox> {
-  let mut runtime_isolate = EsIsolate::new(StartupData::None, true);
+  let runtime_isolate = &mut EsIsolate::new(StartupData::None, true);
   let source_code_vec = std::fs::read(bundle)?;
   let source_code = std::str::from_utf8(&source_code_vec)?;
 
@@ -203,7 +203,7 @@ pub fn mksnapshot_bundle_ts(
   bundle: &Path,
   state: Arc<Mutex<TSState>>,
 ) -> Result<(), ErrBox> {
-  let mut runtime_isolate = EsIsolate::new(StartupData::None, true);
+  let runtime_isolate = &mut EsIsolate::new(StartupData::None, true);
   let source_code_vec = std::fs::read(bundle)?;
   let source_code = std::str::from_utf8(&source_code_vec)?;
 
@@ -222,7 +222,7 @@ pub fn mksnapshot_bundle_ts(
 }
 
 fn write_snapshot(
-  mut runtime_isolate: Box<EsIsolate>,
+  runtime_isolate: &mut EsIsolate,
   bundle: &Path,
 ) -> Result<(), ErrBox> {
   println!("creating snapshot...");
