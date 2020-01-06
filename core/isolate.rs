@@ -715,7 +715,7 @@ impl Isolate {
   #[allow(dead_code)]
   pub fn run_microtasks(&mut self) {
     let isolate = self.isolate_.as_mut().unwrap();
-    let mut locker = v8::Locker::new(isolate);
+    let _locker = v8::Locker::new(isolate);
     isolate.enter();
     isolate.run_microtasks();
     isolate.exit();
