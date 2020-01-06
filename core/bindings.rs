@@ -1,21 +1,225 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-#![allow(mutable_transmutes)]
-#![allow(clippy::transmute_ptr_to_ptr)]
-
+use crate::isolate::DenoBuf;
 use crate::isolate::Isolate;
-use crate::libdeno::deno_buf;
-use crate::libdeno::script_origin;
-use crate::libdeno::PinnedBuf;
+use crate::isolate::PinnedBuf;
+use crate::isolate::ResolveContext;
 
 use rusty_v8 as v8;
 use v8::InIsolate;
 
-use libc::c_char;
 use libc::c_void;
 use std::convert::TryFrom;
-use std::ffi::CString;
 use std::option::Option;
+
+lazy_static! {
+  pub static ref EXTERNAL_REFERENCES: v8::ExternalReferences =
+    v8::ExternalReferences::new(&[
+      v8::ExternalReference { function: print },
+      v8::ExternalReference { function: recv },
+      v8::ExternalReference { function: send },
+      v8::ExternalReference {
+        function: eval_context
+      },
+      v8::ExternalReference {
+        function: error_to_json
+      },
+      v8::ExternalReference {
+        getter: shared_getter
+      },
+      v8::ExternalReference {
+        message: message_callback
+      },
+      v8::ExternalReference {
+        function: queue_microtask
+      },
+    ]);
+}
+
+pub fn script_origin<'a>(
+  s: &mut impl v8::ToLocal<'a>,
+  resource_name: v8::Local<'a, v8::String>,
+) -> v8::ScriptOrigin<'a> {
+  let resource_line_offset = v8::Integer::new(s, 0);
+  let resource_column_offset = v8::Integer::new(s, 0);
+  let resource_is_shared_cross_origin = v8::Boolean::new(s, false);
+  let script_id = v8::Integer::new(s, 123);
+  let source_map_url = v8::String::new(s, "source_map_url").unwrap();
+  let resource_is_opaque = v8::Boolean::new(s, true);
+  let is_wasm = v8::Boolean::new(s, false);
+  let is_module = v8::Boolean::new(s, false);
+  v8::ScriptOrigin::new(
+    resource_name.into(),
+    resource_line_offset,
+    resource_column_offset,
+    resource_is_shared_cross_origin,
+    script_id,
+    source_map_url.into(),
+    resource_is_opaque,
+    is_wasm,
+    is_module,
+  )
+}
+
+pub fn module_origin<'a>(
+  s: &mut impl v8::ToLocal<'a>,
+  resource_name: v8::Local<'a, v8::String>,
+) -> v8::ScriptOrigin<'a> {
+  let resource_line_offset = v8::Integer::new(s, 0);
+  let resource_column_offset = v8::Integer::new(s, 0);
+  let resource_is_shared_cross_origin = v8::Boolean::new(s, false);
+  let script_id = v8::Integer::new(s, 123);
+  let source_map_url = v8::String::new(s, "source_map_url").unwrap();
+  let resource_is_opaque = v8::Boolean::new(s, true);
+  let is_wasm = v8::Boolean::new(s, false);
+  let is_module = v8::Boolean::new(s, true);
+  v8::ScriptOrigin::new(
+    resource_name.into(),
+    resource_line_offset,
+    resource_column_offset,
+    resource_is_shared_cross_origin,
+    script_id,
+    source_map_url.into(),
+    resource_is_opaque,
+    is_wasm,
+    is_module,
+  )
+}
+
+pub fn initialize_context<'a>(
+  scope: &mut impl v8::ToLocal<'a>,
+  mut context: v8::Local<v8::Context>,
+) {
+  context.enter();
+
+  let global = context.global(scope);
+
+  let deno_val = v8::Object::new(scope);
+
+  global.set(
+    context,
+    v8::String::new(scope, "Deno").unwrap().into(),
+    deno_val.into(),
+  );
+
+  let mut core_val = v8::Object::new(scope);
+
+  deno_val.set(
+    context,
+    v8::String::new(scope, "core").unwrap().into(),
+    core_val.into(),
+  );
+
+  let mut print_tmpl = v8::FunctionTemplate::new(scope, print);
+  let print_val = print_tmpl.get_function(scope, context).unwrap();
+  core_val.set(
+    context,
+    v8::String::new(scope, "print").unwrap().into(),
+    print_val.into(),
+  );
+
+  let mut recv_tmpl = v8::FunctionTemplate::new(scope, recv);
+  let recv_val = recv_tmpl.get_function(scope, context).unwrap();
+  core_val.set(
+    context,
+    v8::String::new(scope, "recv").unwrap().into(),
+    recv_val.into(),
+  );
+
+  let mut send_tmpl = v8::FunctionTemplate::new(scope, send);
+  let send_val = send_tmpl.get_function(scope, context).unwrap();
+  core_val.set(
+    context,
+    v8::String::new(scope, "send").unwrap().into(),
+    send_val.into(),
+  );
+
+  let mut eval_context_tmpl = v8::FunctionTemplate::new(scope, eval_context);
+  let eval_context_val =
+    eval_context_tmpl.get_function(scope, context).unwrap();
+  core_val.set(
+    context,
+    v8::String::new(scope, "evalContext").unwrap().into(),
+    eval_context_val.into(),
+  );
+
+  let mut error_to_json_tmpl = v8::FunctionTemplate::new(scope, error_to_json);
+  let error_to_json_val =
+    error_to_json_tmpl.get_function(scope, context).unwrap();
+  core_val.set(
+    context,
+    v8::String::new(scope, "errorToJSON").unwrap().into(),
+    error_to_json_val.into(),
+  );
+
+  core_val.set_accessor(
+    context,
+    v8::String::new(scope, "shared").unwrap().into(),
+    shared_getter,
+  );
+
+  // Direct bindings on `window`.
+  let mut queue_microtask_tmpl =
+    v8::FunctionTemplate::new(scope, queue_microtask);
+  let queue_microtask_val =
+    queue_microtask_tmpl.get_function(scope, context).unwrap();
+  global.set(
+    context,
+    v8::String::new(scope, "queueMicrotask").unwrap().into(),
+    queue_microtask_val.into(),
+  );
+
+  context.exit();
+}
+
+pub unsafe fn buf_to_uint8array<'sc>(
+  scope: &mut impl v8::ToLocal<'sc>,
+  buf: DenoBuf,
+) -> v8::Local<'sc, v8::Uint8Array> {
+  if buf.data_ptr.is_null() {
+    let ab = v8::ArrayBuffer::new(scope, 0);
+    return v8::Uint8Array::new(ab, 0, 0).expect("Failed to create UintArray8");
+  }
+
+  /*
+  // To avoid excessively allocating new ArrayBuffers, we try to reuse a single
+  // global ArrayBuffer. The caveat is that users must extract data from it
+  // before the next tick. We only do this for ArrayBuffers less than 1024
+  // bytes.
+  v8::Local<v8::ArrayBuffer> ab;
+  void* data;
+  if (buf.data_len > GLOBAL_IMPORT_BUF_SIZE) {
+    // Simple case. We allocate a new ArrayBuffer for this.
+    ab = v8::ArrayBuffer::New(d->isolate_, buf.data_len);
+    data = ab->GetBackingStore()->Data();
+  } else {
+    // Fast case. We reuse the global ArrayBuffer.
+    if (d->global_import_buf_.IsEmpty()) {
+      // Lazily initialize it.
+      DCHECK_NULL(d->global_import_buf_ptr_);
+      ab = v8::ArrayBuffer::New(d->isolate_, GLOBAL_IMPORT_BUF_SIZE);
+      d->global_import_buf_.Reset(d->isolate_, ab);
+      d->global_import_buf_ptr_ = ab->GetBackingStore()->Data();
+    } else {
+      DCHECK(d->global_import_buf_ptr_);
+      ab = d->global_import_buf_.Get(d->isolate_);
+    }
+    data = d->global_import_buf_ptr_;
+  }
+  memcpy(data, buf.data_ptr, buf.data_len);
+  auto view = v8::Uint8Array::New(ab, 0, buf.data_len);
+  return view;
+  */
+
+  // TODO(bartlomieju): for now skipping part with `global_import_buf_`
+  // and always creating new buffer
+  let ab = v8::ArrayBuffer::new(scope, buf.data_len);
+  let mut backing_store = ab.get_backing_store();
+  let data = backing_store.data();
+  let data: *mut u8 = data as *mut libc::c_void as *mut u8;
+  std::ptr::copy_nonoverlapping(buf.data_ptr, data, buf.data_len);
+  v8::Uint8Array::new(ab, 0, buf.data_len).expect("Failed to create UintArray8")
+}
 
 pub extern "C" fn host_import_module_dynamically_callback(
   context: v8::Local<v8::Context>,
@@ -52,10 +256,10 @@ pub extern "C" fn host_import_module_dynamically_callback(
   let mut resolver_handle = v8::Global::new();
   resolver_handle.set(scope, resolver);
 
-  let import_id = deno_isolate.next_dyn_import_id_;
-  deno_isolate.next_dyn_import_id_ += 1;
+  let import_id = deno_isolate.next_dyn_import_id;
+  deno_isolate.next_dyn_import_id += 1;
   deno_isolate
-    .dyn_import_map_
+    .dyn_import_map
     .insert(import_id, resolver_handle);
 
   deno_isolate.dyn_import_cb(&specifier_str, &referrer_name_str, import_id);
@@ -104,8 +308,8 @@ pub extern "C" fn message_callback(
   let mut locker = v8::Locker::new(isolate);
   let mut hs = v8::HandleScope::new(&mut locker);
   let scope = hs.enter();
-  assert!(!deno_isolate.context_.is_empty());
-  let context = deno_isolate.context_.get(scope).unwrap();
+  assert!(!deno_isolate.global_context.is_empty());
+  let context = deno_isolate.global_context.get(scope).unwrap();
 
   // TerminateExecution was called
   if isolate.is_execution_terminating() {
@@ -115,7 +319,7 @@ pub extern "C" fn message_callback(
   }
 
   let json_str = deno_isolate.encode_message_as_json(scope, context, message);
-  deno_isolate.last_exception_ = Some(json_str);
+  deno_isolate.last_exception = Some(json_str);
 }
 
 pub extern "C" fn promise_reject_callback(msg: v8::PromiseRejectMessage) {
@@ -125,10 +329,10 @@ pub extern "C" fn promise_reject_callback(msg: v8::PromiseRejectMessage) {
   let deno_isolate: &mut Isolate =
     unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
   let mut locker = v8::Locker::new(isolate);
-  assert!(!deno_isolate.context_.is_empty());
+  assert!(!deno_isolate.global_context.is_empty());
   let mut hs = v8::HandleScope::new(&mut locker);
   let scope = hs.enter();
-  let mut context = deno_isolate.context_.get(scope).unwrap();
+  let mut context = deno_isolate.global_context.get(scope).unwrap();
   context.enter();
 
   let promise = msg.get_promise();
@@ -140,12 +344,12 @@ pub extern "C" fn promise_reject_callback(msg: v8::PromiseRejectMessage) {
       let mut error_global = v8::Global::<v8::Value>::new();
       error_global.set(scope, error);
       deno_isolate
-        .pending_promise_map_
+        .pending_promise_map
         .insert(promise_id, error_global);
     }
     v8::PromiseRejectEvent::PromiseHandlerAddedAfterReject => {
       if let Some(mut handle) =
-        deno_isolate.pending_promise_map_.remove(&promise_id)
+        deno_isolate.pending_promise_map.remove(&promise_id)
       {
         handle.reset(scope);
       }
@@ -160,6 +364,8 @@ pub extern "C" fn promise_reject_callback(msg: v8::PromiseRejectMessage) {
 }
 
 pub extern "C" fn print(info: &v8::FunctionCallbackInfo) {
+  #[allow(mutable_transmutes)]
+  #[allow(clippy::transmute_ptr_to_ptr)]
   let info: &mut v8::FunctionCallbackInfo =
     unsafe { std::mem::transmute(info) };
 
@@ -205,7 +411,7 @@ pub extern "C" fn recv(info: &v8::FunctionCallbackInfo) {
   let mut hs = v8::HandleScope::new(&mut locker);
   let scope = hs.enter();
 
-  if !deno_isolate.recv_.is_empty() {
+  if !deno_isolate.js_recv_cb.is_empty() {
     let msg = v8::String::new(scope, "Deno.core.recv already called.").unwrap();
     isolate.throw_exception(msg.into());
     return;
@@ -213,7 +419,7 @@ pub extern "C" fn recv(info: &v8::FunctionCallbackInfo) {
 
   let recv_fn =
     v8::Local::<v8::Function>::try_from(info.get_argument(0)).unwrap();
-  deno_isolate.recv_.set(scope, recv_fn);
+  deno_isolate.js_recv_cb.set(scope, recv_fn);
 }
 
 pub extern "C" fn send(info: &v8::FunctionCallbackInfo) {
@@ -227,7 +433,7 @@ pub extern "C" fn send(info: &v8::FunctionCallbackInfo) {
   let isolate = scope.isolate();
   let deno_isolate: &mut Isolate =
     unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
-  assert!(!deno_isolate.context_.is_empty());
+  assert!(!deno_isolate.global_context.is_empty());
 
   let op_id = v8::Local::<v8::Uint32>::try_from(info.get_argument(0))
     .unwrap()
@@ -240,28 +446,25 @@ pub extern "C" fn send(info: &v8::FunctionCallbackInfo) {
         let backing_store_ptr = backing_store.data() as *mut _ as *mut u8;
         let view_ptr = unsafe { backing_store_ptr.add(view.byte_offset()) };
         let view_len = view.byte_length();
-        unsafe { deno_buf::from_raw_parts(view_ptr, view_len) }
+        unsafe { DenoBuf::from_raw_parts(view_ptr, view_len) }
       })
-      .unwrap_or_else(|_| deno_buf::empty());
+      .unwrap_or_else(|_| DenoBuf::empty());
 
   let zero_copy: Option<PinnedBuf> =
     v8::Local::<v8::ArrayBufferView>::try_from(info.get_argument(2))
       .map(PinnedBuf::new)
       .ok();
 
-  // TODO: what's the point of this again?
-  // DCHECK_NULL(d->current_args_);
-  // d->current_args_ = &args;
-  assert!(deno_isolate.current_args_.is_null());
-  deno_isolate.current_args_ = info;
+  assert!(deno_isolate.current_send_cb_info.is_null());
+  deno_isolate.current_send_cb_info = info;
 
   deno_isolate.pre_dispatch(op_id, control, zero_copy);
 
-  if deno_isolate.current_args_.is_null() {
-    // This indicates that deno_repond() was called already.
+  if deno_isolate.current_send_cb_info.is_null() {
+    // This indicates that respond() was called already.
   } else {
     // Asynchronous.
-    deno_isolate.current_args_ = std::ptr::null();
+    deno_isolate.current_send_cb_info = std::ptr::null();
   }
 }
 
@@ -279,8 +482,8 @@ pub extern "C" fn eval_context(info: &v8::FunctionCallbackInfo) {
   let isolate = scope.isolate();
   let deno_isolate: &mut Isolate =
     unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
-  assert!(!deno_isolate.context_.is_empty());
-  let context = deno_isolate.context_.get(scope).unwrap();
+  assert!(!deno_isolate.global_context.is_empty());
+  let context = deno_isolate.global_context.get(scope).unwrap();
 
   let source = match v8::Local::<v8::String>::try_from(arg0) {
     Ok(s) => s,
@@ -414,10 +617,10 @@ pub extern "C" fn error_to_json(info: &v8::FunctionCallbackInfo) {
   let deno_isolate: &mut Isolate =
     unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
   let mut locker = v8::Locker::new(&isolate);
-  assert!(!deno_isolate.context_.is_empty());
+  assert!(!deno_isolate.global_context.is_empty());
   let mut hs = v8::HandleScope::new(&mut locker);
   let scope = hs.enter();
-  let context = deno_isolate.context_.get(scope).unwrap();
+  let context = deno_isolate.global_context.get(scope).unwrap();
   // </Boilerplate>
   let exception = info.get_argument(0);
   let json_string =
@@ -465,27 +668,27 @@ pub extern "C" fn shared_getter(
     let deno_isolate: &mut Isolate =
       unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
 
-    if deno_isolate.shared_.data_ptr.is_null() {
+    if deno_isolate.shared_buf.data_ptr.is_null() {
       return;
     }
 
     // Lazily initialize the persistent external ArrayBuffer.
-    if deno_isolate.shared_ab_.is_empty() {
+    if deno_isolate.shared_ab.is_empty() {
       #[allow(mutable_transmutes)]
       #[allow(clippy::transmute_ptr_to_ptr)]
       let data_ptr: *mut u8 =
-        unsafe { std::mem::transmute(deno_isolate.shared_.data_ptr) };
+        unsafe { std::mem::transmute(deno_isolate.shared_buf.data_ptr) };
       let ab = unsafe {
         v8::SharedArrayBuffer::new_DEPRECATED(
           scope,
           data_ptr as *mut c_void,
-          deno_isolate.shared_.data_len,
+          deno_isolate.shared_buf.data_len,
         )
       };
-      deno_isolate.shared_ab_.set(scope, ab);
+      deno_isolate.shared_ab.set(scope, ab);
     }
 
-    let shared_ab = deno_isolate.shared_ab_.get(scope).unwrap();
+    let shared_ab = deno_isolate.shared_ab.get(scope).unwrap();
     scope.escape(shared_ab)
   };
 
@@ -521,12 +724,9 @@ pub fn module_resolve_callback(
     let req_str = req.to_rust_string_lossy(scope);
 
     if req_str == specifier_str {
-      let resolve_cb = deno_isolate.resolve_cb_.unwrap();
-      let c_str = CString::new(req_str.to_string()).unwrap();
-      let c_req_str: *const c_char = c_str.as_ptr() as *const c_char;
-      let id = unsafe {
-        resolve_cb(deno_isolate.resolve_context_, c_req_str, referrer_id)
-      };
+      let ResolveContext { resolve_fn } =
+        unsafe { ResolveContext::from_raw_ptr(deno_isolate.resolve_context) };
+      let id = resolve_fn(&req_str, referrer_id);
       let maybe_info = deno_isolate.get_module_info(id);
 
       if maybe_info.is_none() {
