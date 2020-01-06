@@ -1,8 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-#![allow(mutable_transmutes)]
-#![allow(clippy::transmute_ptr_to_ptr)]
-
 use crate::isolate::deno_buf;
 use crate::isolate::Isolate;
 use crate::isolate::PinnedBuf;
@@ -366,6 +363,8 @@ pub extern "C" fn promise_reject_callback(msg: v8::PromiseRejectMessage) {
 }
 
 pub extern "C" fn print(info: &v8::FunctionCallbackInfo) {
+  #[allow(mutable_transmutes)]
+  #[allow(clippy::transmute_ptr_to_ptr)]
   let info: &mut v8::FunctionCallbackInfo =
     unsafe { std::mem::transmute(info) };
 

@@ -5,18 +5,10 @@
 // Isolate struct from becoming too bloating for users who do not need
 // asynchronous module loading.
 
-#![allow(mutable_transmutes)]
-#![allow(clippy::transmute_ptr_to_ptr)]
-
-use crate::bindings;
-
 use rusty_v8 as v8;
 
-use std::collections::HashMap;
-use std::convert::From;
-use std::option::Option;
-
 use crate::any_error::ErrBox;
+use crate::bindings;
 use crate::js_errors::CoreJSError;
 use crate::js_errors::V8Exception;
 use crate::ops::*;
@@ -33,9 +25,12 @@ use futures::stream::TryStream;
 use futures::stream::TryStreamExt;
 use futures::task::AtomicWaker;
 use libc::c_void;
+use std::collections::HashMap;
+use std::convert::From;
 use std::fmt;
 use std::future::Future;
 use std::ops::{Deref, DerefMut};
+use std::option::Option;
 use std::pin::Pin;
 use std::ptr::null;
 use std::ptr::NonNull;
