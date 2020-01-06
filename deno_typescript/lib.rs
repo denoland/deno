@@ -1,4 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+#![deny(warnings)]
+
 extern crate deno_core;
 extern crate serde;
 extern crate serde_json;
