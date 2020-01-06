@@ -1,9 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::es_isolate::EsIsolate;
+use crate::es_isolate::ResolveContext;
 use crate::isolate::DenoBuf;
 use crate::isolate::Isolate;
 use crate::isolate::PinnedBuf;
-use crate::isolate::ResolveContext;
 
 use rusty_v8 as v8;
 use v8::InIsolate;
@@ -230,8 +231,8 @@ pub extern "C" fn host_import_module_dynamically_callback(
   let mut hs = v8::EscapableHandleScope::new(cbs.enter());
   let scope = hs.enter();
   let isolate = scope.isolate();
-  let deno_isolate: &mut Isolate =
-    unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
+  let deno_isolate: &mut EsIsolate =
+    unsafe { &mut *(isolate.get_data(1) as *mut EsIsolate) };
 
   // NOTE(bartlomieju): will crash for non-UTF-8 specifier
   let specifier_str = specifier
@@ -276,8 +277,8 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
   let mut hs = v8::HandleScope::new(cbs.enter());
   let scope = hs.enter();
   let isolate = scope.isolate();
-  let deno_isolate: &mut Isolate =
-    unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
+  let deno_isolate: &mut EsIsolate =
+    unsafe { &mut *(isolate.get_data(1) as *mut EsIsolate) };
 
   let id = module.get_identity_hash();
   assert_ne!(id, 0);
@@ -704,8 +705,8 @@ pub fn module_resolve_callback(
   let mut cbs = v8::CallbackScope::new(context);
   let cb_scope = cbs.enter();
   let isolate = cb_scope.isolate();
-  let deno_isolate: &mut Isolate =
-    unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
+  let deno_isolate: &mut EsIsolate =
+    unsafe { &mut *(isolate.get_data(1) as *mut EsIsolate) };
 
   let mut locker = v8::Locker::new(isolate);
   let mut hs = v8::EscapableHandleScope::new(&mut locker);
