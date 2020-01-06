@@ -443,26 +443,6 @@ pub unsafe fn deno_import_buf<'sc>(
 /*
 
 #[allow(dead_code)]
-pub unsafe fn deno_run_microtasks(i: *mut isolate, core_isolate: *mut c_void) {
-  /*
-  deno::DenoIsolate* d = reinterpret_cast<deno::DenoIsolate*>(d_);
-  deno::UserDataScope user_data_scope(d, user_data);
-  v8::Locker locker(d->isolate_);
-  v8::Isolate::Scope isolate_scope(d->isolate_);
-  d->isolate_->RunMicrotasks();
-  */
-  let deno_isolate: &mut DenoIsolate = unsafe { &mut *i };
-  deno_isolate.core_isolate_ = core_isolate;
-  let isolate = deno_isolate.isolate_.as_mut().unwrap();
-  let mut locker = v8::Locker::new(isolate);
-  isolate.enter();
-  isolate.run_microtasks();
-  isolate.exit();
-  deno_isolate.core_isolate_ = std::ptr::null_mut();
-}
-
-
-#[allow(dead_code)]
 pub unsafe fn deno_snapshot_delete(s: &mut deno_snapshot) {
   todo!()
 }

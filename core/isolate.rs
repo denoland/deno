@@ -201,8 +201,6 @@ pub struct Isolate {
   pub pending_promise_map_: HashMap<i32, v8::Global<v8::Value>>,
   // Used in deno_mod_instantiate
   pub resolve_context_: *mut c_void,
-  // Used in deno_mod_evaluate
-  pub core_isolate_: *mut c_void,
 
   // TODO: These two fields were not yet ported from libdeno
   // void* global_import_buf_ptr_;
@@ -369,7 +367,6 @@ impl Isolate {
       next_dyn_import_id_: 0,
       dyn_import_map_: HashMap::new(),
       resolve_context_: std::ptr::null_mut(),
-      core_isolate_: std::ptr::null_mut(),
       shared_isolate_handle: Arc::new(Mutex::new(None)),
       dyn_import: None,
       js_error_create: Arc::new(CoreJSError::from_v8_exception),
@@ -713,6 +710,15 @@ impl Isolate {
     );
 
     json_obj
+  }
+
+  #[allow(dead_code)]
+  pub fn run_microtasks(&mut self) {
+    let isolate = self.isolate_.as_mut().unwrap();
+    let mut locker = v8::Locker::new(isolate);
+    isolate.enter();
+    isolate.run_microtasks();
+    isolate.exit();
   }
   // End of methods from libdeno
 
