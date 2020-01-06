@@ -1208,6 +1208,12 @@ builds. The following must be installed separately:
       it refers to Python 2, [not 3](
       https://github.com/denoland/deno/issues/464#issuecomment-411795578).
 
+Extra steps for Linux users:
+
+- Install glib-2.0 development files.
+    - Required by [rusty_v8](https://github.com/denoland/rusty_v8#build).
+    - On Ubuntu, run `sudo apt install libglib2.0-dev`.
+
 Extra steps for Mac users:
 
 - Install [XCode](https://developer.apple.com/xcode/) :(
