@@ -2,6 +2,11 @@
 import { sendSync, sendAsync } from "./dispatch_json.ts";
 import * as dispatch from "./dispatch.ts";
 
+export interface MkdirOption {
+  recursive?: boolean;
+  mode?: number;
+}
+
 /** Creates a new directory with the specified path synchronously.
  * If `recursive` is set to true, nested directories will be created (also known
  * as "mkdir -p").
@@ -9,10 +14,14 @@ import * as dispatch from "./dispatch.ts";
  * Windows.
  *
  *       Deno.mkdirSync("new_dir");
- *       Deno.mkdirSync("nested/directories", true);
+ *       Deno.mkdirSync("nested/directories", { recursive: true });
  */
-export function mkdirSync(path: string, recursive = false, mode = 0o777): void {
-  sendSync(dispatch.OP_MKDIR, { path, recursive, mode });
+export function mkdirSync(path: string, options: MkdirOption = {}): void {
+  sendSync(dispatch.OP_MKDIR, {
+    path,
+    recursive: !!options.recursive,
+    mode: options.mode || 0o777
+  });
 }
 
 /** Creates a new directory with the specified path.
@@ -22,12 +31,15 @@ export function mkdirSync(path: string, recursive = false, mode = 0o777): void {
  * Windows.
  *
  *       await Deno.mkdir("new_dir");
- *       await Deno.mkdir("nested/directories", true);
+ *       await Deno.mkdir("nested/directories", { recursive: true });
  */
 export async function mkdir(
   path: string,
-  recursive = false,
-  mode = 0o777
+  options: MkdirOption = {}
 ): Promise<void> {
-  await sendAsync(dispatch.OP_MKDIR, { path, recursive, mode });
+  await sendAsync(dispatch.OP_MKDIR, {
+    path,
+    recursive: !!options.recursive,
+    mode: options.mode || 0o777
+  });
 }
