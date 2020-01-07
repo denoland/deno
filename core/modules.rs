@@ -252,6 +252,95 @@ impl<L: Loader + Unpin> MainImportRecursiveLoad<L> {
 }
 
 #[derive(Debug, Eq, PartialEq)]
+pub enum NewMainImportState {
+  LoadingRoot,
+  LoadingImports,
+  Done,
+}
+
+/// This future is used to implement parallel async module loading without
+/// complicating the Isolate API.
+/// TODO: RecursiveLoad desperately needs to be merged with Modules.
+pub struct NewMainImportRecursiveLoad {
+  pub root_module_id: Option<ModuleId>,
+  pub state: NewMainImportState,
+  pub loader: Arc<Box<dyn Loader + Unpin>>,
+  pub pending: FuturesUnordered<Pin<Box<SourceCodeInfoFuture>>>,
+  pub is_pending: HashSet<ModuleSpecifier>,
+}
+
+impl NewMainImportRecursiveLoad {
+  /// Starts a new parallel load of the given URL of the main module.
+  pub fn new(
+    specifier: &str,
+    code: Option<String>,
+    loader: Arc<Box<dyn Loader + Unpin>>,
+  ) -> Result<Self, ErrBox> {
+    let module_specifier = loader.resolve(specifier, ".", true, false)?;
+    let pending = FuturesUnordered::new();
+
+    if code.is_some() {
+      let info = SourceCodeInfo {
+        code: code.unwrap().to_owned(),
+        module_url_specified: module_specifier.to_string(),
+        module_url_found: module_specifier.to_string(),
+      };
+      let load_fut = futures::future::ok(info).boxed();
+      pending.push(load_fut)
+    } else {
+      let load_fut = loader.load(&module_specifier, None).boxed();
+      pending.push(load_fut);
+    }
+
+    let load = Self {
+      root_module_id: None,
+      state: NewMainImportState::LoadingRoot,
+      loader,
+      pending,
+      is_pending: HashSet::new(),
+    };
+
+    Ok(load)
+  }
+
+  pub fn add_import(
+    &mut self,
+    specifier: ModuleSpecifier,
+    referrer: ModuleSpecifier,
+  ) {
+    if !self.is_pending.contains(&specifier) {
+      let fut = self
+        .loader
+        .load(&specifier, Some(referrer));
+      self.pending.push(fut.boxed());
+      self.is_pending.insert(specifier);
+    }
+  }
+}
+
+
+impl Stream for NewMainImportRecursiveLoad {
+  type Item = Result<SourceCodeInfo, ErrBox>;
+
+  fn poll_next(
+    self: Pin<&mut Self>,
+    cx: &mut Context,
+  ) -> Poll<Option<Self::Item>> {
+    let inner = self.get_mut();
+    match inner.state {
+      NewMainImportState::LoadingRoot | NewMainImportState::LoadingImports => {
+        match inner.pending.try_poll_next_unpin(cx)? {
+          Poll::Ready(None) => unreachable!(),
+          Poll::Ready(Some(info)) => Poll::Ready(Some(Ok(info))),
+          Poll::Pending => Poll::Pending,
+        }
+      }
+      NewMainImportState::Done => Poll::Ready(None)
+    }
+  }
+}
+
+#[derive(Debug, Eq, PartialEq)]
 enum DynImportState {
   ResolveImport(String, String), // specifier, referrer
   LoadingRoot,

@@ -5,6 +5,7 @@
 // Isolate struct from becoming too bloating for users who do not need
 // asynchronous module loading.
 
+#![allow(unused)]
 use rusty_v8 as v8;
 
 use crate::any_error::ErrBox;
@@ -26,13 +27,19 @@ use std::fmt;
 use std::ops::{Deref, DerefMut};
 use std::option::Option;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::task::Context;
 use std::task::Poll;
 
+use crate::module_specifier::ModuleSpecifier;
 use crate::isolate::Isolate;
 use crate::isolate::StartupData;
 use crate::modules::NewDynImportRecursiveLoad;
+use crate::modules::SourceCodeInfoFuture;
+use crate::modules::NewMainImportRecursiveLoad;
+use crate::modules::NewMainImportState;
+use crate::modules::Modules;
+use crate::modules::Loader;
 
 pub type ModuleId = i32;
 pub type DynImportId = i32;
@@ -133,7 +140,8 @@ pub struct ModuleInfo {
 /// as arguments. An async Op corresponds exactly to a Promise in JavaScript.
 pub struct EsIsolate {
   core_isolate: Box<Isolate>,
-
+  loader: Arc<Box<dyn Loader + Unpin>>,
+  modules: Arc<Mutex<Modules>>,
   mods_: HashMap<ModuleId, ModuleInfo>,
   pub(crate) next_dyn_import_id: DynImportId,
   pub(crate) dyn_import_map:
@@ -205,7 +213,7 @@ impl<'a> ResolveContext<'a> {
 }
 
 impl EsIsolate {
-  pub fn new(startup_data: StartupData, will_snapshot: bool) -> Box<Self> {
+  pub fn new(loader: Box<dyn Loader + Unpin>, startup_data: StartupData, will_snapshot: bool) -> Box<Self> {
     let mut core_isolate = Isolate::new(startup_data, will_snapshot);
     {
       let isolate = core_isolate.v8_isolate.as_mut().unwrap();
@@ -218,6 +226,8 @@ impl EsIsolate {
     }
 
     let es_isolate = Self {
+      modules: Arc::new(Mutex::new(Modules::new())),
+      loader: Arc::new(loader),
       core_isolate,
       mods_: HashMap::new(),
       next_dyn_import_id: 0,
@@ -320,8 +330,8 @@ impl EsIsolate {
     out
   }
 
-  fn mod_instantiate2(&mut self, mut ctx: ResolveContext<'_>, id: ModuleId) {
-    self.resolve_context = ctx.as_raw_ptr();
+  fn mod_instantiate2(&mut self, id: ModuleId) {
+    // self.resolve_context = ctx.as_raw_ptr();
     let isolate = self.core_isolate.v8_isolate.as_ref().unwrap();
     let mut locker = v8::Locker::new(isolate);
     let mut hs = v8::HandleScope::new(&mut locker);
@@ -335,6 +345,7 @@ impl EsIsolate {
     let maybe_info = self.get_module_info(id);
 
     if maybe_info.is_none() {
+      context.exit();
       return;
     }
 
@@ -342,6 +353,7 @@ impl EsIsolate {
     let mut module = module_handle.get(scope).unwrap();
 
     if module.get_status() == v8::ModuleStatus::Errored {
+      context.exit();
       return;
     }
 
@@ -358,7 +370,7 @@ impl EsIsolate {
     }
 
     context.exit();
-    self.resolve_context = std::ptr::null_mut();
+    // self.resolve_context = std::ptr::null_mut();
   }
   /// Instanciates a ES module
   ///
@@ -370,8 +382,8 @@ impl EsIsolate {
     id: ModuleId,
     resolve_fn: &mut ResolveFn,
   ) -> Result<(), ErrBox> {
-    let ctx = ResolveContext { resolve_fn };
-    self.mod_instantiate2(ctx, id);
+    let _ctx = ResolveContext { resolve_fn };
+    self.mod_instantiate2(id);
     self.core_isolate.check_last_exception()
   }
 
@@ -433,6 +445,21 @@ impl EsIsolate {
       return None;
     }
     self.mods_.get(&id)
+  }
+
+  pub fn module_resolve_cb(&mut self, specifier: &str, referrer_id: ModuleId) -> ModuleId {
+    let modules = self.modules.lock().unwrap();
+    eprintln!("specifier {} referrer {}", specifier, referrer_id);
+    let referrer = modules.get_name(referrer_id).unwrap();
+    // We should have already resolved and Ready this module, so
+    // resolve() will not fail this time.
+    
+    // TODO: how to figure out if main or dynamic import????
+    let specifier = self
+      .loader
+      .resolve(specifier, &referrer, false, false)
+      .expect("Module should already be resolved");
+    modules.get_id(specifier.as_str()).unwrap_or(0)
   }
 
   pub fn set_dyn_import<F>(&mut self, f: F)
@@ -640,6 +667,101 @@ impl EsIsolate {
       }
     }
   }
+
+  fn load_register(&mut self, info: SourceCodeInfo, is_main: bool) -> Result<ModuleId, ErrBox> { 
+    let SourceCodeInfo {
+      code,
+      module_url_specified,
+      module_url_found,
+    } = info;
+    // #A There are 3 cases to handle at this moment:
+    // 1. Source code resolved result have the same module name as requested
+    //    and is not yet registered
+    //     -> register
+    // 2. Source code resolved result have a different name as requested:
+    //   2a. The module with resolved module name has been registered
+    //     -> alias
+    //   2b. The module with resolved module name has not yet been registerd
+    //     -> register & alias
+
+    let maybe_id = {
+      let mut modules = self.modules.lock().unwrap();
+
+      // If necessary, register an alias.
+      if module_url_specified != module_url_found {
+        modules.alias(&module_url_specified, &module_url_found);
+      }
+
+      modules.get_id(&module_url_found)
+    };
+
+    if let Some(id) = maybe_id {
+      // Module has already been registered.
+      debug!(
+        "Already-registered module fetched again: {}",
+        module_url_found
+      );
+      return Ok(id);
+    }
+
+    // Module not registered yet, do it now.
+    let id = self.mod_new(is_main, &module_url_found, &code)?;
+    {
+      let mut modules = self.modules.lock().unwrap();
+      modules.register(id, &module_url_found);
+    }
+    Ok(id)
+  }
+
+  // Methods from RecursiveLoad
+  async fn load_module(
+    &mut self,
+    specifier: &str,
+    code: Option<String>,
+  ) -> Result<ModuleId, ErrBox> {
+    let mut load = NewMainImportRecursiveLoad::new(specifier, code, self.loader.clone())?;
+
+    loop {
+      match load.state {
+        NewMainImportState::LoadingRoot | NewMainImportState::LoadingImports => {
+          let info = load.pending.try_next().await?.unwrap();
+          let is_main = load.state == NewMainImportState::LoadingRoot;
+          let referrer_name = &info.module_url_found.to_string();
+          let referrer = ModuleSpecifier::resolve_url(referrer_name).unwrap();
+          let module_id = self.load_register(info, is_main)?;
+          // Now we must iterate over all imports of the module and load them.
+          let imports = self.mod_get_imports(module_id);
+          for import in imports {
+            let module_specifier =
+              self.loader.resolve(&import, referrer_name, false, false)?;
+            let module_name = module_specifier.as_str();
+      
+            let mut modules = self.modules.lock().unwrap();
+      
+            modules.add_child(module_id, module_name);
+            if !modules.is_registered(module_name) {
+              load.add_import(module_specifier, referrer.clone());
+            }
+          }
+          // If we just finished loading the root module, store the root module id.
+          if load.state == NewMainImportState::LoadingRoot {
+            load.root_module_id = Some(module_id);
+            load.state = NewMainImportState::LoadingImports;
+          }
+
+          if load.pending.is_empty() {
+            // TODO: change to done
+            load.state = NewMainImportState::Done;
+          }
+        }
+        NewMainImportState::Done => {
+          let root_id = load.root_module_id.expect("Root module id empty");
+          self.mod_instantiate2(root_id);
+          self.core_isolate.check_last_exception()?;
+        }
+      }
+    }
+  }
 }
 
 impl Future for EsIsolate {
@@ -684,11 +806,29 @@ pub mod tests {
   use std::sync::atomic::{AtomicUsize, Ordering};
   use std::sync::Mutex;
 
+  struct MockLoader {}
+
+  impl Loader for MockLoader {
+    fn resolve(
+      &self,
+      _specifier: &str,
+      _referrer: &str,
+      _is_main: bool,
+      _is_dyn_import: bool,
+    ) -> Result<ModuleSpecifier, ErrBox> { todo!() }
+  
+    fn load(
+      &self,
+      _module_specifier: &ModuleSpecifier,
+      _maybe_referrer: Option<ModuleSpecifier>,
+    ) -> Pin<Box<SourceCodeInfoFuture>> { todo!() }
+  }
+
   pub fn setup() -> (Box<EsIsolate>, Arc<AtomicUsize>) {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let dispatch_count_ = dispatch_count.clone();
 
-    let mut isolate = EsIsolate::new(StartupData::None, false);
+    let mut isolate = EsIsolate::new(Box::new(MockLoader{}), StartupData::None, false);
 
     let dispatcher =
       move |control: &[u8], _zero_copy: Option<PinnedBuf>| -> CoreOp {
@@ -806,7 +946,7 @@ pub mod tests {
     run_in_task(|cx| {
       let count = Arc::new(AtomicUsize::new(0));
       let count_ = count.clone();
-      let mut isolate = EsIsolate::new(StartupData::None, false);
+      let mut isolate = EsIsolate::new(Box::new(MockLoader{}), StartupData::None, false);
       isolate.set_dyn_import(move |_, specifier, referrer| {
         count_.fetch_add(1, Ordering::Relaxed);
         assert_eq!(specifier, "foo.js");
@@ -841,7 +981,7 @@ pub mod tests {
     run_in_task(|cx| {
       let count = Arc::new(AtomicUsize::new(0));
       let count_ = count.clone();
-      let mut isolate = EsIsolate::new(StartupData::None, false);
+      let mut isolate = EsIsolate::new(Box::new(MockLoader{}), StartupData::None, false);
       isolate.set_dyn_import(move |_, specifier, referrer| {
         let c = count_.fetch_add(1, Ordering::Relaxed);
         match c {
@@ -906,7 +1046,7 @@ pub mod tests {
       let mod_b = Arc::new(Mutex::new(0));
       let mod_b2 = mod_b.clone();
 
-      let mut isolate = EsIsolate::new(StartupData::None, false);
+      let mut isolate = EsIsolate::new(Box::new(MockLoader{}), StartupData::None, false);
       isolate.set_dyn_import(move |_id, specifier, referrer| {
         let c = count_.fetch_add(1, Ordering::Relaxed);
         match c {

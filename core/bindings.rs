@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::es_isolate::EsIsolate;
-use crate::es_isolate::ResolveContext;
+// use crate::es_isolate::ResolveContext;
 use crate::isolate::DenoBuf;
 use crate::isolate::Isolate;
 use crate::isolate::PinnedBuf;
@@ -713,9 +713,10 @@ pub fn module_resolve_callback(
   let scope = hs.enter();
 
   let referrer_id = referrer.get_identity_hash();
-  let referrer_info = deno_isolate
+  let referrer_name = deno_isolate
     .get_module_info(referrer_id)
-    .expect("ModuleInfo not found");
+    .expect("ModuleInfo not found")
+    .name.to_string();
   let len_ = referrer.get_module_requests_length();
 
   let specifier_str = specifier.to_rust_string_lossy(scope);
@@ -725,15 +726,15 @@ pub fn module_resolve_callback(
     let req_str = req.to_rust_string_lossy(scope);
 
     if req_str == specifier_str {
-      let ResolveContext { resolve_fn } =
-        unsafe { ResolveContext::from_raw_ptr(deno_isolate.resolve_context) };
-      let id = resolve_fn(&req_str, referrer_id);
+      eprintln!("pre resolve callback!");
+      let id = deno_isolate.module_resolve_cb(&req_str, referrer_id);
+      eprintln!("post resolve callback!");
       let maybe_info = deno_isolate.get_module_info(id);
 
       if maybe_info.is_none() {
         let msg = format!(
           "Cannot resolve module \"{}\" from \"{}\"",
-          req_str, referrer_info.name
+          req_str, referrer_name
         );
         let msg = v8::String::new(scope, &msg).unwrap();
         isolate.throw_exception(msg.into());
