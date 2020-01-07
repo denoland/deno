@@ -33,12 +33,12 @@ use std::task::Poll;
 use crate::isolate::Isolate;
 use crate::isolate::StartupData;
 use crate::module_specifier::ModuleSpecifier;
+use crate::modules::DynImportRecursiveLoad;
+use crate::modules::DynImportState;
 use crate::modules::Loader;
+use crate::modules::MainImportRecursiveLoad;
+use crate::modules::MainImportState;
 use crate::modules::Modules;
-use crate::modules::NewDynImportRecursiveLoad;
-use crate::modules::NewDynImportState;
-use crate::modules::NewMainImportRecursiveLoad;
-use crate::modules::NewMainImportState;
 use crate::modules::SourceCodeInfoFuture;
 
 pub type ModuleId = i32;
@@ -144,7 +144,7 @@ pub struct EsIsolate {
     HashMap<DynImportId, v8::Global<v8::PromiseResolver>>,
 
   new_pending_dyn_imports:
-    FuturesUnordered<StreamFuture<NewDynImportRecursiveLoad>>,
+    FuturesUnordered<StreamFuture<DynImportRecursiveLoad>>,
   pending_dyn_imports: FuturesUnordered<StreamFuture<IntoStream<DynImport>>>,
   waker: AtomicWaker,
 }
@@ -443,12 +443,8 @@ impl EsIsolate {
   ) {
     debug!("dyn_import specifier {} referrer {} ", specifier, referrer);
 
-    let load = NewDynImportRecursiveLoad::new(
-      id,
-      specifier,
-      referrer,
-      self.loader.clone(),
-    );
+    let load =
+      DynImportRecursiveLoad::new(id, specifier, referrer, self.loader.clone());
     self.waker.wake();
     self.new_pending_dyn_imports.push(load.into_future());
   }
@@ -617,7 +613,7 @@ impl EsIsolate {
   fn register_during_load(
     &mut self,
     info: SourceCodeInfo,
-    load: &mut NewDynImportRecursiveLoad,
+    load: &mut DynImportRecursiveLoad,
   ) -> Result<(), ErrBox> {
     let SourceCodeInfo {
       code,
@@ -682,13 +678,13 @@ impl EsIsolate {
     }
 
     // If we just finished loading the root module, store the root module id.
-    if load.state == NewDynImportState::LoadingRoot {
+    if load.state == DynImportState::LoadingRoot {
       load.root_module_id = Some(module_id);
-      load.state = NewDynImportState::LoadingImports;
+      load.state = DynImportState::LoadingImports;
     }
 
     if load.pending.is_empty() {
-      load.state = NewDynImportState::Done;
+      load.state = DynImportState::Done;
     }
 
     Ok(())
@@ -697,7 +693,7 @@ impl EsIsolate {
   fn register_during_load2(
     &mut self,
     info: SourceCodeInfo,
-    load: &mut NewMainImportRecursiveLoad,
+    load: &mut MainImportRecursiveLoad,
   ) -> Result<(), ErrBox> {
     let SourceCodeInfo {
       code,
@@ -705,7 +701,7 @@ impl EsIsolate {
       module_url_found,
     } = info;
 
-    let is_main = load.state == NewMainImportState::LoadingRoot;
+    let is_main = load.state == MainImportState::LoadingRoot;
     let referrer_name = &module_url_found.to_string();
     let referrer_specifier =
       ModuleSpecifier::resolve_url(referrer_name).unwrap();
@@ -761,13 +757,13 @@ impl EsIsolate {
     }
 
     // If we just finished loading the root module, store the root module id.
-    if load.state == NewMainImportState::LoadingRoot {
+    if load.state == MainImportState::LoadingRoot {
       load.root_module_id = Some(module_id);
-      load.state = NewMainImportState::LoadingImports;
+      load.state = MainImportState::LoadingImports;
     }
 
     if load.pending.is_empty() {
-      load.state = NewMainImportState::Done;
+      load.state = MainImportState::Done;
     }
 
     Ok(())
@@ -779,7 +775,7 @@ impl EsIsolate {
     code: Option<String>,
   ) -> Result<ModuleId, ErrBox> {
     let mut load =
-      NewMainImportRecursiveLoad::new(specifier, code, self.loader.clone())?;
+      MainImportRecursiveLoad::new(specifier, code, self.loader.clone())?;
 
     while let Some(info_result) = load.next().await {
       let info = info_result?;

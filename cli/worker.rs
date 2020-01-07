@@ -4,10 +4,9 @@ use crate::ops;
 use crate::state::ThreadSafeState;
 use deno_core;
 use deno_core::Buf;
+use deno_core::DynImportRecursiveLoad;
 use deno_core::ErrBox;
-use deno_core::MainImportRecursiveLoad;
 use deno_core::ModuleSpecifier;
-use deno_core::NewDynImportRecursiveLoad;
 use deno_core::StartupData;
 use futures::channel::mpsc;
 use futures::future::FutureExt;
@@ -76,16 +75,6 @@ impl Worker {
       ops::workers::init(&mut i, &state);
 
       let state_ = state.clone();
-      i.set_new_dyn_import(move |id, specifier, referrer| {
-        let load_stream = NewDynImportRecursiveLoad::new(
-          id,
-          specifier,
-          referrer,
-          Box::new(state_.clone()),
-          state_.modules.clone(),
-        );
-        load_stream
-      });
 
       let global_state_ = state.global_state.clone();
       i.set_js_error_create(move |v8_exception| {
@@ -138,12 +127,9 @@ impl Worker {
     let worker = self.clone();
     let loader = self.state.clone();
     let isolate = self.isolate.clone();
-    let modules = self.state.modules.clone();
 
     async move {
-      let recursive_load =
-        MainImportRecursiveLoad::new(&specifier, maybe_code, loader, modules)?;
-      let id = recursive_load.get_future(isolate).await?;
+      let id = isolate.load_module(&specifier, maybe_code).await?;
       worker.state.global_state.progress.done();
 
       if !is_prefetch {
