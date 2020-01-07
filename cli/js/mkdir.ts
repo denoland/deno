@@ -4,6 +4,27 @@ import * as dispatch from "./dispatch.ts";
 
 // TODO(ry) The complexity in argument parsing is to support deprecated forms of
 // mkdir and mkdirSync.
+function mkdirArgs(
+  path: string,
+  optionsOrRecursive?: MkdirOption | boolean,
+  mode?: number
+): { path: string; recursive: boolean; mode: number } {
+  const args = { path, recursive: false, mode: 0o777 };
+  if (typeof optionsOrRecursive == "boolean") {
+    args.recursive = optionsOrRecursive;
+    if (mode) {
+      args.mode = mode;
+    }
+  } else if (optionsOrRecursive) {
+    if (typeof optionsOrRecursive.recursive == "boolean") {
+      args.recursive = optionsOrRecursive.recursive;
+    }
+    if (optionsOrRecursive.mode) {
+      args.mode = optionsOrRecursive.mode;
+    }
+  }
+  return args;
+}
 
 export interface MkdirOption {
   recursive?: boolean;
@@ -24,15 +45,7 @@ export function mkdirSync(
   optionsOrRecursive?: MkdirOption | boolean,
   mode?: number
 ): void {
-  const args = { path, recursive: false, mode: 0o777 };
-  if (typeof optionsOrRecursive == "boolean") {
-    args.recursive = optionsOrRecursive;
-    args.mode = mode!;
-  } else if (optionsOrRecursive) {
-    args.recursive = optionsOrRecursive.recursive!;
-    args.mode = optionsOrRecursive.mode!;
-  }
-  sendSync(dispatch.OP_MKDIR, args);
+  sendSync(dispatch.OP_MKDIR, mkdirArgs(path, optionsOrRecursive, mode));
 }
 
 /** Creates a new directory with the specified path.
@@ -49,13 +62,5 @@ export async function mkdir(
   optionsOrRecursive?: MkdirOption | boolean,
   mode?: number
 ): Promise<void> {
-  const args = { path, recursive: false, mode: 0o777 };
-  if (typeof optionsOrRecursive == "boolean") {
-    args.recursive = optionsOrRecursive;
-    args.mode = mode!;
-  } else if (optionsOrRecursive) {
-    args.recursive = optionsOrRecursive.recursive!;
-    args.mode = optionsOrRecursive.mode!;
-  }
-  await sendAsync(dispatch.OP_MKDIR, args);
+  await sendAsync(dispatch.OP_MKDIR, mkdirArgs(path, optionsOrRecursive, mode));
 }
