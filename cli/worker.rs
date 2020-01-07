@@ -4,9 +4,10 @@ use crate::ops;
 use crate::state::ThreadSafeState;
 use deno_core;
 use deno_core::Buf;
+use deno_core::DynImportRecursiveLoad;
 use deno_core::ErrBox;
+use deno_core::MainImportRecursiveLoad;
 use deno_core::ModuleSpecifier;
-use deno_core::RecursiveLoad;
 use deno_core::StartupData;
 use futures::channel::mpsc;
 use futures::future::FutureExt;
@@ -72,9 +73,8 @@ impl Worker {
       ops::workers::init(&mut i, &state);
 
       let state_ = state.clone();
-      i.set_dyn_import(move |id, specifier, referrer| {
-        let load_stream = RecursiveLoad::dynamic_import(
-          id,
+      i.set_dyn_import(move |_id, specifier, referrer| {
+        let load_stream = DynImportRecursiveLoad::new(
           specifier,
           referrer,
           state_.clone(),
@@ -134,7 +134,7 @@ impl Worker {
     let loader = self.state.clone();
     let isolate = self.isolate.clone();
     let modules = self.state.modules.clone();
-    let recursive_load = RecursiveLoad::main(
+    let recursive_load = MainImportRecursiveLoad::new(
       &module_specifier.to_string(),
       maybe_code,
       loader,

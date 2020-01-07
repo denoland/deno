@@ -7,7 +7,6 @@
 // synchronously. The isolate.rs module should never depend on this module.
 
 use crate::any_error::ErrBox;
-use crate::es_isolate::DynImportId;
 use crate::es_isolate::EsIsolate;
 use crate::es_isolate::ImportStream;
 use crate::es_isolate::ModuleId;
@@ -53,73 +52,36 @@ pub trait Loader: Send + Sync {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-enum Kind {
-  Main,
-  DynamicImport(DynImportId),
-}
-
-#[derive(Debug, Eq, PartialEq)]
-enum State {
+enum MainImportState {
   ResolveMain(String, Option<String>), // specifier, maybe code
-  ResolveImport(String, String),       // specifier, referrer
   LoadingRoot,
-  LoadingImports(ModuleId),
-  Instantiated(ModuleId),
+  LoadingImports,
+  Instantiated,
 }
 
 /// This future is used to implement parallel async module loading without
 /// complicating the Isolate API.
 /// TODO: RecursiveLoad desperately needs to be merged with Modules.
-pub struct RecursiveLoad<L: Loader + Unpin> {
-  kind: Kind,
-  state: State,
+pub struct MainImportRecursiveLoad<L: Loader + Unpin> {
+  root_module_id: Option<ModuleId>,
+  state: MainImportState,
   loader: L,
   modules: Arc<Mutex<Modules>>,
   pending: FuturesUnordered<Pin<Box<SourceCodeInfoFuture>>>,
   is_pending: HashSet<ModuleSpecifier>,
 }
 
-impl<L: Loader + Unpin> RecursiveLoad<L> {
+impl<L: Loader + Unpin> MainImportRecursiveLoad<L> {
   /// Starts a new parallel load of the given URL of the main module.
-  pub fn main(
+  pub fn new(
     specifier: &str,
     code: Option<String>,
     loader: L,
     modules: Arc<Mutex<Modules>>,
   ) -> Self {
-    let kind = Kind::Main;
-    let state = State::ResolveMain(specifier.to_owned(), code);
-    Self::new(kind, state, loader, modules)
-  }
-
-  pub fn dynamic_import(
-    id: DynImportId,
-    specifier: &str,
-    referrer: &str,
-    loader: L,
-    modules: Arc<Mutex<Modules>>,
-  ) -> Self {
-    let kind = Kind::DynamicImport(id);
-    let state = State::ResolveImport(specifier.to_owned(), referrer.to_owned());
-    Self::new(kind, state, loader, modules)
-  }
-
-  pub fn dyn_import_id(&self) -> Option<DynImportId> {
-    match self.kind {
-      Kind::Main => None,
-      Kind::DynamicImport(id) => Some(id),
-    }
-  }
-
-  fn new(
-    kind: Kind,
-    state: State,
-    loader: L,
-    modules: Arc<Mutex<Modules>>,
-  ) -> Self {
     Self {
-      kind,
-      state,
+      root_module_id: None,
+      state: MainImportState::ResolveMain(specifier.to_owned(), code),
       loader,
       modules,
       pending: FuturesUnordered::new(),
@@ -129,15 +91,9 @@ impl<L: Loader + Unpin> RecursiveLoad<L> {
 
   fn add_root(&mut self) -> Result<(), ErrBox> {
     let module_specifier = match self.state {
-      State::ResolveMain(ref specifier, _) => self.loader.resolve(
-        specifier,
-        ".",
-        true,
-        self.dyn_import_id().is_some(),
-      )?,
-      State::ResolveImport(ref specifier, ref referrer) => self
-        .loader
-        .resolve(specifier, referrer, false, self.dyn_import_id().is_some())?,
+      MainImportState::ResolveMain(ref specifier, _) => {
+        self.loader.resolve(specifier, ".", true, false)?
+      }
       _ => unreachable!(),
     };
 
@@ -156,7 +112,7 @@ impl<L: Loader + Unpin> RecursiveLoad<L> {
     self
       .pending
       .push(self.loader.load(&module_specifier, None).boxed());
-    self.state = State::LoadingRoot;
+    self.state = MainImportState::LoadingRoot;
 
     Ok(())
   }
@@ -169,12 +125,8 @@ impl<L: Loader + Unpin> RecursiveLoad<L> {
   ) -> Result<(), ErrBox> {
     let referrer_specifier = ModuleSpecifier::resolve_url(referrer)
       .expect("Referrer should be a valid specifier");
-    let module_specifier = self.loader.resolve(
-      specifier,
-      referrer,
-      false,
-      self.dyn_import_id().is_some(),
-    )?;
+    let module_specifier =
+      self.loader.resolve(specifier, referrer, false, false)?;
     let module_name = module_specifier.as_str();
 
     let mut modules = self.modules.lock().unwrap();
@@ -191,6 +143,28 @@ impl<L: Loader + Unpin> RecursiveLoad<L> {
       self.is_pending.insert(module_specifier);
     }
 
+    Ok(())
+  }
+
+  fn instantiate_root(
+    &mut self,
+    isolate: &mut EsIsolate,
+  ) -> Result<(), ErrBox> {
+    let root_id = self.root_module_id.expect("Root module empty!");
+    let mut resolve_cb = |specifier: &str, referrer_id: ModuleId| -> ModuleId {
+      let modules = self.modules.lock().unwrap();
+      let referrer = modules.get_name(referrer_id).unwrap();
+      // We should have already resolved and Ready this module, so
+      // resolve() will not fail this time.
+      let specifier = self
+        .loader
+        .resolve(specifier, &referrer, false, false)
+        .expect("Module should already be resolved");
+      modules.get_id(specifier.as_str()).unwrap_or(0)
+    };
+    isolate.mod_instantiate(root_id, &mut resolve_cb)?;
+
+    self.state = MainImportState::Instantiated;
     Ok(())
   }
 
@@ -216,7 +190,7 @@ impl<L: Loader + Unpin> RecursiveLoad<L> {
   }
 }
 
-impl<L: Loader + Unpin> ImportStream for RecursiveLoad<L> {
+impl<L: Loader + Unpin> ImportStream for MainImportRecursiveLoad<L> {
   // TODO: this should not be part of RecursiveLoad.
   fn register(
     &mut self,
@@ -238,7 +212,7 @@ impl<L: Loader + Unpin> ImportStream for RecursiveLoad<L> {
       module_url_found,
     } = source_code_info;
 
-    let is_main = self.kind == Kind::Main && self.state == State::LoadingRoot;
+    let is_main = self.state == MainImportState::LoadingRoot;
 
     let module_id = {
       let mut modules = self.modules.lock().unwrap();
@@ -273,45 +247,21 @@ impl<L: Loader + Unpin> ImportStream for RecursiveLoad<L> {
     }
 
     // If we just finished loading the root module, store the root module id.
-    match self.state {
-      State::LoadingRoot => self.state = State::LoadingImports(module_id),
-      State::LoadingImports(..) => {}
-      _ => unreachable!(),
-    };
+    if self.state == MainImportState::LoadingRoot {
+      self.root_module_id = Some(module_id);
+      self.state = MainImportState::LoadingImports;
+    }
 
-    // If all imports have been loaded, instantiate the root module.
+    // If all imports have loaded instantiate the root module.
     if self.pending.is_empty() {
-      let root_id = match self.state {
-        State::LoadingImports(mod_id) => mod_id,
-        _ => unreachable!(),
-      };
-
-      let mut resolve_cb =
-        |specifier: &str, referrer_id: ModuleId| -> ModuleId {
-          let modules = self.modules.lock().unwrap();
-          let referrer = modules.get_name(referrer_id).unwrap();
-          match self.loader.resolve(
-            specifier,
-            &referrer,
-            is_main,
-            self.dyn_import_id().is_some(),
-          ) {
-            Ok(specifier) => modules.get_id(specifier.as_str()).unwrap_or(0),
-            // We should have already resolved and Ready this module, so
-            // resolve() will not fail this time.
-            Err(..) => unreachable!(),
-          }
-        };
-      isolate.mod_instantiate(root_id, &mut resolve_cb)?;
-
-      self.state = State::Instantiated(root_id);
+      self.instantiate_root(isolate)?;
     }
 
     Ok(())
   }
 }
 
-impl<L: Loader + Unpin> Stream for RecursiveLoad<L> {
+impl<L: Loader + Unpin> Stream for MainImportRecursiveLoad<L> {
   type Item = Result<Event, ErrBox>;
 
   fn poll_next(
@@ -320,35 +270,274 @@ impl<L: Loader + Unpin> Stream for RecursiveLoad<L> {
   ) -> Poll<Option<Self::Item>> {
     let inner = self.get_mut();
     match inner.state {
-      State::ResolveMain(ref specifier, Some(ref code)) => {
-        let module_specifier = inner.loader.resolve(
-          specifier,
-          ".",
-          true,
-          inner.dyn_import_id().is_some(),
-        )?;
+      MainImportState::ResolveMain(ref specifier, Some(ref code)) => {
+        let module_specifier =
+          inner.loader.resolve(specifier, ".", true, false)?;
         let info = SourceCodeInfo {
           code: code.to_owned(),
           module_url_specified: module_specifier.to_string(),
           module_url_found: module_specifier.to_string(),
         };
-        inner.state = State::LoadingRoot;
+        inner.state = MainImportState::LoadingRoot;
         Poll::Ready(Some(Ok(Event::Fetch(info))))
       }
-      State::ResolveMain(..) | State::ResolveImport(..) => {
+      MainImportState::ResolveMain(..) => {
         if let Err(e) = inner.add_root() {
           return Poll::Ready(Some(Err(e)));
         }
         inner.try_poll_next_unpin(cx)
       }
-      State::LoadingRoot | State::LoadingImports(..) => {
+      MainImportState::LoadingRoot | MainImportState::LoadingImports => {
         match inner.pending.try_poll_next_unpin(cx)? {
           Poll::Ready(None) => unreachable!(),
           Poll::Ready(Some(info)) => Poll::Ready(Some(Ok(Event::Fetch(info)))),
           Poll::Pending => Poll::Pending,
         }
       }
-      State::Instantiated(id) => Poll::Ready(Some(Ok(Event::Instantiate(id)))),
+      MainImportState::Instantiated => {
+        let root_id = inner.root_module_id.expect("Root module id empty");
+        Poll::Ready(Some(Ok(Event::Instantiate(root_id))))
+      }
+    }
+  }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum DynImportState {
+  ResolveImport(String, String), // specifier, referrer
+  LoadingRoot,
+  LoadingImports,
+  Instantiated,
+}
+
+/// This future is used to implement parallel async module loading without
+/// complicating the Isolate API.
+/// TODO: RecursiveLoad desperately needs to be merged with Modules.
+pub struct DynImportRecursiveLoad<L: Loader + Unpin> {
+  root_module_id: Option<ModuleId>,
+  state: DynImportState,
+  loader: L,
+  modules: Arc<Mutex<Modules>>,
+  pending: FuturesUnordered<Pin<Box<SourceCodeInfoFuture>>>,
+  is_pending: HashSet<ModuleSpecifier>,
+}
+
+impl<L: Loader + Unpin> DynImportRecursiveLoad<L> {
+  pub fn new(
+    specifier: &str,
+    referrer: &str,
+    loader: L,
+    modules: Arc<Mutex<Modules>>,
+  ) -> Self {
+    Self {
+      root_module_id: None,
+      state: DynImportState::ResolveImport(
+        specifier.to_owned(),
+        referrer.to_owned(),
+      ),
+      loader,
+      modules,
+      pending: FuturesUnordered::new(),
+      is_pending: HashSet::new(),
+    }
+  }
+
+  fn add_root(&mut self) -> Result<(), ErrBox> {
+    let module_specifier = match self.state {
+      DynImportState::ResolveImport(ref specifier, ref referrer) => {
+        self.loader.resolve(specifier, referrer, false, true)?
+      }
+      _ => unreachable!(),
+    };
+
+    // We deliberately do not check if this module is already present in the
+    // module map. That's because the module map doesn't track whether a
+    // a module's dependencies have been loaded and whether it's been
+    // instantiated, so if we did find this module in the module map and used
+    // its id, this could lead to a crash.
+    //
+    // For the time being code and metadata for a module specifier is fetched
+    // multiple times, register() uses only the first result, and assigns the
+    // same module id to all instances.
+    //
+    // TODO: this is very ugly. The module map and recursive loader should be
+    // integrated into one thing.
+    self
+      .pending
+      .push(self.loader.load(&module_specifier, None).boxed());
+    self.state = DynImportState::LoadingRoot;
+
+    Ok(())
+  }
+
+  fn add_import(
+    &mut self,
+    specifier: &str,
+    referrer: &str,
+    parent_id: ModuleId,
+  ) -> Result<(), ErrBox> {
+    let referrer_specifier = ModuleSpecifier::resolve_url(referrer)
+      .expect("Referrer should be a valid specifier");
+    let module_specifier =
+      self.loader.resolve(specifier, referrer, false, true)?;
+    let module_name = module_specifier.as_str();
+
+    let mut modules = self.modules.lock().unwrap();
+
+    modules.add_child(parent_id, module_name);
+
+    if !modules.is_registered(module_name)
+      && !self.is_pending.contains(&module_specifier)
+    {
+      let fut = self
+        .loader
+        .load(&module_specifier, Some(referrer_specifier));
+      self.pending.push(fut.boxed());
+      self.is_pending.insert(module_specifier);
+    }
+
+    Ok(())
+  }
+
+  fn instantiate_root(
+    &mut self,
+    isolate: &mut EsIsolate,
+  ) -> Result<(), ErrBox> {
+    let root_id = self.root_module_id.expect("Root module empty!");
+    let mut resolve_cb = |specifier: &str, referrer_id: ModuleId| -> ModuleId {
+      let modules = self.modules.lock().unwrap();
+      let referrer = modules.get_name(referrer_id).unwrap();
+      // We should have already resolved and Ready this module, so
+      // resolve() will not fail this time.
+      let specifier = self
+        .loader
+        .resolve(specifier, &referrer, false, false)
+        .expect("Module should already be resolved");
+      modules.get_id(specifier.as_str()).unwrap_or(0)
+    };
+    isolate.mod_instantiate(root_id, &mut resolve_cb)?;
+
+    self.state = DynImportState::Instantiated;
+    Ok(())
+  }
+
+  /// Returns a future that resolves to the final module id of the root module.
+  /// This future needs to take ownership of the isolate.
+  pub fn get_future(
+    self,
+    isolate: Arc<Mutex<Box<EsIsolate>>>,
+  ) -> impl Future<Output = Result<ModuleId, ErrBox>> {
+    async move {
+      let mut load = self;
+      loop {
+        let event = load.try_next().await?;
+        match event.unwrap() {
+          Event::Fetch(info) => {
+            let mut isolate = isolate.lock().unwrap();
+            load.register(info, &mut isolate)?;
+          }
+          Event::Instantiate(id) => return Ok(id),
+        }
+      }
+    }
+  }
+}
+
+impl<L: Loader + Unpin> ImportStream for DynImportRecursiveLoad<L> {
+  // TODO: this should not be part of RecursiveLoad.
+  fn register(
+    &mut self,
+    source_code_info: SourceCodeInfo,
+    isolate: &mut EsIsolate,
+  ) -> Result<(), ErrBox> {
+    // #A There are 3 cases to handle at this moment:
+    // 1. Source code resolved result have the same module name as requested
+    //    and is not yet registered
+    //     -> register
+    // 2. Source code resolved result have a different name as requested:
+    //   2a. The module with resolved module name has been registered
+    //     -> alias
+    //   2b. The module with resolved module name has not yet been registerd
+    //     -> register & alias
+    let SourceCodeInfo {
+      code,
+      module_url_specified,
+      module_url_found,
+    } = source_code_info;
+
+    let module_id = {
+      let mut modules = self.modules.lock().unwrap();
+
+      // If necessary, register an alias.
+      if module_url_specified != module_url_found {
+        modules.alias(&module_url_specified, &module_url_found);
+      }
+
+      match modules.get_id(&module_url_found) {
+        // Module has already been registered.
+        Some(id) => {
+          debug!(
+            "Already-registered module fetched again: {}",
+            module_url_found
+          );
+          id
+        }
+        // Module not registered yet, do it now.
+        None => {
+          let id = isolate.mod_new(false, &module_url_found, &code)?;
+          modules.register(id, &module_url_found);
+          id
+        }
+      }
+    };
+
+    // Now we must iterate over all imports of the module and load them.
+    let imports = isolate.mod_get_imports(module_id);
+    for import in imports {
+      self.add_import(&import, &module_url_found, module_id)?;
+    }
+
+    // If we just finished loading the root module, store the root module id.
+    if self.state == DynImportState::LoadingRoot {
+      self.root_module_id = Some(module_id);
+      self.state = DynImportState::LoadingImports;
+    }
+
+    // If all imports have been loaded, instantiate the root module.
+    if self.pending.is_empty() {
+      self.instantiate_root(isolate)?;
+    }
+
+    Ok(())
+  }
+}
+
+impl<L: Loader + Unpin> Stream for DynImportRecursiveLoad<L> {
+  type Item = Result<Event, ErrBox>;
+
+  fn poll_next(
+    self: Pin<&mut Self>,
+    cx: &mut Context,
+  ) -> Poll<Option<Self::Item>> {
+    let inner = self.get_mut();
+    match inner.state {
+      DynImportState::ResolveImport(..) => {
+        if let Err(e) = inner.add_root() {
+          return Poll::Ready(Some(Err(e)));
+        }
+        inner.try_poll_next_unpin(cx)
+      }
+      DynImportState::LoadingRoot | DynImportState::LoadingImports => {
+        match inner.pending.try_poll_next_unpin(cx)? {
+          Poll::Ready(None) => unreachable!(),
+          Poll::Ready(Some(info)) => Poll::Ready(Some(Ok(Event::Fetch(info)))),
+          Poll::Pending => Poll::Pending,
+        }
+      }
+      DynImportState::Instantiated => {
+        let root_id = inner.root_module_id.expect("Root module id empty");
+        Poll::Ready(Some(Ok(Event::Instantiate(root_id))))
+      }
     }
   }
 }
@@ -799,7 +988,7 @@ mod tests {
       let isolate_ = isolate.clone();
       let loads = loader.loads.clone();
       let mut recursive_load =
-        RecursiveLoad::main("/a.js", None, loader, modules);
+        MainImportRecursiveLoad::new("/a.js", None, loader, modules);
 
       let a_id = loop {
         match recursive_load.try_poll_next_unpin(&mut cx) {
@@ -878,7 +1067,7 @@ mod tests {
       let modules_ = modules.clone();
       let loads = loader.loads.clone();
       let recursive_load =
-        RecursiveLoad::main("/circular1.js", None, loader, modules);
+        MainImportRecursiveLoad::new("/circular1.js", None, loader, modules);
       let mut load_fut = recursive_load.get_future(isolate).boxed();
       let result = Pin::new(&mut load_fut).poll(&mut cx);
       assert!(result.is_ready());
@@ -950,7 +1139,7 @@ mod tests {
       let modules_ = modules.clone();
       let loads = loader.loads.clone();
       let recursive_load =
-        RecursiveLoad::main("/redirect1.js", None, loader, modules);
+        MainImportRecursiveLoad::new("/redirect1.js", None, loader, modules);
       let mut load_fut = recursive_load.get_future(isolate).boxed();
       let result = Pin::new(&mut load_fut).poll(&mut cx);
       println!(">> result {:?}", result);
@@ -1014,7 +1203,7 @@ mod tests {
       let modules = loader.modules.clone();
       let loads = loader.loads.clone();
       let mut recursive_load =
-        RecursiveLoad::main("/main.js", None, loader, modules)
+        MainImportRecursiveLoad::new("/main.js", None, loader, modules)
           .get_future(isolate)
           .boxed();
 
@@ -1062,7 +1251,7 @@ mod tests {
       let isolate = loader.isolate.clone();
       let modules = loader.modules.clone();
       let recursive_load =
-        RecursiveLoad::main("/bad_import.js", None, loader, modules);
+        MainImportRecursiveLoad::new("/bad_import.js", None, loader, modules);
       let mut load_fut = recursive_load.get_future(isolate).boxed();
       let result = load_fut.poll_unpin(&mut cx);
       if let Poll::Ready(Err(err)) = result {
@@ -1097,7 +1286,7 @@ mod tests {
       // In default resolution code should be empty.
       // Instead we explicitly pass in our own code.
       // The behavior should be very similar to /a.js.
-      let mut recursive_load = RecursiveLoad::main(
+      let mut recursive_load = MainImportRecursiveLoad::new(
         "/main_with_code.js",
         Some(MAIN_WITH_CODE_SRC.to_owned()),
         loader,
