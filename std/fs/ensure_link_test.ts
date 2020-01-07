@@ -43,7 +43,7 @@ test(async function ensureLinkIfItExist(): Promise<void> {
   const testFile = path.join(testDir, "test.txt");
   const linkFile = path.join(testDir, "link.txt");
 
-  await Deno.mkdir(testDir, true);
+  await Deno.mkdir(testDir, { recursive: true });
   await Deno.writeFile(testFile, new Uint8Array());
 
   await ensureLink(testFile, linkFile);
@@ -90,7 +90,7 @@ test(function ensureLinkSyncIfItExist(): void {
   const testFile = path.join(testDir, "test.txt");
   const linkFile = path.join(testDir, "link.txt");
 
-  Deno.mkdirSync(testDir, true);
+  Deno.mkdirSync(testDir, { recursive: true });
   Deno.writeFileSync(testFile, new Uint8Array());
 
   ensureLinkSync(testFile, linkFile);
@@ -138,7 +138,7 @@ test(async function ensureLinkDirectoryIfItExist(): Promise<void> {
   const linkDir = path.join(testdataDir, "ensure_link_link_3");
   const testFile = path.join(testDir, "test.txt");
 
-  await Deno.mkdir(testDir, true);
+  await Deno.mkdir(testDir, { recursive: true });
   await Deno.writeFile(testFile, new Uint8Array());
 
   await assertThrowsAsync(
@@ -158,7 +158,7 @@ test(function ensureLinkSyncDirectoryIfItExist(): void {
   const linkDir = path.join(testdataDir, "ensure_link_link_3");
   const testFile = path.join(testDir, "test.txt");
 
-  Deno.mkdirSync(testDir, true);
+  Deno.mkdirSync(testDir, { recursive: true });
   Deno.writeFileSync(testFile, new Uint8Array());
 
   assertThrows(

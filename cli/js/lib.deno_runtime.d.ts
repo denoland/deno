@@ -516,7 +516,7 @@ declare namespace Deno {
   export function writeAllSync(w: SyncWriter, arr: Uint8Array): void;
 
   // @url js/mkdir.d.ts
-  //
+
   export interface MkdirOption {
     recursive?: boolean;
     mode?: number;
@@ -533,6 +533,13 @@ declare namespace Deno {
    */
   export function mkdirSync(path: string, options?: MkdirOption): void;
 
+  /** Deprecated */
+  export function mkdirSync(
+    path: string,
+    recursive?: boolean,
+    mode?: number
+  ): void;
+
   /** Creates a new directory with the specified path.
    * If `recursive` is set to true, nested directories will be created (also known
    * as "mkdir -p").
@@ -543,6 +550,13 @@ declare namespace Deno {
    *       await Deno.mkdir("nested/directories", { recursive: true });
    */
   export function mkdir(path: string, options?: MkdirOption): Promise<void>;
+
+  /** Deprecated */
+  export function mkdir(
+    path: string,
+    recursive?: boolean,
+    mode?: number
+  ): Promise<void>;
 
   // @url js/make_temp_dir.d.ts
 

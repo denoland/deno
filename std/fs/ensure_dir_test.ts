@@ -40,7 +40,7 @@ test(async function ensureDirIfItExist(): Promise<void> {
   const testDir = path.join(baseDir, "test");
 
   // create test directory
-  await Deno.mkdir(testDir, true);
+  await Deno.mkdir(testDir, { recursive: true });
 
   await ensureDir(testDir);
 
@@ -60,7 +60,7 @@ test(function ensureDirSyncIfItExist(): void {
   const testDir = path.join(baseDir, "test");
 
   // create test directory
-  Deno.mkdirSync(testDir, true);
+  Deno.mkdirSync(testDir, { recursive: true });
 
   ensureDirSync(testDir);
 
