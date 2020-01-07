@@ -48,8 +48,11 @@ impl Worker {
     state: ThreadSafeState,
     external_channels: WorkerChannels,
   ) -> Self {
-    let isolate =
-      Arc::new(Mutex::new(deno_core::EsIsolate::new(Box::new(state.clone()), startup_data, false)));
+    let isolate = Arc::new(Mutex::new(deno_core::EsIsolate::new(
+      Box::new(state.clone()),
+      startup_data,
+      false,
+    )));
     {
       let mut i = isolate.lock().unwrap();
       let op_registry = i.op_registry.clone();

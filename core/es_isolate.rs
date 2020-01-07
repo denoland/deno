@@ -31,15 +31,15 @@ use std::sync::{Arc, Mutex};
 use std::task::Context;
 use std::task::Poll;
 
-use crate::module_specifier::ModuleSpecifier;
 use crate::isolate::Isolate;
 use crate::isolate::StartupData;
+use crate::module_specifier::ModuleSpecifier;
+use crate::modules::Loader;
+use crate::modules::Modules;
 use crate::modules::NewDynImportRecursiveLoad;
-use crate::modules::SourceCodeInfoFuture;
 use crate::modules::NewMainImportRecursiveLoad;
 use crate::modules::NewMainImportState;
-use crate::modules::Modules;
-use crate::modules::Loader;
+use crate::modules::SourceCodeInfoFuture;
 
 pub type ModuleId = i32;
 pub type DynImportId = i32;
@@ -141,7 +141,7 @@ pub struct ModuleInfo {
 pub struct EsIsolate {
   core_isolate: Box<Isolate>,
   loader: Arc<Box<dyn Loader + Unpin>>,
-  modules: Arc<Mutex<Modules>>,
+  pub(crate) modules: Arc<Mutex<Modules>>,
   mods_: HashMap<ModuleId, ModuleInfo>,
   pub(crate) next_dyn_import_id: DynImportId,
   pub(crate) dyn_import_map:
@@ -213,7 +213,11 @@ impl<'a> ResolveContext<'a> {
 }
 
 impl EsIsolate {
-  pub fn new(loader: Box<dyn Loader + Unpin>, startup_data: StartupData, will_snapshot: bool) -> Box<Self> {
+  pub fn new(
+    loader: Box<dyn Loader + Unpin>,
+    startup_data: StartupData,
+    will_snapshot: bool,
+  ) -> Box<Self> {
     let mut core_isolate = Isolate::new(startup_data, will_snapshot);
     {
       let isolate = core_isolate.v8_isolate.as_mut().unwrap();
@@ -447,14 +451,21 @@ impl EsIsolate {
     self.mods_.get(&id)
   }
 
-  pub fn module_resolve_cb(&mut self, specifier: &str, referrer_id: ModuleId) -> ModuleId {
+  pub fn module_resolve_cb(
+    &mut self,
+    specifier: &str,
+    referrer_id: ModuleId,
+  ) -> ModuleId {
     let modules = self.modules.lock().unwrap();
-    eprintln!("specifier {} referrer {}", specifier, referrer_id);
+    // eprintln!("specifier {} referrer {}", specifier, referrer_id);
     let referrer = modules.get_name(referrer_id).unwrap();
     // We should have already resolved and Ready this module, so
     // resolve() will not fail this time.
-    
-    // TODO: how to figure out if main or dynamic import????
+
+    // IMPORTANT: this is very hacky - it works only because:
+    //  a) this callback is never called for main module
+    //  b) it is called for dynamic modules, but they were already permission checked
+    // Preferably this should be somehow cached....
     let specifier = self
       .loader
       .resolve(specifier, &referrer, false, false)
@@ -668,7 +679,11 @@ impl EsIsolate {
     }
   }
 
-  fn load_register(&mut self, info: SourceCodeInfo, is_main: bool) -> Result<ModuleId, ErrBox> { 
+  fn load_register(
+    &mut self,
+    info: SourceCodeInfo,
+    is_main: bool,
+  ) -> Result<ModuleId, ErrBox> {
     let SourceCodeInfo {
       code,
       module_url_specified,
@@ -714,53 +729,49 @@ impl EsIsolate {
   }
 
   // Methods from RecursiveLoad
-  async fn load_module(
+  pub async fn load_module(
     &mut self,
     specifier: &str,
     code: Option<String>,
   ) -> Result<ModuleId, ErrBox> {
-    let mut load = NewMainImportRecursiveLoad::new(specifier, code, self.loader.clone())?;
+    let mut load =
+      NewMainImportRecursiveLoad::new(specifier, code, self.loader.clone())?;
 
-    loop {
-      match load.state {
-        NewMainImportState::LoadingRoot | NewMainImportState::LoadingImports => {
-          let info = load.pending.try_next().await?.unwrap();
-          let is_main = load.state == NewMainImportState::LoadingRoot;
-          let referrer_name = &info.module_url_found.to_string();
-          let referrer = ModuleSpecifier::resolve_url(referrer_name).unwrap();
-          let module_id = self.load_register(info, is_main)?;
-          // Now we must iterate over all imports of the module and load them.
-          let imports = self.mod_get_imports(module_id);
-          for import in imports {
-            let module_specifier =
-              self.loader.resolve(&import, referrer_name, false, false)?;
-            let module_name = module_specifier.as_str();
-      
-            let mut modules = self.modules.lock().unwrap();
-      
-            modules.add_child(module_id, module_name);
-            if !modules.is_registered(module_name) {
-              load.add_import(module_specifier, referrer.clone());
-            }
-          }
-          // If we just finished loading the root module, store the root module id.
-          if load.state == NewMainImportState::LoadingRoot {
-            load.root_module_id = Some(module_id);
-            load.state = NewMainImportState::LoadingImports;
-          }
+    while let Some(info_result) = load.next().await {
+      // TODO: cleanup
+      let info = info_result?;
+      let is_main = load.state == NewMainImportState::LoadingRoot;
+      let referrer_name = &info.module_url_found.to_string();
+      let referrer = ModuleSpecifier::resolve_url(referrer_name).unwrap();
+      let module_id = self.load_register(info, is_main)?;
+      // Now we must iterate over all imports of the module and load them.
+      let imports = self.mod_get_imports(module_id);
+      for import in imports {
+        let module_specifier =
+          self.loader.resolve(&import, referrer_name, false, false)?;
+        let module_name = module_specifier.as_str();
 
-          if load.pending.is_empty() {
-            // TODO: change to done
-            load.state = NewMainImportState::Done;
-          }
-        }
-        NewMainImportState::Done => {
-          let root_id = load.root_module_id.expect("Root module id empty");
-          self.mod_instantiate2(root_id);
-          self.core_isolate.check_last_exception()?;
+        let mut modules = self.modules.lock().unwrap();
+
+        modules.add_child(module_id, module_name);
+        if !modules.is_registered(module_name) {
+          load.add_import(module_specifier, referrer.clone());
         }
       }
+      // If we just finished loading the root module, store the root module id.
+      if load.state == NewMainImportState::LoadingRoot {
+        load.root_module_id = Some(module_id);
+        load.state = NewMainImportState::LoadingImports;
+      }
+
+      if load.pending.is_empty() {
+        load.state = NewMainImportState::Done;
+      }
     }
+
+    let root_id = load.root_module_id.expect("Root module id empty");
+    self.mod_instantiate2(root_id);
+    self.core_isolate.check_last_exception().map(|_| root_id)
   }
 }
 
@@ -806,29 +817,34 @@ pub mod tests {
   use std::sync::atomic::{AtomicUsize, Ordering};
   use std::sync::Mutex;
 
-  struct MockLoader {}
+  struct EsMockLoader {}
 
-  impl Loader for MockLoader {
+  impl Loader for EsMockLoader {
     fn resolve(
       &self,
       _specifier: &str,
       _referrer: &str,
       _is_main: bool,
       _is_dyn_import: bool,
-    ) -> Result<ModuleSpecifier, ErrBox> { todo!() }
-  
+    ) -> Result<ModuleSpecifier, ErrBox> {
+      todo!()
+    }
+
     fn load(
       &self,
       _module_specifier: &ModuleSpecifier,
       _maybe_referrer: Option<ModuleSpecifier>,
-    ) -> Pin<Box<SourceCodeInfoFuture>> { todo!() }
+    ) -> Pin<Box<SourceCodeInfoFuture>> {
+      todo!()
+    }
   }
 
   pub fn setup() -> (Box<EsIsolate>, Arc<AtomicUsize>) {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let dispatch_count_ = dispatch_count.clone();
 
-    let mut isolate = EsIsolate::new(Box::new(MockLoader{}), StartupData::None, false);
+    let mut isolate =
+      EsIsolate::new(Box::new(EsMockLoader {}), StartupData::None, false);
 
     let dispatcher =
       move |control: &[u8], _zero_copy: Option<PinnedBuf>| -> CoreOp {
@@ -946,7 +962,8 @@ pub mod tests {
     run_in_task(|cx| {
       let count = Arc::new(AtomicUsize::new(0));
       let count_ = count.clone();
-      let mut isolate = EsIsolate::new(Box::new(MockLoader{}), StartupData::None, false);
+      let mut isolate =
+        EsIsolate::new(Box::new(EsMockLoader {}), StartupData::None, false);
       isolate.set_dyn_import(move |_, specifier, referrer| {
         count_.fetch_add(1, Ordering::Relaxed);
         assert_eq!(specifier, "foo.js");
@@ -981,7 +998,8 @@ pub mod tests {
     run_in_task(|cx| {
       let count = Arc::new(AtomicUsize::new(0));
       let count_ = count.clone();
-      let mut isolate = EsIsolate::new(Box::new(MockLoader{}), StartupData::None, false);
+      let mut isolate =
+        EsIsolate::new(Box::new(EsMockLoader {}), StartupData::None, false);
       isolate.set_dyn_import(move |_, specifier, referrer| {
         let c = count_.fetch_add(1, Ordering::Relaxed);
         match c {
@@ -1046,7 +1064,8 @@ pub mod tests {
       let mod_b = Arc::new(Mutex::new(0));
       let mod_b2 = mod_b.clone();
 
-      let mut isolate = EsIsolate::new(Box::new(MockLoader{}), StartupData::None, false);
+      let mut isolate =
+        EsIsolate::new(Box::new(EsMockLoader {}), StartupData::None, false);
       isolate.set_dyn_import(move |_id, specifier, referrer| {
         let c = count_.fetch_add(1, Ordering::Relaxed);
         match c {

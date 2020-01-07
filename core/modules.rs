@@ -309,15 +309,12 @@ impl NewMainImportRecursiveLoad {
     referrer: ModuleSpecifier,
   ) {
     if !self.is_pending.contains(&specifier) {
-      let fut = self
-        .loader
-        .load(&specifier, Some(referrer));
+      let fut = self.loader.load(&specifier, Some(referrer));
       self.pending.push(fut.boxed());
       self.is_pending.insert(specifier);
     }
   }
 }
-
 
 impl Stream for NewMainImportRecursiveLoad {
   type Item = Result<SourceCodeInfo, ErrBox>;
@@ -335,7 +332,7 @@ impl Stream for NewMainImportRecursiveLoad {
           Poll::Pending => Poll::Pending,
         }
       }
-      NewMainImportState::Done => Poll::Ready(None)
+      NewMainImportState::Done => Poll::Ready(None),
     }
   }
 }
@@ -1049,7 +1046,6 @@ impl fmt::Display for Deps {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::es_isolate::tests::*;
   use crate::isolate::js_check;
   use futures::future::FutureExt;
   use std::error::Error;
@@ -1058,18 +1054,12 @@ mod tests {
 
   struct MockLoader {
     pub loads: Arc<Mutex<Vec<String>>>,
-    pub isolate: Arc<Mutex<Box<EsIsolate>>>,
-    pub modules: Arc<Mutex<Modules>>,
   }
 
   impl MockLoader {
     fn new() -> Self {
-      let modules = Modules::new();
-      let (isolate, _dispatch_count) = setup();
       Self {
         loads: Arc::new(Mutex::new(Vec::new())),
-        isolate: Arc::new(Mutex::new(isolate)),
-        modules: Arc::new(Mutex::new(modules)),
       }
     }
   }
@@ -1227,24 +1217,19 @@ mod tests {
   // nevertheless run it in the tokio executor. Ideally run_in_task can be
   // removed in the future.
   use crate::isolate::tests::run_in_task;
+  use crate::isolate::StartupData;
 
   #[test]
   fn test_recursive_load() {
     let loader = MockLoader::new();
-    let modules = loader.modules.clone();
-    let modules_ = modules.clone();
-    let isolate = loader.isolate.clone();
-    let isolate_ = isolate.clone();
     let loads = loader.loads.clone();
-    let recursive_load =
-      MainImportRecursiveLoad::new("/a.js", None, loader, modules).unwrap();
-
-    let a_id_fut = recursive_load.get_future(isolate);
+    let mut isolate =
+      EsIsolate::new(Box::new(loader), StartupData::None, false);
+    let modules = isolate.modules.clone();
+    let a_id_fut = isolate.load_module("/a.js", None);
     let a_id = futures::executor::block_on(a_id_fut).expect("Failed to load");
 
-    let mut isolate = isolate_.lock().unwrap();
     js_check(isolate.mod_evaluate(a_id));
-
     let l = loads.lock().unwrap();
     assert_eq!(
       l.to_vec(),
@@ -1256,13 +1241,11 @@ mod tests {
       ]
     );
 
-    let modules = modules_.lock().unwrap();
-
+    let modules = modules.lock().unwrap();
     assert_eq!(modules.get_id("file:///a.js"), Some(a_id));
     let b_id = modules.get_id("file:///b.js").unwrap();
     let c_id = modules.get_id("file:///c.js").unwrap();
     let d_id = modules.get_id("file:///d.js").unwrap();
-
     assert_eq!(
       modules.get_children(a_id),
       Some(&vec![
@@ -1299,61 +1282,56 @@ mod tests {
 
   #[test]
   fn test_circular_load() {
-    run_in_task(|mut cx| {
-      let loader = MockLoader::new();
-      let isolate = loader.isolate.clone();
-      let isolate_ = isolate.clone();
-      let modules = loader.modules.clone();
-      let modules_ = modules.clone();
-      let loads = loader.loads.clone();
-      let recursive_load =
-        MainImportRecursiveLoad::new("/circular1.js", None, loader, modules)
-          .unwrap();
-      let mut load_fut = recursive_load.get_future(isolate).boxed();
-      let result = Pin::new(&mut load_fut).poll(&mut cx);
-      assert!(result.is_ready());
-      if let Poll::Ready(Ok(circular1_id)) = result {
-        let mut isolate = isolate_.lock().unwrap();
-        js_check(isolate.mod_evaluate(circular1_id));
+    let loader = MockLoader::new();
+    let loads = loader.loads.clone();
+    let mut isolate =
+      EsIsolate::new(Box::new(loader), StartupData::None, false);
+    let modules = isolate.modules.clone();
 
-        let l = loads.lock().unwrap();
-        assert_eq!(
-          l.to_vec(),
-          vec![
-            "file:///circular1.js",
-            "file:///circular2.js",
-            "file:///circular3.js"
-          ]
-        );
+    let fut = async move {
+      let result = isolate.load_module("/circular1.js", None).await;
+      assert!(result.is_ok());
+      let circular1_id = result.unwrap();
+      js_check(isolate.mod_evaluate(circular1_id));
 
-        let modules = modules_.lock().unwrap();
+      let l = loads.lock().unwrap();
+      assert_eq!(
+        l.to_vec(),
+        vec![
+          "file:///circular1.js",
+          "file:///circular2.js",
+          "file:///circular3.js"
+        ]
+      );
 
-        assert_eq!(modules.get_id("file:///circular1.js"), Some(circular1_id));
-        let circular2_id = modules.get_id("file:///circular2.js").unwrap();
+      let modules = modules.lock().unwrap();
 
-        assert_eq!(
-          modules.get_children(circular1_id),
-          Some(&vec!["file:///circular2.js".to_string()])
-        );
+      assert_eq!(modules.get_id("file:///circular1.js"), Some(circular1_id));
+      let circular2_id = modules.get_id("file:///circular2.js").unwrap();
 
-        assert_eq!(
-          modules.get_children(circular2_id),
-          Some(&vec!["file:///circular3.js".to_string()])
-        );
+      assert_eq!(
+        modules.get_children(circular1_id),
+        Some(&vec!["file:///circular2.js".to_string()])
+      );
 
-        assert!(modules.get_id("file:///circular3.js").is_some());
-        let circular3_id = modules.get_id("file:///circular3.js").unwrap();
-        assert_eq!(
-          modules.get_children(circular3_id),
-          Some(&vec![
-            "file:///circular1.js".to_string(),
-            "file:///circular2.js".to_string()
-          ])
-        );
-      } else {
-        unreachable!();
-      }
-    })
+      assert_eq!(
+        modules.get_children(circular2_id),
+        Some(&vec!["file:///circular3.js".to_string()])
+      );
+
+      assert!(modules.get_id("file:///circular3.js").is_some());
+      let circular3_id = modules.get_id("file:///circular3.js").unwrap();
+      assert_eq!(
+        modules.get_children(circular3_id),
+        Some(&vec![
+          "file:///circular1.js".to_string(),
+          "file:///circular2.js".to_string()
+        ])
+      );
+    }
+    .boxed();
+
+    futures::executor::block_on(fut);
   }
 
   const REDIRECT1_SRC: &str = r#"
@@ -1372,53 +1350,48 @@ mod tests {
 
   #[test]
   fn test_redirect_load() {
-    run_in_task(|mut cx| {
-      let loader = MockLoader::new();
-      let isolate = loader.isolate.clone();
-      let isolate_ = isolate.clone();
-      let modules = loader.modules.clone();
-      let modules_ = modules.clone();
-      let loads = loader.loads.clone();
-      let recursive_load =
-        MainImportRecursiveLoad::new("/redirect1.js", None, loader, modules)
-          .unwrap();
-      let mut load_fut = recursive_load.get_future(isolate).boxed();
-      let result = Pin::new(&mut load_fut).poll(&mut cx);
+    let loader = MockLoader::new();
+    let loads = loader.loads.clone();
+    let mut isolate =
+      EsIsolate::new(Box::new(loader), StartupData::None, false);
+    let modules = isolate.modules.clone();
+
+    let fut = async move {
+      let result = isolate.load_module("/redirect1.js", None).await;
       println!(">> result {:?}", result);
-      assert!(result.is_ready());
-      if let Poll::Ready(Ok(redirect1_id)) = result {
-        let mut isolate = isolate_.lock().unwrap();
-        js_check(isolate.mod_evaluate(redirect1_id));
-        let l = loads.lock().unwrap();
-        assert_eq!(
-          l.to_vec(),
-          vec![
-            "file:///redirect1.js",
-            "file:///redirect2.js",
-            "file:///dir/redirect3.js"
-          ]
-        );
+      assert!(result.is_ok());
+      let redirect1_id = result.unwrap();
+      js_check(isolate.mod_evaluate(redirect1_id));
+      let l = loads.lock().unwrap();
+      assert_eq!(
+        l.to_vec(),
+        vec![
+          "file:///redirect1.js",
+          "file:///redirect2.js",
+          "file:///dir/redirect3.js"
+        ]
+      );
 
-        let modules = modules_.lock().unwrap();
+      let modules = modules.lock().unwrap();
 
-        assert_eq!(modules.get_id("file:///redirect1.js"), Some(redirect1_id));
+      assert_eq!(modules.get_id("file:///redirect1.js"), Some(redirect1_id));
 
-        let redirect2_id = modules.get_id("file:///dir/redirect2.js").unwrap();
-        assert!(modules.is_alias("file:///redirect2.js"));
-        assert!(!modules.is_alias("file:///dir/redirect2.js"));
-        assert_eq!(modules.get_id("file:///redirect2.js"), Some(redirect2_id));
+      let redirect2_id = modules.get_id("file:///dir/redirect2.js").unwrap();
+      assert!(modules.is_alias("file:///redirect2.js"));
+      assert!(!modules.is_alias("file:///dir/redirect2.js"));
+      assert_eq!(modules.get_id("file:///redirect2.js"), Some(redirect2_id));
 
-        let redirect3_id = modules.get_id("file:///redirect3.js").unwrap();
-        assert!(modules.is_alias("file:///dir/redirect3.js"));
-        assert!(!modules.is_alias("file:///redirect3.js"));
-        assert_eq!(
-          modules.get_id("file:///dir/redirect3.js"),
-          Some(redirect3_id)
-        );
-      } else {
-        unreachable!();
-      }
-    })
+      let redirect3_id = modules.get_id("file:///redirect3.js").unwrap();
+      assert!(modules.is_alias("file:///dir/redirect3.js"));
+      assert!(!modules.is_alias("file:///redirect3.js"));
+      assert_eq!(
+        modules.get_id("file:///dir/redirect3.js"),
+        Some(redirect3_id)
+      );
+    }
+    .boxed();
+
+    futures::executor::block_on(fut);
   }
 
   // main.js
@@ -1441,14 +1414,10 @@ mod tests {
   fn slow_never_ready_modules() {
     run_in_task(|mut cx| {
       let loader = MockLoader::new();
-      let isolate = loader.isolate.clone();
-      let modules = loader.modules.clone();
       let loads = loader.loads.clone();
-      let mut recursive_load =
-        MainImportRecursiveLoad::new("/main.js", None, loader, modules)
-          .unwrap()
-          .get_future(isolate)
-          .boxed();
+      let mut isolate =
+        EsIsolate::new(Box::new(loader), StartupData::None, false);
+      let mut recursive_load = isolate.load_module("/main.js", None).boxed();
 
       let result = recursive_load.poll_unpin(&mut cx);
       assert!(result.is_pending());
@@ -1491,12 +1460,9 @@ mod tests {
   fn loader_disappears_after_error() {
     run_in_task(|mut cx| {
       let loader = MockLoader::new();
-      let isolate = loader.isolate.clone();
-      let modules = loader.modules.clone();
-      let recursive_load =
-        MainImportRecursiveLoad::new("/bad_import.js", None, loader, modules)
-          .unwrap();
-      let mut load_fut = recursive_load.get_future(isolate).boxed();
+      let mut isolate =
+        EsIsolate::new(Box::new(loader), StartupData::None, false);
+      let mut load_fut = isolate.load_module("/bad_import.js", None).boxed();
       let result = load_fut.poll_unpin(&mut cx);
       if let Poll::Ready(Err(err)) = result {
         assert_eq!(
@@ -1521,27 +1487,19 @@ mod tests {
   #[test]
   fn recursive_load_main_with_code() {
     let loader = MockLoader::new();
-    let modules = loader.modules.clone();
-    let modules_ = modules.clone();
-    let isolate = loader.isolate.clone();
-    let isolate_ = isolate.clone();
     let loads = loader.loads.clone();
+    let mut isolate =
+      EsIsolate::new(Box::new(loader), StartupData::None, false);
+    let modules = isolate.modules.clone();
     // In default resolution code should be empty.
     // Instead we explicitly pass in our own code.
     // The behavior should be very similar to /a.js.
-    let recursive_load = MainImportRecursiveLoad::new(
-      "/main_with_code.js",
-      Some(MAIN_WITH_CODE_SRC.to_owned()),
-      loader,
-      modules,
-    )
-    .unwrap();
-
-    let main_id_fut = recursive_load.get_future(isolate);
+    let main_id_fut = isolate
+      .load_module("/main_with_code.js", Some(MAIN_WITH_CODE_SRC.to_owned()))
+      .boxed();
     let main_id =
       futures::executor::block_on(main_id_fut).expect("Failed to load");
 
-    let mut isolate = isolate_.lock().unwrap();
     js_check(isolate.mod_evaluate(main_id));
 
     let l = loads.lock().unwrap();
@@ -1550,7 +1508,7 @@ mod tests {
       vec!["file:///b.js", "file:///c.js", "file:///d.js"]
     );
 
-    let modules = modules_.lock().unwrap();
+    let modules = modules.lock().unwrap();
 
     assert_eq!(modules.get_id("file:///main_with_code.js"), Some(main_id));
     let b_id = modules.get_id("file:///b.js").unwrap();

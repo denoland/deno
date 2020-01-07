@@ -716,7 +716,8 @@ pub fn module_resolve_callback(
   let referrer_name = deno_isolate
     .get_module_info(referrer_id)
     .expect("ModuleInfo not found")
-    .name.to_string();
+    .name
+    .to_string();
   let len_ = referrer.get_module_requests_length();
 
   let specifier_str = specifier.to_rust_string_lossy(scope);
@@ -726,9 +727,7 @@ pub fn module_resolve_callback(
     let req_str = req.to_rust_string_lossy(scope);
 
     if req_str == specifier_str {
-      eprintln!("pre resolve callback!");
       let id = deno_isolate.module_resolve_cb(&req_str, referrer_id);
-      eprintln!("post resolve callback!");
       let maybe_info = deno_isolate.get_module_info(id);
 
       if maybe_info.is_none() {
