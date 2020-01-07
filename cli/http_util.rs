@@ -36,7 +36,6 @@ lazy_static! {
       USER_AGENT,
       format!("Deno/{}", version::DENO).parse().unwrap(),
     );
-    headers.insert(ACCEPT_ENCODING, HeaderValue::from_static("gzip, br"));
     Client::builder()
       .redirect(Policy::none())
       .default_headers(headers)
@@ -104,7 +103,9 @@ pub fn fetch_string_once(
     let mut request = client.get(url.clone());
     if let Some(etag) = cached_etag {
       let if_none_match_val = HeaderValue::from_str(&etag).unwrap();
-      request = request.header(IF_NONE_MATCH, if_none_match_val);
+      request = request
+        .header(IF_NONE_MATCH, if_none_match_val)
+        .header(ACCEPT_ENCODING, HeaderValue::from_static("gzip, br"));
     }
     let response = request.send().await?;
 
