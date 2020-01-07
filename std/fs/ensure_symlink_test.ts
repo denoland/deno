@@ -50,7 +50,7 @@ test(async function ensureSymlinkIfItExist(): Promise<void> {
   const testFile = path.join(testDir, "test.txt");
   const linkFile = path.join(testDir, "link.txt");
 
-  await Deno.mkdir(testDir, true);
+  await Deno.mkdir(testDir, { recursive: true });
   await Deno.writeFile(testFile, new Uint8Array());
 
   if (isWindows) {
@@ -79,7 +79,7 @@ test(function ensureSymlinkSyncIfItExist(): void {
   const testFile = path.join(testDir, "test.txt");
   const linkFile = path.join(testDir, "link.txt");
 
-  Deno.mkdirSync(testDir, true);
+  Deno.mkdirSync(testDir, { recursive: true });
   Deno.writeFileSync(testFile, new Uint8Array());
 
   if (isWindows) {
@@ -109,7 +109,7 @@ test(async function ensureSymlinkDirectoryIfItExist(): Promise<void> {
   const linkDir = path.join(testdataDir, "link_file_link_3");
   const testFile = path.join(testDir, "test.txt");
 
-  await Deno.mkdir(testDir, true);
+  await Deno.mkdir(testDir, { recursive: true });
   await Deno.writeFile(testFile, new Uint8Array());
 
   if (isWindows) {
@@ -141,7 +141,7 @@ test(function ensureSymlinkSyncDirectoryIfItExist(): void {
   const linkDir = path.join(testdataDir, "link_file_link_3");
   const testFile = path.join(testDir, "test.txt");
 
-  Deno.mkdirSync(testDir, true);
+  Deno.mkdirSync(testDir, { recursive: true });
   Deno.writeFileSync(testFile, new Uint8Array());
 
   if (isWindows) {

@@ -517,6 +517,11 @@ declare namespace Deno {
 
   // @url js/mkdir.d.ts
 
+  export interface MkdirOption {
+    recursive?: boolean;
+    mode?: number;
+  }
+
   /** Creates a new directory with the specified path synchronously.
    * If `recursive` is set to true, nested directories will be created (also known
    * as "mkdir -p").
@@ -524,13 +529,17 @@ declare namespace Deno {
    * Windows.
    *
    *       Deno.mkdirSync("new_dir");
-   *       Deno.mkdirSync("nested/directories", true);
+   *       Deno.mkdirSync("nested/directories", { recursive: true });
    */
+  export function mkdirSync(path: string, options?: MkdirOption): void;
+
+  /** Deprecated */
   export function mkdirSync(
     path: string,
     recursive?: boolean,
     mode?: number
   ): void;
+
   /** Creates a new directory with the specified path.
    * If `recursive` is set to true, nested directories will be created (also known
    * as "mkdir -p").
@@ -538,8 +547,11 @@ declare namespace Deno {
    * Windows.
    *
    *       await Deno.mkdir("new_dir");
-   *       await Deno.mkdir("nested/directories", true);
+   *       await Deno.mkdir("nested/directories", { recursive: true });
    */
+  export function mkdir(path: string, options?: MkdirOption): Promise<void>;
+
+  /** Deprecated */
   export function mkdir(
     path: string,
     recursive?: boolean,
