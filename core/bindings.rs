@@ -1,9 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::es_isolate::EsIsolate;
+use crate::es_isolate::ResolveContext;
 use crate::isolate::DenoBuf;
 use crate::isolate::Isolate;
 use crate::isolate::PinnedBuf;
-use crate::isolate::ResolveContext;
 
 use rusty_v8 as v8;
 use v8::InIsolate;
@@ -230,8 +231,8 @@ pub extern "C" fn host_import_module_dynamically_callback(
   let mut hs = v8::EscapableHandleScope::new(cbs.enter());
   let scope = hs.enter();
   let isolate = scope.isolate();
-  let deno_isolate: &mut Isolate =
-    unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
+  let deno_isolate: &mut EsIsolate =
+    unsafe { &mut *(isolate.get_data(1) as *mut EsIsolate) };
 
   // NOTE(bartlomieju): will crash for non-UTF-8 specifier
   let specifier_str = specifier
@@ -276,8 +277,8 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
   let mut hs = v8::HandleScope::new(cbs.enter());
   let scope = hs.enter();
   let isolate = scope.isolate();
-  let deno_isolate: &mut Isolate =
-    unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
+  let deno_isolate: &mut EsIsolate =
+    unsafe { &mut *(isolate.get_data(1) as *mut EsIsolate) };
 
   let id = module.get_identity_hash();
   assert_ne!(id, 0);
@@ -704,8 +705,8 @@ pub fn module_resolve_callback(
   let mut cbs = v8::CallbackScope::new(context);
   let cb_scope = cbs.enter();
   let isolate = cb_scope.isolate();
-  let deno_isolate: &mut Isolate =
-    unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
+  let deno_isolate: &mut EsIsolate =
+    unsafe { &mut *(isolate.get_data(1) as *mut EsIsolate) };
 
   let mut locker = v8::Locker::new(isolate);
   let mut hs = v8::EscapableHandleScope::new(&mut locker);
@@ -746,4 +747,185 @@ pub fn module_resolve_callback(
   }
 
   std::ptr::null_mut()
+}
+
+pub fn encode_message_as_object<'a>(
+  s: &mut impl v8::ToLocal<'a>,
+  context: v8::Local<v8::Context>,
+  message: v8::Local<v8::Message>,
+) -> v8::Local<'a, v8::Object> {
+  let json_obj = v8::Object::new(s);
+
+  let exception_str = message.get(s);
+  json_obj.set(
+    context,
+    v8::String::new(s, "message").unwrap().into(),
+    exception_str.into(),
+  );
+
+  let script_resource_name = message
+    .get_script_resource_name(s)
+    .expect("Missing ScriptResourceName");
+  json_obj.set(
+    context,
+    v8::String::new(s, "scriptResourceName").unwrap().into(),
+    script_resource_name,
+  );
+
+  let source_line = message
+    .get_source_line(s, context)
+    .expect("Missing SourceLine");
+  json_obj.set(
+    context,
+    v8::String::new(s, "sourceLine").unwrap().into(),
+    source_line.into(),
+  );
+
+  let line_number = message
+    .get_line_number(context)
+    .expect("Missing LineNumber");
+  json_obj.set(
+    context,
+    v8::String::new(s, "lineNumber").unwrap().into(),
+    v8::Integer::new(s, line_number as i32).into(),
+  );
+
+  json_obj.set(
+    context,
+    v8::String::new(s, "startPosition").unwrap().into(),
+    v8::Integer::new(s, message.get_start_position() as i32).into(),
+  );
+
+  json_obj.set(
+    context,
+    v8::String::new(s, "endPosition").unwrap().into(),
+    v8::Integer::new(s, message.get_end_position() as i32).into(),
+  );
+
+  json_obj.set(
+    context,
+    v8::String::new(s, "errorLevel").unwrap().into(),
+    v8::Integer::new(s, message.error_level() as i32).into(),
+  );
+
+  json_obj.set(
+    context,
+    v8::String::new(s, "startColumn").unwrap().into(),
+    v8::Integer::new(s, message.get_start_column() as i32).into(),
+  );
+
+  json_obj.set(
+    context,
+    v8::String::new(s, "endColumn").unwrap().into(),
+    v8::Integer::new(s, message.get_end_column() as i32).into(),
+  );
+
+  let is_shared_cross_origin =
+    v8::Boolean::new(s, message.is_shared_cross_origin());
+
+  json_obj.set(
+    context,
+    v8::String::new(s, "isSharedCrossOrigin").unwrap().into(),
+    is_shared_cross_origin.into(),
+  );
+
+  let is_opaque = v8::Boolean::new(s, message.is_opaque());
+
+  json_obj.set(
+    context,
+    v8::String::new(s, "isOpaque").unwrap().into(),
+    is_opaque.into(),
+  );
+
+  let frames = if let Some(stack_trace) = message.get_stack_trace(s) {
+    let count = stack_trace.get_frame_count() as i32;
+    let frames = v8::Array::new(s, count);
+
+    for i in 0..count {
+      let frame = stack_trace
+        .get_frame(s, i as usize)
+        .expect("No frame found");
+      let frame_obj = v8::Object::new(s);
+      frames.set(context, v8::Integer::new(s, i).into(), frame_obj.into());
+      frame_obj.set(
+        context,
+        v8::String::new(s, "line").unwrap().into(),
+        v8::Integer::new(s, frame.get_line_number() as i32).into(),
+      );
+      frame_obj.set(
+        context,
+        v8::String::new(s, "column").unwrap().into(),
+        v8::Integer::new(s, frame.get_column() as i32).into(),
+      );
+
+      if let Some(function_name) = frame.get_function_name(s) {
+        frame_obj.set(
+          context,
+          v8::String::new(s, "functionName").unwrap().into(),
+          function_name.into(),
+        );
+      }
+
+      let script_name = match frame.get_script_name_or_source_url(s) {
+        Some(name) => name,
+        None => v8::String::new(s, "<unknown>").unwrap(),
+      };
+      frame_obj.set(
+        context,
+        v8::String::new(s, "scriptName").unwrap().into(),
+        script_name.into(),
+      );
+
+      frame_obj.set(
+        context,
+        v8::String::new(s, "isEval").unwrap().into(),
+        v8::Boolean::new(s, frame.is_eval()).into(),
+      );
+
+      frame_obj.set(
+        context,
+        v8::String::new(s, "isConstructor").unwrap().into(),
+        v8::Boolean::new(s, frame.is_constructor()).into(),
+      );
+
+      frame_obj.set(
+        context,
+        v8::String::new(s, "isWasm").unwrap().into(),
+        v8::Boolean::new(s, frame.is_wasm()).into(),
+      );
+    }
+
+    frames
+  } else {
+    // No stack trace. We only have one stack frame of info..
+    let frames = v8::Array::new(s, 1);
+    let frame_obj = v8::Object::new(s);
+    frames.set(context, v8::Integer::new(s, 0).into(), frame_obj.into());
+
+    frame_obj.set(
+      context,
+      v8::String::new(s, "scriptResourceName").unwrap().into(),
+      script_resource_name,
+    );
+    frame_obj.set(
+      context,
+      v8::String::new(s, "line").unwrap().into(),
+      v8::Integer::new(s, line_number as i32).into(),
+    );
+    frame_obj.set(
+      context,
+      v8::String::new(s, "column").unwrap().into(),
+      v8::Integer::new(s, message.get_start_column() as i32).into(),
+    );
+
+    frames
+  };
+
+  json_obj.set(
+    context,
+    v8::String::new(s, "frames").unwrap().into(),
+    frames.into(),
+  );
+
+  json_obj
 }

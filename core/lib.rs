@@ -13,6 +13,7 @@ extern crate lazy_static;
 
 mod any_error;
 mod bindings;
+mod es_isolate;
 mod flags;
 mod isolate;
 mod js_errors;
@@ -26,6 +27,7 @@ mod shared_queue;
 use rusty_v8 as v8;
 
 pub use crate::any_error::*;
+pub use crate::es_isolate::*;
 pub use crate::flags::v8_set_flags;
 pub use crate::isolate::*;
 pub use crate::js_errors::*;
