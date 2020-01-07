@@ -7,12 +7,12 @@
 // synchronously. The isolate.rs module should never depend on this module.
 
 use crate::any_error::ErrBox;
-use crate::isolate::DynImportId;
-use crate::isolate::ImportStream;
-use crate::isolate::Isolate;
-use crate::isolate::ModuleId;
-use crate::isolate::RecursiveLoadEvent as Event;
-use crate::isolate::SourceCodeInfo;
+use crate::es_isolate::DynImportId;
+use crate::es_isolate::EsIsolate;
+use crate::es_isolate::ImportStream;
+use crate::es_isolate::ModuleId;
+use crate::es_isolate::RecursiveLoadEvent as Event;
+use crate::es_isolate::SourceCodeInfo;
 use crate::module_specifier::ModuleSpecifier;
 use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
@@ -198,7 +198,7 @@ impl<L: Loader + Unpin> RecursiveLoad<L> {
   /// This future needs to take ownership of the isolate.
   pub fn get_future(
     self,
-    isolate: Arc<Mutex<Box<Isolate>>>,
+    isolate: Arc<Mutex<Box<EsIsolate>>>,
   ) -> impl Future<Output = Result<ModuleId, ErrBox>> {
     async move {
       let mut load = self;
@@ -221,7 +221,7 @@ impl<L: Loader + Unpin> ImportStream for RecursiveLoad<L> {
   fn register(
     &mut self,
     source_code_info: SourceCodeInfo,
-    isolate: &mut Isolate,
+    isolate: &mut EsIsolate,
   ) -> Result<(), ErrBox> {
     // #A There are 3 cases to handle at this moment:
     // 1. Source code resolved result have the same module name as requested
@@ -609,8 +609,8 @@ impl fmt::Display for Deps {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::es_isolate::tests::*;
   use crate::isolate::js_check;
-  use crate::isolate::tests::*;
   use futures::future::FutureExt;
   use futures::stream::StreamExt;
   use std::error::Error;
@@ -619,14 +619,14 @@ mod tests {
 
   struct MockLoader {
     pub loads: Arc<Mutex<Vec<String>>>,
-    pub isolate: Arc<Mutex<Box<Isolate>>>,
+    pub isolate: Arc<Mutex<Box<EsIsolate>>>,
     pub modules: Arc<Mutex<Modules>>,
   }
 
   impl MockLoader {
     fn new() -> Self {
       let modules = Modules::new();
-      let (isolate, _dispatch_count) = setup(Mode::Async);
+      let (isolate, _dispatch_count) = setup();
       Self {
         loads: Arc::new(Mutex::new(Vec::new())),
         isolate: Arc::new(Mutex::new(isolate)),

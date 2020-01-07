@@ -10,7 +10,7 @@ use deno_core::js_check;
 pub use deno_core::v8_set_flags;
 use deno_core::CoreOp;
 use deno_core::ErrBox;
-use deno_core::Isolate;
+use deno_core::EsIsolate;
 use deno_core::ModuleSpecifier;
 use deno_core::PinnedBuf;
 use deno_core::StartupData;
@@ -64,13 +64,13 @@ where
 }
 
 pub struct TSIsolate {
-  isolate: Box<Isolate>,
+  isolate: Box<EsIsolate>,
   state: Arc<Mutex<TSState>>,
 }
 
 impl TSIsolate {
   fn new(bundle: bool) -> TSIsolate {
-    let mut isolate = Isolate::new(StartupData::None, false);
+    let mut isolate = EsIsolate::new(StartupData::None, false);
     js_check(isolate.execute("assets/typescript.js", TYPESCRIPT_CODE));
     js_check(isolate.execute("compiler_main.js", COMPILER_CODE));
 
@@ -180,7 +180,7 @@ pub fn mksnapshot_bundle(
   bundle: &Path,
   state: Arc<Mutex<TSState>>,
 ) -> Result<(), ErrBox> {
-  let mut runtime_isolate = Isolate::new(StartupData::None, true);
+  let runtime_isolate = &mut EsIsolate::new(StartupData::None, true);
   let source_code_vec = std::fs::read(bundle)?;
   let source_code = std::str::from_utf8(&source_code_vec)?;
 
@@ -203,7 +203,7 @@ pub fn mksnapshot_bundle_ts(
   bundle: &Path,
   state: Arc<Mutex<TSState>>,
 ) -> Result<(), ErrBox> {
-  let mut runtime_isolate = Isolate::new(StartupData::None, true);
+  let runtime_isolate = &mut EsIsolate::new(StartupData::None, true);
   let source_code_vec = std::fs::read(bundle)?;
   let source_code = std::str::from_utf8(&source_code_vec)?;
 
@@ -222,7 +222,7 @@ pub fn mksnapshot_bundle_ts(
 }
 
 fn write_snapshot(
-  mut runtime_isolate: Box<Isolate>,
+  runtime_isolate: &mut EsIsolate,
   bundle: &Path,
 ) -> Result<(), ErrBox> {
   println!("creating snapshot...");

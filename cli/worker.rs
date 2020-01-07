@@ -35,7 +35,7 @@ pub struct WorkerChannels {
 #[derive(Clone)]
 pub struct Worker {
   pub name: String,
-  isolate: Arc<Mutex<Box<deno_core::Isolate>>>,
+  isolate: Arc<Mutex<Box<deno_core::EsIsolate>>>,
   pub state: ThreadSafeState,
   external_channels: Arc<Mutex<WorkerChannels>>,
 }
@@ -48,7 +48,7 @@ impl Worker {
     external_channels: WorkerChannels,
   ) -> Self {
     let isolate =
-      Arc::new(Mutex::new(deno_core::Isolate::new(startup_data, false)));
+      Arc::new(Mutex::new(deno_core::EsIsolate::new(startup_data, false)));
     {
       let mut i = isolate.lock().unwrap();
       let op_registry = i.op_registry.clone();
