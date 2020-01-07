@@ -28,7 +28,7 @@ pub fn get_asset(name: &str) -> Option<&'static str> {
 
 #[test]
 fn cli_snapshot() {
-  let mut isolate = deno_core::EsIsolate::new(
+  let mut isolate = deno_core::Isolate::new(
     deno_core::StartupData::Snapshot(CLI_SNAPSHOT),
     false,
   );
@@ -45,7 +45,7 @@ fn cli_snapshot() {
 
 #[test]
 fn compiler_snapshot() {
-  let mut isolate = deno_core::EsIsolate::new(
+  let mut isolate = deno_core::Isolate::new(
     deno_core::StartupData::Snapshot(COMPILER_SNAPSHOT),
     false,
   );

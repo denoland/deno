@@ -32,6 +32,7 @@ use std::task::Poll;
 
 use crate::isolate::Isolate;
 use crate::isolate::StartupData;
+use crate::modules::NewDynImportRecursiveLoad;
 
 pub type ModuleId = i32;
 pub type DynImportId = i32;
@@ -72,6 +73,8 @@ type DynImportStream = Box<
 >;
 
 type DynImportFn = dyn Fn(DynImportId, &str, &str) -> DynImportStream;
+type NewDynImportFn =
+  dyn Fn(DynImportId, &str, &str) -> NewDynImportRecursiveLoad;
 
 /// Wraps DynImportStream to include the DynImportId, so that it doesn't
 /// need to be exposed.
@@ -137,7 +140,10 @@ pub struct EsIsolate {
     HashMap<DynImportId, v8::Global<v8::PromiseResolver>>,
   pub(crate) resolve_context: *mut c_void,
 
+  new_pending_dyn_imports:
+    FuturesUnordered<StreamFuture<NewDynImportRecursiveLoad>>,
   pending_dyn_imports: FuturesUnordered<StreamFuture<IntoStream<DynImport>>>,
+  new_dyn_import: Option<Arc<NewDynImportFn>>,
   dyn_import: Option<Arc<DynImportFn>>,
   waker: AtomicWaker,
 }
@@ -218,6 +224,8 @@ impl EsIsolate {
       dyn_import_map: HashMap::new(),
       resolve_context: std::ptr::null_mut(),
       dyn_import: None,
+      new_dyn_import: None,
+      new_pending_dyn_imports: FuturesUnordered::new(),
       pending_dyn_imports: FuturesUnordered::new(),
       waker: AtomicWaker::new(),
     };
@@ -434,6 +442,16 @@ impl EsIsolate {
     self.dyn_import = Some(Arc::new(f));
   }
 
+  pub fn set_new_dyn_import<F>(&mut self, f: F)
+  where
+    F: Fn(DynImportId, &str, &str) -> NewDynImportRecursiveLoad
+      + Send
+      + Sync
+      + 'static,
+  {
+    self.new_dyn_import = Some(Arc::new(f));
+  }
+
   pub fn dyn_import_cb(
     &mut self,
     specifier: &str,
@@ -442,15 +460,21 @@ impl EsIsolate {
   ) {
     debug!("dyn_import specifier {} referrer {} ", specifier, referrer);
 
-    if let Some(ref f) = self.dyn_import {
-      let inner = f(id, specifier, referrer);
-      let stream = DynImport { inner, id };
+    if let Some(ref f) = self.new_dyn_import {
+      let load = f(id, specifier, referrer);
       self.waker.wake();
-      self
-        .pending_dyn_imports
-        .push(stream.into_stream().into_future());
+      self.new_pending_dyn_imports.push(load.into_future());
     } else {
-      panic!("dyn_import callback not set")
+      if let Some(ref f) = self.dyn_import {
+        let inner = f(id, specifier, referrer);
+        let stream = DynImport { inner, id };
+        self.waker.wake();
+        self
+          .pending_dyn_imports
+          .push(stream.into_stream().into_future());
+      } else {
+        panic!("dyn_import callback not set")
+      }
     }
   }
 
@@ -517,6 +541,63 @@ impl EsIsolate {
     self.core_isolate.check_last_exception()
   }
 
+  fn new_poll_dyn_imports(
+    &mut self,
+    cx: &mut Context,
+  ) -> Poll<Result<(), ErrBox>> {
+    loop {
+      match self.new_pending_dyn_imports.poll_next_unpin(cx) {
+        Poll::Pending | Poll::Ready(None) => {
+          // There are no active dynamic import loaders, or none are ready.
+          return Poll::Ready(Ok(()));
+        }
+        Poll::Ready(Some(load_stream_poll)) => {
+          let maybe_result = load_stream_poll.0;
+          let mut load = load_stream_poll.1;
+
+          match maybe_result {
+            Some(load_stream_result) => match load_stream_result {
+              Ok(info) => {
+                // A module (not necessarily the one dynamically imported) has been
+                // fetched. Create and register it, and if successful, poll for the
+                // next recursive-load event related to this dynamic import.
+                match load.register(info, self) {
+                  Ok(()) => {}
+                  Err(err) => self.dyn_import_done(
+                    load.dyn_import_id,
+                    Err(Some(err.to_string())),
+                  )?,
+                }
+              }
+              Err(err) => {
+                // A non-javascript error occurred; this could be due to a an invalid
+                // module specifier, or a problem with the source map, or a failure
+                // to fetch the module source code.
+                self.dyn_import_done(
+                  load.dyn_import_id,
+                  Err(Some(err.to_string())),
+                )?
+              }
+            },
+            None => {
+              // The top-level module from a dynamic import has been instantiated.
+              // Load is done.
+              let module_id = load.root_module_id.unwrap();
+              match self.mod_evaluate(module_id) {
+                Ok(()) => {
+                  self.dyn_import_done(load.dyn_import_id, Ok(module_id))?
+                }
+                Err(..) => {
+                  self.dyn_import_done(load.dyn_import_id, Err(None))?
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
   fn poll_dyn_imports(&mut self, cx: &mut Context) -> Poll<Result<(), ErrBox>> {
     use RecursiveLoadEvent::*;
     loop {
@@ -572,6 +653,10 @@ impl Future for EsIsolate {
     // If there are any pending dyn_import futures, do those first.
     if !inner.pending_dyn_imports.is_empty() {
       let poll_imports = inner.poll_dyn_imports(cx)?;
+      assert!(poll_imports.is_ready());
+    }
+    if !inner.new_pending_dyn_imports.is_empty() {
+      let poll_imports = inner.new_poll_dyn_imports(cx)?;
       assert!(poll_imports.is_ready());
     }
 
