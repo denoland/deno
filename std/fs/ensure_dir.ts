@@ -18,7 +18,7 @@ export async function ensureDir(dir: string): Promise<void> {
   } catch (err) {
     if (err instanceof Deno.DenoError && err.kind === ErrorKind.NotFound) {
       // if dir not exists. then create it.
-      await mkdir(dir, true);
+      await mkdir(dir, { recursive: true });
       return;
     }
     throw err;
@@ -41,7 +41,7 @@ export function ensureDirSync(dir: string): void {
   } catch (err) {
     if (err instanceof Deno.DenoError && err.kind == ErrorKind.NotFound) {
       // if dir not exists. then create it.
-      mkdirSync(dir, true);
+      mkdirSync(dir, { recursive: true });
       return;
     }
     throw err;

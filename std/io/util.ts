@@ -40,7 +40,7 @@ export async function tempFile(
   const filepath = path.resolve(
     `${dir}/${opts.prefix || ""}${r}${opts.postfix || ""}`
   );
-  await mkdir(path.dirname(filepath), true);
+  await mkdir(path.dirname(filepath), { recursive: true });
   const file = await open(filepath, "a");
   return { file, filepath };
 }

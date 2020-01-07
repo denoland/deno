@@ -33,7 +33,7 @@ export async function emptyDir(dir: string): Promise<void> {
     }
 
     // if not exist. then create it
-    await mkdir(dir, true);
+    await mkdir(dir, { recursive: true });
   }
 }
 
@@ -61,7 +61,7 @@ export function emptyDirSync(dir: string): void {
       throw err;
     }
     // if not exist. then create it
-    mkdirSync(dir, true);
+    mkdirSync(dir, { recursive: true });
     return;
   }
 }

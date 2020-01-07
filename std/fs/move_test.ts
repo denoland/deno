@@ -28,7 +28,7 @@ test(async function moveDirectoryIfDestNotExists(): Promise<void> {
   const srcDir = path.join(testdataDir, "move_test_src_2");
   const destDir = path.join(testdataDir, "move_test_dest_2");
 
-  await Deno.mkdir(srcDir, true);
+  await Deno.mkdir(srcDir, { recursive: true });
 
   // if dest directory not exist
   await assertThrowsAsync(
@@ -112,7 +112,7 @@ test(async function moveDirectory(): Promise<void> {
   const destFile = path.join(destDir, "test.txt");
   const srcContent = new TextEncoder().encode("src");
 
-  await Deno.mkdir(srcDir, true);
+  await Deno.mkdir(srcDir, { recursive: true });
   assertEquals(await exists(srcDir), true);
   await Deno.writeFile(srcFile, srcContent);
 
@@ -140,7 +140,10 @@ test(async function moveIfSrcAndDestDirectoryExistsAndOverwrite(): Promise<
   const srcContent = new TextEncoder().encode("src");
   const destContent = new TextEncoder().encode("dest");
 
-  await Promise.all([Deno.mkdir(srcDir, true), Deno.mkdir(destDir, true)]);
+  await Promise.all([
+    Deno.mkdir(srcDir, { recursive: true }),
+    Deno.mkdir(destDir, { recursive: true })
+  ]);
   assertEquals(await exists(srcDir), true);
   assertEquals(await exists(destDir), true);
   await Promise.all([
@@ -191,7 +194,7 @@ test(function moveSyncDirectoryIfDestNotExists(): void {
   const srcDir = path.join(testdataDir, "move_sync_test_src_2");
   const destDir = path.join(testdataDir, "move_sync_test_dest_2");
 
-  Deno.mkdirSync(srcDir, true);
+  Deno.mkdirSync(srcDir, { recursive: true });
 
   // if dest directory not exist
   assertThrows(
@@ -270,7 +273,7 @@ test(function moveSyncDirectory(): void {
   const destFile = path.join(destDir, "test.txt");
   const srcContent = new TextEncoder().encode("src");
 
-  Deno.mkdirSync(srcDir, true);
+  Deno.mkdirSync(srcDir, { recursive: true });
   assertEquals(existsSync(srcDir), true);
   Deno.writeFileSync(srcFile, srcContent);
 
@@ -294,8 +297,8 @@ test(function moveSyncIfSrcAndDestDirectoryExistsAndOverwrite(): void {
   const srcContent = new TextEncoder().encode("src");
   const destContent = new TextEncoder().encode("dest");
 
-  Deno.mkdirSync(srcDir, true);
-  Deno.mkdirSync(destDir, true);
+  Deno.mkdirSync(srcDir, { recursive: true });
+  Deno.mkdirSync(destDir, { recursive: true });
   assertEquals(existsSync(srcDir), true);
   assertEquals(existsSync(destDir), true);
   Deno.writeFileSync(srcFile, srcContent);

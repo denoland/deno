@@ -41,7 +41,7 @@ test(async function ensureFileIfItExist(): Promise<void> {
   const testDir = path.join(testdataDir, "ensure_file_3");
   const testFile = path.join(testDir, "test.txt");
 
-  await Deno.mkdir(testDir, true);
+  await Deno.mkdir(testDir, { recursive: true });
   await Deno.writeFile(testFile, new Uint8Array());
 
   await ensureFile(testFile);
@@ -61,7 +61,7 @@ test(function ensureFileSyncIfItExist(): void {
   const testDir = path.join(testdataDir, "ensure_file_4");
   const testFile = path.join(testDir, "test.txt");
 
-  Deno.mkdirSync(testDir, true);
+  Deno.mkdirSync(testDir, { recursive: true });
   Deno.writeFileSync(testFile, new Uint8Array());
 
   ensureFileSync(testFile);
@@ -77,7 +77,7 @@ test(function ensureFileSyncIfItExist(): void {
 test(async function ensureFileIfItExistAsDir(): Promise<void> {
   const testDir = path.join(testdataDir, "ensure_file_5");
 
-  await Deno.mkdir(testDir, true);
+  await Deno.mkdir(testDir, { recursive: true });
 
   await assertThrowsAsync(
     async (): Promise<void> => {
@@ -93,7 +93,7 @@ test(async function ensureFileIfItExistAsDir(): Promise<void> {
 test(function ensureFileSyncIfItExistAsDir(): void {
   const testDir = path.join(testdataDir, "ensure_file_6");
 
-  Deno.mkdirSync(testDir, true);
+  Deno.mkdirSync(testDir, { recursive: true });
 
   assertThrows(
     (): void => {
