@@ -1817,7 +1817,7 @@ mod tests {
         .await;
       assert!(source.is_ok());
       let source = source.unwrap();
-      assert_eq!(source.source_code, "console.log('etag')".as_bytes());
+      assert_eq!(source.source_code, b"console.log('etag')");
       assert_eq!(&(source.media_type), &msg::MediaType::JavaScript);
 
       let headers = fetcher.get_source_code_headers(&module_url);
@@ -1833,7 +1833,7 @@ mod tests {
         .fetch_remote_source_async(&module_url, false, false, 1)
         .await
         .unwrap();
-      assert_eq!(cached_source.source_code, "changed content".as_bytes());
+      assert_eq!(cached_source.source_code, b"changed content");
     };
 
     tokio_util::run(fut);
