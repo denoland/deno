@@ -138,21 +138,21 @@ impl<L: Loader + Unpin> MainImportRecursiveLoad<L> {
 
   fn instantiate_root(
     &mut self,
-    isolate: &mut EsIsolate,
+    _isolate: &mut EsIsolate,
   ) -> Result<(), ErrBox> {
-    let root_id = self.root_module_id.expect("Root module empty!");
-    let mut resolve_cb = |specifier: &str, referrer_id: ModuleId| -> ModuleId {
-      let modules = self.modules.lock().unwrap();
-      let referrer = modules.get_name(referrer_id).unwrap();
-      // We should have already resolved and Ready this module, so
-      // resolve() will not fail this time.
-      let specifier = self
-        .loader
-        .resolve(specifier, &referrer, false, false)
-        .expect("Module should already be resolved");
-      modules.get_id(specifier.as_str()).unwrap_or(0)
-    };
-    isolate.mod_instantiate(root_id, &mut resolve_cb)?;
+    // let root_id = self.root_module_id.expect("Root module empty!");
+    // let mut resolve_cb = |specifier: &str, referrer_id: ModuleId| -> ModuleId {
+    //   let modules = self.modules.lock().unwrap();
+    //   let referrer = modules.get_name(referrer_id).unwrap();
+    //   // We should have already resolved and Ready this module, so
+    //   // resolve() will not fail this time.
+    //   let specifier = self
+    //     .loader
+    //     .resolve(specifier, &referrer, false, false)
+    //     .expect("Module should already be resolved");
+    //   modules.get_id(specifier.as_str()).unwrap_or(0)
+    // };
+    // isolate.mod_instantiate(root_id, &mut resolve_cb)?;
 
     self.state = MainImportState::Instantiated;
     Ok(())
@@ -436,21 +436,21 @@ impl DynImportRecursiveLoad {
 
   fn instantiate_root(
     &mut self,
-    isolate: &mut EsIsolate,
+    _isolate: &mut EsIsolate,
   ) -> Result<(), ErrBox> {
-    let root_id = self.root_module_id.expect("Root module empty!");
-    let mut resolve_cb = |specifier: &str, referrer_id: ModuleId| -> ModuleId {
-      let modules = self.modules.lock().unwrap();
-      let referrer = modules.get_name(referrer_id).unwrap();
-      // We should have already resolved and Ready this module, so
-      // resolve() will not fail this time.
-      let specifier = self
-        .loader
-        .resolve(specifier, &referrer, false, false)
-        .expect("Module should already be resolved");
-      modules.get_id(specifier.as_str()).unwrap_or(0)
-    };
-    isolate.mod_instantiate(root_id, &mut resolve_cb)?;
+    // let root_id = self.root_module_id.expect("Root module empty!");
+    // let mut resolve_cb = |specifier: &str, referrer_id: ModuleId| -> ModuleId {
+    //   let modules = self.modules.lock().unwrap();
+    //   let referrer = modules.get_name(referrer_id).unwrap();
+    //   // We should have already resolved and Ready this module, so
+    //   // resolve() will not fail this time.
+    //   let specifier = self
+    //     .loader
+    //     .resolve(specifier, &referrer, false, false)
+    //     .expect("Module should already be resolved");
+    //   modules.get_id(specifier.as_str()).unwrap_or(0)
+    // };
+    // isolate.mod_instantiate(root_id, &mut resolve_cb)?;
 
     self.state = DynImportState::Instantiated;
     Ok(())

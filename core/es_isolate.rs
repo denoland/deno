@@ -79,10 +79,6 @@ type DynImportStream = Box<
     + Unpin,
 >;
 
-type DynImportFn = dyn Fn(DynImportId, &str, &str) -> DynImportStream;
-type NewDynImportFn =
-  dyn Fn(DynImportId, &str, &str) -> NewDynImportRecursiveLoad;
-
 /// Wraps DynImportStream to include the DynImportId, so that it doesn't
 /// need to be exposed.
 #[derive(Debug)]
@@ -146,14 +142,10 @@ pub struct EsIsolate {
   pub(crate) next_dyn_import_id: DynImportId,
   pub(crate) dyn_import_map:
     HashMap<DynImportId, v8::Global<v8::PromiseResolver>>,
-  #[allow(unused)]
-  pub(crate) resolve_context: *mut c_void,
 
   new_pending_dyn_imports:
     FuturesUnordered<StreamFuture<NewDynImportRecursiveLoad>>,
   pending_dyn_imports: FuturesUnordered<StreamFuture<IntoStream<DynImport>>>,
-  new_dyn_import: Option<Arc<NewDynImportFn>>,
-  dyn_import: Option<Arc<DynImportFn>>,
   waker: AtomicWaker,
 }
 
@@ -191,29 +183,6 @@ impl Drop for EsIsolate {
   }
 }
 
-/// Called during mod_instantiate() to resolve imports.
-type ResolveFn<'a> = dyn FnMut(&str, ModuleId) -> ModuleId + 'a;
-
-/// Used internally by Isolate::mod_instantiate to wrap ResolveFn and
-/// encapsulate pointer casts.
-pub struct ResolveContext<'a> {
-  pub resolve_fn: &'a mut ResolveFn<'a>,
-}
-
-#[allow(unused)]
-impl<'a> ResolveContext<'a> {
-  #[inline]
-  fn as_raw_ptr(&mut self) -> *mut c_void {
-    self as *mut _ as *mut c_void
-  }
-
-  #[allow(clippy::missing_safety_doc)]
-  #[inline]
-  pub(crate) unsafe fn from_raw_ptr(ptr: *mut c_void) -> &'a mut Self {
-    &mut *(ptr as *mut _)
-  }
-}
-
 impl EsIsolate {
   pub fn new(
     loader: Box<dyn Loader + Unpin>,
@@ -238,9 +207,6 @@ impl EsIsolate {
       mods_: HashMap::new(),
       next_dyn_import_id: 0,
       dyn_import_map: HashMap::new(),
-      resolve_context: std::ptr::null_mut(),
-      dyn_import: None,
-      new_dyn_import: None,
       new_pending_dyn_imports: FuturesUnordered::new(),
       pending_dyn_imports: FuturesUnordered::new(),
       waker: AtomicWaker::new(),
@@ -337,7 +303,6 @@ impl EsIsolate {
   }
 
   fn mod_instantiate2(&mut self, id: ModuleId) {
-    // self.resolve_context = ctx.as_raw_ptr();
     let isolate = self.core_isolate.v8_isolate.as_ref().unwrap();
     let mut locker = v8::Locker::new(isolate);
     let mut hs = v8::HandleScope::new(&mut locker);
@@ -376,19 +341,14 @@ impl EsIsolate {
     }
 
     context.exit();
-    // self.resolve_context = std::ptr::null_mut();
   }
+
   /// Instanciates a ES module
   ///
   /// ErrBox can be downcast to a type that exposes additional information about
   /// the V8 exception. By default this type is CoreJSError, however it may be a
   /// different type if Isolate::set_js_error_create() has been used.
-  pub fn mod_instantiate(
-    &mut self,
-    id: ModuleId,
-    resolve_fn: &mut ResolveFn,
-  ) -> Result<(), ErrBox> {
-    let _ctx = ResolveContext { resolve_fn };
+  pub fn mod_instantiate(&mut self, id: ModuleId) -> Result<(), ErrBox> {
     self.mod_instantiate2(id);
     self.core_isolate.check_last_exception()
   }
@@ -459,7 +419,7 @@ impl EsIsolate {
     referrer_id: ModuleId,
   ) -> ModuleId {
     let modules = self.modules.lock().unwrap();
-    // eprintln!("specifier {} referrer {}", specifier, referrer_id);
+    eprintln!("specifier {} referrer {}", specifier, referrer_id);
     let referrer = modules.get_name(referrer_id).unwrap();
     // We should have already resolved and Ready this module, so
     // resolve() will not fail this time.
@@ -473,23 +433,6 @@ impl EsIsolate {
       .resolve(specifier, &referrer, false, false)
       .expect("Module should already be resolved");
     modules.get_id(specifier.as_str()).unwrap_or(0)
-  }
-
-  pub fn set_dyn_import<F>(&mut self, f: F)
-  where
-    F: Fn(DynImportId, &str, &str) -> DynImportStream + Send + Sync + 'static,
-  {
-    self.dyn_import = Some(Arc::new(f));
-  }
-
-  pub fn set_new_dyn_import<F>(&mut self, f: F)
-  where
-    F: Fn(DynImportId, &str, &str) -> NewDynImportRecursiveLoad
-      + Send
-      + Sync
-      + 'static,
-  {
-    self.new_dyn_import = Some(Arc::new(f));
   }
 
   pub fn dyn_import_cb(
@@ -508,23 +451,6 @@ impl EsIsolate {
     );
     self.waker.wake();
     self.new_pending_dyn_imports.push(load.into_future());
-
-    // if let Some(ref f) = self.new_dyn_import {
-    //   let load = f(id, specifier, referrer);
-    //   self.waker.wake();
-    //   self.new_pending_dyn_imports.push(load.into_future());
-    // } else {
-    //   if let Some(ref f) = self.dyn_import {
-    //     let inner = f(id, specifier, referrer);
-    //     let stream = DynImport { inner, id };
-    //     self.waker.wake();
-    //     self
-    //       .pending_dyn_imports
-    //       .push(stream.into_stream().into_future());
-    //   } else {
-    //     panic!("dyn_import callback not set")
-    //   }
-    // }
   }
 
   fn dyn_import_done(
@@ -929,12 +855,43 @@ pub mod tests {
     }
   }
 
-  pub fn setup() -> (Box<EsIsolate>, Arc<AtomicUsize>) {
+  #[test]
+  fn test_mods() {
+    #[derive(Clone, Default)]
+    struct ModsLoader {
+      pub count: Arc<AtomicUsize>,
+    }
+
+    impl Loader for ModsLoader {
+      fn resolve(
+        &self,
+        specifier: &str,
+        referrer: &str,
+        _is_main: bool,
+        _is_dyn_import: bool,
+      ) -> Result<ModuleSpecifier, ErrBox> {
+        self.count.fetch_add(1, Ordering::Relaxed);
+        assert_eq!(specifier, "./b.js");
+        assert_eq!(referrer, "file:///a.js");
+        let s = ModuleSpecifier::resolve_import(specifier, referrer).unwrap();
+        Ok(s)
+      }
+
+      fn load(
+        &self,
+        _module_specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<ModuleSpecifier>,
+      ) -> Pin<Box<SourceCodeInfoFuture>> {
+        unreachable!()
+      }
+    }
+
+    let loader = Box::new(ModsLoader::default());
+    let resolve_count = loader.count.clone();
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let dispatch_count_ = dispatch_count.clone();
 
-    let mut isolate =
-      EsIsolate::new(Box::new(EsMockLoader {}), StartupData::None, false);
+    let mut isolate = EsIsolate::new(loader, StartupData::None, false);
 
     let dispatcher =
       move |control: &[u8], _zero_copy: Option<PinnedBuf>| -> CoreOp {
@@ -957,19 +914,15 @@ pub mod tests {
         }
         "#,
     ));
-    assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
-    (isolate, dispatch_count)
-  }
 
-  #[test]
-  fn test_mods() {
-    let (mut isolate, dispatch_count) = setup();
+    assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
+
     let mod_a = isolate
       .mod_new(
         true,
-        "a.js",
+        "file:///a.js",
         r#"
-        import { b } from 'b.js'
+        import { b } from './b.js'
         if (b() != 'b') throw Error();
         let control = new Uint8Array([42]);
         Deno.core.send(1, control);
@@ -977,29 +930,30 @@ pub mod tests {
       )
       .unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
+    isolate
+      .modules
+      .lock()
+      .unwrap()
+      .register(mod_a, "file:///a.js");
 
     let imports = isolate.mod_get_imports(mod_a);
-    assert_eq!(imports, vec!["b.js".to_string()]);
+    assert_eq!(imports, vec!["./b.js".to_string()]);
     let mod_b = isolate
-      .mod_new(false, "b.js", "export function b() { return 'b' }")
+      .mod_new(false, "file:///b.js", "export function b() { return 'b' }")
       .unwrap();
     let imports = isolate.mod_get_imports(mod_b);
     assert_eq!(imports.len(), 0);
+    isolate
+      .modules
+      .lock()
+      .unwrap()
+      .register(mod_b, "file:///b.js");
 
-    let resolve_count = Arc::new(AtomicUsize::new(0));
-    let resolve_count_ = resolve_count.clone();
-
-    let mut resolve = move |specifier: &str, _referrer: ModuleId| -> ModuleId {
-      resolve_count_.fetch_add(1, Ordering::SeqCst);
-      assert_eq!(specifier, "b.js");
-      mod_b
-    };
-
-    js_check(isolate.mod_instantiate(mod_b, &mut resolve));
+    js_check(isolate.mod_instantiate(mod_b));
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
     assert_eq!(resolve_count.load(Ordering::SeqCst), 0);
 
-    js_check(isolate.mod_instantiate(mod_a, &mut resolve));
+    js_check(isolate.mod_instantiate(mod_a));
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
     assert_eq!(resolve_count.load(Ordering::SeqCst), 1);
 
