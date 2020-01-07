@@ -11,6 +11,7 @@ use crate::any_error::ErrBox;
 use crate::bindings;
 use futures::future::Future;
 use futures::future::FutureExt;
+use futures::ready;
 use futures::stream::FuturesUnordered;
 use futures::stream::IntoStream;
 use futures::stream::Stream;
@@ -94,13 +95,10 @@ impl Stream for DynImport {
     cx: &mut Context,
   ) -> Poll<Option<Self::Item>> {
     let self_inner = self.get_mut();
-    match self_inner.inner.try_poll_next_unpin(cx) {
-      Poll::Ready(Some(Ok(event))) => {
-        Poll::Ready(Some(Ok((self_inner.id, event))))
-      }
-      Poll::Ready(None) => unreachable!(),
-      Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err((self_inner.id, e)))),
-      Poll::Pending => Poll::Pending,
+    let result = ready!(self_inner.inner.try_poll_next_unpin(cx)).unwrap();
+    match result {
+      Ok(event) => Poll::Ready(Some(Ok((self_inner.id, event)))),
+      Err(e) => Poll::Ready(Some(Err((self_inner.id, e)))),
     }
   }
 }
@@ -168,10 +166,10 @@ impl Drop for EsIsolate {
       let mut locker = v8::Locker::new(&isolate);
       let mut hs = v8::HandleScope::new(&mut locker);
       let scope = hs.enter();
-      for (_key, module) in self.mods_.iter_mut() {
+      for module in self.mods_.values_mut() {
         module.handle.reset(scope);
       }
-      for (_key, handle) in self.dyn_import_map.iter_mut() {
+      for handle in self.dyn_import_map.values_mut() {
         handle.reset(scope);
       }
     }
@@ -577,16 +575,15 @@ impl Future for EsIsolate {
       assert!(poll_imports.is_ready());
     }
 
-    match inner.core_isolate.poll_unpin(cx) {
-      Poll::Ready(Ok(())) => {
+    match ready!(inner.core_isolate.poll_unpin(cx)) {
+      Ok(()) => {
         if inner.pending_dyn_imports.is_empty() {
           Poll::Ready(Ok(()))
         } else {
           Poll::Pending
         }
       }
-      Poll::Ready(Err(e)) => Poll::Ready(Err(e)),
-      Poll::Pending => Poll::Pending,
+      Err(e) => Poll::Ready(Err(e)),
     }
   }
 }
