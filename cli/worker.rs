@@ -139,7 +139,7 @@ impl Worker {
       maybe_code,
       loader,
       modules,
-    );
+    )?;
 
     async move {
       let id = recursive_load.get_future(isolate).await?;

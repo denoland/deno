@@ -53,7 +53,6 @@ pub trait Loader: Send + Sync {
 
 #[derive(Debug, Eq, PartialEq)]
 enum MainImportState {
-  ResolveMain(String, Option<String>), // specifier, maybe code
   LoadingRoot,
   LoadingImports,
   Instantiated,
@@ -78,43 +77,33 @@ impl<L: Loader + Unpin> MainImportRecursiveLoad<L> {
     code: Option<String>,
     loader: L,
     modules: Arc<Mutex<Modules>>,
-  ) -> Self {
-    Self {
+  ) -> Result<Self, ErrBox> {
+    let module_specifier = loader.resolve(specifier, ".", true, false)?;
+    let pending = FuturesUnordered::new();
+
+    if code.is_some() {
+      let info = SourceCodeInfo {
+        code: code.unwrap().to_owned(),
+        module_url_specified: module_specifier.to_string(),
+        module_url_found: module_specifier.to_string(),
+      };
+      let load_fut = futures::future::ok(info).boxed();
+      pending.push(load_fut)
+    } else {
+      let load_fut = loader.load(&module_specifier, None).boxed();
+      pending.push(load_fut);
+    }
+
+    let load = Self {
       root_module_id: None,
-      state: MainImportState::ResolveMain(specifier.to_owned(), code),
+      state: MainImportState::LoadingRoot,
       loader,
       modules,
-      pending: FuturesUnordered::new(),
+      pending,
       is_pending: HashSet::new(),
-    }
-  }
-
-  fn add_root(&mut self) -> Result<(), ErrBox> {
-    let module_specifier = match self.state {
-      MainImportState::ResolveMain(ref specifier, _) => {
-        self.loader.resolve(specifier, ".", true, false)?
-      }
-      _ => unreachable!(),
     };
 
-    // We deliberately do not check if this module is already present in the
-    // module map. That's because the module map doesn't track whether a
-    // a module's dependencies have been loaded and whether it's been
-    // instantiated, so if we did find this module in the module map and used
-    // its id, this could lead to a crash.
-    //
-    // For the time being code and metadata for a module specifier is fetched
-    // multiple times, register() uses only the first result, and assigns the
-    // same module id to all instances.
-    //
-    // TODO: this is very ugly. The module map and recursive loader should be
-    // integrated into one thing.
-    self
-      .pending
-      .push(self.loader.load(&module_specifier, None).boxed());
-    self.state = MainImportState::LoadingRoot;
-
-    Ok(())
+    Ok(load)
   }
 
   fn add_import(
@@ -168,30 +157,6 @@ impl<L: Loader + Unpin> MainImportRecursiveLoad<L> {
     Ok(())
   }
 
-  /// Returns a future that resolves to the final module id of the root module.
-  /// This future needs to take ownership of the isolate.
-  pub fn get_future(
-    self,
-    isolate: Arc<Mutex<Box<EsIsolate>>>,
-  ) -> impl Future<Output = Result<ModuleId, ErrBox>> {
-    async move {
-      let mut load = self;
-      loop {
-        let event = load.try_next().await?;
-        match event.unwrap() {
-          Event::Fetch(info) => {
-            let mut isolate = isolate.lock().unwrap();
-            load.register(info, &mut isolate)?;
-          }
-          Event::Instantiate(id) => return Ok(id),
-        }
-      }
-    }
-  }
-}
-
-impl<L: Loader + Unpin> ImportStream for MainImportRecursiveLoad<L> {
-  // TODO: this should not be part of RecursiveLoad.
   fn register(
     &mut self,
     source_code_info: SourceCodeInfo,
@@ -259,44 +224,27 @@ impl<L: Loader + Unpin> ImportStream for MainImportRecursiveLoad<L> {
 
     Ok(())
   }
-}
 
-impl<L: Loader + Unpin> Stream for MainImportRecursiveLoad<L> {
-  type Item = Result<Event, ErrBox>;
-
-  fn poll_next(
-    self: Pin<&mut Self>,
-    cx: &mut Context,
-  ) -> Poll<Option<Self::Item>> {
-    let inner = self.get_mut();
-    match inner.state {
-      MainImportState::ResolveMain(ref specifier, Some(ref code)) => {
-        let module_specifier =
-          inner.loader.resolve(specifier, ".", true, false)?;
-        let info = SourceCodeInfo {
-          code: code.to_owned(),
-          module_url_specified: module_specifier.to_string(),
-          module_url_found: module_specifier.to_string(),
-        };
-        inner.state = MainImportState::LoadingRoot;
-        Poll::Ready(Some(Ok(Event::Fetch(info))))
-      }
-      MainImportState::ResolveMain(..) => {
-        if let Err(e) = inner.add_root() {
-          return Poll::Ready(Some(Err(e)));
+  /// Returns a future that resolves to the final module id of the root module.
+  /// This future needs to take ownership of the isolate.
+  pub fn get_future(
+    self,
+    isolate: Arc<Mutex<Box<EsIsolate>>>,
+  ) -> impl Future<Output = Result<ModuleId, ErrBox>> {
+    async move {
+      let mut load = self;
+      loop {
+        match load.state {
+          MainImportState::LoadingRoot | MainImportState::LoadingImports => {
+            let info = load.pending.try_next().await?.unwrap();
+            let mut isolate = isolate.lock().unwrap();
+            load.register(info, &mut isolate)?;
+          }
+          MainImportState::Instantiated => {
+            let root_id = load.root_module_id.expect("Root module id empty");
+            return Ok(root_id);
+          }
         }
-        inner.try_poll_next_unpin(cx)
-      }
-      MainImportState::LoadingRoot | MainImportState::LoadingImports => {
-        match inner.pending.try_poll_next_unpin(cx)? {
-          Poll::Ready(None) => unreachable!(),
-          Poll::Ready(Some(info)) => Poll::Ready(Some(Ok(Event::Fetch(info)))),
-          Poll::Pending => Poll::Pending,
-        }
-      }
-      MainImportState::Instantiated => {
-        let root_id = inner.root_module_id.expect("Root module id empty");
-        Poll::Ready(Some(Ok(Event::Instantiate(root_id))))
       }
     }
   }
@@ -801,7 +749,6 @@ mod tests {
   use crate::es_isolate::tests::*;
   use crate::isolate::js_check;
   use futures::future::FutureExt;
-  use futures::stream::StreamExt;
   use std::error::Error;
   use std::fmt;
   use std::future::Future;
@@ -980,65 +927,55 @@ mod tests {
 
   #[test]
   fn test_recursive_load() {
-    run_in_task(|mut cx| {
-      let loader = MockLoader::new();
-      let modules = loader.modules.clone();
-      let modules_ = modules.clone();
-      let isolate = loader.isolate.clone();
-      let isolate_ = isolate.clone();
-      let loads = loader.loads.clone();
-      let mut recursive_load =
-        MainImportRecursiveLoad::new("/a.js", None, loader, modules);
+    let loader = MockLoader::new();
+    let modules = loader.modules.clone();
+    let modules_ = modules.clone();
+    let isolate = loader.isolate.clone();
+    let isolate_ = isolate.clone();
+    let loads = loader.loads.clone();
+    let recursive_load =
+      MainImportRecursiveLoad::new("/a.js", None, loader, modules).unwrap();
 
-      let a_id = loop {
-        match recursive_load.try_poll_next_unpin(&mut cx) {
-          Poll::Ready(Some(Ok(Event::Fetch(info)))) => {
-            let mut isolate = isolate.lock().unwrap();
-            recursive_load.register(info, &mut isolate).unwrap();
-          }
-          Poll::Ready(Some(Ok(Event::Instantiate(id)))) => break id,
-          _ => panic!("unexpected result"),
-        };
-      };
+    let a_id_fut = recursive_load.get_future(isolate);
+    let a_id = futures::executor::block_on(a_id_fut).expect("Failed to load");
 
-      let mut isolate = isolate_.lock().unwrap();
-      js_check(isolate.mod_evaluate(a_id));
+    let mut isolate = isolate_.lock().unwrap();
+    js_check(isolate.mod_evaluate(a_id));
 
-      let l = loads.lock().unwrap();
-      assert_eq!(
-        l.to_vec(),
-        vec![
-          "file:///a.js",
-          "file:///b.js",
-          "file:///c.js",
-          "file:///d.js"
-        ]
-      );
+    let l = loads.lock().unwrap();
+    assert_eq!(
+      l.to_vec(),
+      vec![
+        "file:///a.js",
+        "file:///b.js",
+        "file:///c.js",
+        "file:///d.js"
+      ]
+    );
 
-      let modules = modules_.lock().unwrap();
+    let modules = modules_.lock().unwrap();
 
-      assert_eq!(modules.get_id("file:///a.js"), Some(a_id));
-      let b_id = modules.get_id("file:///b.js").unwrap();
-      let c_id = modules.get_id("file:///c.js").unwrap();
-      let d_id = modules.get_id("file:///d.js").unwrap();
+    assert_eq!(modules.get_id("file:///a.js"), Some(a_id));
+    let b_id = modules.get_id("file:///b.js").unwrap();
+    let c_id = modules.get_id("file:///c.js").unwrap();
+    let d_id = modules.get_id("file:///d.js").unwrap();
 
-      assert_eq!(
-        modules.get_children(a_id),
-        Some(&vec![
-          "file:///b.js".to_string(),
-          "file:///c.js".to_string()
-        ])
-      );
-      assert_eq!(
-        modules.get_children(b_id),
-        Some(&vec!["file:///c.js".to_string()])
-      );
-      assert_eq!(
-        modules.get_children(c_id),
-        Some(&vec!["file:///d.js".to_string()])
-      );
-      assert_eq!(modules.get_children(d_id), Some(&vec![]));
-    })
+    assert_eq!(
+      modules.get_children(a_id),
+      Some(&vec![
+        "file:///b.js".to_string(),
+        "file:///c.js".to_string()
+      ])
+    );
+    assert_eq!(
+      modules.get_children(b_id),
+      Some(&vec!["file:///c.js".to_string()])
+    );
+    assert_eq!(
+      modules.get_children(c_id),
+      Some(&vec!["file:///d.js".to_string()])
+    );
+    assert_eq!(modules.get_children(d_id), Some(&vec![]));
   }
 
   const CIRCULAR1_SRC: &str = r#"
@@ -1067,7 +1004,8 @@ mod tests {
       let modules_ = modules.clone();
       let loads = loader.loads.clone();
       let recursive_load =
-        MainImportRecursiveLoad::new("/circular1.js", None, loader, modules);
+        MainImportRecursiveLoad::new("/circular1.js", None, loader, modules)
+          .unwrap();
       let mut load_fut = recursive_load.get_future(isolate).boxed();
       let result = Pin::new(&mut load_fut).poll(&mut cx);
       assert!(result.is_ready());
@@ -1139,7 +1077,8 @@ mod tests {
       let modules_ = modules.clone();
       let loads = loader.loads.clone();
       let recursive_load =
-        MainImportRecursiveLoad::new("/redirect1.js", None, loader, modules);
+        MainImportRecursiveLoad::new("/redirect1.js", None, loader, modules)
+          .unwrap();
       let mut load_fut = recursive_load.get_future(isolate).boxed();
       let result = Pin::new(&mut load_fut).poll(&mut cx);
       println!(">> result {:?}", result);
@@ -1204,6 +1143,7 @@ mod tests {
       let loads = loader.loads.clone();
       let mut recursive_load =
         MainImportRecursiveLoad::new("/main.js", None, loader, modules)
+          .unwrap()
           .get_future(isolate)
           .boxed();
 
@@ -1251,7 +1191,8 @@ mod tests {
       let isolate = loader.isolate.clone();
       let modules = loader.modules.clone();
       let recursive_load =
-        MainImportRecursiveLoad::new("/bad_import.js", None, loader, modules);
+        MainImportRecursiveLoad::new("/bad_import.js", None, loader, modules)
+          .unwrap();
       let mut load_fut = recursive_load.get_future(isolate).boxed();
       let result = load_fut.poll_unpin(&mut cx);
       if let Poll::Ready(Err(err)) = result {
@@ -1276,67 +1217,59 @@ mod tests {
 
   #[test]
   fn recursive_load_main_with_code() {
-    run_in_task(|mut cx| {
-      let loader = MockLoader::new();
-      let modules = loader.modules.clone();
-      let modules_ = modules.clone();
-      let isolate = loader.isolate.clone();
-      let isolate_ = isolate.clone();
-      let loads = loader.loads.clone();
-      // In default resolution code should be empty.
-      // Instead we explicitly pass in our own code.
-      // The behavior should be very similar to /a.js.
-      let mut recursive_load = MainImportRecursiveLoad::new(
-        "/main_with_code.js",
-        Some(MAIN_WITH_CODE_SRC.to_owned()),
-        loader,
-        modules,
-      );
+    let loader = MockLoader::new();
+    let modules = loader.modules.clone();
+    let modules_ = modules.clone();
+    let isolate = loader.isolate.clone();
+    let isolate_ = isolate.clone();
+    let loads = loader.loads.clone();
+    // In default resolution code should be empty.
+    // Instead we explicitly pass in our own code.
+    // The behavior should be very similar to /a.js.
+    let recursive_load = MainImportRecursiveLoad::new(
+      "/main_with_code.js",
+      Some(MAIN_WITH_CODE_SRC.to_owned()),
+      loader,
+      modules,
+    )
+    .unwrap();
 
-      let main_id = loop {
-        match recursive_load.poll_next_unpin(&mut cx) {
-          Poll::Ready(Some(Ok(Event::Fetch(info)))) => {
-            let mut isolate = isolate.lock().unwrap();
-            recursive_load.register(info, &mut isolate).unwrap();
-          }
-          Poll::Ready(Some(Ok(Event::Instantiate(id)))) => break id,
-          _ => panic!("unexpected result"),
-        };
-      };
+    let main_id_fut = recursive_load.get_future(isolate);
+    let main_id =
+      futures::executor::block_on(main_id_fut).expect("Failed to load");
 
-      let mut isolate = isolate_.lock().unwrap();
-      js_check(isolate.mod_evaluate(main_id));
+    let mut isolate = isolate_.lock().unwrap();
+    js_check(isolate.mod_evaluate(main_id));
 
-      let l = loads.lock().unwrap();
-      assert_eq!(
-        l.to_vec(),
-        vec!["file:///b.js", "file:///c.js", "file:///d.js"]
-      );
+    let l = loads.lock().unwrap();
+    assert_eq!(
+      l.to_vec(),
+      vec!["file:///b.js", "file:///c.js", "file:///d.js"]
+    );
 
-      let modules = modules_.lock().unwrap();
+    let modules = modules_.lock().unwrap();
 
-      assert_eq!(modules.get_id("file:///main_with_code.js"), Some(main_id));
-      let b_id = modules.get_id("file:///b.js").unwrap();
-      let c_id = modules.get_id("file:///c.js").unwrap();
-      let d_id = modules.get_id("file:///d.js").unwrap();
+    assert_eq!(modules.get_id("file:///main_with_code.js"), Some(main_id));
+    let b_id = modules.get_id("file:///b.js").unwrap();
+    let c_id = modules.get_id("file:///c.js").unwrap();
+    let d_id = modules.get_id("file:///d.js").unwrap();
 
-      assert_eq!(
-        modules.get_children(main_id),
-        Some(&vec![
-          "file:///b.js".to_string(),
-          "file:///c.js".to_string()
-        ])
-      );
-      assert_eq!(
-        modules.get_children(b_id),
-        Some(&vec!["file:///c.js".to_string()])
-      );
-      assert_eq!(
-        modules.get_children(c_id),
-        Some(&vec!["file:///d.js".to_string()])
-      );
-      assert_eq!(modules.get_children(d_id), Some(&vec![]));
-    })
+    assert_eq!(
+      modules.get_children(main_id),
+      Some(&vec![
+        "file:///b.js".to_string(),
+        "file:///c.js".to_string()
+      ])
+    );
+    assert_eq!(
+      modules.get_children(b_id),
+      Some(&vec!["file:///c.js".to_string()])
+    );
+    assert_eq!(
+      modules.get_children(c_id),
+      Some(&vec!["file:///d.js".to_string()])
+    );
+    assert_eq!(modules.get_children(d_id), Some(&vec![]));
   }
 
   #[test]
