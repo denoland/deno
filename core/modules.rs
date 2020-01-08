@@ -1,11 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-// Implementation note: one could imagine combining this module with Isolate to
-// provide a more intuitive high-level API. However, due to the complexity
-// inherent in asynchronous module loading, we would like the Isolate to remain
-// small and simple for users who do not use modules or if they do can load them
-// synchronously. The isolate.rs module should never depend on this module.
-
 use rusty_v8 as v8;
 
 use crate::any_error::ErrBox;

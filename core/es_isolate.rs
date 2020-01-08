@@ -1,9 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-// Do not add any dependency to modules.rs!
-// modules.rs is complex and should remain decoupled from isolate.rs to keep the
-// Isolate struct from becoming too bloating for users who do not need
-// asynchronous module loading.
+// This module provides higher level implementation of Isolate that
+// supports asynchronous loading and executution of ES Modules.
+// The isolate.rs should never depend on this module.
 
 use rusty_v8 as v8;
 
