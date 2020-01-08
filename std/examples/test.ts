@@ -20,6 +20,7 @@ test(async function catSmoke(): Promise<void> {
       "run",
       "--allow-read",
       "examples/cat.ts",
+      "--",
       "README.md"
     ],
     stdout: "piped"

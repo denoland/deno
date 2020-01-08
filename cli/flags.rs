@@ -518,6 +518,7 @@ fn run_test_args_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
 fn run_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   flags.subcommand = DenoSubcommand::Run;
   script_arg_parse(flags, matches);
+  args_parse(flags, matches);
   run_test_args_parse(flags, matches);
 }
 
@@ -997,6 +998,7 @@ fn run_subcommand<'a, 'b>() -> App<'a, 'b> {
   run_test_args(SubCommand::with_name("run"))
     .setting(AppSettings::TrailingVarArg)
     .arg(script_arg())
+    .arg(args_arg())
     .about("Run a program given a filename or url to the source code")
     .long_about(
       "Run a program given a filename or url to the source code.
@@ -1016,7 +1018,11 @@ With only permission to read from disk and listen to network
 
 With only permission to read whitelist files from disk
 
-  deno run --allow-read=/etc https://deno.land/std/http/file_server.ts",
+  deno run --allow-read=/etc https://deno.land/std/http/file_server.ts
+
+Any arguments that should be passed to the script should be prefixed by '--'
+
+  deno run -A https://deno.land/std/examples/cat.ts -- /etc/passwd",
     )
 }
 
@@ -1061,15 +1067,26 @@ _test.js and executes them.
 }
 
 fn script_arg<'a, 'b>() -> Arg<'a, 'b> {
-  Arg::with_name("script_arg")
-    .multiple(true)
-    .help("script args")
-    .value_name("SCRIPT_ARG")
+  Arg::with_name("script").help("script").value_name("SCRIPT")
 }
 
 fn script_arg_parse(flags: &mut DenoFlags, matches: &ArgMatches) {
-  if let Some(script_values) = matches.values_of("script_arg") {
-    for v in script_values {
+  if let Some(script_value) = matches.value_of("script") {
+    debug_assert!(flags.argv.len() == 1);
+    flags.argv.push(String::from(script_value));
+  }
+}
+
+fn args_arg<'a, 'b>() -> Arg<'a, 'b> {
+  Arg::with_name("script_args")
+    .raw(true)
+    .help("script args")
+    .value_name("SCRIPT_ARGS")
+}
+
+fn args_parse(flags: &mut DenoFlags, matches: &ArgMatches) {
+  if let Some(values) = matches.values_of("script_args") {
+    for v in values {
       flags.argv.push(String::from(v));
     }
   }
@@ -1398,6 +1415,7 @@ mod tests {
       "run",
       "--allow-net",
       "gist.ts",
+      "--",
       "--title",
       "X"
     ]);
@@ -1480,7 +1498,7 @@ mod tests {
       r.unwrap(),
       DenoFlags {
         subcommand: DenoSubcommand::Run,
-        argv: svec!["deno", "script.ts", "--", "-D", "--allow-net"],
+        argv: svec!["deno", "script.ts", "-D", "--allow-net"],
         allow_write: true,
         ..DenoFlags::default()
       }
