@@ -97,5 +97,6 @@ pub fn enum_name_media_type(mt: MediaType) -> &'static str {
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum CompilerRequestType {
   Compile = 0,
-  Bundle = 1,
+  RuntimeCompile = 1,
+  RuntimeTranspile = 2,
 }

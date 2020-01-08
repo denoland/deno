@@ -97,6 +97,7 @@ export {
   ProcessStatus,
   Signal
 } from "./process.ts";
+export { transpileOnly, compile, bundle } from "./compiler_api.ts";
 export { inspect, customInspect } from "./console.ts";
 export { build, OperatingSystem, Arch } from "./build.ts";
 export { version } from "./version.ts";
