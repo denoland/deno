@@ -629,7 +629,6 @@ SUBCOMMANDS:
     run            Run a program given a filename or url to the source code
     test           Run tests
     types          Print runtime TypeScript declarations
-    xeval          Eval a script on text segments from stdin
 
 ENVIRONMENT VARIABLES:
     DENO_DIR       Set deno's base directory
