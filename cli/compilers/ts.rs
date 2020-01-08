@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::compilers::CompilationResultFuture;
 use crate::compilers::CompiledModule;
 use crate::compilers::CompiledModuleFuture;
 use crate::diagnostics::Diagnostic;
@@ -7,6 +8,7 @@ use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::global_state::ThreadSafeGlobalState;
 use crate::msg;
+use crate::serde_json::json;
 use crate::source_maps::SourceMapGetter;
 use crate::startup_data;
 use crate::state::*;
@@ -18,8 +20,10 @@ use deno_core::ModuleSpecifier;
 use futures::future::FutureExt;
 use futures::Future;
 use regex::Regex;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
+use std::hash::BuildHasher;
 use std::io;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -156,12 +160,14 @@ fn req(
   root_names: Vec<String>,
   compiler_config: CompilerConfig,
   out_file: Option<String>,
+  bundle: bool,
 ) -> Buf {
   let j = match (compiler_config.path, compiler_config.content) {
     (Some(config_path), Some(config_data)) => json!({
       "type": request_type as i32,
       "rootNames": root_names,
       "outFile": out_file,
+      "bundle": bundle,
       "configPath": config_path,
       "config": str::from_utf8(&config_data).unwrap(),
     }),
@@ -169,6 +175,7 @@ fn req(
       "type": request_type as i32,
       "rootNames": root_names,
       "outFile": out_file,
+      "bundle": bundle,
     }),
   };
 
@@ -258,10 +265,11 @@ impl TsCompiler {
 
     let root_names = vec![module_name];
     let req_msg = req(
-      msg::CompilerRequestType::Bundle,
+      msg::CompilerRequestType::Compile,
       root_names,
       self.config.clone(),
       out_file,
+      true,
     );
 
     let worker = TsCompiler::setup_worker(global_state);
@@ -356,6 +364,7 @@ impl TsCompiler {
       root_names,
       self.config.clone(),
       None,
+      false,
     );
 
     let worker = TsCompiler::setup_worker(global_state.clone());
@@ -597,6 +606,66 @@ impl TsCompiler {
 
     None
   }
+}
+
+pub fn runtime_compile_async<S: BuildHasher>(
+  global_state: ThreadSafeGlobalState,
+  root_name: &str,
+  sources: &Option<HashMap<String, String, S>>,
+  bundle: bool,
+  options: &Option<String>,
+) -> Pin<Box<CompilationResultFuture>> {
+  let req_msg = json!({
+    "type": msg::CompilerRequestType::RuntimeCompile as i32,
+    "rootName": root_name,
+    "sources": sources,
+    "options": options,
+    "bundle": bundle,
+  })
+  .to_string()
+  .into_boxed_str()
+  .into_boxed_bytes();
+
+  let worker = TsCompiler::setup_worker(global_state);
+  let worker_ = worker.clone();
+
+  async move {
+    worker.post_message(req_msg).await?;
+    worker.await?;
+    debug!("Sent message to worker");
+    let msg = (worker_.get_message().await?).unwrap();
+    let json_str = std::str::from_utf8(&msg).unwrap();
+    Ok(json!(json_str))
+  }
+  .boxed()
+}
+
+pub fn runtime_transpile_async<S: BuildHasher>(
+  global_state: ThreadSafeGlobalState,
+  sources: &HashMap<String, String, S>,
+  options: &Option<String>,
+) -> Pin<Box<CompilationResultFuture>> {
+  let req_msg = json!({
+    "type": msg::CompilerRequestType::RuntimeTranspile as i32,
+    "sources": sources,
+    "options": options,
+  })
+  .to_string()
+  .into_boxed_str()
+  .into_boxed_bytes();
+
+  let worker = TsCompiler::setup_worker(global_state);
+  let worker_ = worker.clone();
+
+  async move {
+    worker.post_message(req_msg).await?;
+    worker.await?;
+    debug!("Sent message to worker");
+    let msg = (worker_.get_message().await?).unwrap();
+    let json_str = std::str::from_utf8(&msg).unwrap();
+    Ok(json!(json_str))
+  }
+  .boxed()
 }
 
 #[cfg(test)]
