@@ -36,6 +36,10 @@ lazy_static! {
       USER_AGENT,
       format!("Deno/{}", version::DENO).parse().unwrap(),
     );
+    // todo support brotli for fetch ops
+    headers.insert(
+     ACCEPT_ENCODING, HeaderValue::from_static("gzip")
+    );
     Client::builder()
       .redirect(Policy::none())
       .default_headers(headers)

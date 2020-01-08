@@ -680,7 +680,7 @@ itest!(top_level_for_await_ts {
 });
 
 itest!(_053_import_compression {
-  args: "run --reload 053_import_compression/main.ts",
+  args: "run --reload --allow-net 053_import_compression/main.ts",
   output: "053_import_compression.out",
   http_server: true,
 });
