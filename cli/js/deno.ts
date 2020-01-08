@@ -7,6 +7,8 @@ export {
   File,
   open,
   openSync,
+  create,
+  createSync,
   stdin,
   stdout,
   stderr,
