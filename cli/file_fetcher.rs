@@ -400,24 +400,13 @@ impl SourceFileFetcher {
     let f = async move {
       match http_util::fetch_string_once(&module_url, module_etag).await? {
         FetchOnceResult::NotModified => {
-          let maybe_source_file = dir.fetch_cached_remote_source(&module_url);
+          let source_file =
+            dir.fetch_cached_remote_source(&module_url)?.unwrap();
 
           // Explicit drop to keep reference alive until future completes.
           drop(download_job);
 
-          match maybe_source_file {
-            Ok(Some(source_file)) => Ok(source_file),
-            _ => {
-              dir
-                .fetch_remote_source_async(
-                  &module_url,
-                  use_disk_cache,
-                  cached_only,
-                  redirect_limit - 1,
-                )
-                .await
-            }
-          }
+          Ok(source_file)
         }
         FetchOnceResult::Redirect(new_module_url) => {
           // If redirects, update module_name and filename for next looped call.
@@ -1823,6 +1812,14 @@ mod tests {
       let headers = fetcher.get_source_code_headers(&module_url);
       assert_eq!(headers.etag, Some("33a64df551425fcc55e".to_string()));
 
+      let header_path = fetcher.deps_cache.location.join(
+        fetcher
+          .deps_cache
+          .get_cache_filename_with_extension(&module_url, "headers.json"),
+      );
+
+      let modified1 = header_path.metadata().unwrap().modified().unwrap();
+
       // Forcibly change the contents of the cache file and request
       // it again with the cache parameters turned off.
       // If the fetched content changes, the cached content is used.
@@ -1834,6 +1831,11 @@ mod tests {
         .await
         .unwrap();
       assert_eq!(cached_source.source_code, b"changed content");
+
+      let modified2 = header_path.metadata().unwrap().modified().unwrap();
+
+      // Assert that the file has not been modified
+      assert_eq!(modified1, modified2);
     };
 
     tokio_util::run(fut);
