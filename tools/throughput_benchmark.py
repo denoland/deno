@@ -21,7 +21,7 @@ def cat(deno_exe, megs):
     size = megs * MB
     start = time.time()
     cmd = deno_exe + " run --allow-read "
-    cmd += "tests/cat.ts /dev/zero | head -c %s " % size
+    cmd += "tests/cat.ts -- /dev/zero | head -c %s " % size
     print cmd
     subprocess.check_output(cmd, shell=True)
     end = time.time()
@@ -32,7 +32,8 @@ def tcp(deno_exe, megs):
     size = megs * MB
     # Run deno echo server in the background.
     args = [
-        deno_exe, "run", "--allow-net", "tests/echo_server.ts", SERVER_ADDR
+        deno_exe, "run", "--allow-net", "tests/echo_server.ts", "--",
+        SERVER_ADDR
     ]
     print args
     echo_server = subprocess.Popen(args)
