@@ -161,7 +161,7 @@ testPerm({ read: true, write: true }, async function createFile(): Promise<
 > {
   const tempDir = await Deno.makeTempDir();
   const filename = tempDir + "/test.txt";
-  const f = await Deno.open(filename, "w");
+  const f = await Deno.create(filename);
   let fileInfo = Deno.statSync(filename);
   assert(fileInfo.isFile());
   assert(fileInfo.len === 0);

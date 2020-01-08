@@ -39,6 +39,24 @@ export async function open(
   return new File(rid);
 }
 
+/** Creates a file if none exists or truncates an existing file and returns
+ *  an instance of the `File` object synchronously.
+ *
+ *       const file = Deno.createSync("/foo/bar.txt");
+ */
+export function createSync(filename: string): File {
+  return openSync(filename, "w+");
+}
+
+/** Creates a file if none exists or truncates an existing file and returns
+ *  an instance of the `File` object.
+ *
+ *       const file = await Deno.create("/foo/bar.txt");
+ */
+export function create(filename: string): Promise<File> {
+  return open(filename, "w+");
+}
+
 /** Read synchronously from a file ID into an array buffer.
  *
  * Return `number | EOF` for the operation.
@@ -223,11 +241,3 @@ export type OpenMode =
   | "x"
   /** Read-write. Behaves like `x` and allows to read from file. */
   | "x+";
-
-/** A factory function for creating instances of `File` associated with the
- * supplied file name.
- * @internal
- */
-export function create(filename: string): Promise<File> {
-  return open(filename, "w+");
-}
