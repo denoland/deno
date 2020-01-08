@@ -7,20 +7,12 @@
 # pygtk.require().
 #init-hook=
 
-# Profiled execution.
-profile=no
-
 # Add files or directories to the blacklist. They should be base names, not
 # paths.
 ignore=CVS
 
 # Pickle collected data for later comparisons.
 persistent=yes
-
-# List of plugins (as comma separated values of python modules names) to load,
-# usually to register additional checkers.
-load-plugins=
-
 
 [MESSAGES CONTROL]
 
@@ -93,31 +85,56 @@ disable=
     logging-not-lazy,
     bad-continuation,
     anomalous-backslash-in-string,
+    assigning-non-slot,
     bad-context-manager,
     bad-indentation,
     bad-str-strip-call,
+    bad-super-call,
     bad-whitespace,
     cell-var-from-loop,
+    consider-using-enumerate,
     deprecated-lambda,
+    deprecated-method,
     eval-used,
     function-redefined,
     import-error,
+    invalid-docstring-quote,
+    invalid-string-quote,
+    invalid-triple-quote,
     locally-enabled,
+    misplaced-comparison-constant,
+    misplaced-bare-raise,
     missing-final-newline,
+    multiple-imports,
     no-init,
     no-name-in-module,
+    no-self-argument,
     no-self-use,
+    not-an-iterable,
     not-callable,
     old-style-class,
     protected-access,
+    redefined-variable-type,
+    simplifiable-if-statement,
+    singleton-comparison,
     superfluous-parens,
     super-on-old-class,
+    too-many-boolean-expressions,
     too-many-function-args,
+    too-many-nested-blocks,
     trailing-whitespace,
+    undefined-variable,
+    ungrouped-imports,
     unnecessary-semicolon,
+    unneeded-not,
     unpacking-non-sequence,
+    unsubscriptable-object,
+    unsupported-membership-test,
     unused-import,
-    useless-else-on-loop
+    useless-else-on-loop,
+    using-constant-test,
+    wrong-import-order,
+    wrong-import-position,
 
 
 [REPORTS]
@@ -135,16 +152,15 @@ files-output=no
 # CHANGED:
 reports=no
 
+# Activate the evaluation score.
+score=no
+
 # Python expression which should return a note less than 10 (10 is the highest
 # note). You have access to the variables errors warning, statement which
 # respectively contain the number of errors / warnings messages and the total
 # number of statements analyzed. This is used by the global evaluation report
 # (RP0004).
 evaluation=10.0 - ((float(5 * error + warning + refactor + convention) / statement) * 10)
-
-# Add a comment according to your evaluation note. This is used by the global
-# evaluation report (RP0004).
-comment=no
 
 
 [VARIABLES]
@@ -170,10 +186,6 @@ ignore-mixin-members=yes
 # List of classes names for which member attributes should not be checked
 # (useful for classes with attributes dynamically set).
 ignored-classes=SQLObject,twisted.internet.reactor,hashlib,google.appengine.api.memcache
-
-# When zope mode is activated, add a predefined set of Zope acquired attributes
-# to generated-members.
-zope=no
 
 # List of members which are set dynamically and missed by pylint inference
 # system, and so shouldn't trigger E0201 when accessed. Python regular
@@ -214,9 +226,6 @@ indent-string='  '
 
 
 [BASIC]
-
-# Required attributes for module, separated by a comma
-required-attributes=
 
 # List of builtins function names that should not be used, separated by a comma
 bad-functions=map,filter,apply,input
@@ -295,10 +304,6 @@ max-public-methods=20
 
 
 [CLASSES]
-
-# List of interface methods to ignore, separated by a comma. This is used for
-# instance to not check methods defines in Zope's Interface base class.
-ignore-iface-methods=isImplementedBy,deferred,extends,names,namesAndDescriptions,queryDescriptionFor,getBases,getDescriptionFor,getDoc,getName,getTaggedValue,getTaggedValueTags,isEqualOrExtendedBy,setTaggedValue,isImplementedByInstancesOf,adaptWith,is_implemented_by
 
 # List of method names used to declare (i.e. assign) instance attributes.
 defining-attr-methods=__init__,__new__,setUp
