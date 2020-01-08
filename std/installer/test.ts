@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-const { run, stat, makeTempDir, remove, env, readAll } = Deno;
+const { run, stat, makeTempDir, remove, env } = Deno;
 
 import { test, runIfMain, TestFunction } from "../testing/mod.ts";
 import { assert, assertEquals } from "../testing/asserts.ts";
