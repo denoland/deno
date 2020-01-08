@@ -253,7 +253,7 @@ itest!(_027_redirect_typescript {
 });
 
 itest!(_028_args {
-  args: "run --reload 028_args.ts --arg1 val1 --arg2=val2 -- arg3 arg4",
+  args: "run --reload 028_args.ts -- --arg1 val1 --arg2=val2 -- arg3 arg4",
   output: "028_args.ts.out",
 });
 
