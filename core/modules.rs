@@ -672,19 +672,10 @@ mod tests {
     let d_id = modules.get_id("file:///d.js").unwrap();
     assert_eq!(
       modules.get_children(a_id),
-      Some(&vec![
-        "file:///b.js".to_string(),
-        "file:///c.js".to_string()
-      ])
+      Some(&vec!["/b.js".to_string(), "/c.js".to_string()])
     );
-    assert_eq!(
-      modules.get_children(b_id),
-      Some(&vec!["file:///c.js".to_string()])
-    );
-    assert_eq!(
-      modules.get_children(c_id),
-      Some(&vec!["file:///d.js".to_string()])
-    );
+    assert_eq!(modules.get_children(b_id), Some(&vec!["/c.js".to_string()]));
+    assert_eq!(modules.get_children(c_id), Some(&vec!["/d.js".to_string()]));
     assert_eq!(modules.get_children(d_id), Some(&vec![]));
   }
 
@@ -734,12 +725,12 @@ mod tests {
 
       assert_eq!(
         modules.get_children(circular1_id),
-        Some(&vec!["file:///circular2.js".to_string()])
+        Some(&vec!["/circular2.js".to_string()])
       );
 
       assert_eq!(
         modules.get_children(circular2_id),
-        Some(&vec!["file:///circular3.js".to_string()])
+        Some(&vec!["/circular3.js".to_string()])
       );
 
       assert!(modules.get_id("file:///circular3.js").is_some());
@@ -747,8 +738,8 @@ mod tests {
       assert_eq!(
         modules.get_children(circular3_id),
         Some(&vec![
-          "file:///circular1.js".to_string(),
-          "file:///circular2.js".to_string()
+          "/circular1.js".to_string(),
+          "/circular2.js".to_string()
         ])
       );
     }
@@ -938,19 +929,10 @@ mod tests {
 
     assert_eq!(
       modules.get_children(main_id),
-      Some(&vec![
-        "file:///b.js".to_string(),
-        "file:///c.js".to_string()
-      ])
+      Some(&vec!["/b.js".to_string(), "/c.js".to_string()])
     );
-    assert_eq!(
-      modules.get_children(b_id),
-      Some(&vec!["file:///c.js".to_string()])
-    );
-    assert_eq!(
-      modules.get_children(c_id),
-      Some(&vec!["file:///d.js".to_string()])
-    );
+    assert_eq!(modules.get_children(b_id), Some(&vec!["/c.js".to_string()]));
+    assert_eq!(modules.get_children(c_id), Some(&vec!["/d.js".to_string()]));
     assert_eq!(modules.get_children(d_id), Some(&vec![]));
   }
 
