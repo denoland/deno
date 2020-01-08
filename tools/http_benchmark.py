@@ -35,7 +35,7 @@ def get_port(port=None):
 def deno_tcp(deno_exe):
     port = get_port()
     deno_cmd = [
-        deno_exe, "run", "--allow-net", "tools/deno_tcp.ts",
+        deno_exe, "run", "--allow-net", "tools/deno_tcp.ts", "--",
         server_addr(port)
     ]
     print "http_benchmark testing DENO tcp."
@@ -46,7 +46,7 @@ def deno_tcp_current_thread(deno_exe):
     port = get_port()
     deno_cmd = [
         deno_exe, "run", "--current-thread", "--allow-net",
-        "tools/deno_tcp.ts",
+        "tools/deno_tcp.ts", "--",
         server_addr(port)
     ]
     print "http_benchmark testing DENO tcp (single-thread)."
@@ -56,7 +56,7 @@ def deno_tcp_current_thread(deno_exe):
 def deno_http(deno_exe):
     port = get_port()
     deno_cmd = [
-        deno_exe, "run", "--allow-net", "std/http/http_bench.ts",
+        deno_exe, "run", "--allow-net", "std/http/http_bench.ts", "--",
         server_addr(port)
     ]
     print "http_benchmark testing DENO using net/http."
@@ -67,7 +67,7 @@ def deno_tcp_proxy(deno_exe, hyper_hello_exe):
     port = get_port()
     origin_port = get_port()
     deno_cmd = [
-        deno_exe, "run", "--allow-net", "tools/deno_tcp_proxy.ts",
+        deno_exe, "run", "--allow-net", "tools/deno_tcp_proxy.ts", "--",
         server_addr(port),
         server_addr(origin_port)
     ]
@@ -82,7 +82,7 @@ def deno_http_proxy(deno_exe, hyper_hello_exe):
     port = get_port()
     origin_port = get_port()
     deno_cmd = [
-        deno_exe, "run", "--allow-net", "tools/deno_http_proxy.ts",
+        deno_exe, "run", "--allow-net", "tools/deno_http_proxy.ts", "--",
         server_addr(port),
         server_addr(origin_port)
     ]
