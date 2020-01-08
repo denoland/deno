@@ -441,7 +441,10 @@ impl EsIsolate {
                 // fetched. Create and register it, and if successful, poll for the
                 // next recursive-load event related to this dynamic import.
                 match self.register_during_load(info, &mut load) {
-                  Ok(()) => {}
+                  Ok(()) => {
+                    // Keep importing until it's fully drained
+                    self.pending_dyn_imports.push(load.into_future());
+                  }
                   Err(err) => self.dyn_import_done(
                     dyn_import_id,
                     Err(Some(err.to_string())),
@@ -483,7 +486,8 @@ impl EsIsolate {
       module_url_found,
     } = info;
 
-    let is_main = load.state == LoadState::LoadingRoot;
+    let is_main =
+      load.state == LoadState::LoadingRoot && !load.is_dynamic_import();
     let referrer_name = &module_url_found.to_string();
     let referrer_specifier =
       ModuleSpecifier::resolve_url(referrer_name).unwrap();
@@ -842,7 +846,8 @@ pub mod tests {
   fn dyn_import_ok() {
     #[derive(Clone, Default)]
     struct DynImportOkLoader {
-      pub count: Arc<AtomicUsize>,
+      pub resolve_count: Arc<AtomicUsize>,
+      pub load_count: Arc<AtomicUsize>,
     }
 
     impl Loader for DynImportOkLoader {
@@ -853,10 +858,10 @@ pub mod tests {
         _is_main: bool,
         _is_dyn_import: bool,
       ) -> Result<ModuleSpecifier, ErrBox> {
-        let c = self.count.fetch_add(1, Ordering::Relaxed);
+        let c = self.resolve_count.fetch_add(1, Ordering::Relaxed);
         match c {
-          0 => assert_eq!(specifier, "./foo1.js"),
-          1 => assert_eq!(specifier, "./foo2.js"),
+          0 => assert_eq!(specifier, "./b.js"),
+          1 => assert_eq!(specifier, "./b.js"),
           _ => unreachable!(),
         }
         assert_eq!(referrer, "file:///dyn_import3.js");
@@ -869,10 +874,11 @@ pub mod tests {
         specifier: &ModuleSpecifier,
         _maybe_referrer: Option<ModuleSpecifier>,
       ) -> Pin<Box<SourceCodeInfoFuture>> {
+        self.load_count.fetch_add(1, Ordering::Relaxed);
         let info = SourceCodeInfo {
           module_url_specified: specifier.to_string(),
           module_url_found: specifier.to_string(),
-          code: "".to_owned(),
+          code: "export function b() { return 'b' }".to_owned(),
         };
         async move { Ok(info) }.boxed()
       }
@@ -880,29 +886,21 @@ pub mod tests {
 
     run_in_task(|cx| {
       let loader = Box::new(DynImportOkLoader::default());
-      let count = loader.count.clone();
+      let resolve_count = loader.resolve_count.clone();
+      let load_count = loader.load_count.clone();
       let mut isolate = EsIsolate::new(loader, StartupData::None, false);
-
-      // Instantiate mod_b
-      {
-        let mod_id = isolate
-          .mod_new(false, "file:///b.js", "export function b() { return 'b' }")
-          .unwrap();
-        let result = isolate.mod_instantiate(mod_id);
-        js_check(result);
-      }
 
       // Dynamically import mod_b
       js_check(isolate.execute(
         "file:///dyn_import3.js",
         r#"
           (async () => {
-            let mod = await import("./foo1.js");
+            let mod = await import("./b.js");
             if (mod.b() !== 'b') {
               throw Error("bad1");
             }
             // And again!
-            mod = await import("./foo2.js");
+            mod = await import("./b.js");
             if (mod.b() !== 'b') {
               throw Error("bad2");
             }
@@ -914,12 +912,14 @@ pub mod tests {
         Poll::Ready(Ok(_)) => true,
         _ => false,
       });
-      assert_eq!(count.load(Ordering::Relaxed), 1);
+      assert_eq!(resolve_count.load(Ordering::Relaxed), 2);
+      assert_eq!(load_count.load(Ordering::Relaxed), 2);
       assert!(match isolate.poll_unpin(cx) {
         Poll::Ready(Ok(_)) => true,
         _ => false,
       });
-      assert_eq!(count.load(Ordering::Relaxed), 1);
+      assert_eq!(resolve_count.load(Ordering::Relaxed), 2);
+      assert_eq!(load_count.load(Ordering::Relaxed), 2);
     })
   }
 }
