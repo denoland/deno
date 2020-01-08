@@ -48,13 +48,6 @@ pub struct SourceCodeInfo {
   pub module_url_found: String,
 }
 
-pub struct ModuleInfo {
-  pub main: bool,
-  pub name: String,
-  pub handle: v8::Global<v8::Module>,
-  pub import_specifiers: Vec<String>,
-}
-
 /// A single execution context of JavaScript. Corresponds roughly to the "Web
 /// Worker" concept in the DOM. An Isolate is a Future that can be used with
 /// Tokio.  The Isolate future complete when there is an error or when all
@@ -67,7 +60,6 @@ pub struct EsIsolate {
   core_isolate: Box<Isolate>,
   loader: Arc<Box<dyn Loader + Unpin>>,
   pub modules: Modules,
-  mods_: HashMap<ModuleId, ModuleInfo>,
   pub(crate) next_dyn_import_id: DynImportId,
   pub(crate) dyn_import_map:
     HashMap<DynImportId, v8::Global<v8::PromiseResolver>>,
@@ -100,7 +92,7 @@ impl Drop for EsIsolate {
       let mut locker = v8::Locker::new(&isolate);
       let mut hs = v8::HandleScope::new(&mut locker);
       let scope = hs.enter();
-      for module in self.mods_.values_mut() {
+      for module in self.modules.info.values_mut() {
         module.handle.reset(scope);
       }
       for handle in self.dyn_import_map.values_mut() {
@@ -131,7 +123,6 @@ impl EsIsolate {
       modules: Modules::new(),
       loader: Arc::new(loader),
       core_isolate,
-      mods_: HashMap::new(),
       next_dyn_import_id: 0,
       dyn_import_map: HashMap::new(),
       pending_dyn_imports: FuturesUnordered::new(),
@@ -192,15 +183,9 @@ impl EsIsolate {
 
     let mut handle = v8::Global::<v8::Module>::new();
     handle.set(scope, module);
-    self.mods_.insert(
-      id,
-      ModuleInfo {
-        main,
-        name: name.to_string(),
-        import_specifiers,
-        handle,
-      },
-    );
+    self
+      .modules
+      .register(id, name, main, handle, import_specifiers);
     context.exit();
     id
   }
@@ -213,16 +198,15 @@ impl EsIsolate {
     source: &str,
   ) -> Result<ModuleId, ErrBox> {
     let id = self.mod_new2(main, name, source);
-    self.modules.register(id, name);
     self.core_isolate.check_last_exception().map(|_| id)
   }
 
   pub fn mod_get_imports(&self, id: ModuleId) -> Vec<String> {
-    let info = self.get_module_info(id).unwrap();
+    let info = self.modules.get_info(id).unwrap();
     let len = info.import_specifiers.len();
     let mut out = Vec::new();
     for i in 0..len {
-      let info = self.get_module_info(id).unwrap();
+      let info = self.modules.get_info(id).unwrap();
       let specifier = info.import_specifiers.get(i).unwrap().to_string();
       out.push(specifier);
     }
@@ -240,7 +224,7 @@ impl EsIsolate {
     let mut try_catch = v8::TryCatch::new(scope);
     let tc = try_catch.enter();
 
-    let maybe_info = self.get_module_info(id);
+    let maybe_info = self.modules.get_info(id);
 
     if maybe_info.is_none() {
       context.exit();
@@ -289,7 +273,7 @@ impl EsIsolate {
     let mut context = self.core_isolate.global_context.get(scope).unwrap();
     context.enter();
 
-    let info = self.get_module_info(id).expect("ModuleInfo not found");
+    let info = self.modules.get_info(id).expect("ModuleInfo not found");
     let mut module = info.handle.get(scope).expect("Empty module handle");
     let mut status = module.get_status();
 
@@ -334,13 +318,6 @@ impl EsIsolate {
     self.shared_init();
     self.mod_evaluate2(id);
     self.core_isolate.check_last_exception()
-  }
-
-  pub fn get_module_info(&self, id: ModuleId) -> Option<&ModuleInfo> {
-    if id == 0 {
-      return None;
-    }
-    self.mods_.get(&id)
   }
 
   pub fn module_resolve_cb(
@@ -414,7 +391,7 @@ impl EsIsolate {
     let mut resolver = resolver_handle.get(scope).unwrap();
     resolver_handle.reset(scope);
 
-    let maybe_info = self.get_module_info(mod_id);
+    let maybe_info = self.modules.get_info(mod_id);
 
     if let Some(info) = maybe_info {
       // Resolution success
@@ -534,7 +511,7 @@ impl EsIsolate {
           module_url_found
         );
         id
-      },
+      }
       // Module not registered yet, do it now.
       None => self.mod_new(is_main, &module_url_found, &code)?,
     };
@@ -550,7 +527,6 @@ impl EsIsolate {
       )?;
       let module_name = module_specifier.as_str();
 
-      self.modules.add_child(module_id, module_name);
       if !self.modules.is_registered(module_name) {
         load.add_import(module_specifier, referrer_specifier.clone());
       }
@@ -708,7 +684,6 @@ pub mod tests {
       .unwrap();
     let imports = isolate.mod_get_imports(mod_b);
     assert_eq!(imports.len(), 0);
-
 
     js_check(isolate.mod_instantiate(mod_b));
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);

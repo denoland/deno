@@ -6,6 +6,8 @@
 // small and simple for users who do not use modules or if they do can load them
 // synchronously. The isolate.rs module should never depend on this module.
 
+use rusty_v8 as v8;
+
 use crate::any_error::ErrBox;
 use crate::es_isolate::DynImportId;
 use crate::es_isolate::ModuleId;
@@ -47,7 +49,6 @@ pub trait Loader: Send + Sync {
     maybe_referrer: Option<ModuleSpecifier>,
   ) -> Pin<Box<SourceCodeInfoFuture>>;
 }
-
 
 #[derive(Debug, Eq, PartialEq)]
 enum Kind {
@@ -103,7 +104,7 @@ impl RecursiveModuleLoad {
   }
 
   pub fn is_dynamic_import(&self) -> bool {
-    return self.kind != Kind::Main;
+    self.kind != Kind::Main
   }
 
   fn new(
@@ -193,20 +194,11 @@ impl Stream for RecursiveModuleLoad {
   }
 }
 
-struct ModuleInfo {
-  name: String,
-  children: Vec<String>,
-}
-
-impl ModuleInfo {
-  fn has_child(&self, child_name: &str) -> bool {
-    for c in self.children.iter() {
-      if c == child_name {
-        return true;
-      }
-    }
-    false
-  }
+pub struct ModuleInfo {
+  pub main: bool,
+  pub name: String,
+  pub handle: v8::Global<v8::Module>,
+  pub import_specifiers: Vec<String>,
 }
 
 /// A symbolic module entity.
@@ -276,7 +268,7 @@ impl ModuleNameMap {
 /// A collection of JS modules.
 #[derive(Default)]
 pub struct Modules {
-  info: HashMap<ModuleId, ModuleInfo>,
+  pub(crate) info: HashMap<ModuleId, ModuleInfo>,
   by_name: ModuleNameMap,
 }
 
@@ -293,7 +285,7 @@ impl Modules {
   }
 
   pub fn get_children(&self, id: ModuleId) -> Option<&Vec<String>> {
-    self.info.get(&id).map(|i| &i.children)
+    self.info.get(&id).map(|i| &i.import_specifiers)
   }
 
   pub fn get_children2(&self, name: &str) -> Option<&Vec<String>> {
@@ -308,19 +300,14 @@ impl Modules {
     self.by_name.get(name).is_some()
   }
 
-  pub fn add_child(&mut self, parent_id: ModuleId, child_name: &str) -> bool {
-    self
-      .info
-      .get_mut(&parent_id)
-      .map(move |i| {
-        if !i.has_child(&child_name) {
-          i.children.push(child_name.to_string());
-        }
-      })
-      .is_some()
-  }
-
-  pub fn register(&mut self, id: ModuleId, name: &str) {
+  pub fn register(
+    &mut self,
+    id: ModuleId,
+    name: &str,
+    main: bool,
+    handle: v8::Global<v8::Module>,
+    import_specifiers: Vec<String>,
+  ) {
     let name = String::from(name);
     debug!("register_complete {}", name);
 
@@ -328,8 +315,10 @@ impl Modules {
     self.info.insert(
       id,
       ModuleInfo {
+        main,
         name,
-        children: Vec::new(),
+        import_specifiers,
+        handle,
       },
     );
   }
@@ -340,6 +329,13 @@ impl Modules {
 
   pub fn is_alias(&self, name: &str) -> bool {
     self.by_name.is_alias(name)
+  }
+
+  pub fn get_info(&self, id: ModuleId) -> Option<&ModuleInfo> {
+    if id == 0 {
+      return None;
+    }
+    self.info.get(&id)
   }
 
   pub fn deps(&self, url: &str) -> Option<Deps> {
@@ -940,6 +936,7 @@ mod tests {
     assert!(modules.deps("foo").is_none());
   }
 
+  /* TODO(bartlomieju): reenable
   #[test]
   fn deps() {
     // "foo" -> "bar"
@@ -976,4 +973,5 @@ mod tests {
       maybe_deps.unwrap().to_json()
     );
   }
+  */
 }

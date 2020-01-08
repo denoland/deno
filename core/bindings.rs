@@ -282,7 +282,7 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
   let id = module.get_identity_hash();
   assert_ne!(id, 0);
 
-  let info = deno_isolate.get_module_info(id).expect("Module not found");
+  let info = deno_isolate.modules.get_info(id).expect("Module not found");
 
   meta.create_data_property(
     context,
@@ -713,7 +713,8 @@ pub fn module_resolve_callback(
 
   let referrer_id = referrer.get_identity_hash();
   let referrer_name = deno_isolate
-    .get_module_info(referrer_id)
+    .modules
+    .get_info(referrer_id)
     .expect("ModuleInfo not found")
     .name
     .to_string();
@@ -727,7 +728,7 @@ pub fn module_resolve_callback(
 
     if req_str == specifier_str {
       let id = deno_isolate.module_resolve_cb(&req_str, referrer_id);
-      let maybe_info = deno_isolate.get_module_info(id);
+      let maybe_info = deno_isolate.modules.get_info(id);
 
       if maybe_info.is_none() {
         let msg = format!(
