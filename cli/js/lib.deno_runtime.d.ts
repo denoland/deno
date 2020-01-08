@@ -306,6 +306,18 @@ declare namespace Deno {
    *       })();
    */
   export function open(filename: string, mode?: OpenMode): Promise<File>;
+  /** Creates a file if none exists or truncates an existing file and returns
+   *  an instance of the `File` object synchronously.
+   *
+   *       const file = Deno.createSync("/foo/bar.txt");
+   */
+  export function createSync(filename: string): File;
+  /** Creates a file if none exists or truncates an existing file and returns
+   *  an instance of the `File` object.
+   *
+   *       const file = await Deno.create("/foo/bar.txt");
+   */
+  export function create(filename: string): Promise<File>;
   /** Read synchronously from a file ID into an array buffer.
    *
    * Return `number | EOF` for the operation.
