@@ -325,16 +325,13 @@ impl EsIsolate {
     specifier: &str,
     referrer_id: ModuleId,
   ) -> ModuleId {
-    eprintln!("specifier {} referrer {}", specifier, referrer_id);
     let referrer = self.modules.get_name(referrer_id).unwrap();
     // We should have already resolved and Ready this module, so
     // resolve() will not fail this time.
-    eprintln!("before!");
     let specifier = self
       .modules
       .get_cached_specifier(specifier, &referrer)
       .expect("Module should already be resolved");
-    eprintln!("after!");
     self.modules.get_id(specifier.as_str()).unwrap_or(0)
   }
 
