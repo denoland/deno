@@ -306,7 +306,7 @@ declare namespace Deno {
    *       })();
    */
   export function open(filename: string, mode?: OpenMode): Promise<File>;
-    /** Creates a file if none exists or truncates an existing file and returns
+  /** Creates a file if none exists or truncates an existing file and returns
    *  an instance of the `File` object synchronously.
    *
    *       const file = Deno.createSync("/foo/bar.txt");
