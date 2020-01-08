@@ -386,9 +386,7 @@ installerTest(async function installAndMakesureArgsRight(): Promise<void> {
 
   try {
     const b = await readAll(ps.stdout);
-
     const s = new TextDecoder("utf-8").decode(b);
-
     const obj = JSON.parse(s);
 
     assertEquals(obj[0], "arg1");
