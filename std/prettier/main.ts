@@ -565,7 +565,7 @@ async function main(opts): Promise<void> {
 }
 
 main(
-  parse(args.slice(1), {
+  parse(args, {
     string: [
       "ignore",
       "ignore-path",

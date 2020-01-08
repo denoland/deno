@@ -243,7 +243,7 @@ export async function runTestModules({
 }
 
 async function main(): Promise<void> {
-  const parsedArgs = parse(args.slice(1), {
+  const parsedArgs = parse(args, {
     boolean: ["allow-none", "failfast", "help", "quiet"],
     string: ["exclude"],
     alias: {

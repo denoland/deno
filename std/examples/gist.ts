@@ -14,7 +14,7 @@ if (!token) {
   Deno.exit(1);
 }
 
-const parsedArgs = parse(Deno.args.slice(1));
+const parsedArgs = parse(Deno.args);
 
 if (parsedArgs._.length === 0) {
   console.error(

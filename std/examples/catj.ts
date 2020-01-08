@@ -79,7 +79,7 @@ function print(data: any): void {
   }
 }
 
-const parsedArgs = parse(Deno.args.slice(1));
+const parsedArgs = parse(Deno.args);
 
 if (parsedArgs.h || parsedArgs.help || parsedArgs._.length === 0) {
   console.log("Usage: catj [-h|--help] [file...]");

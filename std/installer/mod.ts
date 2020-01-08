@@ -276,7 +276,7 @@ export async function install(
 }
 
 async function main(): Promise<void> {
-  const parsedArgs = parse(args.slice(1), { stopEarly: true });
+  const parsedArgs = parse(args, { stopEarly: true });
 
   if (parsedArgs.h || parsedArgs.help) {
     return showHelp();
