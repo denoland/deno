@@ -13,15 +13,11 @@ use futures::future::Future;
 use futures::future::FutureExt;
 use futures::ready;
 use futures::stream::FuturesUnordered;
-use futures::stream::Stream;
 use futures::stream::StreamExt;
 use futures::stream::StreamFuture;
-use futures::stream::TryStream;
-use futures::stream::TryStreamExt;
 use futures::task::AtomicWaker;
 use libc::c_void;
 use std::collections::HashMap;
-use std::fmt;
 use std::ops::{Deref, DerefMut};
 use std::option::Option;
 use std::pin::Pin;
@@ -50,69 +46,6 @@ pub struct SourceCodeInfo {
   pub code: String,
   pub module_url_specified: String,
   pub module_url_found: String,
-}
-
-#[derive(Debug, Eq, PartialEq)]
-pub enum RecursiveLoadEvent {
-  Fetch(SourceCodeInfo),
-  Instantiate(ModuleId),
-}
-
-pub trait ImportStream: TryStream {
-  fn register(
-    &mut self,
-    source_code_info: SourceCodeInfo,
-    isolate: &mut EsIsolate,
-  ) -> Result<(), ErrBox>;
-}
-
-type DynImportStream = Box<
-  dyn ImportStream<
-      Ok = RecursiveLoadEvent,
-      Error = ErrBox,
-      Item = Result<RecursiveLoadEvent, ErrBox>,
-    > + Send
-    + Unpin,
->;
-
-/// Wraps DynImportStream to include the DynImportId, so that it doesn't
-/// need to be exposed.
-#[derive(Debug)]
-struct DynImport {
-  pub id: DynImportId,
-  pub inner: DynImportStream,
-}
-
-impl fmt::Debug for DynImportStream {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(f, "DynImportStream(..)")
-  }
-}
-
-impl Stream for DynImport {
-  type Item = Result<(DynImportId, RecursiveLoadEvent), (DynImportId, ErrBox)>;
-
-  fn poll_next(
-    self: Pin<&mut Self>,
-    cx: &mut Context,
-  ) -> Poll<Option<Self::Item>> {
-    let self_inner = self.get_mut();
-    let result = ready!(self_inner.inner.try_poll_next_unpin(cx)).unwrap();
-    match result {
-      Ok(event) => Poll::Ready(Some(Ok((self_inner.id, event)))),
-      Err(e) => Poll::Ready(Some(Err((self_inner.id, e)))),
-    }
-  }
-}
-
-impl ImportStream for DynImport {
-  fn register(
-    &mut self,
-    source_code_info: SourceCodeInfo,
-    isolate: &mut EsIsolate,
-  ) -> Result<(), ErrBox> {
-    self.inner.register(source_code_info, isolate)
-  }
 }
 
 pub struct ModuleInfo {
@@ -280,6 +213,7 @@ impl EsIsolate {
     source: &str,
   ) -> Result<ModuleId, ErrBox> {
     let id = self.mod_new2(main, name, source);
+    self.modules.register(id, name);
     self.core_isolate.check_last_exception().map(|_| id)
   }
 
@@ -341,18 +275,12 @@ impl EsIsolate {
   /// ErrBox can be downcast to a type that exposes additional information about
   /// the V8 exception. By default this type is CoreJSError, however it may be a
   /// different type if Isolate::set_js_error_create() has been used.
-  pub fn mod_instantiate(&mut self, id: ModuleId) -> Result<(), ErrBox> {
+  fn mod_instantiate(&mut self, id: ModuleId) -> Result<(), ErrBox> {
     self.mod_instantiate2(id);
     self.core_isolate.check_last_exception()
   }
 
-  /// Evaluates an already instantiated ES module.
-  ///
-  /// ErrBox can be downcast to a type that exposes additional information about
-  /// the V8 exception. By default this type is CoreJSError, however it may be a
-  /// different type if Isolate::set_js_error_create() has been used.
-  pub fn mod_evaluate(&mut self, id: ModuleId) -> Result<(), ErrBox> {
-    self.shared_init();
+  fn mod_evaluate2(&mut self, id: ModuleId) {
     let isolate = self.core_isolate.v8_isolate.as_ref().unwrap();
     let mut locker = v8::Locker::new(isolate);
     let mut hs = v8::HandleScope::new(&mut locker);
@@ -395,7 +323,16 @@ impl EsIsolate {
     };
 
     context.exit();
+  }
 
+  /// Evaluates an already instantiated ES module.
+  ///
+  /// ErrBox can be downcast to a type that exposes additional information about
+  /// the V8 exception. By default this type is CoreJSError, however it may be a
+  /// different type if Isolate::set_js_error_create() has been used.
+  pub fn mod_evaluate(&mut self, id: ModuleId) -> Result<(), ErrBox> {
+    self.shared_init();
+    self.mod_evaluate2(id);
     self.core_isolate.check_last_exception()
   }
 
@@ -597,13 +534,9 @@ impl EsIsolate {
           module_url_found
         );
         id
-      }
-      None => {
-        // Module not registered yet, do it now.
-        let id = self.mod_new(is_main, &module_url_found, &code)?;
-        self.modules.register(id, &module_url_found);
-        id
-      }
+      },
+      // Module not registered yet, do it now.
+      None => self.mod_new(is_main, &module_url_found, &code)?,
     };
 
     // Now we must iterate over all imports of the module and load them.
@@ -767,7 +700,6 @@ pub mod tests {
       )
       .unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
-    isolate.modules.register(mod_a, "file:///a.js");
 
     let imports = isolate.mod_get_imports(mod_a);
     assert_eq!(imports, vec!["./b.js".to_string()]);
@@ -776,7 +708,7 @@ pub mod tests {
       .unwrap();
     let imports = isolate.mod_get_imports(mod_b);
     assert_eq!(imports.len(), 0);
-    isolate.modules.register(mod_b, "file:///b.js");
+
 
     js_check(isolate.mod_instantiate(mod_b));
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
@@ -789,44 +721,6 @@ pub mod tests {
     js_check(isolate.mod_evaluate(mod_a));
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
     assert_eq!(resolve_count.load(Ordering::SeqCst), 1);
-  }
-
-  struct MockImportStream(Vec<Result<RecursiveLoadEvent, ErrBox>>);
-
-  impl Stream for MockImportStream {
-    type Item = Result<RecursiveLoadEvent, ErrBox>;
-
-    fn poll_next(
-      self: Pin<&mut Self>,
-      _cx: &mut Context,
-    ) -> Poll<Option<Self::Item>> {
-      let inner = self.get_mut();
-      let event = if inner.0.is_empty() {
-        None
-      } else {
-        Some(inner.0.remove(0))
-      };
-      Poll::Ready(event)
-    }
-  }
-
-  impl ImportStream for MockImportStream {
-    fn register(
-      &mut self,
-      module_data: SourceCodeInfo,
-      isolate: &mut EsIsolate,
-    ) -> Result<(), ErrBox> {
-      let id = isolate.mod_new(
-        false,
-        &module_data.module_url_found,
-        &module_data.code,
-      )?;
-      println!(
-        "MockImportStream register {} {}",
-        id, module_data.module_url_found
-      );
-      Ok(())
-    }
   }
 
   #[test]

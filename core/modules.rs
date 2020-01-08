@@ -48,6 +48,13 @@ pub trait Loader: Send + Sync {
   ) -> Pin<Box<SourceCodeInfoFuture>>;
 }
 
+
+#[derive(Debug, Eq, PartialEq)]
+enum Kind {
+  Main,
+  DynamicImport,
+}
+
 #[derive(Debug, Eq, PartialEq)]
 pub enum LoadState {
   ResolveMain(String, Option<String>),
@@ -55,12 +62,6 @@ pub enum LoadState {
   LoadingRoot,
   LoadingImports,
   Done,
-}
-
-#[derive(Debug, Eq, PartialEq)]
-enum Kind {
-  Main,
-  DynamicImport,
 }
 
 /// This future is used to implement parallel async module loading without
