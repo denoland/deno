@@ -32,8 +32,6 @@ const PRETTIER_URL: &str = std_url!("prettier/main.ts");
 const INSTALLER_URL: &str = std_url!("installer/mod.ts");
 /// Used for `deno test...` subcommand
 const TEST_RUNNER_URL: &str = std_url!("testing/runner.ts");
-/// Used for `deno xeval...` subcommand
-const XEVAL_URL: &str = std_url!("xeval/mod.ts");
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum DenoSubcommand {
@@ -47,7 +45,6 @@ pub enum DenoSubcommand {
   Repl,
   Run,
   Types,
-  Xeval,
 }
 
 impl Default for DenoSubcommand {
@@ -174,8 +171,6 @@ pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<DenoFlags> {
     eval_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("repl") {
     repl_parse(&mut flags, m);
-  } else if let Some(m) = matches.subcommand_matches("xeval") {
-    xeval_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("bundle") {
     bundle_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("install") {
@@ -224,7 +219,6 @@ fn clap_root<'a, 'b>() -> App<'a, 'b> {
     .subcommand(run_subcommand())
     .subcommand(test_subcommand())
     .subcommand(types_subcommand())
-    .subcommand(xeval_subcommand())
     .long_about(DENO_HELP)
     .after_help(ENV_VARIABLES_HELP)
 }
@@ -342,33 +336,6 @@ fn completions_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   // acting upon the flags. Although this print is innocent, it breaks the
   // model. The print should be moved out.
   print!("{}", std::str::from_utf8(&buf).unwrap());
-}
-
-fn xeval_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
-  flags.subcommand = DenoSubcommand::Run;
-  flags.allow_net = true;
-  flags.allow_env = true;
-  flags.allow_run = true;
-  flags.allow_read = true;
-  flags.allow_write = true;
-  flags.allow_plugin = true;
-  flags.allow_hrtime = true;
-  flags.argv.push(XEVAL_URL.to_string());
-
-  if matches.is_present("delim") {
-    let delim = matches.value_of("delim").unwrap();
-    flags.argv.push("--delim".to_string());
-    flags.argv.push(delim.to_string());
-  }
-
-  if matches.is_present("replvar") {
-    let replvar = matches.value_of("replvar").unwrap();
-    flags.argv.push("--replvar".to_string());
-    flags.argv.push(replvar.to_string());
-  }
-
-  let code: &str = matches.value_of("code").unwrap();
-  flags.argv.push(code.to_string());
 }
 
 fn repl_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
@@ -802,46 +769,6 @@ Example:
   deno completions bash > /usr/local/etc/bash_completion.d/deno.bash
   source /usr/local/etc/bash_completion.d/deno.bash",
     )
-}
-
-fn xeval_subcommand<'a, 'b>() -> App<'a, 'b> {
-  SubCommand::with_name("xeval")
-        .about("Eval a script on text segments from stdin")
-        .long_about(
-          "Eval a script on lines from stdin
-
-Read from standard input and eval code on each whitespace-delimited
-string chunks.
-
--I/--replvar optionally sets variable name for input to be used in eval.
-Otherwise '$' will be used as default variable name.
-
-This command has implicit access to all permissions (equivalent to deno run --allow-all)
-
-Print all the usernames in /etc/passwd:
-
-  cat /etc/passwd | deno xeval \"a = $.split(':'); if (a) console.log(a[0])\"
-
-A complicated way to print the current git branch:
-
-  git branch | deno xeval -I 'line' \"if (line.startsWith('*')) console.log(line.slice(2))\"
-
-Demonstrates breaking the input up by space delimiter instead of by lines:
-
-  cat LICENSE | deno xeval -d \" \" \"if ($ === 'MIT') console.log('MIT licensed')\"",
-        ).arg(
-          Arg::with_name("replvar")
-            .long("replvar")
-            .short("I")
-            .help("Set variable name to be used in eval, defaults to $")
-            .takes_value(true),
-        ).arg(
-          Arg::with_name("delim")
-            .long("delim")
-            .short("d")
-            .help("Set delimiter, defaults to newline")
-            .takes_value(true),
-        ).arg(Arg::with_name("code").takes_value(true).required(true))
 }
 
 fn eval_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -1283,8 +1210,7 @@ fn arg_hacks(mut args: Vec<String>) -> Vec<String> {
     "types",
     "install",
     "help",
-    "version",
-    "xeval"
+    "version"
   ];
   let modifier_flags = sset!["-h", "--help", "-V", "--version"];
   // deno [subcommand|behavior modifier flags] -> do nothing
@@ -1632,42 +1558,6 @@ mod tests {
       DenoFlags {
         subcommand: DenoSubcommand::Repl,
         argv: svec!["deno"],
-        allow_net: true,
-        allow_env: true,
-        allow_run: true,
-        allow_read: true,
-        allow_write: true,
-        allow_plugin: true,
-        allow_hrtime: true,
-        ..DenoFlags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn xeval() {
-    let r = flags_from_vec_safe(svec![
-      "deno",
-      "xeval",
-      "-I",
-      "val",
-      "-d",
-      " ",
-      "console.log(val)"
-    ]);
-    assert_eq!(
-      r.unwrap(),
-      DenoFlags {
-        subcommand: DenoSubcommand::Run,
-        argv: svec![
-          "deno",
-          XEVAL_URL,
-          "--delim",
-          " ",
-          "--replvar",
-          "val",
-          "console.log(val)"
-        ],
         allow_net: true,
         allow_env: true,
         allow_run: true,

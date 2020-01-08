@@ -262,24 +262,6 @@ itest!(_029_eval {
   output: "029_eval.out",
 });
 
-itest!(_030_xeval {
-  args: "xeval console.log($.toUpperCase())",
-  input: Some("a\nb\n\nc"),
-  output: "030_xeval.out",
-});
-
-itest!(_031_xeval_replvar {
-  args: "xeval -I val console.log(val.toUpperCase());",
-  input: Some("a\nb\n\nc"),
-  output: "031_xeval_replvar.out",
-});
-
-itest!(_032_xeval_delim {
-  args: "xeval -d DELIM console.log($.toUpperCase());",
-  input: Some("aDELIMbDELIMDELIMc"),
-  output: "032_xeval_delim.out",
-});
-
 itest!(_033_import_map {
   args:
     "run --reload --importmap=importmaps/import_map.json importmaps/test.ts",
