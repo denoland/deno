@@ -172,7 +172,6 @@ fn print_cache_info(worker: Worker) {
 
 async fn print_file_info(worker: Worker, module_specifier: ModuleSpecifier) {
   let global_state_ = &worker.state.global_state;
-  let state_ = &worker.state;
 
   let maybe_source_file = global_state_
     .file_fetcher
@@ -233,7 +232,8 @@ async fn print_file_info(worker: Worker, module_specifier: ModuleSpecifier) {
     );
   }
 
-  if let Some(deps) = state_.modules.lock().unwrap().deps(&compiled.name) {
+  let isolate = worker.isolate.try_lock().unwrap();
+  if let Some(deps) = isolate.modules.deps(&compiled.name) {
     println!("{}{}", colors::bold("deps:\n".to_string()), deps.name);
     if let Some(ref depsdeps) = deps.deps {
       for d in depsdeps {

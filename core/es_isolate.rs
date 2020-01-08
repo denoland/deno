@@ -13,7 +13,6 @@ use futures::future::Future;
 use futures::future::FutureExt;
 use futures::ready;
 use futures::stream::FuturesUnordered;
-use futures::stream::IntoStream;
 use futures::stream::Stream;
 use futures::stream::StreamExt;
 use futures::stream::StreamFuture;
@@ -26,20 +25,17 @@ use std::fmt;
 use std::ops::{Deref, DerefMut};
 use std::option::Option;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 
 use crate::isolate::Isolate;
 use crate::isolate::StartupData;
 use crate::module_specifier::ModuleSpecifier;
-use crate::modules::DynImportRecursiveLoad;
-use crate::modules::DynImportState;
+use crate::modules::LoadState;
 use crate::modules::Loader;
-use crate::modules::MainImportRecursiveLoad;
-use crate::modules::MainImportState;
 use crate::modules::Modules;
-use crate::modules::SourceCodeInfoFuture;
+use crate::modules::RecursiveModuleLoad;
 
 pub type ModuleId = i32;
 pub type DynImportId = i32;
@@ -137,15 +133,13 @@ pub struct ModuleInfo {
 pub struct EsIsolate {
   core_isolate: Box<Isolate>,
   loader: Arc<Box<dyn Loader + Unpin>>,
-  pub(crate) modules: Arc<Mutex<Modules>>,
+  pub modules: Modules,
   mods_: HashMap<ModuleId, ModuleInfo>,
   pub(crate) next_dyn_import_id: DynImportId,
   pub(crate) dyn_import_map:
     HashMap<DynImportId, v8::Global<v8::PromiseResolver>>,
 
-  new_pending_dyn_imports:
-    FuturesUnordered<StreamFuture<DynImportRecursiveLoad>>,
-  pending_dyn_imports: FuturesUnordered<StreamFuture<IntoStream<DynImport>>>,
+  pending_dyn_imports: FuturesUnordered<StreamFuture<RecursiveModuleLoad>>,
   waker: AtomicWaker,
 }
 
@@ -201,13 +195,12 @@ impl EsIsolate {
     }
 
     let es_isolate = Self {
-      modules: Arc::new(Mutex::new(Modules::new())),
+      modules: Modules::new(),
       loader: Arc::new(loader),
       core_isolate,
       mods_: HashMap::new(),
       next_dyn_import_id: 0,
       dyn_import_map: HashMap::new(),
-      new_pending_dyn_imports: FuturesUnordered::new(),
       pending_dyn_imports: FuturesUnordered::new(),
       waker: AtomicWaker::new(),
     };
@@ -418,9 +411,8 @@ impl EsIsolate {
     specifier: &str,
     referrer_id: ModuleId,
   ) -> ModuleId {
-    let modules = self.modules.lock().unwrap();
     eprintln!("specifier {} referrer {}", specifier, referrer_id);
-    let referrer = modules.get_name(referrer_id).unwrap();
+    let referrer = self.modules.get_name(referrer_id).unwrap();
     // We should have already resolved and Ready this module, so
     // resolve() will not fail this time.
 
@@ -432,7 +424,7 @@ impl EsIsolate {
       .loader
       .resolve(specifier, &referrer, false, false)
       .expect("Module should already be resolved");
-    modules.get_id(specifier.as_str()).unwrap_or(0)
+    self.modules.get_id(specifier.as_str()).unwrap_or(0)
   }
 
   pub fn dyn_import_cb(
@@ -443,10 +435,14 @@ impl EsIsolate {
   ) {
     debug!("dyn_import specifier {} referrer {} ", specifier, referrer);
 
-    let load =
-      DynImportRecursiveLoad::new(id, specifier, referrer, self.loader.clone());
+    let load = RecursiveModuleLoad::dynamic_import(
+      id,
+      specifier,
+      referrer,
+      self.loader.clone(),
+    );
     self.waker.wake();
-    self.new_pending_dyn_imports.push(load.into_future());
+    self.pending_dyn_imports.push(load.into_future());
   }
 
   fn dyn_import_done(
@@ -512,12 +508,9 @@ impl EsIsolate {
     self.core_isolate.check_last_exception()
   }
 
-  fn new_poll_dyn_imports(
-    &mut self,
-    cx: &mut Context,
-  ) -> Poll<Result<(), ErrBox>> {
+  fn poll_dyn_imports(&mut self, cx: &mut Context) -> Poll<Result<(), ErrBox>> {
     loop {
-      match self.new_pending_dyn_imports.poll_next_unpin(cx) {
+      match self.pending_dyn_imports.poll_next_unpin(cx) {
         Poll::Pending | Poll::Ready(None) => {
           // There are no active dynamic import loaders, or none are ready.
           return Poll::Ready(Ok(()));
@@ -525,6 +518,7 @@ impl EsIsolate {
         Poll::Ready(Some(load_stream_poll)) => {
           let maybe_result = load_stream_poll.0;
           let mut load = load_stream_poll.1;
+          let dyn_import_id = load.dyn_import_id.unwrap();
 
           if let Some(load_stream_result) = maybe_result {
             match load_stream_result {
@@ -535,7 +529,7 @@ impl EsIsolate {
                 match self.register_during_load(info, &mut load) {
                   Ok(()) => {}
                   Err(err) => self.dyn_import_done(
-                    load.dyn_import_id,
+                    dyn_import_id,
                     Err(Some(err.to_string())),
                   )?,
                 }
@@ -544,68 +538,22 @@ impl EsIsolate {
                 // A non-javascript error occurred; this could be due to a an invalid
                 // module specifier, or a problem with the source map, or a failure
                 // to fetch the module source code.
-                self.dyn_import_done(
-                  load.dyn_import_id,
-                  Err(Some(err.to_string())),
-                )?
+                self
+                  .dyn_import_done(dyn_import_id, Err(Some(err.to_string())))?
               }
             }
           } else {
             // The top-level module from a dynamic import has been instantiated.
             // Load is done.
             let module_id = load.root_module_id.unwrap();
-            self.mod_instantiate2(module_id);
-            self.core_isolate.check_last_exception()?;
+            self.mod_instantiate(module_id)?;
             if let Ok(()) = self.mod_evaluate(module_id) {
-              self.dyn_import_done(load.dyn_import_id, Ok(module_id))?
+              self.dyn_import_done(dyn_import_id, Ok(module_id))?
             } else {
-              self.dyn_import_done(load.dyn_import_id, Err(None))?
+              self.dyn_import_done(dyn_import_id, Err(None))?
             }
           }
         }
-      }
-    }
-  }
-
-  fn poll_dyn_imports(&mut self, cx: &mut Context) -> Poll<Result<(), ErrBox>> {
-    use RecursiveLoadEvent::*;
-    loop {
-      match self.pending_dyn_imports.poll_next_unpin(cx) {
-        Poll::Pending | Poll::Ready(None) => {
-          // There are no active dynamic import loaders, or none are ready.
-          return Poll::Ready(Ok(()));
-        }
-        Poll::Ready(Some((
-          Some(Ok((dyn_import_id, Fetch(source_code_info)))),
-          mut stream,
-        ))) => {
-          // A module (not necessarily the one dynamically imported) has been
-          // fetched. Create and register it, and if successful, poll for the
-          // next recursive-load event related to this dynamic import.
-          match stream.get_mut().register(source_code_info, self) {
-            Ok(()) => self.pending_dyn_imports.push(stream.into_future()),
-            Err(err) => {
-              self.dyn_import_done(dyn_import_id, Err(Some(err.to_string())))?
-            }
-          }
-        }
-        Poll::Ready(Some((
-          Some(Ok((dyn_import_id, Instantiate(module_id)))),
-          _,
-        ))) => {
-          // The top-level module from a dynamic import has been instantiated.
-          match self.mod_evaluate(module_id) {
-            Ok(()) => self.dyn_import_done(dyn_import_id, Ok(module_id))?,
-            Err(..) => self.dyn_import_done(dyn_import_id, Err(None))?,
-          }
-        }
-        Poll::Ready(Some((Some(Err((dyn_import_id, err))), _))) => {
-          // A non-javascript error occurred; this could be due to a an invalid
-          // module specifier, or a problem with the source map, or a failure
-          // to fetch the module source code.
-          self.dyn_import_done(dyn_import_id, Err(Some(err.to_string())))?
-        }
-        Poll::Ready(Some((None, _))) => unreachable!(),
       }
     }
   }
@@ -613,7 +561,7 @@ impl EsIsolate {
   fn register_during_load(
     &mut self,
     info: SourceCodeInfo,
-    load: &mut DynImportRecursiveLoad,
+    load: &mut RecursiveModuleLoad,
   ) -> Result<(), ErrBox> {
     let SourceCodeInfo {
       code,
@@ -621,8 +569,7 @@ impl EsIsolate {
       module_url_found,
     } = info;
 
-    let is_main = false;
-
+    let is_main = load.state == LoadState::LoadingRoot;
     let referrer_name = &module_url_found.to_string();
     let referrer_specifier =
       ModuleSpecifier::resolve_url(referrer_name).unwrap();
@@ -636,134 +583,54 @@ impl EsIsolate {
     //     -> alias
     //   2b. The module with resolved module name has not yet been registerd
     //     -> register & alias
-    let maybe_id = {
-      let mut modules = self.modules.lock().unwrap();
 
-      // If necessary, register an alias.
-      if module_url_specified != module_url_found {
-        modules.alias(&module_url_specified, &module_url_found);
+    // If necessary, register an alias.
+    if module_url_specified != module_url_found {
+      self.modules.alias(&module_url_specified, &module_url_found);
+    }
+
+    let module_id = match self.modules.get_id(&module_url_found) {
+      Some(id) => {
+        // Module has already been registered.
+        debug!(
+          "Already-registered module fetched again: {}",
+          module_url_found
+        );
+        id
       }
-
-      modules.get_id(&module_url_found)
-    };
-
-    let module_id = if maybe_id.is_none() {
-      // Module not registered yet, do it now.
-      let id = self.mod_new(is_main, &module_url_found, &code)?;
-      let mut modules = self.modules.lock().unwrap();
-      modules.register(id, &module_url_found);
-      id
-    } else {
-      // Module has already been registered.
-      debug!(
-        "Already-registered module fetched again: {}",
-        module_url_found
-      );
-      maybe_id.unwrap()
+      None => {
+        // Module not registered yet, do it now.
+        let id = self.mod_new(is_main, &module_url_found, &code)?;
+        self.modules.register(id, &module_url_found);
+        id
+      }
     };
 
     // Now we must iterate over all imports of the module and load them.
     let imports = self.mod_get_imports(module_id);
     for import in imports {
-      let module_specifier =
-        self.loader.resolve(&import, referrer_name, false, false)?;
+      let module_specifier = self.loader.resolve(
+        &import,
+        referrer_name,
+        false,
+        load.is_dynamic_import(),
+      )?;
       let module_name = module_specifier.as_str();
 
-      let mut modules = self.modules.lock().unwrap();
-
-      modules.add_child(module_id, module_name);
-      if !modules.is_registered(module_name) {
+      self.modules.add_child(module_id, module_name);
+      if !self.modules.is_registered(module_name) {
         load.add_import(module_specifier, referrer_specifier.clone());
       }
     }
 
     // If we just finished loading the root module, store the root module id.
-    if load.state == DynImportState::LoadingRoot {
+    if load.state == LoadState::LoadingRoot {
       load.root_module_id = Some(module_id);
-      load.state = DynImportState::LoadingImports;
+      load.state = LoadState::LoadingImports;
     }
 
     if load.pending.is_empty() {
-      load.state = DynImportState::Done;
-    }
-
-    Ok(())
-  }
-
-  fn register_during_load2(
-    &mut self,
-    info: SourceCodeInfo,
-    load: &mut MainImportRecursiveLoad,
-  ) -> Result<(), ErrBox> {
-    let SourceCodeInfo {
-      code,
-      module_url_specified,
-      module_url_found,
-    } = info;
-
-    let is_main = load.state == MainImportState::LoadingRoot;
-    let referrer_name = &module_url_found.to_string();
-    let referrer_specifier =
-      ModuleSpecifier::resolve_url(referrer_name).unwrap();
-
-    // #A There are 3 cases to handle at this moment:
-    // 1. Source code resolved result have the same module name as requested
-    //    and is not yet registered
-    //     -> register
-    // 2. Source code resolved result have a different name as requested:
-    //   2a. The module with resolved module name has been registered
-    //     -> alias
-    //   2b. The module with resolved module name has not yet been registerd
-    //     -> register & alias
-    let maybe_id = {
-      let mut modules = self.modules.lock().unwrap();
-
-      // If necessary, register an alias.
-      if module_url_specified != module_url_found {
-        modules.alias(&module_url_specified, &module_url_found);
-      }
-
-      modules.get_id(&module_url_found)
-    };
-
-    let module_id = if maybe_id.is_none() {
-      // Module not registered yet, do it now.
-      let id = self.mod_new(is_main, &module_url_found, &code)?;
-      let mut modules = self.modules.lock().unwrap();
-      modules.register(id, &module_url_found);
-      id
-    } else {
-      // Module has already been registered.
-      debug!(
-        "Already-registered module fetched again: {}",
-        module_url_found
-      );
-      maybe_id.unwrap()
-    };
-
-    // Now we must iterate over all imports of the module and load them.
-    let imports = self.mod_get_imports(module_id);
-    for import in imports {
-      let module_specifier =
-        self.loader.resolve(&import, referrer_name, false, false)?;
-      let module_name = module_specifier.as_str();
-
-      let mut modules = self.modules.lock().unwrap();
-
-      modules.add_child(module_id, module_name);
-      if !modules.is_registered(module_name) {
-        load.add_import(module_specifier, referrer_specifier.clone());
-      }
-    }
-
-    // If we just finished loading the root module, store the root module id.
-    if load.state == MainImportState::LoadingRoot {
-      load.root_module_id = Some(module_id);
-      load.state = MainImportState::LoadingImports;
-    }
-
-    if load.pending.is_empty() {
-      load.state = MainImportState::Done;
+      load.state = LoadState::Done;
     }
 
     Ok(())
@@ -775,16 +642,15 @@ impl EsIsolate {
     code: Option<String>,
   ) -> Result<ModuleId, ErrBox> {
     let mut load =
-      MainImportRecursiveLoad::new(specifier, code, self.loader.clone())?;
+      RecursiveModuleLoad::main(specifier, code, self.loader.clone());
 
     while let Some(info_result) = load.next().await {
       let info = info_result?;
-      self.register_during_load2(info, &mut load)?;
+      self.register_during_load(info, &mut load)?;
     }
 
     let root_id = load.root_module_id.expect("Root module id empty");
-    self.mod_instantiate2(root_id);
-    self.core_isolate.check_last_exception().map(|_| root_id)
+    self.mod_instantiate(root_id).map(|_| root_id)
   }
 }
 
@@ -799,10 +665,6 @@ impl Future for EsIsolate {
     // If there are any pending dyn_import futures, do those first.
     if !inner.pending_dyn_imports.is_empty() {
       let poll_imports = inner.poll_dyn_imports(cx)?;
-      assert!(poll_imports.is_ready());
-    }
-    if !inner.new_pending_dyn_imports.is_empty() {
-      let poll_imports = inner.new_poll_dyn_imports(cx)?;
       assert!(poll_imports.is_ready());
     }
 
@@ -825,31 +687,10 @@ pub mod tests {
   use crate::isolate::js_check;
   use crate::isolate::tests::run_in_task;
   use crate::isolate::PinnedBuf;
+  use crate::modules::SourceCodeInfoFuture;
   use crate::ops::*;
   use std::io;
   use std::sync::atomic::{AtomicUsize, Ordering};
-
-  struct EsMockLoader {}
-
-  impl Loader for EsMockLoader {
-    fn resolve(
-      &self,
-      _specifier: &str,
-      _referrer: &str,
-      _is_main: bool,
-      _is_dyn_import: bool,
-    ) -> Result<ModuleSpecifier, ErrBox> {
-      todo!()
-    }
-
-    fn load(
-      &self,
-      _module_specifier: &ModuleSpecifier,
-      _maybe_referrer: Option<ModuleSpecifier>,
-    ) -> Pin<Box<SourceCodeInfoFuture>> {
-      todo!()
-    }
-  }
 
   #[test]
   fn test_mods() {
@@ -926,11 +767,7 @@ pub mod tests {
       )
       .unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
-    isolate
-      .modules
-      .lock()
-      .unwrap()
-      .register(mod_a, "file:///a.js");
+    isolate.modules.register(mod_a, "file:///a.js");
 
     let imports = isolate.mod_get_imports(mod_a);
     assert_eq!(imports, vec!["./b.js".to_string()]);
@@ -939,11 +776,7 @@ pub mod tests {
       .unwrap();
     let imports = isolate.mod_get_imports(mod_b);
     assert_eq!(imports.len(), 0);
-    isolate
-      .modules
-      .lock()
-      .unwrap()
-      .register(mod_b, "file:///b.js");
+    isolate.modules.register(mod_b, "file:///b.js");
 
     js_check(isolate.mod_instantiate(mod_b));
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
@@ -1186,8 +1019,7 @@ pub mod tests {
         let mod_id = isolate
           .mod_new(false, "file:///b.js", "export function b() { return 'b' }")
           .unwrap();
-        isolate.mod_instantiate2(mod_id);
-        let result = isolate.core_isolate.check_last_exception();
+        let result = isolate.mod_instantiate(mod_id);
         js_check(result);
       }
 

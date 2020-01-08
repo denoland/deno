@@ -8,7 +8,6 @@
 
 use crate::any_error::ErrBox;
 use crate::es_isolate::DynImportId;
-use crate::es_isolate::EsIsolate;
 use crate::es_isolate::ModuleId;
 use crate::es_isolate::SourceCodeInfo;
 use crate::module_specifier::ModuleSpecifier;
@@ -22,7 +21,6 @@ use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::Mutex;
 use std::task::Context;
 use std::task::Poll;
 
@@ -51,124 +49,73 @@ pub trait Loader: Send + Sync {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub enum MainImportState {
+pub enum LoadState {
+  ResolveMain(String, Option<String>),
+  ResolveImport(String, String),
   LoadingRoot,
   LoadingImports,
   Done,
 }
 
+#[derive(Debug, Eq, PartialEq)]
+enum Kind {
+  Main,
+  DynamicImport,
+}
+
 /// This future is used to implement parallel async module loading without
-/// complicating the Isolate API.
-/// TODO: RecursiveLoad desperately needs to be merged with Modules.
-pub struct MainImportRecursiveLoad {
+/// that is consumed by the isolate.
+pub struct RecursiveModuleLoad {
+  kind: Kind,
+  // Kind::Main
   pub root_module_id: Option<ModuleId>,
-  pub state: MainImportState,
+  // Kind::Main
+  pub dyn_import_id: Option<DynImportId>,
+  pub state: LoadState,
   pub loader: Arc<Box<dyn Loader + Unpin>>,
   pub pending: FuturesUnordered<Pin<Box<SourceCodeInfoFuture>>>,
   pub is_pending: HashSet<ModuleSpecifier>,
 }
 
-impl MainImportRecursiveLoad {
+impl RecursiveModuleLoad {
   /// Starts a new parallel load of the given URL of the main module.
-  pub fn new(
+  pub fn main(
     specifier: &str,
     code: Option<String>,
     loader: Arc<Box<dyn Loader + Unpin>>,
-  ) -> Result<Self, ErrBox> {
-    let module_specifier = loader.resolve(specifier, ".", true, false)?;
-    let pending = FuturesUnordered::new();
-
-    if code.is_some() {
-      let info = SourceCodeInfo {
-        code: code.unwrap().to_owned(),
-        module_url_specified: module_specifier.to_string(),
-        module_url_found: module_specifier.to_string(),
-      };
-      let load_fut = futures::future::ok(info).boxed();
-      pending.push(load_fut)
-    } else {
-      let load_fut = loader.load(&module_specifier, None).boxed();
-      pending.push(load_fut);
-    }
-
-    let load = Self {
-      root_module_id: None,
-      state: MainImportState::LoadingRoot,
-      loader,
-      pending,
-      is_pending: HashSet::new(),
-    };
-
-    Ok(load)
+  ) -> Self {
+    let kind = Kind::Main;
+    let state = LoadState::ResolveMain(specifier.to_owned(), code);
+    Self::new(kind, state, loader, None)
   }
 
-  pub fn add_import(
-    &mut self,
-    specifier: ModuleSpecifier,
-    referrer: ModuleSpecifier,
-  ) {
-    if !self.is_pending.contains(&specifier) {
-      let fut = self.loader.load(&specifier, Some(referrer));
-      self.pending.push(fut.boxed());
-      self.is_pending.insert(specifier);
-    }
-  }
-}
-
-impl Stream for MainImportRecursiveLoad {
-  type Item = Result<SourceCodeInfo, ErrBox>;
-
-  fn poll_next(
-    self: Pin<&mut Self>,
-    cx: &mut Context,
-  ) -> Poll<Option<Self::Item>> {
-    let inner = self.get_mut();
-    match inner.state {
-      MainImportState::LoadingRoot | MainImportState::LoadingImports => {
-        match inner.pending.try_poll_next_unpin(cx)? {
-          Poll::Ready(None) => unreachable!(),
-          Poll::Ready(Some(info)) => Poll::Ready(Some(Ok(info))),
-          Poll::Pending => Poll::Pending,
-        }
-      }
-      MainImportState::Done => Poll::Ready(None),
-    }
-  }
-}
-
-#[derive(Debug, Eq, PartialEq)]
-pub enum DynImportState {
-  ResolveImport(String, String), // specifier, referrer
-  LoadingRoot,
-  LoadingImports,
-  Done,
-}
-/// This future is used to implement parallel async module loading without
-/// complicating the Isolate API.
-/// TODO: RecursiveLoad desperately needs to be merged with Modules.
-pub struct DynImportRecursiveLoad {
-  pub dyn_import_id: DynImportId,
-  pub root_module_id: Option<ModuleId>,
-  pub state: DynImportState,
-  pub loader: Arc<Box<dyn Loader + Unpin>>,
-  pub pending: FuturesUnordered<Pin<Box<SourceCodeInfoFuture>>>,
-  is_pending: HashSet<ModuleSpecifier>,
-}
-
-impl DynImportRecursiveLoad {
-  pub fn new(
-    dyn_import_id: DynImportId,
+  pub fn dynamic_import(
+    id: DynImportId,
     specifier: &str,
     referrer: &str,
     loader: Arc<Box<dyn Loader + Unpin>>,
   ) -> Self {
+    let kind = Kind::DynamicImport;
+    let state =
+      LoadState::ResolveImport(specifier.to_owned(), referrer.to_owned());
+    Self::new(kind, state, loader, Some(id))
+  }
+
+  pub fn is_dynamic_import(&self) -> bool {
+    return self.kind != Kind::Main;
+  }
+
+  fn new(
+    kind: Kind,
+    state: LoadState,
+    loader: Arc<Box<dyn Loader + Unpin>>,
+    dyn_import_id: Option<DynImportId>,
+  ) -> Self {
     Self {
-      dyn_import_id,
       root_module_id: None,
-      state: DynImportState::ResolveImport(
-        specifier.to_owned(),
-        referrer.to_owned(),
-      ),
+      dyn_import_id,
+      kind,
+      state,
       loader,
       pending: FuturesUnordered::new(),
       is_pending: HashSet::new(),
@@ -177,29 +124,31 @@ impl DynImportRecursiveLoad {
 
   fn add_root(&mut self) -> Result<(), ErrBox> {
     let module_specifier = match self.state {
-      DynImportState::ResolveImport(ref specifier, ref referrer) => {
+      LoadState::ResolveMain(ref specifier, _) => {
+        self.loader.resolve(specifier, ".", true, false)?
+      }
+      LoadState::ResolveImport(ref specifier, ref referrer) => {
         self.loader.resolve(specifier, referrer, false, true)?
       }
+
       _ => unreachable!(),
     };
 
-    // We deliberately do not check if this module is already present in the
-    // module map. That's because the module map doesn't track whether a
-    // a module's dependencies have been loaded and whether it's been
-    // instantiated, so if we did find this module in the module map and used
-    // its id, this could lead to a crash.
-    //
-    // For the time being code and metadata for a module specifier is fetched
-    // multiple times, register() uses only the first result, and assigns the
-    // same module id to all instances.
-    //
-    // TODO: this is very ugly. The module map and recursive loader should be
-    // integrated into one thing.
-    self
-      .pending
-      .push(self.loader.load(&module_specifier, None).boxed());
-    self.state = DynImportState::LoadingRoot;
+    let load_fut = match &self.state {
+      LoadState::ResolveMain(_, Some(code)) => {
+        futures::future::ok(SourceCodeInfo {
+          code: code.to_owned(),
+          module_url_specified: module_specifier.to_string(),
+          module_url_found: module_specifier.to_string(),
+        })
+        .boxed()
+      }
+      _ => self.loader.load(&module_specifier, None).boxed(),
+    };
 
+    self.pending.push(load_fut);
+
+    self.state = LoadState::LoadingRoot;
     Ok(())
   }
 
@@ -216,7 +165,7 @@ impl DynImportRecursiveLoad {
   }
 }
 
-impl Stream for DynImportRecursiveLoad {
+impl Stream for RecursiveModuleLoad {
   type Item = Result<SourceCodeInfo, ErrBox>;
 
   fn poll_next(
@@ -225,20 +174,20 @@ impl Stream for DynImportRecursiveLoad {
   ) -> Poll<Option<Self::Item>> {
     let inner = self.get_mut();
     match inner.state {
-      DynImportState::ResolveImport(..) => {
+      LoadState::ResolveMain(..) | LoadState::ResolveImport(..) => {
         if let Err(e) = inner.add_root() {
           return Poll::Ready(Some(Err(e)));
         }
         inner.try_poll_next_unpin(cx)
       }
-      DynImportState::LoadingRoot | DynImportState::LoadingImports => {
+      LoadState::LoadingRoot | LoadState::LoadingImports => {
         match inner.pending.try_poll_next_unpin(cx)? {
           Poll::Ready(None) => unreachable!(),
           Poll::Ready(Some(info)) => Poll::Ready(Some(Ok(info))),
           Poll::Pending => Poll::Pending,
         }
       }
-      DynImportState::Done => Poll::Ready(None),
+      LoadState::Done => Poll::Ready(None),
     }
   }
 }
@@ -499,11 +448,13 @@ impl fmt::Display for Deps {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::es_isolate::EsIsolate;
   use crate::isolate::js_check;
   use futures::future::FutureExt;
   use std::error::Error;
   use std::fmt;
   use std::future::Future;
+  use std::sync::Mutex;
 
   struct MockLoader {
     pub loads: Arc<Mutex<Vec<String>>>,
@@ -678,7 +629,6 @@ mod tests {
     let loads = loader.loads.clone();
     let mut isolate =
       EsIsolate::new(Box::new(loader), StartupData::None, false);
-    let modules = isolate.modules.clone();
     let a_id_fut = isolate.load_module("/a.js", None);
     let a_id = futures::executor::block_on(a_id_fut).expect("Failed to load");
 
@@ -694,7 +644,7 @@ mod tests {
       ]
     );
 
-    let modules = modules.lock().unwrap();
+    let modules = &isolate.modules;
     assert_eq!(modules.get_id("file:///a.js"), Some(a_id));
     let b_id = modules.get_id("file:///b.js").unwrap();
     let c_id = modules.get_id("file:///c.js").unwrap();
@@ -739,7 +689,6 @@ mod tests {
     let loads = loader.loads.clone();
     let mut isolate =
       EsIsolate::new(Box::new(loader), StartupData::None, false);
-    let modules = isolate.modules.clone();
 
     let fut = async move {
       let result = isolate.load_module("/circular1.js", None).await;
@@ -757,7 +706,7 @@ mod tests {
         ]
       );
 
-      let modules = modules.lock().unwrap();
+      let modules = &isolate.modules;
 
       assert_eq!(modules.get_id("file:///circular1.js"), Some(circular1_id));
       let circular2_id = modules.get_id("file:///circular2.js").unwrap();
@@ -807,7 +756,6 @@ mod tests {
     let loads = loader.loads.clone();
     let mut isolate =
       EsIsolate::new(Box::new(loader), StartupData::None, false);
-    let modules = isolate.modules.clone();
 
     let fut = async move {
       let result = isolate.load_module("/redirect1.js", None).await;
@@ -825,7 +773,7 @@ mod tests {
         ]
       );
 
-      let modules = modules.lock().unwrap();
+      let modules = &isolate.modules;
 
       assert_eq!(modules.get_id("file:///redirect1.js"), Some(redirect1_id));
 
@@ -943,7 +891,6 @@ mod tests {
     let loads = loader.loads.clone();
     let mut isolate =
       EsIsolate::new(Box::new(loader), StartupData::None, false);
-    let modules = isolate.modules.clone();
     // In default resolution code should be empty.
     // Instead we explicitly pass in our own code.
     // The behavior should be very similar to /a.js.
@@ -961,7 +908,7 @@ mod tests {
       vec!["file:///b.js", "file:///c.js", "file:///d.js"]
     );
 
-    let modules = modules.lock().unwrap();
+    let modules = &isolate.modules;
 
     assert_eq!(modules.get_id("file:///main_with_code.js"), Some(main_id));
     let b_id = modules.get_id("file:///b.js").unwrap();
