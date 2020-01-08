@@ -197,7 +197,7 @@ installerTest(async function installLocalModule(): Promise<void> {
 ) ELSE (
   @SETLOCAL
   @SET PATHEXT=%PATHEXT:;.TS;=;%
-  "deno" "run" "--" "${localModule}" %*
+  "deno" "run" "${localModule}" "--" %*
 )
 `
       /* eslint-enable max-len */
