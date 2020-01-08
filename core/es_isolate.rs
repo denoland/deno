@@ -325,18 +325,14 @@ impl EsIsolate {
     specifier: &str,
     referrer_id: ModuleId,
   ) -> ModuleId {
-    eprintln!("specifier {} referrer {}", specifier, referrer_id);
+    debug!("specifier {} referrer {}", specifier, referrer_id);
     let referrer = self.modules.get_name(referrer_id).unwrap();
     // We should have already resolved and Ready this module, so
     // resolve() will not fail this time.
 
-    // IMPORTANT: this is very hacky - it works only because:
-    //  a) this callback is never called for main module
-    //  b) it is called for dynamic modules, but they were already permission checked
-    // Preferably this should be somehow cached....
     let specifier = self
-      .loader
-      .resolve(specifier, &referrer, false, false)
+      .modules
+      .get_cached_specifier(specifier, &referrer)
       .expect("Module should already be resolved");
     self.modules.get_id(specifier.as_str()).unwrap_or(0)
   }
@@ -529,6 +525,9 @@ impl EsIsolate {
         false,
         load.is_dynamic_import(),
       )?;
+      self
+        .modules
+        .cache_specifier(&import, referrer_name, &module_specifier);
       let module_name = module_specifier.as_str();
 
       if !self.modules.is_registered(module_name) {

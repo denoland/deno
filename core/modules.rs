@@ -270,6 +270,7 @@ impl ModuleNameMap {
 pub struct Modules {
   pub(crate) info: HashMap<ModuleId, ModuleInfo>,
   by_name: ModuleNameMap,
+  pub(crate) specifier_cache: HashMap<(String, String), ModuleSpecifier>,
 }
 
 impl Modules {
@@ -277,6 +278,7 @@ impl Modules {
     Self {
       info: HashMap::new(),
       by_name: ModuleNameMap::new(),
+      specifier_cache: HashMap::new(),
     }
   }
 
@@ -336,6 +338,28 @@ impl Modules {
       return None;
     }
     self.info.get(&id)
+  }
+
+  pub fn cache_specifier(
+    &mut self,
+    specifier: &str,
+    referrer: &str,
+    resolved_specifier: &ModuleSpecifier,
+  ) {
+    self.specifier_cache.insert(
+      (specifier.to_string(), referrer.to_string()),
+      resolved_specifier.to_owned(),
+    );
+  }
+
+  pub fn get_cached_specifier(
+    &self,
+    specifier: &str,
+    referrer: &str,
+  ) -> Option<&ModuleSpecifier> {
+    self
+      .specifier_cache
+      .get(&(specifier.to_string(), referrer.to_string()))
   }
 
   pub fn deps(&self, url: &str) -> Option<Deps> {
