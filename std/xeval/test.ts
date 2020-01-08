@@ -25,7 +25,7 @@ const modTsUrl = import.meta.url.replace(/test.ts$/, "mod.ts");
 
 test(async function xevalCliReplvar(): Promise<void> {
   const p = run({
-    args: [execPath(), modTsUrl, "--replvar=abc", "console.log(abc)"],
+    args: [execPath(), modTsUrl, "--", "--replvar=abc", "console.log(abc)"],
     stdin: "piped",
     stdout: "piped",
     stderr: "null"
@@ -38,7 +38,7 @@ test(async function xevalCliReplvar(): Promise<void> {
 
 test(async function xevalCliSyntaxError(): Promise<void> {
   const p = run({
-    args: [execPath(), modTsUrl, "("],
+    args: [execPath(), modTsUrl, "--", "("],
     stdin: "null",
     stdout: "piped",
     stderr: "piped"

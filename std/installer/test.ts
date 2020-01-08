@@ -20,6 +20,7 @@ async function startFileServer(): Promise<void> {
       "--allow-read",
       "--allow-net",
       "http/file_server.ts",
+      "--",
       ".",
       "--cors"
     ],
