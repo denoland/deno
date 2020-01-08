@@ -1,41 +1,47 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { Console } from "./console.ts";
 import * as dispatch from "./dispatch.ts";
 import { sendSync } from "./dispatch_json.ts";
-import { TextEncoder } from "./text_encoding.ts";
-import { assert, commonPath, humanFileSize } from "./util.ts";
-import { writeFileSync } from "./write_file.ts";
-
-declare global {
-  const console: Console;
-}
+import {
+  assert,
+  commonPath,
+  normalizeString,
+  CHAR_FORWARD_SLASH
+} from "./util.ts";
 
 const BUNDLE_LOADER = "bundle_loader.js";
 
-const encoder = new TextEncoder();
-
+/** A loader of bundled modules that we will inline into any bundle outputs. */
 let bundleLoader: string;
 
+/** Local state of what the root exports are of a root module. */
 let rootExports: string[] | undefined;
 
-/** Given a fileName and the data, emit the file to the file system. */
-export function emitBundle(
-  rootNames: string[],
-  fileName: string | undefined,
+/** Take a URL and normalize it, resolving relative path parts. */
+function normalizeUrl(rootName: string): string {
+  const match = /^(\S+:\/{2,3})(.+)$/.exec(rootName);
+  if (match) {
+    const [, protocol, path] = match;
+    return `${protocol}${normalizeString(
+      path,
+      false,
+      "/",
+      code => code === CHAR_FORWARD_SLASH
+    )}`;
+  } else {
+    return rootName;
+  }
+}
+
+/** Given a root name, contents, and source files, enrich the data of the
+ * bundle with a loader and re-export the exports of the root name. */
+export function buildBundle(
+  rootName: string,
   data: string,
   sourceFiles: readonly ts.SourceFile[]
-): void {
-  // if the fileName is set to an internal value, just noop
-  if (fileName && fileName.startsWith("$deno$")) {
-    return;
-  }
-  // This should never happen at the moment, but this code can't currently
-  // support it
-  assert(
-    rootNames.length === 1,
-    "Only single root modules supported for bundling."
-  );
+): string {
+  // we can only do this once we are bootstrapped and easiest way to do it is
+  // inline here
   if (!bundleLoader) {
     bundleLoader = sendSync(dispatch.OP_FETCH_ASSET, { name: BUNDLE_LOADER });
   }
@@ -45,7 +51,9 @@ export function emitBundle(
   // publicly, so we have to try to replicate
   const sources = sourceFiles.map(sf => sf.fileName);
   const sharedPath = commonPath(sources);
-  const rootName = rootNames[0].replace(sharedPath, "").replace(/\.\w+$/i, "");
+  rootName = normalizeUrl(rootName)
+    .replace(sharedPath, "")
+    .replace(/\.\w+$/i, "");
   let instantiate: string;
   if (rootExports && rootExports.length) {
     instantiate = `const __rootExports = instantiate("${rootName}");\n`;
@@ -59,28 +67,16 @@ export function emitBundle(
   } else {
     instantiate = `instantiate("${rootName}");\n`;
   }
-  const bundle = `${bundleLoader}\n${data}\n${instantiate}`;
-  if (fileName) {
-    const encodedData = encoder.encode(bundle);
-    console.warn(`Emitting bundle to "${fileName}"`);
-    writeFileSync(fileName, encodedData);
-    console.warn(`${humanFileSize(encodedData.length)} emitted.`);
-  } else {
-    console.log(bundle);
-  }
+  return `${bundleLoader}\n${data}\n${instantiate}`;
 }
 
 /** Set the rootExports which will by the `emitBundle()` */
-export function setRootExports(
-  program: ts.Program,
-  rootModules: string[]
-): void {
+export function setRootExports(program: ts.Program, rootModule: string): void {
   // get a reference to the type checker, this will let us find symbols from
   // the AST.
   const checker = program.getTypeChecker();
-  assert(rootModules.length === 1);
   // get a reference to the main source file for the bundle
-  const mainSourceFile = program.getSourceFile(rootModules[0]);
+  const mainSourceFile = program.getSourceFile(rootModule);
   assert(mainSourceFile);
   // retrieve the internal TypeScript symbol for this AST node
   const mainSymbol = checker.getSymbolAtLocation(mainSourceFile);
