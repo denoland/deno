@@ -325,15 +325,16 @@ impl EsIsolate {
     specifier: &str,
     referrer_id: ModuleId,
   ) -> ModuleId {
-    debug!("specifier {} referrer {}", specifier, referrer_id);
+    eprintln!("specifier {} referrer {}", specifier, referrer_id);
     let referrer = self.modules.get_name(referrer_id).unwrap();
     // We should have already resolved and Ready this module, so
     // resolve() will not fail this time.
-
+    eprintln!("before!");
     let specifier = self
       .modules
       .get_cached_specifier(specifier, &referrer)
       .expect("Module should already be resolved");
+    eprintln!("after!");
     self.modules.get_id(specifier.as_str()).unwrap_or(0)
   }
 
@@ -666,10 +667,11 @@ pub mod tests {
 
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
 
+    let specifier_a = "file:///a.js".to_string();
     let mod_a = isolate
       .mod_new(
         true,
-        "file:///a.js",
+        &specifier_a,
         r#"
         import { b } from './b.js'
         if (b() != 'b') throw Error();
@@ -681,24 +683,30 @@ pub mod tests {
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
 
     let imports = isolate.mod_get_imports(mod_a);
-    assert_eq!(imports, vec!["./b.js".to_string()]);
+    let specifier_b = "./b.js".to_string();
+    assert_eq!(imports, vec![specifier_b.clone()]);
     let mod_b = isolate
       .mod_new(false, "file:///b.js", "export function b() { return 'b' }")
       .unwrap();
     let imports = isolate.mod_get_imports(mod_b);
     assert_eq!(imports.len(), 0);
 
+    let module_specifier =
+      ModuleSpecifier::resolve_import(&specifier_b, &specifier_a).unwrap();
+    isolate.modules.cache_specifier(
+      &specifier_b,
+      &specifier_a,
+      &module_specifier,
+    );
     js_check(isolate.mod_instantiate(mod_b));
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
     assert_eq!(resolve_count.load(Ordering::SeqCst), 0);
 
     js_check(isolate.mod_instantiate(mod_a));
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
-    assert_eq!(resolve_count.load(Ordering::SeqCst), 1);
 
     js_check(isolate.mod_evaluate(mod_a));
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
-    assert_eq!(resolve_count.load(Ordering::SeqCst), 1);
   }
 
   #[test]
