@@ -161,7 +161,7 @@ async function generateExecutable(
   if (isWindows) {
     const template = `% ${templateHeader} %
 @IF EXIST "%~dp0\deno.exe" (
-  "%~dp0\deno.exe" ${commands.slice(1).join(" ")} "--" %*
+  "%~dp0\deno.exe" ${commands.slice(1).join(" ")} %*
 ) ELSE (
   @SETLOCAL
   @SET PATHEXT=%PATHEXT:;.TS;=;%
@@ -183,10 +183,10 @@ case \`uname\` in
 esac
 
 if [ -x "$basedir/deno" ]; then
-  "$basedir/deno" ${commands.slice(1).join(" ")} "--" "$@"
+  "$basedir/deno" ${commands.slice(1).join(" ")} "$@"
   ret=$?
 else
-  ${commands.join(" ")} "--" "$@"
+  ${commands.join(" ")} "$@"
   ret=$?
 fi
 exit $ret
