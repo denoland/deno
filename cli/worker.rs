@@ -6,7 +6,6 @@ use deno_core;
 use deno_core::Buf;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
-use deno_core::RecursiveLoad;
 use deno_core::StartupData;
 use futures::channel::mpsc;
 use futures::future::FutureExt;
@@ -20,6 +19,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::task::Context;
 use std::task::Poll;
+use tokio::sync::Mutex as AsyncMutex;
 use url::Url;
 
 /// Wraps mpsc channels so they can be referenced
@@ -35,7 +35,7 @@ pub struct WorkerChannels {
 #[derive(Clone)]
 pub struct Worker {
   pub name: String,
-  isolate: Arc<Mutex<Box<deno_core::EsIsolate>>>,
+  pub isolate: Arc<AsyncMutex<Box<deno_core::EsIsolate>>>,
   pub state: ThreadSafeState,
   external_channels: Arc<Mutex<WorkerChannels>>,
 }
@@ -47,10 +47,13 @@ impl Worker {
     state: ThreadSafeState,
     external_channels: WorkerChannels,
   ) -> Self {
-    let isolate =
-      Arc::new(Mutex::new(deno_core::EsIsolate::new(startup_data, false)));
+    let isolate = Arc::new(AsyncMutex::new(deno_core::EsIsolate::new(
+      Box::new(state.clone()),
+      startup_data,
+      false,
+    )));
     {
-      let mut i = isolate.lock().unwrap();
+      let mut i = isolate.try_lock().unwrap();
       let op_registry = i.op_registry.clone();
 
       ops::compiler::init(&mut i, &state);
@@ -71,18 +74,6 @@ impl Worker {
       ops::timers::init(&mut i, &state);
       ops::workers::init(&mut i, &state);
 
-      let state_ = state.clone();
-      i.set_dyn_import(move |id, specifier, referrer| {
-        let load_stream = RecursiveLoad::dynamic_import(
-          id,
-          specifier,
-          referrer,
-          state_.clone(),
-          state_.modules.clone(),
-        );
-        Box::new(load_stream)
-      });
-
       let global_state_ = state.global_state.clone();
       i.set_js_error_create(move |v8_exception| {
         JSError::from_v8_exception(v8_exception, &global_state_.ts_compiler)
@@ -101,7 +92,7 @@ impl Worker {
     &mut self,
     handler: Box<dyn FnMut(ErrBox) -> Result<(), ErrBox>>,
   ) {
-    let mut i = self.isolate.lock().unwrap();
+    let mut i = self.isolate.try_lock().unwrap();
     i.set_error_handler(handler);
   }
 
@@ -119,39 +110,31 @@ impl Worker {
     js_filename: &str,
     js_source: &str,
   ) -> Result<(), ErrBox> {
-    let mut isolate = self.isolate.lock().unwrap();
+    let mut isolate = self.isolate.try_lock().unwrap();
     isolate.execute(js_filename, js_source)
   }
 
   /// Executes the provided JavaScript module.
-  pub fn execute_mod_async(
+  ///
+  /// Takes ownership of the isolate behind mutex.
+  pub async fn execute_mod_async(
     &mut self,
     module_specifier: &ModuleSpecifier,
     maybe_code: Option<String>,
     is_prefetch: bool,
-  ) -> impl Future<Output = Result<(), ErrBox>> {
+  ) -> Result<(), ErrBox> {
+    let specifier = module_specifier.to_string();
     let worker = self.clone();
-    let loader = self.state.clone();
-    let isolate = self.isolate.clone();
-    let modules = self.state.modules.clone();
-    let recursive_load = RecursiveLoad::main(
-      &module_specifier.to_string(),
-      maybe_code,
-      loader,
-      modules,
-    );
 
-    async move {
-      let id = recursive_load.get_future(isolate).await?;
-      worker.state.global_state.progress.done();
+    let mut isolate = self.isolate.lock().await;
+    let id = isolate.load_module(&specifier, maybe_code).await?;
+    worker.state.global_state.progress.done();
 
-      if !is_prefetch {
-        let mut isolate = worker.isolate.lock().unwrap();
-        return isolate.mod_evaluate(id);
-      }
-
-      Ok(())
+    if !is_prefetch {
+      return isolate.mod_evaluate(id);
     }
+
+    Ok(())
   }
 
   /// Post message to worker as a host.
@@ -183,7 +166,7 @@ impl Future for Worker {
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
-    let mut isolate = inner.isolate.lock().unwrap();
+    let mut isolate = inner.isolate.try_lock().unwrap();
     isolate.poll_unpin(cx)
   }
 }
