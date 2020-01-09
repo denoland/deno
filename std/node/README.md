@@ -47,7 +47,7 @@ deno standard library as it's a compatiblity module.
 
 ### Deprecated
 
-These modules are deprecated in NodeJS v13 and will not be polyfilled:
+These builtins are deprecated in NodeJS v13 and will probably not be polyfilled:
 
 - constants
 - domain
@@ -56,7 +56,7 @@ These modules are deprecated in NodeJS v13 and will not be polyfilled:
 
 ### Experimental
 
-These modules are experimental in NodeJS v13 and will not be polyfilled until
+These builtins are experimental in NodeJS v13 and will not be polyfilled until
 they are stable:
 
 - async_hooks
