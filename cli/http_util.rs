@@ -104,12 +104,13 @@ pub fn fetch_string_once(
   let client: &Client = get_client();
 
   let fut = async move {
-    let mut request = client.get(url.clone());
+    let mut request = client
+      .get(url.clone())
+      .header(ACCEPT_ENCODING, HeaderValue::from_static("gzip, br"));
+
     if let Some(etag) = cached_etag {
       let if_none_match_val = HeaderValue::from_str(&etag).unwrap();
-      request = request
-        .header(IF_NONE_MATCH, if_none_match_val)
-        .header(ACCEPT_ENCODING, HeaderValue::from_static("gzip, br"));
+      request = request.header(IF_NONE_MATCH, if_none_match_val);
     }
     let response = request.send().await?;
 
