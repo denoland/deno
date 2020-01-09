@@ -35,12 +35,6 @@ const CHAR_COLON = ":".charCodeAt(0);
 
 const isWindows = path.isWindows;
 
-const nativeModulePolyfill = new Map<string, Module>();
-nativeModulePolyfill.set("fs", createNativeModule("fs", nodeFS));
-nativeModulePolyfill.set("util", createNativeModule("util", nodeUtil));
-nativeModulePolyfill.set("path", createNativeModule("path", nodePath));
-nativeModulePolyfill.set("timers", createNativeModule("timers", nodeTimers));
-
 const relativeResolveCache = Object.create(null);
 
 let requireDepth = 0;
@@ -576,6 +570,11 @@ class Module {
 }
 
 // Polyfills.
+const nativeModulePolyfill = new Map<string, Module>();
+nativeModulePolyfill.set("fs", createNativeModule("fs", nodeFS));
+nativeModulePolyfill.set("util", createNativeModule("util", nodeUtil));
+nativeModulePolyfill.set("path", createNativeModule("path", nodePath));
+nativeModulePolyfill.set("timers", createNativeModule("timers", nodeTimers));
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function createNativeModule(id: string, exports: any): Module {
   const mod = new Module(id);
