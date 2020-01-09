@@ -11,7 +11,7 @@ if (Deno.build.os === "mac") {
   filenameSuffix = ".dylib";
 }
 
-const filename = `../target/${Deno.args[1]}/${filenamePrefix}${filenameBase}${filenameSuffix}`;
+const filename = `../target/${Deno.args[0]}/${filenamePrefix}${filenameBase}${filenameSuffix}`;
 
 const plugin = Deno.openPlugin(filename);
 
