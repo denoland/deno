@@ -9,51 +9,62 @@ deno standard library as it's a compatiblity module.
 ## Supported Builtins
 
 - [ ] assert
-- [ ] ~~async_hooks~~ _experimental_
 - [ ] buffer
 - [ ] child_process
 - [ ] cluster
 - [ ] console
-- [ ] ~~constants~~ _deprecated_
-- [ ] crypto _deno needs this first_
+- [ ] crypto
 - [ ] dgram
 - [ ] dns
-- [ ] ~~domain~~ _deprecated_
 - [ ] events
-- [ ] ~~freelist~~ _deprecated_
-- [ ] fs _partly_
+- [x] fs _partly_
 - [ ] http
 - [ ] http2
 - [ ] https
-- [ ] ~~inspector~~ _experimental_
 - [x] module
 - [ ] net
 - [ ] os
 - [x] path
 - [ ] perf_hooks
-- [ ] ~~policies~~ _experimental_
-- [ ] process
-- [ ] ~~punycode~~ _deprecated_
+- [x] process _partly_
 - [ ] querystring
 - [ ] readline
 - [ ] repl
-- [ ] ~~report~~ _experimental_
 - [ ] stream
 - [ ] string_decoder
 - [ ] sys
 - [x] timers
 - [ ] tls
-- [ ] ~~trace_events~~ _experimental_
 - [ ] tty
 - [ ] url
-- [ ] util _partly_
+- [x] util _partly_
 - [ ] ~~v8~~ _can't implement_
 - [ ] vm
-- [ ] ~~wasi~~ _experimental_
 - [ ] worker_threads
 - [ ] zlib
 
-* [ ] node globals
+* [x] node globals _partly_
+
+### Deprecated
+
+These modules are deprecated in NodeJS v13 and will not be polyfilled:
+
+- constants
+- domain
+- freelist
+- punycode
+
+### Experimental
+
+These modules are experimental in NodeJS v13 and will not be polyfilled until
+they are stable:
+
+- async_hooks
+- inspector
+- policies
+- report
+- trace_events
+- wasi
 
 ## CommonJS Module Loading
 
