@@ -25,10 +25,8 @@ function denoMain(preserveDenoNamespace = true, name?: string): void {
     assert(s.mainModule.length > 0);
     setLocation(s.mainModule);
   }
-
   log("cwd", s.cwd);
-
-  for (let i = 1; i < s.argv.length; i++) {
+  for (let i = 0; i < s.argv.length; i++) {
     args.push(s.argv[i]);
   }
   log("args", args);

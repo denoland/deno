@@ -1,8 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { serve, ServerRequest } from "../std/http/server.ts";
 
-const addr = Deno.args[1] || "127.0.0.1:4500";
-const originAddr = Deno.args[2] || "127.0.0.1:4501";
+const addr = Deno.args[0] || "127.0.0.1:4500";
+const originAddr = Deno.args[1] || "127.0.0.1:4501";
 const server = serve(addr);
 
 async function proxyRequest(req: ServerRequest): Promise<void> {
