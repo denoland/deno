@@ -1307,8 +1307,8 @@ declare namespace Deno {
 
   interface Addr {
     transport: Transport;
-    /** UNSTABLE: Address is unstable because inconsistent with DialOptions. */
-    address: string;
+    hostname: string;
+    port: number;
   }
 
   /** UNSTABLE: Maybe remove ShutdownMode entirely. */
