@@ -235,7 +235,6 @@ pub struct Isolate {
   pub(crate) shared_buf: DenoBuf,
   pub(crate) shared_ab: v8::Global<v8::SharedArrayBuffer>,
   pub(crate) js_recv_cb: v8::Global<v8::Function>,
-  pub(crate) current_send_cb_info: *const v8::FunctionCallbackInfo,
   pub(crate) pending_promise_map: HashMap<i32, v8::Global<v8::Value>>,
 
   // TODO: These two fields were not yet ported from libdeno
@@ -399,7 +398,6 @@ impl Isolate {
       shared_buf: shared.as_deno_buf(),
       shared_ab: v8::Global::<v8::SharedArrayBuffer>::new(),
       js_recv_cb: v8::Global::<v8::Function>::new(),
-      current_send_cb_info: std::ptr::null(),
       snapshot_creator: maybe_snapshot_creator,
       snapshot: load_snapshot,
       has_snapshotted: false,
@@ -549,12 +547,12 @@ impl Isolate {
     }
   }
 
-  pub fn pre_dispatch(
+  pub fn dispatch_op(
     &mut self,
     op_id: OpId,
     control_buf: DenoBuf,
     zero_copy_buf: Option<PinnedBuf>,
-  ) {
+  ) -> Option<(OpId, Box<[u8]>)> {
     let maybe_op =
       self
         .op_registry
@@ -563,7 +561,8 @@ impl Isolate {
     let op = match maybe_op {
       Some(op) => op,
       None => {
-        return self.throw_exception(&format!("Unknown op id: {}", op_id))
+        self.throw_exception(&format!("Unknown op id: {}", op_id));
+        return None;
       }
     };
 
@@ -573,16 +572,13 @@ impl Isolate {
         // For sync messages, we always return the response via Deno.core.send's
         // return value. Sync messages ignore the op_id.
         let op_id = 0;
-        self
-          .respond(Some((op_id, &buf)))
-          // Because this is a sync op, deno_respond() does not actually call
-          // into JavaScript. We should not get an error here.
-          .expect("unexpected error");
+        Some((op_id, buf))
       }
       Op::Async(fut) => {
         let fut2 = fut.map_ok(move |buf| (op_id, buf));
         self.pending_ops.push(fut2.boxed());
         self.have_unpolled_ops = true;
+        None
       }
     }
   }
@@ -677,28 +673,8 @@ impl Isolate {
     isolate.throw_exception(msg.into());
   }
 
-  fn respond2(&mut self, op_id: OpId, buf: DenoBuf) {
-    if !self.current_send_cb_info.is_null() {
-      // Synchronous response.
-      // Note op_id is not passed back in the case of synchronous response.
-      let isolate = self.v8_isolate.as_ref().unwrap();
-      let mut locker = v8::Locker::new(isolate);
-      assert!(!self.global_context.is_empty());
-      let mut hs = v8::HandleScope::new(&mut locker);
-      let scope = hs.enter();
-
-      if !buf.data_ptr.is_null() && buf.data_len > 0 {
-        let ab = unsafe { bindings::buf_to_uint8array(scope, buf) };
-        let info: &v8::FunctionCallbackInfo =
-          unsafe { &*self.current_send_cb_info };
-        let rv = &mut info.get_return_value();
-        rv.set(ab.into())
-      }
-
-      self.current_send_cb_info = std::ptr::null();
-      return;
-    }
-
+  fn async_op_response2(&mut self, op_id: OpId, buf: DenoBuf) {
+    eprintln!("async op response called!");
     let isolate = self.v8_isolate.as_ref().unwrap();
     // println!("deno_execute -> Isolate ptr {:?}", isolate);
     let mut locker = v8::Locker::new(isolate);
@@ -743,7 +719,7 @@ impl Isolate {
     context.exit();
   }
 
-  fn respond(
+  fn async_op_response(
     &mut self,
     maybe_buf: Option<(OpId, &[u8])>,
   ) -> Result<(), ErrBox> {
@@ -751,7 +727,7 @@ impl Isolate {
       None => (0, DenoBuf::empty()),
       Some((op_id, r)) => (op_id, DenoBuf::from(r)),
     };
-    self.respond2(op_id, buf);
+    self.async_op_response2(op_id, buf);
     self.check_last_exception()
   }
 
@@ -816,14 +792,14 @@ impl Future for Isolate {
     }
 
     if inner.shared.size() > 0 {
-      inner.respond(None)?;
+      inner.async_op_response(None)?;
       // The other side should have shifted off all the messages.
       assert_eq!(inner.shared.size(), 0);
     }
 
     if overflow_response.is_some() {
       let (op_id, buf) = overflow_response.take().unwrap();
-      inner.respond(Some((op_id, &buf)))?;
+      inner.async_op_response(Some((op_id, &buf)))?;
     }
 
     inner.check_promise_errors();
@@ -1143,6 +1119,7 @@ pub mod tests {
         // Large message that will overflow the shared space.
         let control = new Uint8Array([42]);
         let response = Deno.core.dispatch(1, control);
+        Deno.core.print(`${response[0]}, ${response.length}, ${asyncRecv}`, true);
         assert(response instanceof Uint8Array);
         assert(response.length == 100 * 1024 * 1024);
         assert(response[0] == 99);

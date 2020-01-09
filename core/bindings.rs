@@ -423,11 +423,16 @@ pub extern "C" fn recv(info: &v8::FunctionCallbackInfo) {
 }
 
 pub extern "C" fn send(info: &v8::FunctionCallbackInfo) {
+  let rv = &mut info.get_return_value();
+
   #[allow(mutable_transmutes)]
   #[allow(clippy::transmute_ptr_to_ptr)]
   let info: &mut v8::FunctionCallbackInfo =
     unsafe { std::mem::transmute(info) };
 
+  let arg0 = info.get_argument(0);
+  let arg1 = info.get_argument(1);
+  let arg2 = info.get_argument(2);
   let mut hs = v8::HandleScope::new(info);
   let scope = hs.enter();
   let isolate = scope.isolate();
@@ -435,36 +440,38 @@ pub extern "C" fn send(info: &v8::FunctionCallbackInfo) {
     unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
   assert!(!deno_isolate.global_context.is_empty());
 
-  let op_id = v8::Local::<v8::Uint32>::try_from(info.get_argument(0))
-    .unwrap()
-    .value() as u32;
+  let op_id = v8::Local::<v8::Uint32>::try_from(arg0).unwrap().value() as u32;
 
-  let control =
-    v8::Local::<v8::ArrayBufferView>::try_from(info.get_argument(1))
-      .map(|view| {
-        let mut backing_store = view.buffer().unwrap().get_backing_store();
-        let backing_store_ptr = backing_store.data() as *mut _ as *mut u8;
-        let view_ptr = unsafe { backing_store_ptr.add(view.byte_offset()) };
-        let view_len = view.byte_length();
-        unsafe { DenoBuf::from_raw_parts(view_ptr, view_len) }
-      })
-      .unwrap_or_else(|_| DenoBuf::empty());
+  let control = v8::Local::<v8::ArrayBufferView>::try_from(arg1)
+    .map(|view| {
+      let mut backing_store = view.buffer().unwrap().get_backing_store();
+      let backing_store_ptr = backing_store.data() as *mut _ as *mut u8;
+      let view_ptr = unsafe { backing_store_ptr.add(view.byte_offset()) };
+      let view_len = view.byte_length();
+      unsafe { DenoBuf::from_raw_parts(view_ptr, view_len) }
+    })
+    .unwrap_or_else(|_| DenoBuf::empty());
 
   let zero_copy: Option<PinnedBuf> =
-    v8::Local::<v8::ArrayBufferView>::try_from(info.get_argument(2))
+    v8::Local::<v8::ArrayBufferView>::try_from(arg2)
       .map(PinnedBuf::new)
       .ok();
 
-  assert!(deno_isolate.current_send_cb_info.is_null());
-  deno_isolate.current_send_cb_info = info;
+  // If response is empty then it's either async op or exception was thrown
+  let maybe_response = deno_isolate.dispatch_op(op_id, control, zero_copy);
 
-  deno_isolate.pre_dispatch(op_id, control, zero_copy);
+  if let Some(response) = maybe_response {
+    // Synchronous response.
+    // Note op_id is not passed back in the case of synchronous response.
+    let (_op_id, buf) = response;
 
-  if deno_isolate.current_send_cb_info.is_null() {
-    // This indicates that respond() was called already.
-  } else {
-    // Asynchronous.
-    deno_isolate.current_send_cb_info = std::ptr::null();
+    if !buf.is_empty() {
+      let buf: &[u8] = &buf;
+      // TODO(bartlomieju): get rid of DenoBuf
+      let deno_buf = DenoBuf::from(buf);
+      let ab = unsafe { buf_to_uint8array(scope, deno_buf) };
+      rv.set(ab.into())
+    }
   }
 }
 
