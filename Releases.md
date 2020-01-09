@@ -6,6 +6,24 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.29.0 / 2020.01.09
+
+- BREAKING CHANGE Remove xeval subcommand (#3630)
+- BREAKING CHANGE script arguments should come after '--' (#3621)
+- BREAKING CHANGE Deno.mkdir should conform to style guide BREAKING CHANGE
+  (#3617)
+- BREAKING CHANGE Deno.args only includes script args (#3628)
+- BREAKING CHANGE Rename crates: 'deno' to 'deno_core' and 'deno_cli' to 'deno'
+  (#3600)
+- feat: Add Deno.create (#3629)
+- feat: Add compiler API (#3442)
+- fix(ws): Handshake with correctly empty search string (#3587)
+- fix(yaml): Export parseAll (#3592)
+- perf: TextEncoder.encode improvement (#3596, #3589)
+- refactor: Replace libdeno with rusty_v8 (#3556, #3601, #3602, #3605, #3611,
+  #3613, #3615)
+- upgrade: V8 8.1.108 (#3623)
+
 ### v0.28.1 / 2020.01.03
 
 - feat(http): make req.body a Reader (#3575)
