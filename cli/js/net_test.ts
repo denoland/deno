@@ -5,9 +5,8 @@ testPerm({ net: true }, function netListenClose(): void {
   const listener = Deno.listen({ hostname: "127.0.0.1", port: 4500 });
   const addr = listener.addr();
   assertEquals(addr.transport, "tcp");
-  // TODO(ry) Replace 'address' with 'hostname' and 'port', similar to
-  // DialOptions and ListenOptions.
-  assertEquals(addr.address, "127.0.0.1:4500");
+  assertEquals(addr.hostname, "127.0.0.1");
+  assertEquals(addr.port, 4500);
   listener.close();
 });
 
