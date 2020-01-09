@@ -53,7 +53,7 @@ deno standard library as it's a compatiblity module.
 - [ ] worker_threads
 - [ ] zlib
 
-- [ ] node globals
+* [ ] node globals
 
 ## CommonJS Module Loading
 
