@@ -449,10 +449,7 @@ impl Isolate {
       // maybe make a new exception object
       let exception = if exception.is_null_or_undefined() {
         let exception_str = v8::String::new(s, "execution terminated").unwrap();
-        isolate.enter();
-        let e = v8::error(s, exception_str);
-        isolate.exit();
-        e
+        v8::error(s, exception_str)
       } else {
         exception
       };
