@@ -3,4 +3,4 @@ function echo(args: string[]) {
   Deno.stdout.write(new TextEncoder().encode(msg));
 }
 
-echo(Deno.args.slice(1));
+echo(Deno.args);

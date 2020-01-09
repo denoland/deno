@@ -6,4 +6,4 @@ function args(args: string[]) {
   Deno.stdout.write(new TextEncoder().encode(JSON.stringify(map)));
 }
 
-args(Deno.args.slice(1));
+args(Deno.args);

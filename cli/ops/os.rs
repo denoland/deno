@@ -41,11 +41,15 @@ fn op_start(
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let gs = &state.global_state;
-
+  let script_args = if gs.flags.argv.len() >= 2 {
+    gs.flags.argv.clone().split_off(2)
+  } else {
+    vec![]
+  };
   Ok(JsonOp::Sync(json!({
     "cwd": deno_fs::normalize_path(&env::current_dir().unwrap()),
     "pid": std::process::id(),
-    "argv": gs.flags.argv,
+    "argv": script_args,
     "mainModule": gs.main_module.as_ref().map(|x| x.to_string()),
     "debugFlag": gs.flags.log_level.map_or(false, |l| l == log::Level::Debug),
     "versionFlag": gs.flags.version,

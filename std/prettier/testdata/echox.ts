@@ -5,4 +5,4 @@ async function echox(args: string[]) {
   Deno.exit(0);
 }
 
-echox(Deno.args.slice(1));
+echox(Deno.args);

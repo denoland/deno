@@ -193,7 +193,7 @@ In this program each command-line argument is assumed to be a filename, the file
 is opened, and printed to stdout.
 
 ```ts
-for (let i = 1; i < Deno.args.length; i++) {
+for (let i = 0; i < Deno.args.length; i++) {
   let filename = Deno.args[i];
   let file = await Deno.open(filename);
   await Deno.copy(Deno.stdout, file);
@@ -386,7 +386,7 @@ By default when you use `Deno.run()` subprocess inherits `stdin`, `stdout` and
 you can use `"piped"` option.
 
 ```ts
-const fileNames = Deno.args.slice(1);
+const fileNames = Deno.args;
 
 const p = Deno.run({
   args: [

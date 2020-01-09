@@ -1,6 +1,6 @@
 // Used for benchmarking Deno's tcp proxy perfromance. See tools/http_benchmark.py
-const addr = Deno.args[1] || "127.0.0.1:4500";
-const originAddr = Deno.args[2] || "127.0.0.1:4501";
+const addr = Deno.args[0] || "127.0.0.1:4500";
+const originAddr = Deno.args[1] || "127.0.0.1:4501";
 
 const [hostname, port] = addr.split(":");
 const [originHostname, originPort] = originAddr.split(":");
