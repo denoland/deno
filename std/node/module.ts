@@ -38,7 +38,7 @@ const isWindows = path.isWindows;
 const nativeModulePolyfill = new Map<string, Module>();
 nativeModulePolyfill.set("fs", createNativeModule("fs", nodeFS));
 nativeModulePolyfill.set("util", createNativeModule("util", nodeUtil));
-nativeModulePolyfill.set("path", createNativeModule("path", nodeUtil));
+nativeModulePolyfill.set("path", createNativeModule("path", nodePath));
 nativeModulePolyfill.set("timers", createNativeModule("timers", nodeTimers));
 
 const relativeResolveCache = Object.create(null);
