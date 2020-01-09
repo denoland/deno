@@ -8,54 +8,52 @@ deno standard library as it's a compatiblity module.
 
 ## Supported Builtins
 
-[ ] assert
-[ ] ~~async_hooks~~ _experimental_
-[ ] buffer
-[ ] child_process
-[ ] cluster
-[ ] console
-[ ] ~~constants~~ _deprecated_
-[ ] crypto _deno needs this first_
-[ ] dgram
-[ ] dns
-[ ] ~~domain~~ _deprecated_
-[ ] events
-[ ] ~~freelist~~ _deprecated_
-[ ] fs _partly_
-[ ] http
-[ ] http2
-[ ] https
-[ ] ~~inspector~~ _experimental_
-[x] module
-[ ] net
-[ ] os
-[x] path
-[ ] perf_hooks
-[ ] ~~policies~~ _experimental_
-[ ] process
-[ ] ~~punycode~~ _deprecated_
-[ ] querystring
-[ ] readline
-[ ] repl
-[ ] ~~report~~ _experimental_
-[ ] stream
-[ ] string_decoder
-[ ] sys
-[ ] timers
-[ ] tls
-[ ] ~~trace_events~~ _experimental_
-[ ] tty
-[ ] url
-[ ] util _partly_
-[ ] ~~v8~~ _can't implement_
-[ ] vm
-[ ] ~~wasi~~ _experimental_
-[ ] worker_threads
-[ ] zlib
+- [ ] assert
+- [ ] ~~async_hooks~~ _experimental_
+- [ ] buffer
+- [ ] child_process
+- [ ] cluster
+- [ ] console
+- [ ] ~~constants~~ _deprecated_
+- [ ] crypto _deno needs this first_
+- [ ] dgram
+- [ ] dns
+- [ ] ~~domain~~ _deprecated_
+- [ ] events
+- [ ] ~~freelist~~ _deprecated_
+- [ ] fs _partly_
+- [ ] http
+- [ ] http2
+- [ ] https
+- [ ] ~~inspector~~ _experimental_
+- [x] module
+- [ ] net
+- [ ] os
+- [x] path
+- [ ] perf_hooks
+- [ ] ~~policies~~ _experimental_
+- [ ] process
+- [ ] ~~punycode~~ _deprecated_
+- [ ] querystring
+- [ ] readline
+- [ ] repl
+- [ ] ~~report~~ _experimental_
+- [ ] stream
+- [ ] string_decoder
+- [ ] sys
+- [ ] timers
+- [ ] tls
+- [ ] ~~trace_events~~ _experimental_
+- [ ] tty
+- [ ] url
+- [ ] util _partly_
+- [ ] ~~v8~~ _can't implement_
+- [ ] vm
+- [ ] ~~wasi~~ _experimental_
+- [ ] worker_threads
+- [ ] zlib
 
-Other:
-[x] global
-
+- [ ] node globals
 
 ## CommonJS Module Loading
 
