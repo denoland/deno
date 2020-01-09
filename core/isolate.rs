@@ -671,7 +671,6 @@ impl Isolate {
   }
 
   fn async_op_response2(&mut self, op_id: OpId, buf: DenoBuf) {
-    eprintln!("async op response called!");
     let isolate = self.v8_isolate.as_ref().unwrap();
     // println!("deno_execute -> Isolate ptr {:?}", isolate);
     let mut locker = v8::Locker::new(isolate);
