@@ -4,5 +4,6 @@ members = [
   "core",
   "tools/hyper_hello",
   "deno_typescript",
-  "test_plugin"
+  "test_plugin",
+  "std/plugins/dispatch_stateful"
 ]

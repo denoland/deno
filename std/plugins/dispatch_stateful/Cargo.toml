@@ -1,0 +1,14 @@
+# Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+[package]
+name = "deno_dispatch_stateful"
+version = "0.1.0"
+authors = ["afinch7 <andyfinch7@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+deno_core = { path = "../../../core" }
