@@ -24,6 +24,7 @@ import "./global.ts";
 import * as nodeFS from "./fs.ts";
 import * as nodeUtil from "./util.ts";
 import * as nodePath from "./path.ts";
+import * as nodeTimers from "./timers.ts";
 
 import * as path from "../path/mod.ts";
 import { assert } from "../testing/asserts.ts";
@@ -33,6 +34,12 @@ const CHAR_BACKWARD_SLASH = "\\".charCodeAt(0);
 const CHAR_COLON = ":".charCodeAt(0);
 
 const isWindows = path.isWindows;
+
+const nativeModulePolyfill = new Map<string, Module>();
+nativeModulePolyfill.set("fs", createNativeModule("fs", nodeFS));
+nativeModulePolyfill.set("util", createNativeModule("util", nodeUtil));
+nativeModulePolyfill.set("path", createNativeModule("path", nodeUtil));
+nativeModulePolyfill.set("timers", createNativeModule("timers", nodeTimers));
 
 const relativeResolveCache = Object.create(null);
 
@@ -569,7 +576,6 @@ class Module {
 }
 
 // Polyfills.
-const nativeModulePolyfill = new Map<string, Module>();
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function createNativeModule(id: string, exports: any): Module {
   const mod = new Module(id);
@@ -577,9 +583,6 @@ function createNativeModule(id: string, exports: any): Module {
   mod.loaded = true;
   return mod;
 }
-nativeModulePolyfill.set("fs", createNativeModule("fs", nodeFS));
-nativeModulePolyfill.set("util", createNativeModule("util", nodeUtil));
-nativeModulePolyfill.set("path", createNativeModule("path", nodePath));
 function loadNativeModule(
   _filename: string,
   request: string

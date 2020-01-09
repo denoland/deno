@@ -41,7 +41,7 @@ deno standard library as it's a compatiblity module.
 - [ ] stream
 - [ ] string_decoder
 - [ ] sys
-- [ ] timers
+- [x] timers
 - [ ] tls
 - [ ] ~~trace_events~~ _experimental_
 - [ ] tty
