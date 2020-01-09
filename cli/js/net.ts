@@ -9,11 +9,10 @@ export type Transport = "tcp";
 // TODO support other types:
 // export type Transport = "tcp" | "tcp4" | "tcp6" | "unix" | "unixpacket";
 
-// TODO(ry) Replace 'address' with 'hostname' and 'port', similar to DialOptions
-// and ListenOptions.
 export interface Addr {
   transport: Transport;
-  address: string;
+  hostname: string;
+  port: number;
 }
 
 /** A Listener is a generic transport listener for stream-oriented protocols. */
@@ -105,9 +104,13 @@ export class ListenerImpl implements Listener {
   }
 
   addr(): Addr {
+    const sliceIndex = this.localAddr.lastIndexOf(":");
+    const hostname = this.localAddr.slice(0, sliceIndex);
+    const port = parseInt(this.localAddr.slice(sliceIndex + 1));
     return {
       transport: this.transport,
-      address: this.localAddr
+      hostname,
+      port
     };
   }
 
@@ -173,12 +176,14 @@ export interface ListenOptions {
  *     listen({ hostname: "[2001:db8::1]", port: 80 });
  *     listen({ hostname: "golang.org", port: 80, transport: "tcp" })
  */
-export function listen(options: ListenOptions): Listener {
-  const hostname = options.hostname || "0.0.0.0";
-  const transport = options.transport || "tcp";
+export function listen({
+  hostname = "0.0.0.0",
+  transport = "tcp",
+  port
+}: ListenOptions): Listener {
   const res = sendSync(dispatch.OP_LISTEN, {
     hostname,
-    port: options.port,
+    port,
     transport
   });
   return new ListenerImpl(res.rid, transport, res.localAddr);
@@ -207,11 +212,15 @@ export interface DialOptions {
  *     dial({ hostname: "[2001:db8::1]", port: 80 });
  *     dial({ hostname: "golang.org", port: 80, transport: "tcp" })
  */
-export async function dial(options: DialOptions): Promise<Conn> {
+export async function dial({
+  hostname = "127.0.0.1",
+  port,
+  transport = "tcp"
+}: DialOptions): Promise<Conn> {
   const res = await sendAsync(dispatch.OP_DIAL, {
-    hostname: options.hostname || "127.0.0.1",
-    port: options.port,
-    transport: options.transport || "tcp"
+    hostname,
+    port,
+    transport
   });
   return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);
 }

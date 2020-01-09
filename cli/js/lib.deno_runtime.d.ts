@@ -1157,7 +1157,8 @@ declare namespace Deno {
   type Transport = "tcp";
   interface Addr {
     transport: Transport;
-    address: string;
+    hostname: string;
+    port: number;
   }
 
   export enum ShutdownMode {
