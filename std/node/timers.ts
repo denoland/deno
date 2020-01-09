@@ -4,6 +4,6 @@ export const setTimeout = window.setTimeout;
 export const clearTimeout = window.clearTimeout;
 export const setInterval = window.setInterval;
 export const clearInterval = window.clearInterval;
-export const setImmediate = (handler: TimerHandler, ...args): number =>
+export const setImmediate = (handler: Deno.TimerHandler, ...args): number =>
   window.setTimeout(handler, 0, ...args);
 export const clearImmediate = window.clearTimeout;
