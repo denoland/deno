@@ -129,11 +129,11 @@ export class Host implements ts.CompilerHost {
   private _writeFile: WriteFileCallback;
 
   private _getAsset(filename: string): SourceFile {
-    const sourceFile = SourceFile.get(filename);
+    const url = filename.split("/").pop()!;
+    const sourceFile = SourceFile.get(url);
     if (sourceFile) {
       return sourceFile;
     }
-    const url = filename.split("/").pop()!;
     const name = url.includes(".") ? url : `${url}.d.ts`;
     const sourceCode = sendSync(dispatch.OP_FETCH_ASSET, { name });
     return new SourceFile({

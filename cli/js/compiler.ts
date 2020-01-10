@@ -85,10 +85,7 @@ let oldProgram: ts.Program;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (dispatch as any)[opName] = opId;
   }
-  const host = new Host({
-    bundle: false,
-    writeFile(): void {}
-  });
+  const host = new Host({ writeFile(): void {} });
   const options = host.getCompilationSettings();
   oldProgram = ts.createProgram({
     rootNames: [`${ASSETS}/example.ts`],
@@ -99,7 +96,7 @@ let oldProgram: ts.Program;
 
 // bootstrap the runtime environment, this gets called as the isolate is setup
 self.denoMain = function denoMain(compilerType?: string): void {
-  os.start(true, compilerType || "TS");
+  os.start(true, compilerType ?? "TS");
 };
 
 // bootstrap the worker environment, this gets called as the isolate is setup
