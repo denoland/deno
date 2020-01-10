@@ -32,6 +32,8 @@ use std::sync::{Arc, Mutex, Once};
 use std::task::Context;
 use std::task::Poll;
 
+pub const SHARED_RESPONSE_BUF_SIZE: usize = 1024;
+
 /// A PinnedBuf encapsulates a slice that's been borrowed from a JavaScript
 /// ArrayBuffer object. JavaScript objects can normally be garbage collected,
 /// but the existence of a PinnedBuf inhibits this until it is dropped. It
@@ -167,10 +169,7 @@ pub struct Isolate {
   pub(crate) shared_ab: v8::Global<v8::SharedArrayBuffer>,
   pub(crate) js_recv_cb: v8::Global<v8::Function>,
   pub(crate) pending_promise_map: HashMap<i32, v8::Global<v8::Value>>,
-
-  // TODO: These two fields were not yet ported from libdeno
-  // void* global_import_buf_ptr_;
-  // v8::Persistent<v8::ArrayBuffer> global_import_buf_;
+  pub(crate) shared_response_buf: v8::Global<v8::ArrayBuffer>,
   shared_isolate_handle: Arc<Mutex<Option<*mut v8::Isolate>>>,
   js_error_create: Arc<JSErrorCreateFn>,
   needs_init: bool,
@@ -201,6 +200,7 @@ impl Drop for Isolate {
       // </Boilerplate>
       self.global_context.reset(scope);
       self.shared_ab.reset(scope);
+      self.shared_response_buf.reset(scope);
       self.last_exception_handle.reset(scope);
       self.js_recv_cb.reset(scope);
       for (_key, handle) in self.pending_promise_map.iter_mut() {
@@ -328,6 +328,7 @@ impl Isolate {
       pending_promise_map: HashMap::new(),
       shared_ab: v8::Global::<v8::SharedArrayBuffer>::new(),
       js_recv_cb: v8::Global::<v8::Function>::new(),
+      shared_response_buf: v8::Global::<v8::ArrayBuffer>::new(),
       snapshot_creator: maybe_snapshot_creator,
       snapshot: load_snapshot,
       has_snapshotted: false,
@@ -625,7 +626,7 @@ impl Isolate {
       argc = 2;
       let op_id = v8::Integer::new(scope, op_id as i32);
       args.push(op_id.into());
-      let buf = unsafe { bindings::slice_to_uint8array(scope, &buf) };
+      let buf = unsafe { bindings::slice_to_uint8array(self, scope, &buf) };
       args.push(buf.into());
     }
 

@@ -3,6 +3,7 @@
 use crate::es_isolate::EsIsolate;
 use crate::isolate::Isolate;
 use crate::isolate::PinnedBuf;
+use crate::isolate::SHARED_RESPONSE_BUF_SIZE;
 
 use rusty_v8 as v8;
 use v8::InIsolate;
@@ -174,6 +175,7 @@ pub fn initialize_context<'a>(
 }
 
 pub unsafe fn slice_to_uint8array<'sc>(
+  deno_isolate: &mut Isolate,
   scope: &mut impl v8::ToLocal<'sc>,
   buf: &[u8],
 ) -> v8::Local<'sc, v8::Uint8Array> {
@@ -182,41 +184,24 @@ pub unsafe fn slice_to_uint8array<'sc>(
     return v8::Uint8Array::new(ab, 0, 0).expect("Failed to create UintArray8");
   }
 
-  /*
+  let buf_len = buf.len();
+  let buf_ptr = buf.as_ptr();
+
   // To avoid excessively allocating new ArrayBuffers, we try to reuse a single
   // global ArrayBuffer. The caveat is that users must extract data from it
   // before the next tick. We only do this for ArrayBuffers less than 1024
   // bytes.
-  v8::Local<v8::ArrayBuffer> ab;
-  void* data;
-  if (buf.data_len > GLOBAL_IMPORT_BUF_SIZE) {
+  let ab = if buf_len > SHARED_RESPONSE_BUF_SIZE {
     // Simple case. We allocate a new ArrayBuffer for this.
-    ab = v8::ArrayBuffer::New(d->isolate_, buf.data_len);
-    data = ab->GetBackingStore()->Data();
+    v8::ArrayBuffer::new(scope, buf_len)
+  } else if deno_isolate.shared_response_buf.is_empty() {
+    let buf = v8::ArrayBuffer::new(scope, SHARED_RESPONSE_BUF_SIZE);
+    deno_isolate.shared_response_buf.set(scope, buf);
+    buf
   } else {
-    // Fast case. We reuse the global ArrayBuffer.
-    if (d->global_import_buf_.IsEmpty()) {
-      // Lazily initialize it.
-      DCHECK_NULL(d->global_import_buf_ptr_);
-      ab = v8::ArrayBuffer::New(d->isolate_, GLOBAL_IMPORT_BUF_SIZE);
-      d->global_import_buf_.Reset(d->isolate_, ab);
-      d->global_import_buf_ptr_ = ab->GetBackingStore()->Data();
-    } else {
-      DCHECK(d->global_import_buf_ptr_);
-      ab = d->global_import_buf_.Get(d->isolate_);
-    }
-    data = d->global_import_buf_ptr_;
-  }
-  memcpy(data, buf.data_ptr, buf.data_len);
-  auto view = v8::Uint8Array::New(ab, 0, buf.data_len);
-  return view;
-  */
+    deno_isolate.shared_response_buf.get(scope).unwrap()
+  };
 
-  // TODO(bartlomieju): for now skipping part with `global_import_buf_`
-  // and always creating new buffer
-  let buf_len = buf.len();
-  let buf_ptr = buf.as_ptr();
-  let ab = v8::ArrayBuffer::new(scope, buf_len);
   let mut backing_store = ab.get_backing_store();
   let data = backing_store.data();
   let data: *mut u8 = data as *mut libc::c_void as *mut u8;
@@ -470,7 +455,7 @@ pub extern "C" fn send(info: &v8::FunctionCallbackInfo) {
     let (_op_id, buf) = response;
 
     if !buf.is_empty() {
-      let ab = unsafe { slice_to_uint8array(scope, &buf) };
+      let ab = unsafe { slice_to_uint8array(deno_isolate, scope, &buf) };
       rv.set(ab.into())
     }
   }
