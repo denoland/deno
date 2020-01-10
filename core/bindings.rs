@@ -172,55 +172,6 @@ pub fn initialize_context<'a>(
   context.exit();
 }
 
-pub unsafe fn buf_to_uint8array<'sc>(
-  scope: &mut impl v8::ToLocal<'sc>,
-  buf: DenoBuf,
-) -> v8::Local<'sc, v8::Uint8Array> {
-  if buf.data_ptr.is_null() {
-    let ab = v8::ArrayBuffer::new(scope, 0);
-    return v8::Uint8Array::new(ab, 0, 0).expect("Failed to create UintArray8");
-  }
-
-  /*
-  // To avoid excessively allocating new ArrayBuffers, we try to reuse a single
-  // global ArrayBuffer. The caveat is that users must extract data from it
-  // before the next tick. We only do this for ArrayBuffers less than 1024
-  // bytes.
-  v8::Local<v8::ArrayBuffer> ab;
-  void* data;
-  if (buf.data_len > GLOBAL_IMPORT_BUF_SIZE) {
-    // Simple case. We allocate a new ArrayBuffer for this.
-    ab = v8::ArrayBuffer::New(d->isolate_, buf.data_len);
-    data = ab->GetBackingStore()->Data();
-  } else {
-    // Fast case. We reuse the global ArrayBuffer.
-    if (d->global_import_buf_.IsEmpty()) {
-      // Lazily initialize it.
-      DCHECK_NULL(d->global_import_buf_ptr_);
-      ab = v8::ArrayBuffer::New(d->isolate_, GLOBAL_IMPORT_BUF_SIZE);
-      d->global_import_buf_.Reset(d->isolate_, ab);
-      d->global_import_buf_ptr_ = ab->GetBackingStore()->Data();
-    } else {
-      DCHECK(d->global_import_buf_ptr_);
-      ab = d->global_import_buf_.Get(d->isolate_);
-    }
-    data = d->global_import_buf_ptr_;
-  }
-  memcpy(data, buf.data_ptr, buf.data_len);
-  auto view = v8::Uint8Array::New(ab, 0, buf.data_len);
-  return view;
-  */
-
-  // TODO(bartlomieju): for now skipping part with `global_import_buf_`
-  // and always creating new buffer
-  let ab = v8::ArrayBuffer::new(scope, buf.data_len);
-  let mut backing_store = ab.get_backing_store();
-  let data = backing_store.data();
-  let data: *mut u8 = data as *mut libc::c_void as *mut u8;
-  std::ptr::copy_nonoverlapping(buf.data_ptr, data, buf.data_len);
-  v8::Uint8Array::new(ab, 0, buf.data_len).expect("Failed to create UintArray8")
-}
-
 pub unsafe fn boxed_slice_to_uint8array<'sc>(
   scope: &mut impl v8::ToLocal<'sc>,
   buf: Box<[u8]>,
@@ -509,7 +460,8 @@ pub extern "C" fn send(info: &v8::FunctionCallbackInfo) {
       .ok();
 
   // If response is empty then it's either async op or exception was thrown
-  let maybe_response = deno_isolate.dispatch_op(op_id, control, zero_copy);
+  let maybe_response =
+    deno_isolate.dispatch_op(op_id, control.as_ref(), zero_copy);
 
   if let Some(response) = maybe_response {
     // Synchronous response.
@@ -517,10 +469,7 @@ pub extern "C" fn send(info: &v8::FunctionCallbackInfo) {
     let (_op_id, buf) = response;
 
     if !buf.is_empty() {
-      let buf: &[u8] = &buf;
-      // TODO(bartlomieju): get rid of DenoBuf
-      let deno_buf = DenoBuf::from(buf);
-      let ab = unsafe { buf_to_uint8array(scope, deno_buf) };
+      let ab = unsafe { boxed_slice_to_uint8array(scope, buf) };
       rv.set(ab.into())
     }
   }
@@ -726,21 +675,15 @@ pub extern "C" fn shared_getter(
     let deno_isolate: &mut Isolate =
       unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
 
-    if deno_isolate.shared_buf.data_ptr.is_null() {
-      return;
-    }
-
     // Lazily initialize the persistent external ArrayBuffer.
     if deno_isolate.shared_ab.is_empty() {
-      #[allow(mutable_transmutes)]
-      #[allow(clippy::transmute_ptr_to_ptr)]
-      let data_ptr: *mut u8 =
-        unsafe { std::mem::transmute(deno_isolate.shared_buf.data_ptr) };
+      let data_ptr = deno_isolate.shared_buf.as_ptr();
+      let data_len = deno_isolate.shared_buf.len();
       let ab = unsafe {
         v8::SharedArrayBuffer::new_DEPRECATED(
           scope,
           data_ptr as *mut c_void,
-          deno_isolate.shared_buf.data_len,
+          data_len,
         )
       };
       deno_isolate.shared_ab.set(scope, ab);

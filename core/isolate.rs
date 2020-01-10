@@ -547,13 +547,10 @@ impl Isolate {
   pub fn dispatch_op(
     &mut self,
     op_id: OpId,
-    control_buf: DenoBuf,
+    control_buf: &[u8],
     zero_copy_buf: Option<PinnedBuf>,
   ) -> Option<(OpId, Box<[u8]>)> {
-    let maybe_op =
-      self
-        .op_registry
-        .call(op_id, control_buf.as_ref(), zero_copy_buf);
+    let maybe_op = self.op_registry.call(op_id, control_buf, zero_copy_buf);
 
     let op = match maybe_op {
       Some(op) => op,
