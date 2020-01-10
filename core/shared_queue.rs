@@ -16,7 +16,6 @@ SharedQueue Binary Layout
 +---------------------------------------------------------------+
  */
 
-use crate::isolate::DenoBuf;
 use crate::ops::OpId;
 
 const MAX_RECORDS: usize = 100;
@@ -35,7 +34,7 @@ const HEAD_INIT: usize = 4 * INDEX_RECORDS;
 pub const RECOMMENDED_SIZE: usize = 128 * MAX_RECORDS;
 
 pub struct SharedQueue {
-  bytes: Vec<u8>,
+  pub bytes: Vec<u8>,
 }
 
 impl SharedQueue {
@@ -45,12 +44,6 @@ impl SharedQueue {
     let mut q = Self { bytes };
     q.reset();
     q
-  }
-
-  pub fn as_deno_buf(&self) -> DenoBuf {
-    let ptr = self.bytes.as_ptr();
-    let len = self.bytes.len();
-    unsafe { DenoBuf::from_raw_parts(ptr, len) }
   }
 
   fn reset(&mut self) {

@@ -677,8 +677,8 @@ pub extern "C" fn shared_getter(
 
     // Lazily initialize the persistent external ArrayBuffer.
     if deno_isolate.shared_ab.is_empty() {
-      let data_ptr = deno_isolate.shared_buf.as_ptr();
-      let data_len = deno_isolate.shared_buf.len();
+      let data_ptr = deno_isolate.shared.bytes.as_ptr();
+      let data_len = deno_isolate.shared.bytes.len();
       let ab = unsafe {
         v8::SharedArrayBuffer::new_DEPRECATED(
           scope,
