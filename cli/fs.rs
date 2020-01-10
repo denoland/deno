@@ -1,11 +1,11 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use std;
 use std::fs::{create_dir, DirBuilder, File, OpenOptions};
 use std::io::ErrorKind;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use deno::ErrBox;
+use deno_core::ErrBox;
 use rand;
 use rand::Rng;
 use url::Url;

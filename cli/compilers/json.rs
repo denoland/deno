@@ -1,9 +1,9 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::compilers::CompiledModule;
 use crate::compilers::CompiledModuleFuture;
 use crate::file_fetcher::SourceFile;
 use crate::futures::future::FutureExt;
-use deno::ErrBox;
+use deno_core::ErrBox;
 use regex::Regex;
 use std::pin::Pin;
 use std::str;
@@ -15,7 +15,7 @@ pub struct JsonCompiler {}
 
 impl JsonCompiler {
   pub fn compile_async(
-    self: &Self,
+    &self,
     source_file: &SourceFile,
   ) -> Pin<Box<CompiledModuleFuture>> {
     let maybe_json_value: serde_json::Result<serde_json::Value> =

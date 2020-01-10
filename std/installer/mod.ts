@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno --allow-all
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 const { env, stdin, args, exit, writeFile, chmod, run } = Deno;
 import { parse } from "../flags/mod.ts";
 import { exists } from "../fs/exists.ts";
@@ -255,6 +255,7 @@ export async function install(
     "run",
     ...grantedPermissions.map(getFlagFromPermission),
     moduleUrl,
+    "--",
     ...scriptArgs
   ];
 
@@ -275,7 +276,7 @@ export async function install(
 }
 
 async function main(): Promise<void> {
-  const parsedArgs = parse(args.slice(1), { stopEarly: true });
+  const parsedArgs = parse(args, { stopEarly: true });
 
   if (parsedArgs.h || parsedArgs.help) {
     return showHelp();

@@ -1,11 +1,11 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::diagnostics::Diagnostic;
 use crate::fmt_errors::JSError;
 use crate::import_map::ImportMapError;
 pub use crate::msg::ErrorKind;
-use deno::AnyError;
-use deno::ErrBox;
-use deno::ModuleResolutionError;
+use deno_core::AnyError;
+use deno_core::ErrBox;
+use deno_core::ModuleResolutionError;
 use dlopen::Error as DlopenError;
 use http::uri;
 use hyper;
@@ -211,6 +211,7 @@ impl GetErrorKind for url::ParseError {
       }
       RelativeUrlWithoutBase => ErrorKind::RelativeUrlWithoutBase,
       SetHostOnCannotBeABaseUrl => ErrorKind::SetHostOnCannotBeABaseUrl,
+      _ => ErrorKind::Other,
     }
   }
 }
@@ -231,7 +232,7 @@ impl GetErrorKind for reqwest::Error {
   fn kind(&self) -> ErrorKind {
     use self::GetErrorKind as Get;
 
-    match self.get_ref() {
+    match self.source() {
       Some(err_ref) => None
         .or_else(|| err_ref.downcast_ref::<hyper::Error>().map(Get::kind))
         .or_else(|| err_ref.downcast_ref::<url::ParseError>().map(Get::kind))
@@ -242,7 +243,7 @@ impl GetErrorKind for reqwest::Error {
             .map(Get::kind)
         })
         .unwrap_or_else(|| ErrorKind::HttpOther),
-      _ => ErrorKind::HttpOther,
+      None => ErrorKind::HttpOther,
     }
   }
 }
@@ -354,9 +355,9 @@ mod tests {
   use crate::diagnostics::Diagnostic;
   use crate::diagnostics::DiagnosticCategory;
   use crate::diagnostics::DiagnosticItem;
-  use deno::ErrBox;
-  use deno::StackFrame;
-  use deno::V8Exception;
+  use deno_core::ErrBox;
+  use deno_core::StackFrame;
+  use deno_core::V8Exception;
 
   fn js_error() -> JSError {
     JSError::new(V8Exception {

@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
   test,
   testPerm,
@@ -147,6 +147,14 @@ testPerm({ env: true }, function getDir(): void {
       ]
     },
     {
+      kind: "executable",
+      runtime: [
+        { os: "mac", shouldHaveValue: false },
+        { os: "win", shouldHaveValue: false },
+        { os: "linux", shouldHaveValue: true }
+      ]
+    },
+    {
       kind: "data",
       runtime: [
         { os: "mac", shouldHaveValue: true },
@@ -240,14 +248,8 @@ testPerm({ env: true }, function getDir(): void {
     for (const r of s.runtime) {
       if (Deno.build.os !== r.os) continue;
       if (r.shouldHaveValue) {
-        assertNotEquals(Deno.dir(s.kind), "");
-      } else {
-        // if not support your platform. it should throw an error
-        assertThrows(
-          () => Deno.dir(s.kind),
-          Deno.DenoError,
-          `Could not get user ${s.kind} directory.`
-        );
+        const d = Deno.dir(s.kind);
+        assert(d.length > 0);
       }
     }
   }

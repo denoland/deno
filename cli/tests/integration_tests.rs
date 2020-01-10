@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 #[macro_use]
 extern crate lazy_static;
 extern crate tempfile;
@@ -100,11 +100,6 @@ fn bundle_exports() {
 #[test]
 fn repl_test() {
   util::run_python_script("tools/repl_test.py")
-}
-
-#[test]
-fn setup_test() {
-  util::run_python_script("tools/setup_test.py")
 }
 
 #[test]
@@ -258,31 +253,13 @@ itest!(_027_redirect_typescript {
 });
 
 itest!(_028_args {
-  args: "run --reload 028_args.ts --arg1 val1 --arg2=val2 -- arg3 arg4",
+  args: "run --reload 028_args.ts -- --arg1 val1 --arg2=val2 -- arg3 arg4",
   output: "028_args.ts.out",
 });
 
 itest!(_029_eval {
   args: "eval console.log(\"hello\")",
   output: "029_eval.out",
-});
-
-itest!(_030_xeval {
-  args: "xeval console.log($.toUpperCase())",
-  input: Some("a\nb\n\nc"),
-  output: "030_xeval.out",
-});
-
-itest!(_031_xeval_replvar {
-  args: "xeval -I val console.log(val.toUpperCase());",
-  input: Some("a\nb\n\nc"),
-  output: "031_xeval_replvar.out",
-});
-
-itest!(_032_xeval_delim {
-  args: "xeval -d DELIM console.log($.toUpperCase());",
-  input: Some("aDELIMbDELIMDELIMc"),
-  output: "032_xeval_delim.out",
 });
 
 itest!(_033_import_map {
@@ -685,8 +662,8 @@ itest!(top_level_for_await_ts {
 });
 
 mod util {
-  use deno_cli::colors::strip_ansi_codes;
-  pub use deno_cli::test_util::*;
+  use deno::colors::strip_ansi_codes;
+  pub use deno::test_util::*;
   use os_pipe::pipe;
   use std::io::Read;
   use std::io::Write;

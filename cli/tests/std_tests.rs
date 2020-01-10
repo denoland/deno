@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 // TODO: fix tests in debug mode
 // Runs only on release build
@@ -6,7 +6,7 @@
 mod tests {
   extern crate lazy_static;
   extern crate tempfile;
-  use deno_cli::test_util::*;
+  use deno::test_util::*;
   use std::process::Command;
   use tempfile::TempDir;
 
@@ -23,6 +23,7 @@ mod tests {
       .arg("-A")
       // .arg("-Ldebug")
       .arg("./testing/runner.ts")
+      .arg("--")
       .arg("--exclude=testing/testdata")
       .spawn()
       .expect("failed to spawn script");

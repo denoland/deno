@@ -1,11 +1,11 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 //! This mod provides DenoError to unify errors across Deno.
 use crate::colors;
 use crate::source_maps::apply_source_map;
 use crate::source_maps::SourceMapGetter;
-use deno::ErrBox;
-use deno::StackFrame;
-use deno::V8Exception;
+use deno_core::ErrBox;
+use deno_core::StackFrame;
+use deno_core::V8Exception;
 use std::error::Error;
 use std::fmt;
 
@@ -66,7 +66,7 @@ pub fn format_maybe_source_line(
   assert!(end_column.is_some());
   let line = (1 + line_number.unwrap()).to_string();
   let line_color = colors::black_on_white(line.to_string());
-  let line_len = line.clone().len();
+  let line_len = line.len();
   let line_padding =
     colors::black_on_white(format!("{:indent$}", "", indent = line_len))
       .to_string();

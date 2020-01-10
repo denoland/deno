@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::deno_error::permission_denied;
 use crate::global_state::ThreadSafeGlobalState;
 use crate::global_timer::GlobalTimer;
@@ -9,14 +9,14 @@ use crate::ops::MinimalOp;
 use crate::permissions::DenoPermissions;
 use crate::worker::Worker;
 use crate::worker::WorkerChannels;
-use deno::Buf;
-use deno::CoreOp;
-use deno::ErrBox;
-use deno::Loader;
-use deno::ModuleSpecifier;
-use deno::Op;
-use deno::PinnedBuf;
-use deno::ResourceTable;
+use deno_core::Buf;
+use deno_core::CoreOp;
+use deno_core::ErrBox;
+use deno_core::Loader;
+use deno_core::ModuleSpecifier;
+use deno_core::Op;
+use deno_core::PinnedBuf;
+use deno_core::ResourceTable;
 use futures::channel::mpsc;
 use futures::future::FutureExt;
 use futures::future::TryFutureExt;
@@ -43,7 +43,7 @@ pub struct ThreadSafeState(Arc<State>);
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct State {
   pub global_state: ThreadSafeGlobalState,
-  pub modules: Arc<Mutex<deno::Modules>>,
+  pub modules: Arc<Mutex<deno_core::Modules>>,
   pub permissions: Arc<Mutex<DenoPermissions>>,
   pub main_module: Option<ModuleSpecifier>,
   pub worker_channels: Mutex<WorkerChannels>,
@@ -104,7 +104,7 @@ impl ThreadSafeState {
         Op::Async(fut) => {
           let state = state.clone();
           let result_fut = fut.map_ok(move |buf: Buf| {
-            state.clone().metrics_op_completed(buf.len());
+            state.metrics_op_completed(buf.len());
             buf
           });
           Op::Async(result_fut.boxed())
@@ -179,13 +179,13 @@ impl Loader for ThreadSafeState {
     &self,
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
-  ) -> Pin<Box<deno::SourceCodeInfoFuture>> {
+  ) -> Pin<Box<deno_core::SourceCodeInfoFuture>> {
     self.metrics.resolve_count.fetch_add(1, Ordering::SeqCst);
     let module_url_specified = module_specifier.to_string();
     let fut = self
       .global_state
       .fetch_compiled_module(module_specifier, maybe_referrer)
-      .map_ok(|compiled_module| deno::SourceCodeInfo {
+      .map_ok(|compiled_module| deno_core::SourceCodeInfo {
         // Real module name, might be different from initial specifier
         // due to redirections.
         code: compiled_module.code,
@@ -231,7 +231,7 @@ impl ThreadSafeState {
       None => None,
     };
 
-    let modules = Arc::new(Mutex::new(deno::Modules::new()));
+    let modules = Arc::new(Mutex::new(deno_core::Modules::new()));
     let permissions = if let Some(perm) = shared_permissions {
       perm
     } else {
@@ -301,7 +301,7 @@ impl ThreadSafeState {
   }
 
   pub fn check_dyn_import(
-    self: &Self,
+    &self,
     module_specifier: &ModuleSpecifier,
   ) -> Result<(), ErrBox> {
     let u = module_specifier.as_url();

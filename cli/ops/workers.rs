@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::deno_error::bad_resource;
 use crate::deno_error::js_check;
@@ -8,7 +8,7 @@ use crate::ops::json_op;
 use crate::startup_data;
 use crate::state::ThreadSafeState;
 use crate::worker::Worker;
-use deno::*;
+use deno_core::*;
 use futures;
 use futures::future::FutureExt;
 use futures::future::TryFutureExt;
@@ -77,13 +77,11 @@ fn op_worker_get_message(
     state: state.clone(),
   };
 
-  let op = op.then(move |maybe_buf| {
+  let op = async move {
+    let maybe_buf = op.await;
     debug!("op_worker_get_message");
-
-    futures::future::ok(json!({
-      "data": maybe_buf.map(|buf| buf.to_owned())
-    }))
-  });
+    Ok(json!({ "data": maybe_buf }))
+  };
 
   Ok(JsonOp::Async(op.boxed()))
 }
@@ -168,14 +166,13 @@ fn op_create_worker(
   // TODO(bartlomieju): this should spawn mod execution on separate tokio task
   // and block on receving message on a channel or even use sync channel /shrug
   let (sender, receiver) = mpsc::sync_channel::<Result<(), ErrBox>>(1);
-  let fut = worker
-    .execute_mod_async(&module_specifier, None, false)
-    .then(move |result| {
-      sender.send(result).expect("Failed to send message");
-      futures::future::ok(())
-    })
-    .boxed()
-    .compat();
+  let fut = async move {
+    let result = worker
+      .execute_mod_async(&module_specifier, None, false)
+      .await;
+    sender.send(result).expect("Failed to send message");
+  }
+  .boxed();
   tokio::spawn(fut);
 
   let result = receiver.recv().expect("Failed to receive message");
@@ -256,14 +253,12 @@ fn op_host_get_message(
   let mut table = state.workers.lock().unwrap();
   // TODO: don't return bad resource anymore
   let worker = table.get_mut(&id).ok_or_else(bad_resource)?;
-  let op = worker
-    .get_message()
-    .map_err(move |_| -> ErrBox { unimplemented!() })
-    .and_then(move |maybe_buf| {
-      futures::future::ok(json!({
-        "data": maybe_buf.map(|buf| buf.to_owned())
-      }))
-    });
+  let fut = worker.get_message();
+
+  let op = async move {
+    let maybe_buf = fut.await.unwrap();
+    Ok(json!({ "data": maybe_buf }))
+  };
 
   Ok(JsonOp::Async(op.boxed()))
 }

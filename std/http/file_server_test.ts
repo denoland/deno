@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { test } from "../testing/mod.ts";
 import { assert, assertEquals } from "../testing/asserts.ts";
 import { BufReader } from "../io/bufio.ts";
@@ -14,6 +14,7 @@ async function startFileServer(): Promise<void> {
       "--allow-read",
       "--allow-net",
       "http/file_server.ts",
+      "--",
       ".",
       "--cors"
     ],
@@ -122,7 +123,7 @@ test(async function servePermissionDenied(): Promise<void> {
 
 test(async function printHelp(): Promise<void> {
   const helpProcess = Deno.run({
-    args: [Deno.execPath(), "run", "http/file_server.ts", "--help"],
+    args: [Deno.execPath(), "run", "http/file_server.ts", "--", "--help"],
     stdout: "piped"
   });
   const r = new TextProtoReader(new BufReader(helpProcess.stdout!));

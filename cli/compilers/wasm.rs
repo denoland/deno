@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::compilers::CompiledModule;
 use crate::compilers::CompiledModuleFuture;
 use crate::file_fetcher::SourceFile;
@@ -6,9 +6,7 @@ use crate::global_state::ThreadSafeGlobalState;
 use crate::startup_data;
 use crate::state::*;
 use crate::worker::Worker;
-use deno::Buf;
 use futures::FutureExt;
-use futures::TryFutureExt;
 use serde_derive::Deserialize;
 use serde_json;
 use std::collections::HashMap;
@@ -69,64 +67,62 @@ impl WasmCompiler {
   }
 
   pub fn compile_async(
-    self: &Self,
+    &self,
     global_state: ThreadSafeGlobalState,
     source_file: &SourceFile,
   ) -> Pin<Box<CompiledModuleFuture>> {
     let cache = self.cache.clone();
     let maybe_cached = { cache.lock().unwrap().get(&source_file.url).cloned() };
     if let Some(m) = maybe_cached {
-      return futures::future::ok(m.clone()).boxed();
+      return futures::future::ok(m).boxed();
     }
     let cache_ = self.cache.clone();
 
     debug!(">>>>> wasm_compile_async START");
     let base64_data = base64::encode(&source_file.source_code);
-    let worker = WasmCompiler::setup_worker(global_state.clone());
+    let worker = WasmCompiler::setup_worker(global_state);
     let worker_ = worker.clone();
     let url = source_file.url.clone();
 
-    let fut = worker
-      .post_message(
-        serde_json::to_string(&base64_data)
-          .unwrap()
-          .into_boxed_str()
-          .into_boxed_bytes(),
-      )
-      .then(|_| worker)
-      .then(move |result| {
-        if let Err(err) = result {
-          // TODO(ry) Need to forward the error instead of exiting.
-          eprintln!("{}", err.to_string());
-          std::process::exit(1);
-        }
-        debug!("Sent message to worker");
-        worker_.get_message()
-      })
-      .map_err(|_| panic!("not handled"))
-      .and_then(move |maybe_msg: Option<Buf>| {
-        debug!("Received message from worker");
-        let json_msg = maybe_msg.unwrap();
-        let module_info: WasmModuleInfo =
-          serde_json::from_slice(&json_msg).unwrap();
-        debug!("WASM module info: {:#?}", &module_info);
-        let code = wrap_wasm_code(
-          &base64_data,
-          &module_info.import_list,
-          &module_info.export_list,
-        );
-        debug!("Generated code: {}", &code);
-        let module = CompiledModule {
-          code,
-          name: url.to_string(),
-        };
-        {
-          cache_.lock().unwrap().insert(url.clone(), module.clone());
-        }
-        debug!("<<<<< wasm_compile_async END");
-        futures::future::ok(module)
-      });
-    fut.boxed()
+    Box::pin(async move {
+      let _ = worker
+        .post_message(
+          serde_json::to_string(&base64_data)
+            .unwrap()
+            .into_boxed_str()
+            .into_boxed_bytes(),
+        )
+        .await;
+
+      if let Err(err) = worker.await {
+        // TODO(ry) Need to forward the error instead of exiting.
+        eprintln!("{}", err.to_string());
+        std::process::exit(1);
+      }
+      debug!("Sent message to worker");
+      let maybe_msg = worker_.get_message().await.expect("not handled");
+
+      debug!("Received message from worker");
+      let json_msg = maybe_msg.unwrap();
+      let module_info: WasmModuleInfo =
+        serde_json::from_slice(&json_msg).unwrap();
+      debug!("WASM module info: {:#?}", &module_info);
+      let code = wrap_wasm_code(
+        &base64_data,
+        &module_info.import_list,
+        &module_info.export_list,
+      );
+      debug!("Generated code: {}", &code);
+      let module = CompiledModule {
+        code,
+        name: url.to_string(),
+      };
+      {
+        cache_.lock().unwrap().insert(url.clone(), module.clone());
+      }
+      debug!("<<<<< wasm_compile_async END");
+      Ok(module)
+    })
   }
 }
 

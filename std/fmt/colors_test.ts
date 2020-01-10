@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { test } from "../testing/mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
 import * as c from "./colors.ts";
@@ -17,10 +17,10 @@ test(function replacesCloseCharacters(): void {
 });
 
 test(function enablingColors(): void {
-  assertEquals(c.getEnabled(), true);
-  c.setEnabled(false);
+  assertEquals(c.getColorEnabled(), true);
+  c.setColorEnabled(false);
   assertEquals(c.bgBlue(c.red("foo bar")), "foo bar");
-  c.setEnabled(true);
+  c.setColorEnabled(true);
   assertEquals(c.red("foo bar"), "[31mfoo bar[39m");
 });
 

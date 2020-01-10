@@ -1,4 +1,11 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+export * from "./asserts.ts";
+export * from "./bench.ts";
+import diff from "./diff.ts";
+export { diff };
+export * from "./format.ts";
+export * from "./runner.ts";
 
 import {
   bgRed,

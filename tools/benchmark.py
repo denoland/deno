@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 # Performs benchmark and append data to //website/data.json.
 # If //website/data.json doesn't exist, this script tries to import it from
 # gh-pages branch.
@@ -28,6 +28,7 @@ exec_time_benchmarks = [
     ("workers_startup", ["tests/workers_startup_bench.ts"]),
     ("workers_round_robin", ["tests/workers_round_robin_bench.ts"]),
     ("text_decoder", ["cli/tests/text_decoder_perf.js"]),
+    ("text_encoder", ["cli/tests/text_encoder_perf.js"]),
 ]
 
 

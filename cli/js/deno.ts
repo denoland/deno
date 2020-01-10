@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 // Public deno module.
 export { dir, env, exit, isTTY, execPath, hostname } from "./os.ts";
@@ -7,6 +7,8 @@ export {
   File,
   open,
   openSync,
+  create,
+  createSync,
   stdin,
   stdout,
   stderr,
@@ -77,7 +79,15 @@ export {
 export { truncateSync, truncate } from "./truncate.ts";
 export { FileInfo } from "./file_info.ts";
 export { openPlugin } from "./plugins.ts";
-export { connect, dial, listen, Listener, Conn } from "./net.ts";
+export {
+  connect,
+  dial,
+  listen,
+  Listener,
+  Conn,
+  ShutdownMode,
+  shutdown
+} from "./net.ts";
 export { dialTLS, listenTLS } from "./tls.ts";
 export { metrics, Metrics } from "./metrics.ts";
 export { resources } from "./resources.ts";
@@ -89,6 +99,7 @@ export {
   ProcessStatus,
   Signal
 } from "./process.ts";
+export { transpileOnly, compile, bundle } from "./compiler_api.ts";
 export { inspect, customInspect } from "./console.ts";
 export { build, OperatingSystem, Arch } from "./build.ts";
 export { version } from "./version.ts";

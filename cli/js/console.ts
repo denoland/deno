@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { isTypedArray } from "./util.ts";
 import { TypedArray } from "./types.ts";
 import { TextEncoder } from "./text_encoding.ts";
@@ -40,12 +40,12 @@ export class CSI {
 
 function cursorTo(stream: File, _x: number, _y?: number): void {
   const uint8 = new TextEncoder().encode(CSI.kClear);
-  stream.write(uint8);
+  stream.writeSync(uint8);
 }
 
 function clearScreenDown(stream: File): void {
   const uint8 = new TextEncoder().encode(CSI.kClearScreenDown);
-  stream.write(uint8);
+  stream.writeSync(uint8);
 }
 
 function getClassInstanceName(instance: unknown): string {

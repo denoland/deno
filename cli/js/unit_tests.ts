@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 // This test is executed as part of tools/test.py
 // But it can also be run manually: ./target/debug/deno cli/js/unit_tests.ts
@@ -9,6 +9,7 @@ import "./buffer_test.ts";
 import "./build_test.ts";
 import "./chmod_test.ts";
 import "./chown_test.ts";
+import "./compiler_api_test.ts";
 import "./console_test.ts";
 import "./copy_file_test.ts";
 import "./custom_event_test.ts";

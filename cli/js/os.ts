@@ -1,7 +1,8 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { core } from "./core.ts";
 import * as dispatch from "./dispatch.ts";
 import { sendSync } from "./dispatch_json.ts";
+import { ErrorKind } from "./errors.ts";
 import { assert } from "./util.ts";
 import * as util from "./util.ts";
 import { window } from "./window.ts";
@@ -132,6 +133,7 @@ type DirKind =
   | "home"
   | "cache"
   | "config"
+  | "executable"
   | "data"
   | "data_local"
   | "audio"
@@ -147,10 +149,12 @@ type DirKind =
 /**
  * Returns the user and platform specific directories.
  * Requires the `--allow-env` flag.
+ * Returns null if there is no applicable directory or if any other error
+ * occurs.
  *
- * Argument values: "home", "cache", "config", "data", "data_local", "audio",
- * "desktop", "document", "download", "font", "picture", "public", "template",
- * "video"
+ * Argument values: "home", "cache", "config", "executable", "data",
+ * "data_local", "audio", "desktop", "document", "download", "font", "picture",
+ * "public", "template", "video"
  *
  * "cache"
  * |Platform | Value                               | Example                      |
@@ -165,6 +169,13 @@ type DirKind =
  * | Linux   | `$XDG_CONFIG_HOME` or `$HOME`/.config | /home/alice/.config              |
  * | macOS   | `$HOME`/Library/Preferences           | /Users/Alice/Library/Preferences |
  * | Windows | `{FOLDERID_RoamingAppData}`           | C:\Users\Alice\AppData\Roaming   |
+ *
+ * "executable"
+ * |Platform | Value                                                           | Example                |
+ * | ------- | --------------------------------------------------------------- | -----------------------|
+ * | Linux   | `XDG_BIN_HOME` or `$XDG_DATA_HOME`/../bin or `$HOME`/.local/bin | /home/alice/.local/bin |
+ * | macOS   | -                                                               | -                      |
+ * | Windows | -                                                               | -                      |
  *
  * "data"
  * |Platform | Value                                    | Example                                  |
@@ -243,8 +254,15 @@ type DirKind =
  * | macOS   | `$HOME`/Movies      | /Users/Alice/Movies   |
  * | Windows | `{FOLDERID_Videos}` | C:\Users\Alice\Videos |
  */
-export function dir(kind: DirKind): string {
-  return sendSync(dispatch.OP_GET_DIR, { kind });
+export function dir(kind: DirKind): string | null {
+  try {
+    return sendSync(dispatch.OP_GET_DIR, { kind });
+  } catch (error) {
+    if (error.kind == ErrorKind.PermissionDenied) {
+      throw error;
+    }
+    return null;
+  }
 }
 
 /**

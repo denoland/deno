@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { URL } from "./url.ts";
 import { notImplemented } from "./util.ts";
 import { Location } from "./dom_types.ts";

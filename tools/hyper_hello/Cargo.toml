@@ -1,10 +1,11 @@
 [package]
 name = "hyper_hello"
 version = "0.0.1"
+edition = "2018"
 
 [dependencies]
-hyper = "0.12.35"
-ring = "0.16.9"
+hyper = "0.13.1"
+tokio = { version = "0.2.6", features = ["full"] }
 
 [[bin]]
 name = "hyper_hello"

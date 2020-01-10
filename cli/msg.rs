@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 // Warning! The values in this enum are duplicated in js/errors.ts
 // Update carefully!
@@ -97,5 +97,6 @@ pub fn enum_name_media_type(mt: MediaType) -> &'static str {
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum CompilerRequestType {
   Compile = 0,
-  Bundle = 1,
+  RuntimeCompile = 1,
+  RuntimeTranspile = 2,
 }

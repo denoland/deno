@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 export interface ArgParsingOptions {
   unknown?: (i: unknown) => unknown;
   boolean?: boolean | string | string[];

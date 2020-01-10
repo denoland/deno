@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { test, testPerm, assert, assertEquals } from "./test_util.ts";
 
 test(function filesStdioFileDescriptors(): void {
@@ -118,6 +118,10 @@ testPerm(
     const filename = tempDir + "hello.txt";
     const file = await Deno.open(filename, "w+");
 
+    // reading into an empty buffer should return 0 immediately
+    const bytesRead = await file.read(new Uint8Array(0));
+    assert(bytesRead === 0);
+
     // reading file into null buffer should throw an error
     let err;
     try {
@@ -157,7 +161,7 @@ testPerm({ read: true, write: true }, async function createFile(): Promise<
 > {
   const tempDir = await Deno.makeTempDir();
   const filename = tempDir + "/test.txt";
-  const f = await Deno.open(filename, "w");
+  const f = await Deno.create(filename);
   let fileInfo = Deno.statSync(filename);
   assert(fileInfo.isFile());
   assert(fileInfo.len === 0);

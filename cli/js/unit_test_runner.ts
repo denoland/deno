@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run --reload --allow-run
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import "./unit_tests.ts";
 import {
   permissionCombinations,
@@ -9,14 +9,14 @@ import {
 
 interface TestResult {
   perms: string;
-  output: string;
+  output?: string;
   result: number;
 }
 
 function permsToCliFlags(perms: Permissions): string[] {
   return Object.keys(perms)
-    .map((key): string => {
-      if (!perms[key]) return "";
+    .map(key => {
+      if (!perms[key as keyof Permissions]) return "";
 
       const cliFlag = key.replace(
         /\.?([A-Z])/g,

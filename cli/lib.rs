@@ -1,4 +1,6 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+#![deny(warnings)]
+
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
@@ -7,7 +9,7 @@ extern crate futures;
 #[macro_use]
 extern crate serde_json;
 extern crate clap;
-extern crate deno;
+extern crate deno_core;
 extern crate indexmap;
 #[cfg(unix)]
 extern crate nix;
@@ -30,7 +32,6 @@ pub mod fmt_errors;
 mod fs;
 mod global_state;
 mod global_timer;
-mod http_body;
 mod http_util;
 mod import_map;
 mod js;
@@ -59,9 +60,9 @@ use crate::ops::io::get_stdio;
 use crate::progress::Progress;
 use crate::state::ThreadSafeState;
 use crate::worker::Worker;
-use deno::v8_set_flags;
-use deno::ErrBox;
-use deno::ModuleSpecifier;
+use deno_core::v8_set_flags;
+use deno_core::ErrBox;
+use deno_core::ModuleSpecifier;
 use flags::DenoFlags;
 use flags::DenoSubcommand;
 use log::Level;
@@ -171,7 +172,6 @@ fn print_cache_info(worker: Worker) {
 
 async fn print_file_info(worker: Worker, module_specifier: ModuleSpecifier) {
   let global_state_ = &worker.state.global_state;
-  let state_ = &worker.state;
 
   let maybe_source_file = global_state_
     .file_fetcher
@@ -232,7 +232,8 @@ async fn print_file_info(worker: Worker, module_specifier: ModuleSpecifier) {
     );
   }
 
-  if let Some(deps) = state_.modules.lock().unwrap().deps(&compiled.name) {
+  let isolate = worker.isolate.try_lock().unwrap();
+  if let Some(deps) = isolate.modules.deps(&compiled.name) {
     println!("{}{}", colors::bold("deps:\n".to_string()), deps.name);
     if let Some(ref depsdeps) = deps.deps {
       for d in depsdeps {
@@ -270,7 +271,6 @@ fn info_command(flags: DenoFlags) {
     print_file_info(worker.clone(), main_module.clone()).await;
     let result = worker.await;
     js_check(result);
-    Ok(())
   };
 
   tokio_util::run(main_future);
@@ -288,7 +288,6 @@ fn fetch_command(flags: DenoFlags) {
   let main_future = async move {
     let result = worker.execute_mod_async(&main_module, None, true).await;
     js_check(result);
-    Ok(())
   };
 
   tokio_util::run(main_future);
@@ -316,7 +315,6 @@ fn eval_command(flags: DenoFlags) {
     let result = worker.await;
     js_check(result);
     js_check(worker_.execute("window.dispatchEvent(new Event('unload'))"));
-    Ok(())
   };
 
   tokio_util::run(main_future);
@@ -342,19 +340,22 @@ fn bundle_command(flags: DenoFlags) {
       print_err_and_exit(err);
     }
     debug!(">>>>> bundle_async END");
-    Ok(())
   };
   tokio_util::run(main_future);
 }
 
 fn run_repl(flags: DenoFlags) {
   let (mut worker, _state) = create_worker_and_state(flags);
+  // Make repl continue to function under uncaught async errors.
+  worker.set_error_handler(Box::new(|err| {
+    eprintln!("{}", err.to_string());
+    Ok(())
+  }));
   // Setup runtime.
   js_check(worker.execute("denoMain()"));
   let main_future = async move {
     let result = worker.await;
     js_check(result);
-    Ok(())
   };
   tokio_util::run(main_future);
 }
@@ -396,7 +397,6 @@ fn run_script(flags: DenoFlags) {
     let result = worker.await;
     js_check(result);
     js_check(worker_.execute("window.dispatchEvent(new Event('unload'))"));
-    Ok(())
   };
 
   if use_current_thread {

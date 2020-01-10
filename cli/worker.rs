@@ -1,13 +1,12 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::fmt_errors::JSError;
 use crate::ops;
 use crate::state::ThreadSafeState;
-use deno;
-use deno::Buf;
-use deno::ErrBox;
-use deno::ModuleSpecifier;
-use deno::RecursiveLoad;
-use deno::StartupData;
+use deno_core;
+use deno_core::Buf;
+use deno_core::ErrBox;
+use deno_core::ModuleSpecifier;
+use deno_core::StartupData;
 use futures::channel::mpsc;
 use futures::future::FutureExt;
 use futures::future::TryFutureExt;
@@ -20,6 +19,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::task::Context;
 use std::task::Poll;
+use tokio::sync::Mutex as AsyncMutex;
 use url::Url;
 
 /// Wraps mpsc channels so they can be referenced
@@ -30,12 +30,12 @@ pub struct WorkerChannels {
   pub receiver: mpsc::Receiver<Buf>,
 }
 
-/// Wraps deno::Isolate to provide source maps, ops for the CLI, and
+/// Wraps deno_core::Isolate to provide source maps, ops for the CLI, and
 /// high-level module loading.
 #[derive(Clone)]
 pub struct Worker {
   pub name: String,
-  isolate: Arc<Mutex<deno::Isolate>>,
+  pub isolate: Arc<AsyncMutex<Box<deno_core::EsIsolate>>>,
   pub state: ThreadSafeState,
   external_channels: Arc<Mutex<WorkerChannels>>,
 }
@@ -47,9 +47,13 @@ impl Worker {
     state: ThreadSafeState,
     external_channels: WorkerChannels,
   ) -> Self {
-    let isolate = Arc::new(Mutex::new(deno::Isolate::new(startup_data, false)));
+    let isolate = Arc::new(AsyncMutex::new(deno_core::EsIsolate::new(
+      Box::new(state.clone()),
+      startup_data,
+      false,
+    )));
     {
-      let mut i = isolate.lock().unwrap();
+      let mut i = isolate.try_lock().unwrap();
       let op_registry = i.op_registry.clone();
 
       ops::compiler::init(&mut i, &state);
@@ -70,18 +74,6 @@ impl Worker {
       ops::timers::init(&mut i, &state);
       ops::workers::init(&mut i, &state);
 
-      let state_ = state.clone();
-      i.set_dyn_import(move |id, specifier, referrer| {
-        let load_stream = RecursiveLoad::dynamic_import(
-          id,
-          specifier,
-          referrer,
-          state_.clone(),
-          state_.modules.clone(),
-        );
-        Box::new(load_stream)
-      });
-
       let global_state_ = state.global_state.clone();
       i.set_js_error_create(move |v8_exception| {
         JSError::from_v8_exception(v8_exception, &global_state_.ts_compiler)
@@ -94,6 +86,14 @@ impl Worker {
       state,
       external_channels: Arc::new(Mutex::new(external_channels)),
     }
+  }
+
+  pub fn set_error_handler(
+    &mut self,
+    handler: Box<dyn FnMut(ErrBox) -> Result<(), ErrBox>>,
+  ) {
+    let mut i = self.isolate.try_lock().unwrap();
+    i.set_error_handler(handler);
   }
 
   /// Same as execute2() but the filename defaults to "$CWD/__anonymous__".
@@ -110,46 +110,38 @@ impl Worker {
     js_filename: &str,
     js_source: &str,
   ) -> Result<(), ErrBox> {
-    let mut isolate = self.isolate.lock().unwrap();
+    let mut isolate = self.isolate.try_lock().unwrap();
     isolate.execute(js_filename, js_source)
   }
 
   /// Executes the provided JavaScript module.
-  pub fn execute_mod_async(
+  ///
+  /// Takes ownership of the isolate behind mutex.
+  pub async fn execute_mod_async(
     &mut self,
     module_specifier: &ModuleSpecifier,
     maybe_code: Option<String>,
     is_prefetch: bool,
-  ) -> impl Future<Output = Result<(), ErrBox>> {
+  ) -> Result<(), ErrBox> {
+    let specifier = module_specifier.to_string();
     let worker = self.clone();
-    let loader = self.state.clone();
-    let isolate = self.isolate.clone();
-    let modules = self.state.modules.clone();
-    let recursive_load = RecursiveLoad::main(
-      &module_specifier.to_string(),
-      maybe_code,
-      loader,
-      modules,
-    );
 
-    async move {
-      let id = recursive_load.get_future(isolate).await?;
-      worker.state.global_state.progress.done();
+    let mut isolate = self.isolate.lock().await;
+    let id = isolate.load_module(&specifier, maybe_code).await?;
+    worker.state.global_state.progress.done();
 
-      if !is_prefetch {
-        let mut isolate = worker.isolate.lock().unwrap();
-        return isolate.mod_evaluate(id);
-      }
-
-      Ok(())
+    if !is_prefetch {
+      return isolate.mod_evaluate(id);
     }
+
+    Ok(())
   }
 
   /// Post message to worker as a host.
   ///
   /// This method blocks current thread.
   pub fn post_message(
-    self: &Self,
+    &self,
     buf: Buf,
   ) -> impl Future<Output = Result<(), ErrBox>> {
     let channels = self.external_channels.lock().unwrap();
@@ -162,7 +154,7 @@ impl Worker {
   }
 
   /// Get message from worker as a host.
-  pub fn get_message(self: &Self) -> WorkerReceiver {
+  pub fn get_message(&self) -> WorkerReceiver {
     WorkerReceiver {
       channels: self.external_channels.clone(),
     }
@@ -174,7 +166,7 @@ impl Future for Worker {
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
-    let mut isolate = inner.isolate.lock().unwrap();
+    let mut isolate = inner.isolate.try_lock().unwrap();
     isolate.poll_unpin(cx)
   }
 }
@@ -214,20 +206,19 @@ mod tests {
   where
     F: FnOnce() + Send + 'static,
   {
-    let fut = futures::future::lazy(move |_cx| {
-      f();
-      Ok(())
-    });
-
+    let fut = futures::future::lazy(move |_cx| f());
     tokio_util::run(fut)
   }
 
-  pub fn panic_on_error<I, E, F>(f: F) -> impl Future<Output = Result<I, ()>>
+  pub async fn panic_on_error<I, E, F>(f: F) -> I
   where
     F: Future<Output = Result<I, E>>,
     E: std::fmt::Debug,
   {
-    f.map_err(|err| panic!("Future got unexpected error: {:?}", err))
+    match f.await {
+      Ok(v) => v,
+      Err(e) => panic!("Future got unexpected error: {:?}", e),
+    }
   }
 
   #[test]
@@ -235,8 +226,7 @@ mod tests {
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
       .parent()
       .unwrap()
-      .join("tests/esm_imports_a.js")
-      .to_owned();
+      .join("tests/esm_imports_a.js");
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state = ThreadSafeGlobalState::new(
@@ -280,8 +270,7 @@ mod tests {
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
       .parent()
       .unwrap()
-      .join("tests/circular1.ts")
-      .to_owned();
+      .join("tests/circular1.ts");
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state = ThreadSafeGlobalState::new(
@@ -327,8 +316,7 @@ mod tests {
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
       .parent()
       .unwrap()
-      .join("cli/tests/006_url_imports.ts")
-      .to_owned();
+      .join("cli/tests/006_url_imports.ts");
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let mut flags = flags::DenoFlags::default();
@@ -345,7 +333,7 @@ mod tests {
       int,
     )
     .unwrap();
-    let global_state_ = global_state.clone();
+    let global_state_ = global_state;
     let state_ = state.clone();
     tokio_util::run(async move {
       let mut worker = Worker::new(
@@ -415,10 +403,9 @@ mod tests {
       let fut = async move {
         let r = worker.await;
         r.unwrap();
-        Ok(())
       };
 
-      tokio::spawn(fut.boxed().compat());
+      tokio::spawn(fut);
 
       let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
 
@@ -448,26 +435,21 @@ mod tests {
         .unwrap();
 
       let worker_ = worker.clone();
-      let worker_future = worker
-        .then(move |r| {
-          println!("workers.rs after resource close");
-          r.unwrap();
-          futures::future::ok(())
-        })
-        .shared();
+      let worker_future = async move {
+        let result = worker.await;
+        println!("workers.rs after resource close");
+        result.unwrap();
+      }
+      .shared();
 
       let worker_future_ = worker_future.clone();
-      tokio::spawn(
-        worker_future_
-          .then(|_: Result<(), ()>| futures::future::ok(()))
-          .compat(),
-      );
+      tokio::spawn(worker_future_);
 
       let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
       let r = block_on(worker_.post_message(msg));
       assert!(r.is_ok());
 
-      block_on(worker_future).unwrap();
+      block_on(worker_future);
     })
   }
 
@@ -493,8 +475,7 @@ mod tests {
       let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()
-        .join("tests/002_hello.ts")
-        .to_owned();
+        .join("tests/002_hello.ts");
       let module_specifier =
         ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
       let result =

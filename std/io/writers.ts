@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 type Writer = Deno.Writer;
 import { decode, encode } from "../strings/mod.ts";
 

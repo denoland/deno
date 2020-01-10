@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // This is a "special" module, in that it define the global runtime scope of
 // Deno, and therefore it defines a lot of the runtime environment that code
 // is evaluated in.  We use this file to automatically build the runtime type
@@ -62,6 +62,8 @@ declare global {
   interface Object {
     [consoleTypes.customInspect]?(): string;
   }
+
+  const console: consoleTypes.Console;
 }
 
 // A self reference to the global object.

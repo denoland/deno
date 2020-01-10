@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { join } from "../path/mod.ts";
 const {
   readDir,
@@ -33,7 +33,7 @@ export async function emptyDir(dir: string): Promise<void> {
     }
 
     // if not exist. then create it
-    await mkdir(dir, true);
+    await mkdir(dir, { recursive: true });
   }
 }
 
@@ -61,7 +61,7 @@ export function emptyDirSync(dir: string): void {
       throw err;
     }
     // if not exist. then create it
-    mkdirSync(dir, true);
+    mkdirSync(dir, { recursive: true });
     return;
   }
 }

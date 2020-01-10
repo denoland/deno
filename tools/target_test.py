@@ -21,9 +21,6 @@ class TestTarget(DenoTestCase):
         self.check_exists(bin_file)
         run([bin_file], quiet=True)
 
-    def test_libdeno(self):
-        self._test("libdeno_test")
-
     def test_no_color(self):
         t = os.path.join(tests_path, "no_color.js")
         result = run_output([self.deno_exe, "run", t],

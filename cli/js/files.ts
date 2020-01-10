@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
   EOF,
   Reader,
@@ -39,6 +39,24 @@ export async function open(
   return new File(rid);
 }
 
+/** Creates a file if none exists or truncates an existing file and returns
+ *  an instance of the `File` object synchronously.
+ *
+ *       const file = Deno.createSync("/foo/bar.txt");
+ */
+export function createSync(filename: string): File {
+  return openSync(filename, "w+");
+}
+
+/** Creates a file if none exists or truncates an existing file and returns
+ *  an instance of the `File` object.
+ *
+ *       const file = await Deno.create("/foo/bar.txt");
+ */
+export function create(filename: string): Promise<File> {
+  return open(filename, "w+");
+}
+
 /** Read synchronously from a file ID into an array buffer.
  *
  * Return `number | EOF` for the operation.
@@ -50,6 +68,9 @@ export async function open(
  *
  */
 export function readSync(rid: number, p: Uint8Array): number | EOF {
+  if (p.length == 0) {
+    return 0;
+  }
   const nread = sendSyncMinimal(dispatch.OP_READ, rid, p);
   if (nread < 0) {
     throw new Error("read error");
@@ -70,6 +91,9 @@ export function readSync(rid: number, p: Uint8Array): number | EOF {
  *       const text = new TextDecoder().decode(buf);
  */
 export async function read(rid: number, p: Uint8Array): Promise<number | EOF> {
+  if (p.length == 0) {
+    return 0;
+  }
   const nread = await sendAsyncMinimal(dispatch.OP_READ, rid, p);
   if (nread < 0) {
     throw new Error("read error");
@@ -217,11 +241,3 @@ export type OpenMode =
   | "x"
   /** Read-write. Behaves like `x` and allows to read from file. */
   | "x+";
-
-/** A factory function for creating instances of `File` associated with the
- * supplied file name.
- * @internal
- */
-export function create(filename: string): Promise<File> {
-  return open(filename, "w+");
-}

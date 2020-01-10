@@ -103,10 +103,10 @@ import * as log from "https://deno.land/std/log/mod.ts";
 
 ## Setup
 
-### Binary Install
-
 Deno works on OSX, Linux, and Windows. Deno is a single binary executable. It
 has no external dependencies.
+
+### Download and Install
 
 [deno_install](https://github.com/denoland/deno_install) provides convenience
 scripts to download and install the binary.
@@ -159,111 +159,13 @@ Once it's installed and in your `$PATH`, try it:
 deno https://deno.land/std/examples/welcome.ts
 ```
 
-### Build from source
+### Build from Source
 
-Clone on Linux or Mac:
-
-```bash
-git clone --recurse-submodules https://github.com/denoland/deno.git
-```
-
-On Windows, a couple extra steps are required to clone because we use symlinks
-in the repository. First
-[enable "Developer Mode"](https://www.google.com/search?q=windows+enable+developer+mode)
-(otherwise symlinks would require administrator privileges). Then you must set
-`core.symlinks=true` before the checkout is started.
-
-```bash
-git config --global core.symlinks true
-git clone --recurse-submodules https://github.com/denoland/deno.git
-```
-
-Now we can start the build:
-
-```bash
-# Build.
-cargo build -vv
-
-# Run.
-./target/debug/deno tests/002_hello.ts
-
-# Test.
-cargo test
-
-# Format code.
-./tools/format.py
-```
-
-#### Prerequisites
-
-To ensure reproducible builds, Deno has most of its dependencies in a git
-submodule. However, you need to install separately:
-
-1. [Rust](https://www.rust-lang.org/en-US/install.html) >= 1.36.0
-2. Python 2.
-   [Not 3](https://github.com/denoland/deno/issues/464#issuecomment-411795578).
-
-Extra steps for Mac users: install [XCode](https://developer.apple.com/xcode/)
-:(
-
-Extra steps for Windows users:
-
-<!-- prettier-ignore-start -->
-<!-- see https://github.com/prettier/prettier/issues/3679 -->
-
-1. Add `python.exe` to `PATH` (e.g. `set PATH=%PATH%;C:\Python27\python.exe`)
-2. Get [VS Community 2017](https://www.visualstudio.com/downloads/) with
-   "Desktop development with C++" toolkit and make sure to select the following
-   required tools listed below along with all C++ tools.
-    - Windows 10 SDK >= 10.0.17134
-    - Visual C++ ATL for x86 and x64
-    - Visual C++ MFC for x86 and x64
-    - C++ profiling tools
-3. Enable "Debugging Tools for Windows". Go to "Control Panel" → "Programs" →
-   "Programs and Features" → Select "Windows Software Development Kit - Windows
-   10" → "Change" → "Change" → Check "Debugging Tools For Windows" → "Change" ->
-   "Finish".
-4. Make sure you are using git version 2.19.2.windows.1 or newer.
-
-<!-- prettier-ignore-end -->
-
-#### Other useful commands
-
-```bash
-# Call ninja manually.
-ninja -C target/debug
-
-# Build a release binary.
-cargo build --release
-
-# List executable targets.
-gn --root=core/libdeno ls target/debug "//:*" --as=output --type=executable
-
-# List build configuration.
-gn --root=core/libdeno args target/debug/ --list
-
-# Edit build configuration.
-gn --root=core/libdeno args target/debug/
-
-# Describe a target.
-gn --root=core/libdeno desc target/debug/ :deno
-gn help
-
-# Update third_party modules
-git submodule update
-
-# Skip downloading binary build tools and point the build
-# to the system provided ones (for packagers of deno ...).
-export DENO_BUILD_ARGS="clang_base_path=/usr clang_use_chrome_plugins=false"
-DENO_NO_BINARY_DOWNLOAD=1 DENO_GN_PATH=/usr/bin/gn cargo build
-```
-
-Environment variables: `DENO_BUILD_MODE`, `DENO_BUILD_PATH`, `DENO_BUILD_ARGS`,
-`DENO_DIR`, `DENO_GN_PATH`, `DENO_NO_BINARY_DOWNLOAD`.
+Follow the [build instruction for contributors](#development).
 
 ## API reference
 
-### deno types
+### `deno types`
 
 To get an exact reference of deno's runtime API, run the following in the
 command line:
@@ -291,7 +193,7 @@ In this program each command-line argument is assumed to be a filename, the file
 is opened, and printed to stdout.
 
 ```ts
-for (let i = 1; i < Deno.args.length; i++) {
+for (let i = 0; i < Deno.args.length; i++) {
   let filename = Deno.args[i];
   let file = await Deno.open(filename);
   await Deno.copy(Deno.stdout, file);
@@ -484,7 +386,7 @@ By default when you use `Deno.run()` subprocess inherits `stdin`, `stdout` and
 you can use `"piped"` option.
 
 ```ts
-const fileNames = Deno.args.slice(1);
+const fileNames = Deno.args;
 
 const p = Deno.run({
   args: [
@@ -492,6 +394,7 @@ const p = Deno.run({
     "run",
     "--allow-read",
     "https://deno.land/std/examples/cat.ts",
+    "--",
     ...fileNames
   ],
   stdout: "piped",
@@ -533,8 +436,11 @@ browser JavaScript, Deno can import libraries directly from URLs. This example
 uses a URL to import a test runner library:
 
 ```ts
-import { test, runIfMain } from "https://deno.land/std/testing/mod.ts";
-import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+import {
+  assertEquals,
+  runIfMain,
+  test
+} from "https://deno.land/std/testing/mod.ts";
 
 test(function t1() {
   assertEquals("hello", "hello");
@@ -597,13 +503,15 @@ everywhere in a large project?** The solution is to import and re-export your
 external libraries in a central `deps.ts` file (which serves the same purpose as
 Node's `package.json` file). For example, let's say you were using the above
 testing library across a large project. Rather than importing
-`"https://deno.land/std/testing/mod.ts"` and
-`"https://deno.land/std/testing/asserts.ts"` everywhere, you could create a
+`"https://deno.land/std/testing/mod.ts"` everywhere, you could create a
 `deps.ts` file that exports the third-party code:
 
 ```ts
-export { runTests, test } from "https://deno.land/std/testing/mod.ts";
-export { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+export {
+  assertEquals,
+  runTests,
+  test
+} from "https://deno.land/std/testing/mod.ts";
 ```
 
 And throughout the same project, you can import from the `deps.ts` and avoid
@@ -721,7 +629,6 @@ SUBCOMMANDS:
     run            Run a program given a filename or url to the source code
     test           Run tests
     types          Print runtime TypeScript declarations
-    xeval          Eval a script on text segments from stdin
 
 ENVIRONMENT VARIABLES:
     DENO_DIR       Set deno's base directory
@@ -990,6 +897,132 @@ import { fib } from "./fib.wasm";
 console.log(fib(20));
 ```
 
+## Compiler API
+
+Deno supports runtime access to the built in TypeScript compiler. There are
+three methods in the `Deno` namespace that provide this access.
+
+### `Deno.compile()`
+
+This works similar to `deno fetch` in that it can fetch code, compile it, but
+not run it. It takes up to three arguments, the `rootName`, optionally
+`sources`, and optionally `options`. The `rootName` is the root module which
+will be used to generate the resulting program. This is like module name you
+would pass on the command line in `deno --reload run example.ts`. The `sources`
+is a hash where the key is the fully qualified module name, and the value is the
+text source of the module. If `sources` is passed, Deno will resolve all the
+modules from within that hash and not attempt to resolve them outside of Deno.
+If `sources` are not provided, Deno will resolve modules as if the root module
+had been passed on the command line. Deno will also cache any of these
+resources. The `options` argument is a set of options of type
+`Deno.CompilerOptions`, which is a subset of the TypeScript compiler options
+which can be supported by Deno.
+
+The method resolves with a tuple where the first argument is any diagnostics
+(syntax or type errors) related to the code, and a map of the code, where the
+key would be the output filename and the value would be the content.
+
+An example of providing sources:
+
+```ts
+const [diagnostics, emitMap] = await Deno.compile("/foo.ts", {
+  "/foo.ts": `import * as bar from "./bar.ts";\nconsole.log(bar);\n`,
+  "/bar.ts": `export const bar = "bar";\n`
+});
+
+assert(diagnostics == null); // ensuring no diagnostics are returned
+console.log(emitMap);
+```
+
+We would expect map to contain 4 "files", named `/foo.js.map`, `/foo.js`,
+`/bar.js.map`, and `/bar.js`.
+
+When not supplying resources, you can use local or remote modules, just like you
+could do on the command line. So you could do something like this:
+
+```ts
+const [diagnostics, emitMap] = await Deno.compile(
+  "https://deno.land/std/examples/welcome.ts"
+);
+```
+
+We should get back in the `emitMap` a simple `console.log()` statement.
+
+### `Deno.bundle()`
+
+This works a lot like `deno bundle` does on the command line. It is also like
+`Deno.compile()`, except instead of returning a map of files, it returns a
+single string, which is a self-contained JavaScript ES module which will include
+all of the code that was provided or resolved as well as exports of all the
+exports of the root module that was provided. It takes up to three arguments,
+the `rootName`, optionally `sources`, and optionally `options`. The `rootName`
+is the root module which will be used to generate the resulting program. This is
+like module name you would pass on the command line in `deno bundle example.ts`.
+The `sources` is a hash where the key is the fully qualified module name, and
+the value is the text source of the module. If `sources` is passed, Deno will
+resolve all the modules from within that hash and not attempt to resolve them
+outside of Deno. If `sources` are not provided, Deno will resolve modules as if
+the root module had been passed on the command line. Deno will also cache any of
+these resources. The `options` argument is a set of options of type
+`Deno.CompilerOptions`, which is a subset of the TypeScript compiler options
+which can be supported by Deno.
+
+An example of providing sources:
+
+```ts
+const [diagnostics, emit] = await Deno.compile("/foo.ts", {
+  "/foo.ts": `import * as bar from "./bar.ts";\nconsole.log(bar);\n`,
+  "/bar.ts": `export const bar = "bar";\n`
+});
+
+assert(diagnostics == null); // ensuring no diagnostics are returned
+console.log(emit);
+```
+
+We would expect `emit` to be the text for an ES module, which would contain the
+output sources for both modules.
+
+When not supplying resources, you can use local or remote modules, just like you
+could do on the command line. So you could do something like this:
+
+```ts
+const [diagnostics, emit] = await Deno.compile(
+  "https://deno.land/std/http/server.ts"
+);
+```
+
+We should get back in `emit` a self contained JavaScript ES module with all of
+its dependencies resolved and exporting the same exports as the source module.
+
+### `Deno.transpileOnly()`
+
+This is based off of the TypeScript function `transpileModule()`. All this does
+is "erase" any types from the modules and emit JavaScript. There is no type
+checking and no resolution of dependencies. It accepts up to two arguments, the
+first is a hash where the key is the module name and the value is the contents.
+The only purpose of the module name is when putting information into a source
+map, of what the source file name was. The second is optionally `options` which
+is of type `Deno.CompilerOptions`. This is a subset of options which can be
+supported by Deno. It resolves with a map where the key is the source module
+name supplied, and the value is an object with a property of `source` which is
+the output contents of the module, and optionally `map` which would be the
+source map. By default, source maps are output, but can be turned off via the
+`options` argument.
+
+An example:
+
+```ts
+const result = await Deno.transpileOnly({
+  "/foo.ts": `enum Foo { Foo, Bar, Baz };\n`
+});
+
+console.log(result["/foo.ts"].source);
+console.log(result["/foo.ts"].map);
+```
+
+We would expect the `enum` would be rewritten to an IIFE which constructs the
+enumerable, and the map to be defined.
+
 ## Program lifecycle
 
 Deno supports browser compatible lifecycle events: `load` and `unload`. You can
@@ -1255,19 +1288,156 @@ These Deno logos, like the Deno software, are distributed under the MIT license
 
 ## Contributing
 
-[Style Guide](style_guide.md)
+- Read the [style guide](style_guide.md).
+- Progress towards future releases is tracked
+  [here](https://github.com/denoland/deno/milestones).
+- Please don't make [the benchmarks](https://deno.land/benchmarks.html) worse.
+- Ask for help in the [community chat room](https://gitter.im/denolife/Lobby).
+- If you are going to work on an issue, mention so in the issue comments
+  _before_ you start working on the issue.
 
-Progress towards future releases is tracked
-[here](https://github.com/denoland/deno/milestones).
+### Development
 
-Please don't make [the benchmarks](https://deno.land/benchmarks.html) worse.
+#### Cloning the Repository
 
-Ask for help in the [community chat room](https://gitter.im/denolife/Lobby).
+Clone on Linux or Mac:
 
-If you are going to work on an issue, mention so in the issue comments _before_
-you start working on the issue.
+```bash
+git clone --recurse-submodules https://github.com/denoland/deno.git
+```
 
-### Submitting a pull request
+Extra steps for Windows users:
+
+1. [Enable "Developer Mode"](https://www.google.com/search?q=windows+enable+developer+mode)
+   (otherwise symlinks would require administrator privileges).
+2. Make sure you are using git version 2.19.2.windows.1 or newer.
+3. Set `core.symlinks=true` before the checkout:
+   ```bash
+   git config --global core.symlinks true
+   git clone --recurse-submodules https://github.com/denoland/deno.git
+   ```
+
+#### Prerequisites
+
+Deno has most of its dependencies in a git submodule to ensure reproducible
+builds. The following must be installed separately:
+
+<!-- prettier-ignore-start -->
+<!-- see https://github.com/prettier/prettier/issues/3679 -->
+
+1. [Rust](https://www.rust-lang.org/en-US/install.html)
+    - Ensure that your version is compatible with the one used in [CI](
+      https://github.com/denoland/deno/blob/master/.github/workflows/ci.yml).
+      This is updated frequently.
+2. [Python 2](https://www.python.org/downloads)
+    - Ensure that a suffix-less `python`/`python.exe` exists in your `PATH` and
+      it refers to Python 2, [not 3](
+      https://github.com/denoland/deno/issues/464#issuecomment-411795578).
+
+Extra steps for Linux users:
+
+- Install glib-2.0 development files.
+    - Required by [rusty_v8](https://github.com/denoland/rusty_v8#build).
+    - On Ubuntu, run `sudo apt install libglib2.0-dev`.
+
+Extra steps for Mac users:
+
+- Install [XCode](https://developer.apple.com/xcode/) :(
+
+Extra steps for Windows users:
+
+1. Get [VS Community 2017](https://www.visualstudio.com/downloads/) with
+   "Desktop development with C++" toolkit and make sure to select the following
+   required tools listed below along with all C++ tools.
+    - Windows 10 SDK >= 10.0.17134
+    - Visual C++ ATL for x86 and x64
+    - Visual C++ MFC for x86 and x64
+    - C++ profiling tools
+2. Enable "Debugging Tools for Windows". Go to "Control Panel" → "Programs" →
+   "Programs and Features" → Select "Windows Software Development Kit - Windows
+   10" → "Change" → "Change" → Check "Debugging Tools For Windows" → "Change" ->
+   "Finish".
+
+<!-- prettier-ignore-end -->
+
+#### Building
+
+Build with Cargo:
+
+```bash
+# Build:
+cargo build -vv
+
+# Run:
+./target/debug/deno tests/002_hello.ts
+```
+
+#### Testing and Tools
+
+Test `deno`:
+
+```bash
+# Run the whole suite:
+cargo test
+
+# Only test cli/js/:
+cargo test js_unit_tests
+```
+
+Test `std/`:
+
+```bash
+cd std
+cargo run -- -A testing/runner.ts --exclude "**/testdata"
+```
+
+Lint the code:
+
+```bash
+./tools/lint.py
+```
+
+Format the code:
+
+```bash
+./tools/format.py
+```
+
+#### Other Useful Commands
+
+```bash
+# Call ninja manually.
+ninja -C target/debug
+
+# Build a release binary.
+cargo build --release
+
+# List executable targets.
+gn --root=core/libdeno ls target/debug "//:*" --as=output --type=executable
+
+# List build configuration.
+gn --root=core/libdeno args target/debug/ --list
+
+# Edit build configuration.
+gn --root=core/libdeno args target/debug/
+
+# Describe a target.
+gn --root=core/libdeno desc target/debug/ :deno
+gn help
+
+# Update third_party modules
+git submodule update
+
+# Skip downloading binary build tools and point the build
+# to the system provided ones (for packagers of deno ...).
+export DENO_BUILD_ARGS="clang_base_path=/usr clang_use_chrome_plugins=false"
+DENO_NO_BINARY_DOWNLOAD=1 DENO_GN_PATH=/usr/bin/gn cargo build
+```
+
+Environment variables: `DENO_BUILD_MODE`, `DENO_BUILD_PATH`, `DENO_BUILD_ARGS`,
+`DENO_DIR`, `DENO_GN_PATH`, `DENO_NO_BINARY_DOWNLOAD`.
+
+### Submitting a Pull Request
 
 Before submitting, please make sure the following is done:
 

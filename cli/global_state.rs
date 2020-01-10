@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::compilers::CompiledModule;
 use crate::compilers::JsCompiler;
 use crate::compilers::JsonCompiler;
@@ -13,8 +13,8 @@ use crate::metrics::Metrics;
 use crate::msg;
 use crate::permissions::DenoPermissions;
 use crate::progress::Progress;
-use deno::ErrBox;
-use deno::ModuleSpecifier;
+use deno_core::ErrBox;
+use deno_core::ModuleSpecifier;
 use std;
 use std::env;
 use std::future::Future;
@@ -205,7 +205,7 @@ impl ThreadSafeGlobalState {
   }
 
   pub fn check_dyn_import(
-    self: &Self,
+    &self,
     module_specifier: &ModuleSpecifier,
   ) -> Result<(), ErrBox> {
     let u = module_specifier.as_url();

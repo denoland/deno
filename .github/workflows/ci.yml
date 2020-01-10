@@ -45,7 +45,7 @@ jobs:
       - name: Install rust
         uses: hecrj/setup-rust-action@v1
         with:
-          rust-version: "1.39.0"
+          rust-version: "1.40.0"
 
       - name: Install clippy and rustfmt
         if: matrix.kind == 'lint'
@@ -102,9 +102,6 @@ jobs:
           python --version
           rustc --version
           cargo --version
-
-      - name: Run setup.py
-        run: python ./tools/setup.py
 
       - name: Start sccache
         env:
