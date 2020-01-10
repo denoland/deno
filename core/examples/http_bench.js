@@ -17,11 +17,15 @@ function assert(cond) {
 }
 
 function createResolvable() {
-  let methods;
-  const promise = new Promise((resolve, reject) => {
-    methods = { resolve, reject };
+  let resolve;
+  let reject;
+  const promise = new Promise((res, rej) => {
+    resolve = res;
+    reject = rej;
   });
-  return Object.assign(promise, methods);
+  promise.resolve = resolve;
+  promise.reject = reject;
+  return promise;
 }
 
 const scratch32 = new Int32Array(3);
@@ -59,25 +63,19 @@ function sendAsync(opId, arg, zeroCopy = null) {
 function sendSync(opId, arg) {
   const buf = send(0, opId, arg);
   const record = recordFromBuf(buf);
-  return record.result;
+  return record[2];
 }
 
 function recordFromBuf(buf) {
   assert(buf.byteLength === 3 * 4);
-  const buf32 = new Int32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
-  return {
-    promiseId: buf32[0],
-    arg: buf32[1],
-    result: buf32[2]
-  };
+  return new Int32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
 }
 
 function handleAsyncMsgFromRust(opId, buf) {
   const record = recordFromBuf(buf);
-  const { promiseId, result } = record;
-  const p = promiseMap.get(promiseId);
-  promiseMap.delete(promiseId);
-  p.resolve(result);
+  const p = promiseMap.get(record[0]);
+  promiseMap.delete(record[0]);
+  p.resolve(record[2]);
 }
 
 /** Listens on 0.0.0.0:4500, returns rid. */
