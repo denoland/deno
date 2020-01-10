@@ -32,7 +32,10 @@ use std::sync::{Arc, Mutex, Once};
 use std::task::Context;
 use std::task::Poll;
 
-pub const SHARED_RESPONSE_BUF_SIZE: usize = 1024;
+/// Size of `ArrayBuffer` that will be allocated and shared
+/// between responses. If response is bigger a new one-off
+/// `ArrayBuffer` will be allocated.
+pub const SHARED_RESPONSE_BUF_SIZE: usize = 1024 * 1024;
 
 /// A PinnedBuf encapsulates a slice that's been borrowed from a JavaScript
 /// ArrayBuffer object. JavaScript objects can normally be garbage collected,
@@ -1043,7 +1046,6 @@ pub mod tests {
         // Large message that will overflow the shared space.
         let control = new Uint8Array([42]);
         let response = Deno.core.dispatch(1, control);
-        Deno.core.print(`${response[0]}, ${response.length}, ${asyncRecv}`, true);
         assert(response instanceof Uint8Array);
         assert(response.length == 100 * 1024 * 1024);
         assert(response[0] == 99);
