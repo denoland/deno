@@ -10,12 +10,13 @@ import {
 import { test, runIfMain } from "../testing/mod.ts";
 import * as path from "../path/mod.ts";
 import {
-  matchAfterPrefix,
+  FormFile,
   MultipartReader,
   MultipartWriter,
+  isFormFile,
+  matchAfterPrefix,
   scanUntilBoundary
 } from "./multipart.ts";
-import { FormFile, isFormFile } from "../multipart/formfile.ts";
 import { StringWriter } from "../io/writers.ts";
 
 const e = new TextEncoder();
@@ -94,7 +95,7 @@ test(async function multipartMultipartWriter(): Promise<void> {
   const mw = new MultipartWriter(buf);
   await mw.writeField("foo", "foo");
   await mw.writeField("bar", "bar");
-  const f = await open(path.resolve("./multipart/fixtures/sample.txt"), "r");
+  const f = await open(path.resolve("./mime/testdata/sample.txt"), "r");
   await mw.writeFile("file", "sample.txt", f);
   await mw.close();
 });
@@ -173,7 +174,7 @@ test(async function multipartMultipartWriter3(): Promise<void> {
 
 test(async function multipartMultipartReader(): Promise<void> {
   // FIXME: path resolution
-  const o = await open(path.resolve("./multipart/fixtures/sample.txt"));
+  const o = await open(path.resolve("./mime/testdata/sample.txt"));
   const mr = new MultipartReader(
     o,
     "--------------------------434049563556637648550474"
@@ -187,7 +188,7 @@ test(async function multipartMultipartReader(): Promise<void> {
 });
 
 test(async function multipartMultipartReader2(): Promise<void> {
-  const o = await open(path.resolve("./multipart/fixtures/sample.txt"));
+  const o = await open(path.resolve("./mime/testdata/sample.txt"));
   const mr = new MultipartReader(
     o,
     "--------------------------434049563556637648550474"
