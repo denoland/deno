@@ -47,14 +47,12 @@ pub struct SourceCodeInfo {
   pub module_url_found: String,
 }
 
-/// A single execution context of JavaScript. Corresponds roughly to the "Web
-/// Worker" concept in the DOM. An Isolate is a Future that can be used with
-/// Tokio.  The Isolate future complete when there is an error or when all
-/// pending ops have completed.
+/// More specialized version of `Isolate` that provides loading
+/// and execution of ES Modules.
 ///
-/// Ops are created in JavaScript by calling Deno.core.dispatch(), and in Rust
-/// by implementing dispatcher function that takes control buffer and optional zero copy buffer
-/// as arguments. An async Op corresponds exactly to a Promise in JavaScript.
+/// Creating `EsIsolate` requires to pass `loader` argument
+/// that implements `Loader` trait - that way actual resolution and
+/// loading of modules can be customized by the implementor.
 pub struct EsIsolate {
   core_isolate: Box<Isolate>,
   loader: Arc<Box<dyn Loader + Unpin>>,
@@ -190,7 +188,9 @@ impl EsIsolate {
   }
 
   /// Low-level module creation.
-  pub fn mod_new(
+  ///
+  /// Called during module loading or dynamic import loading.
+  fn mod_new(
     &mut self,
     main: bool,
     name: &str,
@@ -307,6 +307,7 @@ impl EsIsolate {
     self.core_isolate.check_last_exception()
   }
 
+  // Called by V8 during `Isolate::mod_instantiate`.
   pub fn module_resolve_cb(
     &mut self,
     specifier: &str,
@@ -322,6 +323,7 @@ impl EsIsolate {
     self.modules.get_id(specifier.as_str()).unwrap_or(0)
   }
 
+  // Called by V8 during `Isolate::mod_instantiate`.
   pub fn dyn_import_cb(
     &mut self,
     specifier: &str,
@@ -544,6 +546,10 @@ impl EsIsolate {
     Ok(())
   }
 
+  /// Asynchronously load specified module and all of it's dependencies
+  ///
+  /// User must call `Isolate::mod_evaluate` with returned `ModuleId`
+  /// manually after load is finished.
   pub async fn load_module(
     &mut self,
     specifier: &str,
@@ -677,13 +683,23 @@ pub mod tests {
       .unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
 
-    let imports = isolate.modules.get_info(mod_a).unwrap().import_specifiers;
+    let imports = isolate
+      .modules
+      .get_info(mod_a)
+      .unwrap()
+      .import_specifiers
+      .clone();
     let specifier_b = "./b.js".to_string();
     assert_eq!(imports, vec![specifier_b.clone()]);
     let mod_b = isolate
       .mod_new(false, "file:///b.js", "export function b() { return 'b' }")
       .unwrap();
-    let imports = isolate.modules.get_info(mod_b).unwrap().import_specifiers;
+    let imports = isolate
+      .modules
+      .get_info(mod_b)
+      .unwrap()
+      .import_specifiers
+      .clone();
     assert_eq!(imports.len(), 0);
 
     let module_specifier =
