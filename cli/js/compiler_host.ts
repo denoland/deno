@@ -238,13 +238,15 @@ export class Host implements ts.CompilerHost {
         : SourceFile.get(fileName);
       assert(sourceFile != null);
       if (!sourceFile.tsSourceFile) {
+        assert(sourceFile.sourceCode != null);
         sourceFile.tsSourceFile = ts.createSourceFile(
           fileName,
           sourceFile.sourceCode,
           languageVersion
         );
+        delete sourceFile.sourceCode;
       }
-      return sourceFile!.tsSourceFile;
+      return sourceFile.tsSourceFile;
     } catch (e) {
       if (onError) {
         onError(String(e));

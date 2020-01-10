@@ -81,14 +81,14 @@ let oldProgram: ts.Program;
 ((): void => {
   const ops = core.ops();
   for (const [name, opId] of Object.entries(ops)) {
-    const opName = `OP_${name.toUpperCase()}` as keyof typeof dispatch;
+    const opName = `OP_${name.toUpperCase()}`;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (dispatch as any)[opName] = opId;
   }
   const host = new Host({ writeFile(): void {} });
   const options = host.getCompilationSettings();
   oldProgram = ts.createProgram({
-    rootNames: [`${ASSETS}/example.ts`],
+    rootNames: [`${ASSETS}/bootstrap.ts`],
     options,
     host
   });
