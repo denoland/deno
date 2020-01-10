@@ -172,9 +172,9 @@ pub fn initialize_context<'a>(
   context.exit();
 }
 
-pub unsafe fn boxed_slice_to_uint8array<'sc>(
+pub unsafe fn slice_to_uint8array<'sc>(
   scope: &mut impl v8::ToLocal<'sc>,
-  buf: Box<[u8]>,
+  buf: &[u8],
 ) -> v8::Local<'sc, v8::Uint8Array> {
   if buf.is_empty() {
     let ab = v8::ArrayBuffer::new(scope, 0);
@@ -469,7 +469,7 @@ pub extern "C" fn send(info: &v8::FunctionCallbackInfo) {
     let (_op_id, buf) = response;
 
     if !buf.is_empty() {
-      let ab = unsafe { boxed_slice_to_uint8array(scope, buf) };
+      let ab = unsafe { slice_to_uint8array(scope, &buf) };
       rv.set(ab.into())
     }
   }

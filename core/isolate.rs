@@ -695,7 +695,7 @@ impl Isolate {
       argc = 2;
       let op_id = v8::Integer::new(scope, op_id as i32);
       args.push(op_id.into());
-      let buf = unsafe { bindings::boxed_slice_to_uint8array(scope, buf) };
+      let buf = unsafe { bindings::slice_to_uint8array(scope, &buf) };
       args.push(buf.into());
     }
 
