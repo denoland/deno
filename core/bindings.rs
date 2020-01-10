@@ -221,6 +221,57 @@ pub unsafe fn buf_to_uint8array<'sc>(
   v8::Uint8Array::new(ab, 0, buf.data_len).expect("Failed to create UintArray8")
 }
 
+pub unsafe fn boxed_slice_to_uint8array<'sc>(
+  scope: &mut impl v8::ToLocal<'sc>,
+  buf: Box<[u8]>,
+) -> v8::Local<'sc, v8::Uint8Array> {
+  if buf.is_empty() {
+    let ab = v8::ArrayBuffer::new(scope, 0);
+    return v8::Uint8Array::new(ab, 0, 0).expect("Failed to create UintArray8");
+  }
+
+  /*
+  // To avoid excessively allocating new ArrayBuffers, we try to reuse a single
+  // global ArrayBuffer. The caveat is that users must extract data from it
+  // before the next tick. We only do this for ArrayBuffers less than 1024
+  // bytes.
+  v8::Local<v8::ArrayBuffer> ab;
+  void* data;
+  if (buf.data_len > GLOBAL_IMPORT_BUF_SIZE) {
+    // Simple case. We allocate a new ArrayBuffer for this.
+    ab = v8::ArrayBuffer::New(d->isolate_, buf.data_len);
+    data = ab->GetBackingStore()->Data();
+  } else {
+    // Fast case. We reuse the global ArrayBuffer.
+    if (d->global_import_buf_.IsEmpty()) {
+      // Lazily initialize it.
+      DCHECK_NULL(d->global_import_buf_ptr_);
+      ab = v8::ArrayBuffer::New(d->isolate_, GLOBAL_IMPORT_BUF_SIZE);
+      d->global_import_buf_.Reset(d->isolate_, ab);
+      d->global_import_buf_ptr_ = ab->GetBackingStore()->Data();
+    } else {
+      DCHECK(d->global_import_buf_ptr_);
+      ab = d->global_import_buf_.Get(d->isolate_);
+    }
+    data = d->global_import_buf_ptr_;
+  }
+  memcpy(data, buf.data_ptr, buf.data_len);
+  auto view = v8::Uint8Array::New(ab, 0, buf.data_len);
+  return view;
+  */
+
+  // TODO(bartlomieju): for now skipping part with `global_import_buf_`
+  // and always creating new buffer
+  let buf_len = buf.len();
+  let buf_ptr = buf.as_ptr();
+  let ab = v8::ArrayBuffer::new(scope, buf_len);
+  let mut backing_store = ab.get_backing_store();
+  let data = backing_store.data();
+  let data: *mut u8 = data as *mut libc::c_void as *mut u8;
+  std::ptr::copy_nonoverlapping(buf_ptr, data, buf_len);
+  v8::Uint8Array::new(ab, 0, buf_len).expect("Failed to create UintArray8")
+}
+
 pub extern "C" fn host_import_module_dynamically_callback(
   context: v8::Local<v8::Context>,
   referrer: v8::Local<v8::ScriptOrModule>,

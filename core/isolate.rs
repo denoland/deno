@@ -670,7 +670,7 @@ impl Isolate {
     isolate.throw_exception(msg.into());
   }
 
-  fn async_op_response2(&mut self, op_id: OpId, buf: DenoBuf) {
+  fn async_op_response2(&mut self, op_id: OpId, buf: Box<[u8]>) {
     let isolate = self.v8_isolate.as_ref().unwrap();
     // println!("deno_execute -> Isolate ptr {:?}", isolate);
     let mut locker = v8::Locker::new(isolate);
@@ -694,11 +694,11 @@ impl Isolate {
     let mut argc = 0;
     let mut args: Vec<v8::Local<v8::Value>> = vec![];
 
-    if !buf.data_ptr.is_null() {
+    if !buf.is_empty() {
       argc = 2;
       let op_id = v8::Integer::new(scope, op_id as i32);
       args.push(op_id.into());
-      let buf = unsafe { bindings::buf_to_uint8array(scope, buf) };
+      let buf = unsafe { bindings::boxed_slice_to_uint8array(scope, buf) };
       args.push(buf.into());
     }
 
@@ -717,11 +717,11 @@ impl Isolate {
 
   fn async_op_response(
     &mut self,
-    maybe_buf: Option<(OpId, &[u8])>,
+    maybe_buf: Option<(OpId, Box<[u8]>)>,
   ) -> Result<(), ErrBox> {
     let (op_id, buf) = match maybe_buf {
-      None => (0, DenoBuf::empty()),
-      Some((op_id, r)) => (op_id, DenoBuf::from(r)),
+      None => (0, Vec::with_capacity(0).into_boxed_slice()),
+      Some((op_id, r)) => (op_id, r),
     };
     self.async_op_response2(op_id, buf);
     self.check_last_exception()
@@ -795,7 +795,7 @@ impl Future for Isolate {
 
     if overflow_response.is_some() {
       let (op_id, buf) = overflow_response.take().unwrap();
-      inner.async_op_response(Some((op_id, &buf)))?;
+      inner.async_op_response(Some((op_id, buf)))?;
     }
 
     inner.check_promise_errors();
