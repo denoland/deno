@@ -257,6 +257,7 @@ pub fn get_asset(name: &str) -> Option<&'static str> {
   match name {
     "bundle_loader.js" => Some(include_str!("bundle_loader.js")),
     "lib.deno_core.d.ts" => Some(include_str!("lib.deno_core.d.ts")),
+    "example.ts" => Some("console.log(\"hello deno\");"),
     "typescript.d.ts" => inc!("typescript.d.ts"),
     "lib.esnext.d.ts" => inc!("lib.esnext.d.ts"),
     "lib.es2020.d.ts" => inc!("lib.es2020.d.ts"),

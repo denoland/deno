@@ -8,6 +8,7 @@ import "./ts_global.d.ts";
 import { TranspileOnlyResult } from "./compiler_api.ts";
 import { setRootExports } from "./compiler_bundler.ts";
 import {
+  ASSETS,
   defaultBundlerOptions,
   defaultRuntimeCompileOptions,
   defaultTranspileOptions,
@@ -79,6 +80,23 @@ self.denoMain = function denoMain(compilerType?: string): void {
 // bootstrap the worker environment, this gets called as the isolate is setup
 self.workerMain = workerMain;
 
+// this is used to generate the foundational AST for all other compilations, so
+// it can be cached as part of the
+let oldProgram: ts.Program;
+
+((): void => {
+  const host = new Host({
+    bundle: false,
+    writeFile(): void {}
+  });
+  const options = host.getCompilationSettings();
+  oldProgram = ts.createProgram({
+    rootNames: [`${ASSETS}/example.ts`],
+    options,
+    host
+  });
+})();
+
 // provide the "main" function that will be called by the privileged side when
 // lazy instantiating the compiler web worker
 self.compilerMain = function compilerMain(): void {
@@ -135,7 +153,12 @@ self.compilerMain = function compilerMain(): void {
         // to generate the program and possibly emit it.
         if (!diagnostics || (diagnostics && diagnostics.length === 0)) {
           const options = host.getCompilationSettings();
-          const program = ts.createProgram(rootNames, options, host);
+          const program = ts.createProgram({
+            rootNames,
+            options,
+            host,
+            oldProgram
+          });
 
           diagnostics = ts
             .getPreEmitDiagnostics(program)
@@ -213,11 +236,12 @@ self.compilerMain = function compilerMain(): void {
         }
         host.mergeOptions(...compilerOptions);
 
-        const program = ts.createProgram(
+        const program = ts.createProgram({
           rootNames,
-          host.getCompilationSettings(),
-          host
-        );
+          options: host.getCompilationSettings(),
+          host,
+          oldProgram
+        });
 
         if (bundle) {
           setRootExports(program, rootNames[0]);

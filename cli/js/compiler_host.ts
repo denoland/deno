@@ -18,7 +18,7 @@ export interface ConfigureResponse {
   diagnostics?: ts.Diagnostic[];
 }
 
-const ASSETS = "$asset$";
+export const ASSETS = "$asset$";
 
 /** Options that need to be used when generating a bundle (either trusted or
  * runtime). */
