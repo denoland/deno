@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::es_isolate::EsIsolate;
-use crate::isolate::DenoBuf;
 use crate::isolate::Isolate;
 use crate::isolate::PinnedBuf;
 
@@ -11,6 +10,8 @@ use v8::InIsolate;
 use libc::c_void;
 use std::convert::TryFrom;
 use std::option::Option;
+use std::ptr;
+use std::slice;
 
 lazy_static! {
   pub static ref EXTERNAL_REFERENCES: v8::ExternalReferences =
@@ -444,15 +445,16 @@ pub extern "C" fn send(info: &v8::FunctionCallbackInfo) {
 
   let op_id = v8::Local::<v8::Uint32>::try_from(arg0).unwrap().value() as u32;
 
-  let control = v8::Local::<v8::ArrayBufferView>::try_from(arg1)
-    .map(|view| {
+  let control = match v8::Local::<v8::ArrayBufferView>::try_from(arg1) {
+    Ok(view) => {
       let mut backing_store = view.buffer().unwrap().get_backing_store();
       let backing_store_ptr = backing_store.data() as *mut _ as *mut u8;
       let view_ptr = unsafe { backing_store_ptr.add(view.byte_offset()) };
       let view_len = view.byte_length();
-      unsafe { DenoBuf::from_raw_parts(view_ptr, view_len) }
-    })
-    .unwrap_or_else(|_| DenoBuf::empty());
+      unsafe { slice::from_raw_parts(view_ptr, view_len) }
+    }
+    Err(..) => unsafe { slice::from_raw_parts(ptr::null(), 0) },
+  };
 
   let zero_copy: Option<PinnedBuf> =
     v8::Local::<v8::ArrayBufferView>::try_from(arg2)
@@ -460,8 +462,7 @@ pub extern "C" fn send(info: &v8::FunctionCallbackInfo) {
       .ok();
 
   // If response is empty then it's either async op or exception was thrown
-  let maybe_response =
-    deno_isolate.dispatch_op(op_id, control.as_ref(), zero_copy);
+  let maybe_response = deno_isolate.dispatch_op(op_id, control, zero_copy);
 
   if let Some(response) = maybe_response {
     // Synchronous response.

@@ -26,79 +26,11 @@ use std::future::Future;
 use std::ops::{Deref, DerefMut};
 use std::option::Option;
 use std::pin::Pin;
-use std::ptr::null;
 use std::ptr::NonNull;
 use std::slice;
 use std::sync::{Arc, Mutex, Once};
 use std::task::Context;
 use std::task::Poll;
-
-// TODO(bartlomieju): get rid of DenoBuf
-/// This type represents a borrowed slice.
-#[repr(C)]
-pub struct DenoBuf {
-  pub data_ptr: *const u8,
-  pub data_len: usize,
-}
-
-/// `DenoBuf` can not clone, and there is no interior mutability.
-/// This type satisfies Send bound.
-unsafe impl Send for DenoBuf {}
-
-impl DenoBuf {
-  #[inline]
-  pub fn empty() -> Self {
-    Self {
-      data_ptr: null(),
-      data_len: 0,
-    }
-  }
-
-  #[allow(clippy::missing_safety_doc)]
-  #[inline]
-  pub unsafe fn from_raw_parts(ptr: *const u8, len: usize) -> Self {
-    Self {
-      data_ptr: ptr,
-      data_len: len,
-    }
-  }
-}
-
-/// Converts Rust &Buf to libdeno `DenoBuf`.
-impl<'a> From<&'a [u8]> for DenoBuf {
-  #[inline]
-  fn from(x: &'a [u8]) -> Self {
-    Self {
-      data_ptr: x.as_ref().as_ptr(),
-      data_len: x.len(),
-    }
-  }
-}
-
-impl<'a> From<&'a mut [u8]> for DenoBuf {
-  #[inline]
-  fn from(x: &'a mut [u8]) -> Self {
-    Self {
-      data_ptr: x.as_ref().as_ptr(),
-      data_len: x.len(),
-    }
-  }
-}
-
-impl Deref for DenoBuf {
-  type Target = [u8];
-  #[inline]
-  fn deref(&self) -> &[u8] {
-    unsafe { std::slice::from_raw_parts(self.data_ptr, self.data_len) }
-  }
-}
-
-impl AsRef<[u8]> for DenoBuf {
-  #[inline]
-  fn as_ref(&self) -> &[u8] {
-    &*self
-  }
-}
 
 /// A PinnedBuf encapsulates a slice that's been borrowed from a JavaScript
 /// ArrayBuffer object. JavaScript objects can normally be garbage collected,
