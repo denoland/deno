@@ -14,6 +14,7 @@ import { BufReader, BufWriter, UnexpectedEOFError } from "../io/bufio.ts";
 import { encoder } from "../strings/mod.ts";
 import { assertStrictEq } from "../testing/asserts.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
+import { hasOwnProperty } from "../util/has_own_property.ts";
 
 /** FormFile object */
 export interface FormFile {
