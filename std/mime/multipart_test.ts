@@ -10,12 +10,13 @@ import {
 import { test, runIfMain } from "../testing/mod.ts";
 import * as path from "../path/mod.ts";
 import {
-  matchAfterPrefix,
+  FormFile,
   MultipartReader,
   MultipartWriter,
+  isFormFile,
+  matchAfterPrefix,
   scanUntilBoundary
 } from "./multipart.ts";
-import { FormFile, isFormFile } from "../multipart/formfile.ts";
 import { StringWriter } from "../io/writers.ts";
 
 const e = new TextEncoder();
