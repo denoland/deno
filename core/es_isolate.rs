@@ -47,14 +47,12 @@ pub struct SourceCodeInfo {
   pub module_url_found: String,
 }
 
-/// A single execution context of JavaScript. Corresponds roughly to the "Web
-/// Worker" concept in the DOM. An Isolate is a Future that can be used with
-/// Tokio.  The Isolate future complete when there is an error or when all
-/// pending ops have completed.
+/// More specialized version of `Isolate` that provides loading
+/// and execution of ES Modules.
 ///
-/// Ops are created in JavaScript by calling Deno.core.dispatch(), and in Rust
-/// by implementing dispatcher function that takes control buffer and optional zero copy buffer
-/// as arguments. An async Op corresponds exactly to a Promise in JavaScript.
+/// Creating `EsIsolate` requires to pass `loader` argument
+/// that implements `Loader` trait - that way actual resolution and
+/// loading of modules can be customized by the implementor.
 pub struct EsIsolate {
   core_isolate: Box<Isolate>,
   loader: Arc<Box<dyn Loader + Unpin>>,
@@ -190,7 +188,9 @@ impl EsIsolate {
   }
 
   /// Low-level module creation.
-  pub fn mod_new(
+  ///
+  /// Called during module loading or dynamic import loading.
+  fn mod_new(
     &mut self,
     main: bool,
     name: &str,
@@ -198,18 +198,6 @@ impl EsIsolate {
   ) -> Result<ModuleId, ErrBox> {
     let id = self.mod_new2(main, name, source);
     self.core_isolate.check_last_exception().map(|_| id)
-  }
-
-  pub fn mod_get_imports(&self, id: ModuleId) -> Vec<String> {
-    let info = self.modules.get_info(id).unwrap();
-    let len = info.import_specifiers.len();
-    let mut out = Vec::new();
-    for i in 0..len {
-      let info = self.modules.get_info(id).unwrap();
-      let specifier = info.import_specifiers.get(i).unwrap().to_string();
-      out.push(specifier);
-    }
-    out
   }
 
   fn mod_instantiate2(&mut self, id: ModuleId) {
@@ -319,6 +307,7 @@ impl EsIsolate {
     self.core_isolate.check_last_exception()
   }
 
+  // Called by V8 during `Isolate::mod_instantiate`.
   pub fn module_resolve_cb(
     &mut self,
     specifier: &str,
@@ -334,6 +323,7 @@ impl EsIsolate {
     self.modules.get_id(specifier.as_str()).unwrap_or(0)
   }
 
+  // Called by V8 during `Isolate::mod_instantiate`.
   pub fn dyn_import_cb(
     &mut self,
     specifier: &str,
@@ -352,24 +342,15 @@ impl EsIsolate {
     self.pending_dyn_imports.push(load.into_future());
   }
 
-  fn dyn_import_done(
+  fn dyn_import_error(
     &mut self,
     id: DynImportId,
-    result: Result<ModuleId, Option<String>>,
+    error: Option<String>,
   ) -> Result<(), ErrBox> {
-    debug!("dyn_import_done {} {:?}", id, result);
-    let (mod_id, maybe_err_str) = match result {
-      Ok(mod_id) => (mod_id, None),
-      Err(None) => (0, None),
-      Err(Some(err_str)) => (0, Some(err_str)),
-    };
-
+    debug!("dyn_import_error {} {:?}", id, error);
     assert!(
-      (mod_id == 0 && maybe_err_str.is_some())
-        || (mod_id != 0 && maybe_err_str.is_none())
-        || (mod_id == 0 && !self.core_isolate.last_exception_handle.is_empty())
+      error.is_some() || !self.core_isolate.last_exception_handle.is_empty()
     );
-
     let isolate = self.core_isolate.v8_isolate.as_ref().unwrap();
     let mut locker = v8::Locker::new(isolate);
     let mut hs = v8::HandleScope::new(&mut locker);
@@ -377,40 +358,58 @@ impl EsIsolate {
     assert!(!self.core_isolate.global_context.is_empty());
     let mut context = self.core_isolate.global_context.get(scope).unwrap();
     context.enter();
-
-    // TODO(ry) error on bad import_id.
-    let mut resolver_handle = self.dyn_import_map.remove(&id).unwrap();
-    // Resolve.
+    let mut resolver_handle = self
+      .dyn_import_map
+      .remove(&id)
+      .expect("Invalid dyn import id");
     let mut resolver = resolver_handle.get(scope).unwrap();
     resolver_handle.reset(scope);
-
-    let maybe_info = self.modules.get_info(mod_id);
-
-    if let Some(info) = maybe_info {
-      // Resolution success
-      let mut module = info.handle.get(scope).unwrap();
-      assert_eq!(module.get_status(), v8::ModuleStatus::Evaluated);
-      let module_namespace = module.get_module_namespace();
-      resolver.resolve(context, module_namespace).unwrap();
+    // Resolution error.
+    if let Some(error_str) = error {
+      let msg = v8::String::new(scope, &error_str).unwrap();
+      let e = v8::type_error(scope, msg);
+      resolver.reject(context, e).unwrap();
     } else {
-      // Resolution error.
-      if let Some(error_str) = maybe_err_str {
-        let msg = v8::String::new(scope, &error_str).unwrap();
-        let isolate = context.get_isolate();
-        isolate.enter();
-        let e = v8::type_error(scope, msg);
-        isolate.exit();
-        resolver.reject(context, e).unwrap();
-      } else {
-        let e = self.core_isolate.last_exception_handle.get(scope).unwrap();
-        self.core_isolate.last_exception_handle.reset(scope);
-        self.core_isolate.last_exception.take();
-        resolver.reject(context, e).unwrap();
-      }
+      let e = self.core_isolate.last_exception_handle.get(scope).unwrap();
+      self.core_isolate.last_exception_handle.reset(scope);
+      self.core_isolate.last_exception.take();
+      resolver.reject(context, e).unwrap();
     }
-
     isolate.run_microtasks();
+    context.exit();
+    self.core_isolate.check_last_exception()
+  }
 
+  fn dyn_import_done(
+    &mut self,
+    id: DynImportId,
+    mod_id: ModuleId,
+  ) -> Result<(), ErrBox> {
+    debug!("dyn_import_done {} {:?}", id, mod_id);
+    assert!(mod_id != 0);
+    let isolate = self.core_isolate.v8_isolate.as_ref().unwrap();
+    let mut locker = v8::Locker::new(isolate);
+    let mut hs = v8::HandleScope::new(&mut locker);
+    let scope = hs.enter();
+    assert!(!self.core_isolate.global_context.is_empty());
+    let mut context = self.core_isolate.global_context.get(scope).unwrap();
+    context.enter();
+    let mut resolver_handle = self
+      .dyn_import_map
+      .remove(&id)
+      .expect("Invalid dyn import id");
+    let mut resolver = resolver_handle.get(scope).unwrap();
+    resolver_handle.reset(scope);
+    let info = self
+      .modules
+      .get_info(mod_id)
+      .expect("Dyn import module info not found");
+    // Resolution success
+    let mut module = info.handle.get(scope).unwrap();
+    assert_eq!(module.get_status(), v8::ModuleStatus::Evaluated);
+    let module_namespace = module.get_module_namespace();
+    resolver.resolve(context, module_namespace).unwrap();
+    isolate.run_microtasks();
     context.exit();
     self.core_isolate.check_last_exception()
   }
@@ -438,18 +437,15 @@ impl EsIsolate {
                     // Keep importing until it's fully drained
                     self.pending_dyn_imports.push(load.into_future());
                   }
-                  Err(err) => self.dyn_import_done(
-                    dyn_import_id,
-                    Err(Some(err.to_string())),
-                  )?,
+                  Err(err) => self
+                    .dyn_import_error(dyn_import_id, Some(err.to_string()))?,
                 }
               }
               Err(err) => {
                 // A non-javascript error occurred; this could be due to a an invalid
                 // module specifier, or a problem with the source map, or a failure
                 // to fetch the module source code.
-                self
-                  .dyn_import_done(dyn_import_id, Err(Some(err.to_string())))?
+                self.dyn_import_error(dyn_import_id, Some(err.to_string()))?
               }
             }
           } else {
@@ -458,9 +454,9 @@ impl EsIsolate {
             let module_id = load.root_module_id.unwrap();
             self.mod_instantiate(module_id)?;
             if let Ok(()) = self.mod_evaluate(module_id) {
-              self.dyn_import_done(dyn_import_id, Ok(module_id))?
+              self.dyn_import_done(dyn_import_id, module_id)?
             } else {
-              self.dyn_import_done(dyn_import_id, Err(None))?
+              self.dyn_import_error(dyn_import_id, None)?
             }
           }
         }
@@ -514,7 +510,12 @@ impl EsIsolate {
     };
 
     // Now we must iterate over all imports of the module and load them.
-    let imports = self.mod_get_imports(module_id);
+    let imports = self
+      .modules
+      .get_info(module_id)
+      .unwrap()
+      .import_specifiers
+      .clone();
     for import in imports {
       let module_specifier = self.loader.resolve(
         &import,
@@ -545,6 +546,10 @@ impl EsIsolate {
     Ok(())
   }
 
+  /// Asynchronously load specified module and all of it's dependencies
+  ///
+  /// User must call `Isolate::mod_evaluate` with returned `ModuleId`
+  /// manually after load is finished.
   pub async fn load_module(
     &mut self,
     specifier: &str,
@@ -678,13 +683,23 @@ pub mod tests {
       .unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
 
-    let imports = isolate.mod_get_imports(mod_a);
+    let imports = isolate
+      .modules
+      .get_info(mod_a)
+      .unwrap()
+      .import_specifiers
+      .clone();
     let specifier_b = "./b.js".to_string();
     assert_eq!(imports, vec![specifier_b.clone()]);
     let mod_b = isolate
       .mod_new(false, "file:///b.js", "export function b() { return 'b' }")
       .unwrap();
-    let imports = isolate.mod_get_imports(mod_b);
+    let imports = isolate
+      .modules
+      .get_info(mod_b)
+      .unwrap()
+      .import_specifiers
+      .clone();
     assert_eq!(imports.len(), 0);
 
     let module_specifier =

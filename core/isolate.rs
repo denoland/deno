@@ -26,79 +26,16 @@ use std::future::Future;
 use std::ops::{Deref, DerefMut};
 use std::option::Option;
 use std::pin::Pin;
-use std::ptr::null;
 use std::ptr::NonNull;
 use std::slice;
 use std::sync::{Arc, Mutex, Once};
 use std::task::Context;
 use std::task::Poll;
 
-// TODO(bartlomieju): get rid of DenoBuf
-/// This type represents a borrowed slice.
-#[repr(C)]
-pub struct DenoBuf {
-  pub data_ptr: *const u8,
-  pub data_len: usize,
-}
-
-/// `DenoBuf` can not clone, and there is no interior mutability.
-/// This type satisfies Send bound.
-unsafe impl Send for DenoBuf {}
-
-impl DenoBuf {
-  #[inline]
-  pub fn empty() -> Self {
-    Self {
-      data_ptr: null(),
-      data_len: 0,
-    }
-  }
-
-  #[allow(clippy::missing_safety_doc)]
-  #[inline]
-  pub unsafe fn from_raw_parts(ptr: *const u8, len: usize) -> Self {
-    Self {
-      data_ptr: ptr,
-      data_len: len,
-    }
-  }
-}
-
-/// Converts Rust &Buf to libdeno `DenoBuf`.
-impl<'a> From<&'a [u8]> for DenoBuf {
-  #[inline]
-  fn from(x: &'a [u8]) -> Self {
-    Self {
-      data_ptr: x.as_ref().as_ptr(),
-      data_len: x.len(),
-    }
-  }
-}
-
-impl<'a> From<&'a mut [u8]> for DenoBuf {
-  #[inline]
-  fn from(x: &'a mut [u8]) -> Self {
-    Self {
-      data_ptr: x.as_ref().as_ptr(),
-      data_len: x.len(),
-    }
-  }
-}
-
-impl Deref for DenoBuf {
-  type Target = [u8];
-  #[inline]
-  fn deref(&self) -> &[u8] {
-    unsafe { std::slice::from_raw_parts(self.data_ptr, self.data_len) }
-  }
-}
-
-impl AsRef<[u8]> for DenoBuf {
-  #[inline]
-  fn as_ref(&self) -> &[u8] {
-    &*self
-  }
-}
+/// Size of `ArrayBuffer` that will be allocated and shared
+/// between responses. If response is bigger a new one-off
+/// `ArrayBuffer` will be allocated.
+pub const SHARED_RESPONSE_BUF_SIZE: usize = 1024 * 1024;
 
 /// A PinnedBuf encapsulates a slice that's been borrowed from a JavaScript
 /// ArrayBuffer object. JavaScript objects can normally be garbage collected,
@@ -232,19 +169,14 @@ pub struct Isolate {
   pub(crate) last_exception: Option<String>,
   pub(crate) last_exception_handle: v8::Global<v8::Value>,
   pub(crate) global_context: v8::Global<v8::Context>,
-  pub(crate) shared_buf: DenoBuf,
   pub(crate) shared_ab: v8::Global<v8::SharedArrayBuffer>,
   pub(crate) js_recv_cb: v8::Global<v8::Function>,
-  pub(crate) current_send_cb_info: *const v8::FunctionCallbackInfo,
   pub(crate) pending_promise_map: HashMap<i32, v8::Global<v8::Value>>,
-
-  // TODO: These two fields were not yet ported from libdeno
-  // void* global_import_buf_ptr_;
-  // v8::Persistent<v8::ArrayBuffer> global_import_buf_;
+  pub(crate) shared_response_buf: v8::Global<v8::ArrayBuffer>,
   shared_isolate_handle: Arc<Mutex<Option<*mut v8::Isolate>>>,
   js_error_create: Arc<JSErrorCreateFn>,
   needs_init: bool,
-  shared: SharedQueue,
+  pub(crate) shared: SharedQueue,
   pending_ops: FuturesUnordered<PendingOpFuture>,
   have_unpolled_ops: bool,
   startup_script: Option<OwnedScript>,
@@ -271,6 +203,7 @@ impl Drop for Isolate {
       // </Boilerplate>
       self.global_context.reset(scope);
       self.shared_ab.reset(scope);
+      self.shared_response_buf.reset(scope);
       self.last_exception_handle.reset(scope);
       self.js_recv_cb.reset(scope);
       for (_key, handle) in self.pending_promise_map.iter_mut() {
@@ -396,10 +329,9 @@ impl Isolate {
       last_exception_handle: v8::Global::<v8::Value>::new(),
       global_context,
       pending_promise_map: HashMap::new(),
-      shared_buf: shared.as_deno_buf(),
       shared_ab: v8::Global::<v8::SharedArrayBuffer>::new(),
       js_recv_cb: v8::Global::<v8::Function>::new(),
-      current_send_cb_info: std::ptr::null(),
+      shared_response_buf: v8::Global::<v8::ArrayBuffer>::new(),
       snapshot_creator: maybe_snapshot_creator,
       snapshot: load_snapshot,
       has_snapshotted: false,
@@ -451,10 +383,7 @@ impl Isolate {
       // maybe make a new exception object
       let exception = if exception.is_null_or_undefined() {
         let exception_str = v8::String::new(s, "execution terminated").unwrap();
-        isolate.enter();
-        let e = v8::error(s, exception_str);
-        isolate.exit();
-        e
+        v8::error(s, exception_str)
       } else {
         exception
       };
@@ -549,21 +478,19 @@ impl Isolate {
     }
   }
 
-  pub fn pre_dispatch(
+  pub fn dispatch_op(
     &mut self,
     op_id: OpId,
-    control_buf: DenoBuf,
+    control_buf: &[u8],
     zero_copy_buf: Option<PinnedBuf>,
-  ) {
-    let maybe_op =
-      self
-        .op_registry
-        .call(op_id, control_buf.as_ref(), zero_copy_buf);
+  ) -> Option<(OpId, Box<[u8]>)> {
+    let maybe_op = self.op_registry.call(op_id, control_buf, zero_copy_buf);
 
     let op = match maybe_op {
       Some(op) => op,
       None => {
-        return self.throw_exception(&format!("Unknown op id: {}", op_id))
+        self.throw_exception(&format!("Unknown op id: {}", op_id));
+        return None;
       }
     };
 
@@ -573,16 +500,13 @@ impl Isolate {
         // For sync messages, we always return the response via Deno.core.send's
         // return value. Sync messages ignore the op_id.
         let op_id = 0;
-        self
-          .respond(Some((op_id, &buf)))
-          // Because this is a sync op, deno_respond() does not actually call
-          // into JavaScript. We should not get an error here.
-          .expect("unexpected error");
+        Some((op_id, buf))
       }
       Op::Async(fut) => {
         let fut2 = fut.map_ok(move |buf| (op_id, buf));
         self.pending_ops.push(fut2.boxed());
         self.have_unpolled_ops = true;
+        None
       }
     }
   }
@@ -677,28 +601,7 @@ impl Isolate {
     isolate.throw_exception(msg.into());
   }
 
-  fn respond2(&mut self, op_id: OpId, buf: DenoBuf) {
-    if !self.current_send_cb_info.is_null() {
-      // Synchronous response.
-      // Note op_id is not passed back in the case of synchronous response.
-      let isolate = self.v8_isolate.as_ref().unwrap();
-      let mut locker = v8::Locker::new(isolate);
-      assert!(!self.global_context.is_empty());
-      let mut hs = v8::HandleScope::new(&mut locker);
-      let scope = hs.enter();
-
-      if !buf.data_ptr.is_null() && buf.data_len > 0 {
-        let ab = unsafe { bindings::buf_to_uint8array(scope, buf) };
-        let info: &v8::FunctionCallbackInfo =
-          unsafe { &*self.current_send_cb_info };
-        let rv = &mut info.get_return_value();
-        rv.set(ab.into())
-      }
-
-      self.current_send_cb_info = std::ptr::null();
-      return;
-    }
-
+  fn async_op_response2(&mut self, op_id: OpId, buf: Box<[u8]>) {
     let isolate = self.v8_isolate.as_ref().unwrap();
     // println!("deno_execute -> Isolate ptr {:?}", isolate);
     let mut locker = v8::Locker::new(isolate);
@@ -722,11 +625,11 @@ impl Isolate {
     let mut argc = 0;
     let mut args: Vec<v8::Local<v8::Value>> = vec![];
 
-    if !buf.data_ptr.is_null() {
+    if !buf.is_empty() {
       argc = 2;
       let op_id = v8::Integer::new(scope, op_id as i32);
       args.push(op_id.into());
-      let buf = unsafe { bindings::buf_to_uint8array(scope, buf) };
+      let buf = unsafe { bindings::slice_to_uint8array(self, scope, &buf) };
       args.push(buf.into());
     }
 
@@ -743,15 +646,15 @@ impl Isolate {
     context.exit();
   }
 
-  fn respond(
+  fn async_op_response(
     &mut self,
-    maybe_buf: Option<(OpId, &[u8])>,
+    maybe_buf: Option<(OpId, Box<[u8]>)>,
   ) -> Result<(), ErrBox> {
     let (op_id, buf) = match maybe_buf {
-      None => (0, DenoBuf::empty()),
-      Some((op_id, r)) => (op_id, DenoBuf::from(r)),
+      None => (0, Vec::with_capacity(0).into_boxed_slice()),
+      Some((op_id, r)) => (op_id, r),
     };
-    self.respond2(op_id, buf);
+    self.async_op_response2(op_id, buf);
     self.check_last_exception()
   }
 
@@ -816,14 +719,14 @@ impl Future for Isolate {
     }
 
     if inner.shared.size() > 0 {
-      inner.respond(None)?;
+      inner.async_op_response(None)?;
       // The other side should have shifted off all the messages.
       assert_eq!(inner.shared.size(), 0);
     }
 
     if overflow_response.is_some() {
       let (op_id, buf) = overflow_response.take().unwrap();
-      inner.respond(Some((op_id, &buf)))?;
+      inner.async_op_response(Some((op_id, buf)))?;
     }
 
     inner.check_promise_errors();
