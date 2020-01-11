@@ -5,6 +5,8 @@
 // Isolate struct from becoming too bloating for users who do not need
 // asynchronous module loading.
 
+#![allow(unused)]
+
 use rusty_v8 as v8;
 
 use crate::any_error::ErrBox;
@@ -658,6 +660,58 @@ impl Isolate {
     self.check_last_exception()
   }
 
+  fn new_async_op_response2(&mut self, op_id: OpId, buf: Box<[u8]>) {
+    let isolate = self.v8_isolate.as_ref().unwrap();
+    // println!("deno_execute -> Isolate ptr {:?}", isolate);
+    let mut locker = v8::Locker::new(isolate);
+    assert!(!self.global_context.is_empty());
+    let mut hs = v8::HandleScope::new(&mut locker);
+    let scope = hs.enter();
+    let mut context = self.global_context.get(scope).unwrap();
+    context.enter();
+
+    let mut try_catch = v8::TryCatch::new(scope);
+    let tc = try_catch.enter();
+
+    let js_recv_cb = self.js_recv_cb.get(scope);
+
+    if js_recv_cb.is_none() {
+      let msg = "Deno.core.recv has not been called.".to_string();
+      self.last_exception = Some(msg);
+      return;
+    }
+
+    let mut argc = 0;
+    let mut args: Vec<v8::Local<v8::Value>> = vec![];
+
+    if !buf.is_empty() {
+      argc = 2;
+      let op_id = v8::Integer::new(scope, op_id as i32);
+      args.push(op_id.into());
+      let buf = unsafe { bindings::new_slice_to_uint8array(self, scope, buf) };
+      args.push(buf.into());
+    }
+
+    let global = context.global(scope);
+    let maybe_value =
+      js_recv_cb
+        .unwrap()
+        .call(scope, context, global.into(), argc, args);
+
+    if tc.has_caught() {
+      assert!(maybe_value.is_none());
+      self.handle_exception(scope, context, tc.exception().unwrap());
+    }
+    context.exit();
+  }
+
+  fn new_async_op_response(
+    &mut self,
+    maybe_buf: (OpId, Box<[u8]>),
+  ) -> Result<(), ErrBox> {
+    self.new_async_op_response2(maybe_buf.0, maybe_buf.1);
+    self.check_last_exception()
+  }
   /// Takes a snapshot. The isolate should have been created with will_snapshot
   /// set to true.
   ///
@@ -695,7 +749,7 @@ impl Future for Isolate {
 
     inner.shared_init();
 
-    let mut overflow_response: Option<(OpId, Buf)> = None;
+    // let mut overflow_response: Option<(OpId, Buf)> = None;
 
     loop {
       // Now handle actual ops.
@@ -706,28 +760,29 @@ impl Future for Isolate {
         Poll::Ready(None) => break,
         Poll::Pending => break,
         Poll::Ready(Some(Ok((op_id, buf)))) => {
-          let successful_push = inner.shared.push(op_id, &buf);
-          if !successful_push {
-            // If we couldn't push the response to the shared queue, because
-            // there wasn't enough size, we will return the buffer via the
-            // legacy route, using the argument of deno_respond.
-            overflow_response = Some((op_id, buf));
-            break;
-          }
+          inner.new_async_op_response((op_id, buf))?;
+          // let successful_push = inner.shared.push(op_id, &buf);
+          // if !successful_push {
+          //   // If we couldn't push the response to the shared queue, because
+          //   // there wasn't enough size, we will return the buffer via the
+          //   // legacy route, using the argument of deno_respond.
+          //   overflow_response = Some((op_id, buf));
+          //   break;
+          // }
         }
       }
     }
 
-    if inner.shared.size() > 0 {
-      inner.async_op_response(None)?;
-      // The other side should have shifted off all the messages.
-      assert_eq!(inner.shared.size(), 0);
-    }
+    // if inner.shared.size() > 0 {
+    //   inner.async_op_response(None)?;
+    //   // The other side should have shifted off all the messages.
+    //   assert_eq!(inner.shared.size(), 0);
+    // }
 
-    if overflow_response.is_some() {
-      let (op_id, buf) = overflow_response.take().unwrap();
-      inner.async_op_response(Some((op_id, buf)))?;
-    }
+    // if overflow_response.is_some() {
+    //   let (op_id, buf) = overflow_response.take().unwrap();
+    //   inner.async_op_response(Some((op_id, buf)))?;
+    // }
 
     inner.check_promise_errors();
     inner.check_last_exception()?;

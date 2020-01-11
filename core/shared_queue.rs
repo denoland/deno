@@ -16,6 +16,8 @@ SharedQueue Binary Layout
 +---------------------------------------------------------------+
  */
 
+#![allow(unused)]
+
 use crate::ops::OpId;
 
 const MAX_RECORDS: usize = 100;
