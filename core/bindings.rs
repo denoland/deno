@@ -1,9 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::es_isolate::EsIsolate;
-use crate::isolate::DenoBuf;
 use crate::isolate::Isolate;
 use crate::isolate::PinnedBuf;
+use crate::isolate::SHARED_RESPONSE_BUF_SIZE;
 
 use rusty_v8 as v8;
 use v8::InIsolate;
@@ -11,6 +11,8 @@ use v8::InIsolate;
 use libc::c_void;
 use std::convert::TryFrom;
 use std::option::Option;
+use std::ptr;
+use std::slice;
 
 lazy_static! {
   pub static ref EXTERNAL_REFERENCES: v8::ExternalReferences =
@@ -172,53 +174,39 @@ pub fn initialize_context<'a>(
   context.exit();
 }
 
-pub unsafe fn buf_to_uint8array<'sc>(
+pub unsafe fn slice_to_uint8array<'sc>(
+  deno_isolate: &mut Isolate,
   scope: &mut impl v8::ToLocal<'sc>,
-  buf: DenoBuf,
+  buf: &[u8],
 ) -> v8::Local<'sc, v8::Uint8Array> {
-  if buf.data_ptr.is_null() {
+  if buf.is_empty() {
     let ab = v8::ArrayBuffer::new(scope, 0);
     return v8::Uint8Array::new(ab, 0, 0).expect("Failed to create UintArray8");
   }
 
-  /*
+  let buf_len = buf.len();
+  let buf_ptr = buf.as_ptr();
+
   // To avoid excessively allocating new ArrayBuffers, we try to reuse a single
   // global ArrayBuffer. The caveat is that users must extract data from it
   // before the next tick. We only do this for ArrayBuffers less than 1024
   // bytes.
-  v8::Local<v8::ArrayBuffer> ab;
-  void* data;
-  if (buf.data_len > GLOBAL_IMPORT_BUF_SIZE) {
+  let ab = if buf_len > SHARED_RESPONSE_BUF_SIZE {
     // Simple case. We allocate a new ArrayBuffer for this.
-    ab = v8::ArrayBuffer::New(d->isolate_, buf.data_len);
-    data = ab->GetBackingStore()->Data();
+    v8::ArrayBuffer::new(scope, buf_len)
+  } else if deno_isolate.shared_response_buf.is_empty() {
+    let buf = v8::ArrayBuffer::new(scope, SHARED_RESPONSE_BUF_SIZE);
+    deno_isolate.shared_response_buf.set(scope, buf);
+    buf
   } else {
-    // Fast case. We reuse the global ArrayBuffer.
-    if (d->global_import_buf_.IsEmpty()) {
-      // Lazily initialize it.
-      DCHECK_NULL(d->global_import_buf_ptr_);
-      ab = v8::ArrayBuffer::New(d->isolate_, GLOBAL_IMPORT_BUF_SIZE);
-      d->global_import_buf_.Reset(d->isolate_, ab);
-      d->global_import_buf_ptr_ = ab->GetBackingStore()->Data();
-    } else {
-      DCHECK(d->global_import_buf_ptr_);
-      ab = d->global_import_buf_.Get(d->isolate_);
-    }
-    data = d->global_import_buf_ptr_;
-  }
-  memcpy(data, buf.data_ptr, buf.data_len);
-  auto view = v8::Uint8Array::New(ab, 0, buf.data_len);
-  return view;
-  */
+    deno_isolate.shared_response_buf.get(scope).unwrap()
+  };
 
-  // TODO(bartlomieju): for now skipping part with `global_import_buf_`
-  // and always creating new buffer
-  let ab = v8::ArrayBuffer::new(scope, buf.data_len);
   let mut backing_store = ab.get_backing_store();
   let data = backing_store.data();
   let data: *mut u8 = data as *mut libc::c_void as *mut u8;
-  std::ptr::copy_nonoverlapping(buf.data_ptr, data, buf.data_len);
-  v8::Uint8Array::new(ab, 0, buf.data_len).expect("Failed to create UintArray8")
+  std::ptr::copy_nonoverlapping(buf_ptr, data, buf_len);
+  v8::Uint8Array::new(ab, 0, buf_len).expect("Failed to create UintArray8")
 }
 
 pub extern "C" fn host_import_module_dynamically_callback(
@@ -423,11 +411,16 @@ pub extern "C" fn recv(info: &v8::FunctionCallbackInfo) {
 }
 
 pub extern "C" fn send(info: &v8::FunctionCallbackInfo) {
+  let rv = &mut info.get_return_value();
+
   #[allow(mutable_transmutes)]
   #[allow(clippy::transmute_ptr_to_ptr)]
   let info: &mut v8::FunctionCallbackInfo =
     unsafe { std::mem::transmute(info) };
 
+  let arg0 = info.get_argument(0);
+  let arg1 = info.get_argument(1);
+  let arg2 = info.get_argument(2);
   let mut hs = v8::HandleScope::new(info);
   let scope = hs.enter();
   let isolate = scope.isolate();
@@ -435,36 +428,36 @@ pub extern "C" fn send(info: &v8::FunctionCallbackInfo) {
     unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
   assert!(!deno_isolate.global_context.is_empty());
 
-  let op_id = v8::Local::<v8::Uint32>::try_from(info.get_argument(0))
-    .unwrap()
-    .value() as u32;
+  let op_id = v8::Local::<v8::Uint32>::try_from(arg0).unwrap().value() as u32;
 
-  let control =
-    v8::Local::<v8::ArrayBufferView>::try_from(info.get_argument(1))
-      .map(|view| {
-        let mut backing_store = view.buffer().unwrap().get_backing_store();
-        let backing_store_ptr = backing_store.data() as *mut _ as *mut u8;
-        let view_ptr = unsafe { backing_store_ptr.add(view.byte_offset()) };
-        let view_len = view.byte_length();
-        unsafe { DenoBuf::from_raw_parts(view_ptr, view_len) }
-      })
-      .unwrap_or_else(|_| DenoBuf::empty());
+  let control = match v8::Local::<v8::ArrayBufferView>::try_from(arg1) {
+    Ok(view) => {
+      let mut backing_store = view.buffer().unwrap().get_backing_store();
+      let backing_store_ptr = backing_store.data() as *mut _ as *mut u8;
+      let view_ptr = unsafe { backing_store_ptr.add(view.byte_offset()) };
+      let view_len = view.byte_length();
+      unsafe { slice::from_raw_parts(view_ptr, view_len) }
+    }
+    Err(..) => unsafe { slice::from_raw_parts(ptr::null(), 0) },
+  };
 
   let zero_copy: Option<PinnedBuf> =
-    v8::Local::<v8::ArrayBufferView>::try_from(info.get_argument(2))
+    v8::Local::<v8::ArrayBufferView>::try_from(arg2)
       .map(PinnedBuf::new)
       .ok();
 
-  assert!(deno_isolate.current_send_cb_info.is_null());
-  deno_isolate.current_send_cb_info = info;
+  // If response is empty then it's either async op or exception was thrown
+  let maybe_response = deno_isolate.dispatch_op(op_id, control, zero_copy);
 
-  deno_isolate.pre_dispatch(op_id, control, zero_copy);
+  if let Some(response) = maybe_response {
+    // Synchronous response.
+    // Note op_id is not passed back in the case of synchronous response.
+    let (_op_id, buf) = response;
 
-  if deno_isolate.current_send_cb_info.is_null() {
-    // This indicates that respond() was called already.
-  } else {
-    // Asynchronous.
-    deno_isolate.current_send_cb_info = std::ptr::null();
+    if !buf.is_empty() {
+      let ab = unsafe { slice_to_uint8array(deno_isolate, scope, &buf) };
+      rv.set(ab.into())
+    }
   }
 }
 
@@ -668,21 +661,15 @@ pub extern "C" fn shared_getter(
     let deno_isolate: &mut Isolate =
       unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
 
-    if deno_isolate.shared_buf.data_ptr.is_null() {
-      return;
-    }
-
     // Lazily initialize the persistent external ArrayBuffer.
     if deno_isolate.shared_ab.is_empty() {
-      #[allow(mutable_transmutes)]
-      #[allow(clippy::transmute_ptr_to_ptr)]
-      let data_ptr: *mut u8 =
-        unsafe { std::mem::transmute(deno_isolate.shared_buf.data_ptr) };
+      let data_ptr = deno_isolate.shared.bytes.as_ptr();
+      let data_len = deno_isolate.shared.bytes.len();
       let ab = unsafe {
         v8::SharedArrayBuffer::new_DEPRECATED(
           scope,
           data_ptr as *mut c_void,
-          deno_isolate.shared_buf.data_len,
+          data_len,
         )
       };
       deno_isolate.shared_ab.set(scope, ab);
