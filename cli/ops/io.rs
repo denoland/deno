@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use super::dispatch_minimal::MinimalOp;
 use crate::deno_error;
 use crate::deno_error::bad_resource;
@@ -246,7 +248,7 @@ impl DenoAsyncWrite for StreamResource {
       _ => return Err(bad_resource()).into(),
     };
 
-    ready!(f.as_mut().poll_flush(cx))?;
+    // ready!(f.as_mut().poll_flush(cx))?;
     Ok(()).into()
   }
 
