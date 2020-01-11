@@ -31,6 +31,42 @@ class QuietSimpleHTTPRequestHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
 
 class ContentTypeHandler(QuietSimpleHTTPRequestHandler):
     def do_GET(self):
+
+        # Check if there is a custom header configuration ending
+        # with ".header" before sending the file
+        maybe_header_file_path = "./" + self.path + ".header"
+        if os.path.exists(maybe_header_file_path):
+            self.protocol_version = 'HTTP/1.1'
+            self.send_response(200, 'OK')
+
+            f = open(maybe_header_file_path)
+            for line in f:
+                kv = line.split(": ")
+                self.send_header(kv[0].strip(), kv[1].strip())
+            f.close()
+            self.end_headers()
+
+            body = open("./" + self.path)
+            self.wfile.write(body.read())
+            body.close()
+            return
+
+        if "etag_script.ts" in self.path:
+            self.protocol_version = 'HTTP/1.1'
+            if_not_match = self.headers.getheader('if-none-match')
+            if if_not_match == "33a64df551425fcc55e":
+                self.send_response(304, 'Not Modified')
+                self.send_header('Content-type', 'application/javascript')
+                self.send_header('ETag', '33a64df551425fcc55e')
+                self.end_headers()
+            else:
+                self.send_response(200, 'OK')
+                self.send_header('Content-type', 'application/javascript')
+                self.send_header('ETag', '33a64df551425fcc55e')
+                self.end_headers()
+                self.wfile.write(bytes("console.log('etag')"))
+            return
+
         if "multipart_form_data.txt" in self.path:
             self.protocol_version = 'HTTP/1.1'
             self.send_response(200, 'OK')

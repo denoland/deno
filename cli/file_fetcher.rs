@@ -393,10 +393,21 @@ impl SourceFileFetcher {
     let download_job = self.progress.add("Download", &module_url.to_string());
     let dir = self.clone();
     let module_url = module_url.clone();
+    let headers = self.get_source_code_headers(&module_url);
+    let module_etag = headers.etag;
 
     // Single pass fetch, either yields code or yields redirect.
     let f = async move {
-      match http_util::fetch_string_once(&module_url).await? {
+      match http_util::fetch_string_once(&module_url, module_etag).await? {
+        FetchOnceResult::NotModified => {
+          let source_file =
+            dir.fetch_cached_remote_source(&module_url)?.unwrap();
+
+          // Explicit drop to keep reference alive until future completes.
+          drop(download_job);
+
+          Ok(source_file)
+        }
         FetchOnceResult::Redirect(new_module_url) => {
           // If redirects, update module_name and filename for next looped call.
           dir
@@ -404,6 +415,7 @@ impl SourceFileFetcher {
               &module_url,
               None,
               Some(new_module_url.to_string()),
+              None,
             )
             .unwrap();
 
@@ -420,13 +432,14 @@ impl SourceFileFetcher {
             )
             .await
         }
-        FetchOnceResult::Code(source, maybe_content_type) => {
+        FetchOnceResult::Code(source, maybe_content_type, etag) => {
           // We land on the code.
           dir
             .save_source_code_headers(
               &module_url,
               maybe_content_type.clone(),
               None,
+              etag,
             )
             .unwrap();
 
@@ -501,6 +514,7 @@ impl SourceFileFetcher {
     url: &Url,
     mime_type: Option<String>,
     redirect_to: Option<String>,
+    etag: Option<String>,
   ) -> std::io::Result<()> {
     let cache_key = self
       .deps_cache
@@ -513,6 +527,7 @@ impl SourceFileFetcher {
     let headers = SourceCodeHeaders {
       mime_type,
       redirect_to,
+      etag,
     };
 
     let cache_filename = self.deps_cache.get_cache_filename(url);
@@ -634,10 +649,13 @@ pub struct SourceCodeHeaders {
   /// Where should we actually look for source code.
   /// This should be an absolute path!
   pub redirect_to: Option<String>,
+  /// ETag of the remote source file
+  pub etag: Option<String>,
 }
 
 static MIME_TYPE: &str = "mime_type";
 static REDIRECT_TO: &str = "redirect_to";
+static ETAG: &str = "etag";
 
 impl SourceCodeHeaders {
   pub fn from_json_string(headers_string: String) -> Self {
@@ -648,10 +666,12 @@ impl SourceCodeHeaders {
     if let Ok(headers_json) = maybe_headers_json {
       let mime_type = headers_json[MIME_TYPE].as_str().map(String::from);
       let redirect_to = headers_json[REDIRECT_TO].as_str().map(String::from);
+      let etag = headers_json[ETAG].as_str().map(String::from);
 
       return SourceCodeHeaders {
         mime_type,
         redirect_to,
+        etag,
       };
     }
 
@@ -686,6 +706,10 @@ impl SourceCodeHeaders {
 
     if let Some(redirect_to) = &self.redirect_to {
       value_map.insert(REDIRECT_TO.to_string(), json!(redirect_to));
+    }
+
+    if let Some(etag) = &self.etag {
+      value_map.insert(ETAG.to_string(), json!(etag));
     }
 
     if value_map.is_empty() {
@@ -808,21 +832,27 @@ mod tests {
     let _ = deno_fs::write_file(
       headers_filepath.as_path(),
       "{\"mime_type\":\"text/javascript\",\"redirect_to\":\"http://example.com/a.js\"}",
-      0o666
+      0o666,
     );
     let headers = fetcher.get_source_code_headers(&url);
 
     assert_eq!(headers.mime_type.clone().unwrap(), "text/javascript");
     assert_eq!(headers.redirect_to.unwrap(), "http://example.com/a.js");
+    assert_eq!(headers.etag, None);
 
     let _ = fetcher.save_source_code_headers(
       &url,
       Some("text/typescript".to_owned()),
       Some("http://deno.land/a.js".to_owned()),
+      Some("W/\"04572f4749af993f4961a7e5daa1e4d5\"".to_owned()),
     );
     let headers2 = fetcher.get_source_code_headers(&url);
     assert_eq!(headers2.mime_type.clone().unwrap(), "text/typescript");
     assert_eq!(headers2.redirect_to.unwrap(), "http://deno.land/a.js");
+    assert_eq!(
+      headers2.etag.unwrap(),
+      "W/\"04572f4749af993f4961a7e5daa1e4d5\""
+    );
   }
 
   #[test]
@@ -901,6 +931,7 @@ mod tests {
           &module_url_1,
           Some("application/json".to_owned()),
           None,
+          None,
         );
         fetcher_2.get_source_file_async(&module_url_1, true, false, false)
       })
@@ -975,6 +1006,7 @@ mod tests {
         let _ = fetcher.save_source_code_headers(
           &module_url,
           Some("text/typescript".to_owned()),
+          None,
           None,
         );
         fetcher.get_source_file_async(&module_url, true, false, false)
@@ -1344,6 +1376,7 @@ mod tests {
           &module_url,
           Some("text/javascript".to_owned()),
           None,
+          None,
         );
         let result2 = fetcher.fetch_cached_remote_source(&module_url);
         assert!(result2.is_ok());
@@ -1385,6 +1418,7 @@ mod tests {
         let _ = fetcher.save_source_code_headers(
           &module_url,
           Some("text/javascript".to_owned()),
+          None,
           None,
         );
         let result2 = fetcher.fetch_cached_remote_source(&module_url);
@@ -1683,28 +1717,28 @@ mod tests {
     assert_eq!(
       map_content_type(
         Path::new("foo/bar.tsx"),
-        Some("application/typescript")
+        Some("application/typescript"),
       ),
       msg::MediaType::TSX
     );
     assert_eq!(
       map_content_type(
         Path::new("foo/bar.tsx"),
-        Some("application/javascript")
+        Some("application/javascript"),
       ),
       msg::MediaType::TSX
     );
     assert_eq!(
       map_content_type(
         Path::new("foo/bar.tsx"),
-        Some("application/x-typescript")
+        Some("application/x-typescript"),
       ),
       msg::MediaType::TSX
     );
     assert_eq!(
       map_content_type(
         Path::new("foo/bar.tsx"),
-        Some("video/vnd.dlna.mpeg-tts")
+        Some("video/vnd.dlna.mpeg-tts"),
       ),
       msg::MediaType::TSX
     );
@@ -1715,21 +1749,21 @@ mod tests {
     assert_eq!(
       map_content_type(
         Path::new("foo/bar.jsx"),
-        Some("application/javascript")
+        Some("application/javascript"),
       ),
       msg::MediaType::JSX
     );
     assert_eq!(
       map_content_type(
         Path::new("foo/bar.jsx"),
-        Some("application/x-typescript")
+        Some("application/x-typescript"),
       ),
       msg::MediaType::JSX
     );
     assert_eq!(
       map_content_type(
         Path::new("foo/bar.jsx"),
-        Some("application/ecmascript")
+        Some("application/ecmascript"),
       ),
       msg::MediaType::JSX
     );
@@ -1740,7 +1774,7 @@ mod tests {
     assert_eq!(
       map_content_type(
         Path::new("foo/bar.jsx"),
-        Some("application/x-javascript")
+        Some("application/x-javascript"),
       ),
       msg::MediaType::JSX
     );
@@ -1757,5 +1791,54 @@ mod tests {
       .as_bytes()
       .to_owned();
     assert_eq!(filter_shebang(code), "\nconsole.log('hello');\n".as_bytes());
+  }
+
+  #[test]
+  fn test_fetch_with_etag() {
+    let http_server_guard = crate::test_util::http_server();
+    let (_temp_dir, fetcher) = test_setup();
+    let module_url =
+      Url::parse("http://127.0.0.1:4545/etag_script.ts").unwrap();
+
+    let fut = async move {
+      let source = fetcher
+        .fetch_remote_source_async(&module_url, false, false, 1)
+        .await;
+      assert!(source.is_ok());
+      let source = source.unwrap();
+      assert_eq!(source.source_code, b"console.log('etag')");
+      assert_eq!(&(source.media_type), &msg::MediaType::JavaScript);
+
+      let headers = fetcher.get_source_code_headers(&module_url);
+      assert_eq!(headers.etag, Some("33a64df551425fcc55e".to_string()));
+
+      let header_path = fetcher.deps_cache.location.join(
+        fetcher
+          .deps_cache
+          .get_cache_filename_with_extension(&module_url, "headers.json"),
+      );
+
+      let modified1 = header_path.metadata().unwrap().modified().unwrap();
+
+      // Forcibly change the contents of the cache file and request
+      // it again with the cache parameters turned off.
+      // If the fetched content changes, the cached content is used.
+      fetcher
+        .save_source_code(&module_url, "changed content")
+        .unwrap();
+      let cached_source = fetcher
+        .fetch_remote_source_async(&module_url, false, false, 1)
+        .await
+        .unwrap();
+      assert_eq!(cached_source.source_code, b"changed content");
+
+      let modified2 = header_path.metadata().unwrap().modified().unwrap();
+
+      // Assert that the file has not been modified
+      assert_eq!(modified1, modified2);
+    };
+
+    tokio_util::run(fut);
+    drop(http_server_guard);
   }
 }
