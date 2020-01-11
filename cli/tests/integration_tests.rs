@@ -661,6 +661,12 @@ itest!(top_level_for_await_ts {
   output: "top_level_for_await.out",
 });
 
+itest!(_053_import_compression {
+  args: "run --reload --allow-net 053_import_compression/main.ts",
+  output: "053_import_compression.out",
+  http_server: true,
+});
+
 mod util {
   use deno::colors::strip_ansi_codes;
   pub use deno::test_util::*;

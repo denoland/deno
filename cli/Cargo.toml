@@ -30,6 +30,7 @@ atty = "0.2.13"
 base64 = "0.11.0"
 bytes = "0.5.3"
 byteorder = "1.3.2"
+brotli2 = "0.3.2"
 clap = "2.33.0"
 dirs = "2.0.2"
 dlopen = "0.1.8"
@@ -44,7 +45,7 @@ log = "0.4.8"
 rand = "0.7.2"
 regex = "1.3.1"
 remove_dir_all = "0.5.2"
-reqwest = { version = "0.10.0", default-features = false, features = ["rustls-tls", "stream"] }
+reqwest = { version = "0.10.0", default-features = false, features = ["rustls-tls", "stream", "gzip"] }
 ring = "0.16.9"
 rustyline = "5.0.6"
 serde = { version = "1.0.104", features = ["derive"] }
