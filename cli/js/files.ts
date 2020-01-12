@@ -16,6 +16,7 @@ import {
   sendSync as sendSyncJson,
   sendAsync as sendAsyncJson
 } from "./dispatch_json.ts";
+import { ErrorKind } from "./errors.ts";
 
 /** Open a file and return an instance of the `File` object
  *  synchronously.
@@ -94,13 +95,21 @@ export async function read(rid: number, p: Uint8Array): Promise<number | EOF> {
   if (p.length == 0) {
     return 0;
   }
-  const nread = await sendAsyncMinimal(dispatch.OP_READ, rid, p);
-  if (nread < 0) {
-    throw new Error("read error");
-  } else if (nread == 0) {
-    return EOF;
-  } else {
-    return nread;
+  try {
+    const nread = await sendAsyncMinimal(dispatch.OP_READ, rid, p);
+    if (nread < 0) {
+      throw new Error("read error");
+    } else if (nread == 0) {
+      return EOF;
+    } else {
+      return nread;
+    }
+  } catch (error) {
+    // Catch Windows bug.
+    if (error.kind == ErrorKind.ConnectionAborted) {
+      return EOF;
+    }
+    throw error;
   }
 }
 
