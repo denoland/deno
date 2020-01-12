@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::deno_error::too_many_redirects;
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
 use crate::deno_error::GetErrorKind;
@@ -103,7 +102,7 @@ impl SourceFileFetcher {
     if !SUPPORTED_URL_SCHEMES.contains(&url.scheme()) {
       return Err(
         DenoError::new(
-          ErrorKind::UnsupportedFetchScheme,
+          ErrorKind::Other,
           format!("Unsupported scheme \"{}\" for module \"{}\". Supported schemes: {:#?}", url.scheme(), url, SUPPORTED_URL_SCHEMES),
         ).into()
       );
@@ -354,7 +353,9 @@ impl SourceFileFetcher {
     redirect_limit: i64,
   ) -> Pin<Box<SourceFileFuture>> {
     if redirect_limit < 0 {
-      return futures::future::err(too_many_redirects()).boxed();
+      let e =
+        DenoError::new(ErrorKind::HttpOther, "too many redirects".to_string());
+      return futures::future::err(e.into()).boxed();
     }
 
     let is_blacklisted =
@@ -1289,7 +1290,7 @@ mod tests {
       .map(move |result| {
         assert!(result.is_err());
         let err = result.err().unwrap();
-        assert_eq!(err.kind(), ErrorKind::TooManyRedirects);
+        assert_eq!(err.kind(), ErrorKind::HttpOther);
       });
 
     tokio_util::run(fut);
@@ -1565,7 +1566,7 @@ mod tests {
         SourceFileFetcher::check_if_supported_scheme(&url)
           .unwrap_err()
           .kind(),
-        ErrorKind::UnsupportedFetchScheme
+        ErrorKind::Other
       );
     }
   }
