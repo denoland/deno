@@ -242,7 +242,7 @@ fn write_snapshot(
 }
 
 /// Same as get_asset() but returns NotFound intead of None.
-pub fn get_asset2(name: &str) -> Result<&'static str, ErrBox> {
+pub fn get_asset2(name: &str) -> Result<String, ErrBox> {
   match get_asset(name) {
     Some(a) => Ok(a),
     None => Err(
@@ -252,19 +252,26 @@ pub fn get_asset2(name: &str) -> Result<&'static str, ErrBox> {
   }
 }
 
-pub fn get_asset(name: &str) -> Option<&'static str> {
-  macro_rules! inc {
-    ($e:expr) => {
-      Some(include_str!(concat!("typescript/lib/", $e)))
-    };
-  }
+fn read_file(name: &str) -> String {
+  fs::read_to_string(name).unwrap()
+}
+
+macro_rules! inc {
+  ($e:expr) => {
+    Some(read_file(concat!("../deno_typescript/typescript/lib/", $e)))
+  };
+}
+
+pub fn get_asset(name: &str) -> Option<String> {
   match name {
-    "bundle_loader.js" => Some(include_str!("bundle_loader.js")),
-    "lib.deno_core.d.ts" => Some(include_str!("lib.deno_core.d.ts")),
-    "lib.deno_runtime.d.ts" => {
-      Some(include_str!("../cli/js/lib.deno_runtime.d.ts"))
+    "bundle_loader.js" => {
+      Some(read_file("../deno_typescript/bundle_loader.js"))
     }
-    "bootstrap.ts" => Some("console.log(\"hello deno\");"),
+    "lib.deno_core.d.ts" => {
+      Some(read_file("../deno_typescript/lib.deno_core.d.ts"))
+    }
+    "lib.deno_runtime.d.ts" => Some(read_file("js/lib.deno_runtime.d.ts")),
+    "bootstrap.ts" => Some("console.log(\"hello deno\");".to_string()),
     "typescript.d.ts" => inc!("typescript.d.ts"),
     "lib.esnext.d.ts" => inc!("lib.esnext.d.ts"),
     "lib.es2020.d.ts" => inc!("lib.es2020.d.ts"),
