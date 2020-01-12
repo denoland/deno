@@ -19,7 +19,7 @@ use std::convert::From;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::Ordering;
-use std::sync::mpsc;
+use futures::channel::mpsc;
 use std::task::Context;
 use std::task::Poll;
 
@@ -31,6 +31,10 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op(
     "host_get_worker_closed",
     s.core_op(json_op(s.stateful_op(op_host_get_worker_closed))),
+  );
+  i.register_op(
+    "host_get_worker_loaded",
+    s.core_op(json_op(s.stateful_op(op_host_get_worker_loaded))),
   );
   i.register_op(
     "host_poll_worker",
@@ -122,6 +126,7 @@ struct CreateWorkerArgs {
   source_code: String,
 }
 
+
 /// Create worker as the host
 fn op_create_worker(
   state: &ThreadSafeState,
@@ -175,20 +180,20 @@ fn op_create_worker(
     return Ok(JsonOp::Sync(response));
   }
 
-  // TODO(bartlomieju): this should spawn mod execution on separate tokio task
-  // and block on receving message on a channel or even use sync channel /shrug
-  let (sender, receiver) = mpsc::sync_channel::<Result<(), ErrBox>>(1);
+  let (mut sender, receiver) = mpsc::channel::<Result<(), ErrBox>>(1);
+
+  // TODO(bartlomieju): this future should be spawned on the separate thread,
+  // dedicated to that worker
   let fut = async move {
     let result = worker
       .execute_mod_async(&module_specifier, None, false)
       .await;
-    sender.send(result).expect("Failed to send message");
+    sender.send(result).await.expect("Failed to send message");
   }
   .boxed();
   tokio::spawn(fut);
-
-  let result = receiver.recv().expect("Failed to receive message");
-  result?;
+  let mut table = state.loading_workers.lock().unwrap();
+  table.insert(worker_id, receiver);
   Ok(JsonOp::Sync(response))
 }
 
@@ -219,6 +224,26 @@ impl Future for GetWorkerClosedFuture {
 struct HostGetWorkerClosedArgs {
   id: i32,
 }
+
+fn op_host_get_worker_loaded(
+  state: &ThreadSafeState,
+  args: Value,
+  _data: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: HostGetWorkerClosedArgs = serde_json::from_value(args)?;
+  let id = args.id as u32;
+  let mut table = state.loading_workers.lock().unwrap();
+  let mut receiver = table.remove(&id).unwrap();
+
+  let op = async move {
+    let load_result = receiver.next().await.unwrap();
+    load_result?;
+    Ok(json!({}))
+  };
+
+  Ok(JsonOp::Async(op.boxed()))
+}
+
 
 /// Return when the worker closes
 fn op_host_get_worker_closed(

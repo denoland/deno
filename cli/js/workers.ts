@@ -39,6 +39,10 @@ async function hostGetWorkerClosed(id: number): Promise<void> {
   await sendAsync(dispatch.OP_HOST_GET_WORKER_CLOSED, { id });
 }
 
+async function hostGetWorkerLoaded(id: number): Promise<void> {
+  await sendAsync(dispatch.OP_HOST_GET_WORKER_LOADED, { id });
+}
+
 async function hostPollWorker(id: number): Promise<any> {
   await sendAsync(dispatch.OP_HOST_POLL_WORKER, { id });
 }
@@ -153,6 +157,8 @@ export interface DenoWorkerOptions extends WorkerOptions {
 export class WorkerImpl implements Worker {
   private readonly id: number;
   private isClosing = false;
+  private messageBuffer: any[] = [];
+  private ready = false;
   // private readonly isClosedPromise: Promise<void>;
   public onerror?: (e: any) => void;
   public onmessage?: (data: any) => void;
@@ -187,7 +193,6 @@ export class WorkerImpl implements Worker {
       sourceCode
     );
     this.poll();
-    this.run();
     // this.isClosedPromise = hostGetWorkerClosed(this.id);
     // this.isClosedPromise.then((): void => {
     //   this.isClosing = true;
@@ -195,6 +200,20 @@ export class WorkerImpl implements Worker {
   }
 
   async poll() {
+    try {
+      await hostGetWorkerLoaded(this.id);
+    } catch (e) {
+      // TODO: handle script load fail
+    }
+
+    // drain messages
+    for (const data of this.messageBuffer) {
+      hostPostMessage(this.id, data);
+    }
+    this.messageBuffer = [];
+    this.ready = true;
+    this.run();
+
     while (true) {
       try {
         console.log("polling", this.id);
@@ -235,6 +254,11 @@ export class WorkerImpl implements Worker {
   // }
 
   postMessage(data: any): void {
+    if (!this.ready) {
+      this.messageBuffer.push(data);
+      return;
+    }
+
     hostPostMessage(this.id, data);
   }
 
