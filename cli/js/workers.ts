@@ -47,6 +47,10 @@ function hostCloseWorker(id: number): void {
   sendSync(dispatch.OP_HOST_CLOSE_WORKER, { id });
 }
 
+function hostResumeWorker(id: number): void {
+  sendSync(dispatch.OP_HOST_RESUME_WORKER, { id });
+}
+
 function hostPostMessage(id: number, data: any): void {
   const dataIntArray = encodeMessage(data);
   sendSync(dispatch.OP_HOST_POST_MESSAGE, { id }, dataIntArray);
@@ -110,7 +114,13 @@ export async function workerMain(): Promise<void> {
       }
     } catch (e) {
       if (window["onerror"]) {
-        let result = window.onerror(e.message, e.sourceCode, e.line, e.col, e);
+        let result = window.onerror(
+          e.message,
+          e.fileName,
+          e.lineNumber,
+          e.columnNumber,
+          e
+        );
         if (result === true) {
           continue;
         }
@@ -185,21 +195,38 @@ export class WorkerImpl implements Worker {
   }
 
   async poll() {
-    try {
-      const result = await hostPollWorker(this.id);
-      console.log("asdfasdf", result);
-      this.isClosing = true;
-    } catch (e) {
-      // TODO:
-      console.error("caugh error in worker :)", e);
-      if (this.onerror) {
-        this.onerror(e)
-      } else {
-        throw(e);
+    while (true) {
+      try {
+        console.log("polling", this.id);
+        const result = await hostPollWorker(this.id);
+        console.log("success", result);
+        this.isClosing = true;
+        hostCloseWorker(this.id);
+        console.log("closed");
+        break;
+      } catch (e) {
+        // TODO:
+        // console.error("[caugh error in worker]", e.message, e.lineNumber, e.columnNumber, e.fileName);
+        const event = new window.Event("error", { cancelable: true });
+        event.message = "TODO: JS ERROR";
+        event.error = null;
+
+        let handled = false;
+        if (this.onerror) {
+          this.onerror(event);
+          console.log("default prevented", event.defaultPrevented);
+          // TODO: if handled resume execution of JS
+          hostResumeWorker(this.id);
+          if (event.defaultPrevented) {
+            handled = true;
+          }
+        }
+
+        if (!handled) {
+          console.log("throwing");
+          throw e;
+        }
       }
-    } finally {
-      hostCloseWorker(this.id);
-      console.log("closed");
     }
   }
 

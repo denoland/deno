@@ -159,6 +159,11 @@ impl Worker {
       channels: self.external_channels.clone(),
     }
   }
+
+  pub fn clear_exception(&mut self) {
+    let mut isolate = self.isolate.try_lock().unwrap();
+    isolate.clear_exception();
+  }
 }
 
 impl Future for Worker {

@@ -11,9 +11,10 @@ jsWorker.onmessage = (e): void => {
   tsWorker.postMessage("Hello World");
 };
 
-jsWorker.onerror = (): void => {
+jsWorker.onerror = (e: Event): void => {
+  e.preventDefault();
   console.error("on error called!");
-  tsWorker.postMessage("Hello World");
-}
+  jsWorker.postMessage("Hello World");
+};
 
 jsWorker.postMessage("Hello World");

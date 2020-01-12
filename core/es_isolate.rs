@@ -380,6 +380,15 @@ impl EsIsolate {
     self.core_isolate.check_last_exception()
   }
 
+  pub fn clear_exception(&mut self) {
+    let isolate = self.core_isolate.v8_isolate.as_ref().unwrap();
+    let mut locker = v8::Locker::new(isolate);
+    let mut hs = v8::HandleScope::new(&mut locker);
+    let scope = hs.enter();
+    self.core_isolate.last_exception_handle.reset(scope);
+    self.core_isolate.last_exception.take();
+  }
+
   fn dyn_import_done(
     &mut self,
     id: DynImportId,
