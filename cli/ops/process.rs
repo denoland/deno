@@ -135,7 +135,7 @@ fn op_run(
 
   let mut table = state_.lock_resource_table();
 
-  let stdin_rid = match child.stdin().take() {
+  let stdin_rid = match child.stdin.take() {
     Some(child_stdin) => {
       let rid = table.add(
         "childStdin",
@@ -146,7 +146,7 @@ fn op_run(
     None => None,
   };
 
-  let stdout_rid = match child.stdout().take() {
+  let stdout_rid = match child.stdout.take() {
     Some(child_stdout) => {
       let rid = table.add(
         "childStdout",
@@ -157,7 +157,7 @@ fn op_run(
     None => None,
   };
 
-  let stderr_rid = match child.stderr().take() {
+  let stderr_rid = match child.stderr.take() {
     Some(child_stderr) => {
       let rid = table.add(
         "childStderr",
