@@ -52,7 +52,7 @@ testPerm({ net: true }, async function netConcurrentAccept(): Promise<void> {
 
 testPerm({ net: true }, async function netDialListen(): Promise<void> {
   const listener = Deno.listen({ port: 4500 });
-  listener.accept().then(
+  const response = listener.accept().then(
     async (conn): Promise<void> => {
       await conn.write(new Uint8Array([1, 2, 3]));
       conn.close();
@@ -69,6 +69,7 @@ testPerm({ net: true }, async function netDialListen(): Promise<void> {
   listener.close();
   conn.close();
 
+  await response;
   assertEquals(3, readResult);
   assertEquals(1, buf[0]);
   assertEquals(2, buf[1]);
@@ -98,7 +99,7 @@ testPerm({ net: true }, async function netListenAsyncIterator(): Promise<void> {
       conn.close();
     }
   };
-  runAsyncIterator();
+  const response = runAsyncIterator();
   const conn = await Deno.dial({ port: 4500 });
   const buf = new Uint8Array(1024);
   const readResult = await conn.read(buf);
@@ -106,6 +107,7 @@ testPerm({ net: true }, async function netListenAsyncIterator(): Promise<void> {
   listener.close();
   conn.close();
 
+  await response;
   assertEquals(3, readResult);
   assertEquals(1, buf[0]);
   assertEquals(2, buf[1]);
@@ -119,7 +121,7 @@ testPerm({ net: true }, async function netCloseReadSuccess() {
   const listener = Deno.listen({ port: 4500 });
   const closeDeferred = deferred();
   const closeReadDeferred = deferred();
-  listener.accept().then(async conn => {
+  const response = listener.accept().then(async conn => {
     await closeReadDeferred.promise;
     await conn.write(new Uint8Array([1, 2, 3]));
     const buf = new Uint8Array(1024);
@@ -143,6 +145,7 @@ testPerm({ net: true }, async function netCloseReadSuccess() {
   listener.close();
   conn.close();
 
+  await response;
   assertEquals(Deno.EOF, readResult); // with immediate EOF
 });
 
@@ -150,7 +153,7 @@ testPerm({ net: true }, async function netCloseReadSuccess() {
 testPerm({ net: true }, async function netDoubleCloseRead() {
   const listener = Deno.listen({ port: 4500 });
   const closeDeferred = deferred();
-  listener.accept().then(async conn => {
+  const response = listener.accept().then(async conn => {
     await conn.write(new Uint8Array([1, 2, 3]));
     await closeDeferred.promise;
     conn.close();
@@ -168,6 +171,7 @@ testPerm({ net: true }, async function netDoubleCloseRead() {
   listener.close();
   conn.close();
 
+  await response;
   assert(!!err);
   assertEquals(err.kind, Deno.ErrorKind.NotConnected);
   assertEquals(err.name, "NotConnected");
@@ -177,7 +181,7 @@ testPerm({ net: true }, async function netDoubleCloseRead() {
 testPerm({ net: true }, async function netCloseWriteSuccess() {
   const listener = Deno.listen({ port: 4500 });
   const closeDeferred = deferred();
-  listener.accept().then(async conn => {
+  const response = listener.accept().then(async conn => {
     await conn.write(new Uint8Array([1, 2, 3]));
     await closeDeferred.promise;
     conn.close();
@@ -198,6 +202,7 @@ testPerm({ net: true }, async function netCloseWriteSuccess() {
   listener.close();
   conn.close();
 
+  await response;
   assertEquals(3, readResult);
   assertEquals(1, buf[0]);
   assertEquals(2, buf[1]);
@@ -211,7 +216,7 @@ testPerm({ net: true }, async function netCloseWriteSuccess() {
 testPerm({ net: true }, async function netDoubleCloseWrite() {
   const listener = Deno.listen({ port: 4500 });
   const closeDeferred = deferred();
-  listener.accept().then(async conn => {
+  const response = listener.accept().then(async conn => {
     await closeDeferred.promise;
     conn.close();
   });
@@ -228,6 +233,7 @@ testPerm({ net: true }, async function netDoubleCloseWrite() {
   listener.close();
   conn.close();
 
+  await response;
   assert(!!err);
   assertEquals(err.kind, Deno.ErrorKind.NotConnected);
   assertEquals(err.name, "NotConnected");
