@@ -33,6 +33,14 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
     s.core_op(json_op(s.stateful_op(op_host_get_worker_closed))),
   );
   i.register_op(
+    "host_poll_worker",
+    s.core_op(json_op(s.stateful_op(op_host_poll_worker))),
+  );
+  i.register_op(
+    "host_close_worker",
+    s.core_op(json_op(s.stateful_op(op_host_close_worker))),
+  );
+  i.register_op(
     "host_post_message",
     s.core_op(json_op(s.stateful_op(op_host_post_message))),
   );
@@ -234,6 +242,49 @@ fn op_host_get_worker_closed(
   });
 
   Ok(JsonOp::Async(op.boxed()))
+}
+
+/// Return when the worker closes
+fn op_host_poll_worker(
+  state: &ThreadSafeState,
+  args: Value,
+  _data: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: HostGetWorkerClosedArgs = serde_json::from_value(args)?;
+  let id = args.id as u32;
+
+  let future = GetWorkerClosedFuture {
+    state: state.clone(),
+    rid: id,
+  };
+
+  let op = async move {
+    let result = future.await;
+    result.map(|_| json!({}))
+  };
+  Ok(JsonOp::Async(op.boxed()))
+}
+
+
+/// Return when the worker closes
+fn op_host_close_worker(
+  state: &ThreadSafeState,
+  args: Value,
+  _data: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: HostGetWorkerClosedArgs = serde_json::from_value(args)?;
+  let id = args.id as u32;
+  let state_ = state.clone();
+
+  let mut workers_table = state_.workers.lock().unwrap();
+  let maybe_worker = workers_table.remove(&id);
+  if let Some(worker) = maybe_worker {
+    let mut channels = worker.state.worker_channels.lock().unwrap();
+    channels.sender.close_channel();
+    channels.receiver.close();
+  };
+
+  Ok(JsonOp::Sync(json!({})))
 }
 
 #[derive(Deserialize)]

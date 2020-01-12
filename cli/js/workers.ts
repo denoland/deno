@@ -39,6 +39,14 @@ async function hostGetWorkerClosed(id: number): Promise<void> {
   await sendAsync(dispatch.OP_HOST_GET_WORKER_CLOSED, { id });
 }
 
+async function hostPollWorker(id: number): Promise<any> {
+  await sendAsync(dispatch.OP_HOST_POLL_WORKER, { id });
+}
+
+function hostCloseWorker(id: number): void {
+  sendSync(dispatch.OP_HOST_CLOSE_WORKER, { id });
+}
+
 function hostPostMessage(id: number, data: any): void {
   const dataIntArray = encodeMessage(data);
   sendSync(dispatch.OP_HOST_POST_MESSAGE, { id }, dataIntArray);
@@ -88,26 +96,33 @@ export async function workerMain(): Promise<void> {
       break;
     }
 
-    if (window["onmessage"]) {
-      const event = { data };
-      const result: void | Promise<void> = window.onmessage(event);
+    if (!window["onmessage"]) {
+      break;
+    }
+    let result: void | Promise<void>;
+    const event = { data };
+
+    try {
+      result = window.onmessage(event);
       if (result && "then" in result) {
         await result;
       }
-    }
-
-    if (!window["onmessage"]) {
-      break;
+    } catch (e) {
+      if (window["onerror"]) {
+        window.onerror(e);
+      } else {
+        throw e;
+      }
     }
   }
 }
 
 export interface Worker {
-  onerror?: () => void;
+  onerror?: (e: any) => void;
   onmessage?: (e: { data: any }) => void;
   onmessageerror?: () => void;
   postMessage(data: any): void;
-  closed: Promise<void>;
+  // closed: Promise<void>;
 }
 
 // TODO(kevinkassimo): Maybe implement reasonable web worker options?
@@ -125,8 +140,8 @@ export interface DenoWorkerOptions extends WorkerOptions {
 export class WorkerImpl implements Worker {
   private readonly id: number;
   private isClosing = false;
-  private readonly isClosedPromise: Promise<void>;
-  public onerror?: () => void;
+  // private readonly isClosedPromise: Promise<void>;
+  public onerror?: (e: any) => void;
   public onmessage?: (data: any) => void;
   public onmessageerror?: () => void;
 
@@ -158,16 +173,36 @@ export class WorkerImpl implements Worker {
       hasSourceCode,
       sourceCode
     );
+    this.poll();
     this.run();
-    this.isClosedPromise = hostGetWorkerClosed(this.id);
-    this.isClosedPromise.then((): void => {
-      this.isClosing = true;
-    });
+    // this.isClosedPromise = hostGetWorkerClosed(this.id);
+    // this.isClosedPromise.then((): void => {
+    //   this.isClosing = true;
+    // });
   }
 
-  get closed(): Promise<void> {
-    return this.isClosedPromise;
+  async poll() {
+    try {
+      const result = await hostPollWorker(this.id);
+      console.log("asdfasdf", result);
+      this.isClosing = true;
+    } catch (e) {
+      // TODO:
+      console.error("caugh error in worker :)", e);
+      if (this.onerror) {
+        this.onerror(e)
+      } else {
+        throw(e);
+      }
+    } finally {
+      hostCloseWorker(this.id);
+      console.log("closed");
+    }
   }
+
+  // get closed(): Promise<void> {
+  //   return this.isClosedPromise;
+  // }
 
   postMessage(data: any): void {
     hostPostMessage(this.id, data);

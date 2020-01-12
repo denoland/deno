@@ -11,4 +11,9 @@ jsWorker.onmessage = (e): void => {
   tsWorker.postMessage("Hello World");
 };
 
+jsWorker.onerror = (): void => {
+  console.error("on error called!");
+  tsWorker.postMessage("Hello World");
+}
+
 jsWorker.postMessage("Hello World");
