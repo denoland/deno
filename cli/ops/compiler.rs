@@ -20,10 +20,6 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
     "fetch_source_files",
     s.core_op(json_op(s.stateful_op(op_fetch_source_files))),
   );
-  i.register_op(
-    "fetch_asset",
-    s.core_op(json_op(s.stateful_op(op_fetch_asset))),
-  );
   i.register_op("compile", s.core_op(json_op(s.stateful_op(op_compile))));
   i.register_op("transpile", s.core_op(json_op(s.stateful_op(op_transpile))));
 }
@@ -153,24 +149,6 @@ fn op_fetch_source_files(
   });
 
   Ok(JsonOp::Async(future))
-}
-
-#[derive(Deserialize)]
-struct FetchAssetArgs {
-  name: String,
-}
-
-fn op_fetch_asset(
-  _state: &ThreadSafeState,
-  args: Value,
-  _zero_copy: Option<PinnedBuf>,
-) -> Result<JsonOp, ErrBox> {
-  let args: FetchAssetArgs = serde_json::from_value(args)?;
-  if let Some(source_code) = crate::js::get_asset(&args.name) {
-    Ok(JsonOp::Sync(json!(source_code)))
-  } else {
-    panic!("op_fetch_asset bad asset {}", args.name)
-  }
 }
 
 #[derive(Deserialize, Debug)]
