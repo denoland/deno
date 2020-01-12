@@ -64,6 +64,7 @@ async function hostGetMessage(id: number): Promise<any> {
 
 // Stuff for workers
 export const onmessage: (e: { data: any }) => void = (): void => {};
+export const onerror: (e: { data: any }) => void = (): void => {};
 
 export function postMessage(data: any): void {
   const dataIntArray = encodeMessage(data);
@@ -109,10 +110,12 @@ export async function workerMain(): Promise<void> {
       }
     } catch (e) {
       if (window["onerror"]) {
-        window.onerror(e);
-      } else {
-        throw e;
+        let result = window.onerror(e.message, e.sourceCode, e.line, e.col, e);
+        if (result === true) {
+          continue;
+        }
       }
+      throw e;
     }
   }
 }

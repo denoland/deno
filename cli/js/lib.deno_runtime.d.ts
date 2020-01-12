@@ -1957,6 +1957,7 @@ declare interface Window {
   Response: typeof __fetch.Response;
   performance: __performanceUtil.Performance;
   onmessage: (e: { data: any }) => void;
+  onerror: undefined | typeof onerror;
   workerMain: typeof __workers.workerMain;
   workerClose: typeof __workers.workerClose;
   postMessage: typeof __workers.postMessage;
@@ -2007,6 +2008,7 @@ declare const Request: __domTypes.RequestConstructor;
 declare const Response: typeof __fetch.Response;
 declare const performance: __performanceUtil.Performance;
 declare let onmessage: (e: { data: any }) => void;
+declare let onerror: (e: { data: any }) => void;
 declare const workerMain: typeof __workers.workerMain;
 declare const workerClose: typeof __workers.workerClose;
 declare const postMessage: typeof __workers.postMessage;
