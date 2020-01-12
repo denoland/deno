@@ -1,24 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, assert, assertEquals, assertNotEquals } from "./test_util.ts";
-
-function deferred(): {
-  promise: Promise<{}>;
-  resolve: (value?: {} | PromiseLike<{}>) => void;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  reject: (reason?: any) => void;
-} {
-  let resolve;
-  let reject;
-  const promise = new Promise((res, rej): void => {
-    resolve = res;
-    reject = rej;
-  });
-  return {
-    promise,
-    resolve,
-    reject
-  };
-}
+import {
+  assert,
+  assertEquals,
+  assertNotEquals,
+  deferred,
+  test
+} from "./test_util.ts";
 
 async function waitForMs(ms): Promise<number> {
   return new Promise((resolve): number => setTimeout(resolve, ms));

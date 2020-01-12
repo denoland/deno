@@ -20,6 +20,25 @@ export {
   unreachable
 } from "../../std/testing/asserts.ts";
 
+export function deferred(): {
+  promise: Promise<{}>;
+  resolve: (value?: {} | PromiseLike<{}>) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  reject: (reason?: any) => void;
+} {
+  let resolve;
+  let reject;
+  const promise = new Promise((res, rej): void => {
+    resolve = res;
+    reject = rej;
+  });
+  return {
+    promise,
+    resolve,
+    reject
+  };
+}
+
 interface TestPermissions {
   read?: boolean;
   write?: boolean;
