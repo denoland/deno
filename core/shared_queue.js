@@ -180,7 +180,6 @@ SharedQueue Binary Layout
   }
 
   function dispatch(opId, control, zeroCopy = null) {
-    maybeInit();
     return Deno.core.send(opId, control, zeroCopy);
   }
 

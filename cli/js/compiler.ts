@@ -6,6 +6,7 @@ import "./globals.ts";
 import "./ts_global.d.ts";
 
 import { TranspileOnlyResult } from "./compiler_api.ts";
+import { oldProgram } from "./compiler_bootstrap.ts";
 import { setRootExports } from "./compiler_bundler.ts";
 import {
   defaultBundlerOptions,
@@ -73,7 +74,7 @@ interface CompileResult {
 
 // bootstrap the runtime environment, this gets called as the isolate is setup
 self.denoMain = function denoMain(compilerType?: string): void {
-  os.start(true, compilerType || "TS");
+  os.start(true, compilerType ?? "TS");
 };
 
 // bootstrap the worker environment, this gets called as the isolate is setup
@@ -135,7 +136,12 @@ self.compilerMain = function compilerMain(): void {
         // to generate the program and possibly emit it.
         if (!diagnostics || (diagnostics && diagnostics.length === 0)) {
           const options = host.getCompilationSettings();
-          const program = ts.createProgram(rootNames, options, host);
+          const program = ts.createProgram({
+            rootNames,
+            options,
+            host,
+            oldProgram
+          });
 
           diagnostics = ts
             .getPreEmitDiagnostics(program)
@@ -213,11 +219,12 @@ self.compilerMain = function compilerMain(): void {
         }
         host.mergeOptions(...compilerOptions);
 
-        const program = ts.createProgram(
+        const program = ts.createProgram({
           rootNames,
-          host.getCompilationSettings(),
-          host
-        );
+          options: host.getCompilationSettings(),
+          host,
+          oldProgram
+        });
 
         if (bundle) {
           setRootExports(program, rootNames[0]);

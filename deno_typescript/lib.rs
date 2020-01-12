@@ -204,6 +204,10 @@ pub fn mksnapshot_bundle_ts(
   state: Arc<Mutex<TSState>>,
 ) -> Result<(), ErrBox> {
   let runtime_isolate = &mut Isolate::new(StartupData::None, true);
+  runtime_isolate.register_op(
+    "fetch_asset",
+    compiler_op(state.clone(), ops::json_op(ops::fetch_asset)),
+  );
   let source_code_vec = std::fs::read(bundle)?;
   let source_code = std::str::from_utf8(&source_code_vec)?;
 
@@ -257,6 +261,10 @@ pub fn get_asset(name: &str) -> Option<&'static str> {
   match name {
     "bundle_loader.js" => Some(include_str!("bundle_loader.js")),
     "lib.deno_core.d.ts" => Some(include_str!("lib.deno_core.d.ts")),
+    "lib.deno_runtime.d.ts" => {
+      Some(include_str!("../cli/js/lib.deno_runtime.d.ts"))
+    }
+    "bootstrap.ts" => Some("console.log(\"hello deno\");"),
     "typescript.d.ts" => inc!("typescript.d.ts"),
     "lib.esnext.d.ts" => inc!("lib.esnext.d.ts"),
     "lib.es2020.d.ts" => inc!("lib.es2020.d.ts"),

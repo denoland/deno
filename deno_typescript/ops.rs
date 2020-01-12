@@ -112,6 +112,21 @@ pub fn resolve_module_names(
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct FetchAssetArgs {
+  name: String,
+}
+
+pub fn fetch_asset(_s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
+  let args: FetchAssetArgs = serde_json::from_value(v)?;
+  if let Some(source_code) = crate::get_asset(&args.name) {
+    Ok(json!(source_code))
+  } else {
+    panic!("op_fetch_asset bad asset {}", args.name)
+  }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct Exit {
   code: i32,
 }
