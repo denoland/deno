@@ -22,7 +22,7 @@ macro_rules! sset {
 
 macro_rules! std_url {
   ($x:expr) => {
-    concat!("https://deno.land/std@v0.28.1/", $x)
+    concat!("https://deno.land/std@v0.29.0/", $x)
   };
 }
 
