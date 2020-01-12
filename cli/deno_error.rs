@@ -187,8 +187,8 @@ impl GetErrorKind for reqwest::Error {
             .downcast_ref::<serde_json::error::Error>()
             .map(Get::kind)
         })
-        .unwrap_or_else(|| ErrorKind::HttpOther),
-      None => ErrorKind::HttpOther,
+        .unwrap_or_else(|| ErrorKind::Http),
+      None => ErrorKind::Http,
     }
   }
 }

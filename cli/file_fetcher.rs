@@ -353,8 +353,7 @@ impl SourceFileFetcher {
     redirect_limit: i64,
   ) -> Pin<Box<SourceFileFuture>> {
     if redirect_limit < 0 {
-      let e =
-        DenoError::new(ErrorKind::HttpOther, "too many redirects".to_string());
+      let e = DenoError::new(ErrorKind::Http, "too many redirects".to_string());
       return futures::future::err(e.into()).boxed();
     }
 
@@ -1290,7 +1289,7 @@ mod tests {
       .map(move |result| {
         assert!(result.is_err());
         let err = result.err().unwrap();
-        assert_eq!(err.kind(), ErrorKind::HttpOther);
+        assert_eq!(err.kind(), ErrorKind::Http);
       });
 
     tokio_util::run(fut);

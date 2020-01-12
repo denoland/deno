@@ -12,7 +12,6 @@
 // TODO don't disable this warning
 
 import { AbortSignal, QueuingStrategySizeCallback } from "../dom_types.ts";
-import { DenoError, ErrorKind } from "../errors.ts";
 
 // common stream fields
 

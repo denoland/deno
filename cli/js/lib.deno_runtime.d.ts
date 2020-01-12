@@ -1010,15 +1010,15 @@ declare namespace Deno {
     Other = 17,
     UnexpectedEof = 18,
     BadResource = 19,
-    UrlParse = 21,
-    HttpOther = 35,
-    TooLarge = 36,
-    InvalidSeekMode = 38,
-    UnixError = 41,
-    InvalidPath = 45,
-    ImportPrefixMissing = 46,
-    Diagnostic = 49,
-    JSError = 50
+    UrlParse = 20,
+    Http = 21,
+    TooLarge = 22,
+    InvalidSeekMode = 23,
+    UnixError = 24,
+    InvalidPath = 25,
+    ImportPrefixMissing = 26,
+    Diagnostic = 27,
+    JSError = 28
   }
 
   // @url js/permissions.d.ts
