@@ -35,6 +35,7 @@ function createWorker(
   });
 }
 
+/* eslint-disable @typescript-eslint/no-unused-vars */
 async function hostGetWorkerClosed(id: number): Promise<void> {
   await sendAsync(dispatch.OP_HOST_GET_WORKER_CLOSED, { id });
 }
@@ -118,7 +119,7 @@ export async function workerMain(): Promise<void> {
       }
     } catch (e) {
       if (window["onerror"]) {
-        let result = window.onerror(
+        const result = window.onerror(
           e.message,
           e.fileName,
           e.lineNumber,
@@ -139,7 +140,6 @@ export interface Worker {
   onmessage?: (e: { data: any }) => void;
   onmessageerror?: () => void;
   postMessage(data: any): void;
-  // closed: Promise<void>;
 }
 
 // TODO(kevinkassimo): Maybe implement reasonable web worker options?
@@ -159,7 +159,6 @@ export class WorkerImpl implements Worker {
   private isClosing = false;
   private messageBuffer: any[] = [];
   private ready = false;
-  // private readonly isClosedPromise: Promise<void>;
   public onerror?: (e: any) => void;
   public onmessage?: (data: any) => void;
   public onmessageerror?: () => void;
@@ -193,17 +192,34 @@ export class WorkerImpl implements Worker {
       sourceCode
     );
     this.poll();
-    // this.isClosedPromise = hostGetWorkerClosed(this.id);
-    // this.isClosedPromise.then((): void => {
-    //   this.isClosing = true;
-    // });
   }
 
-  async poll() {
+  private handleError(_e: Error): boolean {
+    const event = new window.Event("error", { cancelable: true });
+    event.message = "TODO: JS ERROR";
+    event.error = null;
+
+    let handled = false;
+    if (this.onerror) {
+      this.onerror(event);
+      console.log("default prevented", event.defaultPrevented);
+      // TODO: if handled resume execution of JS
+      if (event.defaultPrevented) {
+        handled = true;
+      }
+    }
+
+    return handled;
+  }
+
+  async poll(): Promise<void> {
     try {
       await hostGetWorkerLoaded(this.id);
     } catch (e) {
       // TODO: handle script load fail
+      if (!this.handleError(e)) {
+        throw e;
+      }
     }
 
     // drain messages
@@ -224,34 +240,17 @@ export class WorkerImpl implements Worker {
         console.log("closed");
         break;
       } catch (e) {
-        // TODO:
-        // console.error("[caugh error in worker]", e.message, e.lineNumber, e.columnNumber, e.fileName);
-        const event = new window.Event("error", { cancelable: true });
-        event.message = "TODO: JS ERROR";
-        event.error = null;
-
-        let handled = false;
-        if (this.onerror) {
-          this.onerror(event);
-          console.log("default prevented", event.defaultPrevented);
-          // TODO: if handled resume execution of JS
-          hostResumeWorker(this.id);
-          if (event.defaultPrevented) {
-            handled = true;
-          }
-        }
+        const handled = this.handleError(e);
 
         if (!handled) {
           console.log("throwing");
           throw e;
+        } else {
+          hostResumeWorker(this.id);
         }
       }
     }
   }
-
-  // get closed(): Promise<void> {
-  //   return this.isClosedPromise;
-  // }
 
   postMessage(data: any): void {
     if (!this.ready) {
@@ -269,7 +268,6 @@ export class WorkerImpl implements Worker {
         log("worker got null message. quitting.");
         break;
       }
-      // TODO(afinch7) stop this from eating messages before onmessage has been assigned
       if (this.onmessage) {
         const event = { data };
         this.onmessage(event);

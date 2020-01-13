@@ -13,7 +13,7 @@ onmessage = function(e) {
   workerClose();
 };
 
-onerror = function(e, a, d, f, h) {
-  console.log("caught in worker onerror");
+onerror = function() {
+  console.log("called onerror in worker");
   return false;
 };

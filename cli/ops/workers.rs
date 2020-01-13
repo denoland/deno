@@ -10,6 +10,7 @@ use crate::state::ThreadSafeState;
 use crate::worker::Worker;
 use deno_core::*;
 use futures;
+use futures::channel::mpsc;
 use futures::future::FutureExt;
 use futures::future::TryFutureExt;
 use futures::sink::SinkExt;
@@ -19,7 +20,6 @@ use std::convert::From;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::Ordering;
-use futures::channel::mpsc;
 use std::task::Context;
 use std::task::Poll;
 
@@ -125,7 +125,6 @@ struct CreateWorkerArgs {
   has_source_code: bool,
   source_code: String,
 }
-
 
 /// Create worker as the host
 fn op_create_worker(
@@ -243,7 +242,6 @@ fn op_host_get_worker_loaded(
 
   Ok(JsonOp::Async(op.boxed()))
 }
-
 
 /// Return when the worker closes
 fn op_host_get_worker_closed(
