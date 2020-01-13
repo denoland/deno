@@ -13,7 +13,7 @@ import third_party
 #   "deno_tcp" was once called "deno"
 #   "deno_http" was once called "deno_net_http"
 
-DURATION = "10s"
+DURATION = "20s"
 
 LAST_PORT = 4544
 
