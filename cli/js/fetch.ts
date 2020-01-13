@@ -507,14 +507,10 @@ export async function fetch(
       // We're in a redirect status
       switch ((init && init.redirect) || "follow") {
         case "error":
-          /* TODO(serverhiccups): Replace this with a NetworkError. */
-          throw notImplemented();
+          /* I suspect that deno will probably crash if you try to use that
+             rid, which suggests to me that Response needs to be refactored */
+          return new Response("", 0, "", [], -1, false, null, "error");
         case "manual":
-          /* This is super not standards compliant, but due to the fact that
-             with the fact that the Response class's type property is readonly,
-             it is currently not possible to implement this in a standards
-             compliant way anyway. The relevant part of the standard is here:
-             https://fetch.spec.whatwg.org/#concept-request-redirect-mode */
           return response;
         case "follow":
         default:
