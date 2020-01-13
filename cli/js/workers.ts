@@ -7,6 +7,7 @@ import { TextDecoder, TextEncoder } from "./text_encoding.ts";
 import { window } from "./window.ts";
 import { blobURLMap } from "./url.ts";
 import { blobBytesWeakMap } from "./blob.ts";
+import { EventTarget } from "./event_target.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -106,9 +107,6 @@ export async function workerMain(): Promise<void> {
       break;
     }
 
-    if (!window["onmessage"]) {
-      break;
-    }
     let result: void | Promise<void>;
     const event = { data };
 
@@ -116,6 +114,9 @@ export async function workerMain(): Promise<void> {
       result = window.onmessage(event);
       if (result && "then" in result) {
         await result;
+      }
+      if (!window["onmessage"]) {
+        break;
       }
     } catch (e) {
       if (window["onerror"]) {
@@ -154,7 +155,7 @@ export interface DenoWorkerOptions extends WorkerOptions {
   noDenoNamespace?: boolean;
 }
 
-export class WorkerImpl implements Worker {
+export class WorkerImpl extends EventTarget implements Worker {
   private readonly id: number;
   private isClosing = false;
   private messageBuffer: any[] = [];
@@ -164,6 +165,7 @@ export class WorkerImpl implements Worker {
   public onmessageerror?: () => void;
 
   constructor(specifier: string, options?: DenoWorkerOptions) {
+    super();
     let hasSourceCode = false;
     let sourceCode = new Uint8Array();
 
