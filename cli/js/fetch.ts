@@ -522,6 +522,10 @@ export async function fetch(
              rid, which suggests to me that Response needs to be refactored */
           return new Response("", 0, "", [], -1, false, null, "error");
         case "manual":
+          return new Response("", 0, "", [], -1, false, null, "opaqueredirect");
+        /* This mode is not part of the standard, but leaving it out would be
+           annoying to work around. */
+        case "nofollow":
           return response;
         case "follow":
         default:
