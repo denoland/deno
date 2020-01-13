@@ -13,7 +13,7 @@ jsWorker.onmessage = (e): void => {
 
 jsWorker.onerror = (e: Event): void => {
   e.preventDefault();
-  console.error("called onerror in script");
+  console.log("called onerror in script");
   jsWorker.postMessage("Hello World");
 };
 

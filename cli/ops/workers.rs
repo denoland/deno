@@ -171,12 +171,11 @@ fn op_create_worker(
   js_check(worker.execute("workerMain()"));
 
   let worker_id = parent_state.add_child_worker(worker.clone());
-  let response = json!(worker_id);
 
   // Has provided source code, execute immediately.
   if has_source_code {
     js_check(worker.execute(&source_code));
-    return Ok(JsonOp::Sync(response));
+    return Ok(JsonOp::Sync(json!({"id": worker_id, "loaded": true})));
   }
 
   let (mut sender, receiver) = mpsc::channel::<Result<(), ErrBox>>(1);
@@ -193,7 +192,7 @@ fn op_create_worker(
   tokio::spawn(fut);
   let mut table = state.loading_workers.lock().unwrap();
   table.insert(worker_id, receiver);
-  Ok(JsonOp::Sync(response))
+  Ok(JsonOp::Sync(json!({"id": worker_id, "loaded": true})))
 }
 
 struct GetWorkerClosedFuture {

@@ -26,7 +26,7 @@ function createWorker(
   includeDenoNamespace: boolean,
   hasSourceCode: boolean,
   sourceCode: Uint8Array
-): number {
+): { id: number; loaded: boolean } {
   return sendSync(dispatch.OP_CREATE_WORKER, {
     specifier,
     includeDenoNamespace,
@@ -185,12 +185,14 @@ export class WorkerImpl implements Worker {
       sourceCode = blobBytes!;
     }
 
-    this.id = createWorker(
+    const { id, loaded } = createWorker(
       specifier,
       includeDenoNamespace,
       hasSourceCode,
       sourceCode
     );
+    this.id = id;
+    this.ready = loaded;
     this.poll();
   }
 
@@ -202,8 +204,6 @@ export class WorkerImpl implements Worker {
     let handled = false;
     if (this.onerror) {
       this.onerror(event);
-      console.log("default prevented", event.defaultPrevented);
-      // TODO: if handled resume execution of JS
       if (event.defaultPrevented) {
         handled = true;
       }
@@ -213,12 +213,16 @@ export class WorkerImpl implements Worker {
   }
 
   async poll(): Promise<void> {
-    try {
-      await hostGetWorkerLoaded(this.id);
-    } catch (e) {
-      // TODO: handle script load fail
-      if (!this.handleError(e)) {
-        throw e;
+    // If worker has not been immediately executed
+    // then let's await it's readiness
+    if (!this.ready) {
+      try {
+        await hostGetWorkerLoaded(this.id);
+      } catch (e) {
+        if (!this.handleError(e)) {
+          throw e;
+        }
+        return;
       }
     }
 
@@ -232,18 +236,12 @@ export class WorkerImpl implements Worker {
 
     while (true) {
       try {
-        console.log("polling", this.id);
-        const result = await hostPollWorker(this.id);
-        console.log("success", result);
+        await hostPollWorker(this.id);
         this.isClosing = true;
         hostCloseWorker(this.id);
-        console.log("closed");
         break;
       } catch (e) {
-        const handled = this.handleError(e);
-
-        if (!handled) {
-          console.log("throwing");
+        if (!this.handleError(e)) {
           throw e;
         } else {
           hostResumeWorker(this.id);
