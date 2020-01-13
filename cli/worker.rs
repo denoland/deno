@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::fmt_errors::JSError;
+use crate::inspector::Inspector;
 use crate::ops;
 use crate::state::ThreadSafeState;
 use deno_core;
@@ -38,6 +39,7 @@ pub struct Worker {
   pub isolate: Arc<AsyncMutex<Box<deno_core::EsIsolate>>>,
   pub state: ThreadSafeState,
   external_channels: Arc<Mutex<WorkerChannels>>,
+  inspector: Arc<Mutex<Inspector>>,
 }
 
 impl Worker {
@@ -47,6 +49,10 @@ impl Worker {
     state: ThreadSafeState,
     external_channels: WorkerChannels,
   ) -> Self {
+    let inspector = Inspector::new(
+      state.global_state.flags.debug,
+      state.global_state.flags.debug_address.clone(),
+    );
     let isolate = Arc::new(AsyncMutex::new(deno_core::EsIsolate::new(
       Box::new(state.clone()),
       startup_data,
@@ -77,7 +83,9 @@ impl Worker {
       let global_state_ = state.global_state.clone();
       i.set_js_error_create(move |v8_exception| {
         JSError::from_v8_exception(v8_exception, &global_state_.ts_compiler)
-      })
+      });
+
+      // TODO: setup inspector
     }
 
     Self {
@@ -85,6 +93,7 @@ impl Worker {
       isolate,
       state,
       external_channels: Arc::new(Mutex::new(external_channels)),
+      inspector: Arc::new(Mutex::new(inspector)),
     }
   }
 
@@ -110,6 +119,10 @@ impl Worker {
     js_filename: &str,
     js_source: &str,
   ) -> Result<(), ErrBox> {
+    {
+      let mut inspector = self.inspector.lock().unwrap();
+      inspector.start();
+    }
     let mut isolate = self.isolate.try_lock().unwrap();
     isolate.execute(js_filename, js_source)
   }
