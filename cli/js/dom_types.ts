@@ -530,7 +530,7 @@ type RequestDestination =
   | "worker"
   | "xslt";
 type RequestMode = "navigate" | "same-origin" | "no-cors" | "cors";
-type RequestRedirect = "follow" | "error" | "manual";
+type RequestRedirect = "follow" | "nofollow" | "error" | "manual";
 export type ResponseType =
   | "basic"
   | "cors"
