@@ -531,7 +531,7 @@ type RequestDestination =
   | "xslt";
 type RequestMode = "navigate" | "same-origin" | "no-cors" | "cors";
 type RequestRedirect = "follow" | "error" | "manual";
-type ResponseType =
+export type ResponseType =
   | "basic"
   | "cors"
   | "default"

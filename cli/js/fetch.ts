@@ -252,11 +252,11 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
 }
 
 export class Response implements domTypes.Response {
-  readonly type: ResponseType; // TODO
+  readonly type: domTypes.ResponseType;
   readonly redirected: boolean;
   headers: domTypes.Headers;
   readonly trailer: Promise<domTypes.Headers>;
-  readonly body: Body;
+  readonly body: null | Body;
 
   constructor(
     readonly url: string,
@@ -266,7 +266,7 @@ export class Response implements domTypes.Response {
     rid: number,
     redirected_: boolean,
     body_: null | Body = null,
-    readonly type_: null | ResponseType = "default"
+    readonly type_: null | domTypes.ResponseType = "default"
   ) {
     this.trailer = createResolvable();
     this.headers = new Headers(headersList);
@@ -339,23 +339,28 @@ export class Response implements domTypes.Response {
   }
 
   async arrayBuffer(): Promise<ArrayBuffer> {
+    if (this.body === null) return Promise.reject(new Error("Response body is null"));
     return this.body.arrayBuffer();
   }
 
   async blob(): Promise<domTypes.Blob> {
+    if (this.body === null) return Promise.reject(new Error("Response body is null"));
     return this.body.blob();
   }
 
   async formData(): Promise<domTypes.FormData> {
+    if (this.body === null) return Promise.reject(new Error("Response body is null"));
     return this.body.formData();
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async json(): Promise<any> {
+    if (this.body === null) return Promise.reject(new Error("Response body is null"));
     return this.body.json();
   }
 
   async text(): Promise<string> {
+    if (this.body === null) return Promise.reject(new Error("Response body is null"));
     return this.body.text();
   }
 
@@ -364,6 +369,7 @@ export class Response implements domTypes.Response {
   }
 
   get bodyUsed(): boolean {
+    if (this.body === null) return false;
     return this.body.bodyUsed;
   }
 
