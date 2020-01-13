@@ -252,7 +252,7 @@ class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
 }
 
 export class Response implements domTypes.Response {
-  readonly type = "basic"; // TODO
+  readonly type: ResponseType; // TODO
   readonly redirected: boolean;
   headers: domTypes.Headers;
   readonly trailer: Promise<domTypes.Headers>;
@@ -265,7 +265,8 @@ export class Response implements domTypes.Response {
     headersList: Array<[string, string]>,
     rid: number,
     redirected_: boolean,
-    body_: null | Body = null
+    body_: null | Body = null,
+    readonly type_: null | ResponseType = "default"
   ) {
     this.trailer = createResolvable();
     this.headers = new Headers(headersList);
@@ -275,6 +276,63 @@ export class Response implements domTypes.Response {
       this.body = new Body(rid, contentType);
     } else {
       this.body = body_;
+    }
+
+    if (type_ == null) {
+      this.type = "default";
+    } else {
+      this.type = type_;
+      if (type_ == "error") {
+        // spec: https://fetch.spec.whatwg.org/#concept-network-error
+        this.status = 0;
+        this.statusText = "";
+        this.headers = new Headers();
+        this.body = null;
+        /* spec for other Response types:
+           https://fetch.spec.whatwg.org/#concept-filtered-response-basic
+           Please note that type "basic" is not the same thing as "default".*/
+      } else if (type_ == "basic") {
+        for (const h of this.headers) {
+          /* Forbidden Response-Header Names:
+             https://fetch.spec.whatwg.org/#forbidden-response-header-name */
+          if (["set-cookie", "set-cookie2"].includes(h[0].toLowerCase())) {
+            this.headers.delete(h[0]);
+          }
+        }
+      } else if (type_ == "cors") {
+        /* CORS-safelisted Response-Header Names:
+             https://fetch.spec.whatwg.org/#cors-safelisted-response-header-name */
+        const allowedHeaders = [
+          "Cache-Control",
+          "Content-Language",
+          "Content-Length",
+          "Content-Type",
+          "Expires",
+          "Last-Modified",
+          "Pragma"
+        ].map((c: string) => c.toLowerCase());
+        for (const h of this.headers) {
+          /* Technically this is still not standards compliant because we are
+             supposed to allow headers allowed in the
+             'Access-Control-Expose-Headers' header in the 'internal response'
+             However, this implementation of response doesn't seem to have an
+             easy way to access the internal response, so we ignore that
+             header.
+             TODO(serverhiccups): change how internal responses are handled
+             so we can do this properly. */
+          if (!allowedHeaders.includes(h[0].toLowerCase())) {
+            this.headers.delete(h[0]);
+          }
+        }
+        /* TODO(serverhiccups): Once I fix the 'internal response' thing,
+           these actually need to treat the internal response differently */
+      } else if (type_ == "opaque" || type_ == "opaqueredirect") {
+        this.url = "";
+        this.status = 0;
+        this.statusText = "";
+        this.headers = new Headers();
+        this.body = null;
+      }
     }
 
     this.redirected = redirected_;
@@ -366,6 +424,10 @@ async function sendFetchReq(
   return (await sendAsync(dispatch.OP_FETCH, args, zeroCopy)) as FetchResponse;
 }
 
+interface NetworkError {
+  name: string;
+  message: string;
+}
 /** Fetch a resource from the network. */
 export async function fetch(
   input: domTypes.Request | URL | string,
