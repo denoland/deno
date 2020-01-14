@@ -409,7 +409,10 @@ export class Response implements domTypes.Response {
       );
     }
     const location = this.headers.get("Location");
-    const newLocation = new URL(typeof url === "string" ? url : url.toString(), location);
+    const newLocation = new URL(
+      typeof url === "string" ? url : url.toString(),
+      location
+    );
     return new Response(
       "",
       status,
