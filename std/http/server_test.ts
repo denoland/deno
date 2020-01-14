@@ -17,7 +17,7 @@ import {
   readRequest,
   parseHTTPVersion
 } from "./server.ts";
-import { delay, deferred } from "../util/async.ts";
+import { delay, deferred } from "../_util/async.ts";
 import {
   BufReader,
   BufWriter,
