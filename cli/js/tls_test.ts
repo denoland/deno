@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { test, testPerm, assert, assertEquals } from "./test_util.ts";
-import { BufWriter, BufReader } from "../../std/io/bufio.ts";
+import { BufWriter, BufReader } from "../../std/io/buffers.ts";
 import { TextProtoReader } from "../../std/textproto/mod.ts";
 import { runIfMain } from "../../std/testing/mod.ts";
 

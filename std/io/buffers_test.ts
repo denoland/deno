@@ -19,7 +19,7 @@ import {
   BufWriter,
   BufferFullError,
   UnexpectedEOFError
-} from "./bufio.ts";
+} from "./buffers.ts";
 
 const encoder = new TextEncoder();
 

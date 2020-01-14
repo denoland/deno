@@ -4,8 +4,7 @@
 // license that can be found in the LICENSE file.
 
 import { stringsReader } from "../_util/io.ts";
-import { BufReader } from "../io/bufio.ts";
-import { TextProtoReader, ProtocolError } from "./mod.ts";
+import { BufReader } from "../io/buffers.ts";
 import {
   assert,
   assertEquals,
@@ -13,6 +12,7 @@ import {
   assertThrows
 } from "../testing/asserts.ts";
 import { test, runIfMain } from "../testing/mod.ts";
+import { TextProtoReader, ProtocolError } from "./mod.ts";
 
 function assertNotEOF<T extends {}>(val: T | Deno.EOF): T {
   assertNotEquals(val, Deno.EOF);

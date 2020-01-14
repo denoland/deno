@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { BufReader, UnexpectedEOFError } from "../io/bufio.ts";
+import { BufReader, UnexpectedEOFError } from "../io/buffers.ts";
 import * as path from "../path/mod.ts";
 import { encode } from "../strings/mod.ts";
 import { assert } from "../testing/asserts.ts";

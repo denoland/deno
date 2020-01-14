@@ -1,8 +1,8 @@
 const { dial, run } = Deno;
 
+import { BufReader } from "../io/buffers.ts";
 import { test, runIfMain } from "../testing/mod.ts";
 import { assert, assertEquals } from "../testing/asserts.ts";
-import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 
 let server: Deno.Process;

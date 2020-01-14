@@ -23,7 +23,7 @@ import {
   BufWriter,
   ReadLineResult,
   UnexpectedEOFError
-} from "../io/bufio.ts";
+} from "../io/buffers.ts";
 import { StringReader } from "../io/readers.ts";
 
 function assertNotEOF<T extends {}>(val: T | Deno.EOF): T {

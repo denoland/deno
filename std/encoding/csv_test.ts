@@ -3,8 +3,8 @@
 import { test, runIfMain } from "../testing/mod.ts";
 import { assertEquals, assert } from "../testing/asserts.ts";
 import { readMatrix, parse } from "./csv.ts";
+import { BufReader } from "../io/buffers.ts";
 import { StringReader } from "../io/readers.ts";
-import { BufReader } from "../io/bufio.ts";
 
 const ErrInvalidDelim = "Invalid Delimiter";
 const ErrFieldCount = "wrong number of fields";

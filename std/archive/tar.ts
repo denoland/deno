@@ -27,7 +27,7 @@
  * THE SOFTWARE.
  */
 import { MultiReader } from "../io/readers.ts";
-import { BufReader } from "../io/bufio.ts";
+import { BufReader } from "../io/buffers.ts";
 
 const recordSize = 512;
 const ustar = "ustar\u000000";

@@ -4,7 +4,7 @@ type Listener = Deno.Listener;
 type Conn = Deno.Conn;
 type Reader = Deno.Reader;
 type Writer = Deno.Writer;
-import { BufReader, BufWriter, UnexpectedEOFError } from "../io/bufio.ts";
+import { BufReader, BufWriter, UnexpectedEOFError } from "../io/buffers.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { STATUS_TEXT } from "./http_status.ts";
 import { assert } from "../testing/asserts.ts";

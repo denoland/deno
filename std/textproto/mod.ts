@@ -4,7 +4,7 @@
 // license that can be found in the LICENSE file.
 
 import { charCode } from "../_util/io.ts";
-import { BufReader, UnexpectedEOFError } from "../io/bufio.ts";
+import { BufReader, UnexpectedEOFError } from "../io/buffers.ts";
 
 const asciiDecoder = new TextDecoder();
 function str(buf: Uint8Array): string {

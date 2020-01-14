@@ -3,7 +3,7 @@ const { run, stat, makeTempDir, remove, env } = Deno;
 
 import { test, runIfMain, TestFunction } from "../testing/mod.ts";
 import { assert, assertEquals } from "../testing/asserts.ts";
-import { BufReader } from "../io/bufio.ts";
+import { BufReader } from "../io/buffers.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import * as path from "../path/mod.ts";
 import * as fs from "../fs/mod.ts";

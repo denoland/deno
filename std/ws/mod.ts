@@ -3,7 +3,7 @@
 import { hasOwnProperty } from "../_util/has_own_property.ts";
 import { readLong, readShort, sliceLongToBytes } from "../_util/io.ts";
 import { writeResponse } from "../http/server.ts";
-import { BufReader, BufWriter, UnexpectedEOFError } from "../io/bufio.ts";
+import { BufReader, BufWriter, UnexpectedEOFError } from "../io/buffers.ts";
 import { decode, encode } from "../strings/mod.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { Sha1 } from "./sha1.ts";
