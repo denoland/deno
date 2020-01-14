@@ -5,6 +5,7 @@
 
 const { Buffer } = Deno;
 type Reader = Deno.Reader;
+import { charCode, copyBytes, stringsReader } from "../_util/io.ts";
 import { test, runIfMain } from "../testing/mod.ts";
 import {
   assert,
@@ -12,14 +13,13 @@ import {
   assertNotEquals,
   fail
 } from "../testing/asserts.ts";
+import * as testUtil from "./_test_util.ts";
 import {
   BufReader,
   BufWriter,
   BufferFullError,
   UnexpectedEOFError
 } from "./bufio.ts";
-import * as iotest from "./iotest.ts";
-import { charCode, copyBytes, stringsReader } from "../_util/io.ts";
 
 const encoder = new TextEncoder();
 
@@ -59,11 +59,11 @@ const readMakers: ReadMaker[] = [
   { name: "full", fn: (r): Reader => r },
   {
     name: "byte",
-    fn: (r): iotest.OneByteReader => new iotest.OneByteReader(r)
+    fn: (r): testUtil.OneByteReader => new testUtil.OneByteReader(r)
   },
-  { name: "half", fn: (r): iotest.HalfReader => new iotest.HalfReader(r) }
-  // TODO { name: "data+err", r => new iotest.DataErrReader(r) },
-  // { name: "timeout", fn: r => new iotest.TimeoutReader(r) },
+  { name: "half", fn: (r): testUtil.HalfReader => new testUtil.HalfReader(r) }
+  // TODO { name: "data+err", r => new testUtil.DataErrReader(r) },
+  // { name: "timeout", fn: r => new testUtil.TimeoutReader(r) },
 ];
 
 // Call read to accumulate the text of a file
