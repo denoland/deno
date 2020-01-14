@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { copyBytes } from "../io/util.ts";
+import { copyBytes } from "../_util/io.ts";
 
 /** Find first index of binary pattern from a. If not found, then return -1 **/
 export function findIndex(a: Uint8Array, pat: Uint8Array): number {

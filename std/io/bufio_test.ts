@@ -19,7 +19,7 @@ import {
   UnexpectedEOFError
 } from "./bufio.ts";
 import * as iotest from "./iotest.ts";
-import { charCode, copyBytes, stringsReader } from "./util.ts";
+import { charCode, copyBytes, stringsReader } from "../_util/io.ts";
 
 const encoder = new TextEncoder();
 

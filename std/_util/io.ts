@@ -1,8 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { BufReader, UnexpectedEOFError } from "./bufio.ts";
+import { BufReader, UnexpectedEOFError } from "../io/bufio.ts";
+import * as path from "../path/mod.ts";
+import { encode } from "../strings/mod.ts";
+import { assert } from "../testing/asserts.ts";
+const { Buffer, mkdir, open } = Deno;
+type File = Deno.File;
 type Reader = Deno.Reader;
 type Writer = Deno.Writer;
-import { assert } from "../testing/asserts.ts";
 
 /** copy N size at the most.
  *  If read size is lesser than N, then returns nread
@@ -76,4 +80,44 @@ export function sliceLongToBytes(d: number, dest = new Array(8)): number[] {
     big >>= 8n;
   }
   return dest;
+}
+
+// `off` is the offset into `dst` where it will at which to begin writing values
+// from `src`.
+// Returns the number of bytes copied.
+export function copyBytes(dst: Uint8Array, src: Uint8Array, off = 0): number {
+  off = Math.max(0, Math.min(off, dst.byteLength));
+  const r = dst.byteLength - off;
+  if (src.byteLength > r) {
+    src = src.subarray(0, r);
+  }
+  dst.set(src, off);
+  return src.byteLength;
+}
+
+export function charCode(s: string): number {
+  return s.charCodeAt(0);
+}
+
+export function stringsReader(s: string): Reader {
+  return new Buffer(encode(s).buffer);
+}
+
+/** Create or open a temporal file at specified directory with prefix and
+ *  postfix
+ * */
+export async function tempFile(
+  dir: string,
+  opts: {
+    prefix?: string;
+    postfix?: string;
+  } = { prefix: "", postfix: "" }
+): Promise<{ file: File; filepath: string }> {
+  const r = Math.floor(Math.random() * 1000000);
+  const filepath = path.resolve(
+    `${dir}/${opts.prefix || ""}${r}${opts.postfix || ""}`
+  );
+  await mkdir(path.dirname(filepath), { recursive: true });
+  const file = await open(filepath, "a");
+  return { file, filepath };
 }

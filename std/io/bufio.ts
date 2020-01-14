@@ -5,7 +5,7 @@
 
 type Reader = Deno.Reader;
 type Writer = Deno.Writer;
-import { charCode, copyBytes } from "./util.ts";
+import { charCode, copyBytes } from "../_util/io.ts";
 import { assert } from "../testing/asserts.ts";
 
 const DEFAULT_BUF_SIZE = 4096;

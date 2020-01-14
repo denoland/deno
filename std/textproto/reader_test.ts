@@ -3,9 +3,9 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+import { stringsReader } from "../_util/io.ts";
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader, ProtocolError } from "./mod.ts";
-import { stringsReader } from "../io/util.ts";
 import {
   assert,
   assertEquals,
