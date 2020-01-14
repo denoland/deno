@@ -404,20 +404,20 @@ export class Response implements domTypes.Response {
 
   redirect(url: URL | string, status: number): domTypes.Response {
     if (![301, 302, 303, 307, 308].includes(status)) {
-      return new RangeError(
+      throw new RangeError(
         "The redirection status must be one of 302, 302, 303, 307 and 308."
       );
     }
     const location = this.headers.get("Location");
     const newLocation = new URL(
       typeof url === "string" ? url : url.toString(),
-      location
+      location == null ? undefined : location
     );
     return new Response(
       "",
       status,
       "",
-      [["Location", newLocation]],
+      [["Location", newLocation.toString()]],
       -1,
       false,
       null,
