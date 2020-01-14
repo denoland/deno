@@ -30,7 +30,7 @@ use rusty_v8 as v8;
 pub use crate::any_error::*;
 pub use crate::es_isolate::*;
 pub use crate::flags::v8_set_flags;
-pub use crate::inspector::InspectorHandle;
+pub use crate::inspector::{InspectorClient, InspectorHandle};
 pub use crate::isolate::*;
 pub use crate::js_errors::*;
 pub use crate::module_specifier::*;

@@ -61,7 +61,7 @@ tokio-executor = "0.1.9"
 tokio-rustls = "0.12.1"
 url = "2.1.0"
 utime = "0.2.1"
-warp = "0.1.20"
+warp = { git = "https://github.com/seanmonstar/warp.git", rev = "69a7eff" }
 webpki = "0.21.0"
 webpki-roots = "0.17.0"
 

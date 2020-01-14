@@ -3,9 +3,12 @@
 
 use crate::version::DENO;
 use deno_core::InspectorHandle;
-use futures::compat::Future01CompatExt;
 use futures::Future;
 use futures::FutureExt;
+use futures::Sink;
+use futures::SinkExt;
+use futures::Stream;
+use futures::StreamExt;
 use std::net::SocketAddrV4;
 use std::pin::Pin;
 use std::sync::mpsc::{channel, Receiver, Sender};
@@ -14,9 +17,6 @@ use tokio;
 use tokio::task::JoinHandle;
 use warp::ws::{Message, WebSocket};
 use warp::Filter;
-use warp::Future as WarpFuture;
-use warp::Sink as WarpSink;
-use warp::Stream as WarpStream;
 
 pub struct Inspector {
   enable: bool,
@@ -30,7 +30,7 @@ pub struct Inspector {
   // TODO(mtharrison): Is a condvar more appropriate?
   ready_tx: Arc<Mutex<Sender<()>>>,
   ready_rx: Arc<Mutex<Receiver<()>>>,
-  server_spawn_handle: Option<JoinHandle<Result<(), ()>>>,
+  server_spawn_handle: Option<JoinHandle<()>>,
   // TODO(mtharrison): Maybe use an atomic bool instead?
   started: Arc<Mutex<bool>>,
   connected: Arc<Mutex<bool>>,
@@ -61,7 +61,7 @@ impl Inspector {
     }
   }
 
-  pub fn serve(&self) -> Pin<Box<dyn Future<Output = Result<(), ()>> + Send>> {
+  pub fn serve(&self) -> Pin<Box<dyn Future<Output = ()> + Send>> {
     let state = ClientState {
       sender: self.inbound_tx.clone(),
       receiver: self.outbound_rx.clone(),
@@ -69,8 +69,8 @@ impl Inspector {
       connected: self.connected.clone(),
     };
 
-    let websocket = warp::path("websocket").and(warp::ws2()).map(
-      enclose!((state) move |ws: warp::ws::Ws2| {
+    let websocket = warp::path("websocket").and(warp::ws()).map(
+      enclose!((state) move |ws: warp::ws::Ws| {
         ws.on_upgrade(enclose!((state) move |socket| {
           let client = Client::new(state, socket);
           client.on_connection()
@@ -109,10 +109,7 @@ impl Inspector {
       .map(move || warp::reply::json(&response_version));
 
     let routes = websocket.or(version).or(json);
-
-    // Unfortunately warp still uses 0.1 futures, so need to
-    // call .compat() here
-    warp::serve(routes).bind(self.address).compat().boxed()
+    warp::serve(routes).bind(self.address).boxed()
   }
 
   pub fn start(&mut self) {
@@ -123,7 +120,6 @@ impl Inspector {
     }
 
     *started = true;
-
     let fut = self.serve();
     let join_handle = tokio::spawn(fut);
     self.server_spawn_handle = Some(join_handle);
@@ -172,28 +168,29 @@ impl Client {
     Client { state, socket }
   }
 
-  fn on_connection(self) -> impl WarpFuture<Item = (), Error = ()> {
+  fn on_connection(self) -> Pin<Box<dyn Future<Output = ()> + Send>> {
     let socket = self.socket;
     let sender = self.state.sender;
     let receiver = self.state.receiver;
     let connected = self.state.connected;
     let ready_tx = self.state.ready_tx;
 
-    let (mut user_ws_tx, user_ws_rx) = socket.split();
+    let (mut user_ws_tx, mut user_ws_rx) = socket.split();
 
-    let fut_rx = user_ws_rx
-      .for_each(move |msg| {
-        let msg_str = msg.to_str().unwrap();
-        sender
-          .lock()
-          .unwrap()
-          .send(msg_str.to_owned())
-          .unwrap_or_else(|err| println!("Err: {}", err));
-        Ok(())
-      })
-      .map_err(|_| {});
+    let fut_rx = async move {
+      // TODO(bartlomieju): handle None - meaning stream has been closed
+      let result = user_ws_rx.next().await.unwrap();
+      let msg = result.unwrap();
+      let msg_str = msg.to_str().unwrap();
+      eprintln!("message received {:?}", msg);
+      sender
+        .lock()
+        .unwrap()
+        .send(msg_str.to_owned())
+        .unwrap_or_else(|err| println!("Err: {}", err));
+    };
 
-    // TODO(mtharrison): This is a mess. There must be a better way to do this - maybe use async channels or wrap them with a stream?
+    // TODO: This should probably spawn a loop future on the runtime
 
     std::thread::spawn(move || {
       let receiver = receiver.lock().unwrap();
@@ -202,11 +199,14 @@ impl Client {
         if let Ok(msg) = received {
           let _ = ready_tx.lock().unwrap().send(());
           *connected.lock().unwrap() = true;
-          user_ws_tx = user_ws_tx.send(Message::text(msg)).wait().unwrap();
+          eprintln!("send message from separate thread {:?}", msg);
+          futures::executor::block_on(user_ws_tx.send(Message::text(msg)))
+            .unwrap();
+          eprintln!("sent message from separate thread");
         }
       }
     });
 
-    fut_rx
+    fut_rx.boxed()
   }
 }

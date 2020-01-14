@@ -683,11 +683,11 @@ pub extern "C" fn shared_getter(
   rv.set(shared_ab.into());
 }
 
-pub fn module_resolve_callback(
+pub extern "C" fn module_resolve_callback(
   context: v8::Local<v8::Context>,
   specifier: v8::Local<v8::String>,
   referrer: v8::Local<v8::Module>,
-) -> *mut v8::Module {
+) -> *const v8::Module {
   let mut cbs = v8::CallbackScope::new(context);
   let cb_scope = cbs.enter();
   let isolate = cb_scope.isolate();
@@ -729,11 +729,11 @@ pub fn module_resolve_callback(
 
       let child_mod =
         maybe_info.unwrap().handle.get(scope).expect("Empty handle");
-      return &mut *scope.escape(child_mod);
+      return &*scope.escape(child_mod);
     }
   }
 
-  std::ptr::null_mut()
+  std::ptr::null()
 }
 
 pub fn encode_message_as_object<'a>(

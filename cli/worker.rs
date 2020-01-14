@@ -58,6 +58,7 @@ impl Worker {
       startup_data,
       false,
     )));
+    let isolate_ = isolate.clone();
     {
       let mut i = isolate.try_lock().unwrap();
       let op_registry = i.op_registry.clone();
@@ -85,7 +86,27 @@ impl Worker {
         JSError::from_v8_exception(v8_exception, &global_state_.ts_compiler)
       });
 
-      // TODO: setup inspector
+      let inspector_handle = inspector.handle.clone();
+      i.set_inspector_handle(inspector.handle.clone());
+
+      // TODO(bartlomieju): refactor this...
+      // I'm pretty sure it can be port of `Poll` for worker
+      std::thread::spawn(move || loop {
+        {
+          let message = {
+            let rx = inspector_handle.rx.lock().unwrap();
+            rx.try_recv()
+          };
+
+          if let Ok(msg) = message {
+            eprintln!("[i] message ok");
+            let mut i = isolate_.try_lock().unwrap();
+            i.inspector_message(msg);
+          }
+        }
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+      });
     }
 
     Self {
@@ -119,10 +140,6 @@ impl Worker {
     js_filename: &str,
     js_source: &str,
   ) -> Result<(), ErrBox> {
-    {
-      let mut inspector = self.inspector.lock().unwrap();
-      inspector.start();
-    }
     let mut isolate = self.isolate.try_lock().unwrap();
     isolate.execute(js_filename, js_source)
   }
@@ -136,6 +153,11 @@ impl Worker {
     maybe_code: Option<String>,
     is_prefetch: bool,
   ) -> Result<(), ErrBox> {
+    {
+      let mut inspector = self.inspector.lock().unwrap();
+      inspector.start();
+    }
+
     let specifier = module_specifier.to_string();
     let worker = self.clone();
 
@@ -144,6 +166,11 @@ impl Worker {
     worker.state.global_state.progress.done();
 
     if !is_prefetch {
+      {
+        let client = isolate.inspector_client.as_mut().unwrap();
+        client.schedule_pause_on_next_statement();
+      }
+
       return isolate.mod_evaluate(id);
     }
 
