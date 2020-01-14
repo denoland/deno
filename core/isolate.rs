@@ -497,11 +497,14 @@ impl Isolate {
 
     let inspector_client = self.inspector_client.as_mut().unwrap();
     let mut session = inspector_client.get_session();
+    eprintln!("before message");
     let message = &message.into_bytes()[..];
     let string_view = v8::inspector::StringView::from(message);
     let mut string_buffer =
       v8::inspector::StringBuffer::create(&string_view).unwrap();
+    eprintln!("before dispatch protocol message");
     session.dispatch_protocol_message(&mut string_buffer);
+    eprintln!("after dispatch protocol message");
     // let task_runner = platform::get_foreground_task_runner(self);
     // let task = DispatchOnInspectorBackendTask::new(session, message);
     // task_runner.post_task(task);

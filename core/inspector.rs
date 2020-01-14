@@ -148,10 +148,12 @@ impl InspectorClient {
     let string_view = StringView::from(reason);
     let mut reason_buffer = StringBuffer::create(&string_view).unwrap();
     let mut reason_buffer2 = StringBuffer::create(&string_view).unwrap();
+    eprintln!("before break");
     session.schedule_pause_on_next_statement(
       &mut reason_buffer,
       &mut reason_buffer2,
     );
+    eprintln!("after break");
   }
 }
 

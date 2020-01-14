@@ -167,6 +167,7 @@ impl Worker {
 
     if !is_prefetch {
       {
+        eprintln!("getting client!");
         let client = isolate.inspector_client.as_mut().unwrap();
         client.schedule_pause_on_next_statement();
       }
