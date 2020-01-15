@@ -446,7 +446,7 @@ export class Server implements AsyncIterable<ServerRequest> {
     this.closeConnection(conn);
   }
 
-  private closeConnection(conn: Conn) {
+  private closeConnection(conn: Conn): void {
     const index = this.connections.indexOf(conn);
     this.connections.splice(index, 1);
     conn.close();
