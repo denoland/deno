@@ -12,6 +12,7 @@ use futures::future::FutureExt;
 use futures::future::TryFutureExt;
 use futures::sink::SinkExt;
 use futures::stream::StreamExt;
+use futures::task::AtomicWaker;
 use std::env;
 use std::future::Future;
 use std::pin::Pin;
@@ -171,8 +172,15 @@ impl Future for Worker {
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
-    let mut isolate = inner.isolate.try_lock().unwrap();
-    isolate.poll_unpin(cx)
+    let waker = AtomicWaker::new();
+    waker.register(cx.waker());
+    match inner.isolate.try_lock() {
+      Ok(mut isolate) => isolate.poll_unpin(cx),
+      Err(_) => {
+        waker.wake();
+        Poll::Pending
+      }
+    }
   }
 }
 
