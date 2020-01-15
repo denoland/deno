@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import * as dispatch from "./dispatch.ts";
 import { sendAsync, sendSync } from "./dispatch_json.ts";
-import { log } from "./util.ts";
+import { log, createResolvable, Resolvable } from "./util.ts";
 import { TextDecoder, TextEncoder } from "./text_encoding.ts";
 import { window } from "./window.ts";
 import { blobURLMap } from "./url.ts";
@@ -141,6 +141,8 @@ export interface Worker {
   onmessage?: (e: { data: any }) => void;
   onmessageerror?: () => void;
   postMessage(data: any): void;
+  // TODO(bartlomieju): remove this
+  closed: Promise<void>;
 }
 
 // TODO(kevinkassimo): Maybe implement reasonable web worker options?
@@ -160,6 +162,7 @@ export class WorkerImpl extends EventTarget implements Worker {
   private isClosing = false;
   private messageBuffer: any[] = [];
   private ready = false;
+  private readonly isClosedPromise: Resolvable<void>;
   public onerror?: (e: any) => void;
   public onmessage?: (data: any) => void;
   public onmessageerror?: () => void;
@@ -195,7 +198,12 @@ export class WorkerImpl extends EventTarget implements Worker {
     );
     this.id = id;
     this.ready = loaded;
+    this.isClosedPromise = createResolvable();
     this.poll();
+  }
+
+  get closed(): Promise<void> {
+    return this.isClosedPromise;
   }
 
   private handleError(_e: Error): boolean {
@@ -241,6 +249,7 @@ export class WorkerImpl extends EventTarget implements Worker {
         await hostPollWorker(this.id);
         this.isClosing = true;
         hostCloseWorker(this.id);
+        this.isClosedPromise.resolve();
         break;
       } catch (e) {
         if (!this.handleError(e)) {
