@@ -8,7 +8,12 @@
 const { Buffer } = Deno;
 import { TextProtoReader } from "../textproto/mod.ts";
 import { test, runIfMain } from "../testing/mod.ts";
-import { assert, assertEquals, assertNotEquals } from "../testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+  assertNotEquals,
+  assertStrContains
+} from "../testing/asserts.ts";
 import {
   Response,
   ServerRequest,
@@ -652,10 +657,16 @@ test({
 
     const server = serve(":8123");
     iteratorReq(server);
-    // fetch keeps open connection, this when calling `server.close()`
-    // server should close all open connections
-    const res = await fetch("http://127.0.0.1:8123/hello");
-    assertEquals(await res.text(), "/hello");
+    const conn = await Deno.dial({ hostname: "127.0.0.1", port: 8080 });
+    await Deno.writeAll(
+      conn,
+      new TextEncoder().encode("GET /hello HTTP/1.1\r\n\r\n")
+    );
+    const res = new Uint8Array(100);
+    const nread = await conn.read(res);
+    assert(nread !== Deno.EOF);
+    const resStr = new TextDecoder().decode(res.subarray(0, nread));
+    assertStrContains(resStr, "/hello");
     server.close();
   }
 });
