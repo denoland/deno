@@ -255,7 +255,6 @@ export async function install(
     "run",
     ...grantedPermissions.map(getFlagFromPermission),
     moduleUrl,
-    "--",
     ...scriptArgs
   ];
 
