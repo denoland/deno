@@ -29,31 +29,20 @@ use std::task::Poll;
 use tokio::io::AsyncRead;
 use url::Url;
 
-lazy_static! {
-  static ref HTTP_CLIENT: Client = {
-    let mut headers = HeaderMap::new();
-    headers.insert(
-      USER_AGENT,
-      format!("Deno/{}", version::DENO).parse().unwrap(),
-    );
-    // todo support brotli for fetch ops
-    headers.insert(
-     ACCEPT_ENCODING, HeaderValue::from_static("gzip")
-    );
-    Client::builder()
-      .redirect(Policy::none())
-      .default_headers(headers)
-      .use_rustls_tls()
-      .gzip(true)
-      .build()
-      .unwrap()
-  };
-}
-
-/// Get instance of async reqwest::Client. This client supports
+/// Create new instance of async reqwest::Client. This client supports
 /// proxies and doesn't follow redirects.
-pub fn get_client() -> &'static Client {
-  &HTTP_CLIENT as &Client
+pub fn get_client() -> Client {
+  let mut headers = HeaderMap::new();
+  headers.insert(
+    USER_AGENT,
+    format!("Deno/{}", version::DENO).parse().unwrap(),
+  );
+  Client::builder()
+    .redirect(Policy::none())
+    .default_headers(headers)
+    .use_rustls_tls()
+    .build()
+    .unwrap()
 }
 
 /// Construct the next uri based on base uri and location header fragment
@@ -101,7 +90,7 @@ pub fn fetch_string_once(
   cached_etag: Option<String>,
 ) -> impl Future<Output = Result<FetchOnceResult, ErrBox>> {
   let url = url.clone();
-  let client: &Client = get_client();
+  let client = get_client();
 
   let fut = async move {
     let mut request = client
