@@ -92,7 +92,7 @@ impl Worker {
     &mut self,
     handler: Box<dyn FnMut(ErrBox) -> Result<(), ErrBox>>,
   ) {
-    let mut i = self.isolate.try_lock().unwrap();
+    let mut i = futures::executor::block_on(self.isolate.lock());
     i.set_error_handler(handler);
   }
 
@@ -110,7 +110,7 @@ impl Worker {
     js_filename: &str,
     js_source: &str,
   ) -> Result<(), ErrBox> {
-    let mut isolate = self.isolate.try_lock().unwrap();
+    let mut isolate = futures::executor::block_on(self.isolate.lock());
     isolate.execute(js_filename, js_source)
   }
 
@@ -161,7 +161,7 @@ impl Worker {
   }
 
   pub fn clear_exception(&mut self) {
-    let mut isolate = self.isolate.try_lock().unwrap();
+    let mut isolate = futures::executor::block_on(self.isolate.lock());
     isolate.clear_exception();
   }
 }
@@ -171,7 +171,7 @@ impl Future for Worker {
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
-    let mut isolate = inner.isolate.try_lock().unwrap();
+    let mut isolate = futures::executor::block_on(inner.isolate.lock());
     isolate.poll_unpin(cx)
   }
 }
@@ -433,7 +433,7 @@ mod tests {
 
   #[test]
   fn removed_from_resource_table_on_close() {
-    run_in_task(|| {
+    let fut = async {
       let mut worker = create_test_worker();
       worker
         .execute("onmessage = () => { delete window.onmessage; }")
@@ -441,7 +441,7 @@ mod tests {
 
       let worker_ = worker.clone();
       let worker_future = async move {
-        let result = worker.await;
+        let result = worker_.await;
         println!("workers.rs after resource close");
         result.unwrap();
       }
@@ -451,11 +451,11 @@ mod tests {
       tokio::spawn(worker_future_);
 
       let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
-      let r = block_on(worker_.post_message(msg));
+      let r = block_on(worker.post_message(msg));
       assert!(r.is_ok());
-
-      block_on(worker_future);
-    })
+      worker.await.expect("Worker failed");
+    };
+    tokio_util::run(fut.boxed());
   }
 
   #[test]

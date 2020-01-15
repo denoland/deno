@@ -294,7 +294,8 @@ fn op_host_poll_worker(
       let worker = workers_table.get_mut(&id).unwrap();
       worker.clear_exception();
     }
-    eprintln!("poll worker {:?}", result);
+
+    // TODO(bartlomieju): serialize JSError to JSON
     result
   };
   Ok(JsonOp::Async(op.boxed()))
