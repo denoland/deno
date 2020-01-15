@@ -46,7 +46,7 @@ async function hostGetWorkerLoaded(id: number): Promise<void> {
 }
 
 async function hostPollWorker(id: number): Promise<any> {
-  await sendAsync(dispatch.OP_HOST_POLL_WORKER, { id });
+  return await sendAsync(dispatch.OP_HOST_POLL_WORKER, { id });
 }
 
 function hostCloseWorker(id: number): void {
@@ -206,6 +206,25 @@ export class WorkerImpl extends EventTarget implements Worker {
     return this.isClosedPromise;
   }
 
+  private handleError2(e: any): boolean {
+    const event = new window.Event("error", { cancelable: true });
+    event.message = e.message;
+    event.lineNumber = e.lineNumber ? e.lineNumber + 1 : null;
+    event.columnNumber = e.columnNumber ? e.columnNumber + 1 : null;
+    event.fileName = e.fileName;
+    event.error = null;
+
+    let handled = false;
+    if (this.onerror) {
+      this.onerror(event);
+      if (event.defaultPrevented) {
+        handled = true;
+      }
+    }
+
+    return handled;
+  }
+
   private handleError(_e: Error): boolean {
     const event = new window.Event("error", { cancelable: true });
     event.message = "TODO: JS ERROR";
@@ -245,18 +264,19 @@ export class WorkerImpl extends EventTarget implements Worker {
     this.run();
 
     while (true) {
-      try {
-        await hostPollWorker(this.id);
+      const result = await hostPollWorker(this.id);
+
+      if (result.error) {
+        if (!this.handleError2(result.error)) {
+          throw Error(result.error.message);
+        } else {
+          hostResumeWorker(this.id);
+        }
+      } else {
         this.isClosing = true;
         hostCloseWorker(this.id);
         this.isClosedPromise.resolve();
         break;
-      } catch (e) {
-        if (!this.handleError(e)) {
-          throw e;
-        } else {
-          hostResumeWorker(this.id);
-        }
       }
     }
   }

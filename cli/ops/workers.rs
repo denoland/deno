@@ -4,6 +4,8 @@ use crate::deno_error::bad_resource;
 use crate::deno_error::js_check;
 use crate::deno_error::DenoError;
 use crate::deno_error::ErrorKind;
+use crate::deno_error::GetErrorKind;
+use crate::fmt_errors::JSError;
 use crate::ops::json_op;
 use crate::startup_data;
 use crate::state::ThreadSafeState;
@@ -287,16 +289,29 @@ fn op_host_poll_worker(
 
   let op = async move {
     let result = future.await;
-    let result = result.map(|_| json!({}));
 
-    if result.is_err() {
+    if let Err(error) = result {
       let mut workers_table = state_.workers.lock().unwrap();
       let worker = workers_table.get_mut(&id).unwrap();
       worker.clear_exception();
+      match error.kind() {
+        ErrorKind::JSError => {
+          let error = error.downcast::<JSError>().unwrap();
+          let exception: V8Exception = error.into();
+          Ok(json!({"error": {
+            "message": exception.message,
+            "fileName": exception.script_resource_name,
+            "lineNumber": exception.line_number,
+            "columnNumber": exception.start_column,
+          }}))
+        }
+        _ => Ok(json!({"error": {
+          "message": error.to_string(),
+        }})),
+      }
+    } else {
+      Ok(json!({"ok": true}))
     }
-
-    // TODO(bartlomieju): serialize JSError to JSON
-    result
   };
   Ok(JsonOp::Async(op.boxed()))
 }
