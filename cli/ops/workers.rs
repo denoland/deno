@@ -192,7 +192,7 @@ fn op_create_worker(
   tokio::spawn(fut);
   let mut table = state.loading_workers.lock().unwrap();
   table.insert(worker_id, receiver);
-  Ok(JsonOp::Sync(json!({"id": worker_id, "loaded": true})))
+  Ok(JsonOp::Sync(json!({"id": worker_id, "loaded": false})))
 }
 
 struct GetWorkerClosedFuture {
