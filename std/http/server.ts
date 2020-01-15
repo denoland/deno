@@ -382,12 +382,12 @@ export class Server implements AsyncIterable<ServerRequest> {
   close(): void {
     this.closing = true;
     this.listener.close();
-    // TODO: refactor server not to hold any closed
-    // connections that were already closed
     for (const conn of this.connections) {
       try {
         conn.close();
-      } catch (e) {}
+      } catch (e) {
+        // Connection might have been already closed
+      }
     }
   }
 
@@ -421,6 +421,7 @@ export class Server implements AsyncIterable<ServerRequest> {
         // Something bad happened during response.
         // (likely other side closed during pipelined req)
         // req.done implies this connection already closed, so we can just return.
+        this.untrackConnection(req.conn);
         return;
       }
     }
@@ -443,13 +444,19 @@ export class Server implements AsyncIterable<ServerRequest> {
       // TODO(ry): send a back a HTTP 503 Service Unavailable status.
     }
 
-    this.closeConnection(conn);
+    this.untrackConnection(conn);
+    conn.close();
   }
 
-  private closeConnection(conn: Conn): void {
+  private trackConnection(conn: Conn): void {
+    this.connections.push(conn);
+  }
+
+  private untrackConnection(conn: Conn): void {
     const index = this.connections.indexOf(conn);
-    this.connections.splice(index, 1);
-    conn.close();
+    if (index !== -1) {
+      this.connections.splice(index, 1);
+    }
   }
 
   // Accepts a new TCP connection and yields all HTTP requests that arrive on
@@ -464,7 +471,7 @@ export class Server implements AsyncIterable<ServerRequest> {
     const { value, done } = await this.listener.next();
     if (done) return;
     const conn = value as Conn;
-    this.connections.push(conn);
+    this.trackConnection(conn);
     // Try to accept another connection and add it to the multiplexer.
     mux.add(this.acceptConnAndIterateHttpRequests(mux));
     // Yield the requests that arrive on the just-accepted connection.
