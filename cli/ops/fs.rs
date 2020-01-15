@@ -255,9 +255,7 @@ fn get_stat_json(
     "modified":to_seconds!(metadata.modified()),
     "accessed":to_seconds!(metadata.accessed()),
     "created":to_seconds!(metadata.created()),
-    // If under Unix (not Windows).
-    "isUnix": cfg!(target_family = "unix"),
-    // Following are only valid when isUnix is true
+    // Following are only valid under Unix.
     "dev": usm!(dev),
     "ino": usm!(ino),
     "mode": usm!(mode),

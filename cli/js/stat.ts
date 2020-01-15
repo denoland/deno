@@ -11,7 +11,6 @@ export interface StatResponse {
   accessed: number;
   created: number;
   name: string | null;
-  isUnix: boolean; // false on windows
   // Unix only members
   dev: number;
   ino: number;

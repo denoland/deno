@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { StatResponse } from "./stat.ts";
+import { build } from "./build.ts";
 
 /** A FileInfo describes a file and is returned by `stat`, `lstat`,
  * `statSync`, `lstatSync`.
@@ -93,10 +94,10 @@ export class FileInfoImpl implements FileInfo {
 
   /* @internal */
   constructor(private _res: StatResponse) {
+    const isUnix = build.os === "mac" || build.os === "linux";
     const modified = this._res.modified;
     const accessed = this._res.accessed;
     const created = this._res.created;
-    const isUnix = this._res.isUnix;
     const name = this._res.name;
     // Unix only
     const {

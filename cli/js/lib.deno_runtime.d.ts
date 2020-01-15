@@ -843,9 +843,16 @@ declare namespace Deno {
     modified: number;
     accessed: number;
     created: number;
-    mode: number;
-    hasMode: boolean;
     name: string | null;
+    dev: number;
+    ino: number;
+    mode: number;
+    nlink: number;
+    uid: number;
+    gid: number;
+    rdev: number;
+    blksize: number;
+    blocks: number;
   }
   /** Queries the file system for information on the path provided. If the given
    * path is a symlink information about the symlink will be returned.
