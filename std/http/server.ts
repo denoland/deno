@@ -375,12 +375,20 @@ export async function readRequest(
 
 export class Server implements AsyncIterable<ServerRequest> {
   private closing = false;
+  private connections: Conn[] = [];
 
   constructor(public listener: Listener) {}
 
   close(): void {
     this.closing = true;
     this.listener.close();
+    // TODO: refactor server not to hold any closed
+    // connections that were already closed
+    for (const conn of this.connections) {
+      try {
+        conn.close();
+      } catch (e) {}
+    }
   }
 
   // Yields all HTTP requests on a single TCP connection.
@@ -435,6 +443,12 @@ export class Server implements AsyncIterable<ServerRequest> {
       // TODO(ry): send a back a HTTP 503 Service Unavailable status.
     }
 
+    this.closeConnection(conn);
+  }
+
+  private closeConnection(conn: Conn) {
+    const index = this.connections.indexOf(conn);
+    this.connections.splice(index, 1);
     conn.close();
   }
 
@@ -450,6 +464,7 @@ export class Server implements AsyncIterable<ServerRequest> {
     const { value, done } = await this.listener.next();
     if (done) return;
     const conn = value as Conn;
+    this.connections.push(conn);
     // Try to accept another connection and add it to the multiplexer.
     mux.add(this.acceptConnAndIterateHttpRequests(mux));
     // Yield the requests that arrive on the just-accepted connection.

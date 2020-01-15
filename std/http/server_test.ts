@@ -12,6 +12,7 @@ import { assert, assertEquals, assertNotEquals } from "../testing/asserts.ts";
 import {
   Response,
   ServerRequest,
+  Server,
   serve,
   writeResponse,
   readRequest,
@@ -637,6 +638,25 @@ test({
 
     const nextAfterClosing = server[Symbol.asyncIterator]().next();
     assertEquals(await nextAfterClosing, { value: undefined, done: true });
+  }
+});
+
+test({
+  name: "[http] close server while connection is open",
+  async fn(): Promise<void> {
+    async function iteratorReq(server: Server): Promise<void> {
+      for await (const req of server) {
+        req.respond({ body: new TextEncoder().encode(req.url) });
+      }
+    }
+
+    const server = serve(":8123");
+    iteratorReq(server);
+    // fetch keeps open connection, this when calling `server.close()`
+    // server should close all open connections
+    const res = await fetch("http://127.0.0.1:8123/hello");
+    assertEquals(await res.text(), "/hello");
+    server.close();
   }
 });
 
