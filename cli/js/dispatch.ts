@@ -42,7 +42,6 @@ export let OP_QUERY_PERMISSION: number;
 export let OP_REVOKE_PERMISSION: number;
 export let OP_REQUEST_PERMISSION: number;
 export let OP_CREATE_WORKER: number;
-export let OP_HOST_GET_WORKER_CLOSED: number;
 export let OP_HOST_GET_WORKER_LOADED: number;
 export let OP_HOST_POST_MESSAGE: number;
 export let OP_HOST_POLL_WORKER: number;
@@ -110,7 +109,6 @@ export function asyncMsgFromRust(opId: number, ui8: Uint8Array): void {
     case OP_ACCEPT_TLS:
     case OP_DIAL:
     case OP_GLOBAL_TIMER:
-    case OP_HOST_GET_WORKER_CLOSED:
     case OP_HOST_GET_WORKER_LOADED:
     case OP_HOST_GET_MESSAGE:
     case OP_HOST_POLL_WORKER:

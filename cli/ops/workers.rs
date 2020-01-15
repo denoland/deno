@@ -31,10 +31,6 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
     s.core_op(json_op(s.stateful_op(op_create_worker))),
   );
   i.register_op(
-    "host_get_worker_closed",
-    s.core_op(json_op(s.stateful_op(op_host_get_worker_closed))),
-  );
-  i.register_op(
     "host_get_worker_loaded",
     s.core_op(json_op(s.stateful_op(op_host_get_worker_loaded))),
   );
@@ -197,12 +193,12 @@ fn op_create_worker(
   Ok(JsonOp::Sync(json!({"id": worker_id, "loaded": false})))
 }
 
-struct GetWorkerClosedFuture {
+struct WorkerPollFuture {
   state: ThreadSafeState,
   rid: ResourceId,
 }
 
-impl Future for GetWorkerClosedFuture {
+impl Future for WorkerPollFuture {
   type Output = Result<(), ErrBox>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
@@ -220,8 +216,30 @@ impl Future for GetWorkerClosedFuture {
   }
 }
 
+fn serialize_worker_result(result: Result<(), ErrBox>) -> Value {
+  if let Err(error) = result {
+    match error.kind() {
+      ErrorKind::JSError => {
+        let error = error.downcast::<JSError>().unwrap();
+        let exception: V8Exception = error.into();
+        json!({"error": {
+          "message": exception.message,
+          "fileName": exception.script_resource_name,
+          "lineNumber": exception.line_number,
+          "columnNumber": exception.start_column,
+        }})
+      }
+      _ => json!({"error": {
+        "message": error.to_string(),
+      }}),
+    }
+  } else {
+    json!({"ok": true})
+  }
+}
+
 #[derive(Deserialize)]
-struct HostGetWorkerClosedArgs {
+struct WorkerArgs {
   id: i32,
 }
 
@@ -230,59 +248,29 @@ fn op_host_get_worker_loaded(
   args: Value,
   _data: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
-  let args: HostGetWorkerClosedArgs = serde_json::from_value(args)?;
+  let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
   let mut table = state.loading_workers.lock().unwrap();
   let mut receiver = table.remove(&id).unwrap();
 
   let op = async move {
-    let load_result = receiver.next().await.unwrap();
-    load_result?;
-    Ok(json!({}))
+    let result = receiver.next().await.unwrap();
+    Ok(serialize_worker_result(result))
   };
 
   Ok(JsonOp::Async(op.boxed()))
 }
 
-/// Return when the worker closes
-fn op_host_get_worker_closed(
-  state: &ThreadSafeState,
-  args: Value,
-  _data: Option<PinnedBuf>,
-) -> Result<JsonOp, ErrBox> {
-  let args: HostGetWorkerClosedArgs = serde_json::from_value(args)?;
-  let id = args.id as u32;
-  let state_ = state.clone();
-
-  let future = GetWorkerClosedFuture {
-    state: state.clone(),
-    rid: id,
-  };
-  let op = future.then(move |_result| {
-    let mut workers_table = state_.workers.lock().unwrap();
-    let maybe_worker = workers_table.remove(&id);
-    if let Some(worker) = maybe_worker {
-      let mut channels = worker.state.worker_channels.lock().unwrap();
-      channels.sender.close_channel();
-      channels.receiver.close();
-    };
-    futures::future::ok(json!({}))
-  });
-
-  Ok(JsonOp::Async(op.boxed()))
-}
-
-/// Return when the worker closes
 fn op_host_poll_worker(
   state: &ThreadSafeState,
   args: Value,
   _data: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
-  let args: HostGetWorkerClosedArgs = serde_json::from_value(args)?;
+  let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
   let state_ = state.clone();
 
-  let future = GetWorkerClosedFuture {
+  let future = WorkerPollFuture {
     state: state.clone(),
     rid: id,
   };
@@ -290,39 +278,23 @@ fn op_host_poll_worker(
   let op = async move {
     let result = future.await;
 
-    if let Err(error) = result {
+    if result.is_err() {
       let mut workers_table = state_.workers.lock().unwrap();
       let worker = workers_table.get_mut(&id).unwrap();
       worker.clear_exception();
-      match error.kind() {
-        ErrorKind::JSError => {
-          let error = error.downcast::<JSError>().unwrap();
-          let exception: V8Exception = error.into();
-          Ok(json!({"error": {
-            "message": exception.message,
-            "fileName": exception.script_resource_name,
-            "lineNumber": exception.line_number,
-            "columnNumber": exception.start_column,
-          }}))
-        }
-        _ => Ok(json!({"error": {
-          "message": error.to_string(),
-        }})),
-      }
-    } else {
-      Ok(json!({"ok": true}))
     }
+
+    Ok(serialize_worker_result(result))
   };
   Ok(JsonOp::Async(op.boxed()))
 }
 
-/// Return when the worker closes
 fn op_host_close_worker(
   state: &ThreadSafeState,
   args: Value,
   _data: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
-  let args: HostGetWorkerClosedArgs = serde_json::from_value(args)?;
+  let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
   let state_ = state.clone();
 
@@ -342,7 +314,7 @@ fn op_host_resume_worker(
   args: Value,
   _data: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
-  let args: HostGetWorkerClosedArgs = serde_json::from_value(args)?;
+  let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
   let state_ = state.clone();
 

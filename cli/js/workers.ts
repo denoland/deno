@@ -36,13 +36,8 @@ function createWorker(
   });
 }
 
-/* eslint-disable @typescript-eslint/no-unused-vars */
-async function hostGetWorkerClosed(id: number): Promise<void> {
-  await sendAsync(dispatch.OP_HOST_GET_WORKER_CLOSED, { id });
-}
-
-async function hostGetWorkerLoaded(id: number): Promise<void> {
-  await sendAsync(dispatch.OP_HOST_GET_WORKER_LOADED, { id });
+async function hostGetWorkerLoaded(id: number): Promise<any> {
+  return await sendAsync(dispatch.OP_HOST_GET_WORKER_LOADED, { id });
 }
 
 async function hostPollWorker(id: number): Promise<any> {
@@ -206,7 +201,7 @@ export class WorkerImpl extends EventTarget implements Worker {
     return this.isClosedPromise;
   }
 
-  private handleError2(e: any): boolean {
+  private handleError(e: any): boolean {
     const event = new window.Event("error", { cancelable: true });
     event.message = e.message;
     event.lineNumber = e.lineNumber ? e.lineNumber + 1 : null;
@@ -225,31 +220,15 @@ export class WorkerImpl extends EventTarget implements Worker {
     return handled;
   }
 
-  private handleError(_e: Error): boolean {
-    const event = new window.Event("error", { cancelable: true });
-    event.message = "TODO: JS ERROR";
-    event.error = null;
-
-    let handled = false;
-    if (this.onerror) {
-      this.onerror(event);
-      if (event.defaultPrevented) {
-        handled = true;
-      }
-    }
-
-    return handled;
-  }
-
   async poll(): Promise<void> {
     // If worker has not been immediately executed
     // then let's await it's readiness
     if (!this.ready) {
-      try {
-        await hostGetWorkerLoaded(this.id);
-      } catch (e) {
-        if (!this.handleError(e)) {
-          throw e;
+      const result = await hostGetWorkerLoaded(this.id);
+
+      if (result.error) {
+        if (!this.handleError(result.error)) {
+          throw new Error(result.error.message);
         }
         return;
       }
@@ -267,7 +246,7 @@ export class WorkerImpl extends EventTarget implements Worker {
       const result = await hostPollWorker(this.id);
 
       if (result.error) {
-        if (!this.handleError2(result.error)) {
+        if (!this.handleError(result.error)) {
           throw Error(result.error.message);
         } else {
           hostResumeWorker(this.id);
