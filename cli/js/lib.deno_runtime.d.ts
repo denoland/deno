@@ -732,12 +732,28 @@ declare namespace Deno {
      * be available on all platforms.
      */
     created: number | null;
+    /** The file or directory name. */
+    name: string | null;
+    /** ID of the device containing the file. Unix only. */
+    dev: number | null;
+    /** Inode number. Unix only. */
+    ino: number | null;
     /** The underlying raw st_mode bits that contain the standard Unix permissions
      * for this file/directory. TODO Match behavior with Go on windows for mode.
      */
     mode: number | null;
-    /** The file or directory name. */
-    name: string | null;
+    /** Number of hard links pointing to this file. Unix only. */
+    nlink: number | null;
+    /** User ID of the owner of this file. Unix only. */
+    uid: number | null;
+    /** User ID of the owner of this file. Unix only. */
+    gid: number | null;
+    /** Device ID of this file. Unix only. */
+    rdev: number | null;
+    /** Blocksize for filesystem I/O. Unix only. */
+    blksize: number | null;
+    /** Number of blocks allocated to the file, in 512-byte units. Unix only. */
+    blocks: number | null;
     /** Returns whether this is info for a regular file. This result is mutually
      * exclusive to `FileInfo.isDirectory` and `FileInfo.isSymlink`.
      */

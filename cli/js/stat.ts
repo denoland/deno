@@ -10,9 +10,18 @@ export interface StatResponse {
   modified: number;
   accessed: number;
   created: number;
-  mode: number;
-  hasMode: boolean; // false on windows
   name: string | null;
+  isUnix: boolean; // false on windows
+  // Unix only members
+  dev: number;
+  ino: number;
+  mode: number;
+  nlink: number;
+  uid: number;
+  gid: number;
+  rdev: number;
+  blksize: number;
+  blocks: number;
 }
 
 /** Queries the file system for information on the path provided. If the given
