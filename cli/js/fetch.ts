@@ -339,33 +339,68 @@ export class Response implements domTypes.Response {
   }
 
   async arrayBuffer(): Promise<ArrayBuffer> {
-    if (this.body === null)
+    if (
+      this.type == "error" ||
+      this.type == "opaque" ||
+      this.type == "opaqueredirect" ||
+      this.body == null ||
+      this.body == undefined
+    ) {
       return Promise.reject(new Error("Response body is null"));
+    }
     return this.body.arrayBuffer();
   }
 
   async blob(): Promise<domTypes.Blob> {
-    if (this.body === null)
+    if (
+      this.type == "error" ||
+      this.type == "opaque" ||
+      this.type == "opaqueredirect" ||
+      this.body == null ||
+      this.body == undefined
+    ) {
       return Promise.reject(new Error("Response body is null"));
+    }
     return this.body.blob();
   }
 
   async formData(): Promise<domTypes.FormData> {
-    if (this.body === null)
+    if (
+      this.type == "error" ||
+      this.type == "opaque" ||
+      this.type == "opaqueredirect" ||
+      this.body == null ||
+      this.body == undefined
+    ) {
       return Promise.reject(new Error("Response body is null"));
+    }
     return this.body.formData();
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async json(): Promise<any> {
-    if (this.body === null)
+    if (
+      this.type == "error" ||
+      this.type == "opaque" ||
+      this.type == "opaqueredirect" ||
+      this.body == null ||
+      this.body == undefined
+    ) {
       return Promise.reject(new Error("Response body is null"));
+    }
     return this.body.json();
   }
 
   async text(): Promise<string> {
-    if (this.body === null)
+    if (
+      this.type == "error" ||
+      this.type == "opaque" ||
+      this.type == "opaqueredirect" ||
+      this.body == null ||
+      this.body == undefined
+    ) {
       return Promise.reject(new Error("Response body is null"));
+    }
     return this.body.text();
   }
 
