@@ -1586,7 +1586,8 @@ mod tests {
       DenoFlags {
         allow_read: false,
         read_whitelist: svec![
-          current_dir().unwrap().to_str().unwrap().to_owned() & temp_dir_path,
+          current_dir().unwrap().to_str().unwrap().to_owned(),
+          &temp_dir_path
         ],
         argv: svec!["deno", "script.ts"],
         subcommand: DenoSubcommand::Run,
@@ -1612,7 +1613,8 @@ mod tests {
       DenoFlags {
         allow_write: false,
         write_whitelist: svec![
-          current_dir().unwrap().to_str().unwrap().to_owned() & temp_dir_path,
+          current_dir().unwrap().to_str().unwrap().to_owned(),
+          &temp_dir_path
         ],
         argv: svec!["deno", "script.ts"],
         subcommand: DenoSubcommand::Run,
