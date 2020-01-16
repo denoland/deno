@@ -53,7 +53,15 @@ jobs:
           rustup component add clippy
           rustup component add rustfmt
 
-      - name: Install python
+      - name: Install Python (macOS)
+        if: startsWith(matrix.os, 'macOS')
+        uses: actions/setup-python@v1
+        with:
+          python-version: "2.7.17"
+          architecture: x64
+
+      - name: Install Python
+        if: startsWith(matrix.os, 'ubuntu') || startsWith(matrix.os, 'windows')
         uses: actions/setup-python@v1
         with:
           python-version: "2.7.16"
