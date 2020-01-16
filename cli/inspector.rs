@@ -44,7 +44,7 @@ impl Inspector {
 
     let address = match address {
       Some(address) => address.parse::<SocketAddrV4>().unwrap(),
-      None => "127.0.0.1:9888".parse::<SocketAddrV4>().unwrap(),
+      None => "127.0.0.1:9229".parse::<SocketAddrV4>().unwrap(),
     };
 
     Inspector {
@@ -129,6 +129,7 @@ impl Inspector {
       self.address.ip(),
       self.address.port(),
     );
+    eprintln!("Open chrome://inspect/");
 
     self
       .ready_rx
