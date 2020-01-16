@@ -370,45 +370,45 @@ impl Isolate {
 
   pub fn handle_exception<'a>(
     &mut self,
-    s: &mut impl v8::ToLocal<'a>,
-    mut context: v8::Local<'a, v8::Context>,
+    scope: &mut impl v8::ToLocal<'a>,
+    context: v8::Local<'a, v8::Context>,
     exception: v8::Local<'a, v8::Value>,
   ) {
-    let isolate = context.get_isolate();
     // TerminateExecution was called
-    if isolate.is_execution_terminating() {
+    if scope.isolate().is_execution_terminating() {
       // cancel exception termination so that the exception can be created
-      isolate.cancel_terminate_execution();
+      scope.isolate().cancel_terminate_execution();
 
       // maybe make a new exception object
       let exception = if exception.is_null_or_undefined() {
-        let exception_str = v8::String::new(s, "execution terminated").unwrap();
-        v8::error(s, exception_str)
+        let exception_str =
+          v8::String::new(scope, "execution terminated").unwrap();
+        v8::error(scope, exception_str)
       } else {
         exception
       };
 
       // handle the exception as if it is a regular exception
-      self.handle_exception(s, context, exception);
+      self.handle_exception(scope, context, exception);
 
       // re-enable exception termination
-      context.get_isolate().terminate_execution();
+      scope.isolate().terminate_execution();
       return;
     }
 
-    let json_str = self.encode_exception_as_json(s, context, exception);
+    let json_str = self.encode_exception_as_json(scope, context, exception);
     self.last_exception = Some(json_str);
-    self.last_exception_handle.set(s, exception);
+    self.last_exception_handle.set(scope, exception);
   }
 
   pub fn encode_exception_as_json<'a>(
     &mut self,
-    s: &mut impl v8::ToLocal<'a>,
+    scope: &mut impl v8::ToLocal<'a>,
     context: v8::Local<'a, v8::Context>,
     exception: v8::Local<'a, v8::Value>,
   ) -> String {
-    let message = v8::create_message(s, exception);
-    self.encode_message_as_json(s, context, message)
+    let message = v8::create_message(scope, exception);
+    self.encode_message_as_json(scope, context, message)
   }
 
   pub fn encode_message_as_json<'a>(
