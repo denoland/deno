@@ -394,7 +394,6 @@ const p = Deno.run({
     "run",
     "--allow-read",
     "https://deno.land/std/examples/cat.ts",
-    "--",
     ...fileNames
   ],
   stdout: "piped",
