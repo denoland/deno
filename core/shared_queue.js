@@ -38,6 +38,9 @@ SharedQueue Binary Layout
 
   let sharedBytes;
   let shared32;
+
+  let asyncHandlers;
+
   let initialized = false;
 
   function maybeInit() {
@@ -54,6 +57,7 @@ SharedQueue Binary Layout
     assert(shared32 == null);
     sharedBytes = new Uint8Array(shared);
     shared32 = new Int32Array(shared);
+    asyncHandlers = [];
     // Callers should not call Deno.core.recv, use setAsyncHandler.
     Deno.core.recv(handleAsyncMsgFromRust);
   }
@@ -157,24 +161,24 @@ SharedQueue Binary Layout
     return [opId, buf];
   }
 
-  let asyncHandler;
-  function setAsyncHandler(cb) {
+  function setAsyncHandler(opId, cb) {
     maybeInit();
-    assert(asyncHandler == null);
-    asyncHandler = cb;
+    assert(opId != null);
+    asyncHandlers[opId] = cb;
   }
 
   function handleAsyncMsgFromRust(opId, buf) {
     if (buf) {
       // This is the overflow_response case of deno::Isolate::poll().
-      asyncHandler(opId, buf);
+      asyncHandlers[opId](buf);
     } else {
       while (true) {
         const opIdBuf = shift();
         if (opIdBuf == null) {
           break;
         }
-        asyncHandler(...opIdBuf);
+        assert(asyncHandlers[opIdBuf[0]] != null);
+        asyncHandlers[opIdBuf[0]](opIdBuf[1]);
       }
     }
   }
