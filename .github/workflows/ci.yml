@@ -64,7 +64,7 @@ jobs:
         if: startsWith(matrix.os, 'ubuntu') || startsWith(matrix.os, 'windows')
         uses: actions/setup-python@v1
         with:
-          python-version: "2.7.16"
+          python-version: "2.7.17"
           architecture: x64
 
       - name: Remove unused versions of Python
