@@ -25,8 +25,7 @@ const cmd = [
   "--allow-run",
   "--allow-write",
   "--allow-read",
-  "./prettier/main.ts",
-  "--"
+  "./prettier/main.ts"
 ];
 
 const testdata = join("prettier", "testdata");
@@ -403,7 +402,6 @@ test(async function testPrettierWithAutoConfig(): Promise<void> {
         "--allow-read",
         "--allow-env",
         prettierFile,
-        "--",
         "../5.ts",
         "--config",
         "auto"
@@ -470,7 +468,6 @@ test(async function testPrettierWithSpecifiedConfig(): Promise<void> {
         "--allow-read",
         "--allow-env",
         prettierFile,
-        "--",
         "../5.ts",
         "--config",
         config.name
@@ -506,7 +503,6 @@ test(async function testPrettierWithAutoIgnore(): Promise<void> {
       "--allow-read",
       "--allow-env",
       prettierFile,
-      "--",
       "**/*",
       "--ignore-path",
       "auto"
@@ -535,7 +531,6 @@ test(async function testPrettierWithSpecifiedIgnore(): Promise<void> {
       "--allow-read",
       "--allow-env",
       prettierFile,
-      "--",
       "**/*",
       "--ignore-path",
       "typescript.prettierignore"
