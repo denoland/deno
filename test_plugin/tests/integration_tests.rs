@@ -26,7 +26,6 @@ fn basic() {
   let output = deno_cmd()
     .arg("--allow-plugin")
     .arg("tests/test.js")
-    .arg("--")
     .arg(BUILD_VARIANT)
     .output()
     .unwrap();

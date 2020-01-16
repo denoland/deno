@@ -53,10 +53,10 @@ jobs:
           rustup component add clippy
           rustup component add rustfmt
 
-      - name: Install python
+      - name: Install Python
         uses: actions/setup-python@v1
         with:
-          python-version: "2.7.16"
+          python-version: "2.7"
           architecture: x64
 
       - name: Remove unused versions of Python

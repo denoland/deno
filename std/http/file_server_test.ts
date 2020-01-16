@@ -14,7 +14,6 @@ async function startFileServer(): Promise<void> {
       "--allow-read",
       "--allow-net",
       "http/file_server.ts",
-      "--",
       ".",
       "--cors"
     ],
@@ -123,7 +122,7 @@ test(async function servePermissionDenied(): Promise<void> {
 
 test(async function printHelp(): Promise<void> {
   const helpProcess = Deno.run({
-    args: [Deno.execPath(), "run", "http/file_server.ts", "--", "--help"],
+    args: [Deno.execPath(), "run", "http/file_server.ts", "--help"],
     stdout: "piped"
   });
   const r = new TextProtoReader(new BufReader(helpProcess.stdout!));
