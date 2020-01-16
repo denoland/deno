@@ -14,6 +14,8 @@ use std::path::PathBuf;
 use std::time::UNIX_EPOCH;
 
 #[cfg(unix)]
+use std::os::unix::fs::MetadataExt;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
 pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
@@ -226,14 +228,55 @@ macro_rules! to_seconds {
   }};
 }
 
-#[cfg(any(unix))]
-fn get_mode(perm: &fs::Permissions) -> u32 {
-  perm.mode()
-}
+#[inline(always)]
+fn get_stat_json(
+  metadata: fs::Metadata,
+  maybe_name: Option<String>,
+) -> Result<Value, ErrBox> {
+  // Unix stat member (number types only). 0 if not on unix.
+  macro_rules! usm {
+    ($member: ident) => {{
+      #[cfg(unix)]
+      {
+        metadata.$member()
+      }
+      #[cfg(not(unix))]
+      {
+        0
+      }
+    }};
+  }
 
-#[cfg(not(any(unix)))]
-fn get_mode(_perm: &fs::Permissions) -> u32 {
-  0
+  let mut json_val = json!({
+    "isFile": metadata.is_file(),
+    "isSymlink": metadata.file_type().is_symlink(),
+    "len": metadata.len(),
+    // In seconds. Available on both Unix or Windows.
+    "modified":to_seconds!(metadata.modified()),
+    "accessed":to_seconds!(metadata.accessed()),
+    "created":to_seconds!(metadata.created()),
+    // Following are only valid under Unix.
+    "dev": usm!(dev),
+    "ino": usm!(ino),
+    "mode": usm!(mode),
+    "nlink": usm!(nlink),
+    "uid": usm!(uid),
+    "gid": usm!(gid),
+    "rdev": usm!(rdev),
+    // TODO(kevinkassimo): *time_nsec requires BigInt.
+    // Probably should be treated as String if we need to add them.
+    "blksize": usm!(blksize),
+    "blocks": usm!(blocks),
+  });
+
+  // "name" is an optional field by our design.
+  if let Some(name) = maybe_name {
+    if let serde_json::Value::Object(ref mut m) = json_val {
+      m.insert("name".to_owned(), json!(name));
+    }
+  }
+
+  Ok(json_val)
 }
 
 #[derive(Deserialize)]
@@ -265,17 +308,7 @@ fn op_stat(
     } else {
       fs::metadata(&filename)?
     };
-
-    Ok(json!({
-      "isFile": metadata.is_file(),
-      "isSymlink": metadata.file_type().is_symlink(),
-      "len": metadata.len(),
-      "modified":to_seconds!(metadata.modified()),
-      "accessed":to_seconds!(metadata.accessed()),
-      "created":to_seconds!(metadata.created()),
-      "mode": get_mode(&metadata.permissions()),
-      "hasMode": cfg!(target_family = "unix"), // false on windows,
-    }))
+    get_stat_json(metadata, None)
   })
 }
 
@@ -335,19 +368,11 @@ fn op_read_dir(
       .map(|entry| {
         let entry = entry.unwrap();
         let metadata = entry.metadata().unwrap();
-        let file_type = metadata.file_type();
-
-        json!({
-          "isFile": file_type.is_file(),
-          "isSymlink": file_type.is_symlink(),
-          "len": metadata.len(),
-          "modified": to_seconds!(metadata.modified()),
-          "accessed": to_seconds!(metadata.accessed()),
-          "created": to_seconds!(metadata.created()),
-          "mode": get_mode(&metadata.permissions()),
-          "name": entry.file_name().to_str().unwrap(),
-          "hasMode": cfg!(target_family = "unix"), // false on windows,
-        })
+        get_stat_json(
+          metadata,
+          Some(entry.file_name().to_str().unwrap().to_owned()),
+        )
+        .unwrap()
       })
       .collect();
 
