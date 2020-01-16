@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::deno_error::type_error;
+use crate::fs as deno_fs;
 use crate::ops::json_op;
 use crate::state::ThreadSafeState;
 use deno_core::*;
@@ -27,6 +28,15 @@ struct PermissionArgs {
   path: Option<String>,
 }
 
+fn resolve_path(path: &str) -> String {
+  deno_fs::resolve_from_cwd(path)
+    .unwrap()
+    .0
+    .to_str()
+    .unwrap()
+    .to_string()
+}
+
 pub fn op_query_permission(
   state: &ThreadSafeState,
   args: Value,
@@ -34,10 +44,11 @@ pub fn op_query_permission(
 ) -> Result<JsonOp, ErrBox> {
   let args: PermissionArgs = serde_json::from_value(args)?;
   let permissions = state.permissions.lock().unwrap();
+  let resolved_path = args.path.as_ref().map(String::as_str).map(resolve_path);
   let perm = permissions.get_permission_state(
     &args.name,
     &args.url.as_ref().map(String::as_str),
-    &args.path.as_ref().map(String::as_str),
+    &resolved_path.as_ref().map(String::as_str),
   )?;
   Ok(JsonOp::Sync(json!({ "state": perm.to_string() })))
 }
@@ -59,10 +70,11 @@ pub fn op_revoke_permission(
     "hrtime" => permissions.allow_hrtime.revoke(),
     _ => {}
   };
+  let resolved_path = args.path.as_ref().map(String::as_str).map(resolve_path);
   let perm = permissions.get_permission_state(
     &args.name,
     &args.url.as_ref().map(String::as_str),
-    &args.path.as_ref().map(String::as_str),
+    &resolved_path.as_ref().map(String::as_str),
   )?;
   Ok(JsonOp::Sync(json!({ "state": perm.to_string() })))
 }
@@ -74,13 +86,14 @@ pub fn op_request_permission(
 ) -> Result<JsonOp, ErrBox> {
   let args: PermissionArgs = serde_json::from_value(args)?;
   let mut permissions = state.permissions.lock().unwrap();
+  let resolved_path = args.path.as_ref().map(String::as_str).map(resolve_path);
   let perm = match args.name.as_ref() {
     "run" => Ok(permissions.request_run()),
     "read" => {
-      Ok(permissions.request_read(&args.path.as_ref().map(String::as_str)))
+      Ok(permissions.request_read(&resolved_path.as_ref().map(String::as_str)))
     }
     "write" => {
-      Ok(permissions.request_write(&args.path.as_ref().map(String::as_str)))
+      Ok(permissions.request_write(&resolved_path.as_ref().map(String::as_str)))
     }
     "net" => permissions.request_net(&args.url.as_ref().map(String::as_str)),
     "env" => Ok(permissions.request_env()),
