@@ -5,7 +5,8 @@ import {
   assert,
   assertEquals,
   assertStrContains,
-  assertThrows
+  assertThrows,
+  fail
 } from "./test_util.ts";
 
 testPerm({ net: true }, async function fetchConnectionError(): Promise<void> {
@@ -360,3 +361,21 @@ testPerm({ net: true }, async function fetchPostBodyTypedArray():Promise<void> {
   assertEquals(actual, expected);
 });
 */
+
+testPerm({ net: true }, async function fetchWithRedirection(): Promise<void> {
+  const response = await fetch("http://localhost:4546/", {
+    redirect: "manual"
+  }); // will redirect to http://localhost:4545/
+  assertEquals(response.status, 0);
+  assertEquals(response.statusText, "");
+  assertEquals(response.url, "");
+  assertEquals(response.type, "opaqueredirect");
+  try {
+    await response.text();
+    fail(
+      "Reponse.text() on a filtered response without a body (opaqueredirect)"
+    );
+  } catch (e) {
+    return;
+  }
+});
