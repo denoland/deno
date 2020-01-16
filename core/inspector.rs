@@ -3,12 +3,12 @@
 use rusty_v8 as v8;
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex};
-use v8::inspector::Client;
 use v8::inspector::StringBuffer;
 use v8::inspector::StringView;
+use v8::inspector::V8InspectorClient;
 use v8::inspector::{ChannelBase, ChannelImpl};
-use v8::inspector::{ClientBase, ClientImpl};
 use v8::inspector::{V8Inspector, V8InspectorSession};
+use v8::inspector::{V8InspectorClientBase, V8InspectorClientImpl};
 use v8::int;
 use v8::platform::{TaskBase, TaskImpl};
 use v8::UniquePtr;
@@ -76,19 +76,19 @@ impl InspectorFrontend {
 
 #[repr(C)]
 pub struct InspectorClient {
-  base: ClientBase,
+  base: V8InspectorClientBase,
   session: Option<UniqueRef<V8InspectorSession>>,
   frontend: Option<InspectorFrontend>,
   inspector: Option<UniqueRef<V8Inspector>>,
   terminated: bool,
 }
 
-impl ClientImpl for InspectorClient {
-  fn base(&self) -> &ClientBase {
+impl V8InspectorClientImpl for InspectorClient {
+  fn base(&self) -> &V8InspectorClientBase {
     &self.base
   }
 
-  fn base_mut(&mut self) -> &mut ClientBase {
+  fn base_mut(&mut self) -> &mut V8InspectorClientBase {
     &mut self.base
   }
 
@@ -116,7 +116,7 @@ impl InspectorClient {
     let mut frontend = InspectorFrontend::new();
 
     let mut client = Self {
-      base: ClientBase::new::<Self>(),
+      base: V8InspectorClientBase::new::<Self>(),
       session: None,
       inspector: None,
       frontend: None,
@@ -127,10 +127,14 @@ impl InspectorClient {
     let context_group_id = 1;
     let empty_view = StringView::empty();
     let mut buffer = StringBuffer::create(&empty_view).unwrap();
+
+    let state = b"";
+    let state_view = StringView::from(&state[..]);
+
     let session =
-      inspector.connect(context_group_id, &mut frontend, &mut buffer);
+      inspector.connect(context_group_id, &mut frontend, &state_view);
     // let context_info = V8ContextInfo::new();
-    inspector.context_created(context, context_group_id, &mut buffer);
+    inspector.context_created(context, context_group_id, &state_view);
     client.frontend = Some(frontend);
     client.session = Some(session);
     client.inspector = Some(inspector);
