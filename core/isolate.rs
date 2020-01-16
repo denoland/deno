@@ -511,9 +511,11 @@ impl Isolate {
         let op_id = 0;
         Some((op_id, buf))
       }
-      Op::Async(fut) => {
+      Op::Async(fut, blocks_exit) => {
         let fut2 = fut.map_ok(move |buf| (op_id, buf));
-        self.pending_ops.push(fut2.boxed());
+        self
+          .pending_ops
+          .push(Pin::new(Box::new(PendingOp(fut2.boxed(), blocks_exit))));
         self.have_unpolled_ops = true;
         None
       }
@@ -742,8 +744,8 @@ impl Future for Isolate {
     inner.check_promise_errors();
     inner.check_last_exception()?;
 
-    // We're idle if pending_ops is empty.
-    if inner.pending_ops.is_empty() {
+    // We're idle if all pending_ops have blocks_exit flag false.
+    if inner.pending_ops.iter().all(|op| !op.1) {
       Poll::Ready(Ok(()))
     } else {
       if inner.have_unpolled_ops {
@@ -814,6 +816,7 @@ pub mod tests {
 
   pub enum Mode {
     Async,
+    AsyncOptional,
     OverflowReqSync,
     OverflowResSync,
     OverflowReqAsync,
@@ -834,7 +837,18 @@ pub mod tests {
             assert_eq!(control.len(), 1);
             assert_eq!(control[0], 42);
             let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
-            Op::Async(futures::future::ok(buf).boxed())
+            Op::Async(futures::future::ok(buf).boxed(), true)
+          }
+          Mode::AsyncOptional => {
+            assert_eq!(control.len(), 1);
+            assert_eq!(control[0], 42);
+            let fut = async {
+              // This future never finish.
+              futures::future::pending::<()>().await;
+              let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
+              Ok(buf)
+            };
+            Op::Async(fut.boxed(), false)
           }
           Mode::OverflowReqSync => {
             assert_eq!(control.len(), 100 * 1024 * 1024);
@@ -853,7 +867,7 @@ pub mod tests {
           Mode::OverflowReqAsync => {
             assert_eq!(control.len(), 100 * 1024 * 1024);
             let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
-            Op::Async(futures::future::ok(buf).boxed())
+            Op::Async(futures::future::ok(buf).boxed(), true)
           }
           Mode::OverflowResAsync => {
             assert_eq!(control.len(), 1);
@@ -862,7 +876,7 @@ pub mod tests {
             vec.resize(100 * 1024 * 1024, 0);
             vec[0] = 4;
             let buf = vec.into_boxed_slice();
-            Op::Async(futures::future::ok(buf).boxed())
+            Op::Async(futures::future::ok(buf).boxed(), true)
           }
         }
       };
@@ -951,6 +965,31 @@ pub mod tests {
         _ => false,
       });
     });
+  }
+
+  #[test]
+  fn test_poll_async_optional_ops() {
+    run_in_task(|cx| {
+      let (mut isolate, dispatch_count) = setup(Mode::AsyncOptional);
+      js_check(isolate.execute(
+        "check1.js",
+        r#"
+          Deno.core.setAsyncHandler(1, (buf) => {
+            // This handler will never be called
+            assert(false);
+          });
+          let control = new Uint8Array([42]);
+          Deno.core.send(1, control);
+        "#,
+      ));
+      assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
+      // The above op never finish, but isolate can finish
+      // because the op is an optional async op (blocks_exit flag == false).
+      assert!(match isolate.poll_unpin(cx) {
+        Poll::Ready(Ok(_)) => true,
+        _ => false,
+      });
+    })
   }
 
   #[test]

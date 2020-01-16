@@ -650,7 +650,7 @@ pub mod tests {
         assert_eq!(control.len(), 1);
         assert_eq!(control[0], 42);
         let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
-        Op::Async(futures::future::ok(buf).boxed())
+        Op::Async(futures::future::ok(buf).boxed(), true)
       };
 
     isolate.register_op("test", dispatcher);

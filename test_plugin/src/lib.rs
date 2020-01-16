@@ -49,5 +49,5 @@ pub fn op_test_async(data: &[u8], zero_copy: Option<PinnedBuf>) -> CoreOp {
     Ok(result_box)
   };
 
-  Op::Async(fut.boxed())
+  Op::Async(fut.boxed(), true)
 }

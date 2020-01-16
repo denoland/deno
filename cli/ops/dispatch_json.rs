@@ -13,7 +13,8 @@ pub type AsyncJsonOp =
 
 pub enum JsonOp {
   Sync(Value),
-  Async(AsyncJsonOp),
+  /** The 2nd element is true when the op blocks exiting, false otherwise. */
+  Async(AsyncJsonOp, bool),
 }
 
 fn json_err(err: ErrBox) -> Value {
@@ -70,19 +71,19 @@ where
         assert!(promise_id.is_none());
         CoreOp::Sync(serialize_result(promise_id, Ok(sync_value)))
       }
-      Ok(JsonOp::Async(fut)) => {
+      Ok(JsonOp::Async(fut, blocks_exit)) => {
         assert!(promise_id.is_some());
         let fut2 = fut.then(move |result| {
           futures::future::ok(serialize_result(promise_id, result))
         });
-        CoreOp::Async(fut2.boxed())
+        CoreOp::Async(fut2.boxed(), blocks_exit)
       }
       Err(sync_err) => {
         let buf = serialize_result(promise_id, Err(sync_err));
         if is_sync {
           CoreOp::Sync(buf)
         } else {
-          CoreOp::Async(futures::future::ok(buf).boxed())
+          CoreOp::Async(futures::future::ok(buf).boxed(), true)
         }
       }
     }
@@ -101,6 +102,6 @@ where
     let handle = pool
       .spawn_with_handle(futures::future::lazy(move |_cx| f()))
       .unwrap();
-    Ok(JsonOp::Async(handle.boxed()))
+    Ok(JsonOp::Async(handle.boxed(), true))
   }
 }

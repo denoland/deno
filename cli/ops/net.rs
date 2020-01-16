@@ -130,7 +130,7 @@ fn op_accept(
     }))
   };
 
-  Ok(JsonOp::Async(op.boxed()))
+  Ok(JsonOp::Async(op.boxed(), true))
 }
 
 #[derive(Deserialize)]
@@ -173,7 +173,7 @@ fn op_connect(
     }))
   };
 
-  Ok(JsonOp::Async(op.boxed()))
+  Ok(JsonOp::Async(op.boxed(), true))
 }
 
 #[derive(Deserialize)]
