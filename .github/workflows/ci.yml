@@ -56,7 +56,7 @@ jobs:
       - name: Install Python
         uses: actions/setup-python@v1
         with:
-          python-version: "2.7.17"
+          python-version: "2.7"
           architecture: x64
 
       - name: Remove unused versions of Python
