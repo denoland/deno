@@ -74,9 +74,9 @@ have been historically written with bash or python.
 - Uses "ES Modules" and does not support `require()`. Third party modules are
   imported via URLs:
 
-```javascript
-import * as log from "https://deno.land/std/log/mod.ts";
-```
+  ```javascript
+  import * as log from "https://deno.land/std/log/mod.ts";
+  ```
 
 ### Other key behaviors
 
