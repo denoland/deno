@@ -5,6 +5,7 @@ use crate::deno_error::ErrorKind;
 use crate::deno_error::GetErrorKind;
 use crate::disk_cache::DiskCache;
 use crate::http_util;
+use crate::http_util::create_http_client;
 use crate::http_util::FetchOnceResult;
 use crate::msg;
 use crate::progress::Progress;
@@ -12,6 +13,7 @@ use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use futures::future::Either;
 use futures::future::FutureExt;
+use reqwest;
 use serde_json;
 use std;
 use std::collections::HashMap;
@@ -75,6 +77,7 @@ pub struct SourceFileFetcher {
   use_disk_cache: bool,
   no_remote: bool,
   cached_only: bool,
+  http_client: reqwest::Client,
 }
 
 impl SourceFileFetcher {
@@ -94,6 +97,7 @@ impl SourceFileFetcher {
       use_disk_cache,
       no_remote,
       cached_only,
+      http_client: create_http_client(),
     };
 
     Ok(file_fetcher)
@@ -395,10 +399,12 @@ impl SourceFileFetcher {
     let module_url = module_url.clone();
     let headers = self.get_source_code_headers(&module_url);
     let module_etag = headers.etag;
-
+    let http_client = self.http_client.clone();
     // Single pass fetch, either yields code or yields redirect.
     let f = async move {
-      match http_util::fetch_string_once(&module_url, module_etag).await? {
+      match http_util::fetch_string_once(http_client, &module_url, module_etag)
+        .await?
+      {
         FetchOnceResult::NotModified => {
           let source_file =
             dir.fetch_cached_remote_source(&module_url)?.unwrap();
