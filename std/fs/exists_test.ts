@@ -124,7 +124,6 @@ test(async function existsPermission(): Promise<void> {
     }
 
     args.push(path.join(testdataDir, s.async ? "exists.ts" : "exists_sync.ts"));
-    args.push("--");
     args.push(s.file);
 
     const { stdout } = Deno.run({
