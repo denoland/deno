@@ -102,13 +102,13 @@ impl ThreadSafeState {
           state.metrics_op_completed(buf.len());
           Op::Sync(buf)
         }
-        Op::Async(fut) => {
+        Op::Async(fut, blocks_exit) => {
           let state = state.clone();
           let result_fut = fut.map_ok(move |buf: Buf| {
             state.metrics_op_completed(buf.len());
             buf
           });
-          Op::Async(result_fut.boxed())
+          Op::Async(result_fut.boxed(), blocks_exit)
         }
       }
     }

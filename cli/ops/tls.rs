@@ -106,7 +106,7 @@ pub fn op_connect_tls(
     }))
   };
 
-  Ok(JsonOp::Async(op.boxed()))
+  Ok(JsonOp::Async(op.boxed(), true))
 }
 
 fn load_certs(path: &str) -> Result<Vec<Certificate>, ErrBox> {
@@ -376,5 +376,5 @@ fn op_accept_tls(
     }))
   };
 
-  Ok(JsonOp::Async(op.boxed()))
+  Ok(JsonOp::Async(op.boxed(), true))
 }

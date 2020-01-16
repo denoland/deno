@@ -133,7 +133,7 @@ fn http_op(
     if is_sync {
       Op::Sync(futures::executor::block_on(fut).unwrap())
     } else {
-      Op::Async(fut.boxed())
+      Op::Async(fut.boxed(), true)
     }
   }
 }
