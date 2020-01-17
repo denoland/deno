@@ -10,6 +10,8 @@ import { STATUS_TEXT } from "./http_status.ts";
 import { assert } from "../testing/asserts.ts";
 import { deferred, Deferred, MuxAsyncIterator } from "../util/async.ts";
 
+const encoder = new TextEncoder();
+
 function bufWriter(w: Writer): BufWriter {
   if (w instanceof BufWriter) {
     return w;
@@ -25,6 +27,7 @@ export function setContentLength(r: Response): void {
 
   if (r.body) {
     if (!r.headers.has("content-length")) {
+      // typeof r.body === "string" handled in writeResponse.
       if (r.body instanceof Uint8Array) {
         const bodyLength = r.body.byteLength;
         r.headers.append("Content-Length", bodyLength.toString());
@@ -37,7 +40,6 @@ export function setContentLength(r: Response): void {
 
 async function writeChunkedBody(w: Writer, r: Reader): Promise<void> {
   const writer = bufWriter(w);
-  const encoder = new TextEncoder();
 
   for await (const chunk of toAsyncIterator(r)) {
     if (chunk.byteLength <= 0) continue;
@@ -64,6 +66,9 @@ export async function writeResponse(w: Writer, r: Response): Promise<void> {
   if (!r.body) {
     r.body = new Uint8Array();
   }
+  if (typeof r.body === "string") {
+    r.body = encoder.encode(r.body);
+  }
 
   let out = `HTTP/${protoMajor}.${protoMinor} ${statusCode} ${statusText}\r\n`;
 
@@ -75,7 +80,7 @@ export async function writeResponse(w: Writer, r: Response): Promise<void> {
   }
   out += "\r\n";
 
-  const header = new TextEncoder().encode(out);
+  const header = encoder.encode(out);
   const n = await writer.write(header);
   assert(n === header.byteLength);
 
@@ -424,7 +429,7 @@ export class Server implements AsyncIterable<ServerRequest> {
       try {
         await writeResponse(req!.w, {
           status: 400,
-          body: new TextEncoder().encode(`${err.message}\r\n\r\n`)
+          body: encoder.encode(`${err.message}\r\n\r\n`)
         });
       } catch (_) {
         // The connection is destroyed.
@@ -472,7 +477,7 @@ interface ServerConfig {
  * Start a HTTP server
  *
  *     import { serve } from "https://deno.land/std/http/server.ts";
- *     const body = new TextEncoder().encode("Hello World\n");
+ *     const body = "Hello World\n";
  *     const s = serve({ port: 8000 });
  *     for await (const req of s) {
  *       req.respond({ body });
@@ -505,7 +510,7 @@ export type HTTPSOptions = Omit<Deno.ListenTLSOptions, "transport">;
 /**
  * Create an HTTPS server with given options
  *
- *     const body = new TextEncoder().encode("Hello HTTPS");
+ *     const body = "Hello HTTPS";
  *     const options = {
  *       hostname: "localhost",
  *       port: 443,
@@ -531,7 +536,7 @@ export function serveTLS(options: HTTPSOptions): Server {
 /**
  * Create an HTTPS server with given options and request handler
  *
- *     const body = new TextEncoder().encode("Hello HTTPS");
+ *     const body = "Hello HTTPS";
  *     const options = {
  *       hostname: "localhost",
  *       port: 443,
@@ -556,8 +561,13 @@ export async function listenAndServeTLS(
   }
 }
 
+/**
+ * Interface of HTTP server response.
+ * If body is a Reader, response would be chunked.
+ * If body is a string, it would be UTF-8 encoded by default.
+ */
 export interface Response {
   status?: number;
   headers?: Headers;
-  body?: Uint8Array | Reader;
+  body?: Uint8Array | Reader | string;
 }

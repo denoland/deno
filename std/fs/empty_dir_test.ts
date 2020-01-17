@@ -233,6 +233,8 @@ test(async function emptyDirPermission(): Promise<void> {
     await Deno.remove(testfolder, { recursive: true });
     throw err;
   }
-
+  // Make the test rerunnable
+  // Otherwise would throw error due to mkdir fail.
+  await Deno.remove(testfolder, { recursive: true });
   // done
 });
