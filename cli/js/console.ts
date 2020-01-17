@@ -4,6 +4,7 @@ import { TypedArray } from "./types.ts";
 import { TextEncoder } from "./text_encoding.ts";
 import { File, stdout } from "./files.ts";
 import { cliTable } from "./console_table.ts";
+import { exposeForTest } from "./internals.ts";
 
 type ConsoleContext = Set<unknown>;
 type ConsoleOptions = Partial<{
@@ -363,9 +364,7 @@ function createObjectString(
   }
 }
 
-/** TODO Do not expose this from "deno" namespace.
- * @internal
- */
+/** @internal */
 export function stringifyArgs(
   args: unknown[],
   options: ConsoleOptions = {}
@@ -785,3 +784,7 @@ export function inspect(value: unknown, options?: ConsoleOptions): string {
     );
   }
 }
+
+// Expose these fields to internalObject for tests.
+exposeForTest("Console", Console);
+exposeForTest("stringifyArgs", stringifyArgs);

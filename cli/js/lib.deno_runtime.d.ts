@@ -1507,10 +1507,6 @@ declare namespace Deno {
     colors: boolean;
     indentLevel: number;
   }>;
-  /** A symbol which can be used as a key for a custom method which will be called
-   * when `Deno.inspect()` is called, or when the object is logged to the console.
-   */
-  export const customInspect: unique symbol;
   /**
    * `inspect()` converts input into string that has the same format
    * as printed by `console.log(...)`;
@@ -1947,6 +1943,16 @@ declare namespace Deno {
   // @url js/deno.d.ts
 
   export const args: string[];
+
+  /** Special Deno related symbols. */
+  export const symbols: {
+    /** Symbol to access exposed internal Deno API */
+    readonly internal: unique symbol;
+    /** A symbol which can be used as a key for a custom method which will be called
+     * when `Deno.inspect()` is called, or when the object is logged to the console.
+     */
+    readonly customInspect: unique symbol;
+  };
 }
 
 // @url js/globals.ts
