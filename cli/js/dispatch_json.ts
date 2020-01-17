@@ -43,7 +43,7 @@ function unwrapResponse(res: JsonResponse): Ok {
   return res.ok;
 }
 
-export function asyncMsgFromRust(opId: number, resUi8: Uint8Array): void {
+export function asyncMsgFromRust(resUi8: Uint8Array): void {
   const res = decode(resUi8);
   util.assert(res.promiseId != null);
 
