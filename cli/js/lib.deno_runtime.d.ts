@@ -998,7 +998,9 @@ declare namespace Deno {
    */
   export function link(oldname: string, newname: string): Promise<void>;
 
-  /** Synchronously creates `newname` as a symbolic link to `oldname`. The type
+  /** UNSTABLE type argument may be changed to "dir" | "file"
+   *
+   * Synchronously creates `newname` as a symbolic link to `oldname`. The type
    * argument can be set to `dir` or `file` and is only available on Windows
    * (ignored on other platforms).
    *
@@ -1009,10 +1011,12 @@ declare namespace Deno {
   export function symlinkSync(
     oldname: string,
     newname: string,
-    type?: "dir" | "file"
+    type?: string
   ): void;
 
-  /** Creates `newname` as a symbolic link to `oldname`. The type argument can be
+  /** UNSTABLE type argument may be changed to "dir" | "file"
+   *
+   * Creates `newname` as a symbolic link to `oldname`. The type argument can be
    * set to `dir` or `file` and is only available on Windows (ignored on other
    * platforms).
    *
@@ -1023,7 +1027,7 @@ declare namespace Deno {
   export function symlink(
     oldname: string,
     newname: string,
-    type?: "dir" | "file"
+    type?: string
   ): Promise<void>;
 
   /** Options for writing to a file.
