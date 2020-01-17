@@ -56,7 +56,6 @@ sys-info = "0.5.8"
 tempfile = "3.1.0"
 termcolor = "1.0.5"
 tokio = { version = "0.2.9", features = ["full"] }
-tokio-executor = "0.1.9"
 tokio-rustls = "0.12.1"
 url = "2.1.0"
 utime = "0.2.1"
