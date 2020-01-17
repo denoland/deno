@@ -40,7 +40,7 @@ class FileReader implements Deno.Reader {
 
   constructor(
     private filePath: string,
-    private mode: Deno.OpenCapability = { read: true }
+    private mode: Deno.OpenMode | Deno.OpenCapability = "r"
   ) {}
 
   public async read(p: Uint8Array): Promise<number | Deno.EOF> {

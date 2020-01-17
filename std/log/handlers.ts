@@ -107,7 +107,7 @@ export class FileHandler extends WriterHandler {
 
   async setup(): Promise<void> {
     // open file in append mode - write only
-    this._file = await open(this._filename, { append: true, create: true });
+    this._file = await open(this._filename, "a");
     this._writer = this._file;
   }
 

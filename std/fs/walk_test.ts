@@ -46,7 +46,7 @@ export async function walkArray(
 }
 
 export async function touch(path: string): Promise<void> {
-  await open(path, { write: true, truncate: true, create: true });
+  await open(path, "w");
 }
 
 function assertReady(expectedLength: number): void {
