@@ -1904,7 +1904,7 @@ declare namespace Deno {
     rootName: string,
     sources?: Record<string, string>,
     options?: CompilerOptions
-  ): Promise<[Diagnostic[] | undefined, Record<string, string>]>;
+  ): Promise<[Diagnostic | undefined, Record<string, string>]>;
 
   /** Takes a root module name, and optionally a record set of sources. Resolves
    * with a single JavaScript string that is like the output of a `deno bundle`
@@ -1938,7 +1938,7 @@ declare namespace Deno {
     rootName: string,
     sources?: Record<string, string>,
     options?: CompilerOptions
-  ): Promise<[Diagnostic[] | undefined, string]>;
+  ): Promise<[Diagnostic | undefined, string]>;
 
   // @url js/deno.d.ts
 
