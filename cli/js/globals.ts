@@ -150,6 +150,7 @@ window.performance = new performanceUtil.Performance();
 // This variable functioning correctly depends on `declareAsLet`
 // in //tools/ts_library_builder/main.ts
 window.onmessage = workers.onmessage;
+window.onerror = workers.onerror;
 
 window.workerMain = workers.workerMain;
 window.workerClose = workers.workerClose;
