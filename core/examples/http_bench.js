@@ -71,7 +71,7 @@ function recordFromBuf(buf) {
   return new Int32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
 }
 
-function handleAsyncMsgFromRust(opId, buf) {
+function handleAsyncMsgFromRust(buf) {
   const record = recordFromBuf(buf);
   const p = promiseMap.get(record[0]);
   promiseMap.delete(record[0]);
