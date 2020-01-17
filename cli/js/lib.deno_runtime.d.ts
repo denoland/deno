@@ -1986,6 +1986,7 @@ declare interface Window {
   Response: typeof __fetch.Response;
   performance: __performanceUtil.Performance;
   onmessage: (e: { data: any }) => void;
+  onerror: undefined | typeof onerror;
   workerMain: typeof __workers.workerMain;
   workerClose: typeof __workers.workerClose;
   postMessage: typeof __workers.postMessage;
@@ -2036,6 +2037,7 @@ declare const Request: __domTypes.RequestConstructor;
 declare const Response: typeof __fetch.Response;
 declare const performance: __performanceUtil.Performance;
 declare let onmessage: (e: { data: any }) => void;
+declare let onerror: (e: Event) => void;
 declare const workerMain: typeof __workers.workerMain;
 declare const workerClose: typeof __workers.workerClose;
 declare const postMessage: typeof __workers.postMessage;
@@ -3293,7 +3295,7 @@ declare namespace __workers {
   export function workerClose(): void;
   export function workerMain(): Promise<void>;
   export interface Worker {
-    onerror?: () => void;
+    onerror?: (e: Event) => void;
     onmessage?: (e: { data: any }) => void;
     onmessageerror?: () => void;
     postMessage(data: any): void;
@@ -3311,7 +3313,7 @@ declare namespace __workers {
     private readonly id;
     private isClosing;
     private readonly isClosedPromise;
-    onerror?: () => void;
+    onerror?: (e: Event) => void;
     onmessage?: (data: any) => void;
     onmessageerror?: () => void;
     constructor(specifier: string, options?: DenoWorkerOptions);
