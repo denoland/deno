@@ -909,7 +909,7 @@ pub mod tests {
         "setup2.js",
         r#"
          let nrecv = 0;
-         Deno.core.setAsyncHandler((opId, buf) => {
+         Deno.core.setAsyncHandler(1, (buf) => {
            nrecv++;
          });
          "#,
@@ -1030,7 +1030,7 @@ pub mod tests {
       "overflow_req_sync.js",
       r#"
         let asyncRecv = 0;
-        Deno.core.setAsyncHandler((opId, buf) => { asyncRecv++ });
+        Deno.core.setAsyncHandler(1, (buf) => { asyncRecv++ });
         // Large message that will overflow the shared space.
         let control = new Uint8Array(100 * 1024 * 1024);
         let response = Deno.core.dispatch(1, control);
@@ -1052,7 +1052,7 @@ pub mod tests {
       "overflow_res_sync.js",
       r#"
         let asyncRecv = 0;
-        Deno.core.setAsyncHandler((opId, buf) => { asyncRecv++ });
+        Deno.core.setAsyncHandler(1, (buf) => { asyncRecv++ });
         // Large message that will overflow the shared space.
         let control = new Uint8Array([42]);
         let response = Deno.core.dispatch(1, control);
@@ -1073,8 +1073,7 @@ pub mod tests {
         "overflow_req_async.js",
         r#"
          let asyncRecv = 0;
-         Deno.core.setAsyncHandler((opId, buf) => {
-           assert(opId == 1);
+         Deno.core.setAsyncHandler(1, (buf) => {
            assert(buf.byteLength === 4);
            assert(buf[0] === 43);
            asyncRecv++;
@@ -1106,8 +1105,7 @@ pub mod tests {
         "overflow_res_async.js",
         r#"
          let asyncRecv = 0;
-         Deno.core.setAsyncHandler((opId, buf) => {
-           assert(opId == 1);
+         Deno.core.setAsyncHandler(1, (buf) => {
            assert(buf.byteLength === 100 * 1024 * 1024);
            assert(buf[0] === 4);
            asyncRecv++;
@@ -1135,8 +1133,7 @@ pub mod tests {
         "overflow_res_multiple_dispatch_async.js",
         r#"
          let asyncRecv = 0;
-         Deno.core.setAsyncHandler((opId, buf) => {
-           assert(opId === 1);
+         Deno.core.setAsyncHandler(1, (buf) => {
            assert(buf.byteLength === 100 * 1024 * 1024);
            assert(buf[0] === 4);
            asyncRecv++;

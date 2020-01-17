@@ -1,5 +1,5 @@
 import { sendSync } from "./dispatch_json.ts";
-import { OP_OPEN_PLUGIN, setPluginAsyncHandler } from "./dispatch.ts";
+import { OP_OPEN_PLUGIN } from "./dispatch.ts";
 import { core } from "./core.ts";
 
 export interface AsyncHandler {
@@ -25,7 +25,7 @@ class PluginOpImpl implements PluginOp {
   }
 
   setAsyncHandler(handler: AsyncHandler): void {
-    setPluginAsyncHandler(this.opId, handler);
+    core.setAsyncHandler(this.opId, handler);
   }
 }
 
