@@ -3,7 +3,7 @@ import { test, assert, assertEquals } from "./test_util.ts";
 const {
   stringifyArgs
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-} = Deno as any;
+} = Deno[Deno.symbols.internal] as any;
 
 // Logic heavily copied from web-platform-tests, make
 // sure pass mostly header basic test

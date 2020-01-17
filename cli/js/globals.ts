@@ -32,6 +32,8 @@ import * as request from "./request.ts";
 // symbols required.
 import { core } from "./core.ts";
 
+import { internalObject } from "./internals.ts";
+
 // During the build process, augmentations to the variable `window` in this
 // file are tracked and created as part of default library that is built into
 // Deno, we only need to declare the enough to compile Deno.
@@ -69,6 +71,10 @@ declare global {
 // A self reference to the global object.
 window.window = window;
 
+// Add internal object to Deno object.
+// This is not exposed as part of the Deno types.
+// @ts-ignore
+Deno[Deno.symbols.internal] = internalObject;
 // This is the Deno namespace, it is handled differently from other window
 // properties when building the runtime type library, as the whole module
 // is flattened into a single namespace.

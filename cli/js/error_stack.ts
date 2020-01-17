@@ -4,6 +4,7 @@
 import * as dispatch from "./dispatch.ts";
 import { sendSync } from "./dispatch_json.ts";
 import { assert } from "./util.ts";
+import { exposeForTest } from "./internals.ts";
 
 export interface Location {
   /** The full url for the module, e.g. `file://some/file.ts` or
@@ -271,3 +272,5 @@ function prepareStackTrace(
 export function setPrepareStackTrace(ErrorConstructor: typeof Error): void {
   ErrorConstructor.prepareStackTrace = prepareStackTrace;
 }
+
+exposeForTest("setPrepareStackTrace", setPrepareStackTrace);
