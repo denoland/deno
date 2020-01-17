@@ -3,6 +3,7 @@
 import { DomIterable } from "../dom_types.ts";
 import { window } from "../window.ts";
 import { requiredArguments } from "../util.ts";
+import { exposeForTest } from "../internals.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Constructor<T = {}> = new (...args: any[]) => T;
@@ -10,7 +11,6 @@ type Constructor<T = {}> = new (...args: any[]) => T;
 /** Mixes in a DOM iterable methods into a base class, assumes that there is
  * a private data iterable that is part of the base class, located at
  * `[dataSymbol]`.
- * TODO Don't expose DomIterableMixin from "deno" namespace.
  */
 export function DomIterableMixin<K, V, TBase extends Constructor>(
   Base: TBase,
@@ -80,3 +80,5 @@ export function DomIterableMixin<K, V, TBase extends Constructor>(
 
   return DomIterable;
 }
+
+exposeForTest("DomIterableMixin", DomIterableMixin);
