@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
   EOF,
   Reader,
@@ -51,9 +51,7 @@ export function openSync(
 
 /** Open a file and return an instance of the `File` object.
  *
- *       (async () => {
- *         const file = await Deno.open("/foo/bar.txt", { read: true});
- *       })();
+ *     const file = await Deno.open("/foo/bar.txt");
  */
 export async function open(
   filename: string,
@@ -89,6 +87,24 @@ export async function open(
   }
 }
 
+/** Creates a file if none exists or truncates an existing file and returns
+ *  an instance of the `File` object synchronously.
+ *
+ *       const file = Deno.createSync("/foo/bar.txt");
+ */
+export function createSync(filename: string): File {
+  return openSync(filename, "w+");
+}
+
+/** Creates a file if none exists or truncates an existing file and returns
+ *  an instance of the `File` object.
+ *
+ *       const file = await Deno.create("/foo/bar.txt");
+ */
+export function create(filename: string): Promise<File> {
+  return open(filename, "w+");
+}
+
 /** Read synchronously from a file ID into an array buffer.
  *
  * Return `number | EOF` for the operation.
@@ -100,6 +116,9 @@ export async function open(
  *
  */
 export function readSync(rid: number, p: Uint8Array): number | EOF {
+  if (p.length == 0) {
+    return 0;
+  }
   const nread = sendSyncMinimal(dispatch.OP_READ, rid, p);
   if (nread < 0) {
     throw new Error("read error");
@@ -114,14 +133,15 @@ export function readSync(rid: number, p: Uint8Array): number | EOF {
  *
  * Resolves with the `number | EOF` for the operation.
  *
- *       (async () => {
- *         const file = await Deno.open("/foo/bar.txt");
- *         const buf = new Uint8Array(100);
- *         const nread = await Deno.read(file.rid, buf);
- *         const text = new TextDecoder().decode(buf);
- *       })();
+ *       const file = await Deno.open("/foo/bar.txt");
+ *       const buf = new Uint8Array(100);
+ *       const nread = await Deno.read(file.rid, buf);
+ *       const text = new TextDecoder().decode(buf);
  */
 export async function read(rid: number, p: Uint8Array): Promise<number | EOF> {
+  if (p.length == 0) {
+    return 0;
+  }
   const nread = await sendAsyncMinimal(dispatch.OP_READ, rid, p);
   if (nread < 0) {
     throw new Error("read error");
@@ -154,12 +174,10 @@ export function writeSync(rid: number, p: Uint8Array): number {
  *
  * Resolves with the number of bytes written.
  *
- *      (async () => {
- *        const encoder = new TextEncoder();
- *        const data = encoder.encode("Hello world\n");
- *        const file = await Deno.open("/foo/bar.txt");
- *        await Deno.write(file.rid, data);
- *      })();
+ *      const encoder = new TextEncoder();
+ *      const data = encoder.encode("Hello world\n");
+ *      const file = await Deno.open("/foo/bar.txt");
+ *      await Deno.write(file.rid, data);
  *
  */
 export async function write(rid: number, p: Uint8Array): Promise<number> {
@@ -182,10 +200,8 @@ export function seekSync(rid: number, offset: number, whence: SeekMode): void {
 
 /** Seek a file ID to the given offset under mode given by `whence`.
  *
- *      (async () => {
- *        const file = await Deno.open("/foo/bar.txt");
- *        await Deno.seek(file.rid, 0, 0);
- *      })();
+ *      const file = await Deno.open("/foo/bar.txt");
+ *      await Deno.seek(file.rid, 0, 0);
  */
 export async function seek(
   rid: number,
@@ -303,19 +319,6 @@ export type OpenMode =
   | "x"
   /** Read-write. Behaves like `x` and allows to read from file. */
   | "x+";
-
-/** A factory function for creating instances of `File` associated with the
- * supplied file name.
- * @internal
- */
-export function create(filename: string): Promise<File> {
-  return open(filename, {
-    read: true,
-    create: true,
-    write: true,
-    truncate: true
-  });
-}
 
 /** Check if OpenMode is set to something that is valid.
  *  @returns Tuple representing if openMode is valid and error message if it's not

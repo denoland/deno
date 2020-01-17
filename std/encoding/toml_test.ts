@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { runIfMain, test } from "../testing/mod.ts";
 import { assertEquals } from "../testing/asserts.ts";
 import { existsSync } from "../fs/exists.ts";
@@ -112,7 +112,10 @@ test({
   fn(): void {
     const expected = {
       arrays: {
-        data: [["gamma", "delta"], [1, 2]],
+        data: [
+          ["gamma", "delta"],
+          [1, 2]
+        ],
         hosts: ["alpha", "omega"]
       }
     };
@@ -344,7 +347,10 @@ test({
       sf4: NaN,
       sf5: NaN,
       sf6: NaN,
-      data: [["gamma", "delta"], [1, 2]],
+      data: [
+        ["gamma", "delta"],
+        [1, 2]
+      ],
       hosts: ["alpha", "omega"]
     };
     const expected = `deno    = "is"

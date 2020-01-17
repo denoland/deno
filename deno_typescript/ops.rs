@@ -1,8 +1,8 @@
 use crate::TSState;
-use deno::CoreOp;
-use deno::ErrBox;
-use deno::ModuleSpecifier;
-use deno::Op;
+use deno_core::CoreOp;
+use deno_core::ErrBox;
+use deno_core::ModuleSpecifier;
+use deno_core::Op;
 use serde::Deserialize;
 use serde_json::json;
 use serde_json::Value;
@@ -45,7 +45,7 @@ pub fn read_file(_s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
   let v: ReadFile = serde_json::from_value(v)?;
   let (module_name, source_code) = if v.file_name.starts_with("$asset$/") {
     let asset = v.file_name.replace("$asset$/", "");
-    let source_code = crate::get_asset2(&asset)?.to_string();
+    let source_code = crate::get_asset2(&asset)?;
     (asset, source_code)
   } else {
     assert!(!v.file_name.starts_with("$assets$"), "you meant $asset$");
@@ -108,6 +108,21 @@ pub fn resolve_module_names(
     }
   }
   Ok(json!(resolved))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FetchAssetArgs {
+  name: String,
+}
+
+pub fn fetch_asset(_s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
+  let args: FetchAssetArgs = serde_json::from_value(v)?;
+  if let Some(source_code) = crate::get_asset(&args.name) {
+    Ok(json!(source_code))
+  } else {
+    panic!("op_fetch_asset bad asset {}", args.name)
+  }
 }
 
 #[derive(Debug, Deserialize)]

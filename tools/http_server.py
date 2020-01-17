@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 # Many tests expect there to be an http server on port 4545 servering the deno
 # root directory.
 from collections import namedtuple
@@ -7,6 +7,7 @@ from contextlib import contextmanager
 import os
 import SimpleHTTPServer
 import SocketServer
+import socket
 import sys
 from time import sleep
 from threading import Thread
@@ -30,6 +31,42 @@ class QuietSimpleHTTPRequestHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
 
 class ContentTypeHandler(QuietSimpleHTTPRequestHandler):
     def do_GET(self):
+
+        # Check if there is a custom header configuration ending
+        # with ".header" before sending the file
+        maybe_header_file_path = "./" + self.path + ".header"
+        if os.path.exists(maybe_header_file_path):
+            self.protocol_version = 'HTTP/1.1'
+            self.send_response(200, 'OK')
+
+            f = open(maybe_header_file_path)
+            for line in f:
+                kv = line.split(": ")
+                self.send_header(kv[0].strip(), kv[1].strip())
+            f.close()
+            self.end_headers()
+
+            body = open("./" + self.path)
+            self.wfile.write(body.read())
+            body.close()
+            return
+
+        if "etag_script.ts" in self.path:
+            self.protocol_version = 'HTTP/1.1'
+            if_not_match = self.headers.getheader('if-none-match')
+            if if_not_match == "33a64df551425fcc55e":
+                self.send_response(304, 'Not Modified')
+                self.send_header('Content-type', 'application/javascript')
+                self.send_header('ETag', '33a64df551425fcc55e')
+                self.end_headers()
+            else:
+                self.send_response(200, 'OK')
+                self.send_header('Content-type', 'application/javascript')
+                self.send_header('ETag', '33a64df551425fcc55e')
+                self.end_headers()
+                self.wfile.write(bytes("console.log('etag')"))
+            return
+
         if "multipart_form_data.txt" in self.path:
             self.protocol_version = 'HTTP/1.1'
             self.send_response(200, 'OK')
@@ -105,6 +142,17 @@ class ContentTypeHandler(QuietSimpleHTTPRequestHandler):
 RunningServer = namedtuple("RunningServer", ["server", "thread"])
 
 
+def get_socket(port, handler):
+    SocketServer.TCPServer.allow_reuse_address = True
+    if os.name != "nt":
+        # We use AF_INET6 to avoid flaky test issue, particularly with
+        # the test 019_media_types. It's not well understood why this fixes the
+        # flaky tests, but it does appear to...
+        # See https://github.com/denoland/deno/issues/3332
+        SocketServer.TCPServer.address_family = socket.AF_INET6
+    return SocketServer.TCPServer(("", port), handler)
+
+
 def server():
     os.chdir(root_path)  # Hopefully the main thread doesn't also chdir.
     Handler = ContentTypeHandler
@@ -115,8 +163,7 @@ def server():
         ".jsx": "application/javascript",
         ".json": "application/json",
     })
-    SocketServer.TCPServer.allow_reuse_address = True
-    s = SocketServer.TCPServer(("", PORT), Handler)
+    s = get_socket(PORT, Handler)
     if not QUIET:
         print "Deno test server http://localhost:%d/" % PORT
     return RunningServer(s, start(s))
@@ -133,9 +180,7 @@ def base_redirect_server(host_port, target_port, extra_path_segment=""):
                              target_host + extra_path_segment + self.path)
             self.end_headers()
 
-    Handler = RedirectHandler
-    SocketServer.TCPServer.allow_reuse_address = True
-    s = SocketServer.TCPServer(("", host_port), Handler)
+    s = get_socket(host_port, RedirectHandler)
     if not QUIET:
         print "redirect server http://localhost:%d/ -> http://localhost:%d/" % (
             host_port, target_port)
@@ -178,20 +223,20 @@ def spawn():
     while any(not s.thread.is_alive() for s in servers):
         sleep(0.01)
     try:
-        yield
+        print "ready"
+        yield servers
     finally:
         for s in servers:
             s.server.shutdown()
 
 
 def main():
-    servers = (server(), redirect_server(), another_redirect_server(),
-               double_redirects_server(), inf_redirects_server())
-    try:
-        while all(s.thread.is_alive() for s in servers):
-            sleep(10)
-    except KeyboardInterrupt:
-        pass
+    with spawn() as servers:
+        try:
+            while all(s.thread.is_alive() for s in servers):
+                sleep(1)
+        except KeyboardInterrupt:
+            pass
     sys.exit(1)
 
 

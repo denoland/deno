@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 //! This module helps deno implement timers.
 //!
@@ -8,11 +8,12 @@
 //! only need to be able to start and cancel a single timer (or Delay, as Tokio
 //! calls it) for an entire Isolate. This is what is implemented here.
 
-use crate::tokio_util::panic_on_error;
-use futures::Future;
+use crate::futures::TryFutureExt;
+use futures::channel::oneshot;
+use futures::future::FutureExt;
+use std::future::Future;
 use std::time::Instant;
-use tokio::sync::oneshot;
-use tokio::timer::Delay;
+use tokio;
 
 #[derive(Default)]
 pub struct GlobalTimer {
@@ -33,7 +34,7 @@ impl GlobalTimer {
   pub fn new_timeout(
     &mut self,
     deadline: Instant,
-  ) -> impl Future<Item = (), Error = ()> {
+  ) -> impl Future<Output = Result<(), ()>> {
     if self.tx.is_some() {
       self.cancel();
     }
@@ -42,9 +43,10 @@ impl GlobalTimer {
     let (tx, rx) = oneshot::channel();
     self.tx = Some(tx);
 
-    let delay = panic_on_error(Delay::new(deadline));
-    let rx = panic_on_error(rx);
+    let delay = tokio::time::delay_until(deadline.into());
+    let rx = rx
+      .map_err(|err| panic!("Unexpected error in receiving channel {:?}", err));
 
-    delay.select(rx).then(|_| Ok(()))
+    futures::future::select(delay, rx).then(|_| futures::future::ok(()))
   }
 }

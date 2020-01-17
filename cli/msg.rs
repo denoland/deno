@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 // Warning! The values in this enum are duplicated in js/errors.ts
 // Update carefully!
@@ -57,6 +57,10 @@ pub enum ErrorKind {
   TooManyRedirects = 48,
   Diagnostic = 49,
   JSError = 50,
+  TypeError = 51,
+
+  /** TODO this is a DomException type, and should be moved out of here when possible */
+  DataCloneError = 52,
 }
 
 // Warning! The values in this enum are duplicated in js/compiler.ts
@@ -70,7 +74,8 @@ pub enum MediaType {
   TypeScript = 2,
   TSX = 3,
   Json = 4,
-  Unknown = 5,
+  Wasm = 5,
+  Unknown = 6,
 }
 
 pub fn enum_name_media_type(mt: MediaType) -> &'static str {
@@ -80,6 +85,18 @@ pub fn enum_name_media_type(mt: MediaType) -> &'static str {
     MediaType::TypeScript => "TypeScript",
     MediaType::TSX => "TSX",
     MediaType::Json => "Json",
+    MediaType::Wasm => "Wasm",
     MediaType::Unknown => "Unknown",
   }
+}
+
+// Warning! The values in this enum are duplicated in js/compiler.ts
+// Update carefully!
+#[allow(non_camel_case_types)]
+#[repr(i8)]
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum CompilerRequestType {
+  Compile = 0,
+  RuntimeCompile = 1,
+  RuntimeTranspile = 2,
 }

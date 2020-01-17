@@ -1,18 +1,18 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::compilers::CompiledModule;
 use crate::compilers::CompiledModuleFuture;
 use crate::file_fetcher::SourceFile;
-use crate::state::ThreadSafeState;
+use futures::future::FutureExt;
+use std::pin::Pin;
 use std::str;
 
 pub struct JsCompiler {}
 
 impl JsCompiler {
   pub fn compile_async(
-    self: &Self,
-    _state: ThreadSafeState,
+    &self,
     source_file: &SourceFile,
-  ) -> Box<CompiledModuleFuture> {
+  ) -> Pin<Box<CompiledModuleFuture>> {
     let module = CompiledModule {
       code: str::from_utf8(&source_file.source_code)
         .unwrap()
@@ -20,6 +20,6 @@ impl JsCompiler {
       name: source_file.url.to_string(),
     };
 
-    Box::new(futures::future::ok(module))
+    futures::future::ok(module).boxed()
   }
 }

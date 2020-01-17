@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { testPerm, assert, assertEquals } from "./test_util.ts";
 
 testPerm({ net: true }, function netListenClose(): void {
@@ -75,6 +75,18 @@ testPerm({ net: true }, async function netDialListen(): Promise<void> {
 
   listener.close();
   conn.close();
+});
+
+testPerm({ net: true }, async function netListenCloseWhileIterating(): Promise<
+  void
+> {
+  const listener = Deno.listen({ port: 8000 });
+  const nextWhileClosing = listener[Symbol.asyncIterator]().next();
+  listener.close();
+  assertEquals(await nextWhileClosing, { value: undefined, done: true });
+
+  const nextAfterClosing = listener[Symbol.asyncIterator]().next();
+  assertEquals(await nextAfterClosing, { value: undefined, done: true });
 });
 
 /* TODO(ry) Re-enable this test.

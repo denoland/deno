@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { LogLevel, getLevelByName, getLevelName } from "./levels.ts";
 import { BaseHandler } from "./handlers.ts";
 
@@ -36,11 +36,9 @@ export class Logger {
       level: level,
       levelName: getLevelName(level)
     };
-    this.handlers.forEach(
-      (handler): void => {
-        handler.handle(record);
-      }
-    );
+    this.handlers.forEach((handler): void => {
+      handler.handle(record);
+    });
   }
 
   debug(msg: string, ...args: unknown[]): void {

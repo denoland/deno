@@ -1,5 +1,5 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-const { listen, copy, toAsyncIterator } = Deno;
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+const { listen, listenTLS, copy, toAsyncIterator } = Deno;
 type Listener = Deno.Listener;
 type Conn = Deno.Conn;
 type Reader = Deno.Reader;
@@ -8,12 +8,7 @@ import { BufReader, BufWriter, UnexpectedEOFError } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { STATUS_TEXT } from "./http_status.ts";
 import { assert } from "../testing/asserts.ts";
-import {
-  collectUint8Arrays,
-  deferred,
-  Deferred,
-  MuxAsyncIterator
-} from "../util/async.ts";
+import { deferred, Deferred, MuxAsyncIterator } from "../util/async.ts";
 
 function bufWriter(w: Writer): BufWriter {
   if (w instanceof BufWriter) {
@@ -97,6 +92,17 @@ export async function writeResponse(w: Writer, r: Response): Promise<void> {
   await writer.flush();
 }
 
+export class ServerRequestBody implements Reader {
+  constructor(private it: AsyncIterator<number, undefined, Uint8Array>) {}
+  async read(p: Uint8Array): Promise<number | Deno.EOF> {
+    const res = await this.it.next(p);
+    if (res.done) {
+      return Deno.EOF;
+    }
+    return res.value;
+  }
+}
+
 export class ServerRequest {
   url!: string;
   method!: string;
@@ -107,26 +113,77 @@ export class ServerRequest {
   conn!: Conn;
   r!: BufReader;
   w!: BufWriter;
-  done: Deferred<void> = deferred();
+  done: Deferred<Error | undefined> = deferred();
 
-  public async *bodyStream(): AsyncIterableIterator<Uint8Array> {
-    if (this.headers.has("content-length")) {
-      const len = +this.headers.get("content-length")!;
-      if (Number.isNaN(len)) {
-        return new Uint8Array(0);
+  private _contentLength: number | undefined | null = undefined;
+  /**
+   * Value of Content-Length header.
+   * If null, then content length is invalid or not given (e.g. chunked encoding).
+   */
+  get contentLength(): number | null {
+    // undefined means not cached.
+    // null means invalid or not provided.
+    if (this._contentLength === undefined) {
+      if (this.headers.has("content-length")) {
+        this._contentLength = +this.headers.get("content-length")!;
+        // Convert NaN to null (as NaN harder to test)
+        if (Number.isNaN(this._contentLength)) {
+          this._contentLength = null;
+        }
+      } else {
+        this._contentLength = null;
       }
-      let buf = new Uint8Array(1024);
+    }
+    return this._contentLength;
+  }
+
+  private _body: ServerRequestBody | null = null;
+
+  /**
+   * Body of the request.
+   *
+   *     const buf = new Uint8Array(req.contentLength);
+   *     let bufSlice = buf;
+   *     let totRead = 0;
+   *     while (true) {
+   *       const nread = await req.body.read(bufSlice);
+   *       if (nread === Deno.EOF) break;
+   *       totRead += nread;
+   *       if (totRead >= req.contentLength) break;
+   *       bufSlice = bufSlice.subarray(nread);
+   *     }
+   */
+  get body(): ServerRequestBody {
+    if (!this._body) {
+      const stream = this._bodyStream();
+      stream.next(); // drop dummy such that first read is not empty.
+      this._body = new ServerRequestBody(stream);
+    }
+    return this._body;
+  }
+
+  /**
+   * Internal: actually reading body. Each step, buf to use is passed
+   * in through yield result.
+   * Returns on no more data to read or error.
+   */
+  private async *_bodyStream(): AsyncIterator<number, undefined, Uint8Array> {
+    let buf = yield 0; // dummy yield to retrieve user provided buf.
+    if (this.headers.has("content-length")) {
+      const len = this.contentLength;
+      if (len === null) {
+        return;
+      }
       let rr = await this.r.read(buf);
       let nread = rr === Deno.EOF ? 0 : rr;
       let nreadTotal = nread;
       while (rr !== Deno.EOF && nreadTotal < len) {
-        yield buf.subarray(0, nread);
-        buf = new Uint8Array(1024);
+        buf = yield nread;
         rr = await this.r.read(buf);
         nread = rr === Deno.EOF ? 0 : rr;
         nreadTotal += nread;
       }
-      yield buf.subarray(0, nread);
+      yield nread;
     } else {
       if (this.headers.has("transfer-encoding")) {
         const transferEncodings = this.headers
@@ -145,11 +202,17 @@ export class ServerRequest {
             throw new Error("Invalid chunk size");
           }
           while (chunkSize > 0) {
-            const data = new Uint8Array(chunkSize);
-            if ((await this.r.readFull(data)) === Deno.EOF) {
-              throw new UnexpectedEOFError();
+            let currChunkOffset = 0;
+            // Since given readBuffer might be smaller, loop.
+            while (currChunkOffset < chunkSize) {
+              // Try to be as large as chunkSize. Might be smaller though.
+              const bufferToFill = buf.subarray(0, chunkSize);
+              if ((await this.r.readFull(bufferToFill)) === Deno.EOF) {
+                throw new UnexpectedEOFError();
+              }
+              currChunkOffset += bufferToFill.length;
+              buf = yield bufferToFill.length;
             }
-            yield data;
             await this.r.readLine(); // Consume \r\n
             line = await tp.readLine();
             if (line === Deno.EOF) throw new UnexpectedEOFError();
@@ -182,22 +245,29 @@ export class ServerRequest {
         }
         // TODO: handle other transfer-encoding types
       }
-      // Otherwise...
-      yield new Uint8Array(0);
+      // Otherwise... Do nothing
     }
   }
 
-  // Read the body of the request into a single Uint8Array
-  public async body(): Promise<Uint8Array> {
-    return collectUint8Arrays(this.bodyStream());
-  }
-
   async respond(r: Response): Promise<void> {
-    // Write our response!
-    await writeResponse(this.w, r);
+    let err: Error | undefined;
+    try {
+      // Write our response!
+      await writeResponse(this.w, r);
+    } catch (e) {
+      try {
+        // Eagerly close on error.
+        this.conn.close();
+      } catch {}
+      err = e;
+    }
     // Signal that this request has been processed and the next pipelined
     // request on the same connection can be accepted.
-    this.done.resolve();
+    this.done.resolve(err);
+    if (err) {
+      // Error during responding, rethrow.
+      throw err;
+    }
   }
 }
 
@@ -228,9 +298,11 @@ function fixLength(req: ServerRequest): void {
   }
 }
 
-// ParseHTTPVersion parses a HTTP version string.
-// "HTTP/1.0" returns (1, 0, true).
-// Ported from https://github.com/golang/go/blob/f5c43b9/src/net/http/request.go#L766-L792
+/**
+ * ParseHTTPVersion parses a HTTP version string.
+ * "HTTP/1.0" returns (1, 0, true).
+ * Ported from https://github.com/golang/go/blob/f5c43b9/src/net/http/request.go#L766-L792
+ */
 export function parseHTTPVersion(vers: string): [number, number] {
   switch (vers) {
     case "HTTP/1.1":
@@ -336,7 +408,13 @@ export class Server implements AsyncIterable<ServerRequest> {
 
       // Wait for the request to be processed before we accept a new request on
       // this connection.
-      await req!.done;
+      const procError = await req!.done;
+      if (procError) {
+        // Something bad happened during response.
+        // (likely other side closed during pipelined req)
+        // req.done implies this connection already closed, so we can just return.
+        return;
+      }
     }
 
     if (req! === Deno.EOF) {
@@ -369,7 +447,9 @@ export class Server implements AsyncIterable<ServerRequest> {
   ): AsyncIterableIterator<ServerRequest> {
     if (this.closing) return;
     // Wait for a new connection.
-    const conn = await this.listener.accept();
+    const { value, done } = await this.listener.next();
+    if (done) return;
+    const conn = value as Conn;
     // Try to accept another connection and add it to the multiplexer.
     mux.add(this.acceptConnAndIterateHttpRequests(mux));
     // Yield the requests that arrive on the just-accepted connection.
@@ -383,10 +463,28 @@ export class Server implements AsyncIterable<ServerRequest> {
   }
 }
 
-export function serve(addr: string): Server {
-  // TODO(ry) Update serve to also take { hostname, port }.
-  const [hostname, port] = addr.split(":");
-  const listener = listen({ hostname, port: Number(port) });
+interface ServerConfig {
+  port: number;
+  hostname?: string;
+}
+
+/**
+ * Start a HTTP server
+ *
+ *     import { serve } from "https://deno.land/std/http/server.ts";
+ *     const body = new TextEncoder().encode("Hello World\n");
+ *     const s = serve({ port: 8000 });
+ *     for await (const req of s) {
+ *       req.respond({ body });
+ *     }
+ */
+export function serve(addr: string | ServerConfig): Server {
+  if (typeof addr === "string") {
+    const [hostname, port] = addr.split(":");
+    addr = { hostname, port: Number(port) };
+  }
+
+  const listener = listen(addr);
   return new Server(listener);
 }
 
@@ -395,6 +493,63 @@ export async function listenAndServe(
   handler: (req: ServerRequest) => void
 ): Promise<void> {
   const server = serve(addr);
+
+  for await (const request of server) {
+    handler(request);
+  }
+}
+
+/** Options for creating an HTTPS server. */
+export type HTTPSOptions = Omit<Deno.ListenTLSOptions, "transport">;
+
+/**
+ * Create an HTTPS server with given options
+ *
+ *     const body = new TextEncoder().encode("Hello HTTPS");
+ *     const options = {
+ *       hostname: "localhost",
+ *       port: 443,
+ *       certFile: "./path/to/localhost.crt",
+ *       keyFile: "./path/to/localhost.key",
+ *     };
+ *     for await (const req of serveTLS(options)) {
+ *       req.respond({ body });
+ *     }
+ *
+ * @param options Server configuration
+ * @return Async iterable server instance for incoming requests
+ */
+export function serveTLS(options: HTTPSOptions): Server {
+  const tlsOptions: Deno.ListenTLSOptions = {
+    ...options,
+    transport: "tcp"
+  };
+  const listener = listenTLS(tlsOptions);
+  return new Server(listener);
+}
+
+/**
+ * Create an HTTPS server with given options and request handler
+ *
+ *     const body = new TextEncoder().encode("Hello HTTPS");
+ *     const options = {
+ *       hostname: "localhost",
+ *       port: 443,
+ *       certFile: "./path/to/localhost.crt",
+ *       keyFile: "./path/to/localhost.key",
+ *     };
+ *     listenAndServeTLS(options, (req) => {
+ *       req.respond({ body });
+ *     });
+ *
+ * @param options Server configuration
+ * @param handler Request handler
+ */
+export async function listenAndServeTLS(
+  options: HTTPSOptions,
+  handler: (req: ServerRequest) => void
+): Promise<void> {
+  const server = serveTLS(options);
 
   for await (const request of server) {
     handler(request);

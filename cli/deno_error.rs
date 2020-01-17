@@ -1,11 +1,12 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::diagnostics::Diagnostic;
 use crate::fmt_errors::JSError;
 use crate::import_map::ImportMapError;
 pub use crate::msg::ErrorKind;
-use deno::AnyError;
-use deno::ErrBox;
-use deno::ModuleResolutionError;
+use deno_core::AnyError;
+use deno_core::ErrBox;
+use deno_core::ModuleResolutionError;
+use dlopen::Error as DlopenError;
 use http::uri;
 use hyper;
 use reqwest;
@@ -21,6 +22,11 @@ use url;
 pub struct DenoError {
   kind: ErrorKind,
   msg: String,
+}
+
+pub fn print_msg_and_exit(msg: &str) {
+  eprintln!("{}", msg);
+  std::process::exit(1);
 }
 
 pub fn print_err_and_exit(err: ErrBox) {
@@ -67,6 +73,10 @@ pub fn permission_denied() -> ErrBox {
   StaticError(ErrorKind::PermissionDenied, "permission denied").into()
 }
 
+pub fn permission_denied_msg(msg: String) -> ErrBox {
+  DenoError::new(ErrorKind::PermissionDenied, msg).into()
+}
+
 pub fn op_not_implemented() -> ErrBox {
   StaticError(ErrorKind::OpNotAvailable, "op not implemented").into()
 }
@@ -90,6 +100,10 @@ pub fn invalid_address_syntax() -> ErrBox {
 
 pub fn too_many_redirects() -> ErrBox {
   StaticError(ErrorKind::TooManyRedirects, "too many redirects").into()
+}
+
+pub fn type_error(msg: String) -> ErrBox {
+  DenoError::new(ErrorKind::TypeError, msg).into()
 }
 
 pub trait GetErrorKind {
@@ -132,7 +146,7 @@ impl GetErrorKind for ModuleResolutionError {
     match self {
       InvalidUrl(ref err) | InvalidBaseUrl(ref err) => err.kind(),
       InvalidPath(_) => ErrorKind::InvalidPath,
-      ImportPrefixMissing(_) => ErrorKind::ImportPrefixMissing,
+      ImportPrefixMissing(_, _) => ErrorKind::ImportPrefixMissing,
     }
   }
 }
@@ -197,6 +211,7 @@ impl GetErrorKind for url::ParseError {
       }
       RelativeUrlWithoutBase => ErrorKind::RelativeUrlWithoutBase,
       SetHostOnCannotBeABaseUrl => ErrorKind::SetHostOnCannotBeABaseUrl,
+      _ => ErrorKind::Other,
     }
   }
 }
@@ -217,7 +232,7 @@ impl GetErrorKind for reqwest::Error {
   fn kind(&self) -> ErrorKind {
     use self::GetErrorKind as Get;
 
-    match self.get_ref() {
+    match self.source() {
       Some(err_ref) => None
         .or_else(|| err_ref.downcast_ref::<hyper::Error>().map(Get::kind))
         .or_else(|| err_ref.downcast_ref::<url::ParseError>().map(Get::kind))
@@ -228,7 +243,7 @@ impl GetErrorKind for reqwest::Error {
             .map(Get::kind)
         })
         .unwrap_or_else(|| ErrorKind::HttpOther),
-      _ => ErrorKind::HttpOther,
+      None => ErrorKind::HttpOther,
     }
   }
 }
@@ -279,6 +294,19 @@ mod unix {
   }
 }
 
+impl GetErrorKind for DlopenError {
+  fn kind(&self) -> ErrorKind {
+    use dlopen::Error::*;
+    match self {
+      NullCharacter(_) => ErrorKind::Other,
+      OpeningLibraryError(e) => GetErrorKind::kind(e),
+      SymbolGettingError(e) => GetErrorKind::kind(e),
+      NullSymbol => ErrorKind::Other,
+      AddrNotMatchingDll(e) => GetErrorKind::kind(e),
+    }
+  }
+}
+
 impl GetErrorKind for dyn AnyError {
   fn kind(&self) -> ErrorKind {
     use self::GetErrorKind as Get;
@@ -312,6 +340,7 @@ impl GetErrorKind for dyn AnyError {
           .downcast_ref::<serde_json::error::Error>()
           .map(Get::kind)
       })
+      .or_else(|| self.downcast_ref::<DlopenError>().map(Get::kind))
       .or_else(|| unix_error_kind(self))
       .unwrap_or_else(|| {
         panic!("Can't get ErrorKind for {:?}", self);
@@ -326,9 +355,9 @@ mod tests {
   use crate::diagnostics::Diagnostic;
   use crate::diagnostics::DiagnosticCategory;
   use crate::diagnostics::DiagnosticItem;
-  use deno::ErrBox;
-  use deno::StackFrame;
-  use deno::V8Exception;
+  use deno_core::ErrBox;
+  use deno_core::StackFrame;
+  use deno_core::V8Exception;
 
   fn js_error() -> JSError {
     JSError::new(V8Exception {
@@ -481,6 +510,14 @@ mod tests {
     let err = permission_denied();
     assert_eq!(err.kind(), ErrorKind::PermissionDenied);
     assert_eq!(err.to_string(), "permission denied");
+  }
+
+  #[test]
+  fn test_permission_denied_msg() {
+    let err =
+      permission_denied_msg("run again with the --allow-net flag".to_string());
+    assert_eq!(err.kind(), ErrorKind::PermissionDenied);
+    assert_eq!(err.to_string(), "run again with the --allow-net flag");
   }
 
   #[test]

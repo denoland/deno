@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 /** A Deno specific error.  The `kind` property is set to a specific error code
  * which can be used to in application logic.
@@ -75,5 +75,9 @@ export enum ErrorKind {
   UnsupportedFetchScheme = 47,
   TooManyRedirects = 48,
   Diagnostic = 49,
-  JSError = 50
+  JSError = 50,
+  TypeError = 51,
+
+  /** TODO this is a DomException type, and should be moved out of here when possible */
+  DataCloneError = 52
 }

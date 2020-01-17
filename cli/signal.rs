@@ -1,4 +1,4 @@
-use deno::ErrBox;
+use deno_core::ErrBox;
 
 #[cfg(unix)]
 pub fn kill(pid: i32, signo: i32) -> Result<(), ErrBox> {

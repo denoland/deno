@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { sendSync, sendAsync } from "./dispatch_json.ts";
 import * as dispatch from "./dispatch.ts";
 import { FileInfo, FileInfoImpl } from "./file_info.ts";
@@ -10,9 +10,17 @@ export interface StatResponse {
   modified: number;
   accessed: number;
   created: number;
-  mode: number;
-  hasMode: boolean; // false on windows
   name: string | null;
+  // Unix only members
+  dev: number;
+  ino: number;
+  mode: number;
+  nlink: number;
+  uid: number;
+  gid: number;
+  rdev: number;
+  blksize: number;
+  blocks: number;
 }
 
 /** Queries the file system for information on the path provided. If the given

@@ -1,9 +1,10 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { isTypedArray } from "./util.ts";
 import { TypedArray } from "./types.ts";
 import { TextEncoder } from "./text_encoding.ts";
 import { File, stdout } from "./files.ts";
 import { cliTable } from "./console_table.ts";
+import { exposeForTest } from "./internals.ts";
 
 type ConsoleContext = Set<unknown>;
 type ConsoleOptions = Partial<{
@@ -40,12 +41,12 @@ export class CSI {
 
 function cursorTo(stream: File, _x: number, _y?: number): void {
   const uint8 = new TextEncoder().encode(CSI.kClear);
-  stream.write(uint8);
+  stream.writeSync(uint8);
 }
 
 function clearScreenDown(stream: File): void {
   const uint8 = new TextEncoder().encode(CSI.kClearScreenDown);
-  stream.write(uint8);
+  stream.writeSync(uint8);
 }
 
 function getClassInstanceName(instance: unknown): string {
@@ -292,20 +293,18 @@ function createRawObjectString(
     shouldShowClassName = true;
   }
   const keys = Object.keys(value);
-  const entries: string[] = keys.map(
-    (key): string => {
-      if (keys.length > OBJ_ABBREVIATE_SIZE) {
-        return key;
-      } else {
-        return `${key}: ${stringifyWithQuotes(
-          value[key],
-          ctx,
-          level + 1,
-          maxLevel
-        )}`;
-      }
+  const entries: string[] = keys.map((key): string => {
+    if (keys.length > OBJ_ABBREVIATE_SIZE) {
+      return key;
+    } else {
+      return `${key}: ${stringifyWithQuotes(
+        value[key],
+        ctx,
+        level + 1,
+        maxLevel
+      )}`;
     }
-  );
+  });
 
   ctx.delete(value);
 
@@ -327,8 +326,11 @@ function createObjectString(
   ...args: [ConsoleContext, number, number]
 ): string {
   if (customInspect in value && typeof value[customInspect] === "function") {
-    return String(value[customInspect]!());
-  } else if (value instanceof Error) {
+    try {
+      return String(value[customInspect]!());
+    } catch {}
+  }
+  if (value instanceof Error) {
     return String(value.stack);
   } else if (Array.isArray(value)) {
     return createArrayString(value, ...args);
@@ -362,9 +364,7 @@ function createObjectString(
   }
 }
 
-/** TODO Do not expose this from "deno" namespace.
- * @internal
- */
+/** @internal */
 export function stringifyArgs(
   args: unknown[],
   options: ConsoleOptions = {}
@@ -637,43 +637,39 @@ export class Console {
       let idx = 0;
       resultData = {};
 
-      data.forEach(
-        (v: unknown, k: unknown): void => {
-          resultData[idx] = { Key: k, Values: v };
-          idx++;
-        }
-      );
+      data.forEach((v: unknown, k: unknown): void => {
+        resultData[idx] = { Key: k, Values: v };
+        idx++;
+      });
     } else {
       resultData = data!;
     }
 
-    Object.keys(resultData).forEach(
-      (k, idx): void => {
-        const value: unknown = resultData[k]!;
+    Object.keys(resultData).forEach((k, idx): void => {
+      const value: unknown = resultData[k]!;
 
-        if (value !== null && typeof value === "object") {
-          Object.entries(value as { [key: string]: unknown }).forEach(
-            ([k, v]): void => {
-              if (properties && !properties.includes(k)) {
-                return;
-              }
-
-              if (objectValues[k]) {
-                objectValues[k].push(stringifyValue(v));
-              } else {
-                objectValues[k] = createColumn(v, idx);
-              }
+      if (value !== null && typeof value === "object") {
+        Object.entries(value as { [key: string]: unknown }).forEach(
+          ([k, v]): void => {
+            if (properties && !properties.includes(k)) {
+              return;
             }
-          );
 
-          values.push("");
-        } else {
-          values.push(stringifyValue(value));
-        }
+            if (objectValues[k]) {
+              objectValues[k].push(stringifyValue(v));
+            } else {
+              objectValues[k] = createColumn(v, idx);
+            }
+          }
+        );
 
-        indexKeys.push(k);
+        values.push("");
+      } else {
+        values.push(stringifyValue(value));
       }
-    );
+
+      indexKeys.push(k);
+    });
 
     const headerKeys = Object.keys(objectValues);
     const bodyValues = Object.values(objectValues);
@@ -788,3 +784,7 @@ export function inspect(value: unknown, options?: ConsoleOptions): string {
     );
   }
 }
+
+// Expose these fields to internalObject for tests.
+exposeForTest("Console", Console);
+exposeForTest("stringifyArgs", stringifyArgs);

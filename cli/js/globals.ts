@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // This is a "special" module, in that it define the global runtime scope of
 // Deno, and therefore it defines a lot of the runtime environment that code
 // is evaluated in.  We use this file to automatically build the runtime type
@@ -26,12 +26,13 @@ import * as url from "./url.ts";
 import * as urlSearchParams from "./url_search_params.ts";
 import * as workers from "./workers.ts";
 import * as performanceUtil from "./performance.ts";
-
 import * as request from "./request.ts";
 
 // These imports are not exposed and therefore are fine to just import the
 // symbols required.
 import { core } from "./core.ts";
+
+import { internalObject } from "./internals.ts";
 
 // During the build process, augmentations to the variable `window` in this
 // file are tracked and created as part of default library that is built into
@@ -63,11 +64,17 @@ declare global {
   interface Object {
     [consoleTypes.customInspect]?(): string;
   }
+
+  const console: consoleTypes.Console;
 }
 
 // A self reference to the global object.
 window.window = window;
 
+// Add internal object to Deno object.
+// This is not exposed as part of the Deno types.
+// @ts-ignore
+Deno[Deno.symbols.internal] = internalObject;
 // This is the Deno namespace, it is handled differently from other window
 // properties when building the runtime type library, as the whole module
 // is flattened into a single namespace.
@@ -163,25 +170,19 @@ window.removeEventListener =
   eventTarget.EventTarget.prototype.removeEventListener;
 
 // Registers the handler for window.onload function.
-window.addEventListener(
-  "load",
-  (e: domTypes.Event): void => {
-    const onload = window.onload;
-    if (typeof onload === "function") {
-      onload(e);
-    }
+window.addEventListener("load", (e: domTypes.Event): void => {
+  const onload = window.onload;
+  if (typeof onload === "function") {
+    onload(e);
   }
-);
+});
 // Registers the handler for window.onunload function.
-window.addEventListener(
-  "unload",
-  (e: domTypes.Event): void => {
-    const onunload = window.onunload;
-    if (typeof onunload === "function") {
-      onunload(e);
-    }
+window.addEventListener("unload", (e: domTypes.Event): void => {
+  const onunload = window.onunload;
+  if (typeof onunload === "function") {
+    onunload(e);
   }
-);
+});
 
 // below are interfaces that are available in TypeScript but
 // have different signatures

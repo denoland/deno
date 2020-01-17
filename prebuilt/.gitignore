@@ -1,5 +1,0 @@
-*.a
-*.lib
-*.exe
-sccache
-hyperfine

@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 const { Buffer, mkdir, open } = Deno;
 type File = Deno.File;
 type Reader = Deno.Reader;
@@ -40,7 +40,7 @@ export async function tempFile(
   const filepath = path.resolve(
     `${dir}/${opts.prefix || ""}${r}${opts.postfix || ""}`
   );
-  await mkdir(path.dirname(filepath), true);
-  const file = await open(filepath, { append: true, create: true });
+  await mkdir(path.dirname(filepath), { recursive: true });
+  const file = await open(filepath, "a");
   return { file, filepath };
 }

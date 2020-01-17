@@ -1,8 +1,9 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import * as urlSearchParams from "./url_search_params.ts";
 import * as domTypes from "./dom_types.ts";
 import { getRandomValues } from "./get_random_values.ts";
 import { window } from "./window.ts";
+import { customInspect } from "./console.ts";
 
 interface URLParts {
   protocol: string;
@@ -16,7 +17,7 @@ interface URLParts {
 }
 
 const patterns = {
-  protocol: "(?:([^:/?#]+):)",
+  protocol: "(?:([a-z]+):)",
   authority: "(?://([^/?#]*))",
   path: "([^?#]*)",
   query: "(\\?[^#]*)",
@@ -28,9 +29,7 @@ const patterns = {
 };
 
 const urlRegExp = new RegExp(
-  `^${patterns.protocol}?${patterns.authority}?${patterns.path}${
-    patterns.query
-  }?${patterns.hash}?`
+  `^${patterns.protocol}?${patterns.authority}?${patterns.path}${patterns.query}?${patterns.hash}?`
 );
 
 const authorityRegExp = new RegExp(
@@ -69,11 +68,9 @@ function parse(url: string): URLParts | undefined {
 // Based on https://github.com/kelektiv/node-uuid
 // TODO(kevinkassimo): Use deno_std version once possible.
 function generateUUID(): string {
-  return "00000000-0000-4000-8000-000000000000".replace(
-    /[0]/g,
-    (): string =>
-      // random integer from 0 to 15 as a hex digit.
-      (getRandomValues(new Uint8Array(1))[0] % 16).toString(16)
+  return "00000000-0000-4000-8000-000000000000".replace(/[0]/g, (): string =>
+    // random integer from 0 to 15 as a hex digit.
+    (getRandomValues(new Uint8Array(1))[0] % 16).toString(16)
   );
 }
 
@@ -144,6 +141,26 @@ export class URL {
   private _parts: URLParts;
   private _searchParams!: urlSearchParams.URLSearchParams;
 
+  [customInspect](): string {
+    const keys = [
+      "href",
+      "origin",
+      "protocol",
+      "username",
+      "password",
+      "host",
+      "hostname",
+      "port",
+      "pathname",
+      "hash",
+      "search"
+    ];
+    const objectString = keys
+      .map((key: string) => `${key}: "${this[key as keyof this] || ""}"`)
+      .join(", ");
+    return `URL { ${objectString} }`;
+  }
+
   private _updateSearchParams(): void {
     const searchParams = new urlSearchParams.URLSearchParams(this.search);
 
@@ -207,10 +224,11 @@ export class URL {
       this.username || this.password
         ? `${this.username}${this.password ? ":" + this.password : ""}@`
         : "";
-
-    return `${this.protocol}//${authentication}${this.host}${this.pathname}${
-      this.search
-    }${this.hash}`;
+    let slash = "";
+    if (this.host || this.protocol === "file:") {
+      slash = "//";
+    }
+    return `${this.protocol}${slash}${authentication}${this.host}${this.pathname}${this.search}${this.hash}`;
   }
 
   set href(value: string) {
@@ -223,7 +241,10 @@ export class URL {
   }
 
   get origin(): string {
-    return `${this.protocol}//${this.host}`;
+    if (this.host) {
+      return `${this.protocol}//${this.host}`;
+    }
+    return "null";
   }
 
   get password(): string {

@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { test } from "../testing/mod.ts";
 import { assertThrows, assertThrowsAsync } from "../testing/asserts.ts";
 import * as path from "../path/mod.ts";
@@ -15,11 +15,9 @@ test(async function ensureDirIfItNotExist(): Promise<void> {
 
   await assertThrowsAsync(
     async (): Promise<void> => {
-      await Deno.stat(testDir).then(
-        (): void => {
-          throw new Error("test dir should exists.");
-        }
-      );
+      await Deno.stat(testDir).then((): void => {
+        throw new Error("test dir should exists.");
+      });
     }
   );
 
@@ -42,17 +40,15 @@ test(async function ensureDirIfItExist(): Promise<void> {
   const testDir = path.join(baseDir, "test");
 
   // create test directory
-  await Deno.mkdir(testDir, true);
+  await Deno.mkdir(testDir, { recursive: true });
 
   await ensureDir(testDir);
 
   await assertThrowsAsync(
     async (): Promise<void> => {
-      await Deno.stat(testDir).then(
-        (): void => {
-          throw new Error("test dir should still exists.");
-        }
-      );
+      await Deno.stat(testDir).then((): void => {
+        throw new Error("test dir should still exists.");
+      });
     }
   );
 
@@ -64,16 +60,14 @@ test(function ensureDirSyncIfItExist(): void {
   const testDir = path.join(baseDir, "test");
 
   // create test directory
-  Deno.mkdirSync(testDir, true);
+  Deno.mkdirSync(testDir, { recursive: true });
 
   ensureDirSync(testDir);
 
-  assertThrows(
-    (): void => {
-      Deno.statSync(testDir);
-      throw new Error("test dir should still exists.");
-    }
-  );
+  assertThrows((): void => {
+    Deno.statSync(testDir);
+    throw new Error("test dir should still exists.");
+  });
 
   Deno.removeSync(baseDir, { recursive: true });
 });

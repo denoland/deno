@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { close } from "./files.ts";
 import { exit } from "./os.ts";
 import { window } from "./window.ts";
@@ -7,8 +7,6 @@ import { formatError } from "./format_error.ts";
 import { stringifyArgs } from "./console.ts";
 import * as dispatch from "./dispatch.ts";
 import { sendSync, sendAsync } from "./dispatch_json.ts";
-
-const { console } = window;
 
 /**
  * REPL logging.
@@ -106,6 +104,7 @@ function evaluate(code: string): boolean {
 
 // @internal
 export async function replLoop(): Promise<void> {
+  const { console } = window;
   Object.defineProperties(window, replCommands);
 
   const historyFile = "deno_history.txt";

@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { URL } from "./url.ts";
 import { requiredArguments, isIterable } from "./util.ts";
 
@@ -168,8 +168,8 @@ export class URLSearchParams {
    *       searchParams.sort();
    */
   sort(): void {
-    this.params = this.params.sort(
-      (a, b): number => (a[0] === b[0] ? 0 : a[0] > b[0] ? 1 : -1)
+    this.params = this.params.sort((a, b): number =>
+      a[0] === b[0] ? 0 : a[0] > b[0] ? 1 : -1
     );
     this.updateSteps();
   }

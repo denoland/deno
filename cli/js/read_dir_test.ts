@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { testPerm, assert, assertEquals } from "./test_util.ts";
 
 type FileInfo = Deno.FileInfo;
@@ -43,7 +43,7 @@ testPerm({ read: true }, function readDirSyncNotDir(): void {
   let src;
 
   try {
-    src = Deno.readDirSync("package.json");
+    src = Deno.readDirSync("cli/tests/fixture.json");
   } catch (err) {
     caughtError = true;
     assertEquals(err.kind, Deno.ErrorKind.Other);

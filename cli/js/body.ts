@@ -3,6 +3,7 @@ import * as blob from "./blob.ts";
 import * as encoding from "./text_encoding.ts";
 import * as headers from "./headers.ts";
 import * as domTypes from "./dom_types.ts";
+import { ReadableStream } from "./streams/mod.ts";
 
 const { Headers } = headers;
 
@@ -11,6 +12,13 @@ const { FormData } = formData;
 const { TextEncoder, TextDecoder } = encoding;
 const Blob = blob.DenoBlob;
 const DenoBlob = blob.DenoBlob;
+
+type ReadableStreamReader = domTypes.ReadableStreamReader;
+
+interface ReadableStreamController {
+  enqueue(chunk: string | ArrayBuffer): void;
+  close(): void;
+}
 
 export type BodySource =
   | domTypes.Blob
@@ -37,6 +45,8 @@ function validateBodyType(owner: Body, bodySource: BodySource): boolean {
     return true;
   } else if (typeof bodySource === "string") {
     return true;
+  } else if (bodySource instanceof ReadableStream) {
+    return true;
   } else if (bodySource instanceof FormData) {
     return true;
   } else if (!bodySource) {
@@ -45,6 +55,52 @@ function validateBodyType(owner: Body, bodySource: BodySource): boolean {
   throw new Error(
     `Bad ${owner.constructor.name} body type: ${bodySource.constructor.name}`
   );
+}
+
+function concatenate(...arrays: Uint8Array[]): ArrayBuffer {
+  let totalLength = 0;
+  for (const arr of arrays) {
+    totalLength += arr.length;
+  }
+  const result = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const arr of arrays) {
+    result.set(arr, offset);
+    offset += arr.length;
+  }
+  return result.buffer as ArrayBuffer;
+}
+
+function bufferFromStream(stream: ReadableStreamReader): Promise<ArrayBuffer> {
+  return new Promise((resolve, reject): void => {
+    const parts: Uint8Array[] = [];
+    const encoder = new TextEncoder();
+    // recurse
+    (function pump(): void {
+      stream
+        .read()
+        .then(({ done, value }): void => {
+          if (done) {
+            return resolve(concatenate(...parts));
+          }
+
+          if (typeof value === "string") {
+            parts.push(encoder.encode(value));
+          } else if (value instanceof ArrayBuffer) {
+            parts.push(new Uint8Array(value));
+          } else if (!value) {
+            // noop for undefined
+          } else {
+            reject("unhandled type on stream read");
+          }
+
+          return pump();
+        })
+        .catch((err): void => {
+          reject(err);
+        });
+    })();
+  });
 }
 
 function getHeaderValueParams(value: string): Map<string, string> {
@@ -81,8 +137,19 @@ export class Body implements domTypes.Body {
     if (this._stream) {
       return this._stream;
     }
+
+    if (this._bodySource instanceof ReadableStream) {
+      // @ts-ignore
+      this._stream = this._bodySource;
+    }
     if (typeof this._bodySource === "string") {
-      throw Error("not implemented");
+      const bodySource = this._bodySource;
+      this._stream = new ReadableStream({
+        start(controller: ReadableStreamController): void {
+          controller.enqueue(bodySource);
+          controller.close();
+        }
+      });
     }
     return this._stream;
   }
@@ -203,19 +270,17 @@ export class Body implements domTypes.Body {
         body
           .trim()
           .split("&")
-          .forEach(
-            (bytes): void => {
-              if (bytes) {
-                const split = bytes.split("=");
-                const name = split.shift()!.replace(/\+/g, " ");
-                const value = split.join("=").replace(/\+/g, " ");
-                formData.append(
-                  decodeURIComponent(name),
-                  decodeURIComponent(value)
-                );
-              }
+          .forEach((bytes): void => {
+            if (bytes) {
+              const split = bytes.split("=");
+              const name = split.shift()!.replace(/\+/g, " ");
+              const value = split.join("=").replace(/\+/g, " ");
+              formData.append(
+                decodeURIComponent(name),
+                decodeURIComponent(value)
+              );
             }
-          );
+          });
       } catch (e) {
         throw new TypeError("Invalid form urlencoded format");
       }
@@ -259,6 +324,9 @@ export class Body implements domTypes.Body {
     } else if (typeof this._bodySource === "string") {
       const enc = new TextEncoder();
       return enc.encode(this._bodySource).buffer as ArrayBuffer;
+    } else if (this._bodySource instanceof ReadableStream) {
+      // @ts-ignore
+      return bufferFromStream(this._bodySource.getReader());
     } else if (this._bodySource instanceof FormData) {
       const enc = new TextEncoder();
       return enc.encode(this._bodySource.toString()).buffer as ArrayBuffer;

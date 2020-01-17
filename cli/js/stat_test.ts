@@ -1,14 +1,14 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { testPerm, assert, assertEquals } from "./test_util.ts";
 
 // TODO Add tests for modified, accessed, and created fields once there is a way
 // to create temp files.
 testPerm({ read: true }, async function statSyncSuccess(): Promise<void> {
-  const packageInfo = Deno.statSync("package.json");
+  const packageInfo = Deno.statSync("README.md");
   assert(packageInfo.isFile());
   assert(!packageInfo.isSymlink());
 
-  const modulesInfo = Deno.statSync("node_modules");
+  const modulesInfo = Deno.statSync("cli/tests/symlink_to_subdir");
   assert(modulesInfo.isDirectory());
   assert(!modulesInfo.isSymlink());
 
@@ -20,7 +20,7 @@ testPerm({ read: true }, async function statSyncSuccess(): Promise<void> {
 testPerm({ read: false }, async function statSyncPerm(): Promise<void> {
   let caughtError = false;
   try {
-    Deno.statSync("package.json");
+    Deno.statSync("README.md");
   } catch (e) {
     caughtError = true;
     assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
@@ -46,15 +46,15 @@ testPerm({ read: true }, async function statSyncNotFound(): Promise<void> {
 });
 
 testPerm({ read: true }, async function lstatSyncSuccess(): Promise<void> {
-  const packageInfo = Deno.lstatSync("package.json");
+  const packageInfo = Deno.lstatSync("README.md");
   assert(packageInfo.isFile());
   assert(!packageInfo.isSymlink());
 
-  const modulesInfo = Deno.lstatSync("node_modules");
+  const modulesInfo = Deno.lstatSync("cli/tests/symlink_to_subdir");
   assert(!modulesInfo.isDirectory());
   assert(modulesInfo.isSymlink());
 
-  const i = Deno.lstatSync("website");
+  const i = Deno.lstatSync("core");
   assert(i.isDirectory());
   assert(!i.isSymlink());
 });
@@ -62,7 +62,7 @@ testPerm({ read: true }, async function lstatSyncSuccess(): Promise<void> {
 testPerm({ read: false }, async function lstatSyncPerm(): Promise<void> {
   let caughtError = false;
   try {
-    Deno.lstatSync("package.json");
+    Deno.lstatSync("README.md");
   } catch (e) {
     caughtError = true;
     assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
@@ -88,11 +88,11 @@ testPerm({ read: true }, async function lstatSyncNotFound(): Promise<void> {
 });
 
 testPerm({ read: true }, async function statSuccess(): Promise<void> {
-  const packageInfo = await Deno.stat("package.json");
+  const packageInfo = await Deno.stat("README.md");
   assert(packageInfo.isFile());
   assert(!packageInfo.isSymlink());
 
-  const modulesInfo = await Deno.stat("node_modules");
+  const modulesInfo = await Deno.stat("cli/tests/symlink_to_subdir");
   assert(modulesInfo.isDirectory());
   assert(!modulesInfo.isSymlink());
 
@@ -104,7 +104,7 @@ testPerm({ read: true }, async function statSuccess(): Promise<void> {
 testPerm({ read: false }, async function statPerm(): Promise<void> {
   let caughtError = false;
   try {
-    await Deno.stat("package.json");
+    await Deno.stat("README.md");
   } catch (e) {
     caughtError = true;
     assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
@@ -130,15 +130,15 @@ testPerm({ read: true }, async function statNotFound(): Promise<void> {
 });
 
 testPerm({ read: true }, async function lstatSuccess(): Promise<void> {
-  const packageInfo = await Deno.lstat("package.json");
+  const packageInfo = await Deno.lstat("README.md");
   assert(packageInfo.isFile());
   assert(!packageInfo.isSymlink());
 
-  const modulesInfo = await Deno.lstat("node_modules");
+  const modulesInfo = await Deno.lstat("cli/tests/symlink_to_subdir");
   assert(!modulesInfo.isDirectory());
   assert(modulesInfo.isSymlink());
 
-  const i = await Deno.lstat("website");
+  const i = await Deno.lstat("core");
   assert(i.isDirectory());
   assert(!i.isSymlink());
 });
@@ -146,7 +146,7 @@ testPerm({ read: true }, async function lstatSuccess(): Promise<void> {
 testPerm({ read: false }, async function lstatPerm(): Promise<void> {
   let caughtError = false;
   try {
-    await Deno.lstat("package.json");
+    await Deno.lstat("README.md");
   } catch (e) {
     caughtError = true;
     assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
@@ -170,3 +170,53 @@ testPerm({ read: true }, async function lstatNotFound(): Promise<void> {
   assert(caughtError);
   assertEquals(badInfo, undefined);
 });
+
+const isWindows = Deno.build.os === "win";
+
+// OS dependent tests
+if (isWindows) {
+  testPerm(
+    { read: true, write: true },
+    async function statNoUnixFields(): Promise<void> {
+      const enc = new TextEncoder();
+      const data = enc.encode("Hello");
+      const tempDir = Deno.makeTempDirSync();
+      const filename = tempDir + "/test.txt";
+      Deno.writeFileSync(filename, data, { perm: 0o666 });
+      const s = Deno.statSync(filename);
+      assert(s.dev === null);
+      assert(s.ino === null);
+      assert(s.mode === null);
+      assert(s.nlink === null);
+      assert(s.uid === null);
+      assert(s.gid === null);
+      assert(s.rdev === null);
+      assert(s.blksize === null);
+      assert(s.blocks === null);
+    }
+  );
+} else {
+  testPerm(
+    { read: true, write: true },
+    async function statUnixFields(): Promise<void> {
+      const enc = new TextEncoder();
+      const data = enc.encode("Hello");
+      const tempDir = Deno.makeTempDirSync();
+      const filename = tempDir + "/test.txt";
+      const filename2 = tempDir + "/test2.txt";
+      Deno.writeFileSync(filename, data, { perm: 0o666 });
+      // Create a link
+      Deno.linkSync(filename, filename2);
+      const s = Deno.statSync(filename);
+      assert(s.dev !== null);
+      assert(s.ino !== null);
+      assertEquals(s.mode & 0o666, 0o666);
+      assertEquals(s.nlink, 2);
+      assert(s.uid !== null);
+      assert(s.gid !== null);
+      assert(s.rdev !== null);
+      assert(s.blksize !== null);
+      assert(s.blocks !== null);
+    }
+  );
+}

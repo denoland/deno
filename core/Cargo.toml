@@ -1,8 +1,8 @@
-# Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 [package]
-name = "deno"
-version = "0.20.0"
+name = "deno_core"
+version = "0.29.0"
 edition = "2018"
 description = "A secure JavaScript/TypeScript runtime built with V8, Rust, and Tokio"
 authors = ["the Deno authors"]
@@ -14,12 +14,14 @@ repository = "https://github.com/denoland/deno"
 path = "lib.rs"
 
 [dependencies]
-futures = "0.1.29"
+downcast-rs = "1.1.1"
+futures = { version = "0.3.1", features = [ "thread-pool", "compat" ] }
 lazy_static = "1.4.0"
-libc = "0.2.62"
+libc = "0.2.66"
 log = "0.4.8"
-serde_json = "1.0.40"
-url = "1.7.2"
+serde_json = "1.0.44"
+url = "2.1.0"
+rusty_v8 = "0.1.0"
 
 [[example]]
 name = "deno_core_http_bench"
@@ -27,4 +29,5 @@ path = "examples/http_bench.rs"
 
 # tokio is only used for deno_core_http_bench
 [dev_dependencies]
-tokio = "0.1.18"
+tokio = { version = "0.2", features = ["full"] }
+num_cpus = "1.11.1"

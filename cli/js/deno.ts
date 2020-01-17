@@ -1,12 +1,14 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 // Public deno module.
-export { env, exit, isTTY, execPath, homeDir, hostname } from "./os.ts";
+export { dir, env, exit, isTTY, execPath, hostname } from "./os.ts";
 export { chdir, cwd } from "./dir.ts";
 export {
   File,
   open,
   openSync,
+  create,
+  createSync,
   stdin,
   stdout,
   stderr,
@@ -57,6 +59,7 @@ export { chownSync, chown } from "./chown.ts";
 export { utimeSync, utime } from "./utime.ts";
 export { removeSync, remove, RemoveOption } from "./remove.ts";
 export { renameSync, rename } from "./rename.ts";
+export { realpathSync, realpath } from "./realpath.ts";
 export { readFileSync, readFile } from "./read_file.ts";
 export { readDirSync, readDir } from "./read_dir.ts";
 export { copyFileSync, copyFile } from "./copy_file.ts";
@@ -69,14 +72,24 @@ export { applySourceMap } from "./error_stack.ts";
 export { ErrorKind, DenoError } from "./errors.ts";
 export {
   permissions,
-  revokePermission,
-  Permission,
+  PermissionName,
+  PermissionState,
+  PermissionStatus,
   Permissions
 } from "./permissions.ts";
 export { truncateSync, truncate } from "./truncate.ts";
 export { FileInfo } from "./file_info.ts";
-export { connect, dial, listen, Listener, Conn } from "./net.ts";
-export { dialTLS } from "./tls.ts";
+export { openPlugin } from "./plugins.ts";
+export {
+  connect,
+  dial,
+  listen,
+  Listener,
+  Conn,
+  ShutdownMode,
+  shutdown
+} from "./net.ts";
+export { dialTLS, listenTLS } from "./tls.ts";
 export { metrics, Metrics } from "./metrics.ts";
 export { resources } from "./resources.ts";
 export {
@@ -87,7 +100,8 @@ export {
   ProcessStatus,
   Signal
 } from "./process.ts";
-export { inspect, customInspect } from "./console.ts";
+export { transpileOnly, compile, bundle } from "./compiler_api.ts";
+export { inspect } from "./console.ts";
 export { build, OperatingSystem, Arch } from "./build.ts";
 export { version } from "./version.ts";
 export const args: string[] = [];
@@ -97,24 +111,10 @@ export const args: string[] = [];
 /** @internal */
 export { core } from "./core.ts";
 
-/** @internal */
-export { setPrepareStackTrace } from "./error_stack.ts";
-
-// TODO Don't expose Console nor stringifyArgs.
-/** @internal */
-export { Console, stringifyArgs } from "./console.ts";
-// TODO Don't expose DomIterableMixin.
-/** @internal */
-export { DomIterableMixin } from "./mixins/dom_iterable.ts";
-
 /** The current process id of the runtime. */
 export let pid: number;
 
 /** Reflects the NO_COLOR environment variable: https://no-color.org/ */
 export let noColor: boolean;
 
-// TODO(ry) This should not be exposed to Deno.
-export function _setGlobals(pid_: number, noColor_: boolean): void {
-  pid = pid_;
-  noColor = noColor_;
-}
+export { symbols } from "./symbols.ts";

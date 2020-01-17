@@ -1,4 +1,11 @@
-import { testPerm, assertMatch, unreachable } from "./test_util.ts";
+import {
+  test,
+  testPerm,
+  assert,
+  assertEquals,
+  assertMatch,
+  unreachable
+} from "./test_util.ts";
 
 const openErrorStackPattern = new RegExp(
   `^.*
@@ -11,9 +18,18 @@ const openErrorStackPattern = new RegExp(
 testPerm({ read: true }, async function sendAsyncStackTrace(): Promise<void> {
   await Deno.open("nonexistent.txt")
     .then(unreachable)
-    .catch(
-      (error): void => {
-        assertMatch(error.stack, openErrorStackPattern);
-      }
-    );
+    .catch((error): void => {
+      assertMatch(error.stack, openErrorStackPattern);
+    });
+});
+
+test(async function malformedJsonControlBuffer(): Promise<void> {
+  // @ts-ignore
+  const res = Deno.core.send(10, new Uint8Array([1, 2, 3, 4, 5]));
+  const resText = new TextDecoder().decode(res);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const resJson = JSON.parse(resText) as any;
+  assert(!resJson.ok);
+  assert(resJson.err);
+  assertEquals(resJson.err!.kind, Deno.ErrorKind.InvalidInput);
 });

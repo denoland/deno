@@ -1,11 +1,11 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 // This file contains APIs that are introduced into the global namespace by
 // Deno core.  These are not intended to be used directly by runtime users of
 // Deno and therefore do not flow through to the runtime type library.
 
 declare interface MessageCallback {
-  (opId: number, msg: Uint8Array): void;
+  (msg: Uint8Array): void;
 }
 
 interface EvalErrorInfo {
@@ -21,13 +21,13 @@ interface EvalErrorInfo {
 }
 
 declare interface DenoCore {
-  print(s: string, isErr?: boolean);
+  print(s: string, isErr?: boolean): void;
   dispatch(
     opId: number,
     control: Uint8Array,
     zeroCopy?: ArrayBufferView | null
   ): Uint8Array | null;
-  setAsyncHandler(cb: MessageCallback): void;
+  setAsyncHandler(opId: number, cb: MessageCallback): void;
   sharedQueue: {
     head(): number;
     numRecords(): number;
@@ -39,7 +39,7 @@ declare interface DenoCore {
 
   ops(): Record<string, number>;
 
-  recv(cb: MessageCallback): void;
+  recv(cb: (opId: number, msg: Uint8Array) => void): void;
 
   send(
     opId: number,

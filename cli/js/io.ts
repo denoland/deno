@@ -1,13 +1,10 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // Interfaces 100% copied from Go.
 // Documentation liberally lifted from them too.
 // Thank you! We love Go!
 
-// TODO(kt3k): EOF should be `unique symbol` type.
-// That might require some changes of ts_library_builder.
-// See #2591 for more details.
-export const EOF = null;
-export type EOF = null;
+export const EOF: unique symbol = Symbol("EOF");
+export type EOF = typeof EOF;
 
 // Seek whence values.
 // https://golang.org/pkg/io/#pkg-constants
@@ -21,11 +18,13 @@ export enum SeekMode {
 // https://golang.org/pkg/io/#Reader
 export interface Reader {
   /** Reads up to p.byteLength bytes into `p`. It resolves to the number
-   * of bytes read (`0` < `n` <= `p.byteLength`) and rejects if any error encountered.
+   * of bytes read (`0` <= `n` <= `p.byteLength`) and rejects if any error encountered.
    * Even if `read()` returns `n` < `p.byteLength`, it may use all of `p` as
    * scratch space during the call. If some data is available but not
    * `p.byteLength` bytes, `read()` conventionally returns what is available
    * instead of waiting for more.
+   *
+   * When `p.byteLength` == `0`, `read()` returns `0` and has no other effects.
    *
    * When `read()` encounters end-of-file condition, it returns EOF symbol.
    *

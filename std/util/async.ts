@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 // TODO(ry) It'd be better to make Deferred a class that inherits from
 // Promise, rather than an interface. This is possible in ES2016, however
@@ -20,11 +20,9 @@ export interface Deferred<T> extends Promise<T> {
  */
 export function deferred<T>(): Deferred<T> {
   let methods;
-  const promise = new Promise<T>(
-    (resolve, reject): void => {
-      methods = { resolve, reject };
-    }
-  );
+  const promise = new Promise<T>((resolve, reject): void => {
+    methods = { resolve, reject };
+  });
   return Object.assign(promise, methods)! as Deferred<T>;
 }
 
@@ -111,10 +109,9 @@ export async function collectUint8Arrays(
 
 // Delays the given milliseconds and resolves.
 export function delay(ms: number): Promise<void> {
-  return new Promise(
-    (res): number =>
-      setTimeout((): void => {
-        res();
-      }, ms)
+  return new Promise((res): number =>
+    setTimeout((): void => {
+      res();
+    }, ms)
   );
 }

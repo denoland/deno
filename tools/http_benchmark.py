@@ -1,10 +1,11 @@
 #!/usr/bin/env python
-# Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import os
 import sys
 import time
 import subprocess
 import util
+import third_party
 
 # Some of the benchmarks in this file have been renamed. In case the history
 # somehow gets messed up:
@@ -12,7 +13,7 @@ import util
 #   "deno_tcp" was once called "deno"
 #   "deno_http" was once called "deno_net_http"
 
-DURATION = "10s"
+DURATION = "20s"
 
 LAST_PORT = 4544
 
@@ -193,8 +194,9 @@ def run(server_cmd, port, merge_env=None, origin_cmd=None):
     time.sleep(5)  # wait for server to wake up. TODO racy.
 
     try:
-        cmd = "third_party/wrk/%s/wrk -d %s --latency http://127.0.0.1:%s/" % (
-            util.platform(), DURATION, port)
+        wrk = third_party.get_prebuilt_tool_path("wrk")
+        assert os.path.exists(wrk)
+        cmd = "%s -d %s --latency http://127.0.0.1:%s/" % (wrk, DURATION, port)
         print cmd
         output = subprocess.check_output(cmd, shell=True)
         stats = util.parse_wrk_output(output)

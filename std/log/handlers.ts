@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 const { open } = Deno;
 type File = Deno.File;
 type Writer = Deno.Writer;
@@ -37,19 +37,16 @@ export class BaseHandler {
       return this.formatter(logRecord);
     }
 
-    return this.formatter.replace(
-      /{(\S+)}/g,
-      (match, p1): string => {
-        const value = logRecord[p1 as keyof LogRecord];
+    return this.formatter.replace(/{(\S+)}/g, (match, p1): string => {
+      const value = logRecord[p1 as keyof LogRecord];
 
-        // do not interpolate missing values
-        if (!value) {
-          return match;
-        }
-
-        return String(value);
+      // do not interpolate missing values
+      if (!value) {
+        return match;
       }
-    );
+
+      return String(value);
+    });
   }
 
   log(_msg: string): void {}

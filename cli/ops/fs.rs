@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // Some deserializer fields are only used on Unix and Windows build fails without it
 use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
 use crate::deno_error::DenoError;
@@ -6,13 +6,15 @@ use crate::deno_error::ErrorKind;
 use crate::fs as deno_fs;
 use crate::ops::json_op;
 use crate::state::ThreadSafeState;
-use deno::*;
+use deno_core::*;
 use remove_dir_all::remove_dir_all;
 use std::convert::From;
 use std::fs;
 use std::path::PathBuf;
 use std::time::UNIX_EPOCH;
 
+#[cfg(unix)]
+use std::os::unix::fs::MetadataExt;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
@@ -24,6 +26,7 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op("remove", s.core_op(json_op(s.stateful_op(op_remove))));
   i.register_op("copy_file", s.core_op(json_op(s.stateful_op(op_copy_file))));
   i.register_op("stat", s.core_op(json_op(s.stateful_op(op_stat))));
+  i.register_op("realpath", s.core_op(json_op(s.stateful_op(op_realpath))));
   i.register_op("read_dir", s.core_op(json_op(s.stateful_op(op_read_dir))));
   i.register_op("rename", s.core_op(json_op(s.stateful_op(op_rename))));
   i.register_op("link", s.core_op(json_op(s.stateful_op(op_link))));
@@ -85,6 +88,7 @@ fn op_mkdir(
 struct ChmodArgs {
   promise_id: Option<u64>,
   path: String,
+  #[allow(unused)]
   mode: u32,
 }
 
@@ -224,14 +228,55 @@ macro_rules! to_seconds {
   }};
 }
 
-#[cfg(any(unix))]
-fn get_mode(perm: &fs::Permissions) -> u32 {
-  perm.mode()
-}
+#[inline(always)]
+fn get_stat_json(
+  metadata: fs::Metadata,
+  maybe_name: Option<String>,
+) -> Result<Value, ErrBox> {
+  // Unix stat member (number types only). 0 if not on unix.
+  macro_rules! usm {
+    ($member: ident) => {{
+      #[cfg(unix)]
+      {
+        metadata.$member()
+      }
+      #[cfg(not(unix))]
+      {
+        0
+      }
+    }};
+  }
 
-#[cfg(not(any(unix)))]
-fn get_mode(_perm: &fs::Permissions) -> u32 {
-  0
+  let mut json_val = json!({
+    "isFile": metadata.is_file(),
+    "isSymlink": metadata.file_type().is_symlink(),
+    "len": metadata.len(),
+    // In seconds. Available on both Unix or Windows.
+    "modified":to_seconds!(metadata.modified()),
+    "accessed":to_seconds!(metadata.accessed()),
+    "created":to_seconds!(metadata.created()),
+    // Following are only valid under Unix.
+    "dev": usm!(dev),
+    "ino": usm!(ino),
+    "mode": usm!(mode),
+    "nlink": usm!(nlink),
+    "uid": usm!(uid),
+    "gid": usm!(gid),
+    "rdev": usm!(rdev),
+    // TODO(kevinkassimo): *time_nsec requires BigInt.
+    // Probably should be treated as String if we need to add them.
+    "blksize": usm!(blksize),
+    "blocks": usm!(blocks),
+  });
+
+  // "name" is an optional field by our design.
+  if let Some(name) = maybe_name {
+    if let serde_json::Value::Object(ref mut m) = json_val {
+      m.insert("name".to_owned(), json!(name));
+    }
+  }
+
+  Ok(json_val)
 }
 
 #[derive(Deserialize)]
@@ -263,17 +308,38 @@ fn op_stat(
     } else {
       fs::metadata(&filename)?
     };
+    get_stat_json(metadata, None)
+  })
+}
 
-    Ok(json!({
-      "isFile": metadata.is_file(),
-      "isSymlink": metadata.file_type().is_symlink(),
-      "len": metadata.len(),
-      "modified":to_seconds!(metadata.modified()),
-      "accessed":to_seconds!(metadata.accessed()),
-      "created":to_seconds!(metadata.created()),
-      "mode": get_mode(&metadata.permissions()),
-      "hasMode": cfg!(target_family = "unix"), // false on windows,
-    }))
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RealpathArgs {
+  promise_id: Option<u64>,
+  path: String,
+}
+
+fn op_realpath(
+  state: &ThreadSafeState,
+  args: Value,
+  _zero_copy: Option<PinnedBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let args: RealpathArgs = serde_json::from_value(args)?;
+  let (_, path_) = deno_fs::resolve_from_cwd(args.path.as_ref())?;
+  state.check_read(&path_)?;
+  let path = args.path.clone();
+  let is_sync = args.promise_id.is_none();
+  blocking_json(is_sync, move || {
+    debug!("op_realpath {}", &path);
+    // corresponds to the realpath on Unix and
+    // CreateFile and GetFinalPathNameByHandle on Windows
+    let realpath = fs::canonicalize(&path)?;
+    let mut realpath_str =
+      realpath.to_str().unwrap().to_owned().replace("\\", "/");
+    if cfg!(windows) {
+      realpath_str = realpath_str.trim_start_matches("//?/").to_string();
+    }
+    Ok(json!(realpath_str))
   })
 }
 
@@ -302,19 +368,11 @@ fn op_read_dir(
       .map(|entry| {
         let entry = entry.unwrap();
         let metadata = entry.metadata().unwrap();
-        let file_type = metadata.file_type();
-
-        json!({
-          "isFile": file_type.is_file(),
-          "isSymlink": file_type.is_symlink(),
-          "len": metadata.len(),
-          "modified": to_seconds!(metadata.modified()),
-          "accessed": to_seconds!(metadata.accessed()),
-          "created": to_seconds!(metadata.created()),
-          "mode": get_mode(&metadata.permissions()),
-          "name": entry.file_name().to_str().unwrap(),
-          "hasMode": cfg!(target_family = "unix"), // false on windows,
-        })
+        get_stat_json(
+          metadata,
+          Some(entry.file_name().to_str().unwrap().to_owned()),
+        )
+        .unwrap()
       })
       .collect();
 

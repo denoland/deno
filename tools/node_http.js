@@ -1,9 +1,9 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 const http = require("http");
 const port = process.argv[2] || "4544";
 console.log("port", port);
 http
   .Server((req, res) => {
-    res.end("Hello World\n");
+    res.end("Hello World");
   })
   .listen(port);

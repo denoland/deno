@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { TypedArray } from "./types.ts";
 import { window } from "./window.ts";
 
@@ -26,7 +26,7 @@ export function log(...args: unknown[]): void {
 }
 
 // @internal
-export function assert(cond: boolean, msg = "assert"): void {
+export function assert(cond: unknown, msg = "assert"): asserts cond {
   if (!cond) {
     throw Error(msg);
   }
@@ -62,10 +62,13 @@ export function arrayToStr(ui8: Uint8Array): string {
  * @internal
  */
 
+export type ResolveFunction<T> = (value?: T | PromiseLike<T>) => void;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type RejectFunction = (reason?: any) => void;
+
 export interface ResolvableMethods<T> {
-  resolve: (value?: T | PromiseLike<T>) => void;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  reject: (reason?: any) => void;
+  resolve: ResolveFunction<T>;
+  reject: RejectFunction;
 }
 
 // @internal
@@ -73,15 +76,15 @@ export type Resolvable<T> = Promise<T> & ResolvableMethods<T>;
 
 // @internal
 export function createResolvable<T>(): Resolvable<T> {
-  let methods: ResolvableMethods<T>;
-  const promise = new Promise<T>(
-    (resolve, reject): void => {
-      methods = { resolve, reject };
-    }
-  );
-  // TypeScript doesn't know that the Promise callback occurs synchronously
-  // therefore use of not null assertion (`!`)
-  return Object.assign(promise, methods!) as Resolvable<T>;
+  let resolve: ResolveFunction<T>;
+  let reject: RejectFunction;
+  const promise = new Promise<T>((res, rej): void => {
+    resolve = res;
+    reject = rej;
+  }) as Resolvable<T>;
+  promise.resolve = resolve!;
+  promise.reject = reject!;
+  return promise;
 }
 
 // @internal
@@ -97,12 +100,9 @@ export function unreachable(): never {
 // @internal
 export function hexdump(u8: Uint8Array): string {
   return Array.prototype.map
-    .call(
-      u8,
-      (x: number): string => {
-        return ("00" + x.toString(16)).slice(-2);
-      }
-    )
+    .call(u8, (x: number): string => {
+      return ("00" + x.toString(16)).slice(-2);
+    })
     .join(" ");
 }
 
@@ -126,6 +126,7 @@ export function isObject(o: unknown): o is object {
 }
 
 // Returns whether o is iterable.
+// @internal
 export function isIterable<T, P extends keyof T, K extends T[P]>(
   o: T
 ): o is T & Iterable<[P, K]> {
@@ -222,4 +223,133 @@ export function splitNumberToParts(n: number): number[] {
   // This is also faster than Math.floor(n / 0x100000000) in V8.
   const higher = (n - lower) / 0x100000000;
   return [lower, higher];
+}
+
+// Constants used by `normalizeString` and `resolvePath`
+export const CHAR_DOT = 46; /* . */
+export const CHAR_FORWARD_SLASH = 47; /* / */
+
+/** Resolves `.` and `..` elements in a path with directory names */
+export function normalizeString(
+  path: string,
+  allowAboveRoot: boolean,
+  separator: string,
+  isPathSeparator: (code: number) => boolean
+): string {
+  let res = "";
+  let lastSegmentLength = 0;
+  let lastSlash = -1;
+  let dots = 0;
+  let code: number;
+  for (let i = 0, len = path.length; i <= len; ++i) {
+    if (i < len) code = path.charCodeAt(i);
+    else if (isPathSeparator(code!)) break;
+    else code = CHAR_FORWARD_SLASH;
+
+    if (isPathSeparator(code)) {
+      if (lastSlash === i - 1 || dots === 1) {
+        // NOOP
+      } else if (lastSlash !== i - 1 && dots === 2) {
+        if (
+          res.length < 2 ||
+          lastSegmentLength !== 2 ||
+          res.charCodeAt(res.length - 1) !== CHAR_DOT ||
+          res.charCodeAt(res.length - 2) !== CHAR_DOT
+        ) {
+          if (res.length > 2) {
+            const lastSlashIndex = res.lastIndexOf(separator);
+            if (lastSlashIndex === -1) {
+              res = "";
+              lastSegmentLength = 0;
+            } else {
+              res = res.slice(0, lastSlashIndex);
+              lastSegmentLength = res.length - 1 - res.lastIndexOf(separator);
+            }
+            lastSlash = i;
+            dots = 0;
+            continue;
+          } else if (res.length === 2 || res.length === 1) {
+            res = "";
+            lastSegmentLength = 0;
+            lastSlash = i;
+            dots = 0;
+            continue;
+          }
+        }
+        if (allowAboveRoot) {
+          if (res.length > 0) res += `${separator}..`;
+          else res = "..";
+          lastSegmentLength = 2;
+        }
+      } else {
+        if (res.length > 0) res += separator + path.slice(lastSlash + 1, i);
+        else res = path.slice(lastSlash + 1, i);
+        lastSegmentLength = i - lastSlash - 1;
+      }
+      lastSlash = i;
+      dots = 0;
+    } else if (code === CHAR_DOT && dots !== -1) {
+      ++dots;
+    } else {
+      dots = -1;
+    }
+  }
+  return res;
+}
+
+/** Return the common path shared by the `paths`.
+ *
+ * @param paths The set of paths to compare.
+ * @param sep An optional separator to use. Defaults to `/`.
+ * @internal
+ */
+export function commonPath(paths: string[], sep = "/"): string {
+  const [first = "", ...remaining] = paths;
+  if (first === "" || remaining.length === 0) {
+    return "";
+  }
+  const parts = first.split(sep);
+
+  let endOfPrefix = parts.length;
+  for (const path of remaining) {
+    const compare = path.split(sep);
+    for (let i = 0; i < endOfPrefix; i++) {
+      if (compare[i] !== parts[i]) {
+        endOfPrefix = i;
+      }
+    }
+
+    if (endOfPrefix === 0) {
+      return "";
+    }
+  }
+  const prefix = parts.slice(0, endOfPrefix).join(sep);
+  return prefix.endsWith(sep) ? prefix : `${prefix}${sep}`;
+}
+
+/** Utility function to turn the number of bytes into a human readable
+ * unit */
+export function humanFileSize(bytes: number): string {
+  const thresh = 1000;
+  if (Math.abs(bytes) < thresh) {
+    return bytes + " B";
+  }
+  const units = ["kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
+  let u = -1;
+  do {
+    bytes /= thresh;
+    ++u;
+  } while (Math.abs(bytes) >= thresh && u < units.length - 1);
+  return `${bytes.toFixed(1)} ${units[u]}`;
+}
+
+// @internal
+export function base64ToUint8Array(data: string): Uint8Array {
+  const binString = window.atob(data);
+  const size = binString.length;
+  const bytes = new Uint8Array(size);
+  for (let i = 0; i < size; i++) {
+    bytes[i] = binString.charCodeAt(i);
+  }
+  return bytes;
 }

@@ -2,7 +2,7 @@
 // TODO Replace this with a real HTTP server once
 // https://github.com/denoland/deno/issues/726 is completed.
 // Note: this is a keep-alive server.
-const addr = Deno.args[1] || "127.0.0.1:4500";
+const addr = Deno.args[0] || "127.0.0.1:4500";
 const [hostname, port] = addr.split(":");
 const listener = Deno.listen({ hostname, port: Number(port) });
 const response = new TextEncoder().encode(
@@ -24,12 +24,7 @@ async function handle(conn: Deno.Conn): Promise<void> {
   }
 }
 
-async function main(): Promise<void> {
-  console.log("Listening on", addr);
-  while (true) {
-    const conn = await listener.accept();
-    handle(conn);
-  }
+console.log("Listening on", addr);
+for await (const conn of listener) {
+  handle(conn);
 }
-
-main();

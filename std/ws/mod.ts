@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import { decode, encode } from "../strings/mod.ts";
 import { hasOwnProperty } from "../util/has_own_property.ts";
@@ -411,13 +411,13 @@ export function createSecKey(): string {
   return btoa(key);
 }
 
-async function handshake(
+export async function handshake(
   url: URL,
   headers: Headers,
   bufReader: BufReader,
   bufWriter: BufWriter
 ): Promise<void> {
-  const { hostname, pathname, searchParams } = url;
+  const { hostname, pathname, search } = url;
   const key = createSecKey();
 
   if (!headers.has("host")) {
@@ -428,7 +428,7 @@ async function handshake(
   headers.set("sec-websocket-key", key);
   headers.set("sec-websocket-version", "13");
 
-  let headerStr = `GET ${pathname}?${searchParams || ""} HTTP/1.1\r\n`;
+  let headerStr = `GET ${pathname}${search} HTTP/1.1\r\n`;
   for (const [key, value] of headers) {
     headerStr += `${key}: ${value}\r\n`;
   }

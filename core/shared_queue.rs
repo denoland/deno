@@ -1,4 +1,4 @@
-// Copyright 2018 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 /*
 SharedQueue Binary Layout
 +-------------------------------+-------------------------------+
@@ -16,8 +16,7 @@ SharedQueue Binary Layout
 +---------------------------------------------------------------+
  */
 
-use crate::libdeno::deno_buf;
-use crate::libdeno::OpId;
+use crate::ops::OpId;
 
 const MAX_RECORDS: usize = 100;
 /// Total number of records added.
@@ -35,7 +34,7 @@ const HEAD_INIT: usize = 4 * INDEX_RECORDS;
 pub const RECOMMENDED_SIZE: usize = 128 * MAX_RECORDS;
 
 pub struct SharedQueue {
-  bytes: Vec<u8>,
+  pub bytes: Vec<u8>,
 }
 
 impl SharedQueue {
@@ -45,12 +44,6 @@ impl SharedQueue {
     let mut q = Self { bytes };
     q.reset();
     q
-  }
-
-  pub fn as_deno_buf(&self) -> deno_buf {
-    let ptr = self.bytes.as_ptr();
-    let len = self.bytes.len();
-    unsafe { deno_buf::from_raw_parts(ptr, len) }
   }
 
   fn reset(&mut self) {

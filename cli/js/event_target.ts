@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import * as domTypes from "./dom_types.ts";
 import { DenoError, ErrorKind } from "./errors.ts";
 import { hasOwnProperty, requiredArguments } from "./util.ts";
@@ -27,7 +27,7 @@ export const eventTargetHasActivationBehavior: unique symbol = Symbol();
 export class EventTarget implements domTypes.EventTarget {
   public [domTypes.eventTargetHost]: domTypes.EventTarget | null = null;
   public [domTypes.eventTargetListeners]: {
-    [type in string]: domTypes.EventListener[]
+    [type in string]: domTypes.EventListener[];
   } = {};
   public [domTypes.eventTargetMode] = "";
   public [domTypes.eventTargetNodeType]: domTypes.NodeType =
@@ -417,9 +417,7 @@ const eventTargetHelpers = {
       }
 
       try {
-        if (listener.callback) {
-          listener.handleEvent(eventImpl);
-        }
+        listener.handleEvent(eventImpl);
       } catch (error) {
         throw new DenoError(ErrorKind.Interrupted, error.message);
       }

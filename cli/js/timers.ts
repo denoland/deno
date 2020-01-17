@@ -1,8 +1,9 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assert } from "./util.ts";
 import { window } from "./window.ts";
 import * as dispatch from "./dispatch.ts";
 import { sendSync, sendAsync } from "./dispatch_json.ts";
+import { RBTree } from "./rbtree.ts";
 
 const { console } = window;
 
@@ -15,14 +16,6 @@ interface Timer {
   scheduled: boolean;
 }
 
-// We'll subtract EPOCH every time we retrieve the time with Date.now(). This
-// ensures that absolute time values stay below UINT32_MAX - 2, which is the
-// maximum object key that EcmaScript considers "numerical". After running for
-// about a month, this is no longer true, and Deno explodes.
-// TODO(piscisaureus): fix that ^.
-const EPOCH = Date.now();
-const APOCALYPSE = 2 ** 32 - 2;
-
 // Timeout values > TIMEOUT_MAX are set to 1.
 const TIMEOUT_MAX = 2 ** 31 - 1;
 
@@ -30,19 +23,18 @@ let globalTimeoutDue: number | null = null;
 
 let nextTimerId = 1;
 const idMap = new Map<number, Timer>();
-const dueMap: { [due: number]: Timer[] } = Object.create(null);
-
-function getTime(): number {
-  // TODO: use a monotonic clock.
-  const now = Date.now() - EPOCH;
-  assert(now >= 0 && now < APOCALYPSE);
-  return now;
-}
+type DueNode = { due: number; timers: Timer[] };
+const dueTree = new RBTree<DueNode>((a, b) => a.due - b.due);
 
 function clearGlobalTimeout(): void {
   globalTimeoutDue = null;
   sendSync(dispatch.OP_GLOBAL_TIMER_STOP);
 }
+
+let pendingEvents = 0;
+const pendingFireTimers: Timer[] = [];
+let hasPendingFireTimers = false;
+let pendingScheduleTimers: Timer[] = [];
 
 async function setGlobalTimeout(due: number, now: number): Promise<void> {
   // Since JS and Rust don't use the same clock, pass the time to rust as a
@@ -50,10 +42,11 @@ async function setGlobalTimeout(due: number, now: number): Promise<void> {
   // value again.
   const timeout = due - now;
   assert(timeout >= 0);
-
   // Send message to the backend.
   globalTimeoutDue = due;
+  pendingEvents++;
   await sendAsync(dispatch.OP_GLOBAL_TIMER, { timeout });
+  pendingEvents--;
   // eslint-disable-next-line @typescript-eslint/no-use-before-define
   fireTimers();
 }
@@ -69,13 +62,24 @@ function setOrClearGlobalTimeout(due: number | null, now: number): void {
 function schedule(timer: Timer, now: number): void {
   assert(!timer.scheduled);
   assert(now <= timer.due);
+  // There are more timers pending firing.
+  // We must ensure new timer scheduled after them.
+  // Push them to a queue that would be depleted after last pending fire
+  // timer is fired.
+  // (This also implies behavior of setInterval)
+  if (hasPendingFireTimers) {
+    pendingScheduleTimers.push(timer);
+    return;
+  }
   // Find or create the list of timers that will fire at point-in-time `due`.
-  let list = dueMap[timer.due];
-  if (list === undefined) {
-    list = dueMap[timer.due] = [];
+  const maybeNewDueNode = { due: timer.due, timers: [] };
+  let dueNode = dueTree.find(maybeNewDueNode);
+  if (dueNode === null) {
+    dueTree.insert(maybeNewDueNode);
+    dueNode = maybeNewDueNode;
   }
   // Append the newly scheduled timer to the list and mark it as scheduled.
-  list.push(timer);
+  dueNode!.timers.push(timer);
   timer.scheduled = true;
   // If the new timer is scheduled to fire before any timer that existed before,
   // update the global timeout to reflect this.
@@ -85,24 +89,35 @@ function schedule(timer: Timer, now: number): void {
 }
 
 function unschedule(timer: Timer): void {
+  // Check if our timer is pending scheduling or pending firing.
+  // If either is true, they are not in tree, and their idMap entry
+  // will be deleted soon. Remove it from queue.
+  let index = -1;
+  if ((index = pendingScheduleTimers.indexOf(timer)) >= 0) {
+    pendingScheduleTimers.splice(index);
+    return;
+  }
+  if ((index = pendingFireTimers.indexOf(timer)) >= 0) {
+    pendingFireTimers.splice(index);
+    return;
+  }
+  // If timer is not in the 2 pending queues and is unscheduled,
+  // it is not in the tree.
   if (!timer.scheduled) {
     return;
   }
+  const searchKey = { due: timer.due, timers: [] };
   // Find the list of timers that will fire at point-in-time `due`.
-  const list = dueMap[timer.due];
+  const list = dueTree.find(searchKey)!.timers;
   if (list.length === 1) {
     // Time timer is the only one in the list. Remove the entire list.
     assert(list[0] === timer);
-    delete dueMap[timer.due];
+    dueTree.remove(searchKey);
     // If the unscheduled timer was 'next up', find when the next timer that
     // still exists is due, and update the global alarm accordingly.
     if (timer.due === globalTimeoutDue) {
-      let nextTimerDue: number | null = null;
-      for (const key in dueMap) {
-        nextTimerDue = Number(key);
-        break;
-      }
-      setOrClearGlobalTimeout(nextTimerDue, getTime());
+      const nextDueNode: DueNode | null = dueTree.min();
+      setOrClearGlobalTimeout(nextDueNode && nextDueNode.due, Date.now());
     }
   } else {
     // Multiple timers that are due at the same point in time.
@@ -126,7 +141,7 @@ function fire(timer: Timer): void {
   } else {
     // Interval timer: compute when timer was supposed to fire next.
     // However make sure to never schedule the next interval in the past.
-    const now = getTime();
+    const now = Date.now();
     timer.due = Math.max(now, timer.due + timer.delay);
     schedule(timer, now);
   }
@@ -137,40 +152,54 @@ function fire(timer: Timer): void {
 }
 
 function fireTimers(): void {
-  const now = getTime();
+  const now = Date.now();
   // Bail out if we're not expecting the global timer to fire.
-  if (globalTimeoutDue === null) {
+  if (globalTimeoutDue === null || pendingEvents > 0) {
     return;
   }
-  // After firing the timers that are due now, this will hold the due time of
-  // the first timer that hasn't fired yet.
-  let nextTimerDue: number | null = null;
-  // Walk over the keys of the 'due' map. Since dueMap is actually a regular
-  // object and its keys are numerical and smaller than UINT32_MAX - 2,
-  // keys are iterated in ascending order.
-  for (const key in dueMap) {
-    // Convert the object key (a string) to a number.
-    const due = Number(key);
-    // Break out of the loop if the next timer isn't due to fire yet.
-    if (Number(due) > now) {
-      nextTimerDue = due;
-      break;
-    }
-    // Get the list of timers that have this due time, then drop it.
-    const list = dueMap[key];
-    delete dueMap[key];
+  // After firing the timers that are due now, this will hold the first timer
+  // list that hasn't fired yet.
+  let nextDueNode: DueNode | null;
+  while ((nextDueNode = dueTree.min()) !== null && nextDueNode.due <= now) {
+    dueTree.remove(nextDueNode);
     // Fire all the timers in the list.
-    for (const timer of list) {
+    for (const timer of nextDueNode.timers) {
       // With the list dropped, the timer is no longer scheduled.
       timer.scheduled = false;
-      // Place the callback on the microtask queue.
-      Promise.resolve(timer).then(fire);
+      // Place the callback to pending timers to fire.
+      pendingFireTimers.push(timer);
     }
   }
+  if (pendingFireTimers.length > 0) {
+    hasPendingFireTimers = true;
+    // Fire the list of pending timers as a chain of microtasks.
+    window.queueMicrotask(firePendingTimers);
+  } else {
+    setOrClearGlobalTimeout(nextDueNode && nextDueNode.due, now);
+  }
+}
 
-  // Update the global alarm to go off when the first-up timer that hasn't fired
-  // yet is due.
-  setOrClearGlobalTimeout(nextTimerDue, now);
+function firePendingTimers(): void {
+  if (pendingFireTimers.length === 0) {
+    // All timer tasks are done.
+    hasPendingFireTimers = false;
+    // Schedule all new timers pushed during previous timer executions
+    const now = Date.now();
+    for (const newTimer of pendingScheduleTimers) {
+      newTimer.due = Math.max(newTimer.due, now);
+      schedule(newTimer, now);
+    }
+    pendingScheduleTimers = [];
+    // Reschedule for next round of timeout.
+    const nextDueNode = dueTree.min();
+    const due = nextDueNode && Math.max(nextDueNode.due, now);
+    setOrClearGlobalTimeout(due, now);
+  } else {
+    // Fire a single timer and allow its children microtasks scheduled first.
+    fire(pendingFireTimers.shift()!);
+    // ...and we schedule next timer after this.
+    window.queueMicrotask(firePendingTimers);
+  }
 }
 
 export type Args = unknown[];
@@ -198,7 +227,7 @@ function setTimer(
   // In the browser, the delay value must be coercible to an integer between 0
   // and INT32_MAX. Any other value will cause the timer to fire immediately.
   // We emulate this behavior.
-  const now = getTime();
+  const now = Date.now();
   if (delay > TIMEOUT_MAX) {
     console.warn(
       `${delay} does not fit into` +
@@ -238,7 +267,7 @@ export function setTimeout(
   return setTimer(cb, delay, args, false);
 }
 
-/** Repeatedly calls a function , with a fixed time delay between each call. */
+/** Repeatedly calls a function, with a fixed time delay between each call. */
 export function setInterval(
   cb: (...args: Args) => void,
   delay = 0,

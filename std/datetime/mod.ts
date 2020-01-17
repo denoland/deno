@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { pad } from "../strings/pad.ts";
 
 export type DateFormat = "mm-dd-yyyy" | "dd-mm-yyyy" | "yyyy-mm-dd";
@@ -126,11 +126,12 @@ export function toIMF(date: Date): string {
   const min = dtPad(date.getUTCMinutes().toString());
   const s = dtPad(date.getUTCSeconds().toString());
   const y = date.getUTCFullYear();
-  const days = ["Sun", "Mon", "Tue", "Wed", "Thus", "Fri", "Sat"];
+  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const months = [
     "Jan",
     "Feb",
     "Mar",
+    "Apr",
     "May",
     "Jun",
     "Jul",

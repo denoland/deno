@@ -21,7 +21,7 @@ impl DiskCache {
     }
   }
 
-  pub fn get_cache_filename(self: &Self, url: &Url) -> PathBuf {
+  pub fn get_cache_filename(&self, url: &Url) -> PathBuf {
     let mut out = PathBuf::new();
 
     let scheme = url.scheme();
@@ -83,7 +83,7 @@ impl DiskCache {
   }
 
   pub fn get_cache_filename_with_extension(
-    self: &Self,
+    &self,
     url: &Url,
     extension: &str,
   ) -> PathBuf {
@@ -99,12 +99,12 @@ impl DiskCache {
     }
   }
 
-  pub fn get(self: &Self, filename: &Path) -> std::io::Result<Vec<u8>> {
+  pub fn get(&self, filename: &Path) -> std::io::Result<Vec<u8>> {
     let path = self.location.join(filename);
     fs::read(&path)
   }
 
-  pub fn set(self: &Self, filename: &Path, data: &[u8]) -> std::io::Result<()> {
+  pub fn set(&self, filename: &Path, data: &[u8]) -> std::io::Result<()> {
     let path = self.location.join(filename);
     match path.parent() {
       Some(ref parent) => fs::create_dir_all(parent),
@@ -113,7 +113,7 @@ impl DiskCache {
     deno_fs::write_file(&path, data, 0o666)
   }
 
-  pub fn remove(self: &Self, filename: &Path) -> std::io::Result<()> {
+  pub fn remove(&self, filename: &Path) -> std::io::Result<()> {
     let path = self.location.join(filename);
     fs::remove_file(path)
   }

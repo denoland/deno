@@ -1,0 +1,22 @@
+[WILDCARD]
+let define;
+[WILDCARD]
+let instantiate;
+[WILDCARD]
+(function() {
+[WILDCARD]
+})();
+
+define("print_hello", ["require", "exports"], function (require, exports) {
+[WILDCARD]
+});
+define("mod1", ["require", "exports", "subdir2/mod2"], function (require, exports, mod2_ts_1) {
+[WILDCARD]
+});
+
+const __rootExports = instantiate("mod1");
+export const returnsHi = __rootExports["returnsHi"];
+export const returnsFoo2 = __rootExports["returnsFoo2"];
+export const printHello3 = __rootExports["printHello3"];
+export const throwsError = __rootExports["throwsError"];
+

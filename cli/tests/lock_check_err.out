@@ -1,0 +1,2 @@
+[WILDCARD]Subresource integrity check failed --lock=lock_check_err.json
+http://127.0.0.1:4545/cli/tests/003_relative_import.ts

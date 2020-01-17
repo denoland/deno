@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import * as util from "./util.ts";
 import { TextEncoder, TextDecoder } from "./text_encoding.ts";
 import { core } from "./core.ts";
@@ -40,17 +40,17 @@ function unwrapResponse(res: JsonResponse): Ok {
     throw new DenoError(res.err!.kind, res.err!.message);
   }
   util.assert(res.ok != null);
-  return res.ok!;
+  return res.ok;
 }
 
-export function asyncMsgFromRust(opId: number, resUi8: Uint8Array): void {
+export function asyncMsgFromRust(resUi8: Uint8Array): void {
   const res = decode(resUi8);
   util.assert(res.promiseId != null);
 
   const promise = promiseTable.get(res.promiseId!);
   util.assert(promise != null);
   promiseTable.delete(res.promiseId!);
-  promise!.resolve(res);
+  promise.resolve(res);
 }
 
 export function sendSync(
@@ -62,7 +62,7 @@ export function sendSync(
   const resUi8 = core.dispatch(opId, argsUi8, zeroCopy);
   util.assert(resUi8 != null);
 
-  const res = decode(resUi8!);
+  const res = decode(resUi8);
   util.assert(res.promiseId == null);
   return unwrapResponse(res);
 }

@@ -1,17 +1,19 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-extern crate deno;
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+#![deny(warnings)]
+
+extern crate deno_core;
 extern crate serde;
 extern crate serde_json;
 
 mod ops;
-use deno::js_check;
-pub use deno::v8_set_flags;
-use deno::CoreOp;
-use deno::ErrBox;
-use deno::Isolate;
-use deno::ModuleSpecifier;
-use deno::PinnedBuf;
-use deno::StartupData;
+use deno_core::js_check;
+pub use deno_core::v8_set_flags;
+use deno_core::CoreOp;
+use deno_core::ErrBox;
+use deno_core::Isolate;
+use deno_core::ModuleSpecifier;
+use deno_core::PinnedBuf;
+use deno_core::StartupData;
 pub use ops::EmitResult;
 use ops::WrittenFile;
 use std::fs;
@@ -22,7 +24,7 @@ use std::sync::Mutex;
 
 static TYPESCRIPT_CODE: &str = include_str!("typescript/lib/typescript.js");
 static COMPILER_CODE: &str = include_str!("compiler_main.js");
-static AMD_RUNTIME_CODE: &str = include_str!("amd_runtime.js");
+static BUNDLE_LOADER: &str = include_str!("bundle_loader.js");
 
 pub fn ts_version() -> String {
   let data = include_str!("typescript/package.json");
@@ -62,7 +64,7 @@ where
 }
 
 pub struct TSIsolate {
-  isolate: Isolate,
+  isolate: Box<Isolate>,
   state: Arc<Mutex<TSState>>,
 }
 
@@ -115,7 +117,7 @@ impl TSIsolate {
     let source =
       &format!("main({:?}, {})", config_json.to_string(), root_names_json);
     self.isolate.execute("<anon>", source)?;
-    Ok(self.state.clone())
+    Ok(self.state)
   }
 }
 
@@ -127,6 +129,7 @@ pub fn compile_bundle(
 
   let config_json = serde_json::json!({
     "compilerOptions": {
+      "strict": true,
       "declaration": true,
       "lib": ["esnext"],
       "module": "amd",
@@ -177,15 +180,17 @@ pub fn mksnapshot_bundle(
   bundle: &Path,
   state: Arc<Mutex<TSState>>,
 ) -> Result<(), ErrBox> {
-  let mut runtime_isolate = Isolate::new(StartupData::None, true);
+  let runtime_isolate = &mut Isolate::new(StartupData::None, true);
   let source_code_vec = std::fs::read(bundle)?;
   let source_code = std::str::from_utf8(&source_code_vec)?;
 
-  js_check(runtime_isolate.execute("amd_runtime.js", AMD_RUNTIME_CODE));
+  js_check(runtime_isolate.execute("bundle_loader.js", BUNDLE_LOADER));
   js_check(runtime_isolate.execute(&bundle.to_string_lossy(), &source_code));
 
   let main = state.lock().unwrap().main_module_name();
-  js_check(runtime_isolate.execute("anon", &format!("require('{}')", main)));
+  js_check(
+    runtime_isolate.execute("anon", &format!("instantiate('{}')", main)),
+  );
 
   write_snapshot(runtime_isolate, bundle)?;
 
@@ -198,16 +203,22 @@ pub fn mksnapshot_bundle_ts(
   bundle: &Path,
   state: Arc<Mutex<TSState>>,
 ) -> Result<(), ErrBox> {
-  let mut runtime_isolate = Isolate::new(StartupData::None, true);
+  let runtime_isolate = &mut Isolate::new(StartupData::None, true);
+  runtime_isolate.register_op(
+    "fetch_asset",
+    compiler_op(state.clone(), ops::json_op(ops::fetch_asset)),
+  );
   let source_code_vec = std::fs::read(bundle)?;
   let source_code = std::str::from_utf8(&source_code_vec)?;
 
-  js_check(runtime_isolate.execute("amd_runtime.js", AMD_RUNTIME_CODE));
+  js_check(runtime_isolate.execute("bundle_loader.js", BUNDLE_LOADER));
   js_check(runtime_isolate.execute("typescript.js", TYPESCRIPT_CODE));
   js_check(runtime_isolate.execute(&bundle.to_string_lossy(), &source_code));
 
   let main = state.lock().unwrap().main_module_name();
-  js_check(runtime_isolate.execute("anon", &format!("require('{}')", main)));
+  js_check(
+    runtime_isolate.execute("anon", &format!("instantiate('{}')", main)),
+  );
 
   write_snapshot(runtime_isolate, bundle)?;
 
@@ -215,13 +226,12 @@ pub fn mksnapshot_bundle_ts(
 }
 
 fn write_snapshot(
-  runtime_isolate: Isolate,
+  runtime_isolate: &mut Isolate,
   bundle: &Path,
 ) -> Result<(), ErrBox> {
   println!("creating snapshot...");
   let snapshot = runtime_isolate.snapshot()?;
-  let snapshot_slice =
-    unsafe { std::slice::from_raw_parts(snapshot.data_ptr, snapshot.data_len) };
+  let snapshot_slice: &[u8] = &*snapshot;
   println!("snapshot bytes {}", snapshot_slice.len());
 
   let snapshot_path = bundle.with_extension("bin");
@@ -232,7 +242,7 @@ fn write_snapshot(
 }
 
 /// Same as get_asset() but returns NotFound intead of None.
-pub fn get_asset2(name: &str) -> Result<&'static str, ErrBox> {
+pub fn get_asset2(name: &str) -> Result<String, ErrBox> {
   match get_asset(name) {
     Some(a) => Ok(a),
     None => Err(
@@ -242,16 +252,29 @@ pub fn get_asset2(name: &str) -> Result<&'static str, ErrBox> {
   }
 }
 
-pub fn get_asset(name: &str) -> Option<&'static str> {
-  macro_rules! inc {
-    ($e:expr) => {
-      Some(include_str!(concat!("typescript/lib/", $e)))
-    };
-  }
+fn read_file(name: &str) -> String {
+  fs::read_to_string(name).unwrap()
+}
+
+macro_rules! inc {
+  ($e:expr) => {
+    Some(read_file(concat!("../deno_typescript/typescript/lib/", $e)))
+  };
+}
+
+pub fn get_asset(name: &str) -> Option<String> {
   match name {
-    "lib.deno_core.d.ts" => Some(include_str!("lib.deno_core.d.ts")),
+    "bundle_loader.js" => {
+      Some(read_file("../deno_typescript/bundle_loader.js"))
+    }
+    "lib.deno_core.d.ts" => {
+      Some(read_file("../deno_typescript/lib.deno_core.d.ts"))
+    }
+    "lib.deno_runtime.d.ts" => Some(read_file("js/lib.deno_runtime.d.ts")),
+    "bootstrap.ts" => Some("console.log(\"hello deno\");".to_string()),
     "typescript.d.ts" => inc!("typescript.d.ts"),
     "lib.esnext.d.ts" => inc!("lib.esnext.d.ts"),
+    "lib.es2020.d.ts" => inc!("lib.es2020.d.ts"),
     "lib.es2019.d.ts" => inc!("lib.es2019.d.ts"),
     "lib.es2018.d.ts" => inc!("lib.es2018.d.ts"),
     "lib.es2017.d.ts" => inc!("lib.es2017.d.ts"),
@@ -284,8 +307,15 @@ pub fn get_asset(name: &str) -> Option<&'static str> {
     "lib.es2019.object.d.ts" => inc!("lib.es2019.object.d.ts"),
     "lib.es2019.string.d.ts" => inc!("lib.es2019.string.d.ts"),
     "lib.es2019.symbol.d.ts" => inc!("lib.es2019.symbol.d.ts"),
+    "lib.es2020.string.d.ts" => inc!("lib.es2020.string.d.ts"),
+    "lib.es2020.symbol.wellknown.d.ts" => {
+      inc!("lib.es2020.symbol.wellknown.d.ts")
+    }
+    "lib.esnext.array.d.ts" => inc!("lib.esnext.array.d.ts"),
+    "lib.esnext.asynciterable.d.ts" => inc!("lib.esnext.asynciterable.d.ts"),
     "lib.esnext.bigint.d.ts" => inc!("lib.esnext.bigint.d.ts"),
     "lib.esnext.intl.d.ts" => inc!("lib.esnext.intl.d.ts"),
+    "lib.esnext.symbol.d.ts" => inc!("lib.esnext.symbol.d.ts"),
     _ => None,
   }
 }
@@ -293,7 +323,9 @@ pub fn get_asset(name: &str) -> Option<&'static str> {
 /// Sets the --trace-serializer V8 flag for debugging snapshots.
 pub fn trace_serializer() {
   let dummy = "foo".to_string();
-  let r =
-    deno::v8_set_flags(vec![dummy.clone(), "--trace-serializer".to_string()]);
+  let r = deno_core::v8_set_flags(vec![
+    dummy.clone(),
+    "--trace-serializer".to_string(),
+  ]);
   assert_eq!(r, vec![dummy]);
 }

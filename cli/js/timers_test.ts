@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { test, assert, assertEquals, assertNotEquals } from "./test_util.ts";
 
 function deferred(): {
@@ -9,12 +9,10 @@ function deferred(): {
 } {
   let resolve;
   let reject;
-  const promise = new Promise(
-    (res, rej): void => {
-      resolve = res;
-      reject = rej;
-    }
-  );
+  const promise = new Promise((res, rej): void => {
+    resolve = res;
+    reject = rej;
+  });
   return {
     promise,
     resolve,
@@ -288,4 +286,68 @@ test(function testFunctionParamsLength(): void {
 
 test(function clearTimeoutAndClearIntervalNotBeEquals(): void {
   assertNotEquals(clearTimeout, clearInterval);
+});
+
+test(async function timerMaxCpuBug(): Promise<void> {
+  // There was a bug where clearing a timeout would cause Deno to use 100% CPU.
+  clearTimeout(setTimeout(() => {}, 1000));
+  // We can check this by counting how many ops have triggered in the interim.
+  // Certainly less than 10 ops should have been dispatched in next 100 ms.
+  const { opsDispatched } = Deno.metrics();
+  await waitForMs(100);
+  const opsDispatched_ = Deno.metrics().opsDispatched;
+  console.log("opsDispatched", opsDispatched, "opsDispatched_", opsDispatched_);
+  assert(opsDispatched_ - opsDispatched < 10);
+});
+
+test(async function timerBasicMicrotaskOrdering(): Promise<void> {
+  let s = "";
+  let count = 0;
+  const { promise, resolve } = deferred();
+  setTimeout(() => {
+    Promise.resolve().then(() => {
+      count++;
+      s += "de";
+      if (count === 2) {
+        resolve();
+      }
+    });
+  });
+  setTimeout(() => {
+    count++;
+    s += "no";
+    if (count === 2) {
+      resolve();
+    }
+  });
+  await promise;
+  assertEquals(s, "deno");
+});
+
+test(async function timerNestedMicrotaskOrdering(): Promise<void> {
+  let s = "";
+  const { promise, resolve } = deferred();
+  s += "0";
+  setTimeout(() => {
+    s += "4";
+    setTimeout(() => (s += "8"));
+    Promise.resolve().then(() => {
+      setTimeout(() => {
+        s += "9";
+        resolve();
+      });
+    });
+  });
+  setTimeout(() => (s += "5"));
+  Promise.resolve().then(() => (s += "2"));
+  Promise.resolve().then(() =>
+    setTimeout(() => {
+      s += "6";
+      Promise.resolve().then(() => (s += "7"));
+    })
+  );
+  Promise.resolve().then(() => Promise.resolve().then(() => (s += "3")));
+  s += "1";
+  await promise;
+  assertEquals(s, "0123456789");
 });

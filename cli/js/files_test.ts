@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { test, testPerm, assert, assertEquals } from "./test_util.ts";
 
 test(function filesStdioFileDescriptors(): void {
@@ -8,7 +8,7 @@ test(function filesStdioFileDescriptors(): void {
 });
 
 testPerm({ read: true }, async function filesCopyToStdout(): Promise<void> {
-  const filename = "package.json";
+  const filename = "cli/tests/fixture.json";
   const file = await Deno.open(filename);
   assert(file.rid > 2);
   const bytesWritten = await Deno.copy(Deno.stdout, file);
@@ -93,11 +93,9 @@ testPerm({ write: false }, async function writePermFailure(): Promise<void> {
 
 testPerm({ read: false }, async function readPermFailure(): Promise<void> {
   let caughtError = false;
-  const r = {
-    read: true
-  };
   try {
     await Deno.open("package.json", r);
+    await Deno.open("cli/tests/fixture.json", "r");
   } catch (e) {
     caughtError = true;
     assertEquals(e.kind, Deno.ErrorKind.PermissionDenied);
@@ -144,6 +142,10 @@ testPerm(
       read: true
     };
     const file = await Deno.open(filename, wplus);
+
+    // reading into an empty buffer should return 0 immediately
+    const bytesRead = await file.read(new Uint8Array(0));
+    assert(bytesRead === 0);
 
     // reading file into null buffer should throw an error
     let err;
@@ -204,12 +206,7 @@ testPerm({ read: true, write: true }, async function createFile(): Promise<
 > {
   const tempDir = await Deno.makeTempDir();
   const filename = tempDir + "/test.txt";
-  const w = {
-    write: true,
-    truncate: true,
-    create: true
-  };
-  const f = await Deno.open(filename, w);
+  const f = await Deno.create(filename);
   let fileInfo = Deno.statSync(filename);
   assert(fileInfo.isFile());
   assert(fileInfo.len === 0);

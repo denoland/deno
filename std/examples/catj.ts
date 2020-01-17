@@ -1,7 +1,7 @@
 #!/usr/bin/env -S deno --allow-read
 // Ported from: https://github.com/soheilpro/catj
 // Copyright (c) 2014 Soheil Rashidi
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 // Install using `deno install`
 // $ deno install catj https://deno.land/std/examples/catj.ts --allow-read
@@ -79,32 +79,28 @@ function print(data: any): void {
   }
 }
 
-async function main(): Promise<void> {
-  const parsedArgs = parse(Deno.args.slice(1));
+const parsedArgs = parse(Deno.args);
 
-  if (parsedArgs.h || parsedArgs.help || parsedArgs._.length === 0) {
-    console.log("Usage: catj [-h|--help] [file...]");
-    console.log();
-    console.log("Examples:");
-    console.log();
-    console.log("// print file:\n   catj file.json");
-    console.log();
-    console.log("// print multiple files:\n   catj file1.json file2.json");
-    console.log();
-    console.log("// print from stdin:\n   cat file.json | catj -");
-  }
-
-  if (parsedArgs._[0] === "-") {
-    const contents = await Deno.readAll(Deno.stdin);
-    const json = JSON.parse(decoder.decode(contents));
-    print(json);
-  } else {
-    for (const fileName of parsedArgs._) {
-      const fileContents = await Deno.readFile(fileName);
-      const json = JSON.parse(decoder.decode(fileContents));
-      print(json);
-    }
-  }
+if (parsedArgs.h || parsedArgs.help || parsedArgs._.length === 0) {
+  console.log("Usage: catj [-h|--help] [file...]");
+  console.log();
+  console.log("Examples:");
+  console.log();
+  console.log("// print file:\n   catj file.json");
+  console.log();
+  console.log("// print multiple files:\n   catj file1.json file2.json");
+  console.log();
+  console.log("// print from stdin:\n   cat file.json | catj -");
 }
 
-main();
+if (parsedArgs._[0] === "-") {
+  const contents = await Deno.readAll(Deno.stdin);
+  const json = JSON.parse(decoder.decode(contents));
+  print(json);
+} else {
+  for (const fileName of parsedArgs._) {
+    const fileContents = await Deno.readFile(fileName);
+    const json = JSON.parse(decoder.decode(fileContents));
+    print(json);
+  }
+}

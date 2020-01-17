@@ -1,5 +1,5 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { test, assert, assertEquals } from "./test_util.ts";
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { test, assert, assertEquals, assertThrows } from "./test_util.ts";
 
 test(function urlParsing(): void {
   const url = new URL(
@@ -178,4 +178,25 @@ test(function sortingNonExistentParamRemovesQuestionMarkFromURL(): void {
   url.searchParams.sort();
   assertEquals(url.href, "http://example.com/");
   assertEquals(url.search, "");
+});
+
+test(function customInspectFunction(): void {
+  const url = new URL("http://example.com/?");
+  assertEquals(
+    Deno.inspect(url),
+    'URL { href: "http://example.com/?", origin: "http://example.com", protocol: "http:", username: "", password: "", host: "example.com", hostname: "example.com", port: "", pathname: "/", hash: "", search: "?" }'
+  );
+});
+
+test(function protocolNotHttpOrFile() {
+  const url = new URL("about:blank");
+  assertEquals(url.href, "about:blank");
+  assertEquals(url.protocol, "about:");
+  assertEquals(url.origin, "null");
+});
+
+test(function createBadUrl(): void {
+  assertThrows(() => {
+    new URL("0.0.0.0:8080");
+  });
 });

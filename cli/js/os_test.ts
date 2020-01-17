@@ -1,10 +1,11 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
   test,
   testPerm,
   assert,
   assertEquals,
-  assertNotEquals
+  assertNotEquals,
+  assertThrows
 } from "./test_util.ts";
 
 testPerm({ env: true }, function envSuccess(): void {
@@ -111,25 +112,155 @@ test(function osPid(): void {
   assert(Deno.pid > 0);
 });
 
-// See complete tests in tools/is_tty_test.py
 test(function osIsTTYSmoke(): void {
   console.log(Deno.isTTY());
 });
 
-testPerm({ env: true }, function homeDir(): void {
-  assertNotEquals(Deno.homeDir(), "");
+testPerm({ env: true }, function getDir(): void {
+  type supportOS = "mac" | "win" | "linux";
+
+  interface Runtime {
+    os: supportOS;
+    shouldHaveValue: boolean;
+  }
+
+  interface Scenes {
+    kind: Deno.DirKind;
+    runtime: Runtime[];
+  }
+
+  const scenes: Scenes[] = [
+    {
+      kind: "config",
+      runtime: [
+        { os: "mac", shouldHaveValue: true },
+        { os: "win", shouldHaveValue: true },
+        { os: "linux", shouldHaveValue: true }
+      ]
+    },
+    {
+      kind: "cache",
+      runtime: [
+        { os: "mac", shouldHaveValue: true },
+        { os: "win", shouldHaveValue: true },
+        { os: "linux", shouldHaveValue: true }
+      ]
+    },
+    {
+      kind: "executable",
+      runtime: [
+        { os: "mac", shouldHaveValue: false },
+        { os: "win", shouldHaveValue: false },
+        { os: "linux", shouldHaveValue: true }
+      ]
+    },
+    {
+      kind: "data",
+      runtime: [
+        { os: "mac", shouldHaveValue: true },
+        { os: "win", shouldHaveValue: true },
+        { os: "linux", shouldHaveValue: true }
+      ]
+    },
+    {
+      kind: "data_local",
+      runtime: [
+        { os: "mac", shouldHaveValue: true },
+        { os: "win", shouldHaveValue: true },
+        { os: "linux", shouldHaveValue: true }
+      ]
+    },
+    {
+      kind: "audio",
+      runtime: [
+        { os: "mac", shouldHaveValue: true },
+        { os: "win", shouldHaveValue: true },
+        { os: "linux", shouldHaveValue: false }
+      ]
+    },
+    {
+      kind: "desktop",
+      runtime: [
+        { os: "mac", shouldHaveValue: true },
+        { os: "win", shouldHaveValue: true },
+        { os: "linux", shouldHaveValue: false }
+      ]
+    },
+    {
+      kind: "document",
+      runtime: [
+        { os: "mac", shouldHaveValue: true },
+        { os: "win", shouldHaveValue: true },
+        { os: "linux", shouldHaveValue: false }
+      ]
+    },
+    {
+      kind: "download",
+      runtime: [
+        { os: "mac", shouldHaveValue: true },
+        { os: "win", shouldHaveValue: true },
+        { os: "linux", shouldHaveValue: false }
+      ]
+    },
+    {
+      kind: "font",
+      runtime: [
+        { os: "mac", shouldHaveValue: true },
+        { os: "win", shouldHaveValue: false },
+        { os: "linux", shouldHaveValue: true }
+      ]
+    },
+    {
+      kind: "picture",
+      runtime: [
+        { os: "mac", shouldHaveValue: true },
+        { os: "win", shouldHaveValue: true },
+        { os: "linux", shouldHaveValue: false }
+      ]
+    },
+    {
+      kind: "public",
+      runtime: [
+        { os: "mac", shouldHaveValue: true },
+        { os: "win", shouldHaveValue: true },
+        { os: "linux", shouldHaveValue: false }
+      ]
+    },
+    {
+      kind: "template",
+      runtime: [
+        { os: "mac", shouldHaveValue: false },
+        { os: "win", shouldHaveValue: true },
+        { os: "linux", shouldHaveValue: false }
+      ]
+    },
+    {
+      kind: "video",
+      runtime: [
+        { os: "mac", shouldHaveValue: true },
+        { os: "win", shouldHaveValue: true },
+        { os: "linux", shouldHaveValue: false }
+      ]
+    }
+  ];
+
+  for (const s of scenes) {
+    for (const r of s.runtime) {
+      if (Deno.build.os !== r.os) continue;
+      if (r.shouldHaveValue) {
+        const d = Deno.dir(s.kind);
+        assert(d.length > 0);
+      }
+    }
+  }
 });
 
-testPerm({ env: false }, function homeDirPerm(): void {
-  let caughtError = false;
-  try {
-    Deno.homeDir();
-  } catch (err) {
-    caughtError = true;
-    assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
-    assertEquals(err.name, "PermissionDenied");
-  }
-  assert(caughtError);
+testPerm({}, function getDirWithoutPermission(): void {
+  assertThrows(
+    () => Deno.dir("home"),
+    Deno.DenoError,
+    `run again with the --allow-env flag`
+  );
 });
 
 testPerm({ env: true }, function execPath(): void {

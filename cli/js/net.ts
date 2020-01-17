@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { EOF, Reader, Writer, Closer } from "./io.ts";
 import { notImplemented } from "./util.ts";
 import { read, write, close } from "./files.ts";
@@ -32,7 +32,7 @@ export interface Listener extends AsyncIterator<Conn> {
   [Symbol.asyncIterator](): AsyncIterator<Conn>;
 }
 
-enum ShutdownMode {
+export enum ShutdownMode {
   // See http://man7.org/linux/man-pages/man2/shutdown.2.html
   // Corresponding to SHUT_RD, SHUT_WR, SHUT_RDWR
   Read = 0,
@@ -40,7 +40,15 @@ enum ShutdownMode {
   ReadWrite // unused
 }
 
-function shutdown(rid: number, how: ShutdownMode): void {
+/** Shut down socket send and receive operations.
+ *
+ * Matches behavior of POSIX shutdown(3).
+ *
+ *       const listener = Deno.listen({ port: 80 });
+ *       const conn = await listener.accept();
+ *       Deno.shutdown(conn.rid, Deno.ShutdownMode.Write);
+ */
+export function shutdown(rid: number, how: ShutdownMode): void {
   sendSync(dispatch.OP_SHUTDOWN, { rid, how });
 }
 
@@ -78,11 +86,12 @@ export class ConnImpl implements Conn {
   }
 }
 
-class ListenerImpl implements Listener {
+export class ListenerImpl implements Listener {
   constructor(
     readonly rid: number,
     private transport: Transport,
-    private localAddr: string
+    private localAddr: string,
+    private closing: boolean = false
   ) {}
 
   async accept(): Promise<Conn> {
@@ -91,6 +100,7 @@ class ListenerImpl implements Listener {
   }
 
   close(): void {
+    this.closing = true;
     close(this.rid);
   }
 
@@ -102,10 +112,20 @@ class ListenerImpl implements Listener {
   }
 
   async next(): Promise<IteratorResult<Conn>> {
-    return {
-      done: false,
-      value: await this.accept()
-    };
+    if (this.closing) {
+      return { value: undefined, done: true };
+    }
+    return await this.accept()
+      .then(value => ({ value, done: false }))
+      .catch(e => {
+        // It wouldn't be correct to simply check this.closing here.
+        // TODO: Get a proper error kind for this case, don't check the message.
+        // The current error kind is Other.
+        if (e.message == "Listener has been closed") {
+          return { value: undefined, done: true };
+        }
+        throw e;
+      });
   }
 
   [Symbol.asyncIterator](): AsyncIterator<Conn> {

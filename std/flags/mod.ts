@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 export interface ArgParsingOptions {
   unknown?: (i: unknown) => unknown;
   boolean?: boolean | string | string[];
@@ -79,11 +79,9 @@ export function parse(
           ? [options.boolean]
           : options.boolean;
 
-      booleanArgs.filter(Boolean).forEach(
-        (key: string): void => {
-          flags.bools[key] = true;
-        }
-      );
+      booleanArgs.filter(Boolean).forEach((key: string): void => {
+        flags.bools[key] = true;
+      });
     }
   }
 
@@ -114,11 +112,9 @@ export function parse(
       flags.strings[key] = true;
       const alias = get(aliases, key);
       if (alias) {
-        alias.forEach(
-          (alias: string): void => {
-            flags.strings[alias] = true;
-          }
-        );
+        alias.forEach((alias: string): void => {
+          flags.strings[alias] = true;
+        });
       }
     });
   }

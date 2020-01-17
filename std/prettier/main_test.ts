@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assertEquals } from "../testing/asserts.ts";
 import { test, runIfMain } from "../testing/mod.ts";
 import { copy, emptyDir } from "../fs/mod.ts";
@@ -213,7 +213,6 @@ console.log([function foo() {}, function baz() {}, (a) => {}]);
   emptyDir(tempDir);
 });
 
-/* TODO(ry) Re-enable test
 test(async function testPrettierPrintToStdout(): Promise<void> {
   const tempDir = await Deno.makeTempDir();
   await copy(testdata, tempDir, { overwrite: true });
@@ -226,21 +225,39 @@ test(async function testPrettierPrintToStdout(): Promise<void> {
 
   const { stdout } = await run([...cmd, file0]);
   // The source file will not change without `--write` flags.
-  assertEquals(await getSourceCode(file0), "console.log (0)" + EOL);
+  assertEquals(
+    await getSourceCode(file0),
+    `console.log (0)
+`
+  );
   // The output should be formatted code.
-  assertEquals(stdout, "console.log(0);" + EOL);
+  assertEquals(
+    stdout,
+    `console.log(0);
+`
+  );
 
   const { stdout: formattedCode } = await run([...cmd, file1]);
   // The source file will not change without `--write` flags.
-  assertEquals(await getSourceCode(file1), "console.log(0);" + EOL);
+  assertEquals(
+    await getSourceCode(file1),
+    `console.log(0);
+`
+  );
   // The output will be formatted code even it is the same as the source file's
   // content.
-  assertEquals(formattedCode, "console.log(0);" + EOL);
+  assertEquals(
+    formattedCode,
+    `console.log(0);
+`
+  );
 
   emptyDir(tempDir);
 });
-*/
 
+// TODO(bartlomieju): reenable after landing rusty_v8 branch
+// crashing on Windows
+/*
 test(async function testPrettierReadFromStdin(): Promise<void> {
   interface TestCase {
     stdin: string;
@@ -362,6 +379,173 @@ test(async function testPrettierReadFromStdin(): Promise<void> {
       t.parser
     );
   }
+});
+*/
+
+test(async function testPrettierWithAutoConfig(): Promise<void> {
+  const configs = [
+    "config_file_json",
+    "config_file_toml",
+    "config_file_js",
+    "config_file_ts",
+    "config_file_yaml",
+    "config_file_yml"
+  ];
+
+  for (const configName of configs) {
+    const cwd = join(testdata, configName);
+    const prettierFile = join(Deno.cwd(), "prettier", "main.ts");
+    const { stdout, stderr } = Deno.run({
+      args: [
+        execPath(),
+        "run",
+        "--allow-read",
+        "--allow-env",
+        prettierFile,
+        "../5.ts",
+        "--config",
+        "auto"
+      ],
+      stdout: "piped",
+      stderr: "piped",
+      cwd
+    });
+
+    const output = decoder.decode(await Deno.readAll(stdout));
+    const errMsg = decoder.decode(await Deno.readAll(stderr));
+
+    assertEquals(
+      errMsg
+        .split(EOL)
+        .filter((line: string) => line.indexOf("Compile") !== 0)
+        .join(EOL),
+      ""
+    );
+
+    assertEquals(output, `console.log('0');\n`);
+  }
+});
+
+test(async function testPrettierWithSpecifiedConfig(): Promise<void> {
+  interface Config {
+    dir: string;
+    name: string;
+  }
+  const configs: Config[] = [
+    {
+      dir: "config_file_json",
+      name: ".prettierrc.json"
+    },
+    {
+      dir: "config_file_toml",
+      name: ".prettierrc.toml"
+    },
+    {
+      dir: "config_file_js",
+      name: ".prettierrc.js"
+    },
+    {
+      dir: "config_file_ts",
+      name: ".prettierrc.ts"
+    },
+    {
+      dir: "config_file_yaml",
+      name: ".prettierrc.yaml"
+    },
+    {
+      dir: "config_file_yml",
+      name: ".prettierrc.yml"
+    }
+  ];
+
+  for (const config of configs) {
+    const cwd = join(testdata, config.dir);
+    const prettierFile = join(Deno.cwd(), "prettier", "main.ts");
+    const { stdout, stderr } = Deno.run({
+      args: [
+        execPath(),
+        "run",
+        "--allow-read",
+        "--allow-env",
+        prettierFile,
+        "../5.ts",
+        "--config",
+        config.name
+      ],
+      stdout: "piped",
+      stderr: "piped",
+      cwd
+    });
+
+    const output = decoder.decode(await Deno.readAll(stdout));
+    const errMsg = decoder.decode(await Deno.readAll(stderr));
+
+    assertEquals(
+      errMsg
+        .split(EOL)
+        .filter((line: string) => line.indexOf("Compile") !== 0)
+        .join(EOL),
+      ""
+    );
+
+    assertEquals(output, `console.log('0');\n`);
+  }
+});
+
+test(async function testPrettierWithAutoIgnore(): Promise<void> {
+  // only format typescript file
+  const cwd = join(testdata, "ignore_file");
+  const prettierFile = join(Deno.cwd(), "prettier", "main.ts");
+  const { stdout, stderr } = Deno.run({
+    args: [
+      execPath(),
+      "run",
+      "--allow-read",
+      "--allow-env",
+      prettierFile,
+      "**/*",
+      "--ignore-path",
+      "auto"
+    ],
+    stdout: "piped",
+    stderr: "piped",
+    cwd
+  });
+
+  assertEquals(decoder.decode(await Deno.readAll(stderr)), "");
+
+  assertEquals(
+    decoder.decode(await Deno.readAll(stdout)),
+    `console.log("typescript");\nconsole.log("typescript1");\n`
+  );
+});
+
+test(async function testPrettierWithSpecifiedIgnore(): Promise<void> {
+  // only format javascript file
+  const cwd = join(testdata, "ignore_file");
+  const prettierFile = join(Deno.cwd(), "prettier", "main.ts");
+  const { stdout, stderr } = Deno.run({
+    args: [
+      execPath(),
+      "run",
+      "--allow-read",
+      "--allow-env",
+      prettierFile,
+      "**/*",
+      "--ignore-path",
+      "typescript.prettierignore"
+    ],
+    stdout: "piped",
+    stderr: "piped",
+    cwd
+  });
+
+  assertEquals(decoder.decode(await Deno.readAll(stderr)), "");
+
+  assertEquals(
+    decoder.decode(await Deno.readAll(stdout)),
+    `console.log("javascript");\nconsole.log("javascript1");\n`
+  );
 });
 
 runIfMain(import.meta);

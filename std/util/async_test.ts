@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { test, runIfMain } from "../testing/mod.ts";
 import { assert, assertEquals, assertStrictEq } from "../testing/asserts.ts";
 import { collectUint8Arrays, deferred, MuxAsyncIterator } from "./async.ts";

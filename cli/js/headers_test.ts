@@ -1,5 +1,9 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { test, assert, assertEquals } from "./test_util.ts";
+const {
+  stringifyArgs
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+} = Deno[Deno.symbols.internal] as any;
 
 // Logic heavily copied from web-platform-tests, make
 // sure pass mostly header basic test
@@ -141,21 +145,17 @@ const headerEntriesDict = {
 test(function headerForEachSuccess(): void {
   const headers = new Headers(headerEntriesDict);
   const keys = Object.keys(headerEntriesDict);
-  keys.forEach(
-    (key): void => {
-      const value = headerEntriesDict[key];
-      const newkey = key.toLowerCase();
-      headerEntriesDict[newkey] = value;
-    }
-  );
+  keys.forEach((key): void => {
+    const value = headerEntriesDict[key];
+    const newkey = key.toLowerCase();
+    headerEntriesDict[newkey] = value;
+  });
   let callNum = 0;
-  headers.forEach(
-    (value, key, container): void => {
-      assertEquals(headers, container);
-      assertEquals(value, headerEntriesDict[key]);
-      callNum++;
-    }
-  );
+  headers.forEach((value, key, container): void => {
+    assertEquals(headers, container);
+    assertEquals(value, headerEntriesDict[key]);
+    callNum++;
+  });
   assertEquals(callNum, keys.length);
 });
 
@@ -256,76 +256,94 @@ test(function headerParamsArgumentsCheck(): void {
 
   const methodRequireTwoParams = ["append", "set"];
 
-  methodRequireOneParam.forEach(
-    (method): void => {
-      const headers = new Headers();
-      let hasThrown = 0;
-      let errMsg = "";
-      try {
-        headers[method]();
-        hasThrown = 1;
-      } catch (err) {
-        errMsg = err.message;
-        if (err instanceof TypeError) {
-          hasThrown = 2;
-        } else {
-          hasThrown = 3;
-        }
+  methodRequireOneParam.forEach((method): void => {
+    const headers = new Headers();
+    let hasThrown = 0;
+    let errMsg = "";
+    try {
+      headers[method]();
+      hasThrown = 1;
+    } catch (err) {
+      errMsg = err.message;
+      if (err instanceof TypeError) {
+        hasThrown = 2;
+      } else {
+        hasThrown = 3;
       }
-      assertEquals(hasThrown, 2);
-      assertEquals(
-        errMsg,
-        `Headers.${method} requires at least 1 argument, but only 0 present`
-      );
     }
-  );
+    assertEquals(hasThrown, 2);
+    assertEquals(
+      errMsg,
+      `Headers.${method} requires at least 1 argument, but only 0 present`
+    );
+  });
 
-  methodRequireTwoParams.forEach(
-    (method): void => {
-      const headers = new Headers();
-      let hasThrown = 0;
-      let errMsg = "";
+  methodRequireTwoParams.forEach((method): void => {
+    const headers = new Headers();
+    let hasThrown = 0;
+    let errMsg = "";
 
-      try {
-        headers[method]();
-        hasThrown = 1;
-      } catch (err) {
-        errMsg = err.message;
-        if (err instanceof TypeError) {
-          hasThrown = 2;
-        } else {
-          hasThrown = 3;
-        }
+    try {
+      headers[method]();
+      hasThrown = 1;
+    } catch (err) {
+      errMsg = err.message;
+      if (err instanceof TypeError) {
+        hasThrown = 2;
+      } else {
+        hasThrown = 3;
       }
-      assertEquals(hasThrown, 2);
-      assertEquals(
-        errMsg,
-        `Headers.${method} requires at least 2 arguments, but only 0 present`
-      );
-
-      hasThrown = 0;
-      errMsg = "";
-      try {
-        headers[method]("foo");
-        hasThrown = 1;
-      } catch (err) {
-        errMsg = err.message;
-        if (err instanceof TypeError) {
-          hasThrown = 2;
-        } else {
-          hasThrown = 3;
-        }
-      }
-      assertEquals(hasThrown, 2);
-      assertEquals(
-        errMsg,
-        `Headers.${method} requires at least 2 arguments, but only 1 present`
-      );
     }
-  );
+    assertEquals(hasThrown, 2);
+    assertEquals(
+      errMsg,
+      `Headers.${method} requires at least 2 arguments, but only 0 present`
+    );
+
+    hasThrown = 0;
+    errMsg = "";
+    try {
+      headers[method]("foo");
+      hasThrown = 1;
+    } catch (err) {
+      errMsg = err.message;
+      if (err instanceof TypeError) {
+        hasThrown = 2;
+      } else {
+        hasThrown = 3;
+      }
+    }
+    assertEquals(hasThrown, 2);
+    assertEquals(
+      errMsg,
+      `Headers.${method} requires at least 2 arguments, but only 1 present`
+    );
+  });
 });
 
 test(function toStringShouldBeWebCompatibility(): void {
   const headers = new Headers();
   assertEquals(headers.toString(), "[object Headers]");
+});
+
+function stringify(...args: unknown[]): string {
+  return stringifyArgs(args).replace(/\n$/, "");
+}
+
+test(function customInspectReturnsCorrectHeadersFormat(): void {
+  const blankHeaders = new Headers();
+  assertEquals(stringify(blankHeaders), "Headers {}");
+  const singleHeader = new Headers([["Content-Type", "application/json"]]);
+  assertEquals(
+    stringify(singleHeader),
+    "Headers { content-type: application/json }"
+  );
+  const multiParamHeader = new Headers([
+    ["Content-Type", "application/json"],
+    ["Content-Length", "1337"]
+  ]);
+  assertEquals(
+    stringify(multiParamHeader),
+    "Headers { content-type: application/json, content-length: 1337 }"
+  );
 });

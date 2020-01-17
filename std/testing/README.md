@@ -48,8 +48,11 @@ Asserts are exposed in `testing/asserts.ts` module.
 Basic usage:
 
 ```ts
-import { runTests, test } from "https://deno.land/std/testing/mod.ts";
-import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+import {
+  assertEquals,
+  runTests,
+  test
+} from "https://deno.land/std/testing/mod.ts";
 
 test({
   name: "testing example",
@@ -92,11 +95,9 @@ Using `assertThrows()`:
 
 ```ts
 test(function doesThrow(): void {
-  assertThrows(
-    (): void => {
-      throw new TypeError("hello world!");
-    }
-  );
+  assertThrows((): void => {
+    throw new TypeError("hello world!");
+  });
   assertThrows((): void => {
     throw new TypeError("hello world!");
   }, TypeError);
@@ -111,11 +112,9 @@ test(function doesThrow(): void {
 
 // This test will not pass
 test(function fails(): void {
-  assertThrows(
-    (): void => {
-      console.log("Hello world");
-    }
-  );
+  assertThrows((): void => {
+    console.log("Hello world");
+  });
 });
 ```
 

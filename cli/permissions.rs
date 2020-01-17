@@ -1,492 +1,363 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::deno_error::permission_denied;
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::deno_error::{permission_denied_msg, type_error};
 use crate::flags::DenoFlags;
 use ansi_term::Style;
+#[cfg(not(test))]
 use atty;
-use deno::ErrBox;
+use deno_core::ErrBox;
 use log;
 use std::collections::HashSet;
 use std::fmt;
+#[cfg(not(test))]
 use std::io;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::Arc;
+#[cfg(test)]
+use std::sync::atomic::AtomicBool;
+#[cfg(test)]
+use std::sync::atomic::Ordering;
+use url::Url;
 
 const PERMISSION_EMOJI: &str = "⚠️";
 
 /// Tri-state value for storing permission state
-pub enum PermissionAccessorState {
+#[derive(PartialEq, Debug, Clone, Copy)]
+pub enum PermissionState {
   Allow = 0,
   Ask = 1,
   Deny = 2,
 }
 
-impl From<usize> for PermissionAccessorState {
+impl PermissionState {
+  /// Checks the permission state and returns the result.
+  pub fn check(self, msg: &str, err_msg: &str) -> Result<(), ErrBox> {
+    if self == PermissionState::Allow {
+      log_perm_access(msg);
+      return Ok(());
+    }
+    Err(permission_denied_msg(err_msg.to_string()))
+  }
+  pub fn is_allow(self) -> bool {
+    self == PermissionState::Allow
+  }
+  /// If the state is "Allow" walk it back to the default "Ask"
+  /// Don't do anything if state is "Deny"
+  pub fn revoke(&mut self) {
+    if *self == PermissionState::Allow {
+      *self = PermissionState::Ask;
+    }
+  }
+  /// Requests the permission.
+  pub fn request(&mut self, msg: &str) -> PermissionState {
+    if *self != PermissionState::Ask {
+      return *self;
+    }
+    if permission_prompt(msg) {
+      *self = PermissionState::Allow;
+    } else {
+      *self = PermissionState::Deny;
+    }
+    *self
+  }
+}
+
+impl From<usize> for PermissionState {
   fn from(val: usize) -> Self {
     match val {
-      0 => PermissionAccessorState::Allow,
-      1 => PermissionAccessorState::Ask,
-      2 => PermissionAccessorState::Deny,
+      0 => PermissionState::Allow,
+      1 => PermissionState::Ask,
+      2 => PermissionState::Deny,
       _ => unreachable!(),
     }
   }
 }
 
-impl From<bool> for PermissionAccessorState {
+impl From<bool> for PermissionState {
   fn from(val: bool) -> Self {
     if val {
-      PermissionAccessorState::Allow
+      PermissionState::Allow
     } else {
-      PermissionAccessorState::Ask
+      PermissionState::Ask
     }
   }
 }
 
-impl fmt::Display for PermissionAccessorState {
+impl fmt::Display for PermissionState {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
-      PermissionAccessorState::Allow => f.pad("Allow"),
-      PermissionAccessorState::Ask => f.pad("Ask"),
-      PermissionAccessorState::Deny => f.pad("Deny"),
+      PermissionState::Allow => f.pad("granted"),
+      PermissionState::Ask => f.pad("prompt"),
+      PermissionState::Deny => f.pad("denied"),
     }
   }
 }
 
-#[derive(Debug)]
-pub struct PermissionAccessor {
-  state: Arc<AtomicUsize>,
-}
-
-impl PermissionAccessor {
-  pub fn new(state: PermissionAccessorState) -> Self {
-    Self {
-      state: Arc::new(AtomicUsize::new(state as usize)),
-    }
-  }
-
-  pub fn is_allow(&self) -> bool {
-    match self.get_state() {
-      PermissionAccessorState::Allow => true,
-      _ => false,
-    }
-  }
-
-  /// If the state is "Allow" walk it back to the default "Ask"
-  /// Don't do anything if state is "Deny"
-  pub fn revoke(&self) {
-    if self.is_allow() {
-      self.ask();
-    }
-  }
-
-  pub fn allow(&self) {
-    self.set_state(PermissionAccessorState::Allow)
-  }
-
-  pub fn ask(&self) {
-    self.set_state(PermissionAccessorState::Ask)
-  }
-
-  pub fn deny(&self) {
-    self.set_state(PermissionAccessorState::Deny)
-  }
-
-  /// Update this accessors state based on a PromptResult value
-  /// This will only update the state if the PromptResult value
-  /// is one of the "Always" values
-  pub fn update_with_prompt_result(&self, prompt_result: &PromptResult) {
-    match prompt_result {
-      PromptResult::AllowAlways => self.allow(),
-      PromptResult::DenyAlways => self.deny(),
-      _ => {}
-    }
-  }
-
-  #[inline]
-  pub fn get_state(&self) -> PermissionAccessorState {
-    self.state.load(Ordering::SeqCst).into()
-  }
-  fn set_state(&self, state: PermissionAccessorState) {
-    self.state.store(state as usize, Ordering::SeqCst)
-  }
-}
-
-impl From<bool> for PermissionAccessor {
-  fn from(val: bool) -> Self {
-    Self::new(PermissionAccessorState::from(val))
-  }
-}
-
-impl Default for PermissionAccessor {
+impl Default for PermissionState {
   fn default() -> Self {
-    Self {
-      state: Arc::new(AtomicUsize::new(PermissionAccessorState::Ask as usize)),
-    }
+    PermissionState::Ask
   }
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct DenoPermissions {
-  // Keep in sync with src/permissions.ts
-  pub allow_read: PermissionAccessor,
-  pub read_whitelist: Arc<HashSet<String>>,
-  pub allow_write: PermissionAccessor,
-  pub write_whitelist: Arc<HashSet<String>>,
-  pub allow_net: PermissionAccessor,
-  pub net_whitelist: Arc<HashSet<String>>,
-  pub allow_env: PermissionAccessor,
-  pub allow_run: PermissionAccessor,
-  pub allow_hrtime: PermissionAccessor,
-  pub no_prompts: AtomicBool,
+  // Keep in sync with cli/js/permissions.ts
+  pub allow_read: PermissionState,
+  pub read_whitelist: HashSet<String>,
+  pub allow_write: PermissionState,
+  pub write_whitelist: HashSet<String>,
+  pub allow_net: PermissionState,
+  pub net_whitelist: HashSet<String>,
+  pub allow_env: PermissionState,
+  pub allow_run: PermissionState,
+  pub allow_plugin: PermissionState,
+  pub allow_hrtime: PermissionState,
 }
 
 impl DenoPermissions {
   pub fn from_flags(flags: &DenoFlags) -> Self {
     Self {
-      allow_read: PermissionAccessor::from(flags.allow_read),
-      read_whitelist: Arc::new(flags.read_whitelist.iter().cloned().collect()),
-      allow_write: PermissionAccessor::from(flags.allow_write),
-      write_whitelist: Arc::new(
-        flags.write_whitelist.iter().cloned().collect(),
-      ),
-      allow_net: PermissionAccessor::from(flags.allow_net),
-      net_whitelist: Arc::new(flags.net_whitelist.iter().cloned().collect()),
-      allow_env: PermissionAccessor::from(flags.allow_env),
-      allow_run: PermissionAccessor::from(flags.allow_run),
-      allow_hrtime: PermissionAccessor::from(flags.allow_hrtime),
-      no_prompts: AtomicBool::new(flags.no_prompts),
+      allow_read: PermissionState::from(flags.allow_read),
+      read_whitelist: flags.read_whitelist.iter().cloned().collect(),
+      allow_write: PermissionState::from(flags.allow_write),
+      write_whitelist: flags.write_whitelist.iter().cloned().collect(),
+      allow_net: PermissionState::from(flags.allow_net),
+      net_whitelist: flags.net_whitelist.iter().cloned().collect(),
+      allow_env: PermissionState::from(flags.allow_env),
+      allow_run: PermissionState::from(flags.allow_run),
+      allow_plugin: PermissionState::from(flags.allow_plugin),
+      allow_hrtime: PermissionState::from(flags.allow_hrtime),
     }
   }
 
   pub fn check_run(&self) -> Result<(), ErrBox> {
-    let msg = "access to run a subprocess";
+    self.allow_run.check(
+      "access to run a subprocess",
+      "run again with the --allow-run flag",
+    )
+  }
 
-    match self.allow_run.get_state() {
-      PermissionAccessorState::Allow => {
-        self.log_perm_access(msg);
-        Ok(())
-      }
-      PermissionAccessorState::Ask => match self.try_permissions_prompt(msg) {
-        Err(e) => Err(e),
-        Ok(v) => {
-          self.allow_run.update_with_prompt_result(&v);
-          v.check()?;
-          self.log_perm_access(msg);
-          Ok(())
-        }
-      },
-      PermissionAccessorState::Deny => Err(permission_denied()),
+  fn get_state_read(&self, filename: &Option<&str>) -> PermissionState {
+    if check_path_white_list(filename, &self.read_whitelist) {
+      return PermissionState::Allow;
     }
+    self.allow_read
   }
 
   pub fn check_read(&self, filename: &str) -> Result<(), ErrBox> {
-    let msg = &format!("read access to \"{}\"", filename);
-    match self.allow_read.get_state() {
-      PermissionAccessorState::Allow => {
-        self.log_perm_access(msg);
-        Ok(())
-      }
-      state => {
-        if check_path_white_list(filename, &self.read_whitelist) {
-          self.log_perm_access(msg);
-          Ok(())
-        } else {
-          match state {
-            PermissionAccessorState::Ask => {
-              match self.try_permissions_prompt(msg) {
-                Err(e) => Err(e),
-                Ok(v) => {
-                  self.allow_read.update_with_prompt_result(&v);
-                  v.check()?;
-                  self.log_perm_access(msg);
-                  Ok(())
-                }
-              }
-            }
-            PermissionAccessorState::Deny => Err(permission_denied()),
-            _ => unreachable!(),
-          }
-        }
-      }
+    self.get_state_read(&Some(filename)).check(
+      &format!("read access to \"{}\"", filename),
+      "run again with the --allow-read flag",
+    )
+  }
+
+  fn get_state_write(&self, filename: &Option<&str>) -> PermissionState {
+    if check_path_white_list(filename, &self.write_whitelist) {
+      return PermissionState::Allow;
     }
+    self.allow_write
   }
 
   pub fn check_write(&self, filename: &str) -> Result<(), ErrBox> {
-    let msg = &format!("write access to \"{}\"", filename);
-    match self.allow_write.get_state() {
-      PermissionAccessorState::Allow => {
-        self.log_perm_access(msg);
-        Ok(())
-      }
-      state => {
-        if check_path_white_list(filename, &self.write_whitelist) {
-          self.log_perm_access(msg);
-          Ok(())
-        } else {
-          match state {
-            PermissionAccessorState::Ask => {
-              match self.try_permissions_prompt(msg) {
-                Err(e) => Err(e),
-                Ok(v) => {
-                  self.allow_write.update_with_prompt_result(&v);
-                  v.check()?;
-                  self.log_perm_access(msg);
-                  Ok(())
-                }
-              }
-            }
-            PermissionAccessorState::Deny => Err(permission_denied()),
-            _ => unreachable!(),
-          }
-        }
-      }
-    }
+    self.get_state_write(&Some(filename)).check(
+      &format!("write access to \"{}\"", filename),
+      "run again with the --allow-write flag",
+    )
   }
 
-  pub fn check_net(&self, host_and_port: &str) -> Result<(), ErrBox> {
-    let msg = &format!("network access to \"{}\"", host_and_port);
-    match self.allow_net.get_state() {
-      PermissionAccessorState::Allow => {
-        self.log_perm_access(msg);
-        Ok(())
-      }
-      state => {
-        let parts = host_and_port.split(':').collect::<Vec<&str>>();
-        if match parts.len() {
-          2 => {
-            if self.net_whitelist.contains(parts[0]) {
-              true
-            } else {
-              self
-                .net_whitelist
-                .contains(&format!("{}:{}", parts[0], parts[1]))
-            }
-          }
-          1 => self.net_whitelist.contains(parts[0]),
-          _ => panic!("Failed to parse origin string: {}", host_and_port),
-        } {
-          self.log_perm_access(msg);
-          Ok(())
-        } else {
-          self.check_net_inner(state, msg)
-        }
-      }
+  fn get_state_net(&self, host: &str, port: Option<u16>) -> PermissionState {
+    if check_host_and_port_whitelist(host, port, &self.net_whitelist) {
+      return PermissionState::Allow;
     }
+    self.allow_net
+  }
+
+  fn get_state_net_url(
+    &self,
+    url: &Option<&str>,
+  ) -> Result<PermissionState, ErrBox> {
+    if url.is_none() {
+      return Ok(self.allow_net);
+    }
+    let url: &str = url.unwrap();
+    // If url is invalid, then throw a TypeError.
+    let parsed = Url::parse(url)
+      .map_err(|_| type_error(format!("Invalid url: {}", url)))?;
+    Ok(
+      self.get_state_net(&format!("{}", parsed.host().unwrap()), parsed.port()),
+    )
+  }
+
+  pub fn check_net(&self, hostname: &str, port: u16) -> Result<(), ErrBox> {
+    self.get_state_net(hostname, Some(port)).check(
+      &format!("network access to \"{}:{}\"", hostname, port),
+      "run again with the --allow-net flag",
+    )
   }
 
   pub fn check_net_url(&self, url: &url::Url) -> Result<(), ErrBox> {
-    let msg = &format!("network access to \"{}\"", url);
-    match self.allow_net.get_state() {
-      PermissionAccessorState::Allow => {
-        self.log_perm_access(msg);
-        Ok(())
-      }
-      state => {
-        let host = url.host().unwrap();
-        let whitelist_result = {
-          if self.net_whitelist.contains(&format!("{}", host)) {
-            true
-          } else {
-            match url.port() {
-              Some(port) => {
-                self.net_whitelist.contains(&format!("{}:{}", host, port))
-              }
-              None => false,
-            }
-          }
-        };
-        if whitelist_result {
-          self.log_perm_access(msg);
-          Ok(())
-        } else {
-          self.check_net_inner(state, msg)
-        }
-      }
-    }
-  }
-
-  fn check_net_inner(
-    &self,
-    state: PermissionAccessorState,
-    prompt_str: &str,
-  ) -> Result<(), ErrBox> {
-    match state {
-      PermissionAccessorState::Ask => {
-        match self.try_permissions_prompt(prompt_str) {
-          Err(e) => Err(e),
-          Ok(v) => {
-            self.allow_net.update_with_prompt_result(&v);
-            v.check()?;
-            self.log_perm_access(prompt_str);
-            Ok(())
-          }
-        }
-      }
-      PermissionAccessorState::Deny => Err(permission_denied()),
-      _ => unreachable!(),
-    }
+    self
+      .get_state_net(&format!("{}", url.host().unwrap()), url.port())
+      .check(
+        &format!("network access to \"{}\"", url),
+        "run again with the --allow-net flag",
+      )
   }
 
   pub fn check_env(&self) -> Result<(), ErrBox> {
-    let msg = "access to environment variables";
-    match self.allow_env.get_state() {
-      PermissionAccessorState::Allow => {
-        self.log_perm_access(msg);
-        Ok(())
-      }
-      PermissionAccessorState::Ask => match self.try_permissions_prompt(msg) {
-        Err(e) => Err(e),
-        Ok(v) => {
-          self.allow_env.update_with_prompt_result(&v);
-          v.check()?;
-          self.log_perm_access(msg);
-          Ok(())
-        }
-      },
-      PermissionAccessorState::Deny => Err(permission_denied()),
-    }
+    self.allow_env.check(
+      "access to environment variables",
+      "run again with the --allow-env flag",
+    )
   }
 
-  /// Try to present the user with a permission prompt
-  /// will error with permission_denied if no_prompts is enabled
-  fn try_permissions_prompt(
-    &self,
-    message: &str,
-  ) -> Result<PromptResult, ErrBox> {
-    if self.no_prompts.load(Ordering::SeqCst) {
-      return Err(permission_denied());
-    }
-    if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) {
-      return Err(permission_denied());
+  pub fn check_plugin(&self, filename: &str) -> Result<(), ErrBox> {
+    self.allow_plugin.check(
+      &format!("access to open a plugin: {}", filename),
+      "run again with the --allow-plugin flag",
+    )
+  }
+
+  pub fn request_run(&mut self) -> PermissionState {
+    self
+      .allow_run
+      .request("Deno requests to access to run a subprocess.")
+  }
+
+  pub fn request_read(&mut self, path: &Option<&str>) -> PermissionState {
+    if check_path_white_list(path, &self.read_whitelist) {
+      return PermissionState::Allow;
     };
-    permission_prompt(message)
+    self.allow_read.request(&match path {
+      None => "Deno requests read access.".to_string(),
+      Some(path) => format!("Deno requests read access to \"{}\".", path),
+    })
   }
 
-  fn log_perm_access(&self, message: &str) {
-    if log_enabled!(log::Level::Info) {
-      eprintln!(
-        "{}",
-        Style::new()
-          .bold()
-          .paint(format!("{}️  Granted {}", PERMISSION_EMOJI, message))
-      );
-    }
+  pub fn request_write(&mut self, path: &Option<&str>) -> PermissionState {
+    if check_path_white_list(path, &self.write_whitelist) {
+      return PermissionState::Allow;
+    };
+    self.allow_write.request(&match path {
+      None => "Deno requests write access.".to_string(),
+      Some(path) => format!("Deno requests write access to \"{}\".", path),
+    })
   }
 
-  pub fn allows_run(&self) -> bool {
-    self.allow_run.is_allow()
+  pub fn request_net(
+    &mut self,
+    url: &Option<&str>,
+  ) -> Result<PermissionState, ErrBox> {
+    if self.get_state_net_url(url)? == PermissionState::Ask {
+      return Ok(self.allow_net.request(&match url {
+        None => "Deno requests network access.".to_string(),
+        Some(url) => format!("Deno requests network access to \"{}\".", url),
+      }));
+    };
+    self.get_state_net_url(url)
   }
 
-  pub fn allows_read(&self) -> bool {
-    self.allow_read.is_allow()
+  pub fn request_env(&mut self) -> PermissionState {
+    self
+      .allow_env
+      .request("Deno requests to access to environment variables.")
   }
 
-  pub fn allows_write(&self) -> bool {
-    self.allow_write.is_allow()
+  pub fn request_hrtime(&mut self) -> PermissionState {
+    self
+      .allow_hrtime
+      .request("Deno requests to access to high precision time.")
   }
 
-  pub fn allows_net(&self) -> bool {
-    self.allow_net.is_allow()
+  pub fn request_plugin(&mut self) -> PermissionState {
+    self.allow_plugin.request("Deno requests to open plugins.")
   }
 
-  pub fn allows_env(&self) -> bool {
-    self.allow_env.is_allow()
-  }
-
-  pub fn allows_hrtime(&self) -> bool {
-    self.allow_hrtime.is_allow()
-  }
-
-  pub fn revoke_run(&self) -> Result<(), ErrBox> {
-    self.allow_run.revoke();
-    Ok(())
-  }
-
-  pub fn revoke_read(&self) -> Result<(), ErrBox> {
-    self.allow_read.revoke();
-    Ok(())
-  }
-
-  pub fn revoke_write(&self) -> Result<(), ErrBox> {
-    self.allow_write.revoke();
-    Ok(())
-  }
-
-  pub fn revoke_net(&self) -> Result<(), ErrBox> {
-    self.allow_net.revoke();
-    Ok(())
-  }
-
-  pub fn revoke_env(&self) -> Result<(), ErrBox> {
-    self.allow_env.revoke();
-    Ok(())
-  }
-  pub fn revoke_hrtime(&self) -> Result<(), ErrBox> {
-    self.allow_hrtime.revoke();
-    Ok(())
-  }
-}
-
-/// Quad-state value for representing user input on permission prompt
-#[derive(Debug, Clone)]
-pub enum PromptResult {
-  AllowAlways = 0,
-  AllowOnce = 1,
-  DenyOnce = 2,
-  DenyAlways = 3,
-}
-
-impl PromptResult {
-  /// If value is any form of deny this will error with permission_denied
-  pub fn check(&self) -> Result<(), ErrBox> {
-    match self {
-      PromptResult::DenyOnce => Err(permission_denied()),
-      PromptResult::DenyAlways => Err(permission_denied()),
-      _ => Ok(()),
+  pub fn get_permission_state(
+    &self,
+    name: &str,
+    url: &Option<&str>,
+    path: &Option<&str>,
+  ) -> Result<PermissionState, ErrBox> {
+    match name {
+      "run" => Ok(self.allow_run),
+      "read" => Ok(self.get_state_read(path)),
+      "write" => Ok(self.get_state_write(path)),
+      "net" => self.get_state_net_url(url),
+      "env" => Ok(self.allow_env),
+      "plugin" => Ok(self.allow_plugin),
+      "hrtime" => Ok(self.allow_hrtime),
+      n => Err(type_error(format!("No such permission name: {}", n))),
     }
   }
 }
 
-impl fmt::Display for PromptResult {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    match self {
-      PromptResult::AllowAlways => f.pad("AllowAlways"),
-      PromptResult::AllowOnce => f.pad("AllowOnce"),
-      PromptResult::DenyOnce => f.pad("DenyOnce"),
-      PromptResult::DenyAlways => f.pad("DenyAlways"),
-    }
-  }
-}
-
-fn permission_prompt(message: &str) -> Result<PromptResult, ErrBox> {
-  let msg = format!("️{}  Deno requests {}. Grant? [a/y/n/d (a = allow always, y = allow once, n = deny once, d = deny always)] ", PERMISSION_EMOJI, message);
+/// Shows the permission prompt and returns the answer according to the user input.
+/// This loops until the user gives the proper input.
+#[cfg(not(test))]
+fn permission_prompt(message: &str) -> bool {
+  if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) {
+    return false;
+  };
+  let msg = format!(
+    "️{}  {}. Grant? [g/d (g = grant, d = deny)] ",
+    PERMISSION_EMOJI, message
+  );
   // print to stderr so that if deno is > to a file this is still displayed.
   eprint!("{}", Style::new().bold().paint(msg));
   loop {
     let mut input = String::new();
     let stdin = io::stdin();
-    let _nread = stdin.read_line(&mut input)?;
+    let result = stdin.read_line(&mut input);
+    if result.is_err() {
+      return false;
+    };
     let ch = input.chars().next().unwrap();
     match ch.to_ascii_lowercase() {
-      'a' => return Ok(PromptResult::AllowAlways),
-      'y' => return Ok(PromptResult::AllowOnce),
-      'n' => return Ok(PromptResult::DenyOnce),
-      'd' => return Ok(PromptResult::DenyAlways),
+      'g' => return true,
+      'd' => return false,
       _ => {
         // If we don't get a recognized option try again.
-        let msg_again = format!("Unrecognized option '{}' [a/y/n/d (a = allow always, y = allow once, n = deny once, d = deny always)] ", ch);
+        let msg_again =
+          format!("Unrecognized option '{}' [g/d (g = grant, d = deny)] ", ch);
         eprint!("{}", Style::new().bold().paint(msg_again));
       }
     };
   }
 }
 
-fn check_path_white_list(
-  filename: &str,
-  white_list: &Arc<HashSet<String>>,
-) -> bool {
-  let mut path_buf = PathBuf::from(filename);
+#[cfg(test)]
+static STUB_PROMPT_VALUE: AtomicBool = AtomicBool::new(true);
 
+#[cfg(test)]
+fn set_prompt_result(value: bool) {
+  STUB_PROMPT_VALUE.store(value, Ordering::SeqCst);
+}
+
+// When testing, permission prompt returns the value of STUB_PROMPT_VALUE
+// which we set from the test functions.
+#[cfg(test)]
+fn permission_prompt(_message: &str) -> bool {
+  STUB_PROMPT_VALUE.load(Ordering::SeqCst)
+}
+
+fn log_perm_access(message: &str) {
+  if log_enabled!(log::Level::Info) {
+    eprintln!(
+      "{}",
+      Style::new()
+        .bold()
+        .paint(format!("{}️  Granted {}", PERMISSION_EMOJI, message))
+    );
+  }
+}
+
+fn check_path_white_list(
+  filename: &Option<&str>,
+  white_list: &HashSet<String>,
+) -> bool {
+  if filename.is_none() {
+    return false;
+  }
+  let mut path_buf = PathBuf::from(filename.unwrap());
   loop {
     if white_list.contains(path_buf.to_str().unwrap()) {
       return true;
@@ -496,6 +367,16 @@ fn check_path_white_list(
     }
   }
   false
+}
+
+fn check_host_and_port_whitelist(
+  host: &str,
+  port: Option<u16>,
+  whitelist: &HashSet<String>,
+) -> bool {
+  whitelist.contains(host)
+    || (port.is_some()
+      && whitelist.contains(&format!("{}:{}", host, port.unwrap())))
 }
 
 #[cfg(test)]
@@ -513,8 +394,7 @@ mod tests {
 
     let perms = DenoPermissions::from_flags(&DenoFlags {
       read_whitelist: whitelist.clone(),
-      write_whitelist: whitelist.clone(),
-      no_prompts: true,
+      write_whitelist: whitelist,
       ..Default::default()
     });
 
@@ -561,31 +441,30 @@ mod tests {
         "127.0.0.1",
         "172.16.0.2:8000"
       ],
-      no_prompts: true,
       ..Default::default()
     });
 
     let domain_tests = vec![
-      ("localhost:1234", true),
-      ("deno.land", true),
-      ("deno.land:3000", true),
-      ("deno.lands", false),
-      ("deno.lands:3000", false),
-      ("github.com:3000", true),
-      ("github.com", false),
-      ("github.com:2000", false),
-      ("github.net:3000", false),
-      ("127.0.0.1", true),
-      ("127.0.0.1:3000", true),
-      ("127.0.0.2", false),
-      ("127.0.0.2:3000", false),
-      ("172.16.0.2:8000", true),
-      ("172.16.0.2", false),
-      ("172.16.0.2:6000", false),
-      ("172.16.0.1:8000", false),
+      ("localhost", 1234, true),
+      ("deno.land", 0, true),
+      ("deno.land", 3000, true),
+      ("deno.lands", 0, false),
+      ("deno.lands", 3000, false),
+      ("github.com", 3000, true),
+      ("github.com", 0, false),
+      ("github.com", 2000, false),
+      ("github.net", 3000, false),
+      ("127.0.0.1", 0, true),
+      ("127.0.0.1", 3000, true),
+      ("127.0.0.2", 0, false),
+      ("127.0.0.2", 3000, false),
+      ("172.16.0.2", 8000, true),
+      ("172.16.0.2", 0, false),
+      ("172.16.0.2", 6000, false),
+      ("172.16.0.1", 8000, false),
       // Just some random hosts that should err
-      ("somedomain", false),
-      ("192.168.0.1", false),
+      ("somedomain", 0, false),
+      ("192.168.0.1", 0, false),
     ];
 
     let url_tests = vec![
@@ -630,8 +509,190 @@ mod tests {
       assert_eq!(*is_ok, perms.check_net_url(&u).is_ok());
     }
 
-    for (domain, is_ok) in domain_tests.iter() {
-      assert_eq!(*is_ok, perms.check_net(domain).is_ok());
+    for (host, port, is_ok) in domain_tests.iter() {
+      assert_eq!(*is_ok, perms.check_net(host, *port).is_ok());
     }
+  }
+
+  #[test]
+  fn test_permissions_request_run() {
+    let mut perms0 = DenoPermissions::from_flags(&DenoFlags {
+      ..Default::default()
+    });
+    set_prompt_result(true);
+    assert_eq!(perms0.request_run(), PermissionState::Allow);
+
+    let mut perms1 = DenoPermissions::from_flags(&DenoFlags {
+      ..Default::default()
+    });
+    set_prompt_result(false);
+    assert_eq!(perms1.request_run(), PermissionState::Deny);
+  }
+
+  #[test]
+  fn test_permissions_request_read() {
+    let whitelist = svec!["/foo/bar"];
+    let mut perms0 = DenoPermissions::from_flags(&DenoFlags {
+      read_whitelist: whitelist.clone(),
+      ..Default::default()
+    });
+    set_prompt_result(false);
+    // If the whitelist contains the path, then the result is `allow`
+    // regardless of prompt result
+    assert_eq!(
+      perms0.request_read(&Some("/foo/bar")),
+      PermissionState::Allow
+    );
+
+    let mut perms1 = DenoPermissions::from_flags(&DenoFlags {
+      read_whitelist: whitelist.clone(),
+      ..Default::default()
+    });
+    set_prompt_result(true);
+    assert_eq!(
+      perms1.request_read(&Some("/foo/baz")),
+      PermissionState::Allow
+    );
+
+    let mut perms2 = DenoPermissions::from_flags(&DenoFlags {
+      read_whitelist: whitelist,
+      ..Default::default()
+    });
+    set_prompt_result(false);
+    assert_eq!(
+      perms2.request_read(&Some("/foo/baz")),
+      PermissionState::Deny
+    );
+  }
+
+  #[test]
+  fn test_permissions_request_write() {
+    let whitelist = svec!["/foo/bar"];
+    let mut perms0 = DenoPermissions::from_flags(&DenoFlags {
+      write_whitelist: whitelist.clone(),
+      ..Default::default()
+    });
+    set_prompt_result(false);
+    // If the whitelist contains the path, then the result is `allow`
+    // regardless of prompt result
+    assert_eq!(
+      perms0.request_write(&Some("/foo/bar")),
+      PermissionState::Allow
+    );
+
+    let mut perms1 = DenoPermissions::from_flags(&DenoFlags {
+      write_whitelist: whitelist.clone(),
+      ..Default::default()
+    });
+    set_prompt_result(true);
+    assert_eq!(
+      perms1.request_write(&Some("/foo/baz")),
+      PermissionState::Allow
+    );
+
+    let mut perms2 = DenoPermissions::from_flags(&DenoFlags {
+      write_whitelist: whitelist,
+      ..Default::default()
+    });
+    set_prompt_result(false);
+    assert_eq!(
+      perms2.request_write(&Some("/foo/baz")),
+      PermissionState::Deny
+    );
+  }
+
+  #[test]
+  fn test_permission_request_net() {
+    let whitelist = svec!["localhost:8080"];
+
+    let mut perms0 = DenoPermissions::from_flags(&DenoFlags {
+      net_whitelist: whitelist.clone(),
+      ..Default::default()
+    });
+    set_prompt_result(false);
+    // If the url matches the whitelist item, then the result is `allow`
+    // regardless of prompt result
+    assert_eq!(
+      perms0
+        .request_net(&Some("http://localhost:8080/"))
+        .expect("Testing expect"),
+      PermissionState::Allow
+    );
+
+    let mut perms1 = DenoPermissions::from_flags(&DenoFlags {
+      net_whitelist: whitelist.clone(),
+      ..Default::default()
+    });
+    set_prompt_result(true);
+    assert_eq!(
+      perms1
+        .request_net(&Some("http://deno.land/"))
+        .expect("Testing expect"),
+      PermissionState::Allow
+    );
+
+    let mut perms2 = DenoPermissions::from_flags(&DenoFlags {
+      net_whitelist: whitelist.clone(),
+      ..Default::default()
+    });
+    set_prompt_result(false);
+    assert_eq!(
+      perms2
+        .request_net(&Some("http://deno.land/"))
+        .expect("Testing expect"),
+      PermissionState::Deny
+    );
+
+    let mut perms3 = DenoPermissions::from_flags(&DenoFlags {
+      net_whitelist: whitelist,
+      ..Default::default()
+    });
+    set_prompt_result(true);
+    assert!(perms3.request_net(&Some(":")).is_err());
+  }
+
+  #[test]
+  fn test_permissions_request_env() {
+    let mut perms0 = DenoPermissions::from_flags(&DenoFlags {
+      ..Default::default()
+    });
+    set_prompt_result(true);
+    assert_eq!(perms0.request_env(), PermissionState::Allow);
+
+    let mut perms1 = DenoPermissions::from_flags(&DenoFlags {
+      ..Default::default()
+    });
+    set_prompt_result(false);
+    assert_eq!(perms1.request_env(), PermissionState::Deny);
+  }
+
+  #[test]
+  fn test_permissions_request_plugin() {
+    let mut perms0 = DenoPermissions::from_flags(&DenoFlags {
+      ..Default::default()
+    });
+    set_prompt_result(true);
+    assert_eq!(perms0.request_plugin(), PermissionState::Allow);
+
+    let mut perms1 = DenoPermissions::from_flags(&DenoFlags {
+      ..Default::default()
+    });
+    set_prompt_result(false);
+    assert_eq!(perms1.request_plugin(), PermissionState::Deny);
+  }
+
+  #[test]
+  fn test_permissions_request_hrtime() {
+    let mut perms0 = DenoPermissions::from_flags(&DenoFlags {
+      ..Default::default()
+    });
+    set_prompt_result(true);
+    assert_eq!(perms0.request_hrtime(), PermissionState::Allow);
+
+    let mut perms1 = DenoPermissions::from_flags(&DenoFlags {
+      ..Default::default()
+    });
+    set_prompt_result(false);
+    assert_eq!(perms1.request_hrtime(), PermissionState::Deny);
   }
 }

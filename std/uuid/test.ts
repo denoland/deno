@@ -1,10 +1,9 @@
 #!/usr/bin/env -S deno run
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { runIfMain } from "../testing/mod.ts";
 
 // Generic Tests
 import "./tests/isNil.ts";
-import "./tests/generate.ts";
 
 // V4 Tests
 import "./tests/v4/validate.ts";

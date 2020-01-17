@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-empty-interface */
@@ -54,11 +54,134 @@ declare namespace Deno {
    *       console.log(myEnv.TEST_VAR == newEnv.TEST_VAR);
    */
   export function env(key: string): string | undefined;
+
+  export type DirKind =
+    | "home"
+    | "cache"
+    | "config"
+    | "executable"
+    | "data"
+    | "data_local"
+    | "audio"
+    | "desktop"
+    | "document"
+    | "download"
+    | "font"
+    | "picture"
+    | "public"
+    | "template"
+    | "video";
+
   /**
-   * Returns the current user's home directory.
+   * Returns the user and platform specific directories.
    * Requires the `--allow-env` flag.
+   * Returns null if there is no applicable directory or if any other error
+   * occurs.
+   *
+   * Argument values: "home", "cache", "config", "executable", "data",
+   * "data_local", "audio", "desktop", "document", "download", "font", "picture",
+   * "public", "template", "video"
+   *
+   * "cache"
+   * |Platform | Value                               | Example                      |
+   * | ------- | ----------------------------------- | ---------------------------- |
+   * | Linux   | `$XDG_CACHE_HOME` or `$HOME`/.cache | /home/alice/.cache           |
+   * | macOS   | `$HOME`/Library/Caches              | /Users/Alice/Library/Caches  |
+   * | Windows | `{FOLDERID_LocalAppData}`           | C:\Users\Alice\AppData\Local |
+   *
+   * "config"
+   * |Platform | Value                                 | Example                          |
+   * | ------- | ------------------------------------- | -------------------------------- |
+   * | Linux   | `$XDG_CONFIG_HOME` or `$HOME`/.config | /home/alice/.config              |
+   * | macOS   | `$HOME`/Library/Preferences           | /Users/Alice/Library/Preferences |
+   * | Windows | `{FOLDERID_RoamingAppData}`           | C:\Users\Alice\AppData\Roaming   |
+   *
+   * "executable"
+   * |Platform | Value                                                           | Example                |
+   * | ------- | --------------------------------------------------------------- | -----------------------|
+   * | Linux   | `XDG_BIN_HOME` or `$XDG_DATA_HOME`/../bin or `$HOME`/.local/bin | /home/alice/.local/bin |
+   * | macOS   | -                                                               | -                      |
+   * | Windows | -                                                               | -                      |
+   *
+   * "data"
+   * |Platform | Value                                    | Example                                  |
+   * | ------- | ---------------------------------------- | ---------------------------------------- |
+   * | Linux   | `$XDG_DATA_HOME` or `$HOME`/.local/share | /home/alice/.local/share                 |
+   * | macOS   | `$HOME`/Library/Application Support      | /Users/Alice/Library/Application Support |
+   * | Windows | `{FOLDERID_RoamingAppData}`              | C:\Users\Alice\AppData\Roaming           |
+   *
+   * "data_local"
+   * |Platform | Value                                    | Example                                  |
+   * | ------- | ---------------------------------------- | ---------------------------------------- |
+   * | Linux   | `$XDG_DATA_HOME` or `$HOME`/.local/share | /home/alice/.local/share                 |
+   * | macOS   | `$HOME`/Library/Application Support      | /Users/Alice/Library/Application Support |
+   * | Windows | `{FOLDERID_LocalAppData}`                | C:\Users\Alice\AppData\Local             |
+   *
+   * "audio"
+   * |Platform | Value              | Example              |
+   * | ------- | ------------------ | -------------------- |
+   * | Linux   | `XDG_MUSIC_DIR`    | /home/alice/Music    |
+   * | macOS   | `$HOME`/Music      | /Users/Alice/Music   |
+   * | Windows | `{FOLDERID_Music}` | C:\Users\Alice\Music |
+   *
+   * "desktop"
+   * |Platform | Value                | Example                |
+   * | ------- | -------------------- | ---------------------- |
+   * | Linux   | `XDG_DESKTOP_DIR`    | /home/alice/Desktop    |
+   * | macOS   | `$HOME`/Desktop      | /Users/Alice/Desktop   |
+   * | Windows | `{FOLDERID_Desktop}` | C:\Users\Alice\Desktop |
+   *
+   * "document"
+   * |Platform | Value                  | Example                  |
+   * | ------- | ---------------------- | ------------------------ |
+   * | Linux   | `XDG_DOCUMENTS_DIR`    | /home/alice/Documents    |
+   * | macOS   | `$HOME`/Documents      | /Users/Alice/Documents   |
+   * | Windows | `{FOLDERID_Documents}` | C:\Users\Alice\Documents |
+   *
+   * "download"
+   * |Platform | Value                  | Example                  |
+   * | ------- | ---------------------- | ------------------------ |
+   * | Linux   | `XDG_DOWNLOAD_DIR`     | /home/alice/Downloads    |
+   * | macOS   | `$HOME`/Downloads      | /Users/Alice/Downloads   |
+   * | Windows | `{FOLDERID_Downloads}` | C:\Users\Alice\Downloads |
+   *
+   * "font"
+   * |Platform | Value                                                | Example                        |
+   * | ------- | ---------------------------------------------------- | ------------------------------ |
+   * | Linux   | `$XDG_DATA_HOME`/fonts or `$HOME`/.local/share/fonts | /home/alice/.local/share/fonts |
+   * | macOS   | `$HOME/Library/Fonts`                                | /Users/Alice/Library/Fonts     |
+   * | Windows | –                                                    | –                              |
+   *
+   * "picture"
+   * |Platform | Value                 | Example                 |
+   * | ------- | --------------------- | ----------------------- |
+   * | Linux   | `XDG_PICTURES_DIR`    | /home/alice/Pictures    |
+   * | macOS   | `$HOME`/Pictures      | /Users/Alice/Pictures   |
+   * | Windows | `{FOLDERID_Pictures}` | C:\Users\Alice\Pictures |
+   *
+   * "public"
+   * |Platform | Value                 | Example             |
+   * | ------- | --------------------- | ------------------- |
+   * | Linux   | `XDG_PUBLICSHARE_DIR` | /home/alice/Public  |
+   * | macOS   | `$HOME`/Public        | /Users/Alice/Public |
+   * | Windows | `{FOLDERID_Public}`   | C:\Users\Public     |
+   *
+   * "template"
+   * |Platform | Value                  | Example                                                    |
+   * | ------- | ---------------------- | ---------------------------------------------------------- |
+   * | Linux   | `XDG_TEMPLATES_DIR`    | /home/alice/Templates                                      |
+   * | macOS   | –                      | –                                                          |
+   * | Windows | `{FOLDERID_Templates}` | C:\Users\Alice\AppData\Roaming\Microsoft\Windows\Templates |
+   *
+   * "video"
+   * |Platform | Value               | Example               |
+   * | ------- | ------------------- | --------------------- |
+   * | Linux   | `XDG_VIDEOS_DIR`    | /home/alice/Videos    |
+   * | macOS   | `$HOME`/Movies      | /Users/Alice/Movies   |
+   * | Windows | `{FOLDERID_Videos}` | C:\Users\Alice\Videos |
    */
-  export function homeDir(): string;
+  export function dir(kind: DirKind): string | null;
+
   /**
    * Returns the path to the current deno executable.
    * Requires the `--allow-env` flag.
@@ -83,8 +206,8 @@ declare namespace Deno {
 
   // @url js/io.d.ts
 
-  export const EOF: null;
-  export type EOF = null;
+  export const EOF: unique symbol;
+  export type EOF = typeof EOF;
   export enum SeekMode {
     SEEK_START = 0,
     SEEK_CURRENT = 1,
@@ -199,6 +322,18 @@ declare namespace Deno {
    *       })();
    */
   export function open(filename: string, mode?: OpenMode): Promise<File>;
+  /** Creates a file if none exists or truncates an existing file and returns
+   *  an instance of the `File` object synchronously.
+   *
+   *       const file = Deno.createSync("/foo/bar.txt");
+   */
+  export function createSync(filename: string): File;
+  /** Creates a file if none exists or truncates an existing file and returns
+   *  an instance of the `File` object.
+   *
+   *       const file = await Deno.create("/foo/bar.txt");
+   */
+  export function create(filename: string): Promise<File>;
   /** Read synchronously from a file ID into an array buffer.
    *
    * Return `number | EOF` for the operation.
@@ -442,6 +577,11 @@ declare namespace Deno {
 
   // @url js/mkdir.d.ts
 
+  export interface MkdirOption {
+    recursive?: boolean;
+    mode?: number;
+  }
+
   /** Creates a new directory with the specified path synchronously.
    * If `recursive` is set to true, nested directories will be created (also known
    * as "mkdir -p").
@@ -449,13 +589,17 @@ declare namespace Deno {
    * Windows.
    *
    *       Deno.mkdirSync("new_dir");
-   *       Deno.mkdirSync("nested/directories", true);
+   *       Deno.mkdirSync("nested/directories", { recursive: true });
    */
+  export function mkdirSync(path: string, options?: MkdirOption): void;
+
+  /** Deprecated */
   export function mkdirSync(
     path: string,
     recursive?: boolean,
     mode?: number
   ): void;
+
   /** Creates a new directory with the specified path.
    * If `recursive` is set to true, nested directories will be created (also known
    * as "mkdir -p").
@@ -463,8 +607,11 @@ declare namespace Deno {
    * Windows.
    *
    *       await Deno.mkdir("new_dir");
-   *       await Deno.mkdir("nested/directories", true);
+   *       await Deno.mkdir("nested/directories", { recursive: true });
    */
+  export function mkdir(path: string, options?: MkdirOption): Promise<void>;
+
+  /** Deprecated */
   export function mkdir(
     path: string,
     recursive?: boolean,
@@ -633,12 +780,28 @@ declare namespace Deno {
      * be available on all platforms.
      */
     created: number | null;
+    /** The file or directory name. */
+    name: string | null;
+    /** ID of the device containing the file. Unix only. */
+    dev: number | null;
+    /** Inode number. Unix only. */
+    ino: number | null;
     /** The underlying raw st_mode bits that contain the standard Unix permissions
      * for this file/directory. TODO Match behavior with Go on windows for mode.
      */
     mode: number | null;
-    /** The file or directory name. */
-    name: string | null;
+    /** Number of hard links pointing to this file. Unix only. */
+    nlink: number | null;
+    /** User ID of the owner of this file. Unix only. */
+    uid: number | null;
+    /** User ID of the owner of this file. Unix only. */
+    gid: number | null;
+    /** Device ID of this file. Unix only. */
+    rdev: number | null;
+    /** Blocksize for filesystem I/O. Unix only. */
+    blksize: number | null;
+    /** Number of blocks allocated to the file, in 512-byte units. Unix only. */
+    blocks: number | null;
     /** Returns whether this is info for a regular file. This result is mutually
      * exclusive to `FileInfo.isDirectory` and `FileInfo.isSymlink`.
      */
@@ -652,6 +815,21 @@ declare namespace Deno {
      */
     isSymlink(): boolean;
   }
+
+  // @url js/realpath.d.ts
+
+  /** Returns absolute normalized path with symbolic links resolved
+   * synchronously.
+   *
+   *       const realPath = Deno.realpathSync("./some/path");
+   */
+  export function realpathSync(path: string): string;
+
+  /** Returns absolute normalized path with symbolic links resolved.
+   *
+   *       const realPath = await Deno.realpath("./some/path");
+   */
+  export function realpath(path: string): Promise<string>;
 
   // @url js/read_dir.d.ts
 
@@ -713,9 +891,16 @@ declare namespace Deno {
     modified: number;
     accessed: number;
     created: number;
-    mode: number;
-    hasMode: boolean;
     name: string | null;
+    dev: number;
+    ino: number;
+    mode: number;
+    nlink: number;
+    uid: number;
+    gid: number;
+    rdev: number;
+    blksize: number;
+    blocks: number;
   }
   /** Queries the file system for information on the path provided. If the given
    * path is a symlink information about the symlink will be returned.
@@ -931,34 +1116,78 @@ declare namespace Deno {
   }
 
   // @url js/permissions.d.ts
-
-  /** Permissions as granted by the caller */
-  export interface Permissions {
-    read: boolean;
-    write: boolean;
-    net: boolean;
-    env: boolean;
-    run: boolean;
-    hrtime: boolean;
+  /** Permissions as granted by the caller
+   * See: https://w3c.github.io/permissions/#permission-registry
+   */
+  export type PermissionName =
+    | "run"
+    | "read"
+    | "write"
+    | "net"
+    | "env"
+    | "plugin"
+    | "hrtime";
+  /** https://w3c.github.io/permissions/#status-of-a-permission */
+  export type PermissionState = "granted" | "denied" | "prompt";
+  interface RunPermissionDescriptor {
+    name: "run";
   }
-  export type Permission = keyof Permissions;
-  /** Inspect granted permissions for the current program.
-   *
-   *       if (Deno.permissions().read) {
-   *         const file = await Deno.readFile("example.test");
-   *         // ...
-   *       }
-   */
-  export function permissions(): Permissions;
-  /** Revoke a permission. When the permission was already revoked nothing changes
-   *
-   *       if (Deno.permissions().read) {
-   *         const file = await Deno.readFile("example.test");
-   *         Deno.revokePermission('read');
-   *       }
-   *       Deno.readFile("example.test"); // -> error or permission prompt
-   */
-  export function revokePermission(permission: Permission): void;
+  interface ReadWritePermissionDescriptor {
+    name: "read" | "write";
+    path?: string;
+  }
+  interface NetPermissionDescriptor {
+    name: "net";
+    url?: string;
+  }
+  interface EnvPermissionDescriptor {
+    name: "env";
+  }
+  interface PluginPermissionDescriptor {
+    name: "plugin";
+  }
+  interface HrtimePermissionDescriptor {
+    name: "hrtime";
+  }
+  /** See: https://w3c.github.io/permissions/#permission-descriptor */
+  type PermissionDescriptor =
+    | RunPermissionDescriptor
+    | ReadWritePermissionDescriptor
+    | NetPermissionDescriptor
+    | EnvPermissionDescriptor
+    | PluginPermissionDescriptor
+    | HrtimePermissionDescriptor;
+
+  export class Permissions {
+    /** Queries the permission.
+     *       const status = await Deno.permissions.query({ name: "read", path: "/etc" });
+     *       if (status.state === "granted") {
+     *         data = await Deno.readFile("/etc/passwd");
+     *       }
+     */
+    query(d: PermissionDescriptor): Promise<PermissionStatus>;
+    /** Revokes the permission.
+     *       const status = await Deno.permissions.revoke({ name: "run" });
+     *       assert(status.state !== "granted")
+     */
+    revoke(d: PermissionDescriptor): Promise<PermissionStatus>;
+    /** Requests the permission.
+     *       const status = await Deno.permissions.request({ name: "env" });
+     *       if (status.state === "granted") {
+     *         console.log(Deno.homeDir());
+     *       } else {
+     *         console.log("'env' permission is denied.");
+     *       }
+     */
+    request(desc: PermissionDescriptor): Promise<PermissionStatus>;
+  }
+  export const permissions: Permissions;
+
+  /** https://w3c.github.io/permissions/#permissionstatus */
+  export class PermissionStatus {
+    state: PermissionState;
+    constructor(state: PermissionState);
+  }
 
   // @url js/truncate.d.ts
 
@@ -976,6 +1205,36 @@ declare namespace Deno {
    */
   export function truncate(name: string, len?: number): Promise<void>;
 
+  // @url js/plugins.d.ts
+
+  export interface AsyncHandler {
+    (msg: Uint8Array): void;
+  }
+
+  export interface PluginOp {
+    dispatch(
+      control: Uint8Array,
+      zeroCopy?: ArrayBufferView | null
+    ): Uint8Array | null;
+    setAsyncHandler(handler: AsyncHandler): void;
+  }
+
+  export interface Plugin {
+    ops: {
+      [name: string]: PluginOp;
+    };
+  }
+
+  /** Open and initalize a plugin.
+   * Requires the `--allow-plugin` flag.
+   *
+   *        const plugin = Deno.openPlugin("./path/to/some/plugin.so");
+   *        const some_op = plugin.ops.some_op;
+   *        const response = some_op.dispatch(new Uint8Array([1,2,3,4]));
+   *        console.log(`Response from plugin ${response}`);
+   */
+  export function openPlugin(filename: string): Plugin;
+
   // @url js/net.d.ts
 
   type Transport = "tcp";
@@ -983,6 +1242,24 @@ declare namespace Deno {
     transport: Transport;
     address: string;
   }
+
+  export enum ShutdownMode {
+    // See http://man7.org/linux/man-pages/man2/shutdown.2.html
+    // Corresponding to SHUT_RD, SHUT_WR, SHUT_RDWR
+    Read = 0,
+    Write,
+    ReadWrite // unused
+  }
+
+  /** Shut down socket send and receive operations.
+   *
+   * Matches behavior of POSIX shutdown(3).
+   *
+   *       const listener = Deno.listen({ port: 80 });
+   *       const conn = await listener.accept();
+   *       Deno.shutdown(conn.rid, Deno.ShutdownMode.Write);
+   */
+  export function shutdown(rid: number, how: ShutdownMode): void;
 
   /** A Listener is a generic network listener for stream-oriented protocols. */
   export interface Listener extends AsyncIterator<Conn> {
@@ -1038,6 +1315,29 @@ declare namespace Deno {
    */
   export function listen(options: ListenOptions): Listener;
 
+  export interface ListenTLSOptions {
+    port: number;
+    hostname?: string;
+    transport?: Transport;
+    certFile: string;
+    keyFile: string;
+  }
+
+  /** Listen announces on the local transport address over TLS (transport layer security).
+   *
+   * @param options
+   * @param options.port The port to connect to. (Required.)
+   * @param options.hostname A literal IP address or host name that can be
+   *   resolved to an IP address. If not specified, defaults to 0.0.0.0
+   * @param options.certFile Server certificate file
+   * @param options.keyFile Server public key file
+   *
+   * Examples:
+   *
+   *     Deno.listenTLS({ port: 443, certFile: "./my_server.crt", keyFile: "./my_server.key" })
+   */
+  export function listenTLS(options: ListenTLSOptions): Listener;
+
   export interface DialOptions {
     port: number;
     hostname?: string;
@@ -1066,6 +1366,7 @@ declare namespace Deno {
   export interface DialTLSOptions {
     port: number;
     hostname?: string;
+    certFile?: string;
   }
 
   /**
@@ -1254,10 +1555,6 @@ declare namespace Deno {
     colors: boolean;
     indentLevel: number;
   }>;
-  /** A symbol which can be used as a key for a custom method which will be called
-   * when `Deno.inspect()` is called, or when the object is logged to the console.
-   */
-  export const customInspect: unique symbol;
   /**
    * `inspect()` converts input into string that has the same format
    * as printed by `console.log(...)`;
@@ -1287,126 +1584,540 @@ declare namespace Deno {
   export const version: Version;
   export {};
 
+  // @url js/diagnostics.d.ts
+
+  /** The log category for a diagnostic message */
+  export enum DiagnosticCategory {
+    Log = 0,
+    Debug = 1,
+    Info = 2,
+    Error = 3,
+    Warning = 4,
+    Suggestion = 5
+  }
+
+  export interface DiagnosticMessageChain {
+    message: string;
+    category: DiagnosticCategory;
+    code: number;
+    next?: DiagnosticMessageChain[];
+  }
+
+  export interface DiagnosticItem {
+    /** A string message summarizing the diagnostic. */
+    message: string;
+
+    /** An ordered array of further diagnostics. */
+    messageChain?: DiagnosticMessageChain;
+
+    /** Information related to the diagnostic.  This is present when there is a
+     * suggestion or other additional diagnostic information */
+    relatedInformation?: DiagnosticItem[];
+
+    /** The text of the source line related to the diagnostic */
+    sourceLine?: string;
+
+    /** The line number that is related to the diagnostic */
+    lineNumber?: number;
+
+    /** The name of the script resource related to the diagnostic */
+    scriptResourceName?: string;
+
+    /** The start position related to the diagnostic */
+    startPosition?: number;
+
+    /** The end position related to the diagnostic */
+    endPosition?: number;
+
+    /** The category of the diagnostic */
+    category: DiagnosticCategory;
+
+    /** A number identifier */
+    code: number;
+
+    /** The the start column of the sourceLine related to the diagnostic */
+    startColumn?: number;
+
+    /** The end column of the sourceLine related to the diagnostic */
+    endColumn?: number;
+  }
+
+  export interface Diagnostic {
+    /** An array of diagnostic items. */
+    items: DiagnosticItem[];
+  }
+
+  // @url js/compiler_api.ts
+
+  /** A specific subset TypeScript compiler options that can be supported by
+   * the Deno TypeScript compiler. */
+  export interface CompilerOptions {
+    /** Allow JavaScript files to be compiled. Defaults to `true`. */
+    allowJs?: boolean;
+
+    /** Allow default imports from modules with no default export. This does not
+     * affect code emit, just typechecking. Defaults to `false`. */
+    allowSyntheticDefaultImports?: boolean;
+
+    /** Allow accessing UMD globals from modules. Defaults to `false`. */
+    allowUmdGlobalAccess?: boolean;
+
+    /** Do not report errors on unreachable code. Defaults to `false`. */
+    allowUnreachableCode?: boolean;
+
+    /** Do not report errors on unused labels. Defaults to `false` */
+    allowUnusedLabels?: boolean;
+
+    /** Parse in strict mode and emit `"use strict"` for each source file.
+     * Defaults to `true`. */
+    alwaysStrict?: boolean;
+
+    /** Base directory to resolve non-relative module names. Defaults to
+     * `undefined`. */
+    baseUrl?: string;
+
+    /** Report errors in `.js` files. Use in conjunction with `allowJs`. Defaults
+     * to `false`. */
+    checkJs?: boolean;
+
+    /** Generates corresponding `.d.ts` file. Defaults to `false`. */
+    declaration?: boolean;
+
+    /** Output directory for generated declaration files. */
+    declarationDir?: string;
+
+    /** Generates a source map for each corresponding `.d.ts` file. Defaults to
+     * `false`. */
+    declarationMap?: boolean;
+
+    /** Provide full support for iterables in `for..of`, spread and
+     * destructuring when targeting ES5 or ES3.  Defaults to `false`. */
+    downlevelIteration?: boolean;
+
+    /** Emit a UTF-8 Byte Order Mark (BOM) in the beginning of output files.
+     * Defaults to `false`. */
+    emitBOM?: boolean;
+
+    /** Only emit `.d.ts` declaration files. Defaults to `false`. */
+    emitDeclarationOnly?: boolean;
+
+    /** Emit design-type metadata for decorated declarations in source. See issue
+     * [microsoft/TypeScript#2577](https://github.com/Microsoft/TypeScript/issues/2577)
+     * for details. Defaults to `false`. */
+    emitDecoratorMetadata?: boolean;
+
+    /** Emit `__importStar` and `__importDefault` helpers for runtime babel
+     * ecosystem compatibility and enable `allowSyntheticDefaultImports` for type
+     * system compatibility. Defaults to `true`. */
+    esModuleInterop?: boolean;
+
+    /** Enables experimental support for ES decorators. Defaults to `false`. */
+    experimentalDecorators?: boolean;
+
+    /** Emit a single file with source maps instead of having a separate file.
+     * Defaults to `false`. */
+    inlineSourceMap?: boolean;
+
+    /** Emit the source alongside the source maps within a single file; requires
+     * `inlineSourceMap` or `sourceMap` to be set. Defaults to `false`. */
+    inlineSources?: boolean;
+
+    /** Perform additional checks to ensure that transpile only would be safe.
+     * Defaults to `false`. */
+    isolatedModules?: boolean;
+
+    /** Support JSX in `.tsx` files: `"react"`, `"preserve"`, `"react-native"`.
+     * Defaults to `"react"`. */
+    jsx?: "react" | "preserve" | "react-native";
+
+    /** Specify the JSX factory function to use when targeting react JSX emit,
+     * e.g. `React.createElement` or `h`. Defaults to `React.createElement`. */
+    jsxFactory?: string;
+
+    /** Resolve keyof to string valued property names only (no numbers or
+     * symbols). Defaults to `false`. */
+    keyofStringsOnly?: string;
+
+    /** Emit class fields with ECMAScript-standard semantics. Defaults to `false`.
+     * Does not apply to `"esnext"` target. */
+    useDefineForClassFields?: boolean;
+
+    /** The locale to use to show error messages. */
+    locale?: string;
+
+    /** Specifies the location where debugger should locate map files instead of
+     * generated locations. Use this flag if the `.map` files will be located at
+     * run-time in a different location than the `.js` files. The location
+     * specified will be embedded in the source map to direct the debugger where
+     * the map files will be located. Defaults to `undefined`. */
+    mapRoot?: string;
+
+    /** Specify the module format for the emitted code.  Defaults to
+     * `"esnext"`. */
+    module?:
+      | "none"
+      | "commonjs"
+      | "amd"
+      | "system"
+      | "umd"
+      | "es6"
+      | "es2015"
+      | "esnext";
+
+    /** Do not generate custom helper functions like `__extends` in compiled
+     * output. Defaults to `false`. */
+    noEmitHelpers?: boolean;
+
+    /** Report errors for fallthrough cases in switch statement. Defaults to
+     * `false`. */
+    noFallthroughCasesInSwitch?: boolean;
+
+    /** Raise error on expressions and declarations with an implied any type.
+     * Defaults to `true`. */
+    noImplicitAny?: boolean;
+
+    /** Report an error when not all code paths in function return a value.
+     * Defaults to `false`. */
+    noImplicitReturns?: boolean;
+
+    /** Raise error on `this` expressions with an implied `any` type. Defaults to
+     * `true`. */
+    noImplicitThis?: boolean;
+
+    /** Do not emit `"use strict"` directives in module output. Defaults to
+     * `false`. */
+    noImplicitUseStrict?: boolean;
+
+    /** Do not add triple-slash references or module import targets to the list of
+     * compiled files. Defaults to `false`. */
+    noResolve?: boolean;
+
+    /** Disable strict checking of generic signatures in function types. Defaults
+     * to `false`. */
+    noStrictGenericChecks?: boolean;
+
+    /** Report errors on unused locals. Defaults to `false`. */
+    noUnusedLocals?: boolean;
+
+    /** Report errors on unused parameters. Defaults to `false`. */
+    noUnusedParameters?: boolean;
+
+    /** Redirect output structure to the directory. This only impacts
+     * `Deno.compile` and only changes the emitted file names.  Defaults to
+     * `undefined`. */
+    outDir?: string;
+
+    /** List of path mapping entries for module names to locations relative to the
+     * `baseUrl`. Defaults to `undefined`. */
+    paths?: Record<string, string[]>;
+
+    /** Do not erase const enum declarations in generated code. Defaults to
+     * `false`. */
+    preserveConstEnums?: boolean;
+
+    /** Remove all comments except copy-right header comments beginning with
+     * `/*!`. Defaults to `true`. */
+    removeComments?: boolean;
+
+    /** Include modules imported with `.json` extension. Defaults to `true`. */
+    resolveJsonModule?: boolean;
+
+    /** Specifies the root directory of input files. Only use to control the
+     * output directory structure with `outDir`. Defaults to `undefined`. */
+    rootDir?: string;
+
+    /** List of _root_ folders whose combined content represent the structure of
+     * the project at runtime. Defaults to `undefined`. */
+    rootDirs?: string[];
+
+    /** Generates corresponding `.map` file. Defaults to `false`. */
+    sourceMap?: boolean;
+
+    /** Specifies the location where debugger should locate TypeScript files
+     * instead of source locations. Use this flag if the sources will be located
+     * at run-time in a different location than that at design-time. The location
+     * specified will be embedded in the sourceMap to direct the debugger where
+     * the source files will be located. Defaults to `undefined`. */
+    sourceRoot?: string;
+
+    /** Enable all strict type checking options. Enabling `strict` enables
+     * `noImplicitAny`, `noImplicitThis`, `alwaysStrict`, `strictBindCallApply`,
+     * `strictNullChecks`, `strictFunctionTypes` and
+     * `strictPropertyInitialization`. Defaults to `true`. */
+    strict?: boolean;
+
+    /** Enable stricter checking of the `bind`, `call`, and `apply` methods on
+     * functions. Defaults to `true`. */
+    strictBindCallApply?: boolean;
+
+    /** Disable bivariant parameter checking for function types. Defaults to
+     * `true`. */
+    strictFunctionTypes?: boolean;
+
+    /** Ensure non-undefined class properties are initialized in the constructor.
+     * This option requires `strictNullChecks` be enabled in order to take effect.
+     * Defaults to `true`. */
+    strictPropertyInitialization?: boolean;
+
+    /** In strict null checking mode, the `null` and `undefined` values are not in
+     * the domain of every type and are only assignable to themselves and `any`
+     * (the one exception being that `undefined` is also assignable to `void`). */
+    strictNullChecks?: boolean;
+
+    /** Suppress excess property checks for object literals. Defaults to
+     * `false`. */
+    suppressExcessPropertyErrors?: boolean;
+
+    /** Suppress `noImplicitAny` errors for indexing objects lacking index
+     * signatures. */
+    suppressImplicitAnyIndexErrors?: boolean;
+
+    /** Specify ECMAScript target version. Defaults to `esnext`. */
+    target?:
+      | "es3"
+      | "es5"
+      | "es6"
+      | "es2015"
+      | "es2016"
+      | "es2017"
+      | "es2018"
+      | "es2019"
+      | "es2020"
+      | "esnext";
+
+    /** List of names of type definitions to include. Defaults to `undefined`. */
+    types?: string[];
+  }
+
+  /** The results of a transpile only command, where the `source` contains the
+   * emitted source, and `map` optionally contains the source map.
+   */
+  export interface TranspileOnlyResult {
+    source: string;
+    map?: string;
+  }
+
+  /** Takes a set of TypeScript sources and resolves with a map where the key was
+   * the original file name provided in sources and the result contains the
+   * `source` and optionally the `map` from the transpile operation. This does no
+   * type checking and validation, it effectively "strips" the types from the
+   * file.
+   *
+   *      const results =  await Deno.transpileOnly({
+   *        "foo.ts": `const foo: string = "foo";`
+   *      });
+   *
+   * @param sources A map where the key is the filename and the value is the text
+   *                to transpile.  The filename is only used in the transpile and
+   *                not resolved, for example to fill in the source name in the
+   *                source map.
+   * @param options An option object of options to send to the compiler. This is
+   *                a subset of ts.CompilerOptions which can be supported by Deno.
+   *                Many of the options related to type checking and emitting
+   *                type declaration files will have no impact on the output.
+   */
+  export function transpileOnly(
+    sources: Record<string, string>,
+    options?: CompilerOptions
+  ): Promise<Record<string, TranspileOnlyResult>>;
+
+  /** Takes a root module name, any optionally a record set of sources. Resolves
+   * with a compiled set of modules.  If just a root name is provided, the modules
+   * will be resolved as if the root module had been passed on the command line.
+   *
+   * If sources are passed, all modules will be resolved out of this object, where
+   * the key is the module name and the value is the content.  The extension of
+   * the module name will be used to determine the media type of the module.
+   *
+   *      const [ maybeDiagnostics1, output1 ] = await Deno.compile("foo.ts");
+   *
+   *      const [ maybeDiagnostics2, output2 ] = await Deno.compile("/foo.ts", {
+   *        "/foo.ts": `export * from "./bar.ts";`,
+   *        "/bar.ts": `export const bar = "bar";`
+   *      });
+   *
+   * @param rootName The root name of the module which will be used as the
+   *                 "starting point".  If no `sources` is specified, Deno will
+   *                 resolve the module externally as if the `rootName` had been
+   *                 specified on the command line.
+   * @param sources An optional key/value map of sources to be used when resolving
+   *                modules, where the key is the module name, and the value is
+   *                the source content.  The extension of the key will determine
+   *                the media type of the file when processing.  If supplied,
+   *                Deno will not attempt to resolve any modules externally.
+   * @param options An optional object of options to send to the compiler. This is
+   *                a subset of ts.CompilerOptions which can be supported by Deno.
+   */
+  export function compile(
+    rootName: string,
+    sources?: Record<string, string>,
+    options?: CompilerOptions
+  ): Promise<[Diagnostic[] | undefined, Record<string, string>]>;
+
+  /** Takes a root module name, and optionally a record set of sources. Resolves
+   * with a single JavaScript string that is like the output of a `deno bundle`
+   * command.  If just a root name is provided, the modules will be resolved as if
+   * the root module had been passed on the command line.
+   *
+   * If sources are passed, all modules will be resolved out of this object, where
+   * the key is the module name and the value is the content. The extension of the
+   * module name will be used to determine the media type of the module.
+   *
+   *      const [ maybeDiagnostics1, output1 ] = await Deno.bundle("foo.ts");
+   *
+   *      const [ maybeDiagnostics2, output2 ] = await Deno.bundle("/foo.ts", {
+   *        "/foo.ts": `export * from "./bar.ts";`,
+   *        "/bar.ts": `export const bar = "bar";`
+   *      });
+   *
+   * @param rootName The root name of the module which will be used as the
+   *                 "starting point".  If no `sources` is specified, Deno will
+   *                 resolve the module externally as if the `rootName` had been
+   *                 specified on the command line.
+   * @param sources An optional key/value map of sources to be used when resolving
+   *                modules, where the key is the module name, and the value is
+   *                the source content.  The extension of the key will determine
+   *                the media type of the file when processing.  If supplied,
+   *                Deno will not attempt to resolve any modules externally.
+   * @param options An optional object of options to send to the compiler. This is
+   *                a subset of ts.CompilerOptions which can be supported by Deno.
+   */
+  export function bundle(
+    rootName: string,
+    sources?: Record<string, string>,
+    options?: CompilerOptions
+  ): Promise<[Diagnostic[] | undefined, string]>;
+
   // @url js/deno.d.ts
 
   export const args: string[];
+
+  /** Special Deno related symbols. */
+  export const symbols: {
+    /** Symbol to access exposed internal Deno API */
+    readonly internal: unique symbol;
+    /** A symbol which can be used as a key for a custom method which will be called
+     * when `Deno.inspect()` is called, or when the object is logged to the console.
+     */
+    readonly customInspect: unique symbol;
+  };
 }
 
 // @url js/globals.ts
 
 declare interface Window {
   window: Window & typeof globalThis;
-  atob: typeof textEncoding.atob;
-  btoa: typeof textEncoding.btoa;
-  fetch: typeof fetchTypes.fetch;
-  clearTimeout: typeof timers.clearTimeout;
-  clearInterval: typeof timers.clearInterval;
-  console: consoleTypes.Console;
-  setTimeout: typeof timers.setTimeout;
-  setInterval: typeof timers.setInterval;
-  location: domTypes.Location;
+  atob: typeof __textEncoding.atob;
+  btoa: typeof __textEncoding.btoa;
+  fetch: typeof __fetch.fetch;
+  clearTimeout: typeof __timers.clearTimeout;
+  clearInterval: typeof __timers.clearInterval;
+  console: __console.Console;
+  setTimeout: typeof __timers.setTimeout;
+  setInterval: typeof __timers.setInterval;
+  location: __domTypes.Location;
   onload: Function | undefined;
   onunload: Function | undefined;
   crypto: Crypto;
-  Blob: typeof blob.DenoBlob;
-  File: domTypes.DomFileConstructor;
-  CustomEvent: typeof customEvent.CustomEvent;
-  Event: typeof event.Event;
-  EventTarget: typeof eventTarget.EventTarget;
-  URL: typeof url.URL;
-  URLSearchParams: typeof urlSearchParams.URLSearchParams;
-  Headers: domTypes.HeadersConstructor;
-  FormData: domTypes.FormDataConstructor;
-  TextEncoder: typeof textEncoding.TextEncoder;
-  TextDecoder: typeof textEncoding.TextDecoder;
-  Request: domTypes.RequestConstructor;
-  Response: typeof fetchTypes.Response;
-  performance: performanceUtil.Performance;
+  Blob: typeof __blob.DenoBlob;
+  File: __domTypes.DomFileConstructor;
+  CustomEvent: typeof __customEvent.CustomEvent;
+  Event: typeof __event.Event;
+  EventTarget: typeof __eventTarget.EventTarget;
+  URL: typeof __url.URL;
+  URLSearchParams: typeof __urlSearchParams.URLSearchParams;
+  Headers: __domTypes.HeadersConstructor;
+  FormData: __domTypes.FormDataConstructor;
+  TextEncoder: typeof __textEncoding.TextEncoder;
+  TextDecoder: typeof __textEncoding.TextDecoder;
+  Request: __domTypes.RequestConstructor;
+  Response: typeof __fetch.Response;
+  performance: __performanceUtil.Performance;
   onmessage: (e: { data: any }) => void;
-  workerMain: typeof workers.workerMain;
-  workerClose: typeof workers.workerClose;
-  postMessage: typeof workers.postMessage;
-  Worker: typeof workers.WorkerImpl;
+  workerMain: typeof __workers.workerMain;
+  workerClose: typeof __workers.workerClose;
+  postMessage: typeof __workers.postMessage;
+  Worker: typeof __workers.WorkerImpl;
   addEventListener: (
     type: string,
-    callback: (event: domTypes.Event) => void | null,
-    options?: boolean | domTypes.AddEventListenerOptions | undefined
+    callback: (event: __domTypes.Event) => void | null,
+    options?: boolean | __domTypes.AddEventListenerOptions | undefined
   ) => void;
-  dispatchEvent: (event: domTypes.Event) => boolean;
+  dispatchEvent: (event: __domTypes.Event) => boolean;
   removeEventListener: (
     type: string,
-    callback: (event: domTypes.Event) => void | null,
-    options?: boolean | domTypes.EventListenerOptions | undefined
+    callback: (event: __domTypes.Event) => void | null,
+    options?: boolean | __domTypes.EventListenerOptions | undefined
   ) => void;
   queueMicrotask: (task: () => void) => void;
   Deno: typeof Deno;
 }
 
 declare const window: Window & typeof globalThis;
-declare const atob: typeof textEncoding.atob;
-declare const btoa: typeof textEncoding.btoa;
-declare const fetch: typeof fetchTypes.fetch;
-declare const clearTimeout: typeof timers.clearTimeout;
-declare const clearInterval: typeof timers.clearInterval;
-declare const console: consoleTypes.Console;
-declare const setTimeout: typeof timers.setTimeout;
-declare const setInterval: typeof timers.setInterval;
-declare const location: domTypes.Location;
+declare const atob: typeof __textEncoding.atob;
+declare const btoa: typeof __textEncoding.btoa;
+declare const fetch: typeof __fetch.fetch;
+declare const clearTimeout: typeof __timers.clearTimeout;
+declare const clearInterval: typeof __timers.clearInterval;
+declare const console: __console.Console;
+declare const setTimeout: typeof __timers.setTimeout;
+declare const setInterval: typeof __timers.setInterval;
+declare const location: __domTypes.Location;
 declare const onload: Function | undefined;
 declare const onunload: Function | undefined;
 declare const crypto: Crypto;
-declare const Blob: typeof blob.DenoBlob;
-declare const File: domTypes.DomFileConstructor;
-declare const CustomEventInit: typeof customEvent.CustomEventInit;
-declare const CustomEvent: typeof customEvent.CustomEvent;
-declare const EventInit: typeof event.EventInit;
-declare const Event: typeof event.Event;
-declare const EventListener: typeof eventTarget.EventListener;
-declare const EventTarget: typeof eventTarget.EventTarget;
-declare const URL: typeof url.URL;
-declare const URLSearchParams: typeof urlSearchParams.URLSearchParams;
-declare const Headers: domTypes.HeadersConstructor;
-declare const FormData: domTypes.FormDataConstructor;
-declare const TextEncoder: typeof textEncoding.TextEncoder;
-declare const TextDecoder: typeof textEncoding.TextDecoder;
-declare const Request: domTypes.RequestConstructor;
-declare const Response: typeof fetchTypes.Response;
-declare const performance: performanceUtil.Performance;
+declare const Blob: typeof __blob.DenoBlob;
+declare const File: __domTypes.DomFileConstructor;
+declare const CustomEventInit: typeof __customEvent.CustomEventInit;
+declare const CustomEvent: typeof __customEvent.CustomEvent;
+declare const EventInit: typeof __event.EventInit;
+declare const Event: typeof __event.Event;
+declare const EventListener: typeof __eventTarget.EventListener;
+declare const EventTarget: typeof __eventTarget.EventTarget;
+declare const URL: typeof __url.URL;
+declare const URLSearchParams: typeof __urlSearchParams.URLSearchParams;
+declare const Headers: __domTypes.HeadersConstructor;
+declare const FormData: __domTypes.FormDataConstructor;
+declare const TextEncoder: typeof __textEncoding.TextEncoder;
+declare const TextDecoder: typeof __textEncoding.TextDecoder;
+declare const Request: __domTypes.RequestConstructor;
+declare const Response: typeof __fetch.Response;
+declare const performance: __performanceUtil.Performance;
 declare let onmessage: (e: { data: any }) => void;
-declare const workerMain: typeof workers.workerMain;
-declare const workerClose: typeof workers.workerClose;
-declare const postMessage: typeof workers.postMessage;
-declare const Worker: typeof workers.WorkerImpl;
+declare const workerMain: typeof __workers.workerMain;
+declare const workerClose: typeof __workers.workerClose;
+declare const postMessage: typeof __workers.postMessage;
+declare const Worker: typeof __workers.WorkerImpl;
 declare const addEventListener: (
   type: string,
-  callback: (event: domTypes.Event) => void | null,
-  options?: boolean | domTypes.AddEventListenerOptions | undefined
+  callback: (event: __domTypes.Event) => void | null,
+  options?: boolean | __domTypes.AddEventListenerOptions | undefined
 ) => void;
-declare const dispatchEvent: (event: domTypes.Event) => boolean;
+declare const dispatchEvent: (event: __domTypes.Event) => boolean;
 declare const removeEventListener: (
   type: string,
-  callback: (event: domTypes.Event) => void | null,
-  options?: boolean | domTypes.EventListenerOptions | undefined
+  callback: (event: __domTypes.Event) => void | null,
+  options?: boolean | __domTypes.EventListenerOptions | undefined
 ) => void;
 
-declare type Blob = domTypes.Blob;
-declare type Body = domTypes.Body;
-declare type File = domTypes.DomFile;
-declare type CustomEventInit = domTypes.CustomEventInit;
-declare type CustomEvent = domTypes.CustomEvent;
-declare type EventInit = domTypes.EventInit;
-declare type Event = domTypes.Event;
-declare type EventListener = domTypes.EventListener;
-declare type EventTarget = domTypes.EventTarget;
-declare type URL = url.URL;
-declare type URLSearchParams = domTypes.URLSearchParams;
-declare type Headers = domTypes.Headers;
-declare type FormData = domTypes.FormData;
-declare type TextEncoder = textEncoding.TextEncoder;
-declare type TextDecoder = textEncoding.TextDecoder;
-declare type Request = domTypes.Request;
-declare type Response = domTypes.Response;
-declare type Worker = workers.Worker;
+declare type Blob = __domTypes.Blob;
+declare type Body = __domTypes.Body;
+declare type File = __domTypes.DomFile;
+declare type CustomEventInit = __domTypes.CustomEventInit;
+declare type CustomEvent = __domTypes.CustomEvent;
+declare type EventInit = __domTypes.EventInit;
+declare type Event = __domTypes.Event;
+declare type EventListener = __domTypes.EventListener;
+declare type EventTarget = __domTypes.EventTarget;
+declare type URL = __url.URL;
+declare type URLSearchParams = __domTypes.URLSearchParams;
+declare type Headers = __domTypes.Headers;
+declare type FormData = __domTypes.FormData;
+declare type TextEncoder = __textEncoding.TextEncoder;
+declare type TextDecoder = __textEncoding.TextDecoder;
+declare type Request = __domTypes.Request;
+declare type Response = __domTypes.Response;
+declare type Worker = __workers.Worker;
 
 declare interface ImportMeta {
   url: string;
@@ -1429,7 +2140,7 @@ declare interface Crypto {
   ) => T;
 }
 
-declare namespace domTypes {
+declare namespace __domTypes {
   // @url js/dom_types.d.ts
 
   export type BufferSource = ArrayBufferView | ArrayBuffer;
@@ -2002,25 +2713,25 @@ declare namespace domTypes {
   }
 }
 
-declare namespace blob {
+declare namespace __blob {
   // @url js/blob.d.ts
 
   export const bytesSymbol: unique symbol;
-  export const blobBytesWeakMap: WeakMap<domTypes.Blob, Uint8Array>;
-  export class DenoBlob implements domTypes.Blob {
+  export const blobBytesWeakMap: WeakMap<__domTypes.Blob, Uint8Array>;
+  export class DenoBlob implements __domTypes.Blob {
     private readonly [bytesSymbol];
     readonly size: number;
     readonly type: string;
     /** A blob object represents a file-like object of immutable, raw data. */
     constructor(
-      blobParts?: domTypes.BlobPart[],
-      options?: domTypes.BlobPropertyBag
+      blobParts?: __domTypes.BlobPart[],
+      options?: __domTypes.BlobPropertyBag
     );
     slice(start?: number, end?: number, contentType?: string): DenoBlob;
   }
 }
 
-declare namespace consoleTypes {
+declare namespace __console {
   // @url js/console.d.ts
 
   type ConsoleOptions = Partial<{
@@ -2109,11 +2820,11 @@ declare namespace consoleTypes {
   export function inspect(value: unknown, options?: ConsoleOptions): string;
 }
 
-declare namespace event {
+declare namespace __event {
   // @url js/event.d.ts
 
   export const eventAttributes: WeakMap<object, any>;
-  export class EventInit implements domTypes.EventInit {
+  export class EventInit implements __domTypes.EventInit {
     bubbles: boolean;
     cancelable: boolean;
     composed: boolean;
@@ -2127,7 +2838,7 @@ declare namespace event {
       composed?: boolean | undefined;
     });
   }
-  export class Event implements domTypes.Event {
+  export class Event implements __domTypes.Event {
     isTrusted: boolean;
     private _canceledFlag;
     private _dispatchedFlag;
@@ -2136,21 +2847,21 @@ declare namespace event {
     private _stopImmediatePropagationFlag;
     private _stopPropagationFlag;
     private _path;
-    constructor(type: string, eventInitDict?: domTypes.EventInit);
+    constructor(type: string, eventInitDict?: __domTypes.EventInit);
     readonly bubbles: boolean;
     cancelBubble: boolean;
     cancelBubbleImmediately: boolean;
     readonly cancelable: boolean;
     readonly composed: boolean;
-    currentTarget: domTypes.EventTarget;
+    currentTarget: __domTypes.EventTarget;
     readonly defaultPrevented: boolean;
     dispatched: boolean;
     eventPhase: number;
     readonly initialized: boolean;
     inPassiveListener: boolean;
-    path: domTypes.EventPath[];
-    relatedTarget: domTypes.EventTarget;
-    target: domTypes.EventTarget;
+    path: __domTypes.EventPath[];
+    relatedTarget: __domTypes.EventTarget;
+    target: __domTypes.EventTarget;
     readonly timeStamp: Date;
     readonly type: string;
     /** Returns the event’s path (objects on which listeners will be
@@ -2159,7 +2870,7 @@ declare namespace event {
      *
      *      event.composedPath();
      */
-    composedPath(): domTypes.EventPath[];
+    composedPath(): __domTypes.EventPath[];
     /** Cancels the event (if it is cancelable).
      * See https://dom.spec.whatwg.org/#set-the-canceled-flag
      *
@@ -2182,22 +2893,23 @@ declare namespace event {
   }
 }
 
-declare namespace customEvent {
+declare namespace __customEvent {
   // @url js/custom_event.d.ts
 
   export const customEventAttributes: WeakMap<object, any>;
-  export class CustomEventInit extends event.EventInit
-    implements domTypes.CustomEventInit {
+  export class CustomEventInit extends __event.EventInit
+    implements __domTypes.CustomEventInit {
     detail: any;
     constructor({
       bubbles,
       cancelable,
       composed,
       detail
-    }: domTypes.CustomEventInit);
+    }: __domTypes.CustomEventInit);
   }
-  export class CustomEvent extends event.Event implements domTypes.CustomEvent {
-    constructor(type: string, customEventInitDict?: domTypes.CustomEventInit);
+  export class CustomEvent extends __event.Event
+    implements __domTypes.CustomEvent {
+    constructor(type: string, customEventInitDict?: __domTypes.CustomEventInit);
     readonly detail: any;
     initCustomEvent(
       type: string,
@@ -2209,16 +2921,16 @@ declare namespace customEvent {
   }
 }
 
-declare namespace eventTarget {
+declare namespace __eventTarget {
   // @url js/event_target.d.ts
 
-  export class EventListenerOptions implements domTypes.EventListenerOptions {
+  export class EventListenerOptions implements __domTypes.EventListenerOptions {
     _capture: boolean;
     constructor({ capture }?: { capture?: boolean | undefined });
     readonly capture: boolean;
   }
   export class AddEventListenerOptions extends EventListenerOptions
-    implements domTypes.AddEventListenerOptions {
+    implements __domTypes.AddEventListenerOptions {
     _passive: boolean;
     _once: boolean;
     constructor({
@@ -2233,52 +2945,50 @@ declare namespace eventTarget {
     readonly passive: boolean;
     readonly once: boolean;
   }
-  export class EventListener implements domTypes.EventListener {
-    allEvents: domTypes.Event[];
-    atEvents: domTypes.Event[];
-    bubbledEvents: domTypes.Event[];
-    capturedEvents: domTypes.Event[];
+  export class EventListener implements __domTypes.EventListener {
+    allEvents: __domTypes.Event[];
+    atEvents: __domTypes.Event[];
+    bubbledEvents: __domTypes.Event[];
+    capturedEvents: __domTypes.Event[];
     private _callback;
     private _options;
     constructor(
-      callback: (event: domTypes.Event) => void | null,
-      options: boolean | domTypes.AddEventListenerOptions
+      callback: (event: __domTypes.Event) => void | null,
+      options: boolean | __domTypes.AddEventListenerOptions
     );
-    handleEvent(event: domTypes.Event): void;
-    readonly callback: (event: domTypes.Event) => void | null;
-    readonly options: domTypes.AddEventListenerOptions | boolean;
+    handleEvent(event: __domTypes.Event): void;
+    readonly callback: (event: __domTypes.Event) => void | null;
+    readonly options: __domTypes.AddEventListenerOptions | boolean;
   }
   export const eventTargetAssignedSlot: unique symbol;
   export const eventTargetHasActivationBehavior: unique symbol;
-  export class EventTarget implements domTypes.EventTarget {
-    [domTypes.eventTargetHost]: domTypes.EventTarget | null;
-    [domTypes.eventTargetListeners]: {
-      [type in string]: domTypes.EventListener[]
+  export class EventTarget implements __domTypes.EventTarget {
+    [__domTypes.eventTargetHost]: __domTypes.EventTarget | null;
+    [__domTypes.eventTargetListeners]: {
+      [type in string]: __domTypes.EventListener[];
     };
-    [domTypes.eventTargetMode]: string;
-    [domTypes.eventTargetNodeType]: domTypes.NodeType;
+    [__domTypes.eventTargetMode]: string;
+    [__domTypes.eventTargetNodeType]: __domTypes.NodeType;
     private [eventTargetAssignedSlot];
     private [eventTargetHasActivationBehavior];
     addEventListener(
       type: string,
-      callback: (event: domTypes.Event) => void | null,
-      options?: domTypes.AddEventListenerOptions | boolean
+      callback: (event: __domTypes.Event) => void | null,
+      options?: __domTypes.AddEventListenerOptions | boolean
     ): void;
     removeEventListener(
       type: string,
-      callback: (event: domTypes.Event) => void | null,
-      options?: domTypes.EventListenerOptions | boolean
+      callback: (event: __domTypes.Event) => void | null,
+      options?: __domTypes.EventListenerOptions | boolean
     ): void;
-    dispatchEvent(event: domTypes.Event): boolean;
+    dispatchEvent(event: __domTypes.Event): boolean;
     readonly [Symbol.toStringTag]: string;
   }
 }
 
-declare namespace io {
+declare namespace __io {
   // @url js/io.d.ts
 
-  export const EOF: null;
-  export type EOF = null;
   export enum SeekMode {
     SEEK_START = 0,
     SEEK_CURRENT = 1,
@@ -2302,10 +3012,10 @@ declare namespace io {
      *
      * Implementations must not retain `p`.
      */
-    read(p: Uint8Array): Promise<number | EOF>;
+    read(p: Uint8Array): Promise<number | Deno.EOF>;
   }
   export interface SyncReader {
-    readSync(p: Uint8Array): number | EOF;
+    readSync(p: Uint8Array): number | Deno.EOF;
   }
   export interface Writer {
     /** Writes `p.byteLength` bytes from `p` to the underlying data
@@ -2363,10 +3073,11 @@ declare namespace io {
   export function toAsyncIterator(r: Reader): AsyncIterableIterator<Uint8Array>;
 }
 
-declare namespace fetchTypes {
+declare namespace __fetch {
   // @url js/fetch.d.ts
 
-  class Body implements domTypes.Body, domTypes.ReadableStream, io.ReadCloser {
+  class Body
+    implements __domTypes.Body, __domTypes.ReadableStream, __io.ReadCloser {
     private rid;
     readonly contentType: string;
     bodyUsed: boolean;
@@ -2377,25 +3088,25 @@ declare namespace fetchTypes {
     constructor(rid: number, contentType: string);
     private _bodyBuffer;
     arrayBuffer(): Promise<ArrayBuffer>;
-    blob(): Promise<domTypes.Blob>;
-    formData(): Promise<domTypes.FormData>;
+    blob(): Promise<__domTypes.Blob>;
+    formData(): Promise<__domTypes.FormData>;
     json(): Promise<any>;
     text(): Promise<string>;
-    read(p: Uint8Array): Promise<number | io.EOF>;
+    read(p: Uint8Array): Promise<number | Deno.EOF>;
     close(): void;
     cancel(): Promise<void>;
-    getReader(): domTypes.ReadableStreamReader;
-    tee(): [domTypes.ReadableStream, domTypes.ReadableStream];
+    getReader(): __domTypes.ReadableStreamReader;
+    tee(): [__domTypes.ReadableStream, __domTypes.ReadableStream];
     [Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array>;
   }
-  export class Response implements domTypes.Response {
+  export class Response implements __domTypes.Response {
     readonly url: string;
     readonly status: number;
     statusText: string;
     readonly type = "basic";
     readonly redirected: boolean;
-    headers: domTypes.Headers;
-    readonly trailer: Promise<domTypes.Headers>;
+    headers: __domTypes.Headers;
+    readonly trailer: Promise<__domTypes.Headers>;
     bodyUsed: boolean;
     readonly body: Body;
     constructor(
@@ -2407,21 +3118,21 @@ declare namespace fetchTypes {
       body_?: null | Body
     );
     arrayBuffer(): Promise<ArrayBuffer>;
-    blob(): Promise<domTypes.Blob>;
-    formData(): Promise<domTypes.FormData>;
+    blob(): Promise<__domTypes.Blob>;
+    formData(): Promise<__domTypes.FormData>;
     json(): Promise<any>;
     text(): Promise<string>;
     readonly ok: boolean;
-    clone(): domTypes.Response;
+    clone(): __domTypes.Response;
   }
   /** Fetch a resource from the network. */
   export function fetch(
-    input: domTypes.Request | string,
-    init?: domTypes.RequestInit
+    input: __domTypes.Request | __url.URL | string,
+    init?: __domTypes.RequestInit
   ): Promise<Response>;
 }
 
-declare namespace textEncoding {
+declare namespace __textEncoding {
   // @url js/text_encoding.d.ts
 
   export function atob(s: string): string;
@@ -2444,7 +3155,10 @@ declare namespace textEncoding {
     readonly ignoreBOM = false;
     constructor(label?: string, options?: TextDecoderOptions);
     /** Returns the result of running encoding's decoder. */
-    decode(input?: domTypes.BufferSource, options?: TextDecodeOptions): string;
+    decode(
+      input?: __domTypes.BufferSource,
+      options?: TextDecodeOptions
+    ): string;
     readonly [Symbol.toStringTag]: string;
   }
   interface TextEncoderEncodeIntoResult {
@@ -2461,7 +3175,7 @@ declare namespace textEncoding {
   }
 }
 
-declare namespace timers {
+declare namespace __timers {
   // @url js/timers.d.ts
 
   export type Args = unknown[];
@@ -2481,7 +3195,7 @@ declare namespace timers {
   export function clearInterval(id?: number): void;
 }
 
-declare namespace urlSearchParams {
+declare namespace __urlSearchParams {
   // @url js/url_search_params.d.ts
 
   export class URLSearchParams {
@@ -2588,14 +3302,9 @@ declare namespace urlSearchParams {
   }
 }
 
-declare namespace url {
+declare namespace __url {
   // @url js/url.d.ts
-
-  export const blobURLMap: Map<string, domTypes.Blob>;
-  export class URL {
-    private _parts;
-    private _searchParams;
-    private _updateSearchParams;
+  export interface URL {
     hash: string;
     host: string;
     hostname: string;
@@ -2606,17 +3315,21 @@ declare namespace url {
     port: string;
     protocol: string;
     search: string;
+    readonly searchParams: __urlSearchParams.URLSearchParams;
     username: string;
-    readonly searchParams: urlSearchParams.URLSearchParams;
-    constructor(url: string, base?: string | URL);
     toString(): string;
     toJSON(): string;
-    static createObjectURL(b: domTypes.Blob): string;
-    static revokeObjectURL(url: string): void;
   }
+
+  export const URL: {
+    prototype: URL;
+    new (url: string, base?: string | URL): URL;
+    createObjectURL(object: __domTypes.Blob): string;
+    revokeObjectURL(url: string): void;
+  };
 }
 
-declare namespace workers {
+declare namespace __workers {
   // @url js/workers.d.ts
 
   export function encodeMessage(data: any): Uint8Array;
@@ -2643,7 +3356,7 @@ declare namespace workers {
     noDenoNamespace?: boolean;
   }
   export class WorkerImpl implements Worker {
-    private readonly rid;
+    private readonly id;
     private isClosing;
     private readonly isClosedPromise;
     onerror?: () => void;
@@ -2656,7 +3369,7 @@ declare namespace workers {
   }
 }
 
-declare namespace performanceUtil {
+declare namespace __performanceUtil {
   // @url js/performance.d.ts
 
   export class Performance {
@@ -2688,14 +3401,14 @@ declare namespace WebAssembly {
    * function is useful if it is necessary to a compile a module before it can
    * be instantiated (otherwise, the `WebAssembly.instantiate()` function
    * should be used). */
-  function compile(bufferSource: domTypes.BufferSource): Promise<Module>;
+  function compile(bufferSource: __domTypes.BufferSource): Promise<Module>;
 
   /** Compiles a `WebAssembly.Module` directly from a streamed underlying
    * source. This function is useful if it is necessary to a compile a module
    * before it can be instantiated (otherwise, the
    * `WebAssembly.instantiateStreaming()` function should be used). */
   function compileStreaming(
-    source: Promise<domTypes.Response>
+    source: Promise<__domTypes.Response>
   ): Promise<Module>;
 
   /** Takes the WebAssembly binary code, in the form of a typed array or
@@ -2703,7 +3416,7 @@ declare namespace WebAssembly {
    * The returned `Promise` resolves to both a compiled `WebAssembly.Module` and
    * its first `WebAssembly.Instance`. */
   function instantiate(
-    bufferSource: domTypes.BufferSource,
+    bufferSource: __domTypes.BufferSource,
     importObject?: object
   ): Promise<WebAssemblyInstantiatedSource>;
 
@@ -2719,13 +3432,13 @@ declare namespace WebAssembly {
    * underlying source. This is the most efficient, optimized way to load wasm
    * code. */
   function instantiateStreaming(
-    source: Promise<domTypes.Response>,
+    source: Promise<__domTypes.Response>,
     importObject?: object
   ): Promise<WebAssemblyInstantiatedSource>;
 
   /** Validates a given typed array of WebAssembly binary code, returning
    * whether the bytes form a valid wasm module (`true`) or not (`false`). */
-  function validate(bufferSource: domTypes.BufferSource): boolean;
+  function validate(bufferSource: __domTypes.BufferSource): boolean;
 
   type ImportExportKind = "function" | "table" | "memory" | "global";
 
@@ -2740,7 +3453,7 @@ declare namespace WebAssembly {
   }
 
   class Module {
-    constructor(bufferSource: domTypes.BufferSource);
+    constructor(bufferSource: __domTypes.BufferSource);
 
     /** Given a `Module` and string, returns a copy of the contents of all
      * custom sections in the module with the given string name. */
@@ -2845,4 +3558,10 @@ declare namespace WebAssembly {
   }
 }
 
-/* eslint-enable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any */
+// Catch-all for JSX elements.
+// See https://www.typescriptlang.org/docs/handbook/jsx.html#intrinsic-elements
+declare namespace JSX {
+  interface IntrinsicElements {
+    [elemName: string]: any;
+  }
+}

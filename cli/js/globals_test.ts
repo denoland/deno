@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { test, assert } from "./test_util.ts";
 
 test(function globalThisExists(): void {
@@ -81,22 +81,18 @@ test(async function windowQueueMicrotask(): Promise<void> {
   let resolve1: () => void | undefined;
   let resolve2: () => void | undefined;
   let microtaskDone = false;
-  const p1 = new Promise(
-    (res): void => {
-      resolve1 = (): void => {
-        microtaskDone = true;
-        res();
-      };
-    }
-  );
-  const p2 = new Promise(
-    (res): void => {
-      resolve2 = (): void => {
-        assert(microtaskDone);
-        res();
-      };
-    }
-  );
+  const p1 = new Promise((res): void => {
+    resolve1 = (): void => {
+      microtaskDone = true;
+      res();
+    };
+  });
+  const p2 = new Promise((res): void => {
+    resolve2 = (): void => {
+      assert(microtaskDone);
+      res();
+    };
+  });
   window.queueMicrotask(resolve1!);
   setTimeout(resolve2!, 0);
   await p1;

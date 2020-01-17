@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno --allow-all
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 const { env, stdin, args, exit, writeFile, chmod, run } = Deno;
 import { parse } from "../flags/mod.ts";
 import { exists } from "../fs/exists.ts";
@@ -78,16 +78,16 @@ function getFlagFromPermission(perm: Permission): string {
 
 function getInstallerDir(): string {
   // In Windows's Powershell $HOME environmental variable maybe null
-  // if so use $HOMEPATH instead.
-  const { HOME, HOMEPATH } = env();
+  // if so use $USERPROFILE instead.
+  const { HOME, USERPROFILE } = env();
 
-  const HOME_PATH = HOME || HOMEPATH;
+  const HOME_PATH = HOME || USERPROFILE;
 
   if (!HOME_PATH) {
     throw new Error("$HOME is not defined.");
   }
 
-  return path.join(HOME_PATH, ".deno", "bin");
+  return path.resolve(HOME_PATH, ".deno", "bin");
 }
 
 async function readCharacter(): Promise<string> {
@@ -275,7 +275,7 @@ export async function install(
 }
 
 async function main(): Promise<void> {
-  const parsedArgs = parse(args.slice(1), { stopEarly: true });
+  const parsedArgs = parse(args, { stopEarly: true });
 
   if (parsedArgs.h || parsedArgs.help) {
     return showHelp();

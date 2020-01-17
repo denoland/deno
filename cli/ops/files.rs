@@ -1,13 +1,17 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
+use super::io::StreamResource;
+use crate::deno_error::bad_resource;
+use crate::deno_error::DenoError;
+use crate::deno_error::ErrorKind;
 use crate::fs as deno_fs;
 use crate::ops::json_op;
-use crate::resources;
 use crate::state::ThreadSafeState;
-use deno::*;
-use futures::Future;
+use deno_core::*;
+use futures::future::FutureExt;
 use std;
 use std::convert::From;
+use std::io::SeekFrom;
 use tokio;
 
 pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
@@ -43,7 +47,7 @@ fn op_open(
   let args: OpenArgs = serde_json::from_value(args)?;
   let (filename, filename_) = deno_fs::resolve_from_cwd(&args.filename)?;
   let capability = args.capability;
-
+  let state_ = state.clone();
   let mut open_options = tokio::fs::OpenOptions::new();
 
   open_options
@@ -63,18 +67,19 @@ fn op_open(
   }
 
   let is_sync = args.promise_id.is_none();
-  let op = open_options.open(filename).map_err(ErrBox::from).and_then(
-    move |fs_file| {
-      let resource = resources::add_fs_file(fs_file);
-      futures::future::ok(json!(resource.rid))
-    },
-  );
+
+  let fut = async move {
+    let fs_file = open_options.open(filename).await?;
+    let mut table = state_.lock_resource_table();
+    let rid = table.add("fsFile", Box::new(StreamResource::FsFile(fs_file)));
+    Ok(json!(rid))
+  };
 
   if is_sync {
-    let buf = op.wait()?;
+    let buf = futures::executor::block_on(fut)?;
     Ok(JsonOp::Sync(buf))
   } else {
-    Ok(JsonOp::Async(Box::new(op)))
+    Ok(JsonOp::Async(fut.boxed()))
   }
 }
 
@@ -84,14 +89,14 @@ struct CloseArgs {
 }
 
 fn op_close(
-  _state: &ThreadSafeState,
+  state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: CloseArgs = serde_json::from_value(args)?;
 
-  let resource = resources::lookup(args.rid as u32)?;
-  resource.close();
+  let mut table = state.lock_resource_table();
+  table.close(args.rid as u32).ok_or_else(bad_resource)?;
   Ok(JsonOp::Sync(json!({})))
 }
 
@@ -105,19 +110,47 @@ struct SeekArgs {
 }
 
 fn op_seek(
-  _state: &ThreadSafeState,
+  state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: SeekArgs = serde_json::from_value(args)?;
+  let rid = args.rid as u32;
+  let offset = args.offset;
+  let whence = args.whence as u32;
+  // Translate seek mode to Rust repr.
+  let seek_from = match whence {
+    0 => SeekFrom::Start(offset as u64),
+    1 => SeekFrom::Current(i64::from(offset)),
+    2 => SeekFrom::End(i64::from(offset)),
+    _ => {
+      return Err(ErrBox::from(DenoError::new(
+        ErrorKind::InvalidSeekMode,
+        format!("Invalid seek mode: {}", whence),
+      )));
+    }
+  };
 
-  let resource = resources::lookup(args.rid as u32)?;
-  let op = resources::seek(resource, args.offset, args.whence as u32)
-    .and_then(move |_| futures::future::ok(json!({})));
+  let mut table = state.lock_resource_table();
+  let resource = table
+    .get_mut::<StreamResource>(rid)
+    .ok_or_else(bad_resource)?;
+
+  let tokio_file = match resource {
+    StreamResource::FsFile(ref mut file) => file,
+    _ => return Err(bad_resource()),
+  };
+  let mut file = futures::executor::block_on(tokio_file.try_clone())?;
+
+  let fut = async move {
+    file.seek(seek_from).await?;
+    Ok(json!({}))
+  };
+
   if args.promise_id.is_none() {
-    let buf = op.wait()?;
+    let buf = futures::executor::block_on(fut)?;
     Ok(JsonOp::Sync(buf))
   } else {
-    Ok(JsonOp::Async(Box::new(op)))
+    Ok(JsonOp::Async(fut.boxed()))
   }
 }

@@ -2,9 +2,10 @@
 ///
 /// > DENO_BUILD_MODE=release ./tools/build.py && \
 ///   ./target/release/deno_core_http_bench --multi-thread
-extern crate deno;
+extern crate deno_core;
 extern crate futures;
 extern crate libc;
+extern crate num_cpus;
 extern crate tokio;
 
 #[macro_use]
@@ -12,18 +13,24 @@ extern crate log;
 #[macro_use]
 extern crate lazy_static;
 
-use deno::*;
-use futures::future::lazy;
-use std::collections::HashMap;
+use deno_core::*;
+use futures::future::Future;
+use futures::future::FutureExt;
+use futures::task::{Context, Poll};
 use std::env;
+use std::io::Error;
+use std::io::ErrorKind;
 use std::net::SocketAddr;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
+use std::pin::Pin;
 use std::sync::Mutex;
-use tokio::prelude::*;
+use std::sync::MutexGuard;
+use tokio::io::AsyncRead;
+use tokio::io::AsyncWrite;
 
 static LOGGER: Logger = Logger;
+
 struct Logger;
+
 impl log::Log for Logger {
   fn enabled(&self, metadata: &log::Metadata) -> bool {
     metadata.level() <= log::max_level()
@@ -98,10 +105,10 @@ fn test_record_from() {
   // TODO test From<&[u8]> for Record
 }
 
-pub type HttpOp = dyn Future<Item = i32, Error = std::io::Error> + Send;
+pub type HttpOp = dyn Future<Output = Result<i32, std::io::Error>> + Send;
 
 pub type HttpOpHandler =
-  fn(record: Record, zero_copy_buf: Option<PinnedBuf>) -> Box<HttpOp>;
+  fn(record: Record, zero_copy_buf: Option<PinnedBuf>) -> Pin<Box<HttpOp>>;
 
 fn http_op(
   handler: HttpOpHandler,
@@ -110,63 +117,31 @@ fn http_op(
     let record = Record::from(control);
     let is_sync = record.promise_id == 0;
     let op = handler(record.clone(), zero_copy_buf);
+    let mut record_a = record;
 
-    let mut record_a = record.clone();
-    let mut record_b = record.clone();
-
-    let fut = Box::new(
-      op.and_then(move |result| {
-        record_a.result = result;
-        Ok(record_a)
-      })
-      .or_else(|err| -> Result<Record, ()> {
-        eprintln!("unexpected err {}", err);
-        record_b.result = -1;
-        Ok(record_b)
-      })
-      .then(|result| -> Result<Buf, ()> {
-        let record = result.unwrap();
-        Ok(record.into())
-      }),
-    );
+    let fut = async move {
+      match op.await {
+        Ok(result) => record_a.result = result,
+        Err(err) => {
+          eprintln!("unexpected err {}", err);
+          record_a.result = -1;
+        }
+      };
+      Ok(record_a.into())
+    };
 
     if is_sync {
-      Op::Sync(fut.wait().unwrap())
+      Op::Sync(futures::executor::block_on(fut).unwrap())
     } else {
-      Op::Async(fut)
+      Op::Async(fut.boxed())
     }
   }
 }
 
 fn main() {
-  let main_future = lazy(move || {
-    // TODO currently isolate.execute() must be run inside tokio, hence the
-    // lazy(). It would be nice to not have that contraint. Probably requires
-    // using v8::MicrotasksPolicy::kExplicit
-
-    let js_source = include_str!("http_bench.js");
-
-    let startup_data = StartupData::Script(Script {
-      source: js_source,
-      filename: "http_bench.js",
-    });
-
-    let mut isolate = deno::Isolate::new(startup_data, false);
-    isolate.register_op("listen", http_op(op_listen));
-    isolate.register_op("accept", http_op(op_accept));
-    isolate.register_op("read", http_op(op_read));
-    isolate.register_op("write", http_op(op_write));
-    isolate.register_op("close", http_op(op_close));
-
-    isolate.then(|r| {
-      js_check(r);
-      Ok(())
-    })
-  });
-
   let args: Vec<String> = env::args().collect();
   // NOTE: `--help` arg will display V8 help and exit
-  let args = deno::v8_set_flags(args);
+  let args = deno_core::v8_set_flags(args);
 
   log::set_logger(&LOGGER).unwrap();
   log::set_max_level(if args.iter().any(|a| a == "-D") {
@@ -175,124 +150,220 @@ fn main() {
     log::LevelFilter::Warn
   });
 
-  if args.iter().any(|a| a == "--multi-thread") {
+  let js_source = include_str!("http_bench.js");
+
+  let startup_data = StartupData::Script(Script {
+    source: js_source,
+    filename: "http_bench.js",
+  });
+
+  let isolate = deno_core::Isolate::new(startup_data, false);
+  isolate.register_op("listen", http_op(op_listen));
+  isolate.register_op("accept", http_op(op_accept));
+  isolate.register_op("read", http_op(op_read));
+  isolate.register_op("write", http_op(op_write));
+  isolate.register_op("close", http_op(op_close));
+
+  let multi_thread = args.iter().any(|a| a == "--multi-thread");
+
+  println!(
+    "num cpus; logical: {}; physical: {}",
+    num_cpus::get(),
+    num_cpus::get_physical()
+  );
+  let mut builder = tokio::runtime::Builder::new();
+  let builder = if multi_thread {
     println!("multi-thread");
-    tokio::run(main_future);
+    builder.threaded_scheduler()
   } else {
     println!("single-thread");
-    tokio::runtime::current_thread::run(main_future);
+    builder.basic_scheduler()
+  };
+
+  let mut runtime = builder
+    .enable_io()
+    .build()
+    .expect("Unable to create tokio runtime");
+  let result = runtime.block_on(isolate.boxed());
+  js_check(result);
+}
+
+pub fn bad_resource() -> Error {
+  Error::new(ErrorKind::NotFound, "bad resource id")
+}
+
+struct TcpListener(tokio::net::TcpListener);
+
+impl Resource for TcpListener {}
+
+struct TcpStream(tokio::net::TcpStream);
+
+impl Resource for TcpStream {}
+
+lazy_static! {
+  static ref RESOURCE_TABLE: Mutex<ResourceTable> =
+    Mutex::new(ResourceTable::default());
+}
+
+fn lock_resource_table<'a>() -> MutexGuard<'a, ResourceTable> {
+  RESOURCE_TABLE.lock().unwrap()
+}
+
+struct Accept {
+  rid: ResourceId,
+}
+
+impl Future for Accept {
+  type Output = Result<(tokio::net::TcpStream, SocketAddr), std::io::Error>;
+
+  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+    let inner = self.get_mut();
+
+    let mut table = lock_resource_table();
+    match table.get_mut::<TcpListener>(inner.rid) {
+      None => Poll::Ready(Err(bad_resource())),
+      Some(listener) => {
+        let listener = &mut listener.0;
+        listener.poll_accept(cx)
+      }
+    }
   }
 }
 
-enum Repr {
-  TcpListener(tokio::net::TcpListener),
-  TcpStream(tokio::net::TcpStream),
-}
+fn op_accept(
+  record: Record,
+  _zero_copy_buf: Option<PinnedBuf>,
+) -> Pin<Box<HttpOp>> {
+  let rid = record.arg as u32;
+  debug!("accept {}", rid);
 
-type ResourceTable = HashMap<i32, Repr>;
-lazy_static! {
-  static ref RESOURCE_TABLE: Mutex<ResourceTable> = Mutex::new(HashMap::new());
-  static ref NEXT_RID: AtomicUsize = AtomicUsize::new(3);
-}
+  let fut = async move {
+    let (stream, addr) = Accept { rid }.await?;
+    debug!("accept success {}", addr);
+    let mut table = lock_resource_table();
+    let rid = table.add("tcpStream", Box::new(TcpStream(stream)));
+    Ok(rid as i32)
+  };
 
-fn new_rid() -> i32 {
-  let rid = NEXT_RID.fetch_add(1, Ordering::SeqCst);
-  rid as i32
-}
-
-fn op_accept(record: Record, _zero_copy_buf: Option<PinnedBuf>) -> Box<HttpOp> {
-  let listener_rid = record.arg;
-  debug!("accept {}", listener_rid);
-  Box::new(
-    futures::future::poll_fn(move || {
-      let mut table = RESOURCE_TABLE.lock().unwrap();
-      let maybe_repr = table.get_mut(&listener_rid);
-      match maybe_repr {
-        Some(Repr::TcpListener(ref mut listener)) => listener.poll_accept(),
-        _ => panic!("bad rid {}", listener_rid),
-      }
-    })
-    .and_then(move |(stream, addr)| {
-      debug!("accept success {}", addr);
-      let rid = new_rid();
-
-      let mut guard = RESOURCE_TABLE.lock().unwrap();
-      guard.insert(rid, Repr::TcpStream(stream));
-
-      Ok(rid as i32)
-    }),
-  )
+  fut.boxed()
 }
 
 fn op_listen(
   _record: Record,
   _zero_copy_buf: Option<PinnedBuf>,
-) -> Box<HttpOp> {
+) -> Pin<Box<HttpOp>> {
   debug!("listen");
-  Box::new(lazy(move || {
+  let fut = async {
     let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
-    let listener = tokio::net::TcpListener::bind(&addr).unwrap();
-    let rid = new_rid();
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    let mut table = lock_resource_table();
+    let rid = table.add("tcpListener", Box::new(TcpListener(listener)));
+    Ok(rid as i32)
+  };
 
-    let mut guard = RESOURCE_TABLE.lock().unwrap();
-    guard.insert(rid, Repr::TcpListener(listener));
-    futures::future::ok(rid)
-  }))
+  fut.boxed()
 }
 
-fn op_close(record: Record, _zero_copy_buf: Option<PinnedBuf>) -> Box<HttpOp> {
+fn op_close(
+  record: Record,
+  _zero_copy_buf: Option<PinnedBuf>,
+) -> Pin<Box<HttpOp>> {
   debug!("close");
-  let rid = record.arg;
-  Box::new(lazy(move || {
-    let mut table = RESOURCE_TABLE.lock().unwrap();
-    let r = table.remove(&rid);
-    let result = if r.is_some() { 0 } else { -1 };
-    futures::future::ok(result)
-  }))
+  let fut = async move {
+    let rid = record.arg as u32;
+    let mut table = lock_resource_table();
+    match table.close(rid) {
+      Some(_) => Ok(0),
+      None => Err(bad_resource()),
+    }
+  };
+  fut.boxed()
 }
 
-fn op_read(record: Record, zero_copy_buf: Option<PinnedBuf>) -> Box<HttpOp> {
-  let rid = record.arg;
-  debug!("read rid={}", rid);
-  let mut zero_copy_buf = zero_copy_buf.unwrap();
-  Box::new(
-    futures::future::poll_fn(move || {
-      let mut table = RESOURCE_TABLE.lock().unwrap();
-      let maybe_repr = table.get_mut(&rid);
-      match maybe_repr {
-        Some(Repr::TcpStream(ref mut stream)) => {
-          stream.poll_read(&mut zero_copy_buf)
-        }
-        _ => panic!("bad rid"),
+struct Read {
+  rid: ResourceId,
+  buf: PinnedBuf,
+}
+
+impl Future for Read {
+  type Output = Result<usize, std::io::Error>;
+
+  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+    let inner = self.get_mut();
+    let mut table = lock_resource_table();
+
+    match table.get_mut::<TcpStream>(inner.rid) {
+      None => Poll::Ready(Err(bad_resource())),
+      Some(stream) => {
+        let pinned_stream = Pin::new(&mut stream.0);
+        pinned_stream.poll_read(cx, &mut inner.buf)
       }
-    })
-    .and_then(move |nread| {
-      debug!("read success {}", nread);
-      Ok(nread as i32)
-    }),
-  )
+    }
+  }
 }
 
-fn op_write(record: Record, zero_copy_buf: Option<PinnedBuf>) -> Box<HttpOp> {
-  let rid = record.arg;
+fn op_read(
+  record: Record,
+  zero_copy_buf: Option<PinnedBuf>,
+) -> Pin<Box<HttpOp>> {
+  let rid = record.arg as u32;
+  debug!("read rid={}", rid);
+  let zero_copy_buf = zero_copy_buf.unwrap();
+
+  let fut = async move {
+    let nread = Read {
+      rid,
+      buf: zero_copy_buf,
+    }
+    .await?;
+    debug!("read success {}", nread);
+    Ok(nread as i32)
+  };
+
+  fut.boxed()
+}
+
+struct Write {
+  rid: ResourceId,
+  buf: PinnedBuf,
+}
+
+impl Future for Write {
+  type Output = Result<usize, std::io::Error>;
+
+  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+    let inner = self.get_mut();
+    let mut table = lock_resource_table();
+
+    match table.get_mut::<TcpStream>(inner.rid) {
+      None => Poll::Ready(Err(bad_resource())),
+      Some(stream) => {
+        let pinned_stream = Pin::new(&mut stream.0);
+        pinned_stream.poll_write(cx, &inner.buf)
+      }
+    }
+  }
+}
+
+fn op_write(
+  record: Record,
+  zero_copy_buf: Option<PinnedBuf>,
+) -> Pin<Box<HttpOp>> {
+  let rid = record.arg as u32;
   debug!("write rid={}", rid);
   let zero_copy_buf = zero_copy_buf.unwrap();
-  Box::new(
-    futures::future::poll_fn(move || {
-      let mut table = RESOURCE_TABLE.lock().unwrap();
-      let maybe_repr = table.get_mut(&rid);
-      match maybe_repr {
-        Some(Repr::TcpStream(ref mut stream)) => {
-          stream.poll_write(&zero_copy_buf)
-        }
-        _ => panic!("bad rid"),
-      }
-    })
-    .and_then(move |nwritten| {
-      debug!("write success {}", nwritten);
-      Ok(nwritten as i32)
-    }),
-  )
+
+  let fut = async move {
+    let nwritten = Write {
+      rid,
+      buf: zero_copy_buf,
+    }
+    .await?;
+    debug!("write success {}", nwritten);
+    Ok(nwritten as i32)
+  };
+
+  fut.boxed()
 }
 
 fn js_check(r: Result<(), ErrBox>) {

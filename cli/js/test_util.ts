@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 //
 // We want to test many ops in deno which have different behavior depending on
 // the permissions set. These tests can specify which permissions they expect,
@@ -26,14 +26,40 @@ interface TestPermissions {
   net?: boolean;
   env?: boolean;
   run?: boolean;
+  plugin?: boolean;
   hrtime?: boolean;
 }
 
-const processPerms = Deno.permissions();
+export interface Permissions {
+  read: boolean;
+  write: boolean;
+  net: boolean;
+  env: boolean;
+  run: boolean;
+  plugin: boolean;
+  hrtime: boolean;
+}
+
+const isGranted = async (name: Deno.PermissionName): Promise<boolean> =>
+  (await Deno.permissions.query({ name })).state === "granted";
+
+async function getProcessPermissions(): Promise<Permissions> {
+  return {
+    run: await isGranted("run"),
+    read: await isGranted("read"),
+    write: await isGranted("write"),
+    net: await isGranted("net"),
+    env: await isGranted("env"),
+    plugin: await isGranted("plugin"),
+    hrtime: await isGranted("hrtime")
+  };
+}
+
+const processPerms = await getProcessPermissions();
 
 function permissionsMatch(
-  processPerms: Deno.Permissions,
-  requiredPerms: Deno.Permissions
+  processPerms: Permissions,
+  requiredPerms: Permissions
 ): boolean {
   for (const permName in processPerms) {
     if (processPerms[permName] !== requiredPerms[permName]) {
@@ -44,32 +70,34 @@ function permissionsMatch(
   return true;
 }
 
-export const permissionCombinations: Map<string, Deno.Permissions> = new Map();
+export const permissionCombinations: Map<string, Permissions> = new Map();
 
-function permToString(perms: Deno.Permissions): string {
+function permToString(perms: Permissions): string {
   const r = perms.read ? 1 : 0;
   const w = perms.write ? 1 : 0;
   const n = perms.net ? 1 : 0;
   const e = perms.env ? 1 : 0;
   const u = perms.run ? 1 : 0;
+  const p = perms.plugin ? 1 : 0;
   const h = perms.hrtime ? 1 : 0;
-  return `permR${r}W${w}N${n}E${e}U${u}H${h}`;
+  return `permR${r}W${w}N${n}E${e}U${u}P${p}H${h}`;
 }
 
-function registerPermCombination(perms: Deno.Permissions): void {
+function registerPermCombination(perms: Permissions): void {
   const key = permToString(perms);
   if (!permissionCombinations.has(key)) {
     permissionCombinations.set(key, perms);
   }
 }
 
-function normalizeTestPermissions(perms: TestPermissions): Deno.Permissions {
+function normalizeTestPermissions(perms: TestPermissions): Permissions {
   return {
     read: !!perms.read,
     write: !!perms.write,
     net: !!perms.net,
     run: !!perms.run,
     env: !!perms.env,
+    plugin: !!perms.plugin,
     hrtime: !!perms.hrtime
   };
 }
@@ -97,6 +125,7 @@ export function test(fn: testing.TestFunction): void {
       net: false,
       env: false,
       run: false,
+      plugin: false,
       hrtime: false
     },
     fn
@@ -153,6 +182,7 @@ test(function permissionsMatches(): void {
         net: false,
         env: false,
         run: false,
+        plugin: false,
         hrtime: false
       },
       normalizeTestPermissions({ read: true })
@@ -167,6 +197,7 @@ test(function permissionsMatches(): void {
         net: false,
         env: false,
         run: false,
+        plugin: false,
         hrtime: false
       },
       normalizeTestPermissions({})
@@ -181,6 +212,7 @@ test(function permissionsMatches(): void {
         net: true,
         env: true,
         run: true,
+        plugin: true,
         hrtime: true
       },
       normalizeTestPermissions({ read: true })
@@ -196,6 +228,7 @@ test(function permissionsMatches(): void {
         net: true,
         env: false,
         run: false,
+        plugin: false,
         hrtime: false
       },
       normalizeTestPermissions({ read: true })
@@ -211,6 +244,7 @@ test(function permissionsMatches(): void {
         net: true,
         env: true,
         run: true,
+        plugin: true,
         hrtime: true
       },
       {
@@ -219,6 +253,7 @@ test(function permissionsMatches(): void {
         net: true,
         env: true,
         run: true,
+        plugin: true,
         hrtime: true
       }
     )

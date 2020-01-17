@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { test, testPerm, assertEquals } from "./test_util.ts";
 
 test(function resourcesStdio(): void {
@@ -39,10 +39,8 @@ testPerm({ read: true }, async function resourcesFile(): Promise<void> {
     Object.keys(resourcesAfter).length,
     Object.keys(resourcesBefore).length + 1
   );
-  const newRid = Object.keys(resourcesAfter).find(
-    (rid): boolean => {
-      return !resourcesBefore.hasOwnProperty(rid);
-    }
-  );
+  const newRid = Object.keys(resourcesAfter).find((rid): boolean => {
+    return !resourcesBefore.hasOwnProperty(rid);
+  });
   assertEquals(resourcesAfter[newRid], "fsFile");
 });

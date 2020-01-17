@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 /*
 SharedQueue Binary Layout
 +-------------------------------+-------------------------------+
@@ -38,6 +38,9 @@ SharedQueue Binary Layout
 
   let sharedBytes;
   let shared32;
+
+  let asyncHandlers;
+
   let initialized = false;
 
   function maybeInit() {
@@ -54,12 +57,13 @@ SharedQueue Binary Layout
     assert(shared32 == null);
     sharedBytes = new Uint8Array(shared);
     shared32 = new Int32Array(shared);
+    asyncHandlers = [];
     // Callers should not call Deno.core.recv, use setAsyncHandler.
     Deno.core.recv(handleAsyncMsgFromRust);
   }
 
   function ops() {
-    // op id 0 is a special value to retreive the map of registered ops.
+    // op id 0 is a special value to retrieve the map of registered ops.
     const opsMapBytes = Deno.core.send(0, new Uint8Array([]), null);
     const opsMapJson = String.fromCharCode.apply(null, opsMapBytes);
     return JSON.parse(opsMapJson);
@@ -157,30 +161,29 @@ SharedQueue Binary Layout
     return [opId, buf];
   }
 
-  let asyncHandler;
-  function setAsyncHandler(cb) {
+  function setAsyncHandler(opId, cb) {
     maybeInit();
-    assert(asyncHandler == null);
-    asyncHandler = cb;
+    assert(opId != null);
+    asyncHandlers[opId] = cb;
   }
 
   function handleAsyncMsgFromRust(opId, buf) {
     if (buf) {
       // This is the overflow_response case of deno::Isolate::poll().
-      asyncHandler(opId, buf);
+      asyncHandlers[opId](buf);
     } else {
       while (true) {
         const opIdBuf = shift();
         if (opIdBuf == null) {
           break;
         }
-        asyncHandler(...opIdBuf);
+        assert(asyncHandlers[opIdBuf[0]] != null);
+        asyncHandlers[opIdBuf[0]](opIdBuf[1]);
       }
     }
   }
 
   function dispatch(opId, control, zeroCopy = null) {
-    maybeInit();
     return Deno.core.send(opId, control, zeroCopy);
   }
 
