@@ -368,6 +368,15 @@ impl Isolate {
     isolate
   }
 
+  pub fn clear_exception(&mut self) {
+    let isolate = self.v8_isolate.as_ref().unwrap();
+    let mut locker = v8::Locker::new(isolate);
+    let mut hs = v8::HandleScope::new(&mut locker);
+    let scope = hs.enter();
+    self.last_exception_handle.reset(scope);
+    self.last_exception.take();
+  }
+
   pub fn handle_exception<'a>(
     &mut self,
     scope: &mut impl v8::ToLocal<'a>,
