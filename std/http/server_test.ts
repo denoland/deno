@@ -346,6 +346,38 @@ test(async function writeUint8ArrayResponse(): Promise<void> {
   assertEquals(eof, Deno.EOF);
 });
 
+test(async function writeStringResponse(): Promise<void> {
+  const body = "Hello";
+
+  const res: Response = { body };
+
+  const buf = new Deno.Buffer();
+  await writeResponse(buf, res);
+
+  const decoder = new TextDecoder("utf-8");
+  const reader = new BufReader(buf);
+
+  let r: ReadLineResult;
+  r = assertNotEOF(await reader.readLine());
+  assertEquals(decoder.decode(r.line), "HTTP/1.1 200 OK");
+  assertEquals(r.more, false);
+
+  r = assertNotEOF(await reader.readLine());
+  assertEquals(decoder.decode(r.line), `content-length: ${body.length}`);
+  assertEquals(r.more, false);
+
+  r = assertNotEOF(await reader.readLine());
+  assertEquals(r.line.byteLength, 0);
+  assertEquals(r.more, false);
+
+  r = assertNotEOF(await reader.readLine());
+  assertEquals(decoder.decode(r.line), body);
+  assertEquals(r.more, false);
+
+  const eof = await reader.readLine();
+  assertEquals(eof, Deno.EOF);
+});
+
 test(async function writeStringReaderResponse(): Promise<void> {
   const shortText = "Hello";
 
