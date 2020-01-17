@@ -123,8 +123,10 @@ async function serve(rid) {
 let ops;
 
 async function main() {
-  Deno.core.setAsyncHandler(handleAsyncMsgFromRust);
   ops = Deno.core.ops();
+  for (const opName in ops) {
+    Deno.core.setAsyncHandler(ops[opName], handleAsyncMsgFromRust);
+  }
 
   Deno.core.print("http_bench.js start\n");
 
