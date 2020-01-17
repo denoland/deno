@@ -443,16 +443,11 @@ export class Response implements domTypes.Response {
         "The redirection status must be one of 302, 302, 303, 307 and 308."
       );
     }
-    const location = this.headers.get("Location");
-    const newLocation = new URL(
-      typeof url === "string" ? url : url.toString(),
-      location == null ? undefined : location
-    );
     return new Response(
       "",
       status,
       "",
-      [["Location", newLocation.toString()]],
+      [["Location", typeof url === "string" ? url : url.toString()]],
       -1,
       false,
       null,
