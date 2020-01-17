@@ -100,7 +100,7 @@ export {
   Signal
 } from "./process.ts";
 export { transpileOnly, compile, bundle } from "./compiler_api.ts";
-export { inspect, customInspect } from "./console.ts";
+export { inspect } from "./console.ts";
 export { build, OperatingSystem, Arch } from "./build.ts";
 export { version } from "./version.ts";
 export const args: string[] = [];
@@ -110,18 +110,10 @@ export const args: string[] = [];
 /** @internal */
 export { core } from "./core.ts";
 
-/** @internal */
-export { setPrepareStackTrace } from "./error_stack.ts";
-
-// TODO Don't expose Console nor stringifyArgs.
-/** @internal */
-export { Console, stringifyArgs } from "./console.ts";
-// TODO Don't expose DomIterableMixin.
-/** @internal */
-export { DomIterableMixin } from "./mixins/dom_iterable.ts";
-
 /** The current process id of the runtime. */
 export let pid: number;
 
 /** Reflects the NO_COLOR environment variable: https://no-color.org/ */
 export let noColor: boolean;
+
+export { symbols } from "./symbols.ts";

@@ -21,7 +21,10 @@ function setup() {
     // This is using an internal API we don't want published as types, so having
     // to cast to any to "trick" TypeScript
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    DomIterable: (Deno as any).DomIterableMixin(Base, dataSymbol)
+    DomIterable: (Deno[Deno.symbols.internal] as any).DomIterableMixin(
+      Base,
+      dataSymbol
+    )
   };
 }
 

@@ -29,6 +29,10 @@ exec_time_benchmarks = [
     ("workers_round_robin", ["tests/workers_round_robin_bench.ts"]),
     ("text_decoder", ["cli/tests/text_decoder_perf.js"]),
     ("text_encoder", ["cli/tests/text_encoder_perf.js"]),
+    ("compile_local_prettier", ["fetch", "--reload", "std/prettier/main.ts"]),
+    ("compile_remote_prettier",
+     ["fetch", "--reload",
+      "https://deno.land/x/std@v0.29.0/prettier/main.ts"]),
 ]
 
 
@@ -132,7 +136,7 @@ def run_strace_benchmarks(deno_exe, new_data):
     thread_count = {}
     syscall_count = {}
     for (name, args) in exec_time_benchmarks:
-        s = get_strace_summary([deno_exe, "run"] + args)
+        s = get_strace_summary([deno_exe] + args)
         thread_count[name] = s["clone"]["calls"] + 1
         syscall_count[name] = s["total"]["calls"]
     new_data["thread_count"] = thread_count
@@ -151,7 +155,7 @@ def find_max_mem_in_bytes(time_v_output):
 def run_max_mem_benchmark(deno_exe):
     results = {}
     for (name, args) in exec_time_benchmarks:
-        cmd = ["/usr/bin/time", "-v", deno_exe, "run"] + args
+        cmd = ["/usr/bin/time", "-v", deno_exe] + args
         try:
             out = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError:
@@ -168,8 +172,7 @@ def run_exec_time(deno_exe, build_dir):
         hyperfine_exe, "--ignore-failure", "--export-json", benchmark_file,
         "--warmup", "3"
     ] + [
-        deno_exe + " run " + " ".join(args)
-        for [_, args] in exec_time_benchmarks
+        deno_exe + " " + " ".join(args) for [_, args] in exec_time_benchmarks
     ])
     hyperfine_results = read_json(benchmark_file)
     results = {}
