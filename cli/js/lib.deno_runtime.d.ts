@@ -217,7 +217,7 @@ declare namespace Deno {
   /** UNSTABLE: might move to Deno.symbols */
   export const EOF: unique symbol;
 
-  /** UNSTABLE: might remove*/
+  /** UNSTABLE: might move to Deno.symbols */
   export type EOF = typeof EOF;
 
   /** UNSTABLE: maybe remove "SEEK_" prefix. Maybe capitalization wrong. */
