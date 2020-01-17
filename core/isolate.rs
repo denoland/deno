@@ -500,10 +500,8 @@ impl Isolate {
     eprintln!("before message");
     let message = &message.into_bytes()[..];
     let string_view = v8::inspector::StringView::from(message);
-    let mut string_buffer =
-      v8::inspector::StringBuffer::create(&string_view).unwrap();
     eprintln!("before dispatch protocol message");
-    session.dispatch_protocol_message(&mut string_buffer);
+    session.dispatch_protocol_message(&string_view);
     eprintln!("after dispatch protocol message");
     // let task_runner = platform::get_foreground_task_runner(self);
     // let task = DispatchOnInspectorBackendTask::new(session, message);

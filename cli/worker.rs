@@ -99,7 +99,7 @@ impl Worker {
           };
 
           if let Ok(msg) = message {
-            eprintln!("[i] message ok");
+            eprintln!("[i] message ok {}", msg);
             let mut i = isolate_.try_lock().unwrap();
             i.inspector_message(msg);
           }
