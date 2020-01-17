@@ -25,12 +25,12 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
 struct OpenArgs {
   promise_id: Option<u64>,
   filename: String,
-  capability: OpenCapability,
+  capability: OpenOptions,
 }
 #[derive(Deserialize, Default, Debug)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
-struct OpenCapability {
+struct OpenOptions {
   read: bool,
   write: bool,
   create: bool,

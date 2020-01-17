@@ -22,7 +22,7 @@ import {
  *
  *       const file = Deno.openSync("/foo/bar.txt", { read: true });
  */
-export function openSync(filename: string, capability?: OpenCapability): File;
+export function openSync(filename: string, capability?: OpenOptions): File;
 /** Open a file and return an instance of the `File` object
  *  synchronously.
  *
@@ -32,15 +32,13 @@ export function openSync(filename: string, mode?: OpenMode): File;
 /**@internal*/
 export function openSync(
   filename: string,
-  openCapOrMode: OpenCapability | OpenMode = { read: true }
+  openCapOrMode: OpenOptions | OpenMode = { read: true }
 ): File {
   let capability = openCapOrMode;
   if (typeof openCapOrMode === "string") {
     capability = convertOpenMode(openCapOrMode);
   }
-  const [modeIsValid, errMsg] = checkOpenCapability(
-    capability as OpenCapability
-  );
+  const [modeIsValid, errMsg] = checkOpenOptions(capability as OpenOptions);
   if (modeIsValid) {
     const rid = sendSyncJson(dispatch.OP_OPEN, { filename, capability });
     return new File(rid);
@@ -55,7 +53,7 @@ export function openSync(
  */
 export async function open(
   filename: string,
-  capability?: OpenCapability
+  capability?: OpenOptions
 ): Promise<File>;
 /** Open a file and return an instance of the `File` object.
  *
@@ -67,15 +65,13 @@ export async function open(filename: string, mode?: OpenMode): Promise<File>;
 /**@internal*/
 export async function open(
   filename: string,
-  openCapOrMode: OpenCapability | OpenMode = { read: true }
+  openCapOrMode: OpenOptions | OpenMode = { read: true }
 ): Promise<File> {
   let capability = openCapOrMode;
   if (typeof openCapOrMode === "string") {
     capability = convertOpenMode(openCapOrMode);
   }
-  const [modeIsValid, errMsg] = checkOpenCapability(
-    capability as OpenCapability
-  );
+  const [modeIsValid, errMsg] = checkOpenOptions(capability as OpenOptions);
   if (modeIsValid) {
     const rid = await sendAsyncJson(dispatch.OP_OPEN, {
       filename,
@@ -264,7 +260,7 @@ export const stdout = new File(1);
 /** An instance of `File` for stderr. */
 export const stderr = new File(2);
 
-export interface OpenCapability {
+export interface OpenOptions {
   /** Sets the option for read access. This option, when true, will indicate that the file should be read-able if opened. */
   read?: boolean;
   /** Sets the option for write access.
@@ -324,7 +320,7 @@ export type OpenMode =
  *  @returns Tuple representing if openMode is valid and error message if it's not
  *  @internal
  */
-function checkOpenCapability(capability: OpenCapability): [boolean, string] {
+function checkOpenOptions(capability: OpenOptions): [boolean, string] {
   const allOptionsAreFalse =
     Object.values(capability).filter(val => val == true).length === 0;
   const truncateOptionWithoutWriteAccess =
@@ -380,9 +376,9 @@ const openModeMap = {
   }
 };
 
-/** Converts OpenMode to OpenCapability
+/** Converts OpenMode to OpenOptions
  *  @internal
  */
-function convertOpenMode(mode: OpenMode): OpenCapability {
+function convertOpenMode(mode: OpenMode): OpenOptions {
   return openModeMap[mode];
 }

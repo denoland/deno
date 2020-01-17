@@ -298,7 +298,7 @@ declare namespace Deno {
    *
    *       const file = Deno.openSync("/foo/bar.txt", { read: true });
    */
-  export function openSync(filename: string, capability?: OpenCapability): File;
+  export function openSync(filename: string, capability?: OpenOptions): File;
   /** Open a file and return an instance of the `File` object
    *  synchronously.
    *
@@ -313,7 +313,7 @@ declare namespace Deno {
    */
   export function open(
     filename: string,
-    capability?: OpenCapability
+    capability?: OpenOptions
   ): Promise<File>;
   /** Open a file and return an instance of the `File` object.
    *
@@ -427,7 +427,7 @@ declare namespace Deno {
   /** An instance of `File` for stderr. */
   export const stderr: File;
 
-  export interface OpenCapability {
+  export interface OpenOptions {
     /** Sets the option for read access. This option, when true, will indicate that the file should be read-able if opened. */
     read?: boolean;
     /** Sets the option for write access.

@@ -19,7 +19,7 @@ export {
   seek,
   seekSync,
   close,
-  OpenCapability,
+  OpenOptions,
   OpenMode
 } from "./files.ts";
 export {
