@@ -240,9 +240,10 @@ self.compilerMain = function compilerMain(): void {
           emitResult.emitSkipped === false,
           "Unexpected skip of the emit."
         );
-        const { items } = fromTypeScriptDiagnostic(diagnostics);
         const result = [
-          items && items.length ? items : undefined,
+          diagnostics.length
+            ? fromTypeScriptDiagnostic(diagnostics)
+            : undefined,
           bundle ? state.emitBundle : state.emitMap
         ];
         postMessage(result);
