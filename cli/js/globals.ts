@@ -71,14 +71,15 @@ declare global {
 // A self reference to the global object.
 window.window = window;
 
-// Add internal object to Deno object.
-// This is not exposed as part of the Deno types.
-// @ts-ignore
-Deno[Deno.symbols.internal] = internalObject;
+
 // This is the Deno namespace, it is handled differently from other window
 // properties when building the runtime type library, as the whole module
 // is flattened into a single namespace.
 window.Deno = Deno;
+// Add internal object to Deno object.
+// This is not exposed as part of the Deno types.
+// @ts-ignore
+// window.Deno[Deno.symbols.internal] = internalObject;
 
 // Globally available functions and object instances.
 window.atob = textEncoding.atob;

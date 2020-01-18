@@ -207,7 +207,7 @@ impl Loader for TempLoader {
     };
     eprintln!("found requested module {}", module_specifier);
 
-    if specifier_str.ends_with("compiler.ts") || specifier_str.ends_with("globals.ts") {
+    if specifier_str.ends_with("compiler.ts") || specifier_str.ends_with("globals.ts")|| specifier_str.ends_with("dispatch.ts") {
       eprintln!("code: {}", info.code);  
     }
 
@@ -239,12 +239,11 @@ pub fn create_ts_snapshot(
   // TODO:
   let config_json = serde_json::json!({
     "compilerOptions": {
-    "esModuleInterop": true,
-    
-      "strict": true,
+      "esModuleInterop": true,
+      // "strict": true,
       // "declaration": true,
       "lib": ["esnext"],
-      "module": "esnext",
+      "module": "es2015",
       "target": "esnext",
       "listFiles": true,
       "listEmittedFiles": true,

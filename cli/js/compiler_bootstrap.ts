@@ -14,7 +14,7 @@ for (const [name, opId] of Object.entries(ops)) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (dispatch as any)[opName] = opId;
 }
-
+dispatch
 const host = new Host({ writeFile(): void {} });
 const options = host.getCompilationSettings();
 

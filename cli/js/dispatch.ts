@@ -3,6 +3,14 @@ import * as minimal from "./dispatch_minimal.ts";
 import * as json from "./dispatch_json.ts";
 import { AsyncHandler } from "./plugins.ts";
 
+export const OPS = {
+
+};
+
+export function setOps(opMap) {
+  
+}
+
 // These consts are shared with Rust. Update with care.
 export let OP_READ: number;
 export let OP_WRITE: number;
