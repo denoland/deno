@@ -313,7 +313,7 @@ declare namespace Deno {
    *  synchronously.
    *
    *       const file = Deno.openSYNC("/foo/bar.txt", { read: true, write: true });
-   * 
+   *
    * Requires allow-read or allow-write or both depending on mode.
    */
   export function openSync(filename: string, options?: OpenOptions): File;
@@ -322,7 +322,7 @@ declare namespace Deno {
    *  synchronously.
    *
    *       const file = Deno.openSync("/foo/bar.txt", "r");
-   * 
+   *
    * Requires allow-read or allow-write or both depending on mode.
    */
   export function openSync(filename: string, mode?: OpenMode): File;
@@ -330,7 +330,7 @@ declare namespace Deno {
   /** Open a file and return an instance of the `File` object.
    *
    *     const file = await Deno.open("/foo/bar.txt", { read: true, write: true });
-   * 
+   *
    * Requires allow-read or allow-write or both depending on mode.
    */
   export function open(filename: string, options?: OpenOptions): Promise<File>;
