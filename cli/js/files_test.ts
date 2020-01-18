@@ -95,7 +95,7 @@ test(async function openOptions(): Promise<void> {
   assert(!!err);
   assertStrContains(
     err.message,
-    "OpenOption requires at least one option to be true"
+    "OpenOptions requires at least one option to be true"
   );
 
   try {
