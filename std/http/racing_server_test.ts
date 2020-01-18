@@ -1,4 +1,4 @@
-const { dial, run } = Deno;
+const { connect, run } = Deno;
 
 import { test, runIfMain } from "../testing/mod.ts";
 import { assert, assertEquals } from "../testing/asserts.ts";

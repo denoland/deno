@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { EOF, Reader, Writer, Closer } from "./io.ts";
-import { notImplemented } from "./util.ts";
 import { read, write, close } from "./files.ts";
 import * as dispatch from "./dispatch.ts";
 import { sendSync, sendAsync } from "./dispatch_json.ts";
