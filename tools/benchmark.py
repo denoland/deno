@@ -119,7 +119,14 @@ def strace_parse(summary_text):
 
 
 def get_strace_summary(test_args):
-    return strace_parse(get_strace_summary_text(test_args))
+    s = get_strace_summary_text(test_args)
+    try:
+        return strace_parse(s)
+    except ValueError:
+        print "error parsing strace"
+        print "----- <strace> -------"
+        print s
+        print "----- </strace> ------"
 
 
 def run_throughput(deno_exe):
