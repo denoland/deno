@@ -595,7 +595,7 @@ test({
       await delay(100);
 
       // Reqeusts to the server and immediately closes the connection
-      const conn = await Deno.dial({ port: 4502 });
+      const conn = await Deno.connect({ port: 4502 });
       await conn.write(new TextEncoder().encode("GET / HTTP/1.0\n\n"));
       conn.close();
 
@@ -637,7 +637,7 @@ test({
         .catch((_): void => {}); // Ignores the error when closing the process.
 
       // Requests to the server and immediately closes the connection
-      const conn = await Deno.dialTLS({
+      const conn = await Deno.connectTLS({
         hostname: "localhost",
         port: 4503,
         certFile: "http/testdata/tls/RootCA.pem"
@@ -721,7 +721,7 @@ if (Deno.build.os !== "win") {
         assert(!(connRid in resources));
       };
       const p = serverRoutine();
-      const conn = await Deno.dial({
+      const conn = await Deno.connect({
         hostname: "127.0.0.1",
         port: 8124
       });
