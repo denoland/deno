@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::StreamResource;
-use crate::http_util::{get_client, HttpBody};
+use crate::http_util::{create_http_client, HttpBody};
 use crate::ops::json_op;
 use crate::state::ThreadSafeState;
 use deno_core::*;
@@ -31,7 +31,7 @@ pub fn op_fetch(
   let args: FetchArgs = serde_json::from_value(args)?;
   let url = args.url;
 
-  let client = get_client();
+  let client = create_http_client();
 
   let method = match args.method {
     Some(method_str) => Method::from_bytes(method_str.as_bytes())?,

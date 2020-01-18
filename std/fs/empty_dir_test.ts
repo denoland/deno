@@ -217,13 +217,12 @@ test(async function emptyDirPermission(): Promise<void> {
       args.push(
         path.join(testdataDir, s.async ? "empty_dir.ts" : "empty_dir_sync.ts")
       );
-      args.push("--");
       args.push("testfolder");
 
       const { stdout } = Deno.run({
         stdout: "piped",
         cwd: testdataDir,
-        args
+        args: args
       });
 
       const output = await Deno.readAll(stdout);
@@ -234,6 +233,8 @@ test(async function emptyDirPermission(): Promise<void> {
     await Deno.remove(testfolder, { recursive: true });
     throw err;
   }
-
+  // Make the test rerunnable
+  // Otherwise would throw error due to mkdir fail.
+  await Deno.remove(testfolder, { recursive: true });
   // done
 });

@@ -12,6 +12,7 @@ use futures::future::FutureExt;
 use futures::future::TryFutureExt;
 use futures::sink::SinkExt;
 use futures::stream::StreamExt;
+use futures::task::AtomicWaker;
 use std::env;
 use std::future::Future;
 use std::pin::Pin;
@@ -159,6 +160,11 @@ impl Worker {
       channels: self.external_channels.clone(),
     }
   }
+
+  pub fn clear_exception(&mut self) {
+    let mut isolate = self.isolate.try_lock().unwrap();
+    isolate.clear_exception();
+  }
 }
 
 impl Future for Worker {
@@ -166,8 +172,15 @@ impl Future for Worker {
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
-    let mut isolate = inner.isolate.try_lock().unwrap();
-    isolate.poll_unpin(cx)
+    let waker = AtomicWaker::new();
+    waker.register(cx.waker());
+    match inner.isolate.try_lock() {
+      Ok(mut isolate) => isolate.poll_unpin(cx),
+      Err(_) => {
+        waker.wake();
+        Poll::Pending
+      }
+    }
   }
 }
 
@@ -436,7 +449,7 @@ mod tests {
 
       let worker_ = worker.clone();
       let worker_future = async move {
-        let result = worker.await;
+        let result = worker_.await;
         println!("workers.rs after resource close");
         result.unwrap();
       }
@@ -446,10 +459,10 @@ mod tests {
       tokio::spawn(worker_future_);
 
       let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
-      let r = block_on(worker_.post_message(msg));
+      let r = block_on(worker.post_message(msg));
       assert!(r.is_ok());
 
-      block_on(worker_future);
+      block_on(worker_future)
     })
   }
 

@@ -53,10 +53,10 @@ jobs:
           rustup component add clippy
           rustup component add rustfmt
 
-      - name: Install python
+      - name: Install Python
         uses: actions/setup-python@v1
         with:
-          python-version: "2.7.16"
+          python-version: "2.7"
           architecture: x64
 
       - name: Remove unused versions of Python
@@ -185,6 +185,15 @@ jobs:
             target/release/deno_osx_x64.gz
             target/release/deno_src.tar.gz
           draft: true
+
+      - name: Publish
+        if: >
+          startsWith(github.ref, 'refs/tags/') &&
+          github.repository == 'denoland/deno' &&
+          runner.os == 'Linux'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: ./tools/cargo_publish.py
 
       - name: Stop sccache
         run: sccache --stop-server

@@ -328,7 +328,7 @@ export function compile(
   rootName: string,
   sources?: Record<string, string>,
   options?: CompilerOptions
-): Promise<[Diagnostic[] | undefined, Record<string, string>]> {
+): Promise<[Diagnostic | undefined, Record<string, string>]> {
   const payload = {
     rootName: sources ? rootName : checkRelative(rootName),
     sources,
@@ -377,7 +377,7 @@ export function bundle(
   rootName: string,
   sources?: Record<string, string>,
   options?: CompilerOptions
-): Promise<[Diagnostic[] | undefined, string]> {
+): Promise<[Diagnostic | undefined, string]> {
   const payload = {
     rootName: sources ? rootName : checkRelative(rootName),
     sources,

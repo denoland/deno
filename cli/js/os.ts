@@ -89,7 +89,6 @@ interface Start {
 // the runtime and the compiler environments.
 // @internal
 export function start(preserveDenoNamespace = true, source?: string): Start {
-  core.setAsyncHandler(dispatch.asyncMsgFromRust);
   const ops = core.ops();
   // TODO(bartlomieju): this is a prototype, we should come up with
   // something a bit more sophisticated
@@ -98,6 +97,7 @@ export function start(preserveDenoNamespace = true, source?: string): Start {
     // Assign op ids to actual variables
     // TODO(ry) This type casting is gross and should be fixed.
     ((dispatch as unknown) as { [key: string]: number })[opName] = opId;
+    core.setAsyncHandler(opId, dispatch.getAsyncHandler(opName));
   }
   // First we send an empty `Start` message to let the privileged side know we
   // are ready. The response should be a `StartRes` message containing the CLI
