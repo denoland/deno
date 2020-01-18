@@ -3,10 +3,9 @@ import { testPerm, assert, assertEquals } from "./test_util.ts";
 
 testPerm({ net: true }, function netListenClose(): void {
   const listener = Deno.listen({ hostname: "127.0.0.1", port: 4500 });
-  const addr = listener.addr();
-  assertEquals(addr.transport, "tcp");
-  assertEquals(addr.hostname, "127.0.0.1");
-  assertEquals(addr.port, 4500);
+  assertEquals(listener.addr.transport, "tcp");
+  assertEquals(listener.addr.hostname, "127.0.0.1");
+  assertEquals(listener.addr.port, 4500);
   listener.close();
 });
 
