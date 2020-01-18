@@ -189,13 +189,13 @@ export function listen({
   return new ListenerImpl(res.rid, transport, res.localAddr);
 }
 
-export interface DialOptions {
+export interface ConnectOptions {
   port: number;
   hostname?: string;
   transport?: Transport;
 }
 
-/** Dial connects to the address on the named transport.
+/** Connects to the address on the named transport.
  *
  * @param options
  * @param options.port The port to connect to. (Required.)
@@ -207,28 +207,20 @@ export interface DialOptions {
  *
  * Examples:
  *
- *     dial({ port: 80 })
- *     dial({ hostname: "192.0.2.1", port: 80 })
- *     dial({ hostname: "[2001:db8::1]", port: 80 });
- *     dial({ hostname: "golang.org", port: 80, transport: "tcp" })
+ *     connect({ port: 80 })
+ *     connect({ hostname: "192.0.2.1", port: 80 })
+ *     connect({ hostname: "[2001:db8::1]", port: 80 });
+ *     connect({ hostname: "golang.org", port: 80, transport: "tcp" })
  */
-export async function dial({
+export async function connect({
   hostname = "127.0.0.1",
   port,
   transport = "tcp"
-}: DialOptions): Promise<Conn> {
-  const res = await sendAsync(dispatch.OP_DIAL, {
+}: ConnectOptions): Promise<Conn> {
+  const res = await sendAsync(dispatch.OP_CONNECT, {
     hostname,
     port,
     transport
   });
   return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);
-}
-
-/** **RESERVED** */
-export async function connect(
-  _transport: Transport,
-  _address: string
-): Promise<Conn> {
-  return notImplemented();
 }

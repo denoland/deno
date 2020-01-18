@@ -56,7 +56,7 @@ testPerm({ net: true }, async function netDialListen(): Promise<void> {
       conn.close();
     }
   );
-  const conn = await Deno.dial({ hostname: "127.0.0.1", port: 4500 });
+  const conn = await Deno.connect({ hostname: "127.0.0.1", port: 4500 });
   assertEquals(conn.remoteAddr, "127.0.0.1:4500");
   assert(conn.localAddr != null);
   const buf = new Uint8Array(1024);
@@ -98,7 +98,7 @@ testPerm({ net: true }, async function netListenAsyncIterator(): Promise<void> {
     }
   };
   runAsyncIterator();
-  const conn = await Deno.dial("127.0.0.1:4500");
+  const conn = await Deno.connect("127.0.0.1:4500");
   const buf = new Uint8Array(1024);
   const readResult = await conn.read(buf);
   assertEquals(3, readResult);
@@ -135,7 +135,7 @@ testPerm({ net: true }, async function netCloseReadSuccess() {
     conn.close();
     closeDeferred.resolve();
   });
-  const conn = await Deno.dial(addr);
+  const conn = await Deno.connect(addr);
   conn.closeRead(); // closing read
   closeReadDeferred.resolve();
   const buf = new Uint8Array(1024);
@@ -159,7 +159,7 @@ testPerm({ net: true }, async function netDoubleCloseRead() {
     await closeDeferred.promise;
     conn.close();
   });
-  const conn = await Deno.dial(addr);
+  const conn = await Deno.connect(addr);
   conn.closeRead(); // closing read
   let err;
   try {
@@ -187,7 +187,7 @@ testPerm({ net: true }, async function netCloseWriteSuccess() {
     await closeDeferred.promise;
     conn.close();
   });
-  const conn = await Deno.dial(addr);
+  const conn = await Deno.connect(addr);
   conn.closeWrite(); // closing write
   const buf = new Uint8Array(1024);
   // Check read not impacted
@@ -221,7 +221,7 @@ testPerm({ net: true }, async function netDoubleCloseWrite() {
     await closeDeferred.promise;
     conn.close();
   });
-  const conn = await Deno.dial(addr);
+  const conn = await Deno.connect(addr);
   conn.closeWrite(); // closing write
   let err;
   try {

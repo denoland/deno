@@ -8,7 +8,7 @@ const [originHostname, originPort] = originAddr.split(":");
 const listener = Deno.listen({ hostname, port: Number(port) });
 
 async function handle(conn: Deno.Conn): Promise<void> {
-  const origin = await Deno.dial({
+  const origin = await Deno.connect({
     hostname: originHostname,
     port: Number(originPort)
   });

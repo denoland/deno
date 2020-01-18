@@ -22,7 +22,7 @@ use tokio::net::TcpStream;
 
 pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op("accept", s.core_op(json_op(s.stateful_op(op_accept))));
-  i.register_op("dial", s.core_op(json_op(s.stateful_op(op_dial))));
+  i.register_op("connect", s.core_op(json_op(s.stateful_op(op_connect))));
   i.register_op("shutdown", s.core_op(json_op(s.stateful_op(op_shutdown))));
   i.register_op("listen", s.core_op(json_op(s.stateful_op(op_listen))));
 }
@@ -126,18 +126,18 @@ fn op_accept(
 }
 
 #[derive(Deserialize)]
-struct DialArgs {
+struct ConnectArgs {
   transport: String,
   hostname: String,
   port: u16,
 }
 
-fn op_dial(
+fn op_connect(
   state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
-  let args: DialArgs = serde_json::from_value(args)?;
+  let args: ConnectArgs = serde_json::from_value(args)?;
   assert_eq!(args.transport, "tcp"); // TODO Support others.
   let state_ = state.clone();
   state.check_net(&args.hostname, args.port)?;
