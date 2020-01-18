@@ -20,7 +20,7 @@ import {
 /** Open a file and return an instance of the `File` object
  *  synchronously.
  *
- *       const file = Deno.openSync("/foo/bar.txt", { read: true });
+ *       const file = Deno.openSYNC("/foo/bar.txt", { read: true, write: true });
  */
 export function openSync(filename: string, capability?: OpenOptions): File;
 /** Open a file and return an instance of the `File` object
@@ -32,55 +32,58 @@ export function openSync(filename: string, mode?: OpenMode): File;
 /**@internal*/
 export function openSync(
   filename: string,
-  openCapOrMode: OpenOptions | OpenMode = { read: true }
+  modeOrOptions: OpenOptions | OpenMode = "r"
 ): File {
-  let capability = openCapOrMode;
-  if (typeof openCapOrMode === "string") {
-    capability = convertOpenMode(openCapOrMode);
-  }
-  const [modeIsValid, errMsg] = checkOpenOptions(capability as OpenOptions);
-  if (modeIsValid) {
-    const rid = sendSyncJson(dispatch.OP_OPEN, { filename, capability });
-    return new File(rid);
+  let mode = null;
+  let options = null;
+
+  if (typeof modeOrOptions === "string") {
+    mode = modeOrOptions;
   } else {
-    throw new Error(errMsg);
+    checkOpenOptions(modeOrOptions);
+    options = modeOrOptions;
   }
+
+  const rid = sendSyncJson(dispatch.OP_OPEN, { filename, options, mode });
+  return new File(rid);
 }
 
 /** Open a file and return an instance of the `File` object.
  *
- *     const file = await Deno.open("/foo/bar.txt");
+ *     const file = await Deno.open("/foo/bar.txt", { read: true, write: true });
  */
 export async function open(
   filename: string,
-  capability?: OpenOptions
+  options?: OpenOptions
 ): Promise<File>;
+
 /** Open a file and return an instance of the `File` object.
  *
- *       (async () => {
- *         const file = await Deno.open("/foo/bar.txt, "r");
- *       })();
+ *     const file = await Deno.open("/foo/bar.txt, "w+");
  */
 export async function open(filename: string, mode?: OpenMode): Promise<File>;
+
 /**@internal*/
 export async function open(
   filename: string,
-  openCapOrMode: OpenOptions | OpenMode = { read: true }
+  modeOrOptions: OpenOptions | OpenMode = "r"
 ): Promise<File> {
-  let capability = openCapOrMode;
-  if (typeof openCapOrMode === "string") {
-    capability = convertOpenMode(openCapOrMode);
-  }
-  const [modeIsValid, errMsg] = checkOpenOptions(capability as OpenOptions);
-  if (modeIsValid) {
-    const rid = await sendAsyncJson(dispatch.OP_OPEN, {
-      filename,
-      capability
-    });
-    return new File(rid);
+  let mode = null;
+  let options = null;
+
+  if (typeof modeOrOptions === "string") {
+    mode = modeOrOptions;
   } else {
-    throw new Error(errMsg);
+    checkOpenOptions(modeOrOptions);
+    options = modeOrOptions;
   }
+
+  const rid = await sendAsyncJson(dispatch.OP_OPEN, {
+    filename,
+    options,
+    mode
+  });
+  return new File(rid);
 }
 
 /** Creates a file if none exists or truncates an existing file and returns
@@ -268,7 +271,7 @@ export interface OpenOptions {
    * If the file already exists, any write calls on it will overwrite its contents, without truncating it.
    */
   write?: boolean;
-  /* Sets the option for creating a new file.
+  /** Sets the option for creating a new file.
    * This option indicates whether a new file will be created if the file does not yet already exist.
    * In order for the file to be created, write or append access must be used.
    */
@@ -316,69 +319,25 @@ export type OpenMode =
   /** Read-write. Behaves like `x` and allows to read from file. */
   | "x+";
 
-/** Check if OpenMode is set to something that is valid.
+/** Check if OpenOptions is set to valid combination of options.
  *  @returns Tuple representing if openMode is valid and error message if it's not
  *  @internal
  */
-function checkOpenOptions(capability: OpenOptions): [boolean, string] {
-  const allOptionsAreFalse =
-    Object.values(capability).filter(val => val == true).length === 0;
-  const truncateOptionWithoutWriteAccess =
-    capability.truncate && !capability.write;
-  const createOrCreateNewWithoutWriteOrAppend =
-    (capability.create || capability.createNew) &&
-    !(capability.write || capability.append);
-  if (allOptionsAreFalse)
-    return [false, "OpenMode require at least one option to be true"];
-  if (truncateOptionWithoutWriteAccess)
-    return [false, "Truncate option require write accesss"];
-  if (createOrCreateNewWithoutWriteOrAppend)
-    return [false, "Create or create new requires write or append access"];
-  return [true, ""];
-}
-
-const openModeMap = {
-  r: {
-    read: true
-  },
-  "r+": {
-    read: true,
-    write: true
-  },
-  w: {
-    write: true,
-    truncate: true,
-    create: true
-  },
-  "w+": {
-    write: true,
-    truncate: true,
-    create: true,
-    read: true
-  },
-  a: {
-    append: true,
-    create: true
-  },
-  "a+": {
-    append: true,
-    create: true,
-    read: true
-  },
-  x: {
-    write: true,
-    createNew: true
-  },
-  "x+": {
-    write: true,
-    createNew: true,
-    read: true
+function checkOpenOptions(options: OpenOptions): void {
+  if (Object.values(options).filter(val => val === true).length === 0) {
+    throw new Error("OpenOptions require at least one option to be true");
   }
-};
 
-/** Converts OpenMode to OpenOptions
- *  @internal
- */
-function convertOpenMode(mode: OpenMode): OpenOptions {
-  return openModeMap[mode];
+  if (options.truncate && !options.write) {
+    throw new Error("'truncate' option requires 'write' option");
+  }
+
+  const createOrCreateNewWithoutWriteOrAppend =
+    (options.create || options.createNew) && !(options.write || options.append);
+
+  if (createOrCreateNewWithoutWriteOrAppend) {
+    throw new Error(
+      "'create' or 'createNew' options require 'write' or 'append' option"
+    );
+  }
 }

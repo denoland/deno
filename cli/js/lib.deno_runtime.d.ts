@@ -296,30 +296,26 @@ declare namespace Deno {
   /** Open a file and return an instance of the `File` object
    *  synchronously.
    *
-   *       const file = Deno.openSync("/foo/bar.txt", { read: true });
+   *       const file = Deno.openSYNC("/foo/bar.txt", { read: true, write: true });
    */
-  export function openSync(filename: string, capability?: OpenOptions): File;
+  export function openSync(filename: string, options?: OpenOptions): File;
+
   /** Open a file and return an instance of the `File` object
    *  synchronously.
    *
    *       const file = Deno.openSync("/foo/bar.txt", "r");
    */
   export function openSync(filename: string, mode?: OpenMode): File;
+
   /** Open a file and return an instance of the `File` object.
    *
-   *       (async () => {
-   *         const file = await Deno.open("/foo/bar.txt", { read: true });
-   *       })();
+   *     const file = await Deno.open("/foo/bar.txt", { read: true, write: true });
    */
-  export function open(
-    filename: string,
-    capability?: OpenOptions
-  ): Promise<File>;
+  export function open(filename: string, options?: OpenOptions): Promise<File>;
+
   /** Open a file and return an instance of the `File` object.
    *
-   *       (async () => {
-   *         const file = await Deno.open("/foo/bar.txt", "r");
-   *       })();
+   *     const file = await Deno.open("/foo/bar.txt, "w+");
    */
   export function open(filename: string, mode?: OpenMode): Promise<File>;
   /** Creates a file if none exists or truncates an existing file and returns
