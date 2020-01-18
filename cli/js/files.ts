@@ -20,7 +20,7 @@ import {
 /** Open a file and return an instance of the `File` object
  *  synchronously.
  *
- *       const file = Deno.openSYNC("/foo/bar.txt", { read: true, write: true });
+ *       const file = Deno.openSync("/foo/bar.txt", { read: true, write: true });
  */
 export function openSync(filename: string, capability?: OpenOptions): File;
 /** Open a file and return an instance of the `File` object
@@ -325,7 +325,7 @@ export type OpenMode =
  */
 function checkOpenOptions(options: OpenOptions): void {
   if (Object.values(options).filter(val => val === true).length === 0) {
-    throw new Error("OpenOptions require at least one option to be true");
+    throw new Error("OpenOptions requires at least one option to be true");
   }
 
   if (options.truncate && !options.write) {

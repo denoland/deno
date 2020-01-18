@@ -1,5 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { test, testPerm, assert, assertEquals } from "./test_util.ts";
+import {
+  test,
+  testPerm,
+  assert,
+  assertEquals,
+  assertStrContains
+} from "./test_util.ts";
 
 test(function filesStdioFileDescriptors(): void {
   assertEquals(Deno.stdin.rid, 0);
@@ -76,6 +82,51 @@ testPerm({ write: false }, async function writePermFailure(): Promise<void> {
     assertEquals(err.kind, Deno.ErrorKind.PermissionDenied);
     assertEquals(err.name, "PermissionDenied");
   }
+});
+
+test(async function openOptions(): Promise<void> {
+  const filename = "cli/tests/fixture.json";
+  let err;
+  try {
+    await Deno.open(filename, { write: false });
+  } catch (e) {
+    err = e;
+  }
+  assert(!!err);
+  assertStrContains(
+    err.message,
+    "OpenOption requires at least one option to be true"
+  );
+
+  try {
+    await Deno.open(filename, { truncate: true, write: false });
+  } catch (e) {
+    err = e;
+  }
+  assert(!!err);
+  assertStrContains(err.message, "'truncate' option requires 'write' option");
+
+  try {
+    await Deno.open(filename, { create: true, write: false });
+  } catch (e) {
+    err = e;
+  }
+  assert(!!err);
+  assertStrContains(
+    err.message,
+    "'create' or 'createNew' options require 'write' or 'append' option"
+  );
+
+  try {
+    await Deno.open(filename, { createNew: true, append: false });
+  } catch (e) {
+    err = e;
+  }
+  assert(!!err);
+  assertStrContains(
+    err.message,
+    "'create' or 'createNew' options require 'write' or 'append' option"
+  );
 });
 
 testPerm({ read: false }, async function readPermFailure(): Promise<void> {
