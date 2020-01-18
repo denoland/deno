@@ -3,11 +3,9 @@ import { testPerm, assert, assertEquals } from "./test_util.ts";
 
 testPerm({ net: true }, function netListenClose(): void {
   const listener = Deno.listen({ hostname: "127.0.0.1", port: 4500 });
-  const addr = listener.addr();
-  assertEquals(addr.transport, "tcp");
-  // TODO(ry) Replace 'address' with 'hostname' and 'port', similar to
-  // ConnectOptions and ListenOptions.
-  assertEquals(addr.address, "127.0.0.1:4500");
+  assertEquals(listener.addr.transport, "tcp");
+  assertEquals(listener.addr.hostname, "127.0.0.1");
+  assertEquals(listener.addr.port, 4500);
   listener.close();
 });
 
@@ -52,13 +50,15 @@ testPerm({ net: true }, async function netDialListen(): Promise<void> {
   listener.accept().then(
     async (conn): Promise<void> => {
       assert(conn.remoteAddr != null);
-      assertEquals(conn.localAddr, "127.0.0.1:4500");
+      assertEquals(conn.localAddr.hostname, "127.0.0.1");
+      assertEquals(conn.localAddr.port, 4500);
       await conn.write(new Uint8Array([1, 2, 3]));
       conn.close();
     }
   );
   const conn = await Deno.connect({ hostname: "127.0.0.1", port: 4500 });
-  assertEquals(conn.remoteAddr, "127.0.0.1:4500");
+  assertEquals(conn.remoteAddr.hostname, "127.0.0.1");
+  assertEquals(conn.remoteAddr.port, 4500);
   assert(conn.localAddr != null);
   const buf = new Uint8Array(1024);
   const readResult = await conn.read(buf);

@@ -8,11 +8,10 @@ export type Transport = "tcp";
 // TODO support other types:
 // export type Transport = "tcp" | "tcp4" | "tcp6" | "unix" | "unixpacket";
 
-// TODO(ry) Replace 'address' with 'hostname' and 'port', similar to ConnectOptions
-// and ListenOptions.
 export interface Addr {
   transport: Transport;
-  address: string;
+  hostname: string;
+  port: number;
 }
 
 /** A Listener is a generic transport listener for stream-oriented protocols. */
@@ -26,7 +25,7 @@ export interface Listener extends AsyncIterator<Conn> {
   close(): void;
 
   /** Return the address of the `Listener`. */
-  addr(): Addr;
+  addr: Addr;
 
   [Symbol.asyncIterator](): AsyncIterator<Conn>;
 }
@@ -54,8 +53,8 @@ export function shutdown(rid: number, how: ShutdownMode): void {
 export class ConnImpl implements Conn {
   constructor(
     readonly rid: number,
-    readonly remoteAddr: string,
-    readonly localAddr: string
+    readonly remoteAddr: Addr,
+    readonly localAddr: Addr
   ) {}
 
   write(p: Uint8Array): Promise<number> {
@@ -88,8 +87,7 @@ export class ConnImpl implements Conn {
 export class ListenerImpl implements Listener {
   constructor(
     readonly rid: number,
-    private transport: Transport,
-    private localAddr: string,
+    public addr: Addr,
     private closing: boolean = false
   ) {}
 
@@ -101,13 +99,6 @@ export class ListenerImpl implements Listener {
   close(): void {
     this.closing = true;
     close(this.rid);
-  }
-
-  addr(): Addr {
-    return {
-      transport: this.transport,
-      address: this.localAddr
-    };
   }
 
   async next(): Promise<IteratorResult<Conn>> {
@@ -134,9 +125,9 @@ export class ListenerImpl implements Listener {
 
 export interface Conn extends Reader, Writer, Closer {
   /** The local address of the connection. */
-  localAddr: string;
+  localAddr: Addr;
   /** The remote address of the connection. */
-  remoteAddr: string;
+  remoteAddr: Addr;
   /** The resource ID of the connection. */
   rid: number;
   /** Shuts down (`shutdown(2)`) the reading side of the TCP connection. Most
@@ -175,12 +166,13 @@ export interface ListenOptions {
 export function listen(options: ListenOptions): Listener {
   const hostname = options.hostname || "0.0.0.0";
   const transport = options.transport || "tcp";
+
   const res = sendSync(dispatch.OP_LISTEN, {
     hostname,
     port: options.port,
     transport
   });
-  return new ListenerImpl(res.rid, transport, res.localAddr);
+  return new ListenerImpl(res.rid, res.localAddr);
 }
 
 export interface ConnectOptions {
@@ -189,7 +181,9 @@ export interface ConnectOptions {
   transport?: Transport;
 }
 
-/** Dial connects to the address on the named transport.
+const connectDefaults = { hostname: "127.0.0.1", transport: "tcp" };
+
+/** Connects to the address on the named transport.
  *
  * @param options
  * @param options.port The port to connect to. (Required.)
@@ -207,10 +201,7 @@ export interface ConnectOptions {
  *     connect({ hostname: "golang.org", port: 80, transport: "tcp" })
  */
 export async function connect(options: ConnectOptions): Promise<Conn> {
-  const res = await sendAsync(dispatch.OP_CONNECT, {
-    hostname: options.hostname || "127.0.0.1",
-    port: options.port,
-    transport: options.transport || "tcp"
-  });
+  options = Object.assign(connectDefaults, options);
+  const res = await sendAsync(dispatch.OP_CONNECT, options);
   return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);
 }
