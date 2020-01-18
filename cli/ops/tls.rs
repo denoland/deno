@@ -36,7 +36,10 @@ use webpki::DNSNameRef;
 use webpki_roots;
 
 pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
-  i.register_op("dial_tls", s.core_op(json_op(s.stateful_op(op_dial_tls))));
+  i.register_op(
+    "connect_tls",
+    s.core_op(json_op(s.stateful_op(op_connect_tls))),
+  );
   i.register_op(
     "listen_tls",
     s.core_op(json_op(s.stateful_op(op_listen_tls))),
@@ -49,18 +52,18 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct DialTLSArgs {
+struct ConnectTLSArgs {
   hostname: String,
   port: u16,
   cert_file: Option<String>,
 }
 
-pub fn op_dial_tls(
+pub fn op_connect_tls(
   state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
-  let args: DialTLSArgs = serde_json::from_value(args)?;
+  let args: ConnectTLSArgs = serde_json::from_value(args)?;
   let cert_file = args.cert_file.clone();
   let state_ = state.clone();
   state.check_net(&args.hostname, args.port)?;

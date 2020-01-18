@@ -5,19 +5,19 @@ import { Listener, Transport, Conn, ConnImpl, ListenerImpl } from "./net.ts";
 
 // TODO(ry) There are many configuration options to add...
 // https://docs.rs/rustls/0.16.0/rustls/struct.ClientConfig.html
-interface DialTLSOptions {
+interface ConnectTLSOptions {
   port: number;
   hostname?: string;
   certFile?: string;
 }
-const dialTLSDefaults = { hostname: "127.0.0.1", transport: "tcp" };
+const connectTLSDefaults = { hostname: "127.0.0.1", transport: "tcp" };
 
 /**
- * dialTLS establishes a secure connection over TLS (transport layer security).
+ * Establishes a secure connection over TLS (transport layer security).
  */
-export async function dialTLS(options: DialTLSOptions): Promise<Conn> {
-  options = Object.assign(dialTLSDefaults, options);
-  const res = await sendAsync(dispatch.OP_DIAL_TLS, options);
+export async function connectTLS(options: ConnectTLSOptions): Promise<Conn> {
+  options = Object.assign(connectTLSDefaults, options);
+  const res = await sendAsync(dispatch.OP_CONNECT_TLS, options);
   return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);
 }
 

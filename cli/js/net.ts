@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { EOF, Reader, Writer, Closer } from "./io.ts";
-import { notImplemented } from "./util.ts";
 import { read, write, close } from "./files.ts";
 import * as dispatch from "./dispatch.ts";
 import { sendSync, sendAsync } from "./dispatch_json.ts";
@@ -9,7 +8,7 @@ export type Transport = "tcp";
 // TODO support other types:
 // export type Transport = "tcp" | "tcp4" | "tcp6" | "unix" | "unixpacket";
 
-// TODO(ry) Replace 'address' with 'hostname' and 'port', similar to DialOptions
+// TODO(ry) Replace 'address' with 'hostname' and 'port', similar to ConnectOptions
 // and ListenOptions.
 export interface Addr {
   transport: Transport;
@@ -184,7 +183,7 @@ export function listen(options: ListenOptions): Listener {
   return new ListenerImpl(res.rid, transport, res.localAddr);
 }
 
-export interface DialOptions {
+export interface ConnectOptions {
   port: number;
   hostname?: string;
   transport?: Transport;
@@ -202,24 +201,16 @@ export interface DialOptions {
  *
  * Examples:
  *
- *     dial({ port: 80 })
- *     dial({ hostname: "192.0.2.1", port: 80 })
- *     dial({ hostname: "[2001:db8::1]", port: 80 });
- *     dial({ hostname: "golang.org", port: 80, transport: "tcp" })
+ *     connect({ port: 80 })
+ *     connect({ hostname: "192.0.2.1", port: 80 })
+ *     connect({ hostname: "[2001:db8::1]", port: 80 });
+ *     connect({ hostname: "golang.org", port: 80, transport: "tcp" })
  */
-export async function dial(options: DialOptions): Promise<Conn> {
-  const res = await sendAsync(dispatch.OP_DIAL, {
+export async function connect(options: ConnectOptions): Promise<Conn> {
+  const res = await sendAsync(dispatch.OP_CONNECT, {
     hostname: options.hostname || "127.0.0.1",
     port: options.port,
     transport: options.transport || "tcp"
   });
   return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);
-}
-
-/** **RESERVED** */
-export async function connect(
-  _transport: Transport,
-  _address: string
-): Promise<Conn> {
-  return notImplemented();
 }
