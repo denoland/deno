@@ -93,11 +93,7 @@ export class ListenerImpl implements Listener {
 
   async accept(): Promise<Conn> {
     const res = await sendAsync(dispatch.OP_ACCEPT, { rid: this.rid });
-    return new ConnImpl(
-      res.rid,
-      { ...res.remoteAddr, transport: this.addr.transport },
-      { ...res.localAddr, transport: this.addr.transport }
-    );
+    return new ConnImpl(res.rid, res.remoteAddr, res.localAddr);
   }
 
   close(): void {

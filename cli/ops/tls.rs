@@ -102,7 +102,6 @@ pub fn op_connect_tls(
     );
     Ok(json!({
         "rid": rid,
-        "transport": args.transport,
         "localAddr": {
           "hostname": local_addr.ip().to_string(),
           "port": local_addr.port(),
@@ -385,10 +384,12 @@ fn op_accept_tls(
     Ok(json!({
       "rid": rid,
       "localAddr": {
+        "transport": "tcp",
         "hostname": local_addr.ip().to_string(),
         "port": local_addr.port()
       },
       "remoteAddr": {
+        "transport": "tcp",
         "hostname": remote_addr.ip().to_string(),
         "port": remote_addr.port()
       }

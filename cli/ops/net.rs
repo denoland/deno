@@ -120,10 +120,12 @@ fn op_accept(
       "localAddr": {
         "hostname": local_addr.ip().to_string(),
         "port": local_addr.port(),
+        "transport": "tcp",
       },
       "remoteAddr": {
         "hostname": remote_addr.ip().to_string(),
-        "port": remote_addr.port()
+        "port": remote_addr.port(),
+        "transport": "tcp",
       }
     }))
   };
@@ -158,7 +160,6 @@ fn op_connect(
       table.add("tcpStream", Box::new(StreamResource::TcpStream(tcp_stream)));
     Ok(json!({
       "rid": rid,
-      "transport": args.transport,
       "localAddr": {
         "hostname": local_addr.ip().to_string(),
         "port": local_addr.port(),

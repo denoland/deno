@@ -25,11 +25,7 @@ export async function connectTLS(options: ConnectTLSOptions): Promise<Conn> {
 class TLSListenerImpl extends ListenerImpl {
   async accept(): Promise<Conn> {
     const res = await sendAsync(dispatch.OP_ACCEPT_TLS, { rid: this.rid });
-    return new ConnImpl(
-      res.rid,
-      { ...res.remoteAddr, transport: this.addr.transport },
-      { ...res.localAddr, transport: this.addr.transport }
-    );
+    return new ConnImpl(res.rid, res.remoteAddr, res.localAddr);
   }
 }
 
