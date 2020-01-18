@@ -1,24 +1,28 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // #![deny(warnings)]
+#![allow(unused)]
 
 extern crate deno_core;
 extern crate serde;
 extern crate serde_json;
 
-mod ops;
-mod new_ops;
-mod new_snapshot;
-pub use new_snapshot::create_ts_snapshot;
 use deno_core::js_check;
-pub use deno_core::v8_set_flags;
 use deno_core::CoreOp;
 use deno_core::ErrBox;
 use deno_core::Isolate;
+use deno_core::EsIsolate;
+use deno_core::Loader;
 use deno_core::ModuleSpecifier;
 use deno_core::PinnedBuf;
+use deno_core::SourceCodeInfoFuture;
+use deno_core::SourceCodeInfo;
+use futures;
+use futures::future::FutureExt;
+use std::pin::Pin;
 use deno_core::StartupData;
-pub use ops::EmitResult;
-use ops::WrittenFile;
+use crate::new_ops;
+use new_ops::EmitResult;
+use new_ops::WrittenFile;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
@@ -36,28 +40,63 @@ pub fn ts_version() -> String {
 }
 
 #[derive(Debug)]
-pub struct TSState {
-  bundle: bool,
-  exit_code: i32,
-  emit_result: Option<EmitResult>,
+pub struct NewTsState {
+  pub bundle: bool,
+  pub exit_code: i32,
+  pub emit_result: Option<EmitResult>,
   /// A list of files emitted by typescript. WrittenFile is tuple of the form
   /// (url, corresponding_module, source_code)
-  written_files: Vec<WrittenFile>,
+  pub written_files: Vec<WrittenFile>,
 }
 
-impl TSState {
+impl NewTsState {
   fn main_module_name(&self) -> String {
     // Assuming that TypeScript has emitted the main file last.
     self.written_files.last().unwrap().module_name.clone()
   }
+
+  fn main_module_url(&self) -> String {
+    // Assuming that TypeScript has emitted the main file last.
+    self.written_files.last().unwrap().url.clone()
+  }
+
+  fn get_compiled_file(&self, specifier: &str) -> Option<WrittenFile> {
+    let mut path = PathBuf::from(specifier);
+
+    if specifier.ends_with(".d.ts") {
+      return Some(WrittenFile {
+        url: specifier.to_string(),
+        module_name: specifier.to_string(),
+        source_code: "".to_string(),
+      })
+    }
+
+    if specifier.ends_with(".ts") {
+      path.set_extension("js");
+    }
+
+    let path_str = path.to_str().unwrap();
+    eprintln!("compiled file {}", path_str);
+
+    for file in self.written_files.iter() {
+      if path_str.contains(&file.url) {
+        return Some(file.clone())
+      }
+    }
+    // eprintln!("not found!");
+    // panic!("not found!");
+
+
+    None
+  }
 }
 
-fn compiler_op<D>(
-  ts_state: Arc<Mutex<TSState>>,
+fn new_compiler_op<D>(
+  ts_state: Arc<Mutex<NewTsState>>,
   dispatcher: D,
 ) -> impl Fn(&[u8], Option<PinnedBuf>) -> CoreOp
 where
-  D: Fn(&mut TSState, &[u8]) -> CoreOp,
+  D: Fn(&mut NewTsState, &[u8]) -> CoreOp,
 {
   move |control: &[u8], zero_copy_buf: Option<PinnedBuf>| -> CoreOp {
     assert!(zero_copy_buf.is_none()); // zero_copy_buf unused in compiler.
@@ -68,7 +107,7 @@ where
 
 pub struct TSIsolate {
   isolate: Box<Isolate>,
-  state: Arc<Mutex<TSState>>,
+  state: Arc<Mutex<NewTsState>>,
 }
 
 impl TSIsolate {
@@ -77,7 +116,7 @@ impl TSIsolate {
     js_check(isolate.execute("assets/typescript.js", TYPESCRIPT_CODE));
     js_check(isolate.execute("compiler_main.js", COMPILER_CODE));
 
-    let state = Arc::new(Mutex::new(TSState {
+    let state = Arc::new(Mutex::new(NewTsState {
       bundle,
       exit_code: 0,
       emit_result: None,
@@ -86,28 +125,28 @@ impl TSIsolate {
 
     isolate.register_op(
       "readFile",
-      compiler_op(state.clone(), ops::json_op(ops::read_file)),
+      new_compiler_op(state.clone(), new_ops::json_op(new_ops::read_file)),
     );
     isolate
-      .register_op("exit", compiler_op(state.clone(), ops::json_op(ops::exit)));
+      .register_op("exit", new_compiler_op(state.clone(), new_ops::json_op(new_ops::exit)));
     isolate.register_op(
       "writeFile",
-      compiler_op(state.clone(), ops::json_op(ops::write_file)),
+      new_compiler_op(state.clone(), new_ops::json_op(new_ops::write_file)),
     );
     isolate.register_op(
       "resolveModuleNames",
-      compiler_op(state.clone(), ops::json_op(ops::resolve_module_names)),
+      new_compiler_op(state.clone(), new_ops::json_op(new_ops::resolve_module_names)),
     );
     isolate.register_op(
       "setEmitResult",
-      compiler_op(state.clone(), ops::json_op(ops::set_emit_result)),
+      new_compiler_op(state.clone(), new_ops::json_op(new_ops::set_emit_result)),
     );
 
     TSIsolate { isolate, state }
   }
 
-  // TODO(ry) Instead of Result<Arc<Mutex<TSState>>, ErrBox>, return something
-  // like Result<TSState, ErrBox>. I think it would be nicer if this function
+  // TODO(ry) Instead of Result<Arc<Mutex<NewTsState>>, ErrBox>, return something
+  // like Result<NewTsState, ErrBox>. I think it would be nicer if this function
   // consumes TSIsolate.
   /// Compiles each module to ESM. Doesn't write any files to disk.
   /// Passes all output via state.
@@ -115,7 +154,7 @@ impl TSIsolate {
     mut self,
     config_json: &serde_json::Value,
     root_names: Vec<String>,
-  ) -> Result<Arc<Mutex<TSState>>, ErrBox> {
+  ) -> Result<Arc<Mutex<NewTsState>>, ErrBox> {
     let root_names_json = serde_json::json!(root_names).to_string();
     let source =
       &format!("main({:?}, {})", config_json.to_string(), root_names_json);
@@ -124,31 +163,64 @@ impl TSIsolate {
   }
 }
 
-pub fn compile_bundle(
-  bundle: &Path,
+#[allow(dead_code)]
+fn print_source_code(code: &str) {
+  let mut i = 1;
+  for line in code.lines() {
+    println!("{:3}  {}", i, line);
+    i += 1;
+  }
+}
+#[derive(Clone)]
+struct TempLoader {
+  ts_state: Arc<Mutex<NewTsState>>,
+}
+
+impl Loader for TempLoader {
+  fn resolve(
+    &self,
+    specifier: &str,
+    referrer: &str,
+    _is_main: bool,
+    _is_dyn_import: bool,
+  ) -> Result<ModuleSpecifier, ErrBox> {
+    ModuleSpecifier::resolve_import(specifier, referrer).map_err(ErrBox::from)
+  }
+
+  fn load(
+    &self,
+    module_specifier: &ModuleSpecifier,
+    maybe_referrer: Option<ModuleSpecifier>,
+  ) -> Pin<Box<SourceCodeInfoFuture>> {
+    let foo = PathBuf::from(module_specifier.to_string());
+    // let foo = foo.with_extension(".js");
+    eprintln!("load called {:?} {:?}", module_specifier, maybe_referrer);
+    
+    let specifier_str = module_specifier.to_string();
+
+    let state = self.ts_state.lock().unwrap();
+    let file = state.get_compiled_file(&specifier_str).expect("Compiled file not found");
+    let info =  SourceCodeInfo {
+      code: file.source_code.to_string(),
+      module_url_specified: module_specifier.to_string(),
+      module_url_found: module_specifier.to_string(),
+    };
+    eprintln!("found requested module {}", module_specifier);
+
+    if specifier_str.ends_with("compiler.ts") || specifier_str.ends_with("globals.ts") {
+      eprintln!("code: {}", info.code);  
+    }
+
+    return futures::future::ok(info).boxed();
+  }
+}
+
+pub fn create_ts_snapshot(
+  current_dir: &Path,
   root_names: Vec<PathBuf>,
-) -> Result<Arc<Mutex<TSState>>, ErrBox> {
-  let ts_isolate = TSIsolate::new(true);
-
-  let config_json = serde_json::json!({
-    "compilerOptions": {
-      "strict": true,
-      "declaration": true,
-      "lib": ["esnext"],
-      "module": "amd",
-      "target": "esnext",
-      "listFiles": true,
-      "listEmittedFiles": true,
-      // "types" : ["typescript.d.ts"],
-      "typeRoots" : ["$typeRoots$"],
-      // Emit the source alongside the sourcemaps within a single file;
-      // requires --inlineSourceMap or --sourceMap to be set.
-      // "inlineSources": true,
-      "sourceMap": true,
-      "outFile": bundle,
-    },
-  });
-
+  output_path: &Path,
+) -> Result<(), ErrBox> {
+  let main_module = root_names[0].to_str().unwrap();
   let mut root_names_str: Vec<String> = root_names
     .iter()
     .map(|p| {
@@ -161,86 +233,66 @@ pub fn compile_bundle(
       module_specifier.as_str().to_string()
     })
     .collect();
+
+  let ts_isolate = TSIsolate::new(false);
+
+  // TODO:
+  let config_json = serde_json::json!({
+    "compilerOptions": {
+    "esModuleInterop": true,
+    
+      "strict": true,
+      // "declaration": true,
+      "lib": ["esnext"],
+      "module": "esnext",
+      "target": "esnext",
+      "listFiles": true,
+      "listEmittedFiles": true,
+      // "types" : ["typescript.d.ts"],
+      "typeRoots" : ["$typeRoots$"],
+      // Emit the source alongside the sourcemaps within a single file;
+      // requires --inlineSourceMap or --sourceMap to be set.
+      // "inlineSources": true,
+      "inlineSourceMap": true,
+      "inlineSources": true,
+      // "sourceMap": true,
+      "outDir": "deno:///",
+    },
+  });
   root_names_str.push("$asset$/lib.deno_core.d.ts".to_string());
-
-  // TODO lift js_check to caller?
-  let state = js_check(ts_isolate.compile(&config_json, root_names_str));
-
-  Ok(state)
-}
-
-#[allow(dead_code)]
-fn print_source_code(code: &str) {
-  let mut i = 1;
-  for line in code.lines() {
-    println!("{:3}  {}", i, line);
-    i += 1;
-  }
-}
-
-/// Create a V8 snapshot.
-pub fn mksnapshot_bundle(
-  bundle: &Path,
-  state: Arc<Mutex<TSState>>,
-) -> Result<(), ErrBox> {
-  let runtime_isolate = &mut Isolate::new(StartupData::None, true);
-  let source_code_vec = std::fs::read(bundle)?;
-  let source_code = std::str::from_utf8(&source_code_vec)?;
-
-  js_check(runtime_isolate.execute("bundle_loader.js", BUNDLE_LOADER));
-  js_check(runtime_isolate.execute(&bundle.to_string_lossy(), &source_code));
-
-  let main = state.lock().unwrap().main_module_name();
-  js_check(
-    runtime_isolate.execute("anon", &format!("instantiate('{}')", main)),
-  );
-
-  write_snapshot(runtime_isolate, bundle)?;
-
-  Ok(())
-}
-
-/// Create a V8 snapshot. This differs from mksnapshot_bundle in that is also
-/// runs typescript.js
-pub fn mksnapshot_bundle_ts(
-  bundle: &Path,
-  state: Arc<Mutex<TSState>>,
-) -> Result<(), ErrBox> {
-  let runtime_isolate = &mut Isolate::new(StartupData::None, true);
+  let state = ts_isolate.compile(&config_json, root_names_str)?;
+  let temp_loader = Box::new(TempLoader { ts_state: state.clone() });
+  let runtime_isolate = &mut EsIsolate::new(temp_loader.clone(), StartupData::None, true);
   runtime_isolate.register_op(
     "fetch_asset",
-    compiler_op(state.clone(), ops::json_op(ops::fetch_asset)),
+    new_compiler_op(state.clone(), new_ops::json_op(new_ops::fetch_asset)),
   );
-  let source_code_vec = std::fs::read(bundle)?;
-  let source_code = std::str::from_utf8(&source_code_vec)?;
-
-  js_check(runtime_isolate.execute("bundle_loader.js", BUNDLE_LOADER));
   js_check(runtime_isolate.execute("typescript.js", TYPESCRIPT_CODE));
-  js_check(runtime_isolate.execute(&bundle.to_string_lossy(), &source_code));
+  // let main_module = {
+  //   let state = state.lock().unwrap();
+  //   state.main_module_url()
+  // };
+  let main_module = "deno:///compiler.ts";
+  eprintln!("main module {}", main_module);
+  // let mut rt = futures::executor::LocalPool::new();
+  let id = futures::executor::block_on(runtime_isolate.load_module(&main_module, None))?;
+  eprintln!("module loaded {}", id);
+  let result = runtime_isolate.mod_evaluate(id);
+  eprintln!("module eval {:?}", result);
+  result?;
+  let isolate_future = runtime_isolate.boxed();
+  futures::executor::block_on(isolate_future)?;
 
-  let main = state.lock().unwrap().main_module_name();
-  js_check(
-    runtime_isolate.execute("anon", &format!("instantiate('{}')", main)),
-  );
-
-  write_snapshot(runtime_isolate, bundle)?;
-
-  Ok(())
-}
-
-fn write_snapshot(
-  runtime_isolate: &mut Isolate,
-  bundle: &Path,
-) -> Result<(), ErrBox> {
   println!("creating snapshot...");
   let snapshot = runtime_isolate.snapshot()?;
   let snapshot_slice: &[u8] = &*snapshot;
   println!("snapshot bytes {}", snapshot_slice.len());
 
-  let snapshot_path = bundle.with_extension("bin");
+  let snapshot_path = output_path.with_extension("bin");
 
   fs::write(&snapshot_path, snapshot_slice)?;
   println!("snapshot path {} ", snapshot_path.display());
+
   Ok(())
 }
 

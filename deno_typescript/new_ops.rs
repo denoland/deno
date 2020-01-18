@@ -1,4 +1,4 @@
-use crate::TSState;
+use crate::new_snapshot::NewTsState;
 use deno_core::CoreOp;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
@@ -14,10 +14,10 @@ pub struct WrittenFile {
   pub source_code: String,
 }
 
-type Dispatcher = fn(state: &mut TSState, args: Value) -> Result<Value, ErrBox>;
+type Dispatcher = fn(state: &mut NewTsState, args: Value) -> Result<Value, ErrBox>;
 
-pub fn json_op(d: Dispatcher) -> impl Fn(&mut TSState, &[u8]) -> CoreOp {
-  move |state: &mut TSState, control: &[u8]| {
+pub fn json_op(d: Dispatcher) -> impl Fn(&mut NewTsState, &[u8]) -> CoreOp {
+  move |state: &mut NewTsState, control: &[u8]| {
     let result = serde_json::from_slice(control)
       .map_err(ErrBox::from)
       .and_then(move |args| d(state, args));
@@ -41,7 +41,7 @@ struct ReadFile {
   should_create_new_source_file: bool,
 }
 
-pub fn read_file(_s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
+pub fn read_file(_s: &mut NewTsState, v: Value) -> Result<Value, ErrBox> {
   let v: ReadFile = serde_json::from_value(v)?;
   let (module_name, source_code) = if v.file_name.starts_with("$asset$/") {
     let asset = v.file_name.replace("$asset$/", "");
@@ -71,7 +71,7 @@ struct WriteFile {
   module_name: String,
 }
 
-pub fn write_file(s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
+pub fn write_file(s: &mut NewTsState, v: Value) -> Result<Value, ErrBox> {
   let v: WriteFile = serde_json::from_value(v)?;
   let url = if v.file_name.starts_with("/$deno$") {
     v.file_name.to_string()
@@ -100,7 +100,7 @@ struct ResolveModuleNames {
 }
 
 pub fn resolve_module_names(
-  _s: &mut TSState,
+  _s: &mut NewTsState,
   v: Value,
 ) -> Result<Value, ErrBox> {
   let v: ResolveModuleNames = serde_json::from_value(v).unwrap();
@@ -123,7 +123,7 @@ struct FetchAssetArgs {
   name: String,
 }
 
-pub fn fetch_asset(_s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
+pub fn fetch_asset(_s: &mut NewTsState, v: Value) -> Result<Value, ErrBox> {
   let args: FetchAssetArgs = serde_json::from_value(v)?;
   if let Some(source_code) = crate::get_asset(&args.name) {
     Ok(json!(source_code))
@@ -138,7 +138,7 @@ struct Exit {
   code: i32,
 }
 
-pub fn exit(s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
+pub fn exit(s: &mut NewTsState, v: Value) -> Result<Value, ErrBox> {
   let v: Exit = serde_json::from_value(v)?;
   s.exit_code = v.code;
   std::process::exit(v.code)
@@ -152,7 +152,7 @@ pub struct EmitResult {
   pub emitted_files: Vec<String>,
 }
 
-pub fn set_emit_result(s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
+pub fn set_emit_result(s: &mut NewTsState, v: Value) -> Result<Value, ErrBox> {
   let v: EmitResult = serde_json::from_value(v)?;
   s.emit_result = Some(v);
   Ok(json!(true))
