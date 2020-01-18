@@ -1342,7 +1342,7 @@ declare namespace Deno {
      */
     close(): void;
     /** Return the address of the `Listener`. */
-    addr(): Addr;
+    addr: Addr;
     [Symbol.asyncIterator](): AsyncIterator<Conn>;
   }
 
@@ -1351,11 +1351,11 @@ declare namespace Deno {
     /**
      * The local address of the connection.
      */
-    localAddr: { hostname: string; port: number };
+    localAddr: Addr;
     /**
      * The remote address of the connection.
      */
-    remoteAddr: { hostname: string; port: number };
+    remoteAddr: Addr;
     /** The resource ID of the connection. */
     rid: number;
     /** Shuts down (`shutdown(2)`) the reading side of the TCP connection. Most

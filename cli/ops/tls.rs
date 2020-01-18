@@ -105,11 +105,13 @@ pub fn op_connect_tls(
         "transport": args.transport,
         "localAddr": {
           "hostname": local_addr.ip().to_string(),
-          "port": local_addr.port()
+          "port": local_addr.port(),
+          "transport": args.transport,
         },
         "remoteAddr": {
           "hostname": remote_addr.ip().to_string(),
-          "port": remote_addr.port()
+          "port": remote_addr.port(),
+          "transport": args.transport,
         }
     }))
   };
@@ -278,7 +280,8 @@ fn op_listen_tls(
     "rid": rid,
     "localAddr": {
       "hostname": local_addr.ip().to_string(),
-      "port": local_addr.port()
+      "port": local_addr.port(),
+      "transport": args.transport,
     },
   })))
 }

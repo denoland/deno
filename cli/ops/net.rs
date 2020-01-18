@@ -119,7 +119,7 @@ fn op_accept(
       "rid": rid,
       "localAddr": {
         "hostname": local_addr.ip().to_string(),
-        "port": local_addr.port()
+        "port": local_addr.port(),
       },
       "remoteAddr": {
         "hostname": remote_addr.ip().to_string(),
@@ -161,11 +161,13 @@ fn op_connect(
       "transport": args.transport,
       "localAddr": {
         "hostname": local_addr.ip().to_string(),
-        "port": local_addr.port()
+        "port": local_addr.port(),
+        "transport": args.transport,
       },
       "remoteAddr": {
         "hostname": remote_addr.ip().to_string(),
         "port": remote_addr.port(),
+        "transport": args.transport,
       }
     }))
   };
@@ -303,7 +305,8 @@ fn op_listen(
     "rid": rid,
     "localAddr": {
       "hostname": local_addr.ip().to_string(),
-      "port": local_addr.port()
+      "port": local_addr.port(),
+      "transport": args.transport,
     },
   })))
 }

@@ -26,7 +26,7 @@ export interface Listener extends AsyncIterator<Conn> {
   close(): void;
 
   /** Return the address of the `Listener`. */
-  addr(): Addr;
+  addr: Addr;
 
   [Symbol.asyncIterator](): AsyncIterator<Conn>;
 }
@@ -54,9 +54,8 @@ export function shutdown(rid: number, how: ShutdownMode): void {
 export class ConnImpl implements Conn {
   constructor(
     readonly rid: number,
-    readonly transport: string,
-    readonly remoteAddr: { hostname: string; port: number },
-    readonly localAddr: { hostname: string; port: number }
+    readonly remoteAddr: Addr,
+    readonly localAddr: Addr
   ) {}
 
   write(p: Uint8Array): Promise<number> {
@@ -89,27 +88,22 @@ export class ConnImpl implements Conn {
 export class ListenerImpl implements Listener {
   constructor(
     readonly rid: number,
-    protected transport: Transport,
-    private localAddr: { ip: string; port: number },
+    public addr: Addr,
     private closing: boolean = false
   ) {}
 
   async accept(): Promise<Conn> {
     const res = await sendAsync(dispatch.OP_ACCEPT, { rid: this.rid });
-    return new ConnImpl(res.rid, this.transport, res.remoteAddr, res.localAddr);
+    return new ConnImpl(
+      res.rid,
+      { ...res.remoteAddr, transport: this.addr.transport },
+      { ...res.localAddr, transport: this.addr.transport }
+    );
   }
 
   close(): void {
     this.closing = true;
     close(this.rid);
-  }
-
-  addr(): Addr {
-    return {
-      transport: this.transport,
-      hostname: this.localAddr.ip,
-      port: this.localAddr.port
-    };
   }
 
   async next(): Promise<IteratorResult<Conn>> {
@@ -135,11 +129,10 @@ export class ListenerImpl implements Listener {
 }
 
 export interface Conn extends Reader, Writer, Closer {
-  transport: string;
   /** The local address of the connection. */
-  localAddr: { hostname: string; port: number };
+  localAddr: Addr;
   /** The remote address of the connection. */
-  remoteAddr: { hostname: string; port: number };
+  remoteAddr: Addr;
   /** The resource ID of the connection. */
   rid: number;
   /** Shuts down (`shutdown(2)`) the reading side of the TCP connection. Most
@@ -184,7 +177,7 @@ export function listen(options: ListenOptions): Listener {
     port: options.port,
     transport
   });
-  return new ListenerImpl(res.rid, transport, res.localAddr);
+  return new ListenerImpl(res.rid, res.localAddr);
 }
 
 export interface ConnectOptions {
@@ -215,5 +208,5 @@ const connectDefaults = { hostname: "127.0.0.1", transport: "tcp" };
 export async function connect(options: ConnectOptions): Promise<Conn> {
   options = Object.assign(connectDefaults, options);
   const res = await sendAsync(dispatch.OP_CONNECT, options);
-  return new ConnImpl(res.rid, res.transport!, res.remoteAddr!, res.localAddr!);
+  return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);
 }
