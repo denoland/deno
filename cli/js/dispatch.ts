@@ -4,11 +4,85 @@ import * as json from "./dispatch_json.ts";
 import { AsyncHandler } from "./plugins.ts";
 
 export const OPS = {
-
+  OP_OPS_MAP: undefined,
+  OP_READ: undefined,
+  OP_WRITE: undefined,
+  OP_EXIT: undefined,
+  OP_IS_TTY: undefined,
+  OP_ENV: undefined,
+  OP_EXEC_PATH: undefined,
+  OP_UTIME: undefined,
+  OP_SET_ENV: undefined,
+  OP_GET_ENV: undefined,
+  OP_GET_DIR: undefined,
+  OP_START: undefined,
+  OP_APPLY_SOURCE_MAP: undefined,
+  OP_FORMAT_ERROR: undefined,
+  OP_CACHE: undefined,
+  OP_RESOLVE_MODULES: undefined,
+  OP_FETCH_SOURCE_FILES: undefined,
+  OP_OPEN: undefined,
+  OP_CLOSE: undefined,
+  OP_SEEK: undefined,
+  OP_FETCH: undefined,
+  OP_METRICS: undefined,
+  OP_REPL_START: undefined,
+  OP_REPL_READLINE: undefined,
+  OP_ACCEPT: undefined,
+  OP_ACCEPT_TLS: undefined,
+  OP_DIAL: undefined,
+  OP_SHUTDOWN: undefined,
+  OP_LISTEN: undefined,
+  OP_LISTEN_TLS: undefined,
+  OP_RESOURCES: undefined,
+  OP_GET_RANDOM_VALUES: undefined,
+  OP_GLOBAL_TIMER_STOP: undefined,
+  OP_GLOBAL_TIMER: undefined,
+  OP_NOW: undefined,
+  OP_QUERY_PERMISSION: undefined,
+  OP_REVOKE_PERMISSION: undefined,
+  OP_REQUEST_PERMISSION: undefined,
+  OP_CREATE_WORKER: undefined,
+  OP_HOST_GET_WORKER_LOADED: undefined,
+  OP_HOST_POST_MESSAGE: undefined,
+  OP_HOST_POLL_WORKER: undefined,
+  OP_HOST_CLOSE_WORKER: undefined,
+  OP_HOST_RESUME_WORKER: undefined,
+  OP_HOST_GET_MESSAGE: undefined,
+  OP_WORKER_POST_MESSAGE: undefined,
+  OP_WORKER_GET_MESSAGE: undefined,
+  OP_RUN: undefined,
+  OP_RUN_STATUS: undefined,
+  OP_KILL: undefined,
+  OP_CHDIR: undefined,
+  OP_MKDIR: undefined,
+  OP_CHMOD: undefined,
+  OP_CHOWN: undefined,
+  OP_REMOVE: undefined,
+  OP_COPY_FILE: undefined,
+  OP_STAT: undefined,
+  OP_REALPATH: undefined,
+  OP_READ_DIR: undefined,
+  OP_RENAME: undefined,
+  OP_LINK: undefined,
+  OP_SYMLINK: undefined,
+  OP_READ_LINK: undefined,
+  OP_TRUNCATE: undefined,
+  OP_MAKE_TEMP_DIR: undefined,
+  OP_CWD: undefined,
+  OP_DIAL_TLS: undefined,
+  OP_HOSTNAME: undefined,
+  OP_OPEN_PLUGIN: undefined,
+  OP_COMPILE: undefined,
+  OP_TRANSPILE: undefined,
+  OP_FETCH_ASSET: undefined,
 };
 
-export function setOps(opMap) {
-  
+export function setOps(opMap: { [key: string]: number }) {
+  for (const [name, opId] of Object.entries(opMap)) {
+    const opName = `OP_${name.toUpperCase()}`;
+    OPS[opName] = opId;
+  }
 }
 
 // These consts are shared with Rust. Update with care.

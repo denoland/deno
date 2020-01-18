@@ -6,15 +6,7 @@ import * as dispatch from "./dispatch.ts";
 import { sendSync } from "./dispatch_json.ts";
 
 // This registers ops that are available during the snapshotting process.
-const ops = core.ops();
-for (const [name, opId] of Object.entries(ops)) {
-  const opName = `OP_${name.toUpperCase()}`;
-  // TODO This type casting is dangerous, and should be improved when the same
-  // code in `os.ts` is done.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (dispatch as any)[opName] = opId;
-}
-dispatch
+dispatch.setOps(core.ops());
 const host = new Host({ writeFile(): void {} });
 const options = host.getCompilationSettings();
 
@@ -29,6 +21,6 @@ export const oldProgram = ts.createProgram({
 /** A module loader which is concatenated into bundle files.  We read all static
  * assets during the snapshotting process, which is why this is located in
  * compiler_bootstrap. */
-export const bundleLoader = sendSync(dispatch.OP_FETCH_ASSET, {
+export const bundleLoader = sendSync(dispatch.OPS.OP_FETCH_ASSET, {
   name: "bundle_loader.js"
 });

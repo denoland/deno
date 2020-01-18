@@ -135,7 +135,7 @@ export class Host implements ts.CompilerHost {
       return sourceFile;
     }
     const name = url.includes(".") ? url : `${url}.d.ts`;
-    const sourceCode = sendSync(dispatch.OP_FETCH_ASSET, { name });
+    const sourceCode = sendSync(dispatch.OPS.OP_FETCH_ASSET, { name });
     return new SourceFile({
       url,
       filename,

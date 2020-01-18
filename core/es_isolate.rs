@@ -4,6 +4,8 @@
 // supports asynchronous loading and executution of ES Modules.
 // The isolate.rs should never depend on this module.
 
+#![allow(unused)]
+
 use rusty_v8 as v8;
 
 use crate::any_error::ErrBox;
@@ -100,6 +102,22 @@ impl Drop for EsIsolate {
 }
 
 impl EsIsolate {
+  pub fn clear_module_handles(&mut self) {
+    let isolate = self.core_isolate.v8_isolate.as_ref().unwrap();
+    // Clear persistent handles we own.
+    {
+      let mut locker = v8::Locker::new(&isolate);
+      let mut hs = v8::HandleScope::new(&mut locker);
+      let scope = hs.enter();
+      for module in self.modules.info.values_mut() {
+        module.handle.reset(scope);
+      }
+      // for handle in self.dyn_import_map.values_mut() {
+      //   handle.reset(scope);
+      // }
+    }
+  }
+
   pub fn new(
     loader: Box<dyn Loader + Unpin>,
     startup_data: StartupData,
@@ -108,12 +126,12 @@ impl EsIsolate {
     let mut core_isolate = Isolate::new(startup_data, will_snapshot);
     {
       let isolate = core_isolate.v8_isolate.as_mut().unwrap();
-      isolate.set_host_initialize_import_meta_object_callback(
-        bindings::host_initialize_import_meta_object_callback,
-      );
-      isolate.set_host_import_module_dynamically_callback(
-        bindings::host_import_module_dynamically_callback,
-      );
+      // isolate.set_host_initialize_import_meta_object_callback(
+      //   bindings::host_initialize_import_meta_object_callback,
+      // );
+      // isolate.set_host_import_module_dynamically_callback(
+      //   bindings::host_import_module_dynamically_callback,
+      // );
     }
 
     let es_isolate = Self {

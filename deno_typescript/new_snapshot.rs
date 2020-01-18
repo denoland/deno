@@ -76,16 +76,13 @@ impl NewTsState {
     }
 
     let path_str = path.to_str().unwrap();
-    eprintln!("compiled file {}", path_str);
+    // eprintln!("compiled file {}", path_str);
 
     for file in self.written_files.iter() {
       if path_str.contains(&file.url) {
         return Some(file.clone())
       }
     }
-    // eprintln!("not found!");
-    // panic!("not found!");
-
 
     None
   }
@@ -192,12 +189,7 @@ impl Loader for TempLoader {
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
   ) -> Pin<Box<SourceCodeInfoFuture>> {
-    let foo = PathBuf::from(module_specifier.to_string());
-    // let foo = foo.with_extension(".js");
-    eprintln!("load called {:?} {:?}", module_specifier, maybe_referrer);
-    
     let specifier_str = module_specifier.to_string();
-
     let state = self.ts_state.lock().unwrap();
     let file = state.get_compiled_file(&specifier_str).expect("Compiled file not found");
     let info =  SourceCodeInfo {
@@ -205,22 +197,20 @@ impl Loader for TempLoader {
       module_url_specified: module_specifier.to_string(),
       module_url_found: module_specifier.to_string(),
     };
-    eprintln!("found requested module {}", module_specifier);
 
-    if specifier_str.ends_with("compiler.ts") || specifier_str.ends_with("globals.ts")|| specifier_str.ends_with("dispatch.ts") {
-      eprintln!("code: {}", info.code);  
-    }
+    // if specifier_str.ends_with("compiler.ts") || specifier_str.ends_with("globals.ts")|| specifier_str.ends_with("dispatch.ts") {
+    //   eprintln!("code: {}", info.code);  
+    // }
 
     return futures::future::ok(info).boxed();
   }
 }
 
 pub fn create_ts_snapshot(
-  current_dir: &Path,
+  _current_dir: &Path,
   root_names: Vec<PathBuf>,
   output_path: &Path,
 ) -> Result<(), ErrBox> {
-  let main_module = root_names[0].to_str().unwrap();
   let mut root_names_str: Vec<String> = root_names
     .iter()
     .map(|p| {
@@ -267,13 +257,8 @@ pub fn create_ts_snapshot(
     new_compiler_op(state.clone(), new_ops::json_op(new_ops::fetch_asset)),
   );
   js_check(runtime_isolate.execute("typescript.js", TYPESCRIPT_CODE));
-  // let main_module = {
-  //   let state = state.lock().unwrap();
-  //   state.main_module_url()
-  // };
   let main_module = "deno:///compiler.ts";
   eprintln!("main module {}", main_module);
-  // let mut rt = futures::executor::LocalPool::new();
   let id = futures::executor::block_on(runtime_isolate.load_module(&main_module, None))?;
   eprintln!("module loaded {}", id);
   let result = runtime_isolate.mod_evaluate(id);
@@ -282,6 +267,10 @@ pub fn create_ts_snapshot(
   let isolate_future = runtime_isolate.boxed();
   futures::executor::block_on(isolate_future)?;
 
+  runtime_isolate.clear_module_handles();
+
+  
+  eprintln!("post modules clear");
   println!("creating snapshot...");
   let snapshot = runtime_isolate.snapshot()?;
   let snapshot_slice: &[u8] = &*snapshot;
