@@ -1347,7 +1347,6 @@ declare namespace Deno {
   }
 
   export interface Conn extends Reader, Writer, Closer {
-    transport: string;
     /**
      * The local address of the connection.
      */
