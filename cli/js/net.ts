@@ -54,8 +54,9 @@ export function shutdown(rid: number, how: ShutdownMode): void {
 export class ConnImpl implements Conn {
   constructor(
     readonly rid: number,
-    readonly remoteAddr: string,
-    readonly localAddr: string
+    readonly transport: string,
+    readonly remoteAddr: { hostname: string; port: number },
+    readonly localAddr: { hostname: string; port: number }
   ) {}
 
   write(p: Uint8Array): Promise<number> {
@@ -88,14 +89,14 @@ export class ConnImpl implements Conn {
 export class ListenerImpl implements Listener {
   constructor(
     readonly rid: number,
-    private transport: Transport,
-    private localAddr: string,
+    protected transport: Transport,
+    private localAddr: { ip: string; port: number },
     private closing: boolean = false
   ) {}
 
   async accept(): Promise<Conn> {
     const res = await sendAsync(dispatch.OP_ACCEPT, { rid: this.rid });
-    return new ConnImpl(res.rid, res.remoteAddr, res.localAddr);
+    return new ConnImpl(res.rid, this.transport, res.remoteAddr, res.localAddr);
   }
 
   close(): void {
@@ -104,13 +105,10 @@ export class ListenerImpl implements Listener {
   }
 
   addr(): Addr {
-    const sliceIndex = this.localAddr.lastIndexOf(":");
-    const hostname = this.localAddr.slice(0, sliceIndex);
-    const port = parseInt(this.localAddr.slice(sliceIndex + 1));
     return {
       transport: this.transport,
-      hostname,
-      port
+      hostname: this.localAddr.ip,
+      port: this.localAddr.port
     };
   }
 
@@ -137,10 +135,11 @@ export class ListenerImpl implements Listener {
 }
 
 export interface Conn extends Reader, Writer, Closer {
+  transport: string;
   /** The local address of the connection. */
-  localAddr: string;
+  localAddr: { hostname: string; port: number };
   /** The remote address of the connection. */
-  remoteAddr: string;
+  remoteAddr: { hostname: string; port: number };
   /** The resource ID of the connection. */
   rid: number;
   /** Shuts down (`shutdown(2)`) the reading side of the TCP connection. Most
@@ -176,14 +175,13 @@ export interface ListenOptions {
  *     listen({ hostname: "[2001:db8::1]", port: 80 });
  *     listen({ hostname: "golang.org", port: 80, transport: "tcp" })
  */
-export function listen({
-  hostname = "0.0.0.0",
-  transport = "tcp",
-  port
-}: ListenOptions): Listener {
+export function listen(options: ListenOptions): Listener {
+  const hostname = options.hostname || "0.0.0.0";
+  const transport = options.transport || "tcp";
+
   const res = sendSync(dispatch.OP_LISTEN, {
     hostname,
-    port,
+    port: options.port,
     transport
   });
   return new ListenerImpl(res.rid, transport, res.localAddr);
@@ -194,6 +192,8 @@ export interface ConnectOptions {
   hostname?: string;
   transport?: Transport;
 }
+
+const connectDefaults = { hostname: "127.0.0.1", transport: "tcp" };
 
 /** Connects to the address on the named transport.
  *
@@ -212,15 +212,8 @@ export interface ConnectOptions {
  *     connect({ hostname: "[2001:db8::1]", port: 80 });
  *     connect({ hostname: "golang.org", port: 80, transport: "tcp" })
  */
-export async function connect({
-  hostname = "127.0.0.1",
-  port,
-  transport = "tcp"
-}: ConnectOptions): Promise<Conn> {
-  const res = await sendAsync(dispatch.OP_CONNECT, {
-    hostname,
-    port,
-    transport
-  });
-  return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);
+export async function connect(options: ConnectOptions): Promise<Conn> {
+  options = Object.assign(connectDefaults, options);
+  const res = await sendAsync(dispatch.OP_CONNECT, options);
+  return new ConnImpl(res.rid, res.transport!, res.remoteAddr!, res.localAddr!);
 }

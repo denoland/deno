@@ -6,6 +6,7 @@ import { Listener, Transport, Conn, ConnImpl, ListenerImpl } from "./net.ts";
 // TODO(ry) There are many configuration options to add...
 // https://docs.rs/rustls/0.16.0/rustls/struct.ClientConfig.html
 interface ConnectTLSOptions {
+  transport?: Transport;
   port: number;
   hostname?: string;
   certFile?: string;
@@ -18,13 +19,13 @@ const connectTLSDefaults = { hostname: "127.0.0.1", transport: "tcp" };
 export async function connectTLS(options: ConnectTLSOptions): Promise<Conn> {
   options = Object.assign(connectTLSDefaults, options);
   const res = await sendAsync(dispatch.OP_CONNECT_TLS, options);
-  return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);
+  return new ConnImpl(res.rid, res.transport!, res.remoteAddr!, res.localAddr!);
 }
 
 class TLSListenerImpl extends ListenerImpl {
   async accept(): Promise<Conn> {
     const res = await sendAsync(dispatch.OP_ACCEPT_TLS, { rid: this.rid });
-    return new ConnImpl(res.rid, res.remoteAddr, res.localAddr);
+    return new ConnImpl(res.rid, this.transport, res.remoteAddr, res.localAddr);
   }
 }
 

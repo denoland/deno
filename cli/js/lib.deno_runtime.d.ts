@@ -1347,16 +1347,15 @@ declare namespace Deno {
   }
 
   export interface Conn extends Reader, Writer, Closer {
-    /** UNSTABLE: return Addr?
-     *
+    transport: string;
+    /**
      * The local address of the connection.
      */
-    localAddr: string;
-    /** UNSTABLE: return Addr?
-     *
+    localAddr: { hostname: string; port: number };
+    /**
      * The remote address of the connection.
      */
-    remoteAddr: string;
+    remoteAddr: { hostname: string; port: number };
     /** The resource ID of the connection. */
     rid: number;
     /** Shuts down (`shutdown(2)`) the reading side of the TCP connection. Most
