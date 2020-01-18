@@ -6,6 +6,24 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.30.0 / 2020.01.17
+
+- BREAKING CHANGE Revert "feat(flags): script arguments come after '--'" (#3681)
+- feat(fs): add more unix-only fields to FileInfo (#3680)
+- feat(http): allow response body to be string (#3705)
+- feat(std/node): Added node timers builtin (#3634)
+- feat: Add Deno.symbols and move internal fields for test (#3693)
+- feat: Add gzip, brotli and ETag support for file fetcher (#3597)
+- feat: support individual async handler for each op (#3690)
+- fix(workers): minimal error handling and async module loading (#3665)
+- fix: Remove std/multipart (#3647)
+- fix: Resolve read/write whitelists from CWD (#3684)
+- fix: process hangs when fetch called (#3657)
+- perf: Create an old program to be used in snapshot (#3644, #3661)
+- perf: share http client in file fetcher (#3683)
+- refactor: remove Isolate.current_send_cb_info and DenoBuf, port
+  Isolate.shared_response_buf (#3643)
+
 ### v0.29.0 / 2020.01.09
 
 - BREAKING CHANGE Remove xeval subcommand (#3630)
