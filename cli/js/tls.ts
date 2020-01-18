@@ -6,6 +6,7 @@ import { Listener, Transport, Conn, ConnImpl, ListenerImpl } from "./net.ts";
 // TODO(ry) There are many configuration options to add...
 // https://docs.rs/rustls/0.16.0/rustls/struct.ClientConfig.html
 interface ConnectTLSOptions {
+  transport?: Transport;
   port: number;
   hostname?: string;
   certFile?: string;
@@ -59,5 +60,5 @@ export function listenTLS(options: ListenTLSOptions): Listener {
     certFile: options.certFile,
     keyFile: options.keyFile
   });
-  return new TLSListenerImpl(res.rid, transport, res.localAddr);
+  return new TLSListenerImpl(res.rid, res.localAddr);
 }

@@ -1307,8 +1307,8 @@ declare namespace Deno {
 
   interface Addr {
     transport: Transport;
-    /** UNSTABLE: Address is unstable because inconsistent with ConnectOptions. */
-    address: string;
+    hostname: string;
+    port: number;
   }
 
   /** UNSTABLE: Maybe remove ShutdownMode entirely. */
@@ -1342,21 +1342,19 @@ declare namespace Deno {
      */
     close(): void;
     /** Return the address of the `Listener`. */
-    addr(): Addr;
+    addr: Addr;
     [Symbol.asyncIterator](): AsyncIterator<Conn>;
   }
 
   export interface Conn extends Reader, Writer, Closer {
-    /** UNSTABLE: return Addr?
-     *
+    /**
      * The local address of the connection.
      */
-    localAddr: string;
-    /** UNSTABLE: return Addr?
-     *
+    localAddr: Addr;
+    /**
      * The remote address of the connection.
      */
-    remoteAddr: string;
+    remoteAddr: Addr;
     /** The resource ID of the connection. */
     rid: number;
     /** Shuts down (`shutdown(2)`) the reading side of the TCP connection. Most
@@ -1426,7 +1424,7 @@ declare namespace Deno {
   }
 
   /**
-   * Dial connects to the address on the named transport.
+   * Connects to the address on the named transport.
    *
    * @param options
    * @param options.port The port to connect to. (Required.)

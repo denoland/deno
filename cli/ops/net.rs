@@ -117,8 +117,16 @@ fn op_accept(
       table.add("tcpStream", Box::new(StreamResource::TcpStream(tcp_stream)));
     Ok(json!({
       "rid": rid,
-      "localAddr": local_addr.to_string(),
-      "remoteAddr": remote_addr.to_string(),
+      "localAddr": {
+        "hostname": local_addr.ip().to_string(),
+        "port": local_addr.port(),
+        "transport": "tcp",
+      },
+      "remoteAddr": {
+        "hostname": remote_addr.ip().to_string(),
+        "port": remote_addr.port(),
+        "transport": "tcp",
+      }
     }))
   };
 
@@ -152,8 +160,16 @@ fn op_connect(
       table.add("tcpStream", Box::new(StreamResource::TcpStream(tcp_stream)));
     Ok(json!({
       "rid": rid,
-      "localAddr": local_addr.to_string(),
-      "remoteAddr": remote_addr.to_string(),
+      "localAddr": {
+        "hostname": local_addr.ip().to_string(),
+        "port": local_addr.port(),
+        "transport": args.transport,
+      },
+      "remoteAddr": {
+        "hostname": remote_addr.ip().to_string(),
+        "port": remote_addr.port(),
+        "transport": args.transport,
+      }
     }))
   };
 
@@ -272,7 +288,6 @@ fn op_listen(
     futures::executor::block_on(resolve_addr(&args.hostname, args.port))?;
   let listener = futures::executor::block_on(TcpListener::bind(&addr))?;
   let local_addr = listener.local_addr()?;
-  let local_addr_str = local_addr.to_string();
   let listener_resource = TcpListenerResource {
     listener,
     waker: None,
@@ -280,10 +295,19 @@ fn op_listen(
   };
   let mut table = state.lock_resource_table();
   let rid = table.add("tcpListener", Box::new(listener_resource));
-  debug!("New listener {} {}", rid, local_addr_str);
+  debug!(
+    "New listener {} {}:{}",
+    rid,
+    local_addr.ip().to_string(),
+    local_addr.port()
+  );
 
   Ok(JsonOp::Sync(json!({
     "rid": rid,
-    "localAddr": local_addr_str,
+    "localAddr": {
+      "hostname": local_addr.ip().to_string(),
+      "port": local_addr.port(),
+      "transport": args.transport,
+    },
   })))
 }
