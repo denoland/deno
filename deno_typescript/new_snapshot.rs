@@ -206,6 +206,85 @@ impl Loader for TempLoader {
   }
 }
 
+
+pub fn create_new_snapshot(
+  _current_dir: &Path,
+  root_names: Vec<PathBuf>,
+  output_path: &Path,
+) -> Result<(), ErrBox> {
+  let mut root_names_str: Vec<String> = root_names
+    .iter()
+    .map(|p| {
+      if !p.exists() {
+        panic!("File not found {}", p.display());
+      }
+
+      let module_specifier =
+        ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
+      module_specifier.as_str().to_string()
+    })
+    .collect();
+
+  let ts_isolate = TSIsolate::new(false);
+
+  // TODO:
+  let config_json = serde_json::json!({
+    "compilerOptions": {
+      "esModuleInterop": true,
+      // "strict": true,
+      // "declaration": true,
+      "lib": ["esnext"],
+      "module": "esnext",
+      "target": "esnext",
+      "listFiles": true,
+      "listEmittedFiles": true,
+      // "types" : ["typescript.d.ts"],
+      "typeRoots" : ["$typeRoots$"],
+      // Emit the source alongside the sourcemaps within a single file;
+      // requires --inlineSourceMap or --sourceMap to be set.
+      // "inlineSources": true,
+      "inlineSourceMap": true,
+      "inlineSources": true,
+      // "sourceMap": true,
+      "outDir": "deno:///",
+    },
+  });
+  root_names_str.push("$asset$/lib.deno_core.d.ts".to_string());
+  let state = ts_isolate.compile(&config_json, root_names_str)?;
+  let temp_loader = Box::new(TempLoader { ts_state: state.clone() });
+  let runtime_isolate = &mut EsIsolate::new(temp_loader.clone(), StartupData::None, true);
+  runtime_isolate.register_op(
+    "fetch_asset",
+    new_compiler_op(state.clone(), new_ops::json_op(new_ops::fetch_asset)),
+  );
+  let main_module = "deno:///foobar.ts";
+  eprintln!("main module {}", main_module);
+  let id = futures::executor::block_on(runtime_isolate.load_module(&main_module, None))?;
+  eprintln!("module loaded {}", id);
+  let result = runtime_isolate.mod_evaluate(id);
+  eprintln!("module eval {:?}", result);
+  result?;
+  let isolate_future = runtime_isolate.boxed();
+  futures::executor::block_on(isolate_future)?;
+
+  runtime_isolate.clear_module_handles();
+
+  
+  eprintln!("post modules clear");
+  println!("creating snapshot...");
+  let snapshot = runtime_isolate.snapshot()?;
+  let snapshot_slice: &[u8] = &*snapshot;
+  println!("snapshot bytes {}", snapshot_slice.len());
+
+  let snapshot_path = output_path.with_extension("bin");
+
+  fs::write(&snapshot_path, snapshot_slice)?;
+  println!("snapshot path {} ", snapshot_path.display());
+
+  Ok(())
+}
+
+
 pub fn create_ts_snapshot(
   _current_dir: &Path,
   root_names: Vec<PathBuf>,

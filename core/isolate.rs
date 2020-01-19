@@ -676,13 +676,15 @@ impl Isolate {
   pub fn snapshot(&mut self) -> Result<v8::OwnedStartupData, ErrBox> {
     assert!(self.snapshot_creator.is_some());
 
-    let isolate = self.v8_isolate.as_ref().unwrap();
+    let isolate = self.v8_isolate.as_mut().unwrap();
     let mut locker = v8::Locker::new(isolate);
     let mut hs = v8::HandleScope::new(&mut locker);
     let scope = hs.enter();
     self.global_context.reset(scope);
     self.shared_response_buf.reset(scope);
 
+    unsafe { isolate.set_data(0, std::ptr::null_mut() as *mut c_void) };
+    unsafe { isolate.set_data(1, std::ptr::null_mut() as *mut c_void) };
     let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
     let snapshot = snapshot_creator
       .create_blob(v8::FunctionCodeHandling::Keep)

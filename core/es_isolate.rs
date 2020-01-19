@@ -126,12 +126,12 @@ impl EsIsolate {
     let mut core_isolate = Isolate::new(startup_data, will_snapshot);
     {
       let isolate = core_isolate.v8_isolate.as_mut().unwrap();
-      // isolate.set_host_initialize_import_meta_object_callback(
-      //   bindings::host_initialize_import_meta_object_callback,
-      // );
-      // isolate.set_host_import_module_dynamically_callback(
-      //   bindings::host_import_module_dynamically_callback,
-      // );
+      isolate.set_host_initialize_import_meta_object_callback(
+        bindings::host_initialize_import_meta_object_callback,
+      );
+      isolate.set_host_import_module_dynamically_callback(
+        bindings::host_import_module_dynamically_callback,
+      );
     }
 
     let es_isolate = Self {

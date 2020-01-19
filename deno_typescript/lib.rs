@@ -9,6 +9,7 @@ mod ops;
 mod new_ops;
 mod new_snapshot;
 pub use new_snapshot::create_ts_snapshot;
+pub use new_snapshot::create_new_snapshot;
 use deno_core::js_check;
 pub use deno_core::v8_set_flags;
 use deno_core::CoreOp;
@@ -328,7 +329,8 @@ pub fn trace_serializer() {
   let dummy = "foo".to_string();
   let r = deno_core::v8_set_flags(vec![
     dummy.clone(),
-    "--trace-serializer".to_string(),
+    // "--trace-serializer".to_string(),
+    "--external-reference-stats".to_string(),
   ]);
   assert_eq!(r, vec![dummy]);
 }

@@ -81,6 +81,7 @@ export const OPS = {
 export function setOps(opMap: { [key: string]: number }) {
   for (const [name, opId] of Object.entries(opMap)) {
     const opName = `OP_${name.toUpperCase()}`;
+    // @ts-ignore
     OPS[opName] = opId;
   }
 }
