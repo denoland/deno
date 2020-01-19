@@ -6,7 +6,7 @@ import "./globals.ts";
 import "./ts_global.d.ts";
 
 import { TranspileOnlyResult } from "./compiler_api.ts";
-import { oldProgram } from "./compiler_bootstrap.ts";
+// import { oldProgram } from "./compiler_bootstrap.ts";
 import { setRootExports } from "./compiler_bundler.ts";
 import {
   defaultBundlerOptions,
@@ -140,7 +140,7 @@ self.compilerMain = function compilerMain(): void {
             rootNames,
             options,
             host,
-            oldProgram
+            // oldProgram
           });
 
           diagnostics = ts
@@ -223,7 +223,7 @@ self.compilerMain = function compilerMain(): void {
           rootNames,
           options: host.getCompilationSettings(),
           host,
-          oldProgram
+          // oldProgram
         });
 
         if (bundle) {

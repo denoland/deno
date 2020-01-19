@@ -80,7 +80,8 @@ pub fn write_file(s: &mut NewTsState, v: Value) -> Result<Value, ErrBox> {
     module_specifier.as_str().to_string()
   };
   
-  eprintln!("writing file to state {} {}", url, v.module_name);
+  eprintln!("writing file to state {}", url);
+  // eprintln!("{} code: {}", url, v.data);
   if s.bundle {
     std::fs::write(&v.file_name, &v.data)?;
   }

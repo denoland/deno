@@ -7,7 +7,7 @@
 // Modules which will make up part of the global public API surface should be
 // imported as namespaces, so when the runtime type library is generated they
 // can be expressed as a namespace in the type library.
-import { window } from "./window.ts";
+// import { window } from "./window.ts";
 import * as blob from "./blob.ts";
 import * as consoleTypes from "./console.ts";
 import * as csprng from "./get_random_values.ts";
@@ -69,34 +69,35 @@ declare global {
 }
 
 // A self reference to the global object.
-window.window = window;
+// window.window = window;
 
 
 // This is the Deno namespace, it is handled differently from other window
 // properties when building the runtime type library, as the whole module
 // is flattened into a single namespace.
-window.Deno = Deno;
+// @ts-ignore
+globalThis.Deno = Deno;
 // Add internal object to Deno object.
 // This is not exposed as part of the Deno types.
 // @ts-ignore
 // window.Deno[Deno.symbols.internal] = internalObject;
 
 // Globally available functions and object instances.
-window.atob = textEncoding.atob;
-window.btoa = textEncoding.btoa;
-window.fetch = fetchTypes.fetch;
-window.clearTimeout = timers.clearTimeout;
-window.clearInterval = timers.clearInterval;
-window.console = new consoleTypes.Console(core.print);
-window.setTimeout = timers.setTimeout;
-window.setInterval = timers.setInterval;
-window.location = (undefined as unknown) as domTypes.Location;
-window.onload = undefined as undefined | Function;
-window.onunload = undefined as undefined | Function;
+// window.atob = textEncoding.atob;
+// window.btoa = textEncoding.btoa;
+// window.fetch = fetchTypes.fetch;
+// window.clearTimeout = timers.clearTimeout;
+// window.clearInterval = timers.clearInterval;
+// window.console = new consoleTypes.Console(core.print);
+// window.setTimeout = timers.setTimeout;
+// window.setInterval = timers.setInterval;
+// window.location = (undefined as unknown) as domTypes.Location;
+// window.onload = undefined as undefined | Function;
+// window.onunload = undefined as undefined | Function;
 // The following Crypto interface implementation is not up to par with the
 // standard https://www.w3.org/TR/WebCryptoAPI/#crypto-interface as it does not
 // yet incorporate the SubtleCrypto interface as its "subtle" property.
-window.crypto = (csprng as unknown) as Crypto;
+// window.crypto = (csprng as unknown) as Crypto;
 // window.queueMicrotask added by hand to self-maintained lib.deno_runtime.d.ts
 
 // When creating the runtime type library, we use modifications to `window` to
@@ -105,86 +106,86 @@ window.crypto = (csprng as unknown) as Crypto;
 // won't be able to refer to instances.
 // We have to export the type aliases, so that TypeScript _knows_ they are
 // being used, which it cannot statically determine within this module.
-window.Blob = blob.DenoBlob;
-export type Blob = domTypes.Blob;
+// window.Blob = blob.DenoBlob;
+// export type Blob = domTypes.Blob;
 
-export type Body = domTypes.Body;
+// export type Body = domTypes.Body;
 
-window.File = domFile.DomFileImpl as domTypes.DomFileConstructor;
-export type File = domTypes.DomFile;
+// window.File = domFile.DomFileImpl as domTypes.DomFileConstructor;
+// export type File = domTypes.DomFile;
 
-export type CustomEventInit = domTypes.CustomEventInit;
-window.CustomEvent = customEvent.CustomEvent;
-export type CustomEvent = domTypes.CustomEvent;
-export type EventInit = domTypes.EventInit;
-window.Event = event.Event;
-export type Event = domTypes.Event;
-export type EventListener = domTypes.EventListener;
-window.EventTarget = eventTarget.EventTarget;
-export type EventTarget = domTypes.EventTarget;
-window.URL = url.URL;
-export type URL = url.URL;
-window.URLSearchParams = urlSearchParams.URLSearchParams;
-export type URLSearchParams = domTypes.URLSearchParams;
+// export type CustomEventInit = domTypes.CustomEventInit;
+// window.CustomEvent = customEvent.CustomEvent;
+// export type CustomEvent = domTypes.CustomEvent;
+// export type EventInit = domTypes.EventInit;
+// window.Event = event.Event;
+// export type Event = domTypes.Event;
+// export type EventListener = domTypes.EventListener;
+// window.EventTarget = eventTarget.EventTarget;
+// export type EventTarget = domTypes.EventTarget;
+// window.URL = url.URL;
+// export type URL = url.URL;
+// window.URLSearchParams = urlSearchParams.URLSearchParams;
+// export type URLSearchParams = domTypes.URLSearchParams;
 
 // Using the `as` keyword to use standard compliant interfaces as the Deno
 // implementations contain some implementation details we wouldn't want to
 // expose in the runtime type library.
-window.Headers = headers.Headers as domTypes.HeadersConstructor;
-export type Headers = domTypes.Headers;
-window.FormData = formData.FormData as domTypes.FormDataConstructor;
-export type FormData = domTypes.FormData;
+// window.Headers = headers.Headers as domTypes.HeadersConstructor;
+// export type Headers = domTypes.Headers;
+// window.FormData = formData.FormData as domTypes.FormDataConstructor;
+// export type FormData = domTypes.FormData;
 
-window.TextEncoder = textEncoding.TextEncoder;
-export type TextEncoder = textEncoding.TextEncoder;
-window.TextDecoder = textEncoding.TextDecoder;
-export type TextDecoder = textEncoding.TextDecoder;
+// window.TextEncoder = textEncoding.TextEncoder;
+// export type TextEncoder = textEncoding.TextEncoder;
+// window.TextDecoder = textEncoding.TextDecoder;
+// export type TextDecoder = textEncoding.TextDecoder;
 
-window.Request = request.Request as domTypes.RequestConstructor;
-export type Request = domTypes.Request;
+// window.Request = request.Request as domTypes.RequestConstructor;
+// export type Request = domTypes.Request;
 
-window.Response = fetchTypes.Response;
-export type Response = domTypes.Response;
+// window.Response = fetchTypes.Response;
+// export type Response = domTypes.Response;
 
-window.performance = new performanceUtil.Performance();
+// window.performance = new performanceUtil.Performance();
 
 // This variable functioning correctly depends on `declareAsLet`
 // in //tools/ts_library_builder/main.ts
-window.onmessage = workers.onmessage;
-window.onerror = workers.onerror;
+// window.onmessage = workers.onmessage;
+// window.onerror = workers.onerror;
 
-window.workerMain = workers.workerMain;
-window.workerClose = workers.workerClose;
-window.postMessage = workers.postMessage;
+// window.workerMain = workers.workerMain;
+// window.workerClose = workers.workerClose;
+// window.postMessage = workers.postMessage;
 
-window.Worker = workers.WorkerImpl;
-export type Worker = workers.Worker;
+// window.Worker = workers.WorkerImpl;
+// export type Worker = workers.Worker;
 
-window[domTypes.eventTargetHost] = null;
-window[domTypes.eventTargetListeners] = {};
-window[domTypes.eventTargetMode] = "";
-window[domTypes.eventTargetNodeType] = 0;
-window[eventTarget.eventTargetAssignedSlot] = false;
-window[eventTarget.eventTargetHasActivationBehavior] = false;
-window.addEventListener = eventTarget.EventTarget.prototype.addEventListener;
-window.dispatchEvent = eventTarget.EventTarget.prototype.dispatchEvent;
-window.removeEventListener =
-  eventTarget.EventTarget.prototype.removeEventListener;
+// window[domTypes.eventTargetHost] = null;
+// window[domTypes.eventTargetListeners] = {};
+// window[domTypes.eventTargetMode] = "";
+// window[domTypes.eventTargetNodeType] = 0;
+// window[eventTarget.eventTargetAssignedSlot] = false;
+// window[eventTarget.eventTargetHasActivationBehavior] = false;
+// window.addEventListener = eventTarget.EventTarget.prototype.addEventListener;
+// window.dispatchEvent = eventTarget.EventTarget.prototype.dispatchEvent;
+// window.removeEventListener =
+//   eventTarget.EventTarget.prototype.removeEventListener;
 
 // Registers the handler for window.onload function.
-window.addEventListener("load", (e: domTypes.Event): void => {
-  const onload = window.onload;
-  if (typeof onload === "function") {
-    onload(e);
-  }
-});
+// window.addEventListener("load", (e: domTypes.Event): void => {
+//   const onload = window.onload;
+//   if (typeof onload === "function") {
+//     onload(e);
+//   }
+// });
 // Registers the handler for window.onunload function.
-window.addEventListener("unload", (e: domTypes.Event): void => {
-  const onunload = window.onunload;
-  if (typeof onunload === "function") {
-    onunload(e);
-  }
-});
+// window.addEventListener("unload", (e: domTypes.Event): void => {
+//   const onunload = window.onunload;
+//   if (typeof onunload === "function") {
+//     onunload(e);
+//   }
+// });
 
 // below are interfaces that are available in TypeScript but
 // have different signatures

@@ -1,11 +1,13 @@
+import "./globals.ts";
+
 import { a, b, } from "./foobar1.ts";
 
-function foo() {
-    // @ts-ignore
-    console.log(Deno.core.dispatch(0));
-}
+// function foo() {
+//     // @ts-ignore
+//     console.log(Deno.core.dispatch(0));
+// }
 
-foo();
+// foo();
 
 function main() {
     // @ts-ignore
