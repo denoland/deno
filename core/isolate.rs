@@ -745,6 +745,9 @@ impl Future for Isolate {
     inner.check_last_exception()?;
 
     // We're idle if all pending_ops have blocks_exit flag false.
+    // TODO(kt3k): This might affect the performance of the event loop when
+    // the user created thousands of optional ops. See the discussion at
+    // https://github.com/denoland/deno/pull/3715/files#r368270169
     if inner.pending_ops.iter().all(|op| !op.1) {
       Poll::Ready(Ok(()))
     } else {
