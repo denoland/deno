@@ -42,18 +42,6 @@ lazy_static! {
       v8::ExternalReference {
         function: queue_microtask.map_fn_to()
       },
-      v8::ExternalReference {
-        host_import: host_import_module_dynamically_callback
-      },
-      v8::ExternalReference {
-        host_initialize: host_initialize_import_meta_object_callback
-      },
-      v8::ExternalReference {
-        resolve_cb: module_resolve_callback.map_fn_to()
-      },
-      v8::ExternalReference {
-        promise_reject: promise_reject_callback
-      },
     ]);
 }
 

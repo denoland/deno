@@ -14,10 +14,10 @@ fn main() {
   let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
   let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
-  let root_names = vec![c.join("js/compiler.ts")];
-  let output_path = o.join("COMPILER_SNAPSHOT.js");
-  deno_typescript::create_ts_snapshot(&o, root_names, &output_path).expect("Failed to create snapshot");
-  assert!(output_path.exists());
+  // let root_names = vec![c.join("js/compiler.ts")];
+  // let output_path = o.join("COMPILER_SNAPSHOT.js");
+  // deno_typescript::create_ts_snapshot(&o, root_names, &output_path).expect("Failed to create snapshot");
+  // assert!(output_path.exists());
 
   let root_names = vec![c.join("js/foobar.ts")];
   let output_path = o.join("FOOBAR_SNAPSHOT.js");
