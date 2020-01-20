@@ -89,6 +89,10 @@ def strace_parse(summary_text):
     summary = {}
     # clear empty lines
     lines = list(filter(lambda x: x and x != "\n", summary_text.split("\n")))
+    # Filter out non-relevant lines. See the error log at
+    # https://github.com/denoland/deno/pull/3715/checks?check_run_id=397365887
+    # This is checked in tools/testdata/strace_summary2.out
+    lines = [x for x in lines if x.find("detached ...") == -1]
     if len(lines) < 4:
         return {}  # malformed summary
     lines, total_line = lines[2:-2], lines[-1]
