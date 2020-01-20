@@ -1114,9 +1114,9 @@ declare namespace Deno {
    *       } catch (e) {
    *         if (
    *           e instanceof Deno.DenoError &&
-   *           e.kind === Deno.ErrorKind.Overflow
+   *           e.kind === Deno.ErrorKind.NotFound
    *         ) {
-   *           console.error("Overflow error!");
+   *           console.error("NotFound error!");
    *         }
    *       }
    *
@@ -1126,7 +1126,6 @@ declare namespace Deno {
     constructor(kind: T, msg: string);
   }
   export enum ErrorKind {
-    NoError = 0,
     NotFound = 1,
     PermissionDenied = 2,
     ConnectionRefused = 3,
@@ -1146,37 +1145,15 @@ declare namespace Deno {
     Other = 17,
     UnexpectedEof = 18,
     BadResource = 19,
-    CommandFailed = 20,
-    EmptyHost = 21,
-    IdnaError = 22,
-    InvalidPort = 23,
-    InvalidIpv4Address = 24,
-    InvalidIpv6Address = 25,
-    InvalidDomainCharacter = 26,
-    RelativeUrlWithoutBase = 27,
-    RelativeUrlWithCannotBeABaseBase = 28,
-    SetHostOnCannotBeABaseUrl = 29,
-    Overflow = 30,
-    HttpUser = 31,
-    HttpClosed = 32,
-    HttpCanceled = 33,
-    HttpParse = 34,
-    HttpOther = 35,
-    TooLarge = 36,
-    InvalidUri = 37,
-    InvalidSeekMode = 38,
-    OpNotAvailable = 39,
-    WorkerInitFailed = 40,
-    UnixError = 41,
-    NoAsyncSupport = 42,
-    NoSyncSupport = 43,
-    ImportMapError = 44,
-    InvalidPath = 45,
-    ImportPrefixMissing = 46,
-    UnsupportedFetchScheme = 47,
-    TooManyRedirects = 48,
-    Diagnostic = 49,
-    JSError = 50
+    UrlParse = 20,
+    Http = 21,
+    TooLarge = 22,
+    InvalidSeekMode = 23,
+    UnixError = 24,
+    InvalidPath = 25,
+    ImportPrefixMissing = 26,
+    Diagnostic = 27,
+    JSError = 28
   }
 
   /** UNSTABLE: potentially want names to overlap more with browser.

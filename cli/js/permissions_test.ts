@@ -35,15 +35,14 @@ test(async function permissionInvalidName(): Promise<void> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await Deno.permissions.query({ name: "foo" as any });
   } catch (e) {
-    assert(e.name === "TypeError");
+    assert(e.name === "Other");
   }
 });
 
 test(async function permissionNetInvalidUrl(): Promise<void> {
   try {
-    // Invalid url causes TypeError.
     await Deno.permissions.query({ name: "net", url: ":" });
   } catch (e) {
-    assert(e.name === "TypeError");
+    assert(e.name === "UrlParse");
   }
 });

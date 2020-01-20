@@ -126,7 +126,9 @@ pub fn chown(path: &str, uid: u32, gid: u32) -> Result<(), ErrBox> {
 pub fn chown(_path: &str, _uid: u32, _gid: u32) -> Result<(), ErrBox> {
   // Noop
   // TODO: implement chown for Windows
-  Err(crate::deno_error::op_not_implemented())
+  Err(crate::deno_error::other_error(
+    "Op not implemented".to_string(),
+  ))
 }
 
 pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, ErrBox> {
