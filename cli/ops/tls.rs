@@ -16,6 +16,7 @@ use std::fs::File;
 use std::future::Future;
 use std::io::BufReader;
 use std::net::SocketAddr;
+use std::path::Path;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::Context;
@@ -69,7 +70,7 @@ pub fn op_connect_tls(
   let state_ = state.clone();
   state.check_net(&args.hostname, args.port)?;
   if let Some(path) = cert_file.clone() {
-    state.check_read(&path)?;
+    state.check_read(Path::new(&path))?;
   }
 
   let mut domain = args.hostname.clone();
@@ -254,8 +255,8 @@ fn op_listen_tls(
   let key_file = args.key_file;
 
   state.check_net(&args.hostname, args.port)?;
-  state.check_read(&cert_file)?;
-  state.check_read(&key_file)?;
+  state.check_read(Path::new(&cert_file))?;
+  state.check_read(Path::new(&key_file))?;
 
   let mut config = ServerConfig::new(NoClientAuth::new());
   config

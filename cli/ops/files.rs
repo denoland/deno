@@ -12,6 +12,7 @@ use futures::future::FutureExt;
 use std;
 use std::convert::From;
 use std::io::SeekFrom;
+use std::path::Path;
 use tokio;
 
 pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
@@ -34,7 +35,7 @@ fn op_open(
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: OpenArgs = serde_json::from_value(args)?;
-  let (filename, filename_) = deno_fs::resolve_from_cwd(&args.filename)?;
+  let filename = deno_fs::resolve_from_cwd(Path::new(&args.filename))?;
   let mode = args.mode.as_ref();
   let state_ = state.clone();
   let mut open_options = tokio::fs::OpenOptions::new();
@@ -75,14 +76,14 @@ fn op_open(
 
   match mode {
     "r" => {
-      state.check_read(&filename_)?;
+      state.check_read(&filename)?;
     }
     "w" | "a" | "x" => {
-      state.check_write(&filename_)?;
+      state.check_write(&filename)?;
     }
     &_ => {
-      state.check_read(&filename_)?;
-      state.check_write(&filename_)?;
+      state.check_read(&filename)?;
+      state.check_write(&filename)?;
     }
   }
 
