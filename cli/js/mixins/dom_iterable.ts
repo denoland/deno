@@ -1,7 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { DomIterable } from "../dom_types.ts";
-import { window } from "../window.ts";
 import { requiredArguments } from "../util.ts";
 import { exposeForTest } from "../internals.ts";
 
@@ -57,7 +56,9 @@ export function DomIterableMixin<K, V, TBase extends Constructor>(
         arguments.length,
         1
       );
-      callbackfn = callbackfn.bind(thisArg == null ? window : Object(thisArg));
+      callbackfn = callbackfn.bind(
+        thisArg == null ? globalThis : Object(thisArg)
+      );
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       for (const [key, value] of (this as any)[dataSymbol]) {
         callbackfn(value, key, this);

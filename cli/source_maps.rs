@@ -412,7 +412,7 @@ mod tests {
     assert_eq!(actual.message, "TypeError: baz");
     // Because this is accessing the live bundle, this test might be more fragile
     assert_eq!(actual.frames.len(), 1);
-    assert!(actual.frames[0].script_name.ends_with("/window.ts"));
+    assert!(actual.frames[0].script_name.ends_with("/dom_types.ts"));
   }
 
   #[test]

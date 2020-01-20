@@ -2200,8 +2200,16 @@ declare const TextDecoder: typeof __textEncoding.TextDecoder;
 declare const Request: __domTypes.RequestConstructor;
 declare const Response: typeof __fetch.Response;
 declare const performance: __performanceUtil.Performance;
-declare let onmessage: (e: { data: any }) => void;
-declare let onerror: (e: Event) => void;
+declare let onmessage: ((e: { data: any }) => Promise<void> | void) | undefined;
+declare let onerror:
+  | ((
+      msg: string,
+      source: string,
+      lineno: number,
+      colno: number,
+      e: Event
+    ) => boolean | void)
+  | undefined;
 declare const workerMain: typeof __workers.workerMain;
 declare const workerClose: typeof __workers.workerClose;
 declare const postMessage: typeof __workers.postMessage;
