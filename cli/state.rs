@@ -26,6 +26,7 @@ use serde_json::Value;
 use std;
 use std::collections::HashMap;
 use std::ops::Deref;
+use std::path::Path;
 use std::pin::Pin;
 use std::str;
 use std::sync::atomic::AtomicUsize;
@@ -268,13 +269,13 @@ impl ThreadSafeState {
   }
 
   #[inline]
-  pub fn check_read(&self, filename: &str) -> Result<(), ErrBox> {
-    self.permissions.lock().unwrap().check_read(filename)
+  pub fn check_read(&self, path: &Path) -> Result<(), ErrBox> {
+    self.permissions.lock().unwrap().check_read(path)
   }
 
   #[inline]
-  pub fn check_write(&self, filename: &str) -> Result<(), ErrBox> {
-    self.permissions.lock().unwrap().check_write(filename)
+  pub fn check_write(&self, path: &Path) -> Result<(), ErrBox> {
+    self.permissions.lock().unwrap().check_write(path)
   }
 
   #[inline]
@@ -298,7 +299,7 @@ impl ThreadSafeState {
   }
 
   #[inline]
-  pub fn check_plugin(&self, filename: &str) -> Result<(), ErrBox> {
+  pub fn check_plugin(&self, filename: &Path) -> Result<(), ErrBox> {
     self.permissions.lock().unwrap().check_plugin(filename)
   }
 
@@ -313,13 +314,13 @@ impl ThreadSafeState {
         Ok(())
       }
       "file" => {
-        let filename = u
+        let path = u
           .to_file_path()
           .unwrap()
           .into_os_string()
           .into_string()
           .unwrap();
-        self.check_read(&filename)?;
+        self.check_read(Path::new(&path))?;
         Ok(())
       }
       _ => Err(permission_denied()),

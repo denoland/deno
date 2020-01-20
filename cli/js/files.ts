@@ -29,7 +29,7 @@ export function openSync(filename: string, capability?: OpenOptions): File;
  *       const file = Deno.openSync("/foo/bar.txt", "r");
  */
 export function openSync(filename: string, mode?: OpenMode): File;
-/**@internal*/
+
 export function openSync(
   filename: string,
   modeOrOptions: OpenOptions | OpenMode = "r"

@@ -19,6 +19,7 @@ use std;
 use std::env;
 use std::future::Future;
 use std::ops::Deref;
+use std::path::Path;
 use std::str;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -175,12 +176,12 @@ impl ThreadSafeGlobalState {
   }
 
   #[inline]
-  pub fn check_read(&self, filename: &str) -> Result<(), ErrBox> {
+  pub fn check_read(&self, filename: &Path) -> Result<(), ErrBox> {
     self.permissions.check_read(filename)
   }
 
   #[inline]
-  pub fn check_write(&self, filename: &str) -> Result<(), ErrBox> {
+  pub fn check_write(&self, filename: &Path) -> Result<(), ErrBox> {
     self.permissions.check_write(filename)
   }
 
@@ -221,7 +222,7 @@ impl ThreadSafeGlobalState {
           .into_os_string()
           .into_string()
           .unwrap();
-        self.check_read(&filename)?;
+        self.check_read(Path::new(&filename))?;
         Ok(())
       }
       _ => Err(permission_denied()),

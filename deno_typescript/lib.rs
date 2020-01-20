@@ -146,7 +146,7 @@ pub fn compile_bundle(
     },
   });
 
-  let mut root_names_str: Vec<String> = root_names
+  let root_names_str: Vec<String> = root_names
     .iter()
     .map(|p| {
       if !p.exists() {
@@ -158,7 +158,6 @@ pub fn compile_bundle(
       module_specifier.as_str().to_string()
     })
     .collect();
-  root_names_str.push("$asset$/lib.deno_core.d.ts".to_string());
 
   // TODO lift js_check to caller?
   let state = js_check(ts_isolate.compile(&config_json, root_names_str));
@@ -266,9 +265,6 @@ pub fn get_asset(name: &str) -> Option<String> {
   match name {
     "bundle_loader.js" => {
       Some(read_file("../deno_typescript/bundle_loader.js"))
-    }
-    "lib.deno_core.d.ts" => {
-      Some(read_file("../deno_typescript/lib.deno_core.d.ts"))
     }
     "lib.deno_runtime.d.ts" => Some(read_file("js/lib.deno_runtime.d.ts")),
     "bootstrap.ts" => Some("console.log(\"hello deno\");".to_string()),
