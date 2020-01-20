@@ -3455,13 +3455,8 @@ declare namespace __workers {
     postMessage(data: any): void;
     closed: Promise<void>;
   }
-  export interface WorkerOptions {}
-  /** Extended Deno Worker initialization options.
-   * `noDenoNamespace` hides global `window.Deno` namespace for
-   * spawned worker and nested workers spawned by it (default: false).
-   */
-  export interface DenoWorkerOptions extends WorkerOptions {
-    noDenoNamespace?: boolean;
+  export interface WorkerOptions {
+    type?: "classic" | "module";
   }
   export class WorkerImpl implements Worker {
     private readonly id;
@@ -3470,7 +3465,7 @@ declare namespace __workers {
     onerror?: (e: Event) => void;
     onmessage?: (data: any) => void;
     onmessageerror?: () => void;
-    constructor(specifier: string, options?: DenoWorkerOptions);
+    constructor(specifier: string, options?: WorkerOptions);
     readonly closed: Promise<void>;
     postMessage(data: any): void;
     private run;

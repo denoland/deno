@@ -24,13 +24,11 @@ export function decodeMessage(dataIntArray: Uint8Array): any {
 
 function createWorker(
   specifier: string,
-  includeDenoNamespace: boolean,
   hasSourceCode: boolean,
   sourceCode: Uint8Array
 ): { id: number; loaded: boolean } {
   return sendSync(dispatch.OP_CREATE_WORKER, {
     specifier,
-    includeDenoNamespace,
     hasSourceCode,
     sourceCode: new TextDecoder().decode(sourceCode)
   });
@@ -143,16 +141,8 @@ export interface Worker {
   closed: Promise<void>;
 }
 
-// TODO(kevinkassimo): Maybe implement reasonable web worker options?
-// eslint-disable-next-line @typescript-eslint/no-empty-interface
-export interface WorkerOptions {}
-
-/** Extended Deno Worker initialization options.
- * `noDenoNamespace` hides global `globalThis.Deno` namespace for
- * spawned worker and nested workers spawned by it (default: false).
- */
-export interface DenoWorkerOptions extends WorkerOptions {
-  noDenoNamespace?: boolean;
+export interface WorkerOptions {
+  type?: "classic" | "module";
 }
 
 export class WorkerImpl extends EventTarget implements Worker {
@@ -165,15 +155,24 @@ export class WorkerImpl extends EventTarget implements Worker {
   public onmessage?: (data: any) => void;
   public onmessageerror?: () => void;
 
-  constructor(specifier: string, options?: DenoWorkerOptions) {
+  constructor(specifier: string, options?: WorkerOptions) {
     super();
+
+    let type = "classic";
+
+    if (options?.type) {
+      type = options.type;
+    }
+
+    if (type !== "module") {
+      throw new Error(
+        'Not yet implemented: only type: "module" workers are supported'
+      );
+    }
+
     let hasSourceCode = false;
     let sourceCode = new Uint8Array();
 
-    let includeDenoNamespace = true;
-    if (options && options.noDenoNamespace) {
-      includeDenoNamespace = false;
-    }
     // Handle blob URL.
     if (specifier.startsWith("blob:")) {
       hasSourceCode = true;
@@ -188,12 +187,7 @@ export class WorkerImpl extends EventTarget implements Worker {
       sourceCode = blobBytes!;
     }
 
-    const { id, loaded } = createWorker(
-      specifier,
-      includeDenoNamespace,
-      hasSourceCode,
-      sourceCode
-    );
+    const { id, loaded } = createWorker(specifier, hasSourceCode, sourceCode);
     this.id = id;
     this.ready = loaded;
     this.isClosedPromise = createResolvable();

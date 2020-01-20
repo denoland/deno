@@ -119,7 +119,6 @@ fn op_worker_post_message(
 #[serde(rename_all = "camelCase")]
 struct CreateWorkerArgs {
   specifier: String,
-  include_deno_namespace: bool,
   has_source_code: bool,
   source_code: String,
 }
@@ -133,10 +132,8 @@ fn op_create_worker(
   let args: CreateWorkerArgs = serde_json::from_value(args)?;
 
   let specifier = args.specifier.as_ref();
-  // Only include deno namespace if requested AND current worker
-  // has included namespace (to avoid escalation).
-  let include_deno_namespace =
-    args.include_deno_namespace && state.include_deno_namespace;
+  // ATM workers do not have access to `Deno` namespace
+  let include_deno_namespace = false;
   let has_source_code = args.has_source_code;
   let source_code = args.source_code;
 
