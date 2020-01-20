@@ -4,9 +4,9 @@ import * as dispatch from "./dispatch.ts";
 import { sendAsync, sendSync } from "./dispatch_json.ts";
 import { log, createResolvable, Resolvable } from "./util.ts";
 import { TextDecoder, TextEncoder } from "./text_encoding.ts";
-import { window } from "./window.ts";
 import { blobURLMap } from "./url.ts";
 import { blobBytesWeakMap } from "./blob.ts";
+import { Event } from "./event.ts";
 import { EventTarget } from "./event_target.ts";
 
 const encoder = new TextEncoder();
@@ -106,16 +106,19 @@ export async function workerMain(): Promise<void> {
     const event = { data };
 
     try {
-      result = window.onmessage(event);
+      if (!globalThis["onmessage"]) {
+        break;
+      }
+      result = globalThis.onmessage!(event);
       if (result && "then" in result) {
         await result;
       }
-      if (!window["onmessage"]) {
+      if (!globalThis["onmessage"]) {
         break;
       }
     } catch (e) {
-      if (window["onerror"]) {
-        const result = window.onerror(
+      if (globalThis["onerror"]) {
+        const result = globalThis.onerror(
           e.message,
           e.fileName,
           e.lineNumber,
@@ -145,7 +148,7 @@ export interface Worker {
 export interface WorkerOptions {}
 
 /** Extended Deno Worker initialization options.
- * `noDenoNamespace` hides global `window.Deno` namespace for
+ * `noDenoNamespace` hides global `globalThis.Deno` namespace for
  * spawned worker and nested workers spawned by it (default: false).
  */
 export interface DenoWorkerOptions extends WorkerOptions {
@@ -202,7 +205,9 @@ export class WorkerImpl extends EventTarget implements Worker {
   }
 
   private handleError(e: any): boolean {
-    const event = new window.Event("error", { cancelable: true });
+    // TODO: this is being handled in a type unsafe way, it should be type safe
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const event = new Event("error", { cancelable: true }) as any;
     event.message = e.message;
     event.lineNumber = e.lineNumber ? e.lineNumber + 1 : null;
     event.columnNumber = e.columnNumber ? e.columnNumber + 1 : null;
