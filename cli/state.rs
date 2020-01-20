@@ -44,7 +44,6 @@ pub struct ThreadSafeState(Arc<State>);
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct State {
   pub global_state: ThreadSafeGlobalState,
-  pub modules: Arc<Mutex<deno_core::Modules>>,
   pub permissions: Arc<Mutex<DenoPermissions>>,
   pub main_module: Option<ModuleSpecifier>,
   pub worker_channels: Mutex<WorkerChannels>,
@@ -233,7 +232,6 @@ impl ThreadSafeState {
       None => None,
     };
 
-    let modules = Arc::new(Mutex::new(deno_core::Modules::new()));
     let permissions = if let Some(perm) = shared_permissions {
       perm
     } else {
@@ -242,7 +240,6 @@ impl ThreadSafeState {
 
     let state = State {
       global_state,
-      modules,
       main_module,
       permissions,
       import_map,
