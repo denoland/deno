@@ -54,11 +54,11 @@ fn op_open(
 
   if let Some(options) = args.options {
     if options.read {
-      state.check_read(&filename_)?;
+      state.check_read(&filename)?;
     }
 
     if options.write || options.append {
-      state.check_write(&filename_)?;
+      state.check_write(&filename)?;
     }
 
     open_options
@@ -72,14 +72,14 @@ fn op_open(
     let mode = mode.as_ref();
     match mode {
       "r" => {
-        state.check_read(&filename_)?;
+        state.check_read(&filename)?;
       }
       "w" | "a" | "x" => {
-        state.check_write(&filename_)?;
+        state.check_write(&filename)?;
       }
       &_ => {
-        state.check_read(&filename_)?;
-        state.check_write(&filename_)?;
+        state.check_read(&filename)?;
+        state.check_write(&filename)?;
       }
     };
 
