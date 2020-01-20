@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { core } from "./core.ts";
 import * as dispatch from "./dispatch.ts";
 import { sendAsync, sendSync } from "./dispatch_json.ts";
 import { log } from "./util.ts";
@@ -44,6 +45,17 @@ export function workerClose(): void {
 }
 
 export async function workerMain(): Promise<void> {
+  const ops = core.ops();
+  // TODO(bartlomieju): this is a prototype, we should come up with
+  // something a bit more sophisticated
+  for (const [name, opId] of Object.entries(ops)) {
+    const opName = `OP_${name.toUpperCase()}`;
+    // Assign op ids to actual variables
+    // TODO(ry) This type casting is gross and should be fixed.
+    ((dispatch as unknown) as { [key: string]: number })[opName] = opId;
+    core.setAsyncHandler(opId, dispatch.getAsyncHandler(opName));
+  }
+
   log("workerMain");
 
   while (!isClosing) {

@@ -113,10 +113,8 @@ fn op_create_worker(
   // TODO: add a new option to make child worker not sharing permissions
   // with parent (aka .clone(), requests from child won't reflect in parent)
   let name = format!("USER-WORKER-{}", specifier);
-  let deno_main_call = format!("denoMain({})", false);
   let mut worker =
     WebWorker::new(name, startup_data::deno_isolate_init(), child_state, ext);
-  js_check(worker.execute(&deno_main_call));
   js_check(worker.execute("workerMain()"));
 
   let worker_id = parent_state.add_child_worker(worker.clone());

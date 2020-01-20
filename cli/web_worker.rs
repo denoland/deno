@@ -42,6 +42,7 @@ impl WebWorker {
       deno_core::EsIsolate::new(Box::new(state.clone()), startup_data, false);
 
     ops::web_worker::init(&mut isolate, &state);
+    ops::worker_host::init(&mut isolate, &state);
 
     let global_state_ = state.global_state.clone();
     isolate.set_js_error_create(move |v8_exception| {
