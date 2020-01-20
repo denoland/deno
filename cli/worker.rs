@@ -68,7 +68,8 @@ impl Worker {
     ops::repl::init(&mut isolate, &state);
     ops::resources::init(&mut isolate, &state);
     ops::timers::init(&mut isolate, &state);
-    ops::workers::init(&mut isolate, &state);
+    ops::worker_host::init(&mut isolate, &state);
+    ops::web_worker::init(&mut isolate, &state);
 
     let global_state_ = state.global_state.clone();
     isolate.set_js_error_create(move |v8_exception| {
@@ -83,6 +84,8 @@ impl Worker {
     }
   }
 
+  // TODO(bartlomieju) this can be removed is REPL means looping on worker
+  // and clearing exception - remove it
   pub fn set_error_handler(
     &mut self,
     handler: Box<dyn FnMut(ErrBox) -> Result<(), ErrBox>>,
@@ -182,7 +185,7 @@ impl Future for Worker {
 /// that will return message received from worker or None
 /// if worker's channel has been closed.
 pub struct WorkerReceiver {
-  channels: Arc<Mutex<WorkerChannels>>,
+  pub channels: Arc<Mutex<WorkerChannels>>,
 }
 
 impl Future for WorkerReceiver {
@@ -249,7 +252,6 @@ mod tests {
       global_state,
       None,
       Some(module_specifier.clone()),
-      true,
       int,
     )
     .unwrap();
@@ -293,7 +295,6 @@ mod tests {
       global_state,
       None,
       Some(module_specifier.clone()),
-      true,
       int,
     )
     .unwrap();
@@ -336,7 +337,6 @@ mod tests {
       global_state.clone(),
       None,
       Some(module_specifier.clone()),
-      true,
       int,
     )
     .unwrap();

@@ -9,7 +9,7 @@ use crate::fmt_errors::JSError;
 use crate::ops::json_op;
 use crate::startup_data;
 use crate::state::ThreadSafeState;
-use crate::worker::Worker;
+use crate::web_worker::WebWorker;
 use deno_core::*;
 use futures;
 use futures::channel::mpsc;
@@ -54,15 +54,6 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
     "host_get_message",
     s.core_op(json_op(s.stateful_op(op_host_get_message))),
   );
-  // TODO: make sure these two ops are only accessible to appropriate Worker
-  i.register_op(
-    "worker_post_message",
-    s.core_op(json_op(s.stateful_op(op_worker_post_message))),
-  );
-  i.register_op(
-    "worker_get_message",
-    s.core_op(json_op(s.stateful_op(op_worker_get_message))),
-  );
   i.register_op("metrics", s.core_op(json_op(s.stateful_op(op_metrics))));
 }
 
@@ -79,40 +70,6 @@ impl Future for GetMessageFuture {
     let receiver = &mut channels.receiver;
     receiver.poll_next_unpin(cx)
   }
-}
-
-/// Get message from host as guest worker
-fn op_worker_get_message(
-  state: &ThreadSafeState,
-  _args: Value,
-  _data: Option<PinnedBuf>,
-) -> Result<JsonOp, ErrBox> {
-  let op = GetMessageFuture {
-    state: state.clone(),
-  };
-
-  let op = async move {
-    let maybe_buf = op.await;
-    debug!("op_worker_get_message");
-    Ok(json!({ "data": maybe_buf }))
-  };
-
-  Ok(JsonOp::Async(op.boxed()))
-}
-
-/// Post message to host as guest worker
-fn op_worker_post_message(
-  state: &ThreadSafeState,
-  _args: Value,
-  data: Option<PinnedBuf>,
-) -> Result<JsonOp, ErrBox> {
-  let d = Vec::from(data.unwrap().as_ref()).into_boxed_slice();
-  let mut channels = state.worker_channels.lock().unwrap();
-  let sender = &mut channels.sender;
-  futures::executor::block_on(sender.send(d))
-    .map_err(|e| DenoError::new(ErrorKind::Other, e.to_string()))?;
-
-  Ok(JsonOp::Sync(json!({})))
 }
 
 #[derive(Deserialize)]
@@ -132,8 +89,6 @@ fn op_create_worker(
   let args: CreateWorkerArgs = serde_json::from_value(args)?;
 
   let specifier = args.specifier.as_ref();
-  // ATM workers do not have access to `Deno` namespace
-  let include_deno_namespace = false;
   let has_source_code = args.has_source_code;
   let source_code = args.source_code;
 
@@ -153,15 +108,14 @@ fn op_create_worker(
     state.global_state.clone(),
     Some(parent_state.permissions.clone()), // by default share with parent
     Some(module_specifier.clone()),
-    include_deno_namespace,
     int,
   )?;
   // TODO: add a new option to make child worker not sharing permissions
   // with parent (aka .clone(), requests from child won't reflect in parent)
   let name = format!("USER-WORKER-{}", specifier);
-  let deno_main_call = format!("denoMain({})", include_deno_namespace);
+  let deno_main_call = format!("denoMain({})", false);
   let mut worker =
-    Worker::new(name, startup_data::deno_isolate_init(), child_state, ext);
+    WebWorker::new(name, startup_data::deno_isolate_init(), child_state, ext);
   js_check(worker.execute(&deno_main_call));
   js_check(worker.execute("workerMain()"));
 

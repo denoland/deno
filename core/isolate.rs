@@ -440,6 +440,8 @@ impl Isolate {
     isolate.exit();
   }
 
+  // TODO(bartlomieju): this can be removed is REPL means looping on worker
+  // and clearing exception - remove it
   pub fn set_error_handler(&mut self, handler: Box<IsolateErrorHandleFn>) {
     self.error_handler = Some(handler);
   }
