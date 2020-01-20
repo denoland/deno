@@ -146,7 +146,7 @@ fn create_worker_and_state(
 }
 
 fn types_command() {
-  let content = include_str!("./js/lib.deno_runtime.d.ts");
+  let content = deno_typescript::get_asset("lib.deno_runtime.d.ts").unwrap();
   println!("{}", content);
 }
 
