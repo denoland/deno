@@ -2,10 +2,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import * as dispatch from "./dispatch.ts";
 import { sendAsync, sendSync } from "./dispatch_json.ts";
-import { log, createResolvable, Resolvable } from "./util.ts";
+import { log } from "./util.ts";
 import { TextDecoder, TextEncoder } from "./text_encoding.ts";
+/*
 import { blobURLMap } from "./url.ts";
 import { blobBytesWeakMap } from "./blob.ts";
+*/
 import { Event } from "./event.ts";
 import { EventTarget } from "./event_target.ts";
 
@@ -100,8 +102,8 @@ export class WorkerImpl extends EventTarget implements Worker {
       );
     }
 
-    let hasSourceCode = false;
-    let sourceCode = new Uint8Array();
+    const hasSourceCode = false;
+    const sourceCode = new Uint8Array();
 
     /* TODO(bartlomieju):
     // Handle blob URL.
