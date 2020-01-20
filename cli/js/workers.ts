@@ -109,9 +109,12 @@ export async function workerMain(): Promise<void> {
       if (!globalThis["onmessage"]) {
         break;
       }
-      result = globalThis.onmessage(event);
+      result = globalThis.onmessage!(event);
       if (result && "then" in result) {
         await result;
+      }
+      if (!globalThis["onmessage"]) {
+        break;
       }
     } catch (e) {
       if (globalThis["onerror"]) {
