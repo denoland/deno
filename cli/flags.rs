@@ -7,6 +7,7 @@ use clap::ArgMatches;
 use clap::SubCommand;
 use log::Level;
 use std::collections::HashSet;
+use std::path::Path;
 
 /// Creates vector of strings, Vec<String>
 macro_rules! svec {
@@ -397,14 +398,13 @@ fn resolve_fs_whitelist(whitelist: &[String]) -> Vec<String> {
   whitelist
     .iter()
     .map(|raw_path| {
-      resolve_from_cwd(&raw_path)
+      resolve_from_cwd(Path::new(&raw_path))
         .unwrap()
-        .0
         .to_str()
         .unwrap()
         .to_owned()
     })
-    .collect::<Vec<_>>()
+    .collect()
 }
 
 // Shared between the run and test subcommands. They both take similar options.

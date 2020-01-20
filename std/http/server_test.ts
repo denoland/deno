@@ -41,6 +41,29 @@ const dec = new TextDecoder();
 
 type Handler = () => void;
 
+const mockConn = {
+  localAddr: {
+    transport: "tcp",
+    hostname: "",
+    port: 0
+  },
+  remoteAddr: {
+    transport: "tcp",
+    hostname: "",
+    port: 0
+  },
+  rid: -1,
+  closeRead: (): void => {},
+  closeWrite: (): void => {},
+  read: async (): Promise<number | Deno.EOF> => {
+    return 0;
+  },
+  write: async (): Promise<number> => {
+    return -1;
+  },
+  close: (): void => {}
+};
+
 const responseTests: ResponseTest[] = [
   // Default response
   {
@@ -75,20 +98,7 @@ test(async function responseWrite(): Promise<void> {
     const request = new ServerRequest();
     request.w = bufw;
 
-    request.conn = {
-      localAddr: "",
-      remoteAddr: "",
-      rid: -1,
-      closeRead: (): void => {},
-      closeWrite: (): void => {},
-      read: async (): Promise<number | Deno.EOF> => {
-        return 0;
-      },
-      write: async (): Promise<number> => {
-        return -1;
-      },
-      close: (): void => {}
-    };
+    request.conn = mockConn as Deno.Conn;
 
     await request.respond(testCase.response);
     assertEquals(buf.toString(), testCase.raw);
@@ -416,21 +426,6 @@ test(async function writeStringReaderResponse(): Promise<void> {
   assertEquals(r.more, false);
 });
 
-const mockConn = {
-  localAddr: "",
-  remoteAddr: "",
-  rid: -1,
-  closeRead: (): void => {},
-  closeWrite: (): void => {},
-  read: async (): Promise<number | Deno.EOF> => {
-    return 0;
-  },
-  write: async (): Promise<number> => {
-    return -1;
-  },
-  close: (): void => {}
-};
-
 test(async function readRequestError(): Promise<void> {
   const input = `GET / HTTP/1.1
 malformedHeader
@@ -438,7 +433,7 @@ malformedHeader
   const reader = new BufReader(new StringReader(input));
   let err;
   try {
-    await readRequest(mockConn, reader);
+    await readRequest(mockConn as Deno.Conn, reader);
   } catch (e) {
     err = e;
   }
@@ -517,7 +512,7 @@ test(async function testReadRequestError(): Promise<void> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let req: any;
     try {
-      req = await readRequest(mockConn, reader);
+      req = await readRequest(mockConn as Deno.Conn, reader);
     } catch (e) {
       err = e;
     }

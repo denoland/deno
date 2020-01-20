@@ -144,7 +144,7 @@ class Host {
    * @param {ts.CompilerOptions} _options
    */
   getDefaultLibFileName(_options) {
-    return "lib.deno_core.d.ts";
+    return "lib.esnext.d.ts";
   }
 
   getDefaultLibLocation() {

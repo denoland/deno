@@ -5,6 +5,7 @@ use crate::fs as deno_fs;
 use crate::ops::json_op;
 use crate::state::ThreadSafeState;
 use deno_core::*;
+use std::path::Path;
 
 pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op(
@@ -29,9 +30,8 @@ struct PermissionArgs {
 }
 
 fn resolve_path(path: &str) -> String {
-  deno_fs::resolve_from_cwd(path)
+  deno_fs::resolve_from_cwd(Path::new(path))
     .unwrap()
-    .0
     .to_str()
     .unwrap()
     .to_string()
@@ -48,7 +48,7 @@ pub fn op_query_permission(
   let perm = permissions.get_permission_state(
     &args.name,
     &args.url.as_ref().map(String::as_str),
-    &resolved_path.as_ref().map(String::as_str),
+    &resolved_path.as_ref().map(String::as_str).map(Path::new),
   )?;
   Ok(JsonOp::Sync(json!({ "state": perm.to_string() })))
 }
@@ -74,7 +74,7 @@ pub fn op_revoke_permission(
   let perm = permissions.get_permission_state(
     &args.name,
     &args.url.as_ref().map(String::as_str),
-    &resolved_path.as_ref().map(String::as_str),
+    &resolved_path.as_ref().map(String::as_str).map(Path::new),
   )?;
   Ok(JsonOp::Sync(json!({ "state": perm.to_string() })))
 }
@@ -89,12 +89,12 @@ pub fn op_request_permission(
   let resolved_path = args.path.as_ref().map(String::as_str).map(resolve_path);
   let perm = match args.name.as_ref() {
     "run" => Ok(permissions.request_run()),
-    "read" => {
-      Ok(permissions.request_read(&resolved_path.as_ref().map(String::as_str)))
-    }
-    "write" => {
-      Ok(permissions.request_write(&resolved_path.as_ref().map(String::as_str)))
-    }
+    "read" => Ok(permissions.request_read(
+      &resolved_path.as_ref().map(String::as_str).map(Path::new),
+    )),
+    "write" => Ok(permissions.request_write(
+      &resolved_path.as_ref().map(String::as_str).map(Path::new),
+    )),
     "net" => permissions.request_net(&args.url.as_ref().map(String::as_str)),
     "env" => Ok(permissions.request_env()),
     "plugin" => Ok(permissions.request_plugin()),
