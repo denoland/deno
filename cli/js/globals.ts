@@ -7,7 +7,6 @@
 // Modules which will make up part of the global public API surface should be
 // imported as namespaces, so when the runtime type library is generated they
 // can be expressed as a namespace in the type library.
-import { window } from "./window.ts";
 import * as blob from "./blob.ts";
 import * as consoleTypes from "./console.ts";
 import * as csprng from "./get_random_values.ts";
@@ -33,6 +32,25 @@ import * as request from "./request.ts";
 import { core } from "./core.ts";
 
 import { internalObject } from "./internals.ts";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const window = globalThis as any;
+
+interface MessageCallback {
+  (msg: Uint8Array): void;
+}
+
+interface EvalErrorInfo {
+  // Is the object thrown a native Error?
+  isNativeError: boolean;
+  // Was the error happened during compilation?
+  isCompileError: boolean;
+  // The actual thrown entity
+  // (might be an Error or anything else thrown by the user)
+  // If isNativeError is true, this is an Error
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  thrown: any;
+}
 
 // During the build process, augmentations to the variable `window` in this
 // file are tracked and created as part of default library that is built into
@@ -65,7 +83,68 @@ declare global {
     [consoleTypes.customInspect]?(): string;
   }
 
-  const console: consoleTypes.Console;
+  interface DenoCore {
+    print(s: string, isErr?: boolean): void;
+    dispatch(
+      opId: number,
+      control: Uint8Array,
+      zeroCopy?: ArrayBufferView | null
+    ): Uint8Array | null;
+    setAsyncHandler(opId: number, cb: MessageCallback): void;
+    sharedQueue: {
+      head(): number;
+      numRecords(): number;
+      size(): number;
+      push(buf: Uint8Array): boolean;
+      reset(): void;
+      shift(): Uint8Array | null;
+    };
+
+    ops(): Record<string, number>;
+
+    recv(cb: (opId: number, msg: Uint8Array) => void): void;
+
+    send(
+      opId: number,
+      control: null | ArrayBufferView,
+      data?: ArrayBufferView
+    ): null | Uint8Array;
+
+    shared: SharedArrayBuffer;
+
+    /** Evaluate provided code in the current context.
+     * It differs from eval(...) in that it does not create a new context.
+     * Returns an array: [output, errInfo].
+     * If an error occurs, `output` becomes null and `errInfo` is non-null.
+     */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    evalContext(code: string): [any, EvalErrorInfo | null];
+
+    errorToJSON: (e: Error) => string;
+  }
+
+  /* eslint-disable no-var */
+  var Deno: {
+    core: DenoCore;
+  };
+  var location: domTypes.Location;
+  var console: consoleTypes.Console;
+  var denoMain: (() => void) | undefined;
+  var workerMain: (() => Promise<void> | void) | undefined;
+  var compilerMain: (() => void) | undefined;
+  var wasmCompilerMain: (() => void) | undefined;
+  var queueMicrotask: (callback: () => void) => void;
+  var onmessage: ((e: { data: any }) => Promise<void> | void) | undefined;
+  var onerror:
+    | ((
+        msg: string,
+        source: string,
+        lineno: number,
+        colno: number,
+        e: domTypes.Event
+      ) => boolean | void)
+    | undefined;
+  /* eslint-enable */
 }
 
 // A self reference to the global object.
@@ -89,75 +168,30 @@ window.clearInterval = timers.clearInterval;
 window.console = new consoleTypes.Console(core.print);
 window.setTimeout = timers.setTimeout;
 window.setInterval = timers.setInterval;
-window.location = (undefined as unknown) as domTypes.Location;
-window.onload = undefined as undefined | Function;
-window.onunload = undefined as undefined | Function;
-// The following Crypto interface implementation is not up to par with the
-// standard https://www.w3.org/TR/WebCryptoAPI/#crypto-interface as it does not
-// yet incorporate the SubtleCrypto interface as its "subtle" property.
-window.crypto = (csprng as unknown) as Crypto;
-// window.queueMicrotask added by hand to self-maintained lib.deno_runtime.d.ts
-
-// When creating the runtime type library, we use modifications to `window` to
-// determine what is in the global namespace.  When we put a class in the
-// namespace, we also need its global instance type as well, otherwise users
-// won't be able to refer to instances.
-// We have to export the type aliases, so that TypeScript _knows_ they are
-// being used, which it cannot statically determine within this module.
+window.location = undefined;
+window.onload = undefined;
+window.onunload = undefined;
+window.crypto = csprng;
 window.Blob = blob.DenoBlob;
-export type Blob = domTypes.Blob;
-
-export type Body = domTypes.Body;
-
-window.File = domFile.DomFileImpl as domTypes.DomFileConstructor;
-export type File = domTypes.DomFile;
-
-export type CustomEventInit = domTypes.CustomEventInit;
+window.File = domFile.DomFileImpl;
 window.CustomEvent = customEvent.CustomEvent;
-export type CustomEvent = domTypes.CustomEvent;
-export type EventInit = domTypes.EventInit;
 window.Event = event.Event;
-export type Event = domTypes.Event;
-export type EventListener = domTypes.EventListener;
 window.EventTarget = eventTarget.EventTarget;
-export type EventTarget = domTypes.EventTarget;
 window.URL = url.URL;
-export type URL = url.URL;
 window.URLSearchParams = urlSearchParams.URLSearchParams;
-export type URLSearchParams = domTypes.URLSearchParams;
-
-// Using the `as` keyword to use standard compliant interfaces as the Deno
-// implementations contain some implementation details we wouldn't want to
-// expose in the runtime type library.
-window.Headers = headers.Headers as domTypes.HeadersConstructor;
-export type Headers = domTypes.Headers;
-window.FormData = formData.FormData as domTypes.FormDataConstructor;
-export type FormData = domTypes.FormData;
-
+window.Headers = headers.Headers;
+window.FormData = formData.FormData;
 window.TextEncoder = textEncoding.TextEncoder;
-export type TextEncoder = textEncoding.TextEncoder;
 window.TextDecoder = textEncoding.TextDecoder;
-export type TextDecoder = textEncoding.TextDecoder;
-
-window.Request = request.Request as domTypes.RequestConstructor;
-export type Request = domTypes.Request;
-
+window.Request = request.Request;
 window.Response = fetchTypes.Response;
-export type Response = domTypes.Response;
-
 window.performance = new performanceUtil.Performance();
-
-// This variable functioning correctly depends on `declareAsLet`
-// in //tools/ts_library_builder/main.ts
 window.onmessage = workers.onmessage;
 window.onerror = workers.onerror;
-
 window.workerMain = workers.workerMain;
 window.workerClose = workers.workerClose;
 window.postMessage = workers.postMessage;
-
 window.Worker = workers.WorkerImpl;
-export type Worker = workers.Worker;
 
 window[domTypes.eventTargetHost] = null;
 window[domTypes.eventTargetListeners] = {};
@@ -165,6 +199,7 @@ window[domTypes.eventTargetMode] = "";
 window[domTypes.eventTargetNodeType] = 0;
 window[eventTarget.eventTargetAssignedSlot] = false;
 window[eventTarget.eventTargetHasActivationBehavior] = false;
+
 window.addEventListener = eventTarget.EventTarget.prototype.addEventListener;
 window.dispatchEvent = eventTarget.EventTarget.prototype.dispatchEvent;
 window.removeEventListener =
@@ -187,23 +222,7 @@ window.addEventListener("unload", (e: domTypes.Event): void => {
 
 // below are interfaces that are available in TypeScript but
 // have different signatures
-export interface ImportMeta {
-  url: string;
-  main: boolean;
-}
-
-export interface Crypto {
-  readonly subtle: null;
-  getRandomValues: <
-    T extends
-      | Int8Array
-      | Uint8Array
-      | Uint8ClampedArray
-      | Int16Array
-      | Uint16Array
-      | Int32Array
-      | Uint32Array
-  >(
-    typedArray: T
-  ) => T;
-}
+// export interface ImportMeta {
+//   url: string;
+//   main: boolean;
+// }

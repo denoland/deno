@@ -5,7 +5,6 @@ import { sendSync } from "./dispatch_json.ts";
 import { ErrorKind } from "./errors.ts";
 import { assert } from "./util.ts";
 import * as util from "./util.ts";
-import { window } from "./window.ts";
 import { OperatingSystem, Arch } from "./build.ts";
 
 /** Check if running in terminal.
@@ -109,21 +108,21 @@ export function start(preserveDenoNamespace = true, source?: string): Start {
 
   // pid and noColor need to be set in the Deno module before it's set to be
   // frozen.
-  util.immutableDefine(window.Deno, "pid", pid);
-  util.immutableDefine(window.Deno, "noColor", noColor);
-  Object.freeze(window.Deno);
+  util.immutableDefine(globalThis.Deno, "pid", pid);
+  util.immutableDefine(globalThis.Deno, "noColor", noColor);
+  Object.freeze(globalThis.Deno);
 
   if (preserveDenoNamespace) {
-    util.immutableDefine(window, "Deno", window.Deno);
+    util.immutableDefine(globalThis, "Deno", globalThis.Deno);
     // Deno.core could ONLY be safely frozen here (not in globals.ts)
     // since shared_queue.js will modify core properties.
-    Object.freeze(window.Deno.core);
+    Object.freeze(globalThis.Deno.core);
     // core.sharedQueue is an object so we should also freeze it.
-    Object.freeze(window.Deno.core.sharedQueue);
+    Object.freeze(globalThis.Deno.core.sharedQueue);
   } else {
-    // Remove window.Deno
-    delete window.Deno;
-    assert(window.Deno === undefined);
+    // Remove globalThis.Deno
+    delete globalThis.Deno;
+    assert(globalThis.Deno === undefined);
   }
 
   return startResponse;

@@ -10,7 +10,6 @@ import {
   isSlotable,
   retarget
 } from "./dom_util.ts";
-import { window } from "./window.ts";
 
 // https://dom.spec.whatwg.org/#get-the-parent
 // Note: Nodes, shadow roots, and documents override this algorithm so we set it to null.
@@ -40,7 +39,7 @@ export class EventTarget implements domTypes.EventTarget {
     callback: (event: domTypes.Event) => void | null,
     options?: domTypes.AddEventListenerOptions | boolean
   ): void {
-    const this_ = this || window;
+    const this_ = this || globalThis;
 
     requiredArguments("EventTarget.addEventListener", arguments.length, 2);
     const normalizedOptions: domTypes.AddEventListenerOptions = eventTargetHelpers.normalizeAddEventHandlerOptions(
@@ -86,7 +85,7 @@ export class EventTarget implements domTypes.EventTarget {
     callback: (event: domTypes.Event) => void | null,
     options?: domTypes.EventListenerOptions | boolean
   ): void {
-    const this_ = this || window;
+    const this_ = this || globalThis;
 
     requiredArguments("EventTarget.removeEventListener", arguments.length, 2);
     const listeners = this_[domTypes.eventTargetListeners];
@@ -126,7 +125,7 @@ export class EventTarget implements domTypes.EventTarget {
   }
 
   public dispatchEvent(event: domTypes.Event): boolean {
-    const this_ = this || window;
+    const this_ = this || globalThis;
 
     requiredArguments("EventTarget.dispatchEvent", arguments.length, 1);
     const listeners = this_[domTypes.eventTargetListeners];

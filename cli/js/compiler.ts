@@ -32,8 +32,9 @@ import { fromTypeScriptDiagnostic } from "./diagnostics_util.ts";
 import * as os from "./os.ts";
 import { assert } from "./util.ts";
 import * as util from "./util.ts";
-import { window as self } from "./window.ts";
 import { postMessage, workerClose, workerMain } from "./workers.ts";
+
+const self = globalThis;
 
 interface CompilerRequestCompile {
   type: CompilerRequestType.Compile;
