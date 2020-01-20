@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::deno_error::{permission_denied_msg, type_error};
+use crate::deno_error::{other_error, permission_denied_msg};
 use crate::flags::DenoFlags;
 use ansi_term::Style;
 #[cfg(not(test))]
@@ -179,8 +179,7 @@ impl DenoPermissions {
     }
     let url: &str = url.unwrap();
     // If url is invalid, then throw a TypeError.
-    let parsed = Url::parse(url)
-      .map_err(|_| type_error(format!("Invalid url: {}", url)))?;
+    let parsed = Url::parse(url).map_err(ErrBox::from)?;
     Ok(
       self.get_state_net(&format!("{}", parsed.host().unwrap()), parsed.port()),
     )
@@ -289,7 +288,7 @@ impl DenoPermissions {
       "env" => Ok(self.allow_env),
       "plugin" => Ok(self.allow_plugin),
       "hrtime" => Ok(self.allow_hrtime),
-      n => Err(type_error(format!("No such permission name: {}", n))),
+      n => Err(other_error(format!("No such permission name: {}", n))),
     }
   }
 }
