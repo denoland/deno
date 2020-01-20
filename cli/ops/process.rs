@@ -244,7 +244,7 @@ fn op_run_status(
   let pool = futures::executor::ThreadPool::new().unwrap();
   let handle = pool.spawn_with_handle(future).unwrap();
 
-  Ok(JsonOp::Async(handle.boxed(), true))
+  Ok(JsonOp::Async(handle.boxed()))
 }
 
 #[derive(Deserialize)]

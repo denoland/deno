@@ -148,7 +148,7 @@ fn op_fetch_source_files(
     Ok(v.into())
   });
 
-  Ok(JsonOp::Async(future, true))
+  Ok(JsonOp::Async(future))
 }
 
 #[derive(Deserialize, Debug)]
@@ -166,16 +166,13 @@ fn op_compile(
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: CompileArgs = serde_json::from_value(args)?;
-  Ok(JsonOp::Async(
-    runtime_compile_async(
-      state.global_state.clone(),
-      &args.root_name,
-      &args.sources,
-      args.bundle,
-      &args.options,
-    ),
-    true,
-  ))
+  Ok(JsonOp::Async(runtime_compile_async(
+    state.global_state.clone(),
+    &args.root_name,
+    &args.sources,
+    args.bundle,
+    &args.options,
+  )))
 }
 
 #[derive(Deserialize, Debug)]
@@ -190,12 +187,9 @@ fn op_transpile(
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: TranspileArgs = serde_json::from_value(args)?;
-  Ok(JsonOp::Async(
-    runtime_transpile_async(
-      state.global_state.clone(),
-      &args.sources,
-      &args.options,
-    ),
-    true,
-  ))
+  Ok(JsonOp::Async(runtime_transpile_async(
+    state.global_state.clone(),
+    &args.sources,
+    &args.options,
+  )))
 }

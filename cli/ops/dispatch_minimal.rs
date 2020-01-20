@@ -164,7 +164,7 @@ where
       // works since they're simple polling futures.
       Op::Sync(futures::executor::block_on(fut).unwrap())
     } else {
-      Op::Async(fut.boxed(), true)
+      Op::Async(fut.boxed())
     }
   }
 }

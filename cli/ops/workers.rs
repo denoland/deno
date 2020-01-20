@@ -97,7 +97,7 @@ fn op_worker_get_message(
     Ok(json!({ "data": maybe_buf }))
   };
 
-  Ok(JsonOp::Async(op.boxed(), true))
+  Ok(JsonOp::Async(op.boxed()))
 }
 
 /// Post message to host as guest worker
@@ -258,7 +258,7 @@ fn op_host_get_worker_loaded(
     Ok(serialize_worker_result(result))
   };
 
-  Ok(JsonOp::Async(op.boxed(), true))
+  Ok(JsonOp::Async(op.boxed()))
 }
 
 fn op_host_poll_worker(
@@ -286,7 +286,7 @@ fn op_host_poll_worker(
 
     Ok(serialize_worker_result(result))
   };
-  Ok(JsonOp::Async(op.boxed(), true))
+  Ok(JsonOp::Async(op.boxed()))
 }
 
 fn op_host_close_worker(
@@ -348,7 +348,7 @@ fn op_host_get_message(
     Ok(json!({ "data": maybe_buf }))
   };
 
-  Ok(JsonOp::Async(op.boxed(), true))
+  Ok(JsonOp::Async(op.boxed()))
 }
 
 #[derive(Deserialize)]

@@ -5,7 +5,6 @@ use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::RwLock;
-use std::task::{Context, Poll};
 
 pub type OpId = u32;
 
@@ -14,26 +13,17 @@ pub type Buf = Box<[u8]>;
 pub type OpAsyncFuture<E> =
   Pin<Box<dyn Future<Output = Result<Buf, E>> + Send>>;
 
-pub(crate) type PendingOpInnerFuture =
+pub(crate) type PendingOpFuture =
   Pin<Box<dyn Future<Output = Result<(OpId, Buf), CoreError>> + Send>>;
-
-pub(crate) struct PendingOp(pub PendingOpInnerFuture, pub bool);
-
-impl Future for PendingOp {
-  type Output = Result<(OpId, Buf), CoreError>;
-  fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    self.as_mut().0.as_mut().poll(cx)
-  }
-}
-
-pub(crate) type PendingOpFuture = Pin<Box<PendingOp>>;
 
 pub type OpResult<E> = Result<Op<E>, E>;
 
 pub enum Op<E> {
   Sync(Buf),
-  /** The 2nd element is true when the op blocks exiting, false otherwise. */
-  Async(OpAsyncFuture<E>, bool),
+  Async(OpAsyncFuture<E>),
+  // AsyncOptional is the variation of Async, which
+  // doesn't block the program exiting.
+  AsyncOptional(OpAsyncFuture<E>),
 }
 
 pub type CoreError = ();

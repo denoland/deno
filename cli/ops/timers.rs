@@ -51,7 +51,7 @@ fn op_global_timer(
     .new_timeout(deadline)
     .then(move |_| futures::future::ok(json!({})));
 
-  Ok(JsonOp::Async(f.boxed(), true))
+  Ok(JsonOp::Async(f.boxed()))
 }
 
 // Returns a milliseconds and nanoseconds subsec

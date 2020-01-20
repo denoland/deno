@@ -178,6 +178,7 @@ pub struct Isolate {
   needs_init: bool,
   pub(crate) shared: SharedQueue,
   pending_ops: FuturesUnordered<PendingOpFuture>,
+  pending_optional_ops: FuturesUnordered<PendingOpFuture>,
   have_unpolled_ops: bool,
   startup_script: Option<OwnedScript>,
   pub op_registry: Arc<OpRegistry>,
@@ -340,6 +341,7 @@ impl Isolate {
       shared,
       needs_init,
       pending_ops: FuturesUnordered::new(),
+      pending_optional_ops: FuturesUnordered::new(),
       have_unpolled_ops: false,
       startup_script,
       op_registry: Arc::new(OpRegistry::new()),
@@ -511,11 +513,15 @@ impl Isolate {
         let op_id = 0;
         Some((op_id, buf))
       }
-      Op::Async(fut, blocks_exit) => {
+      Op::Async(fut) => {
         let fut2 = fut.map_ok(move |buf| (op_id, buf));
-        self
-          .pending_ops
-          .push(Pin::new(Box::new(PendingOp(fut2.boxed(), blocks_exit))));
+        self.pending_ops.push(fut2.boxed());
+        self.have_unpolled_ops = true;
+        None
+      }
+      Op::AsyncOptional(fut) => {
+        let fut2 = fut.map_ok(move |buf| (op_id, buf));
+        self.pending_optional_ops.push(fut2.boxed());
         self.have_unpolled_ops = true;
         None
       }
@@ -744,11 +750,8 @@ impl Future for Isolate {
     inner.check_promise_errors();
     inner.check_last_exception()?;
 
-    // We're idle if all pending_ops have blocks_exit flag false.
-    // TODO(kt3k): This might affect the performance of the event loop when
-    // the user created thousands of optional ops. See the discussion at
-    // https://github.com/denoland/deno/pull/3715/files#r368270169
-    if inner.pending_ops.iter().all(|op| !op.1) {
+    // We're idle if pending_ops is empty.
+    if inner.pending_ops.is_empty() {
       Poll::Ready(Ok(()))
     } else {
       if inner.have_unpolled_ops {
@@ -840,7 +843,7 @@ pub mod tests {
             assert_eq!(control.len(), 1);
             assert_eq!(control[0], 42);
             let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
-            Op::Async(futures::future::ok(buf).boxed(), true)
+            Op::Async(futures::future::ok(buf).boxed())
           }
           Mode::AsyncOptional => {
             assert_eq!(control.len(), 1);
@@ -851,7 +854,7 @@ pub mod tests {
               let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
               Ok(buf)
             };
-            Op::Async(fut.boxed(), false)
+            Op::AsyncOptional(fut.boxed())
           }
           Mode::OverflowReqSync => {
             assert_eq!(control.len(), 100 * 1024 * 1024);
@@ -870,7 +873,7 @@ pub mod tests {
           Mode::OverflowReqAsync => {
             assert_eq!(control.len(), 100 * 1024 * 1024);
             let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
-            Op::Async(futures::future::ok(buf).boxed(), true)
+            Op::Async(futures::future::ok(buf).boxed())
           }
           Mode::OverflowResAsync => {
             assert_eq!(control.len(), 1);
@@ -879,7 +882,7 @@ pub mod tests {
             vec.resize(100 * 1024 * 1024, 0);
             vec[0] = 4;
             let buf = vec.into_boxed_slice();
-            Op::Async(futures::future::ok(buf).boxed(), true)
+            Op::Async(futures::future::ok(buf).boxed())
           }
         }
       };
