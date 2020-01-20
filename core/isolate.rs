@@ -178,7 +178,6 @@ pub struct Isolate {
   needs_init: bool,
   pub(crate) shared: SharedQueue,
   pending_ops: FuturesUnordered<PendingOpFuture>,
-  have_unpolled_ops: bool,
   startup_script: Option<OwnedScript>,
   pub op_registry: Arc<OpRegistry>,
   waker: AtomicWaker,
@@ -340,7 +339,6 @@ impl Isolate {
       shared,
       needs_init,
       pending_ops: FuturesUnordered::new(),
-      have_unpolled_ops: false,
       startup_script,
       op_registry: Arc::new(OpRegistry::new()),
       waker: AtomicWaker::new(),
@@ -514,7 +512,6 @@ impl Isolate {
       Op::Async(fut) => {
         let fut2 = fut.map_ok(move |buf| (op_id, buf));
         self.pending_ops.push(fut2.boxed());
-        self.have_unpolled_ops = true;
         None
       }
     }
@@ -709,7 +706,6 @@ impl Future for Isolate {
 
     loop {
       // Now handle actual ops.
-      inner.have_unpolled_ops = false;
       #[allow(clippy::match_wild_err_arm)]
       match inner.pending_ops.poll_next_unpin(cx) {
         Poll::Ready(Some(Err(_))) => panic!("unexpected op error"),
@@ -746,9 +742,7 @@ impl Future for Isolate {
     if inner.pending_ops.is_empty() {
       Poll::Ready(Ok(()))
     } else {
-      if inner.have_unpolled_ops {
-        inner.waker.wake();
-      }
+      inner.waker.wake();
       Poll::Pending
     }
   }
