@@ -24,6 +24,17 @@ class TestBenchmark(DenoTestCase):
             # summary line
             assert summary["total"]["calls"] == 704
 
+    def test_strace_parse2(self):
+        with open(
+                os.path.join(sys.path[0], "testdata/strace_summary2.out"),
+                "r") as f:
+            summary = benchmark.strace_parse(f.read())
+            # first syscall line
+            assert summary["futex"]["calls"] == 449
+            assert summary["futex"]["errors"] == 94
+            # summary line
+            assert summary["total"]["calls"] == 821
+
     def test_max_mem_parse(self):
         with open(os.path.join(sys.path[0], "testdata/time.out"), "r") as f:
             data = f.read()
