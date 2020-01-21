@@ -14,10 +14,8 @@ pub type AsyncJsonOp =
 pub enum JsonOp {
   Sync(Value),
   Async(AsyncJsonOp),
-  /**
-   * AsyncUnref is the variation of Async, which
-   * doesn't block the program exiting.
-   */
+  /// AsyncUnref is the variation of Async, which doesn't block the program
+  /// exiting.
   AsyncUnref(AsyncJsonOp),
 }
 
