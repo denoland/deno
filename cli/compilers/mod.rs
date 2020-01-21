@@ -3,6 +3,7 @@ use deno_core::ErrBox;
 use futures::Future;
 use serde_json::Value;
 
+mod compiler_worker;
 mod js;
 mod json;
 mod ts;

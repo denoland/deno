@@ -35,6 +35,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::time::Instant;
+use tokio::sync::Mutex as AsyncMutex;
 
 /// Isolate cannot be passed between threads but ThreadSafeState can.
 /// ThreadSafeState satisfies Send and Sync. So any state that needs to be
@@ -46,7 +47,7 @@ pub struct State {
   pub global_state: ThreadSafeGlobalState,
   pub permissions: Arc<Mutex<DenoPermissions>>,
   pub main_module: Option<ModuleSpecifier>,
-  pub worker_channels: Mutex<WorkerChannels>,
+  pub worker_channels: WorkerChannels,
   /// When flags contains a `.import_map_path` option, the content of the
   /// import map file will be resolved and set.
   pub import_map: Option<ImportMap>,
@@ -203,11 +204,11 @@ impl ThreadSafeState {
     let (out_tx, out_rx) = mpsc::channel::<Buf>(1);
     let internal_channels = WorkerChannels {
       sender: out_tx,
-      receiver: in_rx,
+      receiver: Arc::new(AsyncMutex::new(in_rx)),
     };
     let external_channels = WorkerChannels {
       sender: in_tx,
-      receiver: out_rx,
+      receiver: Arc::new(AsyncMutex::new(out_rx)),
     };
     (internal_channels, external_channels)
   }
@@ -241,7 +242,7 @@ impl ThreadSafeState {
       main_module,
       permissions,
       import_map,
-      worker_channels: Mutex::new(internal_channels),
+      worker_channels: internal_channels,
       metrics: Metrics::default(),
       global_timer: Mutex::new(GlobalTimer::new()),
       workers: Mutex::new(HashMap::new()),

@@ -11,10 +11,6 @@ use futures::sink::SinkExt;
 use futures::stream::StreamExt;
 use std;
 use std::convert::From;
-use std::future::Future;
-use std::pin::Pin;
-use std::task::Context;
-use std::task::Poll;
 
 pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op(
@@ -27,33 +23,16 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   );
 }
 
-struct GetMessageFuture {
-  state: ThreadSafeState,
-}
-
-impl Future for GetMessageFuture {
-  type Output = Option<Buf>;
-
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    let inner = self.get_mut();
-    let mut channels = inner.state.worker_channels.lock().unwrap();
-    let receiver = &mut channels.receiver;
-    receiver.poll_next_unpin(cx)
-  }
-}
-
 /// Get message from host as guest worker
 fn op_worker_get_message(
   state: &ThreadSafeState,
   _args: Value,
   _data: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
-  let op = GetMessageFuture {
-    state: state.clone(),
-  };
-
+  let state_ = state.clone();
   let op = async move {
-    let maybe_buf = op.await;
+    let mut receiver = state_.worker_channels.receiver.lock().await;
+    let maybe_buf = receiver.next().await;
     debug!("op_worker_get_message");
     Ok(json!({ "data": maybe_buf }))
   };
@@ -68,8 +47,7 @@ fn op_worker_post_message(
   data: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let d = Vec::from(data.unwrap().as_ref()).into_boxed_slice();
-  let mut channels = state.worker_channels.lock().unwrap();
-  let sender = &mut channels.sender;
+  let mut sender = state.worker_channels.sender.clone();
   futures::executor::block_on(sender.send(d))
     .map_err(|e| DenoError::new(ErrorKind::Other, e.to_string()))?;
 

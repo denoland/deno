@@ -1,11 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use super::compiler_worker::CompilerWorker;
 use crate::compilers::CompiledModule;
 use crate::compilers::CompiledModuleFuture;
 use crate::file_fetcher::SourceFile;
 use crate::global_state::ThreadSafeGlobalState;
 use crate::startup_data;
 use crate::state::*;
-use crate::worker::Worker;
 use futures::FutureExt;
 use serde_derive::Deserialize;
 use serde_json;
@@ -42,7 +42,7 @@ pub struct WasmCompiler {
 
 impl WasmCompiler {
   /// Create a new V8 worker with snapshot of WASM compiler and setup compiler's runtime.
-  fn setup_worker(global_state: ThreadSafeGlobalState) -> Worker {
+  fn setup_worker(global_state: ThreadSafeGlobalState) -> CompilerWorker {
     let (int, ext) = ThreadSafeState::create_channels();
     let worker_state =
       ThreadSafeState::new(global_state.clone(), None, None, int)
@@ -54,7 +54,7 @@ impl WasmCompiler {
       .compiler_starts
       .fetch_add(1, Ordering::SeqCst);
 
-    let mut worker = Worker::new(
+    let mut worker = CompilerWorker::new(
       "WASM".to_string(),
       startup_data::compiler_isolate_init(),
       worker_state,
@@ -100,10 +100,9 @@ impl WasmCompiler {
         std::process::exit(1);
       }
       debug!("Sent message to worker");
-      let maybe_msg = worker_.get_message().await.expect("not handled");
+      let json_msg = worker_.get_message().await.expect("not handled");
 
       debug!("Received message from worker");
-      let json_msg = maybe_msg.unwrap();
       let module_info: WasmModuleInfo =
         serde_json::from_slice(&json_msg).unwrap();
       debug!("WASM module info: {:#?}", &module_info);
