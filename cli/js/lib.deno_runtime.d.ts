@@ -312,7 +312,16 @@ declare namespace Deno {
   /** Open a file and return an instance of the `File` object
    *  synchronously.
    *
-   *       const file = Deno.openSync("/foo/bar.txt");
+   *       const file = Deno.openSYNC("/foo/bar.txt", { read: true, write: true });
+   *
+   * Requires allow-read or allow-write or both depending on mode.
+   */
+  export function openSync(filename: string, options?: OpenOptions): File;
+
+  /** Open a file and return an instance of the `File` object
+   *  synchronously.
+   *
+   *       const file = Deno.openSync("/foo/bar.txt", "r");
    *
    * Requires allow-read or allow-write or both depending on mode.
    */
@@ -320,7 +329,15 @@ declare namespace Deno {
 
   /** Open a file and return an instance of the `File` object.
    *
-   *       const file = await Deno.open("/foo/bar.txt");
+   *     const file = await Deno.open("/foo/bar.txt", { read: true, write: true });
+   *
+   * Requires allow-read or allow-write or both depending on mode.
+   */
+  export function open(filename: string, options?: OpenOptions): Promise<File>;
+
+  /** Open a file and return an instance of the `File` object.
+   *
+   *     const file = await Deno.open("/foo/bar.txt, "w+");
    *
    * Requires allow-read or allow-write or both depending on mode.
    */
@@ -439,8 +456,38 @@ declare namespace Deno {
   /** An instance of `File` for stderr. */
   export const stderr: File;
 
-  /** UNSTABLE: merge https://github.com/denoland/deno/pull/3119 */
+  export interface OpenOptions {
+    /** Sets the option for read access. This option, when true, will indicate that the file should be read-able if opened. */
+    read?: boolean;
+    /** Sets the option for write access.
+     * This option, when true, will indicate that the file should be write-able if opened.
+     * If the file already exists, any write calls on it will overwrite its contents, without truncating it.
+     */
+    write?: boolean;
+    /* Sets the option for creating a new file.
+     * This option indicates whether a new file will be created if the file does not yet already exist.
+     * In order for the file to be created, write or append access must be used.
+     */
+    create?: boolean;
+    /** Sets the option for truncating a previous file.
+     * If a file is successfully opened with this option set it will truncate the file to 0 length if it already exists.
+     * The file must be opened with write access for truncate to work.
+     */
+    truncate?: boolean;
+    /**Sets the option for the append mode.
+     * This option, when true, means that writes will append to a file instead of overwriting previous contents.
+     * Note that setting { write: true, append: true } has the same effect as setting only { append: true }.
+     */
+    append?: boolean;
+    /** Sets the option to always create a new file.
+     * This option indicates whether a new file will be created. No file is allowed to exist at the target location, also no (dangling) symlink.
+     * If { createNew: true } is set, create and truncate are ignored.
+     */
+    createNew?: boolean;
+  }
+
   export type OpenMode =
+    /** Read-only. Default. Starts at beginning of file. */
     | "r"
     /** Read-write. Start at beginning of file. */
     | "r+"
