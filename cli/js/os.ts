@@ -86,7 +86,7 @@ interface Start {
 
 // TODO(bartlomieju): temporary solution, must be fixed when moving
 // dispatches to separate crates
-export function initOps() {
+export function initOps(): void {
   const ops = core.ops();
   for (const [name, opId] of Object.entries(ops)) {
     const opName = `OP_${name.toUpperCase()}`;

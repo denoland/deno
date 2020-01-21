@@ -1,12 +1,19 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import { ASSETS, Host } from "./compiler_host.ts";
+import { core } from "./core.ts";
 import * as dispatch from "./dispatch.ts";
 import { sendSync } from "./dispatch_json.ts";
-import { initOps } from "./os.ts";
 
 // This registers ops that are available during the snapshotting process.
-initOps();
+const ops = core.ops();
+for (const [name, opId] of Object.entries(ops)) {
+  const opName = `OP_${name.toUpperCase()}`;
+  // TODO This type casting is dangerous, and should be improved when the same
+  // code in `os.ts` is done.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (dispatch as any)[opName] = opId;
+}
 
 const host = new Host({ writeFile(): void {} });
 const options = host.getCompilationSettings();
