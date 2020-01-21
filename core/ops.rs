@@ -21,10 +21,8 @@ pub type OpResult<E> = Result<Op<E>, E>;
 pub enum Op<E> {
   Sync(Buf),
   Async(OpAsyncFuture<E>),
-  /**
-   * AsyncUnref is the variation of Async, which
-   * doesn't block the program exiting.
-   */
+  /// AsyncUnref is the variation of Async, which doesn't block the program
+  /// exiting.
   AsyncUnref(OpAsyncFuture<E>),
 }
 
