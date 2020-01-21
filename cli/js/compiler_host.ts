@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import { MediaType, SourceFile } from "./compiler_sourcefile.ts";
 import { OUT_DIR, WriteFileCallback } from "./compiler_util.ts";
