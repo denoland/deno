@@ -16,6 +16,7 @@ use crate::shared_queue::SharedQueue;
 use crate::shared_queue::RECOMMENDED_SIZE;
 use futures::future::FutureExt;
 use futures::future::TryFutureExt;
+use futures::stream::select;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
@@ -178,6 +179,7 @@ pub struct Isolate {
   needs_init: bool,
   pub(crate) shared: SharedQueue,
   pending_ops: FuturesUnordered<PendingOpFuture>,
+  pending_unref_ops: FuturesUnordered<PendingOpFuture>,
   have_unpolled_ops: bool,
   startup_script: Option<OwnedScript>,
   pub op_registry: Arc<OpRegistry>,
@@ -340,6 +342,7 @@ impl Isolate {
       shared,
       needs_init,
       pending_ops: FuturesUnordered::new(),
+      pending_unref_ops: FuturesUnordered::new(),
       have_unpolled_ops: false,
       startup_script,
       op_registry: Arc::new(OpRegistry::new()),
@@ -513,17 +516,13 @@ impl Isolate {
       }
       Op::Async(fut) => {
         let fut2 = fut.map_ok(move |buf| (op_id, buf));
-        self
-          .pending_ops
-          .push(Pin::new(Box::new(PendingOp(fut2.boxed(), true))));
+        self.pending_ops.push(fut2.boxed());
         self.have_unpolled_ops = true;
         None
       }
-      Op::AsyncOptional(fut) => {
+      Op::AsyncUnref(fut) => {
         let fut2 = fut.map_ok(move |buf| (op_id, buf));
-        self
-          .pending_ops
-          .push(Pin::new(Box::new(PendingOp(fut2.boxed(), false))));
+        self.pending_unref_ops.push(fut2.boxed());
         self.have_unpolled_ops = true;
         None
       }
@@ -721,7 +720,9 @@ impl Future for Isolate {
       // Now handle actual ops.
       inner.have_unpolled_ops = false;
       #[allow(clippy::match_wild_err_arm)]
-      match inner.pending_ops.poll_next_unpin(cx) {
+      match select(&mut inner.pending_ops, &mut inner.pending_unref_ops)
+        .poll_next_unpin(cx)
+      {
         Poll::Ready(Some(Err(_))) => panic!("unexpected op error"),
         Poll::Ready(None) => break,
         Poll::Pending => break,
@@ -753,10 +754,7 @@ impl Future for Isolate {
     inner.check_last_exception()?;
 
     // We're idle if pending_ops is empty.
-    // TODO(kt3k): This might affect the performance of the event loop when
-    // the user created many optional ops. See the discussion at
-    // https://github.com/denoland/deno/pull/3715/files#r368270169
-    if inner.pending_ops.iter().all(|op| !op.1) {
+    if inner.pending_ops.is_empty() {
       Poll::Ready(Ok(()))
     } else {
       if inner.have_unpolled_ops {
@@ -827,7 +825,7 @@ pub mod tests {
 
   pub enum Mode {
     Async,
-    AsyncOptional,
+    AsyncUnref,
     OverflowReqSync,
     OverflowResSync,
     OverflowReqAsync,
@@ -850,7 +848,7 @@ pub mod tests {
             let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
             Op::Async(futures::future::ok(buf).boxed())
           }
-          Mode::AsyncOptional => {
+          Mode::AsyncUnref => {
             assert_eq!(control.len(), 1);
             assert_eq!(control[0], 42);
             let fut = async {
@@ -859,7 +857,7 @@ pub mod tests {
               let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
               Ok(buf)
             };
-            Op::AsyncOptional(fut.boxed())
+            Op::AsyncUnref(fut.boxed())
           }
           Mode::OverflowReqSync => {
             assert_eq!(control.len(), 100 * 1024 * 1024);
@@ -981,7 +979,7 @@ pub mod tests {
   #[test]
   fn test_poll_async_optional_ops() {
     run_in_task(|cx| {
-      let (mut isolate, dispatch_count) = setup(Mode::AsyncOptional);
+      let (mut isolate, dispatch_count) = setup(Mode::AsyncUnref);
       js_check(isolate.execute(
         "check1.js",
         r#"
@@ -995,7 +993,7 @@ pub mod tests {
       ));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
       // The above op never finish, but isolate can finish
-      // because the op is an optional async op (blocks_exit flag == false).
+      // because the op is an unreffed async op.
       assert!(match isolate.poll_unpin(cx) {
         Poll::Ready(Ok(_)) => true,
         _ => false,

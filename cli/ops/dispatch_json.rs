@@ -14,9 +14,11 @@ pub type AsyncJsonOp =
 pub enum JsonOp {
   Sync(Value),
   Async(AsyncJsonOp),
-  // AsyncOptional is the variation of Async, which
-  // doesn't block the program exiting.
-  AsyncOptional(AsyncJsonOp),
+  /**
+   * AsyncUnref is the variation of Async, which
+   * doesn't block the program exiting.
+   */
+  AsyncUnref(AsyncJsonOp),
 }
 
 fn json_err(err: ErrBox) -> Value {
@@ -80,12 +82,12 @@ where
         });
         CoreOp::Async(fut2.boxed())
       }
-      Ok(JsonOp::AsyncOptional(fut)) => {
+      Ok(JsonOp::AsyncUnref(fut)) => {
         assert!(promise_id.is_some());
         let fut2 = fut.then(move |result| {
           futures::future::ok(serialize_result(promise_id, result))
         });
-        CoreOp::AsyncOptional(fut2.boxed())
+        CoreOp::AsyncUnref(fut2.boxed())
       }
       Err(sync_err) => {
         let buf = serialize_result(promise_id, Err(sync_err));
