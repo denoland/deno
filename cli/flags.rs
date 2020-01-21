@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::fs::resolve_from_cwd;
 use clap::App;
 use clap::AppSettings;
 use clap::Arg;
@@ -6,6 +7,7 @@ use clap::ArgMatches;
 use clap::SubCommand;
 use log::Level;
 use std::collections::HashSet;
+use std::path::Path;
 
 /// Creates vector of strings, Vec<String>
 macro_rules! svec {
@@ -404,6 +406,19 @@ fn debug_args_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   }
 }
 
+fn resolve_fs_whitelist(whitelist: &[String]) -> Vec<String> {
+  whitelist
+    .iter()
+    .map(|raw_path| {
+      resolve_from_cwd(Path::new(&raw_path))
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_owned()
+    })
+    .collect()
+}
+
 // Shared between the run and test subcommands. They both take similar options.
 fn run_test_args_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   reload_arg_parse(flags, matches);
@@ -419,7 +434,7 @@ fn run_test_args_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
       let read_wl = matches.values_of("allow-read").unwrap();
       let raw_read_whitelist: Vec<String> =
         read_wl.map(std::string::ToString::to_string).collect();
-      flags.read_whitelist = raw_read_whitelist;
+      flags.read_whitelist = resolve_fs_whitelist(&raw_read_whitelist);
       debug!("read whitelist: {:#?}", &flags.read_whitelist);
     } else {
       flags.allow_read = true;
@@ -428,9 +443,10 @@ fn run_test_args_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   if matches.is_present("allow-write") {
     if matches.value_of("allow-write").is_some() {
       let write_wl = matches.values_of("allow-write").unwrap();
-      let raw_write_whitelist =
+      let raw_write_whitelist: Vec<String> =
         write_wl.map(std::string::ToString::to_string).collect();
-      flags.write_whitelist = raw_write_whitelist;
+      flags.write_whitelist =
+        resolve_fs_whitelist(raw_write_whitelist.as_slice());
       debug!("write whitelist: {:#?}", &flags.write_whitelist);
     } else {
       flags.allow_write = true;
@@ -1245,6 +1261,7 @@ fn arg_hacks(mut args: Vec<String>) -> Vec<String> {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use std::env::current_dir;
 
   #[test]
   fn arg_hacks_test() {
@@ -1583,14 +1600,17 @@ mod tests {
     let r = flags_from_vec_safe(svec![
       "deno",
       "run",
-      format!("--allow-read={}", &temp_dir_path),
+      format!("--allow-read=.,{}", &temp_dir_path),
       "script.ts"
     ]);
     assert_eq!(
       r.unwrap(),
       DenoFlags {
         allow_read: false,
-        read_whitelist: svec![&temp_dir_path],
+        read_whitelist: svec![
+          current_dir().unwrap().to_str().unwrap().to_owned(),
+          &temp_dir_path
+        ],
         argv: svec!["deno", "script.ts"],
         subcommand: DenoSubcommand::Run,
         ..DenoFlags::default()
@@ -1607,14 +1627,17 @@ mod tests {
     let r = flags_from_vec_safe(svec![
       "deno",
       "run",
-      format!("--allow-write={}", &temp_dir_path),
+      format!("--allow-write=.,{}", &temp_dir_path),
       "script.ts"
     ]);
     assert_eq!(
       r.unwrap(),
       DenoFlags {
         allow_write: false,
-        write_whitelist: svec![&temp_dir_path],
+        write_whitelist: svec![
+          current_dir().unwrap().to_str().unwrap().to_owned(),
+          &temp_dir_path
+        ],
         argv: svec!["deno", "script.ts"],
         subcommand: DenoSubcommand::Run,
         ..DenoFlags::default()

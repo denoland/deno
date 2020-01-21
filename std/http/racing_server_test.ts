@@ -1,4 +1,4 @@
-const { dial, run } = Deno;
+const { connect, run } = Deno;
 
 import { test, runIfMain } from "../testing/mod.ts";
 import { assert, assertEquals } from "../testing/asserts.ts";
@@ -50,7 +50,7 @@ World 4
 test(async function serverPipelineRace(): Promise<void> {
   await startServer();
 
-  const conn = await dial({ port: 4501 });
+  const conn = await connect({ port: 4501 });
   const r = new TextProtoReader(new BufReader(conn));
   await conn.write(new TextEncoder().encode(input));
   const outLines = output.split("\n");

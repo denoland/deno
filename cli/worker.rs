@@ -13,6 +13,7 @@ use futures::future::FutureExt;
 use futures::future::TryFutureExt;
 use futures::sink::SinkExt;
 use futures::stream::StreamExt;
+use futures::task::AtomicWaker;
 use std::env;
 use std::future::Future;
 use std::pin::Pin;
@@ -53,39 +54,37 @@ impl Worker {
       state.global_state.flags.debug,
       state.global_state.flags.debug_address.clone(),
     );
-    let isolate = Arc::new(AsyncMutex::new(deno_core::EsIsolate::new(
-      Box::new(state.clone()),
-      startup_data,
-      false,
-    )));
+
+    let mut isolate =
+      deno_core::EsIsolate::new(Box::new(state.clone()), startup_data, false);
+    let op_registry = isolate.op_registry.clone();
+
+    ops::compiler::init(&mut isolate, &state);
+    ops::errors::init(&mut isolate, &state);
+    ops::fetch::init(&mut isolate, &state);
+    ops::files::init(&mut isolate, &state);
+    ops::fs::init(&mut isolate, &state);
+    ops::io::init(&mut isolate, &state);
+    ops::plugins::init(&mut isolate, &state, op_registry);
+    ops::net::init(&mut isolate, &state);
+    ops::tls::init(&mut isolate, &state);
+    ops::os::init(&mut isolate, &state);
+    ops::permissions::init(&mut isolate, &state);
+    ops::process::init(&mut isolate, &state);
+    ops::random::init(&mut isolate, &state);
+    ops::repl::init(&mut isolate, &state);
+    ops::resources::init(&mut isolate, &state);
+    ops::timers::init(&mut isolate, &state);
+    ops::worker_host::init(&mut isolate, &state);
+    ops::web_worker::init(&mut isolate, &state);
+
+    let global_state_ = state.global_state.clone();
+    isolate.set_js_error_create(move |v8_exception| {
+      JSError::from_v8_exception(v8_exception, &global_state_.ts_compiler)
+    });
+
     let isolate_ = isolate.clone();
     {
-      let mut i = isolate.try_lock().unwrap();
-      let op_registry = i.op_registry.clone();
-
-      ops::compiler::init(&mut i, &state);
-      ops::errors::init(&mut i, &state);
-      ops::fetch::init(&mut i, &state);
-      ops::files::init(&mut i, &state);
-      ops::fs::init(&mut i, &state);
-      ops::io::init(&mut i, &state);
-      ops::plugins::init(&mut i, &state, op_registry);
-      ops::net::init(&mut i, &state);
-      ops::tls::init(&mut i, &state);
-      ops::os::init(&mut i, &state);
-      ops::permissions::init(&mut i, &state);
-      ops::process::init(&mut i, &state);
-      ops::random::init(&mut i, &state);
-      ops::repl::init(&mut i, &state);
-      ops::resources::init(&mut i, &state);
-      ops::timers::init(&mut i, &state);
-      ops::workers::init(&mut i, &state);
-
-      let global_state_ = state.global_state.clone();
-      i.set_js_error_create(move |v8_exception| {
-        JSError::from_v8_exception(v8_exception, &global_state_.ts_compiler)
-      });
-
       let inspector_handle = inspector.handle.clone();
       i.set_inspector_handle(inspector.handle.clone());
 
@@ -109,21 +108,14 @@ impl Worker {
       });
     }
 
+
     Self {
       name,
-      isolate,
+      isolate: Arc::new(AsyncMutex::new(isolate)),
       state,
       external_channels: Arc::new(Mutex::new(external_channels)),
       inspector: Arc::new(Mutex::new(inspector)),
     }
-  }
-
-  pub fn set_error_handler(
-    &mut self,
-    handler: Box<dyn FnMut(ErrBox) -> Result<(), ErrBox>>,
-  ) {
-    let mut i = self.isolate.try_lock().unwrap();
-    i.set_error_handler(handler);
   }
 
   /// Same as execute2() but the filename defaults to "$CWD/__anonymous__".
@@ -200,6 +192,11 @@ impl Worker {
       channels: self.external_channels.clone(),
     }
   }
+
+  pub fn clear_exception(&mut self) {
+    let mut isolate = self.isolate.try_lock().unwrap();
+    isolate.clear_exception();
+  }
 }
 
 impl Future for Worker {
@@ -207,8 +204,15 @@ impl Future for Worker {
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
-    let mut isolate = inner.isolate.try_lock().unwrap();
-    isolate.poll_unpin(cx)
+    let waker = AtomicWaker::new();
+    waker.register(cx.waker());
+    match inner.isolate.try_lock() {
+      Ok(mut isolate) => isolate.poll_unpin(cx),
+      Err(_) => {
+        waker.wake();
+        Poll::Pending
+      }
+    }
   }
 }
 
@@ -216,7 +220,7 @@ impl Future for Worker {
 /// that will return message received from worker or None
 /// if worker's channel has been closed.
 pub struct WorkerReceiver {
-  channels: Arc<Mutex<WorkerChannels>>,
+  pub channels: Arc<Mutex<WorkerChannels>>,
 }
 
 impl Future for WorkerReceiver {
@@ -283,7 +287,6 @@ mod tests {
       global_state,
       None,
       Some(module_specifier.clone()),
-      true,
       int,
     )
     .unwrap();
@@ -327,7 +330,6 @@ mod tests {
       global_state,
       None,
       Some(module_specifier.clone()),
-      true,
       int,
     )
     .unwrap();
@@ -370,7 +372,6 @@ mod tests {
       global_state.clone(),
       None,
       Some(module_specifier.clone()),
-      true,
       int,
     )
     .unwrap();
@@ -477,7 +478,7 @@ mod tests {
 
       let worker_ = worker.clone();
       let worker_future = async move {
-        let result = worker.await;
+        let result = worker_.await;
         println!("workers.rs after resource close");
         result.unwrap();
       }
@@ -487,10 +488,10 @@ mod tests {
       tokio::spawn(worker_future_);
 
       let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
-      let r = block_on(worker_.post_message(msg));
+      let r = block_on(worker.post_message(msg));
       assert!(r.is_ok());
 
-      block_on(worker_future);
+      block_on(worker_future)
     })
   }
 

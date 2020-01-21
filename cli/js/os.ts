@@ -5,7 +5,6 @@ import { sendSync } from "./dispatch_json.ts";
 import { ErrorKind } from "./errors.ts";
 import { assert } from "./util.ts";
 import * as util from "./util.ts";
-import { window } from "./window.ts";
 import { OperatingSystem, Arch } from "./build.ts";
 
 /** Check if running in terminal.
@@ -89,7 +88,6 @@ interface Start {
 // the runtime and the compiler environments.
 // @internal
 export function start(preserveDenoNamespace = true, source?: string): Start {
-  core.setAsyncHandler(dispatch.asyncMsgFromRust);
   const ops = core.ops();
   // TODO(bartlomieju): this is a prototype, we should come up with
   // something a bit more sophisticated
@@ -98,6 +96,7 @@ export function start(preserveDenoNamespace = true, source?: string): Start {
     // Assign op ids to actual variables
     // TODO(ry) This type casting is gross and should be fixed.
     ((dispatch as unknown) as { [key: string]: number })[opName] = opId;
+    core.setAsyncHandler(opId, dispatch.getAsyncHandler(opName));
   }
   // First we send an empty `Start` message to let the privileged side know we
   // are ready. The response should be a `StartRes` message containing the CLI
@@ -109,21 +108,21 @@ export function start(preserveDenoNamespace = true, source?: string): Start {
 
   // pid and noColor need to be set in the Deno module before it's set to be
   // frozen.
-  util.immutableDefine(window.Deno, "pid", pid);
-  util.immutableDefine(window.Deno, "noColor", noColor);
-  Object.freeze(window.Deno);
+  util.immutableDefine(globalThis.Deno, "pid", pid);
+  util.immutableDefine(globalThis.Deno, "noColor", noColor);
+  Object.freeze(globalThis.Deno);
 
   if (preserveDenoNamespace) {
-    util.immutableDefine(window, "Deno", window.Deno);
+    util.immutableDefine(globalThis, "Deno", globalThis.Deno);
     // Deno.core could ONLY be safely frozen here (not in globals.ts)
     // since shared_queue.js will modify core properties.
-    Object.freeze(window.Deno.core);
+    Object.freeze(globalThis.Deno.core);
     // core.sharedQueue is an object so we should also freeze it.
-    Object.freeze(window.Deno.core.sharedQueue);
+    Object.freeze(globalThis.Deno.core.sharedQueue);
   } else {
-    // Remove window.Deno
-    delete window.Deno;
-    assert(window.Deno === undefined);
+    // Remove globalThis.Deno
+    delete globalThis.Deno;
+    assert(globalThis.Deno === undefined);
   }
 
   return startResponse;

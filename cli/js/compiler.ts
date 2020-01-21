@@ -32,8 +32,9 @@ import { fromTypeScriptDiagnostic } from "./diagnostics_util.ts";
 import * as os from "./os.ts";
 import { assert } from "./util.ts";
 import * as util from "./util.ts";
-import { window as self } from "./window.ts";
-import { postMessage, workerClose, workerMain } from "./workers.ts";
+import { postMessage, workerClose, workerMain } from "./worker_main.ts";
+
+const self = globalThis;
 
 interface CompilerRequestCompile {
   type: CompilerRequestType.Compile;
@@ -240,9 +241,10 @@ self.compilerMain = function compilerMain(): void {
           emitResult.emitSkipped === false,
           "Unexpected skip of the emit."
         );
-        const { items } = fromTypeScriptDiagnostic(diagnostics);
         const result = [
-          items && items.length ? items : undefined,
+          diagnostics.length
+            ? fromTypeScriptDiagnostic(diagnostics)
+            : undefined,
           bundle ? state.emitBundle : state.emitMap
         ];
         postMessage(result);

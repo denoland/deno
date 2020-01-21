@@ -41,6 +41,29 @@ const dec = new TextDecoder();
 
 type Handler = () => void;
 
+const mockConn = {
+  localAddr: {
+    transport: "tcp",
+    hostname: "",
+    port: 0
+  },
+  remoteAddr: {
+    transport: "tcp",
+    hostname: "",
+    port: 0
+  },
+  rid: -1,
+  closeRead: (): void => {},
+  closeWrite: (): void => {},
+  read: async (): Promise<number | Deno.EOF> => {
+    return 0;
+  },
+  write: async (): Promise<number> => {
+    return -1;
+  },
+  close: (): void => {}
+};
+
 const responseTests: ResponseTest[] = [
   // Default response
   {
@@ -75,20 +98,7 @@ test(async function responseWrite(): Promise<void> {
     const request = new ServerRequest();
     request.w = bufw;
 
-    request.conn = {
-      localAddr: "",
-      remoteAddr: "",
-      rid: -1,
-      closeRead: (): void => {},
-      closeWrite: (): void => {},
-      read: async (): Promise<number | Deno.EOF> => {
-        return 0;
-      },
-      write: async (): Promise<number> => {
-        return -1;
-      },
-      close: (): void => {}
-    };
+    request.conn = mockConn as Deno.Conn;
 
     await request.respond(testCase.response);
     assertEquals(buf.toString(), testCase.raw);
@@ -346,6 +356,38 @@ test(async function writeUint8ArrayResponse(): Promise<void> {
   assertEquals(eof, Deno.EOF);
 });
 
+test(async function writeStringResponse(): Promise<void> {
+  const body = "Hello";
+
+  const res: Response = { body };
+
+  const buf = new Deno.Buffer();
+  await writeResponse(buf, res);
+
+  const decoder = new TextDecoder("utf-8");
+  const reader = new BufReader(buf);
+
+  let r: ReadLineResult;
+  r = assertNotEOF(await reader.readLine());
+  assertEquals(decoder.decode(r.line), "HTTP/1.1 200 OK");
+  assertEquals(r.more, false);
+
+  r = assertNotEOF(await reader.readLine());
+  assertEquals(decoder.decode(r.line), `content-length: ${body.length}`);
+  assertEquals(r.more, false);
+
+  r = assertNotEOF(await reader.readLine());
+  assertEquals(r.line.byteLength, 0);
+  assertEquals(r.more, false);
+
+  r = assertNotEOF(await reader.readLine());
+  assertEquals(decoder.decode(r.line), body);
+  assertEquals(r.more, false);
+
+  const eof = await reader.readLine();
+  assertEquals(eof, Deno.EOF);
+});
+
 test(async function writeStringReaderResponse(): Promise<void> {
   const shortText = "Hello";
 
@@ -384,21 +426,6 @@ test(async function writeStringReaderResponse(): Promise<void> {
   assertEquals(r.more, false);
 });
 
-const mockConn = {
-  localAddr: "",
-  remoteAddr: "",
-  rid: -1,
-  closeRead: (): void => {},
-  closeWrite: (): void => {},
-  read: async (): Promise<number | Deno.EOF> => {
-    return 0;
-  },
-  write: async (): Promise<number> => {
-    return -1;
-  },
-  close: (): void => {}
-};
-
 test(async function readRequestError(): Promise<void> {
   const input = `GET / HTTP/1.1
 malformedHeader
@@ -406,7 +433,7 @@ malformedHeader
   const reader = new BufReader(new StringReader(input));
   let err;
   try {
-    await readRequest(mockConn, reader);
+    await readRequest(mockConn as Deno.Conn, reader);
   } catch (e) {
     err = e;
   }
@@ -485,7 +512,7 @@ test(async function testReadRequestError(): Promise<void> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let req: any;
     try {
-      req = await readRequest(mockConn, reader);
+      req = await readRequest(mockConn as Deno.Conn, reader);
     } catch (e) {
       err = e;
     }
@@ -563,7 +590,7 @@ test({
       await delay(100);
 
       // Reqeusts to the server and immediately closes the connection
-      const conn = await Deno.dial({ port: 4502 });
+      const conn = await Deno.connect({ port: 4502 });
       await conn.write(new TextEncoder().encode("GET / HTTP/1.0\n\n"));
       conn.close();
 
@@ -605,7 +632,7 @@ test({
         .catch((_): void => {}); // Ignores the error when closing the process.
 
       // Requests to the server and immediately closes the connection
-      const conn = await Deno.dialTLS({
+      const conn = await Deno.connectTLS({
         hostname: "localhost",
         port: 4503,
         certFile: "http/testdata/tls/RootCA.pem"
@@ -689,7 +716,7 @@ if (Deno.build.os !== "win") {
         assert(!(connRid in resources));
       };
       const p = serverRoutine();
-      const conn = await Deno.dial({
+      const conn = await Deno.connect({
         hostname: "127.0.0.1",
         port: 8124
       });
