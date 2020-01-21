@@ -2,7 +2,6 @@
 import * as urlSearchParams from "./url_search_params.ts";
 import * as domTypes from "./dom_types.ts";
 import { getRandomValues } from "./get_random_values.ts";
-import { window } from "./window.ts";
 import { customInspect } from "./console.ts";
 
 interface URLParts {
@@ -374,7 +373,7 @@ export class URL {
 
   // TODO(kevinkassimo): implement MediaSource version in the future.
   static createObjectURL(b: domTypes.Blob): string {
-    const origin = window.location.origin || "http://deno-opaque-origin";
+    const origin = globalThis.location.origin || "http://deno-opaque-origin";
     const key = `blob:${origin}/${generateUUID()}`;
     blobURLMap.set(key, b);
     return key;
@@ -391,7 +390,7 @@ export class URL {
       return;
     }
     // Origin match check seems irrelevant for now, unless we implement
-    // persisten storage for per window.location.origin at some point.
+    // persisten storage for per globalThis.location.origin at some point.
     blobURLMap.delete(url);
   }
 }

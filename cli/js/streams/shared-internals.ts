@@ -12,7 +12,6 @@
 // TODO don't disable this warning
 
 import { AbortSignal, QueuingStrategySizeCallback } from "../dom_types.ts";
-import { DenoError, ErrorKind } from "../errors.ts";
 
 // common stream fields
 
@@ -208,10 +207,7 @@ export function cloneValue(value: any): any {
     default:
       // TODO this should be a DOMException,
       // https://github.com/stardazed/sd-streams/blob/master/packages/streams/src/shared-internals.ts#L171
-      throw new DenoError(
-        ErrorKind.DataCloneError,
-        "Uncloneable value in stream"
-      );
+      throw new Error("Uncloneable value in stream");
   }
 }
 

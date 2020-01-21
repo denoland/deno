@@ -23,4 +23,5 @@ pub mod repl;
 pub mod resources;
 pub mod timers;
 pub mod tls;
-pub mod workers;
+pub mod web_worker;
+pub mod worker_host;

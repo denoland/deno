@@ -22,7 +22,7 @@ use tokio::net::TcpStream;
 
 pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op("accept", s.core_op(json_op(s.stateful_op(op_accept))));
-  i.register_op("dial", s.core_op(json_op(s.stateful_op(op_dial))));
+  i.register_op("connect", s.core_op(json_op(s.stateful_op(op_connect))));
   i.register_op("shutdown", s.core_op(json_op(s.stateful_op(op_shutdown))));
   i.register_op("listen", s.core_op(json_op(s.stateful_op(op_listen))));
 }
@@ -117,8 +117,16 @@ fn op_accept(
       table.add("tcpStream", Box::new(StreamResource::TcpStream(tcp_stream)));
     Ok(json!({
       "rid": rid,
-      "localAddr": local_addr.to_string(),
-      "remoteAddr": remote_addr.to_string(),
+      "localAddr": {
+        "hostname": local_addr.ip().to_string(),
+        "port": local_addr.port(),
+        "transport": "tcp",
+      },
+      "remoteAddr": {
+        "hostname": remote_addr.ip().to_string(),
+        "port": remote_addr.port(),
+        "transport": "tcp",
+      }
     }))
   };
 
@@ -126,18 +134,18 @@ fn op_accept(
 }
 
 #[derive(Deserialize)]
-struct DialArgs {
+struct ConnectArgs {
   transport: String,
   hostname: String,
   port: u16,
 }
 
-fn op_dial(
+fn op_connect(
   state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
-  let args: DialArgs = serde_json::from_value(args)?;
+  let args: ConnectArgs = serde_json::from_value(args)?;
   assert_eq!(args.transport, "tcp"); // TODO Support others.
   let state_ = state.clone();
   state.check_net(&args.hostname, args.port)?;
@@ -152,8 +160,16 @@ fn op_dial(
       table.add("tcpStream", Box::new(StreamResource::TcpStream(tcp_stream)));
     Ok(json!({
       "rid": rid,
-      "localAddr": local_addr.to_string(),
-      "remoteAddr": remote_addr.to_string(),
+      "localAddr": {
+        "hostname": local_addr.ip().to_string(),
+        "port": local_addr.port(),
+        "transport": args.transport,
+      },
+      "remoteAddr": {
+        "hostname": remote_addr.ip().to_string(),
+        "port": remote_addr.port(),
+        "transport": args.transport,
+      }
     }))
   };
 
@@ -272,7 +288,6 @@ fn op_listen(
     futures::executor::block_on(resolve_addr(&args.hostname, args.port))?;
   let listener = futures::executor::block_on(TcpListener::bind(&addr))?;
   let local_addr = listener.local_addr()?;
-  let local_addr_str = local_addr.to_string();
   let listener_resource = TcpListenerResource {
     listener,
     waker: None,
@@ -280,10 +295,19 @@ fn op_listen(
   };
   let mut table = state.lock_resource_table();
   let rid = table.add("tcpListener", Box::new(listener_resource));
-  debug!("New listener {} {}", rid, local_addr_str);
+  debug!(
+    "New listener {} {}:{}",
+    rid,
+    local_addr.ip().to_string(),
+    local_addr.port()
+  );
 
   Ok(JsonOp::Sync(json!({
     "rid": rid,
-    "localAddr": local_addr_str,
+    "localAddr": {
+      "hostname": local_addr.ip().to_string(),
+      "port": local_addr.port(),
+      "transport": args.transport,
+    },
   })))
 }

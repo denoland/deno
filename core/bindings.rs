@@ -7,6 +7,7 @@ use crate::isolate::SHARED_RESPONSE_BUF_SIZE;
 
 use rusty_v8 as v8;
 use v8::InIsolate;
+use v8::MapFnTo;
 
 use libc::c_void;
 use std::convert::TryFrom;
@@ -17,23 +18,29 @@ use std::slice;
 lazy_static! {
   pub static ref EXTERNAL_REFERENCES: v8::ExternalReferences =
     v8::ExternalReferences::new(&[
-      v8::ExternalReference { function: print },
-      v8::ExternalReference { function: recv },
-      v8::ExternalReference { function: send },
       v8::ExternalReference {
-        function: eval_context
+        function: print.map_fn_to()
       },
       v8::ExternalReference {
-        function: error_to_json
+        function: recv.map_fn_to()
       },
       v8::ExternalReference {
-        getter: shared_getter
+        function: send.map_fn_to()
+      },
+      v8::ExternalReference {
+        function: eval_context.map_fn_to()
+      },
+      v8::ExternalReference {
+        function: error_to_json.map_fn_to()
+      },
+      v8::ExternalReference {
+        getter: shared_getter.map_fn_to()
       },
       v8::ExternalReference {
         message: message_callback
       },
       v8::ExternalReference {
-        function: queue_microtask
+        function: queue_microtask.map_fn_to()
       },
     ]);
 }
@@ -288,19 +295,18 @@ pub extern "C" fn message_callback(
   message: v8::Local<v8::Message>,
   _exception: v8::Local<v8::Value>,
 ) {
-  let mut message: v8::Local<v8::Message> =
-    unsafe { std::mem::transmute(message) };
-  let isolate = message.get_isolate();
+  let mut scope = v8::CallbackScope::new(message);
+  let mut scope = v8::HandleScope::new(scope.enter());
+  let scope = scope.enter();
+
   let deno_isolate: &mut Isolate =
-    unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
-  let mut locker = v8::Locker::new(isolate);
-  let mut hs = v8::HandleScope::new(&mut locker);
-  let scope = hs.enter();
+    unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
+
   assert!(!deno_isolate.global_context.is_empty());
   let context = deno_isolate.global_context.get(scope).unwrap();
 
   // TerminateExecution was called
-  if isolate.is_execution_terminating() {
+  if scope.isolate().is_execution_terminating() {
     let u = v8::new_undefined(scope);
     deno_isolate.handle_exception(scope, context, u.into());
     return;
@@ -310,25 +316,23 @@ pub extern "C" fn message_callback(
   deno_isolate.last_exception = Some(json_str);
 }
 
-pub extern "C" fn promise_reject_callback(msg: v8::PromiseRejectMessage) {
-  #[allow(mutable_transmutes)]
-  let mut msg: v8::PromiseRejectMessage = unsafe { std::mem::transmute(msg) };
-  let isolate = msg.isolate();
+pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
+  let mut scope = v8::CallbackScope::new(&message);
+  let mut scope = v8::HandleScope::new(scope.enter());
+  let scope = scope.enter();
+
   let deno_isolate: &mut Isolate =
-    unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
-  let mut locker = v8::Locker::new(isolate);
-  assert!(!deno_isolate.global_context.is_empty());
-  let mut hs = v8::HandleScope::new(&mut locker);
-  let scope = hs.enter();
+    unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
+
   let mut context = deno_isolate.global_context.get(scope).unwrap();
   context.enter();
 
-  let promise = msg.get_promise();
+  let promise = message.get_promise();
   let promise_id = promise.get_identity_hash();
 
-  match msg.get_event() {
+  match message.get_event() {
     v8::PromiseRejectEvent::PromiseRejectWithNoHandler => {
-      let error = msg.get_value();
+      let error = message.get_value();
       let mut error_global = v8::Global::<v8::Value>::new();
       error_global.set(scope, error);
       deno_isolate
@@ -351,19 +355,18 @@ pub extern "C" fn promise_reject_callback(msg: v8::PromiseRejectMessage) {
   context.exit();
 }
 
-pub extern "C" fn print(info: &v8::FunctionCallbackInfo) {
-  #[allow(mutable_transmutes)]
-  #[allow(clippy::transmute_ptr_to_ptr)]
-  let info: &mut v8::FunctionCallbackInfo =
-    unsafe { std::mem::transmute(info) };
-
-  let arg_len = info.length();
+fn print(
+  scope: v8::FunctionCallbackScope,
+  args: v8::FunctionCallbackArguments,
+  _rv: v8::ReturnValue,
+) {
+  let arg_len = args.length();
   assert!(arg_len >= 0 && arg_len <= 2);
 
-  let obj = info.get_argument(0);
-  let is_err_arg = info.get_argument(1);
+  let obj = args.get(0);
+  let is_err_arg = args.get(1);
 
-  let mut hs = v8::HandleScope::new(info);
+  let mut hs = v8::HandleScope::new(scope);
   let scope = hs.enter();
 
   let mut is_err = false;
@@ -386,51 +389,38 @@ pub extern "C" fn print(info: &v8::FunctionCallbackInfo) {
   }
 }
 
-pub extern "C" fn recv(info: &v8::FunctionCallbackInfo) {
-  #[allow(mutable_transmutes)]
-  #[allow(clippy::transmute_ptr_to_ptr)]
-  let info: &mut v8::FunctionCallbackInfo =
-    unsafe { std::mem::transmute(info) };
-  assert_eq!(info.length(), 1);
-  let isolate = info.get_isolate();
+fn recv(
+  scope: v8::FunctionCallbackScope,
+  args: v8::FunctionCallbackArguments,
+  _rv: v8::ReturnValue,
+) {
   let deno_isolate: &mut Isolate =
-    unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
-  let mut locker = v8::Locker::new(&isolate);
-  let mut hs = v8::HandleScope::new(&mut locker);
-  let scope = hs.enter();
+    unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
 
   if !deno_isolate.js_recv_cb.is_empty() {
     let msg = v8::String::new(scope, "Deno.core.recv already called.").unwrap();
-    isolate.throw_exception(msg.into());
+    scope.isolate().throw_exception(msg.into());
     return;
   }
 
-  let recv_fn =
-    v8::Local::<v8::Function>::try_from(info.get_argument(0)).unwrap();
+  let recv_fn = v8::Local::<v8::Function>::try_from(args.get(0)).unwrap();
   deno_isolate.js_recv_cb.set(scope, recv_fn);
 }
 
-pub extern "C" fn send(info: &v8::FunctionCallbackInfo) {
-  let rv = &mut info.get_return_value();
-
-  #[allow(mutable_transmutes)]
-  #[allow(clippy::transmute_ptr_to_ptr)]
-  let info: &mut v8::FunctionCallbackInfo =
-    unsafe { std::mem::transmute(info) };
-
-  let arg0 = info.get_argument(0);
-  let arg1 = info.get_argument(1);
-  let arg2 = info.get_argument(2);
-  let mut hs = v8::HandleScope::new(info);
-  let scope = hs.enter();
-  let isolate = scope.isolate();
+fn send(
+  scope: v8::FunctionCallbackScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
   let deno_isolate: &mut Isolate =
-    unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
+    unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
   assert!(!deno_isolate.global_context.is_empty());
 
-  let op_id = v8::Local::<v8::Uint32>::try_from(arg0).unwrap().value() as u32;
+  let op_id = v8::Local::<v8::Uint32>::try_from(args.get(0))
+    .unwrap()
+    .value() as u32;
 
-  let control = match v8::Local::<v8::ArrayBufferView>::try_from(arg1) {
+  let control = match v8::Local::<v8::ArrayBufferView>::try_from(args.get(1)) {
     Ok(view) => {
       let mut backing_store = view.buffer().unwrap().get_backing_store();
       let backing_store_ptr = backing_store.data() as *mut _ as *mut u8;
@@ -442,7 +432,7 @@ pub extern "C" fn send(info: &v8::FunctionCallbackInfo) {
   };
 
   let zero_copy: Option<PinnedBuf> =
-    v8::Local::<v8::ArrayBufferView>::try_from(arg2)
+    v8::Local::<v8::ArrayBufferView>::try_from(args.get(2))
       .map(PinnedBuf::new)
       .ok();
 
@@ -461,24 +451,17 @@ pub extern "C" fn send(info: &v8::FunctionCallbackInfo) {
   }
 }
 
-pub extern "C" fn eval_context(info: &v8::FunctionCallbackInfo) {
-  let rv = &mut info.get_return_value();
-
-  #[allow(mutable_transmutes)]
-  #[allow(clippy::transmute_ptr_to_ptr)]
-  let info: &mut v8::FunctionCallbackInfo =
-    unsafe { std::mem::transmute(info) };
-  let arg0 = info.get_argument(0);
-
-  let mut hs = v8::HandleScope::new(info);
-  let scope = hs.enter();
-  let isolate = scope.isolate();
+fn eval_context(
+  scope: v8::FunctionCallbackScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
   let deno_isolate: &mut Isolate =
-    unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
+    unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
   assert!(!deno_isolate.global_context.is_empty());
   let context = deno_isolate.global_context.get(scope).unwrap();
 
-  let source = match v8::Local::<v8::String>::try_from(arg0) {
+  let source = match v8::Local::<v8::String>::try_from(args.get(0)) {
     Ok(s) => s,
     Err(_) => {
       let msg = v8::String::new(scope, "Invalid argument").unwrap();
@@ -599,104 +582,79 @@ pub extern "C" fn eval_context(info: &v8::FunctionCallbackInfo) {
   rv.set(output.into());
 }
 
-pub extern "C" fn error_to_json(info: &v8::FunctionCallbackInfo) {
-  #[allow(mutable_transmutes)]
-  #[allow(clippy::transmute_ptr_to_ptr)]
-  let info: &mut v8::FunctionCallbackInfo =
-    unsafe { std::mem::transmute(info) };
-  assert_eq!(info.length(), 1);
-  // <Boilerplate>
-  let isolate = info.get_isolate();
+fn error_to_json(
+  scope: v8::FunctionCallbackScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
   let deno_isolate: &mut Isolate =
-    unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
-  let mut locker = v8::Locker::new(&isolate);
-  assert!(!deno_isolate.global_context.is_empty());
-  let mut hs = v8::HandleScope::new(&mut locker);
-  let scope = hs.enter();
+    unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
   let context = deno_isolate.global_context.get(scope).unwrap();
-  // </Boilerplate>
-  let exception = info.get_argument(0);
-  let json_string =
-    deno_isolate.encode_exception_as_json(scope, context, exception);
-  let s = v8::String::new(scope, &json_string).unwrap();
-  let mut rv = info.get_return_value();
-  rv.set(s.into());
+
+  // TODO(piscisaureus): This is transmute necessary because of a bug in
+  // rusty_v8's implementation of `v8::create_message()`, which needs to be
+  // fixed.
+  let exception = unsafe { std::mem::transmute(args.get(0)) };
+  let message = v8::create_message(scope, exception);
+  let json_obj = encode_message_as_object(scope, context, message);
+  let json_string = v8::json::stringify(context, json_obj.into()).unwrap();
+
+  rv.set(json_string.into());
 }
 
-pub extern "C" fn queue_microtask(info: &v8::FunctionCallbackInfo) {
-  #[allow(mutable_transmutes)]
-  #[allow(clippy::transmute_ptr_to_ptr)]
-  let info: &mut v8::FunctionCallbackInfo =
-    unsafe { std::mem::transmute(info) };
-  assert_eq!(info.length(), 1);
-  let arg0 = info.get_argument(0);
-  let isolate = info.get_isolate();
-  let mut locker = v8::Locker::new(&isolate);
-  let mut hs = v8::HandleScope::new(&mut locker);
-  let scope = hs.enter();
-
-  match v8::Local::<v8::Function>::try_from(arg0) {
-    Ok(f) => isolate.enqueue_microtask(f),
+fn queue_microtask(
+  scope: v8::FunctionCallbackScope,
+  args: v8::FunctionCallbackArguments,
+  _rv: v8::ReturnValue,
+) {
+  match v8::Local::<v8::Function>::try_from(args.get(0)) {
+    Ok(f) => scope.isolate().enqueue_microtask(f),
     Err(_) => {
       let msg = v8::String::new(scope, "Invalid argument").unwrap();
       let exception = v8::type_error(scope, msg);
-      isolate.throw_exception(exception);
+      scope.isolate().throw_exception(exception);
     }
   };
 }
 
-pub extern "C" fn shared_getter(
+fn shared_getter(
+  scope: v8::PropertyCallbackScope,
   _name: v8::Local<v8::Name>,
-  info: &v8::PropertyCallbackInfo,
+  _args: v8::PropertyCallbackArguments,
+  mut rv: v8::ReturnValue,
 ) {
-  let shared_ab = {
-    #[allow(mutable_transmutes)]
-    #[allow(clippy::transmute_ptr_to_ptr)]
-    let info: &mut v8::PropertyCallbackInfo =
-      unsafe { std::mem::transmute(info) };
+  let deno_isolate: &mut Isolate =
+    unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
 
-    let mut hs = v8::EscapableHandleScope::new(info);
-    let scope = hs.enter();
-    let isolate = scope.isolate();
-    let deno_isolate: &mut Isolate =
-      unsafe { &mut *(isolate.get_data(0) as *mut Isolate) };
+  // Lazily initialize the persistent external ArrayBuffer.
+  if deno_isolate.shared_ab.is_empty() {
+    let data_ptr = deno_isolate.shared.bytes.as_ptr();
+    let data_len = deno_isolate.shared.bytes.len();
+    let ab = unsafe {
+      v8::SharedArrayBuffer::new_DEPRECATED(
+        scope,
+        data_ptr as *mut c_void,
+        data_len,
+      )
+    };
+    deno_isolate.shared_ab.set(scope, ab);
+  }
 
-    // Lazily initialize the persistent external ArrayBuffer.
-    if deno_isolate.shared_ab.is_empty() {
-      let data_ptr = deno_isolate.shared.bytes.as_ptr();
-      let data_len = deno_isolate.shared.bytes.len();
-      let ab = unsafe {
-        v8::SharedArrayBuffer::new_DEPRECATED(
-          scope,
-          data_ptr as *mut c_void,
-          data_len,
-        )
-      };
-      deno_isolate.shared_ab.set(scope, ab);
-    }
-
-    let shared_ab = deno_isolate.shared_ab.get(scope).unwrap();
-    scope.escape(shared_ab)
-  };
-
-  let rv = &mut info.get_return_value();
+  let shared_ab = deno_isolate.shared_ab.get(scope).unwrap();
   rv.set(shared_ab.into());
 }
 
-pub fn module_resolve_callback(
-  context: v8::Local<v8::Context>,
-  specifier: v8::Local<v8::String>,
-  referrer: v8::Local<v8::Module>,
-) -> *mut v8::Module {
-  let mut cbs = v8::CallbackScope::new(context);
-  let cb_scope = cbs.enter();
-  let isolate = cb_scope.isolate();
-  let deno_isolate: &mut EsIsolate =
-    unsafe { &mut *(isolate.get_data(1) as *mut EsIsolate) };
+pub fn module_resolve_callback<'s>(
+  context: v8::Local<'s, v8::Context>,
+  specifier: v8::Local<'s, v8::String>,
+  referrer: v8::Local<'s, v8::Module>,
+) -> Option<v8::Local<'s, v8::Module>> {
+  let mut scope = v8::CallbackScope::new(context);
+  let mut scope = v8::EscapableHandleScope::new(scope.enter());
+  let scope = scope.enter();
 
-  let mut locker = v8::Locker::new(isolate);
-  let mut hs = v8::EscapableHandleScope::new(&mut locker);
-  let scope = hs.enter();
+  let deno_isolate: &mut EsIsolate =
+    unsafe { &mut *(scope.isolate().get_data(1) as *mut EsIsolate) };
 
   let referrer_id = referrer.get_identity_hash();
   let referrer_name = deno_isolate
@@ -723,17 +681,17 @@ pub fn module_resolve_callback(
           req_str, referrer_name
         );
         let msg = v8::String::new(scope, &msg).unwrap();
-        isolate.throw_exception(msg.into());
+        scope.isolate().throw_exception(msg.into());
         break;
       }
 
-      let child_mod =
-        maybe_info.unwrap().handle.get(scope).expect("Empty handle");
-      return &mut *scope.escape(child_mod);
+      return maybe_info
+        .and_then(|i| i.handle.get(scope))
+        .map(|m| scope.escape(m));
     }
   }
 
-  std::ptr::null_mut()
+  None
 }
 
 pub fn encode_message_as_object<'a>(

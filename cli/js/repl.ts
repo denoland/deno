@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { close } from "./files.ts";
 import { exit } from "./os.ts";
-import { window } from "./window.ts";
 import { core } from "./core.ts";
 import { formatError } from "./format_error.ts";
 import { stringifyArgs } from "./console.ts";
@@ -104,8 +103,8 @@ function evaluate(code: string): boolean {
 
 // @internal
 export async function replLoop(): Promise<void> {
-  const { console } = window;
-  Object.defineProperties(window, replCommands);
+  const { console } = globalThis;
+  Object.defineProperties(globalThis, replCommands);
 
   const historyFile = "deno_history.txt";
   const rid = startRepl(historyFile);
@@ -118,12 +117,12 @@ export async function replLoop(): Promise<void> {
     exit(exitCode);
   };
 
-  // Configure window._ to give the last evaluation result.
-  Object.defineProperty(window, "_", {
+  // Configure globalThis._ to give the last evaluation result.
+  Object.defineProperty(globalThis, "_", {
     configurable: true,
     get: (): Value => lastEvalResult,
     set: (value: Value): Value => {
-      Object.defineProperty(window, "_", {
+      Object.defineProperty(globalThis, "_", {
         value: value,
         writable: true,
         enumerable: true,
@@ -133,12 +132,12 @@ export async function replLoop(): Promise<void> {
     }
   });
 
-  // Configure window._error to give the last thrown error.
-  Object.defineProperty(window, "_error", {
+  // Configure globalThis._error to give the last thrown error.
+  Object.defineProperty(globalThis, "_error", {
     configurable: true,
     get: (): Value => lastThrownError,
     set: (value: Value): Value => {
-      Object.defineProperty(window, "_error", {
+      Object.defineProperty(globalThis, "_error", {
         value: value,
         writable: true,
         enumerable: true,

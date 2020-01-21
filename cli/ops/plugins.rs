@@ -6,6 +6,7 @@ use deno_core::*;
 use dlopen::symbor::Library;
 use std::collections::HashMap;
 use std::ffi::OsStr;
+use std::path::Path;
 use std::sync::Arc;
 
 pub fn init(
@@ -62,9 +63,9 @@ pub fn op_open_plugin(
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: OpenPluginArgs = serde_json::from_value(args)?;
-  let (filename, filename_) = deno_fs::resolve_from_cwd(&args.filename)?;
+  let filename = deno_fs::resolve_from_cwd(Path::new(&args.filename))?;
 
-  state.check_plugin(&filename_)?;
+  state.check_plugin(&filename)?;
 
   let lib = open_plugin(filename)?;
   let plugin_resource = PluginResource {

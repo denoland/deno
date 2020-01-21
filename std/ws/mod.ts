@@ -484,10 +484,10 @@ export async function connectWebSocket(
   let conn: Conn;
   if (url.protocol === "http:" || url.protocol === "ws:") {
     const port = parseInt(url.port || "80");
-    conn = await Deno.dial({ hostname, port });
+    conn = await Deno.connect({ hostname, port });
   } else if (url.protocol === "https:" || url.protocol === "wss:") {
     const port = parseInt(url.port || "443");
-    conn = await Deno.dialTLS({ hostname, port });
+    conn = await Deno.connectTLS({ hostname, port });
   } else {
     throw new Error("ws: unsupported protocol: " + url.protocol);
   }

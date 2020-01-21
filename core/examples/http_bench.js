@@ -71,7 +71,7 @@ function recordFromBuf(buf) {
   return new Int32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
 }
 
-function handleAsyncMsgFromRust(opId, buf) {
+function handleAsyncMsgFromRust(buf) {
   const record = recordFromBuf(buf);
   const p = promiseMap.get(record[0]);
   promiseMap.delete(record[0]);
@@ -123,8 +123,10 @@ async function serve(rid) {
 let ops;
 
 async function main() {
-  Deno.core.setAsyncHandler(handleAsyncMsgFromRust);
   ops = Deno.core.ops();
+  for (const opName in ops) {
+    Deno.core.setAsyncHandler(ops[opName], handleAsyncMsgFromRust);
+  }
 
   Deno.core.print("http_bench.js start\n");
 

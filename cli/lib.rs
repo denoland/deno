@@ -51,6 +51,7 @@ pub mod state;
 pub mod test_util;
 mod tokio_util;
 pub mod version;
+mod web_worker;
 pub mod worker;
 
 use crate::deno_error::js_check;
@@ -120,7 +121,6 @@ fn create_worker_and_state(
     global_state.clone(),
     None,
     global_state.main_module.clone(),
-    true,
     int,
   )
   .map_err(deno_error::print_err_and_exit)
@@ -346,16 +346,15 @@ fn bundle_command(flags: DenoFlags) {
 
 fn run_repl(flags: DenoFlags) {
   let (mut worker, _state) = create_worker_and_state(flags);
-  // Make repl continue to function under uncaught async errors.
-  worker.set_error_handler(Box::new(|err| {
-    eprintln!("{}", err.to_string());
-    Ok(())
-  }));
-  // Setup runtime.
   js_check(worker.execute("denoMain()"));
   let main_future = async move {
-    let result = worker.await;
-    js_check(result);
+    loop {
+      let result = worker.clone().await;
+      if let Err(err) = result {
+        eprintln!("{}", err.to_string());
+        worker.clear_exception();
+      }
+    }
   };
   tokio_util::run(main_future);
 }

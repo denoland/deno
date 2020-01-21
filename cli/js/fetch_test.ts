@@ -15,8 +15,8 @@ testPerm({ net: true }, async function fetchConnectionError(): Promise<void> {
   } catch (err_) {
     err = err_;
   }
-  assertEquals(err.kind, Deno.ErrorKind.HttpOther);
-  assertEquals(err.name, "HttpOther");
+  assertEquals(err.kind, Deno.ErrorKind.Http);
+  assertEquals(err.name, "Http");
   assertStrContains(err.message, "error trying to connect");
 });
 
@@ -106,8 +106,8 @@ testPerm({ net: true }, async function fetchEmptyInvalid(): Promise<void> {
   } catch (err_) {
     err = err_;
   }
-  assertEquals(err.kind, Deno.ErrorKind.RelativeUrlWithoutBase);
-  assertEquals(err.name, "RelativeUrlWithoutBase");
+  assertEquals(err.kind, Deno.ErrorKind.UrlParse);
+  assertEquals(err.name, "UrlParse");
 });
 
 testPerm({ net: true }, async function fetchMultipartFormDataSuccess(): Promise<

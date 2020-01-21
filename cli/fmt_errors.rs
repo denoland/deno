@@ -151,6 +151,12 @@ impl JSError {
   }
 }
 
+impl Into<V8Exception> for JSError {
+  fn into(self) -> V8Exception {
+    self.0
+  }
+}
+
 impl DisplayFormatter for JSError {
   fn format_category_and_code(&self) -> String {
     "".to_string()

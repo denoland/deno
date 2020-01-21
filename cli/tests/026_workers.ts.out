@@ -1,4 +1,7 @@
 Hello World
+called onerror in worker
+called onerror in script
+Hello World
 Received js: Hello World
 Hello World
 Received ts: Hello World
