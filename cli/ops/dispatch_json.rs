@@ -97,10 +97,9 @@ where
     Ok(JsonOp::Sync(f()?))
   } else {
     let fut = async move {
-      let op_result = task::spawn_blocking(move || f())
+      task::spawn_blocking(move || f())
         .await
-        .map_err(ErrBox::from)?;
-      op_result
+        .map_err(ErrBox::from)?
     }
     .boxed();
     Ok(JsonOp::Async(fut.boxed()))
