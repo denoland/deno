@@ -3,7 +3,6 @@ use crate::fmt_errors::JSError;
 use crate::ops;
 use crate::state::ThreadSafeState;
 use crate::worker::WorkerChannels;
-use crate::worker::WorkerReceiver;
 use deno_core;
 use deno_core::Buf;
 use deno_core::ErrBox;
@@ -12,12 +11,12 @@ use deno_core::StartupData;
 use futures::future::FutureExt;
 use futures::future::TryFutureExt;
 use futures::sink::SinkExt;
+use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
 use std::env;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::Mutex;
 use std::task::Context;
 use std::task::Poll;
 use tokio::sync::Mutex as AsyncMutex;
@@ -28,7 +27,7 @@ pub struct WebWorker {
   pub name: String,
   pub isolate: Arc<AsyncMutex<Box<deno_core::EsIsolate>>>,
   pub state: ThreadSafeState,
-  external_channels: Arc<Mutex<WorkerChannels>>,
+  pub external_channels: WorkerChannels,
 }
 
 impl WebWorker {
@@ -53,7 +52,7 @@ impl WebWorker {
       name,
       isolate: Arc::new(AsyncMutex::new(isolate)),
       state,
-      external_channels: Arc::new(Mutex::new(external_channels)),
+      external_channels,
     }
   }
 
@@ -101,24 +100,24 @@ impl WebWorker {
   /// Post message to worker as a host.
   ///
   /// This method blocks current thread.
-  pub fn post_message(
-    &self,
-    buf: Buf,
-  ) -> impl Future<Output = Result<(), ErrBox>> {
-    let channels = self.external_channels.lock().unwrap();
-    let mut sender = channels.sender.clone();
-    async move {
-      let result = sender.send(buf).map_err(ErrBox::from).await;
-      drop(sender);
-      result
-    }
+  pub async fn post_message(&self, buf: Buf) -> Result<(), ErrBox> {
+    let mut sender = self.external_channels.sender.clone();
+    let result = sender.send(buf).map_err(ErrBox::from).await;
+    drop(sender);
+    result
   }
 
   /// Get message from worker as a host.
-  pub fn get_message(&self) -> WorkerReceiver {
-    WorkerReceiver {
-      channels: self.external_channels.clone(),
+  pub fn get_message(
+    &self,
+  ) -> Pin<Box<dyn Future<Output = Option<Buf>> + Send>> {
+    let receiver_mutex = self.external_channels.receiver.clone();
+
+    async move {
+      let mut receiver = receiver_mutex.lock().await;
+      receiver.next().await
     }
+    .boxed()
   }
 
   pub fn clear_exception(&mut self) {

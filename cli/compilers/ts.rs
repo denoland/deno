@@ -279,7 +279,7 @@ impl TsCompiler {
       worker.post_message(req_msg).await?;
       worker.await?;
       debug!("Sent message to worker");
-      let maybe_msg = worker_.get_message().await?;
+      let maybe_msg = worker_.get_message().await;
       debug!("Received message from worker");
       if let Some(msg) = maybe_msg {
         let json_str = std::str::from_utf8(&msg).unwrap();
@@ -378,7 +378,7 @@ impl TsCompiler {
       worker.post_message(req_msg).await?;
       worker.await?;
       debug!("Sent message to worker");
-      let maybe_msg = worker_.get_message().await?;
+      let maybe_msg = worker_.get_message().await;
       if let Some(msg) = maybe_msg {
         let json_str = std::str::from_utf8(&msg).unwrap();
         debug!("Message: {}", json_str);
@@ -633,7 +633,7 @@ pub fn runtime_compile_async<S: BuildHasher>(
     worker.post_message(req_msg).await?;
     worker.await?;
     debug!("Sent message to worker");
-    let msg = (worker_.get_message().await?).unwrap();
+    let msg = (worker_.get_message().await).unwrap();
     let json_str = std::str::from_utf8(&msg).unwrap();
     Ok(json!(json_str))
   }
@@ -661,7 +661,7 @@ pub fn runtime_transpile_async<S: BuildHasher>(
     worker.post_message(req_msg).await?;
     worker.await?;
     debug!("Sent message to worker");
-    let msg = (worker_.get_message().await?).unwrap();
+    let msg = (worker_.get_message().await).unwrap();
     let json_str = std::str::from_utf8(&msg).unwrap();
     Ok(json!(json_str))
   }

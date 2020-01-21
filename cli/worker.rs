@@ -17,7 +17,6 @@ use std::env;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::Mutex;
 use std::task::Context;
 use std::task::Poll;
 use tokio::sync::Mutex as AsyncMutex;
@@ -26,9 +25,10 @@ use url::Url;
 /// Wraps mpsc channels so they can be referenced
 /// from ops and used to facilitate parent-child communication
 /// for workers.
+#[derive(Clone)]
 pub struct WorkerChannels {
   pub sender: mpsc::Sender<Buf>,
-  pub receiver: mpsc::Receiver<Buf>,
+  pub receiver: Arc<AsyncMutex<mpsc::Receiver<Buf>>>,
 }
 
 /// Wraps deno_core::Isolate to provide source maps, ops for the CLI, and
@@ -38,7 +38,7 @@ pub struct Worker {
   pub name: String,
   pub isolate: Arc<AsyncMutex<Box<deno_core::EsIsolate>>>,
   pub state: ThreadSafeState,
-  external_channels: Arc<Mutex<WorkerChannels>>,
+  external_channels: WorkerChannels,
 }
 
 impl Worker {
@@ -81,7 +81,7 @@ impl Worker {
       name,
       isolate: Arc::new(AsyncMutex::new(isolate)),
       state,
-      external_channels: Arc::new(Mutex::new(external_channels)),
+      external_channels,
     }
   }
 
@@ -129,24 +129,17 @@ impl Worker {
   /// Post message to worker as a host.
   ///
   /// This method blocks current thread.
-  pub fn post_message(
-    &self,
-    buf: Buf,
-  ) -> impl Future<Output = Result<(), ErrBox>> {
-    let channels = self.external_channels.lock().unwrap();
-    let mut sender = channels.sender.clone();
-    async move {
-      let result = sender.send(buf).map_err(ErrBox::from).await;
-      drop(sender);
-      result
-    }
+  pub async fn post_message(&self, buf: Buf) -> Result<(), ErrBox> {
+    let mut sender = self.external_channels.sender.clone();
+    let result = sender.send(buf).map_err(ErrBox::from).await;
+    drop(sender);
+    result
   }
 
   /// Get message from worker as a host.
-  pub fn get_message(&self) -> WorkerReceiver {
-    WorkerReceiver {
-      channels: self.external_channels.clone(),
-    }
+  pub async fn get_message(&self) -> Option<Buf> {
+    let mut receiver = self.external_channels.receiver.lock().await;
+    receiver.next().await
   }
 
   pub fn clear_exception(&mut self) {
@@ -168,25 +161,6 @@ impl Future for Worker {
         waker.wake();
         Poll::Pending
       }
-    }
-  }
-}
-
-/// This structure wraps worker's resource id to implement future
-/// that will return message received from worker or None
-/// if worker's channel has been closed.
-pub struct WorkerReceiver {
-  pub channels: Arc<Mutex<WorkerChannels>>,
-}
-
-impl Future for WorkerReceiver {
-  type Output = Result<Option<Buf>, ErrBox>;
-
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    let mut channels = self.channels.lock().unwrap();
-    match channels.receiver.poll_next_unpin(cx) {
-      Poll::Ready(v) => Poll::Ready(Ok(v)),
-      Poll::Pending => Poll::Pending,
     }
   }
 }
@@ -410,7 +384,7 @@ mod tests {
       let r = block_on(worker_.post_message(msg));
       assert!(r.is_ok());
 
-      let maybe_msg = block_on(worker_.get_message()).unwrap();
+      let maybe_msg = block_on(worker_.get_message());
       assert!(maybe_msg.is_some());
       // Check if message received is [1, 2, 3] in json
       assert_eq!(*maybe_msg.unwrap(), *b"[1,2,3]");

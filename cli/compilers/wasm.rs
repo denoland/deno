@@ -100,10 +100,9 @@ impl WasmCompiler {
         std::process::exit(1);
       }
       debug!("Sent message to worker");
-      let maybe_msg = worker_.get_message().await.expect("not handled");
+      let json_msg = worker_.get_message().await.expect("not handled");
 
       debug!("Received message from worker");
-      let json_msg = maybe_msg.unwrap();
       let module_info: WasmModuleInfo =
         serde_json::from_slice(&json_msg).unwrap();
       debug!("WASM module info: {:#?}", &module_info);
