@@ -8,6 +8,14 @@ pub static CLI_SNAPSHOT_MAP: &[u8] =
 pub static CLI_SNAPSHOT_DTS: &[u8] =
   include_bytes!(concat!(env!("OUT_DIR"), "/CLI_SNAPSHOT.d.ts"));
 
+pub static WORKER_SNAPSHOT: &[u8] =
+  include_bytes!(concat!(env!("OUT_DIR"), "/WORKER_SNAPSHOT.bin"));
+pub static WORKER_SNAPSHOT_MAP: &[u8] =
+  include_bytes!(concat!(env!("OUT_DIR"), "/WORKER_SNAPSHOT.js.map"));
+#[allow(dead_code)]
+pub static WORKER_SNAPSHOT_DTS: &[u8] =
+  include_bytes!(concat!(env!("OUT_DIR"), "/WORKER_SNAPSHOT.d.ts"));
+
 pub static COMPILER_SNAPSHOT: &[u8] =
   include_bytes!(concat!(env!("OUT_DIR"), "/COMPILER_SNAPSHOT.bin"));
 pub static COMPILER_SNAPSHOT_MAP: &[u8] =

@@ -75,6 +75,8 @@ fn builtin_source_map(_: &str) -> Option<Vec<u8>> {
 fn builtin_source_map(script_name: &str) -> Option<Vec<u8>> {
   if script_name.ends_with("CLI_SNAPSHOT.js") {
     Some(crate::js::CLI_SNAPSHOT_MAP.to_vec())
+  } else if script_name.ends_with("WORKER_SNAPSHOT.js") {
+    Some(crate::js::WORKER_SNAPSHOT_MAP.to_vec())
   } else if script_name.ends_with("COMPILER_SNAPSHOT.js") {
     Some(crate::js::COMPILER_SNAPSHOT_MAP.to_vec())
   } else {

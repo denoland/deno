@@ -206,4 +206,3 @@ const globalProperties = {
 };
 
 Object.defineProperties(globalThis, globalProperties);
-
