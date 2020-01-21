@@ -19,6 +19,7 @@ export {
   seek,
   seekSync,
   close,
+  OpenOptions,
   OpenMode
 } from "./files.ts";
 export {
