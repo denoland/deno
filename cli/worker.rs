@@ -139,9 +139,16 @@ impl Worker {
   }
 
   /// Get message from worker as a host.
-  pub async fn get_message(&self) -> Option<Buf> {
-    let mut receiver = self.external_channels.receiver.lock().await;
-    receiver.next().await
+  pub fn get_message(
+    &self,
+  ) -> Pin<Box<dyn Future<Output = Option<Buf>> + Send>> {
+    let receiver_mutex = self.external_channels.receiver.clone();
+
+    async move {
+      let mut receiver = receiver_mutex.lock().await;
+      receiver.next().await
+    }
+    .boxed()
   }
 
   pub fn clear_exception(&mut self) {
