@@ -6,7 +6,6 @@ import "./globals.ts";
 import "./ts_global.d.ts";
 
 import { TranspileOnlyResult } from "./compiler_api.ts";
-import { oldProgram } from "./compiler_bootstrap.ts";
 import { setRootExports } from "./compiler_bundler.ts";
 import {
   defaultBundlerOptions,
@@ -143,12 +142,7 @@ self.bootstrapTsCompiler = function tsCompilerMain(): void {
         // to generate the program and possibly emit it.
         if (!diagnostics || (diagnostics && diagnostics.length === 0)) {
           const options = host.getCompilationSettings();
-          const program = ts.createProgram({
-            rootNames,
-            options,
-            host,
-            oldProgram
-          });
+          const program = ts.createProgram(rootNames, options, host);
 
           diagnostics = ts
             .getPreEmitDiagnostics(program)
@@ -226,12 +220,11 @@ self.bootstrapTsCompiler = function tsCompilerMain(): void {
         }
         host.mergeOptions(...compilerOptions);
 
-        const program = ts.createProgram({
+        const program = ts.createProgram(
           rootNames,
-          options: host.getCompilationSettings(),
-          host,
-          oldProgram
-        });
+          host.getCompilationSettings(),
+          host
+        );
 
         if (bundle) {
           setRootExports(program, rootNames[0]);
