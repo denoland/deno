@@ -60,9 +60,9 @@ impl WasmCompiler {
       worker_state,
       ext,
     );
-    worker.execute("denoMain('WASM')").unwrap();
-    worker.execute("workerMain()").unwrap();
-    worker.execute("wasmCompilerMain()").unwrap();
+    worker.execute("bootstrapCompilerRuntime('WASM')").unwrap();
+    worker.execute("bootstrapWorkerRuntime()").unwrap();
+    worker.execute("bootstrapWasmCompiler()").unwrap();
     worker
   }
 

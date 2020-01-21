@@ -246,9 +246,9 @@ impl TsCompiler {
       worker_state,
       ext,
     );
-    worker.execute("denoMain()").unwrap();
-    worker.execute("workerMain()").unwrap();
-    worker.execute("compilerMain()").unwrap();
+    worker.execute("bootstrapCompilerRuntime('TS')").unwrap();
+    worker.execute("bootstrapWorkerRuntime()").unwrap();
+    worker.execute("bootstrapTsCompiler()").unwrap();
     worker
   }
 
