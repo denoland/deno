@@ -110,6 +110,14 @@ impl ThreadSafeState {
           });
           Op::Async(result_fut.boxed())
         }
+        Op::AsyncUnref(fut) => {
+          let state = state.clone();
+          let result_fut = fut.map_ok(move |buf: Buf| {
+            state.metrics_op_completed(buf.len());
+            buf
+          });
+          Op::AsyncUnref(result_fut.boxed())
+        }
       }
     }
   }
