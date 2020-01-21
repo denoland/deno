@@ -969,7 +969,7 @@ which can be supported by Deno.
 An example of providing sources:
 
 ```ts
-const [diagnostics, emit] = await Deno.compile("/foo.ts", {
+const [diagnostics, emit] = await Deno.bundle("/foo.ts", {
   "/foo.ts": `import * as bar from "./bar.ts";\nconsole.log(bar);\n`,
   "/bar.ts": `export const bar = "bar";\n`
 });
@@ -985,7 +985,7 @@ When not supplying resources, you can use local or remote modules, just like you
 could do on the command line. So you could do something like this:
 
 ```ts
-const [diagnostics, emit] = await Deno.compile(
+const [diagnostics, emit] = await Deno.bundle(
   "https://deno.land/std/http/server.ts"
 );
 ```
