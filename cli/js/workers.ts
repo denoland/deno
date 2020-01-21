@@ -2,35 +2,35 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import * as dispatch from "./dispatch.ts";
 import { sendAsync, sendSync } from "./dispatch_json.ts";
-import { log, createResolvable, Resolvable } from "./util.ts";
+import { log } from "./util.ts";
 import { TextDecoder, TextEncoder } from "./text_encoding.ts";
+/*
 import { blobURLMap } from "./url.ts";
 import { blobBytesWeakMap } from "./blob.ts";
+*/
 import { Event } from "./event.ts";
 import { EventTarget } from "./event_target.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-export function encodeMessage(data: any): Uint8Array {
+function encodeMessage(data: any): Uint8Array {
   const dataJson = JSON.stringify(data);
   return encoder.encode(dataJson);
 }
 
-export function decodeMessage(dataIntArray: Uint8Array): any {
+function decodeMessage(dataIntArray: Uint8Array): any {
   const dataJson = decoder.decode(dataIntArray);
   return JSON.parse(dataJson);
 }
 
 function createWorker(
   specifier: string,
-  includeDenoNamespace: boolean,
   hasSourceCode: boolean,
   sourceCode: Uint8Array
 ): { id: number; loaded: boolean } {
   return sendSync(dispatch.OP_CREATE_WORKER, {
     specifier,
-    includeDenoNamespace,
     hasSourceCode,
     sourceCode: new TextDecoder().decode(sourceCode)
   });
@@ -67,92 +67,15 @@ async function hostGetMessage(id: number): Promise<any> {
   }
 }
 
-// Stuff for workers
-export const onmessage: (e: { data: any }) => void = (): void => {};
-export const onerror: (e: { data: any }) => void = (): void => {};
-
-export function postMessage(data: any): void {
-  const dataIntArray = encodeMessage(data);
-  sendSync(dispatch.OP_WORKER_POST_MESSAGE, {}, dataIntArray);
-}
-
-export async function getMessage(): Promise<any> {
-  log("getMessage");
-  const res = await sendAsync(dispatch.OP_WORKER_GET_MESSAGE);
-  if (res.data != null) {
-    return decodeMessage(new Uint8Array(res.data));
-  } else {
-    return null;
-  }
-}
-
-export let isClosing = false;
-
-export function workerClose(): void {
-  isClosing = true;
-}
-
-export async function workerMain(): Promise<void> {
-  log("workerMain");
-
-  while (!isClosing) {
-    const data = await getMessage();
-    if (data == null) {
-      log("workerMain got null message. quitting.");
-      break;
-    }
-
-    let result: void | Promise<void>;
-    const event = { data };
-
-    try {
-      if (!globalThis["onmessage"]) {
-        break;
-      }
-      result = globalThis.onmessage!(event);
-      if (result && "then" in result) {
-        await result;
-      }
-      if (!globalThis["onmessage"]) {
-        break;
-      }
-    } catch (e) {
-      if (globalThis["onerror"]) {
-        const result = globalThis.onerror(
-          e.message,
-          e.fileName,
-          e.lineNumber,
-          e.columnNumber,
-          e
-        );
-        if (result === true) {
-          continue;
-        }
-      }
-      throw e;
-    }
-  }
-}
-
 export interface Worker {
   onerror?: (e: any) => void;
   onmessage?: (e: { data: any }) => void;
   onmessageerror?: () => void;
   postMessage(data: any): void;
-  // TODO(bartlomieju): remove this
-  closed: Promise<void>;
 }
 
-// TODO(kevinkassimo): Maybe implement reasonable web worker options?
-// eslint-disable-next-line @typescript-eslint/no-empty-interface
-export interface WorkerOptions {}
-
-/** Extended Deno Worker initialization options.
- * `noDenoNamespace` hides global `globalThis.Deno` namespace for
- * spawned worker and nested workers spawned by it (default: false).
- */
-export interface DenoWorkerOptions extends WorkerOptions {
-  noDenoNamespace?: boolean;
+export interface WorkerOptions {
+  type?: "classic" | "module";
 }
 
 export class WorkerImpl extends EventTarget implements Worker {
@@ -160,20 +83,29 @@ export class WorkerImpl extends EventTarget implements Worker {
   private isClosing = false;
   private messageBuffer: any[] = [];
   private ready = false;
-  private readonly isClosedPromise: Resolvable<void>;
   public onerror?: (e: any) => void;
   public onmessage?: (data: any) => void;
   public onmessageerror?: () => void;
 
-  constructor(specifier: string, options?: DenoWorkerOptions) {
+  constructor(specifier: string, options?: WorkerOptions) {
     super();
-    let hasSourceCode = false;
-    let sourceCode = new Uint8Array();
 
-    let includeDenoNamespace = true;
-    if (options && options.noDenoNamespace) {
-      includeDenoNamespace = false;
+    let type = "classic";
+
+    if (options?.type) {
+      type = options.type;
     }
+
+    if (type !== "module") {
+      throw new Error(
+        'Not yet implemented: only "module" type workers are supported'
+      );
+    }
+
+    const hasSourceCode = false;
+    const sourceCode = new Uint8Array();
+
+    /* TODO(bartlomieju):
     // Handle blob URL.
     if (specifier.startsWith("blob:")) {
       hasSourceCode = true;
@@ -187,21 +119,12 @@ export class WorkerImpl extends EventTarget implements Worker {
       }
       sourceCode = blobBytes!;
     }
+    */
 
-    const { id, loaded } = createWorker(
-      specifier,
-      includeDenoNamespace,
-      hasSourceCode,
-      sourceCode
-    );
+    const { id, loaded } = createWorker(specifier, hasSourceCode, sourceCode);
     this.id = id;
     this.ready = loaded;
-    this.isClosedPromise = createResolvable();
     this.poll();
-  }
-
-  get closed(): Promise<void> {
-    return this.isClosedPromise;
   }
 
   private handleError(e: any): boolean {
@@ -259,7 +182,6 @@ export class WorkerImpl extends EventTarget implements Worker {
       } else {
         this.isClosing = true;
         hostCloseWorker(this.id);
-        this.isClosedPromise.resolve();
         break;
       }
     }

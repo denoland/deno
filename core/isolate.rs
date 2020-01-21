@@ -440,6 +440,8 @@ impl Isolate {
     isolate.exit();
   }
 
+  // TODO(bartlomieju): `error_handler` should be removed
+  #[allow(dead_code)]
   pub fn set_error_handler(&mut self, handler: Box<IsolateErrorHandleFn>) {
     self.error_handler = Some(handler);
   }

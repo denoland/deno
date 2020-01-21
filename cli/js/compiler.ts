@@ -32,7 +32,7 @@ import { fromTypeScriptDiagnostic } from "./diagnostics_util.ts";
 import * as os from "./os.ts";
 import { assert } from "./util.ts";
 import * as util from "./util.ts";
-import { postMessage, workerClose, workerMain } from "./workers.ts";
+import { postMessage, workerClose, workerMain } from "./worker_main.ts";
 
 const self = globalThis;
 

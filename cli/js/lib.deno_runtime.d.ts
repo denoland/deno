@@ -2128,9 +2128,9 @@ declare interface Window {
   performance: __performanceUtil.Performance;
   onmessage: (e: { data: any }) => void;
   onerror: undefined | typeof onerror;
-  workerMain: typeof __workers.workerMain;
-  workerClose: typeof __workers.workerClose;
-  postMessage: typeof __workers.postMessage;
+  workerMain: typeof __workerMain.workerMain;
+  workerClose: typeof __workerMain.workerClose;
+  postMessage: typeof __workerMain.postMessage;
   Worker: typeof __workers.WorkerImpl;
   addEventListener: (
     type: string,
@@ -2187,9 +2187,9 @@ declare let onerror:
       e: Event
     ) => boolean | void)
   | undefined;
-declare const workerMain: typeof __workers.workerMain;
-declare const workerClose: typeof __workers.workerClose;
-declare const postMessage: typeof __workers.postMessage;
+declare const workerMain: typeof __workerMain.workerMain;
+declare const workerClose: typeof __workerMain.workerClose;
+declare const postMessage: typeof __workerMain.postMessage;
 declare const Worker: typeof __workers.WorkerImpl;
 declare const addEventListener: (
   type: string,
@@ -3437,31 +3437,25 @@ declare namespace __url {
   };
 }
 
-declare namespace __workers {
-  // @url js/workers.d.ts
-
-  export function encodeMessage(data: any): Uint8Array;
-  export function decodeMessage(dataIntArray: Uint8Array): any;
+declare namespace __workerMain {
   export let onmessage: (e: { data: any }) => void;
   export function postMessage(data: any): void;
   export function getMessage(): Promise<any>;
   export let isClosing: boolean;
   export function workerClose(): void;
   export function workerMain(): Promise<void>;
+}
+
+declare namespace __workers {
+  // @url js/workers.d.ts
   export interface Worker {
     onerror?: (e: Event) => void;
     onmessage?: (e: { data: any }) => void;
     onmessageerror?: () => void;
     postMessage(data: any): void;
-    closed: Promise<void>;
   }
-  export interface WorkerOptions {}
-  /** Extended Deno Worker initialization options.
-   * `noDenoNamespace` hides global `window.Deno` namespace for
-   * spawned worker and nested workers spawned by it (default: false).
-   */
-  export interface DenoWorkerOptions extends WorkerOptions {
-    noDenoNamespace?: boolean;
+  export interface WorkerOptions {
+    type?: "classic" | "module";
   }
   export class WorkerImpl implements Worker {
     private readonly id;
@@ -3470,8 +3464,7 @@ declare namespace __workers {
     onerror?: (e: Event) => void;
     onmessage?: (data: any) => void;
     onmessageerror?: () => void;
-    constructor(specifier: string, options?: DenoWorkerOptions);
-    readonly closed: Promise<void>;
+    constructor(specifier: string, options?: WorkerOptions);
     postMessage(data: any): void;
     private run;
   }
