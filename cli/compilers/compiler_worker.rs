@@ -14,6 +14,19 @@ use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
 
+/// This worker is used to host TypeScript and WASM compilers.
+///
+/// It provides minimal set of ops that are necessary to facilitate
+/// compilation.
+///
+/// NOTE: This worker is considered priveleged, because it may
+/// access file system without permission check.
+///
+/// At the moment this worker is meant to be single-use - after
+/// performing single compilation/bundling it should be destroyed.
+///
+/// TODO(bartlomieju): add support to reuse the worker - or in other
+/// words support stateful TS compiler
 #[derive(Clone)]
 pub struct CompilerWorker(Worker);
 

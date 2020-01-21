@@ -33,8 +33,18 @@ pub struct WorkerChannels {
   pub receiver: Arc<AsyncMutex<mpsc::Receiver<Buf>>>,
 }
 
-/// Wraps deno_core::Isolate to provide source maps, ops for the CLI, and
-/// high-level module loading.
+/// Worker is a CLI wrapper for `deno_core::Isolate`.
+///
+/// It provides infrastructure to communicate with a worker and
+/// consequently between workers.
+///
+/// This struct is meant to be used as a base struct for concrete
+/// type of worker that registers set of ops.
+///
+/// Currently there are three types of workers:
+///  - `MainWorker`
+///  - `CompilerWorker`
+///  - `WebWorker`
 #[derive(Clone)]
 pub struct Worker {
   pub name: String,
@@ -152,6 +162,13 @@ impl Future for Worker {
     }
   }
 }
+
+/// This worker is created and used by Deno executable.
+///
+/// It provides ops available in the `Deno` namespace.
+///
+/// All WebWorkers created during program execution are decendants of
+/// this worker.
 #[derive(Clone)]
 pub struct MainWorker(Worker);
 

@@ -14,6 +14,13 @@ use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
 
+/// This worker is implementation of `Worker` Web API
+///
+/// At the moment this type of worker supports only
+/// communication with parent and creating new workers.
+///
+/// Each `WebWorker` is either a child of `MainWorker` or other
+/// `WebWorker`.
 #[derive(Clone)]
 pub struct WebWorker(Worker);
 
