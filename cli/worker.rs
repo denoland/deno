@@ -52,6 +52,7 @@ impl Worker {
       deno_core::EsIsolate::new(Box::new(state.clone()), startup_data, false);
     let op_registry = isolate.op_registry.clone();
 
+    ops::runtime_compiler::init(&mut isolate, &state);
     ops::compiler::init(&mut isolate, &state);
     ops::errors::init(&mut isolate, &state);
     ops::fetch::init(&mut isolate, &state);
