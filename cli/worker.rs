@@ -15,6 +15,8 @@ use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
 use std::env;
 use std::future::Future;
+use std::ops::Deref;
+use std::ops::DerefMut;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::Context;
@@ -162,6 +164,68 @@ impl Future for Worker {
         Poll::Pending
       }
     }
+  }
+}
+#[derive(Clone)]
+pub struct MainWorker(Worker);
+
+impl MainWorker {
+  pub fn new(
+    name: String,
+    startup_data: StartupData,
+    state: ThreadSafeState,
+    external_channels: WorkerChannels,
+  ) -> Self {
+    let state_ = state.clone();
+    let worker = Worker::new(name, startup_data, state_, external_channels);
+    {
+      let mut isolate = worker.isolate.try_lock().unwrap();
+      let op_registry = isolate.op_registry.clone();
+
+      ops::runtime_compiler::init(&mut isolate, &state);
+      ops::compiler::init(&mut isolate, &state);
+      ops::errors::init(&mut isolate, &state);
+      ops::fetch::init(&mut isolate, &state);
+      ops::files::init(&mut isolate, &state);
+      ops::fs::init(&mut isolate, &state);
+      ops::io::init(&mut isolate, &state);
+      ops::plugins::init(&mut isolate, &state, op_registry);
+      ops::net::init(&mut isolate, &state);
+      ops::tls::init(&mut isolate, &state);
+      ops::os::init(&mut isolate, &state);
+      ops::permissions::init(&mut isolate, &state);
+      ops::process::init(&mut isolate, &state);
+      ops::random::init(&mut isolate, &state);
+      ops::repl::init(&mut isolate, &state);
+      ops::resources::init(&mut isolate, &state);
+      ops::timers::init(&mut isolate, &state);
+      ops::worker_host::init(&mut isolate, &state);
+      ops::web_worker::init(&mut isolate, &state);
+    }
+
+    Self(worker)
+  }
+}
+
+impl Deref for MainWorker {
+  type Target = Worker;
+  fn deref(&self) -> &Self::Target {
+    &self.0
+  }
+}
+
+impl DerefMut for MainWorker {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    &mut self.0
+  }
+}
+
+impl Future for MainWorker {
+  type Output = Result<(), ErrBox>;
+
+  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+    let inner = self.get_mut();
+    inner.0.poll_unpin(cx)
   }
 }
 

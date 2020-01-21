@@ -60,7 +60,7 @@ use crate::global_state::ThreadSafeGlobalState;
 use crate::ops::io::get_stdio;
 use crate::progress::Progress;
 use crate::state::ThreadSafeState;
-use crate::worker::Worker;
+use crate::worker::MainWorker;
 use deno_core::v8_set_flags;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
@@ -97,7 +97,7 @@ impl log::Log for Logger {
 
 fn create_worker_and_state(
   flags: DenoFlags,
-) -> (Worker, ThreadSafeGlobalState) {
+) -> (MainWorker, ThreadSafeGlobalState) {
   use crate::shell::Shell;
   use std::sync::Arc;
   use std::sync::Mutex;
@@ -135,7 +135,7 @@ fn create_worker_and_state(
     resource_table.add("stderr", Box::new(stderr));
   }
 
-  let worker = Worker::new(
+  let worker = MainWorker::new(
     "main".to_string(),
     startup_data::deno_isolate_init(),
     state,
@@ -150,7 +150,7 @@ fn types_command() {
   println!("{}", content);
 }
 
-fn print_cache_info(worker: Worker) {
+fn print_cache_info(worker: MainWorker) {
   let state = &worker.state.global_state;
 
   println!(
@@ -170,7 +170,10 @@ fn print_cache_info(worker: Worker) {
   );
 }
 
-async fn print_file_info(worker: Worker, module_specifier: ModuleSpecifier) {
+async fn print_file_info(
+  worker: MainWorker,
+  module_specifier: ModuleSpecifier,
+) {
   let global_state_ = &worker.state.global_state;
 
   let maybe_source_file = global_state_

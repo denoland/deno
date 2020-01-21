@@ -5,7 +5,7 @@ use crate::file_fetcher::SourceFile;
 use crate::global_state::ThreadSafeGlobalState;
 use crate::startup_data;
 use crate::state::*;
-use crate::worker::Worker;
+use crate::worker::MainWorker;
 use futures::FutureExt;
 use serde_derive::Deserialize;
 use serde_json;
@@ -42,7 +42,7 @@ pub struct WasmCompiler {
 
 impl WasmCompiler {
   /// Create a new V8 worker with snapshot of WASM compiler and setup compiler's runtime.
-  fn setup_worker(global_state: ThreadSafeGlobalState) -> Worker {
+  fn setup_worker(global_state: ThreadSafeGlobalState) -> MainWorker {
     let (int, ext) = ThreadSafeState::create_channels();
     let worker_state =
       ThreadSafeState::new(global_state.clone(), None, None, int)
@@ -54,7 +54,7 @@ impl WasmCompiler {
       .compiler_starts
       .fetch_add(1, Ordering::SeqCst);
 
-    let mut worker = Worker::new(
+    let mut worker = MainWorker::new(
       "WASM".to_string(),
       startup_data::compiler_isolate_init(),
       worker_state,
