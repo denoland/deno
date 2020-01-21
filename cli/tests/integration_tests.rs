@@ -301,6 +301,7 @@ itest!(_038_checkjs {
   output: "038_checkjs.js.out",
 });
 
+/* TODO(bartlomieju):
 itest!(_039_worker_deno_ns {
   args: "run --reload 039_worker_deno_ns.ts",
   output: "039_worker_deno_ns.ts.out",
@@ -310,6 +311,7 @@ itest!(_040_worker_blob {
   args: "run --reload 040_worker_blob.ts",
   output: "040_worker_blob.ts.out",
 });
+*/
 
 itest!(_041_dyn_import_eval {
   args: "eval import('./subdir/mod4.js').then(console.log)",
@@ -567,12 +569,14 @@ itest!(error_type_definitions {
   output: "error_type_definitions.ts.out",
 });
 
+/* TODO(bartlomieju)
 itest!(error_worker_dynamic {
   args: "run --reload error_worker_dynamic.ts",
   check_stderr: true,
   exit_code: 1,
   output: "error_worker_dynamic.ts.out",
 });
+*/
 
 itest!(exit_error42 {
   exit_code: 42,

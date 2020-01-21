@@ -48,53 +48,40 @@ impl Worker {
     state: ThreadSafeState,
     external_channels: WorkerChannels,
   ) -> Self {
-    let isolate = Arc::new(AsyncMutex::new(deno_core::EsIsolate::new(
-      Box::new(state.clone()),
-      startup_data,
-      false,
-    )));
-    {
-      let mut i = isolate.try_lock().unwrap();
-      let op_registry = i.op_registry.clone();
+    let mut isolate =
+      deno_core::EsIsolate::new(Box::new(state.clone()), startup_data, false);
+    let op_registry = isolate.op_registry.clone();
 
-      ops::compiler::init(&mut i, &state);
-      ops::errors::init(&mut i, &state);
-      ops::fetch::init(&mut i, &state);
-      ops::files::init(&mut i, &state);
-      ops::fs::init(&mut i, &state);
-      ops::io::init(&mut i, &state);
-      ops::plugins::init(&mut i, &state, op_registry);
-      ops::net::init(&mut i, &state);
-      ops::tls::init(&mut i, &state);
-      ops::os::init(&mut i, &state);
-      ops::permissions::init(&mut i, &state);
-      ops::process::init(&mut i, &state);
-      ops::random::init(&mut i, &state);
-      ops::repl::init(&mut i, &state);
-      ops::resources::init(&mut i, &state);
-      ops::timers::init(&mut i, &state);
-      ops::workers::init(&mut i, &state);
+    ops::compiler::init(&mut isolate, &state);
+    ops::errors::init(&mut isolate, &state);
+    ops::fetch::init(&mut isolate, &state);
+    ops::files::init(&mut isolate, &state);
+    ops::fs::init(&mut isolate, &state);
+    ops::io::init(&mut isolate, &state);
+    ops::plugins::init(&mut isolate, &state, op_registry);
+    ops::net::init(&mut isolate, &state);
+    ops::tls::init(&mut isolate, &state);
+    ops::os::init(&mut isolate, &state);
+    ops::permissions::init(&mut isolate, &state);
+    ops::process::init(&mut isolate, &state);
+    ops::random::init(&mut isolate, &state);
+    ops::repl::init(&mut isolate, &state);
+    ops::resources::init(&mut isolate, &state);
+    ops::timers::init(&mut isolate, &state);
+    ops::worker_host::init(&mut isolate, &state);
+    ops::web_worker::init(&mut isolate, &state);
 
-      let global_state_ = state.global_state.clone();
-      i.set_js_error_create(move |v8_exception| {
-        JSError::from_v8_exception(v8_exception, &global_state_.ts_compiler)
-      })
-    }
+    let global_state_ = state.global_state.clone();
+    isolate.set_js_error_create(move |v8_exception| {
+      JSError::from_v8_exception(v8_exception, &global_state_.ts_compiler)
+    });
 
     Self {
       name,
-      isolate,
+      isolate: Arc::new(AsyncMutex::new(isolate)),
       state,
       external_channels: Arc::new(Mutex::new(external_channels)),
     }
-  }
-
-  pub fn set_error_handler(
-    &mut self,
-    handler: Box<dyn FnMut(ErrBox) -> Result<(), ErrBox>>,
-  ) {
-    let mut i = self.isolate.try_lock().unwrap();
-    i.set_error_handler(handler);
   }
 
   /// Same as execute2() but the filename defaults to "$CWD/__anonymous__".
@@ -188,7 +175,7 @@ impl Future for Worker {
 /// that will return message received from worker or None
 /// if worker's channel has been closed.
 pub struct WorkerReceiver {
-  channels: Arc<Mutex<WorkerChannels>>,
+  pub channels: Arc<Mutex<WorkerChannels>>,
 }
 
 impl Future for WorkerReceiver {
@@ -255,7 +242,6 @@ mod tests {
       global_state,
       None,
       Some(module_specifier.clone()),
-      true,
       int,
     )
     .unwrap();
@@ -299,7 +285,6 @@ mod tests {
       global_state,
       None,
       Some(module_specifier.clone()),
-      true,
       int,
     )
     .unwrap();
@@ -342,7 +327,6 @@ mod tests {
       global_state.clone(),
       None,
       Some(module_specifier.clone()),
-      true,
       int,
     )
     .unwrap();

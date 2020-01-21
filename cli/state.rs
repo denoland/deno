@@ -7,7 +7,7 @@ use crate::metrics::Metrics;
 use crate::ops::JsonOp;
 use crate::ops::MinimalOp;
 use crate::permissions::DenoPermissions;
-use crate::worker::Worker;
+use crate::web_worker::WebWorker;
 use crate::worker::WorkerChannels;
 use deno_core::Buf;
 use deno_core::CoreOp;
@@ -44,7 +44,6 @@ pub struct ThreadSafeState(Arc<State>);
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct State {
   pub global_state: ThreadSafeGlobalState,
-  pub modules: Arc<Mutex<deno_core::Modules>>,
   pub permissions: Arc<Mutex<DenoPermissions>>,
   pub main_module: Option<ModuleSpecifier>,
   pub worker_channels: Mutex<WorkerChannels>,
@@ -53,12 +52,11 @@ pub struct State {
   pub import_map: Option<ImportMap>,
   pub metrics: Metrics,
   pub global_timer: Mutex<GlobalTimer>,
-  pub workers: Mutex<HashMap<u32, Worker>>,
+  pub workers: Mutex<HashMap<u32, WebWorker>>,
   pub loading_workers: Mutex<HashMap<u32, mpsc::Receiver<Result<(), ErrBox>>>>,
   pub next_worker_id: AtomicUsize,
   pub start_time: Instant,
   pub seeded_rng: Option<Mutex<StdRng>>,
-  pub include_deno_namespace: bool,
   pub resource_table: Mutex<ResourceTable>,
 }
 
@@ -219,7 +217,6 @@ impl ThreadSafeState {
     // If Some(perm), use perm. Else copy from global_state.
     shared_permissions: Option<Arc<Mutex<DenoPermissions>>>,
     main_module: Option<ModuleSpecifier>,
-    include_deno_namespace: bool,
     internal_channels: WorkerChannels,
   ) -> Result<Self, ErrBox> {
     let import_map: Option<ImportMap> =
@@ -233,7 +230,6 @@ impl ThreadSafeState {
       None => None,
     };
 
-    let modules = Arc::new(Mutex::new(deno_core::Modules::new()));
     let permissions = if let Some(perm) = shared_permissions {
       perm
     } else {
@@ -242,7 +238,6 @@ impl ThreadSafeState {
 
     let state = State {
       global_state,
-      modules,
       main_module,
       permissions,
       import_map,
@@ -254,14 +249,14 @@ impl ThreadSafeState {
       next_worker_id: AtomicUsize::new(0),
       start_time: Instant::now(),
       seeded_rng,
-      include_deno_namespace,
+
       resource_table: Mutex::new(ResourceTable::default()),
     };
 
     Ok(ThreadSafeState(Arc::new(state)))
   }
 
-  pub fn add_child_worker(&self, worker: Worker) -> u32 {
+  pub fn add_child_worker(&self, worker: WebWorker) -> u32 {
     let worker_id = self.next_worker_id.fetch_add(1, Ordering::Relaxed) as u32;
     let mut workers_tl = self.workers.lock().unwrap();
     workers_tl.insert(worker_id, worker);
@@ -344,7 +339,6 @@ impl ThreadSafeState {
       ThreadSafeGlobalState::mock(argv),
       None,
       module_specifier,
-      true,
       internal_channels,
     )
     .unwrap()

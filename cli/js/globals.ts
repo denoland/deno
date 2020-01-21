@@ -21,6 +21,7 @@ import * as textEncoding from "./text_encoding.ts";
 import * as timers from "./timers.ts";
 import * as url from "./url.ts";
 import * as urlSearchParams from "./url_search_params.ts";
+import * as workerRuntime from "./worker_main.ts";
 import * as workers from "./workers.ts";
 import * as performanceUtil from "./performance.ts";
 import * as request from "./request.ts";
@@ -194,12 +195,12 @@ const globalProperties = {
   Response: nonEnumerable(fetchTypes.Response),
   performance: writable(new performanceUtil.Performance()),
 
-  onmessage: writable(workers.onmessage),
-  onerror: writable(workers.onerror),
+  onmessage: writable(workerRuntime.onmessage),
+  onerror: writable(workerRuntime.onerror),
 
-  workerMain: nonEnumerable(workers.workerMain),
-  workerClose: nonEnumerable(workers.workerClose),
-  postMessage: writable(workers.postMessage),
+  workerMain: nonEnumerable(workerRuntime.workerMain),
+  workerClose: nonEnumerable(workerRuntime.workerClose),
+  postMessage: writable(workerRuntime.postMessage),
   Worker: nonEnumerable(workers.WorkerImpl),
 
   [domTypes.eventTargetHost]: nonEnumerable(null),
