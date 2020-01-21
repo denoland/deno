@@ -684,7 +684,7 @@ test({
 
     const server = serve(":8123");
     iteratorReq(server);
-    const conn = await Deno.dial({ hostname: "127.0.0.1", port: 8123 });
+    const conn = await Deno.connect({ hostname: "127.0.0.1", port: 8123 });
     await Deno.writeAll(
       conn,
       new TextEncoder().encode("GET /hello HTTP/1.1\r\n\r\n")

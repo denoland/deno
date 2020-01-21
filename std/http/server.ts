@@ -450,7 +450,11 @@ export class Server implements AsyncIterable<ServerRequest> {
     }
 
     this.untrackConnection(conn);
-    conn.close();
+    try {
+      conn.close();
+    } catch (e) {
+      // might have been already closed
+    }
   }
 
   private trackConnection(conn: Conn): void {

@@ -10,6 +10,7 @@ use deno_core::*;
 use futures::future::FutureExt;
 use futures::ready;
 use std::future::Future;
+use std::net::Shutdown;
 use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
@@ -87,6 +88,17 @@ pub enum StreamResource {
 }
 
 impl Resource for StreamResource {}
+
+impl Drop for StreamResource {
+  fn drop(&mut self) {
+    match self {
+      StreamResource::TcpStream(stream) => {
+        let _ = stream.shutdown(Shutdown::Both);
+      }
+      _ => {}
+    }
+  }
+}
 
 /// `DenoAsyncRead` is the same as the `tokio_io::AsyncRead` trait
 /// but uses an `ErrBox` error instead of `std::io:Error`
