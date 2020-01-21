@@ -52,27 +52,6 @@ impl Worker {
   ) -> Self {
     let mut isolate =
       deno_core::EsIsolate::new(Box::new(state.clone()), startup_data, false);
-    let op_registry = isolate.op_registry.clone();
-
-    ops::runtime_compiler::init(&mut isolate, &state);
-    ops::compiler::init(&mut isolate, &state);
-    ops::errors::init(&mut isolate, &state);
-    ops::fetch::init(&mut isolate, &state);
-    ops::files::init(&mut isolate, &state);
-    ops::fs::init(&mut isolate, &state);
-    ops::io::init(&mut isolate, &state);
-    ops::plugins::init(&mut isolate, &state, op_registry);
-    ops::net::init(&mut isolate, &state);
-    ops::tls::init(&mut isolate, &state);
-    ops::os::init(&mut isolate, &state);
-    ops::permissions::init(&mut isolate, &state);
-    ops::process::init(&mut isolate, &state);
-    ops::random::init(&mut isolate, &state);
-    ops::repl::init(&mut isolate, &state);
-    ops::resources::init(&mut isolate, &state);
-    ops::timers::init(&mut isolate, &state);
-    ops::worker_host::init(&mut isolate, &state);
-    ops::web_worker::init(&mut isolate, &state);
 
     let global_state_ = state.global_state.clone();
     isolate.set_js_error_create(move |v8_exception| {
@@ -190,7 +169,6 @@ impl MainWorker {
       let op_registry = isolate.op_registry.clone();
 
       ops::runtime_compiler::init(&mut isolate, &state);
-      ops::compiler::init(&mut isolate, &state);
       ops::errors::init(&mut isolate, &state);
       ops::fetch::init(&mut isolate, &state);
       ops::files::init(&mut isolate, &state);
