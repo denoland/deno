@@ -5,6 +5,7 @@ import * as dispatch from "./dispatch.ts";
 import { sendAsync, sendSync } from "./dispatch_json.ts";
 import { log } from "./util.ts";
 import { TextDecoder, TextEncoder } from "./text_encoding.ts";
+import { initOps } from "./os.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -45,16 +46,7 @@ export function workerClose(): void {
 }
 
 export async function bootstrapWorkerRuntime(): Promise<void> {
-  const ops = core.ops();
-  // TODO(bartlomieju): this is a prototype, we should come up with
-  // something a bit more sophisticated
-  for (const [name, opId] of Object.entries(ops)) {
-    const opName = `OP_${name.toUpperCase()}`;
-    // Assign op ids to actual variables
-    // TODO(ry) This type casting is gross and should be fixed.
-    ((dispatch as unknown) as { [key: string]: number })[opName] = opId;
-    core.setAsyncHandler(opId, dispatch.getAsyncHandler(opName));
-  }
+  initOps();
 
   log("bootstrapWorkerRuntime");
 

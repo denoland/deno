@@ -111,12 +111,13 @@ declare global {
     callback: (event: domTypes.Event) => void | null,
     options?: boolean | domTypes.AddEventListenerOptions | undefined
   ) => void;
-  var compilerMain: (() => void) | undefined;
+  var bootstrapTsCompiler: (() => void) | undefined;
   var console: consoleTypes.Console;
   var Deno: {
     core: DenoCore;
   };
-  var denoMain: (() => void) | undefined;
+  var bootstrapCompilerRuntime: ((compilerType: string) => void) | undefined;
+  var bootstrapMainRuntime: (() => void) | undefined;
   var location: domTypes.Location;
   var onerror:
     | ((
@@ -132,7 +133,7 @@ declare global {
   var onmessage: ((e: { data: any }) => Promise<void> | void) | undefined;
   var onunload: ((e: domTypes.Event) => void) | undefined;
   var queueMicrotask: (callback: () => void) => void;
-  var wasmCompilerMain: (() => void) | undefined;
+  var bootstrapWasmCompiler: (() => void) | undefined;
   var bootstrapWorkerRuntime: (() => Promise<void> | void) | undefined;
   /* eslint-enable */
 }

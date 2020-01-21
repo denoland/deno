@@ -339,7 +339,7 @@ mod tests {
         state,
         ext,
       );
-      worker.execute("denoMain()").unwrap();
+      worker.execute("bootstrapMainRuntime()").unwrap();
       let result = worker
         .execute_mod_async(&module_specifier, None, false)
         .await;
@@ -371,7 +371,7 @@ mod tests {
       state,
       ext,
     );
-    worker.execute("denoMain()").unwrap();
+    worker.execute("bootstrapMainRuntime()").unwrap();
     worker.execute("bootstrapWorkerRuntime()").unwrap();
     worker
   }
