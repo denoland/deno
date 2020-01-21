@@ -45,7 +45,7 @@ pub fn read_file(_s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
   let v: ReadFile = serde_json::from_value(v)?;
   let (module_name, source_code) = if v.file_name.starts_with("$asset$/") {
     let asset = v.file_name.replace("$asset$/", "");
-    let source_code = crate::get_asset2(&asset)?;
+    let source_code = crate::get_asset2(&asset)?.to_string();
     (asset, source_code)
   } else {
     assert!(!v.file_name.starts_with("$assets$"), "you meant $asset$");
