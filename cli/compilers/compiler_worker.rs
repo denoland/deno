@@ -30,6 +30,9 @@ impl CompilerWorker {
       let mut isolate = worker.isolate.try_lock().unwrap();
       ops::compiler::init(&mut isolate, &state);
       ops::web_worker::init(&mut isolate, &state);
+      // TODO(bartlomieju): CompilerWorker should not
+      // depend on `os` ops
+      ops::os::init(&mut isolate, &state);
     }
 
     Self(worker)

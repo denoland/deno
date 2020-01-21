@@ -272,7 +272,7 @@ mod tests {
     let state_ = state.clone();
     tokio_util::run(async move {
       let mut worker =
-        Worker::new("TEST".to_string(), StartupData::None, state, ext);
+        MainWorker::new("TEST".to_string(), StartupData::None, state, ext);
       let result = worker
         .execute_mod_async(&module_specifier, None, false)
         .await;
@@ -315,7 +315,7 @@ mod tests {
     let state_ = state.clone();
     tokio_util::run(async move {
       let mut worker =
-        Worker::new("TEST".to_string(), StartupData::None, state, ext);
+        MainWorker::new("TEST".to_string(), StartupData::None, state, ext);
       let result = worker
         .execute_mod_async(&module_specifier, None, false)
         .await;
@@ -357,7 +357,7 @@ mod tests {
     let global_state_ = global_state;
     let state_ = state.clone();
     tokio_util::run(async move {
-      let mut worker = Worker::new(
+      let mut worker = MainWorker::new(
         "TEST".to_string(),
         startup_data::deno_isolate_init(),
         state,
@@ -383,13 +383,13 @@ mod tests {
     drop(http_server_guard);
   }
 
-  fn create_test_worker() -> Worker {
+  fn create_test_worker() -> MainWorker {
     let (int, ext) = ThreadSafeState::create_channels();
     let state = ThreadSafeState::mock(
       vec![String::from("./deno"), String::from("hello.js")],
       int,
     );
-    let mut worker = Worker::new(
+    let mut worker = MainWorker::new(
       "TEST".to_string(),
       startup_data::deno_isolate_init(),
       state,
