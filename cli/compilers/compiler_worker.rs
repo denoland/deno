@@ -44,9 +44,10 @@ impl CompilerWorker {
       ops::compiler::init(&mut isolate, &state);
       ops::web_worker::init(&mut isolate, &state);
       // TODO(bartlomieju): CompilerWorker should not
-      // depend on `os`, `files`, `fs` ops
+      // depend on those ops
       ops::os::init(&mut isolate, &state);
       ops::files::init(&mut isolate, &state);
+      ops::fs::init(&mut isolate, &state);
       ops::io::init(&mut isolate, &state);
     }
 
