@@ -1,12 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use deno_core::*;
 use futures::future::FutureExt;
-use futures::task::SpawnExt;
 pub use serde_derive::Deserialize;
 use serde_json::json;
 pub use serde_json::Value;
 use std::future::Future;
 use std::pin::Pin;
+use tokio::task;
 
 pub type AsyncJsonOp =
   Pin<Box<dyn Future<Output = Result<Value, ErrBox>> + Send>>;
@@ -96,11 +96,12 @@ where
   if is_sync {
     Ok(JsonOp::Sync(f()?))
   } else {
-    //TODO(afinch7) replace this with something more efficent.
-    let pool = futures::executor::ThreadPool::new().unwrap();
-    let handle = pool
-      .spawn_with_handle(futures::future::lazy(move |_cx| f()))
-      .unwrap();
-    Ok(JsonOp::Async(handle.boxed()))
+    let fut = async move {
+      task::spawn_blocking(move || f())
+        .await
+        .map_err(ErrBox::from)?
+    }
+    .boxed();
+    Ok(JsonOp::Async(fut.boxed()))
   }
 }
