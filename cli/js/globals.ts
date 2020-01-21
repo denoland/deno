@@ -133,7 +133,7 @@ declare global {
   var onunload: ((e: domTypes.Event) => void) | undefined;
   var queueMicrotask: (callback: () => void) => void;
   var wasmCompilerMain: (() => void) | undefined;
-  var workerMain: (() => Promise<void> | void) | undefined;
+  var bootstrapWorkerRuntime: (() => Promise<void> | void) | undefined;
   /* eslint-enable */
 }
 
@@ -198,7 +198,7 @@ const globalProperties = {
   onmessage: writable(workerRuntime.onmessage),
   onerror: writable(workerRuntime.onerror),
 
-  workerMain: nonEnumerable(workerRuntime.workerMain),
+  bootstrapWorkerRuntime: nonEnumerable(workerRuntime.bootstrapWorkerRuntime),
   workerClose: nonEnumerable(workerRuntime.workerClose),
   postMessage: writable(workerRuntime.postMessage),
   Worker: nonEnumerable(workers.WorkerImpl),

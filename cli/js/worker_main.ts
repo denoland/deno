@@ -44,7 +44,7 @@ export function workerClose(): void {
   isClosing = true;
 }
 
-export async function workerMain(): Promise<void> {
+export async function bootstrapWorkerRuntime(): Promise<void> {
   const ops = core.ops();
   // TODO(bartlomieju): this is a prototype, we should come up with
   // something a bit more sophisticated
@@ -56,12 +56,12 @@ export async function workerMain(): Promise<void> {
     core.setAsyncHandler(opId, dispatch.getAsyncHandler(opName));
   }
 
-  log("workerMain");
+  log("bootstrapWorkerRuntime");
 
   while (!isClosing) {
     const data = await getMessage();
     if (data == null) {
-      log("workerMain got null message. quitting.");
+      log("bootstrapWorkerRuntime got null message. quitting.");
       break;
     }
 
