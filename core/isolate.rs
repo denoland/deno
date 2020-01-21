@@ -200,7 +200,7 @@ impl Drop for Isolate {
     // Clear persistent handles we own.
     {
       let mut locker = v8::Locker::new(&isolate);
-      let mut hs = v8::HandleScope::new(&mut locker);
+      let mut hs = v8::HandleScope::new(locker.enter());
       let scope = hs.enter();
       // </Boilerplate>
       self.global_context.reset(scope);
@@ -232,7 +232,7 @@ static DENO_INIT: Once = Once::new();
 
 #[allow(clippy::missing_safety_doc)]
 pub unsafe fn v8_init() {
-  let platform = v8::platform::new_default_platform();
+  let platform = v8::new_default_platform();
   v8::V8::initialize_platform(platform);
   v8::V8::initialize();
   // TODO(ry) This makes WASM compile synchronously. Eventually we should
@@ -282,16 +282,14 @@ impl Isolate {
       let isolate = Isolate::setup_isolate(isolate);
 
       let mut locker = v8::Locker::new(&isolate);
-      {
-        let mut hs = v8::HandleScope::new(&mut locker);
-        let scope = hs.enter();
-        let context = v8::Context::new(scope);
-        // context.enter();
-        global_context.set(scope, context);
-        creator.set_default_context(context);
-        bindings::initialize_context(scope, context);
-        // context.exit();
-      }
+      let scope = locker.enter();
+
+      let mut hs = v8::HandleScope::new(scope);
+      let scope = hs.enter();
+
+      let context = bindings::initialize_context(scope);
+      global_context.set(scope, context);
+      creator.set_default_context(context);
 
       (isolate, Some(creator))
     } else {
@@ -302,23 +300,25 @@ impl Isolate {
         params.set_snapshot_blob(snapshot);
       }
 
-      let load_snapshot_is_null = load_snapshot.is_none();
       let isolate = v8::Isolate::new(params);
       let isolate = Isolate::setup_isolate(isolate);
 
-      {
-        let mut locker = v8::Locker::new(&isolate);
-        let mut hs = v8::HandleScope::new(&mut locker);
-        let scope = hs.enter();
-        let context = v8::Context::new(scope);
+      let mut locker = v8::Locker::new(&isolate);
+      let scope = locker.enter();
 
-        if load_snapshot_is_null {
+      let mut hs = v8::HandleScope::new(scope);
+      let scope = hs.enter();
+
+      let context = match load_snapshot {
+        Some(_) => v8::Context::new(scope),
+        None => {
           // If no snapshot is provided, we initialize the context with empty
           // main source code and source maps.
-          bindings::initialize_context(scope, context);
+          bindings::initialize_context(scope)
         }
-        global_context.set(scope, context);
-      }
+      };
+      global_context.set(scope, context);
+
       (isolate, None)
     };
 
@@ -374,7 +374,7 @@ impl Isolate {
   pub fn clear_exception(&mut self) {
     let isolate = self.v8_isolate.as_ref().unwrap();
     let mut locker = v8::Locker::new(isolate);
-    let mut hs = v8::HandleScope::new(&mut locker);
+    let mut hs = v8::HandleScope::new(locker.enter());
     let scope = hs.enter();
     self.last_exception_handle.reset(scope);
     self.last_exception.take();
@@ -395,7 +395,7 @@ impl Isolate {
       let exception = if exception.is_null_or_undefined() {
         let exception_str =
           v8::String::new(scope, "execution terminated").unwrap();
-        v8::error(scope, exception_str)
+        v8::Exception::error(scope, exception_str)
       } else {
         exception
       };
@@ -419,7 +419,7 @@ impl Isolate {
     context: v8::Local<'a, v8::Context>,
     exception: v8::Local<'a, v8::Value>,
   ) -> String {
-    let message = v8::create_message(scope, exception);
+    let message = v8::Exception::create_message(scope, exception);
     self.encode_message_as_json(scope, context, message)
   }
 
@@ -432,15 +432,6 @@ impl Isolate {
     let json_obj = bindings::encode_message_as_object(s, context, message);
     let json_string = v8::json::stringify(context, json_obj.into()).unwrap();
     json_string.to_rust_string_lossy(s)
-  }
-
-  #[allow(dead_code)]
-  pub fn run_microtasks(&mut self) {
-    let isolate = self.v8_isolate.as_mut().unwrap();
-    let _locker = v8::Locker::new(isolate);
-    isolate.enter();
-    isolate.run_microtasks();
-    isolate.exit();
   }
 
   // TODO(bartlomieju): `error_handler` should be removed
@@ -545,24 +536,25 @@ impl Isolate {
     let isolate = self.v8_isolate.as_ref().unwrap();
     let mut locker = v8::Locker::new(isolate);
     assert!(!self.global_context.is_empty());
-    let mut hs = v8::HandleScope::new(&mut locker);
-    let s = hs.enter();
-    let mut context = self.global_context.get(s).unwrap();
-    context.enter();
-    let source = v8::String::new(s, js_source).unwrap();
-    let name = v8::String::new(s, js_filename).unwrap();
-    let mut try_catch = v8::TryCatch::new(s);
+    let mut hs = v8::HandleScope::new(locker.enter());
+    let scope = hs.enter();
+    let context = self.global_context.get(scope).unwrap();
+    let mut cs = v8::ContextScope::new(scope, context);
+    let scope = cs.enter();
+
+    let source = v8::String::new(scope, js_source).unwrap();
+    let name = v8::String::new(scope, js_filename).unwrap();
+    let mut try_catch = v8::TryCatch::new(scope);
     let tc = try_catch.enter();
-    let origin = bindings::script_origin(s, name);
+    let origin = bindings::script_origin(scope, name);
     let mut script =
-      v8::Script::compile(s, context, source, Some(&origin)).unwrap();
-    let result = script.run(s, context);
+      v8::Script::compile(scope, context, source, Some(&origin)).unwrap();
+    let result = script.run(scope, context);
     if result.is_none() {
       assert!(tc.has_caught());
       let exception = tc.exception().unwrap();
-      self.handle_exception(s, context, exception);
+      self.handle_exception(scope, context, exception);
     }
-    context.exit();
     self.check_last_exception()
   }
 
@@ -596,10 +588,11 @@ impl Isolate {
 
     let mut locker = v8::Locker::new(isolate);
     assert!(!self.global_context.is_empty());
-    let mut hs = v8::HandleScope::new(&mut locker);
+    let mut hs = v8::HandleScope::new(locker.enter());
     let scope = hs.enter();
-    let mut context = self.global_context.get(scope).unwrap();
-    context.enter();
+    let context = self.global_context.get(scope).unwrap();
+    let mut cs = v8::ContextScope::new(scope, context);
+    let scope = cs.enter();
 
     let pending_promises: Vec<(i32, v8::Global<v8::Value>)> =
       self.pending_promise_map.drain().collect();
@@ -608,17 +601,15 @@ impl Isolate {
       self.handle_exception(scope, context, error);
       handle.reset(scope);
     }
-
-    context.exit();
   }
 
   fn throw_exception(&mut self, text: &str) {
     let isolate = self.v8_isolate.as_ref().unwrap();
     let mut locker = v8::Locker::new(isolate);
-    let mut hs = v8::HandleScope::new(&mut locker);
+    let mut hs = v8::HandleScope::new(locker.enter());
     let scope = hs.enter();
     let msg = v8::String::new(scope, text).unwrap();
-    isolate.throw_exception(msg.into());
+    scope.isolate().throw_exception(msg.into());
   }
 
   fn async_op_response2(&mut self, op_id: OpId, buf: Box<[u8]>) {
@@ -626,10 +617,11 @@ impl Isolate {
     // println!("deno_execute -> Isolate ptr {:?}", isolate);
     let mut locker = v8::Locker::new(isolate);
     assert!(!self.global_context.is_empty());
-    let mut hs = v8::HandleScope::new(&mut locker);
+    let mut hs = v8::HandleScope::new(locker.enter());
     let scope = hs.enter();
-    let mut context = self.global_context.get(scope).unwrap();
-    context.enter();
+    let context = self.global_context.get(scope).unwrap();
+    let mut cs = v8::ContextScope::new(scope, context);
+    let scope = cs.enter();
 
     let mut try_catch = v8::TryCatch::new(scope);
     let tc = try_catch.enter();
@@ -642,28 +634,24 @@ impl Isolate {
       return;
     }
 
-    let mut argc = 0;
-    let mut args: Vec<v8::Local<v8::Value>> = vec![];
+    let global: v8::Local<v8::Value> = context.global(scope).into();
 
-    if !buf.is_empty() {
-      argc = 2;
-      let op_id = v8::Integer::new(scope, op_id as i32);
-      args.push(op_id.into());
-      let buf = unsafe { bindings::slice_to_uint8array(self, scope, &buf) };
-      args.push(buf.into());
-    }
-
-    let global = context.global(scope);
-    let maybe_value =
+    let maybe_value = if !buf.is_empty() {
+      let op_id: v8::Local<v8::Value> =
+        v8::Integer::new(scope, op_id as i32).into();
+      let buf: v8::Local<v8::Value> =
+        unsafe { bindings::slice_to_uint8array(self, scope, &buf) }.into();
       js_recv_cb
         .unwrap()
-        .call(scope, context, global.into(), argc, args);
+        .call(scope, context, global, &[op_id, buf])
+    } else {
+      js_recv_cb.unwrap().call(scope, context, global, &[])
+    };
 
     if tc.has_caught() {
       assert!(maybe_value.is_none());
       self.handle_exception(scope, context, tc.exception().unwrap());
     }
-    context.exit();
   }
 
   fn async_op_response(
@@ -689,7 +677,7 @@ impl Isolate {
 
     let isolate = self.v8_isolate.as_ref().unwrap();
     let mut locker = v8::Locker::new(isolate);
-    let mut hs = v8::HandleScope::new(&mut locker);
+    let mut hs = v8::HandleScope::new(locker.enter());
     let scope = hs.enter();
     self.global_context.reset(scope);
 
