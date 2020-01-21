@@ -42,7 +42,7 @@ fn compiler_snapshot() {
   deno_core::js_check(isolate.execute(
     "<anon>",
     r#"
-      if (!compilerMain) {
+      if (!bootstrapTsCompiler) {
         throw Error("bad");
       }
       console.log(`ts version: ${ts.version}`);

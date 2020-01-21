@@ -11,8 +11,8 @@ import { setLocation } from "./location.ts";
 import { setBuildInfo } from "./build.ts";
 import { setSignals } from "./process.ts";
 
-function denoMain(preserveDenoNamespace = true, name?: string): void {
-  const s = os.start(preserveDenoNamespace, name);
+function bootstrapMainRuntime(): void {
+  const s = os.start(true);
 
   setBuildInfo(s.os, s.arch);
   setSignals();
@@ -35,4 +35,4 @@ function denoMain(preserveDenoNamespace = true, name?: string): void {
     replLoop();
   }
 }
-globalThis["denoMain"] = denoMain;
+globalThis["bootstrapMainRuntime"] = bootstrapMainRuntime;

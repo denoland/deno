@@ -1,10 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { core } from "./core.ts";
 import * as dispatch from "./dispatch.ts";
 import { sendAsync, sendSync } from "./dispatch_json.ts";
 import { log } from "./util.ts";
 import { TextDecoder, TextEncoder } from "./text_encoding.ts";
+import { initOps } from "./os.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -44,24 +44,15 @@ export function workerClose(): void {
   isClosing = true;
 }
 
-export async function workerMain(): Promise<void> {
-  const ops = core.ops();
-  // TODO(bartlomieju): this is a prototype, we should come up with
-  // something a bit more sophisticated
-  for (const [name, opId] of Object.entries(ops)) {
-    const opName = `OP_${name.toUpperCase()}`;
-    // Assign op ids to actual variables
-    // TODO(ry) This type casting is gross and should be fixed.
-    ((dispatch as unknown) as { [key: string]: number })[opName] = opId;
-    core.setAsyncHandler(opId, dispatch.getAsyncHandler(opName));
-  }
+export async function bootstrapWorkerRuntime(): Promise<void> {
+  initOps();
 
-  log("workerMain");
+  log("bootstrapWorkerRuntime");
 
   while (!isClosing) {
     const data = await getMessage();
     if (data == null) {
-      log("workerMain got null message. quitting.");
+      log("bootstrapWorkerRuntime got null message. quitting.");
       break;
     }
 

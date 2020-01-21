@@ -115,7 +115,7 @@ fn op_create_worker(
   let name = format!("USER-WORKER-{}", specifier);
   let mut worker =
     WebWorker::new(name, startup_data::deno_isolate_init(), child_state, ext);
-  js_check(worker.execute("workerMain()"));
+  js_check(worker.execute("bootstrapWorkerRuntime()"));
 
   let worker_id = parent_state.add_child_worker(worker.clone());
 
@@ -269,7 +269,7 @@ fn op_host_resume_worker(
 
   let mut workers_table = state_.workers.lock().unwrap();
   let worker = workers_table.get_mut(&id).unwrap();
-  js_check(worker.execute("workerMain()"));
+  js_check(worker.execute("bootstrapWorkerRuntime()"));
   Ok(JsonOp::Sync(json!({})))
 }
 
