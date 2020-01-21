@@ -9,6 +9,10 @@ import {
   fail
 } from "./test_util.ts";
 
+import {
+  Response
+} from "./fetch.ts";
+
 testPerm({ net: true }, async function fetchConnectionError(): Promise<void> {
   let err;
   try {
@@ -362,7 +366,7 @@ testPerm({ net: true }, async function fetchPostBodyTypedArray():Promise<void> {
 });
 */
 
-testPerm({ net: true }, async function fetchWithRedirection(): Promise<void> {
+testPerm({ net: true }, async function fetchWithManualRedirection(): Promise<void> {
   const response = await fetch("http://localhost:4546/", {
     redirect: "manual"
   }); // will redirect to http://localhost:4545/
@@ -373,9 +377,37 @@ testPerm({ net: true }, async function fetchWithRedirection(): Promise<void> {
   try {
     await response.text();
     fail(
-      "Reponse.text() on a filtered response without a body (opaqueredirect)"
+      "Reponse.text() didn't throw on a filtered response without a body (type opaqueredirect)"
     );
   } catch (e) {
     return;
   }
+});
+
+testPerm({ net: true }, async function fetchWithErrorRedirection(): Promise<void> {
+  const response = await fetch("http://localhost:4546/", {
+    redirect: "error"
+  }); // will redirect to http://localhost:4545/
+  assertEquals(response.status, 0);
+  assertEquals(response.statusText, "");
+  assertEquals(response.url, "");
+  assertEquals(response.type, "error");
+  try {
+    await response.text();
+    fail(
+      "Reponse.text() didn't on a filtered response without a body (type error)"
+    );
+  } catch (e) {
+    return;
+  }
+});
+
+test(function responseRedirect(): void {
+  const response = new Response("example.com/beforeredirect", 200, "OK", [["This-Should", "Disappear"]], -1, false, null);
+  const redir = response.redirect("example.com/newLocation", 301);
+  assertEquals(redir.status, 0);
+  assertEquals(redir.statusText, "");
+  assertEquals(redir.url, "");
+  assertEquals(redir.headers.get("Location"), "example.com/newLocation");
+  assertEquals(redir.type, "default");
 });
