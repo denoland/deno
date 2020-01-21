@@ -203,10 +203,6 @@ pub fn mksnapshot_bundle_ts(
   state: Arc<Mutex<TSState>>,
 ) -> Result<(), ErrBox> {
   let runtime_isolate = &mut Isolate::new(StartupData::None, true);
-  runtime_isolate.register_op(
-    "fetch_asset",
-    compiler_op(state.clone(), ops::json_op(ops::fetch_asset)),
-  );
   let source_code_vec = std::fs::read(bundle)?;
   let source_code = std::str::from_utf8(&source_code_vec)?;
 
