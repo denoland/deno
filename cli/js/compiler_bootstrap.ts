@@ -3,7 +3,7 @@
 import { ASSETS, Host } from "./compiler_host.ts";
 import { core } from "./core.ts";
 import * as dispatch from "./dispatch.ts";
-import { TextDecoder, TextEncoder } from "./text_encoding.ts";
+import { getAsset } from "./compiler_util.ts";
 
 // This registers ops that are available during the snapshotting process.
 const ops = core.ops();
@@ -26,15 +26,9 @@ export const oldProgram = ts.createProgram({
   host
 });
 
-/** A module loader which is concatenated into bundle files.  
- * 
- * We read all static assets during the snapshotting process, which is 
- * why this is located in compiler_bootstrap. 
+/** A module loader which is concatenated into bundle files.
+ *
+ * We read all static assets during the snapshotting process, which is
+ * why this is located in compiler_bootstrap.
  **/
-const encoder = new TextEncoder();
-const decoder = new TextDecoder();
-const sourceCodeBytes = core.dispatch(
-  dispatch.OP_FETCH_ASSET,
-  encoder.encode("bundle_loader.js")
-);
-export const bundleLoader = decoder.decode(sourceCodeBytes!);
+export const bundleLoader = getAsset("bundle_loader.js");

@@ -1,13 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import { MediaType, SourceFile } from "./compiler_sourcefile.ts";
-import { OUT_DIR, WriteFileCallback } from "./compiler_util.ts";
+import { OUT_DIR, WriteFileCallback, getAsset } from "./compiler_util.ts";
 import { cwd } from "./dir.ts";
-import * as dispatch from "./dispatch.ts";
 import { assert, notImplemented } from "./util.ts";
 import * as util from "./util.ts";
-import { core } from "./core.ts";
-import { TextDecoder, TextEncoder } from "./text_encoding.ts";
 
 export interface CompilerHostOptions {
   bundle?: boolean;
@@ -136,16 +133,7 @@ export class Host implements ts.CompilerHost {
       return sourceFile;
     }
     const name = url.includes(".") ? url : `${url}.d.ts`;
-    const encoder = new TextEncoder();
-    const decoder = new TextDecoder();
-    // NOTE: this op is called only during snapshotting,
-    // and we really don't want to depend on JSON dispatch
-    // during snapshotting
-    const sourceCodeBytes = core.dispatch(
-      dispatch.OP_FETCH_ASSET,
-      encoder.encode(name)
-    );
-    const sourceCode = decoder.decode(sourceCodeBytes!);
+    const sourceCode = getAsset(name);
     return new SourceFile({
       url,
       filename,
