@@ -1,10 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import { MediaType, SourceFile } from "./compiler_sourcefile.ts";
-import { OUT_DIR, WriteFileCallback } from "./compiler_util.ts";
+import { OUT_DIR, WriteFileCallback, getAsset } from "./compiler_util.ts";
 import { cwd } from "./dir.ts";
-import { sendSync } from "./dispatch_json.ts";
-import * as dispatch from "./dispatch.ts";
 import { assert, notImplemented } from "./util.ts";
 import * as util from "./util.ts";
 
@@ -135,7 +133,7 @@ export class Host implements ts.CompilerHost {
       return sourceFile;
     }
     const name = url.includes(".") ? url : `${url}.d.ts`;
-    const sourceCode = sendSync(dispatch.OP_FETCH_ASSET, { name });
+    const sourceCode = getAsset(name);
     return new SourceFile({
       url,
       filename,

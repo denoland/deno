@@ -7,7 +7,7 @@ use serde::Deserialize;
 use serde_json::json;
 use serde_json::Value;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct WrittenFile {
   pub url: String,
   pub module_name: String,
@@ -41,14 +41,19 @@ struct ReadFile {
   should_create_new_source_file: bool,
 }
 
-pub fn read_file(s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
+pub fn read_file(_s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
   let v: ReadFile = serde_json::from_value(v)?;
   let (module_name, source_code) = if v.file_name.starts_with("$asset$/") {
     let asset = v.file_name.replace("$asset$/", "");
 
-    let source_code = match s.custom_assets.get(&asset) {
-      Some(asset_path) => std::fs::read_to_string(&asset_path)?,
-      None => crate::get_asset2(&asset)?.to_string(),
+    let source_code = match crate::get_asset(&asset) {
+      Some(code) => code.to_string(),
+      None => {
+        return Err(
+          std::io::Error::new(std::io::ErrorKind::NotFound, "Asset not found")
+            .into(),
+        );
+      }
     };
 
     (asset, source_code)
@@ -113,27 +118,6 @@ pub fn resolve_module_names(
     }
   }
   Ok(json!(resolved))
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct FetchAssetArgs {
-  name: String,
-}
-
-pub fn fetch_asset(s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
-  let args: FetchAssetArgs = serde_json::from_value(v)?;
-
-  if let Some(asset_path) = s.custom_assets.get(&args.name) {
-    let source_code = std::fs::read_to_string(&asset_path)?;
-    return Ok(json!(source_code));
-  }
-
-  if let Some(source_code) = crate::get_asset(&args.name) {
-    Ok(json!(source_code))
-  } else {
-    panic!("op_fetch_asset bad asset {}", args.name)
-  }
 }
 
 #[derive(Debug, Deserialize)]
