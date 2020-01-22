@@ -10,7 +10,7 @@ jobs:
     strategy:
       matrix:
         os: [macOS-latest, windows-2019, ubuntu-16.04]
-        kind: ['test', 'test_debug', 'bench', 'lint', 'test_publish']
+        kind: ['test', 'test_debug', 'bench', 'lint']
         exclude:
           - os: windows-2019
             kind: 'bench'
@@ -26,11 +26,6 @@ jobs:
             kind: 'test_debug'
           - os: macOS-latest
             kind: 'test_debug'
-
-          - os: windows-2019
-            kind: 'test_publish'
-          - os: macOS-latest
-            kind: 'test_publish'
     steps:
       - name: Configure git
         run: git config --global core.symlinks true
@@ -131,10 +126,6 @@ jobs:
       - name: Build
         if: matrix.kind == 'test' || matrix.kind == 'bench'
         run: cargo build --release --locked --all-targets
-
-      - name: dry-run cargo package
-        if: matrix.kind == 'test_publish'
-        run: ./tools/cargo_publish.py --dry-run
 
       - name: Test
         if: matrix.kind == 'test'
