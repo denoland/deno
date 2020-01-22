@@ -61,7 +61,6 @@ pub fn read_file(_s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
     assert!(!v.file_name.starts_with("$assets$"), "you meant $asset$");
     let module_specifier = ModuleSpecifier::resolve_url_or_path(&v.file_name)?;
     let path = module_specifier.as_url().to_file_path().unwrap();
-    // TODO(bartlomieju): has no effect on cli crate, still rebuilds every time
     println!("cargo:rerun-if-changed={}", path.display());
     (
       module_specifier.as_str().to_string(),
