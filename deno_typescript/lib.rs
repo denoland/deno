@@ -16,6 +16,7 @@ use deno_core::PinnedBuf;
 use deno_core::StartupData;
 pub use ops::EmitResult;
 use ops::WrittenFile;
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
@@ -37,6 +38,7 @@ pub struct TSState {
   bundle: bool,
   exit_code: i32,
   emit_result: Option<EmitResult>,
+  custom_assets: HashMap<String, PathBuf>,
   /// A list of files emitted by typescript. WrittenFile is tuple of the form
   /// (url, corresponding_module, source_code)
   written_files: Vec<WrittenFile>,
@@ -76,6 +78,7 @@ impl TSIsolate {
 
     let state = Arc::new(Mutex::new(TSState {
       bundle,
+      custom_assets: HashMap::new(),
       exit_code: 0,
       emit_result: None,
       written_files: Vec::new(),
@@ -119,13 +122,24 @@ impl TSIsolate {
     self.isolate.execute("<anon>", source)?;
     Ok(self.state)
   }
+
+  pub fn add_custom_assets(&mut self, custom_assets: Vec<(String, PathBuf)>) {
+    let mut state = self.state.lock().unwrap();
+    for (name, path) in custom_assets {
+      state.custom_assets.insert(name, path);
+    }
+  }
 }
 
 pub fn compile_bundle(
   bundle: &Path,
   root_names: Vec<PathBuf>,
+  custom_assets: Option<Vec<(String, PathBuf)>>,
 ) -> Result<Arc<Mutex<TSState>>, ErrBox> {
-  let ts_isolate = TSIsolate::new(true);
+  let mut ts_isolate = TSIsolate::new(true);
+  if let Some(assets) = custom_assets {
+    ts_isolate.add_custom_assets(assets);
+  }
 
   let config_json = serde_json::json!({
     "compilerOptions": {
@@ -203,6 +217,10 @@ pub fn mksnapshot_bundle_ts(
   state: Arc<Mutex<TSState>>,
 ) -> Result<(), ErrBox> {
   let runtime_isolate = &mut Isolate::new(StartupData::None, true);
+  runtime_isolate.register_op(
+    "fetch_asset",
+    compiler_op(state.clone(), ops::json_op(ops::fetch_asset)),
+  );
   let source_code_vec = std::fs::read(bundle)?;
   let source_code = std::str::from_utf8(&source_code_vec)?;
 
@@ -255,6 +273,7 @@ pub fn get_asset(name: &str) -> Option<&'static str> {
   }
   match name {
     "bundle_loader.js" => Some(include_str!("bundle_loader.js")),
+    "bootstrap.ts" => Some("console.log(\"hello deno\");"),
     "typescript.d.ts" => inc!("typescript.d.ts"),
     "lib.esnext.d.ts" => inc!("lib.esnext.d.ts"),
     "lib.es2020.d.ts" => inc!("lib.es2020.d.ts"),

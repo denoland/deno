@@ -62,7 +62,7 @@ export function sendSync(
   const resUi8 = core.dispatch(opId, argsUi8, zeroCopy);
   util.assert(resUi8 != null);
 
-  const res = decode(resUi8!);
+  const res = decode(resUi8);
   util.assert(res.promiseId == null);
   return unwrapResponse(res);
 }

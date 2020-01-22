@@ -1,18 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import * as dispatch from "./dispatch.ts";
-import { sendSync } from "./dispatch_json.ts";
+import { bundleLoader } from "./compiler_bootstrap.ts";
 import {
   assert,
   commonPath,
   normalizeString,
   CHAR_FORWARD_SLASH
 } from "./util.ts";
-
-const BUNDLE_LOADER = "bundle_loader.js";
-
-/** A loader of bundled modules that we will inline into any bundle outputs. */
-let bundleLoader: string;
 
 /** Local state of what the root exports are of a root module. */
 let rootExports: string[] | undefined;
@@ -40,12 +34,6 @@ export function buildBundle(
   data: string,
   sourceFiles: readonly ts.SourceFile[]
 ): string {
-  // we can only do this once we are bootstrapped and easiest way to do it is
-  // inline here
-  if (!bundleLoader) {
-    bundleLoader = sendSync(dispatch.OP_FETCH_ASSET, { name: BUNDLE_LOADER });
-  }
-
   // when outputting to AMD and a single outfile, TypeScript makes up the module
   // specifiers which are used to define the modules, and doesn't expose them
   // publicly, so we have to try to replicate

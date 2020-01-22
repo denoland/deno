@@ -146,8 +146,7 @@ fn create_worker_and_state(
 }
 
 fn types_command() {
-  let content = crate::js::get_asset("lib.deno_runtime.d.ts").unwrap();
-  println!("{}", content);
+  println!("{}", crate::js::DENO_RUNTIME);
 }
 
 fn print_cache_info(worker: MainWorker) {

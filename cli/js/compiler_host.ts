@@ -18,7 +18,7 @@ export interface ConfigureResponse {
   diagnostics?: ts.Diagnostic[];
 }
 
-const ASSETS = "$asset$";
+export const ASSETS = "$asset$";
 
 /** Options that need to be used when generating a bundle (either trusted or
  * runtime). */
@@ -129,11 +129,11 @@ export class Host implements ts.CompilerHost {
   private _writeFile: WriteFileCallback;
 
   private _getAsset(filename: string): SourceFile {
-    const sourceFile = SourceFile.get(filename);
+    const url = filename.split("/").pop()!;
+    const sourceFile = SourceFile.get(url);
     if (sourceFile) {
       return sourceFile;
     }
-    const url = filename.split("/").pop()!;
     const name = url.includes(".") ? url : `${url}.d.ts`;
     const sourceCode = sendSync(dispatch.OP_FETCH_ASSET, { name });
     return new SourceFile({
@@ -238,13 +238,15 @@ export class Host implements ts.CompilerHost {
         : SourceFile.get(fileName);
       assert(sourceFile != null);
       if (!sourceFile.tsSourceFile) {
+        assert(sourceFile.sourceCode != null);
         sourceFile.tsSourceFile = ts.createSourceFile(
           fileName,
           sourceFile.sourceCode,
           languageVersion
         );
+        delete sourceFile.sourceCode;
       }
-      return sourceFile!.tsSourceFile;
+      return sourceFile.tsSourceFile;
     } catch (e) {
       if (onError) {
         onError(String(e));
