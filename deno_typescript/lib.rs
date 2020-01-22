@@ -116,14 +116,14 @@ impl TSIsolate {
 
 /// Compile provided roots into a single JS bundle.
 ///
-/// This function does not write files to disk.
+/// This function writes compiled bundle to disk at provided path.
 ///
-/// Instead it consumes isolates and returns list of
-/// compiled files.
+/// Source map file and type declaration file are emmited
+/// alongside the bundle.
 ///
 /// To instantiate bundle use returned `module_name`.
 pub fn compile_bundle(
-  bundle: &Path,
+  bundle_filename: &Path,
   root_names: Vec<PathBuf>,
 ) -> Result<String, ErrBox> {
   let ts_isolate = TSIsolate::new(true);
@@ -143,7 +143,7 @@ pub fn compile_bundle(
       // requires --inlineSourceMap or --sourceMap to be set.
       // "inlineSources": true,
       "sourceMap": true,
-      "outFile": bundle,
+      "outFile": bundle_filename,
     },
   });
 
