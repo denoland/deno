@@ -7,7 +7,8 @@ import { ConfigureResponse, Host } from "./compiler_host.ts";
 import { SourceFile } from "./compiler_sourcefile.ts";
 import { sendSync } from "./dispatch_json.ts";
 import * as dispatch from "./dispatch.ts";
-import { TextEncoder } from "./text_encoding.ts";
+import { TextDecoder, TextEncoder } from "./text_encoding.ts";
+import { core } from "./core.ts";
 import * as util from "./util.ts";
 import { assert } from "./util.ts";
 import { writeFileSync } from "./write_file.ts";
@@ -89,12 +90,27 @@ function cache(
     assert(false, `Trying to cache unhandled file type "${emittedFileName}"`);
   }
 }
-
-const encoder = new TextEncoder();
+/**
+ * This op is called only during snapshotting.
+ *
+ * We really don't want to depend on JSON dispatch
+ * during snapshotting, so this op exchanges strings with Rust
+ * as raw byte arrays.
+ */
+export function getAsset(name: string): string {
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  const sourceCodeBytes = core.dispatch(
+    dispatch.OP_FETCH_ASSET,
+    encoder.encode(name)
+  );
+  return decoder.decode(sourceCodeBytes!);
+}
 
 /** Generates a `writeFile` function which can be passed to the compiler `Host`
  * to use when emitting files. */
 export function createWriteFile(state: WriteFileState): WriteFileCallback {
+  const encoder = new TextEncoder();
   if (state.type === CompilerRequestType.Compile) {
     return function writeFile(
       fileName: string,

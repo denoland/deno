@@ -3,7 +3,7 @@
 import { ASSETS, Host } from "./compiler_host.ts";
 import { core } from "./core.ts";
 import * as dispatch from "./dispatch.ts";
-import { sendSync } from "./dispatch_json.ts";
+import { getAsset } from "./compiler_util.ts";
 
 // This registers ops that are available during the snapshotting process.
 const ops = core.ops();
@@ -26,9 +26,9 @@ export const oldProgram = ts.createProgram({
   host
 });
 
-/** A module loader which is concatenated into bundle files.  We read all static
- * assets during the snapshotting process, which is why this is located in
- * compiler_bootstrap. */
-export const bundleLoader = sendSync(dispatch.OP_FETCH_ASSET, {
-  name: "bundle_loader.js"
-});
+/** A module loader which is concatenated into bundle files.
+ *
+ * We read all static assets during the snapshotting process, which is
+ * why this is located in compiler_bootstrap.
+ **/
+export const bundleLoader = getAsset("bundle_loader.js");
