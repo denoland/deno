@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 
@@ -15,11 +14,10 @@ fn main() {
   let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
   let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
-  let mut custom_libs: HashMap<String, PathBuf> = HashMap::new();
-  custom_libs.insert(
+  let custom_libs = vec![(
     "lib.deno_runtime.d.ts".to_string(),
     c.join("js/lib.deno_runtime.d.ts"),
-  );
+  )];
 
   let root_names = vec![c.join("js/main.ts")];
   let bundle = o.join("CLI_SNAPSHOT.js");
@@ -29,11 +27,10 @@ fn main() {
   assert!(bundle.exists());
   deno_typescript::mksnapshot_bundle(&bundle, state).unwrap();
 
-  let mut custom_libs: HashMap<String, PathBuf> = HashMap::new();
-  custom_libs.insert(
+  let custom_libs = vec![(
     "lib.deno_runtime.d.ts".to_string(),
     c.join("js/lib.deno_runtime.d.ts"),
-  );
+  )];
 
   let root_names = vec![c.join("js/compiler.ts")];
   let bundle = o.join("COMPILER_SNAPSHOT.js");

@@ -46,19 +46,12 @@ pub fn read_file(s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
   let (module_name, source_code) = if v.file_name.starts_with("$asset$/") {
     let asset = v.file_name.replace("$asset$/", "");
 
-    let mut source_code = None;
+    let source_code = match s.custom_assets.get(&asset) {
+      Some(asset_path) => std::fs::read_to_string(&asset_path)?,
+      None => crate::get_asset2(&asset)?.to_string(),
+    };
 
-    if let Some(custom_assets) = &s.custom_assets {
-      if let Some(asset_path) = custom_assets.get(&asset) {
-        source_code = Some(std::fs::read_to_string(&asset_path)?);
-      }
-    }
-
-    if source_code.is_none() {
-      source_code = Some(crate::get_asset2(&asset)?.to_string());
-    }
-
-    (asset, source_code.unwrap())
+    (asset, source_code)
   } else {
     assert!(!v.file_name.starts_with("$assets$"), "you meant $asset$");
     let module_specifier = ModuleSpecifier::resolve_url_or_path(&v.file_name)?;
@@ -131,11 +124,9 @@ struct FetchAssetArgs {
 pub fn fetch_asset(s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
   let args: FetchAssetArgs = serde_json::from_value(v)?;
 
-  if let Some(custom_assets) = &s.custom_assets {
-    if let Some(asset_path) = custom_assets.get(&args.name) {
-      let source_code = std::fs::read_to_string(&asset_path)?;
-      return Ok(json!(source_code));
-    }
+  if let Some(asset_path) = s.custom_assets.get(&args.name) {
+    let source_code = std::fs::read_to_string(&asset_path)?;
+    return Ok(json!(source_code));
   }
 
   if let Some(source_code) = crate::get_asset(&args.name) {

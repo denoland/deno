@@ -18,7 +18,6 @@ pub use ops::EmitResult;
 use ops::WrittenFile;
 use std::collections::HashMap;
 use std::fs;
-use std::hash::BuildHasher;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -39,7 +38,7 @@ pub struct TSState {
   bundle: bool,
   exit_code: i32,
   emit_result: Option<EmitResult>,
-  custom_assets: Option<HashMap<String, PathBuf>>,
+  custom_assets: HashMap<String, PathBuf>,
   /// A list of files emitted by typescript. WrittenFile is tuple of the form
   /// (url, corresponding_module, source_code)
   written_files: Vec<WrittenFile>,
@@ -79,7 +78,7 @@ impl TSIsolate {
 
     let state = Arc::new(Mutex::new(TSState {
       bundle,
-      custom_assets: None,
+      custom_assets: HashMap::new(),
       exit_code: 0,
       emit_result: None,
       written_files: Vec::new(),
@@ -124,16 +123,18 @@ impl TSIsolate {
     Ok(self.state)
   }
 
-  pub fn add_custom_assets(&mut self, custom_assets: HashMap<String, PathBuf>) {
+  pub fn add_custom_assets(&mut self, custom_assets: Vec<(String, PathBuf)>) {
     let mut state = self.state.lock().unwrap();
-    state.custom_assets = Some(custom_assets);
+    for (name, path) in custom_assets {
+      state.custom_assets.insert(name, path);
+    }
   }
 }
 
-pub fn compile_bundle<S: BuildHasher>(
+pub fn compile_bundle(
   bundle: &Path,
   root_names: Vec<PathBuf>,
-  custom_assets: Option<HashMap<String, PathBuf, S>>,
+  custom_assets: Option<Vec<(String, PathBuf)>>,
 ) -> Result<Arc<Mutex<TSState>>, ErrBox> {
   let mut ts_isolate = TSIsolate::new(true);
   if let Some(assets) = custom_assets {
