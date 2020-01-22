@@ -9,7 +9,6 @@ use serde_json::Value;
 
 #[derive(Clone, Debug)]
 pub struct WrittenFile {
-  pub file_name: String,
   pub url: String,
   pub module_name: String,
   pub source_code: String,
@@ -90,7 +89,6 @@ pub fn write_file(s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
     std::fs::write(&v.file_name, &v.data)?;
   }
   s.written_files.push(WrittenFile {
-    file_name: v.file_name,
     url: module_specifier.as_str().to_string(),
     module_name: v.module_name,
     source_code: v.data,

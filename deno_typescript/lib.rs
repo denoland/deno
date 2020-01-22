@@ -22,9 +22,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-pub static TYPESCRIPT_CODE: &str = include_str!("typescript/lib/typescript.js");
-pub static BUNDLE_LOADER: &str = include_str!("bundle_loader.js");
+static TYPESCRIPT_CODE: &str = include_str!("typescript/lib/typescript.js");
 static COMPILER_CODE: &str = include_str!("compiler_main.js");
+static BUNDLE_LOADER: &str = include_str!("bundle_loader.js");
 
 pub fn ts_version() -> String {
   let data = include_str!("typescript/package.json");

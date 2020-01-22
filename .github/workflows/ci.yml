@@ -26,7 +26,6 @@ jobs:
             kind: 'test_debug'
           - os: macOS-latest
             kind: 'test_debug'
-
     steps:
       - name: Configure git
         run: git config --global core.symlinks true
