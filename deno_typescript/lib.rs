@@ -16,6 +16,7 @@ use deno_core::PinnedBuf;
 use deno_core::StartupData;
 pub use ops::EmitResult;
 use ops::WrittenFile;
+use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -120,11 +121,11 @@ impl TSIsolate {
 /// Instead it consumes isolates and returns list of
 /// compiled files.
 ///
-/// To instantiate bundle use `module_name` field of first root file.
+/// To instantiate bundle use returned `module_name`.
 pub fn compile_bundle(
   bundle: &Path,
   root_names: Vec<PathBuf>,
-) -> Result<Vec<WrittenFile>, ErrBox> {
+) -> Result<String, ErrBox> {
   let ts_isolate = TSIsolate::new(true);
 
   let config_json = serde_json::json!({
@@ -162,8 +163,10 @@ pub fn compile_bundle(
   // TODO lift js_check to caller?
   let locked_state = js_check(ts_isolate.compile(&config_json, root_names_str));
   let state = locked_state.lock().unwrap();
-  let files = state.written_files.clone();
-  Ok(files)
+  // Assuming that TypeScript has emitted the main file last.
+  let main = state.written_files.last().unwrap();
+  let module_name = main.module_name.clone();
+  Ok(module_name)
 }
 
 #[allow(dead_code)]
@@ -173,6 +176,55 @@ fn print_source_code(code: &str) {
     println!("{:3}  {}", i, line);
     i += 1;
   }
+}
+
+/// Create a V8 snapshot.
+pub fn mksnapshot_bundle(
+  isolate: &mut Isolate,
+  snapshot_filename: &Path,
+  bundle_filename: &Path,
+  main_module_name: &str,
+) -> Result<(), ErrBox> {
+  js_check(isolate.execute("bundle_loader.js", BUNDLE_LOADER));
+  let source_code_vec = std::fs::read(bundle_filename).unwrap();
+  let bundle_source_code = std::str::from_utf8(&source_code_vec).unwrap();
+  js_check(
+    isolate.execute(&bundle_filename.to_string_lossy(), bundle_source_code),
+  );
+  let script = &format!("instantiate('{}')", main_module_name);
+  js_check(isolate.execute("anon", script));
+  write_snapshot(isolate, snapshot_filename)?;
+  Ok(())
+}
+
+/// Create a V8 snapshot. This differs from mksnapshot_bundle in that is also
+/// runs typescript.js
+pub fn mksnapshot_bundle_ts(
+  isolate: &mut Isolate,
+  snapshot_filename: &Path,
+  bundle_filename: &Path,
+  main_module_name: &str,
+) -> Result<(), ErrBox> {
+  js_check(isolate.execute("typescript.js", TYPESCRIPT_CODE));
+  mksnapshot_bundle(
+    isolate,
+    snapshot_filename,
+    bundle_filename,
+    main_module_name,
+  )
+}
+
+fn write_snapshot(
+  runtime_isolate: &mut Isolate,
+  snapshot_filename: &Path,
+) -> Result<(), ErrBox> {
+  println!("Creating snapshot...");
+  let snapshot = runtime_isolate.snapshot()?;
+  let snapshot_slice: &[u8] = &*snapshot;
+  println!("Snapshot size: {}", snapshot_slice.len());
+  fs::write(&snapshot_filename, snapshot_slice)?;
+  println!("Snapshot written to: {} ", snapshot_filename.display());
+  Ok(())
 }
 
 pub fn get_asset(name: &str) -> Option<&'static str> {

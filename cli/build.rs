@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use deno_core::js_check;
 use deno_core::CoreOp;
 use deno_core::ErrBox;
 use deno_core::Isolate;
@@ -10,7 +9,6 @@ use serde::Deserialize;
 use serde_json::json;
 use serde_json::Value;
 use std::env;
-use std::fs;
 use std::path::PathBuf;
 
 #[derive(Deserialize)]
@@ -70,119 +68,6 @@ where
   }
 }
 
-fn create_main_snapshot() {
-  let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-  let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());
-
-  let root_names = vec![c.join("js/main.ts")];
-  let bundle_path = o.join("CLI_SNAPSHOT.js");
-  let snapshot_path = o.join("CLI_SNAPSHOT.bin");
-
-  let compiled_files =
-    deno_typescript::compile_bundle(&bundle_path, root_names)
-      .expect("Bundle compilation failed");
-  // bundle, source map and type declarations
-  assert_eq!(compiled_files.len(), 3);
-
-  let mut bundle_file = None;
-  for compiled_file in compiled_files {
-    std::fs::write(&compiled_file.file_name, &compiled_file.source_code)
-      .expect("Failed to write bundle file to disk");
-    if compiled_file.url.ends_with(".js") {
-      bundle_file = Some(compiled_file)
-    }
-  }
-  assert!(bundle_path.exists());
-  assert!(bundle_file.is_some());
-  let bundle_file = bundle_file.unwrap();
-
-  let runtime_isolate = &mut Isolate::new(StartupData::None, true);
-  let source_code_vec = std::fs::read(&bundle_path).unwrap();
-  let source_code = std::str::from_utf8(&source_code_vec).unwrap();
-
-  js_check(
-    runtime_isolate.execute("bundle_loader.js", deno_typescript::BUNDLE_LOADER),
-  );
-  js_check(
-    runtime_isolate.execute(&bundle_path.to_string_lossy(), &source_code),
-  );
-
-  let script = &format!("instantiate('{}')", bundle_file.module_name);
-  js_check(runtime_isolate.execute("anon", script));
-
-  println!("Creating main snapshot...");
-  let snapshot = runtime_isolate
-    .snapshot()
-    .expect("Failed to take V8 snapshot");
-  let snapshot_slice: &[u8] = &*snapshot;
-  println!("Snapshot size: {}", snapshot_slice.len());
-  fs::write(&snapshot_path, snapshot_slice)
-    .expect("Failed to write snapshot file");
-  println!("Snapshot written to: {} ", snapshot_path.display());
-}
-
-fn create_compiler_snapshot() {
-  let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-  let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());
-
-  let root_names = vec![c.join("js/compiler.ts")];
-  let bundle_path = o.join("COMPILER_SNAPSHOT.js");
-  let snapshot_path = o.join("COMPILER_SNAPSHOT.bin");
-  let custom_libs = vec![(
-    "lib.deno_runtime.d.ts".to_string(),
-    c.join("js/lib.deno_runtime.d.ts"),
-  )];
-
-  let compiled_files =
-    deno_typescript::compile_bundle(&bundle_path, root_names)
-      .expect("Bundle compilation failed");
-  // bundle, source map and type declarations
-  assert_eq!(compiled_files.len(), 3);
-
-  let mut bundle_file = None;
-  for compiled_file in compiled_files {
-    std::fs::write(&compiled_file.file_name, &compiled_file.source_code)
-      .expect("Failed to write bundle file to disk");
-    if compiled_file.url.ends_with(".js") {
-      bundle_file = Some(compiled_file)
-    }
-  }
-  assert!(bundle_path.exists());
-  assert!(bundle_file.is_some());
-  let bundle_file = bundle_file.unwrap();
-
-  let runtime_isolate = &mut Isolate::new(StartupData::None, true);
-  runtime_isolate.register_op(
-    "fetch_asset",
-    make_op_fetch_asset(custom_libs, op_fetch_asset),
-  );
-  let source_code_vec = std::fs::read(&bundle_path).unwrap();
-  let source_code = std::str::from_utf8(&source_code_vec).unwrap();
-
-  js_check(
-    runtime_isolate.execute("bundle_loader.js", deno_typescript::BUNDLE_LOADER),
-  );
-  js_check(
-    runtime_isolate.execute("typescript.js", deno_typescript::TYPESCRIPT_CODE),
-  );
-  js_check(
-    runtime_isolate.execute(&bundle_path.to_string_lossy(), &source_code),
-  );
-
-  let script = &format!("instantiate('{}')", bundle_file.module_name);
-  js_check(runtime_isolate.execute("anon", script));
-
-  println!("Creating main snapshot...");
-  let snapshot = runtime_isolate
-    .snapshot()
-    .expect("Failed to take V8 snapshot");
-  let snapshot_slice: &[u8] = &*snapshot;
-  println!("Snapshot size: {}", snapshot_slice.len());
-  fs::write(&snapshot_path, snapshot_slice)
-    .expect("Failed to write snapshot file");
-  println!("Snapshot written to: {} ", snapshot_path.display());
-}
-
 fn main() {
   // To debug snapshot issues uncomment:
   // deno_typescript::trace_serializer();
@@ -192,6 +77,54 @@ fn main() {
     deno_typescript::ts_version()
   );
 
-  create_main_snapshot();
-  create_compiler_snapshot();
+  let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
+  let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());
+
+  // Main snapshot
+  let root_names = vec![c.join("js/main.ts")];
+  let bundle_path = o.join("CLI_SNAPSHOT.js");
+  let snapshot_path = o.join("CLI_SNAPSHOT.bin");
+
+  let main_module_name =
+    deno_typescript::compile_bundle(&bundle_path, root_names)
+      .expect("Bundle compilation failed");
+  assert!(bundle_path.exists());
+
+  let runtime_isolate = &mut Isolate::new(StartupData::None, true);
+
+  deno_typescript::mksnapshot_bundle(
+    runtime_isolate,
+    &snapshot_path,
+    &bundle_path,
+    &main_module_name,
+  )
+  .expect("Failed to create snapshot");
+
+  // Compiler snapshot
+  let root_names = vec![c.join("js/compiler.ts")];
+  let bundle_path = o.join("COMPILER_SNAPSHOT.js");
+  let snapshot_path = o.join("COMPILER_SNAPSHOT.bin");
+  let custom_libs = vec![(
+    "lib.deno_runtime.d.ts".to_string(),
+    c.join("js/lib.deno_runtime.d.ts"),
+  )];
+
+  let main_module_name =
+    deno_typescript::compile_bundle(&bundle_path, root_names)
+      .expect("Bundle compilation failed");
+  assert!(bundle_path.exists());
+
+  let runtime_isolate = &mut Isolate::new(StartupData::None, true);
+  runtime_isolate.register_op(
+    "fetch_asset",
+    make_op_fetch_asset(custom_libs, op_fetch_asset),
+  );
+
+  deno_typescript::mksnapshot_bundle_ts(
+    runtime_isolate,
+    &snapshot_path,
+    &bundle_path,
+    &main_module_name,
+  )
+  .expect("Failed to create snapshot");
 }

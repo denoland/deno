@@ -86,6 +86,9 @@ struct WriteFile {
 pub fn write_file(s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
   let v: WriteFile = serde_json::from_value(v)?;
   let module_specifier = ModuleSpecifier::resolve_url_or_path(&v.file_name)?;
+  if s.bundle {
+    std::fs::write(&v.file_name, &v.data)?;
+  }
   s.written_files.push(WrittenFile {
     file_name: v.file_name,
     url: module_specifier.as_str().to_string(),
