@@ -10,7 +10,7 @@ jobs:
     strategy:
       matrix:
         os: [macOS-latest, windows-2019, ubuntu-16.04]
-        kind: ['test', 'test_debug', 'bench', 'lint', 'package']
+        kind: ['test', 'test_debug', 'bench', 'lint']
         exclude:
           - os: windows-2019
             kind: 'bench'
@@ -26,11 +26,6 @@ jobs:
             kind: 'test_debug'
           - os: macOS-latest
             kind: 'test_debug'
-
-          - os: windows-2019
-            kind: 'package'
-          - os: macOS-latest
-            kind: 'package'
     steps:
       - name: Configure git
         run: git config --global core.symlinks true
@@ -131,16 +126,6 @@ jobs:
       - name: Build
         if: matrix.kind == 'test' || matrix.kind == 'bench'
         run: cargo build --release --locked --all-targets
-
-      - name: test cargo-package
-        if: matrix.kind == 'package'
-        run: |
-          cd core
-          cargo package
-          cd ../deno_typescript
-          cargo package
-          cd ../cli
-          cargo package
 
       - name: Test
         if: matrix.kind == 'test'
