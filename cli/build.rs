@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 
