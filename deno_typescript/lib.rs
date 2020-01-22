@@ -18,6 +18,7 @@ pub use ops::EmitResult;
 use ops::WrittenFile;
 use std::collections::HashMap;
 use std::fs;
+use std::hash::BuildHasher;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -131,7 +132,7 @@ impl TSIsolate {
   }
 }
 
-pub fn compile_bundle(
+pub fn compile_bundle<S: BuildHasher>(
   bundle: &Path,
   root_names: Vec<PathBuf>,
   custom_assets: Option<Vec<(String, PathBuf)>>,
