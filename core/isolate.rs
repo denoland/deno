@@ -680,6 +680,7 @@ impl Isolate {
     let mut hs = v8::HandleScope::new(locker.enter());
     let scope = hs.enter();
     self.global_context.reset(scope);
+    self.shared_response_buf.reset(scope);
 
     let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
     let snapshot = snapshot_creator

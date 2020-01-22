@@ -61,7 +61,7 @@ export class SourceFile {
 
   mediaType!: MediaType;
   processed = false;
-  sourceCode!: string;
+  sourceCode?: string;
   tsSourceFile?: ts.SourceFile;
   url!: string;
 

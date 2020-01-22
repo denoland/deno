@@ -70,11 +70,14 @@ export let OP_TRUNCATE: number;
 export let OP_MAKE_TEMP_DIR: number;
 export let OP_CWD: number;
 export let OP_CONNECT_TLS: number;
-export let OP_FETCH_ASSET: number;
 export let OP_HOSTNAME: number;
 export let OP_OPEN_PLUGIN: number;
 export let OP_COMPILE: number;
 export let OP_TRANSPILE: number;
+
+/** **WARNING:** This is only available during the snapshotting process and is
+ * unavailable at runtime. */
+export let OP_FETCH_ASSET: number;
 
 const PLUGIN_ASYNC_HANDLER_MAP: Map<number, AsyncHandler> = new Map();
 
