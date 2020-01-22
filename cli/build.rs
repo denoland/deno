@@ -88,7 +88,7 @@ fn create_main_snapshot() {
   for compiled_file in compiled_files {
     std::fs::write(&compiled_file.file_name, &compiled_file.source_code)
       .expect("Failed to write bundle file to disk");
-    if compiled_file.file_name == bundle_path.to_string_lossy() {
+    if compiled_file.url.ends_with(".js") {
       bundle_file = Some(compiled_file)
     }
   }
@@ -143,7 +143,7 @@ fn create_compiler_snapshot() {
   for compiled_file in compiled_files {
     std::fs::write(&compiled_file.file_name, &compiled_file.source_code)
       .expect("Failed to write bundle file to disk");
-    if compiled_file.file_name == bundle_path.to_string_lossy() {
+    if compiled_file.url.ends_with(".js") {
       bundle_file = Some(compiled_file)
     }
   }
