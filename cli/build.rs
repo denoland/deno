@@ -1,34 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use deno_core::CoreOp;
-use deno_core::ErrBox;
 use deno_core::Isolate;
 use deno_core::Op;
 use deno_core::PinnedBuf;
 use deno_core::StartupData;
-use serde_json::json;
-use serde_json::Value;
 use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
-
-fn inner_fetch_asset(
-  custom_assets: HashMap<String, PathBuf>,
-  v: Value,
-) -> Result<Value, ErrBox> {
-  let name = v["name"].as_str().unwrap();
-
-  if let Some(source_code) = deno_typescript::get_asset(name) {
-    return Ok(json!(source_code));
-  }
-
-  if let Some(asset_path) = custom_assets.get(name) {
-    let source_code_vec = std::fs::read(&asset_path)?;
-    let source_code = std::str::from_utf8(&source_code_vec)?;
-    return Ok(json!(source_code));
-  }
-
-  panic!("op_fetch_asset bad asset {}", name)
-}
 
 fn make_op_fetch_asset(
   custom_assets: HashMap<String, PathBuf>,
@@ -36,17 +14,21 @@ fn make_op_fetch_asset(
   move |control: &[u8], zero_copy_buf: Option<PinnedBuf>| -> CoreOp {
     assert!(zero_copy_buf.is_none()); // zero_copy_buf unused in this op.
     let custom_assets = custom_assets.clone();
-    let result = serde_json::from_slice(control)
-      .map_err(ErrBox::from)
-      .and_then(move |args| inner_fetch_asset(custom_assets, args));
+    let name = std::str::from_utf8(control).unwrap();
 
-    let response = match result {
-      Ok(v) => json!({ "ok": v }),
-      Err(err) => json!({ "err": err.to_string() }),
+    let asset_code = if let Some(source_code) = deno_typescript::get_asset(name)
+    {
+      source_code.to_string()
+    } else if let Some(asset_path) = custom_assets.get(name) {
+      let source_code_vec =
+        std::fs::read(&asset_path).expect("Asset not found");
+      let source_code = std::str::from_utf8(&source_code_vec).unwrap();
+      source_code.to_string()
+    } else {
+      panic!("op_fetch_asset bad asset {}", name)
     };
 
-    let x = serde_json::to_string(&response).unwrap();
-    let vec = x.into_bytes();
+    let vec = asset_code.into_bytes();
     Op::Sync(vec.into_boxed_slice())
   }
 }
