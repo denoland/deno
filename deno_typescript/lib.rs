@@ -23,9 +23,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-static TYPESCRIPT_CODE: &str = include_str!("typescript/lib/typescript.js");
+pub static TYPESCRIPT_CODE: &str = include_str!("typescript/lib/typescript.js");
+pub static BUNDLE_LOADER: &str = include_str!("bundle_loader.js");
 static COMPILER_CODE: &str = include_str!("compiler_main.js");
-static BUNDLE_LOADER: &str = include_str!("bundle_loader.js");
 
 pub fn ts_version() -> String {
   let data = include_str!("typescript/package.json");
@@ -134,12 +134,8 @@ impl TSIsolate {
 pub fn compile_bundle(
   bundle: &Path,
   root_names: Vec<PathBuf>,
-  custom_assets: Option<Vec<(String, PathBuf)>>,
-) -> Result<Arc<Mutex<TSState>>, ErrBox> {
-  let mut ts_isolate = TSIsolate::new(true);
-  if let Some(assets) = custom_assets {
-    ts_isolate.add_custom_assets(assets);
-  }
+) -> Result<Vec<WrittenFile>, ErrBox> {
+  let ts_isolate = TSIsolate::new(true);
 
   let config_json = serde_json::json!({
     "compilerOptions": {
@@ -174,9 +170,10 @@ pub fn compile_bundle(
     .collect();
 
   // TODO lift js_check to caller?
-  let state = js_check(ts_isolate.compile(&config_json, root_names_str));
-
-  Ok(state)
+  let locked_state = js_check(ts_isolate.compile(&config_json, root_names_str));
+  let state = locked_state.lock().unwrap();
+  let files = state.written_files.clone();
+  Ok(files)
 }
 
 #[allow(dead_code)]
@@ -201,6 +198,7 @@ pub fn mksnapshot_bundle(
   js_check(runtime_isolate.execute(&bundle.to_string_lossy(), &source_code));
 
   let main = state.lock().unwrap().main_module_name();
+  eprintln!("mksnapshot bundle main module {}", main);
   js_check(
     runtime_isolate.execute("anon", &format!("instantiate('{}')", main)),
   );
@@ -217,10 +215,10 @@ pub fn mksnapshot_bundle_ts(
   state: Arc<Mutex<TSState>>,
 ) -> Result<(), ErrBox> {
   let runtime_isolate = &mut Isolate::new(StartupData::None, true);
-  runtime_isolate.register_op(
-    "fetch_asset",
-    compiler_op(state.clone(), ops::json_op(ops::fetch_asset)),
-  );
+  // runtime_isolate.register_op(
+  //   "fetch_asset",
+  //   compiler_op(state.clone(), ops::json_op(ops::fetch_asset)),
+  // );
   let source_code_vec = std::fs::read(bundle)?;
   let source_code = std::str::from_utf8(&source_code_vec)?;
 
@@ -252,17 +250,6 @@ fn write_snapshot(
   fs::write(&snapshot_path, snapshot_slice)?;
   println!("snapshot path {} ", snapshot_path.display());
   Ok(())
-}
-
-/// Same as get_asset() but returns NotFound intead of None.
-pub fn get_asset2(name: &str) -> Result<&'static str, ErrBox> {
-  match get_asset(name) {
-    Some(a) => Ok(a),
-    None => Err(
-      std::io::Error::new(std::io::ErrorKind::NotFound, "Asset not found")
-        .into(),
-    ),
-  }
 }
 
 pub fn get_asset(name: &str) -> Option<&'static str> {
