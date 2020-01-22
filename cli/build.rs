@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 
-fn make_op_fetch_asset(
+fn op_fetch_asset(
   custom_assets: HashMap<String, PathBuf>,
 ) -> impl Fn(&[u8], Option<PinnedBuf>) -> CoreOp {
   move |control: &[u8], zero_copy_buf: Option<PinnedBuf>| -> CoreOp {
@@ -81,7 +81,7 @@ fn main() {
   assert!(bundle_path.exists());
 
   let runtime_isolate = &mut Isolate::new(StartupData::None, true);
-  runtime_isolate.register_op("fetch_asset", make_op_fetch_asset(custom_libs));
+  runtime_isolate.register_op("fetch_asset", op_fetch_asset(custom_libs));
 
   deno_typescript::mksnapshot_bundle_ts(
     runtime_isolate,
