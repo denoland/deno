@@ -16,8 +16,6 @@ use deno_core::PinnedBuf;
 use deno_core::StartupData;
 pub use ops::EmitResult;
 use ops::WrittenFile;
-use std::collections::HashMap;
-use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -38,17 +36,9 @@ pub struct TSState {
   bundle: bool,
   exit_code: i32,
   emit_result: Option<EmitResult>,
-  custom_assets: HashMap<String, PathBuf>,
   /// A list of files emitted by typescript. WrittenFile is tuple of the form
   /// (url, corresponding_module, source_code)
   written_files: Vec<WrittenFile>,
-}
-
-impl TSState {
-  fn main_module_name(&self) -> String {
-    // Assuming that TypeScript has emitted the main file last.
-    self.written_files.last().unwrap().module_name.clone()
-  }
 }
 
 fn compiler_op<D>(
@@ -78,7 +68,6 @@ impl TSIsolate {
 
     let state = Arc::new(Mutex::new(TSState {
       bundle,
-      custom_assets: HashMap::new(),
       exit_code: 0,
       emit_result: None,
       written_files: Vec::new(),
@@ -122,15 +111,16 @@ impl TSIsolate {
     self.isolate.execute("<anon>", source)?;
     Ok(self.state)
   }
-
-  pub fn add_custom_assets(&mut self, custom_assets: Vec<(String, PathBuf)>) {
-    let mut state = self.state.lock().unwrap();
-    for (name, path) in custom_assets {
-      state.custom_assets.insert(name, path);
-    }
-  }
 }
 
+/// Compile provided roots into a single JS bundle.
+///
+/// This function does not write files to disk.
+///
+/// Instead it consumes isolates and returns list of
+/// compiled files.
+///
+/// To instantiate bundle use `module_name` field of first root file.
 pub fn compile_bundle(
   bundle: &Path,
   root_names: Vec<PathBuf>,
@@ -183,73 +173,6 @@ fn print_source_code(code: &str) {
     println!("{:3}  {}", i, line);
     i += 1;
   }
-}
-
-/// Create a V8 snapshot.
-pub fn mksnapshot_bundle(
-  bundle: &Path,
-  state: Arc<Mutex<TSState>>,
-) -> Result<(), ErrBox> {
-  let runtime_isolate = &mut Isolate::new(StartupData::None, true);
-  let source_code_vec = std::fs::read(bundle)?;
-  let source_code = std::str::from_utf8(&source_code_vec)?;
-
-  js_check(runtime_isolate.execute("bundle_loader.js", BUNDLE_LOADER));
-  js_check(runtime_isolate.execute(&bundle.to_string_lossy(), &source_code));
-
-  let main = state.lock().unwrap().main_module_name();
-  eprintln!("mksnapshot bundle main module {}", main);
-  js_check(
-    runtime_isolate.execute("anon", &format!("instantiate('{}')", main)),
-  );
-
-  write_snapshot(runtime_isolate, bundle)?;
-
-  Ok(())
-}
-
-/// Create a V8 snapshot. This differs from mksnapshot_bundle in that is also
-/// runs typescript.js
-pub fn mksnapshot_bundle_ts(
-  bundle: &Path,
-  state: Arc<Mutex<TSState>>,
-) -> Result<(), ErrBox> {
-  let runtime_isolate = &mut Isolate::new(StartupData::None, true);
-  // runtime_isolate.register_op(
-  //   "fetch_asset",
-  //   compiler_op(state.clone(), ops::json_op(ops::fetch_asset)),
-  // );
-  let source_code_vec = std::fs::read(bundle)?;
-  let source_code = std::str::from_utf8(&source_code_vec)?;
-
-  js_check(runtime_isolate.execute("bundle_loader.js", BUNDLE_LOADER));
-  js_check(runtime_isolate.execute("typescript.js", TYPESCRIPT_CODE));
-  js_check(runtime_isolate.execute(&bundle.to_string_lossy(), &source_code));
-
-  let main = state.lock().unwrap().main_module_name();
-  js_check(
-    runtime_isolate.execute("anon", &format!("instantiate('{}')", main)),
-  );
-
-  write_snapshot(runtime_isolate, bundle)?;
-
-  Ok(())
-}
-
-fn write_snapshot(
-  runtime_isolate: &mut Isolate,
-  bundle: &Path,
-) -> Result<(), ErrBox> {
-  println!("creating snapshot...");
-  let snapshot = runtime_isolate.snapshot()?;
-  let snapshot_slice: &[u8] = &*snapshot;
-  println!("snapshot bytes {}", snapshot_slice.len());
-
-  let snapshot_path = bundle.with_extension("bin");
-
-  fs::write(&snapshot_path, snapshot_slice)?;
-  println!("snapshot path {} ", snapshot_path.display());
-  Ok(())
 }
 
 pub fn get_asset(name: &str) -> Option<&'static str> {
