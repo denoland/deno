@@ -9,9 +9,7 @@ import {
   fail
 } from "./test_util.ts";
 
-import {
-  Response
-} from "./fetch.ts";
+import { Response } from "./fetch.ts";
 
 testPerm({ net: true }, async function fetchConnectionError(): Promise<void> {
   let err;
@@ -366,7 +364,9 @@ testPerm({ net: true }, async function fetchPostBodyTypedArray():Promise<void> {
 });
 */
 
-testPerm({ net: true }, async function fetchWithManualRedirection(): Promise<void> {
+testPerm({ net: true }, async function fetchWithManualRedirection(): Promise<
+  void
+> {
   const response = await fetch("http://localhost:4546/", {
     redirect: "manual"
   }); // will redirect to http://localhost:4545/
@@ -384,7 +384,9 @@ testPerm({ net: true }, async function fetchWithManualRedirection(): Promise<voi
   }
 });
 
-testPerm({ net: true }, async function fetchWithErrorRedirection(): Promise<void> {
+testPerm({ net: true }, async function fetchWithErrorRedirection(): Promise<
+  void
+> {
   const response = await fetch("http://localhost:4546/", {
     redirect: "error"
   }); // will redirect to http://localhost:4545/
@@ -403,7 +405,15 @@ testPerm({ net: true }, async function fetchWithErrorRedirection(): Promise<void
 });
 
 test(function responseRedirect(): void {
-  const response = new Response("example.com/beforeredirect", 200, "OK", [["This-Should", "Disappear"]], -1, false, null);
+  const response = new Response(
+    "example.com/beforeredirect",
+    200,
+    "OK",
+    [["This-Should", "Disappear"]],
+    -1,
+    false,
+    null
+  );
   const redir = response.redirect("example.com/newLocation", 301);
   assertEquals(redir.status, 0);
   assertEquals(redir.statusText, "");
