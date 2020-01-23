@@ -1,9 +1,10 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { isTypedArray } from "./util.ts";
 import { TypedArray } from "./types.ts";
 import { TextEncoder } from "./text_encoding.ts";
 import { File, stdout } from "./files.ts";
 import { cliTable } from "./console_table.ts";
+import { exposeForTest } from "./internals.ts";
 
 type ConsoleContext = Set<unknown>;
 type ConsoleOptions = Partial<{
@@ -40,12 +41,12 @@ export class CSI {
 
 function cursorTo(stream: File, _x: number, _y?: number): void {
   const uint8 = new TextEncoder().encode(CSI.kClear);
-  stream.write(uint8);
+  stream.writeSync(uint8);
 }
 
 function clearScreenDown(stream: File): void {
   const uint8 = new TextEncoder().encode(CSI.kClearScreenDown);
-  stream.write(uint8);
+  stream.writeSync(uint8);
 }
 
 function getClassInstanceName(instance: unknown): string {
@@ -363,9 +364,7 @@ function createObjectString(
   }
 }
 
-/** TODO Do not expose this from "deno" namespace.
- * @internal
- */
+/** @internal */
 export function stringifyArgs(
   args: unknown[],
   options: ConsoleOptions = {}
@@ -785,3 +784,7 @@ export function inspect(value: unknown, options?: ConsoleOptions): string {
     );
   }
 }
+
+// Expose these fields to internalObject for tests.
+exposeForTest("Console", Console);
+exposeForTest("stringifyArgs", stringifyArgs);

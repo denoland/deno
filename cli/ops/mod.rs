@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 mod dispatch_json;
 mod dispatch_minimal;
 
@@ -21,6 +21,8 @@ pub mod process;
 pub mod random;
 pub mod repl;
 pub mod resources;
+pub mod runtime_compiler;
 pub mod timers;
 pub mod tls;
-pub mod workers;
+pub mod web_worker;
+pub mod worker_host;

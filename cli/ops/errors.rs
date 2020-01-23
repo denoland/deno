@@ -1,11 +1,11 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::fmt_errors::JSError;
 use crate::ops::json_op;
 use crate::source_maps::get_orig_position;
 use crate::source_maps::CachedMaps;
 use crate::state::ThreadSafeState;
-use deno::*;
+use deno_core::*;
 use std::collections::HashMap;
 
 pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
@@ -61,7 +61,7 @@ fn op_apply_source_map(
   );
 
   Ok(JsonOp::Sync(json!({
-    "filename": orig_filename.to_string(),
+    "filename": orig_filename,
     "line": orig_line as u32,
     "column": orig_column as u32,
   })))

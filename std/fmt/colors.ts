@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 /**
  * A module to print ANSI terminal colors. Inspired by chalk, kleur, and colors
  * on npm.
@@ -21,7 +21,7 @@ interface Code {
 
 let enabled = !noColor;
 
-export function setEnabled(value: boolean): void {
+export function setColorEnabled(value: boolean): void {
   if (noColor) {
     return;
   }
@@ -29,7 +29,7 @@ export function setEnabled(value: boolean): void {
   enabled = value;
 }
 
-export function getEnabled(): boolean {
+export function getColorEnabled(): boolean {
   return enabled;
 }
 

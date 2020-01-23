@@ -10,7 +10,7 @@ use std::fmt;
 use std::io::prelude::*;
 
 use atty;
-use deno::ErrBox;
+use deno_core::ErrBox;
 use termcolor::Color::{Cyan, Green, Red, Yellow};
 use termcolor::{self, Color, ColorSpec, StandardStream, WriteColor};
 

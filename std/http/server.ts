@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 const { listen, listenTLS, copy, toAsyncIterator } = Deno;
 type Listener = Deno.Listener;
 type Conn = Deno.Conn;
@@ -8,12 +8,9 @@ import { BufReader, BufWriter, UnexpectedEOFError } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { STATUS_TEXT } from "./http_status.ts";
 import { assert } from "../testing/asserts.ts";
-import {
-  collectUint8Arrays,
-  deferred,
-  Deferred,
-  MuxAsyncIterator
-} from "../util/async.ts";
+import { deferred, Deferred, MuxAsyncIterator } from "../util/async.ts";
+
+const encoder = new TextEncoder();
 
 function bufWriter(w: Writer): BufWriter {
   if (w instanceof BufWriter) {
@@ -30,6 +27,7 @@ export function setContentLength(r: Response): void {
 
   if (r.body) {
     if (!r.headers.has("content-length")) {
+      // typeof r.body === "string" handled in writeResponse.
       if (r.body instanceof Uint8Array) {
         const bodyLength = r.body.byteLength;
         r.headers.append("Content-Length", bodyLength.toString());
@@ -42,7 +40,6 @@ export function setContentLength(r: Response): void {
 
 async function writeChunkedBody(w: Writer, r: Reader): Promise<void> {
   const writer = bufWriter(w);
-  const encoder = new TextEncoder();
 
   for await (const chunk of toAsyncIterator(r)) {
     if (chunk.byteLength <= 0) continue;
@@ -69,6 +66,9 @@ export async function writeResponse(w: Writer, r: Response): Promise<void> {
   if (!r.body) {
     r.body = new Uint8Array();
   }
+  if (typeof r.body === "string") {
+    r.body = encoder.encode(r.body);
+  }
 
   let out = `HTTP/${protoMajor}.${protoMinor} ${statusCode} ${statusText}\r\n`;
 
@@ -80,7 +80,7 @@ export async function writeResponse(w: Writer, r: Response): Promise<void> {
   }
   out += "\r\n";
 
-  const header = new TextEncoder().encode(out);
+  const header = encoder.encode(out);
   const n = await writer.write(header);
   assert(n === header.byteLength);
 
@@ -97,6 +97,17 @@ export async function writeResponse(w: Writer, r: Response): Promise<void> {
   await writer.flush();
 }
 
+export class ServerRequestBody implements Reader {
+  constructor(private it: AsyncIterator<number, undefined, Uint8Array>) {}
+  async read(p: Uint8Array): Promise<number | Deno.EOF> {
+    const res = await this.it.next(p);
+    if (res.done) {
+      return Deno.EOF;
+    }
+    return res.value;
+  }
+}
+
 export class ServerRequest {
   url!: string;
   method!: string;
@@ -107,26 +118,77 @@ export class ServerRequest {
   conn!: Conn;
   r!: BufReader;
   w!: BufWriter;
-  done: Deferred<void> = deferred();
+  done: Deferred<Error | undefined> = deferred();
 
-  public async *bodyStream(): AsyncIterableIterator<Uint8Array> {
-    if (this.headers.has("content-length")) {
-      const len = +this.headers.get("content-length")!;
-      if (Number.isNaN(len)) {
-        return new Uint8Array(0);
+  private _contentLength: number | undefined | null = undefined;
+  /**
+   * Value of Content-Length header.
+   * If null, then content length is invalid or not given (e.g. chunked encoding).
+   */
+  get contentLength(): number | null {
+    // undefined means not cached.
+    // null means invalid or not provided.
+    if (this._contentLength === undefined) {
+      if (this.headers.has("content-length")) {
+        this._contentLength = +this.headers.get("content-length")!;
+        // Convert NaN to null (as NaN harder to test)
+        if (Number.isNaN(this._contentLength)) {
+          this._contentLength = null;
+        }
+      } else {
+        this._contentLength = null;
       }
-      let buf = new Uint8Array(1024);
+    }
+    return this._contentLength;
+  }
+
+  private _body: ServerRequestBody | null = null;
+
+  /**
+   * Body of the request.
+   *
+   *     const buf = new Uint8Array(req.contentLength);
+   *     let bufSlice = buf;
+   *     let totRead = 0;
+   *     while (true) {
+   *       const nread = await req.body.read(bufSlice);
+   *       if (nread === Deno.EOF) break;
+   *       totRead += nread;
+   *       if (totRead >= req.contentLength) break;
+   *       bufSlice = bufSlice.subarray(nread);
+   *     }
+   */
+  get body(): ServerRequestBody {
+    if (!this._body) {
+      const stream = this._bodyStream();
+      stream.next(); // drop dummy such that first read is not empty.
+      this._body = new ServerRequestBody(stream);
+    }
+    return this._body;
+  }
+
+  /**
+   * Internal: actually reading body. Each step, buf to use is passed
+   * in through yield result.
+   * Returns on no more data to read or error.
+   */
+  private async *_bodyStream(): AsyncIterator<number, undefined, Uint8Array> {
+    let buf = yield 0; // dummy yield to retrieve user provided buf.
+    if (this.headers.has("content-length")) {
+      const len = this.contentLength;
+      if (len === null) {
+        return;
+      }
       let rr = await this.r.read(buf);
       let nread = rr === Deno.EOF ? 0 : rr;
       let nreadTotal = nread;
       while (rr !== Deno.EOF && nreadTotal < len) {
-        yield buf.subarray(0, nread);
-        buf = new Uint8Array(1024);
+        buf = yield nread;
         rr = await this.r.read(buf);
         nread = rr === Deno.EOF ? 0 : rr;
         nreadTotal += nread;
       }
-      yield buf.subarray(0, nread);
+      yield nread;
     } else {
       if (this.headers.has("transfer-encoding")) {
         const transferEncodings = this.headers
@@ -145,11 +207,17 @@ export class ServerRequest {
             throw new Error("Invalid chunk size");
           }
           while (chunkSize > 0) {
-            const data = new Uint8Array(chunkSize);
-            if ((await this.r.readFull(data)) === Deno.EOF) {
-              throw new UnexpectedEOFError();
+            let currChunkOffset = 0;
+            // Since given readBuffer might be smaller, loop.
+            while (currChunkOffset < chunkSize) {
+              // Try to be as large as chunkSize. Might be smaller though.
+              const bufferToFill = buf.subarray(0, chunkSize);
+              if ((await this.r.readFull(bufferToFill)) === Deno.EOF) {
+                throw new UnexpectedEOFError();
+              }
+              currChunkOffset += bufferToFill.length;
+              buf = yield bufferToFill.length;
             }
-            yield data;
             await this.r.readLine(); // Consume \r\n
             line = await tp.readLine();
             if (line === Deno.EOF) throw new UnexpectedEOFError();
@@ -182,22 +250,29 @@ export class ServerRequest {
         }
         // TODO: handle other transfer-encoding types
       }
-      // Otherwise...
-      yield new Uint8Array(0);
+      // Otherwise... Do nothing
     }
   }
 
-  // Read the body of the request into a single Uint8Array
-  public async body(): Promise<Uint8Array> {
-    return collectUint8Arrays(this.bodyStream());
-  }
-
   async respond(r: Response): Promise<void> {
-    // Write our response!
-    await writeResponse(this.w, r);
+    let err: Error | undefined;
+    try {
+      // Write our response!
+      await writeResponse(this.w, r);
+    } catch (e) {
+      try {
+        // Eagerly close on error.
+        this.conn.close();
+      } catch {}
+      err = e;
+    }
     // Signal that this request has been processed and the next pipelined
     // request on the same connection can be accepted.
-    this.done.resolve();
+    this.done.resolve(err);
+    if (err) {
+      // Error during responding, rethrow.
+      throw err;
+    }
   }
 }
 
@@ -338,7 +413,13 @@ export class Server implements AsyncIterable<ServerRequest> {
 
       // Wait for the request to be processed before we accept a new request on
       // this connection.
-      await req!.done;
+      const procError = await req!.done;
+      if (procError) {
+        // Something bad happened during response.
+        // (likely other side closed during pipelined req)
+        // req.done implies this connection already closed, so we can just return.
+        return;
+      }
     }
 
     if (req! === Deno.EOF) {
@@ -348,7 +429,7 @@ export class Server implements AsyncIterable<ServerRequest> {
       try {
         await writeResponse(req!.w, {
           status: 400,
-          body: new TextEncoder().encode(`${err.message}\r\n\r\n`)
+          body: encoder.encode(`${err.message}\r\n\r\n`)
         });
       } catch (_) {
         // The connection is destroyed.
@@ -396,7 +477,7 @@ interface ServerConfig {
  * Start a HTTP server
  *
  *     import { serve } from "https://deno.land/std/http/server.ts";
- *     const body = new TextEncoder().encode("Hello World\n");
+ *     const body = "Hello World\n";
  *     const s = serve({ port: 8000 });
  *     for await (const req of s) {
  *       req.respond({ body });
@@ -429,7 +510,7 @@ export type HTTPSOptions = Omit<Deno.ListenTLSOptions, "transport">;
 /**
  * Create an HTTPS server with given options
  *
- *     const body = new TextEncoder().encode("Hello HTTPS");
+ *     const body = "Hello HTTPS";
  *     const options = {
  *       hostname: "localhost",
  *       port: 443,
@@ -455,7 +536,7 @@ export function serveTLS(options: HTTPSOptions): Server {
 /**
  * Create an HTTPS server with given options and request handler
  *
- *     const body = new TextEncoder().encode("Hello HTTPS");
+ *     const body = "Hello HTTPS";
  *     const options = {
  *       hostname: "localhost",
  *       port: 443,
@@ -480,8 +561,13 @@ export async function listenAndServeTLS(
   }
 }
 
+/**
+ * Interface of HTTP server response.
+ * If body is a Reader, response would be chunked.
+ * If body is a string, it would be UTF-8 encoded by default.
+ */
 export interface Response {
   status?: number;
   headers?: Headers;
-  body?: Uint8Array | Reader;
+  body?: Uint8Array | Reader | string;
 }

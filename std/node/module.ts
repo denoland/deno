@@ -24,6 +24,7 @@ import "./global.ts";
 import * as nodeFS from "./fs.ts";
 import * as nodeUtil from "./util.ts";
 import * as nodePath from "./path.ts";
+import * as nodeTimers from "./timers.ts";
 
 import * as path from "../path/mod.ts";
 import { assert } from "../testing/asserts.ts";
@@ -54,6 +55,9 @@ function stat(filename: string): StatResult {
     if (statCache !== null) statCache.set(filename, result);
     return result;
   } catch (e) {
+    if (e.kind === Deno.ErrorKind.PermissionDenied) {
+      throw new Error("CJS loader requires --allow-read.");
+    }
     return -1;
   }
 }
@@ -577,6 +581,7 @@ function createNativeModule(id: string, exports: any): Module {
 nativeModulePolyfill.set("fs", createNativeModule("fs", nodeFS));
 nativeModulePolyfill.set("util", createNativeModule("util", nodeUtil));
 nativeModulePolyfill.set("path", createNativeModule("path", nodePath));
+nativeModulePolyfill.set("timers", createNativeModule("timers", nodeTimers));
 function loadNativeModule(
   _filename: string,
   request: string

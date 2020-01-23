@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 # Performs benchmark and append data to //website/data.json.
 # If //website/data.json doesn't exist, this script tries to import it from
 # gh-pages branch.
@@ -28,6 +28,11 @@ exec_time_benchmarks = [
     ("workers_startup", ["tests/workers_startup_bench.ts"]),
     ("workers_round_robin", ["tests/workers_round_robin_bench.ts"]),
     ("text_decoder", ["cli/tests/text_decoder_perf.js"]),
+    ("text_encoder", ["cli/tests/text_encoder_perf.js"]),
+    ("compile_local_prettier", ["fetch", "--reload", "std/prettier/main.ts"]),
+    ("compile_remote_prettier",
+     ["fetch", "--reload",
+      "https://deno.land/x/std@v0.29.0/prettier/main.ts"]),
 ]
 
 
@@ -84,6 +89,10 @@ def strace_parse(summary_text):
     summary = {}
     # clear empty lines
     lines = list(filter(lambda x: x and x != "\n", summary_text.split("\n")))
+    # Filter out non-relevant lines. See the error log at
+    # https://github.com/denoland/deno/pull/3715/checks?check_run_id=397365887
+    # This is checked in tools/testdata/strace_summary2.out
+    lines = [x for x in lines if x.find("detached ...") == -1]
     if len(lines) < 4:
         return {}  # malformed summary
     lines, total_line = lines[2:-2], lines[-1]
@@ -114,7 +123,14 @@ def strace_parse(summary_text):
 
 
 def get_strace_summary(test_args):
-    return strace_parse(get_strace_summary_text(test_args))
+    s = get_strace_summary_text(test_args)
+    try:
+        return strace_parse(s)
+    except ValueError:
+        print "error parsing strace"
+        print "----- <strace> -------"
+        print s
+        print "----- </strace> ------"
 
 
 def run_throughput(deno_exe):
@@ -131,7 +147,7 @@ def run_strace_benchmarks(deno_exe, new_data):
     thread_count = {}
     syscall_count = {}
     for (name, args) in exec_time_benchmarks:
-        s = get_strace_summary([deno_exe, "run"] + args)
+        s = get_strace_summary([deno_exe] + args)
         thread_count[name] = s["clone"]["calls"] + 1
         syscall_count[name] = s["total"]["calls"]
     new_data["thread_count"] = thread_count
@@ -150,7 +166,7 @@ def find_max_mem_in_bytes(time_v_output):
 def run_max_mem_benchmark(deno_exe):
     results = {}
     for (name, args) in exec_time_benchmarks:
-        cmd = ["/usr/bin/time", "-v", deno_exe, "run"] + args
+        cmd = ["/usr/bin/time", "-v", deno_exe] + args
         try:
             out = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError:
@@ -167,8 +183,7 @@ def run_exec_time(deno_exe, build_dir):
         hyperfine_exe, "--ignore-failure", "--export-json", benchmark_file,
         "--warmup", "3"
     ] + [
-        deno_exe + " run " + " ".join(args)
-        for [_, args] in exec_time_benchmarks
+        deno_exe + " " + " ".join(args) for [_, args] in exec_time_benchmarks
     ])
     hyperfine_results = read_json(benchmark_file)
     results = {}

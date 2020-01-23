@@ -1,7 +1,7 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-//! This mod provides functions to remap a deno::V8Exception based on a source map
-use deno::StackFrame;
-use deno::V8Exception;
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+//! This mod provides functions to remap a deno_core::V8Exception based on a source map
+use deno_core::StackFrame;
+use deno_core::V8Exception;
 use serde_json;
 use source_map_mappings::parse_mappings;
 use source_map_mappings::Bias;
@@ -260,8 +260,12 @@ mod tests {
   impl SourceMapGetter for MockSourceMapGetter {
     fn get_source_map(&self, script_name: &str) -> Option<Vec<u8>> {
       let s = match script_name {
-        "foo_bar.ts" => r#"{"sources": ["foo_bar.ts"], "mappings":";;;IAIA,OAAO,CAAC,GAAG,CAAC,qBAAqB,EAAE,EAAE,CAAC,OAAO,CAAC,CAAC;IAC/C,OAAO,CAAC,GAAG,CAAC,eAAe,EAAE,IAAI,CAAC,QAAQ,CAAC,IAAI,CAAC,CAAC;IACjD,OAAO,CAAC,GAAG,CAAC,WAAW,EAAE,IAAI,CAAC,QAAQ,CAAC,EAAE,CAAC,CAAC;IAE3C,OAAO,CAAC,GAAG,CAAC,GAAG,CAAC,CAAC"}"#,
-        "bar_baz.ts" => r#"{"sources": ["bar_baz.ts"], "mappings":";;;IAEA,CAAC,KAAK,IAAI,EAAE;QACV,MAAM,GAAG,GAAG,sDAAa,OAAO,2BAAC,CAAC;QAClC,OAAO,CAAC,GAAG,CAAC,GAAG,CAAC,CAAC;IACnB,CAAC,CAAC,EAAE,CAAC;IAEQ,QAAA,GAAG,GAAG,KAAK,CAAC;IAEzB,OAAO,CAAC,GAAG,CAAC,GAAG,CAAC,CAAC"}"#,
+        "foo_bar.ts" => {
+          r#"{"sources": ["foo_bar.ts"], "mappings":";;;IAIA,OAAO,CAAC,GAAG,CAAC,qBAAqB,EAAE,EAAE,CAAC,OAAO,CAAC,CAAC;IAC/C,OAAO,CAAC,GAAG,CAAC,eAAe,EAAE,IAAI,CAAC,QAAQ,CAAC,IAAI,CAAC,CAAC;IACjD,OAAO,CAAC,GAAG,CAAC,WAAW,EAAE,IAAI,CAAC,QAAQ,CAAC,EAAE,CAAC,CAAC;IAE3C,OAAO,CAAC,GAAG,CAAC,GAAG,CAAC,CAAC"}"#
+        }
+        "bar_baz.ts" => {
+          r#"{"sources": ["bar_baz.ts"], "mappings":";;;IAEA,CAAC,KAAK,IAAI,EAAE;QACV,MAAM,GAAG,GAAG,sDAAa,OAAO,2BAAC,CAAC;QAClC,OAAO,CAAC,GAAG,CAAC,GAAG,CAAC,CAAC;IACnB,CAAC,CAAC,EAAE,CAAC;IAEQ,QAAA,GAAG,GAAG,KAAK,CAAC;IAEzB,OAAO,CAAC,GAAG,CAAC,GAAG,CAAC,CAAC"}"#
+        }
         _ => return None,
       };
       Some(s.as_bytes().to_owned())
@@ -408,7 +412,7 @@ mod tests {
     assert_eq!(actual.message, "TypeError: baz");
     // Because this is accessing the live bundle, this test might be more fragile
     assert_eq!(actual.frames.len(), 1);
-    assert!(actual.frames[0].script_name.ends_with("/window.ts"));
+    assert!(actual.frames[0].script_name.ends_with("/dom_types.ts"));
   }
 
   #[test]

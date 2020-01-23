@@ -1,16 +1,16 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-use crate::deno_error::{permission_denied_msg, type_error};
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::deno_error::{other_error, permission_denied_msg};
 use crate::flags::DenoFlags;
 use ansi_term::Style;
 #[cfg(not(test))]
 use atty;
-use deno::ErrBox;
+use deno_core::ErrBox;
 use log;
 use std::collections::HashSet;
 use std::fmt;
 #[cfg(not(test))]
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 #[cfg(test)]
 use std::sync::atomic::AtomicBool;
 #[cfg(test)]
@@ -135,30 +135,30 @@ impl DenoPermissions {
     )
   }
 
-  fn get_state_read(&self, filename: &Option<&str>) -> PermissionState {
-    if check_path_white_list(filename, &self.read_whitelist) {
+  fn get_state_read(&self, path: &Option<&Path>) -> PermissionState {
+    if path.map_or(false, |f| check_path_white_list(f, &self.read_whitelist)) {
       return PermissionState::Allow;
     }
     self.allow_read
   }
 
-  pub fn check_read(&self, filename: &str) -> Result<(), ErrBox> {
-    self.get_state_read(&Some(filename)).check(
-      &format!("read access to \"{}\"", filename),
+  pub fn check_read(&self, path: &Path) -> Result<(), ErrBox> {
+    self.get_state_read(&Some(path)).check(
+      &format!("read access to \"{}\"", path.display()),
       "run again with the --allow-read flag",
     )
   }
 
-  fn get_state_write(&self, filename: &Option<&str>) -> PermissionState {
-    if check_path_white_list(filename, &self.write_whitelist) {
+  fn get_state_write(&self, path: &Option<&Path>) -> PermissionState {
+    if path.map_or(false, |f| check_path_white_list(f, &self.write_whitelist)) {
       return PermissionState::Allow;
     }
     self.allow_write
   }
 
-  pub fn check_write(&self, filename: &str) -> Result<(), ErrBox> {
-    self.get_state_write(&Some(filename)).check(
-      &format!("write access to \"{}\"", filename),
+  pub fn check_write(&self, path: &Path) -> Result<(), ErrBox> {
+    self.get_state_write(&Some(path)).check(
+      &format!("write access to \"{}\"", path.display()),
       "run again with the --allow-write flag",
     )
   }
@@ -179,8 +179,7 @@ impl DenoPermissions {
     }
     let url: &str = url.unwrap();
     // If url is invalid, then throw a TypeError.
-    let parsed = Url::parse(url)
-      .map_err(|_| type_error(format!("Invalid url: {}", url)))?;
+    let parsed = Url::parse(url).map_err(ErrBox::from)?;
     Ok(
       self.get_state_net(&format!("{}", parsed.host().unwrap()), parsed.port()),
     )
@@ -209,9 +208,9 @@ impl DenoPermissions {
     )
   }
 
-  pub fn check_plugin(&self, filename: &str) -> Result<(), ErrBox> {
+  pub fn check_plugin(&self, path: &Path) -> Result<(), ErrBox> {
     self.allow_plugin.check(
-      &format!("access to open a plugin: {}", filename),
+      &format!("access to open a plugin: {}", path.display()),
       "run again with the --allow-plugin flag",
     )
   }
@@ -222,23 +221,27 @@ impl DenoPermissions {
       .request("Deno requests to access to run a subprocess.")
   }
 
-  pub fn request_read(&mut self, path: &Option<&str>) -> PermissionState {
-    if check_path_white_list(path, &self.read_whitelist) {
+  pub fn request_read(&mut self, path: &Option<&Path>) -> PermissionState {
+    if path.map_or(false, |f| check_path_white_list(f, &self.read_whitelist)) {
       return PermissionState::Allow;
     };
     self.allow_read.request(&match path {
       None => "Deno requests read access.".to_string(),
-      Some(path) => format!("Deno requests read access to \"{}\".", path),
+      Some(path) => {
+        format!("Deno requests read access to \"{}\".", path.display())
+      }
     })
   }
 
-  pub fn request_write(&mut self, path: &Option<&str>) -> PermissionState {
-    if check_path_white_list(path, &self.write_whitelist) {
+  pub fn request_write(&mut self, path: &Option<&Path>) -> PermissionState {
+    if path.map_or(false, |f| check_path_white_list(f, &self.write_whitelist)) {
       return PermissionState::Allow;
     };
     self.allow_write.request(&match path {
       None => "Deno requests write access.".to_string(),
-      Some(path) => format!("Deno requests write access to \"{}\".", path),
+      Some(path) => {
+        format!("Deno requests write access to \"{}\".", path.display())
+      }
     })
   }
 
@@ -275,7 +278,7 @@ impl DenoPermissions {
     &self,
     name: &str,
     url: &Option<&str>,
-    path: &Option<&str>,
+    path: &Option<&Path>,
   ) -> Result<PermissionState, ErrBox> {
     match name {
       "run" => Ok(self.allow_run),
@@ -285,7 +288,7 @@ impl DenoPermissions {
       "env" => Ok(self.allow_env),
       "plugin" => Ok(self.allow_plugin),
       "hrtime" => Ok(self.allow_hrtime),
-      n => Err(type_error(format!("No such permission name: {}", n))),
+      n => Err(other_error(format!("No such permission name: {}", n))),
     }
   }
 }
@@ -350,14 +353,8 @@ fn log_perm_access(message: &str) {
   }
 }
 
-fn check_path_white_list(
-  filename: &Option<&str>,
-  white_list: &HashSet<String>,
-) -> bool {
-  if filename.is_none() {
-    return false;
-  }
-  let mut path_buf = PathBuf::from(filename.unwrap());
+fn check_path_white_list(path: &Path, white_list: &HashSet<String>) -> bool {
+  let mut path_buf = PathBuf::from(path);
   loop {
     if white_list.contains(path_buf.to_str().unwrap()) {
       return true;
@@ -394,41 +391,47 @@ mod tests {
 
     let perms = DenoPermissions::from_flags(&DenoFlags {
       read_whitelist: whitelist.clone(),
-      write_whitelist: whitelist.clone(),
+      write_whitelist: whitelist,
       ..Default::default()
     });
 
     // Inside of /a/specific and /a/specific/dir/name
-    assert!(perms.check_read("/a/specific/dir/name").is_ok());
-    assert!(perms.check_write("/a/specific/dir/name").is_ok());
+    assert!(perms.check_read(Path::new("/a/specific/dir/name")).is_ok());
+    assert!(perms.check_write(Path::new("/a/specific/dir/name")).is_ok());
 
     // Inside of /a/specific but outside of /a/specific/dir/name
-    assert!(perms.check_read("/a/specific/dir").is_ok());
-    assert!(perms.check_write("/a/specific/dir").is_ok());
+    assert!(perms.check_read(Path::new("/a/specific/dir")).is_ok());
+    assert!(perms.check_write(Path::new("/a/specific/dir")).is_ok());
 
     // Inside of /a/specific and /a/specific/dir/name
-    assert!(perms.check_read("/a/specific/dir/name/inner").is_ok());
-    assert!(perms.check_write("/a/specific/dir/name/inner").is_ok());
+    assert!(perms
+      .check_read(Path::new("/a/specific/dir/name/inner"))
+      .is_ok());
+    assert!(perms
+      .check_write(Path::new("/a/specific/dir/name/inner"))
+      .is_ok());
 
     // Inside of /a/specific but outside of /a/specific/dir/name
-    assert!(perms.check_read("/a/specific/other/dir").is_ok());
-    assert!(perms.check_write("/a/specific/other/dir").is_ok());
+    assert!(perms.check_read(Path::new("/a/specific/other/dir")).is_ok());
+    assert!(perms
+      .check_write(Path::new("/a/specific/other/dir"))
+      .is_ok());
 
     // Exact match with /b/c
-    assert!(perms.check_read("/b/c").is_ok());
-    assert!(perms.check_write("/b/c").is_ok());
+    assert!(perms.check_read(Path::new("/b/c")).is_ok());
+    assert!(perms.check_write(Path::new("/b/c")).is_ok());
 
     // Sub path within /b/c
-    assert!(perms.check_read("/b/c/sub/path").is_ok());
-    assert!(perms.check_write("/b/c/sub/path").is_ok());
+    assert!(perms.check_read(Path::new("/b/c/sub/path")).is_ok());
+    assert!(perms.check_write(Path::new("/b/c/sub/path")).is_ok());
 
     // Inside of /b but outside of /b/c
-    assert!(perms.check_read("/b/e").is_err());
-    assert!(perms.check_write("/b/e").is_err());
+    assert!(perms.check_read(Path::new("/b/e")).is_err());
+    assert!(perms.check_write(Path::new("/b/e")).is_err());
 
     // Inside of /a but outside of /a/specific
-    assert!(perms.check_read("/a/b").is_err());
-    assert!(perms.check_write("/a/b").is_err());
+    assert!(perms.check_read(Path::new("/a/b")).is_err());
+    assert!(perms.check_write(Path::new("/a/b")).is_err());
   }
 
   #[test]
@@ -540,7 +543,7 @@ mod tests {
     // If the whitelist contains the path, then the result is `allow`
     // regardless of prompt result
     assert_eq!(
-      perms0.request_read(&Some("/foo/bar")),
+      perms0.request_read(&Some(Path::new("/foo/bar"))),
       PermissionState::Allow
     );
 
@@ -550,17 +553,17 @@ mod tests {
     });
     set_prompt_result(true);
     assert_eq!(
-      perms1.request_read(&Some("/foo/baz")),
+      perms1.request_read(&Some(Path::new("/foo/baz"))),
       PermissionState::Allow
     );
 
     let mut perms2 = DenoPermissions::from_flags(&DenoFlags {
-      read_whitelist: whitelist.clone(),
+      read_whitelist: whitelist,
       ..Default::default()
     });
     set_prompt_result(false);
     assert_eq!(
-      perms2.request_read(&Some("/foo/baz")),
+      perms2.request_read(&Some(Path::new("/foo/baz"))),
       PermissionState::Deny
     );
   }
@@ -576,7 +579,7 @@ mod tests {
     // If the whitelist contains the path, then the result is `allow`
     // regardless of prompt result
     assert_eq!(
-      perms0.request_write(&Some("/foo/bar")),
+      perms0.request_write(&Some(Path::new("/foo/bar"))),
       PermissionState::Allow
     );
 
@@ -586,17 +589,17 @@ mod tests {
     });
     set_prompt_result(true);
     assert_eq!(
-      perms1.request_write(&Some("/foo/baz")),
+      perms1.request_write(&Some(Path::new("/foo/baz"))),
       PermissionState::Allow
     );
 
     let mut perms2 = DenoPermissions::from_flags(&DenoFlags {
-      write_whitelist: whitelist.clone(),
+      write_whitelist: whitelist,
       ..Default::default()
     });
     set_prompt_result(false);
     assert_eq!(
-      perms2.request_write(&Some("/foo/baz")),
+      perms2.request_write(&Some(Path::new("/foo/baz"))),
       PermissionState::Deny
     );
   }
@@ -644,7 +647,7 @@ mod tests {
     );
 
     let mut perms3 = DenoPermissions::from_flags(&DenoFlags {
-      net_whitelist: whitelist.clone(),
+      net_whitelist: whitelist,
       ..Default::default()
     });
     set_prompt_result(true);

@@ -1,4 +1,6 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+#![deny(warnings)]
+
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
@@ -7,7 +9,7 @@ extern crate futures;
 #[macro_use]
 extern crate serde_json;
 extern crate clap;
-extern crate deno;
+extern crate deno_core;
 extern crate indexmap;
 #[cfg(unix)]
 extern crate nix;
@@ -30,7 +32,6 @@ pub mod fmt_errors;
 mod fs;
 mod global_state;
 mod global_timer;
-mod http_body;
 mod http_util;
 mod import_map;
 mod js;
@@ -50,6 +51,7 @@ pub mod state;
 pub mod test_util;
 mod tokio_util;
 pub mod version;
+mod web_worker;
 pub mod worker;
 
 use crate::deno_error::js_check;
@@ -58,10 +60,10 @@ use crate::global_state::ThreadSafeGlobalState;
 use crate::ops::io::get_stdio;
 use crate::progress::Progress;
 use crate::state::ThreadSafeState;
-use crate::worker::Worker;
-use deno::v8_set_flags;
-use deno::ErrBox;
-use deno::ModuleSpecifier;
+use crate::worker::MainWorker;
+use deno_core::v8_set_flags;
+use deno_core::ErrBox;
+use deno_core::ModuleSpecifier;
 use flags::DenoFlags;
 use flags::DenoSubcommand;
 use log::Level;
@@ -95,7 +97,7 @@ impl log::Log for Logger {
 
 fn create_worker_and_state(
   flags: DenoFlags,
-) -> (Worker, ThreadSafeGlobalState) {
+) -> (MainWorker, ThreadSafeGlobalState) {
   use crate::shell::Shell;
   use std::sync::Arc;
   use std::sync::Mutex;
@@ -119,7 +121,6 @@ fn create_worker_and_state(
     global_state.clone(),
     None,
     global_state.main_module.clone(),
-    true,
     int,
   )
   .map_err(deno_error::print_err_and_exit)
@@ -134,7 +135,7 @@ fn create_worker_and_state(
     resource_table.add("stderr", Box::new(stderr));
   }
 
-  let worker = Worker::new(
+  let worker = MainWorker::new(
     "main".to_string(),
     startup_data::deno_isolate_init(),
     state,
@@ -145,11 +146,10 @@ fn create_worker_and_state(
 }
 
 fn types_command() {
-  let content = crate::js::get_asset("lib.deno_runtime.d.ts").unwrap();
-  println!("{}", content);
+  println!("{}", crate::js::DENO_RUNTIME);
 }
 
-fn print_cache_info(worker: Worker) {
+fn print_cache_info(worker: MainWorker) {
   let state = &worker.state.global_state;
 
   println!(
@@ -169,9 +169,11 @@ fn print_cache_info(worker: Worker) {
   );
 }
 
-async fn print_file_info(worker: Worker, module_specifier: ModuleSpecifier) {
+async fn print_file_info(
+  worker: MainWorker,
+  module_specifier: ModuleSpecifier,
+) {
   let global_state_ = &worker.state.global_state;
-  let state_ = &worker.state;
 
   let maybe_source_file = global_state_
     .file_fetcher
@@ -232,7 +234,8 @@ async fn print_file_info(worker: Worker, module_specifier: ModuleSpecifier) {
     );
   }
 
-  if let Some(deps) = state_.modules.lock().unwrap().deps(&compiled.name) {
+  let isolate = worker.isolate.try_lock().unwrap();
+  if let Some(deps) = isolate.modules.deps(&compiled.name) {
     println!("{}{}", colors::bold("deps:\n".to_string()), deps.name);
     if let Some(ref depsdeps) = deps.deps {
       for d in depsdeps {
@@ -259,7 +262,7 @@ fn info_command(flags: DenoFlags) {
   let main_module = state.main_module.as_ref().unwrap().clone();
 
   // Setup runtime.
-  js_check(worker.execute("denoMain()"));
+  js_check(worker.execute("bootstrapMainRuntime()"));
   debug!("main_module {}", main_module);
 
   let main_future = async move {
@@ -270,7 +273,6 @@ fn info_command(flags: DenoFlags) {
     print_file_info(worker.clone(), main_module.clone()).await;
     let result = worker.await;
     js_check(result);
-    Ok(())
   };
 
   tokio_util::run(main_future);
@@ -282,13 +284,12 @@ fn fetch_command(flags: DenoFlags) {
   let main_module = state.main_module.as_ref().unwrap().clone();
 
   // Setup runtime.
-  js_check(worker.execute("denoMain()"));
+  js_check(worker.execute("bootstrapMainRuntime()"));
   debug!("main_module {}", main_module);
 
   let main_future = async move {
     let result = worker.execute_mod_async(&main_module, None, true).await;
     js_check(result);
-    Ok(())
   };
 
   tokio_util::run(main_future);
@@ -301,7 +302,7 @@ fn eval_command(flags: DenoFlags) {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./__$deno$eval.ts").unwrap();
 
-  js_check(worker.execute("denoMain()"));
+  js_check(worker.execute("bootstrapMainRuntime()"));
   debug!("main_module {}", &main_module);
 
   let main_future = async move {
@@ -316,7 +317,6 @@ fn eval_command(flags: DenoFlags) {
     let result = worker.await;
     js_check(result);
     js_check(worker_.execute("window.dispatchEvent(new Event('unload'))"));
-    Ok(())
   };
 
   tokio_util::run(main_future);
@@ -342,19 +342,21 @@ fn bundle_command(flags: DenoFlags) {
       print_err_and_exit(err);
     }
     debug!(">>>>> bundle_async END");
-    Ok(())
   };
   tokio_util::run(main_future);
 }
 
 fn run_repl(flags: DenoFlags) {
   let (mut worker, _state) = create_worker_and_state(flags);
-  // Setup runtime.
-  js_check(worker.execute("denoMain()"));
+  js_check(worker.execute("bootstrapMainRuntime()"));
   let main_future = async move {
-    let result = worker.await;
-    js_check(result);
-    Ok(())
+    loop {
+      let result = worker.clone().await;
+      if let Err(err) = result {
+        eprintln!("{}", err.to_string());
+        worker.clear_exception();
+      }
+    }
   };
   tokio_util::run(main_future);
 }
@@ -371,7 +373,7 @@ fn run_script(flags: DenoFlags) {
   // Normal situation of executing a module.
 
   // Setup runtime.
-  js_check(worker.execute("denoMain()"));
+  js_check(worker.execute("bootstrapMainRuntime()"));
   debug!("main_module {}", main_module);
 
   let mut worker_ = worker.clone();
@@ -396,7 +398,6 @@ fn run_script(flags: DenoFlags) {
     let result = worker.await;
     js_check(result);
     js_check(worker_.execute("window.dispatchEvent(new Event('unload'))"));
-    Ok(())
   };
 
   if use_current_thread {

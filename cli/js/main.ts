@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import "./globals.ts";
 
 import { assert, log } from "./util.ts";
@@ -7,13 +7,12 @@ import { args } from "./deno.ts";
 import { setPrepareStackTrace } from "./error_stack.ts";
 import { replLoop } from "./repl.ts";
 import { setVersions } from "./version.ts";
-import { window } from "./window.ts";
 import { setLocation } from "./location.ts";
 import { setBuildInfo } from "./build.ts";
 import { setSignals } from "./process.ts";
 
-function denoMain(preserveDenoNamespace = true, name?: string): void {
-  const s = os.start(preserveDenoNamespace, name);
+function bootstrapMainRuntime(): void {
+  const s = os.start(true);
 
   setBuildInfo(s.os, s.arch);
   setSignals();
@@ -25,10 +24,8 @@ function denoMain(preserveDenoNamespace = true, name?: string): void {
     assert(s.mainModule.length > 0);
     setLocation(s.mainModule);
   }
-
   log("cwd", s.cwd);
-
-  for (let i = 1; i < s.argv.length; i++) {
+  for (let i = 0; i < s.argv.length; i++) {
     args.push(s.argv[i]);
   }
   log("args", args);
@@ -38,4 +35,4 @@ function denoMain(preserveDenoNamespace = true, name?: string): void {
     replLoop();
   }
 }
-window["denoMain"] = denoMain;
+globalThis["bootstrapMainRuntime"] = bootstrapMainRuntime;

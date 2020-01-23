@@ -1,4 +1,4 @@
-use crate::libdeno::PinnedBuf;
+use crate::isolate::PinnedBuf;
 use crate::ops::CoreOp;
 
 pub type PluginInitFn = fn(context: &mut dyn PluginInitContext);

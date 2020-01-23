@@ -2,14 +2,19 @@ use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::fs as deno_fs;
 use crate::ops::json_op;
 use crate::state::ThreadSafeState;
-use deno::*;
+use deno_core::*;
 use dlopen::symbor::Library;
 use std::collections::HashMap;
 use std::ffi::OsStr;
+use std::path::Path;
 use std::sync::Arc;
 
-pub fn init(i: &mut Isolate, s: &ThreadSafeState, r: Arc<deno::OpRegistry>) {
-  let r_ = r.clone();
+pub fn init(
+  i: &mut Isolate,
+  s: &ThreadSafeState,
+  r: Arc<deno_core::OpRegistry>,
+) {
+  let r_ = r;
   i.register_op(
     "open_plugin",
     s.core_op(json_op(s.stateful_op(move |state, args, zero_copy| {
@@ -52,15 +57,15 @@ struct OpenPluginArgs {
 }
 
 pub fn op_open_plugin(
-  registry: &Arc<deno::OpRegistry>,
+  registry: &Arc<deno_core::OpRegistry>,
   state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: OpenPluginArgs = serde_json::from_value(args)?;
-  let (filename, filename_) = deno_fs::resolve_from_cwd(&args.filename)?;
+  let filename = deno_fs::resolve_from_cwd(Path::new(&args.filename))?;
 
-  state.check_plugin(&filename_)?;
+  state.check_plugin(&filename)?;
 
   let lib = open_plugin(filename)?;
   let plugin_resource = PluginResource {
@@ -86,7 +91,8 @@ pub fn op_open_plugin(
     // The inclusion of prefix and rid is designed to avoid any
     // op name collision beyond the bound of a single loaded
     // plugin instance.
-    let op_id = registry.register(&format!("plugin_{}_{}", rid, op.0), op.1);
+    let op_id = registry
+      .register(&format!("plugin_{}_{}", rid, op.0), state.core_op(op.1));
     plugin_resource.ops.insert(op.0, op_id);
   }
 

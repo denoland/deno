@@ -1,14 +1,12 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::diagnostics::Diagnostic;
 use crate::fmt_errors::JSError;
 use crate::import_map::ImportMapError;
 pub use crate::msg::ErrorKind;
-use deno::AnyError;
-use deno::ErrBox;
-use deno::ModuleResolutionError;
+use deno_core::AnyError;
+use deno_core::ErrBox;
+use deno_core::ModuleResolutionError;
 use dlopen::Error as DlopenError;
-use http::uri;
-use hyper;
 use reqwest;
 use rustyline::error::ReadlineError;
 use std;
@@ -77,33 +75,16 @@ pub fn permission_denied_msg(msg: String) -> ErrBox {
   DenoError::new(ErrorKind::PermissionDenied, msg).into()
 }
 
-pub fn op_not_implemented() -> ErrBox {
-  StaticError(ErrorKind::OpNotAvailable, "op not implemented").into()
-}
-
 pub fn no_buffer_specified() -> ErrBox {
   StaticError(ErrorKind::InvalidInput, "no buffer specified").into()
-}
-
-pub fn no_async_support() -> ErrBox {
-  StaticError(ErrorKind::NoAsyncSupport, "op doesn't support async calls")
-    .into()
-}
-
-pub fn no_sync_support() -> ErrBox {
-  StaticError(ErrorKind::NoSyncSupport, "op doesn't support sync calls").into()
 }
 
 pub fn invalid_address_syntax() -> ErrBox {
   StaticError(ErrorKind::InvalidInput, "invalid address syntax").into()
 }
 
-pub fn too_many_redirects() -> ErrBox {
-  StaticError(ErrorKind::TooManyRedirects, "too many redirects").into()
-}
-
-pub fn type_error(msg: String) -> ErrBox {
-  DenoError::new(ErrorKind::TypeError, msg).into()
+pub fn other_error(msg: String) -> ErrBox {
+  DenoError::new(ErrorKind::Other, msg).into()
 }
 
 pub trait GetErrorKind {
@@ -136,7 +117,7 @@ impl GetErrorKind for Diagnostic {
 
 impl GetErrorKind for ImportMapError {
   fn kind(&self) -> ErrorKind {
-    ErrorKind::ImportMapError
+    ErrorKind::Other
   }
 }
 
@@ -187,43 +168,9 @@ impl GetErrorKind for io::Error {
   }
 }
 
-impl GetErrorKind for uri::InvalidUri {
-  fn kind(&self) -> ErrorKind {
-    // The http::uri::ErrorKind exists and is similar to url::ParseError.
-    // However it is also private, so we can't get any details out.
-    ErrorKind::InvalidUri
-  }
-}
-
 impl GetErrorKind for url::ParseError {
   fn kind(&self) -> ErrorKind {
-    use url::ParseError::*;
-    match self {
-      EmptyHost => ErrorKind::EmptyHost,
-      IdnaError => ErrorKind::IdnaError,
-      InvalidDomainCharacter => ErrorKind::InvalidDomainCharacter,
-      InvalidIpv4Address => ErrorKind::InvalidIpv4Address,
-      InvalidIpv6Address => ErrorKind::InvalidIpv6Address,
-      InvalidPort => ErrorKind::InvalidPort,
-      Overflow => ErrorKind::Overflow,
-      RelativeUrlWithCannotBeABaseBase => {
-        ErrorKind::RelativeUrlWithCannotBeABaseBase
-      }
-      RelativeUrlWithoutBase => ErrorKind::RelativeUrlWithoutBase,
-      SetHostOnCannotBeABaseUrl => ErrorKind::SetHostOnCannotBeABaseUrl,
-    }
-  }
-}
-
-impl GetErrorKind for hyper::Error {
-  fn kind(&self) -> ErrorKind {
-    match self {
-      e if e.is_canceled() => ErrorKind::HttpCanceled,
-      e if e.is_closed() => ErrorKind::HttpClosed,
-      e if e.is_parse() => ErrorKind::HttpParse,
-      e if e.is_user() => ErrorKind::HttpUser,
-      _ => ErrorKind::HttpOther,
-    }
+    ErrorKind::UrlParse
   }
 }
 
@@ -231,9 +178,8 @@ impl GetErrorKind for reqwest::Error {
   fn kind(&self) -> ErrorKind {
     use self::GetErrorKind as Get;
 
-    match self.get_ref() {
+    match self.source() {
       Some(err_ref) => None
-        .or_else(|| err_ref.downcast_ref::<hyper::Error>().map(Get::kind))
         .or_else(|| err_ref.downcast_ref::<url::ParseError>().map(Get::kind))
         .or_else(|| err_ref.downcast_ref::<io::Error>().map(Get::kind))
         .or_else(|| {
@@ -241,8 +187,8 @@ impl GetErrorKind for reqwest::Error {
             .downcast_ref::<serde_json::error::Error>()
             .map(Get::kind)
         })
-        .unwrap_or_else(|| ErrorKind::HttpOther),
-      _ => ErrorKind::HttpOther,
+        .unwrap_or_else(|| ErrorKind::Http),
+      None => ErrorKind::Http,
     }
   }
 }
@@ -323,14 +269,12 @@ impl GetErrorKind for dyn AnyError {
     None
       .or_else(|| self.downcast_ref::<DenoError>().map(Get::kind))
       .or_else(|| self.downcast_ref::<Diagnostic>().map(Get::kind))
-      .or_else(|| self.downcast_ref::<hyper::Error>().map(Get::kind))
       .or_else(|| self.downcast_ref::<reqwest::Error>().map(Get::kind))
       .or_else(|| self.downcast_ref::<ImportMapError>().map(Get::kind))
       .or_else(|| self.downcast_ref::<io::Error>().map(Get::kind))
       .or_else(|| self.downcast_ref::<JSError>().map(Get::kind))
       .or_else(|| self.downcast_ref::<ModuleResolutionError>().map(Get::kind))
       .or_else(|| self.downcast_ref::<StaticError>().map(Get::kind))
-      .or_else(|| self.downcast_ref::<uri::InvalidUri>().map(Get::kind))
       .or_else(|| self.downcast_ref::<url::ParseError>().map(Get::kind))
       .or_else(|| self.downcast_ref::<VarError>().map(Get::kind))
       .or_else(|| self.downcast_ref::<ReadlineError>().map(Get::kind))
@@ -354,9 +298,9 @@ mod tests {
   use crate::diagnostics::Diagnostic;
   use crate::diagnostics::DiagnosticCategory;
   use crate::diagnostics::DiagnosticItem;
-  use deno::ErrBox;
-  use deno::StackFrame;
-  use deno::V8Exception;
+  use deno_core::ErrBox;
+  use deno_core::StackFrame;
+  use deno_core::V8Exception;
 
   fn js_error() -> JSError {
     JSError::new(V8Exception {
@@ -455,8 +399,8 @@ mod tests {
   #[test]
   fn test_simple_error() {
     let err =
-      ErrBox::from(DenoError::new(ErrorKind::NoError, "foo".to_string()));
-    assert_eq!(err.kind(), ErrorKind::NoError);
+      ErrBox::from(DenoError::new(ErrorKind::NotFound, "foo".to_string()));
+    assert_eq!(err.kind(), ErrorKind::NotFound);
     assert_eq!(err.to_string(), "foo");
   }
 
@@ -470,7 +414,7 @@ mod tests {
   #[test]
   fn test_url_error() {
     let err = ErrBox::from(url_error());
-    assert_eq!(err.kind(), ErrorKind::EmptyHost);
+    assert_eq!(err.kind(), ErrorKind::UrlParse);
     assert_eq!(err.to_string(), "empty host");
   }
 
@@ -493,7 +437,7 @@ mod tests {
   #[test]
   fn test_import_map_error() {
     let err = ErrBox::from(import_map_error());
-    assert_eq!(err.kind(), ErrorKind::ImportMapError);
+    assert_eq!(err.kind(), ErrorKind::Other);
     assert_eq!(err.to_string(), "an import map error");
   }
 
@@ -520,30 +464,9 @@ mod tests {
   }
 
   #[test]
-  fn test_op_not_implemented() {
-    let err = op_not_implemented();
-    assert_eq!(err.kind(), ErrorKind::OpNotAvailable);
-    assert_eq!(err.to_string(), "op not implemented");
-  }
-
-  #[test]
   fn test_no_buffer_specified() {
     let err = no_buffer_specified();
     assert_eq!(err.kind(), ErrorKind::InvalidInput);
     assert_eq!(err.to_string(), "no buffer specified");
-  }
-
-  #[test]
-  fn test_no_async_support() {
-    let err = no_async_support();
-    assert_eq!(err.kind(), ErrorKind::NoAsyncSupport);
-    assert_eq!(err.to_string(), "op doesn't support async calls");
-  }
-
-  #[test]
-  fn test_no_sync_support() {
-    let err = no_sync_support();
-    assert_eq!(err.kind(), ErrorKind::NoSyncSupport);
-    assert_eq!(err.to_string(), "op doesn't support sync calls");
   }
 }

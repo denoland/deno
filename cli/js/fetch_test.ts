@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
   test,
   testPerm,
@@ -15,8 +15,8 @@ testPerm({ net: true }, async function fetchConnectionError(): Promise<void> {
   } catch (err_) {
     err = err_;
   }
-  assertEquals(err.kind, Deno.ErrorKind.HttpOther);
-  assertEquals(err.name, "HttpOther");
+  assertEquals(err.kind, Deno.ErrorKind.Http);
+  assertEquals(err.name, "Http");
   assertStrContains(err.message, "error trying to connect");
 });
 
@@ -39,6 +39,13 @@ test(async function fetchPerm(): Promise<void> {
 
 testPerm({ net: true }, async function fetchUrl(): Promise<void> {
   const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
+  assertEquals(response.url, "http://localhost:4545/cli/tests/fixture.json");
+});
+
+testPerm({ net: true }, async function fetchURL(): Promise<void> {
+  const response = await fetch(
+    new URL("http://localhost:4545/cli/tests/fixture.json")
+  );
   assertEquals(response.url, "http://localhost:4545/cli/tests/fixture.json");
 });
 
@@ -99,8 +106,8 @@ testPerm({ net: true }, async function fetchEmptyInvalid(): Promise<void> {
   } catch (err_) {
     err = err_;
   }
-  assertEquals(err.kind, Deno.ErrorKind.RelativeUrlWithoutBase);
-  assertEquals(err.name, "RelativeUrlWithoutBase");
+  assertEquals(err.kind, Deno.ErrorKind.UrlParse);
+  assertEquals(err.name, "UrlParse");
 });
 
 testPerm({ net: true }, async function fetchMultipartFormDataSuccess(): Promise<

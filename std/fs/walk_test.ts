@@ -105,7 +105,7 @@ testWalk(
 
 testWalk(
   async (d: string): Promise<void> => {
-    await mkdir(d + "/a/b/c/d", true);
+    await mkdir(d + "/a/b/c/d", { recursive: true });
     await touch(d + "/a/b/c/d/x");
   },
   async function depth(): Promise<void> {

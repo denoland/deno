@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno --allow-net --allow-env
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { parse } from "https://deno.land/std/flags/mod.ts";
 
 function pathBase(p: string): string {
@@ -14,7 +14,7 @@ if (!token) {
   Deno.exit(1);
 }
 
-const parsedArgs = parse(Deno.args.slice(1));
+const parsedArgs = parse(Deno.args);
 
 if (parsedArgs._.length === 0) {
   console.error(

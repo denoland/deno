@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 // Note that source_map_mappings requires 0-indexed line and column numbers but
 // V8 Exceptions are 1-indexed.
@@ -123,7 +123,8 @@ impl V8Exception {
   /// Creates a new V8Exception by parsing the raw exception JSON string from V8.
   pub fn from_json(json_str: &str) -> Option<Self> {
     let v = serde_json::from_str::<serde_json::Value>(json_str);
-    if v.is_err() {
+    if let Err(err) = v {
+      eprintln!("V8Exception::from_json got problem {}", err);
       return None;
     }
     let v = v.unwrap();

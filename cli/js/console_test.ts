@@ -1,17 +1,21 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assert, assertEquals, test } from "./test_util.ts";
 
 // Some of these APIs aren't exposed in the types and so we have to cast to any
 // in order to "trick" TypeScript.
 const {
-  Console,
-  customInspect,
-  stringifyArgs,
   inspect,
-  write,
+  writeSync,
   stdout
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 } = Deno as any;
+
+const customInspect = Deno.symbols.customInspect;
+const {
+  Console,
+  stringifyArgs
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+} = Deno[Deno.symbols.internal] as any;
 
 function stringify(...args: unknown[]): string {
   return stringifyArgs(args).replace(/\n$/, "");
@@ -331,20 +335,20 @@ test(function consoleTestError(): void {
 });
 
 test(function consoleTestClear(): void {
-  const stdoutWrite = stdout.write;
+  const stdoutWriteSync = stdout.writeSync;
   const uint8 = new TextEncoder().encode("\x1b[1;1H" + "\x1b[0J");
   let buffer = new Uint8Array(0);
 
-  stdout.write = async (u8: Uint8Array): Promise<number> => {
+  stdout.writeSync = (u8: Uint8Array): Promise<number> => {
     const tmp = new Uint8Array(buffer.length + u8.length);
     tmp.set(buffer, 0);
     tmp.set(u8, buffer.length);
     buffer = tmp;
 
-    return await write(stdout.rid, u8);
+    return writeSync(stdout.rid, u8);
   };
   console.clear();
-  stdout.write = stdoutWrite;
+  stdout.writeSync = stdoutWriteSync;
   assertEquals(buffer, uint8);
 });
 

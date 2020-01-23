@@ -1,8 +1,8 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { test, assert } from "./test_util.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const { setPrepareStackTrace } = Deno as any;
+const { setPrepareStackTrace } = Deno[Deno.symbols.internal] as any;
 
 interface CallSite {
   getThis(): unknown;

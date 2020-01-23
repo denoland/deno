@@ -6,6 +6,89 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### v0.30.0 / 2020.01.17
+
+- BREAKING CHANGE Revert "feat(flags): script arguments come after '--'" (#3681)
+- feat(fs): add more unix-only fields to FileInfo (#3680)
+- feat(http): allow response body to be string (#3705)
+- feat(std/node): Added node timers builtin (#3634)
+- feat: Add Deno.symbols and move internal fields for test (#3693)
+- feat: Add gzip, brotli and ETag support for file fetcher (#3597)
+- feat: support individual async handler for each op (#3690)
+- fix(workers): minimal error handling and async module loading (#3665)
+- fix: Remove std/multipart (#3647)
+- fix: Resolve read/write whitelists from CWD (#3684)
+- fix: process hangs when fetch called (#3657)
+- perf: Create an old program to be used in snapshot (#3644, #3661)
+- perf: share http client in file fetcher (#3683)
+- refactor: remove Isolate.current_send_cb_info and DenoBuf, port
+  Isolate.shared_response_buf (#3643)
+
+### v0.29.0 / 2020.01.09
+
+- BREAKING CHANGE Remove xeval subcommand (#3630)
+- BREAKING CHANGE script arguments should come after '--' (#3621)
+- BREAKING CHANGE Deno.mkdir should conform to style guide BREAKING CHANGE
+  (#3617)
+- BREAKING CHANGE Deno.args only includes script args (#3628)
+- BREAKING CHANGE Rename crates: 'deno' to 'deno_core' and 'deno_cli' to 'deno'
+  (#3600)
+- feat: Add Deno.create (#3629)
+- feat: Add compiler API (#3442)
+- fix(ws): Handshake with correctly empty search string (#3587)
+- fix(yaml): Export parseAll (#3592)
+- perf: TextEncoder.encode improvement (#3596, #3589)
+- refactor: Replace libdeno with rusty_v8 (#3556, #3601, #3602, #3605, #3611,
+  #3613, #3615)
+- upgrade: V8 8.1.108 (#3623)
+
+### v0.28.1 / 2020.01.03
+
+- feat(http): make req.body a Reader (#3575)
+- fix: dynamically linking to OpenSSL (#3586)
+
+### v0.28.0 / 2020.01.02
+
+- feat: Add Deno.dir("executable") (#3526)
+- feat: Add missing mod.ts files in std (#3509)
+- fix(repl): Do not crash on async op reject (#3527)
+- fix(std/encoding/yaml): support document separator in parseAll (#3535)
+- fix: Allow reading into a 0-length array (#3329)
+- fix: Drop unnecessary Object.assign from createResolvable() (#3548)
+- fix: Expose shutdown() and ShutdownMode TS def (#3558, #3560)
+- fix: Remove wildcard export in uuid module (#3540)
+- fix: Return null on error in Deno.dir() (#3531)
+- fix: Use shared HTTP client (#3563)
+- fix: Use sync ops when clearing the console (#3533)
+- refactor: Move HttpBody to cli/http_util.rs (#3569)
+- upgrade: Reqwest to 0.10.0 (#3567)
+- upgrade: Rust to 1.40.0 (#3542)
+- upgrade: Tokio 0.2 (#3418, #3571)
+
+### v0.27.0 / 2019.12.18
+
+- feat: Support utf8 in file_server (#3495)
+- feat: add help & switch to flags to file_server (#3489)
+- feat: fetch should support URL instance as input (#3496)
+- feat: replace Deno.homeDir with Deno.dir (#3491, #3518)
+- feat: show detailed version with --version (#3507)
+- fix(installer): installs to the wrong directory on Windows (#3462)
+- fix(std/http): close connection on .respond() error (#3475)
+- fix(std/node): better error message for read perm in require() (#3502)
+- fix(timer): due/now Math.max instead of min (#3477)
+- fix: Improve empty test case error messages (#3514)
+- fix: Only swallow NotFound errors in std/fs/expandGlob() (#3479)
+- fix: decoding uri in file_server (#3187)
+- fix: file_server should get file and fileInfo concurrently (#3486)
+- fix: file_server swallowing permission errors (#3467)
+- fix: isolate tests silently failing (#3459)
+- fix: permission errors are swallowed in fs.exists, fs.emptyDir, fs.copy
+  (#3493, #3501, #3504)
+- fix: plugin ops should change op count metrics (#3455)
+- fix: release assets not being executable (#3480)
+- upgrade: tokio 0.2 in deno_core_http_bench, take2 (#3435)
+- upgrade: upgrade subcommand links to v0.26.0 (#3492)
+
 ### v0.26.0 / 2019.12.05
 
 - feat: Add --no-remote, rename --no-fetch to --cached-only (#3417)

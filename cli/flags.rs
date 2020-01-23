@@ -1,4 +1,5 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::fs::resolve_from_cwd;
 use clap::App;
 use clap::AppSettings;
 use clap::Arg;
@@ -6,6 +7,7 @@ use clap::ArgMatches;
 use clap::SubCommand;
 use log::Level;
 use std::collections::HashSet;
+use std::path::Path;
 
 /// Creates vector of strings, Vec<String>
 macro_rules! svec {
@@ -22,7 +24,7 @@ macro_rules! sset {
 
 macro_rules! std_url {
   ($x:expr) => {
-    concat!("https://deno.land/std@v0.23.0/", $x)
+    concat!("https://deno.land/std@v0.29.0/", $x)
   };
 }
 
@@ -32,8 +34,6 @@ const PRETTIER_URL: &str = std_url!("prettier/main.ts");
 const INSTALLER_URL: &str = std_url!("installer/mod.ts");
 /// Used for `deno test...` subcommand
 const TEST_RUNNER_URL: &str = std_url!("testing/runner.ts");
-/// Used for `deno xeval...` subcommand
-const XEVAL_URL: &str = std_url!("xeval/mod.ts");
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum DenoSubcommand {
@@ -47,7 +47,6 @@ pub enum DenoSubcommand {
   Repl,
   Run,
   Types,
-  Xeval,
 }
 
 impl Default for DenoSubcommand {
@@ -123,6 +122,15 @@ The default subcommand is 'run'. The above is equivalent to
 
 See 'deno help run' for run specific flags.";
 
+lazy_static! {
+  static ref LONG_VERSION: String = format!(
+    "{}\nv8 {}\ntypescript {}",
+    crate::version::DENO,
+    crate::version::v8(),
+    crate::version::TYPESCRIPT
+  );
+}
+
 /// Main entry point for parsing deno's command line flags.
 /// Exits the process on error.
 pub fn flags_from_vec(args: Vec<String>) -> DenoFlags {
@@ -165,8 +173,6 @@ pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<DenoFlags> {
     eval_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("repl") {
     repl_parse(&mut flags, m);
-  } else if let Some(m) = matches.subcommand_matches("xeval") {
-    xeval_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("bundle") {
     bundle_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("install") {
@@ -193,8 +199,8 @@ fn clap_root<'a, 'b>() -> App<'a, 'b> {
     // Disable clap's auto-detection of terminal width
     .set_term_width(0)
     // Disable each subcommand having its own version.
-    // TODO(ry) use long_version here instead to display TS/V8 versions too.
     .version(crate::version::DENO)
+    .long_version(LONG_VERSION.as_str())
     .arg(
       Arg::with_name("log-level")
         .short("L")
@@ -215,7 +221,6 @@ fn clap_root<'a, 'b>() -> App<'a, 'b> {
     .subcommand(run_subcommand())
     .subcommand(test_subcommand())
     .subcommand(types_subcommand())
-    .subcommand(xeval_subcommand())
     .long_about(DENO_HELP)
     .after_help(ENV_VARIABLES_HELP)
 }
@@ -335,33 +340,6 @@ fn completions_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   print!("{}", std::str::from_utf8(&buf).unwrap());
 }
 
-fn xeval_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
-  flags.subcommand = DenoSubcommand::Run;
-  flags.allow_net = true;
-  flags.allow_env = true;
-  flags.allow_run = true;
-  flags.allow_read = true;
-  flags.allow_write = true;
-  flags.allow_plugin = true;
-  flags.allow_hrtime = true;
-  flags.argv.push(XEVAL_URL.to_string());
-
-  if matches.is_present("delim") {
-    let delim = matches.value_of("delim").unwrap();
-    flags.argv.push("--delim".to_string());
-    flags.argv.push(delim.to_string());
-  }
-
-  if matches.is_present("replvar") {
-    let replvar = matches.value_of("replvar").unwrap();
-    flags.argv.push("--replvar".to_string());
-    flags.argv.push(replvar.to_string());
-  }
-
-  let code: &str = matches.value_of("code").unwrap();
-  flags.argv.push(code.to_string());
-}
-
 fn repl_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   v8_flags_arg_parse(flags, matches);
   flags.subcommand = DenoSubcommand::Repl;
@@ -416,6 +394,19 @@ fn lock_args_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   }
 }
 
+fn resolve_fs_whitelist(whitelist: &[String]) -> Vec<String> {
+  whitelist
+    .iter()
+    .map(|raw_path| {
+      resolve_from_cwd(Path::new(&raw_path))
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_owned()
+    })
+    .collect()
+}
+
 // Shared between the run and test subcommands. They both take similar options.
 fn run_test_args_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   reload_arg_parse(flags, matches);
@@ -430,7 +421,7 @@ fn run_test_args_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
       let read_wl = matches.values_of("allow-read").unwrap();
       let raw_read_whitelist: Vec<String> =
         read_wl.map(std::string::ToString::to_string).collect();
-      flags.read_whitelist = raw_read_whitelist;
+      flags.read_whitelist = resolve_fs_whitelist(&raw_read_whitelist);
       debug!("read whitelist: {:#?}", &flags.read_whitelist);
     } else {
       flags.allow_read = true;
@@ -439,9 +430,10 @@ fn run_test_args_parse(flags: &mut DenoFlags, matches: &clap::ArgMatches) {
   if matches.is_present("allow-write") {
     if matches.value_of("allow-write").is_some() {
       let write_wl = matches.values_of("allow-write").unwrap();
-      let raw_write_whitelist =
+      let raw_write_whitelist: Vec<String> =
         write_wl.map(std::string::ToString::to_string).collect();
-      flags.write_whitelist = raw_write_whitelist;
+      flags.write_whitelist =
+        resolve_fs_whitelist(raw_write_whitelist.as_slice());
       debug!("write whitelist: {:#?}", &flags.write_whitelist);
     } else {
       flags.allow_write = true;
@@ -792,46 +784,6 @@ Example:
   deno completions bash > /usr/local/etc/bash_completion.d/deno.bash
   source /usr/local/etc/bash_completion.d/deno.bash",
     )
-}
-
-fn xeval_subcommand<'a, 'b>() -> App<'a, 'b> {
-  SubCommand::with_name("xeval")
-        .about("Eval a script on text segments from stdin")
-        .long_about(
-          "Eval a script on lines from stdin
-
-Read from standard input and eval code on each whitespace-delimited
-string chunks.
-
--I/--replvar optionally sets variable name for input to be used in eval.
-Otherwise '$' will be used as default variable name.
-
-This command has implicit access to all permissions (equivalent to deno run --allow-all)
-
-Print all the usernames in /etc/passwd:
-
-  cat /etc/passwd | deno xeval \"a = $.split(':'); if (a) console.log(a[0])\"
-
-A complicated way to print the current git branch:
-
-  git branch | deno xeval -I 'line' \"if (line.startsWith('*')) console.log(line.slice(2))\"
-
-Demonstrates breaking the input up by space delimiter instead of by lines:
-
-  cat LICENSE | deno xeval -d \" \" \"if ($ === 'MIT') console.log('MIT licensed')\"",
-        ).arg(
-          Arg::with_name("replvar")
-            .long("replvar")
-            .short("I")
-            .help("Set variable name to be used in eval, defaults to $")
-            .takes_value(true),
-        ).arg(
-          Arg::with_name("delim")
-            .long("delim")
-            .short("d")
-            .help("Set delimiter, defaults to newline")
-            .takes_value(true),
-        ).arg(Arg::with_name("code").takes_value(true).required(true))
 }
 
 fn eval_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -1257,8 +1209,7 @@ fn arg_hacks(mut args: Vec<String>) -> Vec<String> {
     "types",
     "install",
     "help",
-    "version",
-    "xeval"
+    "version"
   ];
   let modifier_flags = sset!["-h", "--help", "-V", "--version"];
   // deno [subcommand|behavior modifier flags] -> do nothing
@@ -1288,6 +1239,7 @@ fn arg_hacks(mut args: Vec<String>) -> Vec<String> {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use std::env::current_dir;
 
   #[test]
   fn arg_hacks_test() {
@@ -1549,7 +1501,7 @@ mod tests {
       r.unwrap(),
       DenoFlags {
         subcommand: DenoSubcommand::Info,
-        argv: svec!["deno"], // TODO(ry) Ditto argv unnessary?
+        argv: svec!["deno"], // TODO(ry) Ditto argv unnecessary?
         ..DenoFlags::default()
       }
     );
@@ -1618,42 +1570,6 @@ mod tests {
   }
 
   #[test]
-  fn xeval() {
-    let r = flags_from_vec_safe(svec![
-      "deno",
-      "xeval",
-      "-I",
-      "val",
-      "-d",
-      " ",
-      "console.log(val)"
-    ]);
-    assert_eq!(
-      r.unwrap(),
-      DenoFlags {
-        subcommand: DenoSubcommand::Run,
-        argv: svec![
-          "deno",
-          XEVAL_URL,
-          "--delim",
-          " ",
-          "--replvar",
-          "val",
-          "console.log(val)"
-        ],
-        allow_net: true,
-        allow_env: true,
-        allow_run: true,
-        allow_read: true,
-        allow_write: true,
-        allow_plugin: true,
-        allow_hrtime: true,
-        ..DenoFlags::default()
-      }
-    );
-  }
-
-  #[test]
   fn allow_read_whitelist() {
     use tempfile::TempDir;
     let temp_dir = TempDir::new().expect("tempdir fail");
@@ -1662,14 +1578,17 @@ mod tests {
     let r = flags_from_vec_safe(svec![
       "deno",
       "run",
-      format!("--allow-read={}", &temp_dir_path),
+      format!("--allow-read=.,{}", &temp_dir_path),
       "script.ts"
     ]);
     assert_eq!(
       r.unwrap(),
       DenoFlags {
         allow_read: false,
-        read_whitelist: svec![&temp_dir_path],
+        read_whitelist: svec![
+          current_dir().unwrap().to_str().unwrap().to_owned(),
+          &temp_dir_path
+        ],
         argv: svec!["deno", "script.ts"],
         subcommand: DenoSubcommand::Run,
         ..DenoFlags::default()
@@ -1686,14 +1605,17 @@ mod tests {
     let r = flags_from_vec_safe(svec![
       "deno",
       "run",
-      format!("--allow-write={}", &temp_dir_path),
+      format!("--allow-write=.,{}", &temp_dir_path),
       "script.ts"
     ]);
     assert_eq!(
       r.unwrap(),
       DenoFlags {
         allow_write: false,
-        write_whitelist: svec![&temp_dir_path],
+        write_whitelist: svec![
+          current_dir().unwrap().to_str().unwrap().to_owned(),
+          &temp_dir_path
+        ],
         argv: svec!["deno", "script.ts"],
         subcommand: DenoSubcommand::Run,
         ..DenoFlags::default()

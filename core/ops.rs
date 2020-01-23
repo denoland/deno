@@ -1,11 +1,12 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-pub use crate::libdeno::OpId;
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::PinnedBuf;
 use futures::Future;
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::RwLock;
+
+pub type OpId = u32;
 
 pub type Buf = Box<[u8]>;
 
@@ -20,6 +21,9 @@ pub type OpResult<E> = Result<Op<E>, E>;
 pub enum Op<E> {
   Sync(Buf),
   Async(OpAsyncFuture<E>),
+  /// AsyncUnref is the variation of Async, which doesn't block the program
+  /// exiting.
+  AsyncUnref(OpAsyncFuture<E>),
 }
 
 pub type CoreError = ();

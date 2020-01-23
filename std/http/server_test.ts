@@ -17,7 +17,7 @@ import {
   readRequest,
   parseHTTPVersion
 } from "./server.ts";
-import { delay } from "../util/async.ts";
+import { delay, deferred } from "../util/async.ts";
 import {
   BufReader,
   BufWriter,
@@ -40,6 +40,29 @@ const enc = new TextEncoder();
 const dec = new TextDecoder();
 
 type Handler = () => void;
+
+const mockConn = {
+  localAddr: {
+    transport: "tcp",
+    hostname: "",
+    port: 0
+  },
+  remoteAddr: {
+    transport: "tcp",
+    hostname: "",
+    port: 0
+  },
+  rid: -1,
+  closeRead: (): void => {},
+  closeWrite: (): void => {},
+  read: async (): Promise<number | Deno.EOF> => {
+    return 0;
+  },
+  write: async (): Promise<number> => {
+    return -1;
+  },
+  close: (): void => {}
+};
 
 const responseTests: ResponseTest[] = [
   // Default response
@@ -75,24 +98,45 @@ test(async function responseWrite(): Promise<void> {
     const request = new ServerRequest();
     request.w = bufw;
 
-    request.conn = {
-      localAddr: "",
-      remoteAddr: "",
-      rid: -1,
-      closeRead: (): void => {},
-      closeWrite: (): void => {},
-      read: async (): Promise<number | Deno.EOF> => {
-        return 0;
-      },
-      write: async (): Promise<number> => {
-        return -1;
-      },
-      close: (): void => {}
-    };
+    request.conn = mockConn as Deno.Conn;
 
     await request.respond(testCase.response);
     assertEquals(buf.toString(), testCase.raw);
     await request.done;
+  }
+});
+
+test(async function requestContentLength(): Promise<void> {
+  // Has content length
+  {
+    const req = new ServerRequest();
+    req.headers = new Headers();
+    req.headers.set("content-length", "5");
+    const buf = new Buffer(enc.encode("Hello"));
+    req.r = new BufReader(buf);
+    assertEquals(req.contentLength, 5);
+  }
+  // No content length
+  {
+    const shortText = "Hello";
+    const req = new ServerRequest();
+    req.headers = new Headers();
+    req.headers.set("transfer-encoding", "chunked");
+    let chunksData = "";
+    let chunkOffset = 0;
+    const maxChunkSize = 70;
+    while (chunkOffset < shortText.length) {
+      const chunkSize = Math.min(maxChunkSize, shortText.length - chunkOffset);
+      chunksData += `${chunkSize.toString(16)}\r\n${shortText.substr(
+        chunkOffset,
+        chunkSize
+      )}\r\n`;
+      chunkOffset += chunkSize;
+    }
+    chunksData += "0\r\n\r\n";
+    const buf = new Buffer(enc.encode(chunksData));
+    req.r = new BufReader(buf);
+    assertEquals(req.contentLength, null);
   }
 });
 
@@ -103,7 +147,7 @@ test(async function requestBodyWithContentLength(): Promise<void> {
     req.headers.set("content-length", "5");
     const buf = new Buffer(enc.encode("Hello"));
     req.r = new BufReader(buf);
-    const body = dec.decode(await req.body());
+    const body = dec.decode(await Deno.readAll(req.body));
     assertEquals(body, "Hello");
   }
 
@@ -115,7 +159,7 @@ test(async function requestBodyWithContentLength(): Promise<void> {
     req.headers.set("Content-Length", "5000");
     const buf = new Buffer(enc.encode(longText));
     req.r = new BufReader(buf);
-    const body = dec.decode(await req.body());
+    const body = dec.decode(await Deno.readAll(req.body));
     assertEquals(body, longText);
   }
 });
@@ -140,7 +184,7 @@ test(async function requestBodyWithTransferEncoding(): Promise<void> {
     chunksData += "0\r\n\r\n";
     const buf = new Buffer(enc.encode(chunksData));
     req.r = new BufReader(buf);
-    const body = dec.decode(await req.body());
+    const body = dec.decode(await Deno.readAll(req.body));
     assertEquals(body, shortText);
   }
 
@@ -164,12 +208,12 @@ test(async function requestBodyWithTransferEncoding(): Promise<void> {
     chunksData += "0\r\n\r\n";
     const buf = new Buffer(enc.encode(chunksData));
     req.r = new BufReader(buf);
-    const body = dec.decode(await req.body());
+    const body = dec.decode(await Deno.readAll(req.body));
     assertEquals(body, longText);
   }
 });
 
-test(async function requestBodyStreamWithContentLength(): Promise<void> {
+test(async function requestBodyReaderWithContentLength(): Promise<void> {
   {
     const shortText = "Hello";
     const req = new ServerRequest();
@@ -177,16 +221,20 @@ test(async function requestBodyStreamWithContentLength(): Promise<void> {
     req.headers.set("content-length", "" + shortText.length);
     const buf = new Buffer(enc.encode(shortText));
     req.r = new BufReader(buf);
-    const it = await req.bodyStream();
+    const readBuf = new Uint8Array(6);
     let offset = 0;
-    for await (const chunk of it) {
-      const s = dec.decode(chunk);
-      assertEquals(shortText.substr(offset, s.length), s);
-      offset += s.length;
+    while (offset < shortText.length) {
+      const nread = await req.body.read(readBuf);
+      assertNotEOF(nread);
+      const s = dec.decode(readBuf.subarray(0, nread as number));
+      assertEquals(shortText.substr(offset, nread as number), s);
+      offset += nread as number;
     }
+    const nread = await req.body.read(readBuf);
+    assertEquals(nread, Deno.EOF);
   }
 
-  // Larger than internal buf
+  // Larger than given buf
   {
     const longText = "1234\n".repeat(1000);
     const req = new ServerRequest();
@@ -194,17 +242,21 @@ test(async function requestBodyStreamWithContentLength(): Promise<void> {
     req.headers.set("Content-Length", "5000");
     const buf = new Buffer(enc.encode(longText));
     req.r = new BufReader(buf);
-    const it = await req.bodyStream();
+    const readBuf = new Uint8Array(1000);
     let offset = 0;
-    for await (const chunk of it) {
-      const s = dec.decode(chunk);
-      assertEquals(longText.substr(offset, s.length), s);
-      offset += s.length;
+    while (offset < longText.length) {
+      const nread = await req.body.read(readBuf);
+      assertNotEOF(nread);
+      const s = dec.decode(readBuf.subarray(0, nread as number));
+      assertEquals(longText.substr(offset, nread as number), s);
+      offset += nread as number;
     }
+    const nread = await req.body.read(readBuf);
+    assertEquals(nread, Deno.EOF);
   }
 });
 
-test(async function requestBodyStreamWithTransferEncoding(): Promise<void> {
+test(async function requestBodyReaderWithTransferEncoding(): Promise<void> {
   {
     const shortText = "Hello";
     const req = new ServerRequest();
@@ -224,13 +276,17 @@ test(async function requestBodyStreamWithTransferEncoding(): Promise<void> {
     chunksData += "0\r\n\r\n";
     const buf = new Buffer(enc.encode(chunksData));
     req.r = new BufReader(buf);
-    const it = await req.bodyStream();
+    const readBuf = new Uint8Array(6);
     let offset = 0;
-    for await (const chunk of it) {
-      const s = dec.decode(chunk);
-      assertEquals(shortText.substr(offset, s.length), s);
-      offset += s.length;
+    while (offset < shortText.length) {
+      const nread = await req.body.read(readBuf);
+      assertNotEOF(nread);
+      const s = dec.decode(readBuf.subarray(0, nread as number));
+      assertEquals(shortText.substr(offset, nread as number), s);
+      offset += nread as number;
     }
+    const nread = await req.body.read(readBuf);
+    assertEquals(nread, Deno.EOF);
   }
 
   // Larger than internal buf
@@ -253,13 +309,17 @@ test(async function requestBodyStreamWithTransferEncoding(): Promise<void> {
     chunksData += "0\r\n\r\n";
     const buf = new Buffer(enc.encode(chunksData));
     req.r = new BufReader(buf);
-    const it = await req.bodyStream();
+    const readBuf = new Uint8Array(1000);
     let offset = 0;
-    for await (const chunk of it) {
-      const s = dec.decode(chunk);
-      assertEquals(longText.substr(offset, s.length), s);
-      offset += s.length;
+    while (offset < longText.length) {
+      const nread = await req.body.read(readBuf);
+      assertNotEOF(nread);
+      const s = dec.decode(readBuf.subarray(0, nread as number));
+      assertEquals(longText.substr(offset, nread as number), s);
+      offset += nread as number;
     }
+    const nread = await req.body.read(readBuf);
+    assertEquals(nread, Deno.EOF);
   }
 });
 
@@ -290,6 +350,38 @@ test(async function writeUint8ArrayResponse(): Promise<void> {
 
   r = assertNotEOF(await reader.readLine());
   assertEquals(decoder.decode(r.line), shortText);
+  assertEquals(r.more, false);
+
+  const eof = await reader.readLine();
+  assertEquals(eof, Deno.EOF);
+});
+
+test(async function writeStringResponse(): Promise<void> {
+  const body = "Hello";
+
+  const res: Response = { body };
+
+  const buf = new Deno.Buffer();
+  await writeResponse(buf, res);
+
+  const decoder = new TextDecoder("utf-8");
+  const reader = new BufReader(buf);
+
+  let r: ReadLineResult;
+  r = assertNotEOF(await reader.readLine());
+  assertEquals(decoder.decode(r.line), "HTTP/1.1 200 OK");
+  assertEquals(r.more, false);
+
+  r = assertNotEOF(await reader.readLine());
+  assertEquals(decoder.decode(r.line), `content-length: ${body.length}`);
+  assertEquals(r.more, false);
+
+  r = assertNotEOF(await reader.readLine());
+  assertEquals(r.line.byteLength, 0);
+  assertEquals(r.more, false);
+
+  r = assertNotEOF(await reader.readLine());
+  assertEquals(decoder.decode(r.line), body);
   assertEquals(r.more, false);
 
   const eof = await reader.readLine();
@@ -334,21 +426,6 @@ test(async function writeStringReaderResponse(): Promise<void> {
   assertEquals(r.more, false);
 });
 
-const mockConn = {
-  localAddr: "",
-  remoteAddr: "",
-  rid: -1,
-  closeRead: (): void => {},
-  closeWrite: (): void => {},
-  read: async (): Promise<number | Deno.EOF> => {
-    return 0;
-  },
-  write: async (): Promise<number> => {
-    return -1;
-  },
-  close: (): void => {}
-};
-
 test(async function readRequestError(): Promise<void> {
   const input = `GET / HTTP/1.1
 malformedHeader
@@ -356,7 +433,7 @@ malformedHeader
   const reader = new BufReader(new StringReader(input));
   let err;
   try {
-    await readRequest(mockConn, reader);
+    await readRequest(mockConn as Deno.Conn, reader);
   } catch (e) {
     err = e;
   }
@@ -435,7 +512,7 @@ test(async function testReadRequestError(): Promise<void> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let req: any;
     try {
-      req = await readRequest(mockConn, reader);
+      req = await readRequest(mockConn as Deno.Conn, reader);
     } catch (e) {
       err = e;
     }
@@ -513,7 +590,7 @@ test({
       await delay(100);
 
       // Reqeusts to the server and immediately closes the connection
-      const conn = await Deno.dial({ port: 4502 });
+      const conn = await Deno.connect({ port: 4502 });
       await conn.write(new TextEncoder().encode("GET / HTTP/1.0\n\n"));
       conn.close();
 
@@ -555,7 +632,7 @@ test({
         .catch((_): void => {}); // Ignores the error when closing the process.
 
       // Requests to the server and immediately closes the connection
-      const conn = await Deno.dialTLS({
+      const conn = await Deno.connectTLS({
         hostname: "localhost",
         port: 4503,
         certFile: "http/testdata/tls/RootCA.pem"
@@ -589,5 +666,70 @@ test({
     assertEquals(await nextAfterClosing, { value: undefined, done: true });
   }
 });
+
+// TODO(kevinkassimo): create a test that works on Windows.
+// The following test is to ensure that if an error occurs during respond
+// would result in connection closed. (such that fd/resource is freed).
+// On *nix, a delayed second attempt to write to a CLOSE_WAIT connection would
+// receive a RST and thus trigger an error during response for us to test.
+// We need to find a way to similarly trigger an error on Windows so that
+// we can test if connection is closed.
+if (Deno.build.os !== "win") {
+  test({
+    name: "[http] respond error handling",
+    async fn(): Promise<void> {
+      const connClosedPromise = deferred();
+      const serverRoutine = async (): Promise<void> => {
+        let reqCount = 0;
+        const server = serve(":8124");
+        const serverRid = server.listener["rid"];
+        let connRid = -1;
+        for await (const req of server) {
+          connRid = req.conn.rid;
+          reqCount++;
+          await Deno.readAll(req.body);
+          await connClosedPromise;
+          try {
+            await req.respond({
+              body: new TextEncoder().encode("Hello World")
+            });
+            await delay(100);
+            req.done = deferred();
+            // This duplicate respond is to ensure we get a write failure from the
+            // other side. Our client would enter CLOSE_WAIT stage after close(),
+            // meaning first server .send (.respond) after close would still work.
+            // However, a second send would fail under RST, which is similar
+            // to the scenario where a failure happens during .respond
+            await req.respond({
+              body: new TextEncoder().encode("Hello World")
+            });
+          } catch {
+            break;
+          }
+        }
+        server.close();
+        const resources = Deno.resources();
+        assert(reqCount === 1);
+        // Server should be gone
+        assert(!(serverRid in resources));
+        // The connection should be destroyed
+        assert(!(connRid in resources));
+      };
+      const p = serverRoutine();
+      const conn = await Deno.connect({
+        hostname: "127.0.0.1",
+        port: 8124
+      });
+      await Deno.writeAll(
+        conn,
+        new TextEncoder().encode("GET / HTTP/1.1\r\n\r\n")
+      );
+      conn.close(); // abruptly closing connection before response.
+      // conn on server side enters CLOSE_WAIT state.
+      connClosedPromise.resolve();
+      await p;
+    }
+  });
+}
 
 runIfMain(import.meta);

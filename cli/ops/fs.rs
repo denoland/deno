@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // Some deserializer fields are only used on Unix and Windows build fails without it
 use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
 use crate::deno_error::ErrorKind;
@@ -7,16 +7,18 @@ use crate::fs as deno_fs;
 use crate::ops::json_op;
 use crate::state::ThreadSafeState;
 use crossbeam_channel;
-use deno::*;
 use notify;
 use notify::{watcher, RecommendedWatcher, RecursiveMode, Watcher};
+use std::time::Duration;
+use deno_core::*;
 use remove_dir_all::remove_dir_all;
 use std::convert::From;
 use std::fs;
-use std::path::PathBuf;
-use std::time::Duration;
+use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
+#[cfg(unix)]
+use std::os::unix::fs::MetadataExt;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
@@ -78,13 +80,13 @@ fn op_mkdir(
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: MkdirArgs = serde_json::from_value(args)?;
-  let (path, path_) = deno_fs::resolve_from_cwd(args.path.as_ref())?;
+  let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
 
-  state.check_write(&path_)?;
+  state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!("op_mkdir {}", path_);
+    debug!("op_mkdir {}", path.display());
     deno_fs::mkdir(&path, args.mode, args.recursive)?;
     Ok(json!({}))
   })
@@ -95,6 +97,7 @@ fn op_mkdir(
 struct ChmodArgs {
   promise_id: Option<u64>,
   path: String,
+  #[allow(unused)]
   mode: u32,
 }
 
@@ -104,13 +107,13 @@ fn op_chmod(
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: ChmodArgs = serde_json::from_value(args)?;
-  let (path, path_) = deno_fs::resolve_from_cwd(args.path.as_ref())?;
+  let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
 
-  state.check_write(&path_)?;
+  state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!("op_chmod {}", &path_);
+    debug!("op_chmod {}", path.display());
     // Still check file/dir exists on windows
     let _metadata = fs::metadata(&path)?;
     #[cfg(any(unix))]
@@ -138,12 +141,13 @@ fn op_chown(
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: ChownArgs = serde_json::from_value(args)?;
+  let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
 
-  state.check_write(&args.path)?;
+  state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!("op_chown {}", &args.path);
+    debug!("op_chown {}", path.display());
     match deno_fs::chown(args.path.as_ref(), args.uid, args.gid) {
       Ok(_) => Ok(json!({})),
       Err(e) => Err(e),
@@ -165,10 +169,10 @@ fn op_remove(
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: RemoveArgs = serde_json::from_value(args)?;
-  let (path, path_) = deno_fs::resolve_from_cwd(args.path.as_ref())?;
+  let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
   let recursive = args.recursive;
 
-  state.check_write(&path_)?;
+  state.check_write(&path)?;
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
@@ -199,12 +203,11 @@ fn op_copy_file(
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: CopyFileArgs = serde_json::from_value(args)?;
+  let from = deno_fs::resolve_from_cwd(Path::new(&args.from))?;
+  let to = deno_fs::resolve_from_cwd(Path::new(&args.to))?;
 
-  let (from, from_) = deno_fs::resolve_from_cwd(args.from.as_ref())?;
-  let (to, to_) = deno_fs::resolve_from_cwd(args.to.as_ref())?;
-
-  state.check_read(&from_)?;
-  state.check_write(&to_)?;
+  state.check_read(&from)?;
+  state.check_write(&to)?;
 
   debug!("op_copy_file {} {}", from.display(), to.display());
   let is_sync = args.promise_id.is_none();
@@ -234,14 +237,55 @@ macro_rules! to_seconds {
   }};
 }
 
-#[cfg(any(unix))]
-fn get_mode(perm: &fs::Permissions) -> u32 {
-  perm.mode()
-}
+#[inline(always)]
+fn get_stat_json(
+  metadata: fs::Metadata,
+  maybe_name: Option<String>,
+) -> Result<Value, ErrBox> {
+  // Unix stat member (number types only). 0 if not on unix.
+  macro_rules! usm {
+    ($member: ident) => {{
+      #[cfg(unix)]
+      {
+        metadata.$member()
+      }
+      #[cfg(not(unix))]
+      {
+        0
+      }
+    }};
+  }
 
-#[cfg(not(any(unix)))]
-fn get_mode(_perm: &fs::Permissions) -> u32 {
-  0
+  let mut json_val = json!({
+    "isFile": metadata.is_file(),
+    "isSymlink": metadata.file_type().is_symlink(),
+    "len": metadata.len(),
+    // In seconds. Available on both Unix or Windows.
+    "modified":to_seconds!(metadata.modified()),
+    "accessed":to_seconds!(metadata.accessed()),
+    "created":to_seconds!(metadata.created()),
+    // Following are only valid under Unix.
+    "dev": usm!(dev),
+    "ino": usm!(ino),
+    "mode": usm!(mode),
+    "nlink": usm!(nlink),
+    "uid": usm!(uid),
+    "gid": usm!(gid),
+    "rdev": usm!(rdev),
+    // TODO(kevinkassimo): *time_nsec requires BigInt.
+    // Probably should be treated as String if we need to add them.
+    "blksize": usm!(blksize),
+    "blocks": usm!(blocks),
+  });
+
+  // "name" is an optional field by our design.
+  if let Some(name) = maybe_name {
+    if let serde_json::Value::Object(ref mut m) = json_val {
+      m.insert("name".to_owned(), json!(name));
+    }
+  }
+
+  Ok(json_val)
 }
 
 #[derive(Deserialize)]
@@ -258,12 +302,10 @@ fn op_stat(
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: StatArgs = serde_json::from_value(args)?;
-
-  let (filename, filename_) =
-    deno_fs::resolve_from_cwd(args.filename.as_ref())?;
+  let filename = deno_fs::resolve_from_cwd(Path::new(&args.filename))?;
   let lstat = args.lstat;
 
-  state.check_read(&filename_)?;
+  state.check_read(&filename)?;
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
@@ -273,17 +315,7 @@ fn op_stat(
     } else {
       fs::metadata(&filename)?
     };
-
-    Ok(json!({
-      "isFile": metadata.is_file(),
-      "isSymlink": metadata.file_type().is_symlink(),
-      "len": metadata.len(),
-      "modified":to_seconds!(metadata.modified()),
-      "accessed":to_seconds!(metadata.accessed()),
-      "created":to_seconds!(metadata.created()),
-      "mode": get_mode(&metadata.permissions()),
-      "hasMode": cfg!(target_family = "unix"), // false on windows,
-    }))
+    get_stat_json(metadata, None)
   })
 }
 
@@ -300,12 +332,13 @@ fn op_realpath(
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: RealpathArgs = serde_json::from_value(args)?;
-  let (_, path_) = deno_fs::resolve_from_cwd(args.path.as_ref())?;
-  state.check_read(&path_)?;
-  let path = args.path.clone();
+  let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
+
+  state.check_read(&path)?;
+
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!("op_realpath {}", &path);
+    debug!("op_realpath {}", path.display());
     // corresponds to the realpath on Unix and
     // CreateFile and GetFinalPathNameByHandle on Windows
     let realpath = fs::canonicalize(&path)?;
@@ -331,31 +364,22 @@ fn op_read_dir(
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: ReadDirArgs = serde_json::from_value(args)?;
-  let (path, path_) = deno_fs::resolve_from_cwd(args.path.as_ref())?;
+  let path = deno_fs::resolve_from_cwd(Path::new(&args.path))?;
 
-  state.check_read(&path_)?;
+  state.check_read(&path)?;
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_read_dir {}", path.display());
-
     let entries: Vec<_> = fs::read_dir(path)?
       .map(|entry| {
         let entry = entry.unwrap();
         let metadata = entry.metadata().unwrap();
-        let file_type = metadata.file_type();
-
-        json!({
-          "isFile": file_type.is_file(),
-          "isSymlink": file_type.is_symlink(),
-          "len": metadata.len(),
-          "modified": to_seconds!(metadata.modified()),
-          "accessed": to_seconds!(metadata.accessed()),
-          "created": to_seconds!(metadata.created()),
-          "mode": get_mode(&metadata.permissions()),
-          "name": entry.file_name().to_str().unwrap(),
-          "hasMode": cfg!(target_family = "unix"), // false on windows,
-        })
+        get_stat_json(
+          metadata,
+          Some(entry.file_name().to_str().unwrap().to_owned()),
+        )
+        .unwrap()
       })
       .collect();
 
@@ -377,13 +401,12 @@ fn op_rename(
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: RenameArgs = serde_json::from_value(args)?;
+  let oldpath = deno_fs::resolve_from_cwd(Path::new(&args.oldpath))?;
+  let newpath = deno_fs::resolve_from_cwd(Path::new(&args.newpath))?;
 
-  let (oldpath, oldpath_) = deno_fs::resolve_from_cwd(args.oldpath.as_ref())?;
-  let (newpath, newpath_) = deno_fs::resolve_from_cwd(args.newpath.as_ref())?;
-
-  state.check_read(&oldpath_)?;
-  state.check_write(&oldpath_)?;
-  state.check_write(&newpath_)?;
+  state.check_read(&oldpath)?;
+  state.check_write(&oldpath)?;
+  state.check_write(&newpath)?;
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
@@ -407,12 +430,11 @@ fn op_link(
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: LinkArgs = serde_json::from_value(args)?;
+  let oldname = deno_fs::resolve_from_cwd(Path::new(&args.oldname))?;
+  let newname = deno_fs::resolve_from_cwd(Path::new(&args.newname))?;
 
-  let (oldname, oldname_) = deno_fs::resolve_from_cwd(args.oldname.as_ref())?;
-  let (newname, newname_) = deno_fs::resolve_from_cwd(args.newname.as_ref())?;
-
-  state.check_read(&oldname_)?;
-  state.check_write(&newname_)?;
+  state.check_read(&oldname)?;
+  state.check_write(&newname)?;
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
@@ -436,11 +458,10 @@ fn op_symlink(
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: SymlinkArgs = serde_json::from_value(args)?;
+  let oldname = deno_fs::resolve_from_cwd(Path::new(&args.oldname))?;
+  let newname = deno_fs::resolve_from_cwd(Path::new(&args.newname))?;
 
-  let (oldname, _oldname_) = deno_fs::resolve_from_cwd(args.oldname.as_ref())?;
-  let (newname, newname_) = deno_fs::resolve_from_cwd(args.newname.as_ref())?;
-
-  state.check_write(&newname_)?;
+  state.check_write(&newname)?;
   // TODO Use type for Windows.
   if cfg!(windows) {
     return Err(
@@ -469,10 +490,9 @@ fn op_read_link(
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: ReadLinkArgs = serde_json::from_value(args)?;
+  let name = deno_fs::resolve_from_cwd(Path::new(&args.name))?;
 
-  let (name, name_) = deno_fs::resolve_from_cwd(args.name.as_ref())?;
-
-  state.check_read(&name_)?;
+  state.check_read(&name)?;
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
@@ -498,15 +518,14 @@ fn op_truncate(
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: TruncateArgs = serde_json::from_value(args)?;
-
-  let (filename, filename_) = deno_fs::resolve_from_cwd(args.name.as_ref())?;
+  let filename = deno_fs::resolve_from_cwd(Path::new(&args.name))?;
   let len = args.len;
 
-  state.check_write(&filename_)?;
+  state.check_write(&filename)?;
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!("op_truncate {} {}", filename_, len);
+    debug!("op_truncate {} {}", filename.display(), len);
     let f = fs::OpenOptions::new().write(true).open(&filename)?;
     f.set_len(len)?;
     Ok(json!({}))
@@ -530,7 +549,7 @@ fn op_make_temp_dir(
   let args: MakeTempDirArgs = serde_json::from_value(args)?;
 
   // FIXME
-  state.check_write("make_temp")?;
+  state.check_write(Path::new("make_temp"))?;
 
   let dir = args.dir.map(PathBuf::from);
   let prefix = args.prefix.map(String::from);
@@ -568,7 +587,7 @@ fn op_utime(
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: Utime = serde_json::from_value(args)?;
-  state.check_write(&args.filename)?;
+  state.check_write(Path::new(&args.filename))?;
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_utimes {} {} {}", args.filename, args.atime, args.mtime);

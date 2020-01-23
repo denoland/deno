@@ -1,5 +1,11 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { test, testPerm, assert, assertEquals } from "./test_util.ts";
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import {
+  test,
+  testPerm,
+  assert,
+  assertEquals,
+  assertStrContains
+} from "./test_util.ts";
 
 test(function filesStdioFileDescriptors(): void {
   assertEquals(Deno.stdin.rid, 0);
@@ -78,9 +84,55 @@ testPerm({ write: false }, async function writePermFailure(): Promise<void> {
   }
 });
 
+test(async function openOptions(): Promise<void> {
+  const filename = "cli/tests/fixture.json";
+  let err;
+  try {
+    await Deno.open(filename, { write: false });
+  } catch (e) {
+    err = e;
+  }
+  assert(!!err);
+  assertStrContains(
+    err.message,
+    "OpenOptions requires at least one option to be true"
+  );
+
+  try {
+    await Deno.open(filename, { truncate: true, write: false });
+  } catch (e) {
+    err = e;
+  }
+  assert(!!err);
+  assertStrContains(err.message, "'truncate' option requires 'write' option");
+
+  try {
+    await Deno.open(filename, { create: true, write: false });
+  } catch (e) {
+    err = e;
+  }
+  assert(!!err);
+  assertStrContains(
+    err.message,
+    "'create' or 'createNew' options require 'write' or 'append' option"
+  );
+
+  try {
+    await Deno.open(filename, { createNew: true, append: false });
+  } catch (e) {
+    err = e;
+  }
+  assert(!!err);
+  assertStrContains(
+    err.message,
+    "'create' or 'createNew' options require 'write' or 'append' option"
+  );
+});
+
 testPerm({ read: false }, async function readPermFailure(): Promise<void> {
   let caughtError = false;
   try {
+    await Deno.open("package.json", "r");
     await Deno.open("cli/tests/fixture.json", "r");
   } catch (e) {
     caughtError = true;
@@ -95,7 +147,12 @@ testPerm({ write: true }, async function writeNullBufferFailure(): Promise<
 > {
   const tempDir = Deno.makeTempDirSync();
   const filename = tempDir + "hello.txt";
-  const file = await Deno.open(filename, "w");
+  const w = {
+    write: true,
+    truncate: true,
+    create: true
+  };
+  const file = await Deno.open(filename, w);
 
   // writing null should throw an error
   let err;
@@ -117,6 +174,10 @@ testPerm(
     const tempDir = Deno.makeTempDirSync();
     const filename = tempDir + "hello.txt";
     const file = await Deno.open(filename, "w+");
+
+    // reading into an empty buffer should return 0 immediately
+    const bytesRead = await file.read(new Uint8Array(0));
+    assert(bytesRead === 0);
 
     // reading file into null buffer should throw an error
     let err;
@@ -157,7 +218,7 @@ testPerm({ read: true, write: true }, async function createFile(): Promise<
 > {
   const tempDir = await Deno.makeTempDir();
   const filename = tempDir + "/test.txt";
-  const f = await Deno.open(filename, "w");
+  const f = await Deno.create(filename);
   let fileInfo = Deno.statSync(filename);
   assert(fileInfo.isFile());
   assert(fileInfo.len === 0);
@@ -179,7 +240,6 @@ testPerm({ read: true, write: true }, async function openModeWrite(): Promise<
   const encoder = new TextEncoder();
   const filename = tempDir + "hello.txt";
   const data = encoder.encode("Hello world!\n");
-
   let file = await Deno.open(filename, "w");
   // assert file was created
   let fileInfo = Deno.statSync(filename);

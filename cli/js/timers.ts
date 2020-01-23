@@ -1,11 +1,10 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assert } from "./util.ts";
-import { window } from "./window.ts";
 import * as dispatch from "./dispatch.ts";
 import { sendSync, sendAsync } from "./dispatch_json.ts";
 import { RBTree } from "./rbtree.ts";
 
-const { console } = window;
+const { console } = globalThis;
 
 interface Timer {
   id: number;
@@ -173,7 +172,7 @@ function fireTimers(): void {
   if (pendingFireTimers.length > 0) {
     hasPendingFireTimers = true;
     // Fire the list of pending timers as a chain of microtasks.
-    window.queueMicrotask(firePendingTimers);
+    globalThis.queueMicrotask(firePendingTimers);
   } else {
     setOrClearGlobalTimeout(nextDueNode && nextDueNode.due, now);
   }
@@ -192,20 +191,20 @@ function firePendingTimers(): void {
     pendingScheduleTimers = [];
     // Reschedule for next round of timeout.
     const nextDueNode = dueTree.min();
-    const due = nextDueNode && Math.min(nextDueNode.due, now);
+    const due = nextDueNode && Math.max(nextDueNode.due, now);
     setOrClearGlobalTimeout(due, now);
   } else {
     // Fire a single timer and allow its children microtasks scheduled first.
     fire(pendingFireTimers.shift()!);
     // ...and we schedule next timer after this.
-    window.queueMicrotask(firePendingTimers);
+    globalThis.queueMicrotask(firePendingTimers);
   }
 }
 
 export type Args = unknown[];
 
 function checkThis(thisArg: unknown): void {
-  if (thisArg !== null && thisArg !== undefined && thisArg !== window) {
+  if (thisArg !== null && thisArg !== undefined && thisArg !== globalThis) {
     throw new TypeError("Illegal invocation");
   }
 }
@@ -222,8 +221,8 @@ function setTimer(
   args: Args,
   repeat: boolean
 ): number {
-  // Bind `args` to the callback and bind `this` to window(global).
-  const callback: () => void = cb.bind(window, ...args);
+  // Bind `args` to the callback and bind `this` to globalThis(global).
+  const callback: () => void = cb.bind(globalThis, ...args);
   // In the browser, the delay value must be coercible to an integer between 0
   // and INT32_MAX. Any other value will cause the timer to fire immediately.
   // We emulate this behavior.

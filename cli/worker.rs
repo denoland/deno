@@ -1,43 +1,56 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::fmt_errors::JSError;
 use crate::ops;
 use crate::state::ThreadSafeState;
-use deno;
-use deno::Buf;
-use deno::ErrBox;
-use deno::ModuleSpecifier;
-use deno::RecursiveLoad;
-use deno::StartupData;
+use deno_core;
+use deno_core::Buf;
+use deno_core::ErrBox;
+use deno_core::ModuleSpecifier;
+use deno_core::StartupData;
 use futures::channel::mpsc;
 use futures::future::FutureExt;
 use futures::future::TryFutureExt;
 use futures::sink::SinkExt;
 use futures::stream::StreamExt;
+use futures::task::AtomicWaker;
 use std::env;
 use std::future::Future;
+use std::ops::Deref;
+use std::ops::DerefMut;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::Mutex;
 use std::task::Context;
 use std::task::Poll;
+use tokio::sync::Mutex as AsyncMutex;
 use url::Url;
 
 /// Wraps mpsc channels so they can be referenced
 /// from ops and used to facilitate parent-child communication
 /// for workers.
+#[derive(Clone)]
 pub struct WorkerChannels {
   pub sender: mpsc::Sender<Buf>,
-  pub receiver: mpsc::Receiver<Buf>,
+  pub receiver: Arc<AsyncMutex<mpsc::Receiver<Buf>>>,
 }
 
-/// Wraps deno::Isolate to provide source maps, ops for the CLI, and
-/// high-level module loading.
+/// Worker is a CLI wrapper for `deno_core::Isolate`.
+///
+/// It provides infrastructure to communicate with a worker and
+/// consequently between workers.
+///
+/// This struct is meant to be used as a base struct for concrete
+/// type of worker that registers set of ops.
+///
+/// Currently there are three types of workers:
+///  - `MainWorker`
+///  - `CompilerWorker`
+///  - `WebWorker`
 #[derive(Clone)]
 pub struct Worker {
   pub name: String,
-  isolate: Arc<Mutex<deno::Isolate>>,
+  pub isolate: Arc<AsyncMutex<Box<deno_core::EsIsolate>>>,
   pub state: ThreadSafeState,
-  external_channels: Arc<Mutex<WorkerChannels>>,
+  external_channels: WorkerChannels,
 }
 
 impl Worker {
@@ -47,52 +60,19 @@ impl Worker {
     state: ThreadSafeState,
     external_channels: WorkerChannels,
   ) -> Self {
-    let isolate = Arc::new(Mutex::new(deno::Isolate::new(startup_data, false)));
-    {
-      let mut i = isolate.lock().unwrap();
-      let op_registry = i.op_registry.clone();
+    let mut isolate =
+      deno_core::EsIsolate::new(Box::new(state.clone()), startup_data, false);
 
-      ops::compiler::init(&mut i, &state);
-      ops::errors::init(&mut i, &state);
-      ops::fetch::init(&mut i, &state);
-      ops::files::init(&mut i, &state);
-      ops::fs::init(&mut i, &state);
-      ops::io::init(&mut i, &state);
-      ops::plugins::init(&mut i, &state, op_registry);
-      ops::net::init(&mut i, &state);
-      ops::tls::init(&mut i, &state);
-      ops::os::init(&mut i, &state);
-      ops::permissions::init(&mut i, &state);
-      ops::process::init(&mut i, &state);
-      ops::random::init(&mut i, &state);
-      ops::repl::init(&mut i, &state);
-      ops::resources::init(&mut i, &state);
-      ops::timers::init(&mut i, &state);
-      ops::workers::init(&mut i, &state);
-
-      let state_ = state.clone();
-      i.set_dyn_import(move |id, specifier, referrer| {
-        let load_stream = RecursiveLoad::dynamic_import(
-          id,
-          specifier,
-          referrer,
-          state_.clone(),
-          state_.modules.clone(),
-        );
-        Box::new(load_stream)
-      });
-
-      let global_state_ = state.global_state.clone();
-      i.set_js_error_create(move |v8_exception| {
-        JSError::from_v8_exception(v8_exception, &global_state_.ts_compiler)
-      })
-    }
+    let global_state_ = state.global_state.clone();
+    isolate.set_js_error_create(move |v8_exception| {
+      JSError::from_v8_exception(v8_exception, &global_state_.ts_compiler)
+    });
 
     Self {
       name,
-      isolate,
+      isolate: Arc::new(AsyncMutex::new(isolate)),
       state,
-      external_channels: Arc::new(Mutex::new(external_channels)),
+      external_channels,
     }
   }
 
@@ -110,62 +90,59 @@ impl Worker {
     js_filename: &str,
     js_source: &str,
   ) -> Result<(), ErrBox> {
-    let mut isolate = self.isolate.lock().unwrap();
+    let mut isolate = self.isolate.try_lock().unwrap();
     isolate.execute(js_filename, js_source)
   }
 
   /// Executes the provided JavaScript module.
-  pub fn execute_mod_async(
+  ///
+  /// Takes ownership of the isolate behind mutex.
+  pub async fn execute_mod_async(
     &mut self,
     module_specifier: &ModuleSpecifier,
     maybe_code: Option<String>,
     is_prefetch: bool,
-  ) -> impl Future<Output = Result<(), ErrBox>> {
+  ) -> Result<(), ErrBox> {
+    let specifier = module_specifier.to_string();
     let worker = self.clone();
-    let loader = self.state.clone();
-    let isolate = self.isolate.clone();
-    let modules = self.state.modules.clone();
-    let recursive_load = RecursiveLoad::main(
-      &module_specifier.to_string(),
-      maybe_code,
-      loader,
-      modules,
-    );
 
-    async move {
-      let id = recursive_load.get_future(isolate).await?;
-      worker.state.global_state.progress.done();
+    let mut isolate = self.isolate.lock().await;
+    let id = isolate.load_module(&specifier, maybe_code).await?;
+    worker.state.global_state.progress.done();
 
-      if !is_prefetch {
-        let mut isolate = worker.isolate.lock().unwrap();
-        return isolate.mod_evaluate(id);
-      }
-
-      Ok(())
+    if !is_prefetch {
+      return isolate.mod_evaluate(id);
     }
+
+    Ok(())
   }
 
   /// Post message to worker as a host.
   ///
   /// This method blocks current thread.
-  pub fn post_message(
-    self: &Self,
-    buf: Buf,
-  ) -> impl Future<Output = Result<(), ErrBox>> {
-    let channels = self.external_channels.lock().unwrap();
-    let mut sender = channels.sender.clone();
-    async move {
-      let result = sender.send(buf).map_err(ErrBox::from).await;
-      drop(sender);
-      result
-    }
+  pub async fn post_message(&self, buf: Buf) -> Result<(), ErrBox> {
+    let mut sender = self.external_channels.sender.clone();
+    let result = sender.send(buf).map_err(ErrBox::from).await;
+    drop(sender);
+    result
   }
 
   /// Get message from worker as a host.
-  pub fn get_message(self: &Self) -> WorkerReceiver {
-    WorkerReceiver {
-      channels: self.external_channels.clone(),
+  pub fn get_message(
+    &self,
+  ) -> Pin<Box<dyn Future<Output = Option<Buf>> + Send>> {
+    let receiver_mutex = self.external_channels.receiver.clone();
+
+    async move {
+      let mut receiver = receiver_mutex.lock().await;
+      receiver.next().await
     }
+    .boxed()
+  }
+
+  pub fn clear_exception(&mut self) {
+    let mut isolate = self.isolate.try_lock().unwrap();
+    isolate.clear_exception();
   }
 }
 
@@ -174,27 +151,83 @@ impl Future for Worker {
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
-    let mut isolate = inner.isolate.lock().unwrap();
-    isolate.poll_unpin(cx)
+    let waker = AtomicWaker::new();
+    waker.register(cx.waker());
+    match inner.isolate.try_lock() {
+      Ok(mut isolate) => isolate.poll_unpin(cx),
+      Err(_) => {
+        waker.wake();
+        Poll::Pending
+      }
+    }
   }
 }
 
-/// This structure wraps worker's resource id to implement future
-/// that will return message received from worker or None
-/// if worker's channel has been closed.
-pub struct WorkerReceiver {
-  channels: Arc<Mutex<WorkerChannels>>,
+/// This worker is created and used by Deno executable.
+///
+/// It provides ops available in the `Deno` namespace.
+///
+/// All WebWorkers created during program execution are decendants of
+/// this worker.
+#[derive(Clone)]
+pub struct MainWorker(Worker);
+
+impl MainWorker {
+  pub fn new(
+    name: String,
+    startup_data: StartupData,
+    state: ThreadSafeState,
+    external_channels: WorkerChannels,
+  ) -> Self {
+    let state_ = state.clone();
+    let worker = Worker::new(name, startup_data, state_, external_channels);
+    {
+      let mut isolate = worker.isolate.try_lock().unwrap();
+      let op_registry = isolate.op_registry.clone();
+
+      ops::runtime_compiler::init(&mut isolate, &state);
+      ops::errors::init(&mut isolate, &state);
+      ops::fetch::init(&mut isolate, &state);
+      ops::files::init(&mut isolate, &state);
+      ops::fs::init(&mut isolate, &state);
+      ops::io::init(&mut isolate, &state);
+      ops::plugins::init(&mut isolate, &state, op_registry);
+      ops::net::init(&mut isolate, &state);
+      ops::tls::init(&mut isolate, &state);
+      ops::os::init(&mut isolate, &state);
+      ops::permissions::init(&mut isolate, &state);
+      ops::process::init(&mut isolate, &state);
+      ops::random::init(&mut isolate, &state);
+      ops::repl::init(&mut isolate, &state);
+      ops::resources::init(&mut isolate, &state);
+      ops::timers::init(&mut isolate, &state);
+      ops::worker_host::init(&mut isolate, &state);
+      ops::web_worker::init(&mut isolate, &state);
+    }
+
+    Self(worker)
+  }
 }
 
-impl Future for WorkerReceiver {
-  type Output = Result<Option<Buf>, ErrBox>;
+impl Deref for MainWorker {
+  type Target = Worker;
+  fn deref(&self) -> &Self::Target {
+    &self.0
+  }
+}
+
+impl DerefMut for MainWorker {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    &mut self.0
+  }
+}
+
+impl Future for MainWorker {
+  type Output = Result<(), ErrBox>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    let mut channels = self.channels.lock().unwrap();
-    match channels.receiver.poll_next_unpin(cx) {
-      Poll::Ready(v) => Poll::Ready(Ok(v)),
-      Poll::Pending => Poll::Pending,
-    }
+    let inner = self.get_mut();
+    inner.0.poll_unpin(cx)
   }
 }
 
@@ -214,20 +247,19 @@ mod tests {
   where
     F: FnOnce() + Send + 'static,
   {
-    let fut = futures::future::lazy(move |_cx| {
-      f();
-      Ok(())
-    });
-
+    let fut = futures::future::lazy(move |_cx| f());
     tokio_util::run(fut)
   }
 
-  pub fn panic_on_error<I, E, F>(f: F) -> impl Future<Output = Result<I, ()>>
+  pub async fn panic_on_error<I, E, F>(f: F) -> I
   where
     F: Future<Output = Result<I, E>>,
     E: std::fmt::Debug,
   {
-    f.map_err(|err| panic!("Future got unexpected error: {:?}", err))
+    match f.await {
+      Ok(v) => v,
+      Err(e) => panic!("Future got unexpected error: {:?}", e),
+    }
   }
 
   #[test]
@@ -235,8 +267,7 @@ mod tests {
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
       .parent()
       .unwrap()
-      .join("tests/esm_imports_a.js")
-      .to_owned();
+      .join("tests/esm_imports_a.js");
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state = ThreadSafeGlobalState::new(
@@ -252,14 +283,13 @@ mod tests {
       global_state,
       None,
       Some(module_specifier.clone()),
-      true,
       int,
     )
     .unwrap();
     let state_ = state.clone();
     tokio_util::run(async move {
       let mut worker =
-        Worker::new("TEST".to_string(), StartupData::None, state, ext);
+        MainWorker::new("TEST".to_string(), StartupData::None, state, ext);
       let result = worker
         .execute_mod_async(&module_specifier, None, false)
         .await;
@@ -280,8 +310,7 @@ mod tests {
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
       .parent()
       .unwrap()
-      .join("tests/circular1.ts")
-      .to_owned();
+      .join("tests/circular1.ts");
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state = ThreadSafeGlobalState::new(
@@ -297,14 +326,13 @@ mod tests {
       global_state,
       None,
       Some(module_specifier.clone()),
-      true,
       int,
     )
     .unwrap();
     let state_ = state.clone();
     tokio_util::run(async move {
       let mut worker =
-        Worker::new("TEST".to_string(), StartupData::None, state, ext);
+        MainWorker::new("TEST".to_string(), StartupData::None, state, ext);
       let result = worker
         .execute_mod_async(&module_specifier, None, false)
         .await;
@@ -327,8 +355,7 @@ mod tests {
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
       .parent()
       .unwrap()
-      .join("cli/tests/006_url_imports.ts")
-      .to_owned();
+      .join("cli/tests/006_url_imports.ts");
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let mut flags = flags::DenoFlags::default();
@@ -341,20 +368,19 @@ mod tests {
       global_state.clone(),
       None,
       Some(module_specifier.clone()),
-      true,
       int,
     )
     .unwrap();
-    let global_state_ = global_state.clone();
+    let global_state_ = global_state;
     let state_ = state.clone();
     tokio_util::run(async move {
-      let mut worker = Worker::new(
+      let mut worker = MainWorker::new(
         "TEST".to_string(),
         startup_data::deno_isolate_init(),
         state,
         ext,
       );
-      worker.execute("denoMain()").unwrap();
+      worker.execute("bootstrapMainRuntime()").unwrap();
       let result = worker
         .execute_mod_async(&module_specifier, None, false)
         .await;
@@ -374,20 +400,20 @@ mod tests {
     drop(http_server_guard);
   }
 
-  fn create_test_worker() -> Worker {
+  fn create_test_worker() -> MainWorker {
     let (int, ext) = ThreadSafeState::create_channels();
     let state = ThreadSafeState::mock(
       vec![String::from("./deno"), String::from("hello.js")],
       int,
     );
-    let mut worker = Worker::new(
+    let mut worker = MainWorker::new(
       "TEST".to_string(),
       startup_data::deno_isolate_init(),
       state,
       ext,
     );
-    worker.execute("denoMain()").unwrap();
-    worker.execute("workerMain()").unwrap();
+    worker.execute("bootstrapMainRuntime()").unwrap();
+    worker.execute("bootstrapWorkerRuntime()").unwrap();
     worker
   }
 
@@ -415,17 +441,16 @@ mod tests {
       let fut = async move {
         let r = worker.await;
         r.unwrap();
-        Ok(())
       };
 
-      tokio::spawn(fut.boxed().compat());
+      tokio::spawn(fut);
 
       let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
 
       let r = block_on(worker_.post_message(msg));
       assert!(r.is_ok());
 
-      let maybe_msg = block_on(worker_.get_message()).unwrap();
+      let maybe_msg = block_on(worker_.get_message());
       assert!(maybe_msg.is_some());
       // Check if message received is [1, 2, 3] in json
       assert_eq!(*maybe_msg.unwrap(), *b"[1,2,3]");
@@ -448,26 +473,21 @@ mod tests {
         .unwrap();
 
       let worker_ = worker.clone();
-      let worker_future = worker
-        .then(move |r| {
-          println!("workers.rs after resource close");
-          r.unwrap();
-          futures::future::ok(())
-        })
-        .shared();
+      let worker_future = async move {
+        let result = worker_.await;
+        println!("workers.rs after resource close");
+        result.unwrap();
+      }
+      .shared();
 
       let worker_future_ = worker_future.clone();
-      tokio::spawn(
-        worker_future_
-          .then(|_: Result<(), ()>| futures::future::ok(()))
-          .compat(),
-      );
+      tokio::spawn(worker_future_);
 
       let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
-      let r = block_on(worker_.post_message(msg));
+      let r = block_on(worker.post_message(msg));
       assert!(r.is_ok());
 
-      block_on(worker_future).unwrap();
+      block_on(worker_future)
     })
   }
 
@@ -493,8 +513,7 @@ mod tests {
       let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()
-        .join("tests/002_hello.ts")
-        .to_owned();
+        .join("tests/002_hello.ts");
       let module_specifier =
         ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
       let result =

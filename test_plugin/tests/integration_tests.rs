@@ -1,4 +1,7 @@
-use deno_cli::test_util::*;
+// TODO(ry) Re-enable this test on windows. It is flaky for an unknown reason.
+#![cfg(not(windows))]
+
+use deno::test_util::*;
 use std::process::Command;
 
 fn deno_cmd() -> Command {

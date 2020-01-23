@@ -20,7 +20,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // This script formats the given source files. If the files are omitted, it
 // formats the all files in the repository.
 import { parse } from "../flags/mod.ts";
@@ -272,11 +272,17 @@ async function formatSourceFiles(
   for await (const { filename } of files) {
     const parser = selectParser(filename);
     if (parser) {
-      formats.push(formatFile(filename, parser, prettierOpts));
+      if (prettierOpts.write) {
+        formats.push(formatFile(filename, parser, prettierOpts));
+      } else {
+        await formatFile(filename, parser, prettierOpts);
+      }
     }
   }
 
-  await Promise.all(formats);
+  if (prettierOpts.write) {
+    await Promise.all(formats);
+  }
   exit(0);
 }
 
@@ -559,7 +565,7 @@ async function main(opts): Promise<void> {
 }
 
 main(
-  parse(args.slice(1), {
+  parse(args, {
     string: [
       "ignore",
       "ignore-path",

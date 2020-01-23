@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 #[macro_use]
 extern crate lazy_static;
 extern crate tempfile;
@@ -100,11 +100,6 @@ fn bundle_exports() {
 #[test]
 fn repl_test() {
   util::run_python_script("tools/repl_test.py")
-}
-
-#[test]
-fn setup_test() {
-  util::run_python_script("tools/setup_test.py")
 }
 
 #[test]
@@ -267,24 +262,6 @@ itest!(_029_eval {
   output: "029_eval.out",
 });
 
-itest!(_030_xeval {
-  args: "xeval console.log($.toUpperCase())",
-  input: Some("a\nb\n\nc"),
-  output: "030_xeval.out",
-});
-
-itest!(_031_xeval_replvar {
-  args: "xeval -I val console.log(val.toUpperCase());",
-  input: Some("a\nb\n\nc"),
-  output: "031_xeval_replvar.out",
-});
-
-itest!(_032_xeval_delim {
-  args: "xeval -d DELIM console.log($.toUpperCase());",
-  input: Some("aDELIMbDELIMDELIMc"),
-  output: "032_xeval_delim.out",
-});
-
 itest!(_033_import_map {
   args:
     "run --reload --importmap=importmaps/import_map.json importmaps/test.ts",
@@ -324,6 +301,7 @@ itest!(_038_checkjs {
   output: "038_checkjs.js.out",
 });
 
+/* TODO(bartlomieju):
 itest!(_039_worker_deno_ns {
   args: "run --reload 039_worker_deno_ns.ts",
   output: "039_worker_deno_ns.ts.out",
@@ -333,6 +311,7 @@ itest!(_040_worker_blob {
   args: "run --reload 040_worker_blob.ts",
   output: "040_worker_blob.ts.out",
 });
+*/
 
 itest!(_041_dyn_import_eval {
   args: "eval import('./subdir/mod4.js').then(console.log)",
@@ -590,12 +569,14 @@ itest!(error_type_definitions {
   output: "error_type_definitions.ts.out",
 });
 
+/* TODO(bartlomieju)
 itest!(error_worker_dynamic {
   args: "run --reload error_worker_dynamic.ts",
   check_stderr: true,
   exit_code: 1,
   output: "error_worker_dynamic.ts.out",
 });
+*/
 
 itest!(exit_error42 {
   exit_code: 42,
@@ -684,9 +665,15 @@ itest!(top_level_for_await_ts {
   output: "top_level_for_await.out",
 });
 
+itest!(_053_import_compression {
+  args: "run --reload --allow-net 053_import_compression/main.ts",
+  output: "053_import_compression.out",
+  http_server: true,
+});
+
 mod util {
-  use deno_cli::colors::strip_ansi_codes;
-  pub use deno_cli::test_util::*;
+  use deno::colors::strip_ansi_codes;
+  pub use deno::test_util::*;
   use os_pipe::pipe;
   use std::io::Read;
   use std::io::Write;

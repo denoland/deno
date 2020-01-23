@@ -1,0 +1,3 @@
+gzip
+brotli
+console.log('gzip')

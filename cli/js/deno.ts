@@ -1,12 +1,14 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 // Public deno module.
-export { env, exit, isTTY, execPath, homeDir, hostname } from "./os.ts";
+export { dir, env, exit, isTTY, execPath, hostname } from "./os.ts";
 export { chdir, cwd } from "./dir.ts";
 export {
   File,
   open,
   openSync,
+  create,
+  createSync,
   stdin,
   stdout,
   stderr,
@@ -17,6 +19,7 @@ export {
   seek,
   seekSync,
   close,
+  OpenOptions,
   OpenMode
 } from "./files.ts";
 export {
@@ -77,8 +80,15 @@ export {
 export { truncateSync, truncate } from "./truncate.ts";
 export { FileInfo } from "./file_info.ts";
 export { openPlugin } from "./plugins.ts";
-export { connect, dial, listen, Listener, Conn } from "./net.ts";
-export { dialTLS, listenTLS } from "./tls.ts";
+export {
+  connect,
+  listen,
+  Listener,
+  Conn,
+  ShutdownMode,
+  shutdown
+} from "./net.ts";
+export { connectTLS, listenTLS } from "./tls.ts";
 export { metrics, Metrics } from "./metrics.ts";
 export { resources } from "./resources.ts";
 export { FsWatcher, FsWatcherEvent, WatchOptions, watch } from "./fs_watch.ts";
@@ -90,7 +100,8 @@ export {
   ProcessStatus,
   Signal
 } from "./process.ts";
-export { inspect, customInspect } from "./console.ts";
+export { transpileOnly, compile, bundle } from "./compiler_api.ts";
+export { inspect } from "./console.ts";
 export { build, OperatingSystem, Arch } from "./build.ts";
 export { version } from "./version.ts";
 export const args: string[] = [];
@@ -100,18 +111,10 @@ export const args: string[] = [];
 /** @internal */
 export { core } from "./core.ts";
 
-/** @internal */
-export { setPrepareStackTrace } from "./error_stack.ts";
-
-// TODO Don't expose Console nor stringifyArgs.
-/** @internal */
-export { Console, stringifyArgs } from "./console.ts";
-// TODO Don't expose DomIterableMixin.
-/** @internal */
-export { DomIterableMixin } from "./mixins/dom_iterable.ts";
-
 /** The current process id of the runtime. */
 export let pid: number;
 
 /** Reflects the NO_COLOR environment variable: https://no-color.org/ */
 export let noColor: boolean;
+
+export { symbols } from "./symbols.ts";

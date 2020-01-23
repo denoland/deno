@@ -14,6 +14,7 @@ onmessage = function(e): void {
       postMessage({ cmdId });
       break;
     case 3: // Close
+      postMessage({ cmdId: 3 });
       workerClose();
       break;
   }

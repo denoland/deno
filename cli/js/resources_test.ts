@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { test, testPerm, assertEquals } from "./test_util.ts";
 
 test(function resourcesStdio(): void {
@@ -11,7 +11,7 @@ test(function resourcesStdio(): void {
 
 testPerm({ net: true }, async function resourcesNet(): Promise<void> {
   const listener = Deno.listen({ port: 4501 });
-  const dialerConn = await Deno.dial({ port: 4501 });
+  const dialerConn = await Deno.connect({ port: 4501 });
   const listenerConn = await listener.accept();
 
   const res = Deno.resources();

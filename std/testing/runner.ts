@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno -A
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { parse } from "../flags/mod.ts";
 import { ExpandGlobOptions, expandGlob } from "../fs/mod.ts";
 import { isWindows, join } from "../path/mod.ts";
@@ -243,7 +243,7 @@ export async function runTestModules({
 }
 
 async function main(): Promise<void> {
-  const parsedArgs = parse(args.slice(1), {
+  const parsedArgs = parse(args, {
     boolean: ["allow-none", "failfast", "help", "quiet"],
     string: ["exclude"],
     alias: {

@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // Do not add flatbuffer dependencies to this module.
 //! Connects to js/dispatch_minimal.ts sendAsyncMinimal This acts as a faster
 //! alternative to flatbuffers using a very simple list of int32s to lay out
@@ -7,11 +7,11 @@
 use crate::deno_error::GetErrorKind;
 use crate::msg::ErrorKind;
 use byteorder::{LittleEndian, WriteBytesExt};
-use deno::Buf;
-use deno::CoreOp;
-use deno::ErrBox;
-use deno::Op;
-use deno::PinnedBuf;
+use deno_core::Buf;
+use deno_core::CoreOp;
+use deno_core::ErrBox;
+use deno_core::Op;
+use deno_core::PinnedBuf;
 use futures::future::FutureExt;
 use std::future::Future;
 use std::pin::Pin;
@@ -138,21 +138,23 @@ where
     let min_op = d(rid, zero_copy);
 
     // Convert to CoreOp
-    let fut = Box::new(min_op.then(move |result| match result {
-      Ok(r) => {
-        record.result = r;
-        futures::future::ok(record.into())
+    let fut = async move {
+      match min_op.await {
+        Ok(r) => {
+          record.result = r;
+          Ok(record.into())
+        }
+        Err(err) => {
+          let error_record = ErrorRecord {
+            promise_id: record.promise_id,
+            arg: -1,
+            error_code: err.kind() as i32,
+            error_message: err.to_string().as_bytes().to_owned(),
+          };
+          Ok(error_record.into())
+        }
       }
-      Err(err) => {
-        let error_record = ErrorRecord {
-          promise_id: record.promise_id,
-          arg: -1,
-          error_code: err.kind() as i32,
-          error_message: err.to_string().as_bytes().to_owned(),
-        };
-        futures::future::ok(error_record.into())
-      }
-    }));
+    };
 
     if is_sync {
       // Warning! Possible deadlocks can occur if we try to wait for a future

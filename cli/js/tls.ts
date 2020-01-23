@@ -1,23 +1,24 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { sendAsync, sendSync } from "./dispatch_json.ts";
 import * as dispatch from "./dispatch.ts";
 import { Listener, Transport, Conn, ConnImpl, ListenerImpl } from "./net.ts";
 
 // TODO(ry) There are many configuration options to add...
 // https://docs.rs/rustls/0.16.0/rustls/struct.ClientConfig.html
-interface DialTLSOptions {
+interface ConnectTLSOptions {
+  transport?: Transport;
   port: number;
   hostname?: string;
   certFile?: string;
 }
-const dialTLSDefaults = { hostname: "127.0.0.1", transport: "tcp" };
+const connectTLSDefaults = { hostname: "127.0.0.1", transport: "tcp" };
 
 /**
- * dialTLS establishes a secure connection over TLS (transport layer security).
+ * Establishes a secure connection over TLS (transport layer security).
  */
-export async function dialTLS(options: DialTLSOptions): Promise<Conn> {
-  options = Object.assign(dialTLSDefaults, options);
-  const res = await sendAsync(dispatch.OP_DIAL_TLS, options);
+export async function connectTLS(options: ConnectTLSOptions): Promise<Conn> {
+  options = Object.assign(connectTLSDefaults, options);
+  const res = await sendAsync(dispatch.OP_CONNECT_TLS, options);
   return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);
 }
 
@@ -59,5 +60,5 @@ export function listenTLS(options: ListenTLSOptions): Listener {
     certFile: options.certFile,
     keyFile: options.keyFile
   });
-  return new TLSListenerImpl(res.rid, transport, res.localAddr);
+  return new TLSListenerImpl(res.rid, res.localAddr);
 }

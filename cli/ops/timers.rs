@@ -1,8 +1,8 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::ops::json_op;
 use crate::state::ThreadSafeState;
-use deno::*;
+use deno_core::*;
 use futures::future::FutureExt;
 use std;
 use std::time::Duration;

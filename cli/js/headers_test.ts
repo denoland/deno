@@ -1,9 +1,9 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { test, assert, assertEquals } from "./test_util.ts";
 const {
   stringifyArgs
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-} = Deno as any;
+} = Deno[Deno.symbols.internal] as any;
 
 // Logic heavily copied from web-platform-tests, make
 // sure pass mostly header basic test
