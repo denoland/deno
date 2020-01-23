@@ -2175,7 +2175,7 @@ declare interface Window {
   performance: __performanceUtil.Performance;
   onmessage: (e: { data: any }) => void;
   onerror: undefined | typeof onerror;
-  workerMain: typeof __workerMain.workerMain;
+  bootstrapWorkerRuntime: typeof __workerMain.bootstrapWorkerRuntime;
   workerClose: typeof __workerMain.workerClose;
   postMessage: typeof __workerMain.postMessage;
   Worker: typeof __workers.WorkerImpl;
@@ -2234,7 +2234,7 @@ declare let onerror:
       e: Event
     ) => boolean | void)
   | undefined;
-declare const workerMain: typeof __workerMain.workerMain;
+declare const bootstrapWorkerRuntime: typeof __workerMain.bootstrapWorkerRuntime;
 declare const workerClose: typeof __workerMain.workerClose;
 declare const postMessage: typeof __workerMain.postMessage;
 declare const Worker: typeof __workers.WorkerImpl;
@@ -3490,7 +3490,7 @@ declare namespace __workerMain {
   export function getMessage(): Promise<any>;
   export let isClosing: boolean;
   export function workerClose(): void;
-  export function workerMain(): Promise<void>;
+  export function bootstrapWorkerRuntime(): Promise<void>;
 }
 
 declare namespace __workers {

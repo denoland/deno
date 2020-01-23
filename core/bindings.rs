@@ -3,13 +3,10 @@
 use crate::es_isolate::EsIsolate;
 use crate::isolate::Isolate;
 use crate::isolate::PinnedBuf;
-use crate::isolate::SHARED_RESPONSE_BUF_SIZE;
 
 use rusty_v8 as v8;
-use v8::InIsolate;
 use v8::MapFnTo;
 
-use libc::c_void;
 use std::convert::TryFrom;
 use std::option::Option;
 use std::ptr;
@@ -95,16 +92,19 @@ pub fn module_origin<'a>(
   )
 }
 
-pub fn initialize_context<'a>(
-  scope: &mut impl v8::ToLocal<'a>,
-  mut context: v8::Local<v8::Context>,
-) {
-  context.enter();
+pub fn initialize_context<'s>(
+  scope: &mut impl v8::ToLocal<'s>,
+) -> v8::Local<'s, v8::Context> {
+  let mut hs = v8::EscapableHandleScope::new(scope);
+  let scope = hs.enter();
 
+  let context = v8::Context::new(scope);
   let global = context.global(scope);
 
-  let deno_val = v8::Object::new(scope);
+  let mut cs = v8::ContextScope::new(scope, context);
+  let scope = cs.enter();
 
+  let deno_val = v8::Object::new(scope);
   global.set(
     context,
     v8::String::new(scope, "Deno").unwrap().into(),
@@ -112,7 +112,6 @@ pub fn initialize_context<'a>(
   );
 
   let mut core_val = v8::Object::new(scope);
-
   deno_val.set(
     context,
     v8::String::new(scope, "core").unwrap().into(),
@@ -178,41 +177,18 @@ pub fn initialize_context<'a>(
     queue_microtask_val.into(),
   );
 
-  context.exit();
+  scope.escape(context)
 }
 
-pub unsafe fn slice_to_uint8array<'sc>(
-  deno_isolate: &mut Isolate,
+pub fn boxed_slice_to_uint8array<'sc>(
   scope: &mut impl v8::ToLocal<'sc>,
-  buf: &[u8],
+  buf: Box<[u8]>,
 ) -> v8::Local<'sc, v8::Uint8Array> {
-  if buf.is_empty() {
-    let ab = v8::ArrayBuffer::new(scope, 0);
-    return v8::Uint8Array::new(ab, 0, 0).expect("Failed to create UintArray8");
-  }
-
+  assert!(!buf.is_empty());
   let buf_len = buf.len();
-  let buf_ptr = buf.as_ptr();
-
-  // To avoid excessively allocating new ArrayBuffers, we try to reuse a single
-  // global ArrayBuffer. The caveat is that users must extract data from it
-  // before the next tick. We only do this for ArrayBuffers less than 1024
-  // bytes.
-  let ab = if buf_len > SHARED_RESPONSE_BUF_SIZE {
-    // Simple case. We allocate a new ArrayBuffer for this.
-    v8::ArrayBuffer::new(scope, buf_len)
-  } else if deno_isolate.shared_response_buf.is_empty() {
-    let buf = v8::ArrayBuffer::new(scope, SHARED_RESPONSE_BUF_SIZE);
-    deno_isolate.shared_response_buf.set(scope, buf);
-    buf
-  } else {
-    deno_isolate.shared_response_buf.get(scope).unwrap()
-  };
-
-  let mut backing_store = ab.get_backing_store();
-  let data = backing_store.data();
-  let data: *mut u8 = data as *mut libc::c_void as *mut u8;
-  std::ptr::copy_nonoverlapping(buf_ptr, data, buf_len);
+  let backing_store =
+    unsafe { &mut v8::ArrayBuffer::new_backing_store_from_boxed_slice(buf) };
+  let ab = v8::ArrayBuffer::new_with_backing_store(scope, backing_store);
   v8::Uint8Array::new(ab, 0, buf_len).expect("Failed to create UintArray8")
 }
 
@@ -221,7 +197,7 @@ pub extern "C" fn host_import_module_dynamically_callback(
   referrer: v8::Local<v8::ScriptOrModule>,
   specifier: v8::Local<v8::String>,
 ) -> *mut v8::Promise {
-  let mut cbs = v8::CallbackScope::new(context);
+  let mut cbs = v8::CallbackScope::new_escapable(context);
   let mut hs = v8::EscapableHandleScope::new(cbs.enter());
   let scope = hs.enter();
   let isolate = scope.isolate();
@@ -307,7 +283,7 @@ pub extern "C" fn message_callback(
 
   // TerminateExecution was called
   if scope.isolate().is_execution_terminating() {
-    let u = v8::new_undefined(scope);
+    let u = v8::undefined(scope);
     deno_isolate.handle_exception(scope, context, u.into());
     return;
   }
@@ -324,8 +300,9 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
   let deno_isolate: &mut Isolate =
     unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
 
-  let mut context = deno_isolate.global_context.get(scope).unwrap();
-  context.enter();
+  let context = deno_isolate.global_context.get(scope).unwrap();
+  let mut cs = v8::ContextScope::new(scope, context);
+  let scope = cs.enter();
 
   let promise = message.get_promise();
   let promise_id = promise.get_identity_hash();
@@ -351,8 +328,6 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
       // Should not warn. See #1272
     }
   };
-
-  context.exit();
 }
 
 fn print(
@@ -445,8 +420,8 @@ fn send(
     let (_op_id, buf) = response;
 
     if !buf.is_empty() {
-      let ab = unsafe { slice_to_uint8array(deno_isolate, scope, &buf) };
-      rv.set(ab.into())
+      let ui8 = boxed_slice_to_uint8array(scope, buf);
+      rv.set(ui8.into())
     }
   }
 }
@@ -465,7 +440,7 @@ fn eval_context(
     Ok(s) => s,
     Err(_) => {
       let msg = v8::String::new(scope, "Invalid argument").unwrap();
-      let exception = v8::type_error(scope, msg);
+      let exception = v8::Exception::type_error(scope, msg);
       scope.isolate().throw_exception(exception);
       return;
     }
@@ -494,7 +469,7 @@ fn eval_context(
     output.set(
       context,
       v8::Integer::new(scope, 0).into(),
-      v8::new_null(scope).into(),
+      v8::null(scope).into(),
     );
 
     let errinfo_obj = v8::Object::new(scope);
@@ -535,7 +510,7 @@ fn eval_context(
     output.set(
       context,
       v8::Integer::new(scope, 0).into(),
-      v8::new_null(scope).into(),
+      v8::null(scope).into(),
     );
 
     let errinfo_obj = v8::Object::new(scope);
@@ -577,7 +552,7 @@ fn eval_context(
   output.set(
     context,
     v8::Integer::new(scope, 1).into(),
-    v8::new_null(scope).into(),
+    v8::null(scope).into(),
   );
   rv.set(output.into());
 }
@@ -591,11 +566,7 @@ fn error_to_json(
     unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
   let context = deno_isolate.global_context.get(scope).unwrap();
 
-  // TODO(piscisaureus): This is transmute necessary because of a bug in
-  // rusty_v8's implementation of `v8::create_message()`, which needs to be
-  // fixed.
-  let exception = unsafe { std::mem::transmute(args.get(0)) };
-  let message = v8::create_message(scope, exception);
+  let message = v8::Exception::create_message(scope, args.get(0));
   let json_obj = encode_message_as_object(scope, context, message);
   let json_string = v8::json::stringify(context, json_obj.into()).unwrap();
 
@@ -611,7 +582,7 @@ fn queue_microtask(
     Ok(f) => scope.isolate().enqueue_microtask(f),
     Err(_) => {
       let msg = v8::String::new(scope, "Invalid argument").unwrap();
-      let exception = v8::type_error(scope, msg);
+      let exception = v8::Exception::type_error(scope, msg);
       scope.isolate().throw_exception(exception);
     }
   };
@@ -628,15 +599,10 @@ fn shared_getter(
 
   // Lazily initialize the persistent external ArrayBuffer.
   if deno_isolate.shared_ab.is_empty() {
-    let data_ptr = deno_isolate.shared.bytes.as_ptr();
-    let data_len = deno_isolate.shared.bytes.len();
-    let ab = unsafe {
-      v8::SharedArrayBuffer::new_DEPRECATED(
-        scope,
-        data_ptr as *mut c_void,
-        data_len,
-      )
-    };
+    let ab = v8::SharedArrayBuffer::new_with_backing_store(
+      scope,
+      deno_isolate.shared.get_backing_store(),
+    );
     deno_isolate.shared_ab.set(scope, ab);
   }
 
@@ -649,7 +615,7 @@ pub fn module_resolve_callback<'s>(
   specifier: v8::Local<'s, v8::String>,
   referrer: v8::Local<'s, v8::Module>,
 ) -> Option<v8::Local<'s, v8::Module>> {
-  let mut scope = v8::CallbackScope::new(context);
+  let mut scope = v8::CallbackScope::new_escapable(context);
   let mut scope = v8::EscapableHandleScope::new(scope.enter());
   let scope = scope.enter();
 

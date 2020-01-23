@@ -87,7 +87,7 @@ impl Drop for EsIsolate {
     // Clear persistent handles we own.
     {
       let mut locker = v8::Locker::new(&isolate);
-      let mut hs = v8::HandleScope::new(&mut locker);
+      let mut hs = v8::HandleScope::new(locker.enter());
       let scope = hs.enter();
       for module in self.modules.info.values_mut() {
         module.handle.reset(scope);
@@ -142,11 +142,12 @@ impl EsIsolate {
     let isolate = self.core_isolate.v8_isolate.as_ref().unwrap();
     let mut locker = v8::Locker::new(&isolate);
 
-    let mut hs = v8::HandleScope::new(&mut locker);
+    let mut hs = v8::HandleScope::new(locker.enter());
     let scope = hs.enter();
     assert!(!self.core_isolate.global_context.is_empty());
-    let mut context = self.core_isolate.global_context.get(scope).unwrap();
-    context.enter();
+    let context = self.core_isolate.global_context.get(scope).unwrap();
+    let mut cs = v8::ContextScope::new(scope, context);
+    let scope = cs.enter();
 
     let name_str = v8::String::new(scope, name).unwrap();
     let source_str = v8::String::new(scope, source).unwrap();
@@ -166,7 +167,6 @@ impl EsIsolate {
         context,
         tc.exception().unwrap(),
       );
-      context.exit();
       return 0;
     }
     let module = maybe_module.unwrap();
@@ -183,7 +183,6 @@ impl EsIsolate {
     self
       .modules
       .register(id, name, main, handle, import_specifiers);
-    context.exit();
     id
   }
 
@@ -203,18 +202,17 @@ impl EsIsolate {
   fn mod_instantiate2(&mut self, id: ModuleId) {
     let isolate = self.core_isolate.v8_isolate.as_ref().unwrap();
     let mut locker = v8::Locker::new(isolate);
-    let mut hs = v8::HandleScope::new(&mut locker);
+    let mut hs = v8::HandleScope::new(locker.enter());
     let scope = hs.enter();
     assert!(!self.core_isolate.global_context.is_empty());
-    let mut context = self.core_isolate.global_context.get(scope).unwrap();
-    context.enter();
-    let mut try_catch = v8::TryCatch::new(scope);
+    let context = self.core_isolate.global_context.get(scope).unwrap();
+    let mut cs = v8::ContextScope::new(scope, context);
+    let mut try_catch = v8::TryCatch::new(cs.enter());
     let tc = try_catch.enter();
 
     let maybe_info = self.modules.get_info(id);
 
     if maybe_info.is_none() {
-      context.exit();
       return;
     }
 
@@ -222,7 +220,6 @@ impl EsIsolate {
     let mut module = module_handle.get(scope).unwrap();
 
     if module.get_status() == v8::ModuleStatus::Errored {
-      context.exit();
       return;
     }
 
@@ -237,8 +234,6 @@ impl EsIsolate {
         tc.exception().unwrap(),
       );
     }
-
-    context.exit();
   }
 
   /// Instanciates a ES module
@@ -254,11 +249,12 @@ impl EsIsolate {
   fn mod_evaluate2(&mut self, id: ModuleId) {
     let isolate = self.core_isolate.v8_isolate.as_ref().unwrap();
     let mut locker = v8::Locker::new(isolate);
-    let mut hs = v8::HandleScope::new(&mut locker);
+    let mut hs = v8::HandleScope::new(locker.enter());
     let scope = hs.enter();
     assert!(!self.core_isolate.global_context.is_empty());
-    let mut context = self.core_isolate.global_context.get(scope).unwrap();
-    context.enter();
+    let context = self.core_isolate.global_context.get(scope).unwrap();
+    let mut cs = v8::ContextScope::new(scope, context);
+    let scope = cs.enter();
 
     let info = self.modules.get_info(id).expect("ModuleInfo not found");
     let mut module = info.handle.get(scope).expect("Empty module handle");
@@ -292,8 +288,6 @@ impl EsIsolate {
       }
       other => panic!("Unexpected module status {:?}", other),
     };
-
-    context.exit();
   }
 
   /// Evaluates an already instantiated ES module.
@@ -353,11 +347,13 @@ impl EsIsolate {
     );
     let isolate = self.core_isolate.v8_isolate.as_ref().unwrap();
     let mut locker = v8::Locker::new(isolate);
-    let mut hs = v8::HandleScope::new(&mut locker);
+    let mut hs = v8::HandleScope::new(locker.enter());
     let scope = hs.enter();
     assert!(!self.core_isolate.global_context.is_empty());
-    let mut context = self.core_isolate.global_context.get(scope).unwrap();
-    context.enter();
+    let context = self.core_isolate.global_context.get(scope).unwrap();
+    let mut cs = v8::ContextScope::new(scope, context);
+    let scope = cs.enter();
+
     let mut resolver_handle = self
       .dyn_import_map
       .remove(&id)
@@ -367,7 +363,7 @@ impl EsIsolate {
     // Resolution error.
     if let Some(error_str) = error {
       let msg = v8::String::new(scope, &error_str).unwrap();
-      let e = v8::type_error(scope, msg);
+      let e = v8::Exception::type_error(scope, msg);
       resolver.reject(context, e).unwrap();
     } else {
       let e = self.core_isolate.last_exception_handle.get(scope).unwrap();
@@ -375,8 +371,8 @@ impl EsIsolate {
       self.core_isolate.last_exception.take();
       resolver.reject(context, e).unwrap();
     }
-    isolate.run_microtasks();
-    context.exit();
+
+    scope.isolate().run_microtasks();
     self.core_isolate.check_last_exception()
   }
 
@@ -389,11 +385,13 @@ impl EsIsolate {
     assert!(mod_id != 0);
     let isolate = self.core_isolate.v8_isolate.as_ref().unwrap();
     let mut locker = v8::Locker::new(isolate);
-    let mut hs = v8::HandleScope::new(&mut locker);
+    let mut hs = v8::HandleScope::new(locker.enter());
     let scope = hs.enter();
     assert!(!self.core_isolate.global_context.is_empty());
-    let mut context = self.core_isolate.global_context.get(scope).unwrap();
-    context.enter();
+    let context = self.core_isolate.global_context.get(scope).unwrap();
+    let mut cs = v8::ContextScope::new(scope, context);
+    let scope = cs.enter();
+
     let mut resolver_handle = self
       .dyn_import_map
       .remove(&id)
@@ -409,8 +407,7 @@ impl EsIsolate {
     assert_eq!(module.get_status(), v8::ModuleStatus::Evaluated);
     let module_namespace = module.get_module_namespace();
     resolver.resolve(context, module_namespace).unwrap();
-    isolate.run_microtasks();
-    context.exit();
+    scope.isolate().run_microtasks();
     self.core_isolate.check_last_exception()
   }
 

@@ -84,13 +84,10 @@ interface Start {
   arch: Arch;
 }
 
-// This function bootstraps an environment within Deno, it is shared both by
-// the runtime and the compiler environments.
-// @internal
-export function start(preserveDenoNamespace = true, source?: string): Start {
+// TODO(bartlomieju): temporary solution, must be fixed when moving
+// dispatches to separate crates
+export function initOps(): void {
   const ops = core.ops();
-  // TODO(bartlomieju): this is a prototype, we should come up with
-  // something a bit more sophisticated
   for (const [name, opId] of Object.entries(ops)) {
     const opName = `OP_${name.toUpperCase()}`;
     // Assign op ids to actual variables
@@ -98,6 +95,13 @@ export function start(preserveDenoNamespace = true, source?: string): Start {
     ((dispatch as unknown) as { [key: string]: number })[opName] = opId;
     core.setAsyncHandler(opId, dispatch.getAsyncHandler(opName));
   }
+}
+
+// This function bootstraps an environment within Deno, it is shared both by
+// the runtime and the compiler environments.
+// @internal
+export function start(preserveDenoNamespace = true, source?: string): Start {
+  initOps();
   // First we send an empty `Start` message to let the privileged side know we
   // are ready. The response should be a `StartRes` message containing the CLI
   // args and other info.

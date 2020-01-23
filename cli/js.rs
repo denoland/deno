@@ -16,6 +16,8 @@ pub static COMPILER_SNAPSHOT_MAP: &[u8] =
 pub static COMPILER_SNAPSHOT_DTS: &[u8] =
   include_bytes!(concat!(env!("OUT_DIR"), "/COMPILER_SNAPSHOT.d.ts"));
 
+pub static DENO_RUNTIME: &str = include_str!("js/lib.deno_runtime.d.ts");
+
 #[test]
 fn cli_snapshot() {
   let mut isolate = deno_core::Isolate::new(
@@ -42,7 +44,7 @@ fn compiler_snapshot() {
   deno_core::js_check(isolate.execute(
     "<anon>",
     r#"
-      if (!compilerMain) {
+      if (!bootstrapTsCompiler) {
         throw Error("bad");
       }
       console.log(`ts version: ${ts.version}`);

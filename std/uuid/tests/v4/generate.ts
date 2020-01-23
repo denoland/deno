@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assert, assertEquals } from "../../../testing/asserts.ts";
 import { test } from "../../../testing/mod.ts";
 import { generate, validate } from "../../v4.ts";

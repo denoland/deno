@@ -14,17 +14,23 @@ use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
 
-/// This worker is implementation of `Worker` Web API
+/// This worker is used to host TypeScript and WASM compilers.
 ///
-/// At the moment this type of worker supports only
-/// communication with parent and creating new workers.
+/// It provides minimal set of ops that are necessary to facilitate
+/// compilation.
 ///
-/// Each `WebWorker` is either a child of `MainWorker` or other
-/// `WebWorker`.
+/// NOTE: This worker is considered priveleged, because it may
+/// access file system without permission check.
+///
+/// At the moment this worker is meant to be single-use - after
+/// performing single compilation/bundling it should be destroyed.
+///
+/// TODO(bartlomieju): add support to reuse the worker - or in other
+/// words support stateful TS compiler
 #[derive(Clone)]
-pub struct WebWorker(Worker);
+pub struct CompilerWorker(Worker);
 
-impl WebWorker {
+impl CompilerWorker {
   pub fn new(
     name: String,
     startup_data: StartupData,
@@ -35,28 +41,34 @@ impl WebWorker {
     let worker = Worker::new(name, startup_data, state_, external_channels);
     {
       let mut isolate = worker.isolate.try_lock().unwrap();
+      ops::compiler::init(&mut isolate, &state);
       ops::web_worker::init(&mut isolate, &state);
-      ops::worker_host::init(&mut isolate, &state);
+      // TODO(bartlomieju): CompilerWorker should not
+      // depend on those ops
+      ops::os::init(&mut isolate, &state);
+      ops::files::init(&mut isolate, &state);
+      ops::fs::init(&mut isolate, &state);
+      ops::io::init(&mut isolate, &state);
     }
 
     Self(worker)
   }
 }
 
-impl Deref for WebWorker {
+impl Deref for CompilerWorker {
   type Target = Worker;
   fn deref(&self) -> &Self::Target {
     &self.0
   }
 }
 
-impl DerefMut for WebWorker {
+impl DerefMut for CompilerWorker {
   fn deref_mut(&mut self) -> &mut Self::Target {
     &mut self.0
   }
 }
 
-impl Future for WebWorker {
+impl Future for CompilerWorker {
   type Output = Result<(), ErrBox>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {

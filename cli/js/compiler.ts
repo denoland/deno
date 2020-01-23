@@ -32,7 +32,11 @@ import { fromTypeScriptDiagnostic } from "./diagnostics_util.ts";
 import * as os from "./os.ts";
 import { assert } from "./util.ts";
 import * as util from "./util.ts";
-import { postMessage, workerClose, workerMain } from "./worker_main.ts";
+import {
+  postMessage,
+  workerClose,
+  bootstrapWorkerRuntime
+} from "./worker_main.ts";
 
 const self = globalThis;
 
@@ -74,17 +78,19 @@ interface CompileResult {
 }
 
 // bootstrap the runtime environment, this gets called as the isolate is setup
-self.denoMain = function denoMain(compilerType?: string): void {
-  os.start(true, compilerType ?? "TS");
+self.bootstrapCompilerRuntime = function bootstrapCompilerRuntime(
+  compilerType: string
+): void {
+  os.start(true, compilerType);
 };
 
 // bootstrap the worker environment, this gets called as the isolate is setup
-self.workerMain = workerMain;
+self.bootstrapWorkerRuntime = bootstrapWorkerRuntime;
 
 // provide the "main" function that will be called by the privileged side when
 // lazy instantiating the compiler web worker
-self.compilerMain = function compilerMain(): void {
-  // workerMain should have already been called since a compiler is a worker.
+self.bootstrapTsCompiler = function tsCompilerMain(): void {
+  // bootstrapWorkerRuntime should have already been called since a compiler is a worker.
   self.onmessage = async ({
     data: request
   }: {
@@ -297,8 +303,8 @@ self.compilerMain = function compilerMain(): void {
   };
 };
 
-self.wasmCompilerMain = function wasmCompilerMain(): void {
-  // workerMain should have already been called since a compiler is a worker.
+self.bootstrapWasmCompiler = function wasmCompilerMain(): void {
+  // bootstrapWorkerRuntime should have already been called since a compiler is a worker.
   self.onmessage = async ({
     data: binary
   }: {
