@@ -6,6 +6,8 @@ import { formatError } from "./format_error.ts";
 import { stringifyArgs } from "./console.ts";
 import * as dispatch from "./dispatch.ts";
 import { sendSync, sendAsync } from "./dispatch_json.ts";
+import { compile } from "./compiler_api.ts";
+import diff, { DiffResult, DiffType } from "./diff.ts"
 
 /**
  * REPL logging.
@@ -147,6 +149,9 @@ export async function replLoop(): Promise<void> {
     }
   });
 
+  let totalCode = "";
+  let previousCompiledCode = "";
+
   while (true) {
     let code = "";
     // Top level read
@@ -170,8 +175,64 @@ export async function replLoop(): Promise<void> {
         quitRepl(1);
       }
     }
+
+    // TODO(bartlomieju): TypeScript support for REPL
+    // What ts-node does:
+    // 
+    //    // Create a simple TypeScript compiler proxy.
+    //    function compile (code: string, fileName: string, lineOffset = 0) {
+    //      const [value, sourceMap] = getOutput(code, fileName, lineOffset)
+    //       const output = updateOutput(value, fileName, sourceMap, getExtension)
+    //      outputCache.set(fileName, output)
+    //      return output
+    //    }
+    //     
+    //    const lines = state.lines  <-- save how many lines are in the state
+    //    const isCompletion = !/\n$/.test(input)  <-- check if it is completion, I guess we won't ever get here, because of code.trim() === "" above
+    //    const undo = appendEval(state, input) <-- update state, getting "undo" function, I don't like how it's handled there, commit/rollback sounds better
+    //    let output: string
+    //    try {
+    //      output = service.compile(state.input, state.path, -lines)  <-- compile TS! path to repl
+    //    } catch (err) {
+    //      undo()
+    //      throw err
+    //    }
+    //
+    //    // Use `diff` to check for new JavaScript to execute.
+    //    const changes = diffLines(state.output, output)
+    //
+    //    if (isCompletion) {
+    //      undo()
+    //    } else {
+    //      state.output = output
+    //    }
+    //
+    //    return changes.reduce((result, change) => {
+    //      return change.added ? exec(change.value, state.path) : result
+    //    }, undefined)
+
+    totalCode += `${code}\n`;
+    const [maybeDiagnostics, output] = await compile("<eval>.ts", {
+      "<eval>.ts": totalCode,
+     });
+    console.log("diagnostics", maybeDiagnostics);
+    console.log("output", output);
+    const outputCode = output["<eval>.js"];
+    // TODO: diff with previous outputCode
+    const difference = diff(
+      previousCompiledCode.split("\n"),
+      outputCode.split("\n")
+    );
+    previousCompiledCode = outputCode
+
+    const toEval = difference.filter((result: DiffResult<string>): boolean => {
+      return result.type === DiffType.added;
+    }).map((result: DiffResult<string>): string => {
+      return result.value;
+    }).join("\n");
+
     // Start continued read
-    while (!evaluate(code)) {
+    while (!evaluate(toEval)) {
       code += "\n";
       try {
         code += await readline(rid, "  ");
