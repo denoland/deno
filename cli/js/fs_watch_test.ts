@@ -26,7 +26,11 @@ testPerm({ read: true, write: true }, async function fsWatcher(): Promise<
   await Deno.writeFile(file1, new Uint8Array([0, 1, 2]));
   await Deno.writeFile(file2, new Uint8Array([0, 1, 2]));
   await Deno.remove(file1);
-
+  await Deno.rename(file2, file1);
+  await Deno.chmod(file1, 0o666);
+  const f = await Deno.open(file1);
+  f.close();
+  
   setTimeout(() => {
     watcher.close();
   }, 750);
