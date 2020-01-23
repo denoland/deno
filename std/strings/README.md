@@ -16,7 +16,7 @@ Basic usage:
 import { pad } from "https://deno.land/std/strings/pad.ts";
 pad("deno", 6, { char: "*", side: "left" }) // output : "**deno"
 pad("deno", 6, { char: "*", side: "right"}) // output : "deno**"
-pad("denosorusrex", 6 {
+pad("denosorusrex", 6, {
     char: "*",
     side: "left",
     strict: true,
