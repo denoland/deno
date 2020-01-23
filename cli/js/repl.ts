@@ -212,7 +212,7 @@ export async function replLoop(): Promise<void> {
           }
         }
       } else {
-        console.log("output", output);
+        // console.log("output", output);
         const outputCode = output["<eval>.js"];
         const outputLines = outputCode.split("\n");
         const difference = diff(previousCompiledCode, outputLines);
