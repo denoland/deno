@@ -639,7 +639,7 @@ pub fn op_watch(
   let (sync_tx, sync_rx) =
     sync_channel::<Result<notify::event::Event, notify::Error>>();
   // TODO(bartlomieju): this is bad, but `Watcher::new_immediate` takes `Fn` and not `FnMut`
-  // so now way to use async chanell there
+  // so now way to use async channel there
   thread::spawn(move || {
     for msg in sync_rx {
       tx.try_send(msg).expect("Failed to pump message");
@@ -690,11 +690,9 @@ pub fn op_fs_poll_watcher(
   let f = async move {
     let mut receiver = receiver_mutex.lock().await;
     if let Some(result) = receiver.next().await {
-      let result = receiver.next().await.unwrap();
       let event = result.map_err(ErrBox::from)?;
-      let serialized =
-        serde_json::to_string(&event).expect("Failed to serialize fs event");
-      Ok(json!({ serialized }))
+      let serialized = serde_json::to_string(&event)?;
+      Ok(json!(serialized))
     } else {
       Ok(json!({}))
     }

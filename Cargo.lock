@@ -278,7 +278,6 @@ dependencies = [
  "byteorder 1.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "bytes 0.5.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "crossbeam-channel 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "deno_core 0.30.1",
  "deno_typescript 0.30.1",
  "dirs 2.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
