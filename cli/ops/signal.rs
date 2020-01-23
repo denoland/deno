@@ -9,13 +9,13 @@ use super::dispatch_json::Deserialize;
 #[cfg(unix)]
 use crate::deno_error::bad_resource;
 #[cfg(unix)]
-use std::task::Waker;
-#[cfg(unix)]
 use deno_core::Resource;
 #[cfg(unix)]
 use futures::future::{poll_fn, FutureExt};
 #[cfg(unix)]
 use serde_json;
+#[cfg(unix)]
+use std::task::Waker;
 #[cfg(unix)]
 use tokio::signal::unix::{signal, Signal, SignalKind};
 
@@ -35,6 +35,8 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
 }
 
 #[cfg(unix)]
+/// The resource for signal stream.
+/// The second element is the waker of polling future.
 pub struct SignalStreamResource(pub Signal, pub Option<Waker>);
 
 #[cfg(unix)]
@@ -113,6 +115,8 @@ pub fn op_unbind_signal(
   let resource = table.get::<SignalStreamResource>(rid);
   if let Some(signal) = resource {
     if let Some(waker) = &signal.1 {
+      // Wakes up the pending poll if exists.
+      // This prevents the poll future from getting stuck forever.
       waker.clone().wake();
     }
   }
