@@ -6,28 +6,28 @@ import { ErrorKind, DenoError } from "./errors.ts";
 
 type EventKind = "any" | "file" | "folder" | "other";
 
-// TODO(bartlomieju): this is translated from Rust's notify 
+// TODO(bartlomieju): this is translated from Rust's notify
 // 1-to-1. IMHO this API is very questionable especially on JS side
 interface EventType {
   any?: {};
   access?: {
-    kind: "any" | "read" | "open" | "close" | "other"
+    kind: "any" | "read" | "open" | "close" | "other";
   };
   create?: {
-    kind: EventKind    
+    kind: EventKind;
   };
   modify?: {
-    kind: EventKind
+    kind: EventKind;
     mode: "any" | "size" | "content" | "other";
   };
   remove?: {
-    kind: EventKind
+    kind: EventKind;
   };
-  other?: {}
+  other?: {};
 }
 
 export interface FsWatcherEvent {
-  type: EventType,
+  type: EventType;
   paths: string[];
   attrs: { [key: string]: string };
 }
