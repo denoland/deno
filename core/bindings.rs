@@ -9,8 +9,6 @@ use v8::MapFnTo;
 
 use std::convert::TryFrom;
 use std::option::Option;
-use std::ptr;
-use std::slice;
 
 lazy_static! {
   pub static ref EXTERNAL_REFERENCES: v8::ExternalReferences =
@@ -186,9 +184,10 @@ pub fn boxed_slice_to_uint8array<'sc>(
 ) -> v8::Local<'sc, v8::Uint8Array> {
   assert!(!buf.is_empty());
   let buf_len = buf.len();
-  let backing_store =
-    unsafe { &mut v8::ArrayBuffer::new_backing_store_from_boxed_slice(buf) };
-  let ab = v8::ArrayBuffer::new_with_backing_store(scope, backing_store);
+  let backing_store = v8::ArrayBuffer::new_backing_store_from_boxed_slice(buf);
+  let mut backing_store_shared = backing_store.make_shared();
+  let ab =
+    v8::ArrayBuffer::with_backing_store(scope, &mut backing_store_shared);
   v8::Uint8Array::new(ab, 0, buf_len).expect("Failed to create UintArray8")
 }
 
@@ -397,13 +396,10 @@ fn send(
 
   let control = match v8::Local::<v8::ArrayBufferView>::try_from(args.get(1)) {
     Ok(view) => {
-      let mut backing_store = view.buffer().unwrap().get_backing_store();
-      let backing_store_ptr = backing_store.data() as *mut _ as *mut u8;
-      let view_ptr = unsafe { backing_store_ptr.add(view.byte_offset()) };
-      let view_len = view.byte_length();
-      unsafe { slice::from_raw_parts(view_ptr, view_len) }
+      let backing_store = view.buffer().unwrap().get_backing_store();
+      unsafe { &**backing_store.get() }
     }
-    Err(..) => unsafe { slice::from_raw_parts(ptr::null(), 0) },
+    Err(..) => &[],
   };
 
   let zero_copy: Option<PinnedBuf> =
@@ -599,7 +595,7 @@ fn shared_getter(
 
   // Lazily initialize the persistent external ArrayBuffer.
   if deno_isolate.shared_ab.is_empty() {
-    let ab = v8::SharedArrayBuffer::new_with_backing_store(
+    let ab = v8::SharedArrayBuffer::with_backing_store(
       scope,
       deno_isolate.shared.get_backing_store(),
     );

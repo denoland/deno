@@ -45,7 +45,9 @@ impl SharedQueue {
     let buf = buf.into_boxed_slice();
     let buf =
       unsafe { v8::SharedArrayBuffer::new_backing_store_from_boxed_slice(buf) };
-    let mut q = Self { buf };
+    let mut q = Self {
+      buf: buf.make_shared(),
+    };
     q.reset();
     q
   }
@@ -65,7 +67,7 @@ impl SharedQueue {
   }
 
   pub fn bytes_mut(&mut self) -> &mut [u8] {
-    self.buf.data_bytes()
+    unsafe { &mut *self.buf.get() }
   }
 
   fn reset(&mut self) {
