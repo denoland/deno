@@ -1,20 +1,23 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-#[cfg(unix)]
-use super::dispatch_json::Deserialize;
 use super::dispatch_json::{JsonOp, Value};
-#[cfg(unix)]
-use crate::deno_error::bad_resource;
 use crate::ops::json_op;
-#[cfg(unix)]
-use crate::signal::SignalStreamResource;
 use crate::state::ThreadSafeState;
 use deno_core::*;
+
+#[cfg(unix)]
+use super::dispatch_json::Deserialize;
+#[cfg(unix)]
+use crate::deno_error::bad_resource;
+#[cfg(unix)]
+use std::task::Waker;
+#[cfg(unix)]
+use deno_core::Resource;
 #[cfg(unix)]
 use futures::future::{poll_fn, FutureExt};
 #[cfg(unix)]
 use serde_json;
 #[cfg(unix)]
-use tokio::signal::unix::{signal, SignalKind};
+use tokio::signal::unix::{signal, Signal, SignalKind};
 
 pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op(
@@ -30,6 +33,12 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
     s.core_op(json_op(s.stateful_op(op_poll_signal))),
   );
 }
+
+#[cfg(unix)]
+pub struct SignalStreamResource(pub Signal, pub Option<Waker>);
+
+#[cfg(unix)]
+impl Resource for SignalStreamResource {}
 
 #[cfg(unix)]
 #[derive(Deserialize)]

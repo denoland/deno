@@ -2130,7 +2130,8 @@ declare namespace Deno {
    */
   export const args: string[];
 
-  // @url js/signal.d.ts
+  /** SignalStream represents the stream of signals, implements both
+   * AsyncIterator and PromiseLike */
   export class SignalStream implements AsyncIterator<void>, PromiseLike<void> {
     constructor(signal: typeof Deno.Signal);
     then<T, S>(
@@ -2168,65 +2169,41 @@ declare namespace Deno {
    */
   export function signal(signo: number): SignalStream;
   export const signals: {
-    /**
-     * Returns the stream of SIGALRM signals.
-     * This method is the shorthand for Deno.signal(Deno.Signal.SIGALRM).
-     */
+    /** Returns the stream of SIGALRM signals.
+     * This method is the shorthand for Deno.signal(Deno.Signal.SIGALRM). */
     alarm: () => SignalStream;
-    /**
-     * Returns the stream of SIGCHLD signals.
-     * This method is the shorthand for Deno.signal(Deno.Signal.SIGCHLD).
-     */
+    /** Returns the stream of SIGCHLD signals.
+     * This method is the shorthand for Deno.signal(Deno.Signal.SIGCHLD). */
     child: () => SignalStream;
-    /**
-     * Returns the stream of SIGHUP signals.
-     * This method is the shorthand for Deno.signal(Deno.Signal.SIGHUP).
-     */
+    /** Returns the stream of SIGHUP signals.
+     * This method is the shorthand for Deno.signal(Deno.Signal.SIGHUP). */
     hungup: () => SignalStream;
-    /**
-     * Returns the stream of SIGINFO signals.
-     * This method is the shorthand for Deno.signal(Deno.Signal.SIGINFO).
-     */
+    /** Returns the stream of SIGINFO signals.
+     * This method is the shorthand for Deno.signal(Deno.Signal.SIGINFO). */
     info: () => SignalStream;
-    /**
-     * Returns the stream of SIGINT signals.
-     * This method is the shorthand for Deno.signal(Deno.Signal.SIGINT).
-     */
+    /** Returns the stream of SIGINT signals.
+     * This method is the shorthand for Deno.signal(Deno.Signal.SIGINT). */
     interrupt: () => SignalStream;
-    /**
-     * Returns the stream of SIGIO signals.
-     * This method is the shorthand for Deno.signal(Deno.Signal.SIGIO).
-     */
+    /** Returns the stream of SIGIO signals.
+     * This method is the shorthand for Deno.signal(Deno.Signal.SIGIO). */
     io: () => SignalStream;
-    /**
-     * Returns the stream of SIGPIPE signals.
-     * This method is the shorthand for Deno.signal(Deno.Signal.SIGPIPE).
-     */
+    /** Returns the stream of SIGPIPE signals.
+     * This method is the shorthand for Deno.signal(Deno.Signal.SIGPIPE). */
     pipe: () => SignalStream;
-    /**
-     * Returns the stream of SIGQUIT signals.
-     * This method is the shorthand for Deno.signal(Deno.Signal.SIGQUIT).
-     */
+    /** Returns the stream of SIGQUIT signals.
+     * This method is the shorthand for Deno.signal(Deno.Signal.SIGQUIT). */
     quit: () => SignalStream;
-    /**
-     * Returns the stream of SIGTERM signals.
-     * This method is the shorthand for Deno.signal(Deno.Signal.SIGTERM).
-     */
+    /** Returns the stream of SIGTERM signals.
+     * This method is the shorthand for Deno.signal(Deno.Signal.SIGTERM). */
     terminate: () => SignalStream;
-    /**
-     * Returns the stream of SIGUSR1 signals.
-     * This method is the shorthand for Deno.signal(Deno.Signal.SIGUSR1).
-     */
+    /** Returns the stream of SIGUSR1 signals.
+     * This method is the shorthand for Deno.signal(Deno.Signal.SIGUSR1). */
     userDefined1: () => SignalStream;
-    /**
-     * Returns the stream of SIGUSR2 signals.
-     * This method is the shorthand for Deno.signal(Deno.Signal.SIGUSR2).
-     */
+    /** Returns the stream of SIGUSR2 signals.
+     * This method is the shorthand for Deno.signal(Deno.Signal.SIGUSR2). */
     userDefined2: () => SignalStream;
-    /**
-     * Returns the stream of SIGWINCH signals.
-     * This method is the shorthand for Deno.signal(Deno.Signal.SIGWINCH).
-     */
+    /** Returns the stream of SIGWINCH signals.
+     * This method is the shorthand for Deno.signal(Deno.Signal.SIGWINCH). */
     windowChange: () => SignalStream;
   };
 

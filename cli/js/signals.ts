@@ -35,87 +35,63 @@ export function signal(signo: number): SignalStream {
 }
 
 export const signals = {
-  /**
-   * Returns the stream of SIGALRM signals.
-   * This method is the shorthand for Deno.signal(Deno.Signal.SIGALRM).
-   */
+  /** Returns the stream of SIGALRM signals.
+   * This method is the shorthand for Deno.signal(Deno.Signal.SIGALRM). */
   alarm(): SignalStream {
     return createSignalStream(Signal.SIGALRM);
   },
-  /**
-   * Returns the stream of SIGCHLD signals.
-   * This method is the shorthand for Deno.signal(Deno.Signal.SIGCHLD).
-   */
+  /** Returns the stream of SIGCHLD signals.
+   * This method is the shorthand for Deno.signal(Deno.Signal.SIGCHLD). */
   child(): SignalStream {
     return createSignalStream(Signal.SIGCHLD);
   },
-  /**
-   * Returns the stream of SIGHUP signals.
-   * This method is the shorthand for Deno.signal(Deno.Signal.SIGHUP).
-   */
+  /** Returns the stream of SIGHUP signals.
+   * This method is the shorthand for Deno.signal(Deno.Signal.SIGHUP). */
   hungup(): SignalStream {
     return createSignalStream(Signal.SIGHUP);
   },
-  /**
-   * Returns the stream of SIGINFO signals.
-   * This method is the shorthand for Deno.signal(Deno.Signal.SIGINFO).
-   */
+  /** Returns the stream of SIGINFO signals.
+   * This method is the shorthand for Deno.signal(Deno.Signal.SIGINFO). */
   info(): SignalStream {
     return createSignalStream(Signal.SIGINFO);
   },
-  /**
-   * Returns the stream of SIGINT signals.
-   * This method is the shorthand for Deno.signal(Deno.Signal.SIGINT).
-   */
+  /** Returns the stream of SIGINT signals.
+   * This method is the shorthand for Deno.signal(Deno.Signal.SIGINT). */
   interrupt(): SignalStream {
     return createSignalStream(Signal.SIGINT);
   },
-  /**
-   * Returns the stream of SIGIO signals.
-   * This method is the shorthand for Deno.signal(Deno.Signal.SIGIO).
-   */
+  /** Returns the stream of SIGIO signals.
+   * This method is the shorthand for Deno.signal(Deno.Signal.SIGIO). */
   io(): SignalStream {
     return createSignalStream(Signal.SIGIO);
   },
-  /**
-   * Returns the stream of SIGPIPE signals.
-   * This method is the shorthand for Deno.signal(Deno.Signal.SIGPIPE).
-   */
+  /** Returns the stream of SIGPIPE signals.
+   * This method is the shorthand for Deno.signal(Deno.Signal.SIGPIPE). */
   pipe(): SignalStream {
     return createSignalStream(Signal.SIGPIPE);
   },
-  /**
-   * Returns the stream of SIGQUIT signals.
-   * This method is the shorthand for Deno.signal(Deno.Signal.SIGQUIT).
-   */
+  /** Returns the stream of SIGQUIT signals.
+   * This method is the shorthand for Deno.signal(Deno.Signal.SIGQUIT). */
   quit(): SignalStream {
     return createSignalStream(Signal.SIGQUIT);
   },
-  /**
-   * Returns the stream of SIGTERM signals.
-   * This method is the shorthand for Deno.signal(Deno.Signal.SIGTERM).
-   */
+  /** Returns the stream of SIGTERM signals.
+   * This method is the shorthand for Deno.signal(Deno.Signal.SIGTERM). */
   terminate(): SignalStream {
     return createSignalStream(Signal.SIGTERM);
   },
-  /**
-   * Returns the stream of SIGUSR1 signals.
-   * This method is the shorthand for Deno.signal(Deno.Signal.SIGUSR1).
-   */
+  /** Returns the stream of SIGUSR1 signals.
+   * This method is the shorthand for Deno.signal(Deno.Signal.SIGUSR1). */
   userDefined1(): SignalStream {
     return createSignalStream(Signal.SIGUSR1);
   },
-  /**
-   * Returns the stream of SIGUSR2 signals.
-   * This method is the shorthand for Deno.signal(Deno.Signal.SIGUSR2).
-   */
+  /** Returns the stream of SIGUSR2 signals.
+   * This method is the shorthand for Deno.signal(Deno.Signal.SIGUSR2). */
   userDefined2(): SignalStream {
     return createSignalStream(Signal.SIGUSR2);
   },
-  /**
-   * Returns the stream of SIGWINCH signals.
-   * This method is the shorthand for Deno.signal(Deno.Signal.SIGWINCH).
-   */
+  /** Returns the stream of SIGWINCH signals.
+   * This method is the shorthand for Deno.signal(Deno.Signal.SIGWINCH). */
   windowChange(): SignalStream {
     return createSignalStream(Signal.SIGWINCH);
   }
@@ -131,9 +107,13 @@ const createSignalStream = (signal: number): SignalStream => {
 const STREAM_DISPOSED_MESSAGE =
   "No signal is available because signal stream is disposed";
 
+/** SignalStream represents the stream of signals, implements both
+ * AsyncIterator and PromiseLike */
 export class SignalStream implements AsyncIterator<void>, PromiseLike<void> {
   private rid: number;
+  /** The promise of polling the signal. */
   private currentPromise: Promise<void> = Promise.resolve();
+  /** The flag, which is true when the stream is disposed. */
   private disposed = false;
   constructor(signo: number) {
     this.rid = sendSync(dispatch.OP_BIND_SIGNAL, { signo }).rid;
