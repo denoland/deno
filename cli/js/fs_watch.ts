@@ -4,10 +4,32 @@ import * as dispatch from "./dispatch.ts";
 import { Closer } from "./io.ts";
 import { ErrorKind, DenoError } from "./errors.ts";
 
+type EventKind = "any" | "file" | "folder" | "other";
+
+// TODO(bartlomieju): this is translated from Rust's notify 
+// 1-to-1. IMHO this API is very questionable especially on JS side
+interface EventType {
+  any?: {};
+  access?: {
+    kind: "any" | "read" | "open" | "close" | "other"
+  };
+  create?: {
+    kind: EventKind    
+  };
+  modify?: {
+    kind: EventKind
+    mode: "any" | "size" | "content" | "other";
+  };
+  remove?: {
+    kind: EventKind
+  };
+  other?: {}
+}
+
 export interface FsWatcherEvent {
-  event: string;
-  source?: string;
-  destination?: string;
+  type: EventType,
+  paths: string[];
+  attrs: { [key: string]: string };
 }
 
 export type FsWatcher = AsyncIterableIterator<FsWatcherEvent> & Closer;

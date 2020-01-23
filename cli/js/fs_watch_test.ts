@@ -11,7 +11,6 @@ async function captureEvents(
     events.push(event);
     console.error("got event!", event);
   }
-  console.log("captured events", events);
   assertEquals(events.length, expectedLength);
 }
 
@@ -25,14 +24,11 @@ testPerm({ read: true, write: true }, async function fsWatcher(): Promise<
   const watcher = Deno.watch(testDir, { recursive: true });
   // start capturing events in the background
   await Deno.writeFile(file1, new Uint8Array([0, 1, 2]));
-  console.error("written file1");
   await Deno.writeFile(file2, new Uint8Array([0, 1, 2]));
-  console.error("written file2");
   await Deno.remove(file1);
-  console.error("removed file1");
+
   setTimeout(() => {
     watcher.close();
-    console.error("closed watcher!");
   }, 750);
   await captureEvents(watcher, 6);
 });
