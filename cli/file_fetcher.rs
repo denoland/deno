@@ -59,7 +59,7 @@ pub fn source_cache_failed_error(module_name: &str, reason: &str) -> ErrBox {
 pub struct SourceFile {
   pub url: Url,
   pub filename: PathBuf,
-  pub types_filename: Option<Url>,
+  pub types_url: Option<Url>,
   pub media_type: msg::MediaType,
   pub source_code: Vec<u8>,
 }
@@ -301,9 +301,9 @@ impl SourceFileFetcher {
     };
 
     let media_type = map_content_type(&filepath, None);
-    let types_filename = match media_type {
+    let types_url = match media_type {
       msg::MediaType::JavaScript | msg::MediaType::JSX => {
-        get_types_filename(&module_url, &source_code, None)
+        get_types_url(&module_url, &source_code, None)
       }
       _ => None,
     };
@@ -312,7 +312,7 @@ impl SourceFileFetcher {
       filename: filepath,
       media_type,
       source_code,
-      types_filename,
+      types_url,
     })
   }
 
@@ -371,8 +371,8 @@ impl SourceFileFetcher {
       &filepath,
       source_code_headers.mime_type.as_ref().map(String::as_str),
     );
-    let types_filename = match media_type {
-      msg::MediaType::JavaScript | msg::MediaType::JSX => get_types_filename(
+    let types_url = match media_type {
+      msg::MediaType::JavaScript | msg::MediaType::JSX => get_types_url(
         &module_url,
         &source_code,
         source_code_headers
@@ -387,7 +387,7 @@ impl SourceFileFetcher {
       filename: filepath,
       media_type,
       source_code,
-      types_filename,
+      types_url,
     }))
   }
 
@@ -522,14 +522,12 @@ impl SourceFileFetcher {
             maybe_content_type.as_ref().map(String::as_str),
           );
 
-          let types_filename = match media_type {
-            msg::MediaType::JavaScript | msg::MediaType::JSX => {
-              get_types_filename(
-                &module_url,
-                source.as_bytes(),
-                x_typescript_types.as_ref().map(String::as_str),
-              )
-            }
+          let types_url = match media_type {
+            msg::MediaType::JavaScript | msg::MediaType::JSX => get_types_url(
+              &module_url,
+              source.as_bytes(),
+              x_typescript_types.as_ref().map(String::as_str),
+            ),
             _ => None,
           };
 
@@ -538,7 +536,7 @@ impl SourceFileFetcher {
             filename: filepath,
             media_type,
             source_code: source.as_bytes().to_owned(),
-            types_filename,
+            types_url,
           };
 
           // Explicit drop to keep reference alive until future completes.
@@ -692,7 +690,7 @@ fn map_js_like_extension(
 
 /// Take a module URL and source code and determines if the source code contains
 /// a type directive, and if so, returns the parsed URL for that type directive.
-fn get_types_filename(
+fn get_types_url(
   module_url: &Url,
   source_code: &[u8],
   maybe_types_header: Option<&str>,
@@ -1993,21 +1991,21 @@ mod tests {
   }
 
   #[test]
-  fn test_get_types_filename_1() {
+  fn test_get_types_url_1() {
     let module_url = Url::parse("https://example.com/mod.js").unwrap();
     let source_code = b"console.log(\"foo\");".to_owned();
-    let result = get_types_filename(&module_url, &source_code, None);
+    let result = get_types_url(&module_url, &source_code, None);
     assert_eq!(result, None);
   }
 
   #[test]
-  fn test_get_types_filename_2() {
+  fn test_get_types_url_2() {
     let module_url = Url::parse("https://example.com/mod.js").unwrap();
     let source_code = r#"/// <reference types="./mod.d.ts" />
     console.log("foo");"#
       .as_bytes()
       .to_owned();
-    let result = get_types_filename(&module_url, &source_code, None);
+    let result = get_types_url(&module_url, &source_code, None);
     assert_eq!(
       result,
       Some(Url::parse("https://example.com/mod.d.ts").unwrap())
@@ -2015,13 +2013,13 @@ mod tests {
   }
 
   #[test]
-  fn test_get_types_filename_3() {
+  fn test_get_types_url_3() {
     let module_url = Url::parse("https://example.com/mod.js").unwrap();
     let source_code = r#"/// <reference types="https://deno.land/mod.d.ts" />
     console.log("foo");"#
       .as_bytes()
       .to_owned();
-    let result = get_types_filename(&module_url, &source_code, None);
+    let result = get_types_url(&module_url, &source_code, None);
     assert_eq!(
       result,
       Some(Url::parse("https://deno.land/mod.d.ts").unwrap())
@@ -2029,13 +2027,13 @@ mod tests {
   }
 
   #[test]
-  fn test_get_types_filename_4() {
+  fn test_get_types_url_4() {
     let module_url = Url::parse("file:///foo/bar/baz.js").unwrap();
     let source_code = r#"/// <reference types="../qat/baz.d.ts" />
     console.log("foo");"#
       .as_bytes()
       .to_owned();
-    let result = get_types_filename(&module_url, &source_code, None);
+    let result = get_types_url(&module_url, &source_code, None);
     assert_eq!(
       result,
       Some(Url::parse("file:///foo/qat/baz.d.ts").unwrap())
@@ -2043,11 +2041,10 @@ mod tests {
   }
 
   #[test]
-  fn test_get_types_filename_5() {
+  fn test_get_types_url_5() {
     let module_url = Url::parse("https://example.com/mod.js").unwrap();
     let source_code = b"console.log(\"foo\");".to_owned();
-    let result =
-      get_types_filename(&module_url, &source_code, Some("./mod.d.ts"));
+    let result = get_types_url(&module_url, &source_code, Some("./mod.d.ts"));
     assert_eq!(
       result,
       Some(Url::parse("https://example.com/mod.d.ts").unwrap())
@@ -2055,13 +2052,13 @@ mod tests {
   }
 
   #[test]
-  fn test_get_types_filename_6() {
+  fn test_get_types_url_6() {
     let module_url = Url::parse("https://example.com/mod.js").unwrap();
     let source_code = r#"/// <reference types="./mod.d.ts" />
     console.log("foo");"#
       .as_bytes()
       .to_owned();
-    let result = get_types_filename(
+    let result = get_types_url(
       &module_url,
       &source_code,
       Some("https://deno.land/mod.d.ts"),
@@ -2088,7 +2085,7 @@ mod tests {
       assert_eq!(source.source_code, b"export const foo = 'foo';");
       assert_eq!(&(source.media_type), &msg::MediaType::JavaScript);
       assert_eq!(
-        source.types_filename,
+        source.types_url,
         Some(
           Url::parse("http://127.0.0.1:4545/xTypeScriptTypes.d.ts").unwrap()
         )
@@ -2114,7 +2111,7 @@ mod tests {
       let source = source.unwrap();
       assert_eq!(&(source.media_type), &msg::MediaType::JavaScript);
       assert_eq!(
-        source.types_filename,
+        source.types_url,
         Some(
           Url::parse("http://127.0.0.1:4545/xTypeScriptTypes.d.ts").unwrap()
         )

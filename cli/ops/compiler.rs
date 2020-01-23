@@ -117,11 +117,11 @@ fn op_fetch_source_files(
     // We want to get an array of futures that resolves to
     let v = files.into_iter().map(|f| {
       async {
-        // if the source file contains a `types_filename` we need to replace
+        // if the source file contains a `types_url` we need to replace
         // the module with the type definition when requested by the compiler
-        let file = match f.types_filename {
-          Some(types_filename) => {
-            let types_specifier = ModuleSpecifier::from(types_filename);
+        let file = match f.types_url {
+          Some(types_url) => {
+            let types_specifier = ModuleSpecifier::from(types_url);
             global_state
               .file_fetcher
               .fetch_source_file_async(&types_specifier, ref_specifier.clone())

@@ -574,12 +574,12 @@ definition files without having to resort to "magic" resolution.
 
 If you are importing a JavaScript module, and you know where the type definition
 for that module is located, you can specify the type definition at import. This
-takes the form of a compiler hint. For example if you had In order to bridge
-this gap, Deno supports compiler hints that inform Deno the location of `.d.ts`
-files and the JavaScript code they relate to. The hint is `@deno-types` and when
-specified the value will be used in the compiler instead of the JavaScript
-module. For example if you had `foo.js`, but you know that along side of it was
-`foo.d.ts` which was the types for the file, the code would look like this:
+takes the form of a compiler hint. Compiler hints inform Deno the location of
+`.d.ts` files and the JavaScript code that is imported that they relate to. The
+hint is `@deno-types` and when specified the value will be used in the compiler
+instead of the JavaScript module. For example if you had `foo.js`, but you know
+that along side of it was `foo.d.ts` which was the types for the file, the code
+would look like this:
 
 ```ts
 // @deno-types="./foo.d.ts"
