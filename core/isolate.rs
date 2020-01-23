@@ -630,11 +630,11 @@ impl Isolate {
     let maybe_value = if !buf.is_empty() {
       let op_id: v8::Local<v8::Value> =
         v8::Integer::new(scope, op_id as i32).into();
-      let buf: v8::Local<v8::Value> =
+      let ui8: v8::Local<v8::Value> =
         bindings::boxed_slice_to_uint8array(scope, buf).into();
       js_recv_cb
         .unwrap()
-        .call(scope, context, global, &[op_id, buf])
+        .call(scope, context, global, &[op_id, ui8])
     } else {
       js_recv_cb.unwrap().call(scope, context, global, &[])
     };

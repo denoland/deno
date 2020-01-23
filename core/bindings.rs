@@ -420,8 +420,8 @@ fn send(
     let (_op_id, buf) = response;
 
     if !buf.is_empty() {
-      let ab = boxed_slice_to_uint8array(scope, buf);
-      rv.set(ab.into())
+      let ui8 = boxed_slice_to_uint8array(scope, buf);
+      rv.set(ui8.into())
     }
   }
 }
