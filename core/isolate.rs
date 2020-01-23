@@ -50,8 +50,9 @@ unsafe impl Send for PinnedBuf {}
 
 impl PinnedBuf {
   pub fn new(view: v8::Local<v8::ArrayBufferView>) -> Self {
-    let mut backing_store = view.buffer().unwrap().get_backing_store();
-    let backing_store_ptr = backing_store.data() as *mut _ as *mut u8;
+    let backing_store = view.buffer().unwrap().get_backing_store();
+    let p = unsafe { &mut *backing_store.get() };
+    let backing_store_ptr = p as *mut _ as *mut u8;
     let view_ptr = unsafe { backing_store_ptr.add(view.byte_offset()) };
     let view_len = view.byte_length();
     Self {
@@ -435,16 +436,16 @@ impl Isolate {
   pub fn run_microtasks(&mut self) {
     let isolate = self.v8_isolate.as_mut().unwrap();
     let _locker = v8::Locker::new(isolate);
-    isolate.enter();
+    // isolate.enter();
     isolate.run_microtasks();
-    isolate.exit();
+    // isolate.exit();
   }
 
   pub fn set_inspector_handle(&mut self, handle: InspectorHandle) {
     let isolate = self.v8_isolate.as_mut().unwrap();
     let mut locker = v8::Locker::new(isolate);
     assert!(!self.global_context.is_empty());
-    let mut hs = v8::HandleScope::new(&mut locker);
+    let mut hs = v8::HandleScope::new(locker.enter());
     let s = hs.enter();
     let context = self.global_context.get(s).unwrap();
 
@@ -493,10 +494,11 @@ impl Isolate {
     let isolate = self.v8_isolate.as_ref().unwrap();
     let mut locker = v8::Locker::new(isolate);
     assert!(!self.global_context.is_empty());
-    let mut hs = v8::HandleScope::new(&mut locker);
+    let mut hs = v8::HandleScope::new(locker.enter());
     let s = hs.enter();
     let mut context = self.global_context.get(s).unwrap();
-    context.enter();
+    let mut cs = v8::ContextScope::new(s, context);
+    let s = cs.enter();
 
     let inspector_client = self.inspector_client.as_mut().unwrap();
     let mut session = inspector_client.get_session();

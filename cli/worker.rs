@@ -100,7 +100,6 @@ impl Worker {
       });
     }
 
-
     Self {
       name,
       isolate: Arc::new(AsyncMutex::new(isolate)),

@@ -9,10 +9,11 @@ use v8::inspector::V8InspectorClient;
 use v8::inspector::{ChannelBase, ChannelImpl};
 use v8::inspector::{V8Inspector, V8InspectorSession};
 use v8::inspector::{V8InspectorClientBase, V8InspectorClientImpl};
-use v8::int;
-use v8::platform::{TaskBase, TaskImpl};
 use v8::UniquePtr;
 use v8::UniqueRef;
+use v8::{TaskBase, TaskImpl};
+
+pub use std::os::raw::c_int as int;
 
 #[derive(Clone)]
 pub struct InspectorHandle {
