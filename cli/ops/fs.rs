@@ -6,16 +6,21 @@ use crate::deno_error::{bad_resource, DenoError};
 use crate::fs as deno_fs;
 use crate::ops::json_op;
 use crate::state::ThreadSafeState;
-use crossbeam_channel;
-use notify;
-use notify::{watcher, RecommendedWatcher, RecursiveMode, Watcher};
-use std::time::Duration;
 use deno_core::*;
+use futures::channel::mpsc;
+use futures::future::FutureExt;
+use futures::stream::StreamExt;
+use notify;
+use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use remove_dir_all::remove_dir_all;
 use std::convert::From;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::channel as sync_channel;
+use std::sync::Arc;
+use std::thread;
 use std::time::UNIX_EPOCH;
+use tokio::sync::Mutex as AsyncMutex;
 
 #[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
@@ -606,11 +611,13 @@ fn op_cwd(
   Ok(JsonOp::Sync(json!(path_str)))
 }
 
+type FsWatcherReceiver =
+  mpsc::Receiver<Result<notify::event::Event, notify::Error>>;
+
 #[allow(dead_code)]
 struct FsWatcher {
   watcher: RecommendedWatcher,
-  receiver:
-    crossbeam_channel::Receiver<Result<notify::event::Event, notify::Error>>,
+  receiver: Arc<AsyncMutex<FsWatcherReceiver>>,
 }
 
 impl Resource for FsWatcher {}
@@ -619,7 +626,6 @@ impl Resource for FsWatcher {}
 struct OpenWatcherArgs {
   recursive: bool,
   paths: Vec<String>,
-  debounce: u64,
 }
 
 pub fn op_watch(
@@ -628,8 +634,20 @@ pub fn op_watch(
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: OpenWatcherArgs = serde_json::from_value(args)?;
-  let (tx, rx) = crossbeam_channel::unbounded();
-  let mut watcher = watcher(tx, Duration::from_millis(args.debounce))?;
+  let (mut tx, rx) =
+    mpsc::channel::<Result<notify::event::Event, notify::Error>>(100);
+  let (sync_tx, sync_rx) =
+    sync_channel::<Result<notify::event::Event, notify::Error>>();
+  // TODO(bartlomieju): this is bad, but `Watcher::new_immediate` takes `Fn` and not `FnMut`
+  // so now way to use async chanell there
+  thread::spawn(move || {
+    for msg in sync_rx {
+      tx.try_send(msg).expect("Failed to pump message");
+    }
+  });
+
+  let mut watcher: RecommendedWatcher =
+    Watcher::new_immediate(move |res| sync_tx.send(res).unwrap())?;
 
   let recursive_mode: RecursiveMode = if args.recursive {
     RecursiveMode::Recursive
@@ -637,13 +655,13 @@ pub fn op_watch(
     RecursiveMode::NonRecursive
   };
   for path in &args.paths {
-    state.check_read(path)?;
+    state.check_read(&PathBuf::from(path))?;
     watcher.watch(path, recursive_mode)?;
   }
 
   let watcher_resource = FsWatcher {
     watcher,
-    receiver: rx,
+    receiver: Arc::new(AsyncMutex::new(rx)),
   };
   let mut table = state.lock_resource_table();
   let rid = table.add("fsWatcher", Box::new(watcher_resource));
@@ -661,17 +679,26 @@ pub fn op_fs_poll_watcher(
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: PollWatcherArgs = serde_json::from_value(args)?;
-  let state = state.clone();
-
-  blocking_json(false, move || {
+  let receiver_mutex = {
     let mut table = state.lock_resource_table();
     let resource = table
       .get_mut::<FsWatcher>(args.rid as u32)
       .ok_or_else(bad_resource)?;
-    // blocks
-    let result = resource.receiver.recv().map_err(ErrBox::from)?;
-    let event = result.map_err(ErrBox::from)?;
-    let serialized = serde_json::to_string(&event).expect("Foobar");
-    Ok(json!(serialized))
-  })
+    resource.receiver.clone()
+  };
+
+  let f = async move {
+    let mut receiver = receiver_mutex.lock().await;
+    if let Some(result) = receiver.next().await {
+      let result = receiver.next().await.unwrap();
+      let event = result.map_err(ErrBox::from)?;
+      let serialized =
+        serde_json::to_string(&event).expect("Failed to serialize fs event");
+      Ok(json!({ serialized }))
+    } else {
+      Ok(json!({}))
+    }
+  };
+
+  Ok(JsonOp::Async(f.boxed()))
 }
