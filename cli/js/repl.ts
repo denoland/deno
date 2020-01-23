@@ -7,7 +7,7 @@ import { stringifyArgs } from "./console.ts";
 import * as dispatch from "./dispatch.ts";
 import { sendSync, sendAsync } from "./dispatch_json.ts";
 import { compile } from "./compiler_api.ts";
-import diff, { DiffResult, DiffType } from "./diff.ts"
+import diff, { DiffResult, DiffType } from "./diff.ts";
 
 /**
  * REPL logging.
@@ -54,22 +54,16 @@ export async function readline(rid: number, prompt: string): Promise<string> {
   return sendAsync(dispatch.OP_REPL_READLINE, { rid, prompt });
 }
 
-// Error messages that allow users to continue input
-// instead of throwing an error to REPL
-// ref: https://github.com/v8/v8/blob/master/src/message-template.h
-// TODO(kevinkassimo): this list might not be comprehensive
-const recoverableErrorMessages = [
-  "Unexpected end of input", // { or [ or (
-  "Missing initializer in const declaration", // const a
-  "Missing catch or finally after try", // try {}
-  "missing ) after argument list", // console.log(1
-  "Unterminated template literal" // `template
-  // TODO(kevinkassimo): need a parser to handling errors such as:
-  // "Missing } in template expression" // `${ or `${ a 123 }`
+const recoverableDiagnosticCodes = [
+  1003, // "Identifier expected."
+  1005, // "')' expected."
+  1109, // "Expression expected."
+  1126, // "Unexpected end of text."
+  1160 // "Unterminated template literal."
 ];
 
-function isRecoverableError(e: Error): boolean {
-  return recoverableErrorMessages.includes(e.message);
+function isRecoverableDiagnostic(code: number): boolean {
+  return recoverableDiagnosticCodes.includes(code);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -79,16 +73,13 @@ let lastEvalResult: Value = undefined;
 let lastThrownError: Value = undefined;
 
 // Evaluate code.
-// Returns true if code is consumed (no error/irrecoverable error).
-// Returns false if error is recoverable
-function evaluate(code: string): boolean {
+///
+/// Prints return value of thrown error.
+function evaluate(code: string): void {
   const [result, errInfo] = core.evalContext(code);
   if (!errInfo) {
     lastEvalResult = result;
     replLog(result);
-  } else if (errInfo.isCompileError && isRecoverableError(errInfo.thrown)) {
-    // Recoverable compiler error
-    return false; // don't consume code.
   } else {
     lastThrownError = errInfo.thrown;
     if (errInfo.isNativeError) {
@@ -100,7 +91,6 @@ function evaluate(code: string): boolean {
       replError("Thrown:", errInfo.thrown);
     }
   }
-  return true;
 }
 
 // @internal
@@ -149,8 +139,8 @@ export async function replLoop(): Promise<void> {
     }
   });
 
-  let totalCode = "";
-  let previousCompiledCode = "";
+  const totalCode: string[] = [];
+  let previousCompiledCode: string[] = [];
 
   while (true) {
     let code = "";
@@ -176,80 +166,69 @@ export async function replLoop(): Promise<void> {
       }
     }
 
-    // TODO(bartlomieju): TypeScript support for REPL
-    // What ts-node does:
-    // 
-    //    // Create a simple TypeScript compiler proxy.
-    //    function compile (code: string, fileName: string, lineOffset = 0) {
-    //      const [value, sourceMap] = getOutput(code, fileName, lineOffset)
-    //       const output = updateOutput(value, fileName, sourceMap, getExtension)
-    //      outputCache.set(fileName, output)
-    //      return output
-    //    }
-    //     
-    //    const lines = state.lines  <-- save how many lines are in the state
-    //    const isCompletion = !/\n$/.test(input)  <-- check if it is completion, I guess we won't ever get here, because of code.trim() === "" above
-    //    const undo = appendEval(state, input) <-- update state, getting "undo" function, I don't like how it's handled there, commit/rollback sounds better
-    //    let output: string
-    //    try {
-    //      output = service.compile(state.input, state.path, -lines)  <-- compile TS! path to repl
-    //    } catch (err) {
-    //      undo()
-    //      throw err
-    //    }
-    //
-    //    // Use `diff` to check for new JavaScript to execute.
-    //    const changes = diffLines(state.output, output)
-    //
-    //    if (isCompletion) {
-    //      undo()
-    //    } else {
-    //      state.output = output
-    //    }
-    //
-    //    return changes.reduce((result, change) => {
-    //      return change.added ? exec(change.value, state.path) : result
-    //    }, undefined)
+    while (true) {
+      totalCode.push(`${code}\n`);
+      const [diagnostics, output] = await compile("<eval>.ts", {
+        "<eval>.ts": totalCode.join("\n")
+      });
 
-    totalCode += `${code}\n`;
-    const [maybeDiagnostics, output] = await compile("<eval>.ts", {
-      "<eval>.ts": totalCode,
-     });
-    console.log("diagnostics", maybeDiagnostics);
-    console.log("output", output);
-    const outputCode = output["<eval>.js"];
-    // TODO: diff with previous outputCode
-    const difference = diff(
-      previousCompiledCode.split("\n"),
-      outputCode.split("\n")
-    );
-    previousCompiledCode = outputCode
+      if (diagnostics) {
+        // console.log("diagnostics emitted");
 
-    const toEval = difference.filter((result: DiffResult<string>): boolean => {
-      return result.type === DiffType.added;
-    }).map((result: DiffResult<string>): string => {
-      return result.value;
-    }).join("\n");
+        let isRecoverable = true;
 
-    // Start continued read
-    while (!evaluate(toEval)) {
-      code += "\n";
-      try {
-        code += await readline(rid, "  ");
-      } catch (err) {
-        // If interrupted on continued read,
-        // abort this read instead of quitting.
-        if (err.message === "Interrupted") {
-          break;
-        } else if (err.message === "EOF") {
-          quitRepl(0);
-        } else {
-          // e.g. this happens when we have deno.close(3).
-          // We want to display the problem.
-          const formattedError = formatError(core.errorToJSON(err));
-          replError(formattedError);
-          quitRepl(1);
+        for (const diagnostic of diagnostics.items) {
+          isRecoverable =
+            isRecoverable && isRecoverableDiagnostic(diagnostic.code);
+          // console.log("diagnostic code: ", diagnostic.code, "recover: ", isRecoverableDiagnostic(diagnostic.code), "message: ", diagnostic.message);
+
+          if (!isRecoverableDiagnostic(diagnostic.code)) {
+            const e = new Error(`fatal TS error: ${diagnostic.message}`);
+            replError(e);
+          }
         }
+
+        if (!isRecoverable) {
+          totalCode.pop();
+          break;
+        } else {
+          code += "\n";
+          try {
+            code += await readline(rid, "  ");
+          } catch (err) {
+            // If interrupted on continued read,
+            // abort this read instead of quitting.
+            if (err.message === "Interrupted") {
+              break;
+            } else if (err.message === "EOF") {
+              quitRepl(0);
+            } else {
+              // e.g. this happens when we have deno.close(3).
+              // We want to display the problem.
+              const formattedError = formatError(core.errorToJSON(err));
+              replError(formattedError);
+              quitRepl(1);
+            }
+          }
+        }
+      } else {
+        console.log("output", output);
+        const outputCode = output["<eval>.js"];
+        const outputLines = outputCode.split("\n");
+        const difference = diff(previousCompiledCode, outputLines);
+        previousCompiledCode = outputLines;
+
+        const toEval = difference
+          .filter((result: DiffResult<string>): boolean => {
+            return result.type === DiffType.added;
+          })
+          .map((result: DiffResult<string>): string => {
+            return result.value;
+          })
+          .join("\n");
+
+        evaluate(toEval);
+        break;
       }
     }
   }
