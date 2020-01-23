@@ -32,12 +32,6 @@ use std::slice;
 use std::sync::{Arc, Mutex, Once};
 use std::task::Context;
 use std::task::Poll;
-
-/// Size of `ArrayBuffer` that will be allocated and shared
-/// between responses. If response is bigger a new one-off
-/// `ArrayBuffer` will be allocated.
-pub const SHARED_RESPONSE_BUF_SIZE: usize = 1024 * 1024;
-
 /// A PinnedBuf encapsulates a slice that's been borrowed from a JavaScript
 /// ArrayBuffer object. JavaScript objects can normally be garbage collected,
 /// but the existence of a PinnedBuf inhibits this until it is dropped. It
@@ -173,7 +167,6 @@ pub struct Isolate {
   pub(crate) shared_ab: v8::Global<v8::SharedArrayBuffer>,
   pub(crate) js_recv_cb: v8::Global<v8::Function>,
   pub(crate) pending_promise_map: HashMap<i32, v8::Global<v8::Value>>,
-  pub(crate) shared_response_buf: v8::Global<v8::ArrayBuffer>,
   shared_isolate_handle: Arc<Mutex<Option<*mut v8::Isolate>>>,
   js_error_create: Arc<JSErrorCreateFn>,
   needs_init: bool,
@@ -205,7 +198,6 @@ impl Drop for Isolate {
       // </Boilerplate>
       self.global_context.reset(scope);
       self.shared_ab.reset(scope);
-      self.shared_response_buf.reset(scope);
       self.last_exception_handle.reset(scope);
       self.js_recv_cb.reset(scope);
       for (_key, handle) in self.pending_promise_map.iter_mut() {
@@ -333,7 +325,6 @@ impl Isolate {
       pending_promise_map: HashMap::new(),
       shared_ab: v8::Global::<v8::SharedArrayBuffer>::new(),
       js_recv_cb: v8::Global::<v8::Function>::new(),
-      shared_response_buf: v8::Global::<v8::ArrayBuffer>::new(),
       snapshot_creator: maybe_snapshot_creator,
       snapshot: load_snapshot,
       has_snapshotted: false,
@@ -639,11 +630,11 @@ impl Isolate {
     let maybe_value = if !buf.is_empty() {
       let op_id: v8::Local<v8::Value> =
         v8::Integer::new(scope, op_id as i32).into();
-      let buf: v8::Local<v8::Value> =
-        unsafe { bindings::slice_to_uint8array(self, scope, &buf) }.into();
+      let ui8: v8::Local<v8::Value> =
+        bindings::boxed_slice_to_uint8array(scope, buf).into();
       js_recv_cb
         .unwrap()
-        .call(scope, context, global, &[op_id, buf])
+        .call(scope, context, global, &[op_id, ui8])
     } else {
       js_recv_cb.unwrap().call(scope, context, global, &[])
     };
@@ -680,7 +671,6 @@ impl Isolate {
     let mut hs = v8::HandleScope::new(locker.enter());
     let scope = hs.enter();
     self.global_context.reset(scope);
-    self.shared_response_buf.reset(scope);
 
     let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
     let snapshot = snapshot_creator
