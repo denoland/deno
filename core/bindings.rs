@@ -180,14 +180,14 @@ pub fn initialize_context<'s>(
   scope.escape(context)
 }
 
-pub unsafe fn boxed_slice_to_uint8array<'sc>(
+pub fn boxed_slice_to_uint8array<'sc>(
   scope: &mut impl v8::ToLocal<'sc>,
   buf: Box<[u8]>,
 ) -> v8::Local<'sc, v8::Uint8Array> {
   assert!(!buf.is_empty());
   let buf_len = buf.len();
   let backing_store =
-    &mut v8::ArrayBuffer::new_backing_store_from_boxed_slice(buf);
+    unsafe { &mut v8::ArrayBuffer::new_backing_store_from_boxed_slice(buf) };
   let ab = v8::ArrayBuffer::new_with_backing_store(scope, backing_store);
   v8::Uint8Array::new(ab, 0, buf_len).expect("Failed to create UintArray8")
 }
@@ -420,7 +420,7 @@ fn send(
     let (_op_id, buf) = response;
 
     if !buf.is_empty() {
-      let ab = unsafe { boxed_slice_to_uint8array(scope, buf) };
+      let ab = boxed_slice_to_uint8array(scope, buf);
       rv.set(ab.into())
     }
   }
