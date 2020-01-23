@@ -31,7 +31,7 @@ import { build } from "./build.ts";
  * The above for-await loop exits after 5 seconds when sig.dispose() is called.
  */
 export function signal(signo: number): SignalStream {
-  return new SignalStream(signo);
+  return createSignalStream(signo);
 }
 
 export const signals = {
