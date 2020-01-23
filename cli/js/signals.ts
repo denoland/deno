@@ -50,11 +50,6 @@ export const signals = {
   hungup(): SignalStream {
     return createSignalStream(Signal.SIGHUP);
   },
-  /** Returns the stream of SIGINFO signals.
-   * This method is the shorthand for Deno.signal(Deno.Signal.SIGINFO). */
-  info(): SignalStream {
-    return createSignalStream(Signal.SIGINFO);
-  },
   /** Returns the stream of SIGINT signals.
    * This method is the shorthand for Deno.signal(Deno.Signal.SIGINT). */
   interrupt(): SignalStream {

@@ -2178,9 +2178,6 @@ declare namespace Deno {
     /** Returns the stream of SIGHUP signals.
      * This method is the shorthand for Deno.signal(Deno.Signal.SIGHUP). */
     hungup: () => SignalStream;
-    /** Returns the stream of SIGINFO signals.
-     * This method is the shorthand for Deno.signal(Deno.Signal.SIGINFO). */
-    info: () => SignalStream;
     /** Returns the stream of SIGINT signals.
      * This method is the shorthand for Deno.signal(Deno.Signal.SIGINT). */
     interrupt: () => SignalStream;

@@ -41,13 +41,6 @@ if (Deno.build.os === "win") {
     );
     assertThrows(
       () => {
-        Deno.signals.info(); // for SIGINFO
-      },
-      Error,
-      "not implemented"
-    );
-    assertThrows(
-      () => {
         Deno.signals.interrupt(); // for SIGINT
       },
       Error,
@@ -158,9 +151,6 @@ if (Deno.build.os === "win") {
     assert(s instanceof Deno.SignalStream);
     s.dispose();
     s = Deno.signals.hungup(); // for SIGHUP
-    assert(s instanceof Deno.SignalStream);
-    s.dispose();
-    s = Deno.signals.info(); // for SIGINFO
     assert(s instanceof Deno.SignalStream);
     s.dispose();
     s = Deno.signals.interrupt(); // for SIGINT
