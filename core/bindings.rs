@@ -3,7 +3,6 @@
 use crate::es_isolate::EsIsolate;
 use crate::isolate::Isolate;
 use crate::isolate::PinnedBuf;
-use crate::isolate::SHARED_RESPONSE_BUF_SIZE;
 
 use rusty_v8 as v8;
 use v8::MapFnTo;
@@ -181,38 +180,15 @@ pub fn initialize_context<'s>(
   scope.escape(context)
 }
 
-pub unsafe fn slice_to_uint8array<'sc>(
-  deno_isolate: &mut Isolate,
+pub fn boxed_slice_to_uint8array<'sc>(
   scope: &mut impl v8::ToLocal<'sc>,
-  buf: &[u8],
+  buf: Box<[u8]>,
 ) -> v8::Local<'sc, v8::Uint8Array> {
-  if buf.is_empty() {
-    let ab = v8::ArrayBuffer::new(scope, 0);
-    return v8::Uint8Array::new(ab, 0, 0).expect("Failed to create UintArray8");
-  }
-
+  assert!(!buf.is_empty());
   let buf_len = buf.len();
-  let buf_ptr = buf.as_ptr();
-
-  // To avoid excessively allocating new ArrayBuffers, we try to reuse a single
-  // global ArrayBuffer. The caveat is that users must extract data from it
-  // before the next tick. We only do this for ArrayBuffers less than 1024
-  // bytes.
-  let ab = if buf_len > SHARED_RESPONSE_BUF_SIZE {
-    // Simple case. We allocate a new ArrayBuffer for this.
-    v8::ArrayBuffer::new(scope, buf_len)
-  } else if deno_isolate.shared_response_buf.is_empty() {
-    let buf = v8::ArrayBuffer::new(scope, SHARED_RESPONSE_BUF_SIZE);
-    deno_isolate.shared_response_buf.set(scope, buf);
-    buf
-  } else {
-    deno_isolate.shared_response_buf.get(scope).unwrap()
-  };
-
-  let mut backing_store = ab.get_backing_store();
-  let data = backing_store.data();
-  let data: *mut u8 = data as *mut libc::c_void as *mut u8;
-  std::ptr::copy_nonoverlapping(buf_ptr, data, buf_len);
+  let backing_store =
+    unsafe { &mut v8::ArrayBuffer::new_backing_store_from_boxed_slice(buf) };
+  let ab = v8::ArrayBuffer::new_with_backing_store(scope, backing_store);
   v8::Uint8Array::new(ab, 0, buf_len).expect("Failed to create UintArray8")
 }
 
@@ -444,8 +420,8 @@ fn send(
     let (_op_id, buf) = response;
 
     if !buf.is_empty() {
-      let ab = unsafe { slice_to_uint8array(deno_isolate, scope, &buf) };
-      rv.set(ab.into())
+      let ui8 = boxed_slice_to_uint8array(scope, buf);
+      rv.set(ui8.into())
     }
   }
 }
