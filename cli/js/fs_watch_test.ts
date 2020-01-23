@@ -30,7 +30,7 @@ testPerm({ read: true, write: true }, async function fsWatcher(): Promise<
   await Deno.chmod(file1, 0o666);
   const f = await Deno.open(file1);
   f.close();
-  
+
   setTimeout(() => {
     watcher.close();
   }, 750);
