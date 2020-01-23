@@ -265,8 +265,8 @@ export class Response implements domTypes.Response {
     headersList: Array<[string, string]>,
     rid: number,
     redirected_: boolean,
-    body_: null | Body = null,
-    readonly type_: null | domTypes.ResponseType = "default"
+    readonly type_: null | domTypes.ResponseType = "default",
+    body_: null | Body = null
   ) {
     this.trailer = createResolvable();
     this.headers = new Headers(headersList);
@@ -433,6 +433,7 @@ export class Response implements domTypes.Response {
       headersList,
       -1,
       this.redirected,
+      this.type,
       this.body
     );
   }
@@ -450,8 +451,8 @@ export class Response implements domTypes.Response {
       [["Location", typeof url === "string" ? url : url.toString()]],
       -1,
       false,
-      null,
-      "default"
+      "default",
+      null
     );
   }
 }
@@ -573,9 +574,9 @@ export async function fetch(
         case "error":
           /* I suspect that deno will probably crash if you try to use that
              rid, which suggests to me that Response needs to be refactored */
-          return new Response("", 0, "", [], -1, false, null, "error");
+          return new Response("", 0, "", [], -1, false, "error", null);
         case "manual":
-          return new Response("", 0, "", [], -1, false, null, "opaqueredirect");
+          return new Response("", 0, "", [], -1, false, "opaqueredirect", null);
         /* This mode is not part of the standard, but leaving it out would be
            annoying to work around. */
         case "nofollow":

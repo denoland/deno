@@ -9,8 +9,6 @@ import {
   fail
 } from "./test_util.ts";
 
-import { Response } from "./fetch.ts";
-
 testPerm({ net: true }, async function fetchConnectionError(): Promise<void> {
   let err;
   try {
