@@ -338,40 +338,33 @@ export class Response implements domTypes.Response {
     this.redirected = redirected_;
   }
 
-  async arrayBuffer(): Promise<ArrayBuffer> {
+  private bodyViewable(): boolean {
     if (
       this.type == "error" ||
       this.type == "opaque" ||
       this.type == "opaqueredirect" ||
-      this.body == null ||
       this.body == undefined
-    ) {
+    )
+      return true;
+    return false;
+  }
+
+  async arrayBuffer(): Promise<ArrayBuffer> {
+    if (this.bodyViewable() || this.body == null) {
       return Promise.reject(new Error("Response body is null"));
     }
     return this.body.arrayBuffer();
   }
 
   async blob(): Promise<domTypes.Blob> {
-    if (
-      this.type == "error" ||
-      this.type == "opaque" ||
-      this.type == "opaqueredirect" ||
-      this.body == null ||
-      this.body == undefined
-    ) {
+    if (this.bodyViewable() || this.body == null) {
       return Promise.reject(new Error("Response body is null"));
     }
     return this.body.blob();
   }
 
   async formData(): Promise<domTypes.FormData> {
-    if (
-      this.type == "error" ||
-      this.type == "opaque" ||
-      this.type == "opaqueredirect" ||
-      this.body == null ||
-      this.body == undefined
-    ) {
+    if (this.bodyViewable() || this.body == null) {
       return Promise.reject(new Error("Response body is null"));
     }
     return this.body.formData();
@@ -379,26 +372,14 @@ export class Response implements domTypes.Response {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async json(): Promise<any> {
-    if (
-      this.type == "error" ||
-      this.type == "opaque" ||
-      this.type == "opaqueredirect" ||
-      this.body == null ||
-      this.body == undefined
-    ) {
+    if (this.bodyViewable() || this.body == null) {
       return Promise.reject(new Error("Response body is null"));
     }
     return this.body.json();
   }
 
   async text(): Promise<string> {
-    if (
-      this.type == "error" ||
-      this.type == "opaque" ||
-      this.type == "opaqueredirect" ||
-      this.body == null ||
-      this.body == undefined
-    ) {
+    if (this.bodyViewable() || this.body == null) {
       return Promise.reject(new Error("Response body is null"));
     }
     return this.body.text();
@@ -441,7 +422,7 @@ export class Response implements domTypes.Response {
   redirect(url: URL | string, status: number): domTypes.Response {
     if (![301, 302, 303, 307, 308].includes(status)) {
       throw new RangeError(
-        "The redirection status must be one of 302, 302, 303, 307 and 308."
+        "The redirection status must be one of 301, 302, 303, 307 and 308."
       );
     }
     return new Response(
@@ -489,10 +470,6 @@ async function sendFetchReq(
   return (await sendAsync(dispatch.OP_FETCH, args, zeroCopy)) as FetchResponse;
 }
 
-interface NetworkError {
-  name: string;
-  message: string;
-}
 /** Fetch a resource from the network. */
 export async function fetch(
   input: domTypes.Request | URL | string,

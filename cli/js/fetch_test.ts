@@ -395,7 +395,7 @@ testPerm({ net: true }, async function fetchWithErrorRedirection(): Promise<
   try {
     await response.text();
     fail(
-      "Reponse.text() didn't on a filtered response without a body (type error)"
+      "Reponse.text() didn't throw on a filtered response without a body (type error)"
     );
   } catch (e) {
     return;
@@ -413,9 +413,23 @@ test(function responseRedirect(): void {
     null
   );
   const redir = response.redirect("example.com/newLocation", 301);
-  assertEquals(redir.status, 0);
+  assertEquals(redir.status, 301);
   assertEquals(redir.statusText, "");
   assertEquals(redir.url, "");
   assertEquals(redir.headers.get("Location"), "example.com/newLocation");
   assertEquals(redir.type, "default");
+});
+
+test(function responseConstructionHeaderRemoval(): void {
+  const res = new Response(
+    "example.com",
+    200,
+    "OK",
+    [["Set-Cookie", "mysessionid"]],
+    -1,
+    false,
+    "basic",
+    null
+  );
+  assert(res.headers.get("Set-Cookie") != "mysessionid");
 });
