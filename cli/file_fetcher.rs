@@ -2045,7 +2045,7 @@ mod tests {
   #[test]
   fn test_get_types_filename_5() {
     let module_url = Url::parse("https://example.com/mod.js").unwrap();
-    let source_code = b"console.log(\"foo\");".as_bytes().to_owned();
+    let source_code = b"console.log(\"foo\");".to_owned();
     let result =
       get_types_filename(&module_url, &source_code, Some("./mod.d.ts"));
     assert_eq!(
