@@ -692,7 +692,7 @@ pub fn op_fs_poll_watcher(
     if let Some(result) = receiver.next().await {
       let event = result.map_err(ErrBox::from)?;
       let serialized = serde_json::to_string(&event)?;
-      Ok(json!(serialized))
+      Ok(json!({ "event": serialized }))
     } else {
       Ok(json!({}))
     }

@@ -1,5 +1,6 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 import { testPerm, assertEquals } from "./test_util.ts";
+import { runIfMain } from "../../std/testing/mod.ts";
 
 async function captureEvents(
   watcher: Deno.FsWatcher,
@@ -10,7 +11,7 @@ async function captureEvents(
     events.push(event);
     console.error("got event!", event);
   }
-  console.error("captured events", events);
+  console.log("captured events", events);
   assertEquals(events.length, expectedLength);
 }
 
@@ -33,5 +34,7 @@ testPerm({ read: true, write: true }, async function fsWatcher(): Promise<
     watcher.close();
     console.error("closed watcher!");
   }, 750);
-  await captureEvents(watcher, 3);
+  await captureEvents(watcher, 6);
 });
+
+runIfMain(import.meta);

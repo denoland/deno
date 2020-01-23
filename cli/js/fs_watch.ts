@@ -14,7 +14,6 @@ export type FsWatcher = AsyncIterableIterator<FsWatcherEvent> & Closer;
 
 export interface WatchOptions {
   recursive?: boolean;
-  debounce?: number;
 }
 
 class FsWatcherImpl implements FsWatcher {
@@ -22,8 +21,8 @@ class FsWatcherImpl implements FsWatcher {
   private closed = false;
 
   constructor(paths: string[], options: WatchOptions) {
-    const { recursive = false, debounce = 500 } = options;
-    this.rid = sendSync(dispatch.OP_WATCH, { recursive, paths, debounce });
+    const { recursive = false } = options;
+    this.rid = sendSync(dispatch.OP_WATCH, { recursive, paths });
   }
 
   async next(): Promise<IteratorResult<FsWatcherEvent>> {
@@ -36,10 +35,10 @@ class FsWatcherImpl implements FsWatcher {
         rid: this.rid
       });
       // If empty value is returned that means that watcher was closed
-      if (!value) {
+      if (!value.event) {
         return { value: undefined, done: true };
       }
-      return { value: value as FsWatcherEvent, done: false };
+      return { value: value.event as FsWatcherEvent, done: false };
     } catch (e) {
       if (e instanceof DenoError && e.kind == ErrorKind.BadResource) {
         return { value: undefined, done: true };
