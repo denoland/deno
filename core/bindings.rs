@@ -396,8 +396,11 @@ fn send(
 
   let control = match v8::Local::<v8::ArrayBufferView>::try_from(args.get(1)) {
     Ok(view) => {
+      let byte_offset = view.byte_offset();
+      let byte_length = view.byte_length();
       let backing_store = view.buffer().unwrap().get_backing_store();
-      unsafe { &**backing_store.get() }
+      let buf = unsafe { &**backing_store.get() };
+      &buf[byte_offset..byte_offset + byte_length]
     }
     Err(..) => &[],
   };
