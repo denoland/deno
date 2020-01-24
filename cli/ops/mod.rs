@@ -22,6 +22,7 @@ pub mod random;
 pub mod repl;
 pub mod resources;
 pub mod runtime_compiler;
+pub mod signal;
 pub mod timers;
 pub mod tls;
 pub mod web_worker;

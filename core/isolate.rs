@@ -27,8 +27,6 @@ use std::future::Future;
 use std::ops::{Deref, DerefMut};
 use std::option::Option;
 use std::pin::Pin;
-use std::ptr::NonNull;
-use std::slice;
 use std::sync::{Arc, Mutex, Once};
 use std::task::Context;
 use std::task::Poll;
@@ -38,24 +36,22 @@ use std::task::Poll;
 /// behaves much like an Arc<[u8]>, although a PinnedBuf currently can't be
 /// cloned.
 pub struct PinnedBuf {
-  data_ptr: NonNull<u8>,
-  data_len: usize,
-  #[allow(unused)]
   backing_store: v8::SharedRef<v8::BackingStore>,
+  byte_offset: usize,
+  byte_length: usize,
 }
 
 unsafe impl Send for PinnedBuf {}
 
 impl PinnedBuf {
   pub fn new(view: v8::Local<v8::ArrayBufferView>) -> Self {
-    let mut backing_store = view.buffer().unwrap().get_backing_store();
-    let backing_store_ptr = backing_store.data() as *mut _ as *mut u8;
-    let view_ptr = unsafe { backing_store_ptr.add(view.byte_offset()) };
-    let view_len = view.byte_length();
+    let backing_store = view.buffer().unwrap().get_backing_store();
+    let byte_offset = view.byte_offset();
+    let byte_length = view.byte_length();
     Self {
-      data_ptr: NonNull::new(view_ptr).unwrap(),
-      data_len: view_len,
       backing_store,
+      byte_offset,
+      byte_length,
     }
   }
 }
@@ -63,13 +59,15 @@ impl PinnedBuf {
 impl Deref for PinnedBuf {
   type Target = [u8];
   fn deref(&self) -> &[u8] {
-    unsafe { slice::from_raw_parts(self.data_ptr.as_ptr(), self.data_len) }
+    let buf = unsafe { &**self.backing_store.get() };
+    &buf[self.byte_offset..self.byte_offset + self.byte_length]
   }
 }
 
 impl DerefMut for PinnedBuf {
   fn deref_mut(&mut self) -> &mut [u8] {
-    unsafe { slice::from_raw_parts_mut(self.data_ptr.as_ptr(), self.data_len) }
+    let buf = unsafe { &mut **self.backing_store.get() };
+    &mut buf[self.byte_offset..self.byte_offset + self.byte_length]
   }
 }
 

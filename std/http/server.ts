@@ -494,7 +494,7 @@ export function serve(addr: string | ServerConfig): Server {
 }
 
 export async function listenAndServe(
-  addr: string,
+  addr: string | ServerConfig,
   handler: (req: ServerRequest) => void
 ): Promise<void> {
   const server = serve(addr);
