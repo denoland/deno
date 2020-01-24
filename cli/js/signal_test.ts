@@ -1,5 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { testPerm, assert, assertEquals, assertThrows } from "./test_util.ts";
+import {
+  test,
+  testPerm,
+  assert,
+  assertEquals,
+  assertThrows
+} from "./test_util.ts";
 
 function defer(n: number): Promise<void> {
   return new Promise((resolve, _) => {
@@ -8,9 +14,7 @@ function defer(n: number): Promise<void> {
 }
 
 if (Deno.build.os === "win") {
-  testPerm({ run: true }, async function signalsNotImplemented(): Promise<
-    void
-  > {
+  test(async function signalsNotImplemented(): Promise<void> {
     assertThrows(
       () => {
         Deno.signal(1);
