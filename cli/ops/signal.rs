@@ -50,13 +50,7 @@ struct BindSignalArgs {
 
 #[cfg(unix)]
 #[derive(Deserialize)]
-struct UnbindSignalArgs {
-  rid: i32,
-}
-
-#[cfg(unix)]
-#[derive(Deserialize)]
-struct PollSignalArgs {
+struct SignalArgs {
   rid: i32,
 }
 
@@ -86,7 +80,7 @@ fn op_poll_signal(
   args: Value,
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
-  let args: PollSignalArgs = serde_json::from_value(args)?;
+  let args: SignalArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let state_ = state.clone();
 
@@ -109,7 +103,7 @@ pub fn op_unbind_signal(
   args: Value,
   _zero_copy: Option<PinnedBuf>,
 ) -> Result<JsonOp, ErrBox> {
-  let args: UnbindSignalArgs = serde_json::from_value(args)?;
+  let args: SignalArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let mut table = state.lock_resource_table();
   let resource = table.get::<SignalStreamResource>(rid);
