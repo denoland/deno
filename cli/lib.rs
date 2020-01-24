@@ -146,7 +146,7 @@ fn create_worker_and_state(
 }
 
 fn types_command() {
-  println!("{}", crate::js::DENO_RUNTIME);
+  println!("{}\n{}", crate::js::DENO_NS_LIB, crate::js::DENO_MAIN_LIB);
 }
 
 fn print_cache_info(worker: MainWorker) {

@@ -165,6 +165,7 @@ fn req(
   let j = match (compiler_config.path, compiler_config.content) {
     (Some(config_path), Some(config_data)) => json!({
       "type": request_type as i32,
+      "target": "main",
       "rootNames": root_names,
       "outFile": out_file,
       "bundle": bundle,
@@ -173,6 +174,7 @@ fn req(
     }),
     _ => json!({
       "type": request_type as i32,
+      "target": "main",
       "rootNames": root_names,
       "outFile": out_file,
       "bundle": bundle,
@@ -617,6 +619,7 @@ pub fn runtime_compile_async<S: BuildHasher>(
 ) -> Pin<Box<CompilationResultFuture>> {
   let req_msg = json!({
     "type": msg::CompilerRequestType::RuntimeCompile as i32,
+    "target": "runtime",
     "rootName": root_name,
     "sources": sources,
     "options": options,
