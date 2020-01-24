@@ -350,6 +350,8 @@ export class Response implements domTypes.Response {
   }
 
   async arrayBuffer(): Promise<ArrayBuffer> {
+    /* You have to do the null check here and not in the function because
+     * otherwise TS complains about this.body potentially being null */
     if (this.bodyViewable() || this.body == null) {
       return Promise.reject(new Error("Response body is null"));
     }
@@ -554,10 +556,6 @@ export async function fetch(
           return new Response("", 0, "", [], -1, false, "error", null);
         case "manual":
           return new Response("", 0, "", [], -1, false, "opaqueredirect", null);
-        /* This mode is not part of the standard, but leaving it out would be
-           annoying to work around. */
-        case "nofollow":
-          return response;
         case "follow":
         default:
           let redirectUrl = response.headers.get("Location");
