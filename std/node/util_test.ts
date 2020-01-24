@@ -60,7 +60,7 @@ test({
   fn() {
     assert(util.isSymbol(Symbol()));
     assert(!util.isSymbol(123));
-    assert(!util.isSymbol('string'));
+    assert(!util.isSymbol("string"));
   }
 });
 
