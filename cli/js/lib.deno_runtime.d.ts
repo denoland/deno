@@ -2130,6 +2130,80 @@ declare namespace Deno {
    */
   export const args: string[];
 
+  /** SignalStream represents the stream of signals, implements both
+   * AsyncIterator and PromiseLike */
+  export class SignalStream implements AsyncIterator<void>, PromiseLike<void> {
+    constructor(signal: typeof Deno.Signal);
+    then<T, S>(
+      f: (v: void) => T | Promise<T>,
+      g?: (v: void) => S | Promise<S>
+    ): Promise<T | S>;
+    next(): Promise<IteratorResult<void>>;
+    [Symbol.asyncIterator](): AsyncIterator<void>;
+    dispose(): void;
+  }
+  /**
+   * Returns the stream of the given signal number. You can use it as an async
+   * iterator.
+   *
+   *     for await (const _ of Deno.signal(Deno.Signal.SIGTERM)) {
+   *       console.log("got SIGTERM!");
+   *     }
+   *
+   * You can also use it as a promise. In this case you can only receive the
+   * first one.
+   *
+   *     await Deno.signal(Deno.Signal.SIGTERM);
+   *     console.log("SIGTERM received!")
+   *
+   * If you want to stop receiving the signals, you can use .dispose() method
+   * of the signal stream object.
+   *
+   *     const sig = Deno.signal(Deno.Signal.SIGTERM);
+   *     setTimeout(() => { sig.dispose(); }, 5000);
+   *     for await (const _ of sig) {
+   *       console.log("SIGTERM!")
+   *     }
+   *
+   * The above for-await loop exits after 5 seconds when sig.dispose() is called.
+   */
+  export function signal(signo: number): SignalStream;
+  export const signals: {
+    /** Returns the stream of SIGALRM signals.
+     * This method is the shorthand for Deno.signal(Deno.Signal.SIGALRM). */
+    alarm: () => SignalStream;
+    /** Returns the stream of SIGCHLD signals.
+     * This method is the shorthand for Deno.signal(Deno.Signal.SIGCHLD). */
+    child: () => SignalStream;
+    /** Returns the stream of SIGHUP signals.
+     * This method is the shorthand for Deno.signal(Deno.Signal.SIGHUP). */
+    hungup: () => SignalStream;
+    /** Returns the stream of SIGINT signals.
+     * This method is the shorthand for Deno.signal(Deno.Signal.SIGINT). */
+    interrupt: () => SignalStream;
+    /** Returns the stream of SIGIO signals.
+     * This method is the shorthand for Deno.signal(Deno.Signal.SIGIO). */
+    io: () => SignalStream;
+    /** Returns the stream of SIGPIPE signals.
+     * This method is the shorthand for Deno.signal(Deno.Signal.SIGPIPE). */
+    pipe: () => SignalStream;
+    /** Returns the stream of SIGQUIT signals.
+     * This method is the shorthand for Deno.signal(Deno.Signal.SIGQUIT). */
+    quit: () => SignalStream;
+    /** Returns the stream of SIGTERM signals.
+     * This method is the shorthand for Deno.signal(Deno.Signal.SIGTERM). */
+    terminate: () => SignalStream;
+    /** Returns the stream of SIGUSR1 signals.
+     * This method is the shorthand for Deno.signal(Deno.Signal.SIGUSR1). */
+    userDefined1: () => SignalStream;
+    /** Returns the stream of SIGUSR2 signals.
+     * This method is the shorthand for Deno.signal(Deno.Signal.SIGUSR2). */
+    userDefined2: () => SignalStream;
+    /** Returns the stream of SIGWINCH signals.
+     * This method is the shorthand for Deno.signal(Deno.Signal.SIGWINCH). */
+    windowChange: () => SignalStream;
+  };
+
   /** UNSTABLE: new API. Maybe move EOF here.
    *
    * Special Deno related symbols.
