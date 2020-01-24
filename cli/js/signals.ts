@@ -31,72 +31,68 @@ import { build } from "./build.ts";
  * The above for-await loop exits after 5 seconds when sig.dispose() is called.
  */
 export function signal(signo: number): SignalStream {
-  return createSignalStream(signo);
+  if (build.os === "win") {
+    throw new Error("not implemented!");
+  }
+  return new SignalStream(signo);
 }
 
 export const signals = {
   /** Returns the stream of SIGALRM signals.
    * This method is the shorthand for Deno.signal(Deno.Signal.SIGALRM). */
   alarm(): SignalStream {
-    return createSignalStream(Signal.SIGALRM);
+    return signal(Signal.SIGALRM);
   },
   /** Returns the stream of SIGCHLD signals.
    * This method is the shorthand for Deno.signal(Deno.Signal.SIGCHLD). */
   child(): SignalStream {
-    return createSignalStream(Signal.SIGCHLD);
+    return signal(Signal.SIGCHLD);
   },
   /** Returns the stream of SIGHUP signals.
    * This method is the shorthand for Deno.signal(Deno.Signal.SIGHUP). */
   hungup(): SignalStream {
-    return createSignalStream(Signal.SIGHUP);
+    return signal(Signal.SIGHUP);
   },
   /** Returns the stream of SIGINT signals.
    * This method is the shorthand for Deno.signal(Deno.Signal.SIGINT). */
   interrupt(): SignalStream {
-    return createSignalStream(Signal.SIGINT);
+    return signal(Signal.SIGINT);
   },
   /** Returns the stream of SIGIO signals.
    * This method is the shorthand for Deno.signal(Deno.Signal.SIGIO). */
   io(): SignalStream {
-    return createSignalStream(Signal.SIGIO);
+    return signal(Signal.SIGIO);
   },
   /** Returns the stream of SIGPIPE signals.
    * This method is the shorthand for Deno.signal(Deno.Signal.SIGPIPE). */
   pipe(): SignalStream {
-    return createSignalStream(Signal.SIGPIPE);
+    return signal(Signal.SIGPIPE);
   },
   /** Returns the stream of SIGQUIT signals.
    * This method is the shorthand for Deno.signal(Deno.Signal.SIGQUIT). */
   quit(): SignalStream {
-    return createSignalStream(Signal.SIGQUIT);
+    return signal(Signal.SIGQUIT);
   },
   /** Returns the stream of SIGTERM signals.
    * This method is the shorthand for Deno.signal(Deno.Signal.SIGTERM). */
   terminate(): SignalStream {
-    return createSignalStream(Signal.SIGTERM);
+    return signal(Signal.SIGTERM);
   },
   /** Returns the stream of SIGUSR1 signals.
    * This method is the shorthand for Deno.signal(Deno.Signal.SIGUSR1). */
   userDefined1(): SignalStream {
-    return createSignalStream(Signal.SIGUSR1);
+    return signal(Signal.SIGUSR1);
   },
   /** Returns the stream of SIGUSR2 signals.
    * This method is the shorthand for Deno.signal(Deno.Signal.SIGUSR2). */
   userDefined2(): SignalStream {
-    return createSignalStream(Signal.SIGUSR2);
+    return signal(Signal.SIGUSR2);
   },
   /** Returns the stream of SIGWINCH signals.
    * This method is the shorthand for Deno.signal(Deno.Signal.SIGWINCH). */
   windowChange(): SignalStream {
-    return createSignalStream(Signal.SIGWINCH);
+    return signal(Signal.SIGWINCH);
   }
-};
-
-const createSignalStream = (signal: number): SignalStream => {
-  if (build.os === "win") {
-    throw new Error("not implemented!");
-  }
-  return new SignalStream(signal);
 };
 
 const STREAM_DISPOSED_MESSAGE =
