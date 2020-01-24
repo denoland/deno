@@ -74,9 +74,9 @@ export let OP_HOSTNAME: number;
 export let OP_OPEN_PLUGIN: number;
 export let OP_COMPILE: number;
 export let OP_TRANSPILE: number;
-export let OP_BIND_SIGNAL: number;
-export let OP_UNBIND_SIGNAL: number;
-export let OP_POLL_SIGNAL: number;
+export let OP_SIGNAL_BIND: number;
+export let OP_SIGNAL_UNBIND: number;
+export let OP_SIGNAL_POLL: number;
 
 /** **WARNING:** This is only available during the snapshotting process and is
  * unavailable at runtime. */

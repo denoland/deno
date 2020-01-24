@@ -21,16 +21,16 @@ use tokio::signal::unix::{signal, Signal, SignalKind};
 
 pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op(
-    "bind_signal",
-    s.core_op(json_op(s.stateful_op(op_bind_signal))),
+    "signal_bind",
+    s.core_op(json_op(s.stateful_op(op_signal_bind))),
   );
   i.register_op(
-    "unbind_signal",
-    s.core_op(json_op(s.stateful_op(op_unbind_signal))),
+    "signal_unbind",
+    s.core_op(json_op(s.stateful_op(op_signal_unbind))),
   );
   i.register_op(
-    "poll_signal",
-    s.core_op(json_op(s.stateful_op(op_poll_signal))),
+    "signal_poll",
+    s.core_op(json_op(s.stateful_op(op_signal_poll))),
   );
 }
 
@@ -55,7 +55,7 @@ struct SignalArgs {
 }
 
 #[cfg(unix)]
-fn op_bind_signal(
+fn op_signal_bind(
   state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
@@ -75,7 +75,7 @@ fn op_bind_signal(
 }
 
 #[cfg(unix)]
-fn op_poll_signal(
+fn op_signal_poll(
   state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
@@ -98,7 +98,7 @@ fn op_poll_signal(
 }
 
 #[cfg(unix)]
-pub fn op_unbind_signal(
+pub fn op_signal_unbind(
   state: &ThreadSafeState,
   args: Value,
   _zero_copy: Option<PinnedBuf>,
@@ -119,7 +119,7 @@ pub fn op_unbind_signal(
 }
 
 #[cfg(not(unix))]
-pub fn op_bind_signal(
+pub fn op_signal_bind(
   _state: &ThreadSafeState,
   _args: Value,
   _zero_copy: Option<PinnedBuf>,
@@ -128,7 +128,7 @@ pub fn op_bind_signal(
 }
 
 #[cfg(not(unix))]
-fn op_unbind_signal(
+fn op_signal_unbind(
   _state: &ThreadSafeState,
   _args: Value,
   _zero_copy: Option<PinnedBuf>,
@@ -137,7 +137,7 @@ fn op_unbind_signal(
 }
 
 #[cfg(not(unix))]
-fn op_poll_signal(
+fn op_signal_poll(
   _state: &ThreadSafeState,
   _args: Value,
   _zero_copy: Option<PinnedBuf>,

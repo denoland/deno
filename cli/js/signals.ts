@@ -111,12 +111,12 @@ export class SignalStream implements AsyncIterator<void>, PromiseLike<void> {
   /** The flag, which is true when the stream is disposed. */
   private disposed = false;
   constructor(signo: number) {
-    this.rid = sendSync(dispatch.OP_BIND_SIGNAL, { signo }).rid;
+    this.rid = sendSync(dispatch.OP_SIGNAL_BIND, { signo }).rid;
     this.loop();
   }
 
   private async pollSignal(): Promise<void> {
-    const { done } = await sendAsync(dispatch.OP_POLL_SIGNAL, {
+    const { done } = await sendAsync(dispatch.OP_SIGNAL_POLL, {
       rid: this.rid
     });
 
@@ -166,6 +166,6 @@ export class SignalStream implements AsyncIterator<void>, PromiseLike<void> {
 
   dispose(): void {
     this.disposed = true;
-    sendSync(dispatch.OP_UNBIND_SIGNAL, { rid: this.rid });
+    sendSync(dispatch.OP_SIGNAL_UNBIND, { rid: this.rid });
   }
 }
