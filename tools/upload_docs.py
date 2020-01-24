@@ -9,5 +9,5 @@ run([sys.executable, "tools/docs.py"])
 os.chdir("target")
 run([
     "aws", "s3", "sync", "--include=typedoc", "--exclude=debug/*",
-    "--exclude=release/*", ".", "s3://deno.land/"
+    "--exclude=package/*", "--exclude=release/*", ".", "s3://deno.land/"
 ])
