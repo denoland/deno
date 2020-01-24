@@ -141,10 +141,10 @@ Using [Homebrew](https://formulae.brew.sh/formula/deno) (mac):
 brew install deno
 ```
 
-Using [Cargo](https://crates.io/crates/deno_cli):
+Using [Cargo](https://crates.io/crates/deno):
 
 ```shell
-cargo install deno_cli
+cargo install deno
 ```
 
 Deno binaries can also be installed manually, by downloading a tarball or zip
