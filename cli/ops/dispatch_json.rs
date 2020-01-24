@@ -48,11 +48,11 @@ struct AsyncArgs {
   promise_id: Option<u64>,
 }
 
-pub fn json_op<D>(d: D) -> impl Fn(&[u8], Option<PinnedBuf>) -> CoreOp
+pub fn json_op<D>(d: D) -> impl Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp
 where
-  D: Fn(Value, Option<PinnedBuf>) -> Result<JsonOp, ErrBox>,
+  D: Fn(Value, Option<ZeroCopyBuf>) -> Result<JsonOp, ErrBox>,
 {
-  move |control: &[u8], zero_copy: Option<PinnedBuf>| {
+  move |control: &[u8], zero_copy: Option<ZeroCopyBuf>| {
     let async_args: AsyncArgs = match serde_json::from_slice(control) {
       Ok(args) => args,
       Err(e) => {

@@ -2,7 +2,7 @@
 
 use crate::es_isolate::EsIsolate;
 use crate::isolate::Isolate;
-use crate::isolate::PinnedBuf;
+use crate::isolate::ZeroCopyBuf;
 
 use rusty_v8 as v8;
 use v8::MapFnTo;
@@ -405,9 +405,9 @@ fn send(
     Err(..) => &[],
   };
 
-  let zero_copy: Option<PinnedBuf> =
+  let zero_copy: Option<ZeroCopyBuf> =
     v8::Local::<v8::ArrayBufferView>::try_from(args.get(2))
-      .map(PinnedBuf::new)
+      .map(ZeroCopyBuf::new)
       .ok();
 
   // If response is empty then it's either async op or exception was thrown

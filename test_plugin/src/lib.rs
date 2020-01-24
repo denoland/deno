@@ -5,7 +5,7 @@ extern crate futures;
 use deno_core::CoreOp;
 use deno_core::Op;
 use deno_core::PluginInitContext;
-use deno_core::{Buf, PinnedBuf};
+use deno_core::{Buf, ZeroCopyBuf};
 use futures::future::FutureExt;
 
 fn init(context: &mut dyn PluginInitContext) {
@@ -14,7 +14,7 @@ fn init(context: &mut dyn PluginInitContext) {
 }
 init_fn!(init);
 
-pub fn op_test_sync(data: &[u8], zero_copy: Option<PinnedBuf>) -> CoreOp {
+pub fn op_test_sync(data: &[u8], zero_copy: Option<ZeroCopyBuf>) -> CoreOp {
   if let Some(buf) = zero_copy {
     let data_str = std::str::from_utf8(&data[..]).unwrap();
     let buf_str = std::str::from_utf8(&buf[..]).unwrap();
@@ -28,7 +28,7 @@ pub fn op_test_sync(data: &[u8], zero_copy: Option<PinnedBuf>) -> CoreOp {
   Op::Sync(result_box)
 }
 
-pub fn op_test_async(data: &[u8], zero_copy: Option<PinnedBuf>) -> CoreOp {
+pub fn op_test_async(data: &[u8], zero_copy: Option<ZeroCopyBuf>) -> CoreOp {
   let data_str = std::str::from_utf8(&data[..]).unwrap().to_string();
   let fut = async move {
     if let Some(buf) = zero_copy {

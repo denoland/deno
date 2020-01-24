@@ -58,7 +58,7 @@ struct SignalArgs {
 fn op_signal_bind(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: BindSignalArgs = serde_json::from_value(args)?;
   let mut table = state.lock_resource_table();
@@ -78,7 +78,7 @@ fn op_signal_bind(
 fn op_signal_poll(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: SignalArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
@@ -101,7 +101,7 @@ fn op_signal_poll(
 pub fn op_signal_unbind(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: SignalArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
@@ -122,7 +122,7 @@ pub fn op_signal_unbind(
 pub fn op_signal_bind(
   _state: &ThreadSafeState,
   _args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   unimplemented!();
 }
@@ -131,7 +131,7 @@ pub fn op_signal_bind(
 fn op_signal_unbind(
   _state: &ThreadSafeState,
   _args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   unimplemented!();
 }
@@ -140,7 +140,7 @@ fn op_signal_unbind(
 fn op_signal_poll(
   _state: &ThreadSafeState,
   _args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   unimplemented!();
 }

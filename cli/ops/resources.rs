@@ -11,7 +11,7 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
 fn op_resources(
   state: &ThreadSafeState,
   _args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let resource_table = state.lock_resource_table();
   let serialized_resources = resource_table.entries();
