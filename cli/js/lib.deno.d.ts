@@ -2127,8 +2127,11 @@ declare namespace Deno {
    */
   export const args: string[];
 
-  /** SignalStream represents the stream of signals, implements both
-   * AsyncIterator and PromiseLike */
+  /** UNSTABLE new API.
+   *
+   * SignalStream represents the stream of signals, implements both
+   * AsyncIterator and PromiseLike
+   */
   export class SignalStream implements AsyncIterator<void>, PromiseLike<void> {
     constructor(signal: typeof Deno.Signal);
     then<T, S>(
@@ -2139,7 +2142,9 @@ declare namespace Deno {
     [Symbol.asyncIterator](): AsyncIterator<void>;
     dispose(): void;
   }
-  /**
+
+  /** UNSTABLE new API.
+   *
    * Returns the stream of the given signal number. You can use it as an async
    * iterator.
    *
@@ -2165,6 +2170,8 @@ declare namespace Deno {
    * The above for-await loop exits after 5 seconds when sig.dispose() is called.
    */
   export function signal(signo: number): SignalStream;
+
+  /** UNSTABLE new API. */
   export const signals: {
     /** Returns the stream of SIGALRM signals.
      * This method is the shorthand for Deno.signal(Deno.Signal.SIGALRM). */
