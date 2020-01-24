@@ -100,10 +100,12 @@ const STREAM_DISPOSED_MESSAGE =
 
 /** SignalStream represents the stream of signals, implements both
  * AsyncIterator and PromiseLike */
-export class SignalStream implements AsyncIterator<void>, PromiseLike<void> {
+export class SignalStream implements AsyncIterator<void>, PromiseLike<boolean> {
   private rid: number;
-  /** The promise of polling the signal. */
-  private currentPromise: Promise<void> = Promise.resolve();
+  /** The promise of polling the signal,
+   * resolves with false when it receives signal,
+   * Resolves with true when the signal stream is disposed. */
+  private pollingPromise: Promise<boolean> = Promise.resolve(false);
   /** The flag, which is true when the stream is disposed. */
   private disposed = false;
   constructor(signo: number) {
@@ -111,49 +113,27 @@ export class SignalStream implements AsyncIterator<void>, PromiseLike<void> {
     this.loop();
   }
 
-  private async pollSignal(): Promise<void> {
-    const { done } = await sendAsync(dispatch.OP_SIGNAL_POLL, {
+  private async pollSignal(): Promise<boolean> {
+    return (await sendAsync(dispatch.OP_SIGNAL_POLL, {
       rid: this.rid
-    });
-
-    if (done) {
-      throw new DenoError(ErrorKind.NotFound, STREAM_DISPOSED_MESSAGE);
-    }
+    })).done;
   }
 
   private async loop(): Promise<void> {
-    while (!this.disposed) {
-      this.currentPromise = this.pollSignal();
-      try {
-        await this.currentPromise;
-      } catch (e) {
-        if (e instanceof DenoError && e.kind === ErrorKind.NotFound) {
-          // If the stream is disposed, then returns silently.
-          return;
-        }
-        // If it's not StreamDisposed error, it's an unexpected error.
-        throw e;
-      }
-    }
+    do {
+      this.pollingPromise = this.pollSignal();
+    } while (!await this.pollingPromise && !this.disposed);
   }
 
   then<T, S>(
-    f: (v: void) => T | Promise<T>,
-    g?: (v: void) => S | Promise<S>
+    f: (v: boolean) => T | Promise<T>,
+    g?: (v: Error) => S | Promise<S>
   ): Promise<T | S> {
-    return this.currentPromise.then(f, g);
+    return this.pollingPromise.then(f, g);
   }
 
   async next(): Promise<IteratorResult<void>> {
-    try {
-      await this.currentPromise;
-      return { done: false, value: undefined };
-    } catch (e) {
-      if (e instanceof DenoError && e.kind === ErrorKind.NotFound) {
-        return { done: true, value: undefined };
-      }
-      throw e;
-    }
+    return { done: await this.pollingPromise, value: undefined };
   }
 
   [Symbol.asyncIterator](): AsyncIterator<void> {
