@@ -2,7 +2,6 @@
 import { Signal } from "./process.ts";
 import * as dispatch from "./dispatch.ts";
 import { sendSync, sendAsync } from "./dispatch_json.ts";
-import { DenoError, ErrorKind } from "./errors.ts";
 import { build } from "./build.ts";
 
 /**
@@ -95,9 +94,6 @@ export const signals = {
   }
 };
 
-const STREAM_DISPOSED_MESSAGE =
-  "No signal is available because signal stream is disposed";
-
 /** SignalStream represents the stream of signals, implements both
  * AsyncIterator and PromiseLike */
 export class SignalStream implements AsyncIterator<void>, PromiseLike<boolean> {
@@ -114,15 +110,17 @@ export class SignalStream implements AsyncIterator<void>, PromiseLike<boolean> {
   }
 
   private async pollSignal(): Promise<boolean> {
-    return (await sendAsync(dispatch.OP_SIGNAL_POLL, {
-      rid: this.rid
-    })).done;
+    return (
+      await sendAsync(dispatch.OP_SIGNAL_POLL, {
+        rid: this.rid
+      })
+    ).done;
   }
 
   private async loop(): Promise<void> {
     do {
       this.pollingPromise = this.pollSignal();
-    } while (!await this.pollingPromise && !this.disposed);
+    } while (!(await this.pollingPromise) && !this.disposed);
   }
 
   then<T, S>(
@@ -141,6 +139,9 @@ export class SignalStream implements AsyncIterator<void>, PromiseLike<boolean> {
   }
 
   dispose(): void {
+    if (this.disposed) {
+      throw new Error("The stream has already been disposed.");
+    }
     this.disposed = true;
     sendSync(dispatch.OP_SIGNAL_UNBIND, { rid: this.rid });
   }
