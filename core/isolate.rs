@@ -30,20 +30,21 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex, Once};
 use std::task::Context;
 use std::task::Poll;
-/// A PinnedBuf encapsulates a slice that's been borrowed from a JavaScript
+
+/// A ZeroCopyBuf encapsulates a slice that's been borrowed from a JavaScript
 /// ArrayBuffer object. JavaScript objects can normally be garbage collected,
-/// but the existence of a PinnedBuf inhibits this until it is dropped. It
-/// behaves much like an Arc<[u8]>, although a PinnedBuf currently can't be
+/// but the existence of a ZeroCopyBuf inhibits this until it is dropped. It
+/// behaves much like an Arc<[u8]>, although a ZeroCopyBuf currently can't be
 /// cloned.
-pub struct PinnedBuf {
+pub struct ZeroCopyBuf {
   backing_store: v8::SharedRef<v8::BackingStore>,
   byte_offset: usize,
   byte_length: usize,
 }
 
-unsafe impl Send for PinnedBuf {}
+unsafe impl Send for ZeroCopyBuf {}
 
-impl PinnedBuf {
+impl ZeroCopyBuf {
   pub fn new(view: v8::Local<v8::ArrayBufferView>) -> Self {
     let backing_store = view.buffer().unwrap().get_backing_store();
     let byte_offset = view.byte_offset();
@@ -56,7 +57,7 @@ impl PinnedBuf {
   }
 }
 
-impl Deref for PinnedBuf {
+impl Deref for ZeroCopyBuf {
   type Target = [u8];
   fn deref(&self) -> &[u8] {
     let buf = unsafe { &**self.backing_store.get() };
@@ -64,20 +65,20 @@ impl Deref for PinnedBuf {
   }
 }
 
-impl DerefMut for PinnedBuf {
+impl DerefMut for ZeroCopyBuf {
   fn deref_mut(&mut self) -> &mut [u8] {
     let buf = unsafe { &mut **self.backing_store.get() };
     &mut buf[self.byte_offset..self.byte_offset + self.byte_length]
   }
 }
 
-impl AsRef<[u8]> for PinnedBuf {
+impl AsRef<[u8]> for ZeroCopyBuf {
   fn as_ref(&self) -> &[u8] {
     &*self
   }
 }
 
-impl AsMut<[u8]> for PinnedBuf {
+impl AsMut<[u8]> for ZeroCopyBuf {
   fn as_mut(&mut self) -> &mut [u8] {
     &mut *self
   }
@@ -436,7 +437,7 @@ impl Isolate {
   /// Requires runtime to explicitly ask for op ids before using any of the ops.
   pub fn register_op<F>(&self, name: &str, op: F) -> OpId
   where
-    F: Fn(&[u8], Option<PinnedBuf>) -> CoreOp + Send + Sync + 'static,
+    F: Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp + Send + Sync + 'static,
   {
     self.op_registry.register(name, op)
   }
@@ -476,7 +477,7 @@ impl Isolate {
     &mut self,
     op_id: OpId,
     control_buf: &[u8],
-    zero_copy_buf: Option<PinnedBuf>,
+    zero_copy_buf: Option<ZeroCopyBuf>,
   ) -> Option<(OpId, Box<[u8]>)> {
     let maybe_op = self.op_registry.call(op_id, control_buf, zero_copy_buf);
 
@@ -817,7 +818,7 @@ pub mod tests {
     let mut isolate = Isolate::new(StartupData::None, false);
 
     let dispatcher =
-      move |control: &[u8], _zero_copy: Option<PinnedBuf>| -> CoreOp {
+      move |control: &[u8], _zero_copy: Option<ZeroCopyBuf>| -> CoreOp {
         dispatch_count_.fetch_add(1, Ordering::Relaxed);
         match mode {
           Mode::Async => {

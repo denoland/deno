@@ -69,7 +69,7 @@ struct CreateWorkerArgs {
 fn op_create_worker(
   state: &ThreadSafeState,
   args: Value,
-  _data: Option<PinnedBuf>,
+  _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: CreateWorkerArgs = serde_json::from_value(args)?;
 
@@ -180,7 +180,7 @@ struct WorkerArgs {
 fn op_host_get_worker_loaded(
   state: &ThreadSafeState,
   args: Value,
-  _data: Option<PinnedBuf>,
+  _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
@@ -198,7 +198,7 @@ fn op_host_get_worker_loaded(
 fn op_host_poll_worker(
   state: &ThreadSafeState,
   args: Value,
-  _data: Option<PinnedBuf>,
+  _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
@@ -226,7 +226,7 @@ fn op_host_poll_worker(
 fn op_host_close_worker(
   state: &ThreadSafeState,
   args: Value,
-  _data: Option<PinnedBuf>,
+  _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
@@ -249,7 +249,7 @@ fn op_host_close_worker(
 fn op_host_resume_worker(
   state: &ThreadSafeState,
   args: Value,
-  _data: Option<PinnedBuf>,
+  _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
@@ -270,7 +270,7 @@ struct HostGetMessageArgs {
 fn op_host_get_message(
   state: &ThreadSafeState,
   args: Value,
-  _data: Option<PinnedBuf>,
+  _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: HostGetMessageArgs = serde_json::from_value(args)?;
   let state_ = state.clone();
@@ -297,7 +297,7 @@ struct HostPostMessageArgs {
 fn op_host_post_message(
   state: &ThreadSafeState,
   args: Value,
-  data: Option<PinnedBuf>,
+  data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: HostPostMessageArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
@@ -317,7 +317,7 @@ fn op_host_post_message(
 fn op_metrics(
   state: &ThreadSafeState,
   _args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let m = &state.metrics;
 

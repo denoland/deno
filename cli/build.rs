@@ -2,16 +2,16 @@
 use deno_core::CoreOp;
 use deno_core::Isolate;
 use deno_core::Op;
-use deno_core::PinnedBuf;
 use deno_core::StartupData;
+use deno_core::ZeroCopyBuf;
 use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 
 fn op_fetch_asset(
   custom_assets: HashMap<String, PathBuf>,
-) -> impl Fn(&[u8], Option<PinnedBuf>) -> CoreOp {
-  move |control: &[u8], zero_copy_buf: Option<PinnedBuf>| -> CoreOp {
+) -> impl Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp {
+  move |control: &[u8], zero_copy_buf: Option<ZeroCopyBuf>| -> CoreOp {
     assert!(zero_copy_buf.is_none()); // zero_copy_buf unused in this op.
     let custom_assets = custom_assets.clone();
     let name = std::str::from_utf8(control).unwrap();

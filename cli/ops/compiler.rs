@@ -30,7 +30,7 @@ struct CacheArgs {
 fn op_cache(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: CacheArgs = serde_json::from_value(args)?;
 
@@ -55,7 +55,7 @@ struct SpecifiersReferrerArgs {
 fn op_resolve_modules(
   state: &ThreadSafeState,
   args: Value,
-  _data: Option<PinnedBuf>,
+  _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: SpecifiersReferrerArgs = serde_json::from_value(args)?;
 
@@ -86,7 +86,7 @@ fn op_resolve_modules(
 fn op_fetch_source_files(
   state: &ThreadSafeState,
   args: Value,
-  _data: Option<PinnedBuf>,
+  _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: SpecifiersReferrerArgs = serde_json::from_value(args)?;
 

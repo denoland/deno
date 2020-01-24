@@ -23,7 +23,7 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
 fn op_global_timer_stop(
   state: &ThreadSafeState,
   _args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let state = state;
   let mut t = state.global_timer.lock().unwrap();
@@ -39,7 +39,7 @@ struct GlobalTimerArgs {
 fn op_global_timer(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: GlobalTimerArgs = serde_json::from_value(args)?;
   let val = args.timeout;
@@ -61,7 +61,7 @@ fn op_global_timer(
 fn op_now(
   state: &ThreadSafeState,
   _args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let seconds = state.start_time.elapsed().as_secs();
   let mut subsec_nanos = state.start_time.elapsed().subsec_nanos();

@@ -597,7 +597,7 @@ pub mod tests {
   use super::*;
   use crate::isolate::js_check;
   use crate::isolate::tests::run_in_task;
-  use crate::isolate::PinnedBuf;
+  use crate::isolate::ZeroCopyBuf;
   use crate::modules::SourceCodeInfoFuture;
   use crate::ops::*;
   use std::io;
@@ -642,7 +642,7 @@ pub mod tests {
     let mut isolate = EsIsolate::new(loader, StartupData::None, false);
 
     let dispatcher =
-      move |control: &[u8], _zero_copy: Option<PinnedBuf>| -> CoreOp {
+      move |control: &[u8], _zero_copy: Option<ZeroCopyBuf>| -> CoreOp {
         dispatch_count_.fetch_add(1, Ordering::Relaxed);
         assert_eq!(control.len(), 1);
         assert_eq!(control[0], 42);

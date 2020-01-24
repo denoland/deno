@@ -182,7 +182,7 @@ where
 pub fn op_read(
   state: &ThreadSafeState,
   rid: i32,
-  zero_copy: Option<PinnedBuf>,
+  zero_copy: Option<ZeroCopyBuf>,
 ) -> Pin<Box<MinimalOp>> {
   debug!("read rid={}", rid);
   let zero_copy = match zero_copy {
@@ -327,7 +327,7 @@ where
 pub fn op_write(
   state: &ThreadSafeState,
   rid: i32,
-  zero_copy: Option<PinnedBuf>,
+  zero_copy: Option<ZeroCopyBuf>,
 ) -> Pin<Box<MinimalOp>> {
   debug!("write rid={}", rid);
   let zero_copy = match zero_copy {
