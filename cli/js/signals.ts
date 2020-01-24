@@ -96,7 +96,7 @@ export const signals = {
 
 /** SignalStream represents the stream of signals, implements both
  * AsyncIterator and PromiseLike */
-export class SignalStream implements AsyncIterator<void>, PromiseLike<boolean> {
+export class SignalStream implements AsyncIterator<void>, PromiseLike<void> {
   private rid: number;
   /** The promise of polling the signal,
    * resolves with false when it receives signal,
@@ -124,10 +124,10 @@ export class SignalStream implements AsyncIterator<void>, PromiseLike<boolean> {
   }
 
   then<T, S>(
-    f: (v: boolean) => T | Promise<T>,
+    f: (v: void) => T | Promise<T>,
     g?: (v: Error) => S | Promise<S>
   ): Promise<T | S> {
-    return this.pollingPromise.then(f, g);
+    return this.pollingPromise.then((_): void => {}).then(f, g);
   }
 
   async next(): Promise<IteratorResult<void>> {
