@@ -15,8 +15,8 @@ use deno_core::ErrBox;
 use deno_core::Loader;
 use deno_core::ModuleSpecifier;
 use deno_core::Op;
-use deno_core::PinnedBuf;
 use deno_core::ResourceTable;
+use deno_core::ZeroCopyBuf;
 use futures::channel::mpsc;
 use futures::future::FutureExt;
 use futures::future::TryFutureExt;
@@ -83,13 +83,13 @@ impl ThreadSafeState {
   pub fn core_op<D>(
     &self,
     dispatcher: D,
-  ) -> impl Fn(&[u8], Option<PinnedBuf>) -> CoreOp
+  ) -> impl Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp
   where
-    D: Fn(&[u8], Option<PinnedBuf>) -> CoreOp,
+    D: Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp,
   {
     let state = self.clone();
 
-    move |control: &[u8], zero_copy: Option<PinnedBuf>| -> CoreOp {
+    move |control: &[u8], zero_copy: Option<ZeroCopyBuf>| -> CoreOp {
       let bytes_sent_control = control.len();
       let bytes_sent_zero_copy =
         zero_copy.as_ref().map(|b| b.len()).unwrap_or(0);
@@ -126,13 +126,13 @@ impl ThreadSafeState {
   pub fn stateful_minimal_op<D>(
     &self,
     dispatcher: D,
-  ) -> impl Fn(i32, Option<PinnedBuf>) -> Pin<Box<MinimalOp>>
+  ) -> impl Fn(i32, Option<ZeroCopyBuf>) -> Pin<Box<MinimalOp>>
   where
-    D: Fn(&ThreadSafeState, i32, Option<PinnedBuf>) -> Pin<Box<MinimalOp>>,
+    D: Fn(&ThreadSafeState, i32, Option<ZeroCopyBuf>) -> Pin<Box<MinimalOp>>,
   {
     let state = self.clone();
 
-    move |rid: i32, zero_copy: Option<PinnedBuf>| -> Pin<Box<MinimalOp>> {
+    move |rid: i32, zero_copy: Option<ZeroCopyBuf>| -> Pin<Box<MinimalOp>> {
       dispatcher(&state, rid, zero_copy)
     }
   }
@@ -145,15 +145,19 @@ impl ThreadSafeState {
   pub fn stateful_op<D>(
     &self,
     dispatcher: D,
-  ) -> impl Fn(Value, Option<PinnedBuf>) -> Result<JsonOp, ErrBox>
+  ) -> impl Fn(Value, Option<ZeroCopyBuf>) -> Result<JsonOp, ErrBox>
   where
-    D: Fn(&ThreadSafeState, Value, Option<PinnedBuf>) -> Result<JsonOp, ErrBox>,
+    D: Fn(
+      &ThreadSafeState,
+      Value,
+      Option<ZeroCopyBuf>,
+    ) -> Result<JsonOp, ErrBox>,
   {
     let state = self.clone();
 
-    move |args: Value, zero_copy: Option<PinnedBuf>| -> Result<JsonOp, ErrBox> {
-      dispatcher(&state, args, zero_copy)
-    }
+    move |args: Value,
+          zero_copy: Option<ZeroCopyBuf>|
+          -> Result<JsonOp, ErrBox> { dispatcher(&state, args, zero_copy) }
   }
 }
 

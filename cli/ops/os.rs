@@ -38,7 +38,7 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
 fn op_start(
   state: &ThreadSafeState,
   _args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let gs = &state.global_state;
   let script_args = if gs.flags.argv.len() >= 2 {
@@ -70,7 +70,7 @@ struct GetDirArgs {
 fn op_get_dir(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   state.check_env()?;
   let args: GetDirArgs = serde_json::from_value(args)?;
@@ -116,7 +116,7 @@ fn op_get_dir(
 fn op_exec_path(
   state: &ThreadSafeState,
   _args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   state.check_env()?;
   let current_exe = env::current_exe().unwrap();
@@ -136,7 +136,7 @@ struct SetEnv {
 fn op_set_env(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: SetEnv = serde_json::from_value(args)?;
   state.check_env()?;
@@ -147,7 +147,7 @@ fn op_set_env(
 fn op_env(
   state: &ThreadSafeState,
   _args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   state.check_env()?;
   let v = env::vars().collect::<HashMap<String, String>>();
@@ -162,7 +162,7 @@ struct GetEnv {
 fn op_get_env(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: GetEnv = serde_json::from_value(args)?;
   state.check_env()?;
@@ -181,7 +181,7 @@ struct Exit {
 fn op_exit(
   _s: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: Exit = serde_json::from_value(args)?;
   std::process::exit(args.code)
@@ -190,7 +190,7 @@ fn op_exit(
 fn op_is_tty(
   _s: &ThreadSafeState,
   _args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   Ok(JsonOp::Sync(json!({
     "stdin": atty::is(atty::Stream::Stdin),
@@ -202,7 +202,7 @@ fn op_is_tty(
 fn op_hostname(
   state: &ThreadSafeState,
   _args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   state.check_env()?;
   let hostname = sys_info::hostname().unwrap_or_else(|_| "".to_owned());
