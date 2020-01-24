@@ -37,6 +37,8 @@ use std::task::Poll;
 /// cloned.
 pub struct PinnedBuf {
   backing_store: v8::SharedRef<v8::BackingStore>,
+  byte_offset: usize,
+  byte_length: usize,
 }
 
 unsafe impl Send for PinnedBuf {}
@@ -44,20 +46,28 @@ unsafe impl Send for PinnedBuf {}
 impl PinnedBuf {
   pub fn new(view: v8::Local<v8::ArrayBufferView>) -> Self {
     let backing_store = view.buffer().unwrap().get_backing_store();
-    Self { backing_store }
+    let byte_offset = view.byte_offset();
+    let byte_length = view.byte_length();
+    Self {
+      backing_store,
+      byte_offset,
+      byte_length,
+    }
   }
 }
 
 impl Deref for PinnedBuf {
   type Target = [u8];
   fn deref(&self) -> &[u8] {
-    unsafe { &**self.backing_store.get() }
+    let buf = unsafe { &**self.backing_store.get() };
+    &buf[self.byte_offset..self.byte_offset + self.byte_length]
   }
 }
 
 impl DerefMut for PinnedBuf {
   fn deref_mut(&mut self) -> &mut [u8] {
-    unsafe { &mut **self.backing_store.get() }
+    let buf = unsafe { &mut **self.backing_store.get() };
+    &mut buf[self.byte_offset..self.byte_offset + self.byte_length]
   }
 }
 
