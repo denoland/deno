@@ -80,30 +80,31 @@ impl Worker {
       });
     }
 
+    let inspector_handle = inspector.handle.clone();
     {
-      let inspector_handle = inspector.handle.clone();
-      //i.set_inspector_handle(inspector.handle.clone());
-
-      // TODO(bartlomieju): refactor this...
-      // I'm pretty sure it can be port of `Poll` for worker
-      let isolate_ = isolate.clone();
-      std::thread::spawn(move || loop {
-        {
-          let message = {
-            let rx = inspector_handle.rx.lock().unwrap();
-            rx.try_recv()
-          };
-
-          if let Ok(msg) = message {
-            eprintln!("[i] message ok {}", msg);
-            let mut i = isolate_.try_lock().unwrap();
-            i.inspector_message(msg);
-          }
-        }
-
-        std::thread::sleep(std::time::Duration::from_millis(5));
-      });
+      let mut i = isolate.try_lock().unwrap();
+      i.set_inspector_handle(inspector.handle.clone());
     }
+
+    // TODO(bartlomieju): refactor this...
+    // I'm pretty sure it can be port of `Poll` for worker
+    let isolate_ = isolate.clone();
+    std::thread::spawn(move || loop {
+      {
+        let message = {
+          let rx = inspector_handle.rx.lock().unwrap();
+          rx.try_recv()
+        };
+
+        if let Ok(msg) = message {
+          eprintln!("[i] message ok {}", msg);
+          let mut i = isolate_.try_lock().unwrap();
+          i.inspector_message(msg);
+        }
+      }
+
+      std::thread::sleep(std::time::Duration::from_millis(5));
+    });
 
     Self {
       name,
