@@ -33,7 +33,6 @@ pub trait Loader: Send + Sync {
     specifier: &str,
     referrer: &str,
     is_main: bool,
-    is_dyn_import: bool,
   ) -> Result<ModuleSpecifier, ErrBox>;
 
   /// Given ModuleSpecifier, load its source code.
@@ -41,6 +40,7 @@ pub trait Loader: Send + Sync {
     &self,
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
+    is_dyn_import: bool,
   ) -> Pin<Box<SourceCodeInfoFuture>>;
 }
 
@@ -121,10 +121,10 @@ impl RecursiveModuleLoad {
   fn add_root(&mut self) -> Result<(), ErrBox> {
     let module_specifier = match self.state {
       LoadState::ResolveMain(ref specifier, _) => {
-        self.loader.resolve(specifier, ".", true, false)?
+        self.loader.resolve(specifier, ".", true)?
       }
       LoadState::ResolveImport(ref specifier, ref referrer) => {
-        self.loader.resolve(specifier, referrer, false, true)?
+        self.loader.resolve(specifier, referrer, false)?
       }
 
       _ => unreachable!(),
@@ -139,7 +139,10 @@ impl RecursiveModuleLoad {
         })
         .boxed()
       }
-      _ => self.loader.load(&module_specifier, None).boxed(),
+      _ => self
+        .loader
+        .load(&module_specifier, None, self.is_dynamic_import())
+        .boxed(),
     };
 
     self.pending.push(load_fut);
@@ -154,7 +157,10 @@ impl RecursiveModuleLoad {
     referrer: ModuleSpecifier,
   ) {
     if !self.is_pending.contains(&specifier) {
-      let fut = self.loader.load(&specifier, Some(referrer));
+      let fut =
+        self
+          .loader
+          .load(&specifier, Some(referrer), self.is_dynamic_import());
       self.pending.push(fut.boxed());
       self.is_pending.insert(specifier);
     }
@@ -393,7 +399,9 @@ impl Deps {
         is_last,
       })
     } else {
-      let children = modules.get_children2(name)?;
+      let maybe_children = modules.get_children2(name);
+      eprintln!("maybe children {:?} {:?}", name, maybe_children);
+      let children = maybe_children?;
       seen.insert(name.to_string());
       let child_count = children.len();
       let deps: Vec<Deps> = children
@@ -565,7 +573,6 @@ mod tests {
       specifier: &str,
       referrer: &str,
       _is_root: bool,
-      _is_dyn_import: bool,
     ) -> Result<ModuleSpecifier, ErrBox> {
       let referrer = if referrer == "." {
         "file:///"
@@ -592,6 +599,7 @@ mod tests {
       &self,
       module_specifier: &ModuleSpecifier,
       _maybe_referrer: Option<ModuleSpecifier>,
+      _is_dyn_import: bool,
     ) -> Pin<Box<SourceCodeInfoFuture>> {
       let mut loads = self.loads.lock().unwrap();
       loads.push(module_specifier.to_string());

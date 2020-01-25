@@ -487,12 +487,8 @@ impl EsIsolate {
       .import_specifiers
       .clone();
     for import in imports {
-      let module_specifier = self.loader.resolve(
-        &import,
-        referrer_name,
-        false,
-        load.is_dynamic_import(),
-      )?;
+      let module_specifier =
+        self.loader.resolve(&import, referrer_name, false)?;
       self
         .modules
         .cache_specifier(&import, referrer_name, &module_specifier);
@@ -589,7 +585,6 @@ pub mod tests {
         specifier: &str,
         referrer: &str,
         _is_main: bool,
-        _is_dyn_import: bool,
       ) -> Result<ModuleSpecifier, ErrBox> {
         self.count.fetch_add(1, Ordering::Relaxed);
         assert_eq!(specifier, "./b.js");
@@ -602,6 +597,7 @@ pub mod tests {
         &self,
         _module_specifier: &ModuleSpecifier,
         _maybe_referrer: Option<ModuleSpecifier>,
+        _is_dyn_import: bool,
       ) -> Pin<Box<SourceCodeInfoFuture>> {
         unreachable!()
       }
@@ -703,7 +699,6 @@ pub mod tests {
         specifier: &str,
         referrer: &str,
         _is_main: bool,
-        _is_dyn_import: bool,
       ) -> Result<ModuleSpecifier, ErrBox> {
         self.count.fetch_add(1, Ordering::Relaxed);
         assert_eq!(specifier, "/foo.js");
@@ -716,6 +711,7 @@ pub mod tests {
         &self,
         _module_specifier: &ModuleSpecifier,
         _maybe_referrer: Option<ModuleSpecifier>,
+        _is_dyn_import: bool,
       ) -> Pin<Box<SourceCodeInfoFuture>> {
         async { Err(ErrBox::from(io::Error::from(io::ErrorKind::NotFound))) }
           .boxed()
@@ -849,7 +845,6 @@ pub mod tests {
         specifier: &str,
         referrer: &str,
         _is_main: bool,
-        _is_dyn_import: bool,
       ) -> Result<ModuleSpecifier, ErrBox> {
         let c = self.resolve_count.fetch_add(1, Ordering::Relaxed);
         match c {
@@ -866,6 +861,7 @@ pub mod tests {
         &self,
         specifier: &ModuleSpecifier,
         _maybe_referrer: Option<ModuleSpecifier>,
+        _is_dyn_import: bool,
       ) -> Pin<Box<SourceCodeInfoFuture>> {
         self.load_count.fetch_add(1, Ordering::Relaxed);
         let info = SourceCodeInfo {
