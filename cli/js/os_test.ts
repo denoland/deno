@@ -255,6 +255,12 @@ testPerm({ env: true }, function getDir(): void {
   }
 });
 
+testPerm({}, function ttySize(): void {
+  const { columns, rows } = Deno.ttySize();
+  assert(typeof columns === "number");
+  assert(typeof rows === "number");
+});
+
 testPerm({}, function getDirWithoutPermission(): void {
   assertThrows(
     () => Deno.dir("home"),
