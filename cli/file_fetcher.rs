@@ -28,6 +28,28 @@ use std::sync::Mutex;
 use url;
 use url::Url;
 
+pub fn source_header_cache_failed_error(
+  module_name: &str,
+  reason: &str,
+) -> ErrBox {
+  DenoError::new(
+    ErrorKind::Other,
+    format!(
+      "Source code header cache failed for '{}': {}",
+      module_name, reason
+    ),
+  )
+  .into()
+}
+
+pub fn source_cache_failed_error(module_name: &str, reason: &str) -> ErrBox {
+  DenoError::new(
+    ErrorKind::Other,
+    format!("Source code cache failed for '{}': {}", module_name, reason),
+  )
+  .into()
+}
+
 /// Structure representing local or remote file.
 ///
 /// In case of remote file `url` might be different than originally requested URL, if so
@@ -416,14 +438,17 @@ impl SourceFileFetcher {
         }
         FetchOnceResult::Redirect(new_module_url) => {
           // If redirects, update module_name and filename for next looped call.
-          dir
-            .save_source_code_headers(
-              &module_url,
-              None,
-              Some(new_module_url.to_string()),
-              None,
-            )
-            .unwrap();
+          if let Err(e) = dir.save_source_code_headers(
+            &module_url,
+            None,
+            Some(new_module_url.to_string()),
+            None,
+          ) {
+            return Err(source_header_cache_failed_error(
+              module_url.as_str(),
+              &e.to_string(),
+            ));
+          }
 
           // Explicit drop to keep reference alive until future completes.
           drop(download_job);
@@ -440,16 +465,24 @@ impl SourceFileFetcher {
         }
         FetchOnceResult::Code(source, maybe_content_type, etag) => {
           // We land on the code.
-          dir
-            .save_source_code_headers(
-              &module_url,
-              maybe_content_type.clone(),
-              None,
-              etag,
-            )
-            .unwrap();
+          if let Err(e) = dir.save_source_code_headers(
+            &module_url,
+            maybe_content_type.clone(),
+            None,
+            etag,
+          ) {
+            return Err(source_header_cache_failed_error(
+              module_url.as_str(),
+              &e.to_string(),
+            ));
+          }
 
-          dir.save_source_code(&module_url, &source).unwrap();
+          if let Err(e) = dir.save_source_code(&module_url, &source) {
+            return Err(source_cache_failed_error(
+              module_url.as_str(),
+              &e.to_string(),
+            ));
+          }
 
           let filepath = dir
             .deps_cache

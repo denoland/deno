@@ -57,21 +57,6 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op("metrics", s.core_op(json_op(s.stateful_op(op_metrics))));
 }
 
-struct GetMessageFuture {
-  state: ThreadSafeState,
-}
-
-impl Future for GetMessageFuture {
-  type Output = Option<Buf>;
-
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    let inner = self.get_mut();
-    let mut channels = inner.state.worker_channels.lock().unwrap();
-    let receiver = &mut channels.receiver;
-    receiver.poll_next_unpin(cx)
-  }
-}
-
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateWorkerArgs {
@@ -84,7 +69,7 @@ struct CreateWorkerArgs {
 fn op_create_worker(
   state: &ThreadSafeState,
   args: Value,
-  _data: Option<PinnedBuf>,
+  _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: CreateWorkerArgs = serde_json::from_value(args)?;
 
@@ -114,8 +99,8 @@ fn op_create_worker(
   // with parent (aka .clone(), requests from child won't reflect in parent)
   let name = format!("USER-WORKER-{}", specifier);
   let mut worker =
-    WebWorker::new(name, startup_data::worker_isolate_init(), child_state, ext);
-  js_check(worker.execute("workerMain()"));
+    WebWorker::new(name, startup_data::deno_isolate_init(), child_state, ext);
+  js_check(worker.execute("bootstrapWorkerRuntime()"));
 
   let worker_id = parent_state.add_child_worker(worker.clone());
 
@@ -195,7 +180,7 @@ struct WorkerArgs {
 fn op_host_get_worker_loaded(
   state: &ThreadSafeState,
   args: Value,
-  _data: Option<PinnedBuf>,
+  _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
@@ -213,7 +198,7 @@ fn op_host_get_worker_loaded(
 fn op_host_poll_worker(
   state: &ThreadSafeState,
   args: Value,
-  _data: Option<PinnedBuf>,
+  _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
@@ -241,7 +226,7 @@ fn op_host_poll_worker(
 fn op_host_close_worker(
   state: &ThreadSafeState,
   args: Value,
-  _data: Option<PinnedBuf>,
+  _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
@@ -250,9 +235,12 @@ fn op_host_close_worker(
   let mut workers_table = state_.workers.lock().unwrap();
   let maybe_worker = workers_table.remove(&id);
   if let Some(worker) = maybe_worker {
-    let mut channels = worker.state.worker_channels.lock().unwrap();
-    channels.sender.close_channel();
-    channels.receiver.close();
+    let channels = worker.state.worker_channels.clone();
+    let mut sender = channels.sender.clone();
+    sender.close_channel();
+
+    let mut receiver = futures::executor::block_on(channels.receiver.lock());
+    receiver.close();
   };
 
   Ok(JsonOp::Sync(json!({})))
@@ -261,7 +249,7 @@ fn op_host_close_worker(
 fn op_host_resume_worker(
   state: &ThreadSafeState,
   args: Value,
-  _data: Option<PinnedBuf>,
+  _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
@@ -269,7 +257,7 @@ fn op_host_resume_worker(
 
   let mut workers_table = state_.workers.lock().unwrap();
   let worker = workers_table.get_mut(&id).unwrap();
-  js_check(worker.execute("workerMain()"));
+  js_check(worker.execute("bootstrapWorkerRuntime()"));
   Ok(JsonOp::Sync(json!({})))
 }
 
@@ -282,12 +270,12 @@ struct HostGetMessageArgs {
 fn op_host_get_message(
   state: &ThreadSafeState,
   args: Value,
-  _data: Option<PinnedBuf>,
+  _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: HostGetMessageArgs = serde_json::from_value(args)?;
-
+  let state_ = state.clone();
   let id = args.id as u32;
-  let mut table = state.workers.lock().unwrap();
+  let mut table = state_.workers.lock().unwrap();
   // TODO: don't return bad resource anymore
   let worker = table.get_mut(&id).ok_or_else(bad_resource)?;
   let fut = worker.get_message();
@@ -309,7 +297,7 @@ struct HostPostMessageArgs {
 fn op_host_post_message(
   state: &ThreadSafeState,
   args: Value,
-  data: Option<PinnedBuf>,
+  data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: HostPostMessageArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
@@ -329,7 +317,7 @@ fn op_host_post_message(
 fn op_metrics(
   state: &ThreadSafeState,
   _args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let m = &state.metrics;
 

@@ -1,4 +1,4 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { test, assert, assertEquals } from "../test_util.ts";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type

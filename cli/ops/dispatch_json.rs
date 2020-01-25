@@ -1,12 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use deno_core::*;
 use futures::future::FutureExt;
-use futures::task::SpawnExt;
 pub use serde_derive::Deserialize;
 use serde_json::json;
 pub use serde_json::Value;
 use std::future::Future;
 use std::pin::Pin;
+use tokio::task;
 
 pub type AsyncJsonOp =
   Pin<Box<dyn Future<Output = Result<Value, ErrBox>> + Send>>;
@@ -14,6 +14,9 @@ pub type AsyncJsonOp =
 pub enum JsonOp {
   Sync(Value),
   Async(AsyncJsonOp),
+  /// AsyncUnref is the variation of Async, which doesn't block the program
+  /// exiting.
+  AsyncUnref(AsyncJsonOp),
 }
 
 fn json_err(err: ErrBox) -> Value {
@@ -45,11 +48,11 @@ struct AsyncArgs {
   promise_id: Option<u64>,
 }
 
-pub fn json_op<D>(d: D) -> impl Fn(&[u8], Option<PinnedBuf>) -> CoreOp
+pub fn json_op<D>(d: D) -> impl Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp
 where
-  D: Fn(Value, Option<PinnedBuf>) -> Result<JsonOp, ErrBox>,
+  D: Fn(Value, Option<ZeroCopyBuf>) -> Result<JsonOp, ErrBox>,
 {
-  move |control: &[u8], zero_copy: Option<PinnedBuf>| {
+  move |control: &[u8], zero_copy: Option<ZeroCopyBuf>| {
     let async_args: AsyncArgs = match serde_json::from_slice(control) {
       Ok(args) => args,
       Err(e) => {
@@ -77,6 +80,13 @@ where
         });
         CoreOp::Async(fut2.boxed())
       }
+      Ok(JsonOp::AsyncUnref(fut)) => {
+        assert!(promise_id.is_some());
+        let fut2 = fut.then(move |result| {
+          futures::future::ok(serialize_result(promise_id, result))
+        });
+        CoreOp::AsyncUnref(fut2.boxed())
+      }
       Err(sync_err) => {
         let buf = serialize_result(promise_id, Err(sync_err));
         if is_sync {
@@ -96,11 +106,12 @@ where
   if is_sync {
     Ok(JsonOp::Sync(f()?))
   } else {
-    //TODO(afinch7) replace this with something more efficent.
-    let pool = futures::executor::ThreadPool::new().unwrap();
-    let handle = pool
-      .spawn_with_handle(futures::future::lazy(move |_cx| f()))
-      .unwrap();
-    Ok(JsonOp::Async(handle.boxed()))
+    let fut = async move {
+      task::spawn_blocking(move || f())
+        .await
+        .map_err(ErrBox::from)?
+    }
+    .boxed();
+    Ok(JsonOp::Async(fut.boxed()))
   }
 }

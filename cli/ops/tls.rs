@@ -63,7 +63,7 @@ struct ConnectTLSArgs {
 pub fn op_connect_tls(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: ConnectTLSArgs = serde_json::from_value(args)?;
   let cert_file = args.cert_file.clone();
@@ -246,7 +246,7 @@ struct ListenTlsArgs {
 fn op_listen_tls(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: ListenTlsArgs = serde_json::from_value(args)?;
   assert_eq!(args.transport, "tcp");
@@ -357,7 +357,7 @@ struct AcceptTlsArgs {
 fn op_accept_tls(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: AcceptTlsArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;

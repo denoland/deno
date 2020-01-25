@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::PinnedBuf;
+use crate::ZeroCopyBuf;
 use futures::Future;
 use std::collections::HashMap;
 use std::pin::Pin;
@@ -21,6 +21,9 @@ pub type OpResult<E> = Result<Op<E>, E>;
 pub enum Op<E> {
   Sync(Buf),
   Async(OpAsyncFuture<E>),
+  /// AsyncUnref is the variation of Async, which doesn't block the program
+  /// exiting.
+  AsyncUnref(OpAsyncFuture<E>),
 }
 
 pub type CoreError = ();
@@ -29,7 +32,7 @@ pub type CoreOp = Op<CoreError>;
 
 /// Main type describing op
 pub type OpDispatcher =
-  dyn Fn(&[u8], Option<PinnedBuf>) -> CoreOp + Send + Sync + 'static;
+  dyn Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp + Send + Sync + 'static;
 
 #[derive(Default)]
 pub struct OpRegistry {
@@ -50,7 +53,7 @@ impl OpRegistry {
 
   pub fn register<F>(&self, name: &str, op: F) -> OpId
   where
-    F: Fn(&[u8], Option<PinnedBuf>) -> CoreOp + Send + Sync + 'static,
+    F: Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp + Send + Sync + 'static,
   {
     let mut lock = self.dispatchers.write().unwrap();
     let op_id = lock.len() as u32;
@@ -79,7 +82,7 @@ impl OpRegistry {
     &self,
     op_id: OpId,
     control: &[u8],
-    zero_copy_buf: Option<PinnedBuf>,
+    zero_copy_buf: Option<ZeroCopyBuf>,
   ) -> Option<CoreOp> {
     // Op with id 0 has special meaning - it's a special op that is always
     // provided to retrieve op id map. The map consists of name to `OpId`

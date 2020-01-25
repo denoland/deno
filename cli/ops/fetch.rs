@@ -26,7 +26,7 @@ struct FetchArgs {
 pub fn op_fetch(
   state: &ThreadSafeState,
   args: Value,
-  data: Option<PinnedBuf>,
+  data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: FetchArgs = serde_json::from_value(args)?;
   let url = args.url;

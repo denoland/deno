@@ -19,6 +19,7 @@ export {
   seek,
   seekSync,
   close,
+  OpenOptions,
   OpenMode
 } from "./files.ts";
 export {
@@ -100,6 +101,7 @@ export {
 } from "./process.ts";
 export { transpileOnly, compile, bundle } from "./compiler_api.ts";
 export { inspect } from "./console.ts";
+export { signal, signals, SignalStream } from "./signals.ts";
 export { build, OperatingSystem, Arch } from "./build.ts";
 export { version } from "./version.ts";
 export const args: string[] = [];

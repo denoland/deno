@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use super::compiler_worker::CompilerWorker;
 use crate::compilers::CompilationResultFuture;
 use crate::compilers::CompiledModule;
 use crate::compilers::CompiledModuleFuture;
@@ -13,7 +14,6 @@ use crate::source_maps::SourceMapGetter;
 use crate::startup_data;
 use crate::state::*;
 use crate::version;
-use crate::worker::Worker;
 use deno_core::Buf;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
@@ -165,6 +165,7 @@ fn req(
   let j = match (compiler_config.path, compiler_config.content) {
     (Some(config_path), Some(config_data)) => json!({
       "type": request_type as i32,
+      "target": "main",
       "rootNames": root_names,
       "outFile": out_file,
       "bundle": bundle,
@@ -173,6 +174,7 @@ fn req(
     }),
     _ => json!({
       "type": request_type as i32,
+      "target": "main",
       "rootNames": root_names,
       "outFile": out_file,
       "bundle": bundle,
@@ -228,7 +230,7 @@ impl TsCompiler {
   }
 
   /// Create a new V8 worker with snapshot of TS compiler and setup compiler's runtime.
-  fn setup_worker(global_state: ThreadSafeGlobalState) -> Worker {
+  fn setup_worker(global_state: ThreadSafeGlobalState) -> CompilerWorker {
     let (int, ext) = ThreadSafeState::create_channels();
     let worker_state =
       ThreadSafeState::new(global_state.clone(), None, None, int)
@@ -240,15 +242,15 @@ impl TsCompiler {
       .compiler_starts
       .fetch_add(1, Ordering::SeqCst);
 
-    let mut worker = Worker::new(
+    let mut worker = CompilerWorker::new(
       "TS".to_string(),
       startup_data::compiler_isolate_init(),
       worker_state,
       ext,
     );
-    worker.execute("denoMain()").unwrap();
-    worker.execute("workerMain()").unwrap();
-    worker.execute("compilerMain()").unwrap();
+    worker.execute("bootstrapCompilerRuntime('TS')").unwrap();
+    worker.execute("bootstrapWorkerRuntime()").unwrap();
+    worker.execute("bootstrapTsCompiler()").unwrap();
     worker
   }
 
@@ -279,7 +281,7 @@ impl TsCompiler {
       worker.post_message(req_msg).await?;
       worker.await?;
       debug!("Sent message to worker");
-      let maybe_msg = worker_.get_message().await?;
+      let maybe_msg = worker_.get_message().await;
       debug!("Received message from worker");
       if let Some(msg) = maybe_msg {
         let json_str = std::str::from_utf8(&msg).unwrap();
@@ -378,7 +380,7 @@ impl TsCompiler {
       worker.post_message(req_msg).await?;
       worker.await?;
       debug!("Sent message to worker");
-      let maybe_msg = worker_.get_message().await?;
+      let maybe_msg = worker_.get_message().await;
       if let Some(msg) = maybe_msg {
         let json_str = std::str::from_utf8(&msg).unwrap();
         debug!("Message: {}", json_str);
@@ -617,6 +619,7 @@ pub fn runtime_compile_async<S: BuildHasher>(
 ) -> Pin<Box<CompilationResultFuture>> {
   let req_msg = json!({
     "type": msg::CompilerRequestType::RuntimeCompile as i32,
+    "target": "runtime",
     "rootName": root_name,
     "sources": sources,
     "options": options,
@@ -633,7 +636,7 @@ pub fn runtime_compile_async<S: BuildHasher>(
     worker.post_message(req_msg).await?;
     worker.await?;
     debug!("Sent message to worker");
-    let msg = (worker_.get_message().await?).unwrap();
+    let msg = (worker_.get_message().await).unwrap();
     let json_str = std::str::from_utf8(&msg).unwrap();
     Ok(json!(json_str))
   }
@@ -661,7 +664,7 @@ pub fn runtime_transpile_async<S: BuildHasher>(
     worker.post_message(req_msg).await?;
     worker.await?;
     debug!("Sent message to worker");
-    let msg = (worker_.get_message().await?).unwrap();
+    let msg = (worker_.get_message().await).unwrap();
     let json_str = std::str::from_utf8(&msg).unwrap();
     Ok(json!(json_str))
   }
