@@ -33,6 +33,7 @@ bytes = "0.5.3"
 byteorder = "1.3.2"
 brotli2 = "0.3.2"
 clap = "2.33.0"
+crossterm = "0.14"
 dirs = "2.0.2"
 dlopen = "0.1.8"
 futures = { version = "0.3.1", features = [ "compat", "io-compat" ] }

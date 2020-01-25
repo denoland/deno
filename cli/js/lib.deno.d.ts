@@ -19,6 +19,15 @@ declare namespace Deno {
     stdout: boolean;
     stderr: boolean;
   };
+  
+  /** Get the size of the terminal.
+   *
+   *       const { columns, rows } = Deno.ttySize();
+   */
+  export function ttySize(): {
+    columns: number;
+    rows: number;
+  };
 
   /** Get the hostname. Requires the `--allow-env` flag.
    *

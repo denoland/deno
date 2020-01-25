@@ -6,6 +6,7 @@ use crate::ops::json_op;
 use crate::state::ThreadSafeState;
 use crate::version;
 use atty;
+use crossterm::{terminal::{ size as terminal_size }};
 use deno_core::*;
 use std::collections::HashMap;
 use std::env;
@@ -26,6 +27,7 @@ static BUILD_ARCH: &str = "x64";
 pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
   i.register_op("exit", s.core_op(json_op(s.stateful_op(op_exit))));
   i.register_op("is_tty", s.core_op(json_op(s.stateful_op(op_is_tty))));
+  i.register_op("tty_size", s.core_op(json_op(s.stateful_op(op_tty_size))));
   i.register_op("env", s.core_op(json_op(s.stateful_op(op_env))));
   i.register_op("exec_path", s.core_op(json_op(s.stateful_op(op_exec_path))));
   i.register_op("set_env", s.core_op(json_op(s.stateful_op(op_set_env))));
@@ -196,6 +198,18 @@ fn op_is_tty(
     "stdin": atty::is(atty::Stream::Stdin),
     "stdout": atty::is(atty::Stream::Stdout),
     "stderr": atty::is(atty::Stream::Stderr),
+  })))
+}
+
+fn op_tty_size(
+  _s: &ThreadSafeState,
+  _args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, ErrBox> {
+  let (columns, rows) = terminal_size()?;
+  Ok(JsonOp::Sync(json!({
+    "columns": columns,
+    "rows": rows,
   })))
 }
 

@@ -157,6 +157,11 @@ itest!(_006_url_imports {
   http_server: true,
 });
 
+itest!(_007_tty_size {
+  args: "run --reload 007_tty_size.ts",
+  output: "007_tty_size.ts.out",
+});
+
 itest!(_012_async {
   args: "run --reload 012_async.ts",
   output: "012_async.ts.out",

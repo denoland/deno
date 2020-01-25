@@ -15,6 +15,14 @@ export function isTTY(): { stdin: boolean; stdout: boolean; stderr: boolean } {
   return sendSync(dispatch.OP_IS_TTY);
 }
 
+/** Get the size of the terminal.
+ *
+ *       const { columns, rows } = Deno.ttySize();
+ */
+export function ttySize(): { columns: number, rows: number } {
+  return sendSync(dispatch.OP_TTY_SIZE);
+}
+
 /** Get the hostname.
  * Requires the `--allow-env` flag.
  *

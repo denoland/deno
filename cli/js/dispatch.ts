@@ -8,6 +8,7 @@ export let OP_READ: number;
 export let OP_WRITE: number;
 export let OP_EXIT: number;
 export let OP_IS_TTY: number;
+export let OP_TTY_SIZE: number;
 export let OP_ENV: number;
 export let OP_EXEC_PATH: number;
 export let OP_UTIME: number;
