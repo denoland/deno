@@ -99,7 +99,7 @@ fn op_create_worker(
   // with parent (aka .clone(), requests from child won't reflect in parent)
   let name = format!("USER-WORKER-{}", specifier);
   let mut worker =
-    WebWorker::new(name, startup_data::deno_isolate_init(), child_state, ext);
+    WebWorker::new(name, startup_data::worker_isolate_init(), child_state, ext);
   js_check(worker.execute("bootstrapWorkerRuntime()"));
 
   let worker_id = parent_state.add_child_worker(worker.clone());

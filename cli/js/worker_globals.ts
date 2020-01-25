@@ -118,7 +118,7 @@ declare global {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   var onmessage: ((e: { data: any }) => Promise<void> | void) | undefined;
   var queueMicrotask: (callback: () => void) => void;
-  var workerMain: (() => Promise<void> | void) | undefined;
+  var bootstrapWorkerRuntime: (() => Promise<void> | void) | undefined;
   /* eslint-enable */
 }
 
@@ -184,7 +184,7 @@ const globalProperties = {
   onmessage: writable(workerRuntime.onmessage),
   onerror: writable(workerRuntime.onerror),
 
-  workerMain: nonEnumerable(workerRuntime.workerMain),
+  bootstrapWorkerRuntime: nonEnumerable(workerRuntime.bootstrapWorkerRuntime),
   workerClose: nonEnumerable(workerRuntime.workerClose),
   postMessage: writable(workerRuntime.postMessage),
   Worker: nonEnumerable(workers.WorkerImpl),
