@@ -20,7 +20,9 @@ declare namespace Deno {
     stderr: boolean;
   };
 
-  /** Get the size of the terminal.
+  /** UNSTABLE: new API.
+   *
+   * Get the size of the terminal.
    *
    *       const { columns, rows } = Deno.ttySize();
    */
