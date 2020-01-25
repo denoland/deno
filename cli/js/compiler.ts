@@ -1,9 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // TODO(ry) Combine this implementation with //deno_typescript/compiler_main.js
 
-// these are imported for their side effects
-import "./globals.ts";
+// NOTE: these imports have side effects!
 import "./ts_global.d.ts";
+// This import will setup `self` global and other global variables available to workers
+import "./worker_main.ts";
 
 import { TranspileOnlyResult } from "./compiler_api.ts";
 import { TS_SNAPSHOT_PROGRAM } from "./compiler_bootstrap.ts";
@@ -33,13 +34,6 @@ import { fromTypeScriptDiagnostic } from "./diagnostics_util.ts";
 import * as os from "./os.ts";
 import { assert } from "./util.ts";
 import * as util from "./util.ts";
-import {
-  postMessage,
-  workerClose,
-  bootstrapWorkerRuntime
-} from "./worker_main.ts";
-
-const self = globalThis;
 
 interface CompilerRequestCompile {
   type: CompilerRequestType.Compile;
@@ -81,20 +75,17 @@ interface CompileResult {
 }
 
 // bootstrap the runtime environment, this gets called as the isolate is setup
-self.bootstrapCompilerRuntime = function bootstrapCompilerRuntime(
+globalThis.bootstrapCompilerRuntime = function bootstrapCompilerRuntime(
   compilerType: string
 ): void {
   os.start(true, compilerType);
 };
 
-// bootstrap the worker environment, this gets called as the isolate is setup
-self.bootstrapWorkerRuntime = bootstrapWorkerRuntime;
-
 // provide the "main" function that will be called by the privileged side when
 // lazy instantiating the compiler web worker
-self.bootstrapTsCompiler = function tsCompilerMain(): void {
+globalThis.bootstrapTsCompiler = function tsCompilerMain(): void {
   // bootstrapWorkerRuntime should have already been called since a compiler is a worker.
-  self.onmessage = async ({
+  globalThis.onmessage = async ({
     data: request
   }: {
     data: CompilerRequest;
@@ -191,7 +182,7 @@ self.bootstrapTsCompiler = function tsCompilerMain(): void {
             ? fromTypeScriptDiagnostic(diagnostics)
             : undefined
         };
-        postMessage(result);
+        globalThis.postMessage(result);
 
         util.log("<<< compile end", {
           rootNames,
@@ -271,7 +262,7 @@ self.bootstrapTsCompiler = function tsCompilerMain(): void {
             : undefined,
           bundle ? state.emitBundle : state.emitMap
         ];
-        postMessage(result);
+        globalThis.postMessage(result);
 
         assert(state.emitMap);
         util.log("<<< runtime compile finish", {
@@ -304,7 +295,7 @@ self.bootstrapTsCompiler = function tsCompilerMain(): void {
           );
           result[fileName] = { source, map };
         }
-        postMessage(result);
+        globalThis.postMessage(result);
 
         break;
       }
@@ -317,13 +308,13 @@ self.bootstrapTsCompiler = function tsCompilerMain(): void {
     }
 
     // The compiler isolate exits after a single message.
-    workerClose();
+    globalThis.workerClose();
   };
 };
 
-self.bootstrapWasmCompiler = function wasmCompilerMain(): void {
+globalThis.bootstrapWasmCompiler = function wasmCompilerMain(): void {
   // bootstrapWorkerRuntime should have already been called since a compiler is a worker.
-  self.onmessage = async ({
+  globalThis.onmessage = async ({
     data: binary
   }: {
     data: string;
@@ -343,11 +334,11 @@ self.bootstrapWasmCompiler = function wasmCompilerMain(): void {
       new Set(WebAssembly.Module.exports(compiled).map(({ name }) => name))
     );
 
-    postMessage({ importList, exportList });
+    globalThis.postMessage({ importList, exportList });
 
     util.log("<<< WASM compile end");
 
     // The compiler isolate exits after a single message.
-    workerClose();
+    globalThis.workerClose();
   };
 };

@@ -102,14 +102,20 @@ declare global {
     callback: (event: domTypes.Event) => void | null,
     options?: boolean | domTypes.AddEventListenerOptions | undefined
   ) => void;
-  var bootstrapTsCompiler: (() => void) | undefined;
+  var queueMicrotask: (callback: () => void) => void;
   var console: consoleTypes.Console;
+  var location: domTypes.Location;
+
+  // Assigned to `window` global - main runtime
   var Deno: {
     core: DenoCore;
   };
-  var bootstrapCompilerRuntime: ((compilerType: string) => void) | undefined;
+  var onload: ((e: domTypes.Event) => void) | undefined;
+  var onunload: ((e: domTypes.Event) => void) | undefined;
   var bootstrapMainRuntime: (() => void) | undefined;
-  var location: domTypes.Location;
+
+  // Assigned to `self` global - worker runtime and compiler
+  var bootstrapWorkerRuntime: (() => Promise<void> | void) | undefined;
   var onerror:
     | ((
         msg: string,
@@ -119,13 +125,17 @@ declare global {
         e: domTypes.Event
       ) => boolean | void)
     | undefined;
-  var onload: ((e: domTypes.Event) => void) | undefined;
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   var onmessage: ((e: { data: any }) => Promise<void> | void) | undefined;
-  var onunload: ((e: domTypes.Event) => void) | undefined;
-  var queueMicrotask: (callback: () => void) => void;
+  // Called in compiler
+  var workerClose: (() => void);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  var postMessage: ((msg: any) => void);
+  // Assigned to `self` global - compiler
+  var bootstrapTsCompiler: (() => void) | undefined;
+  var bootstrapCompilerRuntime: ((compilerType: string) => void) | undefined;
   var bootstrapWasmCompiler: (() => void) | undefined;
-  var bootstrapWorkerRuntime: (() => Promise<void> | void) | undefined;
   /* eslint-enable */
 }
 
