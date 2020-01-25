@@ -68,6 +68,7 @@ enum ShellOut {
 
 /// Whether messages should use color output
 #[derive(Debug, PartialEq, Clone, Copy)]
+#[allow(dead_code)]
 pub enum ColorChoice {
   /// Force color output
   Always,
