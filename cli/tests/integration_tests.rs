@@ -385,6 +385,13 @@ itest!(_052_no_remote_flag {
   http_server: true,
 });
 
+itest!(lock_write_fetch {
+  args:
+    "run --allow-read --allow-write --allow-env --allow-run lock_write_fetch.ts",
+  output: "lock_write_fetch.ts.out",
+  exit_code: 0,
+});
+
 itest!(lock_check_ok {
   args: "run --lock=lock_check_ok.json http://127.0.0.1:4545/cli/tests/003_relative_import.ts",
   output: "003_relative_import.ts.out",
