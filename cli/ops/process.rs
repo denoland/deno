@@ -80,7 +80,7 @@ impl Resource for ChildResource {}
 fn op_run(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let run_args: RunArgs = serde_json::from_value(args)?;
 
@@ -208,7 +208,7 @@ struct RunStatusArgs {
 fn op_run_status(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: RunStatusArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
@@ -256,7 +256,7 @@ struct KillArgs {
 fn op_kill(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   state.check_run()?;
 

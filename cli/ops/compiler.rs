@@ -30,7 +30,7 @@ struct CacheArgs {
 fn op_cache(
   state: &ThreadSafeState,
   args: Value,
-  _zero_copy: Option<PinnedBuf>,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: CacheArgs = serde_json::from_value(args)?;
 
@@ -55,14 +55,9 @@ struct SpecifiersReferrerArgs {
 fn op_resolve_modules(
   state: &ThreadSafeState,
   args: Value,
-  _data: Option<PinnedBuf>,
+  _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: SpecifiersReferrerArgs = serde_json::from_value(args)?;
-
-  // TODO(ry) Maybe a security hole. Only the compiler worker should have access
-  // to this. Need a test to demonstrate the hole.
-  let is_dyn_import = false;
-
   let (referrer, is_main) = if let Some(referrer) = args.referrer {
     (referrer, false)
   } else {
@@ -72,8 +67,7 @@ fn op_resolve_modules(
   let mut specifiers = vec![];
 
   for specifier in &args.specifiers {
-    let resolved_specifier =
-      state.resolve(specifier, &referrer, is_main, is_dyn_import);
+    let resolved_specifier = state.resolve(specifier, &referrer, is_main);
     match resolved_specifier {
       Ok(ms) => specifiers.push(ms.as_str().to_owned()),
       Err(err) => return Err(err),
@@ -86,7 +80,7 @@ fn op_resolve_modules(
 fn op_fetch_source_files(
   state: &ThreadSafeState,
   args: Value,
-  _data: Option<PinnedBuf>,
+  _data: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   let args: SpecifiersReferrerArgs = serde_json::from_value(args)?;
 

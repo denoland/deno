@@ -16,7 +16,7 @@ pub fn init(i: &mut Isolate, s: &ThreadSafeState) {
 fn op_get_random_values(
   state: &ThreadSafeState,
   _args: Value,
-  zero_copy: Option<PinnedBuf>,
+  zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
   assert!(zero_copy.is_some());
 

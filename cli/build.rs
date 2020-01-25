@@ -2,16 +2,16 @@
 use deno_core::CoreOp;
 use deno_core::Isolate;
 use deno_core::Op;
-use deno_core::PinnedBuf;
 use deno_core::StartupData;
+use deno_core::ZeroCopyBuf;
 use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 
 fn op_fetch_asset(
   custom_assets: HashMap<String, PathBuf>,
-) -> impl Fn(&[u8], Option<PinnedBuf>) -> CoreOp {
-  move |control: &[u8], zero_copy_buf: Option<PinnedBuf>| -> CoreOp {
+) -> impl Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp {
+  move |control: &[u8], zero_copy_buf: Option<ZeroCopyBuf>| -> CoreOp {
     assert!(zero_copy_buf.is_none()); // zero_copy_buf unused in this op.
     let custom_assets = custom_assets.clone();
     let name = std::str::from_utf8(control).unwrap();
@@ -71,9 +71,14 @@ fn main() {
   let snapshot_path = o.join("COMPILER_SNAPSHOT.bin");
   let mut custom_libs: HashMap<String, PathBuf> = HashMap::new();
   custom_libs.insert(
-    "lib.deno_runtime.d.ts".to_string(),
-    c.join("js/lib.deno_runtime.d.ts"),
+    "lib.deno_main.d.ts".to_string(),
+    c.join("js/lib.deno_main.d.ts"),
   );
+  custom_libs.insert(
+    "lib.deno_worker.d.ts".to_string(),
+    c.join("js/lib.deno_worker.d.ts"),
+  );
+  custom_libs.insert("lib.deno.d.ts".to_string(), c.join("js/lib.deno.d.ts"));
 
   let main_module_name =
     deno_typescript::compile_bundle(&bundle_path, root_names)

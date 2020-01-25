@@ -141,10 +141,10 @@ Using [Homebrew](https://formulae.brew.sh/formula/deno) (mac):
 brew install deno
 ```
 
-Using [Cargo](https://crates.io/crates/deno_cli):
+Using [Cargo](https://crates.io/crates/deno):
 
 ```shell
-cargo install deno_cli
+cargo install deno
 ```
 
 Deno binaries can also be installed manually, by downloading a tarball or zip
@@ -427,6 +427,39 @@ Uncaught NotFound: No such file or directory (os error 2)
     at maybeError (deno/js/errors.ts:41:12)
     at handleAsyncMsgFromRust (deno/js/dispatch.ts:27:17)
 ```
+
+### Handle OS Signals
+
+[API Reference](https://deno.land/typedoc/index.html#signal)
+
+You can use `Deno.signal()` function for handling OS signals.
+
+```
+for await (const _ of Deno.signal(Deno.Signal.SIGINT)) {
+  console.log("interrupted!");
+}
+```
+
+`Deno.signal()` also works as a promise.
+
+```
+await Deno.signal(Deno.Singal.SIGINT);
+console.log("interrupted!");
+```
+
+If you want to stop watching the signal, you can use `dispose()` method of the
+signal object.
+
+```
+const sig = Deno.signal(Deno.Signal.SIGINT);
+setTimeout(() => { sig.dispose(); }, 5000);
+
+for await (const _ of sig) {
+  console.log("interrupted");
+}
+```
+
+The above for-await loop exits after 5 seconds when sig.dispose() is called.
 
 ### Linking to third party code
 
