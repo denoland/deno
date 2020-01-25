@@ -27,6 +27,7 @@ import { setSignals } from "./process.ts";
 import * as Deno from "./deno.ts";
 import { internalObject } from "./internals.ts";
 
+// TODO: half of this stuff should be called in worker as well...
 function bootstrapMainRuntime(): void {
   const s = os.start(true);
 

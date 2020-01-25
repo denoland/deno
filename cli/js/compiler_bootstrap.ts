@@ -33,7 +33,7 @@ host.getSourceFile(`${ASSETS}/lib.deno.d.ts`, ts.ScriptTarget.ESNext);
  *
  * Used to generate the foundational AST for all other compilations, so it can
  * be cached as part of the snapshot and available to speed up startup.
- **/
+ */
 export const TS_SNAPSHOT_PROGRAM = ts.createProgram({
   rootNames: [`${ASSETS}/bootstrap.ts`],
   options,
@@ -44,5 +44,5 @@ export const TS_SNAPSHOT_PROGRAM = ts.createProgram({
  *
  * We read all static assets during the snapshotting process, which is
  * why this is located in compiler_bootstrap.
- **/
+ */
 export const BUNDLE_LOADER = getAsset("bundle_loader.js");

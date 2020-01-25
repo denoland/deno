@@ -45,6 +45,7 @@ fn main() {
   let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
   let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
+  // TODO(bartlomieju): remove worker snapshot
   // Worker snapshot
   let root_names = vec![c.join("js/worker_main.ts")];
   let bundle_path = o.join("WORKER_SNAPSHOT.js");

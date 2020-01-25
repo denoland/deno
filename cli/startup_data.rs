@@ -33,6 +33,7 @@ pub fn deno_isolate_init() -> StartupData<'static> {
   StartupData::Snapshot(data)
 }
 
+// TODO(bartlomieju): remove worker snapshot
 #[cfg(feature = "no-snapshot-init")]
 pub fn worker_isolate_init() -> StartupData<'static> {
   debug!("Worker isolate init without snapshots.");
@@ -50,6 +51,7 @@ pub fn worker_isolate_init() -> StartupData<'static> {
   })
 }
 
+// TODO(bartlomieju): remove worker snapshot
 #[cfg(not(feature = "no-snapshot-init"))]
 pub fn worker_isolate_init() -> StartupData<'static> {
   debug!("Worker isolate init with snapshots.");
