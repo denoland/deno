@@ -89,10 +89,11 @@ mod tests {
     );
     let mut worker = WebWorker::new(
       "TEST".to_string(),
-      startup_data::worker_isolate_init(),
+      startup_data::deno_isolate_init(),
       state,
       ext,
     );
+    worker.execute("setupWorkerRuntimeGlobals()").unwrap();
     worker.execute("bootstrapWorkerRuntime()").unwrap();
     worker
   }

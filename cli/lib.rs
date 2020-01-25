@@ -261,6 +261,7 @@ fn info_command(flags: DenoFlags) {
   let main_module = state.main_module.as_ref().unwrap().clone();
 
   // Setup runtime.
+  js_check(worker.execute("setupMainRuntimeGlobals()"));
   js_check(worker.execute("bootstrapMainRuntime()"));
   debug!("main_module {}", main_module);
 
@@ -283,6 +284,7 @@ fn fetch_command(flags: DenoFlags) {
   let main_module = state.main_module.as_ref().unwrap().clone();
 
   // Setup runtime.
+  js_check(worker.execute("setupMainRuntimeGlobals()"));
   js_check(worker.execute("bootstrapMainRuntime()"));
   debug!("main_module {}", main_module);
 
@@ -301,6 +303,7 @@ fn eval_command(flags: DenoFlags) {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./__$deno$eval.ts").unwrap();
 
+  js_check(worker.execute("setupMainRuntimeGlobals()"));
   js_check(worker.execute("bootstrapMainRuntime()"));
   debug!("main_module {}", &main_module);
 
@@ -347,6 +350,7 @@ fn bundle_command(flags: DenoFlags) {
 
 fn run_repl(flags: DenoFlags) {
   let (mut worker, _state) = create_worker_and_state(flags);
+  js_check(worker.execute("setupMainRuntimeGlobals()"));
   js_check(worker.execute("bootstrapMainRuntime()"));
   let main_future = async move {
     loop {
@@ -371,6 +375,7 @@ fn run_script(flags: DenoFlags) {
   // Normal situation of executing a module.
 
   // Setup runtime.
+  js_check(worker.execute("setupMainRuntimeGlobals()"));
   js_check(worker.execute("bootstrapMainRuntime()"));
   debug!("main_module {}", main_module);
 

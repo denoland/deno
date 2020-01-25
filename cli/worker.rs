@@ -376,6 +376,7 @@ mod tests {
         state,
         ext,
       );
+      worker.execute("setupMainRuntimeGlobals()").unwrap();
       worker.execute("bootstrapMainRuntime()").unwrap();
       let result = worker
         .execute_mod_async(&module_specifier, None, false)
@@ -408,6 +409,7 @@ mod tests {
       state,
       ext,
     );
+    worker.execute("setupMainRuntimeGlobals()").unwrap();
     worker.execute("bootstrapMainRuntime()").unwrap();
     worker
   }

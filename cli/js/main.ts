@@ -5,15 +5,7 @@
 //
 // It provides global scope as `window`.
 
-import {
-  readOnly,
-  writable,
-  nonEnumerable,
-  windowOrWorkerGlobalScopeMethods,
-  windowOrWorkerGlobalScopeProperties,
-  eventTargetProperties
-} from "./globals.ts";
-import * as domTypes from "./dom_types.ts";
+import { readOnly, writable } from "./globals.ts";
 import { assert, log } from "./util.ts";
 import * as os from "./os.ts";
 import { args } from "./deno.ts";
@@ -28,7 +20,7 @@ import * as Deno from "./deno.ts";
 import { internalObject } from "./internals.ts";
 
 // TODO: half of this stuff should be called in worker as well...
-function bootstrapMainRuntime(): void {
+export function bootstrapMainRuntime(): void {
   const s = os.start(true);
 
   setBuildInfo(s.os, s.arch);
@@ -59,7 +51,6 @@ function bootstrapMainRuntime(): void {
 Deno[Deno.symbols.internal] = internalObject;
 
 export const mainRuntimeGlobalProperties = {
-  bootstrapMainRuntime: nonEnumerable(bootstrapMainRuntime),
   window: readOnly(globalThis),
   Deno: readOnly(Deno),
 
@@ -69,23 +60,3 @@ export const mainRuntimeGlobalProperties = {
   onload: writable(undefined),
   onunload: writable(undefined)
 };
-
-Object.defineProperties(globalThis, windowOrWorkerGlobalScopeMethods);
-Object.defineProperties(globalThis, windowOrWorkerGlobalScopeProperties);
-Object.defineProperties(globalThis, eventTargetProperties);
-Object.defineProperties(globalThis, mainRuntimeGlobalProperties);
-
-// Registers the handler for window.onload function.
-globalThis.addEventListener("load", (e: domTypes.Event): void => {
-  const { onload } = globalThis;
-  if (typeof onload === "function") {
-    onload(e);
-  }
-});
-// Registers the handler for window.onunload function.
-globalThis.addEventListener("unload", (e: domTypes.Event): void => {
-  const { onunload } = globalThis;
-  if (typeof onunload === "function") {
-    onunload(e);
-  }
-});

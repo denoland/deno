@@ -10,9 +10,6 @@ import {
   readOnly,
   writable,
   nonEnumerable,
-  windowOrWorkerGlobalScopeMethods,
-  windowOrWorkerGlobalScopeProperties,
-  eventTargetProperties
 } from "./globals.ts";
 import * as dispatch from "./dispatch.ts";
 import { sendAsync, sendSync } from "./dispatch_json.ts";
@@ -102,16 +99,10 @@ export async function bootstrapWorkerRuntime(): Promise<void> {
   }
 }
 
-const workerRuntimeGlobalProperties = {
+export const workerRuntimeGlobalProperties = {
   self: readOnly(globalThis),
-  bootstrapWorkerRuntime: nonEnumerable(bootstrapWorkerRuntime),
   onmessage: writable(onmessage),
   onerror: writable(onerror),
   workerClose: nonEnumerable(workerClose),
   postMessage: writable(postMessage)
 };
-
-Object.defineProperties(globalThis, windowOrWorkerGlobalScopeMethods);
-Object.defineProperties(globalThis, windowOrWorkerGlobalScopeProperties);
-Object.defineProperties(globalThis, workerRuntimeGlobalProperties);
-Object.defineProperties(globalThis, eventTargetProperties);

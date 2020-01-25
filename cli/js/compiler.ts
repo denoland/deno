@@ -4,7 +4,7 @@
 // NOTE: these imports have side effects!
 import "./ts_global.d.ts";
 // This import will setup `self` global and other global variables available to workers
-import "./worker_main.ts";
+import "./new_main.ts";
 
 import { TranspileOnlyResult } from "./compiler_api.ts";
 import { TS_SNAPSHOT_PROGRAM } from "./compiler_bootstrap.ts";

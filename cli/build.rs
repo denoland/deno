@@ -45,29 +45,8 @@ fn main() {
   let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
   let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
-  // TODO(bartlomieju): remove worker snapshot
-  // Worker snapshot
-  let root_names = vec![c.join("js/worker_main.ts")];
-  let bundle_path = o.join("WORKER_SNAPSHOT.js");
-  let snapshot_path = o.join("WORKER_SNAPSHOT.bin");
-
-  let main_module_name =
-    deno_typescript::compile_bundle(&bundle_path, root_names)
-      .expect("Bundle compilation failed");
-  assert!(bundle_path.exists());
-
-  let runtime_isolate = &mut Isolate::new(StartupData::None, true);
-
-  deno_typescript::mksnapshot_bundle(
-    runtime_isolate,
-    &snapshot_path,
-    &bundle_path,
-    &main_module_name,
-  )
-  .expect("Failed to create snapshot");
-
   // Main snapshot
-  let root_names = vec![c.join("js/main.ts")];
+  let root_names = vec![c.join("js/new_main.ts")];
   let bundle_path = o.join("CLI_SNAPSHOT.js");
   let snapshot_path = o.join("CLI_SNAPSHOT.bin");
 

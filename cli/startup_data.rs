@@ -4,7 +4,6 @@ use deno_core::Script;
 
 use crate::js::CLI_SNAPSHOT;
 use crate::js::COMPILER_SNAPSHOT;
-use crate::js::WORKER_SNAPSHOT;
 use deno_core::StartupData;
 
 #[cfg(feature = "no-snapshot-init")]
@@ -27,36 +26,6 @@ pub fn deno_isolate_init() -> StartupData<'static> {
   debug!("Deno isolate init with snapshots.");
   #[cfg(not(feature = "check-only"))]
   let data = CLI_SNAPSHOT;
-  #[cfg(feature = "check-only")]
-  let data = b"";
-
-  StartupData::Snapshot(data)
-}
-
-// TODO(bartlomieju): remove worker snapshot
-#[cfg(feature = "no-snapshot-init")]
-pub fn worker_isolate_init() -> StartupData<'static> {
-  debug!("Worker isolate init without snapshots.");
-  #[cfg(not(feature = "check-only"))]
-  let source = include_str!(concat!(
-    env!("GN_OUT_DIR"),
-    "/gen/cli/bundle/worker_main.js"
-  ));
-  #[cfg(feature = "check-only")]
-  let source = "";
-
-  StartupData::Script(Script {
-    filename: "gen/cli/bundle/worker_main.js",
-    source,
-  })
-}
-
-// TODO(bartlomieju): remove worker snapshot
-#[cfg(not(feature = "no-snapshot-init"))]
-pub fn worker_isolate_init() -> StartupData<'static> {
-  debug!("Worker isolate init with snapshots.");
-  #[cfg(not(feature = "check-only"))]
-  let data = WORKER_SNAPSHOT;
   #[cfg(feature = "check-only")]
   let data = b"";
 

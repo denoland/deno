@@ -60,6 +60,7 @@ impl WasmCompiler {
       worker_state,
       ext,
     );
+    worker.execute("setupWorkerRuntimeGlobals()").unwrap();
     worker.execute("bootstrapCompilerRuntime('WASM')").unwrap();
     worker.execute("bootstrapWorkerRuntime()").unwrap();
     worker.execute("bootstrapWasmCompiler()").unwrap();

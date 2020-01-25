@@ -249,6 +249,7 @@ impl TsCompiler {
       worker_state,
       ext,
     );
+    worker.execute("setupWorkerRuntimeGlobals()").unwrap();
     worker.execute("bootstrapCompilerRuntime('TS')").unwrap();
     worker.execute("bootstrapWorkerRuntime()").unwrap();
     worker.execute("bootstrapTsCompiler()").unwrap();
