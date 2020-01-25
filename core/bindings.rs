@@ -270,31 +270,28 @@ pub extern "C" fn message_callback(
   message: v8::Local<v8::Message>,
   _exception: v8::Local<v8::Value>,
 ) {
-  let mut scope = v8::CallbackScope::new(message);
-  let mut scope = v8::HandleScope::new(scope.enter());
-  let scope = scope.enter();
+  let mut cbs = v8::CallbackScope::new(message);
+  let mut hs = v8::HandleScope::new(cbs.enter());
+  let scope = hs.enter();
 
   let deno_isolate: &mut Isolate =
     unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
 
-  assert!(!deno_isolate.global_context.is_empty());
-  let context = deno_isolate.global_context.get(scope).unwrap();
-
   // TerminateExecution was called
   if scope.isolate().is_execution_terminating() {
-    let u = v8::undefined(scope);
-    deno_isolate.handle_exception(scope, context, u.into());
+    let undefined = v8::undefined(scope).into();
+    deno_isolate.handle_exception(scope, undefined);
     return;
   }
 
-  let json_str = deno_isolate.encode_message_as_json(scope, context, message);
+  let json_str = deno_isolate.encode_message_as_json(scope, message);
   deno_isolate.last_exception = Some(json_str);
 }
 
 pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
-  let mut scope = v8::CallbackScope::new(&message);
-  let mut scope = v8::HandleScope::new(scope.enter());
-  let scope = scope.enter();
+  let mut cbs = v8::CallbackScope::new(&message);
+  let mut hs = v8::HandleScope::new(cbs.enter());
+  let scope = hs.enter();
 
   let deno_isolate: &mut Isolate =
     unsafe { &mut *(scope.isolate().get_data(0) as *mut Isolate) };
@@ -312,12 +309,12 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
       let mut error_global = v8::Global::<v8::Value>::new();
       error_global.set(scope, error);
       deno_isolate
-        .pending_promise_map
+        .pending_promise_exceptions
         .insert(promise_id, error_global);
     }
     v8::PromiseRejectEvent::PromiseHandlerAddedAfterReject => {
       if let Some(mut handle) =
-        deno_isolate.pending_promise_map.remove(&promise_id)
+        deno_isolate.pending_promise_exceptions.remove(&promise_id)
       {
         handle.reset(scope);
       }
@@ -411,7 +408,8 @@ fn send(
       .ok();
 
   // If response is empty then it's either async op or exception was thrown
-  let maybe_response = deno_isolate.dispatch_op(op_id, control, zero_copy);
+  let maybe_response =
+    deno_isolate.dispatch_op(scope, op_id, control, zero_copy);
 
   if let Some(response) = maybe_response {
     // Synchronous response.
@@ -566,7 +564,7 @@ fn error_to_json(
   let context = deno_isolate.global_context.get(scope).unwrap();
 
   let message = v8::Exception::create_message(scope, args.get(0));
-  let json_obj = encode_message_as_object(scope, context, message);
+  let json_obj = encode_message_as_object(scope, message);
   let json_string = v8::json::stringify(context, json_obj.into()).unwrap();
 
   rv.set(json_string.into());
@@ -661,9 +659,9 @@ pub fn module_resolve_callback<'s>(
 
 pub fn encode_message_as_object<'a>(
   s: &mut impl v8::ToLocal<'a>,
-  context: v8::Local<v8::Context>,
   message: v8::Local<v8::Message>,
 ) -> v8::Local<'a, v8::Object> {
+  let context = s.isolate().get_current_context();
   let json_obj = v8::Object::new(s);
 
   let exception_str = message.get(s);
