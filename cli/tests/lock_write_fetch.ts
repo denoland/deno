@@ -7,6 +7,7 @@ const fetchProc = Deno.run({
   stderr: "null",
   args: [
     Deno.execPath(),
+    "fetch",
     "--reload",
     "--lock=lock_write_fetch.json",
     "--lock-write",
@@ -16,6 +17,20 @@ const fetchProc = Deno.run({
 
 const fetchCode = (await fetchProc.status()).code;
 console.log(`fetch code: ${fetchCode}`);
+
+const fetchCheckProc = Deno.run({
+  stdout: "null",
+  stderr: "null",
+  args: [
+    Deno.execPath(),
+    "fetch",
+    "--lock=lock_write_fetch.json",
+    "https_import.ts"
+  ]
+});
+
+const fetchCheckProcCode = (await fetchCheckProc.status()).code;
+console.log(`fetch check code: ${fetchCheckProcCode}`);
 
 const runProc = Deno.run({
   stdout: "null",
