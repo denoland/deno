@@ -26,7 +26,6 @@ const options = host.getCompilationSettings();
 host.getSourceFile(`${ASSETS}/lib.deno_main.d.ts`, ts.ScriptTarget.ESNext);
 host.getSourceFile(`${ASSETS}/lib.deno_worker.d.ts`, ts.ScriptTarget.ESNext);
 host.getSourceFile(`${ASSETS}/lib.deno.d.ts`, ts.ScriptTarget.ESNext);
-host.getSourceFile(`${ASSETS}/lib.webworker.d.ts`, ts.ScriptTarget.ESNext);
 
 /**
  * This function spins up TS compiler and loads all available libraries
