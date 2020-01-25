@@ -19,7 +19,7 @@ declare namespace Deno {
     stdout: boolean;
     stderr: boolean;
   };
-  
+
   /** Get the size of the terminal.
    *
    *       const { columns, rows } = Deno.ttySize();

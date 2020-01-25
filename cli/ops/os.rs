@@ -6,7 +6,7 @@ use crate::ops::json_op;
 use crate::state::ThreadSafeState;
 use crate::version;
 use atty;
-use crossterm::{terminal::{ size as terminal_size }};
+use crossterm::terminal::size as terminal_size;
 use deno_core::*;
 use std::collections::HashMap;
 use std::env;

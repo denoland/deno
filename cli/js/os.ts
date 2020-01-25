@@ -19,7 +19,7 @@ export function isTTY(): { stdin: boolean; stdout: boolean; stderr: boolean } {
  *
  *       const { columns, rows } = Deno.ttySize();
  */
-export function ttySize(): { columns: number, rows: number } {
+export function ttySize(): { columns: number; rows: number } {
   return sendSync(dispatch.OP_TTY_SIZE);
 }
 
