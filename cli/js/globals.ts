@@ -129,9 +129,9 @@ declare global {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   var onmessage: ((e: { data: any }) => Promise<void> | void) | undefined;
   // Called in compiler
-  var workerClose: (() => void);
+  var workerClose: () => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  var postMessage: ((msg: any) => void);
+  var postMessage: (msg: any) => void;
   // Assigned to `self` global - compiler
   var bootstrapTsCompiler: (() => void) | undefined;
   var bootstrapCompilerRuntime: ((compilerType: string) => void) | undefined;
