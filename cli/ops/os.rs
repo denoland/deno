@@ -206,11 +206,18 @@ fn op_tty_size(
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, ErrBox> {
-  let (columns, rows) = terminal_size()?;
-  Ok(JsonOp::Sync(json!({
-    "columns": columns,
-    "rows": rows,
-  })))
+  match terminal_size() {
+    Ok((columns, rows)) => Ok(JsonOp::Sync(json!({
+      "columns": columns,
+      "rows": rows,
+    }))),
+    // Return zero dimensions in case of error. Expect
+    // caller to check 'is_tty()` prior to query.
+    Err(_) => Ok(JsonOp::Sync(json!({
+      "columns": 0,
+      "rows": 0,
+    }))),
+  }
 }
 
 fn op_hostname(
