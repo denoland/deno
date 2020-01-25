@@ -6,11 +6,7 @@
 // It provides global scope as `self`.
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import {
-  readOnly,
-  writable,
-  nonEnumerable,
-} from "./globals.ts";
+import { readOnly, writable, nonEnumerable } from "./globals.ts";
 import * as dispatch from "./dispatch.ts";
 import { sendAsync, sendSync } from "./dispatch_json.ts";
 import { log } from "./util.ts";
